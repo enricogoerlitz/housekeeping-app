@@ -1,0 +1,179 @@
+-- Spec 0003, T1 — database foundation.
+--
+-- * Nothing new is exposed to the API roles by default: every grant must be explicit, like on
+--   the hosted project. This includes functions, which Postgres makes executable by PUBLIC.
+-- * Schema `private` holds helpers and privileged code; PostgREST does not expose it.
+-- * Shared triggers every synced table uses: server-set timestamps, tombstones for deletions and
+--   a Realtime signal per household (`docs/architecture/sync.md`).
+-- * The tombstone log `deleted_records` with a 30-day retention job.
+--
+-- Policies that need household membership (deleted_records, realtime.messages) follow in the
+-- identity migration, right after `household_members` and `private.my_household_ids()` exist.
+-- Until then deleted_records is deny-all (RLS on, no policy).
+
+-- ---------------------------------------------------------------------------------------------
+-- Default privileges
+-- ---------------------------------------------------------------------------------------------
+
+alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
+alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
+alter default privileges for role postgres in schema public revoke all on functions from anon, authenticated;
+-- EXECUTE for PUBLIC is a global default; it can only be revoked globally (not per schema).
+alter default privileges for role postgres revoke execute on functions from public;
+
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on all functions in schema public from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------------------------
+-- Schema private
+-- ---------------------------------------------------------------------------------------------
+
+create schema private;
+revoke all on schema private from public;
+-- RLS policies call a few helpers in private as the querying user; each one is granted explicitly.
+grant usage on schema private to authenticated;
+
+-- ---------------------------------------------------------------------------------------------
+-- Shared triggers
+-- ---------------------------------------------------------------------------------------------
+
+-- Before insert or update, for each row. The server owns created_at and updated_at (the delta
+-- sync depends on updated_at), and a row can never move to another household.
+create function private.set_timestamps()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_at := now();
+  else
+    new.created_at := old.created_at;
+    if to_jsonb(new) ? 'household_id'
+       and (to_jsonb(new) -> 'household_id') is distinct from (to_jsonb(old) -> 'household_id') then
+      raise exception 'household_id_immutable' using errcode = 'P0001';
+    end if;
+  end if;
+  new.updated_at := now();
+  return new;
+end
+$$;
+
+-- After delete, for each row: writes a tombstone so devices drop the row on the next delta sync.
+-- record_id is the value of the `id` column; tables with a composite key pass their key columns
+-- (without household_id) as trigger arguments, joined with ':' in argument order.
+create function private.record_deletion()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row jsonb := to_jsonb(old);
+  v_record_id text;
+begin
+  if tg_nargs = 0 then
+    v_record_id := v_row ->> 'id';
+  else
+    select string_agg(v_row ->> col, ':' order by ord)
+    into v_record_id
+    from unnest(tg_argv) with ordinality as k (col, ord);
+  end if;
+
+  insert into public.deleted_records (household_id, table_name, record_id)
+  values ((v_row ->> 'household_id')::uuid, tg_table_name, v_record_id);
+  return null;
+end
+$$;
+
+-- After insert, update or delete, for each statement (with transition tables new_rows/old_rows).
+-- Sends one Realtime broadcast per affected household on the private topic household:<id>.
+-- The payload is only {table}: Realtime is a signal to run the delta sync, never data.
+-- Argument: the column holding the household id (default household_id; `households` passes id).
+create function private.notify_household()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_column text := coalesce(tg_argv[0], 'household_id');
+  v_household_ids uuid[];
+  v_household_id uuid;
+begin
+  if tg_op = 'INSERT' then
+    select array_agg(distinct (to_jsonb(r) ->> v_column)::uuid) into v_household_ids from new_rows r;
+  elsif tg_op = 'UPDATE' then
+    select array_agg(distinct x.household_id) into v_household_ids
+    from (
+      select (to_jsonb(r) ->> v_column)::uuid as household_id from new_rows r
+      union all
+      select (to_jsonb(r) ->> v_column)::uuid from old_rows r
+    ) x;
+  else
+    select array_agg(distinct (to_jsonb(r) ->> v_column)::uuid) into v_household_ids from old_rows r;
+  end if;
+
+  foreach v_household_id in array coalesce(v_household_ids, '{}') loop
+    perform realtime.send(
+      jsonb_build_object('table', tg_table_name),
+      'changed',
+      'household:' || v_household_id,
+      true
+    );
+  end loop;
+  return null;
+end
+$$;
+
+-- Parses a Realtime topic "household:<uuid>". Returns null for anything else instead of failing,
+-- so a malformed topic is simply denied.
+create function private.household_id_from_topic(p_topic text)
+returns uuid
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_topic ~* '^household:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      then substr(p_topic, 11)::uuid
+  end
+$$;
+
+grant execute on function private.household_id_from_topic(text) to authenticated;
+
+-- ---------------------------------------------------------------------------------------------
+-- Tombstone log
+-- ---------------------------------------------------------------------------------------------
+
+-- Written only by private.record_deletion(). Members read the tombstones of their households
+-- (policy in the identity migration). No foreign key to households: it is a log, and tombstones
+-- of a deleted household are harmless because nobody can read them any more.
+create table public.deleted_records (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null,
+  table_name text not null,
+  record_id text not null,
+  deleted_at timestamptz not null default now()
+);
+
+create index deleted_records_household_id_deleted_at_idx
+  on public.deleted_records (household_id, deleted_at);
+create index deleted_records_deleted_at_idx on public.deleted_records (deleted_at);
+
+alter table public.deleted_records enable row level security;
+grant select on public.deleted_records to authenticated;
+
+-- Retention: devices whose cursor is older than 30 days do a full load instead (sync.md).
+create function private.purge_deleted_records()
+returns void
+language sql
+set search_path = ''
+as $$
+  delete from public.deleted_records where deleted_at < now() - interval '30 days';
+$$;
+
+create extension if not exists pg_cron with schema pg_catalog;
+
+select cron.schedule('purge-deleted-records', '15 3 * * *', 'select private.purge_deleted_records()');
