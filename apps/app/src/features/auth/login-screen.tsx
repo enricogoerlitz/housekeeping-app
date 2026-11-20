@@ -6,9 +6,13 @@ import {
 } from '@housekeeping/api';
 import { Button, Notice, Screen, Stack, Surface, Text, useBreakpoint } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { authConfig } from '@/lib/auth-config';
+
+const GOOGLE_SIGN_IN_AVAILABLE = Platform.OS === 'web';
+const NATIVE_HINT =
+  'In der iPhone- und Android-App kommt die Google-Anmeldung später. Öffne die App bis dahin im Browser.';
 
 const DEV_LABELS: Record<TestAccountKey, string> = {
   enrico: 'Als Test-Enrico anmelden',
@@ -39,10 +43,13 @@ export function LoginScreen(props: { error?: string }) {
         <Button
           label="Mit Google anmelden"
           full
-          disabled={busy}
+          // Spec 0003 covers the web app only; native Google sign-in comes with the native app.
+          disabled={busy || !GOOGLE_SIGN_IN_AVAILABLE}
+          hint={GOOGLE_SIGN_IN_AVAILABLE ? undefined : NATIVE_HINT}
           onPress={() => run(signInWithGoogle)}
           testID="login-google"
         />
+        {GOOGLE_SIGN_IN_AVAILABLE ? null : <Notice text={NATIVE_HINT} testID="login-native-hint" />}
         <Text variant="small" color="muted">
           Anmelden kann sich, wer von jemandem aus dem Haushalt eingeladen wurde.
         </Text>
