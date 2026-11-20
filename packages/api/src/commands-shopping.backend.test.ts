@@ -265,6 +265,32 @@ describe('from the meal plan', () => {
     expect(ids.some((id) => fx.server.row(H, 'shopping_contributions', id))).toBe(false);
   });
 
+  it('pantry check with more than 200 contributions: undo is one removeContributions call', async () => {
+    await fx.startEnrico();
+    // 5 articles with 50 contributions each, as from a week of many dishes.
+    const rows = lasagneRows()
+      .slice(0, 5)
+      .map((row) => ({
+        ...row,
+        contributions: Array.from({ length: 50 }, () => row.contributions.slice(0, 1)).flat(),
+      }));
+    expect(rows).toHaveLength(5);
+    const listBefore = getData().items;
+    const serverBefore = fx.server.rows(H, 'shopping_contributions');
+    const restore = snapshot();
+    addPlannedToList(list(), rows);
+    await fx.settle();
+    restore();
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual([
+      'addShoppingContributions',
+      'removeContributions',
+    ]);
+    expect(fx.calls[1]?.args[0]).toHaveLength(250);
+    expect(fx.server.rows(H, 'shopping_contributions')).toEqual(serverBefore);
+    expect(getData().items).toEqual(listBefore);
+  });
+
   it('"Ist alle": one call; undo sends removeContributions', async () => {
     await fx.startEnrico();
     const recipe = getData().recipes.find((candidate) =>

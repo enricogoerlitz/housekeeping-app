@@ -138,6 +138,40 @@ describe('fake server: store RPCs ("Abhaken gewinnt", sync.md)', () => {
     });
   });
 
+  it('what one call adds, one call removes: up to 1000 contributions (like the database)', async () => {
+    const transport = server.transport(ENRICO);
+    const bulk = (key: string, count: number): AddEntry => ({
+      ...entry(`Artikel ${key}`, `c-${key}`),
+      contributions: Array.from({ length: count }, (_, index) => ({
+        id: `c-${key}-${index}`,
+        source: { kind: 'manual' },
+        count: 1,
+        qty: null,
+        unit: null,
+        note: null,
+      })),
+    });
+    const keys = Array.from({ length: 10 }, (_, index) => `k${index}`);
+    await expect(
+      transport.addShoppingContributions('l1', [
+        ...keys.map((key) => bulk(key, 100)),
+        bulk('x', 1),
+      ]),
+    ).rejects.toMatchObject({ code: 'too_many_changes' });
+    await transport.addShoppingContributions(
+      'l1',
+      keys.map((key) => bulk(key, 100)),
+    );
+    const ids = keys.flatMap((key) =>
+      Array.from({ length: 100 }, (_, index) => `c-${key}-${index}`),
+    );
+    await expect(transport.removeContributions([...ids, 'c-extra'])).rejects.toMatchObject({
+      code: 'too_many_changes',
+    });
+    expect(await transport.removeContributions(ids)).toBe(1000);
+    expect(server.rows(H, 'shopping_items').map((row) => row.id)).toEqual(['i-milk']);
+  });
+
   it('removes contributions and items that became empty', async () => {
     expect(await server.transport(ENRICO).removeContributions(['c-milk'])).toBe(1);
     expect(server.rows(H, 'shopping_items')).toEqual([]);

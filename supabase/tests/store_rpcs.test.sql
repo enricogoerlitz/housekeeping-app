@@ -3,7 +3,7 @@
 -- and removing contributions. Rule table: docs/architecture/sync.md ("Abhaken: offline").
 begin;
 \ir _helpers.psql
-select plan(69);
+select plan(74);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -412,6 +412,35 @@ select is(
 select is(
   (select count(*)::int from public.shopping_items where id = tests.fx('item_salz')), 1,
   'T4 remove_contributions: an item that was empty before is not touched');
+
+-- ===================== Call sizes: what one call adds, one call removes =====================
+-- 10 new articles with 100 contributions each = 1000 contributions (security re-check 0003).
+create temp table bulk on commit drop as
+select n, gen_random_uuid() as item_id, gen_random_uuid() as article_id,
+       array(select gen_random_uuid() from generate_series(1, 100) where n > 0) as ids -- correlated: fresh ids per row
+from generate_series(1, 10) n;
+grant select on bulk to authenticated;
+select throws_ok(
+  format('select public.add_shopping_contributions(%L, %L)', tests.fx('list_a'),
+    (select jsonb_agg(tests.entry(item_id, article_id, 'Bulk ' || n, 'bulk ' || n, ids)) from bulk)
+    || jsonb_build_array(tests.entry(gen_random_uuid(), gen_random_uuid(), 'Bulk extra', 'bulk extra',
+                                     array[gen_random_uuid()]))),
+  '22023', 'too_many_changes', 'T4 add_shopping_contributions: more than 1000 contributions in one call are rejected');
+select lives_ok(
+  format('select public.add_shopping_contributions(%L, %L)', tests.fx('list_a'),
+    (select jsonb_agg(tests.entry(item_id, article_id, 'Bulk ' || n, 'bulk ' || n, ids)) from bulk)),
+  'T4 add_shopping_contributions: 1000 contributions in one call are allowed');
+select throws_ok(
+  format('select public.remove_contributions(%L::uuid[])',
+    (select array_agg(i) from bulk, unnest(ids) i) || gen_random_uuid()),
+  '22023', 'too_many_changes', 'T4 remove_contributions: more than 1000 ids are rejected');
+select is(
+  public.remove_contributions((select array_agg(i) from bulk, unnest(ids) i)), 1000,
+  'T4 remove_contributions: the 1000 contributions of one add call are removed in one call (undo)');
+select is(
+  (select count(*)::int from public.shopping_items where id in (select item_id from bulk)), 0,
+  'T4 remove_contributions: … and the items they emptied are gone');
+
 select tests.authenticate_as_anon();
 select throws_ok(
   format('select public.remove_contributions(array[%L]::uuid[])', tests.fx('c_butter')),

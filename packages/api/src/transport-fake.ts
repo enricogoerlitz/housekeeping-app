@@ -649,6 +649,9 @@ export function createFakeServer(): FakeServer {
         run(userId, 'add_shopping_contributions', () => {
           const householdId = locate(userId, 'shopping_lists', listId);
           if (!householdId) throw new TransportError('permanent', 'list_not_found', 404);
+          // Like the RPC: ≤ 200 entries, ≤ 1000 contributions (what one call adds, one call removes).
+          const contributions = entries.reduce((sum, entry) => sum + entry.contributions.length, 0);
+          if (entries.length > 200 || contributions > 1000) throw reject('too_many_changes');
           return transaction(householdId, (tables) => addContributions(tables, listId, entries));
         }),
 
@@ -717,7 +720,7 @@ export function createFakeServer(): FakeServer {
 
       removeContributions: (ids) =>
         run(userId, 'remove_contributions', () => {
-          if (ids.length > 200) throw reject('too_many_changes');
+          if (ids.length > 1000) throw reject('too_many_changes');
           let removed = 0;
           for (const householdId of householdsOf(userId)) {
             const mineIds = ids.filter((id) => data.get(householdId)?.shopping_contributions?.[id]);
