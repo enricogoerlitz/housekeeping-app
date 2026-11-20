@@ -211,16 +211,10 @@ function personalise(recipes: Recipe[], today: ISODate): Recipe[] {
 
 function buildDemoData(today: ISODate): HouseholdData {
   const areas = buildAreas();
-  const starterArticles = buildArticles();
-  // A hand-typed article that is not in the starter catalog: no area yet (spec 0001, AC-033).
-  const giftWrap: Article = {
-    id: 'art-geschenkpapier',
-    name: 'Geschenkpapier',
-    synonyms: [],
-    diet: 'unknown',
-    isPantry: false,
-  };
-  const articles = [...starterArticles, giftWrap];
+  // "Geschenkpapier" has no area yet, so the list shows "Ohne Bereich" (spec 0001, AC-033).
+  const articles = buildArticles().map((article) =>
+    article.name === 'Geschenkpapier' ? { ...article, areaId: undefined } : article,
+  );
   const articlesById: Record<Id, Article> = Object.fromEntries(
     articles.map((article) => [article.id, article]),
   );
@@ -343,7 +337,7 @@ function buildDemoData(today: ISODate): HouseholdData {
     items = addContribution(
       items,
       listId,
-      name === 'Geschenkpapier' ? giftWrap.id : articleIdByName(name),
+      articleIdByName(name),
       { id: `contrib-m-${slug(name)}`, source: { kind: 'manual' }, ...amount },
       nextItemId(),
       now,

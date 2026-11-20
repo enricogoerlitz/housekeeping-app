@@ -16,12 +16,7 @@ const demo = () => {
   const state = createInitialState(TODAY);
   const seeded = state.households[DEMO_HOUSEHOLD_ID];
   if (!seeded) throw new Error('demo household missing');
-  // The seed has "Geschenkpapier" twice with the same id (cleaned up by the seed generator, A8);
-  // a table keyed by id can only hold one of them.
-  const articles = seeded.articles.filter(
-    (article, index) => seeded.articles.findIndex((other) => other.id === article.id) === index,
-  );
-  return { data: { ...seeded, articles }, members: state.members };
+  return { data: seeded, members: state.members };
 };
 
 /** What the server adds to every row it sends: timestamps, and the table's own household_id. */

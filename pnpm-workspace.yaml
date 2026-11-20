@@ -7,3 +7,8 @@ packages:
 # Flat node_modules: every workspace package resolves the same single copy of react,
 # react-native and the Expo modules. Avoids duplicate-instance problems in Metro.
 nodeLinker: hoisted
+
+# esbuild (via tsx) ships its binary as an optional platform package; its install script only
+# re-checks that binary, so it stays off.
+allowBuilds:
+  esbuild: false

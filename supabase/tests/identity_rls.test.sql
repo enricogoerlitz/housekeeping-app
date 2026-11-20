@@ -145,7 +145,8 @@ select results_eq(
 update public.households set name = 'Hacked' where id = (select id from fx where key = 'home_a');
 select tests.clear_authentication();
 select results_eq(
-  'select name from public.households order by name',
+  $$ select name from public.households
+     where id in (select id from fx where key in ('home_a', 'home_b')) order by name $$,
   $$ values ('Anna & Carla'), ('B') $$,
   'AC-011 households: neither a foreign member nor an invited person can rename a household'
 );

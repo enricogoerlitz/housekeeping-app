@@ -94,6 +94,11 @@ describe('starter catalog (AC-013)', () => {
     ).toEqual(['Geschenkpapier']);
   });
 
+  it('keeps article ids unique, so every article is one database row (spec 0003, AC-033)', () => {
+    const ids = getData().articles.map((article) => article.id);
+    expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+  });
+
   it('AC-013: "Karot" suggests Möhren, also known as Karotten', () => {
     const [first] = searchArticles('Karot', getData().articles);
     expect(first?.article.name).toBe('Möhren');

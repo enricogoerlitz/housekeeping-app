@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest';
+
+import { DEMO_HOUSEHOLD_ID, ENRICO, TEST_HOUSEHOLD_ID } from './demo';
+import { generateSeed, SEED_NAMESPACE, seedHouseholdId, seedId, uuidV5 } from './seed-sql';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+describe('uuidV5', () => {
+  it('matches the RFC 9562 reference value for "www.example.com" in the DNS namespace', async () => {
+    expect(await uuidV5('www.example.com', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')).toBe(
+      '2ed6657d-e927-568b-95e1-2665a8aea6a2',
+    );
+  });
+});
+
+describe('seed ids', () => {
+  it('derives households and members from the seed namespace', async () => {
+    const id = await seedHouseholdId(DEMO_HOUSEHOLD_ID);
+    expect(id).toBe(await uuidV5(DEMO_HOUSEHOLD_ID, SEED_NAMESPACE));
+    expect(id).toMatch(UUID);
+  });
+
+  it('never gives the same slug the same id in two households', async () => {
+    const demo = await seedId(DEMO_HOUSEHOLD_ID, 'slot-abend');
+    expect(demo).toMatch(UUID);
+    expect(await seedId(TEST_HOUSEHOLD_ID, 'slot-abend')).not.toBe(demo);
+  });
+});
+
+describe('AC-033 (spec 0003): generated seed', async () => {
+  const seed = await generateSeed('2026-11-20');
+
+  it('is the same SQL whatever day it is generated on (all dates relative to the seed run)', async () => {
+    for (const day of ['2026-11-16', '2026-11-22', '2027-01-31', '2027-02-28', '2027-06-01']) {
+      expect((await generateSeed(day)).sql).toBe(seed.sql);
+    }
+  });
+
+  it('writes no readable slug id and no fixed calendar date into the SQL', () => {
+    expect(seed.sql).not.toMatch(/'(rec|art|area|plan|item|contrib|chore|list|store|m|hh)-[a-z]/);
+    expect(seed.sql).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('maps every slug to a UUID, with the demo members as the test accounts', async () => {
+    const demo = seed.ids[DEMO_HOUSEHOLD_ID];
+    expect(demo?.[ENRICO]).toBe(await seedHouseholdId(ENRICO));
+    expect(demo?.['rec-mango-curry']).toBe(await seedId(DEMO_HOUSEHOLD_ID, 'rec-mango-curry'));
+    expect(Object.values(demo ?? {}).every((id) => UUID.test(id))).toBe(true);
+    expect(seed.sql).toContain("'enrico.test@example.com'");
+    expect(seed.sql).toContain("'nadja.test@example.com'");
+  });
+
+  it('lists the e2e ids of the demo household and the test household', async () => {
+    expect(seed.e2eIds['rec-mango-curry']).toBe(await seedId(DEMO_HOUSEHOLD_ID, 'rec-mango-curry'));
+    expect(seed.e2eIds['hh-test']).toBe(await seedHouseholdId(TEST_HOUSEHOLD_ID));
+    expect(seed.e2eIds['m-nadja']).toBeDefined();
+    // Nested ids (ingredients, steps, contributions) stay out of the e2e map.
+    expect(Object.keys(seed.e2eIds).some((slug) => /-i\d+$/.test(slug))).toBe(false);
+  });
+});
