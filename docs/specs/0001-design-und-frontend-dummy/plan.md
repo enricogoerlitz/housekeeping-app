@@ -64,7 +64,8 @@ Für Bildschirme ist der Test der zugehörige Schritt im Rundgang (`e2e/rundgang
 - **Berührt:** `tmp/design-richtungen/` (nicht im Repo)
 - **Inhalt:** statische Entwürfe für „Heute“ und „Einkaufsliste“ (Handy) und „Heute“ (Desktop), je
   hell und dunkel, als Bilder und als Vergleichsseite
-- **Status:** in Arbeit
+- **Status:** erledigt am 20.11.2026; Vergleichsseite unter `tmp/design-richtungen/index.html`.
+  Wartet auf Enricos Auswahl (AC-001) bzw. eine weitere Runde (AC-002)
 
 ### Task 2 — DESIGN.md
 
