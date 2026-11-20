@@ -43,7 +43,7 @@ Use `expo install` for anything native so versions match the Expo SDK.
    requirement behind it is scope creep: report it, do not write it.
 3. **Tests first, red first.** Show the failing run before writing the implementation.
 4. **Read offline, write online.** The UI reads only from the local cache. Writes go to Supabase
-   and are disabled offline — except checking shopping items. See `docs/architecture/sync.md`.
+   and are disabled offline — except four store-mode actions (ADR-0008 addendum). See `docs/architecture/sync.md`.
 5. **Every table is tenant-scoped and synced.** `household_id`, Row Level Security, explicit
    grants, a pgTAP isolation test, server-set `updated_at` and a delete trigger — always together.
    Use the `db-change` skill.

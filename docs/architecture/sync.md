@@ -6,11 +6,11 @@
 
 ## Ziel
 
-| Ohne Netz möglich                                                         | Braucht Netz                              |
-| ------------------------------------------------------------------------- | ----------------------------------------- |
-| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche | Anlegen, bearbeiten, löschen              |
-| Einkaufsposten **abhaken** und Haken zurücknehmen                         | Einkaufsliste aus dem Wochenplan erzeugen |
-| Einkaufsmodus mit Laufreihenfolge                                         | Anmelden, Haushalt anlegen, einladen      |
+| Ohne Netz möglich                                                                                     | Braucht Netz                              |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen              |
+| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen |
+| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen      |
 
 Ohne Netz sind Bearbeiten-Aktionen sichtbar deaktiviert, mit dem Hinweis „Offline – zum Bearbeiten
 brauchst du Netz“. Das ist ein normaler Zustand, kein Fehler.

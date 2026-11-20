@@ -95,3 +95,20 @@ gewählt.
   hinzufügen. Das ist mit Client-IDs konfliktfrei ergänzbar. Erst wenn mehr nötig wird, PowerSync
   erneut prüfen.
 - Der Delta-Abgleich wird spürbar langsam oder fehleranfällig.
+
+## Nachtrag 2026-11-20 — Offline im Einkaufsmodus
+
+Festgelegt im Feature-Konzept (Entscheidung 8): Im Laden fehlt oft das Netz, also gehen dort
+**vier** Aktionen auch offline. Alles andere bleibt online.
+
+| Aktion                                     | Konfliktregel                                                                                                                                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Posten abhaken / Haken zurücknehmen        | wie bisher: „Abhaken gewinnt“                                                                                                                                                                                                   |
+| „Nicht da“ (Posten nach „Woanders kaufen“) | letzte Änderung gewinnt; harmlos, weil der Posten offen bleibt                                                                                                                                                                  |
+| Posten hinzufügen („Brot vergessen“)       | Der Client vergibt die ID. Der Server ordnet den Namen per `resolve_article` einem Artikel zu und hängt den Beitrag an einen offenen Posten desselben Artikels an, wenn es ihn schon gibt. Es entsteht nie ein doppelter Posten |
+| Bereich eines Artikels zuordnen            | letzte Änderung gewinnt                                                                                                                                                                                                         |
+
+- Die bisherige Abhak-Warteschlange wird zur **Laden-Warteschlange** für genau diese vier
+  Aktionen. Sie ist geordnet und läuft je Aktion über eine eigene RPC. Vorübergehende Fehler
+  werden wiederholt, dauerhafte verworfen und protokolliert.
+- Weitere Offline-Aktionen brauchen wie bisher eine Spec und einen weiteren Nachtrag.

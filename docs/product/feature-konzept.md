@@ -70,8 +70,8 @@ Von dir festgelegt, nicht mehr offen:
 - **Dauerposten, Sammlungen und Vorbereitung am Vortag** kommen in Version 1.
 - **Keine KI ohne ausdrückliche Aktion** (siehe Leitlinie 8).
 - **Offline wird ruhig angezeigt**, orange statt rot.
-- **Ebenfalls in Version 1:** Websuche für Rezepte, Foto am Artikel, Wochenvorschau,
-  Saisonfenster für Aufgaben, freihändiger Kochmodus. Weitere „Ideen für später“ gibt es nicht
+- **Ebenfalls in Version 1:** Foto am Artikel, Wochenvorschau, Saisonfenster für Aufgaben.
+  Websuche für Rezepte und freihändiger Kochmodus sind gestrichen. Weitere „Ideen für später“ gibt es nicht
   mehr.
 - **Alle offenen Fragen** sind nach Empfehlung entschieden (Abschnitt 10).
 
@@ -278,10 +278,6 @@ Alle Wege landen **als Entwurf in derselben Rezeptmaske**.
 - **Kochmodus:** große Schrift, ein Schritt pro Bildschirm, Bildschirm bleibt an, Timer, Zutaten
   des Schritts. Bei beiden Varianten zeigt er beide Zutatensätze und markiert Schritte mit „nur
   Hähnchen“; vorab gibt es den Hinweis „2 Pfannen“.
-- **Freihändig** (Schalter im Kochmodus, ausdrücklich einzuschalten): Sprachbefehle „weiter“,
-  „zurück“, „Timer 10 Minuten“, „wie viel Kokosmilch?“. Solange der Schalter an ist, hört die
-  Spracherkennung zu; das kostet Spracherkennungs-Minuten und ist deshalb sichtbar
-  („🎙 hört zu“). Antworten erscheinen groß auf dem Bildschirm.
 
 **Starter-Rezepte**
 
@@ -400,7 +396,7 @@ wurde, bleibt gemerkt: „Liste erneut erzeugen“ holt es nicht zurück.
   Nachricht („Enrico ist bei Rewe – noch was?“).
 - **Offline im Laden** (Entscheidung 8): Abhaken, „Nicht da“, Posten hinzufügen und Bereich
   zuordnen gehen ohne Netz und werden nachgereicht. Beim Abhaken gilt „Abhaken gewinnt“. Ein
-  kleiner Punkt zeigt, was noch nicht synchronisiert ist. Das braucht einen Nachtrag zu ADR-0008.
+  kleiner Punkt zeigt, was noch nicht synchronisiert ist. Festgehalten im Nachtrag zu ADR-0008.
 - **Einkauf abschließen:** „8 gekauft · 2 bleiben“. Erledigte Posten werden geleert, sobald Netz
   da ist.
 - **Mehrere Listen:** Standardliste plus z. B. „Drogerie“ oder „Grillabend“.
@@ -595,11 +591,6 @@ _Erledigung_ (Eintrag im Verlauf).
   neuen Rezepten.
 - **Bilder:** übernommen aus dem Link oder als eigene Fotos. Keine KI-generierten Bilder in
   Version 1 (Entscheidung 6).
-- **Websuche nach Rezepten:** Beim Anlegen per Beschreibung und als letzte Stufe der KI-Suche gibt
-  es „🌐 Im Web suchen“. Die KI sucht passende Rezepte im Web, zeigt sie als Liste mit Quelle, und
-  das gewählte wird wie ein Link importiert (Entwurf, Quelle bleibt erhalten). Technisch läuft das
-  über die Websuche in Foundry (Grounding mit Bing) im vorhandenen Azure-Konto, mit Kosten je
-  Suche. Das wird in der Spec geprüft.
 
 ### F11 — Suche
 
@@ -912,24 +903,24 @@ Quellen (Auswahl): [Plan to Eat: Updates 11/2025](https://www.plantoeat.com/blog
 
 Am 20.11.2026 wurden alle Empfehlungen übernommen.
 
-| #   | Thema                              | Entscheidung                                                                                       |
-| --- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
-| 1   | Navigation                         | 5 Tabs + schwebender Assistent                                                                     |
-| 2   | Varianten                          | Eine Variantengruppe je Rezept; Plan-Eintrag mit Portionen je Variante („beide“)                   |
-| 3   | Ernährungsform                     | Aus den Artikeln abgeleitet, überschreibbar                                                        |
-| 4   | KI-Vorschläge                      | Immer bestätigen (ein Tipp, Geisterzeilen); Annehmen schreibt über die normalen Befehle            |
-| 5   | Erinnerungen                       | Tageszusammenfassung + Überfälligkeit                                                              |
-| 6   | KI-generierte Rezeptbilder         | Nein in Version 1; Fotos und Link-Bilder                                                           |
-| 7   | Click-Dummy                        | Echtes App-Frontend mit Beispieldaten, an das später das Backend angeschlossen wird                |
-| 8   | Offline im Laden                   | Abhaken, „Nicht da“, Posten hinzufügen, Bereich zuordnen gehen offline; Nachtrag zu ADR-0008 nötig |
-| 9   | Haushaltsaufgaben offline abhaken  | Nein, nur online                                                                                   |
-| 10  | Feedback für den Coding-Agent      | Skripte + Skill `feedback-triage`                                                                  |
-| 11  | Verlauf und Gedächtnis             | Speichern, sichtbar und löschbar                                                                   |
-| 12  | Plan geändert nach Listenerzeugung | Momentaufnahme mit Hinweis „neu berechnen“                                                         |
-| 13  | Favorit und Bewertung              | Je Person                                                                                          |
-| 14  | Rotation                           | Dran ist, wer nach der Person kommt, die erledigt hat                                              |
-| 15  | Starter-Katalog                    | Fest in der App; Haushalts-Artikel entsteht bei Nutzung                                            |
-| 16  | Abwesenheit und Pause              | In Version 1                                                                                       |
+| #   | Thema                              | Entscheidung                                                                                 |
+| --- | ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1   | Navigation                         | 5 Tabs + schwebender Assistent                                                               |
+| 2   | Varianten                          | Eine Variantengruppe je Rezept; Plan-Eintrag mit Portionen je Variante („beide“)             |
+| 3   | Ernährungsform                     | Aus den Artikeln abgeleitet, überschreibbar                                                  |
+| 4   | KI-Vorschläge                      | Immer bestätigen (ein Tipp, Geisterzeilen); Annehmen schreibt über die normalen Befehle      |
+| 5   | Erinnerungen                       | Tageszusammenfassung + Überfälligkeit                                                        |
+| 6   | KI-generierte Rezeptbilder         | Nein in Version 1; Fotos und Link-Bilder                                                     |
+| 7   | Click-Dummy                        | Echtes App-Frontend mit Beispieldaten, an das später das Backend angeschlossen wird          |
+| 8   | Offline im Laden                   | Abhaken, „Nicht da“, Posten hinzufügen, Bereich zuordnen gehen offline; Nachtrag zu ADR-0008 |
+| 9   | Haushaltsaufgaben offline abhaken  | Nein, nur online                                                                             |
+| 10  | Feedback für den Coding-Agent      | Skripte + Skill `feedback-triage`                                                            |
+| 11  | Verlauf und Gedächtnis             | Speichern, sichtbar und löschbar                                                             |
+| 12  | Plan geändert nach Listenerzeugung | Momentaufnahme mit Hinweis „neu berechnen“                                                   |
+| 13  | Favorit und Bewertung              | Je Person                                                                                    |
+| 14  | Rotation                           | Dran ist, wer nach der Person kommt, die erledigt hat                                        |
+| 15  | Starter-Katalog                    | Fest in der App; Haushalts-Artikel entsteht bei Nutzung                                      |
+| 16  | Abwesenheit und Pause              | In Version 1                                                                                 |
 
 ## 11. Nächste Schritte
 
