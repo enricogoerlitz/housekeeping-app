@@ -6,10 +6,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @housekeeping/app start",
+    "dev": "node scripts/with-env.mjs pnpm --filter @housekeeping/app start",
     "ios": "pnpm --filter @housekeeping/app ios",
     "android": "pnpm --filter @housekeeping/app android",
-    "web": "pnpm --filter @housekeeping/app web",
+    "web": "node scripts/with-env.mjs pnpm --filter @housekeeping/app web",
     "build:web": "turbo run build:web",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
