@@ -10,7 +10,7 @@
 // device storage next to the cache (bound to the user, cleared at sign-out) and shown through
 // blob: URLs. Offline only what is stored shows (AC-011). The store keeps about 50 MB.
 import type { Activity, Id, Recipe } from '@housekeeping/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 import { deviceStorage, onlineCall, WRITE_REJECTED_MESSAGE } from './backend';
 import { useOffline } from './queries';
@@ -279,80 +279,101 @@ export function loadPhoto(path: string): Promise<Blob | undefined> {
   return task;
 }
 
-// One blob: URL per photo while any screen shows it.
-const urls = new Map<string, { url: string; refs: number }>();
-
-export function peekPhotoUrl(path: string): string | undefined {
-  return urls.get(path)?.url;
+/** What a screen shows for a photo: `uri` once it is there (blob: URL), `loading` while fetched. */
+export interface PhotoView {
+  uri?: string;
+  loading: boolean;
 }
 
-export function acquirePhotoUrl(path: string, photo: Blob): string {
-  const hit = urls.get(path);
-  if (hit) {
-    hit.refs += 1;
-    return hit.url;
-  }
-  const url = URL.createObjectURL(photo);
-  urls.set(path, { url, refs: 1 });
-  return url;
+const LOADING: PhotoView = Object.freeze({ loading: true });
+const NO_PHOTO: PhotoView = Object.freeze({ loading: false });
+
+/** A photo some screen shows: one blob: URL while any screen holds it. */
+interface ShownPhoto {
+  refs: number;
+  view: PhotoView;
+  fetching: boolean;
 }
 
-function acquireExisting(path: string): string | undefined {
-  const hit = urls.get(path);
-  if (!hit) return undefined;
-  hit.refs += 1;
-  return hit.url;
+// The photos on screen are an external store for useSyncExternalStore: every change replaces the
+// view object of its path and notifies, so React re-reads the snapshot after a photo loaded.
+const shown = new Map<string, ShownPhoto>();
+const photoListeners = new Set<() => void>();
+
+function notifyPhotos(): void {
+  for (const listener of photoListeners) listener();
 }
 
-/** Revokes the URL when no screen shows it any more — after the current commit, so a screen that re-mounts keeps it. */
-export function releasePhotoUrl(path: string): void {
-  const hit = urls.get(path);
-  if (!hit) return;
-  hit.refs -= 1;
-  if (hit.refs > 0) return;
-  queueMicrotask(() => {
-    if (urls.get(path) !== hit || hit.refs > 0) return;
-    urls.delete(path);
-    URL.revokeObjectURL(hit.url);
+export function subscribePhotos(onChange: () => void): () => void {
+  photoListeners.add(onChange);
+  return () => {
+    photoListeners.delete(onChange);
+  };
+}
+
+/** The current view of a photo; the same object until it changes. */
+export function photoView(path: string | undefined): PhotoView {
+  if (!path) return NO_PHOTO;
+  return shown.get(path)?.view ?? LOADING;
+}
+
+function fetchShown(path: string, entry: ShownPhoto): void {
+  if (entry.fetching) return;
+  entry.fetching = true;
+  void loadPhoto(path).then((photo) => {
+    entry.fetching = false;
+    // Every screen let go meanwhile: no URL to create.
+    if (shown.get(path) !== entry) return;
+    entry.view = photo ? { uri: URL.createObjectURL(photo), loading: false } : NO_PHOTO;
+    notifyPhotos();
   });
+}
+
+/**
+ * A screen shows the photo: it is loaded (device storage, else downloaded) unless it is already
+ * there; a photo that could not be loaded is tried again. Returns the release; the URL is revoked
+ * after the last screen let go — after the current commit, so a screen that re-mounts keeps it.
+ */
+export function showPhoto(path: string): () => void {
+  let entry = shown.get(path);
+  if (!entry) {
+    entry = { refs: 0, view: LOADING, fetching: false };
+    shown.set(path, entry);
+  }
+  entry.refs += 1;
+  if (!entry.view.uri) fetchShown(path, entry);
+  const held = entry;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    held.refs -= 1;
+    if (held.refs > 0) return;
+    queueMicrotask(() => {
+      if (shown.get(path) !== held || held.refs > 0) return;
+      shown.delete(path);
+      if (held.view.uri) URL.revokeObjectURL(held.view.uri);
+    });
+  };
 }
 
 /**
  * A stored photo for an Image: `uri` once it is there (blob: URL), `loading` while it is fetched.
  * Offline only photos loaded before show (AC-011); back online it tries again.
  */
-export function usePhoto(path: string | undefined): { uri?: string; loading: boolean } {
-  // The URL is read from the module's registry during render; the React Compiler would cache
-  // that read per path, and a photo that finished loading would never show.
-  'use no memo';
+export function usePhoto(path: string | undefined): PhotoView {
   const offline = useOffline();
-  // Set when a load finished; a new object each time, so the screen renders the result.
-  const [attempt, setAttempt] = useState<{ path: string }>();
-
+  const view = useSyncExternalStore(
+    subscribePhotos,
+    () => photoView(path),
+    () => photoView(path),
+  );
+  // `offline` re-runs the effect, so a photo that could not be loaded is tried again online.
   useEffect(() => {
     if (!path) return;
-    let active = true;
-    let held = acquireExisting(path) !== undefined;
-    if (!held) {
-      void loadPhoto(path).then((photo) => {
-        if (!active) return;
-        if (photo) {
-          acquirePhotoUrl(path, photo);
-          held = true;
-        }
-        setAttempt({ path });
-      });
-    }
-    return () => {
-      active = false;
-      if (held) releasePhotoUrl(path);
-    };
+    return showPhoto(path);
   }, [path, offline]);
-
-  if (!path) return { loading: false };
-  const uri = peekPhotoUrl(path);
-  if (uri) return { uri, loading: false };
-  return { loading: attempt?.path !== path };
+  return view;
 }
 
 // ---------------------------------------------------------------------------------------------

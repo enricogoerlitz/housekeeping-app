@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import {
   ACTIVE,
@@ -16,7 +16,9 @@ import {
   only,
   open,
   openSettings,
+  routeUrl,
   showPlanWeek,
+  stubMaps,
   test,
   tid,
   tidPrefix,
@@ -50,25 +52,6 @@ async function restaurantCount(page: Page): Promise<number> {
 const ENZO_LINK = 'https://www.google.com/maps/place/Trattoria+Da+Enzo/@50.9271,6.9580,17z';
 const PHO_LINK = 'https://maps.apple.com/?q=Pho+Saigon&ll=50.94,6.95';
 const THURSDAY = day(3);
-
-/** Map apps are never really opened: every request to them gets a stub page. */
-async function stubMaps(context: BrowserContext): Promise<void> {
-  await context.route(/^https:\/\/(maps\.apple\.com|www\.google\.com\/maps)/, (route) =>
-    route.fulfill({ body: 'map stub', contentType: 'text/plain' }),
-  );
-}
-
-/** Clicks a route button and returns the URL of the map page it opened. */
-async function routeUrl(page: Page, button: string): Promise<string> {
-  const [popup] = await Promise.all([
-    page.context().waitForEvent('page'),
-    tid(page, button).click(),
-  ]);
-  await popup.waitForLoadState();
-  const url = popup.url();
-  await popup.close();
-  return url;
-}
 
 async function openRestaurants(page: Page): Promise<void> {
   await nav(page, 'rezepte');

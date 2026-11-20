@@ -1,7 +1,7 @@
 // Own photos in backend mode (spec 0004, REQ-004): upload to the household's folder, then the path
 // on the diff path, then the old file goes; nothing is left behind when a step fails. Photos once
 // loaded are kept in the device storage (bound to the user) and shown offline.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { resetLocalData } from './backend';
 import { H, withBackend } from './backend-test-helpers';
@@ -9,10 +9,13 @@ import {
   evictMedia,
   loadPhoto,
   PHOTO_UNUSABLE_MESSAGE,
+  photoView,
   removeActivityPhoto,
   removeRecipePhoto,
   setActivityPhoto,
   setRecipePhoto,
+  showPhoto,
+  subscribePhotos,
 } from './photos-remote';
 import { ENRICO, NADJA } from './seed/demo';
 import { getData, getState, OfflineError } from './store';
@@ -239,6 +242,96 @@ describe('photos on the device (AC-011)', () => {
     expect(await fx.storage.get(`media:${path}`)).toBeDefined();
     await resetLocalData();
     expect(await fx.storage.get(`media:${path}`)).toBeUndefined();
+  });
+});
+
+// usePhoto is useSyncExternalStore(subscribePhotos, () => photoView(path)) plus an effect that
+// calls showPhoto(path). React re-reads the snapshot whenever the store notifies, so nothing a
+// compiler memoises during render can hold back a photo that finished loading.
+describe('showing a photo on a screen (usePhoto)', () => {
+  /** Nadja's photo on Bouldern, known to Enrico's device by its path but not stored on it. */
+  async function photoFromNadja(): Promise<string> {
+    const wire = fx.server.transport(NADJA);
+    const path = `${H}/activities/act-bouldern/5d6c1e0a-7f41-4a2b-9c3e-2f1a0b9c8d7e.jpg`;
+    await wire.uploadMedia(path, photo(9));
+    await wire.applyChanges(H, [
+      { kind: 'patch', table: 'activities', id: 'act-bouldern', changes: { photo_path: path } },
+    ]);
+    await fx.settle();
+    fx.clearCalls();
+    return path;
+  }
+
+  it('AC-009: a photo loaded after the first render is returned on the next render', async () => {
+    await fx.startEnrico();
+    const path = await photoFromNadja();
+    const rendered = vi.fn();
+    const unsubscribe = subscribePhotos(rendered);
+
+    // First render: nothing there yet.
+    expect(photoView(path)).toEqual({ loading: true });
+    // The effect after the first render shows the photo, which starts the download.
+    const release = showPhoto(path);
+    await fx.settle();
+
+    expect(fx.calls.map((call) => call.fn)).toEqual(['downloadMedia']);
+    expect(rendered).toHaveBeenCalled();
+    // Next render: the photo, as the same snapshot every time it is read.
+    const view = photoView(path);
+    expect(view).toEqual({ uri: expect.stringMatching(/^blob:/), loading: false });
+    expect(photoView(path)).toBe(view);
+    release();
+    unsubscribe();
+  });
+
+  it('one blob: URL per photo while any screen shows it, revoked after the last one let go', async () => {
+    await fx.startEnrico();
+    const path = await photoFromNadja();
+    const create = vi.spyOn(URL, 'createObjectURL');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const first = showPhoto(path);
+    const second = showPhoto(path);
+    await fx.settle();
+    const uri = photoView(path).uri;
+    expect(uri).toMatch(/^blob:/);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['downloadMedia']);
+
+    first();
+    second();
+    // A screen that unmounts and mounts again in the same commit keeps the URL.
+    const again = showPhoto(path);
+    await Promise.resolve();
+    expect(photoView(path).uri).toBe(uri);
+    again();
+    await Promise.resolve();
+    expect(revoke).toHaveBeenCalledWith(uri);
+    expect(photoView(path)).toEqual({ loading: true });
+    expect(create).toHaveBeenCalledTimes(1);
+    create.mockRestore();
+    revoke.mockRestore();
+  });
+
+  it('AC-011: a photo that is not on the device shows nothing offline, and loads once back online', async () => {
+    await fx.startEnrico();
+    const path = await photoFromNadja();
+    fx.environment.setOnline(false);
+    const offline = showPhoto(path);
+    await fx.settle();
+    expect(photoView(path)).toEqual({ loading: false });
+    expect(fx.calls).toEqual([]);
+
+    // usePhoto shows the photo again when the device goes online (effect dependency).
+    fx.environment.setOnline(true);
+    offline();
+    const online = showPhoto(path);
+    await fx.settle();
+    expect(photoView(path).uri).toMatch(/^blob:/);
+    online();
+  });
+
+  it('without a path there is nothing to load', () => {
+    expect(photoView(undefined)).toEqual({ loading: false });
   });
 });
 

@@ -50,13 +50,17 @@ export interface VariantSplit {
   portions: number;
   /** Empty for recipes without variants. */
   variants: PlanEntryVariant[];
-  /** Members for whom no variant (or the base recipe) fits their diet preference. */
+  /**
+   * Members for whom no variant (or the base recipe) fits their diet preference. A diet that is
+   * not known (no ingredients, or ingredients without an article) is no conflict.
+   */
   misfitMemberIds: Id[];
 }
 /**
  * Splits portions over variants: one portion per eater and guest.
- * Vegan/vegetarian members get a fitting variant (the default if it fits). Flexible members get
- * the variant with the "highest" diet (meat > fish > vegetarian > vegan), guests the default.
+ * Vegan/vegetarian members get a fitting variant (the default if it fits), else one whose diet is
+ * unknown. Flexible members get the variant with the "highest" diet (meat > fish > vegetarian >
+ * vegan), guests the default.
  * Among equally good variants the default wins, then the recipe's order.
  * Members without a fitting variant are listed in misfitMemberIds and counted on the default.
  * Mango-Curry (mit Tofu*, mit Hähnchen), Nadja vegetarian + Enrico flexible →
@@ -74,9 +78,12 @@ export function splitVariants(
 
   if (recipe.variants.length === 0) {
     const diet = deriveRecipeDiet(recipe, undefined, articlesById);
-    const misfitMemberIds = eaters
-      .filter((member) => !dietFitsPreference(diet, member.dietPreference))
-      .map((member) => member.id);
+    const misfitMemberIds =
+      diet === 'unknown'
+        ? []
+        : eaters
+            .filter((member) => !dietFitsPreference(diet, member.dietPreference))
+            .map((member) => member.id);
     return { portions, variants: [], misfitMemberIds };
   }
 
@@ -91,8 +98,9 @@ export function splitVariants(
 
   const pickVariantId = (member: Member): Id | undefined => {
     if (member.dietPreference !== 'flexible') {
-      return candidates.find((candidate) =>
-        dietFitsPreference(candidate.diet, member.dietPreference),
+      return (
+        candidates.find((candidate) => dietFitsPreference(candidate.diet, member.dietPreference)) ??
+        candidates.find((candidate) => candidate.diet === 'unknown')
       )?.id;
     }
     let best = candidates[0];

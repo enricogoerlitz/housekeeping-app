@@ -56,6 +56,8 @@ export function inThisWeek(date: ISODate): boolean {
   return weekDates(TODAY).includes(date);
 }
 
+/** The three Tageszeiten of the demo household (spec 0004, AC-001). */
+export const SLOT_MORNING = seedIds['slot-vormittag'];
 export const SLOT_LUNCH = seedIds['slot-mittag'];
 export const SLOT_DINNER = seedIds['slot-abend'];
 
@@ -132,6 +134,7 @@ export const PLAN_ENTRY = [
   '[data-testid^="entry-"]',
   ':not([data-testid^="entry-cook-"])',
   ':not([data-testid^="entry-restaurant-"])',
+  ':not([data-testid^="entry-activity-"])',
   ':not([data-testid^="entry-variants-"])',
   ':not([data-testid^="entry-misfit-"])',
   ':not([data-testid^="entry-move"])',
@@ -405,6 +408,27 @@ export async function stubEdgeFunctions(context: BrowserContext): Promise<void> 
   );
 }
 
+// ---------- Map apps (never really opened) ----------
+
+/** Every request to Apple Karten or Google Maps gets a stub page. */
+export async function stubMaps(context: BrowserContext): Promise<void> {
+  await context.route(/^https:\/\/(maps\.apple\.com|www\.google\.com\/maps)/, (route) =>
+    route.fulfill({ body: 'map stub', contentType: 'text/plain' }),
+  );
+}
+
+/** Clicks a route button and returns the URL of the map page it opened. */
+export async function routeUrl(page: Page, button: string): Promise<string> {
+  const [popup] = await Promise.all([
+    page.context().waitForEvent('page'),
+    tid(page, button).click(),
+  ]);
+  await popup.waitForLoadState();
+  const url = popup.url();
+  await popup.close();
+  return url;
+}
+
 // ---------- Dictation (Azure Speech, faked) ----------
 
 /**
@@ -490,21 +514,25 @@ export async function accessToken(who: Account | { email: string }): Promise<str
   return (await passwordSession(email)).access_token;
 }
 
-/** A request against the Supabase API with the publishable key and an optional user token. */
+/**
+ * A request against the Supabase API with the publishable key and an optional user token. A body
+ * of bytes (a file for the Storage API) goes as it is, anything else as JSON.
+ */
 export async function supabaseFetch(
   pathname: string,
   init: { method?: string; token?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<Response> {
   const { url, key } = supabaseEnv();
+  const bytes = init.body instanceof Uint8Array ? new Uint8Array(init.body) : undefined;
   return fetch(`${url}${pathname}`, {
     method: init.method ?? 'GET',
     headers: {
       apikey: key,
       ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
-      ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...(init.body !== undefined && !bytes ? { 'content-type': 'application/json' } : {}),
       ...init.headers,
     },
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    body: bytes ?? (init.body !== undefined ? JSON.stringify(init.body) : undefined),
   });
 }
 

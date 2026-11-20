@@ -76,6 +76,15 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'add-entry-new-activity').click();
   await expect(tid(page, 'activity-name')).toBeVisible();
   await tid(page, 'add-entry-sheet-close').click();
+  // The other kinds' "Neu anlegen" forms in the same sheet.
+  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
+  await tid(page, 'add-entry-new-recipe').click();
+  await expect(tid(page, 'new-recipe-title')).toBeVisible();
+  await tid(page, 'add-entry-new-back').click();
+  await tid(page, 'add-entry-mode-restaurant').click();
+  await tid(page, 'add-entry-new-restaurant').click();
+  await expect(tid(page, 'restaurant-link')).toBeVisible();
+  await tid(page, 'add-entry-sheet-close').click();
 
   // Plan with its pantry check, the list and store mode, the household.
   await tid(page, 'plan-to-list').click();

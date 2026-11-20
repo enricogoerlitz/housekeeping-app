@@ -1,18 +1,15 @@
 // The device side of own photos (spec 0004, REQ-004) without a browser: checking the chosen file,
 // the size math, re-encoding through a stubbed canvas, removing location metadata from the bytes,
-// German messages for storage errors, and the shared blob: URLs.
+// German messages for storage errors. Showing photos on screens: photos-remote.backend.test.ts.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  acquirePhotoUrl,
   checkPhotoFile,
   fitWithin,
   PHOTO_FORBIDDEN_MESSAGE,
   PHOTO_UNUSABLE_MESSAGE,
   PHOTO_UPLOAD_FAILED_MESSAGE,
-  peekPhotoUrl,
   preparePhoto,
-  releasePhotoUrl,
   stripJpegMetadata,
   toPhotoError,
 } from './photos-remote';
@@ -247,29 +244,5 @@ describe('storage errors in German', () => {
     expect(toPhotoError(offline)).toBe(offline);
     expect(PHOTO_FORBIDDEN_MESSAGE).toMatch(/Berechtigung/);
     expect(PHOTO_UPLOAD_FAILED_MESSAGE).toMatch(/noch einmal/);
-  });
-});
-
-describe('blob: URLs shared between screens', () => {
-  it('one URL per photo while it is shown, revoked after the last one let go', async () => {
-    let counter = 0;
-    const create = vi
-      .spyOn(URL, 'createObjectURL')
-      .mockImplementation(() => `blob:test/${++counter}`);
-    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-    const blob = new Blob(['x'], { type: 'image/jpeg' });
-    const first = acquirePhotoUrl('h/activities/a/1.jpg', blob);
-    expect(acquirePhotoUrl('h/activities/a/1.jpg', blob)).toBe(first);
-    expect(peekPhotoUrl('h/activities/a/1.jpg')).toBe(first);
-    expect(create).toHaveBeenCalledTimes(1);
-
-    releasePhotoUrl('h/activities/a/1.jpg');
-    releasePhotoUrl('h/activities/a/1.jpg');
-    // A screen that unmounts and mounts again in the same commit keeps the URL.
-    expect(acquirePhotoUrl('h/activities/a/1.jpg', blob)).toBe(first);
-    releasePhotoUrl('h/activities/a/1.jpg');
-    await Promise.resolve();
-    expect(revoke).toHaveBeenCalledWith(first);
-    expect(peekPhotoUrl('h/activities/a/1.jpg')).toBeUndefined();
   });
 });

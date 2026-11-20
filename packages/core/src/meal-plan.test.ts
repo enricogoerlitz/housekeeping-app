@@ -140,6 +140,47 @@ describe('splitVariants', () => {
     ]);
   });
 
+  it('spec 0004 AC-022: an unknown diet is no conflict — a recipe without ingredients fits everyone', () => {
+    // Created while planning: only a title, so nothing is known about its diet.
+    const soup = makeRecipe({ id: 'r-soup', title: 'Kürbissuppe' });
+    expect(splitVariants(soup, [enrico, nadja, vera], 0, articlesById).misfitMemberIds).toEqual([]);
+    // Ingredients without an article are just as unknown.
+    const secret = makeRecipe({
+      id: 'r-secret',
+      title: 'Omas Eintopf',
+      ingredients: [{ id: 'i1', name: 'Geheimzutat', shoppingRule: 'count' }],
+    });
+    expect(splitVariants(secret, [nadja], 0, articlesById).misfitMemberIds).toEqual([]);
+    // A real conflict stays one.
+    expect(splitVariants(bolognese, [nadja], 0, articlesById).misfitMemberIds).toEqual([nadja.id]);
+  });
+
+  it('serves a vegetarian an unknown variant rather than a known meat one, without a misfit', () => {
+    const stew = makeRecipe({
+      id: 'r',
+      title: 'Eintopf',
+      variants: [
+        { id: 'v-meat', name: 'mit Hack', isDefault: true },
+        { id: 'v-unknown', name: 'Spezial', isDefault: false },
+      ],
+      ingredients: [
+        {
+          id: 'a',
+          articleId: 'art-hack',
+          name: 'Hackfleisch',
+          shoppingRule: 'count',
+          variantId: 'v-meat',
+        },
+        { id: 'b', name: 'Geheimzutat', shoppingRule: 'count', variantId: 'v-unknown' },
+      ],
+    });
+    expect(splitVariants(stew, [nadja], 0, articlesById)).toEqual({
+      portions: 1,
+      variants: [{ variantId: 'v-unknown', portions: 1 }],
+      misfitMemberIds: [],
+    });
+  });
+
   it('handles recipes without variants that fit everyone', () => {
     expect(splitVariants(halloumiPfanne, [enrico, nadja], 1, articlesById)).toEqual({
       portions: 3,

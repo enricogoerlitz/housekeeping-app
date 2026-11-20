@@ -312,7 +312,7 @@ test('AC-009: "nadja@" is no e-mail address; nothing is saved', async ({ page })
   expect(stored).toEqual([]);
 });
 
-test('AC-010: a new household "WG Köln" has only Enrico, the starter data, a default list and two meals', async ({
+test('AC-010: a new household "WG Köln" has only Enrico, the starter data, a default list and three Tageszeiten', async ({
   page,
 }) => {
   const name = `WG Köln ${unique()}`;
@@ -336,7 +336,8 @@ test('AC-010: a new household "WG Köln" has only Enrico, the starter data, a de
       { token },
     ),
   );
-  expect(household?.meal_slots.map((slot) => slot.name)).toEqual(['Mittag', 'Abend']);
+  // Spec 0004, AC-001: every new household has Vormittag, Mittag and Abend.
+  expect(household?.meal_slots.map((slot) => slot.name)).toEqual(['Vormittag', 'Mittag', 'Abend']);
   const count = async (table: string, filter = '') =>
     (
       await json<unknown[]>(
