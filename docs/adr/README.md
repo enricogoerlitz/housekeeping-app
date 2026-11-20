@@ -14,3 +14,4 @@ neue abgelöst.
 | [0006](0006-ki-gestuetzte-arbeitsweise.md)             | Specs, Superpowers und kuratierte Skills                                | angenommen          |
 | [0007](0007-hosting-und-kosten.md)                     | Free-Tiers, Skalierungspfad für mehrere Apps                            | angenommen          |
 | [0008](0008-offline-lesen-mit-eigenem-delta-sync.md)   | Offline lesen mit eigenem Delta-Sync, online schreiben, offline abhaken | angenommen          |
+| [0009](0009-ki-dienst.md)                              | KI über Microsoft Foundry, nur serverseitig aus Edge Functions          | angenommen          |
