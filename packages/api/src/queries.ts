@@ -1,4 +1,4 @@
-import type { Article, Id, Member, Recipe, Restaurant } from '@housekeeping/core';
+import type { Activity, Article, Id, Member, Recipe, Restaurant } from '@housekeeping/core';
 
 import { getData, getState, useAppSelector, useDataSelector } from './store';
 
@@ -19,6 +19,8 @@ export const useArticles = () => useDataSelector((data) => data.articles);
 export const useStores = () => useDataSelector((data) => data.stores);
 export const useRecipes = () => useDataSelector((data) => data.recipes);
 export const useRestaurants = () => useDataSelector((data) => data.restaurants);
+/** Newest first. */
+export const useActivities = () => useDataSelector((data) => data.activities);
 export const usePlanEntries = () => useDataSelector((data) => data.planEntries);
 export const useShoppingLists = () => useDataSelector((data) => data.lists);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
@@ -50,6 +52,13 @@ export function useRestaurantsById(): Record<Id, Restaurant> {
 export function useRestaurant(id: Id | undefined): Restaurant | undefined {
   const restaurants = useRestaurantsById();
   return id ? restaurants[id] : undefined;
+}
+export function useActivitiesById(): Record<Id, Activity> {
+  return indexById(useActivities());
+}
+export function useActivity(id: Id | undefined): Activity | undefined {
+  const activities = useActivitiesById();
+  return id ? activities[id] : undefined;
 }
 export function useRecipe(id: Id | undefined): Recipe | undefined {
   const recipes = useRecipesById();

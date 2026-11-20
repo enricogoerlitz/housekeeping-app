@@ -111,6 +111,17 @@ describe.skipIf(!enabled)('AC-033 (spec 0003): local seed in the database', () =
         demo.planEntries.filter((entry) => entry.date !== null && week.includes(entry.date)).length,
       ).toBeGreaterThanOrEqual(5);
       expect(demo.restaurants).toHaveLength(4);
+      // Spec 0004: three activities, Vormittag first.
+      expect(demo.activities.map((activity) => activity.name)).toEqual([
+        'Bouldern',
+        'Eislaufen',
+        'Spieleabend',
+      ]);
+      expect(demo.household.mealSlots.map((slot) => slot.name)).toEqual([
+        'Vormittag',
+        'Mittag',
+        'Abend',
+      ]);
 
       expect(withoutTimestamps(demo)).toEqual(
         withoutTimestamps(asMapped(state.households[DEMO_HOUSEHOLD_ID])),

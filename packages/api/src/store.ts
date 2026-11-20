@@ -1,5 +1,6 @@
 import type {
   Absence,
+  Activity,
   Area,
   Article,
   Chore,
@@ -30,6 +31,7 @@ export interface HouseholdData {
   stores: Store[];
   recipes: Recipe[];
   restaurants: Restaurant[];
+  activities: Activity[];
   planEntries: MealPlanEntry[];
   lists: ShoppingList[];
   items: ShoppingItem[];
@@ -143,10 +145,19 @@ export interface QueueSpec {
   action: StoreAction;
 }
 
+/** How the server took a change: no error = applied; otherwise refused (or lost) with the error. */
+export type CommitOutcome = (error?: unknown) => void;
+
 /** What the store needs from the sync engine. */
 export interface BackendHooks {
   isOffline(): boolean;
-  recordChange<T>(spec: CommitSpec<T>, before: AppState, after: AppState, result: T): void;
+  recordChange<T>(
+    spec: CommitSpec<T>,
+    before: AppState,
+    after: AppState,
+    result: T,
+    onOutcome?: CommitOutcome,
+  ): void;
   enqueueStoreAction(action: StoreAction): void;
   undoable(): () => void;
   setSimulatedOffline(offline: boolean): void;
@@ -212,7 +223,33 @@ export function commit<T>(spec: CommitSpec<T> | QueueSpec, run: () => T): T | vo
     backend.enqueueStoreAction(spec.action);
     return;
   }
-  if (backend.isOffline()) throw new OfflineError();
+  return record(backend, spec, run);
+}
+
+/**
+ * Like commit, for a caller that must know whether the server took the change (a photo upload
+ * deletes its file when the path was refused). Resolves with the command's result once the server
+ * applied it, rejects with the server's error when it refused it or the change got lost. The
+ * local effect shows at once, as with commit. Demo mode, or inside another command: right away.
+ */
+export async function commitConfirmed<T>(spec: CommitSpec<T>, run: () => T): Promise<T> {
+  if (!backend || committing) return commit(spec, run);
+  let report: CommitOutcome = () => {};
+  const outcome = new Promise<void>((resolve, reject) => {
+    report = (error) => (error === undefined ? resolve() : reject(error));
+  });
+  const result = record(backend, spec, run, report);
+  await outcome;
+  return result;
+}
+
+function record<T>(
+  hooks: BackendHooks,
+  spec: CommitSpec<T>,
+  run: () => T,
+  onOutcome?: CommitOutcome,
+): T {
+  if (hooks.isOffline()) throw new OfflineError();
   const before = getState();
   committing = true;
   let result: T;
@@ -227,7 +264,7 @@ export function commit<T>(spec: CommitSpec<T> | QueueSpec, run: () => T): T | vo
   }
   const after = getState();
   try {
-    backend.recordChange(spec, before, after, result);
+    hooks.recordChange(spec, before, after, result, onOutcome);
   } catch (error) {
     state = before;
     notify();

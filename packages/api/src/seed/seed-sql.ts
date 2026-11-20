@@ -89,7 +89,7 @@ const DATE_COLUMNS = new Set([
 ]);
 const TIMESTAMP_COLUMNS = new Set(['created_at', 'checked_at']);
 /** Tables the app lists newest first: ties in created_at must keep the demo's order there too. */
-const NEWEST_FIRST = new Set(['recipes', 'restaurants', 'feedback']);
+const NEWEST_FIRST = new Set(['recipes', 'restaurants', 'activities', 'feedback']);
 /** Rows the demo gives no creation time: the household was "set up" this long before the seed. */
 const SETUP_DAYS_AGO = 120;
 
@@ -284,6 +284,8 @@ const NO_ID_TABLES = new Set([
   'recipe_ratings',
   'restaurant_favorites',
   'restaurant_ratings',
+  'activity_favorites',
+  'activity_ratings',
   'feedback_votes',
 ]);
 
@@ -392,6 +394,9 @@ const TIMESTAMPED_TABLES = [
   'restaurants',
   'restaurant_favorites',
   'restaurant_ratings',
+  'activities',
+  'activity_favorites',
+  'activity_ratings',
   'meal_plan_entries',
   'shopping_items',
   'shopping_contributions',
@@ -409,6 +414,7 @@ const TOP_LEVEL = [
   'lists',
   'recipes',
   'restaurants',
+  'activities',
   'planEntries',
   'items',
   'chores',

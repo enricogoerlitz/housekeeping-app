@@ -66,9 +66,11 @@ describe('askAssistant', () => {
     expect(getData()).toBe(before);
   });
 
-  it('answers "Was koche ich heute?" with the dishes of today, marking leftovers, without changing anything', () => {
+  it('answers "Was koche ich heute?" with today in slot order, marking leftovers and activities, without changing anything', () => {
     const reply = askAssistant('was koche ich heute?', {});
-    expect(reply.text).toBe('Für heute ist geplant: Mango-Curry (Reste), Lasagne.');
+    expect(reply.text).toBe(
+      'Für heute ist geplant: Eislaufen (Aktivität), Mango-Curry (Reste), Lasagne.',
+    );
     expect(reply.proposal).toBeUndefined();
   });
 

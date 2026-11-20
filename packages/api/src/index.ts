@@ -11,9 +11,22 @@ export * from './commands-plan';
 export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
+export * from './commands-activities';
 export * from './assistant';
 export * from './ai';
-export { photoSource } from './photos';
+export { photoSource, useRecipeImage } from './photos';
+export {
+  PHOTO_FORBIDDEN_MESSAGE,
+  PHOTO_MAX_INPUT_BYTES,
+  PHOTO_UNUSABLE_MESSAGE,
+  PHOTO_UPLOAD_FAILED_MESSAGE,
+  preparePhoto,
+  removeActivityPhoto,
+  removeRecipePhoto,
+  setActivityPhoto,
+  setRecipePhoto,
+  usePhoto,
+} from './photos-remote';
 export { snapshot, resetState, OfflineError, type HouseholdData, type AppState } from './store';
 export {
   browserEnvironment,

@@ -19,7 +19,8 @@ import { z } from 'zod';
 /**
  * transient: worth retrying (network, timeout, 408, 429, 5xx); the outcome of a write is unknown.
  * permanent: the server said no (4xx, Postgres error); `code` is the server's code, e.g.
- * `invalid_email`, `row_not_found`.
+ * `invalid_email`, `row_not_found`. Photo storage: `too_large` (413), `invalid_mime` (415),
+ * `access_denied` (403), `already_exists` (409), `not_found` (404).
  */
 export class TransportError extends Error {
   constructor(
@@ -161,6 +162,8 @@ export interface Transport {
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
   setRestaurantFavorite(restaurantId: string, favorite: boolean): Promise<void>;
   setRestaurantRating(restaurantId: string, stars: number | null): Promise<void>;
+  setActivityFavorite(activityId: string, favorite: boolean): Promise<void>;
+  setActivityRating(activityId: string, stars: number | null): Promise<void>;
   setFeedbackVote(feedbackId: string, voted: boolean): Promise<void>;
   // Household, invitation, membership
   createHousehold(name: string, starter: unknown): Promise<string>;
@@ -177,6 +180,13 @@ export interface Transport {
   aiSearch(request: AiSearchRequest): Promise<AiSearchResult>;
   /** A short-lived token for streaming speech to Azure (`speech-token`); never the key. */
   speechToken(): Promise<SpeechTokenReply>;
+  // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
+  /** Stores a JPEG under a new name (never overwrites). */
+  uploadMedia(path: string, photo: Blob): Promise<void>;
+  /** The stored file; `not_found` for a missing one and for one of a foreign household. */
+  downloadMedia(path: string): Promise<Blob>;
+  /** Deletes what the caller may delete; missing or foreign paths are left alone. */
+  removeMedia(paths: readonly string[]): Promise<void>;
   // Sync
   syncPull(request: PullRequest): Promise<PullResult>;
   /** Realtime: calls `onSignal` when the household changed. Only a signal, never data. */
@@ -209,6 +219,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     setRecipeRating: guard(inner.setRecipeRating.bind(inner)),
     setRestaurantFavorite: guard(inner.setRestaurantFavorite.bind(inner)),
     setRestaurantRating: guard(inner.setRestaurantRating.bind(inner)),
+    setActivityFavorite: guard(inner.setActivityFavorite.bind(inner)),
+    setActivityRating: guard(inner.setActivityRating.bind(inner)),
     setFeedbackVote: guard(inner.setFeedbackVote.bind(inner)),
     createHousehold: guard(inner.createHousehold.bind(inner)),
     inviteMember: guard(inner.inviteMember.bind(inner)),
@@ -219,6 +231,9 @@ export function switchable(inner: Transport): SwitchableTransport {
     askAssistant: guard(inner.askAssistant.bind(inner)),
     aiSearch: guard(inner.aiSearch.bind(inner)),
     speechToken: guard(inner.speechToken.bind(inner)),
+    uploadMedia: guard(inner.uploadMedia.bind(inner)),
+    downloadMedia: guard(inner.downloadMedia.bind(inner)),
+    removeMedia: guard(inner.removeMedia.bind(inner)),
     syncPull: guard(inner.syncPull.bind(inner)),
     subscribe: (householdId, onSignal) =>
       inner.subscribe(householdId, () => {

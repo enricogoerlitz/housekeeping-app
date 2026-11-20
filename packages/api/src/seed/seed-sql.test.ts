@@ -37,8 +37,20 @@ describe('AC-033 (spec 0003): generated seed', async () => {
   });
 
   it('writes no readable slug id and no fixed calendar date into the SQL', () => {
-    expect(seed.sql).not.toMatch(/'(rec|art|area|plan|item|contrib|chore|list|store|m|hh)-[a-z]/);
+    expect(seed.sql).not.toMatch(
+      /'(rec|art|area|plan|item|contrib|chore|list|store|act|slot|m|hh)-[a-z]/,
+    );
     expect(seed.sql).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('inserts the activities before the plan entries that point to them (spec 0004)', () => {
+    const activities = seed.sql.indexOf('insert into public.activities ');
+    expect(activities).toBeGreaterThan(0);
+    expect(seed.sql.indexOf('insert into public.activity_ratings ')).toBeGreaterThan(activities);
+    expect(seed.sql.indexOf('insert into public.meal_plan_entries ')).toBeGreaterThan(activities);
+    expect(seed.sql).toContain(
+      'alter table public.activities disable trigger activities_set_timestamps;',
+    );
   });
 
   it('maps every slug to a UUID, with the demo members as the test accounts', async () => {
@@ -54,6 +66,11 @@ describe('AC-033 (spec 0003): generated seed', async () => {
     expect(seed.e2eIds['rec-mango-curry']).toBe(await seedId(DEMO_HOUSEHOLD_ID, 'rec-mango-curry'));
     expect(seed.e2eIds['hh-test']).toBe(await seedHouseholdId(TEST_HOUSEHOLD_ID));
     expect(seed.e2eIds['m-nadja']).toBeDefined();
+    expect(seed.e2eIds['act-eislaufen']).toBe(await seedId(DEMO_HOUSEHOLD_ID, 'act-eislaufen'));
+    expect(seed.e2eIds['slot-vormittag']).toBe(await seedId(DEMO_HOUSEHOLD_ID, 'slot-vormittag'));
+    expect(seed.e2eTestIds['slot-vormittag']).toBe(
+      await seedId(TEST_HOUSEHOLD_ID, 'slot-vormittag'),
+    );
     // Nested ids (ingredients, steps, contributions) stay out of the e2e map.
     expect(Object.keys(seed.e2eIds).some((slug) => /-i\d+$/.test(slug))).toBe(false);
   });

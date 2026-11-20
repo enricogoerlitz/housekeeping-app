@@ -19,6 +19,7 @@ import { DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
 import { createMemoryStorage, type Storage } from './storage';
 import {
   commit,
+  commitConfirmed,
   getData,
   getState,
   OfflineError,
@@ -191,6 +192,14 @@ describe('sync engine', () => {
     expect(transport.pulls[0]).toEqual({ households: {} });
     expect(transport.pulls[1]).toEqual({ households: { [H]: { full: true } } });
     expect(getData().household.name).toBe('Enrico & Nadja');
+  });
+
+  it('AC-018: a cache of the app before activities (version 1) is loaded again in full', async () => {
+    await startEnrico({ cacheVersion: 1 });
+    await stopBackend();
+    const transport = recording(server.transport(ENRICO));
+    await startEnrico({ transport });
+    expect(transport.pulls[0]).toEqual({ households: {} });
   });
 
   it('pulls once for a burst of realtime signals (debounced)', async () => {
@@ -508,6 +517,49 @@ describe('writes: changesets (ADR-0011)', () => {
     expect(getData().recipes[0]?.title).toBe('Angekommen');
     expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
     stopListening();
+  });
+
+  it('commitConfirmed resolves once the server applied the change, also when the answer got lost', async () => {
+    await startEnrico();
+    const recipe = getData().recipes[0];
+    if (!recipe) throw new Error('fixture');
+    const rename = (title: string) =>
+      commitConfirmed({ path: 'diff' }, () => {
+        updateData((data) => ({
+          ...data,
+          recipes: data.recipes.map((candidate) =>
+            candidate.id === recipe.id ? { ...candidate, title } : candidate,
+          ),
+        }));
+        return title;
+      }).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+
+    const confirmed = rename('Bestätigt');
+    await settle();
+    expect(await confirmed).toEqual({ value: 'Bestätigt' });
+
+    server.failNext('apply_changes', new TransportError('transient', 'http_503', 503), {
+      afterApply: true,
+    });
+    const arrived = rename('Angekommen');
+    await settle();
+    expect(await arrived).toEqual({ value: 'Angekommen' });
+
+    server.failNext('apply_changes', new TransportError('transient', 'http_503', 503));
+    const lost = rename('Verloren');
+    await settle();
+    expect(await lost).toEqual({ error: expect.any(TransportError) });
+
+    server.failNext('apply_changes', new TransportError('permanent', 'row_not_found', 404));
+    const refused = rename('Abgelehnt');
+    await settle();
+    expect(await refused).toEqual({ error: expect.objectContaining({ code: 'row_not_found' }) });
+    expect(getData().recipes[0]?.title).toBe('Angekommen');
+
+    expect(await rename('Angekommen')).toEqual({ value: 'Angekommen' });
   });
 
   it('undo sends the inverse of the own change (snapshot in backend mode)', async () => {

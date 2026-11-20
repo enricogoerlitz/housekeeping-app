@@ -1,3 +1,7 @@
+import type { Recipe } from '@housekeeping/core';
+import { useMemo } from 'react';
+
+import { usePhoto } from './photos-remote';
 import type { PhotoKey } from './starter/types';
 
 // Metro turns a require of an image into a numeric asset id; this package has no Node types.
@@ -27,4 +31,19 @@ const sources: Record<PhotoKey, number> = {
 export function photoSource(key: string | undefined): number | undefined {
   if (!key) return undefined;
   return (sources as Record<string, number | undefined>)[key];
+}
+
+/**
+ * The image of a recipe for an Image source: its own photo when it has one (AC-017), else the
+ * bundled sample photo (also again after "Foto entfernen", AC-018), else undefined (placeholder).
+ * While the own photo loads: undefined; when it cannot be loaded (offline, never seen): the sample.
+ */
+export function useRecipeImage(
+  recipe: Pick<Recipe, 'photo' | 'photoPath'> | undefined,
+): number | { uri: string } | undefined {
+  const own = usePhoto(recipe?.photoPath);
+  const uri = own.uri;
+  const ownSource = useMemo(() => (uri ? { uri } : undefined), [uri]);
+  if (recipe?.photoPath && (ownSource || own.loading)) return ownSource;
+  return photoSource(recipe?.photo);
 }

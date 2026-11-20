@@ -38,6 +38,7 @@ import {
   publishState,
   type AppState,
   type BackendHooks,
+  type CommitOutcome,
   type CommitSpec,
   type HouseholdData,
   type StoreAction,
@@ -53,7 +54,7 @@ import {
 import { createSupabaseTransport, fromSupabaseClient } from './transport-supabase';
 
 /** Bump when the cached shape changes: the device then drops its cache and loads again (AC-018). */
-export const CACHE_VERSION = 1;
+export const CACHE_VERSION = 2;
 /** Retention of `deleted_records` on the server (pg_cron). */
 export const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
@@ -170,6 +171,15 @@ interface OutboxCommit {
   /** The answer got lost: the next pull shows whether it arrived. */
   unknownOutcome?: boolean;
   rejected?: boolean;
+  /** Told once whether the server took the change (commitConfirmed). */
+  onOutcome?: CommitOutcome;
+}
+
+/** Tells the waiting caller once how its change ended. */
+function report(entry: OutboxCommit, error?: unknown): void {
+  const onOutcome = entry.onOutcome;
+  entry.onOutcome = undefined;
+  onOutcome?.(error);
 }
 
 interface PersistedMeta {
@@ -581,6 +591,9 @@ export function createEngine(options: EngineOptions): Engine {
       if (!base || !isReflected(base, entry.changeset.ops)) {
         entry.rejected = true;
         lost = true;
+        report(entry, new TransportError('permanent', 'write_lost'));
+      } else {
+        report(entry);
       }
     }
     commits = commits.filter((entry) => kept.has(entry.changeset.id));
@@ -686,6 +699,7 @@ export function createEngine(options: EngineOptions): Engine {
       entry.response = await entry.send(transport);
       noteSuccess();
       entry.changeset = { ...entry.changeset, status: 'confirmed', confirmedAt: startedGeneration };
+      report(entry);
     } catch (error) {
       if (isTransient(error)) {
         noteFailure(error);
@@ -702,7 +716,9 @@ export function createEngine(options: EngineOptions): Engine {
         );
         const droppedIds = new Set(dropped.map((changeset) => changeset.id));
         for (const candidate of commits) {
-          if (droppedIds.has(candidate.changeset.id)) candidate.rejected = true;
+          if (!droppedIds.has(candidate.changeset.id)) continue;
+          candidate.rejected = true;
+          report(candidate, error);
         }
         commits = commits.filter((candidate) => !droppedIds.has(candidate.changeset.id));
         rebuild();
@@ -828,6 +844,7 @@ export function createEngine(options: EngineOptions): Engine {
     before: AppState,
     after: AppState,
     result: T,
+    onOutcome?: CommitOutcome,
   ): void {
     const householdId = before.activeHouseholdId;
     const old = before.households[householdId];
@@ -842,12 +859,14 @@ export function createEngine(options: EngineOptions): Engine {
           });
     if (spec.path === 'diff' && change.ops.length === 0) {
       republish();
+      onOutcome?.();
       return;
     }
     seq += 1;
     const context = { result, householdId, ops: change.ops };
     const entry: OutboxCommit = {
       seq,
+      onOutcome,
       changeset: { id: `changeset-${seq}`, householdId, ops: change.ops, status: 'pending' },
       send:
         spec.path === 'diff'
@@ -991,6 +1010,7 @@ export function createEngine(options: EngineOptions): Engine {
     queue = [];
     inFlight = undefined;
     settling = [];
+    for (const entry of commits) report(entry, new TransportError('permanent', 'reset'));
     commits = [];
     history = [];
     knownCheckSeq.clear();
@@ -1058,6 +1078,8 @@ export interface StartBackendOptions {
 let current: Engine | undefined;
 /** The transport of the current engine, for the household RPCs (households.ts). */
 let currentWire: Transport | undefined;
+/** The device storage of the current engine; photos are kept next to the cache (photos-remote.ts). */
+let currentStorage: Storage | undefined;
 const rejectedListeners = new Set<(message: string) => void>();
 const syncListeners = new Set<() => void>();
 const DEMO_SYNC_STATE: SyncState = { status: 'idle', ready: true };
@@ -1110,6 +1132,7 @@ export async function startBackend(options: StartBackendOptions): Promise<Engine
   });
   current = engine;
   currentWire = wire;
+  currentStorage = options.storage;
   await engine.load();
   const initial = engine.getState();
   if (!initial) throw new Error('The engine built no state');
@@ -1125,6 +1148,7 @@ export async function stopBackend(): Promise<void> {
   if (!engine) return;
   current = undefined;
   currentWire = undefined;
+  currentStorage = undefined;
   engine.stop();
   detachBackend(engine);
   setSyncState(DEMO_SYNC_STATE);
@@ -1184,6 +1208,14 @@ export async function onlineCall<T>(send: (transport: Transport) => Promise<T>):
   if (!engine || !wire) throw new Error('Not signed in');
   if (engine.isOffline()) throw new OfflineError();
   return send(wire);
+}
+
+/**
+ * The storage the signed-in user's cache lives in (undefined in demo mode). Whatever is kept there
+ * is bound to the user: another user's start and the sign-out clear it as a whole.
+ */
+export function deviceStorage(): Storage | undefined {
+  return currentStorage;
 }
 
 /** The small tables of the cache (empty in demo mode); changes notify `subscribeSmall`. */

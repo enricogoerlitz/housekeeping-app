@@ -21,6 +21,7 @@ const TABLE_ORDER = [
   'households',
   'recipes',
   'restaurants',
+  'activities',
   'meal_plan_entries',
   'shopping_items',
   'shopping_contributions',

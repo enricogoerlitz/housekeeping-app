@@ -1,7 +1,8 @@
 // An in-memory server that implements the RPC contracts of spec 0003 for unit tests: membership
 // checks, the apply_changes allowlist with all-or-nothing, "Abhaken gewinnt" with check_seq, the
-// add merge (core queueEffect has the same rules as the server), deletion log and sync_pull.
-// Several transports (users, devices) can share one server.
+// add merge (core queueEffect has the same rules as the server), deletion log and sync_pull, and
+// the photo bucket with its policies and limits (spec 0004). Several transports (users, devices)
+// can share one server.
 import {
   compareTimestamps,
   queueEffect,
@@ -48,6 +49,8 @@ type RpcName =
   | 'set_recipe_rating'
   | 'set_restaurant_favorite'
   | 'set_restaurant_rating'
+  | 'set_activity_favorite'
+  | 'set_activity_rating'
   | 'set_feedback_vote'
   | 'create_household'
   | 'invite_member'
@@ -58,6 +61,9 @@ type RpcName =
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
+  | 'storage_upload'
+  | 'storage_download'
+  | 'storage_remove'
   | 'sync_pull';
 
 /** How the fake AI edge functions answer; an unset one answers `ai_unavailable` (503). */
@@ -92,6 +98,8 @@ export interface FakeServer {
   setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
   /** The answers of the AI edge functions. */
   setAi(ai: FakeAi): void;
+  /** A stored photo (bucket household-media). */
+  media(path: string): Blob | undefined;
   calls: { userId: string; fn: string }[];
 }
 
@@ -108,6 +116,10 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
   restaurants: [
     { table: 'restaurant_favorites', column: 'restaurant_id' },
     { table: 'restaurant_ratings', column: 'restaurant_id' },
+  ],
+  activities: [
+    { table: 'activity_favorites', column: 'activity_id' },
+    { table: 'activity_ratings', column: 'activity_id' },
   ],
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
 };
@@ -129,6 +141,7 @@ const REFERENCES: {
     target: 'restaurants',
     onDelete: 'restrict',
   },
+  { table: 'meal_plan_entries', column: 'activity_id', target: 'activities', onDelete: 'restrict' },
   {
     table: 'meal_plan_entries',
     column: 'leftovers_of_entry_id',
@@ -149,6 +162,31 @@ function checkPlanEntry(row: Row): void {
   }
 }
 
+/** Folders of the photo bucket per table (activities_photo_path_valid, recipes_photo_path_valid). */
+const PHOTO_FOLDERS: Record<string, string> = { activities: 'activities', recipes: 'recipes' };
+/** <household>/<activities|recipes>/<row id>/<file>, like private.media_household_id. */
+const MEDIA_PATH = /^([^/]+)\/(activities|recipes)\/[^/]+\/[^/]+$/;
+/** The bucket's limits: image/jpeg only, at most 2 MiB. */
+const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Row checks of the database that a client bug could break (spec 0004). */
+function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
+  const folder = PHOTO_FOLDERS[table];
+  if (folder && row.photo_path != null) {
+    const prefix = `${householdId}/${folder}/${row.id}/`;
+    const path = String(row.photo_path);
+    if (!path.startsWith(prefix) || path.slice(prefix.length).includes('/')) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  if (table === 'activities') {
+    const clash = Object.values(tables.activities ?? {}).some(
+      (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+}
+
 export function createFakeServer(): FakeServer {
   let lastMicros = 0;
   const profiles = new Map<string, SmallRow>();
@@ -161,6 +199,7 @@ export function createFakeServer(): FakeServer {
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
+  const media = new Map<string, Blob>();
   let ai: FakeAi = {};
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
 
@@ -450,8 +489,10 @@ export function createFakeServer(): FakeServer {
             ...defaults,
             ...op.row,
             ...(op.table === 'feedback' ? { author_id: userId } : {}),
+            ...(op.table === 'activities' ? { created_by: userId } : {}),
           });
           checkReferences(tables, op.table, op.row);
+          checkRow(householdId, op.table, tables[op.table]?.[op.row.id] ?? op.row, tables);
         } else if (op.kind === 'patch') {
           checkColumns(op.table, Object.keys(op.changes), false);
           if (op.table === 'households') {
@@ -463,6 +504,7 @@ export function createFakeServer(): FakeServer {
           if (!row) throw new TransportError('permanent', 'row_not_found', 404);
           tables = withRow(tables, op.table, { ...row, ...op.changes });
           checkReferences(tables, op.table, op.changes);
+          checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
         } else {
           if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || op.table === 'households') {
             throw reject('invalid_change');
@@ -564,6 +606,14 @@ export function createFakeServer(): FakeServer {
     if (stars === null) return undefined;
     if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw reject('invalid_stars');
     return { stars };
+  }
+
+  // ---------- photo bucket (policies of storage.objects) ----------
+
+  /** The household of a photo path the user may use, or undefined (wrong shape, foreign). */
+  function mediaHousehold(userId: string, path: string): string | undefined {
+    const householdId = MEDIA_PATH.exec(path)?.[1];
+    return householdId && isMember(userId, householdId) ? householdId : undefined;
   }
 
   // ---------- the transport per user ----------
@@ -776,6 +826,28 @@ export function createFakeServer(): FakeServer {
             rating(stars),
           ),
         ),
+      setActivityFavorite: (activityId, favorite) =>
+        run(userId, 'set_activity_favorite', () =>
+          setMemberRow(
+            userId,
+            'activity_favorites',
+            'activities',
+            activityId,
+            'activity_not_found',
+            favorite ? {} : undefined,
+          ),
+        ),
+      setActivityRating: (activityId, stars) =>
+        run(userId, 'set_activity_rating', () =>
+          setMemberRow(
+            userId,
+            'activity_ratings',
+            'activities',
+            activityId,
+            'activity_not_found',
+            rating(stars),
+          ),
+        ),
       setFeedbackVote: (feedbackId, voted) =>
         run(userId, 'set_feedback_vote', () =>
           setMemberRow(
@@ -799,8 +871,9 @@ export function createFakeServer(): FakeServer {
             id,
             name: trimmed,
             meal_slots: [
-              { id: crypto.randomUUID(), name: 'Mittag', sort: 0 },
-              { id: crypto.randomUUID(), name: 'Abend', sort: 1 },
+              { id: crypto.randomUUID(), name: 'Vormittag', sort: 0 },
+              { id: crypto.randomUUID(), name: 'Mittag', sort: 1 },
+              { id: crypto.randomUUID(), name: 'Abend', sort: 2 },
             ],
             default_list_id: listId,
             default_store_id: null,
@@ -926,6 +999,30 @@ export function createFakeServer(): FakeServer {
           return ai.speechToken();
         }),
 
+      // The Storage API answers a refused request with its status (413, 415, 403, 409).
+      uploadMedia: (path, photo) =>
+        run(userId, 'storage_upload', () => {
+          if (photo.type !== 'image/jpeg') {
+            throw new TransportError('permanent', 'invalid_mime', 415);
+          }
+          if (photo.size > MEDIA_MAX_BYTES) throw new TransportError('permanent', 'too_large', 413);
+          if (!mediaHousehold(userId, path)) {
+            throw new TransportError('permanent', 'access_denied', 403);
+          }
+          if (media.has(path)) throw new TransportError('permanent', 'already_exists', 409);
+          media.set(path, photo);
+        }),
+      downloadMedia: (path) =>
+        run(userId, 'storage_download', () => {
+          const photo = mediaHousehold(userId, path) ? media.get(path) : undefined;
+          if (!photo) throw new TransportError('permanent', 'not_found', 404);
+          return photo;
+        }),
+      removeMedia: (paths) =>
+        run(userId, 'storage_remove', () => {
+          for (const path of paths) if (mediaHousehold(userId, path)) media.delete(path);
+        }),
+
       syncPull: (request) =>
         run(userId, 'sync_pull', () => withCompositeIds(syncPull(userId, request))),
 
@@ -1013,6 +1110,7 @@ export function createFakeServer(): FakeServer {
     setAi(next) {
       ai = next;
     },
+    media: (path) => media.get(path),
     purgeDeletionsBefore(before) {
       deletions = deletions.filter(
         (deletion) => compareTimestamps(deletion.deletedAt, before) >= 0,

@@ -29,6 +29,43 @@ type RpcReply = {
   status: number;
 };
 
+/** storage-js answers `{ data, error }`; a refused request has `status` and `statusCode`. */
+type StorageReply = { data: unknown; error: unknown };
+
+interface StorageBucketLike {
+  upload(
+    path: string,
+    body: Blob,
+    options: { contentType: string; upsert: boolean },
+  ): PromiseLike<StorageReply>;
+  download(path: string): PromiseLike<StorageReply>;
+  remove(paths: string[]): PromiseLike<StorageReply>;
+}
+
+/** The private bucket of the photos (supabase/migrations/…_storage_household_media.sql). */
+const MEDIA_BUCKET = 'household-media';
+
+/** Storage status (from the answer's body: the HTTP status is 400 for most refusals) → code. */
+const STORAGE_CODES: Record<number, string> = {
+  403: 'access_denied',
+  404: 'not_found',
+  409: 'already_exists',
+  413: 'too_large',
+  415: 'invalid_mime',
+};
+
+/** A storage-js error: with an answer it is classified by its status, without one it is the network. */
+function classifyStorageError(error: unknown): TransportError {
+  const fields = (typeof error === 'object' && error !== null ? error : {}) as {
+    status?: unknown;
+    statusCode?: unknown;
+  };
+  if (typeof fields.status !== 'number') return new TransportError('transient', 'network', 0);
+  const fromBody = Number(fields.statusCode);
+  const status = Number.isInteger(fromBody) && fromBody > 0 ? fromBody : fields.status;
+  return classifyError(status, { message: STORAGE_CODES[status] ?? '', code: '' });
+}
+
 interface ChannelLike {
   on(type: 'broadcast', filter: { event: string }, handler: () => void): ChannelLike;
   subscribe(): unknown;
@@ -49,6 +86,7 @@ export interface SupabaseLike {
       options: { body: unknown },
     ): Promise<{ data: unknown; error: FunctionError | null }>;
   };
+  storage: { from(bucket: string): StorageBucketLike };
 }
 
 /** supabase-js `FunctionsHttpError` carries the response; fetch and relay errors carry none. */
@@ -69,6 +107,8 @@ export function fromSupabaseClient(client: SupabaseClient): SupabaseLike {
 export interface SupabaseTransportOptions {
   /** A call that takes longer counts as a transient failure. */
   timeoutMs?: number;
+  /** The same for photo uploads and downloads (up to 2 MiB). */
+  mediaTimeoutMs?: number;
 }
 
 export function createSupabaseTransport(
@@ -76,6 +116,7 @@ export function createSupabaseTransport(
   options: SupabaseTransportOptions = {},
 ): Transport {
   const timeoutMs = options.timeoutMs ?? 15_000;
+  const mediaTimeoutMs = options.mediaTimeoutMs ?? 60_000;
 
   async function call(fn: string, args: Record<string, unknown>): Promise<unknown> {
     const controller = new AbortController();
@@ -143,6 +184,29 @@ export function createSupabaseTransport(
     return result.data;
   }
 
+  /** A storage request in the photo bucket; its data, or the classified error. */
+  async function media(
+    request: (bucket: StorageBucketLike) => PromiseLike<StorageReply>,
+  ): Promise<unknown> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new TransportError('transient', 'timeout', 0)),
+        mediaTimeoutMs,
+      );
+    });
+    try {
+      const reply = await Promise.race([request(client.storage.from(MEDIA_BUCKET)), timeout]);
+      if (reply.error) throw classifyStorageError(reply.error);
+      return reply.data;
+    } catch (error) {
+      if (error instanceof TransportError) throw error;
+      throw new TransportError('transient', 'network', 0);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function nothing(fn: string, args: Record<string, unknown>): Promise<void> {
     await call(fn, args);
   }
@@ -200,6 +264,10 @@ export function createSupabaseTransport(
       nothing('set_restaurant_favorite', { restaurant_id: restaurantId, favorite }),
     setRestaurantRating: (restaurantId, stars) =>
       nothing('set_restaurant_rating', { restaurant_id: restaurantId, stars }),
+    setActivityFavorite: (activityId, favorite) =>
+      nothing('set_activity_favorite', { activity_id: activityId, favorite }),
+    setActivityRating: (activityId, stars) =>
+      nothing('set_activity_rating', { activity_id: activityId, stars }),
     setFeedbackVote: (feedbackId, voted) =>
       nothing('set_feedback_vote', { feedback_id: feedbackId, voted }),
     createHousehold: (name, starter) => id('create_household', { name, starter }),
@@ -214,6 +282,19 @@ export function createSupabaseTransport(
     askAssistant: (request) => invokeParsed(AssistantReplySchema, 'ai-assistant', request),
     aiSearch: (request) => invokeParsed(AiSearchResultSchema, 'ai-search', request),
     speechToken: () => invokeParsed(SpeechTokenReplySchema, 'speech-token', {}),
+    uploadMedia: async (path, photo) => {
+      await media((bucket) =>
+        bucket.upload(path, photo, { contentType: 'image/jpeg', upsert: false }),
+      );
+    },
+    downloadMedia: async (path) => {
+      const data = await media((bucket) => bucket.download(path));
+      if (!(data instanceof Blob)) throw new TransportError('permanent', 'invalid_response');
+      return data;
+    },
+    removeMedia: async (paths) => {
+      await media((bucket) => bucket.remove([...paths]));
+    },
     syncPull: async (request): Promise<PullResult> => {
       const raw = await parsed(RawPullResultSchema, 'sync_pull', { p_request: request });
       try {

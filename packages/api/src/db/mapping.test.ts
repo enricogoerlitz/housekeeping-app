@@ -43,7 +43,13 @@ function asServerTables(rows: HouseholdRows): {
 
 /** Server-only columns the domain does not carry; left out when comparing rows. */
 function withoutServerColumns(rows: HouseholdRows): Record<string, Row[]> {
-  const domainHasCreatedAt = new Set(['recipes', 'restaurants', 'feedback', 'shopping_items']);
+  const domainHasCreatedAt = new Set([
+    'recipes',
+    'restaurants',
+    'activities',
+    'feedback',
+    'shopping_items',
+  ]);
   return Object.fromEntries(
     Object.entries(rows).map(([table, list]) => [
       table,
@@ -146,6 +152,69 @@ describe('mapping between domain and rows', () => {
     const item = rows.shopping_items?.[0];
     expect(item).not.toHaveProperty('pending_sync');
     expect(item).not.toHaveProperty('contributions');
+  });
+
+  it('writes activities with name_key, place and creator, their favourites, ratings and plan entries', () => {
+    const { data } = demo();
+    const rows = householdToRows(data);
+    expect(rows.activities?.find((row) => row.id === 'act-eislaufen')).toEqual({
+      id: 'act-eislaufen',
+      household_id: DEMO_HOUSEHOLD_ID,
+      name: 'Eislaufen',
+      name_key: normalizeText('Eislaufen'),
+      description: expect.any(String),
+      photo_path: null,
+      place_name: 'Eisstadion Hohenschönhausen',
+      address: null,
+      lat: 52.55,
+      lng: 13.5,
+      maps_url: expect.stringMatching(/^https:\/\//),
+      tags: [],
+      created_by: ENRICO,
+      created_at: expect.any(String),
+    });
+    expect(rows.activity_ratings).toContainEqual({
+      id: `act-eislaufen:${NADJA}`,
+      household_id: DEMO_HOUSEHOLD_ID,
+      activity_id: 'act-eislaufen',
+      member_id: NADJA,
+      stars: expect.any(Number),
+    });
+    expect(rows.activity_favorites?.length).toBeGreaterThan(0);
+    const planned = rows.meal_plan_entries?.find((row) => row.kind === 'activity' && row.note);
+    expect(planned).toMatchObject({ activity_id: 'act-eislaufen', note: 'Hohenschönhausen' });
+    expect(rows.meal_plan_entries?.find((row) => row.kind === 'recipe')).toMatchObject({
+      activity_id: null,
+      note: null,
+    });
+    expect(rows.recipes?.[0]).toMatchObject({ photo_path: null });
+  });
+
+  it('reads an own recipe photo and an activity photo back from the rows', () => {
+    const { data, members } = demo();
+    const { tables, small } = asServerTables({
+      ...householdToRows(data),
+      ...membersToRows(members),
+    });
+    const lasagne = tables.recipes?.['rec-lasagne'];
+    const bouldern = tables.activities?.['act-bouldern'];
+    if (!lasagne || !bouldern) throw new Error('fixture');
+    tables.recipes = {
+      ...tables.recipes,
+      [lasagne.id]: { ...lasagne, photo_path: 'hh-demo/recipes/rec-lasagne/a.jpg' },
+    };
+    tables.activities = {
+      ...tables.activities,
+      [bouldern.id]: { ...bouldern, photo_path: 'hh-demo/activities/act-bouldern/b.jpg' },
+    };
+    const domain = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(domain.recipes.find((recipe) => recipe.id === 'rec-lasagne')).toMatchObject({
+      photo: 'lasagne',
+      photoPath: 'hh-demo/recipes/rec-lasagne/a.jpg',
+    });
+    expect(domain.activities.find((activity) => activity.id === 'act-bouldern')?.photoPath).toBe(
+      'hh-demo/activities/act-bouldern/b.jpg',
+    );
   });
 
   it('a removed member (null done_by / author_id) becomes an empty id', () => {

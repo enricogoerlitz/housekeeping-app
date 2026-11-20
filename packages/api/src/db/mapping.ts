@@ -8,17 +8,19 @@
 // - null in a row ⇄ undefined (missing) in the domain; `not_cooked` / `not_available` false ⇄
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
-// - `name_key` / `synonym_keys` are always recomputed with `normalizeText`.
+// - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
 // - Columns the domain does not have are not written back: `updated_at`, `check_seq`,
 //   `profiles.email`, and `created_at` of tables whose domain type has no `createdAt`.
-// - Order: areas by `sort`; recipes, restaurants and feedback newest first; chore events by day,
-//   newest first; everything else in creation order. Ties keep the order of the rows, rows
-//   without `created_at` (local, not yet on the server) count as newest.
+// - Order: areas by `sort`; recipes, restaurants, activities and feedback newest first; chore
+//   events by day, newest first; everything else in creation order. Ties keep the order of the
+//   rows, rows without `created_at` (local, not yet on the server) count as newest.
+// - A removed creator of an activity (`created_by` null) is simply unknown (undefined).
 // - `pendingSync` is client-only: it is set from the store queue, never stored.
 import {
   compareTimestamps,
   normalizeText,
   type Absence,
+  type Activity,
   type Area,
   type Article,
   type Chore,
@@ -106,6 +108,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         household_id: householdId,
         title: recipe.title,
         photo: recipe.photo ?? null,
+        photo_path: recipe.photoPath ?? null,
         description: recipe.description ?? null,
         servings: recipe.servings,
         total_minutes: recipe.totalMinutes ?? null,
@@ -160,6 +163,37 @@ function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdR
       restaurant.favoriteOf,
     ),
     restaurant_ratings: ratingRows(householdId, 'restaurant_id', restaurant.id, restaurant.ratings),
+  }));
+}
+
+function activityRows(householdId: string, activity: Activity): HouseholdRows {
+  return rowsOf(householdId, activity, () => ({
+    activities: [
+      {
+        id: activity.id,
+        household_id: householdId,
+        name: activity.name,
+        name_key: normalizeText(activity.name),
+        description: activity.description ?? null,
+        photo_path: activity.photoPath ?? null,
+        place_name: activity.placeName ?? null,
+        address: activity.address ?? null,
+        lat: activity.location?.lat ?? null,
+        lng: activity.location?.lng ?? null,
+        maps_url: activity.mapsUrl ?? null,
+        tags: activity.tags,
+        created_by: activity.createdBy ?? null,
+        ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
+      } satisfies Cached<'activities'>,
+    ],
+    activity_favorites: memberRows(
+      householdId,
+      'activity_favorites',
+      'activity_id',
+      activity.id,
+      activity.favoriteOf,
+    ),
+    activity_ratings: ratingRows(householdId, 'activity_id', activity.id, activity.ratings),
   }));
 }
 
@@ -266,7 +300,9 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     kind: entry.kind,
     recipe_id: entry.recipeId ?? null,
     restaurant_id: entry.restaurantId ?? null,
+    activity_id: entry.activityId ?? null,
     text: entry.text ?? null,
+    note: entry.note ?? null,
     leftovers_of_entry_id: entry.leftoversOfEntryId ?? null,
     eater_ids: entry.eaterIds,
     guests: entry.guests,
@@ -344,6 +380,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.lists.map((list) => listRow(householdId, list)),
     ...data.recipes.map((recipe) => recipeRows(householdId, recipe)),
     ...data.restaurants.map((restaurant) => restaurantRows(householdId, restaurant)),
+    ...data.activities.map((activity) => activityRows(householdId, activity)),
     ...data.planEntries.map((entry) => planRow(householdId, entry)),
     ...data.items.map((item) => itemRows(householdId, item)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
@@ -364,6 +401,9 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     restaurants: [],
     restaurant_favorites: [],
     restaurant_ratings: [],
+    activities: [],
+    activity_favorites: [],
+    activity_ratings: [],
     meal_plan_entries: [],
     shopping_items: [],
     shopping_contributions: [],
@@ -476,6 +516,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     id: r.id,
     title: r.title ?? '',
     photo: opt(r.photo),
+    photoPath: opt(r.photo_path),
     description: opt(r.description),
     servings: r.servings ?? 2,
     totalMinutes: opt(r.total_minutes),
@@ -517,6 +558,30 @@ function toRestaurant(row: Row, favorites: Row[], ratings: Row[]): Restaurant {
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
     ),
+    createdAt: r.created_at ?? '',
+  };
+}
+
+function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
+  const r = row as Cached<'activities'>;
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    description: opt(r.description),
+    photoPath: opt(r.photo_path),
+    placeName: opt(r.place_name),
+    address: opt(r.address),
+    location:
+      typeof r.lat === 'number' && typeof r.lng === 'number'
+        ? { lat: r.lat, lng: r.lng }
+        : undefined,
+    mapsUrl: opt(r.maps_url),
+    tags: r.tags ?? [],
+    favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
+    ratings: Object.fromEntries(
+      ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
+    ),
+    createdBy: opt(r.created_by),
     createdAt: r.created_at ?? '',
   };
 }
@@ -613,7 +678,9 @@ function toPlanEntry(row: Row): MealPlanEntry {
     kind: r.kind as MealPlanEntry['kind'],
     recipeId: opt(r.recipe_id),
     restaurantId: opt(r.restaurant_id),
+    activityId: opt(r.activity_id),
     text: opt(r.text),
+    note: opt(r.note),
     leftoversOfEntryId: opt(r.leftovers_of_entry_id),
     eaterIds: r.eater_ids ?? [],
     guests: r.guests ?? 0,
@@ -732,6 +799,22 @@ export function rowsToHousehold(
     );
   });
 
+  const activityFavorites = groupBy(
+    rowsOfTable(tables, 'activity_favorites', 'created'),
+    'activity_id',
+  );
+  const activityRatings = groupBy(
+    rowsOfTable(tables, 'activity_ratings', 'created'),
+    'activity_id',
+  );
+  const activities = rowsOfTable(tables, 'activities', 'newest').map((row) => {
+    const rowFavorites = activityFavorites.get(row.id) ?? [];
+    const rowRatings = activityRatings.get(row.id) ?? [];
+    return cached(row, [...rowFavorites, null, ...rowRatings], () =>
+      toActivity(row, rowFavorites, rowRatings),
+    );
+  });
+
   const votes = groupBy(rowsOfTable(tables, 'feedback_votes', 'created'), 'feedback_id');
   const feedback = rowsOfTable(tables, 'feedback', 'newest').map((row) => {
     const rowVotes = votes.get(row.id) ?? [];
@@ -757,6 +840,7 @@ export function rowsToHousehold(
     stores: reuse(previous?.stores, plain(tables, 'stores', 'created', toStore)),
     recipes: reuse(previous?.recipes, recipes),
     restaurants: reuse(previous?.restaurants, restaurants),
+    activities: reuse(previous?.activities, activities),
     planEntries: reuse(
       previous?.planEntries,
       plain(tables, 'meal_plan_entries', 'created', toPlanEntry),

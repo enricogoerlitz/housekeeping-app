@@ -1,5 +1,6 @@
 import {
   addDays,
+  entriesForDay,
   filterRecipes,
   formatAmount,
   isoWeekday,
@@ -272,13 +273,19 @@ export function askAssistant(text: string, context: AssistantContext): Assistant
     };
   }
   if (request === normalizeText(EXAMPLE_TODAY)) {
-    const dishes = data.planEntries
-      .filter((entry) => entry.date === today)
+    const slotOrder = [...data.household.mealSlots]
+      .sort((a, b) => a.sort - b.sort)
+      .map((slot) => slot.id);
+    const dishes = entriesForDay(data.planEntries, today, slotOrder)
       .map((entry) => {
         if (entry.kind === 'text') return entry.text;
         if (entry.kind === 'restaurant') {
           const restaurant = data.restaurants.find((r) => r.id === entry.restaurantId);
           return restaurant ? `${restaurant.name} (Restaurant)` : undefined;
+        }
+        if (entry.kind === 'activity') {
+          const activity = data.activities.find((a) => a.id === entry.activityId);
+          return activity ? `${activity.name} (Aktivität)` : undefined;
         }
         const title = entry.recipeId ? recipesById[entry.recipeId]?.title : undefined;
         return title && entry.kind === 'leftovers' ? `${title} (Reste)` : title;

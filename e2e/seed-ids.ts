@@ -7,6 +7,7 @@ export const seedIds = {
   'hh-test': '263209f8-b95d-525e-89fc-058960f220a2',
   'm-enrico': 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3',
   'm-nadja': '64399031-c98c-5692-9e99-923924bfff3d',
+  'slot-vormittag': 'cdf976d6-ef47-53a7-863c-24735d4d8b9a',
   'slot-mittag': '0cd9e2c9-74a8-59a5-8ff8-e90c488969f4',
   'slot-abend': 'b60c1058-0fa4-5d7a-b8f8-3b7f8895abcd',
   'area-obst-gemuese': '20823e90-5db0-516b-a708-857e9b2c678a',
@@ -514,6 +515,9 @@ export const seedIds = {
   'rest-pho': 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9',
   'rest-burger': 'f2ad4d16-d1d1-5659-b707-5b48c391e019',
   'rest-sushi': '3af0bb73-8515-5d73-a552-33db433400b8',
+  'act-bouldern': '4213331d-c8fc-5354-b6f7-95f03a0cba65',
+  'act-eislaufen': '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca',
+  'act-spieleabend': 'be438327-21ac-55e4-b69c-1a3f8d58ad39',
   'plan-3': '089c2b8f-6e70-56fd-9068-a33b5680ca6e',
   'plan-4': '0ef174d8-2b45-56bd-ad95-61b8bc375a79',
   'plan-5': '368ab123-75bd-5e90-a529-d957d548f95f',
@@ -530,6 +534,11 @@ export const seedIds = {
   'plan-pho-3': 'bbe199ff-ba91-52b5-af96-095520cacb24',
   'plan-enzo-1': 'bf9d65fa-b396-53d4-a0ae-4e54baeb29bc',
   'plan-enzo-2': '806a6da8-c31a-512c-a1bc-e6d7aa99fed4',
+  'plan-bouldern-1': 'dac18dfd-1587-5a35-b898-0de43af81d22',
+  'plan-bouldern-2': '1f04ad5f-3615-59e5-96d0-b6632a776ece',
+  'plan-bouldern-3': '5fc57aac-f099-5d74-a06e-850a3a39653b',
+  'plan-bouldern-4': 'fe8b8e15-8854-512d-8cd5-8e11a5f07475',
+  'plan-eislaufen-1': 'c47857ea-fa07-5da2-96a9-cf91a39f0a45',
   'item-1': '2de4faa7-ac5c-5fd9-aabc-5c9229bfb4bf',
   'item-2': '8c030590-3c2f-5851-bab0-be766b9f5dd2',
   'item-3': '826e2d4b-4621-5fd6-9976-8884564d604e',
@@ -569,6 +578,7 @@ export const seedIds = {
 
 /** Top-level entities of the household "Test" (same slugs, other ids). */
 export const testSeedIds = {
+  'slot-vormittag': '70d38670-4333-5690-855f-d82b33fc5f48',
   'slot-mittag': '4af4c277-8b78-534c-ba3c-e1da15fb803c',
   'slot-abend': '4553776e-3c4a-5534-a3d4-eaf3ed41f6ce',
   'area-obst-gemuese': '6427c870-88db-598f-a697-1a7e43d4282e',

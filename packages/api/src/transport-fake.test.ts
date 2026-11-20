@@ -484,3 +484,144 @@ describe('fake server: per-member RPCs and edge functions', () => {
     });
   });
 });
+
+describe('fake server: activities and photos (spec 0004)', () => {
+  const H2 = 'h-2';
+  const activity = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+    kind: 'insert' as const,
+    table: 'activities',
+    row: { id, name, name_key: normalizeText(name), tags: [], ...extra },
+  });
+  const jpeg = (size = 10) => new Blob([new Uint8Array(size)], { type: 'image/jpeg' });
+
+  it('sets the creator to the caller, refuses a second activity with the same name_key', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [activity('act1', 'Bouldern', { created_by: NADJA })]);
+    expect(server.row(H, 'activities', 'act1')).toMatchObject({ created_by: ENRICO });
+    await expect(enrico.applyChanges(H, [activity('act2', 'bouldern')])).rejects.toMatchObject({
+      kind: 'permanent',
+      code: '23505',
+    });
+  });
+
+  it('protects a planned activity (restrict), deletes its favourites and ratings with it', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [
+      activity('act1', 'Bouldern'),
+      {
+        kind: 'insert',
+        table: 'meal_plan_entries',
+        row: { id: 'e1', slot_id: 's1', kind: 'activity', activity_id: 'act1', eater_ids: [] },
+      },
+    ]);
+    await enrico.setActivityFavorite('act1', true);
+    await server.transport(NADJA).setActivityRating('act1', 4);
+    expect(server.rows(H, 'activity_ratings')).toEqual([
+      expect.objectContaining({ id: `act1:${NADJA}`, stars: 4 }),
+    ]);
+    await expect(
+      enrico.applyChanges(H, [{ kind: 'delete', table: 'activities', id: 'act1' }]),
+    ).rejects.toMatchObject({ code: '23503' });
+    await enrico.applyChanges(H, [
+      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
+      { kind: 'delete', table: 'activities', id: 'act1' },
+    ]);
+    expect(server.rows(H, 'activity_favorites')).toEqual([]);
+    expect(server.rows(H, 'activity_ratings')).toEqual([]);
+    await expect(enrico.setActivityRating('act1', 3)).rejects.toMatchObject({
+      code: 'activity_not_found',
+    });
+    await expect(server.transport(STRANGER).setActivityFavorite('x', true)).rejects.toMatchObject({
+      code: 'activity_not_found',
+    });
+  });
+
+  it('accepts a photo_path only in the row’s own folder of its household', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [
+      activity('act1', 'Bouldern', { photo_path: `${H}/activities/act1/p.jpg` }),
+    ]);
+    for (const path of [
+      `${H2}/activities/act1/p.jpg`,
+      `${H}/recipes/act1/p.jpg`,
+      `${H}/activities/act2/p.jpg`,
+      `${H}/activities/act1/x/p.jpg`,
+    ]) {
+      await expect(
+        enrico.applyChanges(H, [
+          { kind: 'patch', table: 'activities', id: 'act1', changes: { photo_path: path } },
+        ]),
+      ).rejects.toMatchObject({ code: '23514' });
+    }
+    await enrico.applyChanges(H, [
+      {
+        kind: 'patch',
+        table: 'recipes',
+        id: 'r1',
+        changes: { photo_path: `${H}/recipes/r1/q.jpg` },
+      },
+    ]);
+    expect(server.row(H, 'recipes', 'r1')).toMatchObject({ photo_path: `${H}/recipes/r1/q.jpg` });
+  });
+
+  it('AC-012: stores photos per household; a stranger can neither read, write nor delete them', async () => {
+    server.addHousehold({ id: H2, name: 'Fremd' }, [STRANGER]);
+    const enrico = server.transport(ENRICO);
+    const stranger = server.transport(STRANGER);
+    const path = `${H}/activities/act1/p.jpg`;
+    await enrico.uploadMedia(path, jpeg());
+    expect(server.media(path)?.size).toBe(10);
+    expect((await server.transport(NADJA).downloadMedia(path)).size).toBe(10);
+
+    await expect(stranger.downloadMedia(path)).rejects.toMatchObject({ code: 'not_found' });
+    await expect(stranger.uploadMedia(`${H}/activities/act1/q.jpg`, jpeg())).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'access_denied',
+      status: 403,
+    });
+    await stranger.removeMedia([path]);
+    expect(server.media(path)).toBeDefined();
+    await expect(enrico.uploadMedia(`${H2}/activities/a/p.jpg`, jpeg())).rejects.toMatchObject({
+      code: 'access_denied',
+    });
+    await expect(enrico.uploadMedia(`${H}/chores/a/p.jpg`, jpeg())).rejects.toMatchObject({
+      code: 'access_denied',
+    });
+  });
+
+  it('refuses another type, more than 2 MiB and a second upload to the same name', async () => {
+    const enrico = server.transport(ENRICO);
+    const path = `${H}/recipes/r1/p.jpg`;
+    await expect(
+      enrico.uploadMedia(path, new Blob(['<svg/>'], { type: 'image/svg+xml' })),
+    ).rejects.toMatchObject({ code: 'invalid_mime', status: 415 });
+    await expect(enrico.uploadMedia(path, jpeg(2 * 1024 * 1024 + 1))).rejects.toMatchObject({
+      code: 'too_large',
+      status: 413,
+    });
+    await enrico.uploadMedia(path, jpeg(2 * 1024 * 1024));
+    await expect(enrico.uploadMedia(path, jpeg())).rejects.toMatchObject({
+      code: 'already_exists',
+      status: 409,
+    });
+    await enrico.removeMedia([path, `${H}/recipes/r1/none.jpg`]);
+    expect(server.media(path)).toBeUndefined();
+    await expect(enrico.downloadMedia(path)).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('creates new households with Vormittag, Mittag and Abend', async () => {
+    const id = await server.transport(ENRICO).createHousehold('Neu', null);
+    const pull = await server.transport(ENRICO).syncPull({ households: {} });
+    const household = pull.small.households?.find((row) => row.id === id);
+    expect(
+      (household?.meal_slots as { name: string; sort: number }[]).map((slot) => [
+        slot.name,
+        slot.sort,
+      ]),
+    ).toEqual([
+      ['Vormittag', 0],
+      ['Mittag', 1],
+      ['Abend', 2],
+    ]);
+  });
+});

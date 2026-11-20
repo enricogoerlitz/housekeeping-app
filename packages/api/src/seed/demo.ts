@@ -10,6 +10,7 @@ import {
   splitVariants,
   toISODate,
   weekdayShort,
+  type Activity,
   type Area,
   type Article,
   type Chore,
@@ -38,8 +39,16 @@ export const DEMO_HOUSEHOLD_ID = 'hh-demo';
 export const TEST_HOUSEHOLD_ID = 'hh-test';
 export const ENRICO = 'm-enrico';
 export const NADJA = 'm-nadja';
+export const SLOT_MORNING = 'slot-vormittag';
 export const SLOT_LUNCH = 'slot-mittag';
 export const SLOT_DINNER = 'slot-abend';
+
+/** Vormittag, Mittag, Abend (spec 0004, AC-001), as create_household sets them up. */
+const mealSlots = () => [
+  { id: SLOT_MORNING, name: 'Vormittag', sort: 0 },
+  { id: SLOT_LUNCH, name: 'Mittag', sort: 1 },
+  { id: SLOT_DINNER, name: 'Abend', sort: 2 },
+];
 
 const members: Member[] = [
   {
@@ -288,7 +297,7 @@ function buildDemoData(today: ISODate): HouseholdData {
     planned(1, SLOT_DINNER, 'kichererbsen-eintopf', { cookId: NADJA }),
     // Planned but not yet on a shopping list (AC-031).
     planned(2, SLOT_DINNER, 'mango-curry', { cookId: ENRICO }),
-    // today + 3 stays empty on purpose (AC-024).
+    // today + 3 has no meal on purpose (AC-024); only Bouldern in the morning (spec 0004).
     planned(4, SLOT_DINNER, 'pizza-margherita', { cookId: ENRICO }),
   ];
 
@@ -639,15 +648,71 @@ function buildDemoData(today: ISODate): HouseholdData {
     visit(5, 'rest-enzo', 'plan-enzo-2'),
   );
 
+  // ---------- Activities (spec 0004) ----------
+  const activity = (id: string, name: string, extra: Partial<Activity>): Activity => ({
+    id,
+    name,
+    tags: [],
+    favoriteOf: [],
+    ratings: {},
+    createdBy: ENRICO,
+    createdAt,
+    ...extra,
+  });
+  // Bouldern has no ratings and favourites yet (AC-020 starts from there).
+  const activities: Activity[] = [
+    activity('act-bouldern', 'Bouldern', {
+      description: 'In der Boulderhalle, Schuhe gibt es zum Ausleihen.',
+    }),
+    activity('act-eislaufen', 'Eislaufen', {
+      description: 'Öffentlicher Lauf, Schlittschuhe gibt es zum Ausleihen.',
+      placeName: 'Eisstadion Hohenschönhausen',
+      location: { lat: 52.55, lng: 13.5 },
+      mapsUrl: 'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z',
+      favoriteOf: [NADJA],
+      ratings: { [ENRICO]: 5, [NADJA]: 4 },
+    }),
+    activity('act-spieleabend', 'Spieleabend', {
+      description: 'Brettspiele zu Hause, gern mit Freunden.',
+      favoriteOf: [ENRICO],
+      ratings: { [ENRICO]: 4 },
+      createdBy: NADJA,
+    }),
+  ];
+  const outing = (
+    offset: number,
+    activityId: string,
+    id: string,
+    note?: string,
+  ): MealPlanEntry => ({
+    id,
+    date: addDays(today, offset),
+    slotId: SLOT_MORNING,
+    kind: 'activity',
+    activityId,
+    note,
+    eaterIds: [ENRICO, NADJA],
+    guests: 0,
+    portions: 2,
+    variants: [],
+    sort: 0,
+  });
+  planEntries.push(
+    // AC-016: "Zuletzt: vor 12 Tagen · 3-mal", and planned again in 3 days.
+    outing(-12, 'act-bouldern', 'plan-bouldern-1'),
+    outing(-30, 'act-bouldern', 'plan-bouldern-2'),
+    outing(-45, 'act-bouldern', 'plan-bouldern-3'),
+    outing(3, 'act-bouldern', 'plan-bouldern-4'),
+    // AC-019: today in the morning, with a Zusatz.
+    outing(0, 'act-eislaufen', 'plan-eislaufen-1', 'Hohenschönhausen'),
+  );
+
   return {
     household: {
       id: DEMO_HOUSEHOLD_ID,
       name: 'Enrico & Nadja',
       memberIds: [ENRICO, NADJA],
-      mealSlots: [
-        { id: SLOT_LUNCH, name: 'Mittag', sort: 0 },
-        { id: SLOT_DINNER, name: 'Abend', sort: 1 },
-      ],
+      mealSlots: mealSlots(),
       defaultListId: listId,
       defaultStoreId: 'store-rewe',
     },
@@ -656,6 +721,7 @@ function buildDemoData(today: ISODate): HouseholdData {
     stores: buildStores(),
     recipes,
     restaurants,
+    activities,
     planEntries,
     lists: [
       { id: listId, name: 'Standardliste', isDefault: true },
@@ -676,10 +742,7 @@ function buildTestData(): HouseholdData {
       id: TEST_HOUSEHOLD_ID,
       name: 'Test',
       memberIds: [ENRICO, NADJA],
-      mealSlots: [
-        { id: SLOT_LUNCH, name: 'Mittag', sort: 0 },
-        { id: SLOT_DINNER, name: 'Abend', sort: 1 },
-      ],
+      mealSlots: mealSlots(),
       defaultListId: 'list-test',
     },
     areas: buildAreas(),
@@ -687,6 +750,7 @@ function buildTestData(): HouseholdData {
     stores: [],
     recipes: [],
     restaurants: [],
+    activities: [],
     planEntries: [],
     lists: [{ id: 'list-test', name: 'Standardliste', isDefault: true }],
     items: [],

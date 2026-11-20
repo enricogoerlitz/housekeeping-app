@@ -8,9 +8,17 @@ type Reply = { data: unknown; error: { message: string; code?: string } | null; 
 /** A stand-in for supabase-js: records rpc calls and answers with the queued replies. */
 type InvokeReply = Awaited<ReturnType<SupabaseLike['functions']['invoke']>>;
 
-function stubClient(replies: (Reply | 'hang')[], invokeReplies: InvokeReply[] = []) {
+type StorageReply = { data: unknown; error: unknown };
+
+function stubClient(
+  replies: (Reply | 'hang')[],
+  invokeReplies: InvokeReply[] = [],
+  storageReplies: StorageReply[] = [],
+) {
   const calls: { fn: string; args: Record<string, unknown> }[] = [];
   const invoked: { name: string; body: unknown }[] = [];
+  const stored: { bucket: string; op: string; args: unknown[] }[] = [];
+  const storageReply = async () => storageReplies.shift() ?? { data: null, error: null };
   const channels: { topic: string; options: unknown; handlers: (() => void)[] }[] = [];
   const removed: string[] = [];
   const client: SupabaseLike = {
@@ -60,8 +68,26 @@ function stubClient(replies: (Reply | 'hang')[], invokeReplies: InvokeReply[] = 
         return invokeReplies.shift() ?? { data: null, error: null };
       },
     },
+    storage: {
+      from: (bucket) => ({
+        upload: (...args) => {
+          stored.push({ bucket, op: 'upload', args });
+          return storageReply();
+        },
+        download: (...args) => {
+          stored.push({ bucket, op: 'download', args });
+          return storageReply() as ReturnType<
+            ReturnType<SupabaseLike['storage']['from']>['download']
+          >;
+        },
+        remove: (...args) => {
+          stored.push({ bucket, op: 'remove', args });
+          return storageReply();
+        },
+      }),
+    },
   };
-  return { client, calls, channels, removed, invoked };
+  return { client, calls, channels, removed, invoked, stored };
 }
 
 const ok = (data: unknown): Reply => ({ data, error: null, status: 200 });
@@ -81,6 +107,8 @@ describe('supabase transport', () => {
       ok([]),
       ok(2),
       ok(null),
+      ok(null),
+      ok(null),
       ok('inv-1'),
       ok(null),
     ]);
@@ -98,6 +126,8 @@ describe('supabase transport', () => {
     await transport.clearCheckedItems('l1');
     expect(await transport.removeContributions(['c1', 'c2'])).toBe(2);
     await transport.setRecipeRating('r1', null);
+    await transport.setActivityFavorite('act1', true);
+    await transport.setActivityRating('act1', 4);
     expect(await transport.inviteMember('h1', 'nadja@example.com')).toBe('inv-1');
     await transport.removeMember('h1', 'm2');
 
@@ -113,6 +143,8 @@ describe('supabase transport', () => {
       { fn: 'clear_checked_items', args: { p_list_id: 'l1' } },
       { fn: 'remove_contributions', args: { p_ids: ['c1', 'c2'] } },
       { fn: 'set_recipe_rating', args: { recipe_id: 'r1', stars: null } },
+      { fn: 'set_activity_favorite', args: { activity_id: 'act1', favorite: true } },
+      { fn: 'set_activity_rating', args: { activity_id: 'act1', stars: 4 } },
       { fn: 'invite_member', args: { household_id: 'h1', email: 'nadja@example.com' } },
       { fn: 'remove_member', args: { household_id: 'h1', profile_id: 'm2' } },
     ]);
@@ -372,5 +404,76 @@ describe('supabase transport: AI edge functions', () => {
     expect(invoked[0]).toEqual({ name: 'speech-token', body: {} });
     // The region becomes part of a host name: anything but a plain region name is refused.
     await expect(transport.speechToken()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+});
+
+describe('supabase transport: photo storage (spec 0004)', () => {
+  /** What storage-js answers for a refused request: HTTP 400 with the real status in the body. */
+  const apiError = (statusCode: string, code: string) => ({
+    data: null,
+    error: { name: 'StorageApiError', message: code, status: 400, statusCode, code },
+  });
+
+  it('uploads as image/jpeg without upsert, downloads and removes in the household-media bucket', async () => {
+    const blob = new Blob(['x'], { type: 'image/jpeg' });
+    const { client, stored } = stubClient(
+      [],
+      [],
+      [
+        { data: { path: 'h1/activities/a1/p.jpg' }, error: null },
+        { data: blob, error: null },
+        { data: [], error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await transport.uploadMedia('h1/activities/a1/p.jpg', blob);
+    await expect(transport.downloadMedia('h1/activities/a1/p.jpg')).resolves.toBe(blob);
+    await transport.removeMedia(['h1/activities/a1/p.jpg']);
+    expect(stored).toEqual([
+      {
+        bucket: 'household-media',
+        op: 'upload',
+        args: ['h1/activities/a1/p.jpg', blob, { contentType: 'image/jpeg', upsert: false }],
+      },
+      { bucket: 'household-media', op: 'download', args: ['h1/activities/a1/p.jpg'] },
+      { bucket: 'household-media', op: 'remove', args: [['h1/activities/a1/p.jpg']] },
+    ]);
+  });
+
+  it.each([
+    ['413', 'EntityTooLarge', 'permanent', 'too_large', 413],
+    ['415', 'InvalidMimeType', 'permanent', 'invalid_mime', 415],
+    ['403', 'AccessDenied', 'permanent', 'access_denied', 403],
+    ['409', 'KeyAlreadyExists', 'permanent', 'already_exists', 409],
+    ['404', 'NoSuchKey', 'permanent', 'not_found', 404],
+    ['500', 'InternalError', 'transient', 'http_500', 500],
+  ] as const)(
+    'classifies storage status %s (%s) as %s %s',
+    async (statusCode, code, kind, mapped, status) => {
+      const { client } = stubClient([], [], [apiError(statusCode, code)]);
+      await expect(
+        createSupabaseTransport(client).uploadMedia('h1/recipes/r1/p.jpg', new Blob(['x'])),
+      ).rejects.toMatchObject({ kind, code: mapped, status });
+    },
+  );
+
+  it('a failed request without an answer is a transient network failure', async () => {
+    const { client } = stubClient(
+      [],
+      [],
+      [
+        { data: null, error: { name: 'StorageUnknownError', message: 'Failed to fetch' } },
+        { data: { not: 'a blob' }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.downloadMedia('h1/recipes/r1/p.jpg')).rejects.toMatchObject({
+      kind: 'transient',
+      code: 'network',
+    });
+    await expect(transport.downloadMedia('h1/recipes/r1/p.jpg')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'invalid_response',
+    });
   });
 });

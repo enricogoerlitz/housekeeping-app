@@ -12,6 +12,7 @@ export const ID_TABLES = [
   'shopping_lists',
   'recipes',
   'restaurants',
+  'activities',
   'absences',
   'feedback',
   'chores',
@@ -30,6 +31,8 @@ export const COMPOSITE_TABLES = {
   recipe_ratings: ['recipe_id', 'member_id'],
   restaurant_favorites: ['restaurant_id', 'member_id'],
   restaurant_ratings: ['restaurant_id', 'member_id'],
+  activity_favorites: ['activity_id', 'member_id'],
+  activity_ratings: ['activity_id', 'member_id'],
   feedback_votes: ['feedback_id', 'member_id'],
 } as const satisfies Record<string, readonly [string, string]>;
 
@@ -49,6 +52,7 @@ export const WRITABLE_COLUMNS = {
   recipes: [
     'title',
     'photo',
+    'photo_path',
     'description',
     'servings',
     'total_minutes',
@@ -75,6 +79,20 @@ export const WRITABLE_COLUMNS = {
     'tags',
     'notes',
   ],
+  // created_by is only accepted on insert, and the server overwrites it with auth.uid().
+  activities: [
+    'name',
+    'name_key',
+    'description',
+    'photo_path',
+    'place_name',
+    'address',
+    'lat',
+    'lng',
+    'maps_url',
+    'tags',
+    'created_by',
+  ],
   absences: ['member_id', 'from_on', 'to_on', 'note'],
   // author_id is only accepted on insert, and the server overwrites it with auth.uid().
   feedback: ['kind', 'text', 'status', 'screen', 'reason', 'spec_ref', 'author_id'],
@@ -96,7 +114,9 @@ export const WRITABLE_COLUMNS = {
     'kind',
     'recipe_id',
     'restaurant_id',
+    'activity_id',
     'text',
+    'note',
     'leftovers_of_entry_id',
     'eater_ids',
     'guests',

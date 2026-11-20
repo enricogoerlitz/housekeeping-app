@@ -74,6 +74,173 @@ export type Database = {
           },
         ];
       };
+      activities: {
+        Row: {
+          address: string | null;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          household_id: string;
+          id: string;
+          lat: number | null;
+          lng: number | null;
+          maps_url: string | null;
+          name: string;
+          name_key: string;
+          photo_path: string | null;
+          place_name: string | null;
+          tags: string[];
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          address?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          household_id: string;
+          id?: string;
+          lat?: number | null;
+          lng?: number | null;
+          maps_url?: string | null;
+          name: string;
+          name_key: string;
+          photo_path?: string | null;
+          place_name?: string | null;
+          tags?: string[];
+          updated_at?: string;
+        };
+        Update: {
+          address?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          household_id?: string;
+          id?: string;
+          lat?: number | null;
+          lng?: number | null;
+          maps_url?: string | null;
+          name?: string;
+          name_key?: string;
+          photo_path?: string | null;
+          place_name?: string | null;
+          tags?: string[];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activities_created_by_fkey';
+            columns: ['household_id', 'created_by'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+          {
+            foreignKeyName: 'activities_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      activity_favorites: {
+        Row: {
+          activity_id: string;
+          created_at: string;
+          household_id: string;
+          member_id: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          activity_id: string;
+          created_at?: string;
+          household_id: string;
+          member_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          activity_id?: string;
+          created_at?: string;
+          household_id?: string;
+          member_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_favorites_activity_fkey';
+            columns: ['household_id', 'activity_id'];
+            isOneToOne: false;
+            referencedRelation: 'activities';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'activity_favorites_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activity_favorites_member_fkey';
+            columns: ['household_id', 'member_id'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+        ];
+      };
+      activity_ratings: {
+        Row: {
+          activity_id: string;
+          created_at: string;
+          household_id: string;
+          member_id: string;
+          stars: number;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          activity_id: string;
+          created_at?: string;
+          household_id: string;
+          member_id: string;
+          stars: number;
+          updated_at?: string;
+        };
+        Update: {
+          activity_id?: string;
+          created_at?: string;
+          household_id?: string;
+          member_id?: string;
+          stars?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_ratings_activity_fkey';
+            columns: ['household_id', 'activity_id'];
+            isOneToOne: false;
+            referencedRelation: 'activities';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'activity_ratings_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activity_ratings_member_fkey';
+            columns: ['household_id', 'member_id'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+        ];
+      };
       ai_usage: {
         Row: {
           day: string;
@@ -582,6 +749,7 @@ export type Database = {
       };
       meal_plan_entries: {
         Row: {
+          activity_id: string | null;
           cook_id: string | null;
           created_at: string;
           date: string | null;
@@ -592,6 +760,7 @@ export type Database = {
           kind: string;
           leftovers_of_entry_id: string | null;
           not_cooked: boolean;
+          note: string | null;
           portions: number;
           recipe_id: string | null;
           restaurant_id: string | null;
@@ -603,6 +772,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          activity_id?: string | null;
           cook_id?: string | null;
           created_at?: string;
           date?: string | null;
@@ -613,6 +783,7 @@ export type Database = {
           kind: string;
           leftovers_of_entry_id?: string | null;
           not_cooked?: boolean;
+          note?: string | null;
           portions?: number;
           recipe_id?: string | null;
           restaurant_id?: string | null;
@@ -623,6 +794,7 @@ export type Database = {
           variants?: NonNullable<Json>;
         };
         Update: {
+          activity_id?: string | null;
           cook_id?: string | null;
           created_at?: string;
           date?: string | null;
@@ -633,6 +805,7 @@ export type Database = {
           kind?: string;
           leftovers_of_entry_id?: string | null;
           not_cooked?: boolean;
+          note?: string | null;
           portions?: number;
           recipe_id?: string | null;
           restaurant_id?: string | null;
@@ -643,6 +816,13 @@ export type Database = {
           variants?: NonNullable<Json>;
         };
         Relationships: [
+          {
+            foreignKeyName: 'meal_plan_entries_activity_fkey';
+            columns: ['household_id', 'activity_id'];
+            isOneToOne: false;
+            referencedRelation: 'activities';
+            referencedColumns: ['household_id', 'id'];
+          },
           {
             foreignKeyName: 'meal_plan_entries_cook_fkey';
             columns: ['household_id', 'cook_id'];
@@ -825,6 +1005,7 @@ export type Database = {
           lead_time: Json | null;
           notes: string | null;
           photo: string | null;
+          photo_path: string | null;
           servings: number;
           source: string | null;
           steps: NonNullable<Json>;
@@ -848,6 +1029,7 @@ export type Database = {
           lead_time?: Json | null;
           notes?: string | null;
           photo?: string | null;
+          photo_path?: string | null;
           servings?: number;
           source?: string | null;
           steps?: NonNullable<Json>;
@@ -870,6 +1052,7 @@ export type Database = {
           lead_time?: Json | null;
           notes?: string | null;
           photo?: string | null;
+          photo_path?: string | null;
           servings?: number;
           source?: string | null;
           steps?: NonNullable<Json>;
@@ -1272,6 +1455,11 @@ export type Database = {
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       restore_cleared_items: { Args: { p_items: Json; p_list_id: string }; Returns: number };
+      set_activity_favorite: {
+        Args: { activity_id: string; favorite: boolean };
+        Returns: undefined;
+      };
+      set_activity_rating: { Args: { activity_id: string; stars: number }; Returns: undefined };
       set_feedback_vote: { Args: { feedback_id: string; voted: boolean }; Returns: undefined };
       set_recipe_favorite: { Args: { favorite: boolean; recipe_id: string }; Returns: undefined };
       set_recipe_rating: { Args: { recipe_id: string; stars: number }; Returns: undefined };
