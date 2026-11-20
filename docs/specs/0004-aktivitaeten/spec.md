@@ -23,13 +23,13 @@ Foto-Ablage.
 
 ## Nicht-Ziele
 
-- **Keine Bewertungen und Favoriten** für Aktivitäten in dieser Spec. Sie lassen sich später wie bei
-  Restaurants ergänzen.
 - **Keine Uhrzeiten, Tickets oder Öffnungszeiten.** Eine Aktivität gehört zu einer Tageszeit.
 - **Keine KI-Vorschläge** für Aktivitäten.
 - **Kein Foto je Schritt und keine Galerie:** ein Foto je Rezept bzw. Aktivität.
 - **Keine Fotos für Restaurants** in dieser Spec.
 - **Kein Zusatz für Rezepte und Restaurants im Plan** (siehe Offene Fragen).
+- **Keine Neugestaltung von „Heute“, „Wie war's“ oder der Wochenleiste.** Die kommen mit dem
+  UI-Konzept nach Enricos Review vom 20.11.2026; diese Spec zeigt Aktivitäten dort nur an.
 
 ## Konzept in Kürze
 
@@ -44,6 +44,13 @@ Foto-Ablage.
   oder von Hand). Ein Ort ermöglicht „Route“ wie bei Restaurants (Spec 0002).
 - Im Plan bekommt der Eintrag einen **Zusatz**, angezeigt in Klammern: „Eislaufen
   (Hohenschönhausen)“.
+- Jede Person kann eine Aktivität **bewerten und favorisieren**, wie Restaurants (Spec 0002). Damit
+  kann „Wie war's“ später auch Aktivitäten abfragen.
+- **Neu anlegen beim Einplanen:** Im Hinzufügen-Fenster des Plans lässt sich ein neues Rezept, ein
+  neues Restaurant oder eine neue Aktivität direkt anlegen; nach dem Speichern ist es sofort
+  eingeplant.
+- **„Heute“** zeigt Rezepte, Restaurants und Aktivitäten des Tages gemeinsam unter „Heute
+  geplant“, jeweils mit einem Kennzeichen „Rezept“, „Restaurant“ oder „Aktivität“.
 - **Fotos** für Aktivitäten **und Rezepte** werden hochgeladen, verkleinert und nur für den eigenen
   Haushalt gespeichert. Einmal geladene Fotos sind offline sichtbar. Ein eigenes Rezeptfoto ersetzt
   das mitgelieferte Beispielfoto.
@@ -226,6 +233,15 @@ Wenn        ich den Eintrag öffne
 Dann        gibt es keinen „Route“-Knopf
 ```
 
+**AC-019 — Heute**
+
+```gherkin
+Angenommen  heute stehen „Eislaufen“ am Vormittag, „Lasagne“ und „Trattoria Da Enzo“ am Abend
+Wenn        ich „Heute“ öffne
+Dann        stehen alle drei unter „Heute geplant“, in der Reihenfolge der Tageszeiten
+Und         jede Karte trägt ihr Kennzeichen „Aktivität“, „Rezept“ bzw. „Restaurant“
+```
+
 ### REQ-006 — Nachhalten, was man unternommen hat
 
 > Vergangene Einträge im Plan zählen als „gemacht“.
@@ -241,6 +257,55 @@ Dann        steht dort „Zuletzt: vor 12 Tagen · 3-mal“
 Und         der Abschnitt „Verlauf“ listet die drei vergangenen Tage, den neuesten zuerst
 ```
 
+### REQ-007 — Bewerten und Favorit
+
+> Jede Person bewertet und favorisiert eine Aktivität für sich, wie bei Restaurants.
+
+**Offline:** offline lesend.
+
+**AC-020**
+
+```gherkin
+Angenommen  die Aktivität „Bouldern“ ist geöffnet
+Wenn        Nadja 4 Sterne vergibt und sie favorisiert
+Dann        zeigt die Sammlung bei „Bouldern“ Nadjas 4 Sterne und das Herz auf Nadjas Gerät
+Und         Enrico sieht Nadjas Bewertung in der Detailansicht, seine eigene bleibt leer
+```
+
+### REQ-008 — Neu anlegen beim Einplanen
+
+> Im Hinzufügen-Fenster des Plans legt man ein neues Rezept, Restaurant oder eine neue Aktivität an,
+> ohne den Plan zu verlassen; das Neue ist danach eingeplant.
+
+**Offline:** nur online.
+
+**AC-021**
+
+```gherkin
+Angenommen  das Hinzufügen-Fenster für Samstagvormittag, Art „Aktivität“
+Wenn        ich „Neue Aktivität“ wähle, „Klettern im Wald“ eingebe und speichere
+Dann        gibt es die Aktivität „Klettern im Wald“ in der Sammlung
+Und         sie steht am Samstagvormittag im Plan
+```
+
+**AC-022**
+
+```gherkin
+Angenommen  das Hinzufügen-Fenster für Sonntagabend
+Wenn        ich unter „Rezept“ „Neues Rezept“ wähle und „Kürbissuppe“ speichere
+Dann        steht „Kürbissuppe“ am Sonntagabend und ist in der Rezeptsammlung
+Wenn        ich unter „Restaurant“ einen Karten-Link einfüge und speichere
+Dann        steht auch dieses Restaurant am Sonntagabend und ist in der Restaurantsammlung
+```
+
+**AC-023 — Fehlerfall**
+
+```gherkin
+Angenommen  „Neue Aktivität“ im Hinzufügen-Fenster ohne Namen
+Wenn        ich „Speichern“ wähle
+Dann        wird nichts angelegt und nichts eingeplant, das Namensfeld zeigt „Name fehlt“
+```
+
 ## Offline und Konflikte
 
 Lesen geht offline aus dem lokalen Speicher (Spec 0003). Anlegen, Bearbeiten, Foto hochladen und
@@ -252,23 +317,26 @@ Einplanen brauchen Netz. Bei gleichzeitiger Änderung derselben Aktivität gewin
 - **Web:** Foto per Dateiauswahl (auf dem Handy auch Kamera), Verkleinern im Browser vor dem
   Hochladen.
 - **Nativ (später):** Bildauswahl über die Foto-Mediathek; dieselbe Ablage.
+- **Navigation:** Sammlung und Detailansicht einer Aktivität liegen innerhalb der Tabs; Seitenleiste
+  bzw. Tab-Leiste und Kopfzeile bleiben sichtbar.
 
 ## Daten
 
-Rezept: zusätzlich ein eigenes Foto. Aktivität: Name, Beschreibung, Foto, Ort (Name, Koordinaten, Original-Link), angelegt von. Plan-
+Rezept: zusätzlich ein eigenes Foto. Aktivität: Name, Beschreibung, Foto, Ort, je Person Bewertung und Favorit; (Name, Koordinaten, Original-Link), angelegt von. Plan-
 eintrag: Art „Aktivität“, Verweis, Zusatz. Fotos liegen in Supabase Storage in einem privaten
 Bereich je Haushalt; Löschen einer Aktivität oder eines Rezepts löscht sein Foto. Fotos können Personen zeigen; sie sind
 nur für Mitglieder des Haushalts sichtbar.
 
 ## Offene Fragen
 
-| #   | Frage                                           | Optionen                                                                   | Empfehlung                                                    | Status                                                                                               |
-| --- | ----------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 1   | Wo stehen Aktivitäten im Plan                   | A: eigene Zeile · B: im Slot · C: Tageszeit                                | —                                                             | ENTSCHIEDEN: Slots Vormittag, Mittag, Abend mit Reihenfolge Aktivität → Rezept → Restaurant (Enrico) |
-| 2   | Wo liegt die Sammlung                           | A: Plan-Tab · B: neuer Tab · C: unter „Essen“                              | A                                                             | ENTSCHIEDEN: A                                                                                       |
-| 3   | Bild                                            | A: Foto hochladen · B: Symbol · C: erst Symbol                             | A                                                             | ENTSCHIEDEN: A                                                                                       |
-| 4   | Grenzen fürs Foto                               | A: bis 15 MB, gespeichert längste Seite 1600 px als JPEG · B: andere Werte | A: Handyfotos passen, gespeichert ca. 300 KB                  | OFFEN, Annahme A                                                                                     |
-| 5   | Zusatz auch für Rezepte und Restaurants im Plan | A: nur Aktivitäten · B: für alle Einträge                                  | A jetzt; B ist eine kleine Erweiterung, wenn ihr sie vermisst | OFFEN, Annahme A                                                                                     |
+| #   | Frage                                           | Optionen                                                                   | Empfehlung                                                              | Status                                                                                               |
+| --- | ----------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 1   | Wo stehen Aktivitäten im Plan                   | A: eigene Zeile · B: im Slot · C: Tageszeit                                | —                                                                       | ENTSCHIEDEN: Slots Vormittag, Mittag, Abend mit Reihenfolge Aktivität → Rezept → Restaurant (Enrico) |
+| 2   | Wo liegt die Sammlung                           | A: Plan-Tab · B: neuer Tab · C: unter „Essen“                              | A                                                                       | ENTSCHIEDEN: A                                                                                       |
+| 3   | Bild                                            | A: Foto hochladen · B: Symbol · C: erst Symbol                             | A                                                                       | ENTSCHIEDEN: A                                                                                       |
+| 4   | Grenzen fürs Foto                               | A: bis 15 MB, gespeichert längste Seite 1600 px als JPEG · B: andere Werte | A: Handyfotos passen, gespeichert ca. 300 KB                            | OFFEN, Annahme A                                                                                     |
+| 6   | Wo liegen die Fotos                             | A: Supabase Storage · B: Azure Storage Account                             | A: dieselben Haushalts-Rechte (RLS) wie alle Daten, kein zweiter Dienst | ENTSCHIEDEN: A (Enrico: „wenn in Supabase geht, gerne dort“)                                         |
+| 5   | Zusatz auch für Rezepte und Restaurants im Plan | A: nur Aktivitäten · B: für alle Einträge                                  | A jetzt; B ist eine kleine Erweiterung, wenn ihr sie vermisst           | OFFEN, Annahme A                                                                                     |
 
 ## Rückverfolgbarkeit
 
@@ -279,4 +347,7 @@ nur für Mitglieder des Haushalts sichtbar.
 | REQ-003 | AC-006 bis AC-008                 | —              | —    |
 | REQ-004 | AC-009 bis AC-012, AC-017, AC-018 | —              | —    |
 | REQ-005 | AC-013 bis AC-015                 | —              | —    |
+| REQ-005 | AC-019                            | —              | —    |
 | REQ-006 | AC-016                            | —              | —    |
+| REQ-007 | AC-020                            | —              | —    |
+| REQ-008 | AC-021 bis AC-023                 | —              | —    |
