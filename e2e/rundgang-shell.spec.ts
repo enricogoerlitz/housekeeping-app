@@ -1,4 +1,5 @@
 import {
+  accessToken,
   ACTIVE,
   appBackground,
   back,
@@ -12,12 +13,43 @@ import {
   open,
   openSettings,
   parseRgb,
+  PLAN_ENTRY,
+  secondDevice,
+  SUPABASE_URL,
+  supabaseFetch,
   test,
   tid,
   tidPrefix,
 } from './helpers';
+import { seedIds } from './seed-ids';
 
-// Spec 0001 — app shell, themes, settings, demo data (REQ-001 to REQ-004).
+// Spec 0001 — app shell, themes, settings, demo data (REQ-001 to REQ-004), signed in against the
+// local backend (spec 0003). Read-only except AC-010 (one offline check) and AC-014 (adds
+// "Spülmittel"); nothing here depends on another file's leftovers.
+
+const MANGO = seedIds['rec-mango-curry'];
+
+/** Open items of an article in the demo household, read as Enrico through the API. */
+async function openItemsOnServer(name: string): Promise<number> {
+  const token = await accessToken('enrico');
+  const articles = (await (
+    await supabaseFetch(
+      `/rest/v1/articles?select=id&household_id=eq.${seedIds['hh-demo']}&name=eq.${encodeURIComponent(name)}`,
+      { token },
+    )
+  ).json()) as { id: string }[];
+  const ids = articles.map((article) => article.id).join(',');
+  if (!ids) return 0;
+  const items = (await (
+    await supabaseFetch(
+      `/rest/v1/shopping_items?select=id&checked=is.false&article_id=in.(${ids})`,
+      {
+        token,
+      },
+    )
+  ).json()) as unknown[];
+  return items.length;
+}
 
 const BG = {
   markthalleLight: hexToRgb('#FAF6EE'),
@@ -61,18 +93,19 @@ test.describe('shell at phone width', () => {
     await expect.poll(background).toBe(BG.markthalleLight);
   });
 
-  test('AC-006: Heute, Rezepte and a recipe load everything from the same host', async ({
+  test('AC-006: Heute, Rezepte and a recipe load everything from the same host (and our Supabase)', async ({
     page,
     requests,
   }) => {
     await open(page, '/');
     await nav(page, 'rezepte');
-    await tid(page, 'recipe-card-rec-mango-curry').click();
+    await tid(page, `recipe-card-${MANGO}`).click();
     await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
     await page.waitForLoadState('networkidle');
-    const origin = new URL(page.url()).host;
+    // Spec 0003: data comes from the household's own Supabase; nothing goes anywhere else.
+    const allowed = new Set([new URL(page.url()).host, new URL(SUPABASE_URL()).host]);
     const foreign = requests.filter(
-      (url) => !url.startsWith('data:') && new URL(url).host !== origin,
+      (url) => !url.startsWith('data:') && !allowed.has(new URL(url).host),
     );
     expect(foreign, 'requests to other hosts').toEqual([]);
     // Fonts and photos really were loaded, and from here.
@@ -155,31 +188,37 @@ test.describe('shell at phone width', () => {
 
   test('AC-012: the demo household "Enrico & Nadja" with members, recipes, plan, list, store and chores', async ({
     page,
+    browser,
   }) => {
     await open(page, '/');
     await openSettings(page);
-    await expect(tid(page, 'household-hh-demo')).toContainText('Enrico & Nadja');
-    await expect(tid(page, 'household-hh-demo-active')).toBeVisible();
+    const demo = seedIds['hh-demo'];
+    await expect(tid(page, `household-${demo}`)).toContainText('Enrico & Nadja');
+    await expect(tid(page, `household-${demo}-active`)).toBeVisible();
     await expect(tid(page, 'profile-current')).toContainText('Enrico');
     await expect(tid(page, 'profile-current')).toContainText('isst alles');
-    await tid(page, 'switch-member').click();
-    await expect(tid(page, 'profile-current')).toContainText('Nadja');
-    await expect(tid(page, 'profile-current')).toContainText('vegetarisch');
+    await expect(tid(page, `household-member-${seedIds['m-nadja']}`)).toContainText('Nadja');
+    // "Als … ansehen" is gone with real accounts (spec 0003): Nadja's profile, on her device.
+    const nadja = await secondDevice(browser, 'nadja');
+    await openSettings(nadja.page);
+    await expect(tid(nadja.page, 'profile-current')).toContainText('Nadja');
+    await expect(tid(nadja.page, 'profile-current')).toContainText('vegetarisch');
+    await nadja.context.close();
     await tid(page, 'link-stores').click();
-    await expect(tid(page, 'store-store-rewe')).toContainText('Rewe Südstadt');
+    await expect(tid(page, `store-${seedIds['store-rewe']}`)).toContainText('Rewe Südstadt');
     await back(page);
     await back(page);
 
     await nav(page, 'rezepte');
     const count = Number((await tid(page, 'recipe-count').innerText()).match(/\d+/)?.[0]);
     expect(count).toBeGreaterThanOrEqual(20);
-    await tid(page, 'recipe-card-rec-mango-curry').click();
+    await tid(page, `recipe-card-${MANGO}`).click();
     await expect(tid(page, 'variant').locator('[role="radio"]')).toHaveText([
       'mit Tofu',
       'mit Hähnchen',
     ]);
     await back(page);
-    await tid(page, 'recipe-card-rec-spaghetti-bolognese').click();
+    await tid(page, `recipe-card-${seedIds['rec-spaghetti-bolognese']}`).click();
     await expect(tid(page, 'recipe-title')).toHaveText('Spaghetti Bolognese');
     await expect(tid(page, 'variant')).toBeHidden();
     await back(page);
@@ -187,7 +226,7 @@ test.describe('shell at phone width', () => {
     await nav(page, 'plan');
     // Every day of the current week is shown, and the plan has dishes in it.
     await expect(tidPrefix(page, 'day-')).toHaveCount(7);
-    expect(await tidPrefix(page, 'entry-plan-').count()).toBeGreaterThan(3);
+    expect(await page.locator(PLAN_ENTRY).count()).toBeGreaterThan(3);
 
     await nav(page, 'liste');
     await expect(tid(page, 'screen-title')).toHaveText('Standardliste');
@@ -199,7 +238,7 @@ test.describe('shell at phone width', () => {
 
     await nav(page, 'haushalt');
     await tid(page, 'chores-tab-all').click();
-    const chores = tid(page, 'chores-all').locator('[data-testid^="chore-chore-"][role="button"]');
+    const chores = tid(page, 'chores-all').locator('[data-testid^="chore-"][role="button"]');
     expect(await chores.count()).toBeGreaterThanOrEqual(8);
   });
 
@@ -211,15 +250,20 @@ test.describe('shell at phone width', () => {
     await expect(tid(page, 'smart-suggestions')).toContainText('Möhren · auch: Karotten');
   });
 
-  test('AC-014: reloading restores the demo data', async ({ page }) => {
+  // Spec 0003 AC-014 replaces spec 0001 AC-014 ("reloading restores the demo data").
+  test('AC-014 (0003): "Spülmittel" on the default list is still there after a reload', async ({
+    page,
+  }) => {
     await open(page, '/liste');
     await tid(page, 'smart-input').fill('Spülmittel');
     await tid(page, 'smart-input').press('Enter');
     await expect(itemRows(page, 'Spülmittel')).toHaveCount(1);
+    // Saved on the server, not only in this device's overlay.
+    await expect.poll(() => openItemsOnServer('Spülmittel')).toBe(1);
     await page.reload();
     await expect(tid(page, 'screen-title')).toHaveText('Standardliste');
     await expect(itemRows(page, 'Milch')).toHaveCount(1);
-    await expect(itemRows(page, 'Spülmittel')).toHaveCount(0);
+    await expect(itemRows(page, 'Spülmittel')).toHaveCount(1);
   });
 
   test('AC-016: the empty household "Test" shows the first steps; the starter catalog is there', async ({
@@ -227,8 +271,8 @@ test.describe('shell at phone width', () => {
   }) => {
     await open(page, '/');
     await openSettings(page);
-    await tid(page, 'household-hh-test').click();
-    await expect(tid(page, 'household-hh-test-active')).toBeVisible();
+    await tid(page, `household-${seedIds['hh-test']}`).click();
+    await expect(tid(page, `household-${seedIds['hh-test']}-active`)).toBeVisible();
     await back(page);
     await nav(page, 'rezepte');
     const empty = tid(page, 'recipes-empty');
@@ -291,7 +335,7 @@ test.describe('shell at desktop width', () => {
     await expect(tid(page, 'nav-index')).toBeVisible();
     await expect(tid(page, 'tab-index')).toBeHidden();
     await nav(page, 'rezepte');
-    await tid(page, 'recipe-card-rec-mango-curry').click();
+    await tid(page, `recipe-card-${MANGO}`).click();
     await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
     const sidebar = await tid(page, 'nav-rezepte').boundingBox();
     const list = await tid(page, 'recipe-search').boundingBox();

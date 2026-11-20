@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "e2e": "playwright test",
+    "e2e:dev": "playwright test -c playwright.dev.config.ts",
     "demo:video": "node ./record-video.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@housekeeping/core": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1"

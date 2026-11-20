@@ -1,6 +1,11 @@
 // Records the walk-through of spec 0001 (REQ-005 to REQ-009) and spec 0002 as videos with German
 // captions: tmp/demo/rundgang.webm (phone, 390 px) and tmp/demo/rundgang-desktop.webm (1440 px).
 //
+// DEMO-ONLY, OUT OF DATE since spec 0003: the script drives the in-memory demo of spec 0001/0002
+// (no sign-in, slug ids, a fixed Monday, sample AI answers). The app now always runs against
+// Supabase, so the script stops with a message until it is rewritten like the e2e walk-through
+// (login, e2e/seed-ids.ts, relative days, stubbed edge functions, faked dictation).
+//
 // Usage (repository root): pnpm demo:video
 // Uses apps/app/dist; exports the web build first if it is missing.
 // A failing step ends the run with exit code 1 and names the step (spec 0001, AC-045).
@@ -365,6 +370,10 @@ async function desktopTour(page) {
 }
 
 async function main() {
+  console.error(
+    'record-video.mjs ist noch auf die Demo von Spec 0001/0002 ausgelegt und läuft nicht gegen das Backend (Spec 0003).',
+  );
+  process.exit(1);
   fs.mkdirSync(outDir, { recursive: true });
   ensureBuild();
   const server = await startServer();

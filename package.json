@@ -20,6 +20,7 @@
     "db:seed:gen": "tsx scripts/gen-seed.ts",
     "db:reset": "node scripts/db-reset.mjs",
     "e2e": "pnpm --filter @housekeeping/e2e e2e",
+    "e2e:dev": "pnpm --filter @housekeeping/e2e e2e:dev",
     "demo:video": "pnpm --filter @housekeeping/e2e demo:video",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

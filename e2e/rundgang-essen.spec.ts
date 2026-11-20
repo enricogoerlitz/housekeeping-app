@@ -2,16 +2,25 @@ import {
   ACTIVE,
   back,
   expect,
+  freshSeed,
   itemRows,
   nav,
+  nestedSeedId,
   only,
   open,
+  SUPABASE_URL,
   test,
   tid,
   tidPrefix,
   toastMessage,
 } from './helpers';
+import { seedIds } from './seed-ids';
 import type { Locator } from '@playwright/test';
+
+const MANGO = seedIds['rec-mango-curry'];
+const card = (slug: keyof typeof seedIds) => `recipe-card-${seedIds[slug]}`;
+/** Ingredient and variant ids of the seed recipes: `mango-curry-i1`, `mango-curry-v2`, … */
+const nested = nestedSeedId;
 
 /** The ingredient rows of a recipe (not their amount, note or action elements). */
 function ingredientRows(scope: Locator): Locator {
@@ -27,9 +36,13 @@ function ingredientRows(scope: Locator): Locator {
   );
 }
 
-// Spec 0001 — Heute and recipes (REQ-005) and the simulated AI (REQ-009, recipe side).
+// Spec 0001 — Heute and recipes (REQ-005) and the AI on the recipe side (REQ-009), against the
+// local backend (spec 0003). The edge functions are stubbed (helpers.ts); AC-040 (the sample
+// proposal) is replaced by spec 0003 AC-026 in rundgang-backend.spec.ts.
+// The tests change the demo (new recipes, list items), so the file starts from a fresh seed.
 
 only('phone');
+freshSeed();
 
 test('AC-017: Heute shows Lasagne, the preparation for tomorrow, due chores and open items', async ({
   page,
@@ -51,11 +64,11 @@ test('AC-018: the filter "Vegetarisch" keeps Mango-Curry and hides Spaghetti Bol
   page,
 }) => {
   await open(page, '/rezepte');
-  await expect(tid(page, 'recipe-card-rec-spaghetti-bolognese')).toBeVisible();
+  await expect(tid(page, card('rec-spaghetti-bolognese'))).toBeVisible();
   await tid(page, 'filter-vegetarian').click();
   await expect(tid(page, 'filter-vegetarian')).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'recipe-card-rec-mango-curry')).toBeVisible();
-  await expect(tid(page, 'recipe-card-rec-spaghetti-bolognese')).toBeHidden();
+  await expect(tid(page, card('rec-mango-curry'))).toBeVisible();
+  await expect(tid(page, card('rec-spaghetti-bolognese'))).toBeHidden();
 });
 
 test('AC-019: search tolerates typos ("halumi") and knows synonyms ("Karotten" → Möhren)', async ({
@@ -63,23 +76,26 @@ test('AC-019: search tolerates typos ("halumi") and knows synonyms ("Karotten" �
 }) => {
   await open(page, '/rezepte');
   await tid(page, 'recipe-search').fill('halumi');
-  await expect(tid(page, 'recipe-card-rec-halloumi-pfanne')).toBeVisible();
+  await expect(tid(page, card('rec-halloumi-pfanne'))).toBeVisible();
   await tid(page, 'recipe-search').fill('Karotten');
   // Recipes with the ingredient "Möhren" whose title does not mention it.
-  await expect(tid(page, 'recipe-card-rec-gemischter-salat')).toBeVisible();
-  await expect(tid(page, 'recipe-card-rec-kichererbsen-eintopf')).toBeVisible();
-  await expect(tid(page, 'recipe-card-rec-mango-curry')).toBeHidden();
+  await expect(tid(page, card('rec-gemischter-salat'))).toBeVisible();
+  await expect(tid(page, card('rec-kichererbsen-eintopf'))).toBeVisible();
+  await expect(tid(page, card('rec-mango-curry'))).toBeHidden();
 });
 
 test('AC-020: portions scale the amounts, the variant swaps the ingredient and the diet', async ({
   page,
 }) => {
-  await open(page, '/rezept/rec-mango-curry');
+  await open(page, `/rezept/${MANGO}`);
   await expect(tid(page, 'servings-value')).toHaveText('4');
-  await expect(tid(page, 'variant-mango-curry-v1')).toHaveAttribute('aria-checked', 'true');
-  await expect(tid(page, 'variant-mango-curry-v1')).toHaveText('mit Tofu');
-  const coconut = tid(page, 'ingredient-amount-mango-curry-i1');
-  await expect(tid(page, 'ingredient-mango-curry-i1')).toContainText('Kokosmilch');
+  await expect(tid(page, `variant-${nested('mango-curry-v1')}`)).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await expect(tid(page, `variant-${nested('mango-curry-v1')}`)).toHaveText('mit Tofu');
+  const coconut = tid(page, `ingredient-amount-${nested('mango-curry-i1')}`);
+  await expect(tid(page, `ingredient-${nested('mango-curry-i1')}`)).toContainText('Kokosmilch');
   await expect(coconut).toHaveText('400 ml');
   await expect(tid(page, 'recipe-diet')).toHaveText('vegan');
   await tid(page, 'servings-plus').click();
@@ -89,8 +105,11 @@ test('AC-020: portions scale the amounts, the variant swaps the ingredient and t
 
   const ingredients = ingredientRows(tid(page, 'recipe-ingredients'));
   await expect(ingredients.filter({ hasText: 'Räuchertofu' })).toHaveCount(1);
-  await tid(page, 'variant-mango-curry-v2').click();
-  await expect(tid(page, 'variant-mango-curry-v2')).toHaveAttribute('aria-checked', 'true');
+  await tid(page, `variant-${nested('mango-curry-v2')}`).click();
+  await expect(tid(page, `variant-${nested('mango-curry-v2')}`)).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
   await expect(ingredients.filter({ hasText: 'Hähnchen' })).toHaveCount(1);
   await expect(ingredients.filter({ hasText: 'Tofu' })).toHaveCount(0);
   await expect(tid(page, 'recipe-diet')).toHaveText('mit Fleisch');
@@ -111,7 +130,7 @@ test('AC-021: a new recipe "Linsen-Dal" is first when sorted by "Neu"; no title,
   const cards = tidPrefix(page, 'recipe-card-');
   await expect(cards.first()).toContainText('Linsen-Dal');
   // It is the new recipe, not the Linsen-Dal of the demo data.
-  expect(await cards.first().getAttribute('data-testid')).not.toBe('recipe-card-rec-linsen-dal');
+  expect(await cards.first().getAttribute('data-testid')).not.toBe(card('rec-linsen-dal'));
   await expect(tid(page, 'recipe-count')).toHaveText(`${before + 1} Rezepte`);
 
   await tid(page, 'recipe-new').click();
@@ -148,7 +167,7 @@ test('AC-022: a pasted block becomes three ingredient lines with amount and arti
 test('AC-023: cooking mode steps through; "Ist alle" puts Kreuzkümmel on the list with undo', async ({
   page,
 }) => {
-  await open(page, '/rezept/rec-mango-curry');
+  await open(page, `/rezept/${MANGO}`);
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await expect(tid(page, 'cook-step-index')).toHaveText(/^Schritt 1 von/);
@@ -160,8 +179,8 @@ test('AC-023: cooking mode steps through; "Ist alle" puts Kreuzkümmel on the li
   await expect(tid(page, 'cook-step-text')).toContainText('Zwiebel, Knoblauch und Ingwer');
   await tid(page, 'cook-close').click();
 
-  await expect(tid(page, 'ingredient-mango-curry-i8')).toContainText('Kreuzkümmel');
-  await tid(page, 'ingredient-empty-mango-curry-i8').click();
+  await expect(tid(page, `ingredient-${nested('mango-curry-i8')}`)).toContainText('Kreuzkümmel');
+  await tid(page, `ingredient-empty-${nested('mango-curry-i8')}`).click();
   const shownAt = Date.now();
   await expect(toastMessage(page)).toHaveText('Kreuzkümmel steht auf der Liste');
   await expect(tid(page, 'toast-action')).toHaveText('Rückgängig');
@@ -177,34 +196,10 @@ test('AC-023: cooking mode steps through; "Ist alle" puts Kreuzkümmel on the li
   await expect(tid(page, 'toast')).toBeHidden();
 });
 
-test('AC-040: the assistant proposes only the changes, marked as sample; accepting sets 6 portions', async ({
-  page,
-}) => {
-  await open(page, '/rezept/rec-mango-curry');
-  await expect(tid(page, 'servings-value')).toHaveText('4');
-  await tid(page, 'recipe-assistant').click();
-  await expect(tid(page, 'assistant-context')).toContainText('Mango-Curry');
-  await expect(tid(page, 'assistant-example-0')).toHaveText('Mach das vegan und für 6 Personen');
-  await tid(page, 'assistant-example-0').click();
-  const proposal = tid(page, 'proposal');
-  await expect(proposal).toBeVisible();
-  await expect(tid(page, 'proposal-note')).toHaveText(
-    'Beispielantwort – KI ist noch nicht angeschlossen',
-  );
-  await expect(proposal).toContainText('Portionen');
-  await expect(proposal).toContainText('4 → 6');
-  await expect(proposal).toContainText('Hähnchenbrust → 400 g Räuchertofu');
-  // Unchanged ingredients are not part of the proposal.
-  await expect(proposal).not.toContainText('Kokosmilch');
-  await expect(proposal).not.toContainText('Kreuzkümmel');
-  await tid(page, 'proposal-accept').click();
-  await tid(page, 'assistant-sheet-close').click();
-  await expect(tid(page, 'servings-value')).toHaveText('6');
-});
-
 test('AC-042: AI search is off at first, can be switched on and stays on after a reload', async ({
   page,
 }) => {
+  // The answer of `ai-search` is a contract-shaped stub (helpers.ts aiFixtures.aiSearch).
   await open(page, '/rezepte');
   const toggle = tid(page, 'ai-search-toggle');
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -230,7 +225,9 @@ test('AC-042: AI search is off at first, can be switched on and stays on after a
   await expect(tid(page, 'ai-search-toggle')).toHaveAttribute('aria-checked', 'true');
 });
 
-test('AC-043: a message without a sample answer gets the dummy reply and stays on this host', async ({
+// Spec 0003: the assistant answers through our edge function `ai-assistant` (stubbed here); the
+// browser talks to nothing but this host and our Supabase.
+test('AC-043: a free question gets the assistant’s answer; nothing leaves this host and our Supabase', async ({
   page,
   requests,
 }) => {
@@ -238,12 +235,11 @@ test('AC-043: a message without a sample answer gets the dummy reply and stays o
   await tid(page, 'assistant-open').click();
   await tid(page, 'assistant-input').fill('Wie wird das Wetter morgen in Köln?');
   await tid(page, 'assistant-send').click();
-  await expect(tid(page, 'assistant-answer')).toContainText(
-    'Im Dummy sind nur die Beispielanfragen hinterlegt',
-  );
+  await expect(tid(page, 'assistant-answer')).toContainText('Dazu kann ich leider nichts sagen.');
   await page.waitForLoadState('networkidle');
-  const origin = new URL(page.url()).host;
+  const allowed = new Set([new URL(page.url()).host, new URL(SUPABASE_URL()).host]);
   expect(
-    requests.filter((url) => !url.startsWith('data:') && new URL(url).host !== origin),
+    requests.filter((url) => !url.startsWith('data:') && !allowed.has(new URL(url).host)),
   ).toEqual([]);
+  expect(requests.some((url) => url.endsWith('/functions/v1/ai-assistant'))).toBe(true);
 });

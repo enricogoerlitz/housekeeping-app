@@ -32,10 +32,26 @@ jobs:
       - run: pnpm build:web
 
   e2e:
-    # Walk-through of the acceptance criteria in Chromium against the exported web build.
+    # Walk-through of the acceptance criteria in Chromium against the local Supabase stack
+    # (spec 0003, AC-034): the global setup resets the database and exports the web build with
+    # the developer switch; then the dev-mode smoke test against the Expo dev server.
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    env:
+      # Public local defaults of the Supabase CLI (identical on every machine, not secrets).
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
+      # supabase/config.toml reads these with env(); CI never signs in with Google and the edge
+      # functions' AI calls are stubbed in the browser, so placeholders are enough.
+      GOOGLE_CLIENT_ID: ci-placeholder
+      GOOGLE_CLIENT_SECRET: ci-placeholder
+      FOUNDRY_API_KEY: ci-placeholder
+      FOUNDRY_OPENAI_BASE_URL: https://ci-placeholder.invalid/openai/v1
+      FOUNDRY_LLM_DEPLOYMENT: ci-placeholder
+      FOUNDRY_SPEECH_REGION: westeurope
+      FOUNDRY_STT_MODEL: ''
+      FOUNDRY_STT_LANGUAGE: de-DE
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -44,9 +60,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:web
+      # Docker is available on the GitHub Ubuntu runner.
+      - run: pnpm exec supabase start
       - run: pnpm --filter @housekeeping/e2e exec playwright install --with-deps chromium
       - run: pnpm e2e
+      - run: pnpm e2e:dev
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

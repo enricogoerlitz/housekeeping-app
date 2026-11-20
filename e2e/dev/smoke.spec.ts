@@ -1,0 +1,100 @@
+import type { Page } from '@playwright/test';
+
+import {
+  back,
+  expect,
+  login,
+  nav,
+  openSettings,
+  showPlanWeek,
+  SLOT_DINNER,
+  switchHousehold,
+  test,
+  tid,
+  TODAY,
+} from '../helpers';
+import { seedIds } from '../seed-ids';
+
+// Dev-mode smoke test (playwright.dev.config.ts): every screen once, in the states that have
+// broken before (a restaurant planned for today on "Heute", a household with nothing planned),
+// against the Expo dev server. The shared fixture fails on uncaught errors and console.error;
+// this file also fails on every console warning, which is where React reports nested buttons,
+// missing keys and act() problems in development.
+
+/** Collects console warnings of the page for the end of the test. */
+function warningsOf(page: Page): string[] {
+  const warnings: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'warning') warnings.push(message.text());
+  });
+  return warnings;
+}
+
+test('dev smoke: every screen renders without a React warning or error', async ({ page }) => {
+  const warnings = warningsOf(page);
+  await login(page, 'enrico');
+
+  // A restaurant for tonight: "Heute" shows its card with the route button.
+  await nav(page, 'plan');
+  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
+  await tid(page, 'add-entry-mode-restaurant').click();
+  await tid(page, `add-entry-restaurant-${seedIds['rest-enzo']}`).click();
+  await tid(page, 'add-entry-restaurant-save').click();
+  await showPlanWeek(page, TODAY);
+  await nav(page, 'index');
+  await expect(tid(page, 'today-meals')).toContainText('Trattoria Da Enzo');
+
+  // Essen: list, recipe, cooking mode, restaurants and one restaurant.
+  await nav(page, 'rezepte');
+  await tid(page, `recipe-card-${seedIds['rec-mango-curry']}`).click();
+  await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
+  await tid(page, 'start-cooking').click();
+  await expect(tid(page, 'cooking-screen')).toBeVisible();
+  await tid(page, 'cook-close').click();
+  await tid(page, 'recipe-assistant').click();
+  await expect(tid(page, 'assistant-sheet')).toBeVisible();
+  await tid(page, 'assistant-sheet-close').click();
+  await back(page);
+  await tid(page, 'food-switch-restaurants').click();
+  await tid(page, `restaurant-${seedIds['rest-pho']}`).click();
+  await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
+  await back(page);
+
+  // Plan with its pantry check, the list and store mode, the household.
+  await nav(page, 'plan');
+  await tid(page, 'plan-to-list').click();
+  await expect(tid(page, 'pantry-check-sheet')).toBeVisible();
+  await tid(page, 'pantry-check-sheet-close').click();
+  await nav(page, 'liste');
+  await tid(page, 'start-shopping').click();
+  await expect(tid(page, 'shopping-progress')).toBeVisible();
+  await tid(page, 'shopping-close').click();
+  await nav(page, 'haushalt');
+  await expect(tid(page, 'chores-screen')).toBeVisible();
+  await tid(page, 'chores-tab-history').click();
+  await tid(page, 'chores-tab-all').click();
+
+  // Settings, stores, feedback, the assistant from the button.
+  await nav(page, 'index');
+  await openSettings(page);
+  await tid(page, 'link-stores').click();
+  await tid(page, `store-${seedIds['store-rewe']}`).click();
+  await back(page);
+  await back(page);
+  await tid(page, 'link-feedback').click();
+  await expect(tid(page, 'feedback')).toBeVisible();
+  await back(page);
+  await back(page);
+  await tid(page, 'assistant-open').click();
+  await expect(tid(page, 'assistant-sheet')).toBeVisible();
+  await tid(page, 'assistant-sheet-close').click();
+
+  // A household with nothing planned and no chores: the empty states.
+  await switchHousehold(page, seedIds['hh-test']);
+  await expect(tid(page, 'today-screen')).toBeVisible();
+  for (const key of ['rezepte', 'plan', 'liste', 'haushalt', 'index'] as const) {
+    await nav(page, key);
+  }
+
+  expect(warnings, 'console warnings').toEqual([]);
+});

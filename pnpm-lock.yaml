@@ -131,6 +131,10 @@ importers:
         version: 7.4.1(supports-color@8.1.1)
 
   e2e:
+    dependencies:
+      '@housekeeping/core':
+        specifier: workspace:*
+        version: link:../packages/core
     devDependencies:
       '@playwright/test':
         specifier: 1.65.1
