@@ -8,6 +8,7 @@
     "test": {},
     "build:web": {
       "dependsOn": ["^typecheck"],
+      "env": ["EXPO_PUBLIC_*"],
       "outputs": ["dist/**"]
     }
   }

@@ -298,3 +298,82 @@ describe('fake server: households and invitations', () => {
     await expect(enrico.removeMember(H, ENRICO)).rejects.toMatchObject({ code: 'last_member' });
   });
 });
+
+describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
+  const plan = (id: string, row: Record<string, unknown>) => ({
+    kind: 'insert' as const,
+    table: 'meal_plan_entries',
+    row: { id, slot_id: 's1', eater_ids: [], ...row },
+  });
+
+  it('refuses to delete a recipe that is in the plan (on delete restrict)', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [plan('e1', { kind: 'recipe', recipe_id: 'r1' })]);
+    await expect(
+      enrico.applyChanges(H, [{ kind: 'delete', table: 'recipes', id: 'r1' }]),
+    ).rejects.toMatchObject({ kind: 'permanent', code: '23503' });
+    await enrico.applyChanges(H, [
+      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
+      { kind: 'delete', table: 'recipes', id: 'r1' },
+    ]);
+    expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
+  });
+
+  it('refuses to delete an article that is on a list, and a reference to a missing row', async () => {
+    const enrico = server.transport(ENRICO);
+    await expect(
+      enrico.applyChanges(H, [{ kind: 'delete', table: 'articles', id: 'a-milk' }]),
+    ).rejects.toMatchObject({ code: '23503' });
+    await expect(
+      enrico.applyChanges(H, [plan('e2', { kind: 'recipe', recipe_id: 'r-missing' })]),
+    ).rejects.toMatchObject({ code: '23503' });
+  });
+
+  it('clears leftovers links and chore links (on delete set null) and checks the leftovers rule', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [
+      plan('e1', { kind: 'text', text: 'Gulasch' }),
+      plan('e2', { kind: 'leftovers', recipe_id: 'r1', leftovers_of_entry_id: 'e1' }),
+      plan('e3', { kind: 'leftovers', leftovers_of_entry_id: 'e1' }),
+    ]);
+    await expect(
+      enrico.applyChanges(H, [{ kind: 'delete', table: 'meal_plan_entries', id: 'e1' }]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await enrico.applyChanges(H, [
+      { kind: 'delete', table: 'meal_plan_entries', id: 'e3' },
+      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
+    ]);
+    expect(server.row(H, 'meal_plan_entries', 'e2')).toMatchObject({
+      leftovers_of_entry_id: null,
+    });
+
+    await enrico.applyChanges(H, [
+      { kind: 'insert', table: 'chores', row: { id: 'c1', title: 'Bad' } },
+      { kind: 'insert', table: 'chore_events', row: { id: 'ev1', chore_id: 'c1', title: 'Bad' } },
+      { kind: 'delete', table: 'chores', id: 'c1' },
+    ]);
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: null });
+  });
+});
+
+describe('fake server: per-member RPCs and edge functions', () => {
+  it('can make a favourite fail like any other RPC', async () => {
+    server.failNext('set_recipe_favorite', new TransportError('permanent', 'recipe_not_found'));
+    await expect(server.transport(ENRICO).setRecipeFavorite('r1', true)).rejects.toMatchObject({
+      code: 'recipe_not_found',
+    });
+    expect(server.calls.at(-1)).toEqual({ userId: ENRICO, fn: 'set_recipe_favorite' });
+  });
+
+  it('resolves a known short link and refuses an unknown one with not_a_maps_link', async () => {
+    const reply = { name: 'Café Fleur', mapsUrl: 'https://www.google.com/maps/place/Fleur' };
+    server.setMapsLink('https://maps.app.goo.gl/abc', reply);
+    const enrico = server.transport(ENRICO);
+    await expect(enrico.resolveMapsLink('https://maps.app.goo.gl/abc')).resolves.toEqual(reply);
+    await expect(enrico.resolveMapsLink('https://maps.app.goo.gl/x')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'not_a_maps_link',
+      status: 422,
+    });
+  });
+});

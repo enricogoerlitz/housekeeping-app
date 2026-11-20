@@ -215,8 +215,9 @@ export function ToastHost(props: { bottomOffset?: number }) {
               size="sm"
               testID="toast-action"
               onPress={() => {
-                state.onAction?.();
+                // Hidden first: the action may show a toast of its own (e.g. "offline").
                 toast.hide();
+                state.onAction?.();
               }}
             />
           ) : null}

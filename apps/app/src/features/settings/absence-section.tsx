@@ -28,7 +28,7 @@ import {
 import { useState } from 'react';
 
 import { DateChips } from '@/features/chores/date-chips';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 const HOUSEHOLD = 'household';
 
@@ -45,7 +45,7 @@ export function AbsenceSection() {
     toast.show({
       message: `Abwesenheit von ${who} entfernt`,
       actionLabel: 'Rückgängig',
-      onAction: restore,
+      onAction: undoAction(restore),
     });
   };
 

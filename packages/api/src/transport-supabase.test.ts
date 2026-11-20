@@ -6,8 +6,11 @@ import { createSupabaseTransport, type SupabaseLike } from './transport-supabase
 type Reply = { data: unknown; error: { message: string; code?: string } | null; status: number };
 
 /** A stand-in for supabase-js: records rpc calls and answers with the queued replies. */
-function stubClient(replies: (Reply | 'hang')[]) {
+type InvokeReply = Awaited<ReturnType<SupabaseLike['functions']['invoke']>>;
+
+function stubClient(replies: (Reply | 'hang')[], invokeReplies: InvokeReply[] = []) {
   const calls: { fn: string; args: Record<string, unknown> }[] = [];
+  const invoked: { name: string; body: unknown }[] = [];
   const channels: { topic: string; options: unknown; handlers: (() => void)[] }[] = [];
   const removed: string[] = [];
   const client: SupabaseLike = {
@@ -51,8 +54,14 @@ function stubClient(replies: (Reply | 'hang')[]) {
       return 'ok';
     },
     realtime: { setAuth: async () => {} },
+    functions: {
+      async invoke(name, options) {
+        invoked.push({ name, body: options.body });
+        return invokeReplies.shift() ?? { data: null, error: null };
+      },
+    },
   };
-  return { client, calls, channels, removed };
+  return { client, calls, channels, removed, invoked };
 }
 
 const ok = (data: unknown): Reply => ({ data, error: null, status: 200 });
@@ -205,5 +214,163 @@ describe('supabase transport', () => {
     expect(onSignal).toHaveBeenCalledTimes(1);
     unsubscribe();
     expect(removed).toEqual(['household:h1']);
+  });
+
+  it('resolves a short link through the edge function and classifies its errors', async () => {
+    const reply = {
+      name: 'Café Fleur',
+      location: { lat: 50.9, lng: 6.9 },
+      mapsUrl: 'https://www.google.com/maps/place/Fleur',
+    };
+    const httpError = (status: number, body: unknown) => ({
+      data: null,
+      error: {
+        name: 'FunctionsHttpError',
+        message: 'Edge Function returned a non-2xx status code',
+        context: { status, json: async () => body },
+      },
+    });
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: reply, error: null },
+        httpError(422, { error: 'not_a_maps_link' }),
+        httpError(503, { error: 'ai_unavailable' }),
+        { data: null, error: { name: 'FunctionsFetchError', message: 'Failed to send a request' } },
+        { data: { name: '' }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const url = 'https://maps.app.goo.gl/abc';
+    await expect(transport.resolveMapsLink(url)).resolves.toEqual(reply);
+    expect(invoked).toEqual([{ name: 'resolve-maps-link', body: { url } }]);
+    await expect(transport.resolveMapsLink(url)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'not_a_maps_link',
+      status: 422,
+    });
+    await expect(transport.resolveMapsLink(url)).rejects.toMatchObject({
+      kind: 'transient',
+      code: 'ai_unavailable',
+    });
+    await expect(transport.resolveMapsLink(url)).rejects.toMatchObject({
+      kind: 'transient',
+      code: 'network',
+    });
+    await expect(transport.resolveMapsLink(url)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'invalid_response',
+    });
+  });
+});
+
+describe('supabase transport: AI edge functions', () => {
+  const httpError = (status: number, body: unknown) => ({
+    data: null,
+    error: {
+      name: 'FunctionsHttpError',
+      message: 'Edge Function returned a non-2xx status code',
+      context: { status, json: async () => body },
+    },
+  });
+  const assistantRequest = {
+    householdId: 'h1',
+    message: 'Mach das vegan',
+    context: { recipeId: 'r1' },
+  };
+  const assistantReply = {
+    text: 'Hier ist mein Vorschlag.',
+    proposal: {
+      id: 'p1',
+      title: 'Curry ändern',
+      note: '',
+      parts: [
+        {
+          id: 'a',
+          label: 'Portionen',
+          before: '4',
+          after: '6',
+          command: { type: 'setRecipeServings', recipeId: 'r1', servings: 6 },
+        },
+      ],
+    },
+  };
+
+  it('asks the assistant with the request as body and validates the reply', async () => {
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: assistantReply, error: null },
+        // A proposal with a command outside the contract is refused, never applied.
+        {
+          data: {
+            ...assistantReply,
+            proposal: {
+              ...assistantReply.proposal,
+              parts: [{ id: 'x', label: 'Löschen', command: { type: 'deleteEverything' } }],
+            },
+          },
+          error: null,
+        },
+        httpError(429, { error: 'quota_exceeded' }),
+        httpError(401, { error: 'unauthorized' }),
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.askAssistant(assistantRequest)).resolves.toEqual(assistantReply);
+    expect(invoked[0]).toEqual({ name: 'ai-assistant', body: assistantRequest });
+    await expect(transport.askAssistant(assistantRequest)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    await expect(transport.askAssistant(assistantRequest)).rejects.toMatchObject({
+      code: 'quota_exceeded',
+      status: 429,
+    });
+    await expect(transport.askAssistant(assistantRequest)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'unauthorized',
+    });
+  });
+
+  it('runs the AI search and validates the result', async () => {
+    const result = {
+      chips: [{ id: 'term:tofu', label: 'Tofu' }],
+      results: [{ recipeId: 'r1', reason: 'mit Tofu' }],
+      trace: '1 Runde',
+      note: '',
+    };
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: result, error: null },
+        { data: { chips: 'nope' }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const request = { householdId: 'h1', query: 'Tofu', disabledChips: ['fast'] };
+    await expect(transport.aiSearch(request)).resolves.toEqual(result);
+    expect(invoked[0]).toEqual({ name: 'ai-search', body: request });
+    await expect(transport.aiSearch(request)).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('fetches a speech token with an empty body and validates it', async () => {
+    const token = {
+      token: 'eyJ.short.lived',
+      region: 'westeurope',
+      expiresAt: '2026-11-20T10:09:00.000Z',
+      language: 'de-DE',
+    };
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: token, error: null },
+        { data: { ...token, region: 'evil.example.com/' }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.speechToken()).resolves.toEqual(token);
+    expect(invoked[0]).toEqual({ name: 'speech-token', body: {} });
+    // The region becomes part of a host name: anything but a plain region name is refused.
+    await expect(transport.speechToken()).rejects.toMatchObject({ code: 'invalid_response' });
   });
 });

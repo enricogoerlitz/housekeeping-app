@@ -1,8 +1,10 @@
 import {
   AI_SAMPLE_NOTE,
+  aiErrorMessage,
   applyProposal,
-  askAssistant,
+  askAssistantAsync,
   assistantExamples,
+  useAiSimulated,
   useOffline,
   useRecipe,
   type AssistantContext,
@@ -21,12 +23,14 @@ import {
   Text,
   TextField,
   toast,
+  TypingIndicator,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
+import { useDictation } from '@/lib/use-dictation';
 
 interface UserMessage {
   id: number;
@@ -42,6 +46,8 @@ interface AssistantMessage {
   proposal?: Proposal;
   checkedPartIds: string[];
   status: 'open' | 'accepted' | 'discarded';
+  /** The request failed; `text` is the calm German message. */
+  failed?: boolean;
 }
 
 type Message = UserMessage | AssistantMessage;
@@ -49,7 +55,10 @@ type Message = UserMessage | AssistantMessage;
 const OFFLINE_TEXT = 'Offline – der Assistent braucht Netz';
 const DICTATION_SAMPLE = 'Was koche ich heute?';
 
-/** The central assistant (simulated in spec 0001): sample requests, proposals as diffs. */
+/**
+ * The central assistant: proposals as diffs, applied only on "Übernehmen". Demo mode answers the
+ * samples of spec 0001; with the backend the edge function `ai-assistant` answers (spec 0003).
+ */
 export function AssistantSheet() {
   const host = useAssistant();
   // Mounted only while open: every opening starts a fresh conversation about what the screen
@@ -60,31 +69,73 @@ export function AssistantSheet() {
 
 function AssistantDialog(props: { initialContext: AssistantContext; onClose: () => void }) {
   const offline = useOffline();
+  const simulated = useAiSimulated();
+  const dictation = useDictation();
   const [context, setContext] = useState<AssistantContext>(props.initialContext);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [nextId, setNextId] = useState(1);
+  const [pending, setPending] = useState(false);
+  const nextId = useRef(1);
+  const mounted = useRef(true);
   const recipe = useRecipe(context.recipeId);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const send = (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || offline) return;
-    const reply = askAssistant(trimmed, context);
-    setMessages((current) => [
-      ...current,
-      { id: nextId, role: 'user', text: trimmed },
-      {
-        id: nextId + 1,
-        role: 'assistant',
-        text: reply.text,
-        consulted: reply.consulted,
-        proposal: reply.proposal,
-        checkedPartIds: reply.proposal?.parts.map((part) => part.id) ?? [],
-        status: 'open',
-      },
-    ]);
-    setNextId(nextId + 2);
+    if (!trimmed || offline || pending) return;
+    const userId = nextId.current;
+    const answerId = userId + 1;
+    nextId.current += 2;
+    setMessages((current) => [...current, { id: userId, role: 'user', text: trimmed }]);
     setInput('');
+    setPending(true);
+    askAssistantAsync(trimmed, context)
+      .then(
+        (reply): AssistantMessage => ({
+          id: answerId,
+          role: 'assistant',
+          text: reply.text,
+          consulted: reply.consulted,
+          proposal: reply.proposal,
+          checkedPartIds: reply.proposal?.parts.map((part) => part.id) ?? [],
+          status: 'open',
+        }),
+        (error: unknown): AssistantMessage => ({
+          id: answerId,
+          role: 'assistant',
+          text: aiErrorMessage(error),
+          checkedPartIds: [],
+          status: 'open',
+          failed: true,
+        }),
+      )
+      .then((answer) => {
+        if (!mounted.current) return;
+        setMessages((current) => [...current, answer]);
+        setPending(false);
+      });
+  };
+
+  const busy = offline || pending;
+  const listening = dictation.status === 'listening';
+  const pressMic = () => {
+    if (simulated) {
+      setInput(DICTATION_SAMPLE);
+      return;
+    }
+    if (listening) {
+      void dictation.stop().then((text) => {
+        if (mounted.current && text) setInput(text);
+      });
+      return;
+    }
+    if (dictation.status === 'idle') dictation.start();
   };
 
   const updateMessage = (id: number, patch: Partial<AssistantMessage>) =>
@@ -141,7 +192,7 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
             label={example}
             icon="sparkles"
             tone="ki"
-            disabled={offline}
+            disabled={busy}
             onPress={() => send(example)}
             testID={`assistant-example-${index}`}
           />
@@ -151,9 +202,9 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
         round
         accessibilityLabel="Nachricht an den Assistenten"
         placeholder="Nachricht …"
-        value={input}
+        value={listening || dictation.status === 'stopping' ? dictation.transcript : input}
         onChangeText={setInput}
-        editable={!offline}
+        editable={!busy && dictation.status === 'idle'}
         returnKeyType="send"
         blurOnSubmit={false}
         onSubmitEditing={() => send(input)}
@@ -161,10 +212,11 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
         left={
           <IconButton
             icon="mic"
-            label="Sprechen (Beispiel)"
+            label={simulated ? 'Sprechen (Beispiel)' : listening ? 'Aufnahme beenden' : 'Sprechen'}
             size={36}
-            disabled={offline}
-            onPress={() => setInput(DICTATION_SAMPLE)}
+            variant={listening ? 'filled' : 'plain'}
+            disabled={busy || dictation.status === 'starting' || dictation.status === 'stopping'}
+            onPress={pressMic}
             testID="assistant-mic"
           />
         }
@@ -174,7 +226,7 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
             variant="filled"
             label="Senden"
             size={40}
-            disabled={offline || input.trim() === ''}
+            disabled={busy || listening || input.trim() === ''}
             onPress={() => send(input)}
             testID="assistant-send"
           />
@@ -199,10 +251,15 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
             <Text>
               Frag mich etwas oder wähle unten ein Beispiel. Ich schlage nur vor – ändern tust du.
             </Text>
-            <Text variant="caption" color="muted">
-              {AI_SAMPLE_NOTE}
-            </Text>
+            {simulated ? (
+              <Text variant="caption" color="muted">
+                {AI_SAMPLE_NOTE}
+              </Text>
+            ) : null}
           </View>
+        ) : null}
+        {dictation.error ? (
+          <Notice icon="mic" text={dictation.error} testID="assistant-dictation-error" />
         ) : null}
         {messages.map((message) =>
           message.role === 'user' ? (
@@ -214,15 +271,27 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
           ) : (
             <Stack key={message.id} gap={8}>
               <View style={{ alignSelf: 'flex-start', maxWidth: '90%' }}>
-                <Surface
-                  testID={
-                    message.id === lastAnswerId
-                      ? 'assistant-answer'
-                      : `assistant-answer-${message.id}`
-                  }
-                >
-                  <Text>{message.text}</Text>
-                </Surface>
+                {message.failed ? (
+                  <Notice
+                    icon="circle-alert"
+                    text={message.text}
+                    testID={
+                      message.id === lastAnswerId
+                        ? 'assistant-answer'
+                        : `assistant-answer-${message.id}`
+                    }
+                  />
+                ) : (
+                  <Surface
+                    testID={
+                      message.id === lastAnswerId
+                        ? 'assistant-answer'
+                        : `assistant-answer-${message.id}`
+                    }
+                  >
+                    <Text>{message.text}</Text>
+                  </Surface>
+                )}
               </View>
               {message.proposal ? (
                 <Stack gap={6}>
@@ -261,6 +330,9 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
             </Stack>
           ),
         )}
+        {pending ? (
+          <TypingIndicator label="Der Assistent schreibt …" testID="assistant-typing" />
+        ) : null}
       </Stack>
     </Sheet>
   );

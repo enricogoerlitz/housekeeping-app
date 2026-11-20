@@ -43,6 +43,33 @@ export interface HouseholdChange {
   inverse: RowOp[];
 }
 
+/**
+ * The local effect of an RPC: every column, store-only and server columns included (the RPC sets
+ * them on the server, e.g. reopening a checked item). Only shown, never sent.
+ */
+function localDiff(table: string, before: readonly Row[], after: readonly Row[]): RowOp[] {
+  const beforeById = new Map(before.map((row) => [row.id, row]));
+  const afterIds = new Set(after.map((row) => row.id));
+  const ops: RowOp[] = [];
+  for (const row of after) {
+    const previous = beforeById.get(row.id);
+    if (previous === row) continue;
+    if (!previous) {
+      ops.push({ kind: 'insert', table, row });
+      continue;
+    }
+    const changes: Record<string, unknown> = {};
+    for (const column of new Set([...Object.keys(previous), ...Object.keys(row)])) {
+      if (!sameJson(previous[column], row[column])) changes[column] = row[column] ?? null;
+    }
+    if (Object.keys(changes).length > 0) ops.push({ kind: 'patch', table, id: row.id, changes });
+  }
+  for (const row of before) {
+    if (!afterIds.has(row.id)) ops.push({ kind: 'delete', table, id: row.id });
+  }
+  return selfReferencesFirst(ops, [...before, ...after]);
+}
+
 function columnsOf(rows: readonly Row[]): string[] {
   const columns = new Set<string>();
   for (const row of rows) for (const column of Object.keys(row)) columns.add(column);
@@ -60,6 +87,32 @@ function ordered(byTable: Map<string, RowOp[]>): RowOp[] {
     .reverse()
     .flatMap((table) => (byTable.get(table) ?? []).filter((op) => op.kind === 'delete'));
   return [...writes, ...deletes];
+}
+
+/**
+ * Rows of one table that point to each other (leftovers → their dish): inserts put the referenced
+ * row first and deletes remove the referencing row first, as foreign keys are checked per row.
+ */
+function selfReferencesFirst(ops: RowOp[], rows: readonly Row[]): RowOp[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const touched = (kind: RowOp['kind']) =>
+    new Set(
+      ops.flatMap((op) => (op.kind !== kind ? [] : [op.kind === 'insert' ? op.row.id : op.id])),
+    );
+  const refersTo = (id: string, ids: Set<string>) =>
+    Object.entries(byId.get(id) ?? {}).some(
+      ([column, value]) =>
+        column !== 'id' && typeof value === 'string' && value !== id && ids.has(value),
+    );
+  const inserted = touched('insert');
+  const deleted = touched('delete');
+  const rank = (op: RowOp) => {
+    if (op.kind === 'insert') return refersTo(op.row.id, inserted) ? 1 : 0;
+    if (op.kind === 'delete') return refersTo(op.id, deleted) ? 0 : 1;
+    return 0;
+  };
+  // Array.prototype.sort is stable: the order within each rank stays.
+  return [...ops].sort((a, b) => rank(a) - rank(b));
 }
 
 /** Inserts keep `created_at` locally, so the new row sorts right until the server answers. */
@@ -95,8 +148,11 @@ export function diffHousehold(
     let allowedColumns: readonly string[];
     let maxDeletes: number;
     if (options.mode === 'local') {
-      allowedColumns = columnsOf([...old, ...next]);
-      maxDeletes = Number.POSITIVE_INFINITY;
+      const ops = localDiff(table, old, next);
+      if (ops.length === 0) continue;
+      forward.set(table, ops);
+      backward.set(table, localDiff(table, next, old));
+      continue;
     } else if (RPC_ONLY.has(table)) {
       const ops = diffRows(old, next, {
         table,
@@ -111,15 +167,19 @@ export function diffHousehold(
     }
     const ops = diffRows(old, next, { table, allowedColumns, maxDeletes });
     if (ops.length === 0) continue;
-    forward.set(table, withCreatedAt(ops, next));
+    const both = [...old, ...next];
+    forward.set(table, withCreatedAt(selfReferencesFirst(ops, both), next));
     backward.set(
       table,
       withCreatedAt(
-        diffRows(next, old, {
-          table,
-          allowedColumns,
-          maxDeletes: Number.POSITIVE_INFINITY,
-        }),
+        selfReferencesFirst(
+          diffRows(next, old, {
+            table,
+            allowedColumns,
+            maxDeletes: Number.POSITIVE_INFINITY,
+          }),
+          both,
+        ),
         old,
       ),
     );

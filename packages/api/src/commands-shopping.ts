@@ -1,6 +1,7 @@
 import {
-  addContribution,
   contributionsFromEntry,
+  findArticleByName,
+  normalizeText,
   parseSmartInput,
   summarizeItem,
   weekdayShort,
@@ -13,55 +14,107 @@ import {
 } from '@housekeeping/core';
 
 import { resolveArticle } from './commands-household';
+import {
+  addLocally,
+  addTextLocally,
+  contributionIds,
+  typedContribution,
+  type AddedItem,
+} from './list-additions';
 import { indexById } from './queries';
-import { commit, getData, getState, newId, nowISO, updateData } from './store';
+import {
+  commit,
+  getData,
+  getState,
+  isBackendMode,
+  isBackendOffline,
+  newId,
+  nowISO,
+  updateData,
+} from './store';
+import { ClearedItemsSchema, type AddEntry } from './transport';
 
-function appendContribution(listId: Id, articleId: Id, contribution: ShoppingContribution): Id {
-  const itemId = newId('item');
-  let resultId = itemId;
-  updateData((data) => {
-    const items = addContribution(data.items, listId, articleId, contribution, itemId, nowISO());
-    const target = items.find(
-      (item) => item.listId === listId && item.articleId === articleId && !item.checked,
-    );
-    if (target) resultId = target.id;
-    const offline = getState().offline;
-    return {
-      ...data,
-      items: offline
-        ? items.map((item) => (item.id === resultId ? { ...item, pendingSync: true } : item))
-        : items,
-    };
-  });
-  return resultId;
+export type { AddedItem } from './list-additions';
+
+// ---------- Contributions on a list (server merge, ADR-0011) ----------
+
+/**
+ * A command that puts things on one list: shown at once, sent as one `add_shopping_contributions`
+ * call (one transaction); undo removes exactly these contributions again.
+ */
+function putOnList<T>(listId: Id, run: () => { result: T; entries: AddEntry[] }): T {
+  return commit(
+    {
+      path: 'rpc',
+      send: (transport, context) =>
+        transport.addShoppingContributions(listId, context.result.entries),
+      inverse: (transport, context) =>
+        transport.removeContributions(contributionIds(context.result.entries)),
+    },
+    run,
+  ).result;
 }
 
-export interface AddedItem {
-  itemId: Id;
-  articleName: string;
-  /** True when the name was new and an article was created for it. */
-  createdArticle: boolean;
+/**
+ * Offline in the store: adding is one of the four store actions (ADR-0008 addendum). The queue
+ * shows it at once; the id returned is the item it lands on, a new one keeps the client id until
+ * the server answered.
+ */
+function queueAdd(listId: Id, name: string, contribution: ShoppingContribution): AddedItem {
+  const data = getData();
+  const trimmed = name.trim().replace(/\s+/g, ' ');
+  const existing = findArticleByName(trimmed, data.articles);
+  const articleName = existing?.name ?? trimmed;
+  const clientItemId = newId('item');
+  const onList = existing
+    ? data.items.filter((item) => item.listId === listId && item.articleId === existing.id)
+    : [];
+  const itemId =
+    onList.find((item) => !item.checked)?.id ??
+    onList.find((item) => item.checked)?.id ??
+    clientItemId;
+  commit(
+    {
+      path: 'queue',
+      action: {
+        kind: 'add',
+        listId,
+        clientItemId,
+        clientArticleId: existing?.id ?? newId('art'),
+        contributions: [
+          {
+            clientContributionId: contribution.id,
+            articleName,
+            nameKey: normalizeText(articleName),
+            count: contribution.count,
+            qty: contribution.qty,
+            unit: contribution.unit,
+            note: contribution.note,
+          },
+        ],
+      },
+    },
+    () => undefined,
+  );
+  return { itemId, articleName, createdArticle: !existing };
 }
 
 /**
  * Adds what was typed into the list: "2 Käse (Gouda oder Emmentaler)", "500 g Möhren", "Milch".
  * An article that is already open on the list gets the amount added instead of a second row.
- * Returns null for empty input.
+ * Returns null for empty input. Works offline too (store queue).
  */
 export function addShoppingItemFromText(listId: Id, text: string): AddedItem | null {
-  const parsed = parseSmartInput(text);
-  if (!parsed) return null;
-  const { article, created } = resolveArticle(parsed.name);
-  const itemId = appendContribution(listId, article.id, {
-    id: newId('contrib'),
-    source: { kind: 'manual' },
-    // No number typed means one: a second "Milch" then adds up to 2×.
-    count: parsed.qty === undefined ? (parsed.count ?? 1) : undefined,
-    qty: parsed.qty,
-    unit: parsed.unit,
-    note: parsed.note,
+  if (isBackendMode() && isBackendOffline()) {
+    const typed = typedContribution(text);
+    return typed ? queueAdd(listId, typed.name, typed.contribution) : null;
+  }
+  if (!parseSmartInput(text)) return null;
+  return putOnList(listId, () => {
+    const local = addTextLocally(listId, text);
+    if (!local) throw new Error('Nothing to add');
+    return { result: local.added, entries: [local.entry] };
   });
-  return { itemId, articleName: article.name, createdArticle: created };
 }
 
 /** Checking works offline too (store queue); such changes are marked until the next sync. */
@@ -86,51 +139,84 @@ export function setItemChecked(itemId: Id, checked: boolean): void {
   });
 }
 
-/** "Nicht da": the item stays open and moves to "Woanders kaufen". */
+/** "Nicht da": the item stays open and moves to "Woanders kaufen". A store action. */
 export function setItemNotAvailable(itemId: Id, notAvailable: boolean): void {
-  const offline = getState().offline;
-  updateData((data) => ({
-    ...data,
-    items: data.items.map((item) =>
-      item.id === itemId
-        ? {
-            ...item,
-            notAvailable: notAvailable || undefined,
-            pendingSync: offline ? true : item.pendingSync,
-          }
-        : item,
-    ),
-  }));
+  commit({ path: 'queue', action: { kind: 'notAvailable', itemId, value: notAvailable } }, () => {
+    const offline = getState().offline;
+    updateData((data) => ({
+      ...data,
+      items: data.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              notAvailable: notAvailable || undefined,
+              pendingSync: offline ? true : item.pendingSync,
+            }
+          : item,
+      ),
+    }));
+  });
 }
 
 export function removeShoppingItem(itemId: Id): void {
-  updateData((data) => ({ ...data, items: data.items.filter((item) => item.id !== itemId) }));
+  const item = getData().items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  commit(
+    {
+      path: 'diff',
+      maxDeletes: { shopping_items: 1, shopping_contributions: item.contributions.length },
+    },
+    () =>
+      updateData((data) => ({
+        ...data,
+        items: data.items.filter((candidate) => candidate.id !== itemId),
+      })),
+  );
 }
 
-/** Removes the checked items of a list ("Erledigt leeren"). */
+/**
+ * Removes the checked items of a list ("Erledigt leeren"): its own RPC, as it deletes by a
+ * condition the server checks. Undo puts back exactly what the server removed.
+ */
 export function clearCheckedItems(listId: Id): number {
-  const before = getData().items.length;
-  updateData((data) => ({
-    ...data,
-    items: data.items.filter((item) => !(item.listId === listId && item.checked)),
-  }));
-  return before - getData().items.length;
+  const count = getData().items.filter((item) => item.listId === listId && item.checked).length;
+  if (count === 0) return 0;
+  commit(
+    {
+      path: 'rpc',
+      send: (transport) => transport.clearCheckedItems(listId),
+      inverse: async (transport, _context, response) => {
+        const cleared = ClearedItemsSchema.safeParse(response);
+        return cleared.success && cleared.data.length > 0
+          ? transport.restoreClearedItems(listId, cleared.data)
+          : 0;
+      },
+    },
+    () =>
+      updateData((data) => ({
+        ...data,
+        items: data.items.filter((item) => !(item.listId === listId && item.checked)),
+      })),
+  );
+  return count;
 }
 
 export function createShoppingList(name: string): Id {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Name fehlt');
   const list: ShoppingList = { id: newId('list'), name: trimmed, isDefault: false };
-  updateData((data) => ({ ...data, lists: [...data.lists, list] }));
+  commit({ path: 'diff' }, () => updateData((data) => ({ ...data, lists: [...data.lists, list] })));
   return list.id;
 }
 
 /** Chooses the store a list is sorted for; undefined = no store. */
 export function setListStore(listId: Id, storeId: Id | undefined): void {
-  updateData((data) => ({
-    ...data,
-    lists: data.lists.map((list) => (list.id === listId ? { ...list, storeId } : list)),
-  }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      lists: data.lists.map((list) => (list.id === listId ? { ...list, storeId } : list)),
+    })),
+  );
 }
 
 // ---------- From the meal plan, with the pantry check ----------
@@ -219,17 +305,26 @@ function toContribution(planned: PlannedContribution, id: Id): ShoppingContribut
   };
 }
 
-/** Puts the rows the user kept in the pantry check on the list. Returns the number of articles. */
+/**
+ * Puts the rows the user kept in the pantry check on the list. Returns the number of articles.
+ * All rows are one transaction (AC-020).
+ */
 export function addPlannedToList(listId: Id, rows: PantryCheckRow[]): number {
-  let added = 0;
-  for (const row of rows) {
-    if (!row.articleId) continue;
-    for (const planned of row.contributions) {
-      appendContribution(listId, row.articleId, toContribution(planned, newId('contrib')));
-    }
-    added += 1;
-  }
-  return added;
+  const articles = indexById(getData().articles);
+  const kept = rows.filter((row) => row.articleId && articles[row.articleId]);
+  if (kept.length === 0) return 0;
+  return putOnList(listId, () => ({
+    result: kept.length,
+    entries: kept.map((row) => {
+      const article = articles[row.articleId ?? ''];
+      if (!article) throw new Error(`Article ${row.articleId ?? ''} missing`);
+      return addLocally(
+        listId,
+        article,
+        row.contributions.map((planned) => toContribution(planned, newId('contrib'))),
+      ).entry;
+    }),
+  }));
 }
 
 /** "Ist alle": puts one ingredient of a recipe on the default list. */
@@ -238,17 +333,26 @@ export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem |
   const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
   const ingredient = recipe?.ingredients.find((candidate) => candidate.id === ingredientId);
   if (!recipe || !ingredient) return null;
-  const { article, created } = ingredient.articleId
-    ? { article: indexById(data.articles)[ingredient.articleId], created: false }
-    : resolveArticle(ingredient.name);
-  if (!article) return null;
-  const itemId = appendContribution(data.household.defaultListId, article.id, {
-    id: newId('contrib'),
-    source: { kind: 'manual' },
-    count: 1,
-    ...(ingredient.shoppingNote ? { note: ingredient.shoppingNote } : {}),
+  if (ingredient.articleId && !indexById(data.articles)[ingredient.articleId]) return null;
+  const listId = data.household.defaultListId;
+  return putOnList(listId, () => {
+    const { article, created } = ingredient.articleId
+      ? { article: indexById(getData().articles)[ingredient.articleId], created: false }
+      : resolveArticle(ingredient.name);
+    if (!article) throw new Error(`Article ${ingredient.articleId ?? ''} missing`);
+    const { itemId, entry } = addLocally(listId, article, [
+      {
+        id: newId('contrib'),
+        source: { kind: 'manual' },
+        count: 1,
+        ...(ingredient.shoppingNote ? { note: ingredient.shoppingNote } : {}),
+      },
+    ]);
+    return {
+      result: { itemId, articleName: article.name, createdArticle: created },
+      entries: [entry],
+    };
   });
-  return { itemId, articleName: article.name, createdArticle: created };
 }
 
 /** Open and checked items of one list, in creation order. */
@@ -272,7 +376,9 @@ export function createStore(name: string): Id {
     areaOrder: [...data.areas].sort((a, b) => a.sort - b.sort).map((area) => area.id),
     hiddenAreaIds: [],
   };
-  updateData((current) => ({ ...current, stores: [...current.stores, store] }));
+  commit({ path: 'diff' }, () =>
+    updateData((current) => ({ ...current, stores: [...current.stores, store] })),
+  );
   return store.id;
 }
 
@@ -287,30 +393,34 @@ export function fullAreaOrder(store: Store): Id[] {
 
 /** Moves an area to a new position in the store's walking order. */
 export function moveStoreArea(storeId: Id, areaId: Id, toIndex: number): void {
-  updateData((data) => ({
-    ...data,
-    stores: data.stores.map((store) => {
-      if (store.id !== storeId) return store;
-      const order = fullAreaOrder(store).filter((id) => id !== areaId);
-      const index = Math.max(0, Math.min(order.length, toIndex));
-      order.splice(index, 0, areaId);
-      return { ...store, areaOrder: order };
-    }),
-  }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      stores: data.stores.map((store) => {
+        if (store.id !== storeId) return store;
+        const order = fullAreaOrder(store).filter((id) => id !== areaId);
+        const index = Math.max(0, Math.min(order.length, toIndex));
+        order.splice(index, 0, areaId);
+        return { ...store, areaOrder: order };
+      }),
+    })),
+  );
 }
 
 export function setStoreAreaHidden(storeId: Id, areaId: Id, hidden: boolean): void {
-  updateData((data) => ({
-    ...data,
-    stores: data.stores.map((store) =>
-      store.id === storeId
-        ? {
-            ...store,
-            hiddenAreaIds: hidden
-              ? [...new Set([...store.hiddenAreaIds, areaId])]
-              : store.hiddenAreaIds.filter((id) => id !== areaId),
-          }
-        : store,
-    ),
-  }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      stores: data.stores.map((store) =>
+        store.id === storeId
+          ? {
+              ...store,
+              hiddenAreaIds: hidden
+                ? [...new Set([...store.hiddenAreaIds, areaId])]
+                : store.hiddenAreaIds.filter((id) => id !== areaId),
+            }
+          : store,
+      ),
+    })),
+  );
 }

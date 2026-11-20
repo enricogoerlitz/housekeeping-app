@@ -358,6 +358,20 @@ describe('applyMemberships', () => {
     expect(next.small.household_members).toEqual([{ household_id: H2, profile_id: 'p1' }]);
   });
 
+  it('keeps open invitations to households the user is not a member of yet (to accept them)', () => {
+    const invitation = { id: 'i1', household_id: H2, email: 'p1@example.com', accepted_at: null };
+    const cache: SyncCache = {
+      ...loadedCache(),
+      small: {
+        household_members: [{ household_id: H2, profile_id: 'p2' }],
+        household_invitations: [invitation],
+      },
+    };
+    const next = applyMemberships(cache, [H1]);
+    expect(next.small.household_invitations).toEqual([invitation]);
+    expect(next.small.household_members).toEqual([]);
+  });
+
   it('keeps the data of households that are still listed', () => {
     const cache = loadedCache();
     expect(applyMemberships(cache, [H1]).households[H1]).toBe(cache.households[H1]);

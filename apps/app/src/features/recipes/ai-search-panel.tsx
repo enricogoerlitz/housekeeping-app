@@ -15,7 +15,7 @@ export interface AiSearchPanelProps {
   compact?: boolean;
 }
 
-/** The interpretation as chips, the trace, the sample-answer note and the hits with their reason. */
+/** The interpretation as chips, the trace, a note (demo: "Beispielantwort") and the hits with their reason. */
 export function AiSearchPanel(props: AiSearchPanelProps) {
   const recipesById = useRecipesById();
   const reasons = new Map(props.result.results.map((hit) => [hit.recipeId, hit.reason]));
@@ -27,12 +27,14 @@ export function AiSearchPanel(props: AiSearchPanelProps) {
 
   return (
     <Stack gap={12} style={{ marginBottom: 16 }}>
-      <Row gap={6}>
-        <Icon name="sparkles" size={15} color="accent" />
-        <Text variant="caption" color="muted" testID="ai-search-note" style={{ flexShrink: 1 }}>
-          {props.result.note}
-        </Text>
-      </Row>
+      {props.result.note ? (
+        <Row gap={6}>
+          <Icon name="sparkles" size={15} color="accent" />
+          <Text variant="caption" color="muted" testID="ai-search-note" style={{ flexShrink: 1 }}>
+            {props.result.note}
+          </Text>
+        </Row>
+      ) : null}
       {chips.length > 0 ? (
         <ScrollView
           horizontal

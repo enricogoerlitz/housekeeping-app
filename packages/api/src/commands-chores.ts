@@ -11,7 +11,7 @@ import {
   type Recurrence,
 } from '@housekeeping/core';
 
-import { getData, getState, newId, updateData } from './store';
+import { commit, getData, getState, newId, updateData } from './store';
 
 /**
  * Marks a chore as done today: writes the history entry, computes the next due date and, for
@@ -22,19 +22,20 @@ export function completeChore(choreId: Id, doneBy?: Id): Id | null {
   const chore = getData().chores.find((candidate) => candidate.id === choreId);
   if (!chore) return null;
   const memberId = doneBy ?? state.currentMemberId;
-  const event: ChoreEvent = {
-    id: newId('ev'),
-    choreId,
-    title: chore.title,
-    kind: 'done',
-    doneOn: state.today,
-    doneBy: memberId,
-  };
-  updateData((data) => ({
-    ...data,
-    choreEvents: [event, ...data.choreEvents],
-    chores:
-      chore.recurrence.type === 'once'
+  const once = chore.recurrence.type === 'once';
+  return commit({ path: 'diff', maxDeletes: { chores: once ? 1 : 0 } }, () => {
+    const event: ChoreEvent = {
+      id: newId('ev'),
+      choreId,
+      title: chore.title,
+      kind: 'done',
+      doneOn: state.today,
+      doneBy: memberId,
+    };
+    updateData((data) => ({
+      ...data,
+      choreEvents: [event, ...data.choreEvents],
+      chores: once
         ? data.chores.filter((candidate) => candidate.id !== choreId)
         : data.chores.map((candidate) =>
             candidate.id === choreId
@@ -46,40 +47,45 @@ export function completeChore(choreId: Id, doneBy?: Id): Id | null {
                 }
               : candidate,
           ),
-  }));
-  return event.id;
+    }));
+    return event.id;
+  });
 }
 
 /** Books a history entry onto another person; a rotation continues after that person. */
 export function reassignChoreEvent(eventId: Id, memberId: Id): void {
-  updateData((data) => {
-    const event = data.choreEvents.find((candidate) => candidate.id === eventId);
-    if (!event) return data;
-    return {
-      ...data,
-      choreEvents: data.choreEvents.map((candidate) =>
-        candidate.id === eventId ? { ...candidate, doneBy: memberId } : candidate,
-      ),
-      chores: data.chores.map((chore) =>
-        chore.id === event.choreId
-          ? { ...chore, nextAssigneeId: nextAssignee(chore, memberId) ?? chore.nextAssigneeId }
-          : chore,
-      ),
-    };
-  });
+  commit({ path: 'diff' }, () =>
+    updateData((data) => {
+      const event = data.choreEvents.find((candidate) => candidate.id === eventId);
+      if (!event) return data;
+      return {
+        ...data,
+        choreEvents: data.choreEvents.map((candidate) =>
+          candidate.id === eventId ? { ...candidate, doneBy: memberId } : candidate,
+        ),
+        chores: data.chores.map((chore) =>
+          chore.id === event.choreId
+            ? { ...chore, nextAssigneeId: nextAssignee(chore, memberId) ?? chore.nextAssigneeId }
+            : chore,
+        ),
+      };
+    }),
+  );
 }
 
 /** "Später": moves only this occurrence by one day. */
 export function postponeChore(choreId: Id): void {
   const today = getState().today;
-  updateData((data) => ({
-    ...data,
-    chores: data.chores.map((chore) => {
-      if (chore.id !== choreId) return chore;
-      const from = chore.nextDueOn && chore.nextDueOn > today ? chore.nextDueOn : today;
-      return { ...chore, nextDueOn: addDays(from, 1) };
-    }),
-  }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      chores: data.chores.map((chore) => {
+        if (chore.id !== choreId) return chore;
+        const from = chore.nextDueOn && chore.nextDueOn > today ? chore.nextDueOn : today;
+        return { ...chore, nextDueOn: addDays(from, 1) };
+      }),
+    })),
+  );
 }
 
 /** "Überspringen": recorded as skipped, not as done; the next regular date applies. */
@@ -95,15 +101,17 @@ export function skipChore(choreId: Id): void {
     doneOn: state.today,
     doneBy: state.currentMemberId,
   };
-  updateData((data) => ({
-    ...data,
-    choreEvents: [event, ...data.choreEvents],
-    chores: data.chores.map((candidate) =>
-      candidate.id === choreId
-        ? { ...candidate, nextDueOn: nextDueAfter(candidate, state.today) }
-        : candidate,
-    ),
-  }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      choreEvents: [event, ...data.choreEvents],
+      chores: data.chores.map((candidate) =>
+        candidate.id === choreId
+          ? { ...candidate, nextDueOn: nextDueAfter(candidate, state.today) }
+          : candidate,
+      ),
+    })),
+  );
 }
 
 export interface ChoreInput {
@@ -151,7 +159,9 @@ export function createChore(input: ChoreInput): Id {
           ? input.assignment.memberIds[0]
           : undefined,
   };
-  updateData((data) => ({ ...data, chores: [...data.chores, chore] }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({ ...data, chores: [...data.chores, chore] })),
+  );
   return chore.id;
 }
 
@@ -167,6 +177,8 @@ export function logSpontaneous(title: string): Id {
     doneOn: state.today,
     doneBy: state.currentMemberId,
   };
-  updateData((data) => ({ ...data, choreEvents: [event, ...data.choreEvents] }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({ ...data, choreEvents: [event, ...data.choreEvents] })),
+  );
   return event.id;
 }

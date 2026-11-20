@@ -9,7 +9,7 @@ import {
 } from '@housekeeping/core';
 
 import { indexById } from './queries';
-import { getData, getState, newId, updateData } from './store';
+import { commit, getData, getState, newId, updateData } from './store';
 
 export interface PlanEntryInput {
   /** null = "vorgemerkt", without a day. */
@@ -66,24 +66,26 @@ export function addPlanEntry(input: PlanEntryInput): Id {
   const siblings = data.planEntries.filter(
     (entry) => entry.date === input.date && entry.slotId === input.slotId,
   );
-  const entry: MealPlanEntry = {
-    id: newId('plan'),
-    date: input.date,
-    slotId: input.slotId,
-    kind: input.kind,
-    recipeId: input.recipeId,
-    restaurantId: input.restaurantId,
-    text: input.text?.trim(),
-    leftoversOfEntryId: input.leftoversOfEntryId,
-    eaterIds: input.eaterIds,
-    guests,
-    portions: input.portions ?? split?.portions ?? Math.max(1, input.eaterIds.length + guests),
-    variants: input.variants ?? split?.variants ?? [],
-    cookId: input.cookId,
-    sort: siblings.length,
-  };
-  updateData((current) => ({ ...current, planEntries: [...current.planEntries, entry] }));
-  return entry.id;
+  return commit({ path: 'diff' }, () => {
+    const entry: MealPlanEntry = {
+      id: newId('plan'),
+      date: input.date,
+      slotId: input.slotId,
+      kind: input.kind,
+      recipeId: input.recipeId,
+      restaurantId: input.restaurantId,
+      text: input.text?.trim(),
+      leftoversOfEntryId: input.leftoversOfEntryId,
+      eaterIds: input.eaterIds,
+      guests,
+      portions: input.portions ?? split?.portions ?? Math.max(1, input.eaterIds.length + guests),
+      variants: input.variants ?? split?.variants ?? [],
+      cookId: input.cookId,
+      sort: siblings.length,
+    };
+    updateData((current) => ({ ...current, planEntries: [...current.planEntries, entry] }));
+    return entry.id;
+  });
 }
 
 export function updatePlanEntry(
@@ -95,38 +97,55 @@ export function updatePlanEntry(
     >
   >,
 ): void {
-  updateData((data) => ({
-    ...data,
-    planEntries: data.planEntries.map((entry) =>
-      entry.id === entryId ? { ...entry, ...patch } : entry,
-    ),
-  }));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      planEntries: data.planEntries.map((entry) =>
+        entry.id === entryId ? { ...entry, ...patch } : entry,
+      ),
+    })),
+  );
 }
 
 /** Moves a dish to another day (or to "vorgemerkt" with date null) and optionally another meal. */
 export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): void {
-  updateData((data) => {
-    const entry = data.planEntries.find((candidate) => candidate.id === entryId);
-    if (!entry) return data;
-    const targetSlot = slotId ?? entry.slotId;
-    const siblings = data.planEntries.filter(
-      (candidate) =>
-        candidate.id !== entryId && candidate.date === date && candidate.slotId === targetSlot,
-    );
-    return {
-      ...data,
-      planEntries: data.planEntries.map((candidate) =>
-        candidate.id === entryId
-          ? { ...candidate, date, slotId: targetSlot, sort: siblings.length }
-          : candidate,
-      ),
-    };
-  });
+  commit({ path: 'diff' }, () =>
+    updateData((data) => {
+      const entry = data.planEntries.find((candidate) => candidate.id === entryId);
+      if (!entry) return data;
+      const targetSlot = slotId ?? entry.slotId;
+      const siblings = data.planEntries.filter(
+        (candidate) =>
+          candidate.id !== entryId && candidate.date === date && candidate.slotId === targetSlot,
+      );
+      return {
+        ...data,
+        planEntries: data.planEntries.map((candidate) =>
+          candidate.id === entryId
+            ? { ...candidate, date, slotId: targetSlot, sort: siblings.length }
+            : candidate,
+        ),
+      };
+    }),
+  );
 }
 
+/**
+ * Removes a dish. Leftovers of it that name no recipe go with it: without their dish they would
+ * mean nothing, and the database refuses leftovers without recipe and dish. Leftovers with a
+ * recipe stay (the server clears their link).
+ */
 export function removePlanEntry(entryId: Id): void {
-  updateData((data) => ({
-    ...data,
-    planEntries: data.planEntries.filter((entry) => entry.id !== entryId),
-  }));
+  const removed = new Set([
+    entryId,
+    ...getData()
+      .planEntries.filter((entry) => entry.leftoversOfEntryId === entryId && !entry.recipeId)
+      .map((entry) => entry.id),
+  ]);
+  commit({ path: 'diff', maxDeletes: { meal_plan_entries: removed.size } }, () =>
+    updateData((data) => ({
+      ...data,
+      planEntries: data.planEntries.filter((entry) => !removed.has(entry.id)),
+    })),
+  );
 }

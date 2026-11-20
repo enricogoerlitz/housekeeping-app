@@ -1,16 +1,15 @@
 import {
-  resetState,
-  setCurrentMember,
   setOffline,
-  snapshot,
+  signOut,
   switchHousehold,
   useActiveHouseholdId,
   useCurrentMember,
   useHouseholdsMap,
-  useMembers,
   useOffline,
+  useSyncState,
+  useToday,
 } from '@housekeeping/api';
-import { dietPreferenceLabel } from '@housekeeping/core';
+import { dietPreferenceLabel, toISODate } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -32,6 +31,14 @@ import {
 import { useRouter, type Href } from 'expo-router';
 import { View } from 'react-native';
 
+import {
+  CreateHouseholdForm,
+  InviteForm,
+  MemberList,
+  MyInvitations,
+  useSignedInEmail,
+} from '@/features/household/household-forms';
+import { authConfig } from '@/lib/auth-config';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
 import { AbsenceSection } from './absence-section';
@@ -55,7 +62,7 @@ export function SettingsScreen() {
     <>
       <AppearanceSection />
       <AiSection />
-      <DemoSection />
+      {authConfig.devLogin ? <DevSection /> : null}
     </>
   );
 
@@ -84,35 +91,52 @@ export function SettingsScreen() {
 
 function ProfileSection() {
   const me = useCurrentMember();
-  const members = useMembers();
-  const other = members.find((member) => member.id !== me.id);
+  const email = useSignedInEmail();
   return (
     <Section title="Profil" testID="settings-profile">
       <Stack gap={12}>
         <List>
           <ListRow
             title={me.name}
-            subtitle={`Ernährung: ${dietPreferenceLabel(me.dietPreference)}`}
+            subtitle={[email, `Ernährung: ${dietPreferenceLabel(me.dietPreference)}`]
+              .filter(Boolean)
+              .join(' · ')}
             leading={<Avatar name={me.name} color={me.color} size="m" />}
             testID="profile-current"
           />
         </List>
-        {other ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <Button
-            label={`Als ${other.name} ansehen`}
-            icon="users"
-            variant="secondary"
+            label="Abmelden"
+            icon="log-out"
+            variant="ghost"
             size="sm"
-            hint="Nur in der Vorschau: zeigt die App aus Sicht des anderen Mitglieds"
-            onPress={() => {
-              setCurrentMember(other.id);
-              toast.show({ message: `Du siehst die App jetzt als ${other.name}` });
-            }}
-            testID="switch-member"
+            hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
+            onPress={() => void signOut()}
+            testID="settings-sign-out"
           />
-        ) : null}
+          <SyncLine />
+        </View>
       </Stack>
     </Section>
+  );
+}
+
+/** „Zuletzt abgeglichen: heute, 16:58“ — quiet, only for the curious. */
+function SyncLine() {
+  const sync = useSyncState();
+  const today = useToday();
+  if (!sync.lastSyncedAt) return null;
+  const at = new Date(sync.lastSyncedAt);
+  const time = at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const day =
+    toISODate(at) === today
+      ? 'heute'
+      : at.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+  return (
+    <Text variant="caption" color="muted" testID="sync-last">
+      Zuletzt abgeglichen: {day}, {time}
+    </Text>
   );
 }
 
@@ -167,6 +191,13 @@ function HouseholdSection() {
             );
           })}
         </List>
+        <Stack gap={8}>
+          <Text variant="smallStrong">Mitglieder</Text>
+          <MemberList />
+        </Stack>
+        <InviteForm />
+        <MyInvitations />
+        <CreateHouseholdForm />
         <List>
           <LinkRow
             title="Märkte & Laufreihenfolge"
@@ -245,37 +276,19 @@ function AiSection() {
   );
 }
 
-function DemoSection() {
+/** Only in local development builds (EXPO_PUBLIC_DEV_LOGIN=1). */
+function DevSection() {
   const offline = useOffline();
   return (
-    <Section title="Demo" testID="settings-demo">
+    <Section title="Entwicklung" testID="settings-dev">
       <Stack gap={10}>
         <SwitchRow
           label="Offline simulieren"
-          description="Zeigt, was ohne Netz geht: Lesen und Abhaken."
+          description="Kappt die Verbindung zum Server: Lesen und Abhaken gehen weiter."
           value={offline}
           onValueChange={setOffline}
           testID="setting-offline"
         />
-        <Button
-          label="Demo zurücksetzen"
-          icon="refresh-cw"
-          variant="ghost"
-          size="sm"
-          onPress={() => {
-            const restore = snapshot();
-            resetState();
-            toast.show({
-              message: 'Beispieldaten zurückgesetzt',
-              actionLabel: 'Rückgängig',
-              onAction: restore,
-            });
-          }}
-          testID="demo-reset"
-        />
-        <Text variant="small" color="muted">
-          Diese Version zeigt Beispieldaten. Änderungen gehen beim Neuladen verloren.
-        </Text>
       </Stack>
     </Section>
   );

@@ -1,6 +1,14 @@
 import { Image, type ImageSource } from 'expo-image';
-import type { ReactNode } from 'react';
-import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  AccessibilityInfo,
+  Animated,
+  Platform,
+  Pressable,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { Button, Checkbox, focusRing } from './controls';
 import type { IconName } from './icons';
@@ -573,5 +581,80 @@ export function ProposalCard(props: ProposalCardProps) {
         </View>
       )}
     </Surface>
+  );
+}
+
+const TYPING_DOT = 7;
+
+/**
+ * "Is writing …": three softly pulsing dots in a bubble, e.g. while the assistant thinks. Static
+ * when the system asks for reduced motion. `label` is read by screen readers.
+ */
+export function TypingIndicator(props: { label: string; testID?: string }) {
+  const theme = useTheme();
+  const [reduceMotion, setReduceMotion] = useState(true);
+  const [phase] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduced) => {
+        if (!cancelled) setReduceMotion(reduced);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    const loop = Animated.loop(
+      Animated.timing(phase, {
+        toValue: 3,
+        duration: 1200,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [phase, reduceMotion]);
+
+  return (
+    <View
+      testID={props.testID}
+      accessibilityRole="progressbar"
+      accessibilityLabel={props.label}
+      style={{
+        flexDirection: 'row',
+        gap: 5,
+        alignSelf: 'flex-start',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderRadius: theme.shape.radius.card,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+      }}
+    >
+      {[0, 1, 2].map((index) => (
+        <Animated.View
+          key={index}
+          style={{
+            width: TYPING_DOT,
+            height: TYPING_DOT,
+            borderRadius: TYPING_DOT / 2,
+            backgroundColor: theme.colors.textMuted,
+            opacity: reduceMotion
+              ? 0.6
+              : phase.interpolate({
+                  inputRange: [0, index, index + 0.5, index + 1, 3],
+                  outputRange: [0.3, 0.3, 1, 0.3, 0.3],
+                  extrapolate: 'clamp',
+                }),
+          }}
+        />
+      ))}
+    </View>
   );
 }

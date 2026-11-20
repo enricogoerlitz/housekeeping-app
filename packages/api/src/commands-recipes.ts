@@ -66,87 +66,125 @@ export function updateRecipe(
 export function addIngredientsFromText(recipeId: Id, text: string, variantId?: Id): number {
   const parsed = parseIngredientBlock(text);
   if (parsed.length === 0) return 0;
-  const ingredients: RecipeIngredient[] = parsed.map((line) => {
-    const { article } = resolveArticle(line.name);
-    return {
-      id: newId('ing'),
-      articleId: article.id,
-      name: line.name,
-      amount: line.amount,
-      variantId,
-      shoppingRule: article.isPantry ? 'count' : line.amount?.unit ? 'recipeAmount' : 'count',
-    };
+  // New articles ride in the same change as the recipe.
+  return commit({ path: 'diff' }, () => {
+    const ingredients: RecipeIngredient[] = parsed.map((line) => {
+      const { article } = resolveArticle(line.name);
+      return {
+        id: newId('ing'),
+        articleId: article.id,
+        name: line.name,
+        amount: line.amount,
+        variantId,
+        shoppingRule: article.isPantry ? 'count' : line.amount?.unit ? 'recipeAmount' : 'count',
+      };
+    });
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      ingredients: [...recipe.ingredients, ...ingredients],
+    }));
+    return ingredients.length;
   });
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    ingredients: [...recipe.ingredients, ...ingredients],
-  }));
-  return ingredients.length;
 }
 
 /** Sets the default shopping note of an ingredient ("Philadelphia"); empty text removes it. */
 export function setIngredientShoppingNote(recipeId: Id, ingredientId: Id, note: string): void {
   const trimmed = note.trim();
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    ingredients: recipe.ingredients.map((ingredient) =>
-      ingredient.id === ingredientId
-        ? { ...ingredient, shoppingNote: trimmed || undefined }
-        : ingredient,
-    ),
-  }));
+  commit({ path: 'diff' }, () =>
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      ingredients: recipe.ingredients.map((ingredient) =>
+        ingredient.id === ingredientId
+          ? { ...ingredient, shoppingNote: trimmed || undefined }
+          : ingredient,
+      ),
+    })),
+  );
 }
 
 export function removeIngredient(recipeId: Id, ingredientId: Id): void {
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    ingredients: recipe.ingredients.filter((ingredient) => ingredient.id !== ingredientId),
-  }));
+  commit({ path: 'diff' }, () =>
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      ingredients: recipe.ingredients.filter((ingredient) => ingredient.id !== ingredientId),
+    })),
+  );
 }
 
 /** Replaces one ingredient's article and amount text (used by assistant proposals). */
 export function replaceIngredient(recipeId: Id, ingredientId: Id, line: string): void {
   const [parsed] = parseIngredientBlock(line);
   if (!parsed) throw new Error('Die Zutat fehlt.');
-  const { article } = resolveArticle(parsed.name);
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    ingredients: recipe.ingredients.map((ingredient) =>
-      ingredient.id === ingredientId
-        ? {
-            ...ingredient,
-            articleId: article.id,
-            name: parsed.name,
-            amount: parsed.amount ?? ingredient.amount,
-          }
-        : ingredient,
-    ),
-  }));
+  commit({ path: 'diff' }, () => {
+    const { article } = resolveArticle(parsed.name);
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      ingredients: recipe.ingredients.map((ingredient) =>
+        ingredient.id === ingredientId
+          ? {
+              ...ingredient,
+              articleId: article.id,
+              name: parsed.name,
+              amount: parsed.amount ?? ingredient.amount,
+            }
+          : ingredient,
+      ),
+    }));
+  });
 }
 
 export function addStep(recipeId: Id, text: string): void {
   const trimmed = text.trim();
   if (!trimmed) return;
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    steps: [...recipe.steps, { id: newId('step'), text: trimmed }],
-  }));
+  commit({ path: 'diff' }, () =>
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      steps: [...recipe.steps, { id: newId('step'), text: trimmed }],
+    })),
+  );
 }
 
+/** Favourites are per person: their own RPC; undo sends the opposite. */
 export function toggleFavorite(recipeId: Id): void {
   const me = getState().currentMemberId;
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    favoriteOf: recipe.favoriteOf.includes(me)
-      ? recipe.favoriteOf.filter((id) => id !== me)
-      : [...recipe.favoriteOf, me],
-  }));
+  const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) return;
+  const favorite = !recipe.favoriteOf.includes(me);
+  commit(
+    {
+      path: 'rpc',
+      send: (transport) => transport.setRecipeFavorite(recipeId, favorite),
+      inverse: (transport) => transport.setRecipeFavorite(recipeId, !favorite),
+    },
+    () =>
+      patchRecipe(recipeId, (current) => ({
+        ...current,
+        favoriteOf: favorite
+          ? [...current.favoriteOf, me]
+          : current.favoriteOf.filter((id) => id !== me),
+      })),
+  );
 }
 
+/** Ratings are per person: their own RPC; undo restores the previous rating (or none). */
 export function rateRecipe(recipeId: Id, stars: number): void {
   const me = getState().currentMemberId;
+  const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) return;
   const value = Math.max(1, Math.min(5, Math.round(stars)));
-  patchRecipe(recipeId, (recipe) => ({ ...recipe, ratings: { ...recipe.ratings, [me]: value } }));
+  const previous = recipe.ratings[me] ?? null;
+  commit(
+    {
+      path: 'rpc',
+      send: (transport) => transport.setRecipeRating(recipeId, value),
+      inverse: (transport) => transport.setRecipeRating(recipeId, previous),
+    },
+    () =>
+      patchRecipe(recipeId, (current) => ({
+        ...current,
+        ratings: { ...current.ratings, [me]: value },
+      })),
+  );
 }
 
 export interface StarterRecipeInfo {
@@ -180,7 +218,9 @@ export function adoptStarterRecipes(keys: string[]): number {
     .filter((seed) => keys.includes(seed.key) && !titles.has(seed.title))
     .map((seed) => ({ ...buildRecipe(seed, data.articles, nowISO()), id: newId('rec') }));
   if (adopted.length === 0) return 0;
-  updateData((current) => ({ ...current, recipes: [...adopted, ...current.recipes] }));
+  commit({ path: 'diff' }, () =>
+    updateData((current) => ({ ...current, recipes: [...adopted, ...current.recipes] })),
+  );
   return adopted.length;
 }
 

@@ -5,6 +5,12 @@
 import {
   compareTimestamps,
   queueEffect,
+  type AiSearchRequest,
+  type AiSearchResult,
+  type AssistantReply,
+  type AssistantRequest,
+  type ResolveMapsLinkReply,
+  type SpeechTokenReply,
   type PullRequest,
   type Row,
   type SmallRow,
@@ -38,7 +44,28 @@ type RpcName =
   | 'clear_checked_items'
   | 'remove_contributions'
   | 'restore_cleared_items'
+  | 'set_recipe_favorite'
+  | 'set_recipe_rating'
+  | 'set_restaurant_favorite'
+  | 'set_restaurant_rating'
+  | 'set_feedback_vote'
+  | 'create_household'
+  | 'invite_member'
+  | 'accept_invitation'
+  | 'decline_invitation'
+  | 'remove_member'
+  | 'resolve-maps-link'
+  | 'ai-assistant'
+  | 'ai-search'
+  | 'speech-token'
   | 'sync_pull';
+
+/** How the fake AI edge functions answer; an unset one answers `ai_unavailable` (503). */
+export interface FakeAi {
+  assistant?: (request: AssistantRequest) => AssistantReply;
+  search?: (request: AiSearchRequest) => AiSearchResult;
+  speechToken?: () => SpeechTokenReply;
+}
 
 interface FailureRule {
   fn: RpcName;
@@ -61,6 +88,10 @@ export interface FakeServer {
   failNext(fn: RpcName, error: TransportError, options?: { afterApply?: boolean }): void;
   /** Like pg_cron: forgets deletions older than `before`. */
   purgeDeletionsBefore(before: string): void;
+  /** The place the edge function `resolve-maps-link` answers for a short link. */
+  setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
+  /** The answers of the AI edge functions. */
+  setAi(ai: FakeAi): void;
   calls: { userId: string; fn: string }[];
 }
 
@@ -81,7 +112,42 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
 };
 
+/**
+ * Foreign keys the commands must respect (supabase/migrations, T3): a reference must exist, and a
+ * referenced row is protected (restrict) or the reference is cleared (set null).
+ */
+const REFERENCES: {
+  table: string;
+  column: string;
+  target: string;
+  onDelete: 'restrict' | 'set null';
+}[] = [
+  { table: 'meal_plan_entries', column: 'recipe_id', target: 'recipes', onDelete: 'restrict' },
+  {
+    table: 'meal_plan_entries',
+    column: 'restaurant_id',
+    target: 'restaurants',
+    onDelete: 'restrict',
+  },
+  {
+    table: 'meal_plan_entries',
+    column: 'leftovers_of_entry_id',
+    target: 'meal_plan_entries',
+    onDelete: 'set null',
+  },
+  { table: 'shopping_items', column: 'article_id', target: 'articles', onDelete: 'restrict' },
+  { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
+];
+
 const reject = (code: string) => new TransportError('permanent', code, 400);
+const foreignKey = () => new TransportError('permanent', '23503', 409);
+
+/** meal_plan_entries_kind_complete, for the case a cleared reference can break. */
+function checkPlanEntry(row: Row): void {
+  if (row.kind === 'leftovers' && row.recipe_id == null && row.leftovers_of_entry_id == null) {
+    throw new TransportError('permanent', '23514', 400);
+  }
+}
 
 export function createFakeServer(): FakeServer {
   let lastMicros = 0;
@@ -94,6 +160,9 @@ export function createFakeServer(): FakeServer {
   const subscribers = new Map<string, Set<() => void>>();
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
+  const mapsLinks = new Map<string, ResolveMapsLinkReply>();
+  let ai: FakeAi = {};
+  const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
 
   /** Server clock with microseconds, strictly increasing like `now()` in separate transactions. */
   function now(): string {
@@ -168,18 +237,36 @@ export function createFakeServer(): FakeServer {
     return { ...tables, [table]: { ...tables[table], [row.id]: row } };
   }
 
-  function withoutRows(tables: TableRows, table: string, ids: Iterable<string>): TableRows {
+  /** Deletes rows like the database; `enforce` false = an administrator ignoring restrict. */
+  function withoutRows(
+    tables: TableRows,
+    table: string,
+    ids: Iterable<string>,
+    enforce = true,
+  ): TableRows {
     let next = tables;
     for (const id of ids) {
       if (!next[table]?.[id]) continue;
       const kept = { ...next[table] };
       delete kept[id];
       next = { ...next, [table]: kept };
+      for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
+        for (const row of Object.values(next[reference.table] ?? {})) {
+          if (row[reference.column] !== id) continue;
+          if (reference.onDelete === 'restrict') {
+            if (enforce) throw foreignKey();
+            continue;
+          }
+          const cleared = { ...row, [reference.column]: null };
+          if (enforce && reference.table === 'meal_plan_entries') checkPlanEntry(cleared);
+          next = withRow(next, reference.table, cleared);
+        }
+      }
       for (const cascade of CASCADES[table] ?? []) {
         const dependent = Object.values(next[cascade.table] ?? {})
           .filter((row) => row[cascade.column] === id)
           .map((row) => row.id);
-        next = withoutRows(next, cascade.table, dependent);
+        next = withoutRows(next, cascade.table, dependent, enforce);
       }
     }
     return next;
@@ -191,6 +278,18 @@ export function createFakeServer(): FakeServer {
   }
 
   // ---------- apply_changes ----------
+
+  function checkReferences(
+    tables: TableRows,
+    table: string,
+    written: Row | Record<string, unknown>,
+  ) {
+    for (const reference of REFERENCES.filter((candidate) => candidate.table === table)) {
+      const value = written[reference.column];
+      if (value == null) continue;
+      if (!tables[reference.target]?.[String(value)]) throw foreignKey();
+    }
+  }
 
   function checkColumns(table: string, columns: string[], insert: boolean): void {
     if (!Object.hasOwn(WRITABLE_COLUMNS, table)) throw reject('invalid_change');
@@ -334,6 +433,7 @@ export function createFakeServer(): FakeServer {
             ...op.row,
             ...(op.table === 'feedback' ? { author_id: userId } : {}),
           });
+          checkReferences(tables, op.table, op.row);
         } else if (op.kind === 'patch') {
           checkColumns(op.table, Object.keys(op.changes), false);
           if (op.table === 'households') {
@@ -344,6 +444,7 @@ export function createFakeServer(): FakeServer {
           const row = tables[op.table]?.[op.id];
           if (!row) throw new TransportError('permanent', 'row_not_found', 404);
           tables = withRow(tables, op.table, { ...row, ...op.changes });
+          checkReferences(tables, op.table, op.changes);
         } else {
           if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || op.table === 'households') {
             throw reject('invalid_change');
@@ -450,13 +551,6 @@ export function createFakeServer(): FakeServer {
   // ---------- the transport per user ----------
 
   function transport(userId: string): Transport {
-    const plain = <T>(body: () => T) =>
-      (async () => {
-        calls.push({ userId, fn: 'other' });
-        await Promise.resolve();
-        return body();
-      })();
-
     return {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
@@ -618,7 +712,7 @@ export function createFakeServer(): FakeServer {
         }),
 
       setRecipeFavorite: (recipeId, favorite) =>
-        plain(() =>
+        run(userId, 'set_recipe_favorite', () =>
           setMemberRow(
             userId,
             'recipe_favorites',
@@ -629,7 +723,7 @@ export function createFakeServer(): FakeServer {
           ),
         ),
       setRecipeRating: (recipeId, stars) =>
-        plain(() =>
+        run(userId, 'set_recipe_rating', () =>
           setMemberRow(
             userId,
             'recipe_ratings',
@@ -640,7 +734,7 @@ export function createFakeServer(): FakeServer {
           ),
         ),
       setRestaurantFavorite: (restaurantId, favorite) =>
-        plain(() =>
+        run(userId, 'set_restaurant_favorite', () =>
           setMemberRow(
             userId,
             'restaurant_favorites',
@@ -651,7 +745,7 @@ export function createFakeServer(): FakeServer {
           ),
         ),
       setRestaurantRating: (restaurantId, stars) =>
-        plain(() =>
+        run(userId, 'set_restaurant_rating', () =>
           setMemberRow(
             userId,
             'restaurant_ratings',
@@ -662,7 +756,7 @@ export function createFakeServer(): FakeServer {
           ),
         ),
       setFeedbackVote: (feedbackId, voted) =>
-        plain(() =>
+        run(userId, 'set_feedback_vote', () =>
           setMemberRow(
             userId,
             'feedback_votes',
@@ -674,7 +768,7 @@ export function createFakeServer(): FakeServer {
         ),
 
       createHousehold: (name) =>
-        plain(() => {
+        run(userId, 'create_household', () => {
           const trimmed = name.trim();
           if (!trimmed || trimmed.length > 80) throw reject('invalid_name');
           const id = crypto.randomUUID();
@@ -711,7 +805,7 @@ export function createFakeServer(): FakeServer {
         }),
 
       inviteMember: (householdId, email) =>
-        plain(() => {
+        run(userId, 'invite_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
           const address = email.trim().toLowerCase();
@@ -738,7 +832,7 @@ export function createFakeServer(): FakeServer {
         }),
 
       acceptInvitation: (invitationId) =>
-        plain(() => {
+        run(userId, 'accept_invitation', () => {
           const email = profiles.get(userId)?.email;
           const invitation = invitations.find(
             (candidate) => candidate.id === invitationId && candidate.email === email,
@@ -762,7 +856,7 @@ export function createFakeServer(): FakeServer {
         }),
 
       declineInvitation: (invitationId) =>
-        plain(() => {
+        run(userId, 'decline_invitation', () => {
           const email = profiles.get(userId)?.email;
           const before = invitations.length;
           invitations = invitations.filter(
@@ -774,7 +868,7 @@ export function createFakeServer(): FakeServer {
         }),
 
       removeMember: (householdId, profileId) =>
-        plain(() => {
+        run(userId, 'remove_member', () => {
           if (!isMember(userId, householdId))
             throw new TransportError('permanent', 'not_member', 403);
           if (!isMember(profileId, householdId)) {
@@ -787,6 +881,28 @@ export function createFakeServer(): FakeServer {
             (m) => !(m.household_id === householdId && m.profile_id === profileId),
           );
           notify(householdId);
+        }),
+
+      resolveMapsLink: (url) =>
+        run(userId, 'resolve-maps-link', () => {
+          const reply = mapsLinks.get(url);
+          if (!reply) throw new TransportError('permanent', 'not_a_maps_link', 422);
+          return reply;
+        }),
+      askAssistant: (request) =>
+        run(userId, 'ai-assistant', () => {
+          if (!ai.assistant) throw aiUnavailable();
+          return ai.assistant(request);
+        }),
+      aiSearch: (request) =>
+        run(userId, 'ai-search', () => {
+          if (!ai.search) throw aiUnavailable();
+          return ai.search(request);
+        }),
+      speechToken: () =>
+        run(userId, 'speech-token', () => {
+          if (!ai.speechToken) throw aiUnavailable();
+          return ai.speechToken();
         }),
 
       syncPull: (request) =>
@@ -863,12 +979,18 @@ export function createFakeServer(): FakeServer {
     },
     deleteRow(householdId, table, id) {
       const before = data.get(householdId) ?? {};
-      commit(householdId, before, withoutRows(before, table, [id]));
+      commit(householdId, before, withoutRows(before, table, [id], false));
     },
     rows: (householdId, table) => Object.values(data.get(householdId)?.[table] ?? {}),
     row: (householdId, table, id) => data.get(householdId)?.[table]?.[id],
     failNext(fn, error, options = {}) {
       failures.push({ fn, error, afterApply: options.afterApply ?? false });
+    },
+    setMapsLink(url, reply) {
+      mapsLinks.set(url, reply);
+    },
+    setAi(next) {
+      ai = next;
     },
     purgeDeletionsBefore(before) {
       deletions = deletions.filter(

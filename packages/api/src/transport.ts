@@ -1,7 +1,17 @@
 // The wire between the device and the server: exactly the RPC contracts of spec 0003
 // (tmp/brief/rpc-contracts.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
-import type { PullRequest, PullResult, RowOp } from '@housekeeping/core';
+import type {
+  AiSearchRequest,
+  AiSearchResult,
+  AssistantReply,
+  AssistantRequest,
+  PullRequest,
+  PullResult,
+  ResolveMapsLinkReply,
+  RowOp,
+  SpeechTokenReply,
+} from '@housekeeping/core';
 import { z } from 'zod';
 
 // ---------- Errors ----------
@@ -158,6 +168,15 @@ export interface Transport {
   acceptInvitation(invitationId: string): Promise<string>;
   declineInvitation(invitationId: string): Promise<void>;
   removeMember(householdId: string, profileId: string): Promise<void>;
+  // Edge functions
+  /** Follows a short map link on the server (`resolve-maps-link`); `not_a_maps_link` when none. */
+  resolveMapsLink(url: string): Promise<ResolveMapsLinkReply>;
+  /** The assistant (`ai-assistant`): an answer, maybe with a proposal; it never changes data. */
+  askAssistant(request: AssistantRequest): Promise<AssistantReply>;
+  /** The AI recipe search (`ai-search`). */
+  aiSearch(request: AiSearchRequest): Promise<AiSearchResult>;
+  /** A short-lived token for streaming speech to Azure (`speech-token`); never the key. */
+  speechToken(): Promise<SpeechTokenReply>;
   // Sync
   syncPull(request: PullRequest): Promise<PullResult>;
   /** Realtime: calls `onSignal` when the household changed. Only a signal, never data. */
@@ -196,6 +215,10 @@ export function switchable(inner: Transport): SwitchableTransport {
     acceptInvitation: guard(inner.acceptInvitation.bind(inner)),
     declineInvitation: guard(inner.declineInvitation.bind(inner)),
     removeMember: guard(inner.removeMember.bind(inner)),
+    resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
+    askAssistant: guard(inner.askAssistant.bind(inner)),
+    aiSearch: guard(inner.aiSearch.bind(inner)),
+    speechToken: guard(inner.speechToken.bind(inner)),
     syncPull: guard(inner.syncPull.bind(inner)),
     subscribe: (householdId, onSignal) =>
       inner.subscribe(householdId, () => {

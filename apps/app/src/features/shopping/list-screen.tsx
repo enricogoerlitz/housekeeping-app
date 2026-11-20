@@ -1,6 +1,7 @@
 import {
   addShoppingItemFromText,
   clearCheckedItems,
+  dictatedItems,
   setItemChecked,
   simulateDictation,
   snapshot,
@@ -11,6 +12,7 @@ import {
   useShoppingItems,
   useShoppingLists,
   useStores,
+  useAiSimulated,
   useToday,
   type DictatedItem,
 } from '@housekeeping/api';
@@ -32,6 +34,7 @@ import {
   GroupLabel,
   Icon,
   List,
+  Notice,
   Row,
   Screen,
   Stack,
@@ -45,8 +48,9 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { ProfileButton } from '@/features/shell/profile-button';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
+import { useDictation } from '@/lib/use-dictation';
 
 import { ListSwitchSheet, StoreSheet } from './list-sheets';
 import { PantryCheckSheet } from './pantry-check-sheet';
@@ -113,6 +117,8 @@ function balance(groups: ItemGroup[]): [ItemGroup[], ItemGroup[]] {
 
 interface Dictation {
   transcript: string;
+  /** The sample of spec 0001 (demo mode), labelled as such. */
+  simulated: boolean;
   /** Index stays the original position, so the remaining rows keep their ids. */
   items: { index: number; item: DictatedItem }[];
 }
@@ -135,6 +141,9 @@ export function ListScreen() {
   const [pantryCheck, setPantryCheck] = useState(false);
   const [showDone, setShowDone] = useState(true);
   const [dictation, setDictation] = useState<Dictation | undefined>();
+  const simulated = useAiSimulated();
+  const speech = useDictation();
+  const [nothingHeard, setNothingHeard] = useState(false);
 
   const list =
     lists.find((candidate) => candidate.id === chosenListId) ??
@@ -162,12 +171,36 @@ export function ListScreen() {
     ),
   ];
 
+  const showDictated = (transcript: string, dictated: DictatedItem[], sample: boolean) => {
+    setNothingHeard(dictated.length === 0);
+    setDictation(
+      dictated.length > 0
+        ? {
+            transcript,
+            simulated: sample,
+            items: dictated.map((item, index) => ({ index, item })),
+          }
+        : undefined,
+    );
+  };
+  // Demo: the sample of spec 0001. Backend (web): the first press listens, the second stops and
+  // turns the transcript into proposal rows (AC-028).
   const dictate = () => {
-    const result = simulateDictation();
-    setDictation({
-      transcript: result.transcript,
-      items: result.items.map((item, index) => ({ index, item })),
-    });
+    if (simulated) {
+      const result = simulateDictation();
+      showDictated(result.transcript, result.items, true);
+      return;
+    }
+    if (speech.status === 'listening') {
+      void speech
+        .stop()
+        .then((transcript) => showDictated(transcript, dictatedItems(transcript), false));
+      return;
+    }
+    if (speech.status !== 'idle') return;
+    setNothingHeard(false);
+    setDictation(undefined);
+    speech.start();
   };
   const dropGhost = (index: number) => {
     if (!dictation) return;
@@ -190,7 +223,7 @@ export function ListScreen() {
     toast.show({
       message: count === 1 ? '1 Posten geleert' : `${count} Posten geleert`,
       actionLabel: 'Rückgängig',
-      onAction: restore,
+      onAction: undoAction(restore),
     });
   };
 
@@ -290,10 +323,46 @@ export function ListScreen() {
     </Row>
   );
 
+  const live =
+    speech.status !== 'idle' ? (
+      <View style={{ marginTop: 12, gap: 8 }} testID="dictation-live">
+        <Row gap={8}>
+          <Icon name="mic" size={17} color="accent" />
+          <Text variant="small" color="muted" style={{ flexShrink: 1 }}>
+            {speech.status === 'starting'
+              ? 'Mikrofon wird vorbereitet …'
+              : speech.transcript
+                ? `„${speech.transcript}“`
+                : 'Ich höre zu …'}
+          </Text>
+        </Row>
+        {speech.status === 'listening' ? (
+          <Button
+            label="Fertig"
+            icon="check"
+            size="sm"
+            variant="secondary"
+            onPress={dictate}
+            testID="dictation-stop"
+          />
+        ) : null}
+      </View>
+    ) : speech.error || nothingHeard ? (
+      <View style={{ marginTop: 12 }}>
+        <Notice
+          icon="mic"
+          text={speech.error ?? 'Nichts verstanden – versuch es gern noch einmal.'}
+          testID="dictation-error"
+        />
+      </View>
+    ) : null;
+
   const ghosts = dictation ? (
     <View style={{ marginTop: 12, gap: 4 }} testID="dictation">
       <Text variant="small" color="muted" testID="dictation-transcript">
-        „{dictation.transcript}“ · Beispiel – Spracheingabe ist noch nicht angeschlossen
+        {dictation.simulated
+          ? `„${dictation.transcript}“ · Beispiel – Spracheingabe ist noch nicht angeschlossen`
+          : `„${dictation.transcript}“`}
       </Text>
       {dictation.items.map(({ index, item }) => (
         <GhostRow
@@ -325,7 +394,7 @@ export function ListScreen() {
   ) : null;
 
   let body: ReactNode;
-  if (open.length === 0 && done.length === 0 && !dictation) {
+  if (open.length === 0 && done.length === 0 && !dictation && !live) {
     body = (
       <EmptyState
         icon="shopping-basket"
@@ -347,6 +416,7 @@ export function ListScreen() {
     const [left, right] = balance(groups);
     body = (
       <>
+        {live}
         {ghosts}
         {open.length === 0 ? (
           <Text color="muted" style={{ marginTop: 16 }}>
@@ -384,6 +454,8 @@ export function ListScreen() {
                 label="Erledigt leeren"
                 variant="link"
                 size="sm"
+                disabled={online.disabled}
+                hint={online.hint}
                 testID="clear-done"
                 onPress={clearDone}
               />
@@ -405,7 +477,15 @@ export function ListScreen() {
     <Screen
       clearFab={false}
       footer={
-        <SmartComposer listId={list.id} onDictate={dictate} onAssistant={() => assistant.open()} />
+        <SmartComposer
+          listId={list.id}
+          onDictate={dictate}
+          dictating={speech.status === 'listening'}
+          dictateDisabled={
+            online.disabled || speech.status === 'starting' || speech.status === 'stopping'
+          }
+          onAssistant={() => assistant.open()}
+        />
       }
     >
       {header}

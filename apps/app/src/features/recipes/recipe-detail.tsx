@@ -46,7 +46,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 
 import { IngredientsPasteSheet } from './ingredients-paste-sheet';
@@ -133,7 +133,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
     toast.show({
       message: `${added.articleName} steht auf der Liste`,
       actionLabel: 'Rückgängig',
-      onAction: restore,
+      onAction: undoAction(restore),
     });
   };
 

@@ -252,7 +252,9 @@ export function needsFullLoad(
 
 /**
  * Records the households the user belongs to. Data of every other household is dropped from the
- * cache, including small-table rows carrying its `household_id` (AC-012).
+ * cache, including small-table rows carrying its `household_id` (AC-012). Exception: invitations.
+ * RLS shows a non-member only the open invitations to their own address, which they need to
+ * accept or decline.
  */
 export function applyMemberships(cache: SyncCache, householdIds: string[]): SyncCache {
   const members = new Set(householdIds);
@@ -262,9 +264,12 @@ export function applyMemberships(cache: SyncCache, householdIds: string[]): Sync
   }
   const small: Record<string, SmallRow[]> = {};
   for (const [table, rows] of Object.entries(cache.small)) {
-    small[table] = rows.filter(
-      (row) => typeof row.household_id !== 'string' || members.has(row.household_id),
-    );
+    small[table] =
+      table === 'household_invitations'
+        ? rows
+        : rows.filter(
+            (row) => typeof row.household_id !== 'string' || members.has(row.household_id),
+          );
   }
   return { ...cache, householdIds: [...members], small, households };
 }

@@ -1,11 +1,9 @@
 import {
-  aiSearch,
   useArticlesById,
   useCurrentMember,
   useMembers,
   useRecipes,
   useToday,
-  type AiSearchResult,
 } from '@housekeeping/api';
 import {
   filterRecipes,
@@ -21,12 +19,15 @@ import {
   EmptyState,
   Icon,
   IconButton,
+  Notice,
   Row,
   Screen,
   ScreenHeader,
   Segmented,
+  Stack,
   Text,
   TextField,
+  TypingIndicator,
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -44,6 +45,7 @@ import { NewRecipeSheet } from './new-recipe-sheet';
 import { RecipeDetail } from './recipe-detail';
 import { RecipeGrid } from './recipe-grid';
 import { StarterSheet } from './starter-sheet';
+import { useAiSearch } from './use-ai-search';
 
 type FilterKey = 'favorites' | 'fast' | 'vegetarian' | 'vegan' | 'fits-all' | 'rare';
 
@@ -74,12 +76,6 @@ const FOOD_VIEWS: { value: FoodView; label: string }[] = [
   { value: 'restaurants', label: 'Restaurants' },
 ];
 
-interface AiState {
-  query: string;
-  disabledChips: string[];
-  result: AiSearchResult;
-}
-
 /**
  * "Essen": recipes or restaurants (spec 0002, AC-001). Recipe list with search, filters and sort;
  * on wide screens list and recipe side by side.
@@ -100,7 +96,6 @@ export function RecipesScreen() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<FilterKey[]>([]);
   const [sort, setSort] = useState<RecipeSort>('recent');
-  const [ai, setAi] = useState<AiState | undefined>(undefined);
   const [newOpen, setNewOpen] = useState(false);
   const [starterOpen, setStarterOpen] = useState(false);
 
@@ -158,20 +153,11 @@ export function RecipesScreen() {
   // With a query the search ranking wins; without one the chosen sort applies.
   const results = query.trim() ? filtered : sortRecipes(filtered, sort);
 
-  const runAi = (disabledChips: string[]) => {
-    if (!query.trim() || online.disabled) return;
-    setAi({ query, disabledChips, result: aiSearch(query, disabledChips) });
-  };
-  const aiVisible =
-    settings.aiSearch && ai !== undefined && ai.query === query && query.trim() !== '';
+  // With the switch on, a typed query is searched after a short pause; off, nothing is sent.
+  const { state: ai, runNow: runAi } = useAiSearch(settings.aiSearch && !online.disabled, query);
+  const aiVisible = settings.aiSearch && ai.status !== 'idle' && query.trim() !== '';
 
-  const toggleAi = () => {
-    const next = !settings.aiSearch;
-    settings.update({ aiSearch: next });
-    // Switching it on is an explicit request: a typed query is searched right away.
-    if (next && query.trim() && !online.disabled)
-      setAi({ query, disabledChips: [], result: aiSearch(query, []) });
-  };
+  const toggleAi = () => settings.update({ aiSearch: !settings.aiSearch });
 
   const header = (
     <ScreenHeader
@@ -347,7 +333,7 @@ export function RecipesScreen() {
         />
       </Row>
 
-      {aiVisible && ai ? (
+      {aiVisible && ai.status === 'done' ? (
         <View testID="ai-search-results">
           <AiSearchPanel
             result={ai.result}
@@ -357,6 +343,22 @@ export function RecipesScreen() {
             onOpen={open}
             compact={compact}
           />
+        </View>
+      ) : aiVisible && ai.status === 'error' ? (
+        <Stack gap={8} style={{ marginBottom: 16 }}>
+          <Notice icon="circle-alert" text={ai.message} testID="ai-search-error" />
+          <Button
+            label="Nochmal suchen"
+            icon="refresh-cw"
+            variant="ghost"
+            size="sm"
+            onPress={() => runAi(ai.disabledChips)}
+            testID="ai-search-retry"
+          />
+        </Stack>
+      ) : aiVisible ? (
+        <View style={{ marginBottom: 16 }}>
+          <TypingIndicator label="Die KI sucht …" testID="ai-search-loading" />
         </View>
       ) : results.length === 0 ? (
         <EmptyState

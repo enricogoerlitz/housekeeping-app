@@ -30,7 +30,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 /** Flexible chores show up on "Heute" once this share of their interval has passed. */
 const FLEXIBLE_DUE_FROM = 0.8;
@@ -76,7 +76,7 @@ export function TodayChores() {
     toast.show({
       message: `${chore.title} erledigt`,
       actionLabel: 'Rückgängig',
-      onAction: restore,
+      onAction: undoAction(restore),
     });
   };
 

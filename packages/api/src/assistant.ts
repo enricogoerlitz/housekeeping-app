@@ -1,9 +1,12 @@
 import {
   addDays,
   filterRecipes,
+  formatAmount,
   isoWeekday,
   normalizeText,
+  parseSmartInput,
   searchRecipes,
+  splitDictation,
   weekdayShort,
   type Id,
   type ISODate,
@@ -14,9 +17,11 @@ import {
 import { completeChore, logSpontaneous } from './commands-chores';
 import { addPlanEntry, defaultEaterIds, type PlanEntryInput } from './commands-plan';
 import { replaceIngredient, updateRecipe } from './commands-recipes';
-import { addShoppingItemFromText } from './commands-shopping';
+import { diffHousehold, sendable } from './changes';
+import { addContributionOps, addTextLocally } from './list-additions';
 import { indexById } from './queries';
-import { getData, getState, newId } from './store';
+import { commit, getData, getState, isBackendMode, newId } from './store';
+import type { AddEntry, ChangeOp } from './transport';
 
 // The assistant of spec 0001 is simulated: fixed sample requests with prepared answers.
 // There is no model and no network call here. What it already shows for real: the assistant only
@@ -62,17 +67,14 @@ export interface AssistantReply {
   consulted?: string;
 }
 
-/** Runs one command of a proposal through the normal command functions. */
-export function runAssistantCommand(command: AssistantCommand): void {
+/** A command that changes rows (everything but list additions), through the normal commands. */
+function runRowCommand(command: Exclude<AssistantCommand, { type: 'addShoppingItems' }>): void {
   switch (command.type) {
     case 'setRecipeServings':
       updateRecipe(command.recipeId, { servings: command.servings });
       return;
     case 'replaceIngredient':
       replaceIngredient(command.recipeId, command.ingredientId, command.line);
-      return;
-    case 'addShoppingItems':
-      for (const text of command.texts) addShoppingItemFromText(command.listId, text);
       return;
     case 'addPlanEntry':
       addPlanEntry(command.input);
@@ -86,10 +88,52 @@ export function runAssistantCommand(command: AssistantCommand): void {
   }
 }
 
-/** Accepting a proposal: runs the chosen parts. Returns how many were applied. */
+/**
+ * Runs commands as one change (ADR-0011, AC-026): the same commands the screens use, but in
+ * backend mode sent as one `apply_changes` call — the row changes, then the list additions as
+ * `add_contributions` (merged on the server). Either all of it lands or none.
+ */
+function runCommands(commands: AssistantCommand[]): void {
+  if (commands.length === 0) return;
+  commit<ChangeOp[]>(
+    {
+      path: 'rpc',
+      send: (transport, context) => transport.applyChanges(context.householdId, context.result),
+    },
+    () => {
+      const before = getData();
+      for (const command of commands) {
+        if (command.type !== 'addShoppingItems') runRowCommand(command);
+      }
+      const rows = getData();
+      const additions: { listId: Id; entry: AddEntry }[] = [];
+      for (const command of commands) {
+        if (command.type !== 'addShoppingItems') continue;
+        for (const text of command.texts) {
+          const local = addTextLocally(command.listId, text);
+          if (local) additions.push({ listId: command.listId, entry: local.entry });
+        }
+      }
+      if (!isBackendMode()) return [];
+      const oneOffChores = commands.filter((command) => command.type === 'completeChore').length;
+      const { ops } = diffHousehold(before, rows, {
+        mode: 'send',
+        maxDeletes: { chores: oneOffChores },
+      });
+      return [...sendable(ops), ...addContributionOps(additions)];
+    },
+  );
+}
+
+/** Runs one command of a proposal through the normal command functions. */
+export function runAssistantCommand(command: AssistantCommand): void {
+  runCommands([command]);
+}
+
+/** Accepting a proposal: runs the chosen parts as one change. Returns how many were applied. */
 export function applyProposal(proposal: Proposal, partIds: Id[]): number {
   const parts = proposal.parts.filter((part) => partIds.includes(part.id));
-  for (const part of parts) runAssistantCommand(part.command);
+  runCommands(parts.map((part) => part.command));
   return parts.length;
 }
 
@@ -270,6 +314,24 @@ export interface DictatedItem {
   name: string;
   /** Short amount for display, e.g. "6×". */
   meta?: string;
+}
+
+/**
+ * Proposal rows for a dictated shopping request (AC-028): "Milch, sechs Eier und Brot" → Milch,
+ * 6× Eier, Brot. Each row is added through the smart input when accepted.
+ */
+export function dictatedItems(transcript: string): DictatedItem[] {
+  return splitDictation(transcript).flatMap((text): DictatedItem[] => {
+    const parsed = parseSmartInput(text);
+    if (!parsed) return [];
+    const meta =
+      parsed.qty !== undefined
+        ? formatAmount(parsed.qty, parsed.unit)
+        : parsed.count !== undefined
+          ? `${parsed.count}×`
+          : undefined;
+    return [{ id: newId('ghost'), text, name: parsed.name, meta }];
+  });
 }
 
 /** The sample dictation for the shopping list: "Milch, sechs Eier und Brot". */

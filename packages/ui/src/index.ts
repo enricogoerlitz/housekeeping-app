@@ -65,6 +65,7 @@ export {
   OfflineBanner,
   Notice,
   ProposalCard,
+  TypingIndicator,
   type AvatarProps,
   type BadgeProps,
   type PhotoProps,

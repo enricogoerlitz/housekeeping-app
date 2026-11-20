@@ -26,7 +26,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { ProfileButton } from '@/features/shell/profile-button';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreHistory } from './chore-history';
 import { ChoreRow } from './chore-row';
@@ -85,11 +85,10 @@ export function ChoresScreen() {
       message: 'Erledigt von dir',
       actionLabel: other?.name,
       onAction: other
-        ? () => {
+        ? undoAction(() => {
             reassignChoreEvent(eventId, other.id);
-            // The toast host hides the current toast right after the action; show the next one after that.
-            setTimeout(() => toast.show({ message: `Auf ${other.name} umgebucht` }), 0);
-          }
+            toast.show({ message: `Auf ${other.name} umgebucht` });
+          })
         : undefined,
     });
   };

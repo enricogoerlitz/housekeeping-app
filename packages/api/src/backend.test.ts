@@ -9,13 +9,12 @@ import {
   stopBackend,
   WRITE_REJECTED_MESSAGE,
   type Engine,
-  type Environment,
 } from './backend';
 import { createRecipe, updateRecipe } from './commands-recipes';
 import { removePlanEntry } from './commands-plan';
 import { setItemChecked } from './commands-shopping';
-import { householdToRows, membersToRows } from './db/mapping';
-import { createInitialState, DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
+import { fakeEnvironment, seededServer, type FakeEnvironment } from './backend-test-helpers';
+import { DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
 import { createMemoryStorage, type Storage } from './storage';
 import {
   commit,
@@ -27,65 +26,11 @@ import {
   type StoreAction,
 } from './store';
 import { TransportError, type Transport } from './transport';
-import { createFakeServer, type FakeServer } from './transport-fake';
+import type { FakeServer } from './transport-fake';
 
 const H = DEMO_HOUSEHOLD_ID;
-const TODAY = '2026-11-20';
 
 // ---------- fixtures ----------
-
-function seededServer(): FakeServer {
-  const server = createFakeServer();
-  const state = createInitialState(TODAY);
-  const seeded = state.households[H];
-  if (!seeded) throw new Error('demo household missing');
-  const articles = seeded.articles.filter(
-    (article, index) => seeded.articles.findIndex((other) => other.id === article.id) === index,
-  );
-  for (const profile of membersToRows(state.members).profiles ?? []) {
-    server.addProfile({
-      id: profile.id,
-      name: String(profile.name),
-      email: `${String(profile.name).toLowerCase()}@example.com`,
-      color: String(profile.color),
-    });
-  }
-  const rows = householdToRows({ ...seeded, articles });
-  const { households, household_members: members, ...tables } = rows;
-  const household = households?.[0];
-  if (!household || !members) throw new Error('fixture');
-  server.addHousehold(
-    household,
-    members.map((member) => String(member.profile_id)),
-  );
-  server.insertRows(H, tables);
-  return server;
-}
-
-interface FakeEnvironment extends Environment {
-  setOnline(online: boolean): void;
-  foreground(): void;
-}
-
-function fakeEnvironment(): FakeEnvironment {
-  let online = true;
-  const listeners = new Set<Parameters<Environment['subscribe']>[0]>();
-  return {
-    isOnline: () => online,
-    isVisible: () => true,
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    setOnline(value) {
-      online = value;
-      for (const listener of listeners) (value ? listener.online : listener.offline)?.();
-    },
-    foreground() {
-      for (const listener of listeners) listener.foreground?.();
-    },
-  };
-}
 
 /** Records every pull request a device sends. */
 function recording(transport: Transport): Transport & { pulls: PullRequest[] } {

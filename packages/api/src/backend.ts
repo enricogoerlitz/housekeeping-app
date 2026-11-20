@@ -13,7 +13,6 @@ import {
   pullRequestFor,
   rejectFrom,
   remapQueue,
-  toISODate,
   visibleTables,
   type Changeset,
   type HouseholdCache,
@@ -98,6 +97,24 @@ export function browserEnvironment(): Environment {
   };
 }
 
+const BERLIN_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Berlin',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/**
+ * The calendar day in Berlin ("YYYY-MM-DD"): the household's "today", whatever the device's time
+ * zone. The state is rebuilt at least with every pull (every 60 s), so it moves on after midnight.
+ */
+export function berlinToday(now: Date): string {
+  const parts = Object.fromEntries(
+    BERLIN_DATE.formatToParts(now).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 export interface SyncState {
   status: 'idle' | 'syncing' | 'offline' | 'error';
   /** `serverTime` of the last pull applied. */
@@ -120,6 +137,8 @@ export interface EngineOptions {
   onStateChange?: (state: AppState) => void;
   onSyncStateChange?: (state: SyncState) => void;
   onWriteRejected?: (message: string) => void;
+  /** The small tables (profiles, households, memberships, invitations) changed. */
+  onSmallChange?: (small: SyncCache['small']) => void;
   /** Where the app keeps the household being shown (switchHousehold changes it in the store). */
   readActiveHouseholdId?: () => string | undefined;
 }
@@ -167,6 +186,8 @@ function isMeta(value: unknown): value is PersistedMeta {
   );
 }
 
+const EMPTY_SMALL: SyncCache['small'] = {};
+
 const householdKey = (householdId: string) => `household:${householdId}`;
 
 const smallKey = (row: SmallRow) =>
@@ -213,6 +234,32 @@ function keepIdentity(previous: SyncCache, next: SyncCache): SyncCache {
     households[householdId] = { ...household, tables };
   }
   return { ...next, small, households };
+}
+
+/**
+ * The household shown when none is chosen: the one the user joined first (ties: by name), so the
+ * choice does not depend on the order the server lists them in.
+ */
+function firstJoined(
+  small: SyncCache['small'] | undefined,
+  userId: string,
+  households: Record<string, HouseholdData>,
+): string | undefined {
+  const joined = new Map<string, string>();
+  for (const row of small?.household_members ?? []) {
+    if (row.profile_id === userId && typeof row.created_at === 'string') {
+      joined.set(String(row.household_id), row.created_at);
+    }
+  }
+  const at = (id: string) => joined.get(id) ?? '9999';
+  return Object.keys(households).sort(
+    (a, b) =>
+      (at(a) === at(b) ? 0 : at(a) < at(b) ? -1 : 1) ||
+      (households[a]?.household.name ?? '').localeCompare(
+        households[b]?.household.name ?? '',
+        'de',
+      ),
+  )[0];
 }
 
 function byId(rows: readonly SmallRow[]): Record<string, Row> {
@@ -270,6 +317,7 @@ export function createEngine(options: EngineOptions): Engine {
   let lastPullFailed = false;
   let lastSyncedAt: string | undefined;
   let appState: AppState | undefined;
+  let publishedSmall: SyncCache['small'] | undefined;
   let syncState: SyncState = { status: 'idle', ready: false };
 
   let pullPromise: Promise<void> | undefined;
@@ -343,7 +391,15 @@ export function createEngine(options: EngineOptions): Engine {
     options.onSyncStateChange?.(next);
   }
 
+  function publishSmall(): void {
+    const small = cache?.small ?? EMPTY_SMALL;
+    if (small === publishedSmall) return;
+    publishedSmall = small;
+    options.onSmallChange?.(small);
+  }
+
   function rebuild(): void {
+    publishSmall();
     const previous = appState;
     const households: Record<string, HouseholdData> = {};
     if (cache) {
@@ -369,7 +425,8 @@ export function createEngine(options: EngineOptions): Engine {
     }
     const ids = Object.keys(households);
     const wanted = options.readActiveHouseholdId?.() ?? previous?.activeHouseholdId;
-    const activeHouseholdId = wanted && households[wanted] ? wanted : (ids[0] ?? '');
+    const activeHouseholdId =
+      wanted && households[wanted] ? wanted : (firstJoined(cache?.small, userId, households) ?? '');
     const sameHouseholds =
       previous !== undefined &&
       ids.length === Object.keys(previous.households).length &&
@@ -378,7 +435,7 @@ export function createEngine(options: EngineOptions): Engine {
       ? rowsToMembers(cache.small, previous?.members)
       : (previous?.members ?? []);
     const next: AppState = {
-      today: toISODate(new Date()),
+      today: berlinToday(new Date()),
       members,
       currentMemberId: userId,
       activeHouseholdId,
@@ -960,10 +1017,20 @@ export interface StartBackendOptions {
 }
 
 let current: Engine | undefined;
+/** The transport of the current engine, for the household RPCs (households.ts). */
+let currentWire: Transport | undefined;
 const rejectedListeners = new Set<(message: string) => void>();
 const syncListeners = new Set<() => void>();
 const DEMO_SYNC_STATE: SyncState = { status: 'idle', ready: true };
 let currentSyncState: SyncState = DEMO_SYNC_STATE;
+const smallListeners = new Set<() => void>();
+let currentSmall: SyncCache['small'] = EMPTY_SMALL;
+
+function setSmall(small: SyncCache['small']): void {
+  if (small === currentSmall) return;
+  currentSmall = small;
+  for (const listener of smallListeners) listener();
+}
 
 function setSyncState(state: SyncState): void {
   currentSyncState = state;
@@ -994,9 +1061,13 @@ export async function startBackend(options: StartBackendOptions): Promise<Engine
       if (current !== engine) return;
       for (const listener of rejectedListeners) listener(message);
     },
+    onSmallChange: (small) => {
+      if (current === engine) setSmall(small);
+    },
     readActiveHouseholdId: () => (current === engine ? peekState()?.activeHouseholdId : undefined),
   });
   current = engine;
+  currentWire = wire;
   await engine.load();
   const initial = engine.getState();
   if (!initial) throw new Error('The engine built no state');
@@ -1011,9 +1082,11 @@ export async function stopBackend(): Promise<void> {
   const engine = current;
   if (!engine) return;
   current = undefined;
+  currentWire = undefined;
   engine.stop();
   detachBackend(engine);
   setSyncState(DEMO_SYNC_STATE);
+  setSmall(EMPTY_SMALL);
 }
 
 /** Sign-out or a change of user: clears cache, store queue and outbox, and leaves backend mode. */
@@ -1046,4 +1119,39 @@ export function useSyncState(): SyncState {
     () => currentSyncState,
     () => currentSyncState,
   );
+}
+
+/**
+ * A household, invitation or membership change (rpc only, never undoable): refused offline, sent
+ * directly, then a pull so the result is in the cache when the promise resolves.
+ */
+export async function householdCall<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
+  const engine = current;
+  const wire = currentWire;
+  if (!engine || !wire) throw new Error('Not signed in');
+  if (engine.isOffline()) throw new OfflineError();
+  const result = await send(wire);
+  await engine.pull();
+  return result;
+}
+
+/** A request that needs the server's answer and changes nothing (edge functions); refused offline. */
+export async function onlineCall<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
+  const engine = current;
+  const wire = currentWire;
+  if (!engine || !wire) throw new Error('Not signed in');
+  if (engine.isOffline()) throw new OfflineError();
+  return send(wire);
+}
+
+/** The small tables of the cache (empty in demo mode); changes notify `subscribeSmall`. */
+export function readSmallTables(): SyncCache['small'] {
+  return currentSmall;
+}
+
+export function subscribeSmall(listener: () => void): () => void {
+  smallListeners.add(listener);
+  return () => {
+    smallListeners.delete(listener);
+  };
 }

@@ -2,7 +2,7 @@ import { postponeChore, skipChore, snapshot, useMembers, useToday } from '@house
 import { assignmentLabel, recurrenceLabel, relativeDayLabel, type Chore } from '@housekeeping/core';
 import { Button, Notice, Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { effortLabel } from './chore-labels';
 
@@ -22,7 +22,7 @@ export function ChoreSheet(props: {
     const restore = snapshot();
     action(chore.id);
     props.onClose();
-    toast.show({ message, actionLabel: 'Rückgängig', onAction: restore });
+    toast.show({ message, actionLabel: 'Rückgängig', onAction: undoAction(restore) });
   };
 
   const facts = chore

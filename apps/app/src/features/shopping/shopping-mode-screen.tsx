@@ -39,6 +39,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { undoAction } from '@/features/shell/offline';
+
+/** Decision 6 of spec 0003: clearing is a write, so offline "Fertig" only leaves the mode. */
+const FINISH_OFFLINE_HINT = 'Abgehakte räumen wir auf, sobald du Netz hast';
+
 // A checked row stays in place this long before it moves to "Erledigt", so a mis-tap is visible.
 const LINGER_MS = 2000;
 
@@ -203,6 +208,11 @@ export function ShoppingModeScreen() {
 
   const finish = () => {
     if (!list) return;
+    if (offline) {
+      toast.show({ message: FINISH_OFFLINE_HINT });
+      close();
+      return;
+    }
     const restore = snapshot();
     const bought = progress.done;
     const remaining = progress.total - progress.done;
@@ -210,7 +220,7 @@ export function ShoppingModeScreen() {
     toast.show({
       message: `${bought} gekauft · ${remaining} bleiben`,
       actionLabel: 'Rückgängig',
-      onAction: restore,
+      onAction: undoAction(restore),
     });
     close();
   };

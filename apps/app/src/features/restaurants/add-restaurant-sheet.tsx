@@ -1,7 +1,7 @@
 import {
   createRestaurant,
   readMapsLink,
-  resolveShortLink,
+  resolveMapsShortLink,
   type LinkReading,
   type RestaurantDraft,
 } from '@housekeeping/api';
@@ -57,6 +57,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
   const [address, setAddress] = useState('');
   const [priceLevel, setPriceLevel] = useState<Restaurant['priceLevel']>();
   const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const place: PlaceReading | undefined = reading?.status === 'place' ? reading : undefined;
   const duplicate = place?.duplicate;
@@ -87,11 +88,21 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
     }
   };
 
-  const save = () => {
-    if (online.disabled || duplicate) return;
-    // A short link only says where the place is once the server followed it (AC-005).
-    const resolved: RestaurantDraft | undefined =
-      reading?.status === 'short' ? resolveShortLink(reading.url) : undefined;
+  const save = async () => {
+    if (online.disabled || duplicate || saving) return;
+    // A short link only says where the place is once the server followed it (AC-005, AC-031).
+    let resolved: RestaurantDraft | undefined;
+    if (reading?.status === 'short') {
+      setSaving(true);
+      try {
+        resolved = await resolveMapsShortLink(reading.url);
+      } catch (caught) {
+        setLinkError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
     const location: GeoPoint | undefined = place?.draft.location ?? resolved?.location;
     const draft: RestaurantDraft = {
       name: name.trim() || resolved?.name || '',
@@ -136,9 +147,9 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
           label="Speichern"
           icon="check"
           full
-          disabled={online.disabled || !!duplicate}
+          disabled={online.disabled || !!duplicate || saving}
           hint={online.hint ?? (duplicate ? `Gibt es schon: ${duplicate.name}` : undefined)}
-          onPress={save}
+          onPress={() => void save()}
           testID="restaurant-save"
         />
       }

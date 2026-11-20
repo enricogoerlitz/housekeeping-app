@@ -1,6 +1,12 @@
 // Transport over supabase-js: one RPC per call, answers validated with Zod, errors classified.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { PullResult } from '@housekeeping/core';
+import {
+  AiSearchResultSchema,
+  AssistantReplySchema,
+  ResolveMapsLinkReplySchema,
+  SpeechTokenReplySchema,
+  type PullResult,
+} from '@housekeeping/core';
 import type { z } from 'zod';
 
 import { withCompositeIds } from './db/tables';
@@ -37,6 +43,19 @@ export interface SupabaseLike {
   channel(topic: string, options: { config: { private: boolean } }): ChannelLike;
   removeChannel(channel: ChannelLike): Promise<unknown>;
   realtime: { setAuth(): Promise<void> };
+  functions: {
+    invoke(
+      name: string,
+      options: { body: unknown },
+    ): Promise<{ data: unknown; error: FunctionError | null }>;
+  };
+}
+
+/** supabase-js `FunctionsHttpError` carries the response; fetch and relay errors carry none. */
+interface FunctionError {
+  name?: string;
+  message: string;
+  context?: { status?: number; json?: () => Promise<unknown> };
 }
 
 /**
@@ -84,6 +103,42 @@ export function createSupabaseTransport(
     args: Record<string, unknown>,
   ): Promise<z.infer<S>> {
     const result = schema.safeParse(await call(fn, args));
+    if (!result.success) throw new TransportError('permanent', 'invalid_response');
+    return result.data;
+  }
+
+  /** An edge function: errors are `{ error: code }` with an HTTP status (core ErrorReply). */
+  async function invoke(name: string, body: unknown): Promise<unknown> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new TransportError('transient', 'timeout', 0)), timeoutMs);
+    });
+    try {
+      const reply = await Promise.race([client.functions.invoke(name, { body }), timeout]);
+      if (!reply.error) return reply.data;
+      const status = reply.error.context?.status;
+      if (status === undefined) throw new TransportError('transient', 'network', 0);
+      const answer: unknown = await reply.error.context?.json?.().catch(() => undefined);
+      const code =
+        typeof answer === 'object' && answer !== null && 'error' in answer
+          ? String(answer.error)
+          : '';
+      throw classifyError(status, { message: code });
+    } catch (error) {
+      if (error instanceof TransportError) throw error;
+      throw new TransportError('transient', 'network', 0);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** An edge function whose answer must match the core contract (ai-contract.ts). */
+  async function invokeParsed<S extends z.ZodType>(
+    schema: S,
+    name: string,
+    body: unknown,
+  ): Promise<z.infer<S>> {
+    const result = schema.safeParse(await invoke(name, body));
     if (!result.success) throw new TransportError('permanent', 'invalid_response');
     return result.data;
   }
@@ -154,6 +209,11 @@ export function createSupabaseTransport(
       nothing('decline_invitation', { invitation_id: invitationId }),
     removeMember: (householdId, profileId) =>
       nothing('remove_member', { household_id: householdId, profile_id: profileId }),
+    resolveMapsLink: (url) =>
+      invokeParsed(ResolveMapsLinkReplySchema, 'resolve-maps-link', { url }),
+    askAssistant: (request) => invokeParsed(AssistantReplySchema, 'ai-assistant', request),
+    aiSearch: (request) => invokeParsed(AiSearchResultSchema, 'ai-search', request),
+    speechToken: () => invokeParsed(SpeechTokenReplySchema, 'speech-token', {}),
     syncPull: async (request): Promise<PullResult> => {
       const raw = await parsed(RawPullResultSchema, 'sync_pull', { p_request: request });
       try {

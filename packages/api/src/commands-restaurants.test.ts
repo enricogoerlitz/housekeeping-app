@@ -6,6 +6,7 @@ import {
   createRestaurant,
   rateRestaurant,
   readMapsLink,
+  resolveMapsShortLink,
   resolveShortLink,
   toggleRestaurantFavorite,
   updateRestaurant,
@@ -72,6 +73,12 @@ describe('restaurant commands', () => {
     expect(draft.mapsUrl).toBe('https://maps.app.goo.gl/AbC123');
     const id = createRestaurant(draft);
     expect(getData().restaurants.find((r) => r.id === id)?.location).toEqual(draft.location);
+  });
+
+  it('resolveMapsShortLink answers the sample place in demo mode, without a server', async () => {
+    await expect(resolveMapsShortLink('https://maps.app.goo.gl/AbC123')).resolves.toEqual(
+      resolveShortLink('https://maps.app.goo.gl/AbC123'),
+    );
   });
 
   it('AC-010: rating, favourite and note; ratings and favourites are per member', () => {

@@ -25,7 +25,7 @@ import {
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 const LATER = 'later';
 
@@ -119,7 +119,7 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
     toast.show({
       message: `${count} Artikel auf der Liste`,
       actionLabel: 'Rückgängig',
-      onAction: restore,
+      onAction: undoAction(restore),
     });
   };
 

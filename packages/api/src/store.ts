@@ -172,6 +172,11 @@ export function isBackendMode(): boolean {
   return backend !== undefined;
 }
 
+/** Backend mode without a connection right now: only the store actions work. */
+export function isBackendOffline(): boolean {
+  return backend?.isOffline() ?? false;
+}
+
 /** The engine publishes the visible state. */
 export function publishState(hooks: BackendHooks, next: AppState): void {
   if (backend !== hooks || next === state) return;
@@ -191,6 +196,12 @@ export function commit<T>(spec: CommitSpec<T>, run: () => T): T;
 export function commit(spec: QueueSpec, run: () => void): void;
 export function commit<T>(spec: CommitSpec<T> | QueueSpec, run: () => T): T | void {
   if (!backend) return run();
+  // A command that uses another command (the assistant, a proposal) is still one change: the
+  // inner one runs as part of the outer commit.
+  if (committing) {
+    if (spec.path === 'queue') throw new Error('A store action cannot run inside a command.');
+    return run();
+  }
   if (spec.path === 'queue') {
     backend.enqueueStoreAction(spec.action);
     return;

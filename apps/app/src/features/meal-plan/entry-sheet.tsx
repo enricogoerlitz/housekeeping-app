@@ -15,7 +15,7 @@ import { View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { dayLabel, entryTitle } from './labels';
 
@@ -53,7 +53,11 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
     const restore = snapshot();
     removePlanEntry(entry.id);
     props.onClose();
-    toast.show({ message: `„${title}“ entfernt`, actionLabel: 'Rückgängig', onAction: restore });
+    toast.show({
+      message: `„${title}“ entfernt`,
+      actionLabel: 'Rückgängig',
+      onAction: undoAction(restore),
+    });
   };
 
   return (

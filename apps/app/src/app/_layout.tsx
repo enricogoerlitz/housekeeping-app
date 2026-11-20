@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AssistantSheet } from '@/features/assistant/assistant-sheet';
+import { AuthGate } from '@/features/auth/auth-gate';
 import { AssistantProvider } from '@/lib/assistant';
 import { SettingsProvider, useSettings } from '@/lib/settings';
 
@@ -15,11 +16,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <SettingsProvider>
         <Themed>
-          <AssistantProvider>
-            <Screens />
-            <AssistantSheet />
-            <ToastHost />
-          </AssistantProvider>
+          <AuthGate>
+            <AssistantProvider>
+              <Screens />
+              <AssistantSheet />
+            </AssistantProvider>
+          </AuthGate>
+          <ToastHost />
         </Themed>
       </SettingsProvider>
     </SafeAreaProvider>

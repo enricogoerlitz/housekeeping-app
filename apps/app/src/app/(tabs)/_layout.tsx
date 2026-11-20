@@ -16,6 +16,7 @@ import type { BottomTabBarProps } from 'expo-router/tabs';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
 import { useAssistant } from '@/lib/assistant';
 
 const NAV: NavItem[] = [
@@ -31,17 +32,20 @@ export default function TabsLayout() {
   const theme = useTheme();
   const offline = useOffline();
   const insets = useSafeAreaInsets();
+  const showInstallHint = useInstallHintVisible();
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
-      {offline ? (
+      {offline || showInstallHint ? (
         <View
           style={{
             paddingTop: insets.top + 6,
             paddingHorizontal: isPhone ? theme.shape.gutter : 36,
             paddingBottom: 2,
+            gap: 6,
           }}
         >
-          <OfflineBanner />
+          {offline ? <OfflineBanner /> : null}
+          <InstallHint />
         </View>
       ) : null}
       <Tabs

@@ -54,6 +54,10 @@ function ChipRow(props: { children: ReactNode; testID?: string }) {
 export function SmartComposer(props: {
   listId: Id;
   onDictate: () => void;
+  /** Listening right now: the microphone button stops it. */
+  dictating?: boolean;
+  /** Dictation needs the network (offline) or is starting/stopping. */
+  dictateDisabled?: boolean;
   onAssistant: () => void;
 }) {
   const articles = useArticles();
@@ -147,7 +151,14 @@ export function SmartComposer(props: {
               testID="list-assistant"
               onPress={props.onAssistant}
             />
-            <IconButton icon="mic" label="Sprechen" testID="dictate" onPress={props.onDictate} />
+            <IconButton
+              icon="mic"
+              label={props.dictating ? 'Aufnahme beenden' : 'Sprechen'}
+              variant={props.dictating ? 'filled' : 'plain'}
+              disabled={props.dictateDisabled}
+              testID="dictate"
+              onPress={props.onDictate}
+            />
             <IconButton
               icon="send"
               label="Hinzufügen"

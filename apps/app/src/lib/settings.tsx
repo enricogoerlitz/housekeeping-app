@@ -22,6 +22,8 @@ export interface LocalSettings {
   aiSearch: boolean;
   /** AI suggestions while creating articles and recipes. Off until the user switches it on. */
   aiAssist: boolean;
+  /** The iOS tip "Zum Home-Bildschirm" was closed; it is shown only until then. */
+  installHintDismissed: boolean;
 }
 
 const STORAGE_KEY = 'housekeeping.settings.v1';
@@ -30,6 +32,7 @@ const defaults: LocalSettings = {
   appearance: 'system',
   aiSearch: false,
   aiAssist: false,
+  installHintDismissed: false,
 };
 
 /** Stored values are untrusted: anything unknown falls back to the default. */
@@ -49,6 +52,7 @@ export function parseSettings(raw: string | null): LocalSettings {
           : defaults.appearance,
       aiSearch: record.aiSearch === true,
       aiAssist: record.aiAssist === true,
+      installHintDismissed: record.installHintDismissed === true,
     };
   } catch {
     return defaults;
