@@ -1,5 +1,5 @@
 import { useHousehold, usePlanEntries, useToday } from '@housekeeping/api';
-import { addDays, weekDates, type Id, type ISODate, type MealPlanEntry } from '@housekeeping/core';
+import { addDays, orderSlotEntries, weekDates, type Id, type ISODate } from '@housekeeping/core';
 import {
   Badge,
   Button,
@@ -8,14 +8,17 @@ import {
   Screen,
   ScreenHeader,
   Section,
+  Segmented,
   Stack,
   Text,
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { ActivitiesPanel } from '@/features/activities/activities-panel';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { ProfileButton } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -25,9 +28,12 @@ import { EntrySheet } from './entry-sheet';
 import { dayLabel, weekSubtitle } from './labels';
 import { PlanEntryCard, PlanEntryRow } from './plan-entry';
 
-function bySort(a: MealPlanEntry, b: MealPlanEntry) {
-  return a.sort - b.sort;
-}
+type PlanView = 'week' | 'activities';
+
+const PLAN_VIEWS: { value: PlanView; label: string }[] = [
+  { value: 'week', label: 'Woche' },
+  { value: 'activities', label: 'Aktivitäten' },
+];
 
 /** The "+ hinzufügen" button of one meal; needs the network. */
 function AddButton(props: { date: ISODate; slotId: Id; onPress: () => void; compact?: boolean }) {
@@ -65,7 +71,43 @@ function DayHeading(props: { date: ISODate; today: ISODate }) {
   );
 }
 
+/**
+ * "Plan": the week or the activities (spec 0004, AC-004). The chosen side lives in the URL
+ * (`?view=activities`), so a reload or a deep link keeps it.
+ */
 export function PlanScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ view?: string | string[] }>();
+  const { isPhone } = useBreakpoint();
+  const view: PlanView =
+    (Array.isArray(params.view) ? params.view[0] : params.view) === 'activities'
+      ? 'activities'
+      : 'week';
+  const header = (right: ReactNode, subtitle?: string) => (
+    <>
+      <ScreenHeader title="Plan" subtitle={subtitle} right={right} />
+      <View style={{ marginBottom: 16, maxWidth: isPhone ? undefined : 420 }}>
+        <Segmented
+          label="Woche oder Aktivitäten"
+          value={view}
+          onChange={(next) =>
+            router.setParams({
+              view: next === 'activities' ? 'activities' : undefined,
+              aid: undefined,
+            })
+          }
+          options={PLAN_VIEWS}
+          testID="plan-view"
+        />
+      </View>
+    </>
+  );
+  if (view === 'activities') return <ActivitiesPanel header={header} />;
+  return <WeekPlan header={header} />;
+}
+
+/** The week with its three Tageszeiten, "Auf die Einkaufsliste" and "Vorgemerkt". */
+function WeekPlan(props: { header: (right: ReactNode, subtitle?: string) => ReactNode }) {
   const today = useToday();
   const household = useHousehold();
   const entries = usePlanEntries();
@@ -80,11 +122,12 @@ export function PlanScreen() {
 
   const dates = weekDates(addDays(today, offset * 7));
   const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
-  const later = entries.filter((entry) => entry.date === null).sort(bySort);
+  const later = orderSlotEntries(entries.filter((entry) => entry.date === null));
   const lastSlotId = slots[slots.length - 1]?.id;
 
+  // AC-002: activities, then recipes, then restaurants; within each in the order they were added.
   const entriesOf = (date: ISODate, slotId: Id) =>
-    entries.filter((entry) => entry.date === date && entry.slotId === slotId).sort(bySort);
+    orderSlotEntries(entries.filter((entry) => entry.date === date && entry.slotId === slotId));
   const add = (date: ISODate | null, slotId: Id) => setAdding({ date, slotId });
 
   const weekNav = (
@@ -110,13 +153,7 @@ export function PlanScreen() {
     </>
   );
 
-  const header = (
-    <ScreenHeader
-      title="Wochenplan"
-      subtitle={weekSubtitle(dates)}
-      right={isPhone ? <ProfileButton /> : weekNav}
-    />
-  );
+  const header = props.header(isPhone ? <ProfileButton /> : weekNav, weekSubtitle(dates));
 
   const toList = (
     <View

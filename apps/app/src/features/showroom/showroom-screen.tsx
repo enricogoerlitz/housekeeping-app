@@ -405,9 +405,17 @@ function MediaBlock() {
           meta="vegan möglich"
           image={photoSource('curry')}
           layout="photoTop"
+          badge={{ label: 'Rezept', icon: 'cooking-pot' }}
           onPress={() => undefined}
         />
-        <MediaCard title="Ohne Foto" kicker="Mittag" meta="Platzhalter" layout="photoTop" />
+        <MediaCard
+          title="Ohne Foto"
+          kicker="Vormittag"
+          meta="Platzhalter"
+          layout="photoTop"
+          placeholderIcon="mountain"
+          badge={{ label: 'Aktivität', icon: 'mountain' }}
+        />
       </Row>
       <MediaCard
         title="Lasagne"
@@ -416,6 +424,16 @@ function MediaBlock() {
         image={photoSource('lasagne')}
         layout="thumbRow"
         corner={<Icon name="heart" size={18} color="accent" />}
+      />
+      <MediaCard
+        title="Eislaufen (Hohenschönhausen)"
+        kicker="Vormittag"
+        meta="Eisstadion Hohenschönhausen"
+        layout="thumbRow"
+        placeholderIcon="mountain"
+        badge={{ label: 'Aktivität', icon: 'mountain' }}
+        onPress={() => undefined}
+        testID="showroom-media-badge"
       />
       <MediaCard
         title="Groß"

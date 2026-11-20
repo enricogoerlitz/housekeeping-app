@@ -1,21 +1,32 @@
 import {
   addPlanEntry,
+  createAndPlanActivity,
+  createAndPlanRecipe,
+  createAndPlanRestaurant,
   defaultEaterIds,
-  photoSource,
+  NOTE_MAX_LENGTH,
   splitForEaters,
+  useActivities,
   useArticlesById,
+  useHousehold,
   useMembers,
   useMembersById,
   usePlanEntries,
+  useRecipeImage,
   useRecipes,
   useRecipesById,
   useRestaurants,
+  useToday,
+  type PlanSlotInput,
 } from '@housekeeping/api';
 import {
+  addDays,
   fuzzyIncludes,
   priceLabel,
   searchRecipes,
   sortRecipes,
+  withNote,
+  type Activity,
   type Id,
   type ISODate,
   type Member,
@@ -37,10 +48,22 @@ import {
   Text,
   TextField,
   toast,
+  useBreakpoint,
+  useTheme,
 } from '@housekeeping/ui';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  ActivityFormFields,
+  savePhotoChoice,
+  useActivityForm,
+} from '@/features/activities/activity-form';
+import { ActivityPhoto } from '@/features/activities/activity-photo';
+import { activityPlaceLine } from '@/features/activities/labels';
+import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-form';
+import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { dayLabel, entryTitle, misfitText, splitSummary } from './labels';
@@ -51,9 +74,14 @@ export interface AddTarget {
   slotId: Id;
 }
 
-type Mode = 'recipe' | 'restaurant' | 'text' | 'leftovers';
+type Mode = 'recipe' | 'restaurant' | 'activity' | 'text' | 'leftovers';
 
 const MAX_RESULTS = 30;
+/** Days "Einplanen" of an activity offers, from today. */
+const PLAN_AHEAD_DAYS = 14;
+
+const message = (error: unknown) =>
+  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
 
 function Label(props: { children: string }) {
   return (
@@ -121,41 +149,165 @@ function restaurantSubtitle(restaurant: Restaurant): string | undefined {
   );
 }
 
-/** Adds a dish to one meal: a recipe with eaters and cook, a restaurant, a free text, or leftovers. */
+/** The recipe's own photo, else its sample photo, else the placeholder (AC-017). */
+function RecipeThumb(props: { recipe: Recipe; size: number }) {
+  const image = useRecipeImage(props.recipe);
+  return <Photo source={image} width={props.size} height={props.size} />;
+}
+
+/** "Neues Rezept" / "Neues Restaurant" / "Neue Aktivität": create it right here (REQ-008). */
+function NewRow(props: { label: string; disabled: boolean; onPress: () => void; testID: string }) {
+  const theme = useTheme();
+  return (
+    <List>
+      <ListRow
+        title={props.label}
+        leading={
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: theme.shape.radius.photo,
+              backgroundColor: theme.colors.surfaceSunken,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon name="plus" size={22} color="accent" />
+          </View>
+        }
+        disabled={props.disabled}
+        onPress={props.onPress}
+        testID={props.testID}
+      />
+    </List>
+  );
+}
+
+/** Title row of a "Neu anlegen" form, with the way back to the search. */
+function NewHeading(props: { title: string; onBack: () => void }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Text variant="cardTitle" style={{ flex: 1 }}>
+        {props.title}
+      </Text>
+      <Button
+        label="Zur Suche"
+        variant="link"
+        size="sm"
+        testID="add-entry-new-back"
+        onPress={props.onBack}
+      />
+    </View>
+  );
+}
+
+/** "Wann?" for "Einplanen" from an activity: a day of the next two weeks and a Tageszeit. */
+function WhenPicker(props: {
+  value: AddTarget;
+  today: ISODate;
+  slots: { id: Id; name: string }[];
+  onChange: (value: AddTarget) => void;
+}) {
+  const days = Array.from({ length: PLAN_AHEAD_DAYS }, (_, offset) => addDays(props.today, offset));
+  return (
+    <View style={{ gap: 10 }}>
+      <Label>Wann?</Label>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
+        style={{ flexGrow: 0 }}
+      >
+        {days.map((date) => (
+          <Chip
+            key={date}
+            label={date === props.today ? 'Heute' : dayLabel(date)}
+            selected={props.value.date === date}
+            onPress={() => props.onChange({ ...props.value, date })}
+            testID={`add-entry-day-${date}`}
+          />
+        ))}
+      </ScrollView>
+      <Segmented
+        label="Tageszeit"
+        options={props.slots.map((slot) => ({ value: slot.id, label: slot.name }))}
+        value={props.value.slotId}
+        onChange={(slotId) => props.onChange({ ...props.value, slotId })}
+        testID="add-entry-slot"
+      />
+    </View>
+  );
+}
+
+/**
+ * Adds to one Tageszeit: a recipe with eaters and cook, a restaurant, an activity with a Zusatz,
+ * a free text or leftovers — or creates a new recipe, restaurant or activity right here and plans
+ * it (REQ-008). With `activityId` ("Einplanen" on an activity) that activity is chosen and the
+ * day and Tageszeit can be picked.
+ */
 export function AddEntrySheet(props: {
   target: AddTarget;
   weekDates: ISODate[];
   onClose: () => void;
+  activityId?: Id;
 }) {
   const online = useOnlineOnly();
+  const today = useToday();
+  const household = useHousehold();
   const recipes = useRecipes();
   const recipesById = useRecipesById();
   const restaurants = useRestaurants();
+  const activities = useActivities();
   const articlesById = useArticlesById();
   const entries = usePlanEntries();
   const members = useMembers();
   const membersById = useMembersById();
+  const { isPhone, height } = useBreakpoint();
+  const insets = useSafeAreaInsets();
 
-  const [mode, setMode] = useState<Mode>('recipe');
+  const preset = props.activityId !== undefined;
+  const [mode, setMode] = useState<Mode>(preset ? 'activity' : 'recipe');
+  const [creating, setCreating] = useState(false);
+  const [when, setWhen] = useState<AddTarget>(props.target);
   const [later, setLater] = useState(props.target.date === null);
   const [query, setQuery] = useState('');
   const [recipeId, setRecipeId] = useState<Id | undefined>();
   const [restaurantQuery, setRestaurantQuery] = useState('');
   const [restaurantId, setRestaurantId] = useState<Id | undefined>();
+  const [activityQuery, setActivityQuery] = useState('');
+  const [activityId, setActivityId] = useState<Id | undefined>(props.activityId);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<string | undefined>();
   const [eaterIds, setEaterIds] = useState<Id[]>([]);
   const [guests, setGuests] = useState(0);
   const [cookId, setCookId] = useState<Id | undefined>();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | undefined>();
+  const [newTitle, setNewTitle] = useState('');
+  const [newTitleError, setNewTitleError] = useState<string | undefined>();
+  const [newServings, setNewServings] = useState(DEFAULT_SERVINGS);
+  const restaurantForm = useRestaurantForm();
+  const activityForm = useActivityForm();
 
   // A meal without a day can only be "vorgemerkt"; the toggle then stays on.
-  const date = later ? null : props.target.date;
+  const date = later ? null : when.date;
+  const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
+  const slotName = slots.find((slot) => slot.id === when.slotId)?.name;
   const recipe = recipeId ? recipesById[recipeId] : undefined;
   const restaurant = restaurantId
     ? restaurants.find((candidate) => candidate.id === restaurantId)
     : undefined;
+  const activity = activityId
+    ? activities.find((candidate) => candidate.id === activityId)
+    : undefined;
   const split = recipe ? splitForEaters(recipe.id, eaterIds, guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
+
+  const changeMode = (next: Mode) => {
+    setMode(next);
+    setCreating(false);
+  };
 
   const chooseRecipe = (chosen: Recipe) => {
     setRecipeId(chosen.id);
@@ -165,15 +317,30 @@ export function AddEntrySheet(props: {
   };
 
   const chooseRestaurant = (chosen: Restaurant) => {
+    setCreating(false);
     setRestaurantId(chosen.id);
     setEaterIds(defaultEaterIds(date));
     setGuests(0);
   };
 
+  const chooseActivity = (chosen: Activity) => {
+    setCreating(false);
+    setActivityId(chosen.id);
+  };
+
+  const startCreating = () => {
+    setCreating(true);
+    // What was searched for is usually the name of the new thing.
+    if (mode === 'recipe' && !newTitle) setNewTitle(query.trim());
+    if (mode === 'restaurant' && !restaurantForm.name)
+      restaurantForm.setName(restaurantQuery.trim());
+    if (mode === 'activity' && !activityForm.name) activityForm.setName(activityQuery.trim());
+  };
+
   const toggleLater = () => {
     const next = !later;
     setLater(next);
-    setEaterIds(defaultEaterIds(next ? null : props.target.date));
+    setEaterIds(defaultEaterIds(next ? null : when.date));
   };
 
   const done = (title: string, planned: ISODate | null) => {
@@ -183,11 +350,27 @@ export function AddEntrySheet(props: {
     });
   };
 
+  const created = (title: string, planned: ISODate | null) => {
+    props.onClose();
+    toast.show({
+      message: planned
+        ? `„${title}“ angelegt und eingeplant`
+        : `„${title}“ angelegt und vorgemerkt`,
+    });
+  };
+
+  /** Where and for whom something new is planned: everyone at home that day. */
+  const planSlot = (): PlanSlotInput => ({
+    date,
+    slotId: when.slotId,
+    eaterIds: defaultEaterIds(date),
+  });
+
   const saveRecipe = () => {
     if (!recipe || !split) return;
     addPlanEntry({
       date,
-      slotId: props.target.slotId,
+      slotId: when.slotId,
       kind: 'recipe',
       recipeId: recipe.id,
       eaterIds,
@@ -203,13 +386,31 @@ export function AddEntrySheet(props: {
     if (!restaurant) return;
     addPlanEntry({
       date,
-      slotId: props.target.slotId,
+      slotId: when.slotId,
       kind: 'restaurant',
       restaurantId: restaurant.id,
       eaterIds,
       guests,
     });
     done(restaurant.name, date);
+  };
+
+  const saveActivity = () => {
+    if (!activity || online.disabled) return;
+    try {
+      addPlanEntry({
+        date,
+        slotId: when.slotId,
+        kind: 'activity',
+        activityId: activity.id,
+        note,
+        eaterIds: defaultEaterIds(date),
+      });
+    } catch (caught) {
+      setNoteError(message(caught));
+      return;
+    }
+    done(withNote(activity.name, note), date);
   };
 
   const saveText = () => {
@@ -221,14 +422,14 @@ export function AddEntrySheet(props: {
     try {
       addPlanEntry({
         date,
-        slotId: props.target.slotId,
+        slotId: when.slotId,
         kind: 'text',
         text: trimmed,
         eaterIds: defaultEaterIds(date),
       });
       done(trimmed, date);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+      setError(message(caught));
     }
   };
 
@@ -247,6 +448,53 @@ export function AddEntrySheet(props: {
       variants: [],
     });
     done(`Reste von ${entryTitle(source, recipesById, entries)}`, props.target.date);
+  };
+
+  // ---------- Create while planning (AC-021 to AC-023) ----------
+
+  const saveNewRecipe = () => {
+    if (online.disabled) return;
+    const title = newTitle.trim();
+    if (!title) {
+      setNewTitleError('Titel fehlt');
+      return;
+    }
+    try {
+      createAndPlanRecipe({ title, servings: newServings }, planSlot());
+    } catch (caught) {
+      setNewTitleError(message(caught));
+      return;
+    }
+    created(title, date);
+  };
+
+  const saveNewRestaurant = async () => {
+    if (online.disabled) return;
+    // A short link is resolved first, so creating and planning stay one change.
+    const draft = await restaurantForm.submit();
+    if (!draft) return;
+    try {
+      createAndPlanRestaurant(draft, planSlot());
+    } catch (caught) {
+      restaurantForm.fail(caught);
+      return;
+    }
+    created(draft.name.trim(), date);
+  };
+
+  const saveNewActivity = async () => {
+    if (online.disabled) return;
+    const values = await activityForm.submit();
+    if (!values) return;
+    let activityIdCreated: Id;
+    try {
+      activityIdCreated = createAndPlanActivity(values.draft, { ...planSlot(), note }).activityId;
+    } catch (caught) {
+      activityForm.fail(caught);
+      return;
+    }
+    savePhotoChoice(activityIdCreated, values.photo);
+    created(values.draft.name, date);
   };
 
   const targetDate = props.target.date;
@@ -273,41 +521,114 @@ export function AddEntrySheet(props: {
         fuzzyIncludes(restaurantQuery, candidate.cuisine ?? ''),
     )
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const activityResults = activities
+    .filter(
+      (candidate) =>
+        !activityQuery.trim() ||
+        [candidate.name, candidate.placeName, candidate.description].some(
+          (field) => field !== undefined && fuzzyIncludes(activityQuery, field),
+        ),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
   const modes: { value: Mode; label: string }[] = [
     { value: 'recipe', label: 'Rezept' },
     { value: 'restaurant', label: 'Restaurant' },
+    { value: 'activity', label: 'Aktivität' },
     { value: 'text', label: 'Freitext' },
     ...(targetDate ? [{ value: 'leftovers' as const, label: 'Reste' }] : []),
   ];
 
-  const footer =
-    mode === 'recipe' && recipe ? (
+  const addLabel = later ? 'Vormerken' : 'Hinzufügen';
+  const createLabel = later ? 'Anlegen und vormerken' : 'Anlegen und einplanen';
+  const eatersHint = eaterIds.length + guests === 0 ? 'Wähl aus, wer mitisst.' : undefined;
+  let footer: ReactNode;
+  if (creating && mode === 'recipe') {
+    footer = (
       <Button
-        label={later ? 'Vormerken' : 'Hinzufügen'}
+        label={createLabel}
+        icon="check"
+        full
+        disabled={online.disabled}
+        hint={online.hint}
+        testID="add-entry-new-recipe-save"
+        onPress={saveNewRecipe}
+      />
+    );
+  } else if (creating && mode === 'restaurant') {
+    footer = (
+      <Button
+        label={createLabel}
+        icon="check"
+        full
+        disabled={online.disabled || !!restaurantForm.duplicate || restaurantForm.saving}
+        hint={
+          online.hint ??
+          (restaurantForm.duplicate ? `Gibt es schon: ${restaurantForm.duplicate.name}` : undefined)
+        }
+        testID="add-entry-new-restaurant-save"
+        onPress={() => void saveNewRestaurant()}
+      />
+    );
+  } else if (creating && mode === 'activity') {
+    footer = (
+      <Button
+        label={createLabel}
+        icon="check"
+        full
+        disabled={
+          online.disabled ||
+          !!activityForm.duplicate ||
+          activityForm.saving ||
+          activityForm.preparing
+        }
+        hint={
+          online.hint ??
+          (activityForm.duplicate ? `Gibt es schon: ${activityForm.duplicate.name}` : undefined)
+        }
+        testID="add-entry-new-activity-save"
+        onPress={() => void saveNewActivity()}
+      />
+    );
+  } else if (mode === 'recipe' && recipe) {
+    footer = (
+      <Button
+        label={addLabel}
         icon="plus"
         full
         disabled={online.disabled || eaterIds.length + guests === 0}
-        hint={
-          online.hint ?? (eaterIds.length + guests === 0 ? 'Wähl aus, wer mitisst.' : undefined)
-        }
+        hint={online.hint ?? eatersHint}
         testID="add-entry-save"
         onPress={saveRecipe}
       />
-    ) : mode === 'restaurant' && restaurant ? (
+    );
+  } else if (mode === 'restaurant' && restaurant) {
+    footer = (
       <Button
-        label={later ? 'Vormerken' : 'Hinzufügen'}
+        label={addLabel}
         icon="plus"
         full
         disabled={online.disabled || eaterIds.length + guests === 0}
-        hint={
-          online.hint ?? (eaterIds.length + guests === 0 ? 'Wähl aus, wer mitisst.' : undefined)
-        }
+        hint={online.hint ?? eatersHint}
         testID="add-entry-restaurant-save"
         onPress={saveRestaurant}
       />
-    ) : mode === 'text' ? (
+    );
+  } else if (mode === 'activity' && activity) {
+    footer = (
       <Button
-        label={later ? 'Vormerken' : 'Hinzufügen'}
+        label={addLabel}
+        icon="plus"
+        full
+        disabled={online.disabled}
+        hint={online.hint}
+        testID="add-entry-activity-save"
+        onPress={saveActivity}
+      />
+    );
+  } else if (mode === 'text') {
+    footer = (
+      <Button
+        label={addLabel}
         icon="plus"
         full
         disabled={online.disabled}
@@ -315,25 +636,65 @@ export function AddEntrySheet(props: {
         testID="add-entry-text-save"
         onPress={saveText}
       />
-    ) : undefined;
+    );
+  }
 
-  const where = date ? dayLabel(date) : 'ohne Tag';
+  // Switching modes keeps the dialog's size; long content scrolls inside. Sheet sizes itself to
+  // its content, so the content is made as tall as the sheet's maximum minus its title row, padding
+  // and the footer (values from Sheet in packages/ui).
+  const sheetMax = Math.round(height * (isPhone ? 0.9 : 0.84));
+  const chrome = 60 + 26 + (isPhone ? Math.max(insets.bottom, 12) : 0);
+  const footerHeight = footer ? (isPhone ? 61 : 75) : 0;
+  const minHeight = Math.max(0, sheetMax - chrome - footerHeight);
+
+  const zusatz = (
+    <TextField
+      label="Zusatz (optional)"
+      value={note}
+      onChangeText={(value) => {
+        setNote(value);
+        setNoteError(undefined);
+      }}
+      placeholder="z. B. Hohenschönhausen"
+      maxLength={NOTE_MAX_LENGTH}
+      error={noteError}
+      hint="Steht im Plan in Klammern hinter dem Namen."
+      testID="add-entry-activity-note"
+    />
+  );
+
+  const where = date ? `${dayLabel(date)}${slotName ? ` ${slotName}` : ''}` : 'ohne Tag';
   return (
     <Sheet
       visible
       onClose={props.onClose}
-      title={`Essen hinzufügen · ${where}`}
+      title={`Hinzufügen · ${where}`}
       testID="add-entry-sheet"
       footer={footer}
     >
-      <Stack gap={16}>
-        <Segmented
-          label="Art des Eintrags"
-          options={modes}
-          value={mode}
-          onChange={setMode}
-          testID="add-entry-mode"
-        />
+      <Stack gap={16} style={{ minHeight }}>
+        {preset ? null : (
+          // Chips instead of a segmented control: five kinds do not fit one row on a phone.
+          <View
+            role="group"
+            aria-label="Art des Eintrags"
+            testID="add-entry-mode"
+            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+          >
+            {modes.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                selected={option.value === mode}
+                onPress={() => changeMode(option.value)}
+                testID={`add-entry-mode-${option.value}`}
+              />
+            ))}
+          </View>
+        )}
+        {preset && !later ? (
+          <WhenPicker value={when} today={today} slots={slots} onChange={setWhen} />
+        ) : null}
         {mode !== 'leftovers' && targetDate ? (
           <Chip
             label="Ohne Tag vormerken"
@@ -343,8 +704,30 @@ export function AddEntrySheet(props: {
             testID="add-entry-later"
           />
         ) : null}
+        {online.hint && creating ? (
+          <Text variant="small" color="warn">
+            {online.hint}
+          </Text>
+        ) : null}
 
-        {mode === 'recipe' && !recipe ? (
+        {mode === 'recipe' && creating ? (
+          <Stack gap={12}>
+            <NewHeading title="Neues Rezept" onBack={() => setCreating(false)} />
+            <NewRecipeFields
+              title={newTitle}
+              onChangeTitle={(value) => {
+                setNewTitle(value);
+                setNewTitleError(undefined);
+              }}
+              error={newTitleError}
+              onSubmit={saveNewRecipe}
+              autoFocus
+              servings={{ value: newServings, onChange: setNewServings }}
+            />
+          </Stack>
+        ) : null}
+
+        {mode === 'recipe' && !creating && !recipe ? (
           <Stack gap={10}>
             <TextField
               value={query}
@@ -354,6 +737,12 @@ export function AddEntrySheet(props: {
               round
               left={<Icon name="search" size={19} color="muted" />}
               testID="add-entry-search"
+            />
+            <NewRow
+              label="Neues Rezept"
+              disabled={online.disabled}
+              onPress={startCreating}
+              testID="add-entry-new-recipe"
             />
             {results.length === 0 ? (
               <Text color="muted">Kein Rezept gefunden.</Text>
@@ -366,7 +755,7 @@ export function AddEntrySheet(props: {
                     subtitle={
                       candidate.variants.map((variant) => variant.name).join(' · ') || undefined
                     }
-                    leading={<Photo source={photoSource(candidate.photo)} width={44} height={44} />}
+                    leading={<RecipeThumb recipe={candidate} size={44} />}
                     onPress={() => chooseRecipe(candidate)}
                     testID={`add-entry-recipe-${candidate.id}`}
                   />
@@ -376,10 +765,10 @@ export function AddEntrySheet(props: {
           </Stack>
         ) : null}
 
-        {mode === 'recipe' && recipe && split ? (
+        {mode === 'recipe' && !creating && recipe && split ? (
           <Stack gap={18}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Photo source={photoSource(recipe.photo)} width={52} height={52} />
+              <RecipeThumb recipe={recipe} size={52} />
               <Text variant="cardTitle" style={{ flex: 1 }}>
                 {recipe.title}
               </Text>
@@ -429,7 +818,19 @@ export function AddEntrySheet(props: {
           </Stack>
         ) : null}
 
-        {mode === 'restaurant' && !restaurant ? (
+        {mode === 'restaurant' && creating ? (
+          <Stack gap={12}>
+            <NewHeading title="Neues Restaurant" onBack={() => setCreating(false)} />
+            <RestaurantFormFields
+              form={restaurantForm}
+              focus="link"
+              openLabel="Auswählen"
+              onOpenExisting={chooseRestaurant}
+            />
+          </Stack>
+        ) : null}
+
+        {mode === 'restaurant' && !creating && !restaurant ? (
           <Stack gap={10}>
             <TextField
               value={restaurantQuery}
@@ -440,10 +841,14 @@ export function AddEntrySheet(props: {
               left={<Icon name="search" size={19} color="muted" />}
               testID="add-entry-restaurant-search"
             />
+            <NewRow
+              label="Neues Restaurant"
+              disabled={online.disabled}
+              onPress={startCreating}
+              testID="add-entry-new-restaurant"
+            />
             {restaurants.length === 0 ? (
-              <Text color="muted">
-                Noch keine Restaurants. Leg sie unter Essen → Restaurants an.
-              </Text>
+              <Text color="muted">Noch keine Restaurants.</Text>
             ) : restaurantResults.length === 0 ? (
               <Text color="muted">Kein Restaurant gefunden.</Text>
             ) : (
@@ -463,7 +868,7 @@ export function AddEntrySheet(props: {
           </Stack>
         ) : null}
 
-        {mode === 'restaurant' && restaurant ? (
+        {mode === 'restaurant' && !creating && restaurant ? (
           <Stack gap={18}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Photo placeholderIcon="utensils" width={52} height={52} />
@@ -490,6 +895,83 @@ export function AddEntrySheet(props: {
               onEaters={setEaterIds}
               onGuests={setGuests}
             />
+          </Stack>
+        ) : null}
+
+        {mode === 'activity' && creating ? (
+          <Stack gap={12}>
+            <NewHeading title="Neue Aktivität" onBack={() => setCreating(false)} />
+            <ActivityFormFields
+              form={activityForm}
+              autoFocus
+              openLabel="Auswählen"
+              onOpenExisting={chooseActivity}
+            />
+            {zusatz}
+          </Stack>
+        ) : null}
+
+        {mode === 'activity' && !creating && !activity ? (
+          <Stack gap={10}>
+            <TextField
+              value={activityQuery}
+              onChangeText={setActivityQuery}
+              placeholder="Aktivität suchen"
+              accessibilityLabel="Aktivität suchen"
+              round
+              left={<Icon name="search" size={19} color="muted" />}
+              testID="add-entry-activity-search"
+            />
+            <NewRow
+              label="Neue Aktivität"
+              disabled={online.disabled}
+              onPress={startCreating}
+              testID="add-entry-new-activity"
+            />
+            {activities.length === 0 ? (
+              <Text color="muted">Noch keine Aktivitäten.</Text>
+            ) : activityResults.length === 0 ? (
+              <Text color="muted">Keine Aktivität gefunden.</Text>
+            ) : (
+              <List>
+                {activityResults.slice(0, MAX_RESULTS).map((candidate) => (
+                  <ListRow
+                    key={candidate.id}
+                    title={candidate.name}
+                    subtitle={activityPlaceLine(candidate)}
+                    leading={<ActivityPhoto activity={candidate} width={44} height={44} />}
+                    onPress={() => chooseActivity(candidate)}
+                    testID={`add-entry-activity-${candidate.id}`}
+                  />
+                ))}
+              </List>
+            )}
+          </Stack>
+        ) : null}
+
+        {mode === 'activity' && !creating && activity ? (
+          <Stack gap={18}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <ActivityPhoto activity={activity} width={52} height={52} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text variant="cardTitle" testID="add-entry-activity-chosen">
+                  {activity.name}
+                </Text>
+                {activityPlaceLine(activity) ? (
+                  <Text variant="small" color="muted">
+                    {activityPlaceLine(activity)}
+                  </Text>
+                ) : null}
+              </View>
+              <Button
+                label="Ändern"
+                variant="link"
+                size="sm"
+                testID="add-entry-activity-back"
+                onPress={() => setActivityId(undefined)}
+              />
+            </View>
+            {zusatz}
           </Stack>
         ) : null}
 

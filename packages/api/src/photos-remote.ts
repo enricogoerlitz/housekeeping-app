@@ -322,6 +322,9 @@ export function releasePhotoUrl(path: string): void {
  * Offline only photos loaded before show (AC-011); back online it tries again.
  */
 export function usePhoto(path: string | undefined): { uri?: string; loading: boolean } {
+  // The URL is read from the module's registry during render; the React Compiler would cache
+  // that read per path, and a photo that finished loading would never show.
+  'use no memo';
   const offline = useOffline();
   // Set when a load finished; a new object each time, so the screen renders the result.
   const [attempt, setAttempt] = useState<{ path: string }>();

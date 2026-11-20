@@ -1,14 +1,19 @@
-import { routeLinks, type Restaurant } from '@housekeeping/core';
+import { routeLinks, type Activity, type Restaurant } from '@housekeeping/core';
 import { Button, Sheet, Stack, Text } from '@housekeeping/ui';
 import { Linking } from 'react-native';
 
-/** "Route": pick the map app; it opens with the restaurant as destination (AC-012). */
+/** Where a route goes: a restaurant, or an activity with its place name (spec 0004). */
+export type RouteTarget = Pick<Restaurant, 'name' | 'address' | 'location'> &
+  Partial<Pick<Activity, 'placeName'>>;
+
+/** "Route": pick the map app; it opens with the place as destination (AC-012, spec 0004 AC-014). */
 export function RouteSheet(props: {
-  restaurant: Restaurant;
+  restaurant: RouteTarget;
   visible: boolean;
   onClose: () => void;
 }) {
-  const links = routeLinks(props.restaurant);
+  const target = props.restaurant;
+  const links = routeLinks(target);
   const open = (url: string) => {
     props.onClose();
     Linking.openURL(url).catch(() => undefined);
@@ -17,8 +22,8 @@ export function RouteSheet(props: {
     <Sheet visible={props.visible} onClose={props.onClose} title="Route" testID="route-sheet">
       <Stack gap={12}>
         <Text color="muted">
-          Ziel: {props.restaurant.name}
-          {props.restaurant.address ? `, ${props.restaurant.address}` : ''}
+          Ziel: {target.placeName || target.name}
+          {target.address ? `, ${target.address}` : ''}
         </Text>
         <Button
           label="Apple Karten"

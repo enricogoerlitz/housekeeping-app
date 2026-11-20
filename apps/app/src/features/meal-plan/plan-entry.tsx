@@ -1,8 +1,10 @@
 import {
-  photoSource,
+  useActivitiesById,
   useArticlesById,
   useMembersById,
+  usePhoto,
   usePlanEntries,
+  useRecipeImage,
   useRecipesById,
   useRestaurantsById,
 } from '@housekeeping/api';
@@ -25,16 +27,30 @@ import { entryTitle, misfitMembers, misfitText } from './labels';
 function useEntryView(entry: MealPlanEntry) {
   const recipesById = useRecipesById();
   const restaurantsById = useRestaurantsById();
+  const activitiesById = useActivitiesById();
   const membersById = useMembersById();
   const articlesById = useArticlesById();
   const entries = usePlanEntries();
   const recipe = entry.recipeId ? recipesById[entry.recipeId] : undefined;
-  const title = entryTitle(entry, recipesById, entries, restaurantsById);
+  const activity =
+    entry.kind === 'activity' && entry.activityId ? activitiesById[entry.activityId] : undefined;
+  const title = entryTitle(entry, recipesById, entries, restaurantsById, activitiesById);
   const variants = entry.kind === 'recipe' && recipe ? variantSummary(entry, recipe) : '';
   const misfits = misfitMembers(entry, recipe, membersById, articlesById);
   const eaters = entry.eaterIds.flatMap((id) => membersById[id] ?? []);
   const cook = entry.cookId ? membersById[entry.cookId] : undefined;
-  return { recipe, title, variants, misfits, eaters, cook };
+  return { recipe, activity, title, variants, misfits, eaters, cook };
+}
+
+/**
+ * The entry's picture: the recipe's own or sample photo, the activity's own photo (AC-013), else
+ * undefined (placeholder).
+ */
+function useEntryImage(view: ReturnType<typeof useEntryView>) {
+  const recipeImage = useRecipeImage(view.activity ? undefined : view.recipe);
+  const activityPhoto = usePhoto(view.activity?.photoPath);
+  if (view.activity) return activityPhoto.uri ? { uri: activityPhoto.uri } : undefined;
+  return recipeImage;
 }
 
 function People(props: { entry: MealPlanEntry }) {
@@ -61,17 +77,21 @@ function People(props: { entry: MealPlanEntry }) {
   );
 }
 
-/** "Restaurant" with its symbol, so a visit never reads like a free-text dish (spec 0002, AC-011). */
-function RestaurantMark(props: { entry: MealPlanEntry }) {
-  if (props.entry.kind !== 'restaurant') return null;
+/**
+ * "Restaurant" or "Aktivität" with its symbol, so a visit or an outing never reads like a
+ * free-text dish (spec 0002, AC-011; spec 0004, AC-013).
+ */
+function KindMark(props: { entry: MealPlanEntry }) {
+  const { kind, id } = props.entry;
+  if (kind !== 'restaurant' && kind !== 'activity') return null;
   return (
     <View
-      testID={`entry-restaurant-${props.entry.id}`}
+      testID={`entry-${kind}-${id}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
     >
-      <Icon name="utensils" size={13} color="muted" />
+      <Icon name={kind === 'activity' ? 'mountain' : 'utensils'} size={13} color="muted" />
       <Text variant="caption" color="muted">
-        Restaurant
+        {kind === 'activity' ? 'Aktivität' : 'Restaurant'}
       </Text>
     </View>
   );
@@ -80,13 +100,16 @@ function RestaurantMark(props: { entry: MealPlanEntry }) {
 function placeholderIcon(entry: MealPlanEntry) {
   if (entry.kind === 'recipe') return 'cooking-pot';
   if (entry.kind === 'leftovers') return 'refresh-cw';
+  if (entry.kind === 'activity') return 'mountain';
   return 'utensils';
 }
 
 /** A dish in the plan as a row (phone, tablet and "Vorgemerkt"). */
 export function PlanEntryRow(props: { entry: MealPlanEntry; onPress: () => void }) {
   const theme = useTheme();
-  const { recipe, title, variants, misfits } = useEntryView(props.entry);
+  const view = useEntryView(props.entry);
+  const { title, variants, misfits } = view;
+  const image = useEntryImage(view);
   const id = props.entry.id;
   return (
     <Pressable
@@ -101,7 +124,7 @@ export function PlanEntryRow(props: { entry: MealPlanEntry; onPress: () => void 
     >
       <Surface padding={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Photo
-          source={photoSource(recipe?.photo)}
+          source={image}
           placeholderIcon={placeholderIcon(props.entry)}
           width={52}
           height={52}
@@ -110,7 +133,7 @@ export function PlanEntryRow(props: { entry: MealPlanEntry; onPress: () => void 
           <Text variant="rowTitle" numberOfLines={2}>
             {title}
           </Text>
-          <RestaurantMark entry={props.entry} />
+          <KindMark entry={props.entry} />
           {variants ? (
             <Text variant="small" color="muted" testID={`entry-variants-${id}`}>
               {variants}
@@ -129,7 +152,9 @@ export function PlanEntryRow(props: { entry: MealPlanEntry; onPress: () => void 
 /** A dish as a compact card in the desktop week grid. */
 export function PlanEntryCard(props: { entry: MealPlanEntry; onPress: () => void }) {
   const theme = useTheme();
-  const { recipe, title, variants, misfits } = useEntryView(props.entry);
+  const view = useEntryView(props.entry);
+  const { title, variants, misfits } = view;
+  const image = useEntryImage(view);
   const id = props.entry.id;
   return (
     <Pressable
@@ -143,12 +168,12 @@ export function PlanEntryCard(props: { entry: MealPlanEntry; onPress: () => void
       })}
     >
       <Surface padding={0} style={{ overflow: 'hidden' }}>
-        {recipe?.photo ? <Photo source={photoSource(recipe.photo)} height={64} radius={0} /> : null}
+        {image ? <Photo source={image} height={64} radius={0} /> : null}
         <View style={{ padding: 8, gap: 4 }}>
           <Text variant="smallStrong" numberOfLines={3}>
             {title}
           </Text>
-          <RestaurantMark entry={props.entry} />
+          <KindMark entry={props.entry} />
           {variants ? (
             <Text variant="caption" color="muted" testID={`entry-variants-${id}`}>
               {variants}

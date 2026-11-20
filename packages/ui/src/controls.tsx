@@ -422,6 +422,7 @@ export interface TextFieldProps extends Pick<
   | 'onFocus'
   | 'onBlur'
   | 'numberOfLines'
+  | 'maxLength'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;

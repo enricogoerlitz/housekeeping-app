@@ -60,8 +60,24 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await back(page);
 
-  // Plan with its pantry check, the list and store mode, the household.
+  // Plan → Aktivitäten: the collection, one activity on its own page, the add sheet's new kind
+  // and its "Neu anlegen" form.
   await nav(page, 'plan');
+  await tid(page, 'plan-view-activities').click();
+  await tid(page, `activity-${seedIds['act-eislaufen']}`).click();
+  await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
+  await tid(page, 'activity-plan').click();
+  await expect(tid(page, 'add-entry-activity-chosen')).toHaveText('Eislaufen');
+  await tid(page, 'add-entry-sheet-close').click();
+  await back(page);
+  await tid(page, 'plan-view-week').click();
+  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
+  await tid(page, 'add-entry-mode-activity').click();
+  await tid(page, 'add-entry-new-activity').click();
+  await expect(tid(page, 'activity-name')).toBeVisible();
+  await tid(page, 'add-entry-sheet-close').click();
+
+  // Plan with its pantry check, the list and store mode, the household.
   await tid(page, 'plan-to-list').click();
   await expect(tid(page, 'pantry-check-sheet')).toBeVisible();
   await tid(page, 'pantry-check-sheet-close').click();
@@ -95,6 +111,9 @@ test('dev smoke: every screen renders without a React warning or error', async (
   for (const key of ['rezepte', 'plan', 'liste', 'haushalt', 'index'] as const) {
     await nav(page, key);
   }
+  await nav(page, 'plan');
+  await tid(page, 'plan-view-activities').click();
+  await expect(tid(page, 'activities-empty')).toBeVisible();
 
   expect(warnings, 'console warnings').toEqual([]);
 });

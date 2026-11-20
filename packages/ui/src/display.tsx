@@ -207,8 +207,13 @@ export interface MediaCardProps {
   size?: 'm' | 'l';
   /** auto follows the theme; force a layout only where the design needs it. */
   layout?: 'auto' | 'photoTop' | 'thumbRow';
-  /** Small element in the top right corner, e.g. a favourite heart or a badge. */
+  /** Small element in the top right corner, e.g. a favourite heart or a "Route" button. */
   corner?: ReactNode;
+  /**
+   * What kind of thing the card shows, e.g. "Rezept" or "Aktivität": a neutral badge next to the
+   * kicker, or over the photo's bottom left corner when the photo is on top.
+   */
+  badge?: { label: string; icon?: IconName; testID?: string };
   testID?: string;
 }
 
@@ -217,13 +222,24 @@ export function MediaCard(props: MediaCardProps) {
   const theme = useTheme();
   const layout = !props.layout || props.layout === 'auto' ? theme.shape.media : props.layout;
   const large = props.size === 'l';
+  const badge = props.badge ? (
+    <Badge label={props.badge.label} icon={props.badge.icon} testID={props.badge.testID} />
+  ) : null;
+  const kicker = props.kicker ? (
+    <Text variant="caption" color="muted" numberOfLines={1} style={{ flexShrink: 1 }}>
+      {props.kicker}
+    </Text>
+  ) : null;
   const text = (
     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-      {props.kicker ? (
-        <Text variant="caption" color="muted" numberOfLines={1}>
-          {props.kicker}
-        </Text>
-      ) : null}
+      {badge && layout !== 'photoTop' ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+          {badge}
+          {kicker}
+        </View>
+      ) : (
+        kicker
+      )}
       <Text
         variant="cardTitle"
         numberOfLines={2}
@@ -254,7 +270,7 @@ export function MediaCard(props: MediaCardProps) {
       <Pressable
         testID={props.testID}
         accessibilityRole="button"
-        accessibilityLabel={props.title}
+        accessibilityLabel={props.badge ? `${props.title}, ${props.badge.label}` : props.title}
         onPress={props.onPress}
         style={(state) => [
           { flex: 1, opacity: state.pressed ? 0.75 : 1, borderRadius: theme.shape.radius.card },
@@ -273,12 +289,18 @@ export function MediaCard(props: MediaCardProps) {
       <View style={{ flex: 1 }}>
         {card(
           <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
-            <Photo
-              source={props.image}
-              placeholderIcon={props.placeholderIcon}
-              height={large ? 190 : 122}
-              radius={0}
-            />
+            <View>
+              <Photo
+                source={props.image}
+                placeholderIcon={props.placeholderIcon}
+                height={large ? 190 : 122}
+                radius={0}
+              />
+              {/* Bottom left, so it never meets the corner on a narrow card. */}
+              {badge ? (
+                <View style={{ position: 'absolute', bottom: 8, left: 8 }}>{badge}</View>
+              ) : null}
+            </View>
             <View style={{ padding: 12, paddingTop: 10 }}>{text}</View>
           </Surface>,
         )}

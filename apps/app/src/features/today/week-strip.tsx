@@ -1,10 +1,18 @@
-import { photoSource, usePlanEntries, useRecipesById, useRestaurantsById } from '@housekeeping/api';
+import {
+  useActivitiesById,
+  usePhoto,
+  usePlanEntries,
+  useRecipeImage,
+  useRecipesById,
+  useRestaurantsById,
+} from '@housekeeping/api';
 import {
   entriesForDay,
   isoWeekNumber,
   parseISODate,
   weekDates,
   weekdayShort,
+  type Activity,
   type ISODate,
   type MealPlanEntry,
   type Recipe,
@@ -17,6 +25,7 @@ interface DayView {
   date: ISODate;
   entry?: MealPlanEntry;
   recipe?: Recipe;
+  activity?: Activity;
   title?: string;
 }
 
@@ -32,6 +41,7 @@ export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact:
   const planEntries = usePlanEntries();
   const recipesById = useRecipesById();
   const restaurantsById = useRestaurantsById();
+  const activitiesById = useActivitiesById();
 
   const days: DayView[] = weekDates(props.today).map((date) => {
     const entry = mainEntry(entriesForDay(planEntries, date, props.slotOrder));
@@ -40,12 +50,14 @@ export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact:
       entry?.kind === 'restaurant' && entry.restaurantId
         ? restaurantsById[entry.restaurantId]
         : undefined;
+    const activity =
+      entry?.kind === 'activity' && entry.activityId ? activitiesById[entry.activityId] : undefined;
     const title = entry
       ? entry.kind === 'leftovers'
         ? `Reste ${recipe?.title ?? ''}`.trim()
-        : (recipe?.title ?? restaurant?.name ?? entry.text)
+        : (recipe?.title ?? restaurant?.name ?? activity?.name ?? entry.text)
       : undefined;
-    return { date, entry, recipe, title };
+    return { date, entry, recipe, activity, title };
   });
 
   const tile = (day: DayView) => {
@@ -80,11 +92,7 @@ export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact:
           </Text>
         </View>
         {day.entry ? (
-          <Photo
-            source={photoSource(day.recipe?.photo)}
-            aspectRatio={1.2}
-            placeholderIcon="utensils"
-          />
+          <DayPhoto recipe={day.recipe} activity={day.activity} />
         ) : (
           <View
             style={{
@@ -128,5 +136,23 @@ export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact:
         <View style={{ flexDirection: 'row', gap: 10 }}>{days.map(tile)}</View>
       )}
     </Section>
+  );
+}
+
+/** The picture of a day's tile: the recipe's or the activity's own photo, else a placeholder. */
+function DayPhoto(props: { recipe?: Recipe; activity?: Activity }) {
+  const recipeImage = useRecipeImage(props.recipe);
+  const activityPhoto = usePhoto(props.activity?.photoPath);
+  const source = props.activity
+    ? activityPhoto.uri
+      ? { uri: activityPhoto.uri }
+      : undefined
+    : recipeImage;
+  return (
+    <Photo
+      source={source}
+      aspectRatio={1.2}
+      placeholderIcon={props.activity ? 'mountain' : 'utensils'}
+    />
   );
 }

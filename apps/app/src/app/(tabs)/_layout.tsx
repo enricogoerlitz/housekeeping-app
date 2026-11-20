@@ -77,6 +77,13 @@ function Navigation(props: BottomTabBarProps) {
   const select = (key: string) => {
     const route = props.state.routes.find((candidate) => candidate.name === key);
     if (!route) return;
+    // A tab with its own stack (plan → activity) goes back to its first page on a second tap.
+    const event = props.emitter.emit({
+      type: 'tabPress',
+      target: route.key,
+      canPreventDefault: true,
+    });
+    if (event.defaultPrevented) return;
     props.navigateToTab(route.key);
   };
 

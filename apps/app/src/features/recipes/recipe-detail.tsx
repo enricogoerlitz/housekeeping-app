@@ -1,13 +1,19 @@
 import {
   addIngredientToList,
-  photoSource,
+  OfflineError,
+  PHOTO_UPLOAD_FAILED_MESSAGE,
+  preparePhoto,
   rateRecipe,
+  removeRecipePhoto,
   setIngredientShoppingNote,
+  setRecipePhoto,
   snapshot,
   toggleFavorite,
   useArticlesById,
   useCurrentMember,
   useRecipe,
+  useRecipeImage,
+  WRITE_REJECTED_MESSAGE,
 } from '@housekeeping/api';
 import {
   courseLabel,
@@ -48,6 +54,7 @@ import { Pressable, View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
+import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
 import { IngredientsPasteSheet } from './ingredients-paste-sheet';
 
@@ -108,6 +115,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
   const [variantId, setVariantId] = useState<Id | undefined>(() => defaultVariantId(recipe));
   const [pasteOpen, setPasteOpen] = useState(false);
   const [noteFor, setNoteFor] = useState<RecipeIngredient | undefined>();
+  const image = useRecipeImage(recipe);
 
   const wide = width >= TWO_COLUMNS_FROM;
   const heroRow = width >= PHOTO_BESIDE_TITLE_FROM;
@@ -337,17 +345,18 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
 
       {heroRow ? (
         <Row gap={24} align="flex-start" style={{ marginBottom: 28 }}>
-          <Photo
-            source={photoSource(recipe.photo)}
-            width={wide ? 320 : 240}
-            aspectRatio={4 / 3}
-            alt={recipe.title}
-          />
+          <Stack gap={4} style={{ width: wide ? 320 : 240 }}>
+            <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
+            <PhotoActions recipe={recipe} />
+          </Stack>
           {titleBlock}
         </Row>
       ) : (
         <Stack gap={16} style={{ marginBottom: 24 }}>
-          <Photo source={photoSource(recipe.photo)} aspectRatio={4 / 3} alt={recipe.title} />
+          <Stack gap={4}>
+            <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
+            <PhotoActions recipe={recipe} />
+          </Stack>
           {titleBlock}
         </Stack>
       )}
@@ -391,6 +400,89 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           ingredient={noteFor}
           onClose={() => setNoteFor(undefined)}
         />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * "Foto ändern" / "Foto entfernen": the household's own photo replaces the sample photo
+ * (AC-017); removing it brings the sample back (AC-018). Online only; errors stay at the photo.
+ */
+function PhotoActions(props: { recipe: Recipe }) {
+  const { recipe } = props;
+  const online = useOnlineOnly();
+  const [busy, setBusy] = useState<'change' | 'remove'>();
+  const [error, setError] = useState<string>();
+  if (!CAN_PICK_PHOTO && !recipe.photoPath) return null;
+
+  const run = async (kind: 'change' | 'remove', action: () => Promise<void>, done: string) => {
+    setBusy(kind);
+    setError(undefined);
+    try {
+      await action();
+      toast.show({ message: done });
+    } catch (caught) {
+      // A refused write already shows a toast; here it only stays as a hint at the photo.
+      if (kind === 'remove' && !(caught instanceof OfflineError)) setError(WRITE_REJECTED_MESSAGE);
+      else setError(caught instanceof Error ? caught.message : PHOTO_UPLOAD_FAILED_MESSAGE);
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  const change = () => {
+    if (online.disabled || busy) return;
+    pickPhotoFile((file) => {
+      void run(
+        'change',
+        async () => setRecipePhoto(recipe.id, await preparePhoto(file)),
+        'Foto gespeichert',
+      );
+    });
+  };
+
+  const remove = () => {
+    if (online.disabled || busy) return;
+    void run('remove', () => removeRecipePhoto(recipe.id), 'Foto entfernt');
+  };
+
+  return (
+    <View>
+      <Row gap={16} wrap>
+        {CAN_PICK_PHOTO ? (
+          <Button
+            label={busy === 'change' ? 'Foto wird gespeichert …' : 'Foto ändern'}
+            icon="camera"
+            variant="link"
+            size="sm"
+            disabled={online.disabled || !!busy}
+            hint={online.hint}
+            onPress={change}
+            testID="recipe-photo-change"
+          />
+        ) : null}
+        {recipe.photoPath ? (
+          <Button
+            label={busy === 'remove' ? 'Foto wird entfernt …' : 'Foto entfernen'}
+            icon="trash"
+            variant="link"
+            size="sm"
+            disabled={online.disabled || !!busy}
+            hint={online.hint}
+            onPress={remove}
+            testID="recipe-photo-remove"
+          />
+        ) : null}
+      </Row>
+      {error ? (
+        <Text variant="small" color="warn" testID="recipe-photo-error">
+          {error}
+        </Text>
+      ) : online.hint ? (
+        <Text variant="small" color="muted" testID="recipe-photo-offline">
+          {online.hint}
+        </Text>
       ) : null}
     </View>
   );

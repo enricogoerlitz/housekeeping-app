@@ -5,6 +5,7 @@ import {
   parseISODate,
   splitVariants,
   weekdayShort,
+  withNote,
   type Article,
   type Id,
   type ISODate,
@@ -32,14 +33,16 @@ function weekdayLong(date: ISODate): string {
 }
 
 /**
- * What the plan shows as the dish name: recipe title, free text, "Reste von Donnerstag" or the
- * restaurant's name. Unknown kinds fall back to their text, so a newer entry never breaks the plan.
+ * What the plan shows as the entry's name: recipe title, free text, "Reste von Donnerstag", the
+ * restaurant's name or the activity with its Zusatz, "Eislaufen (Hohenschönhausen)". Unknown kinds
+ * fall back to their text, so a newer entry never breaks the plan.
  */
 export function entryTitle(
   entry: MealPlanEntry,
   recipesById: Record<Id, Recipe>,
   entries: MealPlanEntry[],
   restaurantsById: Record<Id, { name: string }> = {},
+  activitiesById: Record<Id, { name: string }> = {},
 ): string {
   switch (entry.kind) {
     case 'recipe':
@@ -53,6 +56,13 @@ export function entryTitle(
         (entry.restaurantId ? restaurantsById[entry.restaurantId]?.name : undefined) ??
         entry.text ??
         'Restaurant'
+      );
+    case 'activity':
+      return withNote(
+        (entry.activityId ? activitiesById[entry.activityId]?.name : undefined) ??
+          entry.text ??
+          'Aktivität',
+        entry.note,
       );
     default:
       return entry.text ?? '';

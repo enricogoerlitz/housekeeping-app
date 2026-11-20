@@ -282,9 +282,11 @@ test('0002 AC-012: "Route" on Heute opens Apple Karten or Google Maps at Enzo’
 
   await nav(page, 'index');
   const card = tidPrefix(page, 'today-meal-').filter({ hasText: 'Trattoria Da Enzo' });
-  await expect(card).toContainText('Abend · Restaurant');
+  await expect(card).toContainText('Abend');
   // The route button sits next to the card, not inside it (no button in a button).
   const entryId = (await card.getAttribute('data-testid'))?.replace('today-meal-', '');
+  // Spec 0004, AC-019: the kind is the card's badge.
+  await expect(tid(page, `today-badge-${entryId}`)).toHaveText('Restaurant');
   const route = tid(page, `today-route-${entryId}`);
   await route.click();
   await expect(tid(page, 'route-sheet')).toBeVisible();

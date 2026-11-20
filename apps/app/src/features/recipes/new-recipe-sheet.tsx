@@ -5,6 +5,8 @@ import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
+import { NewRecipeFields } from './recipe-form';
+
 export interface NewRecipeSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -62,19 +64,15 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       }
     >
       <Stack gap={16}>
-        <TextField
-          label="Titel"
-          placeholder="z. B. Linsen-Dal"
-          value={title}
-          onChangeText={(text) => {
+        <NewRecipeFields
+          title={title}
+          onChangeTitle={(text) => {
             setTitle(text);
             if (error) setError(undefined);
           }}
-          onSubmitEditing={save}
-          returnKeyType="done"
-          autoFocus
           error={error}
-          testID="new-recipe-title"
+          onSubmit={save}
+          autoFocus
         />
         <TextField
           label="Zutaten einfügen"

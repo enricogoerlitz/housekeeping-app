@@ -1,5 +1,5 @@
-import { photoSource, useArticlesById } from '@housekeeping/api';
-import type { Id, Recipe } from '@housekeeping/core';
+import { useArticlesById, useRecipeImage } from '@housekeeping/api';
+import type { Article, Id, Recipe } from '@housekeeping/core';
 import { MediaCard, useTheme } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -38,22 +38,45 @@ export function RecipeGrid(props: RecipeGridProps) {
           key={recipe.id}
           style={cardWidth !== undefined ? { width: cardWidth } : { width: '100%' }}
         >
-          <MediaCard
+          <RecipeCard
+            recipe={recipe}
+            articlesById={articlesById}
+            compact={props.compact}
+            meta={props.meta}
             testID={props.cardTestID ? props.cardTestID(recipe) : `recipe-card-${recipe.id}`}
-            title={recipe.title}
-            image={photoSource(recipe.photo)}
-            layout={props.compact ? 'thumbRow' : 'auto'}
-            meta={
-              props.meta ? (
-                props.meta(recipe)
-              ) : (
-                <RecipeCardMeta recipe={recipe} articlesById={articlesById} />
-              )
-            }
-            onPress={() => props.onOpen(recipe.id)}
+            onOpen={props.onOpen}
           />
         </View>
       ))}
     </View>
+  );
+}
+
+/** One card; its own photo wins over the sample photo (spec 0004, AC-017). */
+function RecipeCard(props: {
+  recipe: Recipe;
+  articlesById: Record<Id, Article>;
+  compact?: boolean;
+  meta?: (recipe: Recipe) => ReactNode;
+  testID: string;
+  onOpen: (recipeId: Id) => void;
+}) {
+  const { recipe } = props;
+  const image = useRecipeImage(recipe);
+  return (
+    <MediaCard
+      testID={props.testID}
+      title={recipe.title}
+      image={image}
+      layout={props.compact ? 'thumbRow' : 'auto'}
+      meta={
+        props.meta ? (
+          props.meta(recipe)
+        ) : (
+          <RecipeCardMeta recipe={recipe} articlesById={props.articlesById} />
+        )
+      }
+      onPress={() => props.onOpen(recipe.id)}
+    />
   );
 }
