@@ -71,3 +71,15 @@ gespeicherter Sitzung um, getestet mit Negativtests (nicht eingeladene Adresse).
 ## Wann diese Entscheidung neu bewertet wird
 
 Wenn Personen ohne Google- oder Apple-Konto teilnehmen sollen.
+
+## Nachtrag 2026-11-20 — nur Google
+
+Festgelegt nach Rücksprache: **„Mit Apple anmelden“ ist nicht geplant.** Einziger Anmeldeweg ist
+Google, im Web wie in den nativen Apps. Der Apple-Developer-Account wird nur gebraucht, um die
+native iOS-App per TestFlight auf die iPhones zu bringen, nicht für die Anmeldung.
+
+Bis der Auth-Hook mit der Allowlist steht, begrenzt der Google-OAuth-Zustimmungsbildschirm im
+Status „Testen“ die Anmeldung auf die eingetragenen Testnutzer.
+
+Neu bewerten, falls die App je öffentlich in den App Store soll: Apple verlangt dann bei
+Google-Login auch „Mit Apple anmelden“.
