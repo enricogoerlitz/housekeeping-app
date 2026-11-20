@@ -247,55 +247,73 @@ export function MediaCard(props: MediaCardProps) {
       ) : null}
     </View>
   );
-  const body =
-    layout === 'photoTop' ? (
-      <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
-        <Photo
-          source={props.image}
-          placeholderIcon={props.placeholderIcon}
-          height={large ? 190 : 122}
-          radius={0}
-        />
-        <View style={{ padding: 12, paddingTop: 10 }}>{text}</View>
+  // The corner (e.g. a "Route" button or a heart) is never placed inside the pressable card:
+  // a button inside a button is invalid on the web and unreachable for screen readers.
+  const card = (content: ReactNode) =>
+    props.onPress ? (
+      <Pressable
+        testID={props.testID}
+        accessibilityRole="button"
+        accessibilityLabel={props.title}
+        onPress={props.onPress}
+        style={(state) => [
+          { flex: 1, opacity: state.pressed ? 0.75 : 1, borderRadius: theme.shape.radius.card },
+          focusRing(theme, (state as { focused?: boolean }).focused),
+        ]}
+      >
+        {content}
+      </Pressable>
+    ) : (
+      <View testID={props.testID} style={{ flex: 1 }}>
+        {content}
+      </View>
+    );
+  if (layout === 'photoTop')
+    return (
+      <View style={{ flex: 1 }}>
+        {card(
+          <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
+            <Photo
+              source={props.image}
+              placeholderIcon={props.placeholderIcon}
+              height={large ? 190 : 122}
+              radius={0}
+            />
+            <View style={{ padding: 12, paddingTop: 10 }}>{text}</View>
+          </Surface>,
+        )}
         {props.corner ? (
           <View style={{ position: 'absolute', top: 8, right: 8 }}>{props.corner}</View>
         ) : null}
-      </Surface>
-    ) : (
-      <Surface
-        padding={large ? 12 : 9}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
-      >
-        <Photo
-          source={props.image}
-          placeholderIcon={props.placeholderIcon}
-          width={large ? 104 : 68}
-          height={large ? 104 : 68}
-          radius={theme.shape.radius.photo}
-        />
-        {text}
-        {props.corner}
-      </Surface>
-    );
-  if (!props.onPress)
-    return (
-      <View testID={props.testID} style={{ flex: 1 }}>
-        {body}
       </View>
     );
+  const thumb = (
+    <Photo
+      source={props.image}
+      placeholderIcon={props.placeholderIcon}
+      width={large ? 104 : 68}
+      height={large ? 104 : 68}
+      radius={theme.shape.radius.photo}
+    />
+  );
+  const rowStyle = { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 } as const;
+  if (!props.corner)
+    return card(
+      <Surface padding={large ? 12 : 9} style={rowStyle}>
+        {thumb}
+        {text}
+      </Surface>,
+    );
   return (
-    <Pressable
-      testID={props.testID}
-      accessibilityRole="button"
-      accessibilityLabel={props.title}
-      onPress={props.onPress}
-      style={(state) => [
-        { flex: 1, opacity: state.pressed ? 0.75 : 1, borderRadius: theme.shape.radius.card },
-        focusRing(theme, (state as { focused?: boolean }).focused),
-      ]}
-    >
-      {body}
-    </Pressable>
+    <Surface padding={large ? 12 : 9} style={rowStyle}>
+      {card(
+        <View style={rowStyle}>
+          {thumb}
+          {text}
+        </View>,
+      )}
+      {props.corner}
+    </Surface>
   );
 }
 
