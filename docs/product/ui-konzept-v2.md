@@ -1,18 +1,22 @@
 # UI-Konzept v2
 
-> Stand: 20.11.2026 · Status: **Entwurf zur Freigabe** · Für: Enrico
+> Stand: 20.11.2026 · Status: **Freigegeben am 20.11.2026, alle Empfehlungen** · Für: Enrico
 >
 > Grundlage: dein UI-Review vom 20.11.2026, deine Zusatzwünsche (Sammlungen als besondere Rezepte,
 > nur eine Einkaufsliste, Kalender mit Urlaub und Haushalt, alles Planbare bewertbar, Verwalten in
-> der Seitenleiste) und der gebaute Stand nach Spec 0001 bis 0004. Nach deiner Freigabe entstehen
-> daraus die Specs 0005 bis 0011 (Abschnitt 5).
+> der Seitenleiste) und der gebaute Stand nach Spec 0001 bis 0004. Daraus entstehen die Specs 0005
+> bis 0013 (Abschnitt 5).
+>
+> Nachtrag vom selben Tag: Verwalten in der Seitenleiste (3.12), Reisetaschen (3.13) und
+> Benachrichtigungen (3.14), mit den Entscheidungen D30 bis D43.
 
 **So liest du das Dokument**
 
-- Jeder Bereich hat: was sich ändert, warum, eine Skizze (Handy, bei Bedarf Desktop) und offene
+- Jeder Bereich hat: was sich ändert, warum, eine Skizze (Handy, bei Bedarf Desktop) und die
   Entscheidungen.
-- Entscheidungen heißen **D1 bis D29**. Abschnitt 6 sammelt alle in einer Tabelle. Du kannst
-  einfach antworten: „D1: A, D2: B …“ oder „alle Empfehlungen“.
+- Entscheidungen heißen **D1 bis D43**. Alle sind entschieden: D1 bis D29 mit deiner Freigabe
+  („alle Empfehlungen“), D30 bis D43 nach deiner Regel „Empfehlung übernehmen“. Abschnitt 6 sammelt
+  alle in einer Tabelle.
 - Vorausgesetzt ist Spec 0004 (läuft gerade): Vormittag, Aktivitäten, „Neu anlegen beim
   Einplanen“, „Heute geplant“ mit Kennzeichen, eigene Fotos. Das Konzept baut darauf auf.
 - Fachbegriffe folgen `.agents/glossary.md`. Neue oder geänderte Begriffe sind _kursiv_; sie kommen
@@ -34,8 +38,8 @@ In der App sind das Symbole (Kochmütze, Stapel, Besteck, Berg, Haken), keine Em
 2. Globale Muster
 3. Bereiche
 4. Datenmodell-Änderungen
-5. Vorschlag für Specs und Reihenfolge
-6. Entscheidungen für Enrico
+5. Specs und Reihenfolge
+6. Entscheidungen
 
 - Anhang A: Dein Review, Punkt für Punkt
 - Anhang B: Was dieses Konzept nicht abdeckt
@@ -64,10 +68,14 @@ In der App sind das Symbole (Kochmütze, Stapel, Besteck, Berg, Haken), keine Em
 10. **Heute wird zur Tagesansicht.** Wochen blättern, Tag wählen, „Heute geplant“ mit allen Arten,
     „Wie war's?“ für Rezepte, Sammlungen, Restaurants und Aktivitäten mit halben Sternen.
 11. **Haushalt und Einstellungen entrümpelt.** Aufgaben bearbeitbar, Verlauf nach Monat und Woche,
-    „Was anderes erledigt?“ mit Suche. Einstellungen nur noch persönlich, Stammdaten unter
-    „Verwalten“.
+    „Was anderes erledigt?“ mit Suche. Einstellungen nur noch persönlich. Die Stammdaten stehen als
+    „Verwalten“ direkt in der Desktop-Seitenleiste, auf dem Handy hinter dem Knopf ⊞.
 12. **KI ausgeblendet, Frisch ruhiger, Desktop großzügiger.** Die KI kommt am Ende zurück. Frisch
     nutzt eine Bereichsfarbe je Bildschirm statt fünf.
+13. **Reisetaschen für den Urlaub.** Wiederverwendbare Packlisten; je Urlaub entsteht daraus eine
+    Packliste zum Abhaken, auch ohne Netz, mit Link auf „Heute“.
+14. **Benachrichtigungen.** Tagesüberblick, Aktivitäten am Vortag, Aufgaben mit Uhrzeit und
+    Restaurant-Reservierungen per Web Push; ruhig voreingestellt, je Person einstellbar.
 
 ## 2. Globale Muster
 
@@ -84,39 +92,17 @@ unfertig.
 und Seitenleiste (ab Tablet) bleiben sichtbar. Oben links führt ein Pfeil zurück. Spec 0004 macht
 das für Aktivitäten schon so vor.
 
-| Seite                                                                 | gehört zu                                   |
-| --------------------------------------------------------------------- | ------------------------------------------- |
-| Rezept, Sammlung, Restaurant                                          | Essen                                       |
-| Aktivitäten, Aktivität, Abwesenheiten                                 | Kalender (auch über „Verwalten“ erreichbar) |
-| Einkaufen                                                             | Liste (Vollbild-Modus, D5)                  |
-| Aufgabe                                                               | Haushalt                                    |
-| Artikel, Märkte & Bereiche, Markt, Mitglieder & Einladungen, Feedback | Verwalten                                   |
-| Profil & Darstellung                                                  | Avatar (Handy oben rechts, Desktop unten)   |
+| Seite                                                                            | gehört zu                                   |
+| -------------------------------------------------------------------------------- | ------------------------------------------- |
+| Rezept, Sammlung, Restaurant                                                     | Essen                                       |
+| Aktivitäten, Aktivität, Abwesenheiten, Urlaubsseite mit Packliste                | Kalender (auch über „Verwalten“ erreichbar) |
+| Einkaufen                                                                        | Liste (Vollbild-Modus, D5)                  |
+| Aufgabe                                                                          | Haushalt                                    |
+| Reisetaschen, Artikel, Märkte & Bereiche, Markt, Haushalt & Mitglieder, Feedback | Verwalten                                   |
+| Einstellungen (Profil, Darstellung, Benachrichtigungen)                          | Avatar (Handy oben rechts, Desktop unten)   |
 
-**Seitenleiste am Desktop** bekommt eine zweite Gruppe „Verwalten“, wie du es dir wünschst:
-
-```text
-┌──────────────────────────┐
-│ ⌂ Enrico & Nadja      ▾  │ ← Haushalt wechseln
-│                          │
-│   Heute                  │
-│   Essen                  │
-│   Kalender               │
-│   Liste                  │
-│   Haushalt               │
-│                          │
-│ VERWALTEN                │
-│   Aktivitäten            │
-│   Artikel                │
-│   Märkte & Bereiche      │
-│   Abwesenheiten          │
-│   Mitglieder             │
-│   Feedback               │
-│                          │
-│ (E) Enrico               │
-│     Profil & Darstellung │
-└──────────────────────────┘
-```
+**Seitenleiste am Desktop** bekommt eine zweite Gruppe „Verwalten“ mit den Stammdaten, wie du es
+dir wünschst. Aufbau und Skizzen stehen in 3.12.
 
 Der Knopf „Assistent“ entfällt, solange die KI ausgeblendet ist (2.9).
 
@@ -129,12 +115,11 @@ verstecken. Drei Wege:
 | B   | **Knopf „Verwalten“ (⊞) im Kopf jeder Tab-Startseite**, links neben dem Avatar; öffnet die Seite „Verwalten“ | Tab-Leiste bleibt bei fünf; nicht im Profil versteckt; gleiche Einträge wie am Desktop | ein Symbol mehr im Kopf                                                                 |
 | C   | Avatar öffnet „Ich & Verwalten“                                                                              | so machen es viele Apps                                                                | genau das wolltest du nicht                                                             |
 
-**Empfehlung B.** Verwalten braucht man selten. Es soll auffindbar sein, aber keinen Tab kosten.
-Dazu kommen Abkürzungen am Ort: „Märkte verwalten“ in der Marktwahl beim Einkaufen, „Aktivitäten“
-im Kalender, „Artikel bearbeiten“ an jeder Zutat.
+**ENTSCHIEDEN: B** (Empfehlung). Verwalten braucht man selten. Es soll auffindbar sein, aber keinen
+Tab kosten. Dazu kommen Abkürzungen am Ort (3.12).
 
 **Vollbild-Modi (D5):** Einkaufen und Kochen sind Modi, in denen nichts ablenken soll (Vision:
-„Einhändig im Laden“). **Empfehlung A:** Sie verdecken auf dem Handy die Tab-Leiste und haben oben
+„Einhändig im Laden“). **ENTSCHIEDEN A:** Sie verdecken auf dem Handy die Tab-Leiste und haben oben
 immer „Fertig“. Option B: Die Tab-Leiste bleibt auch dort. Am Desktop bleibt die Seitenleiste in
 beiden Fällen.
 
@@ -236,7 +221,7 @@ Heute: Segment-Balken                         Neu: Ansichts-Tabs
 | B   | Kleine Pillen-Tabs (aktive Pille gefüllt, nur so breit wie Text) | iOS-nah, kompakt                                                                                          | sieht aus wie Filter-Chips direkt darunter: Verwechslungsgefahr   |
 | C   | Titel als Menü („Essen: Rezepte ▾“)                              | spart eine ganze Zeile                                                                                    | Optionen unsichtbar; ein Tipp mehr; schlecht für Woche/Monat/Jahr |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 2.5 Abhaken mit Sammel-Fenster
 
@@ -277,7 +262,7 @@ es im Verlauf (3.10).
 | B   | 3 s                | mehr Zeit zum Korrigieren                             | Liste bleibt länger „unaufgeräumt“ |
 | C   | 1,5 s              | schneller sauber                                      | Korrigieren wird hektisch          |
 
-**Empfehlung A.** Der Wert steht an einer Stelle und lässt sich nach einer Woche Alltag anpassen.
+**ENTSCHIEDEN: A** (Empfehlung). Der Wert steht an einer Stelle und lässt sich nach einer Woche Alltag anpassen.
 
 ### 2.6 Suchen oder anlegen
 
@@ -382,7 +367,7 @@ Listenzeile.
 | B   | Frisch streichen, nur Markthalle und Klar | weniger Pflege               | du hattest dich für drei entschieden |
 | C   | so lassen                                 | kein Aufwand                 | dein Befund bleibt                   |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 2.11 Desktop-Regeln
 
@@ -437,6 +422,8 @@ Dazu:
   überfällig, abhakbar. Künftige Tage: nur Anzeige.
 - **Urlaub** steht als ruhige Zeile: „Nadja ist im Urlaub bis Do 26.11.“
 - **„Einkauf“** bleibt (offen, kurze Vorschau, „Einkaufen“) und gilt für die eine Liste.
+- **Reisetasche:** Steht ein Urlaub mit Packliste an, erscheint ganz unten eine Karte „Reisetasche
+  · 12/30 gepackt“ (3.13).
 
 **Warum Tagesauswahl statt „+n weitere“:** Mit Vormittag, Mittag und Abend und mehreren Einträgen
 je Tageszeit passt ein Tag nicht mehr in eine 76-px-Kachel. „+2“ verrät nicht, was geplant ist, und
@@ -509,14 +496,14 @@ Desktop (1440 px)
 | B   | Kacheln mit erstem Eintrag und „+n weitere“ zum Aufklappen (Idee 1) | Woche auf einen Blick                                                         | Kacheln zu klein für drei Tageszeiten; Aufklappen macht Unruhe      |
 | C   | beides: Tagesauswahl oben und alte Wochenleiste unten               | alles da                                                                      | doppelt, Seite wird lang                                            |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D7  | „Heute geplant“ auf dem Handy            | Pro                                                                           | Contra                                        |
 | --- | ---------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------- |
 | A   | **waagerecht wischbar** (dein Vorschlag) | Platz für „Wie war's?“ und „Zu tun“; angeschnittene Karte zeigt „da ist mehr“ | ab vier Einträgen nicht alles auf einen Blick |
 | B   | untereinander                            | alles sichtbar                                                                | schiebt „Zu tun“ weit nach unten              |
 
-**Empfehlung A.** Ab vier Einträgen steht rechts im Titel zusätzlich „Alle 5 ›“ (öffnet den Tag
+**ENTSCHIEDEN: A** (Empfehlung). Ab vier Einträgen steht rechts im Titel zusätzlich „Alle 5 ›“ (öffnet den Tag
 im Kalender).
 
 | D8  | „Wie war's?“ fragt ab               | Pro                                   | Contra                                  |
@@ -525,14 +512,14 @@ im Kalender).
 | B   | **Unbewertetes der letzten 3 Tage** | Wochenende wird nicht vergessen; kurz | —                                       |
 | C   | Unbewertetes der letzten 7 Tage     | vollständig                           | lange Liste, fühlt sich nach Pflicht an |
 
-**Empfehlung B.**
+**ENTSCHIEDEN: B** (Empfehlung).
 
 | D9  | Halbe Sterne                                            | Pro                 | Contra                |
 | --- | ------------------------------------------------------- | ------------------- | --------------------- |
 | A   | **ja**, Bewertungen in halben Schritten speichern (4.5) | dein Wunsch; feiner | kleine Datenmigration |
 | B   | nur ganze Sterne                                        | kein Aufwand        | Wunsch nicht erfüllt  |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.2 Essen
 
@@ -614,7 +601,7 @@ Desktop
 | B   | nur Filter-Knopf und Sortier-Menü, alles andere im Filterfeld                    | am ruhigsten                                              | Favoriten und Vegan kosten immer zwei Tipps    |
 | C   | heutige Leiste, nur ein- und ausklappbar                                         | wenig Umbau                                               | bleibt hässlich, nur seltener sichtbar         |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.3 Rezept-Seite und Rezept-Editor
 
@@ -703,7 +690,7 @@ Desktop: ganze Seite (D11 A)
 | A   | **ganze Seite** mit Seitenleiste, innen zwei Spalten; Zurück an dieselbe Listenstelle | Kacheln bleiben groß, Rezept hat Platz | ändert AC-008 aus Spec 0001 („nebeneinander“)       |
 | B   | wie heute: Liste (380 px) und Rezept nebeneinander                                    | schnelles Durchklicken                 | Kacheln schrumpfen auf Mini-Format, Rezept gedrängt |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D12 | Rezept bearbeiten                                  | Pro                                                        | Contra                                                     |
 | --- | -------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
@@ -711,7 +698,7 @@ Desktop: ganze Seite (D11 A)
 | B   | ein Bearbeiten-Modus für das ganze Rezept          | vertraut                                                   | großer Moduswechsel, Seite sieht dann ganz anders aus      |
 | C   | alles immer direkt bearbeitbar                     | Leitlinie 1 pur                                            | Lese- und Kochansicht voller Eingabefelder                 |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D13 | Bestehende Zutaten ohne Artikel                                                                                        | Pro                                          | Contra                               |
 | --- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------ |
@@ -719,7 +706,7 @@ Desktop: ganze Seite (D11 A)
 | B   | Freitext bleibt, bis jemand das Rezept bearbeitet                                                                      | keine Migration                              | zwei Welten bleiben lange bestehen   |
 | C   | Zeile für Zeile nachfragen                                                                                             | genau                                        | mühsam bei vielen Rezepten           |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.4 Sammlungen
 
@@ -781,18 +768,18 @@ Sammlung (Handy)                         Rezepte hinzufügen (großes Fenster)
 | A   | **Rezept mit Art „Sammlung“** plus kleine Tabelle für die enthaltenen Rezepte | Bewertung, Favorit, Foto, Suche, Filter, Einplanen und Vorratscheck gibt es schon; Planeintrag braucht keine neue Art | Rezeptfelder wie Schritte bleiben bei Sammlungen leer  |
 | B   | eigene Tabellen für Sammlungen                                                | sauber getrennt                                                                                                       | jede Funktion doppelt bauen (Bewertung, Plan, Suche …) |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D15 | Sammlung in Sammlung | Pro                                 | Contra                                         |
 | --- | -------------------- | ----------------------------------- | ---------------------------------------------- |
 | A   | **nein**             | einfach; keine Kreise, klare Mengen | „Sommerfest = Grillabend + Kuchen“ geht nicht  |
 | B   | ja, mit Kreis-Schutz | sehr flexibel                       | Kreis-Prüfung, verschachtelte Mengen verwirren |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.5 Kalender
 
-**Umbenennen (D16):** Mit Monat und Jahr ist „Plan“ ein Kalender. **Empfehlung A:** Der Tab heißt
+**Umbenennen (D16):** Mit Monat und Jahr ist „Plan“ ein Kalender. **ENTSCHIEDEN A:** Der Tab heißt
 **Kalender**. Option B: „Plan“ bleibt. Das Wort „Wochenplan“ bleibt im Glossar für das, was in
 einer Woche geplant ist.
 
@@ -944,7 +931,7 @@ an. Mit Woche, Monat und Jahr würden Zeit-Ansichten und ein Katalog gemischt.
 | B   | dritter Tab in Essen („Rezepte · Restaurants · Aktivitäten“), Tab heißt dann z. B. „Ideen“ | alles Planbare an einem Ort, gleiche Filter                      | Aktivitäten sind kein Essen; Tab-Name unklar |
 | C   | vierte Ansicht im Kalender (Woche · Monat · Jahr · Aktivitäten)                            | wie gebaut                                                       | mischt Zeit und Katalog                      |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 **„Auf die Einkaufsliste“ neu**
 
@@ -990,7 +977,7 @@ Neu:
 | A   | **Kalender**  | trifft, was der Tab jetzt kann | neues Wort für Gewohntes      |
 | B   | Plan          | gewohnt                        | passt nicht zu Monat und Jahr |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D18 | Haushalt-Zeile, Standard          | Pro                                    | Contra                            |
 | --- | --------------------------------- | -------------------------------------- | --------------------------------- |
@@ -998,7 +985,7 @@ Neu:
 | B   | überall an                        | nichts verpasst                        | Monat wird voll                   |
 | C   | überall aus                       | ruhig                                  | Funktion kaum entdeckt            |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D19 | Arten im Kalender                          | Pro                                     | Contra                                               |
 | --- | ------------------------------------------ | --------------------------------------- | ---------------------------------------------------- |
@@ -1006,14 +993,14 @@ Neu:
 | B   | nur Symbol                                 | am ruhigsten                            | im Monat auf dem Handy (Punkte) nicht unterscheidbar |
 | C   | farbige Flächen wie bei Apple              | sehr deutlich                           | genau das Bunte, das Frisch schon hat                |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D20 | Monat auf dem Handy                                      | Pro                             | Contra                        |
 | --- | -------------------------------------------------------- | ------------------------------- | ----------------------------- |
 | A   | **Punkte im Raster, Tagesliste darunter** (Apple iPhone) | Raster lesbar; Details per Tipp | Titel erst nach Tipp sichtbar |
 | B   | Text im Raster wie am Desktop                            | alles sichtbar                  | bei 52 px Zellbreite unlesbar |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D21 | Vorauswahl bei „Auf die Einkaufsliste“                                                      | Pro                                      | Contra                                                     |
 | --- | ------------------------------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
@@ -1021,16 +1008,16 @@ Neu:
 | B   | die nächsten 7 Tage ab heute                                                                | immer eine volle Woche                   | greift in die nächste Woche, auch wenn man die nicht meint |
 | C   | nichts vorausgewählt                                                                        | volle Kontrolle                          | jedes Mal viele Tipps                                      |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.6 Urlaub und Abwesenheit
 
 Baut auf der vorhandenen **Abwesenheit** auf: Person oder ganzer Haushalt, von–bis, Notiz. Kein
-neues Konzept, keine neue Tabelle.
+neues Konzept, keine neue Tabelle. (Die Reisetaschen aus 3.13 hängen sich an die Abwesenheit an.)
 
 - **Eintragen:** Kalender ⋯ → „Abwesenheit eintragen“ oder „+“ auf der Seite „Abwesenheiten“.
   Fenster (mittel): Wer? (Mitglieder als Auswahl-Chips, mehrfach), Von, Bis, Notiz („Urlaub
-  Mallorca“).
+  Mallorca“) und optional Reisetaschen (3.13).
 - **Mehrere Personen (D23 A):** Sind alle Mitglieder gewählt, entsteht eine Abwesenheit des ganzen
   Haushalts (wirkt wie heute: Rotation pausiert, feste Termine entfallen). Sind einzelne gewählt,
   entsteht je Person eine Abwesenheit mit denselben Daten.
@@ -1046,8 +1033,8 @@ neues Konzept, keine neue Tabelle.
 - **Sichtbar:** Kalender (alle Ansichten), Heute (Tagesleiste und Hinweiszeile), „Wer isst mit?“
   (wie heute).
 - **Verwalten:** Seite „Abwesenheiten“ (Kalender ⋯ und Verwalten): kommende und vergangene,
-  bearbeiten, löschen. Ein Tipp auf einen Streifen öffnet die Abwesenheit. Aus den Einstellungen
-  verschwindet der Abschnitt.
+  bearbeiten, löschen. Ein Tipp auf einen Streifen öffnet die Urlaubsseite mit Packliste (3.13). Aus
+  den Einstellungen verschwindet der Abschnitt.
 
 ```text
 ┌ Abwesenheit eintragen ──────────── ✕ ┐
@@ -1069,14 +1056,14 @@ neues Konzept, keine neue Tabelle.
 | A   | **die Notiz** („Urlaub Mallorca“), sonst „abwesend“         | keine Datenänderung; frei formulierbar | kein Symbol je Anlass   |
 | B   | neues Feld „Anlass“ (Urlaub, Dienstreise, krank) mit Symbol | einheitlicher, Symbol im Kalender      | neues Feld, mehr Pflege |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D23 | Mehrere Personen in einer Abwesenheit                                                                    | Pro                                                         | Contra                           |
 | --- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------------- |
 | A   | **alle gewählt = ganzer Haushalt; sonst eine Zeile je Person; Anzeige fasst gleiche Zeiträume zusammen** | keine neue Tabelle; Regeln für Rotation und Termine bleiben | zwei Zeilen gemeinsam bearbeiten |
 | B   | neue Tabelle „Teilnehmer“ je Abwesenheit                                                                 | eine Zeile je Urlaub                                        | Datenmodell und Sync-Änderung    |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.7 Liste
 
@@ -1136,7 +1123,7 @@ Handy                                    Posten bearbeiten (mittel)
 | B   | Haken und ± in derselben Zeile                    | alles an einem Ort                               | volle Zeilen, Fehltipps zwischen Haken und − |
 | C   | Umschalter Bearbeiten ↔ Abhaken                   | beides möglich                                   | ein Modus mehr, den man suchen muss          |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 | D25 | Was passiert mit weiteren Listen (z. B. „Drogerie“)             | Pro                                                                              | Contra                                                       |
 | --- | --------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
@@ -1144,7 +1131,7 @@ Handy                                    Posten bearbeiten (mittel)
 | B   | zusätzlich als Sammlung „Drogerie“ speichern                    | Inhalt mit einem Tipp wieder auf der Liste                                       | Sammlungen sind fürs Essen gedacht; Rezeptliste wird unruhig |
 | C   | nur als Sammlung speichern, Posten nicht übernehmen             | Liste bleibt schlank                                                             | offene Posten fehlen plötzlich                               |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.8 Einkaufen
 
@@ -1183,7 +1170,7 @@ Handy                                    Posten bearbeiten (mittel)
 | B   | immer der Standardmarkt                                   | vorhersehbar                                        | wer meist woanders kauft, wechselt jedes Mal |
 | C   | jedes Mal fragen                                          | nie falsch                                          | ein Tipp mehr bei jedem Einkauf              |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ### 3.9 Märkte, Bereiche und Artikel
 
@@ -1314,7 +1301,7 @@ Alle, Desktop (Liste und Detail, gleiche Breite wie Anstehend)
 | A   | **neue Aufgabe mit Rhythmus „bei Bedarf“**; erscheint in „Alle“, wird gefunden | dein Wunsch; beim nächsten Mal sauber zuordenbar | „Alle“ wächst um Einmaliges  |
 | B   | nur Verlaufseintrag „spontan“ (wie heute)                                      | „Alle“ bleibt schlank                            | nächstes Mal wieder Freitext |
 
-**Empfehlung A.** Wer eine solche Aufgabe nicht mehr braucht, löscht sie in „Alle“; der Verlauf
+**ENTSCHIEDEN: A** (Empfehlung). Wer eine solche Aufgabe nicht mehr braucht, löscht sie in „Alle“; der Verlauf
 bleibt.
 
 ### 3.11 Einstellungen und Verwalten
@@ -1322,36 +1309,36 @@ bleibt.
 **Heute:** eine lange Seite mit Profil, Haushalten, Mitgliedern, Einladungen, Märkten, Feedback,
 Showroom, Abwesenheit, Darstellung, KI und Entwicklung.
 
-**Neu (D28 A):**
+**Neu (D28 A, mit dem Nachtrag in 3.12 geschärft):** Persönliches liegt hinter dem Avatar, alles,
+was den Haushalt betrifft, unter „Verwalten“.
 
-| Seite                          | Inhalt                                                                                                                                         | erreichbar über                                               |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Profil & Darstellung**       | Name, Farbe, Ernährung, Abneigungen; Theme, Hell/Dunkel/System; Haushalt wechseln oder neu anlegen; Abmelden; später Benachrichtigungen und KI | Avatar (Handy oben rechts, Desktop unten in der Seitenleiste) |
-| **Mitglieder & Einladungen**   | Mitglieder, einladen, offene Einladungen, Einladungen an mich                                                                                  | Verwalten                                                     |
-| **Abwesenheiten**              | 3.6                                                                                                                                            | Verwalten, Kalender                                           |
-| **Märkte & Bereiche, Artikel** | 3.9                                                                                                                                            | Verwalten, Liste ⋯, Einkaufen                                 |
-| **Aktivitäten**                | Spec 0004                                                                                                                                      | Verwalten, Kalender                                           |
-| **Feedback**                   | wie heute                                                                                                                                      | Verwalten                                                     |
-| Showroom, „Offline simulieren“ | nur in Entwicklungs-Builds                                                                                                                     | Verwalten (nur Entwicklung)                                   |
+| Seite                              | Inhalt                                                                                                                                | erreichbar über                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Einstellungen** (persönlich)     | Profil (Name, Farbe, Ernährung, Abneigungen), Darstellung (Theme, Hell/Dunkel/System), Benachrichtigungen (3.14), Abmelden; später KI | Avatar (Handy oben rechts, Desktop unten in der Seitenleiste)          |
+| **Haushalt & Mitglieder**          | Name des Haushalts, Mitglieder, einladen, offene Einladungen, Einladungen an mich, weitere Haushalte (wechseln, neu anlegen)          | Verwalten; Desktop zusätzlich Haushaltsname oben in der Seitenleiste ▾ |
+| **Aktivitäten**                    | Spec 0004                                                                                                                             | Verwalten, Kalender                                                    |
+| **Reisetaschen**                   | 3.13                                                                                                                                  | Verwalten, Abwesenheit-Fenster                                         |
+| **Abwesenheiten**                  | 3.6                                                                                                                                   | Verwalten, Kalender                                                    |
+| **Artikel**, **Märkte & Bereiche** | 3.9                                                                                                                                   | Verwalten, Liste ⋯, Einkaufen                                          |
+| **Feedback**                       | wie heute                                                                                                                             | Verwalten                                                              |
+| Showroom, „Offline simulieren“     | nur in Entwicklungs-Builds                                                                                                            | Verwalten, Gruppe „Entwicklung“                                        |
 
-Am Desktop wechselt man den Haushalt zusätzlich über den Namen oben in der Seitenleiste (▾).
+Seitenleiste und Handy-Seite „Verwalten“ sind in 3.12 skizziert.
 
 ```text
-Profil & Darstellung                     Verwalten (Handy, über ⊞)
-┌──────────────────────────────────────┐ ┌──────────────────────────────────────┐
-│ ‹ Profil & Darstellung               │ │ ‹ Verwalten                          │
-├──────────────────────────────────────┤ ├──────────────────────────────────────┤
-│ (E) Enrico                       ✎   │ │ ▲  Aktivitäten                    ›  │
-│ Farbe Blau · Ernährung flexibel      │ │ ◇  Artikel                        ›  │
-│                                      │ │ ⌂  Märkte & Bereiche              ›  │
-│ HAUSHALT                             │ │ ═  Abwesenheiten                  ›  │
-│ Enrico & Nadja            ✓ aktiv    │ │ (E)(N) Mitglieder & Einladungen   ›  │
-│ Test                      wechseln   │ │ ✉  Feedback                       ›  │
-│ + Neuer Haushalt                     │ ├──────────────────────────────────────┤
-│                                      │ │ Heute  Essen  Kalender  Liste  Haush.│
-│ DARSTELLUNG                          │ └──────────────────────────────────────┘
+Einstellungen (Handy, über den Avatar)
+┌──────────────────────────────────────┐
+│ ‹ Einstellungen                      │
+├──────────────────────────────────────┤
+│ PROFIL                               │
+│ (E) Enrico                       ✎   │
+│ Farbe Blau · Ernährung flexibel      │
+│                                      │
+│ DARSTELLUNG                          │
 │ Theme  [Markthalle] [Klar] [Frisch]  │
 │ Modus  [Hell] [Dunkel] [System]      │
+│                                      │
+│ Benachrichtigungen       2 an     ›  │
 │                                      │
 │ Abmelden                             │
 ├──────────────────────────────────────┤
@@ -1359,28 +1346,475 @@ Profil & Darstellung                     Verwalten (Handy, über ⊞)
 └──────────────────────────────────────┘
 ```
 
-| D28 | Aufbau der Einstellungen                                                                | Pro                                                                                                  | Contra                                            |
-| --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| A   | **„Profil & Darstellung“ nur persönlich; alles andere eigene Seiten unter „Verwalten“** | dein Gefühl („Profil und Einstellungen passen zusammen, der Rest gehört woanders hin“); kurze Seiten | eine Seite mehr pro Thema                         |
-| B   | eine Einstellungsseite mit Unterseiten (wie iOS-Einstellungen)                          | ein Ort für alles                                                                                    | Märkte und Feedback wieder „in den Einstellungen“ |
-| C   | wie heute, nur besser gegliedert                                                        | wenig Umbau                                                                                          | bleibt überladen                                  |
+| D28 | Aufbau der Einstellungen                                                           | Pro                                                                                                  | Contra                                            |
+| --- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| A   | **nur persönlich hinter dem Avatar; alles andere eigene Seiten unter „Verwalten“** | dein Gefühl („Profil und Einstellungen passen zusammen, der Rest gehört woanders hin“); kurze Seiten | eine Seite mehr pro Thema                         |
+| B   | eine Einstellungsseite mit Unterseiten (wie iOS-Einstellungen)                     | ein Ort für alles                                                                                    | Märkte und Feedback wieder „in den Einstellungen“ |
+| C   | wie heute, nur besser gegliedert                                                   | wenig Umbau                                                                                          | bleibt überladen                                  |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
+
+### 3.12 Verwalten in der Seitenleiste (Nachtrag)
+
+**Dein Wunsch:** Die Stammdaten (Aktivitäten, Artikel, Märkte, Feedback …) stehen am Desktop direkt
+in der Seitenleiste. Auf dem Handy sind sie erreichbar, aber nicht über den Profil-Knopf.
+
+**Neu**
+
+- **Seitenleiste (Desktop und Tablet)** mit zwei Gruppen. Oben die fünf Bereiche. Darunter die
+  Gruppe **Verwalten**, immer sichtbar (D30), in drei Blöcken mit feiner Trennlinie:
+  - Planen: Aktivitäten · Reisetaschen · Abwesenheiten
+  - Einkaufen: Artikel · Märkte & Bereiche
+  - Haushalt: Haushalt & Mitglieder · Feedback
+- Ist das Fenster niedrig, scrollt die Seitenleiste; die fünf Bereiche bleiben oben stehen.
+- Der aktive Eintrag ist hervorgehoben wie ein Bereich. Unterseiten (ein Markt, eine Reisetasche)
+  halten ihren Eintrag aktiv.
+- **Oben** steht der Haushaltsname mit ▾: wechseln, neuen Haushalt anlegen. **Unten** steht der
+  Avatar: persönliche **Einstellungen** (Profil, Darstellung, Benachrichtigungen, Abmelden).
+  Verwalten und Persönliches sind damit sauber getrennt.
+- **Handy:** Knopf ⊞ im Kopf jeder Tab-Startseite (D2 B). Er öffnet die Seite „Verwalten“ mit
+  denselben Einträgen und Blöcken. Die Tab-Leiste bleibt sichtbar, kein Tab ist hervorgehoben. Der
+  Avatar führt nur zu den persönlichen Einstellungen.
+- **Abkürzungen am Ort** bleiben: ▲ im Kalender (Aktivitäten), Kalender ⋯ (Abwesenheiten),
+  „Märkte verwalten“ beim Einkaufen, Liste ⋯ (Märkte & Bereiche, Artikel), „Artikel bearbeiten“ an
+  einer Zutat, „Neue Reisetasche“ im Abwesenheit-Fenster.
+- **Entwicklung:** In Entwicklungs-Builds gibt es eine dritte Gruppe „Entwicklung“ (Showroom,
+  Offline simulieren).
+- **Datenmodell:** keine Änderung.
+
+```text
+Desktop: Seitenleiste mit „Verwalten“, Seite „Reisetaschen“ offen (Liste und Detail)
+┌──────────────────────────┬──────────────────────────────────────────────────────────────────┐
+│ ⌂ Enrico & Nadja      ▾  │ Reisetaschen                                          [+ Neu]    │
+│                          │ ┌ Strand           12 Packstücke   ┐ ┌ Strand ─────────────────┐ │
+│   Heute                  │ │ Wintersport      18 Packstücke   │ │ für alle            ✎ ⋯ │ │
+│   Essen                  │ │ Kulturbeutel (N)  9 Packstücke   │ │ ≡ Sonnencreme        1× │ │
+│   Kalender               │ │ Technik           6 Packstücke   │ │ ≡ Badehose           2× │ │
+│   Liste                  │ └──────────────────────────────────┘ │ ≡ T-Shirts     1 je Tag │ │
+│   Haushalt               │                                      │ + Packstück             │ │
+│                          │                                      └─────────────────────────┘ │
+│ VERWALTEN                │                                                                  │
+│   Aktivitäten            │                                                                  │
+│ ▸ Reisetaschen           │                                                                  │
+│   Abwesenheiten          │                                                                  │
+│   ───────────            │                                                                  │
+│   Artikel                │                                                                  │
+│   Märkte & Bereiche      │                                                                  │
+│   ───────────            │                                                                  │
+│   Haushalt & Mitglieder  │                                                                  │
+│   Feedback               │                                                                  │
+│                          │                                                                  │
+│ (E) Enrico               │                                                                  │
+│     Einstellungen        │                                                                  │
+└──────────────────────────┴──────────────────────────────────────────────────────────────────┘
+```
+
+```text
+Handy: Seite „Verwalten“ (über ⊞)
+┌──────────────────────────────────────┐
+│ ‹ Verwalten                          │
+├──────────────────────────────────────┤
+│ PLANEN                               │
+│ ▲  Aktivitäten                    ›  │
+│ ▣  Reisetaschen                   ›  │
+│ ═  Abwesenheiten                  ›  │
+│ EINKAUFEN                            │
+│ ◇  Artikel                        ›  │
+│ ⌂  Märkte & Bereiche              ›  │
+│ HAUSHALT                             │
+│ (E)(N) Haushalt & Mitglieder      ›  │
+│ ✉  Feedback                       ›  │
+├──────────────────────────────────────┤
+│ Heute  Essen  Kalender  Liste  Haush.│
+└──────────────────────────────────────┘
+```
+
+| D30 | „Verwalten“ in der Seitenleiste                 | Pro                                                    | Contra                                                  |
+| --- | ----------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
+| A   | **immer sichtbare Gruppe mit drei Blöcken**     | ein Klick zu jeder Stammdaten-Seite; genau dein Wunsch | Seitenleiste wird länger, scrollt bei niedrigem Fenster |
+| B   | einklappbare Gruppe, Zustand wird gemerkt       | Seitenleiste bleibt kurz                               | ein Klick mehr, Einträge versteckt                      |
+| C   | nur ein Eintrag „Verwalten“ mit Übersichtsseite | sehr ruhig                                             | zwei Klicks; widerspricht deinem Wunsch                 |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+### 3.13 Reisetaschen für den Urlaub (Nachtrag)
+
+**Idee:** Wiederverwendbare Packlisten, zum Beispiel „Strand“, „Wintersport“, „Kulturbeutel Nadja“
+oder „Technik“. Beim Eintragen eines Urlaubs hängt man eine oder mehrere an. Daraus entsteht die
+Packliste dieses Urlaubs: eine Kopie, die man abhakt und ergänzt, ohne die Vorlage zu ändern.
+
+**Begriffe** (neu im Glossar): _Reisetasche_ = die Vorlage. _Packliste_ = die Liste eines Urlaubs,
+genauer: einer Abwesenheit. _Packstück_ = eine Zeile mit Name und optionaler Anzahl. Packstücke
+sind Freitext und keine Artikel: Man kauft sie nicht, ein Katalog wäre hier nur Ballast.
+
+**Reisetaschen verwalten** (Verwalten → Reisetaschen)
+
+- Liste: Name, Zahl der Packstücke, optional „für“ eine Person (Avatar). „+ Neue Reisetasche“.
+- Reisetasche: Name, „für“ (alle oder eine Person), Packstücke mit Anzahl. Die Anzahl ist fest
+  („2×“) oder **je Tag** („1 je Tag“ → bei 7 Tagen 7×; D32). Ziehen zum Sortieren. Eingabe wie auf
+  der Liste: „2 Badehose“ tippen, Enter legt die nächste Zeile an. Beim Tippen schlägt die App Namen
+  aus anderen Taschen vor. ⋯: Duplizieren, Löschen (Packlisten behalten ihre Kopie).
+
+**Beim Urlaub anhängen**
+
+- Das Abwesenheit-Fenster (3.6) bekommt den Abschnitt **„Reisetaschen (optional)“**: alle Taschen
+  als Auswahl-Chips, zuletzt benutzte zuerst, dazu „+ Neue“. Nichts ist vorausgewählt.
+- „Speichern“ legt Abwesenheit und Packliste in einem Schritt an. „Je Tag“ wird mit der Dauer der
+  Abwesenheit ausgerechnet. Ändert sich später die Dauer, rechnet die App die offenen „je
+  Tag“-Packstücke neu; gepackte bleiben, wie sie sind.
+- Taschen lassen sich auch später auf der Urlaubsseite hinzufügen oder entfernen.
+- **Mehrere Personen:** Jede Abwesenheit hat ihre eigene Packliste. Ein gemeinsamer Streifen
+  (ganzer Haushalt) hat eine Packliste; Taschen „für Nadja“ stehen dort als eigene Gruppe mit ihrem
+  Avatar. Bei zwei Streifen (Enrico 1.–4.1., Nadja 1.–7.1.) packt jede Person ihre eigene Liste;
+  „je Tag“ rechnet dann mit 4 bzw. 7 Tagen.
+
+**Urlaubsseite mit Packliste** (Tipp auf den Urlaubsstreifen, auf eine Abwesenheit in der Liste
+oder auf die Karte in „Heute“)
+
+- **Kopf:** Notiz als Titel („Urlaub Mallorca“), wer, Zeitraum, Dauer, „beginnt in 12 Tagen“.
+  Bearbeiten (✎) öffnet das Abwesenheit-Fenster. ⋯: „Für die Rückreise zurücksetzen“ (alle Haken
+  weg, mit Dialog, weil es viele auf einmal sind), „Abwesenheit löschen“ (der Dialog nennt auch die
+  Packliste).
+- **Fortschritt:** „12 von 30 gepackt“ mit Balken.
+- **Gruppiert nach Tasche:** je Tasche ein Abschnitt mit eigenem Zähler („Strand 4/9“) und Avatar,
+  falls sie einer Person gehört.
+- **Abhaken (D31 A):** wie überall (2.5). Haken, durchgestrichen, und 2 s nach dem letzten Tipp
+  gleiten die gepackten Stücke in „Gepackt (n)“ am Ende ihrer Tasche (eingeklappt). So sieht man
+  immer, was noch fehlt. Wie beim Einkaufen: Was im Koffer ist, verschwindet aus dem Blick.
+- **„Alles einpacken“** je Tasche (⋯ am Abschnitt), z. B. für den Kulturbeutel, der fertig im
+  Schrank steht. Weil es viele auf einmal sind, gibt es danach 5 s „Rückgängig“.
+- **Ergänzen:** „+ Packstück“ je Tasche. Ein kleiner Haken „auch in der Reisetasche ‚Strand‘
+  speichern“ (aus) übernimmt es in die Vorlage. Die Vorlage selbst ändert sich sonst nie (D35).
+- **„+ Reisetasche hinzufügen“** kopiert eine weitere Vorlage dazu. ⋯ an einer Tasche: „Aus der
+  Packliste entfernen“.
+- **Offline (D34 A):** Abhaken geht auch ohne Netz, wie im Laden. Hinzufügen und Entfernen brauchen
+  Netz.
+- **Desktop:** Taschen als Spalten nebeneinander, der Kopf mit Zeitraum und Fortschritt darüber.
+
+**Auf „Heute“ und im Kalender**
+
+- **„Heute“:** unten, nach „Einkauf“, eine Karte je Packliste: „Reisetasche · Urlaub Mallorca ·
+  12/30 gepackt ›“ mit Balken. Sie erscheint, wenn die gezeigte Woche einen Urlaubstag enthält
+  **oder** der Urlaub in den 7 Tagen nach dem gezeigten Tag beginnt (D33). Ist alles gepackt, steht
+  „alles gepackt ✓“ bis zum ersten Urlaubstag. Ein Tipp öffnet die Packliste.
+- **Kalender:** Ein Urlaubsstreifen mit Packliste trägt ein kleines Taschen-Symbol. Ein Tipp öffnet
+  die Urlaubsseite.
+
+```text
+Abwesenheit-Fenster mit Reisetaschen     Reisetasche bearbeiten (Handy)
+┌ Abwesenheit eintragen ──────────── ✕ ┐ ┌──────────────────────────────────────┐
+│ Wer?   [(E) Enrico ✓] [(N) Nadja ✓]  │ │ ‹ Reisetaschen   Strand       ✎  ⋯   │
+│ Von    Fr 1.1.2027                   │ ├──────────────────────────────────────┤
+│ Bis    Do 7.1.2027                   │ │ für   [alle] [(E)] [(N)]             │
+│ Notiz  Urlaub Mallorca               │ │ ≡ Sonnencreme                   1×   │
+│                                      │ │ ≡ Badehose                      2×   │
+│ Reisetaschen (optional)              │ │ ≡ T-Shirts                1 je Tag   │
+│ [Strand ✓] [Kulturbeutel (N) ✓]      │ │ ≡ Strandtuch                    2×   │
+│ [Wintersport] [Technik] [+ Neue]     │ │ ≡ Sonnenbrille                       │
+├──────────────────────────────────────┤ │ ┌ Packstück … z. B. 2 Badehose   ➤ ┐ │
+│     [ Speichern · 21 Packstücke ]    │ │ └──────────────────────────────────┘ │
+└──────────────────────────────────────┘ ├──────────────────────────────────────┤
+                                         │ Heute  Essen  Kalender  Liste  Haush.│
+                                         └──────────────────────────────────────┘
+```
+
+```text
+Urlaubsseite mit Packliste (Handy)       Karte unten auf „Heute“
+┌──────────────────────────────────────┐ ┌──────────────────────────────────────┐
+│ ‹ Kalender                    ✎  ⋯   │ │ …                                    │
+├──────────────────────────────────────┤ │ Einkauf  12 offen       [Einkaufen]  │
+│ Urlaub Mallorca                      │ │                                      │
+│ (E)(N) · Fr 1.1. – Do 7.1. · 7 Tage  │ │ ┌ Reisetasche · Urlaub Mallorca ───┐ │
+│ beginnt in 12 Tagen                  │ │ │ ▓▓▓▓▓▓▓░░░░░░  12/30 gepackt   › │ │
+│                                      │ │ │ beginnt in 5 Tagen               │ │
+│ Packliste          12 von 30 gepackt │ │ └──────────────────────────────────┘ │
+│ ▓▓▓▓▓▓▓▓░░░░░░░░░░░░                 │ ├──────────────────────────────────────┤
+│                                      │ │ Heute  Essen  Kalender  Liste  Haush.│
+│ STRAND                   4/9    ⋯    │ └──────────────────────────────────────┘
+│ ○ Sonnencreme                   1×   │
+│ ✓ Badehose   durchgestrichen    2×   │ ⋯ an der Tasche: Alles einpacken ·
+│ ○ T-Shirts                      7×   │   Aus der Packliste entfernen
+│ ○ Strandtuch                    2×   │ ⋯ oben: Für die Rückreise zurücksetzen ·
+│ + Packstück                          │   Abwesenheit löschen
+│ ▸ Gepackt (3)                        │
+│                                      │ ✓ gleitet 2 s nach dem letzten Tipp
+│ KULTURBEUTEL (N)         0/9    ⋯    │   nach „Gepackt“
+│ ○ Zahnbürste                         │
+│ …                                    │
+│ + Reisetasche hinzufügen             │
+├──────────────────────────────────────┤
+│ Heute  Essen  Kalender  Liste  Haush.│
+└──────────────────────────────────────┘
+```
+
+```text
+Urlaubsseite, Desktop
+┌──────────────┬───────────────────────────────────────────────────────────────────────────────┐
+│ …            │ ‹ Kalender   Urlaub Mallorca                                   ✎ Bearbeiten ⋯ │
+│ ▸ Kalender   │ (E)(N) · Fr 1.1. – Do 7.1.2027 · 7 Tage · beginnt in 12 Tagen                 │
+│              │ Packliste  ▓▓▓▓▓▓▓▓░░░░░░░░░░  12 von 30 gepackt           [+ Reisetasche]    │
+│              │ ┌ STRAND       4/9  ⋯ ┐ ┌ KULTURBEUTEL (N) 0/9 ⋯ ┐ ┌ TECHNIK       8/12  ⋯ ┐  │
+│              │ │ ○ Sonnencreme    1× │ │ ○ Zahnbürste           │ │ ○ Ladekabel           │  │
+│              │ │ ○ T-Shirts       7× │ │ ○ Zahnpasta            │ │ ○ Kopfhörer           │  │
+│              │ │ ○ Strandtuch     2× │ │ ○ Sonnenmilch          │ │ + Packstück           │  │
+│              │ │ + Packstück         │ │ + Packstück            │ │ ▸ Gepackt (8)         │  │
+│              │ │ ▸ Gepackt (3)       │ │                        │ │                       │  │
+│              │ └─────────────────────┘ └────────────────────────┘ └───────────────────────┘  │
+└──────────────┴───────────────────────────────────────────────────────────────────────────────┘
+```
+
+| D31 | Was passiert mit Gepacktem                                             | Pro                                                          | Contra                                    |
+| --- | ---------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------- |
+| A   | **wie 2.5: nach 2 s in „Gepackt (n)“ am Ende der Tasche, eingeklappt** | man sieht nur, was fehlt; ein Abhak-Muster in der ganzen App | Kontrolle „hab ich X?“ braucht einen Tipp |
+| B   | bleibt durchgestrichen an seinem Platz                                 | alles auf einen Blick                                        | bei 30 Stücken sucht man das Fehlende     |
+| C   | Schalter „Gepackte zeigen“                                             | beides möglich                                               | noch ein Schalter                         |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D32 | Anzahl am Packstück           | Pro                                     | Contra                    |
+| --- | ----------------------------- | --------------------------------------- | ------------------------- |
+| A   | **fest („2×“) oder „je Tag“** | Kleidung passt sich der Urlaubslänge an | ein Feld mehr             |
+| B   | nur feste Anzahl              | einfacher                               | jedes Mal von Hand ändern |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D33 | Wann erscheint die Karte auf „Heute“                                                      | Pro                                                       | Contra                                         |
+| --- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------- |
+| A   | **gezeigte Woche enthält einen Urlaubstag oder der Urlaub beginnt in den 7 Tagen danach** | enthält deinen Vorschlag und deckt die Packwoche davor ab | —                                              |
+| B   | nur, wenn die gezeigte Woche einen Urlaubstag enthält (dein Vorschlag)                    | einfach                                                   | Urlaub ab Montag: am Freitag davor keine Karte |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D34 | Packen ohne Netz                                                          | Pro                                                                        | Contra                                                      |
+| --- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| A   | **Abhaken offline wie im Laden** (Laden-Warteschlange, „Abhaken gewinnt“) | Rückreise aus Ferienwohnung oder Zelt ohne Netz geht; Muster gibt es schon | Nachtrag zu ADR-0008, eine Aktion mehr in der Warteschlange |
+| B   | nur online                                                                | kein neuer Offline-Fall                                                    | ausgerechnet am Urlaubsort oft kein Netz                    |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D35 | Wirkt eine geänderte Reisetasche auf bestehende Packlisten | Pro                                          | Contra                                |
+| --- | ---------------------------------------------------------- | -------------------------------------------- | ------------------------------------- |
+| A   | **nein, die Packliste ist eine Kopie**                     | vorhersehbar; laufender Urlaub bleibt stabil | Neues muss man ggf. von Hand ergänzen |
+| B   | die App fragt, ob offene Packlisten mitziehen              | nichts vergessen                             | Rückfrage bei jeder Änderung          |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+### 3.14 Benachrichtigungen (Nachtrag)
+
+**Heute:** Es gibt keine. Spec 0003 hat sie bewusst ausgelassen; das Feature-Konzept (F8)
+beschreibt eine Tageszusammenfassung per Web Push.
+
+**Was die App schickt**
+
+| Art                         | Beispiel                                                                                                           | Wann                                                               | an wen (D39)                                      | Standard (D36) |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------- | -------------- |
+| **Tagesüberblick**          | „Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Für morgen: Kichererbsen einweichen“ | täglich zur eigenen Uhrzeit, Standard 7:30; nur wenn es etwas gibt | jede Person ihren Teil                            | aus            |
+| **Aktivitäten am Vortag**   | „Morgen: Eislaufen (Hohenschönhausen), Vormittag“                                                                  | am Vortag zur eigenen Uhrzeit, Standard 19:00                      | alle, die nicht abwesend sind                     | aus            |
+| **Aufgaben mit Uhrzeit**    | „Müll rausbringen · 19:00 · du bist dran“                                                                          | zur Uhrzeit der Aufgabe am Fälligkeitstag                          | wer dran ist; bei „egal wer“ und „zu zweit“ beide | an             |
+| **Restaurant-Reservierung** | „Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›“                                                              | n Stunden vor der Reservierung, Standard 2 h, je Eintrag änderbar  | wer mitisst                                       | an             |
+
+- Der **Tagesüberblick** ist eine einzige Nachricht (D37). Welche Teile hinein kommen, wählt jede
+  Person: Essen (Rezepte, Sammlungen, Restaurants), Aktivitäten, Aufgaben (fällig und überfällig),
+  Vorbereitung für morgen. Leere Tage schicken nichts.
+- **Überfälliges** steht im Tagesüberblick, nie als eigene Nachricht; höchstens einmal je Aufgabe
+  und Tag (Feature-Konzept F8).
+- **Ruhe:** Während einer eigenen Abwesenheit kommt nichts (F14). Keine Nachricht zwischen den
+  Personen („Nadja erinnern“ gibt es nicht). Ein Tipp auf die Nachricht öffnet die passende Seite:
+  Heute, die Aufgabe, den Kalendereintrag mit „Route“.
+
+**Seite „Benachrichtigungen“** (persönliche Einstellungen über den Avatar, D41)
+
+- **Dieses Gerät:** Status („erlaubt“, „nicht erlaubt“, „auf dem iPhone erst die App zum
+  Home-Bildschirm hinzufügen“), Schalter „Auf diesem Gerät benachrichtigen“, „Probe senden“.
+- **Was und wann:** je Art Schalter, Uhrzeit und beim Tagesüberblick die Teile. Das gilt für die
+  Person auf allen ihren Geräten (D38).
+- **Deine Geräte:** Liste mit „Entfernen“ (z. B. altes Handy).
+- **Erlaubnis** fragt die App nur, wenn man etwas einschaltet oder eine Uhrzeit setzt, nie beim
+  Start.
+
+**Uhrzeiten setzen**
+
+- **Aufgabe** (3.10, Bearbeiten): optionales Feld „Uhrzeit“ (D42). Mit Uhrzeit erinnert die App am
+  Fälligkeitstag zu dieser Zeit. Die Haushalt-Zeile im Kalender und „Zu tun“ zeigen „19:00“.
+- **Restaurant-Eintrag** im Kalender: „Reserviert um 19:30“ und „Erinnern 2 h vorher ▾“ (D43). Die
+  Karte auf „Heute“ zeigt die Uhrzeit. Rezepte und Aktivitäten bekommen keine Uhrzeit (Spec 0004,
+  Nicht-Ziel).
+
+```text
+Benachrichtigungen (Handy)               So sieht eine Nachricht aus
+┌──────────────────────────────────────┐ ┌──────────────────────────────────────┐
+│ ‹ Einstellungen  Benachrichtigungen  │ │ HOUSEKEEPING · 7:30                  │
+├──────────────────────────────────────┤ │ Heute: Bouldern (Vormittag) ·        │
+│ DIESES GERÄT                         │ │ Lasagne (Abend, du kochst) ·         │
+│ iPhone · als App installiert         │ │ Bad putzen (du) · Für morgen:        │
+│ ✓ erlaubt                            │ │ Kichererbsen einweichen              │
+│ Auf diesem Gerät benachrichtigen [an]│ └──────────────────────────────────────┘
+│ Probe senden                         │ ┌──────────────────────────────────────┐
+│                                      │ │ HOUSEKEEPING · 17:30                 │
+│ WAS UND WANN · gilt für alle Geräte  │ │ Trattoria Da Enzo um 19:30 ·         │
+│ Tagesüberblick                 [aus] │ │ in 2 Stunden · Route ›               │
+│   7:30 · Essen · Aktivitäten ·       │ └──────────────────────────────────────┘
+│   Aufgaben · Vorbereitung          › │ ┌──────────────────────────────────────┐
+│ Aktivitäten am Vortag          [aus] │ │ HOUSEKEEPING · 19:00                 │
+│   19:00                            › │ │ Müll rausbringen · du bist dran      │
+│ Aufgaben mit Uhrzeit            [an] │ └──────────────────────────────────────┘
+│ Restaurant-Reservierung         [an] │
+│   2 h vorher, je Eintrag änderbar    │
+│ Während Abwesenheiten bist du stumm. │
+│                                      │
+│ DEINE GERÄTE                         │
+│ iPhone · Safari        dieses Gerät  │
+│ Mac · Chrome               Entfernen │
+├──────────────────────────────────────┤
+│ Heute  Essen  Kalender  Liste  Haush.│
+└──────────────────────────────────────┘
+```
+
+```text
+Aufgabe bearbeiten (Ausschnitt)          Restaurant-Eintrag im Kalender
+┌ Müll rausbringen ───────────────── ✕ ┐ ┌ Sa 2. Jan · Abend ──────────────── ✕ ┐
+│ Rhythmus   wöchentlich, So        ›  │ │ ● Trattoria Da Enzo                  │
+│ Wer        abwechselnd (E↔N)      ›  │ │ Wer isst mit?  (E) ✓  (N) ✓          │
+│ Uhrzeit    19:00                  ✕  │ │ Reserviert um  19:30              ✕  │
+│ Erinnern   zur Uhrzeit          [an] │ │ Erinnern       2 h vorher ▾          │
+│ Aufwand    1 Punkt                ›  │ │ Route ›                              │
+├──────────────────────────────────────┤ ├──────────────────────────────────────┤
+│              [ Fertig ]              │ │              [ Fertig ]              │
+└──────────────────────────────────────┘ └──────────────────────────────────────┘
+```
+
+```text
+Desktop: persönliche Einstellungen (Liste und Detail)
+┌──────────────┬───────────────────────────────────────────────────────────────────────────────┐
+│ …            │ Einstellungen                                                                 │
+│ (E) Enrico   │ ┌ Profil              ┐ ┌ Benachrichtigungen ───────────────────────────────┐ │
+│ ▸ Einstell.  │ │ Darstellung         │ │ DIESES GERÄT   Mac · Chrome · ✓ erlaubt     [an]  │ │
+│              │ │ ▸ Benachrichtigungen│ │ Tagesüberblick       7:30  Essen · Aufgaben [aus] │ │
+│              │ │ Abmelden            │ │ Aktivitäten am Vortag  19:00                [aus] │ │
+│              │ └─────────────────────┘ │ Aufgaben mit Uhrzeit                         [an] │ │
+│              │                         │ Restaurant-Reservierung  2 h vorher          [an] │ │
+│              │                         └───────────────────────────────────────────────────┘ │
+└──────────────┴───────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Technik** (für Spec 0013; kritischer Pfad: Sicherheit und Infrastruktur)
+
+- **Web Push an die installierte PWA.** Der Service Worker empfängt die Nachricht und zeigt sie an;
+  ein Tipp öffnet die passende Seite.
+- **Schlüssel:** ein VAPID-Schlüsselpaar. Der öffentliche Schlüssel steht im App-Build (öffentlich,
+  unbedenklich). Der private liegt nur als Secret bei der Edge Function.
+- **Plattformen:** Android (Chrome) und Desktop (Chrome, Edge, Firefox) gehen; Desktop-Chrome lässt
+  sich lokal auf `localhost` testen. iPhone und iPad nur als zum Home-Bildschirm hinzugefügte PWA
+  über HTTPS, ab iOS 16.4. Auf dem iPhone geht es also erst nach der Betriebs- bzw. Cloud-Spec mit
+  öffentlicher HTTPS-Adresse. Native Push (Expo) kommt mit den nativen Apps.
+- **Zeitplaner (D40 A): Die Datenbank plant, die Edge Function stellt nur zu.**
+  1. `pg_cron` (gibt es schon für das Aufräumen von Löschmarken) startet alle 5 Minuten eine
+     Datenbankfunktion. Sie läuft in der Datenbank selbst und braucht keinen Schlüssel.
+  2. Die Funktion findet fällige Nachrichten in der Zeitzone des Haushalts, trägt jede in das
+     Zustell-Protokoll ein (eindeutiger Schlüssel, also nie doppelt) und baut nur das Nötigste:
+     Titel, Text, Ziel-Link, Push-Adresse des Geräts.
+  3. Sie schickt das per `pg_net` an die Edge Function `push-send`, zusammen mit einem geteilten
+     Geheimnis aus dem Supabase Vault.
+  4. `push-send` prüft das Geheimnis und den Inhalt (Zod) und stellt mit dem privaten VAPID-Schlüssel
+     zu. Sie hat **keinen Datenbankzugang und kein `service_role`**.
+  5. Der nächste Takt wertet die Antworten aus: abgelaufene Abos (Antwort 404/410) werden
+     abgeschaltet, Fehler im Protokoll vermerkt.
+- **Zeit:** Uhrzeiten sind Ortszeit; umgerechnet wird erst im Takt mit der Zeitzone des Haushalts,
+  so stimmt es auch bei der Zeitumstellung. Was mehr als 30 Minuten zu spät wäre (z. B. weil das
+  Projekt pausiert war), wird verworfen, nicht nachgeholt.
+- **Sicherheit:** kein `service_role` in App oder Function; Push-Inhalte minimal (keine E-Mail,
+  keine Notizen); Abos gehören der Person, fremde Abos sind weder lesbar noch löschbar; Abmelden
+  löscht das Abo des Geräts; wer den Haushalt verlässt, bekommt aus ihm nichts mehr. Der Plan von
+  0013 bekommt ein Bedrohungsmodell, Negativtests (fremder Haushalt, abgemeldet, gefälschter Aufruf
+  der Function ohne Geheimnis) und `/security-check`.
+- **Kosten:** Web Push ist kostenlos. Die Edge Function läuft nur, wenn es etwas zu senden gibt;
+  das bleibt weit unter dem Kontingent von Supabase Free. Pausiert ein Free-Projekt nach 7 Tagen ohne
+  Nutzung, kommen keine Nachrichten (ADR-0007).
+
+```mermaid
+flowchart LR
+  C[pg_cron alle 5 Min] --> F[Datenbankfunktion: fällige Nachrichten]
+  F --> L[(Zustell-Protokoll, eindeutiger Schlüssel)]
+  F -- "pg_net + geteiltes Geheimnis" --> E[Edge Function push-send]
+  E -- "VAPID, Web Push" --> P[Push-Dienst von Apple, Google, Mozilla]
+  P --> S[Service Worker auf dem Gerät]
+  E -. Antwort .-> F
+```
+
+| D36 | Was ist am Anfang eingeschaltet                                                                 | Pro                                                      | Contra                                 |
+| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------- |
+| A   | **nur Erinnerungen mit selbst gesetzter Uhrzeit (Aufgabe mit Uhrzeit, Reservierung); Rest aus** | wer eine Uhrzeit setzt, will erinnert werden; sonst Ruhe | Tagesüberblick muss man entdecken      |
+| B   | alles aus                                                                                       | ganz ruhig                                               | Uhrzeit setzen ohne Wirkung überrascht |
+| C   | zusätzlich der Tagesüberblick                                                                   | Nutzen sofort sichtbar                                   | jeden Morgen eine Nachricht ungefragt  |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D37 | Morgens                                     | Pro                              | Contra                           |
+| --- | ------------------------------------------- | -------------------------------- | -------------------------------- |
+| A   | **ein Tagesüberblick** mit wählbaren Teilen | eine Nachricht statt vieler (F8) | lange Nachricht an vollen Tagen  |
+| B   | je Art eine eigene Nachricht                | einzeln abhakbar                 | drei, vier Nachrichten am Morgen |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D38 | Einstellungen gelten                                          | Pro                                           | Contra                         |
+| --- | ------------------------------------------------------------- | --------------------------------------------- | ------------------------------ |
+| A   | **was und wann je Person (alle Geräte); je Gerät nur an/aus** | einmal einstellen; neues Handy sofort richtig | kein „Laptop nur Aufgaben“     |
+| B   | alles je Gerät                                                | sehr fein                                     | auf jedem Gerät neu einstellen |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D39 | Wer bekommt was                                                            | Pro                                    | Contra                                    |
+| --- | -------------------------------------------------------------------------- | -------------------------------------- | ----------------------------------------- |
+| A   | **nur Betroffene:** wer mitisst, wer kocht, wer dran ist; Abwesende nichts | keine fremden Erinnerungen, kein Druck | „Was macht Nadja heute?“ steht nicht drin |
+| B   | alle im Haushalt alles                                                     | jeder weiß alles                       | Lärm; wirkt wie Kontrolle                 |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D40 | Wie bekommt der Zeitplaner seine Rechte                                                                             | Pro                                                                            | Contra                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| A   | **Datenbank plant und baut die Nachricht; Edge Function stellt nur zu (geteiltes Geheimnis, kein Datenbankzugang)** | kein `service_role` irgendwo; Logik mit pgTAP testbar; kleinste Angriffsfläche | `pg_net` arbeitet verzögert; Antworten erst im nächsten Takt |
+| B   | Edge Function liest selbst mit `service_role`                                                                       | einfach                                                                        | ein Schlüssel, der jede Zeile jedes Haushalts lesen kann     |
+| C   | eigene Datenbankrolle mit eigenem Token für die Function                                                            | engere Rechte als B                                                            | eigenes Token zu signieren braucht wieder den JWT-Schlüssel  |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D41 | Wo liegt die Seite „Benachrichtigungen“ | Pro                                        | Contra                           |
+| --- | --------------------------------------- | ------------------------------------------ | -------------------------------- |
+| A   | **persönliche Einstellungen (Avatar)**  | sie gilt je Person und Gerät; passt zu D28 | nicht in „Verwalten“             |
+| B   | Verwalten                               | alles Einstellbare an einem Ort            | Verwalten ist für Haushaltsdaten |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D42 | Uhrzeit für Aufgaben                                              | Pro                                     | Contra                             |
+| --- | ----------------------------------------------------------------- | --------------------------------------- | ---------------------------------- |
+| A   | **optional je Aufgabe; Erinnerung zur Uhrzeit am Fälligkeitstag** | „Müll raus 19:00“ geht; sonst wie heute | ein Feld mehr                      |
+| B   | keine Uhrzeit, nur der Tagesüberblick                             | einfacher                               | Termin-Aufgaben gehen im Tag unter |
+
+**ENTSCHIEDEN: A** (Empfehlung).
+
+| D43 | Reservierung                                                                   | Pro                                       | Contra                                           |
+| --- | ------------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------ |
+| A   | **nur bei Restaurant-Einträgen: Uhrzeit und Erinnerung (Standard 2 h vorher)** | genau der Fall, in dem eine Uhrzeit zählt | Aktivitäten mit Uhrzeit (Kino) gehen nicht       |
+| B   | Uhrzeit für alle Planeinträge                                                  | auch Kino und Konzert                     | widerspricht 0004 (keine Uhrzeiten); mehr Felder |
+
+**ENTSCHIEDEN: A** (Empfehlung).
 
 ## 4. Datenmodell-Änderungen
 
 In einfachen Worten: was sich ändert, und was mit den Daten passiert, die schon da sind.
 
-| Änderung                        | Was passiert mit bestehenden Daten                                               | Kritischer Pfad                                   | Spec |
-| ------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------- | ---- |
-| Eine Einkaufsliste              | weitere Listen werden zusammengeführt; abgehakte Posten weiterer Listen gelöscht | ja: Migration, Löschen, Sync, Laden-Warteschlange | 0006 |
-| Zutat braucht einen Artikel     | Zutaten ohne Artikel werden zugeordnet oder bekommen einen neuen Artikel         | ja: Migration                                     | 0007 |
-| Sammlung = Rezept-Art + Tabelle | nichts; Sammlungen gibt es in der Datenbank noch nicht                           | neue Tabelle: Mandantengrenze, RLS, pgTAP         | 0009 |
-| Halbe Sterne                    | vorhandene Sterne werden umgerechnet (4 → 4,0)                                   | ja: Migration                                     | 0011 |
-| Rhythmus „bei Bedarf“           | nichts; alte „spontan“-Einträge im Verlauf bleiben                               | nein                                              | 0011 |
-| Markt-Wahl auf dem Gerät        | Markt an der Liste wird nicht mehr gelesen                                       | nein                                              | 0006 |
-| Hinweis je Zutat                | neu, optional                                                                    | nein                                              | 0007 |
-| Abwesenheit, Kalender           | keine Änderung                                                                   | nein                                              | 0010 |
+| Änderung                        | Was passiert mit bestehenden Daten                                                                 | Kritischer Pfad                                   | Spec |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---- |
+| Eine Einkaufsliste              | weitere Listen werden zusammengeführt; abgehakte Posten weiterer Listen gelöscht                   | ja: Migration, Löschen, Sync, Laden-Warteschlange | 0006 |
+| Zutat braucht einen Artikel     | Zutaten ohne Artikel werden zugeordnet oder bekommen einen neuen Artikel                           | ja: Migration                                     | 0007 |
+| Sammlung = Rezept-Art + Tabelle | nichts; Sammlungen gibt es in der Datenbank noch nicht                                             | neue Tabelle: Mandantengrenze, RLS, pgTAP         | 0009 |
+| Halbe Sterne                    | vorhandene Sterne werden umgerechnet (4 → 4,0)                                                     | ja: Migration                                     | 0011 |
+| Rhythmus „bei Bedarf“           | nichts; alte „spontan“-Einträge im Verlauf bleiben                                                 | nein                                              | 0011 |
+| Markt-Wahl auf dem Gerät        | Markt an der Liste wird nicht mehr gelesen                                                         | nein                                              | 0006 |
+| Hinweis je Zutat                | neu, optional                                                                                      | nein                                              | 0007 |
+| Abwesenheit, Kalender           | keine Änderung                                                                                     | nein                                              | 0010 |
+| Reisetaschen und Packlisten     | neu, drei Tabellen; nichts zu migrieren                                                            | ja: neue Offline-Aktion, Sync, RLS                | 0012 |
+| Benachrichtigungen              | neue Spalten (Zeitzone, Uhrzeit an Aufgabe, Reservierung), drei neue Tabellen; nichts zu migrieren | ja: Sicherheit, Zeitplaner, Ausnahme von Regel 5  | 0013 |
 
 ### 4.1 Eine Einkaufsliste
 
@@ -1459,33 +1893,79 @@ In einfachen Worten: was sich ändert, und was mit den Daten passiert, die schon
 - Der zuletzt gewählte Markt wird nur auf dem Gerät gespeichert (wie das Theme). Der Standardmarkt
   des Haushalts bleibt in der Datenbank.
 
-### 4.8 Begriffe und Gestaltungsregeln, die sich mit den Specs ändern
+### 4.8 Reisetaschen und Packlisten
 
-| Dokument        | Änderung                                                                                                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Glossar         | _Einkaufsliste_ (genau eine je Haushalt; Standardliste entfällt), _Sammlung_ (neu definiert), _Kalender_ (Tab), Rhythmus _bei Bedarf_, _Hinweis_ (an der Zutat)          |
-| DESIGN.md       | Ansichts-Tabs statt `Segmented`; Fenstergrößen; Abhaken mit Sammel-Fenster; Bestätigungsdialog nur für Massen-Löschen; Frisch-Regeln; Farbrollen je Art; Desktop-Layouts |
-| Vision          | „mehrere Einkaufslisten“ → eine Liste                                                                                                                                    |
-| Feature-Konzept | F2 (Heute), F4 (Kalender), F5 (eine Liste, Sammlungen), Leitlinie 1 (abschnittsweises Bearbeiten im Rezept)                                                              |
-| Spec 0001       | AC-008 (Rezept am Desktop als ganze Seite, wenn D11 A)                                                                                                                   |
+- **Neue Tabellen**, jede mit `household_id`, RLS, Grants, pgTAP-Isolationstest, vom Server
+  gesetztem `updated_at`, Lösch-Trigger und Sync (Regel 5):
+  - _Reisetaschen_ (`packing_bags`): Name (eindeutig je Haushalt), optional „für“ ein Mitglied,
+    Reihenfolge.
+  - _Packstücke einer Reisetasche_ (`packing_bag_items`): Tasche, Name, Anzahl (optional), „je Tag“
+    (ja/nein), Reihenfolge.
+  - _Packstücke einer Packliste_ (`packing_items`): Abwesenheit, Herkunftstasche (wird beim Löschen
+    der Vorlage leer), Name der Tasche als Kopie (damit die Gruppe bleibt), Mitglied als Kopie, Name,
+    ausgerechnete Anzahl, „je Tag“, gepackt (ja/nein, wann, von wem, Zähler wie beim
+    Einkaufsposten), Reihenfolge.
+- **Eine Funktion, eine Transaktion:** Abwesenheit speichern und Packliste kopieren ist ein
+  einziger Datenbankaufruf (Regel aus `31-sync.md`). Ebenso „Tasche hinzufügen“, „Alles einpacken“
+  und „Für die Rückreise zurücksetzen“.
+- **Löschen:** Löschen der Abwesenheit löscht ihre Packliste. Löschen einer Reisetasche lässt
+  Packlisten unberührt.
+- **Offline (D34 A):** „gepackt / nicht gepackt“ wird eine weitere Aktion der Laden-Warteschlange,
+  mit derselben Regel „Abhaken gewinnt“. Das braucht einen Nachtrag zu ADR-0008 (Regel aus
+  `31-sync.md`: jede neue Offline-Aktion braucht Spec und Nachtrag).
+- **Bestehende Daten:** nichts zu migrieren.
 
-Eine neue ADR ist nach heutigem Stand nicht nötig: Es ändern sich Fachregeln und Oberfläche, keine
-Architektur.
+### 4.9 Benachrichtigungen
 
-## 5. Vorschlag für Specs und Reihenfolge
+| Änderung                           | Art                                                                                           | Wer darf lesen und schreiben                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Zeitzone am Haushalt               | neue Spalte, Standard „Europe/Berlin“                                                         | wie der Haushalt                                                         |
+| Uhrzeit an der Aufgabe             | neue Spalte, optional                                                                         | wie die Aufgabe                                                          |
+| Reservierung am Restaurant-Eintrag | zwei neue Spalten: Uhrzeit, Minuten vorher (Standard 120)                                     | wie der Planeintrag; nur bei Art „Restaurant“ erlaubt                    |
+| _Benachrichtigungs-Einstellungen_  | neue Tabelle je Mitglied und Haushalt: Arten an/aus, Uhrzeiten, Teile des Tagesüberblicks     | nur das Mitglied selbst; synchronisiert                                  |
+| _Push-Abos_                        | neue Tabelle je Person und Gerät: Push-Adresse, Schlüssel, Gerätename, an/aus, letzter Erfolg | nur die Person selbst, über eine Datenbankfunktion; nicht synchronisiert |
+| _Zustell-Protokoll_                | neue Tabelle: eindeutiger Schlüssel je Nachricht, Zeitpunkt, Status; 30 Tage aufbewahrt       | niemand aus der App; nur der Zeitplaner                                  |
+
+- **Ausnahme von Regel 5:** Push-Abos und Zustell-Protokoll gehören einer Person bzw. dem Server,
+  nicht einem Haushalt, und werden nicht synchronisiert. Das Feature-Konzept (Abschnitt 6) hat das
+  schon vorgesehen. Es braucht eine Präzisierung von Regel 5 in `AGENTS.md` und eine ADR.
+- **Neue ADR** „Benachrichtigungen per Web Push“: Zeitplaner in der Datenbank, Zustellung über eine
+  Edge Function ohne Datenbankzugang, VAPID, Umgang mit Push-Abos.
+- **Bestehende Daten:** nichts zu migrieren; Haushalte bekommen die Standard-Zeitzone.
+
+### 4.10 Begriffe und Gestaltungsregeln, die sich mit den Specs ändern
+
+| Dokument        | Änderung                                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Glossar         | _Einkaufsliste_ (genau eine je Haushalt; Standardliste entfällt), _Sammlung_ (neu definiert), _Kalender_ (Tab), Rhythmus _bei Bedarf_, _Hinweis_ (an der Zutat), _Reisetasche_, _Packliste_, _Packstück_, _Tagesüberblick_; „Laden-Warteschlange“ um das Packen erweitert |
+| DESIGN.md       | Ansichts-Tabs statt `Segmented`; Fenstergrößen; Abhaken mit Sammel-Fenster; Bestätigungsdialog nur für Massen-Löschen; Frisch-Regeln; Farbrollen je Art; Desktop-Layouts                                                                                                  |
+| Vision          | „mehrere Einkaufslisten“ → eine Liste                                                                                                                                                                                                                                     |
+| Feature-Konzept | F2 (Heute), F4 (Kalender), F5 (eine Liste, Sammlungen), F8 (Benachrichtigungen: was 0013 umsetzt), F14 (Reisetaschen am Urlaub), Leitlinie 1 (abschnittsweises Bearbeiten im Rezept)                                                                                      |
+| AGENTS.md       | Regel 5: Ausnahme für Push-Abos und Zustell-Protokoll (personen- bzw. serverbezogen, nicht synchronisiert)                                                                                                                                                                |
+| Spec 0001       | AC-008 (Rezept am Desktop als ganze Seite, wenn D11 A)                                                                                                                                                                                                                    |
+
+**Architektur:** Spec 0013 braucht eine neue ADR „Benachrichtigungen per Web Push“ (Zeitplaner in
+der Datenbank, Zustellung ohne Datenbankzugang, VAPID, Push-Abos). Spec 0012 braucht einen Nachtrag
+zu ADR-0008 (Packen als weitere Offline-Aktion). Die übrigen Specs ändern Fachregeln und Oberfläche,
+keine Architektur.
+
+## 5. Specs und Reihenfolge
 
 **Größen:** S = ein Bildschirm, keine Datenbank. M = mehrere Bildschirme oder eine
-Datenbankänderung. L = mehrere Bildschirme und Migration bestehender Daten.
+Datenbankänderung. L = mehrere Bildschirme und Migration bestehender Daten oder neue
+Infrastruktur.
 
-| Spec | Titel                          | Inhalt                                                                                                                                                                                                                    | Datenbank             | Größe | hängt ab von     |
-| ---- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ----- | ---------------- |
-| 0005 | Globale Muster und Navigation  | Alle Seiten in den Tabs, klebende Kopfzeile, Fenstergrößen, Ansichts-Tabs, Abhak-Baustein, „Suchen oder anlegen“, Filterzeile, Endlos-Raster, KI ausblenden, Frisch, Desktop-Regeln, „Verwalten“, Einstellungen aufteilen | nein                  | M–L   | 0004 fertig      |
-| 0006 | Eine Einkaufsliste             | Listen zusammenführen, Liste bearbeiten (±, Zusatz, Bereich, entfernen, hinzufügen), Liste leeren, Einkaufen mit Marktwahl, „Auf die Einkaufsliste“ neu                                                                   | ja, kritisch          | L     | 0005             |
-| 0007 | Artikel-Katalog und Stammdaten | Zutaten nur aus dem Katalog (mit Migration), Hinweis je Zutat, Seite „Artikel“ (Synonyme, Bereich, Vorrat, Zusammenführen), Märkte und Bereiche vollständig                                                               | ja, kritisch          | L     | 0005             |
-| 0008 | Essen und Rezept-Editor        | Filterzeile mit Küche und Zufall, Endlos-Liste, Kacheln, Rezept- und Restaurantseiten, abschnittsweises Bearbeiten, Einplanen und „Auf die Liste“ von der Rezeptseite                                                     | nein                  | L     | 0005, 0006, 0007 |
-| 0009 | Sammlungen                     | Art „Sammlung“, enthaltene Rezepte, eigene Zutaten, Einplanen, „Auf die Liste“ mit enthaltenen Rezepten, Bewertung und Favorit                                                                                            | ja (Spalte + Tabelle) | M     | 0006, 0007, 0008 |
-| 0010 | Kalender und Abwesenheiten     | Umbenennen, Woche/Monat/Jahr, „+n weitere“, Urlaubsstreifen, Haushalt-Zeile, Hinzufügen-Fenster mit Tabs, Aktivitäten-Seite, Seite „Abwesenheiten“                                                                        | nein                  | L     | 0005             |
-| 0011 | Heute und Haushalt             | Tagesauswahl, „Heute geplant“, „Wie war's?“ für alle Arten mit halben Sternen, „Zu tun“; Haushalt: Tabs, Bearbeiten, Verlauf gruppiert, „Was anderes erledigt?“ mit „bei Bedarf“                                          | ja (Sterne, Rhythmus) | M–L   | 0005             |
+| Spec | Titel                          | Inhalt                                                                                                                                                                                                                                                                        | Datenbank                                    | Größe | hängt ab von     |
+| ---- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ----- | ---------------- |
+| 0005 | Globale Muster und Navigation  | Alle Seiten in den Tabs, klebende Kopfzeile, Fenstergrößen, Ansichts-Tabs, Abhak-Baustein, „Suchen oder anlegen“, Filterzeile, Endlos-Raster, KI ausblenden, Frisch, Desktop-Regeln, Seitenleiste mit „Verwalten“ und Handy-Seite „Verwalten“ (3.12), Einstellungen aufteilen | nein                                         | M–L   | 0004 fertig      |
+| 0006 | Eine Einkaufsliste             | Listen zusammenführen, Liste bearbeiten (±, Zusatz, Bereich, entfernen, hinzufügen), Liste leeren, Einkaufen mit Marktwahl, „Auf die Einkaufsliste“ neu; F1 prüfen (Test gegen das echte Backend)                                                                             | ja, kritisch                                 | L     | 0005             |
+| 0007 | Artikel-Katalog und Stammdaten | Zutaten nur aus dem Katalog (mit Migration), Hinweis je Zutat, Seite „Artikel“ (Synonyme, Bereich, Vorrat, Zusammenführen), Märkte und Bereiche vollständig                                                                                                                   | ja, kritisch                                 | L     | 0005             |
+| 0008 | Essen und Rezept-Editor        | Filterzeile mit Küche und Zufall, Endlos-Liste, Kacheln, Rezept- und Restaurantseiten, abschnittsweises Bearbeiten, Einplanen und „Auf die Liste“ von der Rezeptseite                                                                                                         | nein                                         | L     | 0005, 0006, 0007 |
+| 0009 | Sammlungen                     | Art „Sammlung“, enthaltene Rezepte, eigene Zutaten, Einplanen, „Auf die Liste“ mit enthaltenen Rezepten, Bewertung und Favorit                                                                                                                                                | ja (Spalte + Tabelle)                        | M     | 0006, 0007, 0008 |
+| 0010 | Kalender und Abwesenheiten     | Umbenennen, Woche/Monat/Jahr, „+n weitere“, Urlaubsstreifen, Haushalt-Zeile, Hinzufügen-Fenster mit Tabs, Aktivitäten-Seite, Seite „Abwesenheiten“                                                                                                                            | nein                                         | L     | 0005             |
+| 0011 | Heute und Haushalt             | Tagesauswahl, „Heute geplant“, „Wie war's?“ für alle Arten mit halben Sternen, „Zu tun“; Haushalt: Tabs, Bearbeiten, Verlauf gruppiert, „Was anderes erledigt?“ mit „bei Bedarf“                                                                                              | ja (Sterne, Rhythmus)                        | M–L   | 0005             |
+| 0012 | Reisetaschen                   | Seite „Reisetaschen“, Anhängen im Abwesenheit-Fenster, Urlaubsseite mit Packliste, „Alles einpacken“, Rückreise, Karte auf „Heute“, Taschen-Symbol im Kalender, offline packen (Nachtrag ADR-0008)                                                                            | ja, kritisch (drei Tabellen, Offline-Aktion) | M–L   | 0010, 0011       |
+| 0013 | Benachrichtigungen             | Seite „Benachrichtigungen“, vier Arten, Uhrzeit an Aufgabe und Reservierung am Restaurant-Eintrag, Service Worker, Push-Abos, Zeitplaner (`pg_cron` + `pg_net` + Edge Function), Zeitzone am Haushalt, ADR, Präzisierung Regel 5                                              | ja, kritisch (Sicherheit, Infrastruktur)     | L     | 0010, 0011       |
 
 ```mermaid
 flowchart LR
@@ -1498,72 +1978,90 @@ flowchart LR
   S7 --> S8
   S6 --> S9[0009 Sammlungen]
   S8 --> S9
+  S10 --> S12[0012 Reisetaschen]
+  S11 --> S12
+  S10 --> S13[0013 Benachrichtigungen]
+  S11 --> S13
 ```
 
-**Empfohlene Reihenfolge**
+**Reihenfolge**
 
-| Welle | Specs       | Warum so                                                                              |
-| ----- | ----------- | ------------------------------------------------------------------------------------- |
-| 1     | 0005        | Alle anderen bauen auf den Bausteinen auf.                                            |
-| 2     | 0006 ‖ 0010 | Getrennte Bildschirme (Liste / Kalender); nur 0006 hat eine Migration.                |
-| 3     | 0007 ‖ 0011 | Getrennte Bereiche; beide haben Migrationen, die nacheinander zusammengeführt werden. |
-| 4     | 0008        | braucht die Zutaten-Suche aus 0007 und „Auf die Liste“ aus 0006.                      |
-| 5     | 0009        | braucht eine Liste, Katalog und Rezept-Editor.                                        |
+| Welle | Specs       | Warum so                                                                                                 |
+| ----- | ----------- | -------------------------------------------------------------------------------------------------------- |
+| 1     | 0005        | Alle anderen bauen auf den Bausteinen auf.                                                               |
+| 2     | 0006 ‖ 0010 | Getrennte Bildschirme (Liste / Kalender); nur 0006 hat eine Migration.                                   |
+| 3     | 0007 ‖ 0011 | Getrennte Bereiche; beide haben Migrationen, die nacheinander zusammengeführt werden.                    |
+| 4     | 0008 ‖ 0012 | 0008 braucht 0006 und 0007; 0012 braucht Abwesenheiten (0010) und „Heute“ (0011). Getrennte Bildschirme. |
+| 5     | 0009 ‖ 0013 | 0009 braucht Liste, Katalog und Editor; 0013 braucht Kalender-Einträge und Aufgaben-Bearbeiten.          |
 
-Schneller geht es mit 0006, 0007, 0010 und 0011 gleichzeitig in Welle 2. Dann laufen vier große
-Änderungen parallel, mit mehr Abstimmung bei Migrationen und mehr Prüfaufwand für dich. Parallele
-Specs arbeiten je in eigenem Zweig; Migrationen werden in fester Reihenfolge zusammengeführt.
+Parallele Specs arbeiten je in eigenem Zweig; Migrationen werden in fester Reihenfolge
+zusammengeführt. 0013 läuft lokal und am Desktop vollständig; auf dem iPhone kommen Nachrichten
+erst mit der Betriebs- bzw. Cloud-Spec (öffentliche HTTPS-Adresse).
 
 | D29 | Schnitt der Specs                                                                           | Pro                                                       | Contra                             |
 | --- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------- |
-| A   | **sieben Specs in fünf Wellen** wie oben                                                    | kleine, prüfbare Schritte; kritische Migrationen getrennt | mehr Specs zu lesen                |
+| A   | **kleine Specs in fünf Wellen** wie oben (seit dem Nachtrag 0005 bis 0013)                  | kleine, prüfbare Schritte; kritische Migrationen getrennt | mehr Specs zu lesen                |
 | B   | vier große Specs (Muster + Heute + Haushalt; Liste + Katalog; Essen + Sammlungen; Kalender) | weniger Dokumente                                         | große Diffs, Migrationen gebündelt |
 
-**Empfehlung A.**
+**ENTSCHIEDEN: A** (Empfehlung).
 
-## 6. Entscheidungen für Enrico
+## 6. Entscheidungen
 
-Antworte einfach mit „D1: A, D2: B …“ oder „alle Empfehlungen“. Die fett gedruckte Option ist meine
-Empfehlung.
+Freigegeben am 20.11.2026: **alle Empfehlungen** (D1 bis D29). D30 bis D43 kamen mit dem Nachtrag
+vom selben Tag dazu und gelten nach Enricos Regel „Empfehlung übernehmen“ als entschieden.
 
-| ID  | Frage                                       | Optionen                                                                                                | Empfehlung |
-| --- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | Muster statt Segment-Balken (2.4)           | **A Ansichts-Tabs (Text + Linie)** · B Pillen-Tabs · C Titel als Menü                                   | A          |
-| D2  | „Verwalten“ auf dem Handy (2.1)             | A 6. Tab „Mehr“ · **B Knopf ⊞ im Kopf** · C im Avatar-Menü                                              | B          |
-| D3  | Länge des Abhak-Fensters (2.5)              | **A 2 s** · B 3 s · C 1,5 s                                                                             | A          |
-| D4  | Frisch (2.10)                               | **A nach Regeln beruhigen** · B streichen · C lassen                                                    | A          |
-| D5  | Einkaufen und Kochen (2.1)                  | **A Vollbild mit „Fertig“** · B Tab-Leiste bleibt                                                       | A          |
-| D6  | Wochenleiste auf Heute (3.1)                | **A Tagesauswahl** · B Kacheln mit „+n weitere“ · C beides                                              | A          |
-| D7  | „Heute geplant“ auf dem Handy (3.1)         | **A waagerecht wischbar** · B untereinander                                                             | A          |
-| D8  | „Wie war's?“ fragt ab (3.1)                 | A nur gestern · **B Unbewertetes der letzten 3 Tage** · C letzte 7 Tage                                 | B          |
-| D9  | Halbe Sterne (3.1)                          | **A ja** · B nein                                                                                       | A          |
-| D10 | Filterleiste in Essen (3.2)                 | **A eine Zeile mit Schnell-Chips** · B nur Filter-Knopf und Menü · C heutige Leiste einklappbar         | A          |
-| D11 | Rezept auf dem Desktop (3.3)                | **A ganze Seite mit Seitenleiste** · B Liste und Rezept nebeneinander                                   | A          |
-| D12 | Rezept bearbeiten (3.3)                     | **A abschnittsweise** · B ein Modus fürs ganze Rezept · C immer bearbeitbar                             | A          |
-| D13 | Bestehende Zutaten ohne Artikel (3.3, 4.2)  | **A automatisch zuordnen oder neu anlegen, dann prüfen** · B Freitext lassen · C einzeln nachfragen     | A          |
-| D14 | Datenmodell Sammlung (3.4)                  | **A Rezept mit Art „Sammlung“ + Tabelle** · B eigene Tabellen                                           | A          |
-| D15 | Sammlung in Sammlung (3.4)                  | **A nein** · B ja                                                                                       | A          |
-| D16 | Tab „Plan“ umbenennen (3.5)                 | **A „Kalender“** · B „Plan“ bleibt                                                                      | A          |
-| D17 | Wo liegen Aktivitäten (3.5)                 | **A eigene Seite (Kalender-Kopf + Verwalten)** · B dritter Tab in Essen · C vierte Kalender-Ansicht     | A          |
-| D18 | Haushalt-Zeile, Standard (3.5)              | **A Woche an, Monat aus, Jahr nie** · B überall an · C überall aus                                      | A          |
-| D19 | Arten im Kalender (3.5)                     | **A Symbol + feine Farbkante** · B nur Symbol · C farbige Flächen                                       | A          |
-| D20 | Monat auf dem Handy (3.5)                   | **A Punkte + Tagesliste** · B Text im Raster                                                            | A          |
-| D21 | Vorauswahl „Auf die Einkaufsliste“ (3.5)    | **A ab heute bis Wochenende, nur Neues** · B nächste 7 Tage · C nichts                                  | A          |
-| D22 | Text auf dem Urlaubsstreifen (3.6)          | **A die Notiz** · B neues Feld „Anlass“                                                                 | A          |
-| D23 | Mehrere Personen in einer Abwesenheit (3.6) | **A alle = Haushalt, sonst je Person; Anzeige fasst zusammen** · B neue Tabelle                         | A          |
-| D24 | Abhaken auf „Liste“ (3.7)                   | **A nein, nur beim Einkaufen** · B Haken und ± zusammen · C Umschalter                                  | A          |
-| D25 | Weitere Listen wie „Drogerie“ (3.7, 4.1)    | **A Posten in die eine Liste, Liste entfällt** · B zusätzlich als Sammlung · C nur als Sammlung         | A          |
-| D26 | Markt beim Einkaufen (3.8)                  | **A zuletzt auf dem Gerät, sonst Standard** · B immer Standard · C jedes Mal fragen                     | A          |
-| D27 | „Was anderes erledigt?“ ohne Treffer (3.10) | **A Aufgabe „bei Bedarf“ anlegen** · B nur Verlaufseintrag                                              | A          |
-| D28 | Aufbau der Einstellungen (3.11)             | **A nur persönlich, Rest unter „Verwalten“** · B Einstellungen mit Unterseiten · C wie heute gegliedert | A          |
-| D29 | Schnitt der Specs (5)                       | **A sieben Specs, fünf Wellen** · B vier große Specs                                                    | A          |
+| ID  | Frage                                       | Optionen                                                                                                      | Entscheidung                |
+| --- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| D1  | Muster statt Segment-Balken (2.4)           | **A Ansichts-Tabs (Text + Linie)** · B Pillen-Tabs · C Titel als Menü                                         | ENTSCHIEDEN: A              |
+| D2  | „Verwalten“ auf dem Handy (2.1, 3.12)       | A 6. Tab „Mehr“ · **B Knopf ⊞ im Kopf** · C im Avatar-Menü                                                    | ENTSCHIEDEN: B              |
+| D3  | Länge des Abhak-Fensters (2.5)              | **A 2 s** · B 3 s · C 1,5 s                                                                                   | ENTSCHIEDEN: A              |
+| D4  | Frisch (2.10)                               | **A nach Regeln beruhigen** · B streichen · C lassen                                                          | ENTSCHIEDEN: A              |
+| D5  | Einkaufen und Kochen (2.1)                  | **A Vollbild mit „Fertig“** · B Tab-Leiste bleibt                                                             | ENTSCHIEDEN: A              |
+| D6  | Wochenleiste auf Heute (3.1)                | **A Tagesauswahl** · B Kacheln mit „+n weitere“ · C beides                                                    | ENTSCHIEDEN: A              |
+| D7  | „Heute geplant“ auf dem Handy (3.1)         | **A waagerecht wischbar** · B untereinander                                                                   | ENTSCHIEDEN: A              |
+| D8  | „Wie war's?“ fragt ab (3.1)                 | A nur gestern · **B Unbewertetes der letzten 3 Tage** · C letzte 7 Tage                                       | ENTSCHIEDEN: B              |
+| D9  | Halbe Sterne (3.1)                          | **A ja** · B nein                                                                                             | ENTSCHIEDEN: A              |
+| D10 | Filterleiste in Essen (3.2)                 | **A eine Zeile mit Schnell-Chips** · B nur Filter-Knopf und Menü · C heutige Leiste einklappbar               | ENTSCHIEDEN: A              |
+| D11 | Rezept auf dem Desktop (3.3)                | **A ganze Seite mit Seitenleiste** · B Liste und Rezept nebeneinander                                         | ENTSCHIEDEN: A              |
+| D12 | Rezept bearbeiten (3.3)                     | **A abschnittsweise** · B ein Modus fürs ganze Rezept · C immer bearbeitbar                                   | ENTSCHIEDEN: A              |
+| D13 | Bestehende Zutaten ohne Artikel (3.3, 4.2)  | **A automatisch zuordnen oder neu anlegen, dann prüfen** · B Freitext lassen · C einzeln nachfragen           | ENTSCHIEDEN: A              |
+| D14 | Datenmodell Sammlung (3.4)                  | **A Rezept mit Art „Sammlung“ + Tabelle** · B eigene Tabellen                                                 | ENTSCHIEDEN: A              |
+| D15 | Sammlung in Sammlung (3.4)                  | **A nein** · B ja                                                                                             | ENTSCHIEDEN: A              |
+| D16 | Tab „Plan“ umbenennen (3.5)                 | **A „Kalender“** · B „Plan“ bleibt                                                                            | ENTSCHIEDEN: A              |
+| D17 | Wo liegen Aktivitäten (3.5)                 | **A eigene Seite (Kalender-Kopf + Verwalten)** · B dritter Tab in Essen · C vierte Kalender-Ansicht           | ENTSCHIEDEN: A              |
+| D18 | Haushalt-Zeile, Standard (3.5)              | **A Woche an, Monat aus, Jahr nie** · B überall an · C überall aus                                            | ENTSCHIEDEN: A              |
+| D19 | Arten im Kalender (3.5)                     | **A Symbol + feine Farbkante** · B nur Symbol · C farbige Flächen                                             | ENTSCHIEDEN: A              |
+| D20 | Monat auf dem Handy (3.5)                   | **A Punkte + Tagesliste** · B Text im Raster                                                                  | ENTSCHIEDEN: A              |
+| D21 | Vorauswahl „Auf die Einkaufsliste“ (3.5)    | **A ab heute bis Wochenende, nur Neues** · B nächste 7 Tage · C nichts                                        | ENTSCHIEDEN: A              |
+| D22 | Text auf dem Urlaubsstreifen (3.6)          | **A die Notiz** · B neues Feld „Anlass“                                                                       | ENTSCHIEDEN: A              |
+| D23 | Mehrere Personen in einer Abwesenheit (3.6) | **A alle = Haushalt, sonst je Person; Anzeige fasst zusammen** · B neue Tabelle                               | ENTSCHIEDEN: A              |
+| D24 | Abhaken auf „Liste“ (3.7)                   | **A nein, nur beim Einkaufen** · B Haken und ± zusammen · C Umschalter                                        | ENTSCHIEDEN: A              |
+| D25 | Weitere Listen wie „Drogerie“ (3.7, 4.1)    | **A Posten in die eine Liste, Liste entfällt** · B zusätzlich als Sammlung · C nur als Sammlung               | ENTSCHIEDEN: A              |
+| D26 | Markt beim Einkaufen (3.8)                  | **A zuletzt auf dem Gerät, sonst Standard** · B immer Standard · C jedes Mal fragen                           | ENTSCHIEDEN: A              |
+| D27 | „Was anderes erledigt?“ ohne Treffer (3.10) | **A Aufgabe „bei Bedarf“ anlegen** · B nur Verlaufseintrag                                                    | ENTSCHIEDEN: A              |
+| D28 | Aufbau der Einstellungen (3.11)             | **A nur persönlich, Rest unter „Verwalten“** · B Einstellungen mit Unterseiten · C wie heute gegliedert       | ENTSCHIEDEN: A              |
+| D29 | Schnitt der Specs (5)                       | **A kleine Specs in fünf Wellen (0005–0013)** · B vier große Specs                                            | ENTSCHIEDEN: A              |
+| D30 | „Verwalten“ in der Seitenleiste (3.12)      | **A immer sichtbar, drei Blöcke** · B einklappbar · C ein Eintrag mit Übersicht                               | ENTSCHIEDEN (Empfehlung): A |
+| D31 | Gepacktes in der Packliste (3.13)           | **A nach 2 s in „Gepackt (n)“ je Tasche** · B bleibt stehen · C Schalter                                      | ENTSCHIEDEN (Empfehlung): A |
+| D32 | Anzahl am Packstück (3.13)                  | **A fest oder „je Tag“** · B nur fest                                                                         | ENTSCHIEDEN (Empfehlung): A |
+| D33 | Karte „Reisetasche“ auf Heute (3.13)        | **A Urlaubstag in der Woche oder Beginn in 7 Tagen** · B nur Urlaubstag in der gezeigten Woche                | ENTSCHIEDEN (Empfehlung): A |
+| D34 | Packen ohne Netz (3.13, 4.8)                | **A offline abhaken wie im Laden** · B nur online                                                             | ENTSCHIEDEN (Empfehlung): A |
+| D35 | Geänderte Reisetasche und Packlisten (3.13) | **A Packliste ist eine Kopie** · B nachfragen                                                                 | ENTSCHIEDEN (Empfehlung): A |
+| D36 | Benachrichtigungen am Anfang (3.14)         | **A nur Erinnerungen mit selbst gesetzter Uhrzeit** · B alles aus · C auch Tagesüberblick                     | ENTSCHIEDEN (Empfehlung): A |
+| D37 | Morgens (3.14)                              | **A ein Tagesüberblick** · B je Art eine Nachricht                                                            | ENTSCHIEDEN (Empfehlung): A |
+| D38 | Einstellungen je Person oder Gerät (3.14)   | **A je Person, Gerät nur an/aus** · B alles je Gerät                                                          | ENTSCHIEDEN (Empfehlung): A |
+| D39 | Wer bekommt was (3.14)                      | **A nur Betroffene, Abwesende nichts** · B alle alles                                                         | ENTSCHIEDEN (Empfehlung): A |
+| D40 | Rechte des Zeitplaners (3.14)               | **A Datenbank plant, Edge Function stellt nur zu** · B Function mit `service_role` · C eigene Rolle mit Token | ENTSCHIEDEN (Empfehlung): A |
+| D41 | Ort der Seite „Benachrichtigungen“ (3.14)   | **A persönliche Einstellungen** · B Verwalten                                                                 | ENTSCHIEDEN (Empfehlung): A |
+| D42 | Uhrzeit für Aufgaben (3.14)                 | **A optional, Erinnerung zur Uhrzeit** · B nur Tagesüberblick                                                 | ENTSCHIEDEN (Empfehlung): A |
+| D43 | Reservierung (3.14)                         | **A nur Restaurant-Einträge, Standard 2 h vorher** · B Uhrzeit für alle Einträge                              | ENTSCHIEDEN (Empfehlung): A |
 
-**Rückfragen, die keine Entscheidung sind**
+**Rückfragen**
 
-| ID  | Frage                                                                                                                                                                                  |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F1  | „Ich kann keine Einträge hinzufügen“ (Liste): War die Eingabezeile „Was fehlt?“ unten nicht zu sehen, oder hast du etwas eingegeben und es kam nicht auf die Liste? Auf welchem Gerät? |
-| F2  | Spec 0004 baut gerade „Woche · Aktivitäten“ als Umschalter. Bei D17 A baut 0005 das in Kopf-Symbol und eigene Seite um. Passt es, dass 0004 so fertig wird wie geplant?                |
+| ID  | Frage                                                                                                                                      | Stand                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| F1  | „Ich kann keine Einträge hinzufügen“ (Liste): War die Eingabezeile „Was fehlt?“ nicht zu sehen, oder kam Eingegebenes nicht auf die Liste? | OFFEN: Spec 0006 prüft es mit einem Test gegen das echte Backend |
+| F2  | Spec 0004 baut „Woche · Aktivitäten“ als Umschalter; 0005 baut das nach D17 A um. Wird 0004 trotzdem wie geplant fertig?                   | ENTSCHIEDEN: ja, 0004 wird wie geplant fertig                    |
 
 ## Anhang A: Dein Review, Punkt für Punkt
 
@@ -1575,7 +2073,7 @@ Empfehlung.
 | 4   | Haushaltsthemen im Kalender, nicht in den Tageszeiten                                                     | 3.5 Haushalt-Zeile, D18                     |
 | 5   | Plan in Kalender umbenennen?                                                                              | 3.5, D16                                    |
 | 6   | Vormittag im Plan                                                                                         | Spec 0004 (REQ-001), läuft                  |
-| 7   | Desktop-Seitenleiste mit Stammdaten (Aktivitäten, Zutaten, Märkte, Feedback); mobil nicht im Profil-Knopf | 2.1, 3.11; D2, D28                          |
+| 7   | Desktop-Seitenleiste mit Stammdaten (Aktivitäten, Zutaten, Märkte, Feedback); mobil nicht im Profil-Knopf | 2.1, 3.12; D2, D30                          |
 | 8   | Frisch zu bunt                                                                                            | 2.10, D4                                    |
 | 9   | Dialoge gleich groß, innen scrollen; Ausnahme Aufklappen                                                  | 2.3                                         |
 | 10  | KI überall ausblenden                                                                                     | 2.9                                         |
@@ -1605,17 +2103,20 @@ Empfehlung.
 | 34  | „Liste“ = bearbeiten: entfernen, Zusatz bearbeiten                                                        | 3.7, D24                                    |
 | 35  | + und − für die Menge                                                                                     | 3.7                                         |
 | 36  | „Aus dem Plan“ auch vorige und nächste Woche                                                              | 3.5, D21                                    |
-| 37  | Kann keine Einträge hinzufügen                                                                            | 3.7, Rückfrage F1                           |
+| 37  | Kann keine Einträge hinzufügen                                                                            | 3.7, F1 (wird in Spec 0006 geprüft)         |
 | 38  | Markt: Bereiche hinzufügen/löschen fehlt, keine Navigation; Stammdaten-Seiten prüfen                      | 3.9, 2.1                                    |
 | 39  | Haushalt: Umschalter hässlich                                                                             | 2.4, 3.10                                   |
 | 40  | Haushalt: Breite springt zwischen den Tabs                                                                | 2.11, 3.10                                  |
 | 41  | Aufgaben bearbeiten                                                                                       | 3.10                                        |
 | 42  | Anstehend und Alle passen                                                                                 | 3.10 (bleiben inhaltlich)                   |
 | 43  | Verlauf nach Jahr, Monat, Woche in Abschnitten                                                            | 3.10                                        |
-| 44  | Einstellungen überladen; Einladungen, Märkte, Feedback woanders                                           | 3.11, D28                                   |
+| 44  | Einstellungen überladen; Einladungen, Märkte, Feedback woanders                                           | 3.11, 3.12, D28                             |
 | 45  | Einkaufen: Liste und Markt oben wählen, Standard vorausgewählt                                            | 3.8, D26 (Listenwahl entfällt: eine Liste)  |
 | 46  | Sammlungen als besondere Rezepte, mit Rezepten und eigenen Zutaten                                        | 3.4, 4.3, D14, D15                          |
 | 47  | Alles Planbare je Person bewertbar, auch Sammlungen; „Wie war's?“ für alle vier                           | 3.1, 3.4                                    |
+| 48  | Nachtrag: Verwalten-Links direkt in der Desktop-Seitenleiste; Handy über ⊞, nicht über den Profil-Knopf   | 3.12, 2.1, 3.11; D2, D30                    |
+| 49  | Nachtrag: Reisetaschen als Vorlagen, je Urlaub eine Packliste zum Abhaken, Link auf „Heute“               | 3.13, 3.6, 4.8; D31 bis D35                 |
+| 50  | Nachtrag: Benachrichtigungen (Tagesüberblick, Aktivitäten, Aufgaben mit Uhrzeit, Reservierung)            | 3.14, 4.9; D36 bis D43                      |
 
 ## Anhang B: Was dieses Konzept nicht abdeckt
 
@@ -1623,8 +2124,11 @@ Empfehlung.
   bekommt am Ende eine eigene Spec.
 - **Besserer Starter-Rezeptkatalog** (Küchen, je Küche Gerichte, Beilagen und Desserts; Notiz in
   `tmp/TMP.md`). Passt gut zum neuen Küche-Filter, ist aber Inhalt, nicht Oberfläche; eigene Spec.
-- **Code-Review, Refactoring, Deployment und Versions-Hinweis** (TODOs in `tmp/TMP.md`).
+- **Code-Review, Refactoring, Deployment und Versions-Hinweis** (TODOs in `tmp/TMP.md`). Davon hängt
+  ab, ab wann Benachrichtigungen auf dem iPhone ankommen (öffentliche HTTPS-Adresse).
 - **Globale Suche** über Rezepte, Artikel und Aufgaben (war in der Design-Richtung angedeutet,
   stand nicht im Review).
 - **Fotos für Restaurants** und **Löschen von Aktivitäten** (in Spec 0004 bewusst ausgelassen).
-- **Benachrichtigungen** und Tageszusammenfassung (F8).
+- **Weitere Benachrichtigungen** aus F8, die nicht in 0013 sind: Wochenvorschau am Sonntag,
+  „Enrico ist bei Rewe – noch was?“, „Dein Feedback wurde umgesetzt“, eine Erinnerung an die
+  Packliste. Dazu native Push-Nachrichten (Expo), wenn es die nativen Apps gibt.
