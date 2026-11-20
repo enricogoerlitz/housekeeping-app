@@ -1,5 +1,5 @@
 ---
-status: in-arbeit # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-20
 spec: 0004
 ---
@@ -82,16 +82,16 @@ delete restrict`), `note` (≤ 120 Zeichen, nur bei Aktivitäten), kind-Check un
 
 ## Risiken und Gegenmaßnahmen
 
-| Risiko                                           | Gegenmaßnahme                                                                         | Test                     |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------ |
-| Fremder Haushalt liest/überschreibt/löscht Fotos | privater Bucket, Policies über ersten Pfadteil + Mitgliedschaft                       | pgTAP `storage_policies` |
-| Upload in fremden Ordner                         | insert-Policy prüft Pfad; Client baut Pfad aus aktiver Haushalts-ID                   | pgTAP                    |
-| Schädliche oder riesige Dateien (SVG, 50 MB)     | Bucket nur `image/jpeg`, ≤ 2 MB; Client kodiert neu                                   | pgTAP + vitest           |
-| Standortdaten im Foto (EXIF)                     | Neukodieren per Canvas entfernt Metadaten                                             | vitest (Blob ohne EXIF)  |
-| Verwaiste Fotos                                  | altes Objekt nach erfolgreichem Wechsel löschen; Rest-Risiko bei Abbruch dokumentiert | api-Test                 |
-| Plan-Einträge verrutschen durch „Vormittag“      | neue Slot-ID, alte unverändert, idempotente Migration                                 | pgTAP AC-003             |
-| Fotos anderer Person nach Kontowechsel           | Foto-Cache im selben, an die User-ID gebundenen Speicher                              | api-Test                 |
-| Activity-Tabelle ohne Isolation                  | Schema-Linter + `tenant_isolation`                                                    | pgTAP                    |
+| Risiko                                           | Gegenmaßnahme                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Test                                                      |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Fremder Haushalt liest/überschreibt/löscht Fotos | privater Bucket, Policies über ersten Pfadteil + Mitgliedschaft                                                                                                                                                                                                                                                                                                                                                                                                     | pgTAP `storage_policies`                                  |
+| Upload in fremden Ordner                         | insert-Policy prüft Pfad; Client baut Pfad aus aktiver Haushalts-ID                                                                                                                                                                                                                                                                                                                                                                                                 | pgTAP                                                     |
+| Schädliche oder riesige Dateien (SVG, 50 MB)     | **teilweise:** Bucket nur `image/jpeg`, ≤ 2 MB (per Migration erzwungen), Dateiname nur `<uuid>.jpg`; Client kodiert neu; beim Herunterladen prüft das Gerät den Inhalt (JPEG-Anfang `FF D8 FF`, im Browser Dekodieren mit längster Seite ≤ 1600 px), sonst Platzhalter und nichts gespeichert. Rest-Risiko: Ein Mitglied kann über die API eine beliebige Datei ≤ 2 MB als `image/jpeg` ablegen; sie wird nirgends gezeigt oder gespeichert, belegt aber Speicher. | pgTAP `storage_policies` + vitest `verifyDownloadedPhoto` |
+| Standortdaten im Foto (EXIF)                     | Neukodieren per Canvas entfernt Metadaten                                                                                                                                                                                                                                                                                                                                                                                                                           | vitest (Blob ohne EXIF)                                   |
+| Verwaiste Fotos                                  | altes Objekt nach bestätigtem Wechsel löschen; Upload, der nach 60 s Zeitüberschreitung doch ankommt, wird sofort wieder entfernt. **Offen für die Lösch-/Betriebs-Spec:** kein serverseitiger Löschweg beim Löschen von Haushalt, Konto, Rezept oder Aktivität.                                                                                                                                                                                                    | api-Tests `photos-remote*`                                |
+| Plan-Einträge verrutschen durch „Vormittag“      | neue Slot-ID, alte unverändert, idempotente Migration                                                                                                                                                                                                                                                                                                                                                                                                               | pgTAP AC-003                                              |
+| Fotos anderer Person nach Kontowechsel           | Foto-Cache an die Sitzung gebunden (Epoche + AbortSignal): laufende Downloads werden bei Abmelden und Kontowechsel abgebrochen und nicht gespeichert; Fotos eines verlorenen Haushalts werden mit seinem Cache gelöscht; kein Browser-HTTP-Cache (`no-store`, `cacheControl 0`)                                                                                                                                                                                     | api-Tests + Integrationstest                              |
+| Activity-Tabelle ohne Isolation                  | Schema-Linter + `tenant_isolation`                                                                                                                                                                                                                                                                                                                                                                                                                                  | pgTAP                                                     |
 
 ## Aufgaben (parallel, wo Dateien getrennt sind)
 
@@ -131,4 +131,17 @@ Aus Enricos Review in `tmp/TMP.md` plus Sammlungen-Idee ein Konzept unter
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 20.11.2026 (Commits `43879a8` bis `19f2d1d`, Branch `feat/0004-aktivitaeten`).
+
+- [x] Alle AC haben einen Test: E2E `e2e/rundgang-aktivitaeten.spec.ts` (AC-001…AC-023, AC-003 per
+      pgTAP `meal_slots`), dazu pgTAP (`activities`, `storage_policies`, `meal_slots`,
+      `apply_changes`, `sync_pull`) und vitest (core, api). Neue Module rot zuerst (Logs in
+      `tmp/0004-*`).
+- [x] `pnpm check` (17/17), `pnpm format:check`, `pnpm build:web` grün
+- [x] `pnpm exec supabase test db`: 897 Tests grün
+- [x] `pnpm e2e`: 127 bestanden, 18 übersprungen (Breite/Live-KI); nach den Sicherheits-Korrekturen
+      gezielte Dateien grün (79), `pnpm e2e:dev` grün
+- [x] `/security-check` gelaufen: kritisch 0 · hoch 0 · mittel 1 · niedrig 5 · hinweis 2 – alle
+      behoben bis auf die oben als „teilweise“ bzw. „offen“ markierten Rest-Risiken
+- [x] Offline: Fotos aus dem Gerätespeicher sichtbar, Bearbeiten ausgegraut (AC-011, mit Service Worker)
+- [ ] Manueller Test im Browser durch Enrico (Aktivität mit Handyfoto, zweites Gerät)

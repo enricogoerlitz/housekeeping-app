@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
@@ -340,14 +340,14 @@ nur für Mitglieder des Haushalts sichtbar.
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                                | Task (plan.md) | Test |
-| ------- | --------------------------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-003                 | —              | —    |
-| REQ-002 | AC-004, AC-005                    | —              | —    |
-| REQ-003 | AC-006 bis AC-008                 | —              | —    |
-| REQ-004 | AC-009 bis AC-012, AC-017, AC-018 | —              | —    |
-| REQ-005 | AC-013 bis AC-015                 | —              | —    |
-| REQ-005 | AC-019                            | —              | —    |
-| REQ-006 | AC-016                            | —              | —    |
-| REQ-007 | AC-020                            | —              | —    |
-| REQ-008 | AC-021 bis AC-023                 | —              | —    |
+| REQ     | AC                                | Task (plan.md) | Test                                               |
+| ------- | --------------------------------- | -------------- | -------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-003                 | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-002 | AC-004, AC-005                    | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-003 | AC-006 bis AC-008                 | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-004 | AC-009 bis AC-012, AC-017, AC-018 | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-005 | AC-013 bis AC-015                 | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-005 | AC-019                            | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-006 | AC-016                            | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-007 | AC-020                            | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
+| REQ-008 | AC-021 bis AC-023                 | siehe plan.md  | `e2e/rundgang-aktivitaeten.spec.ts`, pgTAP, vitest |
