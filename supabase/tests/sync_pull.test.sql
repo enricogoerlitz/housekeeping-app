@@ -3,7 +3,7 @@
 -- cursor, small tables in full. Shape = core PullResult (packages/core/src/sync-delta.ts).
 begin;
 \ir _helpers.psql
-select plan(29);
+select plan(35);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -80,7 +80,8 @@ select is(
   'T6 sync_pull: a full request is answered as full');
 select is(
   (select array_agg(k order by k) from pulled, jsonb_object_keys(r -> 'households' -> tests.fx('home_a')::text -> 'rows') k),
-  array['absences', 'areas', 'articles', 'chore_events', 'chores', 'feedback', 'feedback_votes', 'meal_plan_entries',
+  array['absences', 'activities', 'activity_favorites', 'activity_ratings', 'areas', 'articles', 'chore_events', 'chores',
+        'feedback', 'feedback_votes', 'meal_plan_entries',
         'recipe_favorites', 'recipe_ratings', 'recipes', 'restaurant_favorites', 'restaurant_ratings', 'restaurants',
         'shopping_contributions', 'shopping_items', 'shopping_lists', 'stores'],
   'T6 sync_pull: every synced household table is answered');
@@ -203,6 +204,56 @@ select is(
      tests.pull_full('home_b') -> 'households' -> tests.fx('home_b')::text -> 'tombstones') e),
   array['gone-b'],
   'AC-011 sync_pull: tombstones come only from the own household');
+
+-- ===================== Activities (spec 0004) =====================
+select tests.clear_authentication();
+insert into fx (key) values ('act_a'), ('act_gone'), ('act_b');
+insert into public.activities (id, household_id, name, name_key) values
+  (tests.fx('act_a'), tests.fx('home_a'), 'Eislaufen', 'eislaufen'),
+  (tests.fx('act_gone'), tests.fx('home_a'), 'Kino', 'kino'),
+  (tests.fx('act_b'), tests.fx('home_b'), 'Bouldern', 'bouldern');
+insert into public.activity_favorites (household_id, activity_id, member_id)
+values (tests.fx('home_a'), tests.fx('act_a'), tests.fx('enrico'));
+insert into public.activity_ratings (household_id, activity_id, member_id, stars)
+values (tests.fx('home_a'), tests.fx('act_a'), tests.fx('enrico'), 4);
+delete from public.activities where id = tests.fx('act_gone');
+delete from public.activity_favorites where activity_id = tests.fx('act_a');
+
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  (select array_agg(e ->> 'name') from jsonb_array_elements(
+     tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'activities') e),
+  array['Eislaufen'],
+  'AC-004 sync_pull: activities of the household are pulled, none of another household');
+select is(
+  (select array_agg((e ->> 'member_id') || ':' || (e ->> 'stars')) from jsonb_array_elements(
+     tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'activity_ratings') e),
+  array[tests.fx('enrico') || ':4'],
+  'AC-020 sync_pull: activity ratings are pulled per person');
+select is(
+  jsonb_array_length(tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'activity_favorites'),
+  0,
+  'AC-020 sync_pull: activity_favorites is answered (empty after the favourite was removed)');
+select is(
+  (select array_agg((e ->> 'table') || '/' || (e ->> 'id') order by e ->> 'table') from jsonb_array_elements(
+     tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'tombstones') e
+   where e ->> 'table' like 'activit%'),
+  array['activities/' || tests.fx('act_gone'), 'activity_favorites/' || tests.fx('act_a') || ':' || tests.fx('enrico')],
+  'AC-015 sync_pull: deleted activities and favourites arrive as tombstones (composite key activity_id:member_id)');
+select is(
+  (select jsonb_array_length(r -> 'rows' -> 'activities') + jsonb_array_length(r -> 'rows' -> 'activity_ratings')
+          + (select count(*)::int from jsonb_array_elements(r -> 'tombstones') e where e ->> 'table' like 'activit%')
+   from (select tests.pull_since('home_a', jsonb_build_object(
+           'activities', now(), 'activity_favorites', now(), 'activity_ratings', now()))
+           -> 'households' -> tests.fx('home_a')::text as r) x),
+  0,
+  'T6 sync_pull: a delta after the last change returns no activity rows or tombstones');
+select tests.authenticate_as(tests.fx('ben'));
+select is(
+  (select array_agg(e ->> 'name') from jsonb_array_elements(
+     tests.pull_full('home_b') -> 'households' -> tests.fx('home_b')::text -> 'rows' -> 'activities') e),
+  array['Bouldern'],
+  'AC-012 sync_pull: another household gets only its own activities');
 
 -- The 2-minute safety window of the delta sync assumes no statement runs longer than 8 s.
 select ok(

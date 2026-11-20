@@ -47,8 +47,8 @@ select results_eq(
   $$ select s ->> 'name', (s ->> 'sort')::int, (s ->> 'id')::uuid is not null
      from public.households h, jsonb_array_elements(h.meal_slots) s
      where h.id = (select id from fx where key = 'wg') order by (s ->> 'sort')::int $$,
-  $$ values ('Mittag', 0, true), ('Abend', 1, true) $$,
-  'AC-010: the household has the meal slots Mittag and Abend'
+  $$ values ('Vormittag', 0, true), ('Mittag', 1, true), ('Abend', 2, true) $$,
+  'AC-010: the household has the meal slots Vormittag, Mittag and Abend (spec 0004 AC-001)'
 );
 select results_eq(
   $$ select name, sort from public.areas where household_id = (select id from fx where key = 'wg') order by sort $$,

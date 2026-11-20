@@ -33,6 +33,9 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_recipe_rating(uuid,smallint)'),
   ('private.set_restaurant_favorite(uuid,boolean)'),
   ('private.set_restaurant_rating(uuid,smallint)'),
+  ('private.set_activity_favorite(uuid,boolean)'),
+  ('private.set_activity_rating(uuid,smallint)'),
+  ('private.media_household_id(text)'), -- used by the storage.objects policies (spec 0004)
   ('private.set_feedback_vote(uuid,boolean)'),
   ('private.set_shopping_item_checked(uuid,boolean,integer)'),
   ('private.set_shopping_item_not_available(uuid,boolean)'),

@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(79);
+select plan(91);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -45,8 +45,11 @@ insert into fx (key, id) values
 insert into fx (key) values
   ('recipe_a'), ('recipe_b'), ('area_a'), ('area_b'), ('list_a'), ('list_b'), ('milch'), ('item_milch'), ('c_milch'),
   ('new_recipe'), ('new_area'), ('new_article'), ('zucker_item'), ('zucker_article'), ('zucker_c'),
-  ('tee'), ('item_b'), ('c_b');
+  ('tee'), ('item_b'), ('c_b'), ('slot_a'), ('new_activity'), ('new_entry'), ('bad_activity');
 
+update public.households
+set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot_a'), 'name', 'Vormittag', 'sort', 0))
+where id = tests.fx('home_a');
 insert into public.recipes (id, household_id, title) values
   (tests.fx('recipe_a'), tests.fx('home_a'), 'Dal'),
   (tests.fx('recipe_b'), tests.fx('home_b'), 'Pasta');
@@ -372,6 +375,92 @@ select is(
 select is(
   (select count(*)::int from public.shopping_contributions where id = tests.fx('c_b')), 1,
   'T5 apply_changes: … the B contribution still exists');
+
+-- ===================== Activities and photos (spec 0004) =====================
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  tests.apply('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'insert', 'table', 'activities',
+                       'row', jsonb_build_object('id', tests.fx('new_activity'), 'name', 'Klettern im Wald',
+                                                 'name_key', 'klettern im wald', 'created_by', tests.fx('nadja'),
+                                                 'tags', jsonb_build_array('draußen'))),
+    jsonb_build_object('kind', 'insert', 'table', 'meal_plan_entries',
+                       'row', jsonb_build_object('id', tests.fx('new_entry'), 'date', '2026-11-21',
+                                                 'slot_id', tests.fx('slot_a'), 'kind', 'activity',
+                                                 'activity_id', tests.fx('new_activity'), 'note', 'Hohenschönhausen')))),
+  '{"applied": 2, "results": []}'::jsonb,
+  'AC-021 apply_changes: one call creates an activity and plans it');
+select results_eq(
+  format($$ select a.name, a.created_by, e.kind, e.note
+            from public.activities a join public.meal_plan_entries e on e.activity_id = a.id where a.id = %L $$,
+         tests.fx('new_activity')),
+  format($$ values ('Klettern im Wald', %L::uuid, 'activity', 'Hohenschönhausen') $$, tests.fx('enrico')),
+  'AC-021 apply_changes: … created_by is the caller and the entry carries the note');
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'patch', 'table', 'activities', 'id', tests.fx('new_activity'),
+                       'changes', jsonb_build_object(
+                         'name', 'Klettern', 'name_key', 'klettern', 'description', 'Mit Seil',
+                         'photo_path', tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/a.jpg',
+                         'place_name', 'Kletterwald', 'address', 'Am Wald 1, Berlin', 'lat', 52.4, 'lng', 13.2,
+                         'maps_url', 'https://maps.app.goo.gl/k', 'tags', jsonb_build_array('sport'))),
+    jsonb_build_object('kind', 'patch', 'table', 'meal_plan_entries', 'id', tests.fx('new_entry'),
+                       'changes', jsonb_build_object('note', 'Wuhletal')),
+    jsonb_build_object('kind', 'patch', 'table', 'recipes', 'id', tests.fx('recipe_a'),
+                       'changes', jsonb_build_object(
+                         'photo_path', tests.fx('home_a') || '/recipes/' || tests.fx('recipe_a') || '/r.jpg')))),
+  'REQ-003 apply_changes: activity columns, the entry note and a recipe photo_path are patchable');
+select results_eq(
+  format($$ select a.name, a.photo_path, e.note, r.photo_path
+            from public.activities a, public.meal_plan_entries e, public.recipes r
+            where a.id = %L and e.id = %L and r.id = %L $$,
+         tests.fx('new_activity'), tests.fx('new_entry'), tests.fx('recipe_a')),
+  format($$ values ('Klettern', %L, 'Wuhletal', %L) $$,
+         tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/a.jpg',
+         tests.fx('home_a') || '/recipes/' || tests.fx('recipe_a') || '/r.jpg'),
+  'AC-009/AC-017 apply_changes: … and stored');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'insert', 'table', 'activities',
+                       'row', jsonb_build_object('id', tests.fx('bad_activity'), 'name', '', 'name_key', 'leer')),
+    jsonb_build_object('kind', 'insert', 'table', 'meal_plan_entries',
+                       'row', jsonb_build_object('slot_id', tests.fx('slot_a'), 'kind', 'activity',
+                                                 'activity_id', tests.fx('bad_activity'))))),
+  '23514', null, 'AC-023 apply_changes: a new activity without a name is rejected …');
+select is(
+  (select count(*)::int from public.meal_plan_entries where activity_id = tests.fx('bad_activity'))
+    + (select count(*)::int from public.activities where id = tests.fx('bad_activity')), 0,
+  'AC-023 apply_changes: … and nothing is created or planned');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'activities', 'id', tests.fx('new_activity'),
+    'changes', jsonb_build_object('created_by', tests.fx('nadja'))))),
+  '22023', 'invalid_change', 'T5 attack: activities.created_by cannot be patched');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'activities', 'id', tests.fx('new_activity'),
+    'changes', jsonb_build_object('household_id', tests.fx('home_b'))))),
+  '22023', 'invalid_change', 'T5 attack: activities.household_id cannot be patched');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'activity_favorites',
+    'row', jsonb_build_object('activity_id', tests.fx('new_activity'), 'member_id', tests.fx('nadja'))))),
+  '22023', 'invalid_change', 'T5 attack: activity_favorites is not writable (set_* RPCs only)');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'activity_ratings',
+    'row', jsonb_build_object('activity_id', tests.fx('new_activity'), 'member_id', tests.fx('nadja'), 'stars', 5)))),
+  '22023', 'invalid_change', 'T5 attack: activity_ratings is not writable (set_* RPCs only)');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'delete', 'table', 'activities', 'id', tests.fx('new_activity')))),
+  '23503', null, 'REQ-005 apply_changes: a planned activity cannot be deleted on its own');
+select is(
+  tests.apply('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'delete', 'table', 'meal_plan_entries', 'id', tests.fx('new_entry')),
+    jsonb_build_object('kind', 'delete', 'table', 'activities', 'id', tests.fx('new_activity')))),
+  '{"applied": 2, "results": []}'::jsonb,
+  'REQ-002 apply_changes: its entries and the activity are deleted in one call');
 
 -- ===================== Limits =====================
 select tests.authenticate_as(tests.fx('enrico'));
