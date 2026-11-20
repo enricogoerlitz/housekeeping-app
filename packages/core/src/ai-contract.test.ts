@@ -6,6 +6,7 @@ import {
   AssistantCommandSchema,
   AssistantReplySchema,
   AssistantRequestSchema,
+  ErrorReplySchema,
   ResolveMapsLinkReplySchema,
   ResolveMapsLinkRequestSchema,
   SpeechTokenReplySchema,
@@ -48,22 +49,26 @@ const reply: AssistantReply = {
 };
 
 describe('AssistantRequestSchema', () => {
-  it('accepts a message with an optional open recipe', () => {
-    const request = { message: 'Mach das vegan', context: { recipeId: 'r1' } };
+  it('accepts a message for the active household with an optional open recipe', () => {
+    const request = { householdId: 'h1', message: 'Mach das vegan', context: { recipeId: 'r1' } };
     expect(AssistantRequestSchema.parse(request)).toEqual(request);
-    expect(AssistantRequestSchema.parse({ message: 'Hallo', context: {} })).toEqual({
-      message: 'Hallo',
-      context: {},
-    });
+    expect(
+      AssistantRequestSchema.parse({ householdId: 'h1', message: 'Hallo', context: {} }),
+    ).toEqual({ householdId: 'h1', message: 'Hallo', context: {} });
+  });
+
+  it('requires the active household', () => {
+    expect(AssistantRequestSchema.safeParse({ message: 'Hallo', context: {} }).success).toBe(false);
   });
 
   it('rejects an empty message, one over 2000 characters, and unknown fields', () => {
-    expect(AssistantRequestSchema.safeParse({ message: '  ', context: {} }).success).toBe(false);
+    const base = { householdId: 'h1', context: {} };
+    expect(AssistantRequestSchema.safeParse({ ...base, message: '  ' }).success).toBe(false);
+    expect(AssistantRequestSchema.safeParse({ ...base, message: 'x'.repeat(2001) }).success).toBe(
+      false,
+    );
     expect(
-      AssistantRequestSchema.safeParse({ message: 'x'.repeat(2001), context: {} }).success,
-    ).toBe(false);
-    expect(
-      AssistantRequestSchema.safeParse({ message: 'Hallo', context: {}, model: 'gpt' }).success,
+      AssistantRequestSchema.safeParse({ ...base, message: 'Hallo', model: 'gpt' }).success,
     ).toBe(false);
   });
 });
@@ -111,28 +116,39 @@ describe('AssistantReplySchema', () => {
 
 describe('AI search', () => {
   it('accepts a query and a result with chips, reasons and a trace', () => {
-    expect(AiSearchRequestSchema.parse({ query: 'was Schnelles mit Tofu' })).toEqual({
-      query: 'was Schnelles mit Tofu',
-      disabledChips: [],
-    });
+    expect(
+      AiSearchRequestSchema.parse({ householdId: 'h1', query: 'was Schnelles mit Tofu' }),
+    ).toEqual({ householdId: 'h1', query: 'was Schnelles mit Tofu', disabledChips: [] });
     const result = {
       chips: [{ id: 'fast', label: '≤ 30 Min' }],
       results: [{ recipeId: 'r1', reason: 'mit Tofu · 25 Min' }],
       trace: '1 Runde',
+      note: '',
     };
     expect(AiSearchResultSchema.parse(result)).toEqual(result);
   });
 
   it('rejects a query over 500 characters', () => {
-    expect(AiSearchRequestSchema.safeParse({ query: 'x'.repeat(501) }).success).toBe(false);
+    expect(
+      AiSearchRequestSchema.safeParse({ householdId: 'h1', query: 'x'.repeat(501) }).success,
+    ).toBe(false);
+    expect(AiSearchRequestSchema.safeParse({ query: 'Tofu' }).success).toBe(false);
   });
 });
 
 describe('SpeechTokenReplySchema', () => {
-  it('accepts a short-lived token with region and expiry', () => {
-    const token = { token: 'abc', region: 'westeurope', expiresAt: '2026-11-20T10:10:00Z' };
+  it('accepts a short-lived token with region, expiry, language and an optional model', () => {
+    const token = {
+      token: 'abc',
+      region: 'westeurope',
+      expiresAt: '2026-11-20T10:10:00Z',
+      language: 'de-DE',
+    };
     expect(SpeechTokenReplySchema.parse(token)).toEqual(token);
+    const withModel = { ...token, model: 'mai-transcribe-2-streaming' };
+    expect(SpeechTokenReplySchema.parse(withModel)).toEqual(withModel);
     expect(SpeechTokenReplySchema.safeParse({ ...token, expiresAt: 'bald' }).success).toBe(false);
+    expect(SpeechTokenReplySchema.safeParse({ ...token, language: 'de DE' }).success).toBe(false);
   });
 });
 
@@ -160,5 +176,20 @@ describe('maps link', () => {
     expect(
       ResolveMapsLinkReplySchema.safeParse({ ...place, location: { lat: 91, lng: 0 } }).success,
     ).toBe(false);
+  });
+});
+
+describe('ErrorReplySchema', () => {
+  it('accepts every stable error code and nothing else', () => {
+    for (const error of [
+      'unauthorized',
+      'invalid_request',
+      'not_a_maps_link',
+      'quota_exceeded',
+      'ai_unavailable',
+      'internal',
+    ])
+      expect(ErrorReplySchema.parse({ error })).toEqual({ error });
+    expect(ErrorReplySchema.safeParse({ error: 'teapot' }).success).toBe(false);
   });
 });

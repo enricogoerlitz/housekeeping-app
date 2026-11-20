@@ -70,6 +70,8 @@ export const ProposalSchema = z.strictObject({
 export type Proposal = z.infer<typeof ProposalSchema>;
 
 export const AssistantRequestSchema = z.strictObject({
+  /** The active household; RLS decides whether the caller may read it. */
+  householdId: Id,
   message: z.string().trim().min(1).max(2000),
   context: z.strictObject({ recipeId: Id.optional() }),
 });
@@ -84,6 +86,7 @@ export const AssistantReplySchema = z.strictObject({
 export type AssistantReply = z.infer<typeof AssistantReplySchema>;
 
 export const AiSearchRequestSchema = z.strictObject({
+  householdId: Id,
   query: z.string().trim().min(1).max(500),
   /** Chip ids the user removed; the search runs again without them. */
   disabledChips: z.array(z.string().min(1).max(100)).max(30).default([]),
@@ -102,6 +105,8 @@ export const AiSearchResultSchema = z.strictObject({
   results: z.array(z.strictObject({ recipeId: Id, reason: z.string().max(300) })).max(50),
   /** e.g. "2 Runden · gesucht: tofu". */
   trace: z.string().max(500),
+  /** Short hint shown under the results, may be empty. */
+  note: z.string().max(300),
 });
 export type AiSearchResult = z.infer<typeof AiSearchResultSchema>;
 
@@ -110,6 +115,10 @@ export const SpeechTokenReplySchema = z.strictObject({
   token: z.string().min(1).max(8192),
   region: z.string().regex(/^[a-z0-9]{1,64}$/),
   expiresAt: z.iso.datetime({ offset: true }),
+  /** Speech model, e.g. "mai-transcribe-2-streaming"; absent = Azure Speech standard model. */
+  model: z.string().min(1).max(100).optional(),
+  /** Recognition language, e.g. "de-DE". */
+  language: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/),
 });
 export type SpeechTokenReply = z.infer<typeof SpeechTokenReplySchema>;
 
@@ -126,3 +135,17 @@ export const ResolveMapsLinkReplySchema = z.strictObject({
   mapsUrl: HttpsUrl,
 });
 export type ResolveMapsLinkReply = z.infer<typeof ResolveMapsLinkReplySchema>;
+
+/** Stable error codes of the edge functions; the app maps them to German messages. */
+export const ErrorCodeSchema = z.enum([
+  'unauthorized',
+  'invalid_request',
+  'not_a_maps_link',
+  'quota_exceeded',
+  'ai_unavailable',
+  'internal',
+]);
+export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
+
+export const ErrorReplySchema = z.strictObject({ error: ErrorCodeSchema });
+export type ErrorReply = z.infer<typeof ErrorReplySchema>;
