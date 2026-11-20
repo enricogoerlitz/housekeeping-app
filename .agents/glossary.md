@@ -68,11 +68,13 @@ Die Zuordnung von Rezepten oder Freitext zu Tagen und Mahlzeiten.
 - **Im Code:** `MealPlan`, Einträge `MealPlanEntry`, `meal_plan_entries`
 - **Nicht verwenden:** Speiseplan, Menüplan
 
-### Mahlzeit
+### Tageszeit
 
-Ein konfigurierbarer Platz im Tag des Wochenplans, z. B. Mittag oder Abend.
+Ein Platz im Tag des Wochenplans: Vormittag, Mittag oder Abend. Nimmt beliebig viele Einträge
+auf, in der Reihenfolge Aktivitäten → Rezepte (auch Freitext und Reste) → Restaurants (Spec 0004).
 
-- **Im Code:** `MealSlot`, `meal_slots`
+- **Im Code:** `MealSlot`, `meal_slots` (Name aus der Zeit, als nur Essen geplant wurde)
+- **Nicht verwenden:** Mahlzeit (für den Platz im Plan), Slot (in der Oberfläche)
 
 ### Restaurant
 
@@ -113,9 +115,10 @@ zusammen (je Rezept im Wochenplan und manuell), die beim Anzeigen zusammengerech
 
 Freitext zu einem Beitrag eines Einkaufspostens, z. B. „laktosefrei“ oder „Gouda oder
 Emmentaler“. In der Liste steht er in Klammern hinter dem Artikel. Bringen mehrere Beiträge
-verschiedene Zusätze mit, stehen sie nebeneinander.
+verschiedene Zusätze mit, stehen sie nebeneinander. Auch ein Planeintrag einer Aktivität kann
+einen Zusatz haben: „Eislaufen (Hohenschönhausen)“ (Spec 0004).
 
-- **Im Code:** `note` (am `ShoppingContribution`)
+- **Im Code:** `note` (am `ShoppingContribution` und am `MealPlanEntry`)
 - **Nicht verwenden:** Notiz (die gehört zum Rezept), Kommentar
 
 ### Markt
@@ -346,3 +349,12 @@ die Änderung aus der Überlagerung und die Anzeige springt zurück.
 
 - **Im Code:** `overlay`, `PendingChangeset`
 - **Nicht verwenden:** Optimistic Update (außer in technischen Docs)
+
+### Aktivität
+
+Eine Unternehmung, die der Haushalt plant und nachhält, z. B. Eislaufen oder Bouldern. Hat Name,
+Beschreibung, Foto und optional einen Ort; steht im Wochenplan in einer Tageszeit, mit Zusatz in
+Klammern, z. B. „Eislaufen (Hohenschönhausen)“.
+
+- **Im Code:** `Activity`, `activities`; Planeintrag `kind: 'activity'`
+- **Nicht verwenden:** Event, Termin, Freizeit (als Begriff für den Eintrag)
