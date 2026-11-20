@@ -93,13 +93,13 @@ Transkriptionsqualität nicht reicht.
 Getestet mit einer deutschen Testaufnahme (16 kHz, mono) gegen die Foundry-Ressource in
 `westeurope`:
 
-| Prüfung | Ergebnis |
-| --- | --- |
-| LLM über die Responses API, Freitext | ✅ deutsche Antwort in ca. 2,5 s |
-| LLM mit strukturierter Ausgabe (JSON-Schema) | ✅ „zwei Liter Milch, sechs Eier, ein Vollkornbrot“ → drei Posten mit Zusatz |
-| `mai-transcribe-2-streaming` in `westeurope` | ❌ „requested speech model is not enabled“, weil die Region nicht unterstützt wird |
-| Azure Speech Standardmodell, `de-DE`, Streaming | ✅ erstes Zwischenergebnis nach ca. 0,5 s, Endergebnis fehlerfrei |
-| Kurzlebiges Speech-Token, ausgestellt mit dem Ressourcenschlüssel (Browser-Ablauf) | ✅ |
+| Prüfung                                                                            | Ergebnis                                                                           |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| LLM über die Responses API, Freitext                                               | ✅ deutsche Antwort in ca. 2,5 s                                                   |
+| LLM mit strukturierter Ausgabe (JSON-Schema)                                       | ✅ „zwei Liter Milch, sechs Eier, ein Vollkornbrot“ → drei Posten mit Zusatz       |
+| `mai-transcribe-2-streaming` in `westeurope`                                       | ❌ „requested speech model is not enabled“, weil die Region nicht unterstützt wird |
+| Azure Speech Standardmodell, `de-DE`, Streaming                                    | ✅ erstes Zwischenergebnis nach ca. 0,5 s, Endergebnis fehlerfrei                  |
+| Kurzlebiges Speech-Token, ausgestellt mit dem Ressourcenschlüssel (Browser-Ablauf) | ✅                                                                                 |
 
 **Folge:** Standard für Speech-to-Text ist das **Azure-Speech-Standardmodell mit `de-DE`**
 (allgemein verfügbar, in der vorhandenen Ressource). MAI-Transcribe-2-Streaming bleibt eine
