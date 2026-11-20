@@ -11,7 +11,7 @@ spec: 0004
 Wird direkt nach Spec 0003 umgesetzt, auf dem echten Backend. Aktivitäten folgen dem Muster der
 Restaurants (Spec 0002): eigene Tabelle, Karten-Link über `parseMapsLink` bzw. die Edge Function
 `resolve-maps-link`, Route über `routeLinks`, „Zuletzt · N-mal“ aus vergangenen Planeinträgen.
-Neu sind die Foto-Ablage in Supabase Storage und die dritte Tageszeit. Betroffen: `supabase`,
+Neu sind die Foto-Ablage in Supabase Storage (für Aktivitäten und Rezepte) und die dritte Tageszeit. Betroffen: `supabase`,
 `core`, `api`, `app`.
 
 ## Datenbank und Sync
@@ -25,7 +25,8 @@ Mit dem `db-change`-Skill:
   Fremdschlüssel) und `note`; additive Migration.
 - Tageszeit „Vormittag“: Migration ergänzt `meal_slots` bestehender Haushalte vorn (neue ID,
   bestehende IDs unverändert, AC-003); `create_household` legt künftig drei Tageszeiten an.
-- Storage: privater Bucket `household-media`, Pfad `<household_id>/activities/<activity_id>/<uuid>.jpg`;
+- `recipes.photo_path` (eigenes Foto; das mitgelieferte Beispielfoto `photo` bleibt als Rückfall).
+- Storage: privater Bucket `household-media`, Pfad `<household_id>/<activities|recipes>/<id>/<uuid>.jpg`;
   Policies auf `storage.objects`: Lesen, Schreiben, Löschen nur für Mitglieder des Haushalts im
   ersten Pfadteil; Größen- und Typgrenze am Bucket. pgTAP für fremde Haushalte (AC-012).
 

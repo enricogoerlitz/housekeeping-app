@@ -26,8 +26,8 @@ arbeiten mit der echten KI. Alles läuft zuerst lokal in Docker und ist automati
   alles läuft.
 - **Keine nativen Apps.** Ziel ist die Web-App (auch als PWA auf dem Handy). Der Code bleibt
   plattformneutral, Secure Store und native Google-Anmeldung kommen später.
-- **Kein Hochladen eigener Fotos.** Rezepte behalten die mitgelieferten Beispielfotos oder den
-  Platzhalter.
+- **Kein Hochladen eigener Fotos** in dieser Spec: kommt für Rezepte und Aktivitäten mit Spec 0004,
+  direkt im Anschluss.
 - **Kein Offline-Bearbeiten** über die vier Laden-Aktionen hinaus (ADR-0008, Nachtrag).
 - **Keine Benachrichtigungen** (Push, E-Mail) für Aufgaben oder Einladungen. Eine Einladung teilt
   man selbst mit („Ich hab dich eingeladen, melde dich mit Google an“).

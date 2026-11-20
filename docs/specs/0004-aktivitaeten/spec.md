@@ -3,20 +3,23 @@ status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
-# 0004 — Aktivitäten
+# 0004 — Aktivitäten und eigene Fotos
 
 ## Problem
 
 Enrico und Nadja planen nicht nur Essen, sondern auch Unternehmungen: Eislaufen, Bouldern,
 Wandern. Im Wochenplan geht das bisher nur als Freitext. Man findet den Ort nicht wieder, hat kein
-Bild dazu und weiß nicht mehr, wann man zuletzt dort war.
+Bild dazu und weiß nicht mehr, wann man zuletzt dort war. Auch Rezepte haben bisher nur die
+mitgelieferten Beispielfotos; ein eigenes Foto vom selbst gekochten Gericht lässt sich nicht
+hochladen.
 
 ## Ziel
 
 Aktivitäten sind eine eigene Sammlung im Plan-Tab: mit Foto, Name, Beschreibung und optionalem Ort,
 schnell angelegt auch aus einem Karten-Link. Im Wochenplan stehen sie neben Rezepten und
 Restaurants, mit einem Zusatz wie „Eislaufen (Hohenschönhausen)“. So sieht man, was man
-unternommen hat und wann zuletzt.
+unternommen hat und wann zuletzt. Rezepte und Aktivitäten bekommen eigene Fotos über dieselbe
+Foto-Ablage.
 
 ## Nicht-Ziele
 
@@ -24,8 +27,8 @@ unternommen hat und wann zuletzt.
   Restaurants ergänzen.
 - **Keine Uhrzeiten, Tickets oder Öffnungszeiten.** Eine Aktivität gehört zu einer Tageszeit.
 - **Keine KI-Vorschläge** für Aktivitäten.
-- **Kein Hochladen von Rezeptfotos.** Die Foto-Ablage ist so gebaut, dass Rezepte sie später nutzen
-  können; das kommt mit einer eigenen Spec.
+- **Kein Foto je Schritt und keine Galerie:** ein Foto je Rezept bzw. Aktivität.
+- **Keine Fotos für Restaurants** in dieser Spec.
 - **Kein Zusatz für Rezepte und Restaurants im Plan** (siehe Offene Fragen).
 
 ## Konzept in Kürze
@@ -41,8 +44,9 @@ unternommen hat und wann zuletzt.
   oder von Hand). Ein Ort ermöglicht „Route“ wie bei Restaurants (Spec 0002).
 - Im Plan bekommt der Eintrag einen **Zusatz**, angezeigt in Klammern: „Eislaufen
   (Hohenschönhausen)“.
-- **Fotos** werden hochgeladen, verkleinert und nur für den eigenen Haushalt gespeichert. Einmal
-  geladene Fotos sind offline sichtbar.
+- **Fotos** für Aktivitäten **und Rezepte** werden hochgeladen, verkleinert und nur für den eigenen
+  Haushalt gespeichert. Einmal geladene Fotos sind offline sichtbar. Ein eigenes Rezeptfoto ersetzt
+  das mitgelieferte Beispielfoto.
 
 ## Anforderungen und Akzeptanzkriterien
 
@@ -132,9 +136,10 @@ Wenn        ich eine neue Aktivität „bouldern“ anlegen will
 Dann        sehe ich „Gibt es schon: Bouldern“ mit „Öffnen“ statt eines zweiten Eintrags
 ```
 
-### REQ-004 — Foto
+### REQ-004 — Eigene Fotos für Aktivitäten und Rezepte
 
-> Ein eigenes Foto je Aktivität, verkleinert gespeichert, nur im eigenen Haushalt sichtbar.
+> Ein eigenes Foto je Aktivität und je Rezept, verkleinert gespeichert, nur im eigenen Haushalt
+> sichtbar.
 
 **Offline:** Hochladen nur online; einmal geladene Fotos offline sichtbar.
 
@@ -171,6 +176,23 @@ Angenommen  ein Foto einer Aktivität von „Enrico & Nadja“
 Wenn        ein Mitglied eines anderen Haushalts es über die Supabase-API abrufen, überschreiben oder
             löschen will
 Dann        wird das abgelehnt
+```
+
+**AC-017 — Rezeptfoto**
+
+```gherkin
+Angenommen  das Rezept „Spaghetti Bolognese“ ohne Foto
+Wenn        Nadja ein Foto ihres Gerichts hochlädt
+Dann        zeigen Rezeptliste, Rezept, „Heute“ und Wochenplan dieses Foto, auch auf Enricos Gerät
+```
+
+**AC-018 — Foto entfernen**
+
+```gherkin
+Angenommen  das Rezept „Lasagne“ mit eigenem Foto
+Wenn        ich „Foto entfernen“ wähle
+Dann        zeigt „Lasagne“ wieder das Beispielfoto bzw. den Platzhalter
+Und         das hochgeladene Foto ist gelöscht
 ```
 
 ### REQ-005 — Im Wochenplan mit Zusatz
@@ -233,9 +255,9 @@ Einplanen brauchen Netz. Bei gleichzeitiger Änderung derselben Aktivität gewin
 
 ## Daten
 
-Aktivität: Name, Beschreibung, Foto, Ort (Name, Koordinaten, Original-Link), angelegt von. Plan-
+Rezept: zusätzlich ein eigenes Foto. Aktivität: Name, Beschreibung, Foto, Ort (Name, Koordinaten, Original-Link), angelegt von. Plan-
 eintrag: Art „Aktivität“, Verweis, Zusatz. Fotos liegen in Supabase Storage in einem privaten
-Bereich je Haushalt; Löschen der Aktivität löscht ihr Foto. Fotos können Personen zeigen; sie sind
+Bereich je Haushalt; Löschen einer Aktivität oder eines Rezepts löscht sein Foto. Fotos können Personen zeigen; sie sind
 nur für Mitglieder des Haushalts sichtbar.
 
 ## Offene Fragen
@@ -250,11 +272,11 @@ nur für Mitglieder des Haushalts sichtbar.
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-003 | —              | —    |
-| REQ-002 | AC-004, AC-005    | —              | —    |
-| REQ-003 | AC-006 bis AC-008 | —              | —    |
-| REQ-004 | AC-009 bis AC-012 | —              | —    |
-| REQ-005 | AC-013 bis AC-015 | —              | —    |
-| REQ-006 | AC-016            | —              | —    |
+| REQ     | AC                                | Task (plan.md) | Test |
+| ------- | --------------------------------- | -------------- | ---- |
+| REQ-001 | AC-001 bis AC-003                 | —              | —    |
+| REQ-002 | AC-004, AC-005                    | —              | —    |
+| REQ-003 | AC-006 bis AC-008                 | —              | —    |
+| REQ-004 | AC-009 bis AC-012, AC-017, AC-018 | —              | —    |
+| REQ-005 | AC-013 bis AC-015                 | —              | —    |
+| REQ-006 | AC-016                            | —              | —    |
