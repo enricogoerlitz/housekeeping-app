@@ -77,17 +77,17 @@ Handy als PWA vom Home-Bildschirm genutzt, offline-fähig. Native Apps für iOS 
 derselben Codebasis folgen, sobald das MVP taugt. Dann kommen Xcode, Android Studio und der
 Apple-Developer-Account dazu.
 
-**Umfang: noch offen.** Wird in der nächsten Session gemeinsam gesammelt und priorisiert.
-Kandidaten aus dem ersten Brainstorming:
+**Umfang:** wird im [Feature-Konzept](feature-konzept.md) ausgearbeitet (Entwurf). Kandidaten aus
+dem ersten Brainstorming:
 
-| Kandidat                             | Kern                                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Fundament: Haushalt, Anmeldung, Sync | Haushalt anlegen, Partnerin oder Partner einladen, Google/Apple-Login, Daten offline auf allen Geräten |
-| Design-Fundament                     | `DESIGN.md`, Tokens, Basiskomponenten, Showroom                                                        |
-| Rezepte                              | Rezepte mit Zutaten (Rezeptangabe + Einkaufsregel), Portionen, Foto, Schritte                          |
-| Wochenplan                           | Rezepte oder Freitext auf Tage und Mahlzeiten verteilen                                                |
-| Einkaufsliste                        | Aus dem Wochenplan erzeugen, von Hand ergänzen, gemeinsam abhaken                                      |
-| Märkte und Bereiche                  | Laufreihenfolge je Markt, Einkaufsmodus                                                                |
+| Kandidat                             | Kern                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Fundament: Haushalt, Anmeldung, Sync | Haushalt anlegen, Partnerin oder Partner einladen, Google-Login, Daten offline lesbar auf allen Geräten |
+| Design-Fundament                     | `DESIGN.md`, Tokens, Basiskomponenten, Showroom                                                         |
+| Rezepte                              | Rezepte mit Zutaten (Rezeptangabe + Einkaufsregel), Portionen, Foto, Schritte                           |
+| Wochenplan                           | Rezepte oder Freitext auf Tage und Mahlzeiten verteilen                                                 |
+| Einkaufsliste                        | Aus dem Wochenplan erzeugen, von Hand ergänzen, gemeinsam abhaken                                       |
+| Märkte und Bereiche                  | Laufreihenfolge je Markt, Einkaufsmodus                                                                 |
 
 ## Ideen für später
 
