@@ -5,6 +5,6 @@ Nachweis). Neue Specs entstehen mit dem `spec`-Skill aus der Vorlage `0000-templ
 
 Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 
-| Nr. | Feature                                                                        | Status |
-| --- | ------------------------------------------------------------------------------ | ------ |
-| —   | _Noch keine. Version 1 wird gerade gesammelt, siehe `docs/product/vision.md`._ | —      |
+| Nr.                                            | Feature                                         | Status  |
+| ---------------------------------------------- | ----------------------------------------------- | ------- |
+| [0001](0001-design-und-frontend-dummy/spec.md) | Design-Fundament und Frontend mit Beispieldaten | entwurf |
