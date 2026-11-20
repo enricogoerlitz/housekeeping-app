@@ -14,8 +14,8 @@ export function householdTables(): { [table: string]: Row[] } {
         id: HOUSEHOLD_ID,
         name: 'Zuhause',
         meal_slots: [
-          { id: 'slot-lunch', name: 'Mittag', sort: 1 },
-          { id: 'slot-dinner', name: 'Abend', sort: 2 },
+          { id: 'slot-lunch', name: 'Mittag', sort: 0 },
+          { id: 'slot-dinner', name: 'Abend', sort: 1 },
         ],
         default_list_id: 'list-main',
       },
@@ -42,9 +42,22 @@ export function householdTables(): { [table: string]: Row[] } {
         total_minutes: 35,
         variants: [{ id: 'v-veg', name: 'Vegetarisch', isDefault: false }],
         ingredients: [
-          { id: 'i-chicken', name: 'Hähnchenbrust', amount: { text: '400 g' } },
-          { id: 'i-cream', name: 'Sahne', amount: { text: '200 ml' } },
-          { id: 'i-tofu', name: 'Tofu', variantId: 'v-veg' },
+          {
+            id: 'i-chicken',
+            articleId: 'a-chicken',
+            name: 'Hähnchenbrust',
+            amount: { text: '400 g', qty: 400, unit: 'g' },
+            shoppingRule: 'recipeAmount',
+          },
+          {
+            id: 'i-cream',
+            name: 'Sahne',
+            amount: { text: '200 ml', qty: 200, unit: 'ml' },
+            shoppingRule: 'count',
+            shoppingNote: 'Kochsahne',
+            group: 'Soße',
+          },
+          { id: 'i-tofu', name: 'Tofu', variantId: 'v-veg', shoppingRule: 'count' },
         ],
       },
       {
@@ -57,7 +70,14 @@ export function householdTables(): { [table: string]: Row[] } {
         cuisine: null,
         total_minutes: 20,
         variants: [],
-        ingredients: [{ id: 'i-pasta-tofu', name: 'Räuchertofu', amount: { text: '200 g' } }],
+        ingredients: [
+          {
+            id: 'i-pasta-tofu',
+            name: 'Räuchertofu',
+            amount: { text: '200 g', qty: 200, unit: 'g' },
+            shoppingRule: 'count',
+          },
+        ],
       },
     ],
     chores: [{ ...h, id: 'c-bath', title: 'Bad putzen', next_due_on: '2026-11-21' }],

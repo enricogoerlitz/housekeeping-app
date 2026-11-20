@@ -420,8 +420,37 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+# Handed to the edge functions as environment variables (spec 0003). Only the named variables
+# from the root .env reach the functions; load it first: `set -a; . ./.env; set +a`.
+# SUPABASE_URL and the publishable/anon keys are injected by the CLI itself.
+[edge_runtime.secrets]
+FOUNDRY_API_KEY = "env(FOUNDRY_API_KEY)"
+FOUNDRY_OPENAI_BASE_URL = "env(FOUNDRY_OPENAI_BASE_URL)"
+FOUNDRY_LLM_DEPLOYMENT = "env(FOUNDRY_LLM_DEPLOYMENT)"
+FOUNDRY_SPEECH_REGION = "env(FOUNDRY_SPEECH_REGION)"
+FOUNDRY_STT_LANGUAGE = "env(FOUNDRY_STT_LANGUAGE)"
+FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
+# Not a secret: the browser origins of the local web app and the e2e server.
+ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
+
+# Every function verifies the JWT itself (getClaims + role = authenticated, so the anon key gets
+# 401). The gateway check adds nothing (the anon key passes it) and would answer CORS preflights
+# without a JWT itself. One shared import map for all functions.
+[functions.ai-assistant]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.ai-search]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.speech-token]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.resolve-maps-link]
+verify_jwt = false
+import_map = "./functions/deno.json"
 
 [analytics]
 enabled = true

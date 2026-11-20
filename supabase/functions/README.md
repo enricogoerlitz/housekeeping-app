@@ -46,54 +46,74 @@ Read by the functions (names only; values live in `.env`, never in the app):
 
 A missing variable fails the request with `500 internal` and logs the variable name.
 
-## Serving locally with secrets
+## Running locally
 
-Recommended: `[edge_runtime.secrets]` in `supabase/config.toml` with `env()`. It hands the
-functions only the named variables from the root `.env` (not `GOOGLE_CLIENT_SECRET` and the
-rest), and it works both for `supabase start` and `supabase functions serve`. The alternative,
-`supabase functions serve --env-file .env`, passes the whole file and needs a separate process.
+The local stack serves the functions itself; there is no separate `functions serve` process.
 
-Proposal for `supabase/config.toml` (not applied yet):
-
-```toml
-# [edge_runtime.secrets]
-# FOUNDRY_API_KEY = "env(FOUNDRY_API_KEY)"
-# FOUNDRY_OPENAI_BASE_URL = "env(FOUNDRY_OPENAI_BASE_URL)"
-# FOUNDRY_LLM_DEPLOYMENT = "env(FOUNDRY_LLM_DEPLOYMENT)"
-# FOUNDRY_SPEECH_REGION = "env(FOUNDRY_SPEECH_REGION)"
-# FOUNDRY_STT_LANGUAGE = "env(FOUNDRY_STT_LANGUAGE)"
-# FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
-# ALLOWED_ORIGINS = "env(EDGE_ALLOWED_ORIGINS)"
-#
-# # The functions verify the JWT themselves (getClaims + role check). The gateway check adds
-# # nothing (the anon key passes it) and would answer CORS preflights without a JWT itself.
-# [functions.ai-assistant]
-# verify_jwt = false
-# import_map = "./functions/deno.json"
-# [functions.ai-search]
-# verify_jwt = false
-# import_map = "./functions/deno.json"
-# [functions.speech-token]
-# verify_jwt = false
-# import_map = "./functions/deno.json"
-# [functions.resolve-maps-link]
-# verify_jwt = false
-# import_map = "./functions/deno.json"
+```sh
+set -a; . ./.env; set +a          # loads the values into this shell only; never print them
+pnpm exec supabase start          # or: supabase stop, then start, after changing config.toml
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:54321/functions/v1/speech-token
+# → 401 (no JWT): the function is up
 ```
 
-`EDGE_ALLOWED_ORIGINS` would be a new line in `.env.example` (e.g. `http://localhost:8081`).
-Then `pnpm exec supabase start` (or `pnpm exec supabase functions serve`) serves them on
-`http://127.0.0.1:54321/functions/v1/<name>`.
+Functions: `http://127.0.0.1:54321/functions/v1/<name>`. Code changes hot-reload
+(`edge_runtime.policy = "per_worker"`); changes to `config.toml` or `.env` need a restart.
+
+### Secrets
+
+`supabase/config.toml` → `[edge_runtime.secrets]` hands the functions only the named variables:
+`FOUNDRY_*` as `env(...)`, resolved from the shell when the stack starts (hence the `set -a`
+line), and `ALLOWED_ORIGINS` as a plain, non-secret list
+(`http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790`). Verified: the edge
+container receives the five set `FOUNDRY_*` values; an empty variable (`FOUNDRY_STT_MODEL`) is
+left out, which the code treats as "no model". Other `.env` entries (`GOOGLE_CLIENT_SECRET`, …)
+do not reach the functions. Always start the stack from a shell with `.env` loaded; a missing
+value makes the function answer `500 internal` and log the variable name.
+
+`SUPABASE_URL` (`http://kong:8000` inside Docker) and `SUPABASE_ANON_KEY` (the legacy anon JWT)
+are injected by the CLI; `_shared/live.ts` uses `SUPABASE_PUBLISHABLE_KEYS` when present, else
+`SUPABASE_ANON_KEY`. The runtime also injects `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_URL`;
+the code never reads them.
+
+`[functions.<name>]` sets `verify_jwt = false` (each function verifies the JWT itself and answers
+the anon key with 401; the gateway check would let the anon key through anyway) and
+`import_map = "./functions/deno.json"`. The `package.json` next to it (vitest under Node) does
+not disturb Deno: all four functions boot and resolve `zod` and `@supabase/supabase-js` from the
+import map.
+
+Locally, Kong's `cors` plugin answers every preflight itself with `Access-Control-Allow-Origin: *`
+and sets that header on responses too. The functions still refuse requests from an origin not in
+`ALLOWED_ORIGINS` with 403; their own preflight answer is covered by the unit tests only. On the
+hosted platform the functions answer preflights themselves.
 
 ## Smoke test
 
-`scripts/edge-smoke.mjs` calls every function with the anon key (expects 401) and with a user
-JWT from a password sign-in of a seeded test account:
+`scripts/edge-smoke.mjs` runs against the local stack. It creates a test account and household
+with `scripts/edge-smoke-fixture.sql` (psql as `postgres` via `docker exec` into
+`supabase_db_housekeeping-app`), signs in with password, calls every function and removes the
+fixture again (also on failure). It reads the API URL and anon key from `supabase status`.
 
 ```sh
-ANON_KEY=<legacy anon JWT from `supabase status`> TEST_EMAIL=… TEST_PASSWORD=… \
-  node scripts/edge-smoke.mjs
+set -a; . ./.env; set +a; node scripts/edge-smoke.mjs
 ```
 
-The AI calls reach Foundry for real (or a mock behind `FOUNDRY_OPENAI_BASE_URL`) and count
-against the test account's daily quota.
+Checks: anon key and missing JWT → 401 for all functions; preflight and POST from
+`http://localhost:8081` pass, POST from a foreign origin → 403; `speech-token` → 200 with a
+contract reply and without the API key in it; `resolve-maps-link` with a long Google URL → 200,
+with `https://evil.example/` → 422; `ai-search` and `ai-assistant` → 200 with replies that pass
+the contract schemas (`packages/core/src/ai-contract.ts`); a household the caller cannot see →
+400; daily request quota used up (`ai_usage.requests = 200`) → 429 before any Foundry call.
+
+Cost per run: two Foundry LLM calls and one Azure speech token. Output: status codes, reply keys
+and timings only — never tokens or keys.
+
+## Deploying (later, operations spec)
+
+- `import_map` in `config.toml` is the legacy way. Supabase recommends one `deno.json` per
+  function (`supabase/functions/<name>/deno.json`); before the first deploy, copy the shared
+  import map into each function folder (or check that `supabase functions deploy` bundles
+  `_shared/` with the shared map) and drop `import_map` from `config.toml`.
+- Set the `FOUNDRY_*` values and `ALLOWED_ORIGINS` (the production web origin) with
+  `supabase secrets set`; never commit them.
+- Deploy with `--no-verify-jwt` or keep `verify_jwt = false` in `config.toml`, as locally.
