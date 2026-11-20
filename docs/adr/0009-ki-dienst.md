@@ -73,3 +73,17 @@ Limits an.
 
 Wenn sich der Foundry-Zugang ändert, die Kosten spürbar werden, oder die deutsche
 Transkriptionsqualität nicht reicht.
+
+## Nachtrag 2026-11-20 — Streaming-Transkription und Variablennamen
+
+- **Speech-to-Text ist `MAI-Transcribe-2-Streaming`** statt der dateibasierten Variante: Der Text
+  erscheint schon während des Sprechens. Das Modell ist ein Speech-Modell in Foundry und braucht
+  **kein eigenes Deployment**. Angesprochen wird es über das Azure Speech SDK
+  (`wss://<region>.stt.speech.microsoft.com/speech/universal/v2`, Modellname in der Konfiguration).
+  Die Ressource muss in einer Region liegen, die das Modell unterstützt. Deutsch ist laut
+  Hersteller über die automatische Spracherkennung abgedeckt; das wird beim ersten Einsatz getestet.
+- **Der Schlüssel bleibt serverseitig:** Eine Edge Function tauscht den Foundry-Schlüssel gegen ein
+  kurzlebiges Speech-Token (ca. 10 Minuten). Damit streamt der Browser das Mikrofon direkt zu Azure.
+- **Ein Schlüssel für alles:** Der „API key“ der Foundry-Ressource gilt für LLM und Speech.
+- **Variablennamen** heißen `FOUNDRY_*` statt `OPENAI_*` (siehe `.env.example`). Das OpenAI-SDK
+  bekommt Basis-URL und Schlüssel explizit übergeben.
