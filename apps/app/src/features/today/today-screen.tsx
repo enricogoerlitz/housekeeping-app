@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 
 import { TodayChores } from './today-chores';
 import { TodayMeals } from './today-meals';
@@ -45,7 +45,7 @@ export function TodayScreen() {
     <ScreenHeader
       kicker={formatLongDate(today)}
       title={`${greeting(hour)}, ${me.name}`}
-      right={isPhone ? <ProfileButton /> : undefined}
+      right={isPhone ? <StartPageActions /> : undefined}
     />
   );
 

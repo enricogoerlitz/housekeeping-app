@@ -54,6 +54,7 @@ import { Pressable, View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
+import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
 import { IngredientsPasteSheet } from './ingredients-paste-sheet';
@@ -204,13 +205,15 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           onPress={() => router.push('/plan')}
           testID="recipe-plan"
         />
-        <Button
-          label="Anpassen"
-          icon="sparkles"
-          variant="ghost"
-          onPress={() => assistant.open({ recipeId: recipe.id })}
-          testID="recipe-assistant"
-        />
+        {features.ai ? (
+          <Button
+            label="Anpassen"
+            icon="sparkles"
+            variant="ghost"
+            onPress={() => assistant.open({ recipeId: recipe.id })}
+            testID="recipe-assistant"
+          />
+        ) : null}
       </Row>
     </Stack>
   );

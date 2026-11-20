@@ -4,7 +4,6 @@ import {
   Button,
   Chip,
   EmptyState,
-  IconButton,
   List,
   ListRow,
   Row,
@@ -22,7 +21,10 @@ function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-/** Cooking mode: one step per screen in large type, without tabs (F3, AC-023). */
+/**
+ * Cooking mode: one step per screen in large type (F3, AC-023). Full screen on phones, the sidebar
+ * stays on wider screens (spec 0005, D5).
+ */
 export function CookingScreen() {
   const params = useLocalSearchParams<{ id?: string | string[]; variant?: string | string[] }>();
   const router = useRouter();
@@ -121,10 +123,12 @@ function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLe
             {recipe.title}
           </Text>
         </View>
-        <IconButton
-          icon="x"
-          label="Kochmodus beenden"
-          variant="soft"
+        {/* Full screen on phones, so "Fertig" is the way out (spec 0005, D5). */}
+        <Button
+          label="Fertig"
+          variant="secondary"
+          size="sm"
+          hint="Kochmodus beenden"
           onPress={props.onLeave}
           testID="cook-close"
         />

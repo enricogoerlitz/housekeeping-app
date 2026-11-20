@@ -76,6 +76,29 @@ describe('theme contrast (DESIGN.md §3)', () => {
   });
 });
 
+// Spec 0005, D4: "Frisch" shows one area colour per screen. Its strong shade (`fg`) draws the line
+// under the active view tab and, in dark mode, fills the primary action, so it must stand out from
+// the page and from cards. Text on the area fill is covered by "fg on bg" above.
+const AREA_TONE_CASES = cases.filter(({ name }) => name.startsWith('frisch'));
+
+describe('Frisch area colours (spec 0005, AC-051)', () => {
+  describe.each(AREA_TONE_CASES)('$name', ({ colors }) => {
+    it.each(Object.entries(colors.tones))('tone %s: fg against bg reaches 3:1', (_tone, tone) => {
+      expect(contrast(tone.fg, colors.bg)).toBeGreaterThanOrEqual(3);
+      expect(contrast(tone.fg, colors.surface)).toBeGreaterThanOrEqual(3);
+    });
+
+    it('rating stars stand out from cards by 3:1', () => {
+      expect(contrast(colors.star, colors.surface)).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it('is the only theme that paints area colours', () => {
+    const painting = themeFamilies.filter((family) => family.light.shape.areaTone);
+    expect(painting.map((family) => family.id)).toEqual(['frisch']);
+  });
+});
+
 describe('theme selection', () => {
   it('AC-047: an unknown stored theme id falls back to Markthalle', () => {
     expect(getTheme('gibt-es-nicht', 'light').id).toBe('markthalle');

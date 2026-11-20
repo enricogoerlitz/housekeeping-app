@@ -7,7 +7,8 @@ import type {
   TextVariantStyle,
 } from './types';
 
-// "Frisch": bold and colourful. Every app area has its own colour; big round tiles.
+// "Frisch": bold, big round tiles, one row per tile. Calm since spec 0005 (D4): one muted area
+// colour per screen, white tiles on a warm ground, ink everywhere else.
 
 const display = 'BricolageGrotesque_700Bold';
 const displayHeavy = 'BricolageGrotesque_800ExtraBold';
@@ -47,12 +48,13 @@ const shape: ThemeShape = {
   },
   stroke: 2.2,
   gutter: 16,
-  section: 'tile',
+  section: 'plain',
   list: 'tile',
   media: 'thumbRow',
   cardBorder: false,
   checkBorderWidth: 2,
   tabActive: 'pill',
+  areaTone: true,
 };
 
 const light: ThemeColors = {
@@ -67,21 +69,22 @@ const light: ThemeColors = {
   accentSoft: '#F0ECE6',
   success: '#12855A',
   onSuccess: '#FFFFFF',
-  star: '#F2B807',
-  due: '#4C6FFF',
+  // Concept value #C9961C, darkened to 3:1 on white (AC-051).
+  star: '#B8891A',
+  due: '#7085DB',
   warnBg: '#FFE3B3',
   warnText: '#5A3500',
   checkLine: '#15151B',
   barBg: '#FFFFFF',
   scrim: 'rgba(21,21,27,0.45)',
-  fabBg: '#7C4DFF',
+  fabBg: '#15151B',
   fabText: '#FFFFFF',
   tones: {
-    essen: { bg: '#FFD9CC', fg: '#5C1A08' },
-    plan: { bg: '#FFE9A8', fg: '#4D3800' },
-    liste: { bg: '#CFF3E0', fg: '#0B3F2A' },
-    haushalt: { bg: '#D9E2FF', fg: '#1B2A6E' },
-    ki: { bg: '#E9DDFF', fg: '#3A1C8C' },
+    essen: { bg: '#F5E3DB', fg: '#5C1A08' },
+    plan: { bg: '#F3EACB', fg: '#4D3800' },
+    liste: { bg: '#DCEDE3', fg: '#0B3F2A' },
+    haushalt: { bg: '#E0E5F4', fg: '#1B2A6E' },
+    ki: { bg: '#EBE4F8', fg: '#3A1C8C' },
   },
 };
 
@@ -98,20 +101,20 @@ const dark: ThemeColors = {
   success: '#5ADBA6',
   onSuccess: '#111116',
   star: '#FFD24A',
-  due: '#8EA2FF',
+  due: '#A5B1E8',
   warnBg: '#4A3408',
   warnText: '#FFD48A',
   checkLine: '#F6F5F2',
   barBg: '#1D1D25',
   scrim: 'rgba(0,0,0,0.6)',
-  fabBg: '#7F56FA',
-  fabText: '#FFFFFF',
+  fabBg: '#F6F5F2',
+  fabText: '#15151B',
   tones: {
-    essen: { bg: '#4D1E12', fg: '#FFCDBF' },
-    plan: { bg: '#4A3A08', fg: '#FFE596' },
-    liste: { bg: '#0E3F2C', fg: '#A6F0CE' },
-    haushalt: { bg: '#1D2A63', fg: '#C7D2FF' },
-    ki: { bg: '#2E1F5E', fg: '#D9CCFF' },
+    essen: { bg: '#41251E', fg: '#F2D4CC' },
+    plan: { bg: '#3D3315', fg: '#EADAAB' },
+    liste: { bg: '#18352A', fg: '#B5E1CD' },
+    haushalt: { bg: '#2B3355', fg: '#D2D9F4' },
+    ki: { bg: '#352C51', fg: '#DED6F5' },
   },
 };
 
@@ -119,7 +122,7 @@ const fonts = [display, displayHeavy, ui, uiMedium, uiStrong];
 const base = {
   id: 'frisch' as const,
   name: 'Frisch',
-  description: 'Mutig und farbig, jeder Bereich hat seine Farbe.',
+  description: 'Mutig und ruhig, jeder Bereich hat seine Farbe.',
   type,
   shape,
   fonts,

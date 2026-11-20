@@ -11,7 +11,7 @@ import {
 
 import { icons, type IconName } from './icons';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
-import { useTheme } from './theme-context';
+import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 
 /** Visible keyboard focus ring, the same on every control. */
@@ -40,10 +40,17 @@ export interface ButtonProps {
 
 export function Button(props: ButtonProps) {
   const theme = useTheme();
+  const area = useAreaColors();
   const variant = props.variant ?? 'primary';
   const small = props.size === 'sm';
-  const textColor: ColorToken =
-    variant === 'primary' ? 'onAccent' : variant === 'link' ? 'accent' : 'text';
+  const inArea = variant === 'primary' && area !== undefined;
+  const textColor: ColorToken = inArea
+    ? 'text'
+    : variant === 'primary'
+      ? 'onAccent'
+      : variant === 'link'
+        ? 'accent'
+        : 'text';
   const c = theme.colors;
   return (
     <Pressable
@@ -68,17 +75,19 @@ export function Button(props: ButtonProps) {
             alignSelf: props.full ? 'stretch' : 'flex-start',
             opacity: props.disabled ? 0.45 : pressed ? 0.75 : hovered ? 0.9 : 1,
           },
-          variant === 'primary' ? { backgroundColor: c.accent } : null,
+          variant === 'primary' ? { backgroundColor: area?.fill ?? c.accent } : null,
           variant === 'secondary' ? { backgroundColor: c.surfaceSunken } : null,
           variant === 'ghost' ? { borderWidth: 1.5, borderColor: c.border } : null,
           focusRing(theme, focused),
         ];
       }}
     >
-      {props.icon ? <Icon name={props.icon} size={small ? 17 : 19} color={textColor} /> : null}
-      <Text variant={small ? 'smallStrong' : 'button'} color={textColor}>
-        {props.label}
-      </Text>
+      <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
+        {props.icon ? <Icon name={props.icon} size={small ? 17 : 19} color={textColor} /> : null}
+        <Text variant={small ? 'smallStrong' : 'button'} color={textColor}>
+          {props.label}
+        </Text>
+      </ToneContext.Provider>
     </Pressable>
   );
 }
@@ -100,10 +109,13 @@ export interface IconButtonProps {
 
 export function IconButton(props: IconButtonProps) {
   const theme = useTheme();
+  const area = useAreaColors();
   const variant = props.variant ?? 'plain';
   const size = props.size ?? 40;
+  const inArea = variant === 'filled' && area !== undefined;
   const iconColor: ColorToken =
-    props.color ?? (variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
+    props.color ??
+    (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
   return (
     <Pressable
       testID={props.testID}
@@ -125,7 +137,7 @@ export function IconButton(props: IconButtonProps) {
             justifyContent: 'center',
             opacity: props.disabled ? 0.4 : pressed ? 0.6 : 1,
           },
-          variant === 'filled' ? { backgroundColor: theme.colors.accent } : null,
+          variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : null,
           variant === 'soft' || (variant === 'plain' && hovered)
             ? { backgroundColor: theme.colors.surfaceSunken }
             : null,
@@ -133,7 +145,9 @@ export function IconButton(props: IconButtonProps) {
         ];
       }}
     >
-      <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
+      <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
+        <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
+      </ToneContext.Provider>
     </Pressable>
   );
 }
@@ -146,11 +160,20 @@ export interface ChipProps {
   /** Paints the chip in an area colour instead of the neutral style. */
   tone?: Tone;
   disabled?: boolean;
+  /** An active filter: shows ✕ after the label, and a tap removes it. */
+  removable?: boolean;
+  /** Accessible name when it says more than the label, e.g. "Vegan entfernen". */
+  accessibilityLabel?: string;
   testID?: string;
 }
 
 /** Filter chip, quick-add tile or small tag. Without onPress it is a static label. */
 export function Chip(props: ChipProps) {
+  return <ChipView {...props} role="button" />;
+}
+
+/** A chip as a button (filters, toggles) or as one option of a ChoiceChips group. */
+export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const theme = useTheme();
   const c = theme.colors;
   const tone = props.tone ? c.tones[props.tone] : undefined;
@@ -167,6 +190,7 @@ export function Chip(props: ChipProps) {
       >
         {props.label}
       </Text>
+      {props.removable ? <ChipIcon name="x" selected={!!props.selected} toneFg={tone?.fg} /> : null}
     </>
   );
   const base: ViewStyle = {
@@ -190,11 +214,16 @@ export function Chip(props: ChipProps) {
   return (
     <Pressable
       testID={props.testID}
-      accessibilityRole="button"
-      accessibilityLabel={props.label}
-      accessibilityState={{ selected: !!props.selected, disabled: !!props.disabled }}
-      aria-selected={!!props.selected}
-      aria-pressed={!!props.selected}
+      accessibilityRole={props.role}
+      accessibilityLabel={props.accessibilityLabel ?? props.label}
+      accessibilityState={
+        props.role === 'radio'
+          ? { checked: !!props.selected, disabled: !!props.disabled }
+          : { selected: !!props.selected, disabled: !!props.disabled }
+      }
+      aria-checked={props.role === 'radio' ? !!props.selected : undefined}
+      aria-selected={props.role === 'button' ? !!props.selected : undefined}
+      aria-pressed={props.role === 'button' && !props.removable ? !!props.selected : undefined}
       disabled={props.disabled}
       onPress={props.onPress}
       hitSlop={4}
@@ -274,6 +303,11 @@ export interface SegmentedProps<T extends string> {
   testID?: string;
 }
 
+/**
+ * @deprecated Spec 0005 (D1) removes the segment bar. Use `ViewTabs` to switch views,
+ * `ChoiceChips` for one value of a few in a form, `Menu` for a sort order. Same props as
+ * `ViewTabs` and `ChoiceChips`, so usages move over by renaming.
+ */
 export function Segmented<T extends string>(props: SegmentedProps<T>) {
   const theme = useTheme();
   const c = theme.colors;

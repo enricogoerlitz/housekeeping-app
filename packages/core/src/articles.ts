@@ -64,7 +64,8 @@ export function findArticleByName(name: string, articles: Article[]): Article | 
   );
 }
 
-function isSingularPluralPair(a: string, b: string): boolean {
+/** True for the singular and plural of one word, both normalised ("tomate" ↔ "tomaten"). */
+export function isSingularPluralPair(a: string, b: string): boolean {
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
   if (shorter.length < MIN_STEM_LENGTH) return false;
   return NUMBER_ENDINGS.some((ending) => shorter + ending === longer);

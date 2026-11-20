@@ -10,10 +10,9 @@ export function RestaurantScreen() {
   const router = useRouter();
   // Only a uuid reaches the lookup; anything else shows "nicht gefunden".
   const id = routeId(params.id);
-  const back = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace({ pathname: '/rezepte', params: { view: 'restaurants' } });
-  };
+  // To the restaurants of "Essen", also after a deep link: the stack's first page would otherwise
+  // keep the restaurant id as a recipe id (spec 0005, AC-004).
+  const back = () => router.dismissTo({ pathname: '/rezepte', params: { view: 'restaurants' } });
   return (
     <Screen testID="restaurant-screen" maxWidth={820}>
       <RestaurantDetail restaurantId={id ?? ''} onBack={back} />

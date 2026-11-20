@@ -248,12 +248,35 @@ export async function back(page: Page): Promise<void> {
   await settle(page);
 }
 
-/** Makes `householdId` the active household on this device (settings → Haushalt). */
+/** A page under "Verwalten" (spec 0005, REQ-010): `manage-entry-<key>` / `nav-manage-<key>`. */
+export type ManagedPage = 'activities' | 'absences' | 'stores' | 'members' | 'feedback';
+
+/**
+ * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page, then the
+ * entry; on wider screens the entry in the sidebar.
+ */
+export async function openManaged(page: Page, key: ManagedPage): Promise<void> {
+  if (isPhone(page)) {
+    await (await single(page, 'header-manage')).click();
+    await expect(tid(page, 'manage-screen')).toBeVisible();
+    await settle(page);
+  }
+  await tid(page, isPhone(page) ? `manage-entry-${key}` : `nav-manage-${key}`).click();
+  await settle(page);
+}
+
+/** Back from a page opened with `openManaged` to where it was opened (phones: via "Verwalten"). */
+export async function leaveManaged(page: Page): Promise<void> {
+  await back(page);
+  if (isPhone(page)) await back(page);
+}
+
+/** Makes `householdId` the active household on this device (Verwalten → Haushalt & Mitglieder). */
 export async function switchHousehold(page: Page, householdId: string): Promise<void> {
-  await openSettings(page);
+  await openManaged(page, 'members');
   await tid(page, `household-${householdId}`).click();
   await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
-  await back(page);
+  await leaveManaged(page);
 }
 
 /** On the plan (showing the current week): moves to the Monday–Sunday week of `date`. */
@@ -268,15 +291,23 @@ export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
 
 // ---------- Offline ----------
 
-/** Switches the developer switch "Offline simulieren" (settings → Entwicklung) and goes back. */
+/**
+ * Switches the developer switch "Offline simulieren" (Verwalten → Entwicklung; spec 0005,
+ * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar.
+ */
 export async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
-  await openSettings(page);
-  const toggle = tid(page, 'setting-offline');
+  const phone = isPhone(page);
+  if (phone) {
+    await (await single(page, 'header-manage')).click();
+    await expect(tid(page, 'manage-screen')).toBeVisible();
+    await settle(page);
+  }
+  const toggle = tid(page, phone ? 'setting-offline' : 'nav-manage-offline');
   const input = toggle.locator('input');
   if ((await input.isChecked()) !== offline) await toggle.click();
   if (offline) await expect(input).toBeChecked();
   else await expect(input).not.toBeChecked();
-  await back(page);
+  if (phone) await back(page);
 }
 
 /** Simulated offline (dev switch); kept as the old name for the walk-throughs. */

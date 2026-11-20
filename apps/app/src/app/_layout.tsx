@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AssistantSheet } from '@/features/assistant/assistant-sheet';
 import { AuthGate } from '@/features/auth/auth-gate';
 import { AssistantProvider } from '@/lib/assistant';
+import { features } from '@/lib/features';
 import { SettingsProvider, useSettings } from '@/lib/settings';
 
 export default function RootLayout() {
@@ -19,7 +20,8 @@ export default function RootLayout() {
           <AuthGate>
             <AssistantProvider>
               <Screens />
-              <AssistantSheet />
+              {/* Without the AI switch the assistant cannot open at all (spec 0005, AC-044). */}
+              {features.ai ? <AssistantSheet /> : null}
             </AssistantProvider>
           </AuthGate>
           <ToastHost />

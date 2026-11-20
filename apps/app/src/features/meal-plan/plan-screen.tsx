@@ -20,7 +20,7 @@ import { View } from 'react-native';
 
 import { ActivitiesPanel } from '@/features/activities/activities-panel';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { AddEntrySheet, type AddTarget } from './add-entry-sheet';
@@ -153,7 +153,7 @@ function WeekPlan(props: { header: (right: ReactNode, subtitle?: string) => Reac
     </>
   );
 
-  const header = props.header(isPhone ? <ProfileButton /> : weekNav, weekSubtitle(dates));
+  const header = props.header(isPhone ? <StartPageActions /> : weekNav, weekSubtitle(dates));
 
   const toList = (
     <View

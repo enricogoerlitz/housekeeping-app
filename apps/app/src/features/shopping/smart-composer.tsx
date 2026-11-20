@@ -53,12 +53,14 @@ function ChipRow(props: { children: ReactNode; testID?: string }) {
  */
 export function SmartComposer(props: {
   listId: Id;
-  onDictate: () => void;
+  /** Without it there is no microphone button (AI switched off, spec 0005, AC-044). */
+  onDictate?: () => void;
   /** Listening right now: the microphone button stops it. */
   dictating?: boolean;
   /** Dictation needs the network (offline) or is starting/stopping. */
   dictateDisabled?: boolean;
-  onAssistant: () => void;
+  /** Without it there is no assistant button (AI switched off). */
+  onAssistant?: () => void;
 }) {
   const articles = useArticles();
   const [text, setText] = useState('');
@@ -145,20 +147,24 @@ export function SmartComposer(props: {
         testID="smart-input"
         right={
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <IconButton
-              icon="sparkles"
-              label="Assistent"
-              testID="list-assistant"
-              onPress={props.onAssistant}
-            />
-            <IconButton
-              icon="mic"
-              label={props.dictating ? 'Aufnahme beenden' : 'Sprechen'}
-              variant={props.dictating ? 'filled' : 'plain'}
-              disabled={props.dictateDisabled}
-              testID="dictate"
-              onPress={props.onDictate}
-            />
+            {props.onAssistant ? (
+              <IconButton
+                icon="sparkles"
+                label="Assistent"
+                testID="list-assistant"
+                onPress={props.onAssistant}
+              />
+            ) : null}
+            {props.onDictate ? (
+              <IconButton
+                icon="mic"
+                label={props.dictating ? 'Aufnahme beenden' : 'Sprechen'}
+                variant={props.dictating ? 'filled' : 'plain'}
+                disabled={props.dictateDisabled}
+                testID="dictate"
+                onPress={props.onDictate}
+              />
+            ) : null}
             <IconButton
               icon="send"
               label="Hinzufügen"

@@ -1,24 +1,25 @@
-import { useCurrentMember, useHousehold, useOffline } from '@housekeeping/api';
+import { useOffline } from '@housekeeping/api';
 import {
-  Avatar,
   Fab,
   OfflineBanner,
-  Sidebar,
   TAB_BAR_HEIGHT,
   TabBar,
-  Text,
   useBreakpoint,
   useTheme,
   type NavItem,
 } from '@housekeeping/ui';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useSegments } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppSidebar } from '@/features/shell/app-sidebar';
 import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
 import { useAssistant } from '@/lib/assistant';
+import { features } from '@/lib/features';
 
+// The keys stay the test ids of the tab bar and the sidebar (`tab-rezepte`, `nav-liste`); the
+// areas with their own stack are route groups, so their pages keep their addresses.
 const NAV: NavItem[] = [
   { key: 'index', label: 'Heute', icon: 'sun', tone: 'essen' },
   { key: 'rezepte', label: 'Essen', icon: 'utensils', tone: 'essen' },
@@ -26,6 +27,20 @@ const NAV: NavItem[] = [
   { key: 'liste', label: 'Liste', icon: 'shopping-basket', tone: 'liste' },
   { key: 'haushalt', label: 'Haushalt', icon: 'list-checks', tone: 'haushalt' },
 ];
+
+const ROUTE_OF_KEY: Record<string, string> = {
+  index: 'index',
+  rezepte: '(essen)',
+  plan: 'plan',
+  liste: '(liste)',
+  haushalt: 'haushalt',
+};
+const KEY_OF_ROUTE = Object.fromEntries(
+  Object.entries(ROUTE_OF_KEY).map(([key, route]) => [route, key]),
+);
+
+/** Cooking and store mode cover the tab bar on phones; the sidebar stays (spec 0005, D5). */
+const FULL_SCREEN_PAGES = new Set(['kochen', 'einkaufen']);
 
 export default function TabsLayout() {
   const { isPhone } = useBreakpoint();
@@ -50,6 +65,9 @@ export default function TabsLayout() {
       ) : null}
       <Tabs
         tabBar={(props) => <Navigation {...props} />}
+        // "Zurück" from a page under "Verwalten" or the settings returns to the tab it was opened
+        // from (spec 0005, AC-054).
+        backBehavior="history"
         screenOptions={{
           headerShown: false,
           tabBarPosition: isPhone ? 'bottom' : 'left',
@@ -57,10 +75,17 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index" options={{ title: 'Heute' }} />
-        <Tabs.Screen name="rezepte" options={{ title: 'Essen' }} />
+        <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
         <Tabs.Screen name="plan" options={{ title: 'Plan' }} />
-        <Tabs.Screen name="liste" options={{ title: 'Liste' }} />
+        <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
         <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
+        {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
+        <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
+        <Tabs.Screen name="abwesenheiten" options={{ title: 'Abwesenheiten' }} />
+        <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
+        <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
+        <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />
+        <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen' }} />
       </Tabs>
     </View>
   );
@@ -68,16 +93,16 @@ export default function TabsLayout() {
 
 function Navigation(props: BottomTabBarProps) {
   const { isPhone } = useBreakpoint();
-  const household = useHousehold();
-  const member = useCurrentMember();
   const assistant = useAssistant();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const activeKey = props.state.routes[props.state.index]?.name ?? 'index';
+  const segments = useSegments();
+  const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
+  // A page outside the five areas highlights no tab (AC-002, AC-054).
+  const activeKey = KEY_OF_ROUTE[activeRoute] ?? '';
   const select = (key: string) => {
-    const route = props.state.routes.find((candidate) => candidate.name === key);
+    const route = props.state.routes.find((candidate) => candidate.name === ROUTE_OF_KEY[key]);
     if (!route) return;
-    // A tab with its own stack (plan → activity) goes back to its first page on a second tap.
+    // A tab with its own stack goes back to its first page on a second tap.
     const event = props.emitter.emit({
       type: 'tabPress',
       target: route.key,
@@ -89,38 +114,14 @@ function Navigation(props: BottomTabBarProps) {
 
   if (!isPhone) {
     return (
-      <Sidebar
-        brand={household.name}
-        onBrandPress={() => router.push('/einstellungen')}
-        items={NAV}
-        activeKey={activeKey}
-        onSelect={select}
-        assistantLabel="Assistent"
-        onAssistant={() => assistant.open()}
-        footer={
-          <Pressable
-            testID="profile-button"
-            accessibilityRole="button"
-            accessibilityLabel="Profil und Einstellungen"
-            onPress={() => router.push('/einstellungen')}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8 }}
-          >
-            <Avatar name={member.name} color={member.color} size="m" />
-            <View>
-              <Text variant="smallStrong">{member.name}</Text>
-              <Text variant="caption" color="muted">
-                Profil & Einstellungen
-              </Text>
-            </View>
-          </Pressable>
-        }
-      />
+      <AppSidebar items={NAV} activeKey={activeKey} onSelect={select} activeRoute={activeRoute} />
     );
   }
+  if (FULL_SCREEN_PAGES.has(segments[segments.length - 1] ?? '')) return null;
   return (
     <View>
       {/* On the list the assistant entry sits in the input bar, so the thumb zone stays free. */}
-      {activeKey !== 'liste' ? (
+      {features.ai && activeKey !== 'liste' ? (
         <Fab
           icon="sparkles"
           label="Assistent"

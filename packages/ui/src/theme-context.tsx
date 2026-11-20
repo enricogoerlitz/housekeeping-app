@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useWindowDimensions } from 'react-native';
 
-import { getTheme, type ColorMode, type Theme, type ThemeId } from './themes';
+import { PHONE_MAX_WIDTH } from './sheet-size';
+import { getTheme, type ColorMode, type Theme, type ThemeId, type Tone } from './themes';
 
 const ThemeContext = createContext<Theme>(getTheme('markthalle', 'light'));
 
@@ -23,6 +24,24 @@ export interface ToneColors {
 }
 export const ToneContext = createContext<ToneColors | undefined>(undefined);
 
+/** The area the current screen belongs to (spec 0005, D4). Set by `Screen`'s `tone`. */
+export const AreaToneContext = createContext<Tone | undefined>(undefined);
+
+/**
+ * Colours of the screen's area when the theme paints areas ("Frisch"): `fill` and `onFill` for the
+ * primary action, `line` under the active view tab. Light mode fills with the soft shade, dark mode
+ * with the strong one, so the button stands out from the page either way. Undefined = accent.
+ */
+export function useAreaColors(): { fill: string; onFill: string; line: string } | undefined {
+  const theme = useTheme();
+  const tone = useContext(AreaToneContext);
+  if (!theme.shape.areaTone || !tone) return undefined;
+  const { bg, fg } = theme.colors.tones[tone];
+  return theme.mode === 'dark'
+    ? { fill: fg, onFill: bg, line: fg }
+    : { fill: bg, onFill: fg, line: fg };
+}
+
 export type Breakpoint = 'phone' | 'tablet' | 'desktop';
 
 /** Layout decisions come from the window width, never from the platform. */
@@ -34,7 +53,7 @@ export function useBreakpoint(): {
   isWide: boolean;
 } {
   const { width, height } = useWindowDimensions();
-  const bp: Breakpoint = width < 700 ? 'phone' : width < 1100 ? 'tablet' : 'desktop';
+  const bp: Breakpoint = width < PHONE_MAX_WIDTH ? 'phone' : width < 1100 ? 'tablet' : 'desktop';
   return { width, height, bp, isPhone: bp === 'phone', isWide: bp !== 'phone' };
 }
 

@@ -3,8 +3,10 @@ import type { Page } from '@playwright/test';
 import {
   back,
   expect,
+  leaveManaged,
   login,
   nav,
+  openManaged,
   openSettings,
   showPlanWeek,
   SLOT_DINNER,
@@ -51,9 +53,6 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();
-  await tid(page, 'recipe-assistant').click();
-  await expect(tid(page, 'assistant-sheet')).toBeVisible();
-  await tid(page, 'assistant-sheet-close').click();
   await back(page);
   await tid(page, 'food-switch-restaurants').click();
   await tid(page, `restaurant-${seedIds['rest-pho']}`).click();
@@ -99,20 +98,25 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'chores-tab-history').click();
   await tid(page, 'chores-tab-all').click();
 
-  // Settings, stores, feedback, the assistant from the button.
+  // Settings, and every page under "Verwalten" (spec 0005): stores and one store, absences,
+  // household and members, feedback. The AI is switched off, so there is no assistant to open.
   await nav(page, 'index');
   await openSettings(page);
-  await tid(page, 'link-stores').click();
+  await back(page);
+  await openManaged(page, 'stores');
   await tid(page, `store-${seedIds['store-rewe']}`).click();
+  await expect(tid(page, 'store-order-screen')).toBeVisible();
   await back(page);
-  await back(page);
-  await tid(page, 'link-feedback').click();
-  await expect(tid(page, 'feedback')).toBeVisible();
-  await back(page);
-  await back(page);
-  await tid(page, 'assistant-open').click();
-  await expect(tid(page, 'assistant-sheet')).toBeVisible();
-  await tid(page, 'assistant-sheet-close').click();
+  await leaveManaged(page);
+  for (const [key, screen] of [
+    ['absences', 'absences-screen'],
+    ['members', 'members-screen'],
+    ['feedback', 'feedback'],
+  ] as const) {
+    await openManaged(page, key);
+    await expect(tid(page, screen)).toBeVisible();
+    await leaveManaged(page);
+  }
 
   // A household with nothing planned and no chores: the empty states.
   await switchHousehold(page, seedIds['hh-test']);

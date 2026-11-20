@@ -36,9 +36,10 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { RestaurantsPanel } from '@/features/restaurants/restaurants-panel';
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
+import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
 
 import { AiSearchPanel } from './ai-search-panel';
@@ -155,8 +156,11 @@ export function RecipesScreen() {
   const results = query.trim() ? filtered : sortRecipes(filtered, sort);
 
   // With the switch on, a typed query is searched after a short pause; off, nothing is sent.
-  const { state: ai, runNow: runAi } = useAiSearch(settings.aiSearch && !online.disabled, query);
-  const aiVisible = settings.aiSearch && ai.status !== 'idle' && query.trim() !== '';
+  // Without the AI switch in code the stored setting stays on the device but has no effect
+  // (spec 0005, AC-046).
+  const aiSearch = features.ai && settings.aiSearch;
+  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
+  const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
 
   const toggleAi = () => settings.update({ aiSearch: !settings.aiSearch });
 
@@ -185,7 +189,7 @@ export function RecipesScreen() {
               testID="recipe-new"
             />
           )}
-          {isPhone ? <ProfileButton /> : null}
+          <StartPageActions />
         </>
       }
     />
@@ -219,7 +223,11 @@ export function RecipesScreen() {
         <EmptyState
           icon="book-open"
           title="Noch keine Rezepte"
-          text="Fangt mit einem Titel an, übernehmt Klassiker oder beschreibt, worauf ihr Lust habt."
+          text={
+            features.ai
+              ? 'Fangt mit einem Titel an, übernehmt Klassiker oder beschreibt, worauf ihr Lust habt.'
+              : 'Fangt mit einem Titel an oder übernehmt Klassiker.'
+          }
           testID="recipes-empty"
         >
           <Button
@@ -237,12 +245,14 @@ export function RecipesScreen() {
             onPress={() => setStarterOpen(true)}
             testID="empty-starter"
           />
-          <Button
-            label="Beschreiben ✨"
-            variant="ghost"
-            onPress={() => assistant.open()}
-            testID="empty-describe"
-          />
+          {features.ai ? (
+            <Button
+              label="Beschreiben ✨"
+              variant="ghost"
+              onPress={() => assistant.open()}
+              testID="empty-describe"
+            />
+          ) : null}
         </EmptyState>
         {sheets}
       </Screen>
@@ -257,15 +267,15 @@ export function RecipesScreen() {
           round
           value={query}
           onChangeText={setQuery}
-          placeholder={settings.aiSearch ? 'Was möchtet ihr essen?' : 'Rezepte suchen …'}
+          placeholder={aiSearch ? 'Was möchtet ihr essen?' : 'Rezepte suchen …'}
           accessibilityLabel="Rezepte suchen"
           returnKeyType="search"
           onSubmitEditing={() => {
-            if (settings.aiSearch) runAi([]);
+            if (aiSearch) runAi([]);
           }}
           left={<Icon name="search" size={19} color="muted" />}
           right={
-            settings.aiSearch ? (
+            aiSearch ? (
               <IconButton
                 icon="sparkles"
                 label="Mit KI suchen"
@@ -287,7 +297,7 @@ export function RecipesScreen() {
           style={{ flexGrow: 1, flexBasis: 220 }}
           testID="recipe-search"
         />
-        <AiToggle on={settings.aiSearch} onToggle={toggleAi} />
+        {features.ai ? <AiToggle on={settings.aiSearch} onToggle={toggleAi} /> : null}
       </Row>
 
       {aiVisible ? null : (

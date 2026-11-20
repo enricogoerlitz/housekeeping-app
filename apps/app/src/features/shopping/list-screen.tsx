@@ -47,9 +47,10 @@ import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
+import { features } from '@/lib/features';
 import { useDictation } from '@/lib/use-dictation';
 
 import { ListSwitchSheet, StoreSheet } from './list-sheets';
@@ -298,7 +299,7 @@ export function ListScreen() {
           forText
         )}
       </View>
-      {isPhone ? <ProfileButton /> : storeChip}
+      {isPhone ? <StartPageActions /> : storeChip}
     </View>
   );
 
@@ -479,12 +480,12 @@ export function ListScreen() {
       footer={
         <SmartComposer
           listId={list.id}
-          onDictate={dictate}
+          onDictate={features.ai ? dictate : undefined}
           dictating={speech.status === 'listening'}
           dictateDisabled={
             online.disabled || speech.status === 'starting' || speech.status === 'stopping'
           }
-          onAssistant={() => assistant.open()}
+          onAssistant={features.ai ? () => assistant.open() : undefined}
         />
       }
     >

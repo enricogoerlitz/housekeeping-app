@@ -4,14 +4,19 @@ import { useRouter } from 'expo-router';
 
 /**
  * Opens a restaurant the way the width asks for: on phones its own page, on wide screens the
- * restaurant list of "Essen" with the restaurant selected.
+ * restaurant list of "Essen" with the restaurant selected. Both open in the "Essen" stack with
+ * its first page underneath (spec 0005).
  */
 export function useOpenRestaurant(): (restaurantId: Id) => void {
   const router = useRouter();
   const { isWide } = useBreakpoint();
   return (restaurantId: Id) => {
     if (isWide)
-      router.push({ pathname: '/rezepte', params: { view: 'restaurants', rid: restaurantId } });
-    else router.push({ pathname: '/restaurant/[id]', params: { id: restaurantId } });
+      router.navigate({ pathname: '/rezepte', params: { view: 'restaurants', rid: restaurantId } });
+    else
+      router.push(
+        { pathname: '/restaurant/[id]', params: { id: restaurantId } },
+        { withAnchor: true },
+      );
   };
 }

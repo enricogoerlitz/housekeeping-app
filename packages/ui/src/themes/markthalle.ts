@@ -52,6 +52,7 @@ const shape: ThemeShape = {
   cardBorder: true,
   checkBorderWidth: 1.6,
   tabActive: 'tint',
+  areaTone: false,
 };
 
 const light: ThemeColors = {

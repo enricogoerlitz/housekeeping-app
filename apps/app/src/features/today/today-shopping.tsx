@@ -84,7 +84,7 @@ export function TodayShopping(props: { preview: boolean }) {
             label="Einkaufen"
             icon="shopping-basket"
             full={props.preview}
-            onPress={() => router.push('/einkaufen')}
+            onPress={() => router.push('/einkaufen', { withAnchor: true })}
             testID="today-shop"
           />
         </View>

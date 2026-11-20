@@ -1,22 +1,10 @@
-import {
-  setOffline,
-  signOut,
-  switchHousehold,
-  useActiveHouseholdId,
-  useCurrentMember,
-  useHouseholdsMap,
-  useOffline,
-  useSyncState,
-  useToday,
-} from '@housekeeping/api';
+import { signOut, useCurrentMember, useSyncState, useToday } from '@housekeeping/api';
 import { dietPreferenceLabel, toISODate } from '@housekeeping/core';
 import {
   Avatar,
   Button,
-  Icon,
   List,
   ListRow,
-  OfflineBanner,
   Screen,
   ScreenHeader,
   Section,
@@ -24,56 +12,38 @@ import {
   Stack,
   SwitchRow,
   Text,
-  toast,
   useBreakpoint,
-  type IconName,
 } from '@housekeeping/ui';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
-import {
-  CreateHouseholdForm,
-  InviteForm,
-  MemberList,
-  MyInvitations,
-  useSignedInEmail,
-} from '@/features/household/household-forms';
-import { authConfig } from '@/lib/auth-config';
+import { useSignedInEmail } from '@/features/household/household-forms';
+import { features } from '@/lib/features';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
-import { AbsenceSection } from './absence-section';
 import { ThemePicker } from './theme-picker';
 
+/**
+ * The personal settings behind the avatar (spec 0005, AC-055): profile, appearance, sign-out.
+ * Everything about the household is under "Verwalten".
+ */
 export function SettingsScreen() {
   const router = useRouter();
   const { isWide } = useBreakpoint();
-  const offline = useOffline();
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
-  const left = (
-    <>
-      <ProfileSection />
-      <HouseholdSection />
-      <AbsenceSection />
-    </>
-  );
+  const left = <ProfileSection />;
   const right = (
     <>
       <AppearanceSection />
-      <AiSection />
-      {authConfig.devLogin ? <DevSection /> : null}
+      {features.ai ? <AiSection /> : null}
     </>
   );
 
   return (
     <Screen testID="settings" maxWidth={980} clearFab={false}>
       <ScreenHeader title="Einstellungen" onBack={back} />
-      {offline ? (
-        <View style={{ marginBottom: 16 }}>
-          <OfflineBanner />
-        </View>
-      ) : null}
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>{left}</View>
@@ -140,89 +110,6 @@ function SyncLine() {
   );
 }
 
-function LinkRow(props: { title: string; icon: IconName; href: Href; testID: string }) {
-  const router = useRouter();
-  return (
-    <ListRow
-      title={props.title}
-      leading={<Icon name={props.icon} color="muted" />}
-      trailing={<Icon name="chevron-right" size={20} color="muted" />}
-      onPress={() => router.push(props.href)}
-      testID={props.testID}
-    />
-  );
-}
-
-function HouseholdSection() {
-  const households = useHouseholdsMap();
-  const activeId = useActiveHouseholdId();
-  return (
-    <Section title="Haushalt" testID="settings-household">
-      <Stack gap={14}>
-        <List testID="household-list">
-          {Object.values(households).map((data) => {
-            const active = data.household.id === activeId;
-            const count = data.household.memberIds.length;
-            return (
-              <ListRow
-                key={data.household.id}
-                title={data.household.name}
-                subtitle={`${count} ${count === 1 ? 'Mitglied' : 'Mitglieder'}${active ? ' · aktiv' : ''}`}
-                leading={<Icon name="house" color={active ? 'accent' : 'muted'} />}
-                trailing={
-                  active ? (
-                    <Icon
-                      name="check"
-                      color="accent"
-                      testID={`household-${data.household.id}-active`}
-                    />
-                  ) : undefined
-                }
-                accessibilityLabel={
-                  active ? `${data.household.name}, aktiv` : `Zu ${data.household.name} wechseln`
-                }
-                onPress={() => {
-                  if (active) return;
-                  switchHousehold(data.household.id);
-                  toast.show({ message: `Du bist jetzt in „${data.household.name}“` });
-                }}
-                testID={`household-${data.household.id}`}
-              />
-            );
-          })}
-        </List>
-        <Stack gap={8}>
-          <Text variant="smallStrong">Mitglieder</Text>
-          <MemberList />
-        </Stack>
-        <InviteForm />
-        <MyInvitations />
-        <CreateHouseholdForm />
-        <List>
-          <LinkRow
-            title="Märkte & Laufreihenfolge"
-            icon="store"
-            href="/maerkte"
-            testID="link-stores"
-          />
-          <LinkRow
-            title="Feedback"
-            icon="message-square-plus"
-            href="/feedback"
-            testID="link-feedback"
-          />
-          <LinkRow
-            title="Showroom (Design-System)"
-            icon="palette"
-            href="/showroom"
-            testID="link-showroom"
-          />
-        </List>
-      </Stack>
-    </Section>
-  );
-}
-
 function AppearanceSection() {
   const settings = useSettings();
   return (
@@ -271,24 +158,6 @@ function AiSection() {
           Wird nur auf diesem Gerät gespeichert. Die KI arbeitet nur, wenn du sie einschaltest oder
           fragst.
         </Text>
-      </Stack>
-    </Section>
-  );
-}
-
-/** Only in local development builds (EXPO_PUBLIC_DEV_LOGIN=1). */
-function DevSection() {
-  const offline = useOffline();
-  return (
-    <Section title="Entwicklung" testID="settings-dev">
-      <Stack gap={10}>
-        <SwitchRow
-          label="Offline simulieren"
-          description="Kappt die Verbindung zum Server: Lesen und Abhaken gehen weiter."
-          value={offline}
-          onValueChange={setOffline}
-          testID="setting-offline"
-        />
       </Stack>
     </Section>
   );

@@ -26,7 +26,6 @@ import {
   Checkbox,
   GroupLabel,
   IconButton,
-  OfflineBanner,
   ProgressBar,
   Screen,
   Sheet,
@@ -254,11 +253,12 @@ export function ShoppingModeScreen() {
             {store?.name ?? 'Ohne Markt'}
           </Text>
         </View>
-        <IconButton
-          icon="x"
-          label="Einkauf beenden"
-          variant="soft"
-          size={44}
+        {/* Full screen on phones, so "Fertig" is the way out (spec 0005, D5). */}
+        <Button
+          label="Fertig"
+          variant="secondary"
+          size="sm"
+          hint="Einkaufen verlassen"
           testID="shopping-close"
           onPress={close}
         />
@@ -272,7 +272,6 @@ export function ShoppingModeScreen() {
           {`${progress.done} / ${progress.total}`}
         </Text>
       </View>
-      {offline ? <OfflineBanner /> : null}
     </View>
   );
 

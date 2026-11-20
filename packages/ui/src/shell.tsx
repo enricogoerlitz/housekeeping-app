@@ -1,25 +1,76 @@
-import type { ReactNode } from 'react';
-import { Pressable, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import {
+  Pressable,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import Animated, {
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { IconButton, focusRing } from './controls';
 import { icons, type IconName } from './icons';
 import { Icon, Text } from './primitives';
-import { ToneContext, useBreakpoint, useTheme } from './theme-context';
+import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
 import type { Tone } from './themes';
 
 export const TAB_BAR_HEIGHT = 62;
 export const SIDEBAR_WIDTH = 256;
+/** Widest content of a page; wider windows centre it (spec 0005, AC-012). */
+export const CONTENT_MAX_WIDTH = 1320;
+/** Page margin from tablet width on, next to the sidebar. */
+export const WIDE_GUTTER = 36;
+
+// The phone header shrinks after this much scrolling and grows again near the top. The gap
+// between both keeps it from flickering on a page that is just long enough to shrink it.
+const COLLAPSE_AT = 56;
+const EXPAND_AT = 8;
+
+/** Whether the phone header is shrunk to its narrow bar; read by ScreenHeader. */
+const ScreenChromeContext = createContext({ collapsed: false });
+
+/**
+ * Set by a Screen with `scroll={false}` for the list that scrolls the page instead (InfiniteList):
+ * `inset` is the space the fixed header takes above the content on phones, `onScroll` a worklet
+ * that receives the scroll offset, so header and toolbar react as on a scrolling Screen.
+ */
+export const PageScrollContext = createContext<
+  { inset: number; onScroll: (y: number) => void } | undefined
+>(undefined);
 
 export interface ScreenProps {
   children?: ReactNode;
-  /** Fixed content above the scroll area (stays visible), e.g. a search field. */
+  /**
+   * Fixed content above the scroll area that stays visible, usually a ScreenHeader. On phones a
+   * ScreenHeader here shrinks to a narrow bar while the page is scrolled.
+   */
   header?: ReactNode;
+  /** View tabs below the header; they stay visible. */
+  tabs?: ReactNode;
+  /**
+   * Search field and filter row below the tabs. On phones they slide away while scrolling down and
+   * come back on scrolling up; on wider screens they stay.
+   */
+  toolbar?: ReactNode;
   /** Fixed content below the scroll area, e.g. a ComposerBar. */
   footer?: ReactNode;
-  /** false for screens that manage their own scrolling. */
+  /**
+   * false for screens that manage their own scrolling. With a header on phones the scrolling child
+   * must be an InfiniteList: it takes the header's space as its inset (PageScrollContext).
+   */
   scroll?: boolean;
-  /** Maximum content width on wide screens; default 1180. */
+  /** Area of the screen (spec 0005, D4); "Frisch" paints its primary action in this colour. */
+  tone?: Tone;
+  /**
+   * Maximum page width including the margins. Keep the default: one width per area, never per tab
+   * or content, or the content jumps when switching tabs (spec 0005, AC-011).
+   */
   maxWidth?: number;
   /** Extra space at the end so the last row can scroll clear of the floating assistant button. */
   clearFab?: boolean;
@@ -27,19 +78,90 @@ export interface ScreenProps {
   testID?: string;
 }
 
-/** Page container: background, safe area, gutters, centred content on wide screens. */
+/**
+ * Page container: background, safe area, margins and content width (36 px next to the sidebar, at
+ * most 1320 px, centred above). Header, tabs and toolbar stay at the top while the page scrolls;
+ * a fine line under them appears once content scrolls underneath (spec 0005, REQ-002).
+ */
 export function Screen(props: ScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { isPhone } = useBreakpoint();
-  const gutter = isPhone ? theme.shape.gutter : 36;
-  const maxWidth = props.maxWidth ?? 1180;
+  const c = theme.colors;
+  const gutter = isPhone ? theme.shape.gutter : WIDE_GUTTER;
   const inner: ViewStyle = {
     width: '100%',
-    maxWidth,
+    maxWidth: props.maxWidth ?? CONTENT_MAX_WIDTH + 2 * WIDE_GUTTER,
     alignSelf: 'center',
     paddingHorizontal: gutter,
   };
+  const hasChrome = !!(props.header || props.tabs || props.toolbar);
+  // Phones: header and toolbar lie over the content, which scrolls underneath; so the header can
+  // shrink and the toolbar slide away without moving the content.
+  const overlay = isPhone && hasChrome;
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [chrome, setChrome] = useState<{ expanded?: number; narrow?: number; now: number }>({
+    now: 0,
+  });
+  const [toolbarHeight, setToolbarHeight] = useState(0);
+
+  const scrollY = useSharedValue(0);
+  const isCollapsed = useSharedValue(false);
+  const toolbarShift = useSharedValue(0);
+  const toolbarMax = useSharedValue(0);
+
+  const onPageScroll = (y: number) => {
+    'worklet';
+    const delta = y - scrollY.get();
+    scrollY.set(y);
+    if (overlay) {
+      if (!isCollapsed.get() && y > COLLAPSE_AT) {
+        isCollapsed.set(true);
+        scheduleOnRN(setCollapsed, true);
+      } else if (isCollapsed.get() && y < EXPAND_AT) {
+        isCollapsed.set(false);
+        scheduleOnRN(setCollapsed, false);
+      }
+      // The toolbar follows the content up and returns as soon as the page scrolls down again.
+      const shift =
+        y <= 0 ? 0 : Math.min(toolbarMax.get(), Math.max(0, toolbarShift.get() + delta));
+      toolbarShift.set(shift);
+    }
+  };
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      onPageScroll(event.contentOffset.y);
+    },
+  });
+  const toolbarStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -toolbarShift.get() }],
+  }));
+  // The line under the fixed part: under the toolbar while it shows, else under header and tabs.
+  const chromeLine = useAnimatedStyle(() => ({
+    opacity: scrollY.get() > 0 && toolbarShift.get() >= toolbarMax.get() ? 1 : 0,
+  }));
+  const toolbarLine = useAnimatedStyle(() => ({
+    opacity: scrollY.get() > 0 && toolbarShift.get() < toolbarMax.get() ? 1 : 0,
+  }));
+
+  const onChromeLayout = (event: LayoutChangeEvent) => {
+    const now = event.nativeEvent.layout.height;
+    setChrome((previous) =>
+      collapsed ? { ...previous, now, narrow: now } : { ...previous, now, expanded: now },
+    );
+  };
+  const onToolbarLayout = (event: LayoutChangeEvent) => {
+    const height = event.nativeEvent.layout.height;
+    toolbarMax.set(height);
+    setToolbarHeight(height);
+  };
+
+  // Once the narrow bar was measured the scroll area starts below it, so sticky group headings
+  // stick under the bar instead of behind it; only the rest of the header lies over the content.
+  const top = overlay ? (chrome.narrow ?? 0) : 0;
+  const inset = overlay ? (chrome.expanded ?? 0) + toolbarHeight - top : 0;
+  const measured = !overlay || chrome.expanded !== undefined;
   const content = (
     <View
       style={[
@@ -51,25 +173,106 @@ export function Screen(props: ScreenProps) {
       {props.children}
     </View>
   );
-  return (
-    <View
-      testID={props.testID}
-      style={{ flex: 1, backgroundColor: theme.colors.bg, paddingTop: insets.top }}
-    >
-      {props.header ? <View style={[inner, { paddingTop: 8 }]}>{props.header}</View> : null}
-      {props.scroll === false ? (
-        <View style={{ flex: 1 }}>{content}</View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+  const body =
+    props.scroll === false ? (
+      <PageScrollContext.Provider value={{ inset, onScroll: onPageScroll }}>
+        <View style={{ flex: 1, marginTop: top, opacity: measured ? 1 : 0 }}>{content}</View>
+      </PageScrollContext.Provider>
+    ) : (
+      <Animated.ScrollView
+        style={{ flex: 1, marginTop: top, opacity: measured ? 1 : 0 }}
+        contentContainerStyle={{ paddingTop: inset }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+      >
+        {content}
+      </Animated.ScrollView>
+    );
+  const line: ViewStyle = {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: c.border,
+  };
+  const header = props.header ? (
+    <ScreenChromeContext.Provider value={{ collapsed: overlay && collapsed }}>
+      <View style={inner}>{props.header}</View>
+    </ScreenChromeContext.Provider>
+  ) : null;
+  const tabs = props.tabs ? <View style={inner}>{props.tabs}</View> : null;
+
+  if (!overlay) {
+    return (
+      <AreaToneContext.Provider value={props.tone}>
+        <View
+          testID={props.testID}
+          style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
         >
-          {content}
-        </ScrollView>
-      )}
-      {props.footer}
-    </View>
+          {hasChrome ? (
+            <View style={{ zIndex: 1 }}>
+              {header}
+              {tabs}
+              {props.toolbar ? (
+                <View style={[inner, { paddingTop: 8, paddingBottom: 8 }]}>{props.toolbar}</View>
+              ) : null}
+              <Animated.View pointerEvents="none" style={[line, chromeLine]} />
+            </View>
+          ) : null}
+          {body}
+          {props.footer}
+        </View>
+      </AreaToneContext.Provider>
+    );
+  }
+
+  return (
+    <AreaToneContext.Provider value={props.tone}>
+      <View testID={props.testID} style={{ flex: 1, backgroundColor: c.bg }}>
+        <View style={{ flex: 1, overflow: 'hidden' }}>
+          {body}
+          {props.toolbar ? (
+            <Animated.View
+              onLayout={onToolbarLayout}
+              style={[
+                {
+                  position: 'absolute',
+                  top: chrome.now,
+                  left: 0,
+                  right: 0,
+                  paddingTop: 8,
+                  paddingBottom: 8,
+                  backgroundColor: c.bg,
+                },
+                toolbarStyle,
+              ]}
+            >
+              <View style={inner}>{props.toolbar}</View>
+              <Animated.View pointerEvents="none" style={[line, toolbarLine]} />
+            </Animated.View>
+          ) : null}
+          <View
+            onLayout={onChromeLayout}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              paddingTop: insets.top,
+              backgroundColor: c.bg,
+            }}
+          >
+            {header}
+            {tabs}
+            <Animated.View pointerEvents="none" style={[line, chromeLine]} />
+          </View>
+        </View>
+        {props.footer}
+      </View>
+    </AreaToneContext.Provider>
   );
 }
 
@@ -79,45 +282,51 @@ export interface ScreenHeaderProps {
   kicker?: string;
   /** Small line below the title. */
   subtitle?: string;
-  /** Content on the right: avatar, buttons, chips. */
+  /** Content on the right: avatar, buttons, chips. They stay in the narrow bar. */
   right?: ReactNode;
   /** Shows a back arrow on the left. */
   onBack?: () => void;
   testID?: string;
 }
 
+/**
+ * Title row of a page. In a Screen's `header` on phones it shrinks to a narrow bar (small title,
+ * same buttons) once the page is scrolled.
+ */
 export function ScreenHeader(props: ScreenHeaderProps) {
   const { isPhone } = useBreakpoint();
+  const { collapsed } = useContext(ScreenChromeContext);
   return (
     <View
       style={{
         flexDirection: 'row',
-        alignItems: 'flex-start',
+        alignItems: collapsed ? 'center' : 'flex-start',
         justifyContent: 'space-between',
         gap: 12,
         paddingTop: 8,
-        paddingBottom: 16,
+        paddingBottom: collapsed ? 8 : 16,
       }}
     >
       {props.onBack ? (
-        <View style={{ marginLeft: -8, marginTop: isPhone ? -2 : 2 }}>
+        <View style={{ marginLeft: -8, marginTop: collapsed ? 0 : isPhone ? -2 : 2 }}>
           <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
         </View>
       ) : null}
       <View style={{ flex: 1, minWidth: 0 }}>
-        {props.kicker ? (
+        {props.kicker && !collapsed ? (
           <Text variant="small" color="muted" style={{ marginBottom: 2 }}>
             {props.kicker}
           </Text>
         ) : null}
         <Text
-          variant={isPhone ? 'title' : 'display'}
+          variant={collapsed ? 'cardTitle' : isPhone ? 'title' : 'display'}
           heading
+          numberOfLines={collapsed ? 1 : undefined}
           testID={props.testID ?? 'screen-title'}
         >
           {props.title}
         </Text>
-        {props.subtitle ? (
+        {props.subtitle && !collapsed ? (
           <Text variant="small" color="muted" style={{ marginTop: 4 }}>
             {props.subtitle}
           </Text>
@@ -164,10 +373,10 @@ export function TabBar(props: TabBarProps) {
     >
       {props.items.map((item) => {
         const active = item.key === props.activeKey;
+        // "Frisch" marks the active tab with an ink pill, never with an area colour (D4).
         const pill = active && theme.shape.tabActive === 'pill';
-        const tone = item.tone ? c.tones[item.tone] : undefined;
         const Glyph = icons[item.icon];
-        const tint = pill ? (tone?.fg ?? c.text) : active ? c.accent : c.textMuted;
+        const tint = pill ? c.onAccent : active ? c.accent : c.textMuted;
         return (
           <Pressable
             key={item.key}
@@ -194,7 +403,7 @@ export function TabBar(props: TabBarProps) {
                 borderRadius: 15,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: pill ? (tone?.bg ?? c.surfaceSunken) : 'transparent',
+                backgroundColor: pill ? c.accent : 'transparent',
               }}
             >
               <Glyph size={24} color={tint} strokeWidth={theme.shape.stroke} />
@@ -227,7 +436,6 @@ export function Sidebar(props: SidebarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const c = theme.colors;
-  const pillTheme = theme.shape.tabActive === 'pill';
   return (
     <View
       style={{
@@ -262,9 +470,8 @@ export function Sidebar(props: SidebarProps) {
       <View accessibilityRole="tablist" style={{ gap: 4 }}>
         {props.items.map((item) => {
           const active = item.key === props.activeKey;
-          const tone = pillTheme && item.tone ? c.tones[item.tone] : undefined;
           const Glyph = icons[item.icon];
-          const tint = active ? (tone?.fg ?? c.accent) : c.textMuted;
+          const tint = active ? c.accent : c.textMuted;
           return (
             <Pressable
               key={item.key}
@@ -284,7 +491,7 @@ export function Sidebar(props: SidebarProps) {
                     paddingHorizontal: 12,
                     borderRadius: theme.shape.radius.control,
                     backgroundColor: active
-                      ? (tone?.bg ?? c.accentSoft)
+                      ? c.accentSoft
                       : hovered
                         ? c.surfaceSunken
                         : 'transparent',
@@ -297,9 +504,7 @@ export function Sidebar(props: SidebarProps) {
               <Text
                 variant={active ? 'bodyStrong' : 'rowTitle'}
                 style={{
-                  color: active
-                    ? (tone?.fg ?? (c.accent === c.text ? c.text : c.accent))
-                    : c.textMuted,
+                  color: active ? (c.accent === c.text ? c.text : c.accent) : c.textMuted,
                 }}
               >
                 {item.label}
@@ -393,13 +598,13 @@ export function ComposerBar(props: { children?: ReactNode; testID?: string }) {
         backgroundColor: theme.colors.barBg,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
-        paddingHorizontal: isPhone ? theme.shape.gutter : 36,
+        paddingHorizontal: isPhone ? theme.shape.gutter : WIDE_GUTTER,
         paddingTop: 10,
         paddingBottom: 10,
         gap: 8,
       }}
     >
-      <View style={{ width: '100%', maxWidth: 1180 - 72, alignSelf: 'center', gap: 8 }}>
+      <View style={{ width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', gap: 8 }}>
         {props.children}
       </View>
     </View>

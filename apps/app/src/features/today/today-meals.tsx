@@ -112,7 +112,11 @@ export function TodayMeals(props: TodayMealsProps) {
           onPress={
             activity
               ? () =>
-                  router.push({ pathname: '/plan/aktivitaet/[id]', params: { id: activity.id } })
+                  router.push(
+                    { pathname: '/plan/aktivitaet/[id]', params: { id: activity.id } },
+                    // The plan stays underneath, so a tap on "Plan" leads to it (spec 0005).
+                    { withAnchor: true },
+                  )
               : undefined
           }
           onRoute={

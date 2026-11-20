@@ -4,7 +4,6 @@ import {
   useCurrentMemberId,
   useFeedback,
   useMembersById,
-  useOffline,
   useToday,
 } from '@housekeeping/api';
 import { fuzzyIncludes, relativeDayLabel, toISODate, type FeedbackEntry } from '@housekeeping/core';
@@ -14,7 +13,6 @@ import {
   Chip,
   EmptyState,
   Icon,
-  OfflineBanner,
   Row,
   Screen,
   ScreenHeader,
@@ -29,10 +27,10 @@ import {
   type BadgeProps,
   type IconName,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
+import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 type Kind = FeedbackEntry['kind'];
@@ -74,10 +72,10 @@ function similarEntries(text: string, entries: FeedbackEntry[]): FeedbackEntry[]
     .slice(0, 3);
 }
 
+/** "Verwalten" → "Feedback" (spec 0005, AC-054). */
 export function FeedbackScreen() {
-  const router = useRouter();
+  const back = useBackToManage();
   const { isWide } = useBreakpoint();
-  const offline = useOffline();
   const entries = useFeedback();
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -125,16 +123,7 @@ export function FeedbackScreen() {
 
   return (
     <Screen testID="feedback" maxWidth={980} clearFab={false}>
-      <ScreenHeader
-        title="Feedback"
-        subtitle="Ideen, Probleme und Lob für die App"
-        onBack={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-      />
-      {offline ? (
-        <View style={{ marginBottom: 16 }}>
-          <OfflineBanner />
-        </View>
-      ) : null}
+      <ScreenHeader title="Feedback" subtitle="Ideen, Probleme und Lob für die App" onBack={back} />
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 5, minWidth: 0 }}>

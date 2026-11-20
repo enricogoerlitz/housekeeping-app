@@ -27,7 +27,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { ActivityDetail } from './activity-detail';
@@ -131,7 +131,7 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
       {props.header(
         <>
           {addButton}
-          {isPhone ? <ProfileButton /> : null}
+          <StartPageActions />
         </>,
       )}
       {online.hint ? (

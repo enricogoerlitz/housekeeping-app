@@ -2,7 +2,7 @@
 
 export type ThemeId = 'markthalle' | 'klar' | 'frisch';
 export type ColorMode = 'light' | 'dark';
-/** Colour worlds of the app areas. Only the theme "Frisch" paints them as coloured tiles. */
+/** Colour worlds of the app areas. Only the theme "Frisch" shows them (see `areaTone`). */
 export type Tone = 'essen' | 'plan' | 'liste' | 'haushalt' | 'ki';
 
 export interface ThemeColors {
@@ -78,8 +78,8 @@ export interface ThemeShape {
   stroke: number;
   /** Horizontal page padding on phones. */
   gutter: number;
-  /** How a titled block is framed: bare, with a muted label above a group, or as a coloured tile. */
-  section: 'plain' | 'grouped' | 'tile';
+  /** How a titled block is framed: bare, or with a muted label above a group. */
+  section: 'plain' | 'grouped';
   /** How list rows are separated: hairlines, one grouped card, or one tile per row. */
   list: 'hairline' | 'grouped' | 'tile';
   /** Picture cards: photo on top, or a thumbnail next to the text. */
@@ -87,8 +87,13 @@ export interface ThemeShape {
   /** Cards and inputs get a hairline border. */
   cardBorder: boolean;
   checkBorderWidth: number;
-  /** Active tab: tinted icon and label, or a coloured pill behind the icon. */
+  /** Active tab: tinted icon and label, or an ink pill behind the icon. */
   tabActive: 'tint' | 'pill';
+  /**
+   * One area colour per screen (spec 0005, D4): the area of the screen colours its primary
+   * button, its header's filled icon button and the line under the active view tab. Off = accent.
+   */
+  areaTone: boolean;
 }
 
 export interface Theme {

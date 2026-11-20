@@ -7,6 +7,7 @@ import {
   CheckRow,
   Checkbox,
   Chip,
+  ChoiceChips,
   DueBar,
   EmptyState,
   GhostRow,
@@ -25,7 +26,6 @@ import {
   Screen,
   ScreenHeader,
   Section,
-  Segmented,
   Sheet,
   Stack,
   Stars,
@@ -39,6 +39,7 @@ import {
   toast,
   useBreakpoint,
   useTheme,
+  ViewTabs,
   type ColorMode,
   type IconName,
   type TextVariant,
@@ -47,9 +48,12 @@ import {
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { useSettings } from '@/lib/settings';
+
+import { EndlessDemo, EndlessDetail } from './showroom-endless';
+import { usePatternBlocks } from './showroom-patterns';
 
 // Sample member colours come from the data in the real app; the showroom borrows theme colours
 // so it stays free of colour literals.
@@ -75,6 +79,9 @@ export function ShowroomScreen() {
   );
 }
 
+type ShowroomView = 'bausteine' | 'muster' | 'liste';
+type AreaChoice = Tone | 'keiner';
+
 function ShowroomContent(props: {
   themeId: ThemeId;
   mode: ColorMode;
@@ -84,53 +91,151 @@ function ShowroomContent(props: {
   const router = useRouter();
   const { isWide } = useBreakpoint();
   const blocks = useBlocks();
+  const patterns = usePatternBlocks();
+  const [view, setView] = useState<ShowroomView>('bausteine');
+  const [area, setArea] = useState<AreaChoice>('essen');
+  const [openRow, setOpenRow] = useState<number>();
+  // The endless list scrolls the page itself.
+  const listScrolls = view === 'liste';
 
-  const half = Math.ceil(blocks.length / 2);
+  const columns = (list: ReactNode[]) => {
+    const half = Math.ceil(list.length / 2);
+    return isWide ? (
+      <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
+        <View style={{ flex: 1, minWidth: 0 }}>{list.slice(0, half)}</View>
+        <View style={{ flex: 1, minWidth: 0 }}>{list.slice(half)}</View>
+      </View>
+    ) : (
+      <View>{list}</View>
+    );
+  };
+
   return (
-    <Screen testID="showroom" clearFab={false}>
-      <ScreenHeader
-        title="Showroom"
-        subtitle="Alle Bausteine des Design-Systems"
-        onBack={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-      />
-      <Surface style={{ gap: 12, marginBottom: 24 }}>
-        <Row wrap gap={8}>
-          {themeFamilies.map((family) => (
-            <Chip
-              key={family.id}
-              label={family.name}
-              icon="palette"
-              selected={props.themeId === family.id}
-              onPress={() => props.onTheme(family.id)}
-              testID={`showroom-theme-${family.id}`}
+    <Screen
+      testID="showroom"
+      clearFab={false}
+      tone={area === 'keiner' ? undefined : area}
+      scroll={!listScrolls}
+      style={listScrolls ? { flex: 1, paddingTop: 0, paddingBottom: 0 } : undefined}
+      header={
+        <ScreenHeader
+          title="Showroom"
+          subtitle="Alle Bausteine des Design-Systems"
+          onBack={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          right={
+            <IconButton
+              icon="plus"
+              variant="filled"
+              label="Beispielaktion"
+              onPress={() => toast.show({ message: 'Beispielaktion' })}
+              testID="showroom-action"
             />
-          ))}
-        </Row>
-        <View style={{ maxWidth: 320 }}>
-          <Segmented<ColorMode>
-            label="Hell oder dunkel"
-            value={props.mode}
-            onChange={props.onMode}
-            options={[
-              { value: 'light', label: 'Hell' },
-              { value: 'dark', label: 'Dunkel' },
-            ]}
-            testID="showroom-mode"
-          />
+          }
+        />
+      }
+      tabs={
+        <ViewTabs<ShowroomView>
+          label="Showroom"
+          value={view}
+          onChange={(next) => {
+            setView(next);
+            setOpenRow(undefined);
+          }}
+          options={[
+            { value: 'bausteine', label: 'Bausteine' },
+            { value: 'muster', label: 'Muster' },
+            { value: 'liste', label: 'Endlos-Liste' },
+          ]}
+          testID="showroom-view"
+        />
+      }
+      toolbar={
+        <PreviewBar
+          themeId={props.themeId}
+          mode={props.mode}
+          area={area}
+          onTheme={props.onTheme}
+          onMode={props.onMode}
+          onArea={setArea}
+        />
+      }
+    >
+      {view === 'bausteine' ? columns(blocks) : null}
+      {view === 'muster' ? columns(patterns) : null}
+      {listScrolls ? (
+        <View style={{ flex: 1 }}>
+          <EndlessDemo onOpen={setOpenRow} />
+          {/* Like a page pushed onto the stack: the list stays mounted underneath (AC-043). */}
+          {openRow !== undefined ? (
+            <EndlessDetail row={openRow} onBack={() => setOpenRow(undefined)} />
+          ) : null}
         </View>
-        <Text variant="caption" color="muted">
-          Nur Vorschau – die App-Einstellung bleibt, wie sie ist.
-        </Text>
-      </Surface>
-      {isWide ? (
-        <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
-          <View style={{ flex: 1, minWidth: 0 }}>{blocks.slice(0, half)}</View>
-          <View style={{ flex: 1, minWidth: 0 }}>{blocks.slice(half)}</View>
-        </View>
-      ) : (
-        <View>{blocks}</View>
-      )}
+      ) : null}
     </Screen>
+  );
+}
+
+/** Theme, mode and area colour of the preview; slides away on phones while scrolling down. */
+function PreviewBar(props: {
+  themeId: ThemeId;
+  mode: ColorMode;
+  area: AreaChoice;
+  onTheme: (id: ThemeId) => void;
+  onMode: (mode: ColorMode) => void;
+  onArea: (area: AreaChoice) => void;
+}) {
+  return (
+    <View style={{ gap: 8 }} testID="showroom-preview">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 16, alignItems: 'center' }}
+      >
+        <ChoiceChips<ThemeId>
+          label="Theme"
+          value={props.themeId}
+          onChange={props.onTheme}
+          options={themeFamilies.map((family) => ({ value: family.id, label: family.name }))}
+          testID="showroom-theme"
+        />
+        <ChoiceChips<ColorMode>
+          label="Hell oder dunkel"
+          value={props.mode}
+          onChange={props.onMode}
+          options={[
+            { value: 'light', label: 'Hell' },
+            { value: 'dark', label: 'Dunkel' },
+          ]}
+          testID="showroom-mode"
+        />
+      </ScrollView>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 10, alignItems: 'center' }}
+      >
+        <Text variant="smallStrong" color="muted">
+          Bereich
+        </Text>
+        <ChoiceChips<AreaChoice>
+          label="Bereichsfarbe"
+          value={props.area}
+          onChange={props.onArea}
+          options={[
+            { value: 'essen', label: 'Essen' },
+            { value: 'plan', label: 'Plan' },
+            { value: 'liste', label: 'Liste' },
+            { value: 'haushalt', label: 'Haushalt' },
+            { value: 'keiner', label: 'Keiner' },
+          ]}
+          testID="showroom-area"
+        />
+      </ScrollView>
+      <Text variant="caption" color="muted">
+        Nur Vorschau – die App-Einstellung bleibt, wie sie ist. Die Bereichsfarbe zeigt nur
+        „Frisch“.
+      </Text>
+    </View>
   );
 }
 
@@ -251,7 +356,6 @@ function ChipBlock() {
 
 function CheckBlock() {
   const [checked, setChecked] = useState(false);
-  const [segment, setSegment] = useState<'a' | 'b' | 'c'>('a');
   const [on, setOn] = useState(true);
   const [stars, setStars] = useState(4);
   return (
@@ -272,16 +376,6 @@ function CheckBlock() {
         <CheckRow title="Brot" checked onToggle={() => undefined} />
         <CheckRow title="Offline ausgegraut" checked={false} disabled onToggle={() => undefined} />
       </List>
-      <Segmented
-        label="Beispiel"
-        value={segment}
-        onChange={setSegment}
-        options={[
-          { value: 'a', label: 'Anstehend' },
-          { value: 'b', label: 'Alle' },
-          { value: 'c', label: 'Verlauf' },
-        ]}
-      />
       <SwitchRow label="Schalter" description="Mit Beschreibung" value={on} onValueChange={setOn} />
       <SwitchRow label="Ausgegraut" value={false} onValueChange={() => undefined} disabled />
       <Row gap={16}>
@@ -314,16 +408,11 @@ function InputBlock() {
 function SectionBlock() {
   return (
     <Block title="Abschnitte" testID="showroom-sections">
-      <Section title="Essen heute" meta="2 Gerichte" tone="essen">
-        <Text>Abschnitt im Ton „essen“</Text>
+      <Section title="Essen heute" meta="2 Gerichte">
+        <Text>Abschnitt mit Titel und Angabe rechts</Text>
       </Section>
-      <Section
-        title="Haushalt"
-        meta="ca. 4 Punkte"
-        tone="haushalt"
-        action={<Button label="Alle" variant="link" size="sm" />}
-      >
-        <Text>Abschnitt im Ton „haushalt“ mit Aktion</Text>
+      <Section title="Haushalt" action={<Button label="Alle" variant="link" size="sm" />}>
+        <Text>Abschnitt mit Aktion</Text>
       </Section>
     </Block>
   );

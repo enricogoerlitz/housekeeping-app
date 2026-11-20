@@ -25,7 +25,7 @@ import {
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreHistory } from './chore-history';
@@ -222,7 +222,7 @@ export function ChoresScreen() {
               disabled={online.disabled}
               testID="chore-new"
             />
-            <ProfileButton />
+            <StartPageActions />
           </>
         }
       />

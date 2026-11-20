@@ -1,4 +1,4 @@
-import { createStore, fullAreaOrder, useHousehold, useOffline, useStores } from '@housekeeping/api';
+import { createStore, fullAreaOrder, useHousehold, useStores } from '@housekeeping/api';
 import {
   Badge,
   Button,
@@ -6,7 +6,6 @@ import {
   Icon,
   List,
   ListRow,
-  OfflineBanner,
   Screen,
   ScreenHeader,
   Section,
@@ -18,24 +17,16 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-/** Back to where the person came from, or to the list when the page was opened directly. */
-export function useBackToList(): () => void {
-  const router = useRouter();
-  return () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/liste');
-  };
-}
-
+/** "Verwalten" → "Märkte & Bereiche": the stores, each with its own walking order. */
 export function StoresScreen() {
   const stores = useStores();
   const household = useHousehold();
-  const offline = useOffline();
   const online = useOnlineOnly();
   const router = useRouter();
-  const back = useBackToList();
+  const back = useBackToManage();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | undefined>();
 
@@ -54,17 +45,12 @@ export function StoresScreen() {
   };
 
   return (
-    <Screen maxWidth={760} clearFab={false}>
+    <Screen testID="stores-screen" maxWidth={760} clearFab={false}>
       <ScreenHeader
         title="Märkte"
         subtitle="Jeder Markt hat seinen eigenen Laufweg."
         onBack={back}
       />
-      {offline ? (
-        <View style={{ marginBottom: 16 }}>
-          <OfflineBanner />
-        </View>
-      ) : null}
       <Section title="Deine Märkte">
         {stores.length === 0 ? (
           <EmptyState

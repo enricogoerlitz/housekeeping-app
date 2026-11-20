@@ -1,4 +1,4 @@
-import { Children, createContext, useContext, type ReactNode } from 'react';
+import { Children, createContext, isValidElement, useContext, type ReactNode } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
 import { Checkbox, IconButton, focusRing } from './controls';
@@ -10,7 +10,10 @@ export interface SectionProps {
   title?: string;
   /** Short text on the right of the title, e.g. "ca. 4 Punkte". */
   meta?: string;
-  /** Area colour. Only the theme "Frisch" paints the section as a coloured tile. */
+  /**
+   * @deprecated No theme paints sections any more (spec 0005, D4: one area colour per screen, set
+   * by `Screen`'s `tone`). Ignored; remove it when touching the screen.
+   */
   tone?: Tone;
   /** Element on the right of the title instead of `meta`, e.g. a small button. */
   action?: ReactNode;
@@ -22,7 +25,6 @@ export interface SectionProps {
 export function Section(props: SectionProps) {
   const theme = useTheme();
   const { section } = theme.shape;
-  const tone = section === 'tile' && props.tone ? theme.colors.tones[props.tone] : undefined;
 
   const header =
     props.title || props.meta || props.action ? (
@@ -57,33 +59,10 @@ export function Section(props: SectionProps) {
       </View>
     ) : null;
 
-  const body = (
-    <>
-      {header}
-      {props.children}
-    </>
-  );
-
-  if (tone) {
-    return (
-      <ToneContext.Provider value={{ fg: tone.fg }}>
-        <View
-          testID={props.testID}
-          style={{
-            backgroundColor: tone.bg,
-            borderRadius: theme.shape.radius.tile,
-            padding: 16,
-            marginBottom: 12,
-          }}
-        >
-          {body}
-        </View>
-      </ToneContext.Provider>
-    );
-  }
   return (
     <View testID={props.testID} style={{ marginBottom: 22 }}>
-      {body}
+      {header}
+      {props.children}
     </View>
   );
 }
@@ -116,8 +95,8 @@ export interface ListProps {
 export function List(props: ListProps) {
   const theme = useTheme();
   const rows = Children.toArray(props.children).map((child, index) => (
-    // Rows have no identity of their own here; the index is their position.
-    <RowIndexContext.Provider key={index} value={index}>
+    // The child's own key keeps a row's identity when rows before it leave (RowTransition).
+    <RowIndexContext.Provider key={isValidElement(child) ? child.key : index} value={index}>
       {child}
     </RowIndexContext.Provider>
   ));

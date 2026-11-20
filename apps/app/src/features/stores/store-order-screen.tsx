@@ -3,7 +3,6 @@ import {
   moveStoreArea,
   setStoreAreaHidden,
   useAreas,
-  useOffline,
   useStores,
 } from '@housekeeping/api';
 import {
@@ -12,34 +11,32 @@ import {
   IconButton,
   List,
   ListRow,
-  OfflineBanner,
   Screen,
   ScreenHeader,
   Text,
   useTheme,
 } from '@housekeeping/ui';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
-
-import { useBackToList } from './stores-screen';
 
 /** The walking order of one store (AC-034). Reordering is an edit and needs the network. */
 export function StoreOrderScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const stores = useStores();
   const areas = useAreas();
-  const offline = useOffline();
   const online = useOnlineOnly();
   const theme = useTheme();
-  const back = useBackToList();
+  const router = useRouter();
+  // Always to the stores, also when the store was opened directly (spec 0005, AC-004).
+  const back = () => router.dismissTo('/maerkte');
 
   const id = typeof params.id === 'string' ? params.id : undefined;
   const store = stores.find((candidate) => candidate.id === id);
   if (!store) {
     return (
-      <Screen clearFab={false}>
+      <Screen testID="store-order-screen" clearFab={false}>
         <ScreenHeader title="Markt" onBack={back} />
         <EmptyState icon="store" title="Markt nicht gefunden" text="Vielleicht wurde er gelöscht.">
           <Button label="Zu den Märkten" variant="secondary" onPress={back} />
@@ -52,13 +49,8 @@ export function StoreOrderScreen() {
   const areaName = (areaId: string) => areas.find((area) => area.id === areaId)?.name ?? 'Bereich';
 
   return (
-    <Screen maxWidth={760} clearFab={false}>
+    <Screen testID="store-order-screen" maxWidth={760} clearFab={false}>
       <ScreenHeader title={store.name} subtitle="Laufweg durch den Markt" onBack={back} />
-      {offline ? (
-        <View style={{ marginBottom: 16 }}>
-          <OfflineBanner />
-        </View>
-      ) : null}
       <Text color="muted" style={{ marginBottom: 14 }}>
         In dieser Reihenfolge stehen die Bereiche auf der Liste und im Einkaufsmodus. Ausgeblendete
         Bereiche landen unter „Woanders kaufen“.

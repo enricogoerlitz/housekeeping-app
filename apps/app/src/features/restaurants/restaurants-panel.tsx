@@ -27,7 +27,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { ProfileButton } from '@/features/shell/profile-button';
+import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
@@ -145,7 +145,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
               testID="restaurant-add"
             />
           )}
-          {isPhone ? <ProfileButton /> : null}
+          <StartPageActions />
         </>
       }
     />

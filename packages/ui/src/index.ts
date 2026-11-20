@@ -7,6 +7,7 @@ export {
   useBreakpoint,
   space,
   ToneContext,
+  useAreaColors,
   type Breakpoint,
 } from './theme-context';
 export { icons, type IconName } from './icons';
@@ -74,7 +75,33 @@ export {
   type ProposalCardProps,
   type ProposalPartView,
 } from './display';
+export {
+  ViewTabs,
+  ChoiceChips,
+  Menu,
+  type ChoiceOption,
+  type ViewTabsProps,
+  type ChoiceChipsProps,
+  type MenuProps,
+} from './choice';
 export { Sheet, toast, ToastHost, type SheetProps, type ToastOptions } from './overlay';
+export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
+export { CHECK_WINDOW_MS } from './check-window';
+export {
+  useCheckWindow,
+  RowTransition,
+  type UseCheckWindowOptions,
+  type CheckWindowState,
+} from './check';
+export { announce } from './announce';
+export {
+  SearchOrCreate,
+  type SearchOrCreateProps,
+  type SearchOrCreateHit,
+  type SearchOrCreateOption,
+} from './search-or-create';
+export { FilterBar, type FilterBarProps } from './filter-bar';
+export { InfiniteList, type InfiniteListProps } from './infinite-list';
 export {
   Screen,
   ScreenHeader,
@@ -84,6 +111,8 @@ export {
   ComposerBar,
   TAB_BAR_HEIGHT,
   SIDEBAR_WIDTH,
+  CONTENT_MAX_WIDTH,
+  WIDE_GUTTER,
   type ScreenProps,
   type ScreenHeaderProps,
   type NavItem,

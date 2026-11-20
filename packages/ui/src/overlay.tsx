@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, IconButton } from './controls';
 import { Text } from './primitives';
+import { sheetFrame, type SheetSize } from './sheet-size';
+import { PageScrollContext } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 
 export interface SheetProps {
@@ -11,9 +13,17 @@ export interface SheetProps {
   onClose: () => void;
   title: string;
   children?: ReactNode;
+  /** Fixed area between the title and the scrolling middle, e.g. view tabs or a search field. */
+  header?: ReactNode;
   /** Fixed area below the scrolling content, e.g. the primary button. */
   footer?: ReactNode;
-  /** Wider dialog on tablet and desktop (default 520). */
+  /**
+   * Fixed size (spec 0005, REQ-003): `s` confirm or pick one of a few, `m` forms, `l` search and
+   * pick with tabs. The window then keeps its size whatever it shows; only the middle scrolls.
+   * Without a size it grows with its content (sheets from before spec 0005).
+   */
+  size?: SheetSize;
+  /** Wider dialog on tablet and desktop (default 520). Ignored with `size`. */
   width?: number;
   testID?: string;
 }
@@ -21,9 +31,16 @@ export interface SheetProps {
 /** A bottom sheet on phones and a centred dialog on wider screens. */
 export function Sheet(props: SheetProps) {
   const theme = useTheme();
-  const { isPhone, height } = useBreakpoint();
+  const { isPhone, width, height } = useBreakpoint();
   const insets = useSafeAreaInsets();
   const c = theme.colors;
+  const frame = props.size
+    ? sheetFrame(props.size, { width, height })
+    : {
+        width: isPhone ? undefined : (props.width ?? 520),
+        height: undefined,
+        maxHeight: Math.round(height * (isPhone ? 0.9 : 0.84)),
+      };
   return (
     <Modal
       visible={props.visible}
@@ -33,83 +50,88 @@ export function Sheet(props: SheetProps) {
       statusBarTranslucent
     >
       <ToneContext.Provider value={undefined}>
-        <View
-          style={{
-            flex: 1,
-            justifyContent: isPhone ? 'flex-end' : 'center',
-            alignItems: isPhone ? 'stretch' : 'center',
-          }}
-        >
-          <Pressable
-            accessibilityLabel="Schließen"
-            accessibilityRole="button"
-            onPress={props.onClose}
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: 0,
-              backgroundColor: c.scrim,
-            }}
-          />
+        <PageScrollContext.Provider value={undefined}>
           <View
-            testID={props.testID}
-            accessibilityViewIsModal
             style={{
-              backgroundColor: c.bg,
-              borderTopLeftRadius: theme.shape.radius.sheet,
-              borderTopRightRadius: theme.shape.radius.sheet,
-              borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
-              borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
-              maxHeight: Math.round(height * (isPhone ? 0.9 : 0.84)),
-              width: isPhone ? undefined : (props.width ?? 520),
-              maxWidth: '100%',
-              paddingBottom: isPhone ? Math.max(insets.bottom, 12) : 0,
+              flex: 1,
+              justifyContent: isPhone ? 'flex-end' : 'center',
+              alignItems: isPhone ? 'stretch' : 'center',
             }}
           >
-            <View
+            <Pressable
+              accessibilityLabel="Schließen"
+              accessibilityRole="button"
+              onPress={props.onClose}
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingLeft: 20,
-                paddingRight: 10,
-                paddingTop: 14,
-                paddingBottom: 6,
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+                backgroundColor: c.scrim,
+              }}
+            />
+            <View
+              testID={props.testID}
+              accessibilityViewIsModal
+              style={{
+                backgroundColor: c.bg,
+                borderTopLeftRadius: theme.shape.radius.sheet,
+                borderTopRightRadius: theme.shape.radius.sheet,
+                borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                maxHeight: frame.maxHeight,
+                height: frame.height,
+                width: frame.width,
+                maxWidth: '100%',
+                paddingBottom: isPhone ? Math.max(insets.bottom, 12) : 0,
               }}
             >
-              <Text variant="heading" heading style={{ flex: 1 }}>
-                {props.title}
-              </Text>
-              <IconButton
-                icon="x"
-                label="Schließen"
-                onPress={props.onClose}
-                testID={props.testID ? `${props.testID}-close` : undefined}
-              />
-            </View>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, paddingTop: 6 }}
-            >
-              {props.children}
-            </ScrollView>
-            {props.footer ? (
               <View
                 style={{
-                  paddingHorizontal: 20,
-                  paddingTop: 10,
-                  paddingBottom: isPhone ? 4 : 18,
-                  borderTopWidth: 1,
-                  borderTopColor: c.border,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingLeft: 20,
+                  paddingRight: 10,
+                  paddingTop: 14,
+                  paddingBottom: 6,
                 }}
               >
-                {props.footer}
+                <Text variant="heading" heading style={{ flex: 1 }}>
+                  {props.title}
+                </Text>
+                <IconButton
+                  icon="x"
+                  label="Schließen"
+                  onPress={props.onClose}
+                  testID={props.testID ? `${props.testID}-close` : undefined}
+                />
               </View>
-            ) : null}
+              {props.header ? <View style={{ paddingHorizontal: 20 }}>{props.header}</View> : null}
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                style={frame.height ? { flex: 1 } : undefined}
+                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, paddingTop: 6 }}
+              >
+                {props.children}
+              </ScrollView>
+              {props.footer ? (
+                <View
+                  style={{
+                    paddingHorizontal: 20,
+                    paddingTop: 10,
+                    paddingBottom: isPhone ? 4 : 18,
+                    borderTopWidth: 1,
+                    borderTopColor: c.border,
+                  }}
+                >
+                  {props.footer}
+                </View>
+              ) : null}
+            </View>
           </View>
-        </View>
+        </PageScrollContext.Provider>
       </ToneContext.Provider>
     </Modal>
   );

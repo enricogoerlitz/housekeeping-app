@@ -32,7 +32,10 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 const HOUSEHOLD = 'household';
 
-/** "Abwesenheit": who is away when. "Wer isst mit?" and the rotation leave absent people out. */
+/**
+ * "Abwesenheiten": who is away when. "Wer isst mit?" and the rotation leave absent people out.
+ * Moved from the settings to its own page (spec 0005, AC-058); spec 0010 redesigns it.
+ */
 export function AbsenceSection() {
   const absences = useAbsences();
   const membersById = useMembersById();
@@ -52,7 +55,7 @@ export function AbsenceSection() {
   const sorted = [...absences].sort((a, b) => a.from.localeCompare(b.from));
 
   return (
-    <Section title="Abwesenheit" testID="settings-absence">
+    <Section testID="settings-absence">
       <Stack gap={12}>
         {sorted.length === 0 ? (
           <Text color="muted" testID="absence-empty">
