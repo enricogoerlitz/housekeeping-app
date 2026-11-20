@@ -102,8 +102,9 @@ select results_eq(
   'T4 restore_cleared_items: checked_by of a removed member becomes null');
 
 -- ===================== Tampered check fields (security check 0003) =====================
--- The payload comes from the client: check_seq is clamped to the allowed range, checked_at may not
--- lie in the future, checked_by must be a current member.
+-- The payload comes from the client: check_seq is clamped to 0…999000 (so the restored item can
+-- still be checked about 1000 times before the 1000000 constraint), checked_at may not lie in the
+-- future, checked_by must be a current member.
 insert into cleared values (3, public.clear_checked_items(tests.fx('list_a')));
 select is(
   public.restore_cleared_items(tests.fx('list_a'),
@@ -117,7 +118,7 @@ select is(
 select results_eq(
   format('select check_seq, checked_at <= now(), checked_by from public.shopping_items where id = %L',
          (tests.cleared(3) -> 0 -> 'item' ->> 'id')),
-  $$ values (1000000, true, null::uuid) $$,
+  $$ values (999000, true, null::uuid) $$,
   'T4 restore_cleared_items: an overflowing check_seq is clamped, a future checked_at becomes now, a foreign checked_by is dropped');
 select is(
   (select check_seq from public.shopping_items where id = (tests.cleared(3) -> 1 -> 'item' ->> 'id')::uuid), 0,

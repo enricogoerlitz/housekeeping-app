@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(73);
+select plan(79);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -21,6 +21,18 @@ grant execute on function tests.apply(text, jsonb) to anon, authenticated;
 create function tests.apply_sql(p_household text, p_ops jsonb) returns text language sql stable
 as $$ select format('select public.apply_changes(%L, %L)', tests.fx(p_household), p_ops) $$;
 grant execute on function tests.apply_sql(text, jsonb) to anon, authenticated;
+
+-- p_entries add entries for new articles, each with p_contributions contributions.
+create function tests.add_entries(p_entries integer, p_contributions integer) returns jsonb language sql volatile
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'client_item_id', gen_random_uuid(), 'client_article_id', gen_random_uuid(),
+    'article_name', 'Artikel ' || e, 'name_key', 'artikel-' || e || '-' || gen_random_uuid(),
+    'contributions', (select jsonb_agg(jsonb_build_object('id', gen_random_uuid(), 'count', 1))
+                      from generate_series(1, p_contributions)))), '[]')
+  from generate_series(1, p_entries) e
+$$;
+grant execute on function tests.add_entries(integer, integer) to anon, authenticated;
 
 insert into fx (key, id) values
   ('enrico', tests.create_user('enrico@example.com', 'Enrico')),
@@ -406,6 +418,39 @@ select throws_ok(
 select is(
   (select count(*)::int from public.areas where name like 'Bereich %'), 0,
   'T5 apply_changes: … and nothing of them is applied');
+-- Entries of add_contributions count as ops, and the contributions of a call are capped
+-- (security re-check 0003).
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
+    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(201, 1)))),
+  '22023', 'too_many_changes', 'T5 apply_changes: one add_contributions op with 201 entries is rejected');
+select throws_ok(
+  tests.apply_sql('home_a',
+    (select jsonb_agg(jsonb_build_object('kind', 'insert', 'table', 'areas',
+                                         'row', jsonb_build_object('name', 'Gang ' || n)))
+     from generate_series(1, 150) n)
+    || jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
+         'list_id', tests.fx('list_a'), 'entries', tests.add_entries(51, 1)))),
+  '22023', 'too_many_changes', 'T5 apply_changes: add_contributions entries count toward the 200 ops');
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
+    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(200, 1)))),
+  'T5 apply_changes: one add_contributions op with 200 entries is allowed');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
+    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(5, 100) || tests.add_entries(1, 1)))),
+  '22023', 'too_many_changes', 'T5 apply_changes: more than 500 contributions in one op are rejected');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_a'),
+                       'entries', tests.add_entries(3, 100)),
+    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_a'),
+                       'entries', tests.add_entries(2, 100) || tests.add_entries(1, 1)))),
+  '22023', 'too_many_changes', 'T5 apply_changes: the contributions of all add_contributions ops add up to the cap');
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
+    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(5, 100)))),
+  'T5 apply_changes: 500 contributions in one call are allowed');
 
 -- ===================== Signed out =====================
 select tests.authenticate_as_anon();

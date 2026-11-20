@@ -222,6 +222,72 @@ describe('fake server: apply_changes (ADR-0011)', () => {
     ).rejects.toMatchObject({ code: 'too_many_changes' });
   });
 
+  it('counts the entries of add_contributions as ops (like the database)', async () => {
+    const inserts: RowOp[] = Array.from({ length: 150 }, (_, index) => ({
+      kind: 'insert',
+      table: 'areas',
+      row: { id: `area-${index}`, name: `Gang ${index}`, sort: index },
+    }));
+    const entries = Array.from({ length: 51 }, (_, index) =>
+      entry(`Artikel ${index}`, `c-${index}`),
+    );
+    await expect(
+      server
+        .transport(ENRICO)
+        .applyChanges(H, [...inserts, { kind: 'add_contributions', list_id: 'l1', entries }]),
+    ).rejects.toMatchObject({ code: 'too_many_changes' });
+    expect(server.row(H, 'areas', 'area-0')).toBeUndefined();
+  });
+
+  it('allows 200 add entries in one call', async () => {
+    const entries = Array.from({ length: 200 }, (_, index) =>
+      entry(`Artikel ${index}`, `c-${index}`),
+    );
+    await expect(
+      server
+        .transport(ENRICO)
+        .applyChanges(H, [{ kind: 'add_contributions', list_id: 'l1', entries }]),
+    ).resolves.toMatchObject({ applied: 1 });
+  });
+
+  it('caps the contributions of one call at 500 (like the database)', async () => {
+    const big = (key: string, count: number): AddEntry => ({
+      ...entry(`Artikel ${key}`, `c-${key}`),
+      contributions: Array.from({ length: count }, (_, index) => ({
+        id: `c-${key}-${index}`,
+        source: { kind: 'manual' },
+        count: 1,
+        qty: null,
+        unit: null,
+        note: null,
+      })),
+    });
+    const transport = server.transport(ENRICO);
+    await expect(
+      transport.applyChanges(H, [
+        {
+          kind: 'add_contributions',
+          list_id: 'l1',
+          entries: ['a', 'b', 'c'].map((k) => big(k, 100)),
+        },
+        {
+          kind: 'add_contributions',
+          list_id: 'l1',
+          entries: [big('d', 100), big('e', 100), big('f', 1)],
+        },
+      ]),
+    ).rejects.toMatchObject({ code: 'too_many_changes' });
+    await expect(
+      transport.applyChanges(H, [
+        {
+          kind: 'add_contributions',
+          list_id: 'l1',
+          entries: ['a', 'b', 'c', 'd', 'e'].map((k) => big(k, 100)),
+        },
+      ]),
+    ).resolves.toMatchObject({ applied: 1 });
+  });
+
   it('can be told to fail, before or after applying', async () => {
     const op: RowOp = { kind: 'patch', table: 'recipes', id: 'r1', changes: { title: 'A' } };
     server.failNext('apply_changes', new TransportError('permanent', 'boom'));

@@ -394,13 +394,26 @@ export function createFakeServer(): FakeServer {
 
   function applyChanges(userId: string, householdId: string, ops: readonly ChangeOp[]) {
     if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
-    // Like apply_changes: every id of remove_contributions is a delete and an op.
-    const removed = ops.reduce(
-      (sum, op) => sum + (op.kind === 'remove_contributions' ? op.ids.length : 0),
-      0,
+    // Like apply_changes: a domain op counts as its elements — every id of remove_contributions
+    // is a delete and an op, every entry of add_contributions an op; at most 500 contributions.
+    const sum = (count: (op: ChangeOp) => number) =>
+      ops.reduce((total, op) => total + count(op), 0);
+    const opCount = sum((op) =>
+      op.kind === 'remove_contributions'
+        ? Math.max(op.ids.length, 1)
+        : op.kind === 'add_contributions'
+          ? Math.max(op.entries.length, 1)
+          : 1,
     );
-    const deletes = ops.filter((op) => op.kind === 'delete').length + removed;
-    if (ops.length + removed > 200 || deletes > 20) throw reject('too_many_changes');
+    const deletes = sum((op) =>
+      op.kind === 'delete' ? 1 : op.kind === 'remove_contributions' ? op.ids.length : 0,
+    );
+    const contributions = sum((op) =>
+      op.kind === 'add_contributions'
+        ? op.entries.reduce((total, entry) => total + entry.contributions.length, 0)
+        : 0,
+    );
+    if (opCount > 200 || deletes > 20 || contributions > 500) throw reject('too_many_changes');
 
     let householdPatch: Record<string, unknown> | undefined;
     const result = transaction(householdId, (before) => {

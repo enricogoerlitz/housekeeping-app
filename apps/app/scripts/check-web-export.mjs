@@ -2,8 +2,10 @@
 // protection the web session relies on is missing (ADR-0003: browser storage is acceptable only
 // with no third-party scripts and a strict Content Security Policy):
 // - index.html has the CSP <meta> with default-src 'self', script-src 'self' (only hashes besides,
-//   nothing unsafe), object-src 'none' and connect-src with the Supabase origin of the build;
-// - index.html has no inline script;
+//   nothing unsafe; script-src-elem and script-src-attr, when present, the same), object-src
+//   'none', base-uri 'self' and connect-src with the Supabase origin of the build and no wildcard
+//   or bare scheme (`*`, `https:` …);
+// - index.html has no inline script (any <script> without a src attribute, in any letter case);
 // - the service worker dist/sw.js exists (offline start, AC-004).
 //
 // Usage: node scripts/check-web-export.mjs [distDir]
@@ -37,21 +39,37 @@ export function checkExport({ html, hasServiceWorker, supabaseUrl }) {
     if (values('default-src').join(' ') !== "'self'") {
       problems.push("default-src must be exactly 'self'");
     }
-    const script = values('script-src');
-    if (!script.includes("'self'")) problems.push("script-src must contain 'self'");
-    const foreign = script.filter((value) => value !== "'self'" && !/^'sha256-[^']+'$/.test(value));
-    if (foreign.length > 0) {
-      problems.push(`script-src allows more than 'self' and hashes: ${foreign.join(' ')}`);
+    if (!values('script-src').includes("'self'")) problems.push("script-src must contain 'self'");
+    // script-src-elem and script-src-attr override script-src for their part, so they get the
+    // same rule when the policy has them.
+    for (const name of ['script-src', 'script-src-elem', 'script-src-attr']) {
+      const foreign = values(name).filter(
+        (value) => value !== "'self'" && !/^'sha256-[^']+'$/.test(value),
+      );
+      if (foreign.length > 0) {
+        problems.push(`${name} allows more than 'self' and hashes: ${foreign.join(' ')}`);
+      }
     }
     if (values('object-src').join(' ') !== "'none'") {
       problems.push("object-src must be exactly 'none'");
     }
-    if (supabaseUrl && !values('connect-src').includes(new URL(supabaseUrl).origin)) {
+    if (values('base-uri').join(' ') !== "'self'") {
+      problems.push("base-uri must be exactly 'self'");
+    }
+    const connect = values('connect-src');
+    if (supabaseUrl && !connect.includes(new URL(supabaseUrl).origin)) {
       problems.push('connect-src does not contain the Supabase origin');
     }
+    const open = connect.filter((value) => value === '*' || /^[a-z][a-z0-9+.-]*:$/i.test(value));
+    if (open.length > 0) {
+      problems.push(`connect-src allows any host: ${open.join(' ')}`);
+    }
   }
-  for (const match of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) {
-    if ((match[1] ?? '').trim() !== '') problems.push('index.html contains an inline script');
+  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    const external = /(?:^|\s)src\s*=/i.test(match[1] ?? '');
+    if (!external && (match[2] ?? '').trim() !== '') {
+      problems.push('index.html contains an inline script');
+    }
   }
   if (!hasServiceWorker) problems.push('sw.js is missing');
   return problems;
