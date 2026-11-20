@@ -33,7 +33,12 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_recipe_rating(uuid,smallint)'),
   ('private.set_restaurant_favorite(uuid,boolean)'),
   ('private.set_restaurant_rating(uuid,smallint)'),
-  ('private.set_feedback_vote(uuid,boolean)');
+  ('private.set_feedback_vote(uuid,boolean)'),
+  ('private.set_shopping_item_checked(uuid,boolean,integer)'),
+  ('private.set_shopping_item_not_available(uuid,boolean)'),
+  ('private.add_shopping_contributions(uuid,jsonb)'),
+  ('private.remove_contributions(uuid[],uuid)'), -- security invoker, shared with apply_changes
+  ('private.consume_ai_quota(text,integer)');
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

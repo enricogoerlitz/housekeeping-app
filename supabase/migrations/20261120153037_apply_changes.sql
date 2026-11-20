@@ -1,0 +1,185 @@
+-- Spec 0003, T5 — apply_changes: the generic write path (ADR-0011).
+--
+-- One call applies one changeset of the app — core RowOp objects plus two domain ops — in one
+-- transaction: all or nothing (AC-020). Security invoker, so RLS, column grants, triggers and
+-- composite foreign keys apply to every op exactly as to a direct API call. On top of that:
+-- * an allowlist of tables and columns as a constant in this function (the grant matrix of T3);
+--   identifiers in dynamic SQL come only from the allowlist, quoted with %I; values are bound
+--   with jsonb_populate_record and never spliced into SQL text;
+-- * one household per call: rows are inserted into p_household_id, and patches and deletes match
+--   only rows of p_household_id;
+-- * plain INSERT (no upsert); a patch that hits no row is an error (row_not_found);
+-- * at most 200 ops and 20 deletes per call (too_many_changes).
+--
+-- Errors: not_member (42501), invalid_change (22023), too_many_changes (22023),
+-- row_not_found (P0002), list_not_found (P0002), plus whatever a constraint raises
+-- (23502/23503/23505/23514, 22P02 for a malformed value).
+
+create function public.apply_changes(p_household_id uuid, p_ops jsonb)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  -- table → columns an insert may set, columns a patch may set, whether rows may be deleted.
+  -- household_id may be sent on insert but must equal p_household_id; it is always forced.
+  c_allowlist constant jsonb := $json${
+    "areas":            {"insert": ["id", "household_id", "name", "sort"],
+                         "patch":  ["name", "sort"], "delete": true},
+    "articles":         {"insert": ["id", "household_id", "name", "name_key", "synonyms", "synonym_keys",
+                                    "area_id", "diet", "is_pantry"],
+                         "patch":  ["name", "name_key", "synonyms", "synonym_keys", "area_id", "diet",
+                                    "is_pantry"], "delete": true},
+    "stores":           {"insert": ["id", "household_id", "name", "area_order", "hidden_area_ids"],
+                         "patch":  ["name", "area_order", "hidden_area_ids"], "delete": true},
+    "shopping_lists":   {"insert": ["id", "household_id", "name", "is_default", "store_id"],
+                         "patch":  ["name", "is_default", "store_id"], "delete": true},
+    "recipes":          {"insert": ["id", "household_id", "title", "photo", "description", "servings",
+                                    "total_minutes", "course", "cuisine", "tags", "variants", "ingredients",
+                                    "steps", "lead_time", "notes", "last_cooked_on", "cooked_count", "source"],
+                         "patch":  ["title", "photo", "description", "servings", "total_minutes", "course",
+                                    "cuisine", "tags", "variants", "ingredients", "steps", "lead_time", "notes",
+                                    "last_cooked_on", "cooked_count", "source"], "delete": true},
+    "restaurants":      {"insert": ["id", "household_id", "name", "address", "lat", "lng", "maps_url", "cuisine",
+                                    "price_level", "tags", "notes"],
+                         "patch":  ["name", "address", "lat", "lng", "maps_url", "cuisine", "price_level", "tags",
+                                    "notes"], "delete": true},
+    "absences":         {"insert": ["id", "household_id", "member_id", "from_on", "to_on", "note"],
+                         "patch":  ["member_id", "from_on", "to_on", "note"], "delete": true},
+    "feedback":         {"insert": ["id", "household_id", "kind", "text", "status", "author_id", "screen", "reason",
+                                    "spec_ref"],
+                         "patch":  ["kind", "text", "status", "screen", "reason", "spec_ref"], "delete": true},
+    "chores":           {"insert": ["id", "household_id", "title", "room", "recurrence", "assignment", "effort",
+                                    "next_due_on", "next_assignee_id", "last_done_on", "active_months"],
+                         "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",
+                                    "next_assignee_id", "last_done_on", "active_months"], "delete": true},
+    "chore_events":     {"insert": ["id", "household_id", "chore_id", "title", "kind", "done_on", "done_by"],
+                         "patch":  ["chore_id", "title", "kind", "done_on", "done_by"], "delete": true},
+    "meal_plan_entries": {"insert": ["id", "household_id", "date", "slot_id", "kind", "recipe_id", "restaurant_id",
+                                     "text", "leftovers_of_entry_id", "eater_ids", "guests", "portions", "variants",
+                                     "cook_id", "sort", "not_cooked"],
+                          "patch":  ["date", "slot_id", "kind", "recipe_id", "restaurant_id", "text",
+                                     "leftovers_of_entry_id", "eater_ids", "guests", "portions", "variants",
+                                     "cook_id", "sort", "not_cooked"], "delete": true},
+    "shopping_items":   {"insert": ["id", "household_id", "list_id", "article_id"],
+                         "patch":  ["list_id", "article_id"], "delete": true},
+    "shopping_contributions": {"insert": ["id", "household_id", "item_id", "source", "count", "qty", "unit", "note"],
+                               "patch":  ["item_id", "source", "count", "qty", "unit", "note"], "delete": true},
+    "households":       {"insert": [],
+                         "patch":  ["name", "meal_slots", "default_list_id", "default_store_id"], "delete": false}
+  }$json$;
+  c_max_ops constant integer := 200;
+  c_max_deletes constant integer := 20;
+
+  v_op jsonb;
+  v_kind text;
+  v_table text;
+  v_rules jsonb;
+  v_row jsonb;
+  v_changes jsonb;
+  v_id uuid;
+  v_columns text;
+  v_select text;
+  v_set text;
+  v_count integer;
+  v_list_id uuid;
+  v_ids uuid[];
+  v_results jsonb := '[]';
+begin
+  if p_household_id is null
+     or not exists (select 1 from private.my_household_ids() h (id) where h.id = p_household_id) then
+    raise exception 'not_member' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_ops) is distinct from 'array' then
+    raise exception 'invalid_change' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_ops) > c_max_ops
+     or (select count(*) from jsonb_array_elements(p_ops) o where o ->> 'kind' = 'delete') > c_max_deletes then
+    raise exception 'too_many_changes' using errcode = '22023';
+  end if;
+
+  for v_op in select o.value from jsonb_array_elements(p_ops) o loop
+    if jsonb_typeof(v_op) is distinct from 'object' then
+      raise exception 'invalid_change' using errcode = '22023';
+    end if;
+    v_kind := v_op ->> 'kind';
+
+    -- Domain ops: the same internal functions as the store/list RPCs (T4).
+    if v_kind = 'add_contributions' then
+      v_list_id := (v_op ->> 'list_id')::uuid;
+      if not exists (
+        select 1 from public.shopping_lists l where l.id = v_list_id and l.household_id = p_household_id
+      ) then
+        raise exception 'list_not_found' using errcode = 'P0002';
+      end if;
+      v_results := v_results || jsonb_build_array(private.add_shopping_contributions(v_list_id, v_op -> 'entries'));
+      continue;
+    elsif v_kind = 'remove_contributions' then
+      if jsonb_typeof(v_op -> 'ids') is distinct from 'array' then
+        raise exception 'invalid_change' using errcode = '22023';
+      end if;
+      v_ids := array(select x::uuid from jsonb_array_elements_text(v_op -> 'ids') x);
+      v_results := v_results || jsonb_build_array(private.remove_contributions(v_ids, p_household_id));
+      continue;
+    end if;
+
+    -- Row ops: the table must be a key of the allowlist (exact match, so no quoting tricks).
+    v_table := case when jsonb_typeof(v_op -> 'table') = 'string' then v_op ->> 'table' end;
+    v_rules := c_allowlist -> v_table;
+    if v_rules is null or v_kind is null or v_kind not in ('insert', 'patch', 'delete') then
+      raise exception 'invalid_change' using errcode = '22023';
+    end if;
+
+    if v_kind = 'insert' then
+      v_row := v_op -> 'row';
+      if jsonb_typeof(v_row) is distinct from 'object'
+         or exists (select 1 from jsonb_object_keys(v_row) k where not (v_rules -> 'insert') ? k)
+         or (v_row ? 'household_id' and lower(v_row ->> 'household_id') is distinct from p_household_id::text) then
+        raise exception 'invalid_change' using errcode = '22023';
+      end if;
+      v_row := v_row || jsonb_build_object('household_id', p_household_id);
+      select string_agg(format('%I', k), ', '), string_agg(format('r.%I', k), ', ')
+      into v_columns, v_select
+      from jsonb_object_keys(v_row) k;
+      execute format(
+        'insert into public.%I (%s) select %s from jsonb_populate_record(null::public.%I, $1) r',
+        v_table, v_columns, v_select, v_table)
+      using v_row;
+
+    elsif v_kind = 'patch' then
+      v_changes := v_op -> 'changes';
+      if jsonb_typeof(v_op -> 'id') is distinct from 'string'
+         or jsonb_typeof(v_changes) is distinct from 'object'
+         or v_changes = '{}'::jsonb
+         or exists (select 1 from jsonb_object_keys(v_changes) k where not (v_rules -> 'patch') ? k) then
+        raise exception 'invalid_change' using errcode = '22023';
+      end if;
+      v_id := (v_op ->> 'id')::uuid;
+      if v_table = 'households' and v_id <> p_household_id then
+        raise exception 'invalid_change' using errcode = '22023';
+      end if;
+      select string_agg(format('%1$I = r.%1$I', k), ', ') into v_set from jsonb_object_keys(v_changes) k;
+      execute format(
+        'update public.%I t set %s from jsonb_populate_record(null::public.%I, $1) r '
+        'where t.id = $2 and t.%I = $3',
+        v_table, v_set, v_table, case when v_table = 'households' then 'id' else 'household_id' end)
+      using v_changes, v_id, p_household_id;
+      get diagnostics v_count = row_count;
+      if v_count = 0 then
+        raise exception 'row_not_found' using errcode = 'P0002';
+      end if;
+
+    else -- delete; a row that is already gone is fine (undo, or deleted by someone else)
+      if not (v_rules -> 'delete')::boolean or jsonb_typeof(v_op -> 'id') is distinct from 'string' then
+        raise exception 'invalid_change' using errcode = '22023';
+      end if;
+      execute format('delete from public.%I t where t.id = $1 and t.household_id = $2', v_table)
+      using (v_op ->> 'id')::uuid, p_household_id;
+    end if;
+  end loop;
+
+  return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
+end
+$$;
+
+grant execute on function public.apply_changes(uuid, jsonb) to authenticated;
