@@ -108,6 +108,8 @@ export interface Recipe {
   title: string;
   /** Key of a bundled sample photo, resolved by the api package. */
   photo?: string;
+  /** Storage path of the household's own photo; shown instead of `photo` when set. */
+  photoPath?: string;
   description?: string;
   servings: number;
   totalMinutes?: number;
@@ -141,10 +143,13 @@ export interface MealPlanEntry {
   /** null = "vorgemerkt" (planned without a day). */
   date: ISODate | null;
   slotId: Id;
-  kind: 'recipe' | 'text' | 'leftovers' | 'restaurant';
+  kind: 'recipe' | 'text' | 'leftovers' | 'restaurant' | 'activity';
   recipeId?: Id;
   restaurantId?: Id;
+  activityId?: Id;
   text?: string;
+  /** "Zusatz", shown in parentheses: "Eislaufen (Hohenschönhausen)". Only on activities. */
+  note?: string;
   leftoversOfEntryId?: Id;
   eaterIds: Id[];
   guests: number;
@@ -177,6 +182,28 @@ export interface Restaurant {
   notes?: string;
   favoriteOf: Id[];
   ratings: Record<Id, number>;
+  createdAt: string;
+}
+
+// ---------- Activities ----------
+
+export interface Activity {
+  id: Id;
+  name: string;
+  description?: string;
+  /** Storage path of the household's own photo. */
+  photoPath?: string;
+  /** Name of the place, e.g. "Eisstadion Hohenschönhausen"; the activity's name stays free. */
+  placeName?: string;
+  address?: string;
+  location?: GeoPoint;
+  /** The link the place was taken from (Google Maps / Apple Karten). */
+  mapsUrl?: string;
+  tags: string[];
+  favoriteOf: Id[];
+  /** Rating 1–5 per member id. */
+  ratings: Record<Id, number>;
+  createdBy?: Id;
   createdAt: string;
 }
 

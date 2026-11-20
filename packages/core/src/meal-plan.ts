@@ -1,4 +1,5 @@
 import { formatQty } from './amounts';
+import { daysBetween } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';
 import type {
@@ -132,7 +133,42 @@ export function variantSummary(entry: MealPlanEntry, recipe: Recipe): string {
     })
     .join(' · ');
 }
-/** Entries of one day sorted by slot order, then by entry.sort; unknown slots come last. */
+/** "Eislaufen (Hohenschönhausen)"; the title alone without a Zusatz. */
+export function withNote(title: string, note?: string): string {
+  const zusatz = note?.trim();
+  return zusatz ? `${title} (${zusatz})` : title;
+}
+
+// A Record over every kind, so a new kind cannot be added without deciding where it goes.
+const KIND_RANK: Record<MealPlanEntry['kind'], number> = {
+  activity: 0,
+  recipe: 1,
+  text: 1,
+  leftovers: 1,
+  restaurant: 2,
+};
+
+function compareInSlot(a: MealPlanEntry, b: MealPlanEntry): number {
+  return (
+    KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
+    a.sort - b.sort ||
+    // Equal sort values happen when two devices add at once; the id keeps the order identical.
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+
+/**
+ * Entries of one Tageszeit in display order: activities, then recipes (also free text and
+ * leftovers), then restaurants; within a group by entry.sort (the order they were added), then id.
+ * Returns a new array.
+ */
+export function orderSlotEntries(entries: MealPlanEntry[]): MealPlanEntry[] {
+  return [...entries].sort(compareInSlot);
+}
+
+/**
+ * Entries of one day sorted by slot order, then as in orderSlotEntries; unknown slots come last.
+ */
 export function entriesForDay(
   entries: MealPlanEntry[],
   date: ISODate,
@@ -144,5 +180,40 @@ export function entriesForDay(
   };
   return entries
     .filter((entry) => entry.date === date)
-    .sort((a, b) => slotPosition(a) - slotPosition(b) || a.sort - b.sort);
+    .sort((a, b) => slotPosition(a) - slotPosition(b) || compareInSlot(a, b));
+}
+
+export interface Visits {
+  count: number;
+  lastOn?: ISODate;
+  daysSince?: number;
+  /** Days it was done, newest first; a day appears once per entry. */
+  dates: ISODate[];
+}
+
+/**
+ * What the plan says was done: entries of that restaurant or activity up to and including today,
+ * without "nicht gekocht"/"nicht gemacht" and without entries that have no day.
+ */
+export function visitsOf(
+  kind: Extract<MealPlanEntry['kind'], 'restaurant' | 'activity'>,
+  id: Id,
+  entries: MealPlanEntry[],
+  today: ISODate,
+): Visits {
+  const dates: ISODate[] = [];
+  for (const entry of entries) {
+    const targetId = kind === 'restaurant' ? entry.restaurantId : entry.activityId;
+    if (entry.kind !== kind || targetId !== id || entry.date === null) continue;
+    if (entry.date > today || entry.notCooked) continue;
+    dates.push(entry.date);
+  }
+  dates.sort().reverse();
+  const lastOn = dates[0];
+  return {
+    count: dates.length,
+    lastOn,
+    daysSince: lastOn ? daysBetween(lastOn, today) : undefined,
+    dates,
+  };
 }

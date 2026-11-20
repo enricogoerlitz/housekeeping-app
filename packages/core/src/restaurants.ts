@@ -1,6 +1,6 @@
-import { daysBetween } from './dates';
+import { visitsOf, type Visits } from './meal-plan';
 import { normalizeText } from './text';
-import type { GeoPoint, ISODate, MealPlanEntry, Restaurant } from './types';
+import type { Activity, GeoPoint, ISODate, MealPlanEntry, Restaurant } from './types';
 
 export type MapsLink =
   | { kind: 'place'; provider: 'google' | 'apple'; name?: string; location?: GeoPoint; url: string }
@@ -79,17 +79,24 @@ export function parseMapsLink(input: string): MapsLink | null {
   };
 }
 
-/** Route links for both map apps. Coordinates win over the name when known. */
-export function routeLinks(restaurant: Pick<Restaurant, 'name' | 'address' | 'location'>): {
+/**
+ * Route links for both map apps. Coordinates win over the name when known. An activity's place
+ * name labels the destination instead of the activity's own name ("Eisstadion …", not
+ * "Eislaufen"), which a map search could not find.
+ */
+export function routeLinks(
+  place: Pick<Restaurant, 'name' | 'address' | 'location'> & Pick<Activity, 'placeName'>,
+): {
   apple: string;
   google: string;
 } {
-  const label = [restaurant.name, restaurant.address].filter(Boolean).join(', ');
+  const name = place.placeName || place.name;
+  const label = [name, place.address].filter(Boolean).join(', ');
   const q = encodeURIComponent(label);
-  if (restaurant.location) {
-    const ll = `${restaurant.location.lat},${restaurant.location.lng}`;
+  if (place.location) {
+    const ll = `${place.location.lat},${place.location.lng}`;
     return {
-      apple: `https://maps.apple.com/?daddr=${ll}&q=${encodeURIComponent(restaurant.name)}`,
+      apple: `https://maps.apple.com/?daddr=${ll}&q=${encodeURIComponent(name)}`,
       google: `https://www.google.com/maps/dir/?api=1&destination=${ll}`,
     };
   }
@@ -121,24 +128,9 @@ export function restaurantVisits(
   restaurantId: string,
   entries: MealPlanEntry[],
   today: ISODate,
-): { count: number; lastOn?: ISODate; daysSince?: number } {
-  const dates = entries
-    .filter(
-      (entry) =>
-        entry.kind === 'restaurant' &&
-        entry.restaurantId === restaurantId &&
-        entry.date !== null &&
-        entry.date <= today &&
-        !entry.notCooked,
-    )
-    .map((entry) => entry.date as ISODate)
-    .sort();
-  const lastOn = dates[dates.length - 1];
-  return {
-    count: dates.length,
-    lastOn,
-    daysSince: lastOn ? daysBetween(lastOn, today) : undefined,
-  };
+): Omit<Visits, 'dates'> {
+  const { count, lastOn, daysSince } = visitsOf('restaurant', restaurantId, entries, today);
+  return { count, lastOn, daysSince };
 }
 
 /** "€€" for priceLevel 2. */

@@ -7,7 +7,7 @@ import {
   restaurantVisits,
   routeLinks,
 } from './restaurants';
-import type { MealPlanEntry, Restaurant } from './types';
+import type { Activity, MealPlanEntry, Restaurant } from './types';
 
 function restaurant(partial: Partial<Restaurant> & Pick<Restaurant, 'id' | 'name'>): Restaurant {
   return {
@@ -175,6 +175,42 @@ describe('routeLinks', () => {
   it('URL-encodes the name next to coordinates', () => {
     const links = routeLinks({ name: 'A&B?x=1', location: { lat: 1, lng: 2 } });
     expect(links.apple).toBe('https://maps.apple.com/?daddr=1,2&q=A%26B%3Fx%3D1');
+  });
+
+  it('AC-014 (0004): routes an activity to its place, labelled with the place name', () => {
+    const eislaufen: Activity = {
+      id: 'act-eislaufen',
+      name: 'Eislaufen',
+      placeName: 'Eisstadion Hohenschönhausen',
+      location: { lat: 52.55, lng: 13.5 },
+      tags: [],
+      favoriteOf: [],
+      ratings: {},
+      createdAt: '2026-11-01T12:00:00.000Z',
+    };
+    expect(routeLinks(eislaufen)).toEqual({
+      apple: 'https://maps.apple.com/?daddr=52.55,13.5&q=Eisstadion%20Hohensch%C3%B6nhausen',
+      google: 'https://www.google.com/maps/dir/?api=1&destination=52.55,13.5',
+    });
+  });
+
+  it('AC-014 (0004): without coordinates an activity routes to place name and address', () => {
+    const links = routeLinks({
+      name: 'Eislaufen',
+      placeName: 'Eisstadion',
+      address: 'Konrad-Wolf-Straße 2, Berlin',
+    });
+    const encoded = 'Eisstadion%2C%20Konrad-Wolf-Stra%C3%9Fe%202%2C%20Berlin';
+    expect(links).toEqual({
+      apple: `https://maps.apple.com/?daddr=${encoded}`,
+      google: `https://www.google.com/maps/dir/?api=1&destination=${encoded}`,
+    });
+  });
+
+  it('falls back to the name when an activity has no place name', () => {
+    expect(routeLinks({ name: 'Wandern', address: 'Teufelsberg, Berlin' }).google).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=Wandern%2C%20Teufelsberg%2C%20Berlin',
+    );
   });
 
   it('never uses the stored maps link, so a hostile link cannot become the route', () => {

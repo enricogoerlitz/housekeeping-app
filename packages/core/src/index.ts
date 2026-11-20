@@ -10,6 +10,7 @@ export * from './meal-plan';
 export * from './shopping';
 export * from './chores';
 export * from './restaurants';
+export * from './activities';
 export * from './dictation';
 export * from './sync-delta';
 export * from './sync-overlay';
