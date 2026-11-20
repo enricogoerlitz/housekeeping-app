@@ -1,0 +1,15 @@
+# Architekturentscheidungen (ADR)
+
+Warum etwas so gebaut ist und wogegen es abgewogen wurde. Neue ADRs entstehen mit dem
+`adr`-Skill aus `0000-template.md`. Angenommene ADRs werden nie umgeschrieben, sondern durch
+neue abgelöst.
+
+| Nr.                                                    | Entscheidung                                                  | Status     |
+| ------------------------------------------------------ | ------------------------------------------------------------- | ---------- |
+| [0001](0001-plattform-und-app-technologie.md)          | Expo Universal-App für iOS, iPadOS, Android und Web           | angenommen |
+| [0002](0002-offline-faehigkeit-und-synchronisation.md) | Offline-first mit PowerSync, Supabase als Quelle der Wahrheit | angenommen |
+| [0003](0003-anmeldung-und-zugang.md)                   | Google- und Apple-Login, nur auf Einladung (Allowlist)        | angenommen |
+| [0004](0004-mandantenfaehigkeit-ueber-haushalte.md)    | Haushalte als Mandanten, Row Level Security                   | angenommen |
+| [0005](0005-monorepo-struktur.md)                      | Monorepo mit pnpm und Turborepo                               | angenommen |
+| [0006](0006-ki-gestuetzte-arbeitsweise.md)             | Specs, Superpowers und kuratierte Skills                      | angenommen |
+| [0007](0007-hosting-und-kosten.md)                     | Free-Tiers, Skalierungspfad für mehrere Apps                  | angenommen |
