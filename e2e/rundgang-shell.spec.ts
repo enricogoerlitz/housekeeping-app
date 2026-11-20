@@ -121,7 +121,7 @@ test.describe('shell at phone width', () => {
     const labels = await tidPrefix(page, 'tab-').allInnerTexts();
     // Spec 0002 renamed "Rezepte" to "Essen" (0002 AC-001).
     expect(labels.map((label) => label.trim())).toEqual([
-      'Heute',
+      'Übersicht',
       'Essen',
       'Plan',
       'Liste',

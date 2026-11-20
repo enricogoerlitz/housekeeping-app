@@ -1,5 +1,4 @@
 import { routeId } from '@housekeeping/core';
-import { Screen } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { ActivityDetail } from './activity-detail';
@@ -15,14 +14,12 @@ export function ActivityScreen() {
     else router.replace({ pathname: '/plan', params: { view: 'activities' } });
   };
   return (
-    <Screen testID="activity-screen" maxWidth={820}>
-      <ActivityDetail
-        activityId={id ?? ''}
-        onBack={back}
-        onOpen={(activityId) =>
-          router.replace({ pathname: '/plan/aktivitaet/[id]', params: { id: activityId } })
-        }
-      />
-    </Screen>
+    <ActivityDetail
+      activityId={id ?? ''}
+      onBack={back}
+      onOpen={(activityId) =>
+        router.replace({ pathname: '/plan/aktivitaet/[id]', params: { id: activityId } })
+      }
+    />
   );
 }

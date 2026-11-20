@@ -25,7 +25,7 @@ function greeting(hour: number): string {
   return 'Guten Abend';
 }
 
-/** "Heute": the day at a glance (F2, AC-017). */
+/** "Übersicht" (tab, spec 0005 REQ-011): the day at a glance (F2, AC-017). */
 export function TodayScreen() {
   const { isPhone, bp } = useBreakpoint();
   // The time of day only picks the greeting; the date itself comes from useToday().
@@ -55,8 +55,7 @@ export function TodayScreen() {
 
   if (isPhone) {
     return (
-      <Screen testID="today-screen">
-        {header}
+      <Screen testID="today-screen" header={header}>
         <Recap />
         {meals}
         <TodayChores />
@@ -67,8 +66,7 @@ export function TodayScreen() {
   }
 
   return (
-    <Screen testID="today-screen">
-      {header}
+    <Screen testID="today-screen" header={header}>
       <View
         style={{ flexDirection: 'row', gap: bp === 'desktop' ? 48 : 28, alignItems: 'flex-start' }}
       >

@@ -160,7 +160,7 @@ function AbsenceSheet(props: { visible: boolean; onClose: () => void }) {
       onClose={close}
       title="Abwesenheit eintragen"
       testID="absence-sheet"
-      width={600}
+      size="m"
       footer={
         <Button
           label="Speichern"

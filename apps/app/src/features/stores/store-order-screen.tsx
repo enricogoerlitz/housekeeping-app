@@ -36,8 +36,11 @@ export function StoreOrderScreen() {
   const store = stores.find((candidate) => candidate.id === id);
   if (!store) {
     return (
-      <Screen testID="store-order-screen" clearFab={false}>
-        <ScreenHeader title="Markt" onBack={back} />
+      <Screen
+        testID="store-order-screen"
+        clearFab={false}
+        header={<ScreenHeader title="Markt" onBack={back} />}
+      >
         <EmptyState icon="store" title="Markt nicht gefunden" text="Vielleicht wurde er gelöscht.">
           <Button label="Zu den Märkten" variant="secondary" onPress={back} />
         </EmptyState>
@@ -49,8 +52,11 @@ export function StoreOrderScreen() {
   const areaName = (areaId: string) => areas.find((area) => area.id === areaId)?.name ?? 'Bereich';
 
   return (
-    <Screen testID="store-order-screen" maxWidth={760} clearFab={false}>
-      <ScreenHeader title={store.name} subtitle="Laufweg durch den Markt" onBack={back} />
+    <Screen
+      testID="store-order-screen"
+      clearFab={false}
+      header={<ScreenHeader title={store.name} subtitle="Laufweg durch den Markt" onBack={back} />}
+    >
       <Text color="muted" style={{ marginBottom: 14 }}>
         In dieser Reihenfolge stehen die Bereiche auf der Liste und im Einkaufsmodus. Ausgeblendete
         Bereiche landen unter „Woanders kaufen“.

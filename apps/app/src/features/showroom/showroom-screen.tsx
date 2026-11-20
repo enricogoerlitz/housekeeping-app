@@ -653,6 +653,7 @@ function OverlayBlock() {
         onClose={() => setOpen(false)}
         title="Beispiel-Sheet"
         testID="showroom-sheet"
+        size="s"
         footer={<Button label="Fertig" full onPress={() => setOpen(false)} />}
       >
         <Text>Auf dem Handy von unten, auf breiten Bildschirmen als Dialog.</Text>

@@ -16,9 +16,9 @@ import {
   Screen,
   ScreenHeader,
   Section,
-  Segmented,
   Stack,
   Text,
+  ViewTabs,
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
@@ -116,7 +116,6 @@ export function ChoresScreen() {
         key={bucket}
         title={SECTION_TITLES[bucket]}
         meta={bucket === 'today' ? `ca. ${points} ${points === 1 ? 'Punkt' : 'Punkte'}` : undefined}
-        tone="haushalt"
         testID={`chores-${bucket}`}
       >
         <List>{list.map((chore) => row(chore))}</List>
@@ -209,25 +208,29 @@ export function ChoresScreen() {
   }
 
   return (
-    <Screen testID="chores-screen" maxWidth={tab === 'upcoming' ? 1180 : 820}>
-      <ScreenHeader
-        title="Haushalt"
-        right={
-          <>
-            <IconButton
-              icon="plus"
-              variant="soft"
-              label="Neue Aufgabe"
-              onPress={() => setCreating(true)}
-              disabled={online.disabled}
-              testID="chore-new"
-            />
-            <StartPageActions />
-          </>
-        }
-      />
-      <View style={{ marginBottom: 20, maxWidth: 520 }}>
-        <Segmented<Tab>
+    <Screen
+      testID="chores-screen"
+      tone="haushalt"
+      header={
+        <ScreenHeader
+          title="Haushalt"
+          right={
+            <>
+              <IconButton
+                icon="plus"
+                variant="soft"
+                label="Neue Aufgabe"
+                onPress={() => setCreating(true)}
+                disabled={online.disabled}
+                testID="chore-new"
+              />
+              <StartPageActions />
+            </>
+          }
+        />
+      }
+      tabs={
+        <ViewTabs<Tab>
           label="Ansicht"
           value={tab}
           onChange={setTab}
@@ -238,9 +241,10 @@ export function ChoresScreen() {
           ]}
           testID="chores-tab"
         />
-      </View>
+      }
+    >
       {online.hint ? (
-        <Text variant="small" color="muted" style={{ marginBottom: 12 }}>
+        <Text variant="small" color="muted" style={{ marginTop: 8, marginBottom: 12 }}>
           {online.hint}
         </Text>
       ) : null}

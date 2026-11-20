@@ -11,13 +11,13 @@ import {
   Badge,
   Button,
   Chip,
+  ChoiceChips,
   EmptyState,
   Icon,
   Row,
   Screen,
   ScreenHeader,
   Section,
-  Segmented,
   Stack,
   Surface,
   Text,
@@ -122,8 +122,17 @@ export function FeedbackScreen() {
   );
 
   return (
-    <Screen testID="feedback" maxWidth={980} clearFab={false}>
-      <ScreenHeader title="Feedback" subtitle="Ideen, Probleme und Lob für die App" onBack={back} />
+    <Screen
+      testID="feedback"
+      clearFab={false}
+      header={
+        <ScreenHeader
+          title="Feedback"
+          subtitle="Ideen, Probleme und Lob für die App"
+          onBack={back}
+        />
+      }
+    >
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 5, minWidth: 0 }}>
@@ -159,7 +168,7 @@ function Composer(props: { entries: FeedbackEntry[] }) {
   return (
     <Section title="Neues Feedback" testID="fb-composer">
       <Surface style={{ gap: 14 }}>
-        <Segmented<Kind>
+        <ChoiceChips<Kind>
           label="Art"
           value={kind}
           onChange={setKind}

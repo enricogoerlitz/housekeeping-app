@@ -9,8 +9,8 @@ import {
 import {
   Button,
   Chip,
+  ChoiceChips,
   Row,
-  Segmented,
   Sheet,
   Stack,
   Text,
@@ -162,7 +162,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
       onClose={close}
       title="Neue Aufgabe"
       testID="chore-new-sheet"
-      width={600}
+      size="m"
       footer={
         <Stack gap={6}>
           {online.hint ? (
@@ -332,7 +332,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
         </Field>
 
         <Field label="Aufwand">
-          <Segmented<Effort>
+          <ChoiceChips<Effort>
             label="Aufwand"
             value={effort}
             onChange={setEffort}

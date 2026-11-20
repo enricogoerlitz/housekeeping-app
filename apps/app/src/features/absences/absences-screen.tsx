@@ -8,8 +8,11 @@ import { AbsenceSection } from './absence-section';
 export function AbsencesScreen() {
   const back = useBackToManage();
   return (
-    <Screen testID="absences-screen" maxWidth={760} clearFab={false}>
-      <ScreenHeader title="Abwesenheiten" onBack={back} />
+    <Screen
+      testID="absences-screen"
+      clearFab={false}
+      header={<ScreenHeader title="Abwesenheiten" onBack={back} />}
+    >
       <AbsenceSection />
     </Screen>
   );

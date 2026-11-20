@@ -43,6 +43,7 @@ export function ChoreSheet(props: {
       onClose={props.onClose}
       title={chore?.title ?? ''}
       testID="chore-sheet"
+      size="s"
     >
       <Stack gap={16}>
         <Text color="muted">{facts.join(' · ')}</Text>

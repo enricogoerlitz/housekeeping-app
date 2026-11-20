@@ -22,13 +22,14 @@ import {
   IconButton,
   Notice,
   Row,
+  Menu,
   Screen,
   ScreenHeader,
-  Segmented,
   Stack,
   Text,
   TextField,
   TypingIndicator,
+  ViewTabs,
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -108,7 +109,7 @@ export function RecipesScreen() {
       ? 'restaurants'
       : 'recipes';
   const switcher = (
-    <Segmented
+    <ViewTabs
       label="Rezepte oder Restaurants"
       value={view}
       onChange={(next) =>
@@ -195,12 +196,7 @@ export function RecipesScreen() {
     />
   );
   const offlineHint = online.hint ? (
-    <Text
-      variant="small"
-      color="warn"
-      testID="recipe-offline-hint"
-      style={{ marginTop: -8, marginBottom: 12 }}
-    >
+    <Text variant="small" color="warn" testID="recipe-offline-hint" style={{ marginBottom: 12 }}>
       {online.hint}
     </Text>
   ) : null;
@@ -216,9 +212,7 @@ export function RecipesScreen() {
 
   if (recipes.length === 0) {
     return (
-      <Screen testID="recipes-screen">
-        {header}
-        <View style={{ marginBottom: 16 }}>{switcher}</View>
+      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher}>
         {offlineHint}
         <EmptyState
           icon="book-open"
@@ -260,9 +254,10 @@ export function RecipesScreen() {
   }
 
   const compact = selectedId !== undefined;
-  const listBody = (
-    <>
-      <Row gap={8} style={{ marginBottom: 12 }} wrap>
+  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const toolbar = (
+    <Stack gap={8}>
+      <Row gap={8} wrap>
         <TextField
           round
           value={query}
@@ -299,37 +294,37 @@ export function RecipesScreen() {
         />
         {features.ai ? <AiToggle on={settings.aiSearch} onToggle={toggleAi} /> : null}
       </Row>
-
       {aiVisible ? null : (
-        <>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-            style={{ marginBottom: 12, flexGrow: 0 }}
-          >
-            {FILTERS.map((entry) => (
-              <Chip
-                key={entry.key}
-                label={entry.label}
-                selected={filters.includes(entry.key)}
-                onPress={() => toggleFilter(entry.key)}
-                testID={`filter-${entry.key}`}
-              />
-            ))}
-          </ScrollView>
-          <View style={{ marginBottom: 12 }}>
-            <Segmented
-              label="Sortierung"
-              value={sort}
-              onChange={setSort}
-              options={SORTS}
-              testID="recipe-sort"
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
+          style={{ flexGrow: 0 }}
+        >
+          <Menu
+            label={sortLabel}
+            accessibilityLabel={`Sortierung: ${sortLabel}`}
+            icon="arrow-up-down"
+            value={sort}
+            onChange={setSort}
+            options={SORTS}
+            testID="recipe-sort"
+          />
+          {FILTERS.map((entry) => (
+            <Chip
+              key={entry.key}
+              label={entry.label}
+              selected={filters.includes(entry.key)}
+              onPress={() => toggleFilter(entry.key)}
+              testID={`filter-${entry.key}`}
             />
-          </View>
-        </>
+          ))}
+        </ScrollView>
       )}
-
+    </Stack>
+  );
+  const listBody = (
+    <>
       <Row justify="space-between" style={{ marginBottom: 12 }}>
         <Text variant="small" color="muted" testID="recipe-count">
           {aiVisible ? 'KI-Suche' : results.length === 1 ? '1 Rezept' : `${results.length} Rezepte`}
@@ -386,19 +381,25 @@ export function RecipesScreen() {
 
   if (compact && selectedId !== undefined) {
     return (
-      <Screen testID="recipes-screen" scroll={false} style={{ flex: 1, paddingBottom: 0 }}>
+      <Screen
+        testID="recipes-screen"
+        tone="essen"
+        header={header}
+        tabs={switcher}
+        scroll={false}
+        style={{ flex: 1, paddingBottom: 0 }}
+      >
         <View style={{ flex: 1, flexDirection: 'row', gap: 32 }}>
           <View style={{ width: LIST_COLUMN_WIDTH }}>
             <ScrollColumn>
-              {header}
-              <View style={{ marginBottom: 16 }}>{switcher}</View>
+              <View style={{ paddingVertical: 8 }}>{toolbar}</View>
               {offlineHint}
               {listBody}
             </ScrollColumn>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <ScrollColumn>
-              <View style={{ paddingTop: 16 }}>
+              <View style={{ paddingTop: 8 }}>
                 <RecipeDetail
                   recipeId={selectedId}
                   onClose={() => router.setParams({ id: undefined })}
@@ -413,9 +414,7 @@ export function RecipesScreen() {
   }
 
   return (
-    <Screen testID="recipes-screen">
-      {header}
-      <View style={{ marginBottom: 16 }}>{switcher}</View>
+    <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher} toolbar={toolbar}>
       {offlineHint}
       {listBody}
       {sheets}

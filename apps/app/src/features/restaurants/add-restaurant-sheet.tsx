@@ -48,6 +48,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
       onClose={props.onClose}
       title="Restaurant hinzufügen"
       testID="restaurant-sheet"
+      size="m"
       footer={
         <Button
           label="Speichern"

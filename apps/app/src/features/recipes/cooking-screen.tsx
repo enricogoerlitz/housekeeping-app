@@ -64,6 +64,7 @@ function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLe
   return (
     <Screen
       testID="cooking-screen"
+      tone="essen"
       maxWidth={860}
       clearFab={false}
       footer={

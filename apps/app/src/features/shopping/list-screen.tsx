@@ -476,7 +476,9 @@ export function ListScreen() {
 
   return (
     <Screen
+      tone="liste"
       clearFab={false}
+      header={header}
       footer={
         <SmartComposer
           listId={list.id}
@@ -489,7 +491,6 @@ export function ListScreen() {
         />
       }
     >
-      {header}
       {actions}
       <Stack gap={0}>{body}</Stack>
       {sheet === 'lists' ? (

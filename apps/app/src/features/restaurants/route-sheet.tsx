@@ -19,7 +19,13 @@ export function RouteSheet(props: {
     Linking.openURL(url).catch(() => undefined);
   };
   return (
-    <Sheet visible={props.visible} onClose={props.onClose} title="Route" testID="route-sheet">
+    <Sheet
+      visible={props.visible}
+      onClose={props.onClose}
+      title="Route"
+      testID="route-sheet"
+      size="s"
+    >
       <Stack gap={12}>
         <Text color="muted">
           Ziel: {target.placeName || target.name}

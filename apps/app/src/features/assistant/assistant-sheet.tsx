@@ -240,7 +240,7 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
       visible
       onClose={props.onClose}
       title="Assistent"
-      width={640}
+      size="l"
       testID="assistant-sheet"
       footer={footer}
     >

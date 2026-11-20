@@ -30,7 +30,7 @@ export function StarterSheet(props: { visible: boolean; onClose: () => void }) {
       visible={props.visible}
       onClose={props.onClose}
       title="Starter-Rezepte"
-      width={620}
+      size="l"
       testID="starter-sheet"
       footer={
         <Button

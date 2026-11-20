@@ -41,6 +41,7 @@ export function IngredientsPasteSheet(props: {
       onClose={close}
       title="Zutaten einfügen"
       testID="ingredients-paste-sheet"
+      size="m"
       footer={
         <Button
           label="Einfügen"

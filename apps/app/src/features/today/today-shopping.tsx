@@ -27,7 +27,6 @@ export function TodayShopping(props: { preview: boolean }) {
   return (
     <Section
       title="Einkauf"
-      tone="liste"
       testID="today-shopping"
       action={
         <Text variant="small" color="muted" testID="today-shopping-count">

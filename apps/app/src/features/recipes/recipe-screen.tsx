@@ -1,5 +1,4 @@
 import { routeId } from '@housekeeping/core';
-import { Screen } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { RecipeDetail } from './recipe-detail';
@@ -14,9 +13,5 @@ export function RecipeScreen() {
     if (router.canGoBack()) router.back();
     else router.replace('/rezepte');
   };
-  return (
-    <Screen testID="recipe-screen" maxWidth={1080}>
-      <RecipeDetail recipeId={id ?? ''} onBack={back} />
-    </Screen>
-  );
+  return <RecipeDetail recipeId={id ?? ''} onBack={back} />;
 }

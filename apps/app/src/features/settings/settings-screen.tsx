@@ -3,12 +3,12 @@ import { dietPreferenceLabel, toISODate } from '@housekeeping/core';
 import {
   Avatar,
   Button,
+  ChoiceChips,
   List,
   ListRow,
   Screen,
   ScreenHeader,
   Section,
-  Segmented,
   Stack,
   SwitchRow,
   Text,
@@ -42,8 +42,11 @@ export function SettingsScreen() {
   );
 
   return (
-    <Screen testID="settings" maxWidth={980} clearFab={false}>
-      <ScreenHeader title="Einstellungen" onBack={back} />
+    <Screen
+      testID="settings"
+      clearFab={false}
+      header={<ScreenHeader title="Einstellungen" onBack={back} />}
+    >
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>{left}</View>
@@ -118,7 +121,7 @@ function AppearanceSection() {
         <ThemePicker />
         <Stack gap={8}>
           <Text variant="smallStrong">Erscheinungsbild</Text>
-          <Segmented<AppearancePreference>
+          <ChoiceChips<AppearancePreference>
             label="Erscheinungsbild"
             value={settings.appearance}
             onChange={(appearance) => settings.update({ appearance })}

@@ -36,24 +36,22 @@ import {
 import {
   Button,
   Chip,
+  ChoiceChips,
   Icon,
   IconButton,
   List,
   ListRow,
   Notice,
   Photo,
-  Segmented,
   Sheet,
   Stack,
   Text,
   TextField,
   toast,
-  useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   ActivityFormFields,
@@ -229,7 +227,7 @@ function WhenPicker(props: {
           />
         ))}
       </ScrollView>
-      <Segmented
+      <ChoiceChips
         label="Tageszeit"
         options={props.slots.map((slot) => ({ value: slot.id, label: slot.name }))}
         value={props.value.slotId}
@@ -263,8 +261,6 @@ export function AddEntrySheet(props: {
   const entries = usePlanEntries();
   const members = useMembers();
   const membersById = useMembersById();
-  const { isPhone, height } = useBreakpoint();
-  const insets = useSafeAreaInsets();
 
   const preset = props.activityId !== undefined;
   const [mode, setMode] = useState<Mode>(preset ? 'activity' : 'recipe');
@@ -639,14 +635,6 @@ export function AddEntrySheet(props: {
     );
   }
 
-  // Switching modes keeps the dialog's size; long content scrolls inside. Sheet sizes itself to
-  // its content, so the content is made as tall as the sheet's maximum minus its title row, padding
-  // and the footer (values from Sheet in packages/ui).
-  const sheetMax = Math.round(height * (isPhone ? 0.9 : 0.84));
-  const chrome = 60 + 26 + (isPhone ? Math.max(insets.bottom, 12) : 0);
-  const footerHeight = footer ? (isPhone ? 61 : 75) : 0;
-  const minHeight = Math.max(0, sheetMax - chrome - footerHeight);
-
   const zusatz = (
     <TextField
       label="Zusatz (optional)"
@@ -670,28 +658,24 @@ export function AddEntrySheet(props: {
       onClose={props.onClose}
       title={`Hinzufügen · ${where}`}
       testID="add-entry-sheet"
+      size="l"
+      // The kind stays at the top; switching it keeps the window's size (spec 0005, AC-014).
+      header={
+        preset ? undefined : (
+          <View style={{ paddingTop: 4, paddingBottom: 10 }}>
+            <ChoiceChips<Mode>
+              label="Art des Eintrags"
+              value={mode}
+              onChange={changeMode}
+              options={modes}
+              testID="add-entry-mode"
+            />
+          </View>
+        )
+      }
       footer={footer}
     >
-      <Stack gap={16} style={{ minHeight }}>
-        {preset ? null : (
-          // Chips instead of a segmented control: five kinds do not fit one row on a phone.
-          <View
-            role="group"
-            aria-label="Art des Eintrags"
-            testID="add-entry-mode"
-            style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
-          >
-            {modes.map((option) => (
-              <Chip
-                key={option.value}
-                label={option.label}
-                selected={option.value === mode}
-                onPress={() => changeMode(option.value)}
-                testID={`add-entry-mode-${option.value}`}
-              />
-            ))}
-          </View>
-        )}
+      <Stack gap={16}>
         {preset && !later ? (
           <WhenPicker value={when} today={today} slots={slots} onChange={setWhen} />
         ) : null}

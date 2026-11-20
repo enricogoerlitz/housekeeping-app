@@ -51,6 +51,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       onClose={close}
       title="Neues Rezept"
       testID="new-recipe-sheet"
+      size="m"
       footer={
         <Button
           label="Anlegen"

@@ -42,6 +42,7 @@ import { Pressable, View } from 'react-native';
 
 import { AddEntrySheet } from '@/features/meal-plan/add-entry-sheet';
 import { RouteSheet } from '@/features/restaurants/route-sheet';
+import { DetailPage } from '@/features/shell/detail-page';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
@@ -68,19 +69,21 @@ export function ActivityDetail(props: ActivityDetailProps) {
   const router = useRouter();
   if (!activity) {
     return (
-      <EmptyState
-        icon="mountain"
-        title="Aktivität nicht gefunden"
-        text="Vielleicht gehört sie zu einem anderen Haushalt."
-        testID="activity-not-found"
-      >
-        <Button
-          label="Zu den Aktivitäten"
-          icon="arrow-left"
-          onPress={() => router.replace({ pathname: '/plan', params: { view: 'activities' } })}
-          testID="activity-not-found-back"
-        />
-      </EmptyState>
+      <DetailPage onBack={props.onBack} title="Aktivität" tone="plan" testID="activity-screen">
+        <EmptyState
+          icon="mountain"
+          title="Aktivität nicht gefunden"
+          text="Vielleicht gehört sie zu einem anderen Haushalt."
+          testID="activity-not-found"
+        >
+          <Button
+            label="Zu den Aktivitäten"
+            icon="arrow-left"
+            onPress={() => router.replace({ pathname: '/plan', params: { view: 'activities' } })}
+            testID="activity-not-found-back"
+          />
+        </EmptyState>
+      </DetailPage>
     );
   }
   return <ActivityDetailBody key={activity.id} activity={activity} {...props} />;
@@ -104,161 +107,176 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
   const firstSlotId = [...household.mealSlots].sort((a, b) => a.sort - b.sort)[0]?.id;
   const place = [activity.placeName, activity.address].filter(Boolean).join(', ');
 
+  const favorite = (
+    <FavoriteButton
+      active={isFavorite}
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => toggleActivityFavorite(activity.id)}
+    />
+  );
+
   return (
-    <View testID="activity-detail">
-      <Row justify="space-between" style={{ marginBottom: 8, marginLeft: props.onBack ? -8 : 0 }}>
-        {props.onBack ? (
-          <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
-        ) : props.onClose ? (
-          <IconButton
-            icon="x"
-            label="Aktivität schließen"
-            onPress={props.onClose}
-            testID="activity-close"
-          />
-        ) : (
-          <View />
+    <DetailPage
+      onBack={props.onBack}
+      title={activity.name}
+      titleTestID="activity-title"
+      right={favorite}
+      tone="plan"
+      testID="activity-screen"
+    >
+      <View testID="activity-detail">
+        {props.onBack ? null : (
+          <Row justify="space-between" style={{ marginBottom: 8 }}>
+            {props.onClose ? (
+              <IconButton
+                icon="x"
+                label="Aktivität schließen"
+                onPress={props.onClose}
+                testID="activity-close"
+              />
+            ) : (
+              <View />
+            )}
+            {favorite}
+          </Row>
         )}
-        <FavoriteButton
-          active={isFavorite}
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => toggleActivityFavorite(activity.id)}
-        />
-      </Row>
 
-      <PhotoBlock activity={activity} />
+        <PhotoBlock activity={activity} />
 
-      <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
-        <Text variant="title" heading testID="activity-title">
-          {activity.name}
-        </Text>
-        {activity.description ? (
-          <Text testID="activity-description">{activity.description}</Text>
-        ) : null}
-        {place ? (
-          <Row gap={6} align="flex-start">
-            <Icon name="map-pin" size={16} color="muted" />
-            <Text variant="small" color="muted" style={{ flexShrink: 1 }} testID="activity-place">
-              {place}
+        <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
+          {props.onBack ? null : (
+            <Text variant="title" heading testID="activity-title">
+              {activity.name}
+            </Text>
+          )}
+          {activity.description ? (
+            <Text testID="activity-description">{activity.description}</Text>
+          ) : null}
+          {place ? (
+            <Row gap={6} align="flex-start">
+              <Icon name="map-pin" size={16} color="muted" />
+              <Text variant="small" color="muted" style={{ flexShrink: 1 }} testID="activity-place">
+                {place}
+              </Text>
+            </Row>
+          ) : null}
+          <Row gap={6}>
+            <Icon name="history" size={16} color="muted" />
+            <Text variant="small" color="muted" testID="activity-visits">
+              {activityVisitsLabel(visits) ?? 'Noch nicht gemacht'}
             </Text>
           </Row>
-        ) : null}
-        <Row gap={6}>
-          <Icon name="history" size={16} color="muted" />
-          <Text variant="small" color="muted" testID="activity-visits">
-            {activityVisitsLabel(visits) ?? 'Noch nicht gemacht'}
-          </Text>
-        </Row>
-        <Row gap={10}>
-          <Stars
-            value={mine}
-            onChange={online.disabled ? undefined : (stars) => rateActivity(activity.id, stars)}
-            testID="activity-stars"
-          />
-          <Text variant="caption" color="muted">
-            {mine ? 'Deine Bewertung' : 'Noch nicht bewertet'}
-          </Text>
-        </Row>
-        {online.hint ? (
-          <Text variant="small" color="warn" testID="activity-offline-hint">
-            {online.hint}
-          </Text>
-        ) : null}
-        <Row gap={10} wrap style={{ marginTop: 4 }}>
-          {/* AC-015: without a place there is nowhere to route to. */}
-          {hasPlace(activity) ? (
-            <Button
-              label="Route"
-              icon="map-pin"
-              onPress={() => setRouteOpen(true)}
-              testID="activity-route"
+          <Row gap={10}>
+            <Stars
+              value={mine}
+              onChange={online.disabled ? undefined : (stars) => rateActivity(activity.id, stars)}
+              testID="activity-stars"
             />
+            <Text variant="caption" color="muted">
+              {mine ? 'Deine Bewertung' : 'Noch nicht bewertet'}
+            </Text>
+          </Row>
+          {online.hint ? (
+            <Text variant="small" color="warn" testID="activity-offline-hint">
+              {online.hint}
+            </Text>
           ) : null}
-          <Button
-            label="Einplanen"
-            icon="calendar-plus"
-            variant="secondary"
-            disabled={online.disabled || !firstSlotId}
-            hint={online.hint}
-            onPress={() => setPlanning(true)}
-            testID="activity-plan"
-          />
-          <Button
-            label="Bearbeiten"
-            icon="pencil"
-            variant="secondary"
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={() => setEditing(true)}
-            testID="activity-edit"
-          />
-        </Row>
-      </Stack>
-
-      <Section title="Bewertungen" testID="activity-ratings">
-        <List>
-          {members.map((member) => {
-            const rating = activity.ratings[member.id] ?? 0;
-            return (
-              <ListRow
-                key={member.id}
-                testID={`activity-rating-${member.id}`}
-                leading={<Avatar name={member.name} color={member.color} />}
-                title={member.id === me.id ? `${member.name} (du)` : member.name}
-                subtitle={activity.favoriteOf.includes(member.id) ? 'Favorit' : undefined}
-                trailing={
-                  rating ? (
-                    <Stars value={rating} size={16} />
-                  ) : (
-                    <Text variant="small" color="muted">
-                      noch keine
-                    </Text>
-                  )
-                }
+          <Row gap={10} wrap style={{ marginTop: 4 }}>
+            {/* AC-015: without a place there is nowhere to route to. */}
+            {hasPlace(activity) ? (
+              <Button
+                label="Route"
+                icon="map-pin"
+                onPress={() => setRouteOpen(true)}
+                testID="activity-route"
               />
-            );
-          })}
-        </List>
-      </Section>
+            ) : null}
+            <Button
+              label="Einplanen"
+              icon="calendar-plus"
+              variant="secondary"
+              disabled={online.disabled || !firstSlotId}
+              hint={online.hint}
+              onPress={() => setPlanning(true)}
+              testID="activity-plan"
+            />
+            <Button
+              label="Bearbeiten"
+              icon="pencil"
+              variant="secondary"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => setEditing(true)}
+              testID="activity-edit"
+            />
+          </Row>
+        </Stack>
 
-      <Section title="Verlauf" testID="activity-history">
-        {visits.dates.length === 0 ? (
-          <Text color="muted">
-            Noch nicht gemacht. Vergangene Tage aus dem Plan stehen dann hier.
-          </Text>
-        ) : (
+        <Section title="Bewertungen" testID="activity-ratings">
           <List>
-            {visits.dates.map((date, index) => (
-              <ListRow
-                key={`${date}-${index}`}
-                testID={`activity-history-${index}`}
-                leading={<Icon name="calendar-days" size={20} color="muted" />}
-                title={formatLongDate(date)}
-                subtitle={daysAgoLabel(daysBetween(date, today))}
-              />
-            ))}
+            {members.map((member) => {
+              const rating = activity.ratings[member.id] ?? 0;
+              return (
+                <ListRow
+                  key={member.id}
+                  testID={`activity-rating-${member.id}`}
+                  leading={<Avatar name={member.name} color={member.color} />}
+                  title={member.id === me.id ? `${member.name} (du)` : member.name}
+                  subtitle={activity.favoriteOf.includes(member.id) ? 'Favorit' : undefined}
+                  trailing={
+                    rating ? (
+                      <Stars value={rating} size={16} />
+                    ) : (
+                      <Text variant="small" color="muted">
+                        noch keine
+                      </Text>
+                    )
+                  }
+                />
+              );
+            })}
           </List>
-        )}
-      </Section>
+        </Section>
 
-      <RouteSheet restaurant={activity} visible={routeOpen} onClose={() => setRouteOpen(false)} />
-      {editing ? (
-        <ActivityFormSheet
-          activity={activity}
-          onClose={() => setEditing(false)}
-          onOpenExisting={props.onOpen}
-        />
-      ) : null}
-      {planning && firstSlotId ? (
-        <AddEntrySheet
-          target={{ date: today, slotId: firstSlotId }}
-          weekDates={weekDates(today)}
-          activityId={activity.id}
-          onClose={() => setPlanning(false)}
-        />
-      ) : null}
-    </View>
+        <Section title="Verlauf" testID="activity-history">
+          {visits.dates.length === 0 ? (
+            <Text color="muted">
+              Noch nicht gemacht. Vergangene Tage aus dem Plan stehen dann hier.
+            </Text>
+          ) : (
+            <List>
+              {visits.dates.map((date, index) => (
+                <ListRow
+                  key={`${date}-${index}`}
+                  testID={`activity-history-${index}`}
+                  leading={<Icon name="calendar-days" size={20} color="muted" />}
+                  title={formatLongDate(date)}
+                  subtitle={daysAgoLabel(daysBetween(date, today))}
+                />
+              ))}
+            </List>
+          )}
+        </Section>
+
+        <RouteSheet restaurant={activity} visible={routeOpen} onClose={() => setRouteOpen(false)} />
+        {editing ? (
+          <ActivityFormSheet
+            activity={activity}
+            onClose={() => setEditing(false)}
+            onOpenExisting={props.onOpen}
+          />
+        ) : null}
+        {planning && firstSlotId ? (
+          <AddEntrySheet
+            target={{ date: today, slotId: firstSlotId }}
+            weekDates={weekDates(today)}
+            activityId={activity.id}
+            onClose={() => setPlanning(false)}
+          />
+        ) : null}
+      </View>
+    </DetailPage>
   );
 }
 

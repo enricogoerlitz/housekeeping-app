@@ -29,7 +29,6 @@ export {
   IconButton,
   Chip,
   Checkbox,
-  Segmented,
   SwitchRow,
   Stars,
   TextField,
@@ -37,7 +36,6 @@ export {
   type IconButtonProps,
   type ChipProps,
   type CheckboxProps,
-  type SegmentedProps,
   type SwitchRowProps,
   type StarsProps,
   type TextFieldProps,
@@ -118,5 +116,7 @@ export {
   type NavItem,
   type TabBarProps,
   type SidebarProps,
+  type SidebarEntry,
+  type SidebarGroup,
   type FabProps,
 } from './shell';

@@ -19,12 +19,9 @@ export interface SheetProps {
   footer?: ReactNode;
   /**
    * Fixed size (spec 0005, REQ-003): `s` confirm or pick one of a few, `m` forms, `l` search and
-   * pick with tabs. The window then keeps its size whatever it shows; only the middle scrolls.
-   * Without a size it grows with its content (sheets from before spec 0005).
+   * pick with tabs. The window keeps its size whatever it shows; only the middle scrolls.
    */
-  size?: SheetSize;
-  /** Wider dialog on tablet and desktop (default 520). Ignored with `size`. */
-  width?: number;
+  size: SheetSize;
   testID?: string;
 }
 
@@ -34,13 +31,7 @@ export function Sheet(props: SheetProps) {
   const { isPhone, width, height } = useBreakpoint();
   const insets = useSafeAreaInsets();
   const c = theme.colors;
-  const frame = props.size
-    ? sheetFrame(props.size, { width, height })
-    : {
-        width: isPhone ? undefined : (props.width ?? 520),
-        height: undefined,
-        maxHeight: Math.round(height * (isPhone ? 0.9 : 0.84)),
-      };
+  const frame = sheetFrame(props.size, { width, height });
   return (
     <Modal
       visible={props.visible}

@@ -42,7 +42,7 @@ export function ListSwitchSheet(props: {
   };
 
   return (
-    <Sheet visible onClose={props.onClose} title="Listen" testID="list-switch-sheet">
+    <Sheet visible onClose={props.onClose} title="Listen" testID="list-switch-sheet" size="s">
       <Stack gap={18}>
         <List>
           {lists.map((list) => (
@@ -96,7 +96,7 @@ export function StoreSheet(props: { list: ShoppingList; onClose: () => void }) {
     props.onClose();
   };
   return (
-    <Sheet visible onClose={props.onClose} title="Markt wählen" testID="store-sheet">
+    <Sheet visible onClose={props.onClose} title="Markt wählen" testID="store-sheet" size="s">
       <Stack gap={14}>
         <Text color="muted">Die Liste folgt dann dem Laufweg dieses Markts.</Text>
         {online.hint ? (

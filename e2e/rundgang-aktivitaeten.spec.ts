@@ -104,7 +104,7 @@ async function addTo(page: Page, date: string, slotId: string): Promise<void> {
 
 async function chooseMode(page: Page, mode: 'recipe' | 'restaurant' | 'activity'): Promise<void> {
   await tid(page, `add-entry-mode-${mode}`).click();
-  await expect(tid(page, `add-entry-mode-${mode}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(tid(page, `add-entry-mode-${mode}`)).toHaveAttribute('aria-checked', 'true');
 }
 
 async function planRecipe(page: Page, date: string, slotId: string, search: string, id: string) {
@@ -214,7 +214,7 @@ test('AC-001: "Plan" shows each day with Vormittag, Mittag and Abend in this ord
 }) => {
   await open(page, '/plan');
   await expect(tid(page, 'screen-title')).toHaveText('Plan');
-  await expect(tid(page, 'plan-view-week')).toHaveAttribute('aria-checked', 'true');
+  await expect(tid(page, 'plan-view-week')).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, 'plan-view-activities')).toHaveText('Aktivitäten');
   const tops: number[] = [];
   for (const [slotId, name] of [

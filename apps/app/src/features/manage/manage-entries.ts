@@ -86,5 +86,5 @@ export const SHOWROOM_ENTRY: ManageEntry = {
   href: '/showroom',
 };
 
-/** The ⊞ glyph of the concept; the icon set has no grid yet, so this stands in for it. */
-export const MANAGE_ICON: IconName = 'clipboard-list';
+/** The ⊞ glyph of the concept. */
+export const MANAGE_ICON: IconName = 'layout-grid';

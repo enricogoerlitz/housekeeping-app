@@ -77,7 +77,7 @@ test('0002 AC-001: "Essen" shows recipes with the switch; "Restaurants" lists na
   await expect(tid(page, 'recipes-screen').locator('[data-testid="screen-title"]')).toHaveText(
     'Essen',
   );
-  await expect(tid(page, 'food-switch-recipes')).toHaveAttribute('aria-checked', 'true');
+  await expect(tid(page, 'food-switch-recipes')).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, 'food-switch-restaurants')).toHaveText('Restaurants');
   await expect(tid(page, `recipe-card-${seedIds['rec-mango-curry']}`)).toBeVisible();
 

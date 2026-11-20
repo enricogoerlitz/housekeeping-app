@@ -298,7 +298,7 @@ export function ShoppingModeScreen() {
   );
 
   return (
-    <Screen header={header} footer={footer} maxWidth={760} clearFab={false}>
+    <Screen tone="liste" header={header} footer={footer} maxWidth={760} clearFab={false}>
       {own.length === 0 ? (
         <Text color="muted" style={{ marginTop: 24 }} align="center">
           Auf dieser Liste steht nichts.
@@ -366,13 +366,7 @@ function AreaSheet(props: {
   const name = props.article?.name ?? 'Artikel';
   const sorted = [...areas].sort((a, b) => a.sort - b.sort);
   return (
-    <Sheet
-      visible
-      onClose={props.onClose}
-      title={`Wo liegt ${name}?`}
-      testID="area-sheet"
-      width={640}
-    >
+    <Sheet visible onClose={props.onClose} title={`Wo liegt ${name}?`} testID="area-sheet" size="s">
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {sorted.map((area) => (
           <Pressable

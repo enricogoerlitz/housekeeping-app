@@ -45,12 +45,17 @@ export function StoresScreen() {
   };
 
   return (
-    <Screen testID="stores-screen" maxWidth={760} clearFab={false}>
-      <ScreenHeader
-        title="Märkte"
-        subtitle="Jeder Markt hat seinen eigenen Laufweg."
-        onBack={back}
-      />
+    <Screen
+      testID="stores-screen"
+      clearFab={false}
+      header={
+        <ScreenHeader
+          title="Märkte"
+          subtitle="Jeder Markt hat seinen eigenen Laufweg."
+          onBack={back}
+        />
+      }
+    >
       <Section title="Deine Märkte">
         {stores.length === 0 ? (
           <EmptyState

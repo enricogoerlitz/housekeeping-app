@@ -145,7 +145,7 @@ export function TodayMeals(props: TodayMealsProps) {
   };
 
   return (
-    <Section title="Heute geplant" tone="essen" testID="today-meals">
+    <Section title="Heute geplant" testID="today-meals">
       {props.entries.length === 0 ? (
         <Stack gap={10}>
           <Text color="muted">Für heute ist noch nichts geplant.</Text>

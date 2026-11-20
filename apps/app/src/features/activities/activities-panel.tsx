@@ -13,9 +13,10 @@ import {
   EmptyState,
   Icon,
   IconButton,
+  Menu,
   Row,
   Screen,
-  Segmented,
+  Stack,
   Stars,
   Surface,
   Text,
@@ -59,7 +60,10 @@ function matches(query: string, activity: Activity): boolean {
  * "Plan → Aktivitäten" (AC-004, AC-005): search, favourites, sort; on wide screens list and
  * detail side by side, on phones the detail is its own page inside the plan tab.
  */
-export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode }) {
+export function ActivitiesPanel(props: {
+  header: (right: ReactNode) => ReactNode;
+  tabs: ReactNode;
+}) {
   const router = useRouter();
   const params = useLocalSearchParams<{ aid?: string | string[] }>();
   const { isWide, isPhone, bp } = useBreakpoint();
@@ -126,26 +130,17 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
       testID="activity-add"
     />
   );
-  const top = (
+  const header = props.header(
     <>
-      {props.header(
-        <>
-          {addButton}
-          <StartPageActions />
-        </>,
-      )}
-      {online.hint ? (
-        <Text
-          variant="small"
-          color="warn"
-          testID="activity-offline-hint"
-          style={{ marginTop: -4, marginBottom: 12 }}
-        >
-          {online.hint}
-        </Text>
-      ) : null}
-    </>
+      {addButton}
+      <StartPageActions />
+    </>,
   );
+  const offlineHint = online.hint ? (
+    <Text variant="small" color="warn" testID="activity-offline-hint" style={{ marginBottom: 12 }}>
+      {online.hint}
+    </Text>
+  ) : null;
 
   const sheet = creating ? (
     <ActivityFormSheet onClose={() => setCreating(false)} onSaved={open} onOpenExisting={open} />
@@ -153,8 +148,8 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
 
   if (empty) {
     return (
-      <Screen testID="activities-screen">
-        {top}
+      <Screen testID="activities-screen" tone="plan" header={header} tabs={props.tabs}>
+        {offlineHint}
         <EmptyState
           icon="mountain"
           title="Noch keine Aktivitäten"
@@ -177,8 +172,9 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
 
   const compact = selectedId !== undefined;
   const columns = isPhone || compact ? 1 : bp === 'desktop' ? 3 : 2;
-  const listBody = (
-    <>
+  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const toolbar = (
+    <Stack gap={8}>
       <TextField
         round
         value={query}
@@ -197,15 +193,23 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
             />
           ) : undefined
         }
-        style={{ marginBottom: 12 }}
         testID="activity-search"
       />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-        style={{ marginBottom: 12, flexGrow: 0 }}
+        style={{ flexGrow: 0 }}
       >
+        <Menu
+          label={sortLabel}
+          accessibilityLabel={`Sortierung: ${sortLabel}`}
+          icon="arrow-up-down"
+          value={sort}
+          onChange={setSort}
+          options={SORTS}
+          testID="activity-sort"
+        />
         <Chip
           label="Favoriten"
           icon="heart"
@@ -214,15 +218,10 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
           testID="afilter-favorites"
         />
       </ScrollView>
-      <View style={{ marginBottom: 12, maxWidth: compact || isPhone ? undefined : 420 }}>
-        <Segmented
-          label="Sortierung"
-          value={sort}
-          onChange={setSort}
-          options={SORTS}
-          testID="activity-sort"
-        />
-      </View>
+    </Stack>
+  );
+  const listBody = (
+    <>
       <Text variant="small" color="muted" testID="activity-count" style={{ marginBottom: 12 }}>
         {results.length === 1 ? '1 Aktivität' : `${results.length} Aktivitäten`}
       </Text>
@@ -257,17 +256,25 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
 
   if (compact && selectedId !== undefined) {
     return (
-      <Screen testID="activities-screen" scroll={false} style={{ flex: 1, paddingBottom: 0 }}>
+      <Screen
+        testID="activities-screen"
+        tone="plan"
+        header={header}
+        tabs={props.tabs}
+        scroll={false}
+        style={{ flex: 1, paddingBottom: 0 }}
+      >
         <View style={{ flex: 1, flexDirection: 'row', gap: 32 }}>
           <View style={{ width: LIST_COLUMN_WIDTH }}>
             <ScrollColumn>
-              {top}
+              <View style={{ paddingVertical: 8 }}>{toolbar}</View>
+              {offlineHint}
               {listBody}
             </ScrollColumn>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <ScrollColumn>
-              <View style={{ paddingTop: 16 }}>
+              <View style={{ paddingTop: 8 }}>
                 <ActivityDetail
                   activityId={selectedId}
                   onClose={() => router.setParams({ aid: undefined })}
@@ -283,8 +290,14 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
   }
 
   return (
-    <Screen testID="activities-screen">
-      {top}
+    <Screen
+      testID="activities-screen"
+      tone="plan"
+      header={header}
+      tabs={props.tabs}
+      toolbar={toolbar}
+    >
+      {offlineHint}
       {listBody}
       {sheet}
     </Screen>

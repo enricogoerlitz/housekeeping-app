@@ -8,7 +8,7 @@ export function NotFoundScreen() {
     <Screen testID="not-found">
       <EmptyState icon="map-pin" title="Nicht gefunden" text="Diese Seite gibt es nicht (mehr).">
         <Button
-          label="Zu „Heute“"
+          label="Zur Übersicht"
           icon="sun"
           onPress={() => router.replace('/')}
           testID="not-found-home"

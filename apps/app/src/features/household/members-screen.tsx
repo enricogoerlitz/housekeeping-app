@@ -50,12 +50,17 @@ export function MembersScreen() {
   );
 
   return (
-    <Screen testID="members-screen" maxWidth={980} clearFab={false}>
-      <ScreenHeader
-        title={active?.name ?? 'Haushalt'}
-        kicker="Haushalt & Mitglieder"
-        onBack={back}
-      />
+    <Screen
+      testID="members-screen"
+      clearFab={false}
+      header={
+        <ScreenHeader
+          title={active?.name ?? 'Haushalt'}
+          kicker="Haushalt & Mitglieder"
+          onBack={back}
+        />
+      }
+    >
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>{members}</View>

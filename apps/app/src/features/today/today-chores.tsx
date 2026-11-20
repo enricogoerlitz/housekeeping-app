@@ -83,7 +83,6 @@ export function TodayChores() {
   return (
     <Section
       title="Zu tun"
-      tone="haushalt"
       meta={due.length > 0 ? `ca. ${points} Punkte` : undefined}
       testID="today-chores"
     >
@@ -177,6 +176,7 @@ function SpontaneousSheet(props: { visible: boolean; onClose: () => void }) {
       onClose={close}
       title="Was anderes erledigt?"
       testID="spontaneous-sheet"
+      size="m"
       footer={
         <Button
           label="Eintragen"

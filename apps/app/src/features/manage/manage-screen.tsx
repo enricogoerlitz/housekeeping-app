@@ -26,8 +26,11 @@ export function ManageScreen() {
   const { isWide } = useBreakpoint();
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
   return (
-    <Screen testID="manage-screen" maxWidth={760} clearFab={false}>
-      <ScreenHeader title="Verwalten" onBack={back} />
+    <Screen
+      testID="manage-screen"
+      clearFab={false}
+      header={<ScreenHeader title="Verwalten" onBack={back} />}
+    >
       <View style={isWide ? { flexDirection: 'row', gap: 32, flexWrap: 'wrap' } : undefined}>
         {MANAGE_GROUPS.map((group) => (
           <View key={group.key} style={isWide ? { flexBasis: 300, flexGrow: 1 } : undefined}>

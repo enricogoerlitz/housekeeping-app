@@ -118,12 +118,7 @@ export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact:
   };
 
   return (
-    <Section
-      title="Diese Woche"
-      meta={`KW ${isoWeekNumber(props.today)}`}
-      tone="plan"
-      testID="today-week"
-    >
+    <Section title="Diese Woche" meta={`KW ${isoWeekNumber(props.today)}`} testID="today-week">
       {props.compact ? (
         <ScrollView
           horizontal

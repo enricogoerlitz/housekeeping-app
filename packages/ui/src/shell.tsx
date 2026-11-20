@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   Pressable,
+  ScrollView,
   View,
   type LayoutChangeEvent,
   type StyleProp,
@@ -16,7 +17,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { IconButton, focusRing } from './controls';
 import { icons, type IconName } from './icons';
-import { Icon, Text } from './primitives';
+import { Divider, Icon, Text } from './primitives';
 import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
 import type { Tone } from './themes';
 
@@ -213,7 +214,7 @@ export function Screen(props: ScreenProps) {
           style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
         >
           {hasChrome ? (
-            <View style={{ zIndex: 1 }}>
+            <View style={{ zIndex: 1, paddingTop: 8 }}>
               {header}
               {tabs}
               {props.toolbar ? (
@@ -421,17 +422,45 @@ export function TabBar(props: TabBarProps) {
   );
 }
 
+export interface SidebarEntry {
+  key: string;
+  label: string;
+  icon: IconName;
+  active?: boolean;
+  onPress: () => void;
+  testID?: string;
+}
+
+/** A titled group below the areas, e.g. "Verwalten"; its blocks are split by fine lines. */
+export interface SidebarGroup {
+  key: string;
+  title: string;
+  blocks: SidebarEntry[][];
+  /** Extra content after the entries, e.g. a switch. */
+  extra?: ReactNode;
+}
+
 export interface SidebarProps extends TabBarProps {
-  /** Household name at the top. */
+  /** Household name at the top, with ▾. */
   brand: string;
+  /** Accessible name of the brand button, e.g. "WG, Haushalt wechseln". */
+  brandLabel: string;
   onBrandPress?: () => void;
-  assistantLabel: string;
-  onAssistant: () => void;
+  /** Fixed content right below the areas, e.g. the assistant button. */
+  belowItems?: ReactNode;
+  /** Groups below the areas; only this part scrolls on a low window (spec 0005, AC-053). */
+  groups?: SidebarGroup[];
+  /** testID of the scrolling part. */
+  groupsTestID?: string;
   /** Bottom area, e.g. the profile entry. */
   footer?: ReactNode;
 }
 
-/** Side navigation for tablet and desktop. */
+/**
+ * Side navigation for tablet and desktop (spec 0005, REQ-010): household name with ▾, the five
+ * areas, titled groups ("Verwalten") and a footer. The active entry is marked neutrally in
+ * `accentSoft`, also in "Frisch", where area colours belong to the screen, not the navigation.
+ */
 export function Sidebar(props: SidebarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -442,105 +471,144 @@ export function Sidebar(props: SidebarProps) {
         width: SIDEBAR_WIDTH,
         paddingTop: insets.top + 24,
         paddingBottom: 18,
-        paddingHorizontal: 14,
-        gap: 4,
         backgroundColor: theme.shape.section === 'grouped' ? c.surfaceSunken : c.barBg,
         borderRightWidth: 1,
         borderRightColor: c.border,
       }}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={props.brand}
-        onPress={props.onBrandPress}
-        testID="sidebar-brand"
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          paddingHorizontal: 10,
-          paddingBottom: 20,
-        }}
-      >
-        <Icon name="house" size={22} color="accent" />
-        <Text variant="cardTitle" numberOfLines={1} style={{ flex: 1 }}>
-          {props.brand}
-        </Text>
-      </Pressable>
-      <View accessibilityRole="tablist" style={{ gap: 4 }}>
-        {props.items.map((item) => {
-          const active = item.key === props.activeKey;
-          const Glyph = icons[item.icon];
-          const tint = active ? c.accent : c.textMuted;
-          return (
-            <Pressable
+      <View style={{ paddingHorizontal: 14, gap: 4 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={props.brandLabel}
+          onPress={props.onBrandPress}
+          testID="sidebar-brand"
+          style={(state) => {
+            const { hovered, focused } = state as { hovered?: boolean; focused?: boolean };
+            return [
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                minHeight: 44,
+                paddingHorizontal: 10,
+                marginBottom: 12,
+                borderRadius: theme.shape.radius.control,
+                backgroundColor: hovered ? c.surfaceSunken : 'transparent',
+              },
+              focusRing(theme, focused),
+            ];
+          }}
+        >
+          <Icon name="house" size={22} color="accent" />
+          <Text variant="cardTitle" numberOfLines={1} style={{ flex: 1 }}>
+            {props.brand}
+          </Text>
+          <Icon name="chevron-down" size={18} color="muted" />
+        </Pressable>
+        <View accessibilityRole="tablist" style={{ gap: 4 }}>
+          {props.items.map((item) => (
+            <SidebarRow
               key={item.key}
-              testID={`nav-${item.key}`}
-              accessibilityRole="tab"
-              accessibilityLabel={item.label}
-              accessibilityState={{ selected: active }}
-              onPress={() => props.onSelect(item.key)}
-              style={(state) => {
-                const { hovered, focused } = state as { hovered?: boolean; focused?: boolean };
-                return [
-                  {
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
-                    minHeight: 46,
-                    paddingHorizontal: 12,
-                    borderRadius: theme.shape.radius.control,
-                    backgroundColor: active
-                      ? c.accentSoft
-                      : hovered
-                        ? c.surfaceSunken
-                        : 'transparent',
-                  },
-                  focusRing(theme, focused),
-                ];
+              tab
+              entry={{
+                key: item.key,
+                label: item.label,
+                icon: item.icon,
+                active: item.key === props.activeKey,
+                onPress: () => props.onSelect(item.key),
+                testID: `nav-${item.key}`,
               }}
-            >
-              <Glyph size={21} color={tint} strokeWidth={theme.shape.stroke} />
-              <Text
-                variant={active ? 'bodyStrong' : 'rowTitle'}
-                style={{
-                  color: active ? (c.accent === c.text ? c.text : c.accent) : c.textMuted,
-                }}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+            />
+          ))}
+        </View>
+        {props.belowItems}
       </View>
-      <Pressable
-        testID="assistant-open"
-        accessibilityRole="button"
-        accessibilityLabel={props.assistantLabel}
-        onPress={props.onAssistant}
-        style={(state) => [
+
+      <ScrollView
+        style={{ flex: 1, marginTop: 20 }}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12, gap: 20 }}
+        showsVerticalScrollIndicator={false}
+        testID={props.groupsTestID}
+      >
+        {props.groups?.map((group) => (
+          <View key={group.key}>
+            <Text
+              variant="caption"
+              color="muted"
+              style={{ paddingHorizontal: 12, marginBottom: 6, textTransform: 'uppercase' }}
+            >
+              {group.title}
+            </Text>
+            {group.blocks.map((block, index) => (
+              <View key={index} style={{ gap: 2 }}>
+                {index > 0 ? (
+                  <View style={{ marginVertical: 8, marginHorizontal: 12 }}>
+                    <Divider />
+                  </View>
+                ) : null}
+                {block.map((entry) => (
+                  <SidebarRow key={entry.key} entry={entry} />
+                ))}
+              </View>
+            ))}
+            {group.extra}
+          </View>
+        ))}
+      </ScrollView>
+
+      {props.footer ? (
+        <View style={{ paddingHorizontal: 14, paddingTop: 8 }}>{props.footer}</View>
+      ) : null}
+    </View>
+  );
+}
+
+/** One row of the sidebar: an area (role tab) or a page in a group (a link). */
+function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
+  const theme = useTheme();
+  const c = theme.colors;
+  const { entry } = props;
+  const active = !!entry.active;
+  const Glyph = icons[entry.icon];
+  // Themes whose accent is ink ("Frisch") keep the label in ink; others use the accent.
+  const activeFg = c.accent === c.text ? c.text : c.accent;
+  return (
+    <Pressable
+      testID={entry.testID}
+      accessibilityRole={props.tab ? 'tab' : 'link'}
+      accessibilityLabel={entry.label}
+      accessibilityState={props.tab ? { selected: active } : undefined}
+      aria-current={!props.tab && active ? 'page' : undefined}
+      onPress={entry.onPress}
+      style={(state) => {
+        const { hovered, focused } = state as { hovered?: boolean; focused?: boolean };
+        return [
           {
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            minHeight: 46,
-            marginTop: 16,
-            borderRadius: theme.shape.radius.button,
-            backgroundColor: c.fabBg,
-            opacity: state.pressed ? 0.75 : 1,
+            gap: 12,
+            minHeight: props.tab ? 46 : 44,
+            paddingHorizontal: 12,
+            borderRadius: theme.shape.radius.control,
+            backgroundColor: active ? c.accentSoft : hovered ? c.surfaceSunken : 'transparent',
           },
-          focusRing(theme, (state as { focused?: boolean }).focused),
-        ]}
+          focusRing(theme, focused),
+        ];
+      }}
+    >
+      <Glyph
+        size={props.tab ? 21 : 19}
+        color={active ? activeFg : c.textMuted}
+        strokeWidth={theme.shape.stroke}
+      />
+      <Text
+        variant={active ? 'bodyStrong' : 'rowTitle'}
+        numberOfLines={1}
+        style={{ flex: 1, color: active ? activeFg : c.textMuted }}
       >
-        <ToneContext.Provider value={{ fg: c.fabText }}>
-          <Icon name="sparkles" size={19} />
-          <Text variant="button">{props.assistantLabel}</Text>
-        </ToneContext.Provider>
-      </Pressable>
-      <View style={{ flex: 1 }} />
-      {props.footer}
-    </View>
+        {entry.label}
+      </Text>
+    </Pressable>
   );
 }
 

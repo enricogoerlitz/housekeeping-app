@@ -457,6 +457,7 @@ export function ActivityFormSheet(props: {
       onClose={props.onClose}
       title={editing ? 'Aktivität bearbeiten' : 'Aktivität anlegen'}
       testID="activity-sheet"
+      size="m"
       footer={
         <Button
           label="Speichern"

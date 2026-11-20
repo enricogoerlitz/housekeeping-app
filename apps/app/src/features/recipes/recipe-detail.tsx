@@ -30,6 +30,7 @@ import {
 import {
   Badge,
   Button,
+  ChoiceChips,
   EmptyState,
   Icon,
   IconButton,
@@ -39,7 +40,6 @@ import {
   Photo,
   Row,
   Section,
-  Segmented,
   Sheet,
   Stack,
   Stars,
@@ -52,6 +52,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { DetailPage } from '@/features/shell/detail-page';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
@@ -76,19 +77,21 @@ export function RecipeDetail(props: RecipeDetailProps) {
   const router = useRouter();
   if (!recipe) {
     return (
-      <EmptyState
-        icon="book-open"
-        title="Rezept nicht gefunden"
-        text="Vielleicht wurde es in einem anderen Haushalt angelegt."
-        testID="recipe-not-found"
-      >
-        <Button
-          label="Zu den Rezepten"
-          icon="arrow-left"
-          onPress={() => router.replace('/rezepte')}
-          testID="recipe-not-found-back"
-        />
-      </EmptyState>
+      <DetailPage onBack={props.onBack} title="Rezept" tone="essen" testID="recipe-screen">
+        <EmptyState
+          icon="book-open"
+          title="Rezept nicht gefunden"
+          text="Vielleicht wurde es in einem anderen Haushalt angelegt."
+          testID="recipe-not-found"
+        >
+          <Button
+            label="Zu den Rezepten"
+            icon="arrow-left"
+            onPress={() => router.replace('/rezepte')}
+            testID="recipe-not-found-back"
+          />
+        </EmptyState>
+      </DetailPage>
     );
   }
   // A new recipe starts with fresh local state (portions, variant).
@@ -155,9 +158,11 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
 
   const titleBlock = (
     <Stack gap={10} style={{ flex: 1, minWidth: 0 }}>
-      <Text variant={wide ? 'display' : 'title'} heading testID="recipe-title">
-        {recipe.title}
-      </Text>
+      {props.onBack ? null : (
+        <Text variant={wide ? 'display' : 'title'} heading testID="recipe-title">
+          {recipe.title}
+        </Text>
+      )}
       {recipe.description ? <Text color="muted">{recipe.description}</Text> : null}
       <Row gap={12} wrap>
         {recipe.totalMinutes !== undefined ? (
@@ -221,13 +226,12 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
   const ingredientsBlock = (
     <Section
       title="Zutaten"
-      tone="essen"
       testID="recipe-ingredients"
       action={<ServingsStepper value={shownServings} onChange={setServings} />}
     >
       {recipe.variants.length > 0 && activeVariantId ? (
         <View testID="variant-select" style={{ marginBottom: 12 }}>
-          <Segmented
+          <ChoiceChips
             label="Variante"
             testID="variant"
             value={activeVariantId}
@@ -298,7 +302,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
   );
 
   const stepsBlock = (
-    <Section title="Zubereitung" tone="essen" testID="recipe-steps">
+    <Section title="Zubereitung" testID="recipe-steps">
       {steps.length === 0 ? (
         <Text color="muted">Noch keine Schritte.</Text>
       ) : (
@@ -324,87 +328,100 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
     </Section>
   );
 
+  const favorite = (
+    <FavoriteButton
+      active={isFavorite}
+      disabled={online.disabled}
+      onPress={() => toggleFavorite(recipe.id)}
+    />
+  );
+
   return (
-    <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} testID="recipe-detail">
-      <Row justify="space-between" style={{ marginBottom: 8, marginLeft: props.onBack ? -8 : 0 }}>
-        {props.onBack ? (
-          <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
-        ) : props.onClose ? (
-          <IconButton
-            icon="x"
-            label="Rezept schließen"
-            onPress={props.onClose}
-            testID="recipe-close"
-          />
-        ) : (
-          <View />
+    <DetailPage
+      onBack={props.onBack}
+      title={recipe.title}
+      titleTestID="recipe-title"
+      right={favorite}
+      tone="essen"
+      testID="recipe-screen"
+    >
+      <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} testID="recipe-detail">
+        {props.onBack ? null : (
+          <Row justify="space-between" style={{ marginBottom: 8 }}>
+            {props.onClose ? (
+              <IconButton
+                icon="x"
+                label="Rezept schließen"
+                onPress={props.onClose}
+                testID="recipe-close"
+              />
+            ) : (
+              <View />
+            )}
+            {favorite}
+          </Row>
         )}
-        <FavoriteButton
-          active={isFavorite}
-          disabled={online.disabled}
-          onPress={() => toggleFavorite(recipe.id)}
-        />
-      </Row>
 
-      {heroRow ? (
-        <Row gap={24} align="flex-start" style={{ marginBottom: 28 }}>
-          <Stack gap={4} style={{ width: wide ? 320 : 240 }}>
-            <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
-            <PhotoActions recipe={recipe} />
+        {heroRow ? (
+          <Row gap={24} align="flex-start" style={{ marginBottom: 28 }}>
+            <Stack gap={4} style={{ width: wide ? 320 : 240 }}>
+              <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
+              <PhotoActions recipe={recipe} />
+            </Stack>
+            {titleBlock}
+          </Row>
+        ) : (
+          <Stack gap={16} style={{ marginBottom: 24 }}>
+            <Stack gap={4}>
+              <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
+              <PhotoActions recipe={recipe} />
+            </Stack>
+            {titleBlock}
           </Stack>
-          {titleBlock}
-        </Row>
-      ) : (
-        <Stack gap={16} style={{ marginBottom: 24 }}>
-          <Stack gap={4}>
-            <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
-            <PhotoActions recipe={recipe} />
-          </Stack>
-          {titleBlock}
-        </Stack>
-      )}
+        )}
 
-      {recipe.leadTime ? (
-        <View style={{ marginBottom: 20 }}>
-          <Notice
-            icon="alarm-clock"
-            text={`Vorlauf: ${recipe.leadTime.text}`}
-            testID="recipe-lead-time"
-          />
-        </View>
-      ) : null}
+        {recipe.leadTime ? (
+          <View style={{ marginBottom: 20 }}>
+            <Notice
+              icon="alarm-clock"
+              text={`Vorlauf: ${recipe.leadTime.text}`}
+              testID="recipe-lead-time"
+            />
+          </View>
+        ) : null}
 
-      {wide ? (
-        <Row gap={32} align="flex-start">
-          <View style={{ flex: 1 }}>{ingredientsBlock}</View>
-          <View style={{ flex: 1.2 }}>{stepsBlock}</View>
-        </Row>
-      ) : (
-        <>
-          {ingredientsBlock}
-          {stepsBlock}
-        </>
-      )}
+        {wide ? (
+          <Row gap={32} align="flex-start">
+            <View style={{ flex: 1 }}>{ingredientsBlock}</View>
+            <View style={{ flex: 1.2 }}>{stepsBlock}</View>
+          </Row>
+        ) : (
+          <>
+            {ingredientsBlock}
+            {stepsBlock}
+          </>
+        )}
 
-      {recipe.notes ? (
-        <Section title="Notizen" testID="recipe-notes">
-          <Text>{recipe.notes}</Text>
-        </Section>
-      ) : null}
+        {recipe.notes ? (
+          <Section title="Notizen" testID="recipe-notes">
+            <Text>{recipe.notes}</Text>
+          </Section>
+        ) : null}
 
-      <IngredientsPasteSheet
-        recipeId={recipe.id}
-        visible={pasteOpen}
-        onClose={() => setPasteOpen(false)}
-      />
-      {noteFor ? (
-        <IngredientNoteSheet
+        <IngredientsPasteSheet
           recipeId={recipe.id}
-          ingredient={noteFor}
-          onClose={() => setNoteFor(undefined)}
+          visible={pasteOpen}
+          onClose={() => setPasteOpen(false)}
         />
-      ) : null}
-    </View>
+        {noteFor ? (
+          <IngredientNoteSheet
+            recipeId={recipe.id}
+            ingredient={noteFor}
+            onClose={() => setNoteFor(undefined)}
+          />
+        ) : null}
+      </View>
+    </DetailPage>
   );
 }
 
@@ -538,6 +555,7 @@ function IngredientNoteSheet(props: {
       onClose={props.onClose}
       title="Einkaufs-Zusatz"
       testID="ingredient-note-sheet"
+      size="m"
       footer={
         <Button
           label="Speichern"

@@ -38,6 +38,7 @@ export function SpontaneousSheet(props: { visible: boolean; onClose: () => void 
       onClose={close}
       title="Was anderes erledigt?"
       testID="chores-spontaneous-sheet"
+      size="m"
       footer={
         <Button
           label="Eintragen"

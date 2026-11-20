@@ -119,6 +119,7 @@ test('AC-021: a new recipe "Linsen-Dal" is first when sorted by "Neu"; no title,
   page,
 }) => {
   await open(page, '/rezepte');
+  await tid(page, 'recipe-sort').click();
   await tid(page, 'recipe-sort-new').click();
   const before = Number((await tid(page, 'recipe-count').innerText()).match(/\d+/)?.[0]);
 

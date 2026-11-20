@@ -90,7 +90,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   };
 
   return (
-    <Sheet visible onClose={props.onClose} title={title} testID="entry-sheet">
+    <Sheet visible onClose={props.onClose} title={title} testID="entry-sheet" size="m">
       <Stack gap={20}>
         {online.hint ? (
           <Text variant="small" color="warn">

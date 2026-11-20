@@ -77,6 +77,9 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
   const [rows, setRows] = useState<PantryCheckRow[] | undefined>();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showPantry, setShowPantry] = useState(false);
+  // Expanding "Vorrat & Gewürze" grows the small window to large once; it stays large until it
+  // closes (spec 0005, AC-019). The sheet unmounts on close, which resets this.
+  const [grown, setGrown] = useState(false);
 
   const chosenEntries = [...days].flatMap(recipeEntriesOn);
   const dishes = [
@@ -130,6 +133,7 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
         onClose={props.onClose}
         title="Welche Tage?"
         testID="pantry-check-sheet"
+        size="s"
         footer={
           <Button
             label="Weiter"
@@ -204,6 +208,7 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
       onClose={props.onClose}
       title="Was brauchst du wirklich?"
       testID="pantry-check-sheet"
+      size={grown ? 'l' : 's'}
       footer={
         <Row gap={10}>
           <Button
@@ -243,7 +248,10 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
                 accessibilityRole="button"
                 accessibilityState={{ expanded: showPantry }}
                 accessibilityLabel={`Vorrat & Gewürze (${pantry.length})`}
-                onPress={() => setShowPantry(!showPantry)}
+                onPress={() => {
+                  setShowPantry(!showPantry);
+                  setGrown(true);
+                }}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',

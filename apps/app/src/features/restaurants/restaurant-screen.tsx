@@ -1,5 +1,4 @@
 import { routeId } from '@housekeeping/core';
-import { Screen } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { RestaurantDetail } from './restaurant-detail';
@@ -13,9 +12,5 @@ export function RestaurantScreen() {
   // To the restaurants of "Essen", also after a deep link: the stack's first page would otherwise
   // keep the restaurant id as a recipe id (spec 0005, AC-004).
   const back = () => router.dismissTo({ pathname: '/rezepte', params: { view: 'restaurants' } });
-  return (
-    <Screen testID="restaurant-screen" maxWidth={820}>
-      <RestaurantDetail restaurantId={id ?? ''} onBack={back} />
-    </Screen>
-  );
+  return <RestaurantDetail restaurantId={id ?? ''} onBack={back} />;
 }

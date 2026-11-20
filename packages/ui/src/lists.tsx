@@ -4,17 +4,11 @@ import { Pressable, View, type ViewStyle } from 'react-native';
 import { Checkbox, IconButton, focusRing } from './controls';
 import { Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
-import type { Tone } from './themes';
 
 export interface SectionProps {
   title?: string;
   /** Short text on the right of the title, e.g. "ca. 4 Punkte". */
   meta?: string;
-  /**
-   * @deprecated No theme paints sections any more (spec 0005, D4: one area colour per screen, set
-   * by `Screen`'s `tone`). Ignored; remove it when touching the screen.
-   */
-  tone?: Tone;
   /** Element on the right of the title instead of `meta`, e.g. a small button. */
   action?: ReactNode;
   children?: ReactNode;

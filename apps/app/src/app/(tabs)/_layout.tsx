@@ -21,7 +21,7 @@ import { features } from '@/lib/features';
 // The keys stay the test ids of the tab bar and the sidebar (`tab-rezepte`, `nav-liste`); the
 // areas with their own stack are route groups, so their pages keep their addresses.
 const NAV: NavItem[] = [
-  { key: 'index', label: 'Heute', icon: 'sun', tone: 'essen' },
+  { key: 'index', label: 'Übersicht', icon: 'sun', tone: 'essen' },
   { key: 'rezepte', label: 'Essen', icon: 'utensils', tone: 'essen' },
   { key: 'plan', label: 'Plan', icon: 'calendar-days', tone: 'plan' },
   { key: 'liste', label: 'Liste', icon: 'shopping-basket', tone: 'liste' },
@@ -74,7 +74,7 @@ export default function TabsLayout() {
           sceneStyle: { backgroundColor: theme.colors.bg },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Heute' }} />
+        <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
         <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
         <Tabs.Screen name="plan" options={{ title: 'Plan' }} />
         <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />

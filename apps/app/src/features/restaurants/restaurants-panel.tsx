@@ -12,10 +12,11 @@ import {
   EmptyState,
   Icon,
   IconButton,
+  Menu,
   Row,
   Screen,
   ScreenHeader,
-  Segmented,
+  Stack,
   Stars,
   Surface,
   Text,
@@ -150,22 +151,16 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
       }
     />
   );
-  const top = (
-    <>
-      {header}
-      <View style={{ marginBottom: 16 }}>{props.switcher}</View>
-      {online.hint ? (
-        <Text
-          variant="small"
-          color="warn"
-          testID="restaurant-offline-hint"
-          style={{ marginTop: -4, marginBottom: 12 }}
-        >
-          {online.hint}
-        </Text>
-      ) : null}
-    </>
-  );
+  const offlineHint = online.hint ? (
+    <Text
+      variant="small"
+      color="warn"
+      testID="restaurant-offline-hint"
+      style={{ marginBottom: 12 }}
+    >
+      {online.hint}
+    </Text>
+  ) : null;
 
   const sheets = sheetRequest ? (
     <AddRestaurantSheet
@@ -179,8 +174,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
 
   if (restaurants.length === 0) {
     return (
-      <Screen testID="restaurants-screen">
-        {top}
+      <Screen testID="restaurants-screen" tone="essen" header={header} tabs={props.switcher}>
+        {offlineHint}
         <EmptyState
           icon="utensils"
           title="Noch keine Restaurants"
@@ -212,8 +207,9 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
 
   const compact = selectedId !== undefined;
   const columns = isPhone || compact ? 1 : bp === 'desktop' ? 3 : 2;
-  const listBody = (
-    <>
+  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const toolbar = (
+    <Stack gap={8}>
       <TextField
         round
         value={query}
@@ -232,15 +228,23 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
             />
           ) : undefined
         }
-        style={{ marginBottom: 12 }}
         testID="restaurant-search"
       />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-        style={{ marginBottom: 12, flexGrow: 0 }}
+        style={{ flexGrow: 0 }}
       >
+        <Menu
+          label={sortLabel}
+          accessibilityLabel={`Sortierung: ${sortLabel}`}
+          icon="arrow-up-down"
+          value={sort}
+          onChange={setSort}
+          options={SORTS}
+          testID="restaurant-sort"
+        />
         <Chip
           label="Favoriten"
           icon="heart"
@@ -249,15 +253,10 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
           testID="rfilter-favorites"
         />
       </ScrollView>
-      <View style={{ marginBottom: 12 }}>
-        <Segmented
-          label="Sortierung"
-          value={sort}
-          onChange={setSort}
-          options={SORTS}
-          testID="restaurant-sort"
-        />
-      </View>
+    </Stack>
+  );
+  const listBody = (
+    <>
       <Text variant="small" color="muted" testID="restaurant-count" style={{ marginBottom: 12 }}>
         {results.length === 1 ? '1 Restaurant' : `${results.length} Restaurants`}
       </Text>
@@ -292,17 +291,25 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
 
   if (compact && selectedId !== undefined) {
     return (
-      <Screen testID="restaurants-screen" scroll={false} style={{ flex: 1, paddingBottom: 0 }}>
+      <Screen
+        testID="restaurants-screen"
+        tone="essen"
+        header={header}
+        tabs={props.switcher}
+        scroll={false}
+        style={{ flex: 1, paddingBottom: 0 }}
+      >
         <View style={{ flex: 1, flexDirection: 'row', gap: 32 }}>
           <View style={{ width: LIST_COLUMN_WIDTH }}>
             <ScrollColumn>
-              {top}
+              <View style={{ paddingVertical: 8 }}>{toolbar}</View>
+              {offlineHint}
               {listBody}
             </ScrollColumn>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <ScrollColumn>
-              <View style={{ paddingTop: 16 }}>
+              <View style={{ paddingTop: 8 }}>
                 <RestaurantDetail
                   restaurantId={selectedId}
                   onClose={() => router.setParams({ rid: undefined })}
@@ -317,8 +324,14 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
   }
 
   return (
-    <Screen testID="restaurants-screen">
-      {top}
+    <Screen
+      testID="restaurants-screen"
+      tone="essen"
+      header={header}
+      tabs={props.switcher}
+      toolbar={toolbar}
+    >
+      {offlineHint}
       {listBody}
       {sheets}
     </Screen>

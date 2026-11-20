@@ -1,0 +1,38 @@
+import { Screen, ScreenHeader, type Tone } from '@housekeeping/ui';
+import type { ReactNode } from 'react';
+
+export interface DetailPageProps {
+  /** Set on its own page; without it (split view on wide screens) only the content renders. */
+  onBack?: () => void;
+  title: string;
+  titleTestID?: string;
+  /** Actions in the header, e.g. the favourite; they stay in the narrow bar. */
+  right?: ReactNode;
+  tone?: Tone;
+  testID?: string;
+  children?: ReactNode;
+}
+
+/**
+ * A recipe, restaurant or activity on its own page: the header with "Zurück", title and actions
+ * stays at the top while the page scrolls (spec 0005, AC-001, AC-002).
+ */
+export function DetailPage(props: DetailPageProps) {
+  if (!props.onBack) return <>{props.children}</>;
+  return (
+    <Screen
+      testID={props.testID}
+      tone={props.tone}
+      header={
+        <ScreenHeader
+          title={props.title}
+          onBack={props.onBack}
+          right={props.right}
+          testID={props.titleTestID}
+        />
+      }
+    >
+      {props.children}
+    </Screen>
+  );
+}

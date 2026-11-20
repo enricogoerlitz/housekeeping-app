@@ -655,8 +655,8 @@ abgehakten Zeilen gemeinsam weg. Wann gespeichert wird, legt der Bildschirm fest
 und Packstücke sofort beim Tipp (Spec 0006; Spec 0012, Offene Frage 3), Aufgaben erst beim Ablauf
 (Spec 0011); Spec 0005, REQ-005.
 
-- **Im Code (vorläufig):** Abhak-Baustein in `packages/ui`; die 2 Sekunden stehen an genau einer
-  Stelle
+- **Im Code:** `useCheckWindow` mit `RowTransition` in `packages/ui`; die 2 Sekunden stehen an
+  genau einer Stelle, `CHECK_WINDOW_MS`
 - **Nicht verwenden:** Verzögerung, Debounce (außer im Code), Rückgängig-Fenster
 - **Abgrenzung:** Im Vorratscheck ist der Haken eine Auswahl, kein Abhaken.
 

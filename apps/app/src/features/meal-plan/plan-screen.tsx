@@ -8,9 +8,9 @@ import {
   Screen,
   ScreenHeader,
   Section,
-  Segmented,
   Stack,
   Text,
+  ViewTabs,
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
@@ -78,36 +78,31 @@ function DayHeading(props: { date: ISODate; today: ISODate }) {
 export function PlanScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ view?: string | string[] }>();
-  const { isPhone } = useBreakpoint();
   const view: PlanView =
     (Array.isArray(params.view) ? params.view[0] : params.view) === 'activities'
       ? 'activities'
       : 'week';
-  const header = (right: ReactNode, subtitle?: string) => (
-    <>
-      <ScreenHeader title="Plan" subtitle={subtitle} right={right} />
-      <View style={{ marginBottom: 16, maxWidth: isPhone ? undefined : 420 }}>
-        <Segmented
-          label="Woche oder Aktivitäten"
-          value={view}
-          onChange={(next) =>
-            router.setParams({
-              view: next === 'activities' ? 'activities' : undefined,
-              aid: undefined,
-            })
-          }
-          options={PLAN_VIEWS}
-          testID="plan-view"
-        />
-      </View>
-    </>
+  const header = (right: ReactNode) => <ScreenHeader title="Plan" right={right} />;
+  const tabs = (
+    <ViewTabs
+      label="Woche oder Aktivitäten"
+      value={view}
+      onChange={(next) =>
+        router.setParams({
+          view: next === 'activities' ? 'activities' : undefined,
+          aid: undefined,
+        })
+      }
+      options={PLAN_VIEWS}
+      testID="plan-view"
+    />
   );
-  if (view === 'activities') return <ActivitiesPanel header={header} />;
-  return <WeekPlan header={header} />;
+  if (view === 'activities') return <ActivitiesPanel header={header} tabs={tabs} />;
+  return <WeekPlan header={header} tabs={tabs} />;
 }
 
 /** The week with its three Tageszeiten, "Auf die Einkaufsliste" and "Vorgemerkt". */
-function WeekPlan(props: { header: (right: ReactNode, subtitle?: string) => ReactNode }) {
+function WeekPlan(props: { header: (right: ReactNode) => ReactNode; tabs: ReactNode }) {
   const today = useToday();
   const household = useHousehold();
   const entries = usePlanEntries();
@@ -153,7 +148,8 @@ function WeekPlan(props: { header: (right: ReactNode, subtitle?: string) => Reac
     </>
   );
 
-  const header = props.header(isPhone ? <StartPageActions /> : weekNav, weekSubtitle(dates));
+  // The week stays out of the header, so title and view tabs stand at the same place in both views.
+  const header = props.header(isPhone ? <StartPageActions /> : weekNav);
 
   const toList = (
     <View
@@ -184,7 +180,6 @@ function WeekPlan(props: { header: (right: ReactNode, subtitle?: string) => Reac
   const laterSection = (
     <Section
       title="Vorgemerkt"
-      tone="plan"
       testID="planned-later"
       action={
         lastSlotId ? (
@@ -322,8 +317,10 @@ function WeekPlan(props: { header: (right: ReactNode, subtitle?: string) => Reac
   }
 
   return (
-    <Screen maxWidth={bp === 'desktop' ? 1400 : undefined}>
-      {header}
+    <Screen tone="plan" header={header} tabs={props.tabs}>
+      <Text variant="small" color="muted" testID="week-subtitle" style={{ marginBottom: 10 }}>
+        {weekSubtitle(dates)}
+      </Text>
       {toList}
       {week}
       {laterSection}
