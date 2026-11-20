@@ -13,7 +13,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@housekeeping/core": "workspace:*"
+    "@housekeeping/core": "workspace:*",
+    "@supabase/supabase-js": "2.119.0",
+    "idb-keyval": "6.3.0",
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "react": "*"

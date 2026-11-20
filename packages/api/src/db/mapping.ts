@@ -1,0 +1,798 @@
+// Domain objects ⇄ database rows. Pure functions; no I/O.
+//
+// Rows use the database's snake_case columns; the jsonb columns of recipes keep the domain's
+// camelCase objects (the edge functions read them that way). Per-member tables (favourites,
+// ratings, votes) fold into `favoriteOf`, `ratings` and `votes`.
+//
+// Documented normalisations (a round trip is equal modulo these):
+// - null in a row ⇄ undefined (missing) in the domain; `not_cooked` / `not_available` false ⇄
+//   undefined.
+// - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
+// - `name_key` / `synonym_keys` are always recomputed with `normalizeText`.
+// - Columns the domain does not have are not written back: `updated_at`, `check_seq`,
+//   `profiles.email`, and `created_at` of tables whose domain type has no `createdAt`.
+// - Order: areas by `sort`; recipes, restaurants and feedback newest first; chore events by day,
+//   newest first; everything else in creation order. Ties keep the order of the rows, rows
+//   without `created_at` (local, not yet on the server) count as newest.
+// - `pendingSync` is client-only: it is set from the store queue, never stored.
+import {
+  compareTimestamps,
+  normalizeText,
+  type Absence,
+  type Area,
+  type Article,
+  type Chore,
+  type ChoreEvent,
+  type FeedbackEntry,
+  type Household,
+  type MealPlanEntry,
+  type Member,
+  type Recipe,
+  type Restaurant,
+  type Row,
+  type ShoppingContribution,
+  type ShoppingItem,
+  type ShoppingList,
+  type SmallRow,
+  type Store,
+  type TableRows,
+} from '@housekeeping/core';
+
+import type { HouseholdData } from '../store';
+import type { Database, Json, Tables } from './types.gen';
+
+/** Rows per table, as written by `householdToRows`. */
+export type HouseholdRows = Record<string, Row[]>;
+
+type TableName = keyof Database['public']['Tables'];
+/** A row as it may be cached: local inserts lack the server columns. */
+type Cached<T extends TableName> = Partial<Tables<T>> & { id: string };
+
+const opt = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+/** Domain jsonb values are plain JSON by construction (no functions, no dates). */
+const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;
+
+// ---------------------------------------------------------------------------------------------
+// Domain → rows
+// ---------------------------------------------------------------------------------------------
+
+const rowCache = new WeakMap<object, { householdId: string; rows: HouseholdRows }>();
+
+/** Rows of one domain object, cached per object so unchanged objects give the same rows. */
+function rowsOf(householdId: string, entity: object, build: () => HouseholdRows): HouseholdRows {
+  const hit = rowCache.get(entity);
+  if (hit && hit.householdId === householdId) return hit.rows;
+  const rows = build();
+  rowCache.set(entity, { householdId, rows });
+  return rows;
+}
+
+function memberRows(
+  householdId: string,
+  table: string,
+  key: string,
+  entityId: string,
+  memberIds: readonly string[],
+): Row[] {
+  return memberIds.map((memberId) => ({
+    id: `${entityId}:${memberId}`,
+    household_id: householdId,
+    [key]: entityId,
+    member_id: memberId,
+  }));
+}
+
+function ratingRows(
+  householdId: string,
+  key: string,
+  entityId: string,
+  ratings: Record<string, number>,
+): Row[] {
+  return Object.entries(ratings).map(([memberId, stars]) => ({
+    id: `${entityId}:${memberId}`,
+    household_id: householdId,
+    [key]: entityId,
+    member_id: memberId,
+    stars,
+  }));
+}
+
+function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
+  return rowsOf(householdId, recipe, () => ({
+    recipes: [
+      {
+        id: recipe.id,
+        household_id: householdId,
+        title: recipe.title,
+        photo: recipe.photo ?? null,
+        description: recipe.description ?? null,
+        servings: recipe.servings,
+        total_minutes: recipe.totalMinutes ?? null,
+        course: recipe.course,
+        cuisine: recipe.cuisine ?? null,
+        tags: recipe.tags,
+        variants: json(recipe.variants),
+        ingredients: json(recipe.ingredients),
+        steps: json(recipe.steps),
+        lead_time: recipe.leadTime ? json(recipe.leadTime) : null,
+        notes: recipe.notes ?? null,
+        last_cooked_on: recipe.lastCookedOn ?? null,
+        cooked_count: recipe.cookedCount,
+        source: recipe.source ?? null,
+        ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
+      } satisfies Cached<'recipes'>,
+    ],
+    recipe_favorites: memberRows(
+      householdId,
+      'recipe_favorites',
+      'recipe_id',
+      recipe.id,
+      recipe.favoriteOf,
+    ),
+    recipe_ratings: ratingRows(householdId, 'recipe_id', recipe.id, recipe.ratings),
+  }));
+}
+
+function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdRows {
+  return rowsOf(householdId, restaurant, () => ({
+    restaurants: [
+      {
+        id: restaurant.id,
+        household_id: householdId,
+        name: restaurant.name,
+        address: restaurant.address ?? null,
+        lat: restaurant.location?.lat ?? null,
+        lng: restaurant.location?.lng ?? null,
+        maps_url: restaurant.mapsUrl ?? null,
+        cuisine: restaurant.cuisine ?? null,
+        price_level: restaurant.priceLevel ?? null,
+        tags: restaurant.tags,
+        notes: restaurant.notes ?? null,
+        ...(restaurant.createdAt ? { created_at: restaurant.createdAt } : {}),
+      } satisfies Cached<'restaurants'>,
+    ],
+    restaurant_favorites: memberRows(
+      householdId,
+      'restaurant_favorites',
+      'restaurant_id',
+      restaurant.id,
+      restaurant.favoriteOf,
+    ),
+    restaurant_ratings: ratingRows(householdId, 'restaurant_id', restaurant.id, restaurant.ratings),
+  }));
+}
+
+function feedbackRows(householdId: string, entry: FeedbackEntry): HouseholdRows {
+  return rowsOf(householdId, entry, () => ({
+    feedback: [
+      {
+        id: entry.id,
+        household_id: householdId,
+        kind: entry.kind,
+        text: entry.text,
+        status: entry.status,
+        author_id: entry.authorId || null,
+        screen: entry.screen ?? null,
+        reason: entry.reason ?? null,
+        spec_ref: entry.specRef ?? null,
+        ...(entry.createdAt ? { created_at: entry.createdAt } : {}),
+      } satisfies Cached<'feedback'>,
+    ],
+    feedback_votes: memberRows(householdId, 'feedback_votes', 'feedback_id', entry.id, entry.votes),
+  }));
+}
+
+function itemRows(householdId: string, item: ShoppingItem): HouseholdRows {
+  return rowsOf(householdId, item, () => ({
+    shopping_items: [
+      {
+        id: item.id,
+        household_id: householdId,
+        list_id: item.listId,
+        article_id: item.articleId,
+        checked: item.checked,
+        checked_at: item.checkedAt ?? null,
+        checked_by: item.checkedBy ?? null,
+        not_available: item.notAvailable ?? false,
+        ...(item.createdAt ? { created_at: item.createdAt } : {}),
+      } satisfies Cached<'shopping_items'>,
+    ],
+    shopping_contributions: item.contributions.map(
+      (contribution) =>
+        ({
+          id: contribution.id,
+          household_id: householdId,
+          item_id: item.id,
+          source: json(contribution.source),
+          count: contribution.count ?? null,
+          qty: contribution.qty ?? null,
+          unit: contribution.unit ?? null,
+          note: contribution.note ?? null,
+        }) satisfies Cached<'shopping_contributions'>,
+    ),
+  }));
+}
+
+function single(table: string, householdId: string, entity: object, row: () => Row): HouseholdRows {
+  return rowsOf(householdId, entity, () => ({ [table]: [row()] }));
+}
+
+const areaRow = (householdId: string, area: Area) =>
+  single('areas', householdId, area, () => ({
+    id: area.id,
+    household_id: householdId,
+    name: area.name,
+    sort: area.sort,
+  }));
+
+const articleRow = (householdId: string, article: Article) =>
+  single('articles', householdId, article, () => ({
+    id: article.id,
+    household_id: householdId,
+    name: article.name,
+    name_key: normalizeText(article.name),
+    synonyms: article.synonyms,
+    synonym_keys: article.synonyms.map(normalizeText),
+    area_id: article.areaId ?? null,
+    diet: article.diet,
+    is_pantry: article.isPantry,
+  }));
+
+const storeRow = (householdId: string, store: Store) =>
+  single('stores', householdId, store, () => ({
+    id: store.id,
+    household_id: householdId,
+    name: store.name,
+    area_order: store.areaOrder,
+    hidden_area_ids: store.hiddenAreaIds,
+  }));
+
+const listRow = (householdId: string, list: ShoppingList) =>
+  single('shopping_lists', householdId, list, () => ({
+    id: list.id,
+    household_id: householdId,
+    name: list.name,
+    is_default: list.isDefault,
+    store_id: list.storeId ?? null,
+  }));
+
+const planRow = (householdId: string, entry: MealPlanEntry) =>
+  single('meal_plan_entries', householdId, entry, () => ({
+    id: entry.id,
+    household_id: householdId,
+    date: entry.date,
+    slot_id: entry.slotId,
+    kind: entry.kind,
+    recipe_id: entry.recipeId ?? null,
+    restaurant_id: entry.restaurantId ?? null,
+    text: entry.text ?? null,
+    leftovers_of_entry_id: entry.leftoversOfEntryId ?? null,
+    eater_ids: entry.eaterIds,
+    guests: entry.guests,
+    portions: entry.portions,
+    variants: json(entry.variants),
+    cook_id: entry.cookId ?? null,
+    sort: entry.sort,
+    not_cooked: entry.notCooked ?? false,
+  }));
+
+const choreRow = (householdId: string, chore: Chore) =>
+  single('chores', householdId, chore, () => ({
+    id: chore.id,
+    household_id: householdId,
+    title: chore.title,
+    room: chore.room ?? null,
+    recurrence: json(chore.recurrence),
+    assignment: json(chore.assignment),
+    effort: chore.effort,
+    next_due_on: chore.nextDueOn ?? null,
+    next_assignee_id: chore.nextAssigneeId ?? null,
+    last_done_on: chore.lastDoneOn ?? null,
+    active_months: chore.activeMonths ?? null,
+  }));
+
+const choreEventRow = (householdId: string, event: ChoreEvent) =>
+  single('chore_events', householdId, event, () => ({
+    id: event.id,
+    household_id: householdId,
+    chore_id: event.choreId ?? null,
+    title: event.title,
+    kind: event.kind,
+    done_on: event.doneOn,
+    done_by: event.doneBy || null,
+  }));
+
+const absenceRow = (householdId: string, absence: Absence) =>
+  single('absences', householdId, absence, () => ({
+    id: absence.id,
+    household_id: householdId,
+    member_id: absence.memberId ?? null,
+    from_on: absence.from,
+    to_on: absence.to,
+    note: absence.note ?? null,
+  }));
+
+function householdRows(household: Household): HouseholdRows {
+  return rowsOf(household.id, household, () => ({
+    households: [
+      {
+        id: household.id,
+        name: household.name,
+        meal_slots: json(household.mealSlots),
+        default_list_id: household.defaultListId || null,
+        default_store_id: household.defaultStoreId ?? null,
+      },
+    ],
+    // household_members has no id of its own; "household:profile" like the composite tables.
+    household_members: household.memberIds.map((profileId) => ({
+      id: `${household.id}:${profileId}`,
+      household_id: household.id,
+      profile_id: profileId,
+    })),
+  }));
+}
+
+/** All rows of one household, by table. Unchanged domain objects give identical row objects. */
+export function householdToRows(data: HouseholdData): HouseholdRows {
+  const householdId = data.household.id;
+  const parts: HouseholdRows[] = [
+    householdRows(data.household),
+    ...data.areas.map((area) => areaRow(householdId, area)),
+    ...data.articles.map((article) => articleRow(householdId, article)),
+    ...data.stores.map((store) => storeRow(householdId, store)),
+    ...data.lists.map((list) => listRow(householdId, list)),
+    ...data.recipes.map((recipe) => recipeRows(householdId, recipe)),
+    ...data.restaurants.map((restaurant) => restaurantRows(householdId, restaurant)),
+    ...data.planEntries.map((entry) => planRow(householdId, entry)),
+    ...data.items.map((item) => itemRows(householdId, item)),
+    ...data.chores.map((chore) => choreRow(householdId, chore)),
+    ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
+    ...data.absences.map((absence) => absenceRow(householdId, absence)),
+    ...data.feedback.map((entry) => feedbackRows(householdId, entry)),
+  ];
+  const result: HouseholdRows = {
+    households: [],
+    household_members: [],
+    areas: [],
+    articles: [],
+    stores: [],
+    shopping_lists: [],
+    recipes: [],
+    recipe_favorites: [],
+    recipe_ratings: [],
+    restaurants: [],
+    restaurant_favorites: [],
+    restaurant_ratings: [],
+    meal_plan_entries: [],
+    shopping_items: [],
+    shopping_contributions: [],
+    chores: [],
+    chore_events: [],
+    absences: [],
+    feedback: [],
+    feedback_votes: [],
+  };
+  for (const part of parts) {
+    for (const [table, rows] of Object.entries(part)) {
+      const target = result[table];
+      if (target) target.push(...rows);
+      else result[table] = [...rows];
+    }
+  }
+  return result;
+}
+
+const profileCache = new WeakMap<Member, Row>();
+
+/** Profiles of the given members (without email, which the domain does not carry). */
+export function membersToRows(members: readonly Member[]): HouseholdRows {
+  return {
+    profiles: members.map((member) => {
+      const hit = profileCache.get(member);
+      if (hit) return hit;
+      const row: Row = {
+        id: member.id,
+        name: member.name,
+        color: member.color,
+        diet_preference: member.dietPreference,
+        dislikes: member.dislikes,
+      };
+      profileCache.set(member, row);
+      return row;
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rows → domain
+// ---------------------------------------------------------------------------------------------
+
+const entityCache = new WeakMap<object, { deps: readonly unknown[]; value: unknown }>();
+
+function sameItems(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+/** Builds the domain object of a row once; again only when the row or a dependency changed. */
+function cached<T>(row: object, deps: readonly unknown[], build: () => T): T {
+  const hit = entityCache.get(row);
+  if (hit && sameItems(hit.deps, deps)) return hit.value as T;
+  const value = build();
+  entityCache.set(row, { deps, value });
+  return value;
+}
+
+/** The previous array when it holds the same objects in the same order. */
+function reuse<T>(previous: T[] | undefined, next: T[]): T[] {
+  return previous && sameItems(previous, next) ? previous : next;
+}
+
+type Order = 'created' | 'newest' | 'sort' | 'doneOn';
+
+function createdAtOf(row: Row | SmallRow): string | undefined {
+  return typeof row.created_at === 'string' ? row.created_at : undefined;
+}
+
+/** -1 when a was created before b; rows without created_at are local and count as newest. */
+function compareCreated(a: Row | SmallRow, b: Row | SmallRow): number {
+  const left = createdAtOf(a);
+  const right = createdAtOf(b);
+  if (left === undefined || right === undefined) {
+    return left === right ? 0 : left === undefined ? 1 : -1;
+  }
+  return compareTimestamps(left, right);
+}
+
+function sorted<T extends Row | SmallRow>(rows: T[], order: Order): T[] {
+  const copy = [...rows];
+  if (order === 'sort') return copy.sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0));
+  if (order === 'created') return copy.sort(compareCreated);
+  if (order === 'newest') return copy.sort((a, b) => compareCreated(b, a));
+  return copy.sort(
+    (a, b) =>
+      String(b.done_on ?? '').localeCompare(String(a.done_on ?? '')) || compareCreated(b, a),
+  );
+}
+
+function rowsOfTable(tables: TableRows, table: string, order: Order): Row[] {
+  return sorted(Object.values(tables[table] ?? {}), order);
+}
+
+function groupBy(rows: Row[], key: string): Map<string, Row[]> {
+  const groups = new Map<string, Row[]>();
+  for (const row of rows) {
+    const value = String(row[key]);
+    const group = groups.get(value);
+    if (group) group.push(row);
+    else groups.set(value, [row]);
+  }
+  return groups;
+}
+
+function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
+  const r = row as Cached<'recipes'>;
+  return {
+    id: r.id,
+    title: r.title ?? '',
+    photo: opt(r.photo),
+    description: opt(r.description),
+    servings: r.servings ?? 2,
+    totalMinutes: opt(r.total_minutes),
+    course: (r.course ?? 'main') as Recipe['course'],
+    cuisine: opt(r.cuisine),
+    tags: r.tags ?? [],
+    variants: (r.variants ?? []) as unknown as Recipe['variants'],
+    ingredients: (r.ingredients ?? []) as unknown as Recipe['ingredients'],
+    steps: (r.steps ?? []) as unknown as Recipe['steps'],
+    leadTime: opt(r.lead_time) as Recipe['leadTime'],
+    favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
+    ratings: Object.fromEntries(
+      ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
+    ),
+    notes: opt(r.notes),
+    lastCookedOn: opt(r.last_cooked_on),
+    cookedCount: r.cooked_count ?? 0,
+    createdAt: r.created_at ?? '',
+    source: opt(r.source),
+  };
+}
+
+function toRestaurant(row: Row, favorites: Row[], ratings: Row[]): Restaurant {
+  const r = row as Cached<'restaurants'>;
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    address: opt(r.address),
+    location:
+      typeof r.lat === 'number' && typeof r.lng === 'number'
+        ? { lat: r.lat, lng: r.lng }
+        : undefined,
+    mapsUrl: opt(r.maps_url),
+    cuisine: opt(r.cuisine),
+    priceLevel: opt(r.price_level) as Restaurant['priceLevel'],
+    tags: r.tags ?? [],
+    notes: opt(r.notes),
+    favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
+    ratings: Object.fromEntries(
+      ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
+    ),
+    createdAt: r.created_at ?? '',
+  };
+}
+
+function toFeedback(row: Row, votes: Row[]): FeedbackEntry {
+  const r = row as Cached<'feedback'>;
+  return {
+    id: r.id,
+    kind: r.kind as FeedbackEntry['kind'],
+    text: r.text ?? '',
+    status: (r.status ?? 'new') as FeedbackEntry['status'],
+    authorId: r.author_id ?? '',
+    createdAt: r.created_at ?? '',
+    votes: votes.map((vote) => String(vote.member_id)),
+    screen: opt(r.screen),
+    reason: opt(r.reason),
+    specRef: opt(r.spec_ref),
+  };
+}
+
+function toContribution(row: Row): ShoppingContribution {
+  const r = row as Cached<'shopping_contributions'>;
+  return {
+    id: r.id,
+    source: (r.source ?? { kind: 'manual' }) as unknown as ShoppingContribution['source'],
+    count: opt(r.count),
+    qty: opt(r.qty),
+    unit: opt(r.unit),
+    note: opt(r.note),
+  };
+}
+
+function toItem(row: Row, contributions: Row[], pending: boolean): ShoppingItem {
+  const r = row as Cached<'shopping_items'>;
+  return {
+    id: r.id,
+    listId: r.list_id ?? '',
+    articleId: r.article_id ?? '',
+    contributions: contributions.map((contribution) =>
+      cached(contribution, [], () => toContribution(contribution)),
+    ),
+    checked: r.checked === true,
+    checkedAt: opt(r.checked_at),
+    checkedBy: opt(r.checked_by),
+    notAvailable: r.not_available ? true : undefined,
+    ...(pending ? { pendingSync: true } : {}),
+    createdAt: r.created_at ?? '',
+  };
+}
+
+function toArea(row: Row): Area {
+  const r = row as Cached<'areas'>;
+  return { id: r.id, name: r.name ?? '', sort: r.sort ?? 0 };
+}
+
+function toArticle(row: Row): Article {
+  const r = row as Cached<'articles'>;
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    synonyms: r.synonyms ?? [],
+    areaId: opt(r.area_id),
+    diet: (r.diet ?? 'unknown') as Article['diet'],
+    isPantry: r.is_pantry === true,
+  };
+}
+
+function toStore(row: Row): Store {
+  const r = row as Cached<'stores'>;
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    areaOrder: r.area_order ?? [],
+    hiddenAreaIds: r.hidden_area_ids ?? [],
+  };
+}
+
+function toList(row: Row): ShoppingList {
+  const r = row as Cached<'shopping_lists'>;
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    isDefault: r.is_default === true,
+    storeId: opt(r.store_id),
+  };
+}
+
+function toPlanEntry(row: Row): MealPlanEntry {
+  const r = row as Cached<'meal_plan_entries'>;
+  return {
+    id: r.id,
+    date: r.date ?? null,
+    slotId: r.slot_id ?? '',
+    kind: r.kind as MealPlanEntry['kind'],
+    recipeId: opt(r.recipe_id),
+    restaurantId: opt(r.restaurant_id),
+    text: opt(r.text),
+    leftoversOfEntryId: opt(r.leftovers_of_entry_id),
+    eaterIds: r.eater_ids ?? [],
+    guests: r.guests ?? 0,
+    portions: r.portions ?? 0,
+    variants: (r.variants ?? []) as unknown as MealPlanEntry['variants'],
+    cookId: opt(r.cook_id),
+    sort: r.sort ?? 0,
+    notCooked: r.not_cooked ? true : undefined,
+  };
+}
+
+function toChore(row: Row): Chore {
+  const r = row as Cached<'chores'>;
+  return {
+    id: r.id,
+    title: r.title ?? '',
+    room: opt(r.room),
+    recurrence: r.recurrence as unknown as Chore['recurrence'],
+    assignment: r.assignment as unknown as Chore['assignment'],
+    effort: (r.effort ?? 1) as Chore['effort'],
+    nextDueOn: opt(r.next_due_on),
+    nextAssigneeId: opt(r.next_assignee_id),
+    lastDoneOn: opt(r.last_done_on),
+    activeMonths: opt(r.active_months),
+  };
+}
+
+function toChoreEvent(row: Row): ChoreEvent {
+  const r = row as Cached<'chore_events'>;
+  return {
+    id: r.id,
+    choreId: opt(r.chore_id),
+    title: r.title ?? '',
+    kind: r.kind as ChoreEvent['kind'],
+    doneOn: r.done_on ?? '',
+    doneBy: r.done_by ?? '',
+  };
+}
+
+function toAbsence(row: Row): Absence {
+  const r = row as Cached<'absences'>;
+  return {
+    id: r.id,
+    memberId: opt(r.member_id),
+    from: r.from_on ?? '',
+    to: r.to_on ?? '',
+    note: opt(r.note),
+  };
+}
+
+function plain<T>(tables: TableRows, table: string, order: Order, build: (row: Row) => T): T[] {
+  return rowsOfTable(tables, table, order).map((row) => cached(row, [], () => build(row)));
+}
+
+function toHousehold(row: SmallRow, members: SmallRow[]): Household {
+  const r = row as Partial<Tables<'households'>>;
+  return {
+    id: String(r.id),
+    name: r.name ?? '',
+    memberIds: members.map((member) => String(member.profile_id)),
+    mealSlots: (r.meal_slots ?? []) as unknown as Household['mealSlots'],
+    defaultListId: r.default_list_id ?? '',
+    defaultStoreId: opt(r.default_store_id),
+  };
+}
+
+export interface RowsToHouseholdOptions {
+  /** The household built last time; arrays and the object itself are reused when unchanged. */
+  previous?: HouseholdData;
+  /** Items with a store action not yet confirmed by the server. */
+  pendingItemIds?: ReadonlySet<string>;
+}
+
+/**
+ * The domain view of one household's rows. Unchanged rows give the same domain objects (cached
+ * per row object), so `useSyncExternalStore` selectors only see what really changed.
+ */
+export function rowsToHousehold(
+  tables: TableRows,
+  small: Record<string, SmallRow[]>,
+  householdId: string,
+  options: RowsToHouseholdOptions = {},
+): HouseholdData {
+  const { previous, pendingItemIds } = options;
+  const householdRow = (small.households ?? []).find((row) => row.id === householdId);
+  if (!householdRow) throw new Error(`Household ${householdId} is not in the cache`);
+  const memberRows = sorted(
+    (small.household_members ?? []).filter((row) => row.household_id === householdId),
+    'created',
+  );
+  const household = cached(householdRow, memberRows, () => toHousehold(householdRow, memberRows));
+
+  const favorites = groupBy(rowsOfTable(tables, 'recipe_favorites', 'created'), 'recipe_id');
+  const ratings = groupBy(rowsOfTable(tables, 'recipe_ratings', 'created'), 'recipe_id');
+  const recipes = rowsOfTable(tables, 'recipes', 'newest').map((row) => {
+    const rowFavorites = favorites.get(row.id) ?? [];
+    const rowRatings = ratings.get(row.id) ?? [];
+    return cached(row, [...rowFavorites, null, ...rowRatings], () =>
+      toRecipe(row, rowFavorites, rowRatings),
+    );
+  });
+
+  const restaurantFavorites = groupBy(
+    rowsOfTable(tables, 'restaurant_favorites', 'created'),
+    'restaurant_id',
+  );
+  const restaurantRatings = groupBy(
+    rowsOfTable(tables, 'restaurant_ratings', 'created'),
+    'restaurant_id',
+  );
+  const restaurants = rowsOfTable(tables, 'restaurants', 'newest').map((row) => {
+    const rowFavorites = restaurantFavorites.get(row.id) ?? [];
+    const rowRatings = restaurantRatings.get(row.id) ?? [];
+    return cached(row, [...rowFavorites, null, ...rowRatings], () =>
+      toRestaurant(row, rowFavorites, rowRatings),
+    );
+  });
+
+  const votes = groupBy(rowsOfTable(tables, 'feedback_votes', 'created'), 'feedback_id');
+  const feedback = rowsOfTable(tables, 'feedback', 'newest').map((row) => {
+    const rowVotes = votes.get(row.id) ?? [];
+    return cached(row, rowVotes, () => toFeedback(row, rowVotes));
+  });
+
+  const contributions = groupBy(
+    rowsOfTable(tables, 'shopping_contributions', 'created'),
+    'item_id',
+  );
+  const items = rowsOfTable(tables, 'shopping_items', 'created').map((row) => {
+    const rowContributions = contributions.get(row.id) ?? [];
+    const pending = pendingItemIds?.has(row.id) === true;
+    return cached(row, [...rowContributions, pending], () =>
+      toItem(row, rowContributions, pending),
+    );
+  });
+
+  const next: HouseholdData = {
+    household,
+    areas: reuse(previous?.areas, plain(tables, 'areas', 'sort', toArea)),
+    articles: reuse(previous?.articles, plain(tables, 'articles', 'created', toArticle)),
+    stores: reuse(previous?.stores, plain(tables, 'stores', 'created', toStore)),
+    recipes: reuse(previous?.recipes, recipes),
+    restaurants: reuse(previous?.restaurants, restaurants),
+    planEntries: reuse(
+      previous?.planEntries,
+      plain(tables, 'meal_plan_entries', 'created', toPlanEntry),
+    ),
+    lists: reuse(previous?.lists, plain(tables, 'shopping_lists', 'created', toList)),
+    items: reuse(previous?.items, items),
+    chores: reuse(previous?.chores, plain(tables, 'chores', 'created', toChore)),
+    choreEvents: reuse(
+      previous?.choreEvents,
+      plain(tables, 'chore_events', 'doneOn', toChoreEvent),
+    ),
+    absences: reuse(previous?.absences, plain(tables, 'absences', 'created', toAbsence)),
+    feedback: reuse(previous?.feedback, feedback),
+  };
+  if (
+    previous &&
+    (Object.keys(next) as (keyof HouseholdData)[]).every((key) => next[key] === previous[key])
+  ) {
+    return previous;
+  }
+  return next;
+}
+
+/** Everyone whose profile the user can see (own and co-members), in sign-up order. */
+export function rowsToMembers(small: Record<string, SmallRow[]>, previous?: Member[]): Member[] {
+  const members = sorted(small.profiles ?? [], 'created').map((row) =>
+    cached(row, [], () => {
+      const r = row as Partial<Tables<'profiles'>>;
+      return {
+        id: String(r.id),
+        name: r.name ?? '',
+        color: r.color ?? '',
+        dietPreference: (r.diet_preference ?? 'flexible') as Member['dietPreference'],
+        dislikes: r.dislikes ?? [],
+      } satisfies Member;
+    }),
+  );
+  return reuse(previous, members);
+}

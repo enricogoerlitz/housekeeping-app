@@ -1,0 +1,737 @@
+import { normalizeText, type PullRequest } from '@housekeeping/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  createEngine,
+  onWriteRejected,
+  resetLocalData,
+  startBackend,
+  stopBackend,
+  WRITE_REJECTED_MESSAGE,
+  type Engine,
+  type Environment,
+} from './backend';
+import { createRecipe, updateRecipe } from './commands-recipes';
+import { removePlanEntry } from './commands-plan';
+import { setItemChecked } from './commands-shopping';
+import { householdToRows, membersToRows } from './db/mapping';
+import { createInitialState, DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
+import { createMemoryStorage, type Storage } from './storage';
+import {
+  commit,
+  getData,
+  getState,
+  OfflineError,
+  snapshot,
+  updateData,
+  type StoreAction,
+} from './store';
+import { TransportError, type Transport } from './transport';
+import { createFakeServer, type FakeServer } from './transport-fake';
+
+const H = DEMO_HOUSEHOLD_ID;
+const TODAY = '2026-11-20';
+
+// ---------- fixtures ----------
+
+function seededServer(): FakeServer {
+  const server = createFakeServer();
+  const state = createInitialState(TODAY);
+  const seeded = state.households[H];
+  if (!seeded) throw new Error('demo household missing');
+  const articles = seeded.articles.filter(
+    (article, index) => seeded.articles.findIndex((other) => other.id === article.id) === index,
+  );
+  for (const profile of membersToRows(state.members).profiles ?? []) {
+    server.addProfile({
+      id: profile.id,
+      name: String(profile.name),
+      email: `${String(profile.name).toLowerCase()}@example.com`,
+      color: String(profile.color),
+    });
+  }
+  const rows = householdToRows({ ...seeded, articles });
+  const { households, household_members: members, ...tables } = rows;
+  const household = households?.[0];
+  if (!household || !members) throw new Error('fixture');
+  server.addHousehold(
+    household,
+    members.map((member) => String(member.profile_id)),
+  );
+  server.insertRows(H, tables);
+  return server;
+}
+
+interface FakeEnvironment extends Environment {
+  setOnline(online: boolean): void;
+  foreground(): void;
+}
+
+function fakeEnvironment(): FakeEnvironment {
+  let online = true;
+  const listeners = new Set<Parameters<Environment['subscribe']>[0]>();
+  return {
+    isOnline: () => online,
+    isVisible: () => true,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    setOnline(value) {
+      online = value;
+      for (const listener of listeners) (value ? listener.online : listener.offline)?.();
+    },
+    foreground() {
+      for (const listener of listeners) listener.foreground?.();
+    },
+  };
+}
+
+/** Records every pull request a device sends. */
+function recording(transport: Transport): Transport & { pulls: PullRequest[] } {
+  const pulls: PullRequest[] = [];
+  return {
+    ...transport,
+    pulls,
+    syncPull: (request) => {
+      pulls.push(request);
+      return transport.syncPull(request);
+    },
+  };
+}
+
+let server: FakeServer;
+let environment: FakeEnvironment;
+let storage: Storage;
+const passive: Engine[] = [];
+
+async function settle(...engines: Engine[]): Promise<void> {
+  for (let round = 0; round < 6; round += 1) {
+    await vi.advanceTimersByTimeAsync(400);
+    for (const engine of engines) await engine.whenIdle();
+  }
+}
+
+/** Enrico's device: the one the app's store (and so the commands) is attached to. */
+async function startEnrico(options: { transport?: Transport; cacheVersion?: number } = {}) {
+  const engine = await startBackend({
+    transport: options.transport ?? server.transport(ENRICO),
+    storage,
+    userId: ENRICO,
+    environment,
+    cacheVersion: options.cacheVersion,
+  });
+  await settle(engine);
+  return engine;
+}
+
+/** Nadja's device: a second engine, not attached to the store. */
+async function startNadja() {
+  const engine = createEngine({
+    transport: server.transport(NADJA),
+    storage: createMemoryStorage(),
+    userId: NADJA,
+    environment: fakeEnvironment(),
+  });
+  passive.push(engine);
+  await engine.start();
+  await settle(engine);
+  return engine;
+}
+
+const nadjaData = (engine: Engine) => {
+  const data = engine.getState()?.households[H];
+  if (!data) throw new Error('Nadja has no data');
+  return data;
+};
+const itemByArticle = (items: ReturnType<typeof getData>['items'], name: string) => {
+  const article = getData().articles.find((candidate) => candidate.name === name);
+  return items.find((item) => item.articleId === article?.id);
+};
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-20T10:00:00Z'));
+  server = seededServer();
+  environment = fakeEnvironment();
+  storage = createMemoryStorage();
+});
+
+afterEach(async () => {
+  for (const engine of passive.splice(0)) engine.stop();
+  await stopBackend();
+  vi.useRealTimers();
+});
+
+// ---------- tests ----------
+
+describe('sync engine', () => {
+  it('loads the household on first start (two round trips) and shows it', async () => {
+    const transport = recording(server.transport(ENRICO));
+    const engine = await startEnrico({ transport });
+    expect(transport.pulls[0]).toEqual({ households: {} });
+    expect(transport.pulls[1]).toEqual({ households: { [H]: { full: true } } });
+    expect(getData().household.name).toBe('Enrico & Nadja');
+    expect(getData().recipes.length).toBeGreaterThanOrEqual(20);
+    expect(getState().currentMemberId).toBe(ENRICO);
+    expect(engine.getSyncState()).toMatchObject({ status: 'idle', ready: true });
+  });
+
+  it('AC-013: a recipe created on one device appears on the other without reload', async () => {
+    await startEnrico();
+    const nadja = await startNadja();
+    const id = createRecipe({ title: 'Linsen-Dal' });
+    expect(getData().recipes[0]?.id).toBe(id);
+    await settle(nadja);
+    expect(nadjaData(nadja).recipes.find((recipe) => recipe.id === id)?.title).toBe('Linsen-Dal');
+  });
+
+  it('AC-014: what was written is still there after a reload, also without network', async () => {
+    await startEnrico();
+    const id = createRecipe({ title: 'Spülmittel-Kuchen' });
+    await settle();
+    await stopBackend();
+
+    environment.setOnline(false);
+    await startEnrico();
+    expect(getData().recipes.find((recipe) => recipe.id === id)?.title).toBe('Spülmittel-Kuchen');
+    expect(getState().offline).toBe(true);
+  });
+
+  it('AC-015: a deleted plan entry disappears on the other device', async () => {
+    await startEnrico();
+    const nadja = await startNadja();
+    const entry = getData().planEntries.find((candidate) => candidate.kind === 'recipe');
+    if (!entry) throw new Error('fixture');
+    expect(nadjaData(nadja).planEntries.some((candidate) => candidate.id === entry.id)).toBe(true);
+
+    commit({ path: 'diff', maxDeletes: { meal_plan_entries: 1 } }, () => removePlanEntry(entry.id));
+    await settle(nadja);
+    expect(nadjaData(nadja).planEntries.some((candidate) => candidate.id === entry.id)).toBe(false);
+  });
+
+  it('AC-016: offline the data stays readable and editing throws OfflineError', async () => {
+    const engine = await startEnrico();
+    const before = getData();
+    engine.setSimulatedOffline(true);
+    expect(getState().offline).toBe(true);
+    expect(getData().recipes).toBe(before.recipes);
+    expect(() => createRecipe({ title: 'Offline' })).toThrow(OfflineError);
+    expect(getData().recipes).toBe(before.recipes);
+    await settle(engine);
+    expect(engine.getSyncState().status).toBe('offline');
+  });
+
+  it('AC-017: after longer offline than the retention, the household is loaded in full', async () => {
+    await startEnrico();
+    const recipe = getData().recipes[3];
+    if (!recipe) throw new Error('fixture');
+    await stopBackend();
+
+    server.deleteRow(H, 'recipes', recipe.id);
+    vi.setSystemTime(new Date('2026-12-25T10:00:00Z'));
+    server.purgeDeletionsBefore('2026-11-25T10:00:00Z');
+    const transport = recording(server.transport(ENRICO));
+    await startEnrico({ transport });
+    expect(transport.pulls.some((request) => request.households[H]?.full === true)).toBe(true);
+    expect(getData().recipes.some((candidate) => candidate.id === recipe.id)).toBe(false);
+  });
+
+  it('AC-018: a new cache version throws the old cache away and loads everything again', async () => {
+    await startEnrico({ cacheVersion: 1 });
+    await stopBackend();
+    const transport = recording(server.transport(ENRICO));
+    await startEnrico({ transport, cacheVersion: 2 });
+    expect(transport.pulls[0]).toEqual({ households: {} });
+    expect(transport.pulls[1]).toEqual({ households: { [H]: { full: true } } });
+    expect(getData().household.name).toBe('Enrico & Nadja');
+  });
+
+  it('pulls once for a burst of realtime signals (debounced)', async () => {
+    await startEnrico();
+    const transport = recording(server.transport(NADJA));
+    const nadja = createEngine({
+      transport,
+      storage: createMemoryStorage(),
+      userId: NADJA,
+      environment: fakeEnvironment(),
+    });
+    passive.push(nadja);
+    await nadja.start();
+    await settle(nadja);
+    const before = transport.pulls.length;
+
+    const enrico = server.transport(ENRICO);
+    await enrico.setItemNotAvailable('item-1', true);
+    await enrico.setItemNotAvailable('item-2', true);
+    await enrico.setItemNotAvailable('item-3', true);
+    await vi.advanceTimersByTimeAsync(299);
+    expect(transport.pulls.length).toBe(before);
+    await vi.advanceTimersByTimeAsync(1);
+    await nadja.whenIdle();
+    expect(transport.pulls.length).toBe(before + 1);
+    expect(nadjaData(nadja).items.find((item) => item.id === 'item-3')?.notAvailable).toBe(true);
+  });
+
+  it('pulls on foreground, when the network is back, and every 60 s', async () => {
+    const transport = recording(server.transport(ENRICO));
+    await startEnrico({ transport });
+    let count = transport.pulls.length;
+    environment.foreground();
+    await settle();
+    expect(transport.pulls.length).toBe(count + 1);
+
+    count = transport.pulls.length;
+    environment.setOnline(false);
+    environment.setOnline(true);
+    await settle();
+    expect(transport.pulls.length).toBe(count + 1);
+
+    count = transport.pulls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(transport.pulls.length).toBe(count + 1);
+  });
+
+  it('AC-012: a household the user lost drops from the device, with its data', async () => {
+    await startEnrico();
+    const nadjaStorage = createMemoryStorage();
+    const nadja = createEngine({
+      transport: server.transport(NADJA),
+      storage: nadjaStorage,
+      userId: NADJA,
+      environment: fakeEnvironment(),
+    });
+    passive.push(nadja);
+    await nadja.start();
+    await settle(nadja);
+    expect(nadja.getState()?.households[H]).toBeDefined();
+    expect(await nadjaStorage.get(`household:${H}`)).toBeDefined();
+
+    await server.transport(ENRICO).removeMember(H, NADJA);
+    await nadja.pull();
+    expect(nadja.getState()?.households[H]).toBeUndefined();
+    expect(await nadjaStorage.get(`household:${H}`)).toBeUndefined();
+  });
+
+  it('keeps unchanged objects identical after a pull that changed one recipe', async () => {
+    const engine = await startEnrico();
+    const before = getData();
+    const recipe = before.recipes[1];
+    if (!recipe) throw new Error('fixture');
+    await server
+      .transport(NADJA)
+      .applyChanges(H, [
+        { kind: 'patch', table: 'recipes', id: recipe.id, changes: { notes: 'neu' } },
+      ]);
+    await engine.pull();
+    const after = getData();
+    expect(after.recipes.find((candidate) => candidate.id === recipe.id)?.notes).toBe('neu');
+    expect(after.areas).toBe(before.areas);
+    expect(after.articles).toBe(before.articles);
+    expect(after.recipes[0]).toBe(before.recipes[0]);
+  });
+
+  it('AC-003: resetting local data empties cache and store queue on this device', async () => {
+    const engine = await startEnrico();
+    engine.setSimulatedOffline(true);
+    const item = getData().items.find((candidate) => !candidate.checked);
+    if (!item) throw new Error('fixture');
+    setItemChecked(item.id, true);
+    expect(await storage.get('queue')).toHaveLength(1);
+
+    await resetLocalData();
+    expect(await storage.get('meta')).toBeUndefined();
+    expect(await storage.get('queue')).toBeUndefined();
+    expect(await storage.get(`household:${H}`)).toBeUndefined();
+    expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
+  });
+
+  it('AC-003: another user on the same device starts with an empty cache', async () => {
+    const engine = await startEnrico();
+    engine.setSimulatedOffline(true);
+    const item = getData().items.find((candidate) => !candidate.checked);
+    if (!item) throw new Error('fixture');
+    setItemChecked(item.id, true);
+    await stopBackend();
+
+    const nadja = await startBackend({
+      transport: server.transport(NADJA),
+      storage,
+      userId: NADJA,
+      environment,
+    });
+    await settle(nadja);
+    expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
+    expect(getState().currentMemberId).toBe(NADJA);
+    expect(await storage.get('queue')).toEqual([]);
+  });
+});
+
+describe('writes: changesets (ADR-0011)', () => {
+  it('sends a rename as one patch and keeps it after the pull', async () => {
+    await startEnrico();
+    const recipe = getData().recipes[0];
+    if (!recipe) throw new Error('fixture');
+    updateRecipe(recipe.id, { title: 'Neuer Name' });
+    expect(getData().recipes[0]?.title).toBe('Neuer Name');
+    await settle();
+    expect(server.row(H, 'recipes', recipe.id)).toMatchObject({ title: 'Neuer Name' });
+    expect(getData().recipes[0]?.title).toBe('Neuer Name');
+  });
+
+  it('AC-019: a rejected rename jumps back and says so', async () => {
+    await startEnrico();
+    const messages: string[] = [];
+    const stopListening = onWriteRejected((message) => messages.push(message));
+    const recipe = getData().recipes[0];
+    if (!recipe) throw new Error('fixture');
+    server.failNext('apply_changes', new TransportError('permanent', 'row_not_found', 404));
+
+    updateRecipe(recipe.id, { title: 'Abgelehnt' });
+    expect(getData().recipes[0]?.title).toBe('Abgelehnt');
+    await settle();
+    expect(getData().recipes[0]?.title).toBe(recipe.title);
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(WRITE_REJECTED_MESSAGE).toBe('Hat nicht geklappt – bitte noch einmal versuchen');
+    stopListening();
+  });
+
+  it('AC-019: a later change built on a rejected one is dropped with it', async () => {
+    await startEnrico();
+    const recipe = getData().recipes[0];
+    if (!recipe) throw new Error('fixture');
+    server.failNext('apply_changes', new TransportError('permanent', 'invalid_change', 400));
+    updateRecipe(recipe.id, { title: 'Eins' });
+    updateRecipe(recipe.id, { servings: 7 });
+    await settle();
+    expect(getData().recipes[0]).toMatchObject({ title: recipe.title, servings: recipe.servings });
+    expect(server.row(H, 'recipes', recipe.id)).toMatchObject({ servings: recipe.servings });
+  });
+
+  it('AC-020: ten items in one changeset: a server error leaves none of them', async () => {
+    await startEnrico();
+    const listId = getData().household.defaultListId;
+    const articles = getData()
+      .articles.filter((article) => !getData().items.some((item) => item.articleId === article.id))
+      .slice(0, 10);
+    server.failNext('apply_changes', new TransportError('permanent', '23503', 409));
+    commit({ path: 'diff' }, () =>
+      updateData((data) => ({
+        ...data,
+        items: [
+          ...data.items,
+          ...articles.map((article, index) => ({
+            id: `new-item-${index}`,
+            listId,
+            articleId: article.id,
+            contributions: [
+              { id: `new-contribution-${index}`, source: { kind: 'manual' as const } },
+            ],
+            checked: false,
+            createdAt: new Date().toISOString(),
+          })),
+        ],
+      })),
+    );
+    expect(getData().items.filter((item) => item.id.startsWith('new-item'))).toHaveLength(10);
+    await settle();
+    expect(getData().items.filter((item) => item.id.startsWith('new-item'))).toHaveLength(0);
+    expect(
+      server.rows(H, 'shopping_items').filter((item) => item.id.startsWith('new-item')),
+    ).toEqual([]);
+  });
+
+  it('refuses a diff that writes a column outside the allowlist or deletes undeclared', async () => {
+    await startEnrico();
+    const item = getData().items[0];
+    const entry = getData().planEntries[0];
+    if (!item || !entry) throw new Error('fixture');
+    expect(() =>
+      commit({ path: 'diff' }, () =>
+        updateData((data) => ({
+          ...data,
+          items: data.items.map((candidate) =>
+            candidate.id === item.id ? { ...candidate, checked: !candidate.checked } : candidate,
+          ),
+        })),
+      ),
+    ).toThrow(/may not be written/);
+    expect(() => commit({ path: 'diff' }, () => removePlanEntry(entry.id))).toThrow(/deletes/);
+    expect(getData().planEntries[0]).toBe(entry);
+  });
+
+  it('an unknown outcome (answer lost) is settled by the pull, no hint when it arrived', async () => {
+    await startEnrico();
+    const messages: string[] = [];
+    const stopListening = onWriteRejected((message) => messages.push(message));
+    const recipe = getData().recipes[0];
+    if (!recipe) throw new Error('fixture');
+    server.failNext('apply_changes', new TransportError('transient', 'http_503', 503), {
+      afterApply: true,
+    });
+    updateRecipe(recipe.id, { title: 'Angekommen' });
+    await settle();
+    expect(getData().recipes[0]?.title).toBe('Angekommen');
+    expect(messages).toEqual([]);
+
+    server.failNext('apply_changes', new TransportError('transient', 'http_503', 503));
+    updateRecipe(recipe.id, { title: 'Verloren' });
+    await settle();
+    expect(getData().recipes[0]?.title).toBe('Angekommen');
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    stopListening();
+  });
+
+  it('undo sends the inverse of the own change (snapshot in backend mode)', async () => {
+    await startEnrico();
+    const recipe = getData().recipes[0];
+    if (!recipe) throw new Error('fixture');
+    const restore = snapshot();
+    updateRecipe(recipe.id, { title: 'Kurz anders' });
+    const created = createRecipe({ title: 'Wieder weg' });
+    await settle();
+    restore();
+    expect(getData().recipes[0]?.title).toBe(recipe.title);
+    await settle();
+    expect(server.row(H, 'recipes', recipe.id)).toMatchObject({ title: recipe.title });
+    expect(server.row(H, 'recipes', created)).toBeUndefined();
+    expect(getData().recipes.some((candidate) => candidate.id === created)).toBe(false);
+  });
+
+  it('rpc path: the local effect shows at once and the inverse RPC undoes it', async () => {
+    await startEnrico();
+    const recipe = getData().recipes.find((candidate) => !candidate.favoriteOf.includes(ENRICO));
+    if (!recipe) throw new Error('fixture');
+    const toggle = (favorite: boolean) =>
+      commit(
+        {
+          path: 'rpc',
+          send: (transport) => transport.setRecipeFavorite(recipe.id, favorite),
+          inverse: (transport) => transport.setRecipeFavorite(recipe.id, !favorite),
+        },
+        () =>
+          updateData((data) => ({
+            ...data,
+            recipes: data.recipes.map((candidate) =>
+              candidate.id === recipe.id
+                ? { ...candidate, favoriteOf: [...candidate.favoriteOf, ENRICO] }
+                : candidate,
+            ),
+          })),
+      );
+    const restore = snapshot();
+    toggle(true);
+    const shown = () => getData().recipes.find((candidate) => candidate.id === recipe.id);
+    expect(shown()?.favoriteOf).toContain(ENRICO);
+    await settle();
+    expect(server.row(H, 'recipe_favorites', `${recipe.id}:${ENRICO}`)).toBeDefined();
+    restore();
+    await settle();
+    expect(server.row(H, 'recipe_favorites', `${recipe.id}:${ENRICO}`)).toBeUndefined();
+    expect(shown()?.favoriteOf).not.toContain(ENRICO);
+  });
+
+  it('a diff touching a per-member table must use its own RPC', async () => {
+    await startEnrico();
+    expect(() =>
+      commit({ path: 'diff' }, () =>
+        updateData((data) => ({
+          ...data,
+          recipes: data.recipes.map((recipe, index) =>
+            index === 0 ? { ...recipe, favoriteOf: [...recipe.favoriteOf, 'x'] } : recipe,
+          ),
+        })),
+      ),
+    ).toThrow(/own RPC/);
+  });
+
+  it('in backend mode a write outside commit() is a programming error', async () => {
+    await startEnrico();
+    expect(() => updateData((data) => ({ ...data, absences: [] }))).toThrow(/commit/);
+  });
+});
+
+describe('writes: store queue (ADR-0008 addendum)', () => {
+  it('AC-021: checked offline, it reaches the other device once online', async () => {
+    const enrico = await startEnrico();
+    const nadja = await startNadja();
+    const milk = itemByArticle(getData().items, 'Milch');
+    if (!milk) throw new Error('fixture');
+
+    enrico.setSimulatedOffline(true);
+    setItemChecked(milk.id, true);
+    expect(itemByArticle(getData().items, 'Milch')).toMatchObject({
+      checked: true,
+      pendingSync: true,
+    });
+    await settle(enrico);
+    expect(server.row(H, 'shopping_items', milk.id)).toMatchObject({ checked: false });
+
+    enrico.setSimulatedOffline(false);
+    await settle(enrico, nadja);
+    expect(server.row(H, 'shopping_items', milk.id)).toMatchObject({ checked: true });
+    expect(itemByArticle(getData().items, 'Milch')?.pendingSync).toBeUndefined();
+    expect(nadjaData(nadja).items.find((item) => item.id === milk.id)?.checked).toBe(true);
+  });
+
+  it('AC-022: an offline uncheck loses against a re-check by someone else', async () => {
+    const enrico = await startEnrico();
+    const butter = itemByArticle(
+      getData().items.filter((item) => item.checked),
+      // "Butter" is also open on the list (lasagne); unchecking would merge it into that item.
+      'Brot',
+    );
+    if (!butter) throw new Error('fixture');
+    const shownButter = () => getData().items.find((item) => item.id === butter.id);
+
+    enrico.setSimulatedOffline(true);
+    setItemChecked(butter.id, false);
+    expect(shownButter()?.checked).toBe(false);
+
+    const nadja = server.transport(NADJA);
+    await nadja.setItemChecked(butter.id, false, 0);
+    await nadja.setItemChecked(butter.id, true, 1);
+
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(server.row(H, 'shopping_items', butter.id)).toMatchObject({ checked: true });
+    expect(shownButter()?.checked).toBe(true);
+  });
+
+  it('AC-023: added offline and online by two people, the item is there once with both', async () => {
+    const enrico = await startEnrico();
+    const listId = getData().household.defaultListId;
+    const name = 'Zucker';
+    expect(itemByArticle(getData().items, name)).toBeUndefined();
+    const add = (prefix: string): StoreAction => ({
+      kind: 'add',
+      listId,
+      clientItemId: `${prefix}-item`,
+      clientArticleId: `${prefix}-article`,
+      contributions: [
+        {
+          clientContributionId: `${prefix}-contribution`,
+          articleName: name,
+          nameKey: normalizeText(name),
+          count: 1,
+        },
+      ],
+    });
+
+    enrico.setSimulatedOffline(true);
+    commit({ path: 'queue', action: add('enrico') }, () => undefined);
+    expect(itemByArticle(getData().items, name)?.contributions).toHaveLength(1);
+
+    await server.transport(NADJA).addShoppingContributions(listId, [
+      {
+        client_item_id: 'nadja-item',
+        client_article_id: 'nadja-article',
+        article_name: name,
+        name_key: normalizeText(name),
+        contributions: [
+          {
+            id: 'nadja-contribution',
+            source: { kind: 'manual' },
+            count: 1,
+            qty: null,
+            unit: null,
+            note: null,
+          },
+        ],
+      },
+    ]);
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+
+    const zucker = getData().items.filter(
+      (item) => getData().articles.find((article) => article.id === item.articleId)?.name === name,
+    );
+    expect(zucker).toHaveLength(1);
+    expect(zucker[0]?.contributions.map((c) => c.id).sort()).toEqual([
+      'enrico-contribution',
+      'nadja-contribution',
+    ]);
+    expect(
+      server
+        .rows(H, 'shopping_items')
+        .filter((item) => item.list_id === listId && item.article_id === zucker[0]?.articleId),
+    ).toHaveLength(1);
+  });
+
+  it('AC-024: three offline checks survive a reload and are sent once online', async () => {
+    const enrico = await startEnrico();
+    const open = getData()
+      .items.filter((item) => !item.checked)
+      .slice(0, 3);
+    enrico.setSimulatedOffline(true);
+    for (const item of open) setItemChecked(item.id, true);
+    await stopBackend();
+
+    environment.setOnline(false);
+    const reloaded = await startEnrico();
+    for (const item of open) {
+      expect(getData().items.find((candidate) => candidate.id === item.id)?.checked).toBe(true);
+      expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
+    }
+    environment.setOnline(true);
+    await settle(reloaded);
+    for (const item of open) {
+      expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: true });
+    }
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
+  it('AC-025: an item deleted meanwhile disappears without an error', async () => {
+    const enrico = await startEnrico();
+    const messages: string[] = [];
+    const stopListening = onWriteRejected((message) => messages.push(message));
+    const eggs = getData().items.find((item) => !item.checked);
+    if (!eggs) throw new Error('fixture');
+    enrico.setSimulatedOffline(true);
+    setItemChecked(eggs.id, true);
+    await server
+      .transport(NADJA)
+      .applyChanges(H, [{ kind: 'delete', table: 'shopping_items', id: eggs.id }]);
+
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(getData().items.some((item) => item.id === eggs.id)).toBe(false);
+    expect(messages).toEqual([]);
+    expect(await storage.get('queue')).toEqual([]);
+    stopListening();
+  });
+
+  it('checking back and forth offline sends nothing', async () => {
+    const enrico = await startEnrico();
+    const item = getData().items.find((candidate) => !candidate.checked);
+    if (!item) throw new Error('fixture');
+    enrico.setSimulatedOffline(true);
+    setItemChecked(item.id, true);
+    setItemChecked(item.id, false);
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
+  it('keeps an entry after a transient failure and retries it later', async () => {
+    const enrico = await startEnrico();
+    const item = getData().items.find((candidate) => !candidate.checked);
+    if (!item) throw new Error('fixture');
+    server.failNext('set_shopping_item_checked', new TransportError('transient', 'http_503', 503));
+    setItemChecked(item.id, true);
+    await vi.advanceTimersByTimeAsync(0);
+    await enrico.whenIdle();
+    expect(await storage.get('queue')).toHaveLength(1);
+    await settle(enrico);
+    expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: true });
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
+  it('store actions run offline; a later uncheck of an own check is sent with the new seq', async () => {
+    const enrico = await startEnrico();
+    const item = getData().items.find((candidate) => !candidate.checked);
+    if (!item) throw new Error('fixture');
+    setItemChecked(item.id, true);
+    setItemChecked(item.id, false);
+    await settle(enrico);
+    expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
+  });
+});

@@ -1,6 +1,6 @@
 // Data interface of the app. Screens import hooks and commands from here and nothing else from
-// this package. Today the data behind it is an in-memory demo household (spec 0001); later
-// specs replace the inside with Supabase and the delta sync without changing these exports.
+// this package. By default the data is the in-memory demo household (spec 0001); after
+// `startBackend` it is the local cache of Supabase, kept current by the delta sync (spec 0003).
 import './seed/demo';
 
 export * from './queries';
@@ -12,7 +12,20 @@ export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './assistant';
 export { photoSource } from './photos';
-export { snapshot, resetState, type HouseholdData, type AppState } from './store';
+export { snapshot, resetState, OfflineError, type HouseholdData, type AppState } from './store';
+export {
+  browserEnvironment,
+  onWriteRejected,
+  resetLocalData,
+  startBackend,
+  stopBackend,
+  useSyncState,
+  WRITE_REJECTED_MESSAGE,
+  type Environment,
+  type StartBackendOptions,
+  type SyncState,
+} from './backend';
+export { createIndexedDbStorage, createMemoryStorage, type Storage } from './storage';
 export { starterAreas } from './starter/areas';
 export { starterCatalog } from './starter/catalog';
 export { DEMO_HOUSEHOLD_ID, TEST_HOUSEHOLD_ID } from './seed/demo';

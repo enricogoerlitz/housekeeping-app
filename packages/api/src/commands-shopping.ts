@@ -14,7 +14,7 @@ import {
 
 import { resolveArticle } from './commands-household';
 import { indexById } from './queries';
-import { getData, getState, newId, nowISO, updateData } from './store';
+import { commit, getData, getState, newId, nowISO, updateData } from './store';
 
 function appendContribution(listId: Id, articleId: Id, contribution: ShoppingContribution): Id {
   const itemId = newId('item');
@@ -64,24 +64,26 @@ export function addShoppingItemFromText(listId: Id, text: string): AddedItem | n
   return { itemId, articleName: article.name, createdArticle: created };
 }
 
-/** Checking works offline too; such changes are marked until the next sync. */
+/** Checking works offline too (store queue); such changes are marked until the next sync. */
 export function setItemChecked(itemId: Id, checked: boolean): void {
-  const state = getState();
-  updateData((data) => ({
-    ...data,
-    items: data.items.map((item) =>
-      item.id === itemId
-        ? {
-            ...item,
-            checked,
-            checkedAt: checked ? nowISO() : undefined,
-            checkedBy: checked ? state.currentMemberId : undefined,
-            notAvailable: checked ? undefined : item.notAvailable,
-            pendingSync: state.offline ? true : item.pendingSync,
-          }
-        : item,
-    ),
-  }));
+  commit({ path: 'queue', action: { kind: 'check', itemId, checked } }, () => {
+    const state = getState();
+    updateData((data) => ({
+      ...data,
+      items: data.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              checked,
+              checkedAt: checked ? nowISO() : undefined,
+              checkedBy: checked ? state.currentMemberId : undefined,
+              notAvailable: checked ? undefined : item.notAvailable,
+              pendingSync: state.offline ? true : item.pendingSync,
+            }
+          : item,
+      ),
+    }));
+  });
 }
 
 /** "Nicht da": the item stays open and moves to "Woanders kaufen". */

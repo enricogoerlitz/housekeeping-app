@@ -9,7 +9,7 @@ import {
 import { resolveArticle } from './commands-household';
 import { buildRecipe } from './seed/demo';
 import { seedRecipes } from './seed/recipes-data';
-import { getData, getState, newId, nowISO, updateData } from './store';
+import { commit, getData, getState, newId, nowISO, updateData } from './store';
 
 function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
   updateData((data) => ({
@@ -22,23 +22,25 @@ function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
 export function createRecipe(input: { title: string; servings?: number; source?: string }): Id {
   const title = input.title.trim();
   if (!title) throw new Error('Titel fehlt');
-  const recipe: Recipe = {
-    id: newId('rec'),
-    title,
-    servings: input.servings ?? 2,
-    course: 'main',
-    tags: [],
-    variants: [],
-    ingredients: [],
-    steps: [],
-    favoriteOf: [],
-    ratings: {},
-    cookedCount: 0,
-    createdAt: nowISO(),
-    source: input.source,
-  };
-  updateData((data) => ({ ...data, recipes: [recipe, ...data.recipes] }));
-  return recipe.id;
+  return commit({ path: 'diff' }, () => {
+    const recipe: Recipe = {
+      id: newId('rec'),
+      title,
+      servings: input.servings ?? 2,
+      course: 'main',
+      tags: [],
+      variants: [],
+      ingredients: [],
+      steps: [],
+      favoriteOf: [],
+      ratings: {},
+      cookedCount: 0,
+      createdAt: nowISO(),
+      source: input.source,
+    };
+    updateData((data) => ({ ...data, recipes: [recipe, ...data.recipes] }));
+    return recipe.id;
+  });
 }
 
 export function updateRecipe(
@@ -53,7 +55,7 @@ export function updateRecipe(
   if (patch.title !== undefined && !patch.title.trim()) throw new Error('Titel fehlt');
   if (patch.servings !== undefined && patch.servings < 1)
     throw new Error('Mindestens eine Portion');
-  patchRecipe(recipeId, (recipe) => ({ ...recipe, ...patch }));
+  commit({ path: 'diff' }, () => patchRecipe(recipeId, (recipe) => ({ ...recipe, ...patch })));
 }
 
 /**

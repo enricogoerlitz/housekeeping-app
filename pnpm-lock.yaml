@@ -132,9 +132,18 @@ importers:
       '@housekeeping/core':
         specifier: workspace:*
         version: link:../core
+      '@supabase/supabase-js':
+        specifier: 2.119.0
+        version: 2.119.0
+      idb-keyval:
+        specifier: 6.3.0
+        version: 6.3.0
       react:
         specifier: '*'
         version: 19.3.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       vitest:
         specifier: ^5.1.1
@@ -2799,6 +2808,9 @@ packages:
   iceberg-js@0.8.1:
     resolution: {integrity: sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==}
     engines: {node: '>=20.0.0'}
+
+  idb-keyval@6.3.0:
+    resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -7367,6 +7379,8 @@ snapshots:
   hyphenate-style-name@1.1.0: {}
 
   iceberg-js@0.8.1: {}
+
+  idb-keyval@6.3.0: {}
 
   ignore@5.3.2: {}
 

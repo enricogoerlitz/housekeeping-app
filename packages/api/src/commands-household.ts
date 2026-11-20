@@ -7,7 +7,16 @@ import {
   type ISODate,
 } from '@housekeeping/core';
 
-import { getData, getState, newId, nowISO, setState, updateData } from './store';
+import {
+  getData,
+  getState,
+  isBackendMode,
+  newId,
+  nowISO,
+  setState,
+  simulateOffline,
+  updateData,
+} from './store';
 
 // Write side: every change to the data goes through a command. The assistant uses the same
 // commands as the screens (see assistant.ts), so there is exactly one implementation per action.
@@ -28,6 +37,11 @@ export function setCurrentMember(memberId: Id): void {
  * changed offline disappear.
  */
 export function setOffline(offline: boolean): void {
+  // Backend mode: the switch blocks the transport, so the app behaves as without network.
+  if (isBackendMode()) {
+    simulateOffline(offline);
+    return;
+  }
   setState((state) => ({ ...state, offline }));
   if (!offline) {
     updateData((data) =>
