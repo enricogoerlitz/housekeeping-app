@@ -87,3 +87,24 @@ Transkriptionsqualität nicht reicht.
 - **Ein Schlüssel für alles:** Der „API key“ der Foundry-Ressource gilt für LLM und Speech.
 - **Variablennamen** heißen `FOUNDRY_*` statt `OPENAI_*` (siehe `.env.example`). Das OpenAI-SDK
   bekommt Basis-URL und Schlüssel explizit übergeben.
+
+## Nachtrag 2026-11-20 — Ergebnis des Verbindungstests
+
+Getestet mit einer deutschen Testaufnahme (16 kHz, mono) gegen die Foundry-Ressource in
+`westeurope`:
+
+| Prüfung | Ergebnis |
+| --- | --- |
+| LLM über die Responses API, Freitext | ✅ deutsche Antwort in ca. 2,5 s |
+| LLM mit strukturierter Ausgabe (JSON-Schema) | ✅ „zwei Liter Milch, sechs Eier, ein Vollkornbrot“ → drei Posten mit Zusatz |
+| `mai-transcribe-2-streaming` in `westeurope` | ❌ „requested speech model is not enabled“, weil die Region nicht unterstützt wird |
+| Azure Speech Standardmodell, `de-DE`, Streaming | ✅ erstes Zwischenergebnis nach ca. 0,5 s, Endergebnis fehlerfrei |
+| Kurzlebiges Speech-Token, ausgestellt mit dem Ressourcenschlüssel (Browser-Ablauf) | ✅ |
+
+**Folge:** Standard für Speech-to-Text ist das **Azure-Speech-Standardmodell mit `de-DE`**
+(allgemein verfügbar, in der vorhandenen Ressource). MAI-Transcribe-2-Streaming bleibt eine
+Option über `FOUNDRY_STT_MODEL`. Dafür bräuchte es eine Ressource in einer unterstützten Region,
+die nächste in der EU ist `swedencentral`. Der Code bleibt derselbe.
+
+Beim Test brachen Verbindungen zu Azure gelegentlich schon beim TLS-Aufbau ab (`ECONNRESET`).
+KI-Aufrufe bekommen deshalb Wiederholungsversuche mit Backoff, wie alle Netzaufrufe.
