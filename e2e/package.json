@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "e2e": "playwright test",
-    "demo:video": "node ./record-video.mjs"
+    "demo:video": "node ./record-video.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1"

@@ -39,6 +39,10 @@ supabase/.branches/
 # Claude Code: personal settings stay local
 .claude/settings.local.json
 
+# Playwright output
+playwright-report/
+test-results/
+
 # scratch work (see AGENTS.md)
 tmp/
 

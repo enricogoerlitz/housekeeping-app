@@ -59,7 +59,9 @@ export function parseMapsLink(input: string): MapsLink | null {
     };
   }
   const isGoogle =
-    /^(google\.[a-z.]+|maps\.google\.[a-z.]+)$/.test(host) &&
+    // Only real Google domains ("google.de", "google.co.uk"); a free suffix would let
+    // "maps.google.com.evil.example" pass as Google.
+    /^(maps\.)?google\.(com|[a-z]{2}|(co|com)\.[a-z]{2})$/.test(host) &&
     (host.startsWith('maps.') || pathname.startsWith('/maps'));
   if (!isGoogle) return null;
   const place = pathname.match(/\/maps\/place\/([^/]+)/);

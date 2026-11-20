@@ -2,6 +2,8 @@ pnpm-lock.yaml
 **/dist/
 **/.expo/
 **/coverage/
+**/playwright-report/
+**/test-results/
 supabase/.temp/
 tmp/
 # Vendored third-party skills keep their upstream formatting

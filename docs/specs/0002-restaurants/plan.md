@@ -46,7 +46,7 @@ Im Frontend-Stand keine Änderung. Mit der ersten Daten-Spec folgen über den `d
 - **Berührt:** `packages/core/src/restaurants.ts`, `types.ts`
 - **Test:** Link-Varianten (Google-Ort, Apple, Kurzlink, kein Link), Routen-Links, Dubletten,
   Besuche relativ zu heute
-- **Status:** erledigt (Unit-Tests folgen mit Task 13 von Spec 0001)
+- **Status:** erledigt am 20.11.2026
 
 ### Task 2 — Befehle, Hooks und Beispieldaten in api
 
@@ -62,7 +62,7 @@ Im Frontend-Stand keine Änderung. Mit der ersten Daten-Spec folgen über den `d
   `features/meal-plan/add-entry-sheet.tsx`, `features/today/today-meals.tsx`, `app/teilen.tsx`,
   `app/restaurant/[id].tsx`
 - **Test:** Playwright-Rundgang (Spec 0001, Task 14) um die Restaurant-Schritte erweitert
-- **Status:** in Arbeit
+- **Status:** erledigt am 20.11.2026
 
 ### Task 4 — Web-Share-Target (Android-PWA)
 
@@ -78,10 +78,18 @@ App), echte Kurzlink-Auflösung (Daten-Spec).
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 20.11.2026.
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+- [x] Jedes AC hat einen Test: `packages/core/src/restaurants.test.ts`,
+      `packages/api/src/commands-{restaurants,plan}.test.ts`, `e2e/rundgang-restaurants.spec.ts`
+      (Handy und Desktop). Tests nach der Umsetzung geschrieben (siehe Nachweis von Spec 0001),
+      jede Datei einmal rot gesehen.
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün.
+- [~] `/ui-verify`: Screenshot-Durchlauf in drei Breiten und allen Themes; `impeccable` offen.
+- [x] Offline: „Restaurant hinzufügen“, Bewerten und Notiz sind offline ausgegraut, Lesen geht.
+- [x] Glossar („Restaurant“, „Besuch“) und Rückverfolgbarkeit aktuell.
+
+Gefunden und behoben: Ein Link wie `maps.google.com.evil.example` galt als Google-Maps-Link
+(`parseMapsLink`). Ohne Folgen, weil die Route nie den Link öffnet, sondern aus Koordinaten gebaut
+wird; trotzdem jetzt streng geprüft. 0002 AC-010 prüft der Rundgang an „Brooklyn Burger Bar“, weil
+„Trattoria Da Enzo“ in den Beispieldaten schon bewertet und favorisiert ist.

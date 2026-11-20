@@ -129,7 +129,7 @@ export function PlanScreen() {
       }}
     >
       <Button
-        label="Auf die Einkaufsliste …"
+        label={isPhone ? 'Auf die Liste …' : 'Auf die Einkaufsliste …'}
         icon="shopping-basket"
         variant="secondary"
         size={isPhone ? 'sm' : 'md'}

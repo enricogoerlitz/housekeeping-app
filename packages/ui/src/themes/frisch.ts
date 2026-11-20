@@ -104,7 +104,7 @@ const dark: ThemeColors = {
   checkLine: '#F6F5F2',
   barBg: '#1D1D25',
   scrim: 'rgba(0,0,0,0.6)',
-  fabBg: '#8E66FF',
+  fabBg: '#7F56FA',
   fabText: '#FFFFFF',
   tones: {
     essen: { bg: '#4D1E12', fg: '#FFCDBF' },

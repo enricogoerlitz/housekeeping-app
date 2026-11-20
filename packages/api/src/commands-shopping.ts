@@ -244,6 +244,7 @@ export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem |
     id: newId('contrib'),
     source: { kind: 'manual' },
     count: 1,
+    ...(ingredient.shoppingNote ? { note: ingredient.shoppingNote } : {}),
   });
   return { itemId, articleName: article.name, createdArticle: created };
 }

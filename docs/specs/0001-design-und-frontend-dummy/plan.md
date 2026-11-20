@@ -74,7 +74,7 @@ Akzeptanzkriterium bekommt trotzdem seinen Test.
 - **Deckt ab:** AC-001, AC-003
 - **Berührt:** `docs/design/DESIGN.md`
 - **Test:** Unit-Test rechnet die Kontraste aller Text-Hintergrund-Paare aller sechs Paletten
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 3 — Styling-Entscheidung (ADR-0010)
 
@@ -92,7 +92,7 @@ Akzeptanzkriterium bekommt trotzdem seinen Test.
   Sheet, Hinweis mit „Rückgängig“, Avatar, Abzeichen, Fortschritt, Fälligkeitsbalken, leerer
   Zustand, Offline-Hinweis, Vorschlagskarte, Geisterzeile, Segment-Schalter, Schalter
 - **Test:** Rundgang-Schritt öffnet `/showroom`; Lint-Regel gegen Farbwerte im Feature-Code
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 5 — Fachfunktionen für die Anzeige
 
@@ -109,7 +109,7 @@ Akzeptanzkriterium bekommt trotzdem seinen Test.
   - Einkaufsposten aus Beiträgen zusammenführen
   - nach Laufreihenfolge gruppieren
 - **Test:** Unit-Tests je Funktion, benannt nach dem Kriterium
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 6 — Daten-Schnittstelle und Beispielhaushalt
 
@@ -117,7 +117,7 @@ Akzeptanzkriterium bekommt trotzdem seinen Test.
 - **Berührt:** `packages/api`, `eslint.config.mjs`
 - **Test:** Unit-Tests prüfen den Beispielhaushalt gegen AC-012 und den Starter-Katalog gegen
   AC-013; Lint-Regel für AC-015
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 7 — App-Gerüst
 
@@ -126,50 +126,50 @@ Akzeptanzkriterium bekommt trotzdem seinen Test.
 - **Inhalt:** fünf Tabs, seitliche Navigation ab Tabletbreite, Assistent-Knopf, Profilmenü,
   Einstellungen (Erscheinungsbild, Offline simulieren, KI-Schalter), Haushalt wechseln,
   „Nicht gefunden“
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 8 — Heute und Rezepte
 
 - **Deckt ab:** AC-017 bis AC-023
 - **Berührt:** `apps/app/src/features/today/`, `recipes/`
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 9 — Wochenplan
 
 - **Deckt ab:** AC-024 bis AC-027
 - **Berührt:** `apps/app/src/features/meal-plan/`
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 10 — Einkaufsliste, Vorratscheck, Einkaufsmodus, Märkte
 
 - **Deckt ab:** AC-028 bis AC-034
 - **Berührt:** `apps/app/src/features/shopping/`, `stores/`
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 11 — Haushaltsplan, Abwesenheit, Feedback
 
 - **Deckt ab:** AC-035 bis AC-039
 - **Berührt:** `apps/app/src/features/chores/`, `household/`, `feedback/`
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 12 — KI-Bedienung, simuliert
 
 - **Deckt ab:** AC-040 bis AC-043
 - **Berührt:** `apps/app/src/features/assistant/`, `packages/api` (Beispielantworten)
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 13 — Rundgang als Test und Video
 
 - **Deckt ab:** AC-044, AC-045; sammelt die Schritte aller vorigen Aufgaben
 - **Berührt:** `e2e/`, `package.json` (`pnpm e2e`, `pnpm demo:video`), `.github/workflows/ci.yml`
-- **Status:** offen
+- **Status:** erledigt am 20.11.2026
 
 ### Task 14 — Unit-Tests, Prüfen und Feinschliff
 
 - **Deckt ab:** alle
 - **Inhalt:** Unit-Tests für `packages/core`, `packages/api` und die Kontraste; `/ui-verify` in drei Breiten, Design-Kritik, Barrierefreiheit (Tastatur, Kontraste,
   Beschriftungen), Prüfung auf dem iPhone durch Enrico
-- **Status:** offen
+- **Status:** teilweise erledigt: Unit-Tests, Kontraste und Screenshot-Durchlauf fertig; Design-Kritik (`impeccable`), Tastatur-Prüfung und iPhone-Test durch Enrico offen
 
 ## Reihenfolge
 
@@ -192,11 +192,29 @@ Alles aus den Nicht-Zielen der Spec. Außerdem:
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 20.11.2026, Commit nach `af55169`.
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] Rundgang (`pnpm e2e`) grün; Video erzeugt
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet
-- [ ] Auf dem iPhone in Safari geprüft
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+- [x] Jedes umsetzbare AC hat einen Test (Tabelle in `spec.md`, Abschnitt „Rückverfolgbarkeit“).
+      **Abweichung von „rot zuerst“:** Enrico wollte die Tests bewusst erst nach der fertigen App.
+      Ersatz: Jede Unit-Testdatei wurde einmal gegen absichtlich kaputten Code rot gesehen; dabei
+      fanden sich zwei echte Fehler (Google-Host-Prüfung in `parseMapsLink`, Kontrast des
+      Assistent-Knopfs in „Frisch“ dunkel), beide behoben. Der Rundgang wurde gegen eine
+      absichtlich kaputte Kopie geprüft (AC-045). `spec-auditor` ist noch nicht gelaufen.
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün: 339 Unit-Tests (core 178,
+      api 55, ui 106).
+- [x] Rundgang `pnpm e2e` grün: 74 bestanden, 17 je Breite übersprungen (Handy 390 px, Desktop
+      1440 px), zweimal hintereinander. Video: `pnpm demo:video` → `tmp/demo/rundgang.webm` und
+      `tmp/demo/rundgang-desktop.webm`.
+- [~] `/ui-verify`: Screenshot-Durchlauf aller 16 Bildschirme in 390/820/1440 px, alle drei Themes
+  hell und dunkel, ohne Konsolenfehler und ohne seitliches Überlaufen. Behoben: abgeschnittener
+  Knopf „Auf die Einkaufsliste …“ auf dem Handy. Bewusst gelassen: Stift-Symbol je Zutat
+  (macht den Einkaufs-Zusatz auffindbar). Offen: `impeccable`-Kritik, Tastaturbedienung.
+- [ ] Auf dem iPhone in Safari geprüft (Enrico).
+- [x] Glossar und Rückverfolgbarkeitstabelle aktuell.
+
+Bekannte Abweichungen zwischen AC und Beispieldaten, im Test berücksichtigt:
+
+- AC-029: „Milch“ steht in den Beispieldaten schon mit 2× (1× von Hand, 1× aus der Lasagne);
+  der Test stellt die Ausgangslage „1×“ im Haushalt „Test“ her.
+- AC-033: auf „Geschenkpapier“ umgestellt (siehe Spec).
+- Rundgang mit fester Uhrzeit (Montag, 16.11.2026, 12 Uhr), damit Wochentage aus den AC stabil sind.

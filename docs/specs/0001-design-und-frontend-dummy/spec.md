@@ -392,12 +392,12 @@ Und         ein Fortschritt zeigt „erledigt / gesamt“
 Und         Posten ohne Bereich stehen am Ende unter „Ohne Bereich“
 ```
 
-**AC-033**
+**AC-033** (geändert am 20.11.2026: „Spülmittel“ hat im Starter-Katalog schon einen Bereich)
 
 ```gherkin
-Angenommen  im Einkaufsmodus steht „Spülmittel“ unter „Ohne Bereich“
+Angenommen  im Einkaufsmodus steht „Geschenkpapier“ unter „Ohne Bereich“
 Wenn        ich „Bereich zuordnen“ wähle und „Haushalt & Reinigung“ antippe
-Dann        steht „Spülmittel“ unter „Haushalt & Reinigung“
+Dann        steht „Geschenkpapier“ unter „Haushalt & Reinigung“
 ```
 
 **AC-034 — Laufreihenfolge ändern**
@@ -563,15 +563,15 @@ lokalen Speicher des Browsers.
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                                                | Task (plan.md) | Test |
-| ------- | ------------------------------------------------- | -------------- | ---- |
-| REQ-001 | AC-001, AC-003, AC-046, AC-047 (AC-002 verworfen) | —              | —    |
-| REQ-002 | AC-004 bis AC-006                                 | —              | —    |
-| REQ-003 | AC-007 bis AC-011                                 | —              | —    |
-| REQ-004 | AC-012 bis AC-016                                 | —              | —    |
-| REQ-005 | AC-017 bis AC-023                                 | —              | —    |
-| REQ-006 | AC-024 bis AC-027, AC-048                         | —              | —    |
-| REQ-007 | AC-028 bis AC-034                                 | —              | —    |
-| REQ-008 | AC-035 bis AC-039                                 | —              | —    |
-| REQ-009 | AC-040 bis AC-043                                 | —              | —    |
-| REQ-010 | AC-044, AC-045                                    | —              | —    |
+| REQ     | AC                                                | Task (plan.md) | Test                                                                                    |
+| ------- | ------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001, AC-003, AC-046, AC-047 (AC-002 verworfen) | 1–3            | `e2e/rundgang-shell.spec.ts`, `packages/ui/src/themes/contrast.test.ts`                 |
+| REQ-002 | AC-004 bis AC-006                                 | 4              | `e2e/rundgang-shell.spec.ts`, Lint-Regel (AC-005)                                       |
+| REQ-003 | AC-007 bis AC-011                                 | 7              | `e2e/rundgang-shell.spec.ts`                                                            |
+| REQ-004 | AC-012 bis AC-016                                 | 5, 6           | `packages/api/src/seed/demo.test.ts`, `e2e/rundgang-shell.spec.ts`, Lint-Regel (AC-015) |
+| REQ-005 | AC-017 bis AC-023                                 | 5, 8           | `e2e/rundgang-essen.spec.ts`, `packages/core/src/{recipes,diet,amounts}.test.ts`        |
+| REQ-006 | AC-024 bis AC-027, AC-048                         | 5, 9           | `e2e/rundgang-plan.spec.ts`, `packages/core/src/meal-plan.test.ts`                      |
+| REQ-007 | AC-028 bis AC-034                                 | 5, 10          | `e2e/rundgang-liste.spec.ts`, `packages/core/src/shopping.test.ts`                      |
+| REQ-008 | AC-035 bis AC-039                                 | 11             | `e2e/rundgang-haushalt.spec.ts`, `packages/core/src/chores.test.ts`                     |
+| REQ-009 | AC-040 bis AC-043                                 | 12             | `e2e/rundgang-*.spec.ts`, `packages/api/src/assistant.test.ts`                          |
+| REQ-010 | AC-044, AC-045                                    | 13             | `pnpm demo:video` (`e2e/record-video.mjs`)                                              |

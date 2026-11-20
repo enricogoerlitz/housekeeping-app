@@ -457,8 +457,8 @@ function IngredientNoteSheet(props: {
     >
       <Stack gap={12}>
         <Text color="muted">
-          Steht auf der Einkaufsliste in Klammern hinter {props.ingredient.name}, wenn dieses Rezept
-          geplant ist.
+          Steht auf der Einkaufsliste in Klammern hinter {props.ingredient.name}, wenn die Zutat aus
+          diesem Rezept auf die Liste kommt.
         </Text>
         <TextField
           label={`Zusatz für ${props.ingredient.name}`}

@@ -230,13 +230,15 @@ export function askAssistant(text: string, context: AssistantContext): Assistant
   if (request === normalizeText(EXAMPLE_TODAY)) {
     const dishes = data.planEntries
       .filter((entry) => entry.date === today)
-      .map((entry) =>
-        entry.kind === 'text'
-          ? entry.text
-          : entry.recipeId
-            ? recipesById[entry.recipeId]?.title
-            : undefined,
-      )
+      .map((entry) => {
+        if (entry.kind === 'text') return entry.text;
+        if (entry.kind === 'restaurant') {
+          const restaurant = data.restaurants.find((r) => r.id === entry.restaurantId);
+          return restaurant ? `${restaurant.name} (Restaurant)` : undefined;
+        }
+        const title = entry.recipeId ? recipesById[entry.recipeId]?.title : undefined;
+        return title && entry.kind === 'leftovers' ? `${title} (Reste)` : title;
+      })
       .filter((title): title is string => !!title);
     return {
       text:
