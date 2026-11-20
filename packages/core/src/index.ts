@@ -10,5 +10,11 @@ export * from './meal-plan';
 export * from './shopping';
 export * from './chores';
 export * from './restaurants';
+export * from './dictation';
+export * from './sync-delta';
+export * from './sync-overlay';
+export * from './sync-diff';
+export * from './store-queue';
+export * from './ai-contract';
 
 export const APP_NAME = 'Housekeeping';

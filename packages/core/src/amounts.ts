@@ -135,6 +135,47 @@ function splitLeadingAmount(input: string): LeadingAmount | undefined {
   return undefined;
 }
 
+const NUMBER_WORDS = new Map<string, string>([
+  ['ein', '1'],
+  ['eine', '1'],
+  ['einen', '1'],
+  ['einer', '1'],
+  ['eins', '1'],
+  ['zwei', '2'],
+  ['zwo', '2'],
+  ['drei', '3'],
+  ['vier', '4'],
+  ['fünf', '5'],
+  ['sechs', '6'],
+  ['sieben', '7'],
+  ['acht', '8'],
+  ['neun', '9'],
+  ['zehn', '10'],
+  ['elf', '11'],
+  ['zwölf', '12'],
+  ['zwanzig', '20'],
+  ['dreißig', '30'],
+]);
+// "ein halbes Brot", "eine halbe Gurke", "einen halben Kohl".
+const HALF = /^(?:ein|eine|einen|einer) halbe[nrs]? (\S.*)$/i;
+// "ein paar Äpfel" is a few, not one.
+const NOT_A_COUNT = new Set(['paar', 'bisschen', 'wenig']);
+
+/**
+ * Replaces a German number word at the start by digits when something follows it:
+ * "sechs Eier" → "6 Eier", "eine Gurke" → "1 Gurke", "ein halbes Brot" → "½ Brot".
+ * Text that is only a number word, or "ein paar …", stays as it is.
+ */
+export function leadingNumberWordToDigits(text: string): string {
+  const half = HALF.exec(text);
+  if (half) return `½ ${half[1]}`;
+  const [, word = '', rest = ''] = /^(\S+) (\S.*)$/.exec(text) ?? [];
+  const digits = NUMBER_WORDS.get(word.normalize('NFC').toLowerCase());
+  const next = rest.split(' ')[0]?.toLowerCase() ?? '';
+  if (digits === undefined || NOT_A_COUNT.has(next)) return text;
+  return `${digits} ${rest}`;
+}
+
 export interface SmartInput {
   /** Article name without amount and note, as typed ("Käse"). */
   name: string;
@@ -154,11 +195,14 @@ export interface SmartInput {
  * "Käse, laktosefrei" → { name: "Käse", note: "laktosefrei" }
  * "2x Käse", "2× Käse" and "Käse 2x" → { name: "Käse", count: 2 }
  * "Milch" → { name: "Milch" } · "   " → null
+ * Number words count like digits: "sechs Eier" → { name: "Eier", count: 6 }, "ein halbes Brot"
+ * → count 0.5, "zwei Dosen Mais" → { qty: 2, unit: "Dose" } (see leadingNumberWordToDigits).
  * Text without a name next to the amount or note ("2", "(Gouda)") is taken as the name as typed.
  */
 export function parseSmartInput(text: string): SmartInput | null {
-  const input = collapseWhitespace(text);
-  if (input === '') return null;
+  const typed = collapseWhitespace(text);
+  if (typed === '') return null;
+  const input = leadingNumberWordToDigits(typed);
 
   const leading = splitLeadingAmount(input);
   const notes: string[] = [];
@@ -182,7 +226,7 @@ export function parseSmartInput(text: string): SmartInput | null {
     name = trailing[1] ?? name;
     count = Number(trailing[2]);
   }
-  if (name === '') return { name: input };
+  if (name === '') return { name: typed };
 
   const result: SmartInput = { name };
   if (count !== undefined) result.count = count;

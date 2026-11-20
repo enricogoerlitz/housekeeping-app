@@ -70,6 +70,28 @@ describe('parseSmartInput', () => {
     expect(parseSmartInput('2')).toEqual({ name: '2' });
     expect(parseSmartInput('(Gouda)')).toEqual({ name: '(Gouda)' });
   });
+
+  it('AC-028: reads German number words as a count ("sechs Eier" = 6 × Eier)', () => {
+    expect(parseSmartInput('sechs Eier')).toEqual({ name: 'Eier', count: 6 });
+    expect(parseSmartInput('Zwölf Brötchen')).toEqual({ name: 'Brötchen', count: 12 });
+    expect(parseSmartInput('zwanzig Servietten')).toEqual({ name: 'Servietten', count: 20 });
+    expect(parseSmartInput('dreißig Teelichter')).toEqual({ name: 'Teelichter', count: 30 });
+  });
+
+  it.each(['ein Brot', 'eine Brot', 'einen Brot'])('reads "%s" as one piece', (text) => {
+    expect(parseSmartInput(text)).toEqual({ name: 'Brot', count: 1 });
+  });
+
+  it('reads "ein halbes" as one half and a number word before a unit as a quantity', () => {
+    expect(parseSmartInput('ein halbes Brot')).toEqual({ name: 'Brot', count: 0.5 });
+    expect(parseSmartInput('zwei Dosen Mais')).toEqual({ name: 'Mais', qty: 2, unit: 'Dose' });
+  });
+
+  it('leaves number words alone when nothing follows or they mean "a few"', () => {
+    expect(parseSmartInput('Sechs')).toEqual({ name: 'Sechs' });
+    expect(parseSmartInput('ein paar Äpfel')).toEqual({ name: 'ein paar Äpfel' });
+    expect(parseSmartInput('Einhorn-Kekse')).toEqual({ name: 'Einhorn-Kekse' });
+  });
 });
 
 describe('parseIngredientLine', () => {
