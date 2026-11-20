@@ -1,5 +1,12 @@
 import { useActivities, useCurrentMember, usePlanEntries, useToday } from '@housekeeping/api';
-import { fuzzyIncludes, visitsOf, type Activity, type Id, type Visits } from '@housekeeping/core';
+import {
+  fuzzyIncludes,
+  routeId,
+  visitsOf,
+  type Activity,
+  type Id,
+  type Visits,
+} from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -38,10 +45,6 @@ const SORTS: { value: ActivitySort; label: string }[] = [
 
 const LIST_COLUMN_WIDTH = 380;
 
-function param(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 function matches(query: string, activity: Activity): boolean {
   return [
     activity.name,
@@ -71,7 +74,7 @@ export function ActivitiesPanel(props: { header: (right: ReactNode) => ReactNode
   const [sort, setSort] = useState<ActivitySort>('name');
   const [creating, setCreating] = useState(false);
 
-  const selectedId = isWide ? param(params.aid) : undefined;
+  const selectedId = isWide ? routeId(params.aid) : undefined;
 
   const open = (activityId: Id) => {
     if (isWide) router.setParams({ aid: activityId });

@@ -1,5 +1,5 @@
 -- Photo storage (spec 0004, REQ-004): the private bucket household-media holds the photos of
--- activities and recipes under <household_id>/<activities|recipes>/<id>/<file>. Members of the
+-- activities and recipes under <household_id>/<activities|recipes>/<id>/<uuid>.jpg. Members of the
 -- household read, upload, replace and delete them; nobody else can, not even with the API
 -- directly (AC-012); a malformed path is rejected without an error that leaks anything.
 --
@@ -9,7 +9,7 @@
 -- Storage API does for its own deletes; this file sets it to test the delete policy.
 begin;
 \ir _helpers.psql
-select plan(26);
+select plan(31);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -17,9 +17,16 @@ create function tests.fx(p_key text) returns uuid language sql stable
 as $$ select id from fx where key = p_key $$;
 grant execute on function tests.fx(text) to anon, authenticated;
 
--- An object name as the client builds it: <household_id>/<kind>/<row id>/<file>.
+-- The folder of a row: <household_id>/<kind>/<row id>/
+create function tests.folder(p_household text, p_kind text, p_row text) returns text language sql stable
+as $$ select tests.fx(p_household) || '/' || p_kind || '/' || tests.fx(p_row) || '/' $$;
+grant execute on function tests.folder(text, text, text) to anon, authenticated;
+
+-- An object name as the client builds it: <household_id>/<kind>/<row id>/<uuid>.jpg. p_file is a
+-- readable stand-in; the file name is a uuid derived from it, so the same p_file names the same
+-- object.
 create function tests.media(p_household text, p_kind text, p_row text, p_file text) returns text language sql stable
-as $$ select tests.fx(p_household) || '/' || p_kind || '/' || tests.fx(p_row) || '/' || p_file $$;
+as $$ select tests.folder(p_household, p_kind, p_row) || md5(p_file)::uuid || '.jpg' $$;
 grant execute on function tests.media(text, text, text, text) to anon, authenticated;
 
 -- Uploads (inserts) an object into household-media as the current role.
@@ -51,6 +58,29 @@ select results_eq(
   $$ select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'household-media' $$,
   $$ values (false, 2097152::bigint, array['image/jpeg']) $$,
   'REQ-004 household-media: a private bucket for JPEG files up to 2 MiB');
+-- A bucket of that name that existed before (made by hand, public, without limits) gets the
+-- settings too: the settings migration runs again over such a bucket, statement by statement as
+-- the CLI recorded and applied it (the migration files are not visible to this test).
+update storage.buckets set public = true, file_size_limit = null, allowed_mime_types = null
+where id = 'household-media';
+do $$
+declare
+  statement text;
+begin
+  for statement in
+    select unnest(statements) from supabase_migrations.schema_migrations where version = '20261120212216'
+  loop
+    execute statement;
+  end loop;
+  if not found then
+    raise exception 'migration 20261120212216 (household_media_bucket_settings) is not recorded';
+  end if;
+end
+$$;
+select results_eq(
+  $$ select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'household-media' $$,
+  $$ values (false, 2097152::bigint, array['image/jpeg']) $$,
+  'REQ-004 household-media: a bucket that existed with other settings is made private, JPEG only, 2 MiB');
 
 -- ===================== Members =====================
 select tests.authenticate_as(tests.fx('anna'));
@@ -107,17 +137,29 @@ select throws_ok(
 
 -- ===================== Malformed paths =====================
 select throws_ok(
-  tests.upload_sql('not-a-uuid/activities/' || gen_random_uuid() || '/x.jpg'),
+  tests.upload_sql('not-a-uuid/activities/' || gen_random_uuid() || '/' || gen_random_uuid() || '.jpg'),
   '42501', null, 'REQ-004 household-media: a first folder that is no uuid is rejected as a policy violation, not a cast error');
 select throws_ok(
   tests.upload_sql(tests.media('home_a', 'chores', 'act_a', 'x.jpg')),
   '42501', null, 'REQ-004 household-media: a second folder other than activities or recipes is rejected');
 select throws_ok(
-  tests.upload_sql(tests.fx('home_a') || '/activities/x.jpg'),
+  tests.upload_sql(tests.fx('home_a') || '/activities/' || gen_random_uuid() || '.jpg'),
   '42501', null, 'REQ-004 household-media: a path without the row''s folder is rejected');
 select throws_ok(
-  tests.upload_sql(upper(tests.fx('home_a')::text) || '/activities/' || tests.fx('act_a') || '/x.jpg'),
+  tests.upload_sql(upper(tests.fx('home_a')::text) || '/activities/' || tests.fx('act_a') || '/' || gen_random_uuid() || '.jpg'),
   '42501', null, 'REQ-004 household-media: the household id must be written as the client builds it (lower case)');
+select throws_ok(
+  tests.upload_sql(tests.folder('home_a', 'activities', 'act_a') || 'eislaufen.jpg'),
+  '42501', null, 'REQ-004 household-media: a file name other than <uuid>.jpg is rejected');
+select throws_ok(
+  tests.upload_sql(tests.folder('home_a', 'activities', 'act_a') || gen_random_uuid() || '.svg'),
+  '42501', null, 'REQ-004 household-media: a file other than .jpg is rejected');
+select throws_ok(
+  tests.upload_sql(tests.folder('home_a', 'activities', 'act_a') || gen_random_uuid() || '.jpg.html'),
+  '42501', null, 'REQ-004 household-media: nothing may follow .jpg');
+select throws_ok(
+  tests.upload_sql(tests.folder('home_a', 'activities', 'act_a') || upper(gen_random_uuid()::text) || '.jpg'),
+  '42501', null, 'REQ-004 household-media: the file''s uuid is written in lower case, as the client builds it');
 select throws_ok(
   tests.upload_sql(tests.media('home_a', 'activities', 'act_a', 'x.jpg'), 'tests-other'),
   '42501', null, 'REQ-004 storage: the policies cover only household-media, not other buckets');

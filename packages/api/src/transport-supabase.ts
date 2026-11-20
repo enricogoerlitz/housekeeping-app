@@ -32,13 +32,21 @@ type RpcReply = {
 /** storage-js answers `{ data, error }`; a refused request has `status` and `statusCode`. */
 type StorageReply = { data: unknown; error: unknown };
 
+/**
+ * storage-js 2.119: `download(path, options, parameters)` hands `parameters` to fetch (HTTP cache
+ * mode, abort signal); `upload` takes no fetch parameters, so an upload cannot be cancelled.
+ */
 interface StorageBucketLike {
   upload(
     path: string,
     body: Blob,
-    options: { contentType: string; upsert: boolean },
+    options: { contentType: string; upsert: boolean; cacheControl: string },
   ): PromiseLike<StorageReply>;
-  download(path: string): PromiseLike<StorageReply>;
+  download(
+    path: string,
+    options: Record<string, never>,
+    parameters: { cache: 'no-store'; signal: AbortSignal },
+  ): PromiseLike<StorageReply>;
   remove(paths: string[]): PromiseLike<StorageReply>;
 }
 
@@ -184,19 +192,34 @@ export function createSupabaseTransport(
     return result.data;
   }
 
-  /** A storage request in the photo bucket; its data, or the classified error. */
+  /**
+   * A storage request in the photo bucket; its data, or the classified error. It gives up after
+   * the media timeout or when the caller's signal aborts (sign-out), and the signal it hands the
+   * request aborts then too, so a request that can be cancelled does not keep running.
+   */
   async function media(
-    request: (bucket: StorageBucketLike) => PromiseLike<StorageReply>,
+    request: (bucket: StorageBucketLike, signal: AbortSignal) => PromiseLike<StorageReply>,
+    caller?: AbortSignal,
   ): Promise<unknown> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new TransportError('transient', 'timeout', 0)),
-        mediaTimeoutMs,
+    if (caller?.aborted) throw new TransportError('transient', 'aborted', 0);
+    const controller = new AbortController();
+    let timedOut = false;
+    const stopped = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () =>
+        reject(new TransportError('transient', timedOut ? 'timeout' : 'aborted', 0)),
       );
     });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, mediaTimeoutMs);
+    const cancel = () => controller.abort();
+    caller?.addEventListener('abort', cancel);
     try {
-      const reply = await Promise.race([request(client.storage.from(MEDIA_BUCKET)), timeout]);
+      const reply = await Promise.race([
+        request(client.storage.from(MEDIA_BUCKET), controller.signal),
+        stopped,
+      ]);
       if (reply.error) throw classifyStorageError(reply.error);
       return reply.data;
     } catch (error) {
@@ -204,6 +227,7 @@ export function createSupabaseTransport(
       throw new TransportError('transient', 'network', 0);
     } finally {
       clearTimeout(timer);
+      caller?.removeEventListener('abort', cancel);
     }
   }
 
@@ -283,12 +307,38 @@ export function createSupabaseTransport(
     aiSearch: (request) => invokeParsed(AiSearchResultSchema, 'ai-search', request),
     speechToken: () => invokeParsed(SpeechTokenReplySchema, 'speech-token', {}),
     uploadMedia: async (path, photo) => {
-      await media((bucket) =>
-        bucket.upload(path, photo, { contentType: 'image/jpeg', upsert: false }),
-      );
+      let sent: PromiseLike<StorageReply> | undefined;
+      try {
+        // cacheControl '0' (max-age=0): no browser or CDN keeps a copy of the photo, so nothing
+        // of it stays on a device after sign-out except the photo store that is cleared then.
+        await media((bucket) => {
+          sent = bucket.upload(path, photo, {
+            contentType: 'image/jpeg',
+            upsert: false,
+            cacheControl: '0',
+          });
+          return sent;
+        });
+      } catch (error) {
+        // The upload cannot be cancelled (storage-js): if it still lands after the timeout, the
+        // caller has given up on it and no row will name it, so the file is removed again.
+        if (error instanceof TransportError && error.code === 'timeout' && sent) {
+          Promise.resolve(sent).then(
+            (reply) => {
+              if (!reply.error) void media((bucket) => bucket.remove([path])).catch(() => {});
+            },
+            () => {},
+          );
+        }
+        throw error;
+      }
     },
-    downloadMedia: async (path) => {
-      const data = await media((bucket) => bucket.download(path));
+    downloadMedia: async (path, signal) => {
+      // no-store: the photo never enters the browser's HTTP cache, which sign-out cannot clear.
+      const data = await media(
+        (bucket, stop) => bucket.download(path, {}, { cache: 'no-store', signal: stop }),
+        signal,
+      );
       if (!(data instanceof Blob)) throw new TransportError('permanent', 'invalid_response');
       return data;
     },

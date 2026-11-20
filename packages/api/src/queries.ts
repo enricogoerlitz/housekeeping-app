@@ -30,11 +30,14 @@ export const useAbsences = () => useDataSelector((data) => data.absences);
 export const useFeedback = () => useDataSelector((data) => data.feedback);
 
 const byIdCache = new WeakMap<object, Record<Id, unknown>>();
-/** Index of a stored array by id, cached per array instance. */
+/**
+ * Index of a stored array by id, cached per array instance. Without a prototype, so an id from
+ * the address like `constructor` or `toString` finds nothing instead of an Object method.
+ */
 export function indexById<T extends { id: Id }>(list: T[]): Record<Id, T> {
   const cached = byIdCache.get(list);
   if (cached) return cached as Record<Id, T>;
-  const index: Record<Id, T> = {};
+  const index = Object.create(null) as Record<Id, T>;
   for (const entry of list) index[entry.id] = entry;
   byIdCache.set(list, index);
   return index;

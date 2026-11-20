@@ -6,15 +6,24 @@
 // without a row. Deleting the old file can fail (offline in that moment): that file stays as an
 // orphan, an accepted rest risk (plan.md).
 //
-// Display: photos are downloaded with the session (the bucket is private), kept as bytes in the
-// device storage next to the cache (bound to the user, cleared at sign-out) and shown through
-// blob: URLs. Offline only what is stored shows (AC-011). The store keeps about 50 MB.
+// Display: photos are downloaded with the session (the bucket is private, never into the HTTP
+// cache), checked (a JPEG of at most 1600 px: the bucket only checks the declared type), kept as
+// bytes in the device storage next to the cache (bound to the user's session, cleared at sign-out,
+// dropped with a household the user lost) and shown through blob: URLs. Offline only what is
+// stored shows (AC-011). The store keeps about 50 MB.
 import type { Activity, Id, Recipe } from '@housekeeping/core';
 import { useEffect, useSyncExternalStore } from 'react';
 
-import { deviceStorage, onlineCall, WRITE_REJECTED_MESSAGE } from './backend';
+import { deviceSession, onlineCall, WRITE_REJECTED_MESSAGE, type DeviceSession } from './backend';
+import {
+  evictMedia,
+  MEDIA_INDEX_KEY,
+  mediaHouseholdId,
+  mediaKey,
+  readMediaIndex,
+  serially,
+} from './media-cache';
 import { useOffline } from './queries';
-import type { Storage } from './storage';
 import {
   commitConfirmed,
   getData,
@@ -31,6 +40,8 @@ export const PHOTO_FORBIDDEN_MESSAGE =
   'Das Foto ließ sich nicht speichern – dafür fehlt die Berechtigung';
 export const PHOTO_UPLOAD_FAILED_MESSAGE =
   'Das Foto ließ sich gerade nicht hochladen – bitte noch einmal versuchen';
+export const PHOTO_HOUSEHOLD_CHANGED_MESSAGE =
+  'Das Foto wurde nicht gespeichert – du hast inzwischen den Haushalt gewechselt';
 
 /** What a person may choose (AC-010); phone photos fit. */
 export const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;
@@ -156,16 +167,6 @@ interface StoredMedia {
   bytes: ArrayBuffer;
 }
 
-interface MediaIndexEntry {
-  path: string;
-  size: number;
-  /** When it was stored (ms): the oldest go first. */
-  at: number;
-}
-
-const mediaKey = (path: string) => `media:${path}`;
-const INDEX_KEY = 'media-index';
-
 function isStoredMedia(value: unknown): value is StoredMedia {
   return (
     typeof value === 'object' &&
@@ -175,60 +176,34 @@ function isStoredMedia(value: unknown): value is StoredMedia {
   );
 }
 
-function readIndex(value: unknown): MediaIndexEntry[] {
-  return Array.isArray(value) ? (value as MediaIndexEntry[]) : [];
+/** Still the signed-in session that began the work (not signed out, no other user since). */
+function isCurrent(session: DeviceSession): boolean {
+  return !session.signal.aborted && deviceSession()?.epoch === session.epoch;
 }
 
 /**
- * Which stored photos stay: none of households no longer on the device, then the oldest go until
- * the rest fits the budget. `kept` keeps the order of the index.
+ * Keeps a photo on the device, unless the session ended meanwhile (its storage is cleared or
+ * belongs to the next user). A full or broken storage only costs the offline copy, never the
+ * action.
  */
-export function evictMedia(
-  index: readonly MediaIndexEntry[],
-  budgetBytes: number,
-  householdIds: ReadonlySet<string>,
-): { kept: MediaIndexEntry[]; dropped: string[] } {
-  const dropped = new Set<string>();
-  for (const entry of index) {
-    if (!householdIds.has(entry.path.split('/')[0] ?? '')) dropped.add(entry.path);
-  }
-  let total = index.reduce((sum, entry) => (dropped.has(entry.path) ? sum : sum + entry.size), 0);
-  for (const entry of [...index].sort((a, b) => a.at - b.at)) {
-    if (total <= budgetBytes) break;
-    if (dropped.has(entry.path)) continue;
-    dropped.add(entry.path);
-    total -= entry.size;
-  }
-  return { kept: index.filter((entry) => !dropped.has(entry.path)), dropped: [...dropped] };
-}
-
-// Index updates are read-modify-write: one at a time.
-let mediaQueue: Promise<unknown> = Promise.resolve();
-function serially<T>(task: () => Promise<T>): Promise<T> {
-  const run = mediaQueue.then(task, task);
-  mediaQueue = run.catch(() => undefined);
-  return run;
-}
-
-/**
- * Keeps a photo on the device, unless the user signed out meanwhile (that storage is cleared).
- * A full or broken storage only costs the offline copy, never the action.
- */
-function rememberMedia(path: string, photo: Blob, storage: Storage): Promise<void> {
+function rememberMedia(path: string, photo: Blob, session: DeviceSession): Promise<void> {
+  const { storage } = session;
   return serially(async () => {
     const bytes = await photo.arrayBuffer();
-    const index = readIndex(await storage.get(INDEX_KEY)).filter((entry) => entry.path !== path);
+    const index = readMediaIndex(await storage.get(MEDIA_INDEX_KEY)).filter(
+      (entry) => entry.path !== path,
+    );
     index.push({ path, size: bytes.byteLength, at: Date.now() });
     const { kept, dropped } = evictMedia(
       index,
       MEDIA_BUDGET_BYTES,
       new Set(Object.keys(peekState()?.households ?? {})),
     );
-    if (deviceStorage() !== storage) return;
-    const stored: StoredMedia = { type: photo.type || 'image/jpeg', bytes };
+    if (!isCurrent(session)) return;
+    const stored: StoredMedia = { type: 'image/jpeg', bytes };
     await storage.setMany([
       [mediaKey(path), stored],
-      [INDEX_KEY, kept],
+      [MEDIA_INDEX_KEY, kept],
     ]);
     if (dropped.length > 0) await storage.del(dropped.map(mediaKey));
   }).catch((error: unknown) => {
@@ -236,33 +211,69 @@ function rememberMedia(path: string, photo: Blob, storage: Storage): Promise<voi
   });
 }
 
-function forgetMedia(path: string, storage: Storage): Promise<void> {
+function forgetMedia(path: string, session: DeviceSession): Promise<void> {
+  const { storage } = session;
   return serially(async () => {
-    const index = readIndex(await storage.get(INDEX_KEY)).filter((entry) => entry.path !== path);
-    if (deviceStorage() !== storage) return;
-    await storage.setMany([[INDEX_KEY, index]]);
+    const index = readMediaIndex(await storage.get(MEDIA_INDEX_KEY)).filter(
+      (entry) => entry.path !== path,
+    );
+    if (!isCurrent(session)) return;
+    await storage.setMany([[MEDIA_INDEX_KEY, index]]);
     await storage.del([mediaKey(path)]);
   }).catch((error: unknown) => {
     console.warn(`Forgetting a photo failed: ${error instanceof Error ? error.name : 'unknown'}`);
   });
 }
 
+/**
+ * A downloaded photo as the device keeps and shows it, or undefined. The bucket checks only the
+ * type the uploader declared, so the bytes must start like a JPEG and, where the platform can
+ * decode images, be one of at most 1600 px (what preparePhoto stores). Typed image/jpeg whatever
+ * the download said.
+ */
+export async function verifyDownloadedPhoto(downloaded: Blob): Promise<Blob | undefined> {
+  const bytes = new Uint8Array(await downloaded.arrayBuffer());
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return undefined;
+  const photo = new Blob([bytes], { type: 'image/jpeg' });
+  const decode = (globalThis as { createImageBitmap?: typeof createImageBitmap }).createImageBitmap;
+  if (typeof decode !== 'function') return photo;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await decode(photo);
+  } catch {
+    return undefined;
+  }
+  try {
+    return Math.max(bitmap.width, bitmap.height) <= PHOTO_MAX_SIDE ? photo : undefined;
+  } finally {
+    bitmap.close();
+  }
+}
+
 const loading = new Map<string, Promise<Blob | undefined>>();
 
-async function fetchPhoto(path: string): Promise<Blob | undefined> {
-  const storage = deviceStorage();
-  // Photos of a household that left the device are not shown (they go with the next eviction).
-  const householdId = path.split('/')[0] ?? '';
-  if (!storage || !peekState()?.households[householdId]) return undefined;
-  const stored = await storage.get(mediaKey(path));
-  if (isStoredMedia(stored)) return new Blob([stored.bytes], { type: stored.type });
+async function fetchPhoto(path: string, session: DeviceSession): Promise<Blob | undefined> {
+  // Photos of a household that left the device are not shown (its photos were dropped with it).
+  if (!peekState()?.households[mediaHouseholdId(path)]) return undefined;
+  const stored = await session.storage.get(mediaKey(path));
+  if (!isCurrent(session)) return undefined;
+  if (isStoredMedia(stored)) return new Blob([stored.bytes], { type: 'image/jpeg' });
   if (isBackendOffline()) return undefined;
   try {
-    const photo = await onlineCall((transport) => transport.downloadMedia(path));
-    await rememberMedia(path, photo, storage);
+    // The session's signal cancels the download at sign-out or when another user signs in.
+    const downloaded = await onlineCall((transport) =>
+      transport.downloadMedia(path, session.signal),
+    );
+    const photo = await verifyDownloadedPhoto(downloaded);
+    if (!photo) {
+      console.warn('A stored photo is no usable JPEG; the placeholder shows instead');
+      return undefined;
+    }
+    if (!isCurrent(session)) return undefined;
+    await rememberMedia(path, photo, session);
     return photo;
   } catch (error) {
-    // Gone, foreign or no network: no photo, the screen shows its placeholder.
+    // Gone, foreign, cancelled or no network: no photo, the screen shows its placeholder.
     if (!(error instanceof TransportError) && !(error instanceof OfflineError)) {
       console.warn(`Loading a photo failed: ${error instanceof Error ? error.name : 'unknown'}`);
     }
@@ -272,10 +283,14 @@ async function fetchPhoto(path: string): Promise<Blob | undefined> {
 
 /** The photo from the device storage, else downloaded (online) and stored; undefined if neither. */
 export function loadPhoto(path: string): Promise<Blob | undefined> {
-  const running = loading.get(path);
+  const session = deviceSession();
+  if (!session) return Promise.resolve(undefined);
+  // Per session: a load the previous user began is never handed to the next one.
+  const key = `${session.epoch}:${path}`;
+  const running = loading.get(key);
   if (running) return running;
-  const task = fetchPhoto(path).finally(() => loading.delete(path));
-  loading.set(path, task);
+  const task = fetchPhoto(path, session).finally(() => loading.delete(key));
+  loading.set(key, task);
   return task;
 }
 
@@ -420,28 +435,43 @@ async function removeQuietly(path: string): Promise<void> {
       `Removing a photo failed: ${error instanceof TransportError ? error.code : 'unknown'}`,
     );
   }
-  const storage = deviceStorage();
-  if (storage) await forgetMedia(path, storage);
+  const session = deviceSession();
+  if (session) await forgetMedia(path, session);
 }
 
 async function setPhoto(table: PhotoTable, id: Id, photo: Blob): Promise<void> {
   if (isBackendOffline()) throw new OfflineError();
-  const old = photoPathOf(table, id);
-  const path = `${getState().activeHouseholdId}/${table}/${id}/${crypto.randomUUID()}.jpg`;
+  photoPathOf(table, id); // an unknown row is refused before anything is uploaded
+  const householdId = getState().activeHouseholdId;
+  const path = `${householdId}/${table}/${id}/${crypto.randomUUID()}.jpg`;
   try {
     await onlineCall((transport) => transport.uploadMedia(path, photo));
   } catch (error) {
     throw toPhotoError(error);
   }
-  const storage = deviceStorage();
-  if (storage) await rememberMedia(path, photo, storage);
+  const session = deviceSession();
+  if (session) await rememberMedia(path, photo, session);
+  // The upload took a while: the photo goes to the row it was chosen for, in that household, or
+  // nowhere. Checked in the same turn as the commit below, so nothing can change in between; the
+  // file it replaces is the one the row names now (another device may have changed it).
+  let replaced: string | undefined;
+  try {
+    if (getState().activeHouseholdId !== householdId) {
+      throw new Error(PHOTO_HOUSEHOLD_CHANGED_MESSAGE);
+    }
+    replaced = photoPathOf(table, id);
+  } catch (refusal) {
+    await removeQuietly(path);
+    throw refusal;
+  }
   try {
     await commitConfirmed({ path: 'diff' }, () => writePhotoPath(table, id, path));
   } catch (error) {
     await removeQuietly(path);
     throw error instanceof OfflineError ? error : new Error(WRITE_REJECTED_MESSAGE);
   }
-  if (old) await removeQuietly(old);
+  // Only now is the replaced file unused: the server took the change of photo_path.
+  if (replaced) await removeQuietly(replaced);
 }
 
 async function removePhoto(table: PhotoTable, id: Id): Promise<void> {

@@ -164,8 +164,10 @@ function checkPlanEntry(row: Row): void {
 
 /** Folders of the photo bucket per table (activities_photo_path_valid, recipes_photo_path_valid). */
 const PHOTO_FOLDERS: Record<string, string> = { activities: 'activities', recipes: 'recipes' };
-/** <household>/<activities|recipes>/<row id>/<file>, like private.media_household_id. */
-const MEDIA_PATH = /^([^/]+)\/(activities|recipes)\/[^/]+\/[^/]+$/;
+/** The file name of a photo: a new lower-case uuid per upload, always .jpg. */
+const PHOTO_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
+/** <household>/<activities|recipes>/<row id>/<uuid>.jpg, like private.media_household_id. */
+const MEDIA_PATH = /^([^/]+)\/(activities|recipes)\/[^/]+\/([^/]+)$/;
 /** The bucket's limits: image/jpeg only, at most 2 MiB. */
 const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -175,7 +177,7 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   if (folder && row.photo_path != null) {
     const prefix = `${householdId}/${folder}/${row.id}/`;
     const path = String(row.photo_path);
-    if (!path.startsWith(prefix) || path.slice(prefix.length).includes('/')) {
+    if (!path.startsWith(prefix) || !PHOTO_FILE.test(path.slice(prefix.length))) {
       throw new TransportError('permanent', '23514', 400);
     }
   }
@@ -612,8 +614,9 @@ export function createFakeServer(): FakeServer {
 
   /** The household of a photo path the user may use, or undefined (wrong shape, foreign). */
   function mediaHousehold(userId: string, path: string): string | undefined {
-    const householdId = MEDIA_PATH.exec(path)?.[1];
-    return householdId && isMember(userId, householdId) ? householdId : undefined;
+    const [, householdId, , file] = MEDIA_PATH.exec(path) ?? [];
+    if (!householdId || !file || !PHOTO_FILE.test(file)) return undefined;
+    return isMember(userId, householdId) ? householdId : undefined;
   }
 
   // ---------- the transport per user ----------
@@ -1012,8 +1015,9 @@ export function createFakeServer(): FakeServer {
           if (media.has(path)) throw new TransportError('permanent', 'already_exists', 409);
           media.set(path, photo);
         }),
-      downloadMedia: (path) =>
+      downloadMedia: (path, signal) =>
         run(userId, 'storage_download', () => {
+          if (signal?.aborted) throw new TransportError('transient', 'aborted', 0);
           const photo = mediaHousehold(userId, path) ? media.get(path) : undefined;
           if (!photo) throw new TransportError('permanent', 'not_found', 404);
           return photo;

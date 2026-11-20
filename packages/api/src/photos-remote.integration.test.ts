@@ -42,6 +42,12 @@ describe.skipIf(!enabled)('photo storage in the local stack', () => {
     try {
       await transport.uploadMedia(path, jpeg(1000));
       expect((await transport.downloadMedia(path)).size).toBe(1004);
+      // Stored with max-age=0, so no browser or CDN keeps a copy (security check 0004).
+      const info = await client.storage.from('household-media').info(path);
+      expect(info.data?.cacheControl).toBe('max-age=0');
+      await expect(
+        transport.uploadMedia(`${folder}/eislaufen.jpg`, jpeg(10)),
+      ).rejects.toMatchObject({ kind: 'permanent', code: 'access_denied' });
       await expect(transport.uploadMedia(path, jpeg(10))).rejects.toMatchObject({
         kind: 'permanent',
         code: 'already_exists',

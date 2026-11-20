@@ -10,15 +10,35 @@ type InvokeReply = Awaited<ReturnType<SupabaseLike['functions']['invoke']>>;
 
 type StorageReply = { data: unknown; error: unknown };
 
+/** A storage answer the test gives later (an upload still on its way). */
+function later() {
+  let settle: (reply: StorageReply) => void = () => {};
+  const reply = new Promise<StorageReply>((resolve) => {
+    settle = resolve;
+  });
+  return { reply, settle };
+}
+
+/** 'hang': the request answers only when its signal aborts, like fetch does. */
+type StorageStub = StorageReply | 'hang' | Promise<StorageReply>;
+
 function stubClient(
   replies: (Reply | 'hang')[],
   invokeReplies: InvokeReply[] = [],
-  storageReplies: StorageReply[] = [],
+  storageReplies: StorageStub[] = [],
 ) {
   const calls: { fn: string; args: Record<string, unknown> }[] = [];
   const invoked: { name: string; body: unknown }[] = [];
   const stored: { bucket: string; op: string; args: unknown[] }[] = [];
-  const storageReply = async () => storageReplies.shift() ?? { data: null, error: null };
+  const storageReply = async (signal?: AbortSignal): Promise<StorageReply> => {
+    const next = storageReplies.shift() ?? { data: null, error: null };
+    if (next !== 'hang') return next;
+    return new Promise((resolve) =>
+      signal?.addEventListener('abort', () =>
+        resolve({ data: null, error: { name: 'StorageUnknownError', message: 'AbortError' } }),
+      ),
+    );
+  };
   const channels: { topic: string; options: unknown; handlers: (() => void)[] }[] = [];
   const removed: string[] = [];
   const client: SupabaseLike = {
@@ -76,9 +96,7 @@ function stubClient(
         },
         download: (...args) => {
           stored.push({ bucket, op: 'download', args });
-          return storageReply() as ReturnType<
-            ReturnType<SupabaseLike['storage']['from']>['download']
-          >;
+          return storageReply(args[2].signal);
         },
         remove: (...args) => {
           stored.push({ bucket, op: 'remove', args });
@@ -414,7 +432,7 @@ describe('supabase transport: photo storage (spec 0004)', () => {
     error: { name: 'StorageApiError', message: code, status: 400, statusCode, code },
   });
 
-  it('uploads as image/jpeg without upsert, downloads and removes in the household-media bucket', async () => {
+  it('uploads as image/jpeg without upsert and uncached, downloads past the HTTP cache, removes in household-media', async () => {
     const blob = new Blob(['x'], { type: 'image/jpeg' });
     const { client, stored } = stubClient(
       [],
@@ -433,9 +451,22 @@ describe('supabase transport: photo storage (spec 0004)', () => {
       {
         bucket: 'household-media',
         op: 'upload',
-        args: ['h1/activities/a1/p.jpg', blob, { contentType: 'image/jpeg', upsert: false }],
+        // max-age=0: no browser or CDN keeps the photo after sign-out (security check 0004).
+        args: [
+          'h1/activities/a1/p.jpg',
+          blob,
+          { contentType: 'image/jpeg', upsert: false, cacheControl: '0' },
+        ],
       },
-      { bucket: 'household-media', op: 'download', args: ['h1/activities/a1/p.jpg'] },
+      {
+        bucket: 'household-media',
+        op: 'download',
+        args: [
+          'h1/activities/a1/p.jpg',
+          {},
+          { cache: 'no-store', signal: expect.any(AbortSignal) as AbortSignal },
+        ],
+      },
       { bucket: 'household-media', op: 'remove', args: [['h1/activities/a1/p.jpg']] },
     ]);
   });
@@ -475,5 +506,65 @@ describe('supabase transport: photo storage (spec 0004)', () => {
       kind: 'permanent',
       code: 'invalid_response',
     });
+  });
+
+  it('a download that takes too long is cancelled, not left running', async () => {
+    vi.useFakeTimers();
+    const { client, stored } = stubClient([], [], ['hang']);
+    const download = createSupabaseTransport(client, { mediaTimeoutMs: 1000 })
+      .downloadMedia('h1/recipes/r1/p.jpg')
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await download).toMatchObject({ kind: 'transient', code: 'timeout' });
+    const parameters = stored[0]?.args[2] as { signal: AbortSignal };
+    expect(parameters.signal.aborted).toBe(true);
+  });
+
+  it('a download the caller cancels (sign-out) stops and fails as aborted', async () => {
+    const { client, stored } = stubClient([], [], ['hang']);
+    const caller = new AbortController();
+    const download = createSupabaseTransport(client)
+      .downloadMedia('h1/recipes/r1/p.jpg', caller.signal)
+      .catch((error: unknown) => error);
+    await Promise.resolve();
+    caller.abort();
+    expect(await download).toMatchObject({ kind: 'transient', code: 'aborted' });
+    expect((stored[0]?.args[2] as { signal: AbortSignal }).signal.aborted).toBe(true);
+    // Already cancelled: nothing is requested.
+    await expect(
+      createSupabaseTransport(client).downloadMedia('h1/recipes/r1/q.jpg', caller.signal),
+    ).rejects.toMatchObject({ code: 'aborted' });
+    expect(stored).toHaveLength(1);
+  });
+
+  it('an upload that lands after its timeout is removed again, so no file is left without a row', async () => {
+    vi.useFakeTimers();
+    const late = later();
+    const failed = later();
+    const { client, stored } = stubClient(
+      [],
+      [],
+      [late.reply, { data: [], error: null }, failed.reply],
+    );
+    const transport = createSupabaseTransport(client, { mediaTimeoutMs: 1000 });
+    const blob = new Blob(['x'], { type: 'image/jpeg' });
+
+    const upload = transport.uploadMedia('h1/recipes/r1/late.jpg', blob).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await upload).toMatchObject({ kind: 'transient', code: 'timeout' });
+    late.settle({ data: { path: 'h1/recipes/r1/late.jpg' }, error: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stored.map((entry) => [entry.op, entry.args[0]])).toEqual([
+      ['upload', 'h1/recipes/r1/late.jpg'],
+      ['remove', ['h1/recipes/r1/late.jpg']],
+    ]);
+
+    // One that is refused in the end left nothing to remove.
+    const refused = transport.uploadMedia('h1/recipes/r1/no.jpg', blob).catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await refused).toMatchObject({ code: 'timeout' });
+    failed.settle(apiError('403', 'AccessDenied'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stored.map((entry) => entry.op)).toEqual(['upload', 'remove', 'upload']);
   });
 });

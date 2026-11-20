@@ -12,6 +12,7 @@ import {
   preparePhoto,
   stripJpegMetadata,
   toPhotoError,
+  verifyDownloadedPhoto,
 } from './photos-remote';
 import { OfflineError } from './store';
 import { TransportError } from './transport';
@@ -223,6 +224,63 @@ describe('preparePhoto (canvas stubbed; the real canvas runs in e2e)', () => {
     await expect(preparePhoto(new Blob(['x'], { type: 'image/heic' }))).rejects.toThrow(
       PHOTO_UNUSABLE_MESSAGE,
     );
+  });
+});
+
+// The bucket only checks the declared type: what another member stored is checked on the device
+// before it is kept or shown (security check 0004).
+describe('a downloaded photo is checked before it is kept or shown', () => {
+  const stored = (bytes: Uint8Array<ArrayBuffer>, type = 'image/jpeg') =>
+    new Blob([bytes], { type });
+
+  function stubDecode(size: { width: number; height: number } | Error) {
+    const close = vi.fn();
+    const decode = vi.fn(async () => {
+      if (size instanceof Error) throw size;
+      return { ...size, close };
+    });
+    vi.stubGlobal('createImageBitmap', decode);
+    return { decode, close };
+  }
+
+  it('a JPEG of at most 1600 px is the photo, as image/jpeg whatever type it came with', async () => {
+    const { decode, close } = stubDecode({ width: 1600, height: 1200 });
+    const photo = await verifyDownloadedPhoto(stored(cameraJpeg(), 'text/html'));
+    expect(decode).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalled();
+    expect(photo?.type).toBe('image/jpeg');
+    expect(new Uint8Array(await (photo as Blob).arrayBuffer())).toEqual(cameraJpeg());
+  });
+
+  it('refuses bytes that do not start like a JPEG, without decoding them', async () => {
+    const { decode } = stubDecode({ width: 10, height: 10 });
+    for (const bytes of [
+      new Uint8Array([...ascii('<svg onload="alert(1)"/>')]),
+      new Uint8Array([0xff, 0xd8]),
+      new Uint8Array([0x89, ...ascii('PNG')]),
+      new Uint8Array(0),
+    ]) {
+      expect(await verifyDownloadedPhoto(stored(bytes))).toBeUndefined();
+    }
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it('refuses a JPEG larger than 1600 px or one the browser cannot decode', async () => {
+    const big = stubDecode({ width: 2400, height: 1800 });
+    expect(await verifyDownloadedPhoto(stored(cameraJpeg()))).toBeUndefined();
+    expect(big.close).toHaveBeenCalled();
+    stubDecode({ width: 900, height: 1601 });
+    expect(await verifyDownloadedPhoto(stored(cameraJpeg()))).toBeUndefined();
+    stubDecode(new Error('InvalidStateError'));
+    expect(await verifyDownloadedPhoto(stored(cameraJpeg()))).toBeUndefined();
+  });
+
+  it('without a decoder (no browser) the JPEG start is the check', async () => {
+    vi.stubGlobal('createImageBitmap', undefined);
+    expect(await verifyDownloadedPhoto(stored(cameraJpeg()))).toBeDefined();
+    expect(
+      await verifyDownloadedPhoto(stored(new Uint8Array([...ascii('GIF89a')]))),
+    ).toBeUndefined();
   });
 });
 

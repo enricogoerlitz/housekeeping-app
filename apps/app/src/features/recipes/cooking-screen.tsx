@@ -1,5 +1,5 @@
 import { useRecipe } from '@housekeeping/api';
-import { ingredientsForVariant, stepsForVariants, type Recipe } from '@housekeeping/core';
+import { ingredientsForVariant, routeId, stepsForVariants, type Recipe } from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -26,7 +26,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export function CookingScreen() {
   const params = useLocalSearchParams<{ id?: string | string[]; variant?: string | string[] }>();
   const router = useRouter();
-  const id = firstParam(params.id);
+  const id = routeId(params.id);
   const recipe = useRecipe(id);
 
   const leave = () => {

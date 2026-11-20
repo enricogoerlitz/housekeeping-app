@@ -1,5 +1,11 @@
 import { useCurrentMember, usePlanEntries, useRestaurants, useToday } from '@housekeeping/api';
-import { fuzzyIncludes, restaurantVisits, type Id, type Restaurant } from '@housekeeping/core';
+import {
+  fuzzyIncludes,
+  restaurantVisits,
+  routeId,
+  type Id,
+  type Restaurant,
+} from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -71,7 +77,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
   const [sort, setSort] = useState<RestaurantSort>('name');
   const [sheet, setSheet] = useState<SheetRequest | undefined>();
 
-  const selectedId = isWide ? param(params.rid) : undefined;
+  const selectedId = isWide ? routeId(params.rid) : undefined;
   // The share target opens the sheet through the URL, so a reload keeps it open (AC-008).
   const shared: SheetRequest | undefined =
     param(params.add) === '1'

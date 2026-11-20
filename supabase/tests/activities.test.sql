@@ -2,10 +2,10 @@
 -- ratings written only by RPCs (REQ-007), own photos referenced by photo_path (REQ-004, recipes
 -- too) and activities in the meal plan with a note (REQ-005). Tenant isolation like every
 -- household table; created_by is the caller; a photo_path can only point into the row's own
--- folder of its own household.
+-- folder of its own household, named <uuid>.jpg like every upload.
 begin;
 \ir _helpers.psql
-select plan(87);
+select plan(92);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -53,7 +53,7 @@ select * from tests.tenant_isolation('activities',
                      'address', 'Halle 1, Berlin', 'lat', 52.5, 'lng', 13.4,
                      'maps_url', 'https://maps.app.goo.gl/abc', 'tags', array['drinnen']),
   jsonb_build_object('name', 'Bouldern (Halle)', 'name_key', 'bouldern halle', 'description', 'Mit Kurs',
-                     'tags', array['sport'], 'photo_path', tests.media('home_a', 'activities', 'act_iso') || 'p.jpg'),
+                     'tags', array['sport'], 'photo_path', tests.media('home_a', 'activities', 'act_iso') || gen_random_uuid() || '.jpg'),
   tests.fx('anna'), tests.fx('ben'));
 
 -- ===================== created_by (4) =====================
@@ -136,7 +136,7 @@ select lives_ok(
          tests.fx('home_b')),
   'AC-008 activities: another household may have an activity of the same name');
 
--- ===================== photo_path (12) =====================
+-- ===================== photo_path (17) =====================
 select tests.authenticate_as(tests.fx('anna'));
 select lives_ok(
   format($$ update public.activities set photo_path = %L where id = %L $$,
@@ -144,15 +144,15 @@ select lives_ok(
   'AC-009 activities: photo_path points into the activity''s folder of its household');
 select throws_ok(
   format($$ update public.activities set photo_path = %L where id = %L $$,
-         tests.media('home_b', 'activities', 'act_a') || 'x.jpg', tests.fx('act_a')),
+         tests.media('home_b', 'activities', 'act_a') || gen_random_uuid() || '.jpg', tests.fx('act_a')),
   '23514', null, 'AC-012 activities: photo_path in the folder of another household is rejected');
 select throws_ok(
   format($$ update public.activities set photo_path = %L where id = %L $$,
-         tests.media('home_a', 'activities', 'act_iso') || 'x.jpg', tests.fx('act_a')),
+         tests.media('home_a', 'activities', 'act_iso') || gen_random_uuid() || '.jpg', tests.fx('act_a')),
   '23514', null, 'AC-012 activities: photo_path in the folder of another activity is rejected');
 select throws_ok(
   format($$ update public.activities set photo_path = %L where id = %L $$,
-         tests.media('home_a', 'recipes', 'act_a') || 'x.jpg', tests.fx('act_a')),
+         tests.media('home_a', 'recipes', 'act_a') || gen_random_uuid() || '.jpg', tests.fx('act_a')),
   '23514', null, 'REQ-004 activities: photo_path in the recipes folder is rejected');
 select throws_ok(
   format($$ update public.activities set photo_path = %L where id = %L $$,
@@ -166,6 +166,23 @@ select throws_ok(
   format($$ update public.activities set photo_path = %L where id = %L $$,
          tests.media('home_a', 'activities', 'act_a') || repeat('x', 300) || '.jpg', tests.fx('act_a')),
   '23514', null, 'REQ-004 activities: photo_path longer than 300 characters is rejected');
+-- The file is always <uuid>.jpg (a new lower-case uuid per upload): nothing else can be named.
+select throws_ok(
+  format($$ update public.activities set photo_path = %L where id = %L $$,
+         tests.media('home_a', 'activities', 'act_a') || 'eislaufen.jpg', tests.fx('act_a')),
+  '23514', null, 'REQ-004 activities: a file name other than <uuid>.jpg is rejected');
+select throws_ok(
+  format($$ update public.activities set photo_path = %L where id = %L $$,
+         tests.media('home_a', 'activities', 'act_a') || gen_random_uuid() || '.svg', tests.fx('act_a')),
+  '23514', null, 'REQ-004 activities: a file other than .jpg is rejected');
+select throws_ok(
+  format($$ update public.activities set photo_path = %L where id = %L $$,
+         tests.media('home_a', 'activities', 'act_a') || gen_random_uuid() || '.jpg.html', tests.fx('act_a')),
+  '23514', null, 'REQ-004 activities: nothing may follow .jpg');
+select throws_ok(
+  format($$ update public.activities set photo_path = %L where id = %L $$,
+         tests.media('home_a', 'activities', 'act_a') || upper(gen_random_uuid()::text) || '.jpg', tests.fx('act_a')),
+  '23514', null, 'REQ-004 activities: the file''s uuid is written in lower case, as the client builds it');
 select lives_ok(
   format($$ update public.activities set photo_path = null where id = %L $$, tests.fx('act_a')),
   'AC-018 activities: removing the photo clears photo_path');
@@ -175,16 +192,20 @@ select lives_ok(
   'AC-017 recipes: a member sets an own photo in the recipe''s folder');
 select throws_ok(
   format($$ update public.recipes set photo_path = %L where id = %L $$,
-         tests.media('home_b', 'recipes', 'recipe_a2') || 'x.jpg', tests.fx('recipe_a2')),
+         tests.media('home_b', 'recipes', 'recipe_a2') || gen_random_uuid() || '.jpg', tests.fx('recipe_a2')),
   '23514', null, 'AC-012 recipes: photo_path in the folder of another household is rejected');
 select throws_ok(
   format($$ update public.recipes set photo_path = %L where id = %L $$,
-         tests.media('home_a', 'activities', 'recipe_a2') || 'x.jpg', tests.fx('recipe_a2')),
+         tests.media('home_a', 'activities', 'recipe_a2') || gen_random_uuid() || '.jpg', tests.fx('recipe_a2')),
   '23514', null, 'REQ-004 recipes: photo_path in the activities folder is rejected');
 select throws_ok(
   format($$ update public.recipes set photo_path = %L where id = %L $$,
-         tests.media('home_a', 'recipes', 'recipe_a') || 'x.jpg', tests.fx('recipe_a2')),
+         tests.media('home_a', 'recipes', 'recipe_a') || gen_random_uuid() || '.jpg', tests.fx('recipe_a2')),
   '23514', null, 'AC-012 recipes: photo_path in the folder of another recipe is rejected');
+select throws_ok(
+  format($$ update public.recipes set photo_path = %L where id = %L $$,
+         tests.media('home_a', 'recipes', 'recipe_a2') || 'lasagne.jpg', tests.fx('recipe_a2')),
+  '23514', null, 'REQ-004 recipes: a file name other than <uuid>.jpg is rejected');
 
 -- ===================== Favourites and ratings (17) =====================
 select lives_ok(

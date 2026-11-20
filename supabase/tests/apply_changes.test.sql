@@ -401,14 +401,14 @@ select lives_ok(
     jsonb_build_object('kind', 'patch', 'table', 'activities', 'id', tests.fx('new_activity'),
                        'changes', jsonb_build_object(
                          'name', 'Klettern', 'name_key', 'klettern', 'description', 'Mit Seil',
-                         'photo_path', tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/a.jpg',
+                         'photo_path', tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/' || md5('a')::uuid || '.jpg',
                          'place_name', 'Kletterwald', 'address', 'Am Wald 1, Berlin', 'lat', 52.4, 'lng', 13.2,
                          'maps_url', 'https://maps.app.goo.gl/k', 'tags', jsonb_build_array('sport'))),
     jsonb_build_object('kind', 'patch', 'table', 'meal_plan_entries', 'id', tests.fx('new_entry'),
                        'changes', jsonb_build_object('note', 'Wuhletal')),
     jsonb_build_object('kind', 'patch', 'table', 'recipes', 'id', tests.fx('recipe_a'),
                        'changes', jsonb_build_object(
-                         'photo_path', tests.fx('home_a') || '/recipes/' || tests.fx('recipe_a') || '/r.jpg')))),
+                         'photo_path', tests.fx('home_a') || '/recipes/' || tests.fx('recipe_a') || '/' || md5('r')::uuid || '.jpg')))),
   'REQ-003 apply_changes: activity columns, the entry note and a recipe photo_path are patchable');
 select results_eq(
   format($$ select a.name, a.photo_path, e.note, r.photo_path
@@ -416,8 +416,8 @@ select results_eq(
             where a.id = %L and e.id = %L and r.id = %L $$,
          tests.fx('new_activity'), tests.fx('new_entry'), tests.fx('recipe_a')),
   format($$ values ('Klettern', %L, 'Wuhletal', %L) $$,
-         tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/a.jpg',
-         tests.fx('home_a') || '/recipes/' || tests.fx('recipe_a') || '/r.jpg'),
+         tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/' || md5('a')::uuid || '.jpg',
+         tests.fx('home_a') || '/recipes/' || tests.fx('recipe_a') || '/' || md5('r')::uuid || '.jpg'),
   'AC-009/AC-017 apply_changes: … and stored');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(

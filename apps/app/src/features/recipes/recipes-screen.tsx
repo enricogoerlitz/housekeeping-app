@@ -7,6 +7,7 @@ import {
 } from '@housekeeping/api';
 import {
   filterRecipes,
+  routeId,
   searchRecipes,
   sortRecipes,
   type Id,
@@ -99,7 +100,7 @@ export function RecipesScreen() {
   const [newOpen, setNewOpen] = useState(false);
   const [starterOpen, setStarterOpen] = useState(false);
 
-  const selectedId = isWide ? (Array.isArray(params.id) ? params.id[0] : params.id) : undefined;
+  const selectedId = isWide ? routeId(params.id) : undefined;
   // The chosen side lives in the URL, so a reload or a deep link keeps it.
   const view: FoodView =
     (Array.isArray(params.view) ? params.view[0] : params.view) === 'restaurants'

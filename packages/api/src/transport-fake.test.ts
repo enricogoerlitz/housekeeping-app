@@ -536,16 +536,21 @@ describe('fake server: activities and photos (spec 0004)', () => {
     });
   });
 
-  it('accepts a photo_path only in the row’s own folder of its household', async () => {
+  it('accepts a photo_path only in the row’s own folder of its household, named <uuid>.jpg', async () => {
     const enrico = server.transport(ENRICO);
+    const file = `${crypto.randomUUID()}.jpg`;
     await enrico.applyChanges(H, [
-      activity('act1', 'Bouldern', { photo_path: `${H}/activities/act1/p.jpg` }),
+      activity('act1', 'Bouldern', { photo_path: `${H}/activities/act1/${file}` }),
     ]);
     for (const path of [
-      `${H2}/activities/act1/p.jpg`,
-      `${H}/recipes/act1/p.jpg`,
-      `${H}/activities/act2/p.jpg`,
-      `${H}/activities/act1/x/p.jpg`,
+      `${H2}/activities/act1/${file}`,
+      `${H}/recipes/act1/${file}`,
+      `${H}/activities/act2/${file}`,
+      `${H}/activities/act1/x/${file}`,
+      `${H}/activities/act1/p.jpg`,
+      `${H}/activities/act1/${file.toUpperCase().replace('.JPG', '.jpg')}`,
+      `${H}/activities/act1/${file.replace('.jpg', '.png')}`,
+      `${H}/activities/act1/${file}.html`,
     ]) {
       await expect(
         enrico.applyChanges(H, [
@@ -558,40 +563,61 @@ describe('fake server: activities and photos (spec 0004)', () => {
         kind: 'patch',
         table: 'recipes',
         id: 'r1',
-        changes: { photo_path: `${H}/recipes/r1/q.jpg` },
+        changes: { photo_path: `${H}/recipes/r1/${file}` },
       },
     ]);
-    expect(server.row(H, 'recipes', 'r1')).toMatchObject({ photo_path: `${H}/recipes/r1/q.jpg` });
+    expect(server.row(H, 'recipes', 'r1')).toMatchObject({ photo_path: `${H}/recipes/r1/${file}` });
   });
 
   it('AC-012: stores photos per household; a stranger can neither read, write nor delete them', async () => {
     server.addHousehold({ id: H2, name: 'Fremd' }, [STRANGER]);
     const enrico = server.transport(ENRICO);
     const stranger = server.transport(STRANGER);
-    const path = `${H}/activities/act1/p.jpg`;
+    const name = () => `${crypto.randomUUID()}.jpg`;
+    const path = `${H}/activities/act1/${name()}`;
     await enrico.uploadMedia(path, jpeg());
     expect(server.media(path)?.size).toBe(10);
     expect((await server.transport(NADJA).downloadMedia(path)).size).toBe(10);
 
     await expect(stranger.downloadMedia(path)).rejects.toMatchObject({ code: 'not_found' });
-    await expect(stranger.uploadMedia(`${H}/activities/act1/q.jpg`, jpeg())).rejects.toMatchObject({
+    await expect(
+      stranger.uploadMedia(`${H}/activities/act1/${name()}`, jpeg()),
+    ).rejects.toMatchObject({
       kind: 'permanent',
       code: 'access_denied',
       status: 403,
     });
     await stranger.removeMedia([path]);
     expect(server.media(path)).toBeDefined();
-    await expect(enrico.uploadMedia(`${H2}/activities/a/p.jpg`, jpeg())).rejects.toMatchObject({
+    await expect(enrico.uploadMedia(`${H2}/activities/a/${name()}`, jpeg())).rejects.toMatchObject({
       code: 'access_denied',
     });
-    await expect(enrico.uploadMedia(`${H}/chores/a/p.jpg`, jpeg())).rejects.toMatchObject({
+    await expect(enrico.uploadMedia(`${H}/chores/a/${name()}`, jpeg())).rejects.toMatchObject({
       code: 'access_denied',
+    });
+    // Like the storage policies: the file name is <uuid>.jpg, nothing else.
+    for (const file of ['p.jpg', `${crypto.randomUUID()}.svg`, `${crypto.randomUUID()}.jpg.html`]) {
+      await expect(enrico.uploadMedia(`${H}/activities/a/${file}`, jpeg())).rejects.toMatchObject({
+        code: 'access_denied',
+      });
+    }
+  });
+
+  it('a download whose signal aborted fails as aborted', async () => {
+    const enrico = server.transport(ENRICO);
+    const path = `${H}/activities/act1/${crypto.randomUUID()}.jpg`;
+    await enrico.uploadMedia(path, jpeg());
+    const stop = new AbortController();
+    stop.abort();
+    await expect(enrico.downloadMedia(path, stop.signal)).rejects.toMatchObject({
+      kind: 'transient',
+      code: 'aborted',
     });
   });
 
   it('refuses another type, more than 2 MiB and a second upload to the same name', async () => {
     const enrico = server.transport(ENRICO);
-    const path = `${H}/recipes/r1/p.jpg`;
+    const path = `${H}/recipes/r1/${crypto.randomUUID()}.jpg`;
     await expect(
       enrico.uploadMedia(path, new Blob(['<svg/>'], { type: 'image/svg+xml' })),
     ).rejects.toMatchObject({ code: 'invalid_mime', status: 415 });

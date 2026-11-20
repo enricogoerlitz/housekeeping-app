@@ -3,11 +3,13 @@
 // loaded are kept in the device storage (bound to the user) and shown offline.
 import { describe, expect, it, vi } from 'vitest';
 
-import { resetLocalData } from './backend';
+import { resetLocalData, startBackend, type Engine } from './backend';
 import { H, withBackend } from './backend-test-helpers';
+import { switchHousehold } from './commands-household';
+import { evictMedia } from './media-cache';
 import {
-  evictMedia,
   loadPhoto,
+  PHOTO_HOUSEHOLD_CHANGED_MESSAGE,
   PHOTO_UNUSABLE_MESSAGE,
   photoView,
   removeActivityPhoto,
@@ -19,14 +21,79 @@ import {
 } from './photos-remote';
 import { ENRICO, NADJA } from './seed/demo';
 import { getData, getState, OfflineError } from './store';
-import { TransportError, type ChangeOp } from './transport';
+import { TransportError, type ChangeOp, type Transport } from './transport';
 
 const fx = withBackend();
 
+/** Starts like a JPEG (SOI and the next marker), then filler: enough for the device's check. */
 const photo = (fill = 1, size = 2048) =>
-  new Blob([new Uint8Array([0xff, 0xd8]), new Uint8Array(size).fill(fill)], {
+  new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), new Uint8Array(size).fill(fill)], {
     type: 'image/jpeg',
   });
+
+/** Nadja stores a photo for a row from her device; Enrico's device learns the path by pulling. */
+async function photoByNadja(table: 'activities' | 'recipes', id: string): Promise<string> {
+  const wire = fx.server.transport(NADJA);
+  const path = `${H}/${table}/${id}/${crypto.randomUUID()}.jpg`;
+  await wire.uploadMedia(path, photo(9));
+  await wire.applyChanges(H, [{ kind: 'patch', table, id, changes: { photo_path: path } }]);
+  await fx.settle();
+  return path;
+}
+
+/**
+ * Enrico's device on a wire whose uploads and downloads wait while `hold()` is on: the photo is
+ * on its way while the test changes something. Records the paths uploaded and the signals the
+ * downloads got.
+ */
+async function startHeld(): Promise<{
+  engine: Engine;
+  uploaded: string[];
+  signals: (AbortSignal | undefined)[];
+  hold(): void;
+  release(): void;
+}> {
+  const inner = fx.server.transport(ENRICO);
+  let held: { promise: Promise<void>; release: () => void } | undefined;
+  const uploaded: string[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
+  const transport: Transport = {
+    ...inner,
+    uploadMedia: async (path, blob) => {
+      uploaded.push(path);
+      await held?.promise;
+      return inner.uploadMedia(path, blob);
+    },
+    downloadMedia: async (path, signal) => {
+      signals.push(signal);
+      await held?.promise;
+      return inner.downloadMedia(path, signal);
+    },
+  };
+  const engine = await startBackend({
+    transport,
+    storage: fx.storage,
+    userId: ENRICO,
+    environment: fx.environment,
+  });
+  await fx.settle(engine);
+  return {
+    engine,
+    uploaded,
+    signals,
+    hold() {
+      let release = () => {};
+      const promise = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      held = { promise, release };
+    },
+    release() {
+      held?.release();
+      held = undefined;
+    },
+  };
+}
 
 /** The promise's outcome without leaving a rejection unhandled while timers run. */
 const outcome = <T>(promise: Promise<T>) =>
@@ -133,6 +200,67 @@ describe('setting a photo', () => {
   });
 });
 
+// The upload takes a while; the person can switch the household or another device can change the
+// row meanwhile. The photo must land where it was chosen or not at all (security check 0004).
+describe('while a photo uploads', () => {
+  it('a switch to another household: the new file is removed, the old photo stays, in German', async () => {
+    const device = await startHeld();
+    const old = await photoByNadja('activities', 'act-eislaufen');
+    const other = await fx.server.transport(ENRICO).createHousehold('WG Köln', null);
+    await device.engine.pull();
+    device.hold();
+    const done = outcome(setActivityPhoto('act-eislaufen', photo(2)));
+    await fx.settle();
+    switchHousehold(other);
+    expect(getState().activeHouseholdId).toBe(other);
+    device.release();
+    await fx.settle(device.engine);
+
+    expect((await done).error).toMatchObject({ message: PHOTO_HOUSEHOLD_CHANGED_MESSAGE });
+    const [uploaded] = device.uploaded;
+    expect(uploaded).toMatch(PATH('activities', 'act-eislaufen'));
+    expect(fx.server.media(uploaded ?? '')).toBeUndefined();
+    expect(fx.server.media(old)).toBeDefined();
+    expect(fx.server.row(H, 'activities', 'act-eislaufen')?.photo_path).toBe(old);
+    expect(await fx.storage.get(`media:${uploaded ?? ''}`)).toBeUndefined();
+  });
+
+  it('a row deleted meanwhile: the new file is removed and nothing is written', async () => {
+    const device = await startHeld();
+    device.hold();
+    const done = outcome(setRecipePhoto('rec-lasagne', photo()));
+    await fx.settle();
+    fx.server.deleteRow(H, 'recipes', 'rec-lasagne');
+    await device.engine.pull();
+    expect(recipe('rec-lasagne')).toBeUndefined();
+    device.release();
+    await fx.settle(device.engine);
+
+    expect((await done).error).toMatchObject({ message: 'Rezept nicht gefunden' });
+    expect(fx.server.media(device.uploaded[0] ?? '')).toBeUndefined();
+  });
+
+  it('the file the change replaced is deleted, also when another device changed the photo meanwhile', async () => {
+    const device = await startHeld();
+    const first = await photoByNadja('activities', 'act-eislaufen');
+    device.hold();
+    const done = outcome(setActivityPhoto('act-eislaufen', photo(2)));
+    await fx.settle();
+    const second = await photoByNadja('activities', 'act-eislaufen');
+    expect(activity('act-eislaufen')?.photoPath).toBe(second);
+    device.release();
+    await fx.settle(device.engine);
+
+    expect((await done).error).toBeUndefined();
+    const mine = device.uploaded[0] ?? '';
+    expect(fx.server.row(H, 'activities', 'act-eislaufen')?.photo_path).toBe(mine);
+    expect(fx.server.media(mine)).toBeDefined();
+    expect(fx.server.media(second)).toBeUndefined();
+    // The photo before belongs to the change of Nadja's device, which deletes it there.
+    expect(fx.server.media(first)).toBeDefined();
+  });
+});
+
 describe('recipe photos', () => {
   it('AC-017: an own recipe photo is shown on the other device; the sample photo key stays', async () => {
     await fx.startEnrico();
@@ -223,16 +351,38 @@ describe('photos on the device (AC-011)', () => {
     expect(await loadPhoto(`${H}/activities/act-bouldern/missing.jpg`)).toBeUndefined();
   });
 
-  it('a stored photo of a household the user left is not shown any more', async () => {
+  it('a stored photo of a household the user lost is deleted from the device with it, not only hidden', async () => {
     const engine = await fx.startEnrico();
     const path = await photoFromNadja('act-bouldern');
     expect(await loadPhoto(path)).toBeDefined();
+    expect(await fx.storage.get(`media:${path}`)).toBeDefined();
     await fx.server.transport(NADJA).removeMember(H, ENRICO);
     await engine.pull();
     expect(getState().households[H]).toBeUndefined();
+    expect(await fx.storage.get(`household:${H}`)).toBeUndefined();
+    expect(await fx.storage.get(`media:${path}`)).toBeUndefined();
+    expect(await fx.storage.get('media-index')).toEqual([]);
     fx.clearCalls();
     expect(await loadPhoto(path)).toBeUndefined();
     expect(fx.calls).toEqual([]);
+  });
+
+  it('a file another member stored that is no JPEG is neither shown nor kept', async () => {
+    await fx.startEnrico();
+    const wire = fx.server.transport(NADJA);
+    const path = `${H}/activities/act-bouldern/${crypto.randomUUID()}.jpg`;
+    // The bucket checks only the declared type.
+    await wire.uploadMedia(path, new Blob(['<svg onload="alert(1)"/>'], { type: 'image/jpeg' }));
+    await wire.applyChanges(H, [
+      { kind: 'patch', table: 'activities', id: 'act-bouldern', changes: { photo_path: path } },
+    ]);
+    await fx.settle();
+    expect(await loadPhoto(path)).toBeUndefined();
+    expect(await fx.storage.get(`media:${path}`)).toBeUndefined();
+    const release = showPhoto(path);
+    await fx.settle();
+    expect(photoView(path)).toEqual({ loading: false });
+    release();
   });
 
   it('signing out deletes the stored photos with the cache', async () => {
@@ -242,6 +392,48 @@ describe('photos on the device (AC-011)', () => {
     expect(await fx.storage.get(`media:${path}`)).toBeDefined();
     await resetLocalData();
     expect(await fx.storage.get(`media:${path}`)).toBeUndefined();
+  });
+});
+
+describe('photos in flight belong to the signed-in session (security check 0004)', () => {
+  it('a download still running at sign-out is cancelled and leaves nothing on the device', async () => {
+    const device = await startHeld();
+    const path = await photoByNadja('activities', 'act-bouldern');
+    device.hold();
+    const loading = loadPhoto(path);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(device.signals).toHaveLength(1);
+    await resetLocalData();
+    expect(device.signals[0]?.aborted).toBe(true);
+    device.release();
+    expect(await loading).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await fx.storage.get(`media:${path}`)).toBeUndefined();
+    expect(await fx.storage.get('media-index')).toBeUndefined();
+  });
+
+  it('a download of the previous user that ends after another one signed in is not kept for her', async () => {
+    const device = await startHeld();
+    const path = await photoByNadja('activities', 'act-bouldern');
+    device.hold();
+    const loading = loadPhoto(path);
+    await vi.advanceTimersByTimeAsync(0);
+    // The app keeps one device storage; the next user's start clears it (other meta).
+    const nadja = await startBackend({
+      transport: fx.server.transport(NADJA),
+      storage: fx.storage,
+      userId: NADJA,
+      environment: fx.environment,
+    });
+    await fx.settle(nadja);
+    expect(device.signals[0]?.aborted).toBe(true);
+    device.release();
+    expect(await loading).toBeUndefined();
+    await fx.settle(nadja);
+    expect(await fx.storage.get(`media:${path}`)).toBeUndefined();
+    // Nadja's own download of the photo is hers: loaded with her session, kept for her.
+    expect(await loadPhoto(path)).toBeDefined();
+    expect(await fx.storage.get(`media:${path}`)).toBeDefined();
   });
 });
 

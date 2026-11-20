@@ -29,6 +29,7 @@ import { useSyncExternalStore } from 'react';
 
 import { diffHousehold, isReflected, sendable } from './changes';
 import { rowsToHousehold, rowsToMembers } from './db/mapping';
+import { dropMediaOutside } from './media-cache';
 import type { Storage } from './storage';
 import {
   attachBackend,
@@ -515,6 +516,8 @@ export function createEngine(options: EngineOptions): Engine {
     const gone = removed.map(householdKey);
     if (lostChoice) gone.push('active');
     if (gone.length > 0) await storage.del(gone);
+    // Its photos go with it (photos-remote.ts keeps them next to the cache).
+    if (removed.length > 0) await dropMediaOutside(storage, new Set(Object.keys(next.households)));
   }
 
   async function load(): Promise<void> {
@@ -1078,8 +1081,22 @@ export interface StartBackendOptions {
 let current: Engine | undefined;
 /** The transport of the current engine, for the household RPCs (households.ts). */
 let currentWire: Transport | undefined;
-/** The device storage of the current engine; photos are kept next to the cache (photos-remote.ts). */
-let currentStorage: Storage | undefined;
+
+/**
+ * The signed-in user's session on this device, for work that outlives a call (photo downloads,
+ * photos-remote.ts). The app keeps one device storage for every user, so the storage object does
+ * not tell sessions apart: the epoch does, and the signal aborts when the session ends.
+ */
+export interface DeviceSession {
+  /** Counts the starts (one per user signed in): what one began must not write into the next. */
+  readonly epoch: number;
+  /** Where the cache lives; photos are kept next to it. */
+  readonly storage: Storage;
+  /** Aborts at sign-out, at the next user's start and when the backend stops. */
+  readonly signal: AbortSignal;
+}
+let session: { current: DeviceSession; controller: AbortController } | undefined;
+let sessionEpoch = 0;
 const rejectedListeners = new Set<(message: string) => void>();
 const syncListeners = new Set<() => void>();
 const DEMO_SYNC_STATE: SyncState = { status: 'idle', ready: true };
@@ -1132,7 +1149,12 @@ export async function startBackend(options: StartBackendOptions): Promise<Engine
   });
   current = engine;
   currentWire = wire;
-  currentStorage = options.storage;
+  const controller = new AbortController();
+  sessionEpoch += 1;
+  session = {
+    current: { epoch: sessionEpoch, storage: options.storage, signal: controller.signal },
+    controller,
+  };
   await engine.load();
   const initial = engine.getState();
   if (!initial) throw new Error('The engine built no state');
@@ -1148,7 +1170,8 @@ export async function stopBackend(): Promise<void> {
   if (!engine) return;
   current = undefined;
   currentWire = undefined;
-  currentStorage = undefined;
+  session?.controller.abort();
+  session = undefined;
   engine.stop();
   detachBackend(engine);
   setSyncState(DEMO_SYNC_STATE);
@@ -1211,11 +1234,11 @@ export async function onlineCall<T>(send: (transport: Transport) => Promise<T>):
 }
 
 /**
- * The storage the signed-in user's cache lives in (undefined in demo mode). Whatever is kept there
- * is bound to the user: another user's start and the sign-out clear it as a whole.
+ * The signed-in user's session (undefined in demo mode). Whatever is kept in its storage is bound
+ * to the user: another user's start and the sign-out clear it as a whole.
  */
-export function deviceStorage(): Storage | undefined {
-  return currentStorage;
+export function deviceSession(): DeviceSession | undefined {
+  return session?.current;
 }
 
 /** The small tables of the cache (empty in demo mode); changes notify `subscribeSmall`. */

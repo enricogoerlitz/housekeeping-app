@@ -811,3 +811,20 @@ test.describe('at desktop width', () => {
     await expect(tid(page, 'nav-plan')).toBeVisible();
   });
 });
+
+// ---------- Deep links (security check of spec 0004) ----------
+
+test('a deep link with a name of Object.prototype shows "nicht gefunden" instead of breaking the page', async ({
+  page,
+}) => {
+  // The pageErrors fixture fails the test on any uncaught error in the page.
+  for (const [route, notFound] of [
+    ['/plan/aktivitaet/constructor', 'activity-not-found'],
+    ['/plan/aktivitaet/__proto__', 'activity-not-found'],
+    ['/rezept/toString', 'recipe-not-found'],
+    ['/restaurant/constructor', 'restaurant-not-found'],
+  ] as const) {
+    await open(page, route);
+    await expect(tid(page, notFound), route).toBeVisible();
+  }
+});

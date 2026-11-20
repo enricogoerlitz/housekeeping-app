@@ -183,8 +183,11 @@ export interface Transport {
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
-  /** The stored file; `not_found` for a missing one and for one of a foreign household. */
-  downloadMedia(path: string): Promise<Blob>;
+  /**
+   * The stored file; `not_found` for a missing one and for one of a foreign household. `signal`
+   * cancels the download (`aborted`), e.g. at sign-out.
+   */
+  downloadMedia(path: string, signal?: AbortSignal): Promise<Blob>;
   /** Deletes what the caller may delete; missing or foreign paths are left alone. */
   removeMedia(paths: readonly string[]): Promise<void>;
   // Sync
