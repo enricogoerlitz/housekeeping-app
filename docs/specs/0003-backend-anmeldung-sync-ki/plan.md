@@ -196,6 +196,25 @@ Fotos, Benachrichtigungen, Desktop-Design (siehe Spec, Nicht-Ziele).
 
 ## Nachweis
 
+### Security-Check (20.11.2026, Diff `32bc519^..HEAD`)
+
+kritisch 0 · hoch 0 · mittel 3 · niedrig 5 · hinweis 2
+
+| Stufe   | Befund                                                                                   | Umgang                                                                                               |
+| ------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| mittel  | Neues Konto trat automatisch jedem einladenden Haushalt bei                              | behoben: Annahme immer selbst (AC-008 geändert)                                                      |
+| mittel  | Hook prüfte nicht, ob Google die Adresse verifiziert hat                                 | behoben: `email_verified` Pflicht, pgTAP                                                             |
+| mittel  | Sprach-Kontingent zählt Tokens; ein Token erlaubt 10 Minuten beliebig viele Verbindungen | offen für die Betriebs-Spec: eigene Azure-Ressource für Speech mit Budget-Alarm                      |
+| niedrig | `restore_cleared_items` übernimmt Haken-Felder ungeprüft                                 | behoben: `check_seq` begrenzt, `checked_at` ≤ jetzt, `checked_by` nur Mitglied                       |
+| niedrig | Löschgrenze über `remove_contributions` umgehbar                                         | behoben: IDs zählen zur Grenze; Vertrauensmodell dokumentiert (Mitglieder dürfen per API löschen)    |
+| niedrig | Testkonten-Seed ohne Sperre gegen entfernte Datenbank                                    | offen für die Betriebs-Spec: E-Mail-Provider aus, `db reset --linked` verboten; Testdaten nur lokal  |
+| niedrig | Abmelden ließ die Sitzung stehen, wenn das Leeren scheiterte                             | behoben: Sitzung wird immer entfernt                                                                 |
+| niedrig | CSP wurde ergänzt, aber nicht geprüft                                                    | behoben: Build bricht ohne Supabase-URL oder bei unbekanntem Inline-Skript ab, Check nach dem Export |
+| hinweis | Lücken in den E2E-Nachweisen                                                             | durch die E2E-Phase geschlossen (siehe unten)                                                        |
+| hinweis | Keine Tagesgrenze für Einladungen und neue Haushalte                                     | offen für die Betriebs-Spec                                                                          |
+
+### Checkliste
+
 Wird am Ende ausgefüllt.
 
 - [ ] Alle AC haben einen Test (spec-auditor)

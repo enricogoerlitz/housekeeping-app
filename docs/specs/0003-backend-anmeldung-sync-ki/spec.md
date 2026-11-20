@@ -131,13 +131,15 @@ Und         die Supabase-Konfiguration für Produktion hat die E-Mail-Anmeldung 
 
 **Offline:** nur online (Einladen, Anlegen, Entfernen); die Liste der Mitglieder ist offline lesbar.
 
-**AC-008 — Einladen**
+**AC-008 — Einladen** (geändert am 20.11.2026 nach dem Security-Check: kein automatischer Beitritt)
 
 ```gherkin
 Angenommen  Enrico ist Mitglied von „Enrico & Nadja“, Nadja hat noch kein Konto
 Wenn        er unter Einstellungen → Haushalt Nadjas Google-Adresse einlädt
 Dann        steht sie dort als „Eingeladen“
 Wenn        Nadja sich mit dieser Adresse anmeldet
+Dann        sieht sie die Einladung zu „Enrico & Nadja“ mit „Annehmen“ und „Ablehnen“
+Wenn        sie „Annehmen“ wählt
 Dann        ist sie Mitglied von „Enrico & Nadja“ und sieht dieselben Daten
 ```
 
@@ -456,11 +458,11 @@ Und         die Zwei-Geräte-Fälle aus REQ-004 und REQ-007 mit zwei Browsern
 
 Weitere Entscheidungen (20.11.2026, nach Enricos Regel „deine Empfehlung“):
 
-| #   | Frage                                           | Entscheidung                                                                                                   |
-| --- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 6   | „Fertig“ im Einkaufsmodus ohne Netz             | Verlässt nur den Modus mit „Abgehakte räumen wir auf, sobald du Netz hast“; keine fünfte Offline-Aktion        |
-| 7   | Einladung einer Person, die schon ein Konto hat | Sie muss die Einladung annehmen (schützt ihr Profil); neue Konten treten bei der Erstanmeldung automatisch bei |
-| 8   | Zwei Personen ändern gleichzeitig Zutaten       | Die Zutatenliste eines Rezepts gilt als ein Feld: die letzte Änderung gewinnt                                  |
+| #   | Frage                                     | Entscheidung                                                                                                                                                                                                |
+| --- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6   | „Fertig“ im Einkaufsmodus ohne Netz       | Verlässt nur den Modus mit „Abgehakte räumen wir auf, sobald du Netz hast“; keine fünfte Offline-Aktion                                                                                                     |
+| 7   | Einladung annehmen                        | Jede eingeladene Person nimmt selbst an, auch beim ersten Anmelden (geändert nach dem Security-Check: sonst könnte jedes Mitglied irgendeines Haushalts eine Adresse einladen und das neue Profil einsehen) |
+| 8   | Zwei Personen ändern gleichzeitig Zutaten | Die Zutatenliste eines Rezepts gilt als ein Feld: die letzte Änderung gewinnt                                                                                                                               |
 
 ## Rückverfolgbarkeit
 
