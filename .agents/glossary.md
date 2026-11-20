@@ -74,6 +74,26 @@ Ein konfigurierbarer Platz im Tag des Wochenplans, z. B. Mittag oder Abend.
 
 - **Im Code:** `MealSlot`, `meal_slots`
 
+### Restaurant
+
+Ein Lokal, in das der Haushalt essen geht: Name, optional Adresse, Koordinaten, Karten-Link,
+Küche, Preisniveau, Schlagworte und eine Notiz für den Haushalt. Bewertung und Favorit gelten je
+Mitglied. Wird meist aus einem geteilten Link von Google Maps oder Apple Karten angelegt und kann
+statt eines Rezepts im Wochenplan stehen.
+
+- **Im Code:** `Restaurant`, `restaurants`; im Wochenplan `MealPlanEntry` mit `kind: 'restaurant'`
+  und `restaurantId`
+- **Nicht verwenden:** Lokal, Location, Gaststätte, Ort (für das Restaurant selbst)
+
+### Besuch
+
+Ein Restaurant, das an einem Tag bis heute im Wochenplan stand. Besuche werden nicht eigens
+gespeichert, sondern aus den Einträgen des Wochenplans abgeleitet („Zuletzt: vor 12 Tagen · 3
+Besuche“).
+
+- **Im Code:** abgeleitet mit `restaurantVisits` aus `MealPlanEntry` mit `kind: 'restaurant'`
+- **Nicht verwenden:** Reservierung, Termin, Check-in
+
 ### Einkaufsliste
 
 Eine Liste von Einkaufsposten. Ein Haushalt kann mehrere haben, eine davon ist die

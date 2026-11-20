@@ -14,7 +14,7 @@
 1. Überblick
 2. Bereits entschieden
 3. Leitlinien für Bedienung und Gestaltung
-4. Features im Detail (F1–F14)
+4. Features im Detail (F1–F15)
 5. KI-Architektur
 6. Datenmodell: Leitlinien und Entitäten
 7. Randfälle aus dem Alltag
@@ -41,6 +41,7 @@
 | F12 | **Feedback-Hub**               | Zwei Tipps entfernt, Status angenommen / abgelehnt / umgesetzt, auswertbar für den Coding-Agent      | 1      |
 | F13 | **Artikel**                    | Ein Katalog für alles Kaufbare: Starter-Katalog, Synonyme gegen Doppelte, Bereich, Ernährung, Vorrat | 2      |
 | F14 | **Abwesenheit und Pause**      | Urlaub, Dienstreise, krank: Plan, Rotation und Erinnerungen passen sich an                           | 5      |
+| F15 | **Restaurants**                | Aus geteiltem Karten-Link anlegen, je Person bewerten, im Wochenplan einplanen, Route mit einem Tipp | 3      |
 
 **Etappen** (Reihenfolge der Umsetzung; alles zusammen ist Version 1):
 
@@ -694,6 +695,24 @@ Der Katalog hinter Rezepten und Listen. Niemand pflegt ihn bewusst; er wächst b
 - **„Heute raus“** (krank): Die eigenen Aufgaben wandern auf morgen oder werden der anderen Person
   angeboten, das Kochen ist wieder frei.
 - **Saisonale Pause** einzelner Aufgaben über das Saisonfenster (F7).
+
+### F15 — Restaurants
+
+Spec: `docs/specs/0002-restaurants/spec.md`. Restaurants sind ein eigener Bereich neben den
+Rezepten; der Tab „Rezepte“ heißt dafür **„Essen“** und hat oben den Umschalter **Rezepte ·
+Restaurants**.
+
+- **Schnell hinzufügen:** Teilen aus Google Maps oder Apple Karten (Android-PWA, später nativ auch
+  iOS) über die Route `/teilen`, Link einfügen (überall) oder von Hand, nur der Name ist Pflicht.
+  Aus dem Link werden Name und Koordinaten gelesen; Kurzlinks löst später der Server auf.
+- **Doppelte vermeiden:** Gleicher Name oder fast gleicher Ort → „Gibt es schon“ mit „Öffnen“.
+- **Je Person:** Bewertung und Favorit; die Notiz gilt für den Haushalt.
+- **Im Wochenplan:** Statt eines Rezepts lässt sich ein Restaurant eintragen. Es erzeugt keine
+  Einkaufsposten. _Besuche_ werden daraus abgeleitet („Zuletzt: vor 12 Tagen · 3 Besuche“).
+- **Route:** Auf „Heute“ und in der Detailseite öffnet „Route“ Apple Karten oder Google Maps mit
+  dem Restaurant als Ziel.
+- **Nicht dabei:** Restaurantsuche über Google (kostenpflichtige Places-API), Öffnungszeiten,
+  Speisekarten, Reservierungen.
 
 ## 5. KI-Architektur: eine Logik für App und Assistent
 

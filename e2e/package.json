@@ -1,0 +1,13 @@
+{
+  "name": "@housekeeping/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "demo:video": "node ./record-video.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}

@@ -8,3 +8,4 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | Nr.                                            | Feature                                         | Status      |
 | ---------------------------------------------- | ----------------------------------------------- | ----------- |
 | [0001](0001-design-und-frontend-dummy/spec.md) | Design-Fundament und Frontend mit Beispieldaten | freigegeben |
+| [0002](0002-restaurants/spec.md)               | Restaurants                                     | freigegeben |

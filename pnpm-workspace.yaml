@@ -1,3 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  - e2e
+
+# Flat node_modules: every workspace package resolves the same single copy of react,
+# react-native and the Expo modules. Avoids duplicate-instance problems in Metro.
+nodeLinker: hoisted

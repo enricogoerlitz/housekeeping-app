@@ -1,0 +1,139 @@
+import type {
+  Theme,
+  ThemeColors,
+  ThemeFamily,
+  ThemeShape,
+  TextVariant,
+  TextVariantStyle,
+} from './types';
+
+// "Klar": calm and familiar, like the platform's own apps. System font, grouped cards, one accent.
+
+const type: Record<TextVariant, TextVariantStyle> = {
+  display: { fontWeight: '700', fontSize: 38, lineHeight: 42, letterSpacing: -0.8 },
+  title: { fontWeight: '700', fontSize: 32, lineHeight: 36, letterSpacing: -0.6 },
+  heading: { fontWeight: '700', fontSize: 20, lineHeight: 25, letterSpacing: -0.3 },
+  cardTitle: { fontWeight: '600', fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
+  rowTitle: { fontWeight: '400', fontSize: 16, lineHeight: 21 },
+  body: { fontWeight: '400', fontSize: 16, lineHeight: 21 },
+  bodyStrong: { fontWeight: '600', fontSize: 16, lineHeight: 21 },
+  small: { fontWeight: '400', fontSize: 13.5, lineHeight: 18 },
+  smallStrong: { fontWeight: '600', fontSize: 13.5, lineHeight: 18 },
+  caption: { fontWeight: '400', fontSize: 12.5, lineHeight: 16 },
+  sectionLabel: {
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  groupLabel: {
+    fontWeight: '500',
+    fontSize: 12.5,
+    lineHeight: 16,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  button: { fontWeight: '600', fontSize: 15, lineHeight: 20 },
+  tab: { fontWeight: '500', fontSize: 10.5, lineHeight: 13 },
+};
+
+const shape: ThemeShape = {
+  radius: {
+    card: 14,
+    tile: 14,
+    control: 10,
+    button: 12,
+    check: 13,
+    fab: 29,
+    input: 22,
+    chip: 999,
+    sheet: 18,
+    photo: 10,
+  },
+  stroke: 1.9,
+  gutter: 16,
+  section: 'grouped',
+  list: 'grouped',
+  media: 'thumbRow',
+  cardBorder: false,
+  checkBorderWidth: 1.6,
+  tabActive: 'tint',
+};
+
+const light: ThemeColors = {
+  bg: '#F2F2F7',
+  surface: '#FFFFFF',
+  surfaceSunken: '#E5E5EA',
+  border: '#C9C9CE',
+  text: '#000000',
+  textMuted: '#62626A',
+  accent: '#0B7A63',
+  onAccent: '#FFFFFF',
+  accentSoft: '#DDF3EC',
+  success: '#0B7A63',
+  onSuccess: '#FFFFFF',
+  star: '#F0A020',
+  due: '#F0A020',
+  warnBg: '#FFEFD1',
+  warnText: '#8A4B00',
+  checkLine: '#C4C4C9',
+  barBg: 'rgba(249,249,251,0.94)',
+  scrim: 'rgba(0,0,0,0.35)',
+  fabBg: '#0B7A63',
+  fabText: '#FFFFFF',
+  tones: {
+    essen: { bg: '#FFE7DD', fg: '#8A2F12' },
+    plan: { bg: '#FFF0CC', fg: '#6B4A00' },
+    liste: { bg: '#DDF3EC', fg: '#075443' },
+    haushalt: { bg: '#E0EAFF', fg: '#1D3F91' },
+    ki: { bg: '#ECE4FF', fg: '#4B2A9E' },
+  },
+};
+
+const dark: ThemeColors = {
+  bg: '#000000',
+  surface: '#1C1C1E',
+  surfaceSunken: '#2C2C2E',
+  border: '#3A3A3C',
+  text: '#FFFFFF',
+  textMuted: '#A0A0A8',
+  accent: '#30C9A0',
+  onAccent: '#03261D',
+  accentSoft: '#0F3A30',
+  success: '#30C9A0',
+  onSuccess: '#03261D',
+  star: '#FFB340',
+  due: '#FFB340',
+  warnBg: '#3D2C0A',
+  warnText: '#FFD08A',
+  checkLine: '#5A5A5E',
+  barBg: 'rgba(22,22,24,0.94)',
+  scrim: 'rgba(0,0,0,0.6)',
+  fabBg: '#30C9A0',
+  fabText: '#03261D',
+  tones: {
+    essen: { bg: '#45200F', fg: '#FFC4AE' },
+    plan: { bg: '#40310A', fg: '#FFDE8F' },
+    liste: { bg: '#0F3A30', fg: '#9CE9D2' },
+    haushalt: { bg: '#18274F', fg: '#B9CCFF' },
+    ki: { bg: '#2B1F52', fg: '#D5C7FF' },
+  },
+};
+
+const base = {
+  id: 'klar' as const,
+  name: 'Klar',
+  description: 'Ruhig und vertraut, wie die Apps des Geräts.',
+  type,
+  shape,
+  fonts: [] as string[],
+};
+
+export const klar: ThemeFamily = {
+  id: base.id,
+  name: base.name,
+  description: base.description,
+  light: { ...base, mode: 'light', colors: light } satisfies Theme,
+  dark: { ...base, mode: 'dark', colors: dark } satisfies Theme,
+};
