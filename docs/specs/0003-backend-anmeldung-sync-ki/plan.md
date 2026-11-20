@@ -1,5 +1,5 @@
 ---
-status: in-arbeit # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-20
 spec: 0003
 ---
@@ -111,7 +111,7 @@ eintragen), ADR-0011 „Schreibweg: lokale Überlagerung, Änderungssätze, Doma
   pg_cron-Aufräumen; pgTAP-Harness + **Schema-Linter-Test** (jede Tabelle: RLS, keine anon-Grants,
   Trigger, Index, zusammengesetzte FKs; jede Definer-Funktion `search_path=''`).
 - T2 ★ Identität: profiles, households, household_members, household_invitations, RPCs
-  (`create_household`, `invite_member`, `accept_invitation`, `remove_member`), Hook, Auth-Trigger,
+  (`create_household`, `invite_member`, `accept_invitation`, `decline_invitation`, `remove_member`), Hook, Auth-Trigger,
   `config.toml` (Google per `env()`, Hook, Redirect-URLs, E-Mail-Registrierung aus).
 - T3 ★ Fachtabellen: a) areas, articles, stores, shopping_lists · b) recipes + Favoriten/
   Bewertungen · c) restaurants (+ dito), absences, feedback + votes · d) chores, chore_events ·
@@ -142,6 +142,8 @@ fester Testtag entfällt → relative Tage), bestehende Rundgänge angepasst, zw
 mit echtem `setOffline` (AC-012–015, 021–025), API-Negativtests (AC-005, AC-011),
 Bundle-Scan (kein Foundry-Schlüssel).
 
+**Stand 20.11.2026:** Phasen 0–5 erledigt (Commits `32bc519` bis `1ffd1a2`), Phase 6 siehe Nachweis.
+
 **Phase 6 — Nachweis:** `/security-check`, `/code-review`, spec-auditor; manueller Test mit
 deinem echten Google-Konto (AC-001/002) — einmal deine Mithilfe nötig.
 
@@ -153,8 +155,10 @@ Feature-Branch abgezweigt), Trailer `Spec: 0003`. Nicht gepusht.
 
 `@supabase/supabase-js` (offizieller Client), `idb-keyval` (~600 B, transaktionales `setMany`),
 `zod` (KI-Vertrag, Validierung an Grenzen laut 20-typescript), `microsoft-cognitiveservices-speech-sdk`
-(nachgeladen, nur Web), `workbox-build` (Precache-Liste aus dem Export), `uuid` (v5 nur im
-Seed-Generator, dev).
+(nachgeladen, nur Web), `workbox-build` (Precache-Liste aus dem Export), `tsx` (führt den Seed-Generator in TypeScript
+aus, der Workspace-Pakete ohne Dateiendungen importiert; Node kann das nicht). Versionen exakt
+gepinnt: supabase-js 2.119.0, idb-keyval 6.3.0, zod 4.6.7, Speech-SDK 1.53.0, workbox-build 7.4.1,
+tsx 4.23.15. UUIDv5 für den Seed ist selbst implementiert (Web Crypto), ohne `uuid`-Paket.
 
 ## Risiken und Gegenmaßnahmen
 
@@ -172,7 +176,7 @@ Löschen. Jede Zeile hat einen Test; `/security-check` läuft über alle ★-Auf
 | Massenlöschung durch einen Fehler im Diff                           | Grenze im Client, Löschgrenze auf dem Server, eigene RPC für Löschen nach Bedingung                                                | vitest C3 + pgTAP T5                         |
 | Sich selbst in einen Haushalt eintragen                             | kein Insert-Recht auf Mitgliedschaften, nur Definer-RPCs mit Prüfung                                                               | pgTAP T2                                     |
 | Konto ohne Einladung; Übernahme einer Einladung per E-Mail/Passwort | Hook verlangt Einladung **und** Google; E-Mail-Registrierung aus; Testkonten nur im lokalen Seed                                   | pgTAP Hook + manuell                         |
-| Profil einer bestehenden Person per Einladung abgreifen             | Annahme-Schritt für bestehende Konten                                                                                              | pgTAP T2                                     |
+| Profil einer Person per Einladung abgreifen                         | Annahme-Schritt für alle Konten (auch neue, Entscheidung 7)                                                                        | pgTAP T2                                     |
 | Ausführbare Funktionen, `search_path`-Übernahme                     | Default-Rechte inkl. PUBLIC entzogen, Schema `private`, `search_path = ''`                                                         | Schema-Linter                                |
 | Datenabfluss über Realtime                                          | private Topics, RLS auf `realtime.messages`, Nachricht ohne Zeilendaten                                                            | pgTAP + E2E                                  |
 | Entferntes Mitglied behält Daten                                    | Mitgliedschaft in jedem Pull, Cursor je Haushalt, Haushalt wird vom Gerät gelöscht                                                 | vitest C1 + E2E AC-012                       |
@@ -215,13 +219,19 @@ kritisch 0 · hoch 0 · mittel 3 · niedrig 5 · hinweis 2
 
 ### Checkliste
 
-Wird am Ende ausgefüllt.
-
-- [ ] Alle AC haben einen Test (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün
-- [ ] `pnpm e2e` gegen den lokalen Stack grün
-- [ ] `/security-check` gelaufen, Befunde behoben oder begründet
-- [ ] Offline-Verhalten wie in der Spec geprüft (zwei Browser)
-- [ ] Manueller Test mit echtem Google-Konto (AC-001, AC-002)
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+- [x] Alle AC haben einen Test (spec-auditor, 20.11.2026): 31 von 34 automatisch. AC-001 manuell
+      (Enrico, echtes Google-Konto, eingeladene Adresse: angemeldet, Daten sichtbar). AC-007 nur
+      App-Seite (Unit-Test des Start-Guards); die abgeschaltete E-Mail-Anmeldung in Produktion
+      kommt mit der Betriebs-Spec. AC-019 am Zutaten-Zusatz statt am Rezeptnamen belegt (die App
+      hat kein Umbenennen); `updateRecipe` mit Rücksprung ist als api-Test belegt.
+      **Abweichung von „rot zuerst“:** Für Code aus Spec 0001/0002 und die E2E-Rundgänge wurden die
+      Tests nach der Umsetzung geschrieben; die neuen Module hatten rote Läufe (je Agent-Bericht).
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] `pnpm exec supabase test db` grün: 729 Tests (14 Dateien)
+- [x] `pnpm e2e` gegen den lokalen Stack grün: 104 bestanden, 18 übersprungen (Breite bzw.
+      Live-KI), 2 volle Läufe; `pnpm e2e:dev` grün
+- [x] `/security-check` gelaufen (zweimal), Befunde behoben oder oben begründet
+- [x] Offline-Verhalten mit zwei Browsern geprüft (AC-012–015, 021–025, AC-004/024 mit Service Worker)
+- [ ] Manueller Test mit echtem Google-Konto: AC-001 erledigt; AC-002 (nicht eingeladenes
+      Google-Konto) und die `email_verified`-Prüfung nach dem Security-Fix stehen aus
+- [x] Glossar und Rückverfolgbarkeitstabelle aktuell

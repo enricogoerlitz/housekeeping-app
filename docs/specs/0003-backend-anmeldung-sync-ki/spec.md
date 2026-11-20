@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
@@ -466,15 +466,15 @@ Weitere Entscheidungen (20.11.2026, nach Enricos Regel „deine Empfehlung“):
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-005 | —              | —    |
-| REQ-002 | AC-006, AC-007    | —              | —    |
-| REQ-003 | AC-008 bis AC-012 | —              | —    |
-| REQ-004 | AC-013 bis AC-015 | —              | —    |
-| REQ-005 | AC-016 bis AC-018 | —              | —    |
-| REQ-006 | AC-019, AC-020    | —              | —    |
-| REQ-007 | AC-021 bis AC-025 | —              | —    |
-| REQ-008 | AC-026 bis AC-030 | —              | —    |
-| REQ-009 | AC-031, AC-032    | —              | —    |
-| REQ-010 | AC-033, AC-034    | —              | —    |
+| REQ     | AC                | Task (plan.md)             | Test                                                                                                                                                                      |
+| ------- | ----------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-005 | T2, A7, U1                 | `supabase/tests/auth.test.sql`, `packages/api/src/auth.test.ts`, `e2e/rundgang-backend-anmeldung.spec.ts`; AC-001 manuell                                                 |
+| REQ-002 | AC-006, AC-007    | T2, A7, A8                 | `packages/api/src/auth.test.ts`, `e2e/rundgang-backend-anmeldung.spec.ts`                                                                                                 |
+| REQ-003 | AC-008 bis AC-012 | T2, A6, U2                 | `supabase/tests/household_rpcs.test.sql`, `identity_rls.test.sql`, `domain_isolation.test.sql`, `e2e/rundgang-backend-anmeldung.spec.ts`, `rundgang-backend-sync.spec.ts` |
+| REQ-004 | AC-013 bis AC-015 | T3, T5, A4–A6              | `packages/api/src/backend.test.ts`, `commands-*.backend.test.ts`, `e2e/rundgang-backend-sync.spec.ts`, `rundgang-shell.spec.ts`                                           |
+| REQ-005 | AC-016 bis AC-018 | C1, A2, A4, U5             | `packages/core/src/sync-delta.test.ts`, `packages/api/src/backend.test.ts`, `e2e/rundgang-backend-anmeldung.spec.ts`                                                      |
+| REQ-006 | AC-019, AC-020    | C2, C3, T5, A5             | `packages/core/src/sync-overlay.test.ts`, `packages/api/src/backend.test.ts`, `supabase/tests/apply_changes.test.sql`, `e2e/rundgang-backend-sync.spec.ts`                |
+| REQ-007 | AC-021 bis AC-025 | C4, T4, A5                 | `packages/core/src/store-queue.test.ts`, `supabase/tests/store_rpcs.test.sql`, `e2e/rundgang-backend-sync.spec.ts`                                                        |
+| REQ-008 | AC-026 bis AC-030 | C6, T7, E1, E2, E4, E5, U3 | `supabase/functions/**/handler.test.ts`, `supabase/tests/ai_quota.test.sql`, `packages/api/src/ai*.test.ts`, `e2e/rundgang-backend-ki.spec.ts`                            |
+| REQ-009 | AC-031, AC-032    | E3, A6                     | `supabase/functions/resolve-maps-link/handler.test.ts`, `e2e/rundgang-backend-ki.spec.ts`                                                                                 |
+| REQ-010 | AC-033, AC-034    | A8, Phase 5                | `packages/api/src/seed/*.test.ts`, `e2e/global-setup.ts`, die ganze E2E-Suite                                                                                             |

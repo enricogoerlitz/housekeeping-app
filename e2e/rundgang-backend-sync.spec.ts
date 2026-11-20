@@ -395,8 +395,7 @@ test('AC-023: Enrico (offline) and Nadja both add "Brot": one item with both con
 test.describe('with the service worker', () => {
   test.use({ serviceWorkers: 'allow' });
 
-  // The active household is not kept across a reload (open issue), so this runs in the demo
-  // household, which is active after every sign-in and reload; the three items are new ones.
+  // Runs in the demo household with three new items, so earlier tests cannot interfere.
   test('AC-024: three offline checks survive a reload without network and are sent afterwards', async ({
     page,
     context,
