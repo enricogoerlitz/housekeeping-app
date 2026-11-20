@@ -38,7 +38,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_shopping_item_not_available(uuid,boolean)'),
   ('private.add_shopping_contributions(uuid,jsonb)'),
   ('private.remove_contributions(uuid[],uuid)'), -- security invoker, shared with apply_changes
-  ('private.consume_ai_quota(text,integer)');
+  ('private.consume_ai_quota(text,integer)'),
+  ('private.restore_cleared_items(uuid,jsonb)');
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

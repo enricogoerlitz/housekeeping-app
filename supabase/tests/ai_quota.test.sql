@@ -3,7 +3,7 @@
 -- ai_usage has RLS on and no grants: only the function touches it.
 begin;
 \ir _helpers.psql
-select plan(21);
+select plan(23);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -92,6 +92,20 @@ select throws_ok(
 select tests.authenticate_as_anon();
 select throws_ok($$ select public.consume_ai_quota('request', 1) $$, '42501', null,
   'AC-005 consume_ai_quota: anon cannot call it');
+
+-- ===================== Retention =====================
+select tests.clear_authentication();
+select is(
+  (select command from cron.job where jobname = 'purge-ai-usage'), 'select private.purge_ai_usage()',
+  'T7 ai_usage: a daily pg_cron job purges old counters');
+insert into public.ai_usage (profile_id, day, requests) values
+  (tests.fx('dora'), tests.berlin_today() - 91, 1),
+  (tests.fx('dora'), tests.berlin_today() - 90, 1);
+select private.purge_ai_usage();
+select is(
+  (select array_agg(day order by day) from public.ai_usage where profile_id = tests.fx('dora')),
+  array[tests.berlin_today() - 90, tests.berlin_today() - 1, tests.berlin_today()],
+  'T7 ai_usage: counters older than 90 days are purged, newer ones kept');
 
 select * from finish();
 rollback;
