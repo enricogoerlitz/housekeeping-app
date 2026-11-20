@@ -310,6 +310,8 @@ Alle Wege landen **als Entwurf in derselben Rezeptmaske**.
 - **Wer isst mit?** Chips mit den Mitgliedern und „+ Gäste“ je Mahlzeit, vorausgewählt sind alle,
   die nicht abwesend sind. Daraus ergeben sich die Portionen und die **Aufteilung auf Varianten**:
   vegetarisch → Tofu, alles → Hähnchen. Ein Tipp auf die Aufteilung ändert sie.
+- **Mehrere Gerichte je Mahlzeit:** Ein Eintrag ist ein Gericht. Abends kann neben der Lasagne
+  ein Salat stehen, jeder Eintrag mit eigenen Portionen und eigener kochender Person.
 - **Wer kocht?** Optionaler Avatar je Eintrag. Die Tageszusammenfassung sagt „Du kochst heute“.
 - **Eintrag hinzufügen:** Suche über Rezepte, Vorschläge („lange nicht gekocht“, Favoriten), dazu
   **Freitext** („Essen bei Oma“), **neues Rezept** (Schnellanlage oder ✨ beschreiben) und

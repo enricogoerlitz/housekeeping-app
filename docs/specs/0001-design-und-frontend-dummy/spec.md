@@ -1,5 +1,5 @@
 ---
-status: entwurf # entwurf | freigegeben | umgesetzt | verworfen
+status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
@@ -40,36 +40,49 @@ Backend anschließen.
 Die Kriterien beziehen sich auf den Beispielhaushalt aus REQ-004. Handybreite bedeutet 390 px,
 Tablet 820 px, Desktop 1440 px.
 
-### REQ-001 — Design-Richtung und DESIGN.md
+### REQ-001 — Drei Themes und DESIGN.md
 
-> Es gibt eine von Enrico gewählte Design-Richtung, festgehalten in `docs/design/DESIGN.md`.
+> Die drei Design-Richtungen „Markthalle“, „Klar“ und „Frisch“ sind wählbare Themes, beschrieben in
+> `docs/design/DESIGN.md`.
 
-**AC-001**
-
-```gherkin
-Angenommen  drei Design-Richtungen liegen als Bilder vor, jede mit „Heute“ und „Einkaufsliste“
-            in Handybreite und „Heute“ in Desktopbreite, jeweils hell und dunkel
-Wenn        Enrico eine Richtung auswählt
-Dann        beschreibt docs/design/DESIGN.md genau diese Richtung: Farben für hell und dunkel,
-            Schriften, Abstände, Radien, Bewegung, Do und Don't
-```
-
-**AC-002 — Randfall: keine Richtung passt**
+**AC-001** (geändert am 20.11.2026: Enrico hat alle drei Richtungen gewählt)
 
 ```gherkin
-Angenommen  Enrico gefällt keine der drei Richtungen
-Wenn        er das zurückmeldet
-Dann        entsteht eine weitere Runde
-Und         DESIGN.md wird vor einer Auswahl nicht geschrieben
+Angenommen  die drei Design-Richtungen aus tmp/design-richtungen
+Wenn        ich docs/design/DESIGN.md öffne
+Dann        beschreibt sie die gemeinsamen Regeln und jedes der drei Themes: Farben für hell und
+            dunkel, Schriften, Abstände, Radien, Bewegung, Do und Don't
 ```
+
+**AC-002 — verworfen**
+
+Der Randfall „keine Richtung passt“ entfällt, weil alle drei Richtungen übernommen wurden.
 
 **AC-003**
 
 ```gherkin
-Angenommen  die Farben aus DESIGN.md
+Angenommen  die Farben jedes Themes in hell und dunkel
 Wenn        Textfarben gegen ihre Hintergründe geprüft werden
-Dann        erreicht Fließtext in hell und dunkel mindestens das Kontrastverhältnis 4,5:1
+Dann        erreicht Fließtext überall mindestens das Kontrastverhältnis 4,5:1
 Und         große Überschriften und Symbole mindestens 3:1
+```
+
+**AC-046 — Theme wählen**
+
+```gherkin
+Angenommen  ich öffne die App zum ersten Mal
+Dann        ist das Theme „Markthalle“ aktiv
+Wenn        ich unter Einstellungen das Theme „Frisch“ wähle
+Dann        erscheinen alle Bildschirme sofort im Theme „Frisch“
+Und         nach dem Neuladen der Seite ist weiterhin „Frisch“ aktiv
+```
+
+**AC-047 — Randfall: unbekanntes gespeichertes Theme**
+
+```gherkin
+Angenommen  im lokalen Speicher steht ein Theme, das es nicht gibt
+Wenn        ich die App öffne
+Dann        ist „Markthalle“ aktiv und die App startet ohne Fehler
 ```
 
 ### REQ-002 — Design-System und Showroom
@@ -307,6 +320,15 @@ Wenn        ich „Shakshuka“ ohne Tag vormerke
 Dann        steht „Shakshuka“ unter „Vorgemerkt“
 ```
 
+**AC-048 — Mehrere Gerichte in einer Mahlzeit**
+
+```gherkin
+Angenommen  heute Abend ist „Lasagne“ geplant, Enrico kocht
+Wenn        ich für heute Abend zusätzlich „Gemischter Salat“ hinzufüge und Nadja als Köchin wähle
+Dann        stehen beide Gerichte unter heute Abend, jedes mit seiner kochenden Person
+Und         „Heute“ zeigt beide unter „Essen heute“
+```
+
 **AC-027**
 
 ```gherkin
@@ -531,25 +553,25 @@ lokalen Speicher des Browsers.
 
 ## Offene Fragen
 
-| #   | Frage                                 | Optionen                                                                                                             | Empfehlung                                                                 | Status                                       |
-| --- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------- |
-| 1   | Welche Design-Richtung?               | drei Richtungen aus der ersten Aufgabe des Plans                                                                     | —                                                                          | BLOCKER für alles nach REQ-001; Enrico wählt |
-| 2   | Woher kommen die Rezeptfotos?         | A: wenige lizenzfreie Fotos (Unsplash-Lizenz) im Repo · B: gestaltete Platzhalter ohne Foto · C: fremde Bildadressen | A: Fotos prägen den Eindruck; C widerspricht AC-006                        | OFFEN, Annahme A                             |
-| 3   | Bleiben Änderungen nach dem Neuladen? | A: nein, Ausgangszustand · B: im Browser speichern                                                                   | A: jede Vorführung startet gleich                                          | OFFEN, Annahme A (AC-014)                    |
-| 4   | Umfang des Videos                     | A: ein Video in Handybreite, 3–5 Minuten, Erklärtexte, ohne Ton · B: zusätzlich Desktop-Teil                         | B: zeigt auch, dass die Web-Version gut aussieht                           | OFFEN, Annahme B                             |
-| 5   | Läuft der Rundgang auch in der CI?    | A: ja, ohne Videoaufnahme, als Test · B: nur lokal                                                                   | A: schützt alle Abläufe vor Regressionen; kostet etwa zwei Minuten je Lauf | OFFEN, Annahme A                             |
+| #   | Frage                                 | Optionen                                                                                                             | Empfehlung                                                                 | Status                                                                |
+| --- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 1   | Welche Design-Richtung?               | drei Richtungen aus der ersten Aufgabe des Plans                                                                     | —                                                                          | ENTSCHIEDEN: alle drei als wählbare Themes, Standard ist „Markthalle“ |
+| 2   | Woher kommen die Rezeptfotos?         | A: wenige lizenzfreie Fotos (Unsplash-Lizenz) im Repo · B: gestaltete Platzhalter ohne Foto · C: fremde Bildadressen | A: Fotos prägen den Eindruck; C widerspricht AC-006                        | ENTSCHIEDEN: A (Empfehlung übernommen)                                |
+| 3   | Bleiben Änderungen nach dem Neuladen? | A: nein, Ausgangszustand · B: im Browser speichern                                                                   | A: jede Vorführung startet gleich                                          | ENTSCHIEDEN: A (Empfehlung übernommen)                                |
+| 4   | Umfang des Videos                     | A: ein Video in Handybreite, 3–5 Minuten, Erklärtexte, ohne Ton · B: zusätzlich Desktop-Teil                         | B: zeigt auch, dass die Web-Version gut aussieht                           | ENTSCHIEDEN: B (Empfehlung übernommen)                                |
+| 5   | Läuft der Rundgang auch in der CI?    | A: ja, ohne Videoaufnahme, als Test · B: nur lokal                                                                   | A: schützt alle Abläufe vor Regressionen; kostet etwa zwei Minuten je Lauf | ENTSCHIEDEN: A (Empfehlung übernommen)                                |
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-003 | —              | —    |
-| REQ-002 | AC-004 bis AC-006 | —              | —    |
-| REQ-003 | AC-007 bis AC-011 | —              | —    |
-| REQ-004 | AC-012 bis AC-016 | —              | —    |
-| REQ-005 | AC-017 bis AC-023 | —              | —    |
-| REQ-006 | AC-024 bis AC-027 | —              | —    |
-| REQ-007 | AC-028 bis AC-034 | —              | —    |
-| REQ-008 | AC-035 bis AC-039 | —              | —    |
-| REQ-009 | AC-040 bis AC-043 | —              | —    |
-| REQ-010 | AC-044, AC-045    | —              | —    |
+| REQ     | AC                                                | Task (plan.md) | Test |
+| ------- | ------------------------------------------------- | -------------- | ---- |
+| REQ-001 | AC-001, AC-003, AC-046, AC-047 (AC-002 verworfen) | —              | —    |
+| REQ-002 | AC-004 bis AC-006                                 | —              | —    |
+| REQ-003 | AC-007 bis AC-011                                 | —              | —    |
+| REQ-004 | AC-012 bis AC-016                                 | —              | —    |
+| REQ-005 | AC-017 bis AC-023                                 | —              | —    |
+| REQ-006 | AC-024 bis AC-027, AC-048                         | —              | —    |
+| REQ-007 | AC-028 bis AC-034                                 | —              | —    |
+| REQ-008 | AC-035 bis AC-039                                 | —              | —    |
+| REQ-009 | AC-040 bis AC-043                                 | —              | —    |
+| REQ-010 | AC-044, AC-045                                    | —              | —    |

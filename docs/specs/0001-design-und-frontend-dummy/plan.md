@@ -31,12 +31,12 @@ Keine Änderung. Diese Spec hat kein Backend.
 
 | Thema               | Entscheidung                                                                                                                                                                                                                                   |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Styling             | Wird in Task 3 per Kurzversuch entschieden und als ADR-0010 festgehalten. Kandidat ist NativeWind (Tailwind); geprüft wird, ob es mit Expo SDK 58, React Native 0.88 und dem Web-Export sauber läuft. Ausweich: eigene Tokens mit `StyleSheet` |
+| Styling             | Eigenes, typisiertes Theme-System in `packages/ui` (Tokens, `ThemeProvider`, Bausteine mit `StyleSheet`). Kein NativeWind: Drei Themes unterscheiden sich auch im Aufbau und müssen zur Laufzeit umschaltbar sein; siehe ADR-0010              |
 | Daten-Schnittstelle | Je Bereich ein kleines Repository mit Lese-Funktionen und Befehlen (`addShoppingItem`, `checkShoppingItem` …). Bildschirme nutzen Hooks, die darauf aufsetzen. Die Befehle tragen schon die Namen, die später Werkzeuge des Assistenten werden |
-| Zustand             | Ein Speicher im Arbeitsspeicher je Haushalt, mit Abo-Mechanismus für reaktive Hooks. Kein Speichern, außer zwei Einstellungen im `localStorage`                                                                                                |
+| Zustand             | Ein Speicher im Arbeitsspeicher je Haushalt, mit Abo-Mechanismus für reaktive Hooks. Kein Speichern, außer den Einstellungen Theme, Erscheinungsbild und KI-Suche im lokalen Speicher des Geräts                                               |
 | Beispieldatum       | Der Wochenplan des Beispielhaushalts wird relativ zu „heute“ erzeugt, damit die laufende Woche immer gefüllt ist. Der Rundgang setzt die Uhr fest, damit er wiederholbar bleibt                                                                |
 | Fotos               | Wenige lizenzfreie Fotos (Unsplash-Lizenz), verkleinert, unter `packages/api` (offene Frage 2 der Spec, Annahme A). Quelle und Lizenz stehen in einer Datei daneben                                                                            |
-| Schriften           | Selbst gehostet über `expo-font`, keine Anfrage an fremde Server (AC-006)                                                                                                                                                                      |
+| Schriften           | Selbst gehostet über `expo-font` aus den Paketen `@expo-google-fonts/*` (Dateien liegen im Bundle, keine Anfrage an fremde Server, AC-006). Geladen wird nur die Schrift des aktiven Themes                                                    |
 | KI                  | Hinterlegte Beispielantworten in `packages/api`, zugeordnet über feste Beispielanfragen. Keine Netzaufrufe                                                                                                                                     |
 
 ## Risiken und Gegenmaßnahmen
@@ -55,8 +55,10 @@ Sync, kein Löschen echter Daten).
 
 ## Aufgaben
 
-Jede Aufgabe ist einzeln abschließbar: Test rot → Umsetzung → Test grün → `pnpm check` → Commit.
-Für Bildschirme ist der Test der zugehörige Schritt im Rundgang (`e2e/rundgang.spec.ts`).
+**Reihenfolge der Tests, abweichend von Regel 3 in `AGENTS.md`:** Auf Enricos ausdrücklichen
+Wunsch (20.11.2026) entsteht zuerst die lauffähige App, die von Hand und im Browser durchgetestet
+wird. Die automatischen Tests (Unit-Tests und Rundgang) folgen am Ende in Task 13 und 14. Jedes
+Akzeptanzkriterium bekommt trotzdem seinen Test.
 
 ### Task 1 — Drei Design-Richtungen
 
@@ -67,24 +69,25 @@ Für Bildschirme ist der Test der zugehörige Schritt im Rundgang (`e2e/rundgang
 - **Status:** erledigt am 20.11.2026; Vergleichsseite unter `tmp/design-richtungen/index.html`.
   Wartet auf Enricos Auswahl (AC-001) bzw. eine weitere Runde (AC-002)
 
-### Task 2 — DESIGN.md
+### Task 2 — DESIGN.md mit drei Themes
 
 - **Deckt ab:** AC-001, AC-003
-- **Berührt:** `docs/design/DESIGN.md`, Kontrastprüfung als Test in `packages/ui`
-- **Test:** Unit-Test rechnet die Kontraste aller Text-Hintergrund-Paare der Tokens
-- **Status:** offen (blockiert durch Auswahl)
-
-### Task 3 — Styling-Kurzversuch und ADR-0010
-
-- **Deckt ab:** Voraussetzung für REQ-002
-- **Berührt:** `apps/app`, `docs/adr/0010-styling.md`
-- **Test:** Web-Build und Typecheck mit einem gestalteten Bildschirm in hell und dunkel
+- **Berührt:** `docs/design/DESIGN.md`
+- **Test:** Unit-Test rechnet die Kontraste aller Text-Hintergrund-Paare aller sechs Paletten
 - **Status:** offen
+
+### Task 3 — Styling-Entscheidung (ADR-0010)
+
+- **Deckt ab:** Voraussetzung für REQ-002, AC-046, AC-047
+- **Berührt:** `docs/adr/0010-styling-und-themes.md`
+- **Status:** erledigt (eigenes Theme-System statt NativeWind)
 
 ### Task 4 — Design-System und Showroom
 
 - **Deckt ab:** AC-004, AC-005, AC-006, AC-009
 - **Berührt:** `packages/ui`, `apps/app/src/app/showroom.tsx`, `eslint.config.mjs`
+- **Themes:** „Markthalle“ (Standard), „Klar“, „Frisch“, je hell und dunkel; Auswahl unter
+  Einstellungen, lokal gespeichert (AC-046, AC-047)
 - **Bausteine:** Text, Knopf, Symbol-Knopf, Karte, Listenzeile, Abhak-Zeile, Chip, Eingabezeile,
   Sheet, Hinweis mit „Rückgängig“, Avatar, Abzeichen, Fortschritt, Fälligkeitsbalken, leerer
   Zustand, Offline-Hinweis, Vorschlagskarte, Geisterzeile, Segment-Schalter, Schalter
@@ -161,18 +164,18 @@ Für Bildschirme ist der Test der zugehörige Schritt im Rundgang (`e2e/rundgang
 - **Berührt:** `e2e/`, `package.json` (`pnpm e2e`, `pnpm demo:video`), `.github/workflows/ci.yml`
 - **Status:** offen
 
-### Task 14 — Prüfen und Feinschliff
+### Task 14 — Unit-Tests, Prüfen und Feinschliff
 
 - **Deckt ab:** alle
-- **Inhalt:** `/ui-verify` in drei Breiten, Design-Kritik, Barrierefreiheit (Tastatur, Kontraste,
+- **Inhalt:** Unit-Tests für `packages/core`, `packages/api` und die Kontraste; `/ui-verify` in drei Breiten, Design-Kritik, Barrierefreiheit (Tastatur, Kontraste,
   Beschriftungen), Prüfung auf dem iPhone durch Enrico
 - **Status:** offen
 
 ## Reihenfolge
 
 ```
-1 → (Auswahl) → 2
-3 ─┐
+1 → 2, 3
+   ┐
 5 ─┼→ 4 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14
 6 ─┘
 ```
