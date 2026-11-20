@@ -1093,6 +1093,16 @@ Nie automatisch, immer Enricos Entscheidung: die gewünschte Sicherung mit dem e
 herunterladen, mit dem privaten Schlüssel entschlüsseln, zuerst lokal einspielen und prüfen, erst
 dann in Produktion. Die genauen Befehle stehen in der Betriebsdoku aus dem Plan.
 
+## Stand der Einrichtung (20.11.2026)
+
+- Produktions-SWA angelegt: `swa-housekeeping-app-prd` in `rg-housekeeping-app-weu-prd`, Tarif Free,
+  Region **East US 2** (West Europe nahm für das Abo keine neuen Static Web Apps an, andere
+  EU-Regionen gibt es für diesen Dienst nicht; dort liegen nur die App-Dateien, keine Daten).
+  Adresse: `https://brave-bush-089e7a80f.6.azurestaticapps.net`. Eigene Domain später.
+- **Später erneut prüfen:** SWA in West Europe anlegen; wenn möglich, die Produktion dorthin umziehen
+  (neue Ressource, ausrollen, Google-Quelle und Supabase-Site-/Redirect-URLs anpassen, alte löschen).
+- Repo ist öffentlich (Branch-Schutz und Umgebungen ohne GitHub Pro).
+
 ## Offene Fragen
 
 Entschieden nach Enricos Regel „deine Empfehlung“ (20.11.2026); `OFFEN` sind nur Fragen, die Geld
