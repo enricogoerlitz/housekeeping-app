@@ -1,53 +1,55 @@
 ---
-status: offen # offen | in-arbeit | erledigt
-datum: JJJJ-MM-TT
+status: in-arbeit # offen | in-arbeit | erledigt
+datum: 2026-11-20
 spec: 0005
 ---
 
-# NNNN — Plan
+# 0005 — Plan
 
 ## Ansatz
 
-Wie es gebaut wird, in drei bis fünf Sätzen. Betroffene Pakete (`core`, `api`, `ui`, `app`,
-`supabase`).
+Keine Datenbankänderung. Die Muster entstehen als Bausteine in `packages/ui` (mit Showroom-Seite),
+die Navigation in `apps/app` (alle Seiten innerhalb der Tabs, „Verwalten“), danach werden die
+Bausteine in allen Bildschirmen eingesetzt. Betroffen: `ui`, `app`; `api` nur für den KI-Schalter.
 
 ## Datenbank und Sync
 
-Neue oder geänderte Tabellen und Spalten, additiv oder expand/contract, Delta-Sync. Umsetzung
-mit dem `db-change`-Skill. „Keine Änderung“ ist eine gültige Antwort.
+Keine Änderung.
 
 ## Risiken und Gegenmaßnahmen
 
-Pflicht bei kritischen Pfaden (Login, RLS, Delta-Sync und Abhak-Warteschlange, Migrationen, Löschen), sonst kurz.
-
-| Was könnte schiefgehen                       | Gegenmaßnahme | Getestet durch |
-| -------------------------------------------- | ------------- | -------------- |
-| Mitglied eines fremden Haushalts sieht Daten | RLS           | pgTAP `…`      |
+Kein kritischer Pfad. Risiken: Umzug der Routen bricht Deep Links (Weiterleitungen alter Adressen,
+E2E am Ende), feste Kopfzeile verdeckt Inhalte (Showroom + Dev-Smoke), Sammel-Fenster verliert
+Haken bei Seitenwechsel (Haken werden sofort gespeichert, nur das Verschieben wartet; Unit-Test).
 
 ## Aufgaben
 
-Jede Aufgabe ist einzeln abschließbar: Test rot → Implementierung → Test grün → `pnpm check` →
-Commit.
+### Task 1 — Bausteine in `packages/ui`
 
-### Task 1 — Kurztitel
+- **Deckt ab:** REQ-002, REQ-003, REQ-004 (Bausteine), REQ-005, REQ-006, REQ-007, REQ-009
+- **Berührt:** `packages/ui/src/*`, `apps/app/src/features/showroom/*`
+- **Test:** vitest für reine Logik (Sammel-Fenster, Suche über Wortteile), Showroom-Durchlauf
+- **Status:** in Arbeit
 
-- **Deckt ab:** AC-001
-- **Berührt:** `pfad/zur/datei`
-- **Test:** was der Test prüft
-- **Status:** offen
+### Task 2 — Navigation, Verwalten, Einstellungen, KI aus
+
+- **Deckt ab:** REQ-001, REQ-008, REQ-010
+- **Berührt:** `apps/app/src/app/**` (Routen), `(tabs)/_layout.tsx`, `features/settings/*`,
+  `features/shell/*`, neue `features/manage/*`, KI-Einstiege
+- **Test:** Typen, Dev-Smoke, gezielter Klick-Durchlauf
+- **Status:** in Arbeit
+
+### Task 3 — Bausteine in allen Bildschirmen einsetzen
+
+- **Deckt ab:** REQ-004 (Einsatz), REQ-002/003 (Einsatz), Tabelle „wer setzt welchen Baustein ein“
+- **Berührt:** `apps/app/src/features/**`
+- **Status:** offen (nach Task 1 und 2)
 
 ## Bewusst nicht Teil dieses Plans
 
-…
+Neue E2E-Rundgänge (kommen gesammelt am Ende der Wellen), Einsatz der Bausteine in Bereichen, die
+erst spätere Specs neu bauen (siehe Spec-Tabelle).
 
 ## Nachweis
 
 Wird am Ende ausgefüllt.
-
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün (falls Datenbank betroffen)
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet (falls UI betroffen)
-- [ ] `/security-check` gelaufen (falls kritischer Pfad)
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
