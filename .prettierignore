@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+**/dist/
+**/.expo/
+**/coverage/
+supabase/.temp/
+tmp/
+# Vendored third-party skills keep their upstream formatting
+.claude/skills/
+.agents/skills/
+skills-lock.json

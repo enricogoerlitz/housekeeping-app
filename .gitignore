@@ -1,0 +1,47 @@
+# dependencies
+node_modules/
+
+# build and tool output
+.turbo/
+dist/
+web-build/
+coverage/
+*.tsbuildinfo
+
+# Expo
+.expo/
+expo-env.d.ts
+.metro-health-check*
+
+# generated native folders (Continuous Native Generation)
+ios/
+android/
+.kotlin/
+
+# signing material
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+# environment and secrets
+.env
+.env.*
+!.env.example
+
+# Supabase local state
+supabase/.temp/
+supabase/.branches/
+
+# Claude Code: personal settings stay local
+.claude/settings.local.json
+
+# scratch work (see AGENTS.md)
+tmp/
+
+# OS / editor
+.DS_Store
+npm-debug.*
+*.orig.*
