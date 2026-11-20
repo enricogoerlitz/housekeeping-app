@@ -147,3 +147,27 @@ regelt die erste Spec mit Fotos.
 - **Offline-Bearbeiten für alles:** Jede Tabelle bräuchte Konfliktregeln. Erweiterbar je Feature,
   wenn es gebraucht wird. Erster Kandidat: Posten im Laden hinzufügen.
 - **PowerSync oder ein anderer Sync-Dienst:** ein Dienst mehr (ADR-0008).
+
+## Nachtrag Spec 0003 — Umsetzung
+
+- **Schreibweg:** Befehle wirken sofort lokal und gehen als genau eine RPC an den Server
+  ([ADR-0011](../adr/0011-schreibweg-mit-lokaler-ueberlagerung.md)). Sichtbar ist
+  `Serverzeilen ⊕ Laden-Warteschlange ⊕ ausstehende Änderungssätze`. Ein Satz fällt heraus, wenn
+  er bestätigt ist und danach ein Pull angewendet wurde; lehnt der Server ab, fällt er und jeder
+  spätere Online-Satz heraus, und die App zeigt „Hat nicht geklappt – bitte noch einmal versuchen“.
+- **Cursor je Haushalt und Tabelle.** Ein neuer Haushalt lädt voll, ohne die anderen zu stören.
+  Profile, Haushalte, Mitgliedschaften und Einladungen kommen bei jedem Pull vollständig, weil
+  sich ihre Sichtbarkeit ohne `updated_at` ändert.
+- **Grabstein und Zeile mit derselben ID:** Das spätere Ereignis gewinnt (`updated_at` gegen
+  `deleted_at`). So erscheint eine per „Rückgängig“ wieder eingefügte Zeile auf allen Geräten.
+- **Zeit:** Die 30-Tage-Grenze misst sich an `server_time` aus dem Pull, nie an der Uhr des
+  Geräts. `statement_timeout` für `authenticated` bleibt bei 8 s; das deckt das
+  Sicherheitsfenster von 2 Minuten.
+- **Abhaken:** Statt eines Zeitstempel-Vergleichs zählt der Server `check_seq` bei jedem Wechsel
+  von `checked` hoch. Die RPC heißt `set_shopping_item_checked(item_id, checked, seen_check_seq)`;
+  Zurücknehmen greift nur, wenn `check_seq` noch dem gesehenen Wert entspricht.
+- **Posten hinzufügen:** `add_shopping_contributions` löst den Namen über `name_key` bzw.
+  `synonym_keys` auf, die der Client mit `normalizeText` berechnet; so gibt es die Normalisierung
+  nur einmal.
+- **Realtime:** Statement-Trigger senden `{table}` an das private Topic `household:<id>`; die
+  Nachricht enthält keine Zeilendaten.

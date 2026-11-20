@@ -298,3 +298,51 @@ Was der Assistent über den Haushalt weiß, z. B. „unter der Woche höchstens 
 änderbar und löschbar.
 
 - **Im Code:** `HouseholdMemory`, `household_memory`
+
+### Einladung
+
+Die Freigabe einer Google-Adresse für einen Haushalt. Nur eingeladene Adressen können ein Konto
+anlegen; bei der ersten Anmeldung wird die Person Mitglied. Die Gesamtheit der offenen
+Einladungen ist die **Einladungsliste** (ADR-0003: „Allowlist“).
+
+- **Im Code:** `Invitation`, `household_invitations`
+- **Nicht verwenden:** Whitelist, Freischaltung
+
+### Testkonto
+
+Ein Konto mit E-Mail und Passwort, das es nur in der lokalen Entwicklungsumgebung gibt, damit
+automatische Tests ohne Google anmelden können. In Produktion abgeschaltet.
+
+- **Im Code:** `devLogin`, `TEST_ACCOUNTS`
+
+### Lokaler Speicher
+
+Die Kopie aller Daten der eigenen Haushalte auf dem Gerät. Die Oberfläche liest nur daraus; der
+[Sync](#sync) hält ihn aktuell. Wegwerfbar: Bei einer neuen Speicher-Version wird er neu geladen.
+
+- **Im Code:** `LocalCache`, `cache`
+- **Nicht verwenden:** Offline-Datenbank, Store (für den Gerätespeicher)
+
+### Laden-Warteschlange
+
+Die auf dem Gerät gespeicherte Reihe von Laden-Aktionen, die offline gemacht wurden: abhaken,
+„nicht da“, Posten hinzufügen, Bereich zuordnen. Wird mit Netz der Reihe nach nachgereicht
+(ADR-0008, Nachtrag).
+
+- **Im Code:** `StoreQueue`, `store_queue`
+- **Nicht verwenden:** Abhak-Warteschlange (alter Name), Outbox
+
+### KI-Kontingent
+
+Die Höchstmenge an KI-Nutzung je Mitglied und Tag, die der Server durchsetzt.
+
+- **Im Code:** `ai_usage`, `AI_DAILY_LIMIT`
+
+### Überlagerung
+
+Was die App anzeigt, solange Änderungen noch nicht vom Server bestätigt sind: die Serverzeilen
+plus Laden-Warteschlange plus ausstehende Änderungssätze (ADR-0011). Lehnt der Server ab, fällt
+die Änderung aus der Überlagerung und die Anzeige springt zurück.
+
+- **Im Code:** `overlay`, `PendingChangeset`
+- **Nicht verwenden:** Optimistic Update (außer in technischen Docs)

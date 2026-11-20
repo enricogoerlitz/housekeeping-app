@@ -16,3 +16,4 @@ neue abgelöst.
 | [0008](0008-offline-lesen-mit-eigenem-delta-sync.md)   | Offline lesen mit eigenem Delta-Sync, online schreiben, offline abhaken | angenommen          |
 | [0009](0009-ki-dienst.md)                              | KI über Microsoft Foundry, nur serverseitig aus Edge Functions          | angenommen          |
 | [0010](0010-styling-und-themes.md)                     | Eigenes Theme-System statt NativeWind; drei Themes zur Laufzeit wählbar | angenommen          |
+| [0011](0011-schreibweg-mit-lokaler-ueberlagerung.md)   | Schreibweg: lokal anwenden, eine RPC je Befehl, Überlagerung            | angenommen          |
