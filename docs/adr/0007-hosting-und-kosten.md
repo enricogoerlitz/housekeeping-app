@@ -79,3 +79,17 @@ sind Open Source, deshalb ist der Wechsel zu „selbst hosten“ später kein Ne
 ## Wann diese Entscheidung neu bewertet wird
 
 Bei der dritten App, bei einer Pause trotz Nutzung, oder wenn ein Free-Tier-Limit erreicht wird.
+
+## Nachtrag 2026-11-20 — nur gemanagte Dienste
+
+Festgelegt nach Rücksprache: **Kein eigener Server, kein Selbst-Hosting.** Supabase und PowerSync
+laufen als gemanagte Cloud-Dienste.
+
+- Erst Supabase Free, bei Bedarf Supabase Pro (25 $/Monat). Weitere kleine Apps kommen zunächst
+  ins selbe Projekt, je App ein eigenes Postgres-Schema. Ein eigenes Projekt gibt es erst, wenn
+  getrennte Nutzerkonten oder Limits nötig werden.
+- PowerSync Cloud Free. Bei zwei Personen ist kein Upgrade zu erwarten.
+- Die Zeile „Selbst hosten“ oben bleibt nur als Ausweg dokumentiert, falls sich der Wunsch ändert.
+
+Lokal läuft dagegen alles in Docker (Supabase CLI und PowerSync per Docker Compose). Das ist
+Entwicklungsumgebung, kein Hosting.

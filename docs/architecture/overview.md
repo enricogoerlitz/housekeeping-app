@@ -53,3 +53,16 @@ flowchart TD
   PowerSync-Client, das lokale Schema, den Upload-Connector und die Daten-Hooks.
 - **`packages/ui`**: entsteht mit der Design-Spec. Enthält Tokens und Komponenten.
 - **`apps/app`**: setzt alles zusammen. Routen in `src/app/`, Features in `src/features/<feature>/`.
+
+## Lokale Entwicklung
+
+Lokal läuft der komplette Stack in Docker (Docker Desktop). Für die tägliche Entwicklung braucht
+es keine Cloud-Accounts.
+
+| Teil                                                | Wie                                                                                                                                                                                | Eingerichtet in                    |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Supabase (Postgres, Auth, Storage, Studio, Mailpit) | `pnpm exec supabase start`. Die Supabase CLI startet und verwaltet die Container selbst; kein eigenes Compose-File, damit Migrationen, `test db` und Typ-Generierung funktionieren | vorhanden (`supabase/config.toml`) |
+| PowerSync Service                                   | Docker Compose (PowerSync Open Edition + Speicher), verbunden mit der lokalen Supabase-Datenbank                                                                                   | erste Daten-Spec                   |
+| App                                                 | `pnpm web` (MVP) bzw. `pnpm dev`                                                                                                                                                   | vorhanden                          |
+
+Die erste Daten-Spec fasst das in einem Befehl zusammen (z. B. `pnpm stack:up` / `stack:down`).

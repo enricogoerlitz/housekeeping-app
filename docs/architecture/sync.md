@@ -101,9 +101,18 @@ Das Detail regelt die erste Spec mit Fotos.
 
 ## Web
 
-Auch die Web-App ist offline-fähig: SQLite im Browser plus Service Worker für die App-Hülle.
-Priorität haben die mobilen Geräte. Web-Offline darf später kommen, wenn es sonst eine Spec
-aufhält.
+Das MVP läuft **zuerst als Web-App** und wird auf dem Handy über „Zum Home-Bildschirm“ als PWA
+genutzt (siehe Vision). Web-Offline ist deshalb **Teil des MVP**, nicht später:
+
+- **Daten:** PowerSync Web SDK, SQLite im Browser (OPFS bzw. IndexedDB).
+- **App-Hülle:** ein Service Worker cached HTML, JavaScript und Assets. Ohne ihn lädt die Seite im
+  Laden ohne Netz gar nicht erst, auch wenn die Daten lokal liegen.
+- **iOS Safari:** Nicht installierte Websites können ihren Speicher nach längerer Nichtnutzung
+  verlieren. Als PWA zum Home-Bildschirm hinzugefügt ist das deutlich robuster. Die App weist beim
+  ersten Start darauf hin.
+
+Die nativen Apps folgen, wenn das MVP taugt. Der Code bleibt dafür plattformneutral:
+Datenzugriff nur über `packages/api`, keine Web-only-APIs in Features.
 
 ## Testen
 

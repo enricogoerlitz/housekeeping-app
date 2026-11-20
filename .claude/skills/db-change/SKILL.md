@@ -23,6 +23,9 @@ Load `supabase-postgres-best-practices` and `powersync` before starting. Read
 
 If the project's household helpers (membership check function, `updated_at` trigger, sync stream
 file) do not exist yet, you are in the first data spec: create them as part of it, with tests.
+That spec also adds a migration revoking the default privileges on schema `public` from `anon` and
+`authenticated`, so the local stack behaves like the hosted project and a missing grant fails
+locally, not in production.
 If something here contradicts what exists, stop and ask.
 
 ## The six steps
@@ -37,9 +40,16 @@ Table shape per `30-database.md`: client-generated `uuid` id, `household_id` + i
 `created_at`, `updated_at` with trigger, constraints that encode the domain (not null, checks,
 foreign keys with a deliberate `on delete`).
 
-### 2. Row Level Security
+### 2. Grants and Row Level Security
 
-`alter table … enable row level security;` and one policy per operation. Select, update and
+The hosted project does **not** grant API access to new tables automatically. Grant explicitly in
+the migration, only what the spec needs, and never to `anon` for household data:
+
+```sql
+grant select, insert, update, delete on table public.<table> to authenticated;
+```
+
+Then `alter table … enable row level security;` and one policy per operation. Select, update and
 delete check membership of `household_id`; insert and update use `with check` so a row can neither
 be created in nor moved into a foreign household. Use the existing membership function — never
 copy the membership query into each policy.

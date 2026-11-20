@@ -17,6 +17,8 @@ all places a change touches.
   membership itself.
 - `created_at timestamptz not null default now()`, `updated_at timestamptz not null default now()`
   maintained by trigger.
+- Explicit grants in the migration (the hosted project does not auto-grant new tables to the API):
+  `authenticated` gets only the operations the spec needs, `anon` gets nothing.
 - Row Level Security enabled, with separate policies for select, insert, update and delete.
 - A pgTAP test proving: a member can do what the spec allows; a member of another household and a
   signed-out user can do nothing.

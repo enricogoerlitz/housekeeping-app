@@ -71,8 +71,13 @@ eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf 
 
 ## Version 1
 
-**Noch offen.** Wird in der nächsten Session gemeinsam gesammelt und priorisiert. Kandidaten aus
-dem ersten Brainstorming:
+**Plattform (entschieden):** Das MVP läuft zuerst als **Web-App**, lokal entwickelt und auf dem
+Handy als PWA vom Home-Bildschirm genutzt, offline-fähig. Native Apps für iOS und Android aus
+derselben Codebasis folgen, sobald das MVP taugt. Dann kommen Xcode, Android Studio und der
+Apple-Developer-Account dazu.
+
+**Umfang: noch offen.** Wird in der nächsten Session gemeinsam gesammelt und priorisiert.
+Kandidaten aus dem ersten Brainstorming:
 
 | Kandidat                             | Kern                                                                                                   |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
