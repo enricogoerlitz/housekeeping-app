@@ -65,7 +65,9 @@ export function parseMapsLink(input: string): MapsLink | null {
     (host.startsWith('maps.') || pathname.startsWith('/maps'));
   if (!isGoogle) return null;
   const place = pathname.match(/\/maps\/place\/([^/]+)/);
-  const at = pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  // "@lat,lng" is only the centre of the visible map; the place itself is "!3d<lat>!4d<lng>".
+  const pin = [...pathname.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g)].at(-1);
+  const at = pin ?? pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
   const query = params.get('query') ?? params.get('q') ?? undefined;
   const name = place?.[1] ? decodeSegment(place[1]) : query ? decodeSegment(query) : undefined;
   return {

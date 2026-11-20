@@ -67,6 +67,14 @@ describe('resolve-maps-link', () => {
     }
   });
 
+  it('AC-031: takes the place pin (!3d…!4d…), not the map centre (@…)', async () => {
+    const url =
+      'https://www.google.com/maps/place/Copenhagen+Coffee+Lab/@43.626,6.648,10z/data=!4m6!3m5!1s0x0:0x1!8m2!3d43.6992!4d7.2774!16s%2Fg%2F1';
+    const { response, body } = await resolve(url);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ location: { lat: 43.6992, lng: 7.2774 } });
+  });
+
   it('follows a chain of short links through all redirect codes', async () => {
     const { response } = await resolve('https://goo.gl/maps/one', {
       'https://goo.gl/maps/one': () => redirect('https://maps.app.goo.gl/two', 301),

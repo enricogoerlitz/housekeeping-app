@@ -59,7 +59,9 @@ export function parsePlaceUrl(url: URL): MapsPlace | null {
     GOOGLE_HOST.test(host) && (host.startsWith('maps.') || url.pathname.startsWith('/maps'));
   if (!isGoogle) return null;
   const place = url.pathname.match(/\/maps\/place\/([^/]+)/);
-  const at = url.pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  // "@lat,lng" is only the centre of the visible map; the place itself is "!3d<lat>!4d<lng>".
+  const pin = [...url.pathname.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g)].at(-1);
+  const at = pin ?? url.pathname.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
   const query = param('query') ?? param('q');
   const name = place?.[1] ? decodeSegment(place[1]) : query;
   return { provider: 'google', name: name || undefined, location: parsePoint(at?.[1], at?.[2]) };

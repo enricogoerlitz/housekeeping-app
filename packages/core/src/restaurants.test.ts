@@ -31,6 +31,16 @@ describe('parseMapsLink', () => {
     });
   });
 
+  it('AC-003: prefers the place pin (!3d…!4d…) over the map centre (@…) in Google links', () => {
+    const url =
+      'https://www.google.com/maps/place/Copenhagen+Coffee+Lab/@43.626,6.648,10z/data=!4m6!3m5!1s0x0:0x1!8m2!3d43.6992!4d7.2774!16s%2Fg%2F1';
+    expect(parseMapsLink(url)).toMatchObject({
+      kind: 'place',
+      name: 'Copenhagen Coffee Lab',
+      location: { lat: 43.6992, lng: 7.2774 },
+    });
+  });
+
   it('AC-004: reads name and coordinates from an Apple Karten link with q and ll', () => {
     const url = 'https://maps.apple.com/?q=Pho+Saigon&ll=50.94,6.95';
     expect(parseMapsLink(url)).toEqual({
