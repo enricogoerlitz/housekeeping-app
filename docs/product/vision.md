@@ -91,9 +91,4 @@ dem ersten Brainstorming:
 
 ## Ideen für später
 
-Rezept-Import per Link (strukturierte Rezeptdaten der Webseite) und per Foto (KI) · Kochmodus
-(Display bleibt an, Schritt für Schritt, Timer) · Vorratsschrank (was da ist, kommt nicht auf die
-Liste) · Putz- und Aufgabenplan mit Wiederholung und Zuständigkeit · „Was koche ich?“-Vorschläge
-· Widget „Heute gibt's …“ · Kurzbefehle/Sprachassistent („Milch auf die Liste“) · Live-Anzeige des
-Einkaufs auf dem Sperrbildschirm · lernende Laufreihenfolge aus der Abhak-Reihenfolge · Ausgaben
-per Kassenbon-Scan.
+Keine separate Ideenliste mehr: Was kommt, steht im [Feature-Konzept](feature-konzept.md).

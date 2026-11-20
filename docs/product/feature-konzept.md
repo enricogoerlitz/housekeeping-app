@@ -1,7 +1,7 @@
 # Feature-Konzept — Brainstorming für Version 1
 
-> Stand: 20.11.2026 · Status: **Entwurf zur Abstimmung**, zweite Fassung. Grundlage für den
-> Click-Dummy; danach entstehen daraus die Specs in `docs/specs/`. Fachbegriffe folgen
+> Stand: 20.11.2026 · Status: **abgestimmt**, dritte Fassung (alle Entscheidungen getroffen). Grundlage
+> für das Frontend mit Beispieldaten; danach entstehen daraus die Specs in `docs/specs/`. Fachbegriffe folgen
 > `.agents/glossary.md`; neue Begriffe sind _kursiv_ und kommen mit der jeweiligen Spec ins
 > Glossar.
 >
@@ -19,10 +19,9 @@
 6. Datenmodell: Leitlinien und Entitäten
 7. Randfälle aus dem Alltag
 8. Was wir von anderen Apps lernen
-9. Ideen für später
-10. Was wir bewusst nicht machen
-11. Offene Fragen
-12. Nächste Schritte
+9. Was wir bewusst nicht machen
+10. Entscheidungen
+11. Nächste Schritte
 
 ## 1. Überblick
 
@@ -30,7 +29,7 @@
 | --- | ------------------------------ | ---------------------------------------------------------------------------------------------------- | ------ |
 | F1  | **Haushalt, Profil und Start** | Mitglieder mit Farbe und Ernährung, Google-Login, Einladung, Start in zwei Minuten                   | 1      |
 | F2  | **Heute**                      | Startseite nach Tageszeit: Essen, Vorbereitung, Aufgaben, Einkauf                                    | 1      |
-| F3  | **Rezepte**                    | Schnell anlegen, durchblättern, filtern; Varianten (Tofu / Hähnchen / beide); Kochmodus              | 2      |
+| F3  | **Rezepte**                    | Schnell anlegen, filtern; Varianten (Tofu / Hähnchen / beide); Kochmodus; Starter-Rezepte            | 2      |
 | F4  | **Wochenplan**                 | „Wer isst mit?“ je Mahlzeit, Rezept oder Freitext, Reste, Vormerken ohne Tag                         | 3      |
 | F5  | **Einkaufsliste**              | Smart-Eingabe, Vorratscheck, Dauerposten, Sammlungen, gemeinsam live, offline abhaken                | 3      |
 | F6  | **Märkte und Bereiche**        | Optional: Markt wählen, ruhiger Einkaufsmodus in Laufreihenfolge                                     | 3      |
@@ -68,6 +67,13 @@ Von dir festgelegt, nicht mehr offen:
 - **Vorgegebene Supermarkt-Bereiche**, Freitext als Ausweg.
 - **KI-Suche ohne Embeddings**, die selbst in der Datenbank sucht und nachschärft.
 - **Flexibler Rhythmus** und **spontan erledigt** im Haushaltsplan.
+- **Dauerposten, Sammlungen und Vorbereitung am Vortag** kommen in Version 1.
+- **Keine KI ohne ausdrückliche Aktion** (siehe Leitlinie 8).
+- **Offline wird ruhig angezeigt**, orange statt rot.
+- **Ebenfalls in Version 1:** Websuche für Rezepte, Foto am Artikel, Wochenvorschau,
+  Saisonfenster für Aufgaben, freihändiger Kochmodus. Weitere „Ideen für später“ gibt es nicht
+  mehr.
+- **Alle offenen Fragen** sind nach Empfehlung entschieden (Abschnitt 10).
 
 ## 3. Leitlinien für Bedienung und Gestaltung
 
@@ -86,13 +92,20 @@ Von dir festgelegt, nicht mehr offen:
 7. **Gesten sind überall gleich:** nach **rechts** wischen heißt „erledigt / kommt mit“, nach
    **links** heißt „weg / später / haben wir“. Jede Geste hat eine Alternative per Tipp und
    funktioniert mit Screenreader.
-8. **KI ist ein Angebot, nie Pflicht.** Jede Maske funktioniert ohne KI. Der Einstieg ✨ sieht
-   überall gleich aus.
+8. **KI nur auf ausdrücklichen Wunsch.** Jede Maske funktioniert ohne KI. Kein KI-Aufruf
+   passiert unbemerkt im Hintergrund. KI startet nur durch eine ausdrückliche Aktion: einen ✨-Knopf,
+   eine Nachricht im Chat oder einen bewusst eingeschalteten Schalter (z. B. KI-Suche), der dann
+   eingeschaltet bleiben darf. Der Einstieg ✨ sieht überall gleich aus.
 9. **Leer, offline, lädt:** Jede Fläche hat diese drei Zustände. Leere Zustände zeigen einen echten
-   ersten Schritt statt einer Einführungstour.
+   ersten Schritt statt einer Einführungstour. **Offline** ist ein ruhiger Zustand: ein schmaler
+   oranger Hinweis („Offline – Lesen und Abhaken gehen“), nie rot, nie als Fehler. Was offline nicht
+   geht, ist sichtbar ausgegraut.
 10. **Ruhe statt Druck.** Kein Rot-Alarm, keine Punkte, keine Serien, keine Ranglisten zwischen
     Partnern. Überfälliges heißt „fällig seit“.
-11. **Breite nutzen.** iPad und Desktop: Liste und Detail nebeneinander, Woche als Raster.
+11. **Responsiv und auf jedem Gerät hochwertig.** Gearbeitet wird vor allem auf dem Handy, das
+    Design ist deshalb zuerst fürs Handy gemacht. Die Web-Version auf Tablet und Desktop muss
+    aber genauso gut aussehen und die Breite nutzen: Liste und Detail nebeneinander, Woche als
+    Raster, Rezepte als großzügiges Raster.
 
 **Grenzen der PWA bis zur nativen App** (ehrlich einplanen):
 
@@ -130,7 +143,13 @@ Von dir festgelegt, nicht mehr offen:
 - **Haushalt:** Name, Zeitzone, Mahlzeiten im Plan (Standard: Mittag, Abend), Wochenstart,
   Standardmarkt, Standardliste.
 - **Einladen** per Link oder Code; die Google-Adresse kommt auf die Allowlist.
-- **Persönlich:** Uhrzeit der Tageszusammenfassung, Benachrichtigungen, Erscheinungsbild.
+- **Persönlich:** Uhrzeit der Tageszusammenfassung, Benachrichtigungen, Erscheinungsbild,
+  KI-Schalter. Die KI-Schalter werden lokal auf dem Gerät gespeichert.
+- **Mehrere Haushalte, Testhaushalt:** Wer einen Haushalt anlegt, ist dessen Verwalter. Man kann
+  jederzeit einen weiteren anlegen, zum Beispiel „Test“, und oben zwischen Haushalten wechseln.
+  Starter-Katalog und Starter-Rezepte sind sofort da, ein Testhaushalt ist also in einer Minute
+  voll benutzbar. Lokal in der Entwicklung legt zusätzlich ein Seed einen fertigen Testhaushalt mit
+  Beispieldaten an.
 
 **Start in zwei Minuten** (die App muss am ersten Abend schon etwas bringen):
 
@@ -140,9 +159,11 @@ Von dir festgelegt, nicht mehr offen:
    Sekunde eins da. Die Liste ist sofort sortiert.
 3. **Aufgaben-Vorlagen** zum Antippen: „Bad putzen – wöchentlich“, „Bettwäsche – alle 2 Wochen
    flexibel“ …
-4. **Mehrere Rezept-Links auf einmal** einfügen. Sie werden im Hintergrund importiert, danach
+4. **Starter-Rezepte** (F3): Klassiker durchstöbern und mit einem Tipp ins eigene Rezeptbuch
+   übernehmen, im Testhaushalt auch „alle übernehmen“.
+5. **Mehrere Rezept-Links auf einmal** einfügen. Sie werden im Hintergrund importiert, danach
    heißt es „12 Entwürfe prüfen“.
-5. **Installations-Hinweis** (iOS Safari): Nach der ersten Liste erklären drei Bilder „Teilen →
+6. **Installations-Hinweis** (iOS Safari): Nach der ersten Liste erklären drei Bilder „Teilen →
    Zum Home-Bildschirm“, mit Begründung („sonst kann iOS die Offline-Daten löschen“).
 
 ### F2 — Heute
@@ -176,8 +197,9 @@ großem Kochmodus-Knopf, nach dem Essen „Morgen“.
 
 - **„Wie war's?“** am Morgen danach: Ein Tipp bestätigt den automatischen Status „gekocht“ und
   vergibt Sterne, je Person. Bewertungen speisen Favoriten und KI.
-- **Sonntags-Impuls:** Ist die nächste Woche leer, erscheint „Woche vorschlagen?“. Erzeugt wird
-  erst beim Antippen. Höchstens ein Impuls pro Tag, nie als Push.
+- **Sonntags-Impuls:** Ist die nächste Woche leer, erscheint „Woche vorschlagen?“. Die Karte selbst
+  braucht keine KI; der Vorschlag entsteht erst beim Antippen. Höchstens ein Impuls pro Tag, nie
+  als Push.
 
 ### F3 — Rezepte
 
@@ -256,6 +278,23 @@ Alle Wege landen **als Entwurf in derselben Rezeptmaske**.
 - **Kochmodus:** große Schrift, ein Schritt pro Bildschirm, Bildschirm bleibt an, Timer, Zutaten
   des Schritts. Bei beiden Varianten zeigt er beide Zutatensätze und markiert Schritte mit „nur
   Hähnchen“; vorab gibt es den Hinweis „2 Pfannen“.
+- **Freihändig** (Schalter im Kochmodus, ausdrücklich einzuschalten): Sprachbefehle „weiter“,
+  „zurück“, „Timer 10 Minuten“, „wie viel Kokosmilch?“. Solange der Schalter an ist, hört die
+  Spracherkennung zu; das kostet Spracherkennungs-Minuten und ist deshalb sichtbar
+  („🎙 hört zu“). Antworten erscheinen groß auf dem Bildschirm.
+
+**Starter-Rezepte**
+
+- Rund **150 Klassiker** der Alltagsküche (deutsch und international), mit Zutaten aus dem
+  Starter-Katalog, Varianten (vegetarisch / mit Fleisch) wo sinnvoll, Zeiten, Gerichtart,
+  Schlagworten und Schritten. Vorerst ohne Fotos.
+- **Herkunft:** einmalig während der Entwicklung mit unserer KI im festen Rezeptformat erzeugt,
+  durch den Zutaten-Parser geprüft und gegengelesen. **Nicht** von Rezeptseiten kopiert, wegen
+  Urheberrecht und Nutzungsbedingungen.
+- Sie liegen wie der Starter-Katalog fest in der App. Ins eigene Rezeptbuch kommen sie erst, wenn
+  man sie übernimmt; dort sind sie normale, änderbare Rezepte mit Herkunft „Starter“.
+- Nebeneffekt: Die Rezepte prüfen den Starter-Katalog. Jede Zutat muss einem Katalog-Artikel
+  entsprechen, sonst fehlt dort etwas.
 
 ### F4 — Wochenplan
 
@@ -359,8 +398,9 @@ wurde, bleibt gemerkt: „Liste erneut erzeugen“ holt es nicht zurück.
 - **Einkauf läuft:** Die andere Person sieht „Nadja ist bei Rewe“. Was sie währenddessen
   ergänzt, erscheint beim Einkaufenden oben unter „Neu dazu“. Optional schickt der Start eine
   Nachricht („Enrico ist bei Rewe – noch was?“).
-- **Offline abhaken** mit Regel „Abhaken gewinnt“ (ADR-0008). Ein kleiner Punkt zeigt, was noch
-  nicht synchronisiert ist.
+- **Offline im Laden** (Entscheidung 8): Abhaken, „Nicht da“, Posten hinzufügen und Bereich
+  zuordnen gehen ohne Netz und werden nachgereicht. Beim Abhaken gilt „Abhaken gewinnt“. Ein
+  kleiner Punkt zeigt, was noch nicht synchronisiert ist. Das braucht einen Nachtrag zu ADR-0008.
 - **Einkauf abschließen:** „8 gekauft · 2 bleiben“. Erledigte Posten werden geleert, sobald Netz
   da ist.
 - **Mehrere Listen:** Standardliste plus z. B. „Drogerie“ oder „Grillabend“.
@@ -402,20 +442,22 @@ wurde, bleibt gemerkt: „Liste erneut erzeugen“ holt es nicht zurück.
 - Zeilen mindestens 56 pt hoch, Bildschirm bleibt an, ✨ ausgeblendet.
 - Zwei Läden gleichzeitig: Jede Person sortiert nach dem eigenen Markt; Abgehaktes verschwindet
   bei der anderen live.
-- **Offen:** Welche Aktionen im Laden offline gehen (offene Frage 8).
+- **Offline:** Abhaken, „Nicht da“, Posten hinzufügen und Bereich zuordnen gehen auch ohne Netz
+  (Entscheidung 8).
 
 ### F7 — Haushaltsplan
 
 **Begriffe:** _Aufgabe_ (was), _Rhythmus_ (wann), _Zuständigkeit_ (wer), _Aufwand_ (wie viel),
 _Erledigung_ (Eintrag im Verlauf).
 
-| Rhythmus                               | Beispiel                                              |
-| -------------------------------------- | ----------------------------------------------------- |
-| Einmalig, mit oder ohne Datum          | „Glühbirne Flur tauschen“                             |
-| Wöchentlich an Tagen, alle n Wochen    | „Jeden Freitag Bad“, „alle 2 Wochen Montag Altpapier“ |
-| Monatlich (Tag X oder n-ter Wochentag) | „Am 1. Kühlschrank auswischen“                        |
-| Alle n Monate, jährlich                | „Alle 6 Monate Matratze drehen“                       |
-| **Flexibel nach letzter Erledigung**   | „Bettwäsche etwa alle 2 Wochen“                       |
+| Rhythmus                                       | Beispiel                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| Einmalig, mit oder ohne Datum                  | „Glühbirne Flur tauschen“                                     |
+| Wöchentlich an Tagen, alle n Wochen            | „Jeden Freitag Bad“, „alle 2 Wochen Montag Altpapier“         |
+| Monatlich (Tag X oder n-ter Wochentag)         | „Am 1. Kühlschrank auswischen“                                |
+| Alle n Monate, jährlich                        | „Alle 6 Monate Matratze drehen“                               |
+| **Flexibel nach letzter Erledigung**           | „Bettwäsche etwa alle 2 Wochen“                               |
+| _Saisonfenster_ (zusätzlich zu jedem Rhythmus) | „Balkon gießen, nur April–September“, „Winterreifen, Oktober“ |
 
 | Zuständigkeit | Bedeutung                                                     |
 | ------------- | ------------------------------------------------------------- |
@@ -458,8 +500,7 @@ _Erledigung_ (Eintrag im Verlauf).
   Termin, die Rotation bleibt.
 - **Neustart statt Schuldenberg:** Ab drei überfälligen Aufgaben bietet die App „Neu verteilen“ auf
   die nächsten Tage an.
-- **Aufwand** als 1–3 Punkte je Aufgabe. Heute zeigt die Summe; eine faire, neutrale Übersicht
-  folgt später.
+- **Aufwand** als 1–3 Punkte je Aufgabe. Heute zeigt die Summe des Tages.
 - **Unteraufgaben** als Checkliste, **Räume** als optionale Gruppierung.
 - **Querverbindung:** „Glühbirne kaufen“ wird mit einem Tipp zum Einkaufsposten.
 - **Verlauf:** wer, wann, was; filterbar nach Person und Aufgabe.
@@ -469,6 +510,8 @@ _Erledigung_ (Eintrag im Verlauf).
 - **Tageszusammenfassung** zur eigenen Uhrzeit: „Heute: Bad putzen (du) · du kochst Lasagne · für
   morgen Kichererbsen einweichen · 12 Posten auf der Liste.“
 - **Überfällig:** höchstens eine Erinnerung pro Aufgabe und Tag, nur an die zuständige Person.
+- **Wochenvorschau** am Sonntagabend (optional): Plan der Woche, Aufgaben je Person, Lücken
+  („Do noch leer“). Eine Zusammenfassung ohne KI.
 - **Optional:** „Enrico ist bei Rewe – noch was?“, „Dein Feedback wurde umgesetzt“.
 - **Stumm** bei Abwesenheit und Urlaub (F14). Jede Art einzeln abschaltbar.
 - Es gibt **keinen** „Nadja erinnern“-Knopf. Erinnerungen kommen nur von der App, neutral
@@ -512,7 +555,8 @@ _Erledigung_ (Eintrag im Verlauf).
 └──────────────────────────────────────────────┘
 ```
 
-- **Übernehmen:** ganz oder teilweise. **Ändern…:** sagen, was anders sein soll; geändert wird
+- **Übernehmen:** ganz oder teilweise. Dann schreibt die App die Änderung über dieselben Befehle
+  wie bei einer Eingabe von Hand. **Ändern…:** sagen, was anders sein soll; geändert wird
   nur das, Änderungsrunden sind markiert. Oder in der normalen Maske weiterbearbeiten.
   **Verwerfen** zählt als Signal.
 - **Streaming:** Plan-Vorschläge füllen sich Zeile für Zeile; man sieht sofort, dass etwas passiert.
@@ -544,12 +588,18 @@ _Erledigung_ (Eintrag im Verlauf).
 - **Zutaten aufbrauchen:** Der Planer bevorzugt Kombinationen, die Angebrochenes verwerten (halber
   Bund Koriander), und sagt das dazu.
 - **Mengen-Plausibilität:** Unplausible Mengen je Portion („12 Eier für 2“) werden markiert.
-- **Unsichtbare Helfer:** Neuer Artikel → Bereich, Ernährung, Synonyme. Neues Rezept →
-  Schlagworte, Gerichtart, Aufwand. Kleine Aufgaben wie diese laufen gesammelt im Hintergrund.
-- **Bilder:** übernommen aus dem Link oder als eigene Fotos. KI-generierte Bilder bräuchten ein
-  Bildmodell (offene Frage 6).
-- **Websuche** nach Rezepten ist für später vorgesehen. Bis dahin decken Trainingswissen und
-  Link-Import fast alles ab.
+- **KI-Hilfe beim Anlegen, nur auf Wunsch:** Neue Artikel bekommen Bereich, Ernährung und
+  Synonyme zuerst **ohne KI** aus dem Starter-Katalog. Fehlt etwas, gibt es am Feld „✨
+  vorschlagen“. Wer das automatisch will, schaltet in den Einstellungen „KI-Hilfe beim Anlegen“
+  ein (lokal gespeichert, bleibt an). Dasselbe gilt für Schlagworte, Gerichtart und Aufwand bei
+  neuen Rezepten.
+- **Bilder:** übernommen aus dem Link oder als eigene Fotos. Keine KI-generierten Bilder in
+  Version 1 (Entscheidung 6).
+- **Websuche nach Rezepten:** Beim Anlegen per Beschreibung und als letzte Stufe der KI-Suche gibt
+  es „🌐 Im Web suchen“. Die KI sucht passende Rezepte im Web, zeigt sie als Liste mit Quelle, und
+  das gewählte wird wie ein Link importiert (Entwurf, Quelle bleibt erhalten). Technisch läuft das
+  über die Websuche in Foundry (Grounding mit Bing) im vorhandenen Azure-Konto, mit Kosten je
+  Suche. Das wird in der Spec geprüft.
 
 ### F11 — Suche
 
@@ -559,7 +609,7 @@ _Erledigung_ (Eintrag im Verlauf).
 ┌──────────────────────────────────────────────┐
 │ 🔍 was Schnelles mit Tofu, nicht scharf, lange nicht gehabt │
 │ Treffer (Stichwort): Tofu-Bowl, Mapo Tofu    │ ← sofort, lokal, offline
-│ ✨ Mit KI suchen                             │ ← erscheint bei ganzen Sätzen / wenig Treffern
+│ ✨ KI-Suche: an                              │ ← ausdrücklich eingeschaltet, lokal gespeichert
 │ ─────────────────────────────────────────── │
 │ [Tofu ×][≤ 30 Min ×][nicht scharf ×][lange nicht ×] │ ← Deutung der KI als echte Filter
 │ ┌ Tofu-Bowl ─── 20' · zuletzt vor 7 Wochen ─┐ │
@@ -573,7 +623,10 @@ _Erledigung_ (Eintrag im Verlauf).
 - **Stufe 0, Stichwort** (immer, sofort, offline, kostenlos): Sie sucht lokal über Titel,
   Zutaten **samt Synonymen**, Schlagworte und Notizen, fehlertolerant („Halumi“ findet
   Halloumi). Kurze Eingaben mit klaren Treffern enden hier.
-- **Stufe 1, KI-Suche** (online, im selben Feld, kein eigener Bildschirm):
+- **Stufe 1, KI-Suche** (online, im selben Feld, kein eigener Bildschirm). Sie muss
+  **ausdrücklich eingeschaltet** werden: Schalter ✨ neben dem Suchfeld, lokal auf dem Gerät
+  gespeichert, bleibt an, bis man ihn ausschaltet. Ist er aus, gibt es nur die Stichwortsuche,
+  ohne jeden KI-Aufruf.
   1. Die KI macht aus dem Wunsch einen **Suchplan** mit 1–3 parallelen Abfragen (streng, breit,
      andere Deutung): Begriffe, gewünschte und ausgeschlossene Artikel, Ernährung je Person,
      Zeit, Saison, „nicht gekocht seit“.
@@ -604,7 +657,8 @@ _Erledigung_ (Eintrag im Verlauf).
 - **Erreichbar:** Avatar → Feedback, oder im Assistenten „Feedback: …“.
 - **Eintrag:** Art (Idee, Problem, Lob), Text oder Sprache. Automatisch dabei sind Bildschirm,
   App-Version und Gerät; ein Screenshot ist optional.
-- **Doppelte vermeiden:** Ähnliche offene Einträge werden angezeigt, „+1“ statt neu.
+- **Doppelte vermeiden:** Ähnliche offene Einträge werden angezeigt (Ähnlichkeitssuche, ohne
+  KI), „+1“ statt neu.
 - **Status:**
   - neu → angenommen oder abgelehnt (mit Begründung) → umgesetzt (mit Spec-Nummer)
   - Benachrichtigung an den Autor, wenn umgesetzt
@@ -632,7 +686,9 @@ Der Katalog hinter Rezepten und Listen. Niemand pflegt ihn bewusst; er wächst b
     schlägt nur vor („Meinst du Möhre?“) und speichert nach Bestätigung ein Synonym.
 - **Zusammenführen:** zwei Artikel werden zu einem; alle Rezepte, Listen und Synonyme ziehen mit.
   Auch ein offline gesetzter Haken findet den Posten danach noch.
-- **Artikelseite:** in welchen Rezepten, wann zuletzt gekauft, welcher Bereich.
+- **Foto am Artikel** (optional): „genau diese Hafermilch“. Es erscheint klein am Einkaufsposten
+  und groß beim Antippen, damit die andere Person das Richtige kauft.
+- **Artikelseite:** in welchen Rezepten, wann zuletzt gekauft, welcher Bereich, Foto.
 
 ### F14 — Abwesenheit und Pause
 
@@ -644,7 +700,7 @@ Der Katalog hinter Rezepten und Listen. Niemand pflegt ihn bewusst; er wächst b
   - Benachrichtigungen sind stumm.
 - **„Heute raus“** (krank): Die eigenen Aufgaben wandern auf morgen oder werden der anderen Person
   angeboten, das Kochen ist wieder frei.
-- **Saisonale Pause** einzelner Aufgaben (Balkon im Winter).
+- **Saisonale Pause** einzelner Aufgaben über das Saisonfenster (F7).
 
 ## 5. KI-Architektur: eine Logik für App und Assistent
 
@@ -688,6 +744,9 @@ flowchart LR
 6. **Dokumentation aus dem Code:** Aus dem Befehlsverzeichnis entsteht `docs/architecture/befehle.md`.
 
 **Leitplanken**
+
+- **Kein unbemerkter KI-Aufruf:** KI läuft nur nach einer ausdrücklichen Aktion (✨-Knopf,
+  Chat-Nachricht, bewusst eingeschalteter Schalter). Es gibt keine Hintergrund-Jobs mit KI.
 
 - **Eingeschleuste Anweisungen:**
   - Importierte Seiten werden zuerst ohne KI gelesen (strukturierte Rezeptdaten). Der KI-Teil des
@@ -759,14 +818,17 @@ Ganzes gelesen und nie gefiltert wird.** Die Tabellen legt jede Spec mit dem `db
 | Bereich       | Tabellen und wichtige Felder                                                                                                                                                                                                                                                                             | `jsonb`                              |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Haushalt      | `households` (Zeitzone) · `household_members` (Farbe, Ernährung, Abneigungen) · `absences` (Person oder Haushalt, von–bis) · `user_settings` (Uhrzeit Zusammenfassung) · `push_subscriptions`                                                                                                            | Einstellungen                        |
-| Artikel       | `articles` (Bereich, Ernährung, Vorrat, Standard-Einkaufsregel, archiviert) · `article_names` (Name/Synonym, normalisiert, **eindeutig je Haushalt**)                                                                                                                                                    | —                                    |
+| Artikel       | `articles` (Bereich, Ernährung, Vorrat, Standard-Einkaufsregel, Foto, archiviert) · `article_names` (Name/Synonym, normalisiert, **eindeutig je Haushalt**)                                                                                                                                              | —                                    |
 | Rezepte       | `recipes` (Titel, Portionen, Zeiten, Gerichtart, Küche, Aufwand, Saison, Schlagworte `text[]`, Vorlauf, archiviert) · `recipe_variants` · `recipe_ingredients` (Variante oder Basis, Menge strukturiert, Einkaufsregel, Zusatz) · `recipe_member_prefs` (Favorit, Bewertung je Person) · `recipe_images` | Schritte, Herkunft, Nährwerte        |
 | Plan          | `meal_slots` · `meal_plan_entries` (Datum oder vorgemerkt, Art: Rezept/Freitext/Reste, Portionen, Koch, „nicht gekocht“) · `meal_plan_entry_variants` (Portionen je Variante) · `meal_plan_entry_eaters`                                                                                                 | —                                    |
 | Einkauf       | `shopping_lists` · `shopping_items` (eine Zeile je Artikel, Haken) · `shopping_contributions` (Herkunft: Rezept/Hand/Dauerposten/Aufgabe, Menge, Zusatz, abgewählt, Quellversion) · `shopping_list_sources` · `recurring_items` (Dauerposten) · `collections`                                            | Rhythmus der Dauerposten             |
 | Märkte        | `areas` (Vorgabe-Schlüssel, Standardreihenfolge) · `stores` · `store_areas` (Reihenfolge, ausgeblendet)                                                                                                                                                                                                  | —                                    |
-| Haushaltsplan | `chores` (Anker, `next_due_on`, Zuständigkeit, Rotation, Aufwand, Raum) · `chore_events` (erledigt/übersprungen/spontan, für Termin, von wem)                                                                                                                                                            | Rhythmus, Unteraufgaben              |
+| Haushaltsplan | `chores` (Anker, `next_due_on`, Zuständigkeit, Rotation, Aufwand, Raum, aktive Monate) · `chore_events` (erledigt/übersprungen/spontan, für Termin, von wem)                                                                                                                                             | Rhythmus, Unteraufgaben              |
 | KI            | `ai_conversations` · `ai_messages` · `ai_proposals` (Status, Teile) · `household_memory` (Eintrag, Quelle, Person)                                                                                                                                                                                       | Inhalte, Vorschlagsteile, Kontext    |
 | Feedback      | `feedback` (Art, Status, Begründung, Spec) · `feedback_votes`                                                                                                                                                                                                                                            | Kontext (Bildschirm, Version, Gerät) |
+
+**Fest in der App** (keine Tabellen): Starter-Katalog, Starter-Rezepte, vorgegebene Bereiche,
+Aufgaben-Vorlagen. **Nur lokal auf dem Gerät:** KI-Schalter.
 
 **Nicht synchronisiert** (nur online gelesen): KI-Tabellen, Suchindex, `user_settings`,
 `push_subscriptions`. Das braucht einen Nachtrag zu ADR-0008 und eine Präzisierung der Regel 5 in
@@ -780,7 +842,6 @@ Ganzes gelesen und nie gefiltert wird.** Die Tabellen legt jede Spec mit dem `db
 | Enrico ist weg, das Curry war aufgeteilt                           | Hähnchen fällt auf 0 Portionen; offene Beiträge werden neu gerechnet, gekaufte bleiben         |
 | „Reste von Montag“, aber Montag wurde nicht gekocht                | Der Reste-Eintrag wird markiert, nicht still gelöscht                                          |
 | Sie ergänzt, während er im Funkloch einkauft                       | Erscheint nach dem Wiederverbinden unter „Neu dazu“; der Modus zeigt „Stand vor 8 Min“         |
-| 10 Eier geplant, nur 6 im Regal                                    | Die Menge lässt sich beim Abhaken ändern, der Rest bleibt offen (später)                       |
 | Beide haken dieselbe Aufgabe ab                                    | Es bleibt eine Erledigung: „Nadja war schneller“                                               |
 | Fenster mittwochs geputzt, die Aufgabe steht freitags an           | Zählt für diesen Freitag, nächster Termin bleibt der Freitag danach (nur flexibel startet neu) |
 | Aufgabe „am 31.“ im Februar                                        | Wird am 28./29. fällig, im März wieder am 31.                                                  |
@@ -833,33 +894,7 @@ Quellen (Auswahl): [Plan to Eat: Updates 11/2025](https://www.plantoeat.com/blog
 [Inquirer: KI-Mealplanner](https://www.inquirer.com/food/ai-apps-meal-planning-shopping-20250828.html) ·
 [heise: Einkaufslisten-Apps](https://www.heise.de/tipps-tricks/Einkaufslisten-Apps-im-Ueberblick-4883163.html)
 
-## 9. Ideen für später
-
-| Idee                                                                      | Bereich | Nutzen                                    |
-| ------------------------------------------------------------------------- | ------- | ----------------------------------------- |
-| Teilkauf: Menge beim Abhaken ändern, Rest bleibt offen                    | F5      | realistisch im Laden                      |
-| Kühlschrankfoto im Vorratscheck                                           | F5      | schneller prüfen                          |
-| Ersatz im Laden: „Kein Halloumi da?“ → passender Ersatz zum Rezept        | F6/F9   | rettet das Abendessen                     |
-| Lernende Laufreihenfolge aus der Abhak-Reihenfolge                        | F6      | Märkte pflegen sich selbst                |
-| Mitnehm-Liste je Markt (Pfand, Taschen, Kühltasche)                       | F6      | nichts vergessen                          |
-| Planregeln je Wochentag („Mo–Do < 30 Min“) und 🎲 ohne KI                 | F4      | schneller Plan                            |
-| Gästeprofile mit Ernährung und Allergien                                  | F1/F4   | Allergien nicht vergessen                 |
-| Freihändiger Kochmodus („weiter“, „Timer 10 Minuten“)                     | F3      | Hände frei                                |
-| Import aus Video-Transkripten (TikTok, YouTube)                           | F10     | mehr Rezepte                              |
-| Faire, neutrale Übersicht nach Aufwand inkl. unsichtbarer Arbeit          | F7      | Mental Load sichtbar                      |
-| Saisonfenster für Aufgaben („Apr–Sep Balkon gießen“)                      | F7      | weniger Ausnahmen                         |
-| Wochenvorschau am Sonntagabend                                            | F8      | Überblick                                 |
-| Datenexport (Rezepte als JSON/schema.org mit Fotos, Pläne, Verlauf)       | neu     | keine Abhängigkeit, Basis fürs Teilen     |
-| Rezept teilen per Link                                                    | F3      | an Freunde                                |
-| Drei Spalten auf iPad/Desktop: Rezepte · Woche · Liste, per Ziehen planen | F4      | Sonntagsplanung am Tablet                 |
-| Foto am Artikel („genau diese Hafermilch“)                                | F13     | das Richtige kaufen                       |
-| Websuche für Rezepte                                                      | F10     | aktuelle Rezepte                          |
-| Embeddings / RAG                                                          | F11     | erst bei sehr vielen Rezepten oder Texten |
-| Kalender-Abo (iCal) für Plan und Aufgaben                                 | F4/F7   | im eigenen Kalender                       |
-| Ausgaben per Kassenbon-Scan                                               | neu     | Haushaltsbuch nebenbei                    |
-| Widgets, Kurzbefehle, Uhr (nativ)                                         | —       | ohne App öffnen                           |
-
-## 10. Was wir bewusst nicht machen
+## 9. Was wir bewusst nicht machen
 
 - **Punkte, Serien, Ranglisten, Belohnungen zwischen Partnern.** Das macht Hausarbeit zum
   Wettkampf und erzeugt nach Urlaub oder Krankheit Schuldgefühle.
@@ -867,45 +902,41 @@ Quellen (Auswahl): [Plan to Eat: Updates 11/2025](https://www.plantoeat.com/blog
 - **Grammgenauer Vorratsbestand.** Den pflegt nach zwei Wochen niemand mehr. Vorrat-Markierung,
   Vorratscheck und „Ist alle“ reichen.
 - **Automatisches Lernen von „meist vorrätig“.** Nichts soll unerwartet verschwinden.
-- **Preise und Budget je Posten** in Version 1.
+- **Preise und Budget je Posten.**
 - **Werbung, Prospekte, Angebote.**
 - **Einführungstour.** Leere Zustände mit einem echten ersten Schritt erklären besser.
 - **Eigener Bildschirm für die KI-Suche.** Es ist ein Suchfeld.
 - **Aktionen nur per Geste.**
 
-## 11. Offene Fragen
+## 10. Entscheidungen
 
-Antwort genügt als „alle Empfehlungen ok“ oder mit den Nummern, die du anders willst.
+Am 20.11.2026 wurden alle Empfehlungen übernommen.
 
-| #   | Frage                                  | Optionen                                                                                                             | Empfehlung                                                                                           |
-| --- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 1   | Navigation                             | A: 5 Tabs + schwebender Assistent · B: Assistent als Tab                                                             | **A**                                                                                                |
-| 2   | Varianten                              | A: eine Variantengruppe je Rezept, Plan mit Portionen je Variante · B: mehrere Gruppen                               | **A**: deckt Tofu/Hähnchen/beide ab; B später möglich                                                |
-| 3   | Ernährungsform                         | A: aus Artikeln abgeleitet, überschreibbar · B: von Hand                                                             | **A**                                                                                                |
-| 4   | KI-Vorschläge                          | A: immer bestätigen (ein Tipp, Geisterzeilen) · B: einfache Posten direkt                                            | **A**                                                                                                |
-| 5   | Erinnerungen                           | A: Tageszusammenfassung + Überfälligkeit · B: jede Aufgabe einzeln                                                   | **A**                                                                                                |
-| 6   | KI-generierte Rezeptbilder             | A: nein, Fotos und Link-Bilder · B: ja, Bildmodell in Foundry                                                        | **A** in Version 1                                                                                   |
-| 7   | Click-Dummy                            | A: im echten App-Gerüst mit Beispieldaten · B: separates HTML                                                        | **A**: echtes Gefühl auf dem Handy, Komponenten bleiben                                              |
-| 8   | **Offline im Laden**                   | A: nur Abhaken (wie heute) · B: kleine Laden-Warteschlange: Abhaken, „Nicht da“, Posten hinzufügen, Bereich zuordnen | **B**: alle vier sind konfliktarm, und genau dort fehlt das Netz. Braucht einen Nachtrag zu ADR-0008 |
-| 9   | Haushaltsaufgaben offline abhaken      | A: nur online · B: Warteschlange                                                                                     | **A**: man ist zu Hause im WLAN                                                                      |
-| 10  | Feedback für den Coding-Agent          | A: Skripte + Skill `feedback-triage` · B: Supabase MCP                                                               | **A**                                                                                                |
-| 11  | Verlauf und Gedächtnis des Assistenten | A: speichern, sichtbar und löschbar · B: nichts speichern                                                            | **A**                                                                                                |
-| 12  | Plan geändert nach Listenerzeugung     | A: Momentaufnahme mit Hinweis „neu berechnen“ · B: Liste passt sich automatisch an                                   | **A**: nichts ändert sich unbemerkt                                                                  |
-| 13  | Favorit und Bewertung                  | A: je Person · B: je Haushalt                                                                                        | **A**: Grundlage für „passt für alle“ und „Favoriten von beiden“                                     |
-| 14  | Rotation                               | A: dran ist, wer nach der Person kommt, die erledigt hat · B: strikt nach Plan                                       | **A**: robust bei Abgeben und Spontan                                                                |
-| 15  | Starter-Katalog                        | A: fest in der App, Haushalts-Artikel entsteht bei Nutzung · B: Kopie je Haushalt in die Datenbank                   | **A**: offline, ohne 300 synchronisierte Zeilen pro Haushalt                                         |
-| 16  | Abwesenheit und Pause                  | A: in Version 1 · B: später                                                                                          | **A**: Urlaub oder Krankheit kommen sicher in den ersten Wochen                                      |
+| #   | Thema                              | Entscheidung                                                                                       |
+| --- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 1   | Navigation                         | 5 Tabs + schwebender Assistent                                                                     |
+| 2   | Varianten                          | Eine Variantengruppe je Rezept; Plan-Eintrag mit Portionen je Variante („beide“)                   |
+| 3   | Ernährungsform                     | Aus den Artikeln abgeleitet, überschreibbar                                                        |
+| 4   | KI-Vorschläge                      | Immer bestätigen (ein Tipp, Geisterzeilen); Annehmen schreibt über die normalen Befehle            |
+| 5   | Erinnerungen                       | Tageszusammenfassung + Überfälligkeit                                                              |
+| 6   | KI-generierte Rezeptbilder         | Nein in Version 1; Fotos und Link-Bilder                                                           |
+| 7   | Click-Dummy                        | Echtes App-Frontend mit Beispieldaten, an das später das Backend angeschlossen wird                |
+| 8   | Offline im Laden                   | Abhaken, „Nicht da“, Posten hinzufügen, Bereich zuordnen gehen offline; Nachtrag zu ADR-0008 nötig |
+| 9   | Haushaltsaufgaben offline abhaken  | Nein, nur online                                                                                   |
+| 10  | Feedback für den Coding-Agent      | Skripte + Skill `feedback-triage`                                                                  |
+| 11  | Verlauf und Gedächtnis             | Speichern, sichtbar und löschbar                                                                   |
+| 12  | Plan geändert nach Listenerzeugung | Momentaufnahme mit Hinweis „neu berechnen“                                                         |
+| 13  | Favorit und Bewertung              | Je Person                                                                                          |
+| 14  | Rotation                           | Dran ist, wer nach der Person kommt, die erledigt hat                                              |
+| 15  | Starter-Katalog                    | Fest in der App; Haushalts-Artikel entsteht bei Nutzung                                            |
+| 16  | Abwesenheit und Pause              | In Version 1                                                                                       |
 
-## 12. Nächste Schritte
+## 11. Nächste Schritte
 
-1. Dieses Dokument durchgehen, offene Fragen entscheiden.
-2. **Click-Dummy** der Kernabläufe:
-   - Heute
-   - Rezept anlegen mit ✨
-   - Plan mit „Wer isst mit?“ und beiden Varianten
-   - Liste aus dem Plan mit Vorratscheck
-   - Einkaufsmodus
-   - Assistent mit Diff-Karte und Geisterzeilen
-   - KI-Suche
-   - Haushaltsplan
-3. Danach: `DESIGN.md` (Design-Fundament), Specs je Etappe, Umsetzung.
+1. **Design-Richtung festlegen:** 2–3 Richtungen für einen Kernbildschirm als Bilder (Handy und
+   Desktop, hell und dunkel), du wählst. Danach wird `docs/design/DESIGN.md` geschrieben.
+2. **Frontend mit Beispieldaten** im echten App-Gerüst: alle Kernabläufe, Daten aus einer
+   austauschbaren Beispiel-Schicht in `packages/api`, später ersetzt durch Supabase.
+3. **Video-Rundgang:** Ein Skript klickt die Abläufe im Handyformat durch und nimmt sie mit
+   eingeblendeten Erklärungen auf.
+4. Danach: Specs je Etappe und Anschluss des Backends.
