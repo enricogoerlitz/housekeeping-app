@@ -171,3 +171,10 @@ regelt die erste Spec mit Fotos.
   nur einmal.
 - **Realtime:** Statement-Trigger senden `{table}` an das private Topic `household:<id>`; die
   Nachricht enthält keine Zeilendaten.
+- **Vertrauensmodell der Grenzen:** `apply_changes` nimmt höchstens 200 Operationen und
+  20 Löschungen je Aufruf an; jede ID in einer `remove_contributions`-Operation zählt als Löschung
+  und als Operation. Die Grenzen fangen Fehler im Client ab (etwa einen Diff, der versehentlich
+  ganze Tabellen löscht), keine böswilligen Mitglieder: Ein Mitglied darf Zeilen seines Haushalts
+  ohnehin direkt über die API löschen. Schutz gegen Fremde geben RLS und die Spaltenrechte.
+- **Einladungen** werden immer selbst angenommen (`accept_invitation`) oder abgelehnt
+  (`decline_invitation`), auch beim ersten Anmelden; das neue Konto bekommt nur sein Profil.

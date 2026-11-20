@@ -1,10 +1,12 @@
 // Finishes the static web export (`expo export --platform web` → dist/) for production:
 // 1. Content Security Policy as <meta> in index.html (rule 10-security, ADR-0003). The Supabase
-//    origin comes from EXPO_PUBLIC_SUPABASE_URL at build time.
+//    origin comes from EXPO_PUBLIC_SUPABASE_URL at build time; without it the build fails. An
+//    inline script fails the build too, unless its hash is on INLINE_SCRIPT_ALLOWLIST.
 // 2. Service worker dist/sw.js with the precache list (workbox-build injectManifest) and the
 //    external registration script dist/register-sw.js (no inline script, so no CSP hash needed).
 // 3. The Speech SDK's audio worklet as a same-origin file (it would otherwise use a blob: URL).
 // Only the export gets these; the dev server stays without service worker and CSP.
+// check-web-export.mjs then verifies the result (part of build:web).
 //
 // Usage: node scripts/finish-web-export.mjs [distDir]
 import { createHash } from 'node:crypto';
@@ -21,26 +23,42 @@ const indexPath = path.join(dist, 'index.html');
 
 // ---------- 1. Content Security Policy ----------
 
+function fail(message) {
+  console.error(`finish-web-export: ${message}`);
+  process.exit(1);
+}
+
 function supabaseOrigins() {
   const raw = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
-  if (!raw) {
-    console.warn(
-      'finish-web-export: EXPO_PUBLIC_SUPABASE_URL is not set; the CSP allows no Supabase origin.',
-    );
-    return [];
+  if (!raw) fail('EXPO_PUBLIC_SUPABASE_URL is not set; the CSP needs the Supabase origin.');
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    fail('EXPO_PUBLIC_SUPABASE_URL is not a URL.');
   }
-  const url = new URL(raw);
   const socket = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}`;
   return [url.origin, socket];
 }
 
-/** Hashes of inline scripts, should Expo ever inject one; today the export has none. */
+/**
+ * Inline scripts that may run, as CSP hashes ('sha256-…'). Empty: the export has none today. An
+ * entry needs a review of the script and a reason here; anything else fails the build instead of
+ * being hashed automatically, so an injected script can never slip into the policy.
+ */
+const INLINE_SCRIPT_ALLOWLIST = [];
+
+/** Hashes of the export's inline scripts; fails on one that is not on the allowlist. */
 function inlineScriptHashes(html) {
   const hashes = [];
   for (const match of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) {
     const body = match[1] ?? '';
     if (body.trim() === '') continue;
-    hashes.push(`'sha256-${createHash('sha256').update(body).digest('base64')}'`);
+    const hash = `'sha256-${createHash('sha256').update(body).digest('base64')}'`;
+    if (!INLINE_SCRIPT_ALLOWLIST.includes(hash)) {
+      fail(`index.html has an inline script that is not allowlisted (${hash}).`);
+    }
+    hashes.push(hash);
   }
   return hashes;
 }

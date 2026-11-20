@@ -141,6 +141,8 @@ export interface EngineOptions {
   onSmallChange?: (small: SyncCache['small']) => void;
   /** Where the app keeps the household being shown (switchHousehold changes it in the store). */
   readActiveHouseholdId?: () => string | undefined;
+  /** A pull came back without the user's own profile: the account no longer exists. */
+  onAccountMissing?: () => void;
 }
 
 export interface Engine extends BackendHooks {
@@ -299,6 +301,8 @@ export function createEngine(options: EngineOptions): Engine {
   let cache: SyncCache | undefined;
   const persisted = new Map<string, HouseholdCache>();
   let loaded = false;
+  /** The household last chosen on this device (stored with the cache, so bound to the user). */
+  let chosenHouseholdId: string | undefined;
 
   // Store queue: waiting entries, the one being sent, and answered ones shown until the next pull.
   let queue: StoreQueueEntry[] = [];
@@ -424,9 +428,12 @@ export function createEngine(options: EngineOptions): Engine {
       }
     }
     const ids = Object.keys(households);
-    const wanted = options.readActiveHouseholdId?.() ?? previous?.activeHouseholdId;
-    const activeHouseholdId =
-      wanted && households[wanted] ? wanted : (firstJoined(cache?.small, userId, households) ?? '');
+    const wanted = [
+      options.readActiveHouseholdId?.(),
+      previous?.activeHouseholdId,
+      chosenHouseholdId,
+    ].find((id) => id !== undefined && households[id] !== undefined);
+    const activeHouseholdId = wanted ?? firstJoined(cache?.small, userId, households) ?? '';
     const sameHouseholds =
       previous !== undefined &&
       ids.length === Object.keys(previous.households).length &&
@@ -491,8 +498,13 @@ export function createEngine(options: EngineOptions): Engine {
     }
     const removed = [...persisted.keys()].filter((householdId) => !next.households[householdId]);
     for (const householdId of removed) persisted.delete(householdId);
+    // A household the user lost leaves nothing on the device, also not as the stored choice.
+    const lostChoice = chosenHouseholdId !== undefined && !next.households[chosenHouseholdId];
+    if (lostChoice) chosenHouseholdId = undefined;
     await storage.setMany(entries);
-    if (removed.length > 0) await storage.del(removed.map(householdKey));
+    const gone = removed.map(householdKey);
+    if (lostChoice) gone.push('active');
+    if (gone.length > 0) await storage.del(gone);
   }
 
   async function load(): Promise<void> {
@@ -522,6 +534,8 @@ export function createEngine(options: EngineOptions): Engine {
       };
       const storedQueue = await storage.get('queue');
       queue = Array.isArray(storedQueue) ? (storedQueue as StoreQueueEntry[]) : [];
+      const chosen = await storage.get('active');
+      chosenHouseholdId = typeof chosen === 'string' ? chosen : undefined;
       for (const entry of queue) entrySeq.set(entry, ++seq);
     }
     rebuild();
@@ -591,6 +605,11 @@ export function createEngine(options: EngineOptions): Engine {
       result = await transport.syncPull(request);
     }
     if (at !== epoch) return;
+    if (!(result.small.profiles ?? []).some((row) => row.id === userId)) {
+      // Every pull carries the own profile; without it the account was deleted (e.g. db reset).
+      options.onAccountMissing?.();
+      return;
+    }
 
     const memberOf = (result.small.household_members ?? [])
       .filter((row) => row.profile_id === userId)
@@ -975,8 +994,25 @@ export function createEngine(options: EngineOptions): Engine {
     commits = [];
     history = [];
     knownCheckSeq.clear();
+    chosenHouseholdId = undefined;
     await storage.clear();
     rebuild();
+  }
+
+  function rememberActiveHousehold(householdId: string): void {
+    if (chosenHouseholdId === householdId) return;
+    chosenHouseholdId = householdId;
+    // meta binds the choice to this user: another user's start clears the whole storage.
+    void storage
+      .setMany([
+        ['meta', meta()],
+        ['active', householdId],
+      ])
+      .catch((error: unknown) => {
+        console.warn(
+          `Storing the household failed: ${error instanceof Error ? error.name : 'unknown'}`,
+        );
+      });
   }
 
   return {
@@ -992,6 +1028,7 @@ export function createEngine(options: EngineOptions): Engine {
     recordChange,
     enqueueStoreAction,
     undoable,
+    rememberActiveHousehold,
     setSimulatedOffline(offline) {
       transport.setBlocked(offline);
       if (!offline) networkFailed = false;
@@ -1014,6 +1051,8 @@ export interface StartBackendOptions {
   userId: string;
   environment?: Environment;
   cacheVersion?: number;
+  /** See EngineOptions.onAccountMissing. */
+  onAccountMissing?: () => void;
 }
 
 let current: Engine | undefined;
@@ -1065,6 +1104,9 @@ export async function startBackend(options: StartBackendOptions): Promise<Engine
       if (current === engine) setSmall(small);
     },
     readActiveHouseholdId: () => (current === engine ? peekState()?.activeHouseholdId : undefined),
+    onAccountMissing: () => {
+      if (current === engine) options.onAccountMissing?.();
+    },
   });
   current = engine;
   currentWire = wire;

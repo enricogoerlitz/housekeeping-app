@@ -394,8 +394,13 @@ export function createFakeServer(): FakeServer {
 
   function applyChanges(userId: string, householdId: string, ops: readonly ChangeOp[]) {
     if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
-    const deletes = ops.filter((op) => op.kind === 'delete').length;
-    if (ops.length > 200 || deletes > 20) throw reject('too_many_changes');
+    // Like apply_changes: every id of remove_contributions is a delete and an op.
+    const removed = ops.reduce(
+      (sum, op) => sum + (op.kind === 'remove_contributions' ? op.ids.length : 0),
+      0,
+    );
+    const deletes = ops.filter((op) => op.kind === 'delete').length + removed;
+    if (ops.length + removed > 200 || deletes > 20) throw reject('too_many_changes');
 
     let householdPatch: Record<string, unknown> | undefined;
     const result = transaction(householdId, (before) => {

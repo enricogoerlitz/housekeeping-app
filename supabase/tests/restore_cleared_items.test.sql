@@ -2,7 +2,7 @@
 -- clear_checked_items returned back on their list, checked, with their contributions.
 begin;
 \ir _helpers.psql
-select plan(18);
+select plan(24);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -100,6 +100,40 @@ select results_eq(
   format('select checked, checked_by from tests.item_state(%L)', tests.fx('item_brot')),
   $$ values (true, null::uuid) $$,
   'T4 restore_cleared_items: checked_by of a removed member becomes null');
+
+-- ===================== Tampered check fields (security check 0003) =====================
+-- The payload comes from the client: check_seq is clamped to the allowed range, checked_at may not
+-- lie in the future, checked_by must be a current member.
+insert into cleared values (3, public.clear_checked_items(tests.fx('list_a')));
+select is(
+  public.restore_cleared_items(tests.fx('list_a'),
+    jsonb_set(jsonb_set(jsonb_set(jsonb_set(tests.cleared(3),
+      '{0,item,check_seq}', '2147483647'),
+      '{0,item,checked_at}', '"2999-01-01T00:00:00Z"'),
+      '{0,item,checked_by}', to_jsonb(tests.fx('ben'))),
+      '{1,item,check_seq}', '-5')),
+  2,
+  'T4 restore_cleared_items: tampered items are still restored');
+select results_eq(
+  format('select check_seq, checked_at <= now(), checked_by from public.shopping_items where id = %L',
+         (tests.cleared(3) -> 0 -> 'item' ->> 'id')),
+  $$ values (1000000, true, null::uuid) $$,
+  'T4 restore_cleared_items: an overflowing check_seq is clamped, a future checked_at becomes now, a foreign checked_by is dropped');
+select is(
+  (select check_seq from public.shopping_items where id = (tests.cleared(3) -> 1 -> 'item' ->> 'id')::uuid), 0,
+  'T4 restore_cleared_items: a negative check_seq is clamped to 0');
+select is(
+  (select checked_at from public.shopping_items where id = (tests.cleared(3) -> 0 -> 'item' ->> 'id')::uuid), now(),
+  'T4 restore_cleared_items: a future checked_at is replaced by now()');
+select tests.clear_authentication();
+select throws_ok(
+  format('update public.shopping_items set check_seq = 1000001 where id = %L', tests.fx('item_butter')),
+  '23514', null, 'T3 shopping_items: check_seq above 1000000 violates the check constraint');
+select lives_ok(
+  format('update public.shopping_items set check_seq = 1000000 where id = %L', tests.fx('item_butter')),
+  'T3 shopping_items: check_seq 1000000 is allowed');
+update public.shopping_items set check_seq = 0 where id = tests.fx('item_butter');
+select tests.authenticate_as(tests.fx('enrico'));
 
 -- ===================== Invalid input =====================
 select throws_ok(

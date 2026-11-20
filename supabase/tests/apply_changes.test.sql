@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(69);
+select plan(73);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -371,6 +371,33 @@ select lives_ok(
   tests.apply_sql('home_a', (select jsonb_agg(jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', gen_random_uuid()))
                              from generate_series(1, 20))),
   'T5 apply_changes: 20 deletes are allowed');
+-- Ids inside remove_contributions count as deletes and as ops (security check 0003).
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'remove_contributions',
+    'ids', (select jsonb_agg(gen_random_uuid()) from generate_series(1, 21))))),
+  '22023', 'too_many_changes', 'T5 apply_changes: one remove_contributions op with 21 ids is rejected');
+select throws_ok(
+  tests.apply_sql('home_a',
+    (select jsonb_agg(jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', gen_random_uuid()))
+     from generate_series(1, 15))
+    || jsonb_build_array(jsonb_build_object('kind', 'remove_contributions',
+         'ids', (select jsonb_agg(gen_random_uuid()) from generate_series(1, 6))))),
+  '22023', 'too_many_changes', 'T5 apply_changes: deletes and removed contribution ids add up to the limit');
+select lives_ok(
+  tests.apply_sql('home_a',
+    (select jsonb_agg(jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', gen_random_uuid()))
+     from generate_series(1, 15))
+    || jsonb_build_array(jsonb_build_object('kind', 'remove_contributions',
+         'ids', (select jsonb_agg(gen_random_uuid()) from generate_series(1, 5))))),
+  'T5 apply_changes: 15 deletes plus 5 removed contributions are allowed');
+select throws_ok(
+  tests.apply_sql('home_a',
+    (select jsonb_agg(jsonb_build_object('kind', 'insert', 'table', 'areas',
+                                         'row', jsonb_build_object('name', 'Bereich ' || n)))
+     from generate_series(1, 190) n)
+    || jsonb_build_array(jsonb_build_object('kind', 'remove_contributions',
+         'ids', (select jsonb_agg(gen_random_uuid()) from generate_series(1, 11))))),
+  '22023', 'too_many_changes', 'T5 apply_changes: removed contribution ids count toward the 200 ops');
 select throws_ok(
   tests.apply_sql('home_a', (select jsonb_agg(jsonb_build_object('kind', 'insert', 'table', 'areas',
                                                                  'row', jsonb_build_object('name', 'Bereich ' || n)))

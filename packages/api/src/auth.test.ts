@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ACCOUNT_GONE_MESSAGE,
   authErrorMessage,
   createAuthController,
   NOT_INVITED_MESSAGE,
   readAuthConfig,
   readRedirectError,
   SIGN_IN_FAILED_MESSAGE,
+  SIGN_OUT_INCOMPLETE_MESSAGE,
+  withoutAuthCallback,
   withoutRedirectError,
+  type AuthControllerOptions,
   type AuthApi,
   type AuthErrorLike,
   type SessionLike,
@@ -127,6 +131,24 @@ describe('auth error messages', () => {
       'http://127.0.0.1:8081/?code=abc',
     );
   });
+
+  it('after the code exchange removes code, flow id and error parameters, keeping the rest', () => {
+    expect(withoutAuthCallback('http://127.0.0.1:8081/?code=abc&sb_flow_id=f1')).toBe(
+      'http://127.0.0.1:8081/',
+    );
+    expect(withoutAuthCallback('http://127.0.0.1:8081/liste?x=1&code=abc#tab=2')).toBe(
+      'http://127.0.0.1:8081/liste?x=1#tab=2',
+    );
+    expect(
+      withoutAuthCallback('http://127.0.0.1:8081/?code=abc&error=server_error&error_description=x'),
+    ).toBe('http://127.0.0.1:8081/');
+    expect(withoutAuthCallback('http://127.0.0.1:8081/#error=a&error_description=b')).toBe(
+      'http://127.0.0.1:8081/',
+    );
+    expect(withoutAuthCallback('http://127.0.0.1:8081/rezepte?q=dal')).toBe(
+      'http://127.0.0.1:8081/rezepte?q=dal',
+    );
+  });
 });
 
 // ---------- controller with a fake Supabase Auth ----------
@@ -139,6 +161,8 @@ interface FakeAuth extends AuthApi {
   session: SessionLike | null;
   sessionError: AuthErrorLike | null;
   passwordError: AuthErrorLike | null;
+  /** What GET /auth/v1/user answers; null = the user exists. */
+  userError: AuthErrorLike | null;
   oauthOptions?: { provider: string; options: { redirectTo: string } };
 }
 
@@ -153,6 +177,7 @@ function fakeAuth(): FakeAuth {
     session: null,
     sessionError: null,
     passwordError: null,
+    userError: null,
     emit(event, value) {
       fake.session = value;
       for (const listener of listeners) listener(event, value);
@@ -163,6 +188,11 @@ function fakeAuth(): FakeAuth {
         data: { session: fake.sessionError ? null : fake.session },
         error: fake.sessionError,
       };
+    },
+    async getUser() {
+      fake.calls.push('getUser');
+      if (fake.userError) return { data: { user: null }, error: fake.userError };
+      return { data: { user: fake.session ? { id: fake.session.user.id } : null }, error: null };
     },
     onAuthStateChange(callback) {
       listeners.add(callback);
@@ -200,12 +230,13 @@ describe('createAuthController', () => {
   let started: string[];
   let resets: number;
 
-  function controller(options: { devLogin?: boolean; redirectError?: string } = {}) {
+  function controller(
+    options: { devLogin?: boolean; redirectError?: string } & Partial<AuthControllerOptions> = {},
+  ) {
     return createAuthController({
       auth,
       devLogin: options.devLogin ?? false,
       redirectUrl: () => 'http://127.0.0.1:8081/',
-      redirectError: options.redirectError,
       startData: async (userId) => {
         started.push(userId);
       },
@@ -214,7 +245,22 @@ describe('createAuthController', () => {
         auth.calls.push('resetData');
       },
       storedUser: async () => undefined,
+      ...options,
     });
+  }
+
+  /** A marker in memory, like the one startAuth keeps in localStorage. */
+  function memoryMarker() {
+    let value = false;
+    return {
+      isSet: async () => value,
+      set: async () => {
+        value = true;
+      },
+      unset: async () => {
+        value = false;
+      },
+    };
   }
 
   beforeEach(() => {
@@ -331,11 +377,123 @@ describe('createAuthController', () => {
     await control.start();
     await control.signOut();
     await flush();
-    expect(auth.calls.filter((call) => call !== 'getSession')).toEqual([
+    expect(auth.calls.filter((call) => call !== 'getSession' && call !== 'getUser')).toEqual([
       'resetData',
       'signOut:local',
     ]);
     expect(control.getState()).toEqual({ status: 'signedOut' });
+  });
+
+  it('AC-003: the session is removed even when clearing the local data fails, and says so', async () => {
+    auth.session = session('enrico');
+    const marker = memoryMarker();
+    const control = controller({
+      clearMarker: marker,
+      resetData: async () => {
+        auth.calls.push('resetData');
+        throw new Error('IndexedDB is broken');
+      },
+    });
+    await control.start();
+    await control.signOut();
+    await flush();
+    expect(auth.calls).toContain('signOut:local');
+    expect(control.getState()).toEqual({ status: 'signedOut', error: SIGN_OUT_INCOMPLETE_MESSAGE });
+    expect(await marker.isSet()).toBe(true);
+  });
+
+  it('AC-003: clearing that failed at sign-out is retried on the next start', async () => {
+    const marker = memoryMarker();
+    await marker.set();
+    const control = controller({ clearMarker: marker });
+    await control.start();
+    expect(auth.calls.slice(0, 2)).toEqual(['resetData', 'getSession']);
+    expect(await marker.isSet()).toBe(false);
+    expect(control.getState()).toEqual({ status: 'signedOut' });
+  });
+
+  it('a deleted account: the stored session is dropped, the data cleared, the login says why', async () => {
+    auth.session = session('enrico');
+    auth.userError = {
+      name: 'AuthApiError',
+      message: 'User from sub claim in JWT does not exist',
+      code: 'user_not_found',
+      status: 403,
+    };
+    const control = controller();
+    await control.start();
+    await vi.waitFor(() =>
+      expect(control.getState()).toEqual({ status: 'signedOut', error: ACCOUNT_GONE_MESSAGE }),
+    );
+    expect(started).toEqual(['enrico']);
+    expect(resets).toBe(1);
+    expect(auth.calls).toContain('signOut:local');
+  });
+
+  it('the account check failing for lack of network keeps the user signed in', async () => {
+    auth.session = session('enrico');
+    auth.userError = { name: 'AuthRetryableFetchError', message: 'Failed to fetch', status: 0 };
+    const control = controller();
+    await control.start();
+    await control.checkAccount();
+    await flush();
+    expect(control.getState().status).toBe('signedIn');
+    expect(resets).toBe(0);
+  });
+
+  it('the account check runs again on demand (back online) and signs out a deleted account', async () => {
+    auth.session = session('enrico');
+    const control = controller();
+    await control.start();
+    await flush();
+    expect(control.getState().status).toBe('signedIn');
+    auth.userError = { name: 'AuthApiError', message: 'gone', code: 'user_not_found', status: 403 };
+    await control.checkAccount();
+    await flush();
+    expect(control.getState()).toEqual({ status: 'signedOut', error: ACCOUNT_GONE_MESSAGE });
+  });
+
+  it('a pull without the own profile signs out the account that no longer exists', async () => {
+    auth.session = session('enrico');
+    const control = controller();
+    await control.start();
+    await flush();
+    control.accountMissing('someone-else');
+    await flush();
+    expect(control.getState().status).toBe('signedIn');
+    control.accountMissing('enrico');
+    await vi.waitFor(() =>
+      expect(control.getState()).toEqual({ status: 'signedOut', error: ACCOUNT_GONE_MESSAGE }),
+    );
+    expect(resets).toBe(1);
+  });
+
+  it('a "code" in the address that gave no session shows the generic error; the URL is cleaned', async () => {
+    const cleaned: string[] = [];
+    const control = controller({
+      authCodeInUrl: true,
+      cleanUrl: () => {
+        cleaned.push(auth.calls.join(','));
+      },
+    });
+    await control.start();
+    expect(control.getState()).toEqual({ status: 'signedOut', error: SIGN_IN_FAILED_MESSAGE });
+    // Only after supabase-js had its chance to exchange the code (getSession waits for it).
+    expect(cleaned).toEqual(['getSession']);
+  });
+
+  it('a "code" in the address after a successful exchange: signed in, the URL is cleaned', async () => {
+    auth.session = session('enrico');
+    let cleaned = 0;
+    const control = controller({
+      authCodeInUrl: true,
+      cleanUrl: () => {
+        cleaned += 1;
+      },
+    });
+    await control.start();
+    expect(control.getState().status).toBe('signedIn');
+    expect(cleaned).toBe(1);
   });
 
   it('another user signing in on this device: the previous data is cleared before loading', async () => {

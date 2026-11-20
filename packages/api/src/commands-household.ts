@@ -18,6 +18,7 @@ import {
   isBackendMode,
   newId,
   nowISO,
+  rememberActiveHousehold,
   setState,
   simulateOffline,
   updateData,
@@ -29,10 +30,12 @@ import { TransportError, type Transport } from './transport';
 // In backend mode each command is one change sent to the server (ADR-0011): `commit` with the
 // diff path, an own RPC, or the store queue.
 
+/** Shows another household; in backend mode the choice is kept for the next start. */
 export function switchHousehold(householdId: Id): void {
   setState((state) =>
     state.households[householdId] ? { ...state, activeHouseholdId: householdId } : state,
   );
+  if (getState().activeHouseholdId === householdId) rememberActiveHousehold(householdId);
 }
 
 /** Demo only: who is using the app. With the backend it is always the signed-in person. */

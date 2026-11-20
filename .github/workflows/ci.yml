@@ -29,7 +29,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm check
+      # The export fails without a Supabase URL (its origin goes into the CSP); the public local
+      # defaults of the Supabase CLI are enough to check the build.
       - run: pnpm build:web
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
 
   e2e:
     # Walk-through of the acceptance criteria in Chromium against the local Supabase stack

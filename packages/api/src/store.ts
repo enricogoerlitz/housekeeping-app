@@ -150,6 +150,8 @@ export interface BackendHooks {
   enqueueStoreAction(action: StoreAction): void;
   undoable(): () => void;
   setSimulatedOffline(offline: boolean): void;
+  /** Keeps the household chosen on this device for the next start. */
+  rememberActiveHousehold(householdId: string): void;
 }
 
 let backend: BackendHooks | undefined;
@@ -182,6 +184,10 @@ export function publishState(hooks: BackendHooks, next: AppState): void {
   if (backend !== hooks || next === state) return;
   state = next;
   notify();
+}
+
+export function rememberActiveHousehold(householdId: string): void {
+  backend?.rememberActiveHousehold(householdId);
 }
 
 export function simulateOffline(offline: boolean): void {

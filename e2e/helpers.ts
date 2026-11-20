@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -471,17 +472,22 @@ const EMAILS: Record<Account, string> = {
 /** The fixed fake password of the local test accounts (packages/api/src/dev-accounts.ts). */
 const TEST_PASSWORD = 'local-test-password';
 
-/** An access token of a test account (password grant against the local Auth). */
-export async function accessToken(who: Account): Promise<string> {
+/** A session of an account with the test password (password grant against the local Auth). */
+async function passwordSession(email: string): Promise<{ access_token: string }> {
   const { url, key } = supabaseEnv();
   const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
     method: 'POST',
     headers: { apikey: key, 'content-type': 'application/json' },
-    body: JSON.stringify({ email: EMAILS[who], password: TEST_PASSWORD }),
+    body: JSON.stringify({ email, password: TEST_PASSWORD }),
   });
-  if (!response.ok) throw new Error(`password grant for ${who} failed: ${response.status}`);
-  const json = (await response.json()) as { access_token: string };
-  return json.access_token;
+  if (!response.ok) throw new Error(`password grant failed: ${response.status}`);
+  return (await response.json()) as { access_token: string };
+}
+
+/** An access token of a test account, or of an account a test created (createAccount). */
+export async function accessToken(who: Account | { email: string }): Promise<string> {
+  const email = typeof who === 'string' ? EMAILS[who] : who.email;
+  return (await passwordSession(email)).access_token;
 }
 
 /** A request against the Supabase API with the publishable key and an optional user token. */
@@ -548,6 +554,87 @@ export async function createTestHousehold(
     });
   }
   return householdId;
+}
+
+// ---------- Accounts created by a test ----------
+
+function databaseContainer(): string {
+  const config = readFileSync(path.join(repo, 'supabase/config.toml'), 'utf8');
+  const projectId = /^project_id\s*=\s*"([^"]+)"/m.exec(config)?.[1];
+  if (!projectId) throw new Error('project_id missing in supabase/config.toml');
+  return `supabase_db_${projectId}`;
+}
+
+/** Runs SQL as postgres in the local database container; returns the unaligned output. */
+export function sql(statement: string): string {
+  const result = spawnSync(
+    'docker',
+    [
+      'exec',
+      '-i',
+      databaseContainer(),
+      'psql',
+      '-U',
+      'postgres',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-q',
+      '-t',
+      '-A',
+    ],
+    { input: statement, encoding: 'utf8' },
+  );
+  if (result.status !== 0) throw new Error(`sql failed: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
+/**
+ * A new account as right after its first sign-in (the auth trigger creates the profile), with the
+ * test password so the test can sign in. Like the seed it bypasses the sign-up hook, which pgTAP
+ * covers. Returns the account id.
+ */
+export function createAccount(email: string, name: string): string {
+  const id = randomUUID();
+  const identity = JSON.stringify({ sub: id, email, email_verified: true });
+  sql(`
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change,
+  email_change_token_current, phone_change, phone_change_token, reauthentication_token
+) values (
+  '00000000-0000-0000-0000-000000000000', ${literal(id)}, 'authenticated', 'authenticated',
+  ${literal(email)}, extensions.crypt(${literal(TEST_PASSWORD)}, extensions.gen_salt('bf')), now(),
+  '{"provider": "email", "providers": ["email"]}', ${literal(JSON.stringify({ full_name: name }))},
+  now(), now(), '', '', '', '', '', '', '', ''
+);
+insert into auth.identities (id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at)
+values (${literal(id)}, ${literal(id)}, ${literal(id)}, 'email', ${literal(identity)}, now(), now(), now());
+`);
+  return id;
+}
+
+/** Deletes an account as postgres (profile and memberships go with it). */
+export function deleteAccount(id: string): void {
+  sql(`delete from auth.users where id = ${literal(id)};`);
+}
+
+/**
+ * Signs `page` in as an account a test created: the session goes where supabase-js keeps it,
+ * then the app loads. Waits until the app rendered past the splash.
+ */
+export async function signInAs(page: Page, email: string): Promise<void> {
+  const session = await passwordSession(email);
+  await page.goto('/');
+  await expect(tid(page, 'login-screen')).toBeVisible();
+  await page.evaluate(([key, value]) => window.localStorage.setItem(key, value), [
+    'housekeeping.auth',
+    JSON.stringify(session),
+  ] as const);
+  await page.reload();
+  await appReady(page);
 }
 
 // ---------- Database reset ----------

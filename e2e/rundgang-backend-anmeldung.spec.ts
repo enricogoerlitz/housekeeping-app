@@ -3,7 +3,9 @@ import type { Page } from '@playwright/test';
 import {
   accessToken,
   back,
+  createAccount,
   createTestHousehold,
+  deleteAccount,
   ENRICO,
   expect,
   itemRows,
@@ -14,7 +16,9 @@ import {
   openSettings,
   rpc,
   secondDevice,
+  signInAs,
   supabaseFetch,
+  switchHousehold,
   test,
   tid,
   tidPrefix,
@@ -31,6 +35,8 @@ only('phone');
 
 const NOT_INVITED =
   'Diese Adresse ist nicht eingeladen. Bitte lass dich von jemandem aus deinem Haushalt einladen.';
+const SIGN_IN_FAILED = 'Anmelden hat nicht geklappt – bitte noch einmal versuchen.';
+const ACCOUNT_GONE = 'Dein Konto gibt es nicht mehr – bitte melde dich neu an.';
 
 async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
@@ -72,6 +78,49 @@ test('AC-002: a redirect with "not_invited" shows the German message on the logi
   await expect(tid(page, 'login-error')).toHaveText(NOT_INVITED);
   // The error parameters are removed, so a reload does not show the message again.
   await expect(page).not.toHaveURL(/error_description/);
+});
+
+test('a sign-in redirect with an unusable code shows the generic error and drops the code', async ({
+  page,
+}) => {
+  await page.goto('/?code=bogus');
+  await expect(tid(page, 'login-screen')).toBeVisible();
+  await expect(tid(page, 'login-error')).toHaveText(SIGN_IN_FAILED);
+  await expect(page).not.toHaveURL(/code=/);
+});
+
+test('a deleted account: after a reload the login screen says the account is gone', async ({
+  page,
+  allowConsoleError,
+}) => {
+  // GET /auth/v1/user answers 403 user_not_found for the deleted account.
+  allowConsoleError(/status of 403/);
+  const email = `weg-${unique()}@example.com`.toLowerCase();
+  const id = createAccount(email, 'Weg');
+  await rpc(await accessToken({ email }), 'create_household', {
+    name: `Weg ${unique()}`,
+    starter: { areas: [], articles: [] },
+  });
+  await signInAs(page, email);
+  await expect(tid(page, 'today-screen')).toBeVisible();
+  expect(await cachedKeys(page)).toBeGreaterThan(0);
+
+  deleteAccount(id);
+  await page.reload();
+  await expect(tid(page, 'login-error')).toHaveText(ACCOUNT_GONE);
+  expect(await cachedKeys(page), 'local cache').toBe(0);
+  const keys = await page.evaluate(() => Object.keys(window.localStorage));
+  expect(keys.filter((key) => key.startsWith('housekeeping.auth'))).toEqual([]);
+});
+
+test('the household chosen on this device is still chosen after a reload', async ({ page }) => {
+  await open(page, '/');
+  await switchHousehold(page, seedIds['hh-test']);
+  await page.reload();
+  await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 30_000 });
+  await openSettings(page);
+  await expect(tid(page, `household-${seedIds['hh-test']}-active`)).toBeVisible();
+  await expect(tid(page, `household-${seedIds['hh-demo']}-active`)).toHaveCount(0);
 });
 
 test('AC-003: signing out with a check waiting offline empties the device and shows the login', async ({
@@ -219,6 +268,28 @@ test('AC-008: Enrico invites Nadja; she shows as "Eingeladen", accepts and sees 
   await expect(tid(page, `household-member-${seedIds['m-nadja']}`)).toBeVisible();
   await expect(invitation).toHaveCount(0);
   await nadja.context.close();
+});
+
+test('AC-008: a new account does not join by itself; on its first sign-in it accepts and sees the household', async ({
+  page,
+}) => {
+  const name = `Erstanmeldung ${unique()}`;
+  const email = `neu-${unique()}@example.com`.toLowerCase();
+  const householdId = await createTestHousehold(name);
+  await rpc(await accessToken('enrico'), 'invite_member', { household_id: householdId, email });
+  // The account is created as on the first Google sign-in (the sign-up hook is pinned by pgTAP).
+  const accountId = createAccount(email, 'Neu');
+
+  await signInAs(page, email);
+  await expect(tid(page, 'no-household')).toBeVisible();
+  const offer = tidPrefix(page, 'my-invitation-').filter({ hasText: name });
+  await expect(offer).toBeVisible();
+  await offer.locator('[data-testid^="invitation-accept-"]').click();
+  await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 30_000 });
+  await openSettings(page);
+  await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
+  await expect(tid(page, `household-member-${accountId}`)).toBeVisible();
+  await expect(tid(page, `household-member-${seedIds['m-enrico']}`)).toBeVisible();
 });
 
 test('AC-009: "nadja@" is no e-mail address; nothing is saved', async ({ page }) => {

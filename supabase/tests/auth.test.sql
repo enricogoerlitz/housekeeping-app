@@ -1,10 +1,12 @@
 -- Sign-up gate and account bootstrap (spec 0003, T2): the before_user_created hook (AC-002) and
--- the auth.users trigger that creates the profile and turns invitations into memberships (AC-008).
+-- the auth.users trigger that creates the profile. Invitations stay open until the person accepts
+-- them herself, also on her first sign-in (AC-008, decision 7).
 begin;
 \ir _helpers.psql
-select plan(19);
+select plan(26);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
+grant select on fx to authenticated;
 insert into fx values ('enrico', tests.create_user('enrico@example.com', 'Enrico'));
 insert into fx values ('home', tests.create_household('Enrico & Nadja', array[(select id from fx where key = 'enrico')]));
 insert into fx values ('wg', tests.create_household('WG Köln', array[(select id from fx where key = 'enrico')]));
@@ -14,14 +16,18 @@ insert into public.household_invitations (household_id, email, invited_by) value
   ((select id from fx where key = 'home'), 'old@example.com', (select id from fx where key = 'enrico'));
 update public.household_invitations set accepted_at = now() - interval '1 day' where email = 'old@example.com';
 
-create function pg_temp.hook_event(p_email text, p_provider text) returns jsonb language sql as $$
+-- p_user_metadata: what Supabase Auth copies from the provider's claims; Google sends
+-- email_verified as a boolean (supabase/auth internal/api/provider Claims).
+create function pg_temp.hook_event(
+  p_email text, p_provider text, p_user_metadata jsonb default '{"email_verified": true}'
+) returns jsonb language sql as $$
   select jsonb_build_object(
     'metadata', jsonb_build_object('name', 'before-user-created', 'uuid', gen_random_uuid()),
     'user', jsonb_build_object(
       'id', gen_random_uuid(), 'aud', 'authenticated', 'role', '', 'email', p_email,
       'app_metadata', case when p_provider is null then '{}'::jsonb
                            else jsonb_build_object('provider', p_provider, 'providers', jsonb_build_array(p_provider)) end,
-      'user_metadata', '{}'::jsonb, 'identities', '[]'::jsonb, 'is_anonymous', false
+      'user_metadata', p_user_metadata, 'identities', '[]'::jsonb, 'is_anonymous', false
     )
   )
 $$;
@@ -53,9 +59,29 @@ select is(
   'AC-002: the hook rejects a sign-up without an email address'
 );
 select is(
+  private.before_user_created_hook(pg_temp.hook_event('nadja@example.com', 'google', '{"email_verified": false}')),
+  '{"error": {"http_code": 403, "message": "not_invited"}}'::jsonb,
+  'AC-002: the hook rejects an invited Google address that Google has not verified'
+);
+select is(
+  private.before_user_created_hook(pg_temp.hook_event('nadja@example.com', 'google', '{}')),
+  '{"error": {"http_code": 403, "message": "not_invited"}}'::jsonb,
+  'AC-002: the hook rejects an invited Google address without email_verified'
+);
+select is(
+  private.before_user_created_hook(pg_temp.hook_event('nadja@example.com', 'google', '{"email_verified": "true"}')),
+  '{"error": {"http_code": 403, "message": "not_invited"}}'::jsonb,
+  'AC-002: email_verified must be the boolean true, not a string'
+);
+select is(
+  private.before_user_created_hook(pg_temp.hook_event('nadja@example.com', 'google', null)),
+  '{"error": {"http_code": 403, "message": "not_invited"}}'::jsonb,
+  'AC-002: the hook rejects a sign-up without user_metadata'
+);
+select is(
   private.before_user_created_hook(pg_temp.hook_event('Nadja@Example.COM', 'google')),
   '{}'::jsonb,
-  'AC-001: the hook admits an invited Google address, ignoring case'
+  'AC-001: the hook admits an invited, verified Google address, ignoring case'
 );
 
 -- ---------- Hook privileges ----------
@@ -110,17 +136,38 @@ select ok(
   ),
   'T2: the profile colour comes from the fixed palette'
 );
-select results_eq(
-  $$ select household_id from public.household_members
-     where profile_id = (select id from fx where key = 'nadja') order by household_id $$,
-  $$ select id from fx where key in ('home', 'wg') order by id $$,
-  'AC-008: a new account becomes a member of every household that invited its address'
+select is(
+  (select count(*)::int from public.household_members
+   where profile_id = (select id from fx where key = 'nadja')),
+  0,
+  'AC-008: a new account does not join the inviting households by itself'
 );
 select is(
   (select count(*)::int from public.household_invitations
-   where email = 'nadja@example.com' and accepted_at = now()),
+   where email = 'nadja@example.com' and accepted_at is null),
   2,
-  'AC-008: those invitations are marked as accepted'
+  'AC-008: her invitations stay open until she accepts them'
+);
+select tests.authenticate_as((select id from fx where key = 'nadja'));
+select is(
+  (select array_agg(household_id order by household_id) from public.household_invitations
+   where email = 'nadja@example.com' and accepted_at is null),
+  (select array_agg(id order by id) from fx where key in ('home', 'wg')),
+  'AC-008: after her first sign-in she sees both open invitations'
+);
+select is(
+  public.accept_invitation((select id from public.household_invitations
+                            where email = 'nadja@example.com'
+                              and household_id = (select id from fx where key = 'home'))),
+  (select id from fx where key = 'home'),
+  'AC-008: she accepts the invitation to "Enrico & Nadja"'
+);
+select tests.clear_authentication();
+select results_eq(
+  $$ select household_id from public.household_members
+     where profile_id = (select id from fx where key = 'nadja') $$,
+  $$ select id from fx where key = 'home' $$,
+  'AC-008: she is a member of the accepted household only'
 );
 
 insert into fx values ('meta_name', tests.create_user('kai@example.com'));

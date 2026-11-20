@@ -58,8 +58,8 @@ Functions. Betroffen: `supabase`, `core`, `api`, `app`, `e2e`.
    (`normalizeText` aus core), Server löst damit auf; Unique `(household_id, name_key)`.
 8. **Auth:** supabase-js, Sitzung im Browser-Speicher (ADR-0003, akzeptiertes Risiko + CSP),
    Google per PKCE. Hook `before_user_created`: nur mit offener Einladung **und** Provider Google;
-   E-Mail-Registrierung aus. Trigger auf `auth.users` legt Profil an und macht Einladungen zu
-   Mitgliedschaften. Testkonten nur per Seed (lokal), Knopf nur mit `EXPO_PUBLIC_DEV_LOGIN=1`;
+   E-Mail-Registrierung aus. Trigger auf `auth.users` legt nur das Profil an; Einladungen nimmt
+   jede Person selbst an (nach dem Security-Check geändert, Migration `security_check_fixes`). Testkonten nur per Seed (lokal), Knopf nur mit `EXPO_PUBLIC_DEV_LOGIN=1`;
    App bricht beim Start ab, wenn der Schalter mit nicht-lokaler Supabase-URL gesetzt ist.
    „Als Nadja ansehen“ entfällt.
 9. **KI (Edge Functions, Deno im Docker):** `ai-assistant` (Kontext unter RLS laden, Foundry
@@ -87,8 +87,8 @@ Functions. Betroffen: `supabase`, `core`, `api`, `app`, `e2e`.
   sobald du Netz hast“ — keine fünfte Offline-Aktion.
 - Sprach-Kontingent: gezählt über ausgestellte Tokens je Tag (statt Minuten, nicht messbar).
   KI-Kontingent: 200 Anfragen + 20 Sprach-Tokens je Mitglied und Tag.
-- Einladung eines **bestehenden** Kontos: muss angenommen werden (schützt Profildaten);
-  neue Konten treten bei der Erstanmeldung automatisch bei.
+- Einladung: muss immer angenommen werden, auch von neuen Konten bei der Erstanmeldung
+  (schützt Profildaten; nach dem Security-Check geändert, Spec-Entscheidung 7).
 - Zutatenliste eines Rezepts gilt beim gleichzeitigen Bearbeiten als ein Feld (letzte Änderung
   gewinnt), dokumentiert.
 
@@ -200,18 +200,18 @@ Fotos, Benachrichtigungen, Desktop-Design (siehe Spec, Nicht-Ziele).
 
 kritisch 0 · hoch 0 · mittel 3 · niedrig 5 · hinweis 2
 
-| Stufe   | Befund                                                                                   | Umgang                                                                                               |
-| ------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| mittel  | Neues Konto trat automatisch jedem einladenden Haushalt bei                              | behoben: Annahme immer selbst (AC-008 geändert)                                                      |
-| mittel  | Hook prüfte nicht, ob Google die Adresse verifiziert hat                                 | behoben: `email_verified` Pflicht, pgTAP                                                             |
-| mittel  | Sprach-Kontingent zählt Tokens; ein Token erlaubt 10 Minuten beliebig viele Verbindungen | offen für die Betriebs-Spec: eigene Azure-Ressource für Speech mit Budget-Alarm                      |
-| niedrig | `restore_cleared_items` übernimmt Haken-Felder ungeprüft                                 | behoben: `check_seq` begrenzt, `checked_at` ≤ jetzt, `checked_by` nur Mitglied                       |
-| niedrig | Löschgrenze über `remove_contributions` umgehbar                                         | behoben: IDs zählen zur Grenze; Vertrauensmodell dokumentiert (Mitglieder dürfen per API löschen)    |
-| niedrig | Testkonten-Seed ohne Sperre gegen entfernte Datenbank                                    | offen für die Betriebs-Spec: E-Mail-Provider aus, `db reset --linked` verboten; Testdaten nur lokal  |
-| niedrig | Abmelden ließ die Sitzung stehen, wenn das Leeren scheiterte                             | behoben: Sitzung wird immer entfernt                                                                 |
-| niedrig | CSP wurde ergänzt, aber nicht geprüft                                                    | behoben: Build bricht ohne Supabase-URL oder bei unbekanntem Inline-Skript ab, Check nach dem Export |
-| hinweis | Lücken in den E2E-Nachweisen                                                             | durch die E2E-Phase geschlossen (siehe unten)                                                        |
-| hinweis | Keine Tagesgrenze für Einladungen und neue Haushalte                                     | offen für die Betriebs-Spec                                                                          |
+| Stufe   | Befund                                                                                   | Umgang                                                                                                                                                                          |
+| ------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| mittel  | Neues Konto trat automatisch jedem einladenden Haushalt bei                              | behoben: Annahme immer selbst (AC-008 geändert); pgTAP `auth.test.sql` „AC-008: a new account does not join …“, E2E „AC-008: a new account does not join by itself …“           |
+| mittel  | Hook prüfte nicht, ob Google die Adresse verifiziert hat                                 | behoben: `email_verified` (Boolean `true`) Pflicht; pgTAP `auth.test.sql` (false, fehlt, Text, ohne Metadaten)                                                                  |
+| mittel  | Sprach-Kontingent zählt Tokens; ein Token erlaubt 10 Minuten beliebig viele Verbindungen | offen für die Betriebs-Spec: eigene Azure-Ressource für Speech mit Budget-Alarm                                                                                                 |
+| niedrig | `restore_cleared_items` übernimmt Haken-Felder ungeprüft                                 | behoben: `check_seq` 0…1000000 (Check-Constraint + Begrenzung), `checked_at` ≤ jetzt, `checked_by` nur Mitglied; pgTAP `restore_cleared_items.test.sql` „Tampered check fields“ |
+| niedrig | Löschgrenze über `remove_contributions` umgehbar                                         | behoben: IDs zählen zur Lösch- und Op-Grenze; Vertrauensmodell in `sync.md`; pgTAP `apply_changes.test.sql` „Ids inside remove_contributions …“                                 |
+| niedrig | Testkonten-Seed ohne Sperre gegen entfernte Datenbank                                    | offen für die Betriebs-Spec: E-Mail-Provider aus, `db reset --linked` verboten; Testdaten nur lokal                                                                             |
+| niedrig | Abmelden ließ die Sitzung stehen, wenn das Leeren scheiterte                             | behoben: Sitzung wird immer entfernt, Hinweis auf der Anmeldeseite, Leeren beim nächsten Start nachgeholt; vitest `auth.test.ts` „AC-003: the session is removed even when …“   |
+| niedrig | CSP wurde ergänzt, aber nicht geprüft                                                    | behoben: Build bricht ohne Supabase-URL oder bei unbekanntem Inline-Skript ab, `check-web-export.mjs` nach dem Export (Teil von `build:web`)                                    |
+| hinweis | Lücken in den E2E-Nachweisen                                                             | durch die E2E-Phase geschlossen (siehe unten)                                                                                                                                   |
+| hinweis | Keine Tagesgrenze für Einladungen und neue Haushalte                                     | offen für die Betriebs-Spec                                                                                                                                                     |
 
 ### Checkliste
 

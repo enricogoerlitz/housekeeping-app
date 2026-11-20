@@ -1,9 +1,9 @@
 -- Household RPCs (spec 0003, T2): create_household (AC-010), invite_member (AC-008, AC-009),
--- accept_invitation / decline_invitation (decision 7: existing accounts must accept) and
+-- accept_invitation / decline_invitation (decision 7: every invited person accepts herself) and
 -- remove_member (AC-012).
 begin;
 \ir _helpers.psql
-select plan(49);
+select plan(51);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select, insert on fx to anon, authenticated;
@@ -208,13 +208,26 @@ select throws_ok(
 );
 select tests.clear_authentication();
 
--- A new account with that address joins automatically (AC-008).
+-- A new account with that address sees the invitation and accepts it herself (AC-008).
 insert into fx values ('nadja', tests.create_user('nadja@example.com', 'Nadja'));
+select ok(
+  not exists (select 1 from public.household_members
+              where household_id = (select id from fx where key = 'home')
+                and profile_id = (select id from fx where key = 'nadja')),
+  'AC-008: signing up with the invited address does not make Nadja a member yet'
+);
+select tests.authenticate_as((select id from fx where key = 'nadja'));
+select is(
+  public.accept_invitation((select id from fx where key = 'inv_nadja')),
+  (select id from fx where key = 'home'),
+  'AC-008: Nadja accepts the invitation'
+);
+select tests.clear_authentication();
 select ok(
   exists (select 1 from public.household_members
           where household_id = (select id from fx where key = 'home')
             and profile_id = (select id from fx where key = 'nadja')),
-  'AC-008: when Nadja signs up with the invited address she is a member'
+  'AC-008: after accepting Nadja is a member'
 );
 
 -- ===================== accept / decline for existing accounts (decision 7) =====================

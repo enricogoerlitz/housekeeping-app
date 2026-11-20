@@ -4,16 +4,21 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useSyncExternalStore } from 'react';
 
-import { resetLocalData, startBackend } from './backend';
+import { browserEnvironment, resetLocalData, startBackend } from './backend';
 import { TEST_ACCOUNTS, TEST_PASSWORD, type TestAccountKey } from './dev-accounts';
 import { createIndexedDbStorage, type Storage } from './storage';
 
 export const NOT_INVITED_MESSAGE =
   'Diese Adresse ist nicht eingeladen. Bitte lass dich von jemandem aus deinem Haushalt einladen.';
 export const SIGN_IN_FAILED_MESSAGE = 'Anmelden hat nicht geklappt – bitte noch einmal versuchen.';
+export const ACCOUNT_GONE_MESSAGE = 'Dein Konto gibt es nicht mehr – bitte melde dich neu an.';
+export const SIGN_OUT_INCOMPLETE_MESSAGE =
+  'Abgemeldet. Die Daten auf diesem Gerät ließen sich nicht ganz löschen – das passiert beim nächsten Start.';
 
 /** Where supabase-js keeps the session (browser storage on the web, ADR-0003). */
 export const AUTH_STORAGE_KEY = 'housekeeping.auth';
+/** Set while clearing the local data at sign-out is still owed (it failed once). */
+export const CLEAR_PENDING_KEY = 'housekeeping.clear-pending';
 
 // ---------- configuration ----------
 
@@ -107,6 +112,20 @@ export function withoutRedirectError(href: string): string {
   return url.toString();
 }
 
+/** Parameters of the PKCE redirect that supabase-js reads (`sb_flow_id`: its flow id). */
+const CALLBACK_PARAMS = ['code', 'sb_flow_id', ...REDIRECT_ERROR_PARAMS] as const;
+
+/**
+ * The address without the sign-in callback (code, flow id, errors), once supabase-js has
+ * exchanged the code or failed to: a reload must not try again, and the code must not linger in
+ * the history.
+ */
+export function withoutAuthCallback(href: string): string {
+  const url = new URL(withoutRedirectError(href));
+  for (const key of CALLBACK_PARAMS) url.searchParams.delete(key);
+  return url.toString();
+}
+
 // ---------- the Supabase client ----------
 
 /** Where the session is kept; the web uses browser storage, native will use secure storage. */
@@ -167,6 +186,15 @@ export interface AuthApi {
     password: string;
   }): Promise<{ data: { session: SessionLike | null }; error: AuthErrorLike | null }>;
   signOut(options: { scope: 'local' }): Promise<{ error: AuthErrorLike | null }>;
+  /** Asks the server about the session's user (the account may have been deleted). */
+  getUser(): Promise<{ data: { user: { id: string } | null }; error: AuthErrorLike | null }>;
+}
+
+/** A flag that survives a reload (localStorage on the web). */
+export interface Marker {
+  isSet(): Promise<boolean>;
+  set(): Promise<void>;
+  unset(): Promise<void>;
 }
 
 export interface AuthUser {
@@ -194,6 +222,12 @@ export interface AuthControllerOptions {
   resetData(): Promise<void>;
   /** The user of the session in storage, when it cannot be refreshed for lack of network. */
   storedUser(): Promise<AuthUser | undefined>;
+  /** Clearing the local data is still owed from a failed sign-out; retried on start. */
+  clearMarker?: Marker;
+  /** The address carries a PKCE `code`: without a session afterwards, the sign-in failed. */
+  authCodeInUrl?: boolean;
+  /** Removes the callback parameters from the address; called once the session was read. */
+  cleanUrl?(): void;
 }
 
 export interface AuthController {
@@ -204,11 +238,20 @@ export interface AuthController {
   signInWithGoogle(): Promise<void>;
   signInWithTestAccount(key: TestAccountKey): Promise<void>;
   signOut(): Promise<void>;
+  /** Asks the server whether the signed-in account still exists (start, back online). */
+  checkAccount(): Promise<void>;
+  /** The sync found no profile of this user: the account was deleted. */
+  accountMissing(userId: string): void;
 }
 
 /** A network failure while refreshing the token: the session is still valid (AC-004). */
 const isRetryable = (error: AuthErrorLike) =>
   error.name === 'AuthRetryableFetchError' || error.status === 0;
+
+/** Supabase Auth: "User from sub claim in JWT does not exist" (403 user_not_found). */
+const isAccountGone = (error: AuthErrorLike) => error.code === 'user_not_found';
+
+const errorName = (error: unknown) => (error instanceof Error ? error.name : 'unknown');
 
 const toUser = (session: SessionLike): AuthUser => ({
   id: session.user.id,
@@ -253,9 +296,7 @@ export function createAuthController(options: AuthControllerOptions): AuthContro
       await options.startData(user.id);
     } catch (error) {
       active = undefined;
-      console.warn(
-        `Loading the local data failed: ${error instanceof Error ? error.name : 'unknown'}`,
-      );
+      console.warn(`Loading the local data failed: ${errorName(error)}`);
       set({ status: 'signedOut', error: SIGN_IN_FAILED_MESSAGE });
       return;
     }
@@ -267,8 +308,63 @@ export function createAuthController(options: AuthControllerOptions): AuthContro
       active = undefined;
       set({ status: 'loading' });
       await options.resetData();
+    } else if (state.status === 'signedOut' && !error) {
+      // Our own signOut already showed the login (maybe with a message); its event changes nothing.
+      return;
     }
     set(error ? { status: 'signedOut', error } : { status: 'signedOut' });
+  }
+
+  /**
+   * Clears this device and removes the session. The session goes in any case: a cache that cannot
+   * be cleared must not keep the user signed in (the clearing is retried on the next start).
+   */
+  async function signOutHere(message?: string): Promise<void> {
+    active = undefined;
+    set({ status: 'loading' });
+    let cleared = true;
+    try {
+      // AC-003: local data first, so nothing of it outlives the session.
+      await options.resetData();
+    } catch (error) {
+      cleared = false;
+      console.warn(`Clearing the local data failed: ${errorName(error)}`);
+      await options.clearMarker?.set().catch(() => undefined);
+    } finally {
+      await auth.signOut({ scope: 'local' }).catch(() => undefined);
+    }
+    const error = cleared ? message : SIGN_OUT_INCOMPLETE_MESSAGE;
+    set(error ? { status: 'signedOut', error } : { status: 'signedOut' });
+  }
+
+  async function retryPendingClear(): Promise<void> {
+    const marker = options.clearMarker;
+    if (!marker || !(await marker.isSet().catch(() => false))) return;
+    try {
+      await options.resetData();
+      await marker.unset();
+    } catch (error) {
+      console.warn(`Clearing the local data failed again: ${errorName(error)}`);
+    }
+  }
+
+  function accountGone(userId: string): Promise<void> {
+    return enqueue(async () => {
+      if (active !== userId) return;
+      await signOutHere(ACCOUNT_GONE_MESSAGE);
+    });
+  }
+
+  async function checkAccount(): Promise<void> {
+    const userId = active;
+    if (userId === undefined) return;
+    let error: AuthErrorLike | null;
+    try {
+      ({ error } = await auth.getUser());
+    } catch {
+      return; // no answer, no verdict
+    }
+    if (error && isAccountGone(error)) await accountGone(userId);
   }
 
   function onChange(session: SessionLike | null): void {
@@ -293,12 +389,18 @@ export function createAuthController(options: AuthControllerOptions): AuthContro
       });
       unsubscribe = () => data.subscription.unsubscribe();
       await enqueue(async () => {
+        await retryPendingClear();
+        // getSession waits until supabase-js has exchanged a code from the address (or failed).
         const { data: current, error } = await auth.getSession();
+        options.cleanUrl?.();
         if (current.session) return enter(toUser(current.session));
         const stored = error && isRetryable(error) ? await options.storedUser() : undefined;
         if (stored) return enter(stored);
-        return leave(options.redirectError);
+        const failedCallback = options.authCodeInUrl ? SIGN_IN_FAILED_MESSAGE : undefined;
+        return leave(options.redirectError ?? failedCallback);
       });
+      // A stored session may belong to an account deleted meanwhile (e.g. after a db reset).
+      void checkAccount();
     },
 
     stop() {
@@ -333,14 +435,13 @@ export function createAuthController(options: AuthControllerOptions): AuthContro
     },
 
     async signOut() {
-      await enqueue(async () => {
-        // AC-003: local data first, so nothing of it outlives the session.
-        active = undefined;
-        set({ status: 'loading' });
-        await options.resetData();
-        await auth.signOut({ scope: 'local' });
-        set({ status: 'signedOut' });
-      });
+      await enqueue(() => signOutHere());
+    },
+
+    checkAccount,
+
+    accountMissing(userId) {
+      void accountGone(userId);
     },
   };
 }
@@ -355,6 +456,29 @@ function subscribeApp(listener: () => void): () => void {
   appListeners.add(listener);
   return () => {
     appListeners.delete(listener);
+  };
+}
+
+/** Changes the address without a navigation; keeps the router's history state (expo-router). */
+function replaceHref(href: string): void {
+  const history = (
+    globalThis as {
+      history?: { state?: unknown; replaceState?: History['replaceState'] };
+    }
+  ).history;
+  history?.replaceState?.(history.state ?? null, '', href);
+}
+
+function storageMarker(storage: SessionStorage | undefined, key: string): Marker | undefined {
+  if (!storage) return undefined;
+  return {
+    isSet: async () => (await storage.getItem(key)) === '1',
+    set: async () => {
+      await storage.setItem(key, '1');
+    },
+    unset: async () => {
+      await storage.removeItem(key);
+    },
   };
 }
 
@@ -392,11 +516,8 @@ export function startAuth(
   // Read the error before the client starts, then drop it from the address bar.
   const href = currentHref();
   const redirectError = href ? readRedirectError(href) : undefined;
-  if (href && redirectError) {
-    const history = (globalThis as { history?: { replaceState?: History['replaceState'] } })
-      .history;
-    history?.replaceState?.(null, '', withoutRedirectError(href));
-  }
+  if (href && redirectError) replaceHref(withoutRedirectError(href));
+  const authCodeInUrl = href ? new URL(href).searchParams.has('code') : false;
 
   const supabase = createSupabaseClient(config, sessionStorage);
   controller = createAuthController({
@@ -408,7 +529,12 @@ export function startAuth(
       return `${location?.origin ?? ''}/`;
     },
     startData: async (userId) => {
-      await startBackend({ supabase, storage: cacheStorage, userId });
+      await startBackend({
+        supabase,
+        storage: cacheStorage,
+        userId,
+        onAccountMissing: () => controller?.accountMissing(userId),
+      });
     },
     resetData: async () => {
       await resetLocalData();
@@ -416,11 +542,22 @@ export function startAuth(
       await cacheStorage.clear();
     },
     storedUser: () => readStoredUser(sessionStorage),
+    clearMarker: storageMarker(sessionStorage, CLEAR_PENDING_KEY),
+    authCodeInUrl,
+    cleanUrl: () => {
+      const now = currentHref();
+      if (!authCodeInUrl || !now) return;
+      const next = withoutAuthCallback(now);
+      if (next !== now) replaceHref(next);
+    },
   });
+  const app = controller;
   controller.subscribe(() => {
     for (const listener of appListeners) listener();
   });
   for (const listener of appListeners) listener();
+  // Back online: the account may have been deleted while the device was offline.
+  browserEnvironment().subscribe({ online: () => void app.checkAccount() });
   void controller.start();
   return controller;
 }

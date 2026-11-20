@@ -10,6 +10,7 @@ import {
   WRITE_REJECTED_MESSAGE,
   type Engine,
 } from './backend';
+import { switchHousehold } from './commands-household';
 import { createRecipe, updateRecipe } from './commands-recipes';
 import { removePlanEntry } from './commands-plan';
 import { setItemChecked } from './commands-shopping';
@@ -309,6 +310,88 @@ describe('sync engine', () => {
     expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
     expect(getState().currentMemberId).toBe(NADJA);
     expect(await storage.get('queue')).toEqual([]);
+  });
+});
+
+describe('active household per device', () => {
+  it('the household chosen with switchHousehold is shown again after a reload', async () => {
+    const second = await server.transport(ENRICO).createHousehold('Zweiter Haushalt', {});
+    await startEnrico();
+    expect(getState().activeHouseholdId).toBe(H);
+    switchHousehold(second);
+    expect(getState().activeHouseholdId).toBe(second);
+    await stopBackend();
+
+    await startEnrico();
+    expect(getState().activeHouseholdId).toBe(second);
+  });
+
+  it('a stored household the user is no longer a member of falls back to the first joined', async () => {
+    const second = await server.transport(ENRICO).createHousehold('Zweiter Haushalt', {});
+    await startEnrico();
+    switchHousehold(second);
+    await vi.waitFor(async () => expect(await storage.get('active')).toBe(second));
+    await stopBackend();
+    // Nadja joins and removes Enrico (the last member could not leave).
+    const invitation = await server.transport(ENRICO).inviteMember(second, 'nadja@example.com');
+    await server.transport(NADJA).acceptInvitation(invitation);
+    await server.transport(NADJA).removeMember(second, ENRICO);
+
+    await startEnrico();
+    expect(getState().activeHouseholdId).toBe(H);
+  });
+
+  it('AC-012: a lost household leaves no trace on the device, also not as the stored choice', async () => {
+    const second = await server.transport(ENRICO).createHousehold('Zweiter Haushalt', {});
+    const engine = await startEnrico();
+    switchHousehold(second);
+    await vi.waitFor(async () => expect(await storage.get('active')).toBe(second));
+    const invitation = await server.transport(ENRICO).inviteMember(second, 'nadja@example.com');
+    await server.transport(NADJA).acceptInvitation(invitation);
+    await server.transport(NADJA).removeMember(second, ENRICO);
+    await engine.pull();
+    await settle(engine);
+    expect(getState().activeHouseholdId).toBe(H);
+    expect(await storage.get('active')).toBeUndefined();
+  });
+
+  it('the stored choice belongs to the user: another user on the device does not inherit it', async () => {
+    const second = await server.transport(ENRICO).createHousehold('Zweiter Haushalt', {});
+    await startEnrico();
+    switchHousehold(second);
+    await vi.waitFor(async () => expect(await storage.get('active')).toBe(second));
+    await stopBackend();
+
+    await startBackend({ transport: server.transport(NADJA), storage, userId: NADJA, environment });
+    expect(await storage.get('active')).toBeUndefined();
+  });
+});
+
+describe('account check', () => {
+  it('a pull without the own profile reports the account as missing', async () => {
+    const missing = vi.fn();
+    const engine = await startBackend({
+      transport: server.transport('ghost'),
+      storage,
+      userId: 'ghost',
+      environment,
+      onAccountMissing: missing,
+    });
+    await settle(engine);
+    expect(missing).toHaveBeenCalled();
+  });
+
+  it('a pull with the own profile reports nothing', async () => {
+    const missing = vi.fn();
+    const engine = await startBackend({
+      transport: server.transport(ENRICO),
+      storage,
+      userId: ENRICO,
+      environment,
+      onAccountMissing: missing,
+    });
+    await settle(engine);
+    expect(missing).not.toHaveBeenCalled();
   });
 });
 

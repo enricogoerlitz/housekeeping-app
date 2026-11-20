@@ -1,6 +1,6 @@
 // Resets the LOCAL database: migrations + supabase/seed.sql (test accounts and demo households).
 // When DEV_OWNER_EMAIL is set (in .env or the environment), that address gets an open invitation
-// to both seed households, so a real Google account joins them on its first sign-in.
+// to both seed households; a real Google account can sign up with it and accept them.
 // The address is handed to psql through the container's environment, never as an argument or a
 // file, and never printed.
 //

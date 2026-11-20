@@ -305,7 +305,8 @@ Was der Assistent über den Haushalt weiß, z. B. „unter der Woche höchstens 
 ### Einladung
 
 Die Freigabe einer Google-Adresse für einen Haushalt. Nur eingeladene Adressen können ein Konto
-anlegen; bei der ersten Anmeldung wird die Person Mitglied. Die Gesamtheit der offenen
+anlegen; Mitglied wird die Person erst, wenn sie die Einladung annimmt (auch bei der ersten
+Anmeldung). Die Gesamtheit der offenen
 Einladungen ist die **Einladungsliste** (ADR-0003: „Allowlist“).
 
 - **Im Code:** `Invitation`, `household_invitations`

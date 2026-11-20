@@ -215,6 +215,13 @@ describe('fake server: apply_changes (ADR-0011)', () => {
     });
   });
 
+  it('counts the ids of remove_contributions as deletes (like the database)', async () => {
+    const ids = Array.from({ length: 21 }, (_, index) => `c-${index}`);
+    await expect(
+      server.transport(ENRICO).applyChanges(H, [{ kind: 'remove_contributions', ids }]),
+    ).rejects.toMatchObject({ code: 'too_many_changes' });
+  });
+
   it('can be told to fail, before or after applying', async () => {
     const op: RowOp = { kind: 'patch', table: 'recipes', id: 'r1', changes: { title: 'A' } };
     server.failNext('apply_changes', new TransportError('permanent', 'boom'));
