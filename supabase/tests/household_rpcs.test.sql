@@ -3,7 +3,7 @@
 -- remove_member (AC-012).
 begin;
 \ir _helpers.psql
-select plan(42);
+select plan(49);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select, insert on fx to anon, authenticated;
@@ -20,9 +20,13 @@ insert into fx values
 create temp table starter (doc jsonb) on commit drop;
 grant select on starter to anon, authenticated;
 insert into starter values ('{
-  "areas": [{"key": "obst-gemuese", "name": "Obst & Gemüse"}],
-  "articles": [{"name": "Äpfel", "name_key": "apfel", "synonyms": [], "synonym_keys": [],
-                "area": "obst-gemuese", "diet": "vegan", "is_pantry": false}]
+  "areas": [{"key": "obst-gemuese", "name": "Obst & Gemüse"}, {"key": "gewuerze-oel", "name": "Gewürze & Öl"}],
+  "articles": [{"name": "Äpfel", "name_key": "apfel", "synonyms": ["Apfel"], "synonym_keys": ["apfel"],
+                "area": "obst-gemuese", "diet": "vegan", "is_pantry": false},
+               {"name": "Olivenöl", "name_key": "olivenol", "synonyms": [], "synonym_keys": [],
+                "area": "gewuerze-oel", "diet": "vegan", "is_pantry": true},
+               {"name": "Geschenkpapier", "name_key": "geschenkpapier", "synonyms": [], "synonym_keys": [],
+                "area": null, "diet": "unknown", "is_pantry": false}]
 }');
 
 -- ===================== create_household (AC-010) =====================
@@ -45,6 +49,48 @@ select results_eq(
      where h.id = (select id from fx where key = 'wg') order by (s ->> 'sort')::int $$,
   $$ values ('Mittag', 0, true), ('Abend', 1, true) $$,
   'AC-010: the household has the meal slots Mittag and Abend'
+);
+select results_eq(
+  $$ select name, sort from public.areas where household_id = (select id from fx where key = 'wg') order by sort $$,
+  $$ values ('Obst & Gemüse', 0), ('Gewürze & Öl', 1) $$,
+  'AC-010: the starter areas are created in the given order'
+);
+select results_eq(
+  $$ select ar.name, ar.name_key, ar.synonyms, ar.synonym_keys, a.name, ar.diet, ar.is_pantry
+     from public.articles ar left join public.areas a on a.id = ar.area_id
+     where ar.household_id = (select id from fx where key = 'wg') order by ar.name_key $$,
+  $$ values ('Äpfel', 'apfel', array['Apfel'], array['apfel'], 'Obst & Gemüse', 'vegan', false),
+            ('Geschenkpapier', 'geschenkpapier', '{}'::text[], '{}'::text[], null, 'unknown', false),
+            ('Olivenöl', 'olivenol', '{}'::text[], '{}'::text[], 'Gewürze & Öl', 'vegan', true) $$,
+  'AC-010: the starter catalog is created with keys, synonyms and areas from the starter'
+);
+select results_eq(
+  $$ select l.name, l.is_default, l.id = h.default_list_id
+     from public.shopping_lists l join public.households h on h.id = l.household_id
+     where l.household_id = (select id from fx where key = 'wg') $$,
+  $$ values ('Standardliste', true, true) $$,
+  'AC-010: the household has the default list "Standardliste" as default_list_id'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Äpfel", "name_key": "apfel", "area": "nirgends"}]}') $$,
+  '22023', 'invalid_starter',
+  'AC-010: an article pointing to an unknown starter area is rejected'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Äpfel", "name_key": "apfel"},
+                                                                     {"name": "Apfel", "name_key": "apfel"}]}') $$,
+  '22023', 'invalid_starter',
+  'AC-010: two starter articles with the same name_key are rejected'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [{"key": "a", "name": ""}], "articles": []}') $$,
+  '22023', 'invalid_starter',
+  'AC-010: a starter area without a name is rejected'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Tofu", "name_key": "tofu", "diet": "carnivore"}]}') $$,
+  '22023', 'invalid_starter',
+  'AC-010: a starter article with an unknown diet is rejected'
 );
 select throws_ok(
   $$ select public.create_household('   ', (select doc from starter)) $$,

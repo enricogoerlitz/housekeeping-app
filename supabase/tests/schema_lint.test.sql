@@ -27,7 +27,13 @@ insert into lint_private_functions_for_authenticated values
   ('private.invite_member(uuid,text)'),
   ('private.accept_invitation(uuid)'),
   ('private.decline_invitation(uuid)'),
-  ('private.remove_member(uuid,uuid)');
+  ('private.remove_member(uuid,uuid)'),
+  ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
+  ('private.set_recipe_favorite(uuid,boolean)'),
+  ('private.set_recipe_rating(uuid,smallint)'),
+  ('private.set_restaurant_favorite(uuid,boolean)'),
+  ('private.set_restaurant_rating(uuid,smallint)'),
+  ('private.set_feedback_vote(uuid,boolean)');
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

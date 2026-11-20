@@ -100,4 +100,146 @@ begin
 end
 $$;
 
+-- Runs one statement as the current role and returns how many rows it touched. RLS hides rows
+-- without an error, so "0 rows changed" is how a denied update or delete shows up.
+create function tests.affected(p_sql text) returns int
+language plpgsql
+as $$
+declare
+  v_count int;
+begin
+  execute p_sql;
+  get diagnostics v_count = row_count;
+  return v_count;
+end
+$$;
+
+-- Tenant isolation of a household-scoped table that members write directly (AC-005, AC-011).
+--   p_row:   a valid new row in the member's household, with id and household_id, using only
+--            columns a member may insert (references point into the same household)
+--   p_patch: columns a member may update, with valid values
+-- Checks the member can insert, read, update and delete it (leaving a tombstone only members
+-- see); a member of another household reads nothing and changes nothing; nobody can move the
+-- row to another household; anon can do nothing. Returns 15 pgTAP results; call as postgres.
+create function tests.tenant_isolation(
+  p_table text,
+  p_row jsonb,
+  p_patch jsonb,
+  p_member uuid,
+  p_foreign uuid
+) returns setof text
+language plpgsql
+as $$
+declare
+  v_rel text := format('public.%I', p_table);
+  v_id uuid := (p_row ->> 'id')::uuid;
+  v_household_id uuid := (p_row ->> 'household_id')::uuid;
+  v_foreign_household_id uuid;
+  v_cols text;
+  v_set text;
+  v_insert text;
+  v_foreign_insert text;
+  v_update text;
+  v_delete text;
+begin
+  select m.household_id into v_foreign_household_id
+  from public.household_members m
+  where m.profile_id = p_foreign and m.household_id <> v_household_id
+  limit 1;
+
+  select string_agg(format('%I', k), ', ') into v_cols from jsonb_object_keys(p_row) k;
+  select string_agg(format('%1$I = r.%1$I', k), ', ') into v_set from jsonb_object_keys(p_patch) k;
+  v_insert := format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, %3$L::jsonb)',
+                     v_rel, v_cols, p_row);
+  v_foreign_insert := format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, %3$L::jsonb)',
+                             v_rel, v_cols, p_row || jsonb_build_object('id', gen_random_uuid()));
+  v_update := format('update %1$s t set %2$s from jsonb_populate_record(null::%1$s, %3$L::jsonb) r where t.id = %4$L',
+                     v_rel, v_set, p_patch, v_id);
+  v_delete := format('delete from %s where id = %L', v_rel, v_id);
+
+  perform tests.authenticate_as(p_member);
+  return next lives_ok(v_insert, format('AC-011 %s: a member inserts a row into her household', p_table));
+  return next is(
+    tests.affected(format('select 1 from %s where id = %L', v_rel, v_id)), 1,
+    format('AC-011 %s: a member reads the row', p_table));
+  return next is(tests.affected(v_update), 1, format('AC-011 %s: a member updates the editable columns', p_table));
+  return next throws_ok(
+    format('update %s set household_id = %L where id = %L', v_rel, v_foreign_household_id, v_id),
+    '42501', null,
+    format('AC-011 %s: a member cannot move the row to another household', p_table));
+
+  perform tests.authenticate_as(p_foreign);
+  return next is(
+    tests.affected(format('select 1 from %s where household_id = %L', v_rel, v_household_id)), 0,
+    format('AC-011 %s: a member of another household reads no rows', p_table));
+  return next is(tests.affected(v_update), 0, format('AC-011 %s: a member of another household updates nothing', p_table));
+  return next is(tests.affected(v_delete), 0, format('AC-011 %s: a member of another household deletes nothing', p_table));
+  return next throws_ok(v_foreign_insert, null::char(5), null,
+    format('AC-011 %s: a member of another household cannot insert with this household_id', p_table));
+
+  perform tests.authenticate_as_anon();
+  return next throws_ok(format('select * from %s', v_rel), '42501', null,
+    format('AC-005 %s: anon cannot read', p_table));
+  return next throws_ok(v_foreign_insert, '42501', null, format('AC-005 %s: anon cannot insert', p_table));
+  return next throws_ok(v_update, '42501', null, format('AC-005 %s: anon cannot update', p_table));
+  return next throws_ok(v_delete, '42501', null, format('AC-005 %s: anon cannot delete', p_table));
+
+  perform tests.authenticate_as(p_member);
+  return next is(tests.affected(v_delete), 1, format('AC-011 %s: a member deletes the row', p_table));
+  return next is(
+    tests.affected(format('select 1 from public.deleted_records where table_name = %L and record_id = %L',
+                          p_table, v_id)), 1,
+    format('AC-015 %s: the delete leaves a tombstone the member reads', p_table));
+
+  perform tests.authenticate_as(p_foreign);
+  return next is(
+    tests.affected(format('select 1 from public.deleted_records where table_name = %L and record_id = %L',
+                          p_table, v_id)), 0,
+    format('AC-011 %s: a member of another household does not see the tombstone', p_table));
+
+  perform tests.clear_authentication();
+end
+$$;
+
+-- Isolation of a table that members never write directly (favourites, ratings, votes go through
+-- set_* RPCs). p_row is a would-be row in the member's household. Expects at least one row of the
+-- household to exist already. Returns 7 pgTAP results; call as postgres.
+create function tests.rpc_only_isolation(p_table text, p_row jsonb, p_member uuid, p_foreign uuid)
+returns setof text
+language plpgsql
+as $$
+declare
+  v_rel text := format('public.%I', p_table);
+  v_household_id uuid := (p_row ->> 'household_id')::uuid;
+  v_cols text;
+  v_insert text;
+begin
+  select string_agg(format('%I', k), ', ') into v_cols from jsonb_object_keys(p_row) k;
+  v_insert := format('insert into %1$s (%2$s) select %2$s from jsonb_populate_record(null::%1$s, %3$L::jsonb)',
+                     v_rel, v_cols, p_row);
+
+  perform tests.authenticate_as(p_member);
+  return next ok(
+    tests.affected(format('select 1 from %s where household_id = %L', v_rel, v_household_id)) > 0,
+    format('AC-011 %s: a member reads the rows of her household', p_table));
+  return next throws_ok(v_insert, '42501', null, format('T3 %s: a member cannot insert directly', p_table));
+  return next throws_ok(format('update %s set updated_at = now()', v_rel), '42501', null,
+    format('T3 %s: a member cannot update directly', p_table));
+  return next throws_ok(format('delete from %s', v_rel), '42501', null,
+    format('T3 %s: a member cannot delete directly', p_table));
+
+  perform tests.authenticate_as(p_foreign);
+  return next is(
+    tests.affected(format('select 1 from %s where household_id = %L', v_rel, v_household_id)), 0,
+    format('AC-011 %s: a member of another household reads no rows', p_table));
+
+  perform tests.authenticate_as_anon();
+  return next throws_ok(format('select * from %s', v_rel), '42501', null,
+    format('AC-005 %s: anon cannot read', p_table));
+  return next throws_ok(v_insert, '42501', null, format('AC-005 %s: anon cannot insert', p_table));
+
+  perform tests.clear_authentication();
+end
+$$;
+
 grant execute on all functions in schema tests to anon, authenticated;
