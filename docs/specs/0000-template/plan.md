@@ -13,16 +13,16 @@ Wie es gebaut wird, in drei bis fünf Sätzen. Betroffene Pakete (`core`, `api`,
 
 ## Datenbank und Sync
 
-Neue oder geänderte Tabellen und Spalten, additiv oder expand/contract, Sync-Streams. Umsetzung
+Neue oder geänderte Tabellen und Spalten, additiv oder expand/contract, Delta-Sync. Umsetzung
 mit dem `db-change`-Skill. „Keine Änderung“ ist eine gültige Antwort.
 
 ## Risiken und Gegenmaßnahmen
 
-Pflicht bei kritischen Pfaden (Login, RLS, Upload-Pfad, Migrationen, Löschen), sonst kurz.
+Pflicht bei kritischen Pfaden (Login, RLS, Delta-Sync und Abhak-Warteschlange, Migrationen, Löschen), sonst kurz.
 
-| Was könnte schiefgehen                       | Gegenmaßnahme            | Getestet durch |
-| -------------------------------------------- | ------------------------ | -------------- |
-| Mitglied eines fremden Haushalts sieht Daten | RLS + Sync-Stream-Filter | pgTAP `…`      |
+| Was könnte schiefgehen                       | Gegenmaßnahme | Getestet durch |
+| -------------------------------------------- | ------------- | -------------- |
+| Mitglied eines fremden Haushalts sieht Daten | RLS           | pgTAP `…`      |
 
 ## Aufgaben
 

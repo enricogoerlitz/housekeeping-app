@@ -1,7 +1,7 @@
 # Housekeeping
 
 Haushalts-App für iPhone, iPad, Android und Web: Rezepte, Wochenplan, Einkaufslisten mit
-Laufreihenfolge im Supermarkt, und später mehr. Vollständig offline-fähig, gemeinsam nutzbar
+Laufreihenfolge im Supermarkt, und später mehr. Offline lesbar und abhakbar, gemeinsam nutzbar
 im Haushalt.
 
 - **Vision und fachliche Leitplanken:** [docs/product/vision.md](docs/product/vision.md)
@@ -12,8 +12,8 @@ im Haushalt.
 
 ## Technik
 
-Expo (React Native) mit Expo Router · PowerSync (lokale SQLite, offline-first) · Supabase
-(Postgres, Auth, Storage) · TypeScript · pnpm + Turborepo · Vitest, pgTAP, Playwright.
+Expo (React Native) mit Expo Router · eigener Lese-Cache mit Delta-Sync (offline lesen und
+abhaken) · Supabase (Postgres, Auth, Realtime, Storage) · TypeScript · pnpm + Turborepo · Vitest, pgTAP, Playwright.
 
 ## Loslegen
 
@@ -47,11 +47,11 @@ testgetrieben, mit Coding-Agents. Der Ablauf steht in [AGENTS.md](AGENTS.md).
 
 ### KI-Setup
 
-| Art                                                    | Inhalt                                                                                                                                             |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Plugins (in `.claude/settings.json` aktiviert)         | Superpowers, Expo, impeccable, UI UX Pro Max                                                                                                       |
-| Eingecheckte Skills (festgelegt in `skills-lock.json`) | Supabase, PowerSync, Emil Kowalski (Animation, Gesten, Apple-Design), Vercel (React Native, Web-Design-Guidelines), Addy Osmani (Barrierefreiheit) |
-| Eigene Skills                                          | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`                                                                              |
+| Art                                                    | Inhalt                                                                                                                                  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Plugins (in `.claude/settings.json` aktiviert)         | Superpowers, Expo, impeccable, UI UX Pro Max                                                                                            |
+| Eingecheckte Skills (festgelegt in `skills-lock.json`) | Supabase, Emil Kowalski (Animation, Gesten, Apple-Design), Vercel (React Native, Web-Design-Guidelines), Addy Osmani (Barrierefreiheit) |
+| Eigene Skills                                          | `spec`, `db-change`, `ui-verify`, `adr`, `glossary`, `security-check`                                                                   |
 
 Beim ersten Start von Claude Code im Repo fragt es, ob die Plugins installiert werden sollen.
 Einmal pro Rechner bestätigen.

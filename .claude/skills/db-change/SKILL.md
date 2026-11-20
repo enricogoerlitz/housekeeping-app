@@ -1,16 +1,17 @@
 ---
 name: db-change
-description: Make a schema change end to end - Supabase migration, Row Level Security policies, pgTAP tenant-isolation test, sync stream configuration, local PowerSync client schema and generated types - so no step is forgotten. Use whenever a table, column, index, policy or database function is added or changed, or when a spec's plan contains database work.
+description: Make a schema change end to end - Supabase migration, Row Level Security policies, pgTAP tenant-isolation test, delta-sync triggers and registration, local cache shape and generated types - so no step is forgotten. Use whenever a table, column, index, policy or database function is added or changed, or when a spec's plan contains database work.
 argument-hint: "[short description of the change]"
 ---
 
 # DB change
 
 A schema change in this app touches up to six places. Forgetting one fails silently: a table
-without a policy is open, a table without a sync stream never reaches the device, a column missing
-from the client schema is invisible offline. This skill walks all six, every time.
+without a policy is open, a table without a grant is invisible to the app, a table without the
+`updated_at` and delete triggers never reaches the device cache correctly. This skill walks all
+six, every time.
 
-Load `supabase-postgres-best-practices` and `powersync` before starting. Read
+Load `supabase-postgres-best-practices` before starting. Read
 `.claude/rules/30-database.md`, `.claude/rules/31-sync.md` and `docs/architecture/sync.md`.
 
 ## Before you write anything
@@ -21,8 +22,8 @@ Load `supabase-postgres-best-practices` and `powersync` before starting. Read
   across releases; write that sequence into the plan and confirm it with the user first.
 - Does a released app version read what you change? Then the old shape must keep working.
 
-If the project's household helpers (membership check function, `updated_at` trigger, sync stream
-file) do not exist yet, you are in the first data spec: create them as part of it, with tests.
+If the project's household helpers (membership check function, `updated_at` trigger, delete
+trigger into `deleted_records`, sync registry in `packages/api`) do not exist yet, you are in the first data spec: create them as part of it, with tests.
 That spec also adds a migration revoking the default privileges on schema `public` from `anon` and
 `authenticated`, so the local stack behaves like the hosted project and a missing grant fails
 locally, not in production.
@@ -65,15 +66,19 @@ copy the membership query into each policy.
 
 Write the test first and run it red: `pnpm exec supabase test db`.
 
-### 4. Sync configuration
+### 4. Delta-sync triggers
 
-Add the table to the sync streams so that each user receives exactly the rows of their
-households — the same rule as RLS, expressed for PowerSync. Check the replication publication
-includes the table.
+- Attach the shared `updated_at` trigger (server-set on every update, never by the client).
+- Attach the shared delete trigger that writes into `deleted_records`.
+- Index `(household_id, updated_at)` so delta queries stay cheap.
+- Extend the pgTAP test: an update bumps `updated_at`; a delete produces a `deleted_records` row
+  that only members of the same household can read.
 
-### 5. Client schema and types
+### 5. Cache, registry and types
 
-- Add the table/columns to the PowerSync client schema in `packages/api`.
+- Register the table in the sync registry in `packages/api`, so the delta sync pulls it.
+- If the cached shape changes in a way old cache data cannot satisfy, bump the cache version (full
+  reload on next start). Never migrate cache data in place.
 - Regenerate database types: `pnpm exec supabase gen types typescript --local` into the location
   `packages/api` uses.
 - If domain types in `packages/core` change, update them and their tests.
@@ -86,12 +91,13 @@ pnpm exec supabase test db       # pgTAP
 pnpm check                       # lint, typecheck, unit tests
 ```
 
-All green, then commit migration, test, sync config and client schema **together** in one commit
+All green, then commit migration, test, sync registration and types **together** in one commit
 with `Spec: NNNN`.
 
 ## Report
 
-Name the table/columns, the policies, the test file and its result, the sync stream change, and
+Name the table/columns, the grants and policies, the test file and its result, the sync
+registration and cache-version change, and
 whether the change is additive or which expand/contract stage it is.
 
 ## Do not

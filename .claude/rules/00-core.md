@@ -31,8 +31,8 @@ continue.
 
 ## Critical paths
 
-Authentication, Row Level Security and tenancy, the sync upload path, migrations, deletion of
-data, and infrastructure or deployment code.
+Authentication, Row Level Security and tenancy, delta sync and the offline check queue,
+migrations, deletion of data, and infrastructure or deployment code.
 
 When a change touches one of them, before the task counts as done:
 

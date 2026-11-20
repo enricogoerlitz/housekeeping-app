@@ -93,3 +93,9 @@ laufen als gemanagte Cloud-Dienste.
 
 Lokal läuft dagegen alles in Docker (Supabase CLI und PowerSync per Docker Compose). Das ist
 Entwicklungsumgebung, kein Hosting.
+
+## Nachtrag 2026-11-20 — PowerSync entfällt
+
+Mit [ADR-0008](0008-offline-lesen-mit-eigenem-delta-sync.md) entfällt PowerSync vollständig, als
+Dienst und lokal. Die Zeilen zu PowerSync oben sind damit überholt. Es bleiben Supabase,
+Web-Hosting und später ein KI-Dienst.

@@ -3,7 +3,6 @@ paths:
   - 'apps/**'
   - 'packages/**'
   - 'supabase/**'
-  - 'powersync/**'
 ---
 
 # Secure coding
@@ -13,9 +12,9 @@ Apply these while writing. `/security-check` verifies them against a diff. They 
 
 ## Keys and secrets
 
-- The app ships only public values: Supabase URL, Supabase anon/publishable key, PowerSync URL.
-  They are read from `EXPO_PUBLIC_*` variables. Anything else is a secret.
-- The `service_role` key, database passwords, OAuth client secrets and PowerSync admin tokens
+- The app ships only public values: the Supabase URL and the publishable (anon) key. They are
+  read from `EXPO_PUBLIC_*` variables. Anything else is a secret.
+- The `service_role` / secret key, database passwords, OAuth client secrets and AI service keys
   never appear in app code, in `EXPO_PUBLIC_*` variables, in logs or in commits.
 - Fail loudly at startup when a required value is missing — never fall back to a hardcoded one.
 
@@ -28,7 +27,8 @@ Apply these while writing. `/security-check` verifies them against a diff. They 
   household.
 - `security definer` functions set `search_path = ''`, use fully qualified names, and are
   revoked from `anon` unless they are meant to be public.
-- Sync streams filter by membership too. A row that RLS hides must never be synced to a device.
+- The delta sync reads through the same API, so RLS decides what reaches a device. Never add a
+  sync path that bypasses RLS (e.g. a `security definer` function returning rows).
 
 ## Sessions and tokens
 

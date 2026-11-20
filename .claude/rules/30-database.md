@@ -11,18 +11,19 @@ all places a change touches.
 
 ## Every table
 
-- `id uuid primary key` — generated **on the client** (offline creation). A server default is
-  allowed as a fallback, never relied upon.
+- `id uuid primary key default gen_random_uuid()`. The client may supply the id (optimistic UI);
+  the server default covers everything else.
 - `household_id uuid not null` referencing the household, indexed. Exception: tables that define
   membership itself.
 - `created_at timestamptz not null default now()`, `updated_at timestamptz not null default now()`
-  maintained by trigger.
+  set **by trigger on every update** — never by the client. The delta sync depends on it.
+- A delete trigger writing into `deleted_records`, so deletions reach the devices.
 - Explicit grants in the migration (the hosted project does not auto-grant new tables to the API):
   `authenticated` gets only the operations the spec needs, `anon` gets nothing.
 - Row Level Security enabled, with separate policies for select, insert, update and delete.
 - A pgTAP test proving: a member can do what the spec allows; a member of another household and a
   signed-out user can do nothing.
-- Part of the sync configuration (see `31-sync.md`).
+- Registered in the delta sync (see `31-sync.md`).
 
 ## Migrations
 

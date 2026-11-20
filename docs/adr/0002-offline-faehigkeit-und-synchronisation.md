@@ -1,5 +1,5 @@
 ---
-status: angenommen
+status: abgelöst durch ADR-0008
 datum: 2026-11-20
 autor: agent
 betrifft: []
@@ -9,7 +9,7 @@ betrifft: []
 
 ## Status
 
-`angenommen`
+`abgelöst durch ADR-0008` — siehe [ADR-0008](0008-offline-lesen-mit-eigenem-delta-sync.md)
 
 ## Kontext
 

@@ -1,130 +1,149 @@
-# Sync-Konzept (offline-first)
+# Sync-Konzept: offline lesen, online schreiben
 
-> Entscheidung: [ADR-0002](../adr/0002-offline-faehigkeit-und-synchronisation.md). Dieses Dokument
-> beschreibt, **wie** Offline und Sync funktionieren, und gilt für jede Spec. Details einzelner
-> Tabellen legt die jeweilige Spec fest.
+> Entscheidung: [ADR-0008](../adr/0008-offline-lesen-mit-eigenem-delta-sync.md) (löst ADR-0002
+> ab). Dieses Dokument beschreibt, **wie** Cache, Abgleich und Abhaken funktionieren, und gilt für
+> jede Spec. Details einzelner Tabellen legt die jeweilige Spec fest.
 
 ## Ziel
 
-Im Supermarkt gibt es oft kein Netz. Deshalb funktioniert **jede alltägliche Handlung ohne
-Verbindung**: Rezepte ansehen und bearbeiten, Wochenplan ändern, Einkaufsliste erzeugen,
-ergänzen und abhaken, Märkte und Bereiche pflegen. Sobald wieder Netz da ist, gleichen sich alle
-Geräte des Haushalts automatisch ab.
+| Ohne Netz möglich                                                         | Braucht Netz                              |
+| ------------------------------------------------------------------------- | ----------------------------------------- |
+| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche | Anlegen, bearbeiten, löschen              |
+| Einkaufsposten **abhaken** und Haken zurücknehmen                         | Einkaufsliste aus dem Wochenplan erzeugen |
+| Einkaufsmodus mit Laufreihenfolge                                         | Anmelden, Haushalt anlegen, einladen      |
 
-Netz ist nur nötig für: die erste Anmeldung, das Anlegen eines Haushalts, Einladungen und das
-erste Herunterladen von Fotos. Die Spec benennt solche Fälle ausdrücklich, und die App zeigt
-offline einen klaren Hinweis statt eines Fehlers.
+Ohne Netz sind Bearbeiten-Aktionen sichtbar deaktiviert, mit dem Hinweis „Offline – zum Bearbeiten
+brauchst du Netz“. Das ist ein normaler Zustand, kein Fehler.
 
 ## Bausteine
 
 ```mermaid
 flowchart LR
-  subgraph Geraet[Gerät: iPhone, iPad, Android, Browser]
-    UI[UI] -- liest reaktiv --> DB[(lokale SQLite)]
-    UI -- schreibt --> DB
-    DB -- Änderungen --> Q[Upload-Warteschlange]
+  subgraph Geraet[Gerät]
+    UI[UI] -- liest reaktiv --> C[(Lokaler Cache)]
+    UI -- hakt ab --> Q[Abhak-Warteschlange]
+    Q -. sofort sichtbar .-> C
   end
-  Q -- "PATCH, wenn online" --> API[Supabase API<br/>mit RLS]
-  API --> PG[(Postgres<br/>Quelle der Wahrheit)]
-  PG -- Replikation --> PS[PowerSync Service]
-  PS -- "Sync Streams<br/>(nur eigene Haushalte)" --> DB
+  subgraph SB[Supabase]
+    API[API + RLS]
+    PG[(Postgres)]
+    RT[Realtime]
+  end
+  UI -- "Schreiben (nur online)" --> API
+  Q -- "nachreichen, wenn online" --> API
+  API --> PG
+  PG -- "Delta: geändert + gelöscht seit Cursor" --> C
+  PG -- Änderungssignal --> RT -- "jetzt abgleichen" --> C
 ```
 
-- **Lokale SQLite** auf jedem Gerät, im Browser per OPFS/IndexedDB. Sie enthält alle Daten der
-  Haushalte, in denen die Person Mitglied ist. Die Datenmenge ist klein (Rezepte, Listen), also
-  wird alles vorab synchronisiert, nicht erst bei Bedarf.
-- **Postgres in Supabase** ist die Quelle der Wahrheit. Row Level Security entscheidet, was
-  geschrieben werden darf.
-- **PowerSync** liest die Änderungen aus Postgres (logische Replikation) und verteilt sie über
-  **Sync Streams** an die Geräte. Die Streams filtern nach Haushaltsmitgliedschaft, also nach
-  derselben Regel wie RLS.
+- **Lokaler Cache:** eine Kopie aller Daten der eigenen Haushalte, gespeichert auf dem Gerät (im
+  Browser IndexedDB/OPFS). Die UI liest **nur** daraus.
+- **Supabase** ist die Quelle der Wahrheit. Gelesen und geschrieben wird über die normale API.
+  **RLS gilt damit überall**, eine zweite Berechtigungsregel gibt es nicht.
+- **Realtime** dient nur als Signal („es hat sich etwas geändert“). Daraufhin läuft der normale
+  Delta-Abgleich. So gibt es genau einen Weg, auf dem Daten in den Cache kommen.
 
-## Lesen
+## Lesen: Delta-Abgleich
 
-Die UI liest **ausschließlich lokal**, mit reaktiven Abfragen: Ändert sich eine Zeile (lokal oder
-per Sync), aktualisiert sich der Screen von selbst. Es gibt keine Ladespinner fürs Netz.
+**Voraussetzungen je synchronisierter Tabelle:**
 
-PowerSync übernimmt Server-Änderungen nur an vollständigen **Checkpoints**. Ein Gerät sieht also
-nie einen halben Zustand, etwa ein Rezept ohne seine Zutaten.
+- `updated_at` wird **vom Server** per Trigger gesetzt, nie vom Client.
+- Ein Lösch-Trigger schreibt jede gelöschte Zeile ins **Löschprotokoll** `deleted_records`
+  (Tabelle, ID, Haushalt, Zeitpunkt). Es ist per RLS ebenfalls auf den eigenen Haushalt beschränkt.
 
-## Schreiben
+**Ablauf:**
 
-1. Jede Änderung wird **lokal in einer Transaktion** geschrieben und ist sofort sichtbar.
-2. PowerSync legt sie geordnet in die **Upload-Warteschlange**.
-3. Sobald Netz da ist, überträgt die App die Einträge der Reihe nach an Supabase. Gesendet werden
-   **nur die geänderten Spalten** (PATCH).
-4. Der Server prüft sie über RLS und Constraints. Der bestätigte Stand kommt über den Sync zurück
-   und ist maßgeblich.
+1. Das Gerät merkt sich je Tabelle einen **Cursor**: das höchste gesehene `updated_at`.
+2. Es holt alle Zeilen mit `updated_at > Cursor − Sicherheitsfenster` und schreibt sie per
+   Upsert in den Cache. Das **Sicherheitsfenster** (Startwert 2 Minuten) fängt Transaktionen ab,
+   die später committen als ihr Zeitstempel. Doppelt geladene Zeilen schaden nicht.
+3. Es holt das Löschprotokoll seit dem Cursor und entfernt diese Zeilen aus dem Cache.
+4. Es schreibt den Cursor fort, erst wenn Schritt 2 und 3 vollständig geklappt haben.
 
-## Konfliktregeln
+**Voll-Load** beim ersten Start, nach dem Abmelden und Wiederanmelden, nach einem Wechsel der
+Cache-Version und wenn der Cursor älter ist als die Aufbewahrungsfrist des Löschprotokolls
+(Startwert 30 Tage, aufgeräumt per `pg_cron`).
 
-| Situation                                                    | Regel                                                                                                                                                                                                                 | Folge für das Datenmodell                                                       |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Zwei Geräte legen offline etwas an                           | IDs (UUID) erzeugt der Client, also kollidieren sie nie                                                                                                                                                               | `id` ohne Server-Pflicht-Default                                                |
-| Zwei Geräte legen offline **denselben** Artikel an („Milch“) | Deterministische ID aus Haushalt + normalisiertem Namen (UUIDv5). Beide Geräte erzeugen dieselbe ID, es entsteht nur ein Artikel. Ist die ID lokal schon vergeben (z. B. nach Umbenennung), gibt es eine zufällige ID | Gilt für Daten mit natürlichem Schlüssel                                        |
-| Zwei Geräte ändern **verschiedene Felder** derselben Zeile   | Beide Änderungen bleiben (PATCH nur der geänderten Spalten)                                                                                                                                                           | —                                                                               |
-| Zwei Geräte ändern **dasselbe Feld**                         | Was zuletzt beim Server ankommt, gewinnt (Last-Write-Wins je Feld)                                                                                                                                                    | Für Texte, Namen, Häkchen ausreichend                                           |
-| Ein Gerät löscht, das andere ändert                          | Löschen gewinnt; die Änderung wird verworfen                                                                                                                                                                          | Wo „Rückgängig“ wichtig ist, legt die Spec Papierkorb-Logik fest (`deleted_at`) |
-| Reihenfolgen (Bereiche im Markt, Rezeptschritte)             | Sortierschlüssel per Fractional Indexing: ein neuer Platz bekommt einen Wert zwischen seinen Nachbarn, nichts wird neu nummeriert                                                                                     | Spalte `sort_key text` statt `position int`                                     |
-| Mengen und Summen                                            | **Nie Summen speichern, die zwei Geräte ändern.** Beiträge je Herkunft speichern, die Summe beim Anzeigen berechnen                                                                                                   | Z. B. Einkaufsposten mit Beiträgen je Rezept und manuell                        |
-| Abhaken im Laden                                             | Status + Zeitpunkt, Last-Write-Wins (beide wollen dasselbe)                                                                                                                                                           | —                                                                               |
+**Auslöser:** App-Start, App kommt in den Vordergrund, Netz ist wieder da, direkt nach eigenem
+Schreiben, Realtime-Signal, und als Rückfallebene alle paar Minuten, solange die App offen ist.
 
-## Fehler beim Hochladen
+**Verlust der Mitgliedschaft:** Taucht ein Haushalt nicht mehr in den eigenen Mitgliedschaften auf,
+löscht das Gerät dessen Daten aus dem Cache.
 
-Die Warteschlange darf **nie blockieren**.
+## Schreiben: online
 
-| Fehlerart     | Beispiele                                | Verhalten                                                                                                   |
-| ------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Vorübergehend | offline, Timeout, 5xx                    | Später erneut, mit Backoff; Reihenfolge bleibt                                                              |
-| Dauerhaft     | 4xx: RLS verweigert, Constraint verletzt | Operation verwerfen, lokal protokollieren, Hinweis in der UI („1 Änderung konnte nicht gespeichert werden“) |
+- Schreibaktionen gehen direkt an Supabase (API oder RPC). RLS und Constraints prüfen sie.
+- Nach Erfolg läuft sofort ein Delta-Abgleich, und der Cache ist aktuell. Wo es sich lohnt, zeigt
+  die UI das Ergebnis schon vorher an und korrigiert sich im Fehlerfall.
+- **Mehrteilige Aktionen** (z. B. Liste aus dem Wochenplan erzeugen) laufen als eine RPC in einer
+  Transaktion. Halbe Zustände gibt es nicht.
+- Ändern zwei Personen gleichzeitig online dasselbe, gilt: Was zuletzt ankommt, gewinnt, je Feld.
+  Gesendet werden nur geänderte Felder.
 
-## Anmeldung und Offline
+## Abhaken: offline
 
-- Die Sitzung wird lokal gespeichert, nativ im Secure Store. Die App startet offline mit der
-  letzten Sitzung und den lokalen Daten.
-- Abgelaufene Tokens werden beim nächsten Netz erneuert. Bis dahin arbeitet die App lokal weiter.
-- **Abmelden löscht die lokale Datenbank** auf diesem Gerät.
+Abhaken und Haken zurücknehmen wirken **sofort lokal** und landen in einer gespeicherten
+**Abhak-Warteschlange**. Mit Netz werden sie der Reihe nach per RPC nachgereicht, z. B.
+`set_shopping_item_checked(item_id, checked, seen_checked_at)`. Die Regel setzt der Server in
+einer Transaktion durch:
 
-## Schema-Entwicklung
+| Stand auf dem Server                         | Auf dem Gerät getan  | Ergebnis                                                   |
+| -------------------------------------------- | -------------------- | ---------------------------------------------------------- |
+| nicht abgehakt                               | abgehakt             | **abgehakt**                                               |
+| abgehakt                                     | nichts               | **bleibt abgehakt**, unberührte Posten werden nie gesendet |
+| abgehakt, seit dem Gerät bekannt unverändert | Haken zurückgenommen | **nicht abgehakt**                                         |
+| inzwischen von jemand anderem abgehakt       | Haken zurückgenommen | **bleibt abgehakt** („Abhaken gewinnt“)                    |
+| Posten inzwischen gelöscht                   | beliebig             | verworfen, kein Fehler                                     |
 
-- Das Client-Schema von PowerSync ist eine Sicht auf JSON-Daten. Neue Tabellen und Spalten
-  brauchen **keine Client-Migration**.
-- Installierte Apps aktualisieren sich verzögert. Deshalb gilt **expand → migrate → contract**:
-  Neues hinzufügen und befüllen; Altes erst entfernen, wenn keine ausgelieferte Version es mehr
-  liest.
+- Mehrfaches Hin- und Hertippen wird zusammengefasst: Gesendet wird nur der Endzustand je Posten.
+  Gleicht er dem Ausgangszustand, wird nichts gesendet.
+- Die Warteschlange blockiert nie. Vorübergehende Fehler (offline, 5xx, Timeout) werden später
+  wiederholt. Dauerhafte Fehler (4xx) werden verworfen und protokolliert.
 
-## Fotos und Dateien
+## Anmeldung offline
 
-Fotos werden lokal gespeichert und über eine eigene Warteschlange hochgeladen
-(PowerSync-Attachments). Andere Geräte laden sie bei Netz nach und halten sie dann offline vor.
-Das Detail regelt die erste Spec mit Fotos.
+- Die Sitzung wird lokal gespeichert. Die App startet offline mit der letzten Sitzung und dem Cache.
+- Tokens werden beim nächsten Netz erneuert. Bis dahin liest die App aus dem Cache und sammelt
+  Haken.
+- **Abmelden löscht Cache und Warteschlange** auf diesem Gerät.
 
-## Web
+## Web und PWA
 
-Das MVP läuft **zuerst als Web-App** und wird auf dem Handy über „Zum Home-Bildschirm“ als PWA
-genutzt (siehe Vision). Web-Offline ist deshalb **Teil des MVP**, nicht später:
+Das MVP läuft als Web-App und wird auf dem Handy als PWA vom Home-Bildschirm genutzt (siehe
+Vision). Damit sie im Laden ohne Netz überhaupt startet:
 
-- **Daten:** PowerSync Web SDK, SQLite im Browser (OPFS bzw. IndexedDB).
-- **App-Hülle:** ein Service Worker cached HTML, JavaScript und Assets. Ohne ihn lädt die Seite im
-  Laden ohne Netz gar nicht erst, auch wenn die Daten lokal liegen.
+- **App-Hülle:** Ein Service Worker cached HTML, JavaScript und Assets.
+- **Daten:** Der Cache liegt im Browser-Speicher.
 - **iOS Safari:** Nicht installierte Websites können ihren Speicher nach längerer Nichtnutzung
   verlieren. Als PWA zum Home-Bildschirm hinzugefügt ist das deutlich robuster. Die App weist beim
   ersten Start darauf hin.
 
-Die nativen Apps folgen, wenn das MVP taugt. Der Code bleibt dafür plattformneutral:
-Datenzugriff nur über `packages/api`, keine Web-only-APIs in Features.
+Der Code bleibt plattformneutral: Datenzugriff nur über `packages/api`, und der Cache-Speicher
+steckt hinter einer Schnittstelle. Die nativen Apps bekommen später einen anderen Speicher, aber
+denselben Abgleich.
+
+## Schema-Entwicklung
+
+- Der Cache ist **wegwerfbar**. Ändert sich seine Struktur, erhöht die App die Cache-Version und
+  lädt einmal voll neu. Eine Client-Migration gibt es nicht.
+- Auf dem Server gilt weiter **expand → migrate → contract**, weil ältere App-Versionen dieselbe
+  API nutzen.
+
+## Fotos
+
+Fotos lädt das Gerät bei Netz und hält sie im Cache vor. Hochladen geht nur online. Das Detail
+regelt die erste Spec mit Fotos.
 
 ## Testen
 
-- Konflikt- und Merge-Regeln sind reine Funktionen in `packages/core` und werden dort per Unit-Test
-  geprüft.
-- Mandantentrennung: pgTAP-Tests je Tabelle (siehe `db-change`-Skill).
-- Ende-zu-Ende: zwei Clients, beide offline ändern, beide online. Kommt mit der ersten Daten-Spec.
+- **Reine Funktionen in `packages/core`:** Delta anwenden (Upsert, Löschungen, Cursor,
+  Sicherheitsfenster) und Haken zusammenfassen. Hier liegen die meisten Tests.
+- **pgTAP:** RLS je Tabelle, Lösch-Trigger, die Regeln der Abhak-RPC (alle Zeilen der Tabelle oben).
+- **Ende-zu-Ende:** zwei Browser, einer offline beim Abhaken, beide wieder online. Kommt mit der
+  ersten Daten-Spec.
 
 ## Bewusst nicht gewählt
 
-- **CRDTs** (z. B. für gemeinsames Bearbeiten eines Textes in Echtzeit): Für diese Daten reichen
-  die Regeln oben. Ein CRDT bringt Komplexität ohne Nutzen. Neu bewerten, falls gemeinsames
-  Live-Bearbeiten langer Texte gewünscht wird.
-- **Eigene Sync-Engine**: Checkpoints, Reihenfolge und Wiederaufnahme selbst zu bauen ist genau
-  der fehleranfällige Teil, den PowerSync abnimmt.
+- **Offline-Bearbeiten für alles:** Jede Tabelle bräuchte Konfliktregeln. Erweiterbar je Feature,
+  wenn es gebraucht wird. Erster Kandidat: Posten im Laden hinzufügen.
+- **PowerSync oder ein anderer Sync-Dienst:** ein Dienst mehr (ADR-0008).

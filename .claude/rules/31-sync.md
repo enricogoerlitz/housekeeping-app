@@ -1,31 +1,30 @@
 ---
 paths:
   - 'packages/api/**'
+  - 'packages/core/**'
   - 'supabase/**'
-  - 'powersync/**'
 ---
 
 # Sync
 
-The full concept is in `docs/architecture/sync.md`; load the `powersync` skill before working
-here. These rules are the part that must never be violated.
+The concept is in `docs/architecture/sync.md` (ADR-0008). These rules must never be violated.
 
-- **Reads are local.** UI code queries the local database (reactive queries). It never awaits a
-  network request to show daily-use data.
-- **Writes are local.** Every mutation writes to the local database in a transaction; the upload
-  queue carries it to Supabase. No feature calls Supabase directly for data it also syncs.
-- **Online-only is the exception** and must be named in the spec: sign-in, creating or joining a
-  household, invitations. These show a clear offline state instead of failing silently.
-- **Upload sends only changed columns** (PATCH semantics), so concurrent edits of different
-  fields both survive.
-- **The upload queue never blocks.** Transient errors (offline, 5xx, timeout) retry with backoff.
-  Permanent errors (4xx: RLS denied, constraint violated) drop the operation, record it locally
-  and surface a hint in the UI.
-- **No stored aggregates that two devices edit.** Store contributions per source and compute
-  totals when reading.
-- **Order with fractional keys**, never by renumbering positions.
-- **Natural keys get deterministic ids** where two devices may create the same thing offline
-  (e.g. an article by name): see the sync concept.
-- **The client schema only grows.** Add tables and columns; never remove or rename what a released
-  app version still reads.
-- **Sync streams filter by household membership**, mirroring RLS exactly.
+- **Reads come from the local cache.** UI code reads reactively from the cache in `packages/api`.
+  It never awaits a network request to show data.
+- **Writes are online.** They go straight to Supabase (API or RPC), followed by a delta sync. When
+  offline, write actions are disabled with a clear hint. They are never queued silently.
+- **The only offline write is checking shopping items.** It goes through the check queue and the
+  check RPC, rule "checking wins". Adding another offline write needs a spec and an ADR.
+- **Multi-row actions are one RPC in one transaction.** No client-side sequences of writes that
+  can stop halfway.
+- **Every synced table has a server-set `updated_at`** (trigger) and a delete trigger into
+  `deleted_records`. Without both, the delta sync silently misses changes.
+- **The cursor advances only after a sync step fully succeeded**, and every delta query overlaps by
+  the safety window. Applying the same row twice must be harmless (upsert).
+- **The cache is disposable.** Changing its shape bumps the cache version and triggers a full load.
+  Never migrate cache data in place.
+- **Realtime is only a signal** that triggers the normal delta sync. Never apply realtime payloads
+  to the cache directly.
+- **Sync and merge logic are pure functions in `packages/core`** with unit tests. `packages/api`
+  only does I/O.
+- **Sign-out clears the cache and the check queue.**

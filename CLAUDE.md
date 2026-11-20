@@ -2,8 +2,8 @@
 
 ## Claude Code
 
-- Use plan mode for critical paths: authentication, Row Level Security, the sync upload path,
-  migrations, data deletion, and infrastructure.
+- Use plan mode for critical paths: authentication, Row Level Security, delta sync and the check
+  queue, migrations, data deletion, and infrastructure.
 - When something is unclear, use `AskUserQuestion` with 2-4 concrete options, each with pros and
   cons, and mark your recommendation.
 - Prefer the `Explore` subagent for broad codebase searches so the main context stays clean.

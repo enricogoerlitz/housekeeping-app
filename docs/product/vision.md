@@ -12,8 +12,9 @@ eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf 
 
 ## Grundsätze
 
-1. **Alles funktioniert offline.** Im Supermarkt gibt es oft kein Netz. Abgleich passiert im
-   Hintergrund ([Sync-Konzept](../architecture/sync.md)).
+1. **Im Laden geht alles, was man dort braucht, auch ohne Netz:** alles lesen und die Liste
+   abhaken. Bearbeiten braucht Netz und ist offline klar als solches erkennbar
+   ([Sync-Konzept](../architecture/sync.md)).
 2. **Alles Strukturierende ist optional.** Ein Artikel ohne Bereich, ein Rezept ohne Foto, ein
    Wochenplan-Eintrag ohne Rezept: Alles ist erlaubt und nichts blockiert.
 3. **Gemeinsam, live.** Beide sehen dieselbe Liste. Hakt eine Person etwas ab, sieht es die andere
@@ -48,8 +49,8 @@ eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf 
   Antippen sieht man die Herkunft („Lasagne (Mo): 1× · Pfannkuchen (Mi): 1×“).
 - Von Hand: Name tippen (mit Autovervollständigung), optional ein **Zusatz** als Freitext
   („laktosefrei“, „die große Packung“).
-- Gespeichert werden die Beiträge je Herkunft, die Summe entsteht erst in der Anzeige. So
-  überschreiben sich zwei Geräte offline nicht gegenseitig.
+- Gespeichert werden die Beiträge je Herkunft, die Summe entsteht erst in der Anzeige. So kann
+  „Liste erneut erzeugen“ die Rezept-Beiträge neu berechnen, ohne manuelle Beiträge anzufassen.
 
 ### Wochenplan und Liste
 
