@@ -31,6 +31,9 @@ eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf 
   Kern **nur einen Namen**, eindeutig je Haushalt. Optional gehört er zu einem Bereich.
 - Ein Artikel entsteht **automatisch**, sobald irgendwo ein neuer Name eingegeben wird, im Rezept
   oder auf der Liste. Einen Katalog muss niemand vorab pflegen.
+  _Geändert durch UI-Konzept v2 / Spec 0007:_ Im Rezept wählt man den Artikel per „Suchen oder
+  anlegen“ und legt einen neuen bewusst an; jede Zutat verweist auf einen Artikel. Auf der Liste
+  entsteht er weiter bei der Eingabe.
 - Eine **Rezeptzutat** verbindet Rezept und Artikel. Sie hat zwei Angaben:
   - **Rezeptangabe**: wie viel zum Kochen gebraucht wird („200 ml“, „1 Prise“, „2 EL“). Freitext.
     Ist sie als Zahl + Einheit erkennbar, wird sie beim Umrechnen der Portionen mitskaliert.
@@ -58,6 +61,8 @@ eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf 
   ein Rezept mit Portionen oder ein Freitext („Essen bei Oma“).
 - Es kann **mehrere Einkaufslisten** geben. Eine davon ist die **Standardliste**, in die der
   Wochenplan schreibt.
+  _Geändert durch UI-Konzept v2 / Spec 0006:_ Jeder Haushalt hat genau **eine** Einkaufsliste; die
+  Standardliste entfällt, weitere Listen werden in sie zusammengeführt.
 - **Liste erneut erzeugen** berechnet nur die Beiträge aus Rezepten neu. Manuelle Posten und
   abgehakte Posten werden nie überschrieben.
 

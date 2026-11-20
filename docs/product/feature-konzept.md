@@ -142,7 +142,8 @@ Von dir festgelegt, nicht mehr offen:
 - **Mitglied:** Anzeigename, Farbe, _Ernährungsform_ (vegan, vegetarisch, flexibel),
   Abneigungen und Unverträglichkeiten.
 - **Haushalt:** Name, Zeitzone, Mahlzeiten im Plan (Standard: Mittag, Abend), Wochenstart,
-  Standardmarkt, Standardliste.
+  Standardmarkt, Standardliste. _Geändert durch UI-Konzept v2 / Spec 0006: keine Standardliste
+  mehr, genau eine Einkaufsliste je Haushalt._
 - **Einladen** per Link oder Code; die Google-Adresse kommt auf die Allowlist.
 - **Persönlich:** Uhrzeit der Tageszusammenfassung, Benachrichtigungen, Erscheinungsbild,
   KI-Schalter. Die KI-Schalter werden lokal auf dem Gerät gespeichert.
@@ -210,7 +211,9 @@ großem Kochmodus-Knopf, nach dem Essen „Morgen“.
 
 - **Schnellanlage:** nur der Titel.
 - **Zutaten einfügen oder diktieren:** Jede Zeile wird zu Rezeptangabe + Artikel. Was der Parser
-  nicht sicher erkennt, bleibt markierter Freitext.
+  nicht sicher erkennt, bleibt markierter Freitext. _Geändert durch UI-Konzept v2 / Spec 0007:_
+  Unsichere Zeilen stehen orange mit „Artikel wählen“ und werden erst mit Artikel gespeichert; eine
+  Zutat ohne Artikel gibt es nicht mehr.
 - **Aus Link:** Strukturierte Rezeptdaten der Seite inklusive Foto. Instagram-, TikTok- und
   YouTube-Links werden aus der Beschreibung gelesen.
 - **Aus Foto:** Kochbuchseite, handgeschriebene Karte oder ein Bild des Gerichts.
@@ -328,6 +331,11 @@ Alle Wege landen **als Entwurf in derselben Rezeptmaske**.
 
 **Grundsatz:** zuerst einfach eine Liste. Markt, Bereiche und Pläne sind Zusätze.
 
+> _Geändert durch UI-Konzept v2 / Spec 0006 und 0009:_ Es gibt genau eine Einkaufsliste je
+> Haushalt (keine Standardliste, keine weiteren Listen, Markt nur noch beim Einkaufen). Eine
+> Sammlung ist kein Set von Artikeln mehr, sondern ein Rezept der Art „Sammlung“ mit eigenen
+> Zutaten und enthaltenen Rezepten. Die Skizzen unten zeigen noch den alten Stand.
+
 ```
 ┌──────────────────────────────────────────────┐
 │ Standardliste ▾            Markt: keiner ▾   │
@@ -387,7 +395,8 @@ wurde, bleibt gemerkt: „Liste erneut erzeugen“ holt es nicht zurück.
   etwa alle 3 Wochen nach dem letzten Kauf“). Sie haben eine eigene Herkunft und kommen nie
   doppelt.
 - **Sammlungen:** benannte Sets mit Zusätzen („Grillabend“, „Plätzchen“, „Frühstück“), die mit
-  einem Tipp durch den Vorratscheck auf eine Liste gehen.
+  einem Tipp durch den Vorratscheck auf eine Liste gehen. _Geändert durch UI-Konzept v2 / Spec
+  0009: ein Rezept der Art „Sammlung“ mit eigenen Zutaten und enthaltenen Rezepten._
 - **Plan geändert:** Statt die Liste still anzupassen, zeigt sie „Curry geändert · 3 Posten
   betroffen“, mit Vorschau vor dem Neuberechnen. Geändert werden nur offene Posten. Ist schon
   gekauft, fragt die App: „Zutaten sind da – neu einplanen?“.
@@ -402,7 +411,8 @@ wurde, bleibt gemerkt: „Liste erneut erzeugen“ holt es nicht zurück.
   kleiner Punkt zeigt, was noch nicht synchronisiert ist. Festgehalten im Nachtrag zu ADR-0008.
 - **Einkauf abschließen:** „8 gekauft · 2 bleiben“. Erledigte Posten werden geleert, sobald Netz
   da ist.
-- **Mehrere Listen:** Standardliste plus z. B. „Drogerie“ oder „Grillabend“.
+- **Mehrere Listen:** Standardliste plus z. B. „Drogerie“ oder „Grillabend“. _Geändert durch
+  UI-Konzept v2 / Spec 0006: entfällt, es gibt genau eine Einkaufsliste (D25)._
 
 ### F6 — Märkte und Bereiche (optional)
 
@@ -838,6 +848,10 @@ Ganzes gelesen und nie gefiltert wird.** Die Tabellen legt jede Spec mit dem `db
 | Haushaltsplan | `chores` (Anker, `next_due_on`, Zuständigkeit, Rotation, Aufwand, Raum, aktive Monate) · `chore_events` (erledigt/übersprungen/spontan, für Termin, von wem)                                                                                                                                             | Rhythmus, Unteraufgaben              |
 | KI            | `ai_conversations` · `ai_messages` · `ai_proposals` (Status, Teile) · `household_memory` (Eintrag, Quelle, Person)                                                                                                                                                                                       | Inhalte, Vorschlagsteile, Kontext    |
 | Feedback      | `feedback` (Art, Status, Begründung, Spec) · `feedback_votes`                                                                                                                                                                                                                                            | Kontext (Bildschirm, Version, Gerät) |
+
+_Geändert durch UI-Konzept v2 / Spec 0006 und 0009:_ `shopping_lists` hat genau eine Zeile je
+Haushalt. `collections` entfällt: Eine Sammlung ist ein Rezept der Art „Sammlung“; welche Rezepte
+sie enthält, steht in einer eigenen kleinen Tabelle (Konzept 4.3).
 
 **Fest in der App** (keine Tabellen): Starter-Katalog, Starter-Rezepte, vorgegebene Bereiche,
 Aufgaben-Vorlagen. **Nur lokal auf dem Gerät:** KI-Schalter.
