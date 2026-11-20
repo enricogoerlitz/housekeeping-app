@@ -9,6 +9,14 @@
 >
 > Nachtrag vom selben Tag: Verwalten in der Seitenleiste (3.12), Reisetaschen (3.13) und
 > Benachrichtigungen (3.14), mit den Entscheidungen D30 bis D43.
+>
+> Nachtrag vom 21.11.2026 (Enricos Wünsche, eingearbeitet in die Specs): Der Tab **„Heute“ heißt
+> „Übersicht“**, weil er durch die Wochen blättert (Spec 0005, AC-061; Spec 0011). Wo dieses
+> Dokument die Seite „Heute“ nennt, ist die Übersicht gemeint; „Heute“ bleibt der Knopf zurück zum
+> heutigen Tag. **„Reste“** im Hinzufügen-Fenster bietet die Gerichte der sieben Tage vor dem
+> Zieltag an, auch aus der Vorwoche (Spec 0010, REQ-011). **Abwesenheiten** wählt man mit einem
+> Monatskalender über Wochen-, Monats- und Jahresgrenzen (Spec 0010, AC-042 bis AC-044). Die Seite
+> **„Aktivitäten“** liegt unter `/kalender/aktivitaeten` (Spec 0010, AC-039 bis AC-041).
 
 **So liest du das Dokument**
 

@@ -3,23 +3,24 @@ status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
-# 0011 — Heute und Haushalt
+# 0011 — Übersicht und Haushalt
 
 ## Problem
 
-„Heute“ kennt nur die laufende Woche. Man kann nicht nachsehen, was nächste Woche ansteht, und in
-der kleinen Wochenleiste passt je Tag nur ein Eintrag, obwohl ein Tag jetzt Vormittag, Mittag und
-Abend mit mehreren Einträgen hat. „Wie war's?“ fragt nur das letzte Rezept von gestern ab, in
-ganzen Sternen; Restaurants und Aktivitäten vom Wochenende gehen unter. Beim Abhaken einer Aufgabe
-rutscht die Liste sofort nach, und „Was anderes erledigt?“ nimmt nur Freitext: Die passende Aufgabe
-wird nicht gefunden, und ihr nächster Termin bleibt, als wäre nichts passiert. Im Haushalt lassen
-sich Aufgaben nicht bearbeiten, die Breite springt zwischen den Ansichten, und der Verlauf ist eine
-lange, ungegliederte Liste.
+Die Startseite (bis 21.11.2026 „Heute“, jetzt „Übersicht“) kennt nur die laufende Woche. Man kann
+nicht nachsehen, was nächste Woche ansteht, und in der kleinen Wochenleiste passt je Tag nur ein
+Eintrag, obwohl ein Tag jetzt Vormittag, Mittag und Abend mit mehreren Einträgen hat. „Wie war's?“
+fragt nur das letzte Rezept von gestern ab, in ganzen Sternen; Restaurants und Aktivitäten vom
+Wochenende gehen unter. Beim Abhaken einer Aufgabe rutscht die Liste sofort nach, und „Was anderes
+erledigt?“ nimmt nur Freitext: Die passende Aufgabe wird nicht gefunden, und ihr nächster Termin
+bleibt, als wäre nichts passiert. Im Haushalt lassen sich Aufgaben nicht bearbeiten, die Breite
+springt zwischen den Ansichten, und der Verlauf ist eine lange, ungegliederte Liste.
 
 ## Ziel
 
-- Auf „Heute“ blättert man beliebig weit durch die Wochen, tippt einen Tag an und sieht alles, was
-  an diesem Tag geplant und zu tun ist. Ein Tipp führt zurück zu heute, einer in den Kalender.
+- Auf der „Übersicht“ blättert man beliebig weit durch die Wochen, tippt einen Tag an und sieht
+  alles, was an diesem Tag geplant und zu tun ist. Ein Tipp führt zurück zu heute, einer in den
+  Kalender.
 - „Wie war's?“ listet alles Unbewertete der letzten drei Tage: Rezepte, Sammlungen, Restaurants und
   Aktivitäten. Bewertet wird in halben Sternen; die Zeile räumt sich danach selbst weg.
 - Aufgaben hakt man ab wie überall in der App: durchgestrichen, nochmal tippen nimmt zurück, zwei
@@ -31,7 +32,8 @@ lange, ungegliederte Liste.
 
 ## Nicht-Ziele
 
-- **Kein Kalender auf „Heute“.** Woche, Monat und Jahr sind Spec 0010; „Heute“ verlinkt nur dorthin.
+- **Kein Kalender auf der „Übersicht“.** Woche, Monat und Jahr sind Spec 0010; die „Übersicht“
+  verlinkt nur dorthin.
 - **Keine Uhrzeiten an Aufgaben und keine Erinnerungen.** Kommen mit Spec 0013.
 - **Keine Karte „Reisetasche“.** Kommt mit Spec 0012.
 - **Keine weiteren Haushaltsplan-Funktionen aus F7:** kein „Abgeben“, kein „Neu verteilen“, keine
@@ -49,7 +51,14 @@ lange, ungegliederte Liste.
 Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`, Abschnitte 2.5, 3.1,
 3.10, 4.5, 4.6; Entscheidungen D1, D3, D6 bis D9, D19, D27).
 
-- **Kopf von „Heute“:** Titel mit dem gezeigten Tag, darunter ‹ „Diese Woche · KW 47“ ›. Sobald
+**Geändert am 21.11.2026 — „Übersicht“ statt „Heute“:** Weil die Seite durch die Wochen blättert,
+heißt der Tab „Übersicht“ (Beschriftung: Spec 0005, AC-061). In dieser Spec ist der neue Name
+überall eingesetzt, wo die Seite gemeint ist; die Kriterien ändern sich sonst nicht. „Heute“
+bleibt der Knopf, der zum heutigen Tag zurückführt, und steckt in „Heute geplant“. Adresse `/`
+und die Test-IDs `tab-index` und `today-*` bleiben (AC-062). Das Layout am Desktop heißt weiter
+„Übersicht“ (Spec 0005); es ist das Layout dieser Seite.
+
+- **Kopf der „Übersicht“:** Titel mit dem gezeigten Tag, darunter ‹ „Diese Woche · KW 47“ ›. Sobald
   eine andere Woche oder ein anderer Tag zu sehen ist, steht in der Mitte der Knopf „Heute“. Rechts
   das Kalender-Symbol (öffnet den Kalender in der gezeigten Woche), ⊞ Verwalten und der Avatar
   (Spec 0005).
@@ -72,9 +81,10 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`, A
 - **„Zu tun“ und Haushalt „Anstehend“:** Abhaken mit Sammel-Fenster (Spec 0005, D3). Gebucht wird
   erst, wenn das Fenster abläuft. Der Hinweis „Erledigt von dir · Nadja“ entfällt; wer es war,
   ändert man im Verlauf.
-- **„Was anderes erledigt?“** (großes Fenster, auf „Heute“ und im Haushalt): Suchen oder anlegen
-  (Spec 0005) über alle Aufgaben, darunter „Erledigt von“ und „heute ▾“ (gestern, vorgestern). Kein
-  Treffer: neue Aufgabe „bei Bedarf“ (D27); mit „Mehr Angaben ▸“ gleich eine geplante Aufgabe.
+- **„Was anderes erledigt?“** (großes Fenster, auf der „Übersicht“ und im Haushalt): Suchen oder
+  anlegen (Spec 0005) über alle Aufgaben, darunter „Erledigt von“ und „heute ▾“ (gestern,
+  vorgestern). Kein Treffer: neue Aufgabe „bei Bedarf“ (D27); mit „Mehr Angaben ▸“ gleich eine
+  geplante Aufgabe.
 - **Haushalt:** Ansichts-Tabs Anstehend · Alle · Verlauf (D1) mit einer Inhaltsbreite; am Desktop
   „Alle“ und „Verlauf“ als Liste und Detail. Ein Tipp öffnet die Aufgabe mit Aktionen, „Bearbeiten“
   und „Löschen“. Der Verlauf gliedert sich in Monate und Wochen; eine Jahreszahl trennt die Jahre.
@@ -108,15 +118,15 @@ Desktopbreite 1440 px.
 
 ### REQ-001 — Woche blättern und Tag wählen
 
-> Auf „Heute“ blättert man mit ‹ › beliebig weit durch die Wochen und wählt in der Wochenleiste
-> einen Tag; die ganze Seite zeigt dann diesen Tag, als wäre er heute.
+> Auf der „Übersicht“ blättert man mit ‹ › beliebig weit durch die Wochen und wählt in der
+> Wochenleiste einen Tag; die ganze Seite zeigt dann diesen Tag, als wäre er heute.
 
 **Offline:** offline vollständig — liest nur aus dem lokalen Speicher, schreibt nichts.
 
 **AC-001 — Start**
 
 ```gherkin
-Angenommen  es ist Freitag, 20.11.2026, 8 Uhr, und Enrico öffnet „Heute“
+Angenommen  es ist Freitag, 20.11.2026, 8 Uhr, und Enrico öffnet die „Übersicht“
 Dann        steht oben „Freitag, 20. November“ und „Guten Morgen, Enrico“
 Und         zwischen ‹ und › steht „Diese Woche · KW 47“
 Und         die Wochenleiste zeigt Mo 16. bis So 22., Freitag ist gewählt
@@ -125,7 +135,7 @@ Und         die Wochenleiste zeigt Mo 16. bis So 22., Freitag ist gewählt
 **AC-002 — Anderen Tag wählen und zurück**
 
 ```gherkin
-Angenommen  „Heute“ zeigt Freitag, 20.11.2026
+Angenommen  die „Übersicht“ zeigt Freitag, 20.11.2026
 Wenn        ich in der Wochenleiste auf Samstag tippe
 Dann        heißt der Titel „Morgen, Samstag 21. November“
 Und         die Abschnitte heißen „Geplant am Samstag“ und „Zu tun am Samstag“
@@ -137,7 +147,7 @@ Dann        ist wieder Freitag gewählt, und zwischen ‹ und › steht „Diese
 **AC-003 — Blättern (Annahme, Offene Frage 2)**
 
 ```gherkin
-Angenommen  „Heute“ zeigt Freitag, 20.11.2026
+Angenommen  die „Übersicht“ zeigt Freitag, 20.11.2026
 Wenn        ich zweimal auf › tippe
 Dann        zeigt die Wochenleiste KW 49 mit Mo 30. November bis So 6. Dezember
 Und         gewählt ist Freitag, 4. Dezember, und der Titel heißt „Freitag, 4. Dezember“
@@ -148,7 +158,7 @@ Dann        zeigt die Wochenleiste KW 46 mit Mo 9. bis So 15. November, gewählt
 **AC-004 — In den Kalender**
 
 ```gherkin
-Angenommen  „Heute“ zeigt Samstag, 28.11.2026 (KW 48)
+Angenommen  die „Übersicht“ zeigt Samstag, 28.11.2026 (KW 48)
 Wenn        ich oben rechts auf das Kalender-Symbol tippe
 Dann        öffnet sich der Kalender in der Ansicht „Woche“ mit „KW 48 · 23.–29. Nov“
 ```
@@ -159,7 +169,7 @@ Dann        öffnet sich der Kalender in der Ansicht „Woche“ mit „KW 48 ·
 Angenommen  am Donnerstag, 19.11., stehen die Rezepte „Shakshuka“ und „Linsen-Dal“ und das
             Restaurant „Trattoria Da Enzo“
 Und         Nadja ist von Samstag, 21.11., bis Donnerstag, 26.11., abwesend
-Wenn        ich „Heute“ in Handybreite öffne
+Wenn        ich die „Übersicht“ in Handybreite öffne
 Dann        trägt Donnerstag genau zwei Punkte: einen in der Farbe für Rezepte, einen in der Farbe
             für Restaurants
 Und         unter Samstag und Sonntag liegt ein Streifen in Nadjas Mitgliederfarbe
@@ -169,7 +179,7 @@ Und         unter Samstag und Sonntag liegt ein Streifen in Nadjas Mitgliederfar
 
 ```gherkin
 Angenommen  heute stehen „Bouldern“ am Vormittag sowie „Lasagne“ und „Trattoria Da Enzo“ am Abend
-Wenn        ich „Heute“ in Desktopbreite öffne
+Wenn        ich die „Übersicht“ in Desktopbreite öffne
 Dann        zeigt die Kachel für Freitag das Foto und den Titel von „Bouldern“ und „+2“
 ```
 
@@ -177,7 +187,7 @@ Dann        zeigt die Kachel für Freitag das Foto und den Titel von „Bouldern
 
 ```gherkin
 Angenommen  Nadja ist von Samstag, 21.11., bis Donnerstag, 26.11., abwesend, Notiz „Urlaub Mallorca“
-Wenn        ich auf „Heute“ Montag, 23.11., wähle
+Wenn        ich auf der „Übersicht“ Montag, 23.11., wähle
 Dann        steht auf der Seite die Zeile „Nadja · Urlaub Mallorca · bis Do 26.11.“
 Wenn        ich Freitag, 27.11., wähle
 Dann        fehlt die Zeile
@@ -188,11 +198,23 @@ Dann        heißt die Zeile „Nadja ist abwesend bis Do 26.11.“
 **AC-008 — Rückweg behält den Tag (Annahme, Offene Frage 2)**
 
 ```gherkin
-Angenommen  „Heute“ zeigt Samstag, 21.11.
+Angenommen  die „Übersicht“ zeigt Samstag, 21.11.
 Wenn        ich die Karte „Kürbissuppe“ öffne und zurückgehe
-Dann        zeigt „Heute“ wieder Samstag, 21.11.
+Dann        zeigt die „Übersicht“ wieder Samstag, 21.11.
 Wenn        ich die App schließe und am nächsten Tag neu starte
-Dann        zeigt „Heute“ den neuen heutigen Tag
+Dann        zeigt die „Übersicht“ den neuen heutigen Tag
+```
+
+**AC-062 — Name „Übersicht“, Knopf „Heute“** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  es ist Freitag, 20.11.2026, 8 Uhr, und die „Übersicht“ zeigt Freitag, 4.12.2026 (KW 49)
+Dann        heißt der aktive Tab „Übersicht“, und zwischen ‹ und › steht der Knopf „Heute“
+Wenn        ich auf „Heute“ tippe
+Dann        zeigt die Seite Freitag, 20.11.2026, mit „Guten Morgen, Enrico“ und „Diese Woche · KW
+            47“
+Und         der Tab heißt weiter „Übersicht“, die Adresse ist `/`
+Und         die Karten und Abschnitte tragen dieselben Test-IDs wie vor der Umbenennung (`today-*`)
 ```
 
 ### REQ-002 — Geplantes des gezeigten Tags
@@ -210,7 +232,7 @@ Angenommen  heute stehen „Bouldern“ (Aktivität, Vormittag, Zusatz „Boulde
             (Rezept, Abend, Enrico kocht) und „Trattoria Da Enzo“ (Restaurant, Abend)
 Und         morgen steht ein Rezept mit dem Vorlauf „Kichererbsen einweichen, 12 Stunden vorher“
 Und         „Bad putzen“ ist heute fällig, und auf der Einkaufsliste sind 12 Posten offen
-Wenn        ich „Heute“ öffne
+Wenn        ich die „Übersicht“ öffne
 Dann        stehen unter „Heute geplant“ die Karten „Bouldern (Boulderhalle Ost)“, „Lasagne“ und
             „Trattoria Da Enzo“ in dieser Reihenfolge
 Und         jede Karte trägt ihr Kennzeichen und ihre Tageszeit, „Lasagne“ zusätzlich Enricos Avatar
@@ -222,11 +244,11 @@ Und         darunter stehen „Für morgen: Kichererbsen einweichen (12 h)“, u
 
 ```gherkin
 Angenommen  heute stehen drei Einträge
-Wenn        ich „Heute“ in Handybreite öffne
+Wenn        ich die „Übersicht“ in Handybreite öffne
 Dann        stehen die drei Karten nebeneinander in einer Zeile, die sich waagerecht wischen lässt,
             und die dritte ist am rechten Rand angeschnitten
 Und         mit sechs statt drei Einträgen beginnt „Zu tun“ an derselben Stelle der Seite
-Wenn        ich „Heute“ in Desktopbreite öffne
+Wenn        ich die „Übersicht“ in Desktopbreite öffne
 Dann        stehen die Karten in einem Raster mit Fotos im Format 16:10
 ```
 
@@ -273,9 +295,9 @@ Dann        fehlt dieser Hinweis
 
 ### REQ-003 — „Wie war's?“ für alles Planbare der letzten drei Tage
 
-> Zeigt „Heute“ den heutigen Tag, fragt „Wie war's?“ jede Person nach ihren unbewerteten Rezepten,
-> Sammlungen, Restaurants und Aktivitäten von gestern, vorgestern und dem Tag davor; bewertet wird
-> in halben Sternen.
+> Zeigt die „Übersicht“ den heutigen Tag, fragt „Wie war's?“ jede Person nach ihren unbewerteten
+> Rezepten, Sammlungen, Restaurants und Aktivitäten von gestern, vorgestern und dem Tag davor;
+> bewertet wird in halben Sternen.
 
 **Offline:** offline lesend — die Liste ist sichtbar; Bewerten und „Nicht gemacht“ schreiben und
 brauchen deshalb Netz (ADR-0008).
@@ -288,7 +310,7 @@ Angenommen  heute ist Montag, 23.11.2026, Enrico stand überall unter „Wer iss
 Und         Fr 20.11.: Rezept „Lasagne“; Sa 21.11.: Restaurant „Trattoria Da Enzo“;
             So 22.11.: Aktivität „Bouldern“ (Vormittag) und Sammlung „Grillabend“ (Abend)
 Und         Do 19.11.: Rezept „Mango-Curry“
-Wenn        Enrico „Heute“ öffnet
+Wenn        Enrico die „Übersicht“ öffnet
 Dann        listet „Wie war's?“ „Bouldern“, „Grillabend“, „Trattoria Da Enzo“ und „Lasagne“ in dieser
             Reihenfolge, jeweils mit Bild, Name, Kennzeichen und leeren Sternen
 Und         „Mango-Curry“ fehlt, weil es vier Tage her ist
@@ -303,7 +325,7 @@ Angenommen  heute ist Montag, 23.11.2026
 Und         gestern standen der Freitext „Essen bei Oma“, „Reste von Lasagne“ und das Rezept „Pizza“,
             das als „nicht gekocht“ markiert ist
 Und         vorgestern stand „Shakshuka“, bei dem Enrico nicht unter „Wer isst mit?“ stand
-Wenn        Enrico „Heute“ öffnet
+Wenn        Enrico die „Übersicht“ öffnet
 Dann        erscheint keiner dieser Einträge unter „Wie war's?“
 Und         bei Nadja, die bei „Shakshuka“ mitgegessen hat, steht „Shakshuka“ unter „Wie war's?“
 ```
@@ -342,7 +364,7 @@ Und         gespeichert ist meine Bewertung 4
 ```gherkin
 Angenommen  Enrico hat „Lasagne“ am 1.10.2026 mit 5 Sternen bewertet
 Und         „Lasagne“ stand am Samstag, 21.11., wieder im Kalender, Enrico hat mitgegessen
-Wenn        Enrico am Montag, 23.11., „Heute“ öffnet
+Wenn        Enrico am Montag, 23.11., die „Übersicht“ öffnet
 Dann        steht „Lasagne“ unter „Wie war's?“, seine 5 Sterne sind vorausgefüllt
 Wenn        er auf die rechte Hälfte des vierten Sterns tippt
 Dann        ist seine Bewertung 4, die Zeile gleitet nach 2 Sekunden weg
@@ -363,7 +385,7 @@ Und         die Aktivität „Bouldern“ zeigt „Zuletzt: vor 22 Tagen“
 
 ```gherkin
 Angenommen  unter „Wie war's?“ stehen Einträge
-Wenn        ich auf „Heute“ einen anderen Tag als heute wähle
+Wenn        ich auf der „Übersicht“ einen anderen Tag als heute wähle
 Dann        gibt es auf der Seite keinen Abschnitt „Wie war's?“
 ```
 
@@ -371,7 +393,7 @@ Dann        gibt es auf der Seite keinen Abschnitt „Wie war's?“
 
 ```gherkin
 Angenommen  ich habe alles der letzten drei Tage bewertet
-Wenn        ich „Heute“ öffne
+Wenn        ich die „Übersicht“ öffne
 Dann        gibt es keinen Abschnitt „Wie war's?“
 Angenommen  unter „Wie war's?“ steht „Lasagne“, und das Gerät ist offline
 Dann        sind die Sterne und „Nicht gemacht“ ausgegraut mit „Offline – zum Bearbeiten brauchst du
@@ -439,8 +461,9 @@ Dann        wird das ebenfalls abgelehnt
 
 ### REQ-005 — Aufgaben abhaken mit Sammel-Fenster
 
-> In „Zu tun“ auf „Heute“ und in „Anstehend“ im Haushalt hakt man Aufgaben mit dem Sammel-Fenster
-> ab (Spec 0005); gebucht wird 2 Sekunden nach dem letzten Tipp oder sofort beim Verlassen der Seite.
+> In „Zu tun“ auf der „Übersicht“ und in „Anstehend“ im Haushalt hakt man Aufgaben mit dem
+> Sammel-Fenster ab (Spec 0005); gebucht wird 2 Sekunden nach dem letzten Tipp oder sofort beim
+> Verlassen der Seite.
 
 **Offline:** nur online — eine Erledigung schreibt Verlauf und nächsten Termin, und Aufgaben sind
 keine Laden-Aktion (ADR-0008). Ohne Netz sind die Haken ausgegraut mit Hinweis.
@@ -490,7 +513,7 @@ Und         ein Hinweis sagt „Nadja war schneller (10:02)“
 ```gherkin
 Angenommen  „Küche wischen“ (Enrico) ist laut Rhythmus am Samstag, 21.11., fällig
 Und         Nadja hat am Mittwoch, 18.11., „Fenster Wohnzimmer“ erledigt
-Wenn        ich auf „Heute“ Samstag, 21.11., wähle
+Wenn        ich auf der „Übersicht“ Samstag, 21.11., wähle
 Dann        steht unter „Zu tun am Samstag“ „Küche wischen“ mit Enricos Avatar, ohne Haken zum
             Antippen, und „Was anderes erledigt?“ fehlt
 Wenn        ich Mittwoch, 18.11., wähle
@@ -530,7 +553,7 @@ mit Hinweis.
 ```gherkin
 Angenommen  es gibt die Aufgaben „Fenster Wohnzimmer“ (alle 2 Monate) und „Fenster Küche“ (bei
             Bedarf)
-Wenn        ich auf „Heute“ „Was anderes erledigt?“ öffne und „fenster“ tippe
+Wenn        ich auf der „Übersicht“ „Was anderes erledigt?“ öffne und „fenster“ tippe
 Dann        stehen unter „Aufgaben“ „Fenster Wohnzimmer · alle 2 Monate“ und „Fenster Küche · bei
             Bedarf“
 Und         darunter steht „+ „fenster“ als neue Aufgabe“ mit „▸ Mehr Angaben (Rhythmus, wer)“
@@ -845,8 +868,9 @@ er ab, springt die Anzeige zurück mit „Hat nicht geklappt – bitte noch einm
 
 - **Handy:** Wochenleiste mit Punkten, „Heute geplant“ waagerecht wischbar, Aufgabe im mittleren
   Fenster, „Was anderes erledigt?“ im großen Fenster (Spec 0005).
-- **Tablet und Desktop:** Layout „Übersicht“ auf „Heute“ mit Tageskacheln; Haushalt als „Liste und
-  Detail“ in einer festen Inhaltsbreite. Die Sterne füllen sich beim Darüberfahren mit der Maus vor.
+- **Tablet und Desktop:** Layout „Übersicht“ auf der Seite „Übersicht“ mit Tageskacheln; Haushalt
+  als „Liste und Detail“ in einer festen Inhaltsbreite. Die Sterne füllen sich beim Darüberfahren
+  mit der Maus vor.
 - **Zurück:** Zurück aus einer Detailseite führt zum zuvor gezeigten Tag; die Android-Zurück-Taste
   schließt zuerst ein offenes Fenster.
 - **Barrierefreiheit:** Der Screenreader sagt „Bad putzen abgehakt“ bzw. „Haken entfernt“; die
@@ -885,15 +909,15 @@ er ab, springt die Anzeige zurück mit „Hat nicht geklappt – bitte noch einm
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-008 | —              | —    |
-| REQ-002 | AC-009 bis AC-014 | —              | —    |
-| REQ-003 | AC-015 bis AC-024 | —              | —    |
-| REQ-004 | AC-025 bis AC-027 | —              | —    |
-| REQ-005 | AC-028 bis AC-034 | —              | —    |
-| REQ-006 | AC-035 bis AC-042 | —              | —    |
-| REQ-007 | AC-043 bis AC-045 | —              | —    |
-| REQ-008 | AC-046 bis AC-048 | —              | —    |
-| REQ-009 | AC-049 bis AC-055 | —              | —    |
-| REQ-010 | AC-056 bis AC-061 | —              | —    |
+| REQ     | AC                        | Task (plan.md) | Test |
+| ------- | ------------------------- | -------------- | ---- |
+| REQ-001 | AC-001 bis AC-008, AC-062 | —              | —    |
+| REQ-002 | AC-009 bis AC-014         | —              | —    |
+| REQ-003 | AC-015 bis AC-024         | —              | —    |
+| REQ-004 | AC-025 bis AC-027         | —              | —    |
+| REQ-005 | AC-028 bis AC-034         | —              | —    |
+| REQ-006 | AC-035 bis AC-042         | —              | —    |
+| REQ-007 | AC-043 bis AC-045         | —              | —    |
+| REQ-008 | AC-046 bis AC-048         | —              | —    |
+| REQ-009 | AC-049 bis AC-055         | —              | —    |
+| REQ-010 | AC-056 bis AC-061         | —              | —    |

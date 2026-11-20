@@ -20,7 +20,7 @@ fehlt oft das Netz, und keiner weiß mehr genau, was alles mit war.
   die Packliste dieser Abwesenheit, mit „je Tag“-Anzahlen passend zur Dauer.
 - Auf der Urlaubsseite hakt man Packstücke ab, auch ohne Netz. Man sieht immer, was noch fehlt, und
   setzt die Liste für die Rückreise mit einem Schritt zurück.
-- „Heute“ und der Kalender führen mit einem Tipp zur Packliste, sobald der Urlaub ansteht.
+- Die „Übersicht“ und der Kalender führen mit einem Tipp zur Packliste, sobald der Urlaub ansteht.
 
 ## Nicht-Ziele
 
@@ -64,9 +64,9 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`, A
   „+ Reisetasche hinzufügen“; „Aus der Packliste entfernen“ je Tasche; ein Packstück entfernen.
 - **Offline (D34):** Packen geht ohne Netz über die Laden-Warteschlange mit „Abhaken gewinnt“.
   Hinzufügen und Entfernen brauchen Netz.
-- **„Heute“ und Kalender:** eine Karte je Packliste unten auf „Heute“, wenn die gezeigte Woche einen
-  Urlaubstag enthält oder der Urlaub in den 7 Tagen nach dem gezeigten Tag beginnt (D33); ein
-  Taschen-Symbol am Abwesenheits-Streifen.
+- **„Übersicht“ und Kalender:** eine Karte je Packliste unten auf der „Übersicht“, wenn die gezeigte
+  Woche einen Urlaubstag enthält oder der Urlaub in den 7 Tagen nach dem gezeigten Tag beginnt
+  (D33); ein Taschen-Symbol am Abwesenheits-Streifen.
 - **Desktop:** Taschen der Packliste als Spalten nebeneinander, der Kopf darüber.
 
 ## Abhängigkeiten und kritischer Pfad
@@ -76,7 +76,7 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`, A
 | 0003 | Laden-Warteschlange, Überlagerung, Delta-Sync, Abmelden löscht Speicher und Warteschlange                                  |
 | 0005 | Gruppe „Verwalten“ mit dem Eintrag „Reisetaschen“, Abhak-Baustein, Fenstergrößen, Auswahl-Chips, Layout „Liste und Detail“ |
 | 0010 | Abwesenheit-Fenster, Seite „Abwesenheiten“, Abwesenheits-Streifen, Abwesenheit bearbeiten und löschen, Kalender            |
-| 0011 | „Heute“ mit gezeigtem Tag und gezeigter Woche (Tagesauswahl), für die Karte „Reisetasche“                                  |
+| 0011 | „Übersicht“ mit gezeigtem Tag und gezeigter Woche (Tagesauswahl), für die Karte „Reisetasche“                              |
 
 Die Urlaubsseite entsteht mit dieser Spec. Bis dahin öffnet ein Tipp auf einen Streifen oder auf
 eine Zeile in „Abwesenheiten“ das Fenster „Abwesenheit bearbeiten“ (Spec 0010, AC-032 und AC-038);
@@ -97,6 +97,10 @@ Eingabe, Fehlerfall) und `/security-check`.
 
 Der Haushalt „Enrico & Nadja“ hat die Mitglieder Enrico (E) und Nadja (N). Handybreite ist 390 px,
 Desktopbreite 1440 px.
+
+**Geändert am 21.11.2026:** Die Seite „Heute“ heißt „Übersicht“ (Spec 0005, AC-061; Spec 0011). Der
+neue Name ist in REQ-003, REQ-009, AC-042, AC-043 und AC-045 eingesetzt; sonst ändern sich diese
+Kriterien nicht.
 
 ### REQ-001 — Reisetaschen verwalten
 
@@ -268,8 +272,8 @@ Und         ich sehe „Hat nicht geklappt – bitte noch einmal versuchen“
 ### REQ-003 — Urlaubsseite mit Packliste
 
 > Ein Tipp auf einen Abwesenheits-Streifen, auf eine Abwesenheit in „Abwesenheiten“ oder auf die
-> Karte auf „Heute“ öffnet die Urlaubsseite: Kopf mit Zeitraum und Dauer, Fortschritt und die
-> Packliste, gruppiert nach Tasche.
+> Karte auf der „Übersicht“ öffnet die Urlaubsseite: Kopf mit Zeitraum und Dauer, Fortschritt und
+> die Packliste, gruppiert nach Tasche.
 
 **Offline:** offline vollständig zum Lesen; Packen siehe REQ-004.
 
@@ -564,11 +568,11 @@ Wenn        ein Mitglied eines anderen Haushalts sie über die Supabase-API lös
 Dann        wird das abgelehnt, und Abwesenheit und Packliste bleiben unverändert
 ```
 
-### REQ-009 — Karte auf „Heute“ und Taschen-Symbol im Kalender
+### REQ-009 — Karte auf der „Übersicht“ und Taschen-Symbol im Kalender
 
-> „Heute“ zeigt unten, nach „Einkauf“, je Packliste eine Karte mit Fortschritt, wenn die gezeigte
-> Woche einen Tag der Abwesenheit enthält oder sie in den 7 Tagen nach dem gezeigten Tag beginnt
-> (D33); im Kalender trägt ein Abwesenheits-Streifen mit Packliste ein Taschen-Symbol.
+> Die „Übersicht“ zeigt unten, nach „Einkauf“, je Packliste eine Karte mit Fortschritt, wenn die
+> gezeigte Woche einen Tag der Abwesenheit enthält oder sie in den 7 Tagen nach dem gezeigten Tag
+> beginnt (D33); im Kalender trägt ein Abwesenheits-Streifen mit Packliste ein Taschen-Symbol.
 
 **Offline:** offline vollständig — nur Anzeige.
 
@@ -577,7 +581,7 @@ Dann        wird das abgelehnt, und Abwesenheit und Packliste bleiben unverände
 ```gherkin
 Angenommen  „Urlaub Mallorca“ geht von Mo 30.11. bis Fr 4.12.2026 und hat eine Packliste mit 12
             von 30 gepackt; heute ist Mo 16.11.2026
-Wenn        ich „Heute“ öffne
+Wenn        ich die „Übersicht“ öffne
 Dann        gibt es keine Karte „Reisetasche“
 Wenn        ich in die nächste Woche blättere und Mo 23.11. wähle
 Dann        steht unten nach „Einkauf“ die Karte „Reisetasche · Urlaub Mallorca“ mit Balken,
@@ -588,7 +592,7 @@ Dann        steht unten nach „Einkauf“ die Karte „Reisetasche · Urlaub Ma
 
 ```gherkin
 Angenommen  dieselbe Packliste
-Wenn        ich auf „Heute“ in KW 49 Samstag, 5.12., wähle
+Wenn        ich auf der „Übersicht“ in KW 49 Samstag, 5.12., wähle
 Dann        steht die Karte da, weil KW 49 Urlaubstage enthält
 Wenn        ich in KW 50 Montag, 7.12., wähle
 Dann        gibt es keine Karte
@@ -608,7 +612,7 @@ Dann        öffnet sich die Urlaubsseite „Urlaub Mallorca“
 ```gherkin
 Angenommen  Enrico (1.–4.1.2027) und Nadja (1.–7.1.2027) haben je eine Abwesenheit mit Packliste
 Und         Nadjas „Dienstreise Hamburg“ am 28. und 29.12.2026 hat keine Packliste
-Wenn        ich auf „Heute“ Montag, 28.12.2026, wähle
+Wenn        ich auf der „Übersicht“ Montag, 28.12.2026, wähle
 Dann        stehen zwei Karten „Reisetasche“, je eine für Enricos und Nadjas Packliste
 Und         für „Dienstreise Hamburg“ gibt es keine Karte
 ```

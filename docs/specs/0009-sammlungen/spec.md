@@ -80,7 +80,10 @@ Tabs, Farbrolle „Sammlung“), 0011 („Wie war's?“ für alle Arten, Bewertu
 
 ## Anforderungen und Akzeptanzkriterien
 
-„Heute“ ist in allen Beispielen Freitag, 20.11.2026 (KW 47). Der Haushalt „Enrico & Nadja“ hat
+**Geändert am 21.11.2026:** Die Seite „Heute“ heißt „Übersicht“ (Spec 0005, AC-061; Spec 0011). Der
+neue Name ist in AC-030 eingesetzt; sonst ändert sich dieses Kriterium nicht.
+
+Heute ist in allen Beispielen Freitag, 20.11.2026 (KW 47). Der Haushalt „Enrico & Nadja“ hat
 diese Rezepte:
 
 | Rezept         | Portionen | Zutaten                                                                                                          |
@@ -520,7 +523,7 @@ Und         Enrico sieht Nadjas 4,5 Sterne auf der Seite „Grillabend“, seine
 ```gherkin
 Angenommen  „Grillabend“ stand am Samstag, 21.11., im Kalender, heute ist Montag, 23.11.
 Und         Enrico stand dort unter „Wer isst mit?“ und hat „Grillabend“ nicht bewertet
-Wenn        Enrico „Heute“ öffnet
+Wenn        Enrico die „Übersicht“ öffnet
 Dann        steht unter „Wie war's?“ „Grillabend“ mit dem Kennzeichen „Sammlung“
 Und         „Kartoffelsalat“ und „Grillgemüse“ stehen dort nicht wegen dieses Eintrags
 Wenn        Enrico dort 4 Sterne vergibt

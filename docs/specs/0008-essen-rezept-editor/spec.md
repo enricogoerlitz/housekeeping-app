@@ -90,8 +90,11 @@ bestehenden Code bzw. als kleinste Lösung):
 
 ## Anforderungen und Akzeptanzkriterien
 
-Handybreite bedeutet 390 px, Desktop 1440 px (wie Spec 0001). „Heute“ ist in allen Beispielen
+Handybreite bedeutet 390 px, Desktop 1440 px (wie Spec 0001). Heute ist in allen Beispielen
 Freitag, 20.11.2026 (KW 47). Der Haushalt heißt „Enrico & Nadja“.
+
+**Geändert am 21.11.2026:** Die Seite „Heute“ heißt „Übersicht“ (Spec 0005, AC-061; Spec 0011). Der
+neue Name ist in AC-027 eingesetzt; sonst ändern sich diese Kriterien nicht.
 
 ### REQ-001 — Kopf, Ansichts-Tabs und Suchzeile
 
@@ -469,7 +472,8 @@ Wenn        ich die Zubereitung bearbeite, Schritt 3 an die erste Stelle ziehe, 
             eintrage und „Fertig“ wähle
 Dann        lauten die Schritte 1 „Kichererbsen kochen“, 2 „Pürieren“, 3 „Abschmecken“,
             4 „Mit Olivenöl servieren“
-Und         steht „Hummus“ morgen im Kalender, zeigt „Heute“ den Vorlauf „Kichererbsen einweichen“
+Und         steht „Hummus“ morgen im Kalender, zeigt die „Übersicht“ den Vorlauf „Kichererbsen
+            einweichen“
 ```
 
 **AC-028 — Ruhige Leseansicht, ein Abschnitt zugleich**

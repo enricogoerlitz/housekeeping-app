@@ -58,9 +58,10 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`, A
   „Dieses Gerät“ (Status, Schalter, „Probe senden“), „Was und wann · gilt für alle Geräte“ (je Art
   Schalter, Uhrzeit, beim Tagesüberblick die Teile; D38), „Deine Geräte“ (mit „Entfernen“). Die
   App fragt die Erlaubnis nur, wenn man etwas einschaltet oder eine Uhrzeit setzt, nie beim Start.
-- **Uhrzeiten setzen:** Aufgabe (Bearbeiten, Spec 0011) bekommt ein optionales Feld „Uhrzeit“
-  (D42); „Zu tun“ und die Haushalt-Zeile zeigen „19:00“. Ein Restaurant-Eintrag im Kalender bekommt
-  „Reserviert um 19:30“ und „Erinnern 2 h vorher ▾“ (D43); die Karte auf „Heute“ zeigt die Uhrzeit.
+- **Uhrzeiten setzen:** Aufgabe (Bearbeiten, Spec 0011) bekommt ein optionales Feld „Uhrzeit“ (D42);
+  „Zu tun“ und die Haushalt-Zeile zeigen „19:00“. Ein Restaurant-Eintrag im Kalender bekommt
+  „Reserviert um 19:30“ und „Erinnern 2 h vorher ▾“ (D43); die Karte auf der „Übersicht“ zeigt die
+  Uhrzeit.
 - **Technischer Rahmen (entschieden, D40):** Web Push an die installierte PWA bzw. den Browser,
   Service Worker zeigt die Nachricht an. Die Datenbank plant: `pg_cron` startet alle 5 Minuten eine
   Datenbankfunktion, die fällige Nachrichten in der Zeitzone des Haushalts findet, jede mit
@@ -76,7 +77,7 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`, A
 | 0003                              | Anmeldung, Mitgliedschaften, Service Worker der PWA, `pg_cron`, Edge Functions                                                   |
 | 0005                              | persönliche Einstellungen hinter dem Avatar (Profil, Darstellung, Benachrichtigungen, Abmelden), Layout „Liste und Detail“       |
 | 0010                              | Fenster eines Kalendereintrags (für die Reservierung), Haushalt-Zeile (zeigt die Uhrzeit), Abwesenheiten                         |
-| 0011                              | „Aufgabe bearbeiten“ (für die Uhrzeit), „Heute“ mit Tagesauswahl, Rhythmus „bei Bedarf“                                          |
+| 0011                              | „Aufgabe bearbeiten“ (für die Uhrzeit), „Übersicht“ mit Tagesauswahl, Rhythmus „bei Bedarf“                                      |
 | Betriebs- bzw. Cloud-Spec (offen) | öffentliche HTTPS-Adresse; erst damit kommen Nachrichten auf iPhone, iPad (als installierte PWA, ab iOS 16.4) und Android-Handys |
 
 **Voraussetzungen vor dem Bau:**
@@ -104,6 +105,10 @@ abgemeldet, ungültiges Abo, gefälschter Aufruf der Function, ausgeschaltet, do
 Beispieldatum ist, wenn nicht anders genannt, **Freitag, 20.11.2026**. Der Haushalt „Enrico &
 Nadja“ hat die Mitglieder Enrico (E) und Nadja (N) und die Zeitzone „Europe/Berlin“. „Takt“ meint
 den Lauf des Zeitplaners alle 5 Minuten. Alle Uhrzeiten sind Ortszeit des Haushalts.
+
+**Geändert am 21.11.2026:** Die Seite „Heute“ heißt „Übersicht“ (Spec 0005, AC-061; Spec 0011). Der
+neue Name ist in AC-027, AC-037 und AC-038 eingesetzt; sonst ändern sich diese Kriterien nicht. Der
+Text des Tagesüberblicks beginnt weiter mit „Heute:“, weil er den heutigen Tag meint.
 
 ### REQ-001 — Seite „Benachrichtigungen“
 
@@ -427,7 +432,7 @@ REQ-005.
 Angenommen  am Samstag, 21.11., steht abends „Trattoria Da Enzo“, Enrico und Nadja essen mit
 Wenn        ich den Eintrag öffne, „Reserviert um“ auf 19:30 setze und „Fertig“ wähle
 Dann        steht „Erinnern 2 h vorher“ darunter
-Und         die Karte auf „Heute“ am Samstag und der Eintrag im Kalender zeigen „19:30“
+Und         die Karte auf der „Übersicht“ am Samstag und der Eintrag im Kalender zeigen „19:30“
 ```
 
 **AC-028 — Erinnerung an die, die mitessen**
@@ -530,7 +535,7 @@ Dann        bekommt Nadja daraus keine Nachricht mehr
 ```gherkin
 Angenommen  auf Enricos Gerät liegen die vier Arten von Nachrichten
 Wenn        er auf den Tagesüberblick tippt
-Dann        öffnet sich „Heute“
+Dann        öffnet sich die „Übersicht“
 Wenn        er auf „Müll rausbringen · 19:00 · du bist dran“ tippt
 Dann        öffnet sich die Aufgabe „Müll rausbringen“
 Wenn        er auf die Reservierung oder auf „Morgen: Eislaufen …“ tippt
@@ -542,7 +547,7 @@ Dann        öffnet sich der Eintrag im Kalender, mit „Route“, wenn es einen
 ```gherkin
 Angenommen  eine Nachricht, deren Ziel-Link verändert wurde und auf keine Seite der App passt
 Wenn        Enrico darauf tippt
-Dann        öffnet sich „Heute“
+Dann        öffnet sich die „Übersicht“
 ```
 
 **AC-039 — Abgelaufenes Abo**

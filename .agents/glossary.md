@@ -159,6 +159,21 @@ Ansichten Woche, Monat und Jahr (D16).
 - **Nicht verwenden:** Plan (für den Tab, ab Spec 0010), Planer
 - **Siehe auch:** [Haushalt-Zeile](#haushalt-zeile), [Abwesenheits-Streifen](#abwesenheits-streifen)
 
+### Übersicht
+
+Der erste Tab und die Startseite der App, bis 21.11.2026 „Heute“. Zeigt einen Tag mit allem, was
+geplant und zu tun ist, und blättert durch die Wochen; ohne Auswahl ist es der heutige Tag (Spec
+0011). Umbenannt, weil die Seite nicht mehr nur heute zeigt (Spec 0005, AC-061).
+
+- **Im Code:** Adresse `/`, Route `index`, Test-IDs `tab-index` und `today-*` und der Ordner
+  `features/today` bleiben (kein Umbenennen im Code nötig)
+- **Nicht verwenden:** Heute (für den Tab oder die Seite), Start, Dashboard, Home
+- **Abgrenzung:** „Heute“ bleibt das Wort für den heutigen Tag: der Knopf „Heute“ führt in der
+  Übersicht und im Kalender zum heutigen Tag zurück; „Heute geplant“ ist ein Abschnitt. Das
+  _Layout „Übersicht“_ (Spec 0005) ist das Desktop-Layout dieser Seite, kein zweiter Begriff. Der
+  _Tagesüberblick_ ist eine Benachrichtigung (Spec 0013).
+- **Siehe auch:** [Kalender](#kalender), [Tagesüberblick](#tagesüberblick)
+
 ### Tageszeit
 
 Ein Platz im Tag des Wochenplans: Vormittag, Mittag oder Abend. Nimmt beliebig viele Einträge
@@ -167,6 +182,19 @@ auf, in der Reihenfolge Aktivitäten → Rezepte (auch Sammlungen, Freitext und 
 
 - **Im Code:** `MealSlot`, `meal_slots` (Name aus der Zeit, als nur Essen geplant wurde)
 - **Nicht verwenden:** Mahlzeit (für den Platz im Plan), Slot (in der Oberfläche)
+
+### Reste
+
+Ein Planeintrag, der ein früher geplantes Gericht noch einmal auf den Tisch bringt, z. B. „Reste von
+Linsen-Dal“. Angeboten werden die Rezepte und Freitexte der sieben Tage vor dem Zieltag, über
+Wochen- und Jahresgrenzen hinweg; die jüngsten zuerst (Spec 0010, REQ-011, geändert am 21.11.2026,
+vorher nur die gezeigte Woche). Gilt in Symbol und Farbe als Rezept, wird nicht bewertet.
+
+- **Im Code:** `MealPlanEntry` mit `kind: 'leftovers'` und `leftoversOfEntryId` (Verweis auf das
+  Gericht)
+- **Nicht verwenden:** Restessen, Leftovers (in der Oberfläche), Aufgewärmtes
+- **Abgrenzung:** Der _Zieltag_ ist der Tag, für den man hinzufügt; Gerichte desselben Tags und
+  danach zählen nicht. Reste von Resten, Restaurants, Aktivitäten und Sammlungen gibt es nicht.
 
 ### Haushalt-Zeile
 
@@ -381,7 +409,7 @@ Die Einordnung eines Rezepts: Frühstück, Hauptgericht, Beilage, Dessert, Snack
 ### Vorlauf
 
 Eine Vorbereitung, die vor dem Kochtag nötig ist, z. B. „Kichererbsen einweichen, 12 Stunden
-vorher“. Erscheint am Vortag auf „Heute“.
+vorher“. Erscheint am Vortag auf der „Übersicht“.
 
 - **Im Code:** `leadTime`
 
@@ -461,8 +489,9 @@ Zuständigkeit wie davor (Spec 0011, Offene Frage 3).
 Ein Zeitraum, in dem eine Person oder der ganze Haushalt nicht da ist. Sind beim Eintragen alle
 Mitglieder gewählt, entsteht eine Abwesenheit des ganzen Haushalts, sonst je Person eine (D23); die
 Notiz ist ihre Beschriftung (D22). Wirkt auf „Wer isst mit?“ und Benachrichtigungen (Spec 0013);
-Rotation und feste Termine bleiben vorerst unberührt (Spec 0010, Offene Frage 1). Kann eine
-Packliste haben (Spec 0012).
+Rotation und feste Termine bleiben vorerst unberührt (Spec 0010, Offene Frage 1). Von und Bis sind
+frei wählbar, auch über Monats- und Jahresgrenzen und in der Vergangenheit (Spec 0010, AC-042 bis
+AC-044). Kann eine Packliste haben (Spec 0012).
 
 - **Im Code:** `Absence`, `absences`; ganzer Haushalt = ohne `memberId`
 - **Nicht verwenden:** Urlaub (ist nur ein Fall davon), Pause
@@ -470,10 +499,10 @@ Packliste haben (Spec 0012).
 
 ### Abwesenheits-Streifen
 
-Die Darstellung einer oder mehrerer Abwesenheiten im Kalender und auf „Heute“: ein Streifen mit
-Notiz (ohne Notiz „abwesend“), Ende („bis Mo 4.1.“) und Avataren. Abwesenheiten mit gleichem Von,
-Bis und gleicher Notiz bilden einen Streifen. Eine Person: zart in ihrer Farbe; mehrere oder der
-ganze Haushalt: neutral (Spec 0010). Ein Tipp öffnet ab Spec 0012 die Urlaubsseite, vorher
+Die Darstellung einer oder mehrerer Abwesenheiten im Kalender und auf der „Übersicht“: ein Streifen
+mit Notiz (ohne Notiz „abwesend“), Ende („bis Mo 4.1.“) und Avataren. Abwesenheiten mit gleichem
+Von, Bis und gleicher Notiz bilden einen Streifen. Eine Person: zart in ihrer Farbe; mehrere oder
+der ganze Haushalt: neutral (Spec 0010). Ein Tipp öffnet ab Spec 0012 die Urlaubsseite, vorher
 „Abwesenheit bearbeiten“; mit Packliste trägt er ein Taschen-Symbol.
 
 - **Im Code (vorläufig):** `AbsenceStripe`, abgeleitet aus `Absence`, nicht gespeichert
@@ -589,7 +618,8 @@ die Änderung aus der Überlagerung und die Anzeige springt zurück.
 Eine Unternehmung, die der Haushalt plant und nachhält, z. B. Eislaufen oder Bouldern. Hat Name,
 Beschreibung, Foto und optional einen Ort; steht im Wochenplan in einer Tageszeit, mit Zusatz in
 Klammern, z. B. „Eislaufen (Hohenschönhausen)“. Alle Aktivitäten stehen auf der Seite
-„Aktivitäten“ (ab Spec 0010 im Kalender-Bereich und unter „Verwalten“).
+„Aktivitäten“ (ab Spec 0010 im Kalender-Bereich unter `/kalender/aktivitaeten`, erreichbar über ▲
+im Kalender und über „Verwalten“; Spec 0010, REQ-008).
 
 - **Im Code:** `Activity`, `activities`; Planeintrag `kind: 'activity'`
 - **Nicht verwenden:** Event, Termin, Freizeit (als Begriff für den Eintrag); „Sammlung

@@ -24,6 +24,10 @@ Zeit-Ansichten.
 - Aufgaben stehen in einer eigenen, abschaltbaren Haushalt-Zeile.
 - Aktivitäten haben eine eigene Seite, erreichbar über ▲ im Kopf des Kalenders und über
   „Verwalten“.
+- Abwesenheiten trägt man für beliebige Zeiträume ein, über Wochen-, Monats- und Jahresgrenzen
+  hinweg (geändert am 21.11.2026).
+- „Reste“ bietet die Gerichte der sieben Tage vor dem gewählten Tag an, auch aus der Vorwoche
+  (geändert am 21.11.2026).
 
 ## Nicht-Ziele
 
@@ -34,7 +38,8 @@ Zeit-Ansichten.
 - **Kein neues Feld „Anlass“** (D22) und **keine neue Tabelle** für mehrere Personen (D23).
 - **„Auf die Einkaufsliste“ selbst** (Schritte, Vorauswahl D21, Vorratscheck) ist Spec 0006. Hier
   geht es nur um den Einstieg im Kopf des Kalenders.
-- **„Heute“** (Tagesleiste mit Punkten und Abwesenheits-Streifen, Urlaubs-Hinweis) ist Spec 0011.
+- **Die „Übersicht“** (bis 21.11.2026 „Heute“; Tagesleiste mit Punkten und
+  Abwesenheits-Streifen, Urlaubs-Hinweis) ist Spec 0011.
 - **Keine neuen Regeln, wie Abwesenheiten auf Aufgaben wirken** (Rotation, feste Termine; siehe
   Offene Frage 1). Die Haushalt-Zeile zeigt, was der Haushalt berechnet.
 - **Bestehende Planeinträge ändern sich nicht**, wenn eine Abwesenheit eingetragen wird. Wie heute
@@ -65,9 +70,9 @@ D21 (Vorauswahl bei „Auf die Einkaufsliste“) setzt Spec 0006 um.
 
 **Abhängigkeiten:** Spec 0004 (Tageszeiten, Aktivitäten, „Neu anlegen beim Einplanen“) und Spec 0005
 (Ansichts-Tabs, feste Fenstergrößen, Abhaken mit Sammel-Fenster, Navigation und die Einträge
-„Aktivitäten“ und „Abwesenheiten“ unter „Verwalten“). Spec 0006 läuft parallel (Welle 2): ⊔
-öffnet deren Fenster „Was soll auf die Liste?“; AC-002 ist deshalb erst ab Spec 0006 prüfbar. Auf
-dieser Spec bauen auf: 0009 (Tab „Sammlungen“, ■), 0011 (Farbrollen der Arten auf „Heute“), 0012
+„Aktivitäten“ und „Abwesenheiten“ unter „Verwalten“). Spec 0006 läuft parallel (Welle 2): ⊔ öffnet
+deren Fenster „Was soll auf die Liste?“; AC-002 ist deshalb erst ab Spec 0006 prüfbar. Auf dieser
+Spec bauen auf: 0009 (Tab „Sammlungen“, ■), 0011 (Farbrollen der Arten auf der „Übersicht“), 0012
 (Urlaubsseite am Streifen, Packlisten an Abwesenheiten), 0013 (Reservierung am Restaurant-Eintrag).
 
 Spec 0005 (AC-021) macht aus dem Umschalter „Woche · Aktivitäten“ zunächst Ansichts-Tabs und zieht
@@ -77,15 +82,18 @@ Seite „Abwesenheiten“ neu.
 
 **Ersetzt oder ändert:**
 
-| Bisher                                                                                       | Neu                                                                           |
-| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Spec 0004, AC-004, in der Fassung von Spec 0005, AC-021: Ansicht „Aktivitäten“ neben „Woche“ | AC-025: ▲ im Kopf des Kalenders öffnet die Seite „Aktivitäten“                |
-| Spec 0004, Konzept: Umschalter „Woche · Aktivitäten“ im Plan-Tab                             | entfällt; Kalender hat nur Woche · Monat · Jahr                               |
-| Spec 0001, AC-007: Tab „Plan“                                                                | AC-001: Tab „Kalender“                                                        |
-| Spec 0002, AC-011: im Hinzufügen-Sheet „Restaurant“ wählen                                   | AC-021: Tab „Restaurants“ im Hinzufügen-Fenster; das Verhalten bleibt         |
-| Spec 0004, AC-021 bis AC-023: „Neue Aktivität“ / „Neues Rezept“ unter der Art                | AC-021: „Neu anlegen als …“ im Hinzufügen-Fenster; das Verhalten bleibt       |
-| Spec 0004, AC-001: jeder Tag zeigt alle drei Tageszeiten                                     | auf dem Handy nur Tageszeiten mit Einträgen (AC-008; Annahme, Offene Frage 2) |
-| Spec 0005, AC-058: Seite „Abwesenheiten“ mit dem bisherigen Inhalt der Einstellungen         | AC-037, AC-038: neu gestaltet mit „Kommend“ und „Vergangen“                   |
+| Bisher                                                                                       | Neu                                                                               |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Spec 0004, AC-004, in der Fassung von Spec 0005, AC-021: Ansicht „Aktivitäten“ neben „Woche“ | AC-025: ▲ im Kopf des Kalenders öffnet die Seite „Aktivitäten“                    |
+| Spec 0004, Konzept: Umschalter „Woche · Aktivitäten“ im Plan-Tab                             | entfällt; Kalender hat nur Woche · Monat · Jahr                                   |
+| Spec 0001, AC-007: Tab „Plan“                                                                | AC-001: Tab „Kalender“                                                            |
+| Spec 0002, AC-011: im Hinzufügen-Sheet „Restaurant“ wählen                                   | AC-021: Tab „Restaurants“ im Hinzufügen-Fenster; das Verhalten bleibt             |
+| Spec 0004, AC-021 bis AC-023: „Neue Aktivität“ / „Neues Rezept“ unter der Art                | AC-021: „Neu anlegen als …“ im Hinzufügen-Fenster; das Verhalten bleibt           |
+| Spec 0004, AC-001: jeder Tag zeigt alle drei Tageszeiten                                     | auf dem Handy nur Tageszeiten mit Einträgen (AC-008; Annahme, Offene Frage 2)     |
+| Spec 0005, AC-058: Seite „Abwesenheiten“ mit dem bisherigen Inhalt der Einstellungen         | AC-037, AC-038: neu gestaltet mit „Kommend“ und „Vergangen“                       |
+| Gebauter Stand: „Von“ und „Bis“ nur als Tage ab heute (14 Tage)                              | AC-042 bis AC-044: Zeitraum frei wählbar (geändert am 21.11.2026)                 |
+| Gebauter Stand: „Reste“ nur aus der gezeigten Woche                                          | AC-045 bis AC-049: sieben Tage vor dem Zieltag (geändert am 21.11.2026)           |
+| Gebauter Stand (Spec 0005): „Verwalten“ → „Aktivitäten“ öffnet `/plan?view=activities`       | AC-039 bis AC-041: eigene Seite `/kalender/aktivitaeten` (geändert am 21.11.2026) |
 
 **Regeln, die diese Spec festlegt, weil das Konzept sie offenlässt:**
 
@@ -98,11 +106,13 @@ Seite „Abwesenheiten“ neu.
 - **Wechsel der Ansicht:** Woche → Monat zeigt den Monat, in dem die meisten Tage der Woche liegen.
   Monat → Woche zeigt die Woche mit heute, wenn heute im Monat liegt, sonst die Woche mit dem
   Ersten. Monat → Jahr zeigt dessen Jahr. „Heute“ führt in jeder Ansicht zum Zeitraum mit heute.
-- **Die Adresse** des Bereichs heißt `/kalender`; alte Adressen unter `/plan` leiten dorthin.
+- **Die Adresse** des Bereichs heißt `/kalender`; alte Adressen unter `/plan` leiten dorthin. Die
+  Seite „Aktivitäten“ liegt unter `/kalender/aktivitaeten`, eine Aktivität unter
+  `/kalender/aktivitaet/<id>` (geändert am 21.11.2026: Adresse der Seite ausdrücklich).
 
 ## Anforderungen und Akzeptanzkriterien
 
-„Heute“ ist in allen Beispielen Freitag, 20.11.2026 (KW 47). Der Haushalt „Enrico & Nadja“ hat die
+Heute ist in allen Beispielen Freitag, 20.11.2026 (KW 47). Der Haushalt „Enrico & Nadja“ hat die
 Mitglieder Enrico (E) und Nadja (N); der Haushalt „WG“ hat Enrico, Nadja und Lena.
 
 ### REQ-001 — Kalender statt Plan
@@ -113,12 +123,13 @@ Mitglieder Enrico (E) und Nadja (N); der Haushalt „WG“ hat Enrico, Nadja und
 **Offline:** offline lesend. Alle Ansichten lesen aus dem lokalen Speicher; Hinzufügen, Abwesenheit
 eintragen und „Auf die Einkaufsliste“ brauchen Netz.
 
-**AC-001** (ersetzt Spec 0001, AC-007, soweit es den Namen „Plan“ betrifft)
+**AC-001** (ersetzt Spec 0001, AC-007, soweit es den Namen „Plan“ betrifft; geändert am
+21.11.2026: erster Tab „Übersicht“, Spec 0005, AC-061)
 
 ```gherkin
 Angenommen  Handybreite
 Wenn        ich die App öffne
-Dann        lautet die Tab-Leiste „Heute“, „Essen“, „Kalender“, „Liste“, „Haushalt“
+Dann        lautet die Tab-Leiste „Übersicht“, „Essen“, „Kalender“, „Liste“, „Haushalt“
 Wenn        ich „Kalender“ wähle
 Dann        heißt die Seite „Kalender“ und zeigt die Ansichts-Tabs „Woche“, „Monat“, „Jahr“,
             „Woche“ aktiv
@@ -435,7 +446,8 @@ Und         der Haken ist ausgegraut mit „Offline – zum Bearbeiten brauchst 
 **Regeln:** Spec 0009 ergänzt den Tab „Sammlungen“. Ohne Suchbegriff stehen die Einträge eines Tabs
 A–Z wie heute. Unter den Treffern stehen „+ „…“ als Rezept anlegen“, „+ als Restaurant · Aktivität“
 (Neu anlegen beim Einplanen, Spec 0004, REQ-008) und „+ „…“ als Freitext eintragen“. „Alle“ zeigt
-zusätzlich die Gruppe „Reste“ (frühere Einträge wie heute). Der zweite Schritt hat Tageszeit, „Wer
+zusätzlich die Gruppe „Reste“ mit den Gerichten der sieben Tage vor dem Zieltag (REQ-011; geändert
+am 21.11.2026, bisher nur aus der gezeigten Woche). Der zweite Schritt hat Tageszeit, „Wer
 isst mit?“, Variante, „Wer kocht?“ und bei Aktivitäten den Zusatz. Aus einem Tag ohne Tageszeit
 ist „Abend“ vorausgewählt.
 
@@ -501,6 +513,11 @@ Dann        heißt das Fenster „Fr 1. Jan“ und im zweiten Schritt ist „Abe
 **Offline:** offline lesend (Anlegen und Bearbeiten wie in Spec 0004: nur online).
 
 **Regeln:** Inhalt der Seite wie in Spec 0004 (REQ-002, REQ-003), als Endlos-Liste (Spec 0005).
+Geändert am 21.11.2026 (ausdrücklich gemacht): Die Seite hat die Adresse `/kalender/aktivitaeten`
+und gehört zum Bereich „Kalender“. Drei Wege führen hin: ▲ im Kopf des Kalenders in jeder Ansicht
+(Woche, Monat, Jahr), „Verwalten“ → „Aktivitäten“ in der Seitenleiste und auf dem Handy über ⊞,
+und die alte Adresse `/plan?view=activities`. „Zurück“ führt dorthin, woher man kam. Eine
+Aktivität öffnet sich aus der Seite unter `/kalender/aktivitaet/<id>`.
 
 **AC-025** (ersetzt Spec 0004, AC-004, und Spec 0005, AC-021)
 
@@ -531,6 +548,44 @@ Dann        öffnet sich die Seite der Aktivität „Bouldern“ unter der Adres
 Angenommen  der Haushalt „Test“ hat keine Aktivitäten
 Wenn        ich im Kalender ▲ wähle
 Dann        sehe ich „Noch keine Aktivitäten“ mit „Aktivität anlegen“ (Spec 0004, AC-005)
+```
+
+**AC-039 — Handy über ⊞ „Verwalten“** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  Handybreite, der Haushalt hat die Aktivitäten „Eislaufen“ und „Bouldern“, „Liste“ ist
+            offen
+Wenn        ich ⊞ und dann unter „Planen“ „Aktivitäten“ wähle
+Dann        öffnet sich die Seite „Aktivitäten“ unter /kalender/aktivitaeten mit beiden Aktivitäten
+Und         „Kalender“ ist der aktive Tab, die Kopfzeile zeigt „‹ Verwalten“
+Wenn        ich „Bouldern“ öffne und zweimal „Zurück“ wähle
+Dann        sehe ich zuerst wieder die Seite „Aktivitäten“ und dann „Verwalten“
+Angenommen  Desktopbreite und ich habe „Verwalten“ → „Aktivitäten“ gewählt
+Dann        ist „Aktivitäten“ in der Seitenleiste hervorgehoben, auch wenn ich „Bouldern“ öffne
+```
+
+**AC-040 — ▲ in Monat und Jahr** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  der Kalender zeigt den Monat „Januar 2027“
+Wenn        ich im Kopf ▲ wähle
+Dann        öffnet sich die Seite „Aktivitäten“ mit „‹ Kalender“
+Wenn        ich „‹ Kalender“ wähle
+Dann        zeigt der Kalender wieder den Monat „Januar 2027“
+Angenommen  der Kalender zeigt das Jahr 2027
+Dann        steht ▲ auch dort im Kopf und öffnet dieselbe Seite
+```
+
+**AC-041 — Randfall: alte Adresse und offline** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  ein Lesezeichen auf /plan?view=activities
+Wenn        ich es öffne
+Dann        sehe ich die Seite „Aktivitäten“ unter /kalender/aktivitaeten, nicht die Woche
+Angenommen  das Netz ist weg
+Wenn        ich die Seite „Aktivitäten“ öffne
+Dann        sehe ich alle Aktivitäten aus dem lokalen Speicher
+Und         „Aktivität anlegen“ ist ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“
 ```
 
 ### REQ-009 — Abwesenheiten im Kalender
@@ -616,6 +671,14 @@ Dann        öffnet sich „Abwesenheit bearbeiten“ mit Nadja, 1.1.2027, 7.1.2
   vorausgewählt, darunter „alle gewählt = ganzer Haushalt“; „Von“ und „Bis“, beide heute
   vorausgewählt; „Notiz“ (optional); der Hinweis „Wer weg ist, fehlt bei „Wer isst mit?“.“
   (Offene Frage 1); „Speichern“.
+- **Zeitraum wählen (geändert am 21.11.2026):** „Von“ und „Bis“ zeigen ihr Datum mit Wochentag
+  („Fr 1.1.2027“). Ein Tipp auf eines der Felder öffnet im selben Fenster einen Monatskalender, der
+  mit dem Monat des Felds beginnt. ‹ › blättert monatsweise ohne Grenze in Vergangenheit und
+  Zukunft. Der Kalender markiert den Zeitraum von „Von“ bis „Bis“, auch über Monats- und
+  Jahresgrenzen. Wer „Von“ wählt, wählt mit dem nächsten Tipp „Bis“; danach schließt der Kalender.
+  Ein Tipp auf das Feld „Bis“ wählt nur „Bis“.
+  „Von“ und „Bis“ dürfen derselbe Tag sein. Eine Länge ist nicht begrenzt. Dasselbe gilt beim
+  Bearbeiten, auch für vergangene Abwesenheiten.
 - **Bearbeiten** eines Streifens bearbeitet alle Abwesenheiten, für die er steht. Das Ergebnis
   folgt derselben Regel wie beim Eintragen. Jede Änderung ist ein Schreibvorgang, der ganz oder gar
   nicht gelingt.
@@ -704,20 +767,145 @@ Wenn        ich dort die Dienstreise antippe
 Dann        öffnet sich „Abwesenheit bearbeiten“ wie beim Tipp auf ihren Streifen im Kalender
 ```
 
+**AC-042 — Zeitraum über Monats- und Jahresgrenzen** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  Enrico ist angemeldet und online, das Fenster „Abwesenheit eintragen“ ist offen
+Wenn        er auf „Von“ tippt
+Dann        steht im Fenster der Monatskalender „November 2026“ mit dem 20. als „Von“
+Wenn        er › wählt und in „Dezember 2026“ den 28. antippt
+Dann        zeigt „Von“ „Mo 28.12.2026“, und der nächste Tipp wählt „Bis“
+Wenn        er › wählt und in „Januar 2027“ den 3. antippt
+Dann        zeigen die Felder „Mo 28.12.2026“ und „So 3.1.2027“, und der Kalender ist zu
+Wenn        er erneut auf „Von“ tippt
+Dann        beginnt der Monatskalender mit „Dezember 2026“, markiert ist der 28. bis 31.
+Wenn        er › wählt
+Dann        ist im Januar 2027 der 1. bis 3. markiert
+Wenn        er speichert
+Dann        gibt es die Abwesenheit vom 28.12.2026 bis 3.1.2027, und der Kalender zeigt sie in KW 53
+```
+
+**AC-043 — Vergangene und lange Zeiträume bearbeiten** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  Enrico war vom 2. bis 6.11.2026 auf „Fortbildung“ (AC-037)
+Wenn        ich auf der Seite „Abwesenheiten“ unter „Vergangen“ die Fortbildung antippe und auf
+            „Bis“ tippe
+Dann        beginnt der Monatskalender mit „November 2026“, markiert ist der 2. bis 6.
+Wenn        ich den 9.11. als „Bis“ wähle und speichere
+Dann        dauert die Fortbildung vom 2. bis 9.11.2026
+Angenommen  das Fenster „Abwesenheit eintragen“
+Wenn        ich als „Von“ den 1.6.2027 und als „Bis“ den 30.9.2027 wähle und speichere
+Dann        steht die Abwesenheit in den Monaten Juni bis September 2027 und unter „Kommend“
+```
+
+**AC-044 — Randfall: ein Tag und „Bis“ vor „Von“** (neu am 21.11.2026; ergänzt AC-035)
+
+```gherkin
+Angenommen  im Haushalt „Enrico & Nadja“ das Fenster „Abwesenheit eintragen“, nur Enrico gewählt,
+            „Von“ Fr 1.1.2027, Notiz „Arzt“
+Wenn        ich als „Bis“ ebenfalls den 1.1.2027 wähle und speichere
+Dann        gibt es eine Abwesenheit nur am 1.1.2027, ihr Streifen lautet „(E) Arzt · bis Fr 1.1.“
+Angenommen  „Von“ ist Mo 4.1.2027 und ich tippe auf „Bis“
+Wenn        ich im Monatskalender den 1.1.2027 antippe
+Dann        zeigt das Feld „Bis“ „„Bis“ liegt vor „Von““ und „Speichern“ speichert nichts (AC-035)
+```
+
+### REQ-011 — Reste aus den sieben Tagen davor (neu am 21.11.2026)
+
+> Die Gruppe „Reste“ im Hinzufügen-Fenster bietet die Gerichte an, die in den sieben Tagen vor dem
+> Zieltag geplant sind, über Wochen-, Monats- und Jahresgrenzen hinweg.
+
+**Offline:** nur online (Einplanen ist Schreiben, AC-004). Die Auswahl liest aus dem lokalen
+Speicher, der alle Planeinträge des Haushalts enthält.
+
+**Regeln**
+
+- **Zieltag** ist der Tag, für den man hinzufügt. Angeboten werden die Tage Zieltag − 7 bis
+  Zieltag − 1, also genau eine Woche zurück. Spätere Tageszeiten desselben Tags und Tage nach dem
+  Zieltag zählen nicht (wie bisher; Offene Frage 3).
+- **Gerichte** sind Planeinträge der Art Rezept und Freitext, wie bisher. Nicht angeboten werden
+  Reste, Restaurants, Aktivitäten, Sammlungen (Offene Frage 3) und Einträge, die als „nicht
+  gekocht“ markiert sind (Spec 0011, AC-021; prüfbar ab Spec 0011).
+- **Reihenfolge:** das jüngste Gericht zuerst: jüngster Tag zuerst, innerhalb eines Tags die
+  spätere Tageszeit zuerst (Offene Frage 3).
+- **Beschriftung:** „Reste von Linsen-Dal (Mo)“, wenn das Gericht in derselben Kalenderwoche wie
+  der Zieltag steht; aus einer früheren Woche mit Datum, „Reste von Linsen-Dal (So 22.11.)“. So
+  bleibt der Tag eindeutig, auch wenn er derselbe Wochentag wie der Zieltag ist.
+- **Ohne Zieltag** (Hinzufügen unter „Vorgemerkt“) gibt es die Gruppe „Reste“ nicht, wie bisher.
+- Ob der Zieltag in der Vergangenheit, heute oder in der Zukunft liegt, ändert die Regel nicht. Für
+  einen künftigen Zieltag zählen auch Gerichte, die erst geplant und noch nicht gekocht sind.
+
+**AC-045 — Über die Wochengrenze**
+
+```gherkin
+Angenommen  im Kalender stehen So 15.11. „Kürbissuppe“, Mo 16.11. „Shakshuka“, Do 19.11. „Reste
+            von Shakshuka“, Sa 21.11. „Trattoria Da Enzo“ (Restaurant), So 22.11. mittags „Essen
+            bei Oma“ (Freitext) und abends „Linsen-Dal“
+Und         am Montag, 23.11. (KW 48), stehen mittags „Pasta Pesto“ und abends noch nichts
+Wenn        ich am Montag, 23.11., abends „+ Hinzufügen“ wähle
+Dann        steht in „Alle“ die Gruppe „Reste“ mit „Reste von Linsen-Dal (So 22.11.)“, „Reste von
+            Essen bei Oma (So 22.11.)“ und „Reste von Shakshuka (Mo 16.11.)“ in dieser Reihenfolge
+Und         „Kürbissuppe“ (acht Tage davor), die Reste vom Donnerstag, „Trattoria Da Enzo“ und
+            „Pasta Pesto“ (derselbe Tag) fehlen
+Wenn        ich „Reste von Linsen-Dal (So 22.11.)“ wähle und einplane
+Dann        steht am Montag, 23.11., abends ein Reste-Eintrag, der auf „Linsen-Dal“ vom 22.11.
+            verweist
+```
+
+**AC-046 — Randfall: Zieltag in der Vergangenheit**
+
+```gherkin
+Angenommen  im Kalender stehen Mo 2.11. „Gulasch“, Di 3.11. „Ofengemüse“ und Mi 11.11. „Risotto“
+Wenn        ich in KW 46 am Dienstag, 10.11., „+ Hinzufügen“ wähle
+Dann        steht unter „Reste“ nur „Reste von Ofengemüse (Di 3.11.)“
+Und         „Gulasch“ (acht Tage davor) und „Risotto“ (nach dem Zieltag) fehlen
+```
+
+**AC-047 — Randfall: Zieltag in der Zukunft**
+
+```gherkin
+Angenommen  heute ist Freitag, 20.11.2026; am Samstag, 21.11., ist „Pizza“ geplant und als „nicht
+            gekocht“ markiert, am Montag, 23.11., ist „Gulasch“ geplant
+Wenn        ich am Freitag, 27.11., „+ Hinzufügen“ wähle
+Dann        steht unter „Reste“ „Reste von Gulasch (Mo)“
+Und         „Pizza“ fehlt (Teil „nicht gekocht“ prüfbar ab Spec 0011)
+```
+
+**AC-048 — Randfall: über den Jahreswechsel**
+
+```gherkin
+Angenommen  am Donnerstag, 31.12.2026, steht abends „Raclette“
+Wenn        ich am Montag, 4.1.2027 (KW 1), „+ Hinzufügen“ wähle
+Dann        steht unter „Reste“ „Reste von Raclette (Do 31.12.)“
+```
+
+**AC-049 — Randfall: nichts gekocht, ohne Zieltag**
+
+```gherkin
+Angenommen  in den sieben Tagen vor Montag, 1.2.2027, steht kein Rezept und kein Freitext
+Wenn        ich am Montag, 1.2.2027, „+ Hinzufügen“ wähle
+Dann        steht in „Alle“ unter „Reste“ nur „In den 7 Tagen davor wurde nichts gekocht.“
+Und         es gibt keine Zeile, die sich wählen lässt
+Angenommen  ich wähle „+ Hinzufügen“ unter „Vorgemerkt“
+Dann        gibt es in „Alle“ keine Gruppe „Reste“
+```
+
 Dass die Einstellungen keinen Abschnitt „Abwesenheit“ mehr haben, regelt Spec 0005, AC-055.
 
 ## Offline und Konflikte
 
-| Bereich                                                                                  | Verhalten                                                                                                                                                                                   |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Woche, Monat, Jahr, Abwesenheiten, Aktivitäten lesen                                     | offline vollständig aus dem lokalen Speicher, der alle Planeinträge, Aufgaben und Abwesenheiten des Haushalts enthält                                                                       |
-| Haushalt-Zeile ein- und ausblenden                                                       | offline vollständig; nur auf dem Gerät gespeichert                                                                                                                                          |
-| Hinzufügen, Abwesenheit eintragen/ändern/löschen, ⊔                                      | nur online; ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“ (ADR-0008)                                                                                                           |
-| Aufgabe in der Haushalt-Zeile abhaken                                                    | nur online; eine Erledigung ist keine Laden-Aktion. Wird während des 2-Sekunden-Fensters das Netz getrennt, wird nichts gebucht und der Haken springt zurück                                |
-| Zwei Personen ändern dieselbe Abwesenheit                                                | je Feld gewinnt die letzte Änderung (`sync.md`)                                                                                                                                             |
-| Eine Person bearbeitet einen Streifen, die andere hat eine seiner Abwesenheiten gelöscht | der Server lehnt die Änderung ab, die Anzeige springt zurück, Hinweis „Hat nicht geklappt – bitte noch einmal versuchen“ (ADR-0011)                                                         |
-| Zwei Personen haken dieselbe Aufgabe heute ab                                            | dieselbe Regel wie beim Abhaken auf „Heute“ und im Haushalt; die Haushalt-Zeile bringt keine eigene. „Nadja war schneller“ kommt mit Spec 0011, AC-031 (Welle 3) und gilt ab dann auch hier |
-| Zwei Personen planen dieselbe Tageszeit ein                                              | beide Einträge stehen da (Spec 0004)                                                                                                                                                        |
+| Bereich                                                                                  | Verhalten                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Woche, Monat, Jahr, Abwesenheiten, Aktivitäten lesen                                     | offline vollständig aus dem lokalen Speicher, der alle Planeinträge, Aufgaben und Abwesenheiten des Haushalts enthält                                                                               |
+| Haushalt-Zeile ein- und ausblenden                                                       | offline vollständig; nur auf dem Gerät gespeichert                                                                                                                                                  |
+| Hinzufügen, Abwesenheit eintragen/ändern/löschen, ⊔                                      | nur online; ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“ (ADR-0008)                                                                                                                   |
+| Aufgabe in der Haushalt-Zeile abhaken                                                    | nur online; eine Erledigung ist keine Laden-Aktion. Wird während des 2-Sekunden-Fensters das Netz getrennt, wird nichts gebucht und der Haken springt zurück                                        |
+| Zwei Personen ändern dieselbe Abwesenheit                                                | je Feld gewinnt die letzte Änderung (`sync.md`)                                                                                                                                                     |
+| Eine Person bearbeitet einen Streifen, die andere hat eine seiner Abwesenheiten gelöscht | der Server lehnt die Änderung ab, die Anzeige springt zurück, Hinweis „Hat nicht geklappt – bitte noch einmal versuchen“ (ADR-0011)                                                                 |
+| Zwei Personen haken dieselbe Aufgabe heute ab                                            | dieselbe Regel wie beim Abhaken auf der „Übersicht“ und im Haushalt; die Haushalt-Zeile bringt keine eigene. „Nadja war schneller“ kommt mit Spec 0011, AC-031 (Welle 3) und gilt ab dann auch hier |
+| Zwei Personen planen dieselbe Tageszeit ein                                              | beide Einträge stehen da (Spec 0004)                                                                                                                                                                |
+| Reste gewählt, während eine andere Person das Gericht dahinter löscht                    | der Server lehnt den Eintrag ab, Hinweis „Hat nicht geklappt – bitte noch einmal versuchen“; die Gruppe „Reste“ zeigt das Gericht danach nicht mehr (ADR-0011)                                      |
 
 ## Plattformen
 
@@ -740,30 +928,33 @@ Dass die Einstellungen keinen Abschnitt „Abwesenheit“ mehr haben, regelt Spe
 - **Geschrieben:** Abwesenheiten (anlegen, ändern, löschen; mehrere Zeilen in einem
   Schreibvorgang), Planeinträge über das Hinzufügen-Fenster, Erledigungen über die Haushalt-Zeile.
 - **Nur auf dem Gerät:** Haushalt-Zeile ein/aus je Ansicht.
-- **Datenbank:** keine Änderung (Konzept 4.4). Künftige Termine der Haushalt-Zeile werden aus dem
-  Rhythmus berechnet und nicht gespeichert.
+- **Datenbank:** keine Änderung (Konzept 4.4). Auch die Reste aus den sieben Tagen davor brauchen
+  keine: Ein Reste-Eintrag verweist schon heute auf einen beliebigen Planeintrag des Haushalts.
+  Künftige Termine der Haushalt-Zeile werden aus dem Rhythmus berechnet und nicht gespeichert.
 - **Personenbezogen:** Abwesenheiten zeigen, wann eine Person nicht da ist, und die Notiz kann
   Persönliches enthalten. Beides sehen wie bisher nur Mitglieder des eigenen Haushalts (RLS aus
   Spec 0003); neue Felder gibt es nicht.
 
 ## Offene Fragen
 
-| #   | Frage                                                                                                                                                                                                             | Optionen                                                                                                                                                                                                                                                                                                                                       | Empfehlung                                                                                                          | Status           |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1   | Das Konzept (3.6) schreibt ins Fenster „die Rotation überspringt ihn“ und „wirkt wie heute: Rotation pausiert, feste Termine entfallen“. Im Code wirkt eine Abwesenheit bisher nur auf „Wer isst mit?“. Was gilt? | A: Hinweis nennt nur, was wirkt („Wer weg ist, fehlt bei „Wer isst mit?“.“); Rotation und feste Termine bekommen eine eigene Spec — Pro: ehrlich, Umfang bleibt klein; Contra: F14 bleibt offen · B: diese Spec baut Rotation und Termine nach F14 mit — Pro: alles auf einmal; Contra: Haushaltslogik in einer Kalender-Spec, größerer Umfang | A, weil die Regeln für Aufgaben in den Haushalt gehören und der Hinweis nichts versprechen soll, was nicht passiert | OFFEN, Annahme A |
-| 2   | Zeigt die Woche auf dem Handy leere Tageszeiten?                                                                                                                                                                  | A: nur Tageszeiten mit Einträgen, dazu je Tag ein „+ Hinzufügen“ (Skizze in 3.5) — Pro: kurze Woche, alles auf einen Blick; Contra: ändert Spec 0004, AC-001 auf dem Handy · B: immer alle drei Tageszeiten je Tag — Pro: wie Spec 0004; Contra: 21 Zeilen plus Haushalt, viel Scrollen                                                        | A, weil die Skizze es so zeigt und die Woche auf dem Handy sonst sehr lang wird                                     | OFFEN, Annahme A |
+| #   | Frage                                                                                                                                                                                                             | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Empfehlung                                                                                                          | Status           |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1   | Das Konzept (3.6) schreibt ins Fenster „die Rotation überspringt ihn“ und „wirkt wie heute: Rotation pausiert, feste Termine entfallen“. Im Code wirkt eine Abwesenheit bisher nur auf „Wer isst mit?“. Was gilt? | A: Hinweis nennt nur, was wirkt („Wer weg ist, fehlt bei „Wer isst mit?“.“); Rotation und feste Termine bekommen eine eigene Spec — Pro: ehrlich, Umfang bleibt klein; Contra: F14 bleibt offen · B: diese Spec baut Rotation und Termine nach F14 mit — Pro: alles auf einmal; Contra: Haushaltslogik in einer Kalender-Spec, größerer Umfang                                                                                                                                                                                                                                         | A, weil die Regeln für Aufgaben in den Haushalt gehören und der Hinweis nichts versprechen soll, was nicht passiert | OFFEN, Annahme A |
+| 2   | Zeigt die Woche auf dem Handy leere Tageszeiten?                                                                                                                                                                  | A: nur Tageszeiten mit Einträgen, dazu je Tag ein „+ Hinzufügen“ (Skizze in 3.5) — Pro: kurze Woche, alles auf einen Blick; Contra: ändert Spec 0004, AC-001 auf dem Handy · B: immer alle drei Tageszeiten je Tag — Pro: wie Spec 0004; Contra: 21 Zeilen plus Haushalt, viel Scrollen                                                                                                                                                                                                                                                                                                | A, weil die Skizze es so zeigt und die Woche auf dem Handy sonst sehr lang wird                                     | OFFEN, Annahme A |
+| 3   | Kleinigkeiten der Reste-Auswahl (REQ-011), die Enricos Wunsch „die letzten 7 Tage“ offenlässt                                                                                                                     | A: (a) Zieltag − 7 bis Zieltag − 1, frühere Tageszeiten desselben Tags zählen nicht (wie bisher); (b) jüngstes Gericht zuerst; (c) Sammlungen zählen nicht, bis Spec 0009 es regelt; (d) für künftige Zieltage zählen auch erst geplante Gerichte; (e) „nicht gekocht“ zählt nicht — Pro: kleinste Änderung am gebauten Stand, gestern steht oben; Contra: Mittagessen wird abends nicht als Rest angeboten · B: Zieltag − 6 bis Zieltag einschließlich früherer Tageszeiten — Pro: auch Reste vom Mittag; Contra: ändert die bisherige Regel, Wochentag im Namen nicht mehr eindeutig | A, weil es die bisherige Regel nur im Zeitraum erweitert und gestern zuerst zeigt                                   | OFFEN, Annahme A |
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-004 | —              | —    |
-| REQ-002 | AC-005 bis AC-008 | —              | —    |
-| REQ-003 | AC-009, AC-010    | —              | —    |
-| REQ-004 | AC-011 bis AC-014 | —              | —    |
-| REQ-005 | AC-015, AC-016    | —              | —    |
-| REQ-006 | AC-017 bis AC-020 | —              | —    |
-| REQ-007 | AC-021 bis AC-024 | —              | —    |
-| REQ-008 | AC-025 bis AC-027 | —              | —    |
-| REQ-009 | AC-028 bis AC-032 | —              | —    |
-| REQ-010 | AC-033 bis AC-038 | —              | —    |
+| REQ     | AC                                   | Task (plan.md) | Test |
+| ------- | ------------------------------------ | -------------- | ---- |
+| REQ-001 | AC-001 bis AC-004                    | —              | —    |
+| REQ-002 | AC-005 bis AC-008                    | —              | —    |
+| REQ-003 | AC-009, AC-010                       | —              | —    |
+| REQ-004 | AC-011 bis AC-014                    | —              | —    |
+| REQ-005 | AC-015, AC-016                       | —              | —    |
+| REQ-006 | AC-017 bis AC-020                    | —              | —    |
+| REQ-007 | AC-021 bis AC-024                    | —              | —    |
+| REQ-008 | AC-025 bis AC-027, AC-039 bis AC-041 | —              | —    |
+| REQ-009 | AC-028 bis AC-032                    | —              | —    |
+| REQ-010 | AC-033 bis AC-038, AC-042 bis AC-044 | —              | —    |
+| REQ-011 | AC-045 bis AC-049                    | —              | —    |

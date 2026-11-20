@@ -134,8 +134,9 @@ hell (der Kontrast-Test entscheidet): Essen `#F5E3DB`, Plan `#F3EACB`, Liste `#D
 
 **Desktop (2.11):** eine Inhaltsbreite je Bereich, nie abhängig von Tab oder Inhalt; der Inhalt
 beginnt 36 px neben der Seitenleiste und füllt bis 1320 px, erst darüber wird zentriert; der Avatar
-steht nur in der Seitenleiste. Drei Layouts: Übersicht (Heute), Raster (Essen, Aktivitäten), Liste
-und Detail (Haushalt, Märkte, Artikel, Verwalten); der Kalender ist sein eigenes Raster.
+steht nur in der Seitenleiste. Drei Layouts: Übersicht (Tab „Übersicht“), Raster (Essen,
+Aktivitäten), Liste und Detail (Haushalt, Märkte, Artikel, Verwalten); der Kalender ist sein eigenes
+Raster.
 
 **Verwalten (3.12, D2, D30) und Einstellungen (3.11, D28):** Die Seitenleiste hat unter den fünf
 Bereichen die immer sichtbare Gruppe „Verwalten“ in drei Blöcken: Planen (Aktivitäten,
@@ -173,6 +174,7 @@ Seite „Verwalten“ mit denselben Einträgen. In Entwicklungs-Builds kommt die
 | Spec 0002, AC-001: „Umschalter Rezepte · Restaurants“             | AC-020: Ansichts-Tabs (Spec 0008, AC-001 beschreibt „Essen“ im Detail) |
 | Spec 0003, AC-008: Einladen „unter Einstellungen → Haushalt“      | AC-056: unter „Verwalten“ → „Haushalt & Mitglieder“; sonst unverändert |
 | Spec 0004, AC-004: „Umschalter“ Woche · Aktivitäten               | AC-021: Ansichts-Tabs; Inhalt unverändert                              |
+| Spec 0001, AC-007: Tab „Heute“ (geändert am 21.11.2026)           | AC-061: Tab „Übersicht“; Adresse `/` bleibt                            |
 
 Wie das Rezept am Desktop aussieht (ganze Seite statt neben der Liste), regelt Spec 0008, AC-019;
 sie ersetzt Spec 0001, AC-008.
@@ -182,6 +184,10 @@ sie ersetzt Spec 0001, AC-008.
 Handybreite heißt 390 × 844 px, Desktop 1440 × 900 px, wenn nichts anderes steht. Daten wie im
 Beispielhaushalt „Enrico & Nadja“ (Spec 0001, AC-012; Spec 0003, AC-033). Der **Showroom** ist die
 Seite `/showroom` in Entwicklungs-Builds; er zeigt jeden neuen Baustein mit Beispieldaten.
+
+**Geändert am 21.11.2026:** Der Tab „Heute“ heißt „Übersicht“, weil er seit Spec 0011 durch die
+Wochen blättert (REQ-011). In AC-012, AC-044, AC-049 und AC-054 ist der neue Name eingesetzt; sonst
+ändern sich diese Kriterien nicht. „Plan“ bleibt hier stehen, bis Spec 0010 daraus „Kalender“ macht.
 
 ### REQ-001 — Navigation auf jeder Seite
 
@@ -307,10 +313,10 @@ Wenn        ich zwischen „Anstehend“, „Alle“ und „Verlauf“ wechsle
 Dann        beginnt der Inhalt in allen drei Ansichten an derselben Stelle und ist gleich breit
 ```
 
-**AC-012 — Inhaltsbreite**
+**AC-012 — Inhaltsbreite** (geändert am 21.11.2026: „Übersicht“ statt „Heute“)
 
 ```gherkin
-Angenommen  ein Fenster von 1440 px Breite, „Heute“ ist offen
+Angenommen  ein Fenster von 1440 px Breite, „Übersicht“ ist offen
 Dann        beginnt der Inhalt 36 px rechts der Seitenleiste und reicht bis 36 px vor den rechten
             Rand
 Wenn        ich das Fenster auf 1920 px verbreitere
@@ -674,11 +680,12 @@ Dann        steht Zeile 400 an derselben Stelle wie vorher
 **Offline:** nicht anwendbar (es wird nur weniger angezeigt).
 
 **AC-044 — Nichts zu sehen** (setzt Spec 0001, REQ-009 und Spec 0003, REQ-008 aus, solange der
-Schalter aus ist; ersetzt den Assistent-Knopf aus Spec 0001, AC-007)
+Schalter aus ist; ersetzt den Assistent-Knopf aus Spec 0001, AC-007; geändert am 21.11.2026:
+„Übersicht“ statt „Heute“)
 
 ```gherkin
 Angenommen  ein Build mit KI-Schalter „aus“ (Standard)
-Wenn        ich auf Handy und Desktop Heute, Essen, ein Rezept, Plan, Liste, Haushalt und die
+Wenn        ich auf Handy und Desktop Übersicht, Essen, ein Rezept, Plan, Liste, Haushalt und die
             Einstellungen öffne
 Dann        gibt es nirgends: den Assistent-Knopf, „Assistent“ in der Seitenleiste, den Schalter
             „KI-Suche“, „Beschreiben ✨“, „Anpassen“ im Rezept, Mikrofon und ✨ in der Eingabezeile
@@ -727,13 +734,13 @@ Und         die Tests zu Spec 0003, REQ-008 laufen in diesem Build grün
 
 **Offline:** nicht anwendbar.
 
-**AC-049 — Keine Farbflächen**
+**AC-049 — Keine Farbflächen** (geändert am 21.11.2026: „Übersicht“ statt „Heute“)
 
 ```gherkin
-Angenommen  Theme „Frisch“ hell, „Heute“ ist offen
+Angenommen  Theme „Frisch“ hell, „Übersicht“ ist offen
 Dann        ist kein Abschnitt farbig ausgemalt: alle stehen als Kacheln in `surface` auf dem Grund
             `bg`, Abschnittstitel in Tinte
-Und         auf dem Bildschirm erscheint keine zweite Bereichsfarbe neben der von „Heute“
+Und         auf dem Bildschirm erscheint keine zweite Bereichsfarbe neben der von „Übersicht“
 ```
 
 **AC-050 — Bereichsfarbe folgt dem Tab, Tab-Leiste in Tinte**
@@ -786,13 +793,13 @@ Und         der Avatar unten ist erreichbar
 ```
 
 **AC-054 — Handy: Knopf ⊞ und Seite „Verwalten“** (ersetzt Spec 0001, AC-039, im Weg zum
-Feedback)
+Feedback; geändert am 21.11.2026: „Übersicht“ statt „Heute“)
 
 ```gherkin
 Angenommen  Handybreite
-Dann        hat jede Tab-Startseite (Heute, Essen, Plan, Liste, Haushalt) im Kopf den Knopf
+Dann        hat jede Tab-Startseite (Übersicht, Essen, Plan, Liste, Haushalt) im Kopf den Knopf
             „Verwalten“ (⊞) links neben dem Avatar
-Wenn        ich auf „Heute“ ⊞ wähle
+Wenn        ich auf „Übersicht“ ⊞ wähle
 Dann        öffnet sich die Seite „Verwalten“ mit denselben Einträgen wie am Desktop, in den Blöcken
             „Planen“, „Einkaufen“ und „Haushalt“
 Und         die Tab-Leiste ist sichtbar und kein Tab ist hervorgehoben
@@ -858,6 +865,44 @@ Angenommen  das Gerät ist offline
 Wenn        ich „Verwalten“ → „Haushalt & Mitglieder“ öffne
 Dann        sehe ich Mitglieder und Einladungen aus dem lokalen Speicher
 Und         „Einladen“ ist ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“
+```
+
+### REQ-011 — Tab „Übersicht“ statt „Heute“ (neu am 21.11.2026)
+
+> Der erste Tab und sein Eintrag in der Seitenleiste heißen „Übersicht“; Adresse `/` und die
+> Test-IDs (`tab-index`, `today-*`) bleiben.
+
+**Offline:** offline vollständig (reine Beschriftung).
+
+**Regeln:** Der Name gilt für Tab-Leiste, Seitenleiste und den Weg aus „Nicht gefunden“. „Heute“
+bleibt das Wort für den heutigen Tag: der Knopf „Heute“, der zum heutigen Tag zurückführt (Spec
+0010, Spec 0011), und Abschnitte wie „Heute geplant“. Den Seiteninhalt regelt Spec 0011. Das Symbol
+des Tabs bleibt.
+
+**AC-061 — Name in Tab-Leiste und Seitenleiste** (ändert Spec 0001, AC-007, im Namen des ersten
+Tabs)
+
+```gherkin
+Angenommen  Handybreite
+Wenn        ich die App öffne
+Dann        lautet die Tab-Leiste „Übersicht“, „Essen“, „Plan“, „Liste“, „Haushalt“, und „Übersicht“
+            ist aktiv
+Und         die Adresse ist `/`, der Tab hat weiterhin die Test-ID `tab-index`
+Angenommen  Desktopbreite
+Dann        heißt der erste Eintrag der Seitenleiste „Übersicht“
+Und         nirgends in Tab-Leiste oder Seitenleiste steht „Heute“
+```
+
+**AC-062 — Randfall: Lesezeichen und „Nicht gefunden“**
+
+```gherkin
+Angenommen  ein Lesezeichen auf `/` aus der Zeit, als der Tab „Heute“ hieß
+Wenn        ich es öffne
+Dann        ist der Tab „Übersicht“ aktiv
+Angenommen  ich öffne die Adresse /gibt-es-nicht
+Dann        sehe ich „Nicht gefunden“ mit dem Weg „Zur Übersicht“
+Wenn        ich ihn wähle
+Dann        bin ich auf `/` im Tab „Übersicht“
 ```
 
 ## Offline und Konflikte
@@ -927,3 +972,4 @@ die Liste nicht unter dem Finger weg. Für das Speichern gelten unverändert die
 | REQ-008 | AC-044 bis AC-048 | —              | —    |
 | REQ-009 | AC-049 bis AC-051 | —              | —    |
 | REQ-010 | AC-052 bis AC-060 | —              | —    |
+| REQ-011 | AC-061, AC-062    | —              | —    |
