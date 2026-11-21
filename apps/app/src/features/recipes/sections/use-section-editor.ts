@@ -1,10 +1,21 @@
-import { OfflineError, saveRecipeSection, type SectionSave } from '@housekeeping/api';
+import {
+  OfflineError,
+  saveCollectionContents,
+  saveRecipeSection,
+  useCollectionContents,
+  type SectionSave,
+} from '@housekeeping/api';
 import {
   addIngredientRows,
-  draftAfterRefusal,
+  contentsDraft,
   savablePart,
   sectionDraft,
+  setContentServings,
+  validateContentsDraft,
   validateSectionDraft,
+  type CollectionContent,
+  type ContentsDraft,
+  type ContentsProblem,
   type Id,
   type Recipe,
   type RecipeSection,
@@ -23,11 +34,19 @@ import { takeHandedOverRows } from './ingredient-handover';
 // The sections of the recipe page (spec 0008, REQ-007, E7): at most one is open, its draft lives
 // here. "Fertig" checks and saves it; another pen, leaving the page (blur, Android back, unmount)
 // saves its valid part. A refusal opens the section again with its draft while the page is open.
+// A collection (spec 0009, E12) has one more: "Enthält", saved with saveCollectionContents.
+
+/** "Enthält" of a collection while it is open. */
+export type ContentsSectionDraft = ContentsDraft & { section: 'contents' };
+/** The draft of the open section. */
+export type OpenDraft = RecipeSectionDraft | ContentsSectionDraft;
+export type PageSection = RecipeSection | 'contents';
+type Problem = SectionProblem | ContentsProblem;
 
 interface EditorState {
-  draft?: RecipeSectionDraft;
+  draft?: OpenDraft;
   /** The pen was tapped: the draft is taken from the recipe of the next render (see below). */
-  opening?: RecipeSection;
+  opening?: PageSection;
   /** "Fertig" was tried with problems: they are shown, and follow the typing. */
   attempted?: boolean;
   /** Why "Fertig" did not save, e.g. offline. */
@@ -36,25 +55,55 @@ interface EditorState {
 
 export interface SectionEditor {
   /** The open section's draft; undefined = the page only reads. */
-  draft: RecipeSectionDraft | undefined;
-  editing: (section: RecipeSection) => boolean;
+  draft: OpenDraft | undefined;
+  editing: (section: PageSection) => boolean;
   /** The pen: saves the open section's valid part, then opens this one. */
-  edit: (section: RecipeSection) => void;
+  edit: (section: PageSection) => void;
   /** Every change of a field goes here; nothing is sent. */
-  change: (draft: RecipeSectionDraft) => void;
+  change: (draft: OpenDraft) => void;
   /** "Fertig". */
   done: () => void;
   /** The message for a field after a failed "Fertig" ("Titel fehlt", AC-026). */
-  problem: (field: SectionField, key?: string) => string | undefined;
-  problems: SectionProblem[];
+  problem: (field: SectionField | ContentsProblem['field'], key?: string) => string | undefined;
+  problems: Problem[];
   error: string | undefined;
 }
 
-function trySave(
-  recipeId: Id,
-  draft: RecipeSectionDraft,
-): { save: SectionSave | null } | { error: string } {
+/** What a save hands back: the server's answer and, for ingredients, the section to show next. */
+type Save = Pick<SectionSave, 'confirmed' | 'reopened'>;
+
+function validate(draft: OpenDraft): Problem[] {
+  return draft.section === 'contents' ? validateContentsDraft(draft) : validateSectionDraft(draft);
+}
+
+/**
+ * Leaving the page or opening another pen saves the valid part (E7). For "Enthält" a row with
+ * invalid portions keeps its stored portions; more than 20 removed at once saves nothing.
+ */
+function savable(draft: OpenDraft): OpenDraft | undefined {
+  if (draft.section !== 'contents') return savablePart(draft);
+  const problems = validateContentsDraft(draft);
+  if (problems.some((problem) => problem.field === 'removed')) return undefined;
+  return problems.reduce<ContentsSectionDraft>((next, problem) => {
+    const stored = draft.base.find((row) => row.id === problem.key);
+    if (!stored) return next;
+    const servings = stored.servings === undefined ? '' : String(stored.servings);
+    return { ...setContentServings(next, stored.id, servings), section: 'contents' };
+  }, draft);
+}
+
+function openDraft(
+  recipe: Recipe,
+  contents: readonly CollectionContent[],
+  section: PageSection,
+): OpenDraft {
+  if (section === 'contents') return { ...contentsDraft(recipe, contents), section };
+  return sectionDraft(recipe, section);
+}
+
+function trySave(recipeId: Id, draft: OpenDraft): { save: Save | null } | { error: string } {
   try {
+    if (draft.section === 'contents') return { save: saveCollectionContents(recipeId, draft) };
     return { save: saveRecipeSection(recipeId, draft) };
   } catch (error) {
     if (error instanceof OfflineError) return { error: OFFLINE_EDIT_HINT };
@@ -64,6 +113,8 @@ function trySave(
 
 export function useSectionEditor(recipe: Recipe): SectionEditor {
   const recipeId = recipe.id;
+  // Empty for a recipe; "Enthält" opens from it.
+  const contents = useCollectionContents(recipeId);
   const [state, setState] = useState<EditorState>({});
   // The state as committed, for the focus cleanup and a late refusal. Synced after the commit, so
   // the double effects of React's strict mode never see a section opened in the same commit.
@@ -81,25 +132,26 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
 
   // A pen opens its section from the recipe as it is after the previous section was saved: that
   // save changed the store, so this render reads the new recipe (a removed variant took its steps).
-  if (state.opening) setState({ draft: sectionDraft(recipe, state.opening) });
+  if (state.opening) setState({ draft: openDraft(recipe, contents, state.opening) });
 
-  /** E7: a refusal while the page is open shows the section again (core draftAfterRefusal). */
-  const watch = useCallback(
-    (save: SectionSave, sent: RecipeSectionDraft, leftOpen: RecipeSectionDraft | undefined) => {
-      save.confirmed.catch(() => {
-        if (!mounted.current) return;
-        const open = committed.current.draft;
-        const shown = draftAfterRefusal(open, sent, leftOpen);
-        if (shown !== open) setState({ draft: shown });
-      });
-    },
-    [],
-  );
+  /**
+   * E7: a refusal while the page is open shows the section again: when none is open, or the one
+   * open is still the draft the save left open (the rule of core draftAfterRefusal, for every
+   * section including "Enthält").
+   */
+  const watch = useCallback((save: Save, sent: OpenDraft, leftOpen: OpenDraft | undefined) => {
+    save.confirmed.catch(() => {
+      if (!mounted.current) return;
+      const open = committed.current.draft;
+      const shown = open === undefined || open === leftOpen ? sent : open;
+      if (shown !== open) setState({ draft: shown });
+    });
+  }, []);
 
   /** "Fertig" for a draft: invalid stays open, open rows stay open (AC-026, AC-032). */
   const finish = useCallback(
-    (draft: RecipeSectionDraft) => {
-      if (validateSectionDraft(draft).length > 0) {
+    (draft: OpenDraft) => {
+      if (validate(draft).length > 0) {
         setState({ draft, attempted: true });
         return;
       }
@@ -126,7 +178,8 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
     if (!draft) return;
     committed.current = {};
     setState({});
-    trySave(recipeId, savablePart(draft));
+    const part = savable(draft);
+    if (part) trySave(recipeId, part);
   }, [recipeId]);
 
   useFocusEffect(
@@ -158,15 +211,15 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const problems = state.attempted && state.draft ? validateSectionDraft(state.draft) : [];
+  const problems = state.attempted && state.draft ? validate(state.draft) : [];
   return {
     draft: state.draft,
     editing: (section) => state.draft?.section === section,
     edit: (section) => {
       const open = state.draft;
       if (open?.section === section) return;
-      if (open) {
-        const sent = savablePart(open);
+      const sent = open ? savable(open) : undefined;
+      if (sent) {
         const result = trySave(recipeId, sent);
         if ('save' in result && result.save) watch(result.save, sent, undefined);
       }

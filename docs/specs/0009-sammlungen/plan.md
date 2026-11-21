@@ -961,3 +961,20 @@ Wird am Ende ausgefüllt.
 - [ ] `/security-check` gelaufen (T1, T4, T9)
 - [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
 - [ ] Glossar, `sync.md`, Hinweise in Spec 0008/0010/0011 und Rückverfolgbarkeitstabelle aktuell
+
+## Entscheidungen beim Bauen (App, T8/T9, 21.11.2026)
+
+1. „+ Rezept hinzufügen“ steht in der Leseansicht von „Enthält“, nicht im Bearbeiten (REQ-003).
+2. Portionen und Variante je Rezept in einem kleinen Fenster (Tipp auf die Zeile oder ⋯); leer =
+   „übernimmt (6)“; Standardvariante wird nicht gespeichert. ⋯ mit „Nach oben/unten“ und
+   „Aus der Sammlung entfernen“.
+3. Fenster „Rezepte zu …“: Suchfeld mit „„…“ als neues Rezept“ als fester Kopf, darunter die Rezepte
+   A–Z als `SelectRow`; der Fuß zählt nur neu angekreuzte.
+4. Beim Verlassen speichert „Enthält“ den gültigen Teil (ungültige Portionen behalten den alten Wert,
+   > 20 Entfernungen speichern nichts). Die Regel liegt vorerst in der App (`use-section-editor.ts`);
+   Kandidat für core (`savableContents`) im Abschluss T10.
+5. „Zu Sammlung hinzufügen“ steht als erster Eintrag im ⋯ der Rezeptseite.
+
+Offen für T10: Kommt eine Entfernung per Sync an, bevor das andere Gerät „Fertig“ wählt, schließt der
+Abschnitt still (Endstand stimmt, aber kein Hinweis wie in der Konflikttabelle) → Hinweis zeigen,
+wenn Zeilen des Entwurfs inzwischen fehlen.

@@ -123,7 +123,14 @@ export function CollectionDetailBody(props: {
     </Stack>
   );
 
-  const contained = <ContentsSection contents={contents} onOpen={openRecipe} />;
+  const contained = (
+    <ContentsSection
+      collection={collection}
+      contents={contents}
+      onOpen={openRecipe}
+      editor={editor}
+    />
+  );
   const ingredients = (
     <IngredientsSection
       recipe={collection}

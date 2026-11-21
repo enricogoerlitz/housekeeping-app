@@ -92,7 +92,10 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'plan-recipe-sheet-close').click();
   await tid(page, 'recipe-more').click();
   await expect(tid(page, 'recipe-more-delete')).toBeVisible();
-  await page.keyboard.press('Escape');
+  // ⋯ → "Zu Sammlung hinzufügen" lists the collections A to Z (spec 0009, AC-008).
+  await tid(page, 'recipe-more-collection').click();
+  await expect(tid(page, `add-to-collection-${seedIds['rec-grillabend']}`)).toBeVisible();
+  await tid(page, 'add-to-collection-sheet-close').click();
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();
@@ -102,6 +105,17 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'collection-badge')).toBeVisible();
   await expect(tid(page, `collection-content-${seedIds['rec-nudelsalat']}`)).toBeVisible();
   await expect(tid(page, 'start-cooking')).toBeHidden();
+  // "+ Rezept hinzufügen" opens "Rezepte zu …" with "schon enthalten" (AC-010); the pen at
+  // "Enthält" opens the rows with ⋯ and "Fertig" closes them again (spec 0009, T8).
+  await tid(page, 'collection-add-recipes').click();
+  await expect(tid(page, `collection-recipes-row-${seedIds['rec-nudelsalat']}`)).toContainText(
+    'schon enthalten',
+  );
+  await tid(page, 'collection-recipes-sheet-close').click();
+  await tid(page, 'collection-contents-edit').click();
+  await expect(tid(page, 'collection-rows-list')).toBeVisible();
+  await tid(page, 'collection-contents-done').click();
+  await expect(tid(page, 'collection-contents-edit')).toBeVisible();
   await back(page);
   await tid(page, 'food-switch-restaurants').click();
   await tid(page, `restaurant-${seedIds['rest-pho']}`).click();

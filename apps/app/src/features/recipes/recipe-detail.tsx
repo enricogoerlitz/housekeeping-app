@@ -33,6 +33,7 @@ import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 
+import { AddToCollectionSheet } from './add-to-collection-sheet';
 import { CollectionDetailBody } from './collection-detail';
 import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { ClassificationSection } from './sections/classification-section';
@@ -132,6 +133,7 @@ function RecipeDetailBody(props: {
   const [variantChoice, setVariantChoice] = useState(() => chooseVariant(recipe));
   const [pantryCheck, setPantryCheck] = useState(false);
   const [planning, setPlanning] = useState(false);
+  const [addingToCollection, setAddingToCollection] = useState(false);
   const photo = useRecipePhoto(recipe);
   const editor = useSectionEditor(recipe);
 
@@ -176,7 +178,12 @@ function RecipeDetailBody(props: {
         onPress={() => toggleFavorite(recipe.id)}
       />
       {desktop ? actions : null}
-      <RecipeMoreMenu recipe={recipe} photo={photo} onDelete={remove} />
+      <RecipeMoreMenu
+        recipe={recipe}
+        photo={photo}
+        onDelete={remove}
+        onAddToCollection={() => setAddingToCollection(true)}
+      />
     </>
   );
 
@@ -251,6 +258,9 @@ function RecipeDetailBody(props: {
         )}
 
         {planning ? <PlanRecipeSheet recipe={recipe} onClose={() => setPlanning(false)} /> : null}
+        {addingToCollection ? (
+          <AddToCollectionSheet recipe={recipe} onClose={() => setAddingToCollection(false)} />
+        ) : null}
         {pantryCheck ? (
           <PantryCheckSheet
             recipes={[{ recipeId: recipe.id, portions: shownServings, variants: shownVariants }]}

@@ -1,16 +1,15 @@
-import type { RecipeSection } from '@housekeeping/core';
 import { Text, type EditableSectionProps } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import type { SectionEditor } from './use-section-editor';
+import type { PageSection, SectionEditor } from './use-section-editor';
 
 export const DONE_LABEL = 'Fertig';
 
 /** The props every section of the recipe page shares: pen, "Fertig", offline greyed out. */
 export function useSectionFrame(
   editor: SectionEditor,
-  section: RecipeSection,
+  section: PageSection,
   title: string,
 ): Omit<EditableSectionProps, 'testID' | 'children'> {
   const online = useOnlineOnly();

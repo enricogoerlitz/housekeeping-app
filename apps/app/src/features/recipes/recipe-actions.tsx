@@ -163,17 +163,30 @@ export function RecipePhotoStatus(props: { photo: RecipePhotoState }) {
   );
 }
 
-type MoreAction = 'photo' | 'photo-remove' | 'delete';
+type MoreAction = 'collection' | 'photo' | 'photo-remove' | 'delete';
 
-/** ⋯ of the recipe page (AC-020): "Foto ändern", "Foto entfernen" with an own photo, "Löschen". */
+/**
+ * ⋯ of the recipe page (AC-020): "Zu Sammlung hinzufügen" for a recipe only (spec 0009, AC-008,
+ * AC-009), "Foto ändern", "Foto entfernen" with an own photo, "Löschen".
+ */
 export function RecipeMoreMenu(props: {
   recipe: Recipe;
   photo: RecipePhotoState;
   onDelete: () => void;
+  /** Offered for the kind "Rezept" only; a collection never goes into a collection (D15). */
+  onAddToCollection?: () => void;
 }) {
   const online = useOnlineOnly();
   const busy = props.photo.busy !== undefined;
   const options: MenuOption<MoreAction>[] = [];
+  if (props.recipe.kind === 'recipe' && props.onAddToCollection) {
+    options.push({
+      value: 'collection',
+      label: 'Zu Sammlung hinzufügen',
+      disabled: online.disabled,
+      hint: online.hint,
+    });
+  }
   if (CAN_PICK_PHOTO) {
     options.push({
       value: 'photo',
@@ -199,7 +212,8 @@ export function RecipeMoreMenu(props: {
       accessibilityLabel={`Mehr zu ${props.recipe.title}`}
       options={options}
       onChange={(action) => {
-        if (action === 'photo') props.photo.change();
+        if (action === 'collection') props.onAddToCollection?.();
+        else if (action === 'photo') props.photo.change();
         else if (action === 'photo-remove') props.photo.remove();
         else props.onDelete();
       }}
