@@ -631,3 +631,15 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 6. Sortierknopf: Kurztexte nur für „Zuletzt“ und „A–Z“, sonst der Menütext.
 7. Umgewandelte Reste behalten `leftoversOfEntryId` (wie der Server in T1).
 8. Namen in core: `recipeShowLabel`/`recipeEmptyLabel` bzw. `restaurant…` (flache Exporte).
+
+## Entscheidungen beim Bauen (App, T5/T6, 21.11.2026)
+
+1. Kachel-Titel nutzt die vorhandenen Schriftgrößen (Handy 19 px, Desktop 22 px über
+   `MediaCard size="l"`) statt einer neuen 20-px-Größe.
+2. Kacheln zeigen in jedem Theme das Foto oben (zwei Kacheln nebeneinander auf dem Handy).
+3. Filterfeld „Schnell“ ohne Ernährung (die steht im Abschnitt „Ernährung“, wie Konzept 3.2).
+4. Keine Weiterleitung für `/rezepte?id=` (E12, ADR-0012); die ältere Zeile im Task T5 ist überholt.
+5. „+ → Restaurant“ öffnet bis T8 das vorhandene Restaurant-Fenster.
+6. Einplanen: ‹ › verschiebt den gewählten Tag um ganze Wochen (`pagePlanChoice`).
+7. Rezept-Aktionen in der Kopfzeile erst ab Desktop; Tablet unter dem Kopf; Handy mit „Kochen“ in
+   zweiter Zeile (44-pt-Knöpfe). „Foto entfernen“ im ⋯, wenn ein eigenes Foto da ist.

@@ -6,23 +6,35 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
-  filterRecipes,
-  routeId,
+  activeFilterChips,
+  activeFilterCount,
+  applyRecipeListFilter,
+  cuisineFacets,
+  EMPTY_RECIPE_LIST_FILTER,
+  filterButtonLabel,
+  isQuickFilterActive,
+  QUICK_FILTERS,
+  RECIPE_SORTS,
+  recipeCountLabel,
+  recipeEmptyLabel,
+  recipeShowLabel,
+  recipeSortShortLabel,
+  removeFilterChip,
   searchRecipes,
-  sortRecipes,
-  type Id,
-  type RecipeFilter,
-  type RecipeSort,
+  sortRecipeList,
+  toggleQuickFilter,
+  type Recipe,
 } from '@housekeeping/core';
 import {
   Button,
   Chip,
   EmptyState,
+  FilterBar,
   Icon,
   IconButton,
-  Notice,
-  Row,
+  InfiniteList,
   Menu,
+  Notice,
   Screen,
   ScreenHeader,
   Stack,
@@ -31,47 +43,27 @@ import {
   TypingIndicator,
   ViewTabs,
   useBreakpoint,
+  type MenuOption,
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, View } from 'react-native';
 
 import { RestaurantsPanel } from '@/features/restaurants/restaurants-panel';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
 
 import { AiSearchPanel } from './ai-search-panel';
+import { useOpenRecipe } from './navigation';
 import { NewRecipeSheet } from './new-recipe-sheet';
-import { RecipeDetail } from './recipe-detail';
-import { RecipeGrid } from './recipe-grid';
+import { RecipeFilterPanel } from './recipe-filter-panel';
+import { RecipeTile } from './recipe-grid';
+import { useRecipeListState } from './recipe-list-state';
 import { StarterSheet } from './starter-sheet';
 import { useAiSearch } from './use-ai-search';
-
-type FilterKey = 'favorites' | 'fast' | 'vegetarian' | 'vegan' | 'fits-all' | 'rare';
-
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'favorites', label: 'Favoriten' },
-  { key: 'fast', label: 'Schnell < 30 Min' },
-  { key: 'vegetarian', label: 'Vegetarisch' },
-  { key: 'vegan', label: 'Vegan' },
-  { key: 'fits-all', label: 'Passt für alle' },
-  { key: 'rare', label: 'Lange nicht gekocht' },
-];
-
-const SORTS: { value: RecipeSort; label: string }[] = [
-  { value: 'recent', label: 'Zuletzt' },
-  { value: 'new', label: 'Neu' },
-  { value: 'title', label: 'A–Z' },
-  { value: 'rating', label: 'Bewertung' },
-];
-
-/** Days after which a recipe counts as "lange nicht gekocht". */
-const RARE_AFTER_DAYS = 21;
-const LIST_COLUMN_WIDTH = 380;
 
 type FoodView = 'recipes' | 'restaurants';
 
@@ -80,14 +72,20 @@ const FOOD_VIEWS: { value: FoodView; label: string }[] = [
   { value: 'restaurants', label: 'Restaurants' },
 ];
 
+type NewKind = 'recipe' | 'restaurant' | 'starter';
+
+/** Recipe tiles: at least 260 px wide, two side by side on phones (AC-014). */
+const TILE_MIN_WIDTH = 260;
+
 /**
- * "Essen": recipes or restaurants (spec 0002, AC-001). Recipe list with search, filters and sort;
- * on wide screens list and recipe side by side.
+ * "Essen": view tabs "Rezepte · Restaurants", and for recipes one search and filter row over an
+ * endless grid of tiles (spec 0008, REQ-001 to REQ-004). A recipe always opens as its own page.
+ * Search, filters, sort and the random order stay while the app runs (E14).
  */
 export function RecipesScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string | string[]; view?: string | string[] }>();
-  const { isWide, isPhone } = useBreakpoint();
+  const params = useLocalSearchParams<{ view?: string | string[] }>();
+  const { isPhone } = useBreakpoint();
   const online = useOnlineOnly();
   const assistant = useAssistant();
   const settings = useSettings();
@@ -96,14 +94,33 @@ export function RecipesScreen() {
   const members = useMembers();
   const me = useCurrentMember();
   const today = useToday();
+  const list = useRecipeListState();
+  const openRecipe = useOpenRecipe();
 
-  const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState<FilterKey[]>([]);
-  const [sort, setSort] = useState<RecipeSort>('recent');
   const [newOpen, setNewOpen] = useState(false);
   const [starterOpen, setStarterOpen] = useState(false);
 
-  const selectedId = isWide ? routeId(params.id) : undefined;
+  const { query, filter, sort, shuffle } = list;
+  const cuisines = useMemo(() => cuisineFacets(recipes), [recipes]);
+  const results = useMemo(() => {
+    const searched = searchRecipes(query, recipes, articlesById);
+    const filtered = applyRecipeListFilter(searched, filter, {
+      me: me.id,
+      members,
+      articlesById,
+      today,
+    });
+    // With a query the search ranking wins; without one the chosen sort applies.
+    return query.trim() ? filtered : sortRecipeList(filtered, sort, shuffle);
+  }, [query, recipes, articlesById, filter, me.id, members, today, sort, shuffle]);
+
+  // With the switch on, a typed query is searched after a short pause; off, nothing is sent.
+  // Without the AI switch in code the stored setting stays on the device but has no effect
+  // (spec 0005, AC-046).
+  const aiSearch = features.ai && settings.aiSearch;
+  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
+  const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
+
   // The chosen side lives in the URL, so a reload or a deep link keeps it.
   const view: FoodView =
     (Array.isArray(params.view) ? params.view[0] : params.view) === 'restaurants'
@@ -116,7 +133,6 @@ export function RecipesScreen() {
       onChange={(next) =>
         router.setParams({
           view: next === 'restaurants' ? 'restaurants' : undefined,
-          id: undefined,
           rid: undefined,
         })
       }
@@ -125,96 +141,58 @@ export function RecipesScreen() {
     />
   );
 
-  const open = (recipeId: Id) => {
-    if (isWide) router.setParams({ id: recipeId });
-    else router.push({ pathname: '/rezept/[id]', params: { id: recipeId } });
+  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} />;
+
+  const ids = recipes.map((recipe) => recipe.id);
+  const newOptions: MenuOption<NewKind>[] = [
+    { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
+    { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
+    { value: 'starter', label: 'Starter-Rezepte' },
+  ];
+  const onNew = (kind: NewKind) => {
+    if (kind === 'recipe') setNewOpen(true);
+    else if (kind === 'starter') setStarterOpen(true);
+    // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
+    else router.setParams({ view: 'restaurants', add: '1' });
   };
-
-  const toggleFilter = (key: FilterKey) => {
-    if (filters.includes(key)) {
-      setFilters(filters.filter((candidate) => candidate !== key));
-      return;
-    }
-    // A recipe can only be filtered for one diet at a time.
-    const exclusive: FilterKey | undefined =
-      key === 'vegan' ? 'vegetarian' : key === 'vegetarian' ? 'vegan' : undefined;
-    setFilters([...filters.filter((candidate) => candidate !== exclusive), key]);
-  };
-
-  const filter: RecipeFilter = {
-    favoriteOf: filters.includes('favorites') ? me.id : undefined,
-    maxMinutes: filters.includes('fast') ? 30 : undefined,
-    diet: filters.includes('vegan')
-      ? 'vegan'
-      : filters.includes('vegetarian')
-        ? 'vegetarian'
-        : undefined,
-    fitsAll: filters.includes('fits-all') ? members : undefined,
-    notCookedSinceDays: filters.includes('rare') ? RARE_AFTER_DAYS : undefined,
-  };
-  const searched = searchRecipes(query, recipes, articlesById);
-  const filtered = filterRecipes(searched, filter, articlesById, today);
-  // With a query the search ranking wins; without one the chosen sort applies.
-  const results = query.trim() ? filtered : sortRecipes(filtered, sort);
-
-  // With the switch on, a typed query is searched after a short pause; off, nothing is sent.
-  // Without the AI switch in code the stored setting stays on the device but has no effect
-  // (spec 0005, AC-046).
-  const aiSearch = features.ai && settings.aiSearch;
-  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
-  const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
-
-  const toggleAi = () => settings.update({ aiSearch: !settings.aiSearch });
 
   const header = (
     <ScreenHeader
       title="Essen"
       right={
         <>
-          {isPhone ? (
-            <IconButton
-              icon="plus"
-              label="Neues Rezept"
-              variant="soft"
-              disabled={online.disabled}
-              onPress={() => setNewOpen(true)}
-              testID="recipe-new"
-            />
-          ) : (
-            <Button
-              label="Neues Rezept"
-              icon="plus"
-              size="sm"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => setNewOpen(true)}
-              testID="recipe-new"
-            />
-          )}
+          <Menu
+            trigger={isPhone ? 'icon' : 'button'}
+            icon="plus"
+            label="Neu"
+            accessibilityLabel="Neu anlegen"
+            options={newOptions}
+            onChange={onNew}
+            testID="recipe-new"
+          />
           <StartPageActions />
         </>
       }
     />
   );
   const offlineHint = online.hint ? (
-    <Text variant="small" color="warn" testID="recipe-offline-hint" style={{ marginBottom: 12 }}>
+    <Text variant="small" color="warn" testID="recipe-offline-hint">
       {online.hint}
     </Text>
   ) : null;
 
   const sheets = (
     <>
-      <NewRecipeSheet visible={newOpen} onClose={() => setNewOpen(false)} onCreated={open} />
+      <NewRecipeSheet visible={newOpen} onClose={() => setNewOpen(false)} onCreated={openRecipe} />
       <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
     </>
   );
 
-  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} />;
-
+  // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (recipes.length === 0) {
     return (
       <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher}>
-        {offlineHint}
+        {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="book-open"
           title="Noch keine Rezepte"
@@ -254,15 +232,16 @@ export function RecipesScreen() {
     );
   }
 
-  const compact = selectedId !== undefined;
-  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const toggleAi = () => settings.update({ aiSearch: !settings.aiSearch });
+  const filterCount = activeFilterCount(filter);
+  const sortLabel = recipeSortShortLabel(sort);
   const toolbar = (
-    <Stack gap={8}>
-      <Row gap={8} wrap>
+    <FilterBar
+      search={
         <TextField
           round
           value={query}
-          onChangeText={setQuery}
+          onChangeText={list.setQuery}
           placeholder={aiSearch ? 'Was möchtet ihr essen?' : 'Rezepte suchen …'}
           accessibilityLabel="Rezepte suchen"
           returnKeyType="search"
@@ -285,139 +264,157 @@ export function RecipesScreen() {
               <IconButton
                 icon="x"
                 label="Suche leeren"
-                onPress={() => setQuery('')}
+                onPress={() => list.setQuery('')}
                 testID="recipe-search-clear"
               />
             ) : undefined
           }
-          style={{ flexGrow: 1, flexBasis: 220 }}
           testID="recipe-search"
         />
-        {features.ai ? <AiToggle on={settings.aiSearch} onToggle={toggleAi} /> : null}
-      </Row>
-      {aiVisible ? null : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-          style={{ flexGrow: 0 }}
-        >
-          <Menu
-            label={sortLabel}
-            accessibilityLabel={`Sortierung: ${sortLabel}`}
-            icon="arrow-up-down"
-            value={sort}
-            onChange={setSort}
-            options={SORTS}
-            testID="recipe-sort"
-          />
-          {FILTERS.map((entry) => (
+      }
+      filterLabel={filterButtonLabel(filterCount)}
+      activeCount={filterCount}
+      sort={
+        <Menu
+          label={sortLabel}
+          accessibilityLabel={`Sortierung: ${sortLabel}`}
+          icon="arrow-up-down"
+          value={sort}
+          onChange={(next) => list.setSort(next, ids)}
+          options={[...RECIPE_SORTS]}
+          testID="recipe-sort"
+        />
+      }
+      chips={
+        <>
+          {sort === 'random' ? (
             <Chip
-              key={entry.key}
-              label={entry.label}
-              selected={filters.includes(entry.key)}
-              onPress={() => toggleFilter(entry.key)}
-              testID={`filter-${entry.key}`}
+              label="Neu mischen"
+              icon="refresh-cw"
+              onPress={() => list.reshuffle(ids)}
+              testID="recipe-reshuffle"
+            />
+          ) : null}
+          {activeFilterChips(filter, cuisines).map((chip) => (
+            <Chip
+              key={`${chip.kind}-${chip.value}`}
+              label={chip.label}
+              selected
+              removable
+              accessibilityLabel={`${chip.label} entfernen`}
+              onPress={() => list.setFilter(removeFilterChip(filter, chip))}
+              testID={`recipe-chip-${chip.kind}-${chip.value}`}
             />
           ))}
-        </ScrollView>
-      )}
-    </Stack>
+          {QUICK_FILTERS.map((chip) => (
+            <Chip
+              key={chip.value}
+              label={chip.label}
+              selected={isQuickFilterActive(filter, chip.value)}
+              onPress={() => list.setFilter(toggleQuickFilter(filter, chip.value))}
+              testID={`recipe-quick-${chip.value}`}
+            />
+          ))}
+          {features.ai ? <AiToggle on={settings.aiSearch} onToggle={toggleAi} /> : null}
+        </>
+      }
+      panelTitle="Filter"
+      panel={<RecipeFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />}
+      resetLabel="Zurücksetzen"
+      onReset={() => list.setFilter(EMPTY_RECIPE_LIST_FILTER)}
+      applyLabel={recipeShowLabel(results.length)}
+      collapseLabel="Einklappen"
+      testID="recipe-filters"
+    />
   );
-  const listBody = (
-    <>
-      <Row justify="space-between" style={{ marginBottom: 12 }}>
-        <Text variant="small" color="muted" testID="recipe-count">
-          {aiVisible ? 'KI-Suche' : results.length === 1 ? '1 Rezept' : `${results.length} Rezepte`}
-        </Text>
+
+  const aiPart =
+    aiVisible && ai.status === 'done' ? (
+      <View testID="ai-search-results">
+        <AiSearchPanel
+          result={ai.result}
+          disabledChips={ai.disabledChips}
+          onRemoveChip={(chipId) => runAi([...ai.disabledChips, chipId])}
+          onAgain={() => runAi(ai.disabledChips)}
+          onOpen={openRecipe}
+        />
+      </View>
+    ) : aiVisible && ai.status === 'error' ? (
+      <Stack gap={8} style={{ marginBottom: 16 }}>
+        <Notice icon="circle-alert" text={ai.message} testID="ai-search-error" />
         <Button
-          label="Starter-Rezepte"
-          icon="book-open"
-          variant="link"
+          label="Nochmal suchen"
+          icon="refresh-cw"
+          variant="ghost"
           size="sm"
-          onPress={() => setStarterOpen(true)}
-          testID="recipe-starter-link"
+          onPress={() => runAi(ai.disabledChips)}
+          testID="ai-search-retry"
         />
-      </Row>
+      </Stack>
+    ) : aiVisible ? (
+      <View style={{ marginBottom: 16 }}>
+        <TypingIndicator label="Die KI sucht …" testID="ai-search-loading" />
+      </View>
+    ) : null;
 
-      {aiVisible && ai.status === 'done' ? (
-        <View testID="ai-search-results">
-          <AiSearchPanel
-            result={ai.result}
-            disabledChips={ai.disabledChips}
-            onRemoveChip={(chipId) => runAi([...ai.disabledChips, chipId])}
-            onAgain={() => runAi(ai.disabledChips)}
-            onOpen={open}
-            compact={compact}
-          />
-        </View>
-      ) : aiVisible && ai.status === 'error' ? (
-        <Stack gap={8} style={{ marginBottom: 16 }}>
-          <Notice icon="circle-alert" text={ai.message} testID="ai-search-error" />
-          <Button
-            label="Nochmal suchen"
-            icon="refresh-cw"
-            variant="ghost"
-            size="sm"
-            onPress={() => runAi(ai.disabledChips)}
-            testID="ai-search-retry"
-          />
-        </Stack>
-      ) : aiVisible ? (
-        <View style={{ marginBottom: 16 }}>
-          <TypingIndicator label="Die KI sucht …" testID="ai-search-loading" />
-        </View>
-      ) : results.length === 0 ? (
-        <EmptyState
-          icon="search"
-          title="Nichts gefunden"
-          text="Probiere ein anderes Wort oder nimm einen Filter heraus."
-          testID="recipes-no-results"
+  const empty = (
+    <EmptyState
+      icon={query.trim() ? 'search' : 'list-filter'}
+      title={recipeEmptyLabel(query)}
+      text={query.trim() ? 'Probiere ein anderes Wort.' : undefined}
+      testID="recipes-no-results"
+    >
+      {filterCount > 0 ? (
+        <Button
+          label="Filter zurücksetzen"
+          variant="secondary"
+          onPress={() => list.setFilter(EMPTY_RECIPE_LIST_FILTER)}
+          testID="recipes-reset-filters"
         />
-      ) : (
-        <RecipeGrid recipes={results} onOpen={open} compact={compact} />
-      )}
-    </>
+      ) : null}
+    </EmptyState>
   );
-
-  if (compact && selectedId !== undefined) {
-    return (
-      <Screen
-        testID="recipes-screen"
-        tone="essen"
-        header={header}
-        tabs={switcher}
-        scroll={false}
-        style={{ flex: 1, paddingBottom: 0 }}
-      >
-        <View style={{ flex: 1, flexDirection: 'row', gap: 32 }}>
-          <View style={{ width: LIST_COLUMN_WIDTH }}>
-            <ScrollColumn>
-              <View style={{ paddingVertical: 8 }}>{toolbar}</View>
-              {offlineHint}
-              {listBody}
-            </ScrollColumn>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <ScrollColumn>
-              <View style={{ paddingTop: 8 }}>
-                <RecipeDetail
-                  recipeId={selectedId}
-                  onClose={() => router.setParams({ id: undefined })}
-                />
-              </View>
-            </ScrollColumn>
-          </View>
-        </View>
-        {sheets}
-      </Screen>
-    );
-  }
 
   return (
-    <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher} toolbar={toolbar}>
-      {offlineHint}
-      {listBody}
+    <Screen
+      testID="recipes-screen"
+      tone="essen"
+      header={header}
+      tabs={switcher}
+      toolbar={toolbar}
+      scroll={false}
+      clearFab={false}
+      style={{ flex: 1, paddingTop: 0, paddingBottom: 0 }}
+    >
+      <InfiniteList<Recipe>
+        // A new round (filter, sort, mixing) starts at the top; its place is kept per round.
+        key={list.round}
+        restoreKey={`recipes-${list.round}`}
+        data={aiVisible ? [] : results}
+        keyExtractor={(recipe) => recipe.id}
+        renderItem={(recipe) => (
+          <RecipeTile recipe={recipe} articlesById={articlesById} onOpen={openRecipe} />
+        )}
+        minColumnWidth={TILE_MIN_WIDTH}
+        minColumns={2}
+        ListHeaderComponent={
+          <View style={{ gap: 6, marginBottom: 12 }}>
+            {offlineHint}
+            {aiVisible ? (
+              <Text variant="small" color="muted" testID="recipe-count">
+                KI-Suche
+              </Text>
+            ) : results.length > 0 ? (
+              <Text variant="small" color="muted" testID="recipe-count">
+                {recipeCountLabel(results.length)}
+              </Text>
+            ) : null}
+            {aiPart}
+          </View>
+        }
+        ListEmptyComponent={aiVisible ? undefined : empty}
+        testID="recipe-list"
+      />
       {sheets}
     </Screen>
   );

@@ -1,18 +1,16 @@
 import {
   addIngredientToList,
+  deleteRecipe,
+  discardRecipePhoto,
   OfflineError,
-  PHOTO_UPLOAD_FAILED_MESSAGE,
-  preparePhoto,
   rateRecipe,
-  removeRecipePhoto,
-  setRecipePhoto,
   snapshot,
   toggleFavorite,
   useArticlesById,
   useCurrentMember,
+  useMembers,
   useRecipe,
   useRecipeImage,
-  WRITE_REJECTED_MESSAGE,
 } from '@housekeeping/api';
 import {
   canPutRecipeOnList,
@@ -22,8 +20,10 @@ import {
   dietLabel,
   ingredientLine,
   ingredientsForVariant,
+  recipeDeletedLabel,
   scaleAmount,
   stepsForVariants,
+  type Diet,
   type Id,
   type Recipe,
   type RecipeIngredient,
@@ -41,67 +41,59 @@ import {
   Notice,
   Photo,
   Row,
+  Screen,
+  ScreenHeader,
   Section,
   Stack,
-  Stars,
   Text,
   toast,
+  useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { ArticleSheet } from '@/features/articles/article-sheet';
 import { MergeArticleDialog } from '@/features/articles/merge-article-dialog';
-import { DetailPage } from '@/features/shell/detail-page';
+import { PlanRecipeSheet } from '@/features/meal-plan/plan-recipe-sheet';
 import { FavoriteButton } from '@/features/shell/favorite-button';
+import { MemberRatings } from '@/features/shell/member-ratings';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
-import { useAssistant } from '@/lib/assistant';
-import { features } from '@/lib/features';
-import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
 import { IngredientSheet } from './ingredient-sheet';
 import { IngredientsPasteSheet } from './ingredients-paste-sheet';
+import {
+  RecipeActions,
+  RecipeMoreMenu,
+  RecipePhotoStatus,
+  useRecipePhoto,
+  type RecipePhotoState,
+} from './recipe-actions';
 import { useIngredientDrafts } from './use-ingredient-drafts';
-
-const TWO_COLUMNS_FROM = 720;
-const PHOTO_BESIDE_TITLE_FROM = 560;
-const NO_INGREDIENTS_HINT = 'Noch keine Zutaten';
 
 type IngredientAction = 'edit' | 'article';
 
 export interface RecipeDetailProps {
   recipeId: Id;
-  /** Shows a back arrow (own page). */
-  onBack?: () => void;
-  /** Shows a close button (split view on wide screens). */
-  onClose?: () => void;
+  /** "‹ Essen": back to the list, at the same place (AC-015). */
+  onBack: () => void;
 }
 
-/** One recipe: header, portions, variants, ingredients with "Ist alle", steps and actions. */
+/**
+ * A recipe as a whole page in "Essen" (spec 0008, REQ-006, E12): the bar with "‹ Essen", the
+ * title once scrolled (phones) and the actions; inside two columns from the desktop breakpoint.
+ * Each block (head, Einordnung, Zutaten, Zubereitung, Notizen) is its own component, so section
+ * editing (T7) can wrap each one.
+ */
 export function RecipeDetail(props: RecipeDetailProps) {
   const recipe = useRecipe(props.recipeId);
-  const router = useRouter();
+  // Set while this page deletes its own recipe: it leaves instead of showing "gibt es nicht mehr".
+  const [leaving, setLeaving] = useState(false);
   if (!recipe) {
-    return (
-      <DetailPage onBack={props.onBack} title="Rezept" tone="essen" testID="recipe-screen">
-        <EmptyState
-          icon="book-open"
-          title="Rezept nicht gefunden"
-          text="Vielleicht wurde es in einem anderen Haushalt angelegt."
-          testID="recipe-not-found"
-        >
-          <Button
-            label="Zu den Rezepten"
-            icon="arrow-left"
-            onPress={() => router.replace('/rezepte')}
-            testID="recipe-not-found-back"
-          />
-        </EmptyState>
-      </DetailPage>
-    );
+    if (leaving) return <Screen testID="recipe-screen" tone="essen" />;
+    return <RecipeGone onBack={props.onBack} />;
   }
   // A new recipe starts with fresh local state (portions, variant).
   return (
@@ -109,39 +101,56 @@ export function RecipeDetail(props: RecipeDetailProps) {
       key={recipe.id}
       recipe={recipe}
       onBack={props.onBack}
-      onClose={props.onClose}
+      onDeleting={() => setLeaving(true)}
     />
   );
 }
 
-function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?: () => void }) {
+/** AC-021: deleted elsewhere, or an address from another household. */
+function RecipeGone(props: { onBack: () => void }) {
+  const router = useRouter();
+  return (
+    <Screen
+      testID="recipe-screen"
+      tone="essen"
+      header={<ScreenHeader title="Rezept" titleOnScroll backLabel="Essen" onBack={props.onBack} />}
+    >
+      <EmptyState
+        icon="book-open"
+        title="Dieses Rezept gibt es nicht mehr"
+        testID="recipe-not-found"
+      >
+        <Button
+          label="Zu Essen"
+          icon="arrow-left"
+          onPress={() => (router.canGoBack() ? props.onBack() : router.replace('/rezepte'))}
+          testID="recipe-not-found-back"
+        />
+      </EmptyState>
+    </Screen>
+  );
+}
+
+function RecipeDetailBody(props: { recipe: Recipe; onBack: () => void; onDeleting: () => void }) {
   const { recipe } = props;
   const router = useRouter();
-  const assistant = useAssistant();
   const online = useOnlineOnly();
   const me = useCurrentMember();
+  const members = useMembers();
   const articlesById = useArticlesById();
-  const [width, setWidth] = useState(0);
+  const { bp, isPhone } = useBreakpoint();
+  const desktop = bp === 'desktop';
   // Displayed portions are local; when the recipe's own portions change (assistant), they follow.
   const [portions, setPortions] = useState({ base: recipe.servings, shown: recipe.servings });
   const shownServings = portions.base === recipe.servings ? portions.shown : recipe.servings;
   const [variantId, setVariantId] = useState<Id | undefined>(() => defaultVariantId(recipe));
-  const drafts = useIngredientDrafts(recipe.id);
   const [pantryCheck, setPantryCheck] = useState(false);
-  // "+ Zutat" (new) or "Zutat bearbeiten" (an ingredient), REQ-001 and REQ-003.
-  const [editing, setEditing] = useState<{ ingredient?: RecipeIngredient } | undefined>();
-  // ⋯ → "Artikel bearbeiten" (AC-007) and, from there, "Zusammenführen" (REQ-007).
-  const [articleFor, setArticleFor] = useState<Id | undefined>();
-  const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
-  const image = useRecipeImage(recipe);
+  const [planning, setPlanning] = useState(false);
+  const photo = useRecipePhoto(recipe);
 
-  const wide = width >= TWO_COLUMNS_FROM;
-  const heroRow = width >= PHOTO_BESIDE_TITLE_FROM;
   const activeVariantId = recipe.variants.some((variant) => variant.id === variantId)
     ? variantId
     : defaultVariantId(recipe);
-  const ingredients = ingredientsForVariant(recipe, activeVariantId);
-  const steps = stepsForVariants(recipe, activeVariantId ? [activeVariantId] : undefined);
   const diet =
     recipe.ingredients.length > 0
       ? deriveRecipeDiet(recipe, activeVariantId, articlesById)
@@ -151,11 +160,240 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
     : [];
   // AC-060: the same rule as the calendar picker (AC-061) — something to buy, or nothing to do.
   const canGoOnList = canPutRecipeOnList(recipe, shownServings, shownVariants);
-  const factor = shownServings / recipe.servings;
-  const isFavorite = recipe.favoriteOf.includes(me.id);
 
-  const setServings = (value: number) =>
-    setPortions({ base: recipe.servings, shown: Math.max(1, value) });
+  const startCooking = () => {
+    router.push({
+      pathname: '/rezept/[id]/kochen',
+      params: activeVariantId ? { id: recipe.id, variant: activeVariantId } : { id: recipe.id },
+    });
+  };
+
+  /**
+   * AC-043: back to "Essen" and the notice "… gelöscht · Rückgängig" for 5 s. Only when it ends
+   * without "Rückgängig" does the own photo go (E5); a refusal brings everything back (AC-045).
+   */
+  const remove = () => {
+    if (online.disabled) return;
+    const restore = snapshot();
+    props.onDeleting();
+    let deletion;
+    try {
+      deletion = deleteRecipe(recipe.id);
+    } catch (error) {
+      if (!(error instanceof OfflineError)) throw error;
+      return;
+    }
+    if (!deletion) return;
+    const done = deletion;
+    props.onBack();
+    toast.show({
+      message: recipeDeletedLabel(recipe.title),
+      actionLabel: 'Rückgängig',
+      onAction: undoAction(restore),
+      onExpire: () => void discardRecipePhoto(done),
+    });
+  };
+
+  const actions = (
+    <RecipeActions
+      recipe={recipe}
+      canGoOnList={canGoOnList}
+      onPlan={() => setPlanning(true)}
+      onList={() => setPantryCheck(true)}
+      onCook={startCooking}
+      compact={desktop}
+    />
+  );
+
+  const headerRight = (
+    <>
+      <FavoriteButton
+        testID="recipe-favorite"
+        active={recipe.favoriteOf.includes(me.id)}
+        disabled={online.disabled}
+        hint={online.hint}
+        onPress={() => toggleFavorite(recipe.id)}
+      />
+      {desktop ? actions : null}
+      <RecipeMoreMenu recipe={recipe} photo={photo} onDelete={remove} />
+    </>
+  );
+
+  const head = (
+    <Stack gap={16} style={{ flex: 1, minWidth: 0 }}>
+      <RecipeHead recipe={recipe} desktop={desktop} />
+      <RecipeClassification recipe={recipe} diet={diet} />
+      <MemberRatings
+        ratings={recipe.ratings}
+        members={members}
+        me={me.id}
+        onRate={(stars) => rateRecipe(recipe.id, stars)}
+        disabled={online.disabled}
+        hint={online.hint}
+        testID="recipe-rating"
+      />
+      {desktop ? null : <View style={{ marginTop: 4 }}>{actions}</View>}
+    </Stack>
+  );
+
+  const ingredients = (
+    <RecipeIngredients
+      recipe={recipe}
+      variantId={activeVariantId}
+      onVariant={setVariantId}
+      servings={shownServings}
+      onServings={(value) => setPortions({ base: recipe.servings, shown: Math.max(1, value) })}
+    />
+  );
+  const steps = <RecipeSteps recipe={recipe} variantId={activeVariantId} />;
+  const notes = <RecipeNotes recipe={recipe} />;
+
+  return (
+    <Screen
+      testID="recipe-screen"
+      tone="essen"
+      header={
+        <ScreenHeader
+          title={recipe.title}
+          titleOnScroll
+          backLabel="Essen"
+          onBack={props.onBack}
+          right={headerRight}
+          testID="recipe-bar-title"
+        />
+      }
+    >
+      <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
+        {desktop ? (
+          <>
+            <Row gap={32} align="flex-start">
+              <RecipePhoto recipe={recipe} photo={photo} style={{ flex: 1 }} />
+              {head}
+            </Row>
+            <Row gap={32} align="flex-start">
+              <View style={{ flex: 1, minWidth: 0 }}>{ingredients}</View>
+              <Stack gap={32} style={{ flex: 1, minWidth: 0 }}>
+                {steps}
+                {notes}
+              </Stack>
+            </Row>
+          </>
+        ) : (
+          <>
+            <RecipePhoto recipe={recipe} photo={photo} />
+            {head}
+            {ingredients}
+            {steps}
+            {notes}
+          </>
+        )}
+
+        {planning ? <PlanRecipeSheet recipe={recipe} onClose={() => setPlanning(false)} /> : null}
+        {pantryCheck ? (
+          <PantryCheckSheet
+            recipes={[{ recipeId: recipe.id, portions: shownServings, variants: shownVariants }]}
+            onClose={() => setPantryCheck(false)}
+          />
+        ) : null}
+      </View>
+    </Screen>
+  );
+}
+
+function RecipePhoto(props: { recipe: Recipe; photo: RecipePhotoState; style?: { flex: number } }) {
+  const image = useRecipeImage(props.recipe);
+  return (
+    <Stack gap={4} style={props.style}>
+      <Photo source={image} aspectRatio={4 / 3} alt={props.recipe.title} />
+      <RecipePhotoStatus photo={props.photo} />
+    </Stack>
+  );
+}
+
+/** Kopf: title, description, portions and time. */
+function RecipeHead(props: { recipe: Recipe; desktop: boolean }) {
+  const { recipe } = props;
+  return (
+    <View testID="recipe-head" style={{ gap: 8 }}>
+      <Text variant={props.desktop ? 'display' : 'title'} heading testID="recipe-title">
+        {recipe.title}
+      </Text>
+      {recipe.description ? (
+        <Text color="muted" testID="recipe-description">
+          {recipe.description}
+        </Text>
+      ) : null}
+      <Row gap={14} wrap>
+        <Row gap={5}>
+          <Icon name="users" size={16} color="muted" />
+          <Text variant="small" color="muted" testID="recipe-servings">
+            {recipe.servings === 1 ? '1 Portion' : `${recipe.servings} Portionen`}
+          </Text>
+        </Row>
+        {recipe.totalMinutes !== undefined ? (
+          <Row gap={5}>
+            <Icon name="clock" size={16} color="muted" />
+            <Text variant="small" color="muted" testID="recipe-minutes">
+              {recipe.totalMinutes} Min
+            </Text>
+          </Row>
+        ) : null}
+      </Row>
+    </View>
+  );
+}
+
+/** Einordnung: Gerichtart, Küche, Schlagworte, and the diet that follows from the ingredients. */
+function RecipeClassification(props: { recipe: Recipe; diet: Diet | undefined }) {
+  const { recipe, diet } = props;
+  const plant = diet === 'vegan' || diet === 'vegetarian';
+  return (
+    <View
+      testID="recipe-classification"
+      style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}
+    >
+      <Badge label={courseLabel(recipe.course)} testID="recipe-course" />
+      {recipe.cuisine ? <Badge label={recipe.cuisine} testID="recipe-cuisine" /> : null}
+      {diet ? (
+        <Badge
+          label={dietLabel(diet)}
+          icon={plant ? 'leaf' : undefined}
+          tone={plant ? 'success' : 'neutral'}
+          testID="recipe-diet"
+        />
+      ) : null}
+      {recipe.tags.map((tag) => (
+        <Text key={tag} variant="small" color="muted" testID={`recipe-tag-${tag}`}>
+          #{tag}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Zutaten with the portions stepper (display only, AC-028), the variant choice, "Ist alle" and
+ * ⋯ per ingredient. "+ Zutat" and "Mehrere einfügen" stay here until the section is edited as a
+ * whole (T7).
+ */
+function RecipeIngredients(props: {
+  recipe: Recipe;
+  variantId: Id | undefined;
+  onVariant: (id: Id) => void;
+  servings: number;
+  onServings: (value: number) => void;
+}) {
+  const { recipe, variantId } = props;
+  const online = useOnlineOnly();
+  const articlesById = useArticlesById();
+  const drafts = useIngredientDrafts(recipe.id);
+  // "+ Zutat" (new) or "Zutat bearbeiten" (an ingredient), spec 0007, REQ-001 and REQ-003.
+  const [editing, setEditing] = useState<{ ingredient?: RecipeIngredient } | undefined>();
+  // ⋯ → "Artikel bearbeiten" (spec 0007, AC-007) and, from there, "Zusammenführen" (REQ-007).
+  const [articleFor, setArticleFor] = useState<Id | undefined>();
+  const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
+  const ingredients = ingredientsForVariant(recipe, variantId);
+  const factor = props.servings / recipe.servings;
 
   const markEmpty = (ingredient: RecipeIngredient) => {
     const restore = snapshot();
@@ -168,110 +406,19 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
     });
   };
 
-  const startCooking = () => {
-    router.push({
-      pathname: '/rezept/[id]/kochen',
-      params: activeVariantId ? { id: recipe.id, variant: activeVariantId } : { id: recipe.id },
-    });
-  };
-
-  const titleBlock = (
-    <Stack gap={10} style={{ flex: 1, minWidth: 0 }}>
-      {props.onBack ? null : (
-        <Text variant={wide ? 'display' : 'title'} heading testID="recipe-title">
-          {recipe.title}
-        </Text>
-      )}
-      {recipe.description ? <Text color="muted">{recipe.description}</Text> : null}
-      <Row gap={12} wrap>
-        {recipe.totalMinutes !== undefined ? (
-          <Row gap={5}>
-            <Icon name="clock" size={16} color="muted" />
-            <Text variant="small" color="muted">
-              {recipe.totalMinutes} Min
-            </Text>
-          </Row>
-        ) : null}
-        <Text variant="small" color="muted">
-          {courseLabel(recipe.course)}
-        </Text>
-        {diet ? (
-          <Badge
-            label={dietLabel(diet)}
-            icon={diet === 'vegan' || diet === 'vegetarian' ? 'leaf' : undefined}
-            tone={diet === 'vegan' || diet === 'vegetarian' ? 'success' : 'neutral'}
-            testID="recipe-diet"
-          />
-        ) : null}
-      </Row>
-      <Row gap={10}>
-        <Stars
-          value={recipe.ratings[me.id] ?? 0}
-          onChange={online.disabled ? undefined : (stars) => rateRecipe(recipe.id, stars)}
-          testID="recipe-rating"
-        />
-        <Text variant="caption" color="muted">
-          {recipe.ratings[me.id] ? 'Deine Bewertung' : 'Noch nicht bewertet'}
-        </Text>
-      </Row>
-      <Row gap={10} wrap style={{ marginTop: 4 }}>
-        <Button
-          label="Kochen"
-          icon="chef-hat"
-          onPress={startCooking}
-          disabled={recipe.steps.length === 0}
-          testID="start-cooking"
-        />
-        <Button
-          label="Einplanen"
-          icon="calendar-plus"
-          variant="secondary"
-          onPress={() => router.push('/kalender')}
-          testID="recipe-plan"
-        />
-        {/* REQ-010: straight into the pantry check with the portions and variant shown here. */}
-        <Row gap={8}>
-          <Button
-            label="Auf die Liste"
-            icon="shopping-basket"
-            variant="secondary"
-            onPress={() => setPantryCheck(true)}
-            disabled={online.disabled || !canGoOnList}
-            hint={online.hint ?? (canGoOnList ? undefined : NO_INGREDIENTS_HINT)}
-            testID="recipe-to-list"
-          />
-          {canGoOnList ? null : (
-            <Text variant="caption" color="muted" testID="recipe-to-list-hint">
-              {NO_INGREDIENTS_HINT}
-            </Text>
-          )}
-        </Row>
-        {features.ai ? (
-          <Button
-            label="Anpassen"
-            icon="sparkles"
-            variant="ghost"
-            onPress={() => assistant.open({ recipeId: recipe.id })}
-            testID="recipe-assistant"
-          />
-        ) : null}
-      </Row>
-    </Stack>
-  );
-
-  const ingredientsBlock = (
+  return (
     <Section
       title="Zutaten"
       testID="recipe-ingredients"
-      action={<ServingsStepper value={shownServings} onChange={setServings} />}
+      action={<ServingsStepper value={props.servings} onChange={props.onServings} />}
     >
-      {recipe.variants.length > 0 && activeVariantId ? (
+      {recipe.variants.length > 0 && variantId ? (
         <View testID="variant-select" style={{ marginBottom: 12 }}>
           <ChoiceChips
             label="Variante"
             testID="variant"
-            value={activeVariantId}
-            onChange={setVariantId}
+            value={variantId}
+            onChange={props.onVariant}
             options={recipe.variants.map((variant) => ({ value: variant.id, label: variant.name }))}
           />
         </View>
@@ -358,16 +505,55 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           testID="recipe-paste-ingredients"
         />
       </Row>
+      <IngredientsPasteSheet state={drafts} />
+      {editing ? (
+        <IngredientSheet
+          recipeId={recipe.id}
+          ingredient={editing.ingredient}
+          onClose={() => setEditing(undefined)}
+        />
+      ) : null}
+      {articleFor ? (
+        <ArticleSheet
+          visible
+          articleId={articleFor}
+          onClose={() => setArticleFor(undefined)}
+          onMerge={(targetId) => {
+            setMerging({ sourceId: articleFor, targetId });
+            setArticleFor(undefined);
+          }}
+        />
+      ) : null}
+      {merging ? (
+        <MergeArticleDialog
+          sourceId={merging.sourceId}
+          targetId={merging.targetId}
+          onCancel={() => setMerging(undefined)}
+          onMerged={() => setMerging(undefined)}
+        />
+      ) : null}
     </Section>
   );
+}
 
-  const stepsBlock = (
+/** Zubereitung: Vorlauf and the steps of the chosen variant. */
+function RecipeSteps(props: { recipe: Recipe; variantId: Id | undefined }) {
+  const { recipe } = props;
+  const steps = stepsForVariants(recipe, props.variantId ? [props.variantId] : undefined);
+  return (
     <Section title="Zubereitung" testID="recipe-steps">
-      {steps.length === 0 ? (
-        <Text color="muted">Noch keine Schritte.</Text>
-      ) : (
-        <Stack gap={16}>
-          {steps.map((step, index) => (
+      <Stack gap={16}>
+        {recipe.leadTime ? (
+          <Notice
+            icon="alarm-clock"
+            text={`Vorlauf: ${recipe.leadTime.text}`}
+            testID="recipe-lead-time"
+          />
+        ) : null}
+        {steps.length === 0 ? (
+          <Text color="muted">Noch keine Schritte.</Text>
+        ) : (
+          steps.map((step, index) => (
             <Row key={step.id} gap={12} align="flex-start">
               <StepNumber value={index + 1} />
               <Stack gap={4} style={{ flex: 1 }}>
@@ -382,224 +568,29 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
                 ) : null}
               </Stack>
             </Row>
-          ))}
-        </Stack>
+          ))
+        )}
+      </Stack>
+    </Section>
+  );
+}
+
+/** Notizen: always there, so it can be written into (AC-023). */
+function RecipeNotes(props: { recipe: Recipe }): ReactNode {
+  return (
+    <Section title="Notizen" testID="recipe-notes">
+      {props.recipe.notes ? (
+        <Text testID="recipe-notes-text">{props.recipe.notes}</Text>
+      ) : (
+        <Text color="muted">Noch keine Notizen.</Text>
       )}
     </Section>
   );
-
-  const favorite = (
-    <FavoriteButton
-      testID="recipe-favorite"
-      active={isFavorite}
-      disabled={online.disabled}
-      hint={online.hint}
-      onPress={() => toggleFavorite(recipe.id)}
-    />
-  );
-
-  return (
-    <DetailPage
-      onBack={props.onBack}
-      title={recipe.title}
-      titleTestID="recipe-title"
-      right={favorite}
-      tone="essen"
-      testID="recipe-screen"
-    >
-      <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} testID="recipe-detail">
-        {props.onBack ? null : (
-          <Row justify="space-between" style={{ marginBottom: 8 }}>
-            {props.onClose ? (
-              <IconButton
-                icon="x"
-                label="Rezept schließen"
-                onPress={props.onClose}
-                testID="recipe-close"
-              />
-            ) : (
-              <View />
-            )}
-            {favorite}
-          </Row>
-        )}
-
-        {heroRow ? (
-          <Row gap={24} align="flex-start" style={{ marginBottom: 28 }}>
-            <Stack gap={4} style={{ width: wide ? 320 : 240 }}>
-              <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
-              <PhotoActions recipe={recipe} />
-            </Stack>
-            {titleBlock}
-          </Row>
-        ) : (
-          <Stack gap={16} style={{ marginBottom: 24 }}>
-            <Stack gap={4}>
-              <Photo source={image} aspectRatio={4 / 3} alt={recipe.title} />
-              <PhotoActions recipe={recipe} />
-            </Stack>
-            {titleBlock}
-          </Stack>
-        )}
-
-        {recipe.leadTime ? (
-          <View style={{ marginBottom: 20 }}>
-            <Notice
-              icon="alarm-clock"
-              text={`Vorlauf: ${recipe.leadTime.text}`}
-              testID="recipe-lead-time"
-            />
-          </View>
-        ) : null}
-
-        {wide ? (
-          <Row gap={32} align="flex-start">
-            <View style={{ flex: 1 }}>{ingredientsBlock}</View>
-            <View style={{ flex: 1.2 }}>{stepsBlock}</View>
-          </Row>
-        ) : (
-          <>
-            {ingredientsBlock}
-            {stepsBlock}
-          </>
-        )}
-
-        {recipe.notes ? (
-          <Section title="Notizen" testID="recipe-notes">
-            <Text>{recipe.notes}</Text>
-          </Section>
-        ) : null}
-
-        {pantryCheck ? (
-          <PantryCheckSheet
-            recipes={[
-              {
-                recipeId: recipe.id,
-                portions: shownServings,
-                variants: shownVariants,
-              },
-            ]}
-            onClose={() => setPantryCheck(false)}
-          />
-        ) : null}
-        <IngredientsPasteSheet state={drafts} />
-        {editing ? (
-          <IngredientSheet
-            recipeId={recipe.id}
-            ingredient={editing.ingredient}
-            onClose={() => setEditing(undefined)}
-          />
-        ) : null}
-        {articleFor ? (
-          <ArticleSheet
-            visible
-            articleId={articleFor}
-            onClose={() => setArticleFor(undefined)}
-            onMerge={(targetId) => {
-              setMerging({ sourceId: articleFor, targetId });
-              setArticleFor(undefined);
-            }}
-          />
-        ) : null}
-        {merging ? (
-          <MergeArticleDialog
-            sourceId={merging.sourceId}
-            targetId={merging.targetId}
-            onCancel={() => setMerging(undefined)}
-            onMerged={() => setMerging(undefined)}
-          />
-        ) : null}
-      </View>
-    </DetailPage>
-  );
 }
 
 /**
- * "Foto ändern" / "Foto entfernen": the household's own photo replaces the sample photo
- * (AC-017); removing it brings the sample back (AC-018). Online only; errors stay at the photo.
- */
-function PhotoActions(props: { recipe: Recipe }) {
-  const { recipe } = props;
-  const online = useOnlineOnly();
-  const [busy, setBusy] = useState<'change' | 'remove'>();
-  const [error, setError] = useState<string>();
-  if (!CAN_PICK_PHOTO && !recipe.photoPath) return null;
-
-  const run = async (kind: 'change' | 'remove', action: () => Promise<void>, done: string) => {
-    setBusy(kind);
-    setError(undefined);
-    try {
-      await action();
-      toast.show({ message: done });
-    } catch (caught) {
-      // A refused write already shows a toast; here it only stays as a hint at the photo.
-      if (kind === 'remove' && !(caught instanceof OfflineError)) setError(WRITE_REJECTED_MESSAGE);
-      else setError(caught instanceof Error ? caught.message : PHOTO_UPLOAD_FAILED_MESSAGE);
-    } finally {
-      setBusy(undefined);
-    }
-  };
-
-  const change = () => {
-    if (online.disabled || busy) return;
-    pickPhotoFile((file) => {
-      void run(
-        'change',
-        async () => setRecipePhoto(recipe.id, await preparePhoto(file)),
-        'Foto gespeichert',
-      );
-    });
-  };
-
-  const remove = () => {
-    if (online.disabled || busy) return;
-    void run('remove', () => removeRecipePhoto(recipe.id), 'Foto entfernt');
-  };
-
-  return (
-    <View>
-      <Row gap={16} wrap>
-        {CAN_PICK_PHOTO ? (
-          <Button
-            label={busy === 'change' ? 'Foto wird gespeichert …' : 'Foto ändern'}
-            icon="camera"
-            variant="link"
-            size="sm"
-            disabled={online.disabled || !!busy}
-            hint={online.hint}
-            onPress={change}
-            testID="recipe-photo-change"
-          />
-        ) : null}
-        {recipe.photoPath ? (
-          <Button
-            label={busy === 'remove' ? 'Foto wird entfernt …' : 'Foto entfernen'}
-            icon="trash"
-            variant="link"
-            size="sm"
-            disabled={online.disabled || !!busy}
-            hint={online.hint}
-            onPress={remove}
-            testID="recipe-photo-remove"
-          />
-        ) : null}
-      </Row>
-      {error ? (
-        <Text variant="small" color="warn" testID="recipe-photo-error">
-          {error}
-        </Text>
-      ) : online.hint ? (
-        <Text variant="small" color="muted" testID="recipe-photo-offline">
-          {online.hint}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * The article's name, the Hinweis after "·" (only for cooking, AC-011) and the default "Zusatz"
- * that goes onto the shopping list: "Frischkäse · zimmerwarm (Philadelphia)" (AC-012).
+ * The article's name, the Hinweis after "·" (only for cooking, spec 0007, AC-011) and the default
+ * "Zusatz" that goes onto the shopping list: "Frischkäse · zimmerwarm (Philadelphia)" (AC-012).
  */
 function IngredientTitle(props: { ingredient: RecipeIngredient }) {
   const { ingredient } = props;

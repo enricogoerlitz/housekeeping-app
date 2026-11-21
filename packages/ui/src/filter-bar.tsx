@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Platform, ScrollView, View } from 'react-native';
 
 import { Button, Chip } from './controls';
 import { Surface } from './primitives';
@@ -39,6 +39,16 @@ export interface FilterBarProps {
 export function FilterBar(props: FilterBarProps) {
   const { isPhone } = useBreakpoint();
   const [open, setOpen] = useState(false);
+  const unfolded = open && !isPhone;
+  useEffect(() => {
+    // The unfolded panel is no modal: Escape closes it here on the web (spec 0008, platforms).
+    if (!unfolded || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [unfolded]);
   const id = (part: string) => (props.testID ? `${props.testID}-${part}` : undefined);
   const reset = (
     <Button

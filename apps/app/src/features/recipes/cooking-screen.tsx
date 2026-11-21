@@ -46,8 +46,12 @@ export function CookingScreen() {
   if (!recipe) {
     return (
       <Screen testID="cooking-screen">
-        <EmptyState icon="book-open" title="Rezept nicht gefunden">
-          <Button label="Zu den Rezepten" onPress={() => router.replace('/rezepte')} />
+        <EmptyState icon="book-open" title="Dieses Rezept gibt es nicht mehr">
+          <Button
+            label="Zu Essen"
+            onPress={() => router.replace('/rezepte')}
+            testID="cooking-not-found-back"
+          />
         </EmptyState>
       </Screen>
     );

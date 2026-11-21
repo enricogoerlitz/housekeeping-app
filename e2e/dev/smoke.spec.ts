@@ -48,6 +48,14 @@ test('dev smoke: every screen renders without a React warning or error', async (
 
   // Essen: list, recipe, cooking mode, restaurants and one restaurant.
   await nav(page, 'rezepte');
+  // The filter row of "Essen" (spec 0008): the filter panel and the sort menu once.
+  await tid(page, 'recipe-filters-filter').click();
+  await expect(tid(page, 'recipe-filters-panel')).toBeVisible();
+  await tid(page, 'recipe-filters-apply').click();
+  await tid(page, 'recipe-sort').click();
+  await expect(tid(page, 'recipe-sort-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tid(page, 'recipe-sort-menu')).toBeHidden();
   await tid(page, `recipe-card-${seedIds['rec-mango-curry']}`).click();
   await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
   // Ingredients with an article (spec 0007): "+ Zutat" with "Suchen oder anlegen", ⋯ at an
@@ -70,6 +78,13 @@ test('dev smoke: every screen renders without a React warning or error', async (
     '1 Zutat braucht noch einen Artikel',
   );
   await tid(page, 'ingredients-paste-sheet-close').click();
+  // "Einplanen" opens its window on the page, ⋯ offers "Löschen" (spec 0008, AC-020, AC-034).
+  await tid(page, 'recipe-plan').click();
+  await expect(tid(page, 'plan-recipe-save')).toContainText('Abend einplanen');
+  await tid(page, 'plan-recipe-sheet-close').click();
+  await tid(page, 'recipe-more').click();
+  await expect(tid(page, 'recipe-more-delete')).toBeVisible();
+  await page.keyboard.press('Escape');
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();

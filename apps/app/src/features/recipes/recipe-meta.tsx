@@ -1,18 +1,13 @@
 import {
   averageRating,
   deriveRecipeDiet,
-  formatQty,
+  formatAverage,
   recipeFitsPreference,
   type Article,
   type Id,
   type Recipe,
 } from '@housekeeping/core';
 import { Badge, Icon, Row, Text } from '@housekeeping/ui';
-
-/** "1,5" → shown with one decimal at most. */
-function formatRating(value: number): string {
-  return formatQty(Math.round(value * 10) / 10);
-}
 
 /**
  * Short diet hint for a recipe card: the default variant's diet when it is plant-based,
@@ -32,7 +27,7 @@ function dietHint(recipe: Recipe, articlesById: Record<Id, Article>): string | u
   return undefined;
 }
 
-/** The line under a recipe title: minutes, diet hint, average rating. */
+/** The line under a recipe title: minutes, diet hint, average rating ("★ 4,8", AC-040). */
 export function RecipeCardMeta(props: { recipe: Recipe; articlesById: Record<Id, Article> }) {
   const { recipe } = props;
   const hint = dietHint(recipe, props.articlesById);
@@ -49,7 +44,7 @@ export function RecipeCardMeta(props: { recipe: Recipe; articlesById: Record<Id,
         <Row gap={3}>
           <Icon name="star" size={13} color="star" filled />
           <Text variant="caption" color="muted">
-            {formatRating(rating)}
+            {formatAverage(rating)}
           </Text>
         </Row>
       ) : null}

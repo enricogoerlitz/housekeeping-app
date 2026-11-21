@@ -1,5 +1,11 @@
 import { useContext, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { FlatList, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  FlatList,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { columnsFor, gridRows, type GridRow } from './grid-columns';
@@ -68,6 +74,22 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   const gap = props.gap ?? 12;
   // The grid needs its own width; it stays invisible for the one frame before it is measured.
   const [width, setWidth] = useState<number>();
+  // Web: a screen left in a stack stays mounted but hidden (display: none), which loses the scroll
+  // position. The place it had when it was hidden comes back once it shows again (spec 0008,
+  // AC-015).
+  const hiddenAt = useRef<number | undefined>(undefined);
+  const onLayout = (event: LayoutChangeEvent) => {
+    const { width: measured, height } = event.nativeEvent.layout;
+    if (height === 0) {
+      if (hiddenAt.current === undefined) hiddenAt.current = offset.get();
+      return;
+    }
+    if (grid) setWidth(measured);
+    const back = hiddenAt.current;
+    hiddenAt.current = undefined;
+    if (back !== undefined && back > 0)
+      list.current?.scrollToOffset({ offset: back, animated: false });
+  };
   const columns = grid
     ? columnsFor(width ?? 0, {
         minColumnWidth: props.minColumnWidth ?? 0,
@@ -130,7 +152,7 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
       showsVerticalScrollIndicator={false}
       onScroll={onScroll}
       scrollEventThrottle={16}
-      onLayout={grid ? (event) => setWidth(event.nativeEvent.layout.width) : undefined}
+      onLayout={onLayout}
       style={[{ flex: 1 }, grid && width === undefined ? { opacity: 0 } : null, props.style]}
       contentContainerStyle={page ? { paddingTop: page.inset, paddingBottom: 24 } : undefined}
       onContentSizeChange={() => {

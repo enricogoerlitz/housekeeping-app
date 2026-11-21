@@ -207,6 +207,11 @@ export interface MediaCardProps {
   size?: 'm' | 'l';
   /** auto follows the theme; force a layout only where the design needs it. */
   layout?: 'auto' | 'photoTop' | 'thumbRow';
+  /**
+   * Photo on top: width / height of the photo instead of the fixed height, so it grows with the
+   * card, e.g. 4 / 3 for the recipe tiles (spec 0008, AC-014).
+   */
+  photoAspectRatio?: number;
   /** Small element in the top right corner, e.g. a favourite heart or a "Route" button. */
   corner?: ReactNode;
   /**
@@ -293,7 +298,8 @@ export function MediaCard(props: MediaCardProps) {
               <Photo
                 source={props.image}
                 placeholderIcon={props.placeholderIcon}
-                height={large ? 190 : 122}
+                height={props.photoAspectRatio ? undefined : large ? 190 : 122}
+                aspectRatio={props.photoAspectRatio}
                 radius={0}
               />
               {/* Bottom left, so it never meets the corner on a narrow card. */}

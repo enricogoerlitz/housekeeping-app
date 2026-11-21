@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   defaultPlanChoice,
   eatersForDay,
+  pagePlanChoice,
   planButtonLabel,
   plannedNotice,
   planWeek,
   weekDays,
+  withPlanDay,
 } from './plan-recipe';
 import { enrico, nadja } from './test-fixtures';
 import type { Absence, MealSlot } from './types';
@@ -68,6 +70,45 @@ describe('plan a recipe from its page (REQ-009)', () => {
   it('AC-037: without a day it is "Vormerken" and "Vorgemerkt"', () => {
     expect(planButtonLabel(null, 'Abend')).toBe('Vormerken');
     expect(plannedNotice(null, 'Abend')).toBe('Vorgemerkt');
+  });
+
+  it('AC-036: another day sets "Wer isst mit?" back to those present; guests, slot and cook stay', () => {
+    const absences: Absence[] = [
+      { id: 'a1', memberId: nadja.id, from: '2026-11-28', to: '2026-11-28' },
+    ];
+    const choice = {
+      ...defaultPlanChoice(today, slots, [enrico, nadja], absences),
+      eaterIds: [nadja.id],
+      guests: 2,
+      cookId: enrico.id,
+      slotId: 'slot-mittag',
+    };
+    expect(withPlanDay(choice, '2026-11-28', [enrico, nadja], absences)).toEqual({
+      date: '2026-11-28',
+      slotId: 'slot-mittag',
+      eaterIds: [enrico.id],
+      guests: 2,
+      cookId: enrico.id,
+    });
+    // "Ohne Tag vormerken": nobody is absent without a day.
+    expect(withPlanDay(choice, null, [enrico, nadja], absences).eaterIds).toEqual([
+      enrico.id,
+      nadja.id,
+    ]);
+  });
+
+  it('AC-035: paging moves the chosen day by whole weeks, so it stays in the shown week', () => {
+    const absences: Absence[] = [
+      { id: 'a1', memberId: nadja.id, from: '2026-11-27', to: '2026-11-27' },
+    ];
+    const choice = defaultPlanChoice(today, slots, [enrico, nadja], absences);
+    const next = pagePlanChoice(choice, 1, [enrico, nadja], absences);
+    expect(next.date).toBe('2026-11-27');
+    expect(next.eaterIds).toEqual([enrico.id]);
+    expect(pagePlanChoice(choice, -2, [enrico, nadja], absences).date).toBe('2026-11-06');
+    // Without a day ("Vormerken") paging changes nothing.
+    const later = withPlanDay(choice, null, [enrico, nadja], absences);
+    expect(pagePlanChoice(later, 1, [enrico, nadja], absences)).toBe(later);
   });
 
   it('a household without Tageszeiten has no slot to preselect', () => {

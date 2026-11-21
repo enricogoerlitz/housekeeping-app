@@ -34,7 +34,6 @@ import {
   type ISODate,
   type KindRole,
   type MealPlanEntry,
-  type Member,
   type Recipe,
   type Restaurant,
 } from '@housekeeping/core';
@@ -44,11 +43,9 @@ import {
   ChoiceChips,
   GroupLabel,
   Icon,
-  IconButton,
   KIND_ICONS,
   List,
   ListRow,
-  Notice,
   Sheet,
   Stack,
   Text,
@@ -69,7 +66,8 @@ import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-for
 import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { addSheetTitle, dayLabel, entryTitle, misfitText, splitSummary } from './labels';
+import { addSheetTitle, dayLabel, entryTitle } from './labels';
+import { CookPicker, EaterPicker, FieldLabel, SplitFields } from './plan-fields';
 
 export interface AddTarget {
   /** null = "Vormerken" without a day. */
@@ -106,68 +104,8 @@ const PLAN_AHEAD_DAYS = 14;
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Das hat nicht geklappt.';
 
-function Label(props: { children: string }) {
-  return (
-    <Text variant="smallStrong" style={{ marginBottom: 6 }}>
-      {props.children}
-    </Text>
-  );
-}
-
 function KindIcon(props: { kind: KindRole }) {
   return <Icon name={KIND_ICONS[props.kind]} size={18} color="muted" />;
-}
-
-/** "Wer isst mit?": members as chips plus a guest counter. */
-function EaterPicker(props: {
-  members: Member[];
-  eaterIds: Id[];
-  guests: number;
-  onEaters: (ids: Id[]) => void;
-  onGuests: (guests: number) => void;
-}) {
-  const { eaterIds, guests } = props;
-  return (
-    <View>
-      <Label>Wer isst mit?</Label>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        {props.members.map((member) => {
-          const selected = eaterIds.includes(member.id);
-          return (
-            <Chip
-              key={member.id}
-              label={member.name}
-              selected={selected}
-              testID={`eater-${member.id}`}
-              onPress={() =>
-                props.onEaters(
-                  selected ? eaterIds.filter((id) => id !== member.id) : [...eaterIds, member.id],
-                )
-              }
-            />
-          );
-        })}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 4 }}>
-          <IconButton
-            icon="minus"
-            label="Ein Gast weniger"
-            disabled={guests === 0}
-            testID="guests-minus"
-            onPress={() => props.onGuests(Math.max(0, guests - 1))}
-          />
-          <Text variant="smallStrong" testID="guests-count">
-            {guests === 1 ? '1 Gast' : `${guests} Gäste`}
-          </Text>
-          <IconButton
-            icon="plus"
-            label="Ein Gast mehr"
-            testID="guests-plus"
-            onPress={() => props.onGuests(guests + 1)}
-          />
-        </View>
-      </View>
-    </View>
-  );
 }
 
 function restaurantSubtitle(restaurant: Restaurant): string | undefined {
@@ -216,7 +154,7 @@ function DayPicker(props: {
   const days = Array.from({ length: PLAN_AHEAD_DAYS }, (_, offset) => addDays(props.today, offset));
   return (
     <View style={{ gap: 6 }}>
-      <Label>Wann?</Label>
+      <FieldLabel>Wann?</FieldLabel>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -762,37 +700,9 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
         />
       ) : null}
       {recipe && split ? (
-        <View style={{ gap: 6 }}>
-          <Text variant="small" color="muted">
-            {split.portions === 1 ? '1 Portion' : `${split.portions} Portionen`}
-          </Text>
-          {split.variants.length > 0 ? (
-            <Text variant="bodyStrong" testID="add-entry-split">
-              {splitSummary(recipe, split.variants)}
-            </Text>
-          ) : null}
-          {misfits.length > 0 ? (
-            <Notice testID="add-entry-misfit" text={misfitText(misfits)} />
-          ) : null}
-        </View>
+        <SplitFields recipe={recipe} split={split} misfits={misfits} testID="add-entry" />
       ) : null}
-      {recipe ? (
-        <View>
-          <Label>Wer kocht?</Label>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {members.map((member) => (
-              <Chip
-                key={member.id}
-                label={member.name}
-                icon="chef-hat"
-                selected={cookId === member.id}
-                testID={`cook-${member.id}`}
-                onPress={() => setCookId(cookId === member.id ? undefined : member.id)}
-              />
-            ))}
-          </View>
-        </View>
-      ) : null}
+      {recipe ? <CookPicker members={members} cookId={cookId} onChange={setCookId} /> : null}
       {choice.kind === 'activity' ? zusatz : null}
       {error && choice.kind !== 'text' ? (
         <Text variant="small" color="warn">

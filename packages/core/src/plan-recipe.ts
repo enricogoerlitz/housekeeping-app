@@ -73,3 +73,31 @@ export function planButtonLabel(date: ISODate | null, slotName: string): string 
 export function plannedNotice(date: ISODate | null, slotName: string): string {
   return date === null ? 'Vorgemerkt' : `Eingeplant: ${weekdayShort(date)} ${slotName}`;
 }
+
+/**
+ * Another day, or null for "Ohne Tag vormerken": "Wer isst mit?" goes back to those present that
+ * day, so nobody absent stays chosen without notice; guests, Tageszeit and cook stay (E11, AC-036).
+ */
+export function withPlanDay(
+  choice: PlanChoice,
+  date: ISODate | null,
+  members: readonly Member[],
+  absences: readonly Absence[],
+): PlanChoice {
+  return { ...choice, date, eaterIds: eatersForDay(members, date, absences) };
+}
+
+/**
+ * ‹ ›: a chosen day moves by whole weeks to the same weekday, so the chosen chip stays in the
+ * shown week and the button never names a day out of sight (AC-035). Without a day nothing
+ * changes.
+ */
+export function pagePlanChoice(
+  choice: PlanChoice,
+  weeks: number,
+  members: readonly Member[],
+  absences: readonly Absence[],
+): PlanChoice {
+  if (choice.date === null) return choice;
+  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members, absences);
+}
