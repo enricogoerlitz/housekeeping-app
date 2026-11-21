@@ -6,6 +6,7 @@ import {
   leaveManaged,
   login,
   nav,
+  nestedSeedId,
   openManaged,
   openSettings,
   showPlanWeek,
@@ -58,26 +59,33 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'recipe-sort-menu')).toBeHidden();
   await tid(page, `recipe-card-${seedIds['rec-mango-curry']}`).click();
   await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
-  // Ingredients with an article (spec 0007): "+ Zutat" with "Suchen oder anlegen", ⋯ at an
-  // ingredient, "Mehrere einfügen" with its orange lines.
+  // Read view: ⋯ at an ingredient offers "Artikel bearbeiten" (spec 0007, AC-007). Editing the
+  // section "Zutaten" (spec 0008, REQ-007, E9): the pen, "+ Zutat" with "Suchen oder anlegen",
+  // "Mehrere einfügen" with its orange row; "Fertig" keeps the section open with it (AC-032),
+  // and closes it once the row is removed.
+  await page.locator('[data-testid^="ingredient-menu-"]:visible').first().click();
+  await expect(
+    page.locator('[data-testid$="-article"][data-testid^="ingredient-menu-"]:visible'),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await tid(page, 'recipe-ingredients-edit').click();
   await tid(page, 'recipe-add-ingredient').click();
   await tid(page, 'ingredient-article-search-input').fill('Kokos');
   await expect(
     tid(page, `ingredient-article-search-hit-${seedIds['art-kokosmilch']}`),
   ).toBeVisible();
   await tid(page, 'ingredient-sheet-close').click();
-  await page.locator('[data-testid^="ingredient-menu-"]:visible').first().click();
-  await expect(
-    page.locator('[data-testid$="-article"][data-testid^="ingredient-menu-"]:visible'),
-  ).toBeVisible();
-  await page.keyboard.press('Escape');
   await tid(page, 'recipe-paste-ingredients').click();
-  await tid(page, 'ingredients-paste').fill('1 Mango\n2 Drachenfrüchte');
+  await tid(page, 'ingredients-paste').fill('2 Drachenfrüchte');
   await tid(page, 'ingredients-paste-save').click();
-  await expect(tid(page, 'ingredients-paste-missing')).toHaveText(
+  await expect(tid(page, 'recipe-ingredients-missing')).toHaveText(
     '1 Zutat braucht noch einen Artikel',
   );
-  await tid(page, 'ingredients-paste-sheet-close').click();
+  await tid(page, 'recipe-ingredients-done').click();
+  await expect(tid(page, 'recipe-ingredients-missing')).toBeVisible();
+  await page.locator('[data-testid^="open-row-"][data-testid$="-remove"]').click();
+  await tid(page, 'recipe-ingredients-done').click();
+  await expect(tid(page, 'recipe-ingredients-edit')).toBeVisible();
   // "Einplanen" opens its window on the page, ⋯ offers "Löschen" (spec 0008, AC-020, AC-034).
   await tid(page, 'recipe-plan').click();
   await expect(tid(page, 'plan-recipe-save')).toContainText('Abend einplanen');
@@ -187,6 +195,23 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'area-new-sheet-close').click();
   await tid(page, 'stores-view-maerkte').click();
   await leaveManaged(page);
+  // "Reisetaschen" (spec 0012, REQ-001): the list, one bag with its Packstücke, a suggestion
+  // from another bag while typing, the window of a Packstück and the name window.
+  await openManaged(page, 'packing-bags');
+  await expect(tid(page, 'bags-screen')).toBeVisible();
+  await tid(page, `bag-${seedIds['bag-strand']}`).click();
+  await expect(tid(page, 'bag-screen')).toBeVisible();
+  await tid(page, 'bag-item-input').fill('Sonn');
+  await expect(tid(page, 'bag-item-suggestion-Sonnencreme')).toBeVisible();
+  await tid(page, 'bag-item-input').fill('');
+  await page.locator('[data-testid^="bag-item-edit-"]:visible').first().click();
+  await expect(tid(page, 'bag-item-sheet')).toBeVisible();
+  await tid(page, 'bag-item-sheet-close').click();
+  await tid(page, 'bag-rename').click();
+  await expect(tid(page, 'bag-rename-sheet')).toBeVisible();
+  await tid(page, 'bag-rename-sheet-cancel').click();
+  await back(page);
+  await leaveManaged(page);
   for (const [key, screen] of [
     ['absences', 'absences-screen'],
     ['members', 'members-screen'],
@@ -196,6 +221,36 @@ test('dev smoke: every screen renders without a React warning or error', async (
     await expect(tid(page, screen)).toBeVisible();
     await leaveManaged(page);
   }
+
+  // The Urlaubsseite of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007): head and progress, a
+  // Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the windows behind
+  // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. Until a stripe of the
+  // calendar leads here (task 10), the page opens by its address.
+  const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
+  const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
+  await page.goto(`/kalender/urlaub/${seedIds['abs-mallorca']}`);
+  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
+  await tid(page, `${sunHat}-check`).click();
+  await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
+  await tid(page, `${strand}-packed-toggle`).click();
+  await expect(tid(page, `${strand}-packed-body`)).toContainText('Sonnenhut');
+  await tid(page, `${strand}-more`).click();
+  await expect(tid(page, `${strand}-more-pack-all`)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await tid(page, `${strand}-add`).click();
+  await expect(tid(page, 'trip-add-item-also')).toBeVisible();
+  await tid(page, 'trip-add-item-sheet-close').click();
+  await tid(page, `trip-add-bag-open-${seedIds['abs-mallorca']}`).click();
+  await expect(tid(page, 'trip-add-bag-list')).toBeVisible();
+  await tid(page, 'trip-add-bag-sheet-close').click();
+  await tid(page, 'trip-more').click();
+  await tid(page, 'trip-more-reset').click();
+  await expect(tid(page, 'trip-reset-dialog')).toContainText('Alle 7 Haken entfernen?');
+  await tid(page, 'trip-reset-dialog-cancel').click();
+  await back(page);
+  await expect(tid(page, 'calendar-screen')).toBeVisible();
+  await nav(page, 'index');
 
   // A household with nothing planned and no chores: the empty states.
   await switchHousehold(page, seedIds['hh-test']);

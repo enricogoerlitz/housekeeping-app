@@ -81,6 +81,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
         {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
         <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
+        <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
         <Tabs.Screen name="abwesenheiten" options={{ title: 'Abwesenheiten' }} />
         <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
         <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
