@@ -91,7 +91,9 @@ Nach grünen Checks mit **„Create a merge commit“** zusammenführen (auf `ma
 `release.yml` läuft dann ohne weiteren Handgriff: Version und Änderungsliste, Web bauen und
 Supabase prüfen, Pakete prüfen, Sicherung, Supabase ausliefern, Web ausliefern, Prüfung von außen,
 Tag `v<Version>` und GitHub-Veröffentlichung. Liegen seit dem letzten Tag nur Dokumentation und
-Agent-Einstellungen vor, gibt es keine Veröffentlichung.
+Agent-Einstellungen vor, gibt es keine Veröffentlichung; von Hand erzwingen lässt sie sich mit
+`gh workflow run release.yml --ref main -f erzwingen=true` (etwa nach einer Wiederherstellung, siehe
+[Notfall](#notfall-wiederherstellen), Schritt 6).
 
 Ist ein Lauf rot: die Fehlermeldung im Lauf lesen, beheben (Hotfix oder PR nach `develop` und neue
 Freigabe). Scheitert nur ein Schritt nach „Supabase ausliefern“ (z. B. Web ausliefern), reicht
@@ -276,9 +278,15 @@ Projekt):
   genannten Grund (`.claude/rules/10-security.md`).
 
 **6. Web neu bauen.** Das Web-Paket enthält die Supabase-Adresse; nach dem Wechsel braucht es eine
-neue Veröffentlichung mit den neuen Variablen. `redeploy-web.yml` genügt dafür nicht.
-**Offen:** Eine Veröffentlichung entsteht nur aus einem Push auf `main` mit mehr als Doku; einen
-Auslöser ohne Code-Änderung gibt es noch nicht (Plan 0014, Task 8).
+neue Veröffentlichung mit den neuen Variablen. `redeploy-web.yml` genügt dafür nicht. Ohne
+Code-Änderung startet Enrico die Veröffentlichung von Hand mit der Eingabe `erzwingen`; sie läuft
+wie jede andere (Sicherung, Migrationen, Konfiguration, Functions, Web, Prüfung) und bekommt die
+nächste Version:
+
+```sh
+gh workflow run release.yml --ref main -f erzwingen=true
+gh run watch --exit-status "$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
 
 **7. Prüfen und aufräumen:** `verify.mjs` läuft mit der Veröffentlichung; zusätzlich mit beiden
 Konten anmelden, Daten und Fotos ansehen, „Probe senden“. Dann `rm -rf tmp/restore`. Das alte

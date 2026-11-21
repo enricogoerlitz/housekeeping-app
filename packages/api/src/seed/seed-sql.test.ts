@@ -92,3 +92,38 @@ describe('AC-033 (spec 0003): generated seed', async () => {
     expect(Object.keys(seed.e2eIds).some((slug) => /-i\d+$/.test(slug))).toBe(false);
   });
 });
+
+describe('spec 0014, AC-014: preview seed', async () => {
+  const seed = await generateSeed('2026-11-20');
+  const preview = await generateSeed('2026-11-20', { accounts: 'preview' });
+  const users = /insert into auth\.users \(([\s\S]*?)\) values\n([\s\S]*?);\n/.exec(preview.sql);
+
+  it('is the same SQL whatever day it is generated on', async () => {
+    expect((await generateSeed('2027-02-28', { accounts: 'preview' })).sql).toBe(preview.sql);
+  });
+
+  it('has no test accounts: no password, no identity, no @example.com, no test wording', () => {
+    expect(preview.sql).not.toContain('encrypted_password');
+    expect(preview.sql).not.toContain('crypt(');
+    expect(preview.sql).not.toContain('local-test-password');
+    expect(preview.sql).not.toContain('auth.identities');
+    expect(preview.sql).not.toContain('@example.com');
+    expect(preview.sql).not.toMatch(/test account|\(Test\)/i);
+  });
+
+  it('keeps the demo members as accounts on @vorschau.invalid, so cooks, raters and assignees stay valid', async () => {
+    expect(users?.[2]).toContain("'enrico@vorschau.invalid'");
+    expect(users?.[2]).toContain("'nadja@vorschau.invalid'");
+    expect(users?.[2]).toContain('"full_name":"Beispiel-Enrico"');
+    expect(users?.[2]).toContain('"full_name":"Beispiel-Nadja"');
+    // Same ids as the local seed: the households refer to the members by them.
+    expect(users?.[2]).toContain(`'${await seedHouseholdId(ENRICO)}'`);
+    expect(preview.ids).toEqual(seed.ids);
+  });
+
+  it('carries the same households as the local seed', () => {
+    const households = (sql: string) => sql.slice(sql.indexOf('-- Household "'));
+    expect(households(preview.sql)).toBe(households(seed.sql));
+    expect(preview.sql).toContain("'Enrico & Nadja'");
+  });
+});

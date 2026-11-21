@@ -76,6 +76,21 @@ describe('AC-020: docs only, no release', () => {
   });
 });
 
+describe('forced release (workflow_dispatch of release.yml, e.g. after a disaster restore)', () => {
+  test('docs only or no change at all: release anyway, and the reason says so', () => {
+    for (const files of [[], ['docs/architecture/betrieb.md']]) {
+      const decision = releaseDecision(files, { force: true });
+      assert.equal(decision.release, true);
+      assert.match(decision.reason, /erzwungen/);
+    }
+  });
+
+  test('with code changes a forced release is an ordinary one', () => {
+    const decision = releaseDecision(['packages/core/src/app-version.ts'], { force: true });
+    assert.equal(decision.release, true);
+  });
+});
+
 describe('minimum version', () => {
   test('the last definition in file order wins', () => {
     assert.equal(
@@ -233,6 +248,27 @@ describe('CLI', () => {
     assert.equal(status, 0, output);
     assert.equal(o.release, 'false');
     assert.match(output, /nur Dokumentation/);
+  });
+
+  test('--force: no change since the last tag still makes the next version a release', () => {
+    const cwd = repoWithFoundation();
+    git(cwd, 'tag', 'v2026.12.3');
+    const { status, output, outputs: o } = run(cwd, ['--now', '2026-12-20T12:00:00Z', '--force']);
+    assert.equal(status, 0, output);
+    assert.equal(o.release, 'true');
+    assert.equal(o.version, '2026.12.4');
+    assert.match(output, /erzwungen/);
+  });
+
+  test('--force does not skip the minimum version guard (AC-026)', () => {
+    const cwd = repoWithFoundation();
+    git(cwd, 'tag', 'v2026.12.4');
+    commit(cwd, 'refactor!: Notizen entfernen', {
+      [CONTRACT]: `-- contract: Notizen entfernt; min_app_version: 2026.12.9\nalter table public.recipes drop column notes;\n${minVersionSql('2026.12.9')}`,
+    });
+    const { status, outputs: o } = run(cwd, ['--now', '2026-12-20T12:00:00Z', '--force']);
+    assert.equal(status, 1);
+    assert.equal(o.release, undefined);
   });
 
   test('AC-026: a minimum version that is not published aborts before anything is delivered', () => {

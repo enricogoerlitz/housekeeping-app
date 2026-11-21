@@ -2,10 +2,12 @@
 // 13). No dependencies: runs in jobs that install no packages.
 //
 // Release (job "version" of release.yml, on main):
-//   node scripts/release/version.mjs [--now <ISO>]
+//   node scripts/release/version.mjs [--now <ISO>] [--force]
 //   - next version JJJJ.M.N from `git tag -l 'v*'` (month in Europe/Berlin, packages/core);
 //   - release=false when nothing but docs/, .agents/, .claude/ or Markdown changed since the
-//     latest tag (AC-020; the same rule as the job "Änderungen" of checks.yml);
+//     latest tag (AC-020; the same rule as the job "Änderungen" of checks.yml); --force (the input
+//     of a release started by hand, e.g. after a disaster restore into a new Supabase project)
+//     makes it a release anyway;
 //   - the last definition of public.min_app_version() in supabase/migrations must be at most the
 //     latest published version (before the first release: at most the new one), otherwise exit 1
 //     with „Mindestversion X ist noch nicht veröffentlicht“ and no outputs (AC-026).
@@ -50,7 +52,14 @@ export function latestReleaseTag(tags) {
 }
 
 /** Whether the files changed since the latest tag make a release (AC-020). */
-export function releaseDecision(files) {
+export function releaseDecision(files, { force = false } = {}) {
+  if (force) {
+    const code = files.filter((file) => !DOCS.test(file)).length;
+    return {
+      release: true,
+      reason: `erzwungen von Hand (${code} Datei(en) außerhalb der Dokumentation seit dem letzten Tag)`,
+    };
+  }
   if (files.length === 0)
     return { release: false, reason: 'Keine Änderungen seit dem letzten Tag' };
   const code = files.filter((file) => !DOCS.test(file));
@@ -125,7 +134,7 @@ function fail(message) {
   return 1;
 }
 
-function release(now) {
+function release(now, force) {
   const tags = releaseTags();
   const latest = latestReleaseTag(tags);
   const previous = latest ? tagVersion(latest) : undefined;
@@ -137,7 +146,7 @@ function release(now) {
   const files = latest
     ? lines(git(['diff', '--name-only', `${latest}`, 'HEAD']))
     : lines(git(['ls-files']));
-  const decision = releaseDecision(files);
+  const decision = releaseDecision(files, { force });
   console.log(
     `Version ${version} (zuletzt veröffentlicht: ${previous ?? 'noch nichts'}), Mindestversion ${min}.`,
   );
@@ -195,6 +204,7 @@ async function main(argv) {
     args: argv,
     options: {
       now: { type: 'string' },
+      force: { type: 'boolean', default: false },
       redeploy: { type: 'string' },
       'supabase-url': { type: 'string' },
     },
@@ -203,7 +213,7 @@ async function main(argv) {
     if (values.redeploy !== undefined)
       return await redeploy(values.redeploy, values['supabase-url']);
     const now = values.now ? new Date(values.now) : new Date();
-    return release(now);
+    return release(now, values.force);
   } catch (error) {
     return fail(error.message);
   }

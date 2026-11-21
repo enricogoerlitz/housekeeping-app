@@ -1,4 +1,4 @@
-// Structure of the GitHub workflows (spec 0014, Task 3; grows with Tasks 7 to 10). Workflows cannot
+// Structure of the GitHub workflows (spec 0014, Tasks 3 and 7 to 10). Workflows cannot
 // run locally; this test and actionlint are their gate, the real runs follow in Task 13.
 //
 //   node --test scripts/ci/workflows.test.mjs
@@ -310,6 +310,494 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
   test('tags v* cannot be moved or deleted; creating stays allowed for the release job', () => {
     const types = rulesets.tags.rules.map((r) => r.type).sort();
     assert.deepEqual(types, ['deletion', 'non_fast_forward', 'update']);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Delivery workflows (Tasks 7 and 8)
+// ---------------------------------------------------------------------------------------------
+
+const jobsOf = (file) => byFile(file)?.doc.jobs ?? {};
+const needsOf = (job) => [job?.needs ?? []].flat();
+const envName = (job) =>
+  typeof job?.environment === 'string' ? job.environment : job?.environment?.name;
+/** Index of the first step whose `run` matches, or -1. */
+const stepIndex = (job, pattern) => steps(job).findIndex((step) => pattern.test(step.run ?? ''));
+/** Asserts that the patterns match steps of `job` in this order. */
+function assertOrder(job, patterns, label) {
+  let last = -1;
+  for (const pattern of patterns) {
+    const index = stepIndex(job, pattern);
+    assert.ok(index > last, `${label}: ${pattern} after step ${last} (found at ${index})`);
+    last = index;
+  }
+}
+// Built from pieces: the check "Konventionen" scans this file for the command it forbids.
+const RESET = new RegExp(['supabase', 'db', 'reset'].join(' '));
+const REMOTE_REF = '--remote="$SUPABASE_PROJECT_REF"';
+
+describe('all delivery workflows', () => {
+  test('AC-006, decision 3: a job without an environment never reads a secret', () => {
+    for (const { workflow, id, job } of allJobs) {
+      if (job.environment) continue;
+      assert.doesNotMatch(JSON.stringify(job), /secrets\./, `${workflow} ${id}`);
+    }
+  });
+
+  test('AC-013, AC-058, AC-071: preview only in preview.yml, production only in release and redeploy', () => {
+    const where = (name) =>
+      [
+        ...new Set(
+          allJobs.filter(({ job }) => envName(job) === name).map(({ workflow }) => workflow),
+        ),
+      ].sort();
+    assert.deepEqual(where('preview'), ['preview.yml']);
+    assert.deepEqual(where('production'), ['redeploy-web.yml', 'release.yml']);
+    assert.doesNotMatch(byFile('preview.yml').text, /vars\.PRODUCTION_|secrets\.PRODUCTION_/);
+    assert.doesNotMatch(byFile('release.yml').text, /vars\.PREVIEW_|secrets\.PREVIEW_/);
+    assert.doesNotMatch(byFile('redeploy-web.yml').text, /vars\.PREVIEW_|secrets\.PREVIEW_/);
+  });
+
+  test('every Supabase command against the cloud names the project of its environment', () => {
+    for (const file of ['preview.yml', 'release.yml', 'redeploy-web.yml']) {
+      for (const [id, job] of Object.entries(jobsOf(file))) {
+        for (const run of runs(job)) {
+          for (const line of run.split('\n').filter((l) => /^\s*supabase /.test(l))) {
+            assert.ok(line.includes(REMOTE_REF), `${file} ${id}: ${line.trim()}`);
+            assert.doesNotMatch(
+              line,
+              /--linked|--db-url|--include-seed|--use-api/,
+              `${file} ${id}`,
+            );
+          }
+          if (/\bsupabase /.test(run))
+            assert.equal(job.environment !== undefined, true, `${file} ${id}`);
+        }
+      }
+    }
+  });
+
+  test('AC-040: config push and the verification run on the prepared config of their environment', () => {
+    for (const file of ['preview.yml', 'release.yml', 'redeploy-web.yml']) {
+      for (const [id, job] of Object.entries(jobsOf(file))) {
+        const uses = stepIndex(job, /supabase config push|scripts\/release\/verify\.mjs/);
+        if (uses === -1) continue;
+        const env = envName(job);
+        const prepare = stepIndex(job, new RegExp(`node scripts/ci/supabase-remote\\.mjs ${env}$`));
+        assert.ok(prepare !== -1 && prepare < uses, `${file} ${id}`);
+        const prefix = env.toUpperCase();
+        assert.equal(
+          job.env?.[`${prefix}_WEB_ORIGIN`],
+          `\${{ vars.${prefix}_WEB_ORIGIN }}`,
+          `${file} ${id}`,
+        );
+        assert.equal(
+          job.env?.[`${prefix}_WEB_ORIGIN_WILDCARD`],
+          `\${{ vars.${prefix}_WEB_ORIGIN }}/**`,
+          `${file} ${id}`,
+        );
+        assert.equal(
+          job.env?.SUPABASE_PROJECT_REF,
+          '${{ vars.SUPABASE_PROJECT_REF }}',
+          `${file} ${id}`,
+        );
+      }
+    }
+  });
+
+  test('AC-059: the deployment token is read at run time, masked before anything else, and never printed', () => {
+    let deploys = 0;
+    for (const { workflow, id, job } of allJobs) {
+      const deploy = steps(job).findIndex((step) =>
+        step.uses?.startsWith('Azure/static-web-apps-deploy@'),
+      );
+      if (deploy === -1) continue;
+      deploys += 1;
+      assert.ok(envName(job), `${workflow} ${id}: deploy without environment`);
+      assert.equal(job.permissions?.['id-token'], 'write', `${workflow} ${id}`);
+      const token = stepIndex(job, /--query properties\.apiKey/);
+      assert.ok(token !== -1 && token < deploy, `${workflow} ${id}`);
+      const script = steps(job)[token].run;
+      assert.ok(
+        script.indexOf('::add-mask::$token') < script.indexOf('GITHUB_OUTPUT'),
+        `${workflow} ${id}`,
+      );
+      const login = steps(job).findIndex((step) => step.uses?.startsWith('azure/login@'));
+      assert.ok(login !== -1 && login < token, `${workflow} ${id}`);
+      const { with: input } = steps(job)[deploy];
+      assert.equal(
+        input.azure_static_web_apps_api_token,
+        `\${{ steps.${steps(job)[token].id}.outputs.token }}`,
+      );
+      assert.equal(input.skip_app_build, true);
+      assert.equal(input.app_location, 'dist');
+      assert.equal(input.action, 'upload');
+    }
+    assert.equal(deploys, 3, 'preview, release, redeploy');
+  });
+});
+
+describe('preview.yml (Task 7)', () => {
+  const preview = byFile('preview.yml');
+  const jobs = jobsOf('preview.yml');
+
+  test('AC-069, AC-071: runs on develop (push and by hand), never on a pull request', () => {
+    assert.deepEqual(Object.keys(preview.doc.on).sort(), ['push', 'workflow_dispatch']);
+    assert.deepEqual(preview.doc.on.push.branches, ['develop']);
+  });
+
+  test('AC-069: one run at a time, a waiting run is replaced by a newer push', () => {
+    assert.deepEqual(preview.doc.concurrency, { group: 'preview', 'cancel-in-progress': false });
+  });
+
+  test('AC-070: the checks come first, everything else needs them', () => {
+    assert.equal(jobs.checks.uses, './.github/workflows/checks.yml');
+    assert.deepEqual(jobs.checks.permissions, { contents: 'read', 'pull-requests': 'read' });
+    for (const [id, job] of Object.entries(jobs)) {
+      if (id !== 'checks') assert.ok(needsOf(job).includes('checks'), id);
+    }
+  });
+
+  test('AC-070: build → Supabase → web → verification, in this order', () => {
+    assert.deepEqual(Object.keys(jobs), [
+      'checks',
+      'web-bauen',
+      'supabase-vorschau',
+      'web-vorschau',
+      'pruefen',
+    ]);
+    assert.ok(needsOf(jobs['supabase-vorschau']).includes('web-bauen'));
+    assert.ok(needsOf(jobs['web-vorschau']).includes('supabase-vorschau'));
+    assert.ok(needsOf(jobs.pruefen).includes('web-vorschau'));
+  });
+
+  test('decision 3: the build has no environment and only public preview values', () => {
+    const build = jobs['web-bauen'];
+    assert.equal(build.environment, undefined);
+    assert.equal(build.env.EXPO_PUBLIC_SUPABASE_URL, '${{ vars.PREVIEW_SUPABASE_URL }}');
+    assert.equal(
+      build.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+      '${{ vars.PREVIEW_SUPABASE_PUBLISHABLE_KEY }}',
+    );
+    assert.equal(build.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY, '${{ vars.PREVIEW_VAPID_PUBLIC_KEY }}');
+    assert.equal(build.env.EXPO_PUBLIC_APP_VERSION, 'vorschau');
+    assert.equal(build.env.EXPO_PUBLIC_DEV_LOGIN, undefined);
+    assert.ok(stepIndex(build, /pnpm build:web/) !== -1);
+  });
+
+  test('AC-071: every job that touches the preview uses the environment preview', () => {
+    for (const id of ['supabase-vorschau', 'web-vorschau', 'pruefen'])
+      assert.equal(envName(jobs[id]), 'preview', id);
+  });
+
+  test('AC-017, AC-014: status, config, reset without seed, preview seed, invitations, then config, functions, secrets', () => {
+    const job = jobs['supabase-vorschau'];
+    assertOrder(
+      job,
+      [
+        /^node scripts\/ci\/supabase-status\.mjs$/,
+        /^node scripts\/ci\/supabase-remote\.mjs preview$/,
+        RESET,
+        /supabase db query .*--file supabase\/preview-seed\.sql/,
+        /^node scripts\/preview-invites\.mjs$/,
+        /supabase config push/,
+        /supabase functions deploy .*--prune/,
+        /supabase secrets set/,
+      ],
+      'supabase-vorschau',
+    );
+    const reset = steps(job)[stepIndex(job, RESET)].run;
+    assert.match(reset, /--no-seed/);
+    assert.match(reset, /--yes/);
+  });
+
+  test('AC-014: the invitation addresses reach only the step that needs them', () => {
+    const job = jobs['supabase-vorschau'];
+    assert.equal(job.env.PREVIEW_INVITE_EMAILS, undefined);
+    const invites = steps(job)[stepIndex(job, /preview-invites\.mjs/)];
+    assert.equal(invites.env.PREVIEW_INVITE_EMAILS, '${{ secrets.PREVIEW_INVITE_EMAILS }}');
+    assert.equal((preview.text.match(/PREVIEW_INVITE_EMAILS }}/g) ?? []).length, 1);
+  });
+
+  test('decision 8: the preview sets only ALLOWED_ORIGINS, no push or AI values', () => {
+    const job = jobs['supabase-vorschau'];
+    assert.equal(
+      steps(job)[stepIndex(job, /supabase secrets set/)].run,
+      `supabase secrets set ${REMOTE_REF} "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"`,
+    );
+    assert.doesNotMatch(JSON.stringify(preview.doc), /FOUNDRY_|VAPID_PRIVATE|PUSH_SEND_SECRET/);
+  });
+
+  test('AC-013: before it reads its own token, the web job proves it cannot read the production one', () => {
+    const job = jobs['web-vorschau'];
+    const check = stepIndex(job, /secrets list -n "\$PRODUCTION_SWA_NAME"/);
+    assert.ok(check !== -1 && check < stepIndex(job, /--query properties\.apiKey/));
+    const script = steps(job)[check].run;
+    assert.match(script, /> \/dev\/null/, 'a token must never reach the log');
+    assert.match(script, /AuthorizationFailed/);
+    assert.equal(job.env.PRODUCTION_SWA_NAME, 'swa-housekeeping-app-prd');
+  });
+
+  test('AC-013, AC-069: the verification checks the preview and the commit of develop', () => {
+    const run = runs(jobs.pruefen).join('\n');
+    assert.match(
+      run,
+      /node scripts\/release\/verify\.mjs "\$PREVIEW_WEB_ORIGIN" "\$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "\$GITHUB_SHA"/,
+    );
+    assert.equal(
+      jobs.pruefen.env.SUPABASE_PUBLISHABLE_KEY,
+      '${{ vars.PREVIEW_SUPABASE_PUBLISHABLE_KEY }}',
+    );
+  });
+});
+
+describe('release.yml (Task 8)', () => {
+  const release = byFile('release.yml');
+  const jobs = jobsOf('release.yml');
+  const PRODUCTION_JOBS = [
+    'supabase-pruefen',
+    'pakete-pruefen',
+    'supabase-ausliefern',
+    'web-ausliefern',
+    'pruefen',
+  ];
+
+  test('runs on main, and by hand with the input erzwingen (default off)', () => {
+    assert.deepEqual(Object.keys(release.doc.on).sort(), ['push', 'workflow_dispatch']);
+    assert.deepEqual(release.doc.on.push.branches, ['main']);
+    assert.deepEqual(release.doc.on.workflow_dispatch.inputs.erzwingen, {
+      description: release.doc.on.workflow_dispatch.inputs.erzwingen.description,
+      type: 'boolean',
+      default: false,
+    });
+  });
+
+  test('AC-032: one delivery at a time, never cancelled', () => {
+    assert.deepEqual(release.doc.concurrency, { group: 'release', 'cancel-in-progress': false });
+  });
+
+  test('AC-028: the checks come first, everything else needs them', () => {
+    assert.equal(jobs.checks.uses, './.github/workflows/checks.yml');
+    assert.deepEqual(jobs.checks.permissions, { contents: 'read', 'pull-requests': 'read' });
+    for (const [id, job] of Object.entries(jobs)) {
+      if (id !== 'checks') assert.ok(needsOf(job).includes('checks'), id);
+    }
+  });
+
+  test('AC-020, AC-026: version first; without a release nothing is built; --force only from the input', () => {
+    assert.ok(needsOf(jobs.version).includes('checks'));
+    for (const id of ['web-bauen', 'supabase-pruefen']) {
+      assert.equal(jobs[id].if, "needs.version.outputs.release == 'true'", id);
+    }
+    for (const [id, job] of Object.entries(jobs)) {
+      if (!['checks', 'version'].includes(id)) assert.ok(needsOf(job).includes('version'), id);
+    }
+    const step = steps(jobs.version)[stepIndex(jobs.version, /scripts\/release\/version\.mjs/)];
+    assert.equal(
+      step.env.FORCE,
+      "${{ github.event_name == 'workflow_dispatch' && inputs.erzwingen }}",
+    );
+    assert.match(step.run, /if \[ "\$FORCE" = true \]; then args\+=\(--force\); fi/);
+    assert.equal(jobs.version.outputs.release, '${{ steps.version.outputs.release }}');
+  });
+
+  test('AC-027: "Web bauen" and "Supabase prüfen" run side by side', () => {
+    assert.deepEqual(needsOf(jobs['web-bauen']).sort(), ['checks', 'version']);
+    assert.deepEqual(needsOf(jobs['supabase-pruefen']).sort(), ['checks', 'version']);
+    assert.equal(jobs['web-bauen'].name, 'Web bauen');
+    assert.equal(jobs['supabase-pruefen'].name, 'Supabase prüfen');
+  });
+
+  test('AC-027, AC-029, AC-061: Supabase is delivered only after build, guard, package scan and backup', () => {
+    assert.ok(needsOf(jobs['pakete-pruefen']).includes('web-bauen'));
+    assert.ok(needsOf(jobs['pakete-pruefen']).includes('supabase-pruefen'));
+    assert.equal(jobs.sicherung.uses, './.github/workflows/backup.yml');
+    assert.deepEqual(jobs.sicherung.permissions, { contents: 'read', 'id-token': 'write' });
+    assert.equal(jobs.sicherung.with.prefix, 'release/v${{ needs.version.outputs.version }}');
+    assert.ok(needsOf(jobs.sicherung).includes('pakete-pruefen'));
+    for (const id of ['web-bauen', 'supabase-pruefen', 'pakete-pruefen', 'sicherung']) {
+      assert.ok(needsOf(jobs['supabase-ausliefern']).includes(id), id);
+    }
+  });
+
+  test('AC-031, AC-064: web after Supabase, verification after web, tag and release after verification', () => {
+    assert.ok(needsOf(jobs['web-ausliefern']).includes('supabase-ausliefern'));
+    assert.ok(needsOf(jobs.pruefen).includes('web-ausliefern'));
+    assert.ok(needsOf(jobs.veroeffentlichen).includes('pruefen'));
+    assert.equal(
+      jobs['web-ausliefern'].name,
+      'Web ausliefern v${{ needs.version.outputs.version }}',
+    );
+    assert.deepEqual(jobs['web-ausliefern'].environment, {
+      name: 'production',
+      url: '${{ vars.PRODUCTION_WEB_ORIGIN }}',
+    });
+  });
+
+  test('AC-058: the jobs that touch production use the environment production, the others none', () => {
+    for (const [id, job] of Object.entries(jobs)) {
+      if (id === 'checks' || id === 'sicherung') continue;
+      assert.equal(envName(job), PRODUCTION_JOBS.includes(id) ? 'production' : undefined, id);
+    }
+  });
+
+  test('only the release and the hand-back may write to the repository', () => {
+    for (const [id, job] of Object.entries(jobs)) {
+      const writes = job.permissions?.contents === 'write';
+      assert.equal(writes, ['veroeffentlichen', 'rueckfuehrung'].includes(id), id);
+    }
+  });
+
+  test('AC-027: the build is the production build of this version, packed for the GitHub release', () => {
+    const build = jobs['web-bauen'];
+    assert.equal(build.env.EXPO_PUBLIC_SUPABASE_URL, '${{ vars.PRODUCTION_SUPABASE_URL }}');
+    assert.equal(build.env.EXPO_PUBLIC_APP_VERSION, '${{ needs.version.outputs.version }}');
+    assert.equal(build.env.EXPO_PUBLIC_DEV_LOGIN, undefined);
+    assert.match(runs(build).join('\n'), /zip -qr "\$RUNNER_TEMP\/web-\$VERSION\.zip"/);
+  });
+
+  test('guard: history of production checked, pending migrations listed, nothing applied', () => {
+    const job = jobs['supabase-pruefen'];
+    assertOrder(
+      job,
+      [
+        /supabase migration list .*--output-format json/,
+        /supabase db push .*--dry-run --skip-vault/,
+      ],
+      'supabase-pruefen',
+    );
+    assert.match(
+      runs(job).join('\n'),
+      /node scripts\/release\/supabase-guard\.mjs "\$RUNNER_TEMP\/migrations\.json"/,
+    );
+    const checkout = steps(job).find((step) => step.uses?.startsWith('actions/checkout@'));
+    assert.equal(checkout.with['fetch-depth'], 0);
+  });
+
+  test('AC-061: the package scan looks for the names and values of the production secrets', () => {
+    const step = steps(jobs['pakete-pruefen'])[
+      stepIndex(jobs['pakete-pruefen'], /check-web-export\.mjs --scan/)
+    ];
+    assert.match(step.run, /--names SUPABASE_ACCESS_TOKEN,GOOGLE_CLIENT_SECRET$/);
+    assert.equal(step.env.SUPABASE_ACCESS_TOKEN, '${{ secrets.SUPABASE_ACCESS_TOKEN }}');
+    assert.equal(step.env.GOOGLE_CLIENT_SECRET, '${{ secrets.GOOGLE_CLIENT_SECRET }}');
+  });
+
+  test('AC-027, AC-040, AC-044, AC-045: migrations, then config, functions with prune, only ALLOWED_ORIGINS', () => {
+    const job = jobs['supabase-ausliefern'];
+    assertOrder(
+      job,
+      [
+        /^node scripts\/ci\/supabase-remote\.mjs production$/,
+        /^supabase db push .*--skip-vault --yes$/,
+        /^supabase config push/,
+        /^supabase functions deploy .*--prune --yes$/,
+        /^supabase secrets set/,
+      ],
+      'supabase-ausliefern',
+    );
+    assert.doesNotMatch(runs(job).join('\n'), /--dry-run|--include-seed|--include-all/);
+    assert.equal(
+      steps(job)[stepIndex(job, /supabase secrets set/)].run,
+      `supabase secrets set ${REMOTE_REF} "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN"`,
+    );
+    assert.doesNotMatch(JSON.stringify(release.doc), /FOUNDRY_|VAPID_PRIVATE|PUSH_SEND_SECRET/);
+  });
+
+  test('AC-064: verification with the version and the commit, then the tag with the change list and the package', () => {
+    assert.match(
+      runs(jobs.pruefen).join('\n'),
+      /verify\.mjs "\$PRODUCTION_WEB_ORIGIN" "\$PRODUCTION_SUPABASE_URL" --environment production --version "\$VERSION" --commit "\$GITHUB_SHA"/,
+    );
+    const publish = runs(jobs.veroeffentlichen).join('\n');
+    assert.match(publish, /gh release create "\$TAG" "\$RUNNER_TEMP\/release\/web-\$VERSION\.zip"/);
+    assert.match(publish, /--target "\$GITHUB_SHA"/);
+    assert.match(publish, /--notes-file "\$RUNNER_TEMP\/release\/changelog\.md"/);
+  });
+
+  test('AC-067, AC-072: the hand-back runs only after a released hotfix pushed to main', () => {
+    const job = jobs.rueckfuehrung;
+    assert.equal(job.if, "github.event_name == 'push' && needs.version.outputs.hotfix == 'true'");
+    assert.ok(needsOf(job).includes('veroeffentlichen'));
+    assert.deepEqual(job.permissions, {
+      contents: 'write',
+      'pull-requests': 'write',
+      actions: 'write',
+    });
+    const detect = steps(jobs.version).find((step) => /hand-back\.mjs detect/.test(step.run ?? ''));
+    assert.match(detect.if, /github\.event_name == 'push'/);
+    assert.equal(jobs.version.outputs.hotfix, '${{ steps.handback.outputs.hotfix }}');
+  });
+
+  test('AC-067: branch from main, PR to develop with the agreed title, checks started by hand', async () => {
+    const { HAND_BACK_TITLE } = await import('../release/hand-back.mjs');
+    const job = jobs.rueckfuehrung;
+    assert.equal(job.env.TITLE, HAND_BACK_TITLE);
+    assert.equal(job.env.BRANCH, '${{ needs.version.outputs.hand_back_branch }}');
+    const script = runs(job).join('\n');
+    assert.match(script, /-f ref="refs\/heads\/\$BRANCH" -f sha="\$GITHUB_SHA"/);
+    assert.match(script, /-f head="\$BRANCH" -f base=develop/);
+    assertOrder(
+      job,
+      [
+        /--json mergeable/,
+        /gh workflow run checks\.yml --ref "\$BRANCH"/,
+        /gh pr merge "\$NUMBER" --merge/,
+      ],
+      'rueckfuehrung',
+    );
+    assert.match(script, /gh run watch "\$id" --exit-status/);
+    assert.match(script, /gh workflow run preview\.yml --ref develop/);
+  });
+
+  test('AC-068: a conflict leaves the PR open and the job red; never squash, rebase, admin or force', () => {
+    const job = jobs.rueckfuehrung;
+    const conflict = steps(job)[stepIndex(job, /--json mergeable/)].run;
+    assert.match(conflict, /if \[ "\$state" = CONFLICTING \]; then[\s\S]*?exit 1/);
+    const script = runs(job).join('\n');
+    assert.doesNotMatch(script, /--squash|--rebase|--admin|--auto|\bgit push\b|--force|-X PATCH/);
+    assert.equal((script.match(/gh pr merge/g) ?? []).length, 1);
+  });
+});
+
+describe('redeploy-web.yml (Task 8)', () => {
+  const redeploy = byFile('redeploy-web.yml');
+  const jobs = jobsOf('redeploy-web.yml');
+
+  test('AC-033: only by hand, with the tag as input, never next to a release', () => {
+    assert.deepEqual(Object.keys(redeploy.doc.on), ['workflow_dispatch']);
+    assert.equal(redeploy.doc.on.workflow_dispatch.inputs.tag.required, true);
+    assert.deepEqual(redeploy.doc.concurrency, { group: 'release', 'cancel-in-progress': false });
+  });
+
+  test('AC-033: the tag is checked against the minimum version of production before anything is delivered', () => {
+    const check = steps(jobs.version)[stepIndex(jobs.version, /version\.mjs --redeploy/)];
+    assert.equal(
+      check.run,
+      'node scripts/release/version.mjs --redeploy "$TAG" --supabase-url "$PRODUCTION_SUPABASE_URL"',
+    );
+    assert.equal(check.env.TAG, '${{ inputs.tag }}');
+    assert.equal(jobs.version.environment, undefined);
+    assert.ok(needsOf(jobs['web-ausliefern']).includes('version'));
+    assert.ok(needsOf(jobs.pruefen).includes('web-ausliefern'));
+  });
+
+  test('AC-033: the package of that release is delivered, and it must carry that version', () => {
+    const script = runs(jobs['web-ausliefern']).join('\n');
+    assert.match(script, /gh release download "\$TAG" --pattern "web-\$VERSION\.zip"/);
+    assert.match(script, /jq -r \.version dist\/version\.json/);
+  });
+
+  test('AC-033: Supabase stays unchanged', () => {
+    assert.doesNotMatch(
+      redeploy.text,
+      /supabase (db (push|query)|config push|functions deploy|secrets set|migration)/,
+    );
+    assert.doesNotMatch(redeploy.text, RESET);
+    assert.match(
+      runs(jobs.pruefen).join('\n'),
+      /verify\.mjs "\$PRODUCTION_WEB_ORIGIN" "\$PRODUCTION_SUPABASE_URL" --environment production --version "\$VERSION" --commit "\$COMMIT"/,
+    );
   });
 });
 

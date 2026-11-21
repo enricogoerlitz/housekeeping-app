@@ -1113,3 +1113,19 @@ Wird am Ende ausgefüllt.
 - [ ] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012)
 - [ ] Offline-Verhalten (AC-023, AC-039) auf dem iPhone geprüft
 - [ ] Glossar, ADR-0015 und Rückverfolgbarkeitstabelle aktuell
+
+## Entscheidungen beim Bauen (Tasks 7–8, 21.11.2026)
+
+1. Spike Entscheidung 6: `env()` in `[remotes.*].project_id` ist mit CLI 3.2.0 nicht nutzbar (Abschnitt
+   wird nach der wörtlichen Ref gewählt; fehlende Variable bricht lokale Befehle). Umgesetzt ist die
+   Ausweichlösung: Platzhalter-Refs in `config.toml`, `scripts/ci/supabase-remote.mjs` setzt im Runner
+   die echte Ref nach Prüfung gegen `<ENV>_SUPABASE_URL` und entfernt den anderen Abschnitt.
+2. Kein `supabase link`; alle Befehle mit `--remote="$SUPABASE_PROJECT_REF"` (Test erzwingt das).
+3. `sicherung` läuft nach `pakete-pruefen` (keine unveränderliche Sicherung für einen roten Build).
+4. `preview-seed.sql` wird von `gen-seed.ts` erzeugt und in `pnpm check` per `--check` verglichen.
+5. Hotfix-Erkennung in `scripts/release/hand-back.mjs`; Zweig und PR per `gh api`.
+6. Selbstprüfung der Vorschau-Identität gegen `swa-housekeeping-app-prd` (fester Name).
+7. Vorschau-Konten: `@vorschau.invalid`, kein Passwort, keine Identität, nicht bestätigt.
+8. `Azure/static-web-apps-deploy` auf den Kopf von `v1` gepinnt (keine Tags upstream).
+9. `release.yml` hat `workflow_dispatch` mit `erzwingen` (Veröffentlichung ohne Code-Änderung, z. B.
+   nach einer Notfall-Wiederherstellung mit neuem Projekt).

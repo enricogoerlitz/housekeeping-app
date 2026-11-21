@@ -2,6 +2,11 @@
 // database rows, owned by the two local test accounts. Written by `pnpm db:seed:gen`
 // (scripts/gen-seed.ts); runs only in the local stack, as postgres, after the migrations.
 //
+// The preview seed (`supabase/preview-seed.sql`, spec 0014 AC-014) has the same households, but
+// its members are accounts without password and without identity on @vorschau.invalid: nobody can
+// sign in with them, and cooks, raters and assignees of the demo stay valid. The preview workflow
+// loads it after the reset of the preview project.
+//
 // Ids: deterministic UUIDv5 from the demo's readable slug ids. Households and members come from
 // SEED_NAMESPACE; everything else from its household's id, so the slugs the "Test" household
 // shares with the demo ("slot-abend", "area-brot", …) still get different ids.
@@ -49,6 +54,15 @@ export const seedHouseholdId = (slug: string): Promise<string> => uuidV5(slug, S
 /** Id of anything that lives in a household. */
 export const seedId = async (householdSlug: string, slug: string): Promise<string> =>
   uuidV5(slug, await seedHouseholdId(householdSlug));
+
+/** Who the demo members are: the local test accounts, or the preview's accounts without sign-in. */
+export type SeedAccounts = 'test' | 'preview';
+
+/** The demo members in the preview project (spec 0014, plan decision 7). */
+const PREVIEW_ACCOUNTS: readonly { key: string; email: string; name: string }[] = [
+  { key: 'enrico', email: 'enrico@vorschau.invalid', name: 'Beispiel-Enrico' },
+  { key: 'nadja', email: 'nadja@vorschau.invalid', name: 'Beispiel-Nadja' },
+];
 
 /** Slug → UUID per household slug; each map includes the household and the members. */
 export type SeedIds = Record<string, Record<string, string>>;
@@ -341,24 +355,34 @@ function householdSql(householdId: string, data: HouseholdData, context: Context
 // ---------------------------------------------------------------------------------------------
 
 /** `ids` maps the member slugs ("m-enrico") to their profile ids. */
-function accountsSql(members: Member[], ids: Record<string, string>): string {
+function accountsSql(members: Member[], ids: Record<string, string>, kind: SeedAccounts): string {
   const profiles = membersToRows(members).profiles ?? [];
-  const parts = ['-- Test accounts (spec 0003, REQ-002): email + password, confirmed.\n'];
+  const accounts = kind === 'test' ? TEST_ACCOUNTS : PREVIEW_ACCOUNTS;
+  const parts = [
+    kind === 'test'
+      ? '-- Test accounts (spec 0003, REQ-002): email + password, confirmed.\n'
+      : '-- Demo members (spec 0014, AC-014): no password, no identity, nobody signs in with them.\n',
+  ];
   const users: string[] = [];
   const identities: string[] = [];
   const updates: string[] = [];
-  TEST_ACCOUNTS.forEach((account, index) => {
+  accounts.forEach((account, index) => {
     const memberSlug = `m-${account.key}`;
     const profile = profiles.find((row) => row.id === memberSlug);
     if (!profile) throw new Error(`Demo member ${memberSlug} is missing`);
     const userId = ids[memberSlug] ?? '';
     const id = quote(userId);
     const email = quote(account.email);
+    const name = quote(JSON.stringify({ full_name: account.name }));
     users.push(
-      `  ('00000000-0000-0000-0000-000000000000', ${id}, 'authenticated', 'authenticated', ${email},\n` +
-        `   extensions.crypt(${quote(TEST_PASSWORD)}, extensions.gen_salt('bf')), now(),\n` +
-        `   '{"provider": "email", "providers": ["email"]}', ${quote(JSON.stringify({ full_name: account.name }))}, now(), now(),\n` +
-        `   '', '', '', '', '', '', '', '')`,
+      kind === 'test'
+        ? `  ('00000000-0000-0000-0000-000000000000', ${id}, 'authenticated', 'authenticated', ${email},\n` +
+            `   extensions.crypt(${quote(TEST_PASSWORD)}, extensions.gen_salt('bf')), now(),\n` +
+            `   '{"provider": "email", "providers": ["email"]}', ${name}, now(), now(),\n` +
+            `   '', '', '', '', '', '', '', '')`
+        : `  ('00000000-0000-0000-0000-000000000000', ${id}, 'authenticated', 'authenticated', ${email},\n` +
+            `   '{}', ${name}, now(), now(),\n` +
+            `   '', '', '', '', '', '', '', '')`,
     );
     const identity = {
       sub: userId,
@@ -378,16 +402,29 @@ function accountsSql(members: Member[], ids: Record<string, string>): string {
         `where id = ${id};\n`,
     );
   });
+  if (kind === 'test') {
+    parts.push(
+      'insert into auth.users (\n' +
+        '  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,\n' +
+        '  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,\n' +
+        '  confirmation_token, recovery_token, email_change_token_new, email_change,\n' +
+        '  email_change_token_current, phone_change, phone_change_token, reauthentication_token\n' +
+        `) values\n${users.join(',\n')};\n`,
+      'insert into auth.identities (\n' +
+        '  id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at\n' +
+        `) values\n${identities.join(',\n')};\n`,
+    );
+  } else {
+    parts.push(
+      'insert into auth.users (\n' +
+        '  instance_id, id, aud, role, email,\n' +
+        '  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,\n' +
+        '  confirmation_token, recovery_token, email_change_token_new, email_change,\n' +
+        '  email_change_token_current, phone_change, phone_change_token, reauthentication_token\n' +
+        `) values\n${users.join(',\n')};\n`,
+    );
+  }
   parts.push(
-    'insert into auth.users (\n' +
-      '  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,\n' +
-      '  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,\n' +
-      '  confirmation_token, recovery_token, email_change_token_new, email_change,\n' +
-      '  email_change_token_current, phone_change, phone_change_token, reauthentication_token\n' +
-      `) values\n${users.join(',\n')};\n`,
-    'insert into auth.identities (\n' +
-      '  id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at\n' +
-      `) values\n${identities.join(',\n')};\n`,
     '-- The auth trigger created the profiles; colours and diets come from the demo members.\n',
     ...updates,
   );
@@ -454,8 +491,25 @@ function topLevelIds(data: HouseholdData, ids: Record<string, string>): Record<s
   return Object.fromEntries(slugs.map((slug) => [slug, ids[slug] ?? '']));
 }
 
+const HEADERS: Record<SeedAccounts, string> = {
+  test:
+    '-- Generated by `pnpm db:seed:gen` (packages/api/src/seed/seed-sql.ts) — do not edit.\n' +
+    '-- LOCAL ONLY (spec 0003, AC-033): test accounts with a fixed fake password and the demo\n' +
+    '-- households of spec 0001. Runs after the migrations on `supabase db reset`, as postgres.\n' +
+    '-- Dates are relative to the Berlin day of the reset, timestamps to its now().\n',
+  preview:
+    '-- Generated by `pnpm db:seed:gen` (packages/api/src/seed/seed-sql.ts) — do not edit.\n' +
+    '-- PREVIEW ONLY (spec 0014, AC-014): the demo households of spec 0001 for the preview project.\n' +
+    '-- Their members are accounts without password and identity on @vorschau.invalid; nobody can\n' +
+    '-- sign in with them. .github/workflows/preview.yml loads it after the reset, as postgres.\n' +
+    '-- Dates are relative to the Berlin day of the run, timestamps to its now().\n',
+};
+
 /** The seed for the demo built on `base`. The SQL is the same for every base day. */
-export async function generateSeed(base: ISODate): Promise<Seed> {
+export async function generateSeed(
+  base: ISODate,
+  { accounts = 'test' }: { accounts?: SeedAccounts } = {},
+): Promise<Seed> {
   const state = createInitialState(base);
   const households: [string, HouseholdData][] = [DEMO_HOUSEHOLD_ID, TEST_HOUSEHOLD_ID].map(
     (slug) => {
@@ -474,14 +528,11 @@ export async function generateSeed(base: ISODate): Promise<Seed> {
     ).join('');
 
   const sql = [
-    '-- Generated by `pnpm db:seed:gen` (packages/api/src/seed/seed-sql.ts) — do not edit.\n' +
-      '-- LOCAL ONLY (spec 0003, AC-033): test accounts with a fixed fake password and the demo\n' +
-      '-- households of spec 0001. Runs after the migrations on `supabase db reset`, as postgres.\n' +
-      '-- Dates are relative to the Berlin day of the reset, timestamps to its now().\n',
+    HEADERS[accounts],
     '-- created_at is set explicitly (relative, and ordered like the demo), so the timestamp\n' +
       '-- triggers are off while seeding. Everything else (foreign keys, member checks) applies.\n' +
       toggle('disable'),
-    accountsSql(state.members, demoIds),
+    accountsSql(state.members, demoIds, accounts),
     ...households.map(([slug, data]) => {
       const householdIdMap = ids[slug] ?? {};
       return householdSql(
