@@ -16,6 +16,7 @@ import {
   WRITE_REJECTED_MESSAGE,
 } from '@housekeeping/api';
 import {
+  canPutRecipeOnList,
   courseLabel,
   defaultVariantId,
   deriveRecipeDiet,
@@ -136,6 +137,11 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
     recipe.ingredients.length > 0
       ? deriveRecipeDiet(recipe, activeVariantId, articlesById)
       : undefined;
+  const shownVariants = activeVariantId
+    ? [{ variantId: activeVariantId, portions: shownServings }]
+    : [];
+  // AC-060: the same rule as the calendar picker (AC-061) — something to buy, or nothing to do.
+  const canGoOnList = canPutRecipeOnList(recipe, shownServings, shownVariants);
   const factor = shownServings / recipe.servings;
   const isFavorite = recipe.favoriteOf.includes(me.id);
 
@@ -215,15 +221,22 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           testID="recipe-plan"
         />
         {/* REQ-010: straight into the pantry check with the portions and variant shown here. */}
-        <Button
-          label="Auf die Liste"
-          icon="shopping-basket"
-          variant="secondary"
-          onPress={() => setPantryCheck(true)}
-          disabled={online.disabled || recipe.ingredients.length === 0}
-          hint={online.hint ?? (recipe.ingredients.length === 0 ? NO_INGREDIENTS_HINT : undefined)}
-          testID="recipe-to-list"
-        />
+        <Row gap={8}>
+          <Button
+            label="Auf die Liste"
+            icon="shopping-basket"
+            variant="secondary"
+            onPress={() => setPantryCheck(true)}
+            disabled={online.disabled || !canGoOnList}
+            hint={online.hint ?? (canGoOnList ? undefined : NO_INGREDIENTS_HINT)}
+            testID="recipe-to-list"
+          />
+          {canGoOnList ? null : (
+            <Text variant="caption" color="muted" testID="recipe-to-list-hint">
+              {NO_INGREDIENTS_HINT}
+            </Text>
+          )}
+        </Row>
         {features.ai ? (
           <Button
             label="Anpassen"
@@ -430,9 +443,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
               {
                 recipeId: recipe.id,
                 portions: shownServings,
-                variants: activeVariantId
-                  ? [{ variantId: activeVariantId, portions: shownServings }]
-                  : [],
+                variants: shownVariants,
               },
             ]}
             onClose={() => setPantryCheck(false)}

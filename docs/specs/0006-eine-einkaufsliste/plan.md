@@ -1,5 +1,5 @@
 ---
-status: in-arbeit # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-21
 spec: 0006
 ---
@@ -86,7 +86,57 @@ aus der Vorwoche, offline hinzufügen → online), Schema-Vergleich vorher/nachh
 
 ## Nachweis
 
-Wird am Ende vollständig ausgefüllt.
+Stand 21.11.2026 (Branch `feat/welle-2-liste-kalender`, Commits `f6dd2a1` bis `2b8c418` und der
+Abschluss der Audit-Lücken).
+
+- [x] Jedes nicht verworfene AC hat einen Test oder ist als „E2E (Endwelle)“ eingetragen:
+      Rückverfolgbarkeit in `spec.md`. Die rein sichtbaren Kriterien (AC-008/009/010/013/020/022/
+      027/028/031/034/036/041/048/056/057 und Teile von AC-058) prüft die volle E2E-Suite am Ende
+      der Wellen; bis dahin im Dev-Build durchgeklickt, Bildschirmfotos `tmp/0006/a-*.png`
+      („Liste“, „Posten bearbeiten“, „Liste leeren“) und `tmp/0006/b-*.png` („Einkaufen“, „Auf die
+      Einkaufsliste“, Rezeptseite).
+- [x] `pnpm exec supabase test db`: 941 Tests grün (nach dem Neuaufbau der Grundlage, ADR-0012)
+- [x] `pnpm format:check` und `pnpm check` grün
+- [x] `pnpm e2e:dev` grün am Ende von Task 3 (`tmp/0006/agent-b-e2e-dev.log`)
+- [ ] `pnpm e2e:dev` nach dem Abschluss der Audit-Lücken: der Lauf brach im Setup ab, weil der
+      Seed gegen die parallel entstehende Katalog-Migration von Spec 0007 verstößt
+      (`articles_name_key_not_synonym`); nachholen, sobald 0007 den Seed angepasst hat
+- [x] `pnpm test:integration` grün, darunter F1 (AC-029: „2 Spülmittel (Zitrone)“ gegen die lokale
+      Supabase, nach Neuladen und bei Nadja) und die Negativfälle AC-038/AC-022
+- [x] `/security-check` der Grundlage gelaufen; die Befunde sind in `23137d3` behoben (Tabelle
+      unten)
+- [x] Keine neue Server-Oberfläche durch die App: Entfernen, „Erledigt leeren“, „Liste leeren“ und
+      „Rückgängig“ rufen nur die bereits geprüften RPCs `clear_shopping_list`,
+      `clear_checked_items`, `restore_cleared_items` und das Entfernen über `apply_changes` auf;
+      ± geht über `adjust_item_count`.
+- [ ] Manueller Test im Browser durch Enrico (zweites Gerät, Einkaufen im Laden)
+
+### Abweichungen
+
+- **AC-001 bis AC-005 und AC-007 verworfen (ADR-0012):** keine Listen-Tabelle, keine Migration
+  alter Daten, damit auch keine Laden-Warteschlange mit alten Listen-Kennungen (AC-004). Ein
+  Entwicklungsgerät meldet sich einmal ab und wieder an.
+- **Menge in „Posten bearbeiten“ (Offene Frage 4b):** ± im Fenster ändert die Gesamtanzahl wie in
+  der Zeile (AC-020 „Menge − 2× +“); die Server-Regel bleibt (+ erhöht den neuesten Anteil „von
+  Hand“ oder legt einen an, − nimmt zuerst „von Hand“, dann den zuletzt hinzugekommenen Beitrag).
+  Die ungenutzte Variante „nur der Anteil von Hand“ ist aus `core` entfernt, die Annahme in
+  `spec.md` angepasst.
+- **AC-060:** „Auf die Liste“ auf der Rezeptseite nutzt dieselbe Regel wie AC-061
+  (`canPutRecipeOnList` → `canPutOnList`, auch Rezepte nur mit „nicht einkaufen“-Zutaten) und
+  zeigt „Noch keine Zutaten“ sichtbar neben dem ausgegrauten Knopf.
+- **Wischen zum Entfernen:** Für Bildschirmleser und Tastatur ist der Weg „Posten bearbeiten“ →
+  „Entfernen“ mit demselben „Rückgängig“; das Wischen selbst hat keine eigene Bedienhilfe.
+- **Haptik fehlt noch:** `expo-haptics` kommt erst mit Spec 0007 (E11). **Folgeaufgabe:** danach
+  das Abhaken in „Einkaufen“ mit Haptik versehen (`.claude/rules/40-ui.md`: „checking off an
+  item“).
+
+### Offen
+
+Die Annahmen der Offenen Fragen in `spec.md` bleiben `OFFEN`, bis Enrico sie bestätigt:
+1 („Nadja kauft gerade ein“ aus Haken der letzten 15 Minuten), 2 (ein Zusatz für den ganzen
+Posten), 3 („Liste leeren“ entfernt auch Erledigtes), 4 (a) bis (h) (kleinere Auslegungen, (b) wie
+oben angepasst), 5 (Rezept ohne Zutaten erscheint nicht in Schritt 1 und ist auf der Rezeptseite
+ausgegraut).
 
 ### Security-Check der Migrations-Grundlage (Commit b9f5151, ADR-0012)
 

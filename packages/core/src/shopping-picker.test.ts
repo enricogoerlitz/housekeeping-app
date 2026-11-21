@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canPutOnList,
+  canPutRecipeOnList,
   entryIdsOnList,
   listPickerContinueLabel,
   listPickerDayLabel,
@@ -256,6 +257,22 @@ describe('canPutOnList', () => {
       expect(canPutOnList(entry('plan-lasagne', TODAY, { kind }), lasagne)).toBe(false);
     }
     expect(canPutOnList(entry('plan-lasagne', TODAY), undefined)).toBe(false);
+  });
+});
+
+describe('canPutRecipeOnList', () => {
+  it('AC-060: a recipe with ingredients to buy can go on the list from its page', () => {
+    expect(canPutRecipeOnList(recipe('rec-kuerbis', 'Kürbissuppe'), 2, [])).toBe(true);
+  });
+
+  it('AC-060: a recipe without ingredients, or with only "skip" ingredients, cannot', () => {
+    const skipOnly = recipe('rec-x', 'Salat', {
+      ingredients: [{ id: 'x', articleId: 'art-salz', name: 'Salz', shoppingRule: 'skip' }],
+    });
+    expect(canPutRecipeOnList(recipe('rec-x', 'Kürbissuppe', { ingredients: [] }), 2, [])).toBe(
+      false,
+    );
+    expect(canPutRecipeOnList(skipOnly, 2, [])).toBe(false);
   });
 });
 

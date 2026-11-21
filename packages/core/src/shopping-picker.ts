@@ -16,6 +16,30 @@ export function canPutOnList(entry: MealPlanEntry, recipe: Recipe | undefined): 
   return contributionsFromEntry(entry, recipe, {}, '').length > 0;
 }
 
+/**
+ * The same rule for a recipe put on the list straight from its page with the portions and variants
+ * shown there (AC-060): it needs at least one ingredient to buy.
+ */
+export function canPutRecipeOnList(
+  recipe: Recipe,
+  portions: number,
+  variants: MealPlanEntry['variants'],
+): boolean {
+  const entry: MealPlanEntry = {
+    id: '',
+    date: null,
+    slotId: '',
+    kind: 'recipe',
+    recipeId: recipe.id,
+    eaterIds: [],
+    guests: 0,
+    portions,
+    variants,
+    sort: 0,
+  };
+  return canPutOnList(entry, recipe);
+}
+
 /** Plan entries with a contribution on one of the given items, open or checked (REQ-008). */
 export function entryIdsOnList(items: readonly ShoppingItem[]): Set<Id> {
   const ids = new Set<Id>();

@@ -104,7 +104,7 @@ export type ContributionChange =
   | { type: 'delete'; contributionId: Id };
 
 export interface CountAdjustment {
-  /** What the control shows afterwards: the item's count, in "manual" scope the manual share. */
+  /** What the control shows afterwards: the item's count. */
   count: number;
   /** Empty when the item is removed: its contributions go with it. */
   changes: ContributionChange[];
@@ -113,31 +113,22 @@ export interface CountAdjustment {
 }
 
 /**
- * Where "item" scope applies (the row on "Liste"): only for pure counts; + raises the manual share
- * (or adds one), − lowers the manual share first, then the most recent other contribution
- * (Offene Frage 4a), and on 1× removes the item.
- * Where "manual" scope applies ("Posten bearbeiten", Offene Frage 4b): + and − change only the
- * manual share, also next to quantities.
- * Returns null when the step is not possible (quantities in item scope, nothing manual to lower,
- * MAX_ITEM_COUNT reached).
+ * + and − on an item (the row on "Liste" and "Posten bearbeiten", Offene Frage 4b): only for pure
+ * counts; + raises the manual share (or adds one), − lowers the manual share first, then the most
+ * recent other contribution (Offene Frage 4a), and on 1× removes the item.
+ * Returns null when the step is not possible (quantities, nothing counted, MAX_ITEM_COUNT reached).
  */
 export function adjustItemCount(
   item: ShoppingItem,
   delta: 1 | -1,
   newContributionId: Id,
-  scope: 'item' | 'manual' = 'item',
 ): CountAdjustment | null {
-  if (scope === 'item' && itemCount(item) === undefined) return null;
+  if (itemCount(item) === undefined) return null;
   const counted = item.contributions.filter(
     (contribution) => contribution.count !== undefined && contribution.count > 0,
   );
   const total = counted.reduce((sum, contribution) => sum + (contribution.count ?? 0), 0);
-  const manualShares = counted.filter((contribution) => contribution.source.kind === 'manual');
-  const manual = manualShares.at(-1);
-  const shown =
-    scope === 'item'
-      ? total
-      : manualShares.reduce((sum, contribution) => sum + (contribution.count ?? 0), 0);
+  const manual = counted.filter((contribution) => contribution.source.kind === 'manual').at(-1);
 
   if (delta === 1) {
     if (total >= MAX_ITEM_COUNT) return null;
@@ -147,22 +138,19 @@ export function adjustItemCount(
           type: 'insert',
           contribution: { id: newContributionId, source: { kind: 'manual' }, count: 1 },
         };
-    return { count: shown + 1, changes: [change], removesItem: false };
+    return { count: total + 1, changes: [change], removesItem: false };
   }
 
-  if (scope === 'item' && total <= 1) return { count: 0, changes: [], removesItem: true };
+  if (total <= 1) return { count: 0, changes: [], removesItem: true };
   // Contributions are kept in the order they were added, so the last one is the most recent.
-  const target = manual ?? (scope === 'item' ? counted.at(-1) : undefined);
+  const target = manual ?? counted.at(-1);
   if (target === undefined) return null;
   const targetCount = target.count ?? 0;
-  if (targetCount <= 1 && item.contributions.length === 1) {
-    return { count: 0, changes: [], removesItem: true };
-  }
   const change: ContributionChange =
     targetCount > 1
       ? { type: 'update', contributionId: target.id, count: targetCount - 1 }
       : { type: 'delete', contributionId: target.id };
-  return { count: shown - 1, changes: [change], removesItem: false };
+  return { count: total - 1, changes: [change], removesItem: false };
 }
 
 /** The item with the changes applied; inserts go to the end. Returns a new item. */

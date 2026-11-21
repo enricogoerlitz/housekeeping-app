@@ -102,7 +102,7 @@ describe('originSummary', () => {
     expect(originSummary(item([manual('a', 1), direct]))).toBe('von Hand: 1× · Mango-Curry: 1×');
   });
 
-  it('AC-001: two manual contributions of a merged item read as one "von Hand: 2×"', () => {
+  it('AC-037: two manual contributions of one item read as one "von Hand: 2×"', () => {
     expect(originSummary(item([manual('a', 1), manual('b', 1)]))).toBe('von Hand: 2×');
   });
 
@@ -223,52 +223,6 @@ describe('adjustItemCount', () => {
     expect(adjustItemCount(item([]), 1, NEW_ID)).toBeNull();
     expect(adjustItemCount(item([]), -1, NEW_ID)).toBeNull();
   });
-
-  describe('scope "manual" (Offene Frage 4b: ± in "Posten bearbeiten")', () => {
-    it('+ adds a manual count also to an item with a quantity', () => {
-      const moehren = item([fromPlan('a', 'Kürbissuppe', 'Sa', { qty: 500, unit: 'g' })]);
-      const result = adjustItemCount(moehren, 1, NEW_ID, 'manual');
-      expect(result).toEqual({
-        count: 1,
-        removesItem: false,
-        changes: [
-          { type: 'insert', contribution: { id: NEW_ID, source: { kind: 'manual' }, count: 1 } },
-        ],
-      });
-      expect(originSummary(applyContributionChanges(moehren, result?.changes ?? []))).toBe(
-        'Kürbissuppe (Sa): 500 g · von Hand: 1×',
-      );
-    });
-
-    it('− only lowers the manual share and never touches calendar contributions', () => {
-      const milch = item([fromPlan('a', 'Pfannkuchen', 'Sa'), manual('b', 1)]);
-      expect(adjustItemCount(milch, -1, NEW_ID, 'manual')).toEqual({
-        count: 0,
-        removesItem: false,
-        changes: [{ type: 'delete', contributionId: 'b' }],
-      });
-      expect(
-        adjustItemCount(item([fromPlan('a', 'Pfannkuchen', 'Sa')]), -1, NEW_ID, 'manual'),
-      ).toBeNull();
-    });
-
-    it('count is the manual share, not the whole item', () => {
-      const milch = item([fromPlan('a', 'Pfannkuchen', 'Sa'), manual('b', 1)]);
-      expect(adjustItemCount(milch, 1, NEW_ID, 'manual')).toEqual({
-        count: 2,
-        removesItem: false,
-        changes: [{ type: 'update', contributionId: 'b', count: 2 }],
-      });
-    });
-
-    it('− on the only contribution removes the item', () => {
-      expect(adjustItemCount(item([manual('a', 1)]), -1, NEW_ID, 'manual')).toEqual({
-        count: 0,
-        removesItem: true,
-        changes: [],
-      });
-    });
-  });
 });
 
 describe('applyContributionChanges', () => {
@@ -387,7 +341,7 @@ describe('resolveShoppingStore', () => {
   const aldi = store('store-aldi', 'Aldi Nord');
   const stores = [aldi, rewe];
 
-  it('AC-040, AC-007: never chosen on this device → the default store', () => {
+  it('AC-040: never chosen on this device → the default store', () => {
     expect(resolveShoppingStore(stores, undefined, rewe.id)).toBe(rewe);
   });
 
