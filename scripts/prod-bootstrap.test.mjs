@@ -1,7 +1,8 @@
 // scripts/prod-bootstrap.mjs (spec 0014, AC-043, plan Task 10, decision 30): the first sign-in to an
 // empty production needs a household and an invitation. The SQL is a pure function of the address;
 // the address is checked like the server does and never printed, and the SQL file exists only
-// while the CLI runs. The idempotence test runs the SQL twice against the local database (inside a
+// while the CLI runs. A household it creates gets the starter content of the app's
+// createHousehold (private.apply_starter with starterPayload from packages/api/src/starter). The idempotence test runs the SQL twice against the local database (inside a
 // transaction that is rolled back); without a running local stack it is skipped with a hint.
 //
 //   node --test scripts/prod-bootstrap.test.mjs
@@ -12,6 +13,8 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { tsImport } from 'tsx/esm/api';
+
 import { HOUSEHOLD_NAME, bootstrapSql, parseEmail, runBootstrap } from './prod-bootstrap.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,6 +23,12 @@ const dir = mkdtempSync(path.join(root, 'tmp', 'prod-bootstrap-test-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const EMAIL = 'bootstrap-probe@example.com';
+
+const { starterPayload } = await tsImport(
+  '../packages/api/src/starter/payload.ts',
+  import.meta.url,
+);
+const STARTER = starterPayload();
 
 describe('parseEmail', () => {
   test('AC-043: trims and lowercases a valid address (same rule as private.is_valid_email)', () => {
@@ -77,8 +86,18 @@ describe('bootstrapSql', () => {
     }
   });
 
+  test('AC-043: a created household gets the starter payload of createHousehold, hex-encoded', () => {
+    const hex = Buffer.from(JSON.stringify(STARTER), 'utf8').toString('hex');
+    assert.ok(sql.includes(`convert_from(decode('${hex}', 'hex'), 'UTF8')::jsonb`));
+    assert.match(sql, /private\.apply_starter\(created\.id, /);
+    assert.match(sql, /from created/);
+  });
+
   test('one statement that reports what it created, never the address', () => {
-    assert.match(sql, /select[\s\S]*as haushalt_angelegt[\s\S]*as einladung_angelegt\s*;\s*$/);
+    assert.match(
+      sql,
+      /select[\s\S]*as haushalt_angelegt[\s\S]*as einladung_angelegt[\s\S]*as startinhalt_angelegt\s*;\s*$/,
+    );
     assert.equal(
       sql
         .trim()
@@ -189,13 +208,17 @@ const counts = (email) => `
       (select id from public.households where name = '${HOUSEHOLD_NAME}');
   select jsonb_path_query_array(meal_slots, '$[*].name')::text from public.households
     where name = '${HOUSEHOLD_NAME}';
+  select (select count(*) from public.areas a where a.household_id = h.id) || '|' ||
+         (select count(*) from public.articles x where x.household_id = h.id) || '|' ||
+         (select count(*) from public.articles x where x.household_id = h.id and x.area_id is null)
+    from public.households h where name = '${HOUSEHOLD_NAME}';
 `;
 
 describe(
   'against the local database',
   { skip: !localDb && 'lokaler Supabase-Stack läuft nicht (pnpm exec supabase start)' },
   () => {
-    test('AC-043: first run creates household and invitation, the second run creates nothing', () => {
+    test('AC-043: first run creates household, invitation and starter content, the second run creates nothing', () => {
       const out = psql(`
       begin;
       update public.households set name = name || ' (Seed)' where name = '${HOUSEHOLD_NAME}';
@@ -204,7 +227,14 @@ describe(
       ${counts(EMAIL)}
       rollback;
     `);
-      assert.deepEqual(out, ['1|1', '0|0', '1', '1', '["Vormittag", "Mittag", "Abend"]']);
+      assert.deepEqual(out, [
+        '1|1|1',
+        '0|0|0',
+        '1',
+        '1',
+        '["Vormittag", "Mittag", "Abend"]',
+        `${STARTER.areas.length}|${STARTER.articles.length}|0`,
+      ]);
     });
 
     test('AC-043: an empty production gets the household with the timezone Europe/Berlin', () => {
@@ -216,7 +246,7 @@ describe(
         from public.households h where name = '${HOUSEHOLD_NAME}';
       rollback;
     `);
-      assert.deepEqual(out, ['1|1', 'Europe/Berlin|0']);
+      assert.deepEqual(out, ['1|1|1', 'Europe/Berlin|0']);
     });
 
     test('a member of an existing household (renamed in the app) gets neither household nor invitation', () => {
@@ -234,7 +264,7 @@ describe(
       select count(*) from public.households where name = '${HOUSEHOLD_NAME}';
       rollback;
     `);
-      assert.deepEqual(out, ['0|0', '0']);
+      assert.deepEqual(out, ['0|0|0', '0']);
     });
   },
 );

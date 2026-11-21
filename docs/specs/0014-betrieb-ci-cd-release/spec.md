@@ -1364,16 +1364,32 @@ Nie automatisch, immer Enricos Entscheidung: die gewünschte Sicherung mit dem e
 herunterladen, mit dem privaten Schlüssel entschlüsseln, zuerst lokal einspielen und prüfen, erst
 dann in Produktion. Die genauen Befehle stehen in der Betriebsdoku aus dem Plan.
 
-## Stand der Einrichtung (20.11.2026)
+## Stand der Einrichtung (21.11.2026)
 
-- Produktions-SWA angelegt: `swa-housekeeping-app-prd` in `rg-housekeeping-app-weu-prd`, Tarif Free,
-  Region **East US 2** (West Europe nahm für das Abo keine neuen Static Web Apps an, andere
-  EU-Regionen gibt es für diesen Dienst nicht; dort liegen nur die App-Dateien, keine Daten).
-  Adresse: `https://brave-bush-089e7a80f.6.azurestaticapps.net`. Eigene Domain später.
-- **Später erneut prüfen:** SWA in West Europe anlegen; wenn möglich, die Produktion dorthin umziehen
-  (neue Ressource, ausrollen, Google-Quelle und Supabase-Site-/Redirect-URLs anpassen, alte löschen).
+Regionen und Begründung: ADR-0015, Nachtrag 2026-11-21. Die vollständige Übersicht steht in
+`docs/architecture/betrieb.md`.
+
+- Static Web Apps in `rg-housekeeping-app-weu-prd`, beide Tarif Free, Region **East US 2** (West
+  Europe nahm am 21.11.2026 erneut keine neuen Ressourcen an; dort liegen nur die App-Dateien,
+  keine Daten):
+  - Produktion `swa-housekeeping-app-prd`: `https://brave-bush-089e7a80f.6.azurestaticapps.net`.
+  - Vorschau `swa-housekeeping-app-preview`: `https://victorious-island-00341950f.3.azurestaticapps.net`.
+  - Eigene Domain später.
+- Storage für Sicherungen: `sthousekeepingbkpger` in **Germany West Central**.
+- Identitäten `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`,
+  `id-housekeeping-restore` in **Germany West Central**, je mit föderierten Anmeldedaten für genau
+  eine GitHub-Umgebung.
+- GitHub-Umgebungen angelegt: `preview` (nur Zweig `develop`), `production`, `backup`,
+  `restore-test` (je nur Zweig `main`).
+- GitHub-Variablen gesetzt: `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID` (je
+  Umgebung), `SWA_NAME` (je Umgebung), `SWA_RESOURCE_GROUP`, `BACKUP_STORAGE_ACCOUNT`,
+  `PRODUCTION_WEB_ORIGIN`, `PREVIEW_WEB_ORIGIN`.
+- **Noch offen:** Die Supabase-CLI ist noch nicht angemeldet; damit fehlen `SUPABASE_PROJECT_REF`
+  (je Umgebung) und Runbook B5. Das erledigt Enrico.
+- **Später erneut prüfen:** beide SWAs in West Europe anlegen; wenn möglich dorthin umziehen (neue
+  Ressource, ausrollen, Google-Quelle und Supabase-Site-/Redirect-URLs anpassen, alte löschen).
 - Repo ist öffentlich (Branch-Schutz und Umgebungen ohne GitHub Pro).
-- Zweig `develop` gibt es noch nicht; er entsteht mit Runbook Abschnitt 5, Schritt 2 (Stand 21.11.2026).
+- Zweig `develop` gibt es (Runbook Abschnitt 5, Schritt 2).
 
 ## Offene Fragen
 

@@ -1,8 +1,9 @@
 // First sign-in to an empty production (spec 0014, AC-043, plan Task 10, decision 30). Sign-up is
 // invite-only (private.before_user_created_hook), so the very first account needs an invitation
 // that nobody can create from the app. This script creates the household "Enrico & Nadja" with the
-// default meal slots of create_household and an invitation for one Google address. A second run
-// finds both and creates nothing.
+// default meal slots and the starter content of the app's createHousehold (private.apply_starter
+// with starterPayload from packages/api/src/starter) and an invitation for one Google address. A
+// second run finds both and creates nothing.
 //
 // Run it yourself, once, with the CLI linked to production (runbook C11 in the plan):
 //
@@ -20,6 +21,7 @@ import { createInterface } from 'node:readline';
 import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
+import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,6 +29,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const HOUSEHOLD_NAME = 'Enrico & Nadja';
 /** The default meal slots of private.create_household (identity migration), in this order. */
 const MEAL_SLOTS = ['Vormittag', 'Mittag', 'Abend'];
+
+/** The starter areas and catalog exactly as the app sends them with create_household. */
+const { starterPayload } = await tsImport(
+  '../packages/api/src/starter/payload.ts',
+  import.meta.url,
+);
+const STARTER_HEX = Buffer.from(JSON.stringify(starterPayload()), 'utf8').toString('hex');
 
 /** Same rule as private.is_valid_email on the server, after trimming and lowercasing. */
 const EmailSchema = z
@@ -47,8 +56,8 @@ export function parseEmail(raw) {
 
 /**
  * One statement: finds the household the address is invited to or a member of, otherwise the one
- * named "Enrico & Nadja", otherwise creates it; then invites the address unless it is a member.
- * Reports only how many rows it created.
+ * named "Enrico & Nadja", otherwise creates it with the starter content; then invites the address
+ * unless it is a member. Reports only how many rows it created.
  */
 export function bootstrapSql(email) {
   if (EmailSchema.safeParse(email).data !== email) {
@@ -92,6 +101,10 @@ created as (
   where not exists (select 1 from existing)
   returning id
 ),
+starter as (
+  select private.apply_starter(created.id, convert_from(decode('${STARTER_HEX}', 'hex'), 'UTF8')::jsonb)
+  from created
+),
 household as (
   select id from existing
   union all
@@ -110,7 +123,8 @@ invited as (
 )
 select
   (select count(*) from created) as haushalt_angelegt,
-  (select count(*) from invited) as einladung_angelegt;
+  (select count(*) from invited) as einladung_angelegt,
+  (select count(*) from starter) as startinhalt_angelegt;
 `;
 }
 
@@ -181,7 +195,7 @@ async function main(args) {
   const status = await runBootstrap({ email, runQuery: supabaseQuery });
   console.error(
     status === 0
-      ? 'Fertig. 1 = angelegt, 0 = war schon da. Jetzt mit Google anmelden und die Einladung annehmen.'
+      ? 'Fertig. 1 = angelegt, 0 = war schon da (Startinhalt nur mit einem neuen Haushalt). Jetzt mit Google anmelden und die Einladung annehmen.'
       : 'Abgebrochen: supabase db query ist gescheitert (verknüpft? angemeldet?). Es wurde nichts angelegt.',
   );
   return status;
