@@ -1,6 +1,6 @@
 // Store queue (ADR-0008 addendum, docs/architecture/sync.md): the four store-mode actions that
-// work offline. Entries are kept on the device, take effect locally at once and are sent later,
-// one RPC each, in order.
+// work offline, and packing (ADR-0013). Entries are kept on the device, take effect locally at
+// once and are sent later in order: one RPC each, a run of pack entries as one call (packBatch).
 import { z } from 'zod';
 
 import type { Row, TableRows } from './sync-delta';
@@ -48,10 +48,22 @@ export const StoreQueueEntrySchema = z.union([
     articleId: z.string().min(1),
     areaId: z.string().min(1).nullable(),
   }),
+  z.object({
+    kind: z.literal('pack'),
+    /** The household of the Packstück; a run of one household goes as one call. */
+    householdId: z.string().min(1),
+    itemId: z.string().min(1),
+    packed: z.boolean(),
+    seenPackSeq: z.number().int().nonnegative(),
+  }),
 ]);
 
 export type QueuedContribution = z.infer<typeof QueuedContributionSchema>;
 export type StoreQueueEntry = z.infer<typeof StoreQueueEntrySchema>;
+export type PackEntry = Extract<StoreQueueEntry, { kind: 'pack' }>;
+
+/** At most this many changes go in one `set_packing_items_packed` call (ADR-0013). */
+export const PACK_BATCH_LIMIT = 200;
 
 function namesOneArticle(entry: { contributions: readonly QueuedContribution[] }): boolean {
   return new Set(entry.contributions.map((contribution) => contribution.nameKey)).size === 1;
@@ -72,22 +84,27 @@ export function parseStoredQueue(stored: unknown): { entries: StoreQueueEntry[];
   return { entries, dropped: stored.length - entries.length };
 }
 
-type ToggleEntry = Extract<StoreQueueEntry, { kind: 'check' | 'notAvailable' }>;
+type ToggleEntry = Extract<StoreQueueEntry, { kind: 'check' | 'notAvailable' | 'pack' }>;
 
 function targetOf(entry: StoreQueueEntry): string | undefined {
-  if (entry.kind === 'check' || entry.kind === 'notAvailable') return entry.itemId;
+  if (entry.kind === 'check' || entry.kind === 'notAvailable' || entry.kind === 'pack') {
+    return entry.itemId;
+  }
   if (entry.kind === 'assignArea') return entry.articleId;
   return undefined;
 }
 
 function toggleValue(entry: ToggleEntry): boolean {
-  return entry.kind === 'check' ? entry.checked : entry.value;
+  if (entry.kind === 'check') return entry.checked;
+  if (entry.kind === 'pack') return entry.packed;
+  return entry.value;
 }
 
 function baseValue(entry: StoreQueueEntry, base: Row | undefined): unknown {
   if (!base) return undefined;
   if (entry.kind === 'check') return base.checked === true;
   if (entry.kind === 'notAvailable') return base.not_available === true;
+  if (entry.kind === 'pack') return base.packed === true;
   if (entry.kind === 'assignArea') return base.area_id ?? null;
   return undefined;
 }
@@ -103,7 +120,8 @@ function assertOneArticle(entry: Extract<StoreQueueEntry, { kind: 'add' }>): voi
 }
 
 /**
- * Appends an entry, collapsing repeated actions on the same item or article into the final state:
+ * Appends an entry, collapsing repeated actions on the same item, Packstück or article into the
+ * final state (packing collapses like checking, ADR-0013):
  * - an entry whose value equals the base state is not queued (`baseState` = the item's or
  *   article's server row; undefined for things created offline);
  * - a toggle back to the state the item had when first queued removes the queued entry;
@@ -156,7 +174,10 @@ export function enqueue(
   return [...queue];
 }
 
-/** Rewrites temporary ids (items and articles created offline) to the ids the server returned. */
+/**
+ * Rewrites temporary ids (items and articles created offline) to the ids the server returned.
+ * Packstücke are never created offline, so pack entries stay as they are.
+ */
 export function remapQueue(
   queue: readonly StoreQueueEntry[],
   ids: Readonly<Record<string, string>>,
@@ -258,10 +279,19 @@ function addEffect(
   return next;
 }
 
+function packEffect(entry: PackEntry, tables: TableRows, householdId: string): TableRows {
+  const item = tables.packing_items?.[entry.itemId];
+  if (!item || entry.householdId !== householdId) return tables;
+  // Who packed and when is set by the server; unpacking clears it at once.
+  const cleared = entry.packed ? {} : { packed_at: null, packed_by: null };
+  return withRow(tables, 'packing_items', { ...item, packed: entry.packed, ...cleared });
+}
+
 /**
  * How one entry changes the visible rows (`shopping_items`, `shopping_contributions`,
- * `articles`) of the household `householdId` (`tables` are its rows). An entry whose item or
- * article no longer exists changes nothing (AC-025); an add for another household neither.
+ * `articles`, `packing_items`) of the household `householdId` (`tables` are its rows). An entry
+ * whose item, Packstück or article no longer exists changes nothing (AC-025; spec 0012, AC-024,
+ * AC-040); an add or pack entry of another household neither.
  */
 export function queueEffect(
   entry: StoreQueueEntry,
@@ -269,6 +299,7 @@ export function queueEffect(
   householdId: string,
 ): TableRows {
   if (entry.kind === 'add') return addEffect(entry, tables, householdId);
+  if (entry.kind === 'pack') return packEffect(entry, tables, householdId);
   if (entry.kind === 'assignArea') {
     const article = tables.articles?.[entry.articleId];
     return article ? withRow(tables, 'articles', { ...article, area_id: entry.areaId }) : tables;
@@ -289,4 +320,19 @@ export function applyQueue(
   householdId: string,
 ): TableRows {
   return queue.reduce((rows, entry) => queueEffect(entry, rows, householdId), tables);
+}
+
+/**
+ * The pack entries sent together as one `set_packing_items_packed` call (ADR-0013): the
+ * contiguous run of pack entries at the front of the queue, of the first entry's household, at
+ * most PACK_BATCH_LIMIT. Empty when the queue does not start with a pack entry.
+ */
+export function packBatch(queue: readonly StoreQueueEntry[]): PackEntry[] {
+  const batch: PackEntry[] = [];
+  for (const entry of queue) {
+    if (entry.kind !== 'pack' || batch.length === PACK_BATCH_LIMIT) break;
+    if (batch[0] && entry.householdId !== batch[0].householdId) break;
+    batch.push(entry);
+  }
+  return batch;
 }

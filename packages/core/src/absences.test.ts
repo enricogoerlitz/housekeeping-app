@@ -17,7 +17,7 @@ import {
   type RangePick,
 } from './absences';
 import { enrico, nadja, vera } from './test-fixtures';
-import type { Absence } from './types';
+import type { Absence, PackingItem, PackingListBag } from './types';
 
 const members = [enrico, nadja];
 const wg = [enrico, nadja, vera];
@@ -231,25 +231,28 @@ describe('writing absences (D23)', () => {
     expect(withoutNadja.removeIds).toEqual(['a-n']);
     expect(withoutNadja.update.map((row) => row.id)).toEqual(['a-e']);
 
+    // Spec 0012, decision 8: the row is reused for the household instead of replaced.
     const everyone = planAbsenceWrite({
       existing: [existing[0] as Absence],
       memberIds: allMemberIds,
       allMemberIds,
       ...draft,
     });
-    expect(everyone.removeIds).toEqual(['a-e']);
-    expect(everyone.create).toEqual([{ memberId: undefined, ...draft }]);
+    expect(everyone.removeIds).toEqual([]);
+    expect(everyone.create).toEqual([]);
+    expect(everyone.update).toEqual([{ id: 'a-e', memberId: undefined, ...draft }]);
   });
 
-  it('turns a household absence back into single people', () => {
+  it('turns a household absence back into single people, reusing its row', () => {
     const plan = planAbsenceWrite({
       existing: [absence({ id: 'h', ...draft })],
       memberIds: [nadja.id],
       allMemberIds: [enrico.id, nadja.id],
       ...draft,
     });
-    expect(plan.removeIds).toEqual(['h']);
-    expect(plan.create.map((row) => row.memberId)).toEqual([nadja.id]);
+    expect(plan.removeIds).toEqual([]);
+    expect(plan.create).toEqual([]);
+    expect(plan.update).toEqual([{ id: 'h', memberId: nadja.id, ...draft }]);
   });
 
   it('AC-035, AC-044: "Bis" before "Von" and nobody chosen are invalid; one day is fine', () => {
@@ -263,6 +266,169 @@ describe('writing absences (D23)', () => {
     expect(
       validateAbsenceDraft({ memberIds: [enrico.id], from: '2027-01-01', to: '2027-01-01' }),
     ).toEqual({ toBeforeFrom: false, noOne: false });
+  });
+});
+
+describe('writing absences with a packing list (spec 0012, decision 8)', () => {
+  const draft = { from: '2027-01-01', to: '2027-01-07', note: 'Urlaub' };
+  const allMemberIds = wg.map((member) => member.id);
+
+  function listBag(id: string, absenceId: string, memberId?: string): PackingListBag {
+    return { id, absenceId, name: id, memberId, sort: 0 };
+  }
+
+  function items(listBagId: string, count: number, packed = 0): PackingItem[] {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `${listBagId}-${index}`,
+      listBagId,
+      name: `Packstück ${index}`,
+      packed: index < packed,
+      packSeq: index < packed ? 1 : 0,
+      sort: index,
+    }));
+  }
+
+  it('AC-039: Enrico alone → whole household → only Nadja keeps one absence and its list', () => {
+    const packingList = { listBags: [listBag('l1', 'a-e')], items: items('l1', 21, 5) };
+    const toHousehold = planAbsenceWrite({
+      existing: [absence({ id: 'a-e', memberId: enrico.id, ...draft })],
+      memberIds: [enrico.id, nadja.id],
+      allMemberIds: [enrico.id, nadja.id],
+      packingList,
+      ...draft,
+    });
+    expect(toHousehold).toEqual({
+      update: [{ id: 'a-e', memberId: undefined, ...draft }],
+      create: [],
+      removeIds: [],
+      moveListBags: [],
+      droppedPackingLists: [],
+    });
+
+    const toNadja = planAbsenceWrite({
+      existing: toHousehold.update,
+      memberIds: [nadja.id],
+      allMemberIds: [enrico.id, nadja.id],
+      packingList,
+      ...draft,
+    });
+    expect(toNadja.update).toEqual([{ id: 'a-e', memberId: nadja.id, ...draft }]);
+    expect(toNadja).toMatchObject({ create: [], removeIds: [], droppedPackingLists: [] });
+  });
+
+  it('AC-039: a row with a packing list is preferred when the person changes', () => {
+    const plan = planAbsenceWrite({
+      existing: [
+        absence({ id: 'a-e', memberId: enrico.id, ...draft }),
+        absence({ id: 'a-n', memberId: nadja.id, ...draft }),
+      ],
+      memberIds: [vera.id],
+      allMemberIds,
+      packingList: { listBags: [listBag('l1', 'a-n')], items: items('l1', 3) },
+      ...draft,
+    });
+    expect(plan.update.map((row) => [row.id, row.memberId])).toEqual([['a-n', vera.id]]);
+    expect(plan.removeIds).toEqual(['a-e']);
+    expect(plan.droppedPackingLists).toEqual([]);
+  });
+
+  it('AC-039: when two rows become one, the bags of the other row move over', () => {
+    const plan = planAbsenceWrite({
+      existing: [
+        absence({ id: 'a-e', memberId: enrico.id, ...draft }),
+        absence({ id: 'a-n', memberId: nadja.id, ...draft }),
+        absence({ id: 'a-v', memberId: vera.id, ...draft }),
+      ],
+      memberIds: allMemberIds,
+      allMemberIds,
+      packingList: {
+        listBags: [listBag('l-n', 'a-n'), listBag('l-v', 'a-v'), listBag('l-v2', 'a-v')],
+        items: [...items('l-n', 9), ...items('l-v', 4)],
+      },
+      ...draft,
+    });
+    expect(plan.update.map((row) => [row.id, row.memberId])).toEqual([['a-n', undefined]]);
+    expect(plan.removeIds).toEqual(['a-e', 'a-v']);
+    expect(plan.moveListBags).toEqual([
+      { listBagId: 'l-v', toMemberId: undefined },
+      { listBagId: 'l-v2', toMemberId: undefined },
+    ]);
+    expect(plan.droppedPackingLists).toEqual([]);
+  });
+
+  it('decision 8: a row removed without replacement reports its packing list', () => {
+    const plan = planAbsenceWrite({
+      existing: [
+        absence({ id: 'a-e', memberId: enrico.id, ...draft }),
+        absence({ id: 'a-n', memberId: nadja.id, ...draft }),
+      ],
+      memberIds: [nadja.id],
+      allMemberIds,
+      packingList: {
+        listBags: [listBag('l-e', 'a-e'), listBag('l-e2', 'a-e'), listBag('l-n', 'a-n')],
+        items: [...items('l-e', 12), ...items('l-e2', 9), ...items('l-n', 5)],
+      },
+      ...draft,
+    });
+    expect(plan.update.map((row) => row.id)).toEqual(['a-n']);
+    expect(plan.removeIds).toEqual(['a-e']);
+    expect(plan.moveListBags).toEqual([]);
+    expect(plan.droppedPackingLists).toEqual([
+      { absenceId: 'a-e', memberId: enrico.id, itemCount: 21 },
+    ]);
+  });
+
+  it('decision 8: splitting moves bags "für" a chosen person to her row, the rest stays', () => {
+    const plan = planAbsenceWrite({
+      existing: [absence({ id: 'h', ...draft })],
+      memberIds: [enrico.id, nadja.id],
+      allMemberIds,
+      packingList: {
+        listBags: [
+          listBag('l-strand', 'h'),
+          listBag('l-kultur', 'h', nadja.id),
+          listBag('l-enrico', 'h', enrico.id),
+          listBag('l-vera', 'h', vera.id),
+        ],
+        items: items('l-strand', 12),
+      },
+      ...draft,
+    });
+    expect(plan.update.map((row) => [row.id, row.memberId])).toEqual([['h', enrico.id]]);
+    expect(plan.create).toEqual([{ memberId: nadja.id, ...draft }]);
+    expect(plan.moveListBags).toEqual([{ listBagId: 'l-kultur', toMemberId: nadja.id }]);
+    expect(plan.removeIds).toEqual([]);
+  });
+
+  it('a removed row with a bag "für" a chosen person keeps that bag', () => {
+    const plan = planAbsenceWrite({
+      existing: [
+        absence({ id: 'a-e', memberId: enrico.id, ...draft }),
+        absence({ id: 'a-n', memberId: nadja.id, ...draft }),
+      ],
+      memberIds: [enrico.id],
+      allMemberIds,
+      packingList: {
+        listBags: [listBag('l-n', 'a-n'), listBag('l-for-e', 'a-n', enrico.id)],
+        items: [...items('l-n', 4), ...items('l-for-e', 2)],
+      },
+      ...draft,
+    });
+    expect(plan.moveListBags).toEqual([{ listBagId: 'l-for-e', toMemberId: enrico.id }]);
+    expect(plan.droppedPackingLists).toEqual([
+      { absenceId: 'a-n', memberId: nadja.id, itemCount: 4 },
+    ]);
+  });
+
+  it('without a packing list nothing moves and nothing is reported', () => {
+    const plan = planAbsenceWrite({
+      existing: [absence({ id: 'a-n', memberId: nadja.id, ...draft })],
+      memberIds: [enrico.id],
+      allMemberIds,
+      ...draft,
+    });
+    expect(plan).toMatchObject({ moveListBags: [], droppedPackingLists: [] });
+    expect(plan.update.map((row) => [row.id, row.memberId])).toEqual([['a-n', enrico.id]]);
   });
 });
 

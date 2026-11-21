@@ -1,5 +1,13 @@
 // Shared sample data for the unit tests of this package. Not exported from index.ts.
-import type { Article, Id, Member, Recipe, RecipeIngredient } from './types';
+import type {
+  Article,
+  Id,
+  Member,
+  PackingBag,
+  PackingBagItem,
+  Recipe,
+  RecipeIngredient,
+} from './types';
 
 export const enrico: Member = {
   id: 'm-enrico',
@@ -158,3 +166,86 @@ export const halloumiPfanne: Recipe = makeRecipe({
     }),
   ],
 });
+
+// ---------- Reisetaschen (spec 0012) ----------
+
+export const strand: PackingBag = { id: 'bag-strand', name: 'Strand', sort: 0 };
+export const wintersport: PackingBag = { id: 'bag-wintersport', name: 'Wintersport', sort: 1 };
+export const kulturbeutel: PackingBag = {
+  id: 'bag-kulturbeutel',
+  name: 'Kulturbeutel',
+  memberId: 'm-nadja',
+  sort: 2,
+};
+export const technik: PackingBag = { id: 'bag-technik', name: 'Technik', sort: 3 };
+export const packingBags: PackingBag[] = [strand, wintersport, kulturbeutel, technik];
+
+/** [name, quantity, per day] in the order of the bag. */
+type BagItemSpec = [string, number?, boolean?];
+
+function bagItems(bag: PackingBag, specs: BagItemSpec[]): PackingBagItem[] {
+  return specs.map(([name, quantity, perDay], index) => ({
+    id: `${bag.id}-${index + 1}`,
+    bagId: bag.id,
+    name,
+    quantity,
+    perDay: perDay ?? false,
+    sort: index,
+  }));
+}
+
+export const packingBagItems: PackingBagItem[] = [
+  ...bagItems(strand, [
+    ['T-Shirts', 1, true],
+    ['Badehose', 2],
+    ['Sonnenbrille'],
+    ['Strandtuch'],
+    ['Flip-Flops'],
+    ['Sonnenhut'],
+    ['Buch'],
+    ['Shorts', 3],
+    ['Kleid', 2],
+    ['Luftmatratze'],
+    ['Kopfhörer'],
+    ['Wasserflasche'],
+  ]),
+  ...bagItems(wintersport, [
+    ['Sonnencreme'],
+    ['Sonnenbrille'],
+    ['Skihose'],
+    ['Skijacke'],
+    ['Handschuhe', 2],
+    ['Mütze'],
+    ['Schal'],
+    ['Skibrille'],
+    ['Helm'],
+    ['Thermounterwäsche', 1, true],
+    ['Skisocken', 1, true],
+    ['Pullover', 2],
+    ['Lippenpflege'],
+    ['Taschenwärmer', 4],
+    ['Rucksack'],
+    ['Thermoskanne'],
+    ['Hüttenschuhe'],
+    ['Skipass'],
+  ]),
+  ...bagItems(kulturbeutel, [
+    ['Zahnbürste'],
+    ['Zahnpasta'],
+    ['Shampoo'],
+    ['Duschgel'],
+    ['Deo'],
+    ['Haarbürste'],
+    ['Abschminktücher'],
+    ['Gesichtscreme'],
+    ['Haargummis', 3],
+  ]),
+  ...bagItems(technik, [
+    ['Ladekabel', 2],
+    ['Powerbank'],
+    ['Kopfhörer'],
+    ['Adapter'],
+    ['E-Reader'],
+    ['Kamera'],
+  ]),
+];

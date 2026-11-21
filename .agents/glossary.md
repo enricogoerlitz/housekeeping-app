@@ -573,7 +573,7 @@ Eine wiederverwendbare Vorlage für Packlisten, z. B. „Strand“ oder „Kultu
 je Haushalt), optional „für“ ein Mitglied, Packstücke mit Anzahl. Liegt unter „Verwalten“ →
 „Reisetaschen“. Eine Änderung wirkt nie auf bestehende Packlisten (Spec 0012, D35).
 
-- **Im Code (vorläufig):** `PackingBag`, `packing_bags`
+- **Im Code:** `PackingBag`, `packing_bags`; Regeln in `packages/core/src/packing.ts`
 - **Nicht verwenden:** Packvorlage, Koffer, Sammlung
 - **Abgrenzung:** Die _Packliste_ ist die Kopie für eine Abwesenheit.
 
@@ -584,8 +584,31 @@ Tasche, auf der Urlaubsseite. Packen geht auch ohne Netz (Laden-Warteschlange, �
 „Für die Rückreise zurücksetzen“ nimmt alle Haken weg. Wird mit ihrer Abwesenheit gelöscht und zieht
 mit, wenn das Bearbeiten die Abwesenheit ersetzt (Spec 0012, AC-039; Spec 0010, REQ-010).
 
-- **Im Code (vorläufig):** kein eigener Datensatz; alle `packing_items` einer Abwesenheit
+- **Im Code:** kein eigener Datensatz; alle [Taschen der Packliste](#tasche-der-packliste)
+  (`packing_list_bags`) einer Abwesenheit mit ihren `packing_items`; Abschnitte `packingSections`
 - **Nicht verwenden:** Checkliste, Kofferliste
+
+### Tasche der Packliste
+
+Eine an eine Abwesenheit angehängte Reisetasche: Abschnitt der Packliste mit Name und Mitglied als
+Kopie, Reihenfolge und Verweis auf die Herkunftstasche, der leer wird, wenn die Reisetasche gelöscht
+wird. „Aus der Packliste entfernen“ löscht sie samt ihren Packstücken (Spec 0012, Entscheidung 2).
+
+- **Im Code:** `PackingListBag`, `packing_list_bags`
+- **Nicht verwenden:** Listentasche, Abschnitt (für den Datensatz)
+- **Abgrenzung:** Die _Reisetasche_ ist die Vorlage; ihre Änderung wirkt nie auf die Tasche der
+  Packliste (D35).
+
+### Urlaubsseite
+
+Die Seite einer Abwesenheit mit Kopf (Notiz, wer, Zeitraum, Dauer, „beginnt in 12 Tagen“),
+Fortschritt und Packliste. Öffnet sich über den Abwesenheits-Streifen, die Seite „Abwesenheiten“
+und die Karte „Reisetasche“ der „Übersicht“; gilt für jede Abwesenheit, nicht nur für Urlaub
+(Spec 0012, REQ-003).
+
+- **Im Code:** Adresse `/kalender/urlaub/[id]`; Kopf `tripHeader`, Streifen `tripStripe`
+  (`packages/core`)
+- **Nicht verwenden:** Reiseseite, Abwesenheitsdetail
 
 ### Packstück
 
@@ -593,8 +616,8 @@ Eine Zeile einer Reisetasche oder Packliste: Name als Freitext und optionale Anz
 oder je Tag („1 je Tag“, gerechnet mit der Dauer der Abwesenheit, erster und letzter Tag
 eingeschlossen). In der Packliste zusätzlich „gepackt“ (Spec 0012, D32).
 
-- **Im Code (vorläufig):** in der Reisetasche `PackingBagItem`, `packing_bag_items`; in der
-  Packliste `PackingItem`, `packing_items`
+- **Im Code:** in der Reisetasche `PackingBagItem`, `packing_bag_items`; in der Packliste
+  `PackingItem`, `packing_items` (Anzahl je Tag in `perDay`, ausgerechnet in `quantity`)
 - **Nicht verwenden:** Artikel, Posten, Gegenstand
 - **Abgrenzung:** Packstücke sind keine Artikel und kommen nie auf die Einkaufsliste.
 
@@ -649,10 +672,12 @@ Die Kopie aller Daten der eigenen Haushalte auf dem Gerät. Die Oberfläche lies
 
 Die auf dem Gerät gespeicherte Reihe von Aktionen, die offline gemacht wurden: abhaken, „nicht
 da“, Posten hinzufügen, Bereich zuordnen (ADR-0008, Nachtrag) und ab Spec 0012 Packstücke packen
-und zurücknehmen, auch „Alles einpacken“ und „Für die Rückreise zurücksetzen“ (eigener Nachtrag zu
-ADR-0008). Wird mit Netz der Reihe nach nachgereicht.
+und zurücknehmen, auch „Alles einpacken“ und „Für die Rückreise zurücksetzen“ (ADR-0013). Wird mit
+Netz der Reihe nach nachgereicht; eine zusammenhängende Folge von Pack-Einträgen eines Haushalts
+geht als ein Aufruf.
 
-- **Im Code:** `StoreQueueEntry` (`packages/core/src/store-queue.ts`), auf dem Gerät unter dem
+- **Im Code:** `StoreQueueEntry` (`packages/core/src/store-queue.ts`) mit den Arten `check`,
+  `notAvailable`, `add`, `assignArea` und `pack` (Folge: `packBatch`), auf dem Gerät unter dem
   Schlüssel `queue`
 - **Nicht verwenden:** Abhak-Warteschlange (alter Name), Outbox
 

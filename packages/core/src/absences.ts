@@ -1,5 +1,5 @@
 import { formatShortDate, daysBetween, weekdayShort } from './dates';
-import type { Absence, Id, ISODate, Member } from './types';
+import type { Absence, Id, ISODate, Member, PackingItem, PackingListBag } from './types';
 
 // Absences in the calendar (spec 0010, REQ-009, REQ-010; D22, D23): a stripe stands for all
 // absences with the same from, to and note; writing follows "all chosen = whole household".
@@ -146,19 +146,42 @@ export interface AbsenceDraft {
 }
 
 export interface AbsenceWritePlan {
-  /** Existing rows that stay, with the new dates and note. */
+  /** Existing rows that stay, with the new dates, note and person. */
   update: Absence[];
   create: (AbsenceDraft & { memberId?: Id })[];
   removeIds: Id[];
+  /**
+   * Bags of a packing list that move to another written absence (patch `absence_id`, sent before
+   * the removals): the row of `toMemberId` in `update` or `create`, undefined = the household's.
+   */
+  moveListBags: { listBagId: Id; toMemberId?: Id }[];
+  /** Removed rows whose packing list is deleted with them; the window names them (decision 8). */
+  droppedPackingLists: DroppedPackingList[];
+}
+
+export interface DroppedPackingList {
+  absenceId: Id;
+  memberId?: Id;
+  /** Packstücke of the bags that are deleted with the absence. */
+  itemCount: number;
 }
 
 /**
  * What saving the absence window writes (D23): all members chosen → one absence of the whole
- * household, otherwise one per chosen person. When editing a stripe, its rows are reused for the
- * same person (or the household) and the rest are removed.
+ * household, otherwise one per chosen person. When editing a stripe, its rows are reused: first
+ * for the same person (or the household), then for another one (`member_id` is patched),
+ * preferring a row with a packing list, so the list stays (spec 0012, AC-039, decision 8).
+ * Bags of a removed row move to the household's absence when rows become one, and a bag "für" a
+ * chosen person moves to her row; what is left of a removed row's list is reported.
+ * `packingList` holds the bags and Packstücke of the stripe's absences.
  */
 export function planAbsenceWrite(
-  input: AbsenceDraft & { existing: Absence[]; memberIds: Id[]; allMemberIds: Id[] },
+  input: AbsenceDraft & {
+    existing: Absence[];
+    memberIds: Id[];
+    allMemberIds: Id[];
+    packingList?: { listBags: readonly PackingListBag[]; items: readonly PackingItem[] };
+  },
 ): AbsenceWritePlan {
   const everyone =
     input.allMemberIds.length > 0 && input.allMemberIds.every((id) => input.memberIds.includes(id));
@@ -166,16 +189,55 @@ export function planAbsenceWrite(
     ? [undefined]
     : input.allMemberIds.filter((id) => input.memberIds.includes(id));
   const draft: AbsenceDraft = { from: input.from, to: input.to, note: input.note };
+  const listBags = input.packingList?.listBags ?? [];
+  const hasList = (absence: Absence) => listBags.some((bag) => bag.absenceId === absence.id);
 
-  const plan: AbsenceWritePlan = { update: [], create: [], removeIds: [] };
   const left = [...input.existing];
+  const rowOf = new Map<Id | undefined, Absence>();
   for (const memberId of targets) {
     const index = left.findIndex((absence) => absence.memberId === memberId);
-    const reuse = index === -1 ? undefined : left.splice(index, 1)[0];
-    if (reuse) plan.update.push({ ...reuse, ...draft });
+    if (index !== -1) rowOf.set(memberId, left.splice(index, 1)[0] as Absence);
+  }
+  for (const memberId of targets) {
+    if (rowOf.has(memberId) || left.length === 0) continue;
+    const withList = left.findIndex(hasList);
+    rowOf.set(memberId, left.splice(withList === -1 ? 0 : withList, 1)[0] as Absence);
+  }
+
+  const plan: AbsenceWritePlan = {
+    update: [],
+    create: [],
+    removeIds: left.map((absence) => absence.id),
+    moveListBags: [],
+    droppedPackingLists: [],
+  };
+  for (const memberId of targets) {
+    const reuse = rowOf.get(memberId);
+    if (reuse) plan.update.push({ ...reuse, ...draft, memberId });
     else plan.create.push({ memberId, ...draft });
   }
-  plan.removeIds = left.map((absence) => absence.id);
+
+  for (const bag of listBags) {
+    const from = input.existing.find((absence) => absence.id === bag.absenceId);
+    if (!from) continue;
+    const removed = left.includes(from);
+    const own = bag.memberId !== undefined && targets.includes(bag.memberId);
+    if (everyone && removed) plan.moveListBags.push({ listBagId: bag.id, toMemberId: undefined });
+    else if (own && rowOf.get(bag.memberId) !== from) {
+      plan.moveListBags.push({ listBagId: bag.id, toMemberId: bag.memberId });
+    }
+  }
+
+  const moved = new Set(plan.moveListBags.map((move) => move.listBagId));
+  for (const absence of left) {
+    const kept = listBags.filter((bag) => bag.absenceId === absence.id && !moved.has(bag.id));
+    if (kept.length === 0) continue;
+    const keptIds = new Set(kept.map((bag) => bag.id));
+    const itemCount = (input.packingList?.items ?? []).filter((item) =>
+      keptIds.has(item.listBagId),
+    ).length;
+    plan.droppedPackingLists.push({ absenceId: absence.id, memberId: absence.memberId, itemCount });
+  }
   return plan;
 }
 

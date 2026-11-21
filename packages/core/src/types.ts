@@ -331,3 +331,56 @@ export interface FeedbackEntry {
   reason?: string;
   specRef?: string;
 }
+
+// ---------- Packing (spec 0012) ----------
+
+/** "Reisetasche": a reusable template for packing lists. */
+export interface PackingBag {
+  id: Id;
+  /** Unique per household (case and umlauts ignored), 1–60 characters. */
+  name: string;
+  /** "für" one member; undefined = for everyone. */
+  memberId?: Id;
+  /** Order of the page "Reisetaschen" (order of creation). */
+  sort: number;
+}
+
+/** "Packstück" of a Reisetasche. */
+export interface PackingBagItem {
+  id: Id;
+  bagId: Id;
+  name: string;
+  /** 1–99; undefined = no quantity ("Sonnenbrille"). */
+  quantity?: number;
+  /** The quantity is per day of the absence ("1 je Tag"); needs a quantity. */
+  perDay: boolean;
+  sort: number;
+}
+
+/** "Tasche der Packliste": one bag attached to an absence, with a copy of its name and member. */
+export interface PackingListBag {
+  id: Id;
+  absenceId: Id;
+  /** The Reisetasche it was copied from; undefined once that one is deleted. */
+  bagId?: Id;
+  name: string;
+  memberId?: Id;
+  sort: number;
+}
+
+/** "Packstück" of a Packliste. The packed fields are written only by the server. */
+export interface PackingItem {
+  id: Id;
+  listBagId: Id;
+  name: string;
+  /** The quantity shown; for "je Tag" per day × days of the absence (at most 9999). */
+  quantity?: number;
+  /** Quantity per day (1–99); undefined = a fixed quantity or none. */
+  perDay?: number;
+  packed: boolean;
+  packedAt?: string;
+  packedBy?: Id;
+  /** Counter for "Abhaken gewinnt" (ADR-0013). */
+  packSeq: number;
+  sort: number;
+}

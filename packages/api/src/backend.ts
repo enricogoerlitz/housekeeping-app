@@ -823,6 +823,8 @@ export function createEngine(options: EngineOptions): Engine {
         await transport.setItemNotAvailable(entry.itemId, entry.value);
       } else if (entry.kind === 'assignArea') {
         await transport.assignArticleArea(entry.articleId, entry.areaId);
+      } else if (entry.kind === 'pack') {
+        throw new Error('Packing entries are not sent yet (spec 0012, task 5).');
       } else {
         const [answer] = await transport.addShoppingContributions(entry.householdId, [
           toAddEntry(entry),

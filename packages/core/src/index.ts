@@ -39,5 +39,7 @@ export * from './restaurant-list';
 export * from './recipe-editor';
 export * from './recipe-deletion';
 export * from './plan-recipe';
+export * from './packing';
+export * from './packing-actions';
 
 export const APP_NAME = 'Housekeeping';
