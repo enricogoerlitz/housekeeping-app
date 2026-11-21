@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 
 import { authenticate } from './auth.ts';
+import { readLimitedBody } from './body.ts';
 import { cors } from './cors.ts';
 import type { Deps, UserClient } from './deps.ts';
 import { ConfigError, HttpError, errorResponse, jsonResponse, requireEnv } from './errors.ts';
@@ -18,29 +19,8 @@ export interface Endpoint<Input> {
 
 /** Reads at most `limit` bytes; an empty body counts as `{}`. */
 async function readJsonBody(request: Request, limit: number): Promise<unknown> {
-  if (Number(request.headers.get('content-length') ?? 0) > limit)
-    throw new HttpError('invalid_request');
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  if (request.body) {
-    const reader = request.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > limit) {
-        await reader.cancel();
-        throw new HttpError('invalid_request');
-      }
-      chunks.push(value);
-    }
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const bytes = await readLimitedBody(request, limit);
+  if (bytes === null) throw new HttpError('invalid_request');
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim();
     return text === '' ? {} : (JSON.parse(text) as unknown);
