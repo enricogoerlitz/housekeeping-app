@@ -1,0 +1,122 @@
+// Guard of the job "Supabase prüfen" (spec 0014, Task 6; threat model „Alte Migrationshistorie im
+// Cloud-Projekt“). No dependencies: runs in a job with the environment `production`, which
+// installs no packages.
+//
+//   supabase migration list --remote --output-format json > "$RUNNER_TEMP/migrations.json"
+//   node scripts/release/supabase-guard.mjs "$RUNNER_TEMP/migrations.json"
+//
+// - Before the first release (no tag v*) the migration history of the project must be empty.
+// - After it, the history must be a prefix of the local migrations (supabase/migrations) and hold
+//   every migration of the latest release tag; a foreign version, a gap or a missing released
+//   migration (another or a reset project) stops the release.
+// On a stop: do not deliver, follow runbook B5 in docs/specs/0014-betrieb-ci-cd-release/plan.md.
+// The history is never repaired by hand. Prints versions (timestamps) and counts only.
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { git, latestReleaseTag, lines, releaseTags } from './version.mjs';
+
+const DIR = 'supabase/migrations';
+const VERSION = /^(\d+)_.*\.sql$/;
+const RUNBOOK =
+  'Nicht ausliefern: Runbook B5 in docs/specs/0014-betrieb-ci-cd-release/plan.md; die Migrationshistorie nie von Hand reparieren.';
+
+/** `{ remote }` (sorted versions in the remote column) or `{ error }`, from the CLI's JSON. */
+export function parseMigrationList(text) {
+  const start = text.indexOf('{');
+  let data;
+  try {
+    data = start === -1 ? undefined : JSON.parse(text.slice(start));
+  } catch {
+    data = undefined;
+  }
+  if (data === undefined) return { error: 'Die Ausgabe von migration list ist keine JSON' };
+  if (data._tag === 'Error') {
+    return {
+      error: `supabase migration list ist fehlgeschlagen (${data.error?.code ?? 'ohne Code'})`,
+    };
+  }
+  if (!Array.isArray(data.migrations)) {
+    return { error: 'Die Ausgabe von migration list hat kein Feld „migrations“' };
+  }
+  const remote = data.migrations
+    .map((entry) => entry?.remote)
+    .filter((version) => typeof version === 'string' && version !== '')
+    .sort();
+  return { remote };
+}
+
+/**
+ * Errors of the remote history. `local`: versions of the local migrations, `released`: versions
+ * at the latest release tag, undefined before the first release.
+ */
+export function guardMigrations({ remote, local, released }) {
+  const errors = [];
+  if (released === undefined) {
+    if (remote.length > 0) {
+      errors.push(
+        `Produktion hat schon ${remote.length} Migration(en) in der Historie (zuerst ${remote[0]}), obwohl es noch keine Veröffentlichung (Tag v*) gibt.`,
+      );
+    }
+  } else {
+    const sortedLocal = [...local].sort();
+    const mismatch = remote.findIndex((version, index) => version !== sortedLocal[index]);
+    if (mismatch !== -1) {
+      const expected = sortedLocal[mismatch];
+      errors.push(
+        `Die Historie der Produktion ist kein Präfix der lokalen Migrationen: an Stelle ${mismatch + 1} steht ${remote[mismatch]}, lokal ${expected ?? 'keine'}.`,
+      );
+    }
+    const inRemote = new Set(remote);
+    const missing = released.filter((version) => !inRemote.has(version));
+    if (missing.length > 0) {
+      errors.push(
+        `In Produktion fehlt die schon veröffentlichte Migration ${missing.join(', ')}: falsches oder zurückgesetztes Projekt?`,
+      );
+    }
+  }
+  return errors.length > 0 ? [...errors, RUNBOOK] : [];
+}
+
+const versionOf = (file) => VERSION.exec(path.posix.basename(file))?.[1];
+
+function localVersions() {
+  return readdirSync(DIR).map(versionOf).filter(Boolean);
+}
+
+function releasedVersions() {
+  const latest = latestReleaseTag(releaseTags());
+  if (!latest) return undefined;
+  return lines(git(['ls-tree', '-r', '--name-only', latest, '--', `${DIR}/`]))
+    .map(versionOf)
+    .filter(Boolean);
+}
+
+function main(args) {
+  if (args.length !== 1) {
+    console.error('Usage: node scripts/release/supabase-guard.mjs <migration-list.json>');
+    return 2;
+  }
+  const parsed = parseMigrationList(readFileSync(args[0], 'utf8'));
+  const local = localVersions();
+  const released = releasedVersions();
+  const errors = parsed.error ? [parsed.error] : guardMigrations({ ...parsed, local, released });
+  if (errors.length === 0) {
+    console.log(
+      `Supabase-Wächter: ok (${parsed.remote.length} von ${local.length} Migrationen in Produktion, ${local.length - parsed.remote.length} neu; ${released ? 'nach' : 'vor'} der ersten Veröffentlichung).`,
+    );
+    return 0;
+  }
+  // Workflow commands (::error::) are read from stdout.
+  const inActions = process.env.GITHUB_ACTIONS === 'true';
+  for (const error of errors) {
+    if (inActions) console.log(`::error::${error}`);
+    else console.error(`FEHLER: ${error}`);
+  }
+  return 1;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main(process.argv.slice(2));
+}
