@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(102);
+select plan(104);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -45,7 +45,8 @@ insert into fx (key, id) values
 insert into fx (key) values
   ('recipe_a'), ('recipe_b'), ('area_a'), ('area_b'), ('milch'), ('item_milch'), ('c_milch'),
   ('new_recipe'), ('new_area'), ('new_article'), ('zucker_item'), ('zucker_article'), ('zucker_c'),
-  ('tee'), ('item_b'), ('c_b'), ('slot_a'), ('new_activity'), ('new_entry'), ('bad_activity');
+  ('tee'), ('item_b'), ('c_b'), ('slot_a'), ('new_activity'), ('new_entry'), ('bad_activity'),
+  ('restaurant_a'), ('restaurant_b'), ('new_restaurant');
 
 update public.households
 set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot_a'), 'name', 'Vormittag', 'sort', 0))
@@ -53,6 +54,9 @@ where id = tests.fx('home_a');
 insert into public.recipes (id, household_id, title) values
   (tests.fx('recipe_a'), tests.fx('home_a'), 'Dal'),
   (tests.fx('recipe_b'), tests.fx('home_b'), 'Pasta');
+insert into public.restaurants (id, household_id, name) values
+  (tests.fx('restaurant_a'), tests.fx('home_a'), 'Trattoria'),
+  (tests.fx('restaurant_b'), tests.fx('home_b'), 'Bistro B');
 insert into public.areas (id, household_id, name) values
   (tests.fx('area_a'), tests.fx('home_a'), 'Obst'),
   (tests.fx('area_b'), tests.fx('home_b'), 'Obst B');
@@ -95,15 +99,25 @@ select results_eq(
          tests.fx('new_recipe'), tests.fx('new_article')),
   format($$ values ('Roter Linsen-Dal', 2, %L::uuid) $$, tests.fx('new_area')),
   'T5 apply_changes: the patch changed only the given columns, the article references the new area');
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'insert', 'table', 'restaurants',
+                       'row', jsonb_build_object('id', tests.fx('new_restaurant'), 'name', 'Pho Nam')))),
+  'AC-015 apply_changes: a restaurant to delete');
 select is(
   tests.apply('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('new_recipe')),
-    jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('new_recipe')))),
+    jsonb_build_object('kind', 'delete', 'table', 'restaurants', 'id', tests.fx('new_restaurant')),
+    jsonb_build_object('kind', 'delete', 'table', 'restaurants', 'id', tests.fx('new_restaurant')))),
   '{"applied": 2, "results": []}'::jsonb,
   'AC-015 apply_changes: delete removes the row; deleting a missing row is harmless');
 select is(
-  (select count(*)::int from public.deleted_records where record_id = tests.fx('new_recipe')::text), 1,
-  'AC-015 apply_changes: the delete leaves one tombstone');
+  (select count(*)::int from public.restaurants where id = tests.fx('new_restaurant'))
+  + (select count(*)::int from public.deleted_records where record_id = tests.fx('new_restaurant')::text), 1,
+  'AC-015 apply_changes: the row is gone and the delete leaves one tombstone');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('new_recipe')))),
+  '22023', 'invalid_change', 'spec 0008 E2 apply_changes: recipes cannot be deleted (delete_recipe only)');
 select is(
   tests.apply('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'patch', 'table', 'households', 'id', tests.fx('home_a'),
@@ -179,19 +193,19 @@ select is(
 -- ===================== Attack suite: names =====================
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'delete', 'table', 'recipes; drop table public.areas; --', 'id', tests.fx('recipe_a')))),
+    'kind', 'delete', 'table', 'restaurants; drop table public.areas; --', 'id', tests.fx('restaurant_a')))),
   '22023', 'invalid_change', 'T5 attack: SQL in the table name is rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'delete', 'table', '"recipes"', 'id', tests.fx('recipe_a')))),
+    'kind', 'delete', 'table', '"restaurants"', 'id', tests.fx('restaurant_a')))),
   '22023', 'invalid_change', 'T5 attack: a quoted table name is rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'delete', 'table', 'public.recipes', 'id', tests.fx('recipe_a')))),
+    'kind', 'delete', 'table', 'public.restaurants', 'id', tests.fx('restaurant_a')))),
   '22023', 'invalid_change', 'T5 attack: a schema-qualified table name is rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'delete', 'table', 'Recipes', 'id', tests.fx('recipe_a')))),
+    'kind', 'delete', 'table', 'Restaurants', 'id', tests.fx('restaurant_a')))),
   '22023', 'invalid_change', 'T5 attack: a differently cased table name is rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
@@ -373,7 +387,7 @@ select throws_ok(
   '42501', 'not_member', 'AC-011 apply_changes: a call for a household the caller is not a member of is denied');
 select throws_ok(
   tests.apply_sql('home_b', jsonb_build_array(jsonb_build_object(
-    'kind', 'delete', 'table', 'recipes', 'id', tests.fx('recipe_b')))),
+    'kind', 'delete', 'table', 'restaurants', 'id', tests.fx('restaurant_b')))),
   '42501', 'not_member', 'AC-011 apply_changes: a foreign household''s row cannot be deleted');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
@@ -397,11 +411,11 @@ select throws_ok(
     'kind', 'patch', 'table', 'recipes', 'id', tests.fx('recipe_b'), 'changes', jsonb_build_object('title', 'Gemischt')))),
   'P0002', 'row_not_found', 'T5 apply_changes: a member of A and B cannot patch a B row in a call for A');
 select is(
-  tests.apply('home_a', jsonb_build_array(jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('recipe_b')))),
+  tests.apply('home_a', jsonb_build_array(jsonb_build_object('kind', 'delete', 'table', 'restaurants', 'id', tests.fx('restaurant_b')))),
   '{"applied": 1, "results": []}'::jsonb,
   'T5 apply_changes: a delete of a B row in a call for A hits nothing');
 select is(
-  (select count(*)::int from public.recipes where id = tests.fx('recipe_b')), 1,
+  (select count(*)::int from public.restaurants where id = tests.fx('restaurant_b')), 1,
   'T5 apply_changes: … and the B row still exists');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(

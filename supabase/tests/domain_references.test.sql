@@ -242,10 +242,12 @@ select throws_ok(
   '23514', null, 'T3 shopping_contributions: an unknown source kind is rejected');
 
 -- ===================== Deleting parents =====================
+-- Members cannot delete recipes (delete_recipe only, spec 0008); the restrict is the safety net
+-- for any other path, checked as postgres.
+select tests.clear_authentication();
 select throws_ok(
   format($$ delete from public.recipes where id = %L $$, tests.fx('recipe_a')),
   '23503', null, 'T3 recipes: a recipe in the meal plan cannot be deleted (restrict)');
-select tests.clear_authentication();
 update public.households set default_store_id = tests.fx('store_a') where id = tests.fx('home_a');
 select tests.authenticate_as(tests.fx('dora'));
 delete from public.stores where id = tests.fx('store_a');

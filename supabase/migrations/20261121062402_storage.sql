@@ -12,7 +12,9 @@
 --   with a cast error.
 -- * Objects are not deleted by the database (the Storage API refuses direct deletes and the
 --   file would stay in the storage backend): the client deletes the old object after switching or
---   removing photo_path, and before deleting a recipe or activity with a photo.
+--   removing photo_path, and before deleting an activity with a photo. The photo of a deleted
+--   recipe stays until its "Rückgängig" has expired, then the app deletes it (spec 0008, E5);
+--   if the app stops before that, the object stays in the household's folder.
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('household-media', 'household-media', false, 2097152, '{image/jpeg}')

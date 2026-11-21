@@ -172,7 +172,7 @@ select throws_ok(
 -- Deleting the parent removes the per-person rows and leaves their tombstones.
 select tests.authenticate_as(tests.fx('anna'));
 select public.set_recipe_favorite(tests.fx('recipe_a'), true);
-delete from public.recipes where id = tests.fx('recipe_a');
+select public.delete_recipe(tests.fx('recipe_a'), current_date);
 select is(
   (select count(*)::int from public.deleted_records where table_name in ('recipe_favorites', 'recipe_ratings')
      and record_id = tests.fx('recipe_a') || ':' || tests.fx('anna')),

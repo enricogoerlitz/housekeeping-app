@@ -3,7 +3,7 @@
 -- remove_member (AC-012).
 begin;
 \ir _helpers.psql
-select plan(56);
+select plan(57);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select, insert on fx to anon, authenticated;
@@ -382,6 +382,8 @@ select (select id from fx where key = 'wg_item'), a.household_id, a.id
 from public.articles a where a.household_id = (select id from fx where key = 'wg') and a.name_key = 'aepfel';
 insert into public.shopping_contributions (household_id, item_id)
 select (select id from fx where key = 'wg'), (select id from fx where key = 'wg_item');
+insert into private.recipe_deletions (household_id, recipe_id, deleted_by, snapshot)
+select (select id from fx where key = 'wg'), gen_random_uuid(), (select id from fx where key = 'enrico'), '{}';
 select lives_ok(
   $$ delete from public.households where id = (select id from fx where key = 'wg') $$,
   'T1 households: a household with recipes, articles and items on the list can be deleted'
@@ -393,6 +395,11 @@ select is(
   + (select count(*)::int from public.areas where household_id = (select id from fx where key = 'wg')),
   0,
   'T1 households: its articles, recipes, items and areas are gone'
+);
+select is(
+  (select count(*)::int from private.recipe_deletions where household_id = (select id from fx where key = 'wg')),
+  0,
+  'spec 0008 T1 households: the snapshots of deleted recipes go with the household'
 );
 
 select * from finish();

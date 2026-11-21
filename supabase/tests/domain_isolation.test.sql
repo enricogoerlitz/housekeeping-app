@@ -74,7 +74,7 @@ select * from tests.tenant_isolation('recipes',
                      'servings', 2, 'course', 'main', 'tags', array['schnell'],
                      'variants', '[]'::jsonb, 'ingredients', '[]'::jsonb, 'steps', '[]'::jsonb),
   '{"title": "Shakshuka mit Feta", "servings": 4, "notes": "Mit Brot"}',
-  tests.fx('anna'), tests.fx('ben'));
+  tests.fx('anna'), tests.fx('ben'), false); -- deleted only by delete_recipe (spec 0008, E2)
 
 select * from tests.tenant_isolation('restaurants',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'name', 'Thai Garden',

@@ -30,6 +30,7 @@ declare
   -- household_id may be sent on insert but must equal p_household_id; it is always forced.
   -- created_by (activities) and author_id (feedback) are overwritten by their insert triggers.
   -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
+  -- Recipes are deleted only by delete_recipe (spec 0008, E2).
   -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
@@ -45,7 +46,7 @@ declare
                                     "steps", "lead_time", "notes", "last_cooked_on", "cooked_count", "source"],
                          "patch":  ["title", "photo", "photo_path", "description", "servings", "total_minutes", "course",
                                     "cuisine", "tags", "variants", "ingredients", "steps", "lead_time", "notes",
-                                    "last_cooked_on", "cooked_count", "source"], "delete": true},
+                                    "last_cooked_on", "cooked_count", "source"], "delete": false},
     "restaurants":      {"insert": ["id", "household_id", "name", "address", "lat", "lng", "maps_url", "cuisine",
                                     "price_level", "tags", "notes"],
                          "patch":  ["name", "address", "lat", "lng", "maps_url", "cuisine", "price_level", "tags",

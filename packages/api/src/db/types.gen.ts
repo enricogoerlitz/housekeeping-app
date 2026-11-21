@@ -1419,12 +1419,14 @@ export type Database = {
       create_household: { Args: { name: string; starter: Json }; Returns: string };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
+      delete_recipe: { Args: { recipe_id: string; today: string }; Returns: Json };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
+      restore_recipe: { Args: { recipe_id: string }; Returns: boolean };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };
         Returns: undefined;
