@@ -219,27 +219,27 @@ select results_eq(
          tests.fx('act_a')),
   format($$ values (%L::uuid, %L::uuid, %L::uuid) $$, tests.fx('home_a'), tests.fx('act_a'), tests.fx('anna')),
   'AC-020 set_activity_favorite: the favourite belongs to the caller and the activity''s household');
-select public.set_activity_rating(tests.fx('act_a'), 3::smallint);
-select public.set_activity_rating(tests.fx('act_a'), 5::smallint);
+select public.set_activity_rating(tests.fx('act_a'), 3::numeric);
+select public.set_activity_rating(tests.fx('act_a'), 5::numeric);
 select results_eq(
   format($$ select member_id, stars from public.activity_ratings where activity_id = %L $$, tests.fx('act_a')),
-  format($$ values (%L::uuid, 5::smallint) $$, tests.fx('anna')),
+  format($$ values (%L::uuid, 5::numeric) $$, tests.fx('anna')),
   'AC-020 set_activity_rating: rating again replaces the caller''s stars');
 select throws_ok(
-  format($$ select public.set_activity_rating(%L, 6::smallint) $$, tests.fx('act_a')),
+  format($$ select public.set_activity_rating(%L, 6::numeric) $$, tests.fx('act_a')),
   '22023', 'invalid_stars', 'AC-020 set_activity_rating: more than 5 stars are rejected');
 select throws_ok(
-  format($$ select public.set_activity_rating(%L, 0::smallint) $$, tests.fx('act_a')),
+  format($$ select public.set_activity_rating(%L, 0::numeric) $$, tests.fx('act_a')),
   '22023', 'invalid_stars', 'AC-020 set_activity_rating: 0 stars are rejected');
 select throws_ok(
   format($$ select public.set_activity_favorite(%L, null) $$, tests.fx('act_a')),
   '22023', 'invalid_favorite', 'AC-020 set_activity_favorite: null is rejected');
 
 select tests.authenticate_as(tests.fx('carla'));
-select public.set_activity_rating(tests.fx('act_a'), 4::smallint);
+select public.set_activity_rating(tests.fx('act_a'), 4::numeric);
 select results_eq(
   format($$ select member_id, stars from public.activity_ratings where activity_id = %L order by stars $$, tests.fx('act_a')),
-  format($$ values (%L::uuid, 4::smallint), (%L::uuid, 5::smallint) $$, tests.fx('carla'), tests.fx('anna')),
+  format($$ values (%L::uuid, 4::numeric), (%L::uuid, 5::numeric) $$, tests.fx('carla'), tests.fx('anna')),
   'AC-020 set_activity_rating: ratings are kept per person');
 select is(
   (select count(*)::int from public.activity_favorites where activity_id = tests.fx('act_a') and member_id = tests.fx('anna')),
@@ -267,14 +267,14 @@ select throws_ok(
   format($$ select public.set_activity_favorite(%L, true) $$, tests.fx('act_a')),
   'P0002', 'activity_not_found', 'AC-011 set_activity_favorite: an activity of another household is not found');
 select throws_ok(
-  format($$ select public.set_activity_rating(%L, 1::smallint) $$, tests.fx('act_a')),
+  format($$ select public.set_activity_rating(%L, 1::numeric) $$, tests.fx('act_a')),
   'P0002', 'activity_not_found', 'AC-011 set_activity_rating: an activity of another household is not found');
 select tests.authenticate_as_anon();
 select throws_ok(
   format($$ select public.set_activity_favorite(%L, true) $$, tests.fx('act_a')),
   '42501', null, 'AC-005 set_activity_favorite: anon cannot call it');
 select throws_ok(
-  format($$ select public.set_activity_rating(%L, 1::smallint) $$, tests.fx('act_a')),
+  format($$ select public.set_activity_rating(%L, 1::numeric) $$, tests.fx('act_a')),
   '42501', null, 'AC-005 set_activity_rating: anon cannot call it');
 select tests.clear_authentication();
 

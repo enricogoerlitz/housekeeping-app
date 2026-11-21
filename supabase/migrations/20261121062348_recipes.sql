@@ -146,8 +146,9 @@ create table public.recipe_ratings (
   household_id uuid not null references public.households (id) on delete cascade,
   recipe_id uuid not null,
   member_id uuid not null,
-  stars smallint not null
-    constraint recipe_ratings_stars_valid check (stars between 1 and 5),
+  -- 0.5 to 5 in half steps (spec 0011, REQ-004).
+  stars numeric(2,1) not null
+    constraint recipe_ratings_stars_valid check (stars between 0.5 and 5 and stars * 2 = trunc(stars * 2)),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (household_id, recipe_id, member_id),
@@ -224,8 +225,10 @@ begin
 end
 $$;
 
--- Sets the caller's rating (1–5 stars) or removes it (null). Idempotent.
-create function private.set_recipe_rating(p_recipe_id uuid, p_stars smallint)
+-- Sets the caller's rating (0.5–5 stars in half steps) or removes it (null). Always writes, also
+-- the same value again, so updated_at says when the caller last rated ("Wie war's?", spec 0011,
+-- Offene Frage 7). The restaurant and activity ratings follow the same rules.
+create function private.set_recipe_rating(p_recipe_id uuid, p_stars numeric)
 returns void
 language plpgsql
 security definer
@@ -237,20 +240,20 @@ begin
   if p_stars is null then
     delete from public.recipe_ratings r
     where r.household_id = v_household_id and r.recipe_id = p_recipe_id and r.member_id = auth.uid();
-  elsif p_stars not between 1 and 5 then
+  elsif not (p_stars between 0.5 and 5 and p_stars * 2 = trunc(p_stars * 2)) then
+    -- Checked before the value meets numeric(2,1), which would round 4.25 to 4.3 silently.
     raise exception 'invalid_stars' using errcode = '22023';
   else
     insert into public.recipe_ratings as r (household_id, recipe_id, member_id, stars)
     values (v_household_id, p_recipe_id, auth.uid(), p_stars)
     on conflict (household_id, recipe_id, member_id) do update
-      set stars = excluded.stars
-      where r.stars is distinct from excluded.stars;
+      set stars = excluded.stars;
   end if;
 end
 $$;
 
 grant execute on function private.set_recipe_favorite(uuid, boolean) to authenticated;
-grant execute on function private.set_recipe_rating(uuid, smallint) to authenticated;
+grant execute on function private.set_recipe_rating(uuid, numeric) to authenticated;
 
 create function public.set_recipe_favorite(recipe_id uuid, favorite boolean)
 returns void
@@ -258,11 +261,11 @@ language sql
 set search_path = ''
 as $$ select private.set_recipe_favorite($1, $2) $$;
 
-create function public.set_recipe_rating(recipe_id uuid, stars smallint)
+create function public.set_recipe_rating(recipe_id uuid, stars numeric)
 returns void
 language sql
 set search_path = ''
 as $$ select private.set_recipe_rating($1, $2) $$;
 
 grant execute on function public.set_recipe_favorite(uuid, boolean) to authenticated;
-grant execute on function public.set_recipe_rating(uuid, smallint) to authenticated;
+grant execute on function public.set_recipe_rating(uuid, numeric) to authenticated;

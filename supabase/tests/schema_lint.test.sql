@@ -30,11 +30,11 @@ insert into lint_private_functions_for_authenticated values
   ('private.remove_member(uuid,uuid)'),
   ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
   ('private.set_recipe_favorite(uuid,boolean)'),
-  ('private.set_recipe_rating(uuid,smallint)'),
+  ('private.set_recipe_rating(uuid,numeric)'),
   ('private.set_restaurant_favorite(uuid,boolean)'),
-  ('private.set_restaurant_rating(uuid,smallint)'),
+  ('private.set_restaurant_rating(uuid,numeric)'),
   ('private.set_activity_favorite(uuid,boolean)'),
-  ('private.set_activity_rating(uuid,smallint)'),
+  ('private.set_activity_rating(uuid,numeric)'),
   ('private.media_household_id(text)'), -- used by the storage.objects policies (spec 0004)
   ('private.set_feedback_vote(uuid,boolean)'),
   ('private.set_shopping_item_checked(uuid,boolean,integer)'),
@@ -45,6 +45,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.restore_cleared_items(uuid,jsonb)'),
   ('private.delete_article(uuid)'),         -- spec 0007: the only way to delete an article
   ('private.merge_articles(uuid,uuid)'),    -- spec 0007
+  ('private.complete_chore(uuid,jsonb)'),   -- spec 0011: domain op of apply_changes, the only way to book
+  ('private.remove_chore_event(uuid,uuid)'), -- spec 0011: domain op of apply_changes, the only way to remove
   ('private.assert_restorable_size(jsonb)'); -- security invoker, a size check without data access
 
 create temp view lint_public_tables as

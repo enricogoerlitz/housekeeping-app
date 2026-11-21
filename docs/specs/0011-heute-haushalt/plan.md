@@ -477,3 +477,22 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 8. „Wie war's?“: Ist der jüngste Eintrag „Nicht gemacht“, erscheint ein älterer Eintrag desselben
    Ziels aus den drei Tagen.
 9. Saison-Eingabe als Monatszahlen 1–12.
+
+## Entscheidungen beim Bauen (Datenbank, Tasks 1–2, 21.11.2026)
+
+Aus dem Plan abgeleitet, ohne neue Frage:
+
+1. **Form der Domänen-Operationen:** `{"kind": "complete_chore", "completion": {…}}` mit den
+   Feldern aus „Regeln von `complete_chore`“, weil `kind` schon die Operation benennt; dazu
+   `{"kind": "remove_chore_event", "id": …}` wie bei `delete`. `complete_chore` lehnt unbekannte
+   Felder ab (auch `title` und `prev_*`) und verlangt `event_id`, `done_by` und `seen`.
+2. **Rückgaben:** `complete_chore` gibt `{"event_id"}` zurück, `remove_chore_event`
+   `{"restored": true|false}`, beides in `results` von `apply_changes`.
+3. **Entfernen bei inzwischen „bei Bedarf“:** Ist die Aufgabe beim Entfernen schon „bei Bedarf“,
+   bleibt `next_due_on` leer, statt den gemerkten Termin herzustellen (sonst schlüge
+   `chores_as_needed_never_due` fehl). `last_done_on` und Person kommen wie geplant zurück.
+4. **Seed:** Aus „Keller aufgeräumt · spontan“ wird eine Erledigung von „Pflanzen gießen“ durch
+   Enrico vor 9 Tagen (`ev-2` bleibt als Kennung). Seed-Erledigungen haben
+   `prev_recorded = false` über den Spalten-Standard.
+5. **Bewertungen:** Die RPCs nehmen `numeric` ohne Genauigkeit und lehnen auch `NaN` und
+   `Infinity` ab.

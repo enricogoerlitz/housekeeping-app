@@ -12,6 +12,18 @@ create function tests.fx(p_key text) returns uuid language sql stable
 as $$ select id from fx where key = p_key $$;
 grant execute on function tests.fx(text) to anon, authenticated;
 
+-- The SQL of an apply_changes call booking the chore (spec 0011: events only via complete_chore),
+-- with the chore's current state as seen.
+create function tests.complete_sql(p_household text, p_chore text, p_kind text, p_done_by text) returns text
+language sql volatile
+as $$
+  select format('select public.apply_changes(%L, %L)', tests.fx(p_household), jsonb_build_array(jsonb_build_object(
+    'kind', 'complete_chore', 'completion', jsonb_build_object(
+      'chore_id', tests.fx(p_chore), 'event_id', gen_random_uuid(), 'kind', p_kind, 'done_on', current_date,
+      'done_by', tests.fx(p_done_by), 'seen', '{}'::jsonb, 'next_due_on', current_date + 7))))
+$$;
+grant execute on function tests.complete_sql(text, text, text, text) to anon, authenticated;
+
 insert into fx (key, id) values
   ('dora', tests.create_user('dora@example.com', 'Dora')),
   ('emil', tests.create_user('emil@example.com', 'Emil')),
@@ -89,12 +101,10 @@ select throws_ok(
          tests.fx('home_a'), tests.fx('slot_a'), tests.fx('recipe_a'), tests.fx('entry_b')),
   '23503', null, 'T3 meal_plan_entries: leftovers_of_entry_id of another household is rejected');
 select throws_ok(
-  format($$ insert into public.chore_events (household_id, chore_id, title, kind, done_on, done_by)
-            values (%L, %L, 'Bad', 'done', '2026-11-20', %L) $$,
-         tests.fx('home_a'), tests.fx('chore_b'), tests.fx('dora')),
-  '23503', null, 'T3 chore_events: chore_id of another household is rejected');
+  tests.complete_sql('home_a', 'chore_b', 'done', 'dora'),
+  'P0002', 'chore_not_found', 'T3 chore_events: an event for a chore of another household is rejected');
 select throws_ok(
-  format($$ select public.set_recipe_rating(%L, 3::smallint) $$, gen_random_uuid()),
+  format($$ select public.set_recipe_rating(%L, 3::numeric) $$, gen_random_uuid()),
   'P0002', 'recipe_not_found', 'T3 recipe_ratings: rating an unknown recipe is rejected');
 
 -- ===================== Person fields: only members of the row's household =====================
@@ -112,8 +122,7 @@ select throws_ok(
          array[gen_random_uuid()], tests.fx('entry_a')),
   '23503', 'invalid_member', 'T3 meal_plan_entries: an update cannot add an unknown person to eater_ids');
 select throws_ok(
-  format($$ insert into public.chore_events (household_id, title, kind, done_on, done_by) values (%L, 'Müll', 'spontaneous', '2026-11-20', %L) $$,
-         tests.fx('home_a'), tests.fx('ben')),
+  tests.complete_sql('home_a', 'chore_a', 'done', 'ben'),
   '23503', null, 'T3 chore_events: done_by of a non-member is rejected');
 select throws_ok(
   format($$ update public.chore_events set done_by = %L where id = %L $$, tests.fx('ben'), tests.fx('event_a')),
@@ -217,8 +226,8 @@ select throws_ok(
   format($$ update public.chores set recurrence = '{"type": "hourly"}' where id = %L $$, tests.fx('chore_a')),
   '23514', null, 'T3 chores: an unknown recurrence type is rejected');
 select throws_ok(
-  format($$ update public.chore_events set kind = 'forgotten' where id = %L $$, tests.fx('event_a')),
-  '23514', null, 'T3 chore_events: an unknown kind is rejected');
+  tests.complete_sql('home_a', 'chore_a', 'forgotten', 'dora'),
+  '22023', 'invalid_change', 'T3 chore_events: an unknown kind is rejected');
 select throws_ok(
   format($$ insert into public.feedback (household_id, kind, text, status) values (%L, 'idea', 'X', 'maybe') $$, tests.fx('home_a')),
   '23514', null, 'T3 feedback: an unknown status is rejected');
@@ -259,7 +268,7 @@ insert into public.absences (household_id, member_id, from_on, to_on)
 values (tests.fx('home_a'), tests.fx('emil'), '2026-12-01', '2026-12-02');
 update public.meal_plan_entries set eater_ids = array[tests.fx('dora'), tests.fx('emil')] where id = tests.fx('entry_a');
 select tests.authenticate_as(tests.fx('emil'));
-select public.set_recipe_rating(tests.fx('recipe_a'), 5::smallint);
+select public.set_recipe_rating(tests.fx('recipe_a'), 5::numeric);
 select tests.authenticate_as(tests.fx('dora'));
 select public.remove_member(tests.fx('home_a'), tests.fx('emil'));
 

@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(96);
+select plan(102);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -303,6 +303,26 @@ select throws_ok(
     'kind', 'patch', 'table', 'households', 'id', tests.fx('home_a'), 'changes', jsonb_build_object('created_at', '2000-01-01')))),
   '22023', 'invalid_change', 'T5 attack: households.created_at cannot be patched');
 
+-- ===================== Attack suite: chore events only through the domain ops (spec 0011) =====================
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'chore_events',
+    'row', jsonb_build_object('title', 'Bad putzen', 'kind', 'done', 'done_on', current_date, 'done_by', tests.fx('enrico'))))),
+  '22023', 'invalid_change', 'spec 0011 attack: chore_events cannot be inserted (complete_chore only)');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'delete', 'table', 'chore_events', 'id', gen_random_uuid()))),
+  '22023', 'invalid_change', 'spec 0011 attack: chore_events cannot be deleted (remove_chore_event only)');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'chore_events', 'id', gen_random_uuid(),
+    'changes', jsonb_build_object('prev_next_due_on', '2020-01-01', 'prev_recorded', true)))),
+  '22023', 'invalid_change', 'spec 0011 attack: the recorded state before an event cannot be patched');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'chore_events', 'id', gen_random_uuid(), 'changes', jsonb_build_object('done_on', current_date)))),
+  '22023', 'invalid_change', 'spec 0011 attack: only chore_id and done_by of an event can be patched');
+
 -- ===================== Attack suite: tables outside the allowlist =====================
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
@@ -511,6 +531,18 @@ select lives_ok(
     || jsonb_build_array(jsonb_build_object('kind', 'remove_contributions',
          'ids', (select jsonb_agg(gen_random_uuid()) from generate_series(1, 5))))),
   'T5 apply_changes: 15 deletes plus 5 removed contributions are allowed');
+-- Every remove_chore_event is a delete (spec 0011).
+select throws_ok(
+  tests.apply_sql('home_a', (select jsonb_agg(jsonb_build_object('kind', 'remove_chore_event', 'id', gen_random_uuid()))
+                             from generate_series(1, 21))),
+  '22023', 'too_many_changes', 'spec 0011 apply_changes: more than 20 remove_chore_event ops are rejected');
+select throws_ok(
+  tests.apply_sql('home_a',
+    (select jsonb_agg(jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', gen_random_uuid()))
+     from generate_series(1, 15))
+    || (select jsonb_agg(jsonb_build_object('kind', 'remove_chore_event', 'id', gen_random_uuid()))
+        from generate_series(1, 6))),
+  '22023', 'too_many_changes', 'spec 0011 apply_changes: deletes and removed events add up to the limit');
 select throws_ok(
   tests.apply_sql('home_a',
     (select jsonb_agg(jsonb_build_object('kind', 'insert', 'table', 'areas',

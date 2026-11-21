@@ -1,7 +1,9 @@
 -- Baseline (ADR-0012) — apply_changes: the generic write path (ADR-0011).
 --
--- One call applies one changeset of the app — core RowOp objects plus two domain ops — in one
--- transaction: all or nothing (AC-020). Security invoker, so RLS, column grants, triggers and
+-- One call applies one changeset of the app — core RowOp objects plus four domain ops — in one
+-- transaction: all or nothing (AC-020). Domain ops: add_contributions / remove_contributions
+-- (shopping list), complete_chore {completion} / remove_chore_event {id} (spec 0011, chores
+-- migration). Security invoker, so RLS, column grants, triggers and
 -- composite foreign keys apply to every op exactly as to a direct API call. On top of that:
 -- * an allowlist of tables and columns as a constant in this function (the grant matrix of the
 --   domain tables); identifiers in dynamic SQL come only from the allowlist, quoted with %I; values
@@ -11,10 +13,11 @@
 --   only rows of p_household_id;
 -- * plain INSERT (no upsert); a patch that hits no row is an error (row_not_found);
 -- * at most 200 ops, 20 deletes and 500 added contributions per call (too_many_changes); a domain
---   op counts as its elements.
+--   op counts as its elements; remove_chore_event is one op and one delete.
 --
 -- Errors: not_member (42501), invalid_change (22023), too_many_changes (22023),
--- row_not_found (P0002), plus whatever a constraint raises
+-- row_not_found (P0002), the errors of the domain ops (e.g. already_done / chore_changed P0001,
+-- chore_not_found / chore_event_not_found P0002), plus whatever a constraint raises
 -- (23502/23503/23505/23514, 22P02 for a malformed value).
 
 create function public.apply_changes(p_household_id uuid, p_ops jsonb)
@@ -27,6 +30,7 @@ declare
   -- household_id may be sent on insert but must equal p_household_id; it is always forced.
   -- created_by (activities) and author_id (feedback) are overwritten by their insert triggers.
   -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
+  -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
                          "patch":  ["name", "sort"], "delete": true},
@@ -59,8 +63,8 @@ declare
                                     "next_due_on", "next_assignee_id", "last_done_on", "active_months"],
                          "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",
                                     "next_assignee_id", "last_done_on", "active_months"], "delete": true},
-    "chore_events":     {"insert": ["id", "household_id", "chore_id", "title", "kind", "done_on", "done_by"],
-                         "patch":  ["chore_id", "title", "kind", "done_on", "done_by"], "delete": true},
+    "chore_events":     {"insert": [],
+                         "patch":  ["chore_id", "done_by"], "delete": false},
     "meal_plan_entries": {"insert": ["id", "household_id", "date", "slot_id", "kind", "recipe_id", "restaurant_id",
                                      "activity_id", "text", "note", "leftovers_of_entry_id", "eater_ids", "guests",
                                      "portions", "variants", "cook_id", "sort", "not_cooked"],
@@ -109,7 +113,7 @@ begin
                            when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
                              then greatest(jsonb_array_length(o -> 'entries'), 1)
                            else 1 end), 0),
-         count(*) filter (where o ->> 'kind' = 'delete')
+         count(*) filter (where o ->> 'kind' in ('delete', 'remove_chore_event'))
            + coalesce(sum(jsonb_array_length(o -> 'ids'))
                         filter (where o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'), 0),
          coalesce(sum(c.contributions), 0)
@@ -143,6 +147,15 @@ begin
       end if;
       v_ids := array(select x::uuid from jsonb_array_elements_text(v_op -> 'ids') x);
       v_results := v_results || jsonb_build_array(private.remove_contributions(v_ids, p_household_id));
+      continue;
+    elsif v_kind = 'complete_chore' then
+      v_results := v_results || jsonb_build_array(private.complete_chore(p_household_id, v_op -> 'completion'));
+      continue;
+    elsif v_kind = 'remove_chore_event' then
+      if jsonb_typeof(v_op -> 'id') is distinct from 'string' then
+        raise exception 'invalid_change' using errcode = '22023';
+      end if;
+      v_results := v_results || jsonb_build_array(private.remove_chore_event(p_household_id, (v_op ->> 'id')::uuid));
       continue;
     end if;
 

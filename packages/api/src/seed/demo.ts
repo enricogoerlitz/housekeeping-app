@@ -512,13 +512,6 @@ function buildDemoData(today: ISODate): HouseholdData {
       doneBy: NADJA,
     },
     {
-      id: 'ev-2',
-      title: 'Keller aufgeräumt',
-      kind: 'spontaneous',
-      doneOn: addDays(today, -3),
-      doneBy: ENRICO,
-    },
-    {
       id: 'ev-3',
       choreId: 'chore-muell',
       title: 'Müll rausbringen',
@@ -540,6 +533,14 @@ function buildDemoData(today: ISODate): HouseholdData {
       title: 'Bad putzen',
       kind: 'done',
       doneOn: addDays(today, -7),
+      doneBy: ENRICO,
+    },
+    {
+      id: 'ev-2',
+      choreId: 'chore-pflanzen',
+      title: 'Pflanzen gießen',
+      kind: 'done',
+      doneOn: addDays(today, -9),
       doneBy: ENRICO,
     },
     {

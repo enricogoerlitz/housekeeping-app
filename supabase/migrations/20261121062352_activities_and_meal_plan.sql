@@ -109,8 +109,9 @@ create table public.activity_ratings (
   household_id uuid not null references public.households (id) on delete cascade,
   activity_id uuid not null,
   member_id uuid not null,
-  stars smallint not null
-    constraint activity_ratings_stars_valid check (stars between 1 and 5),
+  -- 0.5 to 5 in half steps (spec 0011, REQ-004).
+  stars numeric(2,1) not null
+    constraint activity_ratings_stars_valid check (stars between 0.5 and 5 and stars * 2 = trunc(stars * 2)),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (household_id, activity_id, member_id),
@@ -185,7 +186,7 @@ begin
 end
 $$;
 
-create function private.set_activity_rating(p_activity_id uuid, p_stars smallint)
+create function private.set_activity_rating(p_activity_id uuid, p_stars numeric)
 returns void
 language plpgsql
 security definer
@@ -197,20 +198,20 @@ begin
   if p_stars is null then
     delete from public.activity_ratings r
     where r.household_id = v_household_id and r.activity_id = p_activity_id and r.member_id = auth.uid();
-  elsif p_stars not between 1 and 5 then
+  elsif not (p_stars between 0.5 and 5 and p_stars * 2 = trunc(p_stars * 2)) then
+    -- Checked before the value meets numeric(2,1), which would round 4.25 to 4.3 silently.
     raise exception 'invalid_stars' using errcode = '22023';
   else
     insert into public.activity_ratings as r (household_id, activity_id, member_id, stars)
     values (v_household_id, p_activity_id, auth.uid(), p_stars)
     on conflict (household_id, activity_id, member_id) do update
-      set stars = excluded.stars
-      where r.stars is distinct from excluded.stars;
+      set stars = excluded.stars;
   end if;
 end
 $$;
 
 grant execute on function private.set_activity_favorite(uuid, boolean) to authenticated;
-grant execute on function private.set_activity_rating(uuid, smallint) to authenticated;
+grant execute on function private.set_activity_rating(uuid, numeric) to authenticated;
 
 create function public.set_activity_favorite(activity_id uuid, favorite boolean)
 returns void
@@ -218,14 +219,14 @@ language sql
 set search_path = ''
 as $$ select private.set_activity_favorite($1, $2) $$;
 
-create function public.set_activity_rating(activity_id uuid, stars smallint)
+create function public.set_activity_rating(activity_id uuid, stars numeric)
 returns void
 language sql
 set search_path = ''
 as $$ select private.set_activity_rating($1, $2) $$;
 
 grant execute on function public.set_activity_favorite(uuid, boolean) to authenticated;
-grant execute on function public.set_activity_rating(uuid, smallint) to authenticated;
+grant execute on function public.set_activity_rating(uuid, numeric) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
 -- meal_plan_entries

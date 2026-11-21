@@ -38,24 +38,24 @@ select results_eq(
   'select household_id, recipe_id, member_id from public.recipe_favorites',
   format($$ values (%L::uuid, %L::uuid, %L::uuid) $$, tests.fx('home_a'), tests.fx('recipe_a'), tests.fx('anna')),
   'T3 set_recipe_favorite: the favourite belongs to the caller and the recipe''s household');
-select public.set_recipe_rating(tests.fx('recipe_a'), 4::smallint);
-select public.set_recipe_rating(tests.fx('recipe_a'), 5::smallint);
+select public.set_recipe_rating(tests.fx('recipe_a'), 4::numeric);
+select public.set_recipe_rating(tests.fx('recipe_a'), 5::numeric);
 select results_eq(
   'select member_id, stars from public.recipe_ratings',
-  format($$ values (%L::uuid, 5::smallint) $$, tests.fx('anna')),
+  format($$ values (%L::uuid, 5::numeric) $$, tests.fx('anna')),
   'T3 set_recipe_rating: rating again replaces the caller''s stars');
 select throws_ok(
-  format($$ select public.set_recipe_rating(%L, 6::smallint) $$, tests.fx('recipe_a')),
+  format($$ select public.set_recipe_rating(%L, 6::numeric) $$, tests.fx('recipe_a')),
   '22023', 'invalid_stars', 'T3 set_recipe_rating: more than 5 stars are rejected');
 select throws_ok(
-  format($$ select public.set_recipe_rating(%L, 0::smallint) $$, tests.fx('recipe_a')),
+  format($$ select public.set_recipe_rating(%L, 0::numeric) $$, tests.fx('recipe_a')),
   '22023', 'invalid_stars', 'T3 set_recipe_rating: 0 stars are rejected');
 
 select tests.authenticate_as(tests.fx('carla'));
-select public.set_recipe_rating(tests.fx('recipe_a'), 2::smallint);
+select public.set_recipe_rating(tests.fx('recipe_a'), 2::numeric);
 select results_eq(
   'select member_id, stars from public.recipe_ratings order by stars',
-  format($$ values (%L::uuid, 2::smallint), (%L::uuid, 5::smallint) $$, tests.fx('carla'), tests.fx('anna')),
+  format($$ values (%L::uuid, 2::numeric), (%L::uuid, 5::numeric) $$, tests.fx('carla'), tests.fx('anna')),
   'T3 set_recipe_rating: ratings are kept per person');
 select public.set_recipe_rating(tests.fx('recipe_a'), null);
 select public.set_recipe_favorite(tests.fx('recipe_a'), false);
@@ -75,14 +75,14 @@ select throws_ok(
   format($$ select public.set_recipe_favorite(%L, true) $$, tests.fx('recipe_a')),
   'P0002', 'recipe_not_found', 'AC-011 set_recipe_favorite: a recipe of another household is not found');
 select throws_ok(
-  format($$ select public.set_recipe_rating(%L, 1::smallint) $$, tests.fx('recipe_a')),
+  format($$ select public.set_recipe_rating(%L, 1::numeric) $$, tests.fx('recipe_a')),
   'P0002', 'recipe_not_found', 'AC-011 set_recipe_rating: a recipe of another household is not found');
 select tests.authenticate_as_anon();
 select throws_ok(
   format($$ select public.set_recipe_favorite(%L, true) $$, tests.fx('recipe_a')),
   '42501', null, 'AC-005 set_recipe_favorite: anon cannot call it');
 select throws_ok(
-  format($$ select public.set_recipe_rating(%L, 1::smallint) $$, tests.fx('recipe_a')),
+  format($$ select public.set_recipe_rating(%L, 1::numeric) $$, tests.fx('recipe_a')),
   '42501', null, 'AC-005 set_recipe_rating: anon cannot call it');
 
 select tests.authenticate_as(tests.fx('anna'));
@@ -98,13 +98,13 @@ select is(
 -- ===================== Restaurant favourites and ratings =====================
 select tests.authenticate_as(tests.fx('anna'));
 select public.set_restaurant_favorite(tests.fx('restaurant_a'), true);
-select public.set_restaurant_rating(tests.fx('restaurant_a'), 3::smallint);
+select public.set_restaurant_rating(tests.fx('restaurant_a'), 3::numeric);
 select results_eq(
   $$ select f.member_id, r.member_id, r.stars from public.restaurant_favorites f, public.restaurant_ratings r $$,
-  format($$ values (%L::uuid, %L::uuid, 3::smallint) $$, tests.fx('anna'), tests.fx('anna')),
+  format($$ values (%L::uuid, %L::uuid, 3::numeric) $$, tests.fx('anna'), tests.fx('anna')),
   'T3 set_restaurant_favorite / set_restaurant_rating: written for the caller');
 select throws_ok(
-  format($$ select public.set_restaurant_rating(%L, 9::smallint) $$, tests.fx('restaurant_a')),
+  format($$ select public.set_restaurant_rating(%L, 9::numeric) $$, tests.fx('restaurant_a')),
   '22023', 'invalid_stars', 'T3 set_restaurant_rating: more than 5 stars are rejected');
 select public.set_restaurant_favorite(tests.fx('restaurant_a'), false);
 select public.set_restaurant_rating(tests.fx('restaurant_a'), null);
@@ -119,7 +119,7 @@ select throws_ok(
   format($$ select public.set_restaurant_favorite(%L, true) $$, tests.fx('restaurant_a')),
   'P0002', 'restaurant_not_found', 'AC-011 set_restaurant_favorite: a restaurant of another household is not found');
 select throws_ok(
-  format($$ select public.set_restaurant_rating(%L, 2::smallint) $$, tests.fx('restaurant_a')),
+  format($$ select public.set_restaurant_rating(%L, 2::numeric) $$, tests.fx('restaurant_a')),
   'P0002', 'restaurant_not_found', 'AC-011 set_restaurant_rating: a restaurant of another household is not found');
 
 -- ===================== Feedback and votes =====================

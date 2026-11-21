@@ -3,7 +3,7 @@
 -- cursor, small tables in full. Shape = core PullResult (packages/core/src/sync-delta.ts).
 begin;
 \ir _helpers.psql
-select plan(36);
+select plan(37);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -220,7 +220,7 @@ insert into public.activities (id, household_id, name, name_key) values
 insert into public.activity_favorites (household_id, activity_id, member_id)
 values (tests.fx('home_a'), tests.fx('act_a'), tests.fx('enrico'));
 insert into public.activity_ratings (household_id, activity_id, member_id, stars)
-values (tests.fx('home_a'), tests.fx('act_a'), tests.fx('enrico'), 4);
+values (tests.fx('home_a'), tests.fx('act_a'), tests.fx('enrico'), 4.5);
 delete from public.activities where id = tests.fx('act_gone');
 delete from public.activity_favorites where activity_id = tests.fx('act_a');
 
@@ -233,8 +233,8 @@ select is(
 select is(
   (select array_agg((e ->> 'member_id') || ':' || (e ->> 'stars')) from jsonb_array_elements(
      tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'activity_ratings') e),
-  array[tests.fx('enrico') || ':4'],
-  'AC-020 sync_pull: activity ratings are pulled per person');
+  array[tests.fx('enrico') || ':4.5'],
+  'AC-020 sync_pull: activity ratings are pulled per person, half stars included (spec 0011, AC-017)');
 select is(
   jsonb_array_length(tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'activity_favorites'),
   0,
@@ -259,6 +259,26 @@ select is(
      tests.pull_full('home_b') -> 'households' -> tests.fx('home_b')::text -> 'rows' -> 'activities') e),
   array['Bouldern'],
   'AC-012 sync_pull: another household gets only its own activities');
+
+-- Spec 0011: a chore event reaches the device with the state before it (read-only for the client).
+select tests.clear_authentication();
+insert into fx (key) values ('chore_a'), ('event_a');
+insert into public.chores (id, household_id, title, recurrence, assignment, next_due_on)
+values (tests.fx('chore_a'), tests.fx('home_a'), 'Bad putzen', '{"type": "weekly", "every": 1, "weekdays": [5]}',
+        '{"type": "anyone"}', current_date);
+select tests.authenticate_as(tests.fx('enrico'));
+select public.apply_changes(tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
+  'kind', 'complete_chore', 'completion', jsonb_build_object(
+    'chore_id', tests.fx('chore_a'), 'event_id', tests.fx('event_a'), 'kind', 'done', 'done_on', current_date,
+    'done_by', tests.fx('enrico'), 'seen', jsonb_build_object('next_due_on', current_date),
+    'next_due_on', current_date + 7))));
+select is(
+  (select e - array['id', 'household_id', 'created_at', 'updated_at'] from jsonb_array_elements(
+     tests.pull_full('home_a') -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'chore_events') e),
+  jsonb_build_object('chore_id', tests.fx('chore_a'), 'title', 'Bad putzen', 'kind', 'done', 'done_on', current_date,
+                     'done_by', tests.fx('enrico'), 'prev_next_due_on', current_date, 'prev_last_done_on', null,
+                     'prev_next_assignee_id', null, 'prev_recorded', true),
+  'spec 0011 sync_pull: a chore event is pulled with the recorded state before it');
 
 -- The 2-minute safety window of the delta sync assumes no statement runs longer than 8 s.
 select ok(

@@ -380,6 +380,10 @@ export type Database = {
           household_id: string;
           id: string;
           kind: string;
+          prev_last_done_on: string | null;
+          prev_next_assignee_id: string | null;
+          prev_next_due_on: string | null;
+          prev_recorded: boolean;
           title: string;
           updated_at: string;
         };
@@ -392,6 +396,10 @@ export type Database = {
           household_id: string;
           id?: string;
           kind: string;
+          prev_last_done_on?: string | null;
+          prev_next_assignee_id?: string | null;
+          prev_next_due_on?: string | null;
+          prev_recorded?: boolean;
           title: string;
           updated_at?: string;
         };
@@ -403,6 +411,10 @@ export type Database = {
           household_id?: string;
           id?: string;
           kind?: string;
+          prev_last_done_on?: string | null;
+          prev_next_assignee_id?: string | null;
+          prev_next_due_on?: string | null;
+          prev_recorded?: boolean;
           title?: string;
           updated_at?: string;
         };
@@ -427,6 +439,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'households';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chore_events_prev_next_assignee_fkey';
+            columns: ['household_id', 'prev_next_assignee_id'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
           },
         ];
       };

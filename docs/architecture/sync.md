@@ -200,3 +200,30 @@ regelt die erste Spec mit Fotos.
   endgültig: Der Eintrag wird verworfen und blockiert die Warteschlange nicht.
 - **Speicher-Version 3:** Der Cache wird einmal neu geladen; Warteschlange, gewählter Haushalt und
   gewählter Markt des Geräts bleiben dabei erhalten.
+
+## Nachtrag Spec 0011 — Erledigungen mit Bedingung, Bewertungen in halben Schritten
+
+- **Erledigungen nur über Domänen-Operationen:** Mitglieder haben auf `chore_events` nur noch
+  `select` und `update (chore_id, done_by)`; `insert` und `delete` sind entzogen, und die
+  Allowlist von `apply_changes` erlaubt für `chore_events` weder `insert` noch `delete`. Gebucht
+  wird mit der Operation `complete_chore` (`{"kind": "complete_chore", "completion": {…}}`),
+  entfernt mit `remove_chore_event` (`{"kind": "remove_chore_event", "id": …}`). Beide laufen in
+  derselben Transaktion wie der Rest des Aufrufs; eine neue Aufgabe aus „Was anderes erledigt?“
+  geht als `insert` auf `chores` plus `complete_chore` in einen Aufruf.
+- **Bedingung statt „letzte Änderung gewinnt“:** `complete_chore` sperrt die Aufgabe und bucht nur,
+  wenn `next_due_on`, `last_done_on` und `next_assignee_id` noch dem gesehenen Stand (`seen`)
+  entsprechen. Sonst schreibt der Server nichts und antwortet `already_done` (P0001, `detail` mit
+  `done_by` und `done_at`), wenn es am selben Tag schon eine Erledigung gibt, sonst
+  `chore_changed` (P0001). Nächster Termin und nächste Person rechnet weiter `core`; der Server
+  prüft nur die Grenzen (Tag heute − 3 bis heute + 1 nach Server-Datum, Termin nach dem Tag, kein
+  Termin bei „bei Bedarf“).
+- **Der Stand davor liegt an der Erledigung:** `prev_next_due_on`, `prev_last_done_on`,
+  `prev_next_assignee_id` und `prev_recorded` setzt nur `complete_chore`, aus der gesperrten
+  Zeile. Sie kommen wie jede Spalte über den Delta-Abgleich auf die Geräte, werden aber nie
+  zurückgeschrieben. `remove_chore_event` stellt sie wieder her, wenn der Eintrag der zuletzt
+  gebuchte seiner noch vorhandenen Aufgabe ist (`created_at`, dann `id`). Entfernen gewinnt gegen
+  ein gleichzeitiges Ändern: Die spätere Änderung trifft keine Zeile mehr (`row_not_found`).
+- **Grenzen:** `remove_chore_event` zählt als eine Operation und eine Löschung.
+- **Bewertungen:** `stars` ist `numeric(2,1)` (0,5 bis 5 in halben Schritten). Die
+  `set_*_rating`-RPCs prüfen den ungerundeten Wert und schreiben immer, auch denselben Wert noch
+  einmal; `updated_at` der Bewertungszeile sagt damit, wann die Person zuletzt bewertet hat.
