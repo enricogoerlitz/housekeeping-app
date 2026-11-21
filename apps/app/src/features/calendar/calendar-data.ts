@@ -6,6 +6,7 @@ import {
   useHousehold,
   useMembers,
   useMembersById,
+  usePackingListBags,
   usePlanEntries,
   useRecipesById,
   useRestaurantsById,
@@ -15,6 +16,7 @@ import {
   absenceStripes,
   entriesForDay,
   householdRow,
+  stripeHasPackingList,
   type AbsenceStripe,
   type HouseholdRowItem,
   type Id,
@@ -39,6 +41,7 @@ export function useCalendarData() {
   const absences = useAbsences();
   const chores = useChores();
   const events = useChoreEvents();
+  const listBags = usePackingListBags();
 
   const slots = useMemo(
     () => [...household.mealSlots].sort((a, b) => a.sort - b.sort),
@@ -74,6 +77,8 @@ export function useCalendarData() {
     titleOf: (entry: MealPlanEntry) =>
       entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
     slotName: (slotId: Id) => slots.find((slot) => slot.id === slotId)?.name ?? '',
+    /** The stripe carries the bag icon: one of its absences has a packing list (spec 0012, AC-046). */
+    hasPackingList: (stripe: AbsenceStripe) => stripeHasPackingList(stripe, listBags),
     /** The household row from…to (both inclusive), by date. */
     householdRow: (from: ISODate, to: ISODate): Record<ISODate, HouseholdRowItem[]> =>
       householdRow({ chores, events, members, from, to, today }),

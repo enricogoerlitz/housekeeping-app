@@ -38,12 +38,20 @@ export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, M
     : { edge: theme.colors.textMuted, fill: theme.colors.surfaceSunken };
 }
 
-/** Screen-reader text of a stripe: "Enrico abwesend, Urlaub Mallorca, 1.–4. Jan". */
-export function stripeA11y(stripe: AbsenceStripe, membersById: Record<Id, Member>): string {
+/**
+ * Screen-reader text of a stripe: "Enrico abwesend, Urlaub Mallorca, 1.–4. Jan", with a packing
+ * list ", mit Packliste" (spec 0012, AC-046).
+ */
+export function stripeA11y(
+  stripe: AbsenceStripe,
+  membersById: Record<Id, Member>,
+  hasPackingList = false,
+): string {
   return [
     `${stripeWho(stripe, membersById)} abwesend`,
     stripe.note,
     dateRangeLabel(stripe.from, stripe.to),
+    hasPackingList ? 'mit Packliste' : undefined,
   ]
     .filter(Boolean)
     .join(', ');
@@ -64,8 +72,8 @@ export function StripeBadges(props: { stripe: AbsenceStripe; members: Member[] }
 }
 
 /**
- * One absence as a stripe: badges, note and end ("(E) Urlaub Mallorca · bis Mo 4.1."). A tap
- * opens "Abwesenheit bearbeiten" (AC-032).
+ * One absence as a stripe: badges, note and end ("(E) Urlaub Mallorca · bis Mo 4.1."), the bag
+ * icon when it has a packing list. A tap opens its Urlaubsseite (spec 0012, AC-016, AC-046).
  */
 export function AbsenceStripeView(props: {
   stripe: AbsenceStripe;
@@ -82,12 +90,14 @@ export function AbsenceStripeView(props: {
   const { stripe, data } = props;
   const colors = useStripeColors(stripe, data.membersById);
   const text = `${stripeText(stripe)}${props.separator ?? ' '}${absenceEndLabel(stripe.to)}`;
+  const testID = props.testID ?? `absence-stripe-${stripe.absenceIds[0] ?? ''}`;
+  const packing = data.hasPackingList(stripe);
   return (
     <Pressable
-      testID={props.testID ?? `absence-stripe-${stripe.absenceIds[0] ?? ''}`}
+      testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={stripeA11y(stripe, data.membersById)}
-      accessibilityHint="Abwesenheit bearbeiten"
+      accessibilityLabel={stripeA11y(stripe, data.membersById, packing)}
+      accessibilityHint="Urlaubsseite öffnen"
       onPress={() => props.onPress(stripe)}
       style={(state) => ({
         flexDirection: 'row',
@@ -110,6 +120,11 @@ export function AbsenceStripeView(props: {
       <Text variant="caption" numberOfLines={1} style={{ flexShrink: 1, color: theme.colors.text }}>
         {text}
       </Text>
+      {packing ? (
+        <View testID={`${testID}-bag`}>
+          <Icon name="luggage" size={14} color="muted" />
+        </View>
+      ) : null}
       {props.continuesAfter ? <Icon name="chevron-right" size={14} color="muted" /> : null}
     </Pressable>
   );

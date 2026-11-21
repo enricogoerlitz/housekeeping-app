@@ -643,7 +643,8 @@ Wenn        ich zu KW 1 blättere
 Dann        stehen beide Beschriftungen am Montag, 4.1., erneut
 ```
 
-**AC-032 — Tipp auf den Streifen**
+**AC-032 — Tipp auf den Streifen** (ersetzt durch Spec 0012, AC-016: der Tipp öffnet die
+Urlaubsseite; bearbeitet wird dort über ✎)
 
 ```gherkin
 Angenommen  der Streifen „(N) Urlaub Mallorca · bis Do 7.1.“
@@ -735,7 +736,8 @@ Wenn        ich sie erneut öffne, Nadja und Lena dazu wähle und speichere
 Dann        gibt es statt Enricos Abwesenheit genau eine für den ganzen Haushalt vom 1. bis 5.1.
 ```
 
-**AC-037 — Seite „Abwesenheiten“**
+**AC-037 — Seite „Abwesenheiten“** (geändert durch Spec 0012, AC-038: eine Abwesenheit mit
+Packliste löscht die Seite erst nach einem Dialog, der die Packliste nennt, ohne „Rückgängig“)
 
 ```gherkin
 Angenommen  Nadja ist vom 16. bis 24.11.2026 auf „Dienstreise Hamburg“, der ganze Haushalt vom
@@ -750,7 +752,8 @@ Wenn        ich „Rückgängig“ wähle
 Dann        ist die Dienstreise wieder da
 ```
 
-**AC-038 — Ein Ort, zwei Wege** (ändert Spec 0005, AC-058, im Aufbau der Seite)
+**AC-038 — Ein Ort, zwei Wege** (ändert Spec 0005, AC-058, im Aufbau der Seite; der letzte Schritt
+ist ersetzt durch Spec 0012, AC-016: der Tipp öffnet die Urlaubsseite)
 
 ```gherkin
 Angenommen  Nadjas Dienstreise aus AC-037

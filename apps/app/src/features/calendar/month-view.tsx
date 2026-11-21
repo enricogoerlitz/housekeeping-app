@@ -34,7 +34,7 @@ export interface MonthViewProps {
   wide: boolean;
   onAdd: (target: AddTarget) => void;
   onOpenEntry: (entry: MealPlanEntry) => void;
-  onEditStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: AbsenceStripe) => void;
   /** "Tag öffnen ›": the week with that day (AC-012). */
   onOpenDay: (date: ISODate) => void;
 }
@@ -230,7 +230,7 @@ function MonthPhone(props: MonthViewProps) {
             key={stripe.key}
             stripe={stripe}
             data={data}
-            onPress={props.onEditStripe}
+            onPress={props.onOpenStripe}
           />
         ))}
         {props.showHousehold && selectedChores.length > 0 ? (
@@ -290,7 +290,7 @@ function DayMore(props: MonthViewProps & { date: ISODate; more: number }) {
               data={data}
               onPress={(chosen) => {
                 close();
-                props.onEditStripe(chosen);
+                props.onOpenStripe(chosen);
               }}
             />
           ))}
@@ -418,7 +418,7 @@ function MonthGridDesktop(props: MonthViewProps) {
                     separator=" · "
                     continuesBefore={segment.continuesBefore}
                     continuesAfter={segment.continuesAfter}
-                    onPress={props.onEditStripe}
+                    onPress={props.onOpenStripe}
                   />
                 </View>
               </View>

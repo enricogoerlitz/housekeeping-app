@@ -1,5 +1,15 @@
-import { saveAbsences, useCurrentMember, useMembers, useToday } from '@housekeeping/api';
 import {
+  saveAbsences,
+  useAbsences,
+  useCurrentMember,
+  useMembers,
+  usePackingBagItems,
+  usePackingBags,
+  usePackingList,
+  useToday,
+} from '@housekeeping/api';
+import {
+  droppedPackingListMessage,
   formatPickerDate,
   inRange,
   monthGrid,
@@ -7,10 +17,14 @@ import {
   openRangeField,
   parseISODate,
   pickRangeDate,
+  planAbsenceWrite,
+  planPackingLists,
+  saveLabel,
   shiftPeriod,
   startOfMonth,
   validateAbsenceDraft,
   type AbsenceStripe,
+  type Id,
   type ISODate,
   type RangePick,
 } from '@housekeeping/core';
@@ -29,14 +43,21 @@ import {
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { messageOf } from '@/features/packing/packing-labels';
+import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { useOnlineOnly } from '@/features/shell/offline';
+
+import { AbsenceBagChips } from './absence-bag-chips';
 
 const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /**
  * "Abwesenheit eintragen" and "Abwesenheit bearbeiten" (spec 0010, REQ-010; D23): who, from, to
  * and a note. All members chosen is the whole household, otherwise one absence per person.
- * Editing a stripe edits all absences it stands for, in one change.
+ * Editing a stripe edits all absences it stands for, in one change. Entering one also offers the
+ * Reisetaschen; "Speichern · 21 Packstücke" creates the absence and its packing list in one call
+ * (spec 0012, AC-011 to AC-015). Editing keeps the packing list; when a person's absence goes
+ * away with its own list, a dialog names that list before anything is saved (decision 8).
  */
 export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => void }) {
   const members = useMembers();
@@ -59,6 +80,12 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
   });
   const [month, setMonth] = useState<ISODate>(startOfMonth(editing?.from ?? today));
   const [note, setNote] = useState(editing?.note ?? '');
+  const [bagIds, setBagIds] = useState<Id[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const absences = useAbsences();
+  const bags = usePackingBags();
+  const bagItems = usePackingBagItems();
+  const packingList = usePackingList(editing?.absenceIds ?? []);
 
   const problems = validateAbsenceDraft({ memberIds: who, from: range.from, to: range.to });
   // While "Bis" is being chosen right after "Von", the old "Bis" is not a mistake yet (AC-042).
@@ -76,8 +103,35 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
     setMonth(startOfMonth(range[field]));
   };
 
+  // What saving would write, as saveAbsences plans it: the Packstücke of the new packing lists
+  // for the button, and the lists that would go with a removed absence for the dialog.
+  const plan = planAbsenceWrite({
+    existing: editing ? absences.filter((absence) => editing.absenceIds.includes(absence.id)) : [],
+    memberIds: who,
+    allMemberIds: members.map((member) => member.id),
+    from: range.from,
+    to: range.to,
+    packingList,
+  });
+  const newItemCount =
+    editing || bagIds.length === 0
+      ? 0
+      : planPackingLists({
+          absences: plan.create.map((row, index) => ({ id: `draft-${index}`, ...row })),
+          bagIds,
+          bags,
+          bagItems,
+          newId: () => 'draft',
+        }).items.length;
+  const droppedMessage = droppedPackingListMessage(plan.droppedPackingLists, members);
+
   const save = () => {
     if (online.disabled || problems.noOne || problems.toBeforeFrom) return;
+    if (droppedMessage && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
     try {
       saveAbsences({
         replaceIds: editing?.absenceIds ?? [],
@@ -85,9 +139,10 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
         from: range.from,
         to: range.to,
         note: note.trim() || undefined,
+        bagIds: editing ? undefined : bagIds,
       });
-    } catch {
-      toast.show({ message: 'Hat nicht geklappt – bitte noch einmal versuchen' });
+    } catch (failure) {
+      toast.show({ message: messageOf(failure) });
       return;
     }
     toast.show({ message: editing ? 'Abwesenheit geändert' : 'Abwesenheit eingetragen' });
@@ -103,7 +158,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       size="m"
       footer={
         <Button
-          label="Speichern"
+          label={saveLabel(newItemCount)}
           icon="check"
           full
           onPress={save}
@@ -171,7 +226,21 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
         <Text variant="small" color="muted">
           Wer weg ist, fehlt bei „Wer isst mit?“.
         </Text>
+        {editing ? null : (
+          <AbsenceBagChips selected={bagIds} onChange={setBagIds} disabled={online.disabled} />
+        )}
       </Stack>
+      {confirming && droppedMessage ? (
+        <TripConfirmDialog
+          title="Abwesenheit ändern?"
+          message={droppedMessage}
+          confirmLabel="Speichern"
+          needsNetwork
+          onConfirm={save}
+          onCancel={() => setConfirming(false)}
+          testID="absence-drop-dialog"
+        />
+      ) : null}
     </Sheet>
   );
 }

@@ -9,7 +9,7 @@ import {
   type AbsenceStripe,
   type ISODate,
 } from '@housekeeping/core';
-import { List, ListRow, Section, Text, useTheme } from '@housekeeping/ui';
+import { Icon, List, ListRow, Section, Text, useTheme } from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
 import { StripeBadges, stripeA11y } from './calendar-parts';
@@ -20,7 +20,7 @@ export interface YearViewProps {
   year: number;
   columns: number;
   onOpenMonth: (monthStart: ISODate) => void;
-  onEditStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: AbsenceStripe) => void;
 }
 
 const WEEKDAY_INITIALS = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
@@ -81,8 +81,19 @@ export function YearView(props: YearViewProps) {
                     .join(' · ')}
                   subtitle={stripe.household ? undefined : stripeWho(stripe, data.membersById)}
                   leading={<StripeBadges stripe={stripe} members={data.members} />}
-                  accessibilityLabel={stripeA11y(stripe, data.membersById)}
-                  onPress={() => props.onEditStripe(stripe)}
+                  trailing={
+                    data.hasPackingList(stripe) ? (
+                      <View testID={`year-absence-${stripe.absenceIds[0] ?? ''}-bag`}>
+                        <Icon name="luggage" size={16} color="muted" />
+                      </View>
+                    ) : undefined
+                  }
+                  accessibilityLabel={stripeA11y(
+                    stripe,
+                    data.membersById,
+                    data.hasPackingList(stripe),
+                  )}
+                  onPress={() => props.onOpenStripe(stripe)}
                   testID={`year-absence-${stripe.absenceIds[0] ?? ''}`}
                 />
               ))}

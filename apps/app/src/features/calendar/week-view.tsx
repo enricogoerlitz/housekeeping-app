@@ -27,7 +27,7 @@ export interface WeekViewProps {
   wide: boolean;
   onAdd: (target: AddTarget) => void;
   onOpenEntry: (entry: MealPlanEntry) => void;
-  onEditStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: AbsenceStripe) => void;
 }
 
 const LABEL_WIDTH = 92;
@@ -168,7 +168,7 @@ function WeekGrid(props: WeekViewProps) {
                     separator=" · "
                     continuesBefore={segment.continuesBefore}
                     continuesAfter={segment.continuesAfter}
-                    onPress={props.onEditStripe}
+                    onPress={props.onOpenStripe}
                   />
                 </View>
               </View>
@@ -289,7 +289,7 @@ function WeekList(props: WeekViewProps) {
                   key={stripe.key}
                   stripe={stripe}
                   data={data}
-                  onPress={props.onEditStripe}
+                  onPress={props.onOpenStripe}
                 />
               ))}
               {props.showHousehold && dayChores.length > 0 ? (

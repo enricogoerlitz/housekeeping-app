@@ -83,7 +83,7 @@ export function CalendarScreen() {
   const [adding, setAdding] = useState<AddTarget | undefined>();
   const [openEntry, setOpenEntry] = useState<MealPlanEntry | undefined>();
   const [pantryCheck, setPantryCheck] = useState(false);
-  const [absence, setAbsence] = useState<{ stripe?: AbsenceStripe } | undefined>();
+  const [newAbsence, setNewAbsence] = useState(false);
 
   const show = (nextView: CalendarView, nextStart: ISODate) => {
     setView(nextView);
@@ -149,7 +149,7 @@ export function CalendarScreen() {
         householdRow: { ...settings.householdRow, [view]: !householdOn },
       });
     } else if (action === 'absence-new') {
-      if (!online.disabled) setAbsence({});
+      if (!online.disabled) setNewAbsence(true);
     } else {
       router.navigate('/abwesenheiten');
     }
@@ -246,6 +246,11 @@ export function CalendarScreen() {
   );
 
   const onAdd = (target: AddTarget) => setAdding(target);
+  // A stripe leads to its Urlaubsseite (spec 0012, AC-016, AC-046); editing happens there (✎).
+  const openStripe = (stripe: AbsenceStripe) => {
+    const id = stripe.absenceIds[0];
+    if (id) router.push({ pathname: '/kalender/urlaub/[id]', params: { id } });
+  };
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
   const lastSlotId = data.slots[data.slots.length - 1]?.id;
 
@@ -264,7 +269,7 @@ export function CalendarScreen() {
           wide={isWide}
           onAdd={onAdd}
           onOpenEntry={setOpenEntry}
-          onEditStripe={(stripe) => setAbsence({ stripe })}
+          onOpenStripe={openStripe}
         />
       ) : null}
       {view === 'month' ? (
@@ -277,7 +282,7 @@ export function CalendarScreen() {
           wide={isWide}
           onAdd={onAdd}
           onOpenEntry={setOpenEntry}
-          onEditStripe={(stripe) => setAbsence({ stripe })}
+          onOpenStripe={openStripe}
           onOpenDay={(date) => show('week', periodStart('week', date))}
         />
       ) : null}
@@ -287,7 +292,7 @@ export function CalendarScreen() {
           year={Number(start.slice(0, 4))}
           columns={isPhone ? 3 : bp === 'desktop' ? 4 : 3}
           onOpenMonth={(monthStart) => show('month', monthStart)}
-          onEditStripe={(stripe) => setAbsence({ stripe })}
+          onOpenStripe={openStripe}
         />
       ) : null}
       {view === 'week' ? (
@@ -335,9 +340,7 @@ export function CalendarScreen() {
       {pantryCheck ? (
         <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
       ) : null}
-      {absence ? (
-        <AbsenceSheet stripe={absence.stripe} onClose={() => setAbsence(undefined)} />
-      ) : null}
+      {newAbsence ? <AbsenceSheet onClose={() => setNewAbsence(false)} /> : null}
     </Screen>
   );
 }
