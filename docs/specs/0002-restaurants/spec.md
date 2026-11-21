@@ -210,9 +210,9 @@ Keine personenbezogenen Daten über die beiden Mitglieder hinaus.
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test                                                                                                                         |
-| ------- | ----------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| REQ-001 | AC-001, AC-002    | 3              | `e2e/rundgang-restaurants.spec.ts`                                                                                           |
-| REQ-002 | AC-003 bis AC-009 | 1–3            | `packages/core/src/restaurants.test.ts`, `packages/api/src/commands-restaurants.test.ts`, `e2e/rundgang-restaurants.spec.ts` |
-| REQ-003 | AC-010            | 2, 3           | `packages/api/src/commands-restaurants.test.ts`, `e2e/rundgang-restaurants.spec.ts`                                          |
-| REQ-004 | AC-011 bis AC-013 | 1–3            | `packages/core/src/restaurants.test.ts`, `packages/api/src/commands-plan.test.ts`, `e2e/rundgang-restaurants.spec.ts`        |
+| REQ     | AC                | Task (plan.md) | Test                                                                                                                                 |
+| ------- | ----------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| REQ-001 | AC-001, AC-002    | 3              | `e2e/rundgang-restaurants.spec.ts`                                                                                                   |
+| REQ-002 | AC-003 bis AC-009 | 1–3            | `packages/core/src/restaurants.test.ts`, `packages/api/src/commands-restaurants.backend.test.ts`, `e2e/rundgang-restaurants.spec.ts` |
+| REQ-003 | AC-010            | 2, 3           | `packages/api/src/commands-restaurants.backend.test.ts`, `e2e/rundgang-restaurants.spec.ts`                                          |
+| REQ-004 | AC-011 bis AC-013 | 1–3            | `packages/core/src/restaurants.test.ts`, `packages/api/src/commands-plan.backend.test.ts`, `e2e/rundgang-restaurants.spec.ts`        |

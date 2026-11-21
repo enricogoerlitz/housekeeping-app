@@ -33,12 +33,13 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { RestaurantsPanel } from '@/features/restaurants/restaurants-panel';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
@@ -419,19 +420,6 @@ export function RecipesScreen() {
       {listBody}
       {sheets}
     </Screen>
-  );
-}
-
-function ScrollColumn(props: { children: ReactNode }) {
-  return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 96 }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {props.children}
-    </ScrollView>
   );
 }
 

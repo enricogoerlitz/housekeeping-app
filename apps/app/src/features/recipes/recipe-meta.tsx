@@ -10,7 +10,7 @@ import {
 import { Badge, Icon, Row, Text } from '@housekeeping/ui';
 
 /** "1,5" → shown with one decimal at most. */
-export function formatRating(value: number): string {
+function formatRating(value: number): string {
   return formatQty(Math.round(value * 10) / 10);
 }
 
@@ -18,7 +18,7 @@ export function formatRating(value: number): string {
  * Short diet hint for a recipe card: the default variant's diet when it is plant-based,
  * otherwise whether another variant would fit ("vegetarisch möglich"). Undefined when neither.
  */
-export function dietHint(recipe: Recipe, articlesById: Record<Id, Article>): string | undefined {
+function dietHint(recipe: Recipe, articlesById: Record<Id, Article>): string | undefined {
   if (recipe.ingredients.length === 0) return undefined;
   const diet = deriveRecipeDiet(recipe, undefined, articlesById);
   if (diet === 'vegan') return 'vegan';

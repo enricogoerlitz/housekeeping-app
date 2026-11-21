@@ -18,7 +18,7 @@ export interface Dictation {
   dismissError(): void;
 }
 
-/** Real dictation (backend mode, web): microphone → Azure Speech, interim transcript shown live. */
+/** Dictation (web): microphone → Azure Speech, interim transcript shown live. */
 export function useDictation(): Dictation {
   const [status, setStatus] = useState<DictationStatus>('idle');
   const [transcript, setTranscript] = useState('');

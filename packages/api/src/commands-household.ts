@@ -17,9 +17,9 @@ import {
   commit,
   getData,
   getState,
-  isBackendMode,
   newId,
   nowISO,
+  queueStoreAction,
   rememberActiveHousehold,
   setState,
   simulateOffline,
@@ -29,10 +29,10 @@ import { TransportError, type Transport } from './transport';
 
 // Write side: every change to the data goes through a command. The assistant uses the same
 // commands as the screens (see assistant.ts), so there is exactly one implementation per action.
-// In backend mode each command is one change sent to the server (ADR-0011): `commit` with the
-// diff path, an own RPC, or the store queue.
+// Each command is one change sent to the server (ADR-0011): `commit` with the diff path, an own
+// RPC, or the store queue.
 
-/** Shows another household; in backend mode the choice is kept for the next start. */
+/** Shows another household; the choice is kept on the device for the next start. */
 export function switchHousehold(householdId: Id): void {
   setState((state) =>
     state.households[householdId] ? { ...state, activeHouseholdId: householdId } : state,
@@ -40,35 +40,9 @@ export function switchHousehold(householdId: Id): void {
   if (getState().activeHouseholdId === householdId) rememberActiveHousehold(householdId);
 }
 
-/** Demo only: who is using the app. With the backend it is always the signed-in person. */
-export function setCurrentMember(memberId: Id): void {
-  if (isBackendMode()) throw new Error('The current member is the signed-in user.');
-  setState((state) => ({ ...state, currentMemberId: memberId }));
-}
-
-/**
- * Demo switch for the offline state. Going back online "syncs": the markers on items that were
- * changed offline disappear.
- */
+/** The offline switch (dev and e2e): blocks the transport, so the app behaves as without network. */
 export function setOffline(offline: boolean): void {
-  // Backend mode: the switch blocks the transport, so the app behaves as without network.
-  if (isBackendMode()) {
-    simulateOffline(offline);
-    return;
-  }
-  setState((state) => ({ ...state, offline }));
-  if (!offline) {
-    updateData((data) =>
-      data.items.some((item) => item.pendingSync)
-        ? {
-            ...data,
-            items: data.items.map((item) =>
-              item.pendingSync ? { ...item, pendingSync: undefined } : item,
-            ),
-          }
-        : data,
-    );
-  }
+  simulateOffline(offline);
 }
 
 /**
@@ -81,7 +55,7 @@ export function resolveArticle(name: string): { article: Article; created: boole
   const existing = findArticleByName(trimmed, getData().articles);
   if (existing) return { article: existing, created: false };
   const article: Article = {
-    id: newId('art'),
+    id: newId(),
     name: trimmed,
     synonyms: [],
     diet: 'unknown',
@@ -93,38 +67,20 @@ export function resolveArticle(name: string): { article: Article; created: boole
 
 type ArticlePatch = Partial<Pick<Article, 'areaId' | 'isPantry' | 'diet' | 'synonyms'>>;
 
-function patchArticle(articleId: Id, patch: ArticlePatch): void {
-  updateData((data) => ({
-    ...data,
-    articles: data.articles.map((article) =>
-      article.id === articleId ? { ...article, ...patch } : article,
-    ),
-  }));
-}
-
 export function updateArticle(articleId: Id, patch: ArticlePatch): void {
-  commit({ path: 'diff' }, () => patchArticle(articleId, patch));
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      articles: data.articles.map((article) =>
+        article.id === articleId ? { ...article, ...patch } : article,
+      ),
+    })),
+  );
 }
 
 /** Assigning an area applies to the article from now on, on every list. A store action. */
 export function assignArticleArea(articleId: Id, areaId: Id | undefined): void {
-  commit({ path: 'queue', action: { kind: 'assignArea', articleId, areaId: areaId ?? null } }, () =>
-    patchArticle(articleId, { areaId }),
-  );
-}
-
-export function addAbsence(input: {
-  memberId?: Id;
-  from: ISODate;
-  to: ISODate;
-  note?: string;
-}): Id {
-  if (input.to < input.from) throw new Error('Das Ende liegt vor dem Anfang.');
-  return commit({ path: 'diff' }, () => {
-    const absence: Absence = { id: newId('abs'), ...input };
-    updateData((data) => ({ ...data, absences: [...data.absences, absence] }));
-    return absence.id;
-  });
+  queueStoreAction({ kind: 'assignArea', articleId, areaId: areaId ?? null });
 }
 
 /**
@@ -158,7 +114,7 @@ export function saveAbsences(input: {
       const kept = current.absences
         .filter((absence) => !plan.removeIds.includes(absence.id))
         .map((absence) => updated.get(absence.id) ?? absence);
-      const created: Absence[] = plan.create.map((row) => ({ id: newId('abs'), ...row }));
+      const created: Absence[] = plan.create.map((row) => ({ id: newId(), ...row }));
       return { ...current, absences: [...kept, ...created] };
     }),
   );
@@ -174,15 +130,6 @@ export function removeAbsences(absenceIds: Id[]): void {
   );
 }
 
-export function removeAbsence(absenceId: Id): void {
-  commit({ path: 'diff', maxDeletes: { absences: 1 } }, () =>
-    updateData((data) => ({
-      ...data,
-      absences: data.absences.filter((absence) => absence.id !== absenceId),
-    })),
-  );
-}
-
 export function addFeedback(input: {
   kind: FeedbackEntry['kind'];
   text: string;
@@ -192,7 +139,7 @@ export function addFeedback(input: {
   if (!text) throw new Error('Der Text fehlt.');
   return commit({ path: 'diff' }, () => {
     const entry: FeedbackEntry = {
-      id: newId('fb'),
+      id: newId(),
       kind: input.kind,
       text,
       status: 'new',
@@ -269,7 +216,6 @@ export function starterPayload() {
 
 /** One RPC, then a pull; a refusal becomes a German message (offline: OfflineError). */
 async function householdRpc<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
-  if (!isBackendMode()) throw new Error('Haushalte gibt es nur mit Anmeldung.');
   try {
     return await householdCall(send);
   } catch (error) {

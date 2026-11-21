@@ -1,8 +1,9 @@
-// Chore commands in backend mode (spec 0003): all on the diff path; completing a one-off chore
+// Chore commands (spec 0003): all on the diff path; completing a one-off chore
 // declares its delete; "Rückgängig" (today list, chore sheet) sends the inverse.
-import { describe, expect, it } from 'vitest';
+import { choreBucket } from '@housekeeping/core';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { H, withBackend } from './backend-test-helpers';
+import { H, TODAY, withBackend } from './backend-test-helpers';
 import {
   completeChore,
   createChore,
@@ -108,5 +109,51 @@ describe('chores (diff path)', () => {
     expect(fx.calls.map((call) => call.fn)).toEqual(Array(3).fill('applyChanges'));
     expect(fx.server.row(H, 'chores', choreId)).toMatchObject({ title: 'Staubsaugen' });
     expect(fx.server.row(H, 'chore_events', eventId)).toMatchObject({ done_by: NADJA });
+  });
+});
+
+describe('chore commands: local effect', () => {
+  beforeEach(async () => {
+    await fx.startEnrico();
+  });
+
+  it('AC-035: checking "Bad putzen" removes it from today and logs Enrico today', () => {
+    const eventId = completeChore('chore-bad');
+    const data = getData();
+    const bathroom = data.chores.find((chore) => chore.id === 'chore-bad');
+    expect(bathroom && choreBucket(bathroom, TODAY)).not.toBe('today');
+    expect(bathroom?.lastDoneOn).toBe(TODAY);
+    expect(data.choreEvents.find((event) => event.id === eventId)).toMatchObject({
+      title: 'Bad putzen',
+      doneBy: ENRICO,
+      doneOn: TODAY,
+      kind: 'done',
+    });
+
+    if (!eventId) throw new Error('no event');
+    reassignChoreEvent(eventId, NADJA);
+    expect(getData().choreEvents.find((event) => event.id === eventId)?.doneBy).toBe(NADJA);
+  });
+
+  it('hands a rotating chore to the next member and drops one-off chores', () => {
+    completeChore('chore-muell', NADJA);
+    expect(choreById('chore-muell')?.nextAssigneeId).toBe(ENRICO);
+    completeChore('chore-gluehbirne');
+    expect(choreById('chore-gluehbirne')).toBeUndefined();
+    expect(completeChore('chore-weg')).toBeNull();
+  });
+
+  it('AC-036: "Staubsaugen" weekly on Saturday, rotating, is due this week; no title fails', () => {
+    const id = createChore({
+      title: 'Staubsaugen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'rotating', memberIds: [ENRICO, NADJA] },
+    });
+    const chore = choreById(id);
+    expect(chore).toMatchObject({ nextDueOn: '2026-11-21', nextAssigneeId: ENRICO });
+    expect(chore && choreBucket(chore, TODAY)).toBe('thisWeek');
+    expect(() =>
+      createChore({ title: ' ', recurrence: { type: 'once' }, assignment: { type: 'anyone' } }),
+    ).toThrow('Titel fehlt');
   });
 });

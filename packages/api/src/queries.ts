@@ -9,14 +9,14 @@ import {
   type Store,
 } from '@housekeeping/core';
 
-import { getData, getState, useAppSelector, useDataSelector } from './store';
+import { useAppSelector, useDataSelector } from './store';
 
 // Read side of the data interface. Every hook returns stored references, so components only
 // re-render when that slice changed. Derived values are computed in core functions by the caller.
 
 export const useToday = () => useAppSelector((state) => state.today);
 export const useOffline = () => useAppSelector((state) => state.offline);
-export const useAllMembers = () => useAppSelector((state) => state.members);
+const useAllMembers = () => useAppSelector((state) => state.members);
 export const useCurrentMemberId = () => useAppSelector((state) => state.currentMemberId);
 export const useActiveHouseholdId = () => useAppSelector((state) => state.activeHouseholdId);
 /** All households the current person belongs to (for the household switcher). */
@@ -115,7 +115,3 @@ export function useCurrentMember(): Member {
   if (!member) throw new Error('No members');
   return member;
 }
-
-// Non-reactive reads for commands and event handlers.
-export const readData = getData;
-export const readState = getState;

@@ -35,7 +35,7 @@ import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 import { ACTIVITY_ICON } from './activity-photo';
 
 /** activities_name_length. */
-export const ACTIVITY_NAME_MAX_LENGTH = 120;
+const ACTIVITY_NAME_MAX_LENGTH = 120;
 
 /** What happens with the photo when the form is saved. */
 export type PhotoChoice =

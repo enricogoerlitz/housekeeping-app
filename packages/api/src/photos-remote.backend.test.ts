@@ -1,4 +1,4 @@
-// Own photos in backend mode (spec 0004, REQ-004): upload to the household's folder, then the path
+// Own photos (spec 0004, REQ-004): upload to the household's folder, then the path
 // on the diff path, then the old file goes; nothing is left behind when a step fails. Photos once
 // loaded are kept in the device storage (bound to the user) and shown offline.
 import { describe, expect, it, vi } from 'vitest';

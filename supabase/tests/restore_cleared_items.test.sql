@@ -3,7 +3,7 @@
 -- contributions.
 begin;
 \ir _helpers.psql
-select plan(24);
+select plan(33);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -157,6 +157,74 @@ select throws_ok(
   format('select public.restore_cleared_items(%L, %L)', tests.fx('home_a'),
          (select jsonb_agg(tests.cleared(1) -> 0) from generate_series(1, 1001))),
   '22023', 'too_many_changes', 'AC-035 restore_cleared_items: more than 1000 items are rejected');
+
+-- ===================== Size limits (security check) =====================
+-- Every clear stays undoable in one call: restore takes ≤ 1000 items and ≤ 5000 contributions,
+-- and a clear that would return more is refused before anything is deleted.
+select throws_ok(
+  format('select public.restore_cleared_items(%L, %L)', tests.fx('home_a'),
+         jsonb_build_array(jsonb_build_object(
+           'item', tests.cleared(1) -> 0 -> 'item',
+           'contributions', (select jsonb_agg(tests.cleared(1) -> 0 -> 'contributions' -> 0)
+                             from generate_series(1, 5001))))),
+  '22023', 'too_many_changes', 'restore_cleared_items: more than 5000 contributions are rejected');
+
+select tests.clear_authentication();
+insert into fx (key, id) values ('home_c', tests.create_household('C', array[tests.fx('enrico')]));
+insert into public.articles (id, household_id, name, name_key)
+select ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, tests.fx('home_c'), 'Artikel ' || n, 'artikel ' || n
+from generate_series(1, 1001) n;
+insert into public.shopping_items (household_id, article_id, checked, checked_at)
+select tests.fx('home_c'), ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, true, now()
+from generate_series(1, 1001) n;
+select tests.authenticate_as(tests.fx('enrico'));
+select throws_ok(
+  format('select public.clear_checked_items(%L)', tests.fx('home_c')),
+  '22023', 'too_many_changes', 'clear_checked_items: more than 1000 checked items are refused');
+select throws_ok(
+  format('select public.clear_shopping_list(%L)', tests.fx('home_c')),
+  '22023', 'too_many_changes', 'clear_shopping_list: more than 1000 items are refused');
+select is(
+  (select count(*)::int from public.shopping_items where household_id = tests.fx('home_c')), 1001,
+  'a refused clear deletes nothing');
+
+-- 1000 items fit; then two items with 2501 contributions each are too many.
+select tests.clear_authentication();
+update public.shopping_items set checked = false, checked_at = null
+where household_id = tests.fx('home_c')
+  and article_id = '00000000-0000-4000-8000-000000001001';
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  jsonb_array_length(public.clear_checked_items(tests.fx('home_c'))), 1000,
+  'clear_checked_items: 1000 checked items are cleared');
+select is(
+  jsonb_array_length(public.clear_shopping_list(tests.fx('home_c'))), 1,
+  'clear_shopping_list: the remaining item is cleared');
+
+select tests.clear_authentication();
+insert into public.shopping_items (id, household_id, article_id, checked, checked_at)
+select ('00000000-0000-4000-9000-' || lpad(n::text, 12, '0'))::uuid, tests.fx('home_c'),
+       ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, true, now()
+from generate_series(1, 2) n;
+insert into public.shopping_contributions (household_id, item_id, source, count)
+select tests.fx('home_c'), ('00000000-0000-4000-9000-' || lpad((1 + n % 2)::text, 12, '0'))::uuid,
+       '{"kind": "manual"}', 1
+from generate_series(1, 5002) n;
+select tests.authenticate_as(tests.fx('enrico'));
+select throws_ok(
+  format('select public.clear_checked_items(%L)', tests.fx('home_c')),
+  '22023', 'too_many_changes', 'clear_checked_items: more than 5000 contributions are refused');
+select throws_ok(
+  format('select public.clear_shopping_list(%L)', tests.fx('home_c')),
+  '22023', 'too_many_changes', 'clear_shopping_list: more than 5000 contributions are refused');
+select tests.clear_authentication();
+delete from public.shopping_contributions
+where id in (select id from public.shopping_contributions where household_id = tests.fx('home_c') limit 2);
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  (select count(*)::int from jsonb_array_elements(public.clear_shopping_list(tests.fx('home_c'))) e
+   cross join lateral jsonb_array_elements(e -> 'contributions') c), 5000,
+  'clear_shopping_list: 5000 contributions are cleared, and the result restores in one call');
 
 -- ===================== Foreign household, anon =====================
 select tests.authenticate_as(tests.fx('ben'));

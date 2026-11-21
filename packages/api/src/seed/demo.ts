@@ -29,11 +29,12 @@ import {
 import { starterAreas } from '../starter/areas';
 import { starterCatalog } from '../starter/catalog';
 import type { AreaKey, SeedRecipe } from '../starter/types';
-import { registerInitialState, type AppState, type HouseholdData } from '../store';
+import type { AppState, HouseholdData } from '../store';
 import { seedRecipes } from './recipes-data';
 
-// The demo household of spec 0001. Everything is relative to "today", so the current week is
-// always filled, whenever the app is opened.
+// The sample households "Enrico & Nadja" and "Test": the source of the local seed
+// (`pnpm db:seed:gen`, seed-sql.ts) and of the fake server in tests. Everything is relative to
+// "today", so the current week is always filled.
 
 export const DEMO_HOUSEHOLD_ID = 'hh-demo';
 export const TEST_HOUSEHOLD_ID = 'hh-test';
@@ -73,9 +74,9 @@ function slug(text: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export const areaId = (key: AreaKey): Id => `area-${key}`;
+const areaId = (key: AreaKey): Id => `area-${key}`;
 
-export function buildAreas(): Area[] {
+function buildAreas(): Area[] {
   return starterAreas.map((area, index) => ({
     id: areaId(area.key),
     name: area.name,
@@ -84,7 +85,7 @@ export function buildAreas(): Area[] {
 }
 
 /** The starter catalog as household articles. */
-export function buildArticles(): Article[] {
+function buildArticles(): Article[] {
   return starterCatalog.map((entry) => ({
     id: `art-${slug(entry.name)}`,
     name: entry.name,
@@ -761,5 +762,3 @@ export function createInitialState(today: ISODate): AppState {
     offline: false,
   };
 }
-
-registerInitialState(() => createInitialState(toISODate(new Date())));

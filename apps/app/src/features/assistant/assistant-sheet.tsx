@@ -1,10 +1,7 @@
 import {
-  AI_SAMPLE_NOTE,
   aiErrorMessage,
   applyProposal,
   askAssistantAsync,
-  assistantExamples,
-  useAiSimulated,
   useOffline,
   useRecipe,
   type AssistantContext,
@@ -26,7 +23,7 @@ import {
   TypingIndicator,
 } from '@housekeeping/ui';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
@@ -53,11 +50,10 @@ interface AssistantMessage {
 type Message = UserMessage | AssistantMessage;
 
 const OFFLINE_TEXT = 'Offline – der Assistent braucht Netz';
-const DICTATION_SAMPLE = 'Was koche ich heute?';
 
 /**
- * The central assistant: proposals as diffs, applied only on "Übernehmen". Demo mode answers the
- * samples of spec 0001; with the backend the edge function `ai-assistant` answers (spec 0003).
+ * The central assistant: proposals as diffs, applied only on "Übernehmen". The edge function
+ * `ai-assistant` answers (spec 0003).
  */
 export function AssistantSheet() {
   const host = useAssistant();
@@ -69,7 +65,6 @@ export function AssistantSheet() {
 
 function AssistantDialog(props: { initialContext: AssistantContext; onClose: () => void }) {
   const offline = useOffline();
-  const simulated = useAiSimulated();
   const dictation = useDictation();
   const [context, setContext] = useState<AssistantContext>(props.initialContext);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -125,10 +120,6 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
   const busy = offline || pending;
   const listening = dictation.status === 'listening';
   const pressMic = () => {
-    if (simulated) {
-      setInput(DICTATION_SAMPLE);
-      return;
-    }
     if (listening) {
       void dictation.stop().then((text) => {
         if (mounted.current && text) setInput(text);
@@ -164,7 +155,6 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
     .reverse()
     .find((message) => message.role === 'assistant' && message.proposal)?.id;
   const lastAnswerId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
-  const examples = assistantExamples(context);
 
   const footer = (
     <Stack gap={10}>
@@ -180,24 +170,6 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
           />
         </Row>
       ) : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ gap: 8 }}
-      >
-        {examples.map((example, index) => (
-          <Chip
-            key={example}
-            label={example}
-            icon="sparkles"
-            tone="ki"
-            disabled={busy}
-            onPress={() => send(example)}
-            testID={`assistant-example-${index}`}
-          />
-        ))}
-      </ScrollView>
       <TextField
         round
         accessibilityLabel="Nachricht an den Assistenten"
@@ -212,7 +184,7 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
         left={
           <IconButton
             icon="mic"
-            label={simulated ? 'Sprechen (Beispiel)' : listening ? 'Aufnahme beenden' : 'Sprechen'}
+            label={listening ? 'Aufnahme beenden' : 'Sprechen'}
             size={36}
             variant={listening ? 'filled' : 'plain'}
             disabled={busy || dictation.status === 'starting' || dictation.status === 'stopping'}
@@ -248,14 +220,7 @@ function AssistantDialog(props: { initialContext: AssistantContext; onClose: () 
         {offline ? <OfflineBanner text={OFFLINE_TEXT} testID="assistant-offline" /> : null}
         {messages.length === 0 ? (
           <View testID="assistant-intro" style={{ gap: 4 }}>
-            <Text>
-              Frag mich etwas oder wähle unten ein Beispiel. Ich schlage nur vor – ändern tust du.
-            </Text>
-            {simulated ? (
-              <Text variant="caption" color="muted">
-                {AI_SAMPLE_NOTE}
-              </Text>
-            ) : null}
+            <Text>Frag mich etwas. Ich schlage nur vor – ändern tust du.</Text>
           </View>
         ) : null}
         {dictation.error ? (

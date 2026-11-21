@@ -939,16 +939,16 @@ Dass die Einstellungen keinen Abschnitt „Abwesenheit“ mehr haben, regelt Spe
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                                   | Task (plan.md) | Test                                                                                               |
-| ------- | ------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------- |
-| REQ-001 | AC-001 bis AC-004                    | 7              | e2e dev smoke; Klick-Durchlauf (AC-002 ab Spec 0006; AC-003 entfällt)                              |
-| REQ-002 | AC-005 bis AC-008                    | 1, 7           | `calendar.test.ts` (AC-005, AC-006); Klick-Durchlauf                                               |
-| REQ-003 | AC-009, AC-010                       | 1, 5           | `calendar.test.ts` (AC-009); `contrast.test.ts` (AC-010)                                           |
-| REQ-004 | AC-011 bis AC-014                    | 1, 7           | `calendar.test.ts` (AC-011 bis AC-014); Klick-Durchlauf                                            |
-| REQ-005 | AC-015, AC-016                       | 2, 7           | `absences.test.ts` (AC-015, AC-016); Klick-Durchlauf                                               |
-| REQ-006 | AC-017 bis AC-020                    | 3, 7           | `household-row.test.ts` (AC-017, AC-018); Klick-Durchlauf (AC-019, AC-020)                         |
-| REQ-007 | AC-021 bis AC-024                    | 8              | e2e dev smoke; Klick-Durchlauf                                                                     |
-| REQ-008 | AC-025 bis AC-027, AC-039 bis AC-041 | 7              | e2e dev smoke; Klick-Durchlauf                                                                     |
-| REQ-009 | AC-028 bis AC-032                    | 2, 7           | `absences.test.ts` (AC-028 bis AC-031); Klick-Durchlauf (AC-032)                                   |
-| REQ-010 | AC-033 bis AC-038, AC-042 bis AC-044 | 2, 6, 9        | `absences.test.ts`, `commands-household.test.ts` (AC-033 bis AC-037, AC-042 bis AC-044); Durchlauf |
-| REQ-011 | AC-045 bis AC-049                    | 4, 8           | `meal-plan.test.ts` (AC-045 bis AC-049); Klick-Durchlauf                                           |
+| REQ     | AC                                   | Task (plan.md) | Test                                                                                                       |
+| ------- | ------------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-004                    | 7              | e2e dev smoke; Klick-Durchlauf (AC-002 ab Spec 0006; AC-003 entfällt)                                      |
+| REQ-002 | AC-005 bis AC-008                    | 1, 7           | `calendar.test.ts` (AC-005, AC-006); Klick-Durchlauf                                                       |
+| REQ-003 | AC-009, AC-010                       | 1, 5           | `calendar.test.ts` (AC-009); `contrast.test.ts` (AC-010)                                                   |
+| REQ-004 | AC-011 bis AC-014                    | 1, 7           | `calendar.test.ts` (AC-011 bis AC-014); Klick-Durchlauf                                                    |
+| REQ-005 | AC-015, AC-016                       | 2, 7           | `absences.test.ts` (AC-015, AC-016); Klick-Durchlauf                                                       |
+| REQ-006 | AC-017 bis AC-020                    | 3, 7           | `household-row.test.ts` (AC-017, AC-018); Klick-Durchlauf (AC-019, AC-020)                                 |
+| REQ-007 | AC-021 bis AC-024                    | 8              | e2e dev smoke; Klick-Durchlauf                                                                             |
+| REQ-008 | AC-025 bis AC-027, AC-039 bis AC-041 | 7              | e2e dev smoke; Klick-Durchlauf                                                                             |
+| REQ-009 | AC-028 bis AC-032                    | 2, 7           | `absences.test.ts` (AC-028 bis AC-031); Klick-Durchlauf (AC-032)                                           |
+| REQ-010 | AC-033 bis AC-038, AC-042 bis AC-044 | 2, 6, 9        | `absences.test.ts`, `commands-household.backend.test.ts` (AC-033 bis AC-037, AC-042 bis AC-044); Durchlauf |
+| REQ-011 | AC-045 bis AC-049                    | 4, 8           | `meal-plan.test.ts` (AC-045 bis AC-049); Klick-Durchlauf                                                   |

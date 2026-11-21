@@ -1,12 +1,13 @@
-// Activities in backend mode (spec 0004): create and edit on the diff path, favourites and ratings
+// Activities (spec 0004): create and edit on the diff path, favourites and ratings
 // over their RPCs, planning with a Zusatz, and "create while planning" as one apply_changes call.
-import { addDays, normalizeText } from '@housekeeping/core';
-import { describe, expect, it } from 'vitest';
+import { addDays, normalizeText, visitsOf } from '@housekeeping/core';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import {
   createActivity,
   rateActivity,
+  readActivityMapsLink,
   resolveActivityShortLink,
   toggleActivityFavorite,
   updateActivity,
@@ -263,5 +264,150 @@ describe('create while planning: one apply_changes call each (REQ-008)', () => {
       { kind: 'delete', table: 'activities', id: activityId },
     ]);
     expect(fx.server.row(H, 'activities', activityId)).toBeUndefined();
+  });
+});
+
+describe('activity commands: input and local effect', () => {
+  beforeEach(async () => {
+    await fx.startEnrico();
+  });
+
+  it('AC-007: an activity without name is not created', () => {
+    const before = getData().activities;
+    expect(() => createActivity({ name: '   ' })).toThrow('Name fehlt');
+    expect(getData().activities).toBe(before);
+  });
+
+  it('creates an activity with trimmed fields at the top, made by the current member', async () => {
+    await fx.startAs(NADJA);
+    const id = createActivity({
+      name: ' Klettern im Wald ',
+      description: '  ',
+      placeName: ' Hochseilgarten ',
+    });
+    expect(getData().activities[0]).toMatchObject({
+      id,
+      name: 'Klettern im Wald',
+      description: undefined,
+      placeName: 'Hochseilgarten',
+      tags: [],
+      favoriteOf: [],
+      ratings: {},
+      createdBy: NADJA,
+    });
+  });
+
+  it('AC-008: "bouldern" is reported as "Gibt es schon: Bouldern" and nothing is created', () => {
+    const before = getData().activities;
+    expect(() => createActivity({ name: 'bouldern' })).toThrow('Gibt es schon: Bouldern');
+    expect(getData().activities).toBe(before);
+  });
+
+  it('AC-008: renaming to the name of another activity is refused; its own name is fine', () => {
+    expect(() => updateActivity('act-spieleabend', { name: 'Eislaufen ' })).toThrow(
+      'Gibt es schon: Eislaufen',
+    );
+    expect(() => updateActivity('act-spieleabend', { name: ' ' })).toThrow('Name fehlt');
+    updateActivity('act-eislaufen', { name: 'eislaufen', description: ' Mit Glühwein ' });
+    expect(activityById('act-eislaufen')).toMatchObject({
+      name: 'eislaufen',
+      description: 'Mit Glühwein',
+    });
+  });
+
+  it('removes the place when every place field is cleared', () => {
+    updateActivity('act-eislaufen', {
+      placeName: undefined,
+      address: undefined,
+      location: undefined,
+      mapsUrl: undefined,
+    });
+    const eislaufen = activityById('act-eislaufen');
+    expect(eislaufen?.placeName).toBeUndefined();
+    expect(eislaufen?.location).toBeUndefined();
+    expect(eislaufen?.mapsUrl).toBeUndefined();
+    expect(eislaufen?.name).toBe('Eislaufen');
+  });
+
+  it('AC-006: a Google Maps link gives the place with coordinates; the name stays free', () => {
+    const url =
+      'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z';
+    expect(readActivityMapsLink(url)).toEqual({
+      status: 'place',
+      place: {
+        placeName: 'Eisstadion Hohenschönhausen',
+        location: { lat: 52.55, lng: 13.5 },
+        mapsUrl: url,
+      },
+    });
+    expect(readActivityMapsLink('hallo welt')).toEqual({ status: 'invalid' });
+    expect(readActivityMapsLink('https://maps.app.goo.gl/AbC123')).toEqual({
+      status: 'short',
+      url: 'https://maps.app.goo.gl/AbC123',
+    });
+  });
+
+  it('AC-020: ratings and favourites are per member; a rating is clamped to 1–5', async () => {
+    const nadja = await fx.startAs(NADJA);
+    rateActivity('act-bouldern', 4);
+    toggleActivityFavorite('act-bouldern');
+    await fx.settle(nadja);
+    await fx.startEnrico();
+    expect(activityById('act-bouldern')).toMatchObject({
+      ratings: { [NADJA]: 4 },
+      favoriteOf: [NADJA],
+    });
+    expect(activityById('act-bouldern')?.ratings[ENRICO]).toBeUndefined();
+    rateActivity('act-bouldern', 9);
+    expect(activityById('act-bouldern')?.ratings[ENRICO]).toBe(5);
+  });
+});
+
+describe('activities of the sample household', () => {
+  beforeEach(async () => {
+    await fx.startEnrico();
+  });
+
+  it('AC-004: Bouldern, Eislaufen and Spieleabend; only Eislaufen has a place', () => {
+    const activities = getData().activities;
+    expect(activities.map((activity) => activity.name).sort()).toEqual([
+      'Bouldern',
+      'Eislaufen',
+      'Spieleabend',
+    ]);
+    expect(activityById('act-eislaufen')).toMatchObject({
+      placeName: 'Eisstadion Hohenschönhausen',
+      location: { lat: 52.55, lng: 13.5 },
+    });
+    expect(activityById('act-spieleabend')?.location).toBeUndefined();
+    expect(activityById('act-spieleabend')?.placeName).toBeUndefined();
+  });
+
+  it('AC-016: Bouldern was done 12, 30 and 45 days ago and is planned again in 3 days', () => {
+    const visits = visitsOf('activity', 'act-bouldern', getData().planEntries, TODAY);
+    expect(visits).toEqual({
+      count: 3,
+      lastOn: addDays(TODAY, -12),
+      daysSince: 12,
+      dates: [addDays(TODAY, -12), addDays(TODAY, -30), addDays(TODAY, -45)],
+    });
+    expect(
+      getData().planEntries.some(
+        (entry) => entry.activityId === 'act-bouldern' && entry.date === addDays(TODAY, 3),
+      ),
+    ).toBe(true);
+  });
+
+  it('AC-019: today Eislaufen is planned in the morning, with a Zusatz', () => {
+    const today = getData().planEntries.filter(
+      (entry) => entry.date === TODAY && entry.kind === 'activity',
+    );
+    expect(today).toEqual([
+      expect.objectContaining({
+        activityId: 'act-eislaufen',
+        slotId: SLOT_MORNING,
+        note: 'Hohenschönhausen',
+      }),
+    ]);
   });
 });

@@ -29,6 +29,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { StartPageActions } from '@/features/shell/profile-button';
+import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
@@ -335,19 +336,6 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
       {listBody}
       {sheets}
     </Screen>
-  );
-}
-
-function ScrollColumn(props: { children: ReactNode }) {
-  return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 96 }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {props.children}
-    </ScrollView>
   );
 }
 

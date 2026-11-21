@@ -1,18 +1,12 @@
-// The AI functions of the app (spec 0003, REQ-008; ADR-0009). In backend mode they call the edge
-// functions with the active household; replies are validated against the core contract in the
-// transport. In demo mode they keep the simulated answers of spec 0001. Nothing here changes data:
-// a proposal is applied only when the person accepts it (`applyProposal`).
+// The AI functions of the app (spec 0003, REQ-008; ADR-0009). They call the edge functions with
+// the active household; replies are validated against the core contract in the transport.
+// Nothing here changes data: a proposal is applied only when the person accepts it
+// (`applyProposal`).
 import type { SpeechTokenReply } from '@housekeeping/core';
 
-import {
-  aiSearch,
-  askAssistant,
-  type AssistantContext,
-  type AiSearchResult,
-  type AssistantReply,
-} from './assistant';
+import type { AssistantContext, AiSearchResult, AssistantReply } from './assistant';
 import { onlineCall } from './backend';
-import { getState, isBackendMode, OfflineError, useAppSelector } from './store';
+import { getState, OfflineError } from './store';
 import { TransportError, type Transport } from './transport';
 
 export const AI_QUOTA_MESSAGE = 'Für heute ist das KI-Kontingent aufgebraucht';
@@ -69,18 +63,12 @@ export function aiErrorMessage(error: unknown): string {
   return AI_FAILED_MESSAGE;
 }
 
-/** True while the AI answers are the built-in samples (demo mode); reactive. */
-export function useAiSimulated(): boolean {
-  return useAppSelector(() => !isBackendMode());
-}
-
-/** Asks the assistant. Demo mode: the sample answers. */
+/** Asks the assistant. */
 export async function askAssistantAsync(
   text: string,
   context: AssistantContext,
 ): Promise<AssistantReply> {
   const message = text.trim();
-  if (!isBackendMode()) return askAssistant(message, context);
   const householdId = getState().activeHouseholdId;
   return aiCall((transport) =>
     transport.askAssistant({
@@ -96,7 +84,6 @@ export async function aiSearchAsync(
   query: string,
   disabledChips: string[],
 ): Promise<AiSearchResult> {
-  if (!isBackendMode()) return aiSearch(query, disabledChips);
   const householdId = getState().activeHouseholdId;
   return aiCall((transport) =>
     transport.aiSearch({ householdId, query: query.trim(), disabledChips }),
@@ -110,10 +97,9 @@ const speechTokens = new WeakMap<Transport, SpeechTokenReply>();
 
 /**
  * A short-lived token for streaming speech to Azure (AC-028); reused until one minute before it
- * expires. Backend mode only. Never log it.
+ * expires. Never log it.
  */
 export async function getSpeechToken(): Promise<SpeechTokenReply> {
-  if (!isBackendMode()) throw new Error('Spracheingabe gibt es nur mit Anmeldung.');
   return aiCall(async (transport) => {
     const cached = speechTokens.get(transport);
     if (cached && Date.parse(cached.expiresAt) - TOKEN_MARGIN_MS > Date.now()) return cached;

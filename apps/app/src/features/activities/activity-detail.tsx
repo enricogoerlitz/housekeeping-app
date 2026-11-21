@@ -27,15 +27,15 @@ import {
   Stars,
   Text,
   toast,
-  useTheme,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AddEntrySheet } from '@/features/meal-plan/add-entry-sheet';
 import { RouteSheet } from '@/features/restaurants/route-sheet';
 import { DetailPage } from '@/features/shell/detail-page';
+import { FavoriteButton } from '@/features/shell/favorite-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
@@ -102,6 +102,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
 
   const favorite = (
     <FavoriteButton
+      testID="activity-favorite"
       active={isFavorite}
       disabled={online.disabled}
       hint={online.hint}
@@ -351,42 +352,5 @@ function PhotoBlock(props: { activity: Activity }) {
         </Text>
       ) : null}
     </View>
-  );
-}
-
-function FavoriteButton(props: {
-  active: boolean;
-  disabled: boolean;
-  hint?: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      testID="activity-favorite"
-      accessibilityRole="button"
-      accessibilityLabel="Favorit"
-      accessibilityHint={props.hint}
-      accessibilityState={{ selected: props.active, disabled: props.disabled }}
-      aria-pressed={props.active}
-      disabled={props.disabled}
-      onPress={props.onPress}
-      style={(state) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.surfaceSunken,
-        opacity: props.disabled ? 0.45 : state.pressed ? 0.6 : 1,
-      })}
-    >
-      <Icon
-        name="heart"
-        size={22}
-        color={props.active ? 'accent' : 'muted'}
-        filled={props.active}
-      />
-    </Pressable>
   );
 }

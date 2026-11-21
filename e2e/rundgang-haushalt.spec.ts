@@ -96,9 +96,9 @@ test('AC-037: "Was anderes erledigt?" logs "Fenster geputzt · spontan · Enrico
 }) => {
   await open(page, '/');
   await tid(page, 'today-spontaneous').click();
-  await tid(page, 'spontaneous-input').fill('Fenster geputzt');
-  await tid(page, 'spontaneous-submit').click();
-  await expect(tid(page, 'spontaneous-sheet')).toBeHidden();
+  await tid(page, 'chores-spontaneous-input').fill('Fenster geputzt');
+  await tid(page, 'chores-spontaneous-save').click();
+  await expect(tid(page, 'chores-spontaneous-sheet')).toBeHidden();
   await nav(page, 'haushalt');
   await tid(page, 'chores-tab-history').click();
   await expect(

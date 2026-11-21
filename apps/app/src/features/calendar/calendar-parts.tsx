@@ -167,11 +167,7 @@ function Ring() {
 }
 
 /** A chore of a past or future day: done with ✓, planned with ○; nothing to tap. */
-export function ChoreLine(props: {
-  item: HouseholdRowItem;
-  data: CalendarData;
-  compact?: boolean;
-}) {
+function ChoreLine(props: { item: HouseholdRowItem; data: CalendarData; compact?: boolean }) {
   const { item } = props;
   return (
     <KindLine
@@ -194,7 +190,7 @@ export function ChoreLine(props: {
  * day (AC-018). Offline the boxes are greyed out (AC-020); if the network goes during the window,
  * nothing is booked and the boxes spring back.
  */
-export function HouseholdToday(props: {
+function HouseholdToday(props: {
   items: HouseholdRowItem[];
   data: CalendarData;
   compact?: boolean;

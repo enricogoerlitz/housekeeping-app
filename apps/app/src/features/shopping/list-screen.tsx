@@ -3,14 +3,12 @@ import {
   clearCheckedItems,
   dictatedItems,
   setItemChecked,
-  simulateDictation,
   snapshot,
   splitItems,
   useAreas,
   useArticlesById,
   useShoppingItems,
   useShoppingStore,
-  useAiSimulated,
   useToday,
   type DictatedItem,
 } from '@housekeeping/api';
@@ -115,8 +113,6 @@ function balance(groups: ItemGroup[]): [ItemGroup[], ItemGroup[]] {
 
 interface Dictation {
   transcript: string;
-  /** The sample of spec 0001 (demo mode), labelled as such. */
-  simulated: boolean;
   /** Index stays the original position, so the remaining rows keep their ids. */
   items: { index: number; item: DictatedItem }[];
 }
@@ -136,7 +132,6 @@ export function ListScreen() {
   const [pantryCheck, setPantryCheck] = useState(false);
   const [showDone, setShowDone] = useState(true);
   const [dictation, setDictation] = useState<Dictation | undefined>();
-  const simulated = useAiSimulated();
   const speech = useDictation();
   const [nothingHeard, setNothingHeard] = useState(false);
 
@@ -152,30 +147,19 @@ export function ListScreen() {
     ),
   ];
 
-  const showDictated = (transcript: string, dictated: DictatedItem[], sample: boolean) => {
+  const showDictated = (transcript: string, dictated: DictatedItem[]) => {
     setNothingHeard(dictated.length === 0);
     setDictation(
       dictated.length > 0
-        ? {
-            transcript,
-            simulated: sample,
-            items: dictated.map((item, index) => ({ index, item })),
-          }
+        ? { transcript, items: dictated.map((item, index) => ({ index, item })) }
         : undefined,
     );
   };
-  // Demo: the sample of spec 0001. Backend (web): the first press listens, the second stops and
-  // turns the transcript into proposal rows (AC-028).
+  // The first press listens, the second stops and turns the transcript into proposal rows
+  // (AC-028).
   const dictate = () => {
-    if (simulated) {
-      const result = simulateDictation();
-      showDictated(result.transcript, result.items, true);
-      return;
-    }
     if (speech.status === 'listening') {
-      void speech
-        .stop()
-        .then((transcript) => showDictated(transcript, dictatedItems(transcript), false));
+      void speech.stop().then((transcript) => showDictated(transcript, dictatedItems(transcript)));
       return;
     }
     if (speech.status !== 'idle') return;
@@ -325,9 +309,7 @@ export function ListScreen() {
   const ghosts = dictation ? (
     <View style={{ marginTop: 12, gap: 4 }} testID="dictation">
       <Text variant="small" color="muted" testID="dictation-transcript">
-        {dictation.simulated
-          ? `„${dictation.transcript}“ · Beispiel – Spracheingabe ist noch nicht angeschlossen`
-          : `„${dictation.transcript}“`}
+        {`„${dictation.transcript}“`}
       </Text>
       {dictation.items.map(({ index, item }) => (
         <GhostRow

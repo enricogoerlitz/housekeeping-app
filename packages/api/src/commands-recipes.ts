@@ -24,7 +24,7 @@ export function createRecipe(input: { title: string; servings?: number; source?:
   if (!title) throw new Error('Titel fehlt');
   return commit({ path: 'diff' }, () => {
     const recipe: Recipe = {
-      id: newId('rec'),
+      id: newId(),
       title,
       servings: input.servings ?? 2,
       course: 'main',
@@ -71,7 +71,7 @@ export function addIngredientsFromText(recipeId: Id, text: string, variantId?: I
     const ingredients: RecipeIngredient[] = parsed.map((line) => {
       const { article } = resolveArticle(line.name);
       return {
-        id: newId('ing'),
+        id: newId(),
         articleId: article.id,
         name: line.name,
         amount: line.amount,
@@ -139,7 +139,7 @@ export function addStep(recipeId: Id, text: string): void {
   commit({ path: 'diff' }, () =>
     patchRecipe(recipeId, (recipe) => ({
       ...recipe,
-      steps: [...recipe.steps, { id: newId('step'), text: trimmed }],
+      steps: [...recipe.steps, { id: newId(), text: trimmed }],
     })),
   );
 }
@@ -216,7 +216,7 @@ export function adoptStarterRecipes(keys: string[]): number {
   const titles = new Set(data.recipes.map((recipe) => recipe.title));
   const adopted = seedRecipes
     .filter((seed) => keys.includes(seed.key) && !titles.has(seed.title))
-    .map((seed) => ({ ...buildRecipe(seed, data.articles, nowISO()), id: newId('rec') }));
+    .map((seed) => ({ ...buildRecipe(seed, data.articles, nowISO()), id: newId() }));
   if (adopted.length === 0) return 0;
   commit({ path: 'diff' }, () =>
     updateData((current) => ({ ...current, recipes: [...adopted, ...current.recipes] })),

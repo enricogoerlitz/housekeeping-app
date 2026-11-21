@@ -9,14 +9,14 @@ import { Chip } from '@housekeeping/ui';
 import { ScrollView } from 'react-native';
 
 /** "heute", "morgen", otherwise "Sa 21.11." – short enough for a chip. */
-export function dateChipLabel(iso: ISODate, today: ISODate): string {
+function dateChipLabel(iso: ISODate, today: ISODate): string {
   const relative = relativeDayLabel(iso, today);
   return relative === 'heute' || relative === 'morgen'
     ? relative
     : `${weekdayShort(iso)} ${formatShortDate(iso)}`;
 }
 
-export function nextDays(today: ISODate, count: number): ISODate[] {
+function nextDays(today: ISODate, count: number): ISODate[] {
   return Array.from({ length: count }, (_, offset) => addDays(today, offset));
 }
 

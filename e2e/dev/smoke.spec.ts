@@ -145,5 +145,13 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'calendar-activities').click();
   await expect(tid(page, 'activities-empty')).toBeVisible();
 
+  // Signing out: no screen stays behind that still reads the household, which exists only while
+  // someone is signed in.
+  await back(page);
+  await nav(page, 'index');
+  await openSettings(page);
+  await tid(page, 'settings-sign-out').click();
+  await expect(tid(page, 'login-screen')).toBeVisible();
+
   expect(warnings, 'console warnings').toEqual([]);
 });

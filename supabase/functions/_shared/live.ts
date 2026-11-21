@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 import type { ClaimsResult, DbResult, Deps, Query, UserClient } from './deps.ts';
 import { ConfigError, requireEnv } from './errors.ts';
 
-/** The publishable key from SUPABASE_PUBLISHABLE_KEYS ({"default": "sb_publishable_…"}), else the legacy anon key. */
+/**
+ * The publishable key from SUPABASE_PUBLISHABLE_KEYS ({"default": "sb_publishable_…"}), else the
+ * anon key: the local stack of Supabase CLI 3.2.0 injects only SUPABASE_ANON_KEY (checked
+ * 2026-11-21).
+ */
 function publishableKey(env: Deps['env']): string {
   const keys = env('SUPABASE_PUBLISHABLE_KEYS');
   if (!keys) return requireEnv(env, 'SUPABASE_ANON_KEY');

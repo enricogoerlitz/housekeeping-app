@@ -2,10 +2,8 @@ import {
   dayMonthLabel,
   formatLongDate,
   parseISODate,
-  splitVariants,
   weekdayShort,
   withNote,
-  type Article,
   type Id,
   type ISODate,
   type MealPlanEntry,
@@ -79,19 +77,6 @@ export function splitSummary(recipe: Recipe, variants: PlanEntryVariant[]): stri
       return row && row.portions > 0 ? [`${variant.name} ${row.portions}`] : [];
     })
     .join(' · ');
-}
-
-/** Eaters of an entry for whom no variant of the recipe fits. */
-export function misfitMembers(
-  entry: MealPlanEntry,
-  recipe: Recipe | undefined,
-  membersById: Record<Id, Member>,
-  articlesById: Record<Id, Article>,
-): Member[] {
-  if (entry.kind !== 'recipe' || !recipe) return [];
-  const eaters = entry.eaterIds.flatMap((id) => membersById[id] ?? []);
-  const { misfitMemberIds } = splitVariants(recipe, eaters, entry.guests, articlesById);
-  return misfitMemberIds.flatMap((id) => membersById[id] ?? []);
 }
 
 /** "Passt nicht für Nadja", "Passt nicht für Enrico und Nadja". */

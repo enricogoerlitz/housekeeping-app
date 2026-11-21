@@ -6,7 +6,7 @@ import {
 import type { Deps } from '../_shared/deps.ts';
 import { HttpError } from '../_shared/errors.ts';
 import { handleRequest } from '../_shared/http.ts';
-import { isPlaceHost, isShortLink, parsePlaceUrl } from '../_shared/maps-link.ts';
+import { isPlaceHost, parseMapsLink } from '../_shared/maps-link.gen.ts';
 
 // SSRF guard: only Google-owned hosts are ever fetched, each hop is checked again, redirects are
 // followed by hand, bodies are never read. Place links on other map hosts are only parsed.
@@ -73,7 +73,8 @@ async function resolve(deps: Deps, input: string): Promise<ResolveMapsLinkReply>
       url = checkedUrl(target);
       continue;
     }
-    const place = parsePlaceUrl(url);
+    const link = parseMapsLink(url.href);
+    const place = link?.kind === 'place' ? link : null;
     if (place?.name) {
       const reply = ResolveMapsLinkReplySchema.safeParse({
         name: place.name,
@@ -83,7 +84,7 @@ async function resolve(deps: Deps, input: string): Promise<ResolveMapsLinkReply>
       if (!reply.success) throw notAMapsLink();
       return reply.data;
     }
-    const fetchable = FETCH_HOSTS.has(url.hostname) && (isShortLink(url) || place !== null);
+    const fetchable = FETCH_HOSTS.has(url.hostname) && link !== null;
     if (!fetchable || fetches >= MAX_FETCHES) throw notAMapsLink();
     fetches += 1;
     const location = await nextLocation(deps.fetch, url);

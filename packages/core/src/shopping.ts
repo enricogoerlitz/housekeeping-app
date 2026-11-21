@@ -1,4 +1,5 @@
 import { formatAmount, formatQty, scaleAmount } from './amounts';
+import { createdTime } from './dates';
 import { defaultVariantId } from './recipes';
 import type {
   Area,
@@ -217,11 +218,6 @@ export interface ItemGroup {
   title: string;
   area?: Area;
   items: ShoppingItem[];
-}
-
-function createdTime(item: ShoppingItem): number {
-  const time = Date.parse(item.createdAt);
-  return Number.isNaN(time) ? 0 : time;
 }
 
 /**

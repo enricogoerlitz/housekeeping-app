@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   addMonths,
+  createdTime,
   dayInMonth,
   daysBetween,
   formatLongDate,
@@ -97,5 +98,14 @@ describe('date helpers', () => {
     expect(relativeDayLabel('2026-11-26', today)).toBe('in 6 Tagen');
     expect(relativeDayLabel('2026-11-27', today)).toBe('Fr 27.11.');
     expect(relativeDayLabel('2026-11-08', today)).toBe('So 8.11.');
+  });
+});
+
+describe('createdTime', () => {
+  it('sorts by the creation timestamp; an unparsable one counts as the oldest', () => {
+    expect(createdTime({ createdAt: '2026-11-20T10:00:00.000Z' })).toBe(
+      Date.parse('2026-11-20T10:00:00.000Z'),
+    );
+    expect(createdTime({ createdAt: 'kaputt' })).toBe(0);
   });
 });

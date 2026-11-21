@@ -49,7 +49,7 @@ function parseHouseholdRow(value: unknown): LocalSettings['householdRow'] {
 }
 
 /** Stored values are untrusted: anything unknown falls back to the default. */
-export function parseSettings(raw: string | null): LocalSettings {
+function parseSettings(raw: string | null): LocalSettings {
   if (!raw) return defaults;
   try {
     const value: unknown = JSON.parse(raw);

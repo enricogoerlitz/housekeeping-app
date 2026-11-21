@@ -1,4 +1,4 @@
-import { daysBetween } from './dates';
+import { createdTime, daysBetween } from './dates';
 import { recipeFitsPreference } from './diet';
 import { fuzzyIncludes, normalizeText } from './text';
 import type {
@@ -125,11 +125,6 @@ export function filterRecipes(
 
 function byTitle(a: Recipe, b: Recipe): number {
   return a.title.localeCompare(b.title, 'de');
-}
-
-function createdTime(recipe: Recipe): number {
-  const time = Date.parse(recipe.createdAt);
-  return Number.isNaN(time) ? 0 : time;
 }
 
 // ISO dates order like plain strings; the empty string stands for "never cooked" and sorts first.

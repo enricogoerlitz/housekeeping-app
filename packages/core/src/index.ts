@@ -17,6 +17,7 @@ export * from './shopping-list';
 export * from './shopping-picker';
 export * from './chores';
 export * from './restaurants';
+export * from './maps-link';
 export * from './activities';
 export * from './dictation';
 export * from './sync-delta';

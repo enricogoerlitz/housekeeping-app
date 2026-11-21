@@ -1,6 +1,7 @@
-// Shared setup for the backend-mode tests: a fake server seeded with the demo household, a fake
-// platform environment, Enrico's device attached to the store (so commands run against it) and
-// Nadja's device as a second, passive engine. Not exported from index.ts.
+// Shared setup for the command and sync tests: a fake server seeded with the sample household
+// "Enrico & Nadja" (seed/demo.ts), a fake platform environment, Enrico's device attached to the
+// store (so commands run against it) and Nadja's device as a second, passive engine. Not exported
+// from index.ts.
 import { afterEach, beforeEach, vi } from 'vitest';
 
 import { createEngine, startBackend, stopBackend, type Engine, type Environment } from './backend';
@@ -18,7 +19,7 @@ export function seededServer(): FakeServer {
   const server = createFakeServer();
   const state = createInitialState(TODAY);
   const seeded = state.households[H];
-  if (!seeded) throw new Error('demo household missing');
+  if (!seeded) throw new Error('sample household missing');
   const articles = seeded.articles.filter(
     (article, index) => seeded.articles.findIndex((other) => other.id === article.id) === index,
   );
@@ -28,6 +29,8 @@ export function seededServer(): FakeServer {
       name: String(profile.name),
       email: `${String(profile.name).toLowerCase()}@example.com`,
       color: String(profile.color),
+      diet_preference: String(profile.diet_preference),
+      dislikes: (profile.dislikes ?? []) as string[],
     });
   }
   const rows = householdToRows({ ...seeded, articles });
@@ -74,7 +77,7 @@ export interface Call {
 }
 
 /** Records every write and request a device sends, in order. */
-export function recordCalls(inner: Transport): { transport: Transport; calls: Call[] } {
+function recordCalls(inner: Transport): { transport: Transport; calls: Call[] } {
   const calls: Call[] = [];
   const transport = new Proxy(inner, {
     get(target, property, receiver) {
@@ -99,6 +102,8 @@ export interface BackendFixture {
   readonly calls: Call[];
   clearCalls(): void;
   startEnrico(): Promise<Engine>;
+  /** Like startEnrico, for another member (commands then act as that person). */
+  startAs(userId: string): Promise<Engine>;
   startNadja(): Promise<Engine>;
   /** Lets timers, outbox and pulls run until every given engine is idle. */
   settle(...engines: Engine[]): Promise<void>;
@@ -154,13 +159,16 @@ export function withBackend(): BackendFixture {
         for (const engine of engines) await engine.whenIdle();
       }
     },
-    async startEnrico() {
-      const recorded = recordCalls(fixture.server.transport(ENRICO));
+    startEnrico() {
+      return fixture.startAs(ENRICO);
+    },
+    async startAs(userId) {
+      const recorded = recordCalls(fixture.server.transport(userId));
       calls = recorded.calls;
       const engine = await startBackend({
         transport: recorded.transport,
         storage: fixture.storage,
-        userId: ENRICO,
+        userId,
         environment: fixture.environment,
       });
       await fixture.settle(engine);

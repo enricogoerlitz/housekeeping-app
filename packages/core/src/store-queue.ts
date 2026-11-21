@@ -1,34 +1,76 @@
 // Store queue (ADR-0008 addendum, docs/architecture/sync.md): the four store-mode actions that
 // work offline. Entries are kept on the device, take effect locally at once and are sent later,
 // one RPC each, in order.
+import { z } from 'zod';
+
 import type { Row, TableRows } from './sync-delta';
 
-export interface QueuedContribution {
-  clientContributionId: string;
-  articleName: string;
+const QueuedContributionSchema = z.object({
+  clientContributionId: z.string().min(1),
+  articleName: z.string().min(1),
   /** `normalizeText(articleName)`; the server resolves the article with it. */
-  nameKey: string;
-  count?: number;
-  qty?: number;
-  unit?: string;
-  note?: string;
+  nameKey: z.string().min(1),
+  count: z.number().optional(),
+  qty: z.number().optional(),
+  unit: z.string().optional(),
+  note: z.string().optional(),
+});
+
+const AddEntrySchema = z
+  .object({
+    kind: z.literal('add'),
+    /** The household whose shopping list gets the contributions. */
+    householdId: z.string().min(1),
+    /** Id of the item if a new one is needed; replaced by the server's id via remapQueue. */
+    clientItemId: z.string().min(1),
+    /** Id of the article if no article has this name yet; replaced like clientItemId. */
+    clientArticleId: z.string().min(1),
+    /** All for the same article (same nameKey). */
+    contributions: z.array(QueuedContributionSchema),
+  })
+  .refine(namesOneArticle);
+
+/**
+ * One entry of the store queue. The queue is stored on the device and read back after a reload
+ * or an app update, so a stored entry is input: it is parsed with this schema, never cast.
+ */
+export const StoreQueueEntrySchema = z.union([
+  z.object({
+    kind: z.literal('check'),
+    itemId: z.string().min(1),
+    checked: z.boolean(),
+    seenCheckSeq: z.number().int().nonnegative(),
+  }),
+  z.object({ kind: z.literal('notAvailable'), itemId: z.string().min(1), value: z.boolean() }),
+  AddEntrySchema,
+  z.object({
+    kind: z.literal('assignArea'),
+    articleId: z.string().min(1),
+    areaId: z.string().min(1).nullable(),
+  }),
+]);
+
+export type QueuedContribution = z.infer<typeof QueuedContributionSchema>;
+export type StoreQueueEntry = z.infer<typeof StoreQueueEntrySchema>;
+
+function namesOneArticle(entry: { contributions: readonly QueuedContribution[] }): boolean {
+  return new Set(entry.contributions.map((contribution) => contribution.nameKey)).size === 1;
 }
 
-export type StoreQueueEntry =
-  | { kind: 'check'; itemId: string; checked: boolean; seenCheckSeq: number }
-  | { kind: 'notAvailable'; itemId: string; value: boolean }
-  | {
-      kind: 'add';
-      /** The household whose shopping list gets the contributions. */
-      householdId: string;
-      /** Id of the item if a new one is needed; replaced by the server's id via remapQueue. */
-      clientItemId: string;
-      /** Id of the article if no article has this name yet; replaced like clientItemId. */
-      clientArticleId: string;
-      /** All for the same article (same nameKey). */
-      contributions: QueuedContribution[];
-    }
-  | { kind: 'assignArea'; articleId: string; areaId: string | null };
+/**
+ * The stored queue as read from the device: the entries that parse, in order, and how many did
+ * not. A lost entry is a lost action, so the caller must tell the user (never drop silently).
+ */
+export function parseStoredQueue(stored: unknown): { entries: StoreQueueEntry[]; dropped: number } {
+  if (stored === undefined) return { entries: [], dropped: 0 };
+  if (!Array.isArray(stored)) return { entries: [], dropped: 1 };
+  const entries: StoreQueueEntry[] = [];
+  for (const candidate of stored) {
+    const parsed = StoreQueueEntrySchema.safeParse(candidate);
+    if (parsed.success) entries.push(parsed.data);
+  }
+  return { entries, dropped: stored.length - entries.length };
+}
 
 type ToggleEntry = Extract<StoreQueueEntry, { kind: 'check' | 'notAvailable' }>;
 
@@ -57,8 +99,7 @@ function entryValue(entry: StoreQueueEntry): unknown {
 }
 
 function assertOneArticle(entry: Extract<StoreQueueEntry, { kind: 'add' }>): void {
-  const keys = new Set(entry.contributions.map((contribution) => contribution.nameKey));
-  if (keys.size !== 1) throw new Error('An add entry must name exactly one article.');
+  if (!namesOneArticle(entry)) throw new Error('An add entry must name exactly one article.');
 }
 
 /**

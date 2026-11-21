@@ -261,7 +261,7 @@ test('AC-034: moving "Getränke" to the top of Rewe makes it the first group in 
   expect((await storeGroups(page))[0]).toBe(`area:${area('getraenke')}`);
 });
 
-/** Spec 0003: real dictation (microphone → Azure Speech, faked) instead of the sample. */
+/** Dictation (spec 0003): microphone → Azure Speech, faked in the browser. */
 async function dictate(page: Parameters<typeof open>[0]): Promise<void> {
   await fakeSpeech(page, 'Milch, sechs Eier und Brot.');
   await tid(page, 'dictate').click();

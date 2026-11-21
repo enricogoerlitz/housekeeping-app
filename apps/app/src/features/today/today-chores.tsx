@@ -1,11 +1,4 @@
-import {
-  completeChore,
-  logSpontaneous,
-  snapshot,
-  useChores,
-  useMembers,
-  useToday,
-} from '@housekeeping/api';
+import { completeChore, snapshot, useChores, useMembers, useToday } from '@housekeeping/api';
 import {
   choreBucket,
   choreMemberIds,
@@ -22,14 +15,13 @@ import {
   DueBar,
   List,
   Section,
-  Sheet,
   Text,
-  TextField,
   toast,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { SpontaneousSheet } from '@/features/chores/spontaneous-sheet';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 /** Flexible chores show up on "Heute" once this share of their interval has passed. */
@@ -140,69 +132,5 @@ export function TodayChores() {
       </View>
       <SpontaneousSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
     </Section>
-  );
-}
-
-/** "Hab gerade …": logs something done that has no chore (AC-037). */
-function SpontaneousSheet(props: { visible: boolean; onClose: () => void }) {
-  const online = useOnlineOnly();
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | undefined>(undefined);
-
-  const close = () => {
-    setText('');
-    setError(undefined);
-    props.onClose();
-  };
-
-  const submit = () => {
-    if (!text.trim()) {
-      setError('Was hast du erledigt?');
-      return;
-    }
-    try {
-      logSpontaneous(text);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt.');
-      return;
-    }
-    toast.show({ message: 'Eingetragen' });
-    close();
-  };
-
-  return (
-    <Sheet
-      visible={props.visible}
-      onClose={close}
-      title="Was anderes erledigt?"
-      testID="spontaneous-sheet"
-      size="m"
-      footer={
-        <Button
-          label="Eintragen"
-          icon="check"
-          full
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={submit}
-          testID="spontaneous-submit"
-        />
-      }
-    >
-      <TextField
-        label="Was hast du gemacht?"
-        placeholder="z. B. Fenster geputzt"
-        value={text}
-        onChangeText={(value) => {
-          setText(value);
-          if (error) setError(undefined);
-        }}
-        onSubmitEditing={submit}
-        returnKeyType="done"
-        autoFocus
-        error={error}
-        testID="spontaneous-input"
-      />
-    </Sheet>
   );
 }

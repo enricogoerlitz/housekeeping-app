@@ -30,10 +30,9 @@ import {
   commit,
   getData,
   getState,
-  isBackendMode,
-  isBackendOffline,
+  isOffline,
   newId,
-  nowISO,
+  queueStoreAction,
   rememberShoppingStore,
   updateData,
   type CommitSpec,
@@ -72,35 +71,29 @@ function queueAdd(name: string, contribution: ShoppingContribution): AddedItem {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   const existing = findArticleByName(trimmed, data.articles);
   const articleName = existing?.name ?? trimmed;
-  const clientItemId = newId('item');
+  const clientItemId = newId();
   const onList = existing ? data.items.filter((item) => item.articleId === existing.id) : [];
   const itemId =
     onList.find((item) => !item.checked)?.id ??
     onList.find((item) => item.checked)?.id ??
     clientItemId;
-  commit(
-    {
-      path: 'queue',
-      action: {
-        kind: 'add',
-        householdId: getState().activeHouseholdId,
-        clientItemId,
-        clientArticleId: existing?.id ?? newId('art'),
-        contributions: [
-          {
-            clientContributionId: contribution.id,
-            articleName,
-            nameKey: normalizeText(articleName),
-            count: contribution.count,
-            qty: contribution.qty,
-            unit: contribution.unit,
-            note: contribution.note,
-          },
-        ],
+  queueStoreAction({
+    kind: 'add',
+    householdId: getState().activeHouseholdId,
+    clientItemId,
+    clientArticleId: existing?.id ?? newId(),
+    contributions: [
+      {
+        clientContributionId: contribution.id,
+        articleName,
+        nameKey: normalizeText(articleName),
+        count: contribution.count,
+        qty: contribution.qty,
+        unit: contribution.unit,
+        note: contribution.note,
       },
-    },
-    () => undefined,
-  );
+    ],
+  });
   return { itemId, articleName, createdArticle: !existing };
 }
 
@@ -110,7 +103,7 @@ function queueAdd(name: string, contribution: ShoppingContribution): AddedItem {
  * Returns null for empty input. Works offline too (store queue).
  */
 export function addShoppingItemFromText(text: string): AddedItem | null {
-  if (isBackendMode() && isBackendOffline()) {
+  if (isOffline()) {
     const typed = typedContribution(text);
     return typed ? queueAdd(typed.name, typed.contribution) : null;
   }
@@ -124,43 +117,12 @@ export function addShoppingItemFromText(text: string): AddedItem | null {
 
 /** Checking works offline too (store queue); such changes are marked until the next sync. */
 export function setItemChecked(itemId: Id, checked: boolean): void {
-  commit({ path: 'queue', action: { kind: 'check', itemId, checked } }, () => {
-    const state = getState();
-    updateData((data) => ({
-      ...data,
-      items: data.items.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              checked,
-              checkedAt: checked ? nowISO() : undefined,
-              checkedBy: checked ? state.currentMemberId : undefined,
-              notAvailable: checked ? undefined : item.notAvailable,
-              pendingSync: state.offline ? true : item.pendingSync,
-            }
-          : item,
-      ),
-    }));
-  });
+  queueStoreAction({ kind: 'check', itemId, checked });
 }
 
 /** "Nicht da": the item stays open and moves to "Woanders kaufen". A store action. */
 export function setItemNotAvailable(itemId: Id, notAvailable: boolean): void {
-  commit({ path: 'queue', action: { kind: 'notAvailable', itemId, value: notAvailable } }, () => {
-    const offline = getState().offline;
-    updateData((data) => ({
-      ...data,
-      items: data.items.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              notAvailable: notAvailable || undefined,
-              pendingSync: offline ? true : item.pendingSync,
-            }
-          : item,
-      ),
-    }));
-  });
+  queueStoreAction({ kind: 'notAvailable', itemId, value: notAvailable });
 }
 
 /** Removes an item with all its contributions; undo with `snapshot()` (AC-025). Online only. */
@@ -246,7 +208,7 @@ export interface CountChange {
 export function adjustItemCount(itemId: Id, delta: 1 | -1): CountChange | null {
   const item = getData().items.find((candidate) => candidate.id === itemId);
   if (!item) return null;
-  const step = countAdjustment(item, delta, newId('contrib'));
+  const step = countAdjustment(item, delta, newId());
   if (!step) return null;
   const removed = step.removesItem;
   return commit<CountChange>(
@@ -457,7 +419,7 @@ export function addPlannedToList(rows: PantryCheckRow[]): number {
       if (!article) throw new Error(`Article ${row.articleId ?? ''} missing`);
       return addLocally(
         article,
-        row.contributions.map((planned) => toContribution(planned, newId('contrib'))),
+        row.contributions.map((planned) => toContribution(planned, newId())),
       ).entry;
     }),
   }));
@@ -477,7 +439,7 @@ export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem |
     if (!article) throw new Error(`Article ${ingredient.articleId ?? ''} missing`);
     const { itemId, entry } = addLocally(article, [
       {
-        id: newId('contrib'),
+        id: newId(),
         source: { kind: 'manual' },
         count: 1,
         ...(ingredient.shoppingNote ? { note: ingredient.shoppingNote } : {}),
@@ -505,7 +467,7 @@ export function createStore(name: string): Id {
   if (!trimmed) throw new Error('Name fehlt');
   const data = getData();
   const store: Store = {
-    id: newId('store'),
+    id: newId(),
     name: trimmed,
     areaOrder: [...data.areas].sort((a, b) => a.sort - b.sort).map((area) => area.id),
     hiddenAreaIds: [],

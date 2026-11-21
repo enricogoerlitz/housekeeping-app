@@ -1,4 +1,4 @@
-// The real AI in backend mode (spec 0003, REQ-008): assistant, AI search and speech token go to
+// The AI (spec 0003, REQ-008): assistant, AI search and speech token go to
 // the edge functions with the active household; errors become calm German messages; offline
 // nothing is sent.
 import type { AiSearchResult, AssistantReply } from '@housekeeping/core';
@@ -15,7 +15,6 @@ import {
   createAiSearchController,
   getSpeechToken,
 } from './ai';
-import { AI_SAMPLE_NOTE } from './assistant';
 import { H, withBackend } from './backend-test-helpers';
 import { OfflineError } from './store';
 import { TransportError } from './transport';
@@ -71,7 +70,6 @@ describe('askAssistantAsync (backend)', () => {
       recipeId: CURRY,
     });
     expect(answer).toEqual(reply);
-    expect(answer.proposal?.note).not.toBe(AI_SAMPLE_NOTE);
     expect(requests).toEqual([
       {
         householdId: H,
@@ -146,6 +144,13 @@ describe('aiSearchAsync (backend)', () => {
     engine.setSimulatedOffline(true);
     await expect(aiSearchAsync('Tofu', [])).rejects.toBeInstanceOf(OfflineError);
     expect(fx.calls.map((call) => call.fn)).toEqual(['aiSearch']);
+  });
+});
+
+describe('without a sign-in', () => {
+  it('the AI calls are refused before anything is sent', async () => {
+    await expect(askAssistantAsync('Hallo', {})).rejects.toThrow();
+    await expect(getSpeechToken()).rejects.toThrow('Not signed in');
   });
 });
 

@@ -42,7 +42,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.add_shopping_contributions(uuid,jsonb)'),
   ('private.remove_contributions(uuid[],uuid)'), -- security invoker, shared with apply_changes
   ('private.consume_ai_quota(text,integer)'),
-  ('private.restore_cleared_items(uuid,jsonb)');
+  ('private.restore_cleared_items(uuid,jsonb)'),
+  ('private.assert_restorable_size(jsonb)'); -- security invoker, a size check without data access
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

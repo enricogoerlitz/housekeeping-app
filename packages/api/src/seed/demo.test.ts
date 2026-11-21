@@ -11,15 +11,28 @@ import { describe, expect, it } from 'vitest';
 import { indexById } from '../queries';
 import { starterAreas } from '../starter/areas';
 import { starterCatalog } from '../starter/catalog';
-import { getData, getState } from '../store';
-import { TODAY, withDemoHousehold } from '../test-helpers';
+import { TODAY } from '../backend-test-helpers';
+import { createInitialState, DEMO_HOUSEHOLD_ID, SLOT_MORNING, TEST_HOUSEHOLD_ID } from './demo';
 import { seedRecipes } from './recipes-data';
 
 const DIETS: Diet[] = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'];
 
-withDemoHousehold();
+// The sample households are the source of the local seed (`pnpm db:seed:gen`) and of the fake
+// server in the command tests.
+const state = createInitialState(TODAY);
+const getState = () => state;
+const getData = () => {
+  const data = state.households[DEMO_HOUSEHOLD_ID];
+  if (!data) throw new Error('sample household missing');
+  return data;
+};
+const testHousehold = () => {
+  const data = state.households[TEST_HOUSEHOLD_ID];
+  if (!data) throw new Error('household "Test" missing');
+  return data;
+};
 
-describe('demo household (AC-012)', () => {
+describe('sample household (AC-012)', () => {
   it('AC-012: "Enrico & Nadja" is active with Enrico flexible and Nadja vegetarian', () => {
     const state = getState();
     const data = getData();
@@ -71,6 +84,27 @@ describe('demo household (AC-012)', () => {
     for (const item of getData().items) {
       const summary = summarizeItem(item);
       expect(summary.sources.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('the household "Test"', () => {
+  it('AC-002 (spec 0002) / AC-005 (spec 0004): has no restaurants and no activities', () => {
+    expect(testHousehold().restaurants).toEqual([]);
+    expect(testHousehold().activities).toEqual([]);
+  });
+
+  it('AC-001 (spec 0004): both households have Vormittag, Mittag and Abend in this order', () => {
+    for (const household of Object.values(getState().households)) {
+      expect(
+        [...household.household.mealSlots]
+          .sort((a, b) => a.sort - b.sort)
+          .map((slot) => [slot.id, slot.name]),
+      ).toEqual([
+        [SLOT_MORNING, 'Vormittag'],
+        ['slot-mittag', 'Mittag'],
+        ['slot-abend', 'Abend'],
+      ]);
     }
   });
 });

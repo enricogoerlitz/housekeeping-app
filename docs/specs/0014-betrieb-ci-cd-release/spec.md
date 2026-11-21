@@ -1173,7 +1173,14 @@ Im Projekt mit dem Client „Housekeeping Web“:
    Fotos → zwei Secrets in `backup`.
 6. **Lesende Rolle für die Sicherung:** das SQL aus dem Plan einmal im SQL-Editor ausführen, das
    Passwort selbst wählen → Secret in `backup` (Offene Frage 15).
-7. **Nach der ersten Veröffentlichung prüfen.** Das setzt die Pipeline; nichts davon von Hand ändern,
+7. **Vor dem ersten `supabase db push` prüfen, dass das Projekt keine alte Migrationshistorie
+   trägt** (ADR-0012: die Migrationen wurden einmal zu einer Grundlage neu aufgebaut, die alten
+   Versionsnummern gibt es nicht mehr). Lokal mit dem Projekt verknüpft
+   `pnpm exec supabase migration list --linked` ausführen: In der Spalte „Remote“ darf nichts
+   stehen. Steht dort etwas, nicht pushen, sondern die Ausgabe sichern und klären, ob das Projekt
+   leer neu aufgesetzt wird (es gibt vor v1 keine Daten, die erhalten bleiben müssen) — nie mit
+   `supabase migration repair` die alte Historie passend machen.
+8. **Nach der ersten Veröffentlichung prüfen.** Das setzt die Pipeline; nichts davon von Hand ändern,
    sonst überschreibt es die nächste Veröffentlichung:
    - Authentication → URL Configuration: Site URL `https://<SWA-Adresse>`; Redirect URLs
      `https://<SWA-Adresse>` und `https://<SWA-Adresse>/**`, keine `localhost`-Einträge.
@@ -1184,12 +1191,12 @@ Im Projekt mit dem Client „Housekeeping Web“:
      `private.before_user_created_hook`, aktiviert.
    - Database → Settings: „Enforce SSL“ an.
    - Edge Functions: genau die Functions aus dem Repo.
-8. **Erste Anmeldung:** das Einrichtungs-Skript aus dem Plan einmal lokal mit der eigenen
+9. **Erste Anmeldung:** das Einrichtungs-Skript aus dem Plan einmal lokal mit der eigenen
    Google-Adresse ausführen (Werte aus `.env`, nie im Repo). Dann auf `https://<SWA-Adresse>` mit
    Google anmelden, die Einladung annehmen und Nadja in der App einladen.
-9. **Free oder Pro** (Offene Frage 14): Es bleibt Free. Wechsel zu Pro (Organization → Billing),
-   wenn das Projekt trotz Nutzung pausiert oder wenn Benachrichtigungen zuverlässig laufen müssen;
-   die Ausgabengrenze („Spend Cap“) dann eingeschaltet lassen.
+10. **Free oder Pro** (Offene Frage 14): Es bleibt Free. Wechsel zu Pro (Organization → Billing),
+    wenn das Projekt trotz Nutzung pausiert oder wenn Benachrichtigungen zuverlässig laufen müssen;
+    die Ausgabengrenze („Spend Cap“) dann eingeschaltet lassen.
 
 ### 3. Supabase: Projekt „Vorschau“
 

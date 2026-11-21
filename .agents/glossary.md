@@ -112,7 +112,8 @@ Rezept hinter der Zutat („2 Zwiebeln · fein gehackt“) und geht nie auf die 
 0007).
 
 - **Im Code (vorläufig):** `RecipeIngredient.prepNote`
-- **Nicht verwenden:** Notiz (gehört zum Rezept), Kommentar, Anmerkung
+- **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Abwesenheit), Kommentar,
+  Anmerkung
 - **Abgrenzung:** Der _Zusatz_ geht auf die Liste („Frischkäse (Philadelphia)“), der Hinweis nicht.
 
 ### Rezeptangabe
@@ -282,8 +283,22 @@ einen Zusatz haben: „Eislaufen (Hohenschönhausen)“ (Spec 0004).
 
 - **Im Code:** `note` (am `ShoppingContribution` und am `MealPlanEntry`); an der Rezeptzutat
   `shoppingNote`
-- **Nicht verwenden:** Notiz (die gehört zum Rezept), Kommentar
+- **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Abwesenheit), Kommentar
 - **Abgrenzung:** Der _Hinweis_ an einer Zutat ist nur fürs Kochen und geht nicht auf die Liste.
+
+### Notiz
+
+Freitext des Haushalts an einem Rezept („Notizen“), einem Restaurant („Notiz“, z. B.
+„Trüffelpasta!“) oder einer Abwesenheit. An der Abwesenheit ist sie die Beschriftung des Streifens,
+z. B. „Urlaub Mallorca“ (Spec 0010, D22). Optional; gilt für alle Mitglieder, anders als Bewertung
+und Favorit.
+
+- **Im Code:** `notes` an `Recipe` und `Restaurant`, `note` an `Absence`
+- **Nicht verwenden:** Kommentar, Anmerkung, Beschreibung
+- **Abgrenzung:** Der _Zusatz_ steht an einem Beitrag der Einkaufsliste oder einem Planeintrag, der
+  _Hinweis_ an einer Rezeptzutat fürs Kochen; beide heißen nie „Notiz“. Die Beschreibung eines
+  Rezepts oder einer Aktivität (`description`) ist ein eigenes Feld.
+- **Siehe auch:** [Zusatz](#zusatz), [Hinweis](#hinweis), [Abwesenheit](#abwesenheit)
 
 ### Markt
 
@@ -584,7 +599,7 @@ automatische Tests ohne Google anmelden können. In Produktion abgeschaltet.
 Die Kopie aller Daten der eigenen Haushalte auf dem Gerät. Die Oberfläche liest nur daraus; der
 [Sync](#sync) hält ihn aktuell. Wegwerfbar: Bei einer neuen Speicher-Version wird er neu geladen.
 
-- **Im Code:** `LocalCache`, `cache`
+- **Im Code:** `SyncCache` (`packages/core/src/sync-delta.ts`), `cache`
 - **Nicht verwenden:** Offline-Datenbank, Store (für den Gerätespeicher)
 
 ### Laden-Warteschlange
@@ -594,14 +609,15 @@ da“, Posten hinzufügen, Bereich zuordnen (ADR-0008, Nachtrag) und ab Spec 001
 und zurücknehmen, auch „Alles einpacken“ und „Für die Rückreise zurücksetzen“ (eigener Nachtrag zu
 ADR-0008). Wird mit Netz der Reihe nach nachgereicht.
 
-- **Im Code:** `StoreQueue`, `store_queue`
+- **Im Code:** `StoreQueueEntry` (`packages/core/src/store-queue.ts`), auf dem Gerät unter dem
+  Schlüssel `queue`
 - **Nicht verwenden:** Abhak-Warteschlange (alter Name), Outbox
 
 ### KI-Kontingent
 
 Die Höchstmenge an KI-Nutzung je Mitglied und Tag, die der Server durchsetzt.
 
-- **Im Code:** `ai_usage`, `AI_DAILY_LIMIT`
+- **Im Code:** `ai_usage`, `consume_ai_quota` (Grenze je Art in der Funktion)
 
 ### Überlagerung
 
@@ -609,7 +625,7 @@ Was die App anzeigt, solange Änderungen noch nicht vom Server bestätigt sind: 
 plus Laden-Warteschlange plus ausstehende Änderungssätze (ADR-0011). Lehnt der Server ab, fällt
 die Änderung aus der Überlagerung und die Anzeige springt zurück.
 
-- **Im Code:** `overlay`, `PendingChangeset`
+- **Im Code:** `Changeset` (`packages/core/src/sync-overlay.ts`), `visibleTables`
 - **Nicht verwenden:** Optimistic Update (außer in technischen Docs)
 
 ### Aktivität

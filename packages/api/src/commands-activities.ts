@@ -58,7 +58,7 @@ export function createActivity(draft: ActivityDraft): Id {
   const name = checkName(draft.name);
   return commit({ path: 'diff' }, () => {
     const activity: Activity = {
-      id: newId('act'),
+      id: newId(),
       name,
       description: trimmed(draft.description),
       placeName: trimmed(draft.placeName),

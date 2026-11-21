@@ -506,11 +506,14 @@ Dann        antwortet der Assistent „Im Dummy sind nur die Beispielanfragen hi
 Und         es geht keine Netzwerkanfrage an einen fremden Host
 ```
 
-### REQ-010 — Video-Rundgang
+### REQ-010 — Video-Rundgang — verworfen (ADR-0012, Demo-Modus entfernt)
 
 > Ein Befehl nimmt die Abläufe als Video mit eingeblendeten Erklärungen auf.
 
-**AC-044**
+Der Rundgang lief nur gegen den Demo-Modus im Speicher des Browsers. Mit Spec 0003 startet die
+App immer mit Anmeldung, und vor v1 wurde der Demo-Modus samt `pnpm demo:video` entfernt.
+
+**AC-044 — verworfen (ADR-0012, Demo-Modus entfernt)**
 
 ```gherkin
 Angenommen  der Web-Build ist erzeugt
@@ -520,7 +523,7 @@ Und         es zeigt Abläufe aus REQ-005 bis REQ-009 in fester Reihenfolge
 Und         jeder Abschnitt blendet einen deutschen Erklärtext ein
 ```
 
-**AC-045 — Fehlerfall: ein Schritt scheitert**
+**AC-045 — verworfen (ADR-0012, Demo-Modus entfernt)**
 
 ```gherkin
 Angenommen  ein Bildschirm aus dem Rundgang fehlt oder ein Element ist nicht auffindbar
@@ -574,4 +577,4 @@ lokalen Speicher des Browsers.
 | REQ-007 | AC-028 bis AC-034                                 | 5, 10          | `e2e/rundgang-liste.spec.ts`, `packages/core/src/shopping.test.ts`                      |
 | REQ-008 | AC-035 bis AC-039                                 | 11             | `e2e/rundgang-haushalt.spec.ts`, `packages/core/src/chores.test.ts`                     |
 | REQ-009 | AC-040 bis AC-043                                 | 12             | `e2e/rundgang-*.spec.ts`, `packages/api/src/assistant.test.ts`                          |
-| REQ-010 | AC-044, AC-045                                    | 13             | `pnpm demo:video` (`e2e/record-video.mjs`)                                              |
+| REQ-010 | AC-044, AC-045 verworfen (ADR-0012)               | 13             | — (Demo-Modus entfernt)                                                                 |

@@ -50,9 +50,10 @@ import {
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { DetailPage } from '@/features/shell/detail-page';
+import { FavoriteButton } from '@/features/shell/favorite-button';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
@@ -330,8 +331,10 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
 
   const favorite = (
     <FavoriteButton
+      testID="recipe-favorite"
       active={isFavorite}
       disabled={online.disabled}
+      hint={online.hint}
       onPress={() => toggleFavorite(recipe.id)}
     />
   );
@@ -633,35 +636,5 @@ function StepNumber(props: { value: number }) {
     >
       <Text variant="smallStrong">{props.value}</Text>
     </View>
-  );
-}
-
-function FavoriteButton(props: { active: boolean; disabled: boolean; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      testID="recipe-favorite"
-      accessibilityRole="button"
-      accessibilityLabel="Favorit"
-      accessibilityState={{ selected: props.active, disabled: props.disabled }}
-      disabled={props.disabled}
-      onPress={props.onPress}
-      style={(state) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.surfaceSunken,
-        opacity: props.disabled ? 0.45 : state.pressed ? 0.6 : 1,
-      })}
-    >
-      <Icon
-        name="heart"
-        size={22}
-        color={props.active ? 'accent' : 'muted'}
-        filled={props.active}
-      />
-    </Pressable>
   );
 }

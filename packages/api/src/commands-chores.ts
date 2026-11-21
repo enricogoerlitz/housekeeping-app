@@ -25,7 +25,7 @@ export function completeChore(choreId: Id, doneBy?: Id): Id | null {
   const once = chore.recurrence.type === 'once';
   return commit({ path: 'diff', maxDeletes: { chores: once ? 1 : 0 } }, () => {
     const event: ChoreEvent = {
-      id: newId('ev'),
+      id: newId(),
       choreId,
       title: chore.title,
       kind: 'done',
@@ -94,7 +94,7 @@ export function skipChore(choreId: Id): void {
   const chore = getData().chores.find((candidate) => candidate.id === choreId);
   if (!chore) return;
   const event: ChoreEvent = {
-    id: newId('ev'),
+    id: newId(),
     choreId,
     title: chore.title,
     kind: 'skipped',
@@ -145,7 +145,7 @@ export function createChore(input: ChoreInput): Id {
   if (!title) throw new Error('Titel fehlt');
   const today = getState().today;
   const chore: Chore = {
-    id: newId('chore'),
+    id: newId(),
     title,
     room: input.room?.trim() || undefined,
     recurrence: input.recurrence,
@@ -171,7 +171,7 @@ export function logSpontaneous(title: string): Id {
   if (!trimmed) throw new Error('Der Text fehlt.');
   const state = getState();
   const event: ChoreEvent = {
-    id: newId('ev'),
+    id: newId(),
     title: trimmed,
     kind: 'spontaneous',
     doneOn: state.today,

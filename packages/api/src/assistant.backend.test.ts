@@ -1,4 +1,4 @@
-// Accepting an assistant proposal in backend mode (spec 0003): all chosen parts are one
+// Accepting an assistant proposal (spec 0003): all chosen parts are one
 // transaction — one apply_changes call with the row changes and the list contributions.
 import { addDays } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
@@ -56,7 +56,7 @@ function proposal(): Proposal {
 
 const allParts = (p: Proposal) => p.parts.map((part) => part.id);
 
-describe('applyProposal in backend mode', () => {
+describe('applyProposal', () => {
   it('AC-026: all chosen parts go in one apply_changes call and reach the other device', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();

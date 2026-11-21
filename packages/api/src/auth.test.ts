@@ -21,7 +21,7 @@ import { TEST_ACCOUNTS, TEST_PASSWORD } from './dev-accounts';
 import { householdToRows, membersToRows } from './db/mapping';
 import { createInitialState, DEMO_HOUSEHOLD_ID, ENRICO } from './seed/demo';
 import { createMemoryStorage, type Storage } from './storage';
-import { commit, getState, isBackendMode } from './store';
+import { getState, peekState, queueStoreAction } from './store';
 import { createFakeServer, type FakeServer } from './transport-fake';
 
 const LOCAL_ENV = {
@@ -606,14 +606,14 @@ describe('AC-003: sign-out with the real engine', () => {
     environment.setOnline(false);
     const item = getState().households[H]?.items.find((candidate) => !candidate.checked);
     if (!item) throw new Error('fixture: no open item');
-    commit({ path: 'queue', action: { kind: 'check', itemId: item.id, checked: true } }, () => {});
+    queueStoreAction({ kind: 'check', itemId: item.id, checked: true });
     await vi.waitFor(async () => expect(await storage.get('queue')).toHaveLength(1));
 
     await control.signOut();
     expect(await storage.get('meta')).toBeUndefined();
     expect(await storage.get('queue')).toBeUndefined();
     expect(await storage.get(`household:${H}`)).toBeUndefined();
-    expect(isBackendMode()).toBe(false);
+    expect(peekState()).toBeUndefined();
     expect(control.getState().status).toBe('signedOut');
   });
 

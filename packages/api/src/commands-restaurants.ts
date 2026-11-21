@@ -7,7 +7,7 @@ import {
 } from '@housekeeping/core';
 
 import { onlineCall } from './backend';
-import { commit, getData, getState, isBackendMode, newId, nowISO, updateData } from './store';
+import { commit, getData, getState, newId, nowISO, updateData } from './store';
 import { TransportError } from './transport';
 
 export interface RestaurantDraft {
@@ -43,29 +43,15 @@ export function readMapsLink(text: string): LinkReading {
   };
 }
 
-// Stand-in for the server that follows a short link's redirect (Edge Function, later spec).
-const SAMPLE_SHORT_LINK_PLACE: RestaurantDraft = {
-  name: 'Café Fleur',
-  address: 'Lindenstraße 10, Köln',
-  location: { lat: 50.9338, lng: 6.9395 },
-  cuisine: 'Café',
-};
-
-/** Demo mode: resolves a short link to a sample place. */
-export function resolveShortLink(url: string): RestaurantDraft {
-  return { ...SAMPLE_SHORT_LINK_PLACE, mapsUrl: url };
-}
-
 export const NOT_A_MAPS_LINK_MESSAGE = 'Das ist kein Karten-Link';
 const RESOLVE_FAILED_MESSAGE =
   'Der Link ließ sich gerade nicht öffnen – bitte noch einmal versuchen';
 
 /**
- * Resolves a short link: with the backend the edge function `resolve-maps-link` follows the
- * redirect (AC-031); in demo mode it is the sample place. Online only (OfflineError).
+ * Resolves a short link: the edge function `resolve-maps-link` follows the redirect (AC-031).
+ * Online only (OfflineError).
  */
 export async function resolveMapsShortLink(url: string): Promise<RestaurantDraft> {
-  if (!isBackendMode()) return resolveShortLink(url);
   try {
     const place = await onlineCall((transport) => transport.resolveMapsLink(url));
     return {
@@ -87,7 +73,7 @@ export function createRestaurant(draft: RestaurantDraft): Id {
   if (!name) throw new Error('Name fehlt');
   return commit({ path: 'diff' }, () => {
     const restaurant: Restaurant = {
-      id: newId('rest'),
+      id: newId(),
       name,
       address: draft.address?.trim() || undefined,
       location: draft.location,

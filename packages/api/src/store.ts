@@ -46,7 +46,7 @@ export interface AppState {
   currentMemberId: Id;
   activeHouseholdId: Id;
   households: Record<Id, HouseholdData>;
-  /** Demo switch: shows the offline state. There is no network in this build. */
+  /** No connection right now (also the simulated one of the offline switch): only store actions. */
   offline: boolean;
   /**
    * The store last chosen in "Einkaufen" on this device, per household (spec 0006, REQ-007);
@@ -55,24 +55,14 @@ export interface AppState {
   storeChoices?: Readonly<Record<Id, Id | null>>;
 }
 
-// Two modes. Demo (default): an in-memory seed, a reload starts from it again (spec 0001,
-// AC-014). Backend (spec 0003): the sync engine owns the state and publishes it here; commands
-// change it only through `commit`, which hands the change to the engine.
+// The sync engine (spec 0003) owns the state and publishes it here; commands change it only
+// through `commit`, which hands the change to the engine. Without a signed-in user there is no
+// state: the app shows nothing that reads it (AuthGate).
 let state: AppState | undefined;
-let initialise: (() => AppState) | undefined;
 const listeners = new Set<() => void>();
 
-/** Registers how the initial state is built. Called once by the seed module. */
-export function registerInitialState(factory: () => AppState): void {
-  initialise = factory;
-}
-
 export function getState(): AppState {
-  if (!state) {
-    if (backend) throw new Error('The backend has not published a state yet.');
-    if (!initialise) throw new Error('No initial state registered');
-    state = initialise();
-  }
+  if (!state) throw new Error('No state: nobody is signed in or the backend has not loaded yet.');
   return state;
 }
 
@@ -89,9 +79,7 @@ function notify(): void {
 
 /** Replaces the active household's data immutably. */
 export function updateData(update: (data: HouseholdData) => HouseholdData): void {
-  if (backend && !committing) {
-    throw new Error('In backend mode, data changes go through commit().');
-  }
+  if (!committing) throw new Error('Data changes go through commit().');
   setState((current) => {
     const data = current.households[current.activeHouseholdId];
     if (!data) return current;
@@ -101,9 +89,9 @@ export function updateData(update: (data: HouseholdData) => HouseholdData): void
   });
 }
 
-// ---------- Backend mode ----------
+// ---------- The engine ----------
 
-/** Thrown by an online-only command while offline in backend mode (the UI disables them). */
+/** Thrown by an online-only command while offline (the UI disables them). */
 export class OfflineError extends Error {
   constructor() {
     super('Offline – zum Bearbeiten brauchst du Netz');
@@ -129,7 +117,7 @@ export type StoreAction =
  *   columns; every delete per table must be declared in `maxDeletes` (default 0).
  * - rpc: a dedicated RPC; the local effect is shown until it is confirmed. `inverse` makes it
  *   undoable.
- * - queue: one of the four store actions; works offline, applied locally by the store queue.
+ * The four store actions do not go through commit but through `queueStoreAction`.
  */
 export type CommitSpec<T> =
   | { path: 'diff'; maxDeletes?: Partial<Record<string, number>> }
@@ -142,11 +130,6 @@ export type CommitSpec<T> =
         response: unknown,
       ) => Promise<unknown>;
     };
-
-export interface QueueSpec {
-  path: 'queue';
-  action: StoreAction;
-}
 
 /** How the server took a change: no error = applied; otherwise refused (or lost) with the error. */
 export type CommitOutcome = (error?: unknown) => void;
@@ -186,12 +169,13 @@ export function detachBackend(hooks: BackendHooks): void {
   notify();
 }
 
-export function isBackendMode(): boolean {
-  return backend !== undefined;
+function requireBackend(): BackendHooks {
+  if (!backend) throw new Error('Not signed in');
+  return backend;
 }
 
-/** Backend mode without a connection right now: only the store actions work. */
-export function isBackendOffline(): boolean {
+/** No connection right now: only the store actions work. */
+export function isOffline(): boolean {
   return backend?.isOffline() ?? false;
 }
 
@@ -206,58 +190,45 @@ export function rememberActiveHousehold(householdId: string): void {
   backend?.rememberActiveHousehold(householdId);
 }
 
-/** Demo mode keeps the choice in memory; backend mode on the device, bound to the user. */
+/** Kept on the device, bound to the user. */
 export function rememberShoppingStore(storeId: Id | null): void {
-  const householdId = getState().activeHouseholdId;
-  if (backend) {
-    backend.rememberShoppingStore(householdId, storeId);
-    return;
-  }
-  setState((current) =>
-    current.storeChoices?.[householdId] === storeId
-      ? current
-      : { ...current, storeChoices: { ...current.storeChoices, [householdId]: storeId } },
-  );
+  requireBackend().rememberShoppingStore(getState().activeHouseholdId, storeId);
 }
 
 export function simulateOffline(offline: boolean): void {
-  backend?.setSimulatedOffline(offline);
+  requireBackend().setSimulatedOffline(offline);
 }
 
 /**
- * Runs a command. In demo mode it just runs. In backend mode the change is computed from the
- * state before and after and handed to the engine; a store action is queued instead of run.
+ * Runs a command: the change is computed from the state before and after and handed to the
+ * engine.
  */
-export function commit<T>(spec: CommitSpec<T>, run: () => T): T;
-export function commit(spec: QueueSpec, run: () => void): void;
-export function commit<T>(spec: CommitSpec<T> | QueueSpec, run: () => T): T | void {
-  if (!backend) return run();
+export function commit<T>(spec: CommitSpec<T>, run: () => T): T {
   // A command that uses another command (the assistant, a proposal) is still one change: the
   // inner one runs as part of the outer commit.
-  if (committing) {
-    if (spec.path === 'queue') throw new Error('A store action cannot run inside a command.');
-    return run();
-  }
-  if (spec.path === 'queue') {
-    backend.enqueueStoreAction(spec.action);
-    return;
-  }
-  return record(backend, spec, run);
+  if (committing) return run();
+  return record(requireBackend(), spec, run);
+}
+
+/** One of the four store actions (ADR-0008 addendum): queued, shown at once, works offline. */
+export function queueStoreAction(action: StoreAction): void {
+  if (committing) throw new Error('A store action cannot run inside a command.');
+  requireBackend().enqueueStoreAction(action);
 }
 
 /**
  * Like commit, for a caller that must know whether the server took the change (a photo upload
  * deletes its file when the path was refused). Resolves with the command's result once the server
  * applied it, rejects with the server's error when it refused it or the change got lost. The
- * local effect shows at once, as with commit. Demo mode, or inside another command: right away.
+ * local effect shows at once, as with commit. Inside another command: right away.
  */
 export async function commitConfirmed<T>(spec: CommitSpec<T>, run: () => T): Promise<T> {
-  if (!backend || committing) return commit(spec, run);
+  if (committing) return commit(spec, run);
   let report: CommitOutcome = () => {};
   const outcome = new Promise<void>((resolve, reject) => {
     report = (error) => (error === undefined ? resolve() : reject(error));
   });
-  const result = record(backend, spec, run, report);
+  const result = record(requireBackend(), spec, run, report);
   await outcome;
   return result;
 }
@@ -292,7 +263,7 @@ function record<T>(
   return result;
 }
 
-/** The current state without building the demo seed (undefined before anything was published). */
+/** The current state, undefined before anything was published (no throw, unlike getState). */
 export function peekState(): AppState | undefined {
   return state;
 }
@@ -329,32 +300,16 @@ export function useDataSelector<T>(select: (data: HouseholdData) => T): T {
 }
 
 /**
- * Remembers the current state and returns a function that restores it.
- * Used for "Rückgängig": take a snapshot, run the command, offer the restore in a toast.
- * In backend mode the restore sends the inverse of the changes made since (`undoable`).
+ * "Rückgängig": take a snapshot, run the command, offer the returned restore in a toast. The
+ * restore sends the inverse of the changes made since (`undoable`).
  */
 export function snapshot(): () => void {
-  if (backend) return backend.undoable();
-  const saved = getState();
-  return () => {
-    state = saved;
-    notify();
-  };
+  return requireBackend().undoable();
 }
 
-/** Back to the seed data (used by tests and by "Demo zurücksetzen"). Demo mode only. */
-export function resetState(): void {
-  if (backend) throw new Error('resetState is only available in demo mode.');
-  state = undefined;
-  notify();
-}
-
-let idCounter = 0;
-/** Ids are created on the client; the backend needs UUIDs, the demo keeps readable ones. */
-export function newId(prefix: string): Id {
-  if (backend) return crypto.randomUUID();
-  idCounter += 1;
-  return `${prefix}-${idCounter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+/** Ids are created on the client (optimistic UI) as UUIDs, like the database's. */
+export function newId(): Id {
+  return crypto.randomUUID();
 }
 
 export function nowISO(): string {

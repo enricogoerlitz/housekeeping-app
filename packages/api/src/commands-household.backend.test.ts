@@ -1,26 +1,26 @@
-// Household commands in backend mode (spec 0003): absences, feedback and articles on the diff path,
+// Household commands (spec 0003): absences, feedback and articles on the diff path,
 // votes per member over their RPC, assigning an area through the store queue, and the household,
 // invitation and membership calls that wait for the server.
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { berlinToday } from './backend';
 import { H, withBackend } from './backend-test-helpers';
 import {
   acceptInvitation,
-  addAbsence,
   addFeedback,
   assignArticleArea,
   createHousehold,
   declineInvitation,
   inviteMember,
-  removeAbsence,
+  removeAbsences,
   removeMember,
-  setCurrentMember,
+  saveAbsences,
+  switchHousehold,
   toggleFeedbackVote,
   updateArticle,
 } from './commands-household';
 import { ENRICO, NADJA } from './seed/demo';
-import { getData, getState, OfflineError, resetState, snapshot } from './store';
+import { getData, getState, OfflineError, snapshot } from './store';
 
 const fx = withBackend();
 
@@ -28,7 +28,9 @@ describe('diff path', () => {
   it('AC-013: an absence added here reaches the other device; undo of removing it re-inserts', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
-    const id = addAbsence({ memberId: NADJA, from: '2026-12-01', to: '2026-12-03' });
+    saveAbsences({ replaceIds: [], memberIds: [NADJA], from: '2026-12-01', to: '2026-12-03' });
+    const id = getData().absences[0]?.id;
+    if (!id) throw new Error('no absence');
     await fx.settle(nadja);
     expect(fx.calls).toEqual([
       {
@@ -49,7 +51,7 @@ describe('diff path', () => {
 
     fx.clearCalls();
     const restore = snapshot();
-    removeAbsence(id);
+    removeAbsences([id]);
     expect(getData().absences).toEqual([]);
     await fx.settle(nadja);
     expect(fx.calls[0]?.args[1]).toEqual([{ kind: 'delete', table: 'absences', id }]);
@@ -185,13 +187,16 @@ describe('household, invitation, membership (wait for the server)', () => {
   });
 });
 
-describe('backend mode only', () => {
-  it('the current member is the signed-in user; demo switches are gone', async () => {
-    await fx.startEnrico();
-    expect(getState().currentMemberId).toBe(ENRICO);
-    expect(() => setCurrentMember(NADJA)).toThrow();
-    expect(() => resetState()).toThrow();
-    expect(getState().currentMemberId).toBe(ENRICO);
+describe('the signed-in user', () => {
+  it('the current member is the signed-in user', async () => {
+    await fx.startAs(NADJA);
+    expect(getState().currentMemberId).toBe(NADJA);
+  });
+
+  it('without a sign-in there is no state, and commands are refused', () => {
+    expect(() => getState()).toThrow();
+    expect(() => addFeedback({ kind: 'idea', text: 'Etwas' })).toThrow();
+    expect(() => snapshot()).toThrow('Not signed in');
   });
 
   it('"today" is the Berlin date', async () => {
@@ -200,5 +205,94 @@ describe('backend mode only', () => {
     expect(berlinToday(new Date('2026-06-30T22:30:00Z'))).toBe('2026-07-01');
     await fx.startEnrico();
     expect(getState().today).toBe(berlinToday(new Date()));
+  });
+});
+
+describe('household commands: input and local effect', () => {
+  beforeEach(async () => {
+    await fx.startEnrico();
+  });
+
+  it('AC-039: new feedback has status "neu"; empty feedback fails', () => {
+    const id = addFeedback({ kind: 'idea', text: 'Liste nach Rezept gruppieren' });
+    expect(getData().feedback.find((entry) => entry.id === id)).toMatchObject({
+      status: 'new',
+      authorId: ENRICO,
+    });
+    expect(() => addFeedback({ kind: 'idea', text: '  ' })).toThrow('Der Text fehlt.');
+  });
+
+  it('AC-002: an unknown household is ignored', () => {
+    switchHousehold('hh-weg');
+    expect(getState().activeHouseholdId).toBe(H);
+    expect(getData().household.name).toBe('Enrico & Nadja');
+  });
+});
+
+describe('absences (spec 0010, REQ-010)', () => {
+  const mallorca = { from: '2027-01-01', to: '2027-01-04', note: 'Urlaub Mallorca' };
+  const ours = () =>
+    getData().absences.filter(
+      (absence) => absence.from === '2027-01-01' || absence.note === 'Arzt',
+    );
+
+  beforeEach(async () => {
+    await fx.startEnrico();
+  });
+
+  it('AC-033: Enrico and Nadja chosen in "Enrico & Nadja" is one absence of the household', () => {
+    saveAbsences({ replaceIds: [], memberIds: [ENRICO, NADJA], ...mallorca });
+    expect(ours()).toEqual([expect.objectContaining({ memberId: undefined, ...mallorca })]);
+  });
+
+  it('AC-034: one person chosen is one absence of that person', () => {
+    saveAbsences({ replaceIds: [], memberIds: [NADJA], ...mallorca });
+    expect(ours().map((absence) => absence.memberId)).toEqual([NADJA]);
+  });
+
+  it('AC-036: editing replaces the rows of the stripe in one change', () => {
+    saveAbsences({ replaceIds: [], memberIds: [ENRICO], ...mallorca });
+    const [enricos] = ours();
+    saveAbsences({
+      replaceIds: [enricos?.id ?? ''],
+      memberIds: [ENRICO, NADJA],
+      ...mallorca,
+      to: '2027-01-05',
+    });
+    expect(ours()).toEqual([
+      expect.objectContaining({ memberId: undefined, from: '2027-01-01', to: '2027-01-05' }),
+    ]);
+    expect(getData().absences.some((absence) => absence.id === enricos?.id)).toBe(false);
+  });
+
+  it('AC-035, AC-044: "Bis" before "Von" or nobody chosen writes nothing; one day is fine', () => {
+    const before = getData().absences;
+    expect(() =>
+      saveAbsences({ replaceIds: [], memberIds: [ENRICO], from: '2027-01-04', to: '2027-01-01' }),
+    ).toThrow();
+    expect(() =>
+      saveAbsences({ replaceIds: [], memberIds: [], from: '2027-01-01', to: '2027-01-01' }),
+    ).toThrow();
+    expect(getData().absences).toEqual(before);
+    saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO],
+      from: '2027-01-01',
+      to: '2027-01-01',
+      note: 'Arzt',
+    });
+    expect(ours()).toEqual([
+      expect.objectContaining({ memberId: ENRICO, from: '2027-01-01', to: '2027-01-01' }),
+    ]);
+  });
+
+  it('AC-037: removing a row deletes exactly its absences', () => {
+    saveAbsences({ replaceIds: [], memberIds: [ENRICO], ...mallorca });
+    saveAbsences({ replaceIds: [], memberIds: [NADJA], ...mallorca, to: '2027-01-07' });
+    const count = getData().absences.length;
+    const [first] = ours();
+    removeAbsences([first?.id ?? '']);
+    expect(getData().absences).toHaveLength(count - 1);
+    expect(ours()).toHaveLength(1);
   });
 });

@@ -1,7 +1,7 @@
 import { priceLabel, type Restaurant } from '@housekeeping/core';
 
 /** The town part of an address: "Severinstraße 12, Köln" → "Köln". */
-export function addressArea(address: string | undefined): string {
+function addressArea(address: string | undefined): string {
   if (!address) return '';
   const parts = address
     .split(',')

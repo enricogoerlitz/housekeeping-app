@@ -105,7 +105,7 @@ export function TodayMeals(props: TodayMealsProps) {
     }
     if (entry.kind === 'activity') {
       return (
-        <ActivityCard
+        <PlannedActivityCard
           entry={entry}
           activity={activity}
           slotName={slotName}
@@ -202,7 +202,7 @@ function RouteButton(props: { entryId: string; onPress: () => void }) {
 }
 
 /** An activity of today: its own photo, "Eislaufen (Hohenschönhausen)", the place (AC-019). */
-function ActivityCard(props: {
+function PlannedActivityCard(props: {
   entry: MealPlanEntry;
   activity?: Activity;
   slotName: string;

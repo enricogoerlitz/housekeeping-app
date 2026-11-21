@@ -11,26 +11,20 @@ import {
 } from '@housekeeping/core';
 
 import { resolveArticle } from './commands-household';
-import { getState, newId, nowISO, updateData } from './store';
+import { newId, nowISO, updateData } from './store';
 import type { AddEntry, ChangeOp } from './transport';
 
-export function appendContribution(
+function appendContribution(
   articleId: Id,
   contribution: ShoppingContribution,
-  itemId: Id = newId('item'),
+  itemId: Id = newId(),
 ): Id {
   let resultId = itemId;
   updateData((data) => {
     const items = addContribution(data.items, articleId, contribution, itemId, nowISO());
     const target = items.find((item) => item.articleId === articleId && !item.checked);
     if (target) resultId = target.id;
-    const offline = getState().offline;
-    return {
-      ...data,
-      items: offline
-        ? items.map((item) => (item.id === resultId ? { ...item, pendingSync: true } : item))
-        : items,
-    };
+    return { ...data, items };
   });
   return resultId;
 }
@@ -54,7 +48,7 @@ export function addLocally(
   article: Article,
   contributions: ShoppingContribution[],
 ): { itemId: Id; entry: AddEntry } {
-  const clientItemId = newId('item');
+  const clientItemId = newId();
   let itemId = clientItemId;
   for (const contribution of contributions) {
     itemId = appendContribution(article.id, contribution, clientItemId);
@@ -97,7 +91,7 @@ export function typedContribution(
   return {
     name: parsed.name,
     contribution: {
-      id: newId('contrib'),
+      id: newId(),
       source: { kind: 'manual' },
       // No number typed means one: a second "Milch" then adds up to 2×.
       count: parsed.qty === undefined ? (parsed.count ?? 1) : undefined,

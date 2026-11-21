@@ -6,7 +6,7 @@ import { Pressable } from 'react-native';
 import { MANAGE_ICON } from '@/features/manage/manage-entries';
 
 /** The avatar in a screen header: opens the personal settings. */
-export function ProfileButton() {
+function ProfileButton() {
   const member = useCurrentMember();
   const router = useRouter();
   return (
@@ -23,7 +23,7 @@ export function ProfileButton() {
 }
 
 /** ⊞: opens the page "Verwalten" (spec 0005, D2). */
-export function ManageButton() {
+function ManageButton() {
   const router = useRouter();
   return (
     <IconButton

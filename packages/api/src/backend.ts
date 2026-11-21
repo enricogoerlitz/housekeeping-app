@@ -1,4 +1,4 @@
-// Backend mode (spec 0003): the sync engine keeps a local cache of the user's households, pulls
+// The sync engine (spec 0003) keeps a local cache of the user's households, pulls
 // deltas (docs/architecture/sync.md), shows `server rows ⊕ store queue ⊕ pending changesets`
 // (ADR-0011) and sends writes through one FIFO outbox. Merge and sync rules are core functions;
 // this module only does the I/O and the bookkeeping around them.
@@ -10,6 +10,7 @@ import {
   dropSettled,
   enqueue,
   needsFullLoad,
+  parseStoredQueue,
   pullRequestFor,
   rejectFrom,
   remapQueue,
@@ -57,11 +58,10 @@ import { createSupabaseTransport, fromSupabaseClient } from './transport-supabas
 /**
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
  * What is not cache survives the bump: the store queue and the choices made on this device.
- * Version 3: the shopping list is the household's items, without list rows (spec 0006, ADR-0012).
  */
 export const CACHE_VERSION = 3;
 /** Retention of `deleted_records` on the server (pg_cron). */
-export const RETENTION_DAYS = 30;
+const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 const HISTORY_LIMIT = 100;
@@ -365,6 +365,8 @@ export function createEngine(options: EngineOptions): Engine {
   let running = false;
   /** Bumped by a reset; work started before it must not write its result. */
   let epoch = 0;
+  /** A reset engine writes nothing to the device any more (the storage belongs to the next start). */
+  let cleared = false;
 
   const unsent = () => (inFlight ? [inFlight, ...queue] : queue);
   const isOffline = () => transport.isBlocked() || !environment.isOnline() || networkFailed;
@@ -504,12 +506,11 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   async function persistQueue(): Promise<void> {
-    const at = epoch;
-    const entries: [string, unknown][] = [
+    if (cleared) return;
+    await storage.setMany([
       ['meta', meta()],
       ['queue', unsent()],
-    ];
-    if (at === epoch) await storage.setMany(entries);
+    ]);
   }
 
   /** One sync step is written in one transaction: meta, small tables, changed households, queue. */
@@ -591,9 +592,14 @@ export function createEngine(options: EngineOptions): Engine {
 
   /** Reads store queue, household and store choices of this device into the engine. */
   async function readDeviceState(): Promise<void> {
-    const storedQueue = await storage.get('queue');
-    // Written by this module; the entries' shape is kept across cache versions.
-    queue = Array.isArray(storedQueue) ? (storedQueue as StoreQueueEntry[]) : [];
+    // Kept across cache versions and app updates, so an entry may no longer parse: it is dropped,
+    // and the user is told that an action got lost.
+    const { entries, dropped } = parseStoredQueue(await storage.get('queue'));
+    queue = entries;
+    if (dropped > 0) {
+      await storage.setMany([['queue', queue]]);
+      options.onWriteRejected?.(WRITE_REJECTED_MESSAGE);
+    }
     const chosen = await storage.get('active');
     chosenHouseholdId = typeof chosen === 'string' ? chosen : undefined;
     storeChoices = storeChoicesFrom(await storage.get('store-choices'));
@@ -1055,6 +1061,7 @@ export function createEngine(options: EngineOptions): Engine {
   async function resetLocalData(): Promise<void> {
     stop();
     epoch += 1;
+    cleared = true;
     cache = undefined;
     persisted.clear();
     queue = [];
@@ -1071,7 +1078,7 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function rememberActiveHousehold(householdId: string): void {
-    if (chosenHouseholdId === householdId) return;
+    if (cleared || chosenHouseholdId === householdId) return;
     chosenHouseholdId = householdId;
     // meta binds the choice to this user: another user's start clears the whole storage.
     void storage
@@ -1087,7 +1094,7 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function rememberShoppingStore(householdId: string, storeId: string | null): void {
-    if (storeChoices[householdId] === storeId) return;
+    if (cleared || storeChoices[householdId] === storeId) return;
     storeChoices = { ...storeChoices, [householdId]: storeId };
     rebuild();
     // Only on this device (spec 0006): meta binds it to the user like the chosen household.
@@ -1165,8 +1172,9 @@ let session: { current: DeviceSession; controller: AbortController } | undefined
 let sessionEpoch = 0;
 const rejectedListeners = new Set<(message: string) => void>();
 const syncListeners = new Set<() => void>();
-const DEMO_SYNC_STATE: SyncState = { status: 'idle', ready: true };
-let currentSyncState: SyncState = DEMO_SYNC_STATE;
+/** Without an engine nothing is loaded. */
+const NO_ENGINE_SYNC_STATE: SyncState = { status: 'idle', ready: false };
+let currentSyncState: SyncState = NO_ENGINE_SYNC_STATE;
 const smallListeners = new Set<() => void>();
 let currentSmall: SyncCache['small'] = EMPTY_SMALL;
 
@@ -1182,7 +1190,7 @@ function setSyncState(state: SyncState): void {
 }
 
 /**
- * Switches the app to backend mode: commands go through the engine, hooks read its state. Resolves
+ * Starts the engine of the signed-in user: commands go through it, hooks read its state. Resolves
  * once the cache is loaded from storage (the first pull continues in the background).
  */
 export async function startBackend(options: StartBackendOptions): Promise<Engine> {
@@ -1230,7 +1238,7 @@ export async function startBackend(options: StartBackendOptions): Promise<Engine
   return engine;
 }
 
-/** Back to demo mode (tests); the cache stays on the device. */
+/** Stops the engine; the cache stays on the device (the next start of the same user reads it). */
 export async function stopBackend(): Promise<void> {
   const engine = current;
   if (!engine) return;
@@ -1240,11 +1248,11 @@ export async function stopBackend(): Promise<void> {
   session = undefined;
   engine.stop();
   detachBackend(engine);
-  setSyncState(DEMO_SYNC_STATE);
+  setSyncState(NO_ENGINE_SYNC_STATE);
   setSmall(EMPTY_SMALL);
 }
 
-/** Sign-out or a change of user: clears cache, store queue and outbox, and leaves backend mode. */
+/** Sign-out or a change of user: clears cache, store queue and outbox, and stops the engine. */
 export async function resetLocalData(): Promise<void> {
   const engine = current;
   if (!engine) return;
@@ -1267,7 +1275,7 @@ function subscribeSync(listener: () => void): () => void {
   };
 }
 
-/** Sync status for a small indicator; in demo mode always idle and ready. */
+/** Sync status for a small indicator; without an engine idle and not ready. */
 export function useSyncState(): SyncState {
   return useSyncExternalStore(
     subscribeSync,
@@ -1300,14 +1308,14 @@ export async function onlineCall<T>(send: (transport: Transport) => Promise<T>):
 }
 
 /**
- * The signed-in user's session (undefined in demo mode). Whatever is kept in its storage is bound
+ * The signed-in user's session (undefined while nobody is signed in). Whatever is kept in its storage is bound
  * to the user: another user's start and the sign-out clear it as a whole.
  */
 export function deviceSession(): DeviceSession | undefined {
   return session?.current;
 }
 
-/** The small tables of the cache (empty in demo mode); changes notify `subscribeSmall`. */
+/** The small tables of the cache (empty without an engine); changes notify `subscribeSmall`. */
 export function readSmallTables(): SyncCache['small'] {
   return currentSmall;
 }

@@ -49,7 +49,7 @@ export function isNetworkFailure(error: unknown): boolean {
 const SERVER_CODE = /^[a-z][a-z0-9_]*$/;
 /**
  * SQLSTATEs our database functions raise on purpose (`row_not_found`, `last_member` …).
- * PostgREST answers them with 500, but retrying cannot change the answer.
+ * PostgREST answers P0001 with 400 and P0002 with 500; retrying cannot change either answer.
  */
 const RAISED = new Set(['P0001', 'P0002']);
 

@@ -12,7 +12,7 @@ export function useOnlineOnly(): { offline: boolean; disabled: boolean; hint: st
   return { offline, disabled: offline, hint: offline ? OFFLINE_EDIT_HINT : undefined };
 }
 
-export const OFFLINE_UNDO_HINT = 'Offline – zum Rückgängigmachen brauchst du Netz';
+const OFFLINE_UNDO_HINT = 'Offline – zum Rückgängigmachen brauchst du Netz';
 
 /**
  * Wraps the "Rückgängig" of a toast: offline the undo is refused (it is a write) with a calm hint

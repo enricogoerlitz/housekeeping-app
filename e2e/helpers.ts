@@ -295,7 +295,7 @@ export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
  * Switches the developer switch "Offline simulieren" (Verwalten → Entwicklung; spec 0005,
  * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar.
  */
-export async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
+async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
   const phone = isPhone(page);
   if (phone) {
     await (await single(page, 'header-manage')).click();
@@ -327,7 +327,7 @@ export async function setNetwork(context: BrowserContext, online: boolean): Prom
 // ---------- Edge function stubs (no Foundry in the normal run) ----------
 
 /** The request body the app sent to an edge function. */
-export function requestBody(route: Route): Record<string, unknown> {
+function requestBody(route: Route): Record<string, unknown> {
   const body: unknown = route.request().postDataJSON();
   return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
 }
@@ -339,7 +339,7 @@ const CORS = {
 };
 
 /** Answers an edge function call with a reply that must match the core contract. */
-export async function fulfilFunction(route: Route, status: number, body: unknown): Promise<void> {
+async function fulfilFunction(route: Route, status: number, body: unknown): Promise<void> {
   if (route.request().method() === 'OPTIONS') {
     await route.fulfill({ status: 204, headers: CORS });
     return;
@@ -424,7 +424,7 @@ export const aiFixtures = {
  * Routes every AI and maps edge function of a context to the fixtures above. Always on; the one
  * live test (E2E_LIVE_AI=1) removes the route for its function.
  */
-export async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
+async function stubEdgeFunctions(context: BrowserContext): Promise<void> {
   await context.route('**/functions/v1/ai-assistant', (route) =>
     fulfilFunction(route, 200, aiFixtures.assistant(requestBody(route))),
   );
@@ -509,7 +509,7 @@ export async function fakeSpeech(page: Page, transcript: string): Promise<void> 
 
 // ---------- Supabase API (REST) ----------
 
-export const BASE_URL = 'http://127.0.0.1:8790';
+const BASE_URL = 'http://127.0.0.1:8790';
 
 function supabaseEnv(): { url: string; key: string } {
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -625,7 +625,7 @@ function databaseContainer(): string {
 }
 
 /** Runs SQL as postgres in the local database container; returns the unaligned output. */
-export function sql(statement: string): string {
+function sql(statement: string): string {
   const result = spawnSync(
     'docker',
     [
@@ -775,7 +775,7 @@ interface ConsoleWatch {
 let watch: ConsoleWatch | undefined;
 
 /** Collects uncaught errors and console.error of a page into the running test's check. */
-export function watchConsole(page: Page): void {
+function watchConsole(page: Page): void {
   const current = watch;
   if (!current) return;
   page.on('pageerror', (error) => current.errors.push(`uncaught: ${error.message}`));

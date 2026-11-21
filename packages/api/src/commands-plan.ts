@@ -99,7 +99,7 @@ export function addPlanEntry(input: PlanEntryInput): Id {
   );
   return commit({ path: 'diff' }, () => {
     const entry: MealPlanEntry = {
-      id: newId('plan'),
+      id: newId(),
       date: input.date,
       slotId: input.slotId,
       kind: input.kind,

@@ -32,6 +32,12 @@ function localNoon(year: number, monthIndex: number, day: number): Date {
   return new Date(year, monthIndex, day, 12);
 }
 
+/** When something was created, in ms, for sorting by age; an unparsable timestamp counts as 0. */
+export function createdTime(entity: { createdAt: string }): number {
+  const time = Date.parse(entity.createdAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
 /** Local calendar date of a Date as "YYYY-MM-DD" (no UTC shift). */
 export function toISODate(date: Date): ISODate {
   const year = String(date.getFullYear()).padStart(4, '0');

@@ -33,6 +33,7 @@ import {
   type AddEntry,
   type AddResult,
   type ChangeOp,
+  type ClearedItems,
   type RawPullResult,
   type Transport,
 } from './transport';
@@ -85,7 +86,14 @@ interface FailureRule {
 
 export interface FakeServer {
   transport(userId: string): Transport;
-  addProfile(profile: { id: string; name: string; email: string; color?: string }): void;
+  addProfile(profile: {
+    id: string;
+    name: string;
+    email: string;
+    color?: string;
+    diet_preference?: string;
+    dislikes?: string[];
+  }): void;
   addHousehold(household: Row, memberIds: string[]): void;
   /** Writes rows as an administrator would: no checks, server columns set. */
   insertRows(householdId: string, rows: Record<string, Row[]>): void;
@@ -155,6 +163,12 @@ const REFERENCES: {
 ];
 
 const reject = (code: string) => new TransportError('permanent', code, 400);
+
+/** What one restore_cleared_items call takes; a clear returning more is refused (like the RPCs). */
+function assertRestorableSize(items: ClearedItems): void {
+  const contributions = items.reduce((sum, entry) => sum + (entry.contributions?.length ?? 0), 0);
+  if (items.length > 1000 || contributions > 5000) throw reject('too_many_changes');
+}
 const foreignKey = () => new TransportError('permanent', '23503', 409);
 
 /** meal_plan_entries_kind_complete, for the case a cleared reference can break. */
@@ -835,6 +849,7 @@ export function createFakeServer(): FakeServer {
                 (contribution) => contribution.item_id === item.id,
               ),
             }));
+            assertRestorableSize(cleared);
             return [
               withoutRows(
                 tables,
@@ -858,6 +873,7 @@ export function createFakeServer(): FakeServer {
                 .filter((contribution) => contribution.item_id === item.id)
                 .sort(oldestFirst),
             }));
+            assertRestorableSize(cleared);
             return [
               withoutRows(
                 tables,
@@ -884,7 +900,7 @@ export function createFakeServer(): FakeServer {
       restoreClearedItems: (requestedHouseholdId, items) =>
         run(userId, 'restore_cleared_items', () => {
           const householdId = memberOf(userId, requestedHouseholdId);
-          if (items.length > 1000) throw reject('too_many_changes');
+          assertRestorableSize(items);
           return transaction(householdId, (tables) => {
             let next = tables;
             let restored = 0;
@@ -893,7 +909,7 @@ export function createFakeServer(): FakeServer {
               if (item.household_id !== householdId || item.article_id == null) {
                 throw reject('invalid_entries');
               }
-              // Missing = checked, as before spec 0006 (clear_checked_items).
+              // Missing = checked (like the RPC).
               const checked = item.checked == null ? true : item.checked === true;
               // An open item joins one that is open on the list again meanwhile (AC-037).
               let targetId = checked

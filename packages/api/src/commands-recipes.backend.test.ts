@@ -1,6 +1,7 @@
-// Recipe commands in backend mode (spec 0003): edits on the diff path (new articles ride in the
+// Recipe commands (spec 0003): edits on the diff path (new articles ride in the
 // same changeset), favourites and ratings per member over their RPCs.
-import { describe, expect, it } from 'vitest';
+import { sortRecipes } from '@housekeeping/core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, withBackend } from './backend-test-helpers';
@@ -8,6 +9,7 @@ import {
   addIngredientsFromText,
   addStep,
   adoptStarterRecipes,
+  createRecipe,
   listStarterRecipes,
   rateRecipe,
   removeIngredient,
@@ -17,6 +19,7 @@ import {
 } from './commands-recipes';
 import { ENRICO } from './seed/demo';
 import { getData, snapshot } from './store';
+import { articleName } from './test-helpers';
 import { TransportError, type ChangeOp } from './transport';
 
 const fx = withBackend();
@@ -134,5 +137,33 @@ describe('per member (rpc path)', () => {
     expect(recipeById(recipe.id)?.favoriteOf).not.toContain(ENRICO);
     expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
     stop();
+  });
+});
+
+describe('recipe commands: input and local effect', () => {
+  beforeEach(async () => {
+    await fx.startEnrico();
+  });
+
+  it('AC-021: a new recipe with a title comes first when sorted by "Neu"; no title fails', () => {
+    vi.setSystemTime(new Date('2026-11-20T11:00:00Z'));
+    const id = createRecipe({ title: '  Linsen-Curry  ' });
+    expect(sortRecipes(getData().recipes, 'new')[0]).toMatchObject({ id, title: 'Linsen-Curry' });
+    expect(() => createRecipe({ title: ' ' })).toThrow('Titel fehlt');
+  });
+
+  it('AC-022: a pasted block becomes three ingredients linked to articles', () => {
+    const id = createRecipe({ title: 'Test' });
+    expect(addIngredientsFromText(id, '200 ml Kokosmilch\n1 Mango\n1 Prise Salz')).toBe(3);
+    const rows = (recipeById(id)?.ingredients ?? []).map((ingredient) => [
+      ingredient.amount?.text,
+      ingredient.articleId && articleName(ingredient.articleId),
+    ]);
+    expect(rows).toEqual([
+      ['200 ml', 'Kokosmilch'],
+      ['1', 'Mango'],
+      ['1 Prise', 'Salz'],
+    ]);
+    expect(addIngredientsFromText(id, '\n  \n')).toBe(0);
   });
 });

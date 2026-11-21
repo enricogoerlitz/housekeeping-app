@@ -71,7 +71,6 @@ function rowsOf(householdId: string, entity: object, build: () => HouseholdRows)
 
 function memberRows(
   householdId: string,
-  table: string,
   key: string,
   entityId: string,
   memberIds: readonly string[],
@@ -125,13 +124,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
       } satisfies Cached<'recipes'>,
     ],
-    recipe_favorites: memberRows(
-      householdId,
-      'recipe_favorites',
-      'recipe_id',
-      recipe.id,
-      recipe.favoriteOf,
-    ),
+    recipe_favorites: memberRows(householdId, 'recipe_id', recipe.id, recipe.favoriteOf),
     recipe_ratings: ratingRows(householdId, 'recipe_id', recipe.id, recipe.ratings),
   }));
 }
@@ -156,7 +149,6 @@ function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdR
     ],
     restaurant_favorites: memberRows(
       householdId,
-      'restaurant_favorites',
       'restaurant_id',
       restaurant.id,
       restaurant.favoriteOf,
@@ -185,13 +177,7 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
         ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
       } satisfies Cached<'activities'>,
     ],
-    activity_favorites: memberRows(
-      householdId,
-      'activity_favorites',
-      'activity_id',
-      activity.id,
-      activity.favoriteOf,
-    ),
+    activity_favorites: memberRows(householdId, 'activity_id', activity.id, activity.favoriteOf),
     activity_ratings: ratingRows(householdId, 'activity_id', activity.id, activity.ratings),
   }));
 }
@@ -212,7 +198,7 @@ function feedbackRows(householdId: string, entry: FeedbackEntry): HouseholdRows 
         ...(entry.createdAt ? { created_at: entry.createdAt } : {}),
       } satisfies Cached<'feedback'>,
     ],
-    feedback_votes: memberRows(householdId, 'feedback_votes', 'feedback_id', entry.id, entry.votes),
+    feedback_votes: memberRows(householdId, 'feedback_id', entry.id, entry.votes),
   }));
 }
 

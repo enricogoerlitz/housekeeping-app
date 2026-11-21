@@ -28,7 +28,7 @@ import {
   commitConfirmed,
   getData,
   getState,
-  isBackendOffline,
+  isOffline,
   OfflineError,
   peekState,
   updateData,
@@ -46,7 +46,7 @@ export const PHOTO_HOUSEHOLD_CHANGED_MESSAGE =
 /** What a person may choose (AC-010); phone photos fit. */
 export const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;
 /** Longest side of the stored photo (AC-009). */
-export const PHOTO_MAX_SIDE = 1600;
+const PHOTO_MAX_SIDE = 1600;
 const JPEG_QUALITY = 0.82;
 /** Photos kept on the device; the oldest go first beyond it. */
 const MEDIA_BUDGET_BYTES = 50 * 1024 * 1024;
@@ -258,7 +258,7 @@ async function fetchPhoto(path: string, session: DeviceSession): Promise<Blob | 
   const stored = await session.storage.get(mediaKey(path));
   if (!isCurrent(session)) return undefined;
   if (isStoredMedia(stored)) return new Blob([stored.bytes], { type: 'image/jpeg' });
-  if (isBackendOffline()) return undefined;
+  if (isOffline()) return undefined;
   try {
     // The session's signal cancels the download at sign-out or when another user signs in.
     const downloaded = await onlineCall((transport) =>
@@ -440,7 +440,7 @@ async function removeQuietly(path: string): Promise<void> {
 }
 
 async function setPhoto(table: PhotoTable, id: Id, photo: Blob): Promise<void> {
-  if (isBackendOffline()) throw new OfflineError();
+  if (isOffline()) throw new OfflineError();
   photoPathOf(table, id); // an unknown row is refused before anything is uploaded
   const householdId = getState().activeHouseholdId;
   const path = `${householdId}/${table}/${id}/${crypto.randomUUID()}.jpg`;
@@ -475,7 +475,7 @@ async function setPhoto(table: PhotoTable, id: Id, photo: Blob): Promise<void> {
 }
 
 async function removePhoto(table: PhotoTable, id: Id): Promise<void> {
-  if (isBackendOffline()) throw new OfflineError();
+  if (isOffline()) throw new OfflineError();
   const old = photoPathOf(table, id);
   if (!old) return;
   await commitConfirmed({ path: 'diff' }, () => writePhotoPath(table, id, undefined));

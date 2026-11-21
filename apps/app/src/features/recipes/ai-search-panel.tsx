@@ -15,7 +15,7 @@ export interface AiSearchPanelProps {
   compact?: boolean;
 }
 
-/** The interpretation as chips, the trace, a note (demo: "Beispielantwort") and the hits with their reason. */
+/** The interpretation as chips, the trace, a note and the hits with their reason. */
 export function AiSearchPanel(props: AiSearchPanelProps) {
   const recipesById = useRecipesById();
   const reasons = new Map(props.result.results.map((hit) => [hit.recipeId, hit.reason]));

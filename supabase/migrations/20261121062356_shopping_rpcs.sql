@@ -410,9 +410,32 @@ begin
 end
 $$;
 
+-- The size one restore_cleared_items call takes: ≤ 1000 items and ≤ 5000 contributions in all,
+-- else too_many_changes. The clears check their result with it, so every clear stays undoable in
+-- one call. Called only from the functions below (the invoker ones run it as the caller).
+create function private.assert_restorable_size(p_items jsonb)
+returns void
+language plpgsql
+immutable
+set search_path = ''
+as $$
+begin
+  if jsonb_array_length(p_items) > 1000
+     or (select count(*)
+         from jsonb_array_elements(p_items) e
+         cross join lateral jsonb_array_elements(case when jsonb_typeof(e -> 'contributions') = 'array'
+                                                      then e -> 'contributions' else '[]' end) c) > 5000 then
+    raise exception 'too_many_changes' using errcode = '22023';
+  end if;
+end
+$$;
+
+grant execute on function private.assert_restorable_size(jsonb) to authenticated;
+
 -- Deletes the checked items of the household's shopping list ("Fertig" in store mode) and returns
 -- them with their contributions, [{"item": {row}, "contributions": [{row}, …]}, …], for
--- restore_cleared_items. An item reopened meanwhile is no longer checked and stays. Security
+-- restore_cleared_items. An item reopened meanwhile is no longer checked and stays. More than
+-- restore_cleared_items takes is refused (too_many_changes) and nothing is deleted. Security
 -- invoker.
 create function public.clear_checked_items(p_household_id uuid)
 returns jsonb
@@ -443,6 +466,8 @@ begin
   into v_result
   from deleted d;
 
+  -- Raised after the delete, so the check sees exactly what was deleted; the exception undoes it.
+  perform private.assert_restorable_size(v_result);
   return v_result;
 end
 $$;
@@ -453,8 +478,9 @@ $$;
 
 -- Undo of clear_checked_items and clear_shopping_list. p_items is exactly what they returned:
 -- [{"item": {row}, "contributions": [{row}]}]. Every item must belong to p_household_id, every
--- contribution to its item; otherwise invalid_entries and nothing is restored. ≤ 1000 items
--- (too_many_changes), so the undo of any cleared list is one call.
+-- contribution to its item; otherwise invalid_entries and nothing is restored. ≤ 1000 items and
+-- ≤ 5000 contributions (too_many_changes, private.assert_restorable_size): the most a clear returns,
+-- so the undo of any cleared list is one call.
 -- The check state of the entry decides (missing = checked): checked items come back checked with
 -- checked_at ≤ now(), check_seq clamped to 0…999000 (room for checks after a restore) and
 -- checked_by only while that person is still a member; open items come back open. An open item
@@ -492,9 +518,7 @@ begin
   if jsonb_typeof(p_items) is distinct from 'array' then
     raise exception 'invalid_entries' using errcode = '22023';
   end if;
-  if jsonb_array_length(p_items) > 1000 then
-    raise exception 'too_many_changes' using errcode = '22023';
-  end if;
+  perform private.assert_restorable_size(p_items);
 
   for v_entry in select e.value from jsonb_array_elements(p_items) e loop
     if jsonb_typeof(v_entry) is distinct from 'object'
@@ -585,7 +609,8 @@ grant execute on function public.restore_cleared_items(uuid, jsonb) to authentic
 
 -- Deletes every item of the household's shopping list ("Liste leeren …"), open and checked, and
 -- returns them with their contributions, [{"item": {row}, "contributions": [{row}, …]}, …], for
--- restore_cleared_items. Security invoker.
+-- restore_cleared_items. More than restore_cleared_items takes is refused (too_many_changes) and
+-- nothing is deleted. Security invoker.
 create function public.clear_shopping_list(p_household_id uuid)
 returns jsonb
 language plpgsql
@@ -615,6 +640,8 @@ begin
   into v_result
   from deleted d;
 
+  -- Raised after the delete, so the check sees exactly what was deleted; the exception undoes it.
+  perform private.assert_restorable_size(v_result);
   return v_result;
 end
 $$;

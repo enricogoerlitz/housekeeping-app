@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyQueue,
   enqueue,
+  parseStoredQueue,
   queueEffect,
   remapQueue,
   type QueuedContribution,
@@ -283,5 +284,43 @@ describe('remapQueue', () => {
       untouched,
     ]);
     expect(next[3]).toBe(untouched);
+  });
+});
+
+describe('parseStoredQueue', () => {
+  it('AC-024: keeps every valid entry of a stored queue, in order', () => {
+    const queue: StoreQueueEntry[] = [
+      check('i1', true, 2),
+      { kind: 'notAvailable', itemId: 'i1', value: true },
+      addEntry('t1', [contribution('k1', 'Milch', { count: 2, unit: 'l', note: 'bio' })]),
+      { kind: 'assignArea', articleId: 'milk', areaId: null },
+    ];
+    expect(parseStoredQueue(JSON.parse(JSON.stringify(queue)))).toEqual({
+      entries: queue,
+      dropped: 0,
+    });
+  });
+
+  it('nothing stored is an empty queue, not a loss', () => {
+    expect(parseStoredQueue(undefined)).toEqual({ entries: [], dropped: 0 });
+  });
+
+  it('drops entries that do not have the shape of a store action and counts them', () => {
+    const valid = check('i1', true);
+    const stored: unknown[] = [
+      { kind: 'check', itemId: 'i2', checked: 'yes', seenCheckSeq: 0 },
+      valid,
+      { kind: 'delete', itemId: 'i1' },
+      { kind: 'assignArea', articleId: 'milk' },
+      addEntry('t1', [contribution('k1', 'Milch'), contribution('k2', 'Brot')]),
+      addEntry('t2', []),
+      'check',
+      null,
+    ];
+    expect(parseStoredQueue(stored)).toEqual({ entries: [valid], dropped: 7 });
+  });
+
+  it('a stored value that is no list at all counts as one lost entry', () => {
+    expect(parseStoredQueue({ kind: 'check' })).toEqual({ entries: [], dropped: 1 });
   });
 });

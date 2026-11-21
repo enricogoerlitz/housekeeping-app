@@ -222,8 +222,9 @@ describe('supabase transport', () => {
     [404, { message: 'row_not_found', code: 'P0002' }, 'permanent', 'row_not_found'],
     [409, { message: 'already_member', code: '23505' }, 'permanent', 'already_member'],
     [403, { message: 'permission denied for table recipes', code: '42501' }, 'permanent', '42501'],
-    // PostgREST answers SQLSTATE P0002 (and P0001) with 500; what our functions raise on purpose
-    // is permanent, else a queued entry the server refuses would block the store queue for ever.
+    // PostgREST answers P0001 with 400 and P0002 with 500. What our functions raise on purpose is
+    // permanent whatever the status, else a queued entry the server refuses would block the store
+    // queue for ever.
     [500, { message: 'last_member', code: 'P0001' }, 'permanent', 'last_member'],
     [500, { message: 'row_not_found', code: 'P0002' }, 'permanent', 'row_not_found'],
     [500, { message: 'invitation_not_found', code: 'P0001' }, 'permanent', 'invitation_not_found'],

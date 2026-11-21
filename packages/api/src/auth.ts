@@ -16,9 +16,9 @@ export const SIGN_OUT_INCOMPLETE_MESSAGE =
   'Abgemeldet. Die Daten auf diesem Gerät ließen sich nicht ganz löschen – das passiert beim nächsten Start.';
 
 /** Where supabase-js keeps the session (browser storage on the web, ADR-0003). */
-export const AUTH_STORAGE_KEY = 'housekeeping.auth';
+const AUTH_STORAGE_KEY = 'housekeeping.auth';
 /** Set while clearing the local data at sign-out is still owed (it failed once). */
-export const CLEAR_PENDING_KEY = 'housekeeping.clear-pending';
+const CLEAR_PENDING_KEY = 'housekeeping.clear-pending';
 
 // ---------- configuration ----------
 
@@ -146,7 +146,7 @@ function browserSessionStorage(): SessionStorage | undefined {
 
 const isBrowser = () => typeof (globalThis as { document?: unknown }).document !== 'undefined';
 
-export function createSupabaseClient(
+function createSupabaseClient(
   config: AuthConfig,
   storage: SessionStorage | undefined = browserSessionStorage(),
 ): SupabaseClient {
@@ -503,7 +503,7 @@ async function readStoredUser(storage: SessionStorage | undefined): Promise<Auth
 
 /**
  * Starts the sign-in once: creates the Supabase client, reads an error from the redirect, and
- * loads the cache of the signed-in user (backend mode). Throws on a broken configuration.
+ * loads the cache of the signed-in user (startBackend). Throws on a broken configuration.
  */
 export function startAuth(
   config: AuthConfig,

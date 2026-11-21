@@ -24,6 +24,7 @@ import {
   getData,
   getState,
   OfflineError,
+  queueStoreAction,
   snapshot,
   updateData,
   type StoreAction,
@@ -426,6 +427,66 @@ describe('a new cache version (AC-018)', () => {
   });
 });
 
+describe('stored store queue (security check, spec 0006)', () => {
+  it('drops stored entries that do not parse and tells the user, keeping the valid ones', async () => {
+    const itemId = server.rows(H, 'shopping_items').find((row) => row.checked !== true)?.id;
+    if (typeof itemId !== 'string') throw new Error('fixture: no open item');
+    const valid = { kind: 'check', itemId, checked: true, seenCheckSeq: 0 };
+    await storage.setMany([
+      ['meta', { version: CACHE_VERSION, userId: ENRICO, householdIds: [] }],
+      ['queue', [{ kind: 'check', itemId, checked: 'yes' }, valid, { kind: 'drop table' }]],
+    ]);
+    const messages: string[] = [];
+    const off = onWriteRejected((message) => messages.push(message));
+    environment.setOnline(false);
+    try {
+      const engine = await startBackend({
+        transport: server.transport(ENRICO),
+        storage,
+        userId: ENRICO,
+        environment,
+      });
+      await settle(engine);
+      expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+      expect(await storage.get('queue')).toEqual([valid]);
+
+      environment.setOnline(true);
+      await settle(engine);
+      expect(server.row(H, 'shopping_items', itemId)).toMatchObject({ checked: true });
+    } finally {
+      off();
+    }
+  });
+
+  it('a valid stored queue is taken without a message', async () => {
+    await storage.setMany([
+      ['meta', { version: CACHE_VERSION, userId: ENRICO, householdIds: [] }],
+      ['queue', []],
+    ]);
+    const messages: string[] = [];
+    const off = onWriteRejected((message) => messages.push(message));
+    try {
+      await startEnrico();
+      expect(messages).toEqual([]);
+    } finally {
+      off();
+    }
+  });
+});
+
+describe('writes after a reset (security check, spec 0006)', () => {
+  it('remembering a household or a store after resetLocalData writes nothing', async () => {
+    const engine = await startEnrico();
+    await engine.resetLocalData();
+    engine.rememberActiveHousehold(H);
+    engine.rememberShoppingStore(H, 'store-dm');
+    await vi.runAllTimersAsync();
+    expect(await storage.get('meta')).toBeUndefined();
+    expect(await storage.get('active')).toBeUndefined();
+    expect(await storage.get('store-choices')).toBeUndefined();
+  });
+});
+
 describe('store chosen on this device (spec 0006, REQ-007)', () => {
   const chosen = () => getState().storeChoices?.[getState().activeHouseholdId];
 
@@ -681,7 +742,7 @@ describe('writes: changesets (ADR-0011)', () => {
     expect(await rename('Angekommen')).toEqual({ value: 'Angekommen' });
   });
 
-  it('undo sends the inverse of the own change (snapshot in backend mode)', async () => {
+  it('undo sends the inverse of the own change (snapshot)', async () => {
     await startEnrico();
     const recipe = getData().recipes[0];
     if (!recipe) throw new Error('fixture');
@@ -744,7 +805,7 @@ describe('writes: changesets (ADR-0011)', () => {
     ).toThrow(/own RPC/);
   });
 
-  it('in backend mode a write outside commit() is a programming error', async () => {
+  it('a write outside commit() is a programming error', async () => {
     await startEnrico();
     expect(() => updateData((data) => ({ ...data, absences: [] }))).toThrow(/commit/);
   });
@@ -817,7 +878,7 @@ describe('writes: store queue (ADR-0008 addendum)', () => {
     });
 
     enrico.setSimulatedOffline(true);
-    commit({ path: 'queue', action: add('enrico') }, () => undefined);
+    queueStoreAction(add('enrico'));
     expect(itemByArticle(getData().items, name)?.contributions).toHaveLength(1);
 
     await server.transport(NADJA).addShoppingContributions(H, [
