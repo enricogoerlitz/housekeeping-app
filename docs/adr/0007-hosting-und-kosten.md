@@ -99,3 +99,20 @@ Entwicklungsumgebung, kein Hosting.
 Mit [ADR-0008](0008-offline-lesen-mit-eigenem-delta-sync.md) entfällt PowerSync vollständig, als
 Dienst und lokal. Die Zeilen zu PowerSync oben sind damit überholt. Es bleiben Supabase,
 Web-Hosting und später ein KI-Dienst.
+
+## Nachtrag 2026-11-21 — Web-App auf Azure Static Web Apps
+
+Mit [ADR-0015](0015-auslieferung-und-betrieb.md) (Spec 0014) ist die Zeile „Web-App: Cloudflare“
+überholt. Die Web-App läuft auf **Azure Static Web Apps im Tarif Free**, in zwei getrennten Apps
+„Produktion“ und „Vorschau“ in `rg-housekeeping-app-weu-prd`. Außerdem gilt:
+
+- **Backups:** weiterhin eine nächtliche GitHub Action, aber verschlüsselt in einem
+  Azure-Storage-Konto mit Unveränderlichkeit, samt Fotos und monatlichem Wiederherstellungstest
+  (wenige Cent im Monat). Monatsbudget 10 € mit E-Mail bei 80 % und 100 %.
+- **Supabase:** Die Vorschau bekommt ein eigenes Free-Projekt in einer eigenen Organisation. Damit
+  sind beide kostenlosen Projekte belegt; eine weitere App geht zunächst als eigenes Schema ins
+  Produktionsprojekt (Nachtrag „nur gemanagte Dienste“) oder braucht Pro.
+- **Native Builds und Updates ohne Store** (EAS) kommen erst mit der Spec „Native Apps: Anmeldung
+  und Speicher“; bis dahin gibt es kein EAS in der Pipeline.
+- Die Folgearbeit „Backup-Workflow und Web-Deployment kommen mit der Fundament-Spec“ erledigt
+  Spec 0014.

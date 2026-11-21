@@ -21,6 +21,18 @@ Apply these while writing. `/security-check` verifies them against a diff. They 
   in the Vault (ADR-0014). Only the VAPID **public** key may be an `EXPO_PUBLIC_*` value. The
   owner sets these values himself; agents never generate, print or read them.
 
+## Cloud projects
+
+- Changes to the cloud projects (Supabase, Azure) go through migrations and the pipeline by
+  default (ADR-0015).
+- You may analyse Supabase and Azure and, when needed, change things there directly. Prefer a
+  migration or a prepared function or script over an ad-hoc command, and say what you changed.
+  Anything that must persist belongs in the repo, or the next release overwrites it.
+- Never print secrets: tokens, keys, passwords, connection strings.
+- Never run `supabase migration repair` or reset a remote database (`db reset` with `--remote`,
+  `--linked` or `--db-url`) without a reason stated in the feature's `plan.md`. The preview
+  workflow's reset is the standing exception.
+
 ## Authorisation lives in the database
 
 - Every table has Row Level Security enabled, deny by default. Policies check household

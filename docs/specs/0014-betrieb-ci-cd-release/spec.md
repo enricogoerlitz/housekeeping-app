@@ -21,9 +21,10 @@ es eine neue gibt.
   der Vorschau unter einer festen Adresse zum Ausprobieren auf dem Handy (geändert am 21.11.2026:
   Vorschau je `develop` statt je PR).
 - Die PR von `develop` nach `main` ist die einzige Freigabe; ein dringender Fehler kann als Hotfix
-  direkt nach `main`. Nach dem Zusammenführen auf `main` baut die Pipeline Web und Android (iOS,
-  sobald es geht) parallel, liefert zuerst Supabase und dann Web und Android aus und legt eine
-  Veröffentlichung (Release) mit Versionsnummer und Änderungsliste an, ohne einen Handgriff.
+  direkt nach `main`. Nach dem Zusammenführen auf `main` prüft und baut die Pipeline parallel,
+  liefert zuerst Supabase und dann das Web aus und legt eine Veröffentlichung (Release) mit
+  Versionsnummer und Änderungsliste an, ohne einen Handgriff. (geändert am 21.11.2026: Android
+  und iOS kommen mit der Spec „Native Apps: Anmeldung und Speicher“, REQ-008)
 - Die Web-App ist unter einer festen HTTPS-Adresse auf Azure Static Web Apps erreichbar, als PWA
   installierbar und meldet „Neue Version verfügbar“, wenn es eine gibt.
 - Jede Nacht entsteht eine verschlüsselte Sicherung von Datenbank und Fotos in Azure. Einmal im Monat
@@ -110,11 +111,13 @@ Frage 19)
   eigenen Version.
 - **Mindestversion:** Der Server nennt die älteste Version, die noch mit ihm arbeiten darf. Sie
   steigt nur mit einer Rückbau-Migration (contract), also erst, wenn die Version veröffentlicht ist,
-  die das Entfernte nicht mehr liest. Wo der Wert liegt, ist Offene Frage 9.
+  die das Entfernte nicht mehr liest. Der Wert kommt aus der SQL-Funktion
+  `public.min_app_version()` in Supabase (Offene Frage 9 A, ADR-0015).
 
 ### Pipeline
 
-(geändert am 21.11.2026: Sammelzweig `develop`, Vorschau aus `develop`, Hotfix mit Rückführung)
+(geändert am 21.11.2026: Sammelzweig `develop`, Vorschau aus `develop`, Hotfix mit Rückführung;
+ohne native Apps, siehe REQ-008)
 
 ```mermaid
 flowchart LR
@@ -127,27 +130,33 @@ flowchart LR
   M --> C[Checks auf main]
   C --> V[Version und Änderungsliste]
   V --> BW[Web bauen]
-  V --> BA[Android: Build oder Update bauen]
-  V --> BI[iOS bauen<br/>Schalter aus]
   V --> SP[Supabase prüfen<br/>ausstehende Migrationen]
-  BW & BA & BI & SP --> SD[Supabase ausliefern<br/>Sicherung · Migrationen · Konfiguration · Functions · Secrets]
+  BW & SP --> PP[Pakete prüfen]
+  PP --> SD[Supabase ausliefern<br/>Sicherung · Migrationen · Konfiguration · Functions · Secrets]
   SD --> W[Web ausliefern]
-  SD --> A[Android verteilen]
-  SD --> I[iOS TestFlight<br/>Schalter aus]
-  W & A & I --> R[Prüfung, Tag, GitHub-Veröffentlichung]
+  W --> R[Prüfung, Tag, GitHub-Veröffentlichung]
 ```
+
+Native Apps kommen mit der Spec „Native Apps: Anmeldung und Speicher“: Ihre Bau-Jobs rasten
+zwischen „Supabase prüfen“ und „Supabase ausliefern“ ein, ihre Verteil-Jobs neben „Web
+ausliefern“, ohne den Ablauf zu ändern (Plan 0014, Entscheidung 1).
 
 ### GitHub-Umgebungen und Zugänge
 
-| GitHub-Umgebung | Wer darf sie nutzen                                                 | Enthält                                                                                                                                      |
-| --------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preview`       | nur `develop` (geändert am 21.11.2026; vorher alle Zweige einer PR) | Zugang nur zum Vorschau-Projekt, Einladungsadressen für die Vorschau, Azure-Anmeldung nur für die Static Web App „Vorschau“                  |
-| `production`    | nur `main`                                                          | eingeschränktes Supabase-Token, Datenbank-Passwort, Google-Client-Secret, EAS-Token, Azure-Anmeldung nur für die Static Web App „Produktion“ |
-| `backup`        | nur `main` (Zeitplan)                                               | lesender Datenbank-Zugang, S3-Schlüssel für Supabase Storage, Azure-Anmeldung nur zum Schreiben von Sicherungen, öffentlicher Schlüssel      |
-| `restore-test`  | nur `main` (Zeitplan)                                               | Azure-Anmeldung nur zum Lesen von Sicherungen, privater Sicherungsschlüssel                                                                  |
+| GitHub-Umgebung | Wer darf sie nutzen                                                 | Enthält                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preview`       | nur `develop` (geändert am 21.11.2026; vorher alle Zweige einer PR) | eingeschränktes Supabase-Token nur für das Vorschau-Projekt, Google-Client-Secret, Einladungsadressen für die Vorschau, Azure-Anmeldung nur für die Static Web App „Vorschau“ |
+| `production`    | nur `main`                                                          | eingeschränktes Supabase-Token, Google-Client-Secret, Azure-Anmeldung nur für die Static Web App „Produktion“                                                                 |
+| `backup`        | nur `main` (Zeitplan)                                               | lesender Datenbank-Zugang, S3-Schlüssel für Supabase Storage, Azure-Anmeldung nur zum Schreiben von Sicherungen, öffentlicher Schlüssel                                       |
+| `restore-test`  | nur `main` (Zeitplan)                                               | Azure-Anmeldung nur zum Lesen von Sicherungen, privater Sicherungsschlüssel                                                                                                   |
 
 Azure-Anmeldungen laufen per OIDC (föderierte Anmeldedaten) mit je einer eigenen Identität, nie mit
 einem gespeicherten Schlüssel.
+
+(geändert am 21.11.2026: kein Datenbank-Passwort in `production` und `preview`, weil die
+Supabase-CLI mit `--remote` über das Zugangstoken arbeitet; kein EAS-Token, weil die native
+Pipeline mit REQ-008 verschoben ist; Plan 0014, Entscheidungen 1 und 4. Öffentliche Werte der
+Builds liegen als Repository-Variablen `PRODUCTION_*` bzw. `PREVIEW_*`, Entscheidung 3.)
 
 ### Azure-Ressourcen in `rg-housekeeping-app-weu-prd`
 
@@ -161,14 +170,14 @@ einem gespeicherten Schlüssel.
 
 ### Kosten (Stand 11/2026, vor jedem Kauf prüfen)
 
-| Posten                                                           | Kosten                                        |
-| ---------------------------------------------------------------- | --------------------------------------------- |
-| zwei Static Web Apps Free, zwei Supabase-Projekte Free, EAS Free | 0 €                                           |
-| Storage-Konto (wenige GB Sicherungen)                            | wenige Cent bis etwa 1 € im Monat (geschätzt) |
-| GitHub Pro, nur falls das Repo privat bleibt                     | 4 $ im Monat (Offene Frage 5)                 |
-| Apple Developer Program, erst für iOS                            | 99 $ im Jahr                                  |
-| Play Console, erst für den Play Store                            | 25 $ einmalig                                 |
-| Supabase Pro, erst bei Bedarf                                    | 25 $ im Monat (Offene Frage 14)               |
+| Posten                                                     | Kosten                                             |
+| ---------------------------------------------------------- | -------------------------------------------------- |
+| zwei Static Web Apps Free, zwei Supabase-Projekte Free     | 0 €                                                |
+| Storage-Konto (wenige GB Sicherungen)                      | wenige Cent bis etwa 1 € im Monat (geschätzt)      |
+| GitHub Pro                                                 | entfällt, das Repo ist öffentlich (Offene Frage 5) |
+| Apple Developer Program, erst für iOS (Spec „Native Apps“) | 99 $ im Jahr                                       |
+| Play Console, erst für den Play Store (Spec „Native Apps“) | 25 $ einmalig                                      |
+| Supabase Pro, erst bei Bedarf                              | 25 $ im Monat (Offene Frage 14)                    |
 
 ## Abhängigkeiten, Voraussetzungen und kritischer Pfad
 
@@ -198,7 +207,9 @@ Auslieferung einmal neu aufgebaut, die Listen-Tabelle entfällt (ADR-0012).
 | Keine Tagesgrenze für Einladungen und neue Haushalte        | zurückgestellt (Offene Frage 11)                                 |
 | Bucket-Einstellungen in Produktion erzwungen (0004)         | AC-046                                                           |
 
-**Voraussetzungen vor dem Bau:**
+**Voraussetzungen vor dem Bau** (1 bis 4 erledigt am 21.11.2026 mit Task 0 des Plans: ADR-0015,
+Nachtrag in ADR-0007, Glossar, `AGENTS.md`, Regeln; Punkt 3 geändert: keine Sperre in
+`.claude/settings.json`, Entscheidung Enrico):
 
 1. **Neue ADR „Auslieferung und Betrieb“** (nächste freie Nummer): Azure Static Web Apps statt
    Cloudflare, Sicherungen in Azure Storage, Vorschau-Projekt, Kalender-Version, Mindestversion
@@ -210,15 +221,21 @@ Auslieferung einmal neu aufgebaut, die Listen-Tabelle entfällt (ADR-0012).
 3. **AGENTS.md und `.claude/`:** Git-Abschnitt (`develop` als Ziel jeder PR, Squash, PR-Vorlage,
    Zweignamen, Hotfix), Befehle für
    Veröffentlichung und Wiederherstellung, Sperre für `supabase db reset --remote` und
-   `db push --include-seed` in den Agent-Einstellungen.
-4. **Antworten auf die Offenen Fragen 4, 5, 12, 13**, die Geld kosten oder dauerhaft gelten.
+   `db push --include-seed` in den Agent-Einstellungen. (geändert am 21.11.2026, Entscheidung
+   Enrico: keine Sperre in den Agent-Einstellungen. Stattdessen sagt `.claude/rules/10-security.md`:
+   Änderungen an den Cloud-Projekten laufen standardmäßig über Migrationen und die Pipeline; Agenten
+   dürfen Supabase und Azure untersuchen und bei Bedarf direkt ändern, geben nie Secrets aus und
+   setzen `migration repair` oder einen Reset eines entfernten Projekts nur mit einem im Plan
+   genannten Grund ab.)
+4. **Antworten auf die Offenen Fragen 4, 5, 12, 13**, die Geld kosten oder dauerhaft gelten
+   (4 geht in die Spec „Native Apps“, 5 entfällt, 12 und 13 A; siehe Offene Fragen).
 
 **Kritischer Pfad:** Infrastruktur und Auslieferung, Auth-Konfiguration der Produktion, Migrationen,
 Löschen (Aufbewahrung der Sicherungen, Entfernen von Functions, Neuaufsetzen der Vorschau) und alle
 Zugänge. Der Plan braucht ein Bedrohungsmodell mindestens zu: gestohlene Zugänge (Supabase-Token,
 Datenbank-Passwort, EAS-Token, über das ein bösartiges Over-the-Air-Update alle nativen Geräte
-erreichen könnte, Azure-Identitäten); Code aus einem PR-Zweig, der Secrets von `preview` oder
-`production` liest; Umgehen von `develop` (direkter Push, PR nach `main` von einem anderen Zweig);
+erreichen könnte — entfällt mit REQ-008 —, Azure-Identitäten); Code aus einem PR-Zweig, der
+Secrets von `preview` oder `production` liest; Umgehen von `develop` (direkter Push, PR nach `main` von einem anderen Zweig);
 Rückführung nach einem Hotfix, die ausbleibt oder Änderungen auf `develop` überschreibt;
 kompromittierte Action oder Abhängigkeit; Seed oder Reset gegen Produktion; zerstörerische
 Migration; offene Weiterleitung über Platzhalter in Redirect-URLs; Abfluss oder Löschen von
@@ -266,13 +283,19 @@ Wenn        Enrico sie zusammenführen will
 Dann        ist das Zusammenführen gesperrt, bis alle Pflicht-Checks grün sind
 ```
 
-**AC-003 — Squash mit Titel und Spec-Zeile** (geändert am 21.11.2026: Ziel ist `develop`)
+**AC-003 — Squash mit Titel und Spec-Zeile** (geändert am 21.11.2026: Ziel ist `develop`;
+Vorbehalt zur vorgeschlagenen Art, Plan 0014, Entscheidung 28)
+
+> **Vorbehalt:** GitHub kann die vorgeschlagene Merge-Art nicht je Quellzweig festlegen. Auf
+> `develop` sind Squash und Merge-Commit erlaubt (Merge-Commit braucht nur die Rückführung), und
+> die Oberfläche schlägt die zuletzt gewählte Art vor. „Squash and merge“ ist deshalb angeboten,
+> aber nicht in jedem Fall vorgewählt; Feature-PRs werden per Squash zusammengeführt.
 
 ```gherkin
 Angenommen  die PR „feat: Reisetaschen packen“ vom Zweig „feat/0012-reisetaschen“ nach „develop“
             mit „Spec: 0012“ in der Beschreibung, alle Pflicht-Checks grün
 Wenn        Enrico sie zusammenführt
-Dann        ist „Squash and merge“ die vorgeschlagene Art
+Dann        ist „Squash and merge“ angeboten (siehe Vorbehalt)
 Und         auf „develop“ entsteht genau ein Commit „feat: Reisetaschen packen (#<PR-Nummer>)“ mit
             der Zeile „Spec: 0012“
 Und         der Zweig „feat/0012-reisetaschen“ ist danach gelöscht
@@ -409,16 +432,20 @@ Dann        ist der Check „Migrationen“ rot mit „Rückbau ohne Kennzeichnu
 Und         ebenso, wenn die PR eine Migration ändert, die schon auf „develop“ oder „main“ liegt
 ```
 
-**AC-010 — Verbotene Befehle**
+**AC-010 — Verbotene Befehle** (geändert am 21.11.2026: Schreibweise `--remote`, dazu
+`migration repair`; Plan 0014, Entscheidung 5)
 
 ```gherkin
 Angenommen  ein Workflow oder Skript im Repo ruft „supabase db reset“ gegen ein entferntes Projekt
-            auf („--remote“, „--linked“ oder „--db-url“) oder „supabase db push --include-seed“
+            auf („--remote“, „--linked“ oder „--db-url“), „supabase db push --include-seed“ oder
+            „supabase migration repair“
 Wenn        die Checks laufen
 Dann        ist der Check „Konventionen“ rot
-Und         ausgenommen ist nur das Neuaufsetzen des Vorschau-Projekts im Vorschau-Workflow, der die
-            Umgebung „preview“ nutzt (REQ-003)
+Und         ausgenommen ist nur „supabase db reset --remote --no-seed“ im Vorschau-Workflow
+            „.github/workflows/preview.yml“, der die Umgebung „preview“ nutzt (REQ-003)
 ```
+
+Die Pipeline nutzt überall `--remote`; `--linked` ist in der Supabase-CLI 3.2.0 veraltet.
 
 **AC-074 — Festgenagelte Abhängigkeiten von `push-send`** (ergänzt am 21.11.2026 aus der
 Sicherheitsprüfung der Spec 0013: lokal ist Deno nicht installiert, die Lock-Datei fehlt noch)
@@ -609,14 +636,14 @@ Wenn        sie wieder Netz hat und die neue Version lädt, über „Neu laden�
 Dann        sind die drei Posten danach auf Nadjas und Enricos Gerät abgehakt
 ```
 
-**AC-025 — Unter der Mindestversion**
+**AC-025 — Unter der Mindestversion** (geändert am 21.11.2026: ohne „Aktualisieren (nativ)“, das
+kommt mit REQ-008 in die Spec „Native Apps“)
 
 ```gherkin
 Angenommen  der Server verlangt mindestens „2026.12.5“, Enricos Gerät hat Netz und läuft mit
             „2026.12.4“
 Wenn        die App den Server erreicht
-Dann        steht dauerhaft „Diese Version wird nicht mehr unterstützt“ mit „Neu laden“ (Web) bzw.
-            „Aktualisieren“ (nativ)
+Dann        steht dauerhaft „Diese Version wird nicht mehr unterstützt“ mit „Neu laden“
 Und         Lesen und Abhaken gehen weiter, Bearbeiten ist gesperrt, und die Laden-Warteschlange wird
             nicht nachgereicht
 Wenn        er neu lädt
@@ -643,17 +670,17 @@ Dann        bricht sie vor jeder Auslieferung ab mit „Mindestversion 2026.12.9
 **Offline:** betrifft keine App-Bedienung. Geräte ohne Netz arbeiten mit ihrer Version weiter
 (REQ-004).
 
-**AC-027 — Ablauf** (geändert am 21.11.2026: Auslöser ist die Release-PR)
+**AC-027 — Ablauf** (geändert am 21.11.2026: Auslöser ist die Release-PR; ohne native Apps,
+REQ-008 verschoben)
 
 ```gherkin
 Angenommen  eine Release-PR von „develop“ mit Code-Änderungen und einer neuen Migration wird auf
             „main“ zusammengeführt, und die Checks auf „main“ sind grün
 Wenn        die Veröffentlichung läuft
-Dann        starten „Web bauen“, „Android bauen“ und „Supabase prüfen“ gleichzeitig, „iOS bauen“ ist
-            „übersprungen: iOS aus“
-Und         „Supabase ausliefern“ startet erst, wenn alle drei grün sind, sichert zuerst die Datenbank
-            wie in REQ-009 und nennt dann die angewandte Migration
-Und         „Web ausliefern“ und „Android verteilen“ starten erst danach, gleichzeitig
+Dann        starten „Web bauen“ und „Supabase prüfen“ gleichzeitig
+Und         „Supabase ausliefern“ startet erst, wenn beide und die Prüfung der Pakete grün sind und
+            die Datenbank wie in REQ-009 gesichert ist, und nennt die angewandte Migration
+Und         „Web ausliefern“ startet erst danach
 Und         am Ende sind die Prüfung nach der Auslieferung grün, der Tag gesetzt und die
             GitHub-Veröffentlichung angelegt
 ```
@@ -666,22 +693,22 @@ Wenn        die Veröffentlichung ausgelöst würde
 Dann        wird nichts gebaut und nichts ausgeliefert
 ```
 
-**AC-029 — Ein Build scheitert**
+**AC-029 — Ein Build scheitert** (geändert am 21.11.2026: „Web bauen“ statt des Android-Builds)
 
 ```gherkin
-Angenommen  der Android-Build schlägt fehl, der Web-Build ist grün
+Angenommen  „Web bauen“ schlägt fehl, „Supabase prüfen“ ist grün
 Wenn        die Veröffentlichung weiterläuft
 Dann        wird nichts ausgeliefert, auch keine Migration
 Und         Produktion bleibt vollständig auf der vorigen Version
 ```
 
-**AC-030 — Eine Migration scheitert**
+**AC-030 — Eine Migration scheitert** (geändert am 21.11.2026: ohne Android)
 
 ```gherkin
 Angenommen  von zwei neuen Migrationen bricht die zweite in Produktion mit einem Fehler ab
 Wenn        „Supabase ausliefern“ läuft
 Dann        bleibt die erste angewandt, und von der zweiten bleibt nichts zurück
-Und         Web und Android werden nicht ausgeliefert, und es gibt keine GitHub-Veröffentlichung
+Und         das Web wird nicht ausgeliefert, und es gibt keine GitHub-Veröffentlichung
 Und         die Veröffentlichung ist rot, und Enrico bekommt die GitHub-Benachrichtigung
 ```
 
@@ -827,16 +854,18 @@ Dann        lehnt Supabase sie ab, weil die E-Mail-Anmeldung abgeschaltet ist
 Und         „/auth/v1/settings“ meldet „email: false“ und „google: true“
 ```
 
-**AC-042 — Nie Seed, nie Reset**
+**AC-042 — Nie Seed, nie Reset** (geändert am 21.11.2026: keine Sperre in den Agent-Einstellungen,
+Entscheidung Enrico)
 
 ```gherkin
 Angenommen  beliebig viele Veröffentlichungen sind gelaufen
 Wenn        die Prüfung nach der Auslieferung Produktion abfragt
 Dann        gibt es kein Konto mit einer Adresse auf „@example.com“ und keine Zeile mit einer ID aus
             dem Seed
-Und         weder die Pipeline noch ein Agent kann „supabase db reset“ gegen Produktion ausführen
-            (Check aus AC-010, Sperre in den Agent-Einstellungen, kein Produktionszugang außerhalb
-            der Umgebung „production“)
+Und         die Pipeline kann „supabase db reset“ gegen Produktion nicht ausführen (Check aus
+            AC-010, kein Produktionszugang außerhalb der Umgebung „production“)
+Und         ein Agent setzt einen Reset eines entfernten Projekts nur mit einem im Plan genannten
+            Grund ab („.claude/rules/10-security.md“)
 ```
 
 **AC-043 — Erste Anmeldung in leerer Produktion**
@@ -882,7 +911,10 @@ Und         ein Abruf eines Fotos ohne Anmeldung scheitert
 **AC-073 — `pg_net` nicht über die API erreichbar** (ergänzt am 21.11.2026 aus der
 Sicherheitsprüfung der Spec 0013: Supabase gibt die Warteschlange von `pg_net` an alle
 Datenbank-Rollen frei und `net.http_post` an `anon` und `authenticated`, und eine Migration kann
-das nicht zurücknehmen; nur die freigegebenen Schemas der API halten sie fern)
+das nicht zurücknehmen; nur die freigegebenen Schemas der API halten sie fern; geändert am
+21.11.2026: „angemeldetes Mitglied“ wird über die Rolle `authenticated` in der Datenbank geprüft,
+weil Produktion kein Mitglied hat, mit dessen Sitzung die Pipeline sich anmelden könnte; Plan
+0014, Entscheidung 22)
 
 ```gherkin
 Angenommen  eine Veröffentlichung ist durch
@@ -890,14 +922,23 @@ Wenn        die Prüfung nach der Auslieferung die Einstellung „Exposed schema
             Produktion liest
 Dann        sind es genau „public“ und „graphql_public“
 Und         ein Aufruf von „/rest/v1/rpc/http_post“ und „/rest/v1/http_request_queue“ mit
-            „Content-Profile: net“ bzw. „Accept-Profile: net“ antwortet als „anon“ und als
-            angemeldetes Mitglied mit 406 („PGRST106“)
-Und         eine GraphQL-Introspektion („/graphql/v1“, „__schema“) als „anon“ und als angemeldetes
-            Mitglied nennt keinen Typ und kein Feld aus „net“ („http_request_queue“,
-            „_http_response“, „http_post“, „http_get“)
+            „Content-Profile: net“ bzw. „Accept-Profile: net“ antwortet als „anon“ mit 406
+            („PGRST106“); die Antwort hängt an den freigegebenen Schemas, nicht an der Rolle
+Und         eine GraphQL-Introspektion („__schema“) nennt keinen Typ und kein Feld aus „net“
+            („http_request_queue“, „_http_response“, „http_post“, „http_get“), weder als „anon“
+            über „/graphql/v1“ noch als angemeldetes Mitglied, geprüft nur lesend über
+            „supabase db query --remote --read-only“ mit „set local role authenticated“ und dem
+            Suchpfad der API
 ```
 
-### REQ-008 — Native Apps: Android jetzt, iOS hinter einem Schalter
+### REQ-008 — Native Apps: Android jetzt, iOS hinter einem Schalter (verschoben)
+
+> **Verschoben am 21.11.2026 in die Spec „Native Apps: Anmeldung und Speicher“** (Plan 0014,
+> Entscheidung 1): Die Android-App wäre bis dahin nicht nutzbar (keine native Anmeldung, kein
+> dauerhafter Speicher), die App-ID (Offene Frage 4) bindet für immer, und ein EAS-Token wäre
+> ohne Nutzen das gefährlichste Secret der Pipeline. REQ-008 und AC-047 bis AC-051 gelten in
+> dieser Spec nicht; der Text bleibt als Vorlage für die neue Spec stehen. Mit ihnen entfallen
+> hier `EXPO_TOKEN` und die Variablen `ANDROID_ENABLED` und `IOS_ENABLED`.
 
 > Die Pipeline baut die Android-App mit EAS (signiert, interne Verteilung) und liefert reine
 > JavaScript-Änderungen als Over-the-Air-Update; iOS läuft durch dieselbe Pipeline und bleibt
@@ -906,7 +947,8 @@ Und         eine GraphQL-Introspektion („/graphql/v1“, „__schema“) als �
 
 **Offline:** wie in der jeweiligen App; Updates kommen nur mit Netz.
 
-**AC-047 — Neuer Build nur bei nativer Änderung**
+**AC-047 — Neuer Build nur bei nativer Änderung** — verschoben am 21.11.2026 in die Spec „Native Apps: Anmeldung und
+Speicher“
 
 ```gherkin
 Angenommen  seit der letzten Veröffentlichung hat sich der native Fingerabdruck der App geändert,
@@ -917,7 +959,8 @@ Dann        baut EAS eine signierte Android-APK mit dem Versionsnamen „2026.12
 Und         die GitHub-Veröffentlichung nennt den Installations-Link der internen Verteilung
 ```
 
-**AC-048 — Sonst Over-the-Air-Update**
+**AC-048 — Sonst Over-the-Air-Update** — verschoben am 21.11.2026 in die Spec „Native Apps: Anmeldung und
+Speicher“
 
 ```gherkin
 Angenommen  der native Fingerabdruck ist unverändert
@@ -927,7 +970,8 @@ Und         eine installierte App mit demselben Fingerabdruck zeigt nach höchst
             „Version 2026.12.5“
 ```
 
-**AC-049 — Produktionswerte, kein Testzugang**
+**AC-049 — Produktionswerte, kein Testzugang** — verschoben am 21.11.2026 in die Spec „Native Apps: Anmeldung und
+Speicher“
 
 ```gherkin
 Angenommen  die APK aus der Veröffentlichung ist auf einem Android-Handy installiert
@@ -938,7 +982,8 @@ Und         bis zur Spec „Native Apps: Anmeldung und Speicher“ steht auf der
             Hinweis, dass die Google-Anmeldung in der App noch fehlt
 ```
 
-**AC-050 — iOS ausgeschaltet**
+**AC-050 — iOS ausgeschaltet** — verschoben am 21.11.2026 in die Spec „Native Apps: Anmeldung und
+Speicher“
 
 ```gherkin
 Angenommen  der Schalter „iOS“ ist aus
@@ -947,7 +992,8 @@ Dann        sind „iOS bauen“ und „iOS verteilen“ als übersprungen marki
             ist trotzdem grün
 ```
 
-**AC-051 — Fehlerfall: iOS an ohne Apple-Zugang**
+**AC-051 — Fehlerfall: iOS an ohne Apple-Zugang** — verschoben am 21.11.2026 in die Spec „Native Apps: Anmeldung und
+Speicher“
 
 ```gherkin
 Angenommen  der Schalter „iOS“ ist an, aber die Apple-Zugangsdaten fehlen in der Umgebung
@@ -1059,10 +1105,11 @@ Wenn        damit jemand ein anderes Projekt ändern oder dieses Projekt lösche
 Dann        lehnt Supabase ab, weil das Token nur dieses Projekt und die Rechte aus dem Plan hat
 ```
 
-**AC-061 — Keine Geheimnisse in den Paketen**
+**AC-061 — Keine Geheimnisse in den Paketen** (geändert am 21.11.2026: nur der Web-Export; das
+Android-Bundle kommt mit REQ-008 in die Spec „Native Apps“)
 
 ```gherkin
-Angenommen  Web-Export und Android-Bundle einer Veröffentlichung sind gebaut
+Angenommen  der Web-Export einer Veröffentlichung ist gebaut
 Wenn        die Prüfung der Pakete läuft
 Dann        sucht sie nach „sb_secret_“, „service_role“, „FOUNDRY_API_KEY“, „GOOGLE_CLIENT_SECRET“
             und den Werten der Secrets
@@ -1122,13 +1169,10 @@ Auslieferung für Geräte bedeutet.
   Adresse der App später (eigene Domain), gehören Anmeldung, lokaler Speicher und die PWA auf dem
   Home-Bildschirm zur alten Adresse: Man meldet sich neu an und fügt die App neu hinzu (Offene Frage
   13).
-- **Android:** Installation per Link aus der GitHub-Veröffentlichung; einmal „Installation aus
-  unbekannten Quellen“ erlauben. Nutzbar erst mit der Spec „Native Apps: Anmeldung und Speicher“.
-  Für den Play Store später ein Build als AAB und die Play Console (25 $).
-- **iOS nativ:** hinter dem Schalter; mit Apple-Developer-Account (99 $ im Jahr) Verteilung über
-  TestFlight.
-- **Updates:** Web über Service Worker und Hinweis; nativ als Over-the-Air-Update, solange sich der
-  native Fingerabdruck nicht ändert, sonst als neuer Build.
+- **Android und iOS nativ:** kommen mit der Spec „Native Apps: Anmeldung und Speicher“ (REQ-008
+  verschoben am 21.11.2026); diese Spec baut und verteilt keine nativen Apps. Android und iPhone
+  nutzen bis dahin die PWA.
+- **Updates:** Web über Service Worker und Hinweis.
 
 ## Daten
 
@@ -1141,8 +1185,8 @@ Auslieferung für Geräte bedeutet.
   Die Google-Adresse für die erste Einladung in Produktion gibt Enrico nur lokal an das
   Einrichtungs-Skript; sie wird nirgends gespeichert.
 - **Logs:** nie Tokens, Adressen oder ganze Zeilen (Regel `10-security.md`).
-- **Dritte:** Microsoft Azure (Web-Hosting, Sicherungen), GitHub (Pipeline, Secrets), Expo/EAS
-  (Builds und Updates, nur App-Code, keine Nutzerdaten), Supabase und Google wie bisher.
+- **Dritte:** Microsoft Azure (Web-Hosting, Sicherungen), GitHub (Pipeline, Secrets), Supabase und
+  Google wie bisher. Expo/EAS (Builds und Updates, nur App-Code) erst mit der Spec „Native Apps“.
 - **Gelöscht:** Vorschau-Daten bei jedem Vorschau-Lauf; Sicherungen
   nach der Aufbewahrungsregel; Functions, die das Repo nicht mehr enthält.
 
@@ -1155,12 +1199,17 @@ Plan legt sie fest. Die `<SWA-Adresse>` nennt die Umsetzung, sobald die Static W
 angelegt ist.
 Menünamen entsprechen dem Stand 11/2026 und können abweichen.
 
+(geändert am 21.11.2026) Verbindlich sind die Befehle im Plan, Abschnitt „Runbook: Einrichtung
+und erste Veröffentlichung“ (Schritte B0 bis B7 für den Lead, C1 bis C11 für Enrico); Alltag,
+erneute Auslieferung, Wiederherstellen und Schlüsselwechsel stehen danach in
+`docs/architecture/betrieb.md`. Die Abschnitte hier beschreiben, was Enrico wo einstellt.
+
 ### 0. Vorab entscheiden und anlegen
 
-1. Offene Fragen 4, 5, 12 und 13 beantworten (App-ID, GitHub-Tarif, Budget, Domain).
-2. Bleibt das Repo privat: GitHub Pro buchen (github.com → Settings → Billing and plans).
-3. Expo-Konto anlegen, falls keins da ist (kostenlos). Unter expo.dev → Account settings → Access
-   tokens ein Token erzeugen → Secret `EXPO_TOKEN` in `production`.
+1. Offene Fragen 4, 5, 12 und 13 beantworten (App-ID, GitHub-Tarif, Budget, Domain) — erledigt
+   am 21.11.2026: 4 geht in die Spec „Native Apps“, 5 entfällt, 12 und 13 A.
+2. GitHub Pro — entfällt, das Repo ist öffentlich.
+3. Expo-Konto und Secret `EXPO_TOKEN` — mit der Spec „Native Apps“ (REQ-008 verschoben).
 
 ### 1. Google Cloud Console → Google Auth Platform
 
@@ -1192,9 +1241,10 @@ Im Projekt mit dem Client „Housekeeping Web“:
 2. **Account → Access Tokens:** ein eingeschränktes Token nur für dieses Projekt mit den Rechten aus
    dem Plan erzeugen, mit Ablaufdatum (im Kalender vormerken) → Secret `SUPABASE_ACCESS_TOKEN` in
    `production`.
-3. **Datenbank-Passwort** (Project Settings → Database; falls unbekannt, „Reset database password“)
-   → Secret `SUPABASE_DB_PASSWORD` in `production`. Die Projekt-Ref als Variable
-   `SUPABASE_PROJECT_REF` (kein Secret).
+3. **Datenbank-Passwort** — entfällt (geändert am 21.11.2026): Die Supabase-CLI arbeitet mit
+   `--remote` über das Zugangstoken (Plan 0014, Entscheidung 4). Scheitert das im Spike, kommt
+   `SUPABASE_DB_PASSWORD` als Secret in `production` dazu. Die Projekt-Ref steht als Variable
+   `SUPABASE_PROJECT_REF` in `production` (kein Secret).
 4. **Project Settings → API Keys:** den „Publishable key“ als Variable
    `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` und `https://<Projekt-Ref>.supabase.co` als Variable
    `EXPO_PUBLIC_SUPABASE_URL` in `production` (öffentliche Werte). Den „Secret key“ bzw.
@@ -1206,7 +1256,7 @@ Im Projekt mit dem Client „Housekeeping Web“:
 7. **Vor dem ersten `supabase db push` prüfen, dass das Projekt keine alte Migrationshistorie
    trägt** (ADR-0012: die Migrationen wurden einmal zu einer Grundlage neu aufgebaut, die alten
    Versionsnummern gibt es nicht mehr). Lokal mit dem Projekt verknüpft
-   `pnpm exec supabase migration list --linked` ausführen: In der Spalte „Remote“ darf nichts
+   `pnpm exec supabase migration list --remote` ausführen: In der Spalte „Remote“ darf nichts
    stehen. Steht dort etwas, nicht pushen, sondern die Ausgabe sichern und klären, ob das Projekt
    leer neu aufgesetzt wird (es gibt vor v1 keine Daten, die erhalten bleiben müssen) — nie mit
    `supabase migration repair` die alte Historie passend machen.
@@ -1232,8 +1282,8 @@ Im Projekt mit dem Client „Housekeeping Web“:
 
 1. Eine neue Organisation im Free-Tarif anlegen, darin das Projekt „housekeeping-vorschau“, Region
    Frankfurt.
-2. Access Token (nur dieses Projekt), Datenbank-Passwort, URL und Publishable key wie in Abschnitt 2
-   anlegen, aber in der Umgebung `preview`.
+2. Access Token (nur dieses Projekt), URL und Publishable key wie in Abschnitt 2 anlegen, aber für
+   die Umgebung `preview` (ohne Datenbank-Passwort, geändert am 21.11.2026).
 3. Secret `PREVIEW_INVITE_EMAILS` in `preview`: Enricos und Nadjas Google-Adressen, durch Kommas
    getrennt.
 4. Den Callback des Vorschau-Projekts in Google eintragen (Abschnitt 1, Schritt 1).
@@ -1269,7 +1319,8 @@ GitHub und das Budget, alles in `rg-housekeeping-app-weu-prd`. Von Hand:
      erhalten.
    - Dependabot-Alarme an, Dependabot-PRs zielen auf `develop`.
    - Umgebungen `preview` (nur `develop`), `production` (nur `main`), `backup` und `restore-test`
-     (nur `main`), Variablen `ANDROID_ENABLED=true` und `IOS_ENABLED=false`.
+     (nur `main`). Schalter-Variablen für Android und iOS gibt es nicht (geändert am 21.11.2026,
+     REQ-008 verschoben).
 
 ### 5a. Alltag: Feature, Freigabe, Hotfix
 
@@ -1288,7 +1339,9 @@ GitHub und das Budget, alles in `rg-housekeeping-app-weu-prd`. Von Hand:
    `develop` hineinmergen, den Konflikt lösen, pushen und die PR nach grünen Checks mit
    „Create a merge commit“ zusammenführen.
 
-### 6. Android
+### 6. Android — mit der Spec „Native Apps: Anmeldung und Speicher“
+
+(geändert am 21.11.2026: REQ-008 verschoben; die Schritte bleiben als Vorlage für die neue Spec)
 
 1. Nach dem ersten Android-Build mit `eas credentials -p android` eine Sicherungskopie des Keystores
    herunterladen und im Passwort-Manager ablegen. Ohne ihn lassen sich installierte Apps nicht mehr
@@ -1297,7 +1350,9 @@ GitHub und das Budget, alles in `rg-housekeeping-app-weu-prd`. Von Hand:
    „Installation aus unbekannten Quellen“ für den Browser erlauben.
 3. Die Play Console (25 $ einmalig) erst buchen, wenn die App in den Play Store soll.
 
-### 7. iOS (später)
+### 7. iOS — mit der Spec „Native Apps: Anmeldung und Speicher“
+
+(geändert am 21.11.2026: REQ-008 verschoben; der Schalter `IOS_ENABLED` entfällt hier)
 
 Apple Developer Program buchen (99 $ im Jahr); in App Store Connect die App mit der Bundle-ID anlegen
 und einen API-Schlüssel erzeugen (Users and Access → Integrations) → Secrets in `production`; dann
@@ -1325,42 +1380,49 @@ dann in Produktion. Die genauen Befehle stehen in der Betriebsdoku aus dem Plan.
 Entschieden nach Enricos Regel „deine Empfehlung“ (20.11.2026); `OFFEN` sind nur Fragen, die Geld
 kosten, dauerhaft gelten oder von Fakten abhängen, die erst die Umsetzung prüfen kann. Frage 19 hat
 Enrico am 21.11.2026 selbst entschieden; die Fragen 20 und 21 folgen daraus nach derselben Regel.
+Die Fragen 4, 5, 9, 12, 13 und 15 sind am 21.11.2026 mit dem Plan entschieden bzw. entfallen
+(Vorab-Freigabe durch Enrico, Plan 0014, Abschnitt „Entscheidungen beim Planen“); es gibt keine
+offene Frage mehr.
 
-| #   | Frage                                         | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Empfehlung                                                                                                                                           | Status                      |
-| --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| 1   | Gegen welches Backend laufen Vorschauen?      | A: eigenes Supabase-Projekt „Vorschau“ (Free, eigene Organisation) und eigene Static Web App „Vorschau“, Daten je Lauf frisch — Pro: echtes Ausprobieren auf dem Handy, 0 €, Migrationen laufen vor Produktion einmal durch; Contra: zweites Projekt einrichten, pausiert ohne PRs, offene PRs teilen es · B: ohne Backend — Pro: nichts einzurichten; Contra: die App zeigt nur die Anmeldeseite, also wertlos · C: Produktion — Contra: echte Daten, ungetestete Migrationen, Platzhalter-Redirects in Produktion; ausgeschlossen · D: Supabase Branching — Contra: braucht Pro, und jede Branch hat eine neue Adresse, die Google nicht als Weiterleitung kennt; Testkonten sind außerhalb lokal verboten                                                                                                                            | A, weil nur so eine Vorschau mit Anmeldung möglich ist, ohne Produktion zu gefährden oder Geld auszugeben                                            | ENTSCHIEDEN: A              |
-| 2   | Versionsschema                                | A: Kalender-Version `JJJJ.M.N` — Pro: jede Zusammenführung ist eine Veröffentlichung ohne Streit über die Art, Datum ablesbar, für Stores gültig; Contra: sagt nichts über Verträglichkeit · B: SemVer aus Commit-Typen — Pro: verbreitet; Contra: Major/Minor bedeuten bei einer privaten App mit ständiger Auslieferung nichts, und der Commit-Typ entscheidet, ob ausgeliefert wird                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil Verträglichkeit ohnehin die Mindestversion regelt                                                                                            | ENTSCHIEDEN: A              |
-| 3   | Native Google-Anmeldung hier oder eigene Spec | A: eigene Spec „Native Apps: Anmeldung und Speicher“ — Pro: hält 0014 prüfbar; native Anmeldung, Secure Store und dauerhafter Speicher sind kritischer Pfad (Auth, Sync); Contra: die Android-App ist bis dahin nicht nutzbar · B: in 0014 — Contra: der native Speicher fehlt auch (heute nur im Arbeitsspeicher), 0014 würde doppelt so groß                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A, weil ohne nativen Speicher auch eine Anmeldung keine offline lesbare App ergibt                                                                   | ENTSCHIEDEN: A              |
-| 4   | App-ID für Android und iOS                    | A: `de.enricogoerlitz.housekeeping` — Pro: eindeutig, keine Domain nötig · B: rückwärts geschriebene eigene Domain — Pro: neutral; Contra: Domain muss es geben                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A; die ID bleibt nach dem ersten Play-Store-Eintrag für immer                                                                                        | OFFEN, Annahme A            |
-| 5   | GitHub-Tarif                                  | A: Repo privat + GitHub Pro (4 $ im Monat) — Pro: Schutz von `main` und Umgebungs-Secrets nur für `main`; Contra: kostet, kein Freigabe-Gate mit Reviewer · B: Repo öffentlich — Pro: alles kostenlos, auch Secret Scanning und unbegrenzte Actions-Minuten; Contra: Code und Doku mit Namen und Haushaltsdetails öffentlich · C: privat ohne Pro — Contra: kein Schutz von `main`, keine Umgebungen; jeder PR-Zweig könnte Produktions-Secrets lesen; ausgeschlossen                                                                                                                                                                                                                                                                                                                                                                   | A, falls das Repo privat ist (laut GitHub-Doku, vor dem Kauf prüfen); ist es schon öffentlich, entfällt die Frage                                    | OFFEN, Annahme A            |
-| 6   | Tarif der Static Web App                      | A: Free — Pro: 0 €, 3 Vorschauen, eigene Domain möglich · B: Standard (etwa 9 $ im Monat) — Pro: SLA, 10 Vorschauen, Passwortschutz für Vorschauen; Contra: kostet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil nichts davon bei zwei Personen nötig ist                                                                                                     | ENTSCHIEDEN: A              |
-| 7   | Zugang der Pipeline zur Static Web App        | A: Azure-Anmeldung per OIDC, Deployment-Token zur Laufzeit holen und maskieren · B: Deployment-Token als GitHub-Secret                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil kein dauerhafter Schlüssel in GitHub liegt                                                                                                   | ENTSCHIEDEN: A              |
-| 8   | Freigabe-Gate vor Produktion                  | A: keins, das Zusammenführen ist die Freigabe; erneute Auslieferung von Hand möglich · B: Umgebung `production` mit Enrico als Reviewer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, weil Enrico Auslieferung beim Zusammenführen will; B geht bei privatem Repo mit Pro ohnehin nicht                                                 | ENTSCHIEDEN: A              |
-| 9   | Wo liegt die Mindestversion?                  | A: in Supabase, von der Rückbau-Migration gesetzt und auch ohne Anmeldung lesbar — Pro: kommt atomar mit der Änderung, die sie nötig macht; Web und native Apps lesen dieselbe Quelle · B: in `/version.json` der Static Web App — Pro: keine Datenbank-Änderung; Contra: native Apps hängen am Web, und das Web wird erst nach der Datenbank ausgeliefert                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | A; berührt Datenmodell und Sync, deshalb in der neuen ADR festhalten                                                                                 | OFFEN, Annahme A            |
-| 10  | KI-Schlüssel in Produktion                    | A: keine, solange der KI-Schalter aus ist; KI-Functions antworten ohne Schlüssel mit Fehler; eigene Speech-Ressource mit Budget kommt mit der Spec, die die KI einschaltet · B: jetzt mit eigener Speech-Ressource im kostenlosen Tarif                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, weil die Oberfläche die KI nicht anbietet und ohne Schlüssel keine Kosten entstehen können                                                        | ENTSCHIEDEN: A              |
-| 11  | Tagesgrenzen für Einladungen und Haushalte    | A: zurückstellen · B: jetzt Grenzen in der Datenbank                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | A, weil Einladungen nichts versenden, nur angemeldete Mitglieder einladen und es zwei Personen gibt; neu bewerten, wenn weitere Haushalte dazukommen | ENTSCHIEDEN: A              |
-| 12  | Höhe des Azure-Budgets                        | A: 10 € im Monat, E-Mail bei 80 % und 100 % · B: anderer Betrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A, weil die erwarteten Kosten unter 1 € liegen und 10 € jeden Fehler früh zeigen                                                                     | OFFEN, Annahme A            |
-| 13  | Eigene Domain                                 | A: Standard-Adresse der Static Web App · B: eigene Domain vor der ersten Installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | A, solange Enrico keine Domain hat; hat er eine, B, denn ein späterer Wechsel heißt neu anmelden und die PWA neu hinzufügen                          | OFFEN, Annahme A            |
-| 14  | Supabase Free oder Pro                        | A: Free; Pro, wenn das Projekt trotz Nutzung pausiert oder Benachrichtigungen zuverlässig laufen müssen · B: sofort Pro (25 $ im Monat)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, wie ADR-0007; die eigenen Sicherungen ersetzen die fehlenden Backups                                                                              | ENTSCHIEDEN: A              |
-| 15  | Datenbank-Zugang der Sicherung                | A: eigene Rolle, die nur lesen darf (mit dem Recht, Row Level Security beim Lesen zu umgehen) · B: Benutzer `postgres` mit Passwort, nur in der Umgebung `backup`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | A; erlaubt Supabase eine solche Rolle nicht, dann B, und die Umsetzung meldet das                                                                    | OFFEN, Annahme A            |
-| 16  | Wo laufen Android-Builds?                     | A: EAS-Cloud (Free, 30 Builds im Monat, Warteschlange) mit Link der internen Verteilung · B: `eas build --local` im GitHub-Runner — Pro: keine Warteschlange; Contra: Verteilung nur als Datei an der GitHub-Veröffentlichung, Actions-Minuten                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A, weil native Builds nur bei geändertem Fingerabdruck nötig sind; dauert die Warteschlange zu lange, B                                              | ENTSCHIEDEN: A              |
-| 17  | Aufbewahrung der Sicherungen                  | A: 30 Tage täglich, 12 Monate die vom Monatsersten · B: kürzer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A; Abwägung: Gelöschtes bleibt bis zu 12 Monate in Sicherungen                                                                                       | ENTSCHIEDEN: A              |
-| 18  | Zugang der Sicherung zu den Fotos             | A: S3-Schlüssel von Supabase Storage · B: `service_role`-Schlüssel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil er nur Storage öffnet und nicht die ganze API                                                                                                | ENTSCHIEDEN: A              |
-| 19  | Branching-Modell (21.11.2026)                 | A: Trunk-based, Feature-PRs per Squash direkt auf `main`, jedes Zusammenführen ist eine Veröffentlichung, Vorschau je PR — Pro: kurzer Weg, wenig Zweige; Contra: keine Stelle, an der mehrere Änderungen zusammen auf dem Handy geprüft werden, bevor sie live gehen; jede PR braucht Zugang zu `preview` · B: Sammelzweig `develop`: Feature-PRs per Squash nach `develop`, `develop` liefert an die Vorschau aus, Release-PR `develop` → `main` per Merge-Commit löst die Veröffentlichung aus, Hotfix von `main` nach `main` mit Rückführung nach `develop`; `develop` und `main` geschützt — Pro: Enrico bestimmt den Zeitpunkt der Veröffentlichung und prüft vorher den Gesamtstand; PR-Zweige brauchen keinen Zugang zu `preview`; keine Höchstzahl offener Vorschauen; Contra: ein Zweig mehr, Rückführung nach Hotfixes nötig | B                                                                                                                                                    | ENTSCHIEDEN (Enrico): B     |
-| 20  | Rückführung nach einem Hotfix                 | A: die Pipeline legt nach der Hotfix-Veröffentlichung einen Zweig vom Stand von `main` an, öffnet die PR nach `develop` und führt sie bei grünen Checks per Merge-Commit selbst zusammen; bei Konflikt bleibt sie offen mit Benachrichtigung — Pro: wird nie vergessen, Konflikte fallen sofort auf; Contra: braucht ein Token, das PRs anlegen und Checks auslösen darf (ein mit `GITHUB_TOKEN` angelegter PR startet keine Workflows; der Plan klärt das) · B: dokumentierter Handschritt im Runbook — Pro: nichts zu bauen; Contra: wird vergessen, dann fehlt der Hotfix auf `develop`, und die nächste Release-PR bringt Konflikte                                                                                                                                                                                                 | A, weil eine vergessene Rückführung erst bei der nächsten Freigabe auffällt                                                                          | ENTSCHIEDEN: A (Empfehlung) |
-| 21  | Standard-Zweig des Repos                      | A: `develop` — Pro: neue PRs und Dependabot zielen von selbst auf `develop`; Contra: die Startseite des Repos zeigt den unveröffentlichten Stand · B: `main` — Pro: Startseite zeigt Produktion; Contra: jede PR muss von Hand auf `develop` umgestellt werden, Fehlgriffe fängt erst AC-065                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | A, weil der häufigste Weg ohne Umstellen richtig sein soll                                                                                           | ENTSCHIEDEN: A (Empfehlung) |
+| #   | Frage                                         | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Empfehlung                                                                                                                                           | Status                                                                                        |
+| --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 1   | Gegen welches Backend laufen Vorschauen?      | A: eigenes Supabase-Projekt „Vorschau“ (Free, eigene Organisation) und eigene Static Web App „Vorschau“, Daten je Lauf frisch — Pro: echtes Ausprobieren auf dem Handy, 0 €, Migrationen laufen vor Produktion einmal durch; Contra: zweites Projekt einrichten, pausiert ohne PRs, offene PRs teilen es · B: ohne Backend — Pro: nichts einzurichten; Contra: die App zeigt nur die Anmeldeseite, also wertlos · C: Produktion — Contra: echte Daten, ungetestete Migrationen, Platzhalter-Redirects in Produktion; ausgeschlossen · D: Supabase Branching — Contra: braucht Pro, und jede Branch hat eine neue Adresse, die Google nicht als Weiterleitung kennt; Testkonten sind außerhalb lokal verboten                                                                                                                            | A, weil nur so eine Vorschau mit Anmeldung möglich ist, ohne Produktion zu gefährden oder Geld auszugeben                                            | ENTSCHIEDEN: A                                                                                |
+| 2   | Versionsschema                                | A: Kalender-Version `JJJJ.M.N` — Pro: jede Zusammenführung ist eine Veröffentlichung ohne Streit über die Art, Datum ablesbar, für Stores gültig; Contra: sagt nichts über Verträglichkeit · B: SemVer aus Commit-Typen — Pro: verbreitet; Contra: Major/Minor bedeuten bei einer privaten App mit ständiger Auslieferung nichts, und der Commit-Typ entscheidet, ob ausgeliefert wird                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil Verträglichkeit ohnehin die Mindestversion regelt                                                                                            | ENTSCHIEDEN: A                                                                                |
+| 3   | Native Google-Anmeldung hier oder eigene Spec | A: eigene Spec „Native Apps: Anmeldung und Speicher“ — Pro: hält 0014 prüfbar; native Anmeldung, Secure Store und dauerhafter Speicher sind kritischer Pfad (Auth, Sync); Contra: die Android-App ist bis dahin nicht nutzbar · B: in 0014 — Contra: der native Speicher fehlt auch (heute nur im Arbeitsspeicher), 0014 würde doppelt so groß                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A, weil ohne nativen Speicher auch eine Anmeldung keine offline lesbare App ergibt                                                                   | ENTSCHIEDEN: A                                                                                |
+| 4   | App-ID für Android und iOS                    | A: `de.enricogoerlitz.housekeeping` — Pro: eindeutig, keine Domain nötig · B: rückwärts geschriebene eigene Domain — Pro: neutral; Contra: Domain muss es geben                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A; die ID bleibt nach dem ersten Play-Store-Eintrag für immer                                                                                        | ENTFÄLLT (21.11.2026): geht mit REQ-008 in die Spec „Native Apps“, Annahme A bleibt Vorschlag |
+| 5   | GitHub-Tarif                                  | A: Repo privat + GitHub Pro (4 $ im Monat) — Pro: Schutz von `main` und Umgebungs-Secrets nur für `main`; Contra: kostet, kein Freigabe-Gate mit Reviewer · B: Repo öffentlich — Pro: alles kostenlos, auch Secret Scanning und unbegrenzte Actions-Minuten; Contra: Code und Doku mit Namen und Haushaltsdetails öffentlich · C: privat ohne Pro — Contra: kein Schutz von `main`, keine Umgebungen; jeder PR-Zweig könnte Produktions-Secrets lesen; ausgeschlossen                                                                                                                                                                                                                                                                                                                                                                   | A, falls das Repo privat ist (laut GitHub-Doku, vor dem Kauf prüfen); ist es schon öffentlich, entfällt die Frage                                    | ENTFÄLLT (21.11.2026): Repo ist öffentlich                                                    |
+| 6   | Tarif der Static Web App                      | A: Free — Pro: 0 €, 3 Vorschauen, eigene Domain möglich · B: Standard (etwa 9 $ im Monat) — Pro: SLA, 10 Vorschauen, Passwortschutz für Vorschauen; Contra: kostet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil nichts davon bei zwei Personen nötig ist                                                                                                     | ENTSCHIEDEN: A                                                                                |
+| 7   | Zugang der Pipeline zur Static Web App        | A: Azure-Anmeldung per OIDC, Deployment-Token zur Laufzeit holen und maskieren · B: Deployment-Token als GitHub-Secret                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil kein dauerhafter Schlüssel in GitHub liegt                                                                                                   | ENTSCHIEDEN: A                                                                                |
+| 8   | Freigabe-Gate vor Produktion                  | A: keins, das Zusammenführen ist die Freigabe; erneute Auslieferung von Hand möglich · B: Umgebung `production` mit Enrico als Reviewer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, weil Enrico Auslieferung beim Zusammenführen will; B geht bei privatem Repo mit Pro ohnehin nicht                                                 | ENTSCHIEDEN: A                                                                                |
+| 9   | Wo liegt die Mindestversion?                  | A: in Supabase, von der Rückbau-Migration gesetzt und auch ohne Anmeldung lesbar — Pro: kommt atomar mit der Änderung, die sie nötig macht; Web und native Apps lesen dieselbe Quelle · B: in `/version.json` der Static Web App — Pro: keine Datenbank-Änderung; Contra: native Apps hängen am Web, und das Web wird erst nach der Datenbank ausgeliefert                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | A; berührt Datenmodell und Sync, deshalb in der neuen ADR festhalten                                                                                 | ENTSCHIEDEN (21.11.2026): A, SQL-Funktion `public.min_app_version()`, ADR-0015                |
+| 10  | KI-Schlüssel in Produktion                    | A: keine, solange der KI-Schalter aus ist; KI-Functions antworten ohne Schlüssel mit Fehler; eigene Speech-Ressource mit Budget kommt mit der Spec, die die KI einschaltet · B: jetzt mit eigener Speech-Ressource im kostenlosen Tarif                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, weil die Oberfläche die KI nicht anbietet und ohne Schlüssel keine Kosten entstehen können                                                        | ENTSCHIEDEN: A                                                                                |
+| 11  | Tagesgrenzen für Einladungen und Haushalte    | A: zurückstellen · B: jetzt Grenzen in der Datenbank                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | A, weil Einladungen nichts versenden, nur angemeldete Mitglieder einladen und es zwei Personen gibt; neu bewerten, wenn weitere Haushalte dazukommen | ENTSCHIEDEN: A                                                                                |
+| 12  | Höhe des Azure-Budgets                        | A: 10 € im Monat, E-Mail bei 80 % und 100 % · B: anderer Betrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A, weil die erwarteten Kosten unter 1 € liegen und 10 € jeden Fehler früh zeigen                                                                     | ENTSCHIEDEN (21.11.2026): A, 10 €                                                             |
+| 13  | Eigene Domain                                 | A: Standard-Adresse der Static Web App · B: eigene Domain vor der ersten Installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | A, solange Enrico keine Domain hat; hat er eine, B, denn ein späterer Wechsel heißt neu anmelden und die PWA neu hinzufügen                          | ENTSCHIEDEN (21.11.2026): A, keine Domain                                                     |
+| 14  | Supabase Free oder Pro                        | A: Free; Pro, wenn das Projekt trotz Nutzung pausiert oder Benachrichtigungen zuverlässig laufen müssen · B: sofort Pro (25 $ im Monat)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, wie ADR-0007; die eigenen Sicherungen ersetzen die fehlenden Backups                                                                              | ENTSCHIEDEN: A                                                                                |
+| 15  | Datenbank-Zugang der Sicherung                | A: eigene Rolle, die nur lesen darf (mit dem Recht, Row Level Security beim Lesen zu umgehen) · B: Benutzer `postgres` mit Passwort, nur in der Umgebung `backup`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | A; erlaubt Supabase eine solche Rolle nicht, dann B, und die Umsetzung meldet das                                                                    | ENTSCHIEDEN (21.11.2026): A, Spike in Plan 0014 Task 11 (Runbook B6a), sonst B                |
+| 16  | Wo laufen Android-Builds?                     | A: EAS-Cloud (Free, 30 Builds im Monat, Warteschlange) mit Link der internen Verteilung · B: `eas build --local` im GitHub-Runner — Pro: keine Warteschlange; Contra: Verteilung nur als Datei an der GitHub-Veröffentlichung, Actions-Minuten                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A, weil native Builds nur bei geändertem Fingerabdruck nötig sind; dauert die Warteschlange zu lange, B                                              | ENTSCHIEDEN: A                                                                                |
+| 17  | Aufbewahrung der Sicherungen                  | A: 30 Tage täglich, 12 Monate die vom Monatsersten · B: kürzer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A; Abwägung: Gelöschtes bleibt bis zu 12 Monate in Sicherungen                                                                                       | ENTSCHIEDEN: A                                                                                |
+| 18  | Zugang der Sicherung zu den Fotos             | A: S3-Schlüssel von Supabase Storage · B: `service_role`-Schlüssel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil er nur Storage öffnet und nicht die ganze API                                                                                                | ENTSCHIEDEN: A                                                                                |
+| 19  | Branching-Modell (21.11.2026)                 | A: Trunk-based, Feature-PRs per Squash direkt auf `main`, jedes Zusammenführen ist eine Veröffentlichung, Vorschau je PR — Pro: kurzer Weg, wenig Zweige; Contra: keine Stelle, an der mehrere Änderungen zusammen auf dem Handy geprüft werden, bevor sie live gehen; jede PR braucht Zugang zu `preview` · B: Sammelzweig `develop`: Feature-PRs per Squash nach `develop`, `develop` liefert an die Vorschau aus, Release-PR `develop` → `main` per Merge-Commit löst die Veröffentlichung aus, Hotfix von `main` nach `main` mit Rückführung nach `develop`; `develop` und `main` geschützt — Pro: Enrico bestimmt den Zeitpunkt der Veröffentlichung und prüft vorher den Gesamtstand; PR-Zweige brauchen keinen Zugang zu `preview`; keine Höchstzahl offener Vorschauen; Contra: ein Zweig mehr, Rückführung nach Hotfixes nötig | B                                                                                                                                                    | ENTSCHIEDEN (Enrico): B                                                                       |
+| 20  | Rückführung nach einem Hotfix                 | A: die Pipeline legt nach der Hotfix-Veröffentlichung einen Zweig vom Stand von `main` an, öffnet die PR nach `develop` und führt sie bei grünen Checks per Merge-Commit selbst zusammen; bei Konflikt bleibt sie offen mit Benachrichtigung — Pro: wird nie vergessen, Konflikte fallen sofort auf; Contra: braucht ein Token, das PRs anlegen und Checks auslösen darf (ein mit `GITHUB_TOKEN` angelegter PR startet keine Workflows; der Plan klärt das) · B: dokumentierter Handschritt im Runbook — Pro: nichts zu bauen; Contra: wird vergessen, dann fehlt der Hotfix auf `develop`, und die nächste Release-PR bringt Konflikte                                                                                                                                                                                                 | A, weil eine vergessene Rückführung erst bei der nächsten Freigabe auffällt                                                                          | ENTSCHIEDEN: A (Empfehlung)                                                                   |
+| 21  | Standard-Zweig des Repos                      | A: `develop` — Pro: neue PRs und Dependabot zielen von selbst auf `develop`; Contra: die Startseite des Repos zeigt den unveröffentlichten Stand · B: `main` — Pro: Startseite zeigt Produktion; Contra: jede PR muss von Hand auf `develop` umgestellt werden, Fehlgriffe fängt erst AC-065                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | A, weil der häufigste Weg ohne Umstellen richtig sein soll                                                                                           | ENTSCHIEDEN: A (Empfehlung)                                                                   |
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                                                                      | Task (plan.md) | Test |
-| ------- | ----------------------------------------------------------------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-005, AC-065 bis AC-068                                    | —              | —    |
-| REQ-002 | AC-006 bis AC-011, AC-074                                               | —              | —    |
-| REQ-003 | AC-013 bis AC-015, AC-017, AC-069 bis AC-071 (AC-012, AC-016 verworfen) | —              | —    |
-| REQ-004 | AC-018 bis AC-026                                                       | —              | —    |
-| REQ-005 | AC-027 bis AC-033, AC-072                                               | —              | —    |
-| REQ-006 | AC-034 bis AC-039                                                       | —              | —    |
-| REQ-007 | AC-040 bis AC-046, AC-073                                               | —              | —    |
-| REQ-008 | AC-047 bis AC-051                                                       | —              | —    |
-| REQ-009 | AC-052 bis AC-057                                                       | —              | —    |
-| REQ-010 | AC-058 bis AC-064                                                       | —              | —    |
+Tasks aus `plan.md`; „Beleg“ heißt ein echter Lauf bzw. Negativtest aus Task 13 oder 14 mit
+Nachweis in `tmp/0014/`. Die Spalte „Test“ nennt die geplanten Testdateien; sie entstehen mit den
+Tasks.
+
+| REQ     | AC                                                                      | Task (plan.md)                                                                                                               | Test                                                                                                                                                                                                                                   |
+| ------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-005, AC-065 bis AC-068                                    | AC-001: 10, 13 · AC-002: 3, 13 · AC-003: 13 · AC-004, AC-065: 1, 13 · AC-005: 1 · AC-066: 10, 14 · AC-067, AC-068: 8, 13     | `scripts/ci/conventions.test.mjs` (AC-004, AC-065), `scripts/ci/workflows.test.mjs` (Rückführung), Belege Task 13                                                                                                                      |
+| REQ-002 | AC-006 bis AC-011, AC-074                                               | AC-006, AC-007, AC-011, AC-074: 3, 13 · AC-008: 1, 13 · AC-009, AC-010: 1                                                    | `scripts/ci/conventions.test.mjs` (AC-008, AC-010), `scripts/ci/migrations.test.mjs` (AC-009), `scripts/ci/workflows.test.mjs`, Belege Task 13                                                                                         |
+| REQ-003 | AC-013 bis AC-015, AC-017, AC-069 bis AC-071 (AC-012, AC-016 verworfen) | AC-013, AC-014, AC-069, AC-071: 7, 13 · AC-015: 13 · AC-017, AC-070: 7                                                       | `packages/api/src/seed/seed-sql.test.ts`, `scripts/preview-invites.test.mjs`, `scripts/ci/supabase-status.test.mjs` (AC-017), `scripts/ci/workflows.test.mjs`, Belege Task 13                                                          |
+| REQ-004 | AC-018 bis AC-026                                                       | AC-018: 2, 6, 14 · AC-019, AC-020: 6, 8 · AC-021: 5 · AC-022: 5, 14 · AC-023: 4, 5 · AC-024: 5 · AC-025: 2, 5 · AC-026: 2, 6 | `packages/core/src/app-version.test.ts`, `packages/api/src/app-version.test.ts`, `packages/api/src/backend.test.ts` (AC-024), `scripts/release/version.test.mjs`, `scripts/release/changelog.test.mjs`, `e2e/rundgang-version.spec.ts` |
+| REQ-005 | AC-027 bis AC-033, AC-072                                               | AC-027 bis AC-032: 8, 14 · AC-033: 6, 8 · AC-072: 6, 8, 13                                                                   | `scripts/ci/workflows.test.mjs`, `scripts/release/version.test.mjs` (AC-033), `scripts/release/changelog.test.mjs` (AC-072), Belege Task 13 und 14                                                                                     |
+| REQ-006 | AC-034 bis AC-039                                                       | AC-034: 11, 14 · AC-035 bis AC-038: 4, 6 · AC-039: 14                                                                        | `apps/app/scripts/check-web-export.test.mjs`, `scripts/release/verify.test.mjs`, Belege Task 14                                                                                                                                        |
+| REQ-007 | AC-040 bis AC-046, AC-073                                               | AC-040: 6, 7 · AC-041, AC-042, AC-044, AC-046, AC-073: 6, 14 · AC-043: 10, 14 · AC-045: 8                                    | `scripts/release/verify.test.mjs`, `scripts/ci/supabase-config.test.mjs`, `scripts/prod-bootstrap.test.mjs` (AC-043), Belege Task 14                                                                                                   |
+| REQ-008 | AC-047 bis AC-051 — verschoben in die Spec „Native Apps“                | —                                                                                                                            | —                                                                                                                                                                                                                                      |
+| REQ-009 | AC-052 bis AC-057                                                       | AC-052, AC-056: 9, 14 · AC-053, AC-054: 9, 11, 13 · AC-055: 9 · AC-057: 11, 12                                               | `scripts/backup/manifest.test.mjs`, `scripts/backup/compare.test.mjs` (AC-056), `scripts/ci/workflows.test.mjs`, Belege Task 13 und 14                                                                                                 |
+| REQ-010 | AC-058 bis AC-064                                                       | AC-058: 13 · AC-059, AC-063: 11 · AC-060: 12, 13 · AC-061: 4, 8 · AC-062: 1, 3 · AC-064: 8, 9, 14                            | `apps/app/scripts/check-web-export.test.mjs` (AC-061), `scripts/ci/workflows.test.mjs` (AC-062), Belege Task 13 und 14                                                                                                                 |

@@ -854,3 +854,123 @@ D42). Rezepte, Sammlungen und Aktivitäten haben keine Uhrzeit.
 - **Im Code:** `Chore.dueTime` (`TimeOfDay`, „HH:MM“), `chores.due_time`; anzeigen mit
   `withTime`/`formatTime`, eintippen mit `TimeField` und `parseTimeInput`
 - **Nicht verwenden:** Termin, Deadline, Fälligkeitszeit
+
+### Produktion
+
+Die Umgebung, in der Enrico und Nadja die App mit echten Daten nutzen: die Static Web App
+„Produktion“ und das bestehende Supabase-Projekt (Frankfurt). Ändert sich nur über die
+Veröffentlichung aus `main`; nie Seed, nie Reset, keine Testkonten (Spec 0014, ADR-0015).
+
+- **Im Code:** GitHub-Umgebung `production`, Variablen `PRODUCTION_*`, Static Web App
+  `swa-housekeeping-app-prd`, Abschnitt `[remotes.production]` in `supabase/config.toml`
+- **Nicht verwenden:** Live, Prod, Live-System
+- **Abgrenzung:** _Lokal_ ist die Entwicklungsumgebung in Docker mit Seed und Testkonten; die
+  _Vorschau_ hat nur Beispieldaten.
+- **Siehe auch:** [Vorschau](#vorschau), [Veröffentlichung](#veröffentlichung)
+
+### Vorschau
+
+Die eine Umgebung, die immer den neuesten Stand von `develop` zeigt, zum Ausprobieren auf dem Handy
+vor der Freigabe: eigene Static Web App und eigenes Supabase-Projekt, bei jedem Vorschau-Lauf neu
+aufgesetzt mit Beispieldaten ohne Testkonten, Anmeldung nur mit Google und Einladung, Push aus
+(Spec 0014). Feature-Zweige und PRs haben keine eigene Vorschau.
+
+- **Im Code:** GitHub-Umgebung `preview`, Variablen `PREVIEW_*`, Workflow `preview.yml`, Static
+  Web App `swa-housekeeping-app-preview`, `supabase/preview-seed.sql`, App-Version `vorschau`
+- **Nicht verwenden:** Staging, Testumgebung, Preview (in deutschen Texten), PR-Vorschau
+- **Abgrenzung:** Die _Vorschau_ ist keine Veröffentlichung; ihre Daten sind wegwerfbar.
+
+### Veröffentlichung
+
+Ein Stand von `main`, der mit Versionsnummer ausgeliefert ist: Checks, Sicherung, Supabase
+ausliefern, Web ausliefern, Prüfung von außen, dann Git-Tag `v<Version>` und GitHub-Veröffentlichung
+mit Änderungsliste. Entsteht nach jeder Release-PR und jedem Hotfix, außer wenn sich seit dem
+letzten Tag nur Doku geändert hat (Spec 0014, REQ-005).
+
+- **Im Code:** Workflow `release.yml`, Tag `v<Version>`, `scripts/release/` (vorläufig)
+- **Nicht verwenden:** Release (in deutschen Texten, außer „Release-PR“), Deployment (für das
+  Ganze), Rollout
+- **Abgrenzung:** _Ausliefern_ ist ein einzelner Schritt darin („Web ausliefern“, „Supabase
+  ausliefern“) und kommt auch in der Vorschau vor; eine _Veröffentlichung_ gibt es nur in Produktion.
+
+### Release-PR
+
+Die PR von `develop` nach `main`, Titel „chore: Veröffentlichung“, zusammengeführt per
+Merge-Commit. Sie ist die einzige Freigabe für Produktion; ihr Zusammenführen startet die
+Veröffentlichung (Spec 0014, AC-066). Sie selbst steht nicht in der Änderungsliste.
+
+- **Im Code:** kein eigener Bezeichner; PR mit Kopf `develop` und Basis `main`
+- **Nicht verwenden:** Freigabe-PR, Deploy-PR, Merge-Request
+
+### Hotfix
+
+Eine dringende Korrektur, die an `develop` vorbei nach `main` geht: Zweig `hotfix/<slug>` von
+`main`, PR nach `main` mit Titel `fix: …`, Merge-Commit. Danach folgen Veröffentlichung und
+Rückführung (Spec 0014, AC-067, AC-072).
+
+- **Im Code:** Zweigpräfix `hotfix/`
+- **Nicht verwenden:** Bugfix-Release, Patch, Notfall-Release
+- **Abgrenzung:** Ein Zweig `fix/…` ist eine normale Korrektur und geht nach `develop`.
+- **Siehe auch:** [Rückführung](#rückführung)
+
+### Rückführung
+
+Das Zurückbringen von `main` nach `develop` nach einem Hotfix: Die Pipeline legt den Zweig
+`chore/rueckfuehrung-v<Version>` vom Stand von `main` an, öffnet die PR „chore: main nach develop
+zurückführen“ und führt sie bei grünen Checks per Merge-Commit zusammen; bei Konflikt bleibt sie
+offen (Spec 0014, AC-067, AC-068).
+
+- **Im Code:** Job `rueckfuehrung` in `release.yml`, Zweig `chore/rueckfuehrung-v<Version>`
+  (vorläufig)
+- **Nicht verwenden:** Back-Merge, Rück-Merge, Sync (meint den Delta-Abgleich, siehe [Sync](#sync))
+
+### App-Version
+
+Die Versionsnummer einer Veröffentlichung im Format `JJJJ.M.N`: Jahr, Monat ohne führende Null
+(Berliner Zeit), laufende Nummer im Monat ab 1, z. B. `2026.12.4`. Die App zeigt sie ganz unten in
+den Einstellungen; das Web nennt die ausgelieferte in `/version.json`. Lokal heißt sie `dev`, in der
+Vorschau `vorschau` (Spec 0014, ADR-0015).
+
+- **Im Code (vorläufig):** `EXPO_PUBLIC_APP_VERSION`, `/version.json`; `parseAppVersion`,
+  `compareAppVersions`, `nextAppVersion`, `appVersionState` in `packages/core/src/app-version.ts`
+- **Nicht verwenden:** Build-Nummer, Release-Nummer, Versionscode (der ist nur für Android)
+- **Abgrenzung:** Die _Speicher-Version_ (`CACHE_VERSION`) gehört zum lokalen Speicher, nicht zur
+  App; sie ändert sich nur, wenn sich dessen Form ändert.
+- **Siehe auch:** [Mindestversion](#mindestversion)
+
+### Mindestversion
+
+Die älteste App-Version, die noch mit dem Server arbeiten darf. Sie steigt nur mit einer
+Rückbau-Migration (contract) und nie über die zuletzt veröffentlichte Version. Liegt die App
+darunter, steht „Diese Version wird nicht mehr unterstützt“; Lesen und Abhaken gehen weiter,
+Bearbeiten ist gesperrt, die Laden-Warteschlange wartet. Die App liest sie nur online (Spec 0014,
+AC-025, ADR-0015).
+
+- **Im Code:** SQL-Funktion `public.min_app_version()`; Migrationskopf
+  `-- contract: <Begründung>; min_app_version: <Version>`; Zustand `nicht-unterstuetzt` von
+  `appVersionState` (vorläufig)
+- **Nicht verwenden:** Pflicht-Update, Force-Update, Mindest-Build
+
+### Sicherung
+
+Die nächtliche, mit `age` verschlüsselte Kopie von Datenbank (Rollen, Schema, Daten) und allen
+Fotos im Azure-Storage-Konto, mit einer Begleitdatei ohne Daten (Zeilen je Tabelle, Fotoanzahl,
+Prüfsumme). Zusätzlich vor jeder Veröffentlichung. 30 Tage unveränderlich; tägliche bleiben 30
+Tage, die vom Monatsersten 12 Monate (Spec 0014, REQ-009).
+
+- **Im Code:** Workflow `backup.yml`, GitHub-Umgebung `backup`, Container `backups` mit den Pfaden
+  `daily/`, `monthly/`, `release/`, Begleitdatei `manifest.json` (vorläufig)
+- **Nicht verwenden:** Backup (in deutschen Texten), Snapshot, Dump (meint nur den Datenbank-Teil)
+- **Siehe auch:** [Wiederherstellungstest](#wiederherstellungstest)
+
+### Wiederherstellungstest
+
+Die monatliche Probe, ob sich die neueste Sicherung einspielen lässt: entschlüsseln, in eine
+Wegwerf-Datenbank im Runner einspielen, mit der Begleitdatei vergleichen. Rot bei der ersten
+Abweichung oder wenn die neueste Sicherung älter als 36 Stunden ist (Spec 0014, AC-056).
+
+- **Im Code:** Workflow `restore-test.yml`, GitHub-Umgebung `restore-test`,
+  `scripts/backup/compare.mjs` (vorläufig)
+- **Nicht verwenden:** Restore-Probe, Backup-Test
+- **Abgrenzung:** _Wiederherstellen im Notfall_ ist ein Handschritt und immer Enricos Entscheidung;
+  der Test berührt Produktion nie.
