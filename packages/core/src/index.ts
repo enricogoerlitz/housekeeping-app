@@ -6,6 +6,8 @@ export * from './text';
 export * from './amounts';
 export * from './articles';
 export * from './search-or-create';
+export * from './article-catalog';
+export * from './areas';
 export * from './diet';
 export * from './recipes';
 export * from './meal-plan';

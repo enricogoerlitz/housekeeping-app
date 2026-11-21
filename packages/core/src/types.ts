@@ -49,6 +49,8 @@ export interface Article {
   diet: Diet;
   /** Explicit "Vorrat" flag: unchecked by default in the pantry check. */
   isPantry: boolean;
+  /** "Standard-Einkaufsregel" for new recipe ingredients; undefined = derived (spec 0007, E7). */
+  defaultShoppingRule?: ShoppingRule;
 }
 
 export interface Store {
@@ -84,6 +86,8 @@ export interface RecipeIngredient {
   shoppingRule: ShoppingRule;
   /** Default "Zusatz" for the shopping list, e.g. "Philadelphia" for Frischkäse in this recipe. */
   shoppingNote?: string;
+  /** "Hinweis" for cooking ("fein gehackt"); shown in the recipe, never on the shopping list. */
+  prepNote?: string;
   group?: string;
 }
 

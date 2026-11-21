@@ -1,3 +1,4 @@
+import { scaleAmount } from './amounts';
 import { createdTime, daysBetween } from './dates';
 import { recipeFitsPreference } from './diet';
 import { fuzzyIncludes, normalizeText } from './text';
@@ -9,6 +10,7 @@ import type {
   ISODate,
   Member,
   Recipe,
+  RecipeIngredient,
   RecipeStep,
 } from './types';
 
@@ -153,4 +155,20 @@ export function averageRating(recipe: Recipe): number | undefined {
   const ratings = Object.values(recipe.ratings);
   if (ratings.length === 0) return undefined;
   return ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+}
+
+/**
+ * One ingredient as shown in the recipe: amount scaled by the factor, the article name and the
+ * Hinweis after "·" ("4 Zwiebeln · fein gehackt"); without Hinweis no "·" (AC-011, AC-013). The
+ * Einkaufs-Zusatz is not part of it (AC-012).
+ */
+export function ingredientLine(
+  ingredient: Pick<RecipeIngredient, 'amount' | 'prepNote'>,
+  articleName: string,
+  factor = 1,
+): string {
+  const amount = ingredient.amount ? scaleAmount(ingredient.amount, factor).text : '';
+  const line = [amount, articleName].filter((part) => part !== '').join(' ');
+  const prepNote = ingredient.prepNote?.trim() ?? '';
+  return prepNote === '' ? line : `${line} · ${prepNote}`;
 }

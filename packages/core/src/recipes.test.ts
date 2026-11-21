@@ -4,6 +4,7 @@ import {
   averageRating,
   courseLabel,
   filterRecipes,
+  ingredientLine,
   searchRecipes,
   sortRecipes,
   stepsForVariants,
@@ -17,7 +18,7 @@ import {
   mangoCurry,
   nadja,
 } from './test-fixtures';
-import type { Recipe } from './types';
+import type { Recipe, RecipeIngredient } from './types';
 
 const recipes = [mangoCurry, bolognese, halloumiPfanne];
 const titles = (list: Recipe[]): string[] => list.map((recipe) => recipe.title);
@@ -192,5 +193,40 @@ describe('recipe helpers', () => {
   it('has German course labels', () => {
     expect(courseLabel('main')).toBe('Hauptgericht');
     expect(courseLabel('breakfast')).toBe('Frühstück');
+  });
+});
+
+describe('ingredientLine', () => {
+  it('AC-011: shows the Hinweis after the article name', () => {
+    expect(
+      ingredientLine({ amount: { text: '2', qty: 2 }, prepNote: 'fein gehackt' }, 'Zwiebeln'),
+    ).toBe('2 Zwiebeln · fein gehackt');
+  });
+
+  it('AC-013: 4 → 8 portions scales the amount and keeps the Hinweis', () => {
+    const zwiebeln = { amount: { text: '2', qty: 2 }, prepNote: 'fein gehackt' };
+    const linsen = { amount: { text: '150 g', qty: 150, unit: 'g' } };
+    expect(ingredientLine(zwiebeln, 'Zwiebeln', 2)).toBe('4 Zwiebeln · fein gehackt');
+    expect(ingredientLine(linsen, 'Rote Linsen', 2)).toBe('300 g Rote Linsen');
+  });
+
+  it('AC-013: an empty or blank Hinweis adds no "·"', () => {
+    expect(ingredientLine({ amount: { text: '1', qty: 1 }, prepNote: '  ' }, 'Mango')).toBe(
+      '1 Mango',
+    );
+    expect(ingredientLine({ prepNote: '' }, 'Salz')).toBe('Salz');
+  });
+
+  it('AC-012: the Einkaufs-Zusatz is not part of the line, the Hinweis is', () => {
+    const frischkaese: RecipeIngredient = {
+      id: 'i-frischkaese',
+      articleId: 'art-frischkaese',
+      name: 'Frischkäse',
+      amount: { text: '200 g', qty: 200, unit: 'g' },
+      shoppingRule: 'count',
+      shoppingNote: 'Philadelphia',
+      prepNote: 'zimmerwarm',
+    };
+    expect(ingredientLine(frischkaese, 'Frischkäse')).toBe('200 g Frischkäse · zimmerwarm');
   });
 });
