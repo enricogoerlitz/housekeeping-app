@@ -9,6 +9,7 @@ import {
 import {
   PanResponder,
   Platform,
+  Pressable,
   View,
   type AccessibilityActionEvent,
   type HostInstance,
@@ -48,6 +49,8 @@ export interface ReorderListLabels {
   down: (name: string) => string;
   /** Said after every move: "Getränke, Position 1 von 14" (index 0-based). */
   position: (name: string, index: number, total: number) => string;
+  /** With `onPress`: the accessible name of a row, e.g. "Badehose 2× bearbeiten". */
+  open?: (name: string) => string;
 }
 
 export interface ReorderListProps<T extends ReorderListItem> {
@@ -61,8 +64,13 @@ export interface ReorderListProps<T extends ReorderListItem> {
   /** More buttons at the end of a row, e.g. "Ausblenden" or ⋯. */
   trailing?: (item: T, index: number) => ReactNode;
   /**
+   * A tap on the row (name and subtitle; handle, arrows and `trailing` stay buttons of their
+   * own), e.g. to open the details. Disabled together with the list, with `disabledHint`.
+   */
+  onPress?: (key: string) => void;
+  /**
    * Prefix of the test ids: rows `${testID}-row-${key}`, handle `-handle-`, arrows `-up-` and
-   * `-down-`, position `-pos-`; the list itself is `${testID}-list`.
+   * `-down-`, position `-pos-`, the press area `-open-`; the list itself is `${testID}-list`.
    */
   testID?: string;
 }
@@ -204,6 +212,7 @@ export function ReorderList<T extends ReorderListItem>(props: ReorderListProps<T
           disabled={props.disabled}
           disabledHint={props.disabledHint}
           trailing={props.trailing?.(item, index)}
+          onPress={props.onPress ? () => props.onPress?.(item.key) : undefined}
           testID={props.testID}
         />
       ))}
@@ -224,6 +233,7 @@ interface ReorderRowProps {
   disabled?: boolean;
   disabledHint?: string;
   trailing?: ReactNode;
+  onPress?: () => void;
   testID?: string;
 }
 
@@ -235,6 +245,7 @@ function ReorderRow(props: ReorderRowProps) {
   const ownIndex = useSharedValue(props.index);
   const enabled = useSharedValue(!props.disabled);
   const [focused, setFocused] = useState(false);
+  const [pressFocused, setPressFocused] = useState(false);
   const [dragging, setDragging] = useState(false);
   // Set on release: where the row lands; the effect below commits the move once it glided there.
   const [landing, setLanding] = useState<number | undefined>();
@@ -369,11 +380,44 @@ function ReorderRow(props: ReorderRowProps) {
     >
       <ListRow
         title={
-          <Text variant="rowTitle" color={item.muted ? 'muted' : 'text'} numberOfLines={2}>
-            {item.name}
-          </Text>
+          props.onPress ? (
+            // Only name and subtitle press: buttons inside a button would not work on the web.
+            <Pressable
+              testID={id('open')}
+              accessibilityRole="button"
+              accessibilityLabel={labels.open?.(item.name) ?? item.name}
+              accessibilityHint={props.disabled ? props.disabledHint : undefined}
+              accessibilityState={{ disabled: !!props.disabled }}
+              disabled={props.disabled}
+              onPress={props.onPress}
+              onFocus={(event) => setPressFocused(keyboardFocus(event))}
+              onBlur={() => setPressFocused(false)}
+              style={(state) => [
+                {
+                  minHeight: 44,
+                  justifyContent: 'center',
+                  borderRadius: theme.shape.radius.control,
+                  opacity: state.pressed ? 0.6 : 1,
+                },
+                focusRing(theme, pressFocused),
+              ]}
+            >
+              <Text variant="rowTitle" color={item.muted ? 'muted' : 'text'} numberOfLines={2}>
+                {item.name}
+              </Text>
+              {item.subtitle ? (
+                <Text variant="small" color="muted" style={{ marginTop: 1 }}>
+                  {item.subtitle}
+                </Text>
+              ) : null}
+            </Pressable>
+          ) : (
+            <Text variant="rowTitle" color={item.muted ? 'muted' : 'text'} numberOfLines={2}>
+              {item.name}
+            </Text>
+          )
         }
-        subtitle={item.subtitle}
+        subtitle={props.onPress ? undefined : item.subtitle}
         leading={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <View

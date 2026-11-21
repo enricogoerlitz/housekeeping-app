@@ -6,12 +6,7 @@ import {
   snapshot,
   useMembersById,
 } from '@housekeeping/api';
-import {
-  packingItemLabel,
-  type Id,
-  type PackingItem,
-  type PackingSection,
-} from '@housekeeping/core';
+import { packingItemLabel, type PackingItem, type PackingSection } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -39,8 +34,6 @@ import { TripAddItemSheet } from './trip-add-item-sheet';
 
 type BagAction = 'pack-all' | 'remove';
 
-const NO_IDS: ReadonlySet<Id> = new Set();
-
 const bySortThenId = (a: PackingItem, b: PackingItem) =>
   a.sort - b.sort || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -48,7 +41,8 @@ const bySortThenId = (a: PackingItem, b: PackingItem) =>
  * One bag of the packing list (AC-016, AC-020 to AC-021, AC-026, AC-031 to AC-036): name, counter
  * "4/9", avatar when it belongs to someone, ⋯ with "Alles einpacken" and "Aus der Packliste
  * entfernen". A tap packs at once (store queue, also offline); 2 s after the last tap packed rows
- * slide into "Gepackt (n)", and rows unpacked there slide back to the open ones (AC-021).
+ * slide into "Gepackt (n)", and rows unpacked there slide back to the open ones (AC-021). A
+ * Packstück goes by swiping left on phones or by its ⋯ "Entfernen" everywhere (AC-035).
  */
 export function TripSection(props: { section: PackingSection }) {
   const { section } = props;
@@ -58,8 +52,6 @@ export function TripSection(props: { section: PackingSection }) {
   const membersById = useMembersById();
   const owner = listBag.memberId ? membersById[listBag.memberId] : undefined;
   const [adding, setAdding] = useState(false);
-  // Unpacked in "Gepackt (n)" during the running window: they stay there until it closes.
-  const [unpackedHere, setUnpackedHere] = useState<ReadonlySet<Id>>(NO_IDS);
 
   const items = useMemo(
     () => [...section.open, ...section.packed].sort(bySortThenId),
@@ -78,20 +70,10 @@ export function TripSection(props: { section: PackingSection }) {
         toast.show({ message: messageOf(failure) });
       }
     },
-    onSettle: () => setUnpackedHere(NO_IDS),
+    // Unpacked in "Gepackt (n)", a row stays there until the window closes (AC-021).
+    keepInDone: true,
     announce: (item, packed) => `${item.name} ${packed ? 'gepackt' : 'wieder offen'}`,
   });
-
-  const inOpenList = new Set(check.rows.map((item) => item.id));
-  const openRows = check.rows.filter((item) => !unpackedHere.has(item.id));
-  const packedRows = items.filter(
-    (item) => unpackedHere.has(item.id) || (item.packed && !inOpenList.has(item.id)),
-  );
-
-  const unpackInGroup = (item: PackingItem) => {
-    setUnpackedHere((current) => new Set(current).add(item.id));
-    check.toggle(item);
-  };
 
   const removeItem = (item: PackingItem) => {
     if (online.disabled) return;
@@ -147,7 +129,7 @@ export function TripSection(props: { section: PackingSection }) {
     });
   };
 
-  const row = (item: PackingItem, inGroup: boolean) => {
+  const row = (item: PackingItem) => {
     const label = packingItemLabel(item);
     return (
       <RowTransition key={item.id}>
@@ -160,26 +142,25 @@ export function TripSection(props: { section: PackingSection }) {
           <CheckRow
             title={label}
             checked={check.isChecked(item)}
-            onToggle={() => (inGroup ? unpackInGroup(item) : check.toggle(item))}
+            onToggle={() => check.toggle(item)}
             trailing={
-              isPhone ? undefined : (
-                <Menu<'remove'>
-                  trigger="icon"
-                  icon="ellipsis"
-                  label="Mehr"
-                  accessibilityLabel={`Mehr zu ${item.name}`}
-                  options={[
-                    {
-                      value: 'remove',
-                      label: 'Entfernen',
-                      disabled: online.disabled,
-                      hint: online.hint,
-                    },
-                  ]}
-                  onChange={() => removeItem(item)}
-                  testID={`trip-item-${item.id}-more`}
-                />
-              )
+              // Also on phones next to the swipe, so screen readers can remove a Packstück.
+              <Menu<'remove'>
+                trigger="icon"
+                icon="ellipsis"
+                label="Mehr"
+                accessibilityLabel={`Mehr zu ${item.name}`}
+                options={[
+                  {
+                    value: 'remove',
+                    label: 'Entfernen',
+                    disabled: online.disabled,
+                    hint: online.hint,
+                  },
+                ]}
+                onChange={() => removeItem(item)}
+                testID={`trip-item-${item.id}-more`}
+              />
             }
             testID={`trip-item-${item.id}`}
           />
@@ -236,15 +217,15 @@ export function TripSection(props: { section: PackingSection }) {
           Noch keine Packstücke
         </Text>
       ) : null}
-      <List testID={`${testID}-open`}>{openRows.map((item) => row(item, false))}</List>
+      <List testID={`${testID}-open`}>{check.rows.map(row)}</List>
       <Disclosure
         title="Gepackt"
-        count={packedRows.length}
+        count={check.doneRows.length}
         expandedLabel="aufgeklappt"
         collapsedLabel="eingeklappt"
         testID={`${testID}-packed`}
       >
-        <List>{packedRows.map((item) => row(item, true))}</List>
+        <List>{check.doneRows.map(row)}</List>
       </Disclosure>
       <View style={{ alignItems: 'flex-start', marginTop: 4 }}>
         <Button

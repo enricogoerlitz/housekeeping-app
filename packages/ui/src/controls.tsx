@@ -179,6 +179,8 @@ export interface ChipProps {
   /** Paints the chip in an area colour instead of the neutral style. */
   tone?: Tone;
   disabled?: boolean;
+  /** Says why the chip is disabled, e.g. offline; read by screen readers. */
+  hint?: string;
   /** An active filter: shows ✕ after the label, and a tap removes it. */
   removable?: boolean;
   /** Accessible name when it says more than the label, e.g. "Vegan entfernen". */
@@ -235,6 +237,7 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
       testID={props.testID}
       accessibilityRole={props.role}
       accessibilityLabel={props.accessibilityLabel ?? props.label}
+      accessibilityHint={props.hint}
       accessibilityState={
         props.role === 'radio'
           ? { checked: !!props.selected, disabled: !!props.disabled }

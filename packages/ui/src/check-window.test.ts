@@ -4,6 +4,7 @@ import {
   CHECK_WINDOW_MS,
   checkWindowActions,
   createCheckWindow,
+  doneRows,
   openRows,
   shownChecked,
   type CheckWindow,
@@ -275,5 +276,86 @@ describe('set and settle (spec 0011)', () => {
     const list = recap();
     list.actions().settle();
     expect(list.settled).toEqual([]);
+  });
+});
+
+describe('keep in done (spec 0012, AC-021)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // A bag of the Urlaubsseite: Badehose packed (in "Gepackt (n)"), the others open.
+  function bag(keepInDone: boolean) {
+    let items: Item[] = [
+      { id: 'badehose', checked: true },
+      { id: 'handtuch', checked: false },
+      { id: 'sonnenhut', checked: false },
+    ];
+    const window = createCheckWindow();
+    const getId = (item: Item) => item.id;
+    const isData = (item: Item) => item.checked;
+    const open = () =>
+      openRows(items, getId, isData, window.getSnapshot(), { keepInDone }).map(getId);
+    const done = () =>
+      doneRows(items, getId, isData, window.getSnapshot(), { keepInDone }).map(getId);
+    const shown = (id: string) =>
+      shownChecked(
+        window.getSnapshot(),
+        id,
+        items.find((item) => item.id === id)?.checked ?? false,
+      );
+    const tap = (id: string) => {
+      const next = !shown(id);
+      window.toggle(id, next, open());
+      items = items.map((item) => (item.id === id ? { ...item, checked: next } : item));
+    };
+    return { open, done, shown, tap };
+  }
+
+  it('AC-021: a row unchecked in the checked group stays there 2 s, then moves back', () => {
+    const list = bag(true);
+    list.tap('badehose');
+    expect(list.shown('badehose')).toBe(false);
+    expect(list.open()).toEqual(['handtuch', 'sonnenhut']);
+    expect(list.done()).toEqual(['badehose']);
+
+    vi.advanceTimersByTime(CHECK_WINDOW_MS - 1);
+    expect(list.done()).toEqual(['badehose']);
+    vi.advanceTimersByTime(1);
+    expect(list.open()).toEqual(['badehose', 'handtuch', 'sonnenhut']);
+    expect(list.done()).toEqual([]);
+  });
+
+  it('AC-021: checked again in the same window, it simply stays in the checked group', () => {
+    const list = bag(true);
+    list.tap('badehose');
+    vi.advanceTimersByTime(500);
+    list.tap('badehose');
+    expect(list.shown('badehose')).toBe(true);
+    expect(list.done()).toEqual(['badehose']);
+    vi.advanceTimersByTime(CHECK_WINDOW_MS);
+    expect(list.open()).toEqual(['handtuch', 'sonnenhut']);
+    expect(list.done()).toEqual(['badehose']);
+  });
+
+  it('AC-020: rows checked in the open list stay there and leave together with the window', () => {
+    const list = bag(true);
+    list.tap('badehose'); // from the group
+    list.tap('handtuch'); // from the open list
+    expect(list.open()).toEqual(['handtuch', 'sonnenhut']);
+    expect(list.done()).toEqual(['badehose']);
+    vi.advanceTimersByTime(CHECK_WINDOW_MS);
+    expect(list.open()).toEqual(['badehose', 'sonnenhut']);
+    expect(list.done()).toEqual(['handtuch']);
+  });
+
+  it('without the option a row unchecked in the checked group goes back at once', () => {
+    const list = bag(false);
+    list.tap('badehose');
+    expect(list.open()).toEqual(['badehose', 'handtuch', 'sonnenhut']);
+    expect(list.done()).toEqual([]);
   });
 });

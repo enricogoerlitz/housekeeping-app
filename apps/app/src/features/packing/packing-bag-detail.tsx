@@ -228,7 +228,7 @@ function BagItemInput(props: { bagId: Id }) {
 
 /**
  * One Reisetasche (REQ-001): "für" as chips, its Packstücke to drag or move with the arrows
- * (AC-006), ✎ at a Packstück for quantity and "je Tag" (AC-004), the input line below. On
+ * (AC-006), a tap on a Packstück for quantity and "je Tag" (AC-004), the input line below. On
  * phones a page of its own, on wide screens the right column of "Reisetaschen" with the name and
  * the actions. Reading works offline; every change needs the network.
  */
@@ -280,24 +280,20 @@ export function PackingBagPanel(props: {
       ) : null}
 
       <Section title="Für">
-        <View
-          pointerEvents={online.disabled ? 'none' : 'auto'}
-          accessibilityState={{ disabled: online.disabled }}
-          style={{ opacity: online.disabled ? 0.45 : 1 }}
-        >
-          <ChoiceChips<string>
-            label="Für"
-            value={bag.memberId ?? FOR_EVERYONE}
-            onChange={(value) =>
-              write(() => setPackingBagMember(bag.id, value === FOR_EVERYONE ? undefined : value))
-            }
-            options={[
-              { value: FOR_EVERYONE, label: FOR_EVERYONE_LABEL },
-              ...members.map((member) => ({ value: member.id, label: member.name })),
-            ]}
-            testID="bag-for"
-          />
-        </View>
+        <ChoiceChips<string>
+          label="Für"
+          value={bag.memberId ?? FOR_EVERYONE}
+          onChange={(value) =>
+            write(() => setPackingBagMember(bag.id, value === FOR_EVERYONE ? undefined : value))
+          }
+          options={[
+            { value: FOR_EVERYONE, label: FOR_EVERYONE_LABEL },
+            ...members.map((member) => ({ value: member.id, label: member.name })),
+          ]}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="bag-for"
+        />
       </Section>
 
       <Section title="Packstücke" meta={bagSummary(items.length)}>
@@ -313,16 +309,8 @@ export function PackingBagPanel(props: {
               labels={BAG_ITEM_ORDER_LABELS}
               disabled={online.disabled}
               disabledHint={online.hint}
-              trailing={(item) => (
-                <IconButton
-                  icon="pencil"
-                  label={`${item.name} bearbeiten`}
-                  disabled={online.disabled}
-                  hint={online.hint}
-                  onPress={() => setEditingId(item.key)}
-                  testID={`bag-item-edit-${item.key}`}
-                />
-              )}
+              // The whole row opens quantity and "je Tag"; its name says "… bearbeiten" (AC-004).
+              onPress={setEditingId}
               testID="bag-item"
             />
           )}

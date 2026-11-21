@@ -142,6 +142,12 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'absence-sheet')).toBeVisible();
   await tid(page, 'absence-from').click();
   await expect(tid(page, 'range-picker')).toBeVisible();
+  // Its Reisetaschen (spec 0012, AC-011, AC-012): a chosen bag counts into the button.
+  await expect(tid(page, 'absence-save')).toHaveText('Speichern');
+  await tid(page, `absence-bag-${seedIds['bag-strand']}`).click();
+  await expect(tid(page, 'absence-save')).toHaveText('Speichern · 12 Packstücke');
+  await tid(page, 'absence-bag-new').click();
+  await expect(tid(page, 'absence-bag-new-name')).toBeVisible();
   await tid(page, 'absence-sheet-close').click();
   await tid(page, 'calendar-view-week').click();
 
@@ -204,7 +210,8 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'bag-item-input').fill('Sonn');
   await expect(tid(page, 'bag-item-suggestion-Sonnencreme')).toBeVisible();
   await tid(page, 'bag-item-input').fill('');
-  await page.locator('[data-testid^="bag-item-edit-"]:visible').first().click();
+  // A tap on the row opens the window of a Packstück (no ✎ any more).
+  await page.locator('[data-testid^="bag-item-open-"]:visible').first().click();
   await expect(tid(page, 'bag-item-sheet')).toBeVisible();
   await tid(page, 'bag-item-sheet-close').click();
   await tid(page, 'bag-rename').click();
@@ -224,11 +231,12 @@ test('dev smoke: every screen renders without a React warning or error', async (
 
   // The Urlaubsseite of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007): head and progress, a
   // Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the windows behind
-  // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. Until a stripe of the
-  // calendar leads here (task 10), the page opens by its address.
+  // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens from its row in
+  // "Abwesenheiten" (task 10); "‹ Kalender" leads to the calendar underneath.
   const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
-  await page.goto(`/kalender/urlaub/${seedIds['abs-mallorca']}`);
+  await openManaged(page, 'absences');
+  await tid(page, `absence-${seedIds['abs-mallorca']}`).click();
   await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
   await tid(page, `${sunHat}-check`).click();
@@ -251,6 +259,20 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await back(page);
   await expect(tid(page, 'calendar-screen')).toBeVisible();
   await nav(page, 'index');
+
+  // The card "Reisetasche" on the Übersicht (spec 0012, AC-042, AC-044): "Urlaub Mallorca"
+  // starts in 12 days, so only a week later the card stands below "Einkauf", counted from the
+  // shown day; a tap opens the Urlaubsseite.
+  const mallorcaCard = `today-packing-${seedIds['abs-mallorca']}`;
+  await expect(tid(page, mallorcaCard)).toHaveCount(0);
+  await tid(page, 'today-week-next').click();
+  await expect(tid(page, `${mallorcaCard}-progress`)).toHaveText('7/21 gepackt');
+  await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 5 Tagen');
+  await tid(page, `${mallorcaCard}-open`).click();
+  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await back(page);
+  await nav(page, 'index');
+  await tid(page, 'today-week-today').click();
 
   // A household with nothing planned and no chores: the empty states.
   await switchHousehold(page, seedIds['hh-test']);

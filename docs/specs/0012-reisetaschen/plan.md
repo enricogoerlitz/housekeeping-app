@@ -554,7 +554,14 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   bis eine Woche vor dem Urlaub (AC-042), Urlaubswoche und Woche danach (AC-043), alles gepackt und
   Tipp (AC-044), zwei Karten und keine für „Dienstreise Hamburg“ (AC-045, Testdaten im lokalen
   Haushalt angelegt), offline sichtbar.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, noch nicht committet). Klick-Durchlauf 390 und 1440 px
+  (`tmp/0012/t11/t11-*`, Testdaten „T11 Kurztrip“ danach wieder gelöscht): heute keine Karte, Mi
+  25.11. keine, Do 26.11. „beginnt in 7 Tagen“ (AC-042), Sa 28.11. zwei Karten, Enricos mit Avatar
+  und „alles gepackt ✓“ (AC-044, AC-045), KW 49 „läuft bis Mi 9.12.“ (AC-043), KW 50 „vorbei“, KW
+  51 mit „Dienstreise Hamburg“ keine Karte (AC-045), offline sichtbar, Tipp öffnet die
+  Urlaubsseite (AC-044); keine Fehler oder Warnungen in der Konsole. `pnpm e2e:dev` prüft die
+  Karte eine Woche weiter („7/21 gepackt“, „beginnt in 5 Tagen“) und den Tipp. Dazu die
+  Folgearbeiten B3 bis B6 unten.
 
 ### Task 12 — Abschluss
 
@@ -632,6 +639,36 @@ db:types`), statt zusammenzuführen. Ebenso `supabase/seed.sql` (`pnpm db:seed:g
 - Die volle e2e-Suite: Sie läuft einmal am Ende aller Wellen, die Brüche stehen oben.
 - Die Gruppe „Erledigt (n)“ der Einkaufsliste auf den neuen Baustein `Disclosure` umstellen (eigene
   Aufräum-Änderung ohne Verhaltensänderung, später).
+
+## Entscheidungen beim Bauen
+
+Nach der stehenden Regel des Eigentümers selbst entschieden (Empfehlung umgesetzt, hier
+festgehalten):
+
+- **B1 — Karte „Reisetasche“ (Task 11).** Ein Abschnitt „Reisetasche · Urlaub Mallorca“, ein
+  Avatar nur bei einer Packliste für eine Person; darunter Taschen-Symbol, Balken, „12/30 gepackt“
+  und ›, zweite Zeile `startsInLabel` ab dem gezeigten Tag (Entscheidung 15). Der Pfeil › steht
+  auch bei „alles gepackt ✓“, weil die Karte immer zur Urlaubsseite führt (AC-044). Der
+  Screenreader hört einen Knopf „Packliste Urlaub Mallorca öffnen, Enrico, 12/30 gepackt, beginnt
+  in 7 Tagen“ (das ✓ wird nicht vorgelesen).
+- **B2 — Tipp auf die Karte** öffnet `/kalender/urlaub/<id>` mit dem Kalender darunter, wie eine
+  Aktivität von der „Übersicht“ (Spec 0005). „‹ Kalender“ führt deshalb in den Kalender, nicht
+  zurück zur „Übersicht“. Für die Abschluss-Prüfung der Logik vorgemerkt.
+- **B3 — Ganze Zeile einer Reisetasche antippbar.** `ReorderList` hat `onPress(key)`: Name und
+  Untertitel sind ein eigener Knopf (Griff, Pfeile und `trailing` bleiben eigene Knöpfe, damit
+  keine Knöpfe ineinander stecken), sein Name kommt aus `labels.open` („Badehose 2× bearbeiten“).
+  Offline ist er wie Griff und Pfeile ausgegraut, mit Hinweis. Das ✎ je Packstück entfällt: der
+  Zeilen-Knopf ist für Screenreader und Tastatur erreichbar und trägt denselben Namen.
+- **B4 — „für“ offline.** `ChoiceChips` hat `disabled` und `hint` (jeder Chip ausgegraut, Hinweis
+  für den Screenreader, der gewählte Wert bleibt sichtbar); die Hülle mit `pointerEvents` in
+  `packing-bag-detail.tsx` entfällt.
+- **B5 — ⋯ an Packstücken auch am Handy.** Auf der Urlaubsseite hat jede Zeile auch am Handy ⋯ →
+  „Entfernen“; Wischen bleibt. Wischen ist für Screenreader nicht erreichbar (AC-035).
+- **B6 — Zurücknehmen in „Gepackt (n)“ im Baustein.** `useCheckWindow` hat `keepInDone` und
+  liefert `doneRows`; das Fenster merkt sich Zeilen, die beim ersten Tipp nicht in der offenen
+  Liste standen. `trip-section.tsx` nutzt das statt eines eigenen Sets (AC-021), ebenso der
+  Showroom. Test: `packages/ui/src/check-window.test.ts` „keep in done (spec 0012, AC-021)“, rot
+  (`tmp/0012/t11-red-check-window.txt`), dann grün.
 
 ## Nachweis
 

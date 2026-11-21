@@ -12,6 +12,7 @@ import { announce } from './announce';
 import {
   checkWindowActions,
   createCheckWindow,
+  doneRows,
   openRows,
   shownChecked,
   type CheckWindowActions,
@@ -32,11 +33,18 @@ export interface UseCheckWindowOptions<T> {
   onSettle?: (checkedIds: string[]) => void;
   /** Screen-reader text after a tap or `set`, e.g. "Milch abgehakt" or "Milch wieder offen". */
   announce?: (item: T, checked: boolean) => string;
+  /**
+   * A row taken back inside the checked group (e.g. "Gepackt (n)") stays there until the window
+   * closes, then moves to the open list (spec 0012, AC-021). Without it, it moves back at once.
+   */
+  keepInDone?: boolean;
 }
 
 export interface CheckWindowState<T> extends CheckWindowActions<T> {
   /** Rows to show in the open list: open ones and those checked in the running window. */
   rows: T[];
+  /** Rows to show in the checked group: all others, in the order of `items`. */
+  doneRows: T[];
   /** The check state to show: a tap in the running window wins over the data. */
   isChecked: (item: T) => boolean;
 }
@@ -46,7 +54,8 @@ export interface CheckWindowState<T> extends CheckWindowActions<T> {
  * once, a second tap takes it back, and all checked rows leave together 2 s after the last tap.
  * Unmounting settles at once; a screen that stays mounted when it loses focus (tabs) calls
  * `settle` from `useFocusEffect`. `set` marks a row without flipping it, e.g. on every tap on the
- * stars of "Wie war's?" (spec 0011). Wrap each row in `RowTransition` for the motion.
+ * stars of "Wie war's?" (spec 0011). `doneRows` is the checked group; with `keepInDone` a row taken
+ * back there waits for the window too (spec 0012). Wrap each row in `RowTransition` for the motion.
  */
 export function useCheckWindow<T>(options: UseCheckWindowOptions<T>): CheckWindowState<T> {
   const [checkWindow] = useState(() => createCheckWindow());
@@ -66,7 +75,9 @@ export function useCheckWindow<T>(options: UseCheckWindowOptions<T>): CheckWindo
   );
 
   const { getId } = options;
-  const rows = openRows(options.items, getId, options.isChecked, snapshot);
+  const rowsOptions = { keepInDone: options.keepInDone };
+  const rows = openRows(options.items, getId, options.isChecked, snapshot, rowsOptions);
+  const done = doneRows(options.items, getId, options.isChecked, snapshot, rowsOptions);
   const isChecked = (item: T) => shownChecked(snapshot, getId(item), options.isChecked(item));
   const actions = checkWindowActions({
     window: checkWindow,
@@ -79,7 +90,7 @@ export function useCheckWindow<T>(options: UseCheckWindowOptions<T>): CheckWindo
       if (message) announce(message);
     },
   });
-  return { rows, isChecked, ...actions };
+  return { rows, doneRows: done, isChecked, ...actions };
 }
 
 // Leaving rows fade (exit), the rows below close the gap (on-screen movement); 200 ms each.

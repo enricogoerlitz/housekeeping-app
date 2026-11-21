@@ -153,6 +153,20 @@ function ChoiceBlock() {
         ]}
         testID="showroom-choice-kind"
       />
+      <Text variant="smallStrong">Offline</Text>
+      <ChoiceChips
+        label="Art, offline"
+        value={kind}
+        onChange={setKind}
+        options={[
+          { value: 'idee', label: 'Idee' },
+          { value: 'problem', label: 'Problem' },
+          { value: 'lob', label: 'Lob' },
+        ]}
+        disabled
+        hint={OFFLINE_HINT}
+        testID="showroom-choice-offline"
+      />
     </Block>
   );
 }
@@ -852,19 +866,24 @@ const SAMPLE_ORDER_LABELS = {
 
 function ReorderBlock() {
   const [order, setOrder] = useState(SAMPLE_ORDER);
+  const [opened, setOpened] = useState<string | undefined>();
   const items = order.map((name) => ({ key: name, name }));
   return (
     <Block
       title="Liste zum Ordnen"
-      note="Am Griff ziehen, Pfeile antippen oder im Web den Griff fokussieren und Pfeiltasten drücken. Jede Position wird angesagt; offline ist alles ausgegraut."
+      note="Am Griff ziehen, Pfeile antippen oder im Web den Griff fokussieren und Pfeiltasten drücken. Jede Position wird angesagt; mit onPress öffnet ein Tipp auf die Zeile; offline ist alles ausgegraut."
       testID="showroom-reorder"
     >
       <ReorderList
         items={items}
         onMove={(key, toIndex) => setOrder((current) => moveInOrder(current, key, toIndex))}
-        labels={SAMPLE_ORDER_LABELS}
+        labels={{ ...SAMPLE_ORDER_LABELS, open: (name) => `${name} öffnen` }}
+        onPress={setOpened}
         testID="showroom-reorder"
       />
+      <Text variant="small" color="muted" testID="showroom-reorder-opened">
+        {opened ? `Geöffnet: ${opened}` : 'Zeile antippen zum Öffnen'}
+      </Text>
       <ReorderList
         items={items.slice(0, 2)}
         onMove={() => undefined}
@@ -1116,12 +1135,13 @@ function DisclosureBlock() {
     isChecked: (item) => item.checked,
     onToggle: (item, checked) => setPacked(item.id, checked),
     announce: (item, checked) => `${item.name} ${checked ? 'gepackt' : 'wieder offen'}`,
+    keepInDone: true,
   });
-  const packed = items.filter((item) => item.checked && !pack.rows.includes(item));
+  const packed = pack.doneRows;
   return (
     <Block
       title="Aufklappbare Gruppe"
-      note={`Gepacktes gleitet ${CHECK_WINDOW_MS / 1000} s nach dem letzten Tipp in „Gepackt (n)“, eingeklappt. Antippen klappt auf; leer verschwindet die Gruppe.`}
+      note={`Gepacktes gleitet ${CHECK_WINDOW_MS / 1000} s nach dem letzten Tipp in „Gepackt (n)“, eingeklappt. Antippen klappt auf; dort Ausgepacktes bleibt ebenso ${CHECK_WINDOW_MS / 1000} s stehen (keepInDone). Leer verschwindet die Gruppe.`}
       testID="showroom-disclosure"
     >
       <Row gap={8}>
@@ -1154,8 +1174,8 @@ function DisclosureBlock() {
             <RowTransition key={item.id}>
               <CheckRow
                 title={item.name}
-                checked
-                onToggle={() => setPacked(item.id, false)}
+                checked={pack.isChecked(item)}
+                onToggle={() => pack.toggle(item)}
                 testID={`showroom-packed-${item.id}`}
               />
             </RowTransition>

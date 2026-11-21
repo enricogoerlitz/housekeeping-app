@@ -178,13 +178,16 @@ export interface ChoiceChipsProps<T extends string> {
   onChange: (value: T) => void;
   /** Accessible name of the group, e.g. "Art". */
   label: string;
+  /** Greyed out and not changeable, e.g. a write while offline; `hint` says why. */
+  disabled?: boolean;
+  hint?: string;
   /** Each chip gets `${testID}-${value}`. */
   testID?: string;
 }
 
 /**
  * One value out of a few in a form ("Auswahl-Chips"): exactly one chip is active. Screen readers
- * hear a radio group.
+ * hear a radio group. Disabled, the chosen chip still shows the value.
  */
 export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
   return (
@@ -192,6 +195,7 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
       testID={props.testID}
       accessibilityRole="radiogroup"
       accessibilityLabel={props.label}
+      accessibilityState={{ disabled: !!props.disabled }}
       style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
     >
       {props.options.map((option) => (
@@ -200,6 +204,8 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
           role="radio"
           label={option.label}
           selected={option.value === props.value}
+          disabled={props.disabled}
+          hint={props.disabled ? props.hint : undefined}
           onPress={() => props.onChange(option.value)}
           testID={props.testID ? `${props.testID}-${option.value}` : undefined}
         />

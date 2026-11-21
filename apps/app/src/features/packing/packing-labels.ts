@@ -10,6 +10,7 @@ export const BAG_ITEM_ORDER_LABELS: ReorderListLabels = {
   up: (name) => `${name} nach oben`,
   down: (name) => `${name} nach unten`,
   position: orderAnnouncement,
+  open: (name) => `${name} bearbeiten`,
 };
 
 /** "für" of a bag: everyone, or one member (the chip's value). */

@@ -13,6 +13,11 @@ export interface CheckWindowSnapshot {
    * started, plus each tapped one. A check from another device on one of them waits too.
    */
   readonly held: ReadonlySet<string>;
+  /**
+   * Rows tapped in the running window that were not in the open list when first tapped, i.e.
+   * taken back inside the checked group (spec 0012, AC-021).
+   */
+  readonly fromDone: ReadonlySet<string>;
 }
 
 export interface CheckWindow {
@@ -26,7 +31,7 @@ export interface CheckWindow {
   onSettle(listener: (checkedIds: string[]) => void): () => void;
 }
 
-const IDLE: CheckWindowSnapshot = { taps: new Map(), held: new Set() };
+const IDLE: CheckWindowSnapshot = { taps: new Map(), held: new Set(), fromDone: new Set() };
 
 export function createCheckWindow(windowMs = CHECK_WINDOW_MS): CheckWindow {
   let snapshot = IDLE;
@@ -56,11 +61,14 @@ export function createCheckWindow(windowMs = CHECK_WINDOW_MS): CheckWindow {
       };
     },
     toggle(id, checked, openIds) {
-      const held = new Set(timer === undefined ? openIds : snapshot.held);
+      const starting = timer === undefined;
+      const held = new Set(starting ? openIds : snapshot.held);
+      const fromDone = new Set(starting ? [] : snapshot.fromDone);
+      if (!held.has(id) && !openIds.includes(id)) fromDone.add(id);
       held.add(id);
       const taps = new Map(snapshot.taps);
       taps.set(id, checked);
-      snapshot = { taps, held };
+      snapshot = { taps, held, fromDone };
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(settle, windowMs);
       emit();
@@ -84,17 +92,39 @@ export function shownChecked(
   return snapshot.taps.get(id) ?? dataChecked;
 }
 
+export interface RowsOptions {
+  /**
+   * A row taken back inside the checked group stays there until the window closes, then moves
+   * to the open list (spec 0012, AC-021). Without it, it moves back at once.
+   */
+  keepInDone?: boolean;
+}
+
 /** The rows of the open list, in the caller's order: open ones and those the window holds. */
 export function openRows<T>(
   items: readonly T[],
   getId: (item: T) => string,
   isChecked: (item: T) => boolean,
   snapshot: CheckWindowSnapshot,
+  options?: RowsOptions,
 ): T[] {
   return items.filter((item) => {
     const id = getId(item);
+    if (options?.keepInDone && snapshot.fromDone.has(id)) return false;
     return !shownChecked(snapshot, id, isChecked(item)) || snapshot.held.has(id);
   });
+}
+
+/** The rows of the checked group, in the caller's order: every row not in the open list. */
+export function doneRows<T>(
+  items: readonly T[],
+  getId: (item: T) => string,
+  isChecked: (item: T) => boolean,
+  snapshot: CheckWindowSnapshot,
+  options?: RowsOptions,
+): T[] {
+  const open = new Set(openRows(items, getId, isChecked, snapshot, options).map(getId));
+  return items.filter((item) => !open.has(getId(item)));
 }
 
 export interface CheckWindowActions<T> {

@@ -18,6 +18,7 @@ import { TodayAbsence } from './today-absence';
 import { TodayChores } from './today-chores';
 import { CalendarButton, WeekNav } from './today-header';
 import { TodayMeals } from './today-meals';
+import { TodayPacking } from './today-packing';
 import { TodayRecap } from './today-recap';
 import { TodayShopping } from './today-shopping';
 import { WeekStrip } from './week-strip';
@@ -32,8 +33,8 @@ function greeting(hour: number): string {
  * "Übersicht" (spec 0011, REQ-001): one shown day, as if it were today. Head, week strip,
  * planned, "Für morgen", "Wie war's?" and "Zu tun" all follow it. The shown day lives only while
  * the app runs: coming back from a detail page keeps it, a new start shows today (AC-008).
- * Phone: head, week strip, planned, Wie war's?, Zu tun, Einkauf. Desktop (1,6 : 1): left week
- * strip and planned, right Wie war's?, Zu tun and Einkauf.
+ * Phone: head, week strip, planned, Wie war's?, Zu tun, Einkauf, Reisetasche. Desktop (1,6 : 1):
+ * left week strip and planned, right Wie war's?, Zu tun, Einkauf and Reisetasche (spec 0012).
  */
 export function TodayScreen() {
   const { isPhone, bp } = useBreakpoint();
@@ -118,6 +119,7 @@ export function TodayScreen() {
         {recap}
         {chores}
         <TodayShopping preview={false} />
+        <TodayPacking shown={shown} />
       </Screen>
     );
   }
@@ -136,6 +138,7 @@ export function TodayScreen() {
           {recap}
           {chores}
           <TodayShopping preview />
+          <TodayPacking shown={shown} />
         </View>
       </View>
     </Screen>
