@@ -939,3 +939,44 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 Offen für Task 8: AC-007 (`ensureDevicePush` beim Speichern einer Aufgabe mit Uhrzeit und einer
 Reservierung), `/?haushalt=…` (Übersicht, auch Kaltstart über `openWindow`), Fehlertext unter dem
 Uhrzeit-Feld bei 390 px sichtbar machen.
+
+## Entscheidungen beim Bauen (App, Task 8, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. Der Geräte-Zustand (`push.wanted`, zuletzt angemeldete Push-Adresse) liegt in einem eigenen
+   Speicher-Schlüssel des Geräts (`features/notifications/device-store.ts`, nicht synchronisiert)
+   statt in `lib/settings`, weil Abmelden und die Fenster anderer Bereiche ihn ohne React-Kontext
+   brauchen. Abmelden und „vergessen“ löschen ihn.
+2. Einstellungen am Handy: die Zeile „Benachrichtigungen · 2 an ›“ steht unter „Profil“. Ab
+   Tablet-Breite links Profil, Darstellung, KI (nur mit KI-Schalter), Benachrichtigungen, Abmelden;
+   gewählt ist zuerst „Profil“, `/einstellungen/benachrichtigungen` wählt „Benachrichtigungen“.
+   „Abmelden“ ist dort die letzte Zeile der Liste, nicht mehr ein Knopf im Profil.
+3. Dateien: `device-push.ts` (Ablauf der Browser- und Server-Schritte nach `core.deviceAction`),
+   `use-device-push.ts` (`useThisDevice`, `useEnsureDevicePush`), `use-notification-open.ts`
+   (`NotificationBridge`: Abgleich beim Start, Nachricht `open` des Service Workers),
+   `kinds-section.tsx` mit dem Fenster, `device-section.tsx` („Dieses Gerät“ und „Deine Geräte“).
+   Kein eigenes `labels.ts`: die Texte stehen bei ihrem Abschnitt.
+4. Fenster einer Art: „Speichern“ schreibt Uhrzeit und Teile in einem Patch; die Uhrzeit ist
+   Pflicht; der letzte Teil bleibt gewählt (Tipp ohne Wirkung, Hinweis „Mindestens ein Teil bleibt
+   gewählt“).
+5. Gefragt wird (AC-007) beim Einschalten einer Art, beim Speichern der Uhrzeit einer
+   eingeschalteten Art, beim Speichern einer neuen oder geänderten Uhrzeit an einer Aufgabe und beim
+   Setzen einer Reservierungszeit (Enter, Verlassen des Felds, „Fertig“); nie beim Entfernen einer
+   Uhrzeit, und unabhängig davon, ob „Aufgaben mit Uhrzeit“ an ist.
+6. Eine Ablehnung des Servers kommt als Hinweis (`pushRejectedMessage`); lehnt der Browser ab, gibt
+   es keinen Hinweis, „Dieses Gerät“ zeigt „nicht erlaubt“. „Probe senden“ meldet „Probe
+   gesendet“, „Entfernen“ „„Mac · Chrome“ entfernt“. Dieses Gerät hat in „Deine Geräte“ kein
+   „Entfernen“ (dafür der Schalter).
+7. Tipp bei offenem Fenster: die App wechselt selbst in den Haushalt und öffnet dann die Seite;
+   beim Kaltstart (`openWindow`) lesen die Seiten die Parameter, die „Übersicht“ jetzt auch
+   `haushalt`.
+8. Abgleich des Geräts einmal je Start, im ersten Moment mit Netz.
+9. Ein neuer Fehler eines `TextField` scrollt sich im Web ins Bild (`packages/ui`, offener Punkt
+   aus Task 9: Fehler unter dem Uhrzeit-Feld bei 390 px); nativ unverändert.
+10. Neu in `core`: `serverDeviceStatus`, `bytesToBase64Url`/`base64UrlToBytes` (Vergleich des
+    öffentlichen Schlüssels, AC-039), `kindsSectionTitle`.
+
+Offen für Task 10: Der echte Ablauf (Erlaubnis, Anmelden, Probe, Entfernen, Abmelden, Tipp) ist
+nur im gebauten Export prüfbar; `EXPO_PUBLIC_VAPID_PUBLIC_KEY` war beim Bau nicht gesetzt, Enrico
+führt vorher `node scripts/push-keys.mjs` aus.

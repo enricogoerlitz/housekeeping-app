@@ -356,6 +356,66 @@ export function deviceAction(state: DeviceState, trigger: DeviceTrigger): Device
   return trigger === 'start' ? onStart(state) : onTap(state, trigger);
 }
 
+/**
+ * What the server says about this browser's push address, from "Deine Geräte" as asked with that
+ * address (`is_current`): not listed = "missing" (removed elsewhere, AC-041).
+ */
+export function serverDeviceStatus(
+  devices: readonly OwnPushSubscription[],
+): NonNullable<DeviceState['server']> {
+  return devices.find((device) => device.isCurrent)?.status ?? 'missing';
+}
+
+const BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/** base64url without padding, as Web Push writes keys (RFC 8291). */
+export function bytesToBase64Url(bytes: Uint8Array): string {
+  let out = '';
+  for (let at = 0; at < bytes.length; at += 3) {
+    const a = bytes[at] ?? 0;
+    const b = bytes[at + 1] ?? 0;
+    const c = bytes[at + 2] ?? 0;
+    const chunk = (a << 16) | (b << 8) | c;
+    const chars = Math.min(4, Math.ceil(((bytes.length - at) * 8) / 6));
+    for (let index = 0; index < chars; index++) {
+      out += BASE64URL[(chunk >> (18 - index * 6)) & 63];
+    }
+  }
+  return out;
+}
+
+/**
+ * Reads base64url (padding allowed); undefined for anything else. Used to hand the public VAPID
+ * key to the browser and to compare it with the key of an existing subscription (AC-039).
+ */
+export function base64UrlToBytes(text: string): Uint8Array | undefined {
+  const trimmed = text.replace(/=+$/, '');
+  if (!/^[A-Za-z0-9_-]*$/.test(trimmed) || trimmed.length % 4 === 1) return undefined;
+  const bytes = new Uint8Array(Math.floor((trimmed.length * 6) / 8));
+  let buffer = 0;
+  let bits = 0;
+  let at = 0;
+  for (const char of trimmed) {
+    buffer = (buffer << 6) | BASE64URL.indexOf(char);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes[at++] = (buffer >> bits) & 255;
+    }
+  }
+  return bytes;
+}
+
+/**
+ * The title of "Was und wann": with the household's name when the person belongs to several, as
+ * the settings hold per household (Offene Frage 3 e, Decision 25).
+ */
+export function kindsSectionTitle(householdName: string | undefined): string {
+  return householdName === undefined
+    ? 'Was und wann · gilt für alle Geräte'
+    : `Was und wann · ${householdName} · gilt für alle Geräte`;
+}
+
 export interface ThisDeviceView {
   switchOn: boolean;
   switchDisabled: boolean;

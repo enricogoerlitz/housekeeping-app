@@ -142,10 +142,11 @@ Rad: Man tippt „19“, „1930“, „19:30“ oder „7.30“; das geht mit T
 Plattformen gleich. Auf dem iPhone kommt die Tastatur mit Ziffern und Satzzeichen, sonst der
 Ziffernblock. Gelesen und geprüft wird in `core` (`parseTimeInput`): nur volle 5-Minuten-Schritte
 wie der Takt des Zeitplaners („Bitte in 5-Minuten-Schritten“), sonst „Keine gültige Uhrzeit“; der
-Fehler steht orange unter dem Feld. Angezeigt werden Uhrzeiten als `H:MM` („7:30“, „19:00“,
-`formatTime`). Mit einer Uhrzeit steht rechts ✕ (eigener Knopf, Name aus der App, z. B. „Uhrzeit
-entfernen“); ein leeres Feld hört der Screenreader als „keine Uhrzeit“ (Text aus der App). Offline
-ist das Feld ausgegraut, der Grund steht in `hint`.
+Fehler steht orange unter dem Feld und scrollt sich im Web ins Bild, wie jeder neue Fehler eines
+`TextField` (sonst läge er am Handy hinter dem Fuß des Fensters). Angezeigt werden Uhrzeiten als
+`H:MM` („7:30“, „19:00“, `formatTime`). Mit einer Uhrzeit steht rechts ✕ (eigener Knopf, Name aus
+der App, z. B. „Uhrzeit entfernen“); ein leeres Feld hört der Screenreader als „keine Uhrzeit“
+(Text aus der App). Offline ist das Feld ausgegraut, der Grund steht in `hint`.
 
 **Schalter mit Detail (Spec 0013, Entscheidung 25).** Eine Einstellung mit Uhrzeit oder Teilen
 („Tagesüberblick“) ist ein `SwitchRow` mit `onDetail`: Titel, Untertitel („7:30 · Essen · Aufgaben“)

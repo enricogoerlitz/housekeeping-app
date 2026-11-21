@@ -3,6 +3,7 @@ import { Text, toast, useTheme } from '@housekeeping/ui';
 import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { signOutDevicePush } from '@/features/notifications/device-push';
 import { authConfig } from '@/lib/auth-config';
 
 import { LoginScreen } from './login-screen';
@@ -17,7 +18,8 @@ export function AuthGate(props: { children: ReactNode }) {
   const sync = useSyncState();
 
   useEffect(() => {
-    startAuth(authConfig);
+    // Sign-out unsubscribes this browser from push, also offline (spec 0013, AC-042).
+    startAuth(authConfig, { beforeSignOut: signOutDevicePush });
   }, []);
 
   // A write the server refused (AC-019): one calm toast, app-wide.

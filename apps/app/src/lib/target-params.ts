@@ -5,6 +5,9 @@ import { useEffect } from 'react';
 
 type Param = string | string[] | undefined;
 
+/** The pages a notification opens with parameters: Übersicht, Haushalt, Kalender. */
+type TargetPath = '/' | '/haushalt' | '/kalender';
+
 /**
  * The target a page was opened with, from its route parameters, with the same checks as the link
  * of a notification (core `parseNotificationTarget`, spec 0013, AC-037, AC-038): unknown pages,
@@ -12,7 +15,7 @@ type Param = string | string[] | undefined;
  * the first counts.
  */
 export function targetOfParams(
-  path: '/haushalt' | '/kalender',
+  path: TargetPath,
   params: Record<string, Param>,
 ): NotificationTarget {
   const query = Object.entries(params).flatMap(([key, value]) => {
@@ -23,16 +26,13 @@ export function targetOfParams(
 }
 
 /**
- * The target handed to a page by a link (`/haushalt?aufgabe=…`, `/kalender?tag=…&eintrag=…`,
- * each with `haushalt=…`), read from the parameters `keys`. An own household other than the
- * active one becomes active (Decision 12; `switchHousehold` ignores any other id). The parameters
- * are cleared on the page's own route afterwards, so the same link works again and the page takes
- * the target once.
+ * The target handed to a page by a link (`/?haushalt=…`, `/haushalt?aufgabe=…`,
+ * `/kalender?tag=…&eintrag=…`, each with `haushalt=…`), read from the parameters `keys`. An own
+ * household other than the active one becomes active (Decision 12; `switchHousehold` ignores any
+ * other id). The parameters are cleared on the page's own route afterwards, so the same link works
+ * again and the page takes the target once.
  */
-export function useHandedTarget(
-  path: '/haushalt' | '/kalender',
-  keys: readonly string[],
-): NotificationTarget {
+export function useHandedTarget(path: TargetPath, keys: readonly string[]): NotificationTarget {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const target = targetOfParams(
     path,

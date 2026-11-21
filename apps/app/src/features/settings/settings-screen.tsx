@@ -1,10 +1,18 @@
-import { signOut, useCurrentMember, useSyncState, useToday } from '@housekeeping/api';
-import { dietPreferenceLabel, toISODate } from '@housekeeping/core';
+import {
+  signOut,
+  useCurrentMember,
+  useNotificationSettings,
+  useSyncState,
+  useToday,
+} from '@housekeeping/api';
+import { dietPreferenceLabel, enabledKindsLabel, toISODate } from '@housekeeping/core';
 import {
   Avatar,
   Button,
   ChoiceChips,
+  Icon,
   List,
+  ListDetail,
   ListRow,
   Screen,
   ScreenHeader,
@@ -15,54 +23,156 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useSignedInEmail } from '@/features/household/household-forms';
+import {
+  NotificationsContent,
+  NotificationsScreen,
+} from '@/features/notifications/notifications-screen';
+import { ScrollColumn } from '@/features/shell/scroll-column';
 import { features } from '@/lib/features';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
 import { ThemePicker } from './theme-picker';
 
+export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
+
+const SECTION_TITLES: Record<SettingsSection, string> = {
+  profile: 'Profil',
+  appearance: 'Darstellung',
+  ai: 'KI',
+  notifications: 'Benachrichtigungen',
+};
+
 /**
- * The personal settings behind the avatar (spec 0005, AC-055): profile, appearance, sign-out.
- * Everything about the household is under "Verwalten".
+ * The personal settings behind the avatar (spec 0005, AC-055): profile, appearance, AI,
+ * notifications, sign-out. Everything about the household is under "Verwalten". Phones show the
+ * sections one below the other and "Benachrichtigungen" as a page of its own; from tablet width
+ * the settings are a list with the chosen section beside it (spec 0013, AC-002, Decision 25).
+ * `section` is what the route opens: `/einstellungen/benachrichtigungen` → "notifications".
  */
-export function SettingsScreen() {
+export function SettingsScreen(props: { section?: SettingsSection }) {
   const router = useRouter();
-  const { isWide } = useBreakpoint();
+  const { isPhone } = useBreakpoint();
+  const [chosen, setChosen] = useState<SettingsSection>(props.section ?? 'profile');
+
+  if (isPhone && props.section === 'notifications') return <NotificationsScreen />;
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const header = <ScreenHeader title="Einstellungen" onBack={back} />;
 
-  const left = <ProfileSection />;
-  const right = (
-    <>
-      <AppearanceSection />
-      {features.ai ? <AiSection /> : null}
-    </>
-  );
+  if (isPhone) {
+    return (
+      <Screen testID="settings" clearFab={false} header={header}>
+        <ProfileSection withSignOut />
+        <NotificationsRow onPress={() => router.push('/einstellungen/benachrichtigungen')} />
+        <AppearanceSection />
+        {features.ai ? <AiSection /> : null}
+      </Screen>
+    );
+  }
 
+  const sections: SettingsSection[] = features.ai
+    ? ['profile', 'appearance', 'ai', 'notifications']
+    : ['profile', 'appearance', 'notifications'];
   return (
     <Screen
       testID="settings"
       clearFab={false}
-      header={<ScreenHeader title="Einstellungen" onBack={back} />}
+      header={header}
+      scroll={false}
+      style={{ flex: 1, paddingBottom: 0 }}
     >
-      {isWide ? (
-        <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
-          <View style={{ flex: 1, minWidth: 0 }}>{left}</View>
-          <View style={{ flex: 1, minWidth: 0 }}>{right}</View>
-        </View>
-      ) : (
-        <View>
-          {left}
-          {right}
-        </View>
-      )}
+      <ListDetail
+        list={
+          <ScrollColumn>
+            <SettingsList sections={sections} chosen={chosen} onChoose={setChosen} />
+          </ScrollColumn>
+        }
+        detail={
+          chosen === 'profile' ? (
+            <ProfileSection />
+          ) : chosen === 'appearance' ? (
+            <AppearanceSection />
+          ) : chosen === 'ai' ? (
+            <AiSection />
+          ) : (
+            <NotificationsContent />
+          )
+        }
+        placeholder={{ icon: 'settings', title: 'Wähl links eine Einstellung' }}
+        testID="settings-split"
+      />
     </Screen>
   );
 }
 
-function ProfileSection() {
+/** The list on the left (tablet and desktop): the sections, then "Abmelden". */
+function SettingsList(props: {
+  sections: SettingsSection[];
+  chosen: SettingsSection;
+  onChoose: (section: SettingsSection) => void;
+}) {
+  const settings = useNotificationSettings();
+  return (
+    <List>
+      {props.sections.map((section) => (
+        <ListRow
+          key={section}
+          title={SECTION_TITLES[section]}
+          trailing={
+            section === 'notifications' && settings ? (
+              <Text variant="small" color="muted">
+                {enabledKindsLabel(settings)}
+              </Text>
+            ) : undefined
+          }
+          selected={section === props.chosen}
+          onPress={() => props.onChoose(section)}
+          testID={`settings-nav-${section}`}
+        />
+      ))}
+      <ListRow
+        title="Abmelden"
+        leading={<Icon name="log-out" color="muted" />}
+        hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
+        onPress={() => void signOut()}
+        testID="settings-sign-out"
+      />
+    </List>
+  );
+}
+
+/** "Benachrichtigungen · 2 an ›" on phones (AC-001). */
+function NotificationsRow(props: { onPress: () => void }) {
+  const settings = useNotificationSettings();
+  return (
+    <Section testID="settings-notifications">
+      <List>
+        <ListRow
+          title="Benachrichtigungen"
+          leading={<Icon name="bell" color="muted" />}
+          trailing={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              {settings ? (
+                <Text variant="small" color="muted">
+                  {enabledKindsLabel(settings)}
+                </Text>
+              ) : null}
+              <Icon name="chevron-right" color="muted" />
+            </View>
+          }
+          onPress={props.onPress}
+          testID="settings-notifications-row"
+        />
+      </List>
+    </Section>
+  );
+}
+
+function ProfileSection(props: { withSignOut?: boolean }) {
   const me = useCurrentMember();
   const email = useSignedInEmail();
   return (
@@ -79,15 +189,18 @@ function ProfileSection() {
           />
         </List>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Button
-            label="Abmelden"
-            icon="log-out"
-            variant="ghost"
-            size="sm"
-            hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
-            onPress={() => void signOut()}
-            testID="settings-sign-out"
-          />
+          {/* From tablet width "Abmelden" is the last row of the list on the left. */}
+          {props.withSignOut ? (
+            <Button
+              label="Abmelden"
+              icon="log-out"
+              variant="ghost"
+              size="sm"
+              hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
+              onPress={() => void signOut()}
+              testID="settings-sign-out"
+            />
+          ) : null}
           <SyncLine />
         </View>
       </Stack>

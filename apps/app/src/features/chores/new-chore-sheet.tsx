@@ -8,6 +8,7 @@ import {
 import { Button, Sheet, Stack, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
+import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
@@ -18,6 +19,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   const me = useCurrentMember();
   const today = useToday();
   const online = useOnlineOnly();
+  const ensureDevicePush = useEnsureDevicePush();
   const [draft, update, reset] = useChoreDraft(() => newChoreDraft(today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
   const time = useChoreTime(undefined);
@@ -34,6 +36,8 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
     setErrors(found);
     const read = time.read();
     if (found.title || found.weekdays || !read.ok) return;
+    // A time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
+    if (read.time !== undefined) ensureDevicePush();
     try {
       createChore({ ...choreFieldsOf(draft, members), dueTime: read.time });
     } catch (error) {

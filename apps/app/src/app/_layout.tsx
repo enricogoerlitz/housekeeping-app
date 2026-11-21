@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AssistantSheet } from '@/features/assistant/assistant-sheet';
 import { AuthGate } from '@/features/auth/auth-gate';
+import { NotificationBridge } from '@/features/notifications/use-notification-open';
 import { AssistantProvider } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { SettingsProvider, useSettings } from '@/lib/settings';
@@ -20,6 +21,8 @@ export default function RootLayout() {
           <AuthGate>
             <AssistantProvider>
               <Screens />
+              {/* Web Push: this device's registration at start, a tap on a notification. */}
+              <NotificationBridge />
               {/* Without the AI switch the assistant cannot open at all (spec 0005, AC-044). */}
               {features.ai ? <AssistantSheet /> : null}
             </AssistantProvider>

@@ -40,6 +40,7 @@ import { useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
+import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
@@ -363,9 +364,13 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
   const [error, setError] = useState<string>();
   // What was sent last: blur and "Fertig" come one after the other, before the next render.
   const saved = useRef<TimeOfDay | undefined>(stored);
+  const ensureDevicePush = useEnsureDevicePush();
 
   const write = (time: TimeOfDay | undefined): boolean => {
     if (!entry || time === saved.current) return true;
+    // A reservation time asks for this device first, inside the tap or key press (spec 0013,
+    // AC-007, Decision 26).
+    if (time !== undefined) ensureDevicePush();
     try {
       setReservation(entry.id, { reservedAt: time ?? null });
     } catch (caught) {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  base64UrlToBytes,
+  bytesToBase64Url,
   choreTimeHint,
   dailySummaryPartLabel,
   DEFAULT_REMIND_MINUTES,
@@ -13,6 +15,7 @@ import {
   kindEnabled,
   kindEnabledPatch,
   kindSubtitle,
+  kindsSectionTitle,
   NOTIFICATION_KINDS,
   notificationTargetHref,
   parseNotificationTarget,
@@ -22,6 +25,7 @@ import {
   pushSupportHint,
   REMIND_CHOICES,
   remindLabel,
+  serverDeviceStatus,
   thisDeviceView,
   toggleSummaryPart,
   withTime,
@@ -597,6 +601,48 @@ describe('parseNotificationTarget: where a tap on a notification leads (Decision
     );
     expect(notificationTargetHref({ screen: 'notificationSettings' })).toBe(
       '/einstellungen/benachrichtigungen',
+    );
+  });
+});
+
+describe('the page wiring of this device (Task 8)', () => {
+  const device = (status: 'active' | 'off' | 'unreachable', isCurrent: boolean) => ({
+    id: `d-${status}-${isCurrent}`,
+    label: 'Mac · Chrome',
+    status,
+    isCurrent,
+    createdAt: '2026-11-20T08:00:00Z',
+  });
+
+  it('AC-041: a browser address the server does not list is "missing"', () => {
+    expect(serverDeviceStatus([])).toBe('missing');
+    expect(serverDeviceStatus([device('active', false)])).toBe('missing');
+  });
+
+  it('AC-004, AC-008, AC-039: the status of the row marked as this device', () => {
+    expect(serverDeviceStatus([device('active', false), device('active', true)])).toBe('active');
+    expect(serverDeviceStatus([device('off', true)])).toBe('off');
+    expect(serverDeviceStatus([device('unreachable', true)])).toBe('unreachable');
+  });
+
+  it('AC-039: base64url round trip for the VAPID key comparison', () => {
+    expect(bytesToBase64Url(new Uint8Array([251, 255, 0]))).toBe('-_8A');
+    expect(Array.from(base64UrlToBytes('-_8A') ?? [])).toEqual([251, 255, 0]);
+    expect(Array.from(base64UrlToBytes('AQ==') ?? [])).toEqual([1]);
+    expect(Array.from(base64UrlToBytes('AQ') ?? [])).toEqual([1]);
+    expect(bytesToBase64Url(new Uint8Array(0))).toBe('');
+  });
+
+  it('AC-039: a key that is not base64url is unreadable', () => {
+    expect(base64UrlToBytes('a+b/')).toBeUndefined();
+    expect(base64UrlToBytes('A')).toBeUndefined();
+    expect(base64UrlToBytes('ab!c')).toBeUndefined();
+  });
+
+  it('AC-001, Offene Frage 3 e: the household is named when the person has several', () => {
+    expect(kindsSectionTitle(undefined)).toBe('Was und wann · gilt für alle Geräte');
+    expect(kindsSectionTitle('Enrico & Nadja')).toBe(
+      'Was und wann · Enrico & Nadja · gilt für alle Geräte',
     );
   });
 });

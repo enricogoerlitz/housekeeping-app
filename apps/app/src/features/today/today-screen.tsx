@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { StartPageActions } from '@/features/shell/profile-button';
+import { useHandedTarget } from '@/lib/target-params';
 
 import { TodayAbsence } from './today-absence';
 import { TodayChores } from './today-chores';
@@ -36,7 +37,12 @@ function greeting(hour: number): string {
  * Phone: head, week strip, planned, Wie war's?, Zu tun, Einkauf, Reisetasche. Desktop (1,6 : 1):
  * left week strip and planned, right Wie war's?, Zu tun, Einkauf and Reisetasche (spec 0012).
  */
+/** A tap on the Tagesüberblick opens `/?haushalt=…` (spec 0013, Decision 12, AC-037). */
+const TARGET_PARAMS = ['haushalt'] as const;
+
 export function TodayScreen() {
+  // An own household other than the active one becomes active; the parameter is then cleared.
+  useHandedTarget('/', TARGET_PARAMS);
   const { isPhone, bp } = useBreakpoint();
   // The time of day only picks the greeting; the date itself comes from useToday().
   const [hour] = useState(() => new Date().getHours());

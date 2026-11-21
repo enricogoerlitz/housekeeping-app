@@ -37,6 +37,7 @@ import {
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
@@ -98,6 +99,7 @@ function useChoreDetail(props: ChoreDetailProps): {
   const today = useToday();
   const events = useChoreEvents();
   const online = useOnlineOnly();
+  const ensureDevicePush = useEnsureDevicePush();
   const [editing, setEditing] = useState(false);
   const [draft, update, reset] = useChoreDraft(() => choreDraftFrom(chore, today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
@@ -124,6 +126,8 @@ function useChoreDetail(props: ChoreDetailProps): {
     setErrors(found);
     const read = time.read();
     if (found.title || found.weekdays || !read.ok) return;
+    // A new time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
+    if (read.time !== undefined && read.time !== chore.dueTime) ensureDevicePush();
     try {
       // An empty field removes the time (✕, AC-025).
       updateChore(chore.id, {

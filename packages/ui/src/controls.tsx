@@ -1,5 +1,6 @@
-import { useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
+  Platform,
   Pressable,
   Switch as RNSwitch,
   TextInput,
@@ -651,6 +652,16 @@ export function TextField(props: TextFieldProps) {
   const c = theme.colors;
   const [focused, setFocused] = useState(false);
   const placeholderColor = useColor('muted');
+  const errorRef = useRef<HostInstance>(null);
+  // A new error scrolls itself into view, so it never hides behind a window's footer (spec 0013,
+  // the time field at 390 px). The web only: there the view is the DOM node.
+  useEffect(() => {
+    if (!props.error || Platform.OS !== 'web') return;
+    const node = errorRef.current as unknown as {
+      scrollIntoView?: (options: { block: 'nearest' }) => void;
+    } | null;
+    node?.scrollIntoView?.({ block: 'nearest' });
+  }, [props.error]);
   const {
     label,
     error,
@@ -717,9 +728,11 @@ export function TextField(props: TextFieldProps) {
         {right}
       </View>
       {error ? (
-        <Text variant="small" color="warn" testID={testID ? `${testID}-error` : undefined}>
-          {error}
-        </Text>
+        <View ref={errorRef}>
+          <Text variant="small" color="warn" testID={testID ? `${testID}-error` : undefined}>
+            {error}
+          </Text>
+        </View>
       ) : hint ? (
         <Text variant="small" color="muted">
           {hint}
