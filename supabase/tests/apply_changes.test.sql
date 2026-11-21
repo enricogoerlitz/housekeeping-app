@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(104);
+select plan(106);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -336,6 +336,18 @@ select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'chore_events', 'id', gen_random_uuid(), 'changes', jsonb_build_object('done_on', current_date)))),
   '22023', 'invalid_change', 'spec 0011 attack: only chore_id and done_by of an event can be patched');
+
+-- ===================== Attack suite: packing (spec 0012) =====================
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'packing_items',
+    'row', jsonb_build_object('list_bag_id', gen_random_uuid(), 'name', 'Badehose', 'pack_seq', 7)))),
+  '22023', 'invalid_change', 'spec 0012 attack: packing_items cannot be inserted with pack_seq');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'packing_list_bags', 'id', gen_random_uuid(),
+    'changes', jsonb_build_object('name', 'Umbenannt')))),
+  '22023', 'invalid_change', 'spec 0012 attack: the copied name of a bag of a packing list cannot be patched');
 
 -- ===================== Attack suite: tables outside the allowlist =====================
 select throws_ok(

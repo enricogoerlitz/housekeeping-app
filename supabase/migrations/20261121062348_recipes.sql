@@ -303,7 +303,9 @@ revoke all on private.recipe_deletions from public, anon, authenticated;
 -- * expired snapshots of the household are purged, then the snapshot is written;
 -- * entries up to and including p_today become free text with the title (leftovers: "Reste von
 --   <title>"), recipe_id null, variants []; eaters, portions, cook and "nicht gekocht" stay;
--- * later and "vorgemerkt" (date null) entries are deleted;
+-- * later and "vorgemerkt" (date null) entries are deleted, and with them leftovers that name no
+--   recipe and point to a deleted entry (also leftovers of those): without dish and recipe they
+--   would break meal_plan_entries_kind_complete once their link is cleared;
 -- * the recipe is deleted; ratings and favourites go by cascade (with tombstones).
 -- Shopping contributions are not touched (their source names the recipe as text, spec 0006).
 -- Returns {"converted": n, "removed": m}.
@@ -343,11 +345,23 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object(
            'id', e.id, 'kind', e.kind, 'recipe_id', e.recipe_id, 'text', e.text, 'variants', e.variants,
            'new_text', case when e.kind = 'leftovers' then 'Reste von ' || v_recipe.title else v_recipe.title end)
-           order by e.id) filter (where e.date <= p_today), '[]'),
-         coalesce(jsonb_agg(to_jsonb(e) order by e.id) filter (where e.date is null or e.date > p_today), '[]')
-  into v_converted, v_removed
+           order by e.id), '[]')
+  into v_converted
   from public.meal_plan_entries e
-  where e.household_id = v_household_id and e.recipe_id = p_recipe_id;
+  where e.household_id = v_household_id and e.recipe_id = p_recipe_id and e.date <= p_today;
+
+  with recursive removed (id) as (
+    select e.id from public.meal_plan_entries e
+    where e.household_id = v_household_id and e.recipe_id = p_recipe_id and (e.date is null or e.date > p_today)
+    union
+    select l.id from public.meal_plan_entries l
+    join removed r on l.leftovers_of_entry_id = r.id
+    where l.household_id = v_household_id and l.kind = 'leftovers' and l.recipe_id is null
+  )
+  select coalesce(jsonb_agg(to_jsonb(e) order by e.id), '[]')
+  into v_removed
+  from public.meal_plan_entries e
+  where e.household_id = v_household_id and e.id in (select r.id from removed r);
 
   insert into private.recipe_deletions as d (household_id, recipe_id, deleted_by, deleted_at, snapshot)
   values (v_household_id, p_recipe_id, auth.uid(), now(), jsonb_build_object(
@@ -380,7 +394,8 @@ $$;
 
 -- "Rückgängig" (AC-044): only for the person who deleted, while she is a member of the household,
 -- and within 1 hour of the deletion; the device sends only the id. In one transaction:
--- * the recipe comes back with the same id (photo_path included); the ingredient check runs again;
+-- * the recipe comes back with the same id (photo_path included) and its original created_at
+--   (trigger recipes_stamp_restored); the ingredient check runs again;
 -- * ratings and favourites of people who are still members;
 -- * the removed entries (existing ids are left alone), eaters only current members, the cook
 --   cleared if no longer a member, a leftovers link cleared if its source is gone;
@@ -422,6 +437,7 @@ begin
     return false;
   end if;
 
+  perform pg_catalog.set_config('private.restore_created_at', coalesce(v_snapshot -> 'recipe' ->> 'created_at', ''), true);
   insert into public.recipes (id, household_id, title, photo, photo_path, description, servings, total_minutes,
                               course, cuisine, tags, variants, ingredients, steps, lead_time, notes, last_cooked_on,
                               cooked_count, source)
@@ -429,6 +445,7 @@ begin
          r.course, r.cuisine, r.tags, r.variants, r.ingredients, r.steps, r.lead_time, r.notes, r.last_cooked_on,
          r.cooked_count, r.source
   from jsonb_populate_record(null::public.recipes, v_snapshot -> 'recipe') r;
+  perform pg_catalog.set_config('private.restore_created_at', '', true);
 
   insert into public.recipe_ratings (household_id, recipe_id, member_id, stars)
   select v_household_id, p_recipe_id, x.member_id, x.stars
@@ -478,6 +495,29 @@ begin
   return true;
 end
 $$;
+
+-- Before insert of the recipe by restore_recipe: created_at is the original one from the snapshot,
+-- handed over in the transaction-local setting private.restore_created_at (at most now()).
+-- set_timestamps sets created_at := now() on every insert and keeps it on update, so the value
+-- can only be put back here; the name sorts after recipes_set_timestamps (before triggers fire in
+-- name order). Never for the API role: a member's insert always gets the server time.
+create function private.recipes_stamp_restored()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_created_at text := nullif(pg_catalog.current_setting('private.restore_created_at', true), '');
+begin
+  if current_user <> 'authenticated' and v_created_at is not null then
+    new.created_at := least(v_created_at::timestamptz, now());
+  end if;
+  return new;
+end
+$$;
+
+create trigger recipes_stamp_restored before insert on public.recipes
+  for each row execute function private.recipes_stamp_restored();
 
 grant execute on function private.delete_recipe(uuid, date) to authenticated;
 grant execute on function private.restore_recipe(uuid) to authenticated;

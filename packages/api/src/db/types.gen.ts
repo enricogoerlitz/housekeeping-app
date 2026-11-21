@@ -878,6 +878,241 @@ export type Database = {
           },
         ];
       };
+      packing_bag_items: {
+        Row: {
+          bag_id: string;
+          created_at: string;
+          household_id: string;
+          id: string;
+          name: string;
+          per_day: boolean;
+          quantity: number | null;
+          sort: number;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          bag_id: string;
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          name: string;
+          per_day?: boolean;
+          quantity?: number | null;
+          sort?: number;
+          updated_at?: string;
+        };
+        Update: {
+          bag_id?: string;
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          name?: string;
+          per_day?: boolean;
+          quantity?: number | null;
+          sort?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'packing_bag_items_bag_fkey';
+            columns: ['household_id', 'bag_id'];
+            isOneToOne: false;
+            referencedRelation: 'packing_bags';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'packing_bag_items_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      packing_bags: {
+        Row: {
+          created_at: string;
+          household_id: string;
+          id: string;
+          member_id: string | null;
+          name: string;
+          sort: number;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          member_id?: string | null;
+          name: string;
+          sort?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          member_id?: string | null;
+          name?: string;
+          sort?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'packing_bags_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'packing_bags_member_fkey';
+            columns: ['household_id', 'member_id'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+        ];
+      };
+      packing_items: {
+        Row: {
+          created_at: string;
+          household_id: string;
+          id: string;
+          list_bag_id: string;
+          name: string;
+          pack_seq: number;
+          packed: boolean;
+          packed_at: string | null;
+          packed_by: string | null;
+          per_day: number | null;
+          quantity: number | null;
+          sort: number;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          list_bag_id: string;
+          name: string;
+          pack_seq?: number;
+          packed?: boolean;
+          packed_at?: string | null;
+          packed_by?: string | null;
+          per_day?: number | null;
+          quantity?: number | null;
+          sort?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          list_bag_id?: string;
+          name?: string;
+          pack_seq?: number;
+          packed?: boolean;
+          packed_at?: string | null;
+          packed_by?: string | null;
+          per_day?: number | null;
+          quantity?: number | null;
+          sort?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'packing_items_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'packing_items_list_bag_fkey';
+            columns: ['household_id', 'list_bag_id'];
+            isOneToOne: false;
+            referencedRelation: 'packing_list_bags';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'packing_items_packed_by_fkey';
+            columns: ['household_id', 'packed_by'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+        ];
+      };
+      packing_list_bags: {
+        Row: {
+          absence_id: string;
+          bag_id: string | null;
+          created_at: string;
+          household_id: string;
+          id: string;
+          member_id: string | null;
+          name: string;
+          sort: number;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          absence_id: string;
+          bag_id?: string | null;
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          member_id?: string | null;
+          name: string;
+          sort?: number;
+          updated_at?: string;
+        };
+        Update: {
+          absence_id?: string;
+          bag_id?: string | null;
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          member_id?: string | null;
+          name?: string;
+          sort?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'packing_list_bags_absence_fkey';
+            columns: ['household_id', 'absence_id'];
+            isOneToOne: false;
+            referencedRelation: 'absences';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'packing_list_bags_bag_fkey';
+            columns: ['household_id', 'bag_id'];
+            isOneToOne: false;
+            referencedRelation: 'packing_bags';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'packing_list_bags_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'packing_list_bags_member_fkey';
+            columns: ['household_id', 'member_id'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+        ];
+      };
       profiles: {
         Row: {
           color: string;
@@ -1433,6 +1668,10 @@ export type Database = {
       };
       set_activity_rating: { Args: { activity_id: string; stars: number }; Returns: undefined };
       set_feedback_vote: { Args: { feedback_id: string; voted: boolean }; Returns: undefined };
+      set_packing_items_packed: {
+        Args: { p_changes: Json; p_household_id: string };
+        Returns: Json;
+      };
       set_recipe_favorite: { Args: { favorite: boolean; recipe_id: string }; Returns: undefined };
       set_recipe_rating: { Args: { recipe_id: string; stars: number }; Returns: undefined };
       set_restaurant_favorite: {

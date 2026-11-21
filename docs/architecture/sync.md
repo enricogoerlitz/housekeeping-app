@@ -324,3 +324,37 @@ die Tasks 2 und 5 von Spec 0012.
   Warteschlange nie.
 - **Online bleiben** Hinzufügen und Entfernen von Packstücken und Taschen. Die Gepackt-Spalten
   (`packed`, `packed_at`, `packed_by`, `pack_seq`) schreibt nur der Server.
+
+**Datenbank (Spec 0012, Task 1 und 2):**
+
+- **Vier Tabellen**, alle mandantengebunden, mit RLS, Grants, Grabstein und Sync:
+  `packing_bags` (Reisetaschen, Name eindeutig über `lower(name)` je Haushalt, optional „für“ ein
+  Mitglied), `packing_bag_items` (Packstücke der Reisetasche, feste Anzahl 1–99 oder „je Tag“),
+  `packing_list_bags` (Tasche der Packliste: Abwesenheit, Herkunftstasche, Name und Mitglied als
+  Kopie, Reihenfolge; dieselbe Reisetasche höchstens einmal je Abwesenheit) und `packing_items`
+  (Packstücke der Packliste). `sync_pull` liefert alle vier.
+- **„Je Tag“ rechnet der Server.** Ein Trigger vor dem Einfügen setzt bei `per_day` die Anzahl auf
+  `least(per_day × Tage, 9999)` (Tage = `to_on − from_on + 1`), egal was das Gerät schickt. Ändern
+  sich Von oder Bis einer Abwesenheit oder zieht eine Tasche der Packliste zu einer anderen
+  Abwesenheit, rechnet ein Trigger die **offenen** „je Tag“-Packstücke dieser Abwesenheit neu;
+  gepackte behalten ihre Anzahl. Nur geänderte Zeilen werden geschrieben und bekommen ein neues
+  `updated_at`.
+- **Gepackt-Spalten schreibt nur der Server:** `packed`, `packed_at`, `packed_by`, `pack_seq`
+  haben kein Grant und stehen nicht in der Allowlist; `packing_items` hat gar kein `update`-Grant
+  und in `apply_changes` kein `patch`. Ein Einfügen durch `authenticated` startet immer offen.
+- **`set_packing_items_packed(p_household_id, p_changes)`:** 1 bis 200 Änderungen
+  `{item_id, packed, seen_pack_seq}` (genau diese Schlüssel, keine Kennung doppelt), sonst
+  `invalid_change` bzw. `too_many_changes` (22023); kein Mitglied → `not_member` (42501). Die
+  gefundenen Packstücke werden nach `id` sortiert gesperrt, je Packstück gilt die Regeltabelle aus
+  ADR-0013. Fehlende oder fremde Kennungen werden übersprungen. Antwort: `[{item_id, packed,
+pack_seq}]` der gefundenen Packstücke.
+- **Rückgängig nach dem Entfernen:** Domänen-Operation
+  `{"kind": "restore_packing_items", "items": [...]}` in `apply_changes`, zählt als ihre Elemente.
+  Elemente mit `id`, `list_bag_id`, `name` (Pflicht) und `quantity`, `per_day`, `sort`, `packed`,
+  `packed_at`, `packed_by`, `pack_seq`; einfaches Einfügen (vorhandene Kennung → 23505, fremde
+  Tasche oder fremde Person → 23503), `packed_at` höchstens `now()`, `pack_seq` 0 bis 999000.
+- **Kaskaden:** Abwesenheit löschen löscht ihre Taschen der Packliste und deren Packstücke;
+  Reisetasche löschen löscht ihre Packstücke und leert `packing_list_bags.bag_id`; Tasche der
+  Packliste löschen löscht ihre Packstücke. Jede mitgelöschte Zeile bekommt ihren Grabstein, das
+  Gerät schickt also nur die Löschung der Eltern-Zeile. Verlässt jemand den Haushalt, werden
+  „für“ und „gepackt von“ leer; die eigenen Abwesenheiten gehen samt Packliste mit.

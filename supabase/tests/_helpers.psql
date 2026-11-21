@@ -124,13 +124,16 @@ $$;
 -- p_direct_delete = false: the table has no delete grant (articles are deleted only by an RPC,
 -- spec 0007 E4), so every direct delete is refused with 42501; the row is then deleted as postgres
 -- to check the tombstone.
+-- p_direct_update = false: the table has no update grant (packing items change only through
+-- set_packing_items_packed, spec 0012), so every direct update is refused with 42501.
 create function tests.tenant_isolation(
   p_table text,
   p_row jsonb,
   p_patch jsonb,
   p_member uuid,
   p_foreign uuid,
-  p_direct_delete boolean default true
+  p_direct_delete boolean default true,
+  p_direct_update boolean default true
 ) returns setof text
 language plpgsql
 as $$
@@ -166,7 +169,11 @@ begin
   return next is(
     tests.affected(format('select 1 from %s where id = %L', v_rel, v_id)), 1,
     format('AC-011 %s: a member reads the row', p_table));
-  return next is(tests.affected(v_update), 1, format('AC-011 %s: a member updates the editable columns', p_table));
+  if p_direct_update then
+    return next is(tests.affected(v_update), 1, format('AC-011 %s: a member updates the editable columns', p_table));
+  else
+    return next throws_ok(v_update, '42501', null, format('T1 %s: a member cannot update directly', p_table));
+  end if;
   return next throws_ok(
     format('update %s set household_id = %L where id = %L', v_rel, v_foreign_household_id, v_id),
     '42501', null,
@@ -176,7 +183,12 @@ begin
   return next is(
     tests.affected(format('select 1 from %s where household_id = %L', v_rel, v_household_id)), 0,
     format('AC-011 %s: a member of another household reads no rows', p_table));
-  return next is(tests.affected(v_update), 0, format('AC-011 %s: a member of another household updates nothing', p_table));
+  if p_direct_update then
+    return next is(tests.affected(v_update), 0, format('AC-011 %s: a member of another household updates nothing', p_table));
+  else
+    return next throws_ok(v_update, '42501', null,
+      format('AC-011 %s: a member of another household cannot update directly', p_table));
+  end if;
   if p_direct_delete then
     return next is(tests.affected(v_delete), 0, format('AC-011 %s: a member of another household deletes nothing', p_table));
   else

@@ -23,13 +23,14 @@ stable
 set search_path = ''
 as $$
 declare
-  -- The synced household tables (db-handoff T6, spec 0004). Small tables are listed separately below.
+  -- The synced household tables (db-handoff T6, spec 0004; packing tables spec 0012). Small tables are listed separately below.
   c_tables constant text[] := array[
     'areas', 'articles', 'stores',
     'recipes', 'recipe_favorites', 'recipe_ratings',
     'restaurants', 'restaurant_favorites', 'restaurant_ratings',
     'activities', 'activity_favorites', 'activity_ratings',
     'absences', 'feedback', 'feedback_votes',
+    'packing_bags', 'packing_bag_items', 'packing_list_bags', 'packing_items',
     'chores', 'chore_events', 'meal_plan_entries',
     'shopping_items', 'shopping_contributions'];
 

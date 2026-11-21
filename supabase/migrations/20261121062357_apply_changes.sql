@@ -1,9 +1,10 @@
 -- Baseline (ADR-0012) — apply_changes: the generic write path (ADR-0011).
 --
--- One call applies one changeset of the app — core RowOp objects plus four domain ops — in one
+-- One call applies one changeset of the app — core RowOp objects plus five domain ops — in one
 -- transaction: all or nothing (AC-020). Domain ops: add_contributions / remove_contributions
 -- (shopping list), complete_chore {completion} / remove_chore_event {id} (spec 0011, chores
--- migration). Security invoker, so RLS, column grants, triggers and
+-- migration), restore_packing_items {items} (spec 0012, packing migration). Security invoker, so
+-- RLS, column grants, triggers and
 -- composite foreign keys apply to every op exactly as to a direct API call. On top of that:
 -- * an allowlist of tables and columns as a constant in this function (the grant matrix of the
 --   domain tables); identifiers in dynamic SQL come only from the allowlist, quoted with %I; values
@@ -13,7 +14,8 @@
 --   only rows of p_household_id;
 -- * plain INSERT (no upsert); a patch that hits no row is an error (row_not_found);
 -- * at most 200 ops, 20 deletes and 500 added contributions per call (too_many_changes); a domain
---   op counts as its elements; complete_chore and remove_chore_event are one op and one delete each.
+--   op counts as its elements (restore_packing_items: its items); complete_chore and
+--   remove_chore_event are one op and one delete each.
 --
 -- Errors: not_member (42501), invalid_change (22023), too_many_changes (22023),
 -- row_not_found (P0002), the errors of the domain ops (e.g. already_done / chore_changed P0001,
@@ -32,6 +34,8 @@ declare
   -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
   -- Recipes are deleted only by delete_recipe (spec 0008, E2).
   -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011).
+  -- The packed state of packing items (packed, packed_at, packed_by, pack_seq) is written only by
+  -- set_packing_items_packed and restore_packing_items; packing items are never patched (spec 0012).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
                          "patch":  ["name", "sort"], "delete": true},
@@ -57,6 +61,14 @@ declare
                                     "lng", "maps_url", "tags"], "delete": true},
     "absences":         {"insert": ["id", "household_id", "member_id", "from_on", "to_on", "note"],
                          "patch":  ["member_id", "from_on", "to_on", "note"], "delete": true},
+    "packing_bags":     {"insert": ["id", "household_id", "name", "member_id", "sort"],
+                         "patch":  ["name", "member_id", "sort"], "delete": true},
+    "packing_bag_items": {"insert": ["id", "household_id", "bag_id", "name", "quantity", "per_day", "sort"],
+                          "patch":  ["name", "quantity", "per_day", "sort"], "delete": true},
+    "packing_list_bags": {"insert": ["id", "household_id", "absence_id", "bag_id", "name", "member_id", "sort"],
+                          "patch":  ["absence_id", "bag_id", "sort"], "delete": true},
+    "packing_items":    {"insert": ["id", "household_id", "list_bag_id", "name", "quantity", "per_day", "sort"],
+                         "patch":  [], "delete": true},
     "feedback":         {"insert": ["id", "household_id", "kind", "text", "status", "author_id", "screen", "reason",
                                     "spec_ref"],
                          "patch":  ["kind", "text", "status", "screen", "reason", "spec_ref"], "delete": true},
@@ -108,13 +120,16 @@ begin
     raise exception 'invalid_change' using errcode = '22023';
   end if;
   -- A domain op counts as its elements: every id of remove_contributions is a delete and an op,
-  -- every entry of add_contributions is an op. The contributions of all entries are capped too.
+  -- every entry of add_contributions and every item of restore_packing_items is an op. The
+  -- contributions of all entries are capped too.
   -- complete_chore counts as a delete: done of a one-off chore deletes it, which is known only
   -- once the chore is locked.
   select coalesce(sum(case when o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'
                              then greatest(jsonb_array_length(o -> 'ids'), 1)
                            when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
                              then greatest(jsonb_array_length(o -> 'entries'), 1)
+                           when o ->> 'kind' = 'restore_packing_items' and jsonb_typeof(o -> 'items') = 'array'
+                             then greatest(jsonb_array_length(o -> 'items'), 1)
                            else 1 end), 0),
          count(*) filter (where o ->> 'kind' in ('delete', 'complete_chore', 'remove_chore_event'))
            + coalesce(sum(jsonb_array_length(o -> 'ids'))
@@ -159,6 +174,9 @@ begin
         raise exception 'invalid_change' using errcode = '22023';
       end if;
       v_results := v_results || jsonb_build_array(private.remove_chore_event(p_household_id, (v_op ->> 'id')::uuid));
+      continue;
+    elsif v_kind = 'restore_packing_items' then
+      v_results := v_results || jsonb_build_array(private.restore_packing_items(p_household_id, v_op -> 'items'));
       continue;
     end if;
 

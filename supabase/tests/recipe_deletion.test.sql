@@ -6,7 +6,7 @@
 -- AC-021 (foreign household) and the negative tests of the risk table in plan.md.
 begin;
 \ir _helpers.psql
-select plan(66);
+select plan(74);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -35,7 +35,9 @@ insert into fx (key, id) values
 insert into fx (key) values
   ('slot_abend'), ('slot_b'), ('halloumi_article'), ('nudeln'), ('halloumi'), ('lasagne'), ('curry'), ('auflauf'),
   ('risotto'), ('pasta_b'), ('e_past'), ('e_today'), ('e_future'), ('e_noted'), ('e_leftovers'), ('e_other'),
-  ('e_auflauf'), ('e_b'), ('e_new'), ('photo');
+  ('e_auflauf'), ('e_b'), ('e_new'), ('photo'),
+  ('gulasch'), ('e_g_past'), ('e_g_past_left'), ('e_g_future'), ('e_g_left'), ('e_g_chain'), ('e_g_text'),
+  ('e_g_text_left'), ('later_recipe');
 
 update public.households
 set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot_abend'), 'name', 'Abend', 'sort', 0))
@@ -90,6 +92,11 @@ insert into public.meal_plan_entries
    null, null, '{}', 0, 2, '[]', null, 2, false),
   (tests.fx('e_b'), tests.fx('home_b'), current_date + 2, tests.fx('slot_b'), 'recipe', tests.fx('pasta_b'),
    null, null, array[tests.fx('ben')], 0, 1, '[]', null, 0, false);
+
+-- Halloumi-Pfanne was created long ago (follow-up of T1: restore keeps created_at).
+alter table public.recipes disable trigger recipes_set_timestamps;
+update public.recipes set created_at = '2026-01-15 09:00+00' where id = tests.fx('halloumi');
+alter table public.recipes enable trigger recipes_set_timestamps;
 
 -- The state before any deletion, to compare after "Rückgängig".
 create temp table original_recipe on commit drop as
@@ -239,7 +246,15 @@ select is(
   (select jsonb_agg(o.doc order by k) from unnest(array['e_future', 'e_noted']) k
    join original_entries o on o.id = tests.fx(k)),
   'AC-044 restore_recipe: the removed entries are back with all their values');
+select is((select created_at from public.recipes where id = tests.fx('halloumi')), '2026-01-15 09:00+00'::timestamptz,
+  'AC-044 restore_recipe: the recipe keeps its original created_at');
 select is((select count(*)::int from private.recipe_deletions), 0, 'AC-044 restore_recipe: the snapshot is gone');
+select tests.authenticate_as(tests.fx('enrico'));
+select public.apply_changes(tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
+  'kind', 'insert', 'table', 'recipes', 'row', jsonb_build_object('id', tests.fx('later_recipe'), 'title', 'Neu'))));
+select tests.clear_authentication();
+select is((select created_at from public.recipes where id = tests.fx('later_recipe')), now(),
+  'AC-044 restore_recipe: a recipe inserted after a restore in the same transaction gets the server time');
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(tests.restore_sql('halloumi'), 'P0002', 'recipe_not_restorable',
   'AC-044 restore_recipe: a second call is not restorable');
@@ -277,6 +292,52 @@ select is(
   jsonb_build_object('eaters', jsonb_build_array(tests.fx('enrico')), 'cook', null),
   'E4 restore_recipe: a removed member is left out of the eaters, and the cook is cleared');
 select is(tests.entry('e_today') ->> 'kind', 'recipe', 'E4 restore_recipe: a removed entry of today is back');
+
+-- ===================== Leftovers without a recipe of their own =====================
+-- Leftovers point to their dish; the app copies the dish's recipe_id, but a leftovers entry may
+-- name no recipe (leftovers of a free-text dish, or written through the API). When delete_recipe
+-- removes the dish, such leftovers (and leftovers of them) go with it instead of failing on
+-- meal_plan_entries_kind_complete (23514).
+insert into public.recipes (id, household_id, title) values (tests.fx('gulasch'), tests.fx('home_a'), 'Gulasch');
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id, text) values
+  (tests.fx('e_g_past'), tests.fx('home_a'), current_date - 2, tests.fx('slot_abend'), 'recipe', tests.fx('gulasch'), null, null),
+  (tests.fx('e_g_future'), tests.fx('home_a'), current_date + 2, tests.fx('slot_abend'), 'recipe', tests.fx('gulasch'), null, null),
+  (tests.fx('e_g_text'), tests.fx('home_a'), current_date + 2, tests.fx('slot_abend'), 'text', null, null, 'Pizza');
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id) values
+  (tests.fx('e_g_past_left'), tests.fx('home_a'), current_date - 1, tests.fx('slot_abend'), 'leftovers', null, tests.fx('e_g_past')),
+  (tests.fx('e_g_left'), tests.fx('home_a'), current_date + 3, tests.fx('slot_abend'), 'leftovers', null, tests.fx('e_g_future')),
+  (tests.fx('e_g_text_left'), tests.fx('home_a'), current_date + 3, tests.fx('slot_abend'), 'leftovers', null, tests.fx('e_g_text'));
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id) values
+  (tests.fx('e_g_chain'), tests.fx('home_a'), current_date + 4, tests.fx('slot_abend'), 'leftovers', null, tests.fx('e_g_left'));
+create temp table gulasch_entries on commit drop as
+  select e.id, to_jsonb(e) - 'created_at' - 'updated_at' as doc from public.meal_plan_entries e
+  where e.id in (select id from fx where key like 'e_g_%');
+select tests.authenticate_as(tests.fx('enrico'));
+select lives_ok(tests.delete_sql('gulasch'),
+  'E3 delete_recipe: leftovers without a recipe of a removed dish do not make the deletion fail');
+select tests.clear_authentication();
+select is(
+  (select array_agg(key order by key) from fx
+   where key like 'e_g_%' and id in (select id from public.meal_plan_entries)),
+  array['e_g_past', 'e_g_past_left', 'e_g_text', 'e_g_text_left'],
+  'E3 delete_recipe: the removed dish takes its leftovers without a recipe along, also leftovers of them');
+select is(tests.entry('e_g_past_left') ->> 'leftovers_of_entry_id', tests.fx('e_g_past')::text,
+  'E3 delete_recipe: leftovers of a dish that becomes free text stay with it');
+select is(
+  (select jsonb_agg(x - 'created_at' - 'updated_at' order by (x ->> 'id')::uuid)
+   from private.recipe_deletions d, jsonb_array_elements(d.snapshot -> 'removed') x
+   where d.recipe_id = tests.fx('gulasch')),
+  (select jsonb_agg(g.doc order by g.id) from gulasch_entries g
+   where g.id in (tests.fx('e_g_future'), tests.fx('e_g_left'), tests.fx('e_g_chain'))),
+  'E4 delete_recipe: the snapshot holds the removed leftovers in full');
+select tests.authenticate_as(tests.fx('enrico'));
+select lives_ok(tests.restore_sql('gulasch'), 'E4 restore_recipe: restores the dish with its leftovers');
+select tests.clear_authentication();
+select is(
+  (select jsonb_agg(tests.entry(k) order by k) from unnest(array['e_g_future', 'e_g_left', 'e_g_chain', 'e_g_past']) k),
+  (select jsonb_agg(g.doc order by k) from unnest(array['e_g_future', 'e_g_left', 'e_g_chain', 'e_g_past']) k
+   join gulasch_entries g on g.id = tests.fx(k)),
+  'E4 restore_recipe: the leftovers are back with their links, the dish is a recipe entry again');
 
 -- ===================== Failure cases =====================
 -- Expired snapshot.
