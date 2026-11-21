@@ -119,7 +119,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
               testID="entry-open-activity"
               onPress={() => {
                 props.onClose();
-                router.push({ pathname: '/plan/aktivitaet/[id]', params: { id: activity.id } });
+                router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activity.id } });
               }}
             />
             {hasPlace(activity) ? (

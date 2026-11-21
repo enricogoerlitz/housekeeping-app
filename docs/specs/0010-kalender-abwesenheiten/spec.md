@@ -106,7 +106,8 @@ Seite „Abwesenheiten“ neu.
 - **Wechsel der Ansicht:** Woche → Monat zeigt den Monat, in dem die meisten Tage der Woche liegen.
   Monat → Woche zeigt die Woche mit heute, wenn heute im Monat liegt, sonst die Woche mit dem
   Ersten. Monat → Jahr zeigt dessen Jahr. „Heute“ führt in jeder Ansicht zum Zeitraum mit heute.
-- **Die Adresse** des Bereichs heißt `/kalender`; alte Adressen unter `/plan` leiten dorthin. Die
+- **Die Adresse** des Bereichs heißt `/kalender`. Alte Adressen unter `/plan` leiten nicht weiter,
+  weil noch nichts veröffentlicht ist (geändert am 21.11.2026). Die
   Seite „Aktivitäten“ liegt unter `/kalender/aktivitaeten`, eine Aktivität unter
   `/kalender/aktivitaet/<id>` (geändert am 21.11.2026: Adresse der Seite ausdrücklich).
 
@@ -149,13 +150,8 @@ Wenn        ich ⊔ wähle
 Dann        öffnet sich „Was soll auf die Liste?“ (Spec 0006) in KW 48
 ```
 
-**AC-003 — Randfall: alte Adresse**
-
-```gherkin
-Angenommen  ein Lesezeichen auf /plan und eines auf /plan/aktivitaet/<id von „Bouldern“>
-Wenn        ich sie öffne
-Dann        sehe ich den Kalender in der Woche mit heute bzw. die Seite der Aktivität „Bouldern“
-```
+**AC-003 — Randfall: alte Adresse** (entfällt am 21.11.2026: noch nichts ist veröffentlicht, es
+gibt keine alten Lesezeichen; `/plan` zeigt „Seite nicht gefunden“)
 
 **AC-004 — Offline**
 
@@ -202,10 +198,10 @@ Angenommen  Desktopbreite, KW 53, Enrico ist vom 1. bis 4.1. abwesend, die Haush
 Und         am Donnerstag, 31.12., Abend stehen „Linsen-Dal“ und „Gemischter Salat“
 Wenn        ich die Woche ansehe
 Dann        stehen die Tage Mo 28 bis So 3 als Spalten nebeneinander
-Und         die Zeilen lauten von oben „Urlaub“, „Haushalt“, „Vormittag“, „Mittag“, „Abend“,
+Und         die Zeilen lauten von oben „Abwesenheit“, „Haushalt“, „Vormittag“, „Mittag“, „Abend“,
             „Vorgemerkt“
 Und         am Donnerstagabend stehen „Linsen-Dal“ und „Gemischter Salat“ untereinander
-Und         ohne Abwesenheit in der gezeigten Woche gibt es keine Zeile „Urlaub“
+Und         ohne Abwesenheit in der gezeigten Woche gibt es keine Zeile „Abwesenheit“
 ```
 
 **AC-008 — Handy (Annahme, Offene Frage 2)**
@@ -514,10 +510,10 @@ Dann        heißt das Fenster „Fr 1. Jan“ und im zweiten Schritt ist „Abe
 
 **Regeln:** Inhalt der Seite wie in Spec 0004 (REQ-002, REQ-003), als Endlos-Liste (Spec 0005).
 Geändert am 21.11.2026 (ausdrücklich gemacht): Die Seite hat die Adresse `/kalender/aktivitaeten`
-und gehört zum Bereich „Kalender“. Drei Wege führen hin: ▲ im Kopf des Kalenders in jeder Ansicht
-(Woche, Monat, Jahr), „Verwalten“ → „Aktivitäten“ in der Seitenleiste und auf dem Handy über ⊞,
-und die alte Adresse `/plan?view=activities`. „Zurück“ führt dorthin, woher man kam. Eine
-Aktivität öffnet sich aus der Seite unter `/kalender/aktivitaet/<id>`.
+und gehört zum Bereich „Kalender“. Zwei Wege führen hin: ▲ im Kopf des Kalenders in jeder Ansicht
+(Woche, Monat, Jahr) und „Verwalten“ → „Aktivitäten“ in der Seitenleiste und auf dem Handy über
+⊞; die alte Adresse `/plan?view=activities` entfällt (geändert am 21.11.2026). „Zurück“ führt
+dorthin, woher man kam. Eine Aktivität öffnet sich aus der Seite unter `/kalender/aktivitaet/<id>`.
 
 **AC-025** (ersetzt Spec 0004, AC-004, und Spec 0005, AC-021)
 
@@ -576,12 +572,10 @@ Angenommen  der Kalender zeigt das Jahr 2027
 Dann        steht ▲ auch dort im Kopf und öffnet dieselbe Seite
 ```
 
-**AC-041 — Randfall: alte Adresse und offline** (neu am 21.11.2026)
+**AC-041 — Randfall: offline** (neu am 21.11.2026; der Teil „alte Adresse“ entfällt am selben
+Tag, weil noch nichts veröffentlicht ist)
 
 ```gherkin
-Angenommen  ein Lesezeichen auf /plan?view=activities
-Wenn        ich es öffne
-Dann        sehe ich die Seite „Aktivitäten“ unter /kalender/aktivitaeten, nicht die Woche
 Angenommen  das Netz ist weg
 Wenn        ich die Seite „Aktivitäten“ öffne
 Dann        sehe ich alle Aktivitäten aus dem lokalen Speicher
@@ -598,7 +592,7 @@ Und         „Aktivität anlegen“ ist ausgegraut mit „Offline – zum Bearb
 **Regeln:** Die Beschriftung ist die Notiz, ohne Notiz „abwesend“; jeder Streifen trägt sein Ende
 („bis Mo 4.1.“). Der Streifen einer Person ist zart in ihrer Mitgliederfarbe, ein gemeinsamer
 Streifen neutral mit allen Avataren, der ganze Haushalt neutral mit Haus-Symbol und allen Avataren.
-Desktop: eigene Zeile „Urlaub“ ganz oben, Streifen über mehrere Tage. Handy: senkrechte Leiste links
+Desktop: eigene Zeile „Abwesenheit“ (Glossar; geändert am 21.11.2026) ganz oben, Streifen über mehrere Tage. Handy: senkrechte Leiste links
 neben den Tagen, beschriftet am ersten Tag der Abwesenheit und, wenn sie früher begann, am ersten
 Tag der gezeigten Woche. Ein Tipp auf einen Streifen öffnet das Fenster „Abwesenheit bearbeiten“
 (REQ-010); Spec 0012 ersetzt das durch die Urlaubsseite.
@@ -609,7 +603,7 @@ Tag der gezeigten Woche. Ein Tipp auf einen Streifen öffnet das Fenster „Abwe
 Angenommen  Desktopbreite; Enrico ist vom 1. bis 4.1.2027 abwesend, Nadja vom 1. bis 7.1.2027,
             beide mit der Notiz „Urlaub Mallorca“
 Wenn        ich KW 53 ansehe
-Dann        stehen in der Zeile „Urlaub“ zwei Streifen von Freitag bis Sonntag, die über den Rand der
+Dann        stehen in der Zeile „Abwesenheit“ zwei Streifen von Freitag bis Sonntag, die über den Rand der
             Woche weiterlaufen
 Und         sie lauten „(E) Urlaub Mallorca · bis Mo 4.1.“ in Enricos Farbe und
             „(N) Urlaub Mallorca · bis Do 7.1.“ in Nadjas Farbe
@@ -945,16 +939,16 @@ Dass die Einstellungen keinen Abschnitt „Abwesenheit“ mehr haben, regelt Spe
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                                   | Task (plan.md) | Test |
-| ------- | ------------------------------------ | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-004                    | —              | —    |
-| REQ-002 | AC-005 bis AC-008                    | —              | —    |
-| REQ-003 | AC-009, AC-010                       | —              | —    |
-| REQ-004 | AC-011 bis AC-014                    | —              | —    |
-| REQ-005 | AC-015, AC-016                       | —              | —    |
-| REQ-006 | AC-017 bis AC-020                    | —              | —    |
-| REQ-007 | AC-021 bis AC-024                    | —              | —    |
-| REQ-008 | AC-025 bis AC-027, AC-039 bis AC-041 | —              | —    |
-| REQ-009 | AC-028 bis AC-032                    | —              | —    |
-| REQ-010 | AC-033 bis AC-038, AC-042 bis AC-044 | —              | —    |
-| REQ-011 | AC-045 bis AC-049                    | —              | —    |
+| REQ     | AC                                   | Task (plan.md) | Test                                                                                               |
+| ------- | ------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-004                    | 7              | e2e dev smoke; Klick-Durchlauf (AC-002 ab Spec 0006; AC-003 entfällt)                              |
+| REQ-002 | AC-005 bis AC-008                    | 1, 7           | `calendar.test.ts` (AC-005, AC-006); Klick-Durchlauf                                               |
+| REQ-003 | AC-009, AC-010                       | 1, 5           | `calendar.test.ts` (AC-009); `contrast.test.ts` (AC-010)                                           |
+| REQ-004 | AC-011 bis AC-014                    | 1, 7           | `calendar.test.ts` (AC-011 bis AC-014); Klick-Durchlauf                                            |
+| REQ-005 | AC-015, AC-016                       | 2, 7           | `absences.test.ts` (AC-015, AC-016); Klick-Durchlauf                                               |
+| REQ-006 | AC-017 bis AC-020                    | 3, 7           | `household-row.test.ts` (AC-017, AC-018); Klick-Durchlauf (AC-019, AC-020)                         |
+| REQ-007 | AC-021 bis AC-024                    | 8              | e2e dev smoke; Klick-Durchlauf                                                                     |
+| REQ-008 | AC-025 bis AC-027, AC-039 bis AC-041 | 7              | e2e dev smoke; Klick-Durchlauf                                                                     |
+| REQ-009 | AC-028 bis AC-032                    | 2, 7           | `absences.test.ts` (AC-028 bis AC-031); Klick-Durchlauf (AC-032)                                   |
+| REQ-010 | AC-033 bis AC-038, AC-042 bis AC-044 | 2, 6, 9        | `absences.test.ts`, `commands-household.test.ts` (AC-033 bis AC-037, AC-042 bis AC-044); Durchlauf |
+| REQ-011 | AC-045 bis AC-049                    | 4, 8           | `meal-plan.test.ts` (AC-045 bis AC-049); Klick-Durchlauf                                           |

@@ -72,13 +72,13 @@ const SUNDAY = day(7);
 
 // ---------- Helpers of this file ----------
 
-/** Phone: the activity's own page in the plan tab; wider: collection and activity side by side. */
-function activityRoute(page: Page, id: string): string {
-  return isPhone(page) ? `/plan/aktivitaet/${id}` : `/plan?view=activities&aid=${id}`;
+/** The activity's own page in the calendar's area, on every width (spec 0010, AC-026). */
+function activityRoute(_page: Page, id: string): string {
+  return `/kalender/aktivitaet/${id}`;
 }
 
 async function openActivities(page: Page): Promise<void> {
-  await nav(page, 'plan');
+  await nav(page, 'kalender');
   await tid(page, 'plan-view-activities').click();
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await settle(page);
@@ -212,7 +212,7 @@ test.beforeEach(async ({ context }) => {
 test('AC-001: "Plan" shows each day with Vormittag, Mittag and Abend in this order', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await expect(tid(page, 'screen-title')).toHaveText('Plan');
   await expect(tid(page, 'plan-view-week')).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, 'plan-view-activities')).toHaveText('Aktivitäten');
@@ -234,7 +234,7 @@ test('AC-001: "Plan" shows each day with Vormittag, Mittag and Abend in this ord
 test('AC-004: "Aktivitäten" lists Eislaufen and Bouldern with picture, name and the last time', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await tid(page, 'plan-view-activities').click();
   await expect(page).toHaveURL(/view=activities/);
   for (const [id, name] of [
@@ -268,10 +268,10 @@ test('AC-005: the household "Test" shows "Noch keine Aktivitäten" with "Aktivit
 test('AC-016: Bouldern shows "Zuletzt: vor 12 Tagen · 3-mal" and the three past days in "Verlauf"', async ({
   page,
 }) => {
-  await open(page, '/plan?view=activities');
+  await open(page, '/kalender/aktivitaeten');
   await tid(page, `activity-${BOULDERN}`).click();
   // On the phone the activity has its own page inside the tabs: the tab bar stays.
-  await expect(page).toHaveURL(new RegExp(`/plan/aktivitaet/${BOULDERN}$`));
+  await expect(page).toHaveURL(new RegExp(`/kalender/aktivitaet/${BOULDERN}$`));
   await expect(tid(page, 'tab-plan')).toBeVisible();
   await expect(tid(page, 'activity-title')).toHaveText('Bouldern');
   await expect(tid(page, 'activity-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
@@ -290,7 +290,7 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
   page,
 }) => {
   const name = `Eislaufen mit Freunden ${unique()}`;
-  await open(page, '/plan?view=activities');
+  await open(page, '/kalender/aktivitaeten');
   await tid(page, 'activity-add').click();
   await expect(tid(page, 'activity-sheet')).toBeVisible();
   await tid(page, 'activity-link').fill(
@@ -309,7 +309,7 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
 });
 
 test('AC-007: saving without a name creates nothing and shows "Name fehlt"', async ({ page }) => {
-  await open(page, '/plan?view=activities');
+  await open(page, '/kalender/aktivitaeten');
   const count = tid(page, 'activity-count');
   const before = await count.innerText();
   await tid(page, 'activity-add').click();
@@ -323,7 +323,7 @@ test('AC-007: saving without a name creates nothing and shows "Name fehlt"', asy
 test('AC-008: "bouldern" offers "Gibt es schon: Bouldern" with "Öffnen" instead of a copy', async ({
   page,
 }) => {
-  await open(page, '/plan?view=activities');
+  await open(page, '/kalender/aktivitaeten');
   const before = await tid(page, 'activity-count').innerText();
   await tid(page, 'activity-add').click();
   await tid(page, 'activity-name').fill('bouldern');
@@ -331,7 +331,7 @@ test('AC-008: "bouldern" offers "Gibt es schon: Bouldern" with "Öffnen" instead
   await expect(tid(page, 'activity-duplicate-open')).toHaveText(/Öffnen/);
   await tid(page, 'activity-duplicate-open').click();
   await expect(tid(page, 'activity-title')).toHaveText('Bouldern');
-  await nav(page, 'plan');
+  await nav(page, 'kalender');
   await expect(tid(page, 'activity-count')).toHaveText(before);
 });
 
@@ -358,7 +358,7 @@ test('AC-009: Enrico’s photo of Eislaufen shows on Nadja’s device; it is sto
   await expect(tid(page, 'activity-photo-change')).toHaveText(/Foto ändern/);
 
   const nadja = await secondDevice(browser, 'nadja');
-  await nadja.page.goto('/plan?view=activities');
+  await nadja.page.goto('/kalender/aktivitaeten');
   await expectOwnPhoto(tid(nadja.page, `activity-${EISLAUFEN}-photo`));
   await nadja.context.close();
   await page.bringToFront();
@@ -411,7 +411,7 @@ test.describe('with the service worker', () => {
     page,
     context,
   }) => {
-    await open(page, '/plan?view=activities');
+    await open(page, '/kalender/aktivitaeten');
     await expectOwnPhoto(tid(page, `activity-${EISLAUFEN}-photo`));
     await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
     await expect
@@ -498,7 +498,7 @@ test('AC-012: a member of another household cannot read, overwrite or delete a p
 test('AC-013: "Eislaufen (Hohenschönhausen)" on a free Saturday morning, with its photo; the pantry check takes nothing', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
   expect(await slotTitles(page, SATURDAY, SLOT_MORNING)).toEqual([]);
   await planActivity(page, SATURDAY, SLOT_MORNING, EISLAUFEN, 'Hohenschönhausen');
@@ -544,7 +544,7 @@ test('AC-015: Spieleabend has no place, so neither its page nor its plan entry h
   await expect(tid(page, 'activity-plan')).toBeVisible();
   await expect(tid(page, 'activity-route')).toHaveCount(0);
 
-  await nav(page, 'plan');
+  await nav(page, 'kalender');
   await tid(page, 'plan-view-week').click();
   await showPlanWeek(page, FREE_LUNCH);
   await planActivity(page, FREE_LUNCH, SLOT_LUNCH, SPIELEABEND);
@@ -566,7 +566,7 @@ test('AC-015: Spieleabend has no place, so neither its page nor its plan entry h
 test('AC-019: "Heute geplant" shows Eislaufen, Lasagne and Trattoria Da Enzo in the order of the day, each with its kind', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await planRestaurant(page, TODAY, SLOT_DINNER, seedIds['rest-enzo']);
   await nav(page, 'index');
   const meals = tid(page, 'today-meals');
@@ -595,7 +595,7 @@ test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device 
   page,
   browser,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await planRecipe(page, TODAY, SLOT_LUNCH, 'Bolognese', BOLOGNESE);
   expect(await photoPathOf('recipes', BOLOGNESE)).toBeNull();
 
@@ -660,7 +660,7 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
   await tid(nadja.page, 'activity-stars-4').click();
   await tid(nadja.page, 'activity-favorite').click();
   await expect(tid(nadja.page, 'activity-favorite')).toHaveAttribute('aria-pressed', 'true');
-  await nadja.page.goto('/plan?view=activities');
+  await nadja.page.goto('/kalender/aktivitaeten');
   await expect(tid(nadja.page, `activity-${BOULDERN}-stars`)).toHaveAttribute(
     'aria-label',
     '4 von 5 Sternen',
@@ -669,7 +669,7 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
   await nadja.context.close();
 
   await page.bringToFront();
-  await open(page, '/plan?view=activities');
+  await open(page, '/kalender/aktivitaeten');
   await expect(tid(page, `activity-${BOULDERN}`)).toBeVisible();
   await expect(tid(page, `activity-${BOULDERN}-favorite`)).toHaveCount(0);
   await expect(tid(page, `activity-${BOULDERN}-stars`)).toHaveCount(0);
@@ -686,7 +686,7 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
 test('AC-002: in one Tageszeit activities come first, then recipes, then restaurants', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
   expect(await slotTitles(page, SATURDAY, SLOT_DINNER)).toEqual([]);
   await planRecipe(page, SATURDAY, SLOT_DINNER, 'Lasagne', LASAGNE);
@@ -716,7 +716,7 @@ test('AC-023, AC-021: "Neue Aktivität" without a name creates nothing; "Kletter
       )
     ).length;
   const before = await activityCount();
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
   const planned = await slotTitles(page, SATURDAY, SLOT_MORNING);
 
@@ -743,7 +743,7 @@ test('AC-022: a new recipe and a new restaurant from a map link, created on Sund
 }) => {
   const soup = `Kürbissuppe ${unique()}`;
   const place = { name: 'Café Kurzlink' };
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, SUNDAY);
 
   await addTo(page, SUNDAY, SLOT_DINNER);
@@ -781,7 +781,7 @@ test.describe('at desktop width', () => {
   test('AC-001: the week grid has one row per Tageszeit: Vormittag, Mittag, Abend', async ({
     page,
   }) => {
-    await open(page, '/plan');
+    await open(page, '/kalender');
     const tops: number[] = [];
     for (const slotId of [SLOT_MORNING, SLOT_LUNCH, SLOT_DINNER]) {
       tops.push((await tid(page, `add-${TODAY}-${slotId}`).boundingBox())?.y ?? -1);
@@ -796,7 +796,7 @@ test.describe('at desktop width', () => {
   test('AC-004, AC-016: collection and activity side by side; a deep link keeps the sidebar', async ({
     page,
   }) => {
-    await open(page, '/plan?view=activities');
+    await open(page, '/kalender/aktivitaeten');
     await tid(page, `activity-${BOULDERN}`).click();
     await expect(page).toHaveURL(new RegExp(`aid=${BOULDERN}`));
     await expect(tid(page, 'activity-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
@@ -806,7 +806,7 @@ test.describe('at desktop width', () => {
     await tid(page, 'activity-close').click();
     await expect(tid(page, 'activity-detail')).toHaveCount(0);
 
-    await page.goto(`/plan/aktivitaet/${EISLAUFEN}`);
+    await page.goto(`/kalender/aktivitaet/${EISLAUFEN}`);
     await expect(tid(page, 'activity-title')).toHaveText('Eislaufen', SYNC);
     await expect(tid(page, 'nav-plan')).toBeVisible();
   });
@@ -819,8 +819,8 @@ test('a deep link with a name of Object.prototype shows "nicht gefunden" instead
 }) => {
   // The pageErrors fixture fails the test on any uncaught error in the page.
   for (const [route, notFound] of [
-    ['/plan/aktivitaet/constructor', 'activity-not-found'],
-    ['/plan/aktivitaet/__proto__', 'activity-not-found'],
+    ['/kalender/aktivitaet/constructor', 'activity-not-found'],
+    ['/kalender/aktivitaet/__proto__', 'activity-not-found'],
     ['/rezept/toString', 'recipe-not-found'],
     ['/restaurant/constructor', 'restaurant-not-found'],
   ] as const) {

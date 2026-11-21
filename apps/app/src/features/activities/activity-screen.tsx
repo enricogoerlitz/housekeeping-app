@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { ActivityDetail } from './activity-detail';
 
-/** An activity on its own page inside the plan tab (phones, deep links). */
+/** An activity on its own page in the calendar's area (spec 0010, AC-026). */
 export function ActivityScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const router = useRouter();
@@ -11,14 +11,14 @@ export function ActivityScreen() {
   const id = routeId(params.id);
   const back = () => {
     if (router.canGoBack()) router.back();
-    else router.replace({ pathname: '/plan', params: { view: 'activities' } });
+    else router.replace('/kalender/aktivitaeten');
   };
   return (
     <ActivityDetail
       activityId={id ?? ''}
       onBack={back}
       onOpen={(activityId) =>
-        router.replace({ pathname: '/plan/aktivitaet/[id]', params: { id: activityId } })
+        router.replace({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } })
       }
     />
   );

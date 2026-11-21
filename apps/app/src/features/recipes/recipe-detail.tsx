@@ -207,7 +207,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           label="Einplanen"
           icon="calendar-plus"
           variant="secondary"
-          onPress={() => router.push('/plan')}
+          onPress={() => router.push('/kalender')}
           testID="recipe-plan"
         />
         {features.ai ? (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Modal,
   Platform,
@@ -11,7 +11,7 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
-import { ChipView, focusRing } from './controls';
+import { ChipView, focusRing, IconButton } from './controls';
 import { type IconName } from './icons';
 import { Icon, Text } from './primitives';
 import { useAreaColors, useTheme } from './theme-context';
@@ -207,14 +207,26 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
   );
 }
 
+export interface MenuOption<T extends string> extends ChoiceOption<T> {
+  /** Greyed out and not selectable, e.g. a write while offline. */
+  disabled?: boolean;
+  /** Second line under the label; says why an entry is disabled. */
+  hint?: string;
+}
+
 export interface MenuProps<T extends string> {
   /** Text on the button, usually the current choice, e.g. "Zuletzt". */
   label: string;
   /** Accessible name of the button, e.g. "Sortierung: Zuletzt". */
   accessibilityLabel: string;
   icon?: IconName;
-  options: ChoiceOption<T>[];
-  /** The current choice; it carries a check mark. */
+  /**
+   * button = text with ▾ (a choice such as the sort order); icon = only the icon, for a list of
+   * actions such as ⋯ (spec 0010).
+   */
+  trigger?: 'button' | 'icon';
+  options: MenuOption<T>[];
+  /** The current choice; it carries a check mark. Without it the entries are actions. */
   value?: T;
   onChange: (value: T) => void;
   /** The button; the menu is `${testID}-menu`, each entry `${testID}-${value}`. */
@@ -223,8 +235,10 @@ export interface MenuProps<T extends string> {
 
 const MENU_ITEM_HEIGHT = 46;
 const MENU_MIN_WIDTH = 200;
-const itemRole =
-  Platform.OS === 'web' ? ({ role: 'menuitemradio' } as object) : { accessibilityRole: 'menuitem' };
+const itemRole = (choice: boolean): object =>
+  Platform.OS === 'web'
+    ? { role: choice ? 'menuitemradio' : 'menuitem' }
+    : { accessibilityRole: 'menuitem' };
 
 /**
  * A button with a short list that opens next to it, e.g. the sort order "↕ Zuletzt ▾". Arrow keys,
@@ -236,6 +250,8 @@ export function Menu<T extends string>(props: MenuProps<T>) {
   const window = useWindowDimensions();
   const trigger = useRef<HostInstance>(null);
   const items = useRef(new Map<T, HostInstance>());
+  const iconOnly = props.trigger === 'icon';
+  const isChoice = props.value !== undefined;
   const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number }>();
 
   const open = () =>
@@ -248,6 +264,18 @@ export function Menu<T extends string>(props: MenuProps<T>) {
     props.onChange(value);
     close();
   };
+  const isOpen = anchor !== undefined;
+  useEffect(() => {
+    // The modal does not report Escape on the web; close the menu here (spec 0010, platforms).
+    if (!isOpen || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setAnchor(undefined);
+      trigger.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen]);
 
   const current = Math.max(
     0,
@@ -285,8 +313,11 @@ export function Menu<T extends string>(props: MenuProps<T>) {
     focusAt(target);
   };
 
-  const width = Math.max(anchor?.width ?? 0, MENU_MIN_WIDTH);
-  const height = props.options.length * MENU_ITEM_HEIGHT + 12;
+  const width = Math.max(anchor?.width ?? 0, iconOnly ? 260 : MENU_MIN_WIDTH);
+  const height =
+    props.options.length * MENU_ITEM_HEIGHT +
+    props.options.filter((option) => option.hint).length * 18 +
+    12;
   const below = (anchor?.y ?? 0) + (anchor?.height ?? 0) + 6;
   const top =
     below + height > window.height - 8 ? Math.max(8, (anchor?.y ?? 0) - height - 6) : below;
@@ -304,7 +335,21 @@ export function Menu<T extends string>(props: MenuProps<T>) {
         onPress={open}
         hitSlop={4}
         style={(state) => {
-          const { pressed, focused: hasFocus } = state as PressState;
+          const { pressed, hovered, focused: hasFocus } = state as PressState;
+          if (iconOnly) {
+            return [
+              {
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: hovered || anchor ? c.surfaceSunken : 'transparent',
+                opacity: pressed ? 0.6 : 1,
+              },
+              focusRing(theme, hasFocus),
+            ];
+          }
           return [
             {
               flexDirection: 'row',
@@ -323,9 +368,15 @@ export function Menu<T extends string>(props: MenuProps<T>) {
           ];
         }}
       >
-        {props.icon ? <Icon name={props.icon} size={16} /> : null}
-        <Text variant="smallStrong">{props.label}</Text>
-        <Icon name="chevron-down" size={16} color="muted" />
+        {iconOnly ? (
+          <Icon name={props.icon ?? 'ellipsis'} size={21} color="muted" />
+        ) : (
+          <>
+            {props.icon ? <Icon name={props.icon} size={16} /> : null}
+            <Text variant="smallStrong">{props.label}</Text>
+            <Icon name="chevron-down" size={16} color="muted" />
+          </>
+        )}
       </Pressable>
       <Modal visible={anchor !== undefined} transparent animationType="fade" onRequestClose={close}>
         <Pressable
@@ -362,10 +413,17 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                   else items.current.delete(option.value);
                 }}
                 testID={props.testID ? `${props.testID}-${option.value}` : undefined}
-                {...itemRole}
+                {...itemRole(isChoice)}
                 accessibilityLabel={option.label}
-                accessibilityState={{ checked: selected }}
-                aria-checked={selected}
+                accessibilityHint={option.hint}
+                accessibilityState={
+                  isChoice
+                    ? { checked: selected, disabled: !!option.disabled }
+                    : { disabled: !!option.disabled }
+                }
+                aria-checked={isChoice ? selected : undefined}
+                aria-disabled={option.disabled || undefined}
+                disabled={option.disabled}
                 onFocus={() => setFocused(index)}
                 onPress={() => choose(option.value)}
                 style={(state) => {
@@ -377,19 +435,170 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                       gap: 10,
                       minHeight: MENU_ITEM_HEIGHT,
                       paddingHorizontal: 14,
-                      backgroundColor: hovered || hasFocus ? c.surfaceSunken : 'transparent',
-                      opacity: pressed ? 0.7 : 1,
+                      backgroundColor:
+                        (hovered || hasFocus) && !option.disabled ? c.surfaceSunken : 'transparent',
+                      opacity: option.disabled ? 0.5 : pressed ? 0.7 : 1,
                     },
                   ];
                 }}
               >
-                <View style={{ width: 18 }}>
-                  {selected ? <Icon name="check" size={18} color="accent" /> : null}
+                {isChoice ? (
+                  <View style={{ width: 18 }}>
+                    {selected ? <Icon name="check" size={18} color="accent" /> : null}
+                  </View>
+                ) : null}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text variant={selected ? 'bodyStrong' : 'body'}>{option.label}</Text>
+                  {option.hint ? (
+                    <Text variant="caption" color="muted">
+                      {option.hint}
+                    </Text>
+                  ) : null}
                 </View>
-                <Text variant={selected ? 'bodyStrong' : 'body'}>{option.label}</Text>
               </Pressable>
             );
           })}
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+export interface PopoverProps {
+  /** Text of the link that opens it, e.g. "+2 weitere". */
+  label: string;
+  /** Accessible name of the link, e.g. "2 weitere Einträge am Freitag, 1. Januar". */
+  accessibilityLabel: string;
+  /** Title in the panel's head, e.g. "Freitag, 1. Januar". */
+  title: string;
+  /** The content; `close` closes the panel, e.g. before navigating away. */
+  children: (close: () => void) => ReactNode;
+  width?: number;
+  /** The link; the panel is `${testID}-panel`, its ✕ `${testID}-close`. */
+  testID?: string;
+}
+
+const POPOVER_MAX_HEIGHT = 440;
+
+/**
+ * A small panel that opens at its link, e.g. behind "+2 weitere" in the month (spec 0010,
+ * AC-012). Opens with a click or Enter; Escape, ✕ or a click outside closes it.
+ */
+export function Popover(props: PopoverProps) {
+  const theme = useTheme();
+  const c = theme.colors;
+  const window = useWindowDimensions();
+  const trigger = useRef<HostInstance>(null);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number }>();
+
+  const open = () =>
+    trigger.current?.measureInWindow((x, y, width, height) => setAnchor({ x, y, width, height }));
+  const close = () => {
+    setAnchor(undefined);
+    trigger.current?.focus();
+  };
+  const isOpen = anchor !== undefined;
+  useEffect(() => {
+    // Focus stays on the link, outside the modal, so the web needs its own Escape (spec 0010).
+    if (!isOpen || Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setAnchor(undefined);
+      trigger.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen]);
+
+  const width = Math.min(props.width ?? 320, window.width - 16);
+  const maxHeight = Math.min(POPOVER_MAX_HEIGHT, window.height - 16);
+  const below = (anchor?.y ?? 0) + (anchor?.height ?? 0) + 4;
+  const top =
+    below + maxHeight > window.height - 8
+      ? Math.max(8, Math.min(below, window.height - maxHeight - 8))
+      : below;
+  const left = Math.max(8, Math.min(anchor?.x ?? 0, window.width - width - 8));
+
+  return (
+    <>
+      <Pressable
+        ref={trigger}
+        testID={props.testID}
+        accessibilityRole="button"
+        accessibilityLabel={props.accessibilityLabel}
+        accessibilityState={{ expanded: anchor !== undefined }}
+        aria-haspopup="dialog"
+        onPress={open}
+        hitSlop={6}
+        style={(state) => {
+          const { pressed, hovered, focused } = state as PressState;
+          return [
+            {
+              alignSelf: 'flex-start',
+              paddingHorizontal: 4,
+              paddingVertical: 2,
+              borderRadius: theme.shape.radius.control,
+              backgroundColor: hovered ? c.surfaceSunken : 'transparent',
+              opacity: pressed ? 0.6 : 1,
+            },
+            focusRing(theme, focused),
+          ];
+        }}
+      >
+        <Text variant="caption" color="muted" numberOfLines={1}>
+          {props.label}
+        </Text>
+      </Pressable>
+      <Modal visible={anchor !== undefined} transparent animationType="fade" onRequestClose={close}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Schließen"
+          onPress={close}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+        />
+        <View
+          testID={props.testID ? `${props.testID}-panel` : undefined}
+          accessibilityRole="none"
+          aria-modal
+          role="dialog"
+          aria-label={props.title}
+          style={{
+            position: 'absolute',
+            top,
+            left,
+            width,
+            maxHeight,
+            borderRadius: theme.shape.radius.card,
+            backgroundColor: c.surface,
+            borderWidth: 1,
+            borderColor: c.border,
+            boxShadow: '0px 8px 24px rgba(0,0,0,0.16)',
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingLeft: 14,
+              paddingRight: 4,
+              paddingTop: 4,
+            }}
+          >
+            <Text variant="bodyStrong" heading style={{ flex: 1 }} numberOfLines={1}>
+              {props.title}
+            </Text>
+            <IconButton
+              icon="x"
+              label="Schließen"
+              onPress={close}
+              testID={props.testID ? `${props.testID}-close` : undefined}
+            />
+          </View>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}>
+            {props.children(() => setAnchor(undefined))}
+          </ScrollView>
         </View>
       </Modal>
     </>

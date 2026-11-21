@@ -7,21 +7,24 @@ import {
   NOTE_MAX_LENGTH,
   splitForEaters,
   useActivities,
+  useActivitiesById,
   useArticlesById,
   useHousehold,
   useMembers,
   useMembersById,
   usePlanEntries,
-  useRecipeImage,
   useRecipes,
   useRecipesById,
   useRestaurants,
+  useRestaurantsById,
   useToday,
   type PlanSlotInput,
 } from '@housekeeping/api';
 import {
   addDays,
   fuzzyIncludes,
+  leftoverCandidates,
+  leftoversDayLabel,
   priceLabel,
   searchRecipes,
   sortRecipes,
@@ -29,6 +32,8 @@ import {
   type Activity,
   type Id,
   type ISODate,
+  type KindRole,
+  type MealPlanEntry,
   type Member,
   type Recipe,
   type Restaurant,
@@ -37,18 +42,19 @@ import {
   Button,
   Chip,
   ChoiceChips,
+  GroupLabel,
   Icon,
   IconButton,
+  KIND_ICONS,
   List,
   ListRow,
   Notice,
-  Photo,
   Sheet,
   Stack,
   Text,
   TextField,
+  ViewTabs,
   toast,
-  useTheme,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -58,23 +64,42 @@ import {
   savePhotoChoice,
   useActivityForm,
 } from '@/features/activities/activity-form';
-import { ActivityPhoto } from '@/features/activities/activity-photo';
 import { activityPlaceLine } from '@/features/activities/labels';
 import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-form';
 import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { dayLabel, entryTitle, misfitText, splitSummary } from './labels';
+import { addSheetTitle, dayLabel, entryTitle, misfitText, splitSummary } from './labels';
 
 export interface AddTarget {
   /** null = "Vormerken" without a day. */
   date: ISODate | null;
   slotId: Id;
+  /**
+   * false when added to a day as a whole ("+ Hinzufügen" under a day on phones): the title has no
+   * Tageszeit and the second step preselects `slotId`, the last one ("Abend", REQ-007).
+   */
+  slotChosen?: boolean;
 }
 
-type Mode = 'recipe' | 'restaurant' | 'activity' | 'text' | 'leftovers';
+type Tab = 'all' | 'recipes' | 'restaurants' | 'activities';
+type Creating = 'recipe' | 'restaurant' | 'activity';
+type Choice =
+  | { kind: 'recipe'; recipe: Recipe }
+  | { kind: 'restaurant'; restaurant: Restaurant }
+  | { kind: 'activity'; activity: Activity }
+  | { kind: 'text' }
+  | { kind: 'leftovers'; source: MealPlanEntry; title: string };
 
-const MAX_RESULTS = 30;
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'all', label: 'Alle' },
+  { value: 'recipes', label: 'Rezepte' },
+  { value: 'restaurants', label: 'Restaurants' },
+  { value: 'activities', label: 'Aktivitäten' },
+];
+
+/** Hits per kind; the middle scrolls, the window keeps its size (AC-022). */
+const MAX_RESULTS = 60;
 /** Days "Einplanen" of an activity offers, from today. */
 const PLAN_AHEAD_DAYS = 14;
 
@@ -87,6 +112,10 @@ function Label(props: { children: string }) {
       {props.children}
     </Text>
   );
+}
+
+function KindIcon(props: { kind: KindRole }) {
+  return <Icon name={KIND_ICONS[props.kind]} size={18} color="muted" />;
 }
 
 /** "Wer isst mit?": members as chips plus a guest counter. */
@@ -147,38 +176,16 @@ function restaurantSubtitle(restaurant: Restaurant): string | undefined {
   );
 }
 
-/** The recipe's own photo, else its sample photo, else the placeholder (AC-017). */
-function RecipeThumb(props: { recipe: Recipe; size: number }) {
-  const image = useRecipeImage(props.recipe);
-  return <Photo source={image} width={props.size} height={props.size} />;
-}
-
-/** "Neues Rezept" / "Neues Restaurant" / "Neue Aktivität": create it right here (REQ-008). */
+/** A "Neu" row: "+ „paella“ als Rezept anlegen". */
 function NewRow(props: { label: string; disabled: boolean; onPress: () => void; testID: string }) {
-  const theme = useTheme();
   return (
-    <List>
-      <ListRow
-        title={props.label}
-        leading={
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: theme.shape.radius.photo,
-              backgroundColor: theme.colors.surfaceSunken,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="plus" size={22} color="accent" />
-          </View>
-        }
-        disabled={props.disabled}
-        onPress={props.onPress}
-        testID={props.testID}
-      />
-    </List>
+    <ListRow
+      title={props.label}
+      leading={<Icon name="plus" size={18} color="accent" />}
+      disabled={props.disabled}
+      onPress={props.onPress}
+      testID={props.testID}
+    />
   );
 }
 
@@ -200,16 +207,15 @@ function NewHeading(props: { title: string; onBack: () => void }) {
   );
 }
 
-/** "Wann?" for "Einplanen" from an activity: a day of the next two weeks and a Tageszeit. */
-function WhenPicker(props: {
-  value: AddTarget;
+/** "Wann?" for "Einplanen" from an activity: a day of the next two weeks. */
+function DayPicker(props: {
+  value: ISODate | null;
   today: ISODate;
-  slots: { id: Id; name: string }[];
-  onChange: (value: AddTarget) => void;
+  onChange: (date: ISODate) => void;
 }) {
   const days = Array.from({ length: PLAN_AHEAD_DAYS }, (_, offset) => addDays(props.today, offset));
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 6 }}>
       <Label>Wann?</Label>
       <ScrollView
         horizontal
@@ -221,58 +227,51 @@ function WhenPicker(props: {
           <Chip
             key={date}
             label={date === props.today ? 'Heute' : dayLabel(date)}
-            selected={props.value.date === date}
-            onPress={() => props.onChange({ ...props.value, date })}
+            selected={props.value === date}
+            onPress={() => props.onChange(date)}
             testID={`add-entry-day-${date}`}
           />
         ))}
       </ScrollView>
-      <ChoiceChips
-        label="Tageszeit"
-        options={props.slots.map((slot) => ({ value: slot.id, label: slot.name }))}
-        value={props.value.slotId}
-        onChange={(slotId) => props.onChange({ ...props.value, slotId })}
-        testID="add-entry-slot"
-      />
     </View>
   );
 }
 
 /**
- * Adds to one Tageszeit: a recipe with eaters and cook, a restaurant, an activity with a Zusatz,
- * a free text or leftovers — or creates a new recipe, restaurant or activity right here and plans
- * it (REQ-008). With `activityId` ("Einplanen" on an activity) that activity is chosen and the
- * day and Tageszeit can be picked.
+ * "+ Hinzufügen" in the calendar (spec 0010, REQ-007): one large window of fixed size with the
+ * search field "Was steht an?" and the tabs "Alle · Rezepte · Restaurants · Aktivitäten"; "Neu"
+ * creates a recipe, restaurant or activity right here (spec 0004, REQ-008), free text and
+ * "Reste" from the seven days before (REQ-011) are in "Alle". The second step runs in the same
+ * window. With `activityId` ("Einplanen" on an activity) that activity is chosen and the day can
+ * be picked.
  */
-export function AddEntrySheet(props: {
-  target: AddTarget;
-  weekDates: ISODate[];
-  onClose: () => void;
-  activityId?: Id;
-}) {
+export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; activityId?: Id }) {
   const online = useOnlineOnly();
   const today = useToday();
   const household = useHousehold();
   const recipes = useRecipes();
   const recipesById = useRecipesById();
   const restaurants = useRestaurants();
+  const restaurantsById = useRestaurantsById();
   const activities = useActivities();
+  const activitiesById = useActivitiesById();
   const articlesById = useArticlesById();
   const entries = usePlanEntries();
   const members = useMembers();
   const membersById = useMembersById();
 
   const preset = props.activityId !== undefined;
-  const [mode, setMode] = useState<Mode>(preset ? 'activity' : 'recipe');
-  const [creating, setCreating] = useState(false);
-  const [when, setWhen] = useState<AddTarget>(props.target);
-  const [later, setLater] = useState(props.target.date === null);
+  const presetActivity = activities.find((candidate) => candidate.id === props.activityId);
+  const [tab, setTab] = useState<Tab>('all');
   const [query, setQuery] = useState('');
-  const [recipeId, setRecipeId] = useState<Id | undefined>();
-  const [restaurantQuery, setRestaurantQuery] = useState('');
-  const [restaurantId, setRestaurantId] = useState<Id | undefined>();
-  const [activityQuery, setActivityQuery] = useState('');
-  const [activityId, setActivityId] = useState<Id | undefined>(props.activityId);
+  const [choice, setChoice] = useState<Choice | undefined>(
+    presetActivity ? { kind: 'activity', activity: presetActivity } : undefined,
+  );
+  const [creating, setCreating] = useState<Creating | undefined>();
+  const [day, setDay] = useState<ISODate | null>(props.target.date);
+  const [slotId, setSlotId] = useState<Id>(props.target.slotId);
+  const [slotChosen, setSlotChosen] = useState(props.target.slotChosen !== false);
+  const [later, setLater] = useState(props.target.date === null);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | undefined>();
   const [eaterIds, setEaterIds] = useState<Id[]>([]);
@@ -286,57 +285,43 @@ export function AddEntrySheet(props: {
   const restaurantForm = useRestaurantForm();
   const activityForm = useActivityForm();
 
-  // A meal without a day can only be "vorgemerkt"; the toggle then stays on.
-  const date = later ? null : when.date;
+  // A meal without a day can only be "vorgemerkt"; the switch then stays on.
+  const date = later ? null : day;
   const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
-  const slotName = slots.find((slot) => slot.id === when.slotId)?.name;
-  const recipe = recipeId ? recipesById[recipeId] : undefined;
-  const restaurant = restaurantId
-    ? restaurants.find((candidate) => candidate.id === restaurantId)
-    : undefined;
-  const activity = activityId
-    ? activities.find((candidate) => candidate.id === activityId)
-    : undefined;
+  const slotOrder = slots.map((slot) => slot.id);
+  const slotName = slots.find((slot) => slot.id === slotId)?.name;
+  const trimmed = query.trim();
+
+  const recipe = choice?.kind === 'recipe' ? choice.recipe : undefined;
   const split = recipe ? splitForEaters(recipe.id, eaterIds, guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
 
-  const changeMode = (next: Mode) => {
-    setMode(next);
-    setCreating(false);
-  };
-
-  const chooseRecipe = (chosen: Recipe) => {
-    setRecipeId(chosen.id);
+  const choose = (next: Choice) => {
+    setChoice(next);
+    setCreating(undefined);
     setEaterIds(defaultEaterIds(date));
     setGuests(0);
     setCookId(undefined);
+    setError(undefined);
+    if (next.kind === 'text') setText(trimmed);
+  };
+  const backToSearch = () => {
+    setChoice(undefined);
+    setCreating(undefined);
   };
 
-  const chooseRestaurant = (chosen: Restaurant) => {
-    setCreating(false);
-    setRestaurantId(chosen.id);
-    setEaterIds(defaultEaterIds(date));
-    setGuests(0);
-  };
-
-  const chooseActivity = (chosen: Activity) => {
-    setCreating(false);
-    setActivityId(chosen.id);
-  };
-
-  const startCreating = () => {
-    setCreating(true);
+  const startCreating = (kind: Creating) => {
+    setCreating(kind);
     // What was searched for is usually the name of the new thing.
-    if (mode === 'recipe' && !newTitle) setNewTitle(query.trim());
-    if (mode === 'restaurant' && !restaurantForm.name)
-      restaurantForm.setName(restaurantQuery.trim());
-    if (mode === 'activity' && !activityForm.name) activityForm.setName(activityQuery.trim());
+    if (kind === 'recipe' && !newTitle) setNewTitle(trimmed);
+    if (kind === 'restaurant' && !restaurantForm.name) restaurantForm.setName(trimmed);
+    if (kind === 'activity' && !activityForm.name) activityForm.setName(trimmed);
   };
 
   const toggleLater = () => {
     const next = !later;
     setLater(next);
-    setEaterIds(defaultEaterIds(next ? null : when.date));
+    setEaterIds(defaultEaterIds(next ? null : day));
   };
 
   const done = (title: string, planned: ISODate | null) => {
@@ -345,7 +330,6 @@ export function AddEntrySheet(props: {
       message: planned ? `„${title}“ steht am ${dayLabel(planned)}` : `„${title}“ ist vorgemerkt`,
     });
   };
-
   const created = (title: string, planned: ISODate | null) => {
     props.onClose();
     toast.show({
@@ -356,97 +340,94 @@ export function AddEntrySheet(props: {
   };
 
   /** Where and for whom something new is planned: everyone at home that day. */
-  const planSlot = (): PlanSlotInput => ({
-    date,
-    slotId: when.slotId,
-    eaterIds: defaultEaterIds(date),
-  });
+  const planSlot = (): PlanSlotInput => ({ date, slotId, eaterIds: defaultEaterIds(date) });
 
-  const saveRecipe = () => {
-    if (!recipe || !split) return;
-    addPlanEntry({
-      date,
-      slotId: when.slotId,
-      kind: 'recipe',
-      recipeId: recipe.id,
-      eaterIds,
-      guests,
-      cookId,
-      portions: split.portions,
-      variants: split.variants,
-    });
-    done(recipe.title, date);
-  };
-
-  const saveRestaurant = () => {
-    if (!restaurant) return;
-    addPlanEntry({
-      date,
-      slotId: when.slotId,
-      kind: 'restaurant',
-      restaurantId: restaurant.id,
-      eaterIds,
-      guests,
-    });
-    done(restaurant.name, date);
-  };
-
-  const saveActivity = () => {
-    if (!activity || online.disabled) return;
+  const save = () => {
+    if (!choice || online.disabled) return;
     try {
-      addPlanEntry({
-        date,
-        slotId: when.slotId,
-        kind: 'activity',
-        activityId: activity.id,
-        note,
-        eaterIds: defaultEaterIds(date),
-      });
-    } catch (caught) {
-      setNoteError(message(caught));
-      return;
-    }
-    done(withNote(activity.name, note), date);
-  };
-
-  const saveText = () => {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      setError('Schreib kurz, was es gibt.');
-      return;
-    }
-    try {
-      addPlanEntry({
-        date,
-        slotId: when.slotId,
-        kind: 'text',
-        text: trimmed,
-        eaterIds: defaultEaterIds(date),
-      });
-      done(trimmed, date);
+      switch (choice.kind) {
+        case 'recipe': {
+          if (!split) return;
+          addPlanEntry({
+            date,
+            slotId,
+            kind: 'recipe',
+            recipeId: choice.recipe.id,
+            eaterIds,
+            guests,
+            cookId,
+            portions: split.portions,
+            variants: split.variants,
+          });
+          done(choice.recipe.title, date);
+          return;
+        }
+        case 'restaurant':
+          addPlanEntry({
+            date,
+            slotId,
+            kind: 'restaurant',
+            restaurantId: choice.restaurant.id,
+            eaterIds,
+            guests,
+          });
+          done(choice.restaurant.name, date);
+          return;
+        case 'activity':
+          try {
+            addPlanEntry({
+              date,
+              slotId,
+              kind: 'activity',
+              activityId: choice.activity.id,
+              note,
+              eaterIds: defaultEaterIds(date),
+            });
+          } catch (caught) {
+            setNoteError(message(caught));
+            return;
+          }
+          done(withNote(choice.activity.name, note), date);
+          return;
+        case 'text': {
+          const value = text.trim();
+          if (!value) {
+            setError('Schreib kurz, was es gibt.');
+            return;
+          }
+          addPlanEntry({
+            date,
+            slotId,
+            kind: 'text',
+            text: value,
+            eaterIds: defaultEaterIds(date),
+          });
+          done(value, date);
+          return;
+        }
+        case 'leftovers': {
+          if (!day) return;
+          const eaters = defaultEaterIds(day);
+          addPlanEntry({
+            date: day,
+            slotId,
+            kind: 'leftovers',
+            recipeId: choice.source.recipeId,
+            leftoversOfEntryId: choice.source.id,
+            eaterIds: eaters,
+            portions: Math.max(1, eaters.length),
+            variants: [],
+          });
+          done(choice.title, day);
+          return;
+        }
+      }
     } catch (caught) {
       setError(message(caught));
     }
   };
 
-  const saveLeftovers = (sourceId: Id) => {
-    const source = entries.find((entry) => entry.id === sourceId);
-    if (!source || !props.target.date) return;
-    const eaters = defaultEaterIds(props.target.date);
-    addPlanEntry({
-      date: props.target.date,
-      slotId: props.target.slotId,
-      kind: 'leftovers',
-      recipeId: source.recipeId,
-      leftoversOfEntryId: source.id,
-      eaterIds: eaters,
-      portions: Math.max(1, eaters.length),
-      variants: [],
-    });
-    done(`Reste von ${entryTitle(source, recipesById, entries)}`, props.target.date);
-  };
-
-  // ---------- Create while planning (AC-021 to AC-023) ----------
+  // ---------- Create while planning (spec 0004, AC-021 to AC-023) ----------
 
   const saveNewRecipe = () => {
     if (online.disabled) return;
@@ -493,52 +474,378 @@ export function AddEntrySheet(props: {
     created(values.draft.name, date);
   };
 
-  const targetDate = props.target.date;
-  const leftoverSources = targetDate
-    ? entries
-        .filter(
-          (entry) =>
-            entry.date !== null &&
-            entry.date < targetDate &&
-            props.weekDates.includes(entry.date) &&
-            (entry.kind === 'recipe' || entry.kind === 'text'),
-        )
-        .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+  // ---------- Step one: hits, "Neu", "Reste" ----------
+
+  const recipeHits =
+    tab === 'all' || tab === 'recipes'
+      ? (trimmed
+          ? searchRecipes(query, recipes, articlesById)
+          : sortRecipes(recipes, 'title')
+        ).slice(0, MAX_RESULTS)
+      : [];
+  const restaurantHits =
+    tab === 'all' || tab === 'restaurants'
+      ? restaurants
+          .filter(
+            (candidate) =>
+              !trimmed ||
+              fuzzyIncludes(query, candidate.name) ||
+              fuzzyIncludes(query, candidate.cuisine ?? ''),
+          )
+          .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+          .slice(0, MAX_RESULTS)
+      : [];
+  const activityHits =
+    tab === 'all' || tab === 'activities'
+      ? activities
+          .filter(
+            (candidate) =>
+              !trimmed ||
+              [candidate.name, candidate.placeName, candidate.description].some(
+                (field) => field !== undefined && fuzzyIncludes(query, field),
+              ),
+          )
+          .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+          .slice(0, MAX_RESULTS)
+      : [];
+  const hitCount = recipeHits.length + restaurantHits.length + activityHits.length;
+
+  const targetDay = props.target.date;
+  const leftovers = targetDay
+    ? leftoverCandidates(entries, targetDay, slotOrder).map((source) => ({
+        source,
+        title: `Reste von ${entryTitle(source, recipesById, entries, restaurantsById, activitiesById)} (${leftoversDayLabel(source.date ?? targetDay, targetDay)})`,
+      }))
     : [];
+  const quoted = trimmed ? `„${trimmed}“ ` : '';
 
-  const results = query.trim()
-    ? searchRecipes(query, recipes, articlesById)
-    : sortRecipes(recipes, 'title');
-  const restaurantResults = [...restaurants]
-    .filter(
-      (candidate) =>
-        !restaurantQuery.trim() ||
-        fuzzyIncludes(restaurantQuery, candidate.name) ||
-        fuzzyIncludes(restaurantQuery, candidate.cuisine ?? ''),
-    )
-    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  const activityResults = activities
-    .filter(
-      (candidate) =>
-        !activityQuery.trim() ||
-        [candidate.name, candidate.placeName, candidate.description].some(
-          (field) => field !== undefined && fuzzyIncludes(activityQuery, field),
-        ),
-    )
-    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  const modes: { value: Mode; label: string }[] = [
-    { value: 'recipe', label: 'Rezept' },
-    { value: 'restaurant', label: 'Restaurant' },
-    { value: 'activity', label: 'Aktivität' },
-    { value: 'text', label: 'Freitext' },
-    ...(targetDate ? [{ value: 'leftovers' as const, label: 'Reste' }] : []),
-  ];
+  const stepOne = (
+    <Stack gap={4}>
+      {hitCount > 0 ? (
+        <List testID="add-entry-hits">
+          {recipeHits.map((candidate) => (
+            <ListRow
+              key={candidate.id}
+              title={candidate.title}
+              subtitle={candidate.variants.map((variant) => variant.name).join(' · ') || undefined}
+              leading={<KindIcon kind="recipe" />}
+              onPress={() => choose({ kind: 'recipe', recipe: candidate })}
+              testID={`add-entry-recipe-${candidate.id}`}
+            />
+          ))}
+          {restaurantHits.map((candidate) => (
+            <ListRow
+              key={candidate.id}
+              title={candidate.name}
+              subtitle={restaurantSubtitle(candidate)}
+              leading={<KindIcon kind="restaurant" />}
+              onPress={() => choose({ kind: 'restaurant', restaurant: candidate })}
+              testID={`add-entry-restaurant-${candidate.id}`}
+            />
+          ))}
+          {activityHits.map((candidate) => (
+            <ListRow
+              key={candidate.id}
+              title={candidate.name}
+              subtitle={activityPlaceLine(candidate)}
+              leading={<KindIcon kind="activity" />}
+              onPress={() => choose({ kind: 'activity', activity: candidate })}
+              testID={`add-entry-activity-${candidate.id}`}
+            />
+          ))}
+        </List>
+      ) : trimmed ? null : (
+        <Text color="muted" testID="add-entry-none">
+          {tab === 'restaurants'
+            ? 'Noch keine Restaurants.'
+            : tab === 'activities'
+              ? 'Noch keine Aktivitäten.'
+              : 'Noch nichts angelegt.'}
+        </Text>
+      )}
 
-  const addLabel = later ? 'Vormerken' : 'Hinzufügen';
+      <GroupLabel>Neu</GroupLabel>
+      <List testID="add-entry-new">
+        {tab === 'all' || tab === 'recipes' ? (
+          <NewRow
+            label={`+ ${quoted}als Rezept anlegen`}
+            disabled={online.disabled}
+            onPress={() => startCreating('recipe')}
+            testID="add-entry-new-recipe"
+          />
+        ) : null}
+        {tab === 'restaurants' ? (
+          <NewRow
+            label={`+ ${quoted}als Restaurant anlegen`}
+            disabled={online.disabled}
+            onPress={() => startCreating('restaurant')}
+            testID="add-entry-new-restaurant"
+          />
+        ) : null}
+        {tab === 'activities' ? (
+          <NewRow
+            label={`+ ${quoted}als Aktivität anlegen`}
+            disabled={online.disabled}
+            onPress={() => startCreating('activity')}
+            testID="add-entry-new-activity"
+          />
+        ) : null}
+        {tab === 'all' ? (
+          <ListRow
+            title={
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Text>+ als </Text>
+                <Button
+                  label="Restaurant"
+                  variant="link"
+                  size="sm"
+                  disabled={online.disabled}
+                  onPress={() => startCreating('restaurant')}
+                  testID="add-entry-new-restaurant"
+                />
+                <Text> · </Text>
+                <Button
+                  label="Aktivität"
+                  variant="link"
+                  size="sm"
+                  disabled={online.disabled}
+                  onPress={() => startCreating('activity')}
+                  testID="add-entry-new-activity"
+                />
+              </View>
+            }
+            accessibilityLabel="Als Restaurant oder Aktivität anlegen"
+            leading={<Icon name="plus" size={18} color="accent" />}
+            testID="add-entry-new-kind"
+          />
+        ) : null}
+        {tab === 'all' ? (
+          <NewRow
+            label={trimmed ? `+ ${quoted}als Freitext eintragen` : '+ Freitext eintragen'}
+            disabled={online.disabled}
+            onPress={() => choose({ kind: 'text' })}
+            testID="add-entry-new-text"
+          />
+        ) : null}
+      </List>
+
+      {tab === 'all' && targetDay ? (
+        <>
+          <GroupLabel testID="add-entry-leftovers">Reste</GroupLabel>
+          {leftovers.length === 0 ? (
+            <Text color="muted" testID="add-entry-leftovers-empty">
+              In den 7 Tagen davor wurde nichts gekocht.
+            </Text>
+          ) : (
+            <List>
+              {leftovers.map((leftover) => (
+                <ListRow
+                  key={leftover.source.id}
+                  title={leftover.title}
+                  leading={<Icon name="refresh-cw" size={18} color="muted" />}
+                  onPress={() =>
+                    choose({ kind: 'leftovers', source: leftover.source, title: leftover.title })
+                  }
+                  testID={`add-entry-leftover-${leftover.source.id}`}
+                />
+              ))}
+            </List>
+          )}
+        </>
+      ) : null}
+    </Stack>
+  );
+
+  // ---------- Step two ----------
+
+  const chosenTitle =
+    choice?.kind === 'recipe'
+      ? choice.recipe.title
+      : choice?.kind === 'restaurant'
+        ? choice.restaurant.name
+        : choice?.kind === 'activity'
+          ? choice.activity.name
+          : choice?.kind === 'leftovers'
+            ? choice.title
+            : 'Freitext';
+  const chosenKind: KindRole =
+    choice?.kind === 'restaurant'
+      ? 'restaurant'
+      : choice?.kind === 'activity'
+        ? 'activity'
+        : 'recipe';
+
+  const zusatz = (
+    <TextField
+      label="Zusatz (optional)"
+      value={note}
+      onChangeText={(value) => {
+        setNote(value);
+        setNoteError(undefined);
+      }}
+      placeholder="z. B. Hohenschönhausen"
+      maxLength={NOTE_MAX_LENGTH}
+      error={noteError}
+      hint="Steht im Kalender in Klammern hinter dem Namen."
+      testID="add-entry-activity-note"
+    />
+  );
+
+  const stepTwo = choice ? (
+    <Stack gap={18}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {preset ? null : (
+          <Button
+            label="Zurück"
+            icon="chevron-left"
+            variant="link"
+            size="sm"
+            testID="add-entry-step-back"
+            onPress={backToSearch}
+          />
+        )}
+        <KindIcon kind={chosenKind} />
+        <Text
+          variant="cardTitle"
+          style={{ flex: 1 }}
+          numberOfLines={2}
+          testID={choice.kind === 'activity' ? 'add-entry-activity-chosen' : 'add-entry-chosen'}
+        >
+          {chosenTitle}
+        </Text>
+      </View>
+      {preset && !later ? (
+        <DayPicker value={day} today={today} onChange={(next) => setDay(next)} />
+      ) : null}
+      {choice.kind !== 'leftovers' && props.target.date ? (
+        <Chip
+          label="Ohne Tag vormerken"
+          icon="bookmark"
+          selected={later}
+          onPress={toggleLater}
+          testID="add-entry-later"
+        />
+      ) : null}
+      <ChoiceChips
+        label="Tageszeit"
+        options={slots.map((slot) => ({ value: slot.id, label: slot.name }))}
+        value={slotId}
+        onChange={(next) => {
+          setSlotId(next);
+          setSlotChosen(true);
+        }}
+        testID="add-entry-slot"
+      />
+      {choice.kind === 'text' ? (
+        <TextField
+          label="Was gibt es?"
+          value={text}
+          onChangeText={(value) => {
+            setText(value);
+            setError(undefined);
+          }}
+          placeholder="z. B. Essen bei Oma"
+          error={error}
+          autoFocus={!text}
+          returnKeyType="done"
+          onSubmitEditing={save}
+          testID="add-entry-text"
+        />
+      ) : null}
+      {choice.kind === 'recipe' || choice.kind === 'restaurant' ? (
+        <EaterPicker
+          members={members}
+          eaterIds={eaterIds}
+          guests={guests}
+          onEaters={setEaterIds}
+          onGuests={setGuests}
+        />
+      ) : null}
+      {recipe && split ? (
+        <View style={{ gap: 6 }}>
+          <Text variant="small" color="muted">
+            {split.portions === 1 ? '1 Portion' : `${split.portions} Portionen`}
+          </Text>
+          {split.variants.length > 0 ? (
+            <Text variant="bodyStrong" testID="add-entry-split">
+              {splitSummary(recipe, split.variants)}
+            </Text>
+          ) : null}
+          {misfits.length > 0 ? (
+            <Notice testID="add-entry-misfit" text={misfitText(misfits)} />
+          ) : null}
+        </View>
+      ) : null}
+      {recipe ? (
+        <View>
+          <Label>Wer kocht?</Label>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {members.map((member) => (
+              <Chip
+                key={member.id}
+                label={member.name}
+                icon="chef-hat"
+                selected={cookId === member.id}
+                testID={`cook-${member.id}`}
+                onPress={() => setCookId(cookId === member.id ? undefined : member.id)}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {choice.kind === 'activity' ? zusatz : null}
+      {error && choice.kind !== 'text' ? (
+        <Text variant="small" color="warn">
+          {error}
+        </Text>
+      ) : null}
+    </Stack>
+  ) : null;
+
+  // ---------- Create ----------
+
   const createLabel = later ? 'Anlegen und vormerken' : 'Anlegen und einplanen';
-  const eatersHint = eaterIds.length + guests === 0 ? 'Wähl aus, wer mitisst.' : undefined;
+  const creatingBody =
+    creating === 'recipe' ? (
+      <Stack gap={12}>
+        <NewHeading title="Neues Rezept" onBack={() => setCreating(undefined)} />
+        <NewRecipeFields
+          title={newTitle}
+          onChangeTitle={(value) => {
+            setNewTitle(value);
+            setNewTitleError(undefined);
+          }}
+          error={newTitleError}
+          onSubmit={saveNewRecipe}
+          autoFocus
+          servings={{ value: newServings, onChange: setNewServings }}
+        />
+      </Stack>
+    ) : creating === 'restaurant' ? (
+      <Stack gap={12}>
+        <NewHeading title="Neues Restaurant" onBack={() => setCreating(undefined)} />
+        <RestaurantFormFields
+          form={restaurantForm}
+          focus="link"
+          openLabel="Auswählen"
+          onOpenExisting={(chosen) => choose({ kind: 'restaurant', restaurant: chosen })}
+        />
+      </Stack>
+    ) : creating === 'activity' ? (
+      <Stack gap={12}>
+        <NewHeading title="Neue Aktivität" onBack={() => setCreating(undefined)} />
+        <ActivityFormFields
+          form={activityForm}
+          autoFocus
+          openLabel="Auswählen"
+          onOpenExisting={(chosen) => choose({ kind: 'activity', activity: chosen })}
+        />
+        {zusatz}
+      </Stack>
+    ) : null;
+
   let footer: ReactNode;
-  if (creating && mode === 'recipe') {
+  if (creating === 'recipe') {
     footer = (
       <Button
         label={createLabel}
@@ -550,7 +857,7 @@ export function AddEntrySheet(props: {
         onPress={saveNewRecipe}
       />
     );
-  } else if (creating && mode === 'restaurant') {
+  } else if (creating === 'restaurant') {
     footer = (
       <Button
         label={createLabel}
@@ -565,7 +872,7 @@ export function AddEntrySheet(props: {
         onPress={() => void saveNewRestaurant()}
       />
     );
-  } else if (creating && mode === 'activity') {
+  } else if (creating === 'activity') {
     footer = (
       <Button
         label={createLabel}
@@ -585,421 +892,62 @@ export function AddEntrySheet(props: {
         onPress={() => void saveNewActivity()}
       />
     );
-  } else if (mode === 'recipe' && recipe) {
+  } else if (choice) {
+    const needsEaters = choice.kind === 'recipe' || choice.kind === 'restaurant';
+    const noEaters = needsEaters && eaterIds.length + guests === 0;
     footer = (
       <Button
-        label={addLabel}
+        label={later ? 'Vormerken' : 'Einplanen'}
         icon="plus"
         full
-        disabled={online.disabled || eaterIds.length + guests === 0}
-        hint={online.hint ?? eatersHint}
+        disabled={online.disabled || noEaters}
+        hint={online.hint ?? (noEaters ? 'Wähl aus, wer mitisst.' : undefined)}
         testID="add-entry-save"
-        onPress={saveRecipe}
-      />
-    );
-  } else if (mode === 'restaurant' && restaurant) {
-    footer = (
-      <Button
-        label={addLabel}
-        icon="plus"
-        full
-        disabled={online.disabled || eaterIds.length + guests === 0}
-        hint={online.hint ?? eatersHint}
-        testID="add-entry-restaurant-save"
-        onPress={saveRestaurant}
-      />
-    );
-  } else if (mode === 'activity' && activity) {
-    footer = (
-      <Button
-        label={addLabel}
-        icon="plus"
-        full
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="add-entry-activity-save"
-        onPress={saveActivity}
-      />
-    );
-  } else if (mode === 'text') {
-    footer = (
-      <Button
-        label={addLabel}
-        icon="plus"
-        full
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="add-entry-text-save"
-        onPress={saveText}
+        onPress={save}
       />
     );
   }
 
-  const zusatz = (
-    <TextField
-      label="Zusatz (optional)"
-      value={note}
-      onChangeText={(value) => {
-        setNote(value);
-        setNoteError(undefined);
-      }}
-      placeholder="z. B. Hohenschönhausen"
-      maxLength={NOTE_MAX_LENGTH}
-      error={noteError}
-      hint="Steht im Plan in Klammern hinter dem Namen."
-      testID="add-entry-activity-note"
-    />
-  );
-
-  const where = date ? `${dayLabel(date)}${slotName ? ` ${slotName}` : ''}` : 'ohne Tag';
+  const searching = !choice && !creating;
   return (
     <Sheet
       visible
       onClose={props.onClose}
-      title={`Hinzufügen · ${where}`}
+      title={addSheetTitle(date, slotName, slotChosen)}
       testID="add-entry-sheet"
       size="l"
-      // The kind stays at the top; switching it keeps the window's size (spec 0005, AC-014).
+      // Search and tabs stay at the top; switching tabs keeps the window's size (AC-022).
       header={
-        preset ? undefined : (
-          <View style={{ paddingTop: 4, paddingBottom: 10 }}>
-            <ChoiceChips<Mode>
-              label="Art des Eintrags"
-              value={mode}
-              onChange={changeMode}
-              options={modes}
-              testID="add-entry-mode"
-            />
-          </View>
-        )
-      }
-      footer={footer}
-    >
-      <Stack gap={16}>
-        {preset && !later ? (
-          <WhenPicker value={when} today={today} slots={slots} onChange={setWhen} />
-        ) : null}
-        {mode !== 'leftovers' && targetDate ? (
-          <Chip
-            label="Ohne Tag vormerken"
-            icon="bookmark"
-            selected={later}
-            onPress={toggleLater}
-            testID="add-entry-later"
-          />
-        ) : null}
-        {online.hint && creating ? (
-          <Text variant="small" color="warn">
-            {online.hint}
-          </Text>
-        ) : null}
-
-        {mode === 'recipe' && creating ? (
-          <Stack gap={12}>
-            <NewHeading title="Neues Rezept" onBack={() => setCreating(false)} />
-            <NewRecipeFields
-              title={newTitle}
-              onChangeTitle={(value) => {
-                setNewTitle(value);
-                setNewTitleError(undefined);
-              }}
-              error={newTitleError}
-              onSubmit={saveNewRecipe}
-              autoFocus
-              servings={{ value: newServings, onChange: setNewServings }}
-            />
-          </Stack>
-        ) : null}
-
-        {mode === 'recipe' && !creating && !recipe ? (
-          <Stack gap={10}>
+        searching ? (
+          <View style={{ gap: 6, paddingTop: 4 }}>
             <TextField
               value={query}
               onChangeText={setQuery}
-              placeholder="Rezept suchen"
-              accessibilityLabel="Rezept suchen"
+              placeholder="Was steht an?"
+              accessibilityLabel="Was steht an?"
               round
+              autoFocus
               left={<Icon name="search" size={19} color="muted" />}
               testID="add-entry-search"
             />
-            <NewRow
-              label="Neues Rezept"
-              disabled={online.disabled}
-              onPress={startCreating}
-              testID="add-entry-new-recipe"
+            <ViewTabs
+              label="Art"
+              value={tab}
+              onChange={setTab}
+              options={TABS}
+              testID="add-entry-tab"
             />
-            {results.length === 0 ? (
-              <Text color="muted">Kein Rezept gefunden.</Text>
-            ) : (
-              <List>
-                {results.slice(0, MAX_RESULTS).map((candidate) => (
-                  <ListRow
-                    key={candidate.id}
-                    title={candidate.title}
-                    subtitle={
-                      candidate.variants.map((variant) => variant.name).join(' · ') || undefined
-                    }
-                    leading={<RecipeThumb recipe={candidate} size={44} />}
-                    onPress={() => chooseRecipe(candidate)}
-                    testID={`add-entry-recipe-${candidate.id}`}
-                  />
-                ))}
-              </List>
-            )}
-          </Stack>
-        ) : null}
-
-        {mode === 'recipe' && !creating && recipe && split ? (
-          <Stack gap={18}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <RecipeThumb recipe={recipe} size={52} />
-              <Text variant="cardTitle" style={{ flex: 1 }}>
-                {recipe.title}
-              </Text>
-              <Button
-                label="Ändern"
-                variant="link"
-                size="sm"
-                testID="add-entry-back"
-                onPress={() => setRecipeId(undefined)}
-              />
-            </View>
-            <EaterPicker
-              members={members}
-              eaterIds={eaterIds}
-              guests={guests}
-              onEaters={setEaterIds}
-              onGuests={setGuests}
-            />
-            <View style={{ gap: 6 }}>
-              <Text variant="small" color="muted">
-                {split.portions === 1 ? '1 Portion' : `${split.portions} Portionen`}
-              </Text>
-              {split.variants.length > 0 ? (
-                <Text variant="bodyStrong" testID="add-entry-split">
-                  {splitSummary(recipe, split.variants)}
-                </Text>
-              ) : null}
-              {misfits.length > 0 ? (
-                <Notice testID="add-entry-misfit" text={misfitText(misfits)} />
-              ) : null}
-            </View>
-            <View>
-              <Label>Wer kocht?</Label>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {members.map((member) => (
-                  <Chip
-                    key={member.id}
-                    label={member.name}
-                    icon="chef-hat"
-                    selected={cookId === member.id}
-                    testID={`cook-${member.id}`}
-                    onPress={() => setCookId(cookId === member.id ? undefined : member.id)}
-                  />
-                ))}
-              </View>
-            </View>
-          </Stack>
-        ) : null}
-
-        {mode === 'restaurant' && creating ? (
-          <Stack gap={12}>
-            <NewHeading title="Neues Restaurant" onBack={() => setCreating(false)} />
-            <RestaurantFormFields
-              form={restaurantForm}
-              focus="link"
-              openLabel="Auswählen"
-              onOpenExisting={chooseRestaurant}
-            />
-          </Stack>
-        ) : null}
-
-        {mode === 'restaurant' && !creating && !restaurant ? (
-          <Stack gap={10}>
-            <TextField
-              value={restaurantQuery}
-              onChangeText={setRestaurantQuery}
-              placeholder="Restaurant suchen"
-              accessibilityLabel="Restaurant suchen"
-              round
-              left={<Icon name="search" size={19} color="muted" />}
-              testID="add-entry-restaurant-search"
-            />
-            <NewRow
-              label="Neues Restaurant"
-              disabled={online.disabled}
-              onPress={startCreating}
-              testID="add-entry-new-restaurant"
-            />
-            {restaurants.length === 0 ? (
-              <Text color="muted">Noch keine Restaurants.</Text>
-            ) : restaurantResults.length === 0 ? (
-              <Text color="muted">Kein Restaurant gefunden.</Text>
-            ) : (
-              <List>
-                {restaurantResults.slice(0, MAX_RESULTS).map((candidate) => (
-                  <ListRow
-                    key={candidate.id}
-                    title={candidate.name}
-                    subtitle={restaurantSubtitle(candidate)}
-                    leading={<Photo placeholderIcon="utensils" width={44} height={44} />}
-                    onPress={() => chooseRestaurant(candidate)}
-                    testID={`add-entry-restaurant-${candidate.id}`}
-                  />
-                ))}
-              </List>
-            )}
-          </Stack>
-        ) : null}
-
-        {mode === 'restaurant' && !creating && restaurant ? (
-          <Stack gap={18}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Photo placeholderIcon="utensils" width={52} height={52} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text variant="cardTitle">{restaurant.name}</Text>
-                {restaurantSubtitle(restaurant) ? (
-                  <Text variant="small" color="muted">
-                    {restaurantSubtitle(restaurant)}
-                  </Text>
-                ) : null}
-              </View>
-              <Button
-                label="Ändern"
-                variant="link"
-                size="sm"
-                testID="add-entry-restaurant-back"
-                onPress={() => setRestaurantId(undefined)}
-              />
-            </View>
-            <EaterPicker
-              members={members}
-              eaterIds={eaterIds}
-              guests={guests}
-              onEaters={setEaterIds}
-              onGuests={setGuests}
-            />
-          </Stack>
-        ) : null}
-
-        {mode === 'activity' && creating ? (
-          <Stack gap={12}>
-            <NewHeading title="Neue Aktivität" onBack={() => setCreating(false)} />
-            <ActivityFormFields
-              form={activityForm}
-              autoFocus
-              openLabel="Auswählen"
-              onOpenExisting={chooseActivity}
-            />
-            {zusatz}
-          </Stack>
-        ) : null}
-
-        {mode === 'activity' && !creating && !activity ? (
-          <Stack gap={10}>
-            <TextField
-              value={activityQuery}
-              onChangeText={setActivityQuery}
-              placeholder="Aktivität suchen"
-              accessibilityLabel="Aktivität suchen"
-              round
-              left={<Icon name="search" size={19} color="muted" />}
-              testID="add-entry-activity-search"
-            />
-            <NewRow
-              label="Neue Aktivität"
-              disabled={online.disabled}
-              onPress={startCreating}
-              testID="add-entry-new-activity"
-            />
-            {activities.length === 0 ? (
-              <Text color="muted">Noch keine Aktivitäten.</Text>
-            ) : activityResults.length === 0 ? (
-              <Text color="muted">Keine Aktivität gefunden.</Text>
-            ) : (
-              <List>
-                {activityResults.slice(0, MAX_RESULTS).map((candidate) => (
-                  <ListRow
-                    key={candidate.id}
-                    title={candidate.name}
-                    subtitle={activityPlaceLine(candidate)}
-                    leading={<ActivityPhoto activity={candidate} width={44} height={44} />}
-                    onPress={() => chooseActivity(candidate)}
-                    testID={`add-entry-activity-${candidate.id}`}
-                  />
-                ))}
-              </List>
-            )}
-          </Stack>
-        ) : null}
-
-        {mode === 'activity' && !creating && activity ? (
-          <Stack gap={18}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <ActivityPhoto activity={activity} width={52} height={52} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text variant="cardTitle" testID="add-entry-activity-chosen">
-                  {activity.name}
-                </Text>
-                {activityPlaceLine(activity) ? (
-                  <Text variant="small" color="muted">
-                    {activityPlaceLine(activity)}
-                  </Text>
-                ) : null}
-              </View>
-              <Button
-                label="Ändern"
-                variant="link"
-                size="sm"
-                testID="add-entry-activity-back"
-                onPress={() => setActivityId(undefined)}
-              />
-            </View>
-            {zusatz}
-          </Stack>
-        ) : null}
-
-        {mode === 'text' ? (
-          <TextField
-            label="Was gibt es?"
-            value={text}
-            onChangeText={(value) => {
-              setText(value);
-              setError(undefined);
-            }}
-            placeholder="z. B. Essen bei Oma"
-            error={error}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={saveText}
-            testID="add-entry-text"
-          />
-        ) : null}
-
-        {mode === 'leftovers' ? (
-          leftoverSources.length === 0 ? (
-            <Text color="muted">
-              Diese Woche gab es davor noch nichts, von dem Reste übrig sein könnten.
-            </Text>
-          ) : (
-            <Stack gap={8}>
-              <Label>Reste wovon?</Label>
-              <List>
-                {leftoverSources.map((source) => (
-                  <ListRow
-                    key={source.id}
-                    title={entryTitle(source, recipesById, entries)}
-                    subtitle={source.date ? dayLabel(source.date) : undefined}
-                    disabled={online.disabled}
-                    onPress={() => saveLeftovers(source.id)}
-                    testID={`add-entry-leftover-${source.id}`}
-                  />
-                ))}
-              </List>
-            </Stack>
-          )
-        ) : null}
-      </Stack>
+          </View>
+        ) : undefined
+      }
+      footer={footer}
+    >
+      {online.hint ? (
+        <Text variant="small" color="warn" style={{ marginBottom: 8 }}>
+          {online.hint}
+        </Text>
+      ) : null}
+      {creating ? creatingBody : choice ? stepTwo : stepOne}
     </Sheet>
   );
 }

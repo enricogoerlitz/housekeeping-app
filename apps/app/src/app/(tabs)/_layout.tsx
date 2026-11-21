@@ -23,7 +23,7 @@ import { features } from '@/lib/features';
 const NAV: NavItem[] = [
   { key: 'index', label: 'Übersicht', icon: 'sun', tone: 'essen' },
   { key: 'rezepte', label: 'Essen', icon: 'utensils', tone: 'essen' },
-  { key: 'plan', label: 'Plan', icon: 'calendar-days', tone: 'plan' },
+  { key: 'kalender', label: 'Kalender', icon: 'calendar-days', tone: 'plan' },
   { key: 'liste', label: 'Liste', icon: 'shopping-basket', tone: 'liste' },
   { key: 'haushalt', label: 'Haushalt', icon: 'list-checks', tone: 'haushalt' },
 ];
@@ -31,7 +31,7 @@ const NAV: NavItem[] = [
 const ROUTE_OF_KEY: Record<string, string> = {
   index: 'index',
   rezepte: '(essen)',
-  plan: 'plan',
+  kalender: 'kalender',
   liste: '(liste)',
   haushalt: 'haushalt',
 };
@@ -76,7 +76,7 @@ export default function TabsLayout() {
       >
         <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
         <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
-        <Tabs.Screen name="plan" options={{ title: 'Plan' }} />
+        <Tabs.Screen name="kalender" options={{ title: 'Kalender' }} />
         <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
         <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
         {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}

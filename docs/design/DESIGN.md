@@ -35,21 +35,22 @@ nur auf dem Gerät. Ein unbekannter gespeicherter Wert fällt auf „Markthalle�
 
 Rollen statt Farbnamen. Alle Paare erfüllen WCAG AA (Text ≥ 4,5:1), geprüft per Unit-Test.
 
-| Rolle                                  | Verwendung                                               |
-| -------------------------------------- | -------------------------------------------------------- |
-| `bg`                                   | Seitenhintergrund                                        |
-| `surface`                              | Karten, Listen, Sheets                                   |
-| `surfaceSunken`                        | Eingabefelder (Klar), Platzhalter, Hover                 |
-| `border`                               | Haarlinien, Kartenränder                                 |
-| `text` / `textMuted`                   | Haupttext / Nebeninformationen                           |
-| `accent` / `onAccent`                  | Hauptaktionen, aktiver Tab, Links                        |
-| `accentSoft`                           | aktiver Eintrag in der Seitenleiste (in allen Themes)    |
-| `success` / `onSuccess`                | abgehakt, erledigt, Fortschritt                          |
-| `star`, `due`                          | Bewertungen; Fälligkeitsbalken und Vorlauf-Hinweis       |
-| `warnBg` / `warnText`                  | Offline, „Passt nicht für …“, Fehlermeldungen an Feldern |
-| `barBg`                                | Tab-Leiste, Seitenleiste, Eingabeleiste                  |
-| `fabBg` / `fabText`                    | Assistent-Knopf (in „Frisch“ Tinte)                      |
-| `tones.{essen,plan,liste,haushalt,ki}` | Bereichsfarben; nur „Frisch“ nutzt sie, siehe unten      |
+| Rolle                                                 | Verwendung                                                                                                     |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `bg`                                                  | Seitenhintergrund                                                                                              |
+| `surface`                                             | Karten, Listen, Sheets                                                                                         |
+| `surfaceSunken`                                       | Eingabefelder (Klar), Platzhalter, Hover                                                                       |
+| `border`                                              | Haarlinien, Kartenränder                                                                                       |
+| `text` / `textMuted`                                  | Haupttext / Nebeninformationen                                                                                 |
+| `accent` / `onAccent`                                 | Hauptaktionen, aktiver Tab, Links                                                                              |
+| `accentSoft`                                          | aktiver Eintrag in der Seitenleiste (in allen Themes)                                                          |
+| `success` / `onSuccess`                               | abgehakt, erledigt, Fortschritt                                                                                |
+| `star`, `due`                                         | Bewertungen; Fälligkeitsbalken und Vorlauf-Hinweis                                                             |
+| `warnBg` / `warnText`                                 | Offline, „Passt nicht für …“, Fehlermeldungen an Feldern                                                       |
+| `barBg`                                               | Tab-Leiste, Seitenleiste, Eingabeleiste                                                                        |
+| `fabBg` / `fabText`                                   | Assistent-Knopf (in „Frisch“ Tinte)                                                                            |
+| `tones.{essen,plan,liste,haushalt,ki}`                | Bereichsfarben; nur „Frisch“ nutzt sie, siehe unten                                                            |
+| `kinds.{recipe,collection,restaurant,activity,chore}` | Arten im Kalender (Spec 0010, D19): nur als 3-px-Kante oder Punkt, nie als Fläche; ≥ 3:1 gegen Seite und Karte |
 
 | Theme      | Hell: Hintergrund · Akzent                   | Dunkel: Hintergrund · Akzent |
 | ---------- | -------------------------------------------- | ---------------------------- |
@@ -94,24 +95,26 @@ Textstile sind Rollen (`packages/ui/src/themes/types.ts`): `display`, `title`, `
 Alle in `packages/ui`; der **Showroom** (`/showroom`) zeigt jeden Baustein mit seinen Zuständen in
 allen Themes.
 
-| Baustein                                                                      | Wofür                                                                                                                                                                                   |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Screen`, `ScreenHeader`                                                      | Seitenrahmen: `header` (Titel, Zurück, Aktionen), `tabs` und `toolbar` bleiben oben; auf dem Handy schrumpft der Titel zur schmalen Leiste, die `toolbar` rutscht weg; `tone` = Bereich |
-| `TabBar`, `Sidebar`, `Fab`                                                    | Navigation: Tab-Leiste auf dem Handy; Seitenleiste ab Tablet mit Gruppen („Verwalten“), aktiver Eintrag in `accentSoft`; Assistent (nur mit KI-Schalter an)                             |
-| `ViewTabs`                                                                    | zwischen Ansichten wechseln (nur Text, Akzentlinie, seitlich wischbar)                                                                                                                  |
-| `ChoiceChips`                                                                 | ein Wert aus wenigen im Formular (Art, Aufwand, Tageszeit, Variante, Erscheinungsbild)                                                                                                  |
-| `Menu`                                                                        | Menü-Knopf mit kurzer Liste, z. B. Sortierung „↕ Zuletzt ▾“                                                                                                                             |
-| `Section`                                                                     | Abschnitt mit Titel; Rahmung je Theme (frei, gruppiert, Kachel)                                                                                                                         |
-| `List`, `ListRow`, `CheckRow`, `GroupLabel`                                   | Listen; Trennung je Theme (Linie, Gruppe, Kachel)                                                                                                                                       |
-| `useCheckWindow`, `RowTransition`                                             | Abhaken mit Sammel-Fenster (`CHECK_WINDOW_MS` = 2 s); eingesetzt ab Spec 0006                                                                                                           |
-| `SearchOrCreate`                                                              | Suchen oder anlegen, mit Bremse gegen Doppelte; eingesetzt ab Spec 0006                                                                                                                 |
-| `FilterBar`, `InfiniteList`                                                   | Filterzeile (höchstens zwei Zeilen) und Endlos-Liste; eingesetzt ab Spec 0007                                                                                                           |
-| `GhostRow`, `ProposalCard`                                                    | Vorschläge des Assistenten (gestrichelte Zeile, Diff-Karte)                                                                                                                             |
-| `MediaCard`, `Photo`                                                          | Rezepte und Gerichte; Foto oben oder als Vorschaubild                                                                                                                                   |
-| `Button`, `IconButton`, `Chip`, `SwitchRow`, `Checkbox`, `Stars`, `TextField` | Bedienelemente mit sichtbarem Tastatur-Fokus; `Chip` mehrfach wählbar zum Filtern                                                                                                       |
-| `Avatar`, `AvatarStack`, `Badge`, `ProgressBar`, `DueBar`                     | Personen, Kennzeichen, Fortschritt                                                                                                                                                      |
-| `EmptyState`, `OfflineBanner`, `Notice`                                       | leere Zustände mit erstem Schritt, Offline, ruhige Hinweise                                                                                                                             |
-| `Sheet`, `toast`                                                              | Fenster in fester Größe `s` · `m` · `l` (Handy von unten, ab Tablet Dialog 440 · 560 × 640 · 760 × 720); Hinweis mit „Rückgängig“                                                       |
+| Baustein                                                                      | Wofür                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Screen`, `ScreenHeader`                                                      | Seitenrahmen: `header` (Titel, Zurück, Aktionen), `tabs` und `toolbar` bleiben oben; auf dem Handy schrumpft der Titel zur schmalen Leiste, die `toolbar` rutscht weg; `tone` = Bereich; `backLabel` zeigt „‹ Kalender“ |
+| `TabBar`, `Sidebar`, `Fab`                                                    | Navigation: Tab-Leiste auf dem Handy; Seitenleiste ab Tablet mit Gruppen („Verwalten“), aktiver Eintrag in `accentSoft`; Assistent (nur mit KI-Schalter an)                                                             |
+| `ViewTabs`                                                                    | zwischen Ansichten wechseln (nur Text, Akzentlinie, seitlich wischbar)                                                                                                                                                  |
+| `ChoiceChips`                                                                 | ein Wert aus wenigen im Formular (Art, Aufwand, Tageszeit, Variante, Erscheinungsbild)                                                                                                                                  |
+| `Menu`                                                                        | Menü-Knopf mit kurzer Liste, z. B. Sortierung „↕ Zuletzt ▾“; mit `trigger="icon"` das Aktionsmenü ⋯, Einträge mit `disabled` und `hint` (Spec 0010)                                                                     |
+| `Popover`                                                                     | kleines Fenster am Link, z. B. hinter „+2 weitere“ im Monat; Escape, ✕ oder Klick daneben schließt (Spec 0010)                                                                                                          |
+| `KindLine`, `KindDot`, `KIND_ICONS`                                           | Eintrag im Kalender: Symbol plus Text mit 3-px-Kante der Art; Punkt der Art im Monat und Jahr (Spec 0010, D19)                                                                                                          |
+| `Section`                                                                     | Abschnitt mit Titel; Rahmung je Theme (frei, gruppiert, Kachel)                                                                                                                                                         |
+| `List`, `ListRow`, `CheckRow`, `GroupLabel`                                   | Listen; Trennung je Theme (Linie, Gruppe, Kachel)                                                                                                                                                                       |
+| `useCheckWindow`, `RowTransition`                                             | Abhaken mit Sammel-Fenster (`CHECK_WINDOW_MS` = 2 s); eingesetzt ab Spec 0006                                                                                                                                           |
+| `SearchOrCreate`                                                              | Suchen oder anlegen, mit Bremse gegen Doppelte; eingesetzt ab Spec 0006                                                                                                                                                 |
+| `FilterBar`, `InfiniteList`                                                   | Filterzeile (höchstens zwei Zeilen) und Endlos-Liste; eingesetzt ab Spec 0007                                                                                                                                           |
+| `GhostRow`, `ProposalCard`                                                    | Vorschläge des Assistenten (gestrichelte Zeile, Diff-Karte)                                                                                                                                                             |
+| `MediaCard`, `Photo`                                                          | Rezepte und Gerichte; Foto oben oder als Vorschaubild                                                                                                                                                                   |
+| `Button`, `IconButton`, `Chip`, `SwitchRow`, `Checkbox`, `Stars`, `TextField` | Bedienelemente mit sichtbarem Tastatur-Fokus; `Chip` mehrfach wählbar zum Filtern                                                                                                                                       |
+| `Avatar`, `AvatarStack`, `Badge`, `ProgressBar`, `DueBar`                     | Personen, Kennzeichen, Fortschritt                                                                                                                                                                                      |
+| `EmptyState`, `OfflineBanner`, `Notice`                                       | leere Zustände mit erstem Schritt, Offline, ruhige Hinweise                                                                                                                                                             |
+| `Sheet`, `toast`                                                              | Fenster in fester Größe `s` · `m` · `l` (Handy von unten, ab Tablet Dialog 440 · 560 × 640 · 760 × 720); Hinweis mit „Rückgängig“                                                                                       |
 
 Ein Muster je Aufgabe (Spec 0005, D1): Ansichten wechseln mit `ViewTabs`, ein Wert im Formular mit
 `ChoiceChips`, Reihenfolge mit `Menu`, Filtern mit `Chip`, an/aus mit `SwitchRow`. Einen

@@ -14,7 +14,7 @@ import { Button, Checkbox, focusRing } from './controls';
 import type { IconName } from './icons';
 import { Icon, Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
-import type { Tone } from './themes';
+import type { KindColor, Tone } from './themes';
 
 const AVATAR_SIZES = { xs: 18, s: 26, m: 40, l: 56 } as const;
 // Initials stay white on every member colour; member colours are chosen dark enough for that.
@@ -696,5 +696,128 @@ export function TypingIndicator(props: { label: string; testID?: string }) {
         />
       ))}
     </View>
+  );
+}
+
+/** Symbol of each kind of calendar entry (spec 0010, D19): Kochmütze, Stapel, Besteck, Berg, Haken. */
+export const KIND_ICONS: Record<KindColor, IconName> = {
+  recipe: 'chef-hat',
+  collection: 'layers',
+  restaurant: 'utensils',
+  activity: 'mountain',
+  chore: 'check',
+};
+
+export interface KindLineProps {
+  kind: KindColor;
+  title: string;
+  /** Small text before the symbol, e.g. the Tageszeit in a day list. */
+  prefix?: string;
+  /** Replaces the kind's symbol, e.g. the check box of a chore that is due today. */
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  onPress?: () => void;
+  /** Flexible chores: dashed edge (spec 0010, REQ-006). */
+  dashed?: boolean;
+  /** A chore checked in the running window: struck through. */
+  struck?: boolean;
+  /** compact = one line in the desktop month; row = a full row. */
+  size?: 'row' | 'compact';
+  /** Muted text, e.g. the quiet household row. */
+  quiet?: boolean;
+  accessibilityLabel?: string;
+  testID?: string;
+}
+
+/**
+ * One calendar entry: symbol plus text, with its kind's colour only as a 3 px edge, never as a
+ * fill (spec 0010, D19, AC-009).
+ */
+export function KindLine(props: KindLineProps) {
+  const theme = useTheme();
+  const compact = props.size === 'compact';
+  const body = (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: compact ? 5 : 8,
+        minHeight: compact ? 22 : 36,
+        paddingLeft: compact ? 5 : 8,
+        paddingRight: 4,
+        borderLeftWidth: 3,
+        borderLeftColor: theme.colors.kinds[props.kind],
+        borderStyle: props.dashed ? 'dashed' : 'solid',
+      }}
+    >
+      {props.prefix ? (
+        <Text variant="caption" color="muted" style={{ minWidth: 68 }}>
+          {props.prefix}
+        </Text>
+      ) : null}
+      {props.leading ?? (
+        <Icon name={KIND_ICONS[props.kind]} size={compact ? 13 : 15} color="muted" />
+      )}
+      <Text
+        variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
+        color={props.quiet || props.struck ? 'muted' : 'text'}
+        numberOfLines={compact ? 1 : 2}
+        style={[
+          { flex: 1, minWidth: 0 },
+          props.struck ? { textDecorationLine: 'line-through' } : null,
+        ]}
+      >
+        {props.title}
+      </Text>
+      {props.trailing}
+    </View>
+  );
+  if (!props.onPress) {
+    return (
+      <View testID={props.testID} accessibilityLabel={props.accessibilityLabel}>
+        {body}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      testID={props.testID}
+      accessibilityRole="button"
+      accessibilityLabel={props.accessibilityLabel ?? props.title}
+      onPress={props.onPress}
+      style={(state) => {
+        const { pressed, hovered, focused } = state as {
+          pressed: boolean;
+          hovered?: boolean;
+          focused?: boolean;
+        };
+        return [
+          {
+            borderRadius: 4,
+            backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+            opacity: pressed ? 0.7 : 1,
+          },
+          focusRing(theme, focused),
+        ];
+      }}
+    >
+      {body}
+    </Pressable>
+  );
+}
+
+/** The dot of a kind under a day in the month and the year (spec 0010, D19, D20). */
+export function KindDot(props: { kind: KindColor; size?: number }) {
+  const theme = useTheme();
+  const size = props.size ?? 6;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: theme.colors.kinds[props.kind],
+      }}
+    />
   );
 }

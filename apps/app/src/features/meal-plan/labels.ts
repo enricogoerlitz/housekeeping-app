@@ -1,7 +1,6 @@
 import {
+  dayMonthLabel,
   formatLongDate,
-  formatShortDate,
-  isoWeekNumber,
   parseISODate,
   splitVariants,
   weekdayShort,
@@ -20,12 +19,15 @@ export function dayLabel(date: ISODate): string {
   return `${weekdayShort(date)} ${parseISODate(date).getDate()}`;
 }
 
-/** "KW 47 · 16.11.–22.11." */
-export function weekSubtitle(dates: ISODate[]): string {
-  const first = dates[0];
-  const last = dates[dates.length - 1];
-  if (!first || !last) return '';
-  return `KW ${isoWeekNumber(first)} · ${formatShortDate(first)}–${formatShortDate(last)}`;
+/** Title of the add window: "Sa 2. Jan · Abend", "Fr 1. Jan" (no Tageszeit chosen), "Vormerken". */
+export function addSheetTitle(
+  date: ISODate | null,
+  slotName: string | undefined,
+  slotChosen: boolean,
+): string {
+  if (date === null) return 'Vormerken';
+  const day = dayMonthLabel(date);
+  return slotChosen && slotName ? `${day} · ${slotName}` : day;
 }
 
 function weekdayLong(date: ISODate): string {

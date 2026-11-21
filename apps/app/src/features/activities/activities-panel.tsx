@@ -1,12 +1,5 @@
 import { useActivities, useCurrentMember, usePlanEntries, useToday } from '@housekeeping/api';
-import {
-  fuzzyIncludes,
-  routeId,
-  visitsOf,
-  type Activity,
-  type Id,
-  type Visits,
-} from '@housekeeping/core';
+import { fuzzyIncludes, visitsOf, type Activity, type Id, type Visits } from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -16,6 +9,7 @@ import {
   Menu,
   Row,
   Screen,
+  ScreenHeader,
   Stack,
   Stars,
   Surface,
@@ -25,13 +19,11 @@ import {
   useTheme,
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { ActivityDetail } from './activity-detail';
 import { ActivityFormSheet } from './activity-form';
 import { ActivityPhoto } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
@@ -44,8 +36,6 @@ const SORTS: { value: ActivitySort; label: string }[] = [
   { value: 'recent', label: 'Zuletzt' },
 ];
 
-const LIST_COLUMN_WIDTH = 380;
-
 function matches(query: string, activity: Activity): boolean {
   return [
     activity.name,
@@ -57,33 +47,53 @@ function matches(query: string, activity: Activity): boolean {
 }
 
 /**
- * "Plan → Aktivitäten" (AC-004, AC-005): search, favourites, sort; on wide screens list and
- * detail side by side, on phones the detail is its own page inside the plan tab.
+ * "Back" of the page "Aktivitäten" (spec 0010, REQ-008): opened from "Verwalten" on a phone it
+ * leads there ("‹ Verwalten"), otherwise back to the calendar underneath ("‹ Kalender"), which
+ * still shows the view and period it had (AC-025, AC-040).
  */
-export function ActivitiesPanel(props: {
-  header: (right: ReactNode) => ReactNode;
-  tabs: ReactNode;
-}) {
+function useActivitiesBack(): { label: string; back: () => void } {
   const router = useRouter();
-  const params = useLocalSearchParams<{ aid?: string | string[] }>();
-  const { isWide, isPhone, bp } = useBreakpoint();
+  const { isPhone } = useBreakpoint();
+  const params = useLocalSearchParams<{ von?: string | string[] }>();
+  const from = Array.isArray(params.von) ? params.von[0] : params.von;
+  if (from === 'verwalten' && isPhone) {
+    return {
+      label: 'Verwalten',
+      back: () => {
+        // The calendar's tab gets its first page back before "Verwalten" shows, so the tab shows
+        // the calendar again later instead of this page.
+        router.replace('/kalender');
+        router.navigate('/verwalten');
+      },
+    };
+  }
+  return {
+    label: 'Kalender',
+    back: () => (router.canGoBack() ? router.back() : router.replace('/kalender')),
+  };
+}
+
+/**
+ * "Aktivitäten" as its own page in the calendar's area (spec 0010, REQ-008; spec 0004, AC-004,
+ * AC-005): search, favourites, sort; an activity opens as its own page.
+ */
+export function ActivitiesScreen() {
+  const router = useRouter();
+  const { isPhone, bp } = useBreakpoint();
   const online = useOnlineOnly();
   const activities = useActivities();
   const entries = usePlanEntries();
   const today = useToday();
   const me = useCurrentMember();
+  const { label: backLabel, back } = useActivitiesBack();
 
   const [query, setQuery] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [sort, setSort] = useState<ActivitySort>('name');
   const [creating, setCreating] = useState(false);
 
-  const selectedId = isWide ? routeId(params.aid) : undefined;
-
-  const open = (activityId: Id) => {
-    if (isWide) router.setParams({ aid: activityId });
-    else router.push({ pathname: '/plan/aktivitaet/[id]', params: { id: activityId } });
-  };
+  const open = (activityId: Id) =>
+    router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } });
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
@@ -130,11 +140,14 @@ export function ActivitiesPanel(props: {
       testID="activity-add"
     />
   );
-  const header = props.header(
-    <>
-      {addButton}
-      <StartPageActions />
-    </>,
+  const header = (
+    <ScreenHeader
+      title="Aktivitäten"
+      backLabel={backLabel}
+      onBack={back}
+      right={addButton}
+      testID="activities-title"
+    />
   );
   const offlineHint = online.hint ? (
     <Text variant="small" color="warn" testID="activity-offline-hint" style={{ marginBottom: 12 }}>
@@ -148,7 +161,7 @@ export function ActivitiesPanel(props: {
 
   if (empty) {
     return (
-      <Screen testID="activities-screen" tone="plan" header={header} tabs={props.tabs}>
+      <Screen testID="activities-screen" tone="plan" header={header}>
         {offlineHint}
         <EmptyState
           icon="mountain"
@@ -170,8 +183,7 @@ export function ActivitiesPanel(props: {
     );
   }
 
-  const compact = selectedId !== undefined;
-  const columns = isPhone || compact ? 1 : bp === 'desktop' ? 3 : 2;
+  const columns = isPhone ? 1 : bp === 'desktop' ? 3 : 2;
   const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
   const toolbar = (
     <Stack gap={8}>
@@ -244,7 +256,6 @@ export function ActivitiesPanel(props: {
                 myRating={activity.ratings[me.id] ?? 0}
                 isFavorite={activity.favoriteOf.includes(me.id)}
                 visits={visitsById.get(activity.id)}
-                selected={activity.id === selectedId}
                 onPress={() => open(activity.id)}
               />
             </View>
@@ -254,66 +265,12 @@ export function ActivitiesPanel(props: {
     </>
   );
 
-  if (compact && selectedId !== undefined) {
-    return (
-      <Screen
-        testID="activities-screen"
-        tone="plan"
-        header={header}
-        tabs={props.tabs}
-        scroll={false}
-        style={{ flex: 1, paddingBottom: 0 }}
-      >
-        <View style={{ flex: 1, flexDirection: 'row', gap: 32 }}>
-          <View style={{ width: LIST_COLUMN_WIDTH }}>
-            <ScrollColumn>
-              <View style={{ paddingVertical: 8 }}>{toolbar}</View>
-              {offlineHint}
-              {listBody}
-            </ScrollColumn>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <ScrollColumn>
-              <View style={{ paddingTop: 8 }}>
-                <ActivityDetail
-                  activityId={selectedId}
-                  onClose={() => router.setParams({ aid: undefined })}
-                  onOpen={open}
-                />
-              </View>
-            </ScrollColumn>
-          </View>
-        </View>
-        {sheet}
-      </Screen>
-    );
-  }
-
   return (
-    <Screen
-      testID="activities-screen"
-      tone="plan"
-      header={header}
-      tabs={props.tabs}
-      toolbar={toolbar}
-    >
+    <Screen testID="activities-screen" tone="plan" header={header} toolbar={toolbar}>
       {offlineHint}
       {listBody}
       {sheet}
     </Screen>
-  );
-}
-
-function ScrollColumn(props: { children: ReactNode }) {
-  return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 96 }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {props.children}
-    </ScrollView>
   );
 }
 
@@ -322,7 +279,6 @@ function ActivityCard(props: {
   myRating: number;
   isFavorite: boolean;
   visits?: Visits;
-  selected: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -335,20 +291,13 @@ function ActivityCard(props: {
       testID={`activity-${id}`}
       accessibilityRole="button"
       accessibilityLabel={activity.name}
-      accessibilityState={{ selected: props.selected }}
       onPress={props.onPress}
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,
         borderRadius: theme.shape.radius.card,
       })}
     >
-      <Surface
-        padding={12}
-        style={[
-          { flexDirection: 'row', alignItems: 'center', gap: 12 },
-          props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
-        ]}
-      >
+      <Surface padding={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <ActivityPhoto activity={activity} width={56} height={56} testID={`activity-${id}`} />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Row gap={6}>

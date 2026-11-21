@@ -65,6 +65,10 @@ export {
   Notice,
   ProposalCard,
   TypingIndicator,
+  KindLine,
+  KindDot,
+  KIND_ICONS,
+  type KindLineProps,
   type AvatarProps,
   type BadgeProps,
   type PhotoProps,
@@ -77,10 +81,13 @@ export {
   ViewTabs,
   ChoiceChips,
   Menu,
+  Popover,
   type ChoiceOption,
   type ViewTabsProps,
   type ChoiceChipsProps,
+  type MenuOption,
   type MenuProps,
+  type PopoverProps,
 } from './choice';
 export { Sheet, toast, ToastHost, type SheetProps, type ToastOptions } from './overlay';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';

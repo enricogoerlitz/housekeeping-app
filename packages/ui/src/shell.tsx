@@ -287,6 +287,8 @@ export interface ScreenHeaderProps {
   right?: ReactNode;
   /** Shows a back arrow on the left. */
   onBack?: () => void;
+  /** Names where "Zurück" leads, e.g. "Kalender": shown as "‹ Kalender" above the title. */
+  backLabel?: string;
   testID?: string;
 }
 
@@ -308,12 +310,15 @@ export function ScreenHeader(props: ScreenHeaderProps) {
         paddingBottom: collapsed ? 8 : 16,
       }}
     >
-      {props.onBack ? (
+      {props.onBack && (!props.backLabel || collapsed) ? (
         <View style={{ marginLeft: -8, marginTop: collapsed ? 0 : isPhone ? -2 : 2 }}>
           <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
         </View>
       ) : null}
       <View style={{ flex: 1, minWidth: 0 }}>
+        {props.onBack && props.backLabel && !collapsed ? (
+          <BackLink label={props.backLabel} onPress={props.onBack} />
+        ) : null}
         {props.kicker && !collapsed ? (
           <Text variant="small" color="muted" style={{ marginBottom: 2 }}>
             {props.kicker}
@@ -337,6 +342,42 @@ export function ScreenHeader(props: ScreenHeaderProps) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{props.right}</View>
       ) : null}
     </View>
+  );
+}
+
+/** "‹ Kalender": back with the name of the page it leads to (spec 0010, AC-025, AC-039). */
+function BackLink(props: { label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      testID="back"
+      accessibilityRole="button"
+      accessibilityLabel={`Zurück: ${props.label}`}
+      onPress={props.onPress}
+      hitSlop={8}
+      style={(state) => {
+        const { pressed, focused } = state as { pressed: boolean; focused?: boolean };
+        return [
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            alignSelf: 'flex-start',
+            gap: 2,
+            minHeight: 32,
+            marginLeft: -6,
+            paddingRight: 6,
+            borderRadius: theme.shape.radius.control,
+            opacity: pressed ? 0.6 : 1,
+          },
+          focusRing(theme, focused),
+        ];
+      }}
+    >
+      <Icon name="chevron-left" size={20} color="accent" />
+      <Text variant="smallStrong" color="accent" testID="back-label">
+        {props.label}
+      </Text>
+    </Pressable>
   );
 }
 

@@ -223,7 +223,7 @@ test.describe('shell at phone width', () => {
     await expect(tid(page, 'variant')).toBeHidden();
     await back(page);
 
-    await nav(page, 'plan');
+    await nav(page, 'kalender');
     // Every day of the current week is shown, and the plan has dishes in it.
     await expect(tidPrefix(page, 'day-')).toHaveCount(7);
     expect(await page.locator(PLAN_ENTRY).count()).toBeGreaterThan(3);
@@ -296,7 +296,7 @@ test.describe('shell at phone width', () => {
     await expect(tid(page, 'theme-frisch-selected')).toBeVisible();
     await expect.poll(() => appBackground(page)).toBe(BG.frischLight);
     await back(page);
-    for (const key of ['rezepte', 'plan', 'liste', 'haushalt'] as const) {
+    for (const key of ['rezepte', 'kalender', 'liste', 'haushalt'] as const) {
       await nav(page, key);
       await expect.poll(() => appBackground(page), key).toBe(BG.frischLight);
     }

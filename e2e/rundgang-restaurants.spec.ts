@@ -231,7 +231,7 @@ test('0002 AC-010: 5 stars, favourite and a note show in the list and on the det
 test('0002 AC-011: a restaurant in the plan has the restaurant mark and adds nothing to the list', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, THURSDAY);
   await tid(page, `add-${THURSDAY}-${SLOT_DINNER}`).click();
   await tid(page, 'add-entry-mode-restaurant').click();
@@ -257,7 +257,7 @@ test('0002 AC-011: a restaurant in the plan has the restaurant mark and adds not
 test('0002 AC-012: "Route" on Heute opens Apple Karten or Google Maps at Enzo’s coordinates', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
   await tid(page, 'add-entry-mode-restaurant').click();
   await tid(page, `add-entry-restaurant-${seedIds['rest-enzo']}`).click();
@@ -343,7 +343,7 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
   test('"Fior di Latte" on the Mozzarella reaches the list through the pantry check', async ({
     page,
   }) => {
-    await open(page, '/plan');
+    await open(page, '/kalender');
     await pantryCheckFor(page, PIZZA_DAY);
     await expect(tid(page, `pc-row-${seedIds['art-mozzarella']}`)).toContainText('(Fior di Latte)');
     await tid(page, 'pc-apply').click();
@@ -386,7 +386,7 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
     );
 
     await back(page);
-    await nav(page, 'plan');
+    await nav(page, 'kalender');
     await pantryCheckFor(page, PIZZA_DAY);
     await expect(tid(page, `pc-row-${seedIds['art-mozzarella']}`)).toContainText(
       '(Büffelmozzarella)',

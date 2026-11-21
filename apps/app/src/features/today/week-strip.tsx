@@ -69,7 +69,7 @@ export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact:
         testID={`today-week-${day.date}`}
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${day.title ?? 'nichts geplant'}`}
-        onPress={() => router.push('/plan')}
+        onPress={() => router.push('/kalender')}
         style={(state) => ({
           flex: props.compact ? undefined : 1,
           width: props.compact ? 76 : undefined,

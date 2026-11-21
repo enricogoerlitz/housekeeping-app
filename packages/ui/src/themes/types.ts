@@ -4,6 +4,12 @@ export type ThemeId = 'markthalle' | 'klar' | 'frisch';
 export type ColorMode = 'light' | 'dark';
 /** Colour worlds of the app areas. Only the theme "Frisch" shows them (see `areaTone`). */
 export type Tone = 'essen' | 'plan' | 'liste' | 'haushalt' | 'ki';
+/**
+ * Kinds of calendar entries (spec 0010, D19). Their colour is only ever a 3 px edge or a dot,
+ * never a fill, so it is held to the 3:1 of graphics, not to the text ratio.
+ */
+export type KindColor = 'recipe' | 'collection' | 'restaurant' | 'activity' | 'chore';
+export const KIND_COLORS: KindColor[] = ['recipe', 'collection', 'restaurant', 'activity', 'chore'];
 
 export interface ThemeColors {
   bg: string;
@@ -29,6 +35,8 @@ export interface ThemeColors {
   fabBg: string;
   fabText: string;
   tones: Record<Tone, { bg: string; fg: string }>;
+  /** Terrakotta, Pflaume, Ocker, Moos, Grau (spec 0010, D19). */
+  kinds: Record<KindColor, string>;
 }
 
 export type FontWeight = '400' | '500' | '600' | '700' | '800';

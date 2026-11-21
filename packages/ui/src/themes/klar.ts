@@ -90,6 +90,13 @@ const light: ThemeColors = {
     haushalt: { bg: '#E0EAFF', fg: '#1D3F91' },
     ki: { bg: '#ECE4FF', fg: '#4B2A9E' },
   },
+  kinds: {
+    recipe: '#B4532A',
+    collection: '#8A4A7A',
+    restaurant: '#9A6400',
+    activity: '#4F6B2E',
+    chore: '#6E6E73',
+  },
 };
 
 const dark: ThemeColors = {
@@ -119,6 +126,13 @@ const dark: ThemeColors = {
     liste: { bg: '#0F3A30', fg: '#9CE9D2' },
     haushalt: { bg: '#18274F', fg: '#B9CCFF' },
     ki: { bg: '#2B1F52', fg: '#D5C7FF' },
+  },
+  kinds: {
+    recipe: '#E48A66',
+    collection: '#D49AC4',
+    restaurant: '#D9A93A',
+    activity: '#9DBE72',
+    chore: '#9A9AA2',
   },
 };
 

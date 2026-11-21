@@ -13,6 +13,11 @@ export interface ManageEntry {
    * sub-pages (a store keeps "Märkte & Bereiche" highlighted, AC-052).
    */
   route?: string;
+  /**
+   * For pages inside an area's stack: the address they and their sub-pages start with, so the
+   * sidebar highlights the entry there (spec 0010, AC-039).
+   */
+  pathPrefix?: string;
 }
 
 export interface ManageGroup {
@@ -22,7 +27,7 @@ export interface ManageGroup {
 }
 
 // "Artikel" (spec 0007) and "Reisetaschen" (spec 0012) get their entries with their pages
-// (spec 0005, open question 1). "Aktivitäten" is the plan's second view until spec 0010.
+// (spec 0005, open question 1). "Aktivitäten" lives in the calendar's area (spec 0010, REQ-008).
 export const MANAGE_GROUPS: ManageGroup[] = [
   {
     key: 'plan',
@@ -32,7 +37,8 @@ export const MANAGE_GROUPS: ManageGroup[] = [
         key: 'activities',
         label: 'Aktivitäten',
         icon: 'mountain',
-        href: { pathname: '/plan', params: { view: 'activities' } },
+        href: { pathname: '/kalender/aktivitaeten', params: { von: 'verwalten' } },
+        pathPrefix: '/kalender/aktivitaet',
       },
       {
         key: 'absences',

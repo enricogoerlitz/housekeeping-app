@@ -108,7 +108,7 @@ export function isPhone(page: Page): boolean {
   return (page.viewportSize()?.width ?? 0) < 700;
 }
 
-export type TabKey = 'index' | 'rezepte' | 'plan' | 'liste' | 'haushalt';
+export type TabKey = 'index' | 'rezepte' | 'kalender' | 'liste' | 'haushalt';
 
 /**
  * Lets a navigation settle: the screen left behind is marked `inert` a frame after the click,
@@ -279,7 +279,7 @@ export async function switchHousehold(page: Page, householdId: string): Promise<
   await leaveManaged(page);
 }
 
-/** On the plan (showing the current week): moves to the Monday–Sunday week of `date`. */
+/** On the calendar (showing the current week): moves to the Monday–Sunday week of `date`. */
 export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
   await expect(tid(page, `day-${TODAY}`)).toBeVisible();
   const weeks = daysBetween(startOfWeek(TODAY), startOfWeek(date)) / 7;

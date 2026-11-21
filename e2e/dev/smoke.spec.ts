@@ -9,7 +9,6 @@ import {
   openManaged,
   openSettings,
   showPlanWeek,
-  SLOT_DINNER,
   switchHousehold,
   test,
   tid,
@@ -36,12 +35,13 @@ test('dev smoke: every screen renders without a React warning or error', async (
   const warnings = warningsOf(page);
   await login(page, 'enrico');
 
-  // A restaurant for tonight: "Heute" shows its card with the route button.
-  await nav(page, 'plan');
-  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
-  await tid(page, 'add-entry-mode-restaurant').click();
+  // A restaurant for tonight: "Heute" shows its card with the route button. On phones a day has
+  // one "+ Hinzufügen" that preselects the evening (spec 0010, AC-008, AC-024).
+  await nav(page, 'kalender');
+  await tid(page, `add-${TODAY}`).click();
+  await tid(page, 'add-entry-tab-restaurants').click();
   await tid(page, `add-entry-restaurant-${seedIds['rest-enzo']}`).click();
-  await tid(page, 'add-entry-restaurant-save').click();
+  await tid(page, 'add-entry-save').click();
   await showPlanWeek(page, TODAY);
   await nav(page, 'index');
   await expect(tid(page, 'today-meals')).toContainText('Trattoria Da Enzo');
@@ -59,33 +59,50 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await back(page);
 
-  // Plan → Aktivitäten: the collection, one activity on its own page, the add sheet's new kind
-  // and its "Neu anlegen" form.
-  await nav(page, 'plan');
-  await tid(page, 'plan-view-activities').click();
+  // Kalender → ▲ Aktivitäten: the page, one activity on its own page, the add sheet's tabs and
+  // its "Neu anlegen" forms (spec 0010, REQ-007, REQ-008).
+  await nav(page, 'kalender');
+  await tid(page, 'calendar-activities').click();
+  await expect(tid(page, 'activities-screen')).toBeVisible();
   await tid(page, `activity-${seedIds['act-eislaufen']}`).click();
   await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
   await tid(page, 'activity-plan').click();
   await expect(tid(page, 'add-entry-activity-chosen')).toHaveText('Eislaufen');
   await tid(page, 'add-entry-sheet-close').click();
   await back(page);
-  await tid(page, 'plan-view-week').click();
-  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
-  await tid(page, 'add-entry-mode-activity').click();
+  await expect(tid(page, 'activities-screen')).toBeVisible();
+  await back(page);
+  await expect(tid(page, 'calendar-screen')).toBeVisible();
+  await tid(page, `add-${TODAY}`).click();
+  await tid(page, 'add-entry-tab-activities').click();
   await tid(page, 'add-entry-new-activity').click();
   await expect(tid(page, 'activity-name')).toBeVisible();
   await tid(page, 'add-entry-sheet-close').click();
   // The other kinds' "Neu anlegen" forms in the same sheet.
-  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
+  await tid(page, `add-${TODAY}`).click();
   await tid(page, 'add-entry-new-recipe').click();
   await expect(tid(page, 'new-recipe-title')).toBeVisible();
   await tid(page, 'add-entry-new-back').click();
-  await tid(page, 'add-entry-mode-restaurant').click();
+  await tid(page, 'add-entry-tab-restaurants').click();
   await tid(page, 'add-entry-new-restaurant').click();
   await expect(tid(page, 'restaurant-link')).toBeVisible();
   await tid(page, 'add-entry-sheet-close').click();
 
-  // Plan with its pantry check, the list and store mode, the household.
+  // Month and year, and the absence window with its month calendar (spec 0010, REQ-004,
+  // REQ-005, REQ-010).
+  await tid(page, 'calendar-view-month').click();
+  await expect(tid(page, 'month-phone')).toBeVisible();
+  await tid(page, 'calendar-view-year').click();
+  await expect(tid(page, 'year-view')).toBeVisible();
+  await tid(page, 'calendar-more').click();
+  await tid(page, 'calendar-more-absence-new').click();
+  await expect(tid(page, 'absence-sheet')).toBeVisible();
+  await tid(page, 'absence-from').click();
+  await expect(tid(page, 'range-picker')).toBeVisible();
+  await tid(page, 'absence-sheet-close').click();
+  await tid(page, 'calendar-view-week').click();
+
+  // The calendar's pantry check, the list and store mode, the household.
   await tid(page, 'plan-to-list').click();
   await expect(tid(page, 'pantry-check-sheet')).toBeVisible();
   await tid(page, 'pantry-check-sheet-close').click();
@@ -121,11 +138,11 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // A household with nothing planned and no chores: the empty states.
   await switchHousehold(page, seedIds['hh-test']);
   await expect(tid(page, 'today-screen')).toBeVisible();
-  for (const key of ['rezepte', 'plan', 'liste', 'haushalt', 'index'] as const) {
+  for (const key of ['rezepte', 'kalender', 'liste', 'haushalt', 'index'] as const) {
     await nav(page, key);
   }
-  await nav(page, 'plan');
-  await tid(page, 'plan-view-activities').click();
+  await nav(page, 'kalender');
+  await tid(page, 'calendar-activities').click();
   await expect(tid(page, 'activities-empty')).toBeVisible();
 
   expect(warnings, 'console warnings').toEqual([]);

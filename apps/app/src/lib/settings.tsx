@@ -24,6 +24,8 @@ export interface LocalSettings {
   aiAssist: boolean;
   /** The iOS tip "Zum Home-Bildschirm" was closed; it is shown only until then. */
   installHintDismissed: boolean;
+  /** The household row of the calendar per view (spec 0010, D18: week on, month off). */
+  householdRow: { week: boolean; month: boolean };
 }
 
 const STORAGE_KEY = 'housekeeping.settings.v1';
@@ -33,7 +35,18 @@ const defaults: LocalSettings = {
   aiSearch: false,
   aiAssist: false,
   installHintDismissed: false,
+  householdRow: { week: true, month: false },
 };
+
+function parseHouseholdRow(value: unknown): LocalSettings['householdRow'] {
+  const fallback = defaults.householdRow;
+  if (typeof value !== 'object' || value === null) return fallback;
+  const record = value as Record<string, unknown>;
+  return {
+    week: typeof record.week === 'boolean' ? record.week : fallback.week,
+    month: typeof record.month === 'boolean' ? record.month : fallback.month,
+  };
+}
 
 /** Stored values are untrusted: anything unknown falls back to the default. */
 export function parseSettings(raw: string | null): LocalSettings {
@@ -53,6 +66,7 @@ export function parseSettings(raw: string | null): LocalSettings {
       aiSearch: record.aiSearch === true,
       aiAssist: record.aiAssist === true,
       installHintDismissed: record.installHintDismissed === true,
+      householdRow: parseHouseholdRow(record.householdRow),
     };
   } catch {
     return defaults;

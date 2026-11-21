@@ -12,14 +12,7 @@ import {
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import {
-  daysBetween,
-  formatLongDate,
-  visitsOf,
-  weekDates,
-  type Activity,
-  type Id,
-} from '@housekeeping/core';
+import { daysBetween, formatLongDate, visitsOf, type Activity, type Id } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -79,7 +72,7 @@ export function ActivityDetail(props: ActivityDetailProps) {
           <Button
             label="Zu den Aktivitäten"
             icon="arrow-left"
-            onPress={() => router.replace({ pathname: '/plan', params: { view: 'activities' } })}
+            onPress={() => router.replace('/kalender/aktivitaeten')}
             testID="activity-not-found-back"
           />
         </EmptyState>
@@ -270,7 +263,6 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         {planning && firstSlotId ? (
           <AddEntrySheet
             target={{ date: today, slotId: firstSlotId }}
-            weekDates={weekDates(today)}
             activityId={activity.id}
             onClose={() => setPlanning(false)}
           />

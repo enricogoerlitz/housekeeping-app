@@ -113,7 +113,7 @@ export function TodayMeals(props: TodayMealsProps) {
             activity
               ? () =>
                   router.push(
-                    { pathname: '/plan/aktivitaet/[id]', params: { id: activity.id } },
+                    { pathname: '/kalender/aktivitaet/[id]', params: { id: activity.id } },
                     // The plan stays underneath, so a tap on "Plan" leads to it (spec 0005).
                     { withAnchor: true },
                   )
@@ -154,7 +154,7 @@ export function TodayMeals(props: TodayMealsProps) {
             icon="calendar-plus"
             variant="secondary"
             size="sm"
-            onPress={() => router.push('/plan')}
+            onPress={() => router.push('/kalender')}
             testID="today-plan"
           />
         </Stack>

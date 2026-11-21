@@ -52,7 +52,7 @@ async function pickRecipe(page: Page, search: string, slug: keyof typeof seedIds
 
 /** Opens the plan at the week of `date`. */
 async function openPlanAt(page: Page, date: string): Promise<void> {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, date);
 }
 
@@ -118,7 +118,7 @@ test('AC-026: free text on a day, and a dish noted without a day under "Vorgemer
 test('AC-048: a second dish in tonight’s meal, each with its cook; Heute shows both', async ({
   page,
 }) => {
-  await open(page, '/plan');
+  await open(page, '/kalender');
   const tonight = dishes(page, TODAY, SLOT_DINNER);
   await expect(tonight).toHaveCount(1);
   await expect(tonight).toContainText('Lasagne');
@@ -155,7 +155,7 @@ test('AC-027: moving Lasagne from Monday to Thursday', async ({ page }) => {
   // Lasagne is planned for tonight. The sheet moves within the shown week: three days later
   // when that is still this week (Monday → Thursday as in the AC), otherwise three days earlier.
   const target = inThisWeek(day(3)) ? day(3) : day(-3);
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await expect(tid(page, `day-${TODAY}`)).toBeVisible();
   await dishes(page, TODAY, SLOT_DINNER).filter({ hasText: 'Lasagne' }).click();
   await expect(tid(page, 'entry-sheet')).toBeVisible();
@@ -181,7 +181,7 @@ test('AC-038: with Enrico away on Saturday only Nadja is preselected for that da
   await expect(tid(page, 'absence-list')).toContainText(ENRICO);
   await back(page);
 
-  await nav(page, 'plan');
+  await nav(page, 'kalender');
   await showPlanWeek(page, SATURDAY);
   await tid(page, `add-${SATURDAY}-${SLOT_LUNCH}`).click();
   await pickRecipe(page, 'Shakshuka', 'rec-shakshuka');

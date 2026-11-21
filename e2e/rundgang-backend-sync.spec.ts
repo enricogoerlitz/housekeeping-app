@@ -202,7 +202,7 @@ test('AC-015: Enrico removes "Halloumi-Pfanne" from the plan; it disappears at N
 }) => {
   const { householdId, enrico, nadja } = await twoDevices(page, browser);
   const dinner = await slotId(householdId, 'Abend');
-  await nav(enrico, 'plan');
+  await nav(enrico, 'kalender');
   await tid(enrico, `add-${TODAY}-${dinner}`).click();
   // The new household has no recipes: the dish is planned as free text.
   await tid(enrico, 'add-entry-mode-text').click();
@@ -212,7 +212,7 @@ test('AC-015: Enrico removes "Halloumi-Pfanne" from the plan; it disappears at N
   await expect(entry(enrico)).toHaveCount(1);
 
   await nadja.bringToFront();
-  await nav(nadja, 'plan');
+  await nav(nadja, 'kalender');
   await expect(entry(nadja)).toHaveCount(1, SYNC);
 
   await enrico.bringToFront();
@@ -266,7 +266,7 @@ test('AC-020: a server error while taking over the pantry check puts nothing on 
 }) => {
   allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
   const curryDay = day(2);
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, curryDay);
   await page.route('**/rest/v1/rpc/add_shopping_contributions', (route) =>
     route.fulfill({

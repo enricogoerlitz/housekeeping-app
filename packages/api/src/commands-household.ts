@@ -1,6 +1,8 @@
 import {
   findArticleByName,
   normalizeText,
+  planAbsenceWrite,
+  validateAbsenceDraft,
   type Absence,
   type Article,
   type FeedbackEntry,
@@ -123,6 +125,53 @@ export function addAbsence(input: {
     updateData((data) => ({ ...data, absences: [...data.absences, absence] }));
     return absence.id;
   });
+}
+
+/**
+ * Saves the absence window (spec 0010, REQ-010; D23) as one change: all members chosen → one
+ * absence of the whole household, otherwise one per person. `replaceIds` are the absences of the
+ * stripe being edited; they are reused for the same person or removed.
+ */
+export function saveAbsences(input: {
+  replaceIds: Id[];
+  memberIds: Id[];
+  from: ISODate;
+  to: ISODate;
+  note?: string;
+}): void {
+  const problems = validateAbsenceDraft(input);
+  if (problems.noOne) throw new Error('Wähle, wer weg ist.');
+  if (problems.toBeforeFrom) throw new Error('Das Ende liegt vor dem Anfang.');
+  const data = getData();
+  const existing = data.absences.filter((absence) => input.replaceIds.includes(absence.id));
+  const plan = planAbsenceWrite({
+    existing,
+    memberIds: input.memberIds,
+    allMemberIds: data.household.memberIds,
+    from: input.from,
+    to: input.to,
+    note: input.note?.trim() || undefined,
+  });
+  commit({ path: 'diff', maxDeletes: { absences: plan.removeIds.length } }, () =>
+    updateData((current) => {
+      const updated = new Map(plan.update.map((absence) => [absence.id, absence]));
+      const kept = current.absences
+        .filter((absence) => !plan.removeIds.includes(absence.id))
+        .map((absence) => updated.get(absence.id) ?? absence);
+      const created: Absence[] = plan.create.map((row) => ({ id: newId('abs'), ...row }));
+      return { ...current, absences: [...kept, ...created] };
+    }),
+  );
+}
+
+/** Removes the absences of one stripe or row together (spec 0010, AC-037). */
+export function removeAbsences(absenceIds: Id[]): void {
+  commit({ path: 'diff', maxDeletes: { absences: absenceIds.length } }, () =>
+    updateData((data) => ({
+      ...data,
+      absences: data.absences.filter((absence) => !absenceIds.includes(absence.id)),
+    })),
+  );
 }
 
 export function removeAbsence(absenceId: Id): void {

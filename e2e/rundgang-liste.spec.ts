@@ -136,7 +136,7 @@ test('AC-031: pantry check for a planned Mango-Curry puts only what is needed on
   page,
 }) => {
   const curryDay = day(2);
-  await open(page, '/plan');
+  await open(page, '/kalender');
   await showPlanWeek(page, curryDay);
   await expect(
     tid(page, `add-${curryDay}-${seedIds['slot-abend']}`)

@@ -4,6 +4,7 @@ import {
   DEFAULT_THEME_ID,
   getTheme,
   isThemeId,
+  KIND_COLORS,
   themeFamilies,
   type ColorMode,
   type ThemeColors,
@@ -27,7 +28,7 @@ function contrast(a: string, b: string): number {
   return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
 }
 
-type Role = Exclude<keyof ThemeColors, 'tones'>;
+type Role = Exclude<keyof ThemeColors, 'tones' | 'kinds'>;
 
 // DESIGN.md §3: every text pair meets WCAG AA for body text (4.5:1). The accent is also used for
 // links, so it is held to the text ratio on both page and card backgrounds.
@@ -96,6 +97,23 @@ describe('Frisch area colours (spec 0005, AC-051)', () => {
   it('is the only theme that paints area colours', () => {
     const painting = themeFamilies.filter((family) => family.light.shape.areaTone);
     expect(painting.map((family) => family.id)).toEqual(['frisch']);
+  });
+});
+
+// Spec 0010, D19: the kind of a calendar entry shows as a 3 px edge or a dot in its colour. As a
+// graphic it must stand out from the page and from cards by 3:1 in every theme and mode, and no
+// theme may leave a kind out.
+describe('kind colours (spec 0010, AC-010)', () => {
+  const pairs = cases.flatMap(({ name, colors }) =>
+    KIND_COLORS.map((kind) => ({ name, kind, colors })),
+  );
+  it.each(pairs)('$name: role $kind exists and reaches 3:1 on page and card', (pair) => {
+    const kinds = (pair.colors as Partial<ThemeColors>).kinds as
+      Partial<Record<string, string>> | undefined;
+    const value = kinds?.[pair.kind];
+    expect(value, `${pair.name} has no colour for the kind "${pair.kind}"`).toBeDefined();
+    expect(contrast(value ?? '#000000', pair.colors.bg)).toBeGreaterThanOrEqual(3);
+    expect(contrast(value ?? '#000000', pair.colors.surface)).toBeGreaterThanOrEqual(3);
   });
 });
 
