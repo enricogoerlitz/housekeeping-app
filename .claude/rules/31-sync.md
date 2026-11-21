@@ -13,9 +13,12 @@ The concept is in `docs/architecture/sync.md` (ADR-0008). These rules must never
   It never awaits a network request to show data.
 - **Writes are online.** They go straight to Supabase (API or RPC), followed by a delta sync. When
   offline, write actions are disabled with a clear hint. They are never queued silently.
-- **Offline writes exist only in store mode**: check/uncheck ("checking wins"), "not here",
-  add item, assign area (ADR-0008 addendum). They go through the store queue, one RPC per action.
-  Adding another offline write needs a spec and an ADR addendum.
+- **Offline writes exist only in store mode and for packing**: check/uncheck ("checking wins"),
+  "not here", add item, assign area (ADR-0008 addendum); packing / unpacking a packing item, also
+  "Alles einpacken" and "Für die Rückreise zurücksetzen" (ADR-0013, "checking wins" via
+  `pack_seq`). They go through the store queue, one RPC per action; a contiguous run of packing
+  entries of one household goes as one `set_packing_items_packed` call. Adding another offline
+  write needs a spec and an ADR addendum.
 - **Multi-row actions are one RPC in one transaction.** No client-side sequences of writes that
   can stop halfway.
 - **Every synced table has a server-set `updated_at`** (trigger) and a delete trigger into

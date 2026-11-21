@@ -1,5 +1,5 @@
 ---
-status: vorgeschlagen
+status: angenommen
 datum: 2026-11-21
 autor: agent
 betrifft: [0008, 0011, packages/core/src/store-queue.ts, packages/api, supabase/migrations]
@@ -9,9 +9,9 @@ betrifft: [0008, 0011, packages/core/src/store-queue.ts, packages/api, supabase/
 
 ## Status
 
-`vorgeschlagen` · ergänzt [ADR-0008](0008-offline-lesen-mit-eigenem-delta-sync.md) (Nachtrag
-„Offline im Einkaufsmodus“). Wird mit dem ersten Commit von Spec 0012 auf `angenommen` gesetzt; die
-fachliche Entscheidung D34 hat Enrico am 20.11.2026 freigegeben (UI-Konzept v2, Abschnitt 6).
+`angenommen` (Enrico, 21.11.2026) · ergänzt
+[ADR-0008](0008-offline-lesen-mit-eigenem-delta-sync.md) (Nachtrag „Offline im Einkaufsmodus“).
+Die fachliche Entscheidung D34 hat Enrico am 20.11.2026 freigegeben (UI-Konzept v2, Abschnitt 6).
 
 ## Kontext
 

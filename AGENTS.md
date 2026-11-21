@@ -9,8 +9,8 @@ Housekeeping is a private household app: recipes, a weekly meal plan, shopping l
 from it, and supermarkets with a walking order of areas — more household features will follow
 (`docs/product/vision.md`). One Expo codebase runs on iOS, iPadOS, Android and the web. The app is
 **offline-readable**: every device keeps a local cache of its households' data, kept current by
-our own delta sync against Supabase Postgres (the source of truth). Writes are online; only
-checking shopping items works offline. Data is multi-tenant by household; login is Google only and
+our own delta sync against Supabase Postgres (the source of truth). Writes are online; only the
+store-mode actions and packing work offline. Data is multi-tenant by household; login is Google only and
 invite-only.
 
 ## Commands
@@ -44,7 +44,8 @@ Use `expo install` for anything native so versions match the Expo SDK.
    requirement behind it is scope creep: report it, do not write it.
 3. **Tests first, red first.** Show the failing run before writing the implementation.
 4. **Read offline, write online.** The UI reads only from the local cache. Writes go to Supabase
-   and are disabled offline — except four store-mode actions (ADR-0008 addendum). See `docs/architecture/sync.md`.
+   and are disabled offline — except the store-mode actions and packing (ADR-0008 addendum,
+   ADR-0013). See `docs/architecture/sync.md`.
 5. **Every table is tenant-scoped and synced.** `household_id`, Row Level Security, explicit
    grants, a pgTAP isolation test, server-set `updated_at` and a delete trigger — always together.
    Use the `db-change` skill.

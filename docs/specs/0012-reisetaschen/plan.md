@@ -295,7 +295,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   actions (ADR-0008 addendum)“ → „except the store-mode actions and packing (ADR-0008 addendum,
   ADR-0013)“), `docs/architecture/sync.md` (Tabelle „Ziel“: Packen ohne Netz)
 - **Test:** keiner (Dokumentation); `pnpm format:check`
-- **Status:** offen
+- **Status:** erledigt (21.11.2026)
 
 **Text des Nachtrags** (steht vollständig in ADR-0013; hier die Kurzform für `sync.md`):
 

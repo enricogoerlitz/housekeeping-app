@@ -6,11 +6,12 @@
 
 ## Ziel
 
-| Ohne Netz möglich                                                                                     | Braucht Netz                              |
-| ----------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen              |
-| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen |
-| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen      |
+| Ohne Netz möglich                                                                                     | Braucht Netz                               |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen               |
+| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen  |
+| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen       |
+| **Packen**, „Alles einpacken“, „Für die Rückreise zurücksetzen“ (ADR-0013)                            | Packstücke und Taschen ergänzen, entfernen |
 
 Ohne Netz sind Bearbeiten-Aktionen sichtbar deaktiviert, mit dem Hinweis „Offline – zum Bearbeiten
 brauchst du Netz“. Das ist ein normaler Zustand, kein Fehler.
@@ -301,3 +302,25 @@ regelt die erste Spec mit Fotos.
   Nachtragen schicken `complete_chore` mit dem gesehenen Stand, „Was anderes erledigt?“ ohne
   Treffer zusätzlich das `insert` der neuen Aufgabe davor; „Rückgängig“ schickt
   `remove_chore_event`. Die Cache-Version ist 5.
+
+## Nachtrag Spec 0012 — Packen ohne Netz
+
+Entscheidung: [ADR-0013](../adr/0013-packen-ohne-netz.md). Die Datenbank- und App-Teile ergänzen
+die Tasks 2 und 5 von Spec 0012.
+
+- **Packen ohne Netz.** „Gepackt / nicht gepackt“ ist eine weitere Aktion der
+  Laden-Warteschlange mit der Regel „Abhaken gewinnt“ über den Zähler `pack_seq`: Packen gewinnt
+  immer, Zurücknehmen greift nur, wenn `pack_seq` noch dem gesehenen Wert entspricht.
+- **Sammel-Aktionen.** „Alles einpacken“ und „Für die Rückreise zurücksetzen“ legen je Packstück
+  einen Eintrag an. Hin- und Hertippen fasst die Warteschlange wie beim Einkaufsposten je
+  Packstück zum Endzustand zusammen; „Rückgängig“ nach „Alles einpacken“ nimmt so genau die eben
+  gepackten Stücke zurück, auch ohne Netz.
+- **Ein Aufruf je Folge.** Eine zusammenhängende Folge von Pack-Einträgen eines Haushalts geht als
+  ein Aufruf `set_packing_items_packed(household_id, changes)` in einer Transaktion an den Server,
+  höchstens 200 Änderungen je Aufruf. Die Folge endet am ersten Eintrag eines anderen Haushalts
+  oder einer anderen Art.
+- **Fehlende Packstücke** (Packstück, Tasche oder Abwesenheit inzwischen gelöscht, oder fremder
+  Haushalt) überspringt der Server ohne Fehler; der Eintrag gilt als bestätigt und blockiert die
+  Warteschlange nie.
+- **Online bleiben** Hinzufügen und Entfernen von Packstücken und Taschen. Die Gepackt-Spalten
+  (`packed`, `packed_at`, `packed_by`, `pack_seq`) schreibt nur der Server.
