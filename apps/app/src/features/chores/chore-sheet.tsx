@@ -11,7 +11,15 @@ import {
   useMembersById,
   useToday,
 } from '@housekeeping/api';
-import { seasonLabel, type Chore, type ChoreEvent } from '@housekeeping/core';
+import {
+  choreDraftErrors,
+  choreDraftFrom,
+  choreFieldsOf,
+  seasonLabel,
+  type Chore,
+  type ChoreDraftErrors,
+  type ChoreEvent,
+} from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -30,14 +38,7 @@ import { View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
-import {
-  ChoreFormFields,
-  choreDraftErrors,
-  choreDraftFrom,
-  choreInputOf,
-  useChoreDraft,
-  type ChoreDraftErrors,
-} from './chore-form';
+import { ChoreFormFields, useChoreDraft } from './chore-form';
 import { choreFacts, dayWithDate, eventIcon, eventKindLabel } from './chore-labels';
 
 const RECENT_ENTRIES = 3;
@@ -120,7 +121,7 @@ function useChoreDetail(props: ChoreDetailProps): {
     setErrors(found);
     if (found.title || found.weekdays) return;
     try {
-      updateChore(chore.id, choreInputOf(draft, members, chore));
+      updateChore(chore.id, choreFieldsOf(draft, members, chore));
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
       return;

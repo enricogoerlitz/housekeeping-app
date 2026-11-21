@@ -9,6 +9,7 @@ import {
   startOfWeek,
   weekdayShortName,
 } from './dates';
+import { compareTimestamps } from './sync-delta';
 import type {
   Assignment,
   Chore,
@@ -298,11 +299,17 @@ export function completionOutcome(
   };
 }
 
+const EPOCH = '1970-01-01T00:00:00Z';
+
+/** Microseconds, as the database orders created_at; complete_chore compares the latest event. */
 function bookedTime(event: ChoreEvent): number {
   // Not yet confirmed by the server: it was just booked on this device, so it is the latest.
   if (event.createdAt === undefined) return Number.POSITIVE_INFINITY;
-  const time = Date.parse(event.createdAt);
-  return Number.isNaN(time) ? 0 : time;
+  try {
+    return compareTimestamps(event.createdAt, EPOCH);
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -375,6 +382,8 @@ export function removalOutcome(input: {
 
 export interface ChoreDraftErrors {
   title?: string;
+  /** Only from the form (choreDraftErrors): a weekly rhythm without a day. */
+  weekdays?: string;
 }
 
 /** Problems of the chore form (AC-052); an empty object when it can be saved. */

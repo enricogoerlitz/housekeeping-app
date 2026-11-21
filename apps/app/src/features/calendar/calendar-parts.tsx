@@ -1,4 +1,3 @@
-import { completeChore, OfflineError } from '@housekeeping/api';
 import {
   absenceEndLabel,
   dateRangeLabel,
@@ -17,12 +16,11 @@ import {
   KindLine,
   RowTransition,
   Text,
-  toast,
-  useCheckWindow,
   useTheme,
 } from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
+import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { stripeWho, type CalendarData } from './calendar-data';
@@ -185,10 +183,11 @@ function ChoreLine(props: { item: HouseholdRowItem; data: CalendarData; compact?
 }
 
 /**
- * The household row of today: due chores can be checked with the collecting window (spec 0005,
- * REQ-005); 2 s after the last tap the completions are booked and stand as ✓ at the end of the
- * day (AC-018). Offline the boxes are greyed out (AC-020); if the network goes during the window,
- * nothing is booked and the boxes spring back.
+ * The household row of today: due chores are checked with the one chore check window of
+ * „Anstehend“ and „Zu tun“ (spec 0011, REQ-005); 2 s after the last tap the completions are
+ * booked and stand as ✓ at the end of the day (spec 0010, AC-018). Leaving the calendar books at
+ * once; a refusal brings the box back with the hint, e.g. „Nadja war schneller (10:02)“ (AC-031,
+ * AC-034). Offline the boxes are greyed out (spec 0010, AC-020).
  */
 function HouseholdToday(props: {
   items: HouseholdRowItem[];
@@ -198,29 +197,18 @@ function HouseholdToday(props: {
   const online = useOnlineOnly();
   const open = props.items.filter((item) => item.status === 'open');
   const done = props.items.filter((item) => item.status !== 'open');
-  const check = useCheckWindow<HouseholdRowItem>({
-    items: open,
-    getId: (item) => item.key,
-    isChecked: () => false,
-    onSettle: (keys) => {
-      const chosen = open.filter((item) => keys.includes(item.key));
-      try {
-        for (const item of chosen) if (item.choreId) completeChore(item.choreId);
-      } catch (error) {
-        toast.show({
-          message:
-            error instanceof OfflineError
-              ? 'Offline – nichts wurde abgehakt'
-              : 'Hat nicht geklappt – bitte noch einmal versuchen',
-        });
-      }
-    },
-    announce: (item, checked) => `${item.title} ${checked ? 'abgehakt' : 'wieder offen'}`,
-  });
+  const itemOf = new Map(open.map((item) => [item.choreId ?? '', item]));
+  // In the order of the household row.
+  const openChores = open.flatMap(
+    (item) => props.data.chores.find((chore) => chore.id === item.choreId) ?? [],
+  );
+  const check = useChoreCheckWindow(openChores);
   return (
     <>
-      {check.rows.map((item) => {
-        const checked = check.isChecked(item);
+      {check.rows.map((chore) => {
+        const item = itemOf.get(chore.id);
+        if (!item) return null;
+        const checked = check.isChecked(chore);
         return (
           <RowTransition key={item.key}>
             <KindLine
@@ -234,8 +222,8 @@ function HouseholdToday(props: {
                   checked={checked}
                   label={item.title}
                   disabled={online.disabled}
-                  onChange={() => check.toggle(item)}
-                  testID={`chore-check-${item.choreId ?? item.key}`}
+                  onChange={() => check.toggle(chore)}
+                  testID={`chore-check-${chore.id}`}
                 />
               }
               trailing={<People ids={item.memberIds} data={props.data} />}

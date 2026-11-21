@@ -58,7 +58,12 @@ describe('spec 0011: booking with a condition (complete_chore)', () => {
           kind: 'done',
           done_on: TODAY,
           done_by: ENRICO,
-          seen: { next_due_on: TODAY, last_done_on: '2026-11-13', next_assignee_id: ENRICO },
+          seen: {
+            next_due_on: TODAY,
+            last_done_on: '2026-11-13',
+            next_assignee_id: ENRICO,
+            latest_event_id: 'ev-5',
+          },
           next_due_on: '2026-11-27',
           next_assignee_id: ENRICO,
         },
@@ -94,7 +99,12 @@ describe('spec 0011: booking with a condition (complete_chore)', () => {
           kind: 'done',
           done_on: TODAY,
           done_by: NADJA,
-          seen: { next_due_on: TODAY, last_done_on: '2026-11-13', next_assignee_id: ENRICO },
+          seen: {
+            next_due_on: TODAY,
+            last_done_on: '2026-11-13',
+            next_assignee_id: ENRICO,
+            latest_event_id: 'ev-5',
+          },
           next_due_on: '2026-11-27',
           next_assignee_id: ENRICO,
         },
@@ -110,6 +120,50 @@ describe('spec 0011: booking with a condition (complete_chore)', () => {
     expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ next_due_on: '2026-11-27' });
     expect(eventById(mine ?? '')).toBeUndefined();
     expect(eventById('ev-nadja')).toMatchObject({ doneBy: NADJA });
+  });
+
+  it('AC-031: a second booking of a flexible chore for anyone today, with the same state, is refused by the latest entry seen', async () => {
+    await fx.startEnrico();
+    const mine = completeChore('chore-pflanzen');
+    await fx.settle();
+    const after = choreById('chore-pflanzen');
+    if (!after || !mine) throw new Error('fixture');
+    // Nadja saw Enrico's entry and books "Pflanzen gießen" once more two minutes later; date, last
+    // time and person stay exactly as they are. Enrico's device has not seen her entry yet.
+    vi.setSystemTime(new Date(Date.now() + 2 * 60_000));
+    await fx.server.transport(NADJA).applyChanges(H, [
+      {
+        kind: 'complete_chore',
+        completion: {
+          chore_id: 'chore-pflanzen',
+          event_id: 'ev-nadja',
+          kind: 'done',
+          done_on: TODAY,
+          done_by: NADJA,
+          seen: {
+            next_due_on: after.nextDueOn ?? null,
+            last_done_on: after.lastDoneOn ?? null,
+            next_assignee_id: null,
+            latest_event_id: mine,
+          },
+          next_due_on: after.nextDueOn ?? null,
+          next_assignee_id: null,
+        },
+      },
+    ]);
+    const again = logDone({ choreId: 'chore-pflanzen' });
+    await fx.settle();
+
+    expect(opsOf(1)).toEqual([
+      expect.objectContaining({
+        completion: expect.objectContaining({
+          seen: expect.objectContaining({ latest_event_id: mine }),
+        }),
+      }),
+    ]);
+    expect(rejected).toEqual([expect.stringMatching(/^Nadja war schneller \(\d\d:\d\d\)$/)]);
+    expect(serverEvents('chore-pflanzen').filter((row) => row.done_on === TODAY)).toHaveLength(2);
+    expect(eventById(again?.eventId ?? '')).toBeUndefined();
   });
 
   it('AC-034: a refused booking springs back with "Hat nicht geklappt – bitte noch einmal versuchen"', async () => {
@@ -490,7 +544,12 @@ describe('spec 0011: history entries', () => {
           kind: 'done',
           done_on: TODAY,
           done_by: ENRICO,
-          seen: { next_due_on: TODAY, last_done_on: '2026-11-13', next_assignee_id: ENRICO },
+          seen: {
+            next_due_on: TODAY,
+            last_done_on: '2026-11-13',
+            next_assignee_id: ENRICO,
+            latest_event_id: 'ev-5',
+          },
           next_due_on: '2026-11-27',
           next_assignee_id: ENRICO,
         },

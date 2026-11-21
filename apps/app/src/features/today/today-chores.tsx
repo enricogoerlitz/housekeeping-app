@@ -1,11 +1,4 @@
-import {
-  completeChore,
-  OfflineError,
-  useChoreEvents,
-  useChores,
-  useMembers,
-  useMembersById,
-} from '@housekeeping/api';
+import { useChoreEvents, useChores, useMembers, useMembersById } from '@housekeeping/api';
 import {
   choreMemberIds,
   choresOfDay,
@@ -27,18 +20,14 @@ import {
   RowTransition,
   Section,
   Text,
-  toast,
-  useCheckWindow,
   useTheme,
 } from '@housekeeping/ui';
-import { useIsFocused } from 'expo-router';
-import { useEffect, useEffectEvent, useState } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 
+import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
 import { DoneSheet } from '@/features/chores/done-sheet';
 import { useOnlineOnly } from '@/features/shell/offline';
-
-const FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 function dueText(chore: Chore, today: ISODate): string {
   const days = daysOverdue(chore, today);
@@ -47,13 +36,11 @@ function dueText(chore: Chore, today: ISODate): string {
 }
 
 /**
- * "Zu tun" of the shown day (spec 0011, REQ-005, AC-032): today the due chores with the check
- * window — a tap strikes through, a second takes it back, 2 s after the last tap the checked ones
- * are booked and leave; leaving the page books at once; no "Rückgängig" (AC-028 to AC-030). Later
- * days show the planned dates, past days what was done, both only to look at.
- *
- * Built here for the "Übersicht" while the Haushalt gets its own check list (spec 0011, task 7);
- * task 9 merges both.
+ * "Zu tun" of the shown day (spec 0011, REQ-005, AC-032): today the due chores (core dueChores)
+ * with the one chore check window of the Haushalt — a tap strikes through, a second takes it
+ * back, 2 s after the last tap the checked ones are booked and leave; leaving the page books at
+ * once; no "Rückgängig" (AC-028 to AC-031). Later days show the planned dates, past days what was
+ * done, both only to look at and without "Was anderes erledigt?".
  */
 export function TodayChores(props: { shown: ISODate; today: ISODate; title: string }) {
   const chores = useChores();
@@ -83,46 +70,8 @@ export function TodayChores(props: { shown: ISODate; today: ISODate; title: stri
 function DueChores(props: { chores: Chore[]; today: ISODate }) {
   const members = useMembers();
   const online = useOnlineOnly();
-  const focused = useIsFocused();
   const [sheetOpen, setSheetOpen] = useState(false);
-  // Booked in the last window: stays struck through until the chore has left the list, so the
-  // row never flickers back to open before it goes (a refused booking brings it back open).
-  const [booked, setBooked] = useState<ReadonlySet<string>>(() => new Set());
-
-  const check = useCheckWindow<Chore>({
-    items: props.chores,
-    getId: (chore) => chore.id,
-    isChecked: (chore) => booked.has(chore.id),
-    onSettle: (ids) => {
-      const done = new Set<string>();
-      for (const id of ids) {
-        try {
-          if (completeChore(id) !== null) done.add(id);
-        } catch (error) {
-          toast.show({
-            message: error instanceof OfflineError ? (online.hint ?? FAILED) : FAILED,
-          });
-        }
-      }
-      if (done.size > 0) setBooked((current) => new Set([...current, ...done]));
-    },
-    announce: (chore, checked) => `${chore.title} ${checked ? 'abgehakt' : 'Haken entfernt'}`,
-  });
-
-  // Switching tabs keeps the page mounted: losing focus books at once (AC-030).
-  const settleNow = useEffectEvent(() => check.settle());
-  useEffect(() => {
-    if (!focused) settleNow();
-  }, [focused]);
-
-  // Forget booked chores once they have left, so one that comes back is open again (AC-034).
-  const dueIds = props.chores.map((chore) => chore.id).join('|');
-  const [seenIds, setSeenIds] = useState(dueIds);
-  if (seenIds !== dueIds) {
-    setSeenIds(dueIds);
-    const present = new Set(dueIds.split('|'));
-    setBooked((current) => new Set([...current].filter((id) => present.has(id))));
-  }
+  const check = useChoreCheckWindow(props.chores);
 
   const rows = check.rows;
 

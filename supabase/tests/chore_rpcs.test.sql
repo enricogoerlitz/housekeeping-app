@@ -5,7 +5,7 @@
 -- household, signed out, direct writes past the domain ops.
 begin;
 \ir _helpers.psql
-select plan(63);
+select plan(67);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -17,7 +17,8 @@ as $$ select public.apply_changes(tests.fx(p_household), p_ops) $$;
 create function tests.apply_sql(p_household text, p_ops jsonb) returns text language sql stable
 as $$ select format('select public.apply_changes(%L, %L)', tests.fx(p_household), p_ops) $$;
 
--- A complete_chore op. Without p_seen the chore's current state (as the caller reads it) is sent.
+-- A complete_chore op. Without p_seen the chore's current state and its latest booked event (as
+-- the caller reads them) are sent.
 create function tests.completion(
   p_chore text, p_event text, p_kind text, p_done_on date, p_done_by text,
   p_next_due_on date, p_next_assignee text, p_seen jsonb default null
@@ -29,7 +30,9 @@ declare
 begin
   if v_seen is null then
     select jsonb_build_object('next_due_on', c.next_due_on, 'last_done_on', c.last_done_on,
-                              'next_assignee_id', c.next_assignee_id)
+                              'next_assignee_id', c.next_assignee_id,
+                              'latest_event_id', (select e.id from public.chore_events e where e.chore_id = c.id
+                                                  order by e.created_at desc, e.id desc limit 1))
     into v_seen
     from public.chores c where c.id = tests.fx(p_chore);
   end if;
@@ -97,7 +100,7 @@ insert into fx (key, id) values
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
   ('bett'), ('bad'), ('kueche'), ('fenster'), ('glueh'), ('keller'), ('bad_fri'), ('neu'), ('bad_b'),
-  ('ev_bett1'), ('ev_bett2'), ('ev_bad_n'), ('ev_bad_e'), ('ev_k'), ('ev_keller'), ('ev_glueh'),
+  ('pflanzen'), ('ev_p1'), ('ev_p_n'), ('ev_p_e'), ('ev_bett1'), ('ev_bett2'), ('ev_bad_n'), ('ev_bad_e'), ('ev_k'), ('ev_keller'), ('ev_glueh'),
   ('ev_f1'), ('ev_f2'), ('ev_old'), ('ev_new'), ('ev_neu'), ('ev_seed'), ('ev_x');
 
 -- ---------- Fixtures (as postgres); today = current_date (server date) ----------
@@ -119,7 +122,9 @@ insert into public.chores (id, household_id, title, recurrence, assignment, next
   (tests.fx('bad_fri'), tests.fx('home_a'), 'Bad putzen freitags', '{"type": "weekly", "every": 1, "weekdays": [5]}',
    jsonb_build_object('type', 'fixed', 'memberId', tests.fx('enrico')), current_date, tests.fx('enrico'), current_date - 7),
   (tests.fx('bad_b'), tests.fx('home_b'), 'Bad', '{"type": "flexible", "everyDays": 7}', '{"type": "anyone"}',
-   null, null, null);
+   null, null, null),
+  (tests.fx('pflanzen'), tests.fx('home_a'), 'Pflanzen gießen', '{"type": "flexible", "everyDays": 3}', '{"type": "anyone"}',
+   current_date + 3, null, current_date);
 insert into public.chore_events (id, household_id, chore_id, title, kind, done_on, done_by) values
   (tests.fx('ev_f1'), tests.fx('home_a'), tests.fx('fenster'), 'Fenster Küche', 'done', current_date - 30, tests.fx('enrico')),
   (tests.fx('ev_f2'), tests.fx('home_a'), tests.fx('fenster'), 'Fenster Küche', 'done', current_date - 60, tests.fx('nadja'));
@@ -131,6 +136,11 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
 values (tests.fx('ev_old'), tests.fx('home_a'), tests.fx('bad_fri'), 'Bad putzen freitags', 'done', current_date - 7,
         tests.fx('enrico'), current_date - 7, current_date - 14, tests.fx('enrico'), true,
         now() - interval '7 days', now() - interval '7 days');
+-- "Pflanzen gießen" (flexible, anyone) was already done this morning: booking it again today leaves
+-- date, last time and person exactly as they are.
+insert into public.chore_events (id, household_id, chore_id, title, kind, done_on, done_by, created_at, updated_at)
+values (tests.fx('ev_p1'), tests.fx('home_a'), tests.fx('pflanzen'), 'Pflanzen gießen', 'done', current_date,
+        tests.fx('enrico'), now() - interval '1 hour', now() - interval '1 hour');
 alter table public.chore_events enable trigger chore_events_set_timestamps;
 
 -- ===================== Booking (AC-036, AC-038) =====================
@@ -180,6 +190,32 @@ select is(
   'AC-031 complete_chore: there is no second event');
 select is(tests.state('bad'), tests.st(current_date + 7, current_date, 'enrico'),
   'AC-031 complete_chore: the next date moved on only once');
+
+-- A flexible chore for anyone looks the same after a second booking on the same day; only the
+-- latest booked event the device saw tells the two bookings apart (AC-031).
+select tests.authenticate_as(tests.fx('nadja'));
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    tests.completion('pflanzen', 'ev_p_n', 'done', current_date, 'nadja', current_date + 3, null))),
+  'AC-031 complete_chore: Nadja books "Pflanzen gießen" again today, having seen this morning''s event');
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  tests.error_of(tests.apply_sql('home_a', jsonb_build_array(
+    tests.completion('pflanzen', 'ev_p_e', 'done', current_date, 'enrico', current_date + 3, null,
+                     tests.st(current_date + 3, current_date, null)
+                       || jsonb_build_object('latest_event_id', tests.fx('ev_p1')))))),
+  jsonb_build_object('code', 'P0001', 'message', 'already_done', 'detail',
+    jsonb_build_object('done_by', tests.fx('nadja'),
+                       'done_at', (select created_at from public.chore_events where id = tests.fx('ev_p_n')))::text),
+  'AC-031 complete_chore: the same state but a newer event than the one seen is already_done, naming Nadja');
+select is(
+  (select count(*)::int from public.chore_events where chore_id = tests.fx('pflanzen')), 2,
+  'AC-031 complete_chore: … and Enrico''s booking adds no third event');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    tests.completion('pflanzen', 'ev_p_e', 'done', current_date, 'enrico', current_date + 3, null,
+                     tests.state('pflanzen') || '{"latest_event_id": 7}'::jsonb))),
+  '22023', 'invalid_change', 'complete_chore: a latest_event_id that is not an id is invalid');
 
 -- ===================== The chore changed without an event =====================
 select tests.apply('home_a', jsonb_build_array(jsonb_build_object(

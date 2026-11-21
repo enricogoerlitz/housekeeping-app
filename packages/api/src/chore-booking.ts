@@ -5,6 +5,7 @@
 import {
   completionOutcome,
   fasterNotice,
+  latestBookedEvent,
   type Chore,
   type ChoreEvent,
   type Id,
@@ -12,7 +13,7 @@ import {
 } from '@housekeeping/core';
 
 import { choreToRow } from './db/mapping';
-import { getState, newId, peekState, updateData } from './store';
+import { getData, getState, newId, peekState, updateData } from './store';
 import {
   AlreadyDoneDetailSchema,
   TransportError,
@@ -35,18 +36,23 @@ export interface Booking {
   undo: ChangeOp[];
 }
 
-/** The state of a chore as complete_chore compares it. */
-export function seenState(chore: Chore): ChoreCompletion['seen'] {
+/** The state of a chore as complete_chore compares it, with its latest booked entry in `events`. */
+export function seenState(chore: Chore, events: readonly ChoreEvent[]): ChoreCompletion['seen'] {
   return {
     next_due_on: chore.nextDueOn ?? null,
     last_done_on: chore.lastDoneOn ?? null,
     next_assignee_id: chore.nextAssigneeId ?? null,
+    latest_event_id: latestBookedEvent([...events], chore.id)?.id ?? null,
   };
 }
 
-/** The complete_chore op for an entry; "skipped" keeps the person, so it sends none. */
+/**
+ * The complete_chore op for an entry; "skipped" keeps the person, so it sends none. `events` are
+ * the entries the device sees before this one.
+ */
 export function completionOp(
   chore: Chore,
+  events: readonly ChoreEvent[],
   eventId: Id,
   input: BookingInput,
   after: { nextDueOn?: ISODate; nextAssigneeId?: Id },
@@ -59,7 +65,7 @@ export function completionOp(
       kind: input.kind,
       done_on: input.doneOn,
       done_by: input.doneBy,
-      seen: seenState(chore),
+      seen: seenState(chore, events),
       next_due_on: after.nextDueOn ?? null,
       ...(input.kind === 'done' ? { next_assignee_id: after.nextAssigneeId ?? null } : {}),
     },
@@ -73,6 +79,7 @@ export function completionOp(
  */
 export function bookLocally(chore: Chore, input: BookingInput, isNew = false): Booking {
   const householdId = getState().activeHouseholdId;
+  const seenEvents = isNew ? [] : getData().choreEvents;
   const outcome = completionOutcome(chore, input);
   const event: ChoreEvent = {
     id: newId(),
@@ -104,7 +111,7 @@ export function bookLocally(chore: Chore, input: BookingInput, isNew = false): B
 
   const insert: ChangeOp = { kind: 'insert', table: 'chores', row: choreToRow(householdId, chore) };
   const remove: ChangeOp = { kind: 'remove_chore_event', id: event.id };
-  const complete = completionOp(chore, event.id, input, outcome);
+  const complete = completionOp(chore, seenEvents, event.id, input, outcome);
   let undo: ChangeOp[];
   if (isNew) undo = [remove, { kind: 'delete', table: 'chores', id: chore.id }];
   else if (outcome.deletesChore) undo = [insert, remove];

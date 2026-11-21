@@ -54,6 +54,15 @@ const SERVER_CODE = /^[a-z][a-z0-9_]*$/;
  * PostgREST answers P0001 with 400 and P0002 with 500; retrying cannot change either answer.
  */
 const RAISED = new Set(['P0001', 'P0002']);
+/**
+ * Deadlock and serialization failure: Postgres rolled the whole transaction back, so the call
+ * changed nothing and is safe to send again (the transport retries once).
+ */
+const ROLLED_BACK = new Set(['40P01', '40001']);
+
+export function isRolledBack(error: unknown): boolean {
+  return error instanceof TransportError && ROLLED_BACK.has(error.code);
+}
 
 /** The `detail` of a raised error, sent by PostgREST as `details`; only JSON is kept. */
 function parseDetail(details: string | undefined): unknown {
@@ -71,8 +80,9 @@ export function classifyError(
   error: { message?: string; code?: string; details?: string },
 ): TransportError {
   const transient =
-    !RAISED.has(error.code ?? '') &&
-    (status === 0 || status === 408 || status === 429 || status >= 500);
+    ROLLED_BACK.has(error.code ?? '') ||
+    (!RAISED.has(error.code ?? '') &&
+      (status === 0 || status === 408 || status === 429 || status >= 500));
   const message = error.message ?? '';
   const code = SERVER_CODE.test(message)
     ? message
@@ -109,7 +119,8 @@ export type AddEntry = z.infer<typeof AddEntrySchema>;
 
 /**
  * complete_chore (spec 0011): books an entry only while the chore still shows the state the device
- * saw (`seen`); date and person afterwards are computed by core (completionOutcome).
+ * saw (`seen`, with its latest booked entry); date and person afterwards are computed by core
+ * (completionOutcome).
  */
 export interface ChoreCompletion {
   chore_id: string;
@@ -121,6 +132,11 @@ export interface ChoreCompletion {
     next_due_on: string | null;
     last_done_on: string | null;
     next_assignee_id: string | null;
+    /**
+     * The latest booked entry of the chore (core latestBookedEvent), null without any: a second
+     * booking of a flexible chore for anyone on the same day leaves the rest unchanged (AC-031).
+     */
+    latest_event_id: string | null;
   };
   next_due_on: string | null;
   /** Only for "done"; "skipped" keeps the person. */

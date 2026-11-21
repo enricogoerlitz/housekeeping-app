@@ -16,6 +16,7 @@ import {
   stopBackend,
   type Environment,
 } from './backend';
+import { seenState } from './chore-booking';
 import { completeChore, removeChoreEvent } from './commands-chores';
 import { rateRecipe } from './commands-recipes';
 import { TEST_ACCOUNTS, TEST_PASSWORD } from './dev-accounts';
@@ -153,11 +154,7 @@ describe.skipIf(!enabled)('spec 0011: chores and ratings in the local stack', ()
             kind: 'done',
             done_on: getState().today,
             done_by: nadja.userId,
-            seen: {
-              next_due_on: chore.nextDueOn ?? null,
-              last_done_on: chore.lastDoneOn ?? null,
-              next_assignee_id: chore.nextAssigneeId ?? null,
-            },
+            seen: seenState(chore, getData().choreEvents),
             next_due_on: '2099-01-01',
             next_assignee_id: chore.nextAssigneeId ?? null,
           },

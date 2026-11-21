@@ -201,6 +201,59 @@ regelt die erste Spec mit Fotos.
 - **Speicher-Version 3:** Der Cache wird einmal neu geladen; Warteschlange, gewählter Haushalt und
   gewählter Markt des Geräts bleiben dabei erhalten.
 
+## Nachtrag Spec 0007 — Artikel-Katalog, Märkte und Bereiche
+
+- **Artikel werden nie direkt gelöscht:** `authenticated` hat kein `delete`-Recht auf `articles`,
+  und die Allowlist von `apply_changes` steht für `articles` auf `"delete": false`; ein Diff
+  schickt nie das Löschen eines Artikels. Gelöscht wird nur über zwei RPCs:
+  - `delete_article` sperrt die Zeile `for update` und prüft erst danach „unbenutzt“ (in keinem
+    Rezept, in keinem Posten, offen oder erledigt; sonst `article_in_use`). Es gibt die gelöschte
+    Zeile zurück; „Rückgängig“ fügt sie über `apply_changes` wieder ein.
+  - `merge_articles` führt die Quelle in einer Transaktion ins Ziel: Zutaten in
+    `recipes.ingredients` umschreiben (zwei Zeilen im selben Rezept bleiben zwei), stehen beide
+    offen auf der Liste, die Beiträge in den Posten des Ziels ziehen und den Quellposten löschen,
+    übrige Posten der Quelle aufs Ziel, leere Angaben des Ziels füllen, die Quelle löschen, Name
+    und Synonyme der Quelle als Synonyme ans Ziel. Mehr als 30 Synonyme oder mehr als 2000 Zeichen
+    in allen Synonymen oder ihren Schlüsseln ergeben `too_many_synonyms`, und nichts ändert sich.
+- **Bereiche:** `merge_areas` („Zusammenlegen“) ist eine RPC: Sie zieht die Artikel um, nimmt die
+  Quelle aus `area_order` und `hidden_area_ids` jedes Markts und löscht sie. Einen Bereich löschen
+  schickt `apply_changes` mit dem Löschen des Bereichs und dem Patch der Laufreihenfolge jedes
+  betroffenen Markts im selben Änderungssatz; die Artikel verlieren den Bereich über den
+  Fremdschlüssel (`on delete set null`, mit neuem `updated_at`).
+- **Weiterleitung nach dem Zusammenführen:** Der Grabstein eines beim Zusammenführen gelöschten
+  Postens trägt `deleted_records.replaced_by` (die ID des Postens des Ziels). Mitglieder können die
+  Spalte nicht schreiben. `set_shopping_item_checked` und `set_shopping_item_not_available` folgen
+  dem Verweis, wenn der Posten selbst fehlt: höchstens 5 Schritte, nur im Haushalt des Grabsteins
+  und nur, wenn der Aufrufer dort Mitglied ist, sonst `null` wie bisher. Ein offline gemachter
+  Haken auf die Quelle trifft so den Posten des Ziels (AC-040). Ein Zurücknehmen auf einen
+  ersetzten Posten bleibt wirkungslos, weil der gesehene `check_seq` zum alten Posten gehört. Die
+  30-Tage-Aufbewahrung der Grabsteine gilt auch für die Verweise.
+- **Bereich zuordnen aus der Warteschlange:** `assign_article_area` gibt `null` zurück, wenn der
+  Artikel fehlt (gelöscht oder zusammengeführt) oder der Bereich fehlt oder zu einem anderen
+  Haushalt gehört; der Eintrag wird ohne Fehler verworfen. Für Bereichszuordnungen gibt es keine
+  Weiterleitung.
+- **Zutaten zeigen immer auf einen Artikel:** Der Trigger `recipes_check_ingredients` (vor
+  Einfügen und vor Ändern von `ingredients`) verlangt je Zutat eine `articleId` eines Artikels des
+  eigenen Haushalts und einen `prepNote` von höchstens 200 Zeichen, sonst
+  `ingredient_article_invalid` (23503). Er liest die Artikel `for key share`, damit
+  `delete_article` und `merge_articles` keinen davon entfernen, während das Rezept gespeichert
+  wird.
+- **Sperr-Reihenfolge:** `merge_articles` sperrt zuerst je Haushalt und Artikel
+  (`lock_household_article`, wie die Laden-RPCs), dann die betroffenen Rezepte `for update`, dann
+  die beiden Artikel `for update`. Ein gleichzeitiges Ändern von Zutaten sperrt erst die
+  Rezeptzeile und liest dann die Artikel; weil beide die Rezepte vor den Artikeln sperren, können
+  sie sich nicht gegenseitig blockieren. Bricht Postgres einen Aufruf trotzdem wegen Deadlock oder
+  Serialisierung ab (40P01, 40001), wurde nichts geschrieben; der Transport versucht ihn genau
+  einmal neu.
+- **Eindeutigkeit:** Name und Synonyme eines Artikels kollidieren mit keinem Namen oder Synonym
+  eines anderen Artikels desselben Haushalts (Trigger unter Haushalts-Sperre, `name_taken`);
+  Bereichsnamen sind je Haushalt eindeutig über `lower(name)`. `name_key` und `synonym_keys`
+  berechnet das Gerät (`normalizeText`); die Datenbank verlässt sich darauf, dass Mitglieder sie
+  ehrlich schicken — ein falscher Schlüssel wirkt nur im eigenen Haushalt.
+- **Speicher-Version 4:** neue Felder an Artikeln (`defaultShoppingRule`, `needsReview`) und
+  Zutaten (`prepNote`, kein `name` mehr). Der Cache wird einmal neu geladen; Warteschlange,
+  gewählter Haushalt und gewählter Markt bleiben erhalten.
+
 ## Nachtrag Spec 0011 — Erledigungen mit Bedingung, Bewertungen in halben Schritten
 
 - **Erledigungen nur über Domänen-Operationen:** Mitglieder haben auf `chore_events` nur noch
@@ -211,8 +264,11 @@ regelt die erste Spec mit Fotos.
   derselben Transaktion wie der Rest des Aufrufs; eine neue Aufgabe aus „Was anderes erledigt?“
   geht als `insert` auf `chores` plus `complete_chore` in einen Aufruf.
 - **Bedingung statt „letzte Änderung gewinnt“:** `complete_chore` sperrt die Aufgabe und bucht nur,
-  wenn `next_due_on`, `last_done_on` und `next_assignee_id` noch dem gesehenen Stand (`seen`)
-  entsprechen. Sonst schreibt der Server nichts und antwortet `already_done` (P0001, `detail` mit
+  wenn `next_due_on`, `last_done_on`, `next_assignee_id` und die zuletzt gebuchte Erledigung
+  (`latest_event_id`, nach `created_at` auf die Mikrosekunde, dann `id`; `null` ohne Erledigung)
+  noch dem gesehenen Stand (`seen`) entsprechen. Die Erledigung braucht es, weil eine zweite
+  Buchung einer flexiblen Aufgabe für „egal wer“ am selben Tag die drei Spalten unverändert lässt.
+  Sonst schreibt der Server nichts und antwortet `already_done` (P0001, `detail` mit
   `done_by` und `done_at`), wenn es am selben Tag schon eine Erledigung gibt, sonst
   `chore_changed` (P0001). Nächster Termin und nächste Person rechnet weiter `core`; der Server
   prüft nur die Grenzen (Tag heute − 3 bis heute + 1 nach Server-Datum, Termin nach dem Tag, kein

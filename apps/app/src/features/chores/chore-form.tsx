@@ -1,17 +1,16 @@
-import type { ChoreInput } from '@housekeeping/api';
 import {
   monthName,
-  parseISODate,
   seasonLabel,
   seasonMonths,
-  validateChoreDraft,
   weekdayShortName,
   type Assignment,
-  type Chore,
-  type Id,
+  type ChoreDraft,
+  type ChoreDraftErrors,
+  type ChoreDraftPart,
+  type ChoreEffortChoice,
+  type ChoreRhythm,
   type ISODate,
   type Member,
-  type Recurrence,
 } from '@housekeeping/core';
 import { Chip, ChoiceChips, Row, Stack, SwitchRow, Text, TextField } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
@@ -20,13 +19,10 @@ import { DateChips } from './date-chips';
 import { Stepper } from './stepper';
 
 // The chore form (spec 0011, REQ-009): one form for „Neue Aufgabe“ and „Bearbeiten“, its rhythm
-// and assignment parts also under „Mehr Angaben“ in „Was hast du erledigt?“.
+// and assignment parts also under „Mehr Angaben“ in „Was hast du erledigt?“. The form's state and
+// its mapping to a chore live in core (chore-form.ts).
 
-type RhythmKind = 'once' | 'weekly' | 'monthly' | 'months' | 'flexible' | 'asNeeded';
-type AssignmentKind = Assignment['type'];
-type Effort = '1' | '2' | '3';
-
-const RHYTHMS: { value: RhythmKind; label: string }[] = [
+const RHYTHMS: { value: ChoreRhythm; label: string }[] = [
   { value: 'once', label: 'Einmalig' },
   { value: 'weekly', label: 'Wöchentlich' },
   { value: 'monthly', label: 'Monatlich' },
@@ -35,7 +31,7 @@ const RHYTHMS: { value: RhythmKind; label: string }[] = [
   { value: 'asNeeded', label: 'Bei Bedarf' },
 ];
 
-const ASSIGNMENTS: { value: AssignmentKind; label: string }[] = [
+const ASSIGNMENTS: { value: Assignment['type']; label: string }[] = [
   { value: 'fixed', label: 'Fest' },
   { value: 'rotating', label: 'Abwechselnd' },
   { value: 'anyone', label: 'Egal' },
@@ -44,162 +40,7 @@ const ASSIGNMENTS: { value: AssignmentKind; label: string }[] = [
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
 
-export interface ChoreDraft {
-  title: string;
-  room: string;
-  rhythm: RhythmKind;
-  onceDate?: ISODate;
-  weekdays: number[];
-  everyWeeks: number;
-  monthDay: number;
-  everyMonths: number;
-  everyDays: number;
-  assignment: AssignmentKind;
-  fixedMemberId: Id;
-  effort: Effort;
-  seasonOn: boolean;
-  seasonFrom: number;
-  seasonTo: number;
-  /**
-   * Whether rhythm or assignment were changed in the form. Untouched, the chore keeps its stored
-   * value, so saving a new title neither moves the date nor hands the turn on.
-   */
-  touched: { rhythm: boolean; assignment: boolean };
-}
-
-export interface ChoreDraftErrors {
-  title?: string;
-  weekdays?: string;
-}
-
-/** A new chore: weekly, alternating, 1 point, all year (spec 0003, AC-036). */
-export function newChoreDraft(today: ISODate, meId: Id, rhythm: RhythmKind = 'weekly'): ChoreDraft {
-  return {
-    title: '',
-    room: '',
-    rhythm,
-    weekdays: [],
-    everyWeeks: 1,
-    monthDay: parseISODate(today).getDate(),
-    everyMonths: 3,
-    everyDays: 14,
-    assignment: 'rotating',
-    fixedMemberId: meId,
-    effort: '1',
-    seasonOn: false,
-    seasonFrom: 4,
-    seasonTo: 9,
-    touched: { rhythm: false, assignment: false },
-  };
-}
-
-/** The first and last month of a season, also across the turn of the year (Oktober–März). */
-function seasonBounds(months: number[]): { from: number; to: number } | undefined {
-  const set = new Set(months.filter((month) => month >= 1 && month <= 12));
-  if (set.size === 0 || set.size === 12) return undefined;
-  const sorted = [...set].sort((a, b) => a - b);
-  const from = sorted.find((month) => !set.has(month === 1 ? 12 : month - 1)) ?? sorted[0] ?? 1;
-  let to = from;
-  while (set.has((to % 12) + 1) && (to % 12) + 1 !== from) to = (to % 12) + 1;
-  return { from, to };
-}
-
-/** The form filled with a stored chore („Bearbeiten“). */
-export function choreDraftFrom(chore: Chore, today: ISODate, meId: Id): ChoreDraft {
-  const draft = newChoreDraft(today, meId);
-  const { recurrence, assignment } = chore;
-  const season = seasonBounds(chore.activeMonths ?? []);
-  return {
-    ...draft,
-    title: chore.title,
-    room: chore.room ?? '',
-    rhythm:
-      recurrence.type === 'everyMonths'
-        ? 'months'
-        : recurrence.type === 'once'
-          ? 'once'
-          : recurrence.type,
-    onceDate: recurrence.type === 'once' ? recurrence.date : undefined,
-    weekdays: recurrence.type === 'weekly' ? recurrence.weekdays : [],
-    everyWeeks: recurrence.type === 'weekly' ? recurrence.every : draft.everyWeeks,
-    monthDay: recurrence.type === 'monthly' ? recurrence.day : draft.monthDay,
-    everyMonths: recurrence.type === 'everyMonths' ? recurrence.every : draft.everyMonths,
-    everyDays: recurrence.type === 'flexible' ? recurrence.everyDays : draft.everyDays,
-    assignment: assignment.type,
-    fixedMemberId: assignment.type === 'fixed' ? assignment.memberId : meId,
-    effort: String(chore.effort) as Effort,
-    seasonOn: season !== undefined,
-    seasonFrom: season?.from ?? draft.seasonFrom,
-    seasonTo: season?.to ?? draft.seasonTo,
-  };
-}
-
-function recurrenceOf(draft: ChoreDraft): Recurrence {
-  switch (draft.rhythm) {
-    case 'once':
-      return { type: 'once', date: draft.onceDate };
-    case 'weekly':
-      return {
-        type: 'weekly',
-        every: draft.everyWeeks,
-        weekdays: [...draft.weekdays].sort((a, b) => a - b),
-      };
-    case 'monthly':
-      return { type: 'monthly', day: draft.monthDay };
-    case 'months':
-      return { type: 'everyMonths', every: draft.everyMonths };
-    case 'flexible':
-      return { type: 'flexible', everyDays: draft.everyDays };
-    case 'asNeeded':
-      return { type: 'asNeeded' };
-  }
-}
-
-function assignmentOf(draft: ChoreDraft, members: Member[]): Assignment {
-  switch (draft.assignment) {
-    case 'fixed':
-      return { type: 'fixed', memberId: draft.fixedMemberId };
-    case 'rotating':
-      return { type: 'rotating', memberIds: members.map((member) => member.id) };
-    case 'anyone':
-      return { type: 'anyone' };
-    case 'together':
-      return { type: 'together' };
-  }
-}
-
-/** Field errors of the form: „Titel fehlt“ (AC-052), a weekly rhythm without a day. */
-export function choreDraftErrors(draft: ChoreDraft): ChoreDraftErrors {
-  return {
-    ...validateChoreDraft(draft),
-    ...(draft.rhythm === 'weekly' && draft.weekdays.length === 0
-      ? { weekdays: 'Wähle mindestens einen Tag.' }
-      : {}),
-  };
-}
-
-/** What the api commands take; an untouched rhythm or assignment keeps the stored one. */
-export function choreInputOf(draft: ChoreDraft, members: Member[], stored?: Chore): ChoreInput {
-  return {
-    title: draft.title,
-    room: draft.room,
-    recurrence: stored && !draft.touched.rhythm ? stored.recurrence : recurrenceOf(draft),
-    assignment:
-      stored && !draft.touched.assignment ? stored.assignment : assignmentOf(draft, members),
-    effort: Number(draft.effort) as 1 | 2 | 3,
-    activeMonths: draft.seasonOn ? seasonMonths(draft.seasonFrom, draft.seasonTo) : [],
-  };
-}
-
-/** Just the rhythm and assignment, for „Mehr Angaben“ in „Was hast du erledigt?“. */
-export function plannedInputOf(
-  draft: ChoreDraft,
-  members: Member[],
-): Pick<ChoreInput, 'recurrence' | 'assignment'> {
-  return { recurrence: recurrenceOf(draft), assignment: assignmentOf(draft, members) };
-}
-
-export type DraftUpdate = (patch: Partial<ChoreDraft>, part?: 'rhythm' | 'assignment') => void;
+export type DraftUpdate = (patch: Partial<ChoreDraft>, part?: ChoreDraftPart) => void;
 
 /** The form's state; `update` marks the part it changes as touched. */
 export function useChoreDraft(initial: () => ChoreDraft): [ChoreDraft, DraftUpdate, () => void] {
@@ -398,7 +239,7 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
         label="Nur in einer Saison"
         description={draft.seasonOn ? label || 'ganzjährig' : 'ganzjährig'}
         value={draft.seasonOn}
-        onValueChange={(seasonOn) => update({ seasonOn })}
+        onValueChange={(seasonOn) => update({ seasonOn }, 'season')}
         testID="season"
       />
       {draft.seasonOn ? (
@@ -408,7 +249,7 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
             value={draft.seasonFrom}
             min={1}
             max={12}
-            onChange={(seasonFrom) => update({ seasonFrom })}
+            onChange={(seasonFrom) => update({ seasonFrom }, 'season')}
             format={(value) => `ab ${monthLabel(value)}`}
             testID="season-from"
           />
@@ -417,7 +258,7 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
             value={draft.seasonTo}
             min={1}
             max={12}
-            onChange={(seasonTo) => update({ seasonTo })}
+            onChange={(seasonTo) => update({ seasonTo }, 'season')}
             format={(value) => `bis ${monthLabel(value)}`}
             testID="season-to"
           />
@@ -473,7 +314,7 @@ export function ChoreFormFields(props: {
       />
       <AssignmentField draft={draft} update={update} members={props.members} />
       <Field label="Aufwand">
-        <ChoiceChips<Effort>
+        <ChoiceChips<ChoreEffortChoice>
           label="Aufwand"
           value={draft.effort}
           onChange={(effort) => update({ effort })}

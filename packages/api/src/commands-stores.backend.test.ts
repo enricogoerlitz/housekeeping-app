@@ -1,9 +1,11 @@
 // Stores and areas (spec 0007, REQ-008 to REQ-010): each command is one change to the server —
 // apply_changes, or merge_areas for moving any number of articles.
+import { moveInOrder, resolveShoppingStore } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, withBackend } from './backend-test-helpers';
+import { NADJA } from './seed/demo';
 import { setOffline } from './commands-household';
 import {
   addAreaToStore,
@@ -14,6 +16,7 @@ import {
   fullAreaOrder,
   mergeAreas,
   moveArea,
+  moveStoreArea,
   renameArea,
   renameStore,
   setDefaultStore,
@@ -72,6 +75,31 @@ describe('stores', () => {
     expect(() => renameStore('store-dm', 'x'.repeat(81))).toThrow('Höchstens 80 Zeichen');
   });
 
+  it('AC-044: Nadja never chose a store; her "Einkaufen" follows the new default store', async () => {
+    await fx.startEnrico();
+    setDefaultStore('store-rewe');
+    const nadja = await fx.startNadja();
+    const nadjasStore = () => {
+      const state = nadja.getState();
+      const data = fx.nadjaData(nadja);
+      return resolveShoppingStore(
+        data.stores,
+        state?.storeChoices?.[H],
+        data.household.defaultStoreId,
+      )?.id;
+    };
+    await fx.settle(nadja);
+    expect(nadjasStore()).toBe('store-rewe');
+
+    renameStore('store-dm', 'Aldi Nordstadt');
+    setDefaultStore('store-dm');
+    await fx.settle(nadja);
+    expect(nadjasStore()).toBe('store-dm');
+    expect(fx.nadjaData(nadja).stores.find((entry) => entry.id === 'store-dm')?.name).toBe(
+      'Aldi Nordstadt',
+    );
+  });
+
   it('AC-045: deleting the default store leaves the household without one', async () => {
     await fx.startEnrico();
     setDefaultStore('store-rewe');
@@ -122,6 +150,47 @@ describe('walking order of a store', () => {
     await fx.settle();
     expect(store('store-rewe').hiddenAreaIds).not.toContain(tier);
     expect(getData().areas).toHaveLength(count);
+  });
+});
+
+describe('walking order: two people at once (AC-050)', () => {
+  it('AC-050: the walking order is one field; Nadja sends the order as she saw it and it wins on both devices', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const seenByNadja = fullAreaOrder(store('store-rewe'));
+    const getraenke = area('Getränke').id;
+    const brot = area('Brot & Backwaren').id;
+
+    moveStoreArea('store-rewe', getraenke, 0);
+    await fx.settle(nadja);
+    // Enrico's move is the whole order in one column, nothing else.
+    expect(opsOf(0)).toEqual([
+      {
+        kind: 'patch',
+        table: 'stores',
+        id: 'store-rewe',
+        changes: { area_order: fullAreaOrder(store('store-rewe')) },
+      },
+    ]);
+    expect(fullAreaOrder(store('store-rewe'))[0]).toBe(getraenke);
+
+    // Shortly after, Nadja's device moves "Brot & Backwaren" up in the order it still showed.
+    const nadjasOrder = moveInOrder(seenByNadja, brot, 0);
+    await fx.server
+      .transport(NADJA)
+      .applyChanges(H, [
+        { kind: 'patch', table: 'stores', id: 'store-rewe', changes: { area_order: nadjasOrder } },
+      ]);
+    await fx.settle(nadja);
+
+    expect(fx.server.row(H, 'stores', 'store-rewe')?.area_order).toEqual(nadjasOrder);
+    expect(store('store-rewe').areaOrder).toEqual(nadjasOrder);
+    expect(
+      fx.nadjaData(nadja).stores.find((entry) => entry.id === 'store-rewe')?.areaOrder,
+    ).toEqual(nadjasOrder);
+    // Enrico's move is gone: "Getränke" stands where Nadja saw it, behind "Brot & Backwaren".
+    expect(store('store-rewe').areaOrder[0]).toBe(brot);
+    expect(store('store-rewe').areaOrder.indexOf(getraenke)).toBeGreaterThan(0);
   });
 });
 

@@ -92,36 +92,6 @@ function articlesForNames(names: readonly string[]): Article[] {
   });
 }
 
-/**
- * Adds ingredients from a pasted or dictated block, one per line ("200 ml Kokosmilch"), without a
- * person choosing the articles: each name gets its article by the rule of REQ-004 (new ones are
- * "Neu aus Rezepten"). Returns the number of ingredients added.
- */
-export function addIngredientsFromText(recipeId: Id, text: string, variantId?: Id): number {
-  const parsed = parseIngredientBlock(text);
-  if (parsed.length === 0) return 0;
-  // New articles ride in the same change as the recipe.
-  return commit({ path: 'diff' }, () => {
-    const articles = articlesForNames(parsed.map((line) => line.name));
-    const ingredients: RecipeIngredient[] = parsed.map((line, index) => {
-      const article = articles[index];
-      if (!article) throw new Error('Article missing');
-      return {
-        id: newId(),
-        articleId: article.id,
-        amount: line.amount,
-        variantId,
-        shoppingRule: defaultShoppingRuleFor(article, line.amount),
-      };
-    });
-    patchRecipe(recipeId, (recipe) => ({
-      ...recipe,
-      ingredients: [...recipe.ingredients, ...ingredients],
-    }));
-    return ingredients.length;
-  });
-}
-
 /** How an ingredient gets its article in "Suchen oder anlegen" (REQ-001). */
 export type IngredientArticleChoice =
   /** An article of the household. */

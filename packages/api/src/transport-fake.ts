@@ -175,8 +175,11 @@ const REFERENCES: {
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
 ];
 
-/** articles_synonyms_size (spec 0007): at most 30 synonyms. */
+/** articles_synonyms_size (spec 0007): at most 30 synonyms with 2000 characters in all. */
 const MAX_SYNONYMS = 30;
+const MAX_SYNONYMS_LENGTH = 2000;
+const totalLength = (texts: readonly string[]) =>
+  texts.reduce((sum, text) => sum + Array.from(text).length, 0);
 /** recipes_check_ingredients: the "Hinweis" of an ingredient. */
 const PREP_NOTE_MAX_LENGTH = 200;
 const conflict = (code: string) => new TransportError('permanent', code, 409);
@@ -273,7 +276,7 @@ const COMPLETION_KEYS = new Set([
   'next_due_on',
   'next_assignee_id',
 ]);
-const SEEN_KEYS = new Set(['next_due_on', 'last_done_on', 'next_assignee_id']);
+const SEEN_KEYS = new Set(['next_due_on', 'last_done_on', 'next_assignee_id', 'latest_event_id']);
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isTextOrNull = (value: unknown) => value === undefined || value === null || isText(value);
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -293,6 +296,7 @@ function validCompletion(value: unknown): value is ChoreCompletion {
     isTextOrNull(value.next_assignee_id) &&
     isPlainObject(seen) &&
     Object.keys(seen).every((key) => SEEN_KEYS.has(key)) &&
+    isTextOrNull(seen.latest_event_id) &&
     (value.kind === 'done' || value.kind === 'skipped')
   );
 }
@@ -733,7 +737,17 @@ export function createFakeServer(): FakeServer {
     const { seen } = completion;
     const same = (column: string) =>
       (seen[column as keyof typeof seen] ?? null) === (chore[column] ?? null);
-    if (!same('next_due_on') || !same('last_done_on') || !same('next_assignee_id')) {
+    // The latest booked entry as well: a second booking of a flexible chore for anyone on the
+    // same day leaves the rest unchanged (AC-031).
+    const latest = Object.values(tables.chore_events ?? {})
+      .filter((row) => row.chore_id === chore.id)
+      .sort(newestFirst)[0];
+    if (
+      !same('next_due_on') ||
+      !same('last_done_on') ||
+      !same('next_assignee_id') ||
+      (seen.latest_event_id ?? null) !== (latest?.id ?? null)
+    ) {
       const faster = Object.values(tables.chore_events ?? {})
         .filter(
           (row) =>
@@ -1369,7 +1383,13 @@ export function createFakeServer(): FakeServer {
               synonyms.push(synonym);
               keys.push(key);
             }
-            if (synonyms.length > MAX_SYNONYMS) throw reject('too_many_synonyms');
+            if (
+              synonyms.length > MAX_SYNONYMS ||
+              totalLength(synonyms) > MAX_SYNONYMS_LENGTH ||
+              totalLength(keys) > MAX_SYNONYMS_LENGTH
+            ) {
+              throw reject('too_many_synonyms');
+            }
             // 4. and 5.: empty values of the target filled, the source deleted.
             tables = withoutRows(tables, 'articles', [sourceId]);
             tables = withRow(tables, 'articles', {

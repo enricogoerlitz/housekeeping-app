@@ -13,7 +13,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0004](0004-aktivitaeten/spec.md)               | Aktivitäten und eigene Fotos                               | umgesetzt   |
 | [0005](0005-globale-muster-navigation/spec.md)  | Globale Muster und Navigation                              | freigegeben |
 | [0006](0006-eine-einkaufsliste/spec.md)         | Eine Einkaufsliste                                         | umgesetzt   |
-| [0007](0007-artikel-katalog-stammdaten/spec.md) | Artikel-Katalog und Stammdaten                             | freigegeben |
+| [0007](0007-artikel-katalog-stammdaten/spec.md) | Artikel-Katalog und Stammdaten                             | umgesetzt   |
 | [0008](0008-essen-rezept-editor/spec.md)        | Essen und Rezept-Editor                                    | freigegeben |
 | [0009](0009-sammlungen/spec.md)                 | Sammlungen                                                 | freigegeben |
 | [0010](0010-kalender-abwesenheiten/spec.md)     | Kalender und Abwesenheiten                                 | freigegeben |

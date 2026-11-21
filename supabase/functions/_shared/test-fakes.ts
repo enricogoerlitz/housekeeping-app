@@ -14,6 +14,8 @@ export interface FakeClientOptions {
   claims?: { [jwt: string]: { [claim: string]: unknown } };
   tables?: { [table: string]: Row[] };
   rpc?: (fn: string, args: { [name: string]: unknown }) => DbResult;
+  /** At most this many rows per answer, like PostgREST's max_rows (1000 in config.toml). */
+  maxRows?: number;
 }
 
 export interface FakeClient extends UserClient {
@@ -21,9 +23,9 @@ export interface FakeClient extends UserClient {
   selects: { table: string; columns: string }[];
 }
 
-function query(rows: Row[]): Query {
-  const result = (): DbResult => ({ data: rows, error: null });
-  const next = (filtered: Row[]) => query(filtered);
+function query(rows: Row[], maxRows = Number.POSITIVE_INFINITY): Query {
+  const result = (): DbResult => ({ data: rows.slice(0, maxRows), error: null });
+  const next = (filtered: Row[]) => query(filtered, maxRows);
   return {
     eq: (column, value) => next(rows.filter((row) => row[column] === value)),
     in: (column, values) => next(rows.filter((row) => values.includes(String(row[column])))),
@@ -58,7 +60,7 @@ export function fakeClient(options: FakeClientOptions = {}): FakeClient {
     from: (table) => ({
       select: (columns) => {
         client.selects.push({ table, columns });
-        return query(options.tables?.[table] ?? []);
+        return query(options.tables?.[table] ?? [], options.maxRows);
       },
     }),
   };

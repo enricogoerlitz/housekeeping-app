@@ -1,6 +1,12 @@
 // Article commands (spec 0007, REQ-005 to REQ-007): create, edit, confirm, delete with
 // "Rückgängig" and merge, each one change to the server (apply_changes or its own RPC).
-import { normalizeText, searchArticleCatalog, type Article } from '@housekeeping/core';
+import {
+  filterRecipes,
+  groupItems,
+  normalizeText,
+  searchArticleCatalog,
+  type Article,
+} from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
@@ -14,7 +20,8 @@ import {
   updateArticle,
 } from './commands-articles';
 import { setOffline } from './commands-household';
-import { addShoppingItemFromText, setItemChecked } from './commands-shopping';
+import { addShoppingItemFromText, pantryCheckRows, setItemChecked } from './commands-shopping';
+import { indexById } from './queries';
 import { NADJA } from './seed/demo';
 import { starterCatalogEntries } from './starter/entries';
 import { commit, getData, OfflineError, snapshot, updateData } from './store';
@@ -140,6 +147,42 @@ describe('updateArticle', () => {
     ]);
     const seen = fx.nadjaData(nadja).articles.find((article) => article.id === 'a-mk');
     expect(seen).toMatchObject({ name: 'Kokosnussmilch2', needsReview: false });
+  });
+
+  it('AC-032: area, Vorrat and diet reach the list, the pantry check and the "Vegan" filter', async () => {
+    seedMilchkokos();
+    await fx.startEnrico();
+    const konserven = getData().areas.find((area) => area.name === 'Konserven & Saucen');
+    if (!konserven) throw new Error('fixture');
+    const listGroupOf = (itemId: string) => {
+      const data = getData();
+      return groupItems(data.items, indexById(data.articles), data.areas).find((group) =>
+        group.items.some((item) => item.id === itemId),
+      )?.title;
+    };
+    const veganRecipes = () => {
+      const data = getData();
+      return filterRecipes(data.recipes, { diet: 'vegan' }, indexById(data.articles), '2026-11-20');
+    };
+    const curryRow = () =>
+      pantryCheckRows([], [{ recipeId: 'r-curry', portions: 2 }]).find(
+        (row) => row.articleId === 'a-mk',
+      );
+    expect(listGroupOf('i-milchkokos')).toBe('Ohne Bereich');
+    expect(curryRow()?.isPantry).toBe(false);
+    expect(veganRecipes().map((recipe) => recipe.id)).not.toContain('r-curry');
+
+    updateArticle('a-mk', { areaId: konserven.id, isPantry: true, diet: 'vegan' });
+    await fx.settle();
+
+    expect(fx.server.row(H, 'articles', 'a-mk')).toMatchObject({
+      area_id: konserven.id,
+      is_pantry: true,
+      diet: 'vegan',
+    });
+    expect(listGroupOf('i-milchkokos')).toBe('Konserven & Saucen');
+    expect(curryRow()?.isPantry).toBe(true);
+    expect(veganRecipes().map((recipe) => recipe.id)).toContain('r-curry');
   });
 
   it('AC-035: the patch carries only the changed column, so a parallel rename survives', async () => {

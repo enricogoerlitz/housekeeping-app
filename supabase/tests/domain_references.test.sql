@@ -13,14 +13,19 @@ as $$ select id from fx where key = p_key $$;
 grant execute on function tests.fx(text) to anon, authenticated;
 
 -- The SQL of an apply_changes call booking the chore (spec 0011: events only via complete_chore),
--- with the chore's current state as seen.
+-- with the chore's current state as seen (the fixtures' chores have no date, last time or person;
+-- the latest booked event is read as the caller sees it).
 create function tests.complete_sql(p_household text, p_chore text, p_kind text, p_done_by text) returns text
 language sql volatile
 as $$
   select format('select public.apply_changes(%L, %L)', tests.fx(p_household), jsonb_build_array(jsonb_build_object(
     'kind', 'complete_chore', 'completion', jsonb_build_object(
       'chore_id', tests.fx(p_chore), 'event_id', gen_random_uuid(), 'kind', p_kind, 'done_on', current_date,
-      'done_by', tests.fx(p_done_by), 'seen', '{}'::jsonb, 'next_due_on', current_date + 7))))
+      'done_by', tests.fx(p_done_by),
+      'seen', jsonb_build_object('latest_event_id', (
+        select e.id from public.chore_events e where e.chore_id = tests.fx(p_chore)
+        order by e.created_at desc, e.id desc limit 1)),
+      'next_due_on', current_date + 7))))
 $$;
 grant execute on function tests.complete_sql(text, text, text, text) to anon, authenticated;
 

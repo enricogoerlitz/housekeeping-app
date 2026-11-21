@@ -223,6 +223,7 @@ export function removeChoreEvent(eventId: Id): ChoreEventRemoval | null {
     undoable && chore && after
       ? completionOp(
           after,
+          data.choreEvents.filter((candidate) => candidate.id !== eventId),
           event.id,
           { kind: event.kind, doneOn: event.doneOn, doneBy: event.doneBy },
           chore,

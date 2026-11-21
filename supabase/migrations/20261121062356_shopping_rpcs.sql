@@ -465,9 +465,11 @@ $$;
 --    shopping rule; Vorrat stays as on the target; needs_review is cleared;
 -- 5. the source is deleted (tombstone);
 -- 6. name and synonyms of the source become synonyms of the target, duplicate keys are dropped;
---    more than 30 synonyms → too_many_synonyms and nothing changes (Offene Frage 11).
+--    more than 30 synonyms, or more than 2000 characters in them or in their keys →
+--    too_many_synonyms and nothing changes (Offene Frage 11).
 -- Both articles are serialised with the store actions (lock per household and article, in a fixed
--- order) and locked `for update`. Returns {"recipes": n, "items": m}: the recipes rewritten and the
+-- order); then the recipes of the source and the two articles are locked `for update`, in that
+-- order. Returns {"recipes": n, "items": m}: the recipes rewritten and the
 -- items of the source moved (merged or reassigned).
 -- Errors: not_authenticated (42501), invalid_value (22023, missing or equal ids),
 -- article_not_found (P0002, also when one of them is in another household), too_many_synonyms
@@ -507,6 +509,14 @@ begin
 
   perform private.lock_household_article(v_household_id, least(p_source_id, p_target_id));
   perform private.lock_household_article(v_household_id, greatest(p_source_id, p_target_id));
+  -- The recipes of the source before the articles: an ingredient change locks its recipe row and
+  -- then reads the articles `for key share` (recipes_check_ingredients). Taking the locks in the
+  -- same order means one waits for the other instead of a deadlock (40P01).
+  perform 1 from public.recipes r
+  where r.household_id = v_household_id
+    and r.ingredients @> jsonb_build_array(jsonb_build_object('articleId', p_source_id::text))
+  order by r.id
+  for update;
   perform 1 from public.articles a where a.id in (p_source_id, p_target_id) order by a.id for update;
   select a.* into v_source from public.articles a where a.id = p_source_id and a.household_id = v_household_id;
   select a.* into v_target from public.articles a where a.id = p_target_id and a.household_id = v_household_id;
@@ -582,7 +592,10 @@ begin
     where c.key is not null and c.synonym is not null and c.key <> v_target.name_key
     order by c.key, c.ord
   ) n;
-  if cardinality(v_synonyms) > 30 then
+  -- The limits of articles_synonyms_size and articles_synonym_keys_size, named like the count.
+  if cardinality(v_synonyms) > 30
+     or char_length(array_to_string(v_synonyms, '')) > 2000
+     or char_length(array_to_string(v_synonym_keys, '')) > 2000 then
     raise exception 'too_many_synonyms' using errcode = '22023';
   end if;
   update public.articles a

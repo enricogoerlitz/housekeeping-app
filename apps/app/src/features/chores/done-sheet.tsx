@@ -9,8 +9,11 @@ import {
   type DoneTarget,
 } from '@housekeeping/api';
 import {
+  choreDraftErrors,
   doneOnChoices,
   matchSearchOrCreate,
+  newChoreDraft,
+  plannedFieldsOf,
   recurrenceLabel,
   type Chore,
   type DoneOnChoice,
@@ -31,14 +34,7 @@ import { useMemo, useState } from 'react';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
-import {
-  AssignmentField,
-  choreDraftErrors,
-  newChoreDraft,
-  plannedInputOf,
-  RhythmField,
-  useChoreDraft,
-} from './chore-form';
+import { AssignmentField, RhythmField, useChoreDraft } from './chore-form';
 
 type DayLabel = DoneOnChoice['label'];
 
@@ -122,7 +118,7 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
     const target: DoneTarget =
       choice.kind === 'chore'
         ? { choreId: choice.chore.id }
-        : { title: choice.title, ...plannedInputOf(draft, members) };
+        : { title: choice.title, ...plannedFieldsOf(draft, members) };
     const restore = snapshot();
     try {
       if (!logDone(target, { doneOn, doneBy })) {
@@ -153,7 +149,7 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
       ? undefined
       : choice.kind === 'chore'
         ? `${choice.chore.title} · ${recurrenceLabel(choice.chore.recurrence)}`
-        : `Neu: ${choice.title} · ${recurrenceLabel(plannedInputOf(draft, members).recurrence)}`;
+        : `Neu: ${choice.title} · ${recurrenceLabel(plannedFieldsOf(draft, members).recurrence)}`;
 
   return (
     <Sheet

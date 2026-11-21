@@ -90,6 +90,11 @@ const DATE_COLUMNS = new Set([
 const TIMESTAMP_COLUMNS = new Set(['created_at', 'checked_at']);
 /** Tables the app lists newest first: ties in created_at must keep the demo's order there too. */
 const NEWEST_FIRST = new Set(['recipes', 'restaurants', 'activities', 'feedback']);
+/**
+ * Ratings count from `updated_at` (ratedAt, spec 0011): the seed's were given when they were
+ * created, long before the recent plan entries, so „Wie war's?“ asks for those again (AC-020).
+ */
+const RATING_TABLES = new Set(['recipe_ratings', 'restaurant_ratings', 'activity_ratings']);
 /** Rows the demo gives no creation time: the household was "set up" this long before the seed. */
 const SETUP_DAYS_AGO = 120;
 
@@ -260,6 +265,7 @@ function prepareRow(
   out.created_at ??= expr(
     `now() + make_interval(days => -${SETUP_DAYS_AGO}, secs => ${(tie / 1_000_000).toFixed(6)})`,
   );
+  if (RATING_TABLES.has(table)) out.updated_at = out.created_at;
   if (table === 'shopping_items') out.check_seq = row.checked === true ? 1 : 0;
   return out;
 }

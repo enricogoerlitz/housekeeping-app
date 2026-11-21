@@ -587,17 +587,17 @@ insert into public.recipe_favorites (household_id, recipe_id, member_id, created
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'd8261ccd-4cee-57cc-9c74-be39d276ce21', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000007)),
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '859fb162-e839-58b1-b82b-a90bcfb42c70', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000008));
 
-insert into public.recipe_ratings (household_id, recipe_id, member_id, stars, created_at) values
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f8bb33d0-ec23-5cae-afca-e00949b2b93f', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f8bb33d0-ec23-5cae-afca-e00949b2b93f', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b6ba9eb3-8266-5fbf-a32c-e4b38a91b98f', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000002)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '59df6a7a-0604-567e-87a0-e6449db65331', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000003)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '59df6a7a-0604-567e-87a0-e6449db65331', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000004)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '48631bc5-23d6-57cc-b031-d04656c4c5dc', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000005)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '36ae0a76-8195-5afa-b5f1-38005828b69c', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000006)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '36ae0a76-8195-5afa-b5f1-38005828b69c', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000007)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'd8261ccd-4cee-57cc-9c74-be39d276ce21', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 3, now() + make_interval(days => -120, secs => 0.000008)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'd8261ccd-4cee-57cc-9c74-be39d276ce21', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000009));
+insert into public.recipe_ratings (household_id, recipe_id, member_id, stars, created_at, updated_at) values
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f8bb33d0-ec23-5cae-afca-e00949b2b93f', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000), now() + make_interval(days => -120, secs => 0.000000)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f8bb33d0-ec23-5cae-afca-e00949b2b93f', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001), now() + make_interval(days => -120, secs => 0.000001)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b6ba9eb3-8266-5fbf-a32c-e4b38a91b98f', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000002), now() + make_interval(days => -120, secs => 0.000002)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '59df6a7a-0604-567e-87a0-e6449db65331', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000003), now() + make_interval(days => -120, secs => 0.000003)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '59df6a7a-0604-567e-87a0-e6449db65331', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000004), now() + make_interval(days => -120, secs => 0.000004)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '48631bc5-23d6-57cc-b031-d04656c4c5dc', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000005), now() + make_interval(days => -120, secs => 0.000005)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '36ae0a76-8195-5afa-b5f1-38005828b69c', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000006), now() + make_interval(days => -120, secs => 0.000006)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '36ae0a76-8195-5afa-b5f1-38005828b69c', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000007), now() + make_interval(days => -120, secs => 0.000007)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'd8261ccd-4cee-57cc-9c74-be39d276ce21', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 3, now() + make_interval(days => -120, secs => 0.000008), now() + make_interval(days => -120, secs => 0.000008)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'd8261ccd-4cee-57cc-9c74-be39d276ce21', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000009), now() + make_interval(days => -120, secs => 0.000009));
 
 insert into public.restaurants (id, household_id, name, address, lat, lng, maps_url, cuisine, price_level, tags, notes, created_at) values
   ('8444b36e-1fd2-546c-8f90-b715c19c8888', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Trattoria Da Enzo', 'Severinstraße 12, Köln', 50.9271, 6.958, 'https://www.google.com/maps/place/Trattoria+Da+Enzo/@50.9271,6.9580,17z', 'Italienisch', 2, '{"pasta","gemütlich"}', 'Trüffelpasta! Am Wochenende reservieren.', now() + make_interval(days => -40, secs => 0.000000)),
@@ -610,12 +610,12 @@ insert into public.restaurant_favorites (household_id, restaurant_id, member_id,
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '8444b36e-1fd2-546c-8f90-b715c19c8888', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000001)),
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000002));
 
-insert into public.restaurant_ratings (household_id, restaurant_id, member_id, stars, created_at) values
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '8444b36e-1fd2-546c-8f90-b715c19c8888', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '8444b36e-1fd2-546c-8f90-b715c19c8888', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000002)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000003)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f2ad4d16-d1d1-5659-b707-5b48c391e019', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000004));
+insert into public.restaurant_ratings (household_id, restaurant_id, member_id, stars, created_at, updated_at) values
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '8444b36e-1fd2-546c-8f90-b715c19c8888', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000), now() + make_interval(days => -120, secs => 0.000000)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '8444b36e-1fd2-546c-8f90-b715c19c8888', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001), now() + make_interval(days => -120, secs => 0.000001)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9', '64399031-c98c-5692-9e99-923924bfff3d', 5, now() + make_interval(days => -120, secs => 0.000002), now() + make_interval(days => -120, secs => 0.000002)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'cbe4bb0b-38d0-5340-b60b-9f0245d2abb9', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000003), now() + make_interval(days => -120, secs => 0.000003)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'f2ad4d16-d1d1-5659-b707-5b48c391e019', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000004), now() + make_interval(days => -120, secs => 0.000004));
 
 insert into public.activities (id, household_id, name, name_key, description, photo_path, place_name, address, lat, lng, maps_url, tags, created_by, created_at) values
   ('4213331d-c8fc-5354-b6f7-95f03a0cba65', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Bouldern', 'bouldern', 'In der Boulderhalle, Schuhe gibt es zum Ausleihen.', null, null, null, null, null, null, '{}', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -40, secs => 0.000000)),
@@ -626,10 +626,10 @@ insert into public.activity_favorites (household_id, activity_id, member_id, cre
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000000)),
   ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'be438327-21ac-55e4-b69c-1a3f8d58ad39', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000001));
 
-insert into public.activity_ratings (household_id, activity_id, member_id, stars, created_at) values
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001)),
-  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'be438327-21ac-55e4-b69c-1a3f8d58ad39', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000002));
+insert into public.activity_ratings (household_id, activity_id, member_id, stars, created_at, updated_at) values
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 5, now() + make_interval(days => -120, secs => 0.000000), now() + make_interval(days => -120, secs => 0.000000)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', '68941b3d-be5c-5b9d-9b56-2eb0a9d362ca', '64399031-c98c-5692-9e99-923924bfff3d', 4, now() + make_interval(days => -120, secs => 0.000001), now() + make_interval(days => -120, secs => 0.000001)),
+  ('c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'be438327-21ac-55e4-b69c-1a3f8d58ad39', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 4, now() + make_interval(days => -120, secs => 0.000002), now() + make_interval(days => -120, secs => 0.000002));
 
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id, text, note, leftovers_of_entry_id, eater_ids, guests, portions, variants, cook_id, sort, not_cooked, created_at) values
   ('089c2b8f-6e70-56fd-9068-a33b5680ca6e', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date - 6), 'b60c1058-0fa4-5d7a-b8f8-3b7f8895abcd', 'recipe', 'ccaae111-0f68-505f-9c45-ee2c9defceac', null, null, null, null, null, '{"ecc63aaa-a39f-59d0-b7c7-55980a57c2f3","64399031-c98c-5692-9e99-923924bfff3d"}', 0, 2, '[]'::jsonb, 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 0, false, now() + make_interval(days => -120, secs => 0.000000)),

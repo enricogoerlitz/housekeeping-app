@@ -1,17 +1,16 @@
 import { createChore, useCurrentMember, useMembers, useToday } from '@housekeeping/api';
+import {
+  choreDraftErrors,
+  choreFieldsOf,
+  newChoreDraft,
+  type ChoreDraftErrors,
+} from '@housekeeping/core';
 import { Button, Sheet, Stack, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import {
-  ChoreFormFields,
-  choreDraftErrors,
-  choreInputOf,
-  newChoreDraft,
-  useChoreDraft,
-  type ChoreDraftErrors,
-} from './chore-form';
+import { ChoreFormFields, useChoreDraft } from './chore-form';
 
 /** "Neue Aufgabe": only the title is required; everything else has a sensible default. */
 export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) {
@@ -33,7 +32,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
     setErrors(found);
     if (found.title || found.weekdays) return;
     try {
-      createChore(choreInputOf(draft, members));
+      createChore(choreFieldsOf(draft, members));
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
       return;

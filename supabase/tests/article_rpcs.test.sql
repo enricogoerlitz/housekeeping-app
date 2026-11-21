@@ -5,7 +5,7 @@
 -- invalid input, a merge that fails at its last step and changes nothing.
 begin;
 \ir _helpers.psql
-select plan(57);
+select plan(64);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -293,6 +293,32 @@ select is(
   (select cardinality(synonyms) from public.articles where id = tests.fx('tomaten')), 29,
   'E8 merge_articles: after the refusal the target keeps its 29 synonyms');
 
+-- ===================== merge_articles: more than 2000 characters in all synonyms ==================
+-- articles_synonyms_size and articles_synonym_keys_size would fail with 23514; the merge refuses
+-- with too_many_synonyms like for 31 synonyms (security-check hint, T8).
+select tests.clear_authentication();
+insert into fx (key) values ('lang_ziel'), ('lang_quelle'), ('umlaut_ziel');
+insert into public.articles (id, household_id, name, name_key, synonyms, synonym_keys) values
+  (tests.fx('lang_ziel'), tests.fx('home_a'), 'Langer Name', 'langer name',
+   array[repeat('a', 995), repeat('b', 995)], array[repeat('a', 995), repeat('b', 995)]),
+  (tests.fx('lang_quelle'), tests.fx('home_a'), 'Kurzname Bio', 'kurzname bio', '{}', '{}'),
+  (tests.fx('umlaut_ziel'), tests.fx('home_a'), 'Umlaute', 'umlaute',
+   array[repeat('ä', 995)], array[repeat('ae', 995)]);
+select tests.authenticate_as(tests.fx('enrico'));
+select throws_ok(
+  format('select public.merge_articles(%L, %L)', tests.fx('lang_quelle'), tests.fx('lang_ziel')),
+  '22023', 'too_many_synonyms',
+  'E8 merge_articles: more than 2000 characters in all synonyms are refused as too_many_synonyms');
+select throws_ok(
+  format('select public.merge_articles(%L, %L)', tests.fx('lang_quelle'), tests.fx('umlaut_ziel')),
+  '22023', 'too_many_synonyms',
+  'E8 merge_articles: more than 2000 characters in all synonym keys are refused as too_many_synonyms');
+select tests.clear_authentication();
+select is(
+  (select count(*)::int from public.articles where id in (tests.fx('lang_ziel'), tests.fx('lang_quelle'), tests.fx('umlaut_ziel'))),
+  3,
+  'E8 merge_articles: after the refusals all three articles still exist');
+
 -- ===================== merge_articles: Milchkokos into Kokosmilch (AC-036, AC-038, AC-039) ==========
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
@@ -377,6 +403,38 @@ select results_eq(
   format('select synonyms, synonym_keys, diet, default_shopping_rule from public.articles where id = %L', tests.fx('haferdrink')),
   $$ values ('{Hafermilch, Haferdrink Bio}'::text[], '{hafermilch, haferdrink bio}'::text[], 'unknown'::text, 'count'::text) $$,
   'E8 merge_articles: duplicate synonym keys of the source are dropped; diet unknown stays unknown');
+
+-- ===================== merge_articles next to ingredient changes (lock order) =====================
+-- merge_articles locks the recipes of the source before the two articles, in the order an
+-- ingredient change takes them (recipe row, then the articles `for key share` in
+-- recipes_check_ingredients), so the two cannot deadlock. Concurrency is not reachable from one
+-- pgTAP session (tmp/0007/deadlock-repro.sh shows it with two sessions); here both orders run
+-- one after the other in one transaction.
+select tests.clear_authentication();
+insert into fx (key) values ('reis'), ('basmati'), ('risotto');
+insert into public.articles (id, household_id, name, name_key) values
+  (tests.fx('reis'), tests.fx('home_a'), 'Reis', 'reis'),
+  (tests.fx('basmati'), tests.fx('home_a'), 'Basmati', 'basmati');
+insert into public.recipes (id, household_id, title, ingredients) values
+  (tests.fx('risotto'), tests.fx('home_a'), 'Risotto', jsonb_build_array(tests.ing('i1', tests.fx('reis'))));
+select tests.authenticate_as(tests.fx('nadja'));
+select lives_ok(
+  format($$ update public.recipes set ingredients = %L where id = %L $$,
+         jsonb_build_array(tests.ing('i1', tests.fx('reis')), tests.ing('i2', tests.fx('basmati'))), tests.fx('risotto')),
+  'E8 merge_articles: an ingredient change before the merge goes through');
+select is(
+  public.merge_articles(tests.fx('reis'), tests.fx('basmati')),
+  '{"recipes": 1, "items": 0}'::jsonb,
+  'E8 merge_articles: the merge after it rewrites that recipe');
+select is(
+  (select array_agg(e ->> 'articleId' order by ord) from public.recipes r,
+     jsonb_array_elements(r.ingredients) with ordinality as x (e, ord) where r.id = tests.fx('risotto')),
+  array[tests.fx('basmati')::text, tests.fx('basmati')::text],
+  'E8 merge_articles: both rows of the recipe point at the target');
+select lives_ok(
+  format($$ update public.recipes set ingredients = %L where id = %L $$,
+         jsonb_build_array(tests.ing('i1', tests.fx('basmati'))), tests.fx('risotto')),
+  'E8 merge_articles: an ingredient change after the merge goes through');
 
 select * from finish();
 rollback;

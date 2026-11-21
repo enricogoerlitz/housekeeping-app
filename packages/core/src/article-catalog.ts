@@ -26,6 +26,9 @@ export const MAX_SYNONYMS_LENGTH = 2000;
 export type NamedArticle = Pick<Article, 'id' | 'name' | 'synonyms'>;
 
 const length = (text: string): number => Array.from(text).length;
+/** All texts together, as Postgres counts `array_to_string(…, '')` (articles_synonyms_size). */
+const totalLength = (texts: readonly string[]): number =>
+  texts.reduce((sum, text) => sum + length(text), 0);
 
 /** One entry of the starter catalog as core sees it; the api maps its area key to the name. */
 export interface StarterCatalogEntry {
@@ -365,10 +368,9 @@ export function validateArticleDraft<T extends Article>(
   if (synonyms.length > MAX_SYNONYMS) {
     problems.push({ field: 'synonyms', kind: 'tooMany', message: 'Höchstens 30 Synonyme' });
   }
-  const total = (texts: string[]) => texts.reduce((sum, text) => sum + length(text), 0);
   if (
-    total(synonyms) > MAX_SYNONYMS_LENGTH ||
-    total(synonyms.map(normalizeText)) > MAX_SYNONYMS_LENGTH
+    totalLength(synonyms) > MAX_SYNONYMS_LENGTH ||
+    totalLength(synonyms.map(normalizeText)) > MAX_SYNONYMS_LENGTH
   ) {
     problems.push({
       field: 'synonyms',
@@ -609,7 +611,10 @@ export interface MergePreview<T extends Article> {
   items: number;
   /** The target as it will be after the merge (E8). */
   merged: T;
-  /** More than 30 synonyms: the server refuses, nothing changes (open question 11). */
+  /**
+   * More than 30 synonyms or more than 2000 characters in them or in their keys: the server
+   * refuses with too_many_synonyms, nothing changes (open question 11).
+   */
   tooManySynonyms: boolean;
   tooManySynonymsMessage?: string;
 }
@@ -663,7 +668,10 @@ export function mergeArticlesPreview<T extends Article>(
     recipes: recipeCount,
     items: itemCount,
     merged,
-    tooManySynonyms: synonyms.length > MAX_SYNONYMS,
+    tooManySynonyms:
+      synonyms.length > MAX_SYNONYMS ||
+      totalLength(synonyms) > MAX_SYNONYMS_LENGTH ||
+      totalLength(synonyms.map(normalizeText)) > MAX_SYNONYMS_LENGTH,
   };
   if (preview.tooManySynonyms) {
     preview.tooManySynonymsMessage = `Zu viele Synonyme – entferne zuerst welche bei ${target.name}`;

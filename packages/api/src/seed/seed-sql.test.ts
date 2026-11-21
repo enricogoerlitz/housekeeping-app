@@ -53,6 +53,23 @@ describe('AC-033 (spec 0003): generated seed', async () => {
     );
   });
 
+  it("spec 0011, AC-020: seed ratings were given in the past, so „Wie war's?“ asks for the recent entries again", () => {
+    for (const table of ['recipe_ratings', 'restaurant_ratings', 'activity_ratings']) {
+      const insert = new RegExp(
+        `insert into public\\.${table} \\(([^)]*)\\) values\\n([\\s\\S]*?);\\n`,
+      ).exec(seed.sql);
+      const columns = (insert?.[1] ?? '').split(', ');
+      expect(columns).toContain('updated_at');
+      // updated_at (= ratedAt) is the rating's created_at, long before the plan entries.
+      for (const line of (insert?.[2] ?? '').split('\n')) {
+        const stamps = line.match(/now\(\) \+ make_interval\([^)]*\)/g) ?? [];
+        expect(stamps).toHaveLength(2);
+        expect(stamps[0]).toBe(stamps[1]);
+        expect(stamps[0]).toContain('days => -120');
+      }
+    }
+  });
+
   it('maps every slug to a UUID, with the demo members as the test accounts', async () => {
     const demo = seed.ids[DEMO_HOUSEHOLD_ID];
     expect(demo?.[ENRICO]).toBe(await seedHouseholdId(ENRICO));

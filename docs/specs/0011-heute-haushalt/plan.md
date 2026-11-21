@@ -378,7 +378,8 @@ berührt `seed/demo.ts` nicht.
 - **Test:** `pnpm e2e:dev`, Klick-Durchlauf: AC-029 in Zeitlupe (0 s / 0,8 s / 1,5 s / 3,5 s), Tab
   „Essen“ im Fenster bucht sofort, zwei Browser für „Nadja war schneller“, Netz weg im Fenster,
   Samstag ohne Haken, Mittwoch „Erledigt am Mittwoch“.
-- **Status:** offen
+- **Status:** erledigt (nicht committet), samt den Folgearbeiten aus Task 7 und 8; Entscheidungen
+  siehe „Entscheidungen beim Bauen (App, Task 9)“
 
 ### Task 10 — Abschluss
 
@@ -555,3 +556,50 @@ Aus Plan, `AGENTS.md` und dem Code abgeleitet, ohne neue Frage:
 6. **`set` und `settle`** kommen über die reine Funktion `checkWindowActions` in
    `check-window.ts` an `CheckWindowState`. `set` läuft wie ein Tipp durch `onToggle` und
    `announce`, schaltet aber nicht um. Die App ruft `settle` aus `useFocusEffect` (Entscheidung 8).
+
+## Entscheidungen beim Bauen (App, Task 9, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat die Folgearbeiten aus Task 7 und 8 vorab freigegeben):
+
+1. **Eine Abhak-Liste für alle drei Stellen.** `useChoreCheckWindow` aus
+   `features/chores/chore-check-list.tsx` hakt in „Anstehend“, „Zu tun“ und in der Haushalt-Zeile
+   des Kalenders ab; die eigenen Sammel-Fenster in `today-chores.tsx` und `calendar-parts.tsx`
+   sind entfernt. Die Haushalt-Zeile gibt ihre offenen Einträge als Aufgaben in die Liste. Damit
+   gelten überall derselbe Schutz gegen doppeltes Buchen, dieselben Hinweise („Nadja war schneller
+   (10:02)“, „Offline – nichts wurde abgehakt“, „Hat nicht geklappt – bitte noch einmal
+   versuchen“) und „Buchen beim Verlassen der Seite“. Die lokale Kopie der Auswahl „heute fällig“
+   gab es nicht mehr: `today-chores.tsx` nutzt seit Task 8 `choresOfDay` und damit core
+   `dueChores`.
+2. **Der Server vergleicht auch die zuletzt gebuchte Erledigung.** `seen` bekommt
+   `latest_event_id` (zuletzt gebuchte Erledigung jeder Art, nach `created_at`, dann `id`, wie in
+   `remove_chore_event`; `null` ohne Erledigung; ein fehlender Schlüssel zählt als `null`, ein
+   Wert, der kein Text ist, ist `invalid_change`). Grund: Eine zweite Buchung einer flexiblen
+   Aufgabe für „egal wer“ am selben Tag lässt Termin, letzte Erledigung und Person unverändert; ohne
+   die Erledigung käme sie durch. Das Gerät schickt die Erledigung aus core `latestBookedEvent`,
+   der Fake prüft wie die Datenbank. Die Prüfung im Gerät (Stand beim Tippen gegen Stand beim
+   Buchen) vergleicht dieselbe Erledigung statt nur der jüngsten „erledigt“.
+3. **`latestBookedEvent` ordnet auf die Mikrosekunde** (`compareTimestamps`), wie Postgres. Mit
+   Millisekunden lagen die Seed-Erledigungen (1 µs auseinander) gleichauf, und die Kennung
+   entschied anders als in der Datenbank. Mit Punkt 2 wäre jedes Abhaken solcher Aufgaben mit
+   `chore_changed` gescheitert.
+4. **Formular und Aufgabe in core** (`chore-form.ts`: `newChoreDraft`, `choreDraftFrom`,
+   `choreDraftErrors`, `choreFieldsOf`, `plannedFieldsOf`). Die App behält nur die Felder und den
+   Zustand (`useChoreDraft`). `choreInputOf` heißt jetzt `choreFieldsOf`, weil core den Typ
+   `ChoreInput` der api nicht kennt; das Ergebnis passt strukturell. Neu ist die Saison als eigener
+   Teil neben Rhythmus und Zuständigkeit: Unberührt bleibt der gespeicherte Wert. Sonst würde eine
+   Saison, die das Formular nicht zeigen kann („Januar, März“), beim Speichern eines neuen Titels
+   still auf „Januar“ schrumpfen.
+5. **Kalender `?tag=JJJJ-MM-TT`:** Der Kalender übernimmt den Tag einmal (Woche mit diesem Tag,
+   Tag gewählt), ein ungültiger Wert wird ignoriert. Danach löscht er den Parameter auf der
+   eigenen Route (`useNavigation().setParams`). `router.setParams` setzt ihn auf die Tab-Route
+   darüber, die Adresse behielt `?tag=` (im Klick-Durchlauf gefunden). So funktioniert derselbe
+   Link wieder, und Blättern wird nicht zurückgesetzt.
+6. **`/abwesenheiten`:** Der Löschen-Knopf steht im `controls`-Slot von `ListRow` (Spec 0006),
+   außerhalb der Fläche, die die Abwesenheit öffnet. Keine verschachtelten Knöpfe mehr.
+7. **Seed-Bewertungen:** `updated_at` (= `ratedAt`) ist das `created_at` der Bewertungszeile, also
+   120 Tage vor dem Zurücksetzen. Nach `pnpm db:reset` fragt „Wie war's?“ die Einträge der letzten
+   drei Tage mit der alten Bewertung vorausgefüllt ab (AC-020).
+
+**Hinweis:** Lehnt der Server eine Buchung ab (`already_done`), meldet der Browser die Antwort 400
+von `apply_changes` in der Konsole. Das ist die gewollte Ablehnung; die App selbst schreibt keinen
+Fehler in die Konsole.

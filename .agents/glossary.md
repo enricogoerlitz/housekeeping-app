@@ -25,12 +25,15 @@ Haushalte sein.
 
 ### Artikel
 
-Alles, was man kaufen kann, Lebensmittel genauso wie Haushaltswaren. Im Kern nur ein Name,
-eindeutig je Haushalt, optional mit Bereich. Auf der Liste entsteht er bei der ersten Eingabe eines
-neuen Namens; im Rezept wählt man ihn per „Suchen oder anlegen“ und legt einen neuen bewusst an
-(Spec 0007). Jede Rezeptzutat verweist auf einen Artikel.
+Alles, was man kaufen kann, Lebensmittel genauso wie Haushaltswaren. Im Kern ein Name, eindeutig
+je Haushalt, mit Synonymen, optional Bereich, Vorrat, Ernährungseigenschaft und
+Standard-Einkaufsregel. Auf der Liste entsteht er bei der ersten Eingabe eines neuen Namens; im
+Rezept wählt man ihn per „Suchen oder anlegen“ und legt einen neuen bewusst an (Spec 0007). Jede
+Rezeptzutat verweist auf einen Artikel. Gelöscht wird nur ein unbenutzter Artikel, sonst führt man
+ihn mit einem anderen zusammen.
 
-- **Im Code:** `Article`, `articles`
+- **Im Code:** `Article`, `articles`; Löschen nur über `delete_article`, Zusammenführen über
+  `merge_articles`
 - **Nicht verwenden:** Produkt, Item, Ware, Zutat (für den Katalogeintrag)
 - **Abgrenzung:** Eine _Zutat_ ist ein Artikel im Kontext eines Rezepts (→ Rezeptzutat). Ein
   _Packstück_ ist kein Artikel (Spec 0012).
@@ -42,18 +45,22 @@ Alles, was „Suchen oder anlegen“ bei einer Zutat durchsucht: die Artikel des
 Starter-Katalog. Wählt man einen Eintrag des Starter-Katalogs, entsteht dabei der Haushalts-Artikel
 mit dessen Angaben (Spec 0007). Gepflegt wird er auf der Seite „Artikel“ unter „Verwalten“.
 
-- **Im Code:** kein eigener Typ; die Suche läuft über `articles` und `starterCatalog`
+- **Im Code:** kein eigener Typ; die Suche ist `searchArticleCatalog` (`packages/core`) über
+  `articles` und `starterCatalogEntries`
 - **Nicht verwenden:** Produktkatalog, Stammdaten (meint mehr, siehe dort)
 - **Abgrenzung:** Der _Starter-Katalog_ ist nur der mitgelieferte Teil.
 
 ### Neu aus Rezepten
 
-Markierung an einem Artikel, den die Migration aus Spec 0007 für eine Freitext-Zutat neu angelegt
-hat, weil kein Artikel und kein Eintrag des Starter-Katalogs passte. Die Seite „Artikel“ zeigt
-diese zum Prüfen und Zusammenführen. Die Markierung fällt weg, sobald jemand den Artikel speichert,
-bestätigt, zusammenführt oder löscht (Spec 0007, Offene Frage 1).
+Markierung an einem Artikel, der für eine Zutat ohne Wahl eines Menschen neu entstanden ist, weil
+kein Artikel des Haushalts und kein Eintrag des Starter-Katalogs zum Namen passte: beim Übernehmen
+von Starter-Rezepten, bei Vorschlägen des Assistenten und in den Beispieldaten (Spec 0007, E1; es
+gibt keine Migration). Die Seite „Artikel“ zeigt diese zum Prüfen und Zusammenführen. Die
+Markierung fällt weg, sobald jemand den Artikel speichert, bestätigt („Passt so“), zusammenführt
+oder löscht (Spec 0007, Offene Frage 1).
 
-- **Im Code (vorläufig):** `Article.needsReview`
+- **Im Code:** `Article.needsReview` (`articles.needs_review`); die Zuordnungsregel ist
+  `resolveIngredientArticle` in `packages/core`
 - **Abgrenzung:** Ein Artikel, den man im Rezept bewusst neu anlegt, ist nicht „Neu aus Rezepten“.
 
 ### Stammdaten
@@ -101,7 +108,8 @@ optionalem Hinweis fürs Kochen. Verweist immer auf einen Artikel des eigenen Ha
 angezeigt wird der Artikelname. In der Oberfläche heißt sie einfach „Zutat“.
 
 - **Im Code:** `RecipeIngredient`, gespeichert als Liste in `recipes.ingredients` (Spec 0003,
-  Entscheidung 8); der Verweis `articleId` wird mit Spec 0007 Pflicht
+  Entscheidung 8); `articleId` ist Pflicht, einen eigenen Namen hat die Zutat nicht (Spec 0007,
+  E2). Der Trigger `recipes_check_ingredients` lehnt Zutaten ohne Artikel des eigenen Haushalts ab
 - **Nicht verwenden:** Ingredient (allein), Zutatenzeile
 - **Siehe auch:** [Hinweis](#hinweis), [Zusatz](#zusatz)
 
@@ -111,7 +119,7 @@ Freitext an einer Rezeptzutat nur fürs Kochen, z. B. „fein gehackt“ oder �
 Rezept hinter der Zutat („2 Zwiebeln · fein gehackt“) und geht nie auf die Einkaufsliste (Spec
 0007).
 
-- **Im Code (vorläufig):** `RecipeIngredient.prepNote`
+- **Im Code:** `RecipeIngredient.prepNote` (höchstens 200 Zeichen)
 - **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Abwesenheit), Kommentar,
   Anmerkung
 - **Abgrenzung:** Der _Zusatz_ geht auf die Liste („Frischkäse (Philadelphia)“), der Hinweis nicht.
@@ -138,7 +146,8 @@ Die Einkaufsregel, die ein Artikel für eine neue Rezeptzutat vorschlägt. Sie s
 in „Artikel bearbeiten“ änderbar, und jede Wahl in einem Rezept setzt sie neu (Spec 0007, Offene
 Frage 2; Vision: „zuletzt gewählte Regel wird vorgeschlagen“).
 
-- **Im Code (vorläufig):** `Article.defaultShoppingRule`
+- **Im Code:** `Article.defaultShoppingRule` (`articles.default_shopping_rule`); nicht gesetzt
+  (`null`) gilt: Vorrat → Anzahl, Rezeptangabe mit Einheit → Rezeptmenge, sonst Anzahl
 - **Abgrenzung:** Sie gilt nur für neue Zutaten; bestehende Zutaten behalten ihre Einkaufsregel.
 
 ### Wochenplan
@@ -320,16 +329,20 @@ Markt liegt nur auf dem Gerät (Spec 0006, D26).
 ### Bereich
 
 Eine Abteilung im Laden, z. B. „Obst & Gemüse“ oder „Kühlung“. Gehört dem Haushalt, nicht dem
-Markt.
+Markt. Der Name ist je Haushalt eindeutig, ohne Groß/Klein (Spec 0007). Bereiche lassen sich
+zusammenlegen; beim Löschen verlieren ihre Artikel den Bereich („Ohne Bereich“).
 
-- **Im Code:** `Area`, `areas`
+- **Im Code:** `Area`, `areas` (eindeutig über `lower(name)` je Haushalt); Zusammenlegen
+  `merge_areas`
 - **Nicht verwenden:** Kategorie, Abteilung, Gang, Regal
 
 ### Laufreihenfolge
 
 Die Reihenfolge der Bereiche in einem bestimmten Markt. Jeder Markt hat seine eigene und kann
-Bereiche ausblenden. Ohne Markt gilt die Reihenfolge der Bereiche selbst („Reihenfolge ohne
-Markt“).
+Bereiche ausblenden; ein wieder eingeblendeter Bereich steht an seiner früheren Stelle. Ohne Markt
+gilt die Reihenfolge der Bereiche selbst („Reihenfolge ohne Markt“). Die Laufreihenfolge eines
+Markts ist ein Feld: Ordnen zwei Personen gleichzeitig, gilt die letzte Änderung (Spec 0007,
+AC-050).
 
 - **Im Code:** `Store.areaOrder` und `Store.hiddenAreaIds` (`stores.area_order`,
   `stores.hidden_area_ids`); ohne Markt `Area.sort`
@@ -353,9 +366,12 @@ Der automatische Abgleich zwischen der lokalen Datenbank eines Geräts und dem S
 ### Synonym
 
 Ein weiterer Name für denselben Artikel, z. B. „Karotten“ für „Möhren“. Name und Synonyme sind je
-Haushalt eindeutig. Suche und Autovervollständigung treffen beide.
+Haushalt eindeutig: Kein Synonym darf Name oder Synonym eines anderen Artikels sein. Höchstens 30
+je Artikel. Suche und Autovervollständigung treffen beide; beim Zusammenführen werden Name und
+Synonyme der Quelle Synonyme des Ziels.
 
-- **Im Code:** `Article.synonyms` (`articles.synonyms`, eindeutig über `synonym_keys`)
+- **Im Code:** `Article.synonyms` (`articles.synonyms`, verglichen über `synonym_keys`; die
+  Datenbank prüft die Eindeutigkeit im Trigger `articles_keys_unique`)
 - **Nicht verwenden:** Alias (außer im Code-Kommentar), Schreibweise
 
 ### Vorrat
@@ -379,10 +395,13 @@ Schritt „Was soll auf die Liste?“ (Spec 0006, Spec 0009).
 
 ### Starter-Katalog
 
-Rund 300 gängige Artikel mit Bereich, Ernährungseigenschaft, Vorrat und Synonymen, die fest in der
-App liegen. Ein Artikel des Haushalts entsteht erst bei der ersten Nutzung.
+Rund 450 gängige Artikel mit Bereich, Ernährungseigenschaft, Vorrat und Synonymen, die fest in der
+App liegen. Ein neuer Haushalt bekommt sie beim Anlegen als eigene Artikel. „Suchen oder anlegen“
+zeigt einen Eintrag des Starter-Katalogs nur, solange kein Artikel des Haushalts einen seiner
+Namen trägt; wählt man ihn, entsteht der Haushalts-Artikel mit seinen Angaben (Spec 0007, E10).
 
-- **Im Code:** `starterCatalog`
+- **Im Code:** `starterCatalog` (`packages/api/src/starter`); für die Suche
+  `starterCatalogEntries`
 - **Nicht verwenden:** Stammdaten (meint die eigenen Artikel, Märkte und Bereiche, siehe dort),
   Standardartikel
 - **Siehe auch:** [Artikel-Katalog](#artikel-katalog)

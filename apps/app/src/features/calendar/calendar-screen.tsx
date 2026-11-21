@@ -1,4 +1,5 @@
 import {
+  calendarDayParam,
   monthTitle,
   orderSlotEntries,
   periodContains,
@@ -25,8 +26,13 @@ import {
   useBreakpoint,
   type MenuOption,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import {
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+  type NativeStackNavigationProp,
+} from 'expo-router';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { AbsenceSheet } from '@/features/absences/absence-sheet';
@@ -59,7 +65,9 @@ function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
 /**
  * "Kalender" (spec 0010): week, month and year with ‹ › and "Heute", ▲ Aktivitäten, ⊔ Auf die
  * Einkaufsliste and ⋯. View and period are the screen's state; the page "Aktivitäten" opens on top
- * of it, so "‹ Kalender" comes back to the same view (AC-025, AC-040).
+ * of it, so "‹ Kalender" comes back to the same view (AC-025, AC-040). "/kalender?tag=JJJJ-MM-TT"
+ * from the "Übersicht" shows the week of that day with the day selected; an invalid day is
+ * ignored (spec 0011, AC-004, AC-011, AC-013).
  */
 export function CalendarScreen() {
   const data = useCalendarData();
@@ -82,6 +90,26 @@ export function CalendarScreen() {
     setStart(nextStart);
     if (nextView === 'month') setSelected(defaultSelected(nextStart, today));
   };
+  // The day handed over by the "Übersicht": taken once, then the parameter is cleared, so the same
+  // link works again and paging is not pulled back to it.
+  const params = useLocalSearchParams<{ tag?: string | string[] }>();
+  const handedDay = calendarDayParam(params.tag);
+  const [takenDay, setTakenDay] = useState<ISODate | undefined>();
+  if (handedDay !== takenDay) {
+    setTakenDay(handedDay);
+    if (handedDay) {
+      setView('week');
+      setStart(periodStart('week', handedDay));
+      setSelected(handedDay);
+    }
+  }
+  // On this screen's own route: router.setParams would set it on the focused tab route above it.
+  const navigation = useNavigation<NativeStackNavigationProp<{ index: { tag?: string } }>>();
+  const hasParam = params.tag !== undefined;
+  useEffect(() => {
+    if (hasParam) navigation.setParams({ tag: undefined });
+  }, [hasParam, navigation]);
+
   const changeView = (next: CalendarView) => {
     if (next !== view) show(next, switchView(view, next, start, today));
   };

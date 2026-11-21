@@ -47,7 +47,7 @@ const completion = (choreId: string, eventId: string, extra: Record<string, unkn
   kind: 'done',
   done_on: '2026-11-20',
   done_by: ENRICO,
-  seen: { next_due_on: null, last_done_on: null, next_assignee_id: null },
+  seen: { next_due_on: null, last_done_on: null, next_assignee_id: null, latest_event_id: null },
   next_due_on: '2026-11-27',
   next_assignee_id: null,
   ...extra,
@@ -1083,6 +1083,23 @@ describe('fake server: article catalog (spec 0007, like the database)', () => {
       expect(server.row(H, 'articles', 'a-mk')).toBeDefined();
       expect(server.row(H, 'shopping_items', 'i-mk')).toBeDefined();
     });
+
+    it('open question 11: more than 2000 characters in all synonyms are refused like too many', async () => {
+      const enrico = server.transport(ENRICO);
+      const words = ['a'.repeat(995), 'b'.repeat(995)];
+      await enrico.applyChanges(H, [
+        {
+          kind: 'patch',
+          table: 'articles',
+          id: 'a-km',
+          changes: { synonyms: words, synonym_keys: words },
+        },
+      ]);
+      await expect(enrico.mergeArticles('a-mk', 'a-km')).rejects.toMatchObject({
+        code: 'too_many_synonyms',
+      });
+      expect(server.row(H, 'articles', 'a-mk')).toBeDefined();
+    });
   });
 
   describe('merge_areas', () => {
@@ -1226,13 +1243,29 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
         table: 'chores',
         row: { id: 'c-need', title: 'Fenster Küche', recurrence: { type: 'asNeeded' } },
       },
+      {
+        kind: 'insert',
+        table: 'chores',
+        row: {
+          id: 'c-flex',
+          title: 'Pflanzen gießen',
+          recurrence: { type: 'flexible', everyDays: 3 },
+          next_due_on: '2026-11-23',
+          last_done_on: '2026-11-20',
+        },
+      },
     ]);
   });
   const book = (userId: string, op: Record<string, unknown>, householdId = H) =>
     server
       .transport(userId)
       .applyChanges(householdId, [{ kind: 'complete_chore', completion: op } as never]);
-  const seenBath = { next_due_on: '2026-11-20', last_done_on: null, next_assignee_id: null };
+  const seenBath = {
+    next_due_on: '2026-11-20',
+    last_done_on: null,
+    next_assignee_id: null,
+    latest_event_id: null,
+  };
 
   it('AC-028: books with the seen state, records the state before and moves the date', async () => {
     const result = await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
@@ -1266,6 +1299,36 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
     expect(server.row(H, 'chores', 'c1')).toMatchObject({ next_due_on: '2026-11-27' });
   });
 
+  it('AC-031: the same state but an entry newer than the one seen is already_done (flexible, anyone)', async () => {
+    const seenFlex = {
+      next_due_on: '2026-11-23',
+      last_done_on: '2026-11-20',
+      next_assignee_id: null,
+      latest_event_id: null,
+    };
+    const flex = { seen: seenFlex, next_due_on: '2026-11-23' };
+    await book(NADJA, completion('c-flex', 'ev1', { ...flex, done_by: NADJA }));
+    expect(server.row(H, 'chores', 'c-flex')).toMatchObject({
+      next_due_on: '2026-11-23',
+      last_done_on: '2026-11-20',
+    });
+    await expect(book(ENRICO, completion('c-flex', 'ev2', flex))).rejects.toMatchObject({
+      code: 'already_done',
+      detail: { done_by: NADJA },
+    });
+    await expect(
+      book(
+        ENRICO,
+        completion('c-flex', 'ev2', { ...flex, seen: { ...seenFlex, latest_event_id: 7 } }),
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    await book(
+      ENRICO,
+      completion('c-flex', 'ev2', { ...flex, seen: { ...seenFlex, latest_event_id: 'ev1' } }),
+    );
+    expect(server.rows(H, 'chore_events').map((row) => row.id)).toEqual(['ev1', 'ev2']);
+  });
+
   it('a changed chore without an entry that day is chore_changed', async () => {
     await expect(
       book(ENRICO, completion('c1', 'ev1', { seen: { ...seenBath, next_due_on: '2026-11-19' } })),
@@ -1282,7 +1345,12 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
       book(
         ENRICO,
         completion('c-need', 'ev2', {
-          seen: { next_due_on: null, last_done_on: '2026-11-20', next_assignee_id: null },
+          seen: {
+            next_due_on: null,
+            last_done_on: '2026-11-20',
+            next_assignee_id: null,
+            latest_event_id: 'ev1',
+          },
         }),
       ),
     ).rejects.toMatchObject({ code: 'invalid_change' });
@@ -1304,14 +1372,24 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
     await book(
       ENRICO,
       completion('c1', 'ev2', {
-        seen: { next_due_on: '2026-11-27', last_done_on: null, next_assignee_id: null },
+        seen: {
+          next_due_on: '2026-11-27',
+          last_done_on: null,
+          next_assignee_id: null,
+          latest_event_id: 'ev1',
+        },
       }),
     );
     await book(
       ENRICO,
       completion('c1', 'ev3', {
         done_on: '2026-11-19',
-        seen: { next_due_on: '2026-11-27', last_done_on: '2026-11-20', next_assignee_id: null },
+        seen: {
+          next_due_on: '2026-11-27',
+          last_done_on: '2026-11-20',
+          next_assignee_id: null,
+          latest_event_id: 'ev2',
+        },
       }),
     );
     expect(server.row(H, 'chores', 'c1')).toMatchObject({ last_done_on: '2026-11-20' });
@@ -1388,7 +1466,12 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
     await book(
       ENRICO,
       completion('c1', 'ev2', {
-        seen: { next_due_on: '2026-11-27', last_done_on: '2026-11-19', next_assignee_id: null },
+        seen: {
+          next_due_on: '2026-11-27',
+          last_done_on: '2026-11-19',
+          next_assignee_id: null,
+          latest_event_id: 'ev1',
+        },
         next_due_on: '2026-12-04',
       }),
     );

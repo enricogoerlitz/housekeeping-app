@@ -310,6 +310,30 @@ describe('supabase transport', () => {
     ).toMatchObject({ code: 'chore_changed', detail: undefined });
   });
 
+  it('spec 0007 T8: a deadlock or serialization failure (rolled back) is retried once, then transient', async () => {
+    const deadlock = { message: 'deadlock detected', code: '40P01' };
+    const { client, calls } = stubClient([
+      { data: null, error: deadlock, status: 500 },
+      { data: { recipes: 1, items: 2 }, error: null, status: 200 },
+      { data: null, error: { message: 'could not serialize access', code: '40001' }, status: 409 },
+      { data: null, error: deadlock, status: 500 },
+    ]);
+    const transport = createSupabaseTransport(client);
+    await expect(transport.mergeArticles('a-mk', 'a-km')).resolves.toEqual({
+      recipes: 1,
+      items: 2,
+    });
+    expect(calls.map((call) => call.fn)).toEqual(['merge_articles', 'merge_articles']);
+
+    const error = await transport.mergeArticles('a-mk', 'a-km').catch((caught: unknown) => caught);
+    expect(calls).toHaveLength(4);
+    expect(isTransient(error)).toBe(true);
+    expect(error).toMatchObject({ code: '40P01' });
+    expect(
+      classifyError(409, { message: 'could not serialize access', code: '40001' }),
+    ).toMatchObject({ kind: 'transient', code: '40001' });
+  });
+
   it('rejects with the classified error of a failed call', async () => {
     const { client } = stubClient([
       { data: null, error: { message: 'invalid_email', code: '22023' }, status: 400 },

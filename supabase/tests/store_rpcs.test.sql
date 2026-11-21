@@ -4,7 +4,7 @@
 -- RPCs take the household id; households stay independent of each other. Rule table: docs/architecture/sync.md ("Abhaken: offline").
 begin;
 \ir _helpers.psql
-select plan(89);
+select plan(92);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -42,12 +42,13 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
-  ('milch'), ('butter'), ('eier'), ('zwiebeln'), ('salz'), ('kaese'), ('area_kuehl'), ('area_b'), ('article_b'), ('zwiebeln_b'),
+  ('milch'), ('butter'), ('eier'), ('zwiebeln'), ('salz'), ('kaese'), ('area_kuehl'), ('area_b'), ('area_weg'), ('article_b'), ('zwiebeln_b'),
   ('item_milch'), ('item_butter'), ('item_eier'), ('item_salz'), ('item_milch_old'), ('item_b'),
   ('c_milch'), ('c_butter'), ('c_milch_old'), ('c_b');
 
 insert into public.areas (id, household_id, name) values
   (tests.fx('area_kuehl'), tests.fx('home_a'), 'Kühlregal'),
+  (tests.fx('area_weg'), tests.fx('home_a'), 'Aktionsware'),
   (tests.fx('area_b'), tests.fx('home_b'), 'Regal B');
 insert into public.articles (id, household_id, name, name_key, synonym_keys) values
   (tests.fx('milch'), tests.fx('home_a'), 'Milch', 'milch', '{}'),
@@ -341,6 +342,19 @@ select is(
 select is(
   public.assign_article_area(tests.fx('gone'), tests.fx('area_kuehl')), null,
   'AC-025 assign_article_area: a deleted article → null, no error');
+-- Spec 0007, Offene Frage 6h: Eier sit in Kühlregal; an offline assignment to Aktionsware reaches
+-- the server after another device deleted that area.
+select public.assign_article_area(tests.fx('eier'), tests.fx('area_kuehl'));
+delete from public.areas where id = tests.fx('area_weg');
+select is(
+  (select count(*)::int from public.areas where id = tests.fx('area_weg')), 0,
+  'spec 0007 6h: a member deleted the area Aktionsware');
+select is(
+  public.assign_article_area(tests.fx('eier'), tests.fx('area_weg')), null,
+  'spec 0007 6h assign_article_area: an area deleted meanwhile → null, no error (dropped)');
+select is(
+  (select area_id from public.articles where id = tests.fx('eier')), tests.fx('area_kuehl'),
+  'spec 0007 6h assign_article_area: the article keeps its area');
 select tests.authenticate_as(tests.fx('ben'));
 select is(
   public.assign_article_area(tests.fx('eier'), null), null,

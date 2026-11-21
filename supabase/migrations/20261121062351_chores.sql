@@ -159,9 +159,11 @@ select private.attach_sync_triggers('public.chore_events');
 
 -- Books one event of a chore of p_household_id ("done" or "skipped"). p_op:
 --   {chore_id, event_id, kind, done_on, done_by,
---    seen: {next_due_on, last_done_on, next_assignee_id},  -- the chore state the device saw
+--    seen: {next_due_on, last_done_on, next_assignee_id,   -- the chore state the device saw,
+--           latest_event_id},                              -- and its latest booked event (null: none)
 --    next_due_on, next_assignee_id}                         -- the new state, computed by core
--- The chore is locked; when it no longer matches `seen`, nothing is written: already_done
+-- The chore is locked; when it no longer matches `seen` (the latest booked event by created_at,
+-- then id, included; a missing key counts as null), nothing is written: already_done
 -- (P0001, detail = {"done_by", "done_at"}) when a "done" event of the chore on done_on exists,
 -- else chore_changed (P0001). The event's title comes from the chore, prev_* from the locked row.
 -- done sets last_done_on = greatest(last_done_on, done_on), next_due_on and next_assignee_id;
@@ -180,7 +182,7 @@ as $$
 declare
   c_keys constant text[] := array['chore_id', 'event_id', 'kind', 'done_on', 'done_by', 'seen', 'next_due_on',
                                   'next_assignee_id'];
-  c_seen_keys constant text[] := array['next_due_on', 'last_done_on', 'next_assignee_id'];
+  c_seen_keys constant text[] := array['next_due_on', 'last_done_on', 'next_assignee_id', 'latest_event_id'];
   v_chore public.chores;
   v_seen jsonb := p_op -> 'seen';
   v_kind text := p_op ->> 'kind';
@@ -209,6 +211,7 @@ begin
      or jsonb_typeof(coalesce(p_op -> 'next_assignee_id', 'null')) not in ('string', 'null')
      or jsonb_typeof(v_seen) is distinct from 'object'
      or exists (select 1 from jsonb_object_keys(v_seen) k where k <> all (c_seen_keys))
+     or jsonb_typeof(coalesce(v_seen -> 'latest_event_id', 'null')) not in ('string', 'null')
      or v_kind is null or v_kind not in ('done', 'skipped') then
     raise exception 'invalid_change' using errcode = '22023';
   end if;
@@ -229,9 +232,16 @@ begin
     raise exception 'chore_not_found' using errcode = 'P0002';
   end if;
 
+  -- The latest booked event as well: a second booking of a flexible chore for anyone on the same
+  -- day leaves date, last time and person exactly as they were (AC-031).
   if (v_seen ->> 'next_due_on')::date is distinct from v_chore.next_due_on
      or (v_seen ->> 'last_done_on')::date is distinct from v_chore.last_done_on
-     or (v_seen ->> 'next_assignee_id')::uuid is distinct from v_chore.next_assignee_id then
+     or (v_seen ->> 'next_assignee_id')::uuid is distinct from v_chore.next_assignee_id
+     or (v_seen ->> 'latest_event_id')::uuid is distinct from (
+       select e.id from public.chore_events e
+       where e.household_id = p_household_id and e.chore_id = v_chore.id
+       order by e.created_at desc, e.id desc
+       limit 1) then
     select e.done_by, e.created_at into v_other
     from public.chore_events e
     where e.household_id = p_household_id and e.chore_id = v_chore.id and e.kind = 'done' and e.done_on = v_done_on

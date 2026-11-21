@@ -24,6 +24,7 @@ import {
   RawPullResultSchema,
   TransportError,
   classifyError,
+  isRolledBack,
   type Transport,
 } from './transport';
 
@@ -130,7 +131,17 @@ export function createSupabaseTransport(
   const timeoutMs = options.timeoutMs ?? 15_000;
   const mediaTimeoutMs = options.mediaTimeoutMs ?? 60_000;
 
+  /** One RPC; a call Postgres rolled back for a deadlock or serialization failure is sent once more. */
   async function call(fn: string, args: Record<string, unknown>): Promise<unknown> {
+    try {
+      return await callOnce(fn, args);
+    } catch (error) {
+      if (!isRolledBack(error)) throw error;
+      return callOnce(fn, args);
+    }
+  }
+
+  async function callOnce(fn: string, args: Record<string, unknown>): Promise<unknown> {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {

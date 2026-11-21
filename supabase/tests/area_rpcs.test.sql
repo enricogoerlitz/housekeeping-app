@@ -1,9 +1,9 @@
 -- Areas and stores of a household (spec 0007, T1): unique area names per household (AC-052),
 -- merge_areas (AC-054), deleting an area or a store (AC-045, AC-055, AC-056) and the refusals for
--- another household and a signed-out caller (AC-056).
+-- another household and a signed-out caller (AC-056); the walking order as one field (AC-050).
 begin;
 \ir _helpers.psql
-select plan(29);
+select plan(32);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -13,9 +13,10 @@ grant execute on function tests.fx(text) to anon, authenticated;
 
 insert into fx (key, id) values
   ('enrico', tests.create_user('enrico@example.com', 'Enrico')),
+  ('nadja', tests.create_user('nadja@example.com', 'Nadja')),
   ('ben', tests.create_user('ben@example.com', 'Ben'));
 insert into fx (key, id) values
-  ('home_a', tests.create_household('Enrico & Nadja', array[tests.fx('enrico')])),
+  ('home_a', tests.create_household('Enrico & Nadja', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('home_b', tests.create_household('WG Köln', array[tests.fx('ben')]));
 insert into fx (key) values
   ('getraenke'), ('kuehlung'), ('drogerie'), ('drogerie_hygiene'), ('tierbedarf'), ('deko'), ('keller'),
@@ -48,6 +49,34 @@ insert into public.stores (id, household_id, name, area_order, hidden_area_ids) 
    array[tests.fx('drogerie_hygiene')]),
   (tests.fx('store_b'), tests.fx('home_b'), 'Edeka', array[tests.fx('keller')], '{}');
 update public.households set default_store_id = tests.fx('rewe') where id = tests.fx('home_a');
+
+-- ===================== Walking order: two people at once (AC-050) =====================
+-- Both saw Getränke, Drogerie, Drogerie & Hygiene, Tierbedarf. Enrico moves Tierbedarf to the top,
+-- shortly after Nadja moves Drogerie & Hygiene to the top of the order she saw. The order is one
+-- field: the last change is stored as sent, nothing is merged.
+select tests.authenticate_as(tests.fx('enrico'));
+select lives_ok(
+  format('select public.apply_changes(%L, %L)', tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'stores', 'id', tests.fx('rewe'), 'changes', jsonb_build_object('area_order',
+      jsonb_build_array(tests.fx('tierbedarf'), tests.fx('getraenke'), tests.fx('drogerie'), tests.fx('drogerie_hygiene')))))),
+  'AC-050 apply_changes: Enrico''s walking order is stored');
+select tests.authenticate_as(tests.fx('nadja'));
+select lives_ok(
+  format('select public.apply_changes(%L, %L)', tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'stores', 'id', tests.fx('rewe'), 'changes', jsonb_build_object('area_order',
+      jsonb_build_array(tests.fx('drogerie_hygiene'), tests.fx('getraenke'), tests.fx('drogerie'), tests.fx('tierbedarf')))))),
+  'AC-050 apply_changes: Nadja''s walking order is stored after it');
+select results_eq(
+  format('select area_order, hidden_area_ids from public.stores where id = %L', tests.fx('rewe')),
+  format($$ values (array[%L, %L, %L, %L]::uuid[], array[%L]::uuid[]) $$,
+         tests.fx('drogerie_hygiene'), tests.fx('getraenke'), tests.fx('drogerie'), tests.fx('tierbedarf'),
+         tests.fx('drogerie')),
+  'AC-050 stores: Nadja''s order holds as she saw it (Enrico''s move is gone); the hidden areas are untouched');
+-- Back to the fixture order for the sections below.
+select tests.clear_authentication();
+update public.stores
+set area_order = array[tests.fx('getraenke'), tests.fx('drogerie'), tests.fx('drogerie_hygiene'), tests.fx('tierbedarf')]
+where id = tests.fx('rewe');
 
 -- ===================== Unique area names (AC-052) =====================
 select tests.authenticate_as(tests.fx('enrico'));

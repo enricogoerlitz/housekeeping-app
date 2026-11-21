@@ -81,8 +81,32 @@ function named(
   });
 }
 
-async function articleNames(query: Query): Promise<Map<string, string>> {
-  return new Map((await read(query, ArticleRow)).map((article) => [article.id, article.name]));
+/** Ids per `in` filter: about 37 characters each in the request URL. */
+const IDS_PER_QUERY = 100;
+
+/**
+ * The names of the given articles of the household. Only these are read, in chunks: the whole
+ * catalog can hold more rows than one answer returns (PostgREST max_rows).
+ */
+async function articleNames(
+  client: UserClient,
+  householdId: string,
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  const chunks: string[][] = [];
+  for (let start = 0; start < unique.length; start += IDS_PER_QUERY) {
+    chunks.push(unique.slice(start, start + IDS_PER_QUERY));
+  }
+  const found = await Promise.all(
+    chunks.map((chunk) =>
+      read(
+        client.from('articles').select('id, name').eq('household_id', householdId).in('id', chunk),
+        ArticleRow,
+      ),
+    ),
+  );
+  return new Map(found.flat().map((article) => [article.id, article.name]));
 }
 
 /** "YYYY-MM-DD" in Europe/Berlin, the household's calendar. */
@@ -162,17 +186,11 @@ export async function loadAssistantContext(
       : [];
   const recipe = open[0];
   const ingredients = rows(Ingredient, recipe?.ingredients);
-  const names =
-    ingredients.length > 0
-      ? await articleNames(
-          select('articles', 'id, name')
-            .eq('household_id', householdId)
-            .in(
-              'id',
-              ingredients.map((ingredient) => ingredient.articleId),
-            ),
-        )
-      : new Map<string, string>();
+  const names = await articleNames(
+    client,
+    householdId,
+    ingredients.map((ingredient) => ingredient.articleId),
+  );
   return {
     today,
     household: { id: household.id, name: household.name },
@@ -233,17 +251,19 @@ export async function loadRecipeIndex(
   client: UserClient,
   householdId: string,
 ): Promise<RecipeIndexEntry[]> {
-  const [recipes, names] = await Promise.all([
-    read(
-      client
-        .from('recipes')
-        .select('id, title, tags, course, cuisine, total_minutes, variants, ingredients')
-        .eq('household_id', householdId)
-        .limit(MAX_RECIPES),
-      RecipeRow,
-    ),
-    articleNames(client.from('articles').select('id, name').eq('household_id', householdId)),
-  ]);
+  const recipes = await read(
+    client
+      .from('recipes')
+      .select('id, title, tags, course, cuisine, total_minutes, variants, ingredients')
+      .eq('household_id', householdId)
+      .limit(MAX_RECIPES),
+    RecipeRow,
+  );
+  const names = await articleNames(
+    client,
+    householdId,
+    recipes.flatMap((recipe) => rows(Ingredient, recipe.ingredients).map((i) => i.articleId)),
+  );
   return recipes.map((recipe) => ({
     id: recipe.id,
     title: recipe.title,

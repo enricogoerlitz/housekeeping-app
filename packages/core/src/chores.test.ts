@@ -463,6 +463,13 @@ describe('the history chain (Offene Frage 9: the latest booked entry)', () => {
     expect(latestBookedEvent([other], 'c')).toBeUndefined();
   });
 
+  it('AC-031: latestBookedEvent orders by microseconds, as the database does (seed rows are 1 µs apart)', () => {
+    const first = event({ id: 'b-first', createdAt: '2026-07-24T10:00:00.000004+00:00' });
+    const second = event({ id: 'a-second', createdAt: '2026-07-24T10:00:00.000005+00:00' });
+    expect(latestBookedEvent([first, second], 'c')?.id).toBe('a-second');
+    expect(latestBookedEvent([second, first], 'c')?.id).toBe('a-second');
+  });
+
   it('latestBookedEvent breaks a tie of booking times by id', () => {
     const a = event({ id: 'a', createdAt: '2026-11-20T09:00:00.000Z' });
     const b = event({ id: 'b', createdAt: '2026-11-20T09:00:00.000Z' });

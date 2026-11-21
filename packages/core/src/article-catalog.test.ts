@@ -947,6 +947,27 @@ describe('mergeArticlesPreview', () => {
       'Zu viele Synonyme – entferne zuerst welche bei Kokosmilch',
     );
   });
+
+  it('E8: 2000 characters in all synonyms are fine, more refuse the merge with the same hint (articles_synonyms_size)', () => {
+    const target = article('t', 'Kokosmilch', { synonyms: ['a'.repeat(995), 'b'.repeat(995)] });
+    const fits = mergeArticlesPreview(article('s', 'Milchkokos'), target, [], []);
+    expect(fits.tooManySynonyms).toBe(false);
+
+    const tooLong = mergeArticlesPreview(article('s', 'Milchkokos Bio'), target, [], []);
+    expect(tooLong.tooManySynonyms).toBe(true);
+    expect(tooLong.tooManySynonymsMessage).toBe(
+      'Zu viele Synonyme – entferne zuerst welche bei Kokosmilch',
+    );
+
+    // The keys count too: "ä" becomes "ae" (articles_synonym_keys_size).
+    const longKeys = mergeArticlesPreview(
+      article('s', 'Milchkokos'),
+      article('t', 'Kokosmilch', { synonyms: ['ä'.repeat(1000)] }),
+      [],
+      [],
+    );
+    expect(longKeys.tooManySynonyms).toBe(true);
+  });
 });
 
 describe('mergeTargets', () => {

@@ -78,7 +78,8 @@ export function AbsencesScreen() {
           stripe.household ? <Icon name="house" color="muted" /> : <AbsenceWho stripe={stripe} />
         }
         onPress={online.disabled ? undefined : () => setEditing({ stripe })}
-        trailing={
+        // Outside the row's press area, so the two buttons do not nest.
+        controls={
           <IconButton
             icon="trash"
             label={`Abwesenheit von ${who} löschen`}

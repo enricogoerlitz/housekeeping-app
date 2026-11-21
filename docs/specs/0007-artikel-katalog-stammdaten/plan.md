@@ -1,5 +1,5 @@
 ---
-status: offen # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-21
 spec: 0007
 ---
@@ -182,24 +182,25 @@ Grundlagen-Dateien (E3), danach `pnpm db:reset`, `pnpm db:types`, `pnpm db:seed:
 
 Kritischer Pfad: RLS und Tenancy, Löschen, Zusammenführen, Laden-Warteschlange, Schema-Grundlage.
 
-| Was könnte schiefgehen                                                      | Gegenmaßnahme                                                                                                          | Getestet durch                                                                                         |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Zutat zeigt auf Artikel eines fremden Haushalts, auf keinen oder auf nichts | Trigger `recipes_check_ingredients`, Haushalt des Rezepts                                                              | pgTAP `recipe_ingredients.test.sql` AC-006, AC-019 (direkt, über `apply_changes`, ohne Anmeldung)      |
-| Artikel wird gelöscht, während ein Rezept ihn einsetzt (Wettlauf)           | `delete_article` sperrt die Zeile `for update`, der Trigger liest `for key share`; Prüfung „unbenutzt“ nach der Sperre | pgTAP AC-034 (in Rezept, offen, erledigt → `article_in_use`); Ablauf nacheinander in beiden Richtungen |
-| Löschen am Prüfen vorbei (direkt oder über `apply_changes`)                 | kein `delete`-Grant, Allowlist `"delete": false`                                                                       | pgTAP: direktes `delete` → 42501, `apply_changes` → `invalid_change`                                   |
-| Fremder Haushalt, abgemeldet oder Quelle = Ziel beim Zusammenführen         | definer mit Mitgliedsprüfung, gleicher Haushalt, `invalid_value`; `anon` ohne Ausführrecht                             | pgTAP `article_rpcs.test.sql` AC-041 (beide Artikel unverändert), anon → 42501                         |
-| Zusammenführen bricht halb ab                                               | eine RPC, eine Transaktion; Abbruch bei `too_many_synonyms` erst nach allen Schritten                                  | pgTAP: 31. Synonym → nichts geändert (Rezepte, Posten, beide Artikel)                                  |
-| Offline-Haken auf die Quelle geht verloren (AC-040)                         | `replaced_by` am Grabstein, Laden-RPCs folgen ihm                                                                      | pgTAP `store_rpcs.test.sql`; api-Integrationstest Warteschlange nach Zusammenführen                    |
-| Verweis führt in einen fremden Haushalt oder verrät Daten                   | Verweis nur im Haushalt des Grabsteins, Aufrufer muss Mitglied sein, sonst `null` wie bisher                           | pgTAP: fremde Posten-ID mit Verweis → `null`, nichts geändert                                          |
-| Zwei Geräte legen gleichzeitig Doppelte an (Name, Synonym, Bereich)         | Trigger unter Haushalts-Sperre, eindeutige Indizes                                                                     | pgTAP 23505 je Fall; gleicher Name im anderen Haushalt erlaubt                                         |
-| Bereiche zusammenlegen oder umbenennen in fremdem Haushalt (AC-056)         | `merge_areas` invoker + `not_member`; RLS für Patch und Delete                                                         | pgTAP `area_rpcs.test.sql` Mitglied B, anon                                                            |
-| Gelöschter Bereich bleibt in Laufreihenfolgen                               | Patch der Märkte im selben Änderungssatz (E9); `merge_areas` entfernt serverseitig                                     | api-Test `deleteArea`; pgTAP AC-054                                                                    |
-| Haushalt lässt sich wegen der neuen Trigger nicht mehr löschen              | Trigger prüfen nur Einfügen und Ändern von Zutaten; Löschen von Artikeln per Kaskade bleibt erlaubt                    | pgTAP `household_rpcs.test.sql`: Haushalt mit Rezepten, Artikeln, Posten löschen                       |
-| Beispieldaten laden nicht mehr                                              | `buildRecipe` wirft bei fehlendem Artikel                                                                              | `seed/demo.test.ts`, `pnpm db:reset` im Gate                                                           |
-| Verhalten verschiebt sich beim Bearbeiten der Grundlage                     | nur die genannten Abschnitte ändern; volle pgTAP-Suite                                                                 | `pnpm exec supabase test db`                                                                           |
-| Gleichzeitiges Bearbeiten eines Artikels überschreibt Felder (AC-035)       | Patch enthält nur geänderte Spalten (bestehender Diff)                                                                 | api-Test AC-035                                                                                        |
-| „Ähnliche Namen“ wird bei vielen Artikeln langsam                           | Vorfilter nach Länge (Ähnlichkeit ≥ 0,8 setzt ähnliche Länge voraus), Ergebnis je Datenstand gemerkt                   | core-Test mit 1000 Artikeln, Zahl der Vergleiche begrenzt (kein Zeitmessen)                            |
-| Cache-Formwechsel verliert Offline-Aktionen                                 | Versionswechsel behält Warteschlange (bestehender Weg aus 0006)                                                        | api-Test `backend.test.ts`                                                                             |
+| Was könnte schiefgehen                                                              | Gegenmaßnahme                                                                                                          | Getestet durch                                                                                         |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Zutat zeigt auf Artikel eines fremden Haushalts, auf keinen oder auf nichts         | Trigger `recipes_check_ingredients`, Haushalt des Rezepts                                                              | pgTAP `recipe_ingredients.test.sql` AC-006, AC-019 (direkt, über `apply_changes`, ohne Anmeldung)      |
+| Artikel wird gelöscht, während ein Rezept ihn einsetzt (Wettlauf)                   | `delete_article` sperrt die Zeile `for update`, der Trigger liest `for key share`; Prüfung „unbenutzt“ nach der Sperre | pgTAP AC-034 (in Rezept, offen, erledigt → `article_in_use`); Ablauf nacheinander in beiden Richtungen |
+| Löschen am Prüfen vorbei (direkt oder über `apply_changes`)                         | kein `delete`-Grant, Allowlist `"delete": false`                                                                       | pgTAP: direktes `delete` → 42501, `apply_changes` → `invalid_change`                                   |
+| Fremder Haushalt, abgemeldet oder Quelle = Ziel beim Zusammenführen                 | definer mit Mitgliedsprüfung, gleicher Haushalt, `invalid_value`; `anon` ohne Ausführrecht                             | pgTAP `article_rpcs.test.sql` AC-041 (beide Artikel unverändert), anon → 42501                         |
+| Zusammenführen bricht halb ab                                                       | eine RPC, eine Transaktion; Abbruch bei `too_many_synonyms` erst nach allen Schritten                                  | pgTAP: 31. Synonym → nichts geändert (Rezepte, Posten, beide Artikel)                                  |
+| Offline-Haken auf die Quelle geht verloren (AC-040)                                 | `replaced_by` am Grabstein, Laden-RPCs folgen ihm                                                                      | pgTAP `store_rpcs.test.sql`; api-Integrationstest Warteschlange nach Zusammenführen                    |
+| Verweis führt in einen fremden Haushalt oder verrät Daten                           | Verweis nur im Haushalt des Grabsteins, Aufrufer muss Mitglied sein, sonst `null` wie bisher                           | pgTAP: fremde Posten-ID mit Verweis → `null`, nichts geändert                                          |
+| Zwei Geräte legen gleichzeitig Doppelte an (Name, Synonym, Bereich)                 | Trigger unter Haushalts-Sperre, eindeutige Indizes                                                                     | pgTAP 23505 je Fall; gleicher Name im anderen Haushalt erlaubt                                         |
+| Bereiche zusammenlegen oder umbenennen in fremdem Haushalt (AC-056)                 | `merge_areas` invoker + `not_member`; RLS für Patch und Delete                                                         | pgTAP `area_rpcs.test.sql` Mitglied B, anon                                                            |
+| Gelöschter Bereich bleibt in Laufreihenfolgen                                       | Patch der Märkte im selben Änderungssatz (E9); `merge_areas` entfernt serverseitig                                     | api-Test `deleteArea`; pgTAP AC-054                                                                    |
+| Haushalt lässt sich wegen der neuen Trigger nicht mehr löschen                      | Trigger prüfen nur Einfügen und Ändern von Zutaten; Löschen von Artikeln per Kaskade bleibt erlaubt                    | pgTAP `household_rpcs.test.sql`: Haushalt mit Rezepten, Artikeln, Posten löschen                       |
+| Beispieldaten laden nicht mehr                                                      | `buildRecipe` wirft bei fehlendem Artikel                                                                              | `seed/demo.test.ts`, `pnpm db:reset` im Gate                                                           |
+| Verhalten verschiebt sich beim Bearbeiten der Grundlage                             | nur die genannten Abschnitte ändern; volle pgTAP-Suite                                                                 | `pnpm exec supabase test db`                                                                           |
+| Gleichzeitiges Bearbeiten eines Artikels überschreibt Felder (AC-035)               | Patch enthält nur geänderte Spalten (bestehender Diff)                                                                 | api-Test AC-035                                                                                        |
+| „Ähnliche Namen“ wird bei vielen Artikeln langsam                                   | Vorfilter nach Länge (Ähnlichkeit ≥ 0,8 setzt ähnliche Länge voraus), Ergebnis je Datenstand gemerkt                   | core-Test mit 1000 Artikeln, Zahl der Vergleiche begrenzt (kein Zeitmessen)                            |
+| Zusammenführen und gleichzeitiges Ändern von Zutaten blockieren sich (Deadlock, T8) | `merge_articles` sperrt Rezepte vor Artikeln wie der Trigger; 40P01/40001 einmal wiederholt                            | `tmp/0007/deadlock-repro.sh` (zwei Sitzungen), pgTAP nacheinander, `transport-supabase.test.ts`        |
+| Cache-Formwechsel verliert Offline-Aktionen                                         | Versionswechsel behält Warteschlange (bestehender Weg aus 0006)                                                        | api-Test `backend.test.ts`                                                                             |
 
 ## Aufgaben
 
@@ -257,7 +258,7 @@ flowchart LR
     `updated_at`. Markt löschen: Standardmarkt wird `null` (AC-045).
   - Haushalt mit Rezepten, Artikeln und Posten lässt sich löschen; `schema_lint` kennt die neuen
     definer-Funktionen.
-- **Status:** offen
+- **Status:** erledigt (Commit `a9eab08`)
 
 ### Task 2 — Regeln in `core`
 
@@ -280,7 +281,7 @@ flowchart LR
   Groß/Klein und Umlaute, Tippfehler, Grenzwerte (120 Zeichen, 30 Synonyme), fremde IDs werden
   nie getroffen (nur die übergebenen Artikel), 1000 Artikel bei `similarArticleNames` mit
   begrenzter Zahl von Vergleichen.
-- **Status:** offen
+- **Status:** erledigt (Commit `1f03c3a`)
 
 ### Task 3 — Befehle und Abgleich in `api`
 
@@ -308,7 +309,7 @@ flowchart LR
   behält die Warteschlange; Integrationstest gegen die lokale Datenbank: Haken offline auf
   „Milchkokos“, Zusammenführen, Warteschlange senden → „Kokosmilch“ abgehakt, kein Fehler
   (AC-040); „Milchkokos“ in „Was fehlt?“ → „Kokosmilch“ (AC-037).
-- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Status:** erledigt (Commit `b963a63`)
 - **Umgesetzt:** `commands-articles.ts` (`resolveArticle`, `insertArticles`, `createArticle`,
   `updateArticle`, `confirmArticle`, `deleteArticle`, `mergeArticles`, `catalogChoice`),
   `commands-stores.ts` (umgezogen: `createArea`, `createStore`, `fullAreaOrder`, `moveStoreArea`,
@@ -346,7 +347,7 @@ flowchart LR
 - **Test:** core: Beiträge aus einem Rezept tragen nie den Hinweis (AC-011, AC-012), Ernährung
   ohne Sonderfall „ohne Artikel“; api: Vorratscheck-Zeilen haben immer einen Artikel; der Seed
   enthält keine Zutat ohne Artikel. Rein mechanisch sonst, `pnpm check` grün.
-- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Status:** erledigt (Commit `b963a63`)
 - **Abweichungen:**
   - Zusätzlich `supabase/functions/_shared/context.ts`: Assistent und KI-Suche lesen die Namen der
     Zutaten jetzt aus `articles` (vorher `ingredient.name` aus dem Rezept-JSON); Testhaushalt der
@@ -371,7 +372,7 @@ flowchart LR
   „Neu“, Liste und Detail am Desktop mit Hervorhebung, „+ Neu“, Umbenennen mit „Gibt es schon“,
   Synonym-Chips, „In Rezepten“ öffnet das Rezept, „Löschen“ ausgegraut mit Grund, Löschen +
   „Rückgängig“, Zusammenführen mit Dialog, offline ausgegraut mit Hinweis.
-- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Status:** erledigt (Commit `041df1a`)
 - **Umgesetzt:** `features/articles/` (`articles-screen.tsx`, `article-sheet.tsx` mit Schritten
   „Bereich“ und „Zusammenführen mit …“, `merge-article-dialog.tsx`, `new-article-sheet.tsx`,
   `labels.ts`), Route `(artikel)/artikel.tsx` mit `AreaStack`, Eintrag `articles` unter „Verwalten“
@@ -407,7 +408,7 @@ flowchart LR
   und ausgeblendet, Bereiche: anlegen, umbenennen, Doppelte, Reihenfolge ohne Markt, Zusammenlegen
   mit Dialog, Löschen mit Artikeln (Dialog) und leer (Rückgängig), „Ohne Bereich ›“; Desktop
   Liste und Laufreihenfolge nebeneinander.
-- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Status:** erledigt (Commit `5d74d63`)
 - **Umgesetzt:** `packages/ui/src/reorder-list.tsx` (`ReorderList`: Griff ≡ mit `PanResponder` und
   Reanimated wie `swipe-row.tsx`, die übrigen Zeilen machen Platz, Pfeile je Zeile, Pfeiltasten am
   fokussierten Griff im Web, Zeilen-Aktionen für Screenreader, Ansage nach jedem Schritt),
@@ -447,7 +448,7 @@ flowchart LR
 - **Test:** e2e dev smoke (Fenster einmal öffnen), Klick-Durchlauf: AC-001 bis AC-004, AC-008 bis
   AC-010 mit den Blöcken der Spec, Portionen 4 → 8 mit Hinweis (AC-013), Vorratscheck ohne Hinweis
   (AC-011, AC-012), Abkürzung „Artikel bearbeiten“ und zurück ins Rezept (AC-007).
-- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Status:** erledigt (Commit `b2d7d98`)
 - **Umgesetzt:** `features/recipes/ingredient-sheet.tsx` („Neue Zutat“ / „Zutat bearbeiten“: Menge,
   Artikel per „Suchen oder anlegen“ mit Bereich je Treffer und Starter-Einträgen, Einkaufsregel
   vorausgewählt, Einkaufs-Zusatz, Hinweis mit „Höchstens 200 Zeichen“, ohne Artikel „Artikel
@@ -490,7 +491,42 @@ flowchart LR
   Speicher-Version 4), Rückverfolgbarkeit in `spec.md`, dieser Nachweis
 - **Test:** `/security-check` auf den ganzen Diff (Fokus: definer-Funktionen, Trigger, Grants,
   Weiterleitung, Befehle), Befunde behoben oder hier festgehalten; spec-auditor; `pnpm build:web`.
-- **Status:** offen
+- **Status:** erledigt (nicht committet, Commit durch den Lead)
+- **Umgesetzt:** Lücken aus dem spec-auditor und die Hinweise aus `/security-check` (Tabellen im
+  Nachweis), jeweils Test zuerst:
+  - `merge_articles` (`…_shopping_rpcs.sql`) sperrt nach den Haushalts-Artikel-Sperren die Rezepte
+    der Quelle `for update` und erst dann die beiden Artikel — dieselbe Reihenfolge wie ein
+    Ändern von Zutaten (Rezeptzeile, dann `for key share` im Trigger). Rot/grün mit zwei echten
+    Sitzungen: `tmp/0007/deadlock-repro.sh` (`red-t8-deadlock.txt`: 40P01, `green-t8-deadlock.txt`:
+    kein Deadlock); pgTAP prüft beide Reihenfolgen nacheinander in einer Transaktion.
+  - `merge_articles` prüft auch die 2000 Zeichen in allen Synonymen und ihren Schlüsseln und
+    meldet `too_many_synonyms` statt 23514; ebenso `mergeArticlesPreview` (`core`) und der
+    Fake-Server.
+  - Transport: 40P01 und 40001 gelten immer als vorübergehend (`classifyError`), und
+    `transport-supabase` schickt einen so abgebrochenen Aufruf genau einmal neu (Postgres hat die
+    Transaktion zurückgerollt, nichts wurde geschrieben).
+  - Edge-Funktionen: `loadRecipeIndex` (KI-Suche) liest nur die Artikel, die die Rezepte nennen,
+    in Stücken zu 100 IDs (vorher der ganze Katalog, abgeschnitten bei `max_rows` 1000); der
+    Assistent nutzt dieselbe Funktion. Test `_shared/context.test.ts` mit `maxRows` im Fake.
+  - `addIngredientsFromText` (`api`) entfernt — seit T7 ohne Aufrufer; der Test für „neuer
+    Artikel und Rezept-Patch in einem Aufruf“ nutzt jetzt `addIngredients` mit `newName`.
+  - Neue Tests: AC-050 (api mit zwei Geräten, pgTAP `area_rpcs`), AC-032 (Wirkung auf Liste,
+    Vorratscheck und Filter „Vegan“), AC-044 (Nadjas „Einkaufen“ folgt dem neuen Standardmarkt),
+    Offene Frage 6h (Bereichszuordnung auf einen inzwischen gelöschten Bereich → `null`).
+  - AC-046 am Desktop: Der Fehlschlag im Klick-Durchlauf von T6 (`t6-click-1440.log`: „FAIL
+    pfeile: Timeout“) lag am Skript — der fest gewählte Bereich stand bei 1440 px schon an Stelle
+    1, „nach oben“ war deshalb gesperrt. Neuer Durchlauf `tmp/0007/t8-arrows.mjs` wählt den
+    Bereich an Stelle 4: Pfeile und Tastatur bei 390 und 1440 px grün, Ansage „…, Position 1 von
+    18“, keine Konsolenfehler (`t8-arrows-*.log`, `t8-*-pfeile.png`, `t8-*-tastatur.png`). Keine
+    Änderung an der Oberfläche.
+  - Doku: `sync.md` (Nachtrag Spec 0007), Glossar ohne „(vorläufig)“ für die Begriffe dieser Spec
+    (Starter-Katalog korrigiert: 454 Artikel, beim Anlegen des Haushalts), Rückverfolgbarkeit je
+    AC in `spec.md`, Status der Spec `umgesetzt`.
+- **Entscheidung (E6, Hinweis aus `/security-check`):** `name_key` und `synonym_keys` berechnet
+  das Gerät (`normalizeText`); die Datenbank prüft nur Form, Länge und Eindeutigkeit, nicht, ob der
+  Schlüssel zum Namen passt. Das bleibt so: Mitglieder eines Haushalts gelten als vertrauenswürdig,
+  und ein falscher Schlüssel wirkt nur im eigenen Haushalt (Suche und Eindeutigkeit dort), nie in
+  einem anderen.
 
 ## Erwartete E2E-Brüche (für `tmp/brief/e2e-impact.md`)
 
@@ -537,13 +573,57 @@ Nicht reparieren, nur festhalten; die volle Suite läuft am Ende aller Wellen.
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 21.11.2026, nach T8 (Arbeitsbaum mit den Änderungen von T8 und parallel von Spec 0011,
+Task 9).
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün
-- [ ] `pnpm e2e:dev` grün, Klick-Durchlauf bei 390 und 1440 px ohne Konsolenfehler
-- [ ] `/security-check` gelaufen, Befunde behoben oder hier festgehalten
-- [ ] Offline-Verhalten wie in der Spec geprüft (Lesen, Suchen, gesperrtes Bearbeiten, AC-040)
-- [ ] Glossar, `sync.md` und Rückverfolgbarkeitstabelle aktuell
-- [ ] `tmp/brief/e2e-impact.md` mit den Brüchen dieser Spec
+- [x] Alle AC haben einen Test oder sind als Bildschirm-Verhalten für die E2E-Endwelle mit
+      Screenshots belegt (Rückverfolgbarkeit in `spec.md`); spec-auditor siehe unten
+- [x] `pnpm format:check && pnpm check` grün (core 697, ui 188, edge 84, api 561 Tests;
+      `tmp/0007/t8-gate-check.log`); `pnpm build:web` grün (mit `scripts/with-env.mjs`, CSP und
+      Service Worker geprüft; `t8-gate-build-web.log`)
+- [x] `pnpm db:reset` und `pnpm exec supabase test db` grün: 23 Dateien, 1226 Tests
+      (`t8-gate-pgtap.log`; neu in T8: 7 in `article_rpcs`, 3 in `area_rpcs`, 3 in `store_rpcs`)
+- [x] `pnpm test:integration` grün: 5 Dateien, 10 Tests, darunter AC-040/AC-037 und AC-006
+      (`master-data.integration.test.ts`; `t8-gate-integration.log`)
+- [x] `pnpm e2e:dev` grün (1 Test, keine Konsolenfehler; `t8-gate-e2e-dev.log`); Klick-Durchläufe
+      bei 390 und 1440 px: `tmp/0007/t5-*`, `t6-*`, `t7-*`, `t8-*`
+- [x] `/security-check` gelaufen: 0 Befunde, 4 Hinweise, alle behandelt (Tabelle unten)
+- [x] Offline-Verhalten geprüft: Lesen und Suchen aus dem Cache, gesperrtes Bearbeiten
+      (`t5-*-21-offline.png`, api-Tests `OfflineError`), AC-040 im Integrationstest
+- [x] Glossar, `sync.md` und Rückverfolgbarkeitstabelle aktuell
+- [x] `tmp/brief/e2e-impact.md` mit den Brüchen dieser Spec (T3 bis T7; T8 ändert nichts an der
+      Oberfläche)
+
+**Spec-Audit (spec-auditor, nur lesend):** 51 von 56 AC erfüllt, 4 dokumentierte Abweichungen,
+keine fehlende Anforderung:
+
+| AC                | Abweichung                                                                  | Wo festgehalten     |
+| ----------------- | --------------------------------------------------------------------------- | ------------------- |
+| AC-004            | „Der neue Titel ist gespeichert“ kommt mit dem Editor aus Spec 0008         | T7, Abweichungen    |
+| AC-006            | „Ältere App-Version“ entfällt (E2); geprüft wird die Ablehnung über die API | E2, Offene Frage 8  |
+| AC-014 bis AC-018 | Regel `resolveIngredientArticle` statt Migration (E1, keine Altdaten)       | E1, Offene Frage 7  |
+| AC-020            | 119 statt 120 Zeichen, weil auch der Schlüssel höchstens 120 Zeichen hat    | T3, Offene Frage 13 |
+| AC-046            | „Position n von m“ zählt nur die sichtbaren Bereiche                        | T6, Abweichungen    |
+
+Lücken aus dem Audit, in T8 geschlossen: AC-050 ohne Test (jetzt api und pgTAP), AC-046 am
+Desktop (Skriptfehler, nachgeprüft), toter Export `addIngredientsFromText` (entfernt), Zweig
+„Bereich gelöscht → Zuordnung verworfen“ ohne Test (pgTAP), AC-032 und AC-044 ohne Test der
+Wirkung (api).
+
+**`/security-check`** (OWASP-Checkliste, ganzer Diff der Spec; definer-Funktionen, Trigger,
+Grants, Weiterleitung, Befehle, Edge-Kontext): 0 Befunde, 4 Hinweise:
+
+| Hinweis                                                                                                                                                       | Behandlung                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merge_articles` kann mit einem gleichzeitigen Ändern von Zutaten in einen Deadlock laufen (Artikel `for update` vor Rezept gegen Rezept vor `for key share`) | behoben: Rezepte der Quelle vor den Artikeln sperren; mit zwei Sitzungen rot (40P01) und grün nachgewiesen, pgTAP nacheinander; 40P01/40001 vorübergehend, ein Wiederholversuch im Transport (Test `transport-supabase.test.ts`) |
+| Zusammenführen über 2000 Zeichen Synonyme scheitert mit 23514 statt `too_many_synonyms`                                                                       | behoben: Gesamtlänge von Synonymen und Schlüsseln in `merge_articles`, `mergeArticlesPreview` und Fake-Server; pgTAP, core- und Fake-Test zuerst rot                                                                             |
+| `name_key`/`synonym_keys` rechnet das Gerät                                                                                                                   | bewusst so (E6, Entscheidung in T8): Mitglieder sind vertrauenswürdig, Wirkung nur im eigenen Haushalt                                                                                                                           |
+| `loadRecipeIndex` liest alle Artikel ohne Seiten (`max_rows` 1000)                                                                                            | behoben: nur die benutzten Artikel-IDs, in Stücken zu 100; Edge-Test zuerst rot                                                                                                                                                  |
+
+**Commits:** T1 `a9eab08`, T2 `1f03c3a`, T3 und T4 `b963a63`, T5 `041df1a`, T6 `5d74d63`, T7
+`b2d7d98`; T8 noch nicht committet. `b963a63` enthält zusätzlich Code aus Spec 0011 (`core`:
+Übersicht, Erledigungs-Ergebnisse, halbe Sterne, Verlauf), weil beide Specs dieselben Dateien
+berührten; er trägt deshalb beide Trailer `Spec: 0007` und `Spec: 0011`.
+
+**Offen außerhalb dieses Plans:** Ziehen auf iOS/Android im Release-Build (T6); volle E2E-Suite,
+`/ui-verify` mit allen Themes und impeccable-Kritik in der Endwelle.
