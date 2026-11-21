@@ -9,13 +9,18 @@ import {
   ENRICO,
   expect,
   itemRows,
+  leaveManaged,
   login,
   nav,
   only,
   open,
+  openItem,
+  openManaged,
   openSettings,
   rpc,
   secondDevice,
+  shoppingCheck,
+  showDone,
   signInAs,
   supabaseFetch,
   switchHousehold,
@@ -118,7 +123,7 @@ test('the household chosen on this device is still chosen after a reload', async
   await switchHousehold(page, seedIds['hh-test']);
   await page.reload();
   await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 30_000 });
-  await openSettings(page);
+  await openManaged(page, 'members');
   await expect(tid(page, `household-${seedIds['hh-test']}-active`)).toBeVisible();
   await expect(tid(page, `household-${seedIds['hh-demo']}-active`)).toHaveCount(0);
 });
@@ -128,15 +133,19 @@ test('AC-003: signing out with a check waiting offline empties the device and sh
   context,
 }) => {
   await open(page, '/liste');
-  const milk = itemRows(page, 'Milch');
-  await expect(milk.locator('[role="checkbox"]')).toHaveAttribute('aria-checked', 'false');
+  await expect(openItem(page, 'Milch')).toHaveCount(1);
   expect(await cachedKeys(page)).toBeGreaterThan(0);
-  // Load the settings route once online: without the service worker (blocked in this test) its
-  // lazily loaded bundle could not be fetched offline.
+  // Load the settings and "Einkaufen" routes once online: without the service worker (blocked
+  // in this test) their lazily loaded bundles could not be fetched offline.
   await openSettings(page);
   await back(page);
+  await tid(page, 'start-shopping').click();
+  await expect(shoppingCheck(page, 'Milch')).toBeVisible();
   await context.setOffline(true);
-  await milk.locator('[role="checkbox"]').click();
+  await shoppingCheck(page, 'Milch').click();
+  await expect(shoppingCheck(page, 'Milch')).toHaveAttribute('aria-checked', 'true');
+  await tid(page, 'shopping-close').click();
+  await showDone(page);
   await expect(page.locator('[data-testid^="item-"][data-testid$="-pending"]')).toHaveCount(1);
 
   await openSettings(page);
@@ -221,6 +230,8 @@ test('AC-006: "Als Test-Enrico anmelden" signs in as "Enrico (Test)" in "Enrico 
   await login(page, 'enrico');
   await openSettings(page);
   await expect(tid(page, 'profile-current')).toContainText(ENRICO);
+  await back(page);
+  await openManaged(page, 'members');
   await expect(tid(page, `household-${seedIds['hh-demo']}-active`)).toBeVisible();
   await expect(tid(page, `household-${seedIds['hh-demo']}`)).toContainText('Enrico & Nadja');
 });
@@ -231,7 +242,7 @@ test('AC-008: Enrico invites Nadja; she shows as "Eingeladen", accepts and sees 
 }) => {
   const name = `Einladung ${unique()}`;
   await open(page, '/');
-  await openSettings(page);
+  await openManaged(page, 'members');
   await tid(page, 'household-create-input').fill(name);
   await tid(page, 'household-create-submit').click();
   await expect(
@@ -244,27 +255,27 @@ test('AC-008: Enrico invites Nadja; she shows as "Eingeladen", accepts and sees 
     hasText: 'nadja.test@example.com',
   });
   await expect(invitation).toContainText('Eingeladen');
-  await back(page);
+  await leaveManaged(page);
   await nav(page, 'liste');
   await tid(page, 'smart-input').fill('Milch');
   await tid(page, 'smart-input').press('Enter');
   await expect(itemRows(page, 'Milch')).toHaveCount(1);
 
   const nadja = await secondDevice(browser, 'nadja');
-  await openSettings(nadja.page);
+  await openManaged(nadja.page, 'members');
   const offer = tidPrefix(nadja.page, 'my-invitation-').filter({ hasText: name });
   await offer.locator('[data-testid^="invitation-accept-"]').click();
   await expect(
     tid(nadja.page, 'household-list').locator('[aria-label$=", aktiv"]').filter({ hasText: name }),
   ).toBeVisible();
-  await back(nadja.page);
+  await leaveManaged(nadja.page);
   await nav(nadja.page, 'liste');
   await expect(itemRows(nadja.page, 'Milch')).toHaveCount(1);
 
   // On Enrico's device the invitation turns into a member.
   await page.bringToFront();
   await nav(page, 'index');
-  await openSettings(page);
+  await openManaged(page, 'members');
   await expect(tid(page, `household-member-${seedIds['m-nadja']}`)).toBeVisible();
   await expect(invitation).toHaveCount(0);
   await nadja.context.close();
@@ -286,7 +297,7 @@ test('AC-008: a new account does not join by itself; on its first sign-in it acc
   await expect(offer).toBeVisible();
   await offer.locator('[data-testid^="invitation-accept-"]').click();
   await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 30_000 });
-  await openSettings(page);
+  await openManaged(page, 'members');
   await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
   await expect(tid(page, `household-member-${accountId}`)).toBeVisible();
   await expect(tid(page, `household-member-${seedIds['m-enrico']}`)).toBeVisible();
@@ -294,7 +305,8 @@ test('AC-008: a new account does not join by itself; on its first sign-in it acc
 
 test('AC-009: "nadja@" is no e-mail address; nothing is saved', async ({ page }) => {
   await open(page, '/');
-  await openSettings(page);
+  await openManaged(page, 'members');
+  await expect(tid(page, `household-member-${seedIds['m-nadja']}`)).toBeVisible();
   const invitations = tidPrefix(page, 'household-invitation-');
   const before = await invitations.count();
   await tid(page, 'household-invite-input').fill('nadja@');
@@ -317,7 +329,7 @@ test('AC-010: a new household "WG Köln" has only Enrico, the starter data, a de
 }) => {
   const name = `WG Köln ${unique()}`;
   await open(page, '/');
-  await openSettings(page);
+  await openManaged(page, 'members');
   await tid(page, 'household-create-input').fill(name);
   await tid(page, 'household-create-submit').click();
   await expect(
@@ -353,7 +365,7 @@ test('AC-010: a new household "WG Köln" has only Enrico, the starter data, a de
   // ADR-0012: the household's shopping list is its items; a new household starts with none.
   expect(await count('shopping_items')).toBe(0);
 
-  await back(page);
+  await leaveManaged(page);
   await nav(page, 'liste');
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
   await tid(page, 'smart-input').fill('Karot');
@@ -437,7 +449,7 @@ test('AC-033: after `pnpm db:reset` the demo household, "Test" and the owner inv
 }) => {
   // The global setup ran `pnpm db:reset`; this checks what it left.
   await open(page, '/');
-  await openSettings(page);
+  await openManaged(page, 'members');
   await expect(tid(page, `household-${seedIds['hh-demo']}`)).toContainText('Enrico & Nadja');
   await expect(tid(page, `household-${seedIds['hh-test']}`)).toContainText('Test');
   const owner = process.env.DEV_OWNER_EMAIL?.trim().toLowerCase();

@@ -8,15 +8,20 @@ import {
   hexToRgb,
   hue,
   itemRows,
+  leaveManaged,
   nav,
   only,
   open,
+  openItem,
+  openManaged,
   openSettings,
   parseRgb,
   PLAN_ENTRY,
   secondDevice,
+  shoppingCheck,
   SUPABASE_URL,
   supabaseFetch,
+  switchHousehold,
   test,
   tid,
   tidPrefix,
@@ -64,6 +69,16 @@ test.describe('shell at phone width', () => {
     page,
   }) => {
     await open(page, '/showroom');
+    // The switch is a preview of the showroom only; the app setting stays as it is. The preview
+    // bar slides away on phones while scrolling down, so it is used before the blocks are checked.
+    const showroom = tid(page, 'showroom');
+    const background = () => showroom.evaluate((el) => getComputedStyle(el).backgroundColor);
+    await expect.poll(background).toBe(BG.markthalleLight);
+    await tid(page, 'showroom-mode-dark').click();
+    await expect(tid(page, 'showroom-mode-dark')).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(background).toBe(BG.markthalleDark);
+    await tid(page, 'showroom-mode-light').click();
+    await expect.poll(background).toBe(BG.markthalleLight);
     for (const block of [
       'showroom-text',
       'showroom-buttons',
@@ -82,15 +97,6 @@ test.describe('shell at phone width', () => {
     ]) {
       await expect(tid(page, block), block).toBeVisible();
     }
-    // The switch is a preview of the showroom only; the app setting stays as it is.
-    const showroom = tid(page, 'showroom');
-    const background = () => showroom.evaluate((el) => getComputedStyle(el).backgroundColor);
-    await expect.poll(background).toBe(BG.markthalleLight);
-    await tid(page, 'showroom-mode-dark').click();
-    await expect(tid(page, 'showroom-mode-dark')).toHaveAttribute('aria-checked', 'true');
-    await expect.poll(background).toBe(BG.markthalleDark);
-    await tid(page, 'showroom-mode-light').click();
-    await expect.poll(background).toBe(BG.markthalleLight);
   });
 
   test('AC-006: Heute, Rezepte and a recipe load everything from the same host (and our Supabase)', async ({
@@ -113,17 +119,17 @@ test.describe('shell at phone width', () => {
     expect(requests.some((url) => /\.(jpe?g|png|webp)(\?|$)/.test(url))).toBe(true);
   });
 
-  test('AC-007: Heute with a bottom bar of five areas and the assistant button', async ({
+  test('AC-007: Übersicht with a bottom bar of five areas and ⊞ for "Verwalten"', async ({
     page,
   }) => {
     await open(page, '/');
     await expect(tid(page, 'today-screen')).toBeVisible();
     const labels = await tidPrefix(page, 'tab-').allInnerTexts();
-    // The food area is "Essen" (spec 0002, AC-001).
+    // "Essen" (spec 0002, AC-001), "Kalender" (spec 0010), "Übersicht" (spec 0005).
     expect(labels.map((label) => label.trim())).toEqual([
       'Übersicht',
       'Essen',
-      'Plan',
+      'Kalender',
       'Liste',
       'Haushalt',
     ]);
@@ -132,8 +138,51 @@ test.describe('shell at phone width', () => {
     expect(bar && viewport && bar.y > viewport.height * 0.8, 'tab bar sits at the bottom').toBe(
       true,
     );
-    await expect(tid(page, 'assistant-open')).toBeVisible();
+    // Spec 0005, AC-044: no assistant button while the AI switch is off; ⊞ instead.
+    await expect(tid(page, 'header-manage')).toBeVisible();
+    await expect(page.locator('[data-testid="assistant-open"]')).toHaveCount(0);
     await expect(tid(page, 'nav-index')).toBeHidden();
+  });
+
+  test('AC-044 (0005): with the AI switch off no way into the AI is shown', async ({
+    page,
+    requests,
+  }) => {
+    const aiEntries = [
+      'assistant-open',
+      'ai-search-toggle',
+      'empty-describe',
+      'recipe-assistant',
+      'dictate',
+      'list-assistant',
+      'settings-ai',
+      'nav-assistant',
+    ];
+    const noAi = async (where: string) => {
+      for (const id of aiEntries) {
+        await expect(
+          page.locator(`[data-testid="${id}"]${ACTIVE}`),
+          `${id} on ${where}`,
+        ).toHaveCount(0);
+      }
+    };
+    await open(page, '/');
+    await noAi('Übersicht');
+    await nav(page, 'rezepte');
+    await expect(tid(page, `recipe-card-${MANGO}`)).toBeVisible();
+    await noAi('Essen');
+    await tid(page, `recipe-card-${MANGO}`).click();
+    await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
+    await noAi('Rezept');
+    await back(page);
+    for (const key of ['kalender', 'liste', 'haushalt'] as const) {
+      await nav(page, key);
+      await noAi(key);
+    }
+    await openSettings(page);
+    await noAi('Einstellungen');
+    // AC-045: nothing went to an AI function of the server.
+    expect(requests.filter((url) => /\/functions\/v1\/(ai-|speech-)/.test(url))).toEqual([]);
   });
 
   test('AC-009: dark system setting shows the dark design; Hell, Dunkel and System can be chosen', async ({
@@ -164,20 +213,23 @@ test.describe('shell at phone width', () => {
     const color = parseRgb(await banner.evaluate((el) => getComputedStyle(el).backgroundColor));
     const h = hue(color);
     expect(h >= 15 && h <= 50, `banner hue ${h} is orange`).toBe(true);
-    await expect(tid(page, 'recipe-new')).toBeDisabled();
+    // "Neu" stays open; its entries are greyed out with the hint (spec 0008).
+    await tid(page, 'recipe-new').click();
+    await expect(tid(page, 'recipe-new-recipe')).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
     await expect(tid(page, 'recipe-offline-hint')).toHaveText(
       'Offline – zum Bearbeiten brauchst du Netz',
     );
+    // Checking happens in "Einkaufen" (spec 0006, D24), and it works offline.
     await nav(page, 'liste');
-    const milk = itemRows(page, 'Milch');
-    await expect(milk).toHaveCount(1);
-    await milk.locator('[role="checkbox"]').click();
-    await expect(
-      tid(page, 'done-section').locator('[aria-label="Milch"][role="button"]'),
-    ).toBeVisible();
+    await tid(page, 'start-shopping').click();
+    const milk = shoppingCheck(page, 'Milch');
+    await expect(milk).toHaveAttribute('aria-checked', 'false');
+    await milk.click();
+    await expect(milk).toHaveAttribute('aria-checked', 'true');
   });
 
-  test('AC-011: an unknown address shows "Nicht gefunden" with a way back to Heute', async ({
+  test('AC-011: an unknown address shows "Nicht gefunden" with a way back to the Übersicht', async ({
     page,
   }) => {
     await open(page, '/gibt-es-nicht');
@@ -192,22 +244,27 @@ test.describe('shell at phone width', () => {
   }) => {
     await open(page, '/');
     await openSettings(page);
-    const demo = seedIds['hh-demo'];
-    await expect(tid(page, `household-${demo}`)).toContainText('Enrico & Nadja');
-    await expect(tid(page, `household-${demo}-active`)).toBeVisible();
     await expect(tid(page, 'profile-current')).toContainText('Enrico');
     await expect(tid(page, 'profile-current')).toContainText('isst alles');
-    await expect(tid(page, `household-member-${seedIds['m-nadja']}`)).toContainText('Nadja');
+    await back(page);
     // "Als … ansehen" is gone with real accounts (spec 0003): Nadja's profile, on her device.
     const nadja = await secondDevice(browser, 'nadja');
     await openSettings(nadja.page);
     await expect(tid(nadja.page, 'profile-current')).toContainText('Nadja');
     await expect(tid(nadja.page, 'profile-current')).toContainText('vegetarisch');
     await nadja.context.close();
-    await tid(page, 'link-stores').click();
+    await page.bringToFront();
+
+    // Households and members live under "Verwalten" (spec 0005).
+    const demo = seedIds['hh-demo'];
+    await openManaged(page, 'members');
+    await expect(tid(page, `household-${demo}`)).toContainText('Enrico & Nadja');
+    await expect(tid(page, `household-${demo}-active`)).toBeVisible();
+    await expect(tid(page, `household-member-${seedIds['m-nadja']}`)).toContainText('Nadja');
+    await leaveManaged(page);
+    await openManaged(page, 'stores');
     await expect(tid(page, `store-${seedIds['store-rewe']}`)).toContainText('Rewe Südstadt');
-    await back(page);
-    await back(page);
+    await leaveManaged(page);
 
     await nav(page, 'rezepte');
     const count = Number((await tid(page, 'recipe-count').innerText()).match(/\d+/)?.[0]);
@@ -218,28 +275,27 @@ test.describe('shell at phone width', () => {
       'mit Hähnchen',
     ]);
     await back(page);
-    await tid(page, `recipe-card-${seedIds['rec-spaghetti-bolognese']}`).click();
+    const bolognese = tid(page, `recipe-card-${seedIds['rec-spaghetti-bolognese']}`);
+    await bolognese.scrollIntoViewIfNeeded();
+    await bolognese.click();
     await expect(tid(page, 'recipe-title')).toHaveText('Spaghetti Bolognese');
     await expect(tid(page, 'variant')).toBeHidden();
     await back(page);
 
     await nav(page, 'kalender');
-    // Every day of the current week is shown, and the plan has dishes in it.
+    // Every day of the current week is shown, and the calendar has dishes in it.
     await expect(tidPrefix(page, 'day-')).toHaveCount(7);
     expect(await page.locator(PLAN_ENTRY).count()).toBeGreaterThan(3);
 
     await nav(page, 'liste');
     await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
-    expect(
-      await page
-        .locator(`[data-testid^="item-"][role="checkbox"][aria-checked="false"]${ACTIVE}`)
-        .count(),
-    ).toBeGreaterThan(0);
+    await expect(tid(page, 'list-headline')).toContainText(/\d+ offen/);
+    await expect(openItem(page, 'Milch')).toHaveCount(1);
 
     await nav(page, 'haushalt');
     await tid(page, 'chores-tab-all').click();
     const chores = tid(page, 'chores-all').locator('[data-testid^="chore-"][role="button"]');
-    expect(await chores.count()).toBeGreaterThanOrEqual(8);
+    await expect.poll(() => chores.count()).toBeGreaterThanOrEqual(8);
   });
 
   test('AC-013: typing "Karot" suggests "Möhren · auch: Karotten"', async ({ page }) => {
@@ -266,20 +322,21 @@ test.describe('shell at phone width', () => {
     await expect(itemRows(page, 'Spülmittel')).toHaveCount(1);
   });
 
-  test('AC-016: the empty household "Test" shows the first steps; the starter catalog is there', async ({
+  test('AC-016 / AC-047 (0005) / AC-018 (0008): the empty household "Test" shows the first steps; the starter catalog is there', async ({
     page,
   }) => {
     await open(page, '/');
-    await openSettings(page);
-    await tid(page, `household-${seedIds['hh-test']}`).click();
-    await expect(tid(page, `household-${seedIds['hh-test']}-active`)).toBeVisible();
-    await back(page);
+    await switchHousehold(page, seedIds['hh-test']);
     await nav(page, 'rezepte');
     const empty = tid(page, 'recipes-empty');
     await expect(empty).toContainText('Noch keine Rezepte');
     await expect(tid(page, 'empty-recipe-title')).toHaveText(/Titel eingeben/);
     await expect(tid(page, 'empty-starter')).toHaveText(/Starter-Rezepte ansehen/);
-    await expect(tid(page, 'empty-describe')).toHaveText(/Beschreiben ✨/);
+    // Spec 0008, AC-018: nothing to search or filter yet.
+    await expect(page.locator(`[data-testid="recipe-search"]${ACTIVE}`)).toHaveCount(0);
+    await expect(page.locator(`[data-testid="recipe-filters"]${ACTIVE}`)).toHaveCount(0);
+    // Spec 0005, AC-047: no "Beschreiben ✨" while the AI switch is off.
+    await expect(page.locator(`[data-testid="empty-describe"]${ACTIVE}`)).toHaveCount(0);
     await nav(page, 'liste');
     await tid(page, 'smart-input').fill('Karot');
     await expect(tid(page, 'smart-suggestions')).toContainText('Möhren · auch: Karotten');
@@ -330,22 +387,23 @@ test.describe('shell at phone width', () => {
 test.describe('shell at desktop width', () => {
   only('desktop');
 
-  test('AC-008: navigation on the side, recipe list and recipe side by side', async ({ page }) => {
+  test('AC-008: navigation on the side; a recipe opens as its own page next to it', async ({
+    page,
+  }) => {
     await open(page, '/');
     await expect(tid(page, 'nav-index')).toBeVisible();
     await expect(tid(page, 'tab-index')).toBeHidden();
     await nav(page, 'rezepte');
     await tid(page, `recipe-card-${MANGO}`).click();
+    // Spec 0008 (E12): every width opens /rezept/<id>; the list is not beside it any more.
+    await expect(page).toHaveURL(new RegExp(`/rezept/${MANGO}$`));
     await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
+    await expect(tid(page, 'recipe-search')).toBeHidden();
     const sidebar = await tid(page, 'nav-rezepte').boundingBox();
-    const list = await tid(page, 'recipe-search').boundingBox();
     const detail = await tid(page, 'recipe-detail').boundingBox();
-    expect(sidebar && list && detail).toBeTruthy();
-    if (!sidebar || !list || !detail) return;
-    expect(sidebar.x + sidebar.width, 'sidebar left of the list').toBeLessThanOrEqual(list.x);
-    expect(list.x + list.width, 'list left of the recipe').toBeLessThanOrEqual(detail.x);
-    // Side by side: both start in the upper part of the window.
+    expect(sidebar && detail).toBeTruthy();
+    if (!sidebar || !detail) return;
+    expect(sidebar.x + sidebar.width, 'sidebar left of the recipe').toBeLessThanOrEqual(detail.x);
     expect(detail.y).toBeLessThan(300);
-    expect(list.y).toBeLessThan(300);
   });
 });

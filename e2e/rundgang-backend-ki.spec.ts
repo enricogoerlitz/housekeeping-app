@@ -30,7 +30,20 @@ only('phone');
 
 const MANGO = seedIds['rec-mango-curry'];
 const VEGAN = 'Mach das vegan und für 6 Personen';
-const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../apps/app/dist');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const dist = path.resolve(here, '../apps/app/dist');
+/**
+ * The AI switch of the build (spec 0005, REQ-008, `apps/app/src/lib/features.ts`). While it is
+ * off, no way into the AI is shown (AC-044, rundgang-shell.spec.ts); the AI cases run only in a
+ * build with the switch on (AC-048).
+ */
+const AI_ON = /\bai:\s*true\b/.test(
+  readFileSync(path.resolve(here, '../apps/app/src/lib/features.ts'), 'utf8'),
+);
+
+function needsAi(): void {
+  test.skip(!AI_ON, 'AI switch is off (spec 0005, AC-044): runs only with features.ai = true');
+}
 
 async function recipeServings(recipeId: string): Promise<number | undefined> {
   const [recipe] = (await (
@@ -59,6 +72,7 @@ test('AC-029: the AI does not answer; "Der Assistent ist gerade nicht erreichbar
   page,
   allowConsoleError,
 }) => {
+  needsAi();
   allowConsoleError(/^Failed to load resource: the server responded with a status of 503/);
   await page.route('**/functions/v1/ai-assistant', (route) => fulfilError(route, 'ai_unavailable'));
   await open(page, `/rezept/${MANGO}`);
@@ -74,6 +88,7 @@ test('AC-030: the quota is used up; "Für heute ist das KI-Kontingent aufgebrauc
   page,
   allowConsoleError,
 }) => {
+  needsAi();
   allowConsoleError(/^Failed to load resource: the server responded with a status of 429/);
   await page.route('**/functions/v1/ai-assistant', (route) => fulfilError(route, 'quota_exceeded'));
   await open(page, `/rezept/${MANGO}`);
@@ -89,6 +104,7 @@ test('AC-026: a proposal without "Beispielantwort" changes nothing until "Übern
   browser,
   requests,
 }) => {
+  needsAi();
   await open(page, `/rezept/${MANGO}`);
   await expect(tid(page, 'servings-value')).toHaveText('4');
   await askAssistant(page, VEGAN);
@@ -117,6 +133,7 @@ test('AC-027: AI search sends nothing while switched off; switched on it shows c
   page,
   requests,
 }) => {
+  needsAi();
   const aiSearchCalls = () => requests.filter((url) => url.endsWith('/functions/v1/ai-search'));
   await open(page, '/rezepte');
   const toggle = tid(page, 'ai-search-toggle');
@@ -144,6 +161,7 @@ test('AC-027: AI search sends nothing while switched off; switched on it shows c
 test('AC-028: dictation gives three proposal rows; the Foundry key is nowhere in the browser', async ({
   page,
 }) => {
+  needsAi();
   const tokens: unknown[] = [];
   page.on('response', async (response) => {
     if (response.url().endsWith('/functions/v1/speech-token') && response.ok()) {
@@ -199,7 +217,8 @@ test('AC-031: a short link is resolved by the server: name and coordinates of th
   );
   const place = aiFixtures.resolveMapsLink();
   await open(page, '/rezepte?view=restaurants');
-  await tid(page, 'restaurant-add').click();
+  await tid(page, 'recipe-new').click();
+  await tid(page, 'recipe-new-restaurant').click();
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/Kurz123');
   await expect(tid(page, 'restaurant-link-short')).toBeVisible();
   await tid(page, 'restaurant-save').click();
@@ -224,7 +243,8 @@ test('AC-032: a link that does not lead to Google Maps: "Das ist kein Karten-Lin
   );
   await open(page, '/rezepte?view=restaurants');
   const count = await tid(page, 'restaurant-count').innerText();
-  await tid(page, 'restaurant-add').click();
+  await tid(page, 'recipe-new').click();
+  await tid(page, 'recipe-new-restaurant').click();
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/Umleitung');
   await tid(page, 'restaurant-save').click();
   await expect(tid(page, 'restaurant-link-error')).toHaveText('Das ist kein Karten-Link');
@@ -238,6 +258,7 @@ test('live: the real assistant answers about Mango-Curry (E2E_LIVE_AI=1 only)', 
   page,
   context,
 }) => {
+  needsAi();
   test.skip(process.env.E2E_LIVE_AI !== '1', 'calls Foundry: only with E2E_LIVE_AI=1');
   test.setTimeout(120_000);
   await context.unroute('**/functions/v1/ai-assistant');

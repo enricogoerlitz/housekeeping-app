@@ -26,6 +26,7 @@ import {
   type StarPointerEvent,
   type StarStep,
 } from './star-value';
+import { revealsError } from './reveal-error';
 import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
@@ -653,10 +654,13 @@ export function TextField(props: TextFieldProps) {
   const [focused, setFocused] = useState(false);
   const placeholderColor = useColor('muted');
   const errorRef = useRef<HostInstance>(null);
+  const mounted = useRef(false);
   // A new error scrolls itself into view, so it never hides behind a window's footer (spec 0013,
   // the time field at 390 px). The web only: there the view is the DOM node.
   useEffect(() => {
-    if (!props.error || Platform.OS !== 'web') return;
+    const reveal = revealsError({ mounted: mounted.current, error: props.error });
+    mounted.current = true;
+    if (!reveal || Platform.OS !== 'web') return;
     const node = errorRef.current as unknown as {
       scrollIntoView?: (options: { block: 'nearest' }) => void;
     } | null;
