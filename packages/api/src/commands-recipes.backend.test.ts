@@ -833,6 +833,24 @@ describe('spec 0008: deleting a recipe (REQ-012, E3 to E5)', () => {
     stop();
   });
 
+  it('AC-045: "Rückgängig" answered with false (the recipe is back by other means) is refused with the hint', async () => {
+    const { recipe } = await arrange();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const restore = snapshot();
+    deleteRecipe(recipe.id);
+    await fx.settle();
+    fx.server.insertRows(H, {
+      recipes: [{ id: recipe.id, title: 'Neu', servings: 2, course: 'main' }],
+    });
+    restore();
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['deleteRecipe', 'restoreRecipe']);
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(recipeById(recipe.id)).toMatchObject({ title: 'Neu' });
+    stop();
+  });
+
   it('E5: the photo is removed after the deletion went through, never after undo or a refusal', async () => {
     const { recipe } = await arrange();
     const deletion = deleteRecipe(recipe.id);

@@ -1473,8 +1473,11 @@ export function createFakeServer(): FakeServer {
         candidate.deletedAt > Date.now() - RESTORABLE_MS,
     );
     if (!deletion) throw new TransportError('permanent', 'recipe_not_restorable', 500);
-    if ([...data.values()].some((tables) => tables.recipes?.[recipeId])) return false;
     const { householdId } = deletion;
+    if (data.get(householdId)?.recipes?.[recipeId]) return false;
+    if ([...data.values()].some((tables) => tables.recipes?.[recipeId])) {
+      throw new TransportError('permanent', 'recipe_not_restorable', 500);
+    }
     const current = new Set(memberIdsOf(householdId));
     transaction(householdId, (before) => {
       const recipe: Row = { ...withoutTimestamps(deletion.recipe), id: recipeId };

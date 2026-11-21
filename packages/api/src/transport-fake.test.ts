@@ -1825,6 +1825,21 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
     expect(server.row(H, 'meal_plan_entries', 'e-sat')).toBeUndefined();
   });
 
+  it('an id taken in another household meanwhile is not restorable (never false)', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.deleteRecipe('r1', '2026-11-20');
+    server.addHousehold({ id: 'h-2', name: 'WG' }, [STRANGER]);
+    server.insertRows('h-2', {
+      recipes: [{ id: 'r1', title: 'Besetzt', servings: 2, course: 'main' }],
+    });
+    await expect(enrico.restoreRecipe('r1')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'recipe_not_restorable',
+    });
+    expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
+    expect(server.row('h-2', 'recipes', 'r1')).toMatchObject({ title: 'Besetzt' });
+  });
+
   it('E3: leftovers without a recipe of a removed entry go too, and come back with their links', async () => {
     server.insertRows(H, {
       meal_plan_entries: [

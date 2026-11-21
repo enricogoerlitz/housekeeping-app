@@ -38,8 +38,19 @@ create table public.recipes (
     constraint recipes_cuisine_length check (char_length(cuisine) <= 80),
   tags text[] not null default '{}'
     constraint recipes_tags_size check (cardinality(tags) <= 30 and char_length(array_to_string(tags, '')) <= 1000),
+  -- Each variant is an object with a name of 1–60 characters (spec 0008, E8); other keys are the
+  -- client's (core RecipeVariant). At most 20 variants and 20 000 bytes.
   variants jsonb not null default '[]'
-    constraint recipes_variants_valid check (jsonb_typeof(variants) = 'array' and jsonb_array_length(variants) <= 20),
+    constraint recipes_variants_valid check (
+      case
+        when jsonb_typeof(variants) = 'array' then
+          jsonb_array_length(variants) <= 20
+          and octet_length(variants::text) <= 20000
+          and not jsonb_path_exists(
+            variants, '$[*] ? (!(@.type() == "object" && @.name.type() == "string" && @.name like_regex "^.{1,60}$"))')
+        else false
+      end
+    ),
   ingredients jsonb not null default '[]'
     constraint recipes_ingredients_valid check (
       jsonb_typeof(ingredients) = 'array' and jsonb_array_length(ingredients) <= 300
@@ -281,7 +292,7 @@ grant execute on function public.set_recipe_rating(uuid, numeric) to authenticat
 -- the old values of the plan entries it turned into free text and the removed plan entries in
 -- full. Only the server reads it (ratings of others must not come from a device): schema private,
 -- RLS on without policies, no grants, not synced. One snapshot per recipe; deleting the same id
--- again replaces it. Kept for 1 hour: purged by every delete_recipe of the household and nightly.
+-- again replaces it. Kept for 1 hour: purged by every delete_recipe of the household and hourly.
 create table private.recipe_deletions (
   household_id uuid not null references public.households (id) on delete cascade,
   recipe_id uuid not null,
@@ -298,8 +309,9 @@ revoke all on private.recipe_deletions from public, anon, authenticated;
 
 -- "Löschen" (AC-043). p_today is the device's date as the UI shows it; only current_date ± 1 day
 -- is accepted. In one transaction:
--- * the recipe is locked first, then its plan entries (a concurrent "Einplanen" waits for the
---   lock and then fails its foreign key with 23503, E6); no article is locked;
+-- * the recipe is locked first, then its plan entries, then the leftovers without a recipe that
+--   go with removed entries (a concurrent "Einplanen" or "Reste" waits for the lock and then fails
+--   its foreign key with 23503, E6); no article is locked;
 -- * expired snapshots of the household are purged, then the snapshot is written;
 -- * entries up to and including p_today become free text with the title (leftovers: "Reste von
 --   <title>"), recipe_id null, variants []; eaters, portions, cook and "nicht gekocht" stay;
@@ -321,6 +333,7 @@ declare
   v_household_id uuid := private.my_recipe_household_id(p_recipe_id);
   v_recipe public.recipes;
   v_converted jsonb;
+  v_removed_ids uuid[];
   v_removed jsonb;
 begin
   if p_today is null or p_today not between current_date - 1 and current_date + 1 then
@@ -350,18 +363,26 @@ begin
   from public.meal_plan_entries e
   where e.household_id = v_household_id and e.recipe_id = p_recipe_id and e.date <= p_today;
 
-  with recursive removed (id) as (
-    select e.id from public.meal_plan_entries e
-    where e.household_id = v_household_id and e.recipe_id = p_recipe_id and (e.date is null or e.date > p_today)
-    union
-    select l.id from public.meal_plan_entries l
-    join removed r on l.leftovers_of_entry_id = r.id
-    where l.household_id = v_household_id and l.kind = 'leftovers' and l.recipe_id is null
-  )
+  v_removed_ids := array(
+    with recursive removed (id) as (
+      select e.id from public.meal_plan_entries e
+      where e.household_id = v_household_id and e.recipe_id = p_recipe_id and (e.date is null or e.date > p_today)
+      union
+      select l.id from public.meal_plan_entries l
+      join removed r on l.leftovers_of_entry_id = r.id
+      where l.household_id = v_household_id and l.kind = 'leftovers' and l.recipe_id is null
+    )
+    select r.id from removed r);
+  -- The leftovers found this way have no recipe_id and are not locked yet: lock them before they
+  -- go into the snapshot, so a concurrent change cannot slip in between reading and deleting.
+  perform 1 from public.meal_plan_entries e
+  where e.household_id = v_household_id and e.id = any (v_removed_ids)
+  for update;
+
   select coalesce(jsonb_agg(to_jsonb(e) order by e.id), '[]')
   into v_removed
   from public.meal_plan_entries e
-  where e.household_id = v_household_id and e.id in (select r.id from removed r);
+  where e.household_id = v_household_id and e.id = any (v_removed_ids);
 
   insert into private.recipe_deletions as d (household_id, recipe_id, deleted_by, deleted_at, snapshot)
   values (v_household_id, p_recipe_id, auth.uid(), now(), jsonb_build_object(
@@ -402,9 +423,11 @@ $$;
 -- * the free-text entries become recipe entries again, but only while they are still unchanged
 --   free text with the text delete_recipe wrote;
 -- * the snapshot is deleted.
--- Returns true, or false (and changes nothing) when the recipe exists again already.
+-- Returns true, or false (and changes nothing) when the recipe exists again already in the same
+-- household (put back by other means).
 -- Errors: not_authenticated (42501), recipe_not_restorable (P0002: no snapshot of the caller in
--- one of her households, older than 1 hour, or already restored), plus whatever a check raises
+-- one of her households, older than 1 hour, already restored, or the id is taken by a recipe of
+-- another household meanwhile), plus whatever a check raises
 -- when an article or a meal slot is gone in between (e.g. ingredient_article_invalid, invalid_slot,
 -- 23503) — then nothing is restored.
 create function private.restore_recipe(p_recipe_id uuid)
@@ -417,6 +440,7 @@ declare
   v_deletion private.recipe_deletions;
   v_snapshot jsonb;
   v_household_id uuid;
+  v_existing_household_id uuid;
 begin
   if auth.uid() is null then
     raise exception 'not_authenticated' using errcode = '42501';
@@ -433,8 +457,13 @@ begin
   v_snapshot := v_deletion.snapshot;
   v_household_id := v_deletion.household_id;
 
-  if exists (select 1 from public.recipes r where r.id = p_recipe_id) then
+  -- Recipe ids are unique across households. Back in this household: nothing to do. Taken in
+  -- another one (e.g. by a former member who saw the id): refused, never reported as success.
+  select r.household_id into v_existing_household_id from public.recipes r where r.id = p_recipe_id;
+  if v_existing_household_id = v_household_id then
     return false;
+  elsif v_existing_household_id is not null then
+    raise exception 'recipe_not_restorable' using errcode = 'P0002';
   end if;
 
   perform pg_catalog.set_config('private.restore_created_at', coalesce(v_snapshot -> 'recipe' ->> 'created_at', ''), true);
@@ -537,7 +566,8 @@ as $$ select private.restore_recipe($1) $$;
 grant execute on function public.delete_recipe(uuid, date) to authenticated;
 grant execute on function public.restore_recipe(uuid) to authenticated;
 
--- Retention: a snapshot older than 1 hour can no longer be restored.
+-- Retention: a snapshot older than 1 hour can no longer be restored, and holds ratings of others;
+-- purged every hour, so none outlives it by more than about an hour.
 create function private.purge_recipe_deletions()
 returns void
 language sql
@@ -546,4 +576,4 @@ as $$
   delete from private.recipe_deletions where deleted_at <= now() - interval '1 hour';
 $$;
 
-select cron.schedule('purge-recipe-deletions', '20 3 * * *', 'select private.purge_recipe_deletions()');
+select cron.schedule('purge-recipe-deletions', '20 * * * *', 'select private.purge_recipe_deletions()');

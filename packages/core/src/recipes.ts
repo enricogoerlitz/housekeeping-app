@@ -14,7 +14,13 @@ import type {
   RecipeStep,
 } from './types';
 
-export { defaultVariantId, ingredientsForVariant } from './recipe-variants';
+export {
+  chooseVariant,
+  defaultVariantId,
+  ingredientsForVariant,
+  shownVariantId,
+  type VariantChoice,
+} from './recipe-variants';
 
 const COURSE_LABELS: Record<Course, string> = {
   breakfast: 'Frühstück',

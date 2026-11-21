@@ -13,9 +13,10 @@ import {
 } from '@housekeeping/api';
 import {
   canPutRecipeOnList,
-  defaultVariantId,
+  chooseVariant,
   deriveRecipeDiet,
   recipeDeletedLabel,
+  shownVariantId,
   type Id,
   type Recipe,
 } from '@housekeeping/core';
@@ -80,7 +81,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
       key={recipe.id}
       recipe={recipe}
       onBack={props.onBack}
-      onDeleting={() => setLeaving(true)}
+      onDeleting={setLeaving}
     />
   );
 }
@@ -110,7 +111,12 @@ function RecipeGone(props: { onBack: () => void }) {
   );
 }
 
-function RecipeDetailBody(props: { recipe: Recipe; onBack: () => void; onDeleting: () => void }) {
+function RecipeDetailBody(props: {
+  recipe: Recipe;
+  onBack: () => void;
+  /** true while this page deletes its recipe; false again when the deletion did not start. */
+  onDeleting: (leaving: boolean) => void;
+}) {
   const { recipe } = props;
   const router = useRouter();
   const online = useOnlineOnly();
@@ -122,15 +128,14 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack: () => void; onDeletin
   // Displayed portions are local; when the recipe's own portions change (assistant), they follow.
   const [portions, setPortions] = useState({ base: recipe.servings, shown: recipe.servings });
   const shownServings = portions.base === recipe.servings ? portions.shown : recipe.servings;
-  const [variantId, setVariantId] = useState<Id | undefined>(() => defaultVariantId(recipe));
+  // AC-033: a new default after "Fertig" is preselected; a removed variant falls back to it.
+  const [variantChoice, setVariantChoice] = useState(() => chooseVariant(recipe));
   const [pantryCheck, setPantryCheck] = useState(false);
   const [planning, setPlanning] = useState(false);
   const photo = useRecipePhoto(recipe);
   const editor = useSectionEditor(recipe);
 
-  const activeVariantId = recipe.variants.some((variant) => variant.id === variantId)
-    ? variantId
-    : defaultVariantId(recipe);
+  const activeVariantId = shownVariantId(recipe, variantChoice);
   const diet =
     recipe.ingredients.length > 0
       ? deriveRecipeDiet(recipe, activeVariantId, articlesById)
@@ -155,15 +160,19 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack: () => void; onDeletin
   const remove = () => {
     if (online.disabled) return;
     const restore = snapshot();
-    props.onDeleting();
+    props.onDeleting(true);
     let deletion;
     try {
       deletion = deleteRecipe(recipe.id);
     } catch (error) {
+      props.onDeleting(false);
       if (!(error instanceof OfflineError)) throw error;
       return;
     }
-    if (!deletion) return;
+    if (!deletion) {
+      props.onDeleting(false);
+      return;
+    }
     const done = deletion;
     props.onBack();
     toast.show({
@@ -220,7 +229,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack: () => void; onDeletin
     <IngredientsSection
       recipe={recipe}
       variantId={activeVariantId}
-      onVariant={setVariantId}
+      onVariant={(id: Id) => setVariantChoice(chooseVariant(recipe, id))}
       servings={shownServings}
       onServings={(value) => setPortions({ base: recipe.servings, shown: Math.max(1, value) })}
       editor={editor}

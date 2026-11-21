@@ -15,3 +15,31 @@ export function ingredientsForVariant(recipe: Recipe, variantId?: Id): RecipeIng
     (ingredient) => ingredient.variantId === undefined || ingredient.variantId === chosen,
   );
 }
+
+/**
+ * The variant chosen on the recipe page, together with the default it was chosen against
+ * (spec 0008, AC-033).
+ */
+export interface VariantChoice {
+  variantId?: Id;
+  defaultId?: Id;
+}
+
+/** A choice on the recipe page; without a variant it is the recipe's default. */
+export function chooseVariant(recipe: Recipe, variantId?: Id): VariantChoice {
+  const defaultId = defaultVariantId(recipe);
+  return { variantId: variantId ?? defaultId, defaultId };
+}
+
+/**
+ * The variant the recipe page shows (AC-033): a new default ("Als Standard", then "Fertig")
+ * replaces the choice, so the new default is preselected; a chosen variant that is gone falls
+ * back to the default; otherwise the choice stays.
+ */
+export function shownVariantId(recipe: Recipe, choice: VariantChoice): Id | undefined {
+  const defaultId = defaultVariantId(recipe);
+  if (defaultId !== choice.defaultId) return defaultId;
+  return recipe.variants.some((variant) => variant.id === choice.variantId)
+    ? choice.variantId
+    : defaultId;
+}

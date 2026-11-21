@@ -127,7 +127,8 @@ Dann        sehe ich „Heute“ und unten eine Leiste mit Heute, Rezepte, Plan,
 Und         einen Knopf für den Assistenten
 ```
 
-**AC-008**
+**AC-008** (ersetzt durch Spec 0008, AC-019: Ein Rezept öffnet sich auf jeder Breite als ganze
+Seite; „Liste und Detail“ nebeneinander gilt nur noch für Restaurants)
 
 ```gherkin
 Angenommen  Desktopbreite

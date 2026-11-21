@@ -6,7 +6,7 @@
 -- AC-021 (foreign household) and the negative tests of the risk table in plan.md.
 begin;
 \ir _helpers.psql
-select plan(74);
+select plan(84);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -19,6 +19,10 @@ create function tests.delete_sql(p_recipe text, p_today date default current_dat
 as $$ select format('select public.delete_recipe(%L, %L)', tests.fx(p_recipe), p_today) $$;
 create function tests.restore_sql(p_recipe text) returns text language sql stable
 as $$ select format('select public.restore_recipe(%L)', tests.fx(p_recipe)) $$;
+-- An apply_changes call that sets the variants of Lasagne.
+create function tests.variants_sql(p_variants jsonb) returns text language sql stable
+as $$ select format('select public.apply_changes(%L, %L)', tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
+  'kind', 'patch', 'table', 'recipes', 'id', tests.fx('lasagne'), 'changes', jsonb_build_object('variants', p_variants)))) $$;
 -- One plan entry as comparable JSON, without the server timestamps.
 create function tests.entry(p_key text) returns jsonb language sql stable
 as $$ select to_jsonb(e) - 'created_at' - 'updated_at' from public.meal_plan_entries e where e.id = tests.fx(p_key) $$;
@@ -37,7 +41,7 @@ insert into fx (key) values
   ('risotto'), ('pasta_b'), ('e_past'), ('e_today'), ('e_future'), ('e_noted'), ('e_leftovers'), ('e_other'),
   ('e_auflauf'), ('e_b'), ('e_new'), ('photo'),
   ('gulasch'), ('e_g_past'), ('e_g_past_left'), ('e_g_future'), ('e_g_left'), ('e_g_chain'), ('e_g_text'),
-  ('e_g_text_left'), ('later_recipe');
+  ('e_g_text_left'), ('later_recipe'), ('squat'), ('e_squat');
 
 update public.households
 set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot_abend'), 'name', 'Abend', 'sort', 0))
@@ -139,6 +143,23 @@ select throws_ok(tests.delete_sql('halloumi', current_date + 2), '22023', 'inval
   'E3 delete_recipe: a device date two days ahead is rejected');
 select throws_ok(format('select public.delete_recipe(%L, null)', tests.fx('halloumi')), '22023', 'invalid_value',
   'E3 delete_recipe: a missing device date is rejected');
+
+-- E8: variants have the same limits as the other JSON columns (security check of T9).
+select throws_ok(tests.variants_sql(jsonb_build_array(jsonb_build_object('id', 'v1', 'name', repeat('x', 61), 'isDefault', true))),
+  '23514', null, 'E8 recipes: a variant name of 61 characters is rejected');
+select throws_ok(tests.variants_sql('[{"id": "v1", "name": "", "isDefault": true}]'),
+  '23514', null, 'E8 recipes: an empty variant name is rejected');
+select throws_ok(tests.variants_sql('[{"id": "v1", "name": 7, "isDefault": true}]'),
+  '23514', null, 'E8 recipes: a variant name that is not text is rejected');
+select throws_ok(tests.variants_sql('["mit Tofu"]'),
+  '23514', null, 'E8 recipes: a variant that is not an object is rejected');
+select throws_ok(
+  tests.variants_sql(jsonb_build_array(jsonb_build_object('id', 'v1', 'name', 'mit Tofu', 'isDefault', true,
+                                                          'extra', repeat('x', 20000)))),
+  '23514', null, 'E8 recipes: variants over 20000 bytes are rejected');
+select lives_ok(
+  tests.variants_sql(jsonb_build_array(jsonb_build_object('id', 'v1', 'name', repeat('ä', 60), 'isDefault', true))),
+  'E8 recipes: a variant name of 60 characters is allowed');
 select tests.clear_authentication();
 select is(
   (select count(*)::int from public.recipes where id in (tests.fx('halloumi'), tests.fx('lasagne')))
@@ -397,6 +418,34 @@ select results_eq(
   $$ values ('Risotto neu') $$,
   'E4 delete_recipe: deleting the same id again replaces the snapshot');
 
+-- An id deleted in household A and taken in household B (e.g. by a former member): restore does
+-- not answer false (that would look like success), it refuses, and nothing changes in either.
+insert into public.recipes (id, household_id, title) values (tests.fx('squat'), tests.fx('home_a'), 'Kürbissuppe');
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id) values
+  (tests.fx('e_squat'), tests.fx('home_a'), current_date + 2, tests.fx('slot_abend'), 'recipe', tests.fx('squat'));
+select tests.authenticate_as(tests.fx('enrico'));
+select public.delete_recipe(tests.fx('squat'), current_date);
+select tests.authenticate_as(tests.fx('ben'));
+select public.apply_changes(tests.fx('home_b'), jsonb_build_array(jsonb_build_object(
+  'kind', 'insert', 'table', 'recipes', 'row', jsonb_build_object('id', tests.fx('squat'), 'title', 'Besetzt'))));
+select tests.authenticate_as(tests.fx('enrico'));
+select throws_ok(tests.restore_sql('squat'), 'P0002', 'recipe_not_restorable',
+  'E4 restore_recipe: an id taken in another household is not restorable');
+select tests.clear_authentication();
+select results_eq(
+  format($$ select r.household_id, r.title, (select count(*)::int from public.meal_plan_entries where id = %L),
+                   (select count(*)::int from private.recipe_deletions where recipe_id = %L)
+            from public.recipes r where r.id = %L $$, tests.fx('e_squat'), tests.fx('squat'), tests.fx('squat')),
+  format($$ values (%L::uuid, 'Besetzt', 0, 1) $$, tests.fx('home_b')),
+  'E4 restore_recipe: … the other household''s recipe stays, nothing comes back, the snapshot stays');
+delete from public.recipes where id = tests.fx('squat');
+
+-- Deleting a recipe around delete_recipe (superuser) while it is planned: the foreign key stops it.
+select throws_ok(format('delete from public.recipes where id = %L', tests.fx('halloumi')), '23503', null,
+  'E1 recipes: a planned recipe cannot be deleted around delete_recipe (on delete restrict)');
+select is((select count(*)::int from public.recipes where id = tests.fx('halloumi')), 1,
+  'E1 recipes: … and it stays');
+
 -- ===================== Purge and household deletion =====================
 select tests.authenticate_as(tests.fx('ben'));
 select is((select public.delete_recipe(tests.fx('pasta_b'), current_date + 1)), '{"converted": 0, "removed": 1}'::jsonb,
@@ -406,12 +455,12 @@ update private.recipe_deletions set deleted_at = now() - interval '2 hours' wher
 select private.purge_recipe_deletions();
 select results_eq(
   'select recipe_id from private.recipe_deletions order by recipe_id',
-  format($$ select id from fx where key in ('auflauf', 'risotto', 'pasta_b') order by id $$),
+  format($$ select id from fx where key in ('auflauf', 'risotto', 'pasta_b', 'squat') order by id $$),
   'E4 purge_recipe_deletions: removes only snapshots older than 1 hour');
 select is(
   (select count(*)::int from cron.job where jobname = 'purge-recipe-deletions'
-     and command = 'select private.purge_recipe_deletions()'),
-  1, 'E4 purge-recipe-deletions: the nightly job is scheduled');
+     and schedule = '20 * * * *' and command = 'select private.purge_recipe_deletions()'),
+  1, 'E4 purge-recipe-deletions: the job runs hourly');
 delete from public.households where id = tests.fx('home_b');
 select is((select count(*)::int from private.recipe_deletions where household_id = tests.fx('home_b')), 0,
   'E4 recipe_deletions: deleting the household removes its snapshots');

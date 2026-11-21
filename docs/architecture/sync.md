@@ -255,6 +255,50 @@ regelt die erste Spec mit Fotos.
   Zutaten (`prepNote`, kein `name` mehr). Der Cache wird einmal neu geladen; Warteschlange,
   gewählter Haushalt und gewählter Markt bleiben erhalten.
 
+## Nachtrag Spec 0008 — Rezept löschen mit „Rückgängig“
+
+- **Rezepte werden nur per RPC gelöscht:** `authenticated` hat kein `delete`-Recht auf `recipes`,
+  und die Allowlist von `apply_changes` steht für `recipes` auf `"delete": false`. Gelöscht wird
+  nur über `delete_recipe(recipe_id, today)`; nur so lässt sich jedes Löschen rückgängig machen,
+  und der Kalender bleibt stimmig. Einen Haushalt zu löschen, kaskadiert weiter ohne Grant. Löscht
+  jemand ein eingeplantes Rezept an der RPC vorbei (Superuser), verhindert `on delete restrict`
+  der Planeinträge das mit 23503.
+- **Folgen für den Kalender:** Einträge des Rezepts mit Tag bis einschließlich `today` werden
+  Freitext mit dem Titel (Reste: „Reste von <Titel>“); Esser, Portionen, Koch und „nicht gekocht“
+  bleiben. Spätere und vorgemerkte Einträge werden gelöscht, und mit ihnen Reste ohne eigenes
+  Rezept, die auf einen gelöschten Eintrag zeigen (auch Reste davon). `today` ist das Datum des
+  Geräts; der Server nimmt nur `current_date` ± 1 Tag an (`invalid_value`). Beiträge auf der
+  Einkaufsliste bleiben unverändert. Das Gerät rechnet dieselbe Wirkung vorab
+  (`core.recipeDeletionEffect`) und zeigt sie sofort; die Geräte der anderen erfahren das Löschen
+  über die Grabsteine von `recipes`, `recipe_ratings`, `recipe_favorites` und
+  `meal_plan_entries` sowie das neue `updated_at` der umgeschriebenen Einträge.
+- **Sperren:** `delete_recipe` sperrt die Rezeptzeile, dann seine Planeinträge und dann die
+  mitgehenden Reste ohne Rezept `for update`, bevor es den Schnappschuss liest. Ein gleichzeitiges
+  „Einplanen“ wartet auf die Sperre und scheitert danach am Fremdschlüssel (23503); das Gerät nimmt
+  es zurück und zeigt „Das Rezept gibt es nicht mehr“. Artikel sperrt `delete_recipe` nicht.
+- **`private.recipe_deletions` — bewusste Ausnahme von Regel 5:** Der Schnappschuss für
+  „Rückgängig“ (Rezeptzeile, Bewertungen, Favoriten, alte Werte der Freitext-Einträge, gelöschte
+  Einträge vollständig) liegt im Schema `private`, mit RLS ohne Policies, ohne Grants und ohne
+  Sync. Kein Gerät liest ihn, damit niemand die Bewertungen anderer fälschen kann; deshalb hat
+  die Tabelle weder `updated_at`-Abgleich noch Grabstein. Sie ist an den Haushalt gebunden
+  (Fremdschlüssel mit Kaskade), ein Schnappschuss je Rezept. Aufgeräumt wird bei jedem
+  `delete_recipe` des Haushalts und stündlich per `pg_cron` (`purge-recipe-deletions`, Minute 20).
+- **Bedingungen für `restore_recipe(recipe_id)`:** nur die Person, die gelöscht hat, solange sie
+  Mitglied des Haushalts ist, und nur innerhalb von 1 Stunde; sonst `recipe_not_restorable`
+  (P0002). Das Gerät schickt nur die ID. Zurück kommen das Rezept mit derselben ID, `photo_path`
+  und dem ursprünglichen `created_at` (Trigger `recipes_stamp_restored`), Bewertungen und Favoriten
+  heutiger Mitglieder, die gelöschten Einträge (Esser nur heutige Mitglieder, Koch leer, wenn er
+  fehlt) und die Freitext-Einträge, solange sie unverändert sind. Das Rezept bekommt ein neues
+  `updated_at` und gewinnt so gegen seinen Grabstein. Steht die ID im selben Haushalt schon wieder,
+  antwortet der Server `false` und ändert nichts; das Gerät behandelt das als Ablehnung mit dem
+  allgemeinen Hinweis. Ist die ID inzwischen in einem anderen Haushalt vergeben, heißt es
+  `recipe_not_restorable`. Fehlt ein Artikel oder eine Tageszeit, scheitert der ganze Aufruf.
+- **Foto:** Die Datenbank löscht keine Storage-Objekte. Die App löscht das eigene Foto erst, wenn
+  der Hinweis „… gelöscht · Rückgängig“ ohne „Rückgängig“ ausläuft. Bricht die App vorher ab oder
+  scheitert „Rückgängig“, bleibt das Objekt im Ordner des Haushalts liegen (hingenommen).
+- **Kein neuer Cache:** keine neue synchronisierte Tabelle, keine neue Spalte; die
+  Cache-Version bleibt.
+
 ## Nachtrag Spec 0011 — Erledigungen mit Bedingung, Bewertungen in halben Schritten
 
 - **Erledigungen nur über Domänen-Operationen:** Mitglieder haben auf `chore_events` nur noch

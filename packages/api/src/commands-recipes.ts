@@ -36,6 +36,7 @@ import {
   peekState,
   updateData,
 } from './store';
+import { TransportError } from './transport';
 
 function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
   updateData((data) => ({
@@ -241,7 +242,8 @@ export interface RecipeDeletion {
  * "Löschen" (AC-043): one delete_recipe call with the device's date. Shown at once as the server
  * will do it (core recipeDeletionEffect): the recipe with its ratings and favourites is gone,
  * entries up to today are free text, later and noted ones are gone. `snapshot()` taken before
- * undoes it with restore_recipe (AC-044); a refusal jumps back with the general hint (AC-045).
+ * undoes it with restore_recipe (AC-044); a refusal jumps back with the general hint (AC-045),
+ * also when restore_recipe answers false.
  * Throws OfflineError; undefined for a recipe that is not there.
  */
 export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
@@ -253,7 +255,13 @@ export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
     {
       path: 'rpc',
       send: (transport) => transport.deleteRecipe(recipeId, today),
-      inverse: (transport) => transport.restoreRecipe(recipeId),
+      // false: the recipe is back by other means (same id, same household). Nothing was
+      // restored, so "Rückgängig" did not happen; it is refused like any other refusal.
+      inverse: async (transport) => {
+        if (!(await transport.restoreRecipe(recipeId))) {
+          throw new TransportError('permanent', 'recipe_not_restorable');
+        }
+      },
     },
     () =>
       updateData((data) => {

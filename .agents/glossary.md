@@ -85,9 +85,12 @@ die Art ändert sich nach dem Anlegen nicht.
 Die Länderküche oder Stilrichtung eines Rezepts oder Restaurants, z. B. „Italienisch“. Höchstens
 eine je Rezept, Freitext, gewählt per „Suchen oder anlegen“ über die Werte des Haushalts. Der
 Filter fasst Schreibweisen zusammen, die sich nur in Groß/Klein oder Leerzeichen am Rand
-unterscheiden (Spec 0008).
+unterscheiden (Spec 0008). Gezeigt wird die häufigste Schreibweise, bei Gleichstand die erste
+nach A–Z.
 
-- **Im Code:** `cuisine` (an `Recipe` und `Restaurant`)
+- **Im Code:** `cuisine` (an `Recipe` und `Restaurant`); Schlüssel zum Zusammenfassen
+  `cuisineKey` (nur `trim` und Kleinschreibung, nicht `normalizeText`), Filterwerte mit Anzahl
+  `cuisineFacets`
 - **Nicht verwenden:** Kategorie, Stil
 - **Abgrenzung:** Die _Gerichtart_ (Hauptgericht, Beilage …) ist ein eigenes Feld. Sammlungen
   haben keine Küche.
@@ -437,10 +440,26 @@ Ernährungseigenschaften der Artikel abgeleitet, bei Sammlungen aus allem, was s
 
 Eine Ausprägung eines Rezepts, die Zutaten ergänzt, z. B. „mit Tofu“ oder „mit Hähnchen“. Zutaten
 ohne Variante bilden die Basis. Ein Wochenplan-Eintrag kann mehrere Varianten mit eigenen
-Portionen haben.
+Portionen haben. Genau eine Variante ist „Standard“ und auf der Rezeptseite vorausgewählt; wird
+eine Variante entfernt, gehen ihre Zutaten und Schritte mit, und Planeinträge geben ihre Portionen
+an die Standardvariante ab (Spec 0008).
 
-- **Im Code:** `RecipeVariant`, `recipe_variants`
+- **Im Code:** `RecipeVariant`, gespeichert als Liste in `recipes.variants` (`Recipe.variants`,
+  keine eigene Tabelle); Standard `isDefault`, `defaultVariantId`; im Planeintrag `variants`
+  (`{ variantId, portions }`)
 - **Nicht verwenden:** Version, Abwandlung, Option
+
+### Abschnitt der Rezeptseite
+
+Ein Block der Rezeptseite, der für sich bearbeitet und gespeichert wird: Kopf, Einordnung, Zutaten,
+Zubereitung, Notizen. Höchstens einer ist zugleich offen; „Fertig“, ein anderer Stift oder das
+Verlassen der Seite speichert ihn und schickt nur seine Felder (Spec 0008, REQ-007).
+
+- **Im Code:** `RecipeSection` (`'head' | 'classification' | 'ingredients' | 'steps' | 'notes'`),
+  Entwurf `RecipeSectionDraft`, in der App `useSectionEditor`, Baustein `EditableSection`
+- **Nicht verwenden:** Karte, Bereich (ist der Gang im Markt), Formular
+- **Abgrenzung:** Die Abschnitte der _Packliste_ (`packingSections`) und „Heute geplant“ auf der
+  _Übersicht_ sind Gruppen zum Lesen, keine Abschnitte der Rezeptseite.
 
 ### Gerichtart
 

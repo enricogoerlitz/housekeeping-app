@@ -1,5 +1,5 @@
 ---
-status: offen # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-21
 spec: 0008
 ---
@@ -36,6 +36,10 @@ Annahme ist, steht zusätzlich als `OFFEN` in den Offenen Fragen der Spec, Numme
   `"delete": false`. Nur so ist jedes Löschen rückgängig zu machen und lässt den Kalender stimmig.
   Ein Haushalt lässt sich weiter löschen (Kaskade ohne Grant).
 - **E3 — Folgen für Kalender und Liste (Offene Frage 3 A, präzisiert in Offene Frage 5).**
+  Ergänzt beim Bauen (Nachtrag zu T1 in `c8ae963`): Mit einem gelöschten Eintrag gehen auch Reste
+  ohne eigenes Rezept (`recipe_id` leer), die auf ihn zeigen, und Reste davon (rekursiv); sonst
+  verletzten sie `meal_plan_entries_kind_complete`. Sie stehen vollständig im Schnappschuss und
+  kommen mit „Rückgängig“ samt Verweis zurück.
   - `delete_recipe(p_recipe_id, p_today)` macht alle Einträge des Rezepts mit `date <= p_today` zu
     Freitext, nämlich `kind = 'text'`, `recipe_id = null`, `variants = '[]'` und als Text der
     Titel, bei Resten „Reste von <Titel>“ (Glossar). Esser, Portionen, Koch und „nicht gekocht“
@@ -60,13 +64,14 @@ Annahme ist, steht zusätzlich als `OFFEN` in den Offenen Fragen der Spec, Numme
     `public`; diese Ausnahme steht im Nachtrag in `sync.md`.
   - `restore_recipe(p_recipe_id)` geht nur für die Person, die gelöscht hat, solange sie Mitglied
     ist, und nur innerhalb von 1 Stunde; sonst `recipe_not_restorable` (P0002). Es stellt Rezept
-    (dieselbe ID, samt `photo_path`), Bewertungen und Favoriten wieder her, beide nur für heutige
+    (dieselbe ID, samt `photo_path` und dem ursprünglichen `created_at` über den Trigger
+    `recipes_stamp_restored`, Nachtrag `c8ae963`), Bewertungen und Favoriten wieder her, beide nur für heutige
     Mitglieder. Die gelöschten Einträge kommen zurück, mit `eater_ids` nur aus heutigen
     Mitgliedern und `cook_id = null`, wenn die Person fehlt. Die Freitext-Einträge werden wieder
     Rezept-Einträge, aber nur, wenn sie noch unverändert Freitext mit diesem Text sind. Danach wird
     der Schnappschuss gelöscht; ein zweiter Aufruf ergibt `recipe_not_restorable`.
-  - Aufgeräumt wird bei jedem `delete_recipe` des Haushalts (älter als 1 Stunde) und nachts per
-    `pg_cron` (`purge-recipe-deletions`).
+  - Aufgeräumt wird bei jedem `delete_recipe` des Haushalts (älter als 1 Stunde) und stündlich
+    per `pg_cron` (`purge-recipe-deletions`, Minute 20; T9, Befund A3: vorher nachts).
   - Den Schnappschuss vom Gerät zu schicken, ist verworfen: Dann ließe sich die Bewertung anderer
     fälschen.
 - **E5 — Das Foto bleibt bis zum Ende des Hinweises (Offene Frage 6).** Die Datenbank kann
@@ -198,12 +203,12 @@ Grundlagen-Dateien (ADR-0012, E1). Danach `pnpm db:reset`, `pnpm db:types`. `sup
 **Destruktiv, ausdrücklich:** `authenticated` verliert `delete` auf `public.recipes`. Zulässig nur,
 weil die Grundlage noch nicht ausgeliefert ist.
 
-| Datei                              | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20261121062348_recipes.sql`       | `grant select on public.recipes` ohne `delete`. Neu `private.recipe_deletions` (siehe E4; Primärschlüssel `(household_id, recipe_id)`, Index auf `deleted_at`, RLS an ohne Policies, keine Grants). `private.delete_recipe(p_recipe_id uuid, p_today date) returns jsonb` und `private.restore_recipe(p_recipe_id uuid) returns boolean`, beide `security definer`, `search_path = ''`, voll qualifizierte Namen, jeder Zugriff mit `household_id` des Rezepts eingeschränkt. Öffentliche Hüllen `public.delete_recipe(recipe_id, today)` und `public.restore_recipe(recipe_id)`, `execute` nur für `authenticated`. `private.purge_recipe_deletions()` und `cron.schedule('purge-recipe-deletions', '20 3 * * *', …)`. Rückgabe von `delete_recipe`: `{"converted": n, "removed": m}` |
-| `20261121062357_apply_changes.sql` | Allowlist `recipes`: `"delete": false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `20261121062402_storage.sql`       | nur Kommentar: Das Foto eines gelöschten Rezepts löscht die App nach Ablauf von „Rückgängig“ (E5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `packages/api/src/db/types.gen.ts` | neu erzeugt (`pnpm db:types`), nie von Hand                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Datei                              | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `20261121062348_recipes.sql`       | `grant select on public.recipes` ohne `delete`. Neu `private.recipe_deletions` (siehe E4; Primärschlüssel `(household_id, recipe_id)`, Index auf `deleted_at`, RLS an ohne Policies, keine Grants). `private.delete_recipe(p_recipe_id uuid, p_today date) returns jsonb` und `private.restore_recipe(p_recipe_id uuid) returns boolean`, beide `security definer`, `search_path = ''`, voll qualifizierte Namen, jeder Zugriff mit `household_id` des Rezepts eingeschränkt. Öffentliche Hüllen `public.delete_recipe(recipe_id, today)` und `public.restore_recipe(recipe_id)`, `execute` nur für `authenticated`. `private.purge_recipe_deletions()` und `cron.schedule('purge-recipe-deletions', '20 * * * *', …)` (stündlich, T9). Rückgabe von `delete_recipe`: `{"converted": n, "removed": m}` |
+| `20261121062357_apply_changes.sql` | Allowlist `recipes`: `"delete": false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `20261121062402_storage.sql`       | nur Kommentar: Das Foto eines gelöschten Rezepts löscht die App nach Ablauf von „Rückgängig“ (E5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `packages/api/src/db/types.gen.ts` | neu erzeugt (`pnpm db:types`), nie von Hand                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 **Regeln von `delete_recipe`:**
 
@@ -220,8 +225,10 @@ weil die Grundlage noch nicht ausgeliefert ist.
 
 **Regeln von `restore_recipe`:** Gesucht wird der Schnappschuss mit `deleted_by = auth.uid()`,
 `deleted_at > now() - interval '1 hour'` in einem Haushalt, in dem die Person Mitglied ist. Ohne
-Treffer heißt es `recipe_not_restorable`. Steht das Rezept schon wieder da, liefert der Aufruf
-`false` und ändert nichts. Die Reihenfolge ist: Rezept einfügen (der Trigger
+Treffer heißt es `recipe_not_restorable`. Steht das Rezept im selben Haushalt schon wieder da,
+liefert der Aufruf `false` und ändert nichts; die App behandelt `false` als Ablehnung mit dem
+allgemeinen Hinweis. Ist die ID inzwischen in einem anderen Haushalt vergeben (etwa von einem
+früheren Mitglied), heißt es `recipe_not_restorable` (T9, Befund A1). Die Reihenfolge ist: Rezept einfügen (der Trigger
 `recipes_check_ingredients` prüft die Artikel), Bewertungen und Favoriten heutiger Mitglieder,
 gelöschte Einträge (`on conflict (id) do nothing`), Freitext-Einträge zurück, Schnappschuss
 löschen, Rückgabe `true`. Fehlt inzwischen ein Artikel oder eine Tageszeit, scheitert der ganze
@@ -240,27 +247,31 @@ unverändert. `docs/architecture/sync.md` bekommt einen „Nachtrag Spec 0008“
 Kritische Pfade: Löschen von Daten, RLS und Grants (security-definer-Funktionen), Schreibweg über
 `apply_changes`, Schema-Grundlage.
 
-| Was könnte schiefgehen                                                                        | Gegenmaßnahme                                                                                                                              | Getestet durch                                                                                                                     |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Mitglied eines fremden Haushalts löscht ein Rezept oder stellt eines wieder her               | `my_recipe_household_id` (Mitgliedschaft), Schnappschuss nur im Haushalt eines Mitglieds und nur für `deleted_by`                          | pgTAP `recipe_deletion.test.sql` „foreign household …“: `recipe_not_found` / `recipe_not_restorable`, beide Haushalte unverändert  |
-| Abgemeldeter Aufruf                                                                           | kein `execute` für `anon`; `not_authenticated`                                                                                             | pgTAP „anon …“ (42501), `schema_lint.test.sql` (definer-Liste, `search_path`)                                                      |
-| Löschen am RPC vorbei (direkt oder per `apply_changes`), dann ohne Schnappschuss und Kalender | `delete`-Grant entzogen, Allowlist `"delete": false` (E2)                                                                                  | pgTAP: direktes `delete` → 42501; `apply_changes`-`delete` → `invalid_change`                                                      |
-| „Rückgängig“ fälscht Bewertungen oder Favoriten anderer                                       | Schnappschuss nur auf dem Server, `restore_recipe` nimmt nur die ID (E4)                                                                   | pgTAP: Nadjas 5 Sterne nach Rückgängig unverändert 5; Nadja kann Enricos Löschen nicht zurücknehmen; Aufruf mit fremder ID         |
-| Schnappschuss ist lesbar oder kommt auf Geräte                                                | Schema `private`, keine Grants, nicht im Sync                                                                                              | pgTAP: `select` als `authenticated` → 42501; `sync_pull` liefert ihn nicht                                                         |
-| Halb gelöscht (Einträge weg, Rezept noch da, oder umgekehrt)                                  | eine RPC, eine Transaktion; `on delete restrict` als Netz                                                                                  | pgTAP: ungültiges `p_today` → nichts geändert; Rezept mit Einträgen per Superuser löschen → 23503                                  |
-| Jemand plant das Rezept während des Löschens ein                                              | Zeilensperre, dann Fremdschlüssel (E6); App nimmt das Einplanen zurück mit Hinweis                                                         | pgTAP: Eintrag nach dem Löschen einfügen → 23503; api-Test `rejectedMessage` „Das Rezept gibt es nicht mehr“                       |
-| Gefälschtes Gerätedatum verschiebt die Grenze Verlauf/Zukunft                                 | nur ±1 Tag um `current_date`; wirkt nur im eigenen Haushalt                                                                                | pgTAP `invalid_value` für −2 und +2 Tage                                                                                           |
-| Verlauf geht verloren (gekochte Essen verschwinden)                                           | E3: bis heute Freitext mit Titel, Reste mit „Reste von …“                                                                                  | pgTAP AC-043 (Mo 16.11. Freitext, Sa 21.11. weg, vorgemerkt weg, heute Freitext); core `recipeDeletionEffect` mit denselben Fällen |
-| Rückgängig trifft inzwischen geänderte Einträge                                               | nur unveränderte Freitext-Einträge zurück; gelöschte mit `on conflict do nothing`                                                          | pgTAP: geänderter Freitext bleibt; doppelter Aufruf → `false`/`recipe_not_restorable`                                              |
-| Rückgängig scheitert an fehlendem Artikel, Mitglied oder Tageszeit                            | Mitglieder werden gefiltert; Artikel oder Tageszeit fehlt → ganzer Aufruf scheitert, Hinweis, Rezept bleibt gelöscht (bewusst hingenommen) | pgTAP: Mitglied entfernt → Rest kommt zurück; Artikel gelöscht → Fehler, nichts halb                                               |
-| Schnappschuss mit Bewertungen bleibt liegen                                                   | 1 Stunde; Aufräumen bei jedem Löschen und nachts; Kaskade mit dem Haushalt                                                                 | pgTAP `purge_recipe_deletions`, Haushalt löschen entfernt Schnappschüsse                                                           |
-| Foto geht beim Rückgängig verloren oder bleibt ewig liegen                                    | Objekt erst nach Ablauf des Hinweises löschen (E5); Waise bei Abbruch hingenommen                                                          | api-Test: `removeMedia` erst nach `onExpire`, nie nach „Rückgängig“; Klick-Durchlauf mit eigenem Foto                              |
-| Abschnitt speichern überschreibt die gleichzeitige Änderung eines anderen Felds (AC-029)      | Diff nur mit den Spalten des Abschnitts (E7)                                                                                               | api-Test AC-029: Patch enthält nur `notes`, Nadjas Titel bleibt                                                                    |
-| Planeinträge zeigen nach „Variante entfernen“ ins Leere                                       | E10 im selben Aufruf                                                                                                                       | core `removeVariant…`-Tests (AC-033); api-Test: ein Aufruf mit Rezept- und Eintrags-Patches                                        |
-| Ungültige Eingaben (leerer Titel, Grenzen)                                                    | `core`-Prüfung vor dem Senden, Checks der Datenbank dahinter                                                                               | core-Tests je Grenze (E8); api-Test: ungültig schreibt nichts (AC-026)                                                             |
-| Offline wird geschrieben                                                                      | jede Schreibaktion ausgegraut mit Hinweis; Befehle werfen `OfflineError`                                                                   | api-Tests `OfflineError`; Klick-Durchlauf offline (AC-022)                                                                         |
-| Rezept eines fremden Haushalts über die Adresse                                               | RLS beim Lesen; `routeId` prüft die Form; Anzeige „Dieses Rezept gibt es nicht mehr“                                                       | Klick-Durchlauf AC-021 mit ID aus dem zweiten Testhaushalt                                                                         |
-| Grundlage bearbeiten verschiebt Verhalten (Tests, die Rezepte per `apply_changes` löschen)    | Diese Tests löschen künftig `restaurants`; volle pgTAP-Suite                                                                               | `pnpm exec supabase test db`                                                                                                       |
+| Was könnte schiefgehen                                                                                      | Gegenmaßnahme                                                                                                                                                | Getestet durch                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Mitglied eines fremden Haushalts löscht ein Rezept oder stellt eines wieder her                             | `my_recipe_household_id` (Mitgliedschaft), Schnappschuss nur im Haushalt eines Mitglieds und nur für `deleted_by`                                            | pgTAP `recipe_deletion.test.sql` „foreign household …“: `recipe_not_found` / `recipe_not_restorable`, beide Haushalte unverändert  |
+| Abgemeldeter Aufruf                                                                                         | kein `execute` für `anon`; `not_authenticated`                                                                                                               | pgTAP „anon …“ (42501), `schema_lint.test.sql` (definer-Liste, `search_path`)                                                      |
+| Löschen am RPC vorbei (direkt oder per `apply_changes`), dann ohne Schnappschuss und Kalender               | `delete`-Grant entzogen, Allowlist `"delete": false` (E2)                                                                                                    | pgTAP: direktes `delete` → 42501; `apply_changes`-`delete` → `invalid_change`                                                      |
+| „Rückgängig“ fälscht Bewertungen oder Favoriten anderer                                                     | Schnappschuss nur auf dem Server, `restore_recipe` nimmt nur die ID (E4)                                                                                     | pgTAP: Nadjas 5 Sterne nach Rückgängig unverändert 5; Nadja kann Enricos Löschen nicht zurücknehmen; Aufruf mit fremder ID         |
+| Schnappschuss ist lesbar oder kommt auf Geräte                                                              | Schema `private`, keine Grants, nicht im Sync                                                                                                                | pgTAP: `select` als `authenticated` → 42501; `sync_pull` liefert ihn nicht                                                         |
+| Halb gelöscht (Einträge weg, Rezept noch da, oder umgekehrt)                                                | eine RPC, eine Transaktion; `on delete restrict` als Netz                                                                                                    | pgTAP: ungültiges `p_today` → nichts geändert; Rezept mit Einträgen per Superuser löschen → 23503                                  |
+| Jemand plant das Rezept während des Löschens ein                                                            | Zeilensperre, dann Fremdschlüssel (E6); App nimmt das Einplanen zurück mit Hinweis                                                                           | pgTAP: Eintrag nach dem Löschen einfügen → 23503; api-Test `rejectedMessage` „Das Rezept gibt es nicht mehr“                       |
+| Gefälschtes Gerätedatum verschiebt die Grenze Verlauf/Zukunft                                               | nur ±1 Tag um `current_date`; wirkt nur im eigenen Haushalt                                                                                                  | pgTAP `invalid_value` für −2 und +2 Tage                                                                                           |
+| Verlauf geht verloren (gekochte Essen verschwinden)                                                         | E3: bis heute Freitext mit Titel, Reste mit „Reste von …“                                                                                                    | pgTAP AC-043 (Mo 16.11. Freitext, Sa 21.11. weg, vorgemerkt weg, heute Freitext); core `recipeDeletionEffect` mit denselben Fällen |
+| Rückgängig trifft inzwischen geänderte Einträge                                                             | nur unveränderte Freitext-Einträge zurück; gelöschte mit `on conflict do nothing`                                                                            | pgTAP: geänderter Freitext bleibt; doppelter Aufruf → `false`/`recipe_not_restorable`                                              |
+| Rückgängig scheitert an fehlendem Artikel, Mitglied oder Tageszeit                                          | Mitglieder werden gefiltert; Artikel oder Tageszeit fehlt → ganzer Aufruf scheitert, Hinweis, Rezept bleibt gelöscht (bewusst hingenommen)                   | pgTAP: Mitglied entfernt → Rest kommt zurück; Artikel gelöscht → Fehler, nichts halb                                               |
+| Schnappschuss mit Bewertungen bleibt liegen                                                                 | 1 Stunde; Aufräumen bei jedem Löschen und nachts; Kaskade mit dem Haushalt                                                                                   | pgTAP `purge_recipe_deletions`, Haushalt löschen entfernt Schnappschüsse                                                           |
+| Foto geht beim Rückgängig verloren oder bleibt ewig liegen                                                  | Objekt erst nach Ablauf des Hinweises löschen (E5); Waise bei Abbruch hingenommen                                                                            | api-Test: `removeMedia` erst nach `onExpire`, nie nach „Rückgängig“; Klick-Durchlauf mit eigenem Foto                              |
+| Gescheitertes „Rückgängig“ (Artikel fehlt, ID vergeben) lässt das eigene Foto verwaist liegen               | hingenommen wie E5: privat im Ordner des Haushalts, geht mit dem Haushalt; kein Aufräumen auf dem Server (Nicht-Teil)                                        | — (bewusst kein Test; T9, Befund A5)                                                                                               |
+| Früheres Mitglied belegt die ID des gelöschten Rezepts im eigenen Haushalt und blockiert „Rückgängig“ still | `restore_recipe` prüft die ID nur im Haushalt des Schnappschusses auf `false`; vergeben woanders → `recipe_not_restorable`; App wertet `false` als Ablehnung | pgTAP „an id taken in another household …“; Fake-Test; api-Test „AC-045: … answered with false …“ (T9, Befund A1)                  |
+| Varianten ohne Größengrenze füllen die Zeile                                                                | Check `recipes_variants_valid`: Objekte mit Name 1–60 Zeichen, höchstens 20, höchstens 20 000 Byte (E8)                                                      | pgTAP „E8 recipes: …“ (6 Tests; T9, Befund A2)                                                                                     |
+| Reste-Ketten ohne Rezept ändern sich zwischen Lesen des Schnappschusses und Löschen                         | `delete_recipe` sperrt die rekursiv gefundenen Einträge `for update`, bevor es den Schnappschuss liest (T9, Befund A4)                                       | Verhalten durch die vorhandenen pgTAP-Fälle der Reste-Ketten; die Sperre selbst ist in einer Sitzung nicht prüfbar                 |
+| Abschnitt speichern überschreibt die gleichzeitige Änderung eines anderen Felds (AC-029)                    | Diff nur mit den Spalten des Abschnitts (E7)                                                                                                                 | api-Test AC-029: Patch enthält nur `notes`, Nadjas Titel bleibt                                                                    |
+| Planeinträge zeigen nach „Variante entfernen“ ins Leere                                                     | E10 im selben Aufruf                                                                                                                                         | core `removeVariant…`-Tests (AC-033); api-Test: ein Aufruf mit Rezept- und Eintrags-Patches                                        |
+| Ungültige Eingaben (leerer Titel, Grenzen)                                                                  | `core`-Prüfung vor dem Senden, Checks der Datenbank dahinter                                                                                                 | core-Tests je Grenze (E8); api-Test: ungültig schreibt nichts (AC-026)                                                             |
+| Offline wird geschrieben                                                                                    | jede Schreibaktion ausgegraut mit Hinweis; Befehle werfen `OfflineError`                                                                                     | api-Tests `OfflineError`; Klick-Durchlauf offline (AC-022)                                                                         |
+| Rezept eines fremden Haushalts über die Adresse                                                             | RLS beim Lesen; `routeId` prüft die Form; Anzeige „Dieses Rezept gibt es nicht mehr“                                                                         | Klick-Durchlauf AC-021 mit ID aus dem zweiten Testhaushalt                                                                         |
+| Grundlage bearbeiten verschiebt Verhalten (Tests, die Rezepte per `apply_changes` löschen)                  | Diese Tests löschen künftig `restaurants`; volle pgTAP-Suite                                                                                                 | `pnpm exec supabase test db`                                                                                                       |
 
 ## Aufgaben
 
@@ -327,7 +338,7 @@ flowchart LR
     ohne etwas halb anzulegen; ein Planeintrag auf das gelöschte Rezept → 23503.
   - Aufräumen: `purge_recipe_deletions` löscht nur Abgelaufenes; Haushalt löschen entfernt den
     Schnappschuss.
-- **Status:** offen
+- **Status:** erledigt (`d92d00e`; Nachtrag `c8ae963`: `created_at` beim Wiederherstellen, Reste-Ketten ohne Rezept)
 
 ### Task 2 — Regeln in `core`
 
@@ -369,7 +380,7 @@ flowchart LR
   unverändert). Varianten: AC-033 samt Planeintrag „mit Hähnchen 1 · mit Tofu 1“ →
   „mit Garnelen 2“, wenn Garnelen Standard ist. Spec 0007 AC-004: Kopf-Patch enthält den Titel,
   Zutaten-Patch ohne orange Zeile.
-- **Status:** offen
+- **Status:** erledigt (`0fc7b55`)
 
 ### Task 3 — Befehle in `api`
 
@@ -405,7 +416,7 @@ flowchart LR
   - Integration gegen die lokale Datenbank mit zwei Konten: Enrico löscht, Nadjas Gerät sieht es
     nach dem Pull nicht mehr, Rückgängig bringt Nadjas Bewertung zurück, und ihr Gerät sieht das
     Rezept wieder (AC-043, AC-044).
-- **Status:** offen
+- **Status:** erledigt (`f61e88e`)
 
 ### Task 4 — Bausteine in `ui`
 
@@ -426,7 +437,7 @@ flowchart LR
   ergibt 2 (AC-014). Toast: `onExpire` nach 5 s mit falschen Timern, nicht nach `onAction`. Dazu
   der Showroom bei 390/1440 px mit 150 Einträgen bis ans Ende (AC-013), der Haken im Menü und die
   Tastatur.
-- **Status:** offen
+- **Status:** erledigt (`f71535b`)
 
 ### Task 5 — App: „Essen“ mit Filterzeile, Zufall und Endlos-Raster
 
@@ -442,7 +453,7 @@ flowchart LR
   Rezepten bis ans Ende, AC-014 (vier Spalten am Desktop, zwei auf dem Handy), AC-015 (zurück
   an dieselbe Stelle). Dazu AC-018 mit dem leeren Testhaushalt und am Desktop das aufgeklappte
   Filterfeld mit „Einklappen ▴“, Escape schließt es.
-- **Status:** offen
+- **Status:** erledigt (`4750b18`, zusammen mit T6)
 
 ### Task 6 — App: Rezeptseite, Einplanen, Auf die Liste, Löschen
 
@@ -473,7 +484,7 @@ flowchart LR
   - AC-040: Maus über die halbe Sternhälfte.
   - AC-043 bis AC-045, auch mit eigenem Foto; die Ablehnung per Fake-Schalter oder mit einem
     gesperrten Testkonto.
-- **Status:** offen
+- **Status:** erledigt (`4750b18`, zusammen mit T5)
 
 ### Task 7 — App: Abschnittsweise bearbeiten
 
@@ -505,7 +516,7 @@ flowchart LR
   - Spec 0007 AC-004: erst Kopf, dann Zutaten mit oranger Zeile.
   - Zutat entfernen, „Nach oben/unten“ per Tastatur, offline alle Stifte ausgegraut.
   - Zurück-Taste unter Android im Emulator, falls verfügbar, sonst als offen festgehalten.
-- **Status:** offen
+- **Status:** erledigt (`6908eeb`)
 
 ### Task 8 — App: Restaurants mit Filterzeile und halben Sternen
 
@@ -517,7 +528,7 @@ flowchart LR
   (`MemberRatings`)
 - **Test:** Regeln in T2. Klick-Durchlauf: AC-002, AC-016 und AC-017 mit den Seed-Restaurants,
   AC-018 im leeren Testhaushalt, AC-041 mit Tippen und Ziehen in der Handy-Emulation des Browsers.
-- **Status:** offen
+- **Status:** erledigt (`2f08ef2`)
 
 ### Task 9 — Abschluss: Doku, Sicherheit, Nachweis
 
@@ -533,7 +544,7 @@ supabase test db`, `pnpm test:integration`, `/security-check` auf den Diff von T
   (Fokus: definer-Funktionen, Grants, Schnappschuss, Planeinträge, Foto), Befunde behoben oder
   hier festgehalten; `spec-auditor`; `/ui-verify` für „Essen“, Rezeptseite, Einplanen-Fenster
   und Restaurants (390, 768, 1440 px, hell und dunkel).
-- **Status:** offen
+- **Status:** erledigt (Abschluss-Änderung dieses Nachweises, noch nicht committet)
 
 ## Erwartete E2E-Brüche (für `tmp/brief/e2e-impact.md`)
 
@@ -604,16 +615,67 @@ Nicht reparieren, nur festhalten; die volle Suite läuft am Ende aller Wellen.
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 21.11.2026, Abschluss T9. Protokolle in `tmp/0008/t9-*.txt`, rote Läufe in
+`tmp/0008/red-T9-*.txt`.
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün
-- [ ] `pnpm test:integration` grün (Löschen und Rückgängig mit zwei Konten)
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet
-- [ ] `/security-check` gelaufen (T1, T3, T6)
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
-- [ ] Glossar, `sync.md` und Rückverfolgbarkeitstabelle aktuell
+- [x] Alle AC haben einen Test oder einen Klick-Beleg; Zuordnung in der Rückverfolgbarkeit der
+      Spec (reine Oberfläche: „E2E (Endwelle)“ mit Belegen `tmp/0008/t5-*` bis `t8-*`)
+- [x] `pnpm format:check` grün; `pnpm check` grün mit `--concurrency=1` (17/17 Aufgaben). Parallel
+      gestartet läuft der Spec-0006-Test „every clear stays undoable: ≤ 1000 items …“ in
+      `transport-fake.test.ts` unter der Last der parallelen Agenten (Load 13–18) über 5 s und
+      scheitert am Timeout; allein braucht er 2 s. Nicht von dieser Spec verursacht.
+- [x] `pnpm build:web` grün (mit `node scripts/with-env.mjs`, die CSP braucht die Supabase-Adresse)
+- [x] `pnpm db:reset` und `pnpm exec supabase test db` grün: 26 Dateien, 1534 Tests,
+      `recipe_deletion.test.sql` mit 84 Tests (10 neu in T9, zuerst rot: `red-T9-pgtap.txt`)
+- [x] `pnpm test:integration` grün: 7 Dateien, 12 Tests, darunter
+      `recipe-deletion.integration.test.ts` (Löschen und Rückgängig mit zwei Konten)
+- [ ] `pnpm e2e:dev`: alle Schritte von Spec 0008 grün; der Lauf scheitert danach in Zeile 260
+      (`absences-screen`, Spec 0012, Task 10 der parallel laufenden Arbeit, nicht committet).
+      Kein Bruch durch diese Spec.
+- [ ] `/ui-verify` und `impeccable`: laufen am Ende aller Wellen (Abschluss-Review); bis dahin
+      gelten die Klick-Durchläufe bei 390 und 1440 px aus T5 bis T8
+- [x] `/security-check` gelaufen (T1, T3, T6): 0 kritisch, 0 hoch, 0 mittel; Befunde siehe unten
+- [x] `spec-auditor` gelaufen; Lücken siehe unten, behoben oder festgehalten
+- [x] Offline-Verhalten wie in der Spec geprüft (api-Tests `OfflineError`, Klick-Durchläufe
+      `t6-*-offline.png`, `t7-*-18-offline.png`)
+- [x] Glossar („Küche“, „Variante“, neu „Abschnitt der Rezeptseite“), `sync.md` („Nachtrag Spec
+      0008“), Spec 0001 AC-008 (Hinweis) und Rückverfolgbarkeitstabelle aktuell
+
+**`/security-check` (T1, T3, T6; Fokus definer-Funktionen, Grants, Schnappschuss, Planeinträge,
+Foto):**
+
+| #   | Schwere | Befund                                                                                                                                                                           | Behoben durch                                                                                                                                                                                               |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | niedrig | `restore_recipe` prüfte die ID in allen Haushalten und lieferte still `false`: Ein früheres Mitglied hätte die ID im eigenen Haushalt belegen und „Rückgängig“ blockieren können | Prüfung nur im Haushalt des Schnappschusses (`false`); in einem anderen Haushalt vergeben → `recipe_not_restorable`. Die App wertet `false` als Ablehnung mit Hinweis. pgTAP, Fake- und api-Test zuerst rot |
+| A2  | niedrig | `recipes.variants` ohne Byte- und Namensgrenze                                                                                                                                   | Check `recipes_variants_valid`: Objekte mit `name` als Text von 1–60 Zeichen, höchstens 20 Varianten, höchstens 20 000 Byte (wie E8); 6 pgTAP-Tests zuerst rot                                              |
+| A3  | Hinweis | Schnappschüsse mit Bewertungen anderer lagen bis zum nächtlichen Aufräumen bis zu einem Tag                                                                                      | `purge-recipe-deletions` stündlich (`'20 * * * *'`); pgTAP prüft den Zeitplan                                                                                                                               |
+| A4  | Hinweis | Die rekursiv gefundenen Reste ohne Rezept waren vor dem Lesen des Schnappschusses nicht gesperrt                                                                                 | `delete_recipe` sperrt sie `for update` vor dem Lesen; Verhalten durch die vorhandenen Reste-Fälle abgedeckt (eine Sperre ist in einer pgTAP-Sitzung nicht prüfbar)                                         |
+| A5  | Hinweis | Scheitert „Rückgängig“, bleibt das eigene Foto verwaist                                                                                                                          | hingenommen wie E5, Zeile in der Risiko-Tabelle                                                                                                                                                             |
+
+**`spec-auditor`:**
+
+| #   | Lücke                                                                                                  | Ergebnis                                                                                                                                                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1  | AC-033: Nach „Als Standard“ und „Fertig“ blieb auf der Seite die vorher gewählte Variante              | Regel in `core` (`chooseVariant`, `shownVariantId`, Test zuerst rot): Ändert sich die Standardvariante, ist sie vorausgewählt; fehlt die gewählte, gilt der Standard. `recipe-detail.tsx` merkt sich die Wahl zusammen mit dem Standard, gegen den sie getroffen wurde |
+| B2  | pgTAP aus der Risiko-Tabelle fehlte: Rezept mit Planeinträgen als Superuser löschen → 23503            | ergänzt in `recipe_deletion.test.sql` („E1 recipes: a planned recipe cannot be deleted around delete_recipe …“)                                                                                                                                                        |
+| B3  | E16, Zurück-Taste unter Android: gebaut (`BackHandler` in `use-section-editor.ts`), hier nicht prüfbar | **OFFEN:** Prüfung im Emulator mit der Spec der nativen Apps                                                                                                                                                                                                           |
+| B4  | Ablauf beim Wechsel und Verlassen eines Abschnitts (AC-028, E7) nur über die reinen Regeln geprüft     | hingenommen; der Hook-Ablauf ist „E2E (Endwelle)“                                                                                                                                                                                                                      |
+| B5  | Warf `deleteRecipe` `OfflineError`, blieb `leaving` in `recipe-detail.tsx` gesetzt (leere Seite)       | `onDeleting(false)` bei Fehler und wenn nichts gelöscht wurde                                                                                                                                                                                                          |
+| B6  | Nicht im Plan beschrieben: `created_at` beim Wiederherstellen, Reste-Ketten ohne Rezept beim Löschen   | in E3 und E4 nachgetragen (beide aus `c8ae963`)                                                                                                                                                                                                                        |
+
+## Entscheidungen beim Bauen (Abschluss, T9, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. Die Variante auf der Rezeptseite folgt jeder Änderung der Standardvariante, auch einer von
+   einem anderen Gerät; sonst bleibt die eigene Wahl stehen. Das „Fertig“ des eigenen Geräts
+   gesondert zu erkennen, wäre mehr Zustand für denselben sichtbaren Effekt.
+2. `false` von `restore_recipe` bleibt möglich (ID im selben Haushalt wieder vergeben, etwa über
+   `apply_changes` mit derselben ID); die App lehnt dann mit „Hat nicht geklappt – bitte noch
+   einmal versuchen“ ab, und der nächste Abgleich zeigt das vorhandene Rezept.
+3. Der Variantenname wird in der Datenbank nicht getrimmt geprüft (1–60 Zeichen, wie
+   `households.meal_slots`); „Name fehlt“ für Leerzeichen prüft `core`.
+4. `/ui-verify` und `impeccable` laufen gesammelt am Ende aller Wellen.
 
 ## Entscheidungen beim Bauen (core, T2, 21.11.2026)
 
