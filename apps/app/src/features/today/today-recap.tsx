@@ -45,6 +45,7 @@ const FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 const KIND_BADGES = {
   recipe: { label: 'Rezept', icon: 'cooking-pot' },
+  collection: { label: 'Sammlung', icon: 'layers' },
   restaurant: { label: 'Restaurant', icon: 'utensils' },
   activity: { label: 'Aktivität', icon: 'mountain' },
 } as const;
@@ -52,7 +53,8 @@ const KIND_BADGES = {
 const rowId = (item: RecapItem) => item.entry.id;
 
 function rate(item: RecapItem, stars: number): void {
-  if (item.kind === 'recipe') rateRecipe(item.targetId, stars);
+  // A collection is rated like a recipe (spec 0009, AC-030).
+  if (item.kind === 'recipe' || item.kind === 'collection') rateRecipe(item.targetId, stars);
   else if (item.kind === 'restaurant') rateRestaurant(item.targetId, stars);
   else rateActivity(item.targetId, stars);
 }

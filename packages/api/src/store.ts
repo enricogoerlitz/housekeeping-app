@@ -5,6 +5,7 @@ import type {
   Article,
   Chore,
   ChoreEvent,
+  CollectionRecipe,
   FeedbackEntry,
   Household,
   Id,
@@ -33,6 +34,8 @@ export interface HouseholdData {
   articles: Article[];
   stores: Store[];
   recipes: Recipe[];
+  /** Spec 0009: what each collection contains (in creation order; core orders them by sort). */
+  collectionRecipes: CollectionRecipe[];
   restaurants: Restaurant[];
   activities: Activity[];
   planEntries: MealPlanEntry[];

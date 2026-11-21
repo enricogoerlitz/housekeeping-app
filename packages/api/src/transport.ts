@@ -264,8 +264,15 @@ export type MergeArticlesResult = z.infer<typeof MergeArticlesResultSchema>;
 /** merge_areas (spec 0007): how many articles moved. */
 export const MergeAreasResultSchema = z.number();
 
-/** delete_recipe (spec 0008, E3): how many plan entries became free text and how many went. */
-export const DeletedRecipeSchema = z.object({ converted: z.number(), removed: z.number() });
+/**
+ * delete_recipe (spec 0008, E3): how many plan entries became free text and how many went, and
+ * from how many collections the recipe was taken (spec 0009, E11; 0 for a collection).
+ */
+export const DeletedRecipeSchema = z.object({
+  converted: z.number(),
+  removed: z.number(),
+  collections: z.number(),
+});
 export type DeletedRecipe = z.infer<typeof DeletedRecipeSchema>;
 
 /** restore_recipe (spec 0008, E4): false when the recipe exists again already. */

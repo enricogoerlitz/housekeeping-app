@@ -1,10 +1,14 @@
 import {
+  collectionDiet,
+  contentsInBook,
   defaultEaters,
+  dietFitsPreference,
   splitVariants,
   type Id,
   type ISODate,
   type MealPlanEntry,
   type PlanEntryVariant,
+  type RecipeKind,
   type VariantSplit,
 } from '@housekeeping/core';
 
@@ -58,13 +62,35 @@ export function defaultEaterIds(date: ISODate | null): Id[] {
   return defaultEaters(members, date, data.absences).map((member) => member.id);
 }
 
-/** Portions and variant split for a recipe and the chosen eaters (one portion per person). */
+/**
+ * Portions and variant split for a recipe and the chosen eaters (one portion per person). A
+ * collection has no split (spec 0009, E8, AC-016): eaters plus guests, no variants; who does not
+ * fit the diet of everything in it is a misfit.
+ */
 export function splitForEaters(recipeId: Id, eaterIds: Id[], guests: number): VariantSplit {
   const data = getData();
   const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
   if (!recipe) throw new Error('Rezept nicht gefunden');
   const eaters = getState().members.filter((member) => eaterIds.includes(member.id));
-  return splitVariants(recipe, eaters, guests, indexById(data.articles));
+  const articlesById = indexById(data.articles);
+  if (recipe.kind === 'collection') {
+    const contents = contentsInBook(recipe, {
+      recipesById: indexById(data.recipes),
+      collectionRecipes: data.collectionRecipes,
+    });
+    const diet = collectionDiet(recipe, contents, articlesById);
+    return {
+      portions: eaters.length + Math.max(0, guests),
+      variants: [],
+      misfitMemberIds:
+        diet === 'unknown'
+          ? []
+          : eaters
+              .filter((member) => !dietFitsPreference(diet, member.dietPreference))
+              .map((member) => member.id),
+    };
+  }
+  return splitVariants(recipe, eaters, guests, articlesById);
 }
 
 /** Where and for whom something new is planned (create while planning, REQ-008). */
@@ -243,9 +269,12 @@ export function createAndPlanActivity(
   });
 }
 
-/** A new recipe (a title is enough), planned right away (AC-022). */
+/**
+ * A new recipe (a title is enough), planned right away (AC-022); with `kind` "collection" a new,
+ * empty collection ("„Sommerfest“ als Sammlung anlegen", spec 0009, AC-021).
+ */
 export function createAndPlanRecipe(
-  input: { title: string; servings?: number },
+  input: { title: string; servings?: number; kind?: RecipeKind },
   plan: PlanSlotInput,
 ): { recipeId: Id; entryId: Id } {
   return commit({ path: 'diff' }, () => {

@@ -92,7 +92,9 @@ describe('sample household (AC-012)', () => {
       recipe.ingredients.filter((ingredient) => Object.hasOwn(ingredient, 'name')),
     );
     expect(withName).toEqual([]);
-    expect(getData().recipes).toHaveLength(seedRecipes.length);
+    expect(getData().recipes.filter((recipe) => recipe.kind === 'recipe')).toHaveLength(
+      seedRecipes.length,
+    );
   });
 
   it('spec 0007 (plan point 9): buildRecipe refuses an ingredient without a catalog article', () => {
@@ -235,5 +237,52 @@ describe('spec 0012: Reisetaschen and the packing list of "Urlaub Mallorca"', ()
     expect(getData().packingListBags.some((lb) => lb.absenceId === hamburg?.id)).toBe(false);
     expect(testHousehold().packingBags).toEqual([]);
     expect(testHousehold().absences).toEqual([]);
+  });
+});
+
+describe('spec 0009: collections in the sample household', () => {
+  const data = () => getData();
+  const byId = (id: string) => data().recipes.find((recipe) => recipe.id === id);
+
+  it('"Grillabend" for 6 contains Nudelsalat (übernimmt) and Gemischter Salat (8 Port.) with four own ingredients', () => {
+    const grill = byId('rec-grillabend');
+    expect(grill).toMatchObject({ kind: 'collection', title: 'Grillabend', servings: 6 });
+    expect(grill?.course).toBeUndefined();
+    expect(grill?.variants).toEqual([]);
+    expect(grill?.steps).toEqual([]);
+    const articles = indexById(data().articles);
+    expect(
+      grill?.ingredients.map((ingredient) => [
+        articles[ingredient.articleId]?.name,
+        ingredient.shoppingRule,
+        ingredient.variantId,
+      ]),
+    ).toEqual([
+      ['Bratwurst', 'recipeAmount', undefined],
+      ['Grillkohle', 'count', undefined],
+      ['Bier', 'count', undefined],
+      ['Grillanzünder', 'count', undefined],
+    ]);
+    const rows = data().collectionRecipes.filter((row) => row.collectionId === 'rec-grillabend');
+    expect(rows.map((row) => [row.recipeId, row.servings, row.sort])).toEqual([
+      ['rec-nudelsalat', undefined, 0],
+      ['rec-gemischter-salat', 8, 1],
+    ]);
+  });
+
+  it('"Grillabend" is planned next Saturday evening and the day before yesterday; "Sommerfest" is empty', () => {
+    const entries = data().planEntries.filter((entry) => entry.recipeId === 'rec-grillabend');
+    // TODAY is Friday, 20.11.2026.
+    expect(entries.map((entry) => [entry.date, entry.slotId, entry.portions])).toEqual([
+      ['2026-11-21', 'slot-abend', 3],
+      [addDays(TODAY, -2), 'slot-abend', 2],
+    ]);
+    expect(entries.every((entry) => entry.variants.length === 0)).toBe(true);
+    expect(byId('rec-sommerfest')).toMatchObject({ kind: 'collection', ingredients: [] });
+    expect(data().collectionRecipes.some((row) => row.collectionId === 'rec-sommerfest')).toBe(
+      false,
+    );
+    expect(data().recipes.filter((recipe) => recipe.kind === 'recipe').length).toBeGreaterThan(20);
+    expect(testHousehold().collectionRecipes).toEqual([]);
   });
 });

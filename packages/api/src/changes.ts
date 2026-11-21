@@ -29,6 +29,8 @@ const TABLE_ORDER = [
   'stores',
   'households',
   'recipes',
+  // A new collection before its rows (spec 0009).
+  'collection_recipes',
   'restaurants',
   'activities',
   'meal_plan_entries',

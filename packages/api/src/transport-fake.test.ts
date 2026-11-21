@@ -1675,6 +1675,7 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
     expect(await server.transport(ENRICO).deleteRecipe('r1', '2026-11-20')).toEqual({
       converted: 3,
       removed: 2,
+      collections: 0,
     });
     expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
     for (const id of ['e-mon', 'e-today']) {
@@ -1772,6 +1773,7 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
     await expect(server.transport(ENRICO).deleteRecipe('r1', '2026-11-21')).resolves.toEqual({
       converted: 4,
       removed: 1,
+      collections: 0,
     });
   });
 
@@ -1861,7 +1863,11 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
       ],
     });
     const enrico = server.transport(ENRICO);
-    expect(await enrico.deleteRecipe('r1', '2026-11-20')).toEqual({ converted: 3, removed: 4 });
+    expect(await enrico.deleteRecipe('r1', '2026-11-20')).toEqual({
+      converted: 3,
+      removed: 4,
+      collections: 0,
+    });
     expect(server.row(H, 'meal_plan_entries', 'e-rest-sat')).toBeUndefined();
     expect(server.row(H, 'meal_plan_entries', 'e-rest-rest')).toBeUndefined();
     expect(await enrico.restoreRecipe('r1')).toBe(true);
@@ -2214,5 +2220,240 @@ describe('fake server: packing (spec 0012, like the database)', () => {
   it('removing a member clears "für" and "gepackt von"', async () => {
     await server.transport(ENRICO).removeMember(H, NADJA);
     expect(server.row(H, 'packing_items', 'p-packed')).toMatchObject({ packed_by: null });
+  });
+});
+
+describe('fake server: collections (spec 0009, like the database after T1)', () => {
+  const collection = (id: string, extra: Record<string, unknown> = {}): Row => ({
+    id,
+    kind: 'collection',
+    title: id,
+    servings: 6,
+    course: null,
+    ...extra,
+  });
+  const contained = (id: string, collectionId: string, recipeId: string, extra = {}): RowOp => ({
+    kind: 'insert',
+    table: 'collection_recipes',
+    row: { id, collection_id: collectionId, recipe_id: recipeId, sort: 0, ...extra },
+  });
+  const apply = (ops: RowOp[], user = ENRICO, household = H) =>
+    server.transport(user).applyChanges(household, ops);
+
+  beforeEach(async () => {
+    server.insertRows(H, {
+      recipes: [
+        { id: 'r2', title: 'Kartoffelsalat', servings: 4, course: 'side' },
+        {
+          id: 'r3',
+          title: 'Grillgemüse',
+          servings: 4,
+          course: 'side',
+          variants: [{ id: 'v-vegan', name: 'vegan', isDefault: true }],
+        },
+        collection('c-grill'),
+        collection('c-sommer'),
+      ],
+    });
+    await apply([contained('cr-1', 'c-grill', 'r2'), contained('cr-2', 'c-grill', 'r3')]);
+  });
+
+  it('E2, E3: a collection needs course null and none of the recipe fields; kind is insert only', async () => {
+    await expect(
+      apply([
+        { kind: 'insert', table: 'recipes', row: { id: 'c-x', kind: 'collection', title: 'X' } },
+      ]),
+    ).rejects.toMatchObject({ kind: 'permanent', code: '23514' });
+    for (const field of [
+      { total_minutes: 30 },
+      { cuisine: 'Italienisch' },
+      { tags: ['grill'] },
+      { variants: [{ id: 'v', name: 'v', isDefault: true }] },
+      { steps: [{ id: 's', text: 'Grillen' }] },
+      { lead_time: { text: 'Marinieren', hours: 12 } },
+      { ingredients: [{ id: 'i', articleId: 'a-milk', shoppingRule: 'count', variantId: 'v' }] },
+    ]) {
+      await expect(
+        apply([{ kind: 'insert', table: 'recipes', row: collection('c-x', field) }]),
+      ).rejects.toMatchObject({ code: '23514' });
+    }
+    await expect(
+      apply([{ kind: 'insert', table: 'recipes', row: { id: 'r-x', title: 'X', course: null } }]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      apply([{ kind: 'insert', table: 'recipes', row: { id: 'r-x', kind: 'other', title: 'X' } }]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      apply([{ kind: 'patch', table: 'recipes', id: 'r2', changes: { kind: 'collection' } }]),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    await apply([{ kind: 'patch', table: 'recipes', id: 'c-grill', changes: { servings: 10 } }]);
+    await expect(
+      apply([{ kind: 'patch', table: 'recipes', id: 'c-grill', changes: { course: 'main' } }]),
+    ).rejects.toMatchObject({ code: '23514' });
+    expect(server.row(H, 'recipes', 'c-grill')).toMatchObject({ servings: 10, course: null });
+  });
+
+  it('AC-009: no collection in a collection, no recipe as container, no collection in itself', async () => {
+    for (const [collectionId, recipeId] of [
+      ['c-grill', 'c-sommer'],
+      ['r2', 'r3'],
+      ['c-grill', 'c-grill'],
+    ]) {
+      await expect(
+        apply([contained('cr-x', String(collectionId), String(recipeId))]),
+      ).rejects.toMatchObject({ kind: 'permanent', code: 'collection_recipe_kind_invalid' });
+    }
+    expect(server.rows(H, 'collection_recipes').map((row) => row.id)).toEqual(['cr-1', 'cr-2']);
+  });
+
+  it('AC-010, AC-011: twice is 23505; a foreign or deleted recipe 23503; a foreign member is not_member', async () => {
+    await expect(apply([contained('cr-x', 'c-grill', 'r2')])).rejects.toMatchObject({
+      code: '23505',
+    });
+    server.addHousehold({ id: 'h-2', name: 'WG' }, [STRANGER]);
+    server.insertRows('h-2', { recipes: [{ id: 'r-pizza', title: 'Pizza', course: 'main' }] });
+    await expect(apply([contained('cr-x', 'c-grill', 'r-pizza')])).rejects.toMatchObject({
+      code: '23503',
+      constraint: 'collection_recipes_recipe_fkey',
+    });
+    await expect(
+      apply([contained('cr-x', 'c-grill', 'r1')], STRANGER, 'h-2'),
+    ).rejects.toMatchObject({ code: '23503' });
+    await expect(apply([contained('cr-x', 'c-grill', 'r1')], STRANGER)).rejects.toMatchObject({
+      code: 'not_member',
+    });
+    const pull = await server.transport(STRANGER).syncPull({
+      households: { 'h-2': { full: true } },
+    });
+    expect(pull.households[H]).toBeUndefined();
+    expect(pull.households['h-2']?.rows.collection_recipes ?? []).toEqual([]);
+  });
+
+  it('E4: servings 1–100, variant 1–64 characters; only servings, variant and order are patched', async () => {
+    for (const extra of [
+      { servings: 0 },
+      { servings: 101 },
+      { variant_id: '' },
+      { variant_id: 'v'.repeat(65) },
+    ]) {
+      await expect(apply([contained('cr-x', 'c-sommer', 'r2', extra)])).rejects.toMatchObject({
+        code: '23514',
+      });
+    }
+    await apply([
+      {
+        kind: 'patch',
+        table: 'collection_recipes',
+        id: 'cr-2',
+        changes: { servings: 8, variant_id: 'v-vegan', sort: 3 },
+      },
+    ]);
+    expect(server.row(H, 'collection_recipes', 'cr-2')).toMatchObject({
+      servings: 8,
+      variant_id: 'v-vegan',
+      sort: 3,
+    });
+    for (const changes of [{ collection_id: 'c-sommer' }, { recipe_id: 'r1' }]) {
+      await expect(
+        apply([{ kind: 'patch', table: 'collection_recipes', id: 'cr-2', changes }]),
+      ).rejects.toMatchObject({ code: 'invalid_change' });
+    }
+    await expect(
+      apply([{ kind: 'patch', table: 'collection_recipes', id: 'cr-gone', changes: { sort: 1 } }]),
+    ).rejects.toMatchObject({ code: 'row_not_found' });
+  });
+
+  it('E15: the 51st recipe is too_many_collection_recipes; a collection with its rows in one call', async () => {
+    const recipes = Array.from({ length: 49 }, (_, index) => ({
+      id: `rx-${index}`,
+      title: `Rezept ${index}`,
+      course: 'main',
+    }));
+    server.insertRows(H, { recipes });
+    await apply(
+      recipes.slice(0, 48).map((row, index) => contained(`crx-${index}`, 'c-grill', row.id)),
+    );
+    await expect(apply([contained('crx-49', 'c-grill', 'rx-48')])).rejects.toMatchObject({
+      code: 'too_many_collection_recipes',
+    });
+    await apply([
+      { kind: 'insert', table: 'recipes', row: collection('c-neu') },
+      contained('cr-neu', 'c-neu', 'r2'),
+    ]);
+    expect(server.row(H, 'collection_recipes', 'cr-neu')).toBeDefined();
+    await expect(
+      apply([
+        { kind: 'insert', table: 'recipes', row: collection('c-halb') },
+        contained('cr-halb', 'c-halb', 'c-grill'),
+      ]),
+    ).rejects.toMatchObject({ code: 'collection_recipe_kind_invalid' });
+    expect(server.row(H, 'recipes', 'c-halb')).toBeUndefined();
+  });
+
+  it('AC-032: deleting a collection takes its rows with tombstones, the recipes stay; restore brings all back', async () => {
+    await apply([
+      { kind: 'patch', table: 'collection_recipes', id: 'cr-2', changes: { servings: 8, sort: 1 } },
+    ]);
+    const before = server.rows(H, 'collection_recipes');
+    const enrico = server.transport(ENRICO);
+    expect(await enrico.deleteRecipe('c-grill', '2026-11-20')).toEqual({
+      converted: 0,
+      removed: 0,
+      collections: 0,
+    });
+    expect(server.rows(H, 'collection_recipes')).toEqual([]);
+    expect(server.row(H, 'recipes', 'r2')).toBeDefined();
+    const pull = await server.transport(NADJA).syncPull({
+      households: { [H]: { full: false, since: { recipes: '2026-11-20T09:00:00Z' } } },
+    });
+    expect(
+      pull.households[H]?.tombstones
+        .filter((tombstone) => tombstone.table === 'collection_recipes')
+        .map((tombstone) => tombstone.id)
+        .sort(),
+    ).toEqual(['cr-1', 'cr-2']);
+    expect(await enrico.restoreRecipe('c-grill')).toBe(true);
+    expect(server.row(H, 'recipes', 'c-grill')).toMatchObject({ kind: 'collection' });
+    const strip = (rows: Row[]) =>
+      rows.map(({ id, collection_id, recipe_id, servings, variant_id, sort }) => ({
+        id,
+        collection_id,
+        recipe_id,
+        servings: servings ?? null,
+        variant_id: variant_id ?? null,
+        sort,
+      }));
+    expect(strip(server.rows(H, 'collection_recipes'))).toEqual(strip(before));
+  });
+
+  it('AC-033: a recipe in two collections counts 2; a collection deleted meanwhile is skipped on restore', async () => {
+    await apply([contained('cr-3', 'c-sommer', 'r2', { servings: 3, sort: 4 })]);
+    const enrico = server.transport(ENRICO);
+    expect(await enrico.deleteRecipe('r2', '2026-11-20')).toMatchObject({ collections: 2 });
+    expect(server.rows(H, 'collection_recipes').map((row) => row.id)).toEqual(['cr-2']);
+    await enrico.deleteRecipe('c-sommer', '2026-11-20');
+    expect(await enrico.restoreRecipe('r2')).toBe(true);
+    expect(
+      server
+        .rows(H, 'collection_recipes')
+        .map((row) => row.id)
+        .sort(),
+    ).toEqual(['cr-1', 'cr-2']);
+  });
+
+  it('E11: restore fails as a whole when a collection is full by now; the recipe stays deleted', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.deleteRecipe('r2', '2026-11-20');
+    const recipes = Array.from({ length: 49 }, (_, index) => ({
+      id: `rx-${index}`,
+      title: `Rezept ${index}`,
+      course: 'main',
+    }));
+    server.insertRows(H, { recipes });
+    await apply(recipes.map((row, index) => contained(`crx-${index}`, 'c-grill', row.id)));
+    await expect(enrico.restoreRecipe('r2')).rejects.toMatchObject({
+      code: 'too_many_collection_recipes',
+    });
+    expect(server.row(H, 'recipes', 'r2')).toBeUndefined();
   });
 });

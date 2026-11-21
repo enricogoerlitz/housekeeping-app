@@ -2,6 +2,8 @@ import {
   addIngredientRows,
   findArticleByName,
   isHalfStar,
+  newEntryTitleProblem,
+  newRecipe,
   parseIngredientBlock,
   recipeDeletionEffect,
   resolveIngredientArticles,
@@ -14,6 +16,7 @@ import {
   type IngredientRow,
   type IngredientsDraft,
   type Recipe,
+  type RecipeKind,
   type RecipeSectionDraft,
   type ShoppingRule,
 } from '@housekeeping/core';
@@ -45,26 +48,28 @@ function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
   }));
 }
 
-/** Quick creation: a title is enough, everything else can follow later. */
-export function createRecipe(input: { title: string; servings?: number; source?: string }): Id {
-  const title = input.title.trim();
-  if (!title) throw new Error('Titel fehlt');
+/**
+ * Quick creation: a title is enough, everything else can follow later. `kind` "collection"
+ * creates a collection (spec 0009, AC-001, AC-002): without course, sent with course null (E3).
+ * Throws "Titel fehlt" (AC-003) or "Höchstens 200 Zeichen" before anything changes.
+ */
+export function createRecipe(input: {
+  title: string;
+  servings?: number;
+  source?: string;
+  kind?: RecipeKind;
+}): Id {
+  const problem = newEntryTitleProblem(input.title);
+  if (problem) throw new Error(problem);
   return commit({ path: 'diff' }, () => {
-    const recipe: Recipe = {
+    const recipe = newRecipe({
       id: newId(),
-      title,
+      kind: input.kind ?? 'recipe',
+      title: input.title,
       servings: input.servings ?? 2,
-      course: 'main',
-      tags: [],
-      variants: [],
-      ingredients: [],
-      steps: [],
-      favoriteOf: [],
-      ratings: {},
-      cookedCount: 0,
       createdAt: nowISO(),
       source: input.source,
-    };
+    });
     updateData((data) => ({ ...data, recipes: [recipe, ...data.recipes] }));
     return recipe.id;
   });
@@ -187,7 +192,9 @@ export interface SectionSave {
 export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): SectionSave | null {
   const [problem] = validateSectionDraft(draft);
   if (problem) throw new Error(problem.message);
-  if (!getData().recipes.some((recipe) => recipe.id === recipeId)) return null;
+  const target = getData().recipes.find((recipe) => recipe.id === recipeId);
+  if (!target) return null;
+  assertSectionFits(target, draft);
   if (isOffline()) throw new OfflineError();
   let open: IngredientRow[] = [];
   let failure: unknown;
@@ -228,10 +235,29 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
   return { open, reopened: addIngredientRows(sectionDraft(saved, 'ingredients'), open), confirmed };
 }
 
+/**
+ * Spec 0009, E3, E13: a collection has only head, own ingredients and notes, and a draft checked
+ * as the other kind (a recipe's head with time) never goes out; the server would refuse it.
+ */
+function assertSectionFits(recipe: Recipe, draft: RecipeSectionDraft): void {
+  if (recipe.kind === 'collection') {
+    if (draft.section === 'classification') throw new Error('Eine Sammlung hat keine Einordnung');
+    if (draft.section === 'steps') throw new Error('Eine Sammlung hat keine Zubereitung');
+  }
+  if ('kind' in draft && draft.kind !== recipe.kind) {
+    throw new Error('Der Abschnitt passt nicht zur Art');
+  }
+}
+
 // ---------- Deleting (spec 0008, REQ-012, E1 to E5) ----------
 
 export interface RecipeDeletion {
   recipeId: Id;
+  /**
+   * How many collections the recipe was taken out of, counted from the cache (spec 0009, AC-033):
+   * core recipeDeletedLabel(title, collections). 0 for a collection.
+   */
+  collections: number;
   /** The recipe's own photo; discardRecipePhoto removes it once "Rückgängig" expired (E5). */
   photoPath?: string;
   /** Resolves once the server deleted the recipe; rejects when it refused (the recipe is back). */
@@ -241,7 +267,9 @@ export interface RecipeDeletion {
 /**
  * "Löschen" (AC-043): one delete_recipe call with the device's date. Shown at once as the server
  * will do it (core recipeDeletionEffect): the recipe with its ratings and favourites is gone,
- * entries up to today are free text, later and noted ones are gone. `snapshot()` taken before
+ * entries up to today are free text, later and noted ones are gone, and so are its rows as a
+ * collection or as a contained recipe (spec 0009, AC-032, AC-033; the recipes of a deleted
+ * collection stay). "Rückgängig" brings the rows back with portions, variant and order. `snapshot()` taken before
  * undoes it with restore_recipe (AC-044); a refusal jumps back with the general hint (AC-045),
  * also when restore_recipe answers false.
  * Throws OfflineError; undefined for a recipe that is not there.
@@ -251,6 +279,8 @@ export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
   if (!recipe) return undefined;
   if (isOffline()) throw new OfflineError();
   const today = getState().today;
+  const data = getData();
+  const effect = recipeDeletionEffect(data.planEntries, recipe, today, data.collectionRecipes);
   const confirmed = commitConfirmed(
     {
       path: 'rpc',
@@ -264,21 +294,33 @@ export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
       },
     },
     () =>
-      updateData((data) => {
-        const effect = recipeDeletionEffect(data.planEntries, recipe, today);
-        const converted = new Map(effect.converted.map((entry) => [entry.id, entry]));
-        const removed = new Set(effect.removedIds);
+      updateData((current) => {
+        const now = recipeDeletionEffect(
+          current.planEntries,
+          recipe,
+          today,
+          current.collectionRecipes,
+        );
+        const converted = new Map(now.converted.map((entry) => [entry.id, entry]));
+        const removed = new Set(now.removedIds);
+        const removedRows = new Set(now.removedCollectionRecipeIds);
         return {
-          ...data,
-          recipes: data.recipes.filter((candidate) => candidate.id !== recipeId),
-          planEntries: data.planEntries.flatMap((entry) =>
+          ...current,
+          recipes: current.recipes.filter((candidate) => candidate.id !== recipeId),
+          collectionRecipes: current.collectionRecipes.filter((row) => !removedRows.has(row.id)),
+          planEntries: current.planEntries.flatMap((entry) =>
             removed.has(entry.id) ? [] : [converted.get(entry.id) ?? entry],
           ),
         };
       }),
   );
   confirmed.catch(() => {});
-  return { recipeId, photoPath: recipe.photoPath, confirmed };
+  return {
+    recipeId,
+    collections: effect.collections,
+    photoPath: recipe.photoPath,
+    confirmed,
+  };
 }
 
 /**

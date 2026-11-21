@@ -25,6 +25,9 @@
 //   only set_packing_items_packed and restore_packing_items write it. `per_day` of a Reisetasche
 //   is a flag, of a Packliste the quantity per day (`perDay` undefined = fixed). A removed person
 //   (`member_id`, `packed_by` null) is undefined. The four packing tables keep creation order.
+// - Spec 0009: `kind` other than 'collection' (or missing) is a recipe; a recipe without `course`
+//   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
+//   (`collection_recipes`) keep creation order; core orders them by `sort`.
 import {
   compareTimestamps,
   normalizeText,
@@ -34,6 +37,7 @@ import {
   type Article,
   type Chore,
   type ChoreEvent,
+  type CollectionRecipe,
   type FeedbackEntry,
   type Household,
   type MealPlanEntry,
@@ -135,13 +139,15 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
       {
         id: recipe.id,
         household_id: householdId,
+        kind: recipe.kind,
         title: recipe.title,
         photo: recipe.photo ?? null,
         photo_path: recipe.photoPath ?? null,
         description: recipe.description ?? null,
         servings: recipe.servings,
         total_minutes: recipe.totalMinutes ?? null,
-        course: recipe.course,
+        // A collection is inserted with course null; the column's default is for recipes (E3).
+        course: recipe.course ?? null,
         cuisine: recipe.cuisine ?? null,
         tags: recipe.tags,
         variants: json(recipe.variants),
@@ -334,6 +340,17 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     not_cooked: entry.notCooked ?? false,
   }));
 
+const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
+  single('collection_recipes', householdId, row, () => ({
+    id: row.id,
+    household_id: householdId,
+    collection_id: row.collectionId,
+    recipe_id: row.recipeId,
+    servings: row.servings ?? null,
+    variant_id: row.variantId ?? null,
+    sort: row.sort,
+  }));
+
 const choreRow = (householdId: string, chore: Chore) =>
   single('chores', householdId, chore, () => ({
     id: chore.id,
@@ -459,6 +476,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.articles.map((article) => articleRow(householdId, article)),
     ...data.stores.map((store) => storeRow(householdId, store)),
     ...data.recipes.map((recipe) => recipeRows(householdId, recipe)),
+    ...data.collectionRecipes.map((row) => collectionRecipeRow(householdId, row)),
     ...data.restaurants.map((restaurant) => restaurantRows(householdId, restaurant)),
     ...data.activities.map((activity) => activityRows(householdId, activity)),
     ...data.planEntries.map((entry) => planRow(householdId, entry)),
@@ -481,6 +499,8 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     recipes: [],
     recipe_favorites: [],
     recipe_ratings: [],
+    // After recipes: the seed inserts in this order (seed-sql.ts).
+    collection_recipes: [],
     restaurants: [],
     restaurant_favorites: [],
     restaurant_ratings: [],
@@ -600,15 +620,17 @@ function groupBy(rows: Row[], key: string): Map<string, Row[]> {
 
 function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
   const r = row as Cached<'recipes'>;
+  const kind = r.kind === 'collection' ? 'collection' : 'recipe';
   return {
     id: r.id,
+    kind,
     title: r.title ?? '',
     photo: opt(r.photo),
     photoPath: opt(r.photo_path),
     description: opt(r.description),
     servings: r.servings ?? 2,
     totalMinutes: opt(r.total_minutes),
-    course: (r.course ?? 'main') as Recipe['course'],
+    course: kind === 'collection' ? undefined : ((r.course ?? 'main') as Recipe['course']),
     cuisine: opt(r.cuisine),
     tags: r.tags ?? [],
     variants: (r.variants ?? []) as unknown as Recipe['variants'],
@@ -824,6 +846,18 @@ function toAbsence(row: Row): Absence {
   };
 }
 
+function toCollectionRecipe(row: Row): CollectionRecipe {
+  const r = row as Cached<'collection_recipes'>;
+  return {
+    id: r.id,
+    collectionId: r.collection_id ?? '',
+    recipeId: r.recipe_id ?? '',
+    servings: opt(r.servings),
+    variantId: opt(r.variant_id),
+    sort: r.sort ?? 0,
+  };
+}
+
 function toPackingBag(row: Row): PackingBag {
   const r = row as Cached<'packing_bags'>;
   return { id: r.id, name: r.name ?? '', memberId: opt(r.member_id), sort: r.sort ?? 0 };
@@ -976,6 +1010,10 @@ export function rowsToHousehold(
     articles: reuse(previous?.articles, plain(tables, 'articles', 'created', toArticle)),
     stores: reuse(previous?.stores, plain(tables, 'stores', 'created', toStore)),
     recipes: reuse(previous?.recipes, recipes),
+    collectionRecipes: reuse(
+      previous?.collectionRecipes,
+      plain(tables, 'collection_recipes', 'created', toCollectionRecipe),
+    ),
     restaurants: reuse(previous?.restaurants, restaurants),
     activities: reuse(previous?.activities, activities),
     planEntries: reuse(

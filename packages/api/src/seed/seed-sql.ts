@@ -21,7 +21,13 @@ import {
 import { householdToRows, membersToRows } from '../db/mapping';
 import { TEST_ACCOUNTS, TEST_PASSWORD } from '../dev-accounts';
 import type { HouseholdData } from '../store';
-import { createInitialState, DEMO_HOUSEHOLD_ID, TEST_HOUSEHOLD_ID } from './demo';
+import {
+  createInitialState,
+  DEMO_HOUSEHOLD_ID,
+  NEXT_SATURDAY_ENTRY_IDS,
+  nextSaturday,
+  TEST_HOUSEHOLD_ID,
+} from './demo';
 
 /** Root namespace of every seed id. Changing it changes every id in the seed and in e2e. */
 export const SEED_NAMESPACE = 'c672c897-2501-4bbd-8841-7e385c35f7e8';
@@ -134,6 +140,8 @@ const WEEKDAYS_SQL = `(array[${[1, 2, 3, 4, 5, 6, 7].map((day) => quote(weekdayS
 
 interface Context {
   base: ISODate;
+  /** Plan entries (UUIDs) on the coming Saturday: their day depends on the weekday of the run. */
+  nextSaturdayIds: ReadonlySet<string>;
 }
 
 function daysFromBase(context: Context, iso: string): number {
@@ -249,6 +257,15 @@ function prepareRow(
   let prepared: Row = row;
   if (table === 'chores') prepared = choreRow(prepared, context);
   if (table === 'shopping_contributions') prepared = contributionRow(prepared, context, data);
+  if (table === 'meal_plan_entries' && context.nextSaturdayIds.has(String(row.id))) {
+    if (row.date !== nextSaturday(context.base)) {
+      throw new Error(`Plan entry ${row.id} is not on the coming Saturday`);
+    }
+    prepared = {
+      ...prepared,
+      date: expr(`(${BERLIN_TODAY} + (13 - extract(isodow from ${BERLIN_TODAY})::int) % 7)`),
+    };
+  }
   const tie = NEWEST_FIRST.has(table) ? -index : index;
   const out: Record<string, unknown> = {};
   for (const [column, value] of Object.entries(prepared)) {
@@ -392,6 +409,7 @@ const TIMESTAMPED_TABLES = [
   'recipes',
   'recipe_favorites',
   'recipe_ratings',
+  'collection_recipes',
   'restaurants',
   'restaurant_favorites',
   'restaurant_ratings',
@@ -471,6 +489,9 @@ export async function generateSeed(base: ISODate): Promise<Seed> {
         mapIds(data, householdIdMap) as HouseholdData,
         {
           base,
+          nextSaturdayIds: new Set(
+            NEXT_SATURDAY_ENTRY_IDS.flatMap((id) => householdIdMap[id] ?? []),
+          ),
         },
       );
     }),

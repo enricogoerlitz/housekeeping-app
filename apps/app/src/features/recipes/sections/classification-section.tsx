@@ -49,7 +49,9 @@ export function ClassificationSection(props: {
         <ClassificationFields draft={draft} editor={editor} />
       ) : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-          <Badge label={courseLabel(recipe.course)} testID="recipe-course" />
+          {recipe.course ? (
+            <Badge label={courseLabel(recipe.course)} testID="recipe-course" />
+          ) : null}
           {recipe.cuisine ? <Badge label={recipe.cuisine} testID="recipe-cuisine" /> : null}
           {diet ? (
             <Badge

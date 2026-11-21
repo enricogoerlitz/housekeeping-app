@@ -551,3 +551,155 @@ describe('mapping between domain and rows', () => {
     expect(() => diffHousehold(back, changed, { mode: 'send' })).toThrow();
   });
 });
+
+describe('spec 0009: collections in the rows', () => {
+  /** The demo plus "Grillabend" (no course) containing a recipe with own portions and variant. */
+  function withCollection(): HouseholdData {
+    const { data } = demo();
+    const recipe = data.recipes.find((candidate) => candidate.variants.length > 0);
+    const variant = recipe?.variants[1];
+    if (!recipe || !variant) throw new Error('fixture: no recipe with two variants');
+    return {
+      ...data,
+      recipes: [
+        {
+          id: 'rec-grill-test',
+          kind: 'collection',
+          title: 'Grillabend Test',
+          servings: 6,
+          tags: [],
+          variants: [],
+          ingredients: [],
+          steps: [],
+          favoriteOf: [],
+          ratings: {},
+          cookedCount: 0,
+          createdAt: '2026-11-01T10:00:00.000Z',
+        },
+        ...data.recipes,
+      ],
+      collectionRecipes: [
+        ...data.collectionRecipes,
+        {
+          id: 'cr-test-1',
+          collectionId: 'rec-grill-test',
+          recipeId: recipe.id,
+          servings: 8,
+          variantId: variant.id,
+          sort: 0,
+        },
+        { id: 'cr-test-2', collectionId: 'rec-grill-test', recipeId: 'rec-lasagne', sort: 1 },
+      ],
+    };
+  }
+
+  it('E3, E4: kind and a missing course (null) go there and back; contained rows with null = undefined', () => {
+    const data = withCollection();
+    const rows = householdToRows(data);
+    expect(rows.recipes?.find((row) => row.id === 'rec-grill-test')).toMatchObject({
+      kind: 'collection',
+      course: null,
+      total_minutes: null,
+      cuisine: null,
+    });
+    expect(rows.recipes?.find((row) => row.id === 'rec-lasagne')).toMatchObject({
+      kind: 'recipe',
+      course: 'main',
+    });
+    expect(rows.collection_recipes?.find((row) => row.id === 'cr-test-2')).toEqual({
+      id: 'cr-test-2',
+      household_id: DEMO_HOUSEHOLD_ID,
+      collection_id: 'rec-grill-test',
+      recipe_id: 'rec-lasagne',
+      servings: null,
+      variant_id: null,
+      sort: 1,
+    });
+    const { tables, small } = asServerTables(rows);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    const collection = back.recipes.find((recipe) => recipe.id === 'rec-grill-test');
+    expect(collection).toMatchObject({ kind: 'collection', title: 'Grillabend Test' });
+    expect(collection && 'course' in collection && collection.course !== undefined).toBe(false);
+    expect(back.recipes.find((recipe) => recipe.id === 'rec-lasagne')?.kind).toBe('recipe');
+    expect(back.collectionRecipes).toEqual(data.collectionRecipes);
+  });
+
+  it('a recipe row without kind (database default) is a recipe; one without course stays "main"', () => {
+    const { tables, small } = asServerTables(householdToRows(demo().data));
+    const lasagne = tables.recipes?.['rec-lasagne'];
+    if (!lasagne) throw new Error('fixture');
+    const partial: Row = { ...lasagne };
+    delete partial.kind;
+    delete partial.course;
+    const back = rowsToHousehold(
+      { ...tables, recipes: { ...tables.recipes, 'rec-lasagne': partial } },
+      small,
+      DEMO_HOUSEHOLD_ID,
+    );
+    expect(back.recipes.find((recipe) => recipe.id === 'rec-lasagne')).toMatchObject({
+      kind: 'recipe',
+      course: 'main',
+    });
+  });
+
+  it('E12: a new collection is inserted with kind and course null before its rows; kind is never patched', () => {
+    const before = demo().data;
+    const after = withCollection();
+    const { send } = diffHousehold(before, after, { mode: 'send' });
+    expect(send.map((op) => (op.kind === 'insert' ? `${op.table}:${op.row.id}` : op.kind))).toEqual(
+      ['recipes:rec-grill-test', 'collection_recipes:cr-test-1', 'collection_recipes:cr-test-2'],
+    );
+    expect(send[0]).toMatchObject({ row: { kind: 'collection', course: null } });
+    expect(send[2]).toEqual({
+      kind: 'insert',
+      table: 'collection_recipes',
+      row: {
+        id: 'cr-test-2',
+        collection_id: 'rec-grill-test',
+        recipe_id: 'rec-lasagne',
+        servings: null,
+        variant_id: null,
+        sort: 1,
+      },
+    });
+
+    const turned: HouseholdData = {
+      ...after,
+      recipes: after.recipes.map((recipe) =>
+        recipe.id === 'rec-lasagne' ? { ...recipe, kind: 'collection' } : recipe,
+      ),
+    };
+    expect(() => diffHousehold(after, turned, { mode: 'send' })).toThrow(/kind/);
+    const moved: HouseholdData = {
+      ...after,
+      collectionRecipes: after.collectionRecipes.map((row) =>
+        row.id === 'cr-test-2' ? { ...row, recipeId: 'rec-mango-curry' } : row,
+      ),
+    };
+    expect(() => diffHousehold(after, moved, { mode: 'send' })).toThrow(/recipe_id/);
+  });
+
+  it('E12: "Enthält" sends only servings, variant and order patches and declared deletes', () => {
+    const before = withCollection();
+    const after: HouseholdData = {
+      ...before,
+      collectionRecipes: before.collectionRecipes
+        .filter((row) => row.id !== 'cr-test-1')
+        .map((row) => (row.id === 'cr-test-2' ? { ...row, servings: 4, sort: 0 } : row)),
+    };
+    expect(() => diffHousehold(before, after, { mode: 'send' })).toThrow();
+    const { send } = diffHousehold(before, after, {
+      mode: 'send',
+      maxDeletes: { collection_recipes: 1 },
+    });
+    expect(send).toEqual([
+      {
+        kind: 'patch',
+        table: 'collection_recipes',
+        id: 'cr-test-2',
+        changes: { servings: 4, sort: 0 },
+      },
+      { kind: 'delete', table: 'collection_recipes', id: 'cr-test-1' },
+    ]);
+  });
+});

@@ -6,12 +6,20 @@ import {
   entryIdsOnList,
   listPickerContinueLabel,
   listPickerDayLabel,
+  listPickerEntryLabel,
   listPickerPreselection,
   listPickerWeek,
   toggleDaySelection,
   type ListPickerInput,
 } from './shopping-picker';
-import { makeRecipe } from './test-fixtures';
+import type { RecipeBook } from './collections';
+import {
+  grillabend,
+  grillabendRecipes,
+  grillRecipesById,
+  makeCollection,
+  makeRecipe,
+} from './test-fixtures';
 import type { Id, MealPlanEntry, Recipe, ShoppingItem } from './types';
 
 // Spec 0006, REQ-008 "Ausgangsplan": today is Friday, 20 November 2026 (KW 47: 16.–22. November).
@@ -38,6 +46,7 @@ const recipes: Recipe[] = [
   recipe('rec-old', 'Ofengemüse'),
 ];
 const recipesById: Record<Id, Recipe> = Object.fromEntries(recipes.map((r) => [r.id, r]));
+const book: RecipeBook = { recipesById, collectionRecipes: [] };
 
 function entry(id: Id, date: string | null, partial: Partial<MealPlanEntry> = {}): MealPlanEntry {
   return {
@@ -103,6 +112,7 @@ function input(partial: Partial<ListPickerInput> = {}): ListPickerInput {
   return {
     entries: plan,
     recipesById,
+    collectionRecipes: [],
     items,
     today: TODAY,
     week: TODAY,
@@ -238,25 +248,25 @@ describe('listPickerWeek', () => {
 
 describe('canPutOnList', () => {
   it('AC-061: a recipe entry whose recipe has ingredients to buy can go on the list', () => {
-    expect(canPutOnList(entry('plan-lasagne', TODAY), recipesById['rec-lasagne'])).toBe(true);
+    expect(canPutOnList(entry('plan-lasagne', TODAY), recipesById['rec-lasagne'], book)).toBe(true);
   });
 
   it('AC-061: a recipe without ingredients, or with only "skip" ingredients, cannot', () => {
     const skipOnly = recipe('rec-x', 'Salat', {
       ingredients: [{ id: 'x', articleId: 'art-salz', shoppingRule: 'skip' }],
     });
-    expect(canPutOnList(entry('plan-x', TODAY), recipe('rec-x', 'X', { ingredients: [] }))).toBe(
-      false,
-    );
-    expect(canPutOnList(entry('plan-x', TODAY), skipOnly)).toBe(false);
+    expect(
+      canPutOnList(entry('plan-x', TODAY), recipe('rec-x', 'X', { ingredients: [] }), book),
+    ).toBe(false);
+    expect(canPutOnList(entry('plan-x', TODAY), skipOnly, book)).toBe(false);
   });
 
   it('restaurants, activities, free text, leftovers and missing recipes cannot', () => {
     const lasagne = recipesById['rec-lasagne'];
     for (const kind of ['restaurant', 'activity', 'text', 'leftovers'] as const) {
-      expect(canPutOnList(entry('plan-lasagne', TODAY, { kind }), lasagne)).toBe(false);
+      expect(canPutOnList(entry('plan-lasagne', TODAY, { kind }), lasagne, book)).toBe(false);
     }
-    expect(canPutOnList(entry('plan-lasagne', TODAY), undefined)).toBe(false);
+    expect(canPutOnList(entry('plan-lasagne', TODAY), undefined, book)).toBe(false);
   });
 });
 
@@ -325,5 +335,50 @@ describe('listPickerContinueLabel', () => {
 
   it('AC-054: nothing chosen reads "Weiter"', () => {
     expect(listPickerContinueLabel(0)).toBe('Weiter');
+  });
+});
+
+describe('Sammlungen in step 1 (spec 0009, REQ-008)', () => {
+  const leer = makeCollection({ id: 'col-leer', title: 'Leer' });
+  const sommerfest = makeCollection({
+    id: 'col-sommerfest',
+    title: 'Sommerfest',
+    ingredients: [{ id: 'o-bier', articleId: 'art-bier', shoppingRule: 'count' }],
+  });
+  const grillBook: RecipeBook = {
+    recipesById: { ...recipesById, ...grillRecipesById, [leer.id]: leer },
+    collectionRecipes: grillabendRecipes,
+  };
+  const grillPlan: MealPlanEntry[] = [
+    ...plan,
+    entry('plan-grill', '2026-11-21', { recipeId: grillabend.id, portions: 3, sort: 1 }),
+    entry('plan-leer', '2026-11-22', { recipeId: leer.id, sort: 1 }),
+  ];
+  const grillInput = (): ListPickerInput => ({ ...input({ entries: grillPlan }), ...grillBook });
+
+  it('AC-027: "Grillabend (2 Rezepte)" stands under Sa 21 and is preselected', () => {
+    const week = listPickerWeek(grillInput());
+    const saturday = week.days.find((day) => day.date === '2026-11-21');
+    expect(saturday?.entries.map((row) => row.label)).toEqual([
+      'Kürbissuppe',
+      'Grillabend (2 Rezepte)',
+    ]);
+    expect(listPickerPreselection(grillInput())).toContain('plan-grill');
+  });
+
+  it('REQ-008: a collection without anything to buy does not appear', () => {
+    expect(canPutOnList(entry('plan-leer', TODAY, { recipeId: leer.id }), leer, grillBook)).toBe(
+      false,
+    );
+    const sunday = listPickerWeek(grillInput()).days.find((day) => day.date === '2026-11-22');
+    expect(sunday?.entries.map((row) => row.entry.id)).toEqual(['plan-dal']);
+  });
+
+  it('AC-024: a collection without recipes reads without a count', () => {
+    expect(listPickerEntryLabel(sommerfest, grillBook)).toBe('Sommerfest');
+    expect(
+      canPutOnList(entry('plan-fest', TODAY, { recipeId: sommerfest.id }), sommerfest, grillBook),
+    ).toBe(true);
+    expect(listPickerEntryLabel(recipesById['rec-lasagne'] as Recipe, grillBook)).toBe('Lasagne');
   });
 });

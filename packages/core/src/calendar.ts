@@ -7,7 +7,7 @@ import {
   toISODate,
   weekdayShort,
 } from './dates';
-import type { ISODate, MealPlanEntry } from './types';
+import type { Id, ISODate, MealPlanEntry, Recipe } from './types';
 
 // The calendar (spec 0010): week, month and year, their labels and how they lead into each other.
 
@@ -151,13 +151,23 @@ export type KindRole = 'activity' | 'recipe' | 'collection' | 'restaurant' | 'ch
 /** Order of the dots under a day (spec 0010, rules). */
 export const KIND_ROLES: KindRole[] = ['activity', 'recipe', 'collection', 'restaurant', 'chore'];
 
-/** Free text and leftovers look like recipes (spec 0010, rules). */
-export function entryKindRole(entry: Pick<MealPlanEntry, 'kind'>): KindRole {
+/**
+ * Free text and leftovers look like recipes (spec 0010, rules); an entry of a collection has the
+ * role "Sammlung" (spec 0009, E8). A recipe missing from `recipesById` counts as a recipe.
+ */
+export function entryKindRole(
+  entry: Pick<MealPlanEntry, 'kind' | 'recipeId'>,
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): KindRole {
   switch (entry.kind) {
     case 'activity':
       return 'activity';
     case 'restaurant':
       return 'restaurant';
+    case 'recipe': {
+      const recipe = entry.recipeId === undefined ? undefined : recipesById[entry.recipeId];
+      return recipe?.kind === 'collection' ? 'collection' : 'recipe';
+    }
     default:
       return 'recipe';
   }

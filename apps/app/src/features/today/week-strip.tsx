@@ -108,8 +108,9 @@ function dayLabel(date: ISODate, today: ISODate, dots: KindRole[]): string {
 /** Phone: weekday, date in a circle (filled when chosen, ringed for today), the kinds' dots. */
 function DayColumn(props: DayProps) {
   const theme = useTheme();
+  const recipesById = useRecipesById();
   const { date } = props;
-  const dots = dayDots(props.entries, date);
+  const dots = dayDots(props.entries, date, recipesById);
   const selected = date === props.shown;
   const isToday = date === props.today;
   return (
@@ -169,7 +170,7 @@ function DayTile(props: DayProps) {
   const activitiesById = useActivitiesById();
   const { date } = props;
   const { first, more } = dayTile(props.entries, date, props.slotOrder);
-  const dots = dayDots(props.entries, date);
+  const dots = dayDots(props.entries, date, recipesById);
   const selected = date === props.shown;
   const isToday = date === props.today;
   const title = first

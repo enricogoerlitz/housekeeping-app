@@ -162,7 +162,16 @@ describe('updateArticle', () => {
     };
     const veganRecipes = () => {
       const data = getData();
-      return filterRecipes(data.recipes, { diet: 'vegan' }, indexById(data.articles), '2026-11-20');
+      return filterRecipes(
+        data.recipes,
+        { diet: 'vegan' },
+        indexById(data.articles),
+        '2026-11-20',
+        {
+          recipesById: indexById(data.recipes),
+          collectionRecipes: data.collectionRecipes,
+        },
+      );
     };
     const curryRow = () =>
       pantryCheckRows([], [{ recipeId: 'r-curry', portions: 2 }]).find(

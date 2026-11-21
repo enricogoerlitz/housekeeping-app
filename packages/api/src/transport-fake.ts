@@ -6,7 +6,9 @@
 // the article catalog (spec 0007: ingredients point to an article, unique names, delete_article,
 // merge_articles with replaced_by, merge_areas), chore entries only through complete_chore
 // and remove_chore_event with the checks of the database (spec 0011), and recipes deleted only
-// through delete_recipe with a snapshot for restore_recipe (spec 0008, E2 to E4), and
+// through delete_recipe with a snapshot for restore_recipe (spec 0008, E2 to E4), collections
+// (spec 0009: the immutable kind and the fields a collection lacks, collection_recipes with the
+// kind check, once per collection and at most 50, cascades and the rows in the snapshot), and
 // Reisetaschen and Packlisten (spec 0012: grants and allowlist, cascades and set null, "je Tag"
 // computed on insert and after a change of the duration, set_packing_items_packed with
 // "Abhaken gewinnt" via pack_seq, restore_packing_items). Several transports (users, devices) can
@@ -148,6 +150,8 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
   recipes: [
     { table: 'recipe_favorites', column: 'recipe_id' },
     { table: 'recipe_ratings', column: 'recipe_id' },
+    { table: 'collection_recipes', column: 'collection_id' },
+    { table: 'collection_recipes', column: 'recipe_id' },
   ],
   restaurants: [
     { table: 'restaurant_favorites', column: 'restaurant_id' },
@@ -176,6 +180,13 @@ const REFERENCES: {
   onDelete: 'restrict' | 'set null' | 'cascade';
 }[] = [
   { table: 'meal_plan_entries', column: 'recipe_id', target: 'recipes', onDelete: 'restrict' },
+  {
+    table: 'collection_recipes',
+    column: 'collection_id',
+    target: 'recipes',
+    onDelete: 'cascade',
+  },
+  { table: 'collection_recipes', column: 'recipe_id', target: 'recipes', onDelete: 'cascade' },
   {
     table: 'meal_plan_entries',
     column: 'restaurant_id',
@@ -346,6 +357,8 @@ interface RecipeDeletion {
     new_text: string;
   }[];
   removed: Row[];
+  /** Spec 0009: its rows as a collection and as a contained recipe, in full. */
+  collectionRecipes: Row[];
 }
 /** A snapshot can be restored for 1 hour. */
 const RESTORABLE_MS = 60 * 60 * 1000;
@@ -477,8 +490,74 @@ function bookedAfter(a: Row, b: Row): boolean {
   return order > 0 || (order === 0 && a.id > b.id);
 }
 
+/** recipes.kind, its default 'recipe' when a row carries none (spec 0009, E2). */
+const kindOf = (row: Row | undefined) => row?.kind ?? 'recipe';
+
+/** recipes_kind_valid and recipes_kind_fields (spec 0009, E2, E3). */
+function checkRecipeKind(row: Row): void {
+  const kind = kindOf(row);
+  if (kind !== 'recipe' && kind !== 'collection')
+    throw new TransportError('permanent', '23514', 400);
+  const empty = (value: unknown) => value == null || (Array.isArray(value) && value.length === 0);
+  const ownVariant =
+    Array.isArray(row.ingredients) &&
+    (row.ingredients as { variantId?: unknown }[]).some(
+      (ingredient) => ingredient.variantId != null,
+    );
+  const fits =
+    kind === 'recipe'
+      ? row.course != null
+      : row.course == null &&
+        row.total_minutes == null &&
+        row.cuisine == null &&
+        row.lead_time == null &&
+        empty(row.tags) &&
+        empty(row.variants) &&
+        empty(row.steps) &&
+        !ownVariant;
+  if (!fits) throw new TransportError('permanent', '23514', 400);
+}
+
+/** A contained recipe (spec 0009, E4): servings 1–100, variant 1–64 characters, once each. */
+function checkCollectionRecipe(row: Row, tables: TableRows): void {
+  const servingsOk = row.servings == null || inRange(row.servings, 1, 100);
+  const variantOk =
+    row.variant_id == null ||
+    (typeof row.variant_id === 'string' &&
+      row.variant_id.length >= 1 &&
+      row.variant_id.length <= 64);
+  if (!servingsOk || !variantOk) throw new TransportError('permanent', '23514', 400);
+  const twice = Object.values(tables.collection_recipes ?? {}).some(
+    (other) =>
+      other.id !== row.id &&
+      other.collection_id === row.collection_id &&
+      other.recipe_id === row.recipe_id,
+  );
+  if (twice) throw conflict('23505');
+}
+
+/**
+ * The trigger collection_recipes_check before insert (spec 0009, E4): the container is a
+ * collection and the contained row a recipe (AC-009), and a collection holds at most 50 (E15). A
+ * row missing in the household leaves it to the foreign key (23503).
+ */
+function checkCollectionRecipeInsert(row: Row, tables: TableRows): void {
+  const collection = tables.recipes?.[String(row.collection_id)];
+  const recipe = tables.recipes?.[String(row.recipe_id)];
+  if (!collection || !recipe) return;
+  if (kindOf(collection) !== 'collection' || kindOf(recipe) !== 'recipe') {
+    throw reject('collection_recipe_kind_invalid');
+  }
+  const count = Object.values(tables.collection_recipes ?? {}).filter(
+    (other) => other.collection_id === row.collection_id,
+  ).length;
+  if (count >= 50) throw reject('too_many_collection_recipes');
+}
+
 /** Row checks of the database that a client bug could break (spec 0004, 0006, 0007). */
 function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
+  if (table === 'recipes') checkRecipeKind(row);
+  if (table === 'collection_recipes') checkCollectionRecipe(row, tables);
   if (
     table === 'shopping_contributions' &&
     typeof row.note === 'string' &&
@@ -1203,7 +1282,11 @@ export function createFakeServer(): FakeServer {
                 }
               : op.table === 'packing_items'
                 ? OPEN_PACKING_ITEM
-                : {};
+                : op.table === 'recipes'
+                  ? // Column defaults: a collection must send course null (spec 0009, T1).
+                    { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
+                  : {};
+          if (op.table === 'collection_recipes') checkCollectionRecipeInsert(op.row, tables);
           tables = withRow(tables, op.table, {
             ...defaults,
             ...op.row,
@@ -1425,6 +1508,9 @@ export function createFakeServer(): FakeServer {
       }));
       const parentRows = (table: string) =>
         Object.values(before[table] ?? {}).filter((row) => row.recipe_id === recipeId);
+      const collectionRecipes = Object.values(before.collection_recipes ?? {})
+        .filter((row) => row.collection_id === recipeId || row.recipe_id === recipeId)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       deletion = {
         householdId,
         recipeId,
@@ -1438,6 +1524,7 @@ export function createFakeServer(): FakeServer {
         favorites: parentRows('recipe_favorites').map((row) => String(row.member_id)),
         converted,
         removed: later,
+        collectionRecipes,
       };
       let tables = before;
       for (const entry of converted) {
@@ -1453,7 +1540,14 @@ export function createFakeServer(): FakeServer {
       }
       tables = withoutRows(tables, 'meal_plan_entries', [...found].reverse());
       tables = withoutRows(tables, 'recipes', [recipeId]);
-      return [tables, { converted: past.length, removed: later.length }];
+      return [
+        tables,
+        {
+          converted: past.length,
+          removed: later.length,
+          collections: collectionRecipes.filter((row) => row.recipe_id === recipeId).length,
+        },
+      ];
     });
     for (const [key, kept] of recipeDeletions) {
       if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
@@ -1496,6 +1590,25 @@ export function createFakeServer(): FakeServer {
           id: compositeId('recipe_favorites', row),
           ...row,
         });
+      }
+      // Spec 0009, E11: the rows whose other side still exists, in order; the trigger runs again.
+      const rows = [...deletion.collectionRecipes].sort(
+        (a, b) =>
+          String(a.collection_id).localeCompare(String(b.collection_id)) ||
+          Number(a.sort) - Number(b.sort) ||
+          (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      );
+      for (const row of rows) {
+        const other = row.collection_id === recipeId ? row.recipe_id : row.collection_id;
+        if (!tables.recipes?.[String(other)] || tables.collection_recipes?.[row.id]) continue;
+        const restored = { ...withoutTimestamps(row) };
+        const twice = Object.values(tables.collection_recipes ?? {}).some(
+          (existing) =>
+            existing.collection_id === row.collection_id && existing.recipe_id === row.recipe_id,
+        );
+        if (twice) continue;
+        checkCollectionRecipeInsert(restored, tables);
+        tables = withRow(tables, 'collection_recipes', restored);
       }
       const removedIds = new Set(deletion.removed.map((entry) => entry.id));
       for (const entry of deletion.removed) {

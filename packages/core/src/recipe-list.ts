@@ -1,7 +1,16 @@
 import { formatQty } from './amounts';
 import { formatStars } from './ratings';
 import { averageRating, courseLabel, filterRecipes, sortRecipes, type RecipeSort } from './recipes';
-import type { Article, Course, Id, ISODate, Member, Recipe } from './types';
+import type {
+  Article,
+  CollectionRecipe,
+  Course,
+  Id,
+  ISODate,
+  Member,
+  Recipe,
+  RecipeKind,
+} from './types';
 
 // The list on "Essen → Rezepte" (spec 0008, REQ-001 to REQ-004): quick chips, the filter panel
 // with the household's cuisines, sorting with "Zufall", and the texts around the hits. The state
@@ -21,6 +30,8 @@ export const TIME_LIMITS: readonly TimeLimit[] = [15, 30, 60];
 export const MIN_RATINGS: readonly MinRating[] = [4, 4.5];
 
 export interface RecipeListFilter {
+  /** "Art": only recipes or only collections; undefined = both (spec 0009, AC-018). */
+  kind?: RecipeKind;
   /** Own favourites. */
   favorites: boolean;
   diet?: DietFilter;
@@ -96,6 +107,7 @@ export function toggleQuickFilter(filter: RecipeListFilter, chip: QuickFilter): 
 /** n in "Filter (n)": every active value, quick chips included (REQ-002). */
 export function activeFilterCount(filter: RecipeListFilter): number {
   return (
+    Number(filter.kind !== undefined) +
     Number(filter.favorites) +
     Number(filter.fitsAll) +
     Number(filter.rare) +
@@ -105,6 +117,21 @@ export function activeFilterCount(filter: RecipeListFilter): number {
     filter.courses.length +
     filter.cuisines.length
   );
+}
+
+/** The section "Art" of the filter panel (spec 0009, AC-018). */
+export const RECIPE_KINDS: readonly { value: RecipeKind; label: string }[] = [
+  { value: 'recipe', label: 'Rezepte' },
+  { value: 'collection', label: 'Sammlungen' },
+];
+
+function recipeKindLabel(kind: RecipeKind): string {
+  return RECIPE_KINDS.find((entry) => entry.value === kind)?.label ?? '';
+}
+
+/** A tap on a value of "Art": exactly one value or none (AC-018). */
+export function toggleRecipeKind(filter: RecipeListFilter, kind: RecipeKind): RecipeListFilter {
+  return { ...filter, kind: filter.kind === kind ? undefined : kind };
 }
 
 /** "Filter" or "Filter (2)" (REQ-002). */
@@ -124,20 +151,24 @@ export function minRatingLabel(stars: MinRating): string {
 
 /** An active value without a quick chip, shown with ✕ in the filter row (AC-005). */
 export type RecipeFilterChip =
+  | { kind: 'kind'; value: RecipeKind; label: string }
   | { kind: 'course'; value: Course; label: string }
   | { kind: 'cuisine'; value: string; label: string }
   | { kind: 'time'; value: TimeLimit; label: string }
   | { kind: 'rating'; value: MinRating; label: string };
 
 /**
- * The active values that have no quick chip, in the order of the panel's sections: Gerichtart,
- * Küche (with the shown spelling from the facets), Zeit other than 30, Bewertung.
+ * The active values that have no quick chip, in the order of the panel's sections: Art,
+ * Gerichtart, Küche (with the shown spelling from the facets), Zeit other than 30, Bewertung.
  */
 export function activeFilterChips(
   filter: RecipeListFilter,
   facets: readonly CuisineFacet[],
 ): RecipeFilterChip[] {
   const chips: RecipeFilterChip[] = [
+    ...(filter.kind === undefined
+      ? []
+      : [{ kind: 'kind' as const, value: filter.kind, label: recipeKindLabel(filter.kind) }]),
     ...filter.courses.map((value): RecipeFilterChip => ({
       kind: 'course',
       value,
@@ -172,6 +203,8 @@ export function removeFilterChip(
   chip: RecipeFilterChip,
 ): RecipeListFilter {
   switch (chip.kind) {
+    case 'kind':
+      return { ...filter, kind: undefined };
     case 'course':
       return { ...filter, courses: filter.courses.filter((value) => value !== chip.value) };
     case 'cuisine':
@@ -262,12 +295,15 @@ export interface RecipeListContext {
   members: Member[];
   articlesById: Record<Id, Article>;
   today: ISODate;
+  /** All recipes and what each collection contains, for the diet of collections (spec 0009). */
+  recipesById: Readonly<Record<Id, Recipe>>;
+  collectionRecipes: readonly CollectionRecipe[];
 }
 
 /**
- * The recipes that pass every section of the filter, in the given order (REQ-002): diet, time,
- * own favourites, fits every member and not cooked recently through filterRecipes; one of the
- * chosen courses and cuisines; the average rating from the threshold on (AC-042).
+ * The recipes that pass every section of the filter, in the given order (REQ-002): the Art; diet,
+ * time, own favourites, fits every member and not cooked recently through filterRecipes; one of
+ * the chosen courses and cuisines; the average rating from the threshold on (AC-042).
  */
 export function applyRecipeListFilter(
   recipes: readonly Recipe[],
@@ -285,11 +321,15 @@ export function applyRecipeListFilter(
     },
     context.articlesById,
     context.today,
+    context,
   );
   const cuisines = new Set(filter.cuisines);
   const { minRating } = filter;
   return basic.filter((recipe) => {
-    if (filter.courses.length > 0 && !filter.courses.includes(recipe.course)) return false;
+    if (filter.kind !== undefined && recipe.kind !== filter.kind) return false;
+    if (filter.courses.length > 0) {
+      if (recipe.course === undefined || !filter.courses.includes(recipe.course)) return false;
+    }
     if (cuisines.size > 0 && !cuisines.has(cuisineKey(recipe.cuisine ?? ''))) return false;
     if (minRating !== undefined && (averageRating(recipe) ?? 0) < minRating) return false;
     return true;
@@ -367,6 +407,18 @@ export function sortRecipeList(
 /** "24 Rezepte", "1 Rezept" (AC-001). */
 export function recipeCountLabel(count: number): string {
   return count === 1 ? '1 Rezept' : `${count} Rezepte`;
+}
+
+/**
+ * The count above the list (spec 0009, Offene Frage 8 A): "24 Rezepte · 2 Sammlungen", only
+ * collections "2 Sammlungen", without collections as before "24 Rezepte".
+ */
+export function recipeListCountLabel(recipes: readonly Pick<Recipe, 'kind'>[]): string {
+  const collections = recipes.filter((recipe) => recipe.kind === 'collection').length;
+  const plain = recipes.length - collections;
+  if (collections === 0) return recipeCountLabel(plain);
+  const collectionLabel = collections === 1 ? '1 Sammlung' : `${collections} Sammlungen`;
+  return plain === 0 ? collectionLabel : `${recipeCountLabel(plain)} · ${collectionLabel}`;
 }
 
 /** The button in the panel's foot: "13 Rezepte zeigen", "1 Rezept zeigen" (AC-005, AC-008). */

@@ -88,6 +88,7 @@ function ingredient(id: Id, articleId: Id, rest: Partial<RecipeIngredient> = {})
 function recipe(id: Id, title: string, ingredients: RecipeIngredient[]): Recipe {
   return {
     id,
+    kind: 'recipe',
     title,
     servings: 4,
     course: 'main',

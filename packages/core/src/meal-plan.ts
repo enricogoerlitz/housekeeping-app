@@ -231,13 +231,15 @@ export const LEFTOVER_DAYS = 7;
 
 /**
  * Dishes "Reste" offers for a target day (REQ-011): recipes and free text planned from
- * target − 7 to target − 1, without leftovers of leftovers and without "nicht gekocht"; the
- * youngest day first, within a day the later Tageszeit first.
+ * target − 7 to target − 1, without leftovers of leftovers, without collections (glossary "Reste",
+ * spec 0009) and without "nicht gekocht"; the youngest day first, within a day the later
+ * Tageszeit first.
  */
 export function leftoverCandidates(
   entries: MealPlanEntry[],
   target: ISODate,
   slotOrder: Id[],
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
 ): MealPlanEntry[] {
   const first = addDays(target, -LEFTOVER_DAYS);
   const slotPosition = (entry: MealPlanEntry): number => {
@@ -251,6 +253,7 @@ export function leftoverCandidates(
         entry.date >= first &&
         entry.date < target &&
         (entry.kind === 'recipe' || entry.kind === 'text') &&
+        (entry.recipeId === undefined || recipesById[entry.recipeId]?.kind !== 'collection') &&
         !entry.notCooked,
     )
     .sort(

@@ -17,6 +17,8 @@ import {
   weekRangeLabel,
   yearMonths,
 } from './calendar';
+import { collectionEntryLabel } from './collections';
+import { grillabend, kartoffelsalat } from './test-fixtures';
 import type { MealPlanEntry } from './types';
 
 // Today in the spec's examples: Friday, 20 November 2026 (KW 47).
@@ -126,11 +128,11 @@ describe('switching the view', () => {
 
 describe('kinds and dots', () => {
   it('AC-009: free text and leftovers count as recipes', () => {
-    expect(entryKindRole(entry('recipe'))).toBe('recipe');
-    expect(entryKindRole(entry('text'))).toBe('recipe');
-    expect(entryKindRole(entry('leftovers'))).toBe('recipe');
-    expect(entryKindRole(entry('restaurant'))).toBe('restaurant');
-    expect(entryKindRole(entry('activity'))).toBe('activity');
+    expect(entryKindRole(entry('recipe'), {})).toBe('recipe');
+    expect(entryKindRole(entry('text'), {})).toBe('recipe');
+    expect(entryKindRole(entry('leftovers'), {})).toBe('recipe');
+    expect(entryKindRole(entry('restaurant'), {})).toBe('restaurant');
+    expect(entryKindRole(entry('activity'), {})).toBe('activity');
   });
 
   it('AC-011: one dot per kind, activity before recipe', () => {
@@ -175,5 +177,30 @@ describe('date labels', () => {
   it('AC-042: the date fields show weekday and full date', () => {
     expect(formatPickerDate('2027-01-01')).toBe('Fr 1.1.2027');
     expect(formatPickerDate('2026-12-28')).toBe('Mo 28.12.2026');
+  });
+});
+
+describe('Sammlungen in the calendar (spec 0009, REQ-007)', () => {
+  const recipesById = { [grillabend.id]: grillabend, [kartoffelsalat.id]: kartoffelsalat };
+
+  it('AC-022: an entry of a collection has the role "Sammlung", a recipe stays "Rezept"', () => {
+    expect(entryKindRole({ ...entry('recipe'), recipeId: grillabend.id }, recipesById)).toBe(
+      'collection',
+    );
+    expect(entryKindRole({ ...entry('recipe'), recipeId: kartoffelsalat.id }, recipesById)).toBe(
+      'recipe',
+    );
+    expect(entryKindRole({ ...entry('recipe'), recipeId: 'rec-gone' }, recipesById)).toBe('recipe');
+  });
+
+  it('AC-022, AC-024: the row reads "Grillabend · 2 Rezepte", without recipes no count', () => {
+    expect(collectionEntryLabel('Grillabend', 2)).toBe('Grillabend · 2 Rezepte');
+    expect(collectionEntryLabel('Sommerfest', 0)).toBe('Sommerfest');
+  });
+
+  it('AC-022: leftovers that point at a collection are no collection', () => {
+    expect(entryKindRole({ ...entry('leftovers'), recipeId: grillabend.id }, recipesById)).toBe(
+      'recipe',
+    );
   });
 });

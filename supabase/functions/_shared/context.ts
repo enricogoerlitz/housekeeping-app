@@ -37,6 +37,8 @@ const PlanRow = z.object({
 });
 const RecipeRow = z.object({
   id: text,
+  // Spec 0009: 'collection' bundles other recipes and own ingredients; anything else is a recipe.
+  kind: optionalText,
   title: text,
   servings: z.number().nullish(),
   tags: textList,
@@ -55,6 +57,11 @@ const Ingredient = z.object({
   variantId: z.string().nullish(),
 });
 const ArticleRow = z.object({ id: text, name: text });
+
+/** A collection is marked as such, so the model does not take it for a recipe without course. */
+function kindOf(row: { kind?: string }): { kind?: 'collection' } {
+  return row.kind === 'collection' ? { kind: 'collection' } : {};
+}
 
 function rows<T>(schema: z.ZodType<T>, data: unknown): T[] {
   if (!Array.isArray(data)) return [];
@@ -122,6 +129,7 @@ export function berlinDate(now: Date, addDays = 0): string {
 
 export interface OpenRecipe {
   id: string;
+  kind?: 'collection';
   title: string;
   servings?: number;
   variants: { id: string; name: string }[];
@@ -133,7 +141,7 @@ export interface AssistantContext {
   household: { id: string; name: string };
   mealSlots: { id: string; name: string }[];
   members: { id: string; name: string; dietPreference?: string }[];
-  recipes: { id: string; title: string; tags: string[]; minutes?: number }[];
+  recipes: { id: string; kind?: 'collection'; title: string; tags: string[]; minutes?: number }[];
   openRecipe?: OpenRecipe;
   chores: { id: string; title: string; nextDueOn?: string }[];
   plan: { date?: string; slotId: string; kind: string; recipeId?: string; text?: string }[];
@@ -152,14 +160,14 @@ export async function loadAssistantContext(
     read(select('households', 'id, name, meal_slots').eq('id', householdId), HouseholdRow),
     read(select('household_members', 'profile_id').eq('household_id', householdId), MemberRow),
     read(
-      select('recipes', 'id, title, tags, total_minutes')
+      select('recipes', 'id, kind, title, tags, total_minutes')
         .eq('household_id', householdId)
         .limit(MAX_RECIPES),
       RecipeRow,
     ),
     recipeId
       ? read(
-          select('recipes', 'id, title, servings, variants, ingredients')
+          select('recipes', 'id, kind, title, servings, variants, ingredients')
             .eq('household_id', householdId)
             .eq('id', recipeId),
           RecipeRow,
@@ -204,12 +212,14 @@ export async function loadAssistantContext(
       })),
     recipes: recipes.map((r) => ({
       id: r.id,
+      ...kindOf(r),
       title: r.title,
       tags: r.tags,
       minutes: r.total_minutes ?? undefined,
     })),
     openRecipe: recipe && {
       id: recipe.id,
+      ...kindOf(recipe),
       title: recipe.title,
       servings: recipe.servings ?? undefined,
       variants: rows(Variant, recipe.variants),
@@ -237,6 +247,7 @@ export async function loadAssistantContext(
 
 export interface RecipeIndexEntry {
   id: string;
+  kind?: 'collection';
   title: string;
   tags: string[];
   course?: string;
@@ -254,7 +265,7 @@ export async function loadRecipeIndex(
   const recipes = await read(
     client
       .from('recipes')
-      .select('id, title, tags, course, cuisine, total_minutes, variants, ingredients')
+      .select('id, kind, title, tags, course, cuisine, total_minutes, variants, ingredients')
       .eq('household_id', householdId)
       .limit(MAX_RECIPES),
     RecipeRow,
@@ -266,6 +277,7 @@ export async function loadRecipeIndex(
   );
   return recipes.map((recipe) => ({
     id: recipe.id,
+    ...kindOf(recipe),
     title: recipe.title,
     tags: recipe.tags,
     course: recipe.course,

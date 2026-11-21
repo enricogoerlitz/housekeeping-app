@@ -497,7 +497,7 @@ flowchart LR
   - Randfälle: Variante fehlt im Rezept → Standard (Offene Frage 4); lokal fehlendes Rezept fällt
     weg; leere Sammlung „unbekannt“; `coverPhotos` mit 0, 1, 3 und 5 Fotos und mit eigenem Foto;
     Grenzen 50/20.
-- **Status:** offen
+- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t2.txt`, `red-t3.txt`)
 
 ### Task 3 — core: Kalender, Übersicht, Löschen, „gekocht“, Entwürfe
 
@@ -539,7 +539,7 @@ flowchart LR
     (Kopf: 10 übernommen, 0 → „1 bis 100 Portionen“).
   - Reste ohne Sammlungen; `contentsChanges` (nur geänderte Spalten, Löschungen, Reihenfolge);
     AC-008/AC-010 (`collectionChoices`, `recipePickerRows`).
-- **Status:** offen
+- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t2.txt`, `red-t3.txt`)
 
 ### Task 4 — api: Abbildung, Sync, Befehle, Fake, Seed
 
@@ -580,7 +580,7 @@ db:seed:gen`), `index.ts`.
     Rezept an, Nadjas Gerät sieht den Inhalt nach dem Pull, das Konto „WG“ sieht nichts (AC-011).
     Enrico löscht das Rezept, Nadjas Gerät sieht es aus der Sammlung verschwinden, „Rückgängig“
     bringt es zurück (AC-033).
-- **Status:** offen
+- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t4.txt`)
 
 ### Task 5 — ui: Foto-Collage
 
@@ -819,8 +819,58 @@ Abschnitt „Entscheidungen beim Bauen (Bereich, Tn, Datum)“.
     `check_collection_recipe` ist an niemanden freigegeben. Die Allowlist-Fälle stehen in
     `apply_changes.test.sql`, alles Übrige in `collections.test.sql`.
   - Seed unverändert (Sammlungen kommen mit T4).
-- _T2/T3:_ …
-- _T4 (u. a. genaue Seed-Wahl):_ …
+- _T2/T3 (core, 21.11.2026):_
+  - `diet.ts` bleibt unverändert. Der Einstieg nach Art ist `dishFitsPreference` in
+    `collections.ts`, weil `diet.ts` sonst `collections.ts` importieren müsste (Zyklus).
+    `shopping.ts` holt `defaultVariantId` dafür direkt aus `recipe-variants.ts`.
+  - `contentsChanges(draft)` statt `(before, draft)`: Der Entwurf trägt wie die Abschnitte des
+    Rezepts seinen Stand beim Öffnen (`base`).
+  - Neues `sort` = Position, nur wenn sich die Reihenfolge geändert hat, und nur für Zeilen, deren
+    `sort` von der Position abweicht (wie `packing.ts`, `areas.ts`). Nur Entfernen schickt kein
+    `sort`.
+  - Die Regeln des Fensters „Neu“ sind `NEW_ENTRY_KINDS`, `newEntryTakesIngredients`,
+    `newEntryTitleProblem` und `newRecipe` (Rezept mit `course = 'main'`, Sammlung ohne).
+  - `HeadDraft` und `IngredientsDraft` tragen `kind`. Kopf einer Sammlung prüft und sendet keine
+    Zeit; Zutaten einer Sammlung melden „Eine Sammlung hat keine Varianten“.
+    `sectionDraft(sammlung, 'classification')` wirft.
+  - Ein mitgebrachtes Foto (`photo`) zählt bei `coverPhotos` wie ein eigenes.
+  - Zusätzlich für T4 und die App: `contentsInBook`, `collectionEntryLabel`,
+    `collectionListHint`, `newCollectionRecipes`, `takeOverLabel`, `addedToCollectionLabel`,
+    `COLLECTION_FULL`, `RECIPE_KINDS`, `toggleRecipeKind`, `recipeListCountLabel`,
+    `listPickerEntryLabel` (auch als `ListPickerEntry.label`).
+- _T4 (api, 21.11.2026):_
+  - **Seed:** „Grillabend“ (`rec-grillabend`, für 6, Favorit von Enrico) enthält „Nudelsalat“
+    (übernimmt, Standardvariante, `sort` 0) und „Gemischter Salat“ (eigene 8 Portionen, `sort`
+    1). Eigene Zutaten: Bratwurst „12“ (Rezeptmenge), Grillkohle „1 Sack“, Bier „1 Kasten“ und
+    Grillanzünder (alle Anzahl). „Grillanzünder“ fehlt im Starter-Katalog; der Seed legt ihn als
+    Artikel des Haushalts an (Bereich „Sonstiges“, Ernährung unbekannt), der Katalog bleibt
+    unverändert. Eingeplant am kommenden Samstag (am Samstag selbst: heute), Abend, für Enrico,
+    Nadja und 1 Gast (3 Portionen, Koch Enrico), und vorgestern Abend neben der Shakshuka (2
+    Portionen). „Sommerfest“ (`rec-sommerfest`, für 6) ist leer. `seed-sql.ts` schreibt den Tag
+    des Samstags-Eintrags als Wochentag-Ausdruck (`NEXT_SATURDAY_ENTRY_IDS`), damit `seed.sql`
+    für jeden Tag gleich bleibt.
+  - `createRecipe` nimmt `kind` und baut über core `newRecipe`/`newEntryTitleProblem`;
+    `createCollection` ist `createRecipe` mit `kind: 'collection'`.
+  - `addRecipeToCollection` gibt `{ collectionId, title }` zurück (für `addedToCollectionLabel`),
+    `addRecipesToCollection` die Zahl der neuen Zeilen (0 sendet nichts).
+    `saveCollectionContents` gibt wie `saveRecipeSection` `{ confirmed }` zurück, damit der
+    Abschnitt bei einer Ablehnung mit seinem Entwurf wieder aufgeht.
+  - `RecipeDeletion.collections` trägt die Zahl für `recipeDeletedLabel` (aus dem Cache).
+  - `saveRecipeSection` lehnt bei einer Sammlung „Einordnung“ und „Zubereitung“ ab und einen
+    Entwurf der anderen Art („Der Abschnitt passt nicht zur Art“).
+  - `splitForEaters` einer Sammlung: Esser + Gäste, keine Varianten, `misfitMemberIds` aus
+    `collectionDiet`.
+  - Neu `useRecipeBook()` (stabiles `RecipeBook` für Filter, Picker, Ernährung) neben
+    `useCollectionRecipes` und `useCollectionContents(id)`.
+  - `CACHE_VERSION` 7 (0013 hatte ihn noch nicht erhöht).
+  - KI-Kontext: Suchindex und Assistent markieren Sammlungen mit `kind: 'collection'`; Rezepte
+    tragen kein `kind`.
+  - Integrationstest: Es gibt nur zwei lokale Testkonten, beide in beiden Haushalten. Das
+    fremde Mitglied („WG“) prüft pgTAP; der Integrationstest prüft den anderen Haushalt, eine
+    fremde Haushalts-Kennung und einen abgemeldeten Client.
+  - App nur Compile-Fixes (Kalender-Rolle, Reste, Filter-Kontext, Picker-Kontext, Lösch-Hinweis,
+    „Einordnung“ ohne Gerichtart) und in `today-recap.tsx` Kennzeichen „Sammlung“ plus Bewerten
+    über `rateRecipe` (sonst ginge die Bewertung an `rateActivity`).
 - _T5:_ …
 - _T6/T7:_ …
 - _T8/T9:_ …

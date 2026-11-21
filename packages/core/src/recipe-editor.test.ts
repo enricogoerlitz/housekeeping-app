@@ -37,8 +37,16 @@ import {
   type SectionPatchContext,
 } from './recipe-editor';
 import { ingredientLine } from './recipes';
-import { articles, articlesById, makeRecipe, mangoCurry } from './test-fixtures';
-import type { Article, Id, MealPlanEntry, Recipe } from './types';
+import {
+  articles,
+  articlesById,
+  grillabend,
+  grillArticles,
+  grillArticlesById,
+  makeRecipe,
+  mangoCurry,
+} from './test-fixtures';
+import type { Article, Id, MealPlanEntry, Recipe, ShoppingRule } from './types';
 
 const zwiebeln: Article = {
   id: 'art-zwiebeln',
@@ -772,5 +780,81 @@ describe('the page around the sections (T7)', () => {
     const reopened = sectionDraft(mangoCurry, 'ingredients');
     const edited = removeIngredient(reopened, 'i-salz');
     expect(draftAfterRefusal(edited, refused, reopened)).toBe(edited);
+  });
+});
+
+describe('Sammlungen (spec 0009, REQ-002, REQ-004)', () => {
+  const leer = { ...grillabend, ingredients: [] };
+  const grillContext = (): SectionPatchContext => ({ ...context(), articles: grillArticles });
+
+  it('AC-015: the head of a collection saves 10 portions, never a time', () => {
+    const draft = { ...sectionDraft(grillabend, 'head'), servings: '10', totalMinutes: '30' };
+    expect(draft.kind).toBe('collection');
+    expect(validateSectionDraft(draft)).toEqual([]);
+    expect(sectionPatch(grillabend, draft, context()).recipe).toEqual({ servings: 10 });
+  });
+
+  it('AC-017: 0 portions is "1 bis 100 Portionen", and 6 stay stored', () => {
+    const draft = { ...sectionDraft(grillabend, 'head'), servings: '0' };
+    expect(problems(draft)).toEqual(['1 bis 100 Portionen']);
+    expect(() => sectionPatch(grillabend, draft, context())).toThrow();
+    expect(savablePart(draft)).toMatchObject({ servings: '6' });
+  });
+
+  it('AC-012: own ingredients are saved without variants; only the ingredients go out', () => {
+    const row = (amountText: string, articleId: Id, shoppingRule: ShoppingRule) => ({
+      ...newIngredientRow(newKey()),
+      amountText,
+      article: { kind: 'article' as const, articleId },
+      shoppingRule,
+    });
+    const draft = addIngredientRows(sectionDraft(leer, 'ingredients'), [
+      row('12', 'art-wuerstchen', 'recipeAmount'),
+      row('1 Sack', 'art-grillkohle', 'count'),
+      row('1 Kasten', 'art-bier', 'count'),
+      row('', 'art-anzuender', 'count'),
+    ]);
+    expect(draft.kind).toBe('collection');
+    expect(validateSectionDraft(draft)).toEqual([]);
+    const patch = sectionPatch(leer, draft, grillContext());
+    expect(Object.keys(patch.recipe)).toEqual(['ingredients']);
+    expect(
+      patch.recipe.ingredients?.map((ingredient) =>
+        ingredientLine(ingredient, grillArticlesById[ingredient.articleId]?.name ?? ''),
+      ),
+    ).toEqual(['12 Würstchen', '1 Sack Grillkohle', '1 Kasten Bier', 'Grillanzünder']);
+    expect(patch.recipe.ingredients?.some((ingredient) => ingredient.variantId)).toBe(false);
+  });
+
+  it('AC-012: a row with a variant or a variant of its own is refused', () => {
+    const base = sectionDraft(grillabend, 'ingredients');
+    const [first] = base.rows;
+    const withVariantRow: IngredientsDraft = {
+      ...base,
+      rows: base.rows.map((row) => (row === first ? { ...row, variantId: 'v-x' } : row)),
+    };
+    expect(validateSectionDraft(withVariantRow)).toEqual([
+      { field: 'ingredient', key: first?.key, message: 'Eine Sammlung hat keine Varianten' },
+    ]);
+    expect(problems(addVariant(base, 'vegan', 'v-vegan'))).toEqual([
+      'Eine Sammlung hat keine Varianten',
+    ]);
+  });
+
+  it('AC-013: "2 Packungen Holzspieße" without a fitting article stays open, orange', () => {
+    const draft = addIngredientRows(
+      sectionDraft(grillabend, 'ingredients'),
+      rowsFromIngredientDrafts(
+        ingredientDrafts('2 Packungen Holzspieße', grillArticles, [], newKey),
+      ),
+    );
+    expect(openRows(draft, grillArticles).map((row) => row.amountText)).toEqual(['2 Packungen']);
+    const patch = sectionPatch(grillabend, draft, grillContext());
+    expect(patch.open.map((row) => row.amountText)).toEqual(['2 Packungen']);
+    expect(patch.recipe).toEqual({});
+  });
+
+  it('E13: a collection has no section "Einordnung"', () => {
+    expect(() => sectionDraft(grillabend, 'classification')).toThrow();
   });
 });

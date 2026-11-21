@@ -14,7 +14,7 @@ import {
   shiftShownDay,
   weekNav,
 } from './overview';
-import { enrico, nadja, vera } from './test-fixtures';
+import { enrico, grillabend, nadja, vera } from './test-fixtures';
 import type { Absence, Chore, ChoreEvent, MealPlanEntry } from './types';
 
 // Friday, 20 November 2026 (KW 47: Monday 16 to Sunday 22 November).
@@ -113,8 +113,8 @@ describe('AC-005/AC-006/AC-011: the week strip and the planned cards', () => {
   ];
 
   it('AC-005: Thursday carries exactly one recipe and one restaurant dot', () => {
-    expect(dayDots(entries, thursday)).toEqual(['recipe', 'restaurant']);
-    expect(dayDots(entries, '2026-11-22')).toEqual([]);
+    expect(dayDots(entries, thursday, {})).toEqual(['recipe', 'restaurant']);
+    expect(dayDots(entries, '2026-11-22', {})).toEqual([]);
   });
 
   it('AC-006: the desktop tile shows the first entry of the day and "+2"', () => {
@@ -261,5 +261,18 @@ describe('AC-004/AC-011/AC-013: the day handed to the calendar', () => {
     for (const raw of [undefined, '', '28.11.2026', '2026-13-01', '2026-02-30', 'heute', []]) {
       expect(calendarDayParam(raw)).toBeUndefined();
     }
+  });
+});
+
+describe('Sammlungen on the Übersicht (spec 0009, E17)', () => {
+  it('spec 0011 AC-012: a collection gets its own dot, after the recipe', () => {
+    const sunday = [
+      entry({ id: 'grill', date: '2026-11-22', recipeId: grillabend.id }),
+      entry({ id: 'dal', date: '2026-11-22', recipeId: 'rec-dal' }),
+    ];
+    expect(dayDots(sunday, '2026-11-22', { [grillabend.id]: grillabend })).toEqual([
+      'recipe',
+      'collection',
+    ]);
   });
 });

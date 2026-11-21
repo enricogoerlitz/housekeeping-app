@@ -1,6 +1,6 @@
 import { scaleAmount } from './amounts';
+import { dishFitsPreference, type RecipeBook } from './collections';
 import { createdTime, daysBetween } from './dates';
-import { recipeFitsPreference } from './diet';
 import { fuzzyIncludes, normalizeText } from './text';
 import type {
   Article,
@@ -101,25 +101,29 @@ export interface RecipeFilter {
   /** Not cooked within the last n days (never cooked counts too). */
   notCookedSinceDays?: number;
 }
-/** Recipes that pass every criterion set in the filter, in the given order. */
+/**
+ * Recipes that pass every criterion set in the filter, in the given order. A collection is judged
+ * by diet as a whole (`book` says what it contains); it has no time and no course, so those
+ * criteria never let it pass (spec 0009, AC-019, AC-020).
+ */
 export function filterRecipes(
   recipes: Recipe[],
   filter: RecipeFilter,
   articlesById: Record<Id, Article>,
   today: ISODate,
+  book: RecipeBook,
 ): Recipe[] {
   const { diet, maxMinutes, course, favoriteOf, fitsAll, notCookedSinceDays } = filter;
+  const fits = (recipe: Recipe, pref: DietPreference): boolean =>
+    dishFitsPreference(recipe, pref, articlesById, book);
   return recipes.filter((recipe) => {
-    if (diet !== undefined && !recipeFitsPreference(recipe, diet, articlesById)) return false;
+    if (diet !== undefined && !fits(recipe, diet)) return false;
     if (maxMinutes !== undefined) {
       if (recipe.totalMinutes === undefined || recipe.totalMinutes > maxMinutes) return false;
     }
     if (course !== undefined && recipe.course !== course) return false;
     if (favoriteOf !== undefined && !recipe.favoriteOf.includes(favoriteOf)) return false;
-    if (
-      fitsAll !== undefined &&
-      !fitsAll.every((member) => recipeFitsPreference(recipe, member.dietPreference, articlesById))
-    ) {
+    if (fitsAll !== undefined && !fitsAll.every((member) => fits(recipe, member.dietPreference))) {
       return false;
     }
     if (notCookedSinceDays !== undefined && recipe.lastCookedOn !== undefined) {

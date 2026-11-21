@@ -12,19 +12,35 @@ import {
   isQuickFilterActive,
   orderByShuffle,
   RECIPE_SORTS,
+  RECIPE_KINDS,
   recipeCountLabel,
   recipeEmptyLabel,
+  recipeListCountLabel,
   recipeShowLabel,
   recipeSortShortLabel,
   removeFilterChip,
   shuffleOrder,
   sortRecipeList,
   toggleQuickFilter,
+  toggleRecipeKind,
   type RecipeListContext,
   type RecipeListFilter,
 } from './recipe-list';
-import { articlesById, enrico, makeRecipe, nadja } from './test-fixtures';
-import type { Recipe, RecipeIngredient } from './types';
+import { searchRecipes } from './recipes';
+import {
+  articlesById,
+  enrico,
+  grillabend,
+  grillabendRecipes,
+  grillArticlesById,
+  grillRecipesById,
+  hummus,
+  makeCollection,
+  makeRecipe,
+  nadja,
+  tzatziki,
+} from './test-fixtures';
+import type { CollectionRecipe, Recipe, RecipeIngredient } from './types';
 
 const meat: RecipeIngredient = { id: 'i-hack', articleId: 'art-hack', shoppingRule: 'count' };
 const cheese: RecipeIngredient = {
@@ -39,6 +55,8 @@ const context: RecipeListContext = {
   members: [enrico, nadja],
   articlesById,
   today: '2026-11-20',
+  recipesById: {},
+  collectionRecipes: [],
 };
 
 /** 8 × Italienisch (3 vegetarian), 5 × Asiatisch, 3 × Orientalisch, 8 without cuisine (AC-005). */
@@ -356,5 +374,89 @@ describe('recipe list: average rating (REQ-011)', () => {
       'Mango-Curry',
       'Shakshuka',
     ]);
+  });
+});
+
+describe('Sammlungen in "Essen → Rezepte" (spec 0009, REQ-006)', () => {
+  const raclette = makeCollection({ id: 'col-raclette', title: 'Raclette-Abend' });
+  const mezze = makeCollection({ id: 'col-mezze', title: 'Mezze-Abend' });
+  const rows: CollectionRecipe[] = [
+    ...grillabendRecipes,
+    { id: 'cr-hummus', collectionId: mezze.id, recipeId: hummus.id, sort: 0 },
+    { id: 'cr-tzatziki', collectionId: mezze.id, recipeId: tzatziki.id, sort: 1 },
+  ];
+  const all: Recipe[] = [...household24(), grillabend, raclette, mezze, hummus, tzatziki];
+  const grillContext: RecipeListContext = {
+    ...context,
+    articlesById: { ...articlesById, ...grillArticlesById },
+    recipesById: {
+      ...grillRecipesById,
+      ...Object.fromEntries(all.map((recipe) => [recipe.id, recipe])),
+    },
+    collectionRecipes: rows,
+  };
+  const shown = (filter: RecipeListFilter) =>
+    titles(applyRecipeListFilter(all, filter, grillContext));
+
+  it('AC-018: the section "Art" offers "Rezepte" and "Sammlungen", one value or none', () => {
+    expect(RECIPE_KINDS).toEqual([
+      { value: 'recipe', label: 'Rezepte' },
+      { value: 'collection', label: 'Sammlungen' },
+    ]);
+    const collections = toggleRecipeKind(EMPTY_RECIPE_LIST_FILTER, 'collection');
+    expect(collections.kind).toBe('collection');
+    expect(toggleRecipeKind(collections, 'recipe').kind).toBe('recipe');
+    expect(toggleRecipeKind(collections, 'collection').kind).toBeUndefined();
+  });
+
+  it('AC-018: "Sammlungen" shows only the collections, with a chip and a count', () => {
+    const filter = toggleRecipeKind(EMPTY_RECIPE_LIST_FILTER, 'collection');
+    expect(shown(filter)).toEqual(['Grillabend', 'Raclette-Abend', 'Mezze-Abend']);
+    expect(activeFilterCount(filter)).toBe(1);
+    const chips = activeFilterChips(filter, []);
+    expect(chips).toEqual([{ kind: 'kind', value: 'collection', label: 'Sammlungen' }]);
+    const [chip] = chips;
+    expect(chip && removeFilterChip(filter, chip).kind).toBeUndefined();
+    expect(shown(toggleRecipeKind(EMPTY_RECIPE_LIST_FILTER, 'recipe'))).toHaveLength(26);
+  });
+
+  it('AC-018: the search finds "Grillabend" typo tolerant by its title', () => {
+    expect(titles(searchRecipes('grilabend', all, grillContext.articlesById))).toEqual([
+      'Grillabend',
+    ]);
+  });
+
+  it('AC-019: "< 30 Min" and a cuisine never match a collection', () => {
+    expect(shown(toggleQuickFilter(EMPTY_RECIPE_LIST_FILTER, 'fast'))).not.toContain('Grillabend');
+    expect(shown({ ...EMPTY_RECIPE_LIST_FILTER, cuisines: ['italienisch'] })).not.toContain(
+      'Grillabend',
+    );
+    expect(shown({ ...EMPTY_RECIPE_LIST_FILTER, courses: ['main'] })).not.toContain('Grillabend');
+  });
+
+  it('AC-020: "Vegetarisch" shows "Mezze-Abend", not "Grillabend"; "Vegan" neither', () => {
+    const vegetarian = shown(toggleQuickFilter(EMPTY_RECIPE_LIST_FILTER, 'vegetarian'));
+    expect(vegetarian).toContain('Mezze-Abend');
+    expect(vegetarian).not.toContain('Grillabend');
+    const vegan = shown(toggleQuickFilter(EMPTY_RECIPE_LIST_FILTER, 'vegan'));
+    expect(vegan).not.toContain('Mezze-Abend');
+    expect(vegan).not.toContain('Grillabend');
+  });
+
+  it('AC-020: "Passt für alle" asks the whole collection', () => {
+    const fitsAll = shown(toggleQuickFilter(EMPTY_RECIPE_LIST_FILTER, 'fitsAll'));
+    expect(fitsAll).toContain('Mezze-Abend');
+    expect(fitsAll).not.toContain('Grillabend');
+  });
+
+  it('Offene Frage 8 A: "24 Rezepte · 2 Sammlungen", only collections, none', () => {
+    const recipes = household24();
+    expect(recipeListCountLabel([...recipes, grillabend, raclette])).toBe(
+      '24 Rezepte · 2 Sammlungen',
+    );
+    expect(recipeListCountLabel([grillabend, raclette])).toBe('2 Sammlungen');
+    expect(recipeListCountLabel([grillabend])).toBe('1 Sammlung');
+    expect(recipeListCountLabel(recipes)).toBe('24 Rezepte');
+    expect(recipeListCountLabel([])).toBe('0 Rezepte');
   });
 });

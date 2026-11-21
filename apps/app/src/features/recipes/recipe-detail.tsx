@@ -176,7 +176,7 @@ function RecipeDetailBody(props: {
     const done = deletion;
     props.onBack();
     toast.show({
-      message: recipeDeletedLabel(recipe.title),
+      message: recipeDeletedLabel(recipe.title, done.collections),
       actionLabel: 'Rückgängig',
       onAction: undoAction(restore),
       onExpire: () => void discardRecipePhoto(done),

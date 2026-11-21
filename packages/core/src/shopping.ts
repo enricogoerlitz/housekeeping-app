@@ -1,6 +1,6 @@
 import { formatAmount, formatQty, scaleAmount } from './amounts';
 import { createdTime } from './dates';
-import { defaultVariantId } from './recipes';
+import { defaultVariantId } from './recipe-variants';
 import type {
   Area,
   Article,

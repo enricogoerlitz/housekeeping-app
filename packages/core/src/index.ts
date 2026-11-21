@@ -41,5 +41,8 @@ export * from './recipe-deletion';
 export * from './plan-recipe';
 export * from './packing';
 export * from './packing-actions';
+export * from './collections';
+export * from './collection-editor';
+export * from './cooking-history';
 
 export const APP_NAME = 'Housekeeping';

@@ -74,6 +74,22 @@ describe('recipeSource and originLabel', () => {
     expect(originLabel(source)).toBe('Mango-Curry');
   });
 
+  it('AC-025, AC-027 (spec 0009): a recipe of a collection reads "Grillabend · Kartoffelsalat"', () => {
+    const grillabend = { id: 'col-grillabend', title: 'Grillabend' };
+    const salat = { title: 'Kartoffelsalat' };
+    expect(recipeSource(grillabend, undefined, salat)).toEqual({
+      kind: 'recipe',
+      recipeId: 'col-grillabend',
+      label: 'Grillabend · Kartoffelsalat',
+    });
+    expect(recipeSource(grillabend, { id: 'plan-grill', date: '2026-11-21' }, salat)).toEqual({
+      kind: 'recipe',
+      recipeId: 'col-grillabend',
+      entryId: 'plan-grill',
+      label: 'Grillabend · Kartoffelsalat (Sa)',
+    });
+  });
+
   it('an entry under "Vorgemerkt" is marked as such', () => {
     expect(recipeSource(curry, { id: 'plan-curry', date: null }).label).toBe(
       'Mango-Curry (vorgemerkt)',

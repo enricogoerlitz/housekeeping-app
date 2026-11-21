@@ -143,7 +143,7 @@ export function EntryLine(props: {
   const title = data.titleOf(entry);
   return (
     <KindLine
-      kind={entryKindRole(entry)}
+      kind={entryKindRole(entry, data.recipesById)}
       title={title}
       prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
       size={props.compact ? 'compact' : 'row'}

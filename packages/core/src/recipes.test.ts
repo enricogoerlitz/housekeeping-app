@@ -18,11 +18,13 @@ import {
   mangoCurry,
   nadja,
 } from './test-fixtures';
+import type { RecipeBook } from './collections';
 import type { Recipe, RecipeIngredient } from './types';
 
 const recipes = [mangoCurry, bolognese, halloumiPfanne];
 const titles = (list: Recipe[]): string[] => list.map((recipe) => recipe.title);
 const today = '2026-11-20';
+const noCollections: RecipeBook = { recipesById: {}, collectionRecipes: [] };
 
 describe('searchRecipes', () => {
   it('AC-019: "halumi" finds Halloumi-Pfanne despite the typo', () => {
@@ -64,7 +66,9 @@ describe('searchRecipes', () => {
 
 describe('filterRecipes', () => {
   it('AC-018: the vegetarian filter keeps Mango-Curry and drops Spaghetti Bolognese', () => {
-    const result = titles(filterRecipes(recipes, { diet: 'vegetarian' }, articlesById, today));
+    const result = titles(
+      filterRecipes(recipes, { diet: 'vegetarian' }, articlesById, today, noCollections),
+    );
     expect(result).toContain('Mango-Curry');
     expect(result).not.toContain('Spaghetti Bolognese');
   });
@@ -72,7 +76,15 @@ describe('filterRecipes', () => {
   it('filters by maximum duration; recipes without duration do not pass', () => {
     const untimed = makeRecipe({ id: 'u', title: 'Ohne Zeit' });
     expect(
-      titles(filterRecipes([...recipes, untimed], { maxMinutes: 25 }, articlesById, today)),
+      titles(
+        filterRecipes(
+          [...recipes, untimed],
+          { maxMinutes: 25 },
+          articlesById,
+          today,
+          noCollections,
+        ),
+      ),
     ).toEqual(['Mango-Curry', 'Halloumi-Pfanne']);
   });
 
@@ -80,16 +92,28 @@ describe('filterRecipes', () => {
     const dessert = makeRecipe({ id: 'd', title: 'Pudding', course: 'dessert' });
     const fav = { ...bolognese, favoriteOf: [enrico.id] };
     expect(
-      titles(filterRecipes([dessert, fav], { course: 'dessert' }, articlesById, today)),
+      titles(
+        filterRecipes([dessert, fav], { course: 'dessert' }, articlesById, today, noCollections),
+      ),
     ).toEqual(['Pudding']);
     expect(
-      titles(filterRecipes([dessert, fav], { favoriteOf: enrico.id }, articlesById, today)),
+      titles(
+        filterRecipes(
+          [dessert, fav],
+          { favoriteOf: enrico.id },
+          articlesById,
+          today,
+          noCollections,
+        ),
+      ),
     ).toEqual(['Spaghetti Bolognese']);
   });
 
   it('keeps only recipes every listed member can eat', () => {
     expect(
-      titles(filterRecipes(recipes, { fitsAll: [enrico, nadja] }, articlesById, today)),
+      titles(
+        filterRecipes(recipes, { fitsAll: [enrico, nadja] }, articlesById, today, noCollections),
+      ),
     ).toEqual(['Mango-Curry', 'Halloumi-Pfanne']);
   });
 
@@ -103,13 +127,14 @@ describe('filterRecipes', () => {
           { notCookedSinceDays: 21 },
           articlesById,
           today,
+          noCollections,
         ),
       ),
     ).toEqual(['Spaghetti Bolognese', 'Halloumi-Pfanne']);
   });
 
   it('returns everything for an empty filter', () => {
-    expect(filterRecipes(recipes, {}, articlesById, today)).toEqual(recipes);
+    expect(filterRecipes(recipes, {}, articlesById, today, noCollections)).toEqual(recipes);
   });
 });
 

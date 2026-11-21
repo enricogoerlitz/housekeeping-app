@@ -11,6 +11,7 @@ import type {
   MealPlanEntry,
   Recipe,
   RecipeIngredient,
+  RecipeKind,
   RecipeStep,
   RecipeVariant,
   ShoppingRule,
@@ -20,6 +21,8 @@ import type {
 // has a draft that lives in the page; "Fertig" checks it (validateSectionDraft) and turns it into a
 // patch of only this section's columns (sectionPatch), which the api sends as one apply_changes.
 // Switching sections or leaving the page saves the valid part (savablePart).
+// A collection (spec 0009, E3, E13) has the sections head (without time), ingredients ("Eigene
+// Zutaten", without variants) and notes; its contents are edited in collection-editor.ts.
 
 export type RecipeSection = 'head' | 'classification' | 'ingredients' | 'steps' | 'notes';
 
@@ -116,6 +119,8 @@ export interface NotesFields {
 
 export interface HeadDraft extends HeadFields {
   section: 'head';
+  /** A collection has no time: it is neither checked nor sent. */
+  kind: RecipeKind;
   /** The values when the section was opened: only fields changed since then are sent (AC-029). */
   base: HeadFields;
 }
@@ -125,6 +130,8 @@ export interface ClassificationDraft extends ClassificationFields {
 }
 export interface IngredientsDraft extends IngredientsFields {
   section: 'ingredients';
+  /** A collection's own ingredients have no variants (AC-012). */
+  kind: RecipeKind;
   base: Pick<Recipe, 'variants' | 'ingredients'>;
 }
 export interface StepsDraft extends StepsFields {
@@ -149,6 +156,8 @@ function headFields(recipe: Recipe): HeadFields {
 }
 
 function classificationFields(recipe: Recipe): ClassificationFields {
+  // Only a collection lacks a course, and it has no section "Einordnung" (spec 0009, E13).
+  if (recipe.course === undefined) throw new Error('Eine Sammlung hat keine Einordnung.');
   return { course: recipe.course, cuisine: recipe.cuisine ?? '', tags: [...recipe.tags] };
 }
 
@@ -185,12 +194,13 @@ export function sectionDraft(recipe: Recipe, section: RecipeSection): RecipeSect
 export function sectionDraft(recipe: Recipe, section: RecipeSection): RecipeSectionDraft {
   switch (section) {
     case 'head':
-      return { section, ...headFields(recipe), base: headFields(recipe) };
+      return { section, kind: recipe.kind, ...headFields(recipe), base: headFields(recipe) };
     case 'classification':
       return { section, ...classificationFields(recipe), base: classificationFields(recipe) };
     case 'ingredients':
       return {
         section,
+        kind: recipe.kind,
         variants: [...recipe.variants],
         rows: recipe.ingredients.map(rowFromIngredient),
         base: { variants: recipe.variants, ingredients: recipe.ingredients },
@@ -284,7 +294,7 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? 'undefined';
 }
 
-function headProblems(draft: HeadFields): SectionProblem[] {
+function headProblems(draft: HeadDraft): SectionProblem[] {
   const problems: SectionProblem[] = [];
   const title = draft.title.trim();
   if (title === '') problems.push({ field: 'title', message: 'Titel fehlt' });
@@ -298,6 +308,7 @@ function headProblems(draft: HeadFields): SectionProblem[] {
     problems.push({ field: 'servings', message: '1 bis 100 Portionen' });
   }
   if (
+    draft.kind === 'recipe' &&
     draft.totalMinutes.trim() !== '' &&
     !within(wholeNumber(draft.totalMinutes), 0, RECIPE_LIMITS.minutesMax)
   ) {
@@ -349,8 +360,18 @@ function stepsProblems(draft: StepsFields): SectionProblem[] {
 // A stand-in for an id not known before saving, as long as a UUID.
 const UUID_LENGTH_ID = 'x'.repeat(36);
 
+const NO_VARIANTS = 'Eine Sammlung hat keine Varianten';
+
 function ingredientsProblems(draft: IngredientsDraft): SectionProblem[] {
   const problems: SectionProblem[] = [];
+  if (draft.kind === 'collection') {
+    if (draft.variants.length > 0) problems.push({ field: 'variants', message: NO_VARIANTS });
+    for (const row of draft.rows) {
+      if (row.variantId !== undefined) {
+        problems.push({ field: 'ingredient', key: row.key, message: NO_VARIANTS });
+      }
+    }
+  }
   if (draft.variants.length > RECIPE_LIMITS.variants) {
     problems.push({ field: 'variants', message: 'Höchstens 20 Varianten' });
   }
@@ -535,14 +556,15 @@ export interface SectionPatch {
   rules: { articleId: Id; rule: ShoppingRule }[];
 }
 
-function headValues(fields: HeadFields): RecipePatch {
-  const minutes = fields.totalMinutes.trim();
-  return {
+function headValues(fields: HeadFields, kind: RecipeKind): RecipePatch {
+  const values: RecipePatch = {
     title: fields.title.trim(),
     description: fields.description.trim() || undefined,
     servings: Number(fields.servings.trim()),
-    totalMinutes: minutes === '' ? undefined : Number(minutes),
   };
+  if (kind === 'collection') return values;
+  const minutes = fields.totalMinutes.trim();
+  return { ...values, totalMinutes: minutes === '' ? undefined : Number(minutes) };
 }
 
 function classificationValues(fields: ClassificationFields): RecipePatch {
@@ -710,7 +732,7 @@ export function sectionPatch(
   });
   switch (draft.section) {
     case 'head':
-      return only(changed(headValues(draft), headValues(draft.base)));
+      return only(changed(headValues(draft, draft.kind), headValues(draft.base, draft.kind)));
     case 'classification':
       return only(changed(classificationValues(draft), classificationValues(draft.base)));
     case 'ingredients':

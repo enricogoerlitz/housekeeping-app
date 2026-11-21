@@ -1,5 +1,11 @@
 // Step 1 of "Auf die Einkaufsliste" (spec 0006, REQ-008, D21): which plan entries the window
 // shows for a week and which of them start out selected.
+import {
+  collectionContributions,
+  collectionRecipeCountLabel,
+  contentsInBook,
+  type RecipeBook,
+} from './collections';
 import { isoWeekNumber, parseISODate, startOfWeek, weekdayShort, weekDates } from './dates';
 import { entriesForDay, orderSlotEntries } from './meal-plan';
 import { contributionsFromEntry } from './shopping';
@@ -8,11 +14,26 @@ import type { Id, ISODate, MealPlanEntry, Recipe, ShoppingItem } from './types';
 /**
  * True when the entry can bring something onto the list: a recipe entry whose recipe yields at
  * least one contribution. Restaurants, activities, free text and leftovers have nothing to buy;
- * a recipe without ingredients (or only "skip" ones) is left out like them (AC-061, Offene Frage 5).
+ * a recipe without ingredients (or only "skip" ones) is left out like them (AC-061, Offene Frage 5),
+ * and so is a collection without anything to buy in it or its recipes (spec 0009, REQ-008).
  */
-export function canPutOnList(entry: MealPlanEntry, recipe: Recipe | undefined): boolean {
+export function canPutOnList(
+  entry: MealPlanEntry,
+  recipe: Recipe | undefined,
+  book: RecipeBook,
+): boolean {
   if (entry.kind !== 'recipe' || recipe === undefined) return false;
   // The pantry flag does not decide whether something is bought, so no articles are needed here.
+  if (recipe.kind === 'collection') {
+    return (
+      collectionContributions(
+        recipe,
+        contentsInBook(recipe, book),
+        {},
+        { portions: entry.portions },
+      ).length > 0
+    );
+  }
   return contributionsFromEntry(entry, recipe, {}, '').length > 0;
 }
 
@@ -37,7 +58,14 @@ export function canPutRecipeOnList(
     variants,
     sort: 0,
   };
-  return canPutOnList(entry, recipe);
+  return contributionsFromEntry(entry, recipe, {}, '').length > 0;
+}
+
+/** The row of step 1: "Grillabend (2 Rezepte)" for a collection, "Sommerfest" without recipes. */
+export function listPickerEntryLabel(recipe: Recipe, book: RecipeBook): string {
+  if (recipe.kind !== 'collection') return recipe.title;
+  const count = collectionRecipeCountLabel(contentsInBook(recipe, book).length);
+  return count === '' ? recipe.title : `${recipe.title} (${count})`;
 }
 
 /** Plan entries with a contribution on one of the given items, open or checked (REQ-008). */
@@ -53,9 +81,8 @@ export function entryIdsOnList(items: readonly ShoppingItem[]): Set<Id> {
   return ids;
 }
 
-export interface ListPickerInput {
+export interface ListPickerInput extends RecipeBook {
   entries: readonly MealPlanEntry[];
-  recipesById: Readonly<Record<Id, Recipe>>;
   /** All items of the list, open and checked. */
   items: readonly ShoppingItem[];
   today: ISODate;
@@ -68,6 +95,8 @@ export interface ListPickerInput {
 export interface ListPickerEntry {
   entry: MealPlanEntry;
   recipe: Recipe;
+  /** listPickerEntryLabel: the title, for a collection with the number of its recipes. */
+  label: string;
   /** "steht schon auf der Liste". */
   onList: boolean;
 }
@@ -92,13 +121,13 @@ export interface ListPickerWeek {
 
 function pickerEntries(
   entries: MealPlanEntry[],
-  recipesById: Readonly<Record<Id, Recipe>>,
+  book: RecipeBook,
   onList: ReadonlySet<Id>,
 ): ListPickerEntry[] {
   return entries.flatMap((entry) => {
-    const recipe = entry.recipeId === undefined ? undefined : recipesById[entry.recipeId];
-    return recipe !== undefined && canPutOnList(entry, recipe)
-      ? [{ entry, recipe, onList: onList.has(entry.id) }]
+    const recipe = entry.recipeId === undefined ? undefined : book.recipesById[entry.recipeId];
+    return recipe !== undefined && canPutOnList(entry, recipe, book)
+      ? [{ entry, recipe, label: listPickerEntryLabel(recipe, book), onList: onList.has(entry.id) }]
       : [];
   });
 }
@@ -110,7 +139,7 @@ export function listPickerWeek(input: ListPickerInput): ListPickerWeek {
   const days = weekDates(input.week).flatMap((date): ListPickerDay[] => {
     const dayEntries = pickerEntries(
       entriesForDay(entries, date, [...input.slotOrder]),
-      input.recipesById,
+      input,
       onList,
     );
     return dayEntries.length === 0
@@ -131,7 +160,7 @@ export function listPickerWeek(input: ListPickerInput): ListPickerWeek {
     weekStart: startOfWeek(input.week),
     weekNumber: isoWeekNumber(input.week),
     days,
-    parked: pickerEntries(parked, input.recipesById, onList),
+    parked: pickerEntries(parked, input, onList),
   };
 }
 

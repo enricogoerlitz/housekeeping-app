@@ -1,6 +1,8 @@
 import {
   adjustItemCount as countAdjustment,
   applyContributionChanges,
+  collectionContributions,
+  contentsInBook,
   contributionsFromEntry,
   findArticleByName,
   normalizeText,
@@ -8,10 +10,13 @@ import {
   recipeSource,
   summarizeItem,
   weekdayShort,
+  type Article,
   type Id,
   type MealPlanEntry,
   type PlanEntryVariant,
   type PlannedContribution,
+  type Recipe,
+  type RecipeBook,
   type ShoppingContribution,
   type ShoppingItem,
 } from '@housekeeping/core';
@@ -310,7 +315,11 @@ export interface PantryCheckRow {
   contributions: PlannedContribution[];
 }
 
-/** A recipe put on the list without a plan entry (recipe page, "Rezept wählen …"; REQ-010). */
+/**
+ * A recipe put on the list without a plan entry (recipe page, "Rezept wählen …"; REQ-010). For a
+ * collection (spec 0009) `portions` are those of the collection from its page, and `variants` do
+ * not apply: each contained recipe uses the variant chosen in the collection.
+ */
 export interface PantryRecipe {
   recipeId: Id;
   portions: number;
@@ -318,13 +327,36 @@ export interface PantryRecipe {
   variants?: PlanEntryVariant[];
 }
 
+/**
+ * What a collection brings for these portions (core collectionContributions, spec 0009, E6): own
+ * ingredients with Herkunft "Grillabend", contained ones "Grillabend · Kartoffelsalat", from a
+ * plan entry with the day "(Sa)".
+ */
+function collectionPlanned(
+  collection: Recipe,
+  book: RecipeBook,
+  articlesById: Record<Id, Article>,
+  portions: number,
+  entry?: MealPlanEntry,
+): PlannedContribution[] {
+  return collectionContributions(collection, contentsInBook(collection, book), articlesById, {
+    portions,
+    ...(entry ? { entry } : {}),
+  });
+}
+
 /** What a chosen recipe brings, with the title alone as Herkunft ("Mango-Curry", no day). */
 function recipeContributions(
   chosen: PantryRecipe,
   data: ReturnType<typeof getData>,
+  book: RecipeBook,
 ): PlannedContribution[] {
-  const recipe = indexById(data.recipes)[chosen.recipeId];
+  const recipe = book.recipesById[chosen.recipeId];
   if (!recipe) return [];
+  const articlesById = indexById(data.articles);
+  if (recipe.kind === 'collection') {
+    return collectionPlanned(recipe, book, articlesById, chosen.portions);
+  }
   const entry: MealPlanEntry = {
     id: '',
     date: null,
@@ -338,14 +370,16 @@ function recipeContributions(
     sort: 0,
   };
   const { label } = recipeSource(recipe);
-  return contributionsFromEntry(entry, recipe, indexById(data.articles), '').map(
-    (contribution) => ({ ...contribution, label }),
-  );
+  return contributionsFromEntry(entry, recipe, articlesById, '').map((contribution) => ({
+    ...contribution,
+    label,
+  }));
 }
 
 /**
  * One row per article for the pantry check, summed over the given plan entries and recipes
- * chosen directly (for the recipe page and, later, collections: specs 0008, 0009).
+ * chosen directly (for the recipe page and collections: specs 0008, 0009). A collection brings
+ * its own ingredients and those of its recipes, scaled to the planned portions (AC-014, AC-025).
  */
 export function pantryCheckRows(
   entryIds: Id[],
@@ -353,16 +387,23 @@ export function pantryCheckRows(
 ): PantryCheckRow[] {
   const data = getData();
   const articlesById = indexById(data.articles);
-  const recipesById = indexById(data.recipes);
+  const book: RecipeBook = {
+    recipesById: indexById(data.recipes),
+    collectionRecipes: data.collectionRecipes,
+  };
   const planned: PlannedContribution[] = [];
   for (const entry of data.planEntries) {
     if (!entryIds.includes(entry.id) || entry.kind !== 'recipe' || !entry.recipeId) continue;
-    const recipe = recipesById[entry.recipeId];
+    const recipe = book.recipesById[entry.recipeId];
     if (!recipe) continue;
+    if (recipe.kind === 'collection') {
+      planned.push(...collectionPlanned(recipe, book, articlesById, entry.portions, entry));
+      continue;
+    }
     const dayLabel = entry.date ? weekdayShort(entry.date) : 'vorgemerkt';
     planned.push(...contributionsFromEntry(entry, recipe, articlesById, dayLabel));
   }
-  for (const chosen of recipes) planned.push(...recipeContributions(chosen, data));
+  for (const chosen of recipes) planned.push(...recipeContributions(chosen, data, book));
 
   const rows = new Map<Id, PantryCheckRow>();
   for (const contribution of planned) {

@@ -8,6 +8,7 @@ export * from './commands-household';
 export * from './commands-articles';
 export * from './commands-stores';
 export * from './commands-recipes';
+export * from './commands-collections';
 export * from './commands-plan';
 export * from './commands-shopping';
 export * from './commands-chores';

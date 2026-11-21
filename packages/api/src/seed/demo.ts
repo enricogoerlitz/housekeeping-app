@@ -12,10 +12,12 @@ import {
   toISODate,
   weekdayShort,
   type Activity,
+  type Amount,
   type Area,
   type Article,
   type Chore,
   type ChoreEvent,
+  type CollectionRecipe,
   type FeedbackEntry,
   type Id,
   type ISODate,
@@ -121,6 +123,7 @@ export function buildRecipe(seed: SeedRecipe, articles: Article[], createdAt: st
   const variantIdByName = new Map(variants.map((variant) => [variant.name, variant.id]));
   return {
     id: `rec-${seed.key}`,
+    kind: 'recipe',
     title: seed.title,
     photo: seed.photo,
     description: seed.description,
@@ -233,13 +236,99 @@ function personalise(recipes: Recipe[], today: ISODate): Recipe[] {
   });
 }
 
+/** The Saturday from today on (today when it is one): "kommender Samstag" (spec 0009). */
+export function nextSaturday(today: ISODate): ISODate {
+  return addDays(today, (6 - isoWeekday(today) + 7) % 7);
+}
+
+/** Plan entries on nextSaturday: seed-sql.ts writes their day as a weekday, not an offset. */
+export const NEXT_SATURDAY_ENTRY_IDS: readonly Id[] = ['plan-grillabend-sa'];
+
+/**
+ * Spec 0009: "Grillabend" for 6 with Nudelsalat (übernimmt) and Gemischter Salat (own 8
+ * portions) and the own ingredients Bratwurst (12, Rezeptmenge), Grillkohle, Bier and
+ * Grillanzünder (Anzahl); "Sommerfest" is empty (AC-024, AC-028). Newest first, like the list.
+ */
+function buildCollections(
+  articles: Article[],
+  today: ISODate,
+): { collections: Recipe[]; collectionRecipes: CollectionRecipe[] } {
+  const articleIdOf = (name: string): Id => {
+    const article = findArticleByName(name, articles);
+    if (!article) throw new Error(`Seed collection: no article "${name}"`);
+    return article.id;
+  };
+  const collection = (id: Id, title: string, servings: number, offset: number): Recipe => ({
+    id,
+    kind: 'collection',
+    title,
+    servings,
+    tags: [],
+    variants: [],
+    ingredients: [],
+    steps: [],
+    favoriteOf: [],
+    ratings: {},
+    cookedCount: 0,
+    createdAt: `${addDays(today, offset)}T12:00:00.000Z`,
+  });
+  const own = (
+    index: number,
+    article: string,
+    amount: Amount | undefined,
+    shoppingRule: 'count' | 'recipeAmount',
+  ) => ({ id: `grillabend-i${index}`, articleId: articleIdOf(article), amount, shoppingRule });
+  const grillabend: Recipe = {
+    ...collection('rec-grillabend', 'Grillabend', 6, -10),
+    description: 'Würstchen vom Grill, zwei Salate und alles, was dazugehört.',
+    ingredients: [
+      own(1, 'Bratwurst', { text: '12', qty: 12 }, 'recipeAmount'),
+      own(2, 'Grillkohle', { text: '1 Sack', qty: 1 }, 'count'),
+      own(3, 'Bier', { text: '1 Kasten', qty: 1 }, 'count'),
+      own(4, 'Grillanzünder', undefined, 'count'),
+    ],
+    favoriteOf: [ENRICO],
+  };
+  return {
+    collections: [collection('rec-sommerfest', 'Sommerfest', 6, -9), grillabend],
+    collectionRecipes: [
+      {
+        id: 'cr-grillabend-1',
+        collectionId: grillabend.id,
+        recipeId: 'rec-nudelsalat',
+        sort: 0,
+      },
+      {
+        id: 'cr-grillabend-2',
+        collectionId: grillabend.id,
+        recipeId: 'rec-gemischter-salat',
+        servings: 8,
+        sort: 1,
+      },
+    ],
+  };
+}
+
 function buildDemoData(today: ISODate): HouseholdData {
   const areas = buildAreas();
   // "Geschenkpapier" has no area yet, so the list shows "Ohne Bereich" (spec 0001, AC-033).
   const createdAt = `${addDays(today, -40)}T12:00:00.000Z`;
-  const articles = buildArticles(createdAt).map((article) =>
-    article.name === 'Geschenkpapier' ? { ...article, areaId: undefined } : article,
-  );
+  const articles: Article[] = [
+    ...buildArticles(createdAt).map((article) =>
+      article.name === 'Geschenkpapier' ? { ...article, areaId: undefined } : article,
+    ),
+    // Not in the starter catalog: the household created it for "Grillabend" (spec 0009).
+    {
+      id: 'art-grillanzuender',
+      name: 'Grillanzünder',
+      synonyms: [],
+      areaId: areaId('sonstiges'),
+      diet: 'unknown',
+      isPantry: false,
+      needsReview: false,
+      createdAt,
+    },
+  ];
   const articlesById: Record<Id, Article> = Object.fromEntries(
     articles.map((article) => [article.id, article]),
   );
@@ -248,11 +337,15 @@ function buildDemoData(today: ISODate): HouseholdData {
     today,
   );
   const yesterday = addDays(today, -1);
-  const recipes = baseRecipes.map((recipe) =>
-    recipe.id === 'rec-mango-curry'
-      ? { ...recipe, lastCookedOn: yesterday, cookedCount: 9 }
-      : recipe,
-  );
+  const { collections, collectionRecipes } = buildCollections(articles, today);
+  const recipes = [
+    ...collections,
+    ...baseRecipes.map((recipe) =>
+      recipe.id === 'rec-mango-curry'
+        ? { ...recipe, lastCookedOn: yesterday, cookedCount: 9 }
+        : recipe,
+    ),
+  ];
   const recipeByKey = (key: string): Recipe => {
     const recipe = recipes.find((candidate) => candidate.id === `rec-${key}`);
     if (!recipe) throw new Error(`Seed recipe "${key}" is missing`);
@@ -314,6 +407,33 @@ function buildDemoData(today: ISODate): HouseholdData {
     planned(2, SLOT_DINNER, 'mango-curry', { cookId: ENRICO }),
     // today + 3 has no meal on purpose (AC-024); only Bouldern in the morning (spec 0004).
     planned(4, SLOT_DINNER, 'pizza-margherita', { cookId: ENRICO }),
+    // Spec 0009: "Grillabend" next Saturday evening for Enrico, Nadja and a guest (AC-014,
+    // AC-027), and the day before yesterday next to the Shakshuka ("Wie war's?", AC-030).
+    {
+      id: 'plan-grillabend-sa',
+      date: nextSaturday(today),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-grillabend',
+      eaterIds: [ENRICO, NADJA],
+      guests: 1,
+      portions: 3,
+      variants: [],
+      cookId: ENRICO,
+      sort: 1,
+    },
+    {
+      id: 'plan-grillabend-vorgestern',
+      date: addDays(today, -2),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-grillabend',
+      eaterIds: [ENRICO, NADJA],
+      guests: 0,
+      portions: 2,
+      variants: [],
+      sort: 1,
+    },
   ];
 
   // ---------- Shopping ----------
@@ -780,6 +900,7 @@ function buildDemoData(today: ISODate): HouseholdData {
     articles,
     stores: buildStores(),
     recipes,
+    collectionRecipes,
     restaurants,
     activities,
     planEntries,
@@ -953,6 +1074,7 @@ function buildTestData(today: ISODate): HouseholdData {
     articles: buildArticles(`${addDays(today, -40)}T12:00:00.000Z`),
     stores: [],
     recipes: [],
+    collectionRecipes: [],
     restaurants: [],
     activities: [],
     planEntries: [],

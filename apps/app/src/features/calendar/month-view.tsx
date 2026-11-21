@@ -134,7 +134,7 @@ function StripeLine(props: {
 }
 
 function dayRoles(data: CalendarData, date: ISODate, choreCount: number): KindRole[] {
-  const roles = data.dayEntries(date).map(entryKindRole);
+  const roles = data.dayEntries(date).map((entry) => entryKindRole(entry, data.recipesById));
   return choreCount > 0 ? [...roles, ...Array<KindRole>(choreCount).fill('chore')] : roles;
 }
 

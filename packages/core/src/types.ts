@@ -108,8 +108,12 @@ export interface RecipeStep {
 
 export type Course = 'breakfast' | 'main' | 'side' | 'dessert' | 'snack' | 'drink';
 
+/** "Art": a plain recipe or a "Sammlung" (spec 0009, D14); fixed when it is created. */
+export type RecipeKind = 'recipe' | 'collection';
+
 export interface Recipe {
   id: Id;
+  kind: RecipeKind;
   title: string;
   /** Key of a bundled sample photo, resolved by the api package. */
   photo?: string;
@@ -118,7 +122,11 @@ export interface Recipe {
   description?: string;
   servings: number;
   totalMinutes?: number;
-  course: Course;
+  /**
+   * Always set for a recipe, never for a collection. A collection has no course, cuisine, time,
+   * tags, variants, steps or Vorlauf either, and its own ingredients have no variant (E3).
+   */
+  course?: Course;
   cuisine?: string;
   tags: string[];
   variants: RecipeVariant[];
@@ -136,6 +144,20 @@ export interface Recipe {
   cookedCount: number;
   createdAt: string;
   source?: string;
+}
+
+/** "Enthaltenes Rezept": a recipe in a collection (spec 0009, E4). */
+export interface CollectionRecipe {
+  id: Id;
+  /** The recipe of the kind "collection" that contains it. */
+  collectionId: Id;
+  /** Always of the kind "recipe" (D15: no collection in a collection). */
+  recipeId: Id;
+  /** 1–100; undefined = the portions of the collection ("übernimmt"). */
+  servings?: number;
+  /** Undefined = the recipe's default variant. */
+  variantId?: Id;
+  sort: number;
 }
 
 // ---------- Meal plan ----------

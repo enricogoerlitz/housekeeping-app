@@ -1,6 +1,7 @@
 // Shared sample data for the unit tests of this package. Not exported from index.ts.
 import type {
   Article,
+  CollectionRecipe,
   Id,
   Member,
   PackingBag,
@@ -72,6 +73,7 @@ export const articlesById: Record<Id, Article> = Object.fromEntries(
 
 export function makeRecipe(partial: Partial<Recipe> & Pick<Recipe, 'id' | 'title'>): Recipe {
   return {
+    kind: 'recipe',
     servings: 4,
     course: 'main',
     tags: [],
@@ -166,6 +168,111 @@ export const halloumiPfanne: Recipe = makeRecipe({
     }),
   ],
 });
+
+// ---------- Sammlungen (spec 0009) ----------
+// The household of the spec: Kartoffelsalat, Grillgemüse with variants, Tzatziki, and the
+// collection "Grillabend" of AC-014 (for 6, Kartoffelsalat takes its portions, Grillgemüse has 8).
+
+/** A recipe of the kind "Sammlung": no course, no variants, no steps (spec 0009, E3). */
+export function makeCollection(partial: Partial<Recipe> & Pick<Recipe, 'id' | 'title'>): Recipe {
+  const collection = makeRecipe({ servings: 6, ...partial, kind: 'collection' });
+  delete collection.course;
+  return collection;
+}
+
+export const grillArticles: Article[] = [
+  article('art-kartoffeln', 'Kartoffeln'),
+  article('art-mayo', 'Mayonnaise', { diet: 'vegetarian' }),
+  article('art-zucchini', 'Zucchini'),
+  article('art-olivenoel', 'Olivenöl', { isPantry: true }),
+  article('art-halloumi', 'Halloumi', { diet: 'vegetarian' }),
+  article('art-joghurt', 'Joghurt', { diet: 'vegetarian' }),
+  article('art-gurke', 'Gurke'),
+  article('art-kichererbsen', 'Kichererbsen'),
+  article('art-wuerstchen', 'Würstchen', { diet: 'meat' }),
+  article('art-grillkohle', 'Grillkohle'),
+  article('art-bier', 'Bier'),
+  article('art-anzuender', 'Grillanzünder'),
+];
+
+export const grillArticlesById: Record<Id, Article> = Object.fromEntries(
+  grillArticles.map((entry) => [entry.id, entry]),
+);
+
+export const kartoffelsalat: Recipe = makeRecipe({
+  id: 'rec-kartoffelsalat',
+  title: 'Kartoffelsalat',
+  photo: 'kartoffelsalat',
+  ingredients: [
+    ingredient('k-kartoffeln', 'art-kartoffeln', {
+      amount: { text: '2 kg', qty: 2, unit: 'kg' },
+      shoppingRule: 'recipeAmount',
+    }),
+    ingredient('k-mayo', 'art-mayo'),
+  ],
+});
+
+export const grillgemuese: Recipe = makeRecipe({
+  id: 'rec-grillgemuese',
+  title: 'Grillgemüse',
+  photoPath: 'household/recipes/rec-grillgemuese/photo.jpg',
+  variants: [
+    { id: 'v-halloumi', name: 'mit Halloumi', isDefault: true },
+    { id: 'v-vegan', name: 'vegan', isDefault: false },
+  ],
+  ingredients: [
+    ingredient('g-zucchini', 'art-zucchini', {
+      amount: { text: '2', qty: 2 },
+      shoppingRule: 'recipeAmount',
+    }),
+    ingredient('g-olivenoel', 'art-olivenoel'),
+    ingredient('g-halloumi', 'art-halloumi', { variantId: 'v-halloumi' }),
+  ],
+});
+
+export const tzatziki: Recipe = makeRecipe({
+  id: 'rec-tzatziki',
+  title: 'Tzatziki',
+  ingredients: [ingredient('t-joghurt', 'art-joghurt'), ingredient('t-gurke', 'art-gurke')],
+});
+
+export const hummus: Recipe = makeRecipe({
+  id: 'rec-hummus',
+  title: 'Hummus',
+  ingredients: [ingredient('h-kichererbsen', 'art-kichererbsen')],
+});
+
+export const grillabend: Recipe = makeCollection({
+  id: 'col-grillabend',
+  title: 'Grillabend',
+  ingredients: [
+    ingredient('o-wuerstchen', 'art-wuerstchen', {
+      amount: { text: '12', qty: 12 },
+      shoppingRule: 'recipeAmount',
+    }),
+    ingredient('o-grillkohle', 'art-grillkohle', {
+      amount: { text: '1 Sack', qty: 1, unit: 'Sack' },
+    }),
+  ],
+});
+
+export const grillabendRecipes: CollectionRecipe[] = [
+  { id: 'cr-kartoffelsalat', collectionId: grillabend.id, recipeId: kartoffelsalat.id, sort: 0 },
+  {
+    id: 'cr-grillgemuese',
+    collectionId: grillabend.id,
+    recipeId: grillgemuese.id,
+    servings: 8,
+    variantId: 'v-halloumi',
+    sort: 1,
+  },
+];
+
+export const grillRecipes: Recipe[] = [kartoffelsalat, grillgemuese, tzatziki, hummus, grillabend];
+
+export const grillRecipesById: Record<Id, Recipe> = Object.fromEntries(
+  grillRecipes.map((entry) => [entry.id, entry]),
+);
 
 // ---------- Reisetaschen (spec 0012) ----------
 

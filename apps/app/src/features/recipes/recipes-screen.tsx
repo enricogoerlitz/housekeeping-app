@@ -2,6 +2,7 @@ import {
   useArticlesById,
   useCurrentMember,
   useMembers,
+  useRecipeBook,
   useRecipes,
   useToday,
 } from '@housekeeping/api';
@@ -90,6 +91,7 @@ export function RecipesScreen() {
   const assistant = useAssistant();
   const settings = useSettings();
   const recipes = useRecipes();
+  const book = useRecipeBook();
   const articlesById = useArticlesById();
   const members = useMembers();
   const me = useCurrentMember();
@@ -109,10 +111,11 @@ export function RecipesScreen() {
       members,
       articlesById,
       today,
+      ...book,
     });
     // With a query the search ranking wins; without one the chosen sort applies.
     return query.trim() ? filtered : sortRecipeList(filtered, sort, shuffle);
-  }, [query, recipes, articlesById, filter, me.id, members, today, sort, shuffle]);
+  }, [query, recipes, articlesById, filter, me.id, members, today, sort, shuffle, book]);
 
   // With the switch on, a typed query is searched after a short pause; off, nothing is sent.
   // Without the AI switch in code the stored setting stays on the device but has no effect

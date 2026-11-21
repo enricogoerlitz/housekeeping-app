@@ -18,19 +18,23 @@ import type {
 /**
  * The source of a contribution from a recipe. From a calendar entry the label carries the weekday,
  * "Mango-Curry (Sa)", or "(vorgemerkt)" for an entry without a day; directly from the recipe page
- * or "Rezept wählen …" (no entry) it is the title alone, "Mango-Curry".
+ * or "Rezept wählen …" (no entry) it is the title alone, "Mango-Curry". For a recipe contained in
+ * a collection, `recipe` is the collection and the label names both, "Grillabend · Kartoffelsalat
+ * (Sa)" (spec 0009, REQ-008).
  */
 export function recipeSource(
   recipe: Pick<Recipe, 'id' | 'title'>,
   entry?: Pick<MealPlanEntry, 'id' | 'date'>,
+  contained?: Pick<Recipe, 'title'>,
 ): Extract<ContributionSource, { kind: 'recipe' }> {
-  if (entry === undefined) return { kind: 'recipe', recipeId: recipe.id, label: recipe.title };
+  const title = contained === undefined ? recipe.title : `${recipe.title} · ${contained.title}`;
+  if (entry === undefined) return { kind: 'recipe', recipeId: recipe.id, label: title };
   const day = entry.date === null ? 'vorgemerkt' : weekdayShort(entry.date);
   return {
     kind: 'recipe',
     recipeId: recipe.id,
     entryId: entry.id,
-    label: `${recipe.title} (${day})`,
+    label: `${title} (${day})`,
   };
 }
 

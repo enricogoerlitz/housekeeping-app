@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0012: version 6 for the packing tables; version 5 loads again', () => {
-    expect(CACHE_VERSION).toBe(6);
+  it('spec 0009: version 7 for collections (kind, collection_recipes); version 6 loads again', () => {
+    expect(CACHE_VERSION).toBe(7);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

@@ -11,7 +11,7 @@ export const RECAP_DAYS = 3;
 export interface RecapItem {
   /** The youngest plan entry of the target; "Nicht gemacht" marks this one. */
   entry: MealPlanEntry;
-  kind: 'recipe' | 'restaurant' | 'activity';
+  kind: 'recipe' | 'collection' | 'restaurant' | 'activity';
   /** The recipe (also a collection), restaurant or activity that gets the rating. */
   targetId: Id;
   title: string;
@@ -47,7 +47,14 @@ export function recapItems(input: {
   ): { kind: RecapItem['kind']; id: Id; title: string; rated: Rated } | undefined => {
     if (entry.kind === 'recipe' && entry.recipeId !== undefined) {
       const recipe = input.recipesById[entry.recipeId];
-      return recipe && { kind: 'recipe', id: recipe.id, title: recipe.title, rated: recipe };
+      return (
+        recipe && {
+          kind: recipe.kind === 'collection' ? 'collection' : 'recipe',
+          id: recipe.id,
+          title: recipe.title,
+          rated: recipe,
+        }
+      );
     }
     if (entry.kind === 'restaurant' && entry.restaurantId !== undefined) {
       const place = input.restaurantsById[entry.restaurantId];

@@ -17,6 +17,7 @@ import {
   articlesById,
   bolognese,
   enrico,
+  grillabend,
   halloumiPfanne,
   makeRecipe,
   mangoCurry,
@@ -438,7 +439,7 @@ describe('leftovers from the seven days before (REQ-011)', () => {
   ];
 
   it('AC-045: across the week boundary, youngest first, later Tageszeit first', () => {
-    expect(leftoverCandidates(plan, '2026-11-23', slots).map((e) => e.id)).toEqual([
+    expect(leftoverCandidates(plan, '2026-11-23', slots, {}).map((e) => e.id)).toEqual([
       'dal',
       'oma',
       'shakshuka',
@@ -456,7 +457,7 @@ describe('leftovers from the seven days before (REQ-011)', () => {
       entry({ id: 'ofen', date: '2026-11-03' }),
       entry({ id: 'risotto', date: '2026-11-11' }),
     ];
-    expect(leftoverCandidates(past, '2026-11-10', slots).map((e) => e.id)).toEqual(['ofen']);
+    expect(leftoverCandidates(past, '2026-11-10', slots, {}).map((e) => e.id)).toEqual(['ofen']);
   });
 
   it('AC-047: a future target day counts planned dishes, not those marked "nicht gekocht"', () => {
@@ -464,19 +465,48 @@ describe('leftovers from the seven days before (REQ-011)', () => {
       entry({ id: 'pizza', date: '2026-11-21', notCooked: true }),
       entry({ id: 'gulasch', date: '2026-11-23' }),
     ];
-    expect(leftoverCandidates(future, '2026-11-27', slots).map((e) => e.id)).toEqual(['gulasch']);
+    expect(leftoverCandidates(future, '2026-11-27', slots, {}).map((e) => e.id)).toEqual([
+      'gulasch',
+    ]);
     expect(leftoversDayLabel('2026-11-23', '2026-11-27')).toBe('Mo');
   });
 
   it('AC-048: over the turn of the year', () => {
     const raclette = [entry({ id: 'raclette', date: '2026-12-31' })];
-    expect(leftoverCandidates(raclette, '2027-01-04', slots).map((e) => e.id)).toEqual([
+    expect(leftoverCandidates(raclette, '2027-01-04', slots, {}).map((e) => e.id)).toEqual([
       'raclette',
     ]);
     expect(leftoversDayLabel('2026-12-31', '2027-01-04')).toBe('Do 31.12.');
   });
 
   it('AC-049: nothing cooked in the seven days before is an empty list', () => {
-    expect(leftoverCandidates(plan, '2027-02-01', slots)).toEqual([]);
+    expect(leftoverCandidates(plan, '2027-02-01', slots, {})).toEqual([]);
+  });
+});
+
+describe('Sammlungen in a Tageszeit and as leftovers (spec 0009)', () => {
+  it('AC-023: Bouldern, Lasagne, Grillabend, Trattoria Da Enzo', () => {
+    const lasagne = entry({ id: 'e-lasagne', recipeId: 'rec-lasagne', sort: 0 });
+    const grill = entry({ id: 'e-grillabend', recipeId: grillabend.id, sort: 1 });
+    const enzo = entry({ id: 'e-enzo', kind: 'restaurant', restaurantId: 'rest-enzo', sort: 2 });
+    const bouldern = entry({ id: 'e-bouldern', kind: 'activity', activityId: 'a', sort: 3 });
+    expect(orderSlotEntries([lasagne, grill, enzo, bouldern]).map((e) => e.id)).toEqual([
+      'e-bouldern',
+      'e-lasagne',
+      'e-grillabend',
+      'e-enzo',
+    ]);
+  });
+
+  it('glossary "Reste": a collection offers no leftovers', () => {
+    const plan = [
+      entry({ id: 'grill', date: '2026-11-21', recipeId: grillabend.id }),
+      entry({ id: 'dal', date: '2026-11-22', recipeId: 'rec-dal' }),
+    ];
+    expect(
+      leftoverCandidates(plan, '2026-11-23', ['slot-abend'], { [grillabend.id]: grillabend }).map(
+        (e) => e.id,
+      ),
+    ).toEqual(['dal']);
   });
 });

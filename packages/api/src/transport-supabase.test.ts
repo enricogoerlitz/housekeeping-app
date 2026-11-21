@@ -326,14 +326,18 @@ describe('supabase transport', () => {
 
   it('spec 0008: delete_recipe and restore_recipe with their parameters and answers', async () => {
     const { client, calls } = stubClient([
-      ok({ converted: 3, removed: 2 }),
+      ok({ converted: 3, removed: 2, collections: 1 }),
       ok(true),
       ok({ converted: 'drei' }),
       { data: null, error: { message: 'recipe_not_restorable', code: 'P0002' }, status: 500 },
       { data: null, error: { message: 'invalid_value', code: '22023' }, status: 400 },
     ]);
     const transport = createSupabaseTransport(client);
-    expect(await transport.deleteRecipe('r1', '2026-11-20')).toEqual({ converted: 3, removed: 2 });
+    expect(await transport.deleteRecipe('r1', '2026-11-20')).toEqual({
+      converted: 3,
+      removed: 2,
+      collections: 1,
+    });
     expect(await transport.restoreRecipe('r1')).toBe(true);
     await expect(transport.deleteRecipe('r1', '2026-11-20')).rejects.toMatchObject({
       code: 'invalid_response',

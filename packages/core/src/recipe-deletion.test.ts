@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { recipeDeletedLabel, recipeDeletionEffect } from './recipe-deletion';
-import { enrico, halloumiPfanne, nadja } from './test-fixtures';
-import type { MealPlanEntry } from './types';
+import {
+  enrico,
+  grillabend,
+  grillabendRecipes,
+  halloumiPfanne,
+  kartoffelsalat,
+  nadja,
+} from './test-fixtures';
+import type { CollectionRecipe, MealPlanEntry } from './types';
 
 function entry(partial: Partial<MealPlanEntry> & Pick<MealPlanEntry, 'id'>): MealPlanEntry {
   return {
@@ -42,6 +49,7 @@ describe('deleting a recipe (REQ-012, E3)', () => {
       [monday, todays, saturday, planned, leftovers, other, freeText],
       halloumiPfanne,
       today,
+      [],
     );
     expect(effect.removedIds).toEqual(['sat', 'planned']);
     expect(effect.converted.map((converted) => converted.id)).toEqual(['mon', 'today', 'rest']);
@@ -64,7 +72,7 @@ describe('deleting a recipe (REQ-012, E3)', () => {
   });
 
   it('AC-043: eaters, guests, portions and cook stay on the converted entry', () => {
-    const [converted] = recipeDeletionEffect([monday], halloumiPfanne, today).converted;
+    const [converted] = recipeDeletionEffect([monday], halloumiPfanne, today, []).converted;
     expect(converted).toMatchObject({
       eaterIds: [enrico.id, nadja.id],
       guests: 1,
@@ -77,14 +85,14 @@ describe('deleting a recipe (REQ-012, E3)', () => {
   });
 
   it('entries of other recipes and a recipe without entries are untouched', () => {
-    expect(recipeDeletionEffect([other, freeText], halloumiPfanne, today)).toEqual({
+    const nothing = {
       converted: [],
       removedIds: [],
-    });
-    expect(recipeDeletionEffect([], halloumiPfanne, today)).toEqual({
-      converted: [],
-      removedIds: [],
-    });
+      removedCollectionRecipeIds: [],
+      collections: 0,
+    };
+    expect(recipeDeletionEffect([other, freeText], halloumiPfanne, today, [])).toEqual(nothing);
+    expect(recipeDeletionEffect([], halloumiPfanne, today, [])).toEqual(nothing);
   });
 
   it('E3: leftovers without their own recipe go with a removed entry, also leftovers of those', () => {
@@ -111,12 +119,61 @@ describe('deleting a recipe (REQ-012, E3)', () => {
       [monday, saturday, ofSaturday, ofThose, ofMonday, withRecipe],
       halloumiPfanne,
       today,
+      [],
     );
     expect(effect.removedIds).toEqual(['sat', 'rest-sat', 'rest-rest']);
     expect(effect.converted.map((converted) => converted.id)).toEqual(['mon']);
   });
 
   it('AC-043: the notice says "Halloumi-Pfanne gelöscht"', () => {
-    expect(recipeDeletedLabel('Halloumi-Pfanne')).toBe('Halloumi-Pfanne gelöscht');
+    expect(recipeDeletedLabel('Halloumi-Pfanne', 0)).toBe('Halloumi-Pfanne gelöscht');
+  });
+});
+
+describe('deleting with Sammlungen (spec 0009, REQ-010)', () => {
+  const sommerbuffet: CollectionRecipe = {
+    id: 'cr-buffet-salat',
+    collectionId: 'col-sommerbuffet',
+    recipeId: kartoffelsalat.id,
+    sort: 0,
+  };
+  const rows = [...grillabendRecipes, sommerbuffet];
+
+  it('AC-033: a recipe in two collections leaves both, and the notice says so', () => {
+    const effect = recipeDeletionEffect([], kartoffelsalat, today, rows);
+    expect(effect.removedCollectionRecipeIds).toEqual(['cr-kartoffelsalat', 'cr-buffet-salat']);
+    expect(effect.collections).toBe(2);
+    expect(recipeDeletedLabel(kartoffelsalat.title, effect.collections)).toBe(
+      'Kartoffelsalat gelöscht · auch aus 2 Sammlungen entfernt',
+    );
+    expect(recipeDeletedLabel(kartoffelsalat.title, 1)).toBe(
+      'Kartoffelsalat gelöscht · auch aus 1 Sammlung entfernt',
+    );
+  });
+
+  it('AC-032: deleting a collection takes its rows, not the recipes, and says only "gelöscht"', () => {
+    const entry = (partial: Partial<MealPlanEntry> & Pick<MealPlanEntry, 'id'>): MealPlanEntry => ({
+      date: '2026-11-21',
+      slotId: 'slot-abend',
+      kind: 'recipe',
+      recipeId: grillabend.id,
+      eaterIds: [],
+      guests: 0,
+      portions: 3,
+      variants: [],
+      sort: 0,
+      ...partial,
+    });
+    const effect = recipeDeletionEffect(
+      [entry({ id: 'sa' }), entry({ id: 'do', date: '2026-11-19' })],
+      grillabend,
+      today,
+      rows,
+    );
+    expect(effect.removedCollectionRecipeIds).toEqual(['cr-kartoffelsalat', 'cr-grillgemuese']);
+    expect(effect.collections).toBe(0);
+    expect(effect.removedIds).toEqual(['sa']);
+    expect(effect.converted.map((converted) => converted.text)).toEqual(['Grillabend']);
+    expect(recipeDeletedLabel(grillabend.title, effect.collections)).toBe('Grillabend gelöscht');
   });
 });

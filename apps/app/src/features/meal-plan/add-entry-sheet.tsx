@@ -450,7 +450,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
   const targetDay = props.target.date;
   const leftovers = targetDay
-    ? leftoverCandidates(entries, targetDay, slotOrder).map((source) => ({
+    ? leftoverCandidates(entries, targetDay, slotOrder, recipesById).map((source) => ({
         source,
         title: `Reste von ${entryTitle(source, recipesById, entries, restaurantsById, activitiesById)} (${leftoversDayLabel(source.date ?? targetDay, targetDay)})`,
       }))

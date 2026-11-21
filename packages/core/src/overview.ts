@@ -13,7 +13,16 @@ import { choreBucket, flexibleProgress } from './chores';
 import { addDays, isoWeekNumber, parseISODate, startOfWeek, weekdayLong } from './dates';
 import { householdRow, type HouseholdRowItem } from './household-row';
 import { entriesForDay } from './meal-plan';
-import type { Absence, Chore, ChoreEvent, Id, ISODate, MealPlanEntry, Member } from './types';
+import type {
+  Absence,
+  Chore,
+  ChoreEvent,
+  Id,
+  ISODate,
+  MealPlanEntry,
+  Member,
+  Recipe,
+} from './types';
 
 // The "Übersicht" (spec 0011, REQ-001, REQ-002): one shown day, as if it were today, and the
 // week around it. Nothing here is stored; the shown day lives only while the app runs.
@@ -71,9 +80,20 @@ export function overviewSections(
   };
 }
 
-/** The dots under a day of the week strip: one per kind of plan entry, at most three (AC-005). */
-export function dayDots(entries: MealPlanEntry[], date: ISODate): KindRole[] {
-  return dayKinds(entries.filter((entry) => entry.date === date).map(entryKindRole));
+/**
+ * The dots under a day of the week strip: one per kind of plan entry, at most three (AC-005); a
+ * collection has its own (spec 0009).
+ */
+export function dayDots(
+  entries: MealPlanEntry[],
+  date: ISODate,
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): KindRole[] {
+  return dayKinds(
+    entries
+      .filter((entry) => entry.date === date)
+      .map((entry) => entryKindRole(entry, recipesById)),
+  );
 }
 
 /** A desktop tile: the first entry of the day in the day's order and how many more (AC-006). */

@@ -64,6 +64,8 @@ export function useCalendarData() {
     today,
     household,
     entries,
+    /** For the kind role of an entry: a collection is "Sammlung" (spec 0009, E8). */
+    recipesById,
     members,
     membersById,
     absences,

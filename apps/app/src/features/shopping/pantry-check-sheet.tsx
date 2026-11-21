@@ -4,7 +4,7 @@ import {
   snapshot,
   useHousehold,
   usePlanEntries,
-  useRecipesById,
+  useRecipeBook,
   useShoppingItems,
   useToday,
   type PantryCheckRow,
@@ -81,14 +81,14 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   const online = useOnlineOnly();
   const today = useToday();
   const entries = usePlanEntries();
-  const recipesById = useRecipesById();
+  const book = useRecipeBook();
   const items = useShoppingItems();
   const household = useHousehold();
   const slotOrder = [...household.mealSlots].sort((a, b) => a.sort - b.sort).map((slot) => slot.id);
   const direct = props.recipes !== undefined;
   const startWeek = startOfWeek(props.weekDates?.[0] ?? today);
 
-  const pickerInput = (week: ISODate) => ({ entries, recipesById, items, today, week, slotOrder });
+  const pickerInput = (week: ISODate) => ({ entries, ...book, items, today, week, slotOrder });
 
   const [step, setStep] = useState<Step>(direct ? 'check' : 'pick');
   const [week, setWeek] = useState<ISODate>(startWeek);

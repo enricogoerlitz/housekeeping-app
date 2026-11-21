@@ -1,12 +1,16 @@
 import {
+  collectionContents,
   resolveShoppingStore,
   type Activity,
   type Article,
+  type CollectionContent,
+  type CollectionRecipe,
   type Id,
   type Member,
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type RecipeBook,
   type Restaurant,
   type Store,
 } from '@housekeeping/core';
@@ -31,6 +35,9 @@ export const useAreas = () => useDataSelector((data) => data.areas);
 export const useArticles = () => useDataSelector((data) => data.articles);
 export const useStores = () => useDataSelector((data) => data.stores);
 export const useRecipes = () => useDataSelector((data) => data.recipes);
+/** Spec 0009: what every collection contains, in creation order (core orders them by sort). */
+export const useCollectionRecipes = (): CollectionRecipe[] =>
+  useDataSelector((data) => data.collectionRecipes);
 export const useRestaurants = () => useDataSelector((data) => data.restaurants);
 /** Newest first. */
 export const useActivities = () => useDataSelector((data) => data.activities);
@@ -146,4 +153,41 @@ export function useCurrentMember(): Member {
   const member = members.find((candidate) => candidate.id === id) ?? members[0];
   if (!member) throw new Error('No members');
   return member;
+}
+
+const bookCache = new WeakMap<object, WeakMap<object, RecipeBook>>();
+/**
+ * The household's recipes with what each collection contains (spec 0009), the context core needs
+ * for collections (filter, list picker, diet). The same object while neither changed.
+ */
+export function useRecipeBook(): RecipeBook {
+  const recipes = useRecipes();
+  const collectionRecipes = useCollectionRecipes();
+  let perRows = bookCache.get(recipes);
+  if (!perRows) {
+    perRows = new WeakMap();
+    bookCache.set(recipes, perRows);
+  }
+  let book = perRows.get(collectionRecipes);
+  if (!book) {
+    book = { recipesById: indexById(recipes), collectionRecipes };
+    perRows.set(collectionRecipes, book);
+  }
+  return book;
+}
+
+/**
+ * What a collection contains, resolved (core collectionContents: by sort, portions and variant
+ * resolved, rows of recipes missing locally left out); [] for an unknown id or a recipe.
+ */
+export function useCollectionContents(collectionId: Id | undefined): CollectionContent[] {
+  const book = useRecipeBook();
+  const collection = collectionId ? book.recipesById[collectionId] : undefined;
+  return useMemo(
+    () =>
+      collection?.kind === 'collection'
+        ? collectionContents(collection, book.collectionRecipes, book.recipesById)
+        : [],
+    [collection, book],
+  );
 }

@@ -1,4 +1,4 @@
-import type { Id, ISODate, MealPlanEntry, Recipe } from './types';
+import type { CollectionRecipe, Id, ISODate, MealPlanEntry, Recipe } from './types';
 
 // What deleting a recipe does to the meal plan (spec 0008, E3). The server's delete_recipe applies
 // the same rules in one transaction; the device uses this to show the deletion at once.
@@ -11,6 +11,10 @@ export interface RecipeDeletionEffect {
    * recipe of their own that point to a removed entry (also leftovers of those).
    */
   removedIds: Id[];
+  /** Rows "Enthaltenes Rezept" of the deleted collection or recipe (spec 0009, E11). */
+  removedCollectionRecipeIds: Id[];
+  /** How many collections the deleted recipe is taken out of; 0 for a collection. */
+  collections: number;
 }
 
 /**
@@ -25,6 +29,7 @@ export function recipeDeletionEffect(
   entries: readonly MealPlanEntry[],
   recipe: Pick<Recipe, 'id' | 'title'>,
   today: ISODate,
+  collectionRecipes: readonly CollectionRecipe[],
 ): RecipeDeletionEffect {
   const converted: MealPlanEntry[] = [];
   const removedIds: Id[] = [];
@@ -57,10 +62,26 @@ export function recipeDeletionEffect(
       }
     }
   }
-  return { converted, removedIds };
+  const rows = collectionRecipes.filter(
+    (row) => row.collectionId === recipe.id || row.recipeId === recipe.id,
+  );
+  const collections = new Set(
+    rows.filter((row) => row.recipeId === recipe.id).map((row) => row.collectionId),
+  );
+  return {
+    converted,
+    removedIds,
+    removedCollectionRecipeIds: rows.map((row) => row.id),
+    collections: collections.size,
+  };
 }
 
-/** The notice after deleting: "Halloumi-Pfanne gelöscht" (AC-043; "Rückgängig" is the action). */
-export function recipeDeletedLabel(title: string): string {
-  return `${title} gelöscht`;
+/**
+ * The notice after deleting: "Halloumi-Pfanne gelöscht" (AC-043; "Rückgängig" is the action); a
+ * recipe that was in collections adds "· auch aus 2 Sammlungen entfernt" (spec 0009, AC-033).
+ */
+export function recipeDeletedLabel(title: string, collections: number): string {
+  if (collections <= 0) return `${title} gelöscht`;
+  const where = collections === 1 ? '1 Sammlung' : `${collections} Sammlungen`;
+  return `${title} gelöscht · auch aus ${where} entfernt`;
 }

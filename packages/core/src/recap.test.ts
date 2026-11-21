@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { recapDayLabel, recapItems } from './recap';
-import { enrico, makeRecipe, nadja } from './test-fixtures';
+import { enrico, grillabend, kartoffelsalat, makeRecipe, nadja } from './test-fixtures';
 import type { Activity, Id, MealPlanEntry, Recipe, Restaurant } from './types';
 
 // Monday, 23 November 2026: "Wie war's?" looks at Fri 20, Sat 21 and Sun 22 November.
@@ -190,5 +190,30 @@ describe('AC-015: the day of a "Wie war’s?" row', () => {
     expect(recapDayLabel('2026-11-22', today)).toBe('gestern');
     expect(recapDayLabel('2026-11-21', today)).toBe('vorgestern');
     expect(recapDayLabel('2026-11-20', today)).toBe('Freitag');
+  });
+});
+
+describe('Sammlungen in "Wie war\'s?" (spec 0009, REQ-009)', () => {
+  const recipes = [lasagne, mango, pizza, shakshuka, soup, grillabend, kartoffelsalat];
+  const weekend = [
+    entry({ id: 'fr', date: '2026-11-20', recipeId: 'lasagne' }),
+    entry({ id: 'sa', date: '2026-11-21', kind: 'restaurant', restaurantId: 'enzo' }),
+    entry({ id: 'so-grill', recipeId: grillabend.id }),
+    entry({ id: 'so-vm', kind: 'activity', activityId: 'bouldern', slotId: 'slot-vormittag' }),
+    entry({ id: 'do', date: '2026-11-19', recipeId: 'mango' }),
+  ];
+
+  it('spec 0011 AC-015: "Bouldern", "Grillabend", "Trattoria Da Enzo", "Lasagne"', () => {
+    const items = recap(weekend, { recipes });
+    expect(titles(items)).toEqual(['Bouldern', 'Grillabend', 'Trattoria Da Enzo', 'Lasagne']);
+    expect(items[1]).toMatchObject({ kind: 'collection', targetId: grillabend.id });
+  });
+
+  it('AC-030, spec 0011 AC-024: the collection as a whole, its recipes not because of it', () => {
+    const items = recap([entry({ id: 'sa-grill', date: '2026-11-21', recipeId: grillabend.id })], {
+      recipes,
+    });
+    expect(titles(items)).toEqual(['Grillabend']);
+    expect(titles(items)).not.toContain(kartoffelsalat.title);
   });
 });

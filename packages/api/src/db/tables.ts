@@ -10,6 +10,7 @@ export const ID_TABLES = [
   'articles',
   'stores',
   'recipes',
+  'collection_recipes',
   'restaurants',
   'activities',
   'absences',
@@ -61,7 +62,9 @@ export const WRITABLE_COLUMNS = {
     'needs_review',
   ],
   stores: ['name', 'area_order', 'hidden_area_ids'],
+  // kind ("Rezept" or "Sammlung", spec 0009, E2) only on insert: see PATCH_COLUMNS.
   recipes: [
+    'kind',
     'title',
     'photo',
     'photo_path',
@@ -80,6 +83,8 @@ export const WRITABLE_COLUMNS = {
     'cooked_count',
     'source',
   ],
+  // Spec 0009, E4: a contained recipe keeps its collection and its recipe (see PATCH_COLUMNS).
+  collection_recipes: ['collection_id', 'recipe_id', 'servings', 'variant_id', 'sort'],
   restaurants: [
     'name',
     'address',
@@ -155,9 +160,12 @@ export type WritableTable = keyof typeof WRITABLE_COLUMNS;
 /**
  * Tables whose patch allowlist is narrower than their insert columns (spec 0012): a bag of a
  * packing list keeps its name and person as a copy, a Packstück of a packing list is never patched
- * (only its "je Tag" quantity changes, by the server, see DERIVED_COLUMNS).
+ * (only its "je Tag" quantity changes, by the server, see DERIVED_COLUMNS). Spec 0009: the kind of
+ * a recipe never changes, nor the collection and recipe of a contained recipe.
  */
 export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = {
+  recipes: WRITABLE_COLUMNS.recipes.filter((column) => column !== 'kind'),
+  collection_recipes: ['servings', 'variant_id', 'sort'],
   packing_list_bags: ['absence_id', 'bag_id', 'sort'],
   packing_items: [],
 };

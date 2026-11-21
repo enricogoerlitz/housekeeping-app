@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadRecipeIndex } from './context.ts';
+import { loadAssistantContext, loadRecipeIndex } from './context.ts';
 import { fakeClient, type Row } from './test-fakes.ts';
+import { HOUSEHOLD_ID, householdTables } from './test-household.ts';
 
 const HOUSEHOLD = 'h1';
 
@@ -52,5 +53,55 @@ describe('loadRecipeIndex (spec 0007 T8, security-check hint)', () => {
     const index = await loadRecipeIndex(client, HOUSEHOLD);
     expect(index.map((entry) => entry.ingredients)).toEqual([[], []]);
     expect(client.selects.filter((select) => select.table === 'articles')).toHaveLength(1);
+  });
+});
+
+describe('spec 0009: collections in the AI context', () => {
+  const grillabend: Row = {
+    id: 'r-grill',
+    household_id: HOUSEHOLD,
+    kind: 'collection',
+    title: 'Grillabend',
+    course: null,
+    tags: [],
+    variants: [],
+    ingredients: [{ id: 'i1', articleId: 'a-1' }],
+  };
+
+  it('the search index marks a collection with kind "collection", a recipe has no kind', async () => {
+    const client = fakeClient({
+      tables: {
+        articles: [article(1)],
+        recipes: [{ ...recipe('r-curry', []), course: 'main' }, grillabend],
+      },
+    });
+    const index = await loadRecipeIndex(client, HOUSEHOLD);
+    expect(index.find((entry) => entry.id === 'r-grill')).toEqual({
+      id: 'r-grill',
+      kind: 'collection',
+      title: 'Grillabend',
+      tags: [],
+      variants: [],
+      ingredients: ['Artikel 1'],
+    });
+    expect(index.find((entry) => entry.id === 'r-curry')).not.toHaveProperty('kind');
+    expect(client.selects.find((select) => select.table === 'recipes')?.columns).toContain('kind');
+  });
+
+  it('the assistant sees a collection as a collection, in the list and as the open one', async () => {
+    const tables = householdTables();
+    tables.recipes = [...(tables.recipes ?? []), { ...grillabend, household_id: HOUSEHOLD_ID }];
+    const client = fakeClient({ tables });
+    const context = await loadAssistantContext(
+      client,
+      HOUSEHOLD_ID,
+      'r-grill',
+      new Date('2026-11-20T10:00:00Z'),
+    );
+    expect(context?.recipes.find((entry) => entry.id === 'r-grill')).toMatchObject({
+      kind: 'collection',
+    });
+    expect(context?.recipes.find((entry) => entry.id !== 'r-grill')).not.toHaveProperty('kind');
+    expect(context?.openRecipe).toMatchObject({ id: 'r-grill', kind: 'collection' });
   });
 });
