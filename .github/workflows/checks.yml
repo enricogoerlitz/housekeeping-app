@@ -1,0 +1,305 @@
+# Checks of every pull request to develop or main (spec 0014, plan decisions 2, 3, 23, 24, 27).
+# The job names are the required status checks of the rulesets. The preview and release workflows
+# call this workflow as their first job (workflow_call) and hang everything else on it with
+# `needs`, so red checks on develop or main deliver nothing. The hand-back after a hotfix starts
+# it by hand (workflow_dispatch) on its branch.
+#
+# No job has an environment and none reads a secret: jobs here install packages, that is code of
+# third parties. Callers grant `contents: read` and `pull-requests: read` (for "Konventionen").
+# Every action is pinned to a commit SHA; Dependabot keeps the pins current.
+name: Checks
+
+on:
+  pull_request:
+    branches: [develop, main]
+    # edited: a corrected title or a new base reruns "Konventionen".
+    types: [opened, synchronize, reopened, edited]
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  # A new push to a pull request replaces its running checks; called runs never cancel.
+  group: checks-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  changes:
+    # Only a pull request can be docs-only (AC-011); every other run checks everything. Skipped
+    # jobs count as passed required checks, so a failing run of this job runs them all.
+    name: Änderungen
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          code=true
+          if [ "$EVENT_NAME" = pull_request ]; then
+            changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
+            if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^(docs/|\.agents/|\.claude/)|\.md$'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Code geändert: $code"
+
+  conventions:
+    name: Konventionen
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # workflow_dispatch: the script looks up the open pull request of the branch.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Titel, Zweig, verbotene Befehle, SHA-Pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/conventions.mjs
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  secret-scan:
+    name: Geheimnisse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # SHA-256 of gitleaks_8.30.1_linux_x64.tar.gz from the release's checksums file.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks laden und prüfen
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Commits durchsuchen
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) base="$BASE_SHA" ;;
+            push) base="$BEFORE" ;;
+            *) base="$(git merge-base origin/develop HEAD)" ;;
+          esac
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD~1)"
+          fi
+          # The rules as they are on the base, so a pull request cannot weaken its own scan;
+          # inline gitleaks:allow and a .gitleaksignore of the pull request count neither.
+          if git cat-file -e "$base:.gitleaks.toml" 2>/dev/null; then
+            git show "$base:.gitleaks.toml" > "$RUNNER_TEMP/gitleaks.toml"
+          else
+            cp .gitleaks.toml "$RUNNER_TEMP/gitleaks.toml"
+          fi
+          mkdir -p "$RUNNER_TEMP/no-ignore"
+          "$RUNNER_TEMP/gitleaks" git --no-banner --no-color --redact --verbose \
+            --ignore-gitleaks-allow --gitleaks-ignore-path "$RUNNER_TEMP/no-ignore" \
+            --config "$RUNNER_TEMP/gitleaks.toml" --log-opts="$base..HEAD" .
+
+  migrations:
+    name: Migrationen
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # All history and the tags v*: from the first tag on, committed migrations are fixed.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) base="$BASE_SHA" ;;
+            push) base="$BEFORE" ;;
+            *) base="$(git merge-base origin/develop HEAD)" ;;
+          esac
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD~1)"
+          fi
+          node scripts/ci/migrations.mjs --base "$base"
+
+  checks:
+    name: Prüfungen
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Public local defaults of the Supabase CLI (identical on every machine, not secrets); the
+      # export needs a Supabase URL for its CSP.
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm check
+      - name: Wegwerf-Schlüssel für Web Push (nur dieser Lauf)
+        # The web build needs a valid public VAPID key; the bundle scan looks for the private
+        # values. A new pair per run, never stored, every value masked.
+        run: |
+          node scripts/push-keys.mjs --out "$RUNNER_TEMP/push.env"
+          while IFS='=' read -r name value; do
+            case "$name" in '' | '#'*) continue ;; esac
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done < "$RUNNER_TEMP/push.env"
+          rm -f "$RUNNER_TEMP/push.env"
+      - run: pnpm build:web
+
+  database:
+    name: Datenbank (pgTAP)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Docker is available on the GitHub Ubuntu runner.
+      - run: pnpm exec supabase db start
+      - run: pnpm exec supabase test db
+
+  deno-lock:
+    name: Deno-Lock
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # The Deno of the edge runtime that Supabase CLI 3.2.0 serves and bundles with
+      # (edge-runtime v1.79.1, "compatible with Deno v2.1.4"). Change both together.
+      DENO_VERSION: 2.1.4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: ${{ env.DENO_VERSION }}
+      - id: lock
+        name: Lock-Datei von push-send prüfen
+        working-directory: supabase/functions/push-send
+        # AC-074: red when a checksum differs from the committed deno.lock. Without one (first
+        # run), the job writes it, offers it as the artifact push-send-deno-lock and stays red
+        # until it is committed.
+        run: |
+          if [ ! -f deno.lock ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            deno install --frozen=false --entrypoint index.ts
+            echo "::error file=supabase/functions/push-send/deno.lock::deno.lock fehlt. Die erzeugte Datei liegt im Artefakt push-send-deno-lock: herunterladen, prüfen, committen."
+            exit 1
+          fi
+          deno install --frozen --entrypoint index.ts
+          git diff --exit-code -- deno.lock
+      - if: failure() && steps.lock.outputs.missing == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: push-send-deno-lock
+          path: supabase/functions/push-send/deno.lock
+          retention-days: 7
+
+  e2e:
+    # Walk-through of the acceptance criteria in Chromium against the local Supabase stack
+    # (spec 0003, AC-034): the global setup resets the database and exports the web build with
+    # the developer switch; then the dev-mode smoke test against the Expo dev server.
+    name: E2E
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Public local defaults of the Supabase CLI (identical on every machine, not secrets).
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
+      # supabase/config.toml reads these with env(); CI never signs in with Google and the edge
+      # functions' AI calls are stubbed in the browser, so placeholders are enough.
+      GOOGLE_CLIENT_ID: ci-placeholder
+      GOOGLE_CLIENT_SECRET: ci-placeholder
+      FOUNDRY_API_KEY: ci-placeholder
+      FOUNDRY_OPENAI_BASE_URL: https://ci-placeholder.invalid/openai/v1
+      FOUNDRY_LLM_DEPLOYMENT: ci-placeholder
+      FOUNDRY_SPEECH_REGION: westeurope
+      FOUNDRY_STT_MODEL: ''
+      FOUNDRY_STT_LANGUAGE: de-DE
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Wegwerf-Schlüssel für Web Push (nur dieser Lauf)
+        # Before the stack starts: push-send reads them as function secrets, the reset puts
+        # PUSH_SEND_SECRET into the local Vault, the web build bundles the public key.
+        run: |
+          node scripts/push-keys.mjs --out "$RUNNER_TEMP/push.env"
+          while IFS='=' read -r name value; do
+            case "$name" in '' | '#'*) continue ;; esac
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done < "$RUNNER_TEMP/push.env"
+          rm -f "$RUNNER_TEMP/push.env"
+      # Docker is available on the GitHub Ubuntu runner.
+      - run: pnpm exec supabase start
+      - run: pnpm --filter @housekeeping/e2e exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - run: pnpm e2e:dev
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7

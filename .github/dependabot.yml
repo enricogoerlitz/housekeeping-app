@@ -1,0 +1,13 @@
+# Weekly updates of the pinned GitHub Actions (spec 0014, AC-062). PRs go to develop; the title
+# "chore(deps): …" passes the check "Konventionen". Dependabot keeps the SHA pins and their
+# version comments current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
