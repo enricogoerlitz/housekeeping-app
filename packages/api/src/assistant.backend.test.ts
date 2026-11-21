@@ -72,11 +72,17 @@ describe('applyProposal', () => {
     expect(ops.map((op) => [op.kind, 'table' in op ? op.table : ''])).toEqual([
       ['patch', 'recipes'],
       ['insert', 'meal_plan_entries'],
-      ['patch', 'chores'],
-      ['insert', 'chore_events'],
-      ['insert', 'chore_events'],
+      // spec 0011: entries only by complete_chore; logSpontaneous is „Was anderes erledigt?“.
+      ['complete_chore', ''],
+      ['insert', 'chores'],
+      ['complete_chore', ''],
       ['add_contributions', ''],
     ]);
+    expect(fx.server.rows(H, 'chores').find((row) => row.title === 'Bad geputzt')).toMatchObject({
+      recurrence: { type: 'asNeeded' },
+      last_done_on: TODAY,
+    });
+    expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ last_done_on: TODAY });
     const add = ops.at(-1);
     expect(add).toMatchObject({
       kind: 'add_contributions',

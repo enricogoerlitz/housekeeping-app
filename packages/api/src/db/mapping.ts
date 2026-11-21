@@ -11,6 +11,10 @@
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
 // - Columns the domain does not have are not written back: `updated_at`, `check_seq`,
 //   `profiles.email`, and `created_at` of tables whose domain type has no `createdAt`.
+// - Spec 0011: `updated_at` of a rating row is `ratedAt` of that member (and is written back only
+//   to show a local rating at once; the RPCs never send it). The recorded state of a chore entry
+//   (`prev_*`, only when `prev_recorded`) is `ChoreEvent.previous` and is never written back:
+//   only complete_chore sets it.
 // - Order: areas by `sort`; recipes, restaurants, activities and feedback newest first; chore
 //   events by day, newest first; everything else in creation order. Ties keep the order of the
 //   rows, rows without `created_at` (local, not yet on the server) count as newest.
@@ -84,19 +88,36 @@ function memberRows(
   }));
 }
 
+/**
+ * Rating rows carry `updated_at` as the time of the rating (ratedAt), so a rating shows as given at
+ * once (spec 0011, AC-020). Ratings go only through their RPCs; the column is never sent.
+ */
 function ratingRows(
   householdId: string,
   key: string,
   entityId: string,
   ratings: Record<string, number>,
+  ratedAt: Record<string, string> | undefined,
 ): Row[] {
-  return Object.entries(ratings).map(([memberId, stars]) => ({
-    id: `${entityId}:${memberId}`,
-    household_id: householdId,
-    [key]: entityId,
-    member_id: memberId,
-    stars,
-  }));
+  return Object.entries(ratings).map(([memberId, stars]) => {
+    const at = ratedAt?.[memberId];
+    return {
+      id: `${entityId}:${memberId}`,
+      household_id: householdId,
+      [key]: entityId,
+      member_id: memberId,
+      stars,
+      ...(at ? { updated_at: at } : {}),
+    };
+  });
+}
+
+/** ratedAt from `updated_at` of the rating rows; undefined without any. */
+function ratedAtOf(ratings: Row[]): Record<string, string> | undefined {
+  const entries = ratings.flatMap((rating) =>
+    typeof rating.updated_at === 'string' ? [[String(rating.member_id), rating.updated_at]] : [],
+  );
+  return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
 
 function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
@@ -126,7 +147,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
       } satisfies Cached<'recipes'>,
     ],
     recipe_favorites: memberRows(householdId, 'recipe_id', recipe.id, recipe.favoriteOf),
-    recipe_ratings: ratingRows(householdId, 'recipe_id', recipe.id, recipe.ratings),
+    recipe_ratings: ratingRows(householdId, 'recipe_id', recipe.id, recipe.ratings, recipe.ratedAt),
   }));
 }
 
@@ -154,7 +175,13 @@ function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdR
       restaurant.id,
       restaurant.favoriteOf,
     ),
-    restaurant_ratings: ratingRows(householdId, 'restaurant_id', restaurant.id, restaurant.ratings),
+    restaurant_ratings: ratingRows(
+      householdId,
+      'restaurant_id',
+      restaurant.id,
+      restaurant.ratings,
+      restaurant.ratedAt,
+    ),
   }));
 }
 
@@ -179,7 +206,13 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
       } satisfies Cached<'activities'>,
     ],
     activity_favorites: memberRows(householdId, 'activity_id', activity.id, activity.favoriteOf),
-    activity_ratings: ratingRows(householdId, 'activity_id', activity.id, activity.ratings),
+    activity_ratings: ratingRows(
+      householdId,
+      'activity_id',
+      activity.id,
+      activity.ratings,
+      activity.ratedAt,
+    ),
   }));
 }
 
@@ -307,6 +340,13 @@ const choreRow = (householdId: string, chore: Chore) =>
     active_months: chore.activeMonths ?? null,
   }));
 
+/** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
+export function choreToRow(householdId: string, chore: Chore): Row {
+  const row = choreRow(householdId, chore).chores?.[0];
+  if (!row) throw new Error('chore row missing');
+  return row;
+}
+
 const choreEventRow = (householdId: string, event: ChoreEvent) =>
   single('chore_events', householdId, event, () => ({
     id: event.id,
@@ -316,6 +356,7 @@ const choreEventRow = (householdId: string, event: ChoreEvent) =>
     kind: event.kind,
     done_on: event.doneOn,
     done_by: event.doneBy || null,
+    ...(event.createdAt ? { created_at: event.createdAt } : {}),
   }));
 
 const absenceRow = (householdId: string, absence: Absence) =>
@@ -507,6 +548,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
     ),
+    ratedAt: ratedAtOf(ratings),
     notes: opt(r.notes),
     lastCookedOn: opt(r.last_cooked_on),
     cookedCount: r.cooked_count ?? 0,
@@ -534,6 +576,7 @@ function toRestaurant(row: Row, favorites: Row[], ratings: Row[]): Restaurant {
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
     ),
+    ratedAt: ratedAtOf(ratings),
     createdAt: r.created_at ?? '',
   };
 }
@@ -557,6 +600,7 @@ function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
     ),
+    ratedAt: ratedAtOf(ratings),
     createdBy: opt(r.created_by),
     createdAt: r.created_at ?? '',
   };
@@ -687,6 +731,14 @@ function toChoreEvent(row: Row): ChoreEvent {
     kind: r.kind as ChoreEvent['kind'],
     doneOn: r.done_on ?? '',
     doneBy: r.done_by ?? '',
+    createdAt: opt(r.created_at),
+    previous: r.prev_recorded
+      ? {
+          nextDueOn: opt(r.prev_next_due_on),
+          lastDoneOn: opt(r.prev_last_done_on),
+          nextAssigneeId: opt(r.prev_next_assignee_id),
+        }
+      : undefined,
   };
 }
 

@@ -1,5 +1,6 @@
 import {
   findDuplicateRestaurant,
+  isHalfStar,
   parseMapsLink,
   type GeoPoint,
   type Id,
@@ -9,6 +10,9 @@ import {
 import { onlineCall } from './backend';
 import { commit, getData, getState, newId, nowISO, updateData } from './store';
 import { TransportError } from './transport';
+
+/** Thrown by the rating commands for a value that is not 0,5 … 5 in half steps (AC-026). */
+export const INVALID_STARS = 'Bewertung: 0,5 bis 5 Sterne in halben Schritten';
 
 export interface RestaurantDraft {
   name: string;
@@ -132,12 +136,17 @@ export function toggleRestaurantFavorite(id: Id): void {
   );
 }
 
-/** Ratings are per person: their own RPC; undo restores the previous rating (or none). */
+/**
+ * Ratings are per person: their own RPC; undo restores the previous rating (or none). Half steps
+ * from 0,5 to 5 (spec 0011); anything else is refused before sending, never rounded (AC-026).
+ * The same value again is a rating too: it is sent, and ratedAt moves on (Offene Frage 7).
+ */
 export function rateRestaurant(id: Id, stars: number): void {
   const me = getState().currentMemberId;
   const restaurant = getData().restaurants.find((candidate) => candidate.id === id);
   if (!restaurant) return;
-  const value = Math.max(1, Math.min(5, Math.round(stars)));
+  if (!isHalfStar(stars)) throw new Error(INVALID_STARS);
+  const value = stars;
   const previous = restaurant.ratings[me] ?? null;
   commit(
     {
@@ -149,6 +158,7 @@ export function rateRestaurant(id: Id, stars: number): void {
       patchRestaurant(id, (current) => ({
         ...current,
         ratings: { ...current.ratings, [me]: value },
+        ratedAt: { ...current.ratedAt, [me]: nowISO() },
       })),
   );
 }

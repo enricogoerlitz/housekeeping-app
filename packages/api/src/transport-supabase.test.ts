@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TransportError, classifyError, isTransient } from './transport';
 import { createSupabaseTransport, type SupabaseLike } from './transport-supabase';
 
-type Reply = { data: unknown; error: { message: string; code?: string } | null; status: number };
+type Reply = {
+  data: unknown;
+  error: { message: string; code?: string; details?: string } | null;
+  status: number;
+};
 
 /** A stand-in for supabase-js: records rpc calls and answers with the queued replies. */
 type InvokeReply = Awaited<ReturnType<SupabaseLike['functions']['invoke']>>;
@@ -282,6 +286,28 @@ describe('supabase transport', () => {
     const classified = classifyError(status, error);
     expect(classified).toBeInstanceOf(TransportError);
     expect(classified).toMatchObject({ kind, code, status });
+  });
+
+  it('spec 0011, AC-031: already_done keeps who and when from the details; numeric stars stay unrounded', async () => {
+    const details = JSON.stringify({ done_by: 'u-nadja', done_at: '2026-11-20T09:02:00.1+00:00' });
+    const { client, calls } = stubClient([
+      { data: null, error: { message: 'already_done', code: 'P0001', details }, status: 400 },
+      { data: null, error: null, status: 204 },
+    ]);
+    const transport = createSupabaseTransport(client);
+    await expect(transport.applyChanges('h1', [])).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'already_done',
+      detail: { done_by: 'u-nadja', done_at: '2026-11-20T09:02:00.1+00:00' },
+    });
+    await transport.setRestaurantRating('rest1', 4.5);
+    expect(calls[1]).toEqual({
+      fn: 'set_restaurant_rating',
+      args: { restaurant_id: 'rest1', stars: 4.5 },
+    });
+    expect(
+      classifyError(400, { message: 'chore_changed', code: 'P0001', details: 'kein JSON' }),
+    ).toMatchObject({ code: 'chore_changed', detail: undefined });
   });
 
   it('rejects with the classified error of a failed call', async () => {

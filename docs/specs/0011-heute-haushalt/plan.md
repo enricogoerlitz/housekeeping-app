@@ -315,7 +315,7 @@ berührt `seed/demo.ts` nicht.
   `OfflineError`; `mapping.test.ts` Hin- und Rückweg mit `asNeeded`, `previous`, `ratedAt`, und
   der Diff schreibt `prev_*`/`ratedAt` nie; `backend.test.ts` Version 4 behält die
   Warteschlange.
-- **Status:** offen
+- **Status:** erledigt (nicht committet), Entscheidungen siehe „Entscheidungen beim Bauen (api)“
 
 ### Task 6 — ui: halbe Sterne, Sammel-Fenster, Liste und Detail (Agent ui, Welle B)
 
@@ -496,3 +496,34 @@ Aus dem Plan abgeleitet, ohne neue Frage:
    `prev_recorded = false` über den Spalten-Standard.
 5. **Bewertungen:** Die RPCs nehmen `numeric` ohne Genauigkeit und lehnen auch `NaN` und
    `Infinity` ab.
+
+## Entscheidungen beim Bauen (api, Task 5, 21.11.2026)
+
+Aus Plan, ADR-0011 und dem Code abgeleitet, ohne neue Frage:
+
+1. **Ein Aufruf je Befehl.** `completeChore`, `skipChore` und `logDone` schicken genau ein
+   `apply_changes` mit `complete_chore` und dem gesehenen Stand; „Was anderes erledigt?“ ohne
+   Treffer schickt davor das `insert` der neuen Aufgabe in ihrem Stand vor der Erledigung. Der
+   Server-Hinweis bei `already_done` ist `fasterNotice` mit dem Namen aus den Mitgliedern
+   („Jemand war schneller“, wenn die Person unbekannt ist), alles andere der allgemeine Hinweis.
+2. **„Rückgängig“ einer Erledigung** (für die heutigen Aufrufer mit `snapshot`) schickt
+   `remove_chore_event`; bei einer erledigten einmaligen Aufgabe davor das `insert` der Aufgabe,
+   bei einer neuen Aufgabe danach ihr `delete`.
+3. **„Rückgängig“ von „Eintrag entfernen“** bucht den Eintrag mit derselben Id über
+   `complete_chore` neu. Das geht nur, wenn das Entfernen den Stand davor hergestellt hat und der
+   Tag heute, gestern oder vorgestern ist; `removeChoreEvent` meldet das als `undoable`. Sonst
+   gibt es kein „Rückgängig“ (die Datenbank kann einen Eintrag nicht anders wieder anlegen).
+4. **Aufgabe löschen** läuft als eigener Schreibweg (`delete` der Aufgabe); die Anzeige leert die
+   Verweise sofort. „Rückgängig“ fügt die Aufgabe ein und verknüpft ihre Einträge in einem Aufruf.
+   Bei mehr als 199 Einträgen überschreitet das die Grenze von 200 Operationen und scheitert mit
+   Hinweis.
+5. **Tage:** Die Befehle nehmen nur heute, gestern und vorgestern an (`doneOnChoices`) und werfen
+   sonst, bevor etwas gesendet wird.
+6. **Bewertungen:** Ein ungültiger Wert wirft vor dem Senden (`INVALID_STARS`), statt zu runden
+   oder zu begrenzen. `ratedAt` steht in der Überlagerung als `updated_at` der eigenen
+   Bewertungszeile und kommt nach dem Abgleich vom Server.
+7. **Neue Aufgabe aus „Was anderes erledigt?“** ohne „Mehr Angaben“: „bei Bedarf“, „egal wer“,
+   1 Punkt. Der KI-Befehl `logSpontaneous` macht genau das.
+8. **Cache-Version 5**, weil Spec 0007 die 4 schon belegt hat.
+9. **Seed:** neue Aufgabe „Fenster Küche“ (bei Bedarf, zwei Einträge), Verlaufseinträge vor 20,
+   25, 45, 63 und 400 Tagen. 400 Tage liegen immer in einem anderen Jahr (Jahreswechsel, AC-057).

@@ -29,7 +29,8 @@ function withoutTimestamps(value: unknown): unknown {
   if (typeof value === 'object' && value !== null) {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([field]) => field !== 'createdAt' && field !== 'checkedAt')
+        // ratedAt (spec 0011) is the server's updated_at of the rating row.
+        .filter(([field]) => !['createdAt', 'checkedAt', 'ratedAt'].includes(field))
         .map(([field, item]) => [field, withoutTimestamps(item)]),
     );
   }

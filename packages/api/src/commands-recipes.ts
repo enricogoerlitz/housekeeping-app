@@ -1,6 +1,7 @@
 import {
   defaultShoppingRuleFor,
   findArticleByName,
+  isHalfStar,
   parseIngredientBlock,
   resolveIngredientArticles,
   type Amount,
@@ -13,6 +14,7 @@ import {
 } from '@housekeeping/core';
 
 import { catalogChoice, createArticle, insertArticles } from './commands-articles';
+import { INVALID_STARS } from './commands-restaurants';
 import { buildRecipe } from './seed/demo';
 import { seedRecipes } from './seed/recipes-data';
 import { starterCatalogEntries } from './starter/entries';
@@ -352,12 +354,17 @@ export function toggleFavorite(recipeId: Id): void {
   );
 }
 
-/** Ratings are per person: their own RPC; undo restores the previous rating (or none). */
+/**
+ * Ratings are per person: their own RPC; undo restores the previous rating (or none). Half steps
+ * from 0,5 to 5 (spec 0011); anything else is refused before sending, never rounded (AC-026).
+ * The same value again is a rating too: it is sent, and ratedAt moves on (Offene Frage 7).
+ */
 export function rateRecipe(recipeId: Id, stars: number): void {
   const me = getState().currentMemberId;
   const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
   if (!recipe) return;
-  const value = Math.max(1, Math.min(5, Math.round(stars)));
+  if (!isHalfStar(stars)) throw new Error(INVALID_STARS);
+  const value = stars;
   const previous = recipe.ratings[me] ?? null;
   commit(
     {
@@ -369,6 +376,7 @@ export function rateRecipe(recipeId: Id, stars: number): void {
       patchRecipe(recipeId, (current) => ({
         ...current,
         ratings: { ...current.ratings, [me]: value },
+        ratedAt: { ...current.ratedAt, [me]: nowISO() },
       })),
   );
 }

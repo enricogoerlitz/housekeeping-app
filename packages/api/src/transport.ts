@@ -27,6 +27,8 @@ export class TransportError extends Error {
     readonly kind: 'transient' | 'permanent',
     readonly code: string,
     readonly status?: number,
+    /** What the server added to the error as JSON (`detail`), e.g. who was faster for already_done. */
+    readonly detail?: unknown,
   ) {
     super(`${kind}: ${code}`);
     this.name = 'TransportError';
@@ -53,10 +55,20 @@ const SERVER_CODE = /^[a-z][a-z0-9_]*$/;
  */
 const RAISED = new Set(['P0001', 'P0002']);
 
+/** The `detail` of a raised error, sent by PostgREST as `details`; only JSON is kept. */
+function parseDetail(details: string | undefined): unknown {
+  if (!details) return undefined;
+  try {
+    return JSON.parse(details) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Classifies an HTTP status and a PostgREST error body (`message` carries our error code). */
 export function classifyError(
   status: number,
-  error: { message?: string; code?: string },
+  error: { message?: string; code?: string; details?: string },
 ): TransportError {
   const transient =
     !RAISED.has(error.code ?? '') &&
@@ -67,7 +79,12 @@ export function classifyError(
     : status === 0
       ? 'network'
       : error.code || `http_${status}`;
-  return new TransportError(transient ? 'transient' : 'permanent', code, status);
+  return new TransportError(
+    transient ? 'transient' : 'permanent',
+    code,
+    status,
+    parseDetail(error.details),
+  );
 }
 
 // ---------- Contract shapes ----------
@@ -90,11 +107,39 @@ export const AddEntrySchema = z.object({
 });
 export type AddEntry = z.infer<typeof AddEntrySchema>;
 
+/**
+ * complete_chore (spec 0011): books an entry only while the chore still shows the state the device
+ * saw (`seen`); date and person afterwards are computed by core (completionOutcome).
+ */
+export interface ChoreCompletion {
+  chore_id: string;
+  event_id: string;
+  kind: 'done' | 'skipped';
+  done_on: string;
+  done_by: string;
+  seen: {
+    next_due_on: string | null;
+    last_done_on: string | null;
+    next_assignee_id: string | null;
+  };
+  next_due_on: string | null;
+  /** Only for "done"; "skipped" keeps the person. */
+  next_assignee_id?: string | null;
+}
+
 /** A row operation, or one of the domain operations `apply_changes` allows. */
 export type ChangeOp =
   | RowOp
   | { kind: 'add_contributions'; entries: AddEntry[] }
-  | { kind: 'remove_contributions'; ids: string[] };
+  | { kind: 'remove_contributions'; ids: string[] }
+  | { kind: 'complete_chore'; completion: ChoreCompletion }
+  | { kind: 'remove_chore_event'; id: string };
+
+/** already_done (spec 0011, AC-031): who booked the chore that day, and when. */
+export const AlreadyDoneDetailSchema = z.object({ done_by: z.string(), done_at: z.string() });
+
+/** The answer of remove_chore_event in `results`: whether the state before came back. */
+export const RemovedChoreEventSchema = z.object({ restored: z.boolean() });
 
 export const ApplyChangesResultSchema = z.object({
   applied: z.number(),

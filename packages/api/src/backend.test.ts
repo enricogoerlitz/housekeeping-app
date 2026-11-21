@@ -393,8 +393,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0007: version 4 for the new article fields; a device on version 3 loads again', () => {
-    expect(CACHE_VERSION).toBe(4);
+  it('spec 0011: version 5 for asNeeded, the recorded state, createdAt and ratedAt; version 4 loads again', () => {
+    expect(CACHE_VERSION).toBe(5);
   });
 
   it('drops the cache, but keeps the store queue, the chosen store and the chosen household', async () => {

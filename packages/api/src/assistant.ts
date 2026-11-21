@@ -1,11 +1,11 @@
 import { formatAmount, parseSmartInput, splitDictation, type Id } from '@housekeeping/core';
 
-import { completeChore, logSpontaneous } from './commands-chores';
+import { bookingRejected, bookLocally } from './chore-booking';
 import { addPlanEntry, type PlanEntryInput } from './commands-plan';
 import { replaceIngredient, updateRecipe } from './commands-recipes';
 import { diffHousehold, sendable } from './changes';
 import { addContributionOps, addTextLocally } from './list-additions';
-import { commit, getData, newId } from './store';
+import { commit, getData, getState, newId } from './store';
 import type { AddEntry, ChangeOp } from './transport';
 
 // What the assistant's answers can change: the assistant only reads (ai.ts asks the edge
@@ -18,7 +18,14 @@ export type AssistantCommand =
   | { type: 'addShoppingItems'; texts: string[] }
   | { type: 'addPlanEntry'; input: PlanEntryInput }
   | { type: 'completeChore'; choreId: Id }
+  /**
+   * The AI contract keeps the name (spec 0011, Entscheidung 2); it means „Was anderes erledigt?“
+   * without a hit: a new chore „bei Bedarf“, done today.
+   */
   | { type: 'logSpontaneous'; title: string };
+
+type ChoreCommand = Extract<AssistantCommand, { type: 'completeChore' | 'logSpontaneous' }>;
+type RowCommand = Exclude<AssistantCommand, ChoreCommand | { type: 'addShoppingItems' }>;
 
 export interface ProposalPart {
   id: Id;
@@ -48,8 +55,8 @@ export interface AssistantReply {
   consulted?: string;
 }
 
-/** A command that changes rows (everything but list additions), through the normal commands. */
-function runRowCommand(command: Exclude<AssistantCommand, { type: 'addShoppingItems' }>): void {
+/** A command that changes rows, through the normal commands. */
+function runRowCommand(command: RowCommand): void {
   switch (command.type) {
     case 'setRecipeServings':
       updateRecipe(command.recipeId, { servings: command.servings });
@@ -60,19 +67,39 @@ function runRowCommand(command: Exclude<AssistantCommand, { type: 'addShoppingIt
     case 'addPlanEntry':
       addPlanEntry(command.input);
       return;
-    case 'completeChore':
-      completeChore(command.choreId);
-      return;
-    case 'logSpontaneous':
-      logSpontaneous(command.title);
-      return;
   }
+}
+
+const isChoreCommand = (command: AssistantCommand): command is ChoreCommand =>
+  command.type === 'completeChore' || command.type === 'logSpontaneous';
+
+/**
+ * A chore entry, booked like „Erledigt“ / „Was anderes erledigt?“ (spec 0011): today by the
+ * signed-in member, as complete_chore ops (an unknown chore books nothing).
+ */
+function bookChoreCommand(command: ChoreCommand): ChangeOp[] {
+  const state = getState();
+  const input = { kind: 'done' as const, doneOn: state.today, doneBy: state.currentMemberId };
+  if (command.type === 'completeChore') {
+    const chore = getData().chores.find((candidate) => candidate.id === command.choreId);
+    return chore ? bookLocally(chore, input).ops : [];
+  }
+  const title = command.title.trim();
+  if (!title) throw new Error('Titel fehlt');
+  const chore = {
+    id: newId(),
+    title,
+    recurrence: { type: 'asNeeded' as const },
+    assignment: { type: 'anyone' as const },
+    effort: 1 as const,
+  };
+  return bookLocally(chore, input, true).ops;
 }
 
 /**
  * Runs commands as one change (ADR-0011, AC-026): the same commands the screens use, sent as one
- * `apply_changes` call — the row changes, then the list additions as
- * `add_contributions` (merged on the server). Either all of it lands or none.
+ * `apply_changes` call — the row changes, the chore entries as `complete_chore`, then the list
+ * additions as `add_contributions` (merged on the server). Either all of it lands or none.
  */
 function runCommands(commands: AssistantCommand[]): void {
   if (commands.length === 0) return;
@@ -80,13 +107,19 @@ function runCommands(commands: AssistantCommand[]): void {
     {
       path: 'rpc',
       send: (transport, context) => transport.applyChanges(context.householdId, context.result),
+      rejectedMessage: bookingRejected,
     },
     () => {
       const before = getData();
       for (const command of commands) {
-        if (command.type !== 'addShoppingItems') runRowCommand(command);
+        if (command.type !== 'addShoppingItems' && !isChoreCommand(command)) {
+          runRowCommand(command);
+        }
       }
       const rows = getData();
+      const { ops } = diffHousehold(before, rows, { mode: 'send' });
+      // Chore entries are domain ops (spec 0011), booked on top of the row changes.
+      const choreOps = commands.filter(isChoreCommand).flatMap(bookChoreCommand);
       // Always the household's shopping list (ADR-0012): the items of the call's household.
       const additions: AddEntry[] = [];
       for (const command of commands) {
@@ -96,12 +129,7 @@ function runCommands(commands: AssistantCommand[]): void {
           if (local) additions.push(local.entry);
         }
       }
-      const oneOffChores = commands.filter((command) => command.type === 'completeChore').length;
-      const { ops } = diffHousehold(before, rows, {
-        mode: 'send',
-        maxDeletes: { chores: oneOffChores },
-      });
-      return [...sendable(ops), ...addContributionOps(additions)];
+      return [...sendable(ops), ...choreOps, ...addContributionOps(additions)];
     },
   );
 }

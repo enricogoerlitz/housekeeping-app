@@ -38,6 +38,21 @@ function seed() {
   });
 }
 
+const weekly = { type: 'weekly', every: 1, weekdays: [5] };
+
+/** A complete_chore op as the app sends it, for a chore never done and not yet due. */
+const completion = (choreId: string, eventId: string, extra: Record<string, unknown> = {}) => ({
+  chore_id: choreId,
+  event_id: eventId,
+  kind: 'done',
+  done_on: '2026-11-20',
+  done_by: ENRICO,
+  seen: { next_due_on: null, last_done_on: null, next_assignee_id: null },
+  next_due_on: '2026-11-27',
+  next_assignee_id: null,
+  ...extra,
+});
+
 const entry = (name: string, contributionId: string): AddEntry => ({
   client_item_id: `item-${contributionId}`,
   client_article_id: `article-${contributionId}`,
@@ -446,11 +461,11 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
     });
 
     await enrico.applyChanges(H, [
-      { kind: 'insert', table: 'chores', row: { id: 'c1', title: 'Bad' } },
-      { kind: 'insert', table: 'chore_events', row: { id: 'ev1', chore_id: 'c1', title: 'Bad' } },
+      { kind: 'insert', table: 'chores', row: { id: 'c1', title: 'Bad', recurrence: weekly } },
+      { kind: 'complete_chore', completion: completion('c1', 'ev1') as never },
       { kind: 'delete', table: 'chores', id: 'c1' },
     ]);
-    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: null });
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: null, title: 'Bad' });
   });
 });
 
@@ -1188,5 +1203,269 @@ describe('fake server: article catalog (spec 0007, like the database)', () => {
       await insert(article('a-y', 'Milchkokos'), H2, STRANGER);
       expect(server.row(H2, 'articles', 'a-y')).toBeDefined();
     });
+  });
+});
+
+describe('fake server: chore entries only by complete_chore / remove_chore_event (spec 0011)', () => {
+  const H2 = 'h-2';
+  beforeEach(async () => {
+    server.addHousehold({ id: H2, name: 'Fremd' }, [STRANGER]);
+    await server.transport(ENRICO).applyChanges(H, [
+      {
+        kind: 'insert',
+        table: 'chores',
+        row: { id: 'c1', title: 'Bad putzen', recurrence: weekly, next_due_on: '2026-11-20' },
+      },
+      {
+        kind: 'insert',
+        table: 'chores',
+        row: { id: 'c-once', title: 'Glühbirne', recurrence: { type: 'once' } },
+      },
+      {
+        kind: 'insert',
+        table: 'chores',
+        row: { id: 'c-need', title: 'Fenster Küche', recurrence: { type: 'asNeeded' } },
+      },
+    ]);
+  });
+  const book = (userId: string, op: Record<string, unknown>, householdId = H) =>
+    server
+      .transport(userId)
+      .applyChanges(householdId, [{ kind: 'complete_chore', completion: op } as never]);
+  const seenBath = { next_due_on: '2026-11-20', last_done_on: null, next_assignee_id: null };
+
+  it('AC-028: books with the seen state, records the state before and moves the date', async () => {
+    const result = await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
+    expect(result.results).toEqual([{ event_id: 'ev1' }]);
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({
+      chore_id: 'c1',
+      title: 'Bad putzen',
+      kind: 'done',
+      done_by: ENRICO,
+      prev_recorded: true,
+      prev_next_due_on: '2026-11-20',
+      prev_last_done_on: null,
+    });
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({
+      next_due_on: '2026-11-27',
+      last_done_on: '2026-11-20',
+    });
+  });
+
+  it('AC-031: a second booking with the old seen state is already_done with who and when', async () => {
+    await book(NADJA, completion('c1', 'ev1', { seen: seenBath, done_by: NADJA }));
+    const error = await book(ENRICO, completion('c1', 'ev2', { seen: seenBath })).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({ kind: 'permanent', code: 'already_done' });
+    expect((error as TransportError).detail).toEqual({
+      done_by: NADJA,
+      done_at: server.row(H, 'chore_events', 'ev1')?.created_at,
+    });
+    expect(server.rows(H, 'chore_events')).toHaveLength(1);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({ next_due_on: '2026-11-27' });
+  });
+
+  it('a changed chore without an entry that day is chore_changed', async () => {
+    await expect(
+      book(ENRICO, completion('c1', 'ev1', { seen: { ...seenBath, next_due_on: '2026-11-19' } })),
+    ).rejects.toMatchObject({ code: 'chore_changed' });
+  });
+
+  it('AC-043 / AC-044: "bei Bedarf" keeps no date; a date for it is invalid_change', async () => {
+    await book(ENRICO, completion('c-need', 'ev1', { next_due_on: null }));
+    expect(server.row(H, 'chores', 'c-need')).toMatchObject({
+      next_due_on: null,
+      last_done_on: '2026-11-20',
+    });
+    await expect(
+      book(
+        ENRICO,
+        completion('c-need', 'ev2', {
+          seen: { next_due_on: null, last_done_on: '2026-11-20', next_assignee_id: null },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+  });
+
+  it('done "einmalig" deletes the chore with a tombstone; the entry keeps its title', async () => {
+    await book(ENRICO, completion('c-once', 'ev1', { next_due_on: null }));
+    expect(server.row(H, 'chores', 'c-once')).toBeUndefined();
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({
+      chore_id: null,
+      title: 'Glühbirne',
+    });
+  });
+
+  it('"skipped" moves only the date; a later "done" the day before keeps the later last time', async () => {
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath, kind: 'skipped' }));
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({ next_due_on: '2026-11-27' });
+    expect(server.row(H, 'chores', 'c1')?.last_done_on ?? null).toBeNull();
+    await book(
+      ENRICO,
+      completion('c1', 'ev2', {
+        seen: { next_due_on: '2026-11-27', last_done_on: null, next_assignee_id: null },
+      }),
+    );
+    await book(
+      ENRICO,
+      completion('c1', 'ev3', {
+        done_on: '2026-11-19',
+        seen: { next_due_on: '2026-11-27', last_done_on: '2026-11-20', next_assignee_id: null },
+      }),
+    );
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({ last_done_on: '2026-11-20' });
+  });
+
+  it.each([
+    ['a kind other than done/skipped', { kind: 'spontaneous' }],
+    ['a day before today − 3', { done_on: '2026-11-16' }],
+    ['a day after today + 1', { done_on: '2026-11-22' }],
+    ['a date not after the day', { next_due_on: '2026-11-20' }],
+    ['an unknown field', { title: 'Fremder Titel' }],
+    ['a recorded state from the device', { prev_next_due_on: '2026-01-01' }],
+    ['no seen state', { seen: undefined }],
+  ])('refuses %s with invalid_change and books nothing', async (_, extra) => {
+    await expect(
+      book(ENRICO, completion('c1', 'ev1', { seen: seenBath, ...extra })),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    expect(server.rows(H, 'chore_events')).toEqual([]);
+  });
+
+  it('refuses a person outside the household (23503) and a taken entry id (23505)', async () => {
+    await expect(
+      book(ENRICO, completion('c1', 'ev1', { seen: seenBath, done_by: STRANGER })),
+    ).rejects.toMatchObject({ code: '23503' });
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
+    await expect(
+      book(ENRICO, completion('c-need', 'ev1', { next_due_on: null })),
+    ).rejects.toMatchObject({ code: '23505' });
+  });
+
+  it('AC-055: a foreign household is not_member; a chore of another household is chore_not_found', async () => {
+    await expect(book(STRANGER, completion('c1', 'ev1', { seen: seenBath }))).rejects.toMatchObject(
+      { code: 'not_member' },
+    );
+    await expect(
+      book(STRANGER, completion('c1', 'ev1', { seen: seenBath }), H2),
+    ).rejects.toMatchObject({ code: 'chore_not_found' });
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
+    await expect(
+      server.transport(STRANGER).applyChanges(H2, [{ kind: 'remove_chore_event', id: 'ev1' }]),
+    ).rejects.toMatchObject({ code: 'chore_event_not_found' });
+    expect(server.row(H, 'chore_events', 'ev1')).toBeDefined();
+  });
+
+  it('refuses insert and delete of chore events through row ops; patches chore_id and done_by only', async () => {
+    const enrico = server.transport(ENRICO);
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
+    await expect(
+      enrico.applyChanges(H, [
+        { kind: 'insert', table: 'chore_events', row: { id: 'ev9', title: 'x', kind: 'done' } },
+      ]),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    await expect(
+      enrico.applyChanges(H, [{ kind: 'delete', table: 'chore_events', id: 'ev1' }]),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    for (const changes of [
+      { title: 'x' },
+      { prev_next_due_on: '2026-01-01' },
+      { kind: 'skipped' },
+    ]) {
+      await expect(
+        enrico.applyChanges(H, [{ kind: 'patch', table: 'chore_events', id: 'ev1', changes }]),
+      ).rejects.toMatchObject({ code: 'invalid_change' });
+    }
+    await enrico.applyChanges(H, [
+      { kind: 'patch', table: 'chore_events', id: 'ev1', changes: { done_by: NADJA } },
+    ]);
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ done_by: NADJA });
+  });
+
+  it('AC-060: removing the latest entry restores the state before; an older one only goes', async () => {
+    const enrico = server.transport(ENRICO);
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath, done_on: '2026-11-19' }));
+    await book(
+      ENRICO,
+      completion('c1', 'ev2', {
+        seen: { next_due_on: '2026-11-27', last_done_on: '2026-11-19', next_assignee_id: null },
+        next_due_on: '2026-12-04',
+      }),
+    );
+    expect(
+      (await enrico.applyChanges(H, [{ kind: 'remove_chore_event', id: 'ev1' }])).results,
+    ).toEqual([{ restored: false }]);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({ next_due_on: '2026-12-04' });
+    expect(
+      (await enrico.applyChanges(H, [{ kind: 'remove_chore_event', id: 'ev2' }])).results,
+    ).toEqual([{ restored: true }]);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({
+      next_due_on: '2026-11-27',
+      last_done_on: '2026-11-19',
+    });
+    expect(server.rows(H, 'chore_events')).toEqual([]);
+    await expect(
+      enrico.applyChanges(H, [{ kind: 'remove_chore_event', id: 'ev2' }]),
+    ).rejects.toMatchObject({ code: 'chore_event_not_found' });
+  });
+
+  it('removing for a chore that is "bei Bedarf" by now leaves its date empty', async () => {
+    const enrico = server.transport(ENRICO);
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
+    await enrico.applyChanges(H, [
+      {
+        kind: 'patch',
+        table: 'chores',
+        id: 'c1',
+        changes: { recurrence: { type: 'asNeeded' }, next_due_on: null },
+      },
+    ]);
+    await enrico.applyChanges(H, [{ kind: 'remove_chore_event', id: 'ev1' }]);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({ next_due_on: null, last_done_on: null });
+  });
+
+  it('"bei Bedarf" with a date is refused as a row too (chores_as_needed_never_due)', async () => {
+    await expect(
+      server
+        .transport(ENRICO)
+        .applyChanges(H, [
+          { kind: 'patch', table: 'chores', id: 'c-need', changes: { next_due_on: '2026-11-30' } },
+        ]),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
+
+  it('remove_chore_event counts as a delete: more than 20 are too_many_changes', async () => {
+    const ops = Array.from({ length: 21 }, (_, index) => ({
+      kind: 'remove_chore_event' as const,
+      id: `ev${index}`,
+    }));
+    await expect(server.transport(ENRICO).applyChanges(H, ops)).rejects.toMatchObject({
+      code: 'too_many_changes',
+    });
+  });
+});
+
+describe('fake server: ratings in half steps (spec 0011)', () => {
+  it('AC-017 / AC-026: stores 4.5 and 0.5, refuses 4.3, 4.25, 0, 5.5, −1 and NaN; the old value stays', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.setRecipeRating('r1', 4.5);
+    expect(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)).toMatchObject({ stars: 4.5 });
+    await enrico.setRecipeRating('r1', 0.5);
+    for (const stars of [4.3, 4.25, 0, 5.5, -1, Number.NaN]) {
+      await expect(enrico.setRecipeRating('r1', stars)).rejects.toMatchObject({
+        code: 'invalid_stars',
+      });
+    }
+    expect(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)).toMatchObject({ stars: 0.5 });
+  });
+
+  it('Offene Frage 7: the same value again is written, updated_at moves on', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.setRecipeRating('r1', 4);
+    const first = String(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)?.updated_at);
+    vi.advanceTimersByTime(1000);
+    await enrico.setRecipeRating('r1', 4);
+    const second = String(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)?.updated_at);
+    expect(second > first).toBe(true);
   });
 });

@@ -115,7 +115,8 @@ export const WRITABLE_COLUMNS = {
     'last_done_on',
     'active_months',
   ],
-  chore_events: ['chore_id', 'title', 'kind', 'done_on', 'done_by'],
+  // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011).
+  chore_events: ['chore_id', 'done_by'],
   meal_plan_entries: [
     'date',
     'slot_id',
@@ -140,6 +141,22 @@ export const WRITABLE_COLUMNS = {
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;
+
+/**
+ * Tables `apply_changes` never inserts into (allowlist `insert: []`): the household comes from
+ * create_household, chore entries from the domain op complete_chore (spec 0011).
+ */
+export const NO_INSERT_TABLES: ReadonlySet<string> = new Set(['households', 'chore_events']);
+
+/**
+ * Tables `apply_changes` never deletes from (allowlist `delete: false`): articles go through
+ * delete_article (spec 0007, E4), chore entries through remove_chore_event (spec 0011).
+ */
+export const NO_DELETE_TABLES: ReadonlySet<string> = new Set([
+  'households',
+  'articles',
+  'chore_events',
+]);
 
 export function compositeId(table: CompositeTable, row: Record<string, unknown>): string {
   const [first, second] = COMPOSITE_TABLES[table];

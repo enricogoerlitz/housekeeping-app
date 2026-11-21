@@ -10,6 +10,7 @@ import {
   rowsToMembers,
   type HouseholdRows,
 } from './mapping';
+import { diffHousehold } from '../changes';
 
 const TODAY = '2026-11-20';
 const demo = () => {
@@ -18,6 +19,8 @@ const demo = () => {
   if (!seeded) throw new Error('demo household missing');
   return { data: seeded, members: state.members };
 };
+
+const SERVER_TIME = '2026-11-01T10:00:00.000000Z';
 
 /** What the server adds to every row it sends: timestamps, and the table's own household_id. */
 function asServerTables(rows: HouseholdRows): {
@@ -28,9 +31,9 @@ function asServerTables(rows: HouseholdRows): {
   const small: Record<string, Row[]> = {};
   for (const [table, list] of Object.entries(rows)) {
     const withServerColumns = list.map((row) => ({
-      created_at: '2026-11-01T10:00:00.000000Z',
+      created_at: SERVER_TIME,
       ...row,
-      updated_at: '2026-11-01T10:00:00.000000Z',
+      updated_at: SERVER_TIME,
     }));
     if (['households', 'household_members', 'profiles'].includes(table)) {
       small[table] = withServerColumns;
@@ -44,6 +47,7 @@ function asServerTables(rows: HouseholdRows): {
 /** Server-only columns the domain does not carry; left out when comparing rows. */
 function withoutServerColumns(rows: HouseholdRows): Record<string, Row[]> {
   const domainHasCreatedAt = new Set([
+    'chore_events',
     'articles',
     'recipes',
     'restaurants',
@@ -65,10 +69,29 @@ function withoutServerColumns(rows: HouseholdRows): Record<string, Row[]> {
   );
 }
 
-/** Domain order rules applied to the seed: newest feedback first (documented normalisation). */
+/** The time of every rating, as the server sends `updated_at` of each rating row. */
+const ratedNow = (ratings: Record<string, number>) =>
+  Object.keys(ratings).length === 0
+    ? undefined
+    : Object.fromEntries(Object.keys(ratings).map((memberId) => [memberId, SERVER_TIME]));
+
+/**
+ * Domain rules applied to the seed (documented normalisations): newest feedback first; the server
+ * stamps `created_at` on chore events and `updated_at` on ratings (spec 0011: createdAt, ratedAt).
+ */
 function normalised(data: HouseholdData): HouseholdData {
   return {
     ...data,
+    recipes: data.recipes.map((recipe) => ({ ...recipe, ratedAt: ratedNow(recipe.ratings) })),
+    restaurants: data.restaurants.map((restaurant) => ({
+      ...restaurant,
+      ratedAt: ratedNow(restaurant.ratings),
+    })),
+    activities: data.activities.map((activity) => ({
+      ...activity,
+      ratedAt: ratedNow(activity.ratings),
+    })),
+    choreEvents: data.choreEvents.map((event) => ({ ...event, createdAt: SERVER_TIME })),
     feedback: [...data.feedback].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   };
 }
@@ -350,5 +373,115 @@ describe('mapping between domain and rows', () => {
     const second = householdToRows({ ...data, recipes: [...data.recipes] });
     expect(second.recipes?.[0]).toBe(first.recipes?.[0]);
     expect(second.articles?.[0]).toBe(first.articles?.[0]);
+  });
+
+  it('spec 0011: a chore "bei Bedarf" goes there and back without a date', () => {
+    const { data } = demo();
+    const rows = householdToRows(data);
+    const row = rows.chores?.find((chore) => chore.id === 'chore-fenster-kueche');
+    expect(row).toMatchObject({ recurrence: { type: 'asNeeded' }, next_due_on: null });
+    const { tables, small } = asServerTables(rows);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    const chore = back.chores.find((candidate) => candidate.id === 'chore-fenster-kueche');
+    expect(chore?.recurrence).toEqual({ type: 'asNeeded' });
+    expect(chore?.nextDueOn).toBeUndefined();
+  });
+
+  it('spec 0011: an entry reads created_at and the recorded state before it; rows never carry prev_*', () => {
+    const { data } = demo();
+    const { tables, small } = asServerTables(householdToRows(data));
+    const recorded = {
+      ...tables.chore_events?.['ev-5'],
+      id: 'ev-5',
+      created_at: '2026-11-13T09:00:00.000000Z',
+      prev_recorded: true,
+      prev_next_due_on: '2026-11-13',
+      prev_last_done_on: '2026-11-06',
+      prev_next_assignee_id: ENRICO,
+    };
+    const notRecorded = {
+      ...tables.chore_events?.['ev-3'],
+      id: 'ev-3',
+      prev_recorded: false,
+      prev_next_due_on: null,
+      prev_last_done_on: null,
+      prev_next_assignee_id: null,
+    };
+    const back = rowsToHousehold(
+      {
+        ...tables,
+        chore_events: { ...tables.chore_events, 'ev-5': recorded, 'ev-3': notRecorded },
+      },
+      small,
+      DEMO_HOUSEHOLD_ID,
+    );
+    const event = back.choreEvents.find((candidate) => candidate.id === 'ev-5');
+    expect(event).toMatchObject({
+      createdAt: '2026-11-13T09:00:00.000000Z',
+      previous: { nextDueOn: '2026-11-13', lastDoneOn: '2026-11-06', nextAssigneeId: ENRICO },
+    });
+    expect(back.choreEvents.find((candidate) => candidate.id === 'ev-3')?.previous).toBeUndefined();
+
+    const rows = householdToRows(back);
+    const written = rows.chore_events?.find((row) => row.id === 'ev-5');
+    expect(written).toMatchObject({ created_at: '2026-11-13T09:00:00.000000Z' });
+    expect(Object.keys(written ?? {}).filter((column) => column.startsWith('prev_'))).toEqual([]);
+
+    // Changing "Erledigt von" sends only done_by, never the recorded state.
+    const changed: HouseholdData = {
+      ...back,
+      choreEvents: back.choreEvents.map((candidate) =>
+        candidate.id === 'ev-5' ? { ...candidate, doneBy: NADJA } : candidate,
+      ),
+    };
+    expect(diffHousehold(back, changed, { mode: 'send' }).ops).toEqual([
+      { kind: 'patch', table: 'chore_events', id: 'ev-5', changes: { done_by: NADJA } },
+    ]);
+  });
+
+  it('spec 0011: ratedAt is updated_at of the own rating row; a diff never sends it', () => {
+    const { data } = demo();
+    const { tables, small } = asServerTables(householdToRows(data));
+    const rated = Object.values(tables.recipe_ratings ?? {})[0];
+    if (!rated) throw new Error('fixture');
+    const back = rowsToHousehold(
+      {
+        ...tables,
+        recipe_ratings: {
+          ...tables.recipe_ratings,
+          [rated.id]: { ...rated, stars: 4.5, updated_at: '2026-11-19T18:00:00.000000Z' },
+        },
+      },
+      small,
+      DEMO_HOUSEHOLD_ID,
+    );
+    const recipe = back.recipes.find((candidate) => candidate.id === rated.recipe_id);
+    expect(recipe?.ratings[String(rated.member_id)]).toBe(4.5);
+    expect(recipe?.ratedAt?.[String(rated.member_id)]).toBe('2026-11-19T18:00:00.000000Z');
+
+    const renamed: HouseholdData = {
+      ...back,
+      recipes: back.recipes.map((candidate) =>
+        candidate.id === recipe?.id ? { ...candidate, title: 'Neu' } : candidate,
+      ),
+    };
+    expect(diffHousehold(back, renamed, { mode: 'send' }).ops).toEqual([
+      { kind: 'patch', table: 'recipes', id: recipe?.id, changes: { title: 'Neu' } },
+    ]);
+  });
+
+  it('spec 0011: a diff refuses to insert or delete chore events (complete_chore, remove_chore_event)', () => {
+    const { data } = demo();
+    const event = data.choreEvents[0];
+    if (!event) throw new Error('fixture');
+    const added: HouseholdData = {
+      ...data,
+      choreEvents: [{ ...event, id: 'ev-new' }, ...data.choreEvents],
+    };
+    expect(() => diffHousehold(data, added, { mode: 'send' })).toThrow();
+    const removed: HouseholdData = { ...data, choreEvents: data.choreEvents.slice(1) };
+    expect(() =>
+      diffHousehold(data, removed, { mode: 'send', maxDeletes: { chore_events: 1 } }),
+    ).toThrow();
   });
 });

@@ -1,4 +1,4 @@
-import { logSpontaneous } from '@housekeeping/api';
+import { logDone } from '@housekeeping/api';
 import { Button, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
@@ -23,7 +23,7 @@ export function SpontaneousSheet(props: { visible: boolean; onClose: () => void 
       return;
     }
     try {
-      logSpontaneous(text);
+      logDone({ title: text });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
       return;

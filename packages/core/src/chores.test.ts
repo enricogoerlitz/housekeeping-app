@@ -512,6 +512,13 @@ describe('the history chain (Offene Frage 9: the latest booked entry)', () => {
     );
   });
 
+  it('AC-060: a chore that is "bei Bedarf" by now gets no date back, like the database', () => {
+    const asNeeded = { ...bath, recurrence: { type: 'asNeeded' as const }, nextDueOn: undefined };
+    expect(
+      removalOutcome({ chore: asNeeded, events: [thisWeek, lastWeek], eventId: 'ev-20' }),
+    ).toEqual({ lastDoneOn: '2026-11-13', nextAssigneeId: enrico.id });
+  });
+
   it('AC-060: removing an older entry changes neither date nor person', () => {
     expect(
       removalOutcome({ chore: bath, events: [thisWeek, lastWeek], eventId: 'ev-13' }),

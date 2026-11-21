@@ -9,7 +9,13 @@ import {
 } from '@housekeeping/core';
 
 import { householdToRows } from './db/mapping';
-import { COMPOSITE_TABLES, WRITABLE_COLUMNS, type WritableTable } from './db/tables';
+import {
+  COMPOSITE_TABLES,
+  NO_DELETE_TABLES,
+  NO_INSERT_TABLES,
+  WRITABLE_COLUMNS,
+  type WritableTable,
+} from './db/tables';
 import type { HouseholdData } from './store';
 
 /** Parents before children: inserts and patches run in this order, deletes in reverse. */
@@ -34,8 +40,6 @@ const TABLE_ORDER = [
 
 /** Tables only dedicated RPCs write (`apply_changes` refuses them). */
 const RPC_ONLY = new Set([...Object.keys(COMPOSITE_TABLES), 'household_members']);
-/** Tables `apply_changes` never deletes from: articles go through delete_article (spec 0007, E4). */
-const RPC_DELETE_ONLY = new Set(['articles']);
 const NEVER_SENT = new Set<string>(NEVER_SENT_COLUMNS);
 
 export interface HouseholdChange {
@@ -169,8 +173,12 @@ export function diffHousehold(
     }
     const ops = diffRows(old, next, { table, allowedColumns, maxDeletes });
     if (ops.length === 0) continue;
-    if (RPC_DELETE_ONLY.has(table) && ops.some((op) => op.kind === 'delete')) {
-      throw new Error(`Deleting ${table} needs its own RPC (delete_article).`);
+    if (NO_DELETE_TABLES.has(table) && ops.some((op) => op.kind === 'delete')) {
+      const way = table === 'articles' ? 'delete_article' : 'remove_chore_event';
+      throw new Error(`Deleting ${table} needs its own RPC (${way}).`);
+    }
+    if (NO_INSERT_TABLES.has(table) && ops.some((op) => op.kind === 'insert')) {
+      throw new Error(`Inserting into ${table} needs its own RPC (complete_chore).`);
     }
     const both = [...old, ...next];
     forward.set(table, withCreatedAt(selfReferencesFirst(ops, both), next));
@@ -180,7 +188,7 @@ export function diffHousehold(
       table,
       allowedColumns,
       maxDeletes: Number.POSITIVE_INFINITY,
-    }).filter((op) => !(RPC_DELETE_ONLY.has(table) && op.kind === 'delete'));
+    }).filter((op) => !(NO_DELETE_TABLES.has(table) && op.kind === 'delete'));
     if (undo.length > 0) {
       backward.set(table, withCreatedAt(selfReferencesFirst(undo, both), old));
     }

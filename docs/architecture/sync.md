@@ -227,3 +227,10 @@ regelt die erste Spec mit Fotos.
 - **Bewertungen:** `stars` ist `numeric(2,1)` (0,5 bis 5 in halben Schritten). Die
   `set_*_rating`-RPCs prüfen den ungerundeten Wert und schreiben immer, auch denselben Wert noch
   einmal; `updated_at` der Bewertungszeile sagt damit, wann die Person zuletzt bewertet hat.
+- **Auf dem Gerät:** `ChoreEvent.previous` (aus `prev_*`, nur bei `prev_recorded`),
+  `ChoreEvent.createdAt` und `ratedAt` (aus `updated_at` der eigenen Bewertungszeile) kommen nur
+  vom Server; ein Diff schickt sie nie. Die Überlagerung zeigt eine neue Bewertung sofort mit
+  `ratedAt`. Jeder Befehl ist genau ein `apply_changes`-Aufruf: Abhaken, Überspringen und
+  Nachtragen schicken `complete_chore` mit dem gesehenen Stand, „Was anderes erledigt?“ ohne
+  Treffer zusätzlich das `insert` der neuen Aufgabe davor; „Rückgängig“ schickt
+  `remove_chore_event`. Die Cache-Version ist 5.

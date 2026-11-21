@@ -162,14 +162,16 @@ describe('restaurant commands: input and local effect', () => {
     updateRestaurant('rest-enzo', { notes: 'Trüffelpasta!' });
     await fx.settle(nadja);
     await fx.startEnrico();
-    rateRestaurant('rest-enzo', 7);
+    rateRestaurant('rest-enzo', 5);
     const enzo = restaurantById('rest-enzo');
     expect(enzo?.ratings).toEqual({ [ENRICO]: 5, [NADJA]: 2 });
     expect(enzo?.favoriteOf).toEqual([ENRICO]);
     expect(enzo?.notes).toBe('Trüffelpasta!');
 
-    rateRestaurant('rest-enzo', 0);
-    expect(restaurantById('rest-enzo')?.ratings[ENRICO]).toBe(1);
+    // spec 0011, AC-026: an invalid value is refused, not rounded or clamped.
+    expect(() => rateRestaurant('rest-enzo', 0)).toThrow();
+    expect(() => rateRestaurant('rest-enzo', 7)).toThrow();
+    expect(restaurantById('rest-enzo')?.ratings[ENRICO]).toBe(5);
   });
 
   it('rejects renaming a restaurant to an empty name', () => {

@@ -8,8 +8,6 @@ export function historyLine(event: ChoreEvent, memberName: string, today: ISODat
       return `${event.title} · ${memberName} · ${day}`;
     case 'skipped':
       return `${event.title} · übersprungen · ${memberName} · ${day}`;
-    case 'spontaneous':
-      return `${event.title} · spontan · ${memberName} · ${day}`;
   }
 }
 

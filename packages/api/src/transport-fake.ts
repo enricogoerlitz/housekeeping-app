@@ -4,10 +4,13 @@
 // photo bucket with its policies and limits (spec 0004), the household's shopping list with its
 // editing RPCs (spec 0006, ADR-0012: no list rows, one open item per article and household), and
 // the article catalog (spec 0007: ingredients point to an article, unique names, delete_article,
-// merge_articles with replaced_by, merge_areas). Several transports (users, devices) can share
-// one server.
+// merge_articles with replaced_by, merge_areas), and chore entries only through complete_chore
+// and remove_chore_event with the checks of the database (spec 0011). Several transports (users,
+// devices) can share one server.
 import {
+  addDays,
   compareTimestamps,
+  isHalfStar,
   queueEffect,
   type AiSearchRequest,
   type AiSearchResult,
@@ -25,6 +28,8 @@ import {
 import {
   COMPOSITE_TABLES,
   ID_TABLES,
+  NO_DELETE_TABLES,
+  NO_INSERT_TABLES,
   WRITABLE_COLUMNS,
   compositeId,
   withCompositeIds,
@@ -33,6 +38,7 @@ import {
 import {
   AdjustResultSchema,
   TransportError,
+  type ChoreCompletion,
   type AddEntry,
   type AddResult,
   type ChangeOp,
@@ -169,9 +175,6 @@ const REFERENCES: {
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
 ];
 
-/** Tables `apply_changes` never deletes from: articles go through delete_article (spec 0007, E4). */
-const NO_DIRECT_DELETE = new Set(['articles']);
-
 /** articles_synonyms_size (spec 0007): at most 30 synonyms. */
 const MAX_SYNONYMS = 30;
 /** recipes_check_ingredients: the "Hinweis" of an ingredient. */
@@ -255,6 +258,54 @@ function checkIngredients(ingredients: unknown, tables: TableRows): void {
   }
 }
 
+const isAsNeeded = (chore: Row) =>
+  typeof chore.recurrence === 'object' &&
+  chore.recurrence !== null &&
+  (chore.recurrence as { type?: unknown }).type === 'asNeeded';
+
+const COMPLETION_KEYS = new Set([
+  'chore_id',
+  'event_id',
+  'kind',
+  'done_on',
+  'done_by',
+  'seen',
+  'next_due_on',
+  'next_assignee_id',
+]);
+const SEEN_KEYS = new Set(['next_due_on', 'last_done_on', 'next_assignee_id']);
+const isText = (value: unknown): value is string => typeof value === 'string';
+const isTextOrNull = (value: unknown) => value === undefined || value === null || isText(value);
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The shape private.complete_chore accepts; anything else is invalid_change (spec 0011). */
+function validCompletion(value: unknown): value is ChoreCompletion {
+  if (!isPlainObject(value)) return false;
+  const { seen } = value;
+  return (
+    Object.keys(value).every((key) => COMPLETION_KEYS.has(key) && value[key] !== undefined) &&
+    isText(value.chore_id) &&
+    isText(value.event_id) &&
+    isText(value.done_on) &&
+    isText(value.done_by) &&
+    isTextOrNull(value.next_due_on) &&
+    isTextOrNull(value.next_assignee_id) &&
+    isPlainObject(seen) &&
+    Object.keys(seen).every((key) => SEEN_KEYS.has(key)) &&
+    (value.kind === 'done' || value.kind === 'skipped')
+  );
+}
+
+/** (created_at, id) as the database orders bookings; a row without created_at is newest. */
+function bookedAfter(a: Row, b: Row): boolean {
+  if (a.created_at === undefined || b.created_at === undefined) {
+    return a.created_at === undefined && b.created_at !== undefined;
+  }
+  const order = compareTimestamps(String(a.created_at), String(b.created_at));
+  return order > 0 || (order === 0 && a.id > b.id);
+}
+
 /** Row checks of the database that a client bug could break (spec 0004, 0006, 0007). */
 function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
   if (
@@ -277,6 +328,10 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
       (other) => other.id !== row.id && other.name_key === row.name_key,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // chores_as_needed_never_due (spec 0011, AC-043).
+  if (table === 'chores' && isAsNeeded(row) && row.next_due_on != null) {
+    throw new TransportError('permanent', '23514', 400);
   }
   // areas_household_id_name_idx (spec 0007, AC-052).
   if (table === 'areas') {
@@ -323,6 +378,10 @@ export function createFakeServer(): FakeServer {
 
   const isMember = (userId: string, householdId: string) =>
     members.some((member) => member.household_id === householdId && member.profile_id === userId);
+  const memberIdsOf = (householdId: string) =>
+    members
+      .filter((member) => member.household_id === householdId)
+      .map((m) => String(m.profile_id));
   const householdsOf = (userId: string) =>
     members.filter((member) => member.profile_id === userId).map((m) => String(m.household_id));
 
@@ -548,6 +607,7 @@ export function createFakeServer(): FakeServer {
 
   function checkColumns(table: string, columns: string[], insert: boolean): void {
     if (!Object.hasOwn(WRITABLE_COLUMNS, table)) throw reject('invalid_change');
+    if (insert && NO_INSERT_TABLES.has(table)) throw reject('invalid_change');
     const allowed = new Set<string>(WRITABLE_COLUMNS[table as WritableTable]);
     if (insert) {
       allowed.add('id');
@@ -647,6 +707,118 @@ export function createFakeServer(): FakeServer {
     return [next, existing.length];
   }
 
+  /**
+   * private.complete_chore (spec 0011): books only while the chore still shows the seen state;
+   * the title comes from the chore, the state before from the stored row. A day outside today − 3
+   * … today + 1 (server date, UTC), a date not after the day, or a date for "bei Bedarf" is
+   * invalid_change.
+   */
+  function completeChore(
+    tables: TableRows,
+    householdId: string,
+    completion: unknown,
+  ): [TableRows, { event_id: string }] {
+    if (!validCompletion(completion)) throw reject('invalid_change');
+    const today = new Date().toISOString().slice(0, 10);
+    const nextDueOn = completion.next_due_on ?? null;
+    if (
+      completion.done_on < addDays(today, -3) ||
+      completion.done_on > addDays(today, 1) ||
+      (nextDueOn !== null && nextDueOn <= completion.done_on)
+    ) {
+      throw reject('invalid_change');
+    }
+    const chore = tables.chores?.[completion.chore_id];
+    if (!chore) throw new TransportError('permanent', 'chore_not_found', 404);
+    const { seen } = completion;
+    const same = (column: string) =>
+      (seen[column as keyof typeof seen] ?? null) === (chore[column] ?? null);
+    if (!same('next_due_on') || !same('last_done_on') || !same('next_assignee_id')) {
+      const faster = Object.values(tables.chore_events ?? {})
+        .filter(
+          (row) =>
+            row.chore_id === chore.id && row.kind === 'done' && row.done_on === completion.done_on,
+        )
+        .sort(newestFirst)[0];
+      if (faster) {
+        throw new TransportError('permanent', 'already_done', 400, {
+          done_by: faster.done_by,
+          done_at: faster.created_at,
+        });
+      }
+      throw reject('chore_changed');
+    }
+    if (isAsNeeded(chore) && nextDueOn !== null) throw reject('invalid_change');
+    const members = new Set(memberIdsOf(householdId));
+    if (!members.has(completion.done_by)) throw foreignKey();
+    const assignee = completion.next_assignee_id ?? null;
+    if (assignee !== null && !members.has(assignee)) throw foreignKey();
+    if (tables.chore_events?.[completion.event_id]) throw conflict('23505');
+
+    let next = withRow(tables, 'chore_events', {
+      id: completion.event_id,
+      chore_id: chore.id,
+      title: chore.title,
+      kind: completion.kind,
+      done_on: completion.done_on,
+      done_by: completion.done_by,
+      prev_next_due_on: chore.next_due_on ?? null,
+      prev_last_done_on: chore.last_done_on ?? null,
+      prev_next_assignee_id: chore.next_assignee_id ?? null,
+      prev_recorded: true,
+    });
+    const once =
+      typeof chore.recurrence === 'object' &&
+      chore.recurrence !== null &&
+      (chore.recurrence as { type?: unknown }).type === 'once';
+    if (completion.kind === 'done' && once) {
+      next = withoutRows(next, 'chores', [chore.id]);
+    } else if (completion.kind === 'done') {
+      const last = chore.last_done_on == null ? null : String(chore.last_done_on);
+      next = withRow(next, 'chores', {
+        ...chore,
+        last_done_on: last !== null && last > completion.done_on ? last : completion.done_on,
+        next_due_on: nextDueOn,
+        next_assignee_id: assignee,
+      });
+    } else {
+      next = withRow(next, 'chores', { ...chore, next_due_on: nextDueOn });
+    }
+    return [next, { event_id: completion.event_id }];
+  }
+
+  /**
+   * private.remove_chore_event (spec 0011): removing the latest booked entry of a chore that still
+   * exists brings back the recorded state before it (no date for a chore that is "bei Bedarf" by
+   * now); an older entry only goes.
+   */
+  function removeChoreEvent(
+    tables: TableRows,
+    eventId: string,
+  ): [TableRows, { restored: boolean }] {
+    const event = tables.chore_events?.[eventId];
+    if (!event) throw new TransportError('permanent', 'chore_event_not_found', 404);
+    let next = tables;
+    let restored = false;
+    const chore = typeof event.chore_id === 'string' ? tables.chores?.[event.chore_id] : undefined;
+    if (chore && event.prev_recorded === true) {
+      const later = Object.values(tables.chore_events ?? {}).some(
+        (row) => row.chore_id === chore.id && row.id !== event.id && bookedAfter(row, event),
+      );
+      if (!later) {
+        next = withRow(next, 'chores', {
+          ...chore,
+          next_due_on: isAsNeeded(chore) ? null : (event.prev_next_due_on ?? null),
+          last_done_on: event.prev_last_done_on ?? null,
+          next_assignee_id: event.prev_next_assignee_id ?? null,
+        });
+        restored = true;
+      }
+    }
+    next = withoutRows(next, 'chore_events', [eventId]);
+    return [next, { restored }];
+  }
+
   function applyChanges(userId: string, householdId: string, ops: readonly ChangeOp[]) {
     if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
     // Like apply_changes: a domain op counts as its elements — every id of remove_contributions
@@ -661,7 +833,11 @@ export function createFakeServer(): FakeServer {
           : 1,
     );
     const deletes = sum((op) =>
-      op.kind === 'delete' ? 1 : op.kind === 'remove_contributions' ? op.ids.length : 0,
+      op.kind === 'delete' || op.kind === 'remove_chore_event'
+        ? 1
+        : op.kind === 'remove_contributions'
+          ? op.ids.length
+          : 0,
     );
     const contributions = sum((op) =>
       op.kind === 'add_contributions'
@@ -683,8 +859,15 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeContributionRows(tables, op.ids);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'complete_chore') {
+          const [next, booked] = completeChore(tables, householdId, op.completion);
+          tables = next;
+          results.push(booked);
+        } else if (op.kind === 'remove_chore_event') {
+          const [next, removed] = removeChoreEvent(tables, op.id);
+          tables = next;
+          results.push(removed);
         } else if (op.kind === 'insert') {
-          if (op.table === 'households') throw reject('invalid_change');
           checkColumns(op.table, Object.keys(op.row), true);
           if (op.row.household_id !== undefined && op.row.household_id !== householdId) {
             throw reject('invalid_change');
@@ -736,11 +919,7 @@ export function createFakeServer(): FakeServer {
           checkReferences(tables, op.table, op.changes);
           checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
         } else {
-          if (
-            !Object.hasOwn(WRITABLE_COLUMNS, op.table) ||
-            op.table === 'households' ||
-            NO_DIRECT_DELETE.has(op.table)
-          ) {
+          if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || NO_DELETE_TABLES.has(op.table)) {
             throw reject('invalid_change');
           }
           tables = withoutRows(tables, op.table, [op.id]);
@@ -844,9 +1023,10 @@ export function createFakeServer(): FakeServer {
     ]);
   }
 
+  /** 0.5 … 5 in half steps, checked unrounded (spec 0011, AC-026); null deletes. Always writes. */
   function rating(stars: number | null): Record<string, unknown> | undefined {
     if (stars === null) return undefined;
-    if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw reject('invalid_stars');
+    if (!isHalfStar(stars)) throw reject('invalid_stars');
     return { stars };
   }
 

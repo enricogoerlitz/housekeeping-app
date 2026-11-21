@@ -347,7 +347,7 @@ describe('activity commands: input and local effect', () => {
     });
   });
 
-  it('AC-020: ratings and favourites are per member; a rating is clamped to 1–5', async () => {
+  it('AC-020: ratings and favourites are per member; an invalid rating is refused (spec 0011)', async () => {
     const nadja = await fx.startAs(NADJA);
     rateActivity('act-bouldern', 4);
     toggleActivityFavorite('act-bouldern');
@@ -358,8 +358,8 @@ describe('activity commands: input and local effect', () => {
       favoriteOf: [NADJA],
     });
     expect(activityById('act-bouldern')?.ratings[ENRICO]).toBeUndefined();
-    rateActivity('act-bouldern', 9);
-    expect(activityById('act-bouldern')?.ratings[ENRICO]).toBe(5);
+    expect(() => rateActivity('act-bouldern', 9)).toThrow();
+    expect(activityById('act-bouldern')?.ratings[ENRICO]).toBeUndefined();
   });
 });
 

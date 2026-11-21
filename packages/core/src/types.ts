@@ -289,7 +289,8 @@ export interface ChoreEvent {
   id: Id;
   choreId?: Id;
   title: string;
-  kind: 'done' | 'skipped' | 'spontaneous';
+  /** "spontan" does not exist (spec 0011, Offene Frage 6): see "Was anderes erledigt?". */
+  kind: 'done' | 'skipped';
   doneOn: ISODate;
   doneBy: Id;
   /** When it was booked (timestamp; read-only). Orders the history chain, spec 0011. */

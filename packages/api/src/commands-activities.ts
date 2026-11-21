@@ -3,13 +3,14 @@
 // the place. Names are unique per household after normalizeText (AC-008, unique name_key).
 import {
   findDuplicateActivity,
+  isHalfStar,
   parseMapsLink,
   type Activity,
   type GeoPoint,
   type Id,
 } from '@housekeeping/core';
 
-import { resolveMapsShortLink } from './commands-restaurants';
+import { INVALID_STARS, resolveMapsShortLink } from './commands-restaurants';
 import { commit, getData, getState, newId, nowISO, updateData } from './store';
 
 /** Where an activity takes place; every field optional. */
@@ -117,12 +118,17 @@ export function toggleActivityFavorite(id: Id): void {
   );
 }
 
-/** Ratings are per person: their own RPC; undo restores the previous rating (or none). */
+/**
+ * Ratings are per person: their own RPC; undo restores the previous rating (or none). Half steps
+ * from 0,5 to 5 (spec 0011); anything else is refused before sending, never rounded (AC-026).
+ * The same value again is a rating too: it is sent, and ratedAt moves on (Offene Frage 7).
+ */
 export function rateActivity(id: Id, stars: number): void {
   const me = getState().currentMemberId;
   const activity = getData().activities.find((candidate) => candidate.id === id);
   if (!activity) return;
-  const value = Math.max(1, Math.min(5, Math.round(stars)));
+  if (!isHalfStar(stars)) throw new Error(INVALID_STARS);
+  const value = stars;
   const previous = activity.ratings[me] ?? null;
   commit(
     {
@@ -134,6 +140,7 @@ export function rateActivity(id: Id, stars: number): void {
       patchActivity(id, (current) => ({
         ...current,
         ratings: { ...current.ratings, [me]: value },
+        ratedAt: { ...current.ratedAt, [me]: nowISO() },
       })),
   );
 }

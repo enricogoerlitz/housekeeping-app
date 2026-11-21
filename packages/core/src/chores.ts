@@ -351,7 +351,8 @@ export function reassignOutcome(input: {
 
 /**
  * What removing a history entry restores (AC-060): the recorded state before it, when it is the
- * latest booked entry of a chore that still exists. Undefined when only the entry goes.
+ * latest booked entry of a chore that still exists; without a date when the chore is "bei Bedarf"
+ * by now (as remove_chore_event). Undefined when only the entry goes.
  */
 export function removalOutcome(input: {
   chore: Chore | undefined;
@@ -362,7 +363,14 @@ export function removalOutcome(input: {
   if (chore === undefined) return undefined;
   const latest = latestBookedEvent(input.events, chore.id);
   if (latest === undefined || latest.id !== input.eventId) return undefined;
-  return latest.previous === undefined ? undefined : { ...latest.previous };
+  if (latest.previous === undefined) return undefined;
+  // A chore that is "bei Bedarf" by now is never due, whatever it was before (as the database).
+  if (chore.recurrence.type !== 'asNeeded') return { ...latest.previous };
+  const { lastDoneOn, nextAssigneeId } = latest.previous;
+  return {
+    ...(lastDoneOn !== undefined && { lastDoneOn }),
+    ...(nextAssigneeId !== undefined && { nextAssigneeId }),
+  };
 }
 
 export interface ChoreDraftErrors {
