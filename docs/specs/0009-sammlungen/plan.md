@@ -595,7 +595,7 @@ db:seed:gen`), `index.ts`.
     kommt er hier dazu (Texte vom Aufrufer).
 - **Test (zuerst rot):** `collageLayout(0…5)` ergibt Platzhalter, ganz, zwei Spalten, 2×2 und
   höchstens vier. Der Showroom wird bei 390 und 1440 px angesehen.
-- **Status:** offen
+- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t5.txt`)
 
 ### Task 6 — App: „Essen“, Fenster „Neu“, Seite der Sammlung (lesen und Kopf)
 
@@ -871,7 +871,25 @@ Abschnitt „Entscheidungen beim Bauen (Bereich, Tn, Datum)“.
   - App nur Compile-Fixes (Kalender-Rolle, Reste, Filter-Kontext, Picker-Kontext, Lösch-Hinweis,
     „Einordnung“ ohne Gerichtart) und in `today-recap.tsx` Kennzeichen „Sammlung“ plus Bewerten
     über `rateRecipe` (sonst ginge die Bewertung an `rateActivity`).
-- _T5:_ …
+- _T5 (ui, 21.11.2026):_
+  - `PhotoCollage` steht in `display.tsx` neben `Photo` und nimmt dessen Größen (`width`,
+    `height`, `aspectRatio`, `radius`, `alt`, `testID`) plus `sources` in ihrer Reihenfolge. Die
+    Rechnung steht in `collage-layout.ts` (`collageLayout`, `collageInsets`).
+  - Drei Fotos: Das erste füllt die linke Spalte über die volle Höhe, die beiden anderen stehen
+    rechts übereinander. So bleibt das 2×2-Raster ohne leere Zelle, und das erste Rezept ist am
+    größten. Zwischen den Fotos liegt eine 2-px-Fuge in `surface`.
+  - Ohne Foto zeigt `PhotoCollage` den Platzhalter `KIND_ICONS.collection`; `placeholderIcon`
+    ändert ihn (für Rezepte). Mit einem Foto ist es `Photo`.
+  - `MediaCard` bekommt `images` (Collage an Stelle von `image`, für Kachel und Vorschaubild).
+    Das Kennzeichen „Sammlung“ ist das vorhandene `badge` mit `KIND_ICONS.collection`.
+  - Mehrfachauswahl: `lists.tsx` hatte nur `CheckRow` (abgehakt = durchgestrichen, nur das
+    Kästchen schaltet). Neu ist `SelectRow` (`title`, `subtitle`, `selected`, `onToggle`,
+    `disabled`, `hint`): Die ganze Zeile ist ein Ankreuzfeld, Tipp oder Leertaste schaltet um,
+    der Grund steht unter dem Titel und wird angesagt. Dafür hat `ListRow` jetzt `checked`
+    (Rolle `checkbox`, Leertaste im Web) und `hint`; `Checkbox` teilt sein Aussehen mit dem neuen
+    `CheckboxMark`.
+  - Showroom „Muster“: Blöcke „Foto-Collage“ (0, 1, 2, 3, 5 Fotos, Kachel, Vorschaubild, Seite)
+    und „Mehrfachauswahl“; angesehen bei 390 und 1440 px, hell und dunkel (`tmp/0009/t5/`).
 - _T6/T7:_ …
 - _T8/T9:_ …
 

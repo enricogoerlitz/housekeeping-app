@@ -1,7 +1,7 @@
 import { Children, createContext, isValidElement, useContext, type ReactNode } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
-import { Checkbox, IconButton, focusRing } from './controls';
+import { Checkbox, CheckboxMark, IconButton, focusRing } from './controls';
 import { Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
 
@@ -80,6 +80,9 @@ export function GroupLabel(props: { children: string; testID?: string }) {
 
 const RowIndexContext = createContext(0);
 
+// react-native-web passes `onKeyDown` through to the DOM; native has no such prop and ignores it.
+type KeyEvent = { key: string; repeat?: boolean; preventDefault: () => void };
+
 export interface ListProps {
   children?: ReactNode;
   testID?: string;
@@ -127,6 +130,13 @@ export interface ListRowProps {
   strike?: boolean;
   /** The row shown in the detail column next to the list ("Liste und Detail"), in `accentSoft`. */
   selected?: boolean;
+  /**
+   * Makes the whole row one checkbox of a multi-select (SelectRow): read as checkbox with its
+   * state, and on the web the space bar toggles it like Enter. Needs `onPress`, no `controls`.
+   */
+  checked?: boolean;
+  /** Read by screen readers after the name, e.g. why the row cannot be chosen. */
+  hint?: string;
   /** Accessible name when the title is not a plain string. */
   accessibilityLabel?: string;
   testID?: string;
@@ -249,16 +259,31 @@ export function ListRow(props: ListRowProps) {
     );
   }
   if (props.onPress) {
+    const checkable = props.checked !== undefined;
+    const onPress = props.onPress;
+    // react-native-web presses only role="button" with the space bar; a checkbox row does it here.
+    const onKeyDown = (event: KeyEvent) => {
+      if (event.key !== ' ' && event.key !== 'Spacebar') return;
+      event.preventDefault();
+      if (!event.repeat && !props.disabled) onPress();
+    };
     return wrap(
       <Pressable
         testID={props.testID}
-        accessibilityRole="button"
+        accessibilityRole={checkable ? 'checkbox' : 'button'}
         accessibilityLabel={
           props.accessibilityLabel ?? (typeof props.title === 'string' ? props.title : undefined)
         }
-        accessibilityState={{ disabled: !!props.disabled, selected: !!props.selected }}
+        accessibilityHint={props.hint}
+        accessibilityState={
+          checkable
+            ? { disabled: !!props.disabled, checked: props.checked }
+            : { disabled: !!props.disabled, selected: !!props.selected }
+        }
+        aria-checked={checkable ? props.checked : undefined}
         disabled={props.disabled}
-        onPress={props.onPress}
+        onPress={onPress}
+        {...(checkable ? ({ onKeyDown } as object) : null)}
         style={(state) => [
           layout,
           frame,
@@ -313,6 +338,40 @@ export function CheckRow(props: CheckRowProps) {
           onChange={props.onToggle ? () => props.onToggle?.() : undefined}
         />
       }
+    />
+  );
+}
+
+export interface SelectRowProps {
+  title: string;
+  subtitle?: string;
+  selected: boolean;
+  onToggle: () => void;
+  /** Cannot be ticked, e.g. a recipe the collection already contains; `hint` says why. */
+  disabled?: boolean;
+  /** Shown under the title and read after the name, e.g. "schon enthalten" (text from the app). */
+  hint?: string;
+  testID?: string;
+}
+
+/**
+ * A row of a multi-select in a window, e.g. "Rezepte zu „Grillabend“" (spec 0009, E16): the whole
+ * row is one checkbox, a tap or the space bar toggles it. Unlike CheckRow a ticked row is not
+ * struck through, because ticking means "take it", not "done".
+ */
+export function SelectRow(props: SelectRowProps) {
+  const lines = [props.subtitle, props.hint].filter((line): line is string => !!line);
+  return (
+    <ListRow
+      testID={props.testID}
+      title={props.title}
+      subtitle={lines.length > 0 ? lines.join(' · ') : undefined}
+      accessibilityLabel={props.subtitle ? `${props.title}, ${props.subtitle}` : props.title}
+      hint={props.hint}
+      checked={props.selected}
+      disabled={props.disabled}
+      onPress={props.onToggle}
+      leading={<CheckboxMark checked={props.selected} />}
     />
   );
 }

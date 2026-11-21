@@ -280,9 +280,22 @@ export interface CheckboxProps {
   testID?: string;
 }
 
+function checkboxFace(theme: Theme, checked: boolean): ViewStyle {
+  const c = theme.colors;
+  return {
+    width: 26,
+    height: 26,
+    borderRadius: theme.shape.radius.check,
+    borderWidth: theme.shape.checkBorderWidth,
+    borderColor: checked ? c.success : c.checkLine,
+    backgroundColor: checked ? c.success : 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+}
+
 export function Checkbox(props: CheckboxProps) {
   const theme = useTheme();
-  const c = theme.colors;
   return (
     <Pressable
       testID={props.testID}
@@ -296,23 +309,27 @@ export function Checkbox(props: CheckboxProps) {
       style={(state) => {
         const { pressed, focused } = state as PressState;
         return [
-          {
-            width: 26,
-            height: 26,
-            borderRadius: theme.shape.radius.check,
-            borderWidth: theme.shape.checkBorderWidth,
-            borderColor: props.checked ? c.success : c.checkLine,
-            backgroundColor: props.checked ? c.success : 'transparent',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: props.disabled ? 0.45 : pressed ? 0.6 : 1,
-          },
+          checkboxFace(theme, props.checked),
+          { opacity: props.disabled ? 0.45 : pressed ? 0.6 : 1 },
           focusRing(theme, focused),
         ];
       }}
     >
       {props.checked ? <Icon name="check" size={16} color="onSuccess" /> : null}
     </Pressable>
+  );
+}
+
+/**
+ * The look of a checkbox without its own press area, for a row that is one checkbox as a whole
+ * (SelectRow): a second focusable checkbox inside it would be read twice.
+ */
+export function CheckboxMark(props: { checked: boolean }) {
+  const theme = useTheme();
+  return (
+    <View style={checkboxFace(theme, props.checked)}>
+      {props.checked ? <Icon name="check" size={16} color="onSuccess" /> : null}
+    </View>
   );
 }
 

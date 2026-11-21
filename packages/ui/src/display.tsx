@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { collageInsets, collageLayout } from './collage-layout';
 import { Button, Checkbox, focusRing } from './controls';
 import type { IconName } from './icons';
 import { Icon, Surface, Text } from './primitives';
@@ -150,6 +151,7 @@ export interface PhotoProps {
   /** Describes the picture; omit for decorative images. */
   alt?: string;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 export function Photo(props: PhotoProps) {
@@ -165,6 +167,7 @@ export function Photo(props: PhotoProps) {
   if (props.source === undefined) {
     return (
       <View
+        testID={props.testID}
         style={[
           box,
           {
@@ -182,7 +185,7 @@ export function Photo(props: PhotoProps) {
     );
   }
   return (
-    <View style={[box, props.style]}>
+    <View testID={props.testID} style={[box, props.style]}>
       <Image
         source={props.source}
         contentFit="cover"
@@ -195,6 +198,82 @@ export function Photo(props: PhotoProps) {
   );
 }
 
+// Hairline between the photos of a collage, in the colour of the card around it.
+const COLLAGE_GAP = 2;
+
+export interface PhotoCollageProps extends Omit<PhotoProps, 'source'> {
+  /**
+   * The photos in their order, e.g. of the first recipes of a collection that have one (core
+   * `coverPhotos`). Only the first four are shown; none shows the placeholder.
+   */
+  sources: readonly (ImageSource | number)[];
+}
+
+/**
+ * One picture from up to four photos (spec 0009, E14): 1 whole, 2 side by side, 3 as the first in
+ * the left column with two stacked on the right, 4 in a 2 × 2 grid. Without a photo the placeholder
+ * shows the stack symbol of a collection unless `placeholderIcon` says otherwise. Sizes like Photo;
+ * `alt` describes the collage as a whole, the single photos are decorative.
+ */
+export function PhotoCollage(props: PhotoCollageProps) {
+  const theme = useTheme();
+  const { sources, ...frame } = props;
+  const placeholderIcon = props.placeholderIcon ?? KIND_ICONS.collection;
+  const tiles = collageLayout(sources.length);
+  if (tiles.length < 2) {
+    return <Photo {...frame} source={sources[0]} placeholderIcon={placeholderIcon} />;
+  }
+  const radius = props.radius ?? theme.shape.radius.photo;
+  return (
+    <View
+      testID={props.testID}
+      accessible={!!props.alt}
+      accessibilityRole={props.alt ? 'image' : undefined}
+      accessibilityLabel={props.alt}
+      style={[
+        {
+          width: props.width ?? '100%',
+          height: props.height,
+          aspectRatio: props.aspectRatio,
+          borderRadius: radius,
+          overflow: 'hidden',
+          backgroundColor: theme.colors.surface,
+        },
+        props.style,
+      ]}
+    >
+      {tiles.map((tile) => {
+        const inset = collageInsets(tile, COLLAGE_GAP);
+        return (
+          <View
+            key={tile.index}
+            testID={props.testID ? `${props.testID}-tile-${tile.index}` : undefined}
+            style={{
+              position: 'absolute',
+              left: `${tile.x * 100}%`,
+              top: `${tile.y * 100}%`,
+              width: `${tile.width * 100}%`,
+              height: `${tile.height * 100}%`,
+              paddingLeft: inset.left,
+              paddingRight: inset.right,
+              paddingTop: inset.top,
+              paddingBottom: inset.bottom,
+            }}
+          >
+            <Image
+              source={sources[tile.index]}
+              contentFit="cover"
+              accessible={false}
+              style={{ width: '100%', height: '100%' }}
+              transition={120}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export interface MediaCardProps {
   title: string;
   /** Small line above the title, e.g. "Abend · 60 Min". */
@@ -202,6 +281,11 @@ export interface MediaCardProps {
   /** Line(s) below the title: a string or custom content such as an avatar with text. */
   meta?: ReactNode;
   image?: ImageSource | number;
+  /**
+   * Several photos shown as a collage (PhotoCollage), e.g. a collection without a photo of its
+   * own; takes the place of `image`. An empty list shows the placeholder.
+   */
+  images?: readonly (ImageSource | number)[];
   placeholderIcon?: IconName;
   onPress?: () => void;
   size?: 'm' | 'l';
@@ -227,6 +311,12 @@ export function MediaCard(props: MediaCardProps) {
   const theme = useTheme();
   const layout = !props.layout || props.layout === 'auto' ? theme.shape.media : props.layout;
   const large = props.size === 'l';
+  const cover = (size: Pick<PhotoProps, 'width' | 'height' | 'aspectRatio' | 'radius'>) =>
+    props.images ? (
+      <PhotoCollage {...size} sources={props.images} placeholderIcon={props.placeholderIcon} />
+    ) : (
+      <Photo {...size} source={props.image} placeholderIcon={props.placeholderIcon} />
+    );
   const badge = props.badge ? (
     <Badge label={props.badge.label} icon={props.badge.icon} testID={props.badge.testID} />
   ) : null;
@@ -295,13 +385,11 @@ export function MediaCard(props: MediaCardProps) {
         {card(
           <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
             <View>
-              <Photo
-                source={props.image}
-                placeholderIcon={props.placeholderIcon}
-                height={props.photoAspectRatio ? undefined : large ? 190 : 122}
-                aspectRatio={props.photoAspectRatio}
-                radius={0}
-              />
+              {cover({
+                height: props.photoAspectRatio ? undefined : large ? 190 : 122,
+                aspectRatio: props.photoAspectRatio,
+                radius: 0,
+              })}
               {/* Bottom left, so it never meets the corner on a narrow card. */}
               {badge ? (
                 <View style={{ position: 'absolute', bottom: 8, left: 8 }}>{badge}</View>
@@ -315,15 +403,11 @@ export function MediaCard(props: MediaCardProps) {
         ) : null}
       </View>
     );
-  const thumb = (
-    <Photo
-      source={props.image}
-      placeholderIcon={props.placeholderIcon}
-      width={large ? 104 : 68}
-      height={large ? 104 : 68}
-      radius={theme.shape.radius.photo}
-    />
-  );
+  const thumb = cover({
+    width: large ? 104 : 68,
+    height: large ? 104 : 68,
+    radius: theme.shape.radius.photo,
+  });
   const rowStyle = { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 } as const;
   if (!props.corner)
     return card(

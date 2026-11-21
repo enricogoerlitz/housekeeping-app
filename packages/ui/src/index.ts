@@ -139,3 +139,5 @@ export {
 export { columnsFor, type GridColumnsOptions } from './grid-columns';
 export { EditableSection, type EditableSectionProps } from './editable-section';
 export { Disclosure, type DisclosureProps } from './disclosure';
+export { PhotoCollage, type PhotoCollageProps } from './display';
+export { SelectRow, type SelectRowProps } from './lists';

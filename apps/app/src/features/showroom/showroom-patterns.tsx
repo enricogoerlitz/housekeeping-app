@@ -1,3 +1,4 @@
+import { photoSource } from '@housekeeping/api';
 import {
   matchSearchOrCreate,
   moveInOrder,
@@ -15,15 +16,19 @@ import {
   EmptyState,
   FilterBar,
   Icon,
+  KIND_ICONS,
   List,
   ListRow,
+  MediaCard,
   Menu,
+  PhotoCollage,
   ReorderList,
   Row,
   RowTransition,
   ScreenHeader,
   SearchOrCreate,
   Section,
+  SelectRow,
   Sheet,
   Stack,
   Surface,
@@ -32,6 +37,7 @@ import {
   TextField,
   ViewTabs,
   toast,
+  useBreakpoint,
   useCheckWindow,
   type SheetSize,
 } from '@housekeeping/ui';
@@ -86,6 +92,8 @@ export function usePatternBlocks(): ReactNode[] {
     <MemberRatingsBlock key="ratings" />,
     <ExpiringToastBlock key="expire" />,
     <DisclosureBlock key="disclosure" />,
+    <CollageBlock key="collage" />,
+    <SelectRowBlock key="select" />,
   ];
 }
 
@@ -1200,6 +1208,132 @@ function DisclosureBlock() {
         variant="link"
         onPress={() => setItems(initialPacking())}
         testID="showroom-disclosure-reset"
+      />
+    </Block>
+  );
+}
+
+// ---------- Spec 0009, E14 and E16: photo collage, multi-select with a reason ----------
+
+const COLLAGE_PHOTOS = ['salat', 'nudelsalat', 'steak', 'beerensalat', 'pizza']
+  .map(photoSource)
+  .filter((source): source is number => source !== undefined);
+const COLLECTION_BADGE = { label: 'Sammlung', icon: KIND_ICONS.collection };
+
+function CollageBlock() {
+  const { isPhone } = useBreakpoint();
+  return (
+    <Block
+      title="Foto-Collage"
+      note="Sammlung ohne eigenes Foto: die Fotos der ersten bis zu vier enthaltenen Rezepte mit Foto, in ihrer Reihenfolge. Ohne Foto der Platzhalter mit Stapel-Symbol, mit eigenem Foto nur dieses."
+      testID="showroom-collage"
+    >
+      <Row wrap gap={12} align="flex-start">
+        {[0, 1, 2, 3, 5].map((count) => (
+          <Stack key={count} gap={4} style={{ width: 120 }}>
+            <PhotoCollage
+              sources={COLLAGE_PHOTOS.slice(0, count)}
+              aspectRatio={4 / 3}
+              testID={`showroom-collage-${count}`}
+            />
+            <Text variant="caption" color="muted">
+              {count === 0 ? 'ohne Foto' : count === 1 ? '1 Foto' : `${count} Fotos`}
+            </Text>
+          </Stack>
+        ))}
+      </Row>
+      <Row gap={12} align="stretch">
+        <View style={{ flex: 1 }}>
+          <MediaCard
+            title="Grillabend"
+            meta="2 Rezepte"
+            images={COLLAGE_PHOTOS.slice(0, 2)}
+            layout="photoTop"
+            photoAspectRatio={4 / 3}
+            size={isPhone ? 'm' : 'l'}
+            badge={COLLECTION_BADGE}
+            onPress={() => undefined}
+            testID="showroom-collage-card"
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <MediaCard
+            title="Sommerfest"
+            layout="photoTop"
+            photoAspectRatio={4 / 3}
+            size={isPhone ? 'm' : 'l'}
+            images={[]}
+            badge={COLLECTION_BADGE}
+            onPress={() => undefined}
+          />
+        </View>
+      </Row>
+      <MediaCard
+        title="Mezze-Abend"
+        kicker="Heute · Abend"
+        meta="3 Rezepte"
+        images={COLLAGE_PHOTOS.slice(0, 3)}
+        layout="thumbRow"
+        badge={COLLECTION_BADGE}
+        onPress={() => undefined}
+      />
+      <View style={{ maxWidth: 560 }}>
+        <PhotoCollage
+          sources={COLLAGE_PHOTOS.slice(0, 4)}
+          aspectRatio={4 / 3}
+          alt="Fotos von Gemischter Salat, Nudelsalat, Steak und Beerensalat"
+          testID="showroom-collage-page"
+        />
+      </View>
+    </Block>
+  );
+}
+
+const SAMPLE_PICKS = [
+  { id: 'kartoffelsalat', title: 'Kartoffelsalat', subtitle: '30 Min', contained: true },
+  {
+    id: 'grillgemuese',
+    title: 'Grillgemüse',
+    subtitle: '25 Min · vegan möglich',
+    contained: false,
+  },
+  { id: 'tzatziki', title: 'Tzatziki', subtitle: '10 Min · vegetarisch', contained: false },
+];
+
+function SelectRowBlock() {
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (id: string) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  return (
+    <Block
+      title="Mehrfachauswahl"
+      note="Die ganze Zeile ist ein Ankreuzfeld (Tipp oder Leertaste). Nicht wählbare Zeilen sind ausgegraut und sagen, warum."
+      testID="showroom-select"
+    >
+      <List>
+        {SAMPLE_PICKS.map((pick) => (
+          <SelectRow
+            key={pick.id}
+            title={pick.title}
+            subtitle={pick.subtitle}
+            selected={picked.has(pick.id)}
+            onToggle={() => toggle(pick.id)}
+            disabled={pick.contained}
+            hint={pick.contained ? 'schon enthalten' : undefined}
+            testID={`showroom-select-${pick.id}`}
+          />
+        ))}
+      </List>
+      <Button
+        label={picked.size === 1 ? '1 Rezept übernehmen' : `${picked.size} Rezepte übernehmen`}
+        disabled={picked.size === 0}
+        onPress={() => setPicked(new Set())}
+        testID="showroom-select-take"
       />
     </Block>
   );
