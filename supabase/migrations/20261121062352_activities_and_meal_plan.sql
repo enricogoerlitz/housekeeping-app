@@ -1,21 +1,16 @@
--- Spec 0004 — activities (+ per-person favourites and ratings), activities in the meal plan, own
--- photos for activities and recipes.
+-- Baseline (ADR-0012) — activities (+ per-person favourites and ratings) and the meal plan.
 --
--- * activities follow the restaurant pattern (spec 0003, T3c). name_key is computed by the client
---   with core normalizeText (duplicate check AC-008, like articles); it may be longer than the
---   name (ä → ae), hence 240. created_by is the caller (trigger, like feedback.author_id), never
---   updatable, and cleared when the person is removed from the household.
+-- * activities follow the restaurant pattern. name_key is computed by the client with core
+--   normalizeText (duplicate check, like articles); it may be longer than the name (ä → ae),
+--   hence 240. created_by is the caller (trigger, like feedback.author_id), never updatable, and
+--   cleared when the person is removed from the household.
 -- * Favourites and ratings: no write grants, written only by the set_activity_* RPCs for
---   auth.uid() (REQ-007, like restaurants).
--- * photo_path (activities, recipes) names the object in the private storage bucket
---   household-media (migration storage_household_media): <household_id>/<activities|recipes>/<id>/<file>.
---   The check keeps a row from pointing at another household's or another row's photo.
---   Uploading, replacing and deleting the object is the client's job through the Storage API (the
---   database cannot delete stored files). recipes.photo stays the bundled sample photo, used when
---   photo_path is null.
--- * meal_plan_entries: kind 'activity' with activity_id (on delete restrict, like recipe_id and
---   restaurant_id: a planned activity must not silently vanish from the plan) and an optional note
---   (≤ 120 characters, only on activity entries; shown as "Eislaufen (note)", REQ-005).
+--   auth.uid() (like restaurants).
+-- * photo_path names the own photo in the private storage bucket household-media (storage
+--   migration): <household_id>/activities/<id>/<uuid>.jpg. The check keeps a row from pointing at
+--   another household's or another row's photo, and allows no other file name. Uploading,
+--   replacing and deleting the object is the client's job through the Storage API (the database
+--   cannot delete stored files).
 
 -- ---------------------------------------------------------------------------------------------
 -- activities
@@ -50,9 +45,11 @@ create table public.activities (
   constraint activities_household_id_id_key unique (household_id, id),
   constraint activities_household_id_name_key_key unique (household_id, name_key),
   constraint activities_location_complete check ((lat is null) = (lng is null)),
+
   constraint activities_photo_path_valid check (
-    char_length(photo_path) <= 300
-    and photo_path ~ ('^' || household_id::text || '/activities/' || id::text || '/[^/]+$')),
+    photo_path ~ ('^' || household_id::text || '/activities/' || id::text
+                  || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$')),
+
   constraint activities_created_by_fkey foreign key (household_id, created_by)
     references public.household_members (household_id, profile_id) on delete set null (created_by)
 );
@@ -231,19 +228,54 @@ grant execute on function public.set_activity_favorite(uuid, boolean) to authent
 grant execute on function public.set_activity_rating(uuid, smallint) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
--- meal_plan_entries: activities with a note
+-- meal_plan_entries
 -- ---------------------------------------------------------------------------------------------
 
--- The kind checks are replaced as a whole; the rules for the existing kinds are unchanged.
-alter table public.meal_plan_entries
-  add column activity_id uuid,
-  add column note text
+-- * date null = "vorgemerkt" (planned without a day).
+-- * slot_id is the id of one of the household's meal_slots (JSON in households, so a trigger
+--   checks it instead of a foreign key).
+-- * kind decides which reference is required. recipe_id / restaurant_id / activity_id use `on
+--   delete restrict`: a planned or cooked meal must not silently vanish or lose what it was, and a
+--   cleared reference would violate the kind check anyway. Deleting a recipe, restaurant or
+--   activity that is in the plan therefore needs the entries removed or changed first, in the
+--   same RPC.
+-- * note (≤ 120 characters) only on activity entries; shown as "Eislaufen (note)".
+-- * leftovers_of_entry_id is cleared when the source entry is deleted; leftovers keep their
+--   recipe_id (the client copies it from the source), so they stay valid.
+-- * cook_id is cleared when the person is removed; eater_ids are checked by trigger.
+create table public.meal_plan_entries (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households (id) on delete cascade,
+  date date,
+  slot_id uuid not null,
+  kind text not null
+    constraint meal_plan_entries_kind_known
+      check (kind in ('recipe', 'text', 'leftovers', 'restaurant', 'activity')),
+  recipe_id uuid,
+  restaurant_id uuid,
+  activity_id uuid,
+  text text
+    constraint meal_plan_entries_text_length check (char_length(text) <= 500),
+  note text
     constraint meal_plan_entries_note_length check (char_length(note) <= 120),
-  drop constraint meal_plan_entries_kind_known,
-  add constraint meal_plan_entries_kind_known
-    check (kind in ('recipe', 'text', 'leftovers', 'restaurant', 'activity')),
-  drop constraint meal_plan_entries_kind_complete,
-  add constraint meal_plan_entries_kind_complete check (
+  leftovers_of_entry_id uuid,
+  eater_ids uuid[] not null default '{}'
+    constraint meal_plan_entries_eater_ids_size check (cardinality(eater_ids) <= 50),
+  guests integer not null default 0
+    constraint meal_plan_entries_guests_valid check (guests between 0 and 100),
+  portions integer not null default 0
+    constraint meal_plan_entries_portions_valid check (portions between 0 and 1000),
+  variants jsonb not null default '[]'
+    constraint meal_plan_entries_variants_valid check (
+      jsonb_typeof(variants) = 'array' and jsonb_array_length(variants) <= 20
+      and octet_length(variants::text) <= 4000),
+  cook_id uuid,
+  sort integer not null default 0,
+  not_cooked boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint meal_plan_entries_household_id_id_key unique (household_id, id),
+  constraint meal_plan_entries_kind_complete check (
     case kind
       when 'recipe' then recipe_id is not null
       when 'restaurant' then restaurant_id is not null
@@ -252,22 +284,70 @@ alter table public.meal_plan_entries
       when 'activity' then activity_id is not null
       else false
     end),
-  add constraint meal_plan_entries_note_only_activity check (note is null or kind = 'activity'),
-  add constraint meal_plan_entries_activity_fkey foreign key (household_id, activity_id)
-    references public.activities (household_id, id) on delete restrict;
+  constraint meal_plan_entries_note_only_activity check (note is null or kind = 'activity'),
+  constraint meal_plan_entries_recipe_fkey foreign key (household_id, recipe_id)
+    references public.recipes (household_id, id) on delete restrict,
+  constraint meal_plan_entries_restaurant_fkey foreign key (household_id, restaurant_id)
+    references public.restaurants (household_id, id) on delete restrict,
+  constraint meal_plan_entries_activity_fkey foreign key (household_id, activity_id)
+    references public.activities (household_id, id) on delete restrict,
+  constraint meal_plan_entries_leftovers_fkey foreign key (household_id, leftovers_of_entry_id)
+    references public.meal_plan_entries (household_id, id) on delete set null (leftovers_of_entry_id),
+  constraint meal_plan_entries_cook_fkey foreign key (household_id, cook_id)
+    references public.household_members (household_id, profile_id) on delete set null (cook_id)
+);
 
+create index meal_plan_entries_household_id_updated_at_idx on public.meal_plan_entries (household_id, updated_at);
+create index meal_plan_entries_household_id_recipe_id_idx on public.meal_plan_entries (household_id, recipe_id);
+create index meal_plan_entries_household_id_restaurant_id_idx on public.meal_plan_entries (household_id, restaurant_id);
 create index meal_plan_entries_household_id_activity_id_idx on public.meal_plan_entries (household_id, activity_id);
+create index meal_plan_entries_household_id_leftovers_idx
+  on public.meal_plan_entries (household_id, leftovers_of_entry_id);
+create index meal_plan_entries_household_id_cook_id_idx on public.meal_plan_entries (household_id, cook_id);
 
-grant insert (activity_id, note), update (activity_id, note) on public.meal_plan_entries to authenticated;
+-- Before insert or update: a new or changed slot_id must be one of the household's meal slots;
+-- people newly added to eater_ids must be members. Unchanged values are not re-checked, so a
+-- removed slot or member does not block other edits of old entries. Security invoker: reads the
+-- household and its members under the caller's RLS.
+create function private.meal_plan_entries_check_refs()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' or new.slot_id is distinct from old.slot_id then
+    if not exists (
+      select 1
+      from public.households h, jsonb_array_elements(h.meal_slots) s
+      where h.id = new.household_id and (s ->> 'id')::uuid = new.slot_id
+    ) then
+      raise exception 'invalid_slot' using errcode = '23503';
+    end if;
+  end if;
 
--- ---------------------------------------------------------------------------------------------
--- recipes: own photo
--- ---------------------------------------------------------------------------------------------
+  perform private.assert_members(
+    new.household_id,
+    array(
+      select unnest(new.eater_ids)
+      except
+      select unnest(case when tg_op = 'UPDATE' then old.eater_ids else '{}'::uuid[] end)
+    )
+  );
+  return new;
+end
+$$;
 
-alter table public.recipes
-  add column photo_path text,
-  add constraint recipes_photo_path_valid check (
-    char_length(photo_path) <= 300
-    and photo_path ~ ('^' || household_id::text || '/recipes/' || id::text || '/[^/]+$'));
+create trigger meal_plan_entries_check_refs before insert or update of slot_id, eater_ids
+  on public.meal_plan_entries
+  for each row execute function private.meal_plan_entries_check_refs();
 
-grant insert (photo_path), update (photo_path) on public.recipes to authenticated;
+grant select, delete on public.meal_plan_entries to authenticated;
+grant insert (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id, text, note,
+              leftovers_of_entry_id,
+              eater_ids, guests, portions, variants, cook_id, sort, not_cooked)
+  on public.meal_plan_entries to authenticated;
+grant update (date, slot_id, kind, recipe_id, restaurant_id, activity_id, text, note, leftovers_of_entry_id,
+              eater_ids, guests, portions, variants, cook_id, sort, not_cooked)
+  on public.meal_plan_entries to authenticated;
+select private.attach_household_policies('public.meal_plan_entries');
+select private.attach_sync_triggers('public.meal_plan_entries');

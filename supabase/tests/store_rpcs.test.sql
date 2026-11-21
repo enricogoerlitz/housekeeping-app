@@ -1,6 +1,7 @@
 -- Store and list RPCs (spec 0003, T4): checking with "checking wins" (check_seq), "not here",
 -- adding contributions with name resolution and merge, assigning an area, clearing checked items
--- and removing contributions. Rule table: docs/architecture/sync.md ("Abhaken: offline").
+-- and removing contributions. The shopping list is the items of a household (ADR-0012), so the
+-- RPCs take the household id; households stay independent of each other. Rule table: docs/architecture/sync.md ("Abhaken: offline").
 begin;
 \ir _helpers.psql
 select plan(74);
@@ -41,8 +42,7 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
-  ('milch'), ('butter'), ('eier'), ('zwiebeln'), ('salz'), ('kaese'), ('area_kuehl'), ('area_b'), ('article_b'),
-  ('list_a'), ('list_a2'), ('list_b'),
+  ('milch'), ('butter'), ('eier'), ('zwiebeln'), ('salz'), ('kaese'), ('area_kuehl'), ('area_b'), ('article_b'), ('zwiebeln_b'),
   ('item_milch'), ('item_butter'), ('item_eier'), ('item_salz'), ('item_milch_old'), ('item_b'),
   ('c_milch'), ('c_butter'), ('c_milch_old'), ('c_b');
 
@@ -56,23 +56,16 @@ insert into public.articles (id, household_id, name, name_key, synonym_keys) val
   (tests.fx('salz'), tests.fx('home_a'), 'Salz', 'salz', '{}'),
   (tests.fx('kaese'), tests.fx('home_a'), 'Käse', 'kase', '{}'),
   (tests.fx('zwiebeln'), tests.fx('home_a'), 'Frühlingszwiebeln', 'fruhlingszwiebeln', '{lauchzwiebeln}'),
-  (tests.fx('article_b'), tests.fx('home_b'), 'Milch', 'milch', '{}');
--- These T4 tests predate spec 0006 and use a second list in household A (list_a2) to show that
--- lists are independent. Since 0006 a household has one list (one_shopping_list.test.sql); the
--- constraint is dropped for this fixture only, inside the rolled-back test transaction.
-alter table public.shopping_lists drop constraint shopping_lists_household_id_key;
-insert into public.shopping_lists (id, household_id, name) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste'),
-  (tests.fx('list_a2'), tests.fx('home_a'), 'Grillen'),
-  (tests.fx('list_b'), tests.fx('home_b'), 'Liste B');
+  (tests.fx('article_b'), tests.fx('home_b'), 'Milch', 'milch', '{}'),
+  (tests.fx('zwiebeln_b'), tests.fx('home_b'), 'Frühlingszwiebeln', 'fruhlingszwiebeln', '{lauchzwiebeln}');
 -- Fixture state (postgres stands in for the RPCs): Milch open, Butter checked by Nadja (seq 1),
 -- Eier open, Salz open without contributions.
-insert into public.shopping_items (id, household_id, list_id, article_id, checked, checked_at, checked_by, check_seq) values
-  (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('milch'), false, null, null, 0),
-  (tests.fx('item_butter'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('butter'), true, now(), tests.fx('nadja'), 1),
-  (tests.fx('item_eier'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('eier'), false, null, null, 0),
-  (tests.fx('item_salz'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('salz'), false, null, null, 0),
-  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('list_b'), tests.fx('article_b'), false, null, null, 0);
+insert into public.shopping_items (id, household_id, article_id, checked, checked_at, checked_by, check_seq) values
+  (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('milch'), false, null, null, 0),
+  (tests.fx('item_butter'), tests.fx('home_a'), tests.fx('butter'), true, now(), tests.fx('nadja'), 1),
+  (tests.fx('item_eier'), tests.fx('home_a'), tests.fx('eier'), false, null, null, 0),
+  (tests.fx('item_salz'), tests.fx('home_a'), tests.fx('salz'), false, null, null, 0),
+  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('article_b'), false, null, null, 0);
 insert into public.shopping_contributions (id, household_id, item_id) values
   (tests.fx('c_milch'), tests.fx('home_a'), tests.fx('item_milch')),
   (tests.fx('c_butter'), tests.fx('home_a'), tests.fx('item_butter')),
@@ -145,8 +138,8 @@ select is(
 
 -- Unchecking while another open item of the same article exists: merge into the open item.
 select tests.clear_authentication();
-insert into public.shopping_items (id, household_id, list_id, article_id, checked, checked_at, checked_by, check_seq)
-values (tests.fx('item_milch_old'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('milch'), true, now(), tests.fx('nadja'), 4);
+insert into public.shopping_items (id, household_id, article_id, checked, checked_at, checked_by, check_seq)
+values (tests.fx('item_milch_old'), tests.fx('home_a'), tests.fx('milch'), true, now(), tests.fx('nadja'), 4);
 insert into public.shopping_contributions (id, household_id, item_id)
 values (tests.fx('c_milch_old'), tests.fx('home_a'), tests.fx('item_milch_old'));
 select tests.authenticate_as(tests.fx('enrico'));
@@ -216,7 +209,7 @@ insert into fx (key) values
 -- AC-023: Enrico (offline, sent later) and Nadja both add "Brot", which is not in the catalogue.
 select tests.authenticate_as(tests.fx('nadja'));
 select is(
-  public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
     tests.entry(tests.fx('brot_item_n'), tests.fx('brot_article_n'), 'Brot', 'brot', array[tests.fx('brot_c_n')]))),
   jsonb_build_array(jsonb_build_object(
     'client_item_id', tests.fx('brot_item_n'), 'item_id', tests.fx('brot_item_n'),
@@ -228,7 +221,7 @@ select results_eq(
   'T4 add_shopping_contributions: the new article has diet unknown and no area');
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
-  public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
     tests.entry(tests.fx('brot_item_e'), tests.fx('brot_article_e'), 'Brot', 'brot', array[tests.fx('brot_c_e')]))),
   jsonb_build_array(jsonb_build_object(
     'client_item_id', tests.fx('brot_item_e'), 'item_id', tests.fx('brot_item_n'),
@@ -236,7 +229,7 @@ select is(
   'AC-023 add_shopping_contributions: the second "Brot" maps to the existing article and item');
 select is(
   (select count(*)::int from public.shopping_items i join public.articles a on a.id = i.article_id
-   where i.list_id = tests.fx('list_a') and a.name_key = 'brot'), 1,
+   where i.household_id = tests.fx('home_a') and a.name_key = 'brot'), 1,
   'AC-023 add_shopping_contributions: "Brot" is on the list once');
 select results_eq(
   format($$ select id from public.shopping_contributions where item_id = %L order by id $$, tests.fx('brot_item_n')),
@@ -245,7 +238,7 @@ select results_eq(
 
 -- Idempotent repeat (the response was lost, the queue sends the same entry again).
 select is(
-  public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
     tests.entry(tests.fx('brot_item_e'), tests.fx('brot_article_e'), 'Brot', 'brot', array[tests.fx('brot_c_e')]))),
   jsonb_build_array(jsonb_build_object(
     'client_item_id', tests.fx('brot_item_e'), 'item_id', tests.fx('brot_item_n'),
@@ -257,22 +250,23 @@ select is(
 
 -- Idempotent even after the item was checked meanwhile: a repeat must not reopen it.
 select public.set_shopping_item_checked(tests.fx('brot_item_n'), true, 0);
-select public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+select public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
   tests.entry(tests.fx('brot_item_e'), tests.fx('brot_article_e'), 'Brot', 'brot', array[tests.fx('brot_c_e')])));
 select is(
   (select checked from public.shopping_items where id = tests.fx('brot_item_n')), true,
   'T4 add_shopping_contributions: a repeated contribution does not reopen a checked item');
 
--- Name resolution: name_key, then synonym_keys.
+-- Name resolution: name_key, then synonym_keys — in household B, which has its own catalogue.
+select tests.authenticate_as(tests.fx('ben'));
 select is(
-  public.add_shopping_contributions(tests.fx('list_a2'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_b'), jsonb_build_array(
     tests.entry(tests.fx('x_item'), tests.fx('x_article'), 'Milch', 'milch', array[tests.fx('x_c')]))) -> 0 ->> 'article_id',
-  tests.fx('milch')::text,
-  'T4 add_shopping_contributions: a name resolves to the article with that name_key');
+  tests.fx('article_b')::text,
+  'T4 add_shopping_contributions: a name resolves to the article with that name_key in the call''s household');
 select is(
-  public.add_shopping_contributions(tests.fx('list_a2'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_b'), jsonb_build_array(
     tests.entry(tests.fx('z_item'), tests.fx('z_article'), 'Lauchzwiebeln', 'lauchzwiebeln', array[tests.fx('z_c')]))) -> 0 ->> 'article_id',
-  tests.fx('zwiebeln')::text,
+  tests.fx('zwiebeln_b')::text,
   'T4 add_shopping_contributions: a synonym resolves to the article whose synonym_keys contain it');
 select is(
   (select count(*)::int from public.articles where id in (tests.fx('x_article'), tests.fx('z_article'))), 0,
@@ -282,7 +276,7 @@ select is(
 select tests.authenticate_as(tests.fx('nadja'));
 select public.set_shopping_item_not_available(tests.fx('item_butter'), true);
 select is(
-  public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
     tests.entry(tests.fx('butter_item'), gen_random_uuid(), 'Butter', 'butter', array[tests.fx('butter_c')]))) -> 0 ->> 'item_id',
   tests.fx('item_butter')::text,
   'T4 add_shopping_contributions: adding to a checked item reopens it');
@@ -298,31 +292,31 @@ select results_eq(
 -- A client item id that already exists elsewhere is not reused.
 select tests.authenticate_as(tests.fx('enrico'));
 select isnt(
-  public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+  public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
     tests.entry(tests.fx('item_b'), gen_random_uuid(), 'Käse', 'kase', array[tests.fx('taken_c')]))) -> 0 ->> 'item_id',
   tests.fx('item_b')::text,
   'T4 add_shopping_contributions: a client item id taken by another household gets a fresh id');
 select throws_ok(
-  format($$ select public.add_shopping_contributions(%L, %L) $$, tests.fx('list_a'),
+  format($$ select public.add_shopping_contributions(%L, %L) $$, tests.fx('home_a'),
          jsonb_build_array(tests.entry(gen_random_uuid(), gen_random_uuid(), 'Quark', 'quark', array[tests.fx('c_b')]))),
   '22023', 'invalid_entries',
   'T4 add_shopping_contributions: a contribution id of another household is rejected');
 select throws_ok(
-  format($$ select public.add_shopping_contributions(%L, '{"x": 1}') $$, tests.fx('list_a')),
+  format($$ select public.add_shopping_contributions(%L, '{"x": 1}') $$, tests.fx('home_a')),
   '22023', 'invalid_entries', 'T4 add_shopping_contributions: entries must be an array');
 select throws_ok(
-  format($$ select public.add_shopping_contributions(%L, %L) $$, tests.fx('list_a'),
+  format($$ select public.add_shopping_contributions(%L, %L) $$, tests.fx('home_a'),
          jsonb_build_array(tests.entry(gen_random_uuid(), gen_random_uuid(), 'Quark', 'quark', array[]::uuid[]))),
   '22023', 'invalid_entries', 'T4 add_shopping_contributions: an entry needs at least one contribution');
 
 select tests.authenticate_as(tests.fx('ben'));
 select throws_ok(
-  format($$ select public.add_shopping_contributions(%L, %L) $$, tests.fx('list_a'),
+  format($$ select public.add_shopping_contributions(%L, %L) $$, tests.fx('home_a'),
          jsonb_build_array(tests.entry(gen_random_uuid(), gen_random_uuid(), 'Milch', 'milch', array[gen_random_uuid()]))),
-  'P0002', 'list_not_found', 'AC-011 add_shopping_contributions: a list of another household is not found');
+  '42501', 'not_member', 'AC-011 add_shopping_contributions: the shopping list of another household is refused (not_member)');
 select tests.authenticate_as_anon();
 select throws_ok(
-  format($$ select public.add_shopping_contributions(%L, '[]') $$, tests.fx('list_a')),
+  format($$ select public.add_shopping_contributions(%L, '[]') $$, tests.fx('home_a')),
   '42501', null, 'AC-005 add_shopping_contributions: anon cannot call it');
 
 -- ===================== assign_article_area =====================
@@ -357,12 +351,13 @@ select throws_ok(
   '42501', null, 'AC-005 assign_article_area: anon cannot call it');
 
 -- ===================== clear_checked_items =====================
--- list_a now: Milch open, Butter open (reopened meanwhile), Eier open, Salz open, Käse open,
--- Brot checked (with two contributions). list_a2 has open items only; check one there.
+-- home_a now: Milch open, Butter open (reopened meanwhile), Eier open, Salz open, Käse open,
+-- Brot checked (with two contributions). Household B checks its Milch.
+select tests.authenticate_as(tests.fx('ben'));
+select public.set_shopping_item_checked(tests.fx('item_b'), true, 0);
 select tests.authenticate_as(tests.fx('enrico'));
-select public.set_shopping_item_checked(tests.fx('x_item'), true, 0);
 select is(
-  public.clear_checked_items(tests.fx('list_a')),
+  public.clear_checked_items(tests.fx('home_a')),
   (select jsonb_build_array(jsonb_build_object(
             'item', to_jsonb(i),
             'contributions', (select jsonb_agg(to_jsonb(c) order by c.created_at, c.id)
@@ -374,21 +369,23 @@ select is(
     + (select count(*)::int from public.shopping_contributions where item_id = tests.fx('brot_item_n')), 0,
   'T4 clear_checked_items: the checked item and its contributions are deleted');
 select is(
-  (select count(*)::int from public.shopping_items where list_id = tests.fx('list_a')), 5,
+  (select count(*)::int from public.shopping_items where household_id = tests.fx('home_a')), 5,
   'T4 clear_checked_items: open items stay, including one reopened meanwhile');
+select tests.authenticate_as(tests.fx('ben'));
 select is(
-  (select checked from public.shopping_items where id = tests.fx('x_item')), true,
-  'T4 clear_checked_items: checked items of other lists stay');
+  (select checked from public.shopping_items where id = tests.fx('item_b')), true,
+  'T4 clear_checked_items: checked items of another household stay');
+select tests.authenticate_as(tests.fx('enrico'));
 select is(
-  public.clear_checked_items(tests.fx('list_a')), '[]'::jsonb,
+  public.clear_checked_items(tests.fx('home_a')), '[]'::jsonb,
   'T4 clear_checked_items: nothing checked → empty array');
 select tests.authenticate_as(tests.fx('ben'));
 select throws_ok(
-  format('select public.clear_checked_items(%L)', tests.fx('list_a2')),
-  'P0002', 'list_not_found', 'AC-011 clear_checked_items: a list of another household is not found');
+  format('select public.clear_checked_items(%L)', tests.fx('home_a')),
+  '42501', 'not_member', 'AC-011 clear_checked_items: the shopping list of another household is refused (not_member)');
 select tests.authenticate_as_anon();
 select throws_ok(
-  format('select public.clear_checked_items(%L)', tests.fx('list_a2')),
+  format('select public.clear_checked_items(%L)', tests.fx('home_a')),
   '42501', null, 'AC-005 clear_checked_items: anon cannot call it');
 
 -- ===================== remove_contributions =====================
@@ -425,13 +422,13 @@ select n, gen_random_uuid() as item_id, gen_random_uuid() as article_id,
 from generate_series(1, 10) n;
 grant select on bulk to authenticated;
 select throws_ok(
-  format('select public.add_shopping_contributions(%L, %L)', tests.fx('list_a'),
+  format('select public.add_shopping_contributions(%L, %L)', tests.fx('home_a'),
     (select jsonb_agg(tests.entry(item_id, article_id, 'Bulk ' || n, 'bulk ' || n, ids)) from bulk)
     || jsonb_build_array(tests.entry(gen_random_uuid(), gen_random_uuid(), 'Bulk extra', 'bulk extra',
                                      array[gen_random_uuid()]))),
   '22023', 'too_many_changes', 'T4 add_shopping_contributions: more than 1000 contributions in one call are rejected');
 select lives_ok(
-  format('select public.add_shopping_contributions(%L, %L)', tests.fx('list_a'),
+  format('select public.add_shopping_contributions(%L, %L)', tests.fx('home_a'),
     (select jsonb_agg(tests.entry(item_id, article_id, 'Bulk ' || n, 'bulk ' || n, ids)) from bulk)),
   'T4 add_shopping_contributions: 1000 contributions in one call are allowed');
 select throws_ok(

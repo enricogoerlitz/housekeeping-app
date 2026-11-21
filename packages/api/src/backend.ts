@@ -54,8 +54,12 @@ import {
 } from './transport';
 import { createSupabaseTransport, fromSupabaseClient } from './transport-supabase';
 
-/** Bump when the cached shape changes: the device then drops its cache and loads again (AC-018). */
-export const CACHE_VERSION = 2;
+/**
+ * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
+ * What is not cache survives the bump: the store queue and the choices made on this device.
+ * Version 3: the shopping list is the household's items, without list rows (spec 0006, ADR-0012).
+ */
+export const CACHE_VERSION = 3;
 /** Retention of `deleted_records` on the server (pg_cron). */
 export const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
@@ -275,6 +279,17 @@ function firstJoined(
   )[0];
 }
 
+/** The stored store choices: household id → store id or null; anything else is dropped. */
+function storeChoicesFrom(value: unknown): Record<string, string | null> {
+  if (typeof value !== 'object' || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string | null] =>
+        entry[1] === null || typeof entry[1] === 'string',
+    ),
+  );
+}
+
 function byId(rows: readonly SmallRow[]): Record<string, Row> {
   const result: Record<string, Row> = {};
   for (const row of rows) if (typeof row.id === 'string') result[row.id] = row as Row;
@@ -314,6 +329,8 @@ export function createEngine(options: EngineOptions): Engine {
   let loaded = false;
   /** The household last chosen on this device (stored with the cache, so bound to the user). */
   let chosenHouseholdId: string | undefined;
+  /** The store last chosen in "Einkaufen" per household (spec 0006), stored like the household. */
+  let storeChoices: Record<string, string | null> = {};
 
   // Store queue: waiting entries, the one being sent, and answered ones shown until the next pull.
   let queue: StoreQueueEntry[] = [];
@@ -362,8 +379,8 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   /** Items with a store action that has not been answered yet (the small dot). */
-  function pendingItemIds(base: TableRows): Set<string> {
-    const after = applyQueue(base, unsent());
+  function pendingItemIds(base: TableRows, householdId: string): Set<string> {
+    const after = applyQueue(base, unsent(), householdId);
     const ids = new Set<string>();
     if (after === base) return ids;
     for (const [id, row] of Object.entries(after.shopping_items ?? {})) {
@@ -431,10 +448,11 @@ export function createEngine(options: EngineOptions): Engine {
         const confirmed = applyQueue(
           base,
           settling.map((settled) => settled.entry),
+          householdId,
         );
         households[householdId] = rowsToHousehold(tables, small, householdId, {
           previous: previous?.households[householdId],
-          pendingItemIds: pendingItemIds(confirmed),
+          pendingItemIds: pendingItemIds(confirmed, householdId),
         });
       }
     }
@@ -459,6 +477,7 @@ export function createEngine(options: EngineOptions): Engine {
       activeHouseholdId,
       households: sameHouseholds && previous ? previous.households : households,
       offline: isOffline(),
+      storeChoices,
     };
     if (
       previous &&
@@ -510,8 +529,16 @@ export function createEngine(options: EngineOptions): Engine {
     const removed = [...persisted.keys()].filter((householdId) => !next.households[householdId]);
     for (const householdId of removed) persisted.delete(householdId);
     // A household the user lost leaves nothing on the device, also not as the stored choice.
-    const lostChoice = chosenHouseholdId !== undefined && !next.households[chosenHouseholdId];
+    // Lost means no longer a member: a household not loaded yet (first pull) is not lost.
+    const member = (householdId: string) => next.householdIds.includes(householdId);
+    const lostChoice = chosenHouseholdId !== undefined && !member(chosenHouseholdId);
     if (lostChoice) chosenHouseholdId = undefined;
+    if (Object.keys(storeChoices).some((householdId) => !member(householdId))) {
+      storeChoices = Object.fromEntries(
+        Object.entries(storeChoices).filter(([householdId]) => member(householdId)),
+      );
+      entries.push(['store-choices', storeChoices]);
+    }
     await storage.setMany(entries);
     const gone = removed.map(householdKey);
     if (lostChoice) gone.push('active');
@@ -524,9 +551,21 @@ export function createEngine(options: EngineOptions): Engine {
     if (loaded) return;
     loaded = true;
     const stored = await storage.get('meta');
-    if (!isMeta(stored) || stored.userId !== userId || stored.version !== cacheVersion) {
-      // Another user, another cache version or nothing yet: start empty (AC-003, AC-018).
+    if (!isMeta(stored) || stored.userId !== userId) {
+      // Another user or nothing yet: start empty (AC-003).
       await storage.clear();
+    } else if (stored.version !== cacheVersion) {
+      // Another cache version: the cache is loaded again (AC-018), but what waits to be sent and
+      // what was chosen on this device is no cache and stays.
+      await readDeviceState();
+      await storage.clear();
+      const kept: [string, unknown][] = [
+        ['meta', meta()],
+        ['queue', queue],
+        ['store-choices', storeChoices],
+      ];
+      if (chosenHouseholdId !== undefined) kept.push(['active', chosenHouseholdId]);
+      await storage.setMany(kept);
     } else {
       const small = (await storage.get('small')) as SyncCache['small'] | undefined;
       const households: SyncCache['households'] = {};
@@ -545,13 +584,20 @@ export function createEngine(options: EngineOptions): Engine {
         small: small ?? {},
         households,
       };
-      const storedQueue = await storage.get('queue');
-      queue = Array.isArray(storedQueue) ? (storedQueue as StoreQueueEntry[]) : [];
-      const chosen = await storage.get('active');
-      chosenHouseholdId = typeof chosen === 'string' ? chosen : undefined;
-      for (const entry of queue) entrySeq.set(entry, ++seq);
+      await readDeviceState();
     }
     rebuild();
+  }
+
+  /** Reads store queue, household and store choices of this device into the engine. */
+  async function readDeviceState(): Promise<void> {
+    const storedQueue = await storage.get('queue');
+    // Written by this module; the entries' shape is kept across cache versions.
+    queue = Array.isArray(storedQueue) ? (storedQueue as StoreQueueEntry[]) : [];
+    const chosen = await storage.get('active');
+    chosenHouseholdId = typeof chosen === 'string' ? chosen : undefined;
+    storeChoices = storeChoicesFrom(await storage.get('store-choices'));
+    for (const entry of queue) entrySeq.set(entry, ++seq);
   }
 
   // ---------- pull ----------
@@ -771,7 +817,7 @@ export function createEngine(options: EngineOptions): Engine {
       } else if (entry.kind === 'assignArea') {
         await transport.assignArticleArea(entry.articleId, entry.areaId);
       } else {
-        const [answer] = await transport.addShoppingContributions(entry.listId, [
+        const [answer] = await transport.addShoppingContributions(entry.householdId, [
           toAddEntry(entry),
         ]);
         if (answer && answer.item_id !== entry.clientItemId) {
@@ -898,10 +944,11 @@ export function createEngine(options: EngineOptions): Engine {
     for (const householdId of cache?.householdIds ?? []) {
       const tables = cache?.households[householdId]?.tables;
       if (!tables) continue;
-      const confirmed = applyQueue(tables, [
-        ...settling.map((settled) => settled.entry),
-        ...(inFlight ? [inFlight] : []),
-      ]);
+      const confirmed = applyQueue(
+        tables,
+        [...settling.map((settled) => settled.entry), ...(inFlight ? [inFlight] : [])],
+        householdId,
+      );
       const expected = confirmed[table]?.[id];
       if (expected) return { server: tables[table]?.[id], expected };
     }
@@ -1018,6 +1065,7 @@ export function createEngine(options: EngineOptions): Engine {
     history = [];
     knownCheckSeq.clear();
     chosenHouseholdId = undefined;
+    storeChoices = {};
     await storage.clear();
     rebuild();
   }
@@ -1038,6 +1086,23 @@ export function createEngine(options: EngineOptions): Engine {
       });
   }
 
+  function rememberShoppingStore(householdId: string, storeId: string | null): void {
+    if (storeChoices[householdId] === storeId) return;
+    storeChoices = { ...storeChoices, [householdId]: storeId };
+    rebuild();
+    // Only on this device (spec 0006): meta binds it to the user like the chosen household.
+    void storage
+      .setMany([
+        ['meta', meta()],
+        ['store-choices', storeChoices],
+      ])
+      .catch((error: unknown) => {
+        console.warn(
+          `Storing the store failed: ${error instanceof Error ? error.name : 'unknown'}`,
+        );
+      });
+  }
+
   return {
     load,
     start,
@@ -1052,6 +1117,7 @@ export function createEngine(options: EngineOptions): Engine {
     enqueueStoreAction,
     undoable,
     rememberActiveHousehold,
+    rememberShoppingStore,
     setSimulatedOffline(offline) {
       transport.setBlocked(offline);
       if (!offline) networkFailed = false;

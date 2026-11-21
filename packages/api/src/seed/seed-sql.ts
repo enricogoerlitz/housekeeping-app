@@ -297,19 +297,15 @@ function householdSql(householdId: string, data: HouseholdData, context: Context
     const prepared = list.map((row, index) => {
       const copy: Row = { ...row };
       if (NO_ID_TABLES.has(table)) delete (copy as Partial<Row>).id;
-      if (table === 'households') {
-        delete copy.default_list_id;
-        delete copy.default_store_id;
-      }
+      if (table === 'households') delete copy.default_store_id;
       return prepareRow(table, copy, index, context, data);
     });
     parts.push(insert(table, prepared));
-    if (table === 'shopping_lists') {
-      // The default list and store exist now (composite foreign keys).
+    if (table === 'stores') {
+      // The default store exists now (composite foreign key).
       const household = rows.households?.[0];
       parts.push(
-        `update public.households set default_list_id = ${literal('', household?.default_list_id)}, ` +
-          `default_store_id = ${literal('', household?.default_store_id)} ` +
+        `update public.households set default_store_id = ${literal('', household?.default_store_id)} ` +
           `where id = ${quote(householdId)};\n`,
       );
     }
@@ -387,7 +383,6 @@ const TIMESTAMPED_TABLES = [
   'areas',
   'articles',
   'stores',
-  'shopping_lists',
   'recipes',
   'recipe_favorites',
   'recipe_ratings',
@@ -411,7 +406,6 @@ const TOP_LEVEL = [
   'areas',
   'articles',
   'stores',
-  'lists',
   'recipes',
   'restaurants',
   'activities',

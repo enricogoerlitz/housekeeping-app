@@ -168,21 +168,20 @@ export function summarizeItem(item: ShoppingItem): ItemSummary {
 }
 
 /**
- * Adds a contribution for an article to a list, returning a new items array.
+ * Adds a contribution for an article to the household's shopping list, returning a new items
+ * array.
  * - An open item for that article exists → the contribution is appended.
  * - Only a checked item exists → it is reopened with just the new contribution.
  * - Otherwise a new item is created with the given newItemId.
  */
 export function addContribution(
   items: ShoppingItem[],
-  listId: Id,
   articleId: Id,
   contribution: ShoppingContribution,
   newItemId: Id,
   now: string,
 ): ShoppingItem[] {
-  const isTarget = (item: ShoppingItem): boolean =>
-    item.listId === listId && item.articleId === articleId;
+  const isTarget = (item: ShoppingItem): boolean => item.articleId === articleId;
 
   const open = items.find((item) => isTarget(item) && !item.checked);
   if (open) {
@@ -204,7 +203,6 @@ export function addContribution(
     ...items,
     {
       id: newItemId,
-      listId,
       articleId,
       contributions: [contribution],
       checked: false,

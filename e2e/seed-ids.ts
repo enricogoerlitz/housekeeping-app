@@ -485,7 +485,6 @@ export const seedIds = {
   'art-grillkohle': '99820698-4598-592b-bf1e-694e8637766c',
   'store-rewe': 'ec269f55-f5e9-5b9a-afde-ebe1c0ca0848',
   'store-dm': '68e120dd-7e16-5ab3-a284-21deb0185245',
-  'list-standard': '0659d7b0-85bb-5fc2-96d5-73b7f04112d3',
   'rec-mango-curry': 'f8bb33d0-ec23-5cae-afca-e00949b2b93f',
   'rec-spaghetti-bolognese': 'b6ba9eb3-8266-5fbf-a32c-e4b38a91b98f',
   'rec-lasagne': '59df6a7a-0604-567e-87a0-e6449db65331',
@@ -1053,5 +1052,4 @@ export const testSeedIds = {
   'art-briefmarken': 'c6dc6564-be0a-55b6-8f8a-157abd06b030',
   'art-zeitung': 'febd47e4-02b0-5bac-943b-d04fb53b5ceb',
   'art-grillkohle': '3618a368-3d1c-5cd5-bea9-525e21ad7b60',
-  'list-test': '6393e862-1025-5095-9cc9-4c2c9178107f',
 } as const;

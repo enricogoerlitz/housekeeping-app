@@ -178,3 +178,25 @@ regelt die erste Spec mit Fotos.
   ohnehin direkt über die API löschen. Schutz gegen Fremde geben RLS und die Spaltenrechte.
 - **Einladungen** werden immer selbst angenommen (`accept_invitation`) oder abgelehnt
   (`decline_invitation`), auch beim ersten Anmelden; das neue Konto bekommt nur sein Profil.
+
+## Nachtrag Spec 0006 — eine Einkaufsliste ohne eigene Tabelle
+
+- **Eine Liste je Haushalt, keine Tabelle:** Die Einkaufsliste ist die Menge der `shopping_items`
+  eines Haushalts (ADR-0012). Es gibt weder `shopping_lists` noch `households.default_list_id` noch
+  `shopping_items.list_id`. Je Haushalt und Artikel gibt es höchstens einen offenen Posten
+  (`shopping_items_open_article_idx (household_id, article_id) where not checked`).
+- **Listen-Aktionen nehmen die Haushalts-Kennung:** `add_shopping_contributions`,
+  `clear_checked_items`, `clear_shopping_list` und `restore_cleared_items` bekommen
+  `p_household_id`; in `apply_changes` landet `add_contributions` im Haushalt des Aufrufs. Ein
+  Haushalt, in dem der Aufrufer nicht Mitglied ist, ergibt `not_member` (42501) — auch in den
+  security-invoker-Funktionen, damit eine fremde Kennung nicht still ein leeres Ergebnis liefert.
+- **Sperre je Haushalt und Artikel:** Hinzufügen, Zurücknehmen eines Hakens und Wiederherstellen
+  serialisieren über `private.lock_household_article(household, article)`.
+- **Neue RPCs:** `clear_shopping_list` („Liste leeren …“, alle Posten samt Erledigtem, Rückgabe für
+  „Rückgängig“) und `adjust_item_count` (+ und −, ein Aufruf je Tipp, atomar unter der Zeilensperre
+  des Postens).
+- **Laden-Warteschlange:** Ein „Hinzufügen“ trägt die Haushalts-Kennung. Fehler, die unsere
+  Funktionen absichtlich werfen (SQLSTATE P0001/P0002, PostgREST antwortet darauf mit 500), sind
+  endgültig: Der Eintrag wird verworfen und blockiert die Warteschlange nicht.
+- **Speicher-Version 3:** Der Cache wird einmal neu geladen; Warteschlange, gewählter Haushalt und
+  gewählter Markt des Geräts bleiben dabei erhalten.

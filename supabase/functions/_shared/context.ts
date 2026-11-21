@@ -23,12 +23,10 @@ const HouseholdRow = z.object({
   id: text,
   name: text,
   meal_slots: z.array(z.unknown()).nullish(),
-  default_list_id: optionalText,
 });
 const MealSlot = z.object({ id: text, name: text });
 const MemberRow = z.object({ profile_id: text });
 const ProfileRow = z.object({ id: text, name: text, diet_preference: optionalText });
-const ListRow = z.object({ id: text, name: text, is_default: z.boolean().nullish() });
 const ChoreRow = z.object({ id: text, title: text, next_due_on: optionalText });
 const PlanRow = z.object({
   date: optionalText,
@@ -91,10 +89,9 @@ export interface OpenRecipe {
 
 export interface AssistantContext {
   today: string;
-  household: { id: string; name: string; defaultListId?: string };
+  household: { id: string; name: string };
   mealSlots: { id: string; name: string }[];
   members: { id: string; name: string; dietPreference?: string }[];
-  lists: { id: string; name: string; isDefault: boolean }[];
   recipes: { id: string; title: string; tags: string[]; minutes?: number }[];
   openRecipe?: OpenRecipe;
   chores: { id: string; title: string; nextDueOn?: string }[];
@@ -110,13 +107,9 @@ export async function loadAssistantContext(
 ): Promise<AssistantContext | undefined> {
   const today = berlinDate(now);
   const select = (table: string, columns: string) => client.from(table).select(columns);
-  const [households, memberRows, lists, recipes, open, chores, plan] = await Promise.all([
-    read(
-      select('households', 'id, name, meal_slots, default_list_id').eq('id', householdId),
-      HouseholdRow,
-    ),
+  const [households, memberRows, recipes, open, chores, plan] = await Promise.all([
+    read(select('households', 'id, name, meal_slots').eq('id', householdId), HouseholdRow),
     read(select('household_members', 'profile_id').eq('household_id', householdId), MemberRow),
-    read(select('shopping_lists', 'id, name, is_default').eq('household_id', householdId), ListRow),
     read(
       select('recipes', 'id, title, tags, total_minutes')
         .eq('household_id', householdId)
@@ -153,7 +146,7 @@ export async function loadAssistantContext(
   const recipe = open[0];
   return {
     today,
-    household: { id: household.id, name: household.name, defaultListId: household.default_list_id },
+    household: { id: household.id, name: household.name },
     mealSlots: rows(MealSlot, household.meal_slots),
     members: profiles
       .filter((profile) => memberIds.includes(profile.id))
@@ -162,11 +155,6 @@ export async function loadAssistantContext(
         name: profile.name,
         dietPreference: profile.diet_preference,
       })),
-    lists: lists.map((list) => ({
-      id: list.id,
-      name: list.name,
-      isDefault: list.is_default === true,
-    })),
     recipes: recipes.map((r) => ({
       id: r.id,
       title: r.title,

@@ -29,7 +29,6 @@ export interface Household {
   name: string;
   memberIds: Id[];
   mealSlots: MealSlot[];
-  defaultListId: Id;
   defaultStoreId?: Id;
 }
 
@@ -209,13 +208,6 @@ export interface Activity {
 
 // ---------- Shopping ----------
 
-export interface ShoppingList {
-  id: Id;
-  name: string;
-  isDefault: boolean;
-  storeId?: Id;
-}
-
 export type ContributionSource =
   | { kind: 'manual' }
   | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string }
@@ -233,9 +225,9 @@ export interface ShoppingContribution {
   note?: string;
 }
 
+/** An item on the household's shopping list ("Einkaufsliste"; one per household, ADR-0012). */
 export interface ShoppingItem {
   id: Id;
-  listId: Id;
   articleId: Id;
   contributions: ShoppingContribution[];
   checked: boolean;

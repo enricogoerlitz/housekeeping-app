@@ -8,10 +8,8 @@ import {
   splitItems,
   useAreas,
   useArticlesById,
-  useHousehold,
   useShoppingItems,
-  useShoppingLists,
-  useStores,
+  useShoppingStore,
   useAiSimulated,
   useToday,
   type DictatedItem,
@@ -21,7 +19,6 @@ import {
   summarizeItem,
   weekDates,
   type Article,
-  type Id,
   type ItemGroup,
   type ShoppingItem,
 } from '@housekeeping/core';
@@ -53,7 +50,7 @@ import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useDictation } from '@/lib/use-dictation';
 
-import { ListSwitchSheet, StoreSheet } from './list-sheets';
+import { StoreSheet } from './list-sheets';
 import { PantryCheckSheet } from './pantry-check-sheet';
 import { SmartComposer } from './smart-composer';
 
@@ -125,20 +122,17 @@ interface Dictation {
 }
 
 export function ListScreen() {
-  const household = useHousehold();
-  const lists = useShoppingLists();
   const items = useShoppingItems();
   const articlesById = useArticlesById();
   const areas = useAreas();
-  const stores = useStores();
+  const store = useShoppingStore();
   const today = useToday();
   const online = useOnlineOnly();
   const assistant = useAssistant();
   const router = useRouter();
   const { isPhone, isWide } = useBreakpoint();
 
-  const [chosenListId, setChosenListId] = useState<Id>(household.defaultListId);
-  const [sheet, setSheet] = useState<'lists' | 'store' | undefined>();
+  const [storeSheet, setStoreSheet] = useState(false);
   const [pantryCheck, setPantryCheck] = useState(false);
   const [showDone, setShowDone] = useState(true);
   const [dictation, setDictation] = useState<Dictation | undefined>();
@@ -146,21 +140,7 @@ export function ListScreen() {
   const speech = useDictation();
   const [nothingHeard, setNothingHeard] = useState(false);
 
-  const list =
-    lists.find((candidate) => candidate.id === chosenListId) ??
-    lists.find((candidate) => candidate.id === household.defaultListId) ??
-    lists[0];
-  if (!list) {
-    return (
-      <Screen>
-        <EmptyState icon="shopping-basket" title="Noch keine Liste" />
-      </Screen>
-    );
-  }
-  const store = list.storeId
-    ? stores.find((candidate) => candidate.id === list.storeId)
-    : undefined;
-  const { open, done } = splitItems(items, list.id);
+  const { open, done } = splitItems(items);
   const groups = groupItems(open, articlesById, areas, store);
   const recipeLabels = [
     ...new Set(
@@ -210,17 +190,17 @@ export function ListScreen() {
   };
   const acceptGhost = (index: number) => {
     const ghost = dictation?.items.find((entry) => entry.index === index);
-    if (ghost) addShoppingItemFromText(list.id, ghost.item.text);
+    if (ghost) addShoppingItemFromText(ghost.item.text);
     dropGhost(index);
   };
   const acceptAll = () => {
-    for (const entry of dictation?.items ?? []) addShoppingItemFromText(list.id, entry.item.text);
+    for (const entry of dictation?.items ?? []) addShoppingItemFromText(entry.item.text);
     setDictation(undefined);
   };
 
   const clearDone = () => {
     const restore = snapshot();
-    const count = clearCheckedItems(list.id);
+    const count = clearCheckedItems();
     toast.show({
       message: count === 1 ? '1 Posten geleert' : `${count} Posten geleert`,
       actionLabel: 'Rückgängig',
@@ -244,7 +224,7 @@ export function ListScreen() {
       icon="store"
       label={store?.name ?? 'Kein Markt'}
       testID="store-chip"
-      onPress={() => setSheet('store')}
+      onPress={() => setStoreSheet(true)}
     />
   );
   const forText =
@@ -265,31 +245,15 @@ export function ListScreen() {
       }}
     >
       <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
-        <Pressable
-          testID="list-switch"
-          accessibilityRole="button"
-          accessibilityLabel={`${list.name}, Liste wechseln`}
-          onPress={() => setSheet('lists')}
-          style={(state) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            alignSelf: 'flex-start',
-            maxWidth: '100%',
-            opacity: state.pressed ? 0.6 : 1,
-          })}
+        {/* One list per household (ADR-0012): a fixed title, nothing to switch. */}
+        <Text
+          variant={isPhone ? 'title' : 'display'}
+          heading
+          numberOfLines={1}
+          testID="screen-title"
         >
-          <Text
-            variant={isPhone ? 'title' : 'display'}
-            heading
-            numberOfLines={1}
-            testID="screen-title"
-            style={{ flexShrink: 1 }}
-          >
-            {list.name}
-          </Text>
-          <Icon name="chevron-down" size={22} color="muted" />
-        </Pressable>
+          Einkaufsliste
+        </Text>
         {isPhone ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {storeChip}
@@ -310,7 +274,7 @@ export function ListScreen() {
         icon="shopping-basket"
         disabled={open.length === 0}
         testID="start-shopping"
-        onPress={() => router.push({ pathname: '/einkaufen', params: { list: list.id } })}
+        onPress={() => router.push('/einkaufen')}
       />
       <Button
         label="Aus dem Plan"
@@ -481,7 +445,6 @@ export function ListScreen() {
       header={header}
       footer={
         <SmartComposer
-          listId={list.id}
           onDictate={features.ai ? dictate : undefined}
           dictating={speech.status === 'listening'}
           dictateDisabled={
@@ -493,23 +456,9 @@ export function ListScreen() {
     >
       {actions}
       <Stack gap={0}>{body}</Stack>
-      {sheet === 'lists' ? (
-        <ListSwitchSheet
-          activeListId={list.id}
-          onSelect={(id) => {
-            setChosenListId(id);
-            setSheet(undefined);
-          }}
-          onClose={() => setSheet(undefined)}
-        />
-      ) : null}
-      {sheet === 'store' ? <StoreSheet list={list} onClose={() => setSheet(undefined)} /> : null}
+      {storeSheet ? <StoreSheet onClose={() => setStoreSheet(false)} /> : null}
       {pantryCheck ? (
-        <PantryCheckSheet
-          weekDates={weekDates(today)}
-          listId={list.id}
-          onClose={() => setPantryCheck(false)}
-        />
+        <PantryCheckSheet weekDates={weekDates(today)} onClose={() => setPantryCheck(false)} />
       ) : null}
     </Screen>
   );

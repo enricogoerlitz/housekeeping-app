@@ -17,7 +17,6 @@ export function householdTables(): { [table: string]: Row[] } {
           { id: 'slot-lunch', name: 'Mittag', sort: 0 },
           { id: 'slot-dinner', name: 'Abend', sort: 1 },
         ],
-        default_list_id: 'list-main',
       },
     ],
     household_members: [
@@ -29,7 +28,6 @@ export function householdTables(): { [table: string]: Row[] } {
       { id: NADJA, name: 'Nadja', diet_preference: 'vegetarian' },
       { id: 'stranger', name: 'Fremd', diet_preference: 'flexible' },
     ],
-    shopping_lists: [{ ...h, id: 'list-main', name: 'Einkauf', is_default: true }],
     recipes: [
       {
         ...h,

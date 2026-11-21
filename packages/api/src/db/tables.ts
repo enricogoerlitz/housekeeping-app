@@ -9,7 +9,6 @@ export const ID_TABLES = [
   'areas',
   'articles',
   'stores',
-  'shopping_lists',
   'recipes',
   'restaurants',
   'activities',
@@ -48,7 +47,6 @@ export const WRITABLE_COLUMNS = {
   areas: ['name', 'sort'],
   articles: ['name', 'name_key', 'synonyms', 'synonym_keys', 'area_id', 'diet', 'is_pantry'],
   stores: ['name', 'area_order', 'hidden_area_ids'],
-  shopping_lists: ['name', 'is_default', 'store_id'],
   recipes: [
     'title',
     'photo',
@@ -126,9 +124,9 @@ export const WRITABLE_COLUMNS = {
     'sort',
     'not_cooked',
   ],
-  shopping_items: ['list_id', 'article_id'],
+  shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
-  households: ['name', 'meal_slots', 'default_list_id', 'default_store_id'],
+  households: ['name', 'meal_slots', 'default_store_id'],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;

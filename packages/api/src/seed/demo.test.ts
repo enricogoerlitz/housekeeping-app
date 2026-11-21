@@ -52,11 +52,7 @@ describe('demo household (AC-012)', () => {
       (entry) => entry.date !== null && week.includes(entry.date),
     );
     expect(thisWeek.length).toBeGreaterThanOrEqual(5);
-    const defaultList = data.lists.find((list) => list.id === data.household.defaultListId);
-    expect(defaultList?.isDefault).toBe(true);
-    expect(
-      data.items.filter((item) => item.listId === defaultList?.id && !item.checked).length,
-    ).toBeGreaterThan(0);
+    expect(data.items.filter((item) => !item.checked).length).toBeGreaterThan(0);
     expect(data.stores.map((store) => store.name)).toContain('Rewe Südstadt');
     expect(data.chores.length).toBeGreaterThanOrEqual(8);
   });

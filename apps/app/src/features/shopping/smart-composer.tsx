@@ -1,11 +1,5 @@
 import { addShoppingItemFromText, useArticles } from '@housekeeping/api';
-import {
-  formatAmount,
-  parseSmartInput,
-  searchArticles,
-  type Id,
-  type SmartInput,
-} from '@housekeeping/core';
+import { formatAmount, parseSmartInput, searchArticles, type SmartInput } from '@housekeeping/core';
 import { Chip, ComposerBar, IconButton, TextField, toast } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -52,7 +46,6 @@ function ChipRow(props: { children: ReactNode; testID?: string }) {
  * quick-add tiles, dictation and the assistant. Adding works offline too (ADR-0008 addendum).
  */
 export function SmartComposer(props: {
-  listId: Id;
   /** Without it there is no microphone button (AI switched off, spec 0005, AC-044). */
   onDictate?: () => void;
   /** Listening right now: the microphone button stops it. */
@@ -75,7 +68,7 @@ export function SmartComposer(props: {
   const submit = (line: string, refocus: boolean) => {
     if (!line.trim()) return;
     try {
-      addShoppingItemFromText(props.listId, line);
+      addShoppingItemFromText(line);
       setText('');
       setError(undefined);
       if (refocus) setFieldKey(fieldKey + 1);
@@ -85,7 +78,7 @@ export function SmartComposer(props: {
   };
 
   const quickAdd = (name: string) => {
-    const added = addShoppingItemFromText(props.listId, name);
+    const added = addShoppingItemFromText(name);
     if (added) toast.show({ message: `${added.articleName} auf der Liste`, duration: 2000 });
   };
 

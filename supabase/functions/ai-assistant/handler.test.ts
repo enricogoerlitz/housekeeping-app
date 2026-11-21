@@ -116,7 +116,6 @@ describe('ai-assistant', () => {
           ingredientId: 'i-pasta-tofu',
           line: 'a',
         }),
-        part({ type: 'addShoppingItems', listId: 'list-foreign', texts: ['Milch'] }),
         part({ type: 'completeChore', choreId: 'c-foreign' }),
         part(plan({ recipeId: 'r-curry', slotId: 'slot-x' })),
         part(plan({ recipeId: 'r-foreign' })),
@@ -125,7 +124,7 @@ describe('ai-assistant', () => {
         part(plan({ recipeId: 'r-curry', variants: [{ variantId: 'v-foreign', portions: 2 }] })),
         part(plan({ kind: 'restaurant', restaurantId: 'rest-1' })),
         part(plan({ kind: 'leftovers', leftoversOfEntryId: 'entry-1' })),
-        part({ type: 'addShoppingItems', listId: 'list-main', texts: ['Milch'] }, 'Einkaufsliste'),
+        part({ type: 'addShoppingItems', texts: ['Milch'] }, 'Einkaufsliste'),
         part(
           plan({
             recipeId: 'r-curry',
@@ -141,7 +140,7 @@ describe('ai-assistant', () => {
     const response = await handler(request('Mach alles', 'r-curry'), deps);
     const reply = AssistantReplySchema.parse(await response.json());
     expect(reply.proposal?.parts.map((p) => p.command)).toEqual([
-      { type: 'addShoppingItems', listId: 'list-main', texts: ['Milch'] },
+      { type: 'addShoppingItems', texts: ['Milch'] },
       {
         type: 'addPlanEntry',
         input: {

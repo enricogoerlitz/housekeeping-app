@@ -49,16 +49,11 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`), 
 (alle ENTSCHIEDEN) und der Rückfrage F1.
 
 - **Eine Liste (D25).** Der Titel heißt „Einkaufsliste“. Kein Pfeil zum Wechseln, kein „Neue
-  Liste“, keine „Standardliste“. Die Umstellung läuft in drei Schritten (erweitern → umziehen →
-  aufräumen):
-  1. Eine Migration führt je Haushalt alle Listen in die bisherige Standardliste zusammen. Offene
-     Posten ziehen um und behalten ihre Kennung. Steht derselbe Artikel schon offen in der
-     Standardliste, werden beide zu einem Posten; jeder Beitrag (Herkunft, Menge, Zusatz) bleibt
-     einzeln erhalten. Abgehakte Posten weiterer Listen werden gelöscht, sie waren erledigt. Die
-     weiteren Listen verschwinden.
-  2. Ab dann sichert die Datenbank „höchstens eine Liste je Haushalt“.
-  3. Der Markt an der Liste wird nicht mehr gelesen und später entfernt. Die App lädt mit einer
-     neuen Speicher-Version einmal alles neu.
+  Liste“, keine „Standardliste“. Die Einkaufsliste ist die Menge der Posten eines Haushalts; eine
+  eigene Listen-Tabelle gibt es nicht (ADR-0012). Weil noch nichts ausgeliefert ist, entfällt die
+  ursprünglich geplante Umstellung bestehender Daten (Zusammenführen, Warteschlange über die
+  Migration): Die Migrationen wurden einmal neu aufgebaut. Je Haushalt und Artikel gibt es höchstens
+  einen offenen Posten. Die App lädt mit einer neuen Speicher-Version einmal alles neu.
 - **„Liste“ bearbeitet (D24).** Zeile: Artikel mit Zusatz in Klammern, rechts „− 2× +“ bei
   Anzahlen, bei Mengen „500 g ›“. Antippen öffnet „Posten bearbeiten“ (mittleres Fenster), nach
   links wischen entfernt mit 5 s „Rückgängig“. Oben „Einkaufen“ und „+ Aus Kalender …“, unten die
@@ -94,10 +89,11 @@ Grundlage ist das freigegebene UI-Konzept v2 (`docs/product/ui-konzept-v2.md`), 
   das Speichern ging mit dem echten Backend schief. REQ-005 prüft beides: Sichtbarkeit und ein Test
   gegen die lokale Supabase. Läuft der Test sofort grün, fragt die Umsetzung bei Enrico nach, was er
   gesehen hat.
-- **Kritischer Pfad:** Migration bestehender Daten, Löschen (Liste leeren, Entfernen, erledigte
-  Posten weiterer Listen), Sync (neue Speicher-Version) und Laden-Warteschlange (Haken auf
-  zusammengeführten Posten). `plan.md` braucht deshalb ein Bedrohungsmodell, Negativtests (fremder
-  Haushalt, abgemeldet, ungültige Eingabe, Fehlerfall) und einen `/security-check`.
+- **Kritischer Pfad:** Löschen (Liste leeren, Entfernen, Erledigt leeren), Sync (neue
+  Speicher-Version), Laden-Warteschlange (Hinzufügen trägt die Haushalts-Kennung) und die
+  Mitgliedsprüfung der Listen-Aktionen (fremder Haushalt → `not_member`). `plan.md` braucht deshalb
+  ein Bedrohungsmodell, Negativtests (fremder Haushalt, abgemeldet, ungültige Eingabe, Fehlerfall)
+  und einen `/security-check`.
 
 **Bausteine aus Spec 0005:** Abhaken (Einkaufen), „Suchen oder anlegen“ („Was fehlt?“ und Bereich am
 Posten), Fenstergrößen („Wo kaufst du ein?“ und „Liste leeren“ klein, „Posten bearbeiten“ mittel,
@@ -126,86 +122,43 @@ die Kriterien gelten unter beiden Namen, und „Auf die Einkaufsliste“ im Plan
 
 ### REQ-001 — Genau eine Einkaufsliste je Haushalt (D25)
 
-> Jeder Haushalt hat genau eine Einkaufsliste; weitere Listen werden in sie zusammengeführt und
-> verschwinden.
+> Jeder Haushalt hat genau eine Einkaufsliste: Die Einkaufsliste ist die Menge der Posten des
+> Haushalts. Es gibt keine Listen-Zeile, die angelegt, gewechselt oder gelöscht werden könnte.
 
-**Offline:** Die Zusammenführung läuft auf dem Server. Ein Gerät ohne Netz zeigt bis zum nächsten
-Abgleich den alten Stand; was in seiner Laden-Warteschlange wartet, landet danach auf der einen
-Liste oder wird ohne Fehler verworfen (AC-004).
+**Offline:** Nichts Besonderes. Was in der Laden-Warteschlange wartet, nennt den Haushalt und landet
+auf dessen Einkaufsliste.
 
-**AC-001 — Zusammenführen**
+**AC-001 — Zusammenführen** — _verworfen (ADR-0012)._ Es gibt keine weiteren Listen, die
+zusammenzuführen wären: Nichts ist ausgeliefert, die Migrationen wurden vor der ersten Auslieferung
+neu aufgebaut, und die Tabelle `shopping_lists` entfällt.
 
-```gherkin
-Angenommen  „Enrico & Nadja“ hat die Standardliste mit „Milch“ (offen, von Hand 1×) und „Duschgel“
-            (offen, von Hand 1×) und die Liste „Drogerie“ mit „Duschgel“ (offen, von Hand 1×, Zusatz
-            „sensitiv“), „Zahnpasta“ (offen) und „Wattepads“ (abgehakt)
-Wenn        die Migration auf dem Server läuft
-Dann        hat der Haushalt genau eine Liste
-Und         darauf stehen offen „Milch“, „Zahnpasta“ und „Duschgel (sensitiv)“ als eine Zeile mit 2×
-Und         „Duschgel“ besteht aus beiden Beiträgen, jeder einzeln gespeichert
-Und         „Wattepads“ und die Liste „Drogerie“ gibt es nicht mehr
-```
+**AC-002 — Kennungen bleiben** — _verworfen (ADR-0012)._ Ohne Zusammenführen zieht kein Posten um.
 
-**AC-002 — Kennungen bleiben**
+**AC-003 — Randfall: nur eine Liste, zweiter Lauf, fremder Haushalt** — _verworfen (ADR-0012)._ Es
+gibt keine Migration bestehender Daten. Dass kein Posten in einen fremden Haushalt gelangt, sichern
+weiter die Mandanten-Tests (pgTAP) und die Mitgliedsprüfung der Listen-Aktionen.
 
-```gherkin
-Angenommen  derselbe Ausgangszustand
-Wenn        die Migration gelaufen ist
-Dann        hat „Zahnpasta“ dieselbe Kennung wie vorher in „Drogerie“
-Und         „Duschgel“ hat die Kennung des Postens aus der Standardliste
-```
+**AC-004 — Laden-Warteschlange über die Migration hinweg** — _verworfen (ADR-0012)._ Es gibt keine
+App-Version mit mehreren Listen und damit keine Warteschlange mit alten Listen-Kennungen. Ein
+Entwicklungsgerät meldet sich einmal ab und wieder an.
 
-**AC-003 — Randfall: nur eine Liste, zweiter Lauf, fremder Haushalt**
-
-```gherkin
-Angenommen  „WG Köln“ hat nur eine Liste mit drei offenen Posten
-Wenn        die Migration läuft und danach ein zweites Mal
-Dann        sind Liste und Posten von „WG Köln“ unverändert
-Und         kein Posten von „Enrico & Nadja“ ist in „WG Köln“ gelandet oder umgekehrt
-```
-
-**AC-004 — Laden-Warteschlange über die Migration hinweg**
-
-```gherkin
-Angenommen  Nadja hat vor der Migration ohne Netz in „Drogerie“ „Duschgel“ abgehakt, den Haken bei
-            „Wattepads“ zurückgenommen und „Rasierer“ hinzugefügt; alles wartet in ihrer
-            Laden-Warteschlange
-Wenn        die Migration läuft und Nadjas Gerät danach wieder Netz hat
-Dann        ist „Duschgel“ auf der einen Liste abgehakt, für alle
-Und         „Rasierer“ steht offen auf der einen Liste
-Und         das Zurücknehmen bei „Wattepads“ wird verworfen, ohne dass Nadja eine Fehlermeldung
-            sieht
-```
-
-**AC-005 — Keine zweite Liste**
-
-```gherkin
-Angenommen  Enrico ist Mitglied von „Enrico & Nadja“
-Wenn        er über die Supabase-API eine zweite Liste für diesen Haushalt anlegen will
-Dann        lehnt die Datenbank das ab
-Und         eine ältere App-Version, die das versucht, zeigt „Hat nicht geklappt – bitte noch einmal
-            versuchen“
-```
+**AC-005 — Keine zweite Liste** — _verworfen (ADR-0012)._ Ohne Listen-Tabelle gibt es nichts, was
+eine zweite Liste sein könnte; `apply_changes` lehnt jeden Versuch mit `shopping_lists` als
+`invalid_change` ab.
 
 **AC-006 — Neuer Haushalt** (ersetzt Spec 0003, AC-010, im Punkt „eine Standardliste“)
 
 ```gherkin
 Angenommen  Enrico ist angemeldet
-Wenn        er den Haushalt „Ferienhaus“ anlegt
-Dann        hat „Ferienhaus“ genau eine Einkaufsliste
-Und         die App nennt sie „Einkaufsliste“; es gibt keinen Pfeil zum Wechseln, kein „Neue Liste“
-            und nirgends das Wort „Standardliste“
+Wenn        er den Haushalt „Ferienhaus“ anlegt und „Liste“ öffnet
+Dann        heißt der Titel „Einkaufsliste“
+Und         es gibt keinen Pfeil zum Wechseln, kein „Neue Liste“ und nirgends das Wort
+            „Standardliste“
 ```
 
-**AC-007 — Markt an der Liste zählt nicht mehr**
-
-```gherkin
-Angenommen  vor der Migration hatte „Drogerie“ den Markt „dm“ und die Standardliste keinen Markt;
-            auf Enricos Gerät wurde noch nie ein Markt gewählt; der Standardmarkt ist „Rewe
-            Südstadt“
-Wenn        Enrico nach der Migration „Einkaufen“ startet
-Dann        ist „Rewe Südstadt“ gewählt
-```
+**AC-007 — Markt an der Liste zählt nicht mehr** — _verworfen (ADR-0012)._ Es gibt keinen Markt an
+der Liste mehr. Welcher Markt in „Einkaufen“ gilt, regeln AC-040 bis AC-043 (Wahl auf dem Gerät,
+sonst der Standardmarkt).
 
 ### REQ-002 — „Liste“ zeigt und ordnet, ohne Abhaken (D24)
 
@@ -834,9 +787,10 @@ Dann        ist „Auf die Liste“ ausgegraut mit dem Hinweis „Noch keine Zut
 | „Auf die Einkaufsliste“, „Auf die Liste“         | nur online                                | eine Transaktion; zusammengeführt mit offenen Posten desselben Artikels                                |
 | Marktwahl in „Einkaufen“                         | offline vollständig (nur auf dem Gerät)   | kein Konflikt: jedes Gerät hat seine eigene Wahl                                                       |
 
-- **Migration und Warteschlange:** Ein Haken, ein Zurücknehmen oder ein hinzugefügter Posten, der
-  vor der Migration offline entstand, zeigt danach auf den Posten der einen Liste. Gehört er zu
-  einem gelöschten Posten, wird er ohne Fehlermeldung verworfen (AC-004).
+- **Migration und Warteschlange:** Entfällt (ADR-0012): Es gibt keine Migration bestehender Daten.
+  Ein hinzugefügter Posten in der Laden-Warteschlange trägt die Kennung des Haushalts. Lehnt der
+  Server einen Eintrag ab (z. B. `not_member`, `P0001`, `P0002`), ist das endgültig: Der Eintrag
+  wird verworfen und blockiert die Warteschlange nicht.
 - **Rückgängig nach Liste leeren**, während jemand etwas hinzugefügt hat: Die Posten kommen zurück
   und vereinen sich mit offenen Posten desselben Artikels (AC-037).
 - **Fehler beim Schreiben** zeigt die App ehrlich an („Hat nicht geklappt – bitte noch einmal
@@ -861,12 +815,14 @@ Dann        ist „Auf die Liste“ ausgegraut mit dem Hinweis „Noch keine Zut
   Mitglieder (Name in „Nadja kauft gerade ein“).
 - **Geschrieben:** Beiträge (Anzahl, Zusatz), Posten, der Bereich eines Artikels, neue Artikel und
   Bereiche.
-- **Gelöscht:** Posten mit ihren Beiträgen (Entfernen, Liste leeren, Erledigt leeren, „Fertig“); bei
-  der Migration die weiteren Listen und deren erledigte Posten. Jede Löschung erreicht die anderen
-  Geräte über das Löschprotokoll.
-- **Migration in einfachen Worten:** siehe „Konzept in Kürze“. Danach gibt es je Haushalt höchstens
-  eine Liste; der Markt an der Liste wird nicht mehr gelesen und später entfernt; die App lädt mit
-  einer neuen Speicher-Version einmal alles neu (Spec 0003, AC-018).
+- **Gelöscht:** Posten mit ihren Beiträgen (Entfernen, Liste leeren, Erledigt leeren, „Fertig“).
+  Jede Löschung erreicht die anderen Geräte über das Löschprotokoll.
+- **Keine Listen-Tabelle (ADR-0012):** `shopping_items` gehören direkt zum Haushalt
+  (`household_id`); je Haushalt und Artikel höchstens ein offener Posten. Es gibt weder
+  `shopping_lists` noch `households.default_list_id` noch `shopping_items.list_id`. Hinzufügen,
+  Erledigt leeren, Liste leeren und Rückgängig nehmen die Haushalts-Kennung. Die App lädt mit einer
+  neuen Speicher-Version einmal alles neu (Spec 0003, AC-018); Warteschlange, Markt- und
+  Haushaltswahl des Geräts bleiben dabei erhalten.
 - **Nur auf dem Gerät:** der zuletzt in „Einkaufen“ gewählte Markt, je Haushalt; er wird beim
   Abmelden mit gelöscht. Der Standardmarkt bleibt in der Datenbank.
 - **Personenbezogen:** Wer wann abgehakt hat, wird schon gespeichert. Neu ist nur, dass die App
@@ -884,15 +840,15 @@ Dann        ist „Auf die Liste“ ausgegraut mit dem Hinweis „Noch keine Zut
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                        | Task (plan.md) | Test |
-| ------- | ------------------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-007         | —              | —    |
-| REQ-002 | AC-008 bis AC-013         | —              | —    |
-| REQ-003 | AC-014 bis AC-019         | —              | —    |
-| REQ-004 | AC-020 bis AC-027         | —              | —    |
-| REQ-005 | AC-028 bis AC-033         | —              | —    |
-| REQ-006 | AC-034 bis AC-039         | —              | —    |
-| REQ-007 | AC-040 bis AC-048         | —              | —    |
-| REQ-008 | AC-049 bis AC-054, AC-061 | —              | —    |
-| REQ-009 | AC-055 bis AC-057         | —              | —    |
-| REQ-010 | AC-058 bis AC-060         | —              | —    |
+| REQ     | AC                                                        | Task (plan.md) | Test |
+| ------- | --------------------------------------------------------- | -------------- | ---- |
+| REQ-001 | AC-006 (AC-001 bis AC-005 und AC-007 verworfen, ADR-0012) | —              | —    |
+| REQ-002 | AC-008 bis AC-013                                         | —              | —    |
+| REQ-003 | AC-014 bis AC-019                                         | —              | —    |
+| REQ-004 | AC-020 bis AC-027                                         | —              | —    |
+| REQ-005 | AC-028 bis AC-033                                         | —              | —    |
+| REQ-006 | AC-034 bis AC-039                                         | —              | —    |
+| REQ-007 | AC-040 bis AC-048                                         | —              | —    |
+| REQ-008 | AC-049 bis AC-054, AC-061                                 | —              | —    |
+| REQ-009 | AC-055 bis AC-057                                         | —              | —    |
+| REQ-010 | AC-058 bis AC-060                                         | —              | —    |

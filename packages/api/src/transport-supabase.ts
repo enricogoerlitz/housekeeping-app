@@ -12,6 +12,7 @@ import type { z } from 'zod';
 import { withCompositeIds } from './db/tables';
 import {
   AddResultSchema,
+  AdjustResultSchema,
   ApplyChangesResultSchema,
   AssignAreaResultSchema,
   CheckResultSchema,
@@ -258,9 +259,9 @@ export function createSupabaseTransport(
         p_item_id: itemId,
         p_value: value,
       }),
-    addShoppingContributions: (listId, entries) =>
+    addShoppingContributions: (householdId, entries) =>
       parsed(AddResultSchema, 'add_shopping_contributions', {
-        p_list_id: listId,
+        p_household_id: householdId,
         p_entries: entries,
       }),
     assignArticleArea: (articleId, areaId) =>
@@ -268,15 +269,22 @@ export function createSupabaseTransport(
         p_article_id: articleId,
         p_area_id: areaId,
       }),
-    clearCheckedItems: (listId) =>
-      parsed(ClearedItemsSchema, 'clear_checked_items', { p_list_id: listId }),
+    clearCheckedItems: (householdId) =>
+      parsed(ClearedItemsSchema, 'clear_checked_items', { p_household_id: householdId }),
+    clearShoppingList: (householdId) =>
+      parsed(ClearedItemsSchema, 'clear_shopping_list', { p_household_id: householdId }),
+    adjustItemCount: (itemId, delta) =>
+      parsed(AdjustResultSchema, 'adjust_item_count', { p_item_id: itemId, p_delta: delta }),
     removeContributions: async (ids) => {
       const data = await call('remove_contributions', { p_ids: ids });
       if (typeof data !== 'number') throw new TransportError('permanent', 'invalid_response');
       return data;
     },
-    restoreClearedItems: async (listId, items) => {
-      const data = await call('restore_cleared_items', { p_list_id: listId, p_items: items });
+    restoreClearedItems: async (householdId, items) => {
+      const data = await call('restore_cleared_items', {
+        p_household_id: householdId,
+        p_items: items,
+      });
       if (typeof data !== 'number') throw new TransportError('permanent', 'invalid_response');
       return data;
     },

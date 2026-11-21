@@ -1,4 +1,4 @@
--- Spec 0003, T3d — chores and their history (chore_events).
+-- Baseline (ADR-0012) — chores and their history (chore_events).
 --
 -- Person references must be members of the row's household: next_assignee_id and done_by by
 -- composite foreign keys to household_members (cleared when the person is removed, so the

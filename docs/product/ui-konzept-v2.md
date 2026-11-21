@@ -1844,6 +1844,10 @@ In einfachen Worten: was sich ändert, und was mit den Daten passiert, die schon
   zeigt einen Fehler, bis sie aktualisiert ist.
 - **Dokumente:** Vision („Es kann mehrere Einkaufslisten geben“), Feature-Konzept F5 und Glossar
   (Einkaufsliste, Standardliste) werden mit Spec 0006 angepasst.
+- **Nachtrag (ADR-0012, 21.11.2026):** Die Umsetzung oben entfällt. Weil noch nichts ausgeliefert
+  war, wurden die Migrationen einmal neu aufgebaut; es gibt keine Tabelle `shopping_lists` mehr,
+  die Posten gehören direkt zum Haushalt (je Artikel höchstens ein offener Posten). Zusammenführen,
+  Warteschlange über die Migration und das Abweisen alter App-Versionen sind damit hinfällig.
 
 ### 4.2 Zutaten und Artikel-Katalog
 

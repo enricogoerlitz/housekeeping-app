@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(91);
+select plan(96);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -43,7 +43,7 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('enrico'), tests.fx('nadja'), tests.fx('mia')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben'), tests.fx('mia')]));
 insert into fx (key) values
-  ('recipe_a'), ('recipe_b'), ('area_a'), ('area_b'), ('list_a'), ('list_b'), ('milch'), ('item_milch'), ('c_milch'),
+  ('recipe_a'), ('recipe_b'), ('area_a'), ('area_b'), ('milch'), ('item_milch'), ('c_milch'),
   ('new_recipe'), ('new_area'), ('new_article'), ('zucker_item'), ('zucker_article'), ('zucker_c'),
   ('tee'), ('item_b'), ('c_b'), ('slot_a'), ('new_activity'), ('new_entry'), ('bad_activity');
 
@@ -56,15 +56,12 @@ insert into public.recipes (id, household_id, title) values
 insert into public.areas (id, household_id, name) values
   (tests.fx('area_a'), tests.fx('home_a'), 'Obst'),
   (tests.fx('area_b'), tests.fx('home_b'), 'Obst B');
-insert into public.shopping_lists (id, household_id, name) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste'),
-  (tests.fx('list_b'), tests.fx('home_b'), 'Liste B');
 insert into public.articles (id, household_id, name, name_key) values
   (tests.fx('milch'), tests.fx('home_a'), 'Milch', 'milch'),
   (tests.fx('tee'), tests.fx('home_b'), 'Tee', 'tee');
-insert into public.shopping_items (id, household_id, list_id, article_id) values
-  (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('milch')),
-  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('list_b'), tests.fx('tee'));
+insert into public.shopping_items (id, household_id, article_id) values
+  (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('milch')),
+  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('tee'));
 insert into public.shopping_contributions (id, household_id, item_id) values
   (tests.fx('c_milch'), tests.fx('home_a'), tests.fx('item_milch')),
   (tests.fx('c_b'), tests.fx('home_b'), tests.fx('item_b'));
@@ -110,12 +107,12 @@ select is(
 select is(
   tests.apply('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'patch', 'table', 'households', 'id', tests.fx('home_a'),
-                       'changes', jsonb_build_object('name', 'Enrico & Nadja', 'default_list_id', tests.fx('list_a'))))),
+                       'changes', jsonb_build_object('name', 'Enrico & Nadja', 'default_store_id', null)))),
   '{"applied": 1, "results": []}'::jsonb,
-  'T5 apply_changes: the own household can be patched (name, default list)');
+  'T5 apply_changes: the own household can be patched (name, default store)');
 select results_eq(
-  format($$ select name, default_list_id from public.households where id = %L $$, tests.fx('home_a')),
-  format($$ values ('Enrico & Nadja', %L::uuid) $$, tests.fx('list_a')),
+  format($$ select name, default_store_id from public.households where id = %L $$, tests.fx('home_a')),
+  $$ values ('Enrico & Nadja', null::uuid) $$,
   'T5 apply_changes: household patch stored');
 select is(
   tests.apply('home_a', '[]'::jsonb), '{"applied": 0, "results": []}'::jsonb,
@@ -124,7 +121,7 @@ select is(
 -- ===================== Domain ops =====================
 select is(
   tests.apply('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_a'), 'entries', jsonb_build_array(
+    jsonb_build_object('kind', 'add_contributions', 'entries', jsonb_build_array(
       jsonb_build_object('client_item_id', tests.fx('zucker_item'), 'client_article_id', tests.fx('zucker_article'),
                          'article_name', 'Zucker', 'name_key', 'zucker',
                          'contributions', jsonb_build_array(jsonb_build_object('id', tests.fx('zucker_c'), 'qty', 500, 'unit', 'g'))))))),
@@ -136,6 +133,11 @@ select results_eq(
   format($$ select qty, unit from public.shopping_contributions where id = %L $$, tests.fx('zucker_c')),
   $$ values (500::numeric, 'g') $$,
   'T5 apply_changes: add_contributions stored the contribution');
+select results_eq(
+  format($$ select i.household_id, a.household_id from public.shopping_items i join public.articles a on a.id = i.article_id
+            where i.id = %L $$, tests.fx('zucker_item')),
+  format($$ values (%L::uuid, %L::uuid) $$, tests.fx('home_a'), tests.fx('home_a')),
+  'ADR-0012 apply_changes: add_contributions puts the item and its article into p_household_id');
 select is(
   tests.apply('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'remove_contributions', 'ids', jsonb_build_array(tests.fx('zucker_c'))))),
@@ -144,15 +146,11 @@ select is(
 select is(
   (select count(*)::int from public.shopping_items where id = tests.fx('zucker_item')), 0,
   'T5 apply_changes: remove_contributions deleted the emptied item');
-select throws_ok(
-  tests.apply_sql('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_b'), 'entries', '[]'::jsonb))),
-  'P0002', 'list_not_found', 'AC-011 apply_changes: add_contributions to a list of another household is not found');
 
 -- ===================== AC-020: all or nothing =====================
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_a'), 'entries', jsonb_build_array(
+    jsonb_build_object('kind', 'add_contributions', 'entries', jsonb_build_array(
       jsonb_build_object('client_item_id', gen_random_uuid(), 'client_article_id', gen_random_uuid(),
                          'article_name', 'Mehl', 'name_key', 'mehl',
                          'contributions', jsonb_build_array(jsonb_build_object('id', gen_random_uuid()))))),
@@ -263,8 +261,30 @@ select throws_ok(
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
     'kind', 'insert', 'table', 'shopping_items',
-    'row', jsonb_build_object('list_id', tests.fx('list_a'), 'article_id', tests.fx('milch'), 'checked', true)))),
+    'row', jsonb_build_object('article_id', tests.fx('milch'), 'checked', true)))),
   '22023', 'invalid_change', 'T5 attack: checked cannot be inserted');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'shopping_items',
+    'row', jsonb_build_object('list_id', gen_random_uuid(), 'article_id', tests.fx('milch'))))),
+  '22023', 'invalid_change', 'ADR-0012 attack: shopping_items has no list_id to insert');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'households', 'id', tests.fx('home_a'),
+    'changes', jsonb_build_object('default_list_id', gen_random_uuid())))),
+  '22023', 'invalid_change', 'ADR-0012 attack: households.default_list_id cannot be patched');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'insert', 'table', 'shopping_lists', 'row', jsonb_build_object('name', 'Drogerie')))),
+  '22023', 'invalid_change', 'ADR-0012 attack: shopping_lists cannot be inserted into');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'shopping_lists', 'id', gen_random_uuid(), 'changes', jsonb_build_object('name', 'X')))),
+  '22023', 'invalid_change', 'ADR-0012 attack: shopping_lists cannot be patched');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'delete', 'table', 'shopping_lists', 'id', gen_random_uuid()))),
+  '22023', 'invalid_change', 'ADR-0012 attack: shopping_lists cannot be deleted from');
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
     'kind', 'insert', 'table', 'feedback',
@@ -347,7 +367,7 @@ select throws_ok(
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'shopping_items', 'id', tests.fx('item_milch'),
-    'changes', jsonb_build_object('list_id', tests.fx('list_b'))))),
+    'changes', jsonb_build_object('article_id', tests.fx('tee'))))),
   '23503', null, 'AC-011 apply_changes: a row cannot be moved under a parent of another household');
 
 -- Mia belongs to A and B: one call stays in one household.
@@ -511,7 +531,7 @@ select is(
 -- (security re-check 0003).
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
-    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(201, 1)))),
+    'entries', tests.add_entries(201, 1)))),
   '22023', 'too_many_changes', 'T5 apply_changes: one add_contributions op with 201 entries is rejected');
 select throws_ok(
   tests.apply_sql('home_a',
@@ -519,26 +539,26 @@ select throws_ok(
                                          'row', jsonb_build_object('name', 'Gang ' || n)))
      from generate_series(1, 150) n)
     || jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
-         'list_id', tests.fx('list_a'), 'entries', tests.add_entries(51, 1)))),
+         'entries', tests.add_entries(51, 1)))),
   '22023', 'too_many_changes', 'T5 apply_changes: add_contributions entries count toward the 200 ops');
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
-    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(200, 1)))),
+    'entries', tests.add_entries(200, 1)))),
   'T5 apply_changes: one add_contributions op with 200 entries is allowed');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
-    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(5, 100) || tests.add_entries(1, 1)))),
+    'entries', tests.add_entries(5, 100) || tests.add_entries(1, 1)))),
   '22023', 'too_many_changes', 'T5 apply_changes: more than 500 contributions in one op are rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_a'),
+    jsonb_build_object('kind', 'add_contributions',
                        'entries', tests.add_entries(3, 100)),
-    jsonb_build_object('kind', 'add_contributions', 'list_id', tests.fx('list_a'),
+    jsonb_build_object('kind', 'add_contributions',
                        'entries', tests.add_entries(2, 100) || tests.add_entries(1, 1)))),
   '22023', 'too_many_changes', 'T5 apply_changes: the contributions of all add_contributions ops add up to the cap');
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'add_contributions',
-    'list_id', tests.fx('list_a'), 'entries', tests.add_entries(5, 100)))),
+    'entries', tests.add_entries(5, 100)))),
   'T5 apply_changes: 500 contributions in one call are allowed');
 
 -- ===================== Signed out =====================

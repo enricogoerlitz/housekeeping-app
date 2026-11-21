@@ -17,7 +17,6 @@ const TABLE_ORDER = [
   'areas',
   'articles',
   'stores',
-  'shopping_lists',
   'households',
   'recipes',
   'restaurants',

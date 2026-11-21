@@ -6,11 +6,9 @@ import {
   snapshot,
   useAreas,
   useArticlesById,
-  useHousehold,
   useOffline,
   useShoppingItems,
-  useShoppingLists,
-  useStores,
+  useShoppingStore,
 } from '@housekeeping/api';
 import {
   groupItems,
@@ -34,7 +32,7 @@ import {
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -140,11 +138,8 @@ function SmRow(props: {
  * checking, "Nicht da" and assigning an area.
  */
 export function ShoppingModeScreen() {
-  const params = useLocalSearchParams<{ list?: string }>();
   const router = useRouter();
-  const household = useHousehold();
-  const lists = useShoppingLists();
-  const stores = useStores();
+  const store = useShoppingStore();
   const items = useShoppingItems();
   const articlesById = useArticlesById();
   const areas = useAreas();
@@ -163,13 +158,8 @@ export function ShoppingModeScreen() {
     };
   }, []);
 
-  const requested = typeof params.list === 'string' ? params.list : undefined;
-  const list =
-    lists.find((candidate) => candidate.id === requested) ??
-    lists.find((candidate) => candidate.id === household.defaultListId);
-  const storeId = list?.storeId ?? household.defaultStoreId;
-  const store = stores.find((candidate) => candidate.id === storeId);
-  const own = list ? items.filter((item) => item.listId === list.id) : [];
+  // The household's shopping list (ADR-0012): all of its items.
+  const own = items;
   const progress = listProgress(own);
 
   const close = () => {
@@ -206,7 +196,6 @@ export function ShoppingModeScreen() {
   };
 
   const finish = () => {
-    if (!list) return;
     if (offline) {
       toast.show({ message: FINISH_OFFLINE_HINT });
       close();
@@ -215,7 +204,7 @@ export function ShoppingModeScreen() {
     const restore = snapshot();
     const bought = progress.done;
     const remaining = progress.total - progress.done;
-    clearCheckedItems(list.id);
+    clearCheckedItems();
     toast.show({
       message: `${bought} gekauft · ${remaining} bleiben`,
       actionLabel: 'Rückgängig',
@@ -242,7 +231,7 @@ export function ShoppingModeScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text variant="small" color="muted">
-            Einkauf{list ? ` · ${list.name}` : ''}
+            Einkauf · Einkaufsliste
           </Text>
           <Text
             variant={isWide ? 'display' : 'title'}

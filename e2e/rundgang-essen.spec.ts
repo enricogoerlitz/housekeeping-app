@@ -57,7 +57,7 @@ test('AC-017: Heute shows Lasagne, the preparation for tomorrow, due chores and 
     `[data-testid^="item-"][role="checkbox"][aria-checked="false"]${ACTIVE}`,
   );
   await expect(open_.first()).toBeVisible();
-  expect(shown, 'count on Heute equals open items of the Standardliste').toBe(await open_.count());
+  expect(shown, 'count on Heute equals open items of the Einkaufsliste').toBe(await open_.count());
 });
 
 test('AC-018: the filter "Vegetarisch" keeps Mango-Curry and hides Spaghetti Bolognese', async ({

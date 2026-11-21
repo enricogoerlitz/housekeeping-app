@@ -64,12 +64,9 @@ select results_eq(
             ('Olivenöl', 'olivenol', '{}'::text[], '{}'::text[], 'Gewürze & Öl', 'vegan', true) $$,
   'AC-010: the starter catalog is created with keys, synonyms and areas from the starter'
 );
-select results_eq(
-  $$ select l.name, l.is_default, l.id = h.default_list_id
-     from public.shopping_lists l join public.households h on h.id = l.household_id
-     where l.household_id = (select id from fx where key = 'wg') $$,
-  $$ values ('Standardliste', true, true) $$,
-  'AC-010: the household has the default list "Standardliste" as default_list_id'
+select hasnt_table(
+  'public', 'shopping_lists',
+  'AC-010 (ADR-0012): create_household creates no list; the shopping list is the household''s items'
 );
 select throws_ok(
   $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Äpfel", "name_key": "apfel", "area": "nirgends"}]}') $$,

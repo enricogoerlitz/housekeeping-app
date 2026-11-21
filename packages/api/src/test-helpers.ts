@@ -22,8 +22,9 @@ export function withDemoHousehold(): void {
   });
 }
 
-export function itemsOf(listId: Id) {
-  return getData().items.filter((item) => item.listId === listId);
+/** The items of the active household's shopping list. */
+export function itemsOf() {
+  return getData().items;
 }
 
 export function articleName(articleId: Id): string | undefined {

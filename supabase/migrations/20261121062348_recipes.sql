@@ -1,4 +1,4 @@
--- Spec 0003, T3b — recipes, plus per-person favourites and ratings.
+-- Baseline (ADR-0012) — recipes, plus per-person favourites and ratings.
 --
 -- Favourites and ratings belong to one person each. Members never write them directly (no write
 -- grants); set_recipe_favorite / set_recipe_rating write them for auth.uid() in the recipe's
@@ -11,6 +11,11 @@
 
 -- variants, ingredients and steps are JSON arrays in the shape of the core types; the ingredient
 -- list is one field (concurrent edits: last write wins, spec 0003 decision 8).
+-- photo is the bundled sample photo, used when photo_path is null. photo_path names the own photo
+-- in the private storage bucket household-media (storage migration):
+-- <household_id>/recipes/<id>/<uuid>.jpg — the check keeps a row from pointing at another
+-- household's or another row's photo, and allows no other file name. Uploading, replacing and
+-- deleting the object is the client's job through the Storage API.
 create table public.recipes (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
@@ -18,6 +23,7 @@ create table public.recipes (
     constraint recipes_title_valid check (btrim(title) <> '' and char_length(title) <= 200),
   photo text
     constraint recipes_photo_length check (char_length(photo) <= 200),
+  photo_path text,
   description text
     constraint recipes_description_length check (char_length(description) <= 4000),
   servings integer not null default 2
@@ -51,16 +57,19 @@ create table public.recipes (
     constraint recipes_source_length check (char_length(source) <= 2000),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint recipes_household_id_id_key unique (household_id, id)
+  constraint recipes_household_id_id_key unique (household_id, id),
+  constraint recipes_photo_path_valid check (
+    photo_path ~ ('^' || household_id::text || '/recipes/' || id::text
+                  || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'))
 );
 
 create index recipes_household_id_updated_at_idx on public.recipes (household_id, updated_at);
 
 grant select, delete on public.recipes to authenticated;
-grant insert (id, household_id, title, photo, description, servings, total_minutes, course, cuisine, tags,
+grant insert (id, household_id, title, photo, photo_path, description, servings, total_minutes, course, cuisine, tags,
               variants, ingredients, steps, lead_time, notes, last_cooked_on, cooked_count, source)
   on public.recipes to authenticated;
-grant update (title, photo, description, servings, total_minutes, course, cuisine, tags,
+grant update (title, photo, photo_path, description, servings, total_minutes, course, cuisine, tags,
               variants, ingredients, steps, lead_time, notes, last_cooked_on, cooked_count, source)
   on public.recipes to authenticated;
 select private.attach_household_policies('public.recipes');

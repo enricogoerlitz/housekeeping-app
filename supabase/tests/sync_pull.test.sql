@@ -3,7 +3,7 @@
 -- cursor, small tables in full. Shape = core PullResult (packages/core/src/sync-delta.ts).
 begin;
 \ir _helpers.psql
-select plan(35);
+select plan(36);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -83,8 +83,13 @@ select is(
   array['absences', 'activities', 'activity_favorites', 'activity_ratings', 'areas', 'articles', 'chore_events', 'chores',
         'feedback', 'feedback_votes', 'meal_plan_entries',
         'recipe_favorites', 'recipe_ratings', 'recipes', 'restaurant_favorites', 'restaurant_ratings', 'restaurants',
-        'shopping_contributions', 'shopping_items', 'shopping_lists', 'stores'],
+        'shopping_contributions', 'shopping_items', 'stores'],
   'T6 sync_pull: every synced household table is answered');
+select ok(
+  (select not (r -> 'households' -> tests.fx('home_a')::text -> 'rows' ? 'shopping_lists')
+          and not exists (select 1 from jsonb_array_elements(r -> 'small' -> 'households') h where h ? 'default_list_id')
+   from pulled),
+  'ADR-0012 sync_pull: no shopping_lists key and no default_list_id');
 select is(
   (select array_agg(e ->> 'name' order by e ->> 'name') from pulled,
           jsonb_array_elements(r -> 'households' -> tests.fx('home_a')::text -> 'rows' -> 'areas') e),

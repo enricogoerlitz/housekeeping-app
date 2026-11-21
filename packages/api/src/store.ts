@@ -15,7 +15,6 @@ import type {
   Restaurant,
   RowOp,
   ShoppingItem,
-  ShoppingList,
   Store,
   StoreQueueEntry,
 } from '@housekeeping/core';
@@ -33,7 +32,6 @@ export interface HouseholdData {
   restaurants: Restaurant[];
   activities: Activity[];
   planEntries: MealPlanEntry[];
-  lists: ShoppingList[];
   items: ShoppingItem[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
@@ -50,6 +48,11 @@ export interface AppState {
   households: Record<Id, HouseholdData>;
   /** Demo switch: shows the offline state. There is no network in this build. */
   offline: boolean;
+  /**
+   * The store last chosen in "Einkaufen" on this device, per household (spec 0006, REQ-007);
+   * null = "Ohne Markt – nach Bereichen". Never sent to the server; cleared at sign-out.
+   */
+  storeChoices?: Readonly<Record<Id, Id | null>>;
 }
 
 // Two modes. Demo (default): an in-memory seed, a reload starts from it again (spec 0001,
@@ -163,6 +166,8 @@ export interface BackendHooks {
   setSimulatedOffline(offline: boolean): void;
   /** Keeps the household chosen on this device for the next start. */
   rememberActiveHousehold(householdId: string): void;
+  /** Keeps the store chosen in "Einkaufen" on this device (spec 0006, AC-042). */
+  rememberShoppingStore(householdId: string, storeId: string | null): void;
 }
 
 let backend: BackendHooks | undefined;
@@ -199,6 +204,20 @@ export function publishState(hooks: BackendHooks, next: AppState): void {
 
 export function rememberActiveHousehold(householdId: string): void {
   backend?.rememberActiveHousehold(householdId);
+}
+
+/** Demo mode keeps the choice in memory; backend mode on the device, bound to the user. */
+export function rememberShoppingStore(storeId: Id | null): void {
+  const householdId = getState().activeHouseholdId;
+  if (backend) {
+    backend.rememberShoppingStore(householdId, storeId);
+    return;
+  }
+  setState((current) =>
+    current.storeChoices?.[householdId] === storeId
+      ? current
+      : { ...current, storeChoices: { ...current.storeChoices, [householdId]: storeId } },
+  );
 }
 
 export function simulateOffline(offline: boolean): void {

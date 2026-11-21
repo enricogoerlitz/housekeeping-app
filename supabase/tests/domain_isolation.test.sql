@@ -20,7 +20,7 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('anna'), tests.fx('carla')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
-  ('slot_a'), ('area_a'), ('article_a'), ('article_a2'), ('article_a3'), ('store_a'), ('list_a'),
+  ('slot_a'), ('area_a'), ('article_a'), ('article_a2'), ('article_a3'), ('store_a'),
   ('recipe_a'), ('restaurant_a'), ('chore_a'), ('item_a'), ('feedback_a');
 
 -- ---------- Fixtures in household A (as postgres) ----------
@@ -34,9 +34,6 @@ insert into public.articles (id, household_id, name, name_key, area_id, diet) va
   (tests.fx('article_a2'), tests.fx('home_a'), 'Birnen', 'birnen', tests.fx('area_a'), 'vegan'),
   (tests.fx('article_a3'), tests.fx('home_a'), 'Pflaumen', 'pflaumen', tests.fx('area_a'), 'vegan');
 insert into public.stores (id, household_id, name) values (tests.fx('store_a'), tests.fx('home_a'), 'Edeka');
--- One list per household (spec 0006); its isolation is tested in one_shopping_list.test.sql.
-insert into public.shopping_lists (id, household_id, name, is_default) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste', true);
 insert into public.recipes (id, household_id, title, servings, course)
 values (tests.fx('recipe_a'), tests.fx('home_a'), 'Linsen-Dal', 2, 'main');
 insert into public.restaurants (id, household_id, name)
@@ -44,8 +41,8 @@ values (tests.fx('restaurant_a'), tests.fx('home_a'), 'Pizzeria Roma');
 insert into public.chores (id, household_id, title, recurrence, assignment)
 values (tests.fx('chore_a'), tests.fx('home_a'), 'Bad putzen', '{"type": "flexible", "everyDays": 7}',
         '{"type": "anyone"}');
-insert into public.shopping_items (id, household_id, list_id, article_id)
-values (tests.fx('item_a'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('article_a'));
+insert into public.shopping_items (id, household_id, article_id)
+values (tests.fx('item_a'), tests.fx('home_a'), tests.fx('article_a'));
 insert into public.feedback (id, household_id, kind, text, author_id)
 values (tests.fx('feedback_a'), tests.fx('home_a'), 'idea', 'Dunkler Modus', tests.fx('anna'));
 
@@ -116,7 +113,7 @@ select * from tests.tenant_isolation('meal_plan_entries',
   tests.fx('anna'), tests.fx('ben'));
 
 select * from tests.tenant_isolation('shopping_items',
-  jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'list_id', tests.fx('list_a'),
+  jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'),
                      'article_id', tests.fx('article_a2')),
   jsonb_build_object('article_id', tests.fx('article_a3')),
   tests.fx('anna'), tests.fx('ben'));

@@ -314,7 +314,6 @@ function buildDemoData(today: ISODate): HouseholdData {
     itemCounter += 1;
     return `item-${itemCounter}`;
   };
-  const listId = 'list-standard';
   for (const contribution of contributionsFromEntry(
     lasagneToday,
     recipeByKey('lasagne'),
@@ -324,7 +323,6 @@ function buildDemoData(today: ISODate): HouseholdData {
     if (!contribution.articleId || contribution.isPantry) continue;
     items = addContribution(
       items,
-      listId,
       contribution.articleId,
       {
         id: `contrib-${items.length + 1}-l`,
@@ -345,7 +343,6 @@ function buildDemoData(today: ISODate): HouseholdData {
   const manual = (name: string, amount: { count?: number; qty?: number; unit?: string } = {}) => {
     items = addContribution(
       items,
-      listId,
       articleIdByName(name),
       { id: `contrib-m-${slug(name)}`, source: { kind: 'manual' }, ...amount },
       nextItemId(),
@@ -357,7 +354,6 @@ function buildDemoData(today: ISODate): HouseholdData {
   manual('Geschenkpapier');
   items = addContribution(
     items,
-    listId,
     articleIdByName('Bananen'),
     { id: 'contrib-r-bananen', source: { kind: 'recurring' } },
     nextItemId(),
@@ -369,7 +365,6 @@ function buildDemoData(today: ISODate): HouseholdData {
       ...items,
       {
         id,
-        listId,
         articleId: articleIdByName(name),
         contributions: [{ id: `contrib-c-${slug(name)}`, source: { kind: 'manual' }, count: 1 }],
         checked: true,
@@ -382,7 +377,6 @@ function buildDemoData(today: ISODate): HouseholdData {
   for (const name of ['Zahnpasta', 'Duschgel']) {
     items = addContribution(
       items,
-      listId,
       articleIdByName(name),
       { id: `contrib-d-${slug(name)}`, source: { kind: 'manual' }, count: 1 },
       nextItemId(),
@@ -713,7 +707,6 @@ function buildDemoData(today: ISODate): HouseholdData {
       name: 'Enrico & Nadja',
       memberIds: [ENRICO, NADJA],
       mealSlots: mealSlots(),
-      defaultListId: listId,
       defaultStoreId: 'store-rewe',
     },
     areas,
@@ -723,9 +716,6 @@ function buildDemoData(today: ISODate): HouseholdData {
     restaurants,
     activities,
     planEntries,
-    lists: [
-      { id: listId, name: 'Standardliste', isDefault: true },
-    ],
     items,
     chores,
     choreEvents,
@@ -742,7 +732,6 @@ function buildTestData(): HouseholdData {
       name: 'Test',
       memberIds: [ENRICO, NADJA],
       mealSlots: mealSlots(),
-      defaultListId: 'list-test',
     },
     areas: buildAreas(),
     articles: buildArticles(),
@@ -751,7 +740,6 @@ function buildTestData(): HouseholdData {
     restaurants: [],
     activities: [],
     planEntries: [],
-    lists: [{ id: 'list-test', name: 'Standardliste', isDefault: true }],
     items: [],
     chores: [],
     choreEvents: [],

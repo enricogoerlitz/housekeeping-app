@@ -182,10 +182,11 @@ einem gespeicherten Schlüssel.
 
 **Reihenfolge:** Welle 6, nach 0013. **Vorziehen ist möglich**, falls Enrico die PWA früher auf dem
 iPhone will: REQ-006 und REQ-007 mit dem Nötigsten aus REQ-001, REQ-002, REQ-005 und REQ-010. Dann
-laufen aber alle Migrationen der Specs 0005 bis 0013 auf echten Daten, auch das Zusammenführen der
-Listen (0006) und der Umzug der Zutaten auf Artikel (0007). Die Mindestversion (REQ-004) muss in
-dem Fall mit vorgezogen werden. Nach 0013 dagegen laufen diese Migrationen schon bei der ersten
-Auslieferung, auf einer leeren Datenbank.
+laufen aber alle Migrationen der Specs 0007 bis 0013 auf echten Daten, etwa der Umzug der Zutaten
+auf Artikel (0007). Die Mindestversion (REQ-004) muss in dem Fall mit vorgezogen werden. Nach 0013
+dagegen laufen diese Migrationen schon bei der ersten Auslieferung, auf einer leeren Datenbank.
+Das Zusammenführen der Listen (0006) gibt es nicht mehr: Die Migrationen wurden vor der ersten
+Auslieferung einmal neu aufgebaut, die Listen-Tabelle entfällt (ADR-0012).
 
 **Offene Befunde aus 0003 und 0004:**
 
@@ -393,6 +394,11 @@ Dann        ist der Check „Geheimnisse“ rot und nennt Datei und Zeile, aber 
 
 **AC-009 — Rückbau nur gekennzeichnet** (geändert am 21.11.2026: Migrationen auf `develop` gelten
 ebenfalls als fest)
+
+> **Hinweis (ADR-0012):** Vor dem ersten `supabase db push` in das Produktionsprojekt wurden die
+> Migrationen einmal zu einer Grundlage neu aufgebaut; dabei wurden alle bisherigen Dateien ersetzt.
+> Das ist die einzige Ausnahme von „eine committete Migration wird nie geändert“. Der Check gilt ab
+> dieser Grundlage; die PR mit dem Neuaufbau selbst ist davon ausgenommen.
 
 ```gherkin
 Angenommen  eine PR mit einer neuen Migration, die „drop column“, „drop table“ oder ein „rename“

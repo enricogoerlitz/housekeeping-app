@@ -35,7 +35,7 @@ export const AI_NO_ANSWER = 'Im Dummy sind nur die Beispielanfragen hinterlegt.'
 export type AssistantCommand =
   | { type: 'setRecipeServings'; recipeId: Id; servings: number }
   | { type: 'replaceIngredient'; recipeId: Id; ingredientId: Id; line: string }
-  | { type: 'addShoppingItems'; listId: Id; texts: string[] }
+  | { type: 'addShoppingItems'; texts: string[] }
   | { type: 'addPlanEntry'; input: PlanEntryInput }
   | { type: 'completeChore'; choreId: Id }
   | { type: 'logSpontaneous'; title: string };
@@ -107,12 +107,13 @@ function runCommands(commands: AssistantCommand[]): void {
         if (command.type !== 'addShoppingItems') runRowCommand(command);
       }
       const rows = getData();
-      const additions: { listId: Id; entry: AddEntry }[] = [];
+      // Always the household's shopping list (ADR-0012): the items of the call's household.
+      const additions: AddEntry[] = [];
       for (const command of commands) {
         if (command.type !== 'addShoppingItems') continue;
         for (const text of command.texts) {
-          const local = addTextLocally(command.listId, text);
-          if (local) additions.push({ listId: command.listId, entry: local.entry });
+          const local = addTextLocally(text);
+          if (local) additions.push(local.entry);
         }
       }
       if (!isBackendMode()) return [];
@@ -207,7 +208,7 @@ function batchProposal(): Proposal {
       id: newId('part'),
       label: 'Einkaufsliste',
       after: 'Milch',
-      command: { type: 'addShoppingItems', listId: data.household.defaultListId, texts: ['Milch'] },
+      command: { type: 'addShoppingItems', texts: ['Milch'] },
     },
   ];
   const bathroom = data.chores.find((chore) => normalizeText(chore.title).includes('bad'));

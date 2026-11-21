@@ -1,10 +1,11 @@
--- Spec 0003, T1 — database foundation.
+-- Baseline (ADR-0012) — database foundation.
 --
 -- * Nothing new is exposed to the API roles by default: every grant must be explicit, like on
 --   the hosted project. This includes functions, which Postgres makes executable by PUBLIC.
 -- * Schema `private` holds helpers and privileged code; PostgREST does not expose it.
 -- * Shared triggers every synced table uses: server-set timestamps, tombstones for deletions and
---   a Realtime signal per household (`docs/architecture/sync.md`).
+--   a Realtime signal per household (`docs/architecture/sync.md`), and the helpers that attach
+--   them and the four membership policies to a household-scoped table.
 -- * The tombstone log `deleted_records` with a 30-day retention job.
 --
 -- Policies that need household membership (deleted_records, realtime.messages) follow in the
@@ -142,6 +143,83 @@ as $$
 $$;
 
 grant execute on function private.household_id_from_topic(text) to authenticated;
+
+-- ---------------------------------------------------------------------------------------------
+-- Helpers for household-scoped tables
+-- ---------------------------------------------------------------------------------------------
+
+-- Conventions of every household-scoped table (see `docs/architecture/sync.md`): id (client may
+-- supply it), household_id with `on delete cascade` from households, server-set created_at /
+-- updated_at, unique (household_id, id) as the target of composite foreign keys, index
+-- (household_id, updated_at) for the delta sync, RLS with one policy per operation, explicit
+-- column-level grants to authenticated (never id, household_id, created_at, updated_at in an
+-- update grant), nothing for anon.
+
+-- Attaches the sync triggers of a household-scoped table: server-set timestamps, a tombstone per
+-- deleted row and one Realtime signal per statement and household. p_key_columns names the key
+-- columns (without household_id) of a table without an `id` column, for the tombstone's record_id.
+-- For migrations only; not granted to the API roles.
+create function private.attach_sync_triggers(p_table regclass, p_key_columns text[] default '{}')
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_name text := (select c.relname from pg_catalog.pg_class c where c.oid = p_table);
+  v_key_args text := (select coalesce(string_agg(quote_literal(k), ', '), '') from unnest(p_key_columns) k);
+begin
+  execute format(
+    'create trigger %I before insert or update on %s for each row execute function private.set_timestamps()',
+    v_name || '_set_timestamps', p_table);
+  execute format(
+    'create trigger %I after delete on %s for each row execute function private.record_deletion(%s)',
+    v_name || '_record_deletion', p_table, v_key_args);
+  execute format(
+    'create trigger %I after insert on %s referencing new table as new_rows '
+    'for each statement execute function private.notify_household()',
+    v_name || '_notify_insert', p_table);
+  execute format(
+    'create trigger %I after update on %s referencing old table as old_rows new table as new_rows '
+    'for each statement execute function private.notify_household()',
+    v_name || '_notify_update', p_table);
+  execute format(
+    'create trigger %I after delete on %s referencing old table as old_rows '
+    'for each statement execute function private.notify_household()',
+    v_name || '_notify_delete', p_table);
+end
+$$;
+
+-- Enables RLS and creates the four membership policies of a table that members write directly:
+-- every operation is limited to rows of the caller's households, and `with check` keeps inserted
+-- and updated rows there. For migrations only; not granted to the API roles.
+create function private.attach_household_policies(p_table regclass)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_name text := (select c.relname from pg_catalog.pg_class c where c.oid = p_table);
+begin
+  execute format('alter table %s enable row level security', p_table);
+  execute format(
+    'create policy %I on %s for select to authenticated '
+    'using (household_id in (select private.my_household_ids()))',
+    v_name || '_select', p_table);
+  execute format(
+    'create policy %I on %s for insert to authenticated '
+    'with check (household_id in (select private.my_household_ids()))',
+    v_name || '_insert', p_table);
+  execute format(
+    'create policy %I on %s for update to authenticated '
+    'using (household_id in (select private.my_household_ids())) '
+    'with check (household_id in (select private.my_household_ids()))',
+    v_name || '_update', p_table);
+  execute format(
+    'create policy %I on %s for delete to authenticated '
+    'using (household_id in (select private.my_household_ids()))',
+    v_name || '_delete', p_table);
+end
+$$;
 
 -- ---------------------------------------------------------------------------------------------
 -- Tombstone log

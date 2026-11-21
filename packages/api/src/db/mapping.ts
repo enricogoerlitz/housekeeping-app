@@ -34,7 +34,6 @@ import {
   type Row,
   type ShoppingContribution,
   type ShoppingItem,
-  type ShoppingList,
   type SmallRow,
   type Store,
   type TableRows,
@@ -223,7 +222,6 @@ function itemRows(householdId: string, item: ShoppingItem): HouseholdRows {
       {
         id: item.id,
         household_id: householdId,
-        list_id: item.listId,
         article_id: item.articleId,
         checked: item.checked,
         checked_at: item.checkedAt ?? null,
@@ -280,15 +278,6 @@ const storeRow = (householdId: string, store: Store) =>
     name: store.name,
     area_order: store.areaOrder,
     hidden_area_ids: store.hiddenAreaIds,
-  }));
-
-const listRow = (householdId: string, list: ShoppingList) =>
-  single('shopping_lists', householdId, list, () => ({
-    id: list.id,
-    household_id: householdId,
-    name: list.name,
-    is_default: list.isDefault,
-    store_id: list.storeId ?? null,
   }));
 
 const planRow = (householdId: string, entry: MealPlanEntry) =>
@@ -356,7 +345,6 @@ function householdRows(household: Household): HouseholdRows {
         id: household.id,
         name: household.name,
         meal_slots: json(household.mealSlots),
-        default_list_id: household.defaultListId || null,
         default_store_id: household.defaultStoreId ?? null,
       },
     ],
@@ -377,7 +365,6 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.areas.map((area) => areaRow(householdId, area)),
     ...data.articles.map((article) => articleRow(householdId, article)),
     ...data.stores.map((store) => storeRow(householdId, store)),
-    ...data.lists.map((list) => listRow(householdId, list)),
     ...data.recipes.map((recipe) => recipeRows(householdId, recipe)),
     ...data.restaurants.map((restaurant) => restaurantRows(householdId, restaurant)),
     ...data.activities.map((activity) => activityRows(householdId, activity)),
@@ -394,7 +381,6 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     areas: [],
     articles: [],
     stores: [],
-    shopping_lists: [],
     recipes: [],
     recipe_favorites: [],
     recipe_ratings: [],
@@ -618,7 +604,6 @@ function toItem(row: Row, contributions: Row[], pending: boolean): ShoppingItem 
   const r = row as Cached<'shopping_items'>;
   return {
     id: r.id,
-    listId: r.list_id ?? '',
     articleId: r.article_id ?? '',
     contributions: contributions.map((contribution) =>
       cached(contribution, [], () => toContribution(contribution)),
@@ -656,16 +641,6 @@ function toStore(row: Row): Store {
     name: r.name ?? '',
     areaOrder: r.area_order ?? [],
     hiddenAreaIds: r.hidden_area_ids ?? [],
-  };
-}
-
-function toList(row: Row): ShoppingList {
-  const r = row as Cached<'shopping_lists'>;
-  return {
-    id: r.id,
-    name: r.name ?? '',
-    isDefault: r.is_default === true,
-    storeId: opt(r.store_id),
   };
 }
 
@@ -742,7 +717,6 @@ function toHousehold(row: SmallRow, members: SmallRow[]): Household {
     name: r.name ?? '',
     memberIds: members.map((member) => String(member.profile_id)),
     mealSlots: (r.meal_slots ?? []) as unknown as Household['mealSlots'],
-    defaultListId: r.default_list_id ?? '',
     defaultStoreId: opt(r.default_store_id),
   };
 }
@@ -845,7 +819,6 @@ export function rowsToHousehold(
       previous?.planEntries,
       plain(tables, 'meal_plan_entries', 'created', toPlanEntry),
     ),
-    lists: reuse(previous?.lists, plain(tables, 'shopping_lists', 'created', toList)),
     items: reuse(previous?.items, items),
     chores: reuse(previous?.chores, plain(tables, 'chores', 'created', toChore)),
     choreEvents: reuse(

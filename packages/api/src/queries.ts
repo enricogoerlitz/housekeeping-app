@@ -1,4 +1,13 @@
-import type { Activity, Article, Id, Member, Recipe, Restaurant } from '@housekeeping/core';
+import {
+  resolveShoppingStore,
+  type Activity,
+  type Article,
+  type Id,
+  type Member,
+  type Recipe,
+  type Restaurant,
+  type Store,
+} from '@housekeeping/core';
 
 import { getData, getState, useAppSelector, useDataSelector } from './store';
 
@@ -22,12 +31,22 @@ export const useRestaurants = () => useDataSelector((data) => data.restaurants);
 /** Newest first. */
 export const useActivities = () => useDataSelector((data) => data.activities);
 export const usePlanEntries = () => useDataSelector((data) => data.planEntries);
-export const useShoppingLists = () => useDataSelector((data) => data.lists);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
 export const useAbsences = () => useDataSelector((data) => data.absences);
 export const useFeedback = () => useDataSelector((data) => data.feedback);
+
+/**
+ * The store "Einkaufen" sorts for (spec 0006, D26): the one chosen on this device, else the
+ * household's default store; undefined = "Ohne Markt – nach Bereichen".
+ */
+export function useShoppingStore(): Store | undefined {
+  const stores = useStores();
+  const household = useHousehold();
+  const choice = useAppSelector((state) => state.storeChoices?.[state.activeHouseholdId]);
+  return resolveShoppingStore(stores, choice, household.defaultStoreId);
+}
 
 const byIdCache = new WeakMap<object, Record<Id, unknown>>();
 /**

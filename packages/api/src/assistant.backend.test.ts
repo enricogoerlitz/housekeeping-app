@@ -31,7 +31,6 @@ function proposal(): Proposal {
         label: 'Einkaufsliste',
         command: {
           type: 'addShoppingItems',
-          listId: getData().household.defaultListId,
           texts: ['Milch', '2 Mangochutney'],
         },
       },
@@ -81,7 +80,6 @@ describe('applyProposal in backend mode', () => {
     const add = ops.at(-1);
     expect(add).toMatchObject({
       kind: 'add_contributions',
-      list_id: getData().household.defaultListId,
       entries: [
         expect.objectContaining({ article_name: 'Milch' }),
         expect.objectContaining({ article_name: 'Mangochutney', name_key: 'mangochutney' }),
@@ -125,7 +123,6 @@ describe('applyProposal in backend mode', () => {
     await fx.startEnrico();
     runAssistantCommand({
       type: 'addShoppingItems',
-      listId: getData().household.defaultListId,
       texts: ['Milch', 'Eier'],
     });
     await fx.settle();

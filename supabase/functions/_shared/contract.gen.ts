@@ -43,7 +43,6 @@ export const AssistantCommandSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({
     type: z.literal('addShoppingItems'),
-    listId: Id,
     texts: z.array(Label).min(1).max(50),
   }),
   z.strictObject({ type: z.literal('addPlanEntry'), input: PlanEntryInputSchema }),

@@ -18,7 +18,6 @@ function seed() {
   server.addProfile({ id: STRANGER, name: 'Fremd', email: 'fremd@example.com' });
   server.addHousehold({ id: H, name: 'Enrico & Nadja' }, [ENRICO, NADJA]);
   server.insertRows(H, {
-    shopping_lists: [{ id: 'l1', name: 'Standardliste', is_default: true, store_id: null }],
     articles: [
       {
         id: 'a-milk',
@@ -31,7 +30,7 @@ function seed() {
         is_pantry: false,
       },
     ],
-    shopping_items: [{ id: 'i-milk', list_id: 'l1', article_id: 'a-milk' }],
+    shopping_items: [{ id: 'i-milk', article_id: 'a-milk' }],
     shopping_contributions: [
       { id: 'c-milk', item_id: 'i-milk', source: { kind: 'manual' }, count: 1 },
     ],
@@ -84,14 +83,14 @@ describe('fake server: store RPCs ("Abhaken gewinnt", sync.md)', () => {
 
   it('adds to the open item, resolves synonyms and is idempotent per contribution id', async () => {
     const enrico = server.transport(ENRICO);
-    const [result] = await enrico.addShoppingContributions('l1', [entry('Vollmilch', 'c-new')]);
+    const [result] = await enrico.addShoppingContributions(H, [entry('Vollmilch', 'c-new')]);
     expect(result).toMatchObject({ item_id: 'i-milk', article_id: 'a-milk' });
-    await enrico.addShoppingContributions('l1', [entry('Vollmilch', 'c-new')]);
+    await enrico.addShoppingContributions(H, [entry('Vollmilch', 'c-new')]);
     expect(
       server.rows(H, 'shopping_contributions').filter((c) => c.item_id === 'i-milk'),
     ).toHaveLength(2);
 
-    const [bread] = await enrico.addShoppingContributions('l1', [entry('Brot', 'c-bread')]);
+    const [bread] = await enrico.addShoppingContributions(H, [entry('Brot', 'c-bread')]);
     expect(bread).toMatchObject({
       item_id: 'item-c-bread',
       article_id: 'article-c-bread',
@@ -106,7 +105,7 @@ describe('fake server: store RPCs ("Abhaken gewinnt", sync.md)', () => {
   it('reopens a checked item with only the new contribution and bumps check_seq', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.setItemChecked('i-milk', true, 0);
-    await enrico.addShoppingContributions('l1', [entry('Milch', 'c-again')]);
+    await enrico.addShoppingContributions(H, [entry('Milch', 'c-again')]);
     expect(server.row(H, 'shopping_items', 'i-milk')).toMatchObject({
       checked: false,
       check_seq: 2,
@@ -117,14 +116,14 @@ describe('fake server: store RPCs ("Abhaken gewinnt", sync.md)', () => {
   it('clears checked items and returns them for undo', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.setItemChecked('i-milk', true, 0);
-    const cleared = await enrico.clearCheckedItems('l1');
+    const cleared = await enrico.clearCheckedItems(H);
     expect(cleared).toHaveLength(1);
     expect(cleared[0]?.item).toMatchObject({ id: 'i-milk' });
     expect(cleared[0]?.contributions).toHaveLength(1);
     expect(server.rows(H, 'shopping_items')).toEqual([]);
 
-    expect(await enrico.restoreClearedItems('l1', cleared)).toBe(1);
-    expect(await enrico.restoreClearedItems('l1', cleared)).toBe(0);
+    expect(await enrico.restoreClearedItems(H, cleared)).toBe(1);
+    expect(await enrico.restoreClearedItems(H, cleared)).toBe(0);
     expect(server.row(H, 'shopping_items', 'i-milk')).toMatchObject({ checked: true });
     expect(server.rows(H, 'shopping_contributions')).toHaveLength(1);
   });
@@ -153,13 +152,10 @@ describe('fake server: store RPCs ("Abhaken gewinnt", sync.md)', () => {
     });
     const keys = Array.from({ length: 10 }, (_, index) => `k${index}`);
     await expect(
-      transport.addShoppingContributions('l1', [
-        ...keys.map((key) => bulk(key, 100)),
-        bulk('x', 1),
-      ]),
+      transport.addShoppingContributions(H, [...keys.map((key) => bulk(key, 100)), bulk('x', 1)]),
     ).rejects.toMatchObject({ code: 'too_many_changes' });
     await transport.addShoppingContributions(
-      'l1',
+      H,
       keys.map((key) => bulk(key, 100)),
     );
     const ids = keys.flatMap((key) =>
@@ -268,7 +264,7 @@ describe('fake server: apply_changes (ADR-0011)', () => {
     await expect(
       server
         .transport(ENRICO)
-        .applyChanges(H, [...inserts, { kind: 'add_contributions', list_id: 'l1', entries }]),
+        .applyChanges(H, [...inserts, { kind: 'add_contributions', entries }]),
     ).rejects.toMatchObject({ code: 'too_many_changes' });
     expect(server.row(H, 'areas', 'area-0')).toBeUndefined();
   });
@@ -278,9 +274,7 @@ describe('fake server: apply_changes (ADR-0011)', () => {
       entry(`Artikel ${index}`, `c-${index}`),
     );
     await expect(
-      server
-        .transport(ENRICO)
-        .applyChanges(H, [{ kind: 'add_contributions', list_id: 'l1', entries }]),
+      server.transport(ENRICO).applyChanges(H, [{ kind: 'add_contributions', entries }]),
     ).resolves.toMatchObject({ applied: 1 });
   });
 
@@ -301,12 +295,10 @@ describe('fake server: apply_changes (ADR-0011)', () => {
       transport.applyChanges(H, [
         {
           kind: 'add_contributions',
-          list_id: 'l1',
           entries: ['a', 'b', 'c'].map((k) => big(k, 100)),
         },
         {
           kind: 'add_contributions',
-          list_id: 'l1',
           entries: [big('d', 100), big('e', 100), big('f', 1)],
         },
       ]),
@@ -315,7 +307,6 @@ describe('fake server: apply_changes (ADR-0011)', () => {
       transport.applyChanges(H, [
         {
           kind: 'add_contributions',
-          list_id: 'l1',
           entries: ['a', 'b', 'c', 'd', 'e'].map((k) => big(k, 100)),
         },
       ]),
@@ -649,5 +640,176 @@ describe('fake server: activities and photos (spec 0004)', () => {
       ['Mittag', 1],
       ['Abend', 2],
     ]);
+  });
+});
+
+describe("fake server: the household's shopping list (ADR-0012, like the database)", () => {
+  const milkRow = (id: string, count: number, kind = 'manual') => ({
+    id,
+    item_id: 'i-milk',
+    source: kind === 'manual' ? { kind } : { kind, recipeId: 'r1', label: 'Dal (Fr)' },
+    count,
+    qty: null,
+    unit: null,
+    note: null,
+  });
+  const milkCounts = () =>
+    server
+      .rows(H, 'shopping_contributions')
+      .filter((row) => row.item_id === 'i-milk')
+      .map((row) => [row.id, row.count]);
+
+  it('ADR-0012: there is no list table, no list_id and no default_list_id to write', async () => {
+    const enrico = server.transport(ENRICO);
+    const refused = [
+      { kind: 'insert', table: 'shopping_lists', row: { id: 'l2', name: 'Drogerie' } },
+      { kind: 'patch', table: 'shopping_lists', id: 'l1', changes: { name: 'Einkaufsliste' } },
+      {
+        kind: 'insert',
+        table: 'shopping_items',
+        row: { id: 'i-x', list_id: 'l1', article_id: 'a-milk' },
+      },
+      { kind: 'patch', table: 'households', id: H, changes: { default_list_id: 'l1' } },
+    ] satisfies RowOp[];
+    for (const op of refused) {
+      await expect(enrico.applyChanges(H, [op])).rejects.toMatchObject({ code: 'invalid_change' });
+    }
+    const id = await enrico.createHousehold('Neu', null);
+    const pull = await enrico.syncPull({ households: { [id]: { full: true } } });
+    expect(pull.small.households?.find((row) => row.id === id)).not.toHaveProperty(
+      'default_list_id',
+    );
+    expect(pull.households[id]?.rows).not.toHaveProperty('shopping_lists');
+  });
+
+  it('ADR-0012: adding puts the item into the household; one open item per article', async () => {
+    const enrico = server.transport(ENRICO);
+    const [added] = await enrico.addShoppingContributions(H, [entry('Duschgel', 'c-d')]);
+    expect(server.row(H, 'shopping_items', added?.item_id ?? '')).toMatchObject({
+      article_id: added?.article_id,
+      checked: false,
+    });
+    await expect(
+      enrico.applyChanges(H, [
+        { kind: 'insert', table: 'shopping_items', row: { id: 'i-milk-2', article_id: 'a-milk' } },
+      ]),
+    ).rejects.toMatchObject({ code: '23505' });
+    await enrico.setItemChecked('i-milk', true, 0);
+    await expect(
+      enrico.applyChanges(H, [
+        { kind: 'insert', table: 'shopping_items', row: { id: 'i-milk-2', article_id: 'a-milk' } },
+      ]),
+    ).resolves.toMatchObject({ applied: 1 });
+  });
+
+  it('B1: a foreign household is refused with not_member on add, clear and restore', async () => {
+    const stranger = server.transport(STRANGER);
+    const notMember = { kind: 'permanent', code: 'not_member' };
+    await expect(
+      stranger.addShoppingContributions(H, [entry('Seife', 'c-x')]),
+    ).rejects.toMatchObject(notMember);
+    await expect(stranger.clearCheckedItems(H)).rejects.toMatchObject(notMember);
+    await expect(stranger.clearShoppingList(H)).rejects.toMatchObject(notMember);
+    await expect(stranger.restoreClearedItems(H, [])).rejects.toMatchObject(notMember);
+    expect(server.rows(H, 'shopping_items')).toHaveLength(1);
+  });
+
+  it('AC-014 / AC-016: + raises the newest manual count; − takes manual first, then the newest', async () => {
+    server.insertRows(H, {
+      shopping_contributions: [milkRow('c-plan-1', 1, 'recipe'), milkRow('c-plan-2', 1, 'recipe')],
+    });
+    const enrico = server.transport(ENRICO);
+    expect(await enrico.adjustItemCount('i-milk', 1)).toEqual({
+      item_id: 'i-milk',
+      count: 4,
+      removed: false,
+    });
+    expect(milkCounts()).toEqual([
+      ['c-milk', 2],
+      ['c-plan-1', 1],
+      ['c-plan-2', 1],
+    ]);
+    await enrico.adjustItemCount('i-milk', -1);
+    await enrico.adjustItemCount('i-milk', -1);
+    expect(milkCounts()).toEqual([
+      ['c-plan-1', 1],
+      ['c-plan-2', 1],
+    ]);
+    await enrico.adjustItemCount('i-milk', -1);
+    expect(milkCounts()).toHaveLength(1);
+  });
+
+  it('AC-015: − on the last piece deletes the item and returns it for the undo', async () => {
+    const enrico = server.transport(ENRICO);
+    const before = server.row(H, 'shopping_items', 'i-milk');
+    const answer = await enrico.adjustItemCount('i-milk', -1);
+    expect(answer).toMatchObject({ item_id: 'i-milk', count: 0, removed: true, item: before });
+    expect(answer?.removed && answer.contributions).toEqual([
+      expect.objectContaining({ id: 'c-milk', count: 1 }),
+    ]);
+    expect(server.row(H, 'shopping_items', 'i-milk')).toBeUndefined();
+    expect(await enrico.adjustItemCount('i-milk', 1)).toBeNull();
+    if (!answer?.removed) throw new Error('not removed');
+    expect(
+      await enrico.restoreClearedItems(H, [
+        { item: answer.item, contributions: answer.contributions },
+      ]),
+    ).toBe(1);
+    expect(server.row(H, 'shopping_items', 'i-milk')).toMatchObject({ checked: false });
+  });
+
+  it('refuses ± beyond 0…99 and a delta of 0, and items of other households', async () => {
+    const enrico = server.transport(ENRICO);
+    await expect(enrico.adjustItemCount('i-milk', 0)).rejects.toMatchObject({
+      code: 'invalid_value',
+    });
+    await expect(enrico.adjustItemCount('i-milk', -2)).rejects.toMatchObject({
+      code: 'invalid_value',
+    });
+    await expect(enrico.adjustItemCount('i-milk', 99)).rejects.toMatchObject({
+      code: 'invalid_value',
+    });
+    expect(await enrico.adjustItemCount('i-milk', 98)).toMatchObject({ count: 99 });
+    expect(await server.transport(STRANGER).adjustItemCount('i-milk', -1)).toBeNull();
+  });
+
+  it('AC-035 / AC-037: clears the whole list; restore keeps the check state and joins open items', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.setItemChecked('i-milk', true, 0);
+    await enrico.addShoppingContributions(H, [entry('Brot', 'c-brot')]);
+    const cleared = await enrico.clearShoppingList(H);
+    expect(cleared).toHaveLength(2);
+    expect(server.rows(H, 'shopping_items')).toEqual([]);
+    await expect(server.transport(STRANGER).clearShoppingList(H)).rejects.toMatchObject({
+      code: 'not_member',
+    });
+    // Nadja adds Brot again before the undo.
+    await server.transport(NADJA).addShoppingContributions(H, [entry('Brot', 'c-brot-2')]);
+    expect(await enrico.restoreClearedItems(H, cleared)).toBe(2);
+    expect(await enrico.restoreClearedItems(H, cleared)).toBe(0);
+    const items = server.rows(H, 'shopping_items');
+    expect(items).toHaveLength(2);
+    expect(server.row(H, 'shopping_items', 'i-milk')).toMatchObject({ checked: true });
+    const bread = items.find((item) => item.id !== 'i-milk');
+    expect(
+      server
+        .rows(H, 'shopping_contributions')
+        .filter((row) => row.item_id === bread?.id)
+        .map((row) => row.id)
+        .sort(),
+    ).toEqual(['c-brot', 'c-brot-2']);
+  });
+
+  it('AC-022: a contribution note longer than 200 characters is refused', async () => {
+    await expect(
+      server.transport(ENRICO).applyChanges(H, [
+        {
+          kind: 'patch',
+          table: 'shopping_contributions',
+          id: 'c-milk',
+          changes: { note: 'x'.repeat(201) },
+        },
+      ]),
+    ).rejects.toMatchObject({ code: '23514' });
   });
 });

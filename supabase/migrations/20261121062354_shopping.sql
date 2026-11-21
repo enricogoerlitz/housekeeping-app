@@ -1,33 +1,33 @@
--- Spec 0003, T3f — shopping items and their contributions.
+-- Baseline (ADR-0012) — shopping items and their contributions.
 --
 -- The check state of an item (checked, checked_at, checked_by, check_seq, not_available) is
--- changed only by the store RPCs (T4), which enforce "checking wins" with check_seq (sync.md,
--- "Nachtrag Spec 0003"). Clients get no insert or update grant on these columns, and a trigger
--- forces a direct insert by the API role to the open state as a second line of defence.
--- At most one open item per article and list; checked items of the same article may coexist.
+-- changed only by the store RPCs (shopping_rpcs migration), which enforce "checking wins" with
+-- check_seq (sync.md, "Nachtrag Spec 0003"). Clients get no insert or update grant on these
+-- columns, and a trigger forces a direct insert by the API role to the open state as a second line
+-- of defence.
+-- The shopping list is the set of items of a household (ADR-0012): no list table. At most one open
+-- item per article and household; checked items of the same article may coexist.
 
 -- ---------------------------------------------------------------------------------------------
 -- shopping_items
 -- ---------------------------------------------------------------------------------------------
 
--- Deleting a list deletes its items. An article on a list cannot be deleted (restrict): the
--- item would lose its name; the client removes the items first, in the same RPC.
+-- Deleting the household deletes its items. An article on the list cannot be deleted (restrict):
+-- the item would lose its name; the client removes the items first, in the same RPC.
 create table public.shopping_items (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
-  list_id uuid not null,
   article_id uuid not null,
   checked boolean not null default false,
   checked_at timestamptz,
   checked_by uuid,
   check_seq integer not null default 0
-    constraint shopping_items_check_seq_valid check (check_seq >= 0),
+    -- 1000000 changes of one item are far beyond real use; the store RPCs raise 23514 past it.
+    constraint shopping_items_check_seq_valid check (check_seq between 0 and 1000000),
   not_available boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint shopping_items_household_id_id_key unique (household_id, id),
-  constraint shopping_items_list_fkey foreign key (household_id, list_id)
-    references public.shopping_lists (household_id, id) on delete cascade,
   constraint shopping_items_article_fkey foreign key (household_id, article_id)
     references public.articles (household_id, id) on delete restrict,
   constraint shopping_items_checked_by_fkey foreign key (household_id, checked_by)
@@ -35,11 +35,10 @@ create table public.shopping_items (
 );
 
 create index shopping_items_household_id_updated_at_idx on public.shopping_items (household_id, updated_at);
-create index shopping_items_household_id_list_id_idx on public.shopping_items (household_id, list_id);
 create index shopping_items_household_id_article_id_idx on public.shopping_items (household_id, article_id);
 create index shopping_items_household_id_checked_by_idx on public.shopping_items (household_id, checked_by);
--- One open item per article and list (target of the merge in add_shopping_contributions, T4).
-create unique index shopping_items_open_article_idx on public.shopping_items (list_id, article_id)
+-- One open item per article and household (target of the merge in add_shopping_contributions).
+create unique index shopping_items_open_article_idx on public.shopping_items (household_id, article_id)
   where not checked;
 
 -- Before insert: an item inserted directly by the API role starts open, unseen and available.
@@ -65,8 +64,8 @@ create trigger shopping_items_insert_open before insert on public.shopping_items
   for each row execute function private.shopping_items_insert_open();
 
 grant select, delete on public.shopping_items to authenticated;
-grant insert (id, household_id, list_id, article_id) on public.shopping_items to authenticated;
-grant update (list_id, article_id) on public.shopping_items to authenticated;
+grant insert (id, household_id, article_id) on public.shopping_items to authenticated;
+grant update (article_id) on public.shopping_items to authenticated;
 select private.attach_household_policies('public.shopping_items');
 select private.attach_sync_triggers('public.shopping_items');
 

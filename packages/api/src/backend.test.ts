@@ -2,6 +2,7 @@ import { normalizeText, type PullRequest } from '@housekeeping/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  CACHE_VERSION,
   createEngine,
   onWriteRejected,
   resetLocalData,
@@ -13,7 +14,7 @@ import {
 import { switchHousehold } from './commands-household';
 import { createRecipe, updateRecipe } from './commands-recipes';
 import { removePlanEntry } from './commands-plan';
-import { setItemChecked } from './commands-shopping';
+import { chooseShoppingStore, setItemChecked } from './commands-shopping';
 import { fakeEnvironment, seededServer, type FakeEnvironment } from './backend-test-helpers';
 import { DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
 import { createMemoryStorage, type Storage } from './storage';
@@ -376,6 +377,126 @@ describe('active household per device', () => {
   });
 });
 
+describe('a new cache version (AC-018)', () => {
+  /** A device with an older cache: a stale cache, a queued check, a store and a household chosen. */
+  async function deviceWithOldCache(userId: string): Promise<string> {
+    const itemId = server.rows(H, 'shopping_items').find((row) => row.checked !== true)?.id;
+    if (typeof itemId !== 'string') throw new Error('fixture: no open item');
+    await storage.setMany([
+      ['meta', { version: CACHE_VERSION - 1, userId, householdIds: [H] }],
+      [`household:${H}`, { stale: true }],
+      ['queue', [{ kind: 'check', itemId, checked: true, seenCheckSeq: 0 }]],
+      ['store-choices', { [H]: null }],
+      ['active', H],
+    ]);
+    return itemId;
+  }
+
+  it('drops the cache, but keeps the store queue, the chosen store and the chosen household', async () => {
+    const itemId = await deviceWithOldCache(ENRICO);
+    environment.setOnline(false);
+    const engine = await startBackend({
+      transport: server.transport(ENRICO),
+      storage,
+      userId: ENRICO,
+      environment,
+    });
+    await settle(engine);
+    expect(await storage.get('meta')).toMatchObject({ version: CACHE_VERSION });
+    expect(await storage.get(`household:${H}`)).not.toEqual({ stale: true });
+    expect(await storage.get('queue')).toEqual([
+      expect.objectContaining({ kind: 'check', itemId, checked: true }),
+    ]);
+    expect(await storage.get('store-choices')).toEqual({ [H]: null });
+    expect(await storage.get('active')).toBe(H);
+
+    environment.setOnline(true);
+    await settle(engine);
+    expect(await storage.get('queue')).toEqual([]);
+    expect(server.row(H, 'shopping_items', itemId)).toMatchObject({ checked: true });
+    expect(getData().items.find((item) => item.id === itemId)).toMatchObject({ checked: true });
+    expect(getState().storeChoices?.[H]).toBeNull();
+  });
+
+  it('keeps nothing of another user across the version bump', async () => {
+    await deviceWithOldCache(NADJA);
+    await startEnrico();
+    expect(await storage.get('queue')).toEqual([]);
+    expect(await storage.get('store-choices')).toBeUndefined();
+  });
+});
+
+describe('store chosen on this device (spec 0006, REQ-007)', () => {
+  const chosen = () => getState().storeChoices?.[getState().activeHouseholdId];
+
+  it('AC-042: the chosen store is kept per household after a reload, and only on the device', async () => {
+    const second = await server.transport(ENRICO).createHousehold('Zweiter Haushalt', {});
+    await startEnrico();
+    const callsBefore = server.calls.length;
+    chooseShoppingStore('store-dm');
+    expect(chosen()).toBe('store-dm');
+    await vi.waitFor(async () =>
+      expect(await storage.get('store-choices')).toEqual({ [H]: 'store-dm' }),
+    );
+    expect(server.calls.slice(callsBefore).filter((call) => call.fn !== 'sync_pull')).toEqual([]);
+    await stopBackend();
+
+    await startEnrico();
+    expect(chosen()).toBe('store-dm');
+    switchHousehold(second);
+    expect(chosen()).toBeUndefined();
+    chooseShoppingStore(null);
+    expect(chosen()).toBeNull();
+    switchHousehold(H);
+    expect(chosen()).toBe('store-dm');
+  });
+
+  it('AC-042: the choice survives a new cache version', async () => {
+    await startEnrico({ cacheVersion: CACHE_VERSION - 1 });
+    chooseShoppingStore('store-dm');
+    await vi.waitFor(async () => expect(await storage.get('store-choices')).toBeDefined());
+    await stopBackend();
+    await startEnrico();
+    expect(chosen()).toBe('store-dm');
+  });
+
+  it('sign-out and another user remove the choice', async () => {
+    await startEnrico();
+    chooseShoppingStore('store-dm');
+    await vi.waitFor(async () => expect(await storage.get('store-choices')).toBeDefined());
+    await stopBackend();
+    await startBackend({ transport: server.transport(NADJA), storage, userId: NADJA, environment });
+    expect(getState().storeChoices?.[H]).toBeUndefined();
+    expect(await storage.get('store-choices')).toBeUndefined();
+    await stopBackend();
+
+    await startEnrico();
+    chooseShoppingStore('store-dm');
+    await vi.waitFor(async () => expect(await storage.get('store-choices')).toBeDefined());
+    await resetLocalData();
+    expect(await storage.get('store-choices')).toBeUndefined();
+  });
+
+  it('a household the user lost takes its choice with it', async () => {
+    const second = await server.transport(ENRICO).createHousehold('Zweiter Haushalt', {});
+    const engine = await startEnrico();
+    switchHousehold(second);
+    chooseShoppingStore(null);
+    switchHousehold(H);
+    chooseShoppingStore('store-dm');
+    await vi.waitFor(async () =>
+      expect(await storage.get('store-choices')).toEqual({ [second]: null, [H]: 'store-dm' }),
+    );
+    const invitation = await server.transport(ENRICO).inviteMember(second, 'nadja@example.com');
+    await server.transport(NADJA).acceptInvitation(invitation);
+    await server.transport(NADJA).removeMember(second, ENRICO);
+    await engine.pull();
+    await settle(engine);
+    expect(getState().storeChoices).toEqual({ [H]: 'store-dm' });
+    expect(await storage.get('store-choices')).toEqual({ [H]: 'store-dm' });
+  });
+});
+
 describe('account check', () => {
   it('a pull without the own profile reports the account as missing', async () => {
     const missing = vi.fn();
@@ -447,7 +568,6 @@ describe('writes: changesets (ADR-0011)', () => {
 
   it('AC-020: ten items in one changeset: a server error leaves none of them', async () => {
     await startEnrico();
-    const listId = getData().household.defaultListId;
     const articles = getData()
       .articles.filter((article) => !getData().items.some((item) => item.articleId === article.id))
       .slice(0, 10);
@@ -459,7 +579,6 @@ describe('writes: changesets (ADR-0011)', () => {
           ...data.items,
           ...articles.map((article, index) => ({
             id: `new-item-${index}`,
-            listId,
             articleId: article.id,
             contributions: [
               { id: `new-contribution-${index}`, source: { kind: 'manual' as const } },
@@ -680,12 +799,11 @@ describe('writes: store queue (ADR-0008 addendum)', () => {
 
   it('AC-023: added offline and online by two people, the item is there once with both', async () => {
     const enrico = await startEnrico();
-    const listId = getData().household.defaultListId;
     const name = 'Zucker';
     expect(itemByArticle(getData().items, name)).toBeUndefined();
     const add = (prefix: string): StoreAction => ({
       kind: 'add',
-      listId,
+      householdId: H,
       clientItemId: `${prefix}-item`,
       clientArticleId: `${prefix}-article`,
       contributions: [
@@ -702,7 +820,7 @@ describe('writes: store queue (ADR-0008 addendum)', () => {
     commit({ path: 'queue', action: add('enrico') }, () => undefined);
     expect(itemByArticle(getData().items, name)?.contributions).toHaveLength(1);
 
-    await server.transport(NADJA).addShoppingContributions(listId, [
+    await server.transport(NADJA).addShoppingContributions(H, [
       {
         client_item_id: 'nadja-item',
         client_article_id: 'nadja-article',
@@ -732,9 +850,7 @@ describe('writes: store queue (ADR-0008 addendum)', () => {
       'nadja-contribution',
     ]);
     expect(
-      server
-        .rows(H, 'shopping_items')
-        .filter((item) => item.list_id === listId && item.article_id === zucker[0]?.articleId),
+      server.rows(H, 'shopping_items').filter((item) => item.article_id === zucker[0]?.articleId),
     ).toHaveLength(1);
   });
 

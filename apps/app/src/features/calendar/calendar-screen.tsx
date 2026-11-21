@@ -305,11 +305,7 @@ export function CalendarScreen() {
         />
       ) : null}
       {pantryCheck ? (
-        <PantryCheckSheet
-          weekDates={shownWeek}
-          listId={data.household.defaultListId}
-          onClose={() => setPantryCheck(false)}
-        />
+        <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
       ) : null}
       {absence ? (
         <AbsenceSheet stripe={absence.stripe} onClose={() => setAbsence(undefined)} />

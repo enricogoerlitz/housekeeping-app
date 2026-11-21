@@ -77,9 +77,8 @@ describe('applyOps', () => {
 describe('visibleTables', () => {
   it('shows base rows overlaid by the store queue and then by pending changesets', () => {
     const shop: TableRows = {
-      shopping_lists: { l1: { id: 'l1' } },
       shopping_items: {
-        i1: { id: 'i1', list_id: 'l1', article_id: 'milk', checked: false, check_seq: 0 },
+        i1: { id: 'i1', household_id: 'h1', article_id: 'milk', checked: false, check_seq: 0 },
       },
     };
     const queue: StoreQueueEntry[] = [

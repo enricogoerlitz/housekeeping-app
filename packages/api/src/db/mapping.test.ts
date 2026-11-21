@@ -145,7 +145,6 @@ describe('mapping between domain and rows', () => {
     expect(rows.households).toEqual([
       expect.objectContaining({
         id: DEMO_HOUSEHOLD_ID,
-        default_list_id: 'list-standard',
         meal_slots: data.household.mealSlots,
       }),
     ]);

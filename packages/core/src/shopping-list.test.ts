@@ -44,7 +44,6 @@ function item(
 ): ShoppingItem {
   return {
     id: 'item',
-    listId: 'list',
     articleId: 'art-zwiebeln',
     contributions,
     checked: false,

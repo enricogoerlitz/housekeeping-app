@@ -1,10 +1,11 @@
--- Spec 0003, T2 — identity: profiles, households, memberships, invitations; the sign-up gate
--- (before_user_created hook), account bootstrap (auth.users trigger) and the household RPCs.
+-- Baseline (ADR-0012) — identity: profiles, households, memberships, invitations; the sign-up
+-- gate (before_user_created hook), account bootstrap (auth.users trigger) and the household RPCs.
 --
 -- Writes to households, memberships and invitations go only through the RPCs below
 -- (security definer, checked against auth.uid()); the API roles get no insert/delete grants.
 -- Public RPCs are thin security-invoker wrappers so PostgREST can see them; the logic lives in
--- private.
+-- private. Invitations are always accepted explicitly (accept_invitation): the auth.users
+-- trigger only creates the profile.
 
 -- ---------------------------------------------------------------------------------------------
 -- Tables
@@ -31,7 +32,8 @@ create table public.profiles (
 create index profiles_email_idx on public.profiles (email);
 
 -- The household itself (no household_id). meal_slots: [{id: uuid, name: 1–40 chars, sort: number}].
--- default_list_id / default_store_id get their composite foreign keys with the domain tables (T3).
+-- default_store_id gets its composite foreign key in the catalog migration. The shopping list is the
+-- household's shopping_items (ADR-0012); there is no list row.
 create table public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null
@@ -51,7 +53,6 @@ create table public.households (
         else false
       end
     ),
-  default_list_id uuid,
   default_store_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -130,6 +131,33 @@ $$;
 grant execute on function private.my_household_ids() to authenticated;
 grant execute on function private.my_email() to authenticated;
 
+-- Raises `invalid_member` (23503, like a foreign key) unless every id is a member of the
+-- household. Security invoker on purpose: under RLS a caller sees only the memberships of her own
+-- households, so the check cannot be used to probe another household's members. Called by the
+-- member-check triggers of tables whose person references are arrays or JSON (single columns use
+-- composite foreign keys to household_members instead).
+create function private.assert_members(p_household_id uuid, p_profile_ids uuid[])
+returns void
+language plpgsql
+stable
+set search_path = ''
+as $$
+begin
+  if exists (
+    select 1 from unnest(p_profile_ids) as p (id)
+    where p.id is null
+       or not exists (
+         select 1 from public.household_members m
+         where m.household_id = p_household_id and m.profile_id = p.id
+       )
+  ) then
+    raise exception 'invalid_member' using errcode = '23503';
+  end if;
+end
+$$;
+
+grant execute on function private.assert_members(uuid, uuid[]) to authenticated;
+
 -- ---------------------------------------------------------------------------------------------
 -- Grants and Row Level Security
 -- ---------------------------------------------------------------------------------------------
@@ -158,7 +186,7 @@ create policy profiles_update on public.profiles for update to authenticated
 -- households: members read and edit; an invited person reads the household she is invited to
 -- (to decide whether to accept). Created only by create_household, never deleted via the API.
 grant select on public.households to authenticated;
-grant update (name, meal_slots, default_list_id, default_store_id) on public.households to authenticated;
+grant update (name, meal_slots, default_store_id) on public.households to authenticated;
 
 create policy households_select on public.households for select to authenticated
   using (
@@ -285,10 +313,12 @@ create trigger profiles_notify_update after update on public.profiles
 -- Sign-up gate: Supabase Auth hook "before_user_created"
 -- ---------------------------------------------------------------------------------------------
 
--- Admits a new account only for provider google AND an open invitation for its (lowercased)
--- email. Everything else is rejected with 403 and the code `not_invited`, which the app shows
--- in German. Runs as supabase_auth_admin (security invoker) with column-level read access to
--- invitations. Payload: https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook
+-- Admits a new account only for provider google, an address Google verified
+-- (user.user_metadata.email_verified is the boolean true; Supabase Auth copies the provider's
+-- claims there) AND an open invitation for its (lowercased) email. Everything else is rejected
+-- with 403 and the code `not_invited`, which the app shows in German. Runs as
+-- supabase_auth_admin (security invoker) with column-level read access to invitations. Payload:
+-- https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook
 -- (provider in user.app_metadata.provider).
 create function private.before_user_created_hook(event jsonb)
 returns jsonb
@@ -299,8 +329,10 @@ as $$
 declare
   v_email text := lower(btrim(event -> 'user' ->> 'email'));
   v_provider text := event -> 'user' -> 'app_metadata' ->> 'provider';
+  v_verified jsonb := event -> 'user' -> 'user_metadata' -> 'email_verified';
 begin
   if v_provider = 'google'
+     and v_verified = 'true'::jsonb
      and v_email is not null
      and exists (
        select 1 from public.household_invitations i
@@ -334,6 +366,7 @@ as $$
     [1 + get_byte(uuid_send(p_id), 15) % 8]
 $$;
 
+-- Creates the profile of a new account. Memberships come only from accept_invitation.
 create function private.handle_new_user()
 returns trigger
 language plpgsql
@@ -353,18 +386,6 @@ begin
   insert into public.profiles (id, name, email, color)
   values (new.id, v_name, v_email, private.profile_color(new.id));
 
-  -- A new account joins every household that invited its address (AC-008). Existing accounts
-  -- must accept instead (accept_invitation), so this runs only on account creation.
-  with accepted as (
-    update public.household_invitations i
-    set accepted_at = now()
-    where i.email = v_email and i.accepted_at is null
-    returning i.household_id
-  )
-  insert into public.household_members (household_id, profile_id)
-  select distinct a.household_id, new.id from accepted a
-  on conflict do nothing;
-
   return new;
 end
 $$;
@@ -376,32 +397,8 @@ create trigger on_auth_user_created after insert on auth.users
 -- RPCs
 -- ---------------------------------------------------------------------------------------------
 
--- Validates the starter content the client sends with create_household. Format:
---   {"areas":    [{"key": text, "name": text}, …],                       order = sort
---    "articles": [{"name", "name_key", "synonyms", "synonym_keys", "area" (area key), "diet",
---                  "is_pantry"}, …]}
--- Limits: ≤ 50 areas, ≤ 2000 articles, ≤ 512 KiB. T3 replaces this function to also insert the
--- areas, the articles and the default list "Standardliste" (domain tables do not exist yet).
-create function private.apply_starter(p_household_id uuid, p_starter jsonb)
-returns void
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if p_starter is null
-     or jsonb_typeof(p_starter) <> 'object'
-     or jsonb_typeof(p_starter -> 'areas') is distinct from 'array'
-     or jsonb_typeof(p_starter -> 'articles') is distinct from 'array' then
-    raise exception 'invalid_starter' using errcode = '22023';
-  end if;
-  if jsonb_array_length(p_starter -> 'areas') > 50
-     or jsonb_array_length(p_starter -> 'articles') > 2000
-     or octet_length(p_starter::text) > 524288 then
-    raise exception 'invalid_starter' using errcode = '22023';
-  end if;
-end
-$$;
-
+-- Creates a household with the caller as its first member, the meal slots Vormittag, Mittag and
+-- Abend, and the starter content (private.apply_starter, catalog migration).
 create function private.create_household(p_name text, p_starter jsonb)
 returns uuid
 language plpgsql
@@ -422,8 +419,9 @@ begin
 
   insert into public.households (name, meal_slots)
   values (v_name, jsonb_build_array(
-    jsonb_build_object('id', gen_random_uuid(), 'name', 'Mittag', 'sort', 0),
-    jsonb_build_object('id', gen_random_uuid(), 'name', 'Abend', 'sort', 1)
+    jsonb_build_object('id', gen_random_uuid(), 'name', 'Vormittag', 'sort', 0),
+    jsonb_build_object('id', gen_random_uuid(), 'name', 'Mittag', 'sort', 1),
+    jsonb_build_object('id', gen_random_uuid(), 'name', 'Abend', 'sort', 2)
   ))
   returning id into v_household_id;
 

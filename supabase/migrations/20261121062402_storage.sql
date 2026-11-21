@@ -1,9 +1,11 @@
--- Spec 0004, REQ-004 — the photo storage: private bucket household-media.
+-- Baseline (ADR-0012) — the photo storage: private bucket household-media.
 --
--- * Object names: <household_id>/<activities|recipes>/<row id>/<file>, ids in lower case as
---   Postgres prints them (the same folder the photo_path checks of activities and recipes allow).
--- * Bucket limits (enforced by the Storage API on upload, not by the database): 2 MiB, image/jpeg
---   only. The client re-encodes every photo to a JPEG of at most 1600 px before uploading.
+-- * Object names: <household_id>/<activities|recipes>/<row id>/<uuid>.jpg, ids in lower case as
+--   Postgres prints them (the same names the photo_path checks of activities and recipes allow;
+--   the client builds a new uuid per upload, packages/api/src/photos-remote.ts).
+-- * Bucket settings, enforced by the Storage API on upload: private, 2 MiB, image/jpeg only. They
+--   are set whatever a bucket of that id had before (made by hand in the dashboard); running it
+--   again changes nothing. The client re-encodes every photo to a JPEG of at most 1600 px.
 -- * Policies on storage.objects for authenticated only: a member reads, uploads, replaces and
 --   deletes objects of her own households; nothing for anon (no policy = no access). A name
 --   that does not have the shape above is rejected like a foreign one (policy violation), never
@@ -14,11 +16,15 @@
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('household-media', 'household-media', false, 2097152, '{image/jpeg}')
-on conflict (id) do nothing;
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
--- The household of an object name in household-media, or null if the name does not have the
--- shape <household_id>/<activities|recipes>/<row id>/<file>. Parses by regex before casting, so
--- no name can make a policy raise. Called by the storage.objects policies as the caller.
+-- The household of an object name in household-media, or null if the name is not
+-- <household_id>/<activities|recipes>/<row id>/<uuid>.jpg. Parses by regex before casting, so no
+-- name can make a policy raise. Called by the
+-- storage.objects policies as the caller.
 create function private.media_household_id(p_name text)
 returns uuid
 language sql
@@ -26,7 +32,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(activities|recipes)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[^/]+$'
+    when p_name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(activities|recipes)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'
       then split_part(p_name, '/', 1)::uuid
   end
 $$;

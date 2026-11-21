@@ -1,4 +1,4 @@
--- Spec 0003, T6 — sync_pull: the read path of the delta sync (docs/architecture/sync.md).
+-- Baseline (ADR-0012) — sync_pull: the read path of the delta sync (docs/architecture/sync.md).
 --
 -- Security invoker: every row goes through RLS as the caller, exactly like a direct API read
 -- (10-security: never a sync path that bypasses RLS). One call answers core's PullRequest with a
@@ -23,11 +23,12 @@ stable
 set search_path = ''
 as $$
 declare
-  -- The synced household tables (db-handoff T6). Small tables are listed separately below.
+  -- The synced household tables (db-handoff T6, spec 0004). Small tables are listed separately below.
   c_tables constant text[] := array[
-    'areas', 'articles', 'stores', 'shopping_lists',
+    'areas', 'articles', 'stores',
     'recipes', 'recipe_favorites', 'recipe_ratings',
     'restaurants', 'restaurant_favorites', 'restaurant_ratings',
+    'activities', 'activity_favorites', 'activity_ratings',
     'absences', 'feedback', 'feedback_votes',
     'chores', 'chore_events', 'meal_plan_entries',
     'shopping_items', 'shopping_contributions'];
@@ -91,5 +92,8 @@ begin
     'households', v_households);
 end
 $$;
+
+-- ---------------------------------------------------------------------------------------------
+-- apply_changes
 
 grant execute on function public.sync_pull(jsonb) to authenticated;

@@ -1,8 +1,8 @@
 // An in-memory server that implements the RPC contracts of spec 0003 for unit tests: membership
 // checks, the apply_changes allowlist with all-or-nothing, "Abhaken gewinnt" with check_seq, the
-// add merge (core queueEffect has the same rules as the server), deletion log and sync_pull, and
-// the photo bucket with its policies and limits (spec 0004). Several transports (users, devices)
-// can share one server.
+// add merge (core queueEffect has the same rules as the server), deletion log and sync_pull, the
+// photo bucket with its policies and limits (spec 0004), and the household's shopping list with its
+// editing RPCs (spec 0006, ADR-0012: no list rows, one open item per article and household). Several transports (users, devices) can share one server.
 import {
   compareTimestamps,
   queueEffect,
@@ -28,6 +28,7 @@ import {
   type WritableTable,
 } from './db/tables';
 import {
+  AdjustResultSchema,
   TransportError,
   type AddEntry,
   type AddResult,
@@ -43,6 +44,8 @@ type RpcName =
   | 'add_shopping_contributions'
   | 'assign_article_area'
   | 'clear_checked_items'
+  | 'clear_shopping_list'
+  | 'adjust_item_count'
   | 'remove_contributions'
   | 'restore_cleared_items'
   | 'set_recipe_favorite'
@@ -107,7 +110,6 @@ const SYNCED_TABLES = [...ID_TABLES, ...Object.keys(COMPOSITE_TABLES)];
 
 /** Rows depending on a deleted row through `on delete cascade`. */
 const CASCADES: Record<string, { table: string; column: string }[]> = {
-  shopping_lists: [{ table: 'shopping_items', column: 'list_id' }],
   shopping_items: [{ table: 'shopping_contributions', column: 'item_id' }],
   recipes: [
     { table: 'recipe_favorites', column: 'recipe_id' },
@@ -171,8 +173,23 @@ const MEDIA_PATH = /^([^/]+)\/(activities|recipes)\/[^/]+\/([^/]+)$/;
 /** The bucket's limits: image/jpeg only, at most 2 MiB. */
 const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
 
-/** Row checks of the database that a client bug could break (spec 0004). */
+/** shopping_contributions_note_length (spec 0006, AC-022). */
+const NOTE_MAX_LENGTH = 200;
+
+const isManual = (row: Row) =>
+  typeof row.source === 'object' &&
+  row.source !== null &&
+  (row.source as { kind?: unknown }).kind === 'manual';
+
+/** Row checks of the database that a client bug could break (spec 0004, 0006). */
 function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
+  if (
+    table === 'shopping_contributions' &&
+    typeof row.note === 'string' &&
+    row.note.length > NOTE_MAX_LENGTH
+  ) {
+    throw new TransportError('permanent', '23514', 400);
+  }
   const folder = PHOTO_FOLDERS[table];
   if (folder && row.photo_path != null) {
     const prefix = `${householdId}/${folder}/${row.id}/`;
@@ -184,6 +201,14 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   if (table === 'activities') {
     const clash = Object.values(tables.activities ?? {}).some(
       (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // shopping_items_open_article_idx: one open item per article and household.
+  if (table === 'shopping_items' && row.checked !== true) {
+    const clash = Object.values(tables.shopping_items ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.article_id === row.article_id && other.checked !== true,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
@@ -318,6 +343,81 @@ export function createFakeServer(): FakeServer {
     return householdsOf(userId).find((householdId) => data.get(householdId)?.[table]?.[id]);
   }
 
+  /** The list actions take the household id: a foreign one is refused, never answered empty. */
+  function memberOf(userId: string, householdId: string): string {
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
+    return householdId;
+  }
+
+  /** Newest first by created_at, then id (the database's `order by created_at desc, id desc`). */
+  const newestFirst = (a: Row, b: Row) =>
+    compareTimestamps(String(b.created_at), String(a.created_at)) ||
+    (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+
+  /** adjust_item_count: one tap on + or − (spec 0006, REQ-003). */
+  function adjustCount(tables: TableRows, itemId: string, delta: number): [TableRows, unknown] {
+    const item = tables.shopping_items?.[itemId];
+    if (!item) return [tables, null];
+    const own = Object.values(tables.shopping_contributions ?? {}).filter(
+      (row) => row.item_id === itemId,
+    );
+    const total = own.reduce(
+      (sum, row) => sum + (typeof row.count === 'number' ? row.count : 0),
+      0,
+    );
+    if (total + delta < 0 || (delta > 0 && total + delta > 99)) throw reject('invalid_value');
+    const counted = own.filter((row) => typeof row.count === 'number');
+
+    if (delta > 0) {
+      const manual = counted.filter(isManual).sort(newestFirst)[0];
+      const next = manual
+        ? withRow(tables, 'shopping_contributions', {
+            ...manual,
+            count: Number(manual.count) + delta,
+          })
+        : withRow(tables, 'shopping_contributions', {
+            id: crypto.randomUUID(),
+            item_id: itemId,
+            source: { kind: 'manual' },
+            count: delta,
+            qty: null,
+            unit: null,
+            note: null,
+          });
+      return [next, { item_id: itemId, count: total + delta, removed: false }];
+    }
+
+    // "von Hand" first, then the most recently added contribution.
+    const order = [...counted].sort(
+      (a, b) => Number(isManual(b)) - Number(isManual(a)) || newestFirst(a, b),
+    );
+    let left = -delta;
+    let next = tables;
+    for (const row of order) {
+      if (left === 0) break;
+      const count = Number(row.count);
+      if (count <= left) {
+        left -= count;
+        next =
+          row.qty == null
+            ? withoutRows(next, 'shopping_contributions', [row.id])
+            : withRow(next, 'shopping_contributions', { ...row, count: null });
+      } else {
+        next = withRow(next, 'shopping_contributions', { ...row, count: count - left });
+        left = 0;
+      }
+    }
+    const remains = Object.values(next.shopping_contributions ?? {}).some(
+      (row) => row.item_id === itemId,
+    );
+    if (remains) return [next, { item_id: itemId, count: total + delta, removed: false }];
+    const before = [...own].sort((a, b) => newestFirst(b, a));
+    return [
+      withoutRows(next, 'shopping_items', [itemId]),
+      { item_id: itemId, count: 0, removed: true, item, contributions: before },
+    ];
+  }
+
   // ---------- apply_changes ----------
 
   function checkReferences(
@@ -344,10 +444,9 @@ export function createFakeServer(): FakeServer {
 
   function addContributions(
     tables: TableRows,
-    listId: string,
+    householdId: string,
     entries: readonly AddEntry[],
   ): [TableRows, AddResult] {
-    if (!tables.shopping_lists?.[listId]) throw new TransportError('permanent', 'list_not_found');
     let next = tables;
     const results: AddResult = [];
     for (const entry of entries) {
@@ -359,7 +458,7 @@ export function createFakeServer(): FakeServer {
         next = queueEffect(
           {
             kind: 'add',
-            listId,
+            householdId,
             clientItemId: entry.client_item_id,
             clientArticleId: entry.client_article_id,
             contributions: fresh.map((contribution) => ({
@@ -373,6 +472,7 @@ export function createFakeServer(): FakeServer {
             })),
           },
           next,
+          householdId,
         );
         for (const contribution of fresh) {
           const row = next.shopping_contributions?.[contribution.id];
@@ -462,7 +562,7 @@ export function createFakeServer(): FakeServer {
       const results: unknown[] = [];
       for (const op of ops) {
         if (op.kind === 'add_contributions') {
-          const [next, added] = addContributions(tables, op.list_id, op.entries);
+          const [next, added] = addContributions(tables, householdId, op.entries);
           tables = next;
           results.push(added);
         } else if (op.kind === 'remove_contributions') {
@@ -656,7 +756,6 @@ export function createFakeServer(): FakeServer {
             const open = Object.values(tables.shopping_items ?? {}).find(
               (other) =>
                 other.id !== itemId &&
-                other.list_id === item.list_id &&
                 other.article_id === item.article_id &&
                 other.checked !== true,
             );
@@ -698,14 +797,15 @@ export function createFakeServer(): FakeServer {
           });
         }),
 
-      addShoppingContributions: (listId, entries) =>
+      addShoppingContributions: (requestedHouseholdId, entries) =>
         run(userId, 'add_shopping_contributions', () => {
-          const householdId = locate(userId, 'shopping_lists', listId);
-          if (!householdId) throw new TransportError('permanent', 'list_not_found', 404);
+          const householdId = memberOf(userId, requestedHouseholdId);
           // Like the RPC: ≤ 200 entries, ≤ 1000 contributions (what one call adds, one call removes).
           const contributions = entries.reduce((sum, entry) => sum + entry.contributions.length, 0);
           if (entries.length > 200 || contributions > 1000) throw reject('too_many_changes');
-          return transaction(householdId, (tables) => addContributions(tables, listId, entries));
+          return transaction(householdId, (tables) =>
+            addContributions(tables, householdId, entries),
+          );
         }),
 
       assignArticleArea: (articleId, areaId) =>
@@ -722,13 +822,12 @@ export function createFakeServer(): FakeServer {
           });
         }),
 
-      clearCheckedItems: (listId) =>
+      clearCheckedItems: (requestedHouseholdId) =>
         run(userId, 'clear_checked_items', () => {
-          const householdId = locate(userId, 'shopping_lists', listId);
-          if (!householdId) throw new TransportError('permanent', 'list_not_found', 404);
+          const householdId = memberOf(userId, requestedHouseholdId);
           return transaction(householdId, (tables) => {
             const checked = Object.values(tables.shopping_items ?? {}).filter(
-              (item) => item.list_id === listId && item.checked === true,
+              (item) => item.checked === true,
             );
             const cleared = checked.map((item) => ({
               item,
@@ -747,25 +846,89 @@ export function createFakeServer(): FakeServer {
           });
         }),
 
-      restoreClearedItems: (listId, items) =>
+      clearShoppingList: (requestedHouseholdId) =>
+        run(userId, 'clear_shopping_list', () => {
+          const householdId = memberOf(userId, requestedHouseholdId);
+          return transaction(householdId, (tables) => {
+            const oldestFirst = (a: Row, b: Row) => newestFirst(b, a);
+            const items = Object.values(tables.shopping_items ?? {}).sort(oldestFirst);
+            const cleared = items.map((item) => ({
+              item,
+              contributions: Object.values(tables.shopping_contributions ?? {})
+                .filter((contribution) => contribution.item_id === item.id)
+                .sort(oldestFirst),
+            }));
+            return [
+              withoutRows(
+                tables,
+                'shopping_items',
+                items.map((item) => item.id),
+              ),
+              cleared,
+            ];
+          });
+        }),
+
+      adjustItemCount: (itemId, delta) =>
+        run(userId, 'adjust_item_count', () => {
+          if (!Number.isInteger(delta) || delta === 0 || delta < -99 || delta > 99) {
+            throw reject('invalid_value');
+          }
+          const householdId = locate(userId, 'shopping_items', itemId);
+          if (!householdId) return null;
+          return AdjustResultSchema.parse(
+            transaction(householdId, (tables) => adjustCount(tables, itemId, delta)),
+          );
+        }),
+
+      restoreClearedItems: (requestedHouseholdId, items) =>
         run(userId, 'restore_cleared_items', () => {
-          const householdId = locate(userId, 'shopping_lists', listId);
-          if (!householdId) throw new TransportError('permanent', 'list_not_found', 404);
+          const householdId = memberOf(userId, requestedHouseholdId);
+          if (items.length > 1000) throw reject('too_many_changes');
           return transaction(householdId, (tables) => {
             let next = tables;
             let restored = 0;
             for (const { item, contributions } of items) {
               const id = String(item.id);
-              if (next.shopping_items?.[id]) continue;
-              next = withRow(next, 'shopping_items', { ...item, id, list_id: listId });
+              if (item.household_id !== householdId || item.article_id == null) {
+                throw reject('invalid_entries');
+              }
+              // Missing = checked, as before spec 0006 (clear_checked_items).
+              const checked = item.checked == null ? true : item.checked === true;
+              // An open item joins one that is open on the list again meanwhile (AC-037).
+              let targetId = checked
+                ? undefined
+                : Object.values(next.shopping_items ?? {}).find(
+                    (other) => other.article_id === item.article_id && other.checked !== true,
+                  )?.id;
+              let inserted = false;
+              if (targetId === undefined) {
+                if (!next.shopping_items?.[id]) {
+                  next = withRow(next, 'shopping_items', {
+                    ...item,
+                    id,
+                    checked,
+                    checked_at: checked ? (item.checked_at ?? now()) : null,
+                    checked_by: checked ? (item.checked_by ?? null) : null,
+                    check_seq: item.check_seq ?? 0,
+                    not_available: item.not_available ?? false,
+                  });
+                  inserted = true;
+                }
+                targetId = id;
+              }
+              let added = 0;
               for (const contribution of contributions ?? []) {
+                const contributionId = String(contribution.id);
+                if (next.shopping_contributions?.[contributionId]) continue;
                 next = withRow(next, 'shopping_contributions', {
                   ...contribution,
-                  id: String(contribution.id),
-                  item_id: id,
+                  id: contributionId,
+                  item_id: targetId,
                 });
+                added += 1;
               }
-              restored += 1;
+              if (inserted || (targetId !== id && added > 0)) restored += 1;
             }
             return [next, restored];
           });
@@ -868,7 +1031,6 @@ export function createFakeServer(): FakeServer {
           const trimmed = name.trim();
           if (!trimmed || trimmed.length > 80) throw reject('invalid_name');
           const id = crypto.randomUUID();
-          const listId = crypto.randomUUID();
           const time = now();
           households.set(id, {
             id,
@@ -878,7 +1040,6 @@ export function createFakeServer(): FakeServer {
               { id: crypto.randomUUID(), name: 'Mittag', sort: 1 },
               { id: crypto.randomUUID(), name: 'Abend', sort: 2 },
             ],
-            default_list_id: listId,
             default_store_id: null,
             created_at: time,
             updated_at: time,
@@ -889,15 +1050,6 @@ export function createFakeServer(): FakeServer {
             created_at: time,
             updated_at: time,
           });
-          transaction(id, (tables) => [
-            withRow(tables, 'shopping_lists', {
-              id: listId,
-              name: 'Standardliste',
-              is_default: true,
-              store_id: null,
-            }),
-            undefined,
-          ]);
           return id;
         }),
 
@@ -1064,7 +1216,6 @@ export function createFakeServer(): FakeServer {
       const time = now();
       households.set(household.id, {
         meal_slots: [],
-        default_list_id: null,
         default_store_id: null,
         ...household,
         created_at: time,

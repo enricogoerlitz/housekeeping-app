@@ -102,10 +102,7 @@ describe.skipIf(!enabled)('AC-033 (spec 0003): local seed in the database', () =
       ).toEqual(['mit Tofu', 'mit Hähnchen']);
       expect(demo.chores.length).toBeGreaterThanOrEqual(8);
       expect(demo.stores.map((store) => store.name)).toContain('Rewe Südstadt');
-      expect(
-        demo.items.filter((item) => item.listId === demo.household.defaultListId && !item.checked)
-          .length,
-      ).toBeGreaterThan(0);
+      expect(demo.items.filter((item) => !item.checked).length).toBeGreaterThan(0);
       const week = weekDates(seedDay);
       expect(
         demo.planEntries.filter((entry) => entry.date !== null && week.includes(entry.date)).length,

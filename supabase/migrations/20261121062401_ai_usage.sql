@@ -1,9 +1,10 @@
--- Spec 0003, T7 — AI quota: ai_usage and consume_ai_quota.
+-- Baseline (ADR-0012) — AI quota: ai_usage, consume_ai_quota and its retention.
 --
 -- Every edge function charges the caller's daily quota before a paid AI call (plan.md, decision
 -- "KI-Kontingent": 200 requests and 20 speech tokens per member and day; AC-030). The day is the
 -- calendar day in Europe/Berlin. ai_usage is per person, not per household: RLS on, no grants,
--- not synced (exception in the schema linter). Only consume_ai_quota writes it.
+-- not synced (exception in the schema linter). Only consume_ai_quota writes it; rows older than
+-- 90 days are purged daily.
 
 create table public.ai_usage (
   profile_id uuid not null references public.profiles (id) on delete cascade,
@@ -69,3 +70,17 @@ set search_path = ''
 as $$ select private.consume_ai_quota($1, $2) $$;
 
 grant execute on function public.consume_ai_quota(text, integer) to authenticated;
+
+-- ---------------------------------------------------------------------------------------------
+-- ai_usage retention
+-- ---------------------------------------------------------------------------------------------
+
+create function private.purge_ai_usage()
+returns void
+language sql
+set search_path = ''
+as $$
+  delete from public.ai_usage where day < (now() at time zone 'Europe/Berlin')::date - 90;
+$$;
+
+select cron.schedule('purge-ai-usage', '20 3 * * *', 'select private.purge_ai_usage()');

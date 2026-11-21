@@ -4,7 +4,7 @@
 -- has a defined effect; domain checks reject invalid values.
 begin;
 \ir _helpers.psql
-select plan(59);
+select plan(53);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -22,7 +22,7 @@ insert into fx (key, id) values
   ('home_b', tests.create_household('B', array[tests.fx('dora'), tests.fx('ben')]));
 insert into fx (key) values
   ('slot_a'), ('slot_b'),
-  ('area_a'), ('area_b'), ('article_a'), ('article_b'), ('store_a'), ('store_b'), ('list_a'), ('list_b'),
+  ('area_a'), ('area_b'), ('article_a'), ('article_b'), ('store_a'), ('store_b'),
   ('recipe_a'), ('recipe_b'), ('restaurant_a'), ('restaurant_b'), ('chore_a'), ('chore_b'),
   ('entry_a'), ('entry_b'), ('item_a'), ('item_b'), ('event_a');
 
@@ -40,10 +40,6 @@ insert into public.articles (id, household_id, name, name_key, area_id) values
   (tests.fx('article_b'), tests.fx('home_b'), 'Äpfel', 'apfel', tests.fx('area_b'));
 insert into public.stores (id, household_id, name) values
   (tests.fx('store_a'), tests.fx('home_a'), 'Edeka'), (tests.fx('store_b'), tests.fx('home_b'), 'Edeka');
-insert into public.shopping_lists (id, household_id, name, is_default) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste', true),
-  (tests.fx('list_b'), tests.fx('home_b'), 'Standardliste', true);
-update public.households set default_list_id = tests.fx('list_b') where id = tests.fx('home_b');
 insert into public.recipes (id, household_id, title, servings, course) values
   (tests.fx('recipe_a'), tests.fx('home_a'), 'Dal', 2, 'main'),
   (tests.fx('recipe_b'), tests.fx('home_b'), 'Dal', 2, 'main');
@@ -55,9 +51,9 @@ insert into public.chores (id, household_id, title, recurrence, assignment) valu
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, cook_id) values
   (tests.fx('entry_a'), tests.fx('home_a'), '2026-11-20', tests.fx('slot_a'), 'recipe', tests.fx('recipe_a'), tests.fx('emil')),
   (tests.fx('entry_b'), tests.fx('home_b'), '2026-11-20', tests.fx('slot_b'), 'recipe', tests.fx('recipe_b'), tests.fx('ben'));
-insert into public.shopping_items (id, household_id, list_id, article_id) values
-  (tests.fx('item_a'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('article_a')),
-  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('list_b'), tests.fx('article_b'));
+insert into public.shopping_items (id, household_id, article_id) values
+  (tests.fx('item_a'), tests.fx('home_a'), tests.fx('article_a')),
+  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('article_b'));
 insert into public.chore_events (id, household_id, chore_id, title, kind, done_on, done_by) values
   (tests.fx('event_a'), tests.fx('home_a'), tests.fx('chore_a'), 'Bad', 'done', '2026-11-19', tests.fx('emil'));
 
@@ -69,25 +65,11 @@ select throws_ok(
          tests.fx('home_a'), tests.fx('area_b')),
   '23503', null, 'T3 articles: area_id of another household is rejected');
 select throws_ok(
-  format($$ insert into public.shopping_lists (household_id, name, store_id) values (%L, 'X', %L) $$,
-         tests.fx('home_a'), tests.fx('store_b')),
-  '42501', null, 'AC-005 (0006) shopping_lists: members cannot insert lists any more (store_id is covered by the update below)');
-select throws_ok(
-  format($$ update public.shopping_lists set store_id = %L where id = %L $$, tests.fx('store_b'), tests.fx('list_a')),
-  '23503', null, 'T3 shopping_lists: an update cannot point store_id into another household');
-select throws_ok(
-  format($$ update public.households set default_list_id = %L where id = %L $$, tests.fx('list_b'), tests.fx('home_a')),
-  '23503', null, 'T3 households: default_list_id of another household is rejected');
-select throws_ok(
   format($$ update public.households set default_store_id = %L where id = %L $$, tests.fx('store_b'), tests.fx('home_a')),
   '23503', null, 'T3 households: default_store_id of another household is rejected');
 select throws_ok(
-  format($$ insert into public.shopping_items (household_id, list_id, article_id) values (%L, %L, %L) $$,
-         tests.fx('home_a'), tests.fx('list_b'), tests.fx('article_a')),
-  '23503', null, 'T3 shopping_items: list_id of another household is rejected');
-select throws_ok(
-  format($$ insert into public.shopping_items (household_id, list_id, article_id) values (%L, %L, %L) $$,
-         tests.fx('home_a'), tests.fx('list_a'), tests.fx('article_b')),
+  format($$ insert into public.shopping_items (household_id, article_id) values (%L, %L) $$,
+         tests.fx('home_a'), tests.fx('article_b')),
   '23503', null, 'T3 shopping_items: article_id of another household is rejected');
 select throws_ok(
   format($$ insert into public.shopping_contributions (household_id, item_id, source) values (%L, %L, '{"kind": "manual"}') $$,
@@ -219,12 +201,6 @@ select throws_ok(
 select throws_ok(
   format($$ insert into public.articles (household_id, name, name_key) values (%L, 'Äpfel!', 'apfel') $$, tests.fx('home_a')),
   '23505', null, 'T3 articles: name_key is unique per household');
--- Since spec 0006 only the owner could insert a list; the constraint still rejects a second one.
-select tests.clear_authentication();
-select throws_ok(
-  format($$ insert into public.shopping_lists (household_id, name, is_default) values (%L, 'Zweite', false) $$, tests.fx('home_a')),
-  '23505', null, 'AC-005 (0006) shopping_lists: at most one list per household');
-select tests.authenticate_as(tests.fx('dora'));
 select throws_ok(
   format($$ update public.restaurants set maps_url = 'javascript:alert(1)' where id = %L $$, tests.fx('restaurant_a')),
   '23514', null, 'T3 restaurants: maps_url must be an http(s) link');
@@ -255,24 +231,14 @@ select throws_ok(
 select throws_ok(
   format($$ delete from public.recipes where id = %L $$, tests.fx('recipe_a')),
   '23503', null, 'T3 recipes: a recipe in the meal plan cannot be deleted (restrict)');
--- Members cannot delete lists since spec 0006; for the owner the foreign key still protects it.
-select tests.clear_authentication();
-select throws_ok(
-  format($$ delete from public.shopping_lists where id = %L $$, tests.fx('list_b')),
-  '23503', null, 'T3 shopping_lists: the default list of a household cannot be deleted');
-select tests.authenticate_as(tests.fx('dora'));
-
 select tests.clear_authentication();
 update public.households set default_store_id = tests.fx('store_a') where id = tests.fx('home_a');
-update public.shopping_lists set store_id = tests.fx('store_a') where id = tests.fx('list_a');
 select tests.authenticate_as(tests.fx('dora'));
 delete from public.stores where id = tests.fx('store_a');
 select results_eq(
-  format($$ select (select default_store_id from public.households where id = %L),
-                   (select store_id from public.shopping_lists where id = %L) $$,
-         tests.fx('home_a'), tests.fx('list_a')),
-  $$ values (null::uuid, null::uuid) $$,
-  'T3 stores: deleting a store clears default_store_id and the lists'' store_id');
+  format($$ select default_store_id from public.households where id = %L $$, tests.fx('home_a')),
+  $$ values (null::uuid) $$,
+  'T3 stores: deleting a store clears default_store_id');
 
 delete from public.chores where id = tests.fx('chore_a');
 select results_eq(

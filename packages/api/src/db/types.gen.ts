@@ -704,7 +704,6 @@ export type Database = {
       households: {
         Row: {
           created_at: string;
-          default_list_id: string | null;
           default_store_id: string | null;
           id: string;
           meal_slots: NonNullable<Json>;
@@ -714,7 +713,6 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           created_at?: string;
-          default_list_id?: string | null;
           default_store_id?: string | null;
           id?: string;
           meal_slots?: NonNullable<Json>;
@@ -723,7 +721,6 @@ export type Database = {
         };
         Update: {
           created_at?: string;
-          default_list_id?: string | null;
           default_store_id?: string | null;
           id?: string;
           meal_slots?: NonNullable<Json>;
@@ -731,13 +728,6 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
-          {
-            foreignKeyName: 'households_default_list_fkey';
-            columns: ['id', 'default_list_id'];
-            isOneToOne: false;
-            referencedRelation: 'shopping_lists';
-            referencedColumns: ['household_id', 'id'];
-          },
           {
             foreignKeyName: 'households_default_store_fkey';
             columns: ['id', 'default_store_id'];
@@ -1291,7 +1281,6 @@ export type Database = {
           created_at: string;
           household_id: string;
           id: string;
-          list_id: string;
           not_available: boolean;
           updated_at: string;
         };
@@ -1305,7 +1294,6 @@ export type Database = {
           created_at?: string;
           household_id: string;
           id?: string;
-          list_id: string;
           not_available?: boolean;
           updated_at?: string;
         };
@@ -1318,7 +1306,6 @@ export type Database = {
           created_at?: string;
           household_id?: string;
           id?: string;
-          list_id?: string;
           not_available?: boolean;
           updated_at?: string;
         };
@@ -1343,59 +1330,6 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'households';
             referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'shopping_items_list_fkey';
-            columns: ['household_id', 'list_id'];
-            isOneToOne: false;
-            referencedRelation: 'shopping_lists';
-            referencedColumns: ['household_id', 'id'];
-          },
-        ];
-      };
-      shopping_lists: {
-        Row: {
-          created_at: string;
-          household_id: string;
-          id: string;
-          is_default: boolean;
-          name: string;
-          store_id: string | null;
-          updated_at: string;
-        };
-        ComputedFields: never;
-        Insert: {
-          created_at?: string;
-          household_id: string;
-          id?: string;
-          is_default?: boolean;
-          name: string;
-          store_id?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          household_id?: string;
-          id?: string;
-          is_default?: boolean;
-          name?: string;
-          store_id?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'shopping_lists_household_id_fkey';
-            columns: ['household_id'];
-            isOneToOne: false;
-            referencedRelation: 'households';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'shopping_lists_store_fkey';
-            columns: ['household_id', 'store_id'];
-            isOneToOne: false;
-            referencedRelation: 'stores';
-            referencedColumns: ['household_id', 'id'];
           },
         ];
       };
@@ -1444,17 +1378,22 @@ export type Database = {
     };
     Functions: {
       accept_invitation: { Args: { invitation_id: string }; Returns: string };
-      add_shopping_contributions: { Args: { p_entries: Json; p_list_id: string }; Returns: Json };
+      add_shopping_contributions: {
+        Args: { p_entries: Json; p_household_id: string };
+        Returns: Json;
+      };
+      adjust_item_count: { Args: { p_delta: number; p_item_id: string }; Returns: Json };
       apply_changes: { Args: { p_household_id: string; p_ops: Json }; Returns: Json };
       assign_article_area: { Args: { p_area_id: string; p_article_id: string }; Returns: Json };
-      clear_checked_items: { Args: { p_list_id: string }; Returns: Json };
+      clear_checked_items: { Args: { p_household_id: string }; Returns: Json };
+      clear_shopping_list: { Args: { p_household_id: string }; Returns: Json };
       consume_ai_quota: { Args: { amount: number; kind: string }; Returns: boolean };
       create_household: { Args: { name: string; starter: Json }; Returns: string };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
-      restore_cleared_items: { Args: { p_items: Json; p_list_id: string }; Returns: number };
+      restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };
         Returns: undefined;

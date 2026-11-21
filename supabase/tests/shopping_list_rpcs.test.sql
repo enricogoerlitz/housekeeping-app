@@ -3,7 +3,7 @@
 -- whole list with undo (clear_shopping_list + restore_cleared_items, REQ-006, AC-035…AC-038).
 begin;
 \ir _helpers.psql
-select plan(55);
+select plan(57);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -34,15 +34,12 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('Enrico & Nadja', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('home_b', tests.create_household('WG Köln', array[tests.fx('ben')]));
 insert into fx (key) values
-  ('list_a'), ('list_b'), ('lasagne'), ('kuchen'), ('pfannkuchen'), ('suppe'),
+  ('lasagne'), ('kuchen'), ('pfannkuchen'), ('suppe'),
   ('zwiebeln'), ('eier'), ('milch'), ('moehren'), ('brot'), ('kaese'), ('tee'),
   ('item_zw'), ('item_eier'), ('item_milch'), ('item_moehren'), ('item_brot'), ('item_kaese'), ('item_b'),
   ('c_zw'), ('c_eier_kuchen'), ('c_eier_pfann'), ('c_milch'), ('c_moehren'), ('c_brot'), ('c_k1'), ('c_k2'), ('c_b'),
   ('item_milch_new'), ('c_milch_new'), ('item_brot_new'), ('c_brot_new');
 
-insert into public.shopping_lists (id, household_id, name, is_default) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste', true),
-  (tests.fx('list_b'), tests.fx('home_b'), 'Standardliste', true);
 insert into public.articles (id, household_id, name, name_key) values
   (tests.fx('zwiebeln'), tests.fx('home_a'), 'Zwiebeln', 'zwiebeln'),
   (tests.fx('eier'), tests.fx('home_a'), 'Eier', 'eier'),
@@ -51,14 +48,14 @@ insert into public.articles (id, household_id, name, name_key) values
   (tests.fx('brot'), tests.fx('home_a'), 'Brot', 'brot'),
   (tests.fx('kaese'), tests.fx('home_a'), 'Käse', 'kase'),
   (tests.fx('tee'), tests.fx('home_b'), 'Tee', 'tee');
-insert into public.shopping_items (id, household_id, list_id, article_id, checked, checked_at, checked_by, check_seq) values
-  (tests.fx('item_zw'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('zwiebeln'), false, null, null, 0),
-  (tests.fx('item_eier'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('eier'), false, null, null, 0),
-  (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('milch'), false, null, null, 0),
-  (tests.fx('item_moehren'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('moehren'), false, null, null, 0),
-  (tests.fx('item_brot'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('brot'), true, now(), tests.fx('nadja'), 1),
-  (tests.fx('item_kaese'), tests.fx('home_a'), tests.fx('list_a'), tests.fx('kaese'), false, null, null, 0),
-  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('list_b'), tests.fx('tee'), false, null, null, 0);
+insert into public.shopping_items (id, household_id, article_id, checked, checked_at, checked_by, check_seq) values
+  (tests.fx('item_zw'), tests.fx('home_a'), tests.fx('zwiebeln'), false, null, null, 0),
+  (tests.fx('item_eier'), tests.fx('home_a'), tests.fx('eier'), false, null, null, 0),
+  (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('milch'), false, null, null, 0),
+  (tests.fx('item_moehren'), tests.fx('home_a'), tests.fx('moehren'), false, null, null, 0),
+  (tests.fx('item_brot'), tests.fx('home_a'), tests.fx('brot'), true, now(), tests.fx('nadja'), 1),
+  (tests.fx('item_kaese'), tests.fx('home_a'), tests.fx('kaese'), false, null, null, 0),
+  (tests.fx('item_b'), tests.fx('home_b'), tests.fx('tee'), false, null, null, 0);
 -- created_at decides "most recently added"; the trigger would set now() for all of them.
 alter table public.shopping_contributions disable trigger shopping_contributions_set_timestamps;
 insert into public.shopping_contributions (id, household_id, item_id, source, count, qty, unit, created_at) values
@@ -126,7 +123,7 @@ select results_eq(
   format($$ values (%L::uuid, %L::uuid, 1) $$, tests.fx('item_zw'), tests.fx('c_zw')),
   'AC-015 adjust_item_count: the result holds the item and its contributions as they were before the tap');
 select is(
-  public.restore_cleared_items(tests.fx('list_a'), jsonb_build_array(
+  public.restore_cleared_items(tests.fx('home_a'), jsonb_build_array(
     jsonb_build_object('item', tests.kept('removed_zw') -> 'item', 'contributions', tests.kept('removed_zw') -> 'contributions'))),
   1,
   'AC-015 adjust_item_count: "Rückgängig" restores the removed item');
@@ -244,33 +241,33 @@ select is(
 -- ===================== clear_shopping_list: foreign household, anon =====================
 select tests.authenticate_as(tests.fx('ben'));
 select throws_ok(
-  format('select public.clear_shopping_list(%L)', tests.fx('list_a')),
-  'P0002', 'list_not_found', 'AC-038 clear_shopping_list: the list of another household is not found');
+  format('select public.clear_shopping_list(%L)', tests.fx('home_a')),
+  '42501', 'not_member', 'AC-038 clear_shopping_list: the shopping list of another household is refused (not_member)');
 select tests.clear_authentication();
 select is(
-  (select count(*)::int from public.shopping_items where list_id = tests.fx('list_a')), 5,
+  (select count(*)::int from public.shopping_items where household_id = tests.fx('home_a')), 5,
   'AC-038 clear_shopping_list: no item of the other household was removed');
 select tests.authenticate_as_anon();
 select throws_ok(
-  format('select public.clear_shopping_list(%L)', tests.fx('list_a')),
+  format('select public.clear_shopping_list(%L)', tests.fx('home_a')),
   '42501', null, 'AC-038 clear_shopping_list: anon cannot call it');
 
 -- ===================== AC-035: clear the list =====================
--- list_a: Zwiebeln, Eier, Milch, Möhren open; Brot checked.
+-- home_a: Zwiebeln, Eier, Milch, Möhren open; Brot checked.
 select tests.clear_authentication();
 create temp table before_clear on commit drop as
   select i.*, (select jsonb_agg(to_jsonb(c) order by c.created_at, c.id) from public.shopping_contributions c where c.item_id = i.id) as contributions
-  from public.shopping_items i where i.list_id = tests.fx('list_a');
+  from public.shopping_items i where i.household_id = tests.fx('home_a');
 grant select on before_clear to authenticated;
 select tests.authenticate_as(tests.fx('enrico'));
-insert into kept values ('cleared', public.clear_shopping_list(tests.fx('list_a')));
+insert into kept values ('cleared', public.clear_shopping_list(tests.fx('home_a')));
 select is(
   tests.kept('cleared'),
   (select jsonb_agg(jsonb_build_object('item', to_jsonb(b) - 'contributions', 'contributions', b.contributions)
                     order by b.created_at, b.id) from before_clear b),
   'AC-035 clear_shopping_list: returns every item, open and checked, with its contributions');
 select is(
-  (select count(*)::int from public.shopping_items where list_id = tests.fx('list_a'))
+  (select count(*)::int from public.shopping_items where household_id = tests.fx('home_a'))
     + (select count(*)::int from public.shopping_contributions where household_id = tests.fx('home_a')),
   0,
   'AC-035 clear_shopping_list: the list is empty, the contributions are gone');
@@ -280,19 +277,19 @@ select is(
   5,
   'AC-035 clear_shopping_list: every removed item leaves a tombstone, so it disappears for Nadja too');
 select is(
-  public.clear_shopping_list(tests.fx('list_a')), '[]'::jsonb,
+  public.clear_shopping_list(tests.fx('home_a')), '[]'::jsonb,
   'AC-035 clear_shopping_list: an empty list gives an empty array');
 select throws_ok(
-  format('select public.clear_shopping_list(%L)', tests.fx('list_b')),
-  'P0002', 'list_not_found', 'AC-038 clear_shopping_list: Enrico cannot clear the list of "WG Köln"');
+  format('select public.clear_shopping_list(%L)', tests.fx('home_b')),
+  '42501', 'not_member', 'AC-038 clear_shopping_list: Enrico cannot clear the list of "WG Köln" (not_member)');
 select tests.clear_authentication();
 select is(
-  (select count(*)::int from public.shopping_items where list_id = tests.fx('list_b')), 1,
+  (select count(*)::int from public.shopping_items where household_id = tests.fx('home_b')), 1,
   'AC-038 clear_shopping_list: the list of "WG Köln" keeps its item');
 
 -- ===================== AC-037: undo after someone added =====================
 select tests.authenticate_as(tests.fx('nadja'));
-select public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
+select public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
   jsonb_build_object('client_item_id', tests.fx('item_milch_new'), 'client_article_id', gen_random_uuid(),
                      'article_name', 'Milch', 'name_key', 'milch',
                      'contributions', jsonb_build_array(jsonb_build_object('id', tests.fx('c_milch_new'), 'source', '{"kind": "manual"}'::jsonb, 'count', 1))),
@@ -301,11 +298,11 @@ select public.add_shopping_contributions(tests.fx('list_a'), jsonb_build_array(
                      'contributions', jsonb_build_array(jsonb_build_object('id', tests.fx('c_brot_new'), 'source', '{"kind": "manual"}'::jsonb, 'count', 1)))));
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
-  public.restore_cleared_items(tests.fx('list_a'), tests.kept('cleared')), 5,
+  public.restore_cleared_items(tests.fx('home_a'), tests.kept('cleared')), 5,
   'AC-037 restore_cleared_items: every cleared item is restored');
 select results_eq(
   format($$ select i.id, i.checked, (select array_agg(c.id order by c.id) from public.shopping_contributions c where c.item_id = i.id)
-            from public.shopping_items i where i.list_id = %L and i.article_id = %L $$, tests.fx('list_a'), tests.fx('milch')),
+            from public.shopping_items i where i.household_id = %L and i.article_id = %L $$, tests.fx('home_a'), tests.fx('milch')),
   format($$ values (%L::uuid, false, (select array_agg(x order by x) from unnest(array[%L::uuid, %L::uuid]) x)) $$,
          tests.fx('item_milch_new'), tests.fx('c_milch'), tests.fx('c_milch_new')),
   'AC-037 restore_cleared_items: Milch is one open item with my earlier and Nadja''s new contribution');
@@ -313,8 +310,8 @@ select is(
   (select sum(count)::int from public.shopping_contributions where item_id = tests.fx('item_milch_new')), 100,
   'AC-037 restore_cleared_items: the counts of both contributions add up');
 select results_eq(
-  format($$ select id, checked from public.shopping_items where list_id = %L and article_id = %L order by checked $$,
-         tests.fx('list_a'), tests.fx('brot')),
+  format($$ select id, checked from public.shopping_items where household_id = %L and article_id = %L order by checked $$,
+         tests.fx('home_a'), tests.fx('brot')),
   format($$ values (%L::uuid, false), (%L::uuid, true) $$, tests.fx('item_brot_new'), tests.fx('item_brot')),
   'AC-037 restore_cleared_items: a checked item comes back checked, next to the open item of the same article');
 select results_eq(
@@ -327,13 +324,18 @@ select is(
   (select count(*)::int from public.shopping_contributions where household_id = tests.fx('home_a')), 7,
   'AC-037 restore_cleared_items: every contribution is back, none twice');
 select is(
-  public.restore_cleared_items(tests.fx('list_a'), tests.kept('cleared')), 0,
+  public.restore_cleared_items(tests.fx('home_a'), tests.kept('cleared')), 0,
   'AC-037 restore_cleared_items: a repeated undo restores nothing');
 select is(
-  (select count(*)::int from public.shopping_items where list_id = tests.fx('list_a'))
+  (select count(*)::int from public.shopping_items where household_id = tests.fx('home_a'))
     + (select count(*)::int from public.shopping_contributions where household_id = tests.fx('home_a')),
   6 + 7,
   'AC-037 restore_cleared_items: a repeated undo duplicates no item and no contribution');
+
+-- ===================== ADR-0012: no list =====================
+select hasnt_function('private', 'merge_shopping_lists', 'ADR-0012: the list merge is gone');
+select has_function('private', 'lock_household_article', array['uuid', 'uuid'],
+  'ADR-0012: adding, unchecking and restoring lock per household and article');
 
 select * from finish();
 rollback;

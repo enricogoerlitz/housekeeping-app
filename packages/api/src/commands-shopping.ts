@@ -1,15 +1,19 @@
 import {
+  adjustItemCount as countAdjustment,
+  applyContributionChanges,
   contributionsFromEntry,
   findArticleByName,
   normalizeText,
   parseSmartInput,
+  recipeSource,
   summarizeItem,
   weekdayShort,
   type Id,
+  type MealPlanEntry,
+  type PlanEntryVariant,
   type PlannedContribution,
   type ShoppingContribution,
   type ShoppingItem,
-  type ShoppingList,
   type Store,
 } from '@housekeeping/core';
 
@@ -30,24 +34,27 @@ import {
   isBackendOffline,
   newId,
   nowISO,
+  rememberShoppingStore,
   updateData,
+  type CommitSpec,
 } from './store';
-import { ClearedItemsSchema, type AddEntry } from './transport';
+import { AdjustResultSchema, ClearedItemsSchema, type AddEntry } from './transport';
 
 export type { AddedItem } from './list-additions';
 
-// ---------- Contributions on a list (server merge, ADR-0011) ----------
+// ---------- Contributions on the list (server merge, ADR-0011) ----------
 
 /**
- * A command that puts things on one list: shown at once, sent as one `add_shopping_contributions`
- * call (one transaction); undo removes exactly these contributions again.
+ * A command that puts things on the household's shopping list (ADR-0012: the household's items):
+ * shown at once, sent as one `add_shopping_contributions` call (one transaction); undo removes
+ * exactly these contributions again.
  */
-function putOnList<T>(listId: Id, run: () => { result: T; entries: AddEntry[] }): T {
+function putOnList<T>(run: () => { result: T; entries: AddEntry[] }): T {
   return commit(
     {
       path: 'rpc',
       send: (transport, context) =>
-        transport.addShoppingContributions(listId, context.result.entries),
+        transport.addShoppingContributions(context.householdId, context.result.entries),
       inverse: (transport, context) =>
         transport.removeContributions(contributionIds(context.result.entries)),
     },
@@ -60,15 +67,13 @@ function putOnList<T>(listId: Id, run: () => { result: T; entries: AddEntry[] })
  * shows it at once; the id returned is the item it lands on, a new one keeps the client id until
  * the server answered.
  */
-function queueAdd(listId: Id, name: string, contribution: ShoppingContribution): AddedItem {
+function queueAdd(name: string, contribution: ShoppingContribution): AddedItem {
   const data = getData();
   const trimmed = name.trim().replace(/\s+/g, ' ');
   const existing = findArticleByName(trimmed, data.articles);
   const articleName = existing?.name ?? trimmed;
   const clientItemId = newId('item');
-  const onList = existing
-    ? data.items.filter((item) => item.listId === listId && item.articleId === existing.id)
-    : [];
+  const onList = existing ? data.items.filter((item) => item.articleId === existing.id) : [];
   const itemId =
     onList.find((item) => !item.checked)?.id ??
     onList.find((item) => item.checked)?.id ??
@@ -78,7 +83,7 @@ function queueAdd(listId: Id, name: string, contribution: ShoppingContribution):
       path: 'queue',
       action: {
         kind: 'add',
-        listId,
+        householdId: getState().activeHouseholdId,
         clientItemId,
         clientArticleId: existing?.id ?? newId('art'),
         contributions: [
@@ -104,14 +109,14 @@ function queueAdd(listId: Id, name: string, contribution: ShoppingContribution):
  * An article that is already open on the list gets the amount added instead of a second row.
  * Returns null for empty input. Works offline too (store queue).
  */
-export function addShoppingItemFromText(listId: Id, text: string): AddedItem | null {
+export function addShoppingItemFromText(text: string): AddedItem | null {
   if (isBackendMode() && isBackendOffline()) {
     const typed = typedContribution(text);
-    return typed ? queueAdd(listId, typed.name, typed.contribution) : null;
+    return typed ? queueAdd(typed.name, typed.contribution) : null;
   }
   if (!parseSmartInput(text)) return null;
-  return putOnList(listId, () => {
-    const local = addTextLocally(listId, text);
+  return putOnList(() => {
+    const local = addTextLocally(text);
     if (!local) throw new Error('Nothing to add');
     return { result: local.added, entries: [local.entry] };
   });
@@ -158,6 +163,7 @@ export function setItemNotAvailable(itemId: Id, notAvailable: boolean): void {
   });
 }
 
+/** Removes an item with all its contributions; undo with `snapshot()` (AC-025). Online only. */
 export function removeShoppingItem(itemId: Id): void {
   const item = getData().items.find((candidate) => candidate.id === itemId);
   if (!item) return;
@@ -174,64 +180,150 @@ export function removeShoppingItem(itemId: Id): void {
   );
 }
 
-/**
- * Removes the checked items of a list ("Erledigt leeren"): its own RPC, as it deletes by a
- * condition the server checks. Undo puts back exactly what the server removed.
- */
-export function clearCheckedItems(listId: Id): number {
-  const count = getData().items.filter((item) => item.listId === listId && item.checked).length;
+/** Undo of a clearing RPC: puts back exactly what the server removed (restore_cleared_items). */
+const restoreCleared: Extract<CommitSpec<unknown>, { path: 'rpc' }>['inverse'] = async (
+  transport,
+  context,
+  response,
+) => {
+  const cleared = ClearedItemsSchema.safeParse(response);
+  return cleared.success && cleared.data.length > 0
+    ? transport.restoreClearedItems(context.householdId, cleared.data)
+    : 0;
+};
+
+/** Removes the items matching `cleared` from the list with its own RPC; returns how many. */
+function clearItems(
+  cleared: (item: ShoppingItem) => boolean,
+  send: Extract<CommitSpec<void>, { path: 'rpc' }>['send'],
+): number {
+  const count = getData().items.filter(cleared).length;
   if (count === 0) return 0;
-  commit(
-    {
-      path: 'rpc',
-      send: (transport) => transport.clearCheckedItems(listId),
-      inverse: async (transport, _context, response) => {
-        const cleared = ClearedItemsSchema.safeParse(response);
-        return cleared.success && cleared.data.length > 0
-          ? transport.restoreClearedItems(listId, cleared.data)
-          : 0;
-      },
-    },
-    () =>
-      updateData((data) => ({
-        ...data,
-        items: data.items.filter((item) => !(item.listId === listId && item.checked)),
-      })),
+  commit({ path: 'rpc', send, inverse: restoreCleared }, () =>
+    updateData((data) => ({ ...data, items: data.items.filter((item) => !cleared(item)) })),
   );
   return count;
 }
 
-export function createShoppingList(name: string): Id {
-  const trimmed = name.trim();
-  if (!trimmed) throw new Error('Name fehlt');
-  const list: ShoppingList = { id: newId('list'), name: trimmed, isDefault: false };
-  commit({ path: 'diff' }, () => updateData((data) => ({ ...data, lists: [...data.lists, list] })));
-  return list.id;
+/**
+ * Removes the checked items ("Erledigt leeren"): its own RPC, as it deletes by a condition the
+ * server checks. Undo with `snapshot()` puts back exactly what the server removed. Online only.
+ */
+export function clearCheckedItems(): number {
+  return clearItems(
+    (item) => item.checked,
+    (transport, context) => transport.clearCheckedItems(context.householdId),
+  );
 }
 
-/** Chooses the store a list is sorted for; undefined = no store. */
-export function setListStore(listId: Id, storeId: Id | undefined): void {
+/**
+ * "Liste leeren …" (AC-035): every item, open and checked, also those from the calendar. Undo
+ * with `snapshot()`: the items come back with their contributions and join items of the same
+ * article that were added meanwhile (AC-037). Online only.
+ */
+export function clearShoppingList(): number {
+  return clearItems(
+    () => true,
+    (transport, context) => transport.clearShoppingList(context.householdId),
+  );
+}
+
+// ---------- + and −, Zusatz ----------
+
+export interface CountChange {
+  /** The item's count afterwards (0 when removed). */
+  count: number;
+  /** − on 1× removed the item: offer "Rückgängig" (AC-015). */
+  removed: boolean;
+}
+
+/**
+ * One tap on + or − on "Liste" (REQ-003), one `adjust_item_count` call: + raises the share "von
+ * Hand", − lowers it first, then the most recent other contribution; − on 1× removes the item,
+ * and `snapshot()` taken before brings it back. Null when the step is not possible (an item with
+ * quantities, 99× reached, unknown item). Online only.
+ */
+export function adjustItemCount(itemId: Id, delta: 1 | -1): CountChange | null {
+  const item = getData().items.find((candidate) => candidate.id === itemId);
+  if (!item) return null;
+  const step = countAdjustment(item, delta, newId('contrib'));
+  if (!step) return null;
+  const removed = step.removesItem;
+  return commit<CountChange>(
+    {
+      path: 'rpc',
+      send: (transport) => transport.adjustItemCount(itemId, delta),
+      // Only a removal is undone; a + that someone else's tap turned into no removal is not.
+      ...(removed
+        ? {
+            inverse: async (transport, context, response) => {
+              const answer = AdjustResultSchema.safeParse(response);
+              return answer.success && answer.data?.removed
+                ? transport.restoreClearedItems(context.householdId, [
+                    { item: answer.data.item, contributions: answer.data.contributions },
+                  ])
+                : 0;
+            },
+          }
+        : {}),
+    },
+    () => {
+      updateData((data) => ({
+        ...data,
+        items: removed
+          ? data.items.filter((candidate) => candidate.id !== itemId)
+          : data.items.map((candidate) =>
+              candidate.id === itemId
+                ? applyContributionChanges(candidate, step.changes)
+                : candidate,
+            ),
+      }));
+      return { count: step.count, removed };
+    },
+  );
+}
+
+/** shopping_contributions_note_length in the database (AC-022). */
+export const ITEM_NOTE_MAX_LENGTH = 200;
+
+/**
+ * The Zusatz of a whole item (AC-021): set on every contribution, null or blank clears it. One
+ * `apply_changes` call; the last change wins. Online only.
+ */
+export function setItemNote(itemId: Id, note: string | null): void {
+  const value = note?.trim() || undefined;
+  if (value !== undefined && value.length > ITEM_NOTE_MAX_LENGTH) {
+    throw new Error(`Höchstens ${ITEM_NOTE_MAX_LENGTH} Zeichen`);
+  }
   commit({ path: 'diff' }, () =>
     updateData((data) => ({
       ...data,
-      lists: data.lists.map((list) => (list.id === listId ? { ...list, storeId } : list)),
+      items: data.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              contributions: item.contributions.map((contribution) => ({
+                ...contribution,
+                note: value,
+              })),
+            }
+          : item,
+      ),
     })),
   );
 }
 
-// ---------- From the meal plan, with the pantry check ----------
+// ---------- Store in "Einkaufen" ----------
 
-/** Ids of plan entries that already have a contribution on some list. */
-export function entryIdsOnLists(): Set<Id> {
-  const ids = new Set<Id>();
-  for (const item of getData().items) {
-    for (const contribution of item.contributions) {
-      if (contribution.source.kind === 'recipe' && contribution.source.entryId)
-        ids.add(contribution.source.entryId);
-    }
-  }
-  return ids;
+/**
+ * The store chosen in "Wo kaufst du ein?" (AC-041); null = "Ohne Markt – nach Bereichen". Kept
+ * only on this device, per household, and cleared at sign-out (AC-042). Works offline.
+ */
+export function chooseShoppingStore(storeId: Id | null): void {
+  rememberShoppingStore(storeId);
 }
+
+// ---------- From the meal plan or any recipe, with the pantry check ----------
 
 export interface PantryCheckRow {
   /** Undefined for ingredients without an article; those cannot be put on the list. */
@@ -239,46 +331,89 @@ export interface PantryCheckRow {
   name: string;
   /** "400 ml", "2×" … summed over all selected dishes. */
   amount: string;
-  /** "Mango-Curry (Mi)". */
+  /** "Mango-Curry (Mi)" from the calendar, "Mango-Curry" for a recipe chosen directly. */
   sources: string[];
   /** "Vorrat" articles start unchecked. */
   isPantry: boolean;
+  /** From a recipe chosen directly, `entryId` is empty: there is no plan entry. */
   contributions: PlannedContribution[];
 }
 
-/** One row per article for the pantry check, summed over the given plan entries. */
-export function pantryCheckRows(entryIds: Id[]): PantryCheckRow[] {
+/** A recipe put on the list without a plan entry (recipe page, "Rezept wählen …"; REQ-010). */
+export interface PantryRecipe {
+  recipeId: Id;
+  portions: number;
+  /** Portions per variant, like a plan entry; empty or missing = the default variant. */
+  variants?: PlanEntryVariant[];
+}
+
+/** What a chosen recipe brings, with the title alone as Herkunft ("Mango-Curry", no day). */
+function recipeContributions(
+  chosen: PantryRecipe,
+  data: ReturnType<typeof getData>,
+): PlannedContribution[] {
+  const recipe = indexById(data.recipes)[chosen.recipeId];
+  if (!recipe) return [];
+  const entry: MealPlanEntry = {
+    id: '',
+    date: null,
+    slotId: '',
+    kind: 'recipe',
+    recipeId: recipe.id,
+    eaterIds: [],
+    guests: 0,
+    portions: chosen.portions,
+    variants: chosen.variants ?? [],
+    sort: 0,
+  };
+  const { label } = recipeSource(recipe);
+  return contributionsFromEntry(entry, recipe, indexById(data.articles), '').map(
+    (contribution) => ({ ...contribution, label }),
+  );
+}
+
+/**
+ * One row per article for the pantry check, summed over the given plan entries and recipes
+ * chosen directly (for the recipe page and, later, collections: specs 0008, 0009).
+ */
+export function pantryCheckRows(
+  entryIds: Id[],
+  recipes: readonly PantryRecipe[] = [],
+): PantryCheckRow[] {
   const data = getData();
   const articlesById = indexById(data.articles);
   const recipesById = indexById(data.recipes);
-  const rows = new Map<string, PantryCheckRow>();
+  const planned: PlannedContribution[] = [];
   for (const entry of data.planEntries) {
     if (!entryIds.includes(entry.id) || entry.kind !== 'recipe' || !entry.recipeId) continue;
     const recipe = recipesById[entry.recipeId];
     if (!recipe) continue;
     const dayLabel = entry.date ? weekdayShort(entry.date) : 'vorgemerkt';
-    for (const contribution of contributionsFromEntry(entry, recipe, articlesById, dayLabel)) {
-      const key = contribution.articleId ?? `text:${contribution.name}`;
-      const row = rows.get(key) ?? {
-        articleId: contribution.articleId,
-        name: contribution.articleId
-          ? (articlesById[contribution.articleId]?.name ?? contribution.name)
-          : contribution.name,
-        amount: '',
-        sources: [],
-        isPantry: contribution.isPantry,
-        contributions: [],
-      };
-      row.contributions.push(contribution);
-      if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
-      rows.set(key, row);
-    }
+    planned.push(...contributionsFromEntry(entry, recipe, articlesById, dayLabel));
+  }
+  for (const chosen of recipes) planned.push(...recipeContributions(chosen, data));
+
+  const rows = new Map<string, PantryCheckRow>();
+  for (const contribution of planned) {
+    const key = contribution.articleId ?? `text:${contribution.name}`;
+    const row = rows.get(key) ?? {
+      articleId: contribution.articleId,
+      name: contribution.articleId
+        ? (articlesById[contribution.articleId]?.name ?? contribution.name)
+        : contribution.name,
+      amount: '',
+      sources: [],
+      isPantry: contribution.isPantry,
+      contributions: [],
+    };
+    row.contributions.push(contribution);
+    if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
+    rows.set(key, row);
   }
   return [...rows.values()].map((row) => ({
     ...row,
     amount: summarizeItem({
       id: 'preview',
-      listId: 'preview',
       articleId: row.articleId ?? 'preview',
       contributions: row.contributions.map((contribution, index) =>
         toContribution(contribution, `preview-${index}`),
@@ -292,12 +427,14 @@ export function pantryCheckRows(entryIds: Id[]): PantryCheckRow[] {
 function toContribution(planned: PlannedContribution, id: Id): ShoppingContribution {
   return {
     id,
-    source: {
-      kind: 'recipe',
-      recipeId: planned.recipeId,
-      entryId: planned.entryId,
-      label: planned.label,
-    },
+    source: planned.entryId
+      ? {
+          kind: 'recipe',
+          recipeId: planned.recipeId,
+          entryId: planned.entryId,
+          label: planned.label,
+        }
+      : { kind: 'recipe', recipeId: planned.recipeId, label: planned.label },
     count: planned.count,
     qty: planned.qty,
     unit: planned.unit,
@@ -307,19 +444,18 @@ function toContribution(planned: PlannedContribution, id: Id): ShoppingContribut
 
 /**
  * Puts the rows the user kept in the pantry check on the list. Returns the number of articles.
- * All rows are one transaction (AC-020).
+ * All rows are one transaction (AC-020). Online only.
  */
-export function addPlannedToList(listId: Id, rows: PantryCheckRow[]): number {
+export function addPlannedToList(rows: PantryCheckRow[]): number {
   const articles = indexById(getData().articles);
   const kept = rows.filter((row) => row.articleId && articles[row.articleId]);
   if (kept.length === 0) return 0;
-  return putOnList(listId, () => ({
+  return putOnList(() => ({
     result: kept.length,
     entries: kept.map((row) => {
       const article = articles[row.articleId ?? ''];
       if (!article) throw new Error(`Article ${row.articleId ?? ''} missing`);
       return addLocally(
-        listId,
         article,
         row.contributions.map((planned) => toContribution(planned, newId('contrib'))),
       ).entry;
@@ -327,20 +463,19 @@ export function addPlannedToList(listId: Id, rows: PantryCheckRow[]): number {
   }));
 }
 
-/** "Ist alle": puts one ingredient of a recipe on the default list. */
+/** "Ist alle": puts one ingredient of a recipe on the list. */
 export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem | null {
   const data = getData();
   const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
   const ingredient = recipe?.ingredients.find((candidate) => candidate.id === ingredientId);
   if (!recipe || !ingredient) return null;
   if (ingredient.articleId && !indexById(data.articles)[ingredient.articleId]) return null;
-  const listId = data.household.defaultListId;
-  return putOnList(listId, () => {
+  return putOnList(() => {
     const { article, created } = ingredient.articleId
       ? { article: indexById(getData().articles)[ingredient.articleId], created: false }
       : resolveArticle(ingredient.name);
     if (!article) throw new Error(`Article ${ingredient.articleId ?? ''} missing`);
-    const { itemId, entry } = addLocally(listId, article, [
+    const { itemId, entry } = addLocally(article, [
       {
         id: newId('contrib'),
         source: { kind: 'manual' },
@@ -355,13 +490,12 @@ export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem |
   });
 }
 
-/** Open and checked items of one list, in creation order. */
-export function splitItems(
-  items: ShoppingItem[],
-  listId: Id,
-): { open: ShoppingItem[]; done: ShoppingItem[] } {
-  const own = items.filter((item) => item.listId === listId);
-  return { open: own.filter((item) => !item.checked), done: own.filter((item) => item.checked) };
+/** Open and checked items of the list, in creation order. */
+export function splitItems(items: ShoppingItem[]): { open: ShoppingItem[]; done: ShoppingItem[] } {
+  return {
+    open: items.filter((item) => !item.checked),
+    done: items.filter((item) => item.checked),
+  };
 }
 
 // ---------- Stores ----------

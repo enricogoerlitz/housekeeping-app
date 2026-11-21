@@ -1,7 +1,7 @@
--- Spec 0003, T3c — restaurants (+ per-person favourites and ratings), absences, feedback
+-- Baseline (ADR-0012) — restaurants (+ per-person favourites and ratings), absences, feedback
 -- (+ per-person votes).
 --
--- Favourites, ratings and votes follow the recipe pattern (T3b): no write grants, written only
+-- Favourites, ratings and votes follow the recipe pattern (recipes migration): no write grants, written only
 -- by security definer set_* RPCs for auth.uid().
 
 -- ---------------------------------------------------------------------------------------------

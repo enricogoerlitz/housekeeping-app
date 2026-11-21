@@ -28,7 +28,6 @@ function item(
   partial: Partial<ShoppingItem> & Pick<ShoppingItem, 'id' | 'articleId'>,
 ): ShoppingItem {
   return {
-    listId: 'list',
     contributions: [],
     checked: false,
     createdAt: '2026-11-20T08:00:00.000Z',
@@ -213,7 +212,7 @@ describe('addContribution', () => {
 
   it('AC-029: appends to an open item of the same article instead of a second row', () => {
     const items = [item({ id: 'i1', articleId: 'art-milch', contributions: [manual('a')] })];
-    const next = addContribution(items, 'list', 'art-milch', manual('b'), 'new', now);
+    const next = addContribution(items, 'art-milch', manual('b'), 'new', now);
     expect(next).toHaveLength(1);
     expect(next[0]?.contributions.map((c) => c.id)).toEqual(['a', 'b']);
     expect(items[0]?.contributions).toHaveLength(1);
@@ -231,10 +230,9 @@ describe('addContribution', () => {
         notAvailable: true,
       }),
     ];
-    const [reopened] = addContribution(items, 'list', 'art-milch', manual('b'), 'new', now);
+    const [reopened] = addContribution(items, 'art-milch', manual('b'), 'new', now);
     expect(reopened).toEqual({
       id: 'i1',
-      listId: 'list',
       articleId: 'art-milch',
       contributions: [manual('b')],
       checked: false,
@@ -242,14 +240,13 @@ describe('addContribution', () => {
     });
   });
 
-  it('creates a new item for a new article or another list', () => {
+  it('creates a new item for a new article', () => {
     const items = [item({ id: 'i1', articleId: 'art-milch' })];
-    const next = addContribution(items, 'other', 'art-milch', manual('b'), 'new', now);
+    const next = addContribution(items, 'art-tee', manual('b'), 'new', now);
     expect(next).toHaveLength(2);
     expect(next[1]).toEqual({
       id: 'new',
-      listId: 'other',
-      articleId: 'art-milch',
+      articleId: 'art-tee',
       contributions: [manual('b')],
       checked: false,
       createdAt: now,

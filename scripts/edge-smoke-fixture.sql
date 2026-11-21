@@ -44,7 +44,7 @@ insert into auth.identities (
   now(), now(), now()
 );
 
--- The household, created by the real RPC as that user (meal slots + default list).
+-- The household, created by the real RPC as that user (meal slots).
 select set_config('role', 'authenticated', true);
 select set_config(
   'request.jwt.claims',

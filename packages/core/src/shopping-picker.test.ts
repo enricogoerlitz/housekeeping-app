@@ -77,7 +77,6 @@ const plan: MealPlanEntry[] = [
 const items: ShoppingItem[] = [
   {
     id: 'item-mango',
-    listId: 'list',
     articleId: 'art-mango',
     checked: false,
     createdAt: '2026-11-19T08:00:00.000Z',
@@ -138,7 +137,6 @@ describe('listPickerPreselection', () => {
   it('AC-039: after the list was cleared, Lasagne is preselected again', () => {
     const lasagneItem: ShoppingItem = {
       id: 'item-zwiebeln',
-      listId: 'list',
       articleId: 'art-zwiebeln',
       checked: false,
       createdAt: '2026-11-19T08:00:00.000Z',

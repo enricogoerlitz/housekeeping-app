@@ -50,7 +50,7 @@ export function visibleTables(
   queue: readonly StoreQueueEntry[],
   changesets: readonly Changeset[],
 ): TableRows {
-  const withQueue = applyQueue(base, queue);
+  const withQueue = applyQueue(base, queue, householdId);
   return changesets
     .filter((changeset) => changeset.householdId === householdId)
     .reduce((tables, changeset) => applyOps(tables, changeset.ops), withQueue);

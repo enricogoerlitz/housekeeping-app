@@ -229,7 +229,7 @@ test.describe('shell at phone width', () => {
     expect(await page.locator(PLAN_ENTRY).count()).toBeGreaterThan(3);
 
     await nav(page, 'liste');
-    await expect(tid(page, 'screen-title')).toHaveText('Standardliste');
+    await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
     expect(
       await page
         .locator(`[data-testid^="item-"][role="checkbox"][aria-checked="false"]${ACTIVE}`)
@@ -251,7 +251,7 @@ test.describe('shell at phone width', () => {
   });
 
   // Spec 0003 AC-014 replaces spec 0001 AC-014 ("reloading restores the demo data").
-  test('AC-014 (0003): "Spülmittel" on the default list is still there after a reload', async ({
+  test('AC-014 (0003): "Spülmittel" on the shopping list is still there after a reload', async ({
     page,
   }) => {
     await open(page, '/liste');
@@ -261,7 +261,7 @@ test.describe('shell at phone width', () => {
     // Saved on the server, not only in this device's overlay.
     await expect.poll(() => openItemsOnServer('Spülmittel')).toBe(1);
     await page.reload();
-    await expect(tid(page, 'screen-title')).toHaveText('Standardliste');
+    await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
     await expect(itemRows(page, 'Milch')).toHaveCount(1);
     await expect(itemRows(page, 'Spülmittel')).toHaveCount(1);
   });

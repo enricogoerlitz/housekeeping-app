@@ -47,13 +47,20 @@ export function isNetworkFailure(error: unknown): boolean {
 }
 
 const SERVER_CODE = /^[a-z][a-z0-9_]*$/;
+/**
+ * SQLSTATEs our database functions raise on purpose (`row_not_found`, `last_member` …).
+ * PostgREST answers them with 500, but retrying cannot change the answer.
+ */
+const RAISED = new Set(['P0001', 'P0002']);
 
 /** Classifies an HTTP status and a PostgREST error body (`message` carries our error code). */
 export function classifyError(
   status: number,
   error: { message?: string; code?: string },
 ): TransportError {
-  const transient = status === 0 || status === 408 || status === 429 || status >= 500;
+  const transient =
+    !RAISED.has(error.code ?? '') &&
+    (status === 0 || status === 408 || status === 429 || status >= 500);
   const message = error.message ?? '';
   const code = SERVER_CODE.test(message)
     ? message
@@ -86,7 +93,7 @@ export type AddEntry = z.infer<typeof AddEntrySchema>;
 /** A row operation, or one of the domain operations `apply_changes` allows. */
 export type ChangeOp =
   | RowOp
-  | { kind: 'add_contributions'; list_id: string; entries: AddEntry[] }
+  | { kind: 'add_contributions'; entries: AddEntry[] }
   | { kind: 'remove_contributions'; ids: string[] };
 
 export const ApplyChangesResultSchema = z.object({
@@ -127,6 +134,24 @@ export const ClearedItemsSchema = z.array(
 );
 export type ClearedItems = z.infer<typeof ClearedItemsSchema>;
 
+/**
+ * adjust_item_count (spec 0006): the count afterwards; when the tap removed the item, the item and
+ * its contributions as they were before, for restore_cleared_items. Null: the item is gone.
+ */
+export const AdjustResultSchema = z
+  .discriminatedUnion('removed', [
+    z.object({ item_id: z.string(), count: z.number(), removed: z.literal(false) }),
+    z.object({
+      item_id: z.string(),
+      count: z.number(),
+      removed: z.literal(true),
+      item: LooseRowSchema,
+      contributions: z.array(LooseRowSchema),
+    }),
+  ])
+  .nullable();
+export type AdjustResult = z.infer<typeof AdjustResultSchema>;
+
 /** sync_pull as sent: composite-key rows have no `id` yet (see db/tables.ts). */
 export const RawPullResultSchema = z.object({
   serverTime: z.string(),
@@ -151,12 +176,20 @@ export interface Transport {
   // Store queue and list
   setItemChecked(itemId: string, checked: boolean, seenCheckSeq: number): Promise<CheckResult>;
   setItemNotAvailable(itemId: string, value: boolean): Promise<NotAvailableResult>;
-  addShoppingContributions(listId: string, entries: readonly AddEntry[]): Promise<AddResult>;
+  /** Puts entries on the household's shopping list; `not_member` for a foreign household. */
+  addShoppingContributions(householdId: string, entries: readonly AddEntry[]): Promise<AddResult>;
   assignArticleArea(articleId: string, areaId: string | null): Promise<AssignAreaResult>;
-  clearCheckedItems(listId: string): Promise<ClearedItems>;
+  clearCheckedItems(householdId: string): Promise<ClearedItems>;
+  /** "Liste leeren": every item, open and checked, returned for the undo. */
+  clearShoppingList(householdId: string): Promise<ClearedItems>;
+  /** One tap on + (delta > 0) or − (delta < 0); `invalid_value` beyond 0…99×. */
+  adjustItemCount(itemId: string, delta: number): Promise<AdjustResult>;
   removeContributions(ids: readonly string[]): Promise<number>;
-  /** Undo of clearCheckedItems: puts the items back checked, with their contributions. */
-  restoreClearedItems(listId: string, items: ClearedItems): Promise<number>;
+  /**
+   * Undo of clearing: open items come back open (joining an open item of the same article),
+   * checked ones checked. Returns how many came back.
+   */
+  restoreClearedItems(householdId: string, items: ClearedItems): Promise<number>;
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
@@ -216,6 +249,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     addShoppingContributions: guard(inner.addShoppingContributions.bind(inner)),
     assignArticleArea: guard(inner.assignArticleArea.bind(inner)),
     clearCheckedItems: guard(inner.clearCheckedItems.bind(inner)),
+    clearShoppingList: guard(inner.clearShoppingList.bind(inner)),
+    adjustItemCount: guard(inner.adjustItemCount.bind(inner)),
     removeContributions: guard(inner.removeContributions.bind(inner)),
     restoreClearedItems: guard(inner.restoreClearedItems.bind(inner)),
     setRecipeFavorite: guard(inner.setRecipeFavorite.bind(inner)),

@@ -350,11 +350,12 @@ test('AC-010: a new household "WG Köln" has only Enrico, the starter data, a de
   expect(await count('household_members')).toBe(1);
   expect(await count('areas')).toBeGreaterThanOrEqual(15);
   expect(await count('articles')).toBeGreaterThanOrEqual(250);
-  expect(await count('shopping_lists', '&is_default=is.true')).toBe(1);
+  // ADR-0012: the household's shopping list is its items; a new household starts with none.
+  expect(await count('shopping_items')).toBe(0);
 
   await back(page);
   await nav(page, 'liste');
-  await expect(tid(page, 'screen-title')).toHaveText('Standardliste');
+  await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
   await tid(page, 'smart-input').fill('Karot');
   await expect(tid(page, 'smart-suggestions')).toContainText('Möhren · auch: Karotten');
 });
@@ -371,7 +372,6 @@ test('AC-011: Nadja reads, changes, deletes and creates nothing in a household s
     'areas',
     'articles',
     'stores',
-    'shopping_lists',
     'shopping_items',
     'recipes',
     'meal_plan_entries',

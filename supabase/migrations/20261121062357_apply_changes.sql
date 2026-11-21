@@ -1,99 +1,23 @@
--- Spec 0004 — the activity tables and the new columns in the delta sync and the generic write path.
+-- Baseline (ADR-0012) — apply_changes: the generic write path (ADR-0011).
 --
--- * sync_pull also answers activities, activity_favorites and activity_ratings (composite key
---   activity_id:member_id, like the restaurant tables).
--- * apply_changes: allowlist entries for activities (insert, patch, delete; created_by only on
---   insert, overwritten by its trigger) and the new columns meal_plan_entries.activity_id / note
---   and recipes.photo_path. activity_favorites / activity_ratings stay RPC-only.
--- Both bodies are copied unchanged otherwise (apply_changes from 20261120182725, sync_pull from
--- 20261120153257); all limits stay as they are.
+-- One call applies one changeset of the app — core RowOp objects plus two domain ops — in one
+-- transaction: all or nothing (AC-020). Security invoker, so RLS, column grants, triggers and
+-- composite foreign keys apply to every op exactly as to a direct API call. On top of that:
+-- * an allowlist of tables and columns as a constant in this function (the grant matrix of the
+--   domain tables); identifiers in dynamic SQL come only from the allowlist, quoted with %I; values
+--   are bound with jsonb_populate_record and never spliced into SQL text; a table without insert
+--   columns (households) rejects every insert, also an empty row;
+-- * one household per call: rows are inserted into p_household_id, and patches and deletes match
+--   only rows of p_household_id;
+-- * plain INSERT (no upsert); a patch that hits no row is an error (row_not_found);
+-- * at most 200 ops, 20 deletes and 500 added contributions per call (too_many_changes); a domain
+--   op counts as its elements.
+--
+-- Errors: not_member (42501), invalid_change (22023), too_many_changes (22023),
+-- row_not_found (P0002), plus whatever a constraint raises
+-- (23502/23503/23505/23514, 22P02 for a malformed value).
 
--- ---------------------------------------------------------------------------------------------
--- sync_pull
--- ---------------------------------------------------------------------------------------------
-
-create or replace function public.sync_pull(p_request jsonb)
-returns jsonb
-language plpgsql
-stable
-set search_path = ''
-as $$
-declare
-  -- The synced household tables (db-handoff T6, spec 0004). Small tables are listed separately below.
-  c_tables constant text[] := array[
-    'areas', 'articles', 'stores', 'shopping_lists',
-    'recipes', 'recipe_favorites', 'recipe_ratings',
-    'restaurants', 'restaurant_favorites', 'restaurant_ratings',
-    'activities', 'activity_favorites', 'activity_ratings',
-    'absences', 'feedback', 'feedback_votes',
-    'chores', 'chore_events', 'meal_plan_entries',
-    'shopping_items', 'shopping_contributions'];
-
-  v_household_id uuid;
-  v_request jsonb;
-  v_full boolean;
-  v_since jsonb;
-  v_table text;
-  v_table_rows jsonb;
-  v_rows jsonb;
-  v_tombstones jsonb;
-  v_households jsonb := '{}';
-begin
-  if jsonb_typeof(p_request) is distinct from 'object'
-     or jsonb_typeof(p_request -> 'households') is distinct from 'object' then
-    raise exception 'invalid_request' using errcode = '22023';
-  end if;
-
-  for v_household_id, v_request in
-    select h.id, r.value
-    from jsonb_each(p_request -> 'households') r
-    join private.my_household_ids() h (id) on h.id::text = lower(r.key)
-  loop
-    v_full := v_request ->> 'full' is distinct from 'false';
-    v_since := case when not v_full and jsonb_typeof(v_request -> 'since') = 'object'
-                    then v_request -> 'since' else '{}'::jsonb end;
-
-    v_rows := '{}';
-    foreach v_table in array c_tables loop
-      execute format(
-        'select coalesce(jsonb_agg(to_jsonb(t)), ''[]''::jsonb) from public.%I t '
-        'where t.household_id = $1 and ($2::timestamptz is null or t.updated_at > $2)',
-        v_table)
-      into v_table_rows
-      using v_household_id, (v_since ->> v_table)::timestamptz;
-      v_rows := v_rows || jsonb_build_object(v_table, v_table_rows);
-    end loop;
-
-    select coalesce(jsonb_agg(jsonb_build_object('table', d.table_name, 'id', d.record_id, 'deletedAt', d.deleted_at)
-                              order by d.deleted_at), '[]'::jsonb)
-    into v_tombstones
-    from public.deleted_records d
-    where d.household_id = v_household_id
-      and d.table_name = any (c_tables)
-      and (not v_since ? d.table_name or d.deleted_at > (v_since ->> d.table_name)::timestamptz);
-
-    v_households := v_households || jsonb_build_object(v_household_id::text, jsonb_build_object(
-      'full', v_full, 'rows', v_rows, 'tombstones', v_tombstones));
-  end loop;
-
-  return jsonb_build_object(
-    'serverTime', now(),
-    'small', jsonb_build_object(
-      'profiles', (select coalesce(jsonb_agg(to_jsonb(p) order by p.id), '[]'::jsonb) from public.profiles p),
-      'households', (select coalesce(jsonb_agg(to_jsonb(h) order by h.id), '[]'::jsonb) from public.households h),
-      'household_members', (select coalesce(jsonb_agg(to_jsonb(m) order by m.household_id, m.profile_id), '[]'::jsonb)
-                            from public.household_members m),
-      'household_invitations', (select coalesce(jsonb_agg(to_jsonb(i) order by i.id), '[]'::jsonb)
-                                from public.household_invitations i)),
-    'households', v_households);
-end
-$$;
-
--- ---------------------------------------------------------------------------------------------
--- apply_changes
--- ---------------------------------------------------------------------------------------------
-
-create or replace function public.apply_changes(p_household_id uuid, p_ops jsonb)
+create function public.apply_changes(p_household_id uuid, p_ops jsonb)
 returns jsonb
 language plpgsql
 set search_path = ''
@@ -111,8 +35,6 @@ declare
                                     "is_pantry"], "delete": true},
     "stores":           {"insert": ["id", "household_id", "name", "area_order", "hidden_area_ids"],
                          "patch":  ["name", "area_order", "hidden_area_ids"], "delete": true},
-    "shopping_lists":   {"insert": ["id", "household_id", "name", "is_default", "store_id"],
-                         "patch":  ["name", "is_default", "store_id"], "delete": true},
     "recipes":          {"insert": ["id", "household_id", "title", "photo", "photo_path", "description", "servings",
                                     "total_minutes", "course", "cuisine", "tags", "variants", "ingredients",
                                     "steps", "lead_time", "notes", "last_cooked_on", "cooked_count", "source"],
@@ -144,12 +66,12 @@ declare
                           "patch":  ["date", "slot_id", "kind", "recipe_id", "restaurant_id", "activity_id", "text",
                                      "note", "leftovers_of_entry_id", "eater_ids", "guests", "portions", "variants",
                                      "cook_id", "sort", "not_cooked"], "delete": true},
-    "shopping_items":   {"insert": ["id", "household_id", "list_id", "article_id"],
-                         "patch":  ["list_id", "article_id"], "delete": true},
+    "shopping_items":   {"insert": ["id", "household_id", "article_id"],
+                         "patch":  ["article_id"], "delete": true},
     "shopping_contributions": {"insert": ["id", "household_id", "item_id", "source", "count", "qty", "unit", "note"],
                                "patch":  ["item_id", "source", "count", "qty", "unit", "note"], "delete": true},
     "households":       {"insert": [],
-                         "patch":  ["name", "meal_slots", "default_list_id", "default_store_id"], "delete": false}
+                         "patch":  ["name", "meal_slots", "default_store_id"], "delete": false}
   }$json$;
   c_max_ops constant integer := 200;
   c_max_deletes constant integer := 20;
@@ -166,7 +88,6 @@ declare
   v_select text;
   v_set text;
   v_count integer;
-  v_list_id uuid;
   v_ids uuid[];
   v_results jsonb := '[]';
   v_op_count integer;
@@ -210,15 +131,10 @@ begin
     end if;
     v_kind := v_op ->> 'kind';
 
-    -- Domain ops: the same internal functions as the store/list RPCs (T4).
+    -- Domain ops: the same internal functions as the store/list RPCs; add_contributions puts the
+    -- entries on the shopping list of p_household_id.
     if v_kind = 'add_contributions' then
-      v_list_id := (v_op ->> 'list_id')::uuid;
-      if not exists (
-        select 1 from public.shopping_lists l where l.id = v_list_id and l.household_id = p_household_id
-      ) then
-        raise exception 'list_not_found' using errcode = 'P0002';
-      end if;
-      v_results := v_results || jsonb_build_array(private.add_shopping_contributions(v_list_id, v_op -> 'entries'));
+      v_results := v_results || jsonb_build_array(private.add_shopping_contributions(p_household_id, v_op -> 'entries'));
       continue;
     elsif v_kind = 'remove_contributions' then
       if jsonb_typeof(v_op -> 'ids') is distinct from 'array' then
@@ -238,7 +154,8 @@ begin
 
     if v_kind = 'insert' then
       v_row := v_op -> 'row';
-      if jsonb_typeof(v_row) is distinct from 'object'
+      if jsonb_array_length(v_rules -> 'insert') = 0
+         or jsonb_typeof(v_row) is distinct from 'object'
          or exists (select 1 from jsonb_object_keys(v_row) k where not (v_rules -> 'insert') ? k)
          or (v_row ? 'household_id' and lower(v_row ->> 'household_id') is distinct from p_household_id::text) then
         raise exception 'invalid_change' using errcode = '22023';
@@ -287,3 +204,5 @@ begin
   return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
 end
 $$;
+
+grant execute on function public.apply_changes(uuid, jsonb) to authenticated;

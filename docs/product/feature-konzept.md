@@ -849,8 +849,8 @@ Ganzes gelesen und nie gefiltert wird.** Die Tabellen legt jede Spec mit dem `db
 | KI            | `ai_conversations` · `ai_messages` · `ai_proposals` (Status, Teile) · `household_memory` (Eintrag, Quelle, Person)                                                                                                                                                                                       | Inhalte, Vorschlagsteile, Kontext    |
 | Feedback      | `feedback` (Art, Status, Begründung, Spec) · `feedback_votes`                                                                                                                                                                                                                                            | Kontext (Bildschirm, Version, Gerät) |
 
-_Geändert durch UI-Konzept v2 / Spec 0006 und 0009:_ `shopping_lists` hat genau eine Zeile je
-Haushalt. `collections` entfällt: Eine Sammlung ist ein Rezept der Art „Sammlung“; welche Rezepte
+_Geändert durch UI-Konzept v2 / Spec 0006 und 0009:_ `shopping_lists` entfällt (ADR-0012): Die
+eine Einkaufsliste je Haushalt ist die Menge seiner `shopping_items` (`household_id`). `collections` entfällt: Eine Sammlung ist ein Rezept der Art „Sammlung“; welche Rezepte
 sie enthält, steht in einer eigenen kleinen Tabelle (Konzept 4.3).
 
 **Fest in der App** (keine Tabellen): Starter-Katalog, Starter-Rezepte, vorgegebene Bereiche,

@@ -19,7 +19,8 @@ export type StoreQueueEntry =
   | { kind: 'notAvailable'; itemId: string; value: boolean }
   | {
       kind: 'add';
-      listId: string;
+      /** The household whose shopping list gets the contributions. */
+      householdId: string;
       /** Id of the item if a new one is needed; replaced by the server's id via remapQueue. */
       clientItemId: string;
       /** Id of the article if no article has this name yet; replaced like clientItemId. */
@@ -144,9 +145,13 @@ function findArticle(tables: TableRows, nameKey: string): Row | undefined {
   );
 }
 
-function addEffect(entry: Extract<StoreQueueEntry, { kind: 'add' }>, tables: TableRows): TableRows {
+function addEffect(
+  entry: Extract<StoreQueueEntry, { kind: 'add' }>,
+  tables: TableRows,
+  householdId: string,
+): TableRows {
   const first = entry.contributions[0];
-  if (!first || !tables.shopping_lists?.[entry.listId]) return tables;
+  if (!first || entry.householdId !== householdId) return tables;
 
   let next = tables;
   let article = findArticle(next, first.nameKey);
@@ -164,7 +169,7 @@ function addEffect(entry: Extract<StoreQueueEntry, { kind: 'add' }>, tables: Tab
   // Same rules as addContribution: append to the open item, else reopen a checked one with only
   // the new contributions (old ones were bought, "nicht da" belonged to that trip), else create.
   const forArticle = Object.values(next.shopping_items ?? {}).filter(
-    (item) => item.list_id === entry.listId && item.article_id === article.id,
+    (item) => item.article_id === article.id,
   );
   const open = forArticle.find((item) => item.checked !== true);
   const checked = forArticle.find((item) => item.checked === true);
@@ -188,7 +193,7 @@ function addEffect(entry: Extract<StoreQueueEntry, { kind: 'add' }>, tables: Tab
     itemId = entry.clientItemId;
     next = withRow(next, 'shopping_items', {
       id: itemId,
-      list_id: entry.listId,
+      household_id: entry.householdId,
       article_id: article.id,
       checked: false,
       checked_at: null,
@@ -214,10 +219,15 @@ function addEffect(entry: Extract<StoreQueueEntry, { kind: 'add' }>, tables: Tab
 
 /**
  * How one entry changes the visible rows (`shopping_items`, `shopping_contributions`,
- * `articles`). An entry whose item, article or list no longer exists changes nothing (AC-025).
+ * `articles`) of the household `householdId` (`tables` are its rows). An entry whose item or
+ * article no longer exists changes nothing (AC-025); an add for another household neither.
  */
-export function queueEffect(entry: StoreQueueEntry, tables: TableRows): TableRows {
-  if (entry.kind === 'add') return addEffect(entry, tables);
+export function queueEffect(
+  entry: StoreQueueEntry,
+  tables: TableRows,
+  householdId: string,
+): TableRows {
+  if (entry.kind === 'add') return addEffect(entry, tables, householdId);
   if (entry.kind === 'assignArea') {
     const article = tables.articles?.[entry.articleId];
     return article ? withRow(tables, 'articles', { ...article, area_id: entry.areaId }) : tables;
@@ -231,7 +241,11 @@ export function queueEffect(entry: StoreQueueEntry, tables: TableRows): TableRow
   return withRow(tables, 'shopping_items', { ...item, checked: entry.checked, ...cleared });
 }
 
-/** All entries applied in order: what the store queue adds to the server rows. */
-export function applyQueue(tables: TableRows, queue: readonly StoreQueueEntry[]): TableRows {
-  return queue.reduce((rows, entry) => queueEffect(entry, rows), tables);
+/** All entries applied in order: what the store queue adds to the household's server rows. */
+export function applyQueue(
+  tables: TableRows,
+  queue: readonly StoreQueueEntry[],
+  householdId: string,
+): TableRows {
+  return queue.reduce((rows, entry) => queueEffect(entry, rows, householdId), tables);
 }

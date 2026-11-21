@@ -1,14 +1,14 @@
 import {
   addPlannedToList,
-  entryIdsOnLists,
   pantryCheckRows,
   snapshot,
   usePlanEntries,
   useRecipesById,
+  useShoppingItems,
   useToday,
   type PantryCheckRow,
 } from '@housekeeping/api';
-import { parseISODate, weekdayShort, type Id, type ISODate } from '@housekeeping/core';
+import { entryIdsOnList, parseISODate, weekdayShort, type ISODate } from '@housekeeping/core';
 import {
   Button,
   CheckRow,
@@ -51,11 +51,12 @@ function rowKey(row: PantryCheckRow): string {
  * "Auf die Einkaufsliste": choose days of the plan, then keep only what is really needed
  * (Vorratscheck). Mount it fresh for every opening so the preselection is current.
  */
-export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onClose: () => void }) {
+export function PantryCheckSheet(props: { weekDates: ISODate[]; onClose: () => void }) {
   const online = useOnlineOnly();
   const today = useToday();
   const entries = usePlanEntries();
   const recipesById = useRecipesById();
+  const items = useShoppingItems();
 
   const recipeEntriesOn = (day: string) =>
     entries.filter(
@@ -67,7 +68,7 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
     );
 
   const [days, setDays] = useState<Set<string>>(() => {
-    const onLists = entryIdsOnLists();
+    const onLists = entryIdsOnList(items);
     return new Set(
       props.weekDates.filter(
         (date) => date >= today && recipeEntriesOn(date).some((entry) => !onLists.has(entry.id)),
@@ -114,10 +115,7 @@ export function PantryCheckSheet(props: { weekDates: ISODate[]; listId: Id; onCl
   const apply = () => {
     if (!rows) return;
     const restore = snapshot();
-    const count = addPlannedToList(
-      props.listId,
-      rows.filter((row) => selected.has(rowKey(row))),
-    );
+    const count = addPlannedToList(rows.filter((row) => selected.has(rowKey(row))));
     props.onClose();
     toast.show({
       message: `${count} Artikel auf der Liste`,

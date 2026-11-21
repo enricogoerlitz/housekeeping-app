@@ -13,7 +13,7 @@ import type { Row, TableRows } from './sync-delta';
 function shoppingItem(id: string, articleId: string, rest: Partial<Row> = {}): Row {
   return {
     id,
-    list_id: 'l1',
+    household_id: 'h1',
     article_id: articleId,
     checked: false,
     checked_at: null,
@@ -26,7 +26,6 @@ function shoppingItem(id: string, articleId: string, rest: Partial<Row> = {}): R
 
 function base(): TableRows {
   return {
-    shopping_lists: { l1: { id: 'l1', name: 'Wocheneinkauf' } },
     articles: {
       milk: { id: 'milk', name: 'Milch', name_key: 'milch', synonym_keys: [], area_id: null },
       bread: {
@@ -65,7 +64,7 @@ function addEntry(
 ): Extract<StoreQueueEntry, { kind: 'add' }> {
   return {
     kind: 'add',
-    listId: 'l1',
+    householdId: 'h1',
     clientItemId,
     clientArticleId: `art-${clientItemId}`,
     contributions,
@@ -84,7 +83,7 @@ describe('enqueue and queueEffect: checking', () => {
     const tables = base();
     const queue = enqueue([], check('i1', true), item(tables, 'i1'));
     expect(queue).toEqual([check('i1', true)]);
-    expect(item(applyQueue(tables, queue), 'i1')?.checked).toBe(true);
+    expect(item(applyQueue(tables, queue, 'h1'), 'i1')?.checked).toBe(true);
   });
 
   it('AC-022: unchecking queues the check_seq that was seen, also after more toggles', () => {
@@ -96,7 +95,7 @@ describe('enqueue and queueEffect: checking', () => {
     // A repeated tap with the same outcome keeps the first entry and the sequence it saw.
     queue = enqueue(queue, check('i2', false, 4), item(tables, 'i2'));
     expect(queue).toEqual([check('i2', false, 3)]);
-    expect(item(applyQueue(tables, queue), 'i2')).toMatchObject({
+    expect(item(applyQueue(tables, queue, 'h1'), 'i2')).toMatchObject({
       checked: false,
       checked_at: null,
       checked_by: null,
@@ -131,7 +130,7 @@ describe('enqueue and queueEffect: checking', () => {
 
   it('AC-025: checking an item that was deleted meanwhile changes nothing', () => {
     const tables = base();
-    expect(queueEffect(check('gone', true), tables)).toBe(tables);
+    expect(queueEffect(check('gone', true), tables, 'h1')).toBe(tables);
   });
 
   it('AC-024: the queue survives a reload (serialised) and still shows three checked items', () => {
@@ -139,13 +138,13 @@ describe('enqueue and queueEffect: checking', () => {
     tables.shopping_items = {
       ...tables.shopping_items,
       i3: shoppingItem('i3', 'bread'),
-      i4: shoppingItem('i4', 'bread', { list_id: 'l2' }),
+      i4: shoppingItem('i4', 'eggs'),
     };
     let queue: StoreQueueEntry[] = [];
     for (const id of ['i1', 'i3', 'i4']) queue = enqueue(queue, check(id, true), item(tables, id));
 
     const reloaded = JSON.parse(JSON.stringify(queue)) as StoreQueueEntry[];
-    const visible = applyQueue(tables, reloaded);
+    const visible = applyQueue(tables, reloaded, 'h1');
     expect(['i1', 'i3', 'i4'].map((id) => item(visible, id)?.checked)).toEqual([true, true, true]);
     expect(reloaded).toEqual(queue);
   });
@@ -156,7 +155,7 @@ describe('enqueue and queueEffect: not available and area', () => {
     const tables = base();
     const on: StoreQueueEntry = { kind: 'notAvailable', itemId: 'i1', value: true };
     let queue = enqueue([], on, item(tables, 'i1'));
-    expect(item(applyQueue(tables, queue), 'i1')?.not_available).toBe(true);
+    expect(item(applyQueue(tables, queue, 'h1'), 'i1')?.not_available).toBe(true);
     queue = enqueue(
       queue,
       { kind: 'notAvailable', itemId: 'i1', value: false },
@@ -171,7 +170,7 @@ describe('enqueue and queueEffect: not available and area', () => {
     let queue = enqueue([], { kind: 'assignArea', articleId: 'milk', areaId: 'a1' }, article);
     queue = enqueue(queue, { kind: 'assignArea', articleId: 'milk', areaId: 'a2' }, article);
     expect(queue).toEqual([{ kind: 'assignArea', articleId: 'milk', areaId: 'a2' }]);
-    expect(applyQueue(tables, queue).articles?.milk?.area_id).toBe('a2');
+    expect(applyQueue(tables, queue, 'h1').articles?.milk?.area_id).toBe('a2');
 
     queue = enqueue(queue, { kind: 'assignArea', articleId: 'milk', areaId: null }, article);
     expect(queue).toEqual([]);
@@ -179,7 +178,7 @@ describe('enqueue and queueEffect: not available and area', () => {
 
   it('an area for an article that is gone changes nothing', () => {
     const tables = base();
-    expect(queueEffect({ kind: 'assignArea', articleId: 'gone', areaId: 'a1' }, tables)).toBe(
+    expect(queueEffect({ kind: 'assignArea', articleId: 'gone', areaId: 'a1' }, tables, 'h1')).toBe(
       tables,
     );
   });
@@ -192,6 +191,7 @@ describe('queueEffect: adding', () => {
     const next = queueEffect(
       addEntry('t1', [contribution('k1', 'Baguette', { count: 2, note: 'hell' })]),
       tables,
+      'h1',
     );
     expect(next.shopping_items?.t1).toBeUndefined();
     expect(next.shopping_contributions?.k1).toEqual({
@@ -206,7 +206,7 @@ describe('queueEffect: adding', () => {
   });
 
   it('reopens a checked item with only the new contribution', () => {
-    const next = queueEffect(addEntry('t1', [contribution('k1', 'Butter')]), base());
+    const next = queueEffect(addEntry('t1', [contribution('k1', 'Butter')]), base(), 'h1');
     expect(item(next, 'i2')).toMatchObject({
       checked: false,
       checked_at: null,
@@ -220,10 +220,11 @@ describe('queueEffect: adding', () => {
     const next = queueEffect(
       addEntry('t1', [contribution('k1', 'Tahini', { qty: 300, unit: 'g' })]),
       base(),
+      'h1',
     );
     expect(next.articles?.['art-t1']).toMatchObject({ name: 'Tahini', name_key: 'tahini' });
     expect(item(next, 't1')).toMatchObject({
-      list_id: 'l1',
+      household_id: 'h1',
       article_id: 'art-t1',
       checked: false,
       check_seq: 0,
@@ -236,7 +237,7 @@ describe('queueEffect: adding', () => {
       addEntry('t1', [contribution('k1', 'Brot')]),
       addEntry('t2', [contribution('k2', 'Brot', { count: 2 })]),
     ];
-    const visible = applyQueue(base(), queue);
+    const visible = applyQueue(base(), queue, 'h1');
     const bread = Object.values(visible.shopping_items ?? {}).filter(
       (row) => row.article_id === 'bread',
     );
@@ -247,10 +248,10 @@ describe('queueEffect: adding', () => {
     expect(contributions.map((row) => row.id)).toEqual(['k1', 'k2']);
   });
 
-  it('an add for a list that is gone changes nothing', () => {
+  it('ADR-0012: an add for another household changes nothing in this household', () => {
     const tables = base();
-    const entry = { ...addEntry('t1', [contribution('k1', 'Brot')]), listId: 'gone' };
-    expect(queueEffect(entry, tables)).toBe(tables);
+    const entry = { ...addEntry('t1', [contribution('k1', 'Brot')]), householdId: 'h2' };
+    expect(queueEffect(entry, tables, 'h1')).toBe(tables);
   });
 
   it('rejects an add whose contributions name different articles, or none', () => {

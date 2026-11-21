@@ -101,8 +101,10 @@ describe('AssistantReplySchema', () => {
   it('rejects impossible values: zero servings, bad dates, too many shopping texts', () => {
     const bad = [
       { type: 'setRecipeServings', recipeId: 'r1', servings: 0 },
-      { type: 'addShoppingItems', listId: 'l1', texts: Array.from({ length: 51 }, () => 'Milch') },
-      { type: 'addShoppingItems', listId: 'l1', texts: [''] },
+      { type: 'addShoppingItems', texts: Array.from({ length: 51 }, () => 'Milch') },
+      { type: 'addShoppingItems', texts: [''] },
+      // ADR-0012: the shopping list is the household's; a list id is not part of the command.
+      { type: 'addShoppingItems', listId: 'l1', texts: ['Milch'] },
       {
         type: 'addPlanEntry',
         input: { date: '25.11.2026', slotId: 's', kind: 'recipe', eaterIds: [] },

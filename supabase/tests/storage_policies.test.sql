@@ -59,7 +59,7 @@ select results_eq(
   $$ values (false, 2097152::bigint, array['image/jpeg']) $$,
   'REQ-004 household-media: a private bucket for JPEG files up to 2 MiB');
 -- A bucket of that name that existed before (made by hand, public, without limits) gets the
--- settings too: the settings migration runs again over such a bucket, statement by statement as
+-- settings too: the bucket statement of the storage migration runs again over such a bucket, as
 -- the CLI recorded and applied it (the migration files are not visible to this test).
 update storage.buckets set public = true, file_size_limit = null, allowed_mime_types = null
 where id = 'household-media';
@@ -68,12 +68,13 @@ declare
   statement text;
 begin
   for statement in
-    select unnest(statements) from supabase_migrations.schema_migrations where version = '20261120212216'
+    select s from supabase_migrations.schema_migrations m, unnest(m.statements) s
+    where m.version = '20261121062402' and s ~* 'insert\s+into\s+storage\.buckets'
   loop
     execute statement;
   end loop;
   if not found then
-    raise exception 'migration 20261120212216 (household_media_bucket_settings) is not recorded';
+    raise exception 'the bucket statement of migration 20261121062402 (storage) is not recorded';
   end if;
 end
 $$;

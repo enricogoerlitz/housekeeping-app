@@ -1,33 +1,37 @@
--- Spec 0003, T4 — store and list RPCs.
+-- Baseline (ADR-0012) — store and list RPCs. The shopping list is the set of items of a household,
+-- so the list actions take the household id.
 --
 -- The four store-mode actions that work offline (ADR-0008 addendum) are one RPC each, replayed
 -- by the store queue: set_shopping_item_checked, set_shopping_item_not_available,
 -- add_shopping_contributions and assign_article_area. Plus the list actions that change several
--- rows at once: clear_checked_items and remove_contributions (undo of adding).
+-- rows at once: clear_checked_items, clear_shopping_list, restore_cleared_items (undo of both),
+-- remove_contributions (undo of adding) and adjust_item_count (+ and − on "Liste").
 --
 -- * The check state (checked, checked_at, checked_by, check_seq, not_available) has no client
 --   grant, so the functions writing it are security definer and check membership themselves.
 --   "Checking wins": unchecking applies only while check_seq still equals the value the device
 --   saw (docs/architecture/sync.md, "Nachtrag Spec 0003").
 -- * Store actions on a row that no longer exists (or is not visible) return null instead of an
---   error, so a replayed queue entry is dropped silently (AC-025).
+--   error, so a replayed queue entry is dropped silently.
 -- * Everything else is security invoker: RLS decides.
--- * Adding and unchecking serialise per (list, article) with a transaction advisory lock, so two
---   devices adding "Brot" at once end with one item (AC-023).
+-- * Adding, unchecking and restoring serialise per (household, article) with a transaction
+--   advisory lock, so two devices adding "Brot" at once end with one item.
+-- * A household id the caller is not a member of is refused with not_member (42501) — also by the
+--   security invoker list actions, so a foreign id never silently returns an empty result.
 
 -- ---------------------------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------------------------
 
--- Serialises changes to the items of one article on one list until the transaction ends.
+-- Serialises changes to the items of one article in one household until the transaction ends.
 -- Called only from the definer functions below; not granted to the API roles.
-create function private.lock_list_article(p_list_id uuid, p_article_id uuid)
+create function private.lock_household_article(p_household_id uuid, p_article_id uuid)
 returns void
 language sql
 set search_path = ''
 as $$
   select pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(p_list_id::text || ':' || p_article_id::text, 0));
+    pg_catalog.hashtextextended(p_household_id::text || ':' || p_article_id::text, 0));
 $$;
 
 -- ---------------------------------------------------------------------------------------------
@@ -68,7 +72,7 @@ begin
     return null;
   end if;
 
-  perform private.lock_list_article(v_item.list_id, v_item.article_id);
+  perform private.lock_household_article(v_item.household_id, v_item.article_id);
   select i.* into v_item from public.shopping_items i where i.id = p_item_id for update;
   if not found then
     return null;
@@ -84,7 +88,7 @@ begin
   elsif v_item.checked and v_item.check_seq = p_seen_check_seq then
     select i.id into v_open_id
     from public.shopping_items i
-    where i.list_id = v_item.list_id and i.article_id = v_item.article_id and not i.checked
+    where i.household_id = v_item.household_id and i.article_id = v_item.article_id and not i.checked
     for update;
 
     if v_open_id is null then
@@ -139,7 +143,8 @@ $$;
 -- add_shopping_contributions
 -- ---------------------------------------------------------------------------------------------
 
--- Puts contributions on a list. Entries (≤ 200, each with 1–100 contributions):
+-- Puts contributions on the household's shopping list. Entries (≤ 200, each with 1–100 contributions, ≤ 1000
+-- contributions in all):
 --   [{"client_item_id": uuid, "client_article_id": uuid, "article_name": text, "name_key": text,
 --     "contributions": [{"id": uuid, "source": jsonb, "count", "qty", "unit", "note"}]}]
 -- Per entry, in order:
@@ -147,19 +152,19 @@ $$;
 --    contributions of it go to the same item, nothing is reopened.
 -- 2. The article: by name_key, else by name_key in synonym_keys, else a new article with the
 --    client's id (diet unknown, no area). Keys are computed by the client (core normalizeText).
--- 3. The item, under a lock per (list, article): the open item, else the most recently checked
+-- 3. The item, under a lock per (household, article): the open item, else the most recently checked
 --    item reopened (check, "nicht da" and its bought contributions cleared; core
 --    addContribution), else a new item with the client's id.
 -- A client id already used by another row is replaced by a fresh one; the result maps it.
 -- Returns [{"client_item_id", "item_id", "client_article_id", "article_id"}] in entry order.
-create function private.add_shopping_contributions(p_list_id uuid, p_entries jsonb)
+create function private.add_shopping_contributions(p_household_id uuid, p_entries jsonb)
 returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_household_id uuid;
+  v_household_id uuid := p_household_id;
   v_entry jsonb;
   v_contributions jsonb;
   v_contribution_ids uuid[];
@@ -174,17 +179,19 @@ begin
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
 
-  select l.household_id into v_household_id
-  from public.shopping_lists l
-  where l.id = p_list_id and l.household_id in (select private.my_household_ids());
-  if v_household_id is null then
-    raise exception 'list_not_found' using errcode = 'P0002';
+  if p_household_id is null
+     or not exists (select 1 from private.my_household_ids() h (id) where h.id = p_household_id) then
+    raise exception 'not_member' using errcode = '42501';
   end if;
 
   if jsonb_typeof(p_entries) is distinct from 'array' then
     raise exception 'invalid_entries' using errcode = '22023';
   end if;
-  if jsonb_array_length(p_entries) > 200 then
+  if jsonb_array_length(p_entries) > 200
+     or (select count(*)
+         from jsonb_array_elements(p_entries) e
+         cross join lateral jsonb_array_elements(case when jsonb_typeof(e -> 'contributions') = 'array'
+                                                      then e -> 'contributions' else '[]' end) c) > 1000 then
     raise exception 'too_many_changes' using errcode = '22023';
   end if;
 
@@ -251,15 +258,15 @@ begin
       end if;
 
       -- 3. The item.
-      perform private.lock_list_article(p_list_id, v_article_id);
+      perform private.lock_household_article(v_household_id, v_article_id);
       select i.id into v_item_id
       from public.shopping_items i
-      where i.list_id = p_list_id and i.article_id = v_article_id and not i.checked
+      where i.household_id = v_household_id and i.article_id = v_article_id and not i.checked
       for update;
       if v_item_id is null then
         select i.id into v_item_id
         from public.shopping_items i
-        where i.list_id = p_list_id and i.article_id = v_article_id and i.checked
+        where i.household_id = v_household_id and i.article_id = v_article_id and i.checked
         order by i.checked_at desc nulls last, i.id
         limit 1
         for update;
@@ -271,11 +278,11 @@ begin
               check_seq = i.check_seq + 1
           where i.id = v_item_id;
         else
-          insert into public.shopping_items (id, household_id, list_id, article_id)
+          insert into public.shopping_items (id, household_id, article_id)
           values (
             case when exists (select 1 from public.shopping_items i where i.id = v_client_item_id)
                  then gen_random_uuid() else v_client_item_id end,
-            v_household_id, p_list_id, v_article_id)
+            v_household_id, v_article_id)
           returning id into v_item_id;
         end if;
       end if;
@@ -308,10 +315,10 @@ $$;
 -- remove_contributions
 -- ---------------------------------------------------------------------------------------------
 
--- Deletes contributions (≤ 200 ids), then the items they emptied; items that were already empty
--- are left alone. Ids of other households are ignored (RLS). p_household_id limits the call to
--- one household (apply_changes); null = all of the caller's households. Returns how many
--- contributions were deleted. Security invoker.
+-- Deletes contributions (≤ 1000 ids, so the undo of any accepted addition is one call), then the
+-- items they emptied; items that were already empty are left alone. Ids of other households are
+-- ignored (RLS). p_household_id limits the call to one household (apply_changes); null = all of
+-- the caller's households. Returns how many contributions were deleted. Security invoker.
 create function private.remove_contributions(p_ids uuid[], p_household_id uuid)
 returns integer
 language plpgsql
@@ -321,7 +328,7 @@ declare
   v_count integer;
   v_item_ids uuid[];
 begin
-  if cardinality(p_ids) > 200 then
+  if cardinality(p_ids) > 1000 then
     raise exception 'too_many_changes' using errcode = '22023';
   end if;
 
@@ -364,7 +371,7 @@ language sql
 set search_path = ''
 as $$ select private.set_shopping_item_not_available($1, $2) $$;
 
-create function public.add_shopping_contributions(p_list_id uuid, p_entries jsonb)
+create function public.add_shopping_contributions(p_household_id uuid, p_entries jsonb)
 returns jsonb
 language sql
 set search_path = ''
@@ -403,10 +410,11 @@ begin
 end
 $$;
 
--- Deletes the checked items of a list ("Fertig" in store mode) and returns them with their
--- contributions, [{"item": {row}, "contributions": [{row}, …]}, …], so the client can undo with
--- inserts. An item reopened meanwhile is no longer checked and stays. Security invoker.
-create function public.clear_checked_items(p_list_id uuid)
+-- Deletes the checked items of the household's shopping list ("Fertig" in store mode) and returns
+-- them with their contributions, [{"item": {row}, "contributions": [{row}, …]}, …], for
+-- restore_cleared_items. An item reopened meanwhile is no longer checked and stays. Security
+-- invoker.
+create function public.clear_checked_items(p_household_id uuid)
 returns jsonb
 language plpgsql
 set search_path = ''
@@ -414,14 +422,15 @@ as $$
 declare
   v_result jsonb;
 begin
-  if not exists (select 1 from public.shopping_lists l where l.id = p_list_id) then
-    raise exception 'list_not_found' using errcode = 'P0002';
+  if p_household_id is null
+     or not exists (select 1 from private.my_household_ids() h (id) where h.id = p_household_id) then
+    raise exception 'not_member' using errcode = '42501';
   end if;
 
   -- The contributions are read from the statement's snapshot, before the cascade removes them.
   with deleted as (
     delete from public.shopping_items i
-    where i.list_id = p_list_id and i.checked
+    where i.household_id = p_household_id and i.checked
     returning i.*
   )
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -438,9 +447,279 @@ begin
 end
 $$;
 
+-- ---------------------------------------------------------------------------------------------
+-- restore_cleared_items
+-- ---------------------------------------------------------------------------------------------
+
+-- Undo of clear_checked_items and clear_shopping_list. p_items is exactly what they returned:
+-- [{"item": {row}, "contributions": [{row}]}]. Every item must belong to p_household_id, every
+-- contribution to its item; otherwise invalid_entries and nothing is restored. ≤ 1000 items
+-- (too_many_changes), so the undo of any cleared list is one call.
+-- The check state of the entry decides (missing = checked): checked items come back checked with
+-- checked_at ≤ now(), check_seq clamped to 0…999000 (room for checks after a restore) and
+-- checked_by only while that person is still a member; open items come back open. An open item
+-- whose article is open on the list again meanwhile (someone added it) is not restored as a second
+-- item: its contributions join the open item. An item whose id exists already is skipped,
+-- contributions use on conflict do nothing, so a repeated call restores nothing twice.
+-- created_at / updated_at are set by the server. Returns how many entries were restored
+-- (inserted, or joined with at least one new contribution).
+create function private.restore_cleared_items(p_household_id uuid, p_items jsonb)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_household_id uuid := p_household_id;
+  v_entry jsonb;
+  v_item public.shopping_items;
+  v_contributions public.shopping_contributions[];
+  v_checked boolean;
+  v_target_id uuid;
+  v_inserted integer;
+  v_added integer;
+  v_count integer := 0;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '42501';
+  end if;
+
+  if p_household_id is null
+     or not exists (select 1 from private.my_household_ids() h (id) where h.id = p_household_id) then
+    raise exception 'not_member' using errcode = '42501';
+  end if;
+
+  if jsonb_typeof(p_items) is distinct from 'array' then
+    raise exception 'invalid_entries' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_items) > 1000 then
+    raise exception 'too_many_changes' using errcode = '22023';
+  end if;
+
+  for v_entry in select e.value from jsonb_array_elements(p_items) e loop
+    if jsonb_typeof(v_entry) is distinct from 'object'
+       or jsonb_typeof(v_entry -> 'item') is distinct from 'object'
+       or jsonb_typeof(coalesce(v_entry -> 'contributions', '[]')) is distinct from 'array'
+       or jsonb_path_exists(coalesce(v_entry -> 'contributions', '[]'), '$[*] ? (@.type() != "object")') then
+      raise exception 'invalid_entries' using errcode = '22023';
+    end if;
+    begin
+      v_item := jsonb_populate_record(null::public.shopping_items, v_entry -> 'item');
+      v_contributions := array(
+        select jsonb_populate_record(null::public.shopping_contributions, c)
+        from jsonb_array_elements(coalesce(v_entry -> 'contributions', '[]')) c);
+    exception when data_exception then
+      raise exception 'invalid_entries' using errcode = '22023';
+    end;
+    if v_item.id is null
+       or v_item.article_id is null
+       or v_item.household_id is distinct from v_household_id
+       or exists (
+         select 1 from unnest(v_contributions) c
+         where c.id is null or c.item_id is distinct from v_item.id or c.household_id is distinct from v_household_id
+       ) then
+      raise exception 'invalid_entries' using errcode = '22023';
+    end if;
+    v_checked := coalesce(v_item.checked, true);
+    v_target_id := null;
+    v_inserted := 0;
+
+    if not v_checked then
+      -- Same lock as adding and unchecking: one open item per article, also while restoring.
+      perform private.lock_household_article(v_household_id, v_item.article_id);
+      select i.id into v_target_id
+      from public.shopping_items i
+      where i.household_id = v_household_id and i.article_id = v_item.article_id and not i.checked
+      for update;
+    end if;
+
+    if v_target_id is null then
+      insert into public.shopping_items
+        (id, household_id, article_id, checked, checked_at, checked_by, check_seq, not_available)
+      values (
+        v_item.id, v_household_id, v_item.article_id, v_checked,
+        case when v_checked then least(coalesce(v_item.checked_at, now()), now()) end,
+        case when v_checked then
+          (select m.profile_id from public.household_members m
+           where m.household_id = v_household_id and m.profile_id = v_item.checked_by) end,
+        least(greatest(coalesce(v_item.check_seq, 0), 0), 999000),
+        coalesce(v_item.not_available, false))
+      on conflict do nothing;
+      get diagnostics v_inserted = row_count;
+      -- Only onto the item of this household (skipped if its id is taken elsewhere).
+      select i.id into v_target_id
+      from public.shopping_items i
+      where i.household_id = v_household_id and i.id = v_item.id;
+    end if;
+
+    insert into public.shopping_contributions (id, household_id, item_id, source, count, qty, unit, note)
+    select c.id, v_household_id, v_target_id, coalesce(c.source, '{"kind": "manual"}'::jsonb),
+           c.count, c.qty, c.unit, c.note
+    from unnest(v_contributions) c
+    where v_target_id is not null
+    on conflict do nothing;
+    get diagnostics v_added = row_count;
+
+    if v_inserted > 0 or (v_target_id is distinct from v_item.id and v_added > 0) then
+      v_count := v_count + 1;
+    end if;
+  end loop;
+
+  return v_count;
+end
+$$;
+
+grant execute on function private.restore_cleared_items(uuid, jsonb) to authenticated;
+
+create function public.restore_cleared_items(p_household_id uuid, p_items jsonb)
+returns integer
+language sql
+set search_path = ''
+as $$ select private.restore_cleared_items($1, $2) $$;
+
+grant execute on function public.restore_cleared_items(uuid, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------------------------
+-- clear_shopping_list
+-- ---------------------------------------------------------------------------------------------
+
+-- Deletes every item of the household's shopping list ("Liste leeren …"), open and checked, and
+-- returns them with their contributions, [{"item": {row}, "contributions": [{row}, …]}, …], for
+-- restore_cleared_items. Security invoker.
+create function public.clear_shopping_list(p_household_id uuid)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_result jsonb;
+begin
+  if p_household_id is null
+     or not exists (select 1 from private.my_household_ids() h (id) where h.id = p_household_id) then
+    raise exception 'not_member' using errcode = '42501';
+  end if;
+
+  -- The contributions are read from the statement's snapshot, before the cascade removes them.
+  with deleted as (
+    delete from public.shopping_items i
+    where i.household_id = p_household_id
+    returning i.*
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'item', to_jsonb(d),
+           'contributions', coalesce((
+             select jsonb_agg(to_jsonb(c) order by c.created_at, c.id)
+             from public.shopping_contributions c
+             where c.household_id = d.household_id and c.item_id = d.id), '[]'::jsonb))
+         order by d.created_at, d.id), '[]'::jsonb)
+  into v_result
+  from deleted d;
+
+  return v_result;
+end
+$$;
+
+-- ---------------------------------------------------------------------------------------------
+-- adjust_item_count
+-- ---------------------------------------------------------------------------------------------
+
+-- One tap on + (p_delta > 0) or − (p_delta < 0), |p_delta| ≤ 99. Returns
+--   {"item_id", "count", "removed": false}                       the counted total afterwards
+--   {"item_id", "count": 0, "removed": true, "item", "contributions"}  item and contributions as
+--                                                                 they were before, for the undo
+--   null                                                          item gone or not visible
+-- invalid_value (22023): delta 0, null or beyond ±99; + above 99× or − below 0× in total.
+create function public.adjust_item_count(p_item_id uuid, p_delta integer)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_item public.shopping_items;
+  v_before jsonb;
+  v_total integer;
+  v_left integer;
+  v_contribution record;
+  v_manual_id uuid;
+begin
+  if p_delta is null or p_delta = 0 or p_delta not between -99 and 99 then
+    raise exception 'invalid_value' using errcode = '22023';
+  end if;
+
+  -- The row lock serialises taps on this item (and adding to it), so no tap is lost.
+  select i.* into v_item from public.shopping_items i where i.id = p_item_id for update;
+  if not found then
+    return null;
+  end if;
+
+  select coalesce(sum(c.count), 0)::integer into v_total
+  from public.shopping_contributions c
+  where c.household_id = v_item.household_id and c.item_id = v_item.id;
+  -- + never goes above 99×, − never below 0× (a larger total from recipes can still go down).
+  if v_total + p_delta < 0 or (p_delta > 0 and v_total + p_delta > 99) then
+    raise exception 'invalid_value' using errcode = '22023';
+  end if;
+
+  if p_delta > 0 then
+    select c.id into v_manual_id
+    from public.shopping_contributions c
+    where c.household_id = v_item.household_id and c.item_id = v_item.id
+      and c.source ->> 'kind' = 'manual' and c.count is not null
+    order by c.created_at desc, c.id desc
+    limit 1;
+    if v_manual_id is null then
+      insert into public.shopping_contributions (household_id, item_id, source, count)
+      values (v_item.household_id, v_item.id, '{"kind": "manual"}', p_delta);
+    else
+      update public.shopping_contributions c set count = c.count + p_delta where c.id = v_manual_id;
+    end if;
+    return jsonb_build_object('item_id', v_item.id, 'count', v_total + p_delta, 'removed', false);
+  end if;
+
+  select coalesce(jsonb_agg(to_jsonb(c) order by c.created_at, c.id), '[]'::jsonb) into v_before
+  from public.shopping_contributions c
+  where c.household_id = v_item.household_id and c.item_id = v_item.id;
+
+  -- "von Hand" first, then the most recently added contribution.
+  v_left := -p_delta;
+  for v_contribution in
+    select c.id, c.count
+    from public.shopping_contributions c
+    where c.household_id = v_item.household_id and c.item_id = v_item.id and c.count is not null
+    order by (c.source ->> 'kind' = 'manual') desc, c.created_at desc, c.id desc
+  loop
+    exit when v_left = 0;
+    if v_contribution.count <= v_left then
+      v_left := v_left - v_contribution.count;
+      if exists (select 1 from public.shopping_contributions c where c.id = v_contribution.id and c.qty is not null) then
+        update public.shopping_contributions c set count = null where c.id = v_contribution.id;
+      else
+        delete from public.shopping_contributions c where c.id = v_contribution.id;
+      end if;
+    else
+      update public.shopping_contributions c set count = c.count - v_left where c.id = v_contribution.id;
+      v_left := 0;
+    end if;
+  end loop;
+
+  if not exists (
+    select 1 from public.shopping_contributions c
+    where c.household_id = v_item.household_id and c.item_id = v_item.id
+  ) then
+    delete from public.shopping_items i where i.id = v_item.id;
+    return jsonb_build_object('item_id', v_item.id, 'count', 0, 'removed', true,
+                              'item', to_jsonb(v_item), 'contributions', v_before);
+  end if;
+  return jsonb_build_object('item_id', v_item.id, 'count', v_total + p_delta, 'removed', false);
+end
+$$;
+
 grant execute on function public.set_shopping_item_checked(uuid, boolean, integer) to authenticated;
 grant execute on function public.set_shopping_item_not_available(uuid, boolean) to authenticated;
 grant execute on function public.add_shopping_contributions(uuid, jsonb) to authenticated;
 grant execute on function public.remove_contributions(uuid[]) to authenticated;
 grant execute on function public.assign_article_area(uuid, uuid) to authenticated;
 grant execute on function public.clear_checked_items(uuid) to authenticated;
+
+grant execute on function public.clear_shopping_list(uuid) to authenticated;
+grant execute on function public.adjust_item_count(uuid, integer) to authenticated;

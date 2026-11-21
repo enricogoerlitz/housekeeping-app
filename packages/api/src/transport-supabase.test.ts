@@ -139,9 +139,9 @@ describe('supabase transport', () => {
       check_seq: 3,
     });
     expect(await transport.setItemNotAvailable('i1', true)).toBeNull();
-    await transport.addShoppingContributions('l1', []);
+    await transport.addShoppingContributions('h1', []);
     await transport.assignArticleArea('a1', null);
-    await transport.clearCheckedItems('l1');
+    await transport.clearCheckedItems('h1');
     expect(await transport.removeContributions(['c1', 'c2'])).toBe(2);
     await transport.setRecipeRating('r1', null);
     await transport.setActivityFavorite('act1', true);
@@ -156,15 +156,54 @@ describe('supabase transport', () => {
         args: { p_item_id: 'i1', p_checked: true, p_seen_check_seq: 2 },
       },
       { fn: 'set_shopping_item_not_available', args: { p_item_id: 'i1', p_value: true } },
-      { fn: 'add_shopping_contributions', args: { p_list_id: 'l1', p_entries: [] } },
+      { fn: 'add_shopping_contributions', args: { p_household_id: 'h1', p_entries: [] } },
       { fn: 'assign_article_area', args: { p_article_id: 'a1', p_area_id: null } },
-      { fn: 'clear_checked_items', args: { p_list_id: 'l1' } },
+      { fn: 'clear_checked_items', args: { p_household_id: 'h1' } },
       { fn: 'remove_contributions', args: { p_ids: ['c1', 'c2'] } },
       { fn: 'set_recipe_rating', args: { recipe_id: 'r1', stars: null } },
       { fn: 'set_activity_favorite', args: { activity_id: 'act1', favorite: true } },
       { fn: 'set_activity_rating', args: { activity_id: 'act1', stars: 4 } },
       { fn: 'invite_member', args: { household_id: 'h1', email: 'nadja@example.com' } },
       { fn: 'remove_member', args: { household_id: 'h1', profile_id: 'm2' } },
+    ]);
+  });
+
+  it('spec 0006: adjust_item_count and clear_shopping_list with their parameters and answers', async () => {
+    const removed = {
+      item_id: 'i1',
+      count: 0,
+      removed: true,
+      item: { id: 'i1', household_id: 'h1' },
+      contributions: [{ id: 'c1', item_id: 'i1' }],
+    };
+    const { client, calls } = stubClient([
+      ok({ item_id: 'i1', count: 3, removed: false }),
+      ok(removed),
+      ok(null),
+      ok([{ item: { id: 'i1' }, contributions: [] }]),
+      ok({ item_id: 'i1', count: 'drei', removed: false }),
+    ]);
+    const transport = createSupabaseTransport(client);
+    expect(await transport.adjustItemCount('i1', 1)).toEqual({
+      item_id: 'i1',
+      count: 3,
+      removed: false,
+    });
+    expect(await transport.adjustItemCount('i1', -1)).toEqual(removed);
+    expect(await transport.adjustItemCount('i1', -1)).toBeNull();
+    expect(await transport.clearShoppingList('h1')).toEqual([
+      { item: { id: 'i1' }, contributions: [] },
+    ]);
+    await expect(transport.adjustItemCount('i1', 1)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'invalid_response',
+    });
+    expect(calls).toEqual([
+      { fn: 'adjust_item_count', args: { p_item_id: 'i1', p_delta: 1 } },
+      { fn: 'adjust_item_count', args: { p_item_id: 'i1', p_delta: -1 } },
+      { fn: 'adjust_item_count', args: { p_item_id: 'i1', p_delta: -1 } },
+      { fn: 'clear_shopping_list', args: { p_household_id: 'h1' } },
+      { fn: 'adjust_item_count', args: { p_item_id: 'i1', p_delta: 1 } },
     ]);
   });
 
@@ -183,6 +222,11 @@ describe('supabase transport', () => {
     [404, { message: 'row_not_found', code: 'P0002' }, 'permanent', 'row_not_found'],
     [409, { message: 'already_member', code: '23505' }, 'permanent', 'already_member'],
     [403, { message: 'permission denied for table recipes', code: '42501' }, 'permanent', '42501'],
+    // PostgREST answers SQLSTATE P0002 (and P0001) with 500; what our functions raise on purpose
+    // is permanent, else a queued entry the server refuses would block the store queue for ever.
+    [500, { message: 'last_member', code: 'P0001' }, 'permanent', 'last_member'],
+    [500, { message: 'row_not_found', code: 'P0002' }, 'permanent', 'row_not_found'],
+    [500, { message: 'invitation_not_found', code: 'P0001' }, 'permanent', 'invitation_not_found'],
   ] as const)('classifies status %i as %s', (status, error, kind, code) => {
     const classified = classifyError(status, error);
     expect(classified).toBeInstanceOf(TransportError);
