@@ -242,6 +242,77 @@ describe('checks.yml', () => {
   });
 });
 
+describe('infra/github rulesets (Task 10, decision 28)', () => {
+  const read = (name) => {
+    const file = path.join(root, 'infra/github', `ruleset-${name}.json`);
+    return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+  };
+  const rulesets = { develop: read('develop'), main: read('main'), tags: read('tags') };
+  const rule = (set, type) => set?.rules.find((r) => r.type === type);
+  /** Every job name of checks.yml except the helper "Änderungen". */
+  const checkJobNames = Object.values(byFile('checks.yml')?.doc.jobs ?? {})
+    .map((j) => j.name)
+    .filter((name) => name !== 'Änderungen')
+    .sort();
+  // The GitHub Actions app: only check runs from Actions can satisfy a required check.
+  const GITHUB_ACTIONS_APP_ID = 15368;
+
+  test('AC-001: three active rulesets without any bypass, for develop, main and tags v*', () => {
+    for (const [name, set] of Object.entries(rulesets)) {
+      assert.ok(set, `infra/github/ruleset-${name}.json`);
+      assert.equal(set.enforcement, 'active', name);
+      assert.deepEqual(set.bypass_actors, [], name);
+    }
+    assert.deepEqual(rulesets.develop.conditions.ref_name.include, ['refs/heads/develop']);
+    assert.deepEqual(rulesets.main.conditions.ref_name.include, ['refs/heads/main']);
+    assert.deepEqual(rulesets.tags.conditions.ref_name.include, ['refs/tags/v*']);
+    assert.equal(rulesets.develop.target, 'branch');
+    assert.equal(rulesets.main.target, 'branch');
+    assert.equal(rulesets.tags.target, 'tag');
+  });
+
+  test('AC-001: develop and main take changes only through pull requests; no force push, no deletion', () => {
+    for (const name of ['develop', 'main']) {
+      const set = rulesets[name];
+      assert.ok(rule(set, 'deletion'), name);
+      assert.ok(rule(set, 'non_fast_forward'), name);
+      const pr = rule(set, 'pull_request');
+      assert.ok(pr, name);
+      // One owner, and the hand-back merges itself: an approval could never be given.
+      assert.equal(pr.parameters.required_approving_review_count, 0, name);
+    }
+  });
+
+  test('AC-003, AC-066: develop allows squash and merge commit, main only merge commit', () => {
+    const methods = (set) => [...rule(set, 'pull_request').parameters.allowed_merge_methods].sort();
+    assert.deepEqual(methods(rulesets.develop), ['merge', 'squash']);
+    assert.deepEqual(methods(rulesets.main), ['merge']);
+  });
+
+  test('AC-002: the required checks are exactly the job names of checks.yml, from GitHub Actions', () => {
+    assert.deepEqual(checkJobNames, [...REQUIRED_CHECKS].sort());
+    for (const name of ['develop', 'main']) {
+      const checks = rule(rulesets[name], 'required_status_checks')?.parameters;
+      assert.ok(checks, name);
+      assert.deepEqual(
+        checks.required_status_checks.map((c) => c.context).sort(),
+        checkJobNames,
+        name,
+      );
+      for (const c of checks.required_status_checks) {
+        assert.equal(c.integration_id, GITHUB_ACTIONS_APP_ID, `${name}: ${c.context}`);
+      }
+      // "Up to date" is not required (decision 28).
+      assert.equal(checks.strict_required_status_checks_policy, false, name);
+    }
+  });
+
+  test('tags v* cannot be moved or deleted; creating stays allowed for the release job', () => {
+    const types = rulesets.tags.rules.map((r) => r.type).sort();
+    assert.deepEqual(types, ['deletion', 'non_fast_forward', 'update']);
+  });
+});
+
 test('workflow files parse as YAML', () => {
   for (const { file, doc } of workflows) assert.equal(typeof doc, 'object', file);
   assert.ok(existsSync(path.join(root, '.github/dependabot.yml')));
