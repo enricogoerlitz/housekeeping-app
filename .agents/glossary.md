@@ -260,8 +260,9 @@ Die Uhrzeit, für die an einem Restaurant-Eintrag im Kalender reserviert ist (�
 Restaurant-Einträgen. Reserviert wird weiter in den Karten-Apps; die App hält nur die Uhrzeit fest
 (Spec 0013, D43).
 
-- **Im Code (vorläufig):** am `MealPlanEntry` mit `kind: 'restaurant'`: `reservedAt`,
-  `remindMinutesBefore`
+- **Im Code:** am `MealPlanEntry` mit `kind: 'restaurant'`: `reservedAt` (`reserved_at`, Uhrzeit
+  `TimeOfDay`), `remindMinutesBefore` (`remind_minutes_before`, `RemindMinutes`: 30, 60, 120, 180,
+  240; Auswahl `REMIND_CHOICES`, Text `remindLabel`)
 - **Nicht verwenden:** Buchung, Termin
 - **Abgrenzung:** Ein _Besuch_ wird aus dem Wochenplan abgeleitet und hat keine Uhrzeit.
 
@@ -515,7 +516,7 @@ Sammlungen; das Rezept selbst bleibt unberührt, wenn man es aus einer Sammlung 
 Etwas, das im Haushalt zu tun ist, einmalig oder wiederkehrend, z. B. „Bad putzen“. Kann eine
 optionale Uhrzeit haben, zu der am Fälligkeitstag erinnert wird (Spec 0013, D42).
 
-- **Im Code:** `Chore`, `chores`; Uhrzeit (vorläufig) `Chore.dueTime`
+- **Im Code:** `Chore`, `chores`; Uhrzeit siehe [Uhrzeit (Aufgabe)](#uhrzeit-aufgabe)
 - **Nicht verwenden:** To-do, Task (bezeichnet im Plan einer Spec etwas anderes), Pflicht
 
 ### Rhythmus
@@ -769,7 +770,9 @@ Restaurants), Aktivitäten, fällige und überfällige Aufgaben, Vorbereitung f�
 Uhrzeit (Standard 7:30) und Teile wählbar, am Anfang aus. Kommt nur, wenn es etwas gibt (Spec 0013,
 D37).
 
-- **Im Code (vorläufig):** Art `dailySummary` in den Benachrichtigungs-Einstellungen
+- **Im Code:** Art `dailySummary` (`NotificationKind`); Felder `dailySummaryEnabled`,
+  `dailySummaryAt`, `dailySummaryParts` (`DailySummaryPart`: `meals`, `activities`, `chores`,
+  `prep`), Spalten `daily_summary_*`
 - **Nicht verwenden:** Tageszusammenfassung (Feature-Konzept F1), Morgen-Nachricht, Digest
 
 ### Benachrichtigungs-Einstellungen
@@ -778,7 +781,8 @@ Was eine Person wann bekommt: je Art an/aus, Uhrzeiten, beim Tagesüberblick die
 Mitglied und Haushalt auf allen Geräten der Person; je Gerät gibt es nur „an“ oder „aus“ (Spec
 0013, D38). Nur die Person selbst liest und schreibt sie; synchronisiert.
 
-- **Im Code (vorläufig):** `NotificationSettings`, `notification_settings`
+- **Im Code:** `NotificationSettings` (Zod-Schema `NotificationSettingsSchema`),
+  `notification_settings`; Arten `NotificationKind`
 - **Nicht verwenden:** Push-Einstellungen, Profil-Einstellungen
 
 ### Push-Abo
@@ -787,7 +791,9 @@ Die Anmeldung eines Geräts bzw. Browsers für Web Push: Push-Adresse, Schlüsse
 an/aus, letzter Erfolg. Gehört einer Person, nicht einem Haushalt, und wird nicht synchronisiert
 (Ausnahme von Regel 5, Spec 0013). In der Oberfläche „Deine Geräte“.
 
-- **Im Code (vorläufig):** `PushSubscription`, `push_subscriptions`
+- **Im Code:** Tabelle `private.push_subscriptions`; die eigene Liste ohne Push-Adresse und
+  Schlüssel `OwnPushSubscription` (aus `list_push_subscriptions`). Nicht `PushSubscription`: Das
+  ist der Typ des Browsers.
 - **Nicht verwenden:** Abo (allein, das meint nichts), Gerät (für den Datensatz), Token
 
 ### Zustell-Protokoll
@@ -796,7 +802,7 @@ Ein Eintrag je zugestellter Nachricht und Gerät mit eindeutigem Schlüssel, Zei
 verhindert doppelte Nachrichten. 30 Tage aufbewahrt, nur für den Zeitplaner, nie aus der App
 lesbar (Spec 0013).
 
-- **Im Code (vorläufig):** `notification_deliveries`
+- **Im Code:** `private.notification_deliveries`
 - **Nicht verwenden:** Log, Versandliste
 
 ### Zeitplaner
@@ -806,5 +812,32 @@ Nachrichten in der Zeitzone des Haushalts, schreibt sie ins Zustell-Protokoll un
 `pg_net` an die Edge Function `push-send`, die nur zustellt und keinen Datenbankzugang hat (Spec
 0013, D40).
 
-- **Im Code (vorläufig):** Datenbankfunktion mit `pg_cron`-Job; Edge Function `push-send`
+- **Im Code:** `private.run_notification_tick` (`pg_cron`-Job `notification-tick`), Kandidaten aus
+  `private.notification_candidates`; Edge Function `push-send`
 - **Nicht verwenden:** Cronjob (für das Ganze), Scheduler (in der Oberfläche)
+
+### Takt
+
+Ein Lauf des Zeitplaners, alle 5 Minuten zur vollen 5. Minute. Eine Nachricht kommt in dem Takt,
+der ihre Uhrzeit erreicht; was mehr als 30 Minuten zu spät käme, entfällt (Spec 0013).
+
+- **Im Code:** `private.run_notification_tick(p_now)`
+- **Nicht verwenden:** Tick (in der Oberfläche), Durchlauf
+
+### Probe
+
+Eine Nachricht „Probe: So sehen deine Benachrichtigungen aus.“, die „Probe senden“ sofort an
+dieses Gerät schickt, und nur an dieses (Spec 0013, REQ-003). Höchstens 3 in 10 Minuten.
+
+- **Im Code:** `send_test_push`; Art `test` im Zustell-Protokoll
+- **Nicht verwenden:** Test-Nachricht (in der Oberfläche), Ping
+
+### Uhrzeit (Aufgabe)
+
+Die optionale Uhrzeit einer Aufgabe, zu der am Fälligkeitstag erinnert wird, wer dran ist („Müll
+rausbringen · 19:00“). In 5-Minuten-Schritten, Ortszeit des Haushalts; ✕ entfernt sie (Spec 0013,
+D42). Rezepte, Sammlungen und Aktivitäten haben keine Uhrzeit.
+
+- **Im Code:** `Chore.dueTime` (`TimeOfDay`, „HH:MM“), `chores.due_time`; anzeigen mit
+  `withTime`/`formatTime`, eintippen mit `TimeField` und `parseTimeInput`
+- **Nicht verwenden:** Termin, Deadline, Fälligkeitszeit

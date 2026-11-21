@@ -1,5 +1,6 @@
 // Domain types shared by core, api and the app. Names follow .agents/glossary.md.
 // Dates are ISO strings without time ("2026-11-20"); timestamps are full ISO strings.
+import { z } from 'zod';
 
 export type Id = string;
 export type ISODate = string;
@@ -188,6 +189,10 @@ export interface MealPlanEntry {
   cookId?: Id;
   sort: number;
   notCooked?: boolean;
+  /** "Reserviert um" (spec 0013, REQ-008); only on restaurant entries. */
+  reservedAt?: TimeOfDay;
+  /** "Erinnern … vorher"; undefined = DEFAULT_REMIND_MINUTES (the column default, 120). */
+  remindMinutesBefore?: RemindMinutes;
 }
 
 // ---------- Restaurants ----------
@@ -305,6 +310,8 @@ export interface Chore {
   lastDoneOn?: ISODate;
   /** 1–12; undefined = all year. */
   activeMonths?: number[];
+  /** "Uhrzeit": reminder on the due day (spec 0013, REQ-007); undefined = none. */
+  dueTime?: TimeOfDay;
 }
 
 export interface ChoreEvent {
@@ -406,3 +413,62 @@ export interface PackingItem {
   packSeq: number;
   sort: number;
 }
+
+// ---------- Notifications (spec 0013) ----------
+
+/**
+ * A time of day "HH:MM" (24 h) in the household's local time, always in five-minute steps like
+ * the scheduler's tick (plan, Decision 4; `private.is_five_minute_time` in the database).
+ */
+export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5][05]$/);
+export type TimeOfDay = z.infer<typeof TimeOfDaySchema>;
+
+/** "Erinnern … vorher" of a reservation, in minutes (Offene Frage 2 A). */
+export const RemindMinutesSchema = z.literal([30, 60, 120, 180, 240]);
+export type RemindMinutes = z.infer<typeof RemindMinutesSchema>;
+
+/** The parts of the "Tagesüberblick": Essen, Aktivitäten, Aufgaben, Vorbereitung. */
+export const DailySummaryPartSchema = z.enum(['meals', 'activities', 'chores', 'prep']);
+export type DailySummaryPart = z.infer<typeof DailySummaryPartSchema>;
+
+/**
+ * "Benachrichtigungs-Einstellungen" of one member in one household (one row per member, created
+ * by the server with the defaults; the member changes only these fields).
+ */
+export const NotificationSettingsSchema = z.object({
+  id: z.string(),
+  memberId: z.string(),
+  dailySummaryEnabled: z.boolean(),
+  dailySummaryAt: TimeOfDaySchema,
+  /** 1–4 parts, each at most once. */
+  dailySummaryParts: z
+    .array(DailySummaryPartSchema)
+    .min(1)
+    .max(4)
+    .refine((parts) => new Set(parts).size === parts.length),
+  activitiesEveEnabled: z.boolean(),
+  activitiesEveAt: TimeOfDaySchema,
+  choreRemindersEnabled: z.boolean(),
+  reservationRemindersEnabled: z.boolean(),
+});
+export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
+
+/** What the server says about a push subscription ("Deine Geräte"). */
+export const PushSubscriptionStatusSchema = z.enum(['active', 'off', 'unreachable']);
+export type PushSubscriptionStatus = z.infer<typeof PushSubscriptionStatusSchema>;
+
+/**
+ * One of the person's own "Push-Abos" as `list_push_subscriptions` returns it: never the push
+ * address or keys. Not `PushSubscription`, which is the browser's type.
+ */
+export const OwnPushSubscriptionSchema = z.object({
+  id: z.string(),
+  /** "Mac · Chrome" (deviceLabel). */
+  label: z.string(),
+  status: PushSubscriptionStatusSchema,
+  /** The subscription of the device that asks. */
+  isCurrent: z.boolean(),
+  createdAt: z.string(),
+  lastSuccessAt: z.string().optional(),
+});
+export type OwnPushSubscription = z.infer<typeof OwnPushSubscriptionSchema>;

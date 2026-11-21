@@ -865,3 +865,19 @@ aus RFC 8291/8292 bleiben als Tests gegen die Bibliothek erhalten. Neue Abhängi
 Schlüssel: Agenten lesen `.env` nie. Das Erzeugen der lokalen Schlüssel (`scripts/push-keys.mjs`)
 schreibt Werte, ohne sie auszugeben; ausgeführt wird es von Enrico oder einmalig vom Lead, ohne
 Werte anzuzeigen.
+
+## Entscheidungen beim Bauen (core/ui, Tasks 3–4, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. `MealPlanEntry.remindMinutesBefore` ist im Gerät optional (fehlt = 120, `DEFAULT_REMIND_MINUTES`).
+2. Leerwort „keine Uhrzeit“ kommt aus der App (`timeFieldA11yValue`), ui hat keine Texte.
+3. `TimeField` ohne Stepper/Pfeiltasten; 5-Minuten-Raster prüft core („Bitte in 5-Minuten-Schritten“).
+4. Typname `OwnPushSubscription` (Kollision mit dem Browser-Typ).
+5. Gleichlauf-Tests nur auf der SQL-Seite (`notification_parity.test.sql`).
+6. Texte: Hinweis zur Uhrzeit an der Aufgabe je nach Einstellung; abgelehnte Erlaubnis
+   „Erlaube Benachrichtigungen in den Browser-Einstellungen für diese Seite.“; „n an“ / „Alle aus“;
+   „iPhone · App“ / „iPad · App“; „Aufgaben mit Uhrzeit“ ohne Untertitel.
+7. „Dieses Gerät“: bei abgelehnter Erlaubnis ausgegraut; Einschalten einer Art schaltet ein hier
+   ausgeschaltetes Gerät nicht wieder an; beim Start wird ein Gerät mit entzogener Erlaubnis vergessen.
+8. Uhrzeit-Eingabe: „24:00“ ungültig; Pflichtfeld leer → „Bitte eine Uhrzeit eingeben“.

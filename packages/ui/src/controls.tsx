@@ -25,6 +25,7 @@ import {
   type StarPointerEvent,
   type StarStep,
 } from './star-value';
+import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 
@@ -333,19 +334,44 @@ export function CheckboxMark(props: { checked: boolean }) {
   );
 }
 
-export interface SwitchRowProps {
+export type SwitchRowProps = {
   label: string;
   description?: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
   disabled?: boolean;
   testID?: string;
-}
+} & (
+  | { onDetail?: undefined; detailLabel?: undefined; detailDisabled?: undefined }
+  | {
+      /** Opens the details ("›"): the text becomes a button of its own beside the switch. */
+      onDetail: () => void;
+      /** Accessible name of that button, from the feature, e.g. "Tagesüberblick einstellen". */
+      detailLabel: string;
+      detailDisabled?: boolean;
+    }
+);
 
-/** A labelled on/off setting. */
+/** A labelled on/off setting; with `onDetail` its text opens the details (spec 0013). */
 export function SwitchRow(props: SwitchRowProps) {
   const theme = useTheme();
   const c = theme.colors;
+  const names = switchRowParts({
+    label: props.label,
+    description: props.description,
+    detailLabel: props.detailLabel,
+    hasDetail: props.onDetail !== undefined,
+  });
+  const text = (
+    <View style={{ flex: 1 }}>
+      <Text variant="rowTitle">{props.label}</Text>
+      {props.description ? (
+        <Text variant="small" color="muted">
+          {props.description}
+        </Text>
+      ) : null}
+    </View>
+  );
   return (
     <View
       style={{
@@ -356,17 +382,39 @@ export function SwitchRow(props: SwitchRowProps) {
         paddingVertical: 6,
       }}
     >
-      <View style={{ flex: 1 }}>
-        <Text variant="rowTitle">{props.label}</Text>
-        {props.description ? (
-          <Text variant="small" color="muted">
-            {props.description}
-          </Text>
-        ) : null}
-      </View>
+      {props.onDetail ? (
+        <Pressable
+          testID={props.testID ? `${props.testID}-detail` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={names.detailLabel}
+          accessibilityState={{ disabled: !!props.detailDisabled }}
+          disabled={props.detailDisabled}
+          onPress={props.onDetail}
+          style={(state) => {
+            const { pressed, focused } = state as PressState;
+            return [
+              {
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                minHeight: 44,
+                borderRadius: theme.shape.radius.control,
+                opacity: props.detailDisabled ? 0.45 : pressed ? 0.6 : 1,
+              },
+              focusRing(theme, focused),
+            ];
+          }}
+        >
+          {text}
+          <Icon name="chevron-right" size={18} color="muted" />
+        </Pressable>
+      ) : (
+        text
+      )}
       <RNSwitch
         testID={props.testID}
-        accessibilityLabel={props.label}
+        accessibilityLabel={names.switchLabel}
         value={props.value}
         onValueChange={props.onValueChange}
         disabled={props.disabled}
@@ -580,6 +628,7 @@ export interface TextFieldProps extends Pick<
   | 'onBlur'
   | 'numberOfLines'
   | 'maxLength'
+  | 'accessibilityValue'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;

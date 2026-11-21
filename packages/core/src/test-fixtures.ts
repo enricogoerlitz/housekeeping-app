@@ -4,6 +4,7 @@ import type {
   CollectionRecipe,
   Id,
   Member,
+  NotificationSettings,
   PackingBag,
   PackingBagItem,
   Recipe,
@@ -356,3 +357,16 @@ export const packingBagItems: PackingBagItem[] = [
     ['Kamera'],
   ]),
 ];
+
+/** The defaults of a new member's row, as the column defaults set them (spec 0013, AC-011). */
+export const notificationDefaults: NotificationSettings = {
+  id: 'ns-enrico',
+  memberId: enrico.id,
+  dailySummaryEnabled: false,
+  dailySummaryAt: '07:30',
+  dailySummaryParts: ['meals', 'activities', 'chores', 'prep'],
+  activitiesEveEnabled: false,
+  activitiesEveAt: '19:00',
+  choreRemindersEnabled: true,
+  reservationRemindersEnabled: true,
+};

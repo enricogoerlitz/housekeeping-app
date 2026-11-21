@@ -206,3 +206,42 @@ describe('AC-043: "bei Bedarf" in the household row', () => {
     expect(short(row['2026-11-16'])).toEqual([`✓ Fenster Küche (${nadja.id})`]);
   });
 });
+
+describe('spec 0013: the time of a chore in the household row', () => {
+  const timed = { ...muell, dueTime: '19:00' };
+
+  it('AC-022: "Müll rausbringen · 19:00" on its due day and on the computed days after', () => {
+    const row = householdRow({
+      chores: [timed],
+      events: [],
+      members,
+      from: '2026-11-16',
+      to: '2026-11-29',
+      today: '2026-11-22',
+    });
+    expect(row['2026-11-22']?.map((item) => item.title)).toEqual(['Müll rausbringen · 19:00']);
+    expect(row['2026-11-29']?.map((item) => item.title)).toEqual(['Müll rausbringen · 19:00']);
+  });
+
+  it('AC-025: without a time, and in what was done, the title stays as it is', () => {
+    const done: ChoreEvent = {
+      ...badDone,
+      id: 'ev-m',
+      choreId: 'muell',
+      title: 'Müll rausbringen',
+    };
+    const row = householdRow({
+      chores: [muell, { ...timed, id: 'muell-2' }],
+      events: [{ ...done, doneOn: '2026-11-16' }],
+      members,
+      from: '2026-11-16',
+      to: '2026-11-22',
+      today,
+    });
+    expect(row['2026-11-16']?.map((item) => item.title)).toEqual(['Müll rausbringen']);
+    expect(row['2026-11-22']?.map((item) => item.title)).toEqual([
+      'Müll rausbringen',
+      'Müll rausbringen · 19:00',
+    ]);
+  });
+});

@@ -1,0 +1,602 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  choreTimeHint,
+  dailySummaryPartLabel,
+  DEFAULT_REMIND_MINUTES,
+  deviceAction,
+  deviceLabel,
+  deviceRowLabel,
+  enabledKindsLabel,
+  formatTime,
+  isLastSummaryPart,
+  kindEnabled,
+  kindEnabledPatch,
+  kindSubtitle,
+  NOTIFICATION_KINDS,
+  notificationTargetHref,
+  parseNotificationTarget,
+  parseTimeInput,
+  permissionStatus,
+  pushSupport,
+  pushSupportHint,
+  REMIND_CHOICES,
+  remindLabel,
+  thisDeviceView,
+  toggleSummaryPart,
+  withTime,
+  type DeviceState,
+  type PushEnvironment,
+} from './notifications';
+import { notificationDefaults } from './test-fixtures';
+import { NotificationSettingsSchema, OwnPushSubscriptionSchema, TimeOfDaySchema } from './types';
+
+const HOUSEHOLD = '7d1c3a52-8f0e-4c4b-9a55-0c2f3e1d9b10';
+const CHORE = '1b6e5f4a-2c3d-4e5f-8a9b-0c1d2e3f4a5b';
+const ENTRY = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+
+describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
+  it('AC-001: the row in the settings reads "2 an" with the defaults', () => {
+    expect(enabledKindsLabel(notificationDefaults)).toBe('2 an');
+  });
+
+  it('AC-001: counts every kind that is on, "Alle aus" when none is', () => {
+    expect(enabledKindsLabel({ ...notificationDefaults, dailySummaryEnabled: true })).toBe('3 an');
+    expect(
+      enabledKindsLabel({
+        ...notificationDefaults,
+        choreRemindersEnabled: false,
+        reservationRemindersEnabled: false,
+      }),
+    ).toBe('Alle aus');
+  });
+
+  it('AC-011: the defaults: only chores with a time and reservations are on', () => {
+    expect(NOTIFICATION_KINDS.map((kind) => kindEnabled(notificationDefaults, kind))).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it('AC-011: subtitles "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung", "19:00", "2 h vorher, je Eintrag änderbar"', () => {
+    expect(kindSubtitle(notificationDefaults, 'dailySummary')).toBe(
+      '7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung',
+    );
+    expect(kindSubtitle(notificationDefaults, 'activitiesEve')).toBe('19:00');
+    expect(kindSubtitle(notificationDefaults, 'choreReminders')).toBeUndefined();
+    expect(kindSubtitle(notificationDefaults, 'reservationReminders')).toBe(
+      '2 h vorher, je Eintrag änderbar',
+    );
+  });
+
+  it('AC-012: the subtitle follows the chosen time and parts, always in the fixed order', () => {
+    const changed = {
+      ...notificationDefaults,
+      dailySummaryAt: '06:45',
+      dailySummaryParts: ['chores' as const, 'meals' as const],
+    };
+    expect(kindSubtitle(changed, 'dailySummary')).toBe('6:45 · Essen · Aufgaben');
+  });
+
+  it('AC-012: switching a kind is a patch of exactly its own field', () => {
+    expect(kindEnabledPatch('dailySummary', true)).toEqual({ dailySummaryEnabled: true });
+    expect(kindEnabledPatch('activitiesEve', false)).toEqual({ activitiesEveEnabled: false });
+    expect(kindEnabledPatch('choreReminders', false)).toEqual({ choreRemindersEnabled: false });
+    expect(kindEnabledPatch('reservationReminders', true)).toEqual({
+      reservationRemindersEnabled: true,
+    });
+  });
+
+  it('Decision 25: parts of the Tagesüberblick toggle, the last one cannot be deselected', () => {
+    expect(dailySummaryPartLabel('prep')).toBe('Vorbereitung');
+    expect(toggleSummaryPart(['meals', 'chores'], 'chores')).toEqual(['meals']);
+    expect(toggleSummaryPart(['chores'], 'prep')).toEqual(['chores', 'prep']);
+    expect(toggleSummaryPart(['prep', 'meals'], 'activities')).toEqual([
+      'meals',
+      'activities',
+      'prep',
+    ]);
+    expect(toggleSummaryPart(['meals'], 'meals')).toEqual(['meals']);
+    expect(isLastSummaryPart(['meals'], 'meals')).toBe(true);
+    expect(isLastSummaryPart(['meals', 'chores'], 'meals')).toBe(false);
+    expect(isLastSummaryPart(['meals'], 'chores')).toBe(false);
+  });
+
+  it('the schema takes a database-shaped row and refuses what the database refuses (23514)', () => {
+    expect(NotificationSettingsSchema.parse(notificationDefaults)).toEqual(notificationDefaults);
+    const bad = [
+      { dailySummaryParts: [] },
+      { dailySummaryParts: ['meals', 'meals'] },
+      { dailySummaryParts: ['weather'] },
+      { dailySummaryAt: '06:47' },
+      { activitiesEveAt: '19:00:00' },
+    ];
+    for (const patch of bad) {
+      expect(
+        NotificationSettingsSchema.safeParse({ ...notificationDefaults, ...patch }).success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe('times in five-minute steps (Decision 4 and 27)', () => {
+  it('reads "19", "1930", "19:30", "7.30" and more', () => {
+    const cases: [string, string][] = [
+      ['19', '19:00'],
+      ['7', '07:00'],
+      ['0', '00:00'],
+      ['1930', '19:30'],
+      ['730', '07:30'],
+      ['0745', '07:45'],
+      ['19:30', '19:30'],
+      ['7.30', '07:30'],
+      ['7:30', '07:30'],
+      [' 19.05 ', '19:05'],
+      ['23:55', '23:55'],
+    ];
+    for (const [input, time] of cases) {
+      expect(parseTimeInput(input), input).toEqual({ ok: true, time });
+    }
+  });
+
+  it('"19:03" asks for five-minute steps', () => {
+    expect(parseTimeInput('19:03')).toEqual({ ok: false, error: 'Bitte in 5-Minuten-Schritten' });
+    expect(parseTimeInput('1958')).toEqual({ ok: false, error: 'Bitte in 5-Minuten-Schritten' });
+  });
+
+  it('"25:00" and other nonsense is no valid time', () => {
+    for (const input of [
+      '25:00',
+      '24:00',
+      '19:60',
+      '1975',
+      '19:3',
+      '7:5',
+      'abc',
+      '19:30:00',
+      '-1',
+      '12345',
+    ]) {
+      expect(parseTimeInput(input), input).toEqual({ ok: false, error: 'Keine gültige Uhrzeit' });
+    }
+  });
+
+  it('AC-025: an empty field means no time; where a time is required it asks for one', () => {
+    expect(parseTimeInput('')).toEqual({ ok: true, time: undefined });
+    expect(parseTimeInput('   ')).toEqual({ ok: true, time: undefined });
+    expect(parseTimeInput('', { required: true })).toEqual({
+      ok: false,
+      error: 'Bitte eine Uhrzeit eingeben',
+    });
+  });
+
+  it('every parsed time passes the schema the api and the database use', () => {
+    const parsed = parseTimeInput('7.30');
+    expect(parsed.ok && TimeOfDaySchema.safeParse(parsed.time).success).toBe(true);
+  });
+
+  it('shows times as "H:MM", like the texts of the scheduler', () => {
+    expect(formatTime('07:30')).toBe('7:30');
+    expect(formatTime('19:00')).toBe('19:00');
+    expect(formatTime('00:05')).toBe('0:05');
+  });
+
+  it('AC-022: withTime adds " · 19:00" to a chore, AC-025: without a time it stays as it is', () => {
+    expect(withTime('Müll rausbringen', '19:00')).toBe('Müll rausbringen · 19:00');
+    expect(withTime('Müll rausbringen', '07:30')).toBe('Müll rausbringen · 7:30');
+    expect(withTime('Müll rausbringen', undefined)).toBe('Müll rausbringen');
+  });
+
+  it('AC-022: the hint under the time says whether the own setting is on', () => {
+    expect(choreTimeHint(true)).toBe(
+      'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)',
+    );
+    expect(choreTimeHint(false)).toBe(
+      'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus',
+    );
+  });
+
+  it('AC-029: "Erinnern" offers 30 min to 4 h, default 2 h', () => {
+    expect(REMIND_CHOICES).toEqual([30, 60, 120, 180, 240]);
+    expect(DEFAULT_REMIND_MINUTES).toBe(120);
+    expect(REMIND_CHOICES.map(remindLabel)).toEqual([
+      '30 Min vorher',
+      '1 h vorher',
+      '2 h vorher',
+      '3 h vorher',
+      '4 h vorher',
+    ]);
+  });
+});
+
+const chromeMac =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const firefoxMac =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0';
+const safariMac =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15';
+const iphone =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+const android =
+  'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+const edgeWindows =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0';
+
+describe('this device (REQ-002, REQ-010)', () => {
+  it('AC-004, AC-041: names the device "Mac · Chrome", "Mac · Firefox", "iPhone · App", …', () => {
+    expect(deviceLabel({ userAgent: chromeMac, standalone: false, touch: false })).toBe(
+      'Mac · Chrome',
+    );
+    expect(deviceLabel({ userAgent: firefoxMac, standalone: false, touch: false })).toBe(
+      'Mac · Firefox',
+    );
+    expect(deviceLabel({ userAgent: safariMac, standalone: false, touch: false })).toBe(
+      'Mac · Safari',
+    );
+    expect(deviceLabel({ userAgent: iphone, standalone: true, touch: true })).toBe('iPhone · App');
+    expect(deviceLabel({ userAgent: iphone, standalone: false, touch: true })).toBe(
+      'iPhone · Safari',
+    );
+    // iPadOS Safari says "Macintosh"; only the touch screen tells it apart.
+    expect(deviceLabel({ userAgent: safariMac, standalone: true, touch: true })).toBe('iPad · App');
+    expect(deviceLabel({ userAgent: android, standalone: false, touch: true })).toBe(
+      'Android · Chrome',
+    );
+    expect(deviceLabel({ userAgent: edgeWindows, standalone: false, touch: false })).toBe(
+      'Windows · Edge',
+    );
+    expect(deviceLabel({ userAgent: 'curl/8.0', standalone: false, touch: false })).toBe('Browser');
+    expect(deviceLabel({ userAgent: '', standalone: false, touch: false })).toBe('Browser');
+  });
+
+  it('a device name fits the 60 characters of the database', () => {
+    const long = `${'x'.repeat(500)} Windows Edg/1`;
+    expect(
+      deviceLabel({ userAgent: long, standalone: false, touch: false }).length,
+    ).toBeLessThanOrEqual(60);
+  });
+
+  const web: PushEnvironment = {
+    web: true,
+    dev: false,
+    ios: false,
+    standalone: false,
+    serviceWorker: true,
+    pushManager: true,
+    notification: true,
+  };
+
+  it('AC-006: tells what this browser can do', () => {
+    expect(pushSupport(web)).toBe('supported');
+    expect(pushSupport({ ...web, ios: true, pushManager: false })).toBe('ios-needs-home-screen');
+    expect(pushSupport({ ...web, ios: true, standalone: true })).toBe('supported');
+    // Before iOS 16.4 even the home-screen app has no push.
+    expect(pushSupport({ ...web, ios: true, standalone: true, pushManager: false })).toBe(
+      'unsupported',
+    );
+    expect(pushSupport({ ...web, pushManager: false })).toBe('unsupported');
+    expect(pushSupport({ ...web, notification: false })).toBe('unsupported');
+    expect(pushSupport({ ...web, dev: true })).toBe('dev-no-worker');
+    expect(pushSupport({ ...web, web: false, dev: true })).toBe('unsupported');
+  });
+
+  it('AC-006: the hint for each state', () => {
+    expect(pushSupportHint('supported')).toBeUndefined();
+    expect(pushSupportHint('ios-needs-home-screen')).toBe(
+      'Auf dem iPhone erst die App zum Home-Bildschirm hinzufügen',
+    );
+    expect(pushSupportHint('unsupported')).toBe(
+      'Dieser Browser kann keine Benachrichtigungen empfangen',
+    );
+    expect(pushSupportHint('dev-no-worker')).toBe(
+      'Im Entwicklungsserver gibt es keine Benachrichtigungen',
+    );
+  });
+
+  it('AC-004, AC-005: "✓ erlaubt", "nicht erlaubt" with the way out', () => {
+    expect(permissionStatus('granted')).toEqual({ label: '✓ erlaubt', hint: undefined });
+    expect(permissionStatus('denied')).toEqual({
+      label: 'nicht erlaubt',
+      hint: 'Erlaube Benachrichtigungen in den Browser-Einstellungen für diese Seite.',
+    });
+    expect(permissionStatus('default')).toEqual({ label: undefined, hint: undefined });
+  });
+
+  it('AC-004, AC-039, AC-041: "Deine Geräte" names this device and the state of the others', () => {
+    const row = { id: 's1', label: 'Mac · Firefox', createdAt: '2026-11-20T08:00:00Z' };
+    expect(deviceRowLabel({ ...row, status: 'active', isCurrent: true })).toBe(
+      'Mac · Firefox · dieses Gerät',
+    );
+    expect(
+      deviceRowLabel({ ...row, label: 'Mac · Chrome', status: 'active', isCurrent: false }),
+    ).toBe('Mac · Chrome');
+    expect(deviceRowLabel({ ...row, status: 'off', isCurrent: true })).toBe(
+      'Mac · Firefox · dieses Gerät · aus',
+    );
+    expect(deviceRowLabel({ ...row, status: 'unreachable', isCurrent: false })).toBe(
+      'Mac · Firefox · nicht erreichbar',
+    );
+    expect(
+      OwnPushSubscriptionSchema.safeParse({ ...row, status: 'gone', isCurrent: false }).success,
+    ).toBe(false);
+  });
+});
+
+const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/abc';
+const NEW_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/xyz';
+
+function device(partial: Partial<DeviceState> = {}): DeviceState {
+  return {
+    support: 'supported',
+    online: true,
+    permission: 'granted',
+    wanted: true,
+    browser: { endpoint: ENDPOINT, keyMatches: true },
+    storedEndpoint: ENDPOINT,
+    server: 'active',
+    ...partial,
+  };
+}
+
+describe('deviceAction on opening the app (Decision 18)', () => {
+  it('AC-003: never asks for permission on start, whatever the state', () => {
+    const states: DeviceState[] = [
+      device({ permission: 'default', wanted: undefined, browser: undefined, server: undefined }),
+      device({ permission: 'default', wanted: true, browser: undefined }),
+      device({ permission: 'default', wanted: false }),
+    ];
+    for (const state of states) {
+      expect(deviceAction(state, 'start').type).not.toBe('request-permission');
+    }
+  });
+
+  it('AC-003: a device nobody turned on here does nothing, even when the browser allows it', () => {
+    expect(
+      deviceAction(device({ wanted: undefined, browser: undefined, server: 'missing' }), 'start'),
+    ).toEqual({ type: 'none' });
+  });
+
+  it('a registered, active device does nothing; offline or unsupported does nothing', () => {
+    expect(deviceAction(device(), 'start')).toEqual({ type: 'none' });
+    expect(deviceAction(device({ online: false, browser: undefined }), 'start')).toEqual({
+      type: 'none',
+    });
+    expect(deviceAction(device({ support: 'unsupported' }), 'start')).toEqual({ type: 'none' });
+    expect(deviceAction(device({ server: undefined }), 'start')).toEqual({ type: 'none' });
+  });
+
+  it('AC-039: a new push address with permission granted registers again and drops the old one', () => {
+    expect(
+      deviceAction(
+        device({ browser: { endpoint: NEW_ENDPOINT, keyMatches: true }, server: 'missing' }),
+        'start',
+      ),
+    ).toEqual({ type: 'register', staleEndpoint: ENDPOINT });
+  });
+
+  it('AC-039: no browser subscription any more, another VAPID key, or "nicht erreichbar" → subscribe anew', () => {
+    expect(deviceAction(device({ browser: undefined, server: undefined }), 'start')).toEqual({
+      type: 'subscribe',
+    });
+    expect(
+      deviceAction(device({ browser: { endpoint: ENDPOINT, keyMatches: false } }), 'start'),
+    ).toEqual({ type: 'resubscribe' });
+    expect(deviceAction(device({ server: 'unreachable' }), 'start')).toEqual({
+      type: 'resubscribe',
+    });
+  });
+
+  it('AC-041: the same address, which the server no longer knows (removed elsewhere) → forget', () => {
+    expect(deviceAction(device({ server: 'missing' }), 'start')).toEqual({ type: 'forget' });
+    expect(deviceAction(device({ wanted: false, server: 'missing' }), 'start')).toEqual({
+      type: 'forget',
+    });
+  });
+
+  it('permission withdrawn in the browser → forget', () => {
+    expect(deviceAction(device({ permission: 'denied' }), 'start')).toEqual({ type: 'forget' });
+    expect(deviceAction(device({ permission: 'default', browser: undefined }), 'start')).toEqual({
+      type: 'forget',
+    });
+  });
+
+  it('Decision 17: a device switched off here stays registered and untouched', () => {
+    expect(deviceAction(device({ wanted: false, server: 'off' }), 'start')).toEqual({
+      type: 'none',
+    });
+  });
+});
+
+describe('deviceAction on a tap (Decision 26, AC-007)', () => {
+  const fresh = device({
+    permission: 'default',
+    wanted: undefined,
+    browser: undefined,
+    storedEndpoint: undefined,
+    server: undefined,
+  });
+
+  it('AC-007: switching on the device or a kind asks for permission first', () => {
+    expect(deviceAction(fresh, 'device-on')).toEqual({ type: 'request-permission' });
+    expect(deviceAction(fresh, 'kind-on')).toEqual({ type: 'request-permission' });
+  });
+
+  it('AC-004: once allowed, the browser subscribes and the server learns about it', () => {
+    expect(deviceAction({ ...fresh, permission: 'granted' }, 'device-on')).toEqual({
+      type: 'subscribe',
+    });
+    expect(
+      deviceAction(
+        { ...fresh, permission: 'granted', browser: { endpoint: ENDPOINT, keyMatches: true } },
+        'kind-on',
+      ),
+    ).toEqual({ type: 'register' });
+  });
+
+  it('AC-005: blocked in the browser, a tap does nothing more', () => {
+    expect(deviceAction({ ...fresh, permission: 'denied' }, 'device-on')).toEqual({ type: 'none' });
+  });
+
+  it('AC-008: a device switched off here is switched on only by its own switch', () => {
+    const off = device({ wanted: false, server: 'off' });
+    expect(deviceAction(off, 'device-on')).toEqual({ type: 'enable' });
+    expect(deviceAction(off, 'kind-on')).toEqual({ type: 'none' });
+  });
+
+  it('an active device needs nothing; offline or unsupported never acts', () => {
+    expect(deviceAction(device(), 'kind-on')).toEqual({ type: 'none' });
+    expect(deviceAction({ ...fresh, online: false }, 'device-on')).toEqual({ type: 'none' });
+    expect(deviceAction({ ...fresh, support: 'ios-needs-home-screen' }, 'device-on')).toEqual({
+      type: 'none',
+    });
+  });
+
+  it('AC-039: a gone or foreign-key subscription is replaced on a tap as well', () => {
+    expect(deviceAction(device({ server: 'unreachable' }), 'device-on')).toEqual({
+      type: 'resubscribe',
+    });
+    expect(
+      deviceAction(device({ browser: { endpoint: ENDPOINT, keyMatches: false } }), 'kind-on'),
+    ).toEqual({ type: 'resubscribe' });
+  });
+});
+
+describe('thisDeviceView: the section "Dieses Gerät" (AC-004 to AC-006, AC-010)', () => {
+  it('AC-004: allowed and registered: switch on, "✓ erlaubt", "Probe senden" possible', () => {
+    expect(thisDeviceView(device())).toEqual({
+      switchOn: true,
+      switchDisabled: false,
+      status: '✓ erlaubt',
+      hint: undefined,
+      probeDisabled: false,
+      probeHint: undefined,
+    });
+  });
+
+  it('AC-010: switched off: "Probe senden" is greyed out with "Erst auf diesem Gerät einschalten"', () => {
+    const view = thisDeviceView(device({ wanted: false, server: 'off' }));
+    expect(view.switchOn).toBe(false);
+    expect(view.probeDisabled).toBe(true);
+    expect(view.probeHint).toBe('Erst auf diesem Gerät einschalten');
+  });
+
+  it('AC-005: blocked: switch off and greyed out, the hint shows the way out', () => {
+    const view = thisDeviceView(device({ permission: 'denied', browser: undefined }));
+    expect(view).toMatchObject({
+      switchOn: false,
+      switchDisabled: true,
+      status: 'nicht erlaubt',
+      hint: 'Erlaube Benachrichtigungen in den Browser-Einstellungen für diese Seite.',
+      probeDisabled: true,
+    });
+  });
+
+  it('AC-006: iPhone without the home screen: switch greyed out with the hint', () => {
+    const view = thisDeviceView(
+      device({ support: 'ios-needs-home-screen', permission: 'default', browser: undefined }),
+    );
+    expect(view).toMatchObject({
+      switchOn: false,
+      switchDisabled: true,
+      hint: 'Auf dem iPhone erst die App zum Home-Bildschirm hinzufügen',
+      probeDisabled: true,
+    });
+  });
+
+  it('REQ-002: offline the switch keeps its state but is greyed out, "Probe senden" too', () => {
+    const view = thisDeviceView(device({ online: false, server: undefined }));
+    expect(view).toMatchObject({ switchOn: true, switchDisabled: true, probeDisabled: true });
+    expect(view.probeHint).toBeUndefined();
+  });
+
+  it('not yet turned on here: switch off, but it can be tapped', () => {
+    const view = thisDeviceView(
+      device({ permission: 'default', wanted: undefined, browser: undefined, server: undefined }),
+    );
+    expect(view).toMatchObject({ switchOn: false, switchDisabled: false, status: undefined });
+  });
+});
+
+describe('parseNotificationTarget: where a tap on a notification leads (Decision 12)', () => {
+  it('AC-037: the Tagesüberblick opens the "Übersicht" of its household', () => {
+    expect(parseNotificationTarget(`/?haushalt=${HOUSEHOLD}`)).toEqual({
+      screen: 'overview',
+      householdId: HOUSEHOLD,
+    });
+    expect(parseNotificationTarget('/')).toEqual({ screen: 'overview' });
+  });
+
+  it('AC-037: a chore reminder opens the chore', () => {
+    expect(parseNotificationTarget(`/haushalt?aufgabe=${CHORE}&haushalt=${HOUSEHOLD}`)).toEqual({
+      screen: 'chore',
+      choreId: CHORE,
+      householdId: HOUSEHOLD,
+    });
+  });
+
+  it('AC-037: a reservation or a single activity opens the calendar entry; several the day', () => {
+    expect(
+      parseNotificationTarget(`/kalender?tag=2026-11-21&eintrag=${ENTRY}&haushalt=${HOUSEHOLD}`),
+    ).toEqual({ screen: 'calendar', day: '2026-11-21', entryId: ENTRY, householdId: HOUSEHOLD });
+    expect(parseNotificationTarget(`/kalender?tag=2026-11-21&haushalt=${HOUSEHOLD}`)).toEqual({
+      screen: 'calendar',
+      day: '2026-11-21',
+      householdId: HOUSEHOLD,
+    });
+  });
+
+  it('AC-009: the probe opens the page "Benachrichtigungen"', () => {
+    expect(parseNotificationTarget('/einstellungen/benachrichtigungen')).toEqual({
+      screen: 'notificationSettings',
+    });
+  });
+
+  it('AC-038: a changed link opens the "Übersicht"', () => {
+    const attacks = [
+      'https://evil.example/haushalt',
+      `https://evil.example/?haushalt=${HOUSEHOLD}`,
+      'javascript:alert(1)',
+      '//evil.example/kalender?tag=2026-11-21',
+      '/\\evil.example',
+      '/admin',
+      '/haushalt/../rezepte',
+      '/kalender',
+      '/kalender?tag=2026-13-45',
+      '/kalender?tag=morgen',
+      `/kalender?tag=2026-11-21&eintrag=kaputt`,
+      '/haushalt',
+      '/haushalt?aufgabe=1',
+      `/haushalt?aufgabe=${CHORE}&haushalt=nope`,
+      `/?haushalt=${HOUSEHOLD}x`,
+      '',
+      'haushalt',
+    ];
+    for (const attack of attacks) {
+      expect(parseNotificationTarget(attack), attack).toEqual({ screen: 'overview' });
+    }
+  });
+
+  it('of a repeated parameter the first counts, unknown parameters are ignored', () => {
+    expect(
+      parseNotificationTarget(`/haushalt?aufgabe=${CHORE}&aufgabe=x&utm=1&haushalt=${HOUSEHOLD}`),
+    ).toEqual({ screen: 'chore', choreId: CHORE, householdId: HOUSEHOLD });
+  });
+
+  it('notificationTargetHref builds the address of the screen, without the household', () => {
+    expect(notificationTargetHref({ screen: 'overview', householdId: HOUSEHOLD })).toBe('/');
+    expect(
+      notificationTargetHref({ screen: 'chore', choreId: CHORE, householdId: HOUSEHOLD }),
+    ).toBe(`/haushalt?aufgabe=${CHORE}`);
+    expect(notificationTargetHref({ screen: 'calendar', day: '2026-11-21', entryId: ENTRY })).toBe(
+      `/kalender?tag=2026-11-21&eintrag=${ENTRY}`,
+    );
+    expect(notificationTargetHref({ screen: 'calendar', day: '2026-11-21' })).toBe(
+      '/kalender?tag=2026-11-21',
+    );
+    expect(notificationTargetHref({ screen: 'notificationSettings' })).toBe(
+      '/einstellungen/benachrichtigungen',
+    );
+  });
+});

@@ -141,3 +141,4 @@ export { EditableSection, type EditableSectionProps } from './editable-section';
 export { Disclosure, type DisclosureProps } from './disclosure';
 export { PhotoCollage, type PhotoCollageProps } from './display';
 export { SelectRow, type SelectRowProps } from './lists';
+export { TimeField, type TimeFieldProps } from './time-field';

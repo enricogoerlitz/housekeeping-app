@@ -1,5 +1,6 @@
 import { nextAssignee, nextDueAfter } from './chores';
 import { addDays, parseISODate } from './dates';
+import { withTime } from './notifications';
 import type { Chore, ChoreEvent, Id, ISODate, Member } from './types';
 
 // The household row of the calendar (spec 0010, REQ-006): past days show what was done, today what
@@ -8,6 +9,7 @@ import type { Chore, ChoreEvent, Id, ISODate, Member } from './types';
 export interface HouseholdRowItem {
   key: string;
   choreId?: Id;
+  /** With the chore's time on open and planned days: "Müll rausbringen · 19:00" (spec 0013). */
   title: string;
   /** Avatars: who did it, or whose turn it is. */
   memberIds: Id[];
@@ -119,7 +121,7 @@ export function householdRow(input: {
       push(today, {
         key: `open-${chore.id}`,
         choreId: chore.id,
-        title: chore.title,
+        title: withTime(chore.title, chore.dueTime),
         memberIds: turnOf(chore, chore.nextAssigneeId, members),
         status: 'open',
         approximate: false,
@@ -155,7 +157,7 @@ export function householdRow(input: {
         push(date, {
           key: `plan-${chore.id}-${date}`,
           choreId: chore.id,
-          title: chore.title,
+          title: withTime(chore.title, chore.dueTime),
           memberIds: turnOf(chore, assigneeId, members),
           status: 'planned',
           approximate,

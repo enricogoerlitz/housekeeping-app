@@ -1,8 +1,10 @@
 import { photoSource } from '@housekeeping/api';
 import {
+  formatTime,
   matchSearchOrCreate,
   moveInOrder,
   orderAnnouncement,
+  parseTimeInput,
   type Member,
 } from '@housekeeping/core';
 import {
@@ -35,6 +37,7 @@ import {
   SwitchRow,
   Text,
   TextField,
+  TimeField,
   ViewTabs,
   toast,
   useBreakpoint,
@@ -94,6 +97,7 @@ export function usePatternBlocks(): ReactNode[] {
     <DisclosureBlock key="disclosure" />,
     <CollageBlock key="collage" />,
     <SelectRowBlock key="select" />,
+    <TimeBlock key="time" />,
   ];
 }
 
@@ -1334,6 +1338,66 @@ function SelectRowBlock() {
         disabled={picked.size === 0}
         onPress={() => setPicked(new Set())}
         testID="showroom-select-take"
+      />
+    </Block>
+  );
+}
+
+// ---------- Spec 0013: time field and a switch with details ----------
+
+function TimeBlock() {
+  const [offline, setOffline] = useState(false);
+  const [text, setText] = useState('19:00');
+  const [error, setError] = useState<string>();
+  const [summaryOn, setSummaryOn] = useState(false);
+  const [summaryAt, setSummaryAt] = useState('07:30');
+  const read = () => {
+    const parsed = parseTimeInput(text);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    setError(undefined);
+    setText(parsed.time === undefined ? '' : formatTime(parsed.time));
+    if (parsed.time !== undefined) setSummaryAt(parsed.time);
+  };
+  return (
+    <Block
+      title="Uhrzeit und Schalter mit Detail"
+      note="Eintippen: „19“, „1930“, „7.30“. Nur 5-Minuten-Schritte, ✕ leert das Feld. Beim Schalter mit Detail öffnen Titel und „›“ die Einstellung, der Schalter bleibt eigener Knopf."
+      testID="showroom-time"
+    >
+      <SwitchRow label="Offline" value={offline} onValueChange={setOffline} />
+      <TimeField
+        label="Uhrzeit"
+        value={text}
+        onChangeText={(value) => {
+          setText(value);
+          setError(undefined);
+        }}
+        onBlur={read}
+        onSubmitEditing={read}
+        onClear={() => {
+          setText('');
+          setError(undefined);
+        }}
+        clearLabel="Uhrzeit entfernen"
+        emptyLabel="keine Uhrzeit"
+        placeholder="z. B. 19:00"
+        error={error}
+        disabled={offline}
+        hint={offline ? OFFLINE_HINT : undefined}
+        testID="showroom-time-field"
+      />
+      <SwitchRow
+        label="Tagesüberblick"
+        description={`${formatTime(summaryAt)} · Essen · Aufgaben`}
+        value={summaryOn}
+        onValueChange={setSummaryOn}
+        disabled={offline}
+        onDetail={() => toast.show({ message: 'Hier öffnet das Fenster mit Uhrzeit und Teilen' })}
+        detailLabel="Tagesüberblick einstellen"
+        testID="showroom-time-switch"
       />
     </Block>
   );
