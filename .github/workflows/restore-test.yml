@@ -1,0 +1,126 @@
+# Restore test (spec 0014, AC-056, plan Task 9, decision 19): takes the newest complete backup under
+# daily/ (older than 36 hours → red, e.g. when GitHub switched the schedule off), checks its
+# checksum, decrypts it, restores it into a throwaway Supabase database in the runner following
+# Supabase's restore guide (roles, schema, session_replication_role = replica, data) and compares
+# rows per table and the photo count with manifest.json. Nothing from the backup reaches the log or
+# an artifact: psql output goes to files, messages name tables and numbers only.
+#
+# Started on the first of the month by schedule.yml (on main, via workflow_dispatch), or by hand.
+# The identity of the environment may only read blobs. No package install.
+name: Wiederherstellungstest
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  wiederherstellungstest:
+    name: Wiederherstellungstest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: restore-test
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BACKUP_STORAGE_ACCOUNT: ${{ vars.BACKUP_STORAGE_ACCOUNT }}
+      # Public defaults of the local Supabase database (identical on every machine, not secrets).
+      RESTORE_DB: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+
+      - name: Vorbereiten
+        run: |
+          W="$RUNNER_TEMP/restore"
+          echo "W=$W" >> "$GITHUB_ENV"
+          mkdir -p "$W/download" "$W/backup" "$W/db"
+          sudo apt-get update -qq > /dev/null
+          sudo apt-get install -y -qq age > /dev/null
+          command -v psql > /dev/null || sudo apt-get install -y -qq postgresql-client > /dev/null
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Neueste Sicherung laden
+        run: |
+          az storage blob list --auth-mode login --account-name "$BACKUP_STORAGE_ACCOUNT" -c backups \
+            --prefix daily/ --num-results '*' --query "[].{name: name, lastModified: properties.lastModified}" \
+            -o json --only-show-errors > "$W/blobs.json"
+          if ! folder="$(node scripts/backup/paths.mjs latest --blobs "$W/blobs.json")"; then
+            echo "$folder"
+            exit 1
+          fi
+          echo "Sicherung: $folder"
+          for file in backup.tar.gz.age manifest.json; do
+            az storage blob download --auth-mode login --account-name "$BACKUP_STORAGE_ACCOUNT" -c backups \
+              -n "$folder/$file" -f "$W/download/$file" --only-show-errors -o none
+          done
+          node scripts/backup/compare.mjs checksum --manifest "$W/download/manifest.json" --archive "$W/download/backup.tar.gz.age"
+
+      - name: Entschlüsseln
+        env:
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+        run: |
+          KEY="$RUNNER_TEMP/backup.agekey"
+          (umask 077 && printf '%s\n' "$BACKUP_AGE_IDENTITY" > "$KEY")
+          status=0
+          age -d -i "$KEY" "$W/download/backup.tar.gz.age" | tar -xz -C "$W/backup" || status=$?
+          rm -f "$KEY"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Entschlüsseln oder Entpacken gescheitert (Schlüssel passt nicht zur Sicherung?)"
+            exit 1
+          fi
+
+      - name: Wegwerf-Datenbank starten
+        working-directory: ${{ runner.temp }}/restore/db
+        run: |
+          # An empty project: Postgres 17 with the Supabase roles and schemas, no migrations.
+          supabase init > /dev/null
+          supabase db start
+
+      - name: Einspielen
+        run: |
+          cd "$W/backup"
+          if ! psql "$RESTORE_DB" -X --single-transaction -v ON_ERROR_STOP=1 \
+            --file roles.sql --file schema.sql \
+            --command 'SET session_replication_role = replica' \
+            --file data.sql > /dev/null 2> "$W/psql.err"; then
+            # Only file and line of the first error; the message itself could quote data.
+            where="$(grep -oE '^psql:[^:]+:[0-9]+' "$W/psql.err" | head -n 1 || true)"
+            echo "::error::Einspielen gescheitert bei ${where:-unbekannter Stelle}"
+            exit 1
+          fi
+
+      - name: Vergleichen
+        run: |
+          node scripts/backup/compare.mjs query --manifest "$W/download/manifest.json" > "$W/count.sql"
+          if ! psql "$RESTORE_DB" -X -At -v ON_ERROR_STOP=1 -f "$W/count.sql" > "$W/counts.txt" 2> "$W/count.err"; then
+            echo "::error::Zählen in der Wegwerf-Datenbank gescheitert"
+            exit 1
+          fi
+          node scripts/backup/compare.mjs counts --manifest "$W/download/manifest.json" \
+            --counts "$W/counts.txt" --media "$W/backup/media"
+
+      - name: Aufräumen
+        if: always()
+        run: |
+          (cd "$RUNNER_TEMP/restore/db" 2> /dev/null && supabase stop --no-backup > /dev/null 2>&1) || true
+          rm -f "$RUNNER_TEMP/backup.agekey"
+          rm -rf "$RUNNER_TEMP/restore"

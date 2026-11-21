@@ -1,0 +1,10 @@
+{
+  "Name": "Housekeeping SWA Deploy Token Reader",
+  "IsCustom": true,
+  "Description": "Reads one Static Web App and its deployment token (spec 0014, plan decision 20). Assigned to exactly one Static Web App.",
+  "Actions": ["Microsoft.Web/staticSites/read", "Microsoft.Web/staticSites/listSecrets/action"],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": ["{{SCOPE}}"]
+}

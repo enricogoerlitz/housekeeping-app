@@ -1,0 +1,13 @@
+{
+  "Name": "Housekeeping Backup Writer",
+  "IsCustom": true,
+  "Description": "Writes new backup blobs (spec 0014, AC-053). No read, list, delete or management actions; the container's immutability policy blocks overwriting.",
+  "Actions": [],
+  "NotActions": [],
+  "DataActions": [
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action"
+  ],
+  "NotDataActions": [],
+  "AssignableScopes": ["{{SCOPE}}"]
+}

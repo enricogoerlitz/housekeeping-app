@@ -1,0 +1,193 @@
+# Backup of production (spec 0014, REQ-009, plan Task 9, decisions 15 to 18): roles, schema and data
+# through the session pooler with the read-only role backup_reader, the photos of household-media
+# through the S3 interface of Supabase Storage, as one tar.gz encrypted with age to the public key
+# of the environment, plus manifest.json (rows per table, photo count, checksum; no data). Uploaded
+# with the identity of the environment, which may write blobs but not read or delete them; the
+# container keeps every blob immutable for 30 days.
+#
+# Started nightly by schedule.yml (on main, via workflow_dispatch) and before every release by
+# release.yml (workflow_call with prefix release/v<version>; the caller grants id-token: write).
+# No package install: Node runs only the dependency-free scripts in scripts/backup.
+name: Sicherung
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: 'Ziel: leer = daily/<Datum>, sonst release/v<Version>'
+        type: string
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      prefix:
+        description: 'Ziel: leer = daily/<Datum>, sonst release/v<Version>'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # bash with -eo pipefail: a failing tar must fail the step even though age succeeds.
+    shell: bash
+
+jobs:
+  sicherung:
+    name: Sicherung
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: backup
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PREFIX: ${{ inputs.prefix }}
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      BACKUP_STORAGE_ACCOUNT: ${{ vars.BACKUP_STORAGE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+
+      - name: Vorbereiten
+        env:
+          BACKUP_DB_URL: ${{ secrets.BACKUP_DB_URL }}
+        run: |
+          W="$RUNNER_TEMP/backup"
+          echo "W=$W" >> "$GITHUB_ENV"
+          # The secret as a whole is masked by GitHub; its password alone is not.
+          rest="${BACKUP_DB_URL#*://}"
+          userinfo="${rest%@*}"
+          password="${userinfo#*:}"
+          if [ -z "$password" ] || [ "$password" = "$userinfo" ]; then
+            echo "::error::BACKUP_DB_URL ohne Passwort"
+            exit 1
+          fi
+          echo "::add-mask::$password"
+          decoded="$(printf '%b' "${password//%/\\x}")"
+          echo "::add-mask::$decoded"
+          if [ -z "$BACKUP_AGE_RECIPIENT" ] || [ -z "$BACKUP_STORAGE_ACCOUNT" ]; then
+            echo "::error::Variable BACKUP_AGE_RECIPIENT oder BACKUP_STORAGE_ACCOUNT fehlt"
+            exit 1
+          fi
+          if ! targets="$(node scripts/backup/paths.mjs targets --prefix "$PREFIX" --run-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT")"; then
+            echo "$targets"
+            exit 1
+          fi
+          {
+            echo 'TARGETS<<EOF'
+            echo "$targets"
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+          sudo apt-get update -qq > /dev/null
+          sudo apt-get install -y -qq age > /dev/null
+          mkdir -p "$W/dump" "$W/dump/media" "$W/out"
+
+      - name: Datenbank sichern
+        working-directory: ${{ runner.temp }}/backup/dump
+        env:
+          BACKUP_DB_URL: ${{ secrets.BACKUP_DB_URL }}
+          # The image `supabase db dump` of CLI 3.2.0 runs pg_dump in (Postgres 17), by digest.
+          PG_IMAGE: public.ecr.aws/supabase/postgres:17.12.0.000@sha256:8630950b489ecc70563300180287a98c192a4a48f5ae00b4febdaeea1abe85de
+        run: |
+          # `supabase db dump` (CLI 3.2.0) always reads with `--role "postgres"`; backup_reader is
+          # no member of postgres and must not be one (it could write). So the CLI only writes its
+          # dump script (with its filters for reserved roles and platform schemas), the role line is
+          # removed, and the script runs in the CLI's Postgres image as backup_reader itself. The
+          # script holds the connection data: it stays in $W and is removed right after.
+          dump() {
+            local out="$1" status=0
+            shift
+            supabase db dump --dry-run --remote="$BACKUP_DB_URL" "$@" > "$W/dump.sh" || return 1
+            sed -i -E '/^[[:space:]]*--role "postgres" \\$/d' "$W/dump.sh"
+            if grep -q -- '--role ' "$W/dump.sh"; then
+              echo "::error::Unerwartetes Dump-Skript der Supabase-CLI (--role nicht entfernt)"
+              rm -f "$W/dump.sh"
+              return 1
+            fi
+            docker run --rm -i --entrypoint bash "$PG_IMAGE" < "$W/dump.sh" > "$out" || status=$?
+            rm -f "$W/dump.sh"
+            return "$status"
+          }
+          # The first connection decides whether the database is reachable (AC-055); nothing has
+          # been uploaded at that point, so the existing backups stay untouched.
+          if ! dump roles.sql --role-only; then
+            echo "::error::Datenbank nicht erreichbar (pausiert, Zugang falsch oder Pooler gestört)"
+            exit 1
+          fi
+          if ! dump schema.sql; then
+            echo "::error::Dump des Schemas gescheitert"
+            exit 1
+          fi
+          # Supabase's restore guide excludes the vector bucket tables; postgres may not restore them.
+          if ! dump data.sql --data-only --use-copy -x storage.buckets_vectors -x storage.vector_indexes; then
+            echo "::error::Dump der Daten gescheitert"
+            exit 1
+          fi
+
+      - name: Fotos sichern
+        working-directory: ${{ runner.temp }}/backup/dump
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.BACKUP_S3_REGION }}
+          BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+          # Supabase Storage speaks S3 with path-style addresses and without the newer checksums.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          aws configure set default.s3.addressing_style path
+          # Only from the bucket to the runner; the key could also write and delete.
+          aws s3 sync s3://household-media ./media --endpoint-url "$BACKUP_S3_ENDPOINT" --only-show-errors --no-progress
+
+      - name: Verschlüsseln und Begleitdatei
+        working-directory: ${{ runner.temp }}/backup/dump
+        run: |
+          # Straight from tar into age: no unencrypted archive on disk.
+          tar -cz roles.sql schema.sql data.sql media | age -r "$BACKUP_AGE_RECIPIENT" -o "$W/out/backup.tar.gz.age"
+          node "$GITHUB_WORKSPACE/scripts/backup/manifest.mjs" --data data.sql --media media \
+            --archive "$W/out/backup.tar.gz.age" --out "$W/out/manifest.json"
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Hochladen
+        run: |
+          while IFS= read -r target; do
+            az storage blob upload --auth-mode login --account-name "$BACKUP_STORAGE_ACCOUNT" -c backups \
+              -n "$target/backup.tar.gz.age" -f "$W/out/backup.tar.gz.age" --overwrite false --only-show-errors -o none
+            # The manifest last: a folder without it is incomplete and the restore test skips it.
+            az storage blob upload --auth-mode login --account-name "$BACKUP_STORAGE_ACCOUNT" -c backups \
+              -n "$target/manifest.json" -f "$W/out/manifest.json" --overwrite false --only-show-errors -o none
+            echo "Hochgeladen: $target"
+          done <<< "$TARGETS"
+
+      - name: Selbstprüfung „Löschen und Überschreiben scheitern“
+        id: selbstpruefung
+        run: |
+          target="$(head -n 1 <<< "$TARGETS")"
+          if az storage blob delete --auth-mode login --account-name "$BACKUP_STORAGE_ACCOUNT" -c backups -n "$target/manifest.json" -o none > /dev/null 2>&1; then
+            echo "::error::Die Sicherung konnte gelöscht werden – Rolle und Unveränderlichkeit prüfen (AC-053)"
+            exit 1
+          fi
+          if az storage blob upload --auth-mode login --account-name "$BACKUP_STORAGE_ACCOUNT" -c backups -n "$target/manifest.json" -f "$W/out/manifest.json" --overwrite true -o none > /dev/null 2>&1; then
+            echo "::error::Die Sicherung konnte überschrieben werden – Unveränderlichkeit des Containers prüfen (AC-053)"
+            exit 1
+          fi
+          echo "Löschen und Überschreiben wurden abgewiesen."
+
+      - name: Aufräumen
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/backup"

@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "enabled": true,
+      "name": "dailyAndRelease31Days",
+      "type": "Lifecycle",
+      "definition": {
+        "actions": {
+          "baseBlob": { "delete": { "daysAfterModificationGreaterThan": 31 } }
+        },
+        "filters": {
+          "blobTypes": ["blockBlob"],
+          "prefixMatch": ["backups/daily/", "backups/release/"]
+        }
+      }
+    },
+    {
+      "enabled": true,
+      "name": "monthly366Days",
+      "type": "Lifecycle",
+      "definition": {
+        "actions": {
+          "baseBlob": { "delete": { "daysAfterModificationGreaterThan": 366 } }
+        },
+        "filters": {
+          "blobTypes": ["blockBlob"],
+          "prefixMatch": ["backups/monthly/"]
+        }
+      }
+    }
+  ]
+}

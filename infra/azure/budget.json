@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "category": "Cost",
+    "amount": 10,
+    "timeGrain": "Monthly",
+    "timePeriod": { "startDate": "{{START}}T00:00:00Z" },
+    "notifications": {
+      "actual80Percent": {
+        "enabled": true,
+        "operator": "GreaterThanOrEqualTo",
+        "threshold": 80,
+        "thresholdType": "Actual",
+        "contactEmails": ["{{EMAIL}}"]
+      },
+      "actual100Percent": {
+        "enabled": true,
+        "operator": "GreaterThanOrEqualTo",
+        "threshold": 100,
+        "thresholdType": "Actual",
+        "contactEmails": ["{{EMAIL}}"]
+      }
+    }
+  }
+}

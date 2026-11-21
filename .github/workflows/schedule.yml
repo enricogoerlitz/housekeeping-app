@@ -1,0 +1,81 @@
+# Schedules (spec 0014, plan Task 9, decision 15). GitHub starts `schedule` only on the default branch
+# (develop), but the environments backup and restore-test allow only main. So this workflow, without
+# an environment, starts backup.yml and restore-test.yml on main via workflow_dispatch and waits for
+# them: if the started run fails, this run fails too, and GitHub notifies the author of the schedule
+# (AC-055, AC-064). A run started by github-actions alone would notify nobody.
+#
+# The started workflows must exist on main (after the first release; before that this run is red).
+name: Zeitpläne
+
+on:
+  schedule:
+    - cron: '17 2 * * *' # nightly backup, 02:17 UTC
+    - cron: '47 4 1 * *' # restore test on the first of the month, 04:47 UTC
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sicherung:
+    name: Sicherung starten
+    if: github.event.schedule == '17 2 * * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      WORKFLOW: backup.yml
+    steps:
+      - name: Auf main starten und abwarten
+        run: |
+          since="$(date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run backup.yml --ref main
+          id=""
+          for _ in $(seq 1 30); do
+            sleep 10
+            id="$(gh run list --workflow "$WORKFLOW" --branch main --event workflow_dispatch --limit 20 \
+              --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+            [ -n "$id" ] && break
+          done
+          if [ -z "$id" ]; then
+            echo "::error::Gestarteter Lauf von $WORKFLOW nicht gefunden"
+            exit 1
+          fi
+          echo "Lauf: https://github.com/$GH_REPO/actions/runs/$id"
+          gh run watch "$id" --exit-status --interval 30 > /dev/null
+
+  wiederherstellungstest:
+    name: Wiederherstellungstest starten
+    if: github.event.schedule == '47 4 1 * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      WORKFLOW: restore-test.yml
+    steps:
+      - name: Auf main starten und abwarten
+        run: |
+          since="$(date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run restore-test.yml --ref main
+          id=""
+          for _ in $(seq 1 30); do
+            sleep 10
+            id="$(gh run list --workflow "$WORKFLOW" --branch main --event workflow_dispatch --limit 20 \
+              --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+            [ -n "$id" ] && break
+          done
+          if [ -z "$id" ]; then
+            echo "::error::Gestarteter Lauf von $WORKFLOW nicht gefunden"
+            exit 1
+          fi
+          echo "Lauf: https://github.com/$GH_REPO/actions/runs/$id"
+          gh run watch "$id" --exit-status --interval 30 > /dev/null
