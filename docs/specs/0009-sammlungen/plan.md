@@ -801,7 +801,24 @@ Nicht reparieren, nur festhalten; die volle Suite läuft am Ende aller Wellen.
 Werden von den Bau-Agenten hier ergänzt (Empfehlung umsetzen, festhalten), je Aufgabe ein
 Abschnitt „Entscheidungen beim Bauen (Bereich, Tn, Datum)“.
 
-- _T1:_ …
+- _T1 (Datenbank, 21.11.2026):_
+  - Der Standard `course = 'main'` bleibt für Rezepte. Eine Sammlung wird deshalb ausdrücklich mit
+    `course: null` eingefügt; ohne diesen Wert scheitert sie an `recipes_kind_fields` (23514). Das
+    ist ein Vertrag für T4 (`createRecipe`/`createCollection`, Fake).
+  - `recipes_kind_fields` prüft unbekannte Arten nicht mit (`else true`); die lehnt
+    `recipes_kind_valid` ab. Eine eigene Zutat mit `"variantId": null` gilt nicht als Variante.
+  - `recipes_kind_immutable` wirft nur, wenn sich der Wert wirklich ändert.
+  - Der eindeutige Schlüssel heißt `collection_recipes_recipe_once`. Fehlernamen wie im Plan:
+    `collection_recipe_kind_invalid`, `too_many_collection_recipes` (beide 23514), `kind_immutable`
+    (22023).
+  - Schnappschuss-Schlüssel `collection_recipes` (Zeilen vollständig, nach `id`). `collections` zählt
+    die Zeilen mit `recipe_id` = gelöschtes Rezept im Haushalt (bei einer Sammlung 0).
+  - `restore_recipe` fügt die Zeilen nach Bewertungen und Favoriten ein (`on conflict do nothing`
+    für beide eindeutigen Schlüssel).
+  - `schema_lint.test.sql` bleibt unverändert: Er führt keine Trigger-Funktionen namentlich, und
+    `check_collection_recipe` ist an niemanden freigegeben. Die Allowlist-Fälle stehen in
+    `apply_changes.test.sql`, alles Übrige in `collections.test.sql`.
+  - Seed unverändert (Sammlungen kommen mit T4).
 - _T2/T3:_ …
 - _T4 (u. a. genaue Seed-Wahl):_ …
 - _T5:_ …

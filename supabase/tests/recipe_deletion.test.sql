@@ -172,7 +172,7 @@ select is(
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
   (select public.delete_recipe(tests.fx('halloumi'), current_date)),
-  '{"converted": 3, "removed": 2}'::jsonb,
+  '{"converted": 3, "removed": 2, "collections": 0}'::jsonb,
   'AC-043 delete_recipe: returns how many entries became free text and how many were removed');
 select tests.clear_authentication();
 select is((select count(*)::int from public.recipes where id = tests.fx('halloumi')), 0,
@@ -283,7 +283,7 @@ select throws_ok(tests.restore_sql('halloumi'), 'P0002', 'recipe_not_restorable'
 -- ===================== Undo after changes in between =====================
 select is(
   (select public.delete_recipe(tests.fx('halloumi'), current_date - 1)),
-  '{"converted": 2, "removed": 3}'::jsonb,
+  '{"converted": 2, "removed": 3, "collections": 0}'::jsonb,
   'E3 delete_recipe: with yesterday as the device date, today''s entry is removed');
 select tests.authenticate_as(tests.fx('nadja'));
 select public.apply_changes(tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
@@ -363,7 +363,7 @@ select is(
 -- ===================== Failure cases =====================
 -- Expired snapshot.
 select tests.authenticate_as(tests.fx('enrico'));
-select is((select public.delete_recipe(tests.fx('lasagne'), current_date)), '{"converted": 0, "removed": 1}'::jsonb,
+select is((select public.delete_recipe(tests.fx('lasagne'), current_date)), '{"converted": 0, "removed": 1, "collections": 0}'::jsonb,
   'E3 delete_recipe: a recipe only planned in the future');
 select tests.clear_authentication();
 update private.recipe_deletions set deleted_at = now() - interval '61 minutes' where recipe_id = tests.fx('lasagne');
@@ -372,7 +372,7 @@ select throws_ok(tests.restore_sql('lasagne'), 'P0002', 'recipe_not_restorable',
   'E4 restore_recipe: a snapshot older than 1 hour is not restorable');
 
 -- Every delete_recipe of the household purges its expired snapshots.
-select is((select public.delete_recipe(tests.fx('curry'), current_date)), '{"converted": 0, "removed": 0}'::jsonb,
+select is((select public.delete_recipe(tests.fx('curry'), current_date)), '{"converted": 0, "removed": 0, "collections": 0}'::jsonb,
   'E3 delete_recipe: a recipe without plan entries');
 select tests.clear_authentication();
 select results_eq(
@@ -448,7 +448,7 @@ select is((select count(*)::int from public.recipes where id = tests.fx('halloum
 
 -- ===================== Purge and household deletion =====================
 select tests.authenticate_as(tests.fx('ben'));
-select is((select public.delete_recipe(tests.fx('pasta_b'), current_date + 1)), '{"converted": 0, "removed": 1}'::jsonb,
+select is((select public.delete_recipe(tests.fx('pasta_b'), current_date + 1)), '{"converted": 0, "removed": 1, "collections": 0}'::jsonb,
   'AC-043 delete_recipe: Ben deletes in his household, the day after tomorrow is the future');
 select tests.clear_authentication();
 update private.recipe_deletions set deleted_at = now() - interval '2 hours' where recipe_id = tests.fx('curry');

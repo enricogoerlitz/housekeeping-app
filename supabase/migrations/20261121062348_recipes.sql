@@ -1,5 +1,10 @@
--- Baseline (ADR-0012) — recipes, plus per-person favourites and ratings, and deleting a recipe
--- with "Rückgängig" (spec 0008).
+-- Baseline (ADR-0012) — recipes, plus per-person favourites and ratings, collections and the
+-- recipes they contain (spec 0009), and deleting a recipe with "Rückgängig" (spec 0008).
+--
+-- A collection ("Sammlung", spec 0009) is a row of recipes with kind 'collection': rating,
+-- favourite, photo, planning and deleting work as for a recipe. The kind is set on insert and never
+-- changes, and a collection has none of the recipe fields (check recipes_kind_fields).
+-- collection_recipes holds the recipes a collection contains.
 --
 -- Favourites and ratings belong to one person each. Members never write them directly (no write
 -- grants); set_recipe_favorite / set_recipe_rating write them for auth.uid() in the recipe's
@@ -21,6 +26,10 @@
 create table public.recipes (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
+  -- 'recipe' or 'collection' (spec 0009, E2). Insert only: no update grant, not in the patch
+  -- allowlist of apply_changes, and the trigger recipes_kind_immutable for every other path.
+  kind text not null default 'recipe'
+    constraint recipes_kind_valid check (kind in ('recipe', 'collection')),
   title text not null
     constraint recipes_title_valid check (btrim(title) <> '' and char_length(title) <= 200),
   photo text
@@ -32,7 +41,9 @@ create table public.recipes (
     constraint recipes_servings_valid check (servings between 1 and 100),
   total_minutes integer
     constraint recipes_total_minutes_valid check (total_minutes between 0 and 10000),
-  course text not null default 'main'
+  -- Null only for a collection (recipes_kind_fields); the default is for recipes, so a collection
+  -- is inserted with course null.
+  course text default 'main'
     constraint recipes_course_valid check (course in ('breakfast', 'main', 'side', 'dessert', 'snack', 'drink')),
   cuisine text
     constraint recipes_cuisine_length check (char_length(cuisine) <= 80),
@@ -73,7 +84,18 @@ create table public.recipes (
   constraint recipes_household_id_id_key unique (household_id, id),
   constraint recipes_photo_path_valid check (
     photo_path ~ ('^' || household_id::text || '/recipes/' || id::text
-                  || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'))
+                  || '/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$')),
+  -- A recipe has a course. A collection has no course, time, cuisine, tags, variants, steps or lead
+  -- time, and no own ingredient names a variant (spec 0009, E3).
+  constraint recipes_kind_fields check (
+    case kind
+      when 'recipe' then course is not null
+      when 'collection' then
+        course is null and total_minutes is null and cuisine is null and tags = '{}' and variants = '[]'
+        and steps = '[]' and lead_time is null
+        and not jsonb_path_exists(ingredients, '$[*] ? (@.variantId != null)')
+      else true
+    end)
 );
 
 create index recipes_household_id_updated_at_idx on public.recipes (household_id, updated_at);
@@ -81,8 +103,8 @@ create index recipes_household_id_updated_at_idx on public.recipes (household_id
 -- No delete grant: a recipe is deleted only by delete_recipe (spec 0008, E2), so every deletion
 -- keeps the meal plan consistent and can be undone. Deleting the household still cascades.
 grant select on public.recipes to authenticated;
-grant insert (id, household_id, title, photo, photo_path, description, servings, total_minutes, course, cuisine, tags,
-              variants, ingredients, steps, lead_time, notes, last_cooked_on, cooked_count, source)
+grant insert (id, household_id, kind, title, photo, photo_path, description, servings, total_minutes, course, cuisine,
+              tags, variants, ingredients, steps, lead_time, notes, last_cooked_on, cooked_count, source)
   on public.recipes to authenticated;
 grant update (title, photo, photo_path, description, servings, total_minutes, course, cuisine, tags,
               variants, ingredients, steps, lead_time, notes, last_cooked_on, cooked_count, source)
@@ -133,6 +155,25 @@ $$;
 
 create trigger recipes_check_ingredients before insert or update of ingredients on public.recipes
   for each row execute function private.check_recipe_ingredients();
+
+-- Before update of kind, for each row (spec 0009, E2): the kind never changes, for any role. A
+-- member cannot update the column at all (no grant); this covers the security definer paths and
+-- the superuser, so a recipe can never become a collection and slip past check_collection_recipe.
+create function private.recipes_kind_immutable()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.kind is distinct from old.kind then
+    raise exception 'kind_immutable' using errcode = '22023';
+  end if;
+  return new;
+end
+$$;
+
+create trigger recipes_kind_immutable before update of kind on public.recipes
+  for each row execute function private.recipes_kind_immutable();
 
 -- ---------------------------------------------------------------------------------------------
 -- recipe_favorites, recipe_ratings
@@ -185,6 +226,88 @@ create policy recipe_ratings_select on public.recipe_ratings for select to authe
   using (household_id in (select private.my_household_ids()));
 select private.attach_sync_triggers('public.recipe_favorites', array['recipe_id', 'member_id']);
 select private.attach_sync_triggers('public.recipe_ratings', array['recipe_id', 'member_id']);
+
+-- ---------------------------------------------------------------------------------------------
+-- collection_recipes (spec 0009, E4; glossary "Enthaltenes Rezept")
+-- ---------------------------------------------------------------------------------------------
+
+-- One row per recipe a collection contains. servings null = as many as the collection, variant_id
+-- null = the recipe's default variant (a variant the recipe no longer has counts as the default,
+-- Offene Frage 4). A recipe is at most once in a collection. Both links are composite foreign keys
+-- into the row's household, so nothing crosses households (23503, AC-011). Deleting the
+-- collection or the recipe deletes the row (with a tombstone); delete_recipe keeps the rows in its
+-- snapshot for "Rückgängig". collection_id and recipe_id never change (no update grant).
+create table public.collection_recipes (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households (id) on delete cascade,
+  collection_id uuid not null,
+  recipe_id uuid not null,
+  servings integer
+    constraint collection_recipes_servings_valid check (servings between 1 and 100),
+  variant_id text
+    constraint collection_recipes_variant_id_valid check (char_length(variant_id) between 1 and 64),
+  sort integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint collection_recipes_household_id_id_key unique (household_id, id),
+  constraint collection_recipes_recipe_once unique (household_id, collection_id, recipe_id),
+  constraint collection_recipes_collection_fkey foreign key (household_id, collection_id)
+    references public.recipes (household_id, id) on delete cascade,
+  constraint collection_recipes_recipe_fkey foreign key (household_id, recipe_id)
+    references public.recipes (household_id, id) on delete cascade
+);
+
+create index collection_recipes_household_id_updated_at_idx on public.collection_recipes (household_id, updated_at);
+-- "In which collections is this recipe?" and the foreign key on recipe_id; the collection side
+-- is covered by collection_recipes_recipe_once.
+create index collection_recipes_household_id_recipe_id_idx on public.collection_recipes (household_id, recipe_id);
+
+grant select, delete on public.collection_recipes to authenticated;
+grant insert (id, household_id, collection_id, recipe_id, servings, variant_id, sort)
+  on public.collection_recipes to authenticated;
+grant update (servings, variant_id, sort) on public.collection_recipes to authenticated;
+select private.attach_household_policies('public.collection_recipes');
+select private.attach_sync_triggers('public.collection_recipes');
+
+-- Before insert, for each row (spec 0009, E4, AC-009, E15): the container is a collection and the
+-- contained row is a recipe (so a collection never contains a collection or itself), and a
+-- collection holds at most 50 recipes. Both rows are read in the household of the new row. If one
+-- is missing (another household's, or deleted) the trigger lets the foreign key fail with 23503,
+-- so it reveals nothing about other rows. Security invoker: RLS applies as for the caller. Checked
+-- on insert only, because the kind is immutable and the links cannot be updated. Two concurrent
+-- inserts may end slightly above 50; accepted, the limit guards against faulty clients only.
+-- Errors: collection_recipe_kind_invalid (23514), too_many_collection_recipes (23514).
+create function private.check_collection_recipe()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_collection_kind text;
+  v_recipe_kind text;
+begin
+  select r.kind into v_collection_kind
+  from public.recipes r
+  where r.household_id = new.household_id and r.id = new.collection_id;
+  select r.kind into v_recipe_kind
+  from public.recipes r
+  where r.household_id = new.household_id and r.id = new.recipe_id;
+  if v_collection_kind is null or v_recipe_kind is null then
+    return new;
+  end if;
+  if v_collection_kind <> 'collection' or v_recipe_kind <> 'recipe' then
+    raise exception 'collection_recipe_kind_invalid' using errcode = '23514';
+  end if;
+  if (select count(*) from public.collection_recipes c
+      where c.household_id = new.household_id and c.collection_id = new.collection_id) >= 50 then
+    raise exception 'too_many_collection_recipes' using errcode = '23514';
+  end if;
+  return new;
+end
+$$;
+
+create trigger collection_recipes_check before insert on public.collection_recipes
+  for each row execute function private.check_collection_recipe();
 
 -- ---------------------------------------------------------------------------------------------
 -- RPCs
@@ -289,8 +412,8 @@ grant execute on function public.set_recipe_rating(uuid, numeric) to authenticat
 -- ---------------------------------------------------------------------------------------------
 
 -- The snapshot delete_recipe keeps for restore_recipe: the recipe row, its ratings and favourites,
--- the old values of the plan entries it turned into free text and the removed plan entries in
--- full. Only the server reads it (ratings of others must not come from a device): schema private,
+-- the old values of the plan entries it turned into free text, the removed plan entries in full
+-- and its collection_recipes rows in full (as collection and as contained recipe, spec 0009). Only the server reads it (ratings of others must not come from a device): schema private,
 -- RLS on without policies, no grants, not synced. One snapshot per recipe; deleting the same id
 -- again replaces it. Kept for 1 hour: purged by every delete_recipe of the household and hourly.
 create table private.recipe_deletions (
@@ -309,18 +432,21 @@ revoke all on private.recipe_deletions from public, anon, authenticated;
 
 -- "Löschen" (AC-043). p_today is the device's date as the UI shows it; only current_date ± 1 day
 -- is accepted. In one transaction:
--- * the recipe is locked first, then its plan entries, then the leftovers without a recipe that
---   go with removed entries (a concurrent "Einplanen" or "Reste" waits for the lock and then fails
---   its foreign key with 23503, E6); no article is locked;
+-- * the recipe is locked first, then its plan entries, then its collection_recipes rows (as
+--   collection and as contained recipe), then the leftovers without a recipe that go with removed
+--   entries (a concurrent "Einplanen", "Reste" or putting it into a collection waits for the lock
+--   and then fails its foreign key with 23503, E6; spec 0009, E11); no article is locked;
 -- * expired snapshots of the household are purged, then the snapshot is written;
 -- * entries up to and including p_today become free text with the title (leftovers: "Reste von
 --   <title>"), recipe_id null, variants []; eaters, portions, cook and "nicht gekocht" stay;
 -- * later and "vorgemerkt" (date null) entries are deleted, and with them leftovers that name no
 --   recipe and point to a deleted entry (also leftovers of those): without dish and recipe they
 --   would break meal_plan_entries_kind_complete once their link is cleared;
--- * the recipe is deleted; ratings and favourites go by cascade (with tombstones).
+-- * the recipe is deleted; ratings, favourites and collection_recipes rows go by cascade (with
+--   tombstones). Deleting a collection leaves the recipes it contains alone.
 -- Shopping contributions are not touched (their source names the recipe as text, spec 0006).
--- Returns {"converted": n, "removed": m}.
+-- Returns {"converted": n, "removed": m, "collections": k}, k = the number of collections of the
+-- household the recipe was removed from (0 for a collection).
 -- Errors: not_authenticated (42501), recipe_not_found (P0002, also for another household's
 -- recipe), invalid_value (22023, p_today missing or more than one day off).
 create function private.delete_recipe(p_recipe_id uuid, p_today date)
@@ -335,6 +461,7 @@ declare
   v_converted jsonb;
   v_removed_ids uuid[];
   v_removed jsonb;
+  v_collection_recipes jsonb;
 begin
   if p_today is null or p_today not between current_date - 1 and current_date + 1 then
     raise exception 'invalid_value' using errcode = '22023';
@@ -351,6 +478,13 @@ begin
   perform 1 from public.meal_plan_entries e
   where e.household_id = v_household_id and e.recipe_id = p_recipe_id
   for update;
+  select coalesce(jsonb_agg(to_jsonb(c) order by c.id), '[]')
+  into v_collection_recipes
+  from (
+    select c.* from public.collection_recipes c
+    where c.household_id = v_household_id and (c.collection_id = p_recipe_id or c.recipe_id = p_recipe_id)
+    for update
+  ) c;
 
   delete from private.recipe_deletions d
   where d.household_id = v_household_id and d.deleted_at <= now() - interval '1 hour';
@@ -394,7 +528,8 @@ begin
                   from public.recipe_favorites f
                   where f.household_id = v_household_id and f.recipe_id = p_recipe_id),
     'converted', v_converted,
-    'removed', v_removed))
+    'removed', v_removed,
+    'collection_recipes', v_collection_recipes))
   on conflict (household_id, recipe_id) do update
     set deleted_by = excluded.deleted_by, deleted_at = excluded.deleted_at, snapshot = excluded.snapshot;
 
@@ -409,15 +544,23 @@ begin
 
   delete from public.recipes r where r.household_id = v_household_id and r.id = p_recipe_id;
 
-  return jsonb_build_object('converted', jsonb_array_length(v_converted), 'removed', jsonb_array_length(v_removed));
+  return jsonb_build_object(
+    'converted', jsonb_array_length(v_converted),
+    'removed', jsonb_array_length(v_removed),
+    'collections', (select count(*)::integer from jsonb_array_elements(v_collection_recipes) c
+                    where (c ->> 'recipe_id')::uuid = p_recipe_id));
 end
 $$;
 
 -- "Rückgängig" (AC-044): only for the person who deleted, while she is a member of the household,
 -- and within 1 hour of the deletion; the device sends only the id. In one transaction:
--- * the recipe comes back with the same id (photo_path included) and its original created_at
---   (trigger recipes_stamp_restored); the ingredient check runs again;
+-- * the recipe comes back with the same id (photo_path and kind included) and its original
+--   created_at (trigger recipes_stamp_restored); the ingredient check runs again;
 -- * ratings and favourites of people who are still members;
+-- * its collection_recipes rows with their ids, servings, variant and order, but only those whose
+--   other side (collection or contained recipe) still exists in the household; existing rows are
+--   left alone (spec 0009, E11). check_collection_recipe runs again: a collection that holds 50
+--   recipes by now makes the whole restore fail;
 -- * the removed entries (existing ids are left alone), eaters only current members, the cook
 --   cleared if no longer a member, a leftovers link cleared if its source is gone;
 -- * the free-text entries become recipe entries again, but only while they are still unchanged
@@ -429,7 +572,7 @@ $$;
 -- one of her households, older than 1 hour, already restored, or the id is taken by a recipe of
 -- another household meanwhile), plus whatever a check raises
 -- when an article or a meal slot is gone in between (e.g. ingredient_article_invalid, invalid_slot,
--- 23503) — then nothing is restored.
+-- 23503) or a collection is full (too_many_collection_recipes) — then nothing is restored.
 create function private.restore_recipe(p_recipe_id uuid)
 returns boolean
 language plpgsql
@@ -467,10 +610,10 @@ begin
   end if;
 
   perform pg_catalog.set_config('private.restore_created_at', coalesce(v_snapshot -> 'recipe' ->> 'created_at', ''), true);
-  insert into public.recipes (id, household_id, title, photo, photo_path, description, servings, total_minutes,
+  insert into public.recipes (id, household_id, kind, title, photo, photo_path, description, servings, total_minutes,
                               course, cuisine, tags, variants, ingredients, steps, lead_time, notes, last_cooked_on,
                               cooked_count, source)
-  select r.id, v_household_id, r.title, r.photo, r.photo_path, r.description, r.servings, r.total_minutes,
+  select r.id, v_household_id, r.kind, r.title, r.photo, r.photo_path, r.description, r.servings, r.total_minutes,
          r.course, r.cuisine, r.tags, r.variants, r.ingredients, r.steps, r.lead_time, r.notes, r.last_cooked_on,
          r.cooked_count, r.source
   from jsonb_populate_record(null::public.recipes, v_snapshot -> 'recipe') r;
@@ -488,6 +631,15 @@ begin
   cross join lateral (select f.member_id_text::uuid as member_id) x
   where exists (select 1 from public.household_members m
                 where m.household_id = v_household_id and m.profile_id = x.member_id);
+
+  insert into public.collection_recipes (id, household_id, collection_id, recipe_id, servings, variant_id, sort)
+  select c.id, v_household_id, c.collection_id, c.recipe_id, c.servings, c.variant_id, c.sort
+  from jsonb_populate_recordset(null::public.collection_recipes, v_snapshot -> 'collection_recipes') c
+  where exists (select 1 from public.recipes r
+                where r.household_id = v_household_id
+                  and r.id = case when c.collection_id = p_recipe_id then c.recipe_id else c.collection_id end)
+  order by c.collection_id, c.sort, c.id
+  on conflict do nothing;
 
   insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id,
                                         text, note, leftovers_of_entry_id, eater_ids, guests, portions, variants,

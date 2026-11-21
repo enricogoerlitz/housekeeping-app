@@ -32,7 +32,9 @@ declare
   -- household_id may be sent on insert but must equal p_household_id; it is always forced.
   -- created_by (activities) and author_id (feedback) are overwritten by their insert triggers.
   -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
-  -- Recipes are deleted only by delete_recipe (spec 0008, E2).
+  -- Recipes are deleted only by delete_recipe (spec 0008, E2). The kind of a recipe (recipe or
+  -- collection) is set on insert and never patched (spec 0009, E2). A collection_recipes row keeps
+  -- its collection and its recipe; only servings, variant and order change (spec 0009, E4).
   -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011).
   -- The packed state of packing items (packed, packed_at, packed_by, pack_seq) is written only by
   -- set_packing_items_packed and restore_packing_items; packing items are never patched (spec 0012).
@@ -45,12 +47,15 @@ declare
                                     "is_pantry", "default_shopping_rule", "needs_review"], "delete": false},
     "stores":           {"insert": ["id", "household_id", "name", "area_order", "hidden_area_ids"],
                          "patch":  ["name", "area_order", "hidden_area_ids"], "delete": true},
-    "recipes":          {"insert": ["id", "household_id", "title", "photo", "photo_path", "description", "servings",
-                                    "total_minutes", "course", "cuisine", "tags", "variants", "ingredients",
+    "recipes":          {"insert": ["id", "household_id", "kind", "title", "photo", "photo_path", "description",
+                                    "servings", "total_minutes", "course", "cuisine", "tags", "variants", "ingredients",
                                     "steps", "lead_time", "notes", "last_cooked_on", "cooked_count", "source"],
                          "patch":  ["title", "photo", "photo_path", "description", "servings", "total_minutes", "course",
                                     "cuisine", "tags", "variants", "ingredients", "steps", "lead_time", "notes",
                                     "last_cooked_on", "cooked_count", "source"], "delete": false},
+    "collection_recipes": {"insert": ["id", "household_id", "collection_id", "recipe_id", "servings", "variant_id",
+                                      "sort"],
+                           "patch":  ["servings", "variant_id", "sort"], "delete": true},
     "restaurants":      {"insert": ["id", "household_id", "name", "address", "lat", "lng", "maps_url", "cuisine",
                                     "price_level", "tags", "notes"],
                          "patch":  ["name", "address", "lat", "lng", "maps_url", "cuisine", "price_level", "tags",

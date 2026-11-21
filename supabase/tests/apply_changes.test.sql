@@ -4,7 +4,7 @@
 -- foreign parent, mass deletion, rollback = AC-020).
 begin;
 \ir _helpers.psql
-select plan(106);
+select plan(109);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -46,7 +46,7 @@ insert into fx (key) values
   ('recipe_a'), ('recipe_b'), ('area_a'), ('area_b'), ('milch'), ('item_milch'), ('c_milch'),
   ('new_recipe'), ('new_area'), ('new_article'), ('zucker_item'), ('zucker_article'), ('zucker_c'),
   ('tee'), ('item_b'), ('c_b'), ('slot_a'), ('new_activity'), ('new_entry'), ('bad_activity'),
-  ('restaurant_a'), ('restaurant_b'), ('new_restaurant');
+  ('restaurant_a'), ('restaurant_b'), ('new_restaurant'), ('new_collection');
 
 update public.households
 set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot_a'), 'name', 'Vormittag', 'sort', 0))
@@ -118,6 +118,27 @@ select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('new_recipe')))),
   '22023', 'invalid_change', 'spec 0008 E2 apply_changes: recipes cannot be deleted (delete_recipe only)');
+-- Spec 0009 (E2, E4): the kind is set on insert only; collection_recipes rows keep their links.
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'insert', 'table', 'recipes',
+                       'row', jsonb_build_object('id', tests.fx('new_collection'), 'title', 'Grillabend',
+                                                 'kind', 'collection', 'course', null)),
+    jsonb_build_object('kind', 'insert', 'table', 'collection_recipes',
+                       'row', jsonb_build_object('collection_id', tests.fx('new_collection'),
+                                                 'recipe_id', tests.fx('new_recipe'), 'servings', 6)))),
+  'spec 0009 E2 apply_changes: kind is an insert column of recipes, collection_recipes is insertable');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'patch', 'table', 'recipes', 'id', tests.fx('new_recipe'),
+                       'changes', jsonb_build_object('kind', 'collection')))),
+  '22023', 'invalid_change', 'spec 0009 E2 apply_changes: kind is not a patch column of recipes');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'patch', 'table', 'collection_recipes',
+                       'id', (select id from public.collection_recipes where collection_id = tests.fx('new_collection')),
+                       'changes', jsonb_build_object('household_id', tests.fx('home_b'))))),
+  '22023', 'invalid_change', 'spec 0009 E4 apply_changes: household_id of collection_recipes is not patchable');
 select is(
   tests.apply('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'patch', 'table', 'households', 'id', tests.fx('home_a'),

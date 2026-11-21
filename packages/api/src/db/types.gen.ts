@@ -513,6 +513,65 @@ export type Database = {
           },
         ];
       };
+      collection_recipes: {
+        Row: {
+          collection_id: string;
+          created_at: string;
+          household_id: string;
+          id: string;
+          recipe_id: string;
+          servings: number | null;
+          sort: number;
+          updated_at: string;
+          variant_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          collection_id: string;
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          recipe_id: string;
+          servings?: number | null;
+          sort?: number;
+          updated_at?: string;
+          variant_id?: string | null;
+        };
+        Update: {
+          collection_id?: string;
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          recipe_id?: string;
+          servings?: number | null;
+          sort?: number;
+          updated_at?: string;
+          variant_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'collection_recipes_collection_fkey';
+            columns: ['household_id', 'collection_id'];
+            isOneToOne: false;
+            referencedRelation: 'recipes';
+            referencedColumns: ['household_id', 'id'];
+          },
+          {
+            foreignKeyName: 'collection_recipes_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'collection_recipes_recipe_fkey';
+            columns: ['household_id', 'recipe_id'];
+            isOneToOne: false;
+            referencedRelation: 'recipes';
+            referencedColumns: ['household_id', 'id'];
+          },
+        ];
+      };
       deleted_records: {
         Row: {
           deleted_at: string;
@@ -1247,13 +1306,14 @@ export type Database = {
       recipes: {
         Row: {
           cooked_count: number;
-          course: string;
+          course: string | null;
           created_at: string;
           cuisine: string | null;
           description: string | null;
           household_id: string;
           id: string;
           ingredients: NonNullable<Json>;
+          kind: string;
           last_cooked_on: string | null;
           lead_time: Json | null;
           notes: string | null;
@@ -1271,13 +1331,14 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           cooked_count?: number;
-          course?: string;
+          course?: string | null;
           created_at?: string;
           cuisine?: string | null;
           description?: string | null;
           household_id: string;
           id?: string;
           ingredients?: NonNullable<Json>;
+          kind?: string;
           last_cooked_on?: string | null;
           lead_time?: Json | null;
           notes?: string | null;
@@ -1294,13 +1355,14 @@ export type Database = {
         };
         Update: {
           cooked_count?: number;
-          course?: string;
+          course?: string | null;
           created_at?: string;
           cuisine?: string | null;
           description?: string | null;
           household_id?: string;
           id?: string;
           ingredients?: NonNullable<Json>;
+          kind?: string;
           last_cooked_on?: string | null;
           lead_time?: Json | null;
           notes?: string | null;
