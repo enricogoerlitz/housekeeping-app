@@ -268,6 +268,24 @@ export function parseIngredientLine(line: string): ParsedIngredient | null {
   if (leading.unit !== undefined) amount.unit = leading.unit;
   return { name: leading.rest, amount };
 }
+/**
+ * The amount typed on its own in the field "Menge" of an ingredient (spec 0007, AC-001):
+ * "400 ml", "400ml", "2", "2 Dosen" (unit "Dose"), "2–3 EL" (qty = upper bound). Text that is not
+ * a number with an optional known unit is kept as written without a quantity, so it never scales
+ * ("etwas", "2 große"). Blank → undefined.
+ */
+export function parseAmount(text: string): Amount | undefined {
+  const input = collapseWhitespace(text);
+  if (input === '') return undefined;
+  const match = LEADING_NUMBER.exec(input);
+  const qty = match ? parseNumber(match[2] ?? match[1] ?? '') : undefined;
+  if (!match || qty === undefined) return { text: input };
+  const token = input.slice(match[0].length).trim();
+  if (token === '') return { text: input, qty };
+  const unit = findUnit(token);
+  return unit === undefined ? { text: input } : { text: input, qty, unit };
+}
+
 /** Splits a pasted block into lines and parses each; empty lines and bullets ("- ", "• ") are ignored. */
 export function parseIngredientBlock(text: string): ParsedIngredient[] {
   return text

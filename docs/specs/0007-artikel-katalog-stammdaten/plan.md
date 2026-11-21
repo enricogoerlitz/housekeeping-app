@@ -447,7 +447,38 @@ flowchart LR
 - **Test:** e2e dev smoke (Fenster einmal öffnen), Klick-Durchlauf: AC-001 bis AC-004, AC-008 bis
   AC-010 mit den Blöcken der Spec, Portionen 4 → 8 mit Hinweis (AC-013), Vorratscheck ohne Hinweis
   (AC-011, AC-012), Abkürzung „Artikel bearbeiten“ und zurück ins Rezept (AC-007).
-- **Status:** offen
+- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Umgesetzt:** `features/recipes/ingredient-sheet.tsx` („Neue Zutat“ / „Zutat bearbeiten“: Menge,
+  Artikel per „Suchen oder anlegen“ mit Bereich je Treffer und Starter-Einträgen, Einkaufsregel
+  vorausgewählt, Einkaufs-Zusatz, Hinweis mit „Höchstens 200 Zeichen“, ohne Artikel „Artikel
+  wählen“), `ingredients-paste-sheet.tsx` (zwei Schritte: Block → Zeilen; orange Zeilen mit „Meinst
+  du …?“/„Ja“, „Artikel wählen“, „„…“ neu anlegen“; „1 Zutat braucht noch einen Artikel“),
+  `use-ingredient-drafts.ts` (Entwurfszeilen je Rezept; abgelehnte Zeilen kehren orange zurück,
+  das Fenster öffnet sich wieder mit „Hat nicht geklappt …“), `article-search.ts`;
+  `recipe-detail.tsx` („+ Zutat“, „Mehrere einfügen“, ⋯ je Zutat mit „Zutat bearbeiten“ und
+  „Artikel bearbeiten“ → Fenster aus T5 samt Zusammenführen, Zeile „Zwiebeln · fein gehackt“),
+  `cooking-screen.tsx` (Hinweis), `new-recipe-sheet.tsx` (eingefügte Zeilen gehen an die Seite des
+  neuen Rezepts). In `core`: `parseAmount` (Menge allein, `amounts.ts`) und `ingredient-drafts.ts`
+  (`ingredientDrafts`, `chooseDraftArticle`, `splitIngredientDrafts`, `returnRejectedDrafts`,
+  `draftLineLabel`). In `api`: `addIngredientsConfirmed` (wie `addIngredients`, meldet die Antwort
+  des Servers), `updateIngredient` kann die Menge entfernen. Dev-Smoke: „+ Zutat“, ⋯ und
+  „Mehrere einfügen“. Klick-Durchlauf 390/1440 px: `tmp/0007/t7-*`.
+- **Abweichungen:**
+  - Der heutige Editor ist die Rezeptseite: Zutaten werden einzeln gespeichert, nicht mit dem Titel.
+    AC-004 gilt deshalb im Fenster „Neue Zutat“ (ohne Artikel kein Speichern, „Artikel wählen“
+    orange); der Teil „der neue Titel ist gespeichert“ kommt mit dem Editor aus Spec 0008.
+  - „Mehrere einfügen“ zeigt immer erst die Zeilen, „n Zutaten speichern“ speichert (AC-008 →
+    AC-010). Beim neuen Rezept zählt „Anlegen“ als Speichern: sichere Zeilen sind gleich im Rezept,
+    nur die orangen erscheinen danach im Fenster der Rezeptseite.
+  - „„…“ neu anlegen“ an einer eingefügten Zeile legt einen Artikel wie AC-002 an (nicht „Neu aus
+    Rezepten“, weil ein Mensch gewählt hat). `addIngredientsFromText` (REQ-004-Regel) nutzt die App
+    nicht mehr.
+  - ⋯ → „Artikel bearbeiten“ steht an der Zutat in der Rezeptseite, nicht zusätzlich im
+    Zutat-Fenster (dort gingen ungespeicherte Eingaben verloren).
+  - Der Einkaufs-Zusatz wird im Zutat-Fenster bearbeitet; das eigene Fenster „Einkaufs-Zusatz“
+    entfällt. „Zutat entfernen“ gibt es weiter nicht (Spec 0008).
+  - Eine Menge, die keine Zahl mit bekannter Einheit ist („etwas“, „2 große“), bleibt Text ohne
+    Zahl und wird beim Umrechnen der Portionen nicht verändert.
 
 ### Task 8 — Abschluss: Doku, Sicherheit, Nachweis
 

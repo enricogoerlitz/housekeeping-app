@@ -1,5 +1,11 @@
 import { useArticlesById, useRecipe } from '@housekeeping/api';
-import { ingredientsForVariant, routeId, stepsForVariants, type Recipe } from '@housekeeping/core';
+import {
+  ingredientLine,
+  ingredientsForVariant,
+  routeId,
+  stepsForVariants,
+  type Recipe,
+} from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -171,7 +177,12 @@ function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLe
                 {ingredients.map((ingredient) => (
                   <ListRow
                     key={ingredient.id}
-                    title={articlesById[ingredient.articleId]?.name ?? ''}
+                    // The Hinweis after "·" ("Zwiebeln · fein gehackt"); the amount stands in front.
+                    title={ingredientLine(
+                      { prepNote: ingredient.prepNote },
+                      articlesById[ingredient.articleId]?.name ?? '',
+                    )}
+                    testID={`cook-ingredient-${ingredient.id}`}
                     leading={
                       <Text variant="bodyStrong" style={{ width: 76 }}>
                         {ingredient.amount?.text ?? ''}

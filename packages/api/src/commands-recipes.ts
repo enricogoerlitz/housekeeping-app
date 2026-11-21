@@ -18,7 +18,7 @@ import { INVALID_STARS } from './commands-restaurants';
 import { buildRecipe } from './seed/demo';
 import { seedRecipes } from './seed/recipes-data';
 import { starterCatalogEntries } from './starter/entries';
-import { commit, getData, getState, newId, nowISO, updateData } from './store';
+import { commit, commitConfirmed, getData, getState, newId, nowISO, updateData } from './store';
 
 /** recipes_check_ingredients: the "Hinweis" of an ingredient. */
 export const PREP_NOTE_MAX_LENGTH = 200;
@@ -208,14 +208,30 @@ function ingredientFrom(input: IngredientInput): RecipeIngredient {
  */
 export function addIngredients(recipeId: Id, inputs: readonly IngredientInput[]): number {
   if (inputs.length === 0) return 0;
-  return commit({ path: 'diff' }, () => {
-    const ingredients = inputs.map(ingredientFrom);
-    patchRecipe(recipeId, (recipe) => ({
-      ...recipe,
-      ingredients: [...recipe.ingredients, ...ingredients],
-    }));
-    return ingredients.length;
-  });
+  return commit({ path: 'diff' }, () => appendIngredients(recipeId, inputs));
+}
+
+function appendIngredients(recipeId: Id, inputs: readonly IngredientInput[]): number {
+  const ingredients = inputs.map(ingredientFrom);
+  patchRecipe(recipeId, (recipe) => ({
+    ...recipe,
+    ingredients: [...recipe.ingredients, ...ingredients],
+  }));
+  return ingredients.length;
+}
+
+/**
+ * addIngredients for the draft lines of the editor: shown at once like addIngredients; the promise
+ * resolves once the server took them and rejects when it refused them (e.g. an article deleted
+ * meanwhile) or when they failed locally (offline, an article that is gone), so the lines can turn
+ * orange again.
+ */
+export function addIngredientsConfirmed(
+  recipeId: Id,
+  inputs: readonly IngredientInput[],
+): Promise<number> {
+  if (inputs.length === 0) return Promise.resolve(0);
+  return commitConfirmed({ path: 'diff' }, () => appendIngredients(recipeId, inputs));
 }
 
 /** "+ Zutat" (AC-001 to AC-005): one ingredient; returns its id. */
@@ -232,7 +248,7 @@ export function addIngredient(recipeId: Id, input: IngredientInput): Id {
 
 /**
  * Changes an ingredient: its article, amount, rule (E7: goes to the article too), Einkaufs-Zusatz
- * or Hinweis; blank text removes a note. Online only.
+ * or Hinweis; blank text removes a note, `amount: undefined` the amount. Online only.
  */
 export function updateIngredient(
   recipeId: Id,
@@ -247,7 +263,10 @@ export function updateIngredient(
     if (patch.article) {
       next.articleId = chosenArticle(patch.article).id;
     }
-    if (patch.amount) next.amount = patch.amount;
+    if ('amount' in patch) {
+      if (patch.amount) next.amount = patch.amount;
+      else delete next.amount;
+    }
     if (patch.shoppingRule) {
       next.shoppingRule = patch.shoppingRule;
       const article = getData().articles.find((candidate) => candidate.id === next.articleId);

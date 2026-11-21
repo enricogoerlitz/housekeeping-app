@@ -50,6 +50,26 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await nav(page, 'rezepte');
   await tid(page, `recipe-card-${seedIds['rec-mango-curry']}`).click();
   await expect(tid(page, 'recipe-title')).toHaveText('Mango-Curry');
+  // Ingredients with an article (spec 0007): "+ Zutat" with "Suchen oder anlegen", ⋯ at an
+  // ingredient, "Mehrere einfügen" with its orange lines.
+  await tid(page, 'recipe-add-ingredient').click();
+  await tid(page, 'ingredient-article-search-input').fill('Kokos');
+  await expect(
+    tid(page, `ingredient-article-search-hit-${seedIds['art-kokosmilch']}`),
+  ).toBeVisible();
+  await tid(page, 'ingredient-sheet-close').click();
+  await page.locator('[data-testid^="ingredient-menu-"]:visible').first().click();
+  await expect(
+    page.locator('[data-testid$="-article"][data-testid^="ingredient-menu-"]:visible'),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await tid(page, 'recipe-paste-ingredients').click();
+  await tid(page, 'ingredients-paste').fill('1 Mango\n2 Drachenfrüchte');
+  await tid(page, 'ingredients-paste-save').click();
+  await expect(tid(page, 'ingredients-paste-missing')).toHaveText(
+    '1 Zutat braucht noch einen Artikel',
+  );
+  await tid(page, 'ingredients-paste-sheet-close').click();
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();

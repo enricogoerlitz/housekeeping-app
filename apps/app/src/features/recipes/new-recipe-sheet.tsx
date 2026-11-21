@@ -1,4 +1,4 @@
-import { addIngredientsFromText, createRecipe } from '@housekeeping/api';
+import { createRecipe, useArticles } from '@housekeeping/api';
 import type { Id } from '@housekeeping/core';
 import { Button, Sheet, Stack, TextField } from '@housekeeping/ui';
 import { useState } from 'react';
@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { NewRecipeFields } from './recipe-form';
+import { draftsFromText, handOverIngredientDrafts } from './use-ingredient-drafts';
 
 export interface NewRecipeSheetProps {
   visible: boolean;
@@ -14,9 +15,14 @@ export interface NewRecipeSheetProps {
   onCreated: (recipeId: Id) => void;
 }
 
-/** Quick creation: a title is enough; ingredients can be pasted right away (AC-021, AC-022). */
+/**
+ * Quick creation: a title is enough; ingredients can be pasted right away (AC-021, AC-022). The
+ * pasted lines go to the new recipe's page, which saves those with an article and keeps the rest
+ * orange with "Artikel wählen" (spec 0007, AC-010).
+ */
 export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const online = useOnlineOnly();
+  const articles = useArticles();
   const [title, setTitle] = useState('');
   const [ingredients, setIngredients] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
@@ -40,7 +46,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt.');
       return;
     }
-    if (ingredients.trim()) addIngredientsFromText(recipeId, ingredients);
+    handOverIngredientDrafts(recipeId, draftsFromText(ingredients, articles));
     close();
     props.onCreated(recipeId);
   };

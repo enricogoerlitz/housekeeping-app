@@ -7,6 +7,7 @@ export * from './amounts';
 export * from './articles';
 export * from './search-or-create';
 export * from './article-catalog';
+export * from './ingredient-drafts';
 export * from './areas';
 export * from './diet';
 export * from './recipes';

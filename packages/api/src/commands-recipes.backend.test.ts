@@ -8,6 +8,7 @@ import { H, withBackend } from './backend-test-helpers';
 import {
   addIngredient,
   addIngredients,
+  addIngredientsConfirmed,
   addIngredientsFromText,
   addStep,
   adoptStarterRecipes,
@@ -301,6 +302,40 @@ describe('ingredients with an article (spec 0007)', () => {
     expect(recipeById(recipe.id)?.ingredients).toEqual(recipe.ingredients);
     expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
     stop();
+  });
+
+  it('AC-006, AC-010: the editor learns whether the server took its lines', async () => {
+    await fx.startEnrico();
+    const recipe = firstRecipe();
+    const mangoLine = { article: { articleId: articleByName('Mango').id } };
+    const taken = addIngredientsConfirmed(recipe.id, [mangoLine]);
+    expect(recipeById(recipe.id)?.ingredients).toHaveLength(recipe.ingredients.length + 1);
+    await fx.settle();
+    await expect(taken).resolves.toBe(1);
+
+    fx.server.failNext(
+      'apply_changes',
+      new TransportError('permanent', 'ingredient_article_invalid', 409),
+    );
+    const refused = addIngredientsConfirmed(recipe.id, [mangoLine]).catch(
+      (error: unknown) => error,
+    );
+    await fx.settle();
+    expect(await refused).toMatchObject({ code: 'ingredient_article_invalid' });
+    expect(recipeById(recipe.id)?.ingredients).toHaveLength(recipe.ingredients.length + 1);
+    await expect(addIngredientsConfirmed(recipe.id, [])).resolves.toBe(0);
+  });
+
+  it('AC-001: editing an ingredient can remove its amount', async () => {
+    await fx.startEnrico();
+    const recipe = firstRecipe();
+    const ingredient = recipe.ingredients.find((candidate) => candidate.amount);
+    if (!ingredient) throw new Error('fixture');
+    updateIngredient(recipe.id, ingredient.id, { amount: undefined });
+    await fx.settle();
+    const saved = recipeById(recipe.id)?.ingredients.find((row) => row.id === ingredient.id);
+    expect(saved).not.toHaveProperty('amount');
+    expect(saved?.articleId).toBe(ingredient.articleId);
   });
 
   it('AC-006: an article that is gone locally is refused before sending', async () => {

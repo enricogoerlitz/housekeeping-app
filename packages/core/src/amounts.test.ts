@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatAmount,
   formatQty,
+  parseAmount,
   parseIngredientBlock,
   parseIngredientLine,
   parseSmartInput,
@@ -226,5 +227,31 @@ describe('scaleAmount', () => {
 
   it('rounds measured units to two decimals', () => {
     expect(scaleAmount({ text: '250 g', qty: 250, unit: 'g' }, 1 / 3).qty).toBe(83.33);
+  });
+});
+
+describe('parseAmount', () => {
+  it('AC-001: the amount of "+ Zutat" ("400 ml") with quantity and unit', () => {
+    expect(parseAmount('400 ml')).toEqual({ text: '400 ml', qty: 400, unit: 'ml' });
+    expect(parseAmount(' 400  ml ')).toEqual({ text: '400 ml', qty: 400, unit: 'ml' });
+    expect(parseAmount('400ml')).toEqual({ text: '400ml', qty: 400, unit: 'ml' });
+  });
+
+  it('reads counts, plural units, ranges and fractions like an ingredient line', () => {
+    expect(parseAmount('2')).toEqual({ text: '2', qty: 2 });
+    expect(parseAmount('1 Prise')).toEqual({ text: '1 Prise', qty: 1, unit: 'Prise' });
+    expect(parseAmount('2 Dosen')).toEqual({ text: '2 Dosen', qty: 2, unit: 'Dose' });
+    expect(parseAmount('2–3 EL')).toEqual({ text: '2–3 EL', qty: 3, unit: 'EL' });
+    expect(parseAmount('½ Bund')).toEqual({ text: '½ Bund', qty: 0.5, unit: 'Bund' });
+  });
+
+  it('keeps free text as written, without a quantity, so it never scales', () => {
+    expect(parseAmount('etwas')).toEqual({ text: 'etwas' });
+    expect(parseAmount('2 große')).toEqual({ text: '2 große' });
+  });
+
+  it('blank is no amount', () => {
+    expect(parseAmount('')).toBeUndefined();
+    expect(parseAmount('   ')).toBeUndefined();
   });
 });

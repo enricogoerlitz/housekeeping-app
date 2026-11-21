@@ -5,7 +5,6 @@ import {
   preparePhoto,
   rateRecipe,
   removeRecipePhoto,
-  setIngredientShoppingNote,
   setRecipePhoto,
   snapshot,
   toggleFavorite,
@@ -21,6 +20,7 @@ import {
   defaultVariantId,
   deriveRecipeDiet,
   dietLabel,
+  ingredientLine,
   ingredientsForVariant,
   scaleAmount,
   stepsForVariants,
@@ -37,15 +37,14 @@ import {
   IconButton,
   List,
   ListRow,
+  Menu,
   Notice,
   Photo,
   Row,
   Section,
-  Sheet,
   Stack,
   Stars,
   Text,
-  TextField,
   toast,
   useTheme,
 } from '@housekeeping/ui';
@@ -53,6 +52,8 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { ArticleSheet } from '@/features/articles/article-sheet';
+import { MergeArticleDialog } from '@/features/articles/merge-article-dialog';
 import { DetailPage } from '@/features/shell/detail-page';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
@@ -61,11 +62,15 @@ import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
+import { IngredientSheet } from './ingredient-sheet';
 import { IngredientsPasteSheet } from './ingredients-paste-sheet';
+import { useIngredientDrafts } from './use-ingredient-drafts';
 
 const TWO_COLUMNS_FROM = 720;
 const PHOTO_BESIDE_TITLE_FROM = 560;
 const NO_INGREDIENTS_HINT = 'Noch keine Zutaten';
+
+type IngredientAction = 'edit' | 'article';
 
 export interface RecipeDetailProps {
   recipeId: Id;
@@ -121,9 +126,13 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
   const [portions, setPortions] = useState({ base: recipe.servings, shown: recipe.servings });
   const shownServings = portions.base === recipe.servings ? portions.shown : recipe.servings;
   const [variantId, setVariantId] = useState<Id | undefined>(() => defaultVariantId(recipe));
-  const [pasteOpen, setPasteOpen] = useState(false);
+  const drafts = useIngredientDrafts(recipe.id);
   const [pantryCheck, setPantryCheck] = useState(false);
-  const [noteFor, setNoteFor] = useState<RecipeIngredient | undefined>();
+  // "+ Zutat" (new) or "Zutat bearbeiten" (an ingredient), REQ-001 and REQ-003.
+  const [editing, setEditing] = useState<{ ingredient?: RecipeIngredient } | undefined>();
+  // ⋯ → "Artikel bearbeiten" (AC-007) and, from there, "Zusammenführen" (REQ-007).
+  const [articleFor, setArticleFor] = useState<Id | undefined>();
+  const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
   const image = useRecipeImage(recipe);
 
   const wide = width >= TWO_COLUMNS_FROM;
@@ -277,8 +286,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
               testID={`ingredient-${ingredient.id}`}
               title={<IngredientTitle ingredient={ingredient} />}
               accessibilityLabel={[
-                ingredient.amount ? scaleAmount(ingredient.amount, factor).text : '',
-                articlesById[ingredient.articleId]?.name,
+                ingredientLine(ingredient, articlesById[ingredient.articleId]?.name ?? '', factor),
                 ingredient.shoppingNote ? `(${ingredient.shoppingNote})` : '',
               ]
                 .filter(Boolean)
@@ -294,13 +302,29 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
               }
               trailing={
                 <Row gap={0}>
-                  <IconButton
-                    icon="pencil"
-                    label={`Einkaufs-Zusatz für ${articlesById[ingredient.articleId]?.name ?? ''}`}
-                    disabled={online.disabled}
-                    hint={online.hint}
-                    onPress={() => setNoteFor(ingredient)}
-                    testID={`ingredient-note-${ingredient.id}`}
+                  <Menu<IngredientAction>
+                    trigger="icon"
+                    icon="ellipsis"
+                    label="Mehr"
+                    accessibilityLabel={`Mehr zu ${articlesById[ingredient.articleId]?.name ?? ''}`}
+                    onChange={(action) => {
+                      if (action === 'edit') setEditing({ ingredient });
+                      else setArticleFor(ingredient.articleId);
+                    }}
+                    options={[
+                      {
+                        value: 'edit',
+                        label: 'Zutat bearbeiten',
+                        disabled: online.disabled,
+                        hint: online.hint,
+                      },
+                      {
+                        value: 'article',
+                        label: 'Artikel bearbeiten',
+                        disabled: !articlesById[ingredient.articleId],
+                      },
+                    ]}
+                    testID={`ingredient-menu-${ingredient.id}`}
                   />
                   <IconButton
                     icon="shopping-basket"
@@ -314,17 +338,26 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           ))}
         </List>
       )}
-      <View style={{ marginTop: 8 }}>
+      <Row gap={16} wrap style={{ marginTop: 8 }}>
         <Button
-          label="Zutaten einfügen"
+          label="Zutat"
           icon="plus"
           variant="link"
-          onPress={() => setPasteOpen(true)}
+          onPress={() => setEditing({})}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-add-ingredient"
+        />
+        <Button
+          label="Mehrere einfügen"
+          icon="clipboard-list"
+          variant="link"
+          onPress={drafts.open}
           disabled={online.disabled}
           hint={online.hint}
           testID="recipe-paste-ingredients"
         />
-      </View>
+      </Row>
     </Section>
   );
 
@@ -449,16 +482,31 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
             onClose={() => setPantryCheck(false)}
           />
         ) : null}
-        <IngredientsPasteSheet
-          recipeId={recipe.id}
-          visible={pasteOpen}
-          onClose={() => setPasteOpen(false)}
-        />
-        {noteFor ? (
-          <IngredientNoteSheet
+        <IngredientsPasteSheet state={drafts} />
+        {editing ? (
+          <IngredientSheet
             recipeId={recipe.id}
-            ingredient={noteFor}
-            onClose={() => setNoteFor(undefined)}
+            ingredient={editing.ingredient}
+            onClose={() => setEditing(undefined)}
+          />
+        ) : null}
+        {articleFor ? (
+          <ArticleSheet
+            visible
+            articleId={articleFor}
+            onClose={() => setArticleFor(undefined)}
+            onMerge={(targetId) => {
+              setMerging({ sourceId: articleFor, targetId });
+              setArticleFor(undefined);
+            }}
+          />
+        ) : null}
+        {merging ? (
+          <MergeArticleDialog
+            sourceId={merging.sourceId}
+            targetId={merging.targetId}
+            onCancel={() => setMerging(undefined)}
+            onMerged={() => setMerging(undefined)}
           />
         ) : null}
       </View>
@@ -549,7 +597,10 @@ function PhotoActions(props: { recipe: Recipe }) {
   );
 }
 
-/** Name plus the default "Zusatz" that goes onto the shopping list, e.g. "Mozzarella (Fior di Latte)". */
+/**
+ * The article's name, the Hinweis after "·" (only for cooking, AC-011) and the default "Zusatz"
+ * that goes onto the shopping list: "Frischkäse · zimmerwarm (Philadelphia)" (AC-012).
+ */
 function IngredientTitle(props: { ingredient: RecipeIngredient }) {
   const { ingredient } = props;
   const article = useArticlesById()[ingredient.articleId];
@@ -557,6 +608,12 @@ function IngredientTitle(props: { ingredient: RecipeIngredient }) {
     <View>
       <Text variant="rowTitle">
         {article?.name ?? ''}
+        {ingredient.prepNote ? (
+          <Text variant="body" testID={`ingredient-prep-note-${ingredient.id}`}>
+            {' · '}
+            {ingredient.prepNote}
+          </Text>
+        ) : null}
         {ingredient.shoppingNote ? (
           <Text variant="body" color="muted" testID={`ingredient-shopping-note-${ingredient.id}`}>
             {' '}
@@ -573,61 +630,6 @@ function IngredientTitle(props: { ingredient: RecipeIngredient }) {
         </Row>
       ) : null}
     </View>
-  );
-}
-
-/** Sets the default "Zusatz" of one ingredient; empty removes it (spec 0001 addition). */
-function IngredientNoteSheet(props: {
-  recipeId: Id;
-  ingredient: RecipeIngredient;
-  onClose: () => void;
-}) {
-  const online = useOnlineOnly();
-  const name = useArticlesById()[props.ingredient.articleId]?.name ?? '';
-  const [note, setNote] = useState(props.ingredient.shoppingNote ?? '');
-  const save = () => {
-    if (online.disabled) return;
-    props.onClose();
-    if (note.trim() === (props.ingredient.shoppingNote ?? '')) return;
-    setIngredientShoppingNote(props.recipeId, props.ingredient.id, note);
-    toast.show({ message: note.trim() ? 'Zusatz gespeichert' : 'Zusatz entfernt' });
-  };
-  return (
-    <Sheet
-      visible
-      onClose={props.onClose}
-      title="Einkaufs-Zusatz"
-      testID="ingredient-note-sheet"
-      size="m"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={save}
-          testID="ingredient-note-save"
-        />
-      }
-    >
-      <Stack gap={12}>
-        <Text color="muted">
-          Steht auf der Einkaufsliste in Klammern hinter {name}, wenn die Zutat aus diesem Rezept
-          auf die Liste kommt.
-        </Text>
-        <TextField
-          label={`Zusatz für ${name}`}
-          value={note}
-          onChangeText={setNote}
-          placeholder="z. B. Fior di Latte, laktosefrei"
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={save}
-          testID="ingredient-note-input"
-        />
-      </Stack>
-    </Sheet>
   );
 }
 
