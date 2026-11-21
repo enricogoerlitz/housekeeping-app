@@ -26,13 +26,14 @@ declare
   -- table → columns an insert may set, columns a patch may set, whether rows may be deleted.
   -- household_id may be sent on insert but must equal p_household_id; it is always forced.
   -- created_by (activities) and author_id (feedback) are overwritten by their insert triggers.
+  -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
                          "patch":  ["name", "sort"], "delete": true},
     "articles":         {"insert": ["id", "household_id", "name", "name_key", "synonyms", "synonym_keys",
-                                    "area_id", "diet", "is_pantry"],
+                                    "area_id", "diet", "is_pantry", "default_shopping_rule", "needs_review"],
                          "patch":  ["name", "name_key", "synonyms", "synonym_keys", "area_id", "diet",
-                                    "is_pantry"], "delete": true},
+                                    "is_pantry", "default_shopping_rule", "needs_review"], "delete": false},
     "stores":           {"insert": ["id", "household_id", "name", "area_order", "hidden_area_ids"],
                          "patch":  ["name", "area_order", "hidden_area_ids"], "delete": true},
     "recipes":          {"insert": ["id", "household_id", "title", "photo", "photo_path", "description", "servings",

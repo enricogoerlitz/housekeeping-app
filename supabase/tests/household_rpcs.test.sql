@@ -3,7 +3,7 @@
 -- remove_member (AC-012).
 begin;
 \ir _helpers.psql
-select plan(51);
+select plan(56);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select, insert on fx to anon, authenticated;
@@ -21,7 +21,7 @@ create temp table starter (doc jsonb) on commit drop;
 grant select on starter to anon, authenticated;
 insert into starter values ('{
   "areas": [{"key": "obst-gemuese", "name": "Obst & Gemüse"}, {"key": "gewuerze-oel", "name": "Gewürze & Öl"}],
-  "articles": [{"name": "Äpfel", "name_key": "apfel", "synonyms": ["Apfel"], "synonym_keys": ["apfel"],
+  "articles": [{"name": "Äpfel", "name_key": "aepfel", "synonyms": ["Apfel"], "synonym_keys": ["apfel"],
                 "area": "obst-gemuese", "diet": "vegan", "is_pantry": false},
                {"name": "Olivenöl", "name_key": "olivenol", "synonyms": [], "synonym_keys": [],
                 "area": "gewuerze-oel", "diet": "vegan", "is_pantry": true},
@@ -59,7 +59,7 @@ select results_eq(
   $$ select ar.name, ar.name_key, ar.synonyms, ar.synonym_keys, a.name, ar.diet, ar.is_pantry
      from public.articles ar left join public.areas a on a.id = ar.area_id
      where ar.household_id = (select id from fx where key = 'wg') order by ar.name_key $$,
-  $$ values ('Äpfel', 'apfel', array['Apfel'], array['apfel'], 'Obst & Gemüse', 'vegan', false),
+  $$ values ('Äpfel', 'aepfel', array['Apfel'], array['apfel'], 'Obst & Gemüse', 'vegan', false),
             ('Geschenkpapier', 'geschenkpapier', '{}'::text[], '{}'::text[], null, 'unknown', false),
             ('Olivenöl', 'olivenol', '{}'::text[], '{}'::text[], 'Gewürze & Öl', 'vegan', true) $$,
   'AC-010: the starter catalog is created with keys, synonyms and areas from the starter'
@@ -88,6 +88,24 @@ select throws_ok(
   $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Tofu", "name_key": "tofu", "diet": "carnivore"}]}') $$,
   '22023', 'invalid_starter',
   'AC-010: a starter article with an unknown diet is rejected'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Milch", "name_key": "milch"},
+                                                                     {"name": "Hafermilch", "name_key": "hafermilch",
+                                                                      "synonyms": ["Milch"], "synonym_keys": ["milch"]}]}') $$,
+  '22023', 'invalid_starter',
+  'E6 (spec 0007): a starter synonym equal to the name of another starter article is rejected'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [], "articles": [{"name": "Milch", "name_key": "milch",
+                                                                      "synonyms": ["MILCH"], "synonym_keys": ["milch"]}]}') $$,
+  '22023', 'invalid_starter',
+  'E6 (spec 0007): a starter synonym equal to the article''s own name is rejected'
+);
+select throws_ok(
+  $$ select public.create_household('X', '{"areas": [{"key": "a", "name": "Obst"}, {"key": "b", "name": "obst"}], "articles": []}') $$,
+  '22023', 'invalid_starter',
+  'AC-052 (spec 0007): two starter areas with the same name are rejected'
 );
 select throws_ok(
   $$ select public.create_household('   ', (select doc from starter)) $$,
@@ -347,6 +365,34 @@ select results_eq(
      where household_id = (select id from fx where key = 'home') order by profile_id $$,
   $$ select id from fx where key in ('enrico', 'nadja') order by id $$,
   'AC-012: only the expected members remain'
+);
+
+-- ===================== Deleting a household (spec 0007, T1) =====================
+-- Nothing deletes a household through the API; when the server deletes one (as postgres), the new
+-- article and ingredient checks must not stand in the way of the cascade.
+insert into fx values ('wg_recipe', gen_random_uuid()), ('wg_item', gen_random_uuid());
+insert into public.recipes (id, household_id, title, ingredients)
+select (select id from fx where key = 'wg_recipe'), h.id, 'Apfelkuchen',
+       jsonb_build_array(jsonb_build_object('id', 'i1', 'articleId', a.id::text, 'shoppingRule', 'count',
+                                            'prepNote', 'geschält'))
+from fx h join public.articles a on a.household_id = h.id and a.name_key = 'aepfel'
+where h.key = 'wg';
+insert into public.shopping_items (id, household_id, article_id)
+select (select id from fx where key = 'wg_item'), a.household_id, a.id
+from public.articles a where a.household_id = (select id from fx where key = 'wg') and a.name_key = 'aepfel';
+insert into public.shopping_contributions (household_id, item_id)
+select (select id from fx where key = 'wg'), (select id from fx where key = 'wg_item');
+select lives_ok(
+  $$ delete from public.households where id = (select id from fx where key = 'wg') $$,
+  'T1 households: a household with recipes, articles and items on the list can be deleted'
+);
+select is(
+  (select count(*)::int from public.articles where household_id = (select id from fx where key = 'wg'))
+  + (select count(*)::int from public.recipes where household_id = (select id from fx where key = 'wg'))
+  + (select count(*)::int from public.shopping_items where household_id = (select id from fx where key = 'wg'))
+  + (select count(*)::int from public.areas where household_id = (select id from fx where key = 'wg')),
+  0,
+  'T1 households: its articles, recipes, items and areas are gone'
 );
 
 select * from finish();

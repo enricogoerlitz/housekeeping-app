@@ -56,8 +56,9 @@ select * from tests.tenant_isolation('articles',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'name', 'Hafermilch',
                      'name_key', 'hafermilch', 'synonyms', array['Haferdrink'], 'synonym_keys', array['haferdrink'],
                      'area_id', tests.fx('area_a'), 'diet', 'vegan', 'is_pantry', false),
-  '{"name": "Haferdrink", "name_key": "haferdrink", "area_id": null, "is_pantry": true}',
-  tests.fx('anna'), tests.fx('ben'));
+  '{"name": "Haferdrink Barista", "name_key": "haferdrink barista", "area_id": null, "is_pantry": true,
+    "default_shopping_rule": "recipeAmount", "needs_review": true}',
+  tests.fx('anna'), tests.fx('ben'), false);
 
 select * from tests.tenant_isolation('stores',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'name', 'Rewe',

@@ -5,7 +5,8 @@
 -- by the store queue: set_shopping_item_checked, set_shopping_item_not_available,
 -- add_shopping_contributions and assign_article_area. Plus the list actions that change several
 -- rows at once: clear_checked_items, clear_shopping_list, restore_cleared_items (undo of both),
--- remove_contributions (undo of adding) and adjust_item_count (+ and − on "Liste").
+-- remove_contributions (undo of adding) and adjust_item_count (+ and − on "Liste"). And the two
+-- catalog actions that touch recipes and items: delete_article and merge_articles (spec 0007).
 --
 -- * The check state (checked, checked_at, checked_by, check_seq, not_available) has no client
 --   grant, so the functions writing it are security definer and check membership themselves.
@@ -34,6 +35,52 @@ as $$
     pg_catalog.hashtextextended(p_household_id::text || ':' || p_article_id::text, 0));
 $$;
 
+-- The item a store action on p_item_id applies to (spec 0007, E5): the item itself when the caller
+-- sees it; else, when the item was merged away by merge_articles, the item named by its tombstone
+-- (deleted_records.replaced_by), following at most 5 references and only inside the tombstone's
+-- household, which must be one of the caller's. Null otherwise. p_replaced tells whether a
+-- reference was followed. Called only from the definer functions below; not granted.
+create function private.resolve_store_item(p_item_id uuid, out item_id uuid, out replaced boolean)
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_id uuid := p_item_id;
+  v_household_id uuid;
+  v_next text;
+begin
+  replaced := false;
+  select i.id into item_id
+  from public.shopping_items i
+  where i.id = v_id and i.household_id in (select private.my_household_ids());
+  if item_id is not null then
+    return;
+  end if;
+
+  for v_step in 1..5 loop
+    select d.household_id, d.replaced_by into v_household_id, v_next
+    from public.deleted_records d
+    where d.table_name = 'shopping_items' and d.record_id = v_id::text and d.replaced_by is not null
+      and d.household_id in (select private.my_household_ids())
+    order by d.deleted_at desc
+    limit 1;
+    if v_next is null then
+      return;
+    end if;
+    v_id := v_next::uuid;
+    select i.id into item_id
+    from public.shopping_items i
+    where i.id = v_id and i.household_id = v_household_id;
+    if item_id is not null then
+      replaced := true;
+      return;
+    end if;
+    v_next := null;
+  end loop;
+end
+$$;
+
 -- ---------------------------------------------------------------------------------------------
 -- set_shopping_item_checked
 -- ---------------------------------------------------------------------------------------------
@@ -45,6 +92,8 @@ $$;
 --   checked     + uncheck, check_seq ≠ seen     → stays checked ("checking wins")
 --   not checked + uncheck                       → unchanged
 --   item gone or in another household           → null
+--   item merged away (merge_articles)           → applied to the item that replaced it; an uncheck
+--                                                 is unchanged (the seen check_seq is the old item's)
 -- Unchecking while another open item of the same article is on the list moves the contributions
 -- into that open item and deletes the checked one; the result then names the open item.
 create function private.set_shopping_item_checked(p_item_id uuid, p_checked boolean, p_seen_check_seq integer)
@@ -56,6 +105,8 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_item public.shopping_items;
+  v_item_id uuid;
+  v_replaced boolean;
   v_open_id uuid;
 begin
   if v_uid is null then
@@ -65,15 +116,14 @@ begin
     raise exception 'invalid_value' using errcode = '22023';
   end if;
 
-  select i.* into v_item
-  from public.shopping_items i
-  where i.id = p_item_id and i.household_id in (select private.my_household_ids());
+  select r.item_id, r.replaced into v_item_id, v_replaced from private.resolve_store_item(p_item_id) r;
+  select i.* into v_item from public.shopping_items i where i.id = v_item_id;
   if not found then
     return null;
   end if;
 
   perform private.lock_household_article(v_item.household_id, v_item.article_id);
-  select i.* into v_item from public.shopping_items i where i.id = p_item_id for update;
+  select i.* into v_item from public.shopping_items i where i.id = v_item_id for update;
   if not found then
     return null;
   end if;
@@ -82,10 +132,10 @@ begin
     if not v_item.checked then
       update public.shopping_items i
       set checked = true, checked_at = now(), checked_by = v_uid, check_seq = i.check_seq + 1
-      where i.id = p_item_id
+      where i.id = v_item_id
       returning i.* into v_item;
     end if;
-  elsif v_item.checked and v_item.check_seq = p_seen_check_seq then
+  elsif v_item.checked and v_item.check_seq = p_seen_check_seq and not v_replaced then
     select i.id into v_open_id
     from public.shopping_items i
     where i.household_id = v_item.household_id and i.article_id = v_item.article_id and not i.checked
@@ -94,13 +144,13 @@ begin
     if v_open_id is null then
       update public.shopping_items i
       set checked = false, checked_at = null, checked_by = null, check_seq = i.check_seq + 1
-      where i.id = p_item_id
+      where i.id = v_item_id
       returning i.* into v_item;
     else
       update public.shopping_contributions c
       set item_id = v_open_id
-      where c.household_id = v_item.household_id and c.item_id = p_item_id;
-      delete from public.shopping_items i where i.id = p_item_id;
+      where c.household_id = v_item.household_id and c.item_id = v_item_id;
+      delete from public.shopping_items i where i.id = v_item_id;
       select i.* into v_item from public.shopping_items i where i.id = v_open_id;
     end if;
   end if;
@@ -114,7 +164,8 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 
 -- Marks an item as "nicht da" (true) or takes that back (false). Null when the item is gone or
--- belongs to another household.
+-- belongs to another household. An item merged away by merge_articles: applied to the item that
+-- replaced it (spec 0007, E5).
 create function private.set_shopping_item_not_available(p_item_id uuid, p_value boolean)
 returns jsonb
 language plpgsql
@@ -133,7 +184,7 @@ begin
 
   update public.shopping_items i
   set not_available = p_value
-  where i.id = p_item_id and i.household_id in (select private.my_household_ids())
+  where i.id = (select r.item_id from private.resolve_store_item(p_item_id) r)
   returning jsonb_build_object('item_id', i.id, 'not_available', i.not_available) into v_result;
   return v_result;
 end
@@ -350,10 +401,204 @@ begin
 end
 $$;
 
+-- ---------------------------------------------------------------------------------------------
+-- delete_article
+-- ---------------------------------------------------------------------------------------------
+
+-- Deletes an article that is unused: in no recipe and in no item of the list, open or checked
+-- (spec 0007, AC-033, AC-034; E4). Members have no delete grant on articles, so this is the only
+-- way. The row is locked `for update` before the check; the ingredient trigger reads articles
+-- `for key share` and an item's foreign key does the same, so a recipe or item using the article
+-- either commits first (and the check sees it) or fails afterwards. Returns the deleted row, for
+-- "Rückgängig" (inserting it again through apply_changes).
+-- Errors: not_authenticated (42501), article_not_found (P0002, also for another household's
+-- article), article_in_use (P0001).
+create function private.delete_article(p_article_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_article public.articles;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '42501';
+  end if;
+
+  select a.* into v_article
+  from public.articles a
+  where a.id = p_article_id and a.household_id in (select private.my_household_ids())
+  for update;
+  if not found then
+    raise exception 'article_not_found' using errcode = 'P0002';
+  end if;
+
+  if exists (
+       select 1 from public.recipes r
+       where r.household_id = v_article.household_id
+         and r.ingredients @> jsonb_build_array(jsonb_build_object('articleId', v_article.id::text)))
+     or exists (
+       select 1 from public.shopping_items i
+       where i.household_id = v_article.household_id and i.article_id = v_article.id) then
+    raise exception 'article_in_use' using errcode = 'P0001';
+  end if;
+
+  delete from public.articles a where a.id = v_article.id;
+  return to_jsonb(v_article);
+end
+$$;
+
+-- ---------------------------------------------------------------------------------------------
+-- merge_articles
+-- ---------------------------------------------------------------------------------------------
+
+-- "Zusammenführen" (spec 0007, REQ-007, E8): article p_source_id is merged into p_target_id of the
+-- same household, in one transaction, in this order:
+-- 1. every ingredient of the source in the household's recipes points at the target (two rows in
+--    one recipe stay two rows, AC-039);
+-- 2. if source and target are both open on the list, the contributions of the source's open item
+--    move to the target's open item, the source's item is deleted and its tombstone names the
+--    target's item (deleted_records.replaced_by, AC-040);
+-- 3. every other item of the source belongs to the target;
+-- 4. empty values of the target are filled from the source: area, diet "unknown", default
+--    shopping rule; Vorrat stays as on the target; needs_review is cleared;
+-- 5. the source is deleted (tombstone);
+-- 6. name and synonyms of the source become synonyms of the target, duplicate keys are dropped;
+--    more than 30 synonyms → too_many_synonyms and nothing changes (Offene Frage 11).
+-- Both articles are serialised with the store actions (lock per household and article, in a fixed
+-- order) and locked `for update`. Returns {"recipes": n, "items": m}: the recipes rewritten and the
+-- items of the source moved (merged or reassigned).
+-- Errors: not_authenticated (42501), invalid_value (22023, missing or equal ids),
+-- article_not_found (P0002, also when one of them is in another household), too_many_synonyms
+-- (22023).
+create function private.merge_articles(p_source_id uuid, p_target_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_household_id uuid;
+  v_source public.articles;
+  v_target public.articles;
+  v_source_open_id uuid;
+  v_target_open_id uuid;
+  v_recipes integer;
+  v_items integer := 0;
+  v_count integer;
+  v_synonyms text[];
+  v_synonym_keys text[];
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '42501';
+  end if;
+  if p_source_id is null or p_target_id is null or p_source_id = p_target_id then
+    raise exception 'invalid_value' using errcode = '22023';
+  end if;
+
+  select a.household_id into v_household_id
+  from public.articles a
+  where a.id = p_source_id and a.household_id in (select private.my_household_ids());
+  if v_household_id is null
+     or not exists (select 1 from public.articles a where a.id = p_target_id and a.household_id = v_household_id) then
+    raise exception 'article_not_found' using errcode = 'P0002';
+  end if;
+
+  perform private.lock_household_article(v_household_id, least(p_source_id, p_target_id));
+  perform private.lock_household_article(v_household_id, greatest(p_source_id, p_target_id));
+  perform 1 from public.articles a where a.id in (p_source_id, p_target_id) order by a.id for update;
+  select a.* into v_source from public.articles a where a.id = p_source_id and a.household_id = v_household_id;
+  select a.* into v_target from public.articles a where a.id = p_target_id and a.household_id = v_household_id;
+  if v_source.id is null or v_target.id is null then
+    raise exception 'article_not_found' using errcode = 'P0002';
+  end if;
+
+  -- 1. Recipes.
+  update public.recipes r
+  set ingredients = (
+    select jsonb_agg(case when x.e ->> 'articleId' = p_source_id::text
+                          then jsonb_set(x.e, '{articleId}', to_jsonb(p_target_id::text))
+                          else x.e end
+                     order by x.ord)
+    from jsonb_array_elements(r.ingredients) with ordinality as x (e, ord))
+  where r.household_id = v_household_id
+    and r.ingredients @> jsonb_build_array(jsonb_build_object('articleId', p_source_id::text));
+  get diagnostics v_recipes = row_count;
+
+  -- 2. Both open on the list: one item.
+  select i.id into v_source_open_id
+  from public.shopping_items i
+  where i.household_id = v_household_id and i.article_id = p_source_id and not i.checked
+  for update;
+  select i.id into v_target_open_id
+  from public.shopping_items i
+  where i.household_id = v_household_id and i.article_id = p_target_id and not i.checked
+  for update;
+  if v_source_open_id is not null and v_target_open_id is not null then
+    update public.shopping_contributions c
+    set item_id = v_target_open_id
+    where c.household_id = v_household_id and c.item_id = v_source_open_id;
+    delete from public.shopping_items i where i.id = v_source_open_id;
+    update public.deleted_records d
+    set replaced_by = v_target_open_id::text
+    where d.household_id = v_household_id and d.table_name = 'shopping_items'
+      and d.record_id = v_source_open_id::text and d.replaced_by is null;
+    v_items := 1;
+  end if;
+
+  -- 3. Every other item of the source.
+  update public.shopping_items i
+  set article_id = p_target_id
+  where i.household_id = v_household_id and i.article_id = p_source_id;
+  get diagnostics v_count = row_count;
+  v_items := v_items + v_count;
+
+  -- 4. Empty values of the target.
+  update public.articles a
+  set area_id = coalesce(a.area_id, v_source.area_id),
+      diet = case when a.diet = 'unknown' then v_source.diet else a.diet end,
+      default_shopping_rule = coalesce(a.default_shopping_rule, v_source.default_shopping_rule),
+      needs_review = false
+  where a.id = p_target_id;
+
+  -- 5. The source.
+  delete from public.articles a where a.id = p_source_id;
+
+  -- 6. Names of the source as synonyms of the target, in order, without duplicate keys.
+  select coalesce(array_agg(n.synonym order by n.ord), '{}'), coalesce(array_agg(n.key order by n.ord), '{}')
+  into v_synonyms, v_synonym_keys
+  from (
+    select distinct on (c.key) c.synonym, c.key, c.ord
+    from (
+      select t.synonym, t.key, t.ord
+      from unnest(v_target.synonyms, v_target.synonym_keys) with ordinality as t (synonym, key, ord)
+      union all
+      select v_source.name, v_source.name_key, 1000
+      union all
+      select s.synonym, s.key, 1000 + s.ord
+      from unnest(v_source.synonyms, v_source.synonym_keys) with ordinality as s (synonym, key, ord)
+    ) c
+    where c.key is not null and c.synonym is not null and c.key <> v_target.name_key
+    order by c.key, c.ord
+  ) n;
+  if cardinality(v_synonyms) > 30 then
+    raise exception 'too_many_synonyms' using errcode = '22023';
+  end if;
+  update public.articles a
+  set synonyms = v_synonyms, synonym_keys = v_synonym_keys
+  where a.id = p_target_id;
+
+  return jsonb_build_object('recipes', v_recipes, 'items', v_items);
+end
+$$;
+
 grant execute on function private.set_shopping_item_checked(uuid, boolean, integer) to authenticated;
 grant execute on function private.set_shopping_item_not_available(uuid, boolean) to authenticated;
 grant execute on function private.add_shopping_contributions(uuid, jsonb) to authenticated;
 grant execute on function private.remove_contributions(uuid[], uuid) to authenticated;
+grant execute on function private.delete_article(uuid) to authenticated;
+grant execute on function private.merge_articles(uuid, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
 -- Public RPCs
@@ -382,6 +627,18 @@ returns integer
 language sql
 set search_path = ''
 as $$ select private.remove_contributions($1, null) $$;
+
+create function public.delete_article(p_article_id uuid)
+returns jsonb
+language sql
+set search_path = ''
+as $$ select private.delete_article($1) $$;
+
+create function public.merge_articles(p_source_id uuid, p_target_id uuid)
+returns jsonb
+language sql
+set search_path = ''
+as $$ select private.merge_articles($1, $2) $$;
 
 -- Assigns an area to an article (null removes it). Null when the article or the area is gone or
 -- belongs to another household, so a replayed queue entry is dropped. Security invoker: members
@@ -745,6 +1002,8 @@ grant execute on function public.set_shopping_item_checked(uuid, boolean, intege
 grant execute on function public.set_shopping_item_not_available(uuid, boolean) to authenticated;
 grant execute on function public.add_shopping_contributions(uuid, jsonb) to authenticated;
 grant execute on function public.remove_contributions(uuid[]) to authenticated;
+grant execute on function public.delete_article(uuid) to authenticated;
+grant execute on function public.merge_articles(uuid, uuid) to authenticated;
 grant execute on function public.assign_article_area(uuid, uuid) to authenticated;
 grant execute on function public.clear_checked_items(uuid) to authenticated;
 

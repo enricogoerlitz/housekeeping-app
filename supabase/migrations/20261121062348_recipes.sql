@@ -10,7 +10,8 @@
 -- ---------------------------------------------------------------------------------------------
 
 -- variants, ingredients and steps are JSON arrays in the shape of the core types; the ingredient
--- list is one field (concurrent edits: last write wins, spec 0003 decision 8).
+-- list is one field (concurrent edits: last write wins, spec 0003 decision 8). Every ingredient
+-- points at an article of the household (trigger recipes_check_ingredients below).
 -- photo is the bundled sample photo, used when photo_path is null. photo_path names the own photo
 -- in the private storage bucket household-media (storage migration):
 -- <household_id>/recipes/<id>/<uuid>.jpg — the check keeps a row from pointing at another
@@ -74,6 +75,50 @@ grant update (title, photo, photo_path, description, servings, total_minutes, co
   on public.recipes to authenticated;
 select private.attach_household_policies('public.recipes');
 select private.attach_sync_triggers('public.recipes');
+
+-- Before insert, or update of ingredients, for each row (spec 0007, REQ-001): every ingredient is
+-- an object whose articleId is the canonical (lower-case) UUID of an article of the recipe's
+-- household, and whose optional prepNote ("Hinweis") is text of at most 200 characters. Other keys
+-- are the client's (core RecipeIngredient) and not checked here. Anything else is
+-- ingredient_article_invalid (23503) and the whole statement fails. The articles are read
+-- `for key share`, so delete_article and merge_articles (`for update`) cannot remove one while
+-- this change is in flight. Security invoker: an article of another household is not visible and
+-- counts as missing. Deleting a household or an article never fires this trigger.
+create function private.check_recipe_ingredients()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_article_ids uuid[];
+  v_found integer;
+begin
+  if exists (
+    select 1 from jsonb_array_elements(new.ingredients) e
+    where jsonb_typeof(e) <> 'object'
+       or jsonb_typeof(e -> 'articleId') is distinct from 'string'
+       or (e ->> 'articleId') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or (e ? 'prepNote' and (jsonb_typeof(e -> 'prepNote') <> 'string' or char_length(e ->> 'prepNote') > 200))
+  ) then
+    raise exception 'ingredient_article_invalid' using errcode = '23503';
+  end if;
+
+  v_article_ids := array(select distinct (e ->> 'articleId')::uuid from jsonb_array_elements(new.ingredients) e);
+  select count(*)::integer into v_found
+  from (
+    select a.id from public.articles a
+    where a.household_id = new.household_id and a.id = any (v_article_ids)
+    for key share
+  ) found;
+  if v_found <> cardinality(v_article_ids) then
+    raise exception 'ingredient_article_invalid' using errcode = '23503';
+  end if;
+  return new;
+end
+$$;
+
+create trigger recipes_check_ingredients before insert or update of ingredients on public.recipes
+  for each row execute function private.check_recipe_ingredients();
 
 -- ---------------------------------------------------------------------------------------------
 -- recipe_favorites, recipe_ratings

@@ -1,5 +1,5 @@
--- Baseline (ADR-0012) — catalog: areas, articles, stores; the households' default store; the
--- starter content of a new household.
+-- Baseline (ADR-0012) — catalog: areas, articles, stores; merge_areas; the households' default
+-- store; the starter content of a new household.
 
 -- ---------------------------------------------------------------------------------------------
 -- areas
@@ -17,6 +17,8 @@ create table public.areas (
 );
 
 create index areas_household_id_updated_at_idx on public.areas (household_id, updated_at);
+-- Area names are unique per household, regardless of case (spec 0007, AC-052).
+create unique index areas_household_id_name_idx on public.areas (household_id, lower(name));
 
 grant select, delete on public.areas to authenticated;
 grant insert (id, household_id, name, sort) on public.areas to authenticated;
@@ -29,7 +31,13 @@ select private.attach_sync_triggers('public.areas');
 -- ---------------------------------------------------------------------------------------------
 
 -- name_key / synonym_keys are computed by the client with core `normalizeText`, so name
--- resolution is implemented once (sync.md, "Nachtrag Spec 0003").
+-- resolution is implemented once (sync.md, "Nachtrag Spec 0003"). synonym_keys[i] is the key of
+-- synonyms[i]. A name or synonym belongs to one article of the household only (trigger below).
+-- default_shopping_rule is the rule a new ingredient of the article starts with (null = not set:
+-- core picks one, spec 0007 E7); needs_review marks an article created without a person's choice
+-- ("Neu aus Rezepten").
+-- Members do not delete articles directly: delete_article checks that the article is unused and
+-- merge_articles removes the source of a merge (shopping_rpcs migration; spec 0007 E4).
 create table public.articles (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
@@ -47,10 +55,14 @@ create table public.articles (
   diet text not null default 'unknown'
     constraint articles_diet_valid check (diet in ('vegan', 'vegetarian', 'fish', 'meat', 'unknown')),
   is_pantry boolean not null default false,
+  default_shopping_rule text
+    constraint articles_default_shopping_rule_valid check (default_shopping_rule in ('count', 'recipeAmount', 'skip')),
+  needs_review boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint articles_household_id_id_key unique (household_id, id),
   constraint articles_household_id_name_key_key unique (household_id, name_key),
+  constraint articles_name_key_not_synonym check (not (name_key = any (synonym_keys))),
   -- Deleting an area keeps its articles; they lose the area.
   constraint articles_area_fkey foreign key (household_id, area_id)
     references public.areas (household_id, id) on delete set null (area_id)
@@ -58,14 +70,47 @@ create table public.articles (
 
 create index articles_household_id_updated_at_idx on public.articles (household_id, updated_at);
 create index articles_household_id_area_id_idx on public.articles (household_id, area_id);
+create index articles_synonym_keys_idx on public.articles using gin (synonym_keys);
 
-grant select, delete on public.articles to authenticated;
-grant insert (id, household_id, name, name_key, synonyms, synonym_keys, area_id, diet, is_pantry)
+grant select on public.articles to authenticated;
+grant insert (id, household_id, name, name_key, synonyms, synonym_keys, area_id, diet, is_pantry,
+              default_shopping_rule, needs_review)
   on public.articles to authenticated;
-grant update (name, name_key, synonyms, synonym_keys, area_id, diet, is_pantry)
+grant update (name, name_key, synonyms, synonym_keys, area_id, diet, is_pantry, default_shopping_rule, needs_review)
   on public.articles to authenticated;
+-- The delete policy stays (RLS on every operation); without the grant it is never reached by the
+-- API roles.
 select private.attach_household_policies('public.articles');
 select private.attach_sync_triggers('public.articles');
+
+-- Before insert, or update of name_key or synonym_keys, for each row (spec 0007, E6): no name or
+-- synonym key of the article may be the name or a synonym key of another article of the household,
+-- so a typed word resolves to exactly one article. An equal name key is left to the unique
+-- constraint, so `on conflict (household_id, name_key)` keeps working. Serialised per household
+-- with a transaction advisory lock, so two devices cannot add the same synonym at once.
+-- Security invoker: it reads only rows the caller sees; for another household it finds nothing and
+-- RLS refuses the row afterwards.
+create function private.articles_keys_unique()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('articles:' || new.household_id::text, 0));
+  if exists (
+    select 1 from public.articles a
+    where a.household_id = new.household_id
+      and a.id <> new.id
+      and (a.name_key = any (new.synonym_keys) or a.synonym_keys && (new.synonym_keys || new.name_key))
+  ) then
+    raise exception 'name_taken' using errcode = '23505';
+  end if;
+  return new;
+end
+$$;
+
+create trigger articles_keys_unique before insert or update of name_key, synonym_keys on public.articles
+  for each row execute function private.articles_keys_unique();
 
 -- ---------------------------------------------------------------------------------------------
 -- stores
@@ -94,6 +139,57 @@ grant insert (id, household_id, name, area_order, hidden_area_ids) on public.sto
 grant update (name, area_order, hidden_area_ids) on public.stores to authenticated;
 select private.attach_household_policies('public.stores');
 select private.attach_sync_triggers('public.stores');
+
+-- ---------------------------------------------------------------------------------------------
+-- merge_areas
+-- ---------------------------------------------------------------------------------------------
+
+-- "Zusammenlegen" (spec 0007, AC-054): the articles of area p_source_id move to p_target_id of the
+-- same household, the source leaves the walking order and the hidden areas of every store, and is
+-- deleted. The target keeps its place and visibility in every store. Returns how many articles
+-- moved. Security invoker: RLS decides, so an area of another household is not found.
+-- Errors: not_member (42501, no user), invalid_value (22023, missing or equal ids),
+-- area_not_found (P0002).
+create function public.merge_areas(p_source_id uuid, p_target_id uuid)
+returns integer
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_household_id uuid;
+  v_count integer;
+begin
+  if auth.uid() is null then
+    raise exception 'not_member' using errcode = '42501';
+  end if;
+  if p_source_id is null or p_target_id is null or p_source_id = p_target_id then
+    raise exception 'invalid_value' using errcode = '22023';
+  end if;
+
+  -- Both rows locked in a fixed order, so two merges of the same areas cannot interleave.
+  perform 1 from public.areas a where a.id in (p_source_id, p_target_id) order by a.id for update;
+  select a.household_id into v_household_id from public.areas a where a.id = p_source_id;
+  if v_household_id is null
+     or not exists (select 1 from public.areas a where a.id = p_target_id and a.household_id = v_household_id) then
+    raise exception 'area_not_found' using errcode = 'P0002';
+  end if;
+
+  update public.articles a set area_id = p_target_id
+  where a.household_id = v_household_id and a.area_id = p_source_id;
+  get diagnostics v_count = row_count;
+
+  update public.stores s
+  set area_order = pg_catalog.array_remove(s.area_order, p_source_id),
+      hidden_area_ids = pg_catalog.array_remove(s.hidden_area_ids, p_source_id)
+  where s.household_id = v_household_id
+    and (p_source_id = any (s.area_order) or p_source_id = any (s.hidden_area_ids));
+
+  delete from public.areas a where a.id = p_source_id;
+  return v_count;
+end
+$$;
+
+grant execute on function public.merge_areas(uuid, uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
 -- households: default store

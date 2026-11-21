@@ -121,12 +121,16 @@ $$;
 -- Checks the member can insert, read, update and delete it (leaving a tombstone only members
 -- see); a member of another household reads nothing and changes nothing; nobody can move the
 -- row to another household; anon can do nothing. Returns 15 pgTAP results; call as postgres.
+-- p_direct_delete = false: the table has no delete grant (articles are deleted only by an RPC,
+-- spec 0007 E4), so every direct delete is refused with 42501; the row is then deleted as postgres
+-- to check the tombstone.
 create function tests.tenant_isolation(
   p_table text,
   p_row jsonb,
   p_patch jsonb,
   p_member uuid,
-  p_foreign uuid
+  p_foreign uuid,
+  p_direct_delete boolean default true
 ) returns setof text
 language plpgsql
 as $$
@@ -173,7 +177,12 @@ begin
     tests.affected(format('select 1 from %s where household_id = %L', v_rel, v_household_id)), 0,
     format('AC-011 %s: a member of another household reads no rows', p_table));
   return next is(tests.affected(v_update), 0, format('AC-011 %s: a member of another household updates nothing', p_table));
-  return next is(tests.affected(v_delete), 0, format('AC-011 %s: a member of another household deletes nothing', p_table));
+  if p_direct_delete then
+    return next is(tests.affected(v_delete), 0, format('AC-011 %s: a member of another household deletes nothing', p_table));
+  else
+    return next throws_ok(v_delete, '42501', null,
+      format('AC-011 %s: a member of another household cannot delete directly', p_table));
+  end if;
   return next throws_ok(v_foreign_insert, null::char(5), null,
     format('AC-011 %s: a member of another household cannot insert with this household_id', p_table));
 
@@ -185,7 +194,14 @@ begin
   return next throws_ok(v_delete, '42501', null, format('AC-005 %s: anon cannot delete', p_table));
 
   perform tests.authenticate_as(p_member);
-  return next is(tests.affected(v_delete), 1, format('AC-011 %s: a member deletes the row', p_table));
+  if p_direct_delete then
+    return next is(tests.affected(v_delete), 1, format('AC-011 %s: a member deletes the row', p_table));
+  else
+    return next throws_ok(v_delete, '42501', null, format('E4 %s: a member cannot delete the row directly', p_table));
+    perform tests.clear_authentication();
+    execute v_delete;
+    perform tests.authenticate_as(p_member);
+  end if;
   return next is(
     tests.affected(format('select 1 from public.deleted_records where table_name = %L and record_id = %L',
                           p_table, v_id)), 1,

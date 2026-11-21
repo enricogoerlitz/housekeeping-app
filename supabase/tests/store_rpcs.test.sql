@@ -4,7 +4,7 @@
 -- RPCs take the household id; households stay independent of each other. Rule table: docs/architecture/sync.md ("Abhaken: offline").
 begin;
 \ir _helpers.psql
-select plan(74);
+select plan(89);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -446,6 +446,104 @@ select tests.authenticate_as_anon();
 select throws_ok(
   format('select public.remove_contributions(array[%L]::uuid[])', tests.fx('c_butter')),
   '42501', null, 'AC-005 remove_contributions: anon cannot call it');
+
+-- ===================== Store actions after merging articles (spec 0007, E5, AC-040) =====================
+-- Milchkokos, Kokosmilch and Kokosdrink are open on the list. Milchkokos is merged into
+-- Kokosmilch, then Kokosmilch into Kokosdrink: the tombstones point item_mk → item_km → item_kd.
+-- A queued check or "nicht da" on an old item reaches the item that replaced it; an uncheck does
+-- not (its check_seq belongs to the old item).
+select tests.clear_authentication();
+insert into fx (key) values
+  ('mk'), ('km'), ('kd'), ('item_mk'), ('item_km'), ('item_kd'), ('ziel'), ('item_ziel'),
+  ('t1'), ('t2'), ('t3'), ('t4'), ('t5'), ('t6'), ('t_foreign');
+insert into public.articles (id, household_id, name, name_key) values
+  (tests.fx('mk'), tests.fx('home_a'), 'Milchkokos', 'milchkokos'),
+  (tests.fx('km'), tests.fx('home_a'), 'Kokosmilch', 'kokosmilch'),
+  (tests.fx('kd'), tests.fx('home_a'), 'Kokosdrink', 'kokosdrink'),
+  (tests.fx('ziel'), tests.fx('home_a'), 'Zielartikel', 'zielartikel');
+insert into public.shopping_items (id, household_id, article_id) values
+  (tests.fx('item_mk'), tests.fx('home_a'), tests.fx('mk')),
+  (tests.fx('item_km'), tests.fx('home_a'), tests.fx('km')),
+  (tests.fx('item_kd'), tests.fx('home_a'), tests.fx('kd')),
+  (tests.fx('item_ziel'), tests.fx('home_a'), tests.fx('ziel'));
+insert into public.shopping_contributions (household_id, item_id)
+select tests.fx('home_a'), i from unnest(array[tests.fx('item_mk'), tests.fx('item_km'), tests.fx('item_kd')]) i;
+
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  public.merge_articles(tests.fx('mk'), tests.fx('km')), '{"recipes": 0, "items": 1}'::jsonb,
+  'AC-040 merge_articles: Milchkokos is merged into Kokosmilch');
+select is(
+  public.merge_articles(tests.fx('km'), tests.fx('kd')), '{"recipes": 0, "items": 1}'::jsonb,
+  'AC-040 merge_articles: Kokosmilch is merged into Kokosdrink');
+
+-- Nadja's queue replays the check she made offline on Milchkokos.
+select tests.authenticate_as(tests.fx('nadja'));
+select is(
+  public.set_shopping_item_checked(tests.fx('item_mk'), true, 0),
+  jsonb_build_object('item_id', tests.fx('item_kd'), 'checked', true, 'check_seq', 1),
+  'AC-040 set_shopping_item_checked: a check on a merged item follows both merges to Kokosdrink');
+select results_eq(
+  format('select * from tests.item_state(%L)', tests.fx('item_kd')),
+  format($$ values (true, %L::uuid, 1, false) $$, tests.fx('nadja')),
+  'AC-040 set_shopping_item_checked: Kokosdrink is checked by Nadja, for everyone');
+select is(
+  public.set_shopping_item_checked(tests.fx('item_km'), true, 0),
+  jsonb_build_object('item_id', tests.fx('item_kd'), 'checked', true, 'check_seq', 1),
+  'AC-040 set_shopping_item_checked: a check over one merge is idempotent on the target');
+select is(
+  public.set_shopping_item_checked(tests.fx('item_mk'), false, 1),
+  jsonb_build_object('item_id', tests.fx('item_kd'), 'checked', true, 'check_seq', 1),
+  'E5 set_shopping_item_checked: an uncheck on a merged item has no effect, even with a matching check_seq');
+select is(
+  public.set_shopping_item_not_available(tests.fx('item_mk'), true),
+  jsonb_build_object('item_id', tests.fx('item_kd'), 'not_available', true),
+  'AC-040 set_shopping_item_not_available: "nicht da" on a merged item reaches Kokosdrink');
+
+-- Another household never follows the reference.
+select tests.authenticate_as(tests.fx('ben'));
+select is(
+  public.set_shopping_item_checked(tests.fx('item_mk'), false, 1), null,
+  'E5 set_shopping_item_checked: a member of another household gets null for a merged item');
+select is(
+  public.set_shopping_item_not_available(tests.fx('item_mk'), false), null,
+  'E5 set_shopping_item_not_available: a member of another household gets null for a merged item');
+select tests.clear_authentication();
+select results_eq(
+  format('select * from tests.item_state(%L)', tests.fx('item_kd')),
+  format($$ values (true, %L::uuid, 1, true) $$, tests.fx('nadja')),
+  'E5 store RPCs: Kokosdrink is unchanged by the other household');
+
+-- A reference into another household is never followed, and at most 5 references are.
+create temp table item_b_before on commit drop as select * from tests.item_state(tests.fx('item_b'));
+grant select on item_b_before to authenticated;
+insert into public.deleted_records (household_id, table_name, record_id, replaced_by) values
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t_foreign')::text, tests.fx('item_b')::text),
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t1')::text, tests.fx('t2')::text),
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t2')::text, tests.fx('t3')::text),
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t3')::text, tests.fx('t4')::text),
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t4')::text, tests.fx('t5')::text),
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t5')::text, tests.fx('t6')::text),
+  (tests.fx('home_a'), 'shopping_items', tests.fx('t6')::text, tests.fx('item_ziel')::text);
+select tests.authenticate_as(tests.fx('enrico'));
+select is(
+  public.set_shopping_item_not_available(tests.fx('t_foreign'), true), null,
+  'E5 set_shopping_item_not_available: a reference into another household is not followed');
+select is(
+  public.set_shopping_item_checked(tests.fx('t_foreign'), true, 0), null,
+  'E5 set_shopping_item_checked: a reference into another household is not followed');
+select is(
+  public.set_shopping_item_not_available(tests.fx('t1'), true), null,
+  'E5 set_shopping_item_not_available: six references are too many');
+select is(
+  public.set_shopping_item_not_available(tests.fx('t2'), true),
+  jsonb_build_object('item_id', tests.fx('item_ziel'), 'not_available', true),
+  'E5 set_shopping_item_not_available: five references are followed');
+select tests.clear_authentication();
+select results_eq(
+  format('select * from tests.item_state(%L)', tests.fx('item_b')),
+  'select * from item_b_before',
+  'E5 store RPCs: the item of the other household is unchanged');
 
 select * from finish();
 rollback;

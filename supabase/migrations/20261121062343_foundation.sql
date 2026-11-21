@@ -228,17 +228,24 @@ $$;
 -- Written only by private.record_deletion(). Members read the tombstones of their households
 -- (policy in the identity migration). No foreign key to households: it is a log, and tombstones
 -- of a deleted household are harmless because nobody can read them any more.
+-- replaced_by names the row that took the deleted row's place: merge_articles sets it on the
+-- tombstone of a merged shopping item, so a queued store action on the old item reaches the item
+-- of the target (spec 0007, E5). Same retention as the tombstone.
 create table public.deleted_records (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null,
   table_name text not null,
   record_id text not null,
-  deleted_at timestamptz not null default now()
+  deleted_at timestamptz not null default now(),
+  replaced_by text
 );
 
 create index deleted_records_household_id_deleted_at_idx
   on public.deleted_records (household_id, deleted_at);
 create index deleted_records_deleted_at_idx on public.deleted_records (deleted_at);
+-- The store RPCs look a replaced item up by its id.
+create index deleted_records_replaced_record_idx
+  on public.deleted_records (household_id, table_name, record_id) where replaced_by is not null;
 
 alter table public.deleted_records enable row level security;
 grant select on public.deleted_records to authenticated;

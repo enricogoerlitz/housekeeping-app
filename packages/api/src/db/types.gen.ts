@@ -311,12 +311,14 @@ export type Database = {
         Row: {
           area_id: string | null;
           created_at: string;
+          default_shopping_rule: string | null;
           diet: string;
           household_id: string;
           id: string;
           is_pantry: boolean;
           name: string;
           name_key: string;
+          needs_review: boolean;
           synonym_keys: string[];
           synonyms: string[];
           updated_at: string;
@@ -325,12 +327,14 @@ export type Database = {
         Insert: {
           area_id?: string | null;
           created_at?: string;
+          default_shopping_rule?: string | null;
           diet?: string;
           household_id: string;
           id?: string;
           is_pantry?: boolean;
           name: string;
           name_key: string;
+          needs_review?: boolean;
           synonym_keys?: string[];
           synonyms?: string[];
           updated_at?: string;
@@ -338,12 +342,14 @@ export type Database = {
         Update: {
           area_id?: string | null;
           created_at?: string;
+          default_shopping_rule?: string | null;
           diet?: string;
           household_id?: string;
           id?: string;
           is_pantry?: boolean;
           name?: string;
           name_key?: string;
+          needs_review?: boolean;
           synonym_keys?: string[];
           synonyms?: string[];
           updated_at?: string;
@@ -494,6 +500,7 @@ export type Database = {
           household_id: string;
           id: string;
           record_id: string;
+          replaced_by: string | null;
           table_name: string;
         };
         ComputedFields: never;
@@ -502,6 +509,7 @@ export type Database = {
           household_id: string;
           id?: string;
           record_id: string;
+          replaced_by?: string | null;
           table_name: string;
         };
         Update: {
@@ -509,6 +517,7 @@ export type Database = {
           household_id?: string;
           id?: string;
           record_id?: string;
+          replaced_by?: string | null;
           table_name?: string;
         };
         Relationships: [];
@@ -1390,7 +1399,10 @@ export type Database = {
       consume_ai_quota: { Args: { amount: number; kind: string }; Returns: boolean };
       create_household: { Args: { name: string; starter: Json }; Returns: string };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
+      delete_article: { Args: { p_article_id: string }; Returns: Json };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
+      merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
+      merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };

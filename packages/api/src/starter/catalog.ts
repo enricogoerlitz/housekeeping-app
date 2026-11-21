@@ -249,7 +249,7 @@ export const starterCatalog: StarterArticle[] = [
   },
   { name: 'Saure Sahne', synonyms: ['Sauerrahm'], area: 'kuehlregal', diet: 'vegetarian' },
   { name: 'Schmand', area: 'kuehlregal', diet: 'vegetarian' },
-  { name: 'Crème fraîche', synonyms: ['Creme fraiche'], area: 'kuehlregal', diet: 'vegetarian' },
+  { name: 'Crème fraîche', area: 'kuehlregal', diet: 'vegetarian' },
   { name: 'Joghurt', synonyms: ['Naturjoghurt', 'Jogurt'], area: 'kuehlregal', diet: 'vegetarian' },
   { name: 'Griechischer Joghurt', area: 'kuehlregal', diet: 'vegetarian' },
   { name: 'Fruchtjoghurt', area: 'kuehlregal', diet: 'vegetarian' },

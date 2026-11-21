@@ -43,6 +43,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.remove_contributions(uuid[],uuid)'), -- security invoker, shared with apply_changes
   ('private.consume_ai_quota(text,integer)'),
   ('private.restore_cleared_items(uuid,jsonb)'),
+  ('private.delete_article(uuid)'),         -- spec 0007: the only way to delete an article
+  ('private.merge_articles(uuid,uuid)'),    -- spec 0007
   ('private.assert_restorable_size(jsonb)'); -- security invoker, a size check without data access
 
 create temp view lint_public_tables as
