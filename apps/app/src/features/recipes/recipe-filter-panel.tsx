@@ -4,9 +4,11 @@ import {
   MIN_RATINGS,
   minRatingLabel,
   QUICK_FILTERS,
+  RECIPE_KINDS,
   TIME_LIMITS,
   timeLimitLabel,
   toggleQuickFilter,
+  toggleRecipeKind,
   type Course,
   type CuisineFacet,
   type QuickFilter,
@@ -50,9 +52,10 @@ function Part(props: { title: string; children: ReactNode; testID: string }) {
 }
 
 /**
- * The fields of the filter panel on "Essen → Rezepte" (spec 0008, REQ-002): Schnell, Ernährung,
- * Gerichtart, Küche from the household's recipes (left out when none has one, AC-009), Zeit and
- * Bewertung. Every tap applies at once.
+ * The fields of the filter panel on "Essen → Rezepte" (spec 0008, REQ-002): Schnell, Art
+ * ("Rezepte" or "Sammlungen", one or none; spec 0009, AC-018), Ernährung, Gerichtart, Küche from
+ * the household's recipes (left out when none has one, AC-009), Zeit and Bewertung. Every tap
+ * applies at once.
  */
 export function RecipeFilterPanel(props: {
   filter: RecipeListFilter;
@@ -81,6 +84,17 @@ export function RecipeFilterPanel(props: {
     >
       <Part title="Schnell" testID="recipe-filter-quick">
         {PANEL_QUICK.map((chip) => quick(chip, 'quick'))}
+      </Part>
+      <Part title="Art" testID="recipe-filter-kind">
+        {RECIPE_KINDS.map((kind) => (
+          <Chip
+            key={kind.value}
+            label={kind.label}
+            selected={filter.kind === kind.value}
+            onPress={() => onChange(toggleRecipeKind(filter, kind.value))}
+            testID={`recipe-filter-kind-${kind.value}`}
+          />
+        ))}
       </Part>
       <Part title="Ernährung" testID="recipe-filter-diet">
         {DIETS.map((chip) => quick(chip, 'diet'))}

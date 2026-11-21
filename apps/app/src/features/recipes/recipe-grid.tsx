@@ -1,10 +1,32 @@
-import { useArticlesById, useRecipeImage } from '@housekeeping/api';
+import { useArticlesById, useCollectionContents, useRecipeImage } from '@housekeeping/api';
 import type { Article, Id, Recipe } from '@housekeeping/core';
-import { MediaCard, useBreakpoint, useTheme } from '@housekeeping/ui';
+import { KIND_ICONS, MediaCard, useBreakpoint, useTheme } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { useCoverSources } from './recipe-cover';
 import { RecipeCardMeta } from './recipe-meta';
+
+/** The Kennzeichen of a collection on its tile, over the photo's bottom left (spec 0009, AC-018). */
+export const COLLECTION_BADGE = { label: 'Sammlung', icon: KIND_ICONS.collection };
+
+/**
+ * What a card shows of a recipe or a collection: a collection gets its cover (own photo, collage
+ * or stack placeholder, E14), the Kennzeichen "Sammlung" and its contents for the meta line.
+ */
+function useCardMedia(recipe: Recipe) {
+  const collection = recipe.kind === 'collection';
+  const contents = useCollectionContents(collection ? recipe.id : undefined);
+  const image = useRecipeImage(recipe);
+  const images = useCoverSources(recipe);
+  return collection
+    ? {
+        images,
+        contents,
+        badge: { ...COLLECTION_BADGE, testID: `recipe-card-badge-${recipe.id}` },
+      }
+    : { image, contents };
+}
 
 const GAP = 12;
 
@@ -64,22 +86,24 @@ export function RecipeTile(props: {
 }) {
   const { recipe } = props;
   const { isPhone } = useBreakpoint();
-  const image = useRecipeImage(recipe);
+  const { contents, ...media } = useCardMedia(recipe);
   return (
     <MediaCard
       testID={`recipe-card-${recipe.id}`}
       title={recipe.title}
-      image={image}
+      {...media}
       layout="photoTop"
       photoAspectRatio={4 / 3}
       size={isPhone ? 'm' : 'l'}
-      meta={<RecipeCardMeta recipe={recipe} articlesById={props.articlesById} />}
+      meta={
+        <RecipeCardMeta recipe={recipe} articlesById={props.articlesById} contents={contents} />
+      }
       onPress={() => props.onOpen(recipe.id)}
     />
   );
 }
 
-/** One card; its own photo wins over the sample photo (spec 0004, AC-017). */
+/** One card; its own photo wins over the sample photo (spec 0004, AC-017), a collection as above. */
 function RecipeCard(props: {
   recipe: Recipe;
   articlesById: Record<Id, Article>;
@@ -89,18 +113,18 @@ function RecipeCard(props: {
   onOpen: (recipeId: Id) => void;
 }) {
   const { recipe } = props;
-  const image = useRecipeImage(recipe);
+  const { contents, ...media } = useCardMedia(recipe);
   return (
     <MediaCard
       testID={props.testID}
       title={recipe.title}
-      image={image}
+      {...media}
       layout={props.compact ? 'thumbRow' : 'auto'}
       meta={
         props.meta ? (
           props.meta(recipe)
         ) : (
-          <RecipeCardMeta recipe={recipe} articlesById={props.articlesById} />
+          <RecipeCardMeta recipe={recipe} articlesById={props.articlesById} contents={contents} />
         )
       }
       onPress={() => props.onOpen(recipe.id)}

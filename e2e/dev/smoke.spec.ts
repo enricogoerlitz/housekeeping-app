@@ -97,6 +97,12 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();
   await back(page);
+  // The page of a collection with its Kennzeichen, "Enthält" and no "Kochen" (spec 0009, E13).
+  await tid(page, `recipe-card-${seedIds['rec-grillabend']}`).click();
+  await expect(tid(page, 'collection-badge')).toBeVisible();
+  await expect(tid(page, `collection-content-${seedIds['rec-nudelsalat']}`)).toBeVisible();
+  await expect(tid(page, 'start-cooking')).toBeHidden();
+  await back(page);
   await tid(page, 'food-switch-restaurants').click();
   await tid(page, `restaurant-${seedIds['rest-pho']}`).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');

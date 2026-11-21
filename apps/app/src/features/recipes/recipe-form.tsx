@@ -1,3 +1,4 @@
+import type { RecipeKind } from '@housekeeping/core';
 import { IconButton, Row, Stack, Text, TextField } from '@housekeeping/ui';
 
 /** Servings a new recipe starts with (createRecipe's default). */
@@ -5,7 +6,7 @@ export const DEFAULT_SERVINGS = 2;
 
 /**
  * The minimum of a new recipe: its title (required, "Titel fehlt") and, where asked for, the
- * servings. Used by "Neues Rezept" and by the plan's add sheet (spec 0004, AC-022).
+ * servings. Used by the window "Neu" and by the plan's add sheet (spec 0004, AC-022).
  */
 export function NewRecipeFields(props: {
   title: string;
@@ -14,13 +15,15 @@ export function NewRecipeFields(props: {
   onSubmit: () => void;
   autoFocus?: boolean;
   servings?: { value: number; onChange: (servings: number) => void };
+  /** A collection gets an example of its own as placeholder (spec 0009). */
+  kind?: RecipeKind;
 }) {
   const { servings } = props;
   return (
     <Stack gap={16}>
       <TextField
         label="Titel"
-        placeholder="z. B. Linsen-Dal"
+        placeholder={props.kind === 'collection' ? 'z. B. Grillabend' : 'z. B. Linsen-Dal'}
         value={props.title}
         onChangeText={props.onChangeTitle}
         onSubmitEditing={props.onSubmit}

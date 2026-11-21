@@ -785,6 +785,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           onSubmit={() => saveNewRecipe(creating)}
           autoFocus
           servings={{ value: newServings, onChange: setNewServings }}
+          kind={creating}
         />
       </Stack>
     ) : creating === 'restaurant' ? (

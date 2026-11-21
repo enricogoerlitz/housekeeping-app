@@ -24,7 +24,7 @@ import {
   Button,
   List,
   ListRow,
-  Photo,
+  PhotoCollage,
   RowTransition,
   Section,
   Stars,
@@ -36,9 +36,8 @@ import { useIsFocused } from 'expo-router';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { View } from 'react-native';
 
+import { useCoverSources } from '@/features/recipes/recipe-cover';
 import { useOnlineOnly } from '@/features/shell/offline';
-
-import { useCoverImage } from './recipe-cover';
 
 /** Big enough that each half of a star is a comfortable target (AC-017). */
 const STAR_SIZE = 30;
@@ -242,18 +241,18 @@ function RecapRow(props: {
 }
 
 function RecapPhoto(props: { item: RecapItem; recipe?: Recipe; activity?: Activity }) {
-  const recipeImage = useCoverImage(props.recipe);
+  const recipeImages = useCoverSources(props.recipe);
   const activityPhoto = usePhoto(props.activity?.photoPath);
   const { kind } = props.item;
-  const source =
+  const sources =
     kind === 'recipe' || kind === 'collection'
-      ? recipeImage
+      ? recipeImages
       : kind === 'activity' && activityPhoto.uri
-        ? { uri: activityPhoto.uri }
-        : undefined;
+        ? [{ uri: activityPhoto.uri }]
+        : [];
   return (
-    <Photo
-      source={source}
+    <PhotoCollage
+      sources={sources}
       width={56}
       height={56}
       placeholderIcon={

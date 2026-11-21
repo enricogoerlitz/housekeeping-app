@@ -18,7 +18,7 @@ import {
   Text,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +55,10 @@ export function CookingScreen() {
         </EmptyState>
       </Screen>
     );
+  }
+  // A collection has no cooking mode: its address leads to its page (spec 0009, E13).
+  if (recipe.kind === 'collection') {
+    return <Redirect href={{ pathname: '/rezept/[id]', params: { id: recipe.id } }} />;
   }
   return <Cooking recipe={recipe} variantParam={firstParam(params.variant)} onLeave={leave} />;
 }

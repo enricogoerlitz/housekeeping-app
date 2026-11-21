@@ -16,7 +16,8 @@ import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
-const NO_INGREDIENTS_HINT = 'Noch keine Zutaten';
+/** Why "Auf die Liste" is greyed out when there is nothing to buy (spec 0008, AC-060). */
+export const NO_INGREDIENTS_HINT = 'Noch keine Zutaten';
 
 export interface RecipeActionsProps {
   recipe: Recipe;

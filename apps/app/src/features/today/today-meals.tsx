@@ -21,6 +21,7 @@ import {
   Button,
   Icon,
   Photo,
+  PhotoCollage,
   Row,
   Section,
   Surface,
@@ -34,10 +35,10 @@ import { Pressable, ScrollView, View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
 import { useOpenRecipe } from '@/features/recipes/navigation';
+import { useCoverSources } from '@/features/recipes/recipe-cover';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
 
-import { useCoverImage } from './recipe-cover';
 import { useOpenCalendarAt } from './today-header';
 
 export interface TodayMealsProps {
@@ -267,6 +268,8 @@ function PlannedCard(props: {
   title: string;
   meta?: ReactNode;
   image?: number | { uri: string };
+  /** A recipe's or collection's cover (spec 0009, E14): one photo, a collage or none. */
+  images?: readonly (number | { uri: string })[];
   placeholderIcon: IconName;
   /** A planned collection: Kennzeichen "Sammlung". */
   collection?: boolean;
@@ -278,12 +281,21 @@ function PlannedCard(props: {
   const content = (
     <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
       <View>
-        <Photo
-          source={props.image}
-          placeholderIcon={props.placeholderIcon}
-          aspectRatio={PHOTO_RATIO}
-          radius={0}
-        />
+        {props.images ? (
+          <PhotoCollage
+            sources={props.images}
+            placeholderIcon={props.placeholderIcon}
+            aspectRatio={PHOTO_RATIO}
+            radius={0}
+          />
+        ) : (
+          <Photo
+            source={props.image}
+            placeholderIcon={props.placeholderIcon}
+            aspectRatio={PHOTO_RATIO}
+            radius={0}
+          />
+        )}
         {badge ? (
           <View style={{ position: 'absolute', bottom: 8, left: 8 }}>
             <Badge label={badge.label} icon={badge.icon} testID={badge.testID} />
@@ -391,7 +403,7 @@ function MealCard(props: {
   const { entry, recipe } = props;
   const membersById = useMembersById();
   const planEntries = usePlanEntries();
-  const image = useCoverImage(recipe);
+  const images = useCoverSources(recipe);
   const collection = recipe?.kind === 'collection';
   const cook = entry.cookId ? membersById[entry.cookId] : undefined;
   const leftovers = entry.kind === 'leftovers';
@@ -422,7 +434,7 @@ function MealCard(props: {
       kicker={kicker}
       title={recipe?.title ?? entry.text ?? 'Essen'}
       meta={meta}
-      image={image}
+      images={images}
       placeholderIcon={collection ? 'layers' : 'utensils'}
       collection={collection}
       onPress={props.onPress}

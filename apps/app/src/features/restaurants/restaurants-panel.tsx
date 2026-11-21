@@ -17,6 +17,7 @@ import {
   sortRestaurantList,
   toggleRestaurantFavorites,
   type Id,
+  type RecipeKind,
   type Restaurant,
   type RestaurantListSort,
 } from '@housekeeping/core';
@@ -57,7 +58,7 @@ import { RestaurantDetail } from './restaurant-detail';
 import { RestaurantFilterPanel } from './restaurant-filter-panel';
 import { useRestaurantListState } from './restaurant-list-state';
 
-type NewKind = 'recipe' | 'restaurant' | 'starter';
+type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
 
 /** Restaurant cards in the grid: at least this wide (one column on phones, three at 1440 px). */
 const CARD_MIN_WIDTH = 320;
@@ -106,7 +107,10 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
   const openRecipe = useOpenRecipe();
 
   const [sheet, setSheet] = useState<SheetRequest | undefined>();
-  const [newRecipeOpen, setNewRecipeOpen] = useState(false);
+  const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
+    open: false,
+    kind: 'recipe',
+  });
   const [starterOpen, setStarterOpen] = useState(false);
 
   const selectedId = isWide ? routeId(params.rid) : undefined;
@@ -149,11 +153,12 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
 
   const newOptions: MenuOption<NewKind>[] = [
     { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
+    { value: 'collection', label: 'Sammlung', disabled: online.disabled, hint: online.hint },
     { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
     { value: 'starter', label: 'Starter-Rezepte' },
   ];
   const onNew = (kind: NewKind) => {
-    if (kind === 'recipe') setNewRecipeOpen(true);
+    if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
     else if (kind === 'starter') setStarterOpen(true);
     else setSheet({ focus: 'link' });
   };
@@ -196,8 +201,9 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
         />
       ) : null}
       <NewRecipeSheet
-        visible={newRecipeOpen}
-        onClose={() => setNewRecipeOpen(false)}
+        visible={newRecipe.open}
+        kind={newRecipe.kind}
+        onClose={() => setNewRecipe({ ...newRecipe, open: false })}
         onCreated={openRecipe}
       />
       <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />

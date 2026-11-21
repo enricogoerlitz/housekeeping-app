@@ -2,6 +2,7 @@ import {
   useArticlesById,
   useCurrentMember,
   useMembers,
+  usePlanEntries,
   useRecipeBook,
   useRecipes,
   useToday,
@@ -10,21 +11,24 @@ import {
   activeFilterChips,
   activeFilterCount,
   applyRecipeListFilter,
+  cookingHistory,
   cuisineFacets,
   EMPTY_RECIPE_LIST_FILTER,
   filterButtonLabel,
   isQuickFilterActive,
   QUICK_FILTERS,
   RECIPE_SORTS,
-  recipeCountLabel,
   recipeEmptyLabel,
+  recipeListCountLabel,
   recipeShowLabel,
   recipeSortShortLabel,
   removeFilterChip,
   searchRecipes,
   sortRecipeList,
   toggleQuickFilter,
+  withCookingHistory,
   type Recipe,
+  type RecipeKind,
 } from '@housekeeping/core';
 import {
   Button,
@@ -73,7 +77,7 @@ const FOOD_VIEWS: { value: FoodView; label: string }[] = [
   { value: 'restaurants', label: 'Restaurants' },
 ];
 
-type NewKind = 'recipe' | 'restaurant' | 'starter';
+type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
 
 /** Recipe tiles: at least 260 px wide, two side by side on phones (AC-014). */
 const TILE_MIN_WIDTH = 260;
@@ -90,8 +94,9 @@ export function RecipesScreen() {
   const online = useOnlineOnly();
   const assistant = useAssistant();
   const settings = useSettings();
-  const recipes = useRecipes();
+  const stored = useRecipes();
   const book = useRecipeBook();
+  const entries = usePlanEntries();
   const articlesById = useArticlesById();
   const members = useMembers();
   const me = useCurrentMember();
@@ -99,10 +104,21 @@ export function RecipesScreen() {
   const list = useRecipeListState();
   const openRecipe = useOpenRecipe();
 
-  const [newOpen, setNewOpen] = useState(false);
+  // The window "Neu" with the kind chosen in "+" preselected (spec 0009, AC-001, AC-002).
+  const [newSheet, setNewSheet] = useState<{ open: boolean; kind: RecipeKind }>({
+    open: false,
+    kind: 'recipe',
+  });
+  const openNew = (kind: RecipeKind) => setNewSheet({ open: true, kind });
   const [starterOpen, setStarterOpen] = useState(false);
 
   const { query, filter, sort, shuffle } = list;
+  // "Zuletzt gekocht" and "Lange nicht gekocht" count what the calendar says was cooked, for a
+  // collection also its recipes (spec 0009, E10, AC-031).
+  const recipes = useMemo(
+    () => withCookingHistory(stored, cookingHistory(entries, book.collectionRecipes, today)),
+    [stored, entries, book.collectionRecipes, today],
+  );
   const cuisines = useMemo(() => cuisineFacets(recipes), [recipes]);
   const results = useMemo(() => {
     const searched = searchRecipes(query, recipes, articlesById);
@@ -149,11 +165,12 @@ export function RecipesScreen() {
   const ids = recipes.map((recipe) => recipe.id);
   const newOptions: MenuOption<NewKind>[] = [
     { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
+    { value: 'collection', label: 'Sammlung', disabled: online.disabled, hint: online.hint },
     { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
     { value: 'starter', label: 'Starter-Rezepte' },
   ];
   const onNew = (kind: NewKind) => {
-    if (kind === 'recipe') setNewOpen(true);
+    if (kind === 'recipe' || kind === 'collection') openNew(kind);
     else if (kind === 'starter') setStarterOpen(true);
     // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
     else router.setParams({ view: 'restaurants', add: '1' });
@@ -186,7 +203,12 @@ export function RecipesScreen() {
 
   const sheets = (
     <>
-      <NewRecipeSheet visible={newOpen} onClose={() => setNewOpen(false)} onCreated={openRecipe} />
+      <NewRecipeSheet
+        visible={newSheet.open}
+        kind={newSheet.kind}
+        onClose={() => setNewSheet({ ...newSheet, open: false })}
+        onCreated={openRecipe}
+      />
       <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
     </>
   );
@@ -211,7 +233,7 @@ export function RecipesScreen() {
             icon="pencil"
             disabled={online.disabled}
             hint={online.hint}
-            onPress={() => setNewOpen(true)}
+            onPress={() => openNew('recipe')}
             testID="empty-recipe-title"
           />
           <Button
@@ -409,7 +431,7 @@ export function RecipesScreen() {
               </Text>
             ) : results.length > 0 ? (
               <Text variant="small" color="muted" testID="recipe-count">
-                {recipeCountLabel(results.length)}
+                {recipeListCountLabel(results)}
               </Text>
             ) : null}
             {aiPart}

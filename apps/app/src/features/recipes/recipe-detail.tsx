@@ -1,21 +1,15 @@
 import {
-  deleteRecipe,
-  discardRecipePhoto,
-  OfflineError,
   rateRecipe,
-  snapshot,
   toggleFavorite,
   useArticlesById,
   useCurrentMember,
   useMembers,
   useRecipe,
-  useRecipeImage,
 } from '@housekeeping/api';
 import {
   canPutRecipeOnList,
   chooseVariant,
   deriveRecipeDiet,
-  recipeDeletedLabel,
   shownVariantId,
   type Id,
   type Recipe,
@@ -23,12 +17,10 @@ import {
 import {
   Button,
   EmptyState,
-  Photo,
   Row,
   Screen,
   ScreenHeader,
   Stack,
-  toast,
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
@@ -38,22 +30,19 @@ import { View } from 'react-native';
 import { PlanRecipeSheet } from '@/features/meal-plan/plan-recipe-sheet';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 
-import {
-  RecipeActions,
-  RecipeMoreMenu,
-  RecipePhotoStatus,
-  useRecipePhoto,
-  type RecipePhotoState,
-} from './recipe-actions';
+import { CollectionDetailBody } from './collection-detail';
+import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { ClassificationSection } from './sections/classification-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
 import { NotesSection } from './sections/notes-section';
 import { StepsSection } from './sections/steps-section';
 import { useSectionEditor } from './sections/use-section-editor';
+import { RecipePhoto } from './recipe-cover';
+import { useDeleteRecipe } from './use-delete-recipe';
 
 export interface RecipeDetailProps {
   recipeId: Id;
@@ -74,6 +63,17 @@ export function RecipeDetail(props: RecipeDetailProps) {
   if (!recipe) {
     if (leaving) return <Screen testID="recipe-screen" tone="essen" />;
     return <RecipeGone onBack={props.onBack} />;
+  }
+  // A collection has its own page at the same address (spec 0009, E13).
+  if (recipe.kind === 'collection') {
+    return (
+      <CollectionDetailBody
+        key={recipe.id}
+        collection={recipe}
+        onBack={props.onBack}
+        onDeleting={setLeaving}
+      />
+    );
   }
   // A new recipe starts with fresh local state (portions, variant).
   return (
@@ -153,35 +153,7 @@ function RecipeDetailBody(props: {
     });
   };
 
-  /**
-   * AC-043: back to "Essen" and the notice "… gelöscht · Rückgängig" for 5 s. Only when it ends
-   * without "Rückgängig" does the own photo go (E5); a refusal brings everything back (AC-045).
-   */
-  const remove = () => {
-    if (online.disabled) return;
-    const restore = snapshot();
-    props.onDeleting(true);
-    let deletion;
-    try {
-      deletion = deleteRecipe(recipe.id);
-    } catch (error) {
-      props.onDeleting(false);
-      if (!(error instanceof OfflineError)) throw error;
-      return;
-    }
-    if (!deletion) {
-      props.onDeleting(false);
-      return;
-    }
-    const done = deletion;
-    props.onBack();
-    toast.show({
-      message: recipeDeletedLabel(recipe.title, done.collections),
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-      onExpire: () => void discardRecipePhoto(done),
-    });
-  };
+  const remove = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
 
   const actions = (
     <RecipeActions
@@ -287,15 +259,5 @@ function RecipeDetailBody(props: {
         ) : null}
       </View>
     </Screen>
-  );
-}
-
-function RecipePhoto(props: { recipe: Recipe; photo: RecipePhotoState; style?: { flex: number } }) {
-  const image = useRecipeImage(props.recipe);
-  return (
-    <Stack gap={4} style={props.style}>
-      <Photo source={image} aspectRatio={4 / 3} alt={props.recipe.title} />
-      <RecipePhotoStatus photo={props.photo} />
-    </Stack>
   );
 }

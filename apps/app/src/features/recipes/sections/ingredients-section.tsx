@@ -72,16 +72,21 @@ export function IngredientsSection(props: {
   variantId: Id | undefined;
   onVariant: (id: Id) => void;
   servings: number;
-  onServings: (value: number) => void;
+  /** The portions stepper; a collection has none (its portions are set in the head). */
+  onServings?: (value: number) => void;
   editor: SectionEditor;
+  /** "Eigene Zutaten" for a collection (spec 0009, E13). */
+  title?: string;
 }) {
-  const { editor } = props;
-  const frame = useSectionFrame(editor, 'ingredients', 'Zutaten');
+  const { editor, onServings } = props;
+  const frame = useSectionFrame(editor, 'ingredients', props.title ?? 'Zutaten');
   const draft = editor.draft?.section === 'ingredients' ? editor.draft : undefined;
   return (
     <EditableSection
       {...frame}
-      accessory={<ServingsStepper value={props.servings} onChange={props.onServings} />}
+      accessory={
+        onServings ? <ServingsStepper value={props.servings} onChange={onServings} /> : undefined
+      }
       testID="recipe-ingredients"
     >
       {draft ? (
@@ -359,13 +364,16 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
           onPress={() => setSheet({ kind: 'paste' })}
           testID="recipe-paste-ingredients"
         />
-        <Button
-          label="Variante"
-          icon="plus"
-          variant="link"
-          onPress={() => setSheet({ kind: 'variant' })}
-          testID="recipe-add-variant"
-        />
+        {/* A collection's own ingredients have no variants (spec 0009, AC-012). */}
+        {draft.kind === 'collection' ? null : (
+          <Button
+            label="Variante"
+            icon="plus"
+            variant="link"
+            onPress={() => setSheet({ kind: 'variant' })}
+            testID="recipe-add-variant"
+          />
+        )}
       </Row>
       <SectionError editor={editor} testID="recipe-ingredients-error" />
 

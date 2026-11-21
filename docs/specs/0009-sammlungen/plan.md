@@ -622,7 +622,8 @@ db:seed:gen`), `index.ts`.
   - AC-029 mit zwei Browsern.
   - Offline: alle Stifte und Knöpfe ausgegraut.
   - Fremde Kennung in der Adresse.
-- **Status:** offen
+- **Status:** gebaut, nicht committet (Klick-Durchlauf `tmp/0009/t6-click.mjs`, Belege
+  `tmp/0009/t6-*`)
 
 ### Task 7 — App: Kalender, Einplanen, Vorratscheck, Übersicht
 
@@ -890,7 +891,39 @@ Abschnitt „Entscheidungen beim Bauen (Bereich, Tn, Datum)“.
     `CheckboxMark`.
   - Showroom „Muster“: Blöcke „Foto-Collage“ (0, 1, 2, 3, 5 Fotos, Kachel, Vorschaubild, Seite)
     und „Mehrfachauswahl“; angesehen bei 390 und 1440 px, hell und dunkel (`tmp/0009/t5/`).
-- _T6:_ …
+- _T6 (App: „Essen“, Fenster „Neu“, Seite der Sammlung, 21.11.2026):_
+  - Keine neue Regel in `core`: Zähler, Filter „Art“, `withCookingHistory`, `coverPhotos`,
+    `collectionSummary`, `canPutCollectionOnList`/`collectionListHint` und die Regeln des Fensters
+    „Neu“ kamen aus T2/T3. Neu in der App ist nur Darstellung.
+  - `features/recipes/recipe-cover.tsx`: `useCoverSources(recipe)` (immer vier Bild-Hooks, damit
+    die Reihenfolge der Hooks gleich bleibt) und `RecipeCover` (Foto oder `PhotoCollage`), dazu
+    `RecipePhoto` (Foto der Seite mit Speicherstand). Kachel, Karte der KI-Suche, Seite, Zeilen
+    unter „Enthält“ und die Übersicht („Heute geplant“, „Wie war's?“) nutzen es; T7s
+    `today/recipe-cover.ts` ist dadurch entfallen, die Übersicht zeigt jetzt auch die Collage.
+  - Kachel einer Sammlung: Kennzeichen „Sammlung“ unten links über dem Foto, darunter „2 Rezepte“
+    (bei 0 nichts) und das Ernährungs-Kennzeichen nur, wenn alles vegan bzw. vegetarisch ist
+    (`collectionDiet`, ohne „möglich“, weil es keine Variante zu wählen gibt).
+  - Das „+“-Menü hat „Sammlung“ auch in der Ansicht „Restaurants“ (`restaurants-panel.tsx`), weil
+    beide Ansichten denselben Kopf haben (Spec 0008, AC-003).
+  - Fenster „Neu“: die Auswahl-Chips sind offline ausgegraut wie „Anlegen“; jedes Öffnen beginnt
+    mit der Art aus dem Menü. `NewRecipeFields` hat `kind`: der Platzhalter einer Sammlung lautet
+    „z. B. Grillabend“ (auch im Hinzufügen-Fenster des Kalenders, eine Zeile in
+    `add-entry-sheet.tsx`).
+  - Löschen der Rezeptseite steht jetzt in `use-delete-recipe.ts` und gilt für beide Seiten; die
+    Sammlung zeigt damit schon „Grillabend gelöscht · Rückgängig“ (AC-032). T9 ergänzt dort nur
+    noch, was die Lösch-Hinweise brauchen.
+  - Seite: `CollectionDetailBody` in `collection-detail.tsx`, aufgerufen aus `RecipeDetail` nach
+    `kind`. Kopf über `HeadSection` mit `badge` und `meta` (statt Portionen und Zeit), ohne Feld
+    „Zeit“ im Bearbeiten; das liegt in `sections/head-section.tsx`, weil AC-017 zu T6 gehört.
+  - „Eigene Zutaten“ ist schon der Abschnitt „Zutaten“ (`title`, ohne Portionen-Regler, ohne
+    „+ Variante“ bei `kind = 'collection'`), also auch bearbeitbar. Das Zutat-Fenster zeigt
+    „Variante“ ohnehin nur bei Varianten. T8 prüft AC-012/AC-013 im Klick-Durchlauf.
+  - „Enthält“ ist `sections/contents-section.tsx` (lesend, Zeile mit kleinem Cover und
+    `collectionContentLabel`, Tipp öffnet die Rezeptseite, leer „Noch keine Rezepte.“). T8 macht
+    daraus den bearbeitbaren Abschnitt mit „+ Rezept hinzufügen“.
+  - „Auf die Liste“ ist bei Inhalt ohne Einkauf mit „Noch keine Zutaten“ ausgegraut
+    (`NO_INGREDIENTS_HINT` aus `recipe-actions.tsx`), leer mit „Noch nichts enthalten“.
+  - `/rezept/[id]/kochen` einer Sammlung leitet mit `Redirect` auf ihre Seite um.
 - _T7 (App: Kalender, Einplanen, Vorratscheck, Übersicht, 21.11.2026):_
   - Neu in `core`: `entryLineLabel(entry, title, book)` (Kalenderzeile „Grillabend · 2 Rezepte“)
     und `planCandidates(recipes, kind, query, articlesById)` (Tabs des Hinzufügen-Fensters, Offene
