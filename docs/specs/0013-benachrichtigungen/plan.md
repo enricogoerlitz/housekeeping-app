@@ -881,3 +881,22 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 7. „Dieses Gerät“: bei abgelehnter Erlaubnis ausgegraut; Einschalten einer Art schaltet ein hier
    ausgeschaltetes Gerät nicht wieder an; beim Start wird ein Gerät mit entzogener Erlaubnis vergessen.
 8. Uhrzeit-Eingabe: „24:00“ ungültig; Pflichtfeld leer → „Bitte eine Uhrzeit eingeben“.
+
+## Entscheidungen beim Bauen (api, Task 5, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. Uhrzeiten stehen in den Zeilen des Caches als „HH:MM:SS“ (wie Postgres sie liefert), im Gerät
+   als „HH:MM“; so vergleicht der Diff Gleiches mit Gleichem und schickt `19:00:00`.
+2. `remindMinutesBefore` 120 (Spaltenstandard) liest sich als `undefined`; die App zeigt
+   `?? DEFAULT_REMIND_MINUTES`.
+3. `ChoreInput.dueTime`: `undefined` behält beim Bearbeiten die Uhrzeit, `null` entfernt sie (✕).
+   `setReservation(entryId, { reservedAt?, remindMinutesBefore? })` ebenso; ein Eintrag, der kein
+   Restaurant mehr ist, verliert die Reservierung (wie der Zusatz bei Aktivitäten).
+4. `CACHE_VERSION` 8 (Spec 0009 hatte 7 belegt).
+5. Seed: der vorhandene Eintrag `plan-enzo-2` wandert von heute + 5 auf übermorgen abends (nach dem
+   Mango-Curry) und bekommt 19:30; kein zusätzlicher Eintrag.
+6. `beforeSignOut` läuft bei jedem Abmelden auf diesem Gerät (auch „Konto gibt es nicht mehr“),
+   nicht, wenn die Sitzung anderswo endet (dann gibt es keine Sitzung mehr für die RPC).
+7. Hinweise für abgewiesene Geräte-Befehle: `pushRejectedMessage`; `not_found` und Unbekanntes →
+   „Hat nicht geklappt – bitte noch einmal versuchen“.

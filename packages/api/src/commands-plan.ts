@@ -9,6 +9,9 @@ import {
   type MealPlanEntry,
   type PlanEntryVariant,
   type RecipeKind,
+  type RemindMinutes,
+  RemindMinutesSchema,
+  type TimeOfDay,
   type VariantSplit,
 } from '@housekeeping/core';
 
@@ -17,6 +20,7 @@ import { createRecipe } from './commands-recipes';
 import { createRestaurant, type RestaurantDraft } from './commands-restaurants';
 import { indexById } from './queries';
 import { commit, getData, getState, newId, updateData } from './store';
+import { checkTime } from './times';
 import { TransportError } from './transport';
 
 /** meal_plan_entries_note_length. */
@@ -166,7 +170,8 @@ export function addPlanEntry(input: PlanEntryInput): Id {
 
 /**
  * Changes an entry. The Zusatz is trimmed (empty removes it). An entry that is no longer an
- * activity loses its activity and Zusatz (meal_plan_entries_note_only_activity).
+ * activity loses its activity and Zusatz (meal_plan_entries_note_only_activity); one that is no
+ * longer a restaurant loses its reservation (meal_plan_entries_reservation_only_restaurant).
  */
 export function updatePlanEntry(
   entryId: Id,
@@ -202,9 +207,42 @@ export function updatePlanEntry(
       planEntries: data.planEntries.map((entry) => {
         if (entry.id !== entryId) return entry;
         const next = { ...entry, ...clean };
-        return next.kind === 'activity'
-          ? next
-          : { ...next, activityId: undefined, note: undefined };
+        const withoutReservation =
+          next.kind === 'restaurant' ? next : { ...next, reservedAt: undefined };
+        return withoutReservation.kind === 'activity'
+          ? withoutReservation
+          : { ...withoutReservation, activityId: undefined, note: undefined };
+      }),
+    })),
+  );
+}
+
+/**
+ * "Reserviert um" and "Erinnern … vorher" of a restaurant entry (spec 0013, REQ-008, AC-027,
+ * AC-029): `reservedAt` null removes the time (✕), undefined leaves it; the reminder is one of
+ * 30, 60, 120, 180, 240 minutes. Only a restaurant entry takes a time: the server refuses it on
+ * any other (AC-030) and the entry springs back with the general hint. Throws "Keine gültige
+ * Uhrzeit" before sending.
+ */
+export function setReservation(
+  entryId: Id,
+  reservation: { reservedAt?: TimeOfDay | null; remindMinutesBefore?: RemindMinutes },
+): void {
+  checkTime(reservation.reservedAt);
+  const { remindMinutesBefore } = reservation;
+  if (remindMinutesBefore !== undefined) RemindMinutesSchema.parse(remindMinutesBefore);
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      planEntries: data.planEntries.map((entry) => {
+        if (entry.id !== entryId) return entry;
+        return {
+          ...entry,
+          ...(reservation.reservedAt !== undefined
+            ? { reservedAt: reservation.reservedAt ?? undefined }
+            : {}),
+          ...(remindMinutesBefore !== undefined ? { remindMinutesBefore } : {}),
+        };
       }),
     })),
   );

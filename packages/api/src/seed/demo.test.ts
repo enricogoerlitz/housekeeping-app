@@ -286,3 +286,32 @@ describe('spec 0009: collections in the sample household', () => {
     expect(testHousehold().collectionRecipes).toEqual([]);
   });
 });
+
+describe('spec 0013: times in the sample household', () => {
+  const data = getData;
+
+  it('AC-022: "Müll rausbringen" has the time 19:00; other chores have none', () => {
+    const chores = data().chores;
+    expect(chores.find((chore) => chore.title === 'Müll rausbringen')?.dueTime).toBe('19:00');
+    expect(chores.filter((chore) => chore.dueTime !== undefined)).toHaveLength(1);
+  });
+
+  it('AC-027: "Trattoria Da Enzo" the day after tomorrow in the evening is reserved for 19:30', () => {
+    const reserved = data().planEntries.filter((entry) => entry.reservedAt !== undefined);
+    expect(reserved).toEqual([
+      expect.objectContaining({
+        kind: 'restaurant',
+        restaurantId: 'rest-enzo',
+        date: addDays(TODAY, 2),
+        slotId: 'slot-abend',
+        reservedAt: '19:30',
+      }),
+    ]);
+    expect(reserved[0]?.remindMinutesBefore).toBeUndefined();
+  });
+
+  it('has no notification settings: the server creates them for every member', () => {
+    expect(data().notificationSettings).toBeUndefined();
+    expect(testHousehold().notificationSettings).toBeUndefined();
+  });
+});

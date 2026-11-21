@@ -703,3 +703,160 @@ describe('spec 0009: collections in the rows', () => {
     ]);
   });
 });
+
+describe('spec 0013: notification settings, times and reservation in the rows', () => {
+  const settingsRow = (overrides: Row = { id: 'ns-enrico' }): Row => ({
+    household_id: DEMO_HOUSEHOLD_ID,
+    member_id: ENRICO,
+    daily_summary_enabled: false,
+    daily_summary_at: '07:30:00',
+    daily_summary_parts: ['meals', 'activities', 'chores', 'prep'],
+    activities_eve_enabled: false,
+    activities_eve_at: '19:00:00',
+    chore_reminders_enabled: true,
+    reservation_reminders_enabled: true,
+    created_at: SERVER_TIME,
+    updated_at: SERVER_TIME,
+    ...overrides,
+  });
+
+  function withSettings(rows: Row[]) {
+    const { data } = demo();
+    const { tables, small } = asServerTables(householdToRows(data));
+    tables.notification_settings = Object.fromEntries(rows.map((row) => [row.id, row]));
+    return { tables, small };
+  }
+
+  it('AC-011: the own row reads as the domain settings, the database times "HH:MM:SS" as "HH:MM"', () => {
+    const { tables, small } = withSettings([settingsRow()]);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
+    expect(back.notificationSettings).toEqual({
+      id: 'ns-enrico',
+      memberId: ENRICO,
+      dailySummaryEnabled: false,
+      dailySummaryAt: '07:30',
+      dailySummaryParts: ['meals', 'activities', 'chores', 'prep'],
+      activitiesEveEnabled: false,
+      activitiesEveAt: '19:00',
+      choreRemindersEnabled: true,
+      reservationRemindersEnabled: true,
+    });
+  });
+
+  it('AC-013: only the signed-in member’s row is her settings; without one there are none', () => {
+    const { tables, small } = withSettings([
+      settingsRow({ id: 'ns-nadja', member_id: NADJA, daily_summary_enabled: true }),
+    ]);
+    expect(
+      rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO }).notificationSettings,
+    ).toBeUndefined();
+    expect(
+      rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: NADJA }).notificationSettings
+        ?.dailySummaryEnabled,
+    ).toBe(true);
+  });
+
+  it('AC-012: a change of the settings is one patch of only the changed columns, times with seconds', () => {
+    const { tables, small } = withSettings([settingsRow()]);
+    const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
+    const settings = before.notificationSettings;
+    if (!settings) throw new Error('fixture');
+    const after: HouseholdData = {
+      ...before,
+      notificationSettings: {
+        ...settings,
+        dailySummaryEnabled: true,
+        dailySummaryAt: '06:45',
+        dailySummaryParts: ['meals', 'chores'],
+      },
+    };
+    expect(diffHousehold(before, after, { mode: 'send' }).send).toEqual([
+      {
+        kind: 'patch',
+        table: 'notification_settings',
+        id: 'ns-enrico',
+        changes: {
+          daily_summary_enabled: true,
+          daily_summary_at: '06:45:00',
+          daily_summary_parts: ['meals', 'chores'],
+        },
+      },
+    ]);
+  });
+
+  it('AC-013: a diff never inserts, deletes or moves a settings row', () => {
+    const { tables, small } = withSettings([settingsRow()]);
+    const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
+    const settings = before.notificationSettings;
+    if (!settings) throw new Error('fixture');
+    const removed: HouseholdData = { ...before, notificationSettings: undefined };
+    expect(() => diffHousehold(before, removed, { mode: 'send' })).toThrow();
+    const added: HouseholdData = { ...before, notificationSettings: { ...settings, id: 'ns-new' } };
+    expect(() =>
+      diffHousehold({ ...before, notificationSettings: undefined }, added, { mode: 'send' }),
+    ).toThrow();
+    const moved: HouseholdData = {
+      ...before,
+      notificationSettings: { ...settings, memberId: NADJA },
+    };
+    expect(() => diffHousehold(before, moved, { mode: 'send' })).toThrow(/member_id/);
+  });
+
+  it('households.timezone is read from the server and never written back', () => {
+    const { data } = demo();
+    const { tables, small } = asServerTables(householdToRows(data));
+    const household = small.households?.[0];
+    if (!household) throw new Error('fixture');
+    small.households = [{ ...household, timezone: 'Europe/Berlin' }];
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(householdToRows(back).households?.[0]).not.toHaveProperty('timezone');
+    const renamed: HouseholdData = { ...back, household: { ...back.household, name: 'Zuhause' } };
+    expect(diffHousehold(back, renamed, { mode: 'send' }).send).toEqual([
+      { kind: 'patch', table: 'households', id: DEMO_HOUSEHOLD_ID, changes: { name: 'Zuhause' } },
+    ]);
+  });
+
+  it('AC-022, AC-025: the time of a chore goes there and back; none is null', () => {
+    const { data } = demo();
+    const rows = householdToRows(data);
+    expect(rows.chores?.find((row) => row.id === 'chore-muell')).toMatchObject({
+      due_time: '19:00:00',
+    });
+    expect(rows.chores?.find((row) => row.id === 'chore-bad')).toMatchObject({ due_time: null });
+    const { tables, small } = asServerTables(rows);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(back.chores.find((chore) => chore.id === 'chore-muell')?.dueTime).toBe('19:00');
+    expect(back.chores.find((chore) => chore.id === 'chore-bad')).not.toHaveProperty(
+      'dueTime',
+      expect.anything(),
+    );
+  });
+
+  it('AC-027, AC-029: a reservation and its reminder go there and back; 120 (the default) reads as undefined', () => {
+    const { data } = demo();
+    const rows = householdToRows(data);
+    const reserved = rows.meal_plan_entries?.find((row) => row.reserved_at !== null);
+    expect(reserved).toMatchObject({
+      kind: 'restaurant',
+      reserved_at: '19:30:00',
+      remind_minutes_before: 120,
+    });
+    const recipeRow = rows.meal_plan_entries?.find((row) => row.kind === 'recipe');
+    expect(recipeRow).toMatchObject({ reserved_at: null, remind_minutes_before: 120 });
+    const id = String(reserved?.id);
+    const { tables, small } = asServerTables(rows);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    const entry = back.planEntries.find((candidate) => candidate.id === id);
+    expect(entry?.reservedAt).toBe('19:30');
+    expect(entry?.remindMinutesBefore).toBeUndefined();
+    const oneHour = { ...tables.meal_plan_entries?.[id], id, remind_minutes_before: 60 };
+    const changed = rowsToHousehold(
+      { ...tables, meal_plan_entries: { ...tables.meal_plan_entries, [id]: oneHour } },
+      small,
+      DEMO_HOUSEHOLD_ID,
+    );
+    expect(changed.planEntries.find((candidate) => candidate.id === id)?.remindMinutesBefore).toBe(
+      60,
+    );
+  });
+});

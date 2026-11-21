@@ -28,8 +28,15 @@
 // - Spec 0009: `kind` other than 'collection' (or missing) is a recipe; a recipe without `course`
 //   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
 //   (`collection_recipes`) keep creation order; core orders them by `sort`.
+// - Spec 0013: times of day are "HH:MM" in the domain and "HH:MM:SS" in the rows, as Postgres
+//   returns a `time` (`due_time`, `reserved_at`, `daily_summary_at`, `activities_eve_at`); the rows
+//   write them with ":00", so a diff compares like with like. `remind_minutes_before` 120 (the
+//   column default) ⇄ undefined. Of `notification_settings` only the signed-in member's row is
+//   `notificationSettings` (RLS sends no other); `households.timezone` is read by nobody here and
+//   never written.
 import {
   compareTimestamps,
+  DEFAULT_REMIND_MINUTES,
   normalizeText,
   type Absence,
   type Activity,
@@ -42,6 +49,7 @@ import {
   type Household,
   type MealPlanEntry,
   type Member,
+  type NotificationSettings,
   type PackingBag,
   type PackingBagItem,
   type PackingItem,
@@ -55,6 +63,7 @@ import {
   type SmallRow,
   type Store,
   type TableRows,
+  type TimeOfDay,
 } from '@housekeeping/core';
 
 import type { HouseholdData } from '../store';
@@ -71,6 +80,12 @@ const opt = <T>(value: T | null | undefined): T | undefined => (value === null ?
 
 /** Domain jsonb values are plain JSON by construction (no functions, no dates). */
 const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;
+
+/** "19:00" → "19:00:00", the way Postgres returns a `time`. */
+const toDbTime = (time: TimeOfDay): string => `${time}:00`;
+/** "19:00:00" (or a local "19:00") → "19:00". */
+const fromDbTime = (value: string | null | undefined): TimeOfDay | undefined =>
+  typeof value === 'string' ? value.slice(0, 5) : undefined;
 
 // ---------------------------------------------------------------------------------------------
 // Domain → rows
@@ -338,6 +353,8 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     cook_id: entry.cookId ?? null,
     sort: entry.sort,
     not_cooked: entry.notCooked ?? false,
+    reserved_at: entry.reservedAt === undefined ? null : toDbTime(entry.reservedAt),
+    remind_minutes_before: entry.remindMinutesBefore ?? DEFAULT_REMIND_MINUTES,
   }));
 
 const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
@@ -364,6 +381,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     next_assignee_id: chore.nextAssigneeId ?? null,
     last_done_on: chore.lastDoneOn ?? null,
     active_months: chore.activeMonths ?? null,
+    due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -441,6 +459,20 @@ const packingItemRow = (householdId: string, item: PackingItem) =>
     pack_seq: item.packSeq,
   }));
 
+const settingsRow = (householdId: string, settings: NotificationSettings) =>
+  single('notification_settings', householdId, settings, () => ({
+    id: settings.id,
+    household_id: householdId,
+    member_id: settings.memberId,
+    daily_summary_enabled: settings.dailySummaryEnabled,
+    daily_summary_at: toDbTime(settings.dailySummaryAt),
+    daily_summary_parts: settings.dailySummaryParts,
+    activities_eve_enabled: settings.activitiesEveEnabled,
+    activities_eve_at: toDbTime(settings.activitiesEveAt),
+    chore_reminders_enabled: settings.choreRemindersEnabled,
+    reservation_reminders_enabled: settings.reservationRemindersEnabled,
+  }));
+
 /** The row of a bag of a packing list as an insert of `apply_changes` takes it. */
 export function packingListBagToRow(householdId: string, bag: PackingListBag): Row {
   const row = packingListBagRow(householdId, bag).packing_list_bags?.[0];
@@ -489,6 +521,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.packingBagItems.map((item) => packingBagItemRow(householdId, item)),
     ...data.packingListBags.map((bag) => packingListBagRow(householdId, bag)),
     ...data.packingItems.map((item) => packingItemRow(householdId, item)),
+    ...(data.notificationSettings ? [settingsRow(householdId, data.notificationSettings)] : []),
   ];
   const result: HouseholdRows = {
     households: [],
@@ -520,6 +553,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     packing_items: [],
     feedback: [],
     feedback_votes: [],
+    notification_settings: [],
   };
   for (const part of parts) {
     for (const [table, rows] of Object.entries(part)) {
@@ -796,6 +830,11 @@ function toPlanEntry(row: Row): MealPlanEntry {
     cookId: opt(r.cook_id),
     sort: r.sort ?? 0,
     notCooked: r.not_cooked ? true : undefined,
+    reservedAt: fromDbTime(r.reserved_at),
+    remindMinutesBefore:
+      r.remind_minutes_before == null || r.remind_minutes_before === DEFAULT_REMIND_MINUTES
+        ? undefined
+        : (r.remind_minutes_before as MealPlanEntry['remindMinutesBefore']),
   };
 }
 
@@ -812,6 +851,7 @@ function toChore(row: Row): Chore {
     nextAssigneeId: opt(r.next_assignee_id),
     lastDoneOn: opt(r.last_done_on),
     activeMonths: opt(r.active_months),
+    dueTime: fromDbTime(r.due_time),
   };
 }
 
@@ -903,6 +943,21 @@ function toPackingItem(row: Row): PackingItem {
   };
 }
 
+function toNotificationSettings(row: Row): NotificationSettings {
+  const r = row as Cached<'notification_settings'>;
+  return {
+    id: r.id,
+    memberId: r.member_id ?? '',
+    dailySummaryEnabled: r.daily_summary_enabled === true,
+    dailySummaryAt: fromDbTime(r.daily_summary_at) ?? '07:30',
+    dailySummaryParts: (r.daily_summary_parts ?? []) as NotificationSettings['dailySummaryParts'],
+    activitiesEveEnabled: r.activities_eve_enabled === true,
+    activitiesEveAt: fromDbTime(r.activities_eve_at) ?? '19:00',
+    choreRemindersEnabled: r.chore_reminders_enabled === true,
+    reservationRemindersEnabled: r.reservation_reminders_enabled === true,
+  };
+}
+
 function plain<T>(tables: TableRows, table: string, order: Order, build: (row: Row) => T): T[] {
   return rowsOfTable(tables, table, order).map((row) => cached(row, [], () => build(row)));
 }
@@ -923,6 +978,8 @@ export interface RowsToHouseholdOptions {
   previous?: HouseholdData;
   /** Items with a store action not yet confirmed by the server. */
   pendingItemIds?: ReadonlySet<string>;
+  /** The signed-in member: her row of `notification_settings` is `notificationSettings`. */
+  memberId?: string;
 }
 
 /**
@@ -935,7 +992,7 @@ export function rowsToHousehold(
   householdId: string,
   options: RowsToHouseholdOptions = {},
 ): HouseholdData {
-  const { previous, pendingItemIds } = options;
+  const { previous, pendingItemIds, memberId } = options;
   const householdRow = (small.households ?? []).find((row) => row.id === householdId);
   if (!householdRow) throw new Error(`Household ${householdId} is not in the cache`);
   const memberRows = sorted(
@@ -1004,6 +1061,13 @@ export function rowsToHousehold(
     );
   });
 
+  const ownSettings = Object.values(tables.notification_settings ?? {}).find(
+    (row) => memberId !== undefined && row.member_id === memberId,
+  );
+  const notificationSettings = ownSettings
+    ? cached(ownSettings, [], () => toNotificationSettings(ownSettings))
+    : undefined;
+
   const next: HouseholdData = {
     household,
     areas: reuse(previous?.areas, plain(tables, 'areas', 'sort', toArea)),
@@ -1044,6 +1108,7 @@ export function rowsToHousehold(
       previous?.packingItems,
       plain(tables, 'packing_items', 'created', toPackingItem),
     ),
+    notificationSettings,
   };
   if (
     previous &&

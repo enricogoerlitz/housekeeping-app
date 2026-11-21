@@ -11,8 +11,11 @@
 // kind check, once per collection and at most 50, cascades and the rows in the snapshot), and
 // Reisetaschen and Packlisten (spec 0012: grants and allowlist, cascades and set null, "je Tag"
 // computed on insert and after a change of the duration, set_packing_items_packed with
-// "Abhaken gewinnt" via pack_seq, restore_packing_items). Several transports (users, devices) can
-// share one server.
+// "Abhaken gewinnt" via pack_seq, restore_packing_items), and notifications (spec 0013: one
+// settings row per member created on joining, readable and patchable only by herself, the
+// five-minute times and the reservation only on restaurant entries; the push subscriptions of a
+// person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
+// (users, devices) can share one server.
 import {
   absenceDays,
   addDays,
@@ -89,6 +92,12 @@ type RpcName =
   | 'accept_invitation'
   | 'decline_invitation'
   | 'remove_member'
+  | 'register_push_subscription'
+  | 'set_push_subscription_enabled'
+  | 'unregister_push_subscription'
+  | 'remove_push_subscription'
+  | 'list_push_subscriptions'
+  | 'send_test_push'
   | 'resolve-maps-link'
   | 'ai-assistant'
   | 'ai-search'
@@ -139,6 +148,12 @@ export interface FakeServer {
   setAi(ai: FakeAi): void;
   /** A stored photo (bucket household-media). */
   media(path: string): Blob | undefined;
+  /** Like the Vault entries push_send_url and push_send_secret (spec 0013); unset by default. */
+  setPushConfigured(configured: boolean): void;
+  /** The push service answered 404/410 for this address: the subscription is unreachable. */
+  markPushGone(endpoint: string): void;
+  /** The probes sent so far ("Probe senden"), oldest first. */
+  testPushes(): { subscriptionId: string; profileId: string }[];
   calls: { userId: string; fn: string }[];
 }
 
@@ -554,8 +569,102 @@ function checkCollectionRecipeInsert(row: Row, tables: TableRows): void {
   if (count >= 50) throw reject('too_many_collection_recipes');
 }
 
+// ---------- spec 0013: times, reservation, notification settings ----------
+
+/** private.is_five_minute_time: "HH:MM" or "HH:MM:SS" with seconds 0, minutes in steps of 5. */
+const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
+const TIME_COLUMNS: Record<string, readonly string[]> = {
+  chores: ['due_time'],
+  meal_plan_entries: ['reserved_at'],
+  notification_settings: ['daily_summary_at', 'activities_eve_at'],
+};
+const REMIND_MINUTES = new Set([30, 60, 120, 180, 240]);
+const SUMMARY_PARTS = new Set(['meals', 'activities', 'chores', 'prep']);
+
+/** A row as Postgres keeps it: a `time` reads back as "HH:MM:SS"; an invalid one is 23514. */
+function withDbTimes(table: string, row: Row): Row {
+  const columns = TIME_COLUMNS[table];
+  if (!columns) return row;
+  let next = row;
+  for (const column of columns) {
+    const value = row[column];
+    if (value === null || value === undefined) continue;
+    if (typeof value !== 'string' || !FIVE_MINUTE_TIME.test(value)) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+    if (value.length === 5) next = { ...next, [column]: `${value}:00` };
+  }
+  return next;
+}
+
+/** meal_plan_entries_remind_minutes_before_valid, _reservation_only_restaurant, the parts check. */
+function checkNotificationColumns(table: string, row: Row): void {
+  const violated = () => new TransportError('permanent', '23514', 400);
+  if (table === 'meal_plan_entries') {
+    if (row.remind_minutes_before != null && !REMIND_MINUTES.has(Number(row.remind_minutes_before)))
+      throw violated();
+    if (row.reserved_at != null && row.kind !== 'restaurant') throw violated();
+  }
+  if (table === 'notification_settings') {
+    const parts = row.daily_summary_parts;
+    if (
+      !Array.isArray(parts) ||
+      parts.length < 1 ||
+      parts.length > 4 ||
+      new Set(parts).size !== parts.length ||
+      parts.some((part) => !SUMMARY_PARTS.has(String(part)))
+    ) {
+      throw violated();
+    }
+  }
+}
+
+/** private.is_push_endpoint: https, a known push service, no port, no credentials (AC-044). */
+const PUSH_ENDPOINT = new RegExp(
+  '^https://(fcm\\.googleapis\\.com|updates\\.push\\.services\\.mozilla\\.com|web\\.push\\.apple\\.com' +
+    '|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\.notify\\.windows\\.com)' +
+    "/[A-Za-z0-9._~:/?@!$&'()*+,;=%-]*$",
+);
+const PUSH_P256DH = /^B[A-Za-z0-9_-]{86}$/;
+const PUSH_AUTH = /^[A-Za-z0-9_-]{22}$/;
+/** Decision 20: at most 10 devices per person, 3 probes in 10 minutes. */
+const MAX_PUSH_DEVICES = 10;
+const MAX_TEST_PUSHES = 3;
+const TEST_PUSH_WINDOW_MS = 10 * 60 * 1000;
+
+interface PushSubscriptionRecord {
+  id: string;
+  profileId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  deviceLabel: string;
+  enabled: boolean;
+  goneAt: string | null;
+  lastSuccessAt: string | null;
+  createdAt: string;
+}
+
+function validPushSubscription(
+  endpoint: string,
+  p256dh: string,
+  auth: string,
+  label: string,
+): boolean {
+  return (
+    endpoint.length <= 1024 &&
+    PUSH_ENDPOINT.test(endpoint) &&
+    PUSH_P256DH.test(p256dh) &&
+    PUSH_AUTH.test(auth) &&
+    label.length >= 1 &&
+    label.length <= 60 &&
+    !/[\u0000-\u001f\u007f]/.test(label)
+  );
+}
+
 /** Row checks of the database that a client bug could break (spec 0004, 0006, 0007). */
 function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
+  checkNotificationColumns(table, row);
   if (table === 'recipes') checkRecipeKind(row);
   if (table === 'collection_recipes') checkCollectionRecipe(row, tables);
   if (
@@ -619,6 +728,11 @@ export function createFakeServer(): FakeServer {
   /** private.recipe_deletions, one snapshot per household and recipe. */
   const recipeDeletions = new Map<string, RecipeDeletion>();
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
+  /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
+  let pushSubscriptions: PushSubscriptionRecord[] = [];
+  /** The probes of private.notification_deliveries (kind 'test'), for the rate limit. */
+  const testDeliveries: { subscriptionId: string; profileId: string; at: number }[] = [];
+  let pushConfigured = false;
 
   /** Server clock with microseconds, strictly increasing like `now()` in separate transactions. */
   function now(): string {
@@ -636,6 +750,79 @@ export function createFakeServer(): FakeServer {
       .map((m) => String(m.profile_id));
   const householdsOf = (userId: string) =>
     members.filter((member) => member.profile_id === userId).map((m) => String(m.household_id));
+
+  /**
+   * household_members_create_notification_settings (spec 0013, Decision 3): a new member gets her
+   * row with the column defaults; an existing one is kept.
+   */
+  function createNotificationSettings(householdId: string, profileId: string): void {
+    const exists = Object.values(data.get(householdId)?.notification_settings ?? {}).some(
+      (row) => row.member_id === profileId,
+    );
+    if (exists) return;
+    transaction(householdId, (tables) => [
+      withRow(tables, 'notification_settings', {
+        id: crypto.randomUUID(),
+        member_id: profileId,
+        daily_summary_enabled: false,
+        daily_summary_at: '07:30:00',
+        daily_summary_parts: ['meals', 'activities', 'chores', 'prep'],
+        activities_eve_enabled: false,
+        activities_eve_at: '19:00:00',
+        chore_reminders_enabled: true,
+        reservation_reminders_enabled: true,
+      }),
+      undefined,
+    ]);
+  }
+
+  /** Every device RPC: `not_authenticated` (42501) without a signed-in user. */
+  function requireUser(userId: string): void {
+    if (!userId || !profiles.has(userId)) {
+      throw new TransportError('permanent', 'not_authenticated', 401);
+    }
+  }
+
+  const ownSubscription = (userId: string, endpoint: string) =>
+    pushSubscriptions.find(
+      (subscription) => subscription.endpoint === endpoint && subscription.profileId === userId,
+    );
+
+  /** private.register_push_subscription: upsert by address for the caller (Decision 19, 20). */
+  function registerPushSubscription(
+    userId: string,
+    endpoint: string,
+    p256dh: string,
+    auth: string,
+    deviceLabel: string,
+  ): string {
+    requireUser(userId);
+    const label = deviceLabel.trim();
+    if (!validPushSubscription(endpoint, p256dh, auth, label)) {
+      throw reject('invalid_subscription');
+    }
+    const existing = pushSubscriptions.find((subscription) => subscription.endpoint === endpoint);
+    const own = pushSubscriptions.filter((subscription) => subscription.profileId === userId);
+    if (existing?.profileId !== userId && own.length >= MAX_PUSH_DEVICES) {
+      throw reject('too_many_devices');
+    }
+    const record: PushSubscriptionRecord = {
+      id: existing?.id ?? crypto.randomUUID(),
+      profileId: userId,
+      endpoint,
+      p256dh,
+      auth,
+      deviceLabel: label,
+      enabled: true,
+      goneAt: null,
+      lastSuccessAt: existing?.lastSuccessAt ?? null,
+      createdAt: existing?.createdAt ?? now(),
+    };
+    pushSubscriptions = existing
+      ? pushSubscriptions.map((subscription) => (subscription === existing ? record : subscription))
+      : [...pushSubscriptions, record];
+    return record.id;
+  }
 
   function notify(householdId: string): void {
     for (const listener of subscribers.get(householdId) ?? []) queueMicrotask(listener);
@@ -1285,14 +1472,22 @@ export function createFakeServer(): FakeServer {
                 : op.table === 'recipes'
                   ? // Column defaults: a collection must send course null (spec 0009, T1).
                     { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
-                  : {};
+                  : op.table === 'meal_plan_entries'
+                    ? { reserved_at: null, remind_minutes_before: 120 }
+                    : op.table === 'chores'
+                      ? { due_time: null }
+                      : {};
           if (op.table === 'collection_recipes') checkCollectionRecipeInsert(op.row, tables);
-          tables = withRow(tables, op.table, {
-            ...defaults,
-            ...op.row,
-            ...(op.table === 'feedback' ? { author_id: userId } : {}),
-            ...(op.table === 'activities' ? { created_by: userId } : {}),
-          });
+          tables = withRow(
+            tables,
+            op.table,
+            withDbTimes(op.table, {
+              ...defaults,
+              ...op.row,
+              ...(op.table === 'feedback' ? { author_id: userId } : {}),
+              ...(op.table === 'activities' ? { created_by: userId } : {}),
+            }),
+          );
           // packing_items_before_insert: "je Tag" from the absence, whatever the device sent.
           const inserted = tables[op.table]?.[op.row.id];
           if (op.table === 'packing_items' && inserted) {
@@ -1320,10 +1515,13 @@ export function createFakeServer(): FakeServer {
             continue;
           }
           const row = tables[op.table]?.[op.id];
-          if (!row) throw new TransportError('permanent', 'row_not_found', 404);
+          // notification_settings: RLS lets a member update only her own row (spec 0013, AC-013).
+          if (!row || (op.table === 'notification_settings' && row.member_id !== userId)) {
+            throw new TransportError('permanent', 'row_not_found', 404);
+          }
           if (op.table === 'chore_events' && 'chore_id' in op.changes)
             checkChoreLink(tables, row, op.changes.chore_id);
-          tables = withRow(tables, op.table, { ...row, ...op.changes });
+          tables = withRow(tables, op.table, withDbTimes(op.table, { ...row, ...op.changes }));
           if (op.table === 'recipes' && 'ingredients' in op.changes) {
             checkIngredients(op.changes.ingredients, tables);
           }
@@ -1401,6 +1599,8 @@ export function createFakeServer(): FakeServer {
           .filter(
             (row) => since === undefined || compareTimestamps(String(row.updated_at), since) > 0,
           )
+          // RLS of notification_settings: only the caller's own row (spec 0013, AC-013).
+          .filter((row) => table !== 'notification_settings' || row.member_id === userId)
           .map((row) => {
             const copy = { ...row, updated_at: String(row.updated_at) };
             // The database has no id column for composite keys; the client builds it.
@@ -2146,6 +2346,7 @@ export function createFakeServer(): FakeServer {
           households.set(id, {
             id,
             name: trimmed,
+            timezone: 'Europe/Berlin',
             meal_slots: [
               { id: crypto.randomUUID(), name: 'Vormittag', sort: 0 },
               { id: crypto.randomUUID(), name: 'Mittag', sort: 1 },
@@ -2161,6 +2362,7 @@ export function createFakeServer(): FakeServer {
             created_at: time,
             updated_at: time,
           });
+          createNotificationSettings(id, userId);
           return id;
         }),
 
@@ -2211,6 +2413,7 @@ export function createFakeServer(): FakeServer {
             created_at: time,
             updated_at: time,
           });
+          createNotificationSettings(householdId, userId);
           notify(householdId);
           return householdId;
         }),
@@ -2240,9 +2443,16 @@ export function createFakeServer(): FakeServer {
           members = members.filter(
             (m) => !(m.household_id === householdId && m.profile_id === profileId),
           );
-          // on delete set null (member_id / packed_by) of the packing tables (spec 0012).
+          // on delete set null (member_id / packed_by) of the packing tables (spec 0012); the
+          // notification settings go with the member (on delete cascade, spec 0013).
           transaction(householdId, (tables) => {
-            let next = tables;
+            let next = withoutRows(
+              tables,
+              'notification_settings',
+              Object.values(tables.notification_settings ?? {})
+                .filter((row) => row.member_id === profileId)
+                .map((row) => row.id),
+            );
             for (const reference of PACKING_MEMBER_COLUMNS) {
               for (const row of Object.values(next[reference.table] ?? {})) {
                 if (row[reference.column] !== profileId) continue;
@@ -2252,6 +2462,78 @@ export function createFakeServer(): FakeServer {
             return [next, undefined];
           });
           notify(householdId);
+        }),
+
+      registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
+        run(userId, 'register_push_subscription', () =>
+          registerPushSubscription(userId, endpoint, p256dh, auth, deviceLabel),
+        ),
+      setPushSubscriptionEnabled: (endpoint, enabled) =>
+        run(userId, 'set_push_subscription_enabled', () => {
+          requireUser(userId);
+          const own = ownSubscription(userId, endpoint);
+          if (!own) throw new TransportError('permanent', 'not_found', 404);
+          pushSubscriptions = pushSubscriptions.map((subscription) =>
+            subscription === own ? { ...own, enabled } : subscription,
+          );
+        }),
+      unregisterPushSubscription: (endpoint) =>
+        run(userId, 'unregister_push_subscription', () => {
+          requireUser(userId);
+          pushSubscriptions = pushSubscriptions.filter(
+            (subscription) =>
+              !(subscription.endpoint === endpoint && subscription.profileId === userId),
+          );
+        }),
+      removePushSubscription: (id) =>
+        run(userId, 'remove_push_subscription', () => {
+          requireUser(userId);
+          const before = pushSubscriptions.length;
+          pushSubscriptions = pushSubscriptions.filter(
+            (subscription) => !(subscription.id === id && subscription.profileId === userId),
+          );
+          return pushSubscriptions.length < before;
+        }),
+      listPushSubscriptions: (currentEndpoint) =>
+        run(userId, 'list_push_subscriptions', () => {
+          requireUser(userId);
+          const current = (subscription: PushSubscriptionRecord) =>
+            subscription.endpoint === currentEndpoint;
+          return pushSubscriptions
+            .filter((subscription) => subscription.profileId === userId)
+            .sort(
+              (a, b) =>
+                Number(current(b)) - Number(current(a)) ||
+                compareTimestamps(a.createdAt, b.createdAt) ||
+                (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+            )
+            .map((subscription) => ({
+              id: subscription.id,
+              device_label: subscription.deviceLabel,
+              status: subscription.goneAt
+                ? ('unreachable' as const)
+                : subscription.enabled
+                  ? ('active' as const)
+                  : ('off' as const),
+              is_current: current(subscription),
+              created_at: subscription.createdAt,
+              last_success_at: subscription.lastSuccessAt,
+            }));
+        }),
+      sendTestPush: (endpoint) =>
+        run(userId, 'send_test_push', () => {
+          requireUser(userId);
+          const own = ownSubscription(userId, endpoint);
+          if (!own || !own.enabled || own.goneAt !== null) {
+            throw new TransportError('permanent', 'not_found', 404);
+          }
+          if (!pushConfigured) throw reject('push_not_configured');
+          const since = Date.now() - TEST_PUSH_WINDOW_MS;
+          const recent = testDeliveries.filter(
+            (delivery) => delivery.profileId === userId && delivery.at > since,
+          );
+          if (recent.length >= MAX_TEST_PUSHES) throw reject('rate_limited');
+          testDeliveries.push({ subscriptionId: own.id, profileId: userId, at: Date.now() });
         }),
 
       resolveMapsLink: (url) =>
@@ -2339,6 +2621,7 @@ export function createFakeServer(): FakeServer {
       households.set(household.id, {
         meal_slots: [],
         default_store_id: null,
+        timezone: 'Europe/Berlin',
         ...household,
         created_at: time,
         updated_at: time,
@@ -2350,6 +2633,7 @@ export function createFakeServer(): FakeServer {
           created_at: time,
           updated_at: time,
         });
+        createNotificationSettings(household.id, profileId);
       }
     },
     insertRows(householdId, rows) {
@@ -2390,6 +2674,17 @@ export function createFakeServer(): FakeServer {
       ai = next;
     },
     media: (path) => media.get(path),
+    setPushConfigured(configured) {
+      pushConfigured = configured;
+    },
+    markPushGone(endpoint) {
+      const time = now();
+      pushSubscriptions = pushSubscriptions.map((subscription) =>
+        subscription.endpoint === endpoint ? { ...subscription, goneAt: time } : subscription,
+      );
+    },
+    testPushes: () =>
+      testDeliveries.map(({ subscriptionId, profileId }) => ({ subscriptionId, profileId })),
     purgeDeletionsBefore(before) {
       deletions = deletions.filter(
         (deletion) => compareTimestamps(deletion.deletedAt, before) >= 0,

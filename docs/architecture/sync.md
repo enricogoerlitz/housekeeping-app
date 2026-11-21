@@ -498,3 +498,21 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
 - **Doppelte Regeln:** „fällig“ (`private.chore_due_state`) und „wer ist dran“
   (`private.chore_assignees`) stehen auch in SQL; `notification_parity.test.sql` hält sie mit
   `dueChores` und `choreMemberIds` in `packages/core` im Gleichlauf.
+
+**Gerät und Cache (Spec 0013, Task 5):**
+
+- **Eigene Zeile im Cache:** `notification_settings` steht in `ID_TABLES`; die Zeile des
+  angemeldeten Mitglieds ist `HouseholdData.notificationSettings` (`useNotificationSettings`).
+  Ändern geht über den Diff-Weg als Patch nur der geänderten Spalten; einfügen, löschen oder
+  Person und Haushalt ändern weist schon der Diff ab. Uhrzeiten sind im Gerät „HH:MM“, in den
+  Zeilen „HH:MM:SS“ wie Postgres sie liefert, damit Diff und Server dasselbe vergleichen.
+  `CACHE_VERSION` 8 (neue Tabelle und Spalten); Warteschlange und Haushaltswahl überleben das.
+- **Online-Liste:** „Deine Geräte“ (`listPushDevices`) fragt bei jedem Öffnen den Server
+  (`list_push_subscriptions`), nie den Cache; ohne Netz `OfflineError`, die Seite zeigt den
+  Hinweis. Die Antwort wird streng geprüft: eine Zeile mit Push-Adresse oder Schlüssel wird
+  abgelehnt. Anmelden, an/aus, Entfernen und „Probe senden“ gehen direkt per RPC, ohne Abgleich
+  danach (sie ändern nichts Synchronisiertes).
+- **Abmelden:** `createAuthController` ruft `beforeSignOut` (höchstens 3 s, ein Fehler oder Hängen
+  hält das Abmelden nicht auf) vor dem Löschen von Cache und Warteschlange. Die App meldet dort
+  den Browser vom Push ab und ruft mit Netz `unregister_push_subscription`; ohne Netz bleibt die
+  Zeile, bis der Push-Dienst 404/410 meldet.

@@ -44,6 +44,7 @@ const TABLE_ORDER = [
   'packing_list_bags',
   'packing_items',
   'feedback',
+  'notification_settings',
   ...Object.keys(COMPOSITE_TABLES),
   'household_members',
 ];
@@ -298,11 +299,14 @@ export function diffHousehold(
           ? 'delete_article'
           : table === 'recipes'
             ? 'delete_recipe'
-            : 'remove_chore_event';
+            : table === 'notification_settings'
+              ? 'remove_member'
+              : 'remove_chore_event';
       throw new Error(`Deleting ${table} needs its own RPC (${way}).`);
     }
     if (NO_INSERT_TABLES.has(table) && ops.some((op) => op.kind === 'insert')) {
-      throw new Error(`Inserting into ${table} needs its own RPC (complete_chore).`);
+      const way = table === 'notification_settings' ? 'created by the server' : 'complete_chore';
+      throw new Error(`Inserting into ${table} needs its own RPC (${way}).`);
     }
     assertPatchable(table, ops);
     const both = [...old, ...next];

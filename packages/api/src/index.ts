@@ -15,6 +15,7 @@ export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
 export * from './commands-packing';
+export * from './commands-notifications';
 export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';

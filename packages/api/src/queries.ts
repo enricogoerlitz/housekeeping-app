@@ -53,6 +53,12 @@ export const usePackingBagItems = () => useDataSelector((data) => data.packingBa
 /** Every bag of a packing list and every Packstück of the household (calendar, Übersicht). */
 export const usePackingListBags = () => useDataSelector((data) => data.packingListBags);
 export const usePackingItems = () => useDataSelector((data) => data.packingItems);
+/**
+ * Spec 0013: the signed-in member's own notification settings in the active household; undefined
+ * until the first pull brought the row. "Deine Geräte" is not here: it is online only
+ * (listPushDevices).
+ */
+export const useNotificationSettings = () => useDataSelector((data) => data.notificationSettings);
 
 export interface PackingList {
   listBags: PackingListBag[];

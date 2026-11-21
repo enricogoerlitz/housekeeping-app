@@ -24,6 +24,8 @@ export const ID_TABLES = [
   'packing_bag_items',
   'packing_list_bags',
   'packing_items',
+  // Spec 0013: one row per member, readable only by herself (RLS); created by the server.
+  'notification_settings',
 ] as const;
 
 /**
@@ -123,6 +125,7 @@ export const WRITABLE_COLUMNS = {
     'next_assignee_id',
     'last_done_on',
     'active_months',
+    'due_time',
   ],
   // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011).
   chore_events: ['chore_id', 'done_by'],
@@ -143,6 +146,8 @@ export const WRITABLE_COLUMNS = {
     'cook_id',
     'sort',
     'not_cooked',
+    'reserved_at',
+    'remind_minutes_before',
   ],
   shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
@@ -153,6 +158,16 @@ export const WRITABLE_COLUMNS = {
   packing_bag_items: ['bag_id', 'name', 'quantity', 'per_day', 'sort'],
   packing_list_bags: ['absence_id', 'bag_id', 'name', 'member_id', 'sort'],
   packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort'],
+  // Spec 0013, Decision 3: only these seven are patched, never household_id or member_id.
+  notification_settings: [
+    'daily_summary_enabled',
+    'daily_summary_at',
+    'daily_summary_parts',
+    'activities_eve_enabled',
+    'activities_eve_at',
+    'chore_reminders_enabled',
+    'reservation_reminders_enabled',
+  ],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;
@@ -202,20 +217,27 @@ export const SET_NULL_CHILDREN: Partial<Record<WritableTable, readonly ChildRefe
 
 /**
  * Tables `apply_changes` never inserts into (allowlist `insert: []`): the household comes from
- * create_household, chore entries from the domain op complete_chore (spec 0011).
+ * create_household, chore entries from the domain op complete_chore (spec 0011), notification
+ * settings from the server when a member joins (spec 0013).
  */
-export const NO_INSERT_TABLES: ReadonlySet<string> = new Set(['households', 'chore_events']);
+export const NO_INSERT_TABLES: ReadonlySet<string> = new Set([
+  'households',
+  'chore_events',
+  'notification_settings',
+]);
 
 /**
  * Tables `apply_changes` never deletes from (allowlist `delete: false`): articles go through
  * delete_article (spec 0007, E4), recipes through delete_recipe (spec 0008, E2), chore entries
- * through remove_chore_event (spec 0011).
+ * through remove_chore_event (spec 0011); notification settings go only with the member (spec
+ * 0013).
  */
 export const NO_DELETE_TABLES: ReadonlySet<string> = new Set([
   'households',
   'articles',
   'recipes',
   'chore_events',
+  'notification_settings',
 ]);
 
 export function compositeId(table: CompositeTable, row: Record<string, unknown>): string {

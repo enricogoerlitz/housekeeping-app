@@ -597,3 +597,75 @@ describe('spec 0011: negative cases', () => {
     expect(() => removeChoreEvent('ev-5')).toThrow();
   });
 });
+
+describe('spec 0013: the time of a chore', () => {
+  it('AC-022: setting 19:00 is one patch of due_time; Nadja sees "19:00"', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const bath = choreById('chore-bad');
+    if (!bath) throw new Error('fixture');
+    updateChore('chore-bad', { ...bath, dueTime: '19:00' });
+    expect(choreById('chore-bad')?.dueTime).toBe('19:00');
+    await fx.settle(nadja);
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'chores', id: 'chore-bad', changes: { due_time: '19:00:00' } },
+    ]);
+    expect(fx.nadjaData(nadja).chores.find((chore) => chore.id === 'chore-bad')?.dueTime).toBe(
+      '19:00',
+    );
+  });
+
+  it('AC-025: ✕ (null) removes the time; another change without a time keeps it', async () => {
+    await fx.startEnrico();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    expect(trash.dueTime).toBe('19:00');
+    const { dueTime: _kept, ...withoutTime } = trash;
+    updateChore('chore-muell', { ...withoutTime, title: 'Müll und Papier rausbringen' });
+    expect(choreById('chore-muell')?.dueTime).toBe('19:00');
+    updateChore('chore-muell', { ...withoutTime, dueTime: null });
+    await fx.settle();
+    expect(choreById('chore-muell')?.dueTime).toBeUndefined();
+    expect(fx.server.row(H, 'chores', 'chore-muell')).toMatchObject({ due_time: null });
+  });
+
+  it('a new chore keeps its time', async () => {
+    await fx.startEnrico();
+    const id = createChore({
+      title: 'Blumen gießen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'anyone' },
+      dueTime: '18:00',
+    });
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(fx.server.row(H, 'chores', id)).toMatchObject({ due_time: '18:00:00' });
+  });
+
+  it('a time outside the five-minute steps is refused locally and by the server (23514)', async () => {
+    await fx.startEnrico();
+    const bath = choreById('chore-bad');
+    if (!bath) throw new Error('fixture');
+    expect(() => updateChore('chore-bad', { ...bath, dueTime: '19:03' })).toThrow(
+      'Keine gültige Uhrzeit',
+    );
+    await fx.settle();
+    expect(fx.calls).toEqual([]);
+    await expect(
+      fx.server
+        .transport(ENRICO)
+        .applyChanges(H, [
+          { kind: 'patch', table: 'chores', id: 'chore-bad', changes: { due_time: '19:03:00' } },
+        ]),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
+
+  it('REQ-007: setting a time is refused offline', async () => {
+    await fx.startEnrico();
+    const bath = choreById('chore-bad');
+    if (!bath) throw new Error('fixture');
+    fx.environment.setOnline(false);
+    expect(() => updateChore('chore-bad', { ...bath, dueTime: '19:00' })).toThrow(OfflineError);
+    expect(choreById('chore-bad')?.dueTime).toBeUndefined();
+  });
+});

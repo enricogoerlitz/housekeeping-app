@@ -12,6 +12,7 @@ import type {
   ISODate,
   MealPlanEntry,
   Member,
+  NotificationSettings,
   PackingBag,
   PackingBagItem,
   PackingItem,
@@ -50,6 +51,11 @@ export interface HouseholdData {
   /** Taschen der Packlisten and their Packstücke (in creation order). */
   packingListBags: PackingListBag[];
   packingItems: PackingItem[];
+  /**
+   * Spec 0013: the signed-in member's own "Benachrichtigungs-Einstellungen" in this household
+   * (created by the server; undefined until the first pull brought it).
+   */
+  notificationSettings?: NotificationSettings;
 }
 
 export interface AppState {

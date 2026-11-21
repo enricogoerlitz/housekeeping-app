@@ -588,6 +588,8 @@ function buildDemoData(today: ISODate): HouseholdData {
       nextDueOn: addDays(today, 2),
       nextAssigneeId: NADJA,
       lastDoneOn: addDays(today, -5),
+      // Spec 0013, AC-022: the reminder on the due day.
+      dueTime: '19:00',
     },
     {
       id: 'chore-kuehlschrank',
@@ -826,7 +828,8 @@ function buildDemoData(today: ISODate): HouseholdData {
     visit(-33, 'rest-pho', 'plan-pho-2'),
     visit(-61, 'rest-pho', 'plan-pho-3'),
     visit(-19, 'rest-enzo', 'plan-enzo-1'),
-    visit(5, 'rest-enzo', 'plan-enzo-2'),
+    // Spec 0013, AC-027: the day after tomorrow in the evening, reserved for 19:30, after the curry.
+    { ...visit(2, 'rest-enzo', 'plan-enzo-2'), sort: 1, reservedAt: '19:30' },
   );
 
   // ---------- Activities (spec 0004) ----------

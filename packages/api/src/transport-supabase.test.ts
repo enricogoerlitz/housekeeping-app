@@ -359,6 +359,82 @@ describe('supabase transport', () => {
     ]);
   });
 
+  it('spec 0013: the six device RPCs with their parameters; list answers are validated', async () => {
+    const row = {
+      id: 'd1',
+      device_label: 'Mac · Chrome',
+      status: 'active',
+      is_current: true,
+      created_at: '2026-11-21T10:00:00+00:00',
+      last_success_at: null,
+    };
+    const { client, calls } = stubClient([
+      ok('d1'),
+      ok(null),
+      ok(null),
+      ok(true),
+      ok([row]),
+      ok([]),
+      ok(null),
+      ok([{ ...row, endpoint: 'https://fcm.googleapis.com/x' }]),
+      ok([{ ...row, status: 'weird' }]),
+      { data: null, error: { message: 'invalid_subscription', code: '22023' }, status: 400 },
+      { data: null, error: { message: 'not_found', code: 'P0002' }, status: 500 },
+      { data: null, error: { message: 'push_not_configured', code: 'P0001' }, status: 400 },
+      { data: null, error: { message: 'not_authenticated', code: '42501' }, status: 401 },
+    ]);
+    const transport = createSupabaseTransport(client);
+    const endpoint = 'https://fcm.googleapis.com/fcm/send/abc';
+    expect(await transport.registerPushSubscription(endpoint, 'Bkey', 'auth', 'Mac · Chrome')).toBe(
+      'd1',
+    );
+    await transport.setPushSubscriptionEnabled(endpoint, false);
+    await transport.unregisterPushSubscription(endpoint);
+    expect(await transport.removePushSubscription('d1')).toBe(true);
+    expect(await transport.listPushSubscriptions(endpoint)).toEqual([row]);
+    expect(await transport.listPushSubscriptions()).toEqual([]);
+    await transport.sendTestPush(endpoint);
+    // An answer with an address is refused: the list must never carry one (ADR-0014).
+    await expect(transport.listPushSubscriptions()).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    await expect(transport.listPushSubscriptions()).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    await expect(
+      transport.registerPushSubscription('http://127.0.0.1:54321/x', 'Bkey', 'auth', 'Mac'),
+    ).rejects.toMatchObject({ kind: 'permanent', code: 'invalid_subscription' });
+    await expect(transport.setPushSubscriptionEnabled(endpoint, true)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'not_found',
+    });
+    await expect(transport.sendTestPush(endpoint)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'push_not_configured',
+    });
+    await expect(transport.removePushSubscription('d1')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'not_authenticated',
+    });
+    expect(calls.slice(0, 7)).toEqual([
+      {
+        fn: 'register_push_subscription',
+        args: {
+          p_endpoint: endpoint,
+          p_p256dh: 'Bkey',
+          p_auth: 'auth',
+          p_device_label: 'Mac · Chrome',
+        },
+      },
+      { fn: 'set_push_subscription_enabled', args: { p_endpoint: endpoint, p_enabled: false } },
+      { fn: 'unregister_push_subscription', args: { p_endpoint: endpoint } },
+      { fn: 'remove_push_subscription', args: { p_id: 'd1' } },
+      { fn: 'list_push_subscriptions', args: { p_current_endpoint: endpoint } },
+      { fn: 'list_push_subscriptions', args: { p_current_endpoint: null } },
+      { fn: 'send_test_push', args: { p_endpoint: endpoint } },
+    ]);
+  });
+
   it('spec 0011, AC-031: already_done keeps who and when from the details; numeric stars stay unrounded', async () => {
     const details = JSON.stringify({ done_by: 'u-nadja', done_at: '2026-11-20T09:02:00.1+00:00' });
     const { client, calls } = stubClient([

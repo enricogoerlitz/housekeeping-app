@@ -15,6 +15,7 @@ import {
   movePlanEntry,
   RECIPE_GONE_MESSAGE,
   removePlanEntry,
+  setReservation,
   updatePlanEntry,
 } from './commands-plan';
 import { readMapsLink } from './commands-restaurants';
@@ -453,5 +454,103 @@ describe('spec 0008: planning a recipe that was deleted meanwhile (E6)', () => {
         eaterIds: [ENRICO],
       }),
     ).toThrow(OfflineError);
+  });
+});
+
+describe('spec 0013: reservation of a restaurant entry', () => {
+  const planEnzo = () =>
+    addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      kind: 'restaurant',
+      restaurantId: 'rest-enzo',
+      eaterIds: [ENRICO, NADJA],
+    });
+
+  it('AC-027: "Reserviert um 19:30" is one patch; Nadja sees it with the default reminder', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const id = planEnzo();
+    await fx.settle(nadja);
+    fx.clearCalls();
+    setReservation(id, { reservedAt: '19:30' });
+    expect(entryById(id)?.reservedAt).toBe('19:30');
+    await fx.settle(nadja);
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reserved_at: '19:30:00' } },
+    ]);
+    const seen = fx.nadjaData(nadja).planEntries.find((entry) => entry.id === id);
+    expect(seen?.reservedAt).toBe('19:30');
+    expect(seen?.remindMinutesBefore).toBeUndefined();
+    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({
+      reserved_at: '19:30:00',
+      remind_minutes_before: 120,
+    });
+  });
+
+  it('AC-029: "1 h vorher" patches only the reminder; ✕ removes the time', async () => {
+    await fx.startEnrico();
+    const id = planEnzo();
+    setReservation(id, { reservedAt: '19:30' });
+    await fx.settle();
+    fx.clearCalls();
+    setReservation(id, { remindMinutesBefore: 60 });
+    expect(entryById(id)?.remindMinutesBefore).toBe(60);
+    setReservation(id, { reservedAt: null });
+    await fx.settle();
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { remind_minutes_before: 60 } },
+    ]);
+    expect(opsOf(1)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reserved_at: null } },
+    ]);
+    expect(entryById(id)?.reservedAt).toBeUndefined();
+  });
+
+  it('AC-030: a reservation on "Lasagne" is refused by the server and springs back', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const lasagne = getData().planEntries.find((entry) => entry.recipeId === 'rec-lasagne');
+    if (!lasagne) throw new Error('fixture');
+    setReservation(lasagne.id, { reservedAt: '19:30' });
+    await fx.settle();
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(entryById(lasagne.id)?.reservedAt).toBeUndefined();
+    expect(fx.server.row(H, 'meal_plan_entries', lasagne.id)).toMatchObject({ reserved_at: null });
+    stop();
+  });
+
+  it('the database checks: five-minute time, reminder 30/60/120/180/240 (23514)', async () => {
+    await fx.startEnrico();
+    const id = planEnzo();
+    await fx.settle();
+    const patch = (changes: Record<string, unknown>) =>
+      fx.server
+        .transport(ENRICO)
+        .applyChanges(H, [{ kind: 'patch', table: 'meal_plan_entries', id, changes }]);
+    await expect(patch({ reserved_at: '19:33' })).rejects.toMatchObject({ code: '23514' });
+    await expect(patch({ remind_minutes_before: 90 })).rejects.toMatchObject({ code: '23514' });
+    expect(() => setReservation(id, { reservedAt: '19:33' })).toThrow('Keine gültige Uhrzeit');
+    expect(() => setReservation(id, { remindMinutesBefore: 90 as 60 })).toThrow();
+  });
+
+  it('an entry that stops being a restaurant loses its reservation', async () => {
+    await fx.startEnrico();
+    const id = planEnzo();
+    setReservation(id, { reservedAt: '19:30' });
+    await fx.settle();
+    updatePlanEntry(id, { kind: 'text', text: 'Pizza bestellen', restaurantId: undefined });
+    await fx.settle();
+    expect(entryById(id)).toMatchObject({ kind: 'text', reservedAt: undefined });
+    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({ reserved_at: null });
+  });
+
+  it('REQ-008: offline throws OfflineError', async () => {
+    await fx.startEnrico();
+    const id = planEnzo();
+    await fx.settle();
+    fx.environment.setOnline(false);
+    expect(() => setReservation(id, { reservedAt: '19:30' })).toThrow(OfflineError);
   });
 });

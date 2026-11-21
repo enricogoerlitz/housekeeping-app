@@ -14,6 +14,7 @@ import {
   type Id,
   type ISODate,
   type Recurrence,
+  type TimeOfDay,
 } from '@housekeeping/core';
 
 import {
@@ -25,6 +26,7 @@ import {
 } from './chore-booking';
 import { choreToRow } from './db/mapping';
 import { commit, getData, getState, newId, updateData } from './store';
+import { checkTime } from './times';
 import type { ChangeOp } from './transport';
 
 export interface CompletionOptions {
@@ -42,6 +44,12 @@ export interface ChoreInput {
   effort?: 1 | 2 | 3;
   /** Saison: months 1–12; empty or undefined = all year. */
   activeMonths?: number[];
+  /**
+   * "Uhrzeit" of the reminder on the due day (spec 0013, REQ-007), five-minute steps. When
+   * editing, undefined keeps the chore's time and null removes it (✕); a new chore has none
+   * without one.
+   */
+  dueTime?: TimeOfDay | null;
 }
 
 /** A chore that does not exist yet, from „Was anderes erledigt?“; default „bei Bedarf“, anyone. */
@@ -118,6 +126,7 @@ export function skipChore(choreId: Id, options: Pick<CompletionOptions, 'doneOn'
 function newChore(input: ChoreInput, today: ISODate): Chore {
   const errors = validateChoreDraft(input);
   if (errors.title) throw new Error(errors.title);
+  checkTime(input.dueTime);
   return {
     id: newId(),
     title: input.title.trim(),
@@ -128,6 +137,7 @@ function newChore(input: ChoreInput, today: ISODate): Chore {
     activeMonths: input.activeMonths?.length ? input.activeMonths : undefined,
     nextDueOn: firstDueOn(input.recurrence, today),
     nextAssigneeId: assigneeAfterAssignmentChange(input.assignment),
+    dueTime: input.dueTime ?? undefined,
   };
 }
 
@@ -278,7 +288,8 @@ export function createChore(input: ChoreInput): Id {
 }
 
 /**
- * „Bearbeiten“ (AC-050 to AC-052): title, room, rhythm, assignment, effort and season. A new rhythm
+ * „Bearbeiten“ (AC-050 to AC-052): title, room, rhythm, assignment, effort, season and the time
+ * (spec 0013, AC-022, AC-025: null removes it, undefined keeps it). A new rhythm
  * gets a new date as when creating (firstDueOn from the last time, Offene Frage 4), a new
  * assignment a new turn. Throws „Titel fehlt“ and saves nothing. A chore deleted meanwhile is
  * refused by the server (row_not_found) and springs back with the general hint (AC-054).
@@ -286,6 +297,7 @@ export function createChore(input: ChoreInput): Id {
 export function updateChore(choreId: Id, input: ChoreInput): void {
   const errors = validateChoreDraft(input);
   if (errors.title) throw new Error(errors.title);
+  checkTime(input.dueTime);
   const today = getState().today;
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   commit({ path: 'diff' }, () =>
@@ -301,6 +313,7 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
           assignment: input.assignment,
           effort: input.effort ?? chore.effort,
           activeMonths: input.activeMonths?.length ? input.activeMonths : undefined,
+          dueTime: input.dueTime === undefined ? chore.dueTime : (input.dueTime ?? undefined),
           nextDueOn: same(chore.recurrence, input.recurrence)
             ? chore.nextDueOn
             : firstDueOn(input.recurrence, today, chore.lastDoneOn),
