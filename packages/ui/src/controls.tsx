@@ -1,16 +1,29 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import {
   Pressable,
   Switch as RNSwitch,
   TextInput,
   View,
+  type GestureResponderEvent,
   type StyleProp,
   type TextInputProps,
+  type ViewProps,
   type ViewStyle,
 } from 'react-native';
 
 import { icons, type IconName } from './icons';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
+import {
+  IDLE_STAR_POINTER,
+  starFill,
+  starPointer,
+  starsLabel,
+  starValueAt,
+  stepStars,
+  type StarFill,
+  type StarPointerEvent,
+  type StarStep,
+} from './star-value';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 
@@ -22,6 +35,8 @@ export function focusRing(theme: Theme, focused: boolean | undefined): ViewStyle
 }
 
 type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
+// react-native-web passes `onKeyDown` through to the DOM; native has no such prop and ignores it.
+type KeyEvent = { key: string; preventDefault: () => void };
 
 export interface ButtonProps {
   label: string;
@@ -341,39 +356,187 @@ export function SwitchRow(props: SwitchRowProps) {
 }
 
 export interface StarsProps {
-  /** 0–5. */
+  /** 0 = not rated, else 0.5 … 5 in half steps; other values show rounded down to a half. */
   value: number;
+  /** Gets 0.5 … 5 in half steps. Without it the stars only show the value. */
   onChange?: (value: number) => void;
+  /** Greyed out and not changeable, e.g. offline; `hint` says why. */
+  disabled?: boolean;
+  /** Explains why the stars are disabled (screen readers, tooltip on web). */
+  hint?: string;
+  /**
+   * Accessible name of changeable stars, e.g. "Deine Bewertung"; the value is read after it
+   * ("4,5 von 5 Sternen"). Without it the value is the name.
+   */
+  label?: string;
   size?: number;
+  /** Star n gets `${testID}-${n}` (sets the full star) and `${testID}-${n}-half` (half a star). */
   testID?: string;
 }
 
+const STAR_GAP = 1;
+// Touch targets grow upwards and downwards only, so the halves of neighbouring stars never overlap.
+const STAR_HIT_SLOP = { top: 10, bottom: 10 };
+
+/**
+ * Rating stars in half steps (spec 0011, REQ-004). Mouse: hovering fills the stars in advance,
+ * the left half of a star means half a star, a click sets it, leaving without a click shows the
+ * saved value again. Touch: a tap on either half, or dragging along the stars, letting go sets.
+ * Keyboard and screen readers: one adjustable control in steps of 0.5 ("4,5 von 5 Sternen").
+ */
 export function Stars(props: StarsProps) {
+  const theme = useTheme();
   const size = props.size ?? 21;
+  const layout = { size, gap: STAR_GAP };
+  const pointerRef = useRef(IDLE_STAR_POINTER);
+  const [pointer, setPointer] = useState(IDLE_STAR_POINTER);
+  const dragStart = useRef({ x: 0, pageX: 0 });
+  const [focused, setFocused] = useState(false);
+  const interactive = !!props.onChange && !props.disabled;
+  const shown = (interactive ? pointer.preview : undefined) ?? props.value;
+  const valueText = starsLabel(props.value);
+
+  const dispatch = (event: StarPointerEvent) => {
+    const next = starPointer(pointerRef.current, event);
+    pointerRef.current = next.state;
+    setPointer(next.state);
+    if (next.commit !== undefined) props.onChange?.(next.commit);
+  };
+  const step = (kind: StarStep) => {
+    const next = stepStars(props.value, kind);
+    if (next !== props.value && next > 0) props.onChange?.(next);
+  };
+  const onKeyDown = (event: KeyEvent) => {
+    const kind: StarStep | undefined =
+      event.key === 'ArrowRight' || event.key === 'ArrowUp'
+        ? 'increment'
+        : event.key === 'ArrowLeft' || event.key === 'ArrowDown'
+          ? 'decrement'
+          : event.key === 'Home'
+            ? 'first'
+            : event.key === 'End'
+              ? 'last'
+              : undefined;
+    if (!kind) return;
+    event.preventDefault();
+    step(kind);
+  };
+
+  /** Touch and mouse handlers of one half star; `left` is its offset from the first star. */
+  const half = (value: number, left: number): ViewProps => ({
+    onStartShouldSetResponder: () => true,
+    onResponderTerminationRequest: () => true,
+    onResponderGrant: (event: GestureResponderEvent) => {
+      // locationX is relative to this half on every platform; moves count from here by pageX.
+      dragStart.current = {
+        x: left + event.nativeEvent.locationX,
+        pageX: event.nativeEvent.pageX,
+      };
+      dispatch({ type: 'down', value });
+    },
+    onResponderMove: (event: GestureResponderEvent) => {
+      const x = dragStart.current.x + event.nativeEvent.pageX - dragStart.current.pageX;
+      dispatch({ type: 'move', value: starValueAt(x, layout) });
+    },
+    onResponderRelease: () => dispatch({ type: 'up' }),
+    onResponderTerminate: () => dispatch({ type: 'cancel' }),
+    onPointerEnter: () => dispatch({ type: 'hover', value }),
+    hitSlop: STAR_HIT_SLOP,
+  });
+  const id = (suffix: string) => (props.testID ? `${props.testID}-${suffix}` : undefined);
+
   return (
     <View
       testID={props.testID}
+      accessible
       accessibilityRole={props.onChange ? 'adjustable' : 'image'}
-      accessibilityLabel={`${props.value} von 5 Sternen`}
-      style={{ flexDirection: 'row', gap: 1 }}
+      accessibilityLabel={props.onChange && props.label ? props.label : valueText}
+      // aria-* props work on native and on the web (react-native-web drops accessibilityValue).
+      aria-valuemin={props.onChange ? 0 : undefined}
+      aria-valuemax={props.onChange ? 5 : undefined}
+      aria-valuenow={props.onChange ? props.value : undefined}
+      aria-valuetext={props.onChange ? valueText : undefined}
+      aria-disabled={props.onChange ? !interactive : undefined}
+      accessibilityHint={props.hint}
+      accessibilityActions={
+        interactive ? [{ name: 'increment' }, { name: 'decrement' }] : undefined
+      }
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'increment') step('increment');
+        if (event.nativeEvent.actionName === 'decrement') step('decrement');
+      }}
+      focusable={interactive}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onPointerLeave={interactive ? () => dispatch({ type: 'leave' }) : undefined}
+      style={[
+        { flexDirection: 'row', gap: STAR_GAP },
+        props.disabled ? { opacity: 0.45 } : null,
+        interactive ? focusRing(theme, focused) : null,
+      ]}
+      {...(interactive ? ({ onKeyDown } as object) : null)}
     >
-      {[1, 2, 3, 4, 5].map((star) =>
-        props.onChange ? (
-          <Pressable
-            key={star}
-            testID={props.testID ? `${props.testID}-${star}` : undefined}
-            accessibilityRole="button"
-            accessibilityLabel={`${star} Sterne`}
-            onPress={() => props.onChange?.(star)}
-            hitSlop={6}
-          >
-            <Icon name="star" size={size} color="star" filled={star <= props.value} />
-          </Pressable>
-        ) : (
-          <Icon key={star} name="star" size={size} color="star" filled={star <= props.value} />
-        ),
-      )}
+      {[1, 2, 3, 4, 5].map((star) => {
+        const left = (star - 1) * (size + STAR_GAP);
+        return (
+          <View key={star} style={{ width: size, height: size }}>
+            <StarGlyph size={size} fill={starFill(star, shown)} />
+            {interactive ? (
+              <>
+                <View
+                  testID={id(`${star}-half`)}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    width: size / 2,
+                    cursor: 'pointer',
+                  }}
+                  {...half(star - 0.5, left)}
+                />
+                <View
+                  testID={id(String(star))}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: size / 2,
+                    width: size / 2 + (star < 5 ? STAR_GAP : 0),
+                    cursor: 'pointer',
+                  }}
+                  {...half(star, left + size / 2)}
+                />
+              </>
+            ) : null}
+          </View>
+        );
+      })}
     </View>
+  );
+}
+
+/** One star: full, empty, or the left half filled over an empty outline. */
+function StarGlyph(props: { size: number; fill: StarFill }) {
+  if (props.fill !== 'half') {
+    return <Icon name="star" size={props.size} color="star" filled={props.fill === 'full'} />;
+  }
+  return (
+    <>
+      <Icon name="star" size={props.size} color="star" />
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: props.size / 2,
+          height: props.size,
+          overflow: 'hidden',
+        }}
+      >
+        <Icon name="star" size={props.size} color="star" filled />
+      </View>
+    </>
   );
 }
 

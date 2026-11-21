@@ -96,3 +96,38 @@ export function openRows<T>(
     return !shownChecked(snapshot, id, isChecked(item)) || snapshot.held.has(id);
   });
 }
+
+export interface CheckWindowActions<T> {
+  /** A tap: flips the shown state of the row. */
+  toggle: (item: T) => void;
+  /**
+   * Sets the row to `checked` without flipping it, e.g. each tap on the stars of "Wie war's?"
+   * (spec 0011, AC-019): the row stays and the window starts again.
+   */
+  set: (item: T, checked: boolean) => void;
+  /** Closes a running window now, e.g. when the screen loses focus (spec 0011, AC-030). */
+  settle: () => void;
+}
+
+/**
+ * What the screen's calls do to the window, given the rows shown right now and their shown state.
+ * `changed` runs after every toggle and set, with the new state.
+ */
+export function checkWindowActions<T>(options: {
+  window: CheckWindow;
+  rows: readonly T[];
+  getId: (item: T) => string;
+  isChecked: (item: T) => boolean;
+  changed?: (item: T, checked: boolean) => void;
+}): CheckWindowActions<T> {
+  const { window, rows, getId } = options;
+  const set = (item: T, checked: boolean) => {
+    window.toggle(getId(item), checked, rows.map(getId));
+    options.changed?.(item, checked);
+  };
+  return {
+    toggle: (item) => set(item, !options.isChecked(item)),
+    set,
+    settle: () => window.settle(),
+  };
+}

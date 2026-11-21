@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CHECK_WINDOW_MS,
+  checkWindowActions,
   createCheckWindow,
   openRows,
   shownChecked,
@@ -170,5 +171,109 @@ describe('check window (spec 0005, REQ-005)', () => {
     expect(settled).toEqual([]);
     vi.advanceTimersByTime(1);
     expect(settled).toEqual([['a']]);
+  });
+});
+
+describe('set and settle (spec 0011)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Rows of "Wie war's?": rated only once the window closes and the rating is saved.
+  function recap() {
+    const items: Item[] = [
+      { id: 'enzo', checked: false },
+      { id: 'lasagne', checked: false },
+    ];
+    const window = createCheckWindow();
+    const settled: string[][] = [];
+    window.onSettle((ids) => settled.push(ids));
+    const changes: [string, boolean][] = [];
+    const actions = () => {
+      const snapshot = window.getSnapshot();
+      const rows = openRows(
+        items,
+        (item) => item.id,
+        (item) => item.checked,
+        snapshot,
+      );
+      return checkWindowActions({
+        window,
+        rows,
+        getId: (item: Item) => item.id,
+        isChecked: (item: Item) => shownChecked(snapshot, item.id, item.checked),
+        changed: (item: Item, checked: boolean) => changes.push([item.id, checked]),
+      });
+    };
+    const row = (id: string) => items.find((item) => item.id === id) as Item;
+    const visible = () =>
+      openRows(
+        items,
+        (item) => item.id,
+        (item) => item.checked,
+        window.getSnapshot(),
+      ).map((item) => item.id);
+    const shown = (id: string) => shownChecked(window.getSnapshot(), id, row(id).checked);
+    return { window, settled, changes, actions, row, visible, shown };
+  }
+
+  it('AC-019: set keeps the row and restarts the window without toggling it back', () => {
+    const list = recap();
+    list.actions().set(list.row('enzo'), true); // third star, 0 s
+    vi.advanceTimersByTime(1000);
+    list.actions().set(list.row('enzo'), true); // fourth star, 1 s
+    expect(list.shown('enzo')).toBe(true);
+
+    vi.advanceTimersByTime(1900); // 2.9 s: 2 s after the last tap not yet over
+    expect(list.visible()).toEqual(['enzo', 'lasagne']);
+    expect(list.settled).toEqual([]);
+
+    vi.advanceTimersByTime(100); // 3.0 s
+    expect(list.settled).toEqual([['enzo']]);
+    expect(list.changes).toEqual([
+      ['enzo', true],
+      ['enzo', true],
+    ]);
+  });
+
+  it('set can open a row again, like taking a check back', () => {
+    const list = recap();
+    list.actions().set(list.row('enzo'), true);
+    list.actions().set(list.row('enzo'), false);
+    expect(list.shown('enzo')).toBe(false);
+    vi.advanceTimersByTime(CHECK_WINDOW_MS);
+    expect(list.settled).toEqual([[]]);
+  });
+
+  it('toggle still flips the shown state', () => {
+    const list = recap();
+    list.actions().toggle(list.row('lasagne'));
+    expect(list.shown('lasagne')).toBe(true);
+    list.actions().toggle(list.row('lasagne'));
+    expect(list.shown('lasagne')).toBe(false);
+    expect(list.changes).toEqual([
+      ['lasagne', true],
+      ['lasagne', false],
+    ]);
+  });
+
+  it('AC-030: settle closes the running window at once, e.g. when the tab changes', () => {
+    const list = recap();
+    list.actions().set(list.row('lasagne'), true);
+    vi.advanceTimersByTime(1000);
+    list.actions().settle();
+    expect(list.settled).toEqual([['lasagne']]);
+    expect(list.visible()).toEqual(['enzo', 'lasagne']); // the data follows once it is saved
+    vi.advanceTimersByTime(CHECK_WINDOW_MS);
+    expect(list.settled).toHaveLength(1);
+  });
+
+  it('settle without a running window does nothing', () => {
+    const list = recap();
+    list.actions().settle();
+    expect(list.settled).toEqual([]);
   });
 });

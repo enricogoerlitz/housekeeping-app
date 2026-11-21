@@ -357,7 +357,7 @@ function ChipBlock() {
 function CheckBlock() {
   const [checked, setChecked] = useState(false);
   const [on, setOn] = useState(true);
-  const [stars, setStars] = useState(4);
+  const [stars, setStars] = useState(4.5);
   return (
     <Block title="Auswahl" testID="showroom-checks">
       <Row gap={16}>
@@ -378,9 +378,15 @@ function CheckBlock() {
       </List>
       <SwitchRow label="Schalter" description="Mit Beschreibung" value={on} onValueChange={setOn} />
       <SwitchRow label="Ausgegraut" value={false} onValueChange={() => undefined} disabled />
-      <Row gap={16}>
-        <Stars value={stars} onChange={setStars} />
-        <Stars value={3} size={16} />
+      <Row gap={16} wrap>
+        <Stars value={stars} onChange={setStars} label="Deine Bewertung" testID="showroom-stars" />
+        <Stars value={3.5} size={16} />
+        <Stars
+          value={4.5}
+          onChange={() => undefined}
+          disabled
+          hint="Offline – zum Bearbeiten brauchst du Netz"
+        />
       </Row>
     </Block>
   );

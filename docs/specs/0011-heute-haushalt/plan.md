@@ -331,7 +331,7 @@ berührt `seed/demo.ts` nicht.
   = 4 (AC-017, AC-020); Vorschau beim Darüberfahren und zurück beim Verlassen (AC-018);
   Tastaturschritte 0,5 mit Grenzen 0,5…5, Ansage „4,5 von 5 Sternen“; `set` hält die Zeile und
   startet die Uhr neu, ohne umzuschalten (AC-019); `settle` schließt sofort (AC-030).
-- **Status:** offen
+- **Status:** erledigt (nicht committet), Entscheidungen siehe „Entscheidungen beim Bauen (ui)“
 
 ### Task 7 — App: Haushalt (Agent Haushalt, Welle C)
 
@@ -527,3 +527,31 @@ Aus Plan, ADR-0011 und dem Code abgeleitet, ohne neue Frage:
 8. **Cache-Version 5**, weil Spec 0007 die 4 schon belegt hat.
 9. **Seed:** neue Aufgabe „Fenster Küche“ (bei Bedarf, zwei Einträge), Verlaufseinträge vor 20,
    25, 45, 63 und 400 Tagen. 400 Tage liegen immer in einem anderen Jahr (Jahreswechsel, AC-057).
+
+## Entscheidungen beim Bauen (ui, Task 6, 21.11.2026)
+
+Aus Plan, `AGENTS.md` und dem Code abgeleitet, ohne neue Frage:
+
+1. **„Liste und Detail“ gab es schon** (`list-detail.tsx`, Spec 0007, samt Export). Der Baustein
+   deckt AC-047 unverändert ab (Platzhalter „Wähl eine Aufgabe aus“ über `placeholder`); Task 6
+   ändert ihn nicht. `index.ts` bleibt unberührt, weil `Stars`, `useCheckWindow` und ihre Typen
+   schon exportiert sind.
+2. **Die Regeln der Sterne liegen rein in `star-value.ts`** (`starValueAt`, `starFill`,
+   `starPointer`, `stepStars`, `starsLabel`) und sind in Node getestet. `ui` importiert nichts
+   aus `core`; die Grenzen 0,5 und 5 und das Komma stehen deshalb dort noch einmal.
+3. **Bedienung:** Jede Sternhälfte ist eine eigene Trefferfläche. `<id>-<n>` ist die rechte Hälfte
+   samt Lücke dahinter (voller Stern), `<id>-<n>-half` die linke. Ein Tipp setzt den Wert der
+   Hälfte, Ziehen rechnet ab dort mit dem Finger weiter, Loslassen setzt. Übernimmt die Liste das
+   Ziehen (Scrollen), wird nichts gesetzt. Darüberfahren füllt nur vor; Verlassen zeigt wieder den
+   gespeicherten Wert. Derselbe Wert noch einmal ruft `onChange` trotzdem auf (Entscheidung 7).
+4. **Tastatur und Screenreader:** ein einstellbares Element (`adjustable`, im Web `slider`) mit
+   `aria-valuetext` „4,5 von 5 Sternen“. Pfeiltasten in 0,5-Schritten, Pos1 = 0,5, Ende = 5;
+   unbewertet startet ein Schritt nach oben bei 0,5, einer nach unten bleibt unbewertet. Jeder
+   Schritt ruft `onChange`; in „Wie war's?“ sammelt das Fenster die Schritte (`set`).
+5. **Neue Props an `Stars`:** `disabled` + `hint` (ausgegraut mit Begründung, AC-023) und `label`
+   (Name des einstellbaren Elements, z. B. „Deine Bewertung“; ohne `label` bleibt der Wert der
+   Name, wie bisher). Ohne `onChange` bleibt es eine reine Anzeige mit `aria-label`
+   „4 von 5 Sternen“.
+6. **`set` und `settle`** kommen über die reine Funktion `checkWindowActions` in
+   `check-window.ts` an `CheckWindowState`. `set` läuft wie ein Tipp durch `onToggle` und
+   `announce`, schaltet aber nicht um. Die App ruft `settle` aus `useFocusEffect` (Entscheidung 8).
