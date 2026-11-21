@@ -8,9 +8,10 @@ import {
   type DisclosureEvent,
   type DisclosureState,
 } from './disclosure-state';
+import { expandableA11y } from './expandable';
 
 // The words a feature passes in; ui holds no copy of its own.
-const STATES = { expanded: 'aufgeklappt', collapsed: 'eingeklappt' };
+const WORDS = { expanded: 'aufgeklappt', collapsed: 'eingeklappt' };
 
 function run(events: DisclosureEvent[], start: DisclosureState = CLOSED_DISCLOSURE) {
   return events.reduce(disclosureState, start);
@@ -22,13 +23,21 @@ describe('disclosureTitle and disclosureLabel (spec 0012, REQ-004)', () => {
   });
 
   it('AC-020: a screen reader hears "Gepackt, 4, eingeklappt" where the platform says no state', () => {
-    expect(disclosureLabel('Gepackt', 4, false, STATES)).toBe('Gepackt, 4, eingeklappt');
-    expect(disclosureLabel('Gepackt', 4, true, STATES)).toBe('Gepackt, 4, aufgeklappt');
+    const label = disclosureLabel('Gepackt', 4);
+    expect(expandableA11y(label, false, 'ios', WORDS).accessibilityLabel).toBe(
+      'Gepackt, 4, eingeklappt',
+    );
+    expect(expandableA11y(label, true, 'ios', WORDS).accessibilityLabel).toBe(
+      'Gepackt, 4, aufgeklappt',
+    );
   });
 
   it('leaves the state out where the platform announces it from the expanded state', () => {
-    expect(disclosureLabel('Gepackt', 4, false)).toBe('Gepackt, 4');
-    expect(disclosureLabel('Gepackt', 1, true)).toBe('Gepackt, 1');
+    expect(disclosureLabel('Gepackt', 4)).toBe('Gepackt, 4');
+    expect(expandableA11y(disclosureLabel('Gepackt', 1), true, 'web', WORDS)).toEqual({
+      accessibilityLabel: 'Gepackt, 1',
+      'aria-expanded': true,
+    });
   });
 });
 

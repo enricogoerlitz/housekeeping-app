@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { ARRIVE, LEAVE, RowTransition } from './check';
 import { focusRing } from './controls';
 import { disclosureLabel, disclosureState, disclosureTitle } from './disclosure-state';
+import { expandableA11y } from './expandable';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
 
@@ -42,24 +43,17 @@ export function Disclosure(props: DisclosureProps) {
 
   const { expanded } = state;
   const id = (part: string) => (props.testID ? `${props.testID}-${part}` : undefined);
-  // iOS announces only "expanded", never "collapsed": there the label carries the state and the
-  // node state stays off, so it is not said twice. The web and Android read `expanded`.
-  const ios = Platform.OS === 'ios';
-  const label = disclosureLabel(
-    props.title,
-    props.count,
-    expanded,
-    ios ? { expanded: props.expandedLabel, collapsed: props.collapsedLabel } : undefined,
-  );
+  const a11y = expandableA11y(disclosureLabel(props.title, props.count), expanded, Platform.OS, {
+    expanded: props.expandedLabel,
+    collapsed: props.collapsedLabel,
+  });
   return (
     <RowTransition>
       <View testID={props.testID}>
         <Pressable
           testID={id('toggle')}
           accessibilityRole="button"
-          accessibilityLabel={label}
-          // `aria-expanded`, not `accessibilityState`: react-native-web ignores the latter.
-          aria-expanded={ios ? undefined : expanded}
+          {...a11y}
           onPress={() => dispatch({ type: 'toggle' })}
           style={(pressState) => [
             {

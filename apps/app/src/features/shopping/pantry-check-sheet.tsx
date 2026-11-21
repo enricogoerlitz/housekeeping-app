@@ -32,9 +32,10 @@ import {
   Sheet,
   Text,
   toast,
+  expandableA11y,
 } from '@housekeeping/ui';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
@@ -322,8 +323,10 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
               <Pressable
                 testID="pc-pantry-toggle"
                 accessibilityRole="button"
-                accessibilityState={{ expanded: showPantry }}
-                accessibilityLabel={`Vorrat & Gewürze (${pantry.length})`}
+                {...expandableA11y(`Vorrat & Gewürze (${pantry.length})`, showPantry, Platform.OS, {
+                  expanded: 'aufgeklappt',
+                  collapsed: 'eingeklappt',
+                })}
                 onPress={() => setShowPantry(!showPantry)}
                 style={{
                   flexDirection: 'row',

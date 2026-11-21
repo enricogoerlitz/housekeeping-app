@@ -112,6 +112,7 @@ test('AC-008 / AC-009 (0006): "Liste" shows groups with − 2× + or "500 g ›"
   await expect(tid(page, 'start-shopping')).toBeVisible();
   await expect(tid(page, 'list-from-plan')).toHaveText(/Aus Kalender/);
   await expect(tid(page, 'done-toggle')).toHaveText('Erledigt (2)');
+  await expect(tid(page, 'done-toggle')).toHaveAttribute('aria-expanded', 'false');
   await expect(tid(page, 'done-section').locator('[data-testid^="item-"]')).toHaveCount(0);
   // Groups follow the areas without a store: "Ohne Bereich" (Geschenkpapier) comes last.
   const groups = await tidPrefix(page, 'group-').evaluateAll((elements) =>
@@ -283,6 +284,7 @@ test('AC-010 (0006): unchecking "Brot" under "Erledigt" opens it again at once',
   await tid(page, `item-${bread}-check`).click();
   await expect(openItem(page, 'Brot')).toHaveCount(1);
   await expect(tid(page, 'done-toggle')).toHaveText('Erledigt (1)');
+  await expect(tid(page, 'done-toggle')).toHaveAttribute('aria-expanded', 'true');
   await expect(tid(page, 'done-section').locator('[data-testid^="item-"]').first()).toBeVisible();
 });
 
@@ -357,7 +359,9 @@ test('AC-044 / AC-047 (0006): a checked item stays struck, then moves to "Im Wag
   await expect(tid(page, 'shopping-progress')).toHaveText(`${done + 1}/${total}`);
   // The Sammel-Fenster: 2 s after the last tap the row slides into "Im Wagen".
   await expect(tid(page, 'sm-done-toggle')).toContainText('Im Wagen', { timeout: 5_000 });
+  await expect(tid(page, 'sm-done-toggle')).toHaveAttribute('aria-expanded', 'false');
   await tid(page, 'sm-done-toggle').click();
+  await expect(tid(page, 'sm-done-toggle')).toHaveAttribute('aria-expanded', 'true');
   await expect(tid(page, 'sm-done').locator('[aria-label="Zitronen"]')).toHaveCount(1);
 
   await tid(page, 'shopping-close').click();
@@ -489,6 +493,7 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
   // Pantry articles sit folded and deselected under "Vorrat & Gewürze".
   await expect(tid(page, `pc-row-${article('reis')}`)).toBeHidden();
   await expect(tid(page, 'pc-pantry-toggle')).toContainText('Vorrat & Gewürze');
+  await expect(tid(page, 'pc-pantry-toggle')).toHaveAttribute('aria-expanded', 'false');
 
   // AC-057: back keeps the choice; deselecting everything greys out "0 übernehmen".
   await tid(page, 'pc-back').click();
@@ -517,6 +522,7 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
   await expect(tid(page, 'pc-apply')).toHaveText('1 übernehmen');
 
   await tid(page, 'pc-pantry-toggle').click();
+  await expect(tid(page, 'pc-pantry-toggle')).toHaveAttribute('aria-expanded', 'true');
   for (const key of ['reis', 'kreuzkuemmel']) {
     await expect(tid(page, `pc-row-${article(key)}-check`), key).toHaveAttribute(
       'aria-checked',
