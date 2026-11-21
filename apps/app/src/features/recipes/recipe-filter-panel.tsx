@@ -16,8 +16,15 @@ import { Chip, Row, Text, useBreakpoint } from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
-/** Gerichtart in the panel, in the order of the concept (Konzept v2, 3.2). */
-const COURSES: readonly Course[] = ['main', 'side', 'dessert', 'breakfast', 'snack', 'drink'];
+/** Gerichtart in the panel and in „Einordnung“, in the order of the concept (Konzept v2, 3.2). */
+export const COURSES: readonly Course[] = [
+  'main',
+  'side',
+  'dessert',
+  'breakfast',
+  'snack',
+  'drink',
+];
 
 /** "Schnell" without the diets, which have their own section "Ernährung" (Konzept v2, 3.2). */
 const PANEL_QUICK = QUICK_FILTERS.filter(

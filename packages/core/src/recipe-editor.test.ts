@@ -9,7 +9,9 @@ import {
   addVariant,
   chooseRowArticle,
   cleanTags,
+  draftAfterRefusal,
   moveIngredient,
+  moveIngredientAmong,
   moveStep,
   newIngredientRow,
   openRows,
@@ -721,3 +723,54 @@ function planned(id: Id, recipeId: Id, variants: MealPlanEntry['variants']): Mea
     sort: 0,
   };
 }
+
+describe('the page around the sections (T7)', () => {
+  it('Platforms: moving among the rows with an article keeps the orange rows in place', () => {
+    const orange = { ...newIngredientRow('orange'), name: 'Bockshornklee' };
+    // i-kokos, i-mango, orange, i-reis, … — the list shows every row but the orange one.
+    let draft = sectionDraft(mangoCurry, 'ingredients');
+    draft = { ...draft, rows: [...draft.rows.slice(0, 2), orange, ...draft.rows.slice(2)] };
+    const shown = draft.rows.filter((row) => row.article !== undefined).map((row) => row.key);
+
+    const down = moveIngredientAmong(draft, 'i-mango', 2, shown);
+    expect(down.rows.slice(0, 4).map((row) => row.key)).toEqual([
+      'i-kokos',
+      'orange',
+      'i-reis',
+      'i-mango',
+    ]);
+    const up = moveIngredientAmong(draft, 'i-reis', 0, shown);
+    expect(up.rows.slice(0, 4).map((row) => row.key)).toEqual([
+      'i-reis',
+      'i-kokos',
+      'i-mango',
+      'orange',
+    ]);
+    expect(moveIngredientAmong(draft, 'i-reis', 2, shown)).toBe(draft);
+    expect(moveIngredientAmong(draft, 'unknown', 0, shown)).toBe(draft);
+  });
+
+  it('E7: a refused section opens again with its draft when nothing else is open', () => {
+    const refused = { ...sectionDraft(lasagne, 'notes'), notes: 'Neu' };
+    expect(draftAfterRefusal(undefined, refused, undefined)).toBe(refused);
+  });
+
+  it('E7, AC-032: the section left open with its orange rows gets the refused draft back', () => {
+    const refused = addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
+      { ...newIngredientRow('orange'), name: 'Bockshornklee' },
+    ]);
+    const reopened = addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
+      { ...newIngredientRow('orange'), name: 'Bockshornklee' },
+    ]);
+    expect(draftAfterRefusal(reopened, refused, reopened)).toBe(refused);
+  });
+
+  it('E7: a section opened or changed since then stays as it is', () => {
+    const refused = { ...sectionDraft(lasagne, 'notes'), notes: 'Neu' };
+    const other = sectionDraft(lasagne, 'head');
+    expect(draftAfterRefusal(other, refused, undefined)).toBe(other);
+    const reopened = sectionDraft(mangoCurry, 'ingredients');
+    const edited = removeIngredient(reopened, 'i-salz');
+    expect(draftAfterRefusal(edited, refused, reopened)).toBe(edited);
+  });
+});

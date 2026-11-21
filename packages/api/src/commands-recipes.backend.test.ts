@@ -2,11 +2,12 @@
 // same changeset), favourites and ratings per member over their RPCs.
 import {
   addIngredientRows,
-  addStep as addStepRow,
+  addStep,
   addVariant,
   chooseRowArticle,
   moveStep,
   newIngredientRow,
+  removeIngredient,
   removeVariant,
   searchArticleCatalog,
   sectionDraft,
@@ -14,28 +15,23 @@ import {
   setRowShoppingRule,
   sortRecipes,
   updateIngredientRow,
+  type IngredientRow,
+  type Recipe,
 } from '@housekeeping/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import {
-  addIngredient,
-  addIngredients,
-  addIngredientsConfirmed,
-  addStep,
   adoptStarterRecipes,
   createRecipe,
   deleteRecipe,
   discardRecipePhoto,
   listStarterRecipes,
   rateRecipe,
-  removeIngredient,
   replaceIngredient,
   saveRecipeSection,
-  setIngredientShoppingNote,
   toggleFavorite,
-  updateIngredient,
 } from './commands-recipes';
 import { updateArticle } from './commands-articles';
 import { addPlanEntry } from './commands-plan';
@@ -55,47 +51,17 @@ const recipeById = (id: string) => getData().recipes.find((recipe) => recipe.id 
 const opsOf = (index: number) => (fx.calls[index]?.args[1] ?? []) as ChangeOp[];
 
 describe('diff path', () => {
-  it('ingredients with a new name: the article insert and the recipe patch are one call', async () => {
+  it('an assistant replacement patches only the recipe', async () => {
     await fx.startEnrico();
     const recipe = firstRecipe();
-    expect(
-      addIngredients(recipe.id, [
-        { article: { newName: 'Drachenfrucht' }, amount: { text: '200 g', qty: 200, unit: 'g' } },
-        { article: { newName: 'Zwiebel' } },
-      ]),
-    ).toBe(2);
+    const [, second] = recipe.ingredients;
+    if (!second) throw new Error('fixture');
+    replaceIngredient(recipe.id, second.id, '3 Zwiebeln');
     await fx.settle();
     expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
-    expect(opsOf(0).map((op) => [op.kind, 'table' in op ? op.table : ''])).toEqual([
-      ['insert', 'articles'],
-      ['patch', 'recipes'],
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({ kind: 'patch', table: 'recipes', id: recipe.id }),
     ]);
-    const article = getData().articles.find((candidate) => candidate.name === 'Drachenfrucht');
-    expect(fx.server.row(H, 'articles', article?.id ?? '')).toMatchObject({
-      name_key: 'drachenfrucht',
-    });
-    expect(recipeById(recipe.id)?.ingredients).toHaveLength(recipe.ingredients.length + 2);
-  });
-
-  it('note, replace, remove and step each patch only the recipe', async () => {
-    await fx.startEnrico();
-    const recipe = firstRecipe();
-    const [first, second] = recipe.ingredients;
-    if (!first || !second) throw new Error('fixture');
-    setIngredientShoppingNote(recipe.id, first.id, 'Bio');
-    replaceIngredient(recipe.id, second.id, '3 Zwiebeln');
-    removeIngredient(recipe.id, first.id);
-    addStep(recipe.id, 'Abschmecken');
-    await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(Array(4).fill('applyChanges'));
-    for (const index of [0, 1, 2, 3]) {
-      expect(opsOf(index)).toEqual([
-        expect.objectContaining({ kind: 'patch', table: 'recipes', id: recipe.id }),
-      ]);
-    }
-    expect(fx.server.row(H, 'recipes', recipe.id)?.steps).toEqual(
-      expect.arrayContaining([expect.objectContaining({ text: 'Abschmecken' })]),
-    );
   });
 
   it('adopting a starter recipe inserts it in one call', async () => {
@@ -180,28 +146,32 @@ describe('recipe commands: input and local effect', () => {
   });
 });
 
-describe('ingredients with an article (spec 0007)', () => {
+describe('ingredients with an article (spec 0007, through the section "Zutaten")', () => {
   const articleByName = (name: string) => {
     const found = getData().articles.find((article) => article.name === name);
     if (!found) throw new Error(`article ${name} missing`);
     return found;
   };
   const lastIngredient = (recipeId: string) => recipeById(recipeId)?.ingredients.at(-1);
+  /** "+ Zutat" in the section, then "Fertig". */
+  const addRow = (recipe: Recipe, row: Partial<IngredientRow>) =>
+    saveRecipeSection(
+      recipe.id,
+      addIngredientRows(sectionDraft(recipe, 'ingredients'), [
+        { ...newIngredientRow(`k-${Math.random()}`), ...row },
+      ]),
+    );
 
   it('AC-001: the chosen article goes into the recipe; the rule follows the amount', async () => {
     await fx.startEnrico();
     const recipe = firstRecipe();
     const coconut = articleByName('Kokosmilch');
-    const id = addIngredient(recipe.id, {
-      article: { articleId: coconut.id },
-      amount: { text: '400 ml', qty: 400, unit: 'ml' },
-    });
+    addRow(recipe, { amountText: '400 ml', article: { kind: 'article', articleId: coconut.id } });
     await fx.settle();
     expect(opsOf(0)).toEqual([expect.objectContaining({ kind: 'patch', table: 'recipes' })]);
     expect(lastIngredient(recipe.id)).toMatchObject({
-      id,
       articleId: coconut.id,
-      amount: { text: '400 ml' },
+      amount: { text: '400 ml', qty: 400, unit: 'ml' },
       shoppingRule: 'recipeAmount',
     });
   });
@@ -209,7 +179,7 @@ describe('ingredients with an article (spec 0007)', () => {
   it('AC-002: "„Drachenfrucht“ neu anlegen" creates the article in the same call', async () => {
     await fx.startEnrico();
     const recipe = firstRecipe();
-    addIngredient(recipe.id, { article: { newName: 'Drachenfrucht' } });
+    addRow(recipe, { article: { kind: 'new', name: 'Drachenfrucht' } });
     await fx.settle();
     expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
     expect(opsOf(0).map((op) => [op.kind, 'table' in op ? op.table : ''])).toEqual([
@@ -221,9 +191,20 @@ describe('ingredients with an article (spec 0007)', () => {
       isPantry: false,
       needsReview: false,
     });
-    expect(articleByName('Drachenfrucht').areaId).toBeUndefined();
     expect(lastIngredient(recipe.id)?.articleId).toBe(articleByName('Drachenfrucht').id);
-    expect(() => addIngredient(recipe.id, { article: { newName: ' ' } })).toThrow('Name fehlt');
+    expect(fx.server.row(H, 'articles', articleByName('Drachenfrucht').id)).toMatchObject({
+      name_key: 'drachenfrucht',
+    });
+  });
+
+  it('AC-002: "neu anlegen" with the name of an existing article uses that article', async () => {
+    await fx.startEnrico();
+    const recipe = firstRecipe();
+    const count = getData().articles.length;
+    addRow(recipe, { article: { kind: 'new', name: 'Kokosmilch' } });
+    await fx.settle();
+    expect(getData().articles).toHaveLength(count);
+    expect(lastIngredient(recipe.id)?.articleId).toBe(articleByName('Kokosmilch').id);
   });
 
   it('AC-003: a starter hit becomes the household article with its data, in the same call', async () => {
@@ -234,7 +215,7 @@ describe('ingredients with an article (spec 0007)', () => {
     const [hit] = searchArticleCatalog('Grapef', getData().articles, starterCatalogEntries).matches;
     if (!hit) throw new Error('fixture');
     const recipe = firstRecipe();
-    addIngredient(recipe.id, { article: { hit: hit.item } });
+    addRow(recipe, { article: { kind: 'hit', hit: hit.item } });
     await fx.settle();
     expect(fx.calls).toHaveLength(1);
     expect(articleByName('Grapefruit')).toMatchObject({ synonyms: ['Pampelmuse'], diet: 'vegan' });
@@ -245,7 +226,7 @@ describe('ingredients with an article (spec 0007)', () => {
     await fx.startEnrico();
     const recipe = firstRecipe();
     const restore = snapshot();
-    addIngredient(recipe.id, { article: { newName: 'Drachenfrucht' } });
+    addRow(recipe, { article: { kind: 'new', name: 'Drachenfrucht' } });
     await fx.settle();
     restore();
     await fx.settle();
@@ -258,40 +239,24 @@ describe('ingredients with an article (spec 0007)', () => {
 
   it('AC-005, E7: the article’s rule is preselected; a rule chosen at the ingredient goes to the article', async () => {
     await fx.startEnrico();
-    const recipe = firstRecipe();
     const flour = articleByName('Mehl');
     updateArticle(flour.id, { defaultShoppingRule: 'recipeAmount' });
-    addIngredient(recipe.id, { article: { articleId: flour.id } });
-    expect(lastIngredient(recipe.id)?.shoppingRule).toBe('recipeAmount');
+    addRow(firstRecipe(), { article: { kind: 'article', articleId: flour.id } });
+    expect(lastIngredient(firstRecipe().id)?.shoppingRule).toBe('recipeAmount');
     await fx.settle();
     fx.clearCalls();
 
-    addIngredient(recipe.id, { article: { articleId: flour.id }, shoppingRule: 'skip' });
+    addRow(firstRecipe(), {
+      article: { kind: 'article', articleId: flour.id },
+      shoppingRule: 'skip',
+      shoppingRuleChosen: true,
+    });
     await fx.settle();
     expect(opsOf(0).map((op) => [op.kind, 'table' in op ? op.table : ''])).toEqual([
       ['patch', 'articles'],
       ['patch', 'recipes'],
     ]);
     expect(fx.server.row(H, 'articles', flour.id)).toMatchObject({ default_shopping_rule: 'skip' });
-  });
-
-  it('AC-010: several lines with their article are one call', async () => {
-    await fx.startEnrico();
-    const recipe = firstRecipe();
-    const count = recipe.ingredients.length;
-    expect(
-      addIngredients(recipe.id, [
-        {
-          article: { articleId: articleByName('Kokosmilch').id },
-          amount: { text: '200 ml', qty: 200, unit: 'ml' },
-        },
-        { article: { articleId: articleByName('Mango').id }, amount: { text: '1', qty: 1 } },
-        { article: { newName: 'Drachenfrüchte' }, amount: { text: '2', qty: 2 } },
-      ]),
-    ).toBe(3);
-    await fx.settle();
-    expect(fx.calls).toHaveLength(1);
-    expect(recipeById(recipe.id)?.ingredients).toHaveLength(count + 3);
   });
 
   it('AC-006: an ingredient the server refuses leaves the recipe as it was, with the hint', async () => {
@@ -303,33 +268,22 @@ describe('ingredients with an article (spec 0007)', () => {
       'apply_changes',
       new TransportError('permanent', 'ingredient_article_invalid', 409),
     );
-    addIngredient(recipe.id, { article: { articleId: articleByName('Mango').id } });
+    const saved = addRow(recipe, {
+      article: { kind: 'article', articleId: articleByName('Mango').id },
+    });
     await fx.settle();
+    await expect(saved?.confirmed).rejects.toMatchObject({ code: 'ingredient_article_invalid' });
     expect(recipeById(recipe.id)?.ingredients).toEqual(recipe.ingredients);
     expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
     stop();
   });
 
-  it('AC-006, AC-010: the editor learns whether the server took its lines', async () => {
+  it('AC-006: a row whose article is gone locally stays open and sends nothing', async () => {
     await fx.startEnrico();
-    const recipe = firstRecipe();
-    const mangoLine = { article: { articleId: articleByName('Mango').id } };
-    const taken = addIngredientsConfirmed(recipe.id, [mangoLine]);
-    expect(recipeById(recipe.id)?.ingredients).toHaveLength(recipe.ingredients.length + 1);
+    const saved = addRow(firstRecipe(), { article: { kind: 'article', articleId: 'a-gone' } });
+    expect(saved?.open).toHaveLength(1);
     await fx.settle();
-    await expect(taken).resolves.toBe(1);
-
-    fx.server.failNext(
-      'apply_changes',
-      new TransportError('permanent', 'ingredient_article_invalid', 409),
-    );
-    const refused = addIngredientsConfirmed(recipe.id, [mangoLine]).catch(
-      (error: unknown) => error,
-    );
-    await fx.settle();
-    expect(await refused).toMatchObject({ code: 'ingredient_article_invalid' });
-    expect(recipeById(recipe.id)?.ingredients).toHaveLength(recipe.ingredients.length + 1);
-    await expect(addIngredientsConfirmed(recipe.id, [])).resolves.toBe(0);
+    expect(fx.calls).toEqual([]);
   });
 
   it('AC-001: editing an ingredient can remove its amount', async () => {
@@ -337,36 +291,62 @@ describe('ingredients with an article (spec 0007)', () => {
     const recipe = firstRecipe();
     const ingredient = recipe.ingredients.find((candidate) => candidate.amount);
     if (!ingredient) throw new Error('fixture');
-    updateIngredient(recipe.id, ingredient.id, { amount: undefined });
+    saveRecipeSection(
+      recipe.id,
+      updateIngredientRow(sectionDraft(recipe, 'ingredients'), ingredient.id, { amountText: '' }),
+    );
     await fx.settle();
     const saved = recipeById(recipe.id)?.ingredients.find((row) => row.id === ingredient.id);
     expect(saved).not.toHaveProperty('amount');
     expect(saved?.articleId).toBe(ingredient.articleId);
   });
 
-  it('AC-006: an article that is gone locally is refused before sending', async () => {
-    await fx.startEnrico();
-    expect(() => addIngredient(firstRecipe().id, { article: { articleId: 'a-gone' } })).toThrow();
-    await fx.settle();
-    expect(fx.calls).toEqual([]);
-  });
-
-  it('AC-011, AC-012: Hinweis and Einkaufs-Zusatz are separate fields of the ingredient', async () => {
+  it('AC-011, AC-012: Hinweis and Einkaufs-Zusatz are separate fields; blank removes them', async () => {
     await fx.startEnrico();
     const recipe = firstRecipe();
     const [first] = recipe.ingredients;
     if (!first) throw new Error('fixture');
-    updateIngredient(recipe.id, first.id, { prepNote: ' fein gehackt ', shoppingNote: 'Bio' });
-    await fx.settle();
+    saveRecipeSection(
+      recipe.id,
+      updateIngredientRow(sectionDraft(recipe, 'ingredients'), first.id, {
+        prepNote: ' fein gehackt ',
+        shoppingNote: 'Bio',
+      }),
+    );
     expect(recipeById(recipe.id)?.ingredients[0]).toMatchObject({
       prepNote: 'fein gehackt',
       shoppingNote: 'Bio',
     });
-    updateIngredient(recipe.id, first.id, { prepNote: '  ' });
-    expect(recipeById(recipe.id)?.ingredients[0]).not.toHaveProperty('prepNote');
-    expect(() => updateIngredient(recipe.id, first.id, { prepNote: 'x'.repeat(201) })).toThrow(
-      'Höchstens 200 Zeichen',
+    const noted = recipeById(recipe.id);
+    if (!noted) throw new Error('fixture');
+    saveRecipeSection(
+      recipe.id,
+      updateIngredientRow(sectionDraft(noted, 'ingredients'), first.id, { prepNote: '  ' }),
     );
+    expect(recipeById(recipe.id)?.ingredients[0]).not.toHaveProperty('prepNote');
+    expect(() =>
+      saveRecipeSection(
+        recipe.id,
+        updateIngredientRow(sectionDraft(noted, 'ingredients'), first.id, {
+          prepNote: 'x'.repeat(201),
+        }),
+      ),
+    ).toThrow('Höchstens 200 Zeichen');
+  });
+
+  it('spec 0007 "Zutat entfernen": ⋯ → "Entfernen" and "Fertig" remove the ingredient', async () => {
+    await fx.startEnrico();
+    const recipe = firstRecipe();
+    const [first] = recipe.ingredients;
+    if (!first) throw new Error('fixture');
+    saveRecipeSection(recipe.id, removeIngredient(sectionDraft(recipe, 'ingredients'), first.id));
+    await fx.settle();
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({ kind: 'patch', table: 'recipes', id: recipe.id }),
+    ]);
+    const stored = fx.server.row(H, 'recipes', recipe.id)?.ingredients as { id: string }[];
+    expect(stored.map((ingredient) => ingredient.id)).not.toContain(first.id);
+    expect(stored).toHaveLength(recipe.ingredients.length - 1);
   });
 
   it('AC-015, AC-017: an assistant replacement resolves synonyms; an unknown name is new "Neu aus Rezepten"', async () => {
@@ -506,7 +486,7 @@ describe('spec 0008: saving a section (REQ-007, REQ-008, E7, E10)', () => {
     if (!first) throw new Error('fixture');
     let draft = sectionDraft(lasagne, 'steps');
     draft = moveStep(draft, first.id, lasagne.steps.length);
-    draft = addStepRow(draft, 'Mit Olivenöl servieren', 'step-new');
+    draft = addStep(draft, 'Mit Olivenöl servieren', 'step-new');
     draft = { ...draft, leadTimeText: 'Kichererbsen einweichen', leadTimeHours: '12' };
     saveRecipeSection(lasagne.id, draft);
     await fx.settle();
@@ -543,13 +523,19 @@ describe('spec 0008: saving a section (REQ-007, REQ-008, E7, E10)', () => {
       amount: { text: '200 ml', qty: 200, unit: 'ml' },
     });
 
-    // T7 reopens the section from the saved recipe with the open rows.
+    // The section reopens from the saved recipe with the open rows, never with the old draft.
     const saved = recipeById(dal.id);
-    if (!saved || !first) throw new Error('fixture');
-    let reopened = addIngredientRows(sectionDraft(saved, 'ingredients'), first.open);
-    reopened = chooseRowArticle(reopened, 'k-fenugreek', { kind: 'new', name: 'Bockshornklee' });
+    if (!saved || !first?.reopened) throw new Error('fixture');
+    expect(first.reopened).toEqual(
+      addIngredientRows(sectionDraft(saved, 'ingredients'), first.open),
+    );
+    const reopened = chooseRowArticle(first.reopened, 'k-fenugreek', {
+      kind: 'new',
+      name: 'Bockshornklee',
+    });
     const second = saveRecipeSection(dal.id, reopened);
     expect(second?.open).toEqual([]);
+    expect(second?.reopened).toBeUndefined();
     await fx.settle();
     expect(tablesOf(1)).toEqual([
       ['insert', 'articles'],

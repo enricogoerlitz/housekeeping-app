@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { NewRecipeFields } from './recipe-form';
-import { draftsFromText, handOverIngredientDrafts } from './use-ingredient-drafts';
+import { handOverIngredientRows, rowsFromText } from './sections/ingredient-handover';
 
 export interface NewRecipeSheetProps {
   visible: boolean;
@@ -17,8 +17,8 @@ export interface NewRecipeSheetProps {
 
 /**
  * Quick creation: a title is enough; ingredients can be pasted right away (AC-021, AC-022). The
- * pasted lines go to the new recipe's page, which saves those with an article and keeps the rest
- * orange with "Artikel wählen" (spec 0007, AC-010).
+ * pasted lines go to the new recipe's page, which saves those with an article and opens the
+ * section "Zutaten" with the rest orange, "Artikel wählen" (spec 0007, AC-010; spec 0008, E9).
  */
 export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const online = useOnlineOnly();
@@ -46,7 +46,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt.');
       return;
     }
-    handOverIngredientDrafts(recipeId, draftsFromText(ingredients, articles));
+    handOverIngredientRows(recipeId, rowsFromText(ingredients, articles));
     close();
     props.onCreated(recipeId);
   };

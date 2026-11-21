@@ -1,21 +1,19 @@
 import {
-  defaultShoppingRuleFor,
+  addIngredientRows,
   findArticleByName,
   isHalfStar,
   parseIngredientBlock,
-  RECIPE_LIMITS,
   recipeDeletionEffect,
   resolveIngredientArticles,
+  sectionDraft,
   sectionPatch,
   validateSectionDraft,
-  type Amount,
   type Article,
-  type CatalogHit,
   type DraftArticle,
   type Id,
   type IngredientRow,
+  type IngredientsDraft,
   type Recipe,
-  type RecipeIngredient,
   type RecipeSectionDraft,
   type ShoppingRule,
 } from '@housekeeping/core';
@@ -38,12 +36,6 @@ import {
   peekState,
   updateData,
 } from './store';
-
-/**
- * recipes_check_ingredients: the "Hinweis" of an ingredient (core RECIPE_LIMITS). Only for the
- * ingredient sheet of spec 0007 until T7 moves it to the section draft.
- */
-export const PREP_NOTE_MAX_LENGTH = RECIPE_LIMITS.prepNote;
 
 function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
   updateData((data) => ({
@@ -114,197 +106,30 @@ function articlesForNames(names: readonly string[]): Article[] {
   });
 }
 
-/** How an ingredient gets its article in "Suchen oder anlegen" (REQ-001). */
-export type IngredientArticleChoice =
-  /** An article of the household. */
-  | { articleId: Id }
-  /** A hit of core searchArticleCatalog; a starter entry becomes a household article (AC-003). */
-  | { hit: CatalogHit<Article> }
-  /** "„Drachenfrucht“ neu anlegen" (AC-002): an article that exists by that name is used. */
-  | { newName: string };
-
-export interface IngredientInput {
-  article: IngredientArticleChoice;
-  amount?: Amount;
-  /**
-   * Set when the person chose the rule: it also becomes the article's Standard-Einkaufsregel in
-   * the same change (E7). Without it the article's rule is preselected (AC-005).
-   */
-  shoppingRule?: ShoppingRule;
-  /** Einkaufs-Zusatz, goes to the list ("Philadelphia"). */
-  shoppingNote?: string;
-  /** Hinweis, only for cooking ("fein gehackt"); at most 200 characters. */
-  prepNote?: string;
-  variantId?: Id;
-  group?: string;
-}
-
-function noteOf(text: string | undefined, max?: number): string | undefined {
-  const trimmed = text?.replace(/\s+/g, ' ').trim();
-  if (!trimmed) return undefined;
-  if (max !== undefined && Array.from(trimmed).length > max) {
-    throw new Error(`Höchstens ${max} Zeichen`);
-  }
-  return trimmed;
-}
-
-/** The article of a choice, created inside the running command when needed. */
-function chosenArticle(choice: IngredientArticleChoice): Article {
-  if ('hit' in choice) return catalogChoice(choice.hit);
-  if ('newName' in choice) {
-    const existing = findArticleByName(choice.newName, getData().articles);
-    if (existing) return existing;
-    const id = createArticle({ name: choice.newName });
-    const created = getData().articles.find((article) => article.id === id);
-    if (!created) throw new Error('Name fehlt');
-    return created;
-  }
-  const article = getData().articles.find((candidate) => candidate.id === choice.articleId);
-  if (!article) throw new Error('Den Artikel gibt es nicht mehr.');
-  return article;
+/**
+ * The household article of a draft row (spec 0007, `DraftArticle`), created inside the running
+ * command when needed: a starter hit becomes a household article (AC-003), "„Drachenfrucht“ neu
+ * anlegen" uses an article that exists by that name, else creates it (AC-002).
+ */
+function chosenArticle(choice: DraftArticle): Article {
+  if (choice.kind === 'hit') return catalogChoice(choice.hit);
+  const existing = findArticleByName(choice.name, getData().articles);
+  if (existing) return existing;
+  const id = createArticle({ name: choice.name });
+  const created = getData().articles.find((article) => article.id === id);
+  if (!created) throw new Error('Name fehlt');
+  return created;
 }
 
 /** E7: a rule chosen at an ingredient becomes the article's Standard-Einkaufsregel. */
-function rememberRule(article: Article, rule: ShoppingRule | undefined): void {
-  if (rule === undefined || article.defaultShoppingRule === rule) return;
+function rememberRule(article: Article, rule: ShoppingRule): void {
+  if (article.defaultShoppingRule === rule) return;
   updateData((data) => ({
     ...data,
     articles: data.articles.map((candidate) =>
       candidate.id === article.id ? { ...candidate, defaultShoppingRule: rule } : candidate,
     ),
   }));
-}
-
-function ingredientFrom(input: IngredientInput): RecipeIngredient {
-  const article = chosenArticle(input.article);
-  rememberRule(article, input.shoppingRule);
-  const ingredient: RecipeIngredient = {
-    id: newId(),
-    articleId: article.id,
-    shoppingRule: input.shoppingRule ?? defaultShoppingRuleFor(article, input.amount),
-  };
-  if (input.amount) ingredient.amount = input.amount;
-  const shoppingNote = noteOf(input.shoppingNote);
-  if (shoppingNote) ingredient.shoppingNote = shoppingNote;
-  const prepNote = noteOf(input.prepNote, PREP_NOTE_MAX_LENGTH);
-  if (prepNote) ingredient.prepNote = prepNote;
-  if (input.variantId) ingredient.variantId = input.variantId;
-  if (input.group) ingredient.group = input.group;
-  return ingredient;
-}
-
-/**
- * Adds ingredients whose article a person chose (REQ-001, REQ-002: the lines of a pasted block
- * that have one, AC-010). A new or starter article rides in the same change. Online only. Returns
- * the number added.
- */
-export function addIngredients(recipeId: Id, inputs: readonly IngredientInput[]): number {
-  if (inputs.length === 0) return 0;
-  return commit({ path: 'diff' }, () => appendIngredients(recipeId, inputs));
-}
-
-function appendIngredients(recipeId: Id, inputs: readonly IngredientInput[]): number {
-  const ingredients = inputs.map(ingredientFrom);
-  patchRecipe(recipeId, (recipe) => ({
-    ...recipe,
-    ingredients: [...recipe.ingredients, ...ingredients],
-  }));
-  return ingredients.length;
-}
-
-/**
- * addIngredients for the draft lines of the editor: shown at once like addIngredients; the promise
- * resolves once the server took them and rejects when it refused them (e.g. an article deleted
- * meanwhile) or when they failed locally (offline, an article that is gone), so the lines can turn
- * orange again.
- */
-export function addIngredientsConfirmed(
-  recipeId: Id,
-  inputs: readonly IngredientInput[],
-): Promise<number> {
-  if (inputs.length === 0) return Promise.resolve(0);
-  return commitConfirmed({ path: 'diff' }, () => appendIngredients(recipeId, inputs));
-}
-
-/** "+ Zutat" (AC-001 to AC-005): one ingredient; returns its id. */
-export function addIngredient(recipeId: Id, input: IngredientInput): Id {
-  return commit({ path: 'diff' }, () => {
-    const ingredient = ingredientFrom(input);
-    patchRecipe(recipeId, (recipe) => ({
-      ...recipe,
-      ingredients: [...recipe.ingredients, ingredient],
-    }));
-    return ingredient.id;
-  });
-}
-
-/**
- * Changes an ingredient: its article, amount, rule (E7: goes to the article too), Einkaufs-Zusatz
- * or Hinweis; blank text removes a note, `amount: undefined` the amount. Online only.
- */
-export function updateIngredient(
-  recipeId: Id,
-  ingredientId: Id,
-  patch: Partial<Omit<IngredientInput, 'variantId' | 'group'>>,
-): void {
-  commit({ path: 'diff' }, () => {
-    const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
-    const current = recipe?.ingredients.find((candidate) => candidate.id === ingredientId);
-    if (!recipe || !current) throw new Error('Die Zutat gibt es nicht mehr.');
-    const next: RecipeIngredient = { ...current };
-    if (patch.article) {
-      next.articleId = chosenArticle(patch.article).id;
-    }
-    if ('amount' in patch) {
-      if (patch.amount) next.amount = patch.amount;
-      else delete next.amount;
-    }
-    if (patch.shoppingRule) {
-      next.shoppingRule = patch.shoppingRule;
-      const article = getData().articles.find((candidate) => candidate.id === next.articleId);
-      if (article) rememberRule(article, patch.shoppingRule);
-    }
-    if ('shoppingNote' in patch) {
-      const note = noteOf(patch.shoppingNote);
-      if (note) next.shoppingNote = note;
-      else delete next.shoppingNote;
-    }
-    if ('prepNote' in patch) {
-      const note = noteOf(patch.prepNote, PREP_NOTE_MAX_LENGTH);
-      if (note) next.prepNote = note;
-      else delete next.prepNote;
-    }
-    patchRecipe(recipeId, (own) => ({
-      ...own,
-      ingredients: own.ingredients.map((ingredient) =>
-        ingredient.id === ingredientId ? next : ingredient,
-      ),
-    }));
-  });
-}
-
-/** Sets the default shopping note of an ingredient ("Philadelphia"); empty text removes it. */
-export function setIngredientShoppingNote(recipeId: Id, ingredientId: Id, note: string): void {
-  const trimmed = note.trim();
-  commit({ path: 'diff' }, () =>
-    patchRecipe(recipeId, (recipe) => ({
-      ...recipe,
-      ingredients: recipe.ingredients.map((ingredient) =>
-        ingredient.id === ingredientId
-          ? { ...ingredient, shoppingNote: trimmed || undefined }
-          : ingredient,
-      ),
-    })),
-  );
-}
-
-export function removeIngredient(recipeId: Id, ingredientId: Id): void {
-  commit({ path: 'diff' }, () =>
-    patchRecipe(recipeId, (recipe) => ({
-      ...recipe,
-      ingredients: recipe.ingredients.filter((ingredient) => ingredient.id !== ingredientId),
-    })),
-  );
 }
 
 /**
@@ -332,22 +157,16 @@ export function replaceIngredient(recipeId: Id, ingredientId: Id, line: string):
   });
 }
 
-export function addStep(recipeId: Id, text: string): void {
-  const trimmed = text.trim();
-  if (!trimmed) return;
-  commit({ path: 'diff' }, () =>
-    patchRecipe(recipeId, (recipe) => ({
-      ...recipe,
-      steps: [...recipe.steps, { id: newId(), text: trimmed }],
-    })),
-  );
-}
-
 // ---------- Sections of the recipe page (spec 0008, REQ-007, REQ-008, E7 to E10) ----------
 
 export interface SectionSave {
   /** Rows without an article: not saved, the section stays open with them (AC-032). */
   open: IngredientRow[];
+  /**
+   * With open rows: the section to show next, the saved recipe plus the open rows. The page opens
+   * it instead of the draft it sent, so "Fertig" never sends the saved rows twice.
+   */
+  reopened?: IngredientsDraft;
   /**
    * Resolves once the server took the change (at once when nothing changed); rejects with the
    * server's error when it refused it. The change shows at once; a refusal jumps back and the
@@ -356,17 +175,13 @@ export interface SectionSave {
   confirmed: Promise<void>;
 }
 
-function draftArticleChoice(article: DraftArticle): IngredientArticleChoice {
-  return article.kind === 'hit' ? { hit: article.hit } : { newName: article.name };
-}
-
 /**
  * "Fertig", another pen or leaving the page (E7): the draft's section as one apply_changes call
  * with only the columns it changed since it was opened (AC-029). New and starter articles, the
  * articles' Standard-Einkaufsregel and the plan entries of a removed variant (E10) ride in the
  * same call. Throws the first problem of the draft ("Titel fehlt", AC-026) and OfflineError
  * before anything changes; null when the recipe is gone (nothing is sent). For leaving the page
- * pass core savablePart(draft).
+ * pass core savablePart(draft). The only way the app writes a recipe's fields (E9).
  */
 export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): SectionSave | null {
   const [problem] = validateSectionDraft(draft);
@@ -382,7 +197,7 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
       if (!recipe) throw new Error('Rezept nicht gefunden');
       const patch = sectionPatch(recipe, draft, {
         articles: data.articles,
-        createArticle: (article) => chosenArticle(draftArticleChoice(article)),
+        createArticle: chosenArticle,
         newId,
         entries: data.planEntries,
       });
@@ -407,7 +222,9 @@ export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): Sect
   // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
   confirmed.catch(() => {});
   if (failure !== undefined) throw failure;
-  return { open, confirmed };
+  const saved = getData().recipes.find((recipe) => recipe.id === recipeId);
+  if (open.length === 0 || !saved) return { open, confirmed };
+  return { open, reopened: addIngredientRows(sectionDraft(saved, 'ingredients'), open), confirmed };
 }
 
 // ---------- Deleting (spec 0008, REQ-012, E1 to E5) ----------

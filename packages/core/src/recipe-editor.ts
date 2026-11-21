@@ -902,6 +902,25 @@ export function moveIngredient(
   return { ...draft, rows: moveTo(draft.rows, index, toIndex) };
 }
 
+/**
+ * Drag or "Nach oben/unten" in a list that shows only some rows (the page lists orange rows on
+ * their own): `toIndex` counts in `shownKeys`, as the list reports it, and the rows not shown keep
+ * their place. The same draft when nothing moves.
+ */
+export function moveIngredientAmong(
+  draft: IngredientsDraft,
+  key: string,
+  toIndex: number,
+  shownKeys: readonly string[],
+): IngredientsDraft {
+  const from = shownKeys.indexOf(key);
+  const target = shownKeys[toIndex];
+  if (from === -1 || from === toIndex || target === undefined) return draft;
+  // The row lands where the row now at `toIndex` stands: before it moving up, after it moving down.
+  const index = draft.rows.findIndex((row) => row.key === target);
+  return index === -1 ? draft : moveIngredient(draft, key, index);
+}
+
 /** "Entfernen" in the row's ⋯ (spec 0007 "Zutat entfernen"). */
 export function removeIngredient(draft: IngredientsDraft, key: string): IngredientsDraft {
   return { ...draft, rows: draft.rows.filter((row) => row.key !== key) };
@@ -1005,4 +1024,21 @@ export function planEntriesAfterVariantRemoval(
       .sort((a, b) => rank(a.variantId) - rank(b.variantId));
     return [{ ...entry, variants: split }];
   });
+}
+
+// ---------- The page ----------
+
+/**
+ * E7: what the page shows after the server refused a section it saved. The section opens again
+ * with the refused draft when no section is open, or when the one open is still exactly the draft
+ * the save left open (AC-032: the orange rows). A section opened or edited since stays as it is,
+ * so a refusal never sends anything again by itself.
+ */
+export function draftAfterRefusal(
+  open: RecipeSectionDraft | undefined,
+  refused: RecipeSectionDraft,
+  leftOpen: RecipeSectionDraft | undefined,
+): RecipeSectionDraft | undefined {
+  if (open === undefined) return refused;
+  return open === leftOpen ? refused : open;
 }

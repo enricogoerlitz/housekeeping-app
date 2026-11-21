@@ -1,17 +1,18 @@
+import { useArticles } from '@housekeeping/api';
 import {
-  addIngredient,
-  PREP_NOTE_MAX_LENGTH,
-  updateIngredient,
-  useArticles,
-  type IngredientInput,
-} from '@housekeeping/api';
-import {
+  addIngredientRows,
+  chooseRowArticle,
   defaultShoppingRuleFor,
+  newIngredientRow,
   parseAmount,
+  RECIPE_LIMITS,
+  setRowShoppingRule,
+  updateIngredientRow,
   validateArticleDraft,
+  type Article,
   type DraftArticle,
-  type Id,
-  type RecipeIngredient,
+  type IngredientRow,
+  type IngredientsDraft,
   type ShoppingRule,
 } from '@housekeeping/core';
 import {
@@ -24,69 +25,79 @@ import {
   Stack,
   Text,
   TextField,
-  toast,
   type ChoiceOption,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { useOnlineOnly } from '@/features/shell/offline';
-
 import { STARTER_DETAIL, useArticleSearch } from './article-search';
+import { newRowKey } from './sections/ingredient-handover';
 
 const RULE_OPTIONS: ChoiceOption<ShoppingRule>[] = [
   { value: 'count', label: 'Anzahl' },
   { value: 'recipeAmount', label: 'Rezeptmenge' },
   { value: 'skip', label: 'nicht übernehmen' },
 ];
+const BASE = 'base';
 const CHOOSE_ARTICLE = 'Artikel wählen';
-const length = (text: string) => Array.from(text.replace(/\s+/g, ' ').trim()).length;
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
+const length = (text: string) => Array.from(collapse(text)).length;
+
+/** The article a row shows in the window: its household article as a hit, or what it chose. */
+function chosenOf(row: IngredientRow | undefined, articles: readonly Article[]) {
+  const article = row?.article;
+  if (!article) return undefined;
+  if (article.kind !== 'article') return article;
+  const stored = articles.find((candidate) => candidate.id === article.articleId);
+  if (!stored) return undefined;
+  const hit: DraftArticle = {
+    kind: 'hit',
+    hit: {
+      kind: 'article',
+      id: stored.id,
+      name: stored.name,
+      synonyms: stored.synonyms,
+      article: stored,
+    },
+  };
+  return hit;
+}
 
 /**
- * "+ Zutat" and "Zutat bearbeiten" (REQ-001, REQ-003): Menge, the article per "Suchen oder anlegen"
- * over the household and the starter catalog, the Einkaufsregel preselected from the article
- * (AC-005), Einkaufs-Zusatz (goes to the list) and Hinweis (only for cooking). Without an article
- * the ingredient is not saved (AC-004). Online only.
+ * "+ Zutat" and ⋯ → "Bearbeiten" in the open section "Zutaten" (spec 0008, E9): Menge, the article
+ * per "Suchen oder anlegen" over the household and the starter catalog, the Einkaufsregel
+ * preselected from the article (spec 0007, AC-005), Zusatz for the list, Hinweis for cooking,
+ * Variante and Gruppe. "Übernehmen" only changes the draft; a new or starter article is created
+ * with "Fertig" in the same change. Without an article a new row is not taken (spec 0007, AC-004).
  */
 export function IngredientSheet(props: {
-  recipeId: Id;
-  /** Undefined = "+ Zutat". */
-  ingredient?: RecipeIngredient;
+  draft: IngredientsDraft;
+  /** The row to edit; undefined = "+ Zutat". */
+  rowKey?: string;
+  onApply: (draft: IngredientsDraft) => void;
   onClose: () => void;
 }) {
-  const { ingredient } = props;
+  const { draft } = props;
   const articles = useArticles();
-  const online = useOnlineOnly();
-  const current = articles.find((article) => article.id === ingredient?.articleId);
+  const row = draft.rows.find((candidate) => candidate.key === props.rowKey);
 
-  const [amountText, setAmountText] = useState(ingredient?.amount?.text ?? '');
-  const [chosen, setChosen] = useState<DraftArticle | undefined>(() =>
-    current
-      ? {
-          kind: 'hit',
-          hit: {
-            kind: 'article',
-            id: current.id,
-            name: current.name,
-            synonyms: current.synonyms,
-            article: current,
-          },
-        }
-      : undefined,
-  );
-  const [query, setQuery] = useState('');
-  const [rule, setRule] = useState<ShoppingRule | undefined>(ingredient?.shoppingRule);
-  const [shoppingNote, setShoppingNote] = useState(ingredient?.shoppingNote ?? '');
-  const [prepNote, setPrepNote] = useState(ingredient?.prepNote ?? '');
+  const [amountText, setAmountText] = useState(row?.amountText ?? '');
+  const [initialChosen] = useState(() => chosenOf(row, articles));
+  const [chosen, setChosen] = useState<DraftArticle | undefined>(initialChosen);
+  const [query, setQuery] = useState(() => (row && !initialChosen ? (row.name ?? '') : ''));
+  const [rule, setRule] = useState<ShoppingRule | undefined>();
+  const [ruleChosen, setRuleChosen] = useState(false);
+  const [shoppingNote, setShoppingNote] = useState(row?.shoppingNote ?? '');
+  const [prepNote, setPrepNote] = useState(row?.prepNote ?? '');
+  const [variant, setVariant] = useState<string>(row?.variantId ?? BASE);
+  const [group, setGroup] = useState(row?.group ?? '');
   const [articleError, setArticleError] = useState<string | undefined>();
-  const [error, setError] = useState<string | undefined>();
   const search = useArticleSearch(query);
 
   const amount = parseAmount(amountText);
   const name = collapse(query);
   // AC-005: until the person picks a rule, the article's Standard-Einkaufsregel (or the rule of
-  // its amount) is preselected; only a picked rule is sent and remembered at the article (E7).
+  // its amount) is preselected; only a picked rule becomes the article's rule (E7).
   const preselected: ShoppingRule | undefined = !chosen
     ? undefined
     : chosen.kind === 'new'
@@ -94,9 +105,11 @@ export function IngredientSheet(props: {
       : chosen.hit.kind === 'article'
         ? defaultShoppingRuleFor(chosen.hit.article, amount)
         : defaultShoppingRuleFor({ isPantry: chosen.hit.entry.isPantry ?? false }, amount);
-  const shownRule = rule ?? preselected;
-  const prepTooLong = length(prepNote) > PREP_NOTE_MAX_LENGTH;
-  const prepError = prepTooLong ? `Höchstens ${PREP_NOTE_MAX_LENGTH} Zeichen` : undefined;
+  const shownRule = (ruleChosen ? rule : row?.shoppingRule) ?? preselected;
+  const prepError =
+    length(prepNote) > RECIPE_LIMITS.prepNote
+      ? `Höchstens ${RECIPE_LIMITS.prepNote} Zeichen`
+      : undefined;
 
   const choose = (article: DraftArticle) => {
     setChosen(article);
@@ -109,46 +122,24 @@ export function IngredientSheet(props: {
     else choose({ kind: 'new', name });
   };
 
-  const choiceOf = (article: DraftArticle): IngredientInput['article'] =>
-    article.kind === 'new' ? { newName: article.name } : { hit: article.hit };
-
-  const save = () => {
-    if (online.disabled) return;
+  const apply = () => {
     if (!chosen) {
       setArticleError(CHOOSE_ARTICLE);
       return;
     }
-    if (prepTooLong) return;
-    try {
-      if (!ingredient) {
-        const input: IngredientInput = { article: choiceOf(chosen) };
-        if (amount) input.amount = amount;
-        if (rule) input.shoppingRule = rule;
-        if (shoppingNote.trim()) input.shoppingNote = shoppingNote;
-        if (prepNote.trim()) input.prepNote = prepNote;
-        addIngredient(props.recipeId, input);
-        toast.show({ message: 'Zutat hinzugefügt' });
-      } else {
-        const patch: Parameters<typeof updateIngredient>[2] = {};
-        const sameArticle =
-          chosen.kind === 'hit' &&
-          chosen.hit.kind === 'article' &&
-          chosen.hit.id === ingredient.articleId;
-        if (!sameArticle) patch.article = choiceOf(chosen);
-        if ((amount?.text ?? '') !== (ingredient.amount?.text ?? '')) patch.amount = amount;
-        if (rule && rule !== ingredient.shoppingRule) patch.shoppingRule = rule;
-        if (collapse(shoppingNote) !== (ingredient.shoppingNote ?? ''))
-          patch.shoppingNote = shoppingNote;
-        if (collapse(prepNote) !== (ingredient.prepNote ?? '')) patch.prepNote = prepNote;
-        if (Object.keys(patch).length > 0) {
-          updateIngredient(props.recipeId, ingredient.id, patch);
-          toast.show({ message: 'Zutat gespeichert' });
-        }
-      }
-      props.onClose();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
-    }
+    if (prepError) return;
+    const key = row?.key ?? newRowKey();
+    let next = row ? draft : addIngredientRows(draft, [newIngredientRow(key)]);
+    next = updateIngredientRow(next, key, {
+      amountText: collapse(amountText),
+      shoppingNote,
+      prepNote,
+      variantId: variant === BASE ? undefined : variant,
+      group,
+    });
+    if (chosen !== initialChosen) next = chooseRowArticle(next, key, chosen);
+    if (ruleChosen && rule) next = setRowShoppingRule(next, key, rule);
+    props.onApply(next);
   };
 
   const chosenName =
@@ -156,7 +147,7 @@ export function IngredientSheet(props: {
   const chosenDetail = !chosen
     ? undefined
     : chosen.kind === 'new'
-      ? 'Wird neu angelegt'
+      ? 'Wird mit „Fertig“ neu angelegt'
       : [chosen.hit.kind === 'starter' ? STARTER_DETAIL : undefined, search.areaOf(chosen.hit)]
           .filter(Boolean)
           .join(' · ') || 'Ohne Bereich';
@@ -165,34 +156,27 @@ export function IngredientSheet(props: {
     <Sheet
       visible
       size="m"
-      title={ingredient ? 'Zutat bearbeiten' : 'Neue Zutat'}
+      title={row ? 'Zutat bearbeiten' : 'Neue Zutat'}
       onClose={props.onClose}
       testID="ingredient-sheet"
       footer={
         <Button
-          label="Speichern"
+          label="Übernehmen"
           icon="check"
           full
-          disabled={online.disabled || prepTooLong}
-          hint={online.hint}
-          onPress={save}
+          disabled={!!prepError}
+          onPress={apply}
           testID="ingredient-save"
         />
       }
     >
       <Stack gap={18}>
-        {online.hint ? (
-          <Text variant="small" color="warn" testID="ingredient-offline-hint">
-            {online.hint}
-          </Text>
-        ) : null}
         <TextField
           label="Menge"
           placeholder="z. B. 400 ml"
           value={amountText}
           onChangeText={setAmountText}
-          editable={!online.disabled}
-          autoFocus={!ingredient}
+          autoFocus={!row}
           testID="ingredient-amount"
         />
 
@@ -210,7 +194,6 @@ export function IngredientSheet(props: {
                     label="Ändern"
                     variant="link"
                     size="sm"
-                    disabled={online.disabled}
                     onPress={() => {
                       setQuery(chosenName);
                       setChosen(undefined);
@@ -231,7 +214,7 @@ export function IngredientSheet(props: {
               label="Artikel"
               placeholder="Artikel suchen oder anlegen"
               clearLabel="Suche leeren"
-              autoFocus={!!ingredient}
+              autoFocus={!!row}
               hits={search.hits}
               onSelect={(key) => {
                 const hit = search.hitFor(key);
@@ -254,7 +237,6 @@ export function IngredientSheet(props: {
                     }
                   : undefined
               }
-              createDisabledHint={online.hint}
               testID="ingredient-article-search"
             />
           )}
@@ -270,7 +252,7 @@ export function IngredientSheet(props: {
           ) : null}
         </View>
 
-        <View pointerEvents={online.disabled ? 'none' : 'auto'} testID="ingredient-rule-field">
+        <View testID="ingredient-rule-field">
           <Text variant="smallStrong" style={{ marginBottom: 6 }}>
             Einkaufsregel
           </Text>
@@ -280,7 +262,10 @@ export function IngredientSheet(props: {
                 label="Einkaufsregel"
                 options={RULE_OPTIONS}
                 value={shownRule}
-                onChange={setRule}
+                onChange={(value) => {
+                  setRule(value);
+                  setRuleChosen(true);
+                }}
                 testID="ingredient-rule"
               />
               <Text variant="small" color="muted" style={{ marginTop: 6 }}>
@@ -295,29 +280,49 @@ export function IngredientSheet(props: {
         </View>
 
         <TextField
-          label="Einkaufs-Zusatz"
+          label="Zusatz für die Liste"
           placeholder="z. B. Philadelphia, laktosefrei"
           hint="Steht auf der Einkaufsliste in Klammern hinter dem Artikel"
           value={shoppingNote}
           onChangeText={setShoppingNote}
-          editable={!online.disabled}
           testID="ingredient-shopping-note"
         />
         <TextField
-          label="Hinweis"
+          label="Hinweis fürs Kochen"
           placeholder="z. B. fein gehackt"
           hint={prepError ? undefined : 'Nur fürs Kochen, nicht auf der Einkaufsliste'}
           error={prepError}
           value={prepNote}
           onChangeText={setPrepNote}
-          editable={!online.disabled}
           testID="ingredient-prep-note"
         />
-        {error ? (
-          <Text variant="small" color="warn" testID="ingredient-error">
-            {error}
-          </Text>
+        {draft.variants.length > 0 ? (
+          <View testID="ingredient-variant-field">
+            <Text variant="smallStrong" style={{ marginBottom: 6 }}>
+              Variante
+            </Text>
+            <ChoiceChips<string>
+              label="Variante"
+              options={[
+                { value: BASE, label: 'Basis' },
+                ...draft.variants.map((option) => ({
+                  value: option.id,
+                  label: option.name.trim() || 'Ohne Namen',
+                })),
+              ]}
+              value={draft.variants.some((option) => option.id === variant) ? variant : BASE}
+              onChange={setVariant}
+              testID="ingredient-variant"
+            />
+          </View>
         ) : null}
+        <TextField
+          label="Gruppe"
+          placeholder="z. B. Für die Soße"
+          value={group}
+          onChangeText={setGroup}
+          testID="ingredient-group"
+        />
       </Stack>
     </Sheet>
   );

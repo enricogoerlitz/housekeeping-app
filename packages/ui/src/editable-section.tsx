@@ -3,6 +3,7 @@ import { View, type HostInstance } from 'react-native';
 
 import { Button, IconButton } from './controls';
 import { Section } from './lists';
+import { Row } from './primitives';
 
 export interface EditableSectionProps {
   title: string;
@@ -21,6 +22,13 @@ export interface EditableSectionProps {
   hint?: string;
   /** Read view or the fields, as the caller switches them with `editing`. */
   children?: ReactNode;
+  /** Shown before the pencil while the section is read, e.g. the portions stepper of "Zutaten". */
+  accessory?: ReactNode;
+  /**
+   * No title row: the pencil or "Fertig" stands to the right of the content, for a block that
+   * has its own heading (the head of a recipe with its title); `title` is not shown then.
+   */
+  inline?: boolean;
   /** The section; the pencil is `${testID}-edit`, "Fertig" `${testID}-done`. */
   testID?: string;
 }
@@ -43,39 +51,55 @@ export function EditableSection(props: EditableSectionProps) {
   }, [editing]);
 
   const id = (part: string) => (props.testID ? `${props.testID}-${part}` : undefined);
+  const control = editing ? (
+    <Button
+      label={props.doneLabel}
+      icon="check"
+      size="sm"
+      onPress={() => {
+        closedHere.current = true;
+        props.onDone();
+      }}
+      testID={id('done')}
+    />
+  ) : (
+    // The Section title row aligns on the baseline; the pencil sits centred on it.
+    <View style={{ marginVertical: props.inline ? 0 : -8, marginRight: -8 }}>
+      <IconButton
+        ref={pencil}
+        icon="pencil"
+        size={44}
+        label={props.editLabel}
+        disabled={props.disabled}
+        hint={props.hint}
+        onPress={props.onEdit}
+        testID={id('edit')}
+      />
+    </View>
+  );
+  const action =
+    props.accessory && !editing ? (
+      <Row gap={8}>
+        {props.accessory}
+        {control}
+      </Row>
+    ) : (
+      control
+    );
+
+  if (props.inline) {
+    return (
+      <View
+        testID={props.testID}
+        style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>{props.children}</View>
+        {action}
+      </View>
+    );
+  }
   return (
-    <Section
-      title={props.title}
-      testID={props.testID}
-      action={
-        editing ? (
-          <Button
-            label={props.doneLabel}
-            icon="check"
-            size="sm"
-            onPress={() => {
-              closedHere.current = true;
-              props.onDone();
-            }}
-            testID={id('done')}
-          />
-        ) : (
-          // The Section title row aligns on the baseline; the pencil sits centred on it.
-          <View style={{ marginVertical: -8, marginRight: -8 }}>
-            <IconButton
-              ref={pencil}
-              icon="pencil"
-              size={44}
-              label={props.editLabel}
-              disabled={props.disabled}
-              hint={props.hint}
-              onPress={props.onEdit}
-              testID={id('edit')}
-            />
-          </View>
-        )
-      }
-    >
+    <Section title={props.title} testID={props.testID} action={action}>
       {props.children}
     </Section>
   );

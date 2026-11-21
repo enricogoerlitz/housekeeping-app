@@ -5,7 +5,9 @@ import {
   entryIdsOnList,
   groupItems,
   originSummary,
+  sectionDraft,
   summarizeItem,
+  updateIngredientRow,
   type Id,
   type ShoppingItem,
 } from '@housekeeping/core';
@@ -15,7 +17,7 @@ import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import { resolveArticle } from './commands-articles';
 import { assignArticleArea } from './commands-household';
-import { setIngredientShoppingNote } from './commands-recipes';
+import { saveRecipeSection } from './commands-recipes';
 import {
   addIngredientToList,
   addPlannedToList,
@@ -843,7 +845,10 @@ describe('pantry check', () => {
       (ingredient) => articleName(ingredient.articleId) === 'Kokosmilch',
     );
     if (!coconut) throw new Error('Kokosmilch missing');
-    setIngredientShoppingNote(curry.id, coconut.id, '  Bio ');
+    const noted = updateIngredientRow(sectionDraft(curry, 'ingredients'), coconut.id, {
+      shoppingNote: '  Bio ',
+    });
+    saveRecipeSection(curry.id, noted);
 
     const rows = pantryCheckRows([curryEntryId()]);
     const row = rows.find((candidate) => candidate.name === 'Kokosmilch');
@@ -854,7 +859,10 @@ describe('pantry check', () => {
     const [item] = itemsOf();
     expect(item && summarizeItem(item).notes).toEqual(['Bio']);
 
-    setIngredientShoppingNote(curry.id, coconut.id, '   ');
+    const cleared = updateIngredientRow(sectionDraft(recipe(curry.id), 'ingredients'), coconut.id, {
+      shoppingNote: '   ',
+    });
+    saveRecipeSection(curry.id, cleared);
     expect(
       recipe(curry.id).ingredients.find((i) => i.id === coconut.id)?.shoppingNote,
     ).toBeUndefined();

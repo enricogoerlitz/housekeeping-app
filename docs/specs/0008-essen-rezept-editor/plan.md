@@ -652,3 +652,43 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 3. Die Suchzeile steht über die ganze Breite, auch in „Liste und Detail“.
 4. Der Abschnitt „Bewertungen“ auf der Restaurantseite entfällt (`MemberRatings` zeigt alle
    Mitglieder, E15); „Favorit“ je anderem Mitglied wird nicht mehr gezeigt (kein AC verlangt es).
+
+## Entscheidungen beim Bauen (App, T7, 21.11.2026)
+
+1. Kopf und Einordnung nutzen `EditableSection` mit der neuen Option `inline`: Stift rechts neben
+   dem Inhalt, ohne Abschnittstitel „Kopf“ (Skizze in Konzept 3.3). Der Portionen-Regler steht
+   über die neue Option `accessory` vor dem Stift von „Zutaten“ und verschwindet beim Bearbeiten.
+2. Zeilen im Abschnitt „Zutaten“ sind eine `ReorderList` mit dem Text „Menge Artikel“. Menge,
+   Artikel, Einkaufsregel, Zusatz, Hinweis, Variante und Gruppe stehen im Fenster der Zeile (⋯ →
+   „Bearbeiten“, „+ Zutat“), nicht als Felder in der Zeile wie in der Skizze: `ReorderList` kennt
+   nur Text-Zeilen, und ein Umbau des Bausteins hätte die parallele Arbeit in `packages/ui`
+   berührt. Das ⋯ bietet dazu „Nach oben“, „Nach unten“ und „Entfernen“.
+3. Orange Zeilen stehen oben im offenen Abschnitt in einem eigenen Block mit „1 Zutat braucht noch
+   einen Artikel“, „Meinst du …? Ja“, „Artikel wählen“, „„…“ neu anlegen“ und Entfernen.
+   Verschoben werden nur Zeilen mit Artikel; die orangen behalten ihren Platz
+   (`moveIngredientAmong`).
+4. „Mehrere einfügen“ hat nur noch den Text-Schritt; „Einfügen“ legt die Zeilen in den Entwurf und
+   schließt das Fenster.
+5. „+ Schritt“ öffnet ein kleines Fenster; ein leer gelassener neuer Schritt fällt weg. Der Text
+   eines Schritts ändert sich über ⋯ → „Text ändern“; in der Liste stehen höchstens zwei Zeilen.
+6. Ablehnung (E7): Der Abschnitt öffnet sich mit dem abgelehnten Entwurf wieder, wenn keiner offen
+   ist oder noch genau der, den das Speichern offen ließ (AC-032). Ist inzwischen ein anderer
+   Abschnitt offen, bleibt er, und nur der Hinweis erscheint (`draftAfterRefusal`); so schickt eine
+   Ablehnung nie von selbst noch einmal. Nach dem Verlassen der Seite öffnet sich nichts wieder.
+7. Geht das Netz während des Bearbeitens weg, bleibt der Abschnitt bei „Fertig“ offen mit
+   „Offline – zum Bearbeiten brauchst du Netz“. Verlässt man die Seite offline, geht der Entwurf
+   verloren; nichts wird gesammelt (ADR-0008).
+8. `saveRecipeSection` liefert bei offenen Zeilen `reopened` (gespeichertes Rezept plus offene
+   Zeilen); die Seite zeigt diesen Entwurf, nie den alten.
+9. Ein Stift öffnet seinen Abschnitt im nächsten Render aus dem Rezept nach dem Speichern des
+   vorigen Abschnitts (Beispiel: „Variante entfernen“ nahm ihre Schritte mit).
+10. Aufräumen ohne Altlast: In `api` entfallen `addIngredient`, `addIngredients`,
+    `addIngredientsConfirmed`, `updateIngredient`, `setIngredientShoppingNote`,
+    `removeIngredient`, `addStep`, `IngredientInput`, `IngredientArticleChoice` und
+    `PREP_NOTE_MAX_LENGTH`; ihre Tests laufen jetzt über `saveRecipeSection`. `updateRecipe` bleibt,
+    weil der Assistent es aufruft (Portionen). In `core` entfallen `chooseDraftArticle`,
+    `splitIngredientDrafts`, `returnRejectedDrafts`, `draftLineLabel`, `draftArticleName` und
+    `ReadyIngredientDraft` (ohne Aufrufer). `use-ingredient-drafts.ts` entfällt; die Übergabe aus
+    „Neues Rezept“ liegt in `sections/ingredient-handover.ts`.
+11. Die Gerichtarten der Einordnung kommen aus `COURSES` in `recipe-filter-panel.tsx`, dieselbe
+    Reihenfolge wie im Filterfeld.
