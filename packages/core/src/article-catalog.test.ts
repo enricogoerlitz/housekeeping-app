@@ -21,13 +21,13 @@ import {
   validateArticleDraft,
   type StarterCatalogEntry,
 } from './article-catalog';
-import { similarity } from './text';
+import { editDistance } from './text';
 import type { Area, Article, Id, Recipe, RecipeIngredient, ShoppingItem } from './types';
 
 // Counts the expensive comparisons of similarArticleNames without changing what they return.
 vi.mock('./text', async (importOriginal) => {
   const original = await importOriginal<typeof import('./text')>();
-  return { ...original, similarity: vi.fn(original.similarity) };
+  return { ...original, editDistance: vi.fn(original.editDistance) };
 });
 
 function article(id: Id, name: string, rest: Partial<Article> = {}): Article {
@@ -403,6 +403,16 @@ describe('classifyIngredientLines', () => {
     expect(lines.map((line) => line.status)).toEqual(['new', 'new']);
   });
 
+  it('AC-009: a different word that only looks alike is new ("Fleischkäse", "Tafelessig")', () => {
+    const list = [
+      ...household,
+      article('a-frischkaese', 'Frischkäse'),
+      article('a-essig', 'Apfelessig'),
+    ];
+    const lines = classifyIngredientLines('100 g Fleischkäse\n2 EL Tafelessig', list, starter);
+    expect(lines.map((line) => line.status)).toEqual(['new', 'new']);
+  });
+
   it('AC-009: a typo of a starter entry is similar too', () => {
     const [line] = classifyIngredientLines('1 Dose Kichererbsn', household, starter);
     expect(line?.status === 'similar' && line.suggestion.name).toBe('Kichererbsen');
@@ -687,7 +697,7 @@ describe('filters, counts and sorting', () => {
 });
 
 describe('similarArticleNames', () => {
-  it('AC-023: a typo away (similarity ≥ 0.8) counts, also over synonyms', () => {
+  it('AC-023: a typo away counts, also over synonyms', () => {
     const list = [
       article('a', 'Kokosmilch'),
       article('b', 'Kokosmilsch'),
@@ -704,7 +714,7 @@ describe('similarArticleNames', () => {
     expect(similar.size).toBe(0);
   });
 
-  it('AC-023: below 0.8 is not similar ("Reis" and "Eis", "Brot" and "Boot")', () => {
+  it('AC-023: short words and another first letter are not similar ("Reis" and "Eis", "Brot" and "Boot")', () => {
     const similar = similarArticleNames([
       article('a', 'Reis'),
       article('b', 'Eis'),
@@ -712,6 +722,36 @@ describe('similarArticleNames', () => {
       article('d', 'Boot'),
     ]);
     expect(similar.size).toBe(0);
+  });
+
+  it('AC-023: look-alike words are different things (E13)', () => {
+    const similar = similarArticleNames([
+      article('a', 'Belugalinsen', { synonyms: ['Schwarze Linsen'] }),
+      article('b', 'Oliven', { synonyms: ['Schwarze Oliven'] }),
+      article('c', 'Essig', { synonyms: ['Tafelessig'] }),
+      article('d', 'Apfelessig'),
+      article('e', 'Leberkäse', { synonyms: ['Fleischkäse'] }),
+      article('f', 'Frischkäse'),
+      article('g', 'Minze', { synonyms: ['Pfefferminze'] }),
+      article('h', 'Pfefferminztee'),
+      article('i', 'Kochschinken'),
+      article('j', 'Rohschinken'),
+    ]);
+    expect(similar.size).toBe(0);
+  });
+
+  it('AC-023: singular, plural and one typo pair up, also over several words', () => {
+    const similar = similarArticleNames([
+      article('a', 'Möhre'),
+      article('b', 'Möhren'),
+      article('c', 'Rote Zwiebel'),
+      article('d', 'Rote Zwiebeln'),
+      article('e', 'Kokosmilch'),
+      article('f', 'Kokosmilsh'),
+    ]);
+    expect(similar.get('a')?.map((entry) => entry.id)).toEqual(['b']);
+    expect(similar.get('c')?.map((entry) => entry.id)).toEqual(['d']);
+    expect(similar.get('e')?.map((entry) => entry.id)).toEqual(['f']);
   });
 
   it('AC-023: 1000 articles need far fewer comparisons than all pairs', () => {
@@ -730,7 +770,7 @@ describe('similarArticleNames', () => {
     const many = Array.from({ length: 998 }, (_, index) => article(`r-${index}`, word()));
     many.push(article('z1', 'Zwiebel'), article('z2', 'Zwiebeln'));
 
-    const compare = vi.mocked(similarity);
+    const compare = vi.mocked(editDistance);
     compare.mockClear();
     const similar = similarArticleNames(many);
     const allPairs = (many.length * (many.length - 1)) / 2;

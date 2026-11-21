@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { findArticleByName, searchArticles, suggestSimilarArticle } from './articles';
+import { findArticleByName, searchArticles, spelledAlike, suggestSimilarArticle } from './articles';
 import { articles } from './test-fixtures';
 import type { Article } from './types';
 
@@ -209,5 +209,67 @@ describe('suggestSimilarArticle', () => {
       },
     ];
     expect(suggestSimilarArticle('Ei', list)).toBeUndefined();
+  });
+
+  it('AC-023: suggests nothing for a different word that only looks alike ("Fleischkäse")', () => {
+    const list: Article[] = [
+      {
+        id: 'frischkaese',
+        name: 'Frischkäse',
+        synonyms: [],
+        diet: 'vegetarian',
+        isPantry: false,
+        needsReview: false,
+        createdAt: '',
+      },
+    ];
+    expect(suggestSimilarArticle('Fleischkäse', list)).toBeUndefined();
+  });
+});
+
+describe('spelledAlike', () => {
+  // Spec 0007, AC-023 and decision E13: the same thing spelled differently, never two things.
+  const truePairs: [string, string][] = [
+    ['Zwiebel', 'Zwiebeln'],
+    ['Kokosmilch', 'Kokosmilsh'],
+    ['Kokosmilch', 'Kokosmilsch'],
+    ['Möhre', 'Möhren'],
+    ['Tomate', 'Tomaten'],
+    ['Milch', 'Milhc'],
+    ['Kichererbsen', 'Kichererbsn'],
+    ['Karotten', 'Karoten'],
+    ['Kokosmilch', 'Kokos-Milch'],
+    ['Rote Zwiebel', 'rote Zwiebeln'],
+    ['Schwarze Linsen', 'Schwarze Linse'],
+  ];
+  const falsePairs: [string, string][] = [
+    ['Schwarze Linsen', 'Schwarze Oliven'],
+    ['Tafelessig', 'Apfelessig'],
+    ['Fleischkäse', 'Frischkäse'],
+    ['Pfefferminze', 'Pfefferminztee'],
+    ['Kochschinken', 'Rohschinken'],
+    ['Spülmaschinentabs', 'Spülmaschinensalz'],
+    ['Reis', 'Eis'],
+    ['Brot', 'Boot'],
+    ['Milch', 'Buttermilch'],
+    ['Ei', 'Eis'],
+    ['Kokosmilch', 'Kokosmilch light'],
+    ['', ''],
+  ];
+
+  it.each(truePairs)('AC-023: "%s" and "%s" are spelled alike', (a, b) => {
+    expect(spelledAlike(a, b)).toBe(true);
+    expect(spelledAlike(b, a)).toBe(true);
+  });
+
+  it.each(falsePairs)('AC-023: "%s" and "%s" are different things', (a, b) => {
+    expect(spelledAlike(a, b)).toBe(false);
+    expect(spelledAlike(b, a)).toBe(false);
+  });
+
+  it('AC-023: one typo is fine, two only in long words', () => {
+    expect(spelledAlike('Kichererbsen', 'Kicherrebsn')).toBe(false);
+    expect(spelledAlike('Gemüsebrühe', 'Gemüsebrüe')).toBe(true);
+    expect(spelledAlike('Vollkornspaghetti', 'Volkornspagetti')).toBe(true);
   });
 });

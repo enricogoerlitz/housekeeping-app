@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  areaDeleteQuestion,
+  areaMergeQuestion,
   areaSortPatches,
   articleCountsByArea,
   moveInOrder,
   nextAreaSort,
   orderAnnouncement,
+  storeAreaSummary,
+  storeOrderIndex,
   validateAreaName,
 } from './areas';
 import type { Area, Article } from './types';
@@ -172,5 +176,92 @@ describe('articleCountsByArea', () => {
   it('AC-056: an empty area counts 0', () => {
     expect(articleCountsByArea([], areas).byArea.get('area-getraenke')).toBe(0);
     expect(articleCountsByArea([], areas).withoutArea).toBe(0);
+  });
+});
+
+describe('storeOrderIndex', () => {
+  // Walking order a b c d e with c hidden: the visible order is a b d e.
+  const order = ['a', 'b', 'c', 'd', 'e'];
+  const hidden = ['c'];
+
+  it('AC-046: moving a visible area to the top is index 0 of the whole order', () => {
+    expect(storeOrderIndex(order, hidden, 'd', 0)).toBe(0);
+    expect(moveInOrder(order, 'd', storeOrderIndex(order, hidden, 'd', 0))).toEqual([
+      'd',
+      'a',
+      'b',
+      'c',
+      'e',
+    ]);
+  });
+
+  it('AC-047: a hidden area keeps its place between the visible ones it stood between', () => {
+    // "b" one down in the visible order (a d b e): it goes behind d, the hidden c stays after a.
+    const index = storeOrderIndex(order, hidden, 'b', 2);
+    expect(moveInOrder(order, 'b', index)).toEqual(['a', 'c', 'd', 'b', 'e']);
+  });
+
+  it('AC-046: to the end of the visible order is the end of the whole order', () => {
+    expect(moveInOrder(order, 'a', storeOrderIndex(order, hidden, 'a', 3))).toEqual([
+      'b',
+      'c',
+      'd',
+      'e',
+      'a',
+    ]);
+  });
+
+  it('clamps an index outside the visible order and ignores an unknown area', () => {
+    expect(storeOrderIndex(order, hidden, 'e', -3)).toBe(0);
+    expect(moveInOrder(order, 'b', storeOrderIndex(order, hidden, 'b', 99))).toEqual([
+      'a',
+      'c',
+      'd',
+      'e',
+      'b',
+    ]);
+    expect(storeOrderIndex(order, hidden, 'x', 1)).toBe(1);
+  });
+
+  it('with every other area hidden the area stays where it is', () => {
+    expect(storeOrderIndex(['a', 'b'], ['a'], 'b', 0)).toBe(1);
+  });
+});
+
+describe('storeAreaSummary', () => {
+  it('AC-042: "n Bereiche · m ausgeblendet", hidden only when there are some', () => {
+    expect(storeAreaSummary(['a', 'b', 'c'], ['b'])).toBe('2 Bereiche · 1 ausgeblendet');
+    expect(storeAreaSummary(['a'], [])).toBe('1 Bereich');
+    expect(storeAreaSummary([], [])).toBe('Keine Bereiche');
+  });
+
+  it('ignores hidden ids that are not in the walking order', () => {
+    expect(storeAreaSummary(['a', 'b'], ['gone'])).toBe('2 Bereiche');
+  });
+});
+
+describe('areaMergeQuestion', () => {
+  it('AC-054: "Drogerie in Drogerie & Hygiene zusammenlegen? 12 Artikel ziehen um."', () => {
+    expect(areaMergeQuestion('Drogerie', 'Drogerie & Hygiene', 12)).toEqual({
+      title: 'Drogerie in Drogerie & Hygiene zusammenlegen?',
+      message: '12 Artikel ziehen um.',
+    });
+  });
+
+  it('AC-054: one and no article', () => {
+    expect(areaMergeQuestion('A', 'B', 1).message).toBe('1 Artikel zieht um.');
+    expect(areaMergeQuestion('A', 'B', 0).message).toBe('Es ziehen keine Artikel um.');
+  });
+});
+
+describe('areaDeleteQuestion', () => {
+  it('AC-055: "Tierbedarf löschen?" with where the articles go', () => {
+    expect(areaDeleteQuestion('Tierbedarf', 12)).toEqual({
+      title: 'Tierbedarf löschen?',
+      message: '12 Artikel stehen danach unter ‚Ohne Bereich‘.',
+    });
+    expect(areaDeleteQuestion('Tierbedarf', 1).message).toBe(
+      '1 Artikel steht danach unter ‚Ohne Bereich‘.',
+    );
   });
 });

@@ -25,6 +25,7 @@ import {
   Checkbox,
   Chip,
   GroupLabel,
+  haptic,
   Icon,
   IconButton,
   ProgressBar,
@@ -174,7 +175,10 @@ export function ShoppingModeScreen() {
     getId: (item) => item.id,
     isChecked: (item) => item.checked,
     // The check is written at once, not when the window closes (AC-044).
-    onToggle: (item, checked) => setItemChecked(item.id, checked),
+    onToggle: (item, checked) => {
+      if (checked) haptic('check');
+      setItemChecked(item.id, checked);
+    },
     announce: (item, checked) =>
       `${articlesById[item.articleId]?.name ?? 'Posten'} ${checked ? 'abgehakt' : 'wieder offen'}`,
   });

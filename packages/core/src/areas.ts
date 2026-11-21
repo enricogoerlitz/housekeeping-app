@@ -98,3 +98,64 @@ export function articleCountsByArea(
   }
   return { byArea, withoutArea };
 }
+
+/**
+ * Where an area goes in a store's whole walking order when it is moved to `visibleIndex` among
+ * the visible areas (AC-046): the index for `moveInOrder` on the whole order. Hidden areas keep
+ * their place between the visible ones, so they come back there when shown again (AC-047).
+ */
+export function storeOrderIndex(
+  order: readonly Id[],
+  hiddenIds: readonly Id[],
+  areaId: Id,
+  visibleIndex: number,
+): number {
+  const hidden = new Set(hiddenIds);
+  const rest = order.filter((id) => id !== areaId);
+  const visibleRest = rest.filter((id) => !hidden.has(id));
+  if (visibleRest.length === 0) {
+    const own = order.indexOf(areaId);
+    return own < 0 ? rest.length : own;
+  }
+  const to = Math.min(Math.max(0, visibleIndex), visibleRest.length);
+  const before = visibleRest[to];
+  if (before !== undefined) return rest.indexOf(before);
+  const last = visibleRest[visibleRest.length - 1];
+  return last === undefined ? rest.length : rest.indexOf(last) + 1;
+}
+
+const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** A store in "Märkte" (AC-042): "14 Bereiche · 2 ausgeblendet"; visible areas first. */
+export function storeAreaSummary(order: readonly Id[], hiddenIds: readonly Id[]): string {
+  const hidden = order.filter((id) => hiddenIds.includes(id)).length;
+  const visible = order.length - hidden;
+  if (order.length === 0) return 'Keine Bereiche';
+  const shown = count(visible, 'Bereich', 'Bereiche');
+  return hidden > 0 ? `${shown} · ${hidden} ausgeblendet` : shown;
+}
+
+/** The small window of "Zusammenlegen mit …" (AC-054). */
+export function areaMergeQuestion(
+  sourceName: string,
+  targetName: string,
+  articleCount: number,
+): { title: string; message: string } {
+  const message =
+    articleCount === 0
+      ? 'Es ziehen keine Artikel um.'
+      : `${articleCount} Artikel ${articleCount === 1 ? 'zieht' : 'ziehen'} um.`;
+  return { title: `${sourceName} in ${targetName} zusammenlegen?`, message };
+}
+
+/** The small window of "Löschen …" for an area with articles (AC-055). */
+export function areaDeleteQuestion(
+  name: string,
+  articleCount: number,
+): { title: string; message: string } {
+  const verb = articleCount === 1 ? 'steht' : 'stehen';
+  return {
+    title: `${name} löschen?`,
+    message: `${articleCount} Artikel ${verb} danach unter ‚Ohne Bereich‘.`,
+  };
+}

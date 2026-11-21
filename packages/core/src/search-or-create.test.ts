@@ -38,14 +38,32 @@ describe('matchSearchOrCreate', () => {
     expect(result.similar?.name).toBe('Kokosmilch');
   });
 
-  it('AC-034: swapped word parts ("Milchko") find Kokosmilch, last, and brake', () => {
+  it('AC-034 (Nachtrag): swapped word parts ("Milchko") find Kokosmilch, last, without a brake', () => {
     const result = matchSearchOrCreate('Milchko', items);
     expect(result.matches.map((match) => match.item.name)).toEqual([
       'Kokosmilch',
       'Kokosmilch light',
     ]);
     expect(result.matches.every((match) => match.wordPart)).toBe(true);
-    expect(result.similar?.name).toBe('Kokosmilch');
+    expect(result.canCreate).toBe(true);
+    expect(result.similar).toBeUndefined();
+  });
+
+  it('AC-034 (Nachtrag): a word part of a synonym never brakes ("Drachenfrucht")', () => {
+    const list: SearchOrCreateItem[] = [
+      { id: 'marmelade', name: 'Marmelade', synonyms: ['Konfitüre', 'Fruchtaufstrich'] },
+    ];
+    const result = matchSearchOrCreate('Drachenfrucht', list);
+    expect(result.matches.map((match) => [match.item.name, match.wordPart])).toEqual([
+      ['Marmelade', true],
+    ]);
+    expect(result.canCreate).toBe(true);
+    expect(result.similar).toBeUndefined();
+  });
+
+  it('AC-034 (Nachtrag): a look-alike word is no typo ("Fleischkäse" is not "Frischkäse")', () => {
+    const list: SearchOrCreateItem[] = [{ id: 'frischkaese', name: 'Frischkäse' }];
+    expect(matchSearchOrCreate('Fleischkäse', list).similar).toBeUndefined();
   });
 
   it('AC-034: typing only the start of a name ("Kokos") does not brake', () => {
@@ -100,13 +118,15 @@ describe('matchSearchOrCreate', () => {
     expect(matchSearchOrCreate('milchka', list).similar).toBeUndefined();
   });
 
-  it('prefers the word-part hit sharing the longest piece for the brake', () => {
+  it('ranks the word-part hit sharing the longest piece first, still without a brake', () => {
     const list: SearchOrCreateItem[] = [
       { id: 'a', name: 'Kokosmilch' },
       { id: 'b', name: 'Milchkaffee' },
     ];
     // "milchkakao": "milch" is in Kokosmilch, "milchka" in Milchkaffee.
-    expect(matchSearchOrCreate('milchkakao', list).similar?.name).toBe('Milchkaffee');
+    const result = matchSearchOrCreate('milchkakao', list);
+    expect(result.matches.map((match) => match.item.name)).toEqual(['Milchkaffee', 'Kokosmilch']);
+    expect(result.similar).toBeUndefined();
   });
 
   it('respects the limit', () => {

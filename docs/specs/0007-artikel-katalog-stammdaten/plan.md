@@ -108,6 +108,26 @@ Offene Fragen 7 bis 11):
   App nimmt das Hinzufügen zurück und zeigt „Den Artikel gibt es nicht mehr – bitte noch einmal
   hinzufügen“, ohne erneuten Versuch (Text: Annahme, Spec Offene Frage 12).
 
+**Entscheidungen vor T6** (vom Lead vorab freigegeben, 21.11.2026; Grund: mit dem Starter-Katalog
+zeigte „Ähnliche Namen“ nur falsche Paare):
+
+- **E13 — „Ähnlich“ heißt gleich geschrieben, nicht ähnlich aussehend:** Eine Regel
+  `spelledAlike` in `core/articles.ts` gilt für „Ähnliche Namen“ und für jedes „Meinst du …?“
+  (Suchen oder anlegen, „Was fehlt?“, Einfügen von Zutaten). Zwei Namen sind gleich geschrieben,
+  wenn sie ohne Leerzeichen und Bindestriche gleich sind („Kokos-Milch“ ↔ „Kokosmilch“) oder Wort
+  für Wort jedes Wort gleich, seine Einzahl/Mehrzahl oder einen Tippfehler entfernt ist: ein
+  Tippfehler ab 5 Buchstaben, zwei ab 15, nie im ersten Buchstaben. Damit gelten „Zwiebel“ ↔
+  „Zwiebeln“, „Kokosmilch“ ↔ „Kokosmilsh“, „Möhre“ ↔ „Möhren“, „Tomate“ ↔ „Tomaten“, aber nicht
+  mehr „Schwarze Linsen“ ↔ „Schwarze Oliven“, „Tafelessig“ ↔ „Apfelessig“, „Fleischkäse“ ↔
+  „Frischkäse“, „Pfefferminze“ ↔ „Pfefferminztee“, „Kochschinken“ ↔ „Rohschinken“,
+  „Spülmaschinentabs“ ↔ „Spülmaschinensalz“. Ersetzt „Ähnlichkeit ≥ 0,8“ in D-d und im Konzept der
+  Spec (Abschnitt „Konzept in Kürze“, „Ähnliche Namen“). Starter-Katalog und Beispieldaten: vorher
+  6 Paare (alle falsch), jetzt 0.
+- **E14 — Die Bremse kommt nie über Wortteile:** `matchSearchOrCreate` nennt `similar` nur nach
+  E13. Wortteil-Treffer stehen weiter in der Trefferliste („Milchko“ findet „Kokosmilch“), bremsen
+  aber nicht mehr („Drachenfrucht“ ergab vorher „Meinst du Marmelade?“ über das Synonym
+  „Fruchtaufstrich“). Ändert Spec 0005, AC-034 (Nachtrag dort); Spec 0008, AC-030 bleibt gültig.
+
 ## Datenbank und Sync
 
 Umsetzung mit dem `db-change`-Skill und `supabase-postgres-best-practices`. Alles in den
@@ -387,7 +407,31 @@ flowchart LR
   und ausgeblendet, Bereiche: anlegen, umbenennen, Doppelte, Reihenfolge ohne Markt, Zusammenlegen
   mit Dialog, Löschen mit Artikeln (Dialog) und leer (Rückgängig), „Ohne Bereich ›“; Desktop
   Liste und Laufreihenfolge nebeneinander.
-- **Status:** offen
+- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Umgesetzt:** `packages/ui/src/reorder-list.tsx` (`ReorderList`: Griff ≡ mit `PanResponder` und
+  Reanimated wie `swipe-row.tsx`, die übrigen Zeilen machen Platz, Pfeile je Zeile, Pfeiltasten am
+  fokussierten Griff im Web, Zeilen-Aktionen für Screenreader, Ansage nach jedem Schritt),
+  `haptics.ts` (`haptic('drop' | 'check')`, im Web wirkungslos; `expo-haptics` als Peer von `ui`,
+  installiert in `apps/app`, E11), Haptik auch beim Abhaken in „Einkaufen“ (Regel 40-ui);
+  `features/stores/` (`stores-screen.tsx` mit Ansichts-Tabs und Liste und Detail,
+  `store-order-screen.tsx` mit `StoreActions` und `StoreOrderPanel`, `areas-view.tsx`,
+  `store-dialogs.tsx`, `labels.ts`); in `core/areas.ts` neu `storeOrderIndex` (Stelle in der
+  ganzen Laufreihenfolge, wenn nur sichtbare Bereiche geordnet werden), `storeAreaSummary`,
+  `areaMergeQuestion`, `areaDeleteQuestion`; Baustein im Showroom und in `DESIGN.md`; Dev-Smoke
+  öffnet einen Markt mit „+ Bereich hinzufügen“ und „Bereiche“ mit „+ Neuer Bereich“.
+  Klick-Durchlauf 390/1440 px: `tmp/0007/t6-*`. Dazu E13 und E14 (oben) in `core`.
+- **Abweichungen:**
+  - Die Laufreihenfolge ordnet nur die sichtbaren Bereiche; „Position n von m“ zählt diese.
+    Ausgeblendete stehen darunter unter „Ausgeblendet“ und behalten ihre Stelle (AC-047).
+  - „Nach ganz oben“ entfällt (AC-046 nennt Ziehen und Pfeile; ganz nach oben geht per Ziehen).
+  - „Neuer Markt“ und „Neuer Bereich“ öffnen ein kleines Fenster mit dem Namen statt eines Felds
+    auf der Seite.
+  - Kein automatisches Mitscrollen beim Ziehen über den Bildschirmrand; dafür gibt es die Pfeile.
+  - „Rückgängig“ nach dem Löschen nur bei einem leeren Bereich (AC-056); ein Bereich mit Artikeln
+    fragt vorher (AC-055) und hat danach kein „Rückgängig“, weil die Artikel ihn auf dem Server
+    schon verloren haben.
+  - Auf Geräten (iOS/Android) ist das Ziehen nicht im Release-Build geprüft; zu prüfen: Ziehen in
+    der scrollenden Seite, Haptik im selben Moment wie das Ablegen.
 
 ### Task 7 — App: Zutat mit Artikel, Hinweis, Mehrere einfügen
 

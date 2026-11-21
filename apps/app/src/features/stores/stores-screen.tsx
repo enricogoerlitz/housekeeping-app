@@ -1,122 +1,196 @@
 import { createStore, fullAreaOrder, useHousehold, useStores } from '@housekeeping/api';
+import { storeAreaSummary, type Id } from '@housekeeping/core';
 import {
   Badge,
   Button,
   EmptyState,
   Icon,
   List,
+  ListDetail,
   ListRow,
   Screen,
   ScreenHeader,
-  Section,
-  Stack,
-  TextField,
+  Text,
   toast,
+  useBreakpoint,
+  ViewTabs,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
+import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-/** "Verwalten" → "Märkte & Bereiche": the stores, each with its own walking order. */
-export function StoresScreen() {
+import { AreasView } from './areas-view';
+import { messageOf, viewFromParam, VIEW_OPTIONS, type StoresView } from './labels';
+import { NameSheet } from './store-dialogs';
+import { StoreOrderPanel } from './store-order-screen';
+
+const firstParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+/**
+ * The stores (REQ-008): each with "n Bereiche · m ausgeblendet" and "Standard", then "+ Neuer
+ * Markt". A store opens its walking order: on phones as a page, on wide screens in the right
+ * column (AC-042).
+ */
+function StoresList(props: { selectedId?: Id; onSelect: (storeId: Id) => void }) {
   const stores = useStores();
   const household = useHousehold();
   const online = useOnlineOnly();
+  const { isPhone } = useBreakpoint();
+  const [creating, setCreating] = useState(false);
+
+  return (
+    <View testID="stores-list">
+      {online.hint ? (
+        <Text variant="small" color="warn" style={{ marginBottom: 10 }} testID="stores-hint">
+          {online.hint}
+        </Text>
+      ) : null}
+      {stores.length === 0 ? (
+        <EmptyState
+          icon="store"
+          title="Noch keine Märkte"
+          text="Ohne Markt ist die Liste nach Bereichen sortiert. Mit einem Markt stehen die Bereiche in seinem Laufweg."
+          testID="stores-empty"
+        />
+      ) : (
+        <List>
+          {stores.map((store) => (
+            <ListRow
+              key={store.id}
+              title={store.name}
+              subtitle={storeAreaSummary(fullAreaOrder(store), store.hiddenAreaIds)}
+              leading={<Icon name="store" color="muted" />}
+              trailing={
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {household.defaultStoreId === store.id ? (
+                    <Badge label="Standard" tone="accent" />
+                  ) : null}
+                  {isPhone ? <Icon name="chevron-right" color="muted" /> : null}
+                </View>
+              }
+              selected={!isPhone && store.id === props.selectedId}
+              onPress={() => props.onSelect(store.id)}
+              testID={`store-${store.id}`}
+            />
+          ))}
+        </List>
+      )}
+      <View style={{ marginTop: 16, alignItems: 'flex-start' }}>
+        <Button
+          label="Neuer Markt"
+          icon="plus"
+          variant={stores.length === 0 ? 'primary' : 'secondary'}
+          disabled={online.disabled}
+          hint={online.hint}
+          onPress={() => setCreating(true)}
+          testID="store-new"
+        />
+      </View>
+      {creating ? (
+        <NameSheet
+          title="Neuer Markt"
+          label="Name"
+          placeholder="z. B. Aldi Nord"
+          submitLabel="Anlegen"
+          onSubmit={(name) => {
+            let storeId: Id;
+            try {
+              storeId = createStore(name);
+            } catch (caught) {
+              return messageOf(caught);
+            }
+            setCreating(false);
+            toast.show({ message: `„${name.trim()}“ angelegt` });
+            props.onSelect(storeId);
+            return undefined;
+          }}
+          onClose={() => setCreating(false)}
+          testID="store-new-sheet"
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * "Verwalten" → "Märkte & Bereiche" (REQ-008 to REQ-010) with the view tabs "Märkte · Bereiche"
+ * (`?ansicht=bereiche`, E12). Reading works offline; every change needs the network.
+ */
+export function StoresScreen() {
+  const stores = useStores();
+  const household = useHousehold();
   const router = useRouter();
   const back = useBackToManage();
-  const [name, setName] = useState('');
-  const [error, setError] = useState<string | undefined>();
+  const { isPhone } = useBreakpoint();
+  const params = useLocalSearchParams<{ ansicht?: string | string[] }>();
+  const view = viewFromParam(firstParam(params.ansicht));
+  const [chosenId, setChosenId] = useState<Id | undefined>();
 
-  const create = () => {
-    if (!name.trim()) {
-      setError('Name fehlt');
-      return;
-    }
-    try {
-      createStore(name);
-      toast.show({ message: `„${name.trim()}“ angelegt` });
-      setName('');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
-    }
+  // On wide screens a store is always shown: the chosen one, else the default, else the first.
+  const selected =
+    stores.find((store) => store.id === chosenId) ??
+    stores.find((store) => store.id === household.defaultStoreId) ??
+    stores[0];
+
+  const select = (storeId: Id) => {
+    if (isPhone) router.push({ pathname: '/markt/[id]', params: { id: storeId } });
+    else setChosenId(storeId);
   };
+  const setView = (next: StoresView) =>
+    router.setParams({ ansicht: next === 'bereiche' ? 'bereiche' : undefined });
 
+  const split = view === 'maerkte' && !isPhone;
   return (
     <Screen
       testID="stores-screen"
       clearFab={false}
-      header={
-        <ScreenHeader
-          title="Märkte"
-          subtitle="Jeder Markt hat seinen eigenen Laufweg."
-          onBack={back}
+      header={<ScreenHeader title="Märkte & Bereiche" onBack={back} testID="stores-title" />}
+      tabs={
+        <ViewTabs<StoresView>
+          label="Ansicht"
+          value={view}
+          onChange={setView}
+          options={VIEW_OPTIONS}
+          testID="stores-view"
         />
       }
+      scroll={!split}
+      style={split ? { flex: 1, paddingBottom: 0 } : undefined}
     >
-      <Section title="Deine Märkte">
-        {stores.length === 0 ? (
-          <EmptyState
-            icon="store"
-            title="Noch keine Märkte"
-            text="Leg unten deinen ersten Markt an. Ohne Markt ist die Liste nach Bereichen sortiert."
-          />
-        ) : (
-          <List>
-            {stores.map((store) => {
-              const order = fullAreaOrder(store);
-              const visible = order.filter((id) => !store.hiddenAreaIds.includes(id)).length;
-              const hidden = order.length - visible;
-              return (
-                <ListRow
-                  key={store.id}
-                  title={store.name}
-                  subtitle={`${visible} Bereiche${hidden > 0 ? ` · ${hidden} ausgeblendet` : ''}`}
-                  leading={<Icon name="store" color="muted" />}
-                  trailing={
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      {household.defaultStoreId === store.id ? (
-                        <Badge label="Standard" tone="accent" />
-                      ) : null}
-                      <Icon name="chevron-right" color="muted" />
-                    </View>
-                  }
-                  onPress={() => router.push({ pathname: '/markt/[id]', params: { id: store.id } })}
-                  testID={`store-${store.id}`}
-                />
-              );
-            })}
-          </List>
-        )}
-      </Section>
-      <Section title="Neuer Markt">
-        <Stack gap={10}>
-          <TextField
-            accessibilityLabel="Name des Markts"
-            value={name}
-            onChangeText={(value) => {
-              setName(value);
-              setError(undefined);
-            }}
-            placeholder="z. B. Aldi Nord"
-            error={error}
-            hint={online.hint}
-            editable={!online.disabled}
-            onSubmitEditing={create}
-            testID="store-new-name"
-          />
-          <Button
-            label="Markt anlegen"
-            icon="plus"
-            disabled={online.disabled}
-            hint={online.hint}
-            testID="store-new-save"
-            onPress={create}
-          />
-        </Stack>
-      </Section>
+      {view === 'bereiche' ? (
+        <AreasView />
+      ) : split ? (
+        <ListDetail
+          list={
+            <ScrollColumn>
+              <StoresList selectedId={selected?.id} onSelect={select} />
+            </ScrollColumn>
+          }
+          detail={
+            selected ? (
+              <StoreOrderPanel
+                key={selected.id}
+                storeId={selected.id}
+                onDeleted={() => setChosenId(undefined)}
+                showTitle
+              />
+            ) : undefined
+          }
+          placeholder={{
+            icon: 'store',
+            title: 'Noch kein Markt',
+            text: 'Leg links einen Markt an. Dann ordnest du hier seinen Laufweg.',
+          }}
+          testID="stores-split"
+        />
+      ) : (
+        <StoresList onSelect={select} />
+      )}
     </Screen>
   );
 }

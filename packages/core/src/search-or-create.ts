@@ -1,5 +1,5 @@
-import { isSingularPluralPair } from './articles';
-import { fuzzyIncludes, normalizeText, similarity } from './text';
+import { spellingScore } from './articles';
+import { fuzzyIncludes, normalizeText } from './text';
 
 // Matching rule of the building block "Suchen oder anlegen" (spec 0005, REQ-006). The specs that
 // use the block only decide what is searched; how it matches lives here and nowhere else.
@@ -23,14 +23,16 @@ export interface SearchOrCreateResult<T> {
   matches: SearchOrCreateMatch<T>[];
   /** The item whose name or synonym is the query; then there is nothing to create. */
   exact?: T;
-  /** The look-alike for "Meinst du …?": creating needs a second confirmation. */
+  /**
+   * The look-alike for "Meinst du …?": creating needs a second confirmation. Only by spelling
+   * (`spelledAlike`), never through a word part or a synonym containing the query.
+   */
   similar?: T;
   /** A non-empty query that is no existing name or synonym. */
   canCreate: boolean;
 }
 
 const DEFAULT_LIMIT = 8;
-const SIMILAR_THRESHOLD = 0.8;
 // Shorter pieces are common to unrelated words ("brot" in "Brotzeit"); the spec's estimate.
 const MIN_WORD_PART = 5;
 
@@ -90,8 +92,9 @@ function textsOf(item: SearchOrCreateItem): string[] {
  * Matches a query for "Suchen oder anlegen": finds the start, part and typos of names and
  * synonyms like the other searches, plus word parts ("Milchko" finds Kokosmilch, spec 0005,
  * open question 5). Decides whether "neu anlegen" is offered and whether it brakes with
- * "Meinst du …?": one typo away (similarity ≥ 0.8), singular/plural of one word, or a word-part
- * hit — but never while the query is the start of an existing name ("Kokos").
+ * "Meinst du …?": only when a name or synonym is spelled alike (`spelledAlike`: a typo away or
+ * the singular/plural, word by word). Word-part hits are listed but never brake (spec 0005,
+ * AC-034 Nachtrag): "Drachenfrucht" is no "Meinst du Marmelade?" via "Fruchtaufstrich".
  */
 export function matchSearchOrCreate<T extends SearchOrCreateItem>(
   query: string,
@@ -135,27 +138,19 @@ export function matchSearchOrCreate<T extends SearchOrCreateItem>(
     );
   if (exact) return { matches, exact, canCreate: false };
 
-  return { matches, similar: findSimilar(q, items, scored), canCreate: true };
+  return { matches, similar: findSimilar(q, items), canCreate: true };
 }
 
 function findSimilar<T extends SearchOrCreateItem>(
   query: string,
   items: readonly T[],
-  ranked: Scored<T>[],
 ): T | undefined {
   let best: { item: T; score: number } | undefined;
   for (const item of items) {
     for (const text of textsOf(item)) {
-      const candidate = normalizeText(text);
-      const score = isSingularPluralPair(query, candidate) ? 1 : similarity(query, candidate);
-      if (score >= SIMILAR_THRESHOLD && score > (best?.score ?? 0)) best = { item, score };
+      const score = spellingScore(query, text);
+      if (score > 0 && score > (best?.score ?? 0)) best = { item, score };
     }
   }
-  if (best) return best.item;
-
-  const typingAName = items.some((item) =>
-    textsOf(item).some((text) => normalizeText(text).startsWith(query)),
-  );
-  if (typingAName) return undefined;
-  return ranked.find((entry) => entry.score === SCORE.wordPart)?.item;
+  return best?.item;
 }

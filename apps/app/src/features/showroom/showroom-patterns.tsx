@@ -1,4 +1,4 @@
-import { matchSearchOrCreate } from '@housekeeping/core';
+import { matchSearchOrCreate, moveInOrder, orderAnnouncement } from '@housekeeping/core';
 import {
   Button,
   CHECK_WINDOW_MS,
@@ -11,6 +11,7 @@ import {
   List,
   ListRow,
   Menu,
+  ReorderList,
   Row,
   RowTransition,
   SearchOrCreate,
@@ -66,6 +67,7 @@ export function usePatternBlocks(): ReactNode[] {
     <ArticleSearchBlock key="search" />,
     <AddEntryBlock key="add" />,
     <FilterBlock key="filter" />,
+    <ReorderBlock key="reorder" />,
   ];
 }
 
@@ -816,6 +818,43 @@ function FilterBlock() {
           ) : null}
         </View>
       )}
+    </Block>
+  );
+}
+
+// ---------- Spec 0007: ordering list ----------
+
+const SAMPLE_ORDER = ['Obst & Gemüse', 'Brot & Backwaren', 'Kühlregal', 'Getränke', 'Drogerie'];
+const SAMPLE_ORDER_LABELS = {
+  handle: (name: string) => `${name} verschieben`,
+  up: (name: string) => `${name} nach oben`,
+  down: (name: string) => `${name} nach unten`,
+  position: orderAnnouncement,
+};
+
+function ReorderBlock() {
+  const [order, setOrder] = useState(SAMPLE_ORDER);
+  const items = order.map((name) => ({ key: name, name }));
+  return (
+    <Block
+      title="Liste zum Ordnen"
+      note="Am Griff ziehen, Pfeile antippen oder im Web den Griff fokussieren und Pfeiltasten drücken. Jede Position wird angesagt; offline ist alles ausgegraut."
+      testID="showroom-reorder"
+    >
+      <ReorderList
+        items={items}
+        onMove={(key, toIndex) => setOrder((current) => moveInOrder(current, key, toIndex))}
+        labels={SAMPLE_ORDER_LABELS}
+        testID="showroom-reorder"
+      />
+      <ReorderList
+        items={items.slice(0, 2)}
+        onMove={() => undefined}
+        labels={SAMPLE_ORDER_LABELS}
+        disabled
+        disabledHint={OFFLINE_HINT}
+        testID="showroom-reorder-offline"
+      />
     </Block>
   );
 }

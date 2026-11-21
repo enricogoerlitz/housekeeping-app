@@ -135,10 +135,22 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'new-article-sheet')).toBeVisible();
   await tid(page, 'new-article-sheet-close').click();
   await leaveManaged(page);
+  // "Märkte & Bereiche" (spec 0007): a store with its ordering list and "+ Bereich hinzufügen",
+  // the view "Bereiche" with "+ Neuer Bereich".
   await openManaged(page, 'stores');
   await tid(page, `store-${seedIds['store-rewe']}`).click();
   await expect(tid(page, 'store-order-screen')).toBeVisible();
+  await expect(tid(page, `area-handle-${seedIds['area-obst-gemuese']}`)).toBeVisible();
+  await tid(page, 'store-add-area').click();
+  await expect(tid(page, 'add-area-sheet')).toBeVisible();
+  await tid(page, 'add-area-sheet-close').click();
   await back(page);
+  await tid(page, 'stores-view-bereiche').click();
+  await expect(tid(page, 'areas-view')).toBeVisible();
+  await tid(page, 'areas-new').click();
+  await expect(tid(page, 'area-new-sheet')).toBeVisible();
+  await tid(page, 'area-new-sheet-close').click();
+  await tid(page, 'stores-view-maerkte').click();
   await leaveManaged(page);
   for (const [key, screen] of [
     ['absences', 'absences-screen'],

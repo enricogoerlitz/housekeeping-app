@@ -106,6 +106,13 @@ export {
   type SearchOrCreateOption,
 } from './search-or-create';
 export { SwipeToRemove, type SwipeToRemoveProps } from './swipe-row';
+export {
+  ReorderList,
+  type ReorderListProps,
+  type ReorderListItem,
+  type ReorderListLabels,
+} from './reorder-list';
+export { haptic, type HapticMoment } from './haptics';
 export { FilterBar, type FilterBarProps } from './filter-bar';
 export { InfiniteList, type InfiniteListProps } from './infinite-list';
 export { ListDetail, type ListDetailProps } from './list-detail';

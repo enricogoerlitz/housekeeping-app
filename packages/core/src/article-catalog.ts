@@ -1,12 +1,12 @@
 import { parseIngredientBlock, type ParsedIngredient } from './amounts';
-import { isSingularPluralPair } from './articles';
+import { spellingScore, wordsOf } from './articles';
 import { createdTime } from './dates';
 import {
   matchSearchOrCreate,
   type SearchOrCreateMatch,
   type SearchOrCreateResult,
 } from './search-or-create';
-import { normalizeText, similarity } from './text';
+import { normalizeText } from './text';
 import type { Amount, Area, Article, Diet, Id, Recipe, ShoppingItem, ShoppingRule } from './types';
 
 // Rules of the article catalog (spec 0007): what "Suchen oder anlegen" finds for an ingredient,
@@ -21,8 +21,6 @@ import type { Amount, Area, Article, Diet, Id, Recipe, ShoppingItem, ShoppingRul
 export const MAX_ARTICLE_NAME_LENGTH = 120;
 export const MAX_SYNONYMS = 30;
 export const MAX_SYNONYMS_LENGTH = 2000;
-
-const SIMILAR_THRESHOLD = 0.8;
 
 /** What name matching needs of an article; drafts about to be created have it too. */
 export type NamedArticle = Pick<Article, 'id' | 'name' | 'synonyms'>;
@@ -260,16 +258,16 @@ export type IngredientLineClass<T extends Article = Article> =
   /** Nothing fits: orange with "„…“ neu anlegen". */
   | { status: 'new'; line: ParsedIngredient };
 
-/** The hit spelled most like the key: a typo away (similarity ≥ 0.8) or its singular/plural. */
-function spelledAlike<T extends { name: string; synonyms: readonly string[] }>(
+/** The hit spelled most like the key (`spelledAlike`: a typo away or its singular/plural). */
+function bestSpelledAlike<T extends { name: string; synonyms: readonly string[] }>(
   key: string,
   hits: readonly T[],
 ): T | undefined {
   let best: { hit: T; score: number } | undefined;
   for (const hit of hits) {
     for (const candidate of keysOf(hit)) {
-      const score = isSingularPluralPair(key, candidate) ? 1 : similarity(key, candidate);
-      if (score >= SIMILAR_THRESHOLD && score > (best?.score ?? 0)) best = { hit, score };
+      const score = spellingScore(key, candidate);
+      if (score > 0 && score > (best?.score ?? 0)) best = { hit, score };
     }
   }
   return best?.hit;
@@ -277,8 +275,8 @@ function spelledAlike<T extends { name: string; synonyms: readonly string[] }>(
 
 /**
  * Sorts the lines of a pasted block (REQ-002): sure when an article or available starter entry
- * has the name as name or synonym; similar ("Meinst du …?") when one is spelled alike — a typo
- * away or its singular/plural, never a word part ("Buttermilch" is no "Milch"); new otherwise.
+ * has the name as name or synonym; similar ("Meinst du …?") when one is spelled alike
+ * (`spelledAlike`), never a word part ("Buttermilch" is no "Milch"); new otherwise.
  * Empty lines and bullets are ignored.
  */
 export function classifyIngredientLines<T extends Article>(
@@ -293,7 +291,7 @@ export function classifyIngredientLines<T extends Article>(
       hits.find((hit) => normalizeText(hit.name) === key) ??
       hits.find((hit) => hit.synonyms.some((synonym) => normalizeText(synonym) === key));
     if (exact) return { status: 'sure', line, hit: exact };
-    const similar = spelledAlike(key, hits);
+    const similar = bestSpelledAlike(key, hits);
     if (similar) return { status: 'similar', line, suggestion: similar };
     return { status: 'new', line };
   });
@@ -403,6 +401,9 @@ export function searchArticleList<T extends Article>(
 interface NameKey {
   owner: number;
   key: string;
+  /** The key without spaces and hyphens; names spelled alike differ here by ≤ 2 per word. */
+  compact: string;
+  words: number;
 }
 
 /** Lower bound of the edit distance: characters one string has more of than the other. */
@@ -419,27 +420,32 @@ function bagDistance(a: string, b: string): number {
   return Math.max(onlyInA, onlyInB);
 }
 
-function areSimilarKeys(a: string, b: string): boolean {
-  if (isSingularPluralPair(a, b)) return true;
-  const longer = Math.max(a.length, b.length);
-  // similarity ≥ 0.8 allows at most this many edits; each edit changes the bag distance by ≤ 1.
-  const allowedEdits = Math.floor((1 - SIMILAR_THRESHOLD) * longer + 1e-9);
-  if (bagDistance(a, b) > allowedEdits) return false;
-  return similarity(a, b) >= SIMILAR_THRESHOLD;
+function firstLetterOrder(a: string, b: string): number {
+  return (a.codePointAt(0) ?? 0) - (b.codePointAt(0) ?? 0);
 }
 
+// Per word, names spelled alike differ by at most two letters (two typos or the ending "en").
+const MAX_WORD_DIFFERENCE = 2;
+
 /**
- * "Ähnliche Namen" (AC-023): for each article the other articles whose name or synonym is a typo
- * away from one of its own (similarity ≥ 0.8) or its singular/plural; word parts do not count.
- * Only articles with at least one look-alike are in the map, look-alikes in the given order.
- * Names are compared within a band of similar length and after a cheap character count check,
- * so large catalogs need few full comparisons. Callers keep the result per data state.
+ * "Ähnliche Namen" (AC-023): for each article the other articles whose name or synonym is spelled
+ * alike one of its own (`spelledAlike`: a typo away or its singular/plural, word by word); word
+ * parts and look-alike words do not count. Only articles with at least one look-alike are in the
+ * map, look-alikes in the given order. Names spelled alike share the first letter and differ in
+ * length by at most two letters per word, so only such keys are compared, after a cheap
+ * character count check; large catalogs need few full comparisons. Callers keep the result per
+ * data state.
  */
 export function similarArticleNames<T extends Article>(articles: readonly T[]): Map<Id, T[]> {
   const keys: NameKey[] = articles
-    .flatMap((article, owner) => [...new Set(keysOf(article))].map((key) => ({ owner, key })))
-    .filter((entry) => entry.key !== '')
-    .sort((a, b) => a.key.length - b.key.length);
+    .flatMap((article, owner) =>
+      [...new Set(keysOf(article))].map((key) => {
+        const words = wordsOf(key);
+        return { owner, key, compact: words.join(''), words: words.length };
+      }),
+    )
+    .filter((entry) => entry.compact !== '')
+    .sort((a, b) => firstLetterOrder(a.compact, b.compact) || a.compact.length - b.compact.length);
 
   const pairs = new Map<number, Set<number>>();
   const link = (a: number, b: number): void => {
@@ -450,13 +456,14 @@ export function similarArticleNames<T extends Article>(articles: readonly T[]): 
   for (let i = 0; i < keys.length; i++) {
     const shorter = keys[i];
     if (!shorter) continue;
-    // Similarity ≥ 0.8 needs the shorter key at 80 % of the longer; singular/plural adds ≤ 2.
-    const maxLength = Math.max(shorter.key.length / SIMILAR_THRESHOLD, shorter.key.length + 2);
+    const maxDifference = MAX_WORD_DIFFERENCE * shorter.words;
     for (let j = i + 1; j < keys.length; j++) {
       const longer = keys[j];
-      if (!longer || longer.key.length > maxLength) break;
+      if (!longer || longer.compact[0] !== shorter.compact[0]) break;
+      if (longer.compact.length - shorter.compact.length > maxDifference) break;
       if (longer.owner === shorter.owner || pairs.get(shorter.owner)?.has(longer.owner)) continue;
-      if (areSimilarKeys(shorter.key, longer.key)) link(shorter.owner, longer.owner);
+      if (bagDistance(shorter.compact, longer.compact) > maxDifference) continue;
+      if (spellingScore(shorter.key, longer.key) > 0) link(shorter.owner, longer.owner);
     }
   }
 

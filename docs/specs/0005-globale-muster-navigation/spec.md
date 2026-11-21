@@ -570,6 +570,16 @@ Wenn        ich „Kokos“ tippe
 Dann        steht an „„Kokos“ neu anlegen“ keine Bremse
 ```
 
+**Nachtrag (Spec 0007, Entscheidungen E13 und E14, 21.11.2026):** Die Bremse kommt nur noch nach
+der Schreibweise, nie über einen Wortteil. Bei „Milchko“ steht „Kokosmilch“ weiter unter den
+Treffern, aber an „„Milchko“ neu anlegen“ steht keine Bremse mehr; sonst bremste etwa
+„Drachenfrucht“ mit „Meinst du Marmelade?“ über das Synonym „Fruchtaufstrich“. „Ähnlich“ heißt:
+ohne Leerzeichen und Bindestriche gleich, oder Wort für Wort gleich, Einzahl/Mehrzahl oder ein
+Tippfehler entfernt (ab 5 Buchstaben einer, ab 15 zwei, nie im ersten Buchstaben). Damit bremst
+„Kokosmilsch“ weiter, „Fleischkäse“ neben „Frischkäse“ nicht mehr. Das gilt auch für den Absatz
+„Suchen oder anlegen (2.6)“ im Abschnitt „Konzept in Kürze“ und für Offene Frage 5 („lösen die
+Bremse aus“).
+
 **AC-035 — Randfall: Name gibt es schon, leeres Feld**
 
 ```gherkin

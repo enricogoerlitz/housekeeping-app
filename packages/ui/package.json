@@ -22,6 +22,7 @@
   },
   "peerDependencies": {
     "expo-font": "*",
+    "expo-haptics": "*",
     "expo-image": "*",
     "react": "*",
     "react-native": "*",

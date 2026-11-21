@@ -78,6 +78,10 @@ Entscheidung D13 (ENTSCHIEDEN).
   oder Synonym einem anderen Artikel um einen Tippfehler gleicht (Ähnlichkeit mindestens 0,8) oder
   dessen Einzahl bzw. Mehrzahl ist, wie das heutige „Meinst du …?“; Wortteile zählen hier nicht,
   sonst stünde jede „Milch“ neben „Buttermilch“.
+  _Nachtrag (plan.md, E13 und E14):_ „Ähnlich“ heißt hier und bei jedem „Meinst du …?“ gleich
+  geschrieben — Wort für Wort gleich, Einzahl/Mehrzahl oder ein Tippfehler (ab 15 Buchstaben zwei,
+  nie im ersten Buchstaben); „Fleischkäse“ und „Frischkäse“ sind nicht ähnlich. Wortteile lösen nie
+  eine Bremse aus.
 - **Märkte & Bereiche (3.9)** mit den Ansichts-Tabs „Märkte · Bereiche“. Markt: umbenennen, „Als
   Standard“, Laufreihenfolge per Ziehen und per Pfeilen, Bereich ausblenden, „+ Bereich
   hinzufügen“ (legt den Bereich bei Bedarf für den ganzen Haushalt an), „Markt löschen …“ mit
