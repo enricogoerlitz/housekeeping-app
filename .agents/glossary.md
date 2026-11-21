@@ -802,7 +802,9 @@ Mitglied und Haushalt auf allen Geräten der Person; je Gerät gibt es nur „an
 
 Die Anmeldung eines Geräts bzw. Browsers für Web Push: Push-Adresse, Schlüssel, Gerätename,
 an/aus, letzter Erfolg. Gehört einer Person, nicht einem Haushalt, und wird nicht synchronisiert
-(Ausnahme von Regel 5, Spec 0013). In der Oberfläche „Deine Geräte“.
+(Ausnahme von Regel 5, Spec 0013). In der Oberfläche „Deine Geräte“. Mit Spec 0015 (Entwurf) ist
+auch die Anmeldung einer [nativen App](#native-app) über ihr Expo-Push-Token ein Push-Abo, mit
+Gerätename „Android · native App“ bzw. „iPhone · native App“.
 
 - **Im Code:** Tabelle `private.push_subscriptions`; die eigene Liste ohne Push-Adresse und
   Schlüssel `OwnPushSubscription` (aus `list_push_subscriptions`). Nicht `PushSubscription`: Das
@@ -974,3 +976,58 @@ Abweichung oder wenn die neueste Sicherung älter als 36 Stunden ist (Spec 0014,
 - **Nicht verwenden:** Restore-Probe, Backup-Test
 - **Abgrenzung:** _Wiederherstellen im Notfall_ ist ein Handschritt und immer Enricos Entscheidung;
   der Test berührt Produktion nie.
+
+### Native App
+
+Die App aus derselben Codebasis als installierte iPhone- bzw. Android-App, im Unterschied zur
+Web-App im Browser und zur PWA auf dem Home-Bildschirm. Anmeldung mit dem Google-Dialog des
+Systems, Sitzung im sicheren Speicher, lokaler Speicher dauerhaft auf dem Gerät (Spec 0015,
+Entwurf).
+
+- **Im Code:** `Platform.OS !== 'web'` (vorläufig)
+- **Nicht verwenden:** Mobile App (meint auch die PWA), Handy-App, Native (allein)
+- **Abgrenzung:** Die _PWA_ ist die Web-App vom Home-Bildschirm; sie ist keine native App, auch
+  wenn ihr Gerätename „App“ enthält.
+
+### Development Build
+
+Eine native App mit Entwicklungswerkzeugen, gebaut für den Emulator, Simulator oder ein eigenes
+Gerät, gegen die lokale Supabase. Anders als Expo Go enthält sie alle nativen Module der App, also
+auch die Google-Anmeldung (Spec 0015).
+
+- **Im Code:** EAS-Profil `development` (vorläufig)
+- **Nicht verwenden:** Debug-App, Dev-Client (allein), Testversion
+- **Abgrenzung:** _Expo Go_ ist die allgemeine Expo-App ohne die eigenen nativen Module; dort gibt
+  es keine Google-Anmeldung.
+
+### Nativer Fingerabdruck
+
+Eine Prüfsumme über alles Native einer App-Version (native Module, Konfiguration). Gleicher
+Fingerabdruck heißt: Ein Over-the-Air-Update passt; geänderter heißt: Die Veröffentlichung baut
+eine neue App (Spec 0015, AC-047, AC-048).
+
+- **Im Code:** `runtimeVersion` mit der Regel `fingerprint` von `expo-updates` (vorläufig)
+- **Nicht verwenden:** Build-Hash, native Version, Laufzeit (allein)
+- **Abgrenzung:** Die _App-Version_ (`JJJJ.M.N`) zählt jede Veröffentlichung; der Fingerabdruck
+  ändert sich nur mit nativen Änderungen.
+
+### Over-the-Air-Update
+
+Neuer JavaScript-Stand einer Veröffentlichung, den eine installierte native App mit passendem
+nativem Fingerabdruck selbst lädt, ohne neue App zu installieren. Kanal `production`; nur die
+Veröffentlichung aus `main` liefert es aus (Spec 0015, REQ-009).
+
+- **Im Code:** `expo-updates`, EAS Update, Kanal `production` (vorläufig)
+- **Nicht verwenden:** OTA (in deutschen Texten), Hot-Update, Live-Update, Patch
+- **Abgrenzung:** Eine _neue App_ (APK) braucht es nur bei geändertem nativem Fingerabdruck.
+
+### Interne Verteilung
+
+Der Weg, auf dem die Android-App ohne Store auf die Handys kommt: EAS baut eine signierte APK und
+gibt einen Installations-Link, den die GitHub-Veröffentlichung nennt (Spec 0015, REQ-010,
+Annahme).
+
+- **Im Code:** EAS-Profil `production` mit `distribution: internal` (vorläufig)
+- **Nicht verwenden:** Sideload (in deutschen Texten), Beta, Testkanal (meint die Play Console)
+- **Abgrenzung:** Der _interne Testkanal der Play Console_ ist ein anderer Weg (Spec 0015, Offene
+  Frage 4 B).
