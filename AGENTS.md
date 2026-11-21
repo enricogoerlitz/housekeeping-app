@@ -27,6 +27,7 @@ support Node 25.
 | Type check                                     | `pnpm typecheck`                                                      |
 | Test (all)                                     | `pnpm test`                                                           |
 | Test (single file)                             | `pnpm --filter @housekeeping/core exec vitest run src/<name>.test.ts` |
+| Integration tests against local DB (resets it) | `pnpm test:integration`                                               |
 | Everything CI checks                           | `pnpm format:check && pnpm check && pnpm build:web`                   |
 | Format                                         | `pnpm format`                                                         |
 | Web build (static, `apps/app/dist`)            | `pnpm build:web`                                                      |
