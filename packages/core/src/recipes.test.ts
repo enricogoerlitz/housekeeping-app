@@ -5,6 +5,7 @@ import {
   courseLabel,
   filterRecipes,
   ingredientLine,
+  planCandidates,
   searchRecipes,
   sortRecipes,
   stepsForVariants,
@@ -12,6 +13,10 @@ import {
 import {
   articlesById,
   bolognese,
+  grillabend,
+  grillArticlesById,
+  grillRecipes,
+  makeCollection,
   enrico,
   halloumiPfanne,
   makeRecipe,
@@ -252,5 +257,34 @@ describe('ingredientLine', () => {
       prepNote: 'zimmerwarm',
     };
     expect(ingredientLine(frischkaese, 'Frischkäse')).toBe('200 g Frischkäse · zimmerwarm');
+  });
+});
+
+describe('planCandidates (spec 0009, REQ-007, Offene Frage 6 A)', () => {
+  const raclette = makeCollection({ id: 'col-raclette', title: 'Raclette-Abend' });
+  const all = [...grillRecipes, raclette];
+
+  it('AC-021: the tab "Sammlungen" shows only collections, A–Z', () => {
+    expect(titles(planCandidates(all, 'collection', '', grillArticlesById))).toEqual([
+      'Grillabend',
+      'Raclette-Abend',
+    ]);
+  });
+
+  it('AC-021: the tab "Rezepte" shows no collection, "Alle" shows both', () => {
+    expect(titles(planCandidates(all, 'recipe', '', grillArticlesById))).toEqual([
+      'Grillgemüse',
+      'Hummus',
+      'Kartoffelsalat',
+      'Tzatziki',
+    ]);
+    expect(planCandidates(all, undefined, '', grillArticlesById)).toHaveLength(all.length);
+  });
+
+  it('AC-021: a search finds a collection by its title, also with a typo', () => {
+    expect(titles(planCandidates(all, 'collection', 'grilabend', grillArticlesById))).toEqual([
+      grillabend.title,
+    ]);
+    expect(planCandidates(all, 'recipe', 'grilabend', grillArticlesById)).toEqual([]);
   });
 });

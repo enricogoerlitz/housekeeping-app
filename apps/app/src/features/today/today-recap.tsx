@@ -8,7 +8,6 @@ import {
   useCurrentMember,
   usePhoto,
   usePlanEntries,
-  useRecipeImage,
   useRecipesById,
   useRestaurantsById,
 } from '@housekeeping/api';
@@ -38,6 +37,8 @@ import { useEffect, useEffectEvent, useState } from 'react';
 import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+
+import { useCoverImage } from './recipe-cover';
 
 /** Big enough that each half of a star is a comfortable target (AC-017). */
 const STAR_SIZE = 30;
@@ -151,7 +152,11 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
               item={item}
               today={props.today}
               stars={values[rowId(item)] ?? item.stars ?? 0}
-              recipe={item.kind === 'recipe' ? recipesById[item.targetId] : undefined}
+              recipe={
+                item.kind === 'recipe' || item.kind === 'collection'
+                  ? recipesById[item.targetId]
+                  : undefined
+              }
               activity={item.kind === 'activity' ? activitiesById[item.targetId] : undefined}
               disabled={online.disabled}
               hint={online.hint}
@@ -237,11 +242,11 @@ function RecapRow(props: {
 }
 
 function RecapPhoto(props: { item: RecapItem; recipe?: Recipe; activity?: Activity }) {
-  const recipeImage = useRecipeImage(props.recipe);
+  const recipeImage = useCoverImage(props.recipe);
   const activityPhoto = usePhoto(props.activity?.photoPath);
   const { kind } = props.item;
   const source =
-    kind === 'recipe'
+    kind === 'recipe' || kind === 'collection'
       ? recipeImage
       : kind === 'activity' && activityPhoto.uri
         ? { uri: activityPhoto.uri }
@@ -251,7 +256,9 @@ function RecapPhoto(props: { item: RecapItem; recipe?: Recipe; activity?: Activi
       source={source}
       width={56}
       height={56}
-      placeholderIcon={kind === 'activity' ? 'mountain' : 'utensils'}
+      placeholderIcon={
+        kind === 'activity' ? 'mountain' : kind === 'collection' ? 'layers' : 'utensils'
+      }
     />
   );
 }

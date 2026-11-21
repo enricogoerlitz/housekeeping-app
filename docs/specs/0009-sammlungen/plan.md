@@ -890,7 +890,27 @@ Abschnitt „Entscheidungen beim Bauen (Bereich, Tn, Datum)“.
     `CheckboxMark`.
   - Showroom „Muster“: Blöcke „Foto-Collage“ (0, 1, 2, 3, 5 Fotos, Kachel, Vorschaubild, Seite)
     und „Mehrfachauswahl“; angesehen bei 390 und 1440 px, hell und dunkel (`tmp/0009/t5/`).
-- _T6/T7:_ …
+- _T6:_ …
+- _T7 (App: Kalender, Einplanen, Vorratscheck, Übersicht, 21.11.2026):_
+  - Neu in `core`: `entryLineLabel(entry, title, book)` (Kalenderzeile „Grillabend · 2 Rezepte“)
+    und `planCandidates(recipes, kind, query, articlesById)` (Tabs des Hinzufügen-Fensters, Offene
+    Frage 6 A). `useCalendarData` hat statt `titleOf` jetzt `lineTitleOf`.
+  - „Neu anlegen als Sammlung“ geht wie „als Rezept“ über das Formular mit Titel und Portionen
+    („Neue Sammlung“, Standard 2 Portionen wie beim Rezept). Das Titelfeld zeigt weiter den
+    Platzhalter „z. B. Linsen-Dal“ aus `recipe-form.tsx` (Datei von T6, nicht angefasst).
+  - Einplanen einer Sammlung: `SplitFields` bleibt, weil Portionen und „Passt nicht für …“ auch
+    für Sammlungen gelten; die Zeile mit der Aufteilung fehlt von selbst (`variants: []`). Es gibt
+    im Fenster keinen eigenen Abschnitt „Variante“.
+  - Eintrag-Fenster: der Knopf heißt bei einer Sammlung „Sammlung öffnen“.
+  - Schritt 1 und „Rezept wählen …“: Kennzeichen ist das Symbol `layers` hinter dem Ankreuzfeld
+    bzw. vorn in der Zeile. Eine Sammlung mit Inhalt, aber nichts zu kaufen, heißt wie ein Rezept
+    „Noch keine Zutaten“, eine leere „Noch nichts enthalten“.
+  - Übersicht: `RecipeCover` aus T6 gab es noch nicht. Karte und „Wie war's?“ zeigen über
+    `today/recipe-cover.ts` (`useCoverImage`) ein Foto: das eigene oder das erste enthaltene Rezept
+    mit Foto (`coverPhotos`), sonst den Platzhalter `layers`. Auf `RecipeCover` umstellen, sobald
+    T6 es liefert.
+  - Offline ist „+ Hinzufügen“ im Kalender schon ganz ausgegraut (vorhanden); das deckt das
+    Einplanen und Anlegen von Sammlungen ab.
 - _T8/T9:_ …
 
 ## Nachweis

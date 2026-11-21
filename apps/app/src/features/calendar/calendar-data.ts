@@ -8,6 +8,7 @@ import {
   useMembersById,
   usePackingListBags,
   usePlanEntries,
+  useRecipeBook,
   useRecipesById,
   useRestaurantsById,
   useToday,
@@ -15,6 +16,7 @@ import {
 import {
   absenceStripes,
   entriesForDay,
+  entryLineLabel,
   householdRow,
   stripeHasPackingList,
   type AbsenceStripe,
@@ -34,6 +36,7 @@ export function useCalendarData() {
   const household = useHousehold();
   const entries = usePlanEntries();
   const recipesById = useRecipesById();
+  const book = useRecipeBook();
   const restaurantsById = useRestaurantsById();
   const activitiesById = useActivitiesById();
   const members = useMembers();
@@ -76,8 +79,13 @@ export function useCalendarData() {
     stripes,
     /** The entries of a day, by Tageszeit and kind (spec 0004, AC-002). */
     dayEntries: (date: ISODate) => entriesForDay(byDate.get(date) ?? [], date, slotOrder),
-    titleOf: (entry: MealPlanEntry) =>
-      entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
+    /** The text of an entry's row: a collection with the number of its recipes (spec 0009, AC-022). */
+    lineTitleOf: (entry: MealPlanEntry) =>
+      entryLineLabel(
+        entry,
+        entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
+        book,
+      ),
     slotName: (slotId: Id) => slots.find((slot) => slot.id === slotId)?.name ?? '',
     /** The stripe carries the bag icon: one of its absences has a packing list (spec 0012, AC-046). */
     hasPackingList: (stripe: AbsenceStripe) => stripeHasPackingList(stripe, listBags),

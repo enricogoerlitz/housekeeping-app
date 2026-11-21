@@ -99,7 +99,11 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
         ) : null}
         {entry.recipeId && entry.kind === 'recipe' ? (
           <Button
-            label="Rezept öffnen"
+            label={
+              recipesById[entry.recipeId]?.kind === 'collection'
+                ? 'Sammlung öffnen'
+                : 'Rezept öffnen'
+            }
             icon="book-open"
             variant="secondary"
             testID="entry-open-recipe"

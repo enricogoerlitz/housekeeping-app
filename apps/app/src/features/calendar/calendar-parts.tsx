@@ -140,7 +140,7 @@ export function EntryLine(props: {
   compact?: boolean;
 }) {
   const { entry, data } = props;
-  const title = data.titleOf(entry);
+  const title = data.lineTitleOf(entry);
   return (
     <KindLine
       kind={entryKindRole(entry, data.recipesById)}

@@ -13,6 +13,7 @@ import {
   useMembers,
   useMembersById,
   usePlanEntries,
+  useRecipeBook,
   useRecipes,
   useRecipesById,
   useRestaurants,
@@ -22,12 +23,13 @@ import {
 } from '@housekeeping/api';
 import {
   addDays,
+  collectionRecipeCountLabel,
+  contentsInBook,
   fuzzyIncludes,
   leftoverCandidates,
   leftoversDayLabel,
+  planCandidates,
   priceLabel,
-  searchRecipes,
-  sortRecipes,
   withNote,
   type Activity,
   type Id,
@@ -35,6 +37,8 @@ import {
   type KindRole,
   type MealPlanEntry,
   type Recipe,
+  type RecipeBook,
+  type RecipeKind,
   type Restaurant,
 } from '@housekeeping/core';
 import {
@@ -80,8 +84,8 @@ export interface AddTarget {
   slotChosen?: boolean;
 }
 
-type Tab = 'all' | 'recipes' | 'restaurants' | 'activities';
-type Creating = 'recipe' | 'restaurant' | 'activity';
+type Tab = 'all' | 'recipes' | 'collections' | 'restaurants' | 'activities';
+type Creating = 'recipe' | 'collection' | 'restaurant' | 'activity';
 type Choice =
   | { kind: 'recipe'; recipe: Recipe }
   | { kind: 'restaurant'; restaurant: Restaurant }
@@ -92,6 +96,7 @@ type Choice =
 const TABS: { value: Tab; label: string }[] = [
   { value: 'all', label: 'Alle' },
   { value: 'recipes', label: 'Rezepte' },
+  { value: 'collections', label: 'Sammlungen' },
   { value: 'restaurants', label: 'Restaurants' },
   { value: 'activities', label: 'Aktivitäten' },
 ];
@@ -106,6 +111,25 @@ const message = (error: unknown) =>
 
 function KindIcon(props: { kind: KindRole }) {
   return <Icon name={KIND_ICONS[props.kind]} size={18} color="muted" />;
+}
+
+/** The kind of what a recipe row plans: a collection has the role "Sammlung" (spec 0009, E8). */
+const recipeRole = (recipe: Recipe): KindRole =>
+  recipe.kind === 'collection' ? 'collection' : 'recipe';
+
+/** The recipes a tab offers (Offene Frage 6 A of spec 0009): "Alle" both kinds. */
+const TAB_KINDS: Partial<Record<Tab, RecipeKind | 'all'>> = {
+  all: 'all',
+  recipes: 'recipe',
+  collections: 'collection',
+};
+
+/** A recipe row's second line: its variants; a collection the number of its recipes. */
+function recipeSubtitle(recipe: Recipe, book: RecipeBook): string | undefined {
+  if (recipe.kind === 'collection') {
+    return collectionRecipeCountLabel(contentsInBook(recipe, book).length) || undefined;
+  }
+  return recipe.variants.map((variant) => variant.name).join(' · ') || undefined;
 }
 
 function restaurantSubtitle(restaurant: Restaurant): string | undefined {
@@ -177,8 +201,9 @@ function DayPicker(props: {
 
 /**
  * "+ Hinzufügen" in the calendar (spec 0010, REQ-007): one large window of fixed size with the
- * search field "Was steht an?" and the tabs "Alle · Rezepte · Restaurants · Aktivitäten"; "Neu"
- * creates a recipe, restaurant or activity right here (spec 0004, REQ-008), free text and
+ * search field "Was steht an?" and the tabs "Alle · Rezepte · Sammlungen · Restaurants ·
+ * Aktivitäten" (spec 0009, AC-021); "Neu" creates a recipe, collection, restaurant or activity
+ * right here (spec 0004, REQ-008), free text and
  * "Reste" from the seven days before (REQ-011) are in "Alle". The second step runs in the same
  * window. With `activityId` ("Einplanen" on an activity) that activity is chosen and the day can
  * be picked.
@@ -189,6 +214,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const household = useHousehold();
   const recipes = useRecipes();
   const recipesById = useRecipesById();
+  const book = useRecipeBook();
   const restaurants = useRestaurants();
   const restaurantsById = useRestaurantsById();
   const activities = useActivities();
@@ -251,7 +277,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const startCreating = (kind: Creating) => {
     setCreating(kind);
     // What was searched for is usually the name of the new thing.
-    if (kind === 'recipe' && !newTitle) setNewTitle(trimmed);
+    if ((kind === 'recipe' || kind === 'collection') && !newTitle) setNewTitle(trimmed);
     if (kind === 'restaurant' && !restaurantForm.name) restaurantForm.setName(trimmed);
     if (kind === 'activity' && !activityForm.name) activityForm.setName(trimmed);
   };
@@ -367,7 +393,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
   // ---------- Create while planning (spec 0004, AC-021 to AC-023) ----------
 
-  const saveNewRecipe = () => {
+  /** A new recipe or, with `kind` "collection", a new empty collection (spec 0009, AC-021). */
+  const saveNewRecipe = (kind: RecipeKind) => {
     if (online.disabled) return;
     const title = newTitle.trim();
     if (!title) {
@@ -375,7 +402,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
       return;
     }
     try {
-      createAndPlanRecipe({ title, servings: newServings }, planSlot());
+      createAndPlanRecipe({ title, servings: newServings, kind }, planSlot());
     } catch (caught) {
       setNewTitleError(message(caught));
       return;
@@ -414,13 +441,15 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
   // ---------- Step one: hits, "Neu", "Reste" ----------
 
-  const recipeHits =
-    tab === 'all' || tab === 'recipes'
-      ? (trimmed
-          ? searchRecipes(query, recipes, articlesById)
-          : sortRecipes(recipes, 'title')
-        ).slice(0, MAX_RESULTS)
-      : [];
+  const recipeKind = TAB_KINDS[tab];
+  const recipeHits = recipeKind
+    ? planCandidates(
+        recipes,
+        recipeKind === 'all' ? undefined : recipeKind,
+        query,
+        articlesById,
+      ).slice(0, MAX_RESULTS)
+    : [];
   const restaurantHits =
     tab === 'all' || tab === 'restaurants'
       ? restaurants
@@ -465,8 +494,11 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             <ListRow
               key={candidate.id}
               title={candidate.title}
-              subtitle={candidate.variants.map((variant) => variant.name).join(' · ') || undefined}
-              leading={<KindIcon kind="recipe" />}
+              subtitle={recipeSubtitle(candidate, book)}
+              leading={<KindIcon kind={recipeRole(candidate)} />}
+              accessibilityLabel={
+                candidate.kind === 'collection' ? `${candidate.title}, Sammlung` : undefined
+              }
               onPress={() => choose({ kind: 'recipe', recipe: candidate })}
               testID={`add-entry-recipe-${candidate.id}`}
             />
@@ -496,9 +528,11 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
         <Text color="muted" testID="add-entry-none">
           {tab === 'restaurants'
             ? 'Noch keine Restaurants.'
-            : tab === 'activities'
-              ? 'Noch keine Aktivitäten.'
-              : 'Noch nichts angelegt.'}
+            : tab === 'collections'
+              ? 'Noch keine Sammlungen.'
+              : tab === 'activities'
+                ? 'Noch keine Aktivitäten.'
+                : 'Noch nichts angelegt.'}
         </Text>
       )}
 
@@ -510,6 +544,14 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             disabled={online.disabled}
             onPress={() => startCreating('recipe')}
             testID="add-entry-new-recipe"
+          />
+        ) : null}
+        {tab === 'collections' ? (
+          <NewRow
+            label={`+ ${quoted}als Sammlung anlegen`}
+            disabled={online.disabled}
+            onPress={() => startCreating('collection')}
+            testID="add-entry-new-collection"
           />
         ) : null}
         {tab === 'restaurants' ? (
@@ -534,6 +576,15 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
               <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
                 <Text>+ als </Text>
                 <Button
+                  label="Sammlung"
+                  variant="link"
+                  size="sm"
+                  disabled={online.disabled}
+                  onPress={() => startCreating('collection')}
+                  testID="add-entry-new-collection"
+                />
+                <Text> · </Text>
+                <Button
                   label="Restaurant"
                   variant="link"
                   size="sm"
@@ -552,7 +603,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
                 />
               </View>
             }
-            accessibilityLabel="Als Restaurant oder Aktivität anlegen"
+            accessibilityLabel="Als Sammlung, Restaurant oder Aktivität anlegen"
             leading={<Icon name="plus" size={18} color="accent" />}
             testID="add-entry-new-kind"
           />
@@ -611,7 +662,9 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
       ? 'restaurant'
       : choice?.kind === 'activity'
         ? 'activity'
-        : 'recipe';
+        : choice?.kind === 'recipe'
+          ? recipeRole(choice.recipe)
+          : 'recipe';
 
   const zusatz = (
     <TextField
@@ -716,9 +769,12 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
   const createLabel = later ? 'Anlegen und vormerken' : 'Anlegen und einplanen';
   const creatingBody =
-    creating === 'recipe' ? (
+    creating === 'recipe' || creating === 'collection' ? (
       <Stack gap={12}>
-        <NewHeading title="Neues Rezept" onBack={() => setCreating(undefined)} />
+        <NewHeading
+          title={creating === 'collection' ? 'Neue Sammlung' : 'Neues Rezept'}
+          onBack={() => setCreating(undefined)}
+        />
         <NewRecipeFields
           title={newTitle}
           onChangeTitle={(value) => {
@@ -726,7 +782,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             setNewTitleError(undefined);
           }}
           error={newTitleError}
-          onSubmit={saveNewRecipe}
+          onSubmit={() => saveNewRecipe(creating)}
           autoFocus
           servings={{ value: newServings, onChange: setNewServings }}
         />
@@ -755,7 +811,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     ) : null;
 
   let footer: ReactNode;
-  if (creating === 'recipe') {
+  if (creating === 'recipe' || creating === 'collection') {
     footer = (
       <Button
         label={createLabel}
@@ -763,8 +819,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
         full
         disabled={online.disabled}
         hint={online.hint}
-        testID="add-entry-new-recipe-save"
-        onPress={saveNewRecipe}
+        testID={`add-entry-new-${creating}-save`}
+        onPress={() => saveNewRecipe(creating)}
       />
     );
   } else if (creating === 'restaurant') {

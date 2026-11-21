@@ -6,6 +6,7 @@ import {
   dayMonthLabel,
   dayMonthLongLabel,
   entryKindRole,
+  entryLineLabel,
   formatPickerDate,
   monthGrid,
   monthTitle,
@@ -18,7 +19,13 @@ import {
   yearMonths,
 } from './calendar';
 import { collectionEntryLabel } from './collections';
-import { grillabend, kartoffelsalat } from './test-fixtures';
+import {
+  grillabend,
+  grillabendRecipes,
+  grillRecipesById,
+  kartoffelsalat,
+  makeCollection,
+} from './test-fixtures';
 import type { MealPlanEntry } from './types';
 
 // Today in the spec's examples: Friday, 20 November 2026 (KW 47).
@@ -196,6 +203,27 @@ describe('Sammlungen in the calendar (spec 0009, REQ-007)', () => {
   it('AC-022, AC-024: the row reads "Grillabend · 2 Rezepte", without recipes no count', () => {
     expect(collectionEntryLabel('Grillabend', 2)).toBe('Grillabend · 2 Rezepte');
     expect(collectionEntryLabel('Sommerfest', 0)).toBe('Sommerfest');
+  });
+
+  it('AC-022, AC-024: entryLineLabel counts the recipes of a planned collection', () => {
+    const sommerfest = makeCollection({ id: 'col-sommerfest', title: 'Sommerfest' });
+    const book = {
+      recipesById: { ...grillRecipesById, [sommerfest.id]: sommerfest },
+      collectionRecipes: grillabendRecipes,
+    };
+    const planned = (recipeId: string) => ({ ...entry('recipe'), recipeId });
+    expect(entryLineLabel(planned(grillabend.id), 'Grillabend', book)).toBe(
+      'Grillabend · 2 Rezepte',
+    );
+    expect(entryLineLabel(planned(sommerfest.id), 'Sommerfest', book)).toBe('Sommerfest');
+    expect(entryLineLabel(planned(kartoffelsalat.id), 'Kartoffelsalat', book)).toBe(
+      'Kartoffelsalat',
+    );
+    // Leftovers of a collection and free text stay their title.
+    expect(
+      entryLineLabel({ ...entry('leftovers'), recipeId: grillabend.id }, 'Reste von Samstag', book),
+    ).toBe('Reste von Samstag');
+    expect(entryLineLabel(entry('text'), 'Essen bei Oma', book)).toBe('Essen bei Oma');
   });
 
   it('AC-022: leftovers that point at a collection are no collection', () => {

@@ -126,6 +126,13 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'add-entry-new-recipe').click();
   await expect(tid(page, 'new-recipe-title')).toBeVisible();
   await tid(page, 'add-entry-new-back').click();
+  // The tab "Sammlungen" with the seed's collections and "als Sammlung anlegen" (spec 0009,
+  // AC-021).
+  await tid(page, 'add-entry-tab-collections').click();
+  await expect(tid(page, `add-entry-recipe-${seedIds['rec-grillabend']}`)).toBeVisible();
+  await tid(page, 'add-entry-new-collection').click();
+  await expect(tid(page, 'new-recipe-title')).toBeVisible();
+  await tid(page, 'add-entry-new-back').click();
   await tid(page, 'add-entry-tab-restaurants').click();
   await tid(page, 'add-entry-new-restaurant').click();
   await expect(tid(page, 'restaurant-link')).toBeVisible();

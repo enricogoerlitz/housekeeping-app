@@ -63,8 +63,8 @@ export interface PantryCheckSheetProps {
    */
   weekDates?: ISODate[];
   /**
-   * The direct way from a recipe page (REQ-010) or, later, a collection (spec 0009): opens the
-   * pantry check for these recipes and skips step 1.
+   * The direct way from a recipe page (REQ-010) or the page of a collection with its portions
+   * (spec 0009, AC-025): opens the pantry check for these recipes and skips step 1.
    */
   recipes?: PantryRecipe[];
   onClose: () => void;

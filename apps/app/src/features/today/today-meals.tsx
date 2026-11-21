@@ -3,7 +3,6 @@ import {
   useMembersById,
   usePhoto,
   usePlanEntries,
-  useRecipeImage,
   useRecipesById,
   useRestaurantsById,
 } from '@housekeeping/api';
@@ -38,6 +37,7 @@ import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
 
+import { useCoverImage } from './recipe-cover';
 import { useOpenCalendarAt } from './today-header';
 
 export interface TodayMealsProps {
@@ -55,6 +55,7 @@ export interface TodayMealsProps {
 
 const BADGES = {
   recipe: { label: 'Rezept', icon: 'cooking-pot' },
+  collection: { label: 'Sammlung', icon: 'layers' },
   restaurant: { label: 'Restaurant', icon: 'utensils' },
   activity: { label: 'Aktivität', icon: 'mountain' },
 } as const;
@@ -75,10 +76,15 @@ function gridRows(entries: MealPlanEntry[]): MealPlanEntry[][] {
 
 /**
  * The card's Kennzeichen (AC-009): leftovers are a recipe too; free text ("Pizza bestellen") has
- * none, it may be anything.
+ * none, it may be anything. A planned collection reads "Sammlung" (AC-012, spec 0009 AC-022).
  */
-function badgeFor(entry: MealPlanEntry) {
-  const kind = entry.kind === 'leftovers' ? 'recipe' : entry.kind;
+function badgeFor(entry: MealPlanEntry, collection: boolean) {
+  const kind =
+    entry.kind === 'leftovers'
+      ? 'recipe'
+      : collection && entry.kind === 'recipe'
+        ? 'collection'
+        : entry.kind;
   return kind === 'text' ? undefined : { ...BADGES[kind], testID: `today-badge-${entry.id}` };
 }
 
@@ -262,11 +268,13 @@ function PlannedCard(props: {
   meta?: ReactNode;
   image?: number | { uri: string };
   placeholderIcon: IconName;
+  /** A planned collection: Kennzeichen "Sammlung". */
+  collection?: boolean;
   onPress?: () => void;
   corner?: ReactNode;
 }) {
   const theme = useTheme();
-  const badge = badgeFor(props.entry);
+  const badge = badgeFor(props.entry, props.collection === true);
   const content = (
     <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
       <View>
@@ -383,7 +391,8 @@ function MealCard(props: {
   const { entry, recipe } = props;
   const membersById = useMembersById();
   const planEntries = usePlanEntries();
-  const image = useRecipeImage(recipe);
+  const image = useCoverImage(recipe);
+  const collection = recipe?.kind === 'collection';
   const cook = entry.cookId ? membersById[entry.cookId] : undefined;
   const leftovers = entry.kind === 'leftovers';
   const source = leftovers
@@ -414,7 +423,8 @@ function MealCard(props: {
       title={recipe?.title ?? entry.text ?? 'Essen'}
       meta={meta}
       image={image}
-      placeholderIcon="utensils"
+      placeholderIcon={collection ? 'layers' : 'utensils'}
+      collection={collection}
       onPress={props.onPress}
     />
   );

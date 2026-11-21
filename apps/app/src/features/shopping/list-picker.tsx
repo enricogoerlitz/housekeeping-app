@@ -1,6 +1,10 @@
-import { useArticlesById, useRecipes } from '@housekeeping/api';
+import { useArticlesById, useRecipeBook, useRecipes } from '@housekeeping/api';
 import {
+  canPutCollectionOnList,
+  collectionListHint,
+  contentsInBook,
   listPickerDayLabel,
+  listPickerEntryLabel,
   searchRecipes,
   sortRecipes,
   weekRangeLabel,
@@ -9,12 +13,15 @@ import {
   type ListPickerEntry,
   type ListPickerWeek,
   type Recipe,
+  type RecipeBook,
 } from '@housekeeping/core';
 import {
   Checkbox,
   EmptyState,
   GroupLabel,
+  Icon,
   IconButton,
+  KIND_ICONS,
   List,
   ListRow,
   Text,
@@ -30,25 +37,39 @@ export interface ChosenRecipe {
   selected: boolean;
 }
 
+/** The Kennzeichen of a collection in front of its title: "■ Grillabend (2 Rezepte)". */
+function CollectionMark(props: { recipe: Recipe }) {
+  return props.recipe.kind === 'collection' ? (
+    <Icon name={KIND_ICONS.collection} size={18} color="muted" />
+  ) : null;
+}
+
 function SelectRow(props: {
   title: string;
   subtitle?: string;
+  /** A collection gets its Kennzeichen after the box (spec 0009, AC-027). */
+  recipe: Recipe;
   selected: boolean;
   onToggle: () => void;
   testID: string;
 }) {
+  const collection = props.recipe.kind === 'collection';
+  const spoken = collection ? `${props.title}, Sammlung` : props.title;
   return (
     <ListRow
       title={props.title}
       subtitle={props.subtitle}
-      accessibilityLabel={props.subtitle ? `${props.title}, ${props.subtitle}` : props.title}
+      accessibilityLabel={props.subtitle ? `${spoken}, ${props.subtitle}` : spoken}
       leading={
-        <Checkbox
-          checked={props.selected}
-          label={props.title}
-          onChange={props.onToggle}
-          testID={`${props.testID}-check`}
-        />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Checkbox
+            checked={props.selected}
+            label={props.title}
+            onChange={props.onToggle}
+            testID={`${props.testID}-check`}
+          />
+          <CollectionMark recipe={props.recipe} />
+        </View>
       }
       onPress={props.onToggle}
       testID={props.testID}
@@ -116,10 +137,12 @@ export function ListPickerStep(props: {
   chosen: ChosenRecipe[];
   onToggleChosen: (recipeId: Id) => void;
 }) {
+  const book = useRecipeBook();
   const entryRow = (row: ListPickerEntry) => (
     <SelectRow
       key={row.entry.id}
-      title={row.recipe.title}
+      title={row.label}
+      recipe={row.recipe}
       subtitle={row.onList ? 'steht schon auf der Liste' : undefined}
       selected={props.selected.has(row.entry.id)}
       onToggle={() => props.onToggleEntry(row.entry.id)}
@@ -164,7 +187,8 @@ export function ListPickerStep(props: {
             {props.chosen.map((choice) => (
               <SelectRow
                 key={choice.recipe.id}
-                title={choice.recipe.title}
+                title={listPickerEntryLabel(choice.recipe, book)}
+                recipe={choice.recipe}
                 subtitle={`${choice.recipe.servings} Portionen`}
                 selected={choice.selected}
                 onToggle={() => props.onToggleChosen(choice.recipe.id)}
@@ -184,14 +208,28 @@ export function ListPickerStep(props: {
   );
 }
 
-/** A recipe can bring something onto the list when one of its ingredients is bought. */
-function hasIngredientsToBuy(recipe: Recipe): boolean {
-  return recipe.ingredients.some((ingredient) => ingredient.shoppingRule !== 'skip');
+const NO_INGREDIENTS = 'Noch keine Zutaten';
+
+/**
+ * Why a recipe cannot bring anything onto the list, or undefined when it can: a recipe needs an
+ * ingredient that is bought; a collection something to buy in it or its recipes; an empty one reads
+ * "Noch nichts enthalten", one with nothing to buy like a recipe (spec 0009, E7, Offene Frage 6 A).
+ */
+function nothingToBuy(recipe: Recipe, book: RecipeBook): string | undefined {
+  if (recipe.kind === 'collection') {
+    const contents = contentsInBook(recipe, book);
+    if (canPutCollectionOnList(recipe, contents)) return undefined;
+    return collectionListHint(recipe, contents) ?? NO_INGREDIENTS;
+  }
+  return recipe.ingredients.some((ingredient) => ingredient.shoppingRule !== 'skip')
+    ? undefined
+    : NO_INGREDIENTS;
 }
 
-/** "Rezept wählen …" (AC-053): search a recipe that is not in the plan. */
+/** "Rezept wählen …" (AC-053): search a recipe or a collection that is not in the plan. */
 export function RecipeSearch(props: { onChoose: (recipe: Recipe) => void }) {
   const recipes = useRecipes();
+  const book = useRecipeBook();
   const articlesById = useArticlesById();
   const [query, setQuery] = useState('');
   const hits = query.trim()
@@ -215,13 +253,17 @@ export function RecipeSearch(props: { onChoose: (recipe: Recipe) => void }) {
       ) : (
         <List>
           {hits.map((recipe) => {
-            const usable = hasIngredientsToBuy(recipe);
+            const hint = nothingToBuy(recipe, book);
+            const title = listPickerEntryLabel(recipe, book);
+            const collection = recipe.kind === 'collection';
             return (
               <ListRow
                 key={recipe.id}
-                title={recipe.title}
-                subtitle={usable ? `${recipe.servings} Portionen` : 'Noch keine Zutaten'}
-                disabled={!usable}
+                title={title}
+                subtitle={hint ?? `${recipe.servings} Portionen`}
+                leading={collection ? <CollectionMark recipe={recipe} /> : undefined}
+                accessibilityLabel={collection ? `${title}, Sammlung` : undefined}
+                disabled={hint !== undefined}
                 onPress={() => props.onChoose(recipe)}
                 testID={`pick-recipe-hit-${recipe.id}`}
               />

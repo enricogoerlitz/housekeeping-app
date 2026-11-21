@@ -7,6 +7,7 @@ import {
   toISODate,
   weekdayShort,
 } from './dates';
+import { collectionEntryLabel, contentsInBook, type RecipeBook } from './collections';
 import type { Id, ISODate, MealPlanEntry, Recipe } from './types';
 
 // The calendar (spec 0010): week, month and year, their labels and how they lead into each other.
@@ -171,6 +172,20 @@ export function entryKindRole(
     default:
       return 'recipe';
   }
+}
+
+/**
+ * The text of a calendar row (spec 0009, AC-022, AC-024): an entry of a collection with the number
+ * of its recipes, "Grillabend · 2 Rezepte", "Sommerfest" without; every other entry its title.
+ */
+export function entryLineLabel(
+  entry: Pick<MealPlanEntry, 'kind' | 'recipeId'>,
+  title: string,
+  book: RecipeBook,
+): string {
+  if (entryKindRole(entry, book.recipesById) !== 'collection') return title;
+  const collection = entry.recipeId === undefined ? undefined : book.recipesById[entry.recipeId];
+  return collection ? collectionEntryLabel(title, contentsInBook(collection, book).length) : title;
 }
 
 /** Dots of a day: one per kind, in the fixed order, at most three. */

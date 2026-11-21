@@ -11,6 +11,7 @@ import type {
   Member,
   Recipe,
   RecipeIngredient,
+  RecipeKind,
   RecipeStep,
 } from './types';
 
@@ -140,6 +141,21 @@ function byTitle(a: Recipe, b: Recipe): number {
 // ISO dates order like plain strings; the empty string stands for "never cooked" and sorts first.
 function lastCookedKey(recipe: Recipe): string {
   return recipe.lastCookedOn ?? '';
+}
+
+/**
+ * What the calendar's add window offers to plan (spec 0009, AC-021, Offene Frage 6 A): the tab
+ * "Rezepte" only recipes, "Sammlungen" only collections, "Alle" (no kind) both; searched like the
+ * recipe list, without a query A–Z.
+ */
+export function planCandidates(
+  recipes: Recipe[],
+  kind: RecipeKind | undefined,
+  query: string,
+  articlesById: Record<Id, Article>,
+): Recipe[] {
+  const ofKind = kind === undefined ? recipes : recipes.filter((recipe) => recipe.kind === kind);
+  return query.trim() ? searchRecipes(query, ofKind, articlesById) : sortRecipes(ofKind, 'title');
 }
 
 export type RecipeSort = 'recent' | 'new' | 'title' | 'rating' | 'count';
