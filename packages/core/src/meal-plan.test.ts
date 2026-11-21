@@ -5,6 +5,8 @@ import {
   defaultEaters,
   entriesForDay,
   isAbsent,
+  leftoverCandidates,
+  leftoversDayLabel,
   orderSlotEntries,
   splitVariants,
   variantSummary,
@@ -412,5 +414,73 @@ describe('withNote', () => {
     expect(withNote('Eislaufen', '   ')).toBe('Eislaufen');
     expect(withNote('Eislaufen', '')).toBe('Eislaufen');
     expect(withNote('Eislaufen')).toBe('Eislaufen');
+  });
+});
+
+describe('leftovers from the seven days before (REQ-011)', () => {
+  const slots = ['slot-vormittag', 'slot-mittag', 'slot-abend'];
+  const plan = [
+    entry({ id: 'kuerbis', date: '2026-11-15' }),
+    entry({ id: 'shakshuka', date: '2026-11-16' }),
+    entry({
+      id: 'reste-shakshuka',
+      date: '2026-11-19',
+      kind: 'leftovers',
+      leftoversOfEntryId: 'shakshuka',
+    }),
+    entry({ id: 'enzo', date: '2026-11-21', kind: 'restaurant', restaurantId: 'r' }),
+    entry({
+      id: 'oma',
+      date: '2026-11-22',
+      slotId: 'slot-mittag',
+      kind: 'text',
+      text: 'Essen bei Oma',
+    }),
+    entry({ id: 'dal', date: '2026-11-22', slotId: 'slot-abend' }),
+    entry({ id: 'pesto', date: '2026-11-23', slotId: 'slot-mittag' }),
+    entry({ id: 'later', date: null }),
+  ];
+
+  it('AC-045: across the week boundary, youngest first, later Tageszeit first', () => {
+    expect(leftoverCandidates(plan, '2026-11-23', slots).map((e) => e.id)).toEqual([
+      'dal',
+      'oma',
+      'shakshuka',
+    ]);
+  });
+
+  it('AC-045: a dish from an earlier week is named with its date', () => {
+    expect(leftoversDayLabel('2026-11-22', '2026-11-23')).toBe('So 22.11.');
+    expect(leftoversDayLabel('2026-11-16', '2026-11-23')).toBe('Mo 16.11.');
+  });
+
+  it('AC-046: a target day in the past offers only its own seven days before', () => {
+    const past = [
+      entry({ id: 'gulasch', date: '2026-11-02' }),
+      entry({ id: 'ofen', date: '2026-11-03' }),
+      entry({ id: 'risotto', date: '2026-11-11' }),
+    ];
+    expect(leftoverCandidates(past, '2026-11-10', slots).map((e) => e.id)).toEqual(['ofen']);
+  });
+
+  it('AC-047: a future target day counts planned dishes, not those marked "nicht gekocht"', () => {
+    const future = [
+      entry({ id: 'pizza', date: '2026-11-21', notCooked: true }),
+      entry({ id: 'gulasch', date: '2026-11-23' }),
+    ];
+    expect(leftoverCandidates(future, '2026-11-27', slots).map((e) => e.id)).toEqual(['gulasch']);
+    expect(leftoversDayLabel('2026-11-23', '2026-11-27')).toBe('Mo');
+  });
+
+  it('AC-048: over the turn of the year', () => {
+    const raclette = [entry({ id: 'raclette', date: '2026-12-31' })];
+    expect(leftoverCandidates(raclette, '2027-01-04', slots).map((e) => e.id)).toEqual([
+      'raclette',
+    ]);
+    expect(leftoversDayLabel('2026-12-31', '2027-01-04')).toBe('Do 31.12.');
+  });
+
+  it('AC-049: nothing cooked in the seven days before is an empty list', () => {
+    expect(leftoverCandidates(plan, '2027-02-01', slots)).toEqual([]);
   });
 });

@@ -110,7 +110,8 @@ function formatSum(qty: number, unit: string): string {
     : formatAmount(qty, unit);
 }
 
-function sourceLabel(source: ContributionSource): string {
+/** The Herkunft of one contribution: the stored recipe label, "von Hand" or "Dauerposten". */
+export function originLabel(source: ContributionSource): string {
   if (source.kind === 'manual') return 'von Hand';
   if (source.kind === 'recurring') return 'Dauerposten';
   return source.label;
@@ -159,7 +160,7 @@ export function summarizeItem(item: ShoppingItem): ItemSummary {
         contribution.note === undefined || contribution.note === '' ? [] : [contribution.note],
       ),
     ),
-    sources: distinct(item.contributions.map((contribution) => sourceLabel(contribution.source))),
+    sources: distinct(item.contributions.map((contribution) => originLabel(contribution.source))),
     isRecurring: item.contributions.some(
       (contribution) => contribution.source.kind === 'recurring',
     ),

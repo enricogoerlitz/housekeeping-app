@@ -1,5 +1,5 @@
 import { formatQty } from './amounts';
-import { daysBetween } from './dates';
+import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';
 import type {
@@ -224,4 +224,48 @@ export function visitsOf(
     daysSince: lastOn ? daysBetween(lastOn, today) : undefined,
     dates,
   };
+}
+
+/** How many days before the target day "Reste" looks back (REQ-011). */
+export const LEFTOVER_DAYS = 7;
+
+/**
+ * Dishes "Reste" offers for a target day (REQ-011): recipes and free text planned from
+ * target − 7 to target − 1, without leftovers of leftovers and without "nicht gekocht"; the
+ * youngest day first, within a day the later Tageszeit first.
+ */
+export function leftoverCandidates(
+  entries: MealPlanEntry[],
+  target: ISODate,
+  slotOrder: Id[],
+): MealPlanEntry[] {
+  const first = addDays(target, -LEFTOVER_DAYS);
+  const slotPosition = (entry: MealPlanEntry): number => {
+    const index = slotOrder.indexOf(entry.slotId);
+    return index === -1 ? -1 : index;
+  };
+  return entries
+    .filter(
+      (entry) =>
+        entry.date !== null &&
+        entry.date >= first &&
+        entry.date < target &&
+        (entry.kind === 'recipe' || entry.kind === 'text') &&
+        !entry.notCooked,
+    )
+    .sort(
+      (a, b) =>
+        (b.date ?? '').localeCompare(a.date ?? '') ||
+        slotPosition(b) - slotPosition(a) ||
+        compareInSlot(a, b),
+    );
+}
+
+/**
+ * The day in "Reste von Linsen-Dal (Mo)": the weekday within the target's calendar week, else
+ * weekday and date ("So 22.11."), so the same weekday a week earlier stays clear.
+ */
+export function leftoversDayLabel(source: ISODate, target: ISODate): string {
+  if (startOfWeek(source) === startOfWeek(target)) return weekdayShort(source);
+  return `${weekdayShort(source)} ${formatShortDate(source)}`;
 }
