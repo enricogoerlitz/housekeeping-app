@@ -694,7 +694,9 @@ test('AC-002: in one Tageszeit activities come first, then recipes, then restaur
 }) => {
   await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
-  expect(await slotTitles(page, SATURDAY, SLOT_DINNER)).toEqual([]);
+  // The seed may already plan something on that evening (e.g. the collection „Grillabend“,
+  // depending on today's date); only the order of the four entries planned here matters.
+  const planned = ['Bouldern', 'Lasagne', 'Gemischter Salat', 'Trattoria Da Enzo'];
   await planRecipe(page, SATURDAY, SLOT_DINNER, 'Lasagne', LASAGNE);
   await planRecipe(
     page,
@@ -706,8 +708,12 @@ test('AC-002: in one Tageszeit activities come first, then recipes, then restaur
   await planRestaurant(page, SATURDAY, SLOT_DINNER, seedIds['rest-enzo']);
   await planActivity(page, SATURDAY, SLOT_DINNER, BOULDERN);
   await expect
-    .poll(() => slotTitles(page, SATURDAY, SLOT_DINNER))
-    .toEqual(['Bouldern', 'Lasagne', 'Gemischter Salat', 'Trattoria Da Enzo']);
+    .poll(async () =>
+      (await slotTitles(page, SATURDAY, SLOT_DINNER)).filter(
+        (title) => title !== null && planned.includes(title),
+      ),
+    )
+    .toEqual(planned);
 });
 
 test('AC-023, AC-021: "Neue Aktivität" without a name creates nothing; "Klettern im Wald" is created and planned', async ({

@@ -181,13 +181,13 @@ Builds liegen als Repository-Variablen `PRODUCTION_*` bzw. `PREVIEW_*`, Entschei
 
 ## Abhängigkeiten, Voraussetzungen und kritischer Pfad
 
-| Spec bzw. Dokument                    | Was diese Spec daraus braucht oder ihr gibt                                                                                |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 0003                                  | Hook, Google-Anmeldung, CSP- und Export-Prüfung, Service Worker; offene Befunde des Security-Checks (siehe unten)          |
-| 0004                                  | Foto-Bucket `household-media` mit erzwungenen Einstellungen; Aufräumen verwaister Fotos bleibt offen (Nicht-Ziel)          |
-| 0005                                  | persönliche Einstellungen (dort steht die Version), KI-Schalter „aus“                                                      |
-| 0013                                  | braucht die öffentliche HTTPS-Adresse; ihr VAPID-Schlüssel und das geteilte Geheimnis werden Produktions-Secrets           |
-| „Native Apps: Anmeldung und Speicher“ | Spec 0015: native Google-Anmeldung, Secure Store, dauerhafter Speicher; erst damit ist Android nutzbar |
+| Spec bzw. Dokument                    | Was diese Spec daraus braucht oder ihr gibt                                                                       |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 0003                                  | Hook, Google-Anmeldung, CSP- und Export-Prüfung, Service Worker; offene Befunde des Security-Checks (siehe unten) |
+| 0004                                  | Foto-Bucket `household-media` mit erzwungenen Einstellungen; Aufräumen verwaister Fotos bleibt offen (Nicht-Ziel) |
+| 0005                                  | persönliche Einstellungen (dort steht die Version), KI-Schalter „aus“                                             |
+| 0013                                  | braucht die öffentliche HTTPS-Adresse; ihr VAPID-Schlüssel und das geteilte Geheimnis werden Produktions-Secrets  |
+| „Native Apps: Anmeldung und Speicher“ | Spec 0015: native Google-Anmeldung, Secure Store, dauerhafter Speicher; erst damit ist Android nutzbar            |
 
 **Reihenfolge:** Welle 6, nach 0013. **Vorziehen ist möglich**, falls Enrico die PWA früher auf dem
 iPhone will: REQ-006 und REQ-007 mit dem Nötigsten aus REQ-001, REQ-002, REQ-005 und REQ-010. Dann
