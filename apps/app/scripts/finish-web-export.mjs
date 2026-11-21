@@ -5,6 +5,9 @@
 // 2. Service worker dist/sw.js with the precache list (workbox-build injectManifest) and the
 //    external registration script dist/register-sw.js (no inline script, so no CSP hash needed).
 // 3. The Speech SDK's audio worklet as a same-origin file (it would otherwise use a blob: URL).
+// Web push (spec 0013): the build fails without EXPO_PUBLIC_VAPID_PUBLIC_KEY, like without the
+// Supabase origin; check-web-export.mjs checks its form. The CSP needs nothing for push (the push
+// service talks to the browser, not to the page).
 // Only the export gets these; the dev server stays without service worker and CSP.
 // check-web-export.mjs then verifies the result (part of build:web).
 //
@@ -26,6 +29,12 @@ const indexPath = path.join(dist, 'index.html');
 function fail(message) {
   console.error(`finish-web-export: ${message}`);
   process.exit(1);
+}
+
+if (!process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim()) {
+  fail(
+    'EXPO_PUBLIC_VAPID_PUBLIC_KEY is not set; the app subscribes to web push with it. Create the keys once with `node scripts/push-keys.mjs` (writes .env, prints no value).',
+  );
 }
 
 function supabaseOrigins() {

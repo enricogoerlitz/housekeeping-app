@@ -900,3 +900,27 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
    nicht, wenn die Sitzung anderswo endet (dann gibt es keine Sitzung mehr für die RPC).
 7. Hinweise für abgewiesene Geräte-Befehle: `pushRejectedMessage`; `not_found` und Unbekanntes →
    „Hat nicht geklappt – bitte noch einmal versuchen“.
+
+## Entscheidungen beim Bauen (Zustellung, Task 7, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. `safeTarget` im Service Worker baut den Ziel-Link aus den geprüften Teilen neu (erster Wert je
+   Parameter, unbekannte Parameter und Fragment fallen weg). Die Regeln sind dieselben wie in
+   `parseNotificationTarget`; der Service Worker kann `core` nicht importieren, deshalb sichern
+   dieselben Fälle in `sw-push.test.mjs` den Gleichlauf.
+2. Der Titel ist immer „Housekeeping“, auch wenn die Nachricht einen anderen trägt. Ein gültiger
+   Text mit verändertem Link behält den Text und öffnet „/“.
+3. `push-keys.mjs` erzeugt das Schlüsselpaar nur, wenn alle drei Schlüssel-Namen fehlen; ein halbes
+   Paar bricht ohne Schreiben ab. Fehlt nur `EXPO_PUBLIC_VAPID_PUBLIC_KEY`, übernimmt es den Wert
+   von `VAPID_PUBLIC_KEY`. Leere Platzhalter (aus `.env.example`) werden an ihrer Stelle gefüllt.
+   Eine neue Datei bekommt die Rechte 0600; Warnung, wenn die Datei nicht git-ignoriert ist oder
+   die beiden öffentlichen Schlüssel verschieden sind.
+4. `pnpm test:scripts` (Wurzel) führt `scripts/push-keys.test.mjs` aus und ist Teil von `pnpm check`
+   und `pnpm test`.
+5. `turbo.json`: `passThroughEnv` für `VAPID_PRIVATE_KEY` und `PUSH_SEND_SECRET` bei `build:web`,
+   sonst sieht `check-web-export` die Werte im strikten Modus von turbo nie (nicht im Hash).
+6. Lokale `push_send_url`: `http://supabase_kong_<project_id>:8000/functions/v1/push-send`; geprüft,
+   dass `pg_net` Kong über den Containernamen erreicht. Ausgaben von `db-reset.mjs` englisch wie
+   die übrigen Meldungen des Skripts.
+7. `e2e/global-setup.ts` nimmt `EXPO_PUBLIC_VAPID_PUBLIC_KEY` in den Build-Marker auf.

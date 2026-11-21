@@ -9,6 +9,7 @@
     "build:web": {
       "dependsOn": ["^typecheck"],
       "env": ["EXPO_PUBLIC_*"],
+      "passThroughEnv": ["VAPID_PRIVATE_KEY", "PUSH_SEND_SECRET"],
       "outputs": ["dist/**"]
     }
   }
