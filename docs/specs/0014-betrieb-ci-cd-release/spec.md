@@ -16,10 +16,13 @@ es eine neue gibt.
 
 ## Ziel
 
-- Jede Änderung kommt über einen kurzen Zweig und eine PR. Vor dem Zusammenführen ist sichtbar, ob
-  alles grün ist, und die PR hat eine eigene Vorschau-Adresse zum Ausprobieren auf dem Handy.
-- Das Zusammenführen auf `main` ist die einzige Freigabe. Danach baut die Pipeline Web und Android
-  (iOS, sobald es geht) parallel, liefert zuerst Supabase und dann Web und Android aus und legt eine
+- Jede Änderung kommt über einen kurzen Zweig und eine PR in den Sammelzweig `develop`. Vor dem
+  Zusammenführen ist sichtbar, ob alles grün ist. Was auf `develop` ankommt, steht kurz danach in
+  der Vorschau unter einer festen Adresse zum Ausprobieren auf dem Handy (geändert am 21.11.2026:
+  Vorschau je `develop` statt je PR).
+- Die PR von `develop` nach `main` ist die einzige Freigabe; ein dringender Fehler kann als Hotfix
+  direkt nach `main`. Nach dem Zusammenführen auf `main` baut die Pipeline Web und Android (iOS,
+  sobald es geht) parallel, liefert zuerst Supabase und dann Web und Android aus und legt eine
   Veröffentlichung (Release) mit Versionsnummer und Änderungsliste an, ohne einen Handgriff.
 - Die Web-App ist unter einer festen HTTPS-Adresse auf Azure Static Web Apps erreichbar, als PWA
   installierbar und meldet „Neue Version verfügbar“, wenn es eine gibt.
@@ -54,25 +57,49 @@ es eine neue gibt.
 
 ### Umgebungen
 
-| Umgebung         | Web                                                 | Datenbank, Auth, Functions                  | Daten                                                         | Zweck                                 |
-| ---------------- | --------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- | ------------------------------------- |
-| Lokal            | Expo-Dev-Server, E2E-Export                         | Supabase in Docker                          | Seed mit Testkonten                                           | Entwicklung, CI                       |
-| Vorschau (je PR) | Vorschau-Umgebung der Static Web App „Vorschau“     | eigenes Supabase-Projekt „Vorschau“ (Free)  | Beispieldaten ohne Testkonten, bei jedem Vorschau-Lauf frisch | Enrico probiert PRs auf dem Handy aus |
-| Produktion       | Static Web App „Produktion“ `https://<SWA-Adresse>` | das bestehende Supabase-Projekt (Frankfurt) | echte Daten                                                   | Enrico und Nadja                      |
+| Umgebung             | Web                                                    | Datenbank, Auth, Functions                  | Daten                                                         | Zweck                                                                      |
+| -------------------- | ------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Lokal                | Expo-Dev-Server, E2E-Export                            | Supabase in Docker                          | Seed mit Testkonten                                           | Entwicklung, CI                                                            |
+| Vorschau (`develop`) | Static Web App „Vorschau“ `https://<Vorschau-Adresse>` | eigenes Supabase-Projekt „Vorschau“ (Free)  | Beispieldaten ohne Testkonten, bei jedem Vorschau-Lauf frisch | Enrico probiert den Stand von `develop` vor der Freigabe auf dem Handy aus |
+| Produktion           | Static Web App „Produktion“ `https://<SWA-Adresse>`    | das bestehende Supabase-Projekt (Frankfurt) | echte Daten                                                   | Enrico und Nadja                                                           |
 
 Vorschau und Produktion sind vollständig getrennt: zwei Static Web Apps und zwei Supabase-Projekte.
 Das Deployment-Token einer Static Web App gilt für alle ihre Umgebungen; läge die Vorschau in der
-App der Produktion, könnte Code aus einem PR-Zweig die Produktion überschreiben. Das
+App der Produktion, könnte Code, der noch nicht freigegeben ist, die Produktion überschreiben. Das
 Vorschau-Projekt liegt in einer eigenen Supabase-Organisation im Free-Tarif. Wechselt die
-Organisation der Produktion später zu Pro, kostet die Vorschau dadurch nichts.
+Organisation der Produktion später zu Pro, kostet die Vorschau dadurch nichts. Es gibt genau eine
+Vorschau, und sie zeigt immer den neuesten Stand von `develop`; Feature-Zweige und PRs haben keine
+eigene Vorschau und keinen Zugang zur Umgebung `preview` (geändert am 21.11.2026).
 
 ### Zweige
 
-Trunk-based: `main` ist immer auslieferbar und nur per PR erreichbar. Zweige leben kurz und heißen
-`<typ>/<slug>`, für Features `feat/NNNN-slug` (AGENTS.md), sonst `fix/…`, `refactor/…`, `test/…`,
-`docs/…` oder `chore/…`. Zusammengeführt wird nur per Squash. Der PR-Titel wird zur Commit-Zeile auf
-`main` und ist deshalb ein Conventional Commit; die Zeile `Spec: NNNN` steht in der PR-Beschreibung
-und landet im Squash-Commit.
+(geändert am 21.11.2026: Sammelzweig `develop` statt Trunk-based, Entscheidung Enrico, Offene
+Frage 19)
+
+| Zweig                                                                          | Kommt von         | Geht per PR nach        | Zusammenführen            | Löst aus                   |
+| ------------------------------------------------------------------------------ | ----------------- | ----------------------- | ------------------------- | -------------------------- |
+| `feat/NNNN-slug`, `fix/…`, `refactor/…`, `test/…`, `docs/…`, `chore/…`         | `develop`         | `develop`               | Squash                    | Checks auf der PR          |
+| `develop` (Sammelzweig, Standard-Zweig des Repos)                              | —                 | `main` (Release-PR)     | Merge-Commit              | Checks und Vorschau-Lauf   |
+| `hotfix/<slug>`                                                                | `main`            | `main`                  | Merge-Commit              | Checks auf der PR          |
+| `main` (immer auslieferbar)                                                    | `develop`, Hotfix | —                       | —                         | Veröffentlichung (REQ-005) |
+| `chore/rueckfuehrung-v<Version>` (nur nach einem Hotfix, legt die Pipeline an) | `main`            | `develop` (Rückführung) | Merge-Commit, automatisch | Checks auf der PR          |
+
+- **Feature-Zweige** leben kurz und heißen `<typ>/<slug>`, für Features `feat/NNNN-slug`
+  (AGENTS.md). Sie kommen per Squash nach `develop`: Der PR-Titel wird zur Commit-Zeile auf
+  `develop` und ist deshalb ein Conventional Commit; die Zeile `Spec: NNNN` steht in der
+  PR-Beschreibung und landet im Squash-Commit.
+- **Freigabe:** Enrico öffnet eine PR von `develop` nach `main` (Release-PR). Sie wird mit einem
+  Merge-Commit zusammengeführt, nicht per Squash, damit `develop` und `main` dieselbe Historie
+  behalten und die nächste Release-PR ohne Konflikte bleibt.
+- **Hotfix:** Ein Zweig `hotfix/<slug>` von `main`, PR nach `main`, Merge-Commit. Danach öffnet die
+  Pipeline selbst einen Zweig `chore/rueckfuehrung-v<Version>` vom Stand von `main` und eine PR
+  davon nach `develop` (Rückführung) und führt sie mit einem Merge-Commit zusammen, sobald ihre
+  Checks grün sind (Offene Frage 20).
+- **Schutz:** Auf `develop` und `main` gibt es keine direkten Pushes und kein Löschen, auch nicht
+  für Enrico; zusammengeführt wird nur per PR mit grünen Pflicht-Checks. Nach `main` kommen nur PRs
+  von `develop` oder `hotfix/…`.
+- **Änderungsliste:** Sie entsteht aus den Titeln der PRs, die seit dem letzten Tag nach `develop`
+  bzw. als Hotfix nach `main` kamen; Release-PR und Rückführung zählen nicht mit.
 
 ### Versionsnummer und Mindestversion
 
@@ -87,9 +114,16 @@ und landet im Squash-Commit.
 
 ### Pipeline
 
+(geändert am 21.11.2026: Sammelzweig `develop`, Vorschau aus `develop`, Hotfix mit Rückführung)
+
 ```mermaid
 flowchart LR
-  PR[PR, Checks grün] -->|Squash| M[main]
+  F[feat/… · fix/… · …<br/>PR, Checks grün] -->|Squash| D[develop]
+  D --> CD[Checks auf develop]
+  CD --> VS[Vorschau ausliefern<br/>SWA und Supabase „Vorschau“]
+  D -->|Release-PR, Checks grün<br/>Merge-Commit| M[main]
+  H[hotfix/…<br/>PR, Checks grün] -->|Merge-Commit| M
+  M -.->|nach Hotfix: Rückführung<br/>chore/rueckfuehrung-… → develop<br/>Merge-Commit| D
   M --> C[Checks auf main]
   C --> V[Version und Änderungsliste]
   V --> BW[Web bauen]
@@ -105,12 +139,12 @@ flowchart LR
 
 ### GitHub-Umgebungen und Zugänge
 
-| GitHub-Umgebung | Wer darf sie nutzen   | Enthält                                                                                                                                      |
-| --------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preview`       | alle Zweige einer PR  | Zugang nur zum Vorschau-Projekt, Einladungsadressen für die Vorschau, Azure-Anmeldung nur für die Static Web App „Vorschau“                  |
-| `production`    | nur `main`            | eingeschränktes Supabase-Token, Datenbank-Passwort, Google-Client-Secret, EAS-Token, Azure-Anmeldung nur für die Static Web App „Produktion“ |
-| `backup`        | nur `main` (Zeitplan) | lesender Datenbank-Zugang, S3-Schlüssel für Supabase Storage, Azure-Anmeldung nur zum Schreiben von Sicherungen, öffentlicher Schlüssel      |
-| `restore-test`  | nur `main` (Zeitplan) | Azure-Anmeldung nur zum Lesen von Sicherungen, privater Sicherungsschlüssel                                                                  |
+| GitHub-Umgebung | Wer darf sie nutzen                                                 | Enthält                                                                                                                                      |
+| --------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preview`       | nur `develop` (geändert am 21.11.2026; vorher alle Zweige einer PR) | Zugang nur zum Vorschau-Projekt, Einladungsadressen für die Vorschau, Azure-Anmeldung nur für die Static Web App „Vorschau“                  |
+| `production`    | nur `main`                                                          | eingeschränktes Supabase-Token, Datenbank-Passwort, Google-Client-Secret, EAS-Token, Azure-Anmeldung nur für die Static Web App „Produktion“ |
+| `backup`        | nur `main` (Zeitplan)                                               | lesender Datenbank-Zugang, S3-Schlüssel für Supabase Storage, Azure-Anmeldung nur zum Schreiben von Sicherungen, öffentlicher Schlüssel      |
+| `restore-test`  | nur `main` (Zeitplan)                                               | Azure-Anmeldung nur zum Lesen von Sicherungen, privater Sicherungsschlüssel                                                                  |
 
 Azure-Anmeldungen laufen per OIDC (föderierte Anmeldedaten) mit je einer eigenen Identität, nie mit
 einem gespeicherten Schlüssel.
@@ -120,7 +154,7 @@ einem gespeicherten Schlüssel.
 | Ressource                     | Einstellung                                                                                                                                               |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Static Web App „Produktion“   | Tarif Free, Region West Europe, keine Vorschau-Umgebungen                                                                                                 |
-| Static Web App „Vorschau“     | Tarif Free, Region West Europe, eine Vorschau-Umgebung je PR                                                                                              |
+| Static Web App „Vorschau“     | Tarif Free, Region West Europe, keine Vorschau-Umgebungen je PR; ihre Hauptumgebung zeigt `develop` (geändert am 21.11.2026)                              |
 | Storage-Konto für Sicherungen | privat, kein Kontoschlüssel, Unveränderlichkeit 30 Tage, Aufbewahrung 30 Tage täglich und 12 Monate monatlich                                             |
 | Identitäten                   | je eine für Web-Auslieferung Produktion, Web-Auslieferung Vorschau, Sicherung und Wiederherstellungstest; jede nur mit Rechten an ihrer eigenen Ressource |
 | Budget                        | Monatsbudget mit E-Mail bei 80 % und 100 % (Offene Frage 12)                                                                                              |
@@ -172,7 +206,8 @@ Auslieferung, auf einer leeren Datenbank.
 2. **Glossar:** neue Begriffe „Produktion“, „Vorschau“, „Veröffentlichung“, „App-Version“,
    „Mindestversion“, „Sicherung“, „Wiederherstellungstest“ (diese Spec wurde ohne Glossar-Änderung
    geschrieben; die Einträge kommen mit dem Plan).
-3. **AGENTS.md und `.claude/`:** Git-Abschnitt (Squash, PR-Vorlage, Zweignamen), Befehle für
+3. **AGENTS.md und `.claude/`:** Git-Abschnitt (`develop` als Ziel jeder PR, Squash, PR-Vorlage,
+   Zweignamen, Hotfix), Befehle für
    Veröffentlichung und Wiederherstellung, Sperre für `supabase db reset --remote` und
    `db push --include-seed` in den Agent-Einstellungen.
 4. **Antworten auf die Offenen Fragen 4, 5, 12, 13**, die Geld kosten oder dauerhaft gelten.
@@ -181,66 +216,78 @@ Auslieferung, auf einer leeren Datenbank.
 Löschen (Aufbewahrung der Sicherungen, Entfernen von Functions, Neuaufsetzen der Vorschau) und alle
 Zugänge. Der Plan braucht ein Bedrohungsmodell mindestens zu: gestohlene Zugänge (Supabase-Token,
 Datenbank-Passwort, EAS-Token, über das ein bösartiges Over-the-Air-Update alle nativen Geräte
-erreichen könnte, Azure-Identitäten); Code aus einem PR-Zweig, der Produktions-Secrets liest;
+erreichen könnte, Azure-Identitäten); Code aus einem PR-Zweig, der Secrets von `preview` oder
+`production` liest; Umgehen von `develop` (direkter Push, PR nach `main` von einem anderen Zweig);
+Rückführung nach einem Hotfix, die ausbleibt oder Änderungen auf `develop` überschreibt;
 kompromittierte Action oder Abhängigkeit; Seed oder Reset gegen Produktion; zerstörerische
 Migration; offene Weiterleitung über Platzhalter in Redirect-URLs; Abfluss oder Löschen von
 Sicherungen; Secrets in Logs; öffentlich erreichbare Vorschau; Vorschau-Code, der die Produktion
 überschreibt; Kosten. Negativtests: anonymer Zugriff auf Sicherungen, Bucket und Vorschau;
-PR-Zweig greift auf `production` oder die Static Web App „Produktion“ zu; Testkonto-Anmeldung
-in Produktion und Vorschau; fremde Herkunft an den Functions; scheiternde Migration und scheiternder
-Build. Dazu `/security-check` über alle Workflows und Skripte.
+PR-Zweig greift auf `preview`, `production` oder eine der Static Web Apps zu; `develop` greift
+auf `production` zu; Push direkt auf `develop` oder `main`; PR nach `main` von einem
+Feature-Zweig; Testkonto-Anmeldung in Produktion und Vorschau; fremde Herkunft an den Functions;
+scheiternde Migration und scheiternder Build. Dazu `/security-check` über alle Workflows und
+Skripte (geändert am 21.11.2026: `develop` und Hotfix).
 
 ## Anforderungen und Akzeptanzkriterien
 
 Beispielwerte: `<SWA-Adresse>` ist der Standard-Hostname der Static Web App „Produktion“
 (`<name>.<n>.azurestaticapps.net`), `<Projekt-Ref>` die Kennung des bestehenden Supabase-Projekts,
-`<Vorschau-Ref>` die des Vorschau-Projekts. Die echten Werte stehen in GitHub-Variablen, nicht in
+`<Vorschau-Ref>` die des Vorschau-Projekts, `<Vorschau-Adresse>` der Standard-Hostname der Static
+Web App „Vorschau“. Die echten Werte stehen in GitHub-Variablen, nicht in
 dieser Spec. Versionen im Beispiel stammen aus dem Dezember 2026. „Prüfung nach der Auslieferung“
 meint den letzten Schritt der Veröffentlichung, der Produktion von außen abfragt.
 
-### REQ-001 — Zweige und Schutz von `main`
+### REQ-001 — Zweige und Schutz von `develop` und `main`
 
 > Änderungen kommen nur über kurzlebige Zweige und PRs mit grünen Pflicht-Checks per Squash auf
-> `main`; der PR-Titel ist ein Conventional Commit.
+> den Sammelzweig `develop`; nach `main` kommen nur Release-PRs von `develop` und Hotfix-PRs von
+> `hotfix/…` per Merge-Commit, und nach jedem Hotfix wird `main` automatisch nach `develop`
+> zurückgeführt; der PR-Titel ist ein Conventional Commit. (geändert am 21.11.2026: Sammelzweig
+> `develop` statt Squash direkt auf `main`)
 
 **Offline:** betrifft keine App-Bedienung (GitHub).
 
-**AC-001 — Kein direkter Push**
+**AC-001 — Kein direkter Push** (geändert am 21.11.2026: gilt für `develop` und `main`)
 
 ```gherkin
-Angenommen  der Schutz von „main“ ist eingerichtet
-Wenn        jemand einen Commit direkt auf „main“ pusht, auch Enrico als Besitzer des Repos
-Dann        lehnt GitHub den Push ab
+Angenommen  der Schutz von „develop“ und „main“ ist eingerichtet
+Wenn        jemand einen Commit direkt auf „develop“ oder „main“ pusht oder einen der beiden Zweige
+            löschen will, auch Enrico als Besitzer des Repos
+Dann        lehnt GitHub das ab
 ```
 
-**AC-002 — Rote Checks blockieren**
+**AC-002 — Rote Checks blockieren** (geändert am 21.11.2026: PRs nach `develop` und nach `main`)
 
 ```gherkin
-Angenommen  eine PR, deren Check „Datenbank (pgTAP)“ fehlschlägt
+Angenommen  eine PR nach „develop“ oder nach „main“, deren Check „Datenbank (pgTAP)“ fehlschlägt
 Wenn        Enrico sie zusammenführen will
 Dann        ist das Zusammenführen gesperrt, bis alle Pflicht-Checks grün sind
 ```
 
-**AC-003 — Squash mit Titel und Spec-Zeile**
+**AC-003 — Squash mit Titel und Spec-Zeile** (geändert am 21.11.2026: Ziel ist `develop`)
 
 ```gherkin
-Angenommen  die PR „feat: Reisetaschen packen“ vom Zweig „feat/0012-reisetaschen“ mit „Spec: 0012“
-            in der Beschreibung, alle Pflicht-Checks grün
+Angenommen  die PR „feat: Reisetaschen packen“ vom Zweig „feat/0012-reisetaschen“ nach „develop“
+            mit „Spec: 0012“ in der Beschreibung, alle Pflicht-Checks grün
 Wenn        Enrico sie zusammenführt
-Dann        ist „Squash and merge“ die einzige angebotene Art
-Und         auf „main“ entsteht genau ein Commit „feat: Reisetaschen packen (#<PR-Nummer>)“ mit der
-            Zeile „Spec: 0012“
-Und         der Zweig ist danach gelöscht
+Dann        ist „Squash and merge“ die vorgeschlagene Art
+Und         auf „develop“ entsteht genau ein Commit „feat: Reisetaschen packen (#<PR-Nummer>)“ mit
+            der Zeile „Spec: 0012“
+Und         der Zweig „feat/0012-reisetaschen“ ist danach gelöscht
+Und         auf „main“ ändert sich nichts
 ```
 
-**AC-004 — Fehlerfall: Titel und Zweigname**
+**AC-004 — Fehlerfall: Titel und Zweigname** (geändert am 21.11.2026: `hotfix/<slug>` und
+`develop` als gültige Zweige)
 
 ```gherkin
-Angenommen  eine PR mit dem Titel „Reisetaschen fertig“ vom Zweig „reisetaschen“
+Angenommen  eine PR nach „develop“ mit dem Titel „Reisetaschen fertig“ vom Zweig „reisetaschen“
 Wenn        die Checks laufen
 Dann        ist der Check „Konventionen“ rot und nennt beides: Titel ohne Typ (feat, fix, refactor,
             test, docs, chore) und Zweigname nicht in der Form „<typ>/<slug>“
-Und         Zweige von Dependabot („dependabot/…“) gelten als gültig
+Und         Zweige von Dependabot („dependabot/…“), „hotfix/<slug>“ sowie „develop“ als Quelle
+            einer Release-PR gelten als gültig
 ```
 
 **AC-005 — PR-Vorlage**
@@ -252,24 +299,78 @@ Dann        ist die Beschreibung vorbefüllt mit „Spec: NNNN“ (oder „ohne 
             „/security-check“)
 ```
 
+**AC-065 — Fehlerfall: nach `main` nur von `develop` oder `hotfix/…`** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  eine PR vom Zweig „feat/0012-reisetaschen“ nach „main“
+Wenn        die Checks laufen
+Dann        ist der Check „Konventionen“ rot mit „Nach main nur von develop oder hotfix/…“
+Und         das Zusammenführen ist gesperrt
+Und         dieselbe PR nach „develop“ wäre gültig
+```
+
+**AC-066 — Release-PR mit Merge-Commit** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  auf „develop“ liegen seit der letzten Veröffentlichung die Squash-Commits
+            „feat: Reisetaschen packen (#41)“ und „fix: Haken springt zurück (#42)“
+Und         Enrico öffnet die PR „chore: Veröffentlichung“ von „develop“ nach „main“, alle
+            Pflicht-Checks grün
+Wenn        er sie zusammenführt
+Dann        ist „Create a merge commit“ die einzige angebotene Art
+Und         „main“ enthält danach genau die Commits von „develop“ plus einen Merge-Commit
+Und         der Zweig „develop“ besteht weiter
+Und         die nächste Release-PR von „develop“ nach „main“ hat keine Konflikte aus dieser
+```
+
+**AC-067 — Hotfix und Rückführung nach `develop`** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  auf „develop“ liegt „feat: Reisetaschen packen (#41)“, noch nicht veröffentlicht
+Und         die PR „fix: Liste lädt nicht (#45)“ vom Zweig „hotfix/liste-laedt-nicht“, der von „main“
+            abzweigt, wurde mit grünen Checks per Merge-Commit nach „main“ zusammengeführt
+Wenn        die Veröffentlichung des Hotfix grün ist
+Dann        legt die Pipeline den Zweig „chore/rueckfuehrung-v<Version>“ vom Stand von „main“ an
+            und öffnet die PR „chore: main nach develop zurückführen“ von dort nach „develop“; ihre
+            Checks laufen
+Und         sind sie grün, wird sie ohne Handgriff per Merge-Commit zusammengeführt
+Und         „develop“ enthält danach den Hotfix und weiterhin „feat: Reisetaschen packen (#41)“
+```
+
+**AC-068 — Fehlerfall: Rückführung mit Konflikt** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  der Hotfix aus AC-067 ändert dieselben Zeilen wie ein Commit, der nur auf „develop“
+            liegt
+Wenn        die Pipeline die Rückführung öffnet
+Dann        bleibt die PR „chore: main nach develop zurückführen“ offen und wird nicht
+            zusammengeführt
+Und         Enrico bekommt die GitHub-Benachrichtigung mit Link zur PR
+Und         auf „develop“ ändert sich nichts, bis Enrico „develop“ in den Zweig
+            „chore/rueckfuehrung-v<Version>“ übernimmt, den Konflikt löst und die PR mit einem
+            Merge-Commit zusammenführt
+```
+
 ### REQ-002 — Checks auf jeder PR
 
-> Jede PR durchläuft die heutigen Prüfungen und zusätzlich pgTAP, die Prüfung der
-> Web-Konfiguration, eine Suche nach Geheimnissen und die Regeln für Migrationen; kein Check
-> braucht einen Produktionszugang.
+> Jede PR nach `develop` oder `main` durchläuft die heutigen Prüfungen und zusätzlich pgTAP, die
+> Prüfung der Web-Konfiguration, eine Suche nach Geheimnissen und die Regeln für Migrationen; kein
+> Check braucht einen Zugang zu Vorschau oder Produktion. (geändert am 21.11.2026: PRs nach
+> `develop`, kein Vorschau-Zugang)
 
 **Offline:** betrifft keine App-Bedienung (GitHub).
 
-**AC-006 — Umfang**
+**AC-006 — Umfang** (geändert am 21.11.2026: PRs nach `develop` und `main`, auch „preview“ gesperrt)
 
 ```gherkin
-Angenommen  eine PR, die Code ändert
+Angenommen  eine PR nach „develop“ oder „main“, die Code ändert
 Wenn        die Checks laufen
 Dann        laufen „pnpm format:check“, „pnpm check“ (Lint, Typprüfung, Unit-Tests, Edge-Verträge),
             „pnpm exec supabase test db“, „pnpm build:web“ samt CSP- und SWA-Konfigurationsprüfung,
             „pnpm e2e“ und „pnpm e2e:dev“ gegen den lokalen Stack
-Und         keiner dieser Jobs kann ein Secret der Umgebungen „production“, „backup“ oder
+Und         keiner dieser Jobs kann ein Secret der Umgebungen „preview“, „production“, „backup“ oder
             „restore-test“ lesen
+Und         dieselben Checks laufen nach jedem Zusammenführen noch einmal auf „develop“ bzw. „main“
 ```
 
 **AC-007 — pgTAP läuft mit**
@@ -290,7 +391,8 @@ Wenn        die Checks laufen
 Dann        ist der Check „Geheimnisse“ rot und nennt Datei und Zeile, aber nicht den Wert
 ```
 
-**AC-009 — Rückbau nur gekennzeichnet**
+**AC-009 — Rückbau nur gekennzeichnet** (geändert am 21.11.2026: Migrationen auf `develop` gelten
+ebenfalls als fest)
 
 ```gherkin
 Angenommen  eine PR mit einer neuen Migration, die „drop column“, „drop table“ oder ein „rename“
@@ -298,7 +400,7 @@ Angenommen  eine PR mit einer neuen Migration, die „drop column“, „drop ta
 Wenn        die Checks laufen
 Dann        ist der Check „Migrationen“ rot mit „Rückbau ohne Kennzeichnung (expand → migrate →
             contract)“
-Und         ebenso, wenn die PR eine Migration ändert, die schon auf „main“ liegt
+Und         ebenso, wenn die PR eine Migration ändert, die schon auf „develop“ oder „main“ liegt
 ```
 
 **AC-010 — Verbotene Befehle**
@@ -320,42 +422,69 @@ Wenn        die Checks laufen
 Dann        melden alle Pflicht-Checks ein Ergebnis, und die PR lässt sich zusammenführen
 ```
 
-### REQ-003 — Vorschau je PR
+### REQ-003 — Vorschau aus `develop`
 
-> Jede PR bekommt eine eigene Web-Adresse auf der Static Web App „Vorschau“, die gegen das
-> Supabase-Projekt „Vorschau“ läuft und nie gegen Produktion; sie verschwindet, wenn die PR
-> geschlossen wird.
+> Jedes Zusammenführen auf `develop` liefert dessen Stand mit grünen Checks an die Static Web App
+> „Vorschau“ unter einer festen Adresse aus, die gegen das Supabase-Projekt „Vorschau“ läuft und nie
+> gegen Produktion; Feature-Zweige und PRs bekommen keine eigene Vorschau. (geändert am 21.11.2026:
+> Vorschau je `develop` statt je PR)
 
 **Offline:** wie die Web-App (REQ-006). Die Vorschau dient zum Ausprobieren, nicht für den Laden.
 
-**AC-012 — Vorschau-Adresse**
+**AC-012 — Vorschau-Adresse** — verworfen am 21.11.2026: siehe AC-069 (eine feste Vorschau für
+`develop` statt einer Adresse je PR).
+
+**AC-069 — Vorschau zeigt `develop`** (neu am 21.11.2026)
 
 ```gherkin
-Angenommen  Enrico öffnet eine PR mit Code-Änderungen
-Wenn        ihr Vorschau-Job durch ist
-Dann        steht in der PR ein Kommentar „Vorschau: https://<Vorschau-Adresse der PR>“ mit der
-            Kennung „pr-<Nummer>-<Commit>“
-Und         nach jedem weiteren Push zeigt dieselbe Adresse den neuen Stand
+Angenommen  die PR „feat: Reisetaschen packen (#41)“ wird nach „develop“ zusammengeführt, und die
+            Checks auf „develop“ sind grün
+Wenn        der Vorschau-Lauf durch ist
+Dann        zeigt „https://<Vorschau-Adresse>“ diesen Stand, und „/version.json“ dort nennt den
+            Commit von „develop“
+Und         werden zwei PRs kurz nacheinander nach „develop“ zusammengeführt, läuft nie mehr als ein
+            Vorschau-Lauf gleichzeitig, und am Ende zeigt die Vorschau den Stand der zweiten
 ```
 
-**AC-013 — Nie Produktion**
+**AC-070 — Fehlerfall: rote Checks auf `develop`** (neu am 21.11.2026)
 
 ```gherkin
-Angenommen  die Vorschau einer PR
+Angenommen  die Vorschau zeigt den Commit „a1b2c3d“, und die Checks auf „develop“ sind für den
+            neuen Commit rot
+Wenn        der Vorschau-Lauf ausgelöst würde
+Dann        wird nichts an die Vorschau ausgeliefert, und das Vorschau-Projekt bleibt unverändert
+Und         die Vorschau zeigt weiter „a1b2c3d“
+```
+
+**AC-071 — Fehlerfall: keine Vorschau aus PR-Zweigen** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  ein Workflow auf dem Zweig „feat/0015-beispiel“ oder in einer PR verlangt die Umgebung
+            „preview“
+Wenn        er läuft
+Dann        verweigert GitHub den Zugriff, weil nur „develop“ diese Umgebung nutzen darf
+Und         die Vorschau und das Vorschau-Projekt bleiben unverändert
+```
+
+**AC-013 — Nie Produktion** (geändert am 21.11.2026: Vorschau aus `develop`)
+
+```gherkin
+Angenommen  die Vorschau
 Wenn        ich ihre Startseite lade
 Dann        nennt die Content Security Policy als Supabase-Adresse nur das Vorschau-Projekt und nicht
             das Produktionsprojekt
-Und         der Vorschau-Job nutzt die Umgebung „preview“ und hat keinen Produktionszugang
+Und         der Vorschau-Lauf nutzt die Umgebung „preview“ und hat keinen Produktionszugang
 Und         mit seiner Azure-Anmeldung kann er die Static Web App „Produktion“ nicht verändern
 ```
 
-**AC-014 — Frische Beispieldaten, keine Testkonten**
+**AC-014 — Frische Beispieldaten, keine Testkonten** (geändert am 21.11.2026: Stand von `develop`
+statt einer PR)
 
 ```gherkin
-Angenommen  die PR bringt eine neue Migration mit
-Wenn        der Vorschau-Job läuft
-Dann        ist das Vorschau-Projekt danach auf dem Stand der Migrationen dieser PR und enthält den
-            Beispiel-Haushalt „Enrico & Nadja“ mit Beispieldaten
+Angenommen  eine nach „develop“ zusammengeführte PR bringt eine neue Migration mit
+Wenn        der Vorschau-Lauf läuft
+Dann        ist das Vorschau-Projekt danach auf dem Stand der Migrationen von „develop“ und enthält
+            den Beispiel-Haushalt „Enrico & Nadja“ mit Beispieldaten
 Und         Einladungen in diesen Haushalt gibt es nur für die Adressen aus dem Secret der Umgebung
             „preview“
 Und         eine Anmeldung mit „enrico.test@example.com“ und Passwort scheitert, weil es dort weder
@@ -371,23 +500,19 @@ Dann        sieht er die Beispieldaten des Haushalts „Enrico & Nadja“
 Und         ein Google-Konto ohne Einladung wird abgewiesen wie in Produktion
 ```
 
-**AC-016 — PR geschlossen**
+**AC-016 — PR geschlossen** — verworfen am 21.11.2026: siehe AC-069 und AC-071 (PRs haben keine
+eigene Vorschau mehr, also gibt es beim Schließen nichts zu löschen).
+
+**AC-017 — Fehlerfall: Projekt pausiert** (geändert am 21.11.2026: die Höchstzahl offener Vorschauen
+entfällt, Meldung am Lauf statt als PR-Kommentar)
 
 ```gherkin
-Angenommen  eine PR mit Vorschau
-Wenn        sie zusammengeführt oder geschlossen wird
-Dann        ist ihre Vorschau-Umgebung gelöscht, und die Adresse liefert keine App mehr aus
-```
-
-**AC-017 — Fehlerfälle: Höchstzahl erreicht, Projekt pausiert**
-
-```gherkin
-Angenommen  es sind schon so viele Vorschauen offen, wie der Tarif der Static Web App erlaubt
-            (Free: 3), oder das Vorschau-Projekt ist pausiert
-Wenn        eine weitere PR gebaut wird
-Dann        kommentiert der Vorschau-Job „Keine Vorschau: <Grund>“, bei einer Pause mit „im
-            Supabase-Dashboard fortsetzen“
-Und         die Vorschau ist kein Pflicht-Check, die PR bleibt zusammenführbar
+Angenommen  das Vorschau-Projekt ist pausiert
+Wenn        der Vorschau-Lauf für einen neuen Stand von „develop“ läuft
+Dann        ist er rot mit „Keine Vorschau: Vorschau-Projekt pausiert – im Supabase-Dashboard
+            fortsetzen“, und Enrico bekommt die GitHub-Benachrichtigung
+Und         die Vorschau zeigt weiter den vorigen Stand
+Und         die Vorschau ist kein Pflicht-Check, eine Release-PR bleibt zusammenführbar
 ```
 
 ### REQ-004 — Version, Veröffentlichung und Update-Hinweis
@@ -408,22 +533,23 @@ Dann        heißt sie „2026.12.4“ und hat den Tag „v2026.12.4“
 Und         die erste Veröffentlichung im Januar 2027 heißt „2027.1.1“
 ```
 
-**AC-019 — Änderungsliste**
+**AC-019 — Änderungsliste** (geändert am 21.11.2026: PRs kommen über `develop` und die Release-PR)
 
 ```gherkin
 Angenommen  seit „v2026.12.3“ kamen „feat: Reisetaschen packen (#41)“, „fix: Haken springt zurück
-            (#42)“ und „docs: Runbook ergänzt (#43)“ auf „main“
-Wenn        „2026.12.4“ veröffentlicht wird
+            (#42)“ und „docs: Runbook ergänzt (#43)“ nach „develop“
+Wenn        die Release-PR „chore: Veröffentlichung (#44)“ nach „main“ zusammengeführt und
+            „2026.12.4“ veröffentlicht wird
 Dann        steht in der GitHub-Veröffentlichung unter „Neu“ „Reisetaschen packen (#41)“ und unter
             „Behoben“ „Haken springt zurück (#42)“
-Und         die Doku-Änderung steht nicht darin
+Und         weder die Doku-Änderung noch die Release-PR (#44) steht darin
 ```
 
-**AC-020 — Nur Doku: keine Veröffentlichung**
+**AC-020 — Nur Doku: keine Veröffentlichung** (geändert am 21.11.2026: gemessen an der Release-PR)
 
 ```gherkin
-Angenommen  eine zusammengeführte PR ändert nur Dateien unter „docs/“, „.agents/“, „.claude/“ oder
-            Markdown-Dateien
+Angenommen  alle Änderungen einer Release-PR seit dem letzten Tag betreffen nur Dateien unter
+            „docs/“, „.agents/“, „.claude/“ oder Markdown-Dateien
 Wenn        sie auf „main“ ankommt
 Dann        laufen die Checks, aber es entsteht keine Veröffentlichung, und nichts wird ausgeliefert
 ```
@@ -491,18 +617,19 @@ Dann        bricht sie vor jeder Auslieferung ab mit „Mindestversion 2026.12.9
 
 ### REQ-005 — Veröffentlichung: parallel bauen, geordnet ausliefern
 
-> Nach dem Zusammenführen auf `main` baut die Pipeline alle eingeschalteten Systeme parallel und
-> liefert erst aus, wenn alle Builds grün sind: zuerst Supabase, danach Web und native Apps
-> parallel; ein Fehler hält alles Spätere an.
+> Nach dem Zusammenführen einer Release-PR oder eines Hotfix auf `main` baut die Pipeline alle
+> eingeschalteten Systeme parallel und liefert erst aus, wenn alle Builds grün sind: zuerst
+> Supabase, danach Web und native Apps parallel; ein Fehler hält alles Spätere an. (geändert am
+> 21.11.2026: Auslöser ist die Release-PR von `develop` oder ein Hotfix; der Ablauf bleibt gleich)
 
 **Offline:** betrifft keine App-Bedienung. Geräte ohne Netz arbeiten mit ihrer Version weiter
 (REQ-004).
 
-**AC-027 — Ablauf**
+**AC-027 — Ablauf** (geändert am 21.11.2026: Auslöser ist die Release-PR)
 
 ```gherkin
-Angenommen  eine PR mit Code-Änderungen und einer neuen Migration wird auf „main“ zusammengeführt,
-            und die Checks auf „main“ sind grün
+Angenommen  eine Release-PR von „develop“ mit Code-Änderungen und einer neuen Migration wird auf
+            „main“ zusammengeführt, und die Checks auf „main“ sind grün
 Wenn        die Veröffentlichung läuft
 Dann        starten „Web bauen“, „Android bauen“ und „Supabase prüfen“ gleichzeitig, „iOS bauen“ ist
             „übersprungen: iOS aus“
@@ -551,14 +678,30 @@ Wenn        Enrico die fehlgeschlagenen Jobs erneut startet
 Dann        wird das Web ausgeliefert, und erst dann entstehen Tag und GitHub-Veröffentlichung
 ```
 
-**AC-032 — Mehrere PRs kurz nacheinander**
+**AC-032 — Mehrere Zusammenführungen auf `main` kurz nacheinander** (geändert am 21.11.2026:
+Release-PR und Hotfix statt beliebiger PRs)
 
 ```gherkin
-Angenommen  drei PRs werden innerhalb weniger Minuten zusammengeführt
+Angenommen  die Release-PR mit „feat: Reisetaschen packen (#41)“ und kurz danach der Hotfix
+            „fix: Liste lädt nicht (#45)“ werden innerhalb weniger Minuten auf „main“
+            zusammengeführt
 Wenn        die Veröffentlichungen laufen
 Dann        läuft nie mehr als eine Auslieferung gleichzeitig
-Und         am Ende ist der Stand der letzten PR ausgeliefert, und die Änderungslisten der
-            Veröffentlichungen nennen zusammen alle drei PRs
+Und         am Ende ist der Stand von „main“ nach dem Hotfix ausgeliefert, und die Änderungslisten
+            der Veröffentlichungen nennen zusammen #41 und #45
+```
+
+**AC-072 — Hotfix wird veröffentlicht** (neu am 21.11.2026)
+
+```gherkin
+Angenommen  die letzte Veröffentlichung ist „2026.12.4“, auf „develop“ liegt unveröffentlicht
+            „feat: Reisetaschen packen (#41)“
+Wenn        der Hotfix „fix: Liste lädt nicht (#45)“ vom Zweig „hotfix/liste-laedt-nicht“ auf „main“
+            zusammengeführt wird
+Dann        läuft die Veröffentlichung wie in AC-027 und heißt „2026.12.5“
+Und         ihre Änderungsliste nennt unter „Behoben“ „Liste lädt nicht (#45)“ und nicht #41
+Und         Produktion enthält „Reisetaschen packen“ noch nicht
+Und         danach startet die Rückführung nach „develop“ (AC-067)
 ```
 
 **AC-033 — Frühere Web-Version erneut ausliefern**
@@ -890,13 +1033,14 @@ Dann        sucht sie nach „sb_secret_“, „service_role“, „FOUNDRY_API_
 Und         findet sie etwas, bricht die Veröffentlichung vor jeder Auslieferung ab
 ```
 
-**AC-062 — Abhängigkeiten und Actions**
+**AC-062 — Abhängigkeiten und Actions** (geändert am 21.11.2026: Dependabot-PRs nach `develop`)
 
 ```gherkin
 Angenommen  für eine Abhängigkeit im Lockfile wird eine Sicherheitslücke bekannt
 Wenn        GitHub sie erkennt
 Dann        erscheint ein Dependabot-Alarm, und Enrico bekommt eine Benachrichtigung
-Und         für GitHub Actions öffnet Dependabot einmal pro Woche PRs mit neuen Versionen
+Und         für GitHub Actions öffnet Dependabot einmal pro Woche PRs mit neuen Versionen nach
+            „develop“
 Und         in Workflows mit Zugang zu Secrets ist jede Action auf eine Commit-SHA festgelegt; der
             Check „Konventionen“ ist rot bei einer Action, die dort nur per Tag festgelegt ist
 ```
@@ -924,15 +1068,15 @@ Und         eine erfolgreiche Veröffentlichung erscheint als GitHub-Veröffentl
 Diese Spec ändert keine Sync-Regel aus `docs/architecture/sync.md`. Sie regelt, was eine
 Auslieferung für Geräte bedeutet.
 
-| Lage                                              | Verhalten                                                                                                                                   |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auslieferung, während ein Gerät offline ist       | das Gerät läuft mit seiner Version aus Service Worker und lokalem Speicher weiter; der Hinweis kommt erst mit Netz (AC-022, AC-023, AC-039) |
-| Zwei Geräte mit verschiedenen Versionen schreiben | der Server ist die Quelle der Wahrheit; expand → migrate → contract hält beide Versionen gültig; „letzte Änderung gewinnt je Feld“ bleibt   |
-| Laden-Warteschlange und neue Speicher-Version     | die Warteschlange bleibt erhalten und wird nachgereicht (AC-024)                                                                            |
-| Gerät unter der Mindestversion                    | Lesen und Abhaken lokal weiter; Nachreichen und Bearbeiten erst nach dem Update (AC-025)                                                    |
-| Migration läuft gerade                            | einzelne Schreibversuche können scheitern und zeigen „Hat nicht geklappt – bitte noch einmal versuchen“; Lesen ist nicht betroffen          |
-| Produktion pausiert (Free)                        | Lesen aus dem lokalen Speicher; Schreiben scheitert; Sicherung rot (AC-055)                                                                 |
-| Vorschau                                          | Daten sind wegwerfbar und beim nächsten Vorschau-Lauf frisch; mehrere offene PRs teilen sich das Vorschau-Projekt, der letzte Lauf gewinnt  |
+| Lage                                              | Verhalten                                                                                                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auslieferung, während ein Gerät offline ist       | das Gerät läuft mit seiner Version aus Service Worker und lokalem Speicher weiter; der Hinweis kommt erst mit Netz (AC-022, AC-023, AC-039)               |
+| Zwei Geräte mit verschiedenen Versionen schreiben | der Server ist die Quelle der Wahrheit; expand → migrate → contract hält beide Versionen gültig; „letzte Änderung gewinnt je Feld“ bleibt                 |
+| Laden-Warteschlange und neue Speicher-Version     | die Warteschlange bleibt erhalten und wird nachgereicht (AC-024)                                                                                          |
+| Gerät unter der Mindestversion                    | Lesen und Abhaken lokal weiter; Nachreichen und Bearbeiten erst nach dem Update (AC-025)                                                                  |
+| Migration läuft gerade                            | einzelne Schreibversuche können scheitern und zeigen „Hat nicht geklappt – bitte noch einmal versuchen“; Lesen ist nicht betroffen                        |
+| Produktion pausiert (Free)                        | Lesen aus dem lokalen Speicher; Schreiben scheitert; Sicherung rot (AC-055)                                                                               |
+| Vorschau                                          | Daten sind wegwerfbar und beim nächsten Vorschau-Lauf frisch; es gibt nur die eine Vorschau mit dem neuesten Stand von `develop` (geändert am 21.11.2026) |
 
 ## Plattformen
 
@@ -963,7 +1107,7 @@ Auslieferung für Geräte bedeutet.
 - **Logs:** nie Tokens, Adressen oder ganze Zeilen (Regel `10-security.md`).
 - **Dritte:** Microsoft Azure (Web-Hosting, Sicherungen), GitHub (Pipeline, Secrets), Expo/EAS
   (Builds und Updates, nur App-Code, keine Nutzerdaten), Supabase und Google wie bisher.
-- **Gelöscht:** Vorschau-Daten bei jedem Vorschau-Lauf und mit der Vorschau-Umgebung; Sicherungen
+- **Gelöscht:** Vorschau-Daten bei jedem Vorschau-Lauf; Sicherungen
   nach der Aufbewahrungsregel; Functions, die das Repo nicht mehr enthält.
 
 ## Runbook für Enrico
@@ -1050,8 +1194,8 @@ Im Projekt mit dem Client „Housekeeping Web“:
 3. Secret `PREVIEW_INVITE_EMAILS` in `preview`: Enricos und Nadjas Google-Adressen, durch Kommas
    getrennt.
 4. Den Callback des Vorschau-Projekts in Google eintragen (Abschnitt 1, Schritt 1).
-5. Ist das Projekt pausiert (nach 7 Tagen ohne Vorschau-Lauf), im Dashboard „Restore project“
-   wählen.
+5. Ist das Projekt pausiert (nach 7 Tagen ohne Vorschau-Lauf, also ohne Zusammenführen auf
+   `develop`), im Dashboard „Restore project“ wählen.
 
 ### 4. Azure
 
@@ -1066,11 +1210,40 @@ GitHub und das Budget, alles in `rg-housekeeping-app-weu-prd`. Von Hand:
 
 ### 5. GitHub
 
+(geändert am 21.11.2026: `develop`, Schutz beider Zweige, Merge-Arten)
+
 1. Settings → Notifications → Actions: E-Mail bei fehlgeschlagenen Workflows an.
-2. Nach der Umsetzung prüfen: Schutz von `main` (auch für Administratoren), nur „Squash merging“ mit
-   „Default to pull request title and description“, „Automatically delete head branches“,
-   Dependabot-Alarme an, Umgebungen `preview`, `production` (nur `main`), `backup` und
-   `restore-test`, Variablen `ANDROID_ENABLED=true` und `IOS_ENABLED=false`.
+2. Einmalig: den Zweig `develop` vom aktuellen `main` anlegen und unter Settings → General →
+   Default branch als Standard-Zweig setzen (Offene Frage 21). Neue PRs zielen dann von selbst auf
+   `develop`.
+3. Nach der Umsetzung prüfen:
+   - Schutz von `develop` und `main` (Rulesets, auch für Administratoren, ohne Umgehung): nur per
+     PR, Pflicht-Checks grün, kein Force-Push, kein Löschen.
+   - Erlaubte Merge-Arten: auf `develop` „Squash“ für Feature-PRs und „Merge commit“ nur für die
+     Rückführung, die die Pipeline selbst zusammenführt; auf `main` nur „Merge commit“.
+     Squash-Commits übernehmen „Default to pull request title and description“.
+   - „Automatically delete head branches“ an; `develop` und `main` bleiben durch den Schutz
+     erhalten.
+   - Dependabot-Alarme an, Dependabot-PRs zielen auf `develop`.
+   - Umgebungen `preview` (nur `develop`), `production` (nur `main`), `backup` und `restore-test`
+     (nur `main`), Variablen `ANDROID_ENABLED=true` und `IOS_ENABLED=false`.
+
+### 5a. Alltag: Feature, Freigabe, Hotfix
+
+(neu am 21.11.2026)
+
+1. **Feature oder Fix:** Zweig `feat/NNNN-slug` (bzw. `fix/…`) von `develop`, PR nach `develop`,
+   nach grünen Checks per Squash zusammenführen. Kurz danach zeigt `https://<Vorschau-Adresse>`
+   den neuen Stand; dort auf dem Handy ausprobieren.
+2. **Freigabe:** Ist `develop` gut, eine PR von `develop` nach `main` öffnen, Titel
+   „chore: Veröffentlichung“, nach grünen Checks mit „Create a merge commit“ zusammenführen. Die
+   Veröffentlichung läuft ohne weiteren Handgriff.
+3. **Hotfix:** Zweig `hotfix/<slug>` von `main`, PR nach `main` mit Titel `fix: …`, nach grünen
+   Checks mit „Create a merge commit“ zusammenführen. Die Pipeline veröffentlicht und führt `main`
+   danach selbst nach `develop` zurück. Meldet GitHub einen Konflikt in der PR
+   „chore: main nach develop zurückführen“: den Zweig `chore/rueckfuehrung-v<Version>` auschecken,
+   `develop` hineinmergen, den Konflikt lösen, pushen und die PR nach grünen Checks mit
+   „Create a merge commit“ zusammenführen.
 
 ### 6. Android
 
@@ -1102,44 +1275,49 @@ dann in Produktion. Die genauen Befehle stehen in der Betriebsdoku aus dem Plan.
 - **Später erneut prüfen:** SWA in West Europe anlegen; wenn möglich, die Produktion dorthin umziehen
   (neue Ressource, ausrollen, Google-Quelle und Supabase-Site-/Redirect-URLs anpassen, alte löschen).
 - Repo ist öffentlich (Branch-Schutz und Umgebungen ohne GitHub Pro).
+- Zweig `develop` gibt es noch nicht; er entsteht mit Runbook Abschnitt 5, Schritt 2 (Stand 21.11.2026).
 
 ## Offene Fragen
 
 Entschieden nach Enricos Regel „deine Empfehlung“ (20.11.2026); `OFFEN` sind nur Fragen, die Geld
-kosten, dauerhaft gelten oder von Fakten abhängen, die erst die Umsetzung prüfen kann.
+kosten, dauerhaft gelten oder von Fakten abhängen, die erst die Umsetzung prüfen kann. Frage 19 hat
+Enrico am 21.11.2026 selbst entschieden; die Fragen 20 und 21 folgen daraus nach derselben Regel.
 
-| #   | Frage                                         | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Empfehlung                                                                                                                                           | Status           |
-| --- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1   | Gegen welches Backend laufen Vorschauen?      | A: eigenes Supabase-Projekt „Vorschau“ (Free, eigene Organisation) und eigene Static Web App „Vorschau“, Daten je Lauf frisch — Pro: echtes Ausprobieren auf dem Handy, 0 €, Migrationen laufen vor Produktion einmal durch; Contra: zweites Projekt einrichten, pausiert ohne PRs, offene PRs teilen es · B: ohne Backend — Pro: nichts einzurichten; Contra: die App zeigt nur die Anmeldeseite, also wertlos · C: Produktion — Contra: echte Daten, ungetestete Migrationen, Platzhalter-Redirects in Produktion; ausgeschlossen · D: Supabase Branching — Contra: braucht Pro, und jede Branch hat eine neue Adresse, die Google nicht als Weiterleitung kennt; Testkonten sind außerhalb lokal verboten | A, weil nur so eine Vorschau mit Anmeldung möglich ist, ohne Produktion zu gefährden oder Geld auszugeben                                            | ENTSCHIEDEN: A   |
-| 2   | Versionsschema                                | A: Kalender-Version `JJJJ.M.N` — Pro: jede Zusammenführung ist eine Veröffentlichung ohne Streit über die Art, Datum ablesbar, für Stores gültig; Contra: sagt nichts über Verträglichkeit · B: SemVer aus Commit-Typen — Pro: verbreitet; Contra: Major/Minor bedeuten bei einer privaten App mit ständiger Auslieferung nichts, und der Commit-Typ entscheidet, ob ausgeliefert wird                                                                                                                                                                                                                                                                                                                       | A, weil Verträglichkeit ohnehin die Mindestversion regelt                                                                                            | ENTSCHIEDEN: A   |
-| 3   | Native Google-Anmeldung hier oder eigene Spec | A: eigene Spec „Native Apps: Anmeldung und Speicher“ — Pro: hält 0014 prüfbar; native Anmeldung, Secure Store und dauerhafter Speicher sind kritischer Pfad (Auth, Sync); Contra: die Android-App ist bis dahin nicht nutzbar · B: in 0014 — Contra: der native Speicher fehlt auch (heute nur im Arbeitsspeicher), 0014 würde doppelt so groß                                                                                                                                                                                                                                                                                                                                                               | A, weil ohne nativen Speicher auch eine Anmeldung keine offline lesbare App ergibt                                                                   | ENTSCHIEDEN: A   |
-| 4   | App-ID für Android und iOS                    | A: `de.enricogoerlitz.housekeeping` — Pro: eindeutig, keine Domain nötig · B: rückwärts geschriebene eigene Domain — Pro: neutral; Contra: Domain muss es geben                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | A; die ID bleibt nach dem ersten Play-Store-Eintrag für immer                                                                                        | OFFEN, Annahme A |
-| 5   | GitHub-Tarif                                  | A: Repo privat + GitHub Pro (4 $ im Monat) — Pro: Schutz von `main` und Umgebungs-Secrets nur für `main`; Contra: kostet, kein Freigabe-Gate mit Reviewer · B: Repo öffentlich — Pro: alles kostenlos, auch Secret Scanning und unbegrenzte Actions-Minuten; Contra: Code und Doku mit Namen und Haushaltsdetails öffentlich · C: privat ohne Pro — Contra: kein Schutz von `main`, keine Umgebungen; jeder PR-Zweig könnte Produktions-Secrets lesen; ausgeschlossen                                                                                                                                                                                                                                        | A, falls das Repo privat ist (laut GitHub-Doku, vor dem Kauf prüfen); ist es schon öffentlich, entfällt die Frage                                    | OFFEN, Annahme A |
-| 6   | Tarif der Static Web App                      | A: Free — Pro: 0 €, 3 Vorschauen, eigene Domain möglich · B: Standard (etwa 9 $ im Monat) — Pro: SLA, 10 Vorschauen, Passwortschutz für Vorschauen; Contra: kostet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | A, weil nichts davon bei zwei Personen nötig ist                                                                                                     | ENTSCHIEDEN: A   |
-| 7   | Zugang der Pipeline zur Static Web App        | A: Azure-Anmeldung per OIDC, Deployment-Token zur Laufzeit holen und maskieren · B: Deployment-Token als GitHub-Secret                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | A, weil kein dauerhafter Schlüssel in GitHub liegt                                                                                                   | ENTSCHIEDEN: A   |
-| 8   | Freigabe-Gate vor Produktion                  | A: keins, das Zusammenführen ist die Freigabe; erneute Auslieferung von Hand möglich · B: Umgebung `production` mit Enrico als Reviewer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil Enrico Auslieferung beim Zusammenführen will; B geht bei privatem Repo mit Pro ohnehin nicht                                                 | ENTSCHIEDEN: A   |
-| 9   | Wo liegt die Mindestversion?                  | A: in Supabase, von der Rückbau-Migration gesetzt und auch ohne Anmeldung lesbar — Pro: kommt atomar mit der Änderung, die sie nötig macht; Web und native Apps lesen dieselbe Quelle · B: in `/version.json` der Static Web App — Pro: keine Datenbank-Änderung; Contra: native Apps hängen am Web, und das Web wird erst nach der Datenbank ausgeliefert                                                                                                                                                                                                                                                                                                                                                   | A; berührt Datenmodell und Sync, deshalb in der neuen ADR festhalten                                                                                 | OFFEN, Annahme A |
-| 10  | KI-Schlüssel in Produktion                    | A: keine, solange der KI-Schalter aus ist; KI-Functions antworten ohne Schlüssel mit Fehler; eigene Speech-Ressource mit Budget kommt mit der Spec, die die KI einschaltet · B: jetzt mit eigener Speech-Ressource im kostenlosen Tarif                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil die Oberfläche die KI nicht anbietet und ohne Schlüssel keine Kosten entstehen können                                                        | ENTSCHIEDEN: A   |
-| 11  | Tagesgrenzen für Einladungen und Haushalte    | A: zurückstellen · B: jetzt Grenzen in der Datenbank                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A, weil Einladungen nichts versenden, nur angemeldete Mitglieder einladen und es zwei Personen gibt; neu bewerten, wenn weitere Haushalte dazukommen | ENTSCHIEDEN: A   |
-| 12  | Höhe des Azure-Budgets                        | A: 10 € im Monat, E-Mail bei 80 % und 100 % · B: anderer Betrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | A, weil die erwarteten Kosten unter 1 € liegen und 10 € jeden Fehler früh zeigen                                                                     | OFFEN, Annahme A |
-| 13  | Eigene Domain                                 | A: Standard-Adresse der Static Web App · B: eigene Domain vor der ersten Installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | A, solange Enrico keine Domain hat; hat er eine, B, denn ein späterer Wechsel heißt neu anmelden und die PWA neu hinzufügen                          | OFFEN, Annahme A |
-| 14  | Supabase Free oder Pro                        | A: Free; Pro, wenn das Projekt trotz Nutzung pausiert oder Benachrichtigungen zuverlässig laufen müssen · B: sofort Pro (25 $ im Monat)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, wie ADR-0007; die eigenen Sicherungen ersetzen die fehlenden Backups                                                                              | ENTSCHIEDEN: A   |
-| 15  | Datenbank-Zugang der Sicherung                | A: eigene Rolle, die nur lesen darf (mit dem Recht, Row Level Security beim Lesen zu umgehen) · B: Benutzer `postgres` mit Passwort, nur in der Umgebung `backup`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | A; erlaubt Supabase eine solche Rolle nicht, dann B, und die Umsetzung meldet das                                                                    | OFFEN, Annahme A |
-| 16  | Wo laufen Android-Builds?                     | A: EAS-Cloud (Free, 30 Builds im Monat, Warteschlange) mit Link der internen Verteilung · B: `eas build --local` im GitHub-Runner — Pro: keine Warteschlange; Contra: Verteilung nur als Datei an der GitHub-Veröffentlichung, Actions-Minuten                                                                                                                                                                                                                                                                                                                                                                                                                                                               | A, weil native Builds nur bei geändertem Fingerabdruck nötig sind; dauert die Warteschlange zu lange, B                                              | ENTSCHIEDEN: A   |
-| 17  | Aufbewahrung der Sicherungen                  | A: 30 Tage täglich, 12 Monate die vom Monatsersten · B: kürzer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | A; Abwägung: Gelöschtes bleibt bis zu 12 Monate in Sicherungen                                                                                       | ENTSCHIEDEN: A   |
-| 18  | Zugang der Sicherung zu den Fotos             | A: S3-Schlüssel von Supabase Storage · B: `service_role`-Schlüssel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | A, weil er nur Storage öffnet und nicht die ganze API                                                                                                | ENTSCHIEDEN: A   |
+| #   | Frage                                         | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Empfehlung                                                                                                                                           | Status                      |
+| --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 1   | Gegen welches Backend laufen Vorschauen?      | A: eigenes Supabase-Projekt „Vorschau“ (Free, eigene Organisation) und eigene Static Web App „Vorschau“, Daten je Lauf frisch — Pro: echtes Ausprobieren auf dem Handy, 0 €, Migrationen laufen vor Produktion einmal durch; Contra: zweites Projekt einrichten, pausiert ohne PRs, offene PRs teilen es · B: ohne Backend — Pro: nichts einzurichten; Contra: die App zeigt nur die Anmeldeseite, also wertlos · C: Produktion — Contra: echte Daten, ungetestete Migrationen, Platzhalter-Redirects in Produktion; ausgeschlossen · D: Supabase Branching — Contra: braucht Pro, und jede Branch hat eine neue Adresse, die Google nicht als Weiterleitung kennt; Testkonten sind außerhalb lokal verboten                                                                                                                            | A, weil nur so eine Vorschau mit Anmeldung möglich ist, ohne Produktion zu gefährden oder Geld auszugeben                                            | ENTSCHIEDEN: A              |
+| 2   | Versionsschema                                | A: Kalender-Version `JJJJ.M.N` — Pro: jede Zusammenführung ist eine Veröffentlichung ohne Streit über die Art, Datum ablesbar, für Stores gültig; Contra: sagt nichts über Verträglichkeit · B: SemVer aus Commit-Typen — Pro: verbreitet; Contra: Major/Minor bedeuten bei einer privaten App mit ständiger Auslieferung nichts, und der Commit-Typ entscheidet, ob ausgeliefert wird                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil Verträglichkeit ohnehin die Mindestversion regelt                                                                                            | ENTSCHIEDEN: A              |
+| 3   | Native Google-Anmeldung hier oder eigene Spec | A: eigene Spec „Native Apps: Anmeldung und Speicher“ — Pro: hält 0014 prüfbar; native Anmeldung, Secure Store und dauerhafter Speicher sind kritischer Pfad (Auth, Sync); Contra: die Android-App ist bis dahin nicht nutzbar · B: in 0014 — Contra: der native Speicher fehlt auch (heute nur im Arbeitsspeicher), 0014 würde doppelt so groß                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A, weil ohne nativen Speicher auch eine Anmeldung keine offline lesbare App ergibt                                                                   | ENTSCHIEDEN: A              |
+| 4   | App-ID für Android und iOS                    | A: `de.enricogoerlitz.housekeeping` — Pro: eindeutig, keine Domain nötig · B: rückwärts geschriebene eigene Domain — Pro: neutral; Contra: Domain muss es geben                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A; die ID bleibt nach dem ersten Play-Store-Eintrag für immer                                                                                        | OFFEN, Annahme A            |
+| 5   | GitHub-Tarif                                  | A: Repo privat + GitHub Pro (4 $ im Monat) — Pro: Schutz von `main` und Umgebungs-Secrets nur für `main`; Contra: kostet, kein Freigabe-Gate mit Reviewer · B: Repo öffentlich — Pro: alles kostenlos, auch Secret Scanning und unbegrenzte Actions-Minuten; Contra: Code und Doku mit Namen und Haushaltsdetails öffentlich · C: privat ohne Pro — Contra: kein Schutz von `main`, keine Umgebungen; jeder PR-Zweig könnte Produktions-Secrets lesen; ausgeschlossen                                                                                                                                                                                                                                                                                                                                                                   | A, falls das Repo privat ist (laut GitHub-Doku, vor dem Kauf prüfen); ist es schon öffentlich, entfällt die Frage                                    | OFFEN, Annahme A            |
+| 6   | Tarif der Static Web App                      | A: Free — Pro: 0 €, 3 Vorschauen, eigene Domain möglich · B: Standard (etwa 9 $ im Monat) — Pro: SLA, 10 Vorschauen, Passwortschutz für Vorschauen; Contra: kostet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil nichts davon bei zwei Personen nötig ist                                                                                                     | ENTSCHIEDEN: A              |
+| 7   | Zugang der Pipeline zur Static Web App        | A: Azure-Anmeldung per OIDC, Deployment-Token zur Laufzeit holen und maskieren · B: Deployment-Token als GitHub-Secret                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil kein dauerhafter Schlüssel in GitHub liegt                                                                                                   | ENTSCHIEDEN: A              |
+| 8   | Freigabe-Gate vor Produktion                  | A: keins, das Zusammenführen ist die Freigabe; erneute Auslieferung von Hand möglich · B: Umgebung `production` mit Enrico als Reviewer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, weil Enrico Auslieferung beim Zusammenführen will; B geht bei privatem Repo mit Pro ohnehin nicht                                                 | ENTSCHIEDEN: A              |
+| 9   | Wo liegt die Mindestversion?                  | A: in Supabase, von der Rückbau-Migration gesetzt und auch ohne Anmeldung lesbar — Pro: kommt atomar mit der Änderung, die sie nötig macht; Web und native Apps lesen dieselbe Quelle · B: in `/version.json` der Static Web App — Pro: keine Datenbank-Änderung; Contra: native Apps hängen am Web, und das Web wird erst nach der Datenbank ausgeliefert                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | A; berührt Datenmodell und Sync, deshalb in der neuen ADR festhalten                                                                                 | OFFEN, Annahme A            |
+| 10  | KI-Schlüssel in Produktion                    | A: keine, solange der KI-Schalter aus ist; KI-Functions antworten ohne Schlüssel mit Fehler; eigene Speech-Ressource mit Budget kommt mit der Spec, die die KI einschaltet · B: jetzt mit eigener Speech-Ressource im kostenlosen Tarif                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, weil die Oberfläche die KI nicht anbietet und ohne Schlüssel keine Kosten entstehen können                                                        | ENTSCHIEDEN: A              |
+| 11  | Tagesgrenzen für Einladungen und Haushalte    | A: zurückstellen · B: jetzt Grenzen in der Datenbank                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | A, weil Einladungen nichts versenden, nur angemeldete Mitglieder einladen und es zwei Personen gibt; neu bewerten, wenn weitere Haushalte dazukommen | ENTSCHIEDEN: A              |
+| 12  | Höhe des Azure-Budgets                        | A: 10 € im Monat, E-Mail bei 80 % und 100 % · B: anderer Betrag                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A, weil die erwarteten Kosten unter 1 € liegen und 10 € jeden Fehler früh zeigen                                                                     | OFFEN, Annahme A            |
+| 13  | Eigene Domain                                 | A: Standard-Adresse der Static Web App · B: eigene Domain vor der ersten Installation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | A, solange Enrico keine Domain hat; hat er eine, B, denn ein späterer Wechsel heißt neu anmelden und die PWA neu hinzufügen                          | OFFEN, Annahme A            |
+| 14  | Supabase Free oder Pro                        | A: Free; Pro, wenn das Projekt trotz Nutzung pausiert oder Benachrichtigungen zuverlässig laufen müssen · B: sofort Pro (25 $ im Monat)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | A, wie ADR-0007; die eigenen Sicherungen ersetzen die fehlenden Backups                                                                              | ENTSCHIEDEN: A              |
+| 15  | Datenbank-Zugang der Sicherung                | A: eigene Rolle, die nur lesen darf (mit dem Recht, Row Level Security beim Lesen zu umgehen) · B: Benutzer `postgres` mit Passwort, nur in der Umgebung `backup`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | A; erlaubt Supabase eine solche Rolle nicht, dann B, und die Umsetzung meldet das                                                                    | OFFEN, Annahme A            |
+| 16  | Wo laufen Android-Builds?                     | A: EAS-Cloud (Free, 30 Builds im Monat, Warteschlange) mit Link der internen Verteilung · B: `eas build --local` im GitHub-Runner — Pro: keine Warteschlange; Contra: Verteilung nur als Datei an der GitHub-Veröffentlichung, Actions-Minuten                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A, weil native Builds nur bei geändertem Fingerabdruck nötig sind; dauert die Warteschlange zu lange, B                                              | ENTSCHIEDEN: A              |
+| 17  | Aufbewahrung der Sicherungen                  | A: 30 Tage täglich, 12 Monate die vom Monatsersten · B: kürzer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | A; Abwägung: Gelöschtes bleibt bis zu 12 Monate in Sicherungen                                                                                       | ENTSCHIEDEN: A              |
+| 18  | Zugang der Sicherung zu den Fotos             | A: S3-Schlüssel von Supabase Storage · B: `service_role`-Schlüssel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil er nur Storage öffnet und nicht die ganze API                                                                                                | ENTSCHIEDEN: A              |
+| 19  | Branching-Modell (21.11.2026)                 | A: Trunk-based, Feature-PRs per Squash direkt auf `main`, jedes Zusammenführen ist eine Veröffentlichung, Vorschau je PR — Pro: kurzer Weg, wenig Zweige; Contra: keine Stelle, an der mehrere Änderungen zusammen auf dem Handy geprüft werden, bevor sie live gehen; jede PR braucht Zugang zu `preview` · B: Sammelzweig `develop`: Feature-PRs per Squash nach `develop`, `develop` liefert an die Vorschau aus, Release-PR `develop` → `main` per Merge-Commit löst die Veröffentlichung aus, Hotfix von `main` nach `main` mit Rückführung nach `develop`; `develop` und `main` geschützt — Pro: Enrico bestimmt den Zeitpunkt der Veröffentlichung und prüft vorher den Gesamtstand; PR-Zweige brauchen keinen Zugang zu `preview`; keine Höchstzahl offener Vorschauen; Contra: ein Zweig mehr, Rückführung nach Hotfixes nötig | B                                                                                                                                                    | ENTSCHIEDEN (Enrico): B     |
+| 20  | Rückführung nach einem Hotfix                 | A: die Pipeline legt nach der Hotfix-Veröffentlichung einen Zweig vom Stand von `main` an, öffnet die PR nach `develop` und führt sie bei grünen Checks per Merge-Commit selbst zusammen; bei Konflikt bleibt sie offen mit Benachrichtigung — Pro: wird nie vergessen, Konflikte fallen sofort auf; Contra: braucht ein Token, das PRs anlegen und Checks auslösen darf (ein mit `GITHUB_TOKEN` angelegter PR startet keine Workflows; der Plan klärt das) · B: dokumentierter Handschritt im Runbook — Pro: nichts zu bauen; Contra: wird vergessen, dann fehlt der Hotfix auf `develop`, und die nächste Release-PR bringt Konflikte                                                                                                                                                                                                 | A, weil eine vergessene Rückführung erst bei der nächsten Freigabe auffällt                                                                          | ENTSCHIEDEN: A (Empfehlung) |
+| 21  | Standard-Zweig des Repos                      | A: `develop` — Pro: neue PRs und Dependabot zielen von selbst auf `develop`; Contra: die Startseite des Repos zeigt den unveröffentlichten Stand · B: `main` — Pro: Startseite zeigt Produktion; Contra: jede PR muss von Hand auf `develop` umgestellt werden, Fehlgriffe fängt erst AC-065                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | A, weil der häufigste Weg ohne Umstellen richtig sein soll                                                                                           | ENTSCHIEDEN: A (Empfehlung) |
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-005 | —              | —    |
-| REQ-002 | AC-006 bis AC-011 | —              | —    |
-| REQ-003 | AC-012 bis AC-017 | —              | —    |
-| REQ-004 | AC-018 bis AC-026 | —              | —    |
-| REQ-005 | AC-027 bis AC-033 | —              | —    |
-| REQ-006 | AC-034 bis AC-039 | —              | —    |
-| REQ-007 | AC-040 bis AC-046 | —              | —    |
-| REQ-008 | AC-047 bis AC-051 | —              | —    |
-| REQ-009 | AC-052 bis AC-057 | —              | —    |
-| REQ-010 | AC-058 bis AC-064 | —              | —    |
+| REQ     | AC                                                                      | Task (plan.md) | Test |
+| ------- | ----------------------------------------------------------------------- | -------------- | ---- |
+| REQ-001 | AC-001 bis AC-005, AC-065 bis AC-068                                    | —              | —    |
+| REQ-002 | AC-006 bis AC-011                                                       | —              | —    |
+| REQ-003 | AC-013 bis AC-015, AC-017, AC-069 bis AC-071 (AC-012, AC-016 verworfen) | —              | —    |
+| REQ-004 | AC-018 bis AC-026                                                       | —              | —    |
+| REQ-005 | AC-027 bis AC-033, AC-072                                               | —              | —    |
+| REQ-006 | AC-034 bis AC-039                                                       | —              | —    |
+| REQ-007 | AC-040 bis AC-046                                                       | —              | —    |
+| REQ-008 | AC-047 bis AC-051                                                       | —              | —    |
+| REQ-009 | AC-052 bis AC-057                                                       | —              | —    |
+| REQ-010 | AC-058 bis AC-064                                                       | —              | —    |
