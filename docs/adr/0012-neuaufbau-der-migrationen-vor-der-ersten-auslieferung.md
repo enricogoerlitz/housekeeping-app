@@ -82,3 +82,11 @@ Nachgehalten wird das in `docs/specs/0006-eine-einkaufsliste/plan.md`.
 Gar nicht. Die Ausnahme ist mit diesem einen Neuaufbau verbraucht. Ab der ersten Auslieferung
 (dem ersten `supabase db push` in das Produktionsprojekt) gilt wieder: eine committete Migration
 wird nie geändert, und Änderungen laufen über expand → migrate → contract.
+
+## Nachtrag (21.11.2026)
+
+Bis zur ersten Auslieferung bleibt die Grundlage die einzige Form der Migrationen. Weitere
+Schema-Änderungen vor dem Release (z. B. Spec 0007, 0011) ändern die Dateien der Grundlage direkt,
+statt neue Flicken-Migrationen anzulegen. Damit gilt auch für sie: kein Code für die Übernahme
+alter Daten. Ab dem ersten `supabase db push` in das Produktionsprojekt gilt die Regel „nie
+ändern“ unverändert.
