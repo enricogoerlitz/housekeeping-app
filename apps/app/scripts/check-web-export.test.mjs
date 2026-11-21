@@ -433,7 +433,8 @@ const jwt = (payload) =>
 
 test('AC-061: finds secret keys, service_role JWTs and the names of server secrets', () => {
   const problems = scanFiles([
-    file('a.js', 'const k="sb_secret_${"Ab1".repeat(12)}";'),
+    // Built at runtime so this file itself carries no secret-shaped string.
+    file('a.js', `const k="${['sb', 'secret', 'Ab1'.repeat(12)].join('_')}";`),
     file('b.js', `const t="${jwt({ iss: 'supabase', role: 'service_role' })}";`),
     file('c.js', 'process.env.FOUNDRY_API_KEY'),
     file('d.js', 'GOOGLE_CLIENT_SECRET'),
