@@ -177,6 +177,39 @@ export function remindLabel(minutes: RemindMinutes): string {
   return minutes < 60 ? `${minutes} Min vorher` : `${minutes / 60} h vorher`;
 }
 
+/**
+ * What may ask the browser for its permission (AC-007, Decision 26): only an explicit gesture.
+ * - `time`: a time saved with a tap ("Speichern", "Fertig") or Enter, when it is set and differs
+ *   from `before` (the time last confirmed that way); leaving the field (blur) saves but never
+ *   asks; removing a time never asks.
+ * - `switch`: switching a kind on.
+ * - `kindTime`: saving the time of a kind that is on.
+ */
+export type PushPermissionTrigger =
+  | {
+      kind: 'time';
+      gesture: 'tap' | 'enter' | 'blur';
+      before: TimeOfDay | undefined;
+      after: TimeOfDay | undefined;
+    }
+  | { kind: 'switch'; on: boolean }
+  | { kind: 'kindTime'; kindEnabled: boolean };
+
+export function asksForPushPermission(trigger: PushPermissionTrigger): boolean {
+  switch (trigger.kind) {
+    case 'time':
+      return (
+        trigger.gesture !== 'blur' &&
+        trigger.after !== undefined &&
+        trigger.after !== trigger.before
+      );
+    case 'switch':
+      return trigger.on;
+    case 'kindTime':
+      return trigger.kindEnabled;
+  }
+}
+
 // ---------- This device ----------
 
 /** What the browser offers for Web Push, read by the app (AC-006). */
@@ -187,6 +220,8 @@ export interface PushEnvironment {
   dev: boolean;
   /** iPhone or iPad, in any browser. */
   ios: boolean;
+  /** An iPad (also one that reports itself as a Mac); its hint names the iPad. */
+  ipad: boolean;
   /** Opened as an installed app (display-mode standalone). */
   standalone: boolean;
   serviceWorker: boolean;
@@ -194,12 +229,18 @@ export interface PushEnvironment {
   notification: boolean;
 }
 
-export type PushSupport = 'supported' | 'ios-needs-home-screen' | 'unsupported' | 'dev-no-worker';
+export type PushSupport =
+  | 'supported'
+  | 'ios-needs-home-screen'
+  | 'ipad-needs-home-screen'
+  | 'unsupported'
+  | 'dev-no-worker';
 
 export function pushSupport(env: PushEnvironment): PushSupport {
   if (!env.web) return 'unsupported';
   // Safari in a tab has no PushManager at all; the home-screen app has (from iOS 16.4).
-  if (env.ios && !env.standalone) return 'ios-needs-home-screen';
+  if (env.ios && !env.standalone)
+    return env.ipad ? 'ipad-needs-home-screen' : 'ios-needs-home-screen';
   if (env.dev) return 'dev-no-worker';
   return env.serviceWorker && env.pushManager && env.notification ? 'supported' : 'unsupported';
 }
@@ -207,6 +248,7 @@ export function pushSupport(env: PushEnvironment): PushSupport {
 const SUPPORT_HINTS: Record<PushSupport, string | undefined> = {
   supported: undefined,
   'ios-needs-home-screen': 'Auf dem iPhone erst die App zum Home-Bildschirm hinzufügen',
+  'ipad-needs-home-screen': 'Auf dem iPad erst die App zum Home-Bildschirm hinzufügen',
   unsupported: 'Dieser Browser kann keine Benachrichtigungen empfangen',
   'dev-no-worker': 'Im Entwicklungsserver gibt es keine Benachrichtigungen',
 };

@@ -524,10 +524,15 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   sucht die fälligen Nachrichten in der Ortszeit des Haushalts
   (`private.notification_candidates(p_now)`), schreibt sie je aktivem Gerät mit eindeutigem
   Schlüssel ins Protokoll (`on conflict do nothing`) und gibt nur die neu geschriebenen in
-  Bündeln von höchstens 50 per `net.http_post` an `push-send`. Eine Transaktions-Sperre schließt
-  überlappende Takte aus.
-- **Fenster und Schlüssel:** gesendet wird, was seit höchstens 30 Minuten fällig ist; was später
-  käme, entfällt. Schlüssel: `daily:<haushalt>:<person>:<tag>`, `eve:<haushalt>:<person>:<tag>`,
+  Bündeln von höchstens 50 Nachrichten und 100 KB per `net.http_post` an `push-send`. Eine
+  Transaktions-Sperre schließt überlappende Takte aus.
+- **Übergabe signiert (Nachtrag ADR-0014):** Das Geheimnis verlässt die Datenbank nie. Jede
+  Anfrage trägt `x-push-timestamp` (Unix-Sekunden) und `x-push-signature` (HMAC-SHA256 über
+  `<timestamp>.<body>` mit `push_send_secret`); `push-send` prüft zeitkonstant und lehnt
+  Zeitstempel ab, die älter als 5 Minuten oder mehr als 1 Minute voraus sind. Grund: die
+  Warteschlange von `pg_net` ist für alle Datenbank-Rollen lesbar, bis die Anfrage raus ist.
+- **Fenster und Schlüssel:** gesendet wird, was seit höchstens 30 Minuten fällig ist (genau 30
+  Minuten zu spät kommt noch); was später käme, entfällt. Schlüssel: `daily:<haushalt>:<person>:<tag>`, `eve:<haushalt>:<person>:<tag>`,
   `chore:<aufgabe>:<tag>`, `reservation:<eintrag>:<tag>:<HH:MM>`, `test:<uuid>`. Die Uhrzeit der
   Einstellung steht nicht im Schlüssel (neue Uhrzeit, kein zweiter Überblick), die der
   Reservierung schon (verlegt → neue Erinnerung). Höchstens einmal: ein Fehler wird vermerkt,
@@ -538,8 +543,9 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   `gone`, das Abo gilt als „nicht erreichbar“ und bekommt nichts mehr; sonst `failed`. Antwortet
   `push-send` selbst mit einem Fehler oder gar nicht binnen einer Stunde, sind alle Nachrichten
   des Bündels `failed`.
-- **Grenzen:** höchstens 10 Geräte je Person (`too_many_devices`), 3 Proben in 10 Minuten
-  (`rate_limited`), Push-Adresse nur `https://` zu einem bekannten Push-Dienst ohne Port und
+- **Grenzen:** höchstens 10 Geräte je Person (`too_many_devices`), 3 Proben in 10 Minuten je
+  Person (`rate_limited`; die Protokoll-Zeilen bleiben ohne Gerät stehen, wenn es entfernt wird,
+  sodass Abmelden und neu Anmelden die Grenze nicht zurücksetzt), Push-Adresse nur `https://` zu einem bekannten Push-Dienst ohne Port und
   Anmeldedaten, höchstens 1024 Zeichen (`invalid_subscription`), Text höchstens 400 Zeichen.
 - **Doppelte Regeln:** „fällig“ (`private.chore_due_state`) und „wer ist dran“
   (`private.chore_assignees`) stehen auch in SQL; `notification_parity.test.sql` hält sie mit

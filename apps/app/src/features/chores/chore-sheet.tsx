@@ -12,6 +12,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
+  asksForPushPermission,
   choreDraftErrors,
   choreDraftFrom,
   choreFieldsOf,
@@ -127,7 +128,15 @@ function useChoreDetail(props: ChoreDetailProps): {
     const read = time.read();
     if (found.title || found.weekdays || !read.ok) return;
     // A new time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
-    if (read.time !== undefined && read.time !== chore.dueTime) ensureDevicePush();
+    if (
+      asksForPushPermission({
+        kind: 'time',
+        gesture: 'tap',
+        before: chore.dueTime,
+        after: read.time,
+      })
+    )
+      ensureDevicePush();
     try {
       // An empty field removes the time (✕, AC-025).
       updateChore(chore.id, {

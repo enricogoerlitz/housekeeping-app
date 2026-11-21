@@ -3,7 +3,7 @@
 -- time. Example day: Friday, 20.11.2026, household "Enrico & Nadja" in Europe/Berlin.
 begin;
 \ir _helpers.psql
-select plan(58);
+select plan(67);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -109,8 +109,8 @@ select is(
   (select array_agg(distinct c.tick order by c.tick) from tests.c_between('2026-11-20 07:00', '2026-11-20 08:30', '5 minutes') c
    where c.who = 'E' and c.kind = 'daily_summary'),
   array['2026-11-20 07:30', '2026-11-20 07:35', '2026-11-20 07:40', '2026-11-20 07:45', '2026-11-20 07:50',
-        '2026-11-20 07:55']::timestamp[],
-  'Decision 5 daily summary: a candidate from its time up to 30 minutes later, never later');
+        '2026-11-20 07:55', '2026-11-20 08:00']::timestamp[],
+  'Decision 5 daily summary: a candidate from its time up to and including 30 minutes later, never later');
 select is(
   (select count(*)::int from tests.c_between('2026-11-20 00:00', '2026-11-21 00:00') c
    where c.dedupe_key like 'chore:' || tests.fx('c_fenster') || '%'),
@@ -156,6 +156,44 @@ select is(
   'Decision 11 daily summary: Enrico''s turn at the rotation shows "du" and the time');
 update public.chores set next_due_on = '2026-11-20' where id = tests.fx('c_bad');
 delete from public.chores where id = tests.fx('c_blumen');
+
+-- A collection (spec 0009) is a recipe of the kind "Sammlung": the part "Essen" names it like a
+-- recipe, with its own title (Überschneidungen, plan 0013).
+insert into fx (key) values ('r_tapas'), ('e_tapas');
+insert into public.recipes (id, household_id, kind, title, course)
+values (tests.fx('r_tapas'), tests.fx('home'), 'collection', 'Tapas-Abend', null);
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, eater_ids, cook_id)
+values (tests.fx('e_tapas'), tests.fx('home'), '2026-11-23', tests.fx('s_abend'), 'recipe', tests.fx('r_tapas'), '{}',
+        tests.fx('nadja'));
+update public.notification_settings set daily_summary_parts = '{meals}' where household_id = tests.fx('home');
+select is(tests.body('2026-11-23 07:30', 'E', 'daily_summary'), 'Heute: Tapas-Abend (Abend)',
+  'Decision 9 daily summary: a collection in "Essen" is named like a recipe');
+select is(tests.body('2026-11-23 07:30', 'N', 'daily_summary'), 'Heute: Tapas-Abend (Abend, du kochst)',
+  'Decision 9 daily summary: … with "du kochst" for its cook');
+update public.notification_settings set daily_summary_parts = '{meals,activities,chores,prep}'
+where household_id = tests.fx('home');
+delete from public.meal_plan_entries where id = tests.fx('e_tapas');
+delete from public.recipes where id = tests.fx('r_tapas');
+
+-- No control characters in what flows into a message (security check 0013, finding 3; like
+-- push_subscriptions.device_label): a line break or tab would break the text on the lock screen.
+select throws_ok(format('update public.chores set title = %L where id = %L', E'Müll\nraus', tests.fx('c_muell')),
+  '23514', null, 'Security check chores: a title with a line break is refused');
+select throws_ok(format('update public.activities set name = %L where id = %L', E'Kino\tAbend', tests.fx('a_kino')),
+  '23514', null, 'Security check activities: a name with a tab is refused');
+select throws_ok(format('update public.restaurants set name = %L where id = %L', E'Enzo\r', tests.fx('enzo')),
+  '23514', null, 'Security check restaurants: a name with a carriage return is refused');
+select throws_ok(format('update public.meal_plan_entries set note = %L where id = %L', E'Hohen\u0007schönhausen', tests.fx('e_eis')),
+  '23514', null, 'Security check meal_plan_entries: a Zusatz with a control character is refused');
+insert into fx (key) values ('e_text');
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, text, eater_ids, sort)
+values (tests.fx('e_text'), tests.fx('home'), '2026-11-24', tests.fx('s_morgen'), 'text', 'Pfannkuchen', '{}', 0);
+select throws_ok(format('update public.meal_plan_entries set text = %L where id = %L', E'Pfann\nkuchen', tests.fx('e_text')),
+  '23514', null, 'Security check meal_plan_entries: a free text with a line break is refused');
+delete from public.meal_plan_entries where id = tests.fx('e_text');
+select lives_ok(format('update public.chores set title = %L where id = %L', 'Müll rausbringen · Bio', tests.fx('c_muell')),
+  'Security check chores: ordinary text with a middle dot stays allowed');
+update public.chores set title = 'Müll rausbringen' where id = tests.fx('c_muell');
 
 -- At most 400 characters, cut at a separator.
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, text, eater_ids, sort)
@@ -299,8 +337,10 @@ select is(tests.body('2026-11-21 18:30', 'E', 'reservation_reminder'), null,
   'AC-031 reservation: entered at 18:30 for 19:30 with 2 h → 17:30 is more than 30 minutes ago, nothing');
 select is(tests.body('2026-11-21 17:55', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
   'Decision 5 reservation: 25 minutes late is still sent');
-select is(tests.body('2026-11-21 18:00', 'E', 'reservation_reminder'), null,
-  'Decision 5 reservation: exactly 30 minutes late is not');
+select is(tests.body('2026-11-21 18:00', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
+  'Decision 5 reservation: exactly 30 minutes late is still sent');
+select is(tests.body('2026-11-21 18:01', 'E', 'reservation_reminder'), null,
+  'AC-031, Decision 5 reservation: more than 30 minutes late is dropped');
 
 -- ===================== Time zone and daylight saving (AC-033) =====================
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, text, eater_ids)

@@ -5,7 +5,7 @@
 -- neither pg_net nor the Vault (AC-046).
 begin;
 \ir _helpers.psql
-select plan(69);
+select plan(73);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -234,12 +234,15 @@ select is(
   'AC-009 send_test_push: exactly one delivery, for this device only');
 select is(
   (select jsonb_build_object(
-     'url', q.url, 'secret', q.headers ->> 'x-push-secret',
+     'url', q.url, 'secret', q.headers ? 'x-push-secret',
+     'signed', q.headers ->> 'x-push-signature'
+               = encode(extensions.hmac((q.headers ->> 'x-push-timestamp') || '.' || convert_from(q.body, 'utf8'),
+                                        'test-push-secret', 'sha256'), 'hex'),
      'messages', jsonb_array_length(convert_from(q.body, 'utf8')::jsonb -> 'messages'),
      'endpoint', convert_from(q.body, 'utf8')::jsonb -> 'messages' -> 0 ->> 'endpoint',
      'notification', convert_from(q.body, 'utf8')::jsonb -> 'messages' -> 0 -> 'notification')
    from net.http_request_queue q where q.id > (select id from queue_before)),
-  jsonb_build_object('url', 'http://push-send.test/functions/v1/push-send', 'secret', 'test-push-secret',
+  jsonb_build_object('url', 'http://push-send.test/functions/v1/push-send', 'secret', false, 'signed', true,
                      'messages', 1, 'endpoint', tests.chrome(),
                      'notification', jsonb_build_object('title', 'Housekeeping',
                                                         'body', 'Probe: So sehen deine Benachrichtigungen aus.',
@@ -258,6 +261,19 @@ select lives_ok(format('select public.send_test_push(%L)', tests.chrome()), 'Dec
 select lives_ok(format('select public.send_test_push(%L)', tests.chrome()), 'Decision 20 send_test_push: third probe');
 select throws_ok(format('select public.send_test_push(%L)', tests.chrome()), '22023', 'rate_limited',
   'Decision 20 send_test_push: the fourth probe within 10 minutes is refused');
+-- The limit counts per person, not per device: removing and registering the browser again does
+-- not reset it (security check 0013, finding 2).
+select lives_ok(format('select public.unregister_push_subscription(%L)', tests.chrome()),
+  'Decision 20 send_test_push: Enrico removes this device after three probes');
+select lives_ok(tests.register_sql(tests.chrome()), 'Decision 20 send_test_push: … and registers it again');
+select throws_ok(format('select public.send_test_push(%L)', tests.chrome()), '22023', 'rate_limited',
+  'Decision 20 send_test_push: the fourth probe is still refused after unregister and register');
+select tests.clear_authentication();
+select is(
+  (select count(*)::int from private.notification_deliveries d
+   where d.profile_id = tests.fx('enrico') and d.kind = 'test' and d.subscription_id is null),
+  3, 'Decision 20 send_test_push: the log rows of the removed device stay, without the device');
+select tests.authenticate_as(tests.fx('enrico'));
 select lives_ok(format('select public.set_push_subscription_enabled(%L, false)', tests.chrome()),
   'AC-010 send_test_push: Enrico switches this device off');
 select throws_ok(format('select public.send_test_push(%L)', tests.chrome()), 'P0002', 'not_found',

@@ -13,6 +13,7 @@ import {
   useRestaurantsById,
 } from '@housekeeping/api';
 import {
+  asksForPushPermission,
   DEFAULT_REMIND_MINUTES,
   formatTime,
   parseTimeInput,
@@ -102,7 +103,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   }
 
   const done = () => {
-    if (entry.kind !== 'restaurant' || reservation.save()) props.onClose();
+    if (entry.kind !== 'restaurant' || reservation.save('tap')) props.onClose();
   };
 
   const move = (date: ISODate | null, slotId?: Id) => {
@@ -349,14 +350,19 @@ interface ReservationDraft {
   text: string;
   error: string | undefined;
   setText: (text: string) => void;
-  /** Saves the typed time if it changed; false (with the error shown) when it cannot. */
-  save: () => boolean;
+  /**
+   * Saves the typed time if it changed; false (with the error shown) when it cannot. Only Enter
+   * and "Fertig" ask for this device's permission, leaving the field does not (AC-007).
+   */
+  save: (gesture: 'tap' | 'enter' | 'blur') => boolean;
   clear: () => void;
 }
 
 /**
  * The typed "Reserviert um" of a restaurant entry: saved on Enter, when the field loses focus and
- * with "Fertig" (AC-027); ✕ removes it at once. Only five-minute steps (Decision 4).
+ * with "Fertig" (AC-027); ✕ removes it at once. Only five-minute steps (Decision 4). The browser's
+ * permission is asked only on Enter and "Fertig" (AC-007): a time saved on blur is asked for when
+ * "Fertig" or Enter confirms it.
  */
 function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft {
   const stored = entry?.reservedAt;
@@ -364,13 +370,18 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
   const [error, setError] = useState<string>();
   // What was sent last: blur and "Fertig" come one after the other, before the next render.
   const saved = useRef<TimeOfDay | undefined>(stored);
+  // The time last confirmed with Enter or "Fertig" (or the stored one): blur saves without asking.
+  const confirmed = useRef<TimeOfDay | undefined>(stored);
   const ensureDevicePush = useEnsureDevicePush();
 
-  const write = (time: TimeOfDay | undefined): boolean => {
-    if (!entry || time === saved.current) return true;
-    // A reservation time asks for this device first, inside the tap or key press (spec 0013,
-    // AC-007, Decision 26).
-    if (time !== undefined) ensureDevicePush();
+  const write = (time: TimeOfDay | undefined, gesture: 'tap' | 'enter' | 'blur'): boolean => {
+    if (!entry) return true;
+    // Asked first, inside the tap or key press (spec 0013, AC-007, Decision 26).
+    if (asksForPushPermission({ kind: 'time', gesture, before: confirmed.current, after: time })) {
+      ensureDevicePush();
+    }
+    if (gesture !== 'blur') confirmed.current = time;
+    if (time === saved.current) return true;
     try {
       setReservation(entry.id, { reservedAt: time ?? null });
     } catch (caught) {
@@ -391,18 +402,18 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
       setTextState(next);
       setError(undefined);
     },
-    save: () => {
+    save: (gesture) => {
       const result = parseTimeInput(text);
       if (!result.ok) {
         setError(result.error);
         return false;
       }
-      return write(result.time);
+      return write(result.time, gesture);
     },
     clear: () => {
       setTextState('');
       setError(undefined);
-      write(undefined);
+      write(undefined, 'tap');
     },
   };
 }
@@ -427,10 +438,10 @@ function ReservationFields(props: {
         value={draft.text}
         onChangeText={draft.setText}
         onBlur={() => {
-          if (!props.disabled) draft.save();
+          if (!props.disabled) draft.save('blur');
         }}
         onSubmitEditing={() => {
-          if (!props.disabled) draft.save();
+          if (!props.disabled) draft.save('enter');
         }}
         onClear={draft.clear}
         clearLabel="Reservierung entfernen"

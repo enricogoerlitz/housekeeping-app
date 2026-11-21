@@ -432,8 +432,8 @@ FOUNDRY_STT_LANGUAGE = "env(FOUNDRY_STT_LANGUAGE)"
 FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
 # Not a secret: the browser origins of the local web app and the e2e server.
 ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
-# push-send (spec 0013, ADR-0014): VAPID key pair and the shared secret pg_net sends in
-# x-push-secret. Values come from .env (`node scripts/push-keys.mjs`); never print them.
+# push-send (spec 0013, ADR-0014): VAPID key pair and the shared secret; the database signs each
+# request with it (HMAC, x-push-signature), the secret itself is never sent. Values come from .env (`node scripts/push-keys.mjs`); never print them.
 VAPID_PUBLIC_KEY = "env(VAPID_PUBLIC_KEY)"
 VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
 PUSH_SEND_SECRET = "env(PUSH_SEND_SECRET)"

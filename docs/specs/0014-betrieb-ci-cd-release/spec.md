@@ -420,6 +420,18 @@ Und         ausgenommen ist nur das Neuaufsetzen des Vorschau-Projekts im Vorsch
             Umgebung „preview“ nutzt (REQ-003)
 ```
 
+**AC-074 — Festgenagelte Abhängigkeiten von `push-send`** (ergänzt am 21.11.2026 aus der
+Sicherheitsprüfung der Spec 0013: lokal ist Deno nicht installiert, die Lock-Datei fehlt noch)
+
+```gherkin
+Angenommen  eine PR ändert „supabase/functions/push-send“ oder sein „deno.json“
+Wenn        die Checks laufen
+Dann        erzeugt bzw. prüft ein Schritt mit Deno „supabase/functions/push-send/deno.lock“
+            („deno install --frozen“ bzw. „deno cache --frozen“ gegen „index.ts“)
+Und         der Check ist rot, wenn sich eine Prüfsumme gegenüber der committeten Lock-Datei ändert
+Und         die erste Lock-Datei kommt mit der ersten PR dieses Checks ins Repo, Deploy nutzt sie
+```
+
 **AC-011 — PR nur mit Doku**
 
 ```gherkin
@@ -865,6 +877,24 @@ Und         kein Log der Pipeline enthält einen der Werte
 Wenn        die Prüfung nach der Auslieferung den Bucket „household-media“ abfragt
 Dann        ist er privat und nimmt höchstens 2 MiB und nur „image/jpeg“ an
 Und         ein Abruf eines Fotos ohne Anmeldung scheitert
+```
+
+**AC-073 — `pg_net` nicht über die API erreichbar** (ergänzt am 21.11.2026 aus der
+Sicherheitsprüfung der Spec 0013: Supabase gibt die Warteschlange von `pg_net` an alle
+Datenbank-Rollen frei und `net.http_post` an `anon` und `authenticated`, und eine Migration kann
+das nicht zurücknehmen; nur die freigegebenen Schemas der API halten sie fern)
+
+```gherkin
+Angenommen  eine Veröffentlichung ist durch
+Wenn        die Prüfung nach der Auslieferung die Einstellung „Exposed schemas“ der API von
+            Produktion liest
+Dann        sind es genau „public“ und „graphql_public“
+Und         ein Aufruf von „/rest/v1/rpc/http_post“ und „/rest/v1/http_request_queue“ mit
+            „Content-Profile: net“ bzw. „Accept-Profile: net“ antwortet als „anon“ und als
+            angemeldetes Mitglied mit 406 („PGRST106“)
+Und         eine GraphQL-Introspektion („/graphql/v1“, „__schema“) als „anon“ und als angemeldetes
+            Mitglied nennt keinen Typ und kein Feld aus „net“ („http_request_queue“,
+            „_http_response“, „http_post“, „http_get“)
 ```
 
 ### REQ-008 — Native Apps: Android jetzt, iOS hinter einem Schalter
@@ -1325,12 +1355,12 @@ Enrico am 21.11.2026 selbst entschieden; die Fragen 20 und 21 folgen daraus nach
 | REQ     | AC                                                                      | Task (plan.md) | Test |
 | ------- | ----------------------------------------------------------------------- | -------------- | ---- |
 | REQ-001 | AC-001 bis AC-005, AC-065 bis AC-068                                    | —              | —    |
-| REQ-002 | AC-006 bis AC-011                                                       | —              | —    |
+| REQ-002 | AC-006 bis AC-011, AC-074                                               | —              | —    |
 | REQ-003 | AC-013 bis AC-015, AC-017, AC-069 bis AC-071 (AC-012, AC-016 verworfen) | —              | —    |
 | REQ-004 | AC-018 bis AC-026                                                       | —              | —    |
 | REQ-005 | AC-027 bis AC-033, AC-072                                               | —              | —    |
 | REQ-006 | AC-034 bis AC-039                                                       | —              | —    |
-| REQ-007 | AC-040 bis AC-046                                                       | —              | —    |
+| REQ-007 | AC-040 bis AC-046, AC-073                                               | —              | —    |
 | REQ-008 | AC-047 bis AC-051                                                       | —              | —    |
 | REQ-009 | AC-052 bis AC-057                                                       | —              | —    |
 | REQ-010 | AC-058 bis AC-064                                                       | —              | —    |

@@ -13,7 +13,8 @@ create table public.restaurants (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
   name text not null
-    constraint restaurants_name_valid check (btrim(name) <> '' and char_length(name) <= 200),
+    -- No control characters: the name flows into notifications (spec 0013, security check).
+    constraint restaurants_name_valid check (btrim(name) <> '' and char_length(name) <= 200 and name !~ '[[:cntrl:]]'),
   address text
     constraint restaurants_address_length check (char_length(address) <= 500),
   lat double precision

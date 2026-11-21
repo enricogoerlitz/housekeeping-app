@@ -238,3 +238,24 @@ Stand 21.11.2026; vor einer Kostenentscheidung neu prüfen (ADR-0007).
 - Wenn Supabase `pg_net`, `pg_cron` oder den Vault im Free-Tarif einschränkt.
 - Wenn `jsr:@negrel/webpush` nicht mehr gepflegt wird oder eine Sicherheitslücke hat (dann: andere
   gepflegte Bibliothek, nicht selbst bauen).
+
+## Nachtrag 2026-11-21 — Signatur statt Geheimnis in der Übergabe
+
+Der `/security-check` zum Abschluss der Spec 0013 hat gezeigt: Supabase gibt die Warteschlange
+von `pg_net` (`net.http_request_queue`, `net._http_response`) an `PUBLIC` frei und `net.http_post`
+an `anon` und `authenticated`; Eigentümer ist `supabase_admin`, eine Migration kann das nicht
+zurücknehmen. Bis der Hintergrund-Prozess die Anfrage abschickt, liegen dort Kopfzeilen und
+Inhalt. Die Zeile „Übergabe“ oben gilt deshalb mit dieser Änderung:
+
+- Die Datenbank schickt das Geheimnis **nicht** mehr mit. `private.post_push_bundle` signiert
+  jede Anfrage: `x-push-timestamp` (Unix-Sekunden, echte Uhr) und `x-push-signature` (hex,
+  HMAC-SHA256 über `<timestamp>.<body>` mit `push_send_secret` aus dem Vault, `pgcrypto`).
+- `push-send` prüft die Signatur zeitkonstant und weist Zeitstempel ab, die älter als 5 Minuten
+  oder mehr als 1 Minute in der Zukunft sind (401).
+- Eine abgegriffene Zeile der Warteschlange taugt damit nur für genau diesen Inhalt und höchstens
+  5 Minuten; andere Nachrichten lassen sich damit nicht senden. Ein Wiederholen desselben Inhalts
+  in diesem Zeitraum ist hingenommen (`push-send` hat keine Datenbank, um Wiederholungen zu
+  merken; schlimmstenfalls kommt dieselbe Nachricht noch einmal an dieselben Geräte).
+- Dass die API das Schema `net` nicht ausliefert, ist die eigentliche Grenze. Sie ist lokal
+  getestet (`scripts/api-schemas.test.mjs`, `notifications.integration.test.ts`) und für die Cloud
+  ein Prüfpunkt der Spec 0014.

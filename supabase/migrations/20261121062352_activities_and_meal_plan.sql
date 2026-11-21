@@ -21,7 +21,8 @@ create table public.activities (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
   name text not null
-    constraint activities_name_valid check (btrim(name) <> '' and char_length(name) <= 120),
+    -- No control characters: the name flows into notifications (spec 0013, security check).
+    constraint activities_name_valid check (btrim(name) <> '' and char_length(name) <= 120 and name !~ '[[:cntrl:]]'),
   name_key text not null
     constraint activities_name_key_valid check (name_key <> '' and char_length(name_key) <= 240),
   description text
@@ -260,8 +261,11 @@ create table public.meal_plan_entries (
   activity_id uuid,
   text text
     constraint meal_plan_entries_text_length check (char_length(text) <= 500),
+    -- Free text and Zusatz flow into notifications (spec 0013, security check).
+    constraint meal_plan_entries_text_no_control check (text !~ '[[:cntrl:]]'),
   note text
     constraint meal_plan_entries_note_length check (char_length(note) <= 120),
+    constraint meal_plan_entries_note_no_control check (note !~ '[[:cntrl:]]'),
   leftovers_of_entry_id uuid,
   eater_ids uuid[] not null default '{}'
     constraint meal_plan_entries_eater_ids_size check (cardinality(eater_ids) <= 50),

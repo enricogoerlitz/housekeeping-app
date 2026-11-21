@@ -1,5 +1,6 @@
 import { createChore, useCurrentMember, useMembers, useToday } from '@housekeeping/api';
 import {
+  asksForPushPermission,
   choreDraftErrors,
   choreFieldsOf,
   newChoreDraft,
@@ -37,7 +38,10 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
     const read = time.read();
     if (found.title || found.weekdays || !read.ok) return;
     // A time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
-    if (read.time !== undefined) ensureDevicePush();
+    if (
+      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: read.time })
+    )
+      ensureDevicePush();
     try {
       createChore({ ...choreFieldsOf(draft, members), dueTime: read.time });
     } catch (error) {

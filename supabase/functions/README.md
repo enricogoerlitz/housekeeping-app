@@ -19,8 +19,11 @@ Every function: CORS allowlist → POST only → JWT verified with `auth.getClai
 all database reads run under the caller's RLS.
 
 **Exception `push-send`:** called by `pg_net` from the notification tick, not by the app. No JWT
-and no CORS answers: POST only (else 405) → header `x-push-secret` compared in constant time with
-`PUSH_SEND_SECRET` (else 401) → body ≤ 128 KB (else 413) and zod (1 to 50 messages, else 400) →
+and no CORS answers: POST only (else 405) → `x-push-timestamp` (Unix seconds, at most 5 minutes
+old and at most 1 minute ahead, else 401) → body ≤ 128 KB (else 413) → `x-push-signature`, the hex
+HMAC-SHA256 of `<timestamp>.<body>` with `PUSH_SEND_SECRET`, compared in constant time (else 401;
+the database computes it in `private.post_push_bundle`, so the secret never sits in pg_net's
+queue, which every database role can read) → zod (1 to 50 messages, else 400) →
 every endpoint checked again against the known push services (`_shared/push-endpoint.ts`, the same
 pattern as `private.is_push_endpoint`) → encrypted (RFC 8291) and VAPID-signed (RFC 8292) by
 `jsr:@negrel/webpush` 0.5.0, at most 5 at a time, 10 s per message, 15 s per batch. Answer
@@ -128,8 +131,8 @@ contract reply and without the API key in it; `resolve-maps-link` with a long Go
 with `https://evil.example/` → 422; `ai-search` and `ai-assistant` → 200 with replies that pass
 the contract schemas (`packages/core/src/ai-contract.ts`); a household the caller cannot see →
 400; daily request quota used up (`ai_usage.requests = 200`) → 429 before any Foundry call.
-`push-send` (only when `PUSH_SEND_SECRET` is set in the shell): no or wrong secret → 401, no
-messages → 400, an internal address → `rejected`, a made-up FCM address → 200 with FCM's status.
+`push-send` (only when `PUSH_SEND_SECRET` is set in the shell): no signature, a signature with
+the wrong key or one older than 5 minutes → 401, no messages → 400, an internal address → `rejected`, a made-up FCM address → 200 with FCM's status.
 
 Cost per run: two Foundry LLM calls and one Azure speech token. Output: status codes, reply keys
 and timings only — never tokens or keys.

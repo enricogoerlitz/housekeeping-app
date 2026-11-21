@@ -101,8 +101,9 @@ async function call(name, jwt, body, headers = {}) {
   };
 }
 
-// push-send (spec 0013): called like pg_net does — no JWT, no apikey, the shared secret in
-// x-push-secret. The subscription keys are made here and belong to no device; FCM answers the
+// push-send (spec 0013): called like pg_net does — no JWT, no apikey, signed with the shared secret
+// (HMAC-SHA256 over "<timestamp>.<body>" in x-push-timestamp / x-push-signature, as
+// private.post_push_bundle does). The subscription keys are made here and belong to no device; FCM answers the
 // made-up address with an error status, which push-send must hand back as a number.
 async function smokePushSend() {
   const secret = process.env.PUSH_SEND_SECRET;
@@ -110,11 +111,30 @@ async function smokePushSend() {
     console.log('skip push-send: PUSH_SEND_SECRET not set in this shell');
     return;
   }
-  const post = async (body, headers) => {
+  const signed = async (text, key = secret, timestamp = Math.floor(Date.now() / 1000)) => {
+    const hmacKey = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(key.trim()),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    const mac = await crypto.subtle.sign(
+      'HMAC',
+      hmacKey,
+      new TextEncoder().encode(`${timestamp}.${text}`),
+    );
+    return {
+      'x-push-timestamp': String(timestamp),
+      'x-push-signature': Buffer.from(mac).toString('hex'),
+    };
+  };
+  const post = async (body, sign) => {
+    const text = JSON.stringify(body);
     const response = await fetch(`${base}/functions/v1/push-send`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json', ...(sign ? await sign(text) : {}) },
+      body: text,
     });
     const json = await response.json().catch(() => undefined);
     return { status: response.status, json };
@@ -136,22 +156,30 @@ async function smokePushSend() {
   };
   const valid = { messages: [message] };
 
-  const missing = await post(valid, {});
-  check('push-send: no secret → 401', missing.status === 401, `HTTP ${missing.status}`);
-  const wrong = await post(valid, { 'x-push-secret': 'wrong' });
-  check('push-send: wrong secret → 401', wrong.status === 401, `HTTP ${wrong.status}`);
-  const invalid = await post({ messages: [] }, { 'x-push-secret': secret });
+  const missing = await post(valid);
+  check('push-send: no signature → 401', missing.status === 401, `HTTP ${missing.status}`);
+  const wrong = await post(valid, (text) => signed(text, 'wrong'));
+  check('push-send: wrong key → 401', wrong.status === 401, `HTTP ${wrong.status}`);
+  const stale = await post(valid, (text) =>
+    signed(text, secret, Math.floor(Date.now() / 1000) - 301),
+  );
+  check(
+    'push-send: signature older than 5 minutes → 401',
+    stale.status === 401,
+    `HTTP ${stale.status}`,
+  );
+  const invalid = await post({ messages: [] }, signed);
   check('push-send: no messages → 400', invalid.status === 400, `HTTP ${invalid.status}`);
   const internal = await post(
     { messages: [{ ...message, endpoint: 'https://127.0.0.1:54321/rest/v1/' }] },
-    { 'x-push-secret': secret },
+    signed,
   );
   check(
     'push-send: internal address → 200, rejected',
     internal.status === 200 && internal.json?.results?.[0]?.status === 'rejected',
     `HTTP ${internal.status}`,
   );
-  const sent = await post(valid, { 'x-push-secret': secret });
+  const sent = await post(valid, signed);
   const pushStatus = sent.json?.results?.[0]?.status;
   check(
     'push-send: made-up FCM address → 200 with the status of FCM',

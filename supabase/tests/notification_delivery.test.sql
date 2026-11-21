@@ -6,7 +6,7 @@
 -- written into net._http_response by hand.
 begin;
 \ir _helpers.psql
-select plan(38);
+select plan(46);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -76,12 +76,29 @@ select is(
   array['chrome · daily_summary · pending', 'firefox · daily_summary · pending'],
   'AC-008, AC-039 tick: the device switched off and the unreachable one get nothing');
 select is(
-  (select jsonb_build_object('n', count(*), 'url', min(r.url), 'secret', min(r.headers ->> 'x-push-secret'),
-                             'messages', min(jsonb_array_length(r.body -> 'messages')))
+  (select jsonb_build_object('n', count(*), 'url', min(r.url), 'messages', min(jsonb_array_length(r.body -> 'messages')))
    from new_requests r),
-  jsonb_build_object('n', 1, 'url', 'http://push-send.test/functions/v1/push-send', 'secret', 'test-push-secret',
-                     'messages', 2),
-  'Decision 22 tick: one call to push-send with the shared secret for both messages');
+  jsonb_build_object('n', 1, 'url', 'http://push-send.test/functions/v1/push-send', 'messages', 2),
+  'Decision 22 tick: one call to push-send for both messages');
+-- The queue is readable by every role Supabase creates (net.http_request_queue): it must never
+-- hold the shared secret, only a signature of exactly this body (security check 0013, finding 1).
+select is(
+  (select count(*)::int from net.http_request_queue q
+   where q.id > (select id from queue_before)
+     and (q.headers ? 'x-push-secret' or q.headers::text like '%test-push-secret%'
+          or convert_from(q.body, 'utf8') like '%test-push-secret%')),
+  0, 'Decision 22 tick: the queued request holds no shared secret');
+select ok(
+  (select r.headers ->> 'x-push-signature'
+          = encode(extensions.hmac((r.headers ->> 'x-push-timestamp') || '.' || convert_from(q.body, 'utf8'),
+                                   'test-push-secret', 'sha256'), 'hex')
+   from new_requests r join net.http_request_queue q on q.id = r.id),
+  'Decision 22 tick: x-push-signature is HMAC-SHA256 over "<timestamp>.<body>" with the Vault secret');
+select ok(
+  (select (r.headers ->> 'x-push-timestamp') ~ '^\d{10}$'
+      and abs((r.headers ->> 'x-push-timestamp')::bigint - extract(epoch from clock_timestamp())::bigint) <= 60
+   from new_requests r),
+  'Decision 22 tick: x-push-timestamp is the current Unix time in seconds (real clock, not p_now)');
 select is(
   (select m - 'id' - 'endpoint' from new_requests r, jsonb_array_elements(r.body -> 'messages') m
    where m ->> 'endpoint' = 'https://fcm.googleapis.com/fcm/send/chrome'),
@@ -216,6 +233,33 @@ select is(
   array['notification-tick */5 * * * * select private.run_notification_tick()',
         'purge-notification-deliveries 35 3 * * * select private.purge_notification_deliveries()'],
   'Cron: the tick runs every 5 minutes, the purge nightly');
+
+-- ===================== Bundles: at most 50 messages and 100 KB (security check 0013, finding 3) =====================
+-- push-send accepts 128 KB; the tick stays below it with headroom. Synthetic messages of about
+-- 2.7 KB each (a 1000-character address, a 400-character text of three-byte characters and a
+-- 500-character link).
+create temp table bundles on commit drop as
+  select b.ord, jsonb_array_length(b.bundle) as n, octet_length(jsonb_build_object('messages', b.bundle)::text) as bytes,
+         b.bundle
+  from private.push_bundles((
+    select jsonb_agg(jsonb_build_object('id', i, 'endpoint', 'https://fcm.googleapis.com/' || repeat('x', 1000),
+                                        'notification', jsonb_build_object('body', repeat('€', 400), 'url', '/' || repeat('x', 499)))
+                      order by i)
+    from generate_series(1, 60) i)) with ordinality b (bundle, ord);
+select ok((select bool_and(b.bytes <= 100 * 1024) from bundles b),
+  'Bundles: no call to push-send carries more than 100 KB');
+select ok((select b.n < 50 from bundles b where b.ord = 1), 'Bundles: 60 large messages are split by size, not only by count');
+select is(
+  (select array_agg((m ->> 'id')::int order by b.ord, x.pos)
+   from bundles b, jsonb_array_elements(b.bundle) with ordinality x (m, pos)),
+  (select array_agg(i order by i) from generate_series(1, 60) i),
+  'Bundles: every message once, in order');
+select is(
+  (select array_agg(jsonb_array_length(b.bundle) order by b.ord)
+   from private.push_bundles((select jsonb_agg(jsonb_build_object('id', i) order by i) from generate_series(1, 120) i))
+        with ordinality b (bundle, ord)),
+  array[50, 50, 20], 'Bundles: small messages go 50 at a time');
+select is_empty($$ select * from private.push_bundles('[]'::jsonb) $$, 'Bundles: no messages, no call');
 
 -- ===================== Rights (AC-046) =====================
 select tests.authenticate_as(tests.fx('enrico'));

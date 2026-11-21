@@ -9,9 +9,10 @@
 --   reached only through the security definer RPCs below and the scheduler.
 -- * The database plans (ADR-0014): pg_cron runs private.run_notification_tick() every 5 minutes;
 --   it finds the due messages in the household's local time, writes each once per device into the
---   log (unique key, at most once) and hands them in bundles of at most 50 to the Edge Function
---   push-send through pg_net, with the shared secret from the Vault. The next tick reads the
---   answers. push-send has no database access.
+--   log (unique key, at most once) and hands them in bundles of at most 50 messages and 100 KB
+--   to the Edge Function push-send through pg_net, signed with the shared secret from the Vault
+--   (HMAC; the secret itself never leaves the database). The next tick reads the answers.
+--   push-send has no database access.
 -- * Secrets and the target URL live only in the Vault (push_send_secret, push_send_url), never
 --   here. Without them nothing is planned and nothing is logged (Decision 22).
 --
@@ -174,7 +175,9 @@ create table private.notification_deliveries (
   id bigint generated always as identity primary key,
   dedupe_key text not null
     constraint notification_deliveries_dedupe_key_length check (char_length(dedupe_key) between 1 and 200),
-  subscription_id uuid not null references private.push_subscriptions (id) on delete cascade,
+  -- Null once the device is removed: the row stays (no content) until the purge, so the limit on
+  -- "Probe senden" counts per person and unregister + register does not reset it (Decision 20).
+  subscription_id uuid references private.push_subscriptions (id) on delete set null,
   profile_id uuid not null references public.profiles (id) on delete cascade,
   household_id uuid references public.households (id) on delete cascade,
   kind text not null
@@ -477,7 +480,8 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------------------------
--- Candidates (Decision 5: due_at <= p_now and due_at > p_now - 30 minutes)
+-- Candidates (Decision 5: due_at <= p_now and due_at >= p_now - 30 minutes: exactly 30 minutes
+-- late is still sent, more than 30 is dropped, AC-031, AC-034)
 -- ---------------------------------------------------------------------------------------------
 -- Each returns household_id, profile_id, kind, dedupe_key, due_at, expires_at (the TTL at the
 -- push service, Decision 13), title, body, url (Decision 12). Recipients are always members of
@@ -505,7 +509,7 @@ as $$
   from due
   cross join lateral (select private.daily_summary_body(due.household_id, due.member_id, due.day, due.daily_summary_parts)
                       as body) b
-  where due.due_at <= p_now and due.due_at > p_now - interval '30 minutes'
+  where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes'
     and not private.is_silent(due.household_id, due.member_id, due.day)
     and b.body is not null
 $$;
@@ -530,7 +534,7 @@ as $$
     select dd.household_id, dd.day, count(*) as n, (array_agg(x.id order by x.pos, x.sort, x.id))[1] as first_id,
            array_agg(x.segment order by x.pos, x.sort, x.id) as segments
     from (select distinct due.household_id, due.day from due
-          where due.due_at <= p_now and due.due_at > p_now - interval '30 minutes') dd
+          where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes') dd
     join lateral (
       select e.id, e.sort, coalesce(sl.pos, 2147483647) as pos,
              a.name || coalesce(' (' || nullif(e.note, '') || ')', '') || coalesce(', ' || sl.name, '') as segment
@@ -549,7 +553,7 @@ as $$
               else format('/kalender?tag=%s&haushalt=%s', due.day + 1, due.household_id) end
   from due
   join tomorrow t on t.household_id = due.household_id and t.day = due.day
-  where due.due_at <= p_now and due.due_at > p_now - interval '30 minutes'
+  where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes'
     and not private.is_silent(due.household_id, due.member_id, due.day)
     and not private.is_silent(due.household_id, due.member_id, due.day + 1)
 $$;
@@ -585,7 +589,7 @@ as $$
   join public.household_members m on m.household_id = due.household_id
   join public.notification_settings s
     on s.household_id = m.household_id and s.member_id = m.profile_id and s.chore_reminders_enabled
-  where due.due_at <= p_now and due.due_at > p_now - interval '30 minutes'
+  where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes'
     and (cardinality(due.assignees) = 0 or m.profile_id = any (due.assignees))
     and not private.is_silent(due.household_id, m.profile_id, due.day)
 $$;
@@ -624,7 +628,7 @@ as $$
   join public.household_members m on m.household_id = due.household_id
   join public.notification_settings s
     on s.household_id = m.household_id and s.member_id = m.profile_id and s.reservation_reminders_enabled
-  where due.due_at <= p_now and due.due_at > p_now - interval '30 minutes'
+  where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes'
     and (cardinality(due.eater_ids) = 0 or m.profile_id = any (due.eater_ids))
     and not private.is_silent(due.household_id, m.profile_id, (due.due_at at time zone due.timezone)::date)
     and not private.is_silent(due.household_id, m.profile_id, due.date)
@@ -664,8 +668,9 @@ as $$
 $$;
 
 -- One message for push-send. Contract (supabase/functions/push-send): POST {"messages": [...]},
--- header x-push-secret; each message {id, endpoint, keys: {p256dh, auth}, ttl, urgency,
--- notification: {title, body, url}}; answer {"results": [{id, status}]}.
+-- headers x-push-timestamp (Unix seconds) and x-push-signature (hex HMAC-SHA256 over
+-- "<timestamp>.<body>" with the shared secret); each message {id, endpoint, keys: {p256dh, auth},
+-- ttl, urgency, notification: {title, body, url}}; answer {"results": [{id, status}]}.
 create function private.push_message(p_id bigint, p_subscription private.push_subscriptions, p_ttl integer,
                                      p_urgency text, p_title text, p_body text, p_url text)
 returns jsonb
@@ -683,18 +688,28 @@ as $$
 $$;
 
 -- Queues one call to push-send (sent by pg_net after the commit) and links the log rows to it.
+-- The request carries a signature, never the secret: net.http_request_queue is readable by every
+-- role Supabase creates (granted by supabase_admin, not revocable here) until the worker sends it.
+-- A leaked row is good only for exactly this body, and push-send refuses it after 5 minutes.
+-- pg_net sends convert_to(body::text, 'UTF8'), so the signature covers v_body::text. The
+-- timestamp is the real clock (clock_timestamp), never the tick's p_now.
 create function private.post_push_bundle(p_url text, p_secret text, p_messages jsonb)
 returns bigint
 language plpgsql
 set search_path = ''
 as $$
 declare
+  v_body jsonb := jsonb_build_object('messages', p_messages);
+  v_timestamp text := extract(epoch from pg_catalog.clock_timestamp())::bigint::text;
   v_request_id bigint;
 begin
   v_request_id := net.http_post(
     url := p_url,
-    body := jsonb_build_object('messages', p_messages),
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', p_secret),
+    body := v_body,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-push-timestamp', v_timestamp,
+      'x-push-signature', encode(extensions.hmac(v_timestamp || '.' || v_body::text, p_secret, 'sha256'), 'hex')),
     timeout_milliseconds := 20000);
   update private.notification_deliveries d
   set request_id = v_request_id
@@ -755,6 +770,38 @@ as $$
   where s.id = u.subscription_id
 $$;
 
+-- The messages in calls to push-send, in order: at most 50 and at most 100 KB of body each
+-- (push-send accepts 128 KB; Decision 20, security check 0013). One message is far below 100 KB
+-- (address ≤ 1024, text ≤ 400 characters), so every bundle holds at least one.
+create function private.push_bundles(p_messages jsonb)
+returns setof jsonb
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  c_max_messages constant integer := 50;
+  c_max_bytes constant integer := 100 * 1024;
+  v_bundle jsonb := '[]';
+  v_next jsonb;
+  v_message jsonb;
+begin
+  for v_message in select m from jsonb_array_elements(coalesce(p_messages, '[]')) m loop
+    v_next := v_bundle || jsonb_build_array(v_message);
+    if jsonb_array_length(v_bundle) > 0
+       and (jsonb_array_length(v_next) > c_max_messages
+            or octet_length(jsonb_build_object('messages', v_next)::text) > c_max_bytes) then
+      return next v_bundle;
+      v_next := jsonb_build_array(v_message);
+    end if;
+    v_bundle := v_next;
+  end loop;
+  if jsonb_array_length(v_bundle) > 0 then
+    return next v_bundle;
+  end if;
+end
+$$;
+
 -- The tick (pg_cron every 5 minutes; p_now only for tests). Returns the number of messages
 -- handed to push-send. A second, overlapping tick does nothing (transaction lock).
 create function private.run_notification_tick(p_now timestamptz default now())
@@ -764,7 +811,6 @@ security definer
 set search_path = ''
 as $$
 declare
-  c_bundle constant integer := 50;
   v_config record;
   v_messages jsonb;
   v_count integer;
@@ -802,12 +848,7 @@ begin
   join candidates c on c.dedupe_key = i.dedupe_key and c.profile_id = i.profile_id;
 
   v_count := jsonb_array_length(v_messages);
-  for v_bundle in
-    select jsonb_agg(x.m order by x.ord)
-    from jsonb_array_elements(v_messages) with ordinality x (m, ord)
-    group by (x.ord - 1) / c_bundle
-    order by (x.ord - 1) / c_bundle
-  loop
+  for v_bundle in select b from private.push_bundles(v_messages) b loop
     perform private.post_push_bundle(v_config.url, v_config.secret, v_bundle);
   end loop;
   return v_count;

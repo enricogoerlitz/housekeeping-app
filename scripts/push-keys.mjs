@@ -14,7 +14,15 @@
 //   node scripts/push-keys.mjs [--out <file>]
 import { spawnSync } from 'node:child_process';
 import { webcrypto } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -100,6 +108,11 @@ if (!has(SECRET_NAME)) {
 }
 
 const shown = path.relative(process.cwd(), file) || file;
+// An existing file readable by group or others is made owner-only, written or not.
+if (existsSync(file) && (statSync(file).mode & 0o077) !== 0) {
+  chmodSync(file, 0o600);
+  console.warn(`push-keys: ${shown} was readable by group or others; set to 0600.`);
+}
 if (additions.size > 0) {
   const appended = [];
   for (const [name, value] of additions) {
@@ -112,8 +125,17 @@ if (additions.size > 0) {
     if (lines.length > 0) lines.push('');
     lines.push('# Web Push (node scripts/push-keys.mjs)', ...appended, '');
   }
-  // Owner-only for a new file; an existing file keeps its permissions.
-  writeFileSync(file, lines.join('\n'), { mode: 0o600 });
+  // Atomic: a temp file next to the target (owner-only from the start), then a rename, so an
+  // interrupted run never leaves half a file. The result is always owner-only.
+  const temp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.tmp`);
+  try {
+    writeFileSync(temp, lines.join('\n'), { mode: 0o600, flag: 'wx' });
+    chmodSync(temp, 0o600);
+    renameSync(temp, file);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
   console.log(
     `push-keys: wrote ${[...additions.keys()].join(', ')} to ${shown} (values not shown).`,
   );

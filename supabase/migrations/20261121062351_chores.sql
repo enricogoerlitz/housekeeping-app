@@ -20,7 +20,8 @@ create table public.chores (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
   title text not null
-    constraint chores_title_valid check (btrim(title) <> '' and char_length(title) <= 200),
+    -- No control characters: the title flows into reminders (spec 0013, security check).
+    constraint chores_title_valid check (btrim(title) <> '' and char_length(title) <= 200 and title !~ '[[:cntrl:]]'),
   room text
     constraint chores_room_length check (char_length(room) <= 80),
   recurrence jsonb not null

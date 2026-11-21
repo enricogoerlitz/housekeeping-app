@@ -1,5 +1,5 @@
 ---
-status: offen # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt — offen nur: echter Push auf iPhone/Android und Tipp auf die Nachricht (Nachweis)
 datum: 2026-11-21
 spec: 0013
 ---
@@ -15,7 +15,7 @@ und die synchronisierte Tabelle `notification_settings` kommen in die unveröffe
 `security definer`-RPCs bzw. den Zeitplaner erreichbar. `pg_cron` ruft alle 5 Minuten
 `private.run_notification_tick()` auf; die Funktion sucht fällige Nachrichten in der Ortszeit des
 Haushalts, schreibt sie mit eindeutigem Schlüssel je Gerät ins Protokoll und gibt sie gebündelt
-per `pg_net` an `push-send`. `push-send` prüft das geteilte Geheimnis, verschlüsselt nach RFC 8291,
+per `pg_net` an `push-send`, signiert mit dem geteilten Geheimnis (HMAC, Nachtrag ADR-0014). `push-send` prüft die Signatur, verschlüsselt nach RFC 8291,
 signiert mit VAPID und hat weder Datenbankzugang noch `service_role`. Der Service Worker der PWA
 zeigt die Nachricht und öffnet beim Tipp eine geprüfte Seite. `packages/core` bekommt die reinen
 Regeln der Seite (Texte, Uhrzeiten, Geräte-Zustand, Ziel-Links), `packages/api` Abbildung,
@@ -50,8 +50,9 @@ Annahme ist, steht zusätzlich als `OFFEN` in den Offenen Fragen der Spec, Nr. 4
    Reservierung speichern `time` mit Minute durch 5 teilbar, Sekunde 0 (Check
    `private.is_five_minute_time`). Der Takt läuft zur vollen 5. Minute, eine Nachricht kommt also
    in dem Takt, der ihre Uhrzeit erreicht (AC-015: 7:25 nichts, 7:30 ja).
-5. **Fälligkeits-Fenster:** Ein Takt sendet, was `due_at ≤ jetzt` und `due_at > jetzt − 30 Min`
-   ist und für dieses Gerät noch nicht im Protokoll steht. Damit gelten AC-031 und AC-034, und ein
+5. **Fälligkeits-Fenster:** Ein Takt sendet, was `due_at ≤ jetzt` und `due_at ≥ jetzt − 30 Min`
+   ist und für dieses Gerät noch nicht im Protokoll steht (genau 30 Minuten zu spät kommt noch,
+   „mehr als 30 Minuten“ entfällt; Abschluss, Task 10). Damit gelten AC-031 und AC-034, und ein
    Gerät, das um 7:32 dazukommt, bekommt den Überblick von 7:30 noch im nächsten Takt.
 6. **Eindeutige Schlüssel** (`dedupe_key`, eindeutig zusammen mit dem Push-Abo):
    `daily:<household>:<profile>:<datum>`, `eve:<household>:<profile>:<datum>`,
@@ -133,11 +134,13 @@ default 120` an jeder Zeile und wirkt nur mit `reserved_at`.
     zur neuen Person um. Die Adresse ist nur dem Browser bekannt; ohne sie lässt sich nichts
     umhängen.
 20. **Grenzen:** höchstens 10 Push-Abos je Person (`too_many_devices`); „Probe senden“ höchstens 3
-    in 10 Minuten (`rate_limited`); Gerätename 1 bis 60 Zeichen; Push-Adresse höchstens 1024
+    in 10 Minuten **je Person** (`rate_limited`; die Protokoll-Zeilen überleben das Entfernen des
+    Geräts mit `subscription_id = null`, Task 10); Gerätename 1 bis 60 Zeichen; Push-Adresse höchstens 1024
     Zeichen, `https://` und ein bekannter Push-Dienst (`fcm.googleapis.com`,
     `updates.push.services.mozilla.com`, `web.push.apple.com`, `*.notify.windows.com`); `p256dh`
     base64url mit 65 Byte, `auth` base64url mit 16 Byte; `push-send` nimmt höchstens 50 Nachrichten
-    und 128 KB je Aufruf.
+    und 128 KB je Aufruf, der Takt schickt höchstens 50 Nachrichten und 100 KB je Bündel
+    (`private.push_bundles`, Task 10).
 21. **Web-Push-Verschlüsselung selbst auf WebCrypto** (`_shared/web-push.ts`, etwa 200 Zeilen:
     ECDH P-256, HKDF-SHA-256, AES-128-GCM, ES256-JWT) statt einer Bibliothek. Begründung
     (`10-security.md`, neue Abhängigkeit): läuft gleich in Deno und in vitest unter Node 24, kein
@@ -146,8 +149,11 @@ default 120` an jeder Zeile und wirkt nur mit `reserved_at`.
     Begründung im Commit.
 22. **Übergabe Datenbank → `push-send`:** Vault-Einträge `push_send_url` und `push_send_secret`.
     Fehlen sie, plant der Takt nichts, schreibt nichts ins Protokoll und meldet `raise warning
-'push_not_configured'`; „Probe senden“ antwortet mit `push_not_configured`. Kopfzeile
-    `x-push-secret`, `verify_jwt = false` wie bei den anderen Functions. Lokal zeigt
+'push_not_configured'`; „Probe senden“ antwortet mit `push_not_configured`. **Signatur statt
+    Geheimnis** (Task 10, Nachtrag ADR-0014): Kopfzeilen `x-push-timestamp` (Unix-Sekunden) und
+    `x-push-signature` (hex HMAC-SHA256 über `<timestamp>.<body>`, in SQL mit `pgcrypto`);
+    `push-send` prüft zeitkonstant, höchstens 5 Minuten alt, höchstens 1 Minute voraus.
+    `verify_jwt = false` wie bei den anderen Functions. Lokal zeigt
     `push_send_url` auf das Kong-Gateway im Docker-Netz
     (`http://supabase_kong_housekeeping-app:8000/functions/v1/push-send`; beim Bau prüfen, sonst
     `http://host.docker.internal:54321/…`).
@@ -280,9 +286,9 @@ sequenceDiagram
   T->>L: Status sent / gone / failed
   T->>T: Kandidaten in Ortszeit (Fenster 30 Min, stumm, Art an)
   T->>L: insert … on conflict do nothing returning
-  T->>N: net.http_post(Bündel ≤ 50, x-push-secret)
+  T->>N: net.http_post(Bündel ≤ 50 und ≤ 100 KB, HMAC-Signatur)
   N-->>F: POST nach dem Commit
-  F->>F: Geheimnis, Zod, Push-Adresse prüfen
+  F->>F: Zeitstempel, Signatur, Zod, Push-Adresse prüfen
   F->>P: verschlüsselt (RFC 8291), VAPID (RFC 8292), TTL, Urgency
   P-->>S: push
   S->>S: showNotification(Titel, Text, geprüfter Ziel-Link)
@@ -322,7 +328,7 @@ Secrets, Grundlagen-Migration, Löschen (Abos, Protokoll, Einstellungen beim Aus
 | Wert                        | Wo                                               | Wer darf                                        | Schaden bei Verlust                                                                      |
 | --------------------------- | ------------------------------------------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Privater VAPID-Schlüssel    | Secret der Function                              | nur `push-send`                                 | mit bekannten Push-Adressen beliebige Nachrichten an unsere Geräte (Phishing)            |
-| Geteiltes Geheimnis         | Vault + Secret der Function                      | Zeitplaner, `send_test_push`, `push-send`       | `push-send` als Sender missbrauchen (an bekannte Push-Dienste, mit unserem VAPID)        |
+| Geteiltes Geheimnis         | Vault + Secret der Function (nie in der Anfrage) | Zeitplaner, `send_test_push`, `push-send`       | `push-send` als Sender missbrauchen (an bekannte Push-Dienste, mit unserem VAPID)        |
 | Push-Adressen und Schlüssel | `private.push_subscriptions`, Bündel an `pg_net` | die Person über RPCs (ohne Adresse), Zeitplaner | Ziel für fremde Nachrichten (braucht zusätzlich den privaten Schlüssel), personenbezogen |
 | Tagesablauf (Texte)         | entsteht im Takt, Push-Dienste (verschlüsselt)   | die betroffene Person                           | wer wann wo ist                                                                          |
 | Einstellungen               | `notification_settings`                          | das Mitglied selbst                             | Gewohnheiten (wann jemand aufsteht)                                                      |
@@ -336,37 +342,39 @@ Geheimnis) · Internet ↔ `push-send` (öffentliche Adresse) · `push-send` ↔
 Mitglied eines fremden Haushalts, abgemeldeter Aufruf, beliebiger Aufrufer von `push-send` aus dem
 Internet, manipulierte Nachricht oder Ziel-Link, ein Fehler im Zeitplaner (Flut, falsche Person).
 
-| Was könnte schiefgehen                                                                                  | Gegenmaßnahme                                                                                                                                                          | Getestet durch                                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Nadja liest oder ändert Enricos Einstellungen (AC-013)                                                  | Policies mit `member_id = auth.uid()`; kein `insert`/`delete`                                                                                                          | pgTAP `notification_settings.test.sql`: Nadja sieht 0 Zeilen von Enrico, `update` ändert 0 Zeilen; `sync_pull` als Nadja ohne Enricos Zeile                                                   |
-| Fremdes Mitglied oder `anon` liest Einstellungen                                                        | RLS, kein Grant an `anon`                                                                                                                                              | pgTAP: fremdes Mitglied 0 Zeilen, `anon` 42501                                                                                                                                                |
-| Mitglied verschiebt seine Einstellungen in einen anderen Haushalt oder zu einer anderen Person          | kein Grant auf `household_id`, `member_id`                                                                                                                             | pgTAP: `update` dieser Spalten → 42501; `apply_changes`-Patch → `invalid_change`                                                                                                              |
-| Nadja liest, ändert, entfernt oder sendet an Enricos Push-Abos (AC-043)                                 | Tabellen in `private` ohne Grants; RPCs filtern nach `auth.uid()`, fremde Kennung → `false`, keine Adresse in Antworten                                                | pgTAP `push_subscriptions.test.sql`: direkter Zugriff 42501; `remove` fremde Kennung → `false`, Zeile bleibt; `set_…_enabled`/`send_test_push` mit fremder Adresse → `not_found`              |
-| Abgemeldeter Aufruf legt Abo an, liest Einstellungen oder löst „Probe“ aus (AC-043)                     | `execute` nur `authenticated`; `not_authenticated` in jeder RPC                                                                                                        | pgTAP als `anon` je RPC → 42501                                                                                                                                                               |
-| SSRF: Abo mit `http://127.0.0.1:54321/x` oder internem Host lässt `push-send` interne Adressen aufrufen | `private.is_push_endpoint` beim Anlegen **und** dieselbe Liste in `push-send` vor jedem `fetch`; `redirect: 'manual'`; Zeitlimit                                       | pgTAP AC-044 (drei Fälle); vitest `push-endpoint.test.ts` und `handler.test.ts`: abgelehnte Adresse → kein `fetch`, Status `rejected`                                                         |
-| Mitglied ruft `net.http_post` oder liest den Vault direkt (SSRF, Geheimnis)                             | kein `usage` auf `net`/`vault` für `anon`/`authenticated`; falls Supabase es gewährt, entzieht die Migration es                                                        | pgTAP: `has_function_privilege('authenticated', 'net.http_post(…)', 'execute')` falsch; `vault.decrypted_secrets` → 42501                                                                     |
-| Mitglied ruft den Zeitplaner, liest das Protokoll (AC-046)                                              | Schema `private` nicht freigegeben, `execute` entzogen                                                                                                                 | pgTAP als `authenticated` und `anon`: `run_notification_tick`, `notification_candidates`, Protokoll → 42501; `schema_lint`                                                                    |
-| Gefälschter Aufruf von `push-send` (AC-045)                                                             | Geheimnis zeitkonstant verglichen; fehlt `PUSH_SEND_SECRET`, antwortet sie 500; nur `POST`; Größe ≤ 128 KB; Zod                                                        | vitest `handler.test.ts`: ohne/falsch → 401, ungültig → 400, `GET` → 405, zu groß → 413, jeweils kein `fetch`; Smoke gegen den lokalen Stack                                                  |
-| `push-send` liest doch `service_role` oder die Datenbank (AC-046)                                       | Function bekommt `env` über `deps`; nur vier Namen erlaubt                                                                                                             | vitest `no-db-access.test.ts`: Quellen von `push-send` und ihren Importen ohne `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, `supabase-js`, `createClient`, `Deno.env` außerhalb `index.ts` |
-| Privater Schlüssel oder Geheimnis im App-Bundle (AC-046)                                                | nur `EXPO_PUBLIC_VAPID_PUBLIC_KEY` hat den Präfix; `check-web-export` sucht die Werte von `VAPID_PRIVATE_KEY` und `PUSH_SEND_SECRET` (falls in der Umgebung) im Export | `check-web-export.test.mjs`: Export mit dem Wert → Fehler; Ausgabe nennt den Namen, nie den Wert                                                                                              |
-| Secret in Logs (Function, `pg_net`, App)                                                                | keine Ausgabe von Adressen, Schlüsseln, Inhalten; Fehler nur mit Code                                                                                                  | vitest: `console` beobachtet, enthält weder Adresse noch Text; Review im `/security-check`                                                                                                    |
-| Doppelte Nachricht (zweiter Takt, überlappende Takte, neue Uhrzeit) (AC-032)                            | `unique (dedupe_key, subscription_id)`, Transaktions-Sperre, Schlüssel ohne Uhrzeit der Einstellung                                                                    | pgTAP: Takt zweimal mit derselben Zeit → eine Zeile je Gerät; Uhrzeit 7:30 → 8:00 um 7:45 → kein zweiter Kandidat                                                                             |
-| Flut: Fehler im Zeitplaner schickt jeden Takt dieselbe Nachricht                                        | derselbe eindeutige Schlüssel; höchstens 50 je Bündel, Bündel nur für neu eingefügte Zeilen                                                                            | pgTAP: drei Takte im Fenster → eine Zeile je Gerät und Schlüssel                                                                                                                              |
-| Falsche Person bekommt eine Nachricht (D39)                                                             | Regeln aus Entscheidung 9 in SQL; Gleichlauf mit `core`                                                                                                                | pgTAP AC-016, AC-020, AC-023, AC-024, AC-026, AC-028; `notification_parity.test.sql`                                                                                                          |
-| Nachricht während Abwesenheit oder nach dem Austritt (AC-035, AC-036)                                   | `private.is_silent` an Sende- und Bezugstag; Empfänger nur über `household_members`; Einstellungen gehen mit                                                           | pgTAP AC-020, AC-026, AC-035 (Person und Haushalt), AC-036 (Abo der entfernten Person bleibt, keine Kandidaten)                                                                               |
-| Zeitumstellung, Zeitzone falsch (AC-033)                                                                | Ortszeit + `at time zone` im Takt; ungültige Zone übersprungen                                                                                                         | pgTAP mit `p_now` 28.3.2027 05:30 UTC und 29.3.2027 05:30 UTC → je ein Kandidat um 7:30 Ortszeit; Haushalt mit ungültiger Zone stört andere nicht                                             |
-| Zu spät Nachgeholtes nervt (AC-031, AC-034)                                                             | 30-Minuten-Fenster                                                                                                                                                     | pgTAP AC-031, AC-034                                                                                                                                                                          |
-| Manipulierte Nachricht öffnet eine fremde oder schädliche Adresse (AC-038)                              | Ziel-Link im Service Worker gegen eine feste Liste geprüft (nur eigene Pfade), sonst `/`; App prüft Parameter mit Zod                                                  | `sw-push.test.mjs` (fremder Host, `javascript:`, `//evil`, unbekannter Pfad → `/`); core `parseNotificationTarget`-Tests                                                                      |
-| Inhalt der Nachricht verrät mehr als nötig (AC-040)                                                     | Kandidaten bauen nur Titel, Text, Ziel-Link; keine E-Mail, keine Notizen von Rezept/Restaurant/Abwesenheit, keine fremde Kennung im Link                               | pgTAP AC-040: Text und Link je Art gegen eine Liste verbotener Felder (Notiz-Texte und E-Mail aus den Fixtures kommen nicht vor)                                                              |
-| Abgelaufenes Abo bekommt weiter Nachrichten (AC-039)                                                    | 404/410 → `gone_at`; Takt nimmt nur Abos ohne `gone_at` und mit `enabled`                                                                                              | pgTAP mit eingefügter Zeile in `net._http_response` (Status 410) → Abo `unreachable`, nächster Takt ohne dieses Abo                                                                           |
-| Viele Abos oder Proben als Belastung                                                                    | höchstens 10 Abos, 3 Proben in 10 Minuten                                                                                                                              | pgTAP: 11. Abo → `too_many_devices`; 4. Probe → `rate_limited`                                                                                                                                |
-| Abmelden auf einem geteilten Gerät lässt Nachrichten weiterlaufen (AC-042)                              | `beforeSignOut`: Browser abmelden, mit Netz RPC                                                                                                                        | api `auth.test.ts`: Hook läuft vor dem Löschen, auch wenn er scheitert oder hängt (3 s); App-Durchlauf                                                                                        |
-| Ein anderes Konto übernimmt eine fremde Push-Adresse                                                    | nur mit der Adresse möglich, die nur der Browser kennt und die keine RPC herausgibt; Umzug ist Absicht (Entscheidung 19)                                               | pgTAP: Umzug setzt Besitzer, alter Besitzer sieht das Abo nicht mehr; `list_push_subscriptions` enthält keine Adresse                                                                         |
-| Ausgehende Aufrufe von `push-send` hängen oder werden umgeleitet                                        | `AbortSignal.timeout(10 s)`, `redirect: 'manual'`, höchstens 5 gleichzeitig                                                                                            | vitest mit hängendem `fetch`-Fake → Status `null`, Antwort kommt                                                                                                                              |
-| Fehlende Secrets bleiben unbemerkt                                                                      | Takt meldet `push_not_configured` als Warnung und plant nichts; Function 500 mit Variablenname im Log; Seite zeigt Hinweis bei „Probe senden“                          | pgTAP ohne Vault-Einträge → keine Zeile im Protokoll; vitest ohne Variable → 500                                                                                                              |
-| Benachrichtigung auf dem Sperrbildschirm zeigt den Tagesablauf Umstehenden                              | Inhalt minimal; Einstellungen je Art aus                                                                                                                               | hingenommen (Plattform-Einstellung des Geräts)                                                                                                                                                |
-| Baseline wird nach dem ersten Produktions-Push noch geändert                                            | Reihenfolge: 0013 vor dem ersten `db push` (Spec 0014)                                                                                                                 | Abschluss-Check in Task 10                                                                                                                                                                    |
-| Cron und `pg_net` laufen lokal anders als in der Cloud                                                  | Smoke gegen den lokalen Stack; erster Produktions-Test in Spec 0014                                                                                                    | Task 7 Smoke, Task 10 Durchlauf                                                                                                                                                               |
+| Was könnte schiefgehen                                                                                  | Gegenmaßnahme                                                                                                                                                                                                                                                                                                                                                                             | Getestet durch                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nadja liest oder ändert Enricos Einstellungen (AC-013)                                                  | Policies mit `member_id = auth.uid()`; kein `insert`/`delete`                                                                                                                                                                                                                                                                                                                             | pgTAP `notification_settings.test.sql`: Nadja sieht 0 Zeilen von Enrico, `update` ändert 0 Zeilen; `sync_pull` als Nadja ohne Enricos Zeile                                                                                                                                |
+| Fremdes Mitglied oder `anon` liest Einstellungen                                                        | RLS, kein Grant an `anon`                                                                                                                                                                                                                                                                                                                                                                 | pgTAP: fremdes Mitglied 0 Zeilen, `anon` 42501                                                                                                                                                                                                                             |
+| Mitglied verschiebt seine Einstellungen in einen anderen Haushalt oder zu einer anderen Person          | kein Grant auf `household_id`, `member_id`                                                                                                                                                                                                                                                                                                                                                | pgTAP: `update` dieser Spalten → 42501; `apply_changes`-Patch → `invalid_change`                                                                                                                                                                                           |
+| Nadja liest, ändert, entfernt oder sendet an Enricos Push-Abos (AC-043)                                 | Tabellen in `private` ohne Grants; RPCs filtern nach `auth.uid()`, fremde Kennung → `false`, keine Adresse in Antworten                                                                                                                                                                                                                                                                   | pgTAP `push_subscriptions.test.sql`: direkter Zugriff 42501; `remove` fremde Kennung → `false`, Zeile bleibt; `set_…_enabled`/`send_test_push` mit fremder Adresse → `not_found`                                                                                           |
+| Abgemeldeter Aufruf legt Abo an, liest Einstellungen oder löst „Probe“ aus (AC-043)                     | `execute` nur `authenticated`; `not_authenticated` in jeder RPC                                                                                                                                                                                                                                                                                                                           | pgTAP als `anon` je RPC → 42501                                                                                                                                                                                                                                            |
+| SSRF: Abo mit `http://127.0.0.1:54321/x` oder internem Host lässt `push-send` interne Adressen aufrufen | `private.is_push_endpoint` beim Anlegen **und** dieselbe Liste in `push-send` vor jedem `fetch`; `redirect: 'manual'`; Zeitlimit                                                                                                                                                                                                                                                          | pgTAP AC-044 (drei Fälle); vitest `push-endpoint.test.ts` und `handler.test.ts`: abgelehnte Adresse → kein `fetch`, Status `rejected`                                                                                                                                      |
+| Mitglied ruft `net.http_post` oder liest den Vault direkt (SSRF, Geheimnis)                             | **Wirklichkeit (Task 10):** Supabase gewährt `net.http_post` an `anon`/`authenticated` und die Warteschlange `net.http_request_queue`/`net._http_response` an `PUBLIC`, als `supabase_admin` – nicht entziehbar. Grenze: die API liefert nur `public` und `graphql_public` aus; keine freigegebene Funktion ruft `net.*` außer `send_test_push` (nur zur Vault-Adresse); Vault ohne Grant | pgTAP `push_subscriptions.test.sql` (keine API-Funktion ruft `net.*`; `vault.decrypted_secrets` → 42501); `scripts/api-schemas.test.mjs` (`config.toml`); Integration: `Content-Profile: net` → 406 als anon und Mitglied, GraphQL ohne `net`; Cloud: AC-073 der Spec 0014 |
+| Abgegriffene Zeile der `pg_net`-Warteschlange (für jede Rolle lesbar, bis gesendet)                     | Geheimnis nie in der Anfrage, nur HMAC über Zeitstempel und Inhalt; `push-send` lehnt anderen Inhalt und Zeitstempel älter als 5 Min / mehr als 1 Min voraus ab. Rest: dieselbe Anfrage binnen 5 Min noch einmal (hingenommen)                                                                                                                                                            | pgTAP `notification_delivery.test.sql` (kein Geheimnis in der Warteschlange, Signatur stimmt), `push_subscriptions.test.sql` (Probe signiert); vitest `handler.test.ts` (fremder Inhalt, alt, Zukunft, alte Kopfzeile → 401); lokal: signiert 200, gefälscht 401           |
+| Mitglied ruft den Zeitplaner, liest das Protokoll (AC-046)                                              | Schema `private` nicht freigegeben, `execute` entzogen                                                                                                                                                                                                                                                                                                                                    | pgTAP als `authenticated` und `anon`: `run_notification_tick`, `notification_candidates`, Protokoll → 42501; `schema_lint`                                                                                                                                                 |
+| Gefälschter Aufruf von `push-send` (AC-045)                                                             | Signatur zeitkonstant geprüft, Zeitstempel frisch; fehlt `PUSH_SEND_SECRET`, antwortet sie 500; nur `POST`; Größe ≤ 128 KB; Zod                                                                                                                                                                                                                                                           | vitest `handler.test.ts`: ohne/falsch → 401, ungültig → 400, `GET` → 405, zu groß → 413, jeweils kein `fetch`; Smoke gegen den lokalen Stack                                                                                                                               |
+| `push-send` liest doch `service_role` oder die Datenbank (AC-046)                                       | Function bekommt `env` über `deps`; nur vier Namen erlaubt                                                                                                                                                                                                                                                                                                                                | vitest `no-db-access.test.ts`: Quellen von `push-send` und ihren Importen ohne `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, `supabase-js`, `createClient`, `Deno.env` außerhalb `index.ts`                                                                              |
+| Privater Schlüssel oder Geheimnis im App-Bundle (AC-046)                                                | nur `EXPO_PUBLIC_VAPID_PUBLIC_KEY` hat den Präfix; `check-web-export` sucht die Werte von `VAPID_PRIVATE_KEY` und `PUSH_SEND_SECRET` (falls in der Umgebung) im Export                                                                                                                                                                                                                    | `check-web-export.test.mjs`: Export mit dem Wert → Fehler; Ausgabe nennt den Namen, nie den Wert                                                                                                                                                                           |
+| Secret in Logs (Function, `pg_net`, App)                                                                | keine Ausgabe von Adressen, Schlüsseln, Inhalten; Fehler nur mit Code                                                                                                                                                                                                                                                                                                                     | vitest: `console` beobachtet, enthält weder Adresse noch Text; Review im `/security-check`                                                                                                                                                                                 |
+| Doppelte Nachricht (zweiter Takt, überlappende Takte, neue Uhrzeit) (AC-032)                            | `unique (dedupe_key, subscription_id)`, Transaktions-Sperre, Schlüssel ohne Uhrzeit der Einstellung                                                                                                                                                                                                                                                                                       | pgTAP: Takt zweimal mit derselben Zeit → eine Zeile je Gerät; Uhrzeit 7:30 → 8:00 um 7:45 → kein zweiter Kandidat                                                                                                                                                          |
+| Flut: Fehler im Zeitplaner schickt jeden Takt dieselbe Nachricht                                        | derselbe eindeutige Schlüssel; höchstens 50 je Bündel, Bündel nur für neu eingefügte Zeilen                                                                                                                                                                                                                                                                                               | pgTAP: drei Takte im Fenster → eine Zeile je Gerät und Schlüssel                                                                                                                                                                                                           |
+| Falsche Person bekommt eine Nachricht (D39)                                                             | Regeln aus Entscheidung 9 in SQL; Gleichlauf mit `core`                                                                                                                                                                                                                                                                                                                                   | pgTAP AC-016, AC-020, AC-023, AC-024, AC-026, AC-028; `notification_parity.test.sql`                                                                                                                                                                                       |
+| Nachricht während Abwesenheit oder nach dem Austritt (AC-035, AC-036)                                   | `private.is_silent` an Sende- und Bezugstag; Empfänger nur über `household_members`; Einstellungen gehen mit                                                                                                                                                                                                                                                                              | pgTAP AC-020, AC-026, AC-035 (Person und Haushalt), AC-036 (Abo der entfernten Person bleibt, keine Kandidaten)                                                                                                                                                            |
+| Zeitumstellung, Zeitzone falsch (AC-033)                                                                | Ortszeit + `at time zone` im Takt; ungültige Zone übersprungen                                                                                                                                                                                                                                                                                                                            | pgTAP mit `p_now` 28.3.2027 05:30 UTC und 29.3.2027 05:30 UTC → je ein Kandidat um 7:30 Ortszeit; Haushalt mit ungültiger Zone stört andere nicht                                                                                                                          |
+| Zu spät Nachgeholtes nervt (AC-031, AC-034)                                                             | 30-Minuten-Fenster                                                                                                                                                                                                                                                                                                                                                                        | pgTAP AC-031, AC-034                                                                                                                                                                                                                                                       |
+| Manipulierte Nachricht öffnet eine fremde oder schädliche Adresse (AC-038)                              | Ziel-Link im Service Worker gegen eine feste Liste geprüft (nur eigene Pfade), sonst `/`; App prüft Parameter mit Zod                                                                                                                                                                                                                                                                     | `sw-push.test.mjs` (fremder Host, `javascript:`, `//evil`, unbekannter Pfad → `/`); core `parseNotificationTarget`-Tests                                                                                                                                                   |
+| Inhalt der Nachricht verrät mehr als nötig (AC-040)                                                     | Kandidaten bauen nur Titel, Text, Ziel-Link; keine E-Mail, keine Notizen von Rezept/Restaurant/Abwesenheit, keine fremde Kennung im Link                                                                                                                                                                                                                                                  | pgTAP AC-040: Text und Link je Art gegen eine Liste verbotener Felder (Notiz-Texte und E-Mail aus den Fixtures kommen nicht vor)                                                                                                                                           |
+| Abgelaufenes Abo bekommt weiter Nachrichten (AC-039)                                                    | 404/410 → `gone_at`; Takt nimmt nur Abos ohne `gone_at` und mit `enabled`                                                                                                                                                                                                                                                                                                                 | pgTAP mit eingefügter Zeile in `net._http_response` (Status 410) → Abo `unreachable`, nächster Takt ohne dieses Abo                                                                                                                                                        |
+| Viele Abos oder Proben als Belastung                                                                    | höchstens 10 Abos, 3 Proben in 10 Minuten je Person (Zeilen bleiben ohne Gerät stehen); Bündel ≤ 50 Nachrichten und ≤ 100 KB                                                                                                                                                                                                                                                              | pgTAP: 11. Abo → `too_many_devices`; 4. Probe → `rate_limited`, auch nach Abmelden und neu Anmelden; `push_bundles` mit großen und vielen Nachrichten                                                                                                                      |
+| Steuerzeichen in Texten, die in Nachrichten fließen                                                     | Check `!~ '[[:cntrl:]]'` an Aufgaben-Titel, Aktivitäts- und Restaurant-Namen, Freitext und Zusatz von Plan-Einträgen (wie `device_label`)                                                                                                                                                                                                                                                 | pgTAP `notification_scheduler.test.sql`: Zeilenumbruch, Tab, CR, BEL → 23514                                                                                                                                                                                               |
+| Abmelden auf einem geteilten Gerät lässt Nachrichten weiterlaufen (AC-042)                              | `beforeSignOut`: Browser abmelden, mit Netz RPC                                                                                                                                                                                                                                                                                                                                           | api `auth.test.ts`: Hook läuft vor dem Löschen, auch wenn er scheitert oder hängt (3 s); App-Durchlauf                                                                                                                                                                     |
+| Ein anderes Konto übernimmt eine fremde Push-Adresse                                                    | nur mit der Adresse möglich, die nur der Browser kennt und die keine RPC herausgibt; Umzug ist Absicht (Entscheidung 19)                                                                                                                                                                                                                                                                  | pgTAP: Umzug setzt Besitzer, alter Besitzer sieht das Abo nicht mehr; `list_push_subscriptions` enthält keine Adresse                                                                                                                                                      |
+| Ausgehende Aufrufe von `push-send` hängen oder werden umgeleitet                                        | `AbortSignal.timeout(10 s)`, `redirect: 'manual'`, höchstens 5 gleichzeitig                                                                                                                                                                                                                                                                                                               | vitest mit hängendem `fetch`-Fake → Status `null`, Antwort kommt                                                                                                                                                                                                           |
+| Fehlende Secrets bleiben unbemerkt                                                                      | Takt meldet `push_not_configured` als Warnung und plant nichts; Function 500 mit Variablenname im Log; Seite zeigt Hinweis bei „Probe senden“                                                                                                                                                                                                                                             | pgTAP ohne Vault-Einträge → keine Zeile im Protokoll; vitest ohne Variable → 500                                                                                                                                                                                           |
+| Benachrichtigung auf dem Sperrbildschirm zeigt den Tagesablauf Umstehenden                              | Inhalt minimal; Einstellungen je Art aus                                                                                                                                                                                                                                                                                                                                                  | hingenommen (Plattform-Einstellung des Geräts)                                                                                                                                                                                                                             |
+| Baseline wird nach dem ersten Produktions-Push noch geändert                                            | Reihenfolge: 0013 vor dem ersten `db push` (Spec 0014)                                                                                                                                                                                                                                                                                                                                    | Abschluss-Check in Task 10                                                                                                                                                                                                                                                 |
+| Cron und `pg_net` laufen lokal anders als in der Cloud                                                  | Smoke gegen den lokalen Stack; erster Produktions-Test in Spec 0014                                                                                                                                                                                                                                                                                                                       | Task 7 Smoke, Task 10 Durchlauf                                                                                                                                                                                                                                            |
 
 ## Aufgaben
 
@@ -421,7 +429,7 @@ flowchart LR
   (Tabelle „Ziel“), `README.md` nur falls es die Regeln wiederholt
 - **Test:** keiner (Dokumentation); `pnpm format:check`; `AGENTS.md` bleibt unter 150 Zeilen
   (heute 134)
-- **Status:** offen
+- **Status:** erledigt (Plan und ADR-Entwurf `0f97185`; ADR angenommen, Regeln, `.env.example` `8a1ac4a`)
 
 **Text für `AGENTS.md`** (ersetzt Regel 4 und 5; Englisch wie die Datei):
 
@@ -493,7 +501,7 @@ Server stellt zu)“ · „Braucht Netz: Benachrichtigungen einstellen, Geräte 
   `remind_minutes_before` 90 → 23514, `reserved_at` an „Lasagne“ direkt und über `apply_changes`
   → 23514 (AC-030); `households.timezone` ist „Europe/Berlin“ und für Mitglieder nicht änderbar;
   `apply_changes` mit `notification_settings`-Insert oder -Delete → `invalid_change`.
-- **Status:** offen
+- **Status:** erledigt (`8a1ac4a`)
 
 ### Task 2 — Datenbank: Push-Abos, Protokoll, Zeitplaner, RPCs, Cron (Agent DB, Welle A, nach Task 1)
 
@@ -539,7 +547,7 @@ Server stellt zu)“ · „Braucht Netz: Benachrichtigungen einstellen, Geräte 
   - _Aufräumen:_ Protokoll älter als 30 Tage weg, jüngeres bleibt; Cron-Jobs eingetragen.
   - _Gleichlauf_ (`notification_parity.test.sql`): dieselben benannten Fälle wie `dueChores` in
     `overview.test.ts` und `choreMemberIds` in `chores.test.ts`, je Fall ein `is()`.
-- **Status:** offen
+- **Status:** erledigt (`8a1ac4a`; Signatur, Bündel nach Größe, Grenze je Person, Fenster einschließlich 30 Minuten im Abschluss)
 
 ### Task 3 — core: Regeln der Seite, Uhrzeiten, Geräte, Ziel-Links (Agent core/ui, Welle A)
 
@@ -565,7 +573,7 @@ rausbringen", "19:00")` = „Müll rausbringen · 19:00“, ohne Uhrzeit unverä
   `parseNotificationTarget` für jede Form aus Entscheidung 12, fremder Host, `javascript:`,
   `//evil`, unbekannter Pfad, kaputte Kennung → Übersicht (AC-037, AC-038); `householdRow` zeigt
   „Müll rausbringen · 19:00“ (AC-022).
-- **Status:** offen
+- **Status:** erledigt (`dc0ae37`; `asksForPushPermission` und iPad-Hinweis im Abschluss)
 
 ### Task 4 — ui: Uhrzeit-Feld (Agent core/ui, Welle A, nach Task 3)
 
@@ -578,7 +586,7 @@ rausbringen", "19:00")` = „Müll rausbringen · 19:00“, ohne Uhrzeit unverä
 - **Test (zuerst rot):** reine Funktion für die Ansage (`timeFieldA11yValue("19:00")` = „19:00“,
   leer = „keine Uhrzeit“); `SwitchRow`-Detail als eigener Knopf (Prüfung der Props-Logik ohne
   Rendering, wie `disclosure-state.test.ts`).
-- **Status:** offen
+- **Status:** erledigt (`dc0ae37`)
 
 ### Task 5 — api: Abbildung, Befehle, Geräte-RPCs, Abmelden, Fake, Seed (Agent api, Welle B)
 
@@ -610,7 +618,7 @@ rausbringen", "19:00")` = „Müll rausbringen · 19:00“, ohne Uhrzeit unverä
   (`pnpm test:integration`): Enrico meldet ein Gerät an, Liste zeigt es; Nadja kann es nicht
   entfernen; abgemeldeter Client → Fehler; Einstellungen auf „Gerät“ 1 geändert, auf „Gerät“ 2
   nach dem Abgleich gleich (AC-012). Seed: `demo.test.ts` prüft Uhrzeit und Reservierung.
-- **Status:** offen
+- **Status:** erledigt (`4c2f8e3`)
 
 ### Task 6 — Edge Function `push-send` und Web-Push-Verschlüsselung (Agent Zustellung, Welle B)
 
@@ -636,7 +644,7 @@ rausbringen", "19:00")` = „Müll rausbringen · 19:00“, ohne Uhrzeit unverä
   Variable → 500 mit Name im Log. `no-db-access.test.ts` nach AC-046. Smoke (`node
 scripts/edge-smoke.mjs`, lokaler Stack): ohne/falsch → 401, ungültig → 400, gültige Form mit
   einer erfundenen FCM-Adresse → 200 mit dem Status von FCM (ohne Ausgabe der Adresse).
-- **Status:** offen
+- **Status:** erledigt (`57cc597`; Signaturprüfung im Abschluss)
 
 ### Task 7 — Service Worker, Export-Prüfung, Schlüssel und lokaler Vault (Agent Zustellung, Welle B, nach Task 6)
 
@@ -666,7 +674,7 @@ scripts/edge-smoke.mjs`, lokaler Stack): ohne/falsch → 401, ungültig → 400,
   Ordner unter `tmp/`: schreibt vier Namen, überschreibt keinen vorhandenen, Ausgabe ohne Werte.
   Beleg: `pnpm db:reset` meldet „gesetzt“, ein Takt im lokalen Stack ruft `push-send` (Zeile in
   `cron.job_run_details` und `net._http_response`, Status 200).
-- **Status:** offen
+- **Status:** erledigt (`ae007e3`; `push-keys.mjs` schreibt im Abschluss atomar und setzt 0600)
 
 ### Task 8 — App: Seite „Benachrichtigungen“, dieses Gerät, Abmelden, Tipp auf eine Nachricht (Agent Seite, Welle C)
 
@@ -692,7 +700,7 @@ scripts/edge-smoke.mjs`, lokaler Stack): ohne/falsch → 401, ungültig → 400,
   mit Netz“ (REQ-002, REQ-010); kein Erlaubnis-Dialog beim Durchklicken aller Bereiche (AC-003,
   Playwright meldet jede Anfrage). Der Rest (Erlaubnis, Probe, zwei Browser, Entfernen, Abmelden)
   im Durchlauf von Task 10.
-- **Status:** offen
+- **Status:** erledigt (`bb0879b`)
 
 ### Task 9 — App: Uhrzeit an der Aufgabe, Reservierung, Ziel-Seiten (Agent Uhrzeiten, Welle C)
 
@@ -714,7 +722,7 @@ scripts/edge-smoke.mjs`, lokaler Stack): ohne/falsch → 401, ungültig → 400,
   `/haushalt?aufgabe=<seed-id>` öffnet die Aufgabe, `/kalender?tag=…&eintrag=<seed-id>` den Eintrag
   mit „Route“, unbekannte Kennung öffnet die Seite ohne Fenster (AC-037, AC-038); offline sind
   Uhrzeit und Reservierung ausgegraut mit Hinweis.
-- **Status:** offen
+- **Status:** erledigt (`14ecd90`; AC-007 nur bei ausdrücklichem Speichern im Abschluss)
 
 ### Task 10 — Abschluss (Lead)
 
@@ -736,7 +744,7 @@ supabase test db`, `pnpm test:integration`, `node scripts/edge-smoke.mjs`, `/sec
   (AC-023), Tipp öffnet die Seite (AC-037). Firefox (AC-008, AC-009 mit zwei Browsern) prüft Enrico
   von Hand, falls Playwright-Firefox keine Push-Nachrichten empfängt. **Reihenfolge prüfen:** Spec
   0014 hat noch kein `supabase db push` gemacht.
-- **Status:** offen
+- **Status:** erledigt bis auf den echten Push auf iPhone/Android (Spec 0014) und den Tipp auf eine echte Nachricht (Abschluss, noch nicht committet; siehe Nachweis)
 
 ## Erwartete e2e-Brüche (für `tmp/brief/e2e-impact.md`)
 
@@ -800,6 +808,8 @@ Agenten erzeugen, lesen und zeigen keine Schlüssel. Alle Werte setzt Enrico sel
 
 **Lokal (vor dem Durchlauf in Task 10, besser vor Welle B):**
 
+Erledigt am 21.11.2026 (Enrico: Schritte 1 bis 3; danach lief der Chrome-Durchlauf im Nachweis).
+
 1. `node scripts/push-keys.mjs` (aus Task 7) einmal ausführen. Es schreibt
    `EXPO_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` und `PUSH_SEND_SECRET` in
    `.env`, nur wenn sie fehlen, und zeigt keinen Wert.
@@ -837,21 +847,64 @@ Agenten erzeugen, lesen und zeigen keine Schlüssel. Alle Werte setzt Enrico sel
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 21.11.2026, Abschluss (Task 10). Belege in `tmp/0013/` (git-ignoriert). Commits der Spec:
+`0f97185` (Plan), `8a1ac4a` (Task 0–2), `dc0ae37` (Task 3–4), `57cc597` (Task 6), `4c2f8e3`
+(Task 5), `ae007e3` (Task 7), `14ecd90` (Task 9), `bb0879b` (Task 8) und dieser Abschluss (noch
+nicht committet).
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün
-- [ ] `pnpm test:integration` grün (Geräte und Einstellungen)
-- [ ] `node scripts/edge-smoke.mjs` grün (`push-send`)
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet
-- [ ] `/security-check` gelaufen (Task 1, 2, 5, 6, 7, 8)
-- [ ] Durchlauf in Google Chrome mit echter Push-Nachricht (Probe, Tagesüberblick, Aufgabe, Tipp)
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft (Seite, Abmelden ohne Netz)
-- [ ] ADR-0014 angenommen, `AGENTS.md`, `30-database.md`, `31-sync.md`, `10-security.md`,
-      `sync.md`, `.env.example` nachgezogen
-- [ ] Spec 0014 hat noch kein `supabase db push` gemacht
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+- [x] Gates grün: `pnpm format:check && pnpm check` (17 von 17 Turbo-Aufgaben, `test:scripts`
+      13 von 13; zwei alte Lint-Warnungen in `commands-household.backend.test.ts`, nicht aus
+      dieser Spec), `pnpm db:reset && pnpm exec supabase test db` (32 Dateien, 1921 Tests),
+      `pnpm test:integration` (9 Dateien, 17 Tests, 1 übersprungen: „push_not_configured“, weil
+      der lokale Vault jetzt gefüllt ist), `pnpm e2e:dev` (13 von 13), `pnpm build:web` mit
+      Export-Prüfung (CSP, Service Worker mit Push, VAPID-Schlüssel; Suche nach den Werten von
+      `VAPID_PRIVATE_KEY` und `PUSH_SEND_SECRET` ohne Fund).
+- [x] Tests zuerst rot: `handler.test.ts` (40 rot), pgTAP Signatur, Grenze je Person, Bündel,
+      Fenster, Sammlung (`red-pgtap-*.txt`), `api-schemas.test.mjs` (mit `net` in der Liste rot),
+      core `asksForPushPermission` und iPad (7 rot), `push-keys.test.mjs` (2 rot).
+- [x] Übergabe lokal echt geprüft: `private.post_push_bundle` mit den Vault-Werten → `pg_net` →
+      `push-send` antwortet 200; dieselbe Anfrage mit gefälschter Signatur 401
+      (`hmac-local-handover.txt`).
+- [x] **Durchlauf mit echter Push-Nachricht** in Google Chrome (Playwright `channel: 'chrome'`,
+      ohne Fenster) gegen den gebauten Export auf `127.0.0.1:8790`, Schlüssel und Vault von Enrico
+      (`real-push-tick.txt`): Anmelden als Enrico, „Auf diesem Gerät benachrichtigen“ → Abo bei
+      `fcm.googleapis.com`; „Probe senden“ → nach etwa 1 s zeigt der Service Worker „Probe: So
+      sehen deine Benachrichtigungen aus.“ (AC-009); Tagesüberblick um 21:25 und „Pflanzen gießen“
+      mit 21:25 → der Takt von `pg_cron` um 21:25 (Ortszeit) stellt beide zu (AC-012, AC-015,
+      AC-023; der Überblick nennt auch die Sammlung „Grillabend“); Protokoll danach `sent` mit 201.
+      Nicht automatisch prüfbar und **offen für Enrico**: Tipp auf eine echte Nachricht (AC-037),
+      Erlaubnis-Dialog mit „Blockieren“ (AC-005), zweiter Browser (AC-008), Abmelden ohne Netz
+      (AC-042), iPhone/iPad als PWA und Android (Spec 0014).
+- [x] `/security-check` auf Task 1, 2, 5, 6, 7, 8 (0 kritisch, 0 hoch, 2 mittel, 3 niedrig), alle
+      behandelt:
+
+  | #   | Befund                                                                                                                           | Schwere | Behandlung                                                                                                                                                        |
+  | --- | -------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | 1   | `net`-Warteschlange für `PUBLIC` lesbar, `net.http_post` für `anon`/`authenticated` (nicht entziehbar); dort lag `x-push-secret` | mittel  | behoben: HMAC-Signatur statt Geheimnis (Entscheidung 1 des Abschlusses); Grenze der Schemas getestet; Cloud-Prüfung Spec 0014 AC-073; Bedrohungsmodell berichtigt |
+  | 2   | Grenze „Probe senden“ ließ sich durch Abmelden und neu Anmelden zurücksetzen (Kaskade)                                           | mittel  | behoben: `subscription_id` mit `on delete set null`, Zähler je Person; pgTAP                                                                                      |
+  | 3   | Bündel nur nach Anzahl begrenzt; Steuerzeichen in Texten der Nachrichten                                                         | niedrig | behoben: `push_bundles` ≤ 100 KB; Checks `[[:cntrl:]]`; pgTAP                                                                                                     |
+  | 4   | `push-keys.mjs` schrieb eine vorhandene Datei nicht atomar und ließ ihre Rechte                                                  | niedrig | behoben: Temp-Datei + `rename`, 0600, Warnung; Tests                                                                                                              |
+  | 5   | keine `deno.lock` für `push-send`                                                                                                | niedrig | offen als CI-Schritt der Spec 0014 (AC-074); Deno wird lokal nicht installiert                                                                                    |
+
+- [x] `spec-auditor`: Lücken bei AC-007 (Frage beim Verlassen des Felds), AC-031/AC-034 (genau
+      30 Minuten), AC-006 (iPad), Sammlung im Tagesüberblick, Hinweis in Spec 0002; alle behoben
+      (Entscheidungen 8 bis 12 des Abschlusses). Rückverfolgbarkeit je AC in `spec.md`.
+- [x] Offline-Verhalten: `e2e/dev/notifications.spec.ts` und `times.spec.ts` (Hinweise, gesperrte
+      Felder); Abmelden ohne Netz nur von Hand (siehe oben).
+- [x] ADR-0014 angenommen, Nachtrag „Signatur statt Geheimnis“; `AGENTS.md`, `30-database.md`,
+      `31-sync.md`, `10-security.md`, `.env.example` (Task 0), `sync.md` nachgezogen.
+- [x] Spec 0014 hat noch kein `supabase db push` gemacht (Stand der Einrichtung dort, 21.11.2026);
+      die Grundlage durfte deshalb direkt geändert werden.
+- [x] Glossar (Task 3–4) und Rückverfolgbarkeit aktuell.
+- [ ] `node scripts/edge-smoke.mjs`: an die Signatur angepasst, aber nicht gelaufen (kostet zwei
+      Foundry-Aufrufe); die Übergabe ist oben direkt geprüft.
+- [ ] `/ui-verify` (390, 768, 1440 px, hell und dunkel) und `impeccable`-Kritik der Seite
+      „Benachrichtigungen“: nach Absprache erst am Ende aller Wellen, zusammen mit der vollen
+      e2e-Suite.
+
+**Was für Enrico bleibt:** die Handgriffe oben (Tipp auf eine Nachricht, „Blockieren“, zweiter
+Browser, Abmelden ohne Netz); in Spec 0014 Produktions-Schlüssel, Vault, Deploy von `push-send`,
+AC-073 und AC-074, danach iPhone (PWA) und Android.
 
 ## Entscheidung des Leads zur Verschlüsselung (21.11.2026)
 
@@ -980,3 +1033,52 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 Offen für Task 10: Der echte Ablauf (Erlaubnis, Anmelden, Probe, Entfernen, Abmelden, Tipp) ist
 nur im gebauten Export prüfbar; `EXPO_PUBLIC_VAPID_PUBLIC_KEY` war beim Bau nicht gesetzt, Enrico
 führt vorher `node scripts/push-keys.mjs` aus.
+
+## Entscheidungen beim Abschluss (Task 10, 21.11.2026)
+
+Vom Eigentümer vorab entschieden (Befunde aus `/security-check` und `spec-auditor`), vor der
+ersten Produktions-Migration direkt in der Grundlage umgesetzt (ADR-0012), Tests jeweils zuerst
+rot (Belege in `tmp/0013/red-*.txt`):
+
+1. **Signatur statt Geheimnis** (Sicherheit, mittel): `private.post_push_bundle` schickt
+   `x-push-timestamp` und `x-push-signature` (HMAC-SHA256 über `<timestamp>.<body>`, `pgcrypto`,
+   echte Uhr statt `p_now`); `push-send` prüft zeitkonstant, höchstens 5 Minuten alt, höchstens
+   1 Minute voraus, sonst 401. Die alte Kopfzeile `x-push-secret` gilt nicht mehr. Nachtrag in
+   ADR-0014, `sync.md`, `supabase/functions/README.md`, `scripts/edge-smoke.mjs`.
+2. **Freigegebene API-Schemas als Grenze** (Teil desselben Befunds): pgTAP kann die Einstellung
+   von PostgREST nicht lesen (sie steht weder in `pg_roles` noch in `current_setting`), deshalb
+   `scripts/api-schemas.test.mjs` (in `pnpm test:scripts`) gegen `supabase/config.toml` und ein
+   Integrationstest gegen den laufenden Stack (`Content-Profile: net` → 406 als `anon` und als
+   Mitglied; GraphQL-Introspektion ohne `net`; lokal ist `pg_graphql` aus). Für die Cloud:
+   Spec 0014, AC-073.
+3. **Grenze der Probe je Person** (Sicherheit, mittel): `notification_deliveries.subscription_id`
+   ist nullable mit `on delete set null` (für alle Arten, ein Fremdschlüssel kann nicht nach Art
+   unterscheiden). Protokoll-Zeilen ohne Inhalt bleiben damit bis zur nächtlichen Bereinigung
+   (30 Tage) auch nach dem Entfernen des Geräts stehen; der Zähler zählt nach `profile_id`.
+4. **Bündel nach Größe** (niedrig): `private.push_bundles` teilt nach höchstens 50 Nachrichten
+   **und** 100 KB Inhalt (`octet_length`), `push-send` nimmt 128 KB.
+5. **Keine Steuerzeichen** (niedrig): Checks `!~ '[[:cntrl:]]'` an `chores.title`,
+   `activities.name`, `restaurants.name`, `meal_plan_entries.text` und `.note`. Nicht erfasst und
+   hingenommen: Rezept-Titel (Import und KI liefern sie, ein Fehler dort wäre für Nutzer
+   unverständlich), Vorlauf-Text und Namen der Tageszeiten; sie erscheinen nur als Text in der
+   Nachricht, nie als Markup. Die App prüft Steuerzeichen nicht vorab; ein eingefügter Tab ergibt
+   die allgemeine Fehlermeldung.
+6. **`push-keys.mjs`** (niedrig): schreibt atomar (Temp-Datei im selben Ordner, 0600, `rename`)
+   und setzt eine vorhandene, für Gruppe oder andere lesbare Datei auf 0600 mit Warnung (nur der
+   Dateiname). Folge: ein Symlink als Ziel wird durch eine normale Datei ersetzt (hingenommen).
+7. **`deno.lock`** (niedrig): Deno ist lokal nicht installiert und wird nicht installiert; die
+   Lock-Datei für `push-send` entsteht als CI-Schritt der Spec 0014 (AC-074).
+8. **AC-007 nur bei ausdrücklichem Speichern** (Audit): `core.asksForPushPermission`; Tipp
+   („Speichern“, „Fertig“) und Enter fragen, das Verlassen des Felds „Reserviert um“ speichert,
+   fragt aber nicht. Eine beim Verlassen gespeicherte Uhrzeit fragt beim folgenden „Fertig“ (im
+   Web kommt das Verlassen des Felds vor dem Tipp). Die App hat keine Komponententests (jest-expo
+   ist nicht eingerichtet); die Regel ist in `core` getestet, die Aufrufstellen nutzen sie.
+9. **Fenster einschließlich 30 Minuten** (Audit): `due_at ≥ p_now − 30 Min` in allen fünf
+   Stellen. `core` kennt kein Fenster (der Server plant allein), einen Gleichlauf gibt es also
+   nicht zu sichern; die Grenze prüft pgTAP (genau 30 kommt, 31 nicht).
+10. **iPad-Hinweis** (Audit): „Auf dem iPad erst die App zum Home-Bildschirm hinzufügen“, neuer
+    Zustand `ipad-needs-home-screen` (`PushEnvironment.ipad`, auch ein iPad, das sich als Mac
+    meldet).
+11. **Sammlung im Teil „Essen“** (Audit): pgTAP-Fall „Tapas-Abend“ (mit „du kochst“ für die
+    Köchin); keine Änderung im Code nötig.
+12. **Spec 0002:** Hinweis beim Nicht-Ziel „Reservierungen“ (geändert durch REQ-008).

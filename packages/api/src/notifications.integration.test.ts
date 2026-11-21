@@ -238,6 +238,45 @@ describe.skipIf(!enabled)('spec 0013: notifications in the local stack', () => {
     for (const call of calls) expect(refused).toContain(await codeOf(call()));
   });
 
+  it('security check 0013: pg_net is not reachable through the API, as anon or as a member', async () => {
+    // Supabase grants the queue of pg_net to PUBLIC and net.http_post to anon and authenticated
+    // (not revocable); only the exposed schemas (public, graphql_public) keep them out of reach.
+    const enrico = await signedIn(0);
+    const { data } = await enrico.client.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new Error('no session');
+    for (const authorization of [undefined, `Bearer ${token}`]) {
+      const headers = {
+        apikey: key,
+        'content-type': 'application/json',
+        ...(authorization ? { authorization } : {}),
+      };
+      const post = await fetch(`${url}/rest/v1/rpc/http_post`, {
+        method: 'POST',
+        headers: { ...headers, 'content-profile': 'net' },
+        body: JSON.stringify({ url: 'https://example.invalid/' }),
+      });
+      expect(post.status).toBe(406);
+      expect(((await post.json()) as { code?: string }).code).toBe('PGRST106');
+      const queue = await fetch(`${url}/rest/v1/http_request_queue?select=*`, {
+        headers: { ...headers, 'accept-profile': 'net' },
+      });
+      expect(queue.status).toBe(406);
+      const graphql = await fetch(`${url}/graphql/v1`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          query: '{ __schema { types { name fields { name } } } }',
+        }),
+      });
+      const introspection = JSON.stringify(await graphql.json());
+      // Locally pg_graphql is off ("not enabled"); in the cloud it is on: either way no net object.
+      expect(introspection).not.toMatch(
+        /http_?(request|response|post|get)|httpRequestQueue|_http_response/i,
+      );
+    }
+  });
+
   it.skipIf(vaultFilled)(
     'REQ-003: "Probe senden" without the Vault entries answers push_not_configured',
     async () => {

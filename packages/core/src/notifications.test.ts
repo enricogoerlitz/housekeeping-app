@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  asksForPushPermission,
   base64UrlToBytes,
   bytesToBase64Url,
   choreTimeHint,
@@ -266,6 +267,7 @@ describe('this device (REQ-002, REQ-010)', () => {
     web: true,
     dev: false,
     ios: false,
+    ipad: false,
     standalone: false,
     serviceWorker: true,
     pushManager: true,
@@ -276,6 +278,11 @@ describe('this device (REQ-002, REQ-010)', () => {
     expect(pushSupport(web)).toBe('supported');
     expect(pushSupport({ ...web, ios: true, pushManager: false })).toBe('ios-needs-home-screen');
     expect(pushSupport({ ...web, ios: true, standalone: true })).toBe('supported');
+    // The iPad has its own hint, not the iPhone's.
+    expect(pushSupport({ ...web, ios: true, ipad: true, pushManager: false })).toBe(
+      'ipad-needs-home-screen',
+    );
+    expect(pushSupport({ ...web, ios: true, ipad: true, standalone: true })).toBe('supported');
     // Before iOS 16.4 even the home-screen app has no push.
     expect(pushSupport({ ...web, ios: true, standalone: true, pushManager: false })).toBe(
       'unsupported',
@@ -290,6 +297,9 @@ describe('this device (REQ-002, REQ-010)', () => {
     expect(pushSupportHint('supported')).toBeUndefined();
     expect(pushSupportHint('ios-needs-home-screen')).toBe(
       'Auf dem iPhone erst die App zum Home-Bildschirm hinzufügen',
+    );
+    expect(pushSupportHint('ipad-needs-home-screen')).toBe(
+      'Auf dem iPad erst die App zum Home-Bildschirm hinzufügen',
     );
     expect(pushSupportHint('unsupported')).toBe(
       'Dieser Browser kann keine Benachrichtigungen empfangen',
@@ -644,5 +654,74 @@ describe('the page wiring of this device (Task 8)', () => {
     expect(kindsSectionTitle('Enrico & Nadja')).toBe(
       'Was und wann · Enrico & Nadja · gilt für alle Geräte',
     );
+  });
+});
+
+describe('asking for the browser permission (AC-007, Decision 26)', () => {
+  const t = (value: string) => TimeOfDaySchema.parse(value);
+
+  it('AC-007: saving a new time with a tap or Enter asks', () => {
+    expect(
+      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: t('19:00') }),
+    ).toBe(true);
+    expect(
+      asksForPushPermission({
+        kind: 'time',
+        gesture: 'enter',
+        before: t('19:00'),
+        after: t('19:30'),
+      }),
+    ).toBe(true);
+  });
+
+  it('AC-007: leaving the field (blur) never asks, even with a new time', () => {
+    expect(
+      asksForPushPermission({
+        kind: 'time',
+        gesture: 'blur',
+        before: undefined,
+        after: t('19:30'),
+      }),
+    ).toBe(false);
+    expect(
+      asksForPushPermission({
+        kind: 'time',
+        gesture: 'blur',
+        before: t('19:00'),
+        after: t('19:30'),
+      }),
+    ).toBe(false);
+  });
+
+  it('AC-007: removing a time or keeping the same one never asks', () => {
+    expect(
+      asksForPushPermission({ kind: 'time', gesture: 'tap', before: t('19:00'), after: undefined }),
+    ).toBe(false);
+    expect(
+      asksForPushPermission({
+        kind: 'time',
+        gesture: 'tap',
+        before: t('19:00'),
+        after: t('19:00'),
+      }),
+    ).toBe(false);
+    expect(
+      asksForPushPermission({
+        kind: 'time',
+        gesture: 'enter',
+        before: undefined,
+        after: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it('AC-007: switching a kind on asks, switching it off does not', () => {
+    expect(asksForPushPermission({ kind: 'switch', on: true })).toBe(true);
+    expect(asksForPushPermission({ kind: 'switch', on: false })).toBe(false);
+  });
+
+  it('AC-007: saving the time of a kind asks only when that kind is on', () => {
+    expect(asksForPushPermission({ kind: 'kindTime', kindEnabled: true })).toBe(true);
+    expect(asksForPushPermission({ kind: 'kindTime', kindEnabled: false })).toBe(false);
   });
 });

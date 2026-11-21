@@ -8,6 +8,7 @@ import {
   type NotificationSettingsPatch,
 } from '@housekeeping/api';
 import {
+  asksForPushPermission,
   DAILY_SUMMARY_PARTS,
   dailySummaryPartLabel,
   formatTime,
@@ -100,7 +101,7 @@ export function KindsSection() {
               testID: `notif-kind-${KIND_IDS[kind]}`,
               onValueChange: (on: boolean) => {
                 // The browser's question first, inside the tap (Decision 26, AC-007).
-                if (on) ensureDevicePush();
+                if (asksForPushPermission({ kind: 'switch', on })) ensureDevicePush();
                 save(kindEnabledPatch(kind, on));
               },
             };
@@ -165,7 +166,8 @@ function KindSheet(props: {
       return;
     }
     // Setting a time of a kind that is on asks for this device (Decision 26).
-    if (kindEnabled(settings, kind)) ensureDevicePush();
+    if (asksForPushPermission({ kind: 'kindTime', kindEnabled: kindEnabled(settings, kind) }))
+      ensureDevicePush();
     const saved = save(
       daily
         ? { dailySummaryAt: read.time, dailySummaryParts: parts }

@@ -6,7 +6,16 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createECDH } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -156,4 +165,46 @@ test('rejects unknown arguments', () => {
   const file = fileWith(undefined);
   assert.equal(run('--print', '--out', file).status, 2);
   assert.equal(run('--out', file, '--out').status, 2);
+});
+
+test('an existing, group-readable file is written atomically and ends up owner-only, with a warning', () => {
+  const file = fileWith('OTHER=1\n');
+  chmodSync(file, 0o644);
+  const before = statSync(file).ino;
+  const { status, output } = run('--out', file);
+  assert.equal(status, 0, output);
+  const values = parse(file);
+  for (const name of NAMES) assert.ok(values[name], `${name} written`);
+  assert.equal(values.OTHER, '1');
+  assert.equal(statSync(file).mode & 0o777, 0o600, 'only the owner may read the file');
+  // A rename replaces the file, so a crash mid-write never leaves half a file behind.
+  assert.notEqual(statSync(file).ino, before, 'written through a temp file and a rename');
+  assert.deepEqual(
+    readdirSync(dir).filter((name) => name.includes('.tmp')),
+    [],
+    'no temp file left',
+  );
+  assert.match(output, /was readable by group or others; set to 0600/);
+  assertNoValueIn(output, values);
+});
+
+test('an existing, group-readable file with every value set is only made owner-only', () => {
+  const content = NAMES.map((name) => `${name}=keep-${name}`).join('\n') + '\n';
+  const file = fileWith(content);
+  chmodSync(file, 0o640);
+  const { status, output } = run('--out', file);
+  assert.equal(status, 0, output);
+  assert.equal(readFileSync(file, 'utf8'), content);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.match(output, /was readable by group or others; set to 0600/);
+  assert.ok(!output.includes('keep-'));
+});
+
+test('an owner-only existing file stays owner-only without a warning', () => {
+  const file = fileWith('OTHER=1\n');
+  chmodSync(file, 0o600);
+  const { status, output } = run('--out', file);
+  assert.equal(status, 0, output);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.doesNotMatch(output, /readable by group or others/);
 });

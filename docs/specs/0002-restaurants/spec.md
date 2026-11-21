@@ -23,6 +23,8 @@ Apple Karten oder Google Maps.
 - **Keine Restaurantsuche über Google** (Places-API): Sie bräuchte einen kostenpflichtigen
   API-Schlüssel. Wird bei Bedarf in einer eigenen Spec entschieden.
 - **Keine Öffnungszeiten, Speisekarten oder Reservierungen.** Dafür gibt es die Karten-Apps.
+  (Geändert durch Spec 0013, REQ-008: Ein Restaurant-Eintrag im Kalender hat jetzt „Reserviert
+  um“ mit Erinnerung. Eine Reservierung beim Restaurant selbst bleibt ein Nicht-Ziel.)
 - **Kein Teilen-Ziel auf dem iPhone in dieser Spec.** iOS erlaubt das für Web-Apps nicht; es kommt
   mit der nativen App (Teilen-Erweiterung). Android-PWA und der Link-Weg funktionieren vorher.
 - **Keine Einkaufsliste für Restaurantbesuche**: Ein Restaurant im Plan erzeugt keine Posten.
