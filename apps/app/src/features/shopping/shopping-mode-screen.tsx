@@ -1,4 +1,5 @@
 import {
+  addShoppingItemFromText,
   assignArticleArea,
   clearCheckedItems,
   setItemChecked,
@@ -11,41 +12,53 @@ import {
   useShoppingStore,
 } from '@housekeeping/api';
 import {
-  groupItems,
+  finishSummary,
   listProgress,
+  parseSmartInput,
+  shoppingModeGroups,
   summarizeItem,
   type Article,
-  type Id,
-  type ItemGroup,
   type ShoppingItem,
 } from '@housekeeping/core';
 import {
   Button,
   Checkbox,
+  Chip,
   GroupLabel,
+  Icon,
   IconButton,
   ProgressBar,
+  RowTransition,
   Screen,
   Sheet,
   Text,
+  TextField,
   toast,
   useBreakpoint,
+  useCheckWindow,
   useTheme,
+  WIDE_GUTTER,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { useOpenManageEntry } from '@/features/manage/navigation';
 import { undoAction } from '@/features/shell/offline';
+
+import { useActiveShopper } from './active-shopper';
+import { StoreChoiceSheet, WITHOUT_STORE_LABEL } from './store-choice-sheet';
 
 /** Decision 6 of spec 0003: clearing is a write, so offline "Fertig" only leaves the mode. */
 const FINISH_OFFLINE_HINT = 'Abgehakte räumen wir auf, sobald du Netz hast';
-
-// A checked row stays in place this long before it moves to "Erledigt", so a mis-tap is visible.
-const LINGER_MS = 2000;
+// "Einkaufen" is one column at reading width on every screen (spec 0005, D5).
+const SHOPPING_MAX_WIDTH = 760;
+const ADD_FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 function SmRow(props: {
   item: ShoppingItem;
+  /** The check the row shows: a tap in the running window wins over the data. */
+  checked: boolean;
   article: Article | undefined;
   onToggle: () => void;
   onNotHere?: () => void;
@@ -53,7 +66,7 @@ function SmRow(props: {
   onAssignArea?: () => void;
 }) {
   const theme = useTheme();
-  const { item } = props;
+  const { item, checked } = props;
   const name = props.article?.name ?? 'Unbekannter Artikel';
   const summary = summarizeItem(item);
   const note = summary.notes.join(', ');
@@ -75,7 +88,7 @@ function SmRow(props: {
       }}
     >
       <Checkbox
-        checked={item.checked}
+        checked={checked}
         label={name}
         onChange={props.onToggle}
         testID={`sm-item-${item.id}-check`}
@@ -83,11 +96,11 @@ function SmRow(props: {
       <View style={{ flex: 1, minWidth: 0 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={item.checked ? `${name} wieder offen` : `${name} abhaken`}
+          accessibilityLabel={checked ? `${name} wieder offen` : `${name} abhaken`}
           onPress={props.onToggle}
           style={{ minHeight: 44, justifyContent: 'center' }}
         >
-          <Text variant="cardTitle" color={item.checked ? 'muted' : 'text'} strike={item.checked}>
+          <Text variant="cardTitle" color={checked ? 'muted' : 'text'} strike={checked}>
             {name}
             {note ? (
               <Text variant="body" color="muted">
@@ -134,204 +147,195 @@ function SmRow(props: {
 }
 
 /**
- * Einkaufsmodus: calm, large, one-handed. Everything here works offline (ADR-0008 addendum):
- * checking, "Nicht da" and assigning an area.
+ * "Einkaufen" (spec 0006, REQ-007): full screen, large, one-handed. The store chip on top picks
+ * the walking order on this device (D26). A tap checks at once (server or store queue) and the
+ * row stays struck through; 2 s after the last tap the checked rows slide to "Im Wagen" (AC-044).
+ * Everything here works offline (ADR-0008 addendum): checking, "nicht da", adding, assigning an
+ * area; only clearing on "Fertig" waits for the network.
  */
 export function ShoppingModeScreen() {
   const router = useRouter();
+  const openManage = useOpenManageEntry();
   const store = useShoppingStore();
   const items = useShoppingItems();
   const articlesById = useArticlesById();
   const areas = useAreas();
   const offline = useOffline();
+  const shopper = useActiveShopper();
   const theme = useTheme();
   const { isWide } = useBreakpoint();
 
-  const [lingering, setLingering] = useState<Set<Id>>(new Set());
   const [areaFor, setAreaFor] = useState<ShoppingItem | undefined>();
-  const timers = useRef(new Map<Id, ReturnType<typeof setTimeout>>());
+  const [choosingStore, setChoosingStore] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
 
-  useEffect(() => {
-    const running = timers.current;
-    return () => {
-      for (const timer of running.values()) clearTimeout(timer);
-    };
-  }, []);
+  const check = useCheckWindow<ShoppingItem>({
+    items,
+    getId: (item) => item.id,
+    isChecked: (item) => item.checked,
+    // The check is written at once, not when the window closes (AC-044).
+    onToggle: (item, checked) => setItemChecked(item.id, checked),
+    announce: (item, checked) =>
+      `${articlesById[item.articleId]?.name ?? 'Posten'} ${checked ? 'abgehakt' : 'wieder offen'}`,
+  });
 
-  // The household's shopping list (ADR-0012): all of its items.
-  const own = items;
-  const progress = listProgress(own);
+  const progress = listProgress(items);
+  const shownIds = new Set(check.rows.map((item) => item.id));
+  const groups = shoppingModeGroups(check.rows, articlesById, areas, store);
+  const inCart = items.filter((item) => !shownIds.has(item.id));
 
   const close = () => {
     if (router.canGoBack()) router.back();
     else router.replace('/liste');
   };
 
-  const toggle = (item: ShoppingItem) => {
-    const checking = !item.checked;
-    setItemChecked(item.id, checking);
-    const existing = timers.current.get(item.id);
-    if (existing) clearTimeout(existing);
-    if (!checking) {
-      timers.current.delete(item.id);
-      setLingering((current) => {
-        const next = new Set(current);
-        next.delete(item.id);
-        return next;
-      });
-      return;
-    }
-    setLingering((current) => new Set(current).add(item.id));
-    timers.current.set(
-      item.id,
-      setTimeout(() => {
-        timers.current.delete(item.id);
-        setLingering((current) => {
-          const next = new Set(current);
-          next.delete(item.id);
-          return next;
-        });
-      }, LINGER_MS),
-    );
-  };
-
+  // "Fertig" (AC-047): online the checked items leave the list with "Rückgängig"; offline it only
+  // leaves "Einkaufen" and the tidying waits for the network.
   const finish = () => {
-    if (offline) {
+    const summary = finishSummary(items);
+    if (summary.bought > 0 && offline) {
       toast.show({ message: FINISH_OFFLINE_HINT });
-      close();
-      return;
+    } else if (summary.bought > 0) {
+      const restore = snapshot();
+      clearCheckedItems();
+      toast.show({
+        message: summary.label,
+        actionLabel: 'Rückgängig',
+        onAction: undoAction(restore),
+      });
     }
-    const restore = snapshot();
-    const bought = progress.done;
-    const remaining = progress.total - progress.done;
-    clearCheckedItems();
-    toast.show({
-      message: `${bought} gekauft · ${remaining} bleiben`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-    });
     close();
   };
-
-  // Rows checked a moment ago stay in their group; "nicht da" rows go to "Woanders kaufen".
-  const inAisles = own.filter(
-    (item) => (!item.checked || lingering.has(item.id)) && !item.notAvailable,
-  );
-  const groups: ItemGroup[] = groupItems(inAisles, articlesById, areas, store);
-  const notHere = own.filter((item) => !item.checked && item.notAvailable);
-  if (notHere.length > 0) {
-    const elsewhere = groups.find((group) => group.key === 'elsewhere');
-    if (elsewhere) elsewhere.items = [...elsewhere.items, ...notHere];
-    else groups.push({ key: 'elsewhere', title: 'Woanders kaufen', items: notHere });
-  }
-  const done = own.filter((item) => item.checked && !lingering.has(item.id));
 
   const header = (
     <View style={{ gap: 10, paddingTop: 8, paddingBottom: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text variant="small" color="muted">
-            Einkauf · Einkaufsliste
-          </Text>
-          <Text
-            variant={isWide ? 'display' : 'title'}
-            heading
-            numberOfLines={1}
-            testID="screen-title"
-          >
-            {store?.name ?? 'Ohne Markt'}
-          </Text>
-        </View>
+        <Text
+          variant={isWide ? 'display' : 'title'}
+          heading
+          numberOfLines={1}
+          style={{ flex: 1, minWidth: 0 }}
+          testID="screen-title"
+        >
+          Einkaufen
+        </Text>
         {/* Full screen on phones, so "Fertig" is the way out (spec 0005, D5). */}
         <Button
           label="Fertig"
           variant="secondary"
           size="sm"
-          hint="Einkaufen verlassen"
+          hint={offline ? FINISH_OFFLINE_HINT : 'Abgehakte entfernen und Einkaufen verlassen'}
           testID="shopping-close"
-          onPress={close}
+          onPress={finish}
         />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Chip
+          label={`${store?.name ?? WITHOUT_STORE_LABEL} ▾`}
+          icon="store"
+          accessibilityLabel={`Markt: ${store?.name ?? WITHOUT_STORE_LABEL}. Ändern`}
+          onPress={() => setChoosingStore(true)}
+          testID="shopping-store"
+        />
         <ProgressBar
           value={progress.total === 0 ? 0 : progress.done / progress.total}
           label={`${progress.done} von ${progress.total} erledigt`}
         />
         <Text variant="bodyStrong" testID="shopping-progress">
-          {`${progress.done} / ${progress.total}`}
+          {`${progress.done}/${progress.total}`}
         </Text>
       </View>
+      {shopper ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Icon name="shopping-basket" size={15} color="muted" />
+          <Text variant="small" color="muted" testID="shopping-active-shopper">
+            {shopper.label}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 
+  // The bar keeps the page's narrow width on wide screens, so the input lines up with the rows.
   const footer = (
     <View
+      testID="shopping-add-bar"
       style={{
         backgroundColor: theme.colors.barBg,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
-        paddingHorizontal: isWide ? 36 : theme.shape.gutter,
-        paddingVertical: 12,
+        paddingHorizontal: isWide ? WIDE_GUTTER : theme.shape.gutter,
+        paddingVertical: 10,
       }}
     >
-      <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center' }}>
-        <Button
-          label="Einkauf abschließen"
-          icon="check"
-          full
-          testID="shopping-finish"
-          onPress={finish}
-        />
+      <View style={{ width: '100%', maxWidth: SHOPPING_MAX_WIDTH, alignSelf: 'center' }}>
+        <AddItemField />
       </View>
     </View>
   );
 
+  const renderRow = (item: ShoppingItem, groupKey?: string) => {
+    const checked = check.isChecked(item);
+    return (
+      <RowTransition key={item.id}>
+        <SmRow
+          item={item}
+          checked={checked}
+          article={articlesById[item.articleId]}
+          onToggle={() => check.toggle(item)}
+          onNotHere={
+            !checked && !item.notAvailable && groupKey !== undefined
+              ? () => setItemNotAvailable(item.id, true)
+              : undefined
+          }
+          onBackHere={
+            item.notAvailable && !checked ? () => setItemNotAvailable(item.id, false) : undefined
+          }
+          onAssignArea={groupKey === 'none' && !checked ? () => setAreaFor(item) : undefined}
+        />
+      </RowTransition>
+    );
+  };
+
   return (
-    <Screen tone="liste" header={header} footer={footer} maxWidth={760} clearFab={false}>
-      {own.length === 0 ? (
-        <Text color="muted" style={{ marginTop: 24 }} align="center">
-          Auf dieser Liste steht nichts.
+    <Screen
+      tone="liste"
+      header={header}
+      footer={footer}
+      maxWidth={SHOPPING_MAX_WIDTH}
+      clearFab={false}
+    >
+      {items.length === 0 ? (
+        <Text color="muted" style={{ marginTop: 24 }} align="center" testID="shopping-empty">
+          Auf der Einkaufsliste steht nichts.
         </Text>
       ) : null}
       {groups.map((group) => (
         <View key={group.key} testID={`sm-group-${group.key}`}>
-          <GroupLabel>{group.title}</GroupLabel>
-          <View style={{ gap: 8 }}>
-            {group.items.map((item) => (
-              <SmRow
-                key={item.id}
-                item={item}
-                article={articlesById[item.articleId]}
-                onToggle={() => toggle(item)}
-                onNotHere={
-                  !item.checked && !item.notAvailable
-                    ? () => setItemNotAvailable(item.id, true)
-                    : undefined
-                }
-                onBackHere={
-                  item.notAvailable ? () => setItemNotAvailable(item.id, false) : undefined
-                }
-                onAssignArea={
-                  group.key === 'none' && !item.checked ? () => setAreaFor(item) : undefined
-                }
-              />
-            ))}
-          </View>
+          <GroupLabel>
+            {group.key === 'elsewhere' ? `${group.title} (${group.items.length})` : group.title}
+          </GroupLabel>
+          <View style={{ gap: 8 }}>{group.items.map((item) => renderRow(item, group.key))}</View>
         </View>
       ))}
-      {done.length > 0 ? (
+      {inCart.length > 0 ? (
         <View testID="sm-done" style={{ marginTop: 12 }}>
-          <GroupLabel>{`Erledigt (${done.length})`}</GroupLabel>
-          <View style={{ gap: 8 }}>
-            {done.map((item) => (
-              <SmRow
-                key={item.id}
-                item={item}
-                article={articlesById[item.articleId]}
-                onToggle={() => toggle(item)}
-              />
-            ))}
-          </View>
+          <Pressable
+            testID="sm-done-toggle"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: cartOpen }}
+            accessibilityLabel={`Im Wagen (${inCart.length})`}
+            onPress={() => setCartOpen(!cartOpen)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}
+          >
+            <Icon name={cartOpen ? 'chevron-down' : 'chevron-right'} size={18} color="muted" />
+            <Text variant="groupLabel" heading>
+              {`Im Wagen (${inCart.length})`}
+            </Text>
+          </Pressable>
+          {cartOpen ? (
+            <View style={{ gap: 8 }}>{inCart.map((item) => renderRow(item))}</View>
+          ) : null}
         </View>
       ) : null}
       {areaFor ? (
@@ -341,7 +345,67 @@ export function ShoppingModeScreen() {
           onClose={() => setAreaFor(undefined)}
         />
       ) : null}
+      {choosingStore ? (
+        <StoreChoiceSheet
+          current={store}
+          onClose={() => setChoosingStore(false)}
+          onManage={() => {
+            setChoosingStore(false);
+            openManage('/maerkte');
+          }}
+        />
+      ) : null}
     </Screen>
+  );
+}
+
+/**
+ * "Posten hinzufügen" in the store (AC-046): works offline through the store queue; the new row
+ * lands in its area or under "Ohne Bereich".
+ */
+function AddItemField() {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const submit = () => {
+    if (!parseSmartInput(text)) {
+      setError('Was fehlt denn?');
+      return;
+    }
+    try {
+      const added = addShoppingItemFromText(text);
+      if (!added) return;
+      setText('');
+      setError(undefined);
+      toast.show({ message: `${added.articleName} steht auf der Liste`, duration: 2500 });
+    } catch {
+      setError(ADD_FAILED);
+    }
+  };
+  return (
+    <TextField
+      accessibilityLabel="Posten hinzufügen"
+      placeholder="+ Posten hinzufügen"
+      value={text}
+      round
+      onChangeText={(value) => {
+        setText(value);
+        setError(undefined);
+      }}
+      onSubmitEditing={submit}
+      returnKeyType="done"
+      blurOnSubmit={false}
+      error={error}
+      right={
+        <IconButton
+          icon="plus"
+          label="Hinzufügen"
+          disabled={text.trim() === ''}
+          onPress={submit}
+          testID="shopping-add-submit"
+        />
+      }
+      testID="shopping-add-input"
+    />
   );
 }
 

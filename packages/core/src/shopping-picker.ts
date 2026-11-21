@@ -1,6 +1,6 @@
 // Step 1 of "Auf die Einkaufsliste" (spec 0006, REQ-008, D21): which plan entries the window
 // shows for a week and which of them start out selected.
-import { isoWeekNumber, startOfWeek, weekDates } from './dates';
+import { isoWeekNumber, parseISODate, startOfWeek, weekdayShort, weekDates } from './dates';
 import { entriesForDay, orderSlotEntries } from './meal-plan';
 import { contributionsFromEntry } from './shopping';
 import type { Id, ISODate, MealPlanEntry, Recipe, ShoppingItem } from './types';
@@ -133,4 +133,19 @@ export function toggleDaySelection(selected: ReadonlySet<Id>, dayEntryIds: reado
     else next.add(id);
   }
   return next;
+}
+
+/** The head of a day in the window: "Fr 20 · heute", "Do 19 · vorbei", "Sa 21". */
+export function listPickerDayLabel(
+  day: Pick<ListPickerDay, 'date' | 'isToday' | 'isPast'>,
+): string {
+  const label = `${weekdayShort(day.date)} ${parseISODate(day.date).getDate()}`;
+  if (day.isToday) return `${label} · heute`;
+  return day.isPast ? `${label} · vorbei` : label;
+}
+
+/** The button of step 1: "Weiter: 3 Gerichte", "Weiter: 1 Gericht", "Weiter" when none is chosen. */
+export function listPickerContinueLabel(dishes: number): string {
+  if (dishes <= 0) return 'Weiter';
+  return `Weiter: ${dishes} ${dishes === 1 ? 'Gericht' : 'Gerichte'}`;
 }

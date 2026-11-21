@@ -21,7 +21,9 @@ import {
   addShoppingItemFromText,
   adjustItemCount,
   clearCheckedItems,
+  AREA_NAME_MAX_LENGTH,
   clearShoppingList,
+  createArea,
   createStore,
   fullAreaOrder,
   ITEM_NOTE_MAX_LENGTH,
@@ -343,6 +345,35 @@ describe('stores (diff path)', () => {
       expect.objectContaining({ kind: 'patch', table: 'stores' }),
     ]);
     expect(fx.server.row(H, 'stores', storeId)).toMatchObject({ hidden_area_ids: [area.id] });
+  });
+
+  it('AC-024: "Deko" becomes an area of the household (one insert, last in order); the article goes under it', async () => {
+    await fx.startEnrico();
+    const lastSort = Math.max(...getData().areas.map((area) => area.sort));
+    const areaId = createArea('  Deko ');
+    assignArticleArea('art-geschenkpapier', areaId);
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges', 'assignArticleArea']);
+    expect(fx.server.row(H, 'areas', areaId)).toMatchObject({ name: 'Deko', sort: lastSort + 1 });
+    expect(fx.server.row(H, 'articles', 'art-geschenkpapier')).toMatchObject({ area_id: areaId });
+    expect(articleNamed('Geschenkpapier')?.areaId).toBe(areaId);
+  });
+
+  it('AC-024: an existing name (any case) is reused; empty, too long and offline are refused', async () => {
+    const engine = await fx.startEnrico();
+    const existing = getData().areas[0];
+    if (!existing) throw new Error('fixture');
+    const before = getData();
+    expect(createArea(` ${existing.name.toUpperCase()} `)).toBe(existing.id);
+    expect(() => createArea('   ')).toThrow('Name fehlt');
+    expect(() => createArea('x'.repeat(AREA_NAME_MAX_LENGTH + 1))).toThrow(
+      `Höchstens ${AREA_NAME_MAX_LENGTH} Zeichen`,
+    );
+    engine.setSimulatedOffline(true);
+    expect(() => createArea('Deko')).toThrow(OfflineError);
+    expect(getData()).toBe(before);
+    await fx.settle(engine);
+    expect(fx.calls).toEqual([]);
   });
 });
 

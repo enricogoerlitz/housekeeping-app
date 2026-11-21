@@ -8,6 +8,7 @@ import {
   recipeSource,
   summarizeItem,
   weekdayShort,
+  type Area,
   type Id,
   type MealPlanEntry,
   type PlanEntryVariant,
@@ -458,6 +459,34 @@ export function splitItems(items: ShoppingItem[]): { open: ShoppingItem[]; done:
     open: items.filter((item) => !item.checked),
     done: items.filter((item) => item.checked),
   };
+}
+
+// ---------- Areas ----------
+
+/** areas_name_valid in the database. */
+export const AREA_NAME_MAX_LENGTH = 80;
+
+/**
+ * "„Deko“ neu anlegen" under "Bereich" (AC-024): a new area of the household, last in the order
+ * without store. A name that exists already (any case) returns that area instead of a second
+ * one. Online only; assigning it to an article is `assignArticleArea`.
+ */
+export function createArea(name: string): Id {
+  const trimmed = name.trim().replace(/\s+/g, ' ');
+  if (!trimmed) throw new Error('Name fehlt');
+  if (trimmed.length > AREA_NAME_MAX_LENGTH) {
+    throw new Error(`Höchstens ${AREA_NAME_MAX_LENGTH} Zeichen`);
+  }
+  const { areas } = getData();
+  const existing = areas.find((area) => normalizeText(area.name) === normalizeText(trimmed));
+  if (existing) return existing.id;
+  const area: Area = {
+    id: newId(),
+    name: trimmed,
+    sort: areas.reduce((max, candidate) => Math.max(max, candidate.sort), 0) + 1,
+  };
+  commit({ path: 'diff' }, () => updateData((data) => ({ ...data, areas: [...data.areas, area] })));
+  return area.id;
 }
 
 // ---------- Stores ----------

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   canPutOnList,
   entryIdsOnList,
+  listPickerContinueLabel,
+  listPickerDayLabel,
   listPickerPreselection,
   listPickerWeek,
   toggleDaySelection,
@@ -283,5 +285,28 @@ describe('toggleDaySelection', () => {
 
   it('a day without entries changes nothing', () => {
     expect([...toggleDaySelection(new Set(['plan-dal']), [])]).toEqual(['plan-dal']);
+  });
+});
+
+describe('listPickerDayLabel', () => {
+  it('AC-049: "Do 19 · vorbei", "Fr 20 · heute", "Sa 21"', () => {
+    const [thursday, friday, saturday] = listPickerWeek(input()).days;
+    expect([thursday, friday, saturday].map((day) => day && listPickerDayLabel(day))).toEqual([
+      'Do 19 · vorbei',
+      'Fr 20 · heute',
+      'Sa 21',
+    ]);
+  });
+});
+
+describe('listPickerContinueLabel', () => {
+  it('AC-049, AC-050: names the number of chosen dishes', () => {
+    expect(listPickerContinueLabel(3)).toBe('Weiter: 3 Gerichte');
+    expect(listPickerContinueLabel(4)).toBe('Weiter: 4 Gerichte');
+    expect(listPickerContinueLabel(1)).toBe('Weiter: 1 Gericht');
+  });
+
+  it('AC-054: nothing chosen reads "Weiter"', () => {
+    expect(listPickerContinueLabel(0)).toBe('Weiter');
   });
 });

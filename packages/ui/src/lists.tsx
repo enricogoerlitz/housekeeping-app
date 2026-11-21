@@ -116,6 +116,12 @@ export interface ListRowProps {
   subtitle?: ReactNode;
   leading?: ReactNode;
   trailing?: ReactNode;
+  /**
+   * Buttons of their own at the right end, e.g. "− 2× +" (spec 0006). They sit outside the row's
+   * press area, so a tap on them never opens the row and buttons do not nest. The row's own
+   * press area then gets `${testID}-open`.
+   */
+  controls?: ReactNode;
   onPress?: () => void;
   disabled?: boolean;
   strike?: boolean;
@@ -185,6 +191,48 @@ export function ListRow(props: ListRowProps) {
   const wrap = (node: ReactNode) =>
     list === 'tile' ? <ToneContext.Provider value={undefined}>{node}</ToneContext.Provider> : node;
 
+  if (props.onPress && props.controls) {
+    const { paddingVertical, paddingHorizontal, ...outer } = layout;
+    return wrap(
+      <View
+        testID={props.testID}
+        style={[
+          outer,
+          frame,
+          { paddingRight: paddingHorizontal },
+          props.disabled ? { opacity: 0.45 } : null,
+        ]}
+      >
+        <Pressable
+          testID={props.testID ? `${props.testID}-open` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={
+            props.accessibilityLabel ?? (typeof props.title === 'string' ? props.title : undefined)
+          }
+          accessibilityState={{ disabled: !!props.disabled }}
+          disabled={props.disabled}
+          onPress={props.onPress}
+          style={(state) => [
+            {
+              flex: 1,
+              minWidth: 0,
+              alignSelf: 'stretch',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: layout.gap,
+              paddingVertical,
+              paddingLeft: paddingHorizontal,
+            },
+            { opacity: state.pressed ? 0.6 : 1 },
+            focusRing(theme, (state as { focused?: boolean }).focused),
+          ]}
+        >
+          {content}
+        </Pressable>
+        {props.controls}
+      </View>,
+    );
+  }
   if (props.onPress) {
     return wrap(
       <Pressable
@@ -210,6 +258,7 @@ export function ListRow(props: ListRowProps) {
   return wrap(
     <View testID={props.testID} style={[layout, frame, props.disabled ? { opacity: 0.45 } : null]}>
       {content}
+      {props.controls}
     </View>,
   );
 }

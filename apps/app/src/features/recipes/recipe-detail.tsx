@@ -55,6 +55,7 @@ import { View } from 'react-native';
 import { DetailPage } from '@/features/shell/detail-page';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
@@ -63,6 +64,7 @@ import { IngredientsPasteSheet } from './ingredients-paste-sheet';
 
 const TWO_COLUMNS_FROM = 720;
 const PHOTO_BESIDE_TITLE_FROM = 560;
+const NO_INGREDIENTS_HINT = 'Noch keine Zutaten';
 
 export interface RecipeDetailProps {
   recipeId: Id;
@@ -119,6 +121,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
   const shownServings = portions.base === recipe.servings ? portions.shown : recipe.servings;
   const [variantId, setVariantId] = useState<Id | undefined>(() => defaultVariantId(recipe));
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [pantryCheck, setPantryCheck] = useState(false);
   const [noteFor, setNoteFor] = useState<RecipeIngredient | undefined>();
   const image = useRecipeImage(recipe);
 
@@ -210,6 +213,16 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           variant="secondary"
           onPress={() => router.push('/kalender')}
           testID="recipe-plan"
+        />
+        {/* REQ-010: straight into the pantry check with the portions and variant shown here. */}
+        <Button
+          label="Auf die Liste"
+          icon="shopping-basket"
+          variant="secondary"
+          onPress={() => setPantryCheck(true)}
+          disabled={online.disabled || recipe.ingredients.length === 0}
+          hint={online.hint ?? (recipe.ingredients.length === 0 ? NO_INGREDIENTS_HINT : undefined)}
+          testID="recipe-to-list"
         />
         {features.ai ? (
           <Button
@@ -411,6 +424,20 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
           </Section>
         ) : null}
 
+        {pantryCheck ? (
+          <PantryCheckSheet
+            recipes={[
+              {
+                recipeId: recipe.id,
+                portions: shownServings,
+                variants: activeVariantId
+                  ? [{ variantId: activeVariantId, portions: shownServings }]
+                  : [],
+              },
+            ]}
+            onClose={() => setPantryCheck(false)}
+          />
+        ) : null}
         <IngredientsPasteSheet
           recipeId={recipe.id}
           visible={pasteOpen}

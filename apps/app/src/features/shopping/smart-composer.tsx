@@ -1,6 +1,13 @@
 import { addShoppingItemFromText, useArticles } from '@housekeeping/api';
-import { formatAmount, parseSmartInput, searchArticles, type SmartInput } from '@housekeeping/core';
-import { Chip, ComposerBar, IconButton, TextField, toast } from '@housekeeping/ui';
+import {
+  formatAmount,
+  parseSmartInput,
+  searchArticles,
+  suggestSimilarArticle,
+  type Article,
+  type SmartInput,
+} from '@housekeeping/core';
+import { Button, Chip, ComposerBar, IconButton, Text, TextField, toast } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 
@@ -58,6 +65,9 @@ export function SmartComposer(props: {
   const articles = useArticles();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | undefined>();
+  // "Meinst du Kokosmilch?" (AC-031): a typed name close to an article waits for "Ja" or
+  // "Trotzdem neu" instead of creating a second article.
+  const [brake, setBrake] = useState<{ line: string; similar: Article } | undefined>();
   // Remounting with autoFocus brings the focus back after the send button took it.
   const [fieldKey, setFieldKey] = useState(0);
 
@@ -65,8 +75,15 @@ export function SmartComposer(props: {
   const suggestions = parsed ? searchArticles(parsed.name, articles, MAX_SUGGESTIONS) : [];
   const amount = parsed ? amountText(parsed) : undefined;
 
-  const submit = (line: string, refocus: boolean) => {
+  const submit = (line: string, refocus: boolean, checkSimilar = true) => {
     if (!line.trim()) return;
+    const typed = parseSmartInput(line);
+    const similar = checkSimilar && typed ? suggestSimilarArticle(typed.name, articles) : undefined;
+    if (similar) {
+      setBrake({ line, similar });
+      return;
+    }
+    setBrake(undefined);
     try {
       addShoppingItemFromText(line);
       setText('');
@@ -84,6 +101,33 @@ export function SmartComposer(props: {
 
   return (
     <ComposerBar testID="composer">
+      {brake ? (
+        <View
+          testID="smart-brake"
+          style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}
+        >
+          <Text variant="small" style={{ flexShrink: 1 }}>
+            {`Meinst du ${brake.similar.name}?`}
+          </Text>
+          <Button
+            label="Ja"
+            size="sm"
+            variant="secondary"
+            testID="smart-brake-accept"
+            onPress={() => {
+              const typed = parseSmartInput(brake.line);
+              if (typed) submit(withName(typed, brake.similar.name), true, false);
+            }}
+          />
+          <Button
+            label="Trotzdem neu"
+            size="sm"
+            variant="link"
+            testID="smart-brake-create"
+            onPress={() => submit(brake.line, true, false)}
+          />
+        </View>
+      ) : null}
       {parsed ? (
         <>
           <ChipRow testID="smart-preview">
@@ -129,6 +173,7 @@ export function SmartComposer(props: {
         onChangeText={(value) => {
           setText(value);
           setError(undefined);
+          setBrake(undefined);
         }}
         placeholder="Was fehlt? z. B. 2 Käse (Gouda)"
         accessibilityLabel="Artikel hinzufügen"

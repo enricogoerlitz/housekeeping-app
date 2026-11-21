@@ -105,6 +105,7 @@ export {
   type SearchOrCreateHit,
   type SearchOrCreateOption,
 } from './search-or-create';
+export { SwipeToRemove, type SwipeToRemoveProps } from './swipe-row';
 export { FilterBar, type FilterBarProps } from './filter-bar';
 export { InfiniteList, type InfiniteListProps } from './infinite-list';
 export {

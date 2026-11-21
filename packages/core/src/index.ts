@@ -14,6 +14,7 @@ export * from './absences';
 export * from './household-row';
 export * from './shopping';
 export * from './shopping-list';
+export * from './shopping-mode';
 export * from './shopping-picker';
 export * from './chores';
 export * from './restaurants';
