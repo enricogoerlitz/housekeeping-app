@@ -712,6 +712,18 @@ export function createFakeServer(): FakeServer {
   }
 
   /**
+   * chore_events_keep_chore (spec 0011): an entry keeps its chore. The link is set again only
+   * after the chore was deleted („Rückgängig“, AC-053); it is cleared only by deleting the chore.
+   */
+  function checkChoreLink(tables: TableRows, event: Row, choreId: unknown): void {
+    const current = typeof event.chore_id === 'string' ? event.chore_id : null;
+    const target = choreId ?? null;
+    if (current === null || target === current) return;
+    if (target === null && !tables.chores?.[current]) return;
+    throw reject('invalid_change');
+  }
+
+  /**
    * private.complete_chore (spec 0011): books only while the chore still shows the seen state;
    * the title comes from the chore, the state before from the stored row. A day outside today − 3
    * … today + 1 (server date, UTC), a date not after the day, or a date for "bei Bedarf" is
@@ -780,6 +792,8 @@ export function createFakeServer(): FakeServer {
       prev_last_done_on: chore.last_done_on ?? null,
       prev_next_assignee_id: chore.next_assignee_id ?? null,
       prev_recorded: true,
+      // clock_timestamp() of chore_events_stamp_booking: two bookings in one call keep their order.
+      created_at: now(),
     });
     const once =
       typeof chore.recurrence === 'object' &&
@@ -847,7 +861,8 @@ export function createFakeServer(): FakeServer {
           : 1,
     );
     const deletes = sum((op) =>
-      op.kind === 'delete' || op.kind === 'remove_chore_event'
+      // complete_chore too: done of a one-off chore deletes it, known only under the lock.
+      op.kind === 'delete' || op.kind === 'complete_chore' || op.kind === 'remove_chore_event'
         ? 1
         : op.kind === 'remove_contributions'
           ? op.ids.length
@@ -920,6 +935,8 @@ export function createFakeServer(): FakeServer {
           }
           const row = tables[op.table]?.[op.id];
           if (!row) throw new TransportError('permanent', 'row_not_found', 404);
+          if (op.table === 'chore_events' && 'chore_id' in op.changes)
+            checkChoreLink(tables, row, op.changes.chore_id);
           tables = withRow(tables, op.table, { ...row, ...op.changes });
           if (op.table === 'recipes' && 'ingredients' in op.changes) {
             checkIngredients(op.changes.ingredients, tables);

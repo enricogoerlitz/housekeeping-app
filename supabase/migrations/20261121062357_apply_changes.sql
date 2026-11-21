@@ -13,7 +13,7 @@
 --   only rows of p_household_id;
 -- * plain INSERT (no upsert); a patch that hits no row is an error (row_not_found);
 -- * at most 200 ops, 20 deletes and 500 added contributions per call (too_many_changes); a domain
---   op counts as its elements; remove_chore_event is one op and one delete.
+--   op counts as its elements; complete_chore and remove_chore_event are one op and one delete each.
 --
 -- Errors: not_member (42501), invalid_change (22023), too_many_changes (22023),
 -- row_not_found (P0002), the errors of the domain ops (e.g. already_done / chore_changed P0001,
@@ -108,12 +108,14 @@ begin
   end if;
   -- A domain op counts as its elements: every id of remove_contributions is a delete and an op,
   -- every entry of add_contributions is an op. The contributions of all entries are capped too.
+  -- complete_chore counts as a delete: done of a one-off chore deletes it, which is known only
+  -- once the chore is locked.
   select coalesce(sum(case when o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'
                              then greatest(jsonb_array_length(o -> 'ids'), 1)
                            when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
                              then greatest(jsonb_array_length(o -> 'entries'), 1)
                            else 1 end), 0),
-         count(*) filter (where o ->> 'kind' in ('delete', 'remove_chore_event'))
+         count(*) filter (where o ->> 'kind' in ('delete', 'complete_chore', 'remove_chore_event'))
            + coalesce(sum(jsonb_array_length(o -> 'ids'))
                         filter (where o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'), 0),
          coalesce(sum(c.contributions), 0)

@@ -153,6 +153,48 @@ grant update (chore_id, done_by) on public.chore_events to authenticated;
 select private.attach_household_policies('public.chore_events');
 select private.attach_sync_triggers('public.chore_events');
 
+-- Before update of chore_id: an event keeps its chore. The link may only be set again after the
+-- chore was deleted ("Rückgängig", AC-053) and is cleared only by deleting the chore (on delete
+-- set null). Moving an event to another chore would let remove_chore_event restore the recorded
+-- state onto the wrong chore.
+create function private.chore_events_keep_chore()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if old.chore_id is null
+     or (new.chore_id is null
+         and not exists (select 1 from public.chores c where c.household_id = old.household_id and c.id = old.chore_id)) then
+    return new;
+  end if;
+  raise exception 'invalid_change' using errcode = '22023';
+end
+$$;
+
+create trigger chore_events_keep_chore before update of chore_id on public.chore_events
+  for each row when (old.chore_id is distinct from new.chore_id)
+  execute function private.chore_events_keep_chore();
+
+-- Before insert of a booking by complete_chore (prev_recorded): created_at is the booking time,
+-- not the transaction start, so two bookings of one chore in one apply_changes call keep their
+-- order (latest booked = created_at, then id). The name sorts after chore_events_set_timestamps,
+-- which sets created_at := now(); before triggers fire in name order.
+create function private.chore_events_stamp_booking()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.created_at := clock_timestamp();
+  return new;
+end
+$$;
+
+create trigger chore_events_stamp_booking before insert on public.chore_events
+  for each row when (new.prev_recorded)
+  execute function private.chore_events_stamp_booking();
+
 -- ---------------------------------------------------------------------------------------------
 -- complete_chore, remove_chore_event (domain ops of apply_changes, spec 0011)
 -- ---------------------------------------------------------------------------------------------

@@ -184,6 +184,16 @@ geplant und zu tun ist, und blättert durch die Wochen; ohne Auswahl ist es der 
   _Tagesüberblick_ ist eine Benachrichtigung (Spec 0013).
 - **Siehe auch:** [Kalender](#kalender), [Tagesüberblick](#tagesüberblick)
 
+### Wie war's?
+
+Der Abschnitt der Übersicht, der am heutigen Tag die unbewerteten Rezepte, Sammlungen,
+Restaurants und Aktivitäten der letzten drei Tage abfragt, in halben Sternen, mit „Nicht gemacht“
+je Zeile (Spec 0011, REQ-003). Gefragt wird nur, wer unter „Wer isst mit?“ stand.
+
+- **Im Code:** `TodayRecap` (App), Auswahl `recapItems` (`packages/core`); Test-IDs `today-recap`,
+  `recap-<entryId>-stars`, `recap-<entryId>-not-done`
+- **Nicht verwenden:** Rückblick, Feedback (bezeichnet die Rückmeldung an die Entwickler)
+
 ### Tageszeit
 
 Ein Platz im Tag des Wochenplans: Vormittag, Mittag oder Abend. Nimmt beliebig viele Einträge
@@ -517,8 +527,19 @@ wird, gelten nächster Termin und Zuständigkeit wieder wie davor (Spec 0011, Of
 
 - **Im Code:** `ChoreEvent`, `chore_events` mit `kind: 'done' | 'skipped'`; der Stand davor
   (Termin, letzte Erledigung, Person) als `ChoreEvent.previous` (Spalten `prev_*`, nur vom Server
-  gesetzt); gebucht um `ChoreEvent.createdAt`; jüngste Erledigung `latestBookedEvent`
+  gesetzt); eingetragen um `ChoreEvent.createdAt` (Uhrzeit des Servers beim Eintragen,
+  `clock_timestamp()`); jüngste Erledigung `latestBookedEvent`
 - **Nicht verwenden:** Buchung, Abhakung
+
+### Verlauf
+
+Die Liste aller Erledigungen eines Haushalts im Haushaltsplan, neueste zuerst, gegliedert nach Monat
+und Woche, mit einer Trennzeile beim Jahreswechsel (Spec 0011, REQ-010). Ein Tipp auf einen Eintrag
+ändert „Erledigt von“ oder entfernt ihn.
+
+- **Im Code:** Ansicht `history` im Haushalt, `ChoreHistory` (App), Gliederung `historyGroups`
+  (`packages/core`); Test-IDs `history-*`
+- **Nicht verwenden:** Historie, Log, Protokoll
 
 ### Abwesenheit
 

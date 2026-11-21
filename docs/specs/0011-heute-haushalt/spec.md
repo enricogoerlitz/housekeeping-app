@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
@@ -74,8 +74,8 @@ und die Test-IDs `tab-index` und `today-*` bleiben (AC-062). Das Layout am Deskt
 - **„Wie war's?“** (nur, wenn heute gezeigt wird; Offene Frage 2): die unbewerteten Einträge von
   gestern, vorgestern und dem Tag davor (D8), alle vier Arten, halbe Sterne (D9), „Nicht gemacht“
   je Zeile. Nach dem Bewerten gleitet die Zeile 2 s nach dem letzten Tipp weg (2.5).
-- **Halbe Sterne:** Diese Spec bringt das Speichern in halben Schritten samt Übernahme der
-  vorhandenen Bewertungen (Konzept 4.5) und baut den Sterne-Baustein mit seiner Bedienung
+- **Halbe Sterne:** Diese Spec bringt das Speichern in halben Schritten; ganze Bewertungen lesen
+  sich unverändert (Konzept 4.5, ohne Übernahme-Code nach ADR-0012), und sie baut den Sterne-Baustein mit seiner Bedienung
   (REQ-004). Sie kommt in Welle 3 vor Spec 0008 (Welle 4), die den Baustein auf der neu gestalteten
   Rezept- und Restaurantseite einsetzt (Spec 0008, REQ-011).
 - **„Zu tun“ und Haushalt „Anstehend“:** Abhaken mit Sammel-Fenster (Spec 0005, D3). Gebucht wird
@@ -105,8 +105,8 @@ und die Test-IDs `tab-index` und `today-*` bleiben (AC-062). Das Layout am Deskt
 | 0009 | Art „Sammlung“; AC-012, AC-024 und die Zeile „Grillabend“ in AC-015 sind erst damit prüfbar                                                       |
 | 0010 | Kalender (Woche öffnen, Tag zeigen), Regeln der Abwesenheits-Streifen, berechnete künftige Aufgaben-Termine der Haushalt-Zeile                    |
 
-**Kritischer Pfad:** Diese Spec enthält zwei Migrationen (Bewertungen in halben Schritten mit
-Übernahme der vorhandenen Werte; ein Rhythmus-Wert mehr) und Löschen von Daten (Aufgabe löschen,
+**Kritischer Pfad:** Diese Spec enthält zwei Migrationen (Bewertungen in halben Schritten; ein
+Rhythmus-Wert mehr; beides als Änderung der Grundlage, ADR-0012) und Löschen von Daten (Aufgabe löschen,
 Verlaufseintrag entfernen). Der Plan braucht dafür ein kurzes Bedrohungsmodell, Negativtests
 (fremder Haushalt, abgemeldet, ungültige Eingabe, Fehlerfall) und `/security-check`.
 
@@ -288,7 +288,7 @@ Dann        öffnet sich der Kalender in der Woche mit Sonntag, 22.11.
 Angenommen  für Sonntag, 22.11., ist „Hummus“ mit dem Vorlauf „Kichererbsen einweichen, 12 Stunden
             vorher“ geplant
 Wenn        ich Samstag, 21.11., wähle
-Dann        steht dort „Für morgen: Kichererbsen einweichen (12 h)“
+Dann        steht dort „Für morgen: Kichererbsen einweichen (12 h) · Hummus“
 Wenn        ich Freitag, 20.11., wähle
 Dann        fehlt dieser Hinweis
 ```
@@ -312,7 +312,8 @@ Und         Fr 20.11.: Rezept „Lasagne“; Sa 21.11.: Restaurant „Trattoria 
 Und         Do 19.11.: Rezept „Mango-Curry“
 Wenn        Enrico die „Übersicht“ öffnet
 Dann        listet „Wie war's?“ „Bouldern“, „Grillabend“, „Trattoria Da Enzo“ und „Lasagne“ in dieser
-            Reihenfolge, jeweils mit Bild, Name, Kennzeichen und leeren Sternen
+            Reihenfolge, jeweils mit Bild (Restaurants mit Symbol), Name, Kennzeichen und leeren
+            Sternen
 Und         „Mango-Curry“ fehlt, weil es vier Tage her ist
 ```
 
@@ -474,8 +475,8 @@ keine Laden-Aktion (ADR-0008). Ohne Netz sind die Haken ausgegraut mit Hinweis.
 Angenommen  „Bad putzen“ ist heute fällig und Enrico zugeordnet
 Wenn        Enrico unter „Zu tun“ auf den Haken bei „Bad putzen“ tippt
 Dann        ist „Bad putzen“ abgehakt und durchgestrichen und bleibt an seiner Stelle
-Und         2 Sekunden später gleitet die Zeile weg, und der Verlauf zeigt „Bad putzen · Enrico ·
-            heute“
+Und         2 Sekunden später gleitet die Zeile weg, und der Verlauf zeigt „Bad putzen“ mit
+            Enricos Avatar und dem Tag „Fr 20.“
 Und         es erscheint kein Hinweis mit „Rückgängig“ und keiner mit „Erledigt von dir · Nadja“
 ```
 
@@ -495,7 +496,7 @@ Und         der Verlauf enthält „Müll rausbringen“, aber keinen Eintrag zu
 ```gherkin
 Angenommen  ich habe „Bad putzen“ vor einer Sekunde abgehakt
 Wenn        ich zum Tab „Essen“ wechsle
-Dann        steht „Bad putzen · Enrico · heute“ sofort im Verlauf
+Dann        steht „Bad putzen“ sofort im Verlauf, mit Enricos Avatar und „Fr 20.“
 ```
 
 **AC-031 — Andere Person war schneller**
@@ -535,7 +536,10 @@ Dann        ist sie durchgestrichen, gleitet 2 Sekunden später weg und steht im
 Angenommen  das Gerät ist offline
 Dann        sind die Haken unter „Zu tun“ ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“
 Angenommen  ich habe „Bad putzen“ abgehakt, und das Netz bricht ab, bevor das Fenster abläuft
-Wenn        das Buchen deshalb scheitert
+Wenn        das Fenster abläuft
+Dann        steht „Bad putzen“ wieder offen da, mit „Offline – nichts wurde abgehakt“
+Angenommen  ich habe „Bad putzen“ abgehakt, und der Server lehnt die Buchung ab
+Wenn        das Fenster abläuft
 Dann        steht „Bad putzen“ wieder offen da, mit „Hat nicht geklappt – bitte noch einmal versuchen“
 ```
 
@@ -557,7 +561,8 @@ Wenn        ich auf der „Übersicht“ „Was anderes erledigt?“ öffne und 
 Dann        stehen unter „Aufgaben“ „Fenster Wohnzimmer · alle 2 Monate“ und „Fenster Küche · bei
             Bedarf“
 Und         darunter steht „+ „fenster“ als neue Aufgabe“ mit „▸ Mehr Angaben (Rhythmus, wer)“
-Und         unten stehen „Erledigt von“ mit (E) gewählt, „heute ▾“ und „Als erledigt eintragen“
+Und         unten stehen „Erledigt von“ mit dem gewählten Namens-Chip „Enrico“, „heute ▾“ und
+            „Als erledigt eintragen“
 ```
 
 **AC-036 — Flexibler Rhythmus rechnet ab dem Tag**
@@ -566,7 +571,7 @@ Und         unten stehen „Erledigt von“ mit (E) gewählt, „heute ▾“ un
 Angenommen  „Bettwäsche wechseln“ hat den Rhythmus „etwa alle 14 Tage“, zuletzt erledigt am 10.11.,
             nächster Termin 24.11.
 Wenn        ich sie wähle, „Erledigt von“ auf Nadja stelle und „Als erledigt eintragen“ tippe
-Dann        zeigt der Verlauf „Bettwäsche wechseln · Nadja · heute“
+Dann        zeigt der Verlauf „Bettwäsche wechseln“ mit Nadjas Avatar und „Fr 20.“
 Und         der nächste Termin ist der 4.12.
 ```
 
@@ -593,7 +598,7 @@ Dann        steht der Eintrag im Verlauf am Donnerstag, 19.11., und der nächste
 ```gherkin
 Angenommen  keine Aufgabe passt zu „Fenster putzen“
 Wenn        ich „Fenster putzen“ tippe, „+ „Fenster putzen“ als neue Aufgabe“ wähle und eintrage
-Dann        zeigt der Verlauf „Fenster putzen · Enrico · heute“ als Erledigung, nicht als „spontan“
+Dann        zeigt der Verlauf „Fenster putzen“ als Erledigung mit Enricos Avatar und „Fr 20.“
 Und         unter „Alle“ steht „Fenster putzen · bei Bedarf“, unter „Anstehend“ nicht
 Und         beim nächsten Öffnen von „Was anderes erledigt?“ findet „fens“ die Aufgabe
             „Fenster putzen“
@@ -606,7 +611,7 @@ Angenommen  es gibt keine Aufgabe „Pflanzen düngen“
 Wenn        ich „Pflanzen düngen“ tippe, „▸ Mehr Angaben“ öffne, Rhythmus „etwa alle 14 Tage“ und
             Zuständigkeit „abwechselnd (E↔N)“ wähle und als von Enrico heute erledigt eintrage
 Dann        gibt es die Aufgabe „Pflanzen düngen“ mit nächstem Termin 4.12., dran ist Nadja
-Und         der Verlauf zeigt „Pflanzen düngen · Enrico · heute“
+Und         der Verlauf zeigt „Pflanzen düngen“ mit Enricos Avatar und „Fr 20.“
 ```
 
 **AC-041 — Ähnlicher Name**
@@ -658,11 +663,13 @@ Dann        zeigt die Aufgabe „Zuletzt Fr 20.11.“ und weiterhin keinen näch
 
 ```gherkin
 Angenommen  „Fenster Küche“ ist „monatlich am 1.“ und hat zwei Einträge im Verlauf
-Und         im Verlauf stehen ältere Einträge „Fenster geputzt · spontan“
 Wenn        ich den Rhythmus von „Fenster Küche“ auf „bei Bedarf“ ändere
 Dann        verschwindet „Fenster Küche“ aus „Anstehend“, ihre zwei Verlaufseinträge bleiben
-Und         die „spontan“-Einträge stehen unverändert im Verlauf
 ```
+
+Der zweite Teil (ältere „spontan“-Einträge bleiben unverändert stehen) ist **verworfen
+(ADR-0012)**: Die Art „spontan“ entfällt, weil es vor der ersten Auslieferung keine solchen
+Einträge gibt (Offene Frage 6).
 
 ### REQ-008 — Haushalt mit Ansichts-Tabs und fester Breite
 
@@ -700,7 +707,8 @@ Dann        sehe ich „Noch keine Aufgaben“ mit „Aufgabe anlegen“
 
 ### REQ-009 — Aufgabe öffnen, bearbeiten und löschen
 
-> Ein Tipp auf eine Aufgabe öffnet sie (Handy: mittleres Fenster, Desktop: rechte Spalte) mit
+> Ein Tipp auf eine Aufgabe öffnet sie (Handy: mittleres Fenster; Desktop: in „Alle“ die rechte
+> Spalte, in „Anstehend“ ein Fenster wie auf dem Handy) mit
 > Rhythmus, Zuständigkeit, Aufwand, nächstem Termin, letzten Erledigungen und den Aktionen
 > Erledigt, Später, Überspringen; im selben Fenster lassen sich Titel, Rhythmus, Zuständigkeit,
 > Aufwand, Raum und Saison bearbeiten, und die Aufgabe lässt sich löschen.
@@ -808,8 +816,8 @@ Und         für 2026 gibt es keine Trennzeile
 
 ```gherkin
 Angenommen  der Verlauf aus AC-056
-Dann        zeigt jede Zeile das Symbol der Art (erledigt, übersprungen, spontan), den Titel, den
-            Avatar und den Tag, z. B. „Fr 20.“
+Dann        zeigt jede Zeile das Symbol der Art (erledigt, übersprungen), den Titel, den Avatar und
+            den Tag, z. B. „Fr 20.“
 Wenn        ich durch den November scrolle
 Dann        bleibt „November 2026“ oben stehen, bis „Oktober 2026“ es ablöst
 ```
@@ -885,11 +893,12 @@ er ab, springt die Anzeige zurück mit „Hat nicht geklappt – bitte noch einm
   Erledigungen (neu, „Erledigt von“ geändert, entfernt), Aufgaben (neu, auch mit „bei Bedarf“,
   bearbeitet, gelöscht).
 - **Datenbankänderungen:**
-  - Bewertungen von Rezepten, Restaurants und Aktivitäten in halben Schritten (0,5 bis 5). Erweitern
-    → umziehen → aufräumen: Vorhandene ganze Sterne werden übernommen (4 → 4,0); die alte Spalte
-    fällt erst weg, wenn keine App-Version sie mehr liest (Konzept 4.5).
-  - Ein Rhythmus-Wert mehr: „bei Bedarf“ (Konzept 4.6). Bestehende Daten bleiben, alte
-    „spontan“-Einträge im Verlauf auch.
+  - Bewertungen von Rezepten, Restaurants und Aktivitäten in halben Schritten (0,5 bis 5). Weil
+    noch nichts ausgeliefert ist, ändert sich die Grundlage direkt (`stars numeric(2,1)`), ohne
+    Erweitern → umziehen → aufräumen (ADR-0012, Offene Frage 5); ganze Sterne lesen sich
+    unverändert (4 = 4,0).
+  - Ein Rhythmus-Wert mehr: „bei Bedarf“ (Konzept 4.6). Die Art „spontan“ entfällt; Erledigungen
+    sind nur noch „erledigt“ oder „übersprungen“ (ADR-0012, Offene Frage 6).
   - Nach der Annahme in Offener Frage 3 merkt sich eine Erledigung den Termin und die zuständige
     Person von davor.
 - **Gelöscht:** Aufgaben (ihr Verlauf bleibt, der Verweis wird geleert, wie heute) und einzelne
@@ -900,31 +909,87 @@ er ab, springt die Anzeige zurück mit „Hat nicht geklappt – bitte noch einm
 
 ## Offene Fragen
 
-| #   | Frage                                                                                                                                         | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Empfehlung                                                                                       | Status           |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ---------------- |
-| 1   | Wann gilt ein Eintrag für „Wie war's?“ als bewertet? Bewertungen hängen am Rezept, Restaurant oder an der Aktivität, nicht am Planeintrag.    | A: Gefragt wird nur, wer unter „Wer isst mit?“ steht; ein Eintrag gilt als bewertet, wenn die eigene Bewertung am Tag des Eintrags oder später gesetzt wurde; Wiederholtes kommt mit den bisherigen Sternen vorausgefüllt — Pro: keine neue Tabelle, Lieblingsgerichte werden wieder gefragt; Contra: wer zwischendurch auf der Rezeptseite bewertet, wird nicht mehr gefragt · B: nur, was ich noch nie bewertet habe — Pro: am einfachsten; Contra: Wiederholtes wird nie mehr gefragt · C: eigener Merker je Eintrag und Person — Pro: genau; Contra: neue Tabelle mit Sync | A, weil es ohne Datenänderung auskommt und dem Ziel „Wochenende nicht vergessen“ (D8) entspricht | OFFEN, Annahme A |
-| 2   | Kleinigkeiten der Tagesauswahl, die das Konzept offenlässt                                                                                    | A: (a) Blättern behält den Wochentag; (b) „Wie war's?“ nur, wenn heute gezeigt wird; (c) Titel: heute mit Gruß, gestern und morgen mit „Gestern, “ bzw. „Morgen, “, sonst Wochentag und Datum, in einem anderen Jahr mit Jahreszahl; (d) vergangene Tage heißen „Erledigt am …“ und zeigen den Verlauf; (e) Abwesenheitszeile mit der Notiz statt eines Anlasses (D22), ohne Notiz „ist abwesend“; (f) Zurück behält den Tag, ein neuer Start zeigt heute; (g) „Wie war's?“ zeigt den jüngsten Tag zuerst · B: anders festlegen                                                | A, weil es dem Muster „als wäre der Tag heute“ folgt und keine neuen Daten braucht               | OFFEN, Annahme A |
-| 3   | Was bewirkt „Eintrag entfernen“ im Verlauf?                                                                                                   | A: Entfernen der jüngsten Erledigung einer Aufgabe stellt nächsten Termin und Zuständigkeit wie davor wieder her; ältere Einträge verschwinden nur — Pro: Ein versehentlicher Haken lässt sich wirklich zurücknehmen (Konzept 2.5, Punkt 5); Contra: Die Erledigung muss sich den vorigen Stand merken (kleine Datenänderung) · B: nur den Eintrag entfernen — Pro: keine Datenänderung; Contra: Die Aufgabe bleibt bis zum nächsten Termin „erledigt“                                                                                                                         | A, weil „im Verlauf zurücknehmen“ der einzige Weg ist, nachdem das Sammel-Fenster abgelaufen ist | OFFEN, Annahme A |
-| 4   | Was passiert mit dem nächsten Termin, wenn man den Rhythmus ändert?                                                                           | A: neu gerechnet — fester Rhythmus: der nächste passende Tag ab heute; flexibler Rhythmus: ab der letzten Erledigung, ohne Erledigung ab heute — Pro: vorhersehbar, nutzt die vorhandene Rechnung; Contra: ein bewusst verschobener Termin geht verloren · B: bleibt, bis man ihn verschiebt — Pro: nichts ändert sich ungefragt; Contra: Termin passt nicht zum neuen Rhythmus                                                                                                                                                                                                | A, weil ein Termin, der nicht zum Rhythmus passt, mehr verwirrt als ein verlorenes „Später“      | OFFEN, Annahme A |
-| 5   | Bewertungen in halben Schritten: Gilt „Erweitern → umziehen → aufräumen“ (Abschnitt „Daten“), obwohl noch nichts ausgeliefert ist (ADR-0012)? | A: Die Grundlage wird direkt geändert (`stars numeric(2,1)`), ohne zweite Spalte und ohne Übernahme-Code; AC-025 wird mit den Seed-Bewertungen geprüft — Pro: keine Altlast, eine Spalte; Contra: jede lokale Datenbank braucht einmal `pnpm db:reset` · B: neue Spalte, Werte kopieren, alte später entfernen — Pro: folgt dem Text der Spec; Contra: Code für Daten, die es nicht gibt                                                                                                                                                                                       | A, weil ADR-0012 und `30-database.md` vor der ersten Auslieferung genau das verlangen            | OFFEN, Annahme A |
-| 6   | Was wird aus „spontan“-Einträgen, wenn es keine alten gibt (ADR-0012)?                                                                        | A: Die Art „spontan“ entfällt ganz (`kind` nur noch `done`, `skipped`); der zweite Teil von AC-045 und das Symbol „spontan“ in AC-058 entfallen; der Seed-Eintrag wird eine normale Erledigung — Pro: keine Altlast; Contra: weicht vom Wortlaut der Spec ab · B: „spontan“ bleibt lesbar — Pro: Kriterien wörtlich; Contra: eine Art nur für Daten, die es nie gab                                                                                                                                                                                                            | A, weil vor der ersten Auslieferung keine alten Einträge existieren                              | OFFEN, Annahme A |
-| 7   | Zählt es als Bewertung, wenn man in „Wie war's?“ den vorausgefüllten Wert noch einmal antippt?                                                | A: ja — die Bewertung wird auch bei gleichem Wert neu gespeichert, ihr Zeitpunkt zählt — Pro: „Lasagne war wieder 5“ verschwindet aus „Wie war's?“; Contra: ein Schreibvorgang ohne neuen Wert · B: nein — Pro: nichts Unnötiges; Contra: die Zeile bleibt stehen                                                                                                                                                                                                                                                                                                              | A, weil sonst Lieblingsgerichte nie aus „Wie war's?“ verschwinden                                | OFFEN, Annahme A |
-| 8   | Wer wird gefragt, wenn „Wer isst mit?“ leer ist, und was, wenn dasselbe mehrmals in den drei Tagen stand?                                     | A: leer = alle Mitglieder; je Rezept, Restaurant oder Aktivität eine Zeile am jüngsten Tag, „Nicht gemacht“ markiert diesen Planeintrag · B: leer = niemand, jeder Planeintrag eine Zeile                                                                                                                                                                                                                                                                                                                                                                                      | A, weil eine Bewertung je Person und Ziel gilt, nicht je Planeintrag                             | OFFEN, Annahme A |
-| 9   | Welche Erledigung ist die „jüngste“ (Offene Frage 3), und wann verschiebt „Erledigt von“ die Zuständigkeit (AC-059)?                          | A: die zuletzt gebuchte (nicht die mit dem jüngsten Tag); nur sie stellt beim Entfernen den Stand davor her, und nur bei ihr verschiebt „Erledigt von“ die Zuständigkeit; eine einmalige Aufgabe ist nach dem Erledigen gelöscht, ihr Eintrag verschwindet beim Entfernen nur · B: nach jüngstem Tag                                                                                                                                                                                                                                                                           | A, weil nur so der gemerkte Stand davor eine saubere Kette ist                                   | OFFEN, Annahme A |
-| 10  | Welche Tage nimmt der Server für eine Erledigung an?                                                                                          | A: heute − 3 bis heute + 1 (Server-Datum, Puffer für Zeitzonen); die Oberfläche bietet heute, gestern, vorgestern · B: genau heute, gestern, vorgestern nach Server-Datum                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil das Server-Datum (UTC) nachts vom Datum auf dem Gerät abweicht                           | OFFEN, Annahme A |
-| 11  | Wann ist eine neu angelegte Aufgabe „monatlich am 1.“ zum ersten Mal fällig?                                                                  | A: wie beim Rhythmus-Wechsel (Offene Frage 4): am nächsten 1. ab heute · B: heute, wie bisher                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil Anlegen und Ändern dieselbe Rechnung nutzen und „am 1.“ sonst am 20. fällig wäre         | OFFEN, Annahme A |
+| #   | Frage                                                                                                                                         | Optionen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Empfehlung                                                                                       | Status                    |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------- |
+| 1   | Wann gilt ein Eintrag für „Wie war's?“ als bewertet? Bewertungen hängen am Rezept, Restaurant oder an der Aktivität, nicht am Planeintrag.    | A: Gefragt wird nur, wer unter „Wer isst mit?“ steht; ein Eintrag gilt als bewertet, wenn die eigene Bewertung am Tag des Eintrags oder später gesetzt wurde; Wiederholtes kommt mit den bisherigen Sternen vorausgefüllt — Pro: keine neue Tabelle, Lieblingsgerichte werden wieder gefragt; Contra: wer zwischendurch auf der Rezeptseite bewertet, wird nicht mehr gefragt · B: nur, was ich noch nie bewertet habe — Pro: am einfachsten; Contra: Wiederholtes wird nie mehr gefragt · C: eigener Merker je Eintrag und Person — Pro: genau; Contra: neue Tabelle mit Sync | A, weil es ohne Datenänderung auskommt und dem Ziel „Wochenende nicht vergessen“ (D8) entspricht | OFFEN, Annahme A          |
+| 2   | Kleinigkeiten der Tagesauswahl, die das Konzept offenlässt                                                                                    | A: (a) Blättern behält den Wochentag; (b) „Wie war's?“ nur, wenn heute gezeigt wird; (c) Titel: heute mit Gruß, gestern und morgen mit „Gestern, “ bzw. „Morgen, “, sonst Wochentag und Datum, in einem anderen Jahr mit Jahreszahl; (d) vergangene Tage heißen „Erledigt am …“ und zeigen den Verlauf; (e) Abwesenheitszeile mit der Notiz statt eines Anlasses (D22), ohne Notiz „ist abwesend“; (f) Zurück behält den Tag, ein neuer Start zeigt heute; (g) „Wie war's?“ zeigt den jüngsten Tag zuerst · B: anders festlegen                                                | A, weil es dem Muster „als wäre der Tag heute“ folgt und keine neuen Daten braucht               | OFFEN, Annahme A          |
+| 3   | Was bewirkt „Eintrag entfernen“ im Verlauf?                                                                                                   | A: Entfernen der jüngsten Erledigung einer Aufgabe stellt nächsten Termin und Zuständigkeit wie davor wieder her; ältere Einträge verschwinden nur — Pro: Ein versehentlicher Haken lässt sich wirklich zurücknehmen (Konzept 2.5, Punkt 5); Contra: Die Erledigung muss sich den vorigen Stand merken (kleine Datenänderung) · B: nur den Eintrag entfernen — Pro: keine Datenänderung; Contra: Die Aufgabe bleibt bis zum nächsten Termin „erledigt“                                                                                                                         | A, weil „im Verlauf zurücknehmen“ der einzige Weg ist, nachdem das Sammel-Fenster abgelaufen ist | OFFEN, Annahme A          |
+| 4   | Was passiert mit dem nächsten Termin, wenn man den Rhythmus ändert?                                                                           | A: neu gerechnet — fester Rhythmus: der nächste passende Tag ab heute; flexibler Rhythmus: ab der letzten Erledigung, ohne Erledigung ab heute — Pro: vorhersehbar, nutzt die vorhandene Rechnung; Contra: ein bewusst verschobener Termin geht verloren · B: bleibt, bis man ihn verschiebt — Pro: nichts ändert sich ungefragt; Contra: Termin passt nicht zum neuen Rhythmus                                                                                                                                                                                                | A, weil ein Termin, der nicht zum Rhythmus passt, mehr verwirrt als ein verlorenes „Später“      | OFFEN, Annahme A          |
+| 5   | Bewertungen in halben Schritten: Gilt „Erweitern → umziehen → aufräumen“ (Abschnitt „Daten“), obwohl noch nichts ausgeliefert ist (ADR-0012)? | A: Die Grundlage wird direkt geändert (`stars numeric(2,1)`), ohne zweite Spalte und ohne Übernahme-Code; AC-025 wird mit den Seed-Bewertungen geprüft — Pro: keine Altlast, eine Spalte; Contra: jede lokale Datenbank braucht einmal `pnpm db:reset` · B: neue Spalte, Werte kopieren, alte später entfernen — Pro: folgt dem Text der Spec; Contra: Code für Daten, die es nicht gibt                                                                                                                                                                                       | A, weil ADR-0012 und `30-database.md` vor der ersten Auslieferung genau das verlangen            | entschieden: A (ADR-0012) |
+| 6   | Was wird aus „spontan“-Einträgen, wenn es keine alten gibt (ADR-0012)?                                                                        | A: Die Art „spontan“ entfällt ganz (`kind` nur noch `done`, `skipped`); der zweite Teil von AC-045 und das Symbol „spontan“ in AC-058 entfallen; der Seed-Eintrag wird eine normale Erledigung — Pro: keine Altlast; Contra: weicht vom Wortlaut der Spec ab · B: „spontan“ bleibt lesbar — Pro: Kriterien wörtlich; Contra: eine Art nur für Daten, die es nie gab                                                                                                                                                                                                            | A, weil vor der ersten Auslieferung keine alten Einträge existieren                              | entschieden: A (ADR-0012) |
+| 7   | Zählt es als Bewertung, wenn man in „Wie war's?“ den vorausgefüllten Wert noch einmal antippt?                                                | A: ja — die Bewertung wird auch bei gleichem Wert neu gespeichert, ihr Zeitpunkt zählt — Pro: „Lasagne war wieder 5“ verschwindet aus „Wie war's?“; Contra: ein Schreibvorgang ohne neuen Wert · B: nein — Pro: nichts Unnötiges; Contra: die Zeile bleibt stehen                                                                                                                                                                                                                                                                                                              | A, weil sonst Lieblingsgerichte nie aus „Wie war's?“ verschwinden                                | OFFEN, Annahme A          |
+| 8   | Wer wird gefragt, wenn „Wer isst mit?“ leer ist, und was, wenn dasselbe mehrmals in den drei Tagen stand?                                     | A: leer = alle Mitglieder; je Rezept, Restaurant oder Aktivität eine Zeile am jüngsten Tag, „Nicht gemacht“ markiert diesen Planeintrag · B: leer = niemand, jeder Planeintrag eine Zeile                                                                                                                                                                                                                                                                                                                                                                                      | A, weil eine Bewertung je Person und Ziel gilt, nicht je Planeintrag                             | OFFEN, Annahme A          |
+| 9   | Welche Erledigung ist die „jüngste“ (Offene Frage 3), und wann verschiebt „Erledigt von“ die Zuständigkeit (AC-059)?                          | A: die zuletzt gebuchte (nicht die mit dem jüngsten Tag); nur sie stellt beim Entfernen den Stand davor her, und nur bei ihr verschiebt „Erledigt von“ die Zuständigkeit; eine einmalige Aufgabe ist nach dem Erledigen gelöscht, ihr Eintrag verschwindet beim Entfernen nur · B: nach jüngstem Tag                                                                                                                                                                                                                                                                           | A, weil nur so der gemerkte Stand davor eine saubere Kette ist                                   | OFFEN, Annahme A          |
+| 10  | Welche Tage nimmt der Server für eine Erledigung an?                                                                                          | A: heute − 3 bis heute + 1 (Server-Datum, Puffer für Zeitzonen); die Oberfläche bietet heute, gestern, vorgestern · B: genau heute, gestern, vorgestern nach Server-Datum                                                                                                                                                                                                                                                                                                                                                                                                      | A, weil das Server-Datum (UTC) nachts vom Datum auf dem Gerät abweicht                           | OFFEN, Annahme A          |
+| 11  | Wann ist eine neu angelegte Aufgabe „monatlich am 1.“ zum ersten Mal fällig?                                                                  | A: wie beim Rhythmus-Wechsel (Offene Frage 4): am nächsten 1. ab heute · B: heute, wie bisher                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | A, weil Anlegen und Ändern dieselbe Rechnung nutzen und „am 1.“ sonst am 20. fällig wäre         | OFFEN, Annahme A          |
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                        | Task (plan.md) | Test |
-| ------- | ------------------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-008, AC-062 | —              | —    |
-| REQ-002 | AC-009 bis AC-014         | —              | —    |
-| REQ-003 | AC-015 bis AC-024         | —              | —    |
-| REQ-004 | AC-025 bis AC-027         | —              | —    |
-| REQ-005 | AC-028 bis AC-034         | —              | —    |
-| REQ-006 | AC-035 bis AC-042         | —              | —    |
-| REQ-007 | AC-043 bis AC-045         | —              | —    |
-| REQ-008 | AC-046 bis AC-048         | —              | —    |
-| REQ-009 | AC-049 bis AC-055         | —              | —    |
-| REQ-010 | AC-056 bis AC-061         | —              | —    |
+„E2E (Endwelle)“: reine Oberfläche, geprüft im Klick-Durchlauf (Belege in `tmp/0011/`); die
+automatisierten e2e-Tests laufen einmal am Ende aller Wellen. Die Spalte „Beleg“ nennt
+Bildschirmfotos und Protokolle in `tmp/0011/`.
+
+| REQ     | AC     | Task (plan.md) | Test                                                                                                                                                                     | Beleg                                                                           |
+| ------- | ------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 | 4, 8           | core `overview.test.ts` „AC-001 …“                                                                                                                                       | `tmp/0011/t8-desktop-today.png`                                                 |
+| REQ-001 | AC-002 | 4, 8           | core `overview.test.ts` „AC-002 …“                                                                                                                                       | `tmp/0011/t8-desktop-tomorrow.png`                                              |
+| REQ-001 | AC-003 | 4, 8           | core `overview.test.ts` „AC-003 …“                                                                                                                                       | `tmp/0011/t8-phone-plus-two-weeks.png`                                          |
+| REQ-001 | AC-004 | 4, 8           | core `overview.test.ts` „AC-004 …“                                                                                                                                       | `tmp/0011/t8-desktop-plus-two-weeks.png`                                        |
+| REQ-001 | AC-005 | 4, 8           | core `overview.test.ts` „AC-005 …“                                                                                                                                       | `tmp/0011/t8-phone-absence.png`                                                 |
+| REQ-001 | AC-006 | 4, 8           | core `overview.test.ts` „AC-006 …“                                                                                                                                       | `tmp/0011/t8-desktop-today-full.png`                                            |
+| REQ-001 | AC-007 | 4, 8           | core `overview.test.ts` „AC-007 …“                                                                                                                                       | `tmp/0011/t8-phone-absence.png`                                                 |
+| REQ-001 | AC-008 | 8              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t8-click-phone.log`                                                   |
+| REQ-001 | AC-062 | 4, 8           | core `overview.test.ts` „AC-062 …“                                                                                                                                       | `tmp/0011/t8-desktop-plus-two-weeks.png`                                        |
+| REQ-002 | AC-009 | 8              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t8-desktop-today-full.png`                                            |
+| REQ-002 | AC-010 | 8              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t8-phone-end.png`, `tmp/0011/t8-desktop-today.png`                    |
+| REQ-002 | AC-011 | 4, 8           | core `overview.test.ts` „AC-011 …“                                                                                                                                       | `tmp/0011/t8-click-phone.log`                                                   |
+| REQ-002 | AC-012 | —              | offen bis Spec 0009                                                                                                                                                      | —                                                                               |
+| REQ-002 | AC-013 | 4, 8           | core `overview.test.ts` „AC-013 …“                                                                                                                                       | `tmp/0011/t8-phone-past-day.png`                                                |
+| REQ-002 | AC-014 | 8              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t8-desktop-tomorrow.png`                                              |
+| REQ-003 | AC-015 | 4, 8           | core `recap.test.ts` „AC-015 …“ (ohne „Grillabend“: offen bis Spec 0009)                                                                                                 | `tmp/0011/t8-phone-recap-two.png`                                               |
+| REQ-003 | AC-016 | 4              | core `recap.test.ts` „AC-016 …“                                                                                                                                          | —                                                                               |
+| REQ-003 | AC-017 | 1, 5, 6, 8     | pgTAP `half_star_ratings.test.sql`, ui `star-value.test.ts`, api `ratings.backend.test.ts`, `chores.integration.test.ts` „AC-017 …“                                      | `tmp/0011/t8-phone-recap-set.png`                                               |
+| REQ-003 | AC-018 | 6, 8           | ui `star-value.test.ts` „AC-018 …“                                                                                                                                       | `tmp/0011/t8-desktop-recap-hover.png`                                           |
+| REQ-003 | AC-019 | 6, 8           | ui `check-window.test.ts` „AC-019 …“                                                                                                                                     | `tmp/0011/t8-desktop-recap-set.png`                                             |
+| REQ-003 | AC-020 | 3, 4, 5        | core `recap.test.ts`, `ratings.test.ts`, api `ratings.backend.test.ts` „AC-020 …“                                                                                        | —                                                                               |
+| REQ-003 | AC-021 | 4, 5           | core `recap.test.ts`, api `ratings.backend.test.ts` „AC-021 …“                                                                                                           | —                                                                               |
+| REQ-003 | AC-022 | 8              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t8-phone-past-day.png`                                                |
+| REQ-003 | AC-023 | 5, 8           | api `ratings.backend.test.ts` „AC-023 …“ (offline)                                                                                                                       | `tmp/0011/t8-phone-recap-offline.png`                                           |
+| REQ-003 | AC-024 | —              | offen bis Spec 0009                                                                                                                                                      | —                                                                               |
+| REQ-004 | AC-025 | 1, 3, 6        | pgTAP `half_star_ratings.test.sql`, core `ratings.test.ts`, ui `star-value.test.ts` „AC-025 …“                                                                           | —                                                                               |
+| REQ-004 | AC-026 | 1, 3, 5        | pgTAP `half_star_ratings.test.sql`, core `ratings.test.ts`, api `ratings.backend.test.ts`, `chores.integration.test.ts` „AC-026 …“                                       | —                                                                               |
+| REQ-004 | AC-027 | 1, 5           | pgTAP `half_star_ratings.test.sql`, api `ratings.backend.test.ts` „AC-027 …“                                                                                             | —                                                                               |
+| REQ-005 | AC-028 | 4, 5, 9        | core `overview.test.ts`, api `commands-chores.backend.test.ts`, `chores.integration.test.ts` „AC-028 …“                                                                  | `tmp/0011/t8-phone-chores.png`                                                  |
+| REQ-005 | AC-029 | 6, 9           | ui `check-window.test.ts` „AC-029 …“                                                                                                                                     | `tmp/0011/t7-phone-ac029.png`                                                   |
+| REQ-005 | AC-030 | 6, 9           | ui `check-window.test.ts` „AC-030 …“                                                                                                                                     | `tmp/0011/t8-desktop-chore-checked.png`                                         |
+| REQ-005 | AC-031 | 2, 3, 5, 9     | pgTAP `chore_rpcs.test.sql`, core `chores.test.ts`, api `commands-chores.backend.test.ts`, `chores.integration.test.ts` „AC-031 …“                                       | `tmp/0011/t7-race-enrico.png`, `tmp/0011/t7-race-history.png`                   |
+| REQ-005 | AC-032 | 4, 9           | core `overview.test.ts` „AC-032 …“                                                                                                                                       | `tmp/0011/t8-phone-past-day.png`, `tmp/0011/t8-desktop-past-day.png`            |
+| REQ-005 | AC-033 | 7              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t7-phone-checked.png`, `tmp/0011/t7-phone-after-window.png`           |
+| REQ-005 | AC-034 | 5, 9           | api `commands-chores.backend.test.ts` „AC-034 …“                                                                                                                         | `tmp/0011/t8-desktop-offline.png`, `tmp/0011/t7-phone-offline.png`              |
+| REQ-006 | AC-035 | 3, 7, 9        | core `chores.test.ts` „AC-035 …“                                                                                                                                         | `tmp/0011/t7-phone-done-fenster.png`                                            |
+| REQ-006 | AC-036 | 2, 3, 5        | pgTAP `chore_rpcs.test.sql`, core `chores.test.ts`, `chore-form.test.ts`, api `commands-chores.backend.test.ts` „AC-036 …“                                               | —                                                                               |
+| REQ-006 | AC-037 | 3, 5           | core `chores.test.ts`, api `commands-chores.backend.test.ts` „AC-037 …“                                                                                                  | —                                                                               |
+| REQ-006 | AC-038 | 2, 3, 5        | pgTAP `chore_rpcs.test.sql`, core `chores.test.ts`, api `commands-chores.backend.test.ts` „AC-038 …“                                                                     | `tmp/0011/t7-phone-done-day-menu.png`                                           |
+| REQ-006 | AC-039 | 2, 5           | pgTAP `chore_rpcs.test.sql`, api `commands-chores.backend.test.ts` „AC-039 …“                                                                                            | —                                                                               |
+| REQ-006 | AC-040 | 3, 5, 7        | core `chores.test.ts`, `chore-form.test.ts`, api `commands-chores.backend.test.ts` „AC-040 …“                                                                            | `tmp/0011/t7-phone-ac040-sheet.png`, `tmp/0011/t7-desktop-done-more.png`        |
+| REQ-006 | AC-041 | 7              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t7-phone-done-brake.png`                                              |
+| REQ-006 | AC-042 | 5, 7           | api `commands-chores.backend.test.ts` „AC-042 …“ (offline)                                                                                                               | `tmp/0011/t7-phone-offline.png`                                                 |
+| REQ-007 | AC-043 | 2, 3, 4        | pgTAP `chore_rpcs.test.sql`, core `chores.test.ts`, `household-row.test.ts`, `overview.test.ts` „AC-043 …“                                                               | `tmp/0011/t7-phone-all.png`                                                     |
+| REQ-007 | AC-044 | 2, 3, 5        | pgTAP `chore_rpcs.test.sql`, core `chores.test.ts`, api `commands-chores.backend.test.ts` „AC-044 …“                                                                     | —                                                                               |
+| REQ-007 | AC-045 | 2, 5           | pgTAP `chore_rpcs.test.sql`, api `commands-chores.backend.test.ts` „AC-045 …“ (zweiter Teil verworfen, ADR-0012)                                                         | —                                                                               |
+| REQ-008 | AC-046 | 7              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t7-desktop-upcoming.png`, `tmp/0011/t7-desktop-history.png`           |
+| REQ-008 | AC-047 | 6, 7           | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t7-desktop-all-placeholder.png`, `tmp/0011/t7-desktop-all-detail.png` |
+| REQ-008 | AC-048 | 7              | E2E (Endwelle)                                                                                                                                                           | —                                                                               |
+| REQ-009 | AC-049 | 7              | E2E (Endwelle)                                                                                                                                                           | `tmp/0011/t7-phone-chore-sheet.png`                                             |
+| REQ-009 | AC-050 | 3, 5, 7        | core `chores.test.ts`, `chore-form.test.ts`, api `commands-chores.backend.test.ts` „AC-050 …“                                                                            | `tmp/0011/t7-phone-ac050-edit.png`, `tmp/0011/t7-phone-chore-saved.png`         |
+| REQ-009 | AC-051 | 3, 5, 7        | core `chores.test.ts`, `chore-form.test.ts`, api `commands-chores.backend.test.ts` „AC-051 …“                                                                            | `tmp/0011/t7-phone-ac051.png`                                                   |
+| REQ-009 | AC-052 | 3, 5, 7        | core `chores.test.ts`, `chore-form.test.ts`, api `commands-chores.backend.test.ts` „AC-052 …“                                                                            | `tmp/0011/t7-phone-chore-edit.png`                                              |
+| REQ-009 | AC-053 | 2, 5, 10       | pgTAP `chore_rpcs.test.sql` (samt neuer Verknüpfung), api `commands-chores.backend.test.ts`, `transport-fake.test.ts` „AC-053 …“                                         | `tmp/0011/t7-phone-deleted.png`                                                 |
+| REQ-009 | AC-054 | 2, 5           | pgTAP `chore_rpcs.test.sql`, api `commands-chores.backend.test.ts` „AC-054 …“                                                                                            | —                                                                               |
+| REQ-009 | AC-055 | 2, 5           | pgTAP `chore_rpcs.test.sql`, `domain_isolation.test.sql`, api `commands-chores.backend.test.ts`, `chores.integration.test.ts` „AC-055 …“                                 | —                                                                               |
+| REQ-010 | AC-056 | 4, 7           | core `chore-history.test.ts` „AC-056 …“                                                                                                                                  | `tmp/0011/t7-phone-history.png`                                                 |
+| REQ-010 | AC-057 | 4, 7           | core `chore-history.test.ts` „AC-057 …“                                                                                                                                  | `tmp/0011/t7-phone-history-end.png`                                             |
+| REQ-010 | AC-058 | 4, 7           | core `chore-history.test.ts` „AC-058 …“ (Symbol „spontan“ verworfen, ADR-0012)                                                                                           | `tmp/0011/t7-phone-history.png`                                                 |
+| REQ-010 | AC-059 | 2, 3, 5        | pgTAP `chore_rpcs.test.sql`, core `chores.test.ts`, api `commands-chores.backend.test.ts` „AC-059 …“                                                                     | `tmp/0011/t7-phone-history-reassigned.png`                                      |
+| REQ-010 | AC-060 | 2, 3, 5, 10    | pgTAP `chore_rpcs.test.sql` (auch zwei Buchungen in einem Aufruf), core `chores.test.ts`, api `commands-chores.backend.test.ts`, `chores.integration.test.ts` „AC-060 …“ | `tmp/0011/t7-phone-ac060.png`, `tmp/0011/t7-phone-history-removed.png`          |
+| REQ-010 | AC-061 | 4, 5, 7        | core `chore-history.test.ts`, api `commands-chores.backend.test.ts` „AC-061 …“                                                                                           | `tmp/0011/t7-phone-offline-event.png`                                           |

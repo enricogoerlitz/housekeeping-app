@@ -5,7 +5,7 @@
 -- household, signed out, direct writes past the domain ops.
 begin;
 \ir _helpers.psql
-select plan(67);
+select plan(75);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -101,7 +101,11 @@ insert into fx (key, id) values
 insert into fx (key) values
   ('bett'), ('bad'), ('kueche'), ('fenster'), ('glueh'), ('keller'), ('bad_fri'), ('neu'), ('bad_b'),
   ('pflanzen'), ('ev_p1'), ('ev_p_n'), ('ev_p_e'), ('ev_bett1'), ('ev_bett2'), ('ev_bad_n'), ('ev_bad_e'), ('ev_k'), ('ev_keller'), ('ev_glueh'),
-  ('ev_f1'), ('ev_f2'), ('ev_old'), ('ev_new'), ('ev_neu'), ('ev_seed'), ('ev_x');
+  ('ev_f1'), ('ev_f2'), ('ev_old'), ('ev_new'), ('ev_neu'), ('ev_seed'), ('ev_x'), ('zwei');
+-- Two bookings of one chore in one call: the first one has the larger id, so only the booking
+-- time can make the second one the latest booked.
+insert into fx (key, id) values
+  ('ev_z1', 'ffffffff-ffff-4fff-bfff-ffffffffffff'), ('ev_z2', '00000000-0000-4000-8000-000000000001');
 
 -- ---------- Fixtures (as postgres); today = current_date (server date) ----------
 insert into public.chores (id, household_id, title, recurrence, assignment, next_due_on, next_assignee_id, last_done_on) values
@@ -124,13 +128,16 @@ insert into public.chores (id, household_id, title, recurrence, assignment, next
   (tests.fx('bad_b'), tests.fx('home_b'), 'Bad', '{"type": "flexible", "everyDays": 7}', '{"type": "anyone"}',
    null, null, null),
   (tests.fx('pflanzen'), tests.fx('home_a'), 'Pflanzen gießen', '{"type": "flexible", "everyDays": 3}', '{"type": "anyone"}',
-   current_date + 3, null, current_date);
+   current_date + 3, null, current_date),
+  (tests.fx('zwei'), tests.fx('home_a'), 'Staubsaugen', '{"type": "flexible", "everyDays": 7}', '{"type": "anyone"}',
+   current_date, null, null);
 insert into public.chore_events (id, household_id, chore_id, title, kind, done_on, done_by) values
   (tests.fx('ev_f1'), tests.fx('home_a'), tests.fx('fenster'), 'Fenster Küche', 'done', current_date - 30, tests.fx('enrico')),
   (tests.fx('ev_f2'), tests.fx('home_a'), tests.fx('fenster'), 'Fenster Küche', 'done', current_date - 60, tests.fx('nadja'));
 -- An older event of bad_fri, booked a week ago (timestamps set by hand), with a recorded state
 -- that must not come back when it is removed (AC-060, second case).
 alter table public.chore_events disable trigger chore_events_set_timestamps;
+alter table public.chore_events disable trigger chore_events_stamp_booking;
 insert into public.chore_events (id, household_id, chore_id, title, kind, done_on, done_by, prev_next_due_on,
                                  prev_last_done_on, prev_next_assignee_id, prev_recorded, created_at, updated_at)
 values (tests.fx('ev_old'), tests.fx('home_a'), tests.fx('bad_fri'), 'Bad putzen freitags', 'done', current_date - 7,
@@ -142,6 +149,7 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
 values (tests.fx('ev_p1'), tests.fx('home_a'), tests.fx('pflanzen'), 'Pflanzen gießen', 'done', current_date,
         tests.fx('enrico'), now() - interval '1 hour', now() - interval '1 hour');
 alter table public.chore_events enable trigger chore_events_set_timestamps;
+alter table public.chore_events enable trigger chore_events_stamp_booking;
 
 -- ===================== Booking (AC-036, AC-038) =====================
 select tests.authenticate_as(tests.fx('enrico'));
@@ -302,6 +310,24 @@ select throws_ok(
     tests.completion('bett', 'ev_x', 'done', current_date, 'enrico', current_date + 14, 'nadja', '{}'::jsonb))),
   'P0002', 'chore_not_found', 'AC-054 complete_chore: booking a chore deleted in the meantime is chore_not_found');
 
+-- "Rückgängig" inserts the chore again and links its events: chore_id may go from null to a
+-- chore, never from one chore to another (remove_chore_event would restore the wrong chore).
+select lives_ok(
+  tests.apply_sql('home_a', jsonb_build_array(
+    jsonb_build_object('kind', 'insert', 'table', 'chores', 'row', jsonb_build_object(
+      'id', tests.fx('bett'), 'title', 'Bettwäsche wechseln', 'recurrence', '{"type": "flexible", "everyDays": 14}'::jsonb,
+      'assignment', '{"type": "anyone"}'::jsonb, 'next_due_on', current_date + 14, 'last_done_on', current_date)),
+    jsonb_build_object('kind', 'patch', 'table', 'chore_events', 'id', tests.fx('ev_bett1'),
+                       'changes', jsonb_build_object('chore_id', tests.fx('bett'))))),
+  'AC-053 apply_changes: "Rückgängig" links an event of a deleted chore to the restored chore');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'patch', 'table', 'chore_events', 'id', tests.fx('ev_bett1'), 'changes', jsonb_build_object('chore_id', tests.fx('bad'))))),
+  '22023', 'invalid_change', 'spec 0011 chore_events: an event cannot be moved to another chore of the household');
+select throws_ok(
+  format('update public.chore_events set chore_id = null where id = %L', tests.fx('ev_bett1')),
+  '22023', 'invalid_change', 'spec 0011 chore_events: the link to an existing chore cannot be cleared directly');
+
 -- ===================== "Erledigt von" (AC-059) =====================
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(
@@ -356,6 +382,37 @@ select throws_ok(
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object('kind', 'remove_chore_event'))),
   '22023', 'invalid_change', 'remove_chore_event: an op without id is invalid');
+
+-- ===================== Two bookings in one call =====================
+-- The second booking sees the first one; it is the latest booked by its booking time, not by id.
+select tests.apply('home_a', jsonb_build_array(
+  tests.completion('zwei', 'ev_z1', 'done', current_date - 1, 'enrico', current_date + 6, null),
+  tests.completion('zwei', 'ev_z2', 'done', current_date, 'nadja', current_date + 7, null,
+                   tests.st(current_date + 6, current_date - 1, null) || jsonb_build_object('latest_event_id', tests.fx('ev_z1')))));
+select ok(
+  (select created_at from public.chore_events where id = tests.fx('ev_z2'))
+    > (select created_at from public.chore_events where id = tests.fx('ev_z1')),
+  'complete_chore: the second booking in one call is booked later');
+select is(
+  tests.apply('home_a', jsonb_build_array(tests.removal('ev_z2'))),
+  '{"applied": 1, "results": [{"restored": true}]}'::jsonb,
+  'AC-060 remove_chore_event: the second booking of one call is the latest booked');
+select is(tests.state('zwei'), tests.st(current_date + 6, current_date - 1, null),
+  'AC-060 remove_chore_event: … the state after the first booking comes back');
+
+-- ===================== Delete limit =====================
+-- Booking a one-off chore deletes it; that is known only under the lock, so every booking counts.
+insert into public.chores (household_id, title, recurrence, assignment)
+select tests.fx('home_a'), 'Einmalig ' || n, '{"type": "once"}', '{"type": "anyone"}' from generate_series(1, 21) n;
+select throws_ok(
+  tests.apply_sql('home_a', (
+    select jsonb_agg(jsonb_build_object('kind', 'complete_chore', 'completion', jsonb_build_object(
+      'chore_id', c.id, 'event_id', gen_random_uuid(), 'kind', 'done', 'done_on', current_date,
+      'done_by', tests.fx('enrico'), 'seen', '{}'::jsonb)))
+    from public.chores c where c.title like 'Einmalig %')),
+  '22023', 'too_many_changes', 'T5 apply_changes: 21 bookings count as 21 deletes and are rejected');
+select is((select count(*)::int from public.chores where title like 'Einmalig %'), 21,
+  'T5 apply_changes: … no one-off chore is deleted');
 
 -- ===================== Skipping =====================
 select lives_ok(

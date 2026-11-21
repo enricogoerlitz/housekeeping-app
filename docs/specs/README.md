@@ -17,7 +17,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0008](0008-essen-rezept-editor/spec.md)        | Essen und Rezept-Editor                                    | freigegeben |
 | [0009](0009-sammlungen/spec.md)                 | Sammlungen                                                 | freigegeben |
 | [0010](0010-kalender-abwesenheiten/spec.md)     | Kalender und Abwesenheiten                                 | freigegeben |
-| [0011](0011-heute-haushalt/spec.md)             | Übersicht und Haushalt                                     | freigegeben |
+| [0011](0011-heute-haushalt/spec.md)             | Übersicht und Haushalt                                     | umgesetzt   |
 | [0012](0012-reisetaschen/spec.md)               | Reisetaschen                                               | freigegeben |
 | [0013](0013-benachrichtigungen/spec.md)         | Benachrichtigungen                                         | freigegeben |
 | [0014](0014-betrieb-ci-cd-release/spec.md)      | Betrieb: Branching, CI/CD und Release (Welle 6, nach 0013) | freigegeben |

@@ -1526,6 +1526,61 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
       code: 'too_many_changes',
     });
   });
+
+  it('complete_chore counts as a delete (a one-off chore goes): 21 bookings are too_many_changes', async () => {
+    const ops = Array.from({ length: 21 }, (_, index) => ({
+      kind: 'complete_chore' as const,
+      completion: completion('c-once', `ev${index}`, { next_due_on: null }),
+    }));
+    await expect(server.transport(ENRICO).applyChanges(H, ops as never)).rejects.toMatchObject({
+      code: 'too_many_changes',
+    });
+    expect(server.row(H, 'chores', 'c-once')).toBeDefined();
+  });
+
+  it('AC-053: chore_id goes from null to a chore again, never to another chore or back to null', async () => {
+    const enrico = server.transport(ENRICO);
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
+    for (const chore_id of ['c-need', null]) {
+      await expect(
+        enrico.applyChanges(H, [
+          { kind: 'patch', table: 'chore_events', id: 'ev1', changes: { chore_id } },
+        ]),
+      ).rejects.toMatchObject({ code: 'invalid_change' });
+    }
+    await book(ENRICO, completion('c-once', 'ev2', { next_due_on: null }));
+    await enrico.applyChanges(H, [
+      { kind: 'patch', table: 'chore_events', id: 'ev2', changes: { chore_id: 'c-need' } },
+    ]);
+    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: 'c-need' });
+  });
+
+  it('AC-060: the second of two bookings in one call is the latest booked, whatever the ids', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [
+      { kind: 'complete_chore', completion: completion('c1', 'ev-z', { seen: seenBath }) },
+      {
+        kind: 'complete_chore',
+        completion: completion('c1', 'ev-a', {
+          seen: {
+            next_due_on: '2026-11-27',
+            last_done_on: '2026-11-20',
+            next_assignee_id: null,
+            latest_event_id: 'ev-z',
+          },
+          next_due_on: '2026-12-04',
+        }),
+      },
+    ] as never);
+    expect(
+      String(server.row(H, 'chore_events', 'ev-a')?.created_at) >
+        String(server.row(H, 'chore_events', 'ev-z')?.created_at),
+    ).toBe(true);
+    expect(
+      (await enrico.applyChanges(H, [{ kind: 'remove_chore_event', id: 'ev-a' }])).results,
+    ).toEqual([{ restored: true }]);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({ next_due_on: '2026-11-27' });
+  });
 });
 
 describe('fake server: ratings in half steps (spec 0011)', () => {

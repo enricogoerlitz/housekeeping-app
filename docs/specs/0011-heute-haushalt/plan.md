@@ -1,5 +1,5 @@
 ---
-status: offen # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-21
 spec: 0011
 ---
@@ -100,14 +100,14 @@ Umsetzung mit dem `db-change`-Skill, direkt in den Grundlagen-Dateien (ADR-0012)
 weg, und Mitglieder verlieren `insert` und `delete` auf `chore_events`. Das ist nur zulässig, weil
 die Grundlage noch nicht ausgeliefert ist.
 
-| Datei                                              | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20261121062348_recipes.sql`                       | `recipe_ratings.stars numeric(2,1)`, Check `stars between 0.5 and 5 and stars * 2 = trunc(stars * 2)`; `set_recipe_rating(uuid, numeric)` prüft den **ungerundeten** Wert vor dem Speichern (sonst würde `numeric(2,1)` 4,25 still auf 4,3 runden), schreibt immer (kein `where … is distinct from`)                                                                                                                                                                                                                          |
-| `20261121062349_restaurants_absences_feedback.sql` | dasselbe für `restaurant_ratings` / `set_restaurant_rating`                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `20261121062352_activities_and_meal_plan.sql`      | dasselbe für `activity_ratings` / `set_activity_rating`                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `20261121062351_chores.sql`                        | `recurrence ->> 'type'` zusätzlich `asNeeded`; Check `chores_as_needed_never_due` (bei `asNeeded` ist `next_due_on` null); `chore_events.kind in ('done','skipped')`; die vier `prev_*`-Spalten; Grants `chore_events`: `select`, `update (chore_id, done_by)`; `private.complete_chore(p_household_id, p_op jsonb)` und `private.remove_chore_event(p_household_id, p_event_id)` (beide `security definer`, `search_path = ''`, Mitgliedschaft geprüft, fremde Kennung = `chore_not_found` / `chore_event_not_found`, P0002) |
-| `20261121062357_apply_changes.sql`                 | Allowlist `chore_events`: `insert: []`, `patch: ["chore_id","done_by"]`, `delete: false`; Domänen-Operationen `complete_chore` (1 Operation) und `remove_chore_event` (1 Operation, 1 Löschung)                                                                                                                                                                                                                                                                                                                               |
-| `supabase/seed.sql` (erzeugt), `seed/demo.ts`      | Seed-Eintrag „Keller aufgeräumt · spontan“ wird eine normale Erledigung einer vorhandenen Aufgabe; Seed-Erledigungen bekommen `prev_recorded = false`                                                                                                                                                                                                                                                                                                                                                                         |
+| Datei                                              | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `20261121062348_recipes.sql`                       | `recipe_ratings.stars numeric(2,1)`, Check `stars between 0.5 and 5 and stars * 2 = trunc(stars * 2)`; `set_recipe_rating(uuid, numeric)` prüft den **ungerundeten** Wert vor dem Speichern (sonst würde `numeric(2,1)` 4,25 still auf 4,3 runden), schreibt immer (kein `where … is distinct from`)                                                                                                                                                                                                                                                                                                               |
+| `20261121062349_restaurants_absences_feedback.sql` | dasselbe für `restaurant_ratings` / `set_restaurant_rating`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `20261121062352_activities_and_meal_plan.sql`      | dasselbe für `activity_ratings` / `set_activity_rating`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `20261121062351_chores.sql`                        | `recurrence ->> 'type'` zusätzlich `asNeeded`; Check `chores_as_needed_never_due` (bei `asNeeded` ist `next_due_on` null); `chore_events.kind in ('done','skipped')`; die vier `prev_*`-Spalten; Grants `chore_events`: `select`, `update (chore_id, done_by)`; `private.complete_chore(p_household_id, p_op jsonb)` und `private.remove_chore_event(p_household_id, p_event_id)` (beide `security definer`, `search_path = ''`, Mitgliedschaft geprüft, fremde Kennung = `chore_not_found` / `chore_event_not_found`, P0002); seit Task 10 die Trigger `chore_events_keep_chore` und `chore_events_stamp_booking` |
+| `20261121062357_apply_changes.sql`                 | Allowlist `chore_events`: `insert: []`, `patch: ["chore_id","done_by"]`, `delete: false`; Domänen-Operationen `complete_chore` und `remove_chore_event` (je 1 Operation, 1 Löschung; `complete_chore` seit Task 10)                                                                                                                                                                                                                                                                                                                                                                                                |
+| `supabase/seed.sql` (erzeugt), `seed/demo.ts`      | Seed-Eintrag „Keller aufgeräumt · spontan“ wird eine normale Erledigung einer vorhandenen Aufgabe; Seed-Erledigungen bekommen `prev_recorded = false`                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 **Regeln von `complete_chore`** (Eingabe je Operation: `chore_id`, `event_id`, `kind`,
 `done_on`, `done_by`, `seen` = {`next_due_on`, `last_done_on`, `next_assignee_id`},
@@ -211,7 +211,7 @@ berührt `seed/demo.ts` nicht.
   bleibt (AC-026); derselbe Wert noch einmal erhöht `updated_at`; Enrico kann Nadjas Zeile weder
   direkt noch über die RPC ändern; fremdes Mitglied → `recipe_not_found` /
   `restaurant_not_found` / `activity_not_found`; `anon` → 42501 (AC-027).
-- **Status:** offen
+- **Status:** erledigt, Commit 47a502f (zusammen mit Task 2)
 
 ### Task 2 — Datenbank: Rhythmus „bei Bedarf“, Erledigen mit Bedingung, Entfernen (Agent DB, Welle A)
 
@@ -236,7 +236,7 @@ berührt `seed/demo.ts` nicht.
   `chore_events` → `invalid_change`; Tag außerhalb heute − 3 … + 1, Termin nicht nach dem Tag,
   falsches `kind` → 22023; Person außerhalb des Haushalts → 23503; mehr als 20 Löschungen →
   `too_many_changes`.
-- **Status:** offen
+- **Status:** erledigt, Commit 47a502f; Nachbesserung aus `/security-check` in Task 10
 
 ### Task 3 — core: Aufgaben-Regeln (Agent core, Welle A)
 
@@ -259,7 +259,7 @@ berührt `seed/demo.ts` nicht.
   `seasonMonths("April", "September")` und über den Jahreswechsel, `seasonLabel`;
   `fasterNotice("Nadja", "…T10:02…")` = „Nadja war schneller (10:02)“; `householdRow` zeigt
   `asNeeded` nie (AC-043); `isHalfStar`, `formatStars(4.5)` = „4,5“, `ratedOnOrAfter`.
-- **Status:** offen
+- **Status:** erledigt, Commit b963a63 (zusammen mit Task 4; der Commit trägt auch Spec-0007-Arbeit, T3 und T4)
 
 ### Task 4 — core: Übersicht, „Wie war's?“ und Verlauf (Agent core, Welle A)
 
@@ -282,7 +282,7 @@ berührt `seed/demo.ts` nicht.
   Tags nach Tageszeit (AC-015, AC-016, AC-020, AC-021); `historyGroups`: Monate, Wochen auf den
   Monat beschnitten („KW 44 · 1. Nov“, „KW 44 · 26.–31. Okt“), keine leeren Wochen, Jahreszahl
   nur für andere Jahre, Zeile „Fr 20.“ (AC-056 bis AC-058).
-- **Status:** offen
+- **Status:** erledigt, Commit b963a63 (Folgearbeiten in da02913)
 
 ### Task 5 — api: Befehle, Abbildung, Cache (Agent api, Welle B)
 
@@ -315,7 +315,7 @@ berührt `seed/demo.ts` nicht.
   `OfflineError`; `mapping.test.ts` Hin- und Rückweg mit `asNeeded`, `previous`, `ratedAt`, und
   der Diff schreibt `prev_*`/`ratedAt` nie; `backend.test.ts` Version 4 behält die
   Warteschlange.
-- **Status:** erledigt (nicht committet), Entscheidungen siehe „Entscheidungen beim Bauen (api)“
+- **Status:** erledigt, Commit b3098c4; Entscheidungen siehe „Entscheidungen beim Bauen (api)“
 
 ### Task 6 — ui: halbe Sterne, Sammel-Fenster, Liste und Detail (Agent ui, Welle B)
 
@@ -331,7 +331,7 @@ berührt `seed/demo.ts` nicht.
   = 4 (AC-017, AC-020); Vorschau beim Darüberfahren und zurück beim Verlassen (AC-018);
   Tastaturschritte 0,5 mit Grenzen 0,5…5, Ansage „4,5 von 5 Sternen“; `set` hält die Zeile und
   startet die Uhr neu, ohne umzuschalten (AC-019); `settle` schließt sofort (AC-030).
-- **Status:** erledigt (nicht committet), Entscheidungen siehe „Entscheidungen beim Bauen (ui)“
+- **Status:** erledigt, Commit 7ae426e; Entscheidungen siehe „Entscheidungen beim Bauen (ui)“
 
 ### Task 7 — App: Haushalt (Agent Haushalt, Welle C)
 
@@ -351,7 +351,7 @@ berührt `seed/demo.ts` nicht.
   „fenster“ suchen, neu „bei Bedarf“, „Fenster Kuche“ → „Meinst du …“, Bearbeiten und Rhythmus,
   leerer Titel, Löschen + Rückgängig, Verlauf mit Jahreszahl, Eintrag umbuchen und entfernen,
   offline gesperrt mit Hinweis. Belege in `tmp/0011/`.
-- **Status:** offen
+- **Status:** erledigt, Commit da02913 (zusammen mit Task 8)
 
 ### Task 8 — App: Übersicht mit Tagesauswahl, Geplant und „Wie war's?“ (Agent Übersicht, Welle C)
 
@@ -366,7 +366,7 @@ berührt `seed/demo.ts` nicht.
   „Heute“, Samstag wählen, Kalender-Symbol und „Alle 5 ›“ öffnen die richtige Woche, Abwesenheit,
   Karte öffnen und zurück (Tag bleibt), „Wie war's?“ halbe Sterne mit Wegleiten nach 2 s,
   „Nicht gemacht“, offline ausgegraut, anderer Tag ohne „Wie war's?“.
-- **Status:** offen
+- **Status:** erledigt, Commit da02913
 
 ### Task 9 — App: „Zu tun“ am gezeigten Tag und Haushalt-Zeile (nach Task 7 und 8)
 
@@ -378,20 +378,23 @@ berührt `seed/demo.ts` nicht.
 - **Test:** `pnpm e2e:dev`, Klick-Durchlauf: AC-029 in Zeitlupe (0 s / 0,8 s / 1,5 s / 3,5 s), Tab
   „Essen“ im Fenster bucht sofort, zwei Browser für „Nadja war schneller“, Netz weg im Fenster,
   Samstag ohne Haken, Mittwoch „Erledigt am Mittwoch“.
-- **Status:** erledigt (nicht committet), samt den Folgearbeiten aus Task 7 und 8; Entscheidungen
-  siehe „Entscheidungen beim Bauen (App, Task 9)“
+- **Status:** erledigt, Commit 8f23145 (der Commit schließt auch Spec 0007 ab), samt den Folgearbeiten aus Task 7 und 8; Entscheidungen siehe „Entscheidungen beim Bauen (App, Task 9)“
 
 ### Task 10 — Abschluss
 
 - **Deckt ab:** alle AC (Nachweis)
-- **Berührt:** `docs/specs/0011-heute-haushalt/plan.md` (Nachweis), Rückverfolgbarkeitstabelle der
-  Spec, `tmp/brief/e2e-impact.md`
+- **Berührt:** `docs/specs/0011-heute-haushalt/plan.md` (Nachweis), `spec.md`
+  (Rückverfolgbarkeit, Texte aus dem Spec-Audit), `docs/specs/README.md`, `.agents/glossary.md`,
+  `docs/architecture/sync.md`, `tmp/brief/e2e-impact.md`; für die Befunde aus `/security-check`
+  `supabase/migrations/20261121062351_chores.sql`, `20261121062357_apply_changes.sql`,
+  `supabase/tests/chore_rpcs.test.sql`, `packages/api/src/transport-fake.ts` und
+  `transport-fake.test.ts`
 - **Test:** `pnpm format:check && pnpm check && pnpm build:web`, `pnpm db:reset && pnpm exec
 supabase test db`, `pnpm test:integration`, `/security-check` auf den Diff von Task 1, 2 und 5
   (Befunde beheben oder hier eintragen), `spec-auditor`, `/ui-verify` (390, 768, 1440 px, hell und
   dunkel), `impeccable`-Kritik der Übersicht und des Haushalts, `review-animations` für Wegleiten
   und Sterne.
-- **Status:** offen
+- **Status:** erledigt (Abschluss, noch nicht committet); `/ui-verify`, `impeccable` und `review-animations` laufen am Ende aller Wellen (siehe „Nachweis“)
 
 ## Erwartete e2e-Brüche (für `tmp/brief/e2e-impact.md`)
 
@@ -452,15 +455,78 @@ supabase test db`, `pnpm test:integration`, `/security-check` auf den Diff von T
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 21.11.2026, Task 10. Commits der Spec: b963a63 (core, Tasks 3–4), 47a502f (Datenbank,
+Tasks 1–2), b3098c4 (api, Task 5), 7ae426e (ui, Task 6), da02913 (Übersicht und Haushalt,
+Tasks 7–8), 8f23145 (Task 9), dazu dieser Abschluss (Task 10, noch nicht committet). b963a63
+trägt außerdem Spec-0007-Arbeit (T3, T4), 8f23145 schließt auch Spec 0007 ab.
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet
-- [ ] `/security-check` gelaufen (Task 1, 2, 5)
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+- [x] Jedes AC mit Logik hat einen Test, der rot war und jetzt grün ist (Rot-Läufe:
+      `tmp/0011/core-t3-red.txt`, `core-t4-red.txt`, `pgtap-red.txt`, `t8-core-red.txt`,
+      `t10-red.txt`). Reine Oberfläche ist im Klick-Durchlauf belegt und steht in der
+      Rückverfolgbarkeitstabelle als „E2E (Endwelle)“.
+- [x] `pnpm format:check && pnpm check` grün: core 697, ui 188, edge 84, api 564 Tests (10
+      Integrationstests übersprungen, sie laufen getrennt).
+- [x] `pnpm build:web` grün (mit den Werten aus `.env` über `scripts/with-env.mjs`; ohne sie
+      bricht `finish-web-export` ab, weil die CSP den Supabase-Ursprung braucht).
+- [x] `pnpm db:reset && pnpm exec supabase test db` grün: 23 Dateien, 1234 Tests
+      (`chore_rpcs.test.sql` 75).
+- [x] `pnpm test:integration` grün: 5 Dateien, 10 Tests gegen den lokalen Stack.
+- [x] `pnpm e2e:dev` grün (1 Test). Protokolle: `tmp/0011/t10-gates.log`,
+      `t10-build-web.log`, `t10-integration.log`, `t10-e2e-dev.log`.
+- [x] `/security-check` gelaufen (Task 1, 2, 5): keine kritischen, hohen oder mittleren Befunde;
+      alle drei Befunde behoben (Tabelle unten).
+- [x] Spec-Audit gelaufen; Abweichungen entschieden und in der Spec nachgezogen (unten).
+- [x] Offline-Verhalten im Klick-Durchlauf geprüft (AC-023, AC-034, AC-042, AC-061;
+      `tmp/0011/t7-phone-offline*.png`, `t8-*-offline.png`, `t8-phone-recap-offline.png`).
+- [x] Glossar und Rückverfolgbarkeitstabelle aktuell (neu: „Wie war's?“, „Verlauf“;
+      „Erledigung“ mit dem Zeitpunkt des Eintrags; „Übersicht“ und Rhythmus „bei Bedarf“
+      geprüft, unverändert).
+- [ ] `/ui-verify` (390, 768, 1440 px, hell und dunkel), `impeccable`-Kritik der Übersicht und des
+      Haushalts und `review-animations` für Wegleiten und Sterne: **nicht Teil dieser Spec**; sie
+      laufen einmal am Ende aller Wellen, zusammen mit der vollen e2e-Suite.
+
+### `/security-check` (Task 1, 2 und 5)
+
+| #   | Schwere | Befund                                                                                                                                                                       | Behoben durch                                                                                                                                                                                                                           | Test                                                                                                                                                                                                                                    |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | niedrig | `complete_chore` mit `done` auf einer einmaligen Aufgabe löscht sie, zählte aber nicht zur Grenze von 20 Löschungen in `apply_changes`                                       | `apply_changes` zählt jede `complete_chore`-Operation als Löschung (ob gelöscht wird, steht erst unter der Sperre fest); der Fake zählt genauso                                                                                         | pgTAP `chore_rpcs.test.sql` „T5 apply_changes: 21 bookings count as 21 deletes …“ (21 einmalige Aufgaben → `too_many_changes`, keine gelöscht); api `transport-fake.test.ts` „complete_chore counts as a delete …“                      |
+| 2   | Hinweis | `chore_events.chore_id` ließ sich auf eine andere Aufgabe des Haushalts umhängen; ein späteres `remove_chore_event` stellte dann den Stand davor an der falschen Aufgabe her | Trigger `chore_events_keep_chore`: `chore_id` wechselt nur von leer auf eine Aufgabe („Rückgängig“ nach dem Löschen, AC-053) und wird nur durch das Löschen der Aufgabe leer; sonst `invalid_change` (22023). Fake mit derselben Regel  | pgTAP „AC-053 apply_changes: "Rückgängig" links …“, „… cannot be moved to another chore …“, „… cannot be cleared directly“; die Löschtests (AC-053, einmalige Aufgabe) laufen weiter; api `transport-fake.test.ts` „AC-053: chore_id …“ |
+| 3   | Hinweis | Zwei `complete_chore` derselben Aufgabe in einem Aufruf bekamen dasselbe `created_at` (`now()`), „zuletzt gebucht“ entschied dann die Kennung                                | Trigger `chore_events_stamp_booking` setzt `created_at = clock_timestamp()` für Erledigungen aus `complete_chore` (`prev_recorded`); er heißt so, dass er nach `chore_events_set_timestamps` läuft. Reihenfolge bleibt `created_at, id` | pgTAP „complete_chore: the second booking in one call is booked later“ und „AC-060 remove_chore_event: the second booking of one call …“ (Kennungen absichtlich umgekehrt); api `transport-fake.test.ts` „AC-060: the second …“         |
+
+Die Fixes ändern die Grundlagen-Migrationen direkt (`20261121062351_chores.sql`,
+`20261121062357_apply_changes.sql`; ADR-0012). Die Pfade der api bleiben gültig: „Rückgängig“ nach
+dem Löschen hängt Einträge von leer auf die Aufgabe (`deleteChore`), „Erledigt von“ ändert nur
+`done_by`, „Rückgängig“ von „Eintrag entfernen“ trägt neu über `complete_chore` ein
+(`commands-chores.backend.test.ts`, `chores.integration.test.ts` grün). Typen ändern sich nicht
+(nur Trigger), die Cache-Version bleibt 5. `docs/architecture/sync.md` (Nachtrag 0011) und
+`tmp/brief/e2e-impact.md` sind nachgezogen.
+
+**Restrisiko:** Ein KI-Vorschlag mit mehr als 20 Erledigungen in einem Aufruf scheitert jetzt als
+Ganzes mit dem Hinweis „Hat nicht geklappt …“ (bisher galt das nur für mehr als 20 Löschungen).
+Bewusst hingenommen: Ein Vorschlag hat höchstens 30 Teile, und so viele Erledigungen auf einmal
+sind nicht realistisch. Bei Erledigungen ist `created_at` jetzt etwas später als `updated_at`;
+der Delta-Abgleich liest nur `updated_at`.
+
+### Spec-Audit: Entscheidungen (Eigentümer vorab freigegeben)
+
+1. **AC-034:** Bricht das Netz im Sammel-Fenster ab, bleibt der ehrliche Hinweis „Offline – nichts
+   wurde abgehakt“; lehnt der Server ab, heißt er „Hat nicht geklappt – bitte noch einmal
+   versuchen“. Spec-Text angepasst.
+2. **AC-015:** Restaurants haben im Datenmodell kein Foto und zeigen ein Symbol. Spec-Text: „mit
+   Bild (Restaurants mit Symbol)“.
+3. **AC-014:** Der angehängte Rezepttitel („· Hummus“) bleibt; das Beispiel der Spec ist
+   angepasst.
+4. **AC-035:** „Erledigt von“ zeigt Namens-Chips statt eines Avatars „(E)“; Spec-Text angepasst.
+5. **„Anstehend“ am Desktop** öffnet die Aufgabe als Fenster; die rechte Spalte gibt es nur in
+   „Alle“ und „Verlauf“, wie im Konzept. REQ-009 sagt das jetzt so.
+6. **Spec-Text und Bau-Entscheidungen:** Offene Frage 5 (keine Erweitern → umziehen → aufräumen,
+   ADR-0012) und 6 („spontan“ entfällt) stehen auf „entschieden: A (ADR-0012)“; der Abschnitt
+   „Daten“ und der kritische Pfad sind nachgezogen. Der zweite Teil von AC-045 und das Symbol
+   „spontan“ in AC-058 sind „verworfen (ADR-0012)“. AC-028, AC-030, AC-036, AC-039 und AC-040
+   beschreiben die Verlaufszeile jetzt wie gebaut (Titel, Avatar, Tag „Fr 20.“, AC-058) statt
+   „· heute“.
+
+Offen bis Spec 0009: AC-012, AC-024 und die Zeile „Grillabend“ in AC-015.
 
 ## Entscheidungen beim Bauen (core, Tasks 3–4, 21.11.2026)
 

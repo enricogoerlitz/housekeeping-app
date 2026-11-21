@@ -279,7 +279,18 @@ regelt die erste Spec mit Fotos.
   zurückgeschrieben. `remove_chore_event` stellt sie wieder her, wenn der Eintrag der zuletzt
   gebuchte seiner noch vorhandenen Aufgabe ist (`created_at`, dann `id`). Entfernen gewinnt gegen
   ein gleichzeitiges Ändern: Die spätere Änderung trifft keine Zeile mehr (`row_not_found`).
-- **Grenzen:** `remove_chore_event` zählt als eine Operation und eine Löschung.
+- **Zeitpunkt des Eintrags:** `created_at` einer Erledigung aus `complete_chore` ist
+  `clock_timestamp()` (Trigger `chore_events_stamp_booking`), nicht der Beginn der Transaktion.
+  Zwei Erledigungen derselben Aufgabe in einem Aufruf behalten so ihre Reihenfolge, und eine
+  Erledigung, die auf die Sperre gewartet hat, liegt hinter der, auf die sie gewartet hat.
+  `updated_at` bleibt `now()`; der Delta-Abgleich liest nur `updated_at`.
+- **Die Verknüpfung bleibt:** `chore_id` einer Erledigung wechselt nur von leer auf eine Aufgabe
+  („Rückgängig“ nach dem Löschen) und wird nur durch das Löschen der Aufgabe leer. Jede andere
+  Änderung lehnt der Trigger `chore_events_keep_chore` mit `invalid_change` (22023) ab. Sonst
+  stellte `remove_chore_event` den Stand davor an der falschen Aufgabe her.
+- **Grenzen:** `complete_chore` und `remove_chore_event` zählen je als eine Operation und eine
+  Löschung. Ob `complete_chore` eine einmalige Aufgabe löscht, steht erst unter der Sperre fest;
+  darum zählt jede Buchung.
 - **Bewertungen:** `stars` ist `numeric(2,1)` (0,5 bis 5 in halben Schritten). Die
   `set_*_rating`-RPCs prüfen den ungerundeten Wert und schreiben immer, auch denselben Wert noch
   einmal; `updated_at` der Bewertungszeile sagt damit, wann die Person zuletzt bewertet hat.
