@@ -486,7 +486,6 @@ export const seedIds = {
   'store-rewe': 'ec269f55-f5e9-5b9a-afde-ebe1c0ca0848',
   'store-dm': '68e120dd-7e16-5ab3-a284-21deb0185245',
   'list-standard': '0659d7b0-85bb-5fc2-96d5-73b7f04112d3',
-  'list-drogerie': '97f24efe-5af2-5e0c-b6c5-44500f9aaeed',
   'rec-mango-curry': 'f8bb33d0-ec23-5cae-afca-e00949b2b93f',
   'rec-spaghetti-bolognese': 'b6ba9eb3-8266-5fbf-a32c-e4b38a91b98f',
   'rec-lasagne': '59df6a7a-0604-567e-87a0-e6449db65331',

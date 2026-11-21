@@ -32,12 +32,11 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
-  ('list_a'), ('list_a2'), ('list_b'), ('brot'), ('milch'), ('butter'),
+  ('list_a'), ('list_b'), ('brot'), ('milch'), ('butter'),
   ('item_brot'), ('item_milch'), ('item_butter'), ('c_brot1'), ('c_brot2'), ('c_milch');
 
 insert into public.shopping_lists (id, household_id, name) values
   (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste'),
-  (tests.fx('list_a2'), tests.fx('home_a'), 'Grillen'),
   (tests.fx('list_b'), tests.fx('home_b'), 'Liste B');
 insert into public.articles (id, household_id, name, name_key) values
   (tests.fx('brot'), tests.fx('home_a'), 'Brot', 'brot'),
@@ -138,7 +137,8 @@ select tests.authenticate_as(tests.fx('enrico'));
 
 -- ===================== Invalid input =====================
 select throws_ok(
-  format('select public.restore_cleared_items(%L, %L)', tests.fx('list_a2'), tests.cleared(1)),
+  format('select public.restore_cleared_items(%L, %L)', tests.fx('list_a'),
+         jsonb_set(tests.cleared(1), '{0,item,list_id}', to_jsonb(tests.fx('list_b')))),
   '22023', 'invalid_entries', 'T4 restore_cleared_items: items of another list are rejected');
 select throws_ok(
   format('select public.restore_cleared_items(%L, %L)', tests.fx('list_a'),
@@ -157,8 +157,8 @@ select throws_ok(
   '22023', 'invalid_entries', 'T4 restore_cleared_items: items must be an array');
 select throws_ok(
   format('select public.restore_cleared_items(%L, %L)', tests.fx('list_a'),
-         (select jsonb_agg(tests.cleared(1) -> 0) from generate_series(1, 201))),
-  '22023', 'too_many_changes', 'T4 restore_cleared_items: more than 200 items are rejected');
+         (select jsonb_agg(tests.cleared(1) -> 0) from generate_series(1, 1001))),
+  '22023', 'too_many_changes', 'AC-035 restore_cleared_items: more than 1000 items are rejected');
 
 -- ===================== Foreign household, anon =====================
 select tests.authenticate_as(tests.fx('ben'));

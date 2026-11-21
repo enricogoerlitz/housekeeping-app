@@ -71,7 +71,7 @@ select throws_ok(
 select throws_ok(
   format($$ insert into public.shopping_lists (household_id, name, store_id) values (%L, 'X', %L) $$,
          tests.fx('home_a'), tests.fx('store_b')),
-  '23503', null, 'T3 shopping_lists: store_id of another household is rejected');
+  '42501', null, 'AC-005 (0006) shopping_lists: members cannot insert lists any more (store_id is covered by the update below)');
 select throws_ok(
   format($$ update public.shopping_lists set store_id = %L where id = %L $$, tests.fx('store_b'), tests.fx('list_a')),
   '23503', null, 'T3 shopping_lists: an update cannot point store_id into another household');
@@ -219,9 +219,12 @@ select throws_ok(
 select throws_ok(
   format($$ insert into public.articles (household_id, name, name_key) values (%L, 'Äpfel!', 'apfel') $$, tests.fx('home_a')),
   '23505', null, 'T3 articles: name_key is unique per household');
+-- Since spec 0006 only the owner could insert a list; the constraint still rejects a second one.
+select tests.clear_authentication();
 select throws_ok(
-  format($$ insert into public.shopping_lists (household_id, name, is_default) values (%L, 'Zweite', true) $$, tests.fx('home_a')),
-  '23505', null, 'T3 shopping_lists: at most one default list per household');
+  format($$ insert into public.shopping_lists (household_id, name, is_default) values (%L, 'Zweite', false) $$, tests.fx('home_a')),
+  '23505', null, 'AC-005 (0006) shopping_lists: at most one list per household');
+select tests.authenticate_as(tests.fx('dora'));
 select throws_ok(
   format($$ update public.restaurants set maps_url = 'javascript:alert(1)' where id = %L $$, tests.fx('restaurant_a')),
   '23514', null, 'T3 restaurants: maps_url must be an http(s) link');
@@ -252,9 +255,12 @@ select throws_ok(
 select throws_ok(
   format($$ delete from public.recipes where id = %L $$, tests.fx('recipe_a')),
   '23503', null, 'T3 recipes: a recipe in the meal plan cannot be deleted (restrict)');
+-- Members cannot delete lists since spec 0006; for the owner the foreign key still protects it.
+select tests.clear_authentication();
 select throws_ok(
   format($$ delete from public.shopping_lists where id = %L $$, tests.fx('list_b')),
   '23503', null, 'T3 shopping_lists: the default list of a household cannot be deleted');
+select tests.authenticate_as(tests.fx('dora'));
 
 select tests.clear_authentication();
 update public.households set default_store_id = tests.fx('store_a') where id = tests.fx('home_a');

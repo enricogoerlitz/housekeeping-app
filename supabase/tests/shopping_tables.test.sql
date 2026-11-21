@@ -17,13 +17,13 @@ insert into fx (key, id) values
 insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('anna')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
-insert into fx (key) values ('article_a'), ('list_a'), ('list_a2'), ('item_a');
+insert into fx (key) values ('article_a'), ('article_a2'), ('list_a'), ('item_a');
 
 insert into public.articles (id, household_id, name, name_key)
-values (tests.fx('article_a'), tests.fx('home_a'), 'Milch', 'milch');
+values (tests.fx('article_a'), tests.fx('home_a'), 'Milch', 'milch'),
+       (tests.fx('article_a2'), tests.fx('home_a'), 'Butter', 'butter');
 insert into public.shopping_lists (id, household_id, name) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste'),
-  (tests.fx('list_a2'), tests.fx('home_a'), 'Grillen');
+  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste');
 
 -- ===================== Check state belongs to the store RPCs =====================
 select tests.authenticate_as(tests.fx('anna'));
@@ -68,10 +68,10 @@ select tests.clear_authentication();
 grant insert (checked, checked_at, checked_by, check_seq, not_available) on public.shopping_items to authenticated;
 select tests.authenticate_as(tests.fx('anna'));
 insert into public.shopping_items (household_id, list_id, article_id, checked, checked_at, checked_by, check_seq, not_available)
-values (tests.fx('home_a'), tests.fx('list_a2'), tests.fx('article_a'), true, now(), tests.fx('anna'), 5, true);
+values (tests.fx('home_a'), tests.fx('list_a'), tests.fx('article_a2'), true, now(), tests.fx('anna'), 5, true);
 select results_eq(
-  format($$ select checked, checked_at, checked_by, check_seq, not_available from public.shopping_items where list_id = %L $$,
-         tests.fx('list_a2')),
+  format($$ select checked, checked_at, checked_by, check_seq, not_available from public.shopping_items where article_id = %L $$,
+         tests.fx('article_a2')),
   $$ values (false, null::timestamptz, null::uuid, 0, false) $$,
   'T3 shopping_items: a direct insert by a client is forced to open, check_seq 0, available');
 select tests.clear_authentication();

@@ -57,6 +57,10 @@ insert into public.articles (id, household_id, name, name_key, synonym_keys) val
   (tests.fx('kaese'), tests.fx('home_a'), 'Käse', 'kase', '{}'),
   (tests.fx('zwiebeln'), tests.fx('home_a'), 'Frühlingszwiebeln', 'fruhlingszwiebeln', '{lauchzwiebeln}'),
   (tests.fx('article_b'), tests.fx('home_b'), 'Milch', 'milch', '{}');
+-- These T4 tests predate spec 0006 and use a second list in household A (list_a2) to show that
+-- lists are independent. Since 0006 a household has one list (one_shopping_list.test.sql); the
+-- constraint is dropped for this fixture only, inside the rolled-back test transaction.
+alter table public.shopping_lists drop constraint shopping_lists_household_id_key;
 insert into public.shopping_lists (id, household_id, name) values
   (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste'),
   (tests.fx('list_a2'), tests.fx('home_a'), 'Grillen'),

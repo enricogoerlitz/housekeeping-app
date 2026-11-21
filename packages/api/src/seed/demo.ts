@@ -382,7 +382,7 @@ function buildDemoData(today: ISODate): HouseholdData {
   for (const name of ['Zahnpasta', 'Duschgel']) {
     items = addContribution(
       items,
-      'list-drogerie',
+      listId,
       articleIdByName(name),
       { id: `contrib-d-${slug(name)}`, source: { kind: 'manual' }, count: 1 },
       nextItemId(),
@@ -725,7 +725,6 @@ function buildDemoData(today: ISODate): HouseholdData {
     planEntries,
     lists: [
       { id: listId, name: 'Standardliste', isDefault: true },
-      { id: 'list-drogerie', name: 'Drogerie', isDefault: false, storeId: 'store-dm' },
     ],
     items,
     chores,

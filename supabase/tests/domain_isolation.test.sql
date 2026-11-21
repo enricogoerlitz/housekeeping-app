@@ -4,7 +4,7 @@
 -- leaves a tombstone only members see. Favourites, ratings and votes are written only by RPCs.
 begin;
 \ir _helpers.psql
-select plan(13 * 15 + 5 * 7);
+select plan(12 * 15 + 5 * 7);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -20,7 +20,7 @@ insert into fx (key, id) values
   ('home_a', tests.create_household('A', array[tests.fx('anna'), tests.fx('carla')])),
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
-  ('slot_a'), ('area_a'), ('article_a'), ('article_a2'), ('store_a'), ('list_a'), ('list_a2'),
+  ('slot_a'), ('area_a'), ('article_a'), ('article_a2'), ('article_a3'), ('store_a'), ('list_a'),
   ('recipe_a'), ('restaurant_a'), ('chore_a'), ('item_a'), ('feedback_a');
 
 -- ---------- Fixtures in household A (as postgres) ----------
@@ -31,11 +31,12 @@ insert into public.areas (id, household_id, name, sort)
 values (tests.fx('area_a'), tests.fx('home_a'), 'Obst & Gemüse', 0);
 insert into public.articles (id, household_id, name, name_key, area_id, diet) values
   (tests.fx('article_a'), tests.fx('home_a'), 'Äpfel', 'apfel', tests.fx('area_a'), 'vegan'),
-  (tests.fx('article_a2'), tests.fx('home_a'), 'Birnen', 'birnen', tests.fx('area_a'), 'vegan');
+  (tests.fx('article_a2'), tests.fx('home_a'), 'Birnen', 'birnen', tests.fx('area_a'), 'vegan'),
+  (tests.fx('article_a3'), tests.fx('home_a'), 'Pflaumen', 'pflaumen', tests.fx('area_a'), 'vegan');
 insert into public.stores (id, household_id, name) values (tests.fx('store_a'), tests.fx('home_a'), 'Edeka');
+-- One list per household (spec 0006); its isolation is tested in one_shopping_list.test.sql.
 insert into public.shopping_lists (id, household_id, name, is_default) values
-  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste', true),
-  (tests.fx('list_a2'), tests.fx('home_a'), 'Grillen', false);
+  (tests.fx('list_a'), tests.fx('home_a'), 'Standardliste', true);
 insert into public.recipes (id, household_id, title, servings, course)
 values (tests.fx('recipe_a'), tests.fx('home_a'), 'Linsen-Dal', 2, 'main');
 insert into public.restaurants (id, household_id, name)
@@ -65,12 +66,6 @@ select * from tests.tenant_isolation('stores',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'name', 'Rewe',
                      'area_order', array[tests.fx('area_a')], 'hidden_area_ids', '{}'::uuid[]),
   jsonb_build_object('name', 'Rewe City', 'hidden_area_ids', array[tests.fx('area_a')]),
-  tests.fx('anna'), tests.fx('ben'));
-
-select * from tests.tenant_isolation('shopping_lists',
-  jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'name', 'Party',
-                     'is_default', false, 'store_id', tests.fx('store_a')),
-  '{"name": "Feier", "store_id": null}',
   tests.fx('anna'), tests.fx('ben'));
 
 select * from tests.tenant_isolation('recipes',
@@ -123,7 +118,7 @@ select * from tests.tenant_isolation('meal_plan_entries',
 select * from tests.tenant_isolation('shopping_items',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'list_id', tests.fx('list_a'),
                      'article_id', tests.fx('article_a2')),
-  jsonb_build_object('list_id', tests.fx('list_a2')),
+  jsonb_build_object('article_id', tests.fx('article_a3')),
   tests.fx('anna'), tests.fx('ben'));
 
 select * from tests.tenant_isolation('shopping_contributions',
