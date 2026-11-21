@@ -1,5 +1,8 @@
 import {
+  useAbsences,
   useActivitiesById,
+  useMembers,
+  useMembersById,
   usePhoto,
   usePlanEntries,
   useRecipeImage,
@@ -7,135 +10,237 @@ import {
   useRestaurantsById,
 } from '@housekeeping/api';
 import {
-  entriesForDay,
-  isoWeekNumber,
+  absenceStripes,
+  dayDots,
+  dayMonthLongLabel,
+  dayTile,
   parseISODate,
+  stripeSegment,
   weekDates,
+  weekdayLong,
   weekdayShort,
+  type AbsenceStripe,
   type Activity,
   type ISODate,
+  type KindRole,
   type MealPlanEntry,
   type Recipe,
 } from '@housekeeping/core';
-import { Icon, Photo, Section, Text, useTheme } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Badge, Icon, KindDot, Photo, Text, useTheme } from '@housekeeping/ui';
+import { Pressable, View } from 'react-native';
 
-interface DayView {
-  date: ISODate;
-  entry?: MealPlanEntry;
-  recipe?: Recipe;
-  activity?: Activity;
-  title?: string;
+import { stripeA11y, useStripeColors } from '@/features/calendar/calendar-parts';
+import { entryTitle } from '@/features/meal-plan/labels';
+
+const KIND_NAMES: Record<KindRole, string> = {
+  recipe: 'Rezept',
+  collection: 'Sammlung',
+  restaurant: 'Restaurant',
+  activity: 'Aktivität',
+  chore: 'Aufgabe',
+};
+
+export interface WeekStripProps {
+  shown: ISODate;
+  today: ISODate;
+  slotOrder: string[];
+  /** Desktop: tiles with the photo and title of the day's first entry and "+2" (AC-006). */
+  tiles: boolean;
+  /** A tap on a day shows the whole page for that day (D6, AC-002). */
+  onSelect: (date: ISODate) => void;
+  /** Read out with the strip, e.g. "Diese Woche · KW 47". */
+  label: string;
 }
 
-/** The main dish of a day: the latest meal slot with something planned. */
-function mainEntry(entries: MealPlanEntry[]): MealPlanEntry | undefined {
-  return entries[entries.length - 1];
-}
-
-/** "Diese Woche": the seven days of the current week with what is planned (F2). */
-export function WeekStrip(props: { today: ISODate; slotOrder: string[]; compact: boolean }) {
-  const router = useRouter();
-  const theme = useTheme();
-  const planEntries = usePlanEntries();
-  const recipesById = useRecipesById();
-  const restaurantsById = useRestaurantsById();
-  const activitiesById = useActivitiesById();
-
-  const days: DayView[] = weekDates(props.today).map((date) => {
-    const entry = mainEntry(entriesForDay(planEntries, date, props.slotOrder));
-    const recipe = entry?.recipeId ? recipesById[entry.recipeId] : undefined;
-    const restaurant =
-      entry?.kind === 'restaurant' && entry.restaurantId
-        ? restaurantsById[entry.restaurantId]
-        : undefined;
-    const activity =
-      entry?.kind === 'activity' && entry.activityId ? activitiesById[entry.activityId] : undefined;
-    const title = entry
-      ? entry.kind === 'leftovers'
-        ? `Reste ${recipe?.title ?? ''}`.trim()
-        : (recipe?.title ?? restaurant?.name ?? activity?.name ?? entry.text)
-      : undefined;
-    return { date, entry, recipe, activity, title };
+/**
+ * The week of the shown day at the top of the "Übersicht" (spec 0011, REQ-001): up to three dots
+ * per day in the colours of the kinds, absences as stripes below (AC-005); on desktop tiles.
+ */
+export function WeekStrip(props: WeekStripProps) {
+  const entries = usePlanEntries();
+  const absences = useAbsences();
+  const members = useMembers();
+  const week = weekDates(props.shown);
+  const first = week[0] ?? props.shown;
+  const last = week[6] ?? props.shown;
+  const stripes = absenceStripes(absences, members).flatMap((stripe) => {
+    const segment = stripeSegment(stripe, first, last);
+    return segment ? [{ stripe, start: segment.start, end: segment.end }] : [];
   });
 
-  const tile = (day: DayView) => {
-    const isToday = day.date === props.today;
-    const label = `${isToday ? 'Heute' : weekdayShort(day.date)} ${parseISODate(day.date).getDate()}.`;
-    return (
-      <Pressable
-        key={day.date}
-        testID={`today-week-${day.date}`}
-        accessibilityRole="button"
-        accessibilityLabel={`${label}: ${day.title ?? 'nichts geplant'}`}
-        onPress={() => router.push('/kalender')}
-        style={(state) => ({
-          flex: props.compact ? undefined : 1,
-          width: props.compact ? 76 : undefined,
-          minWidth: 0,
-          padding: 8,
-          gap: 6,
-          borderRadius: theme.shape.radius.control,
-          borderWidth: isToday ? 2 : 1,
-          borderColor: isToday ? theme.colors.accent : theme.colors.border,
-          backgroundColor: theme.colors.surface,
-          opacity: state.pressed ? 0.7 : 1,
-        })}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text variant="caption" color={isToday ? 'accent' : 'muted'}>
-            {isToday ? 'Heute' : weekdayShort(day.date)}
-          </Text>
-          <Text variant="caption" color={isToday ? 'accent' : 'muted'}>
-            {parseISODate(day.date).getDate()}
-          </Text>
-        </View>
-        {day.entry ? (
-          <DayPhoto recipe={day.recipe} activity={day.activity} />
-        ) : (
-          <View
-            style={{
-              aspectRatio: 1.2,
-              borderRadius: theme.shape.radius.photo,
-              borderWidth: 1,
-              borderStyle: 'dashed',
-              borderColor: theme.colors.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="plus" size={18} color="muted" />
-          </View>
-        )}
-        {props.compact ? null : (
-          <Text variant="caption" numberOfLines={2}>
-            {day.title ?? 'frei'}
-          </Text>
-        )}
-      </Pressable>
-    );
-  };
-
   return (
-    <Section title="Diese Woche" meta={`KW ${isoWeekNumber(props.today)}`} testID="today-week">
-      {props.compact ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8 }}
-        >
-          {days.map(tile)}
-        </ScrollView>
-      ) : (
-        <View style={{ flexDirection: 'row', gap: 10 }}>{days.map(tile)}</View>
-      )}
-    </Section>
+    <View
+      testID="today-week"
+      accessibilityLabel={props.label}
+      style={{ marginBottom: props.tiles ? 28 : 20 }}
+    >
+      <View style={{ flexDirection: 'row', gap: props.tiles ? 10 : 0 }}>
+        {week.map((date) =>
+          props.tiles ? (
+            <DayTile key={date} date={date} {...props} entries={entries} />
+          ) : (
+            <DayColumn key={date} date={date} {...props} entries={entries} />
+          ),
+        )}
+      </View>
+      {stripes.length > 0 ? (
+        <View style={{ gap: 3, marginTop: 6 }}>
+          {stripes.map((item) => (
+            <StripeLine key={item.stripe.key} {...item} />
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
-/** The picture of a day's tile: the recipe's or the activity's own photo, else a placeholder. */
-function DayPhoto(props: { recipe?: Recipe; activity?: Activity }) {
+interface DayProps extends WeekStripProps {
+  date: ISODate;
+  entries: MealPlanEntry[];
+}
+
+function dayLabel(date: ISODate, today: ISODate, dots: KindRole[]): string {
+  const day = `${date === today ? 'Heute, ' : ''}${weekdayLong(date)}, ${dayMonthLongLabel(date)}`;
+  const kinds = dots.map((role) => KIND_NAMES[role]).join(', ');
+  return kinds ? `${day}: ${kinds}` : `${day}: nichts geplant`;
+}
+
+/** Phone: weekday, date in a circle (filled when chosen, ringed for today), the kinds' dots. */
+function DayColumn(props: DayProps) {
+  const theme = useTheme();
+  const { date } = props;
+  const dots = dayDots(props.entries, date);
+  const selected = date === props.shown;
+  const isToday = date === props.today;
+  return (
+    <Pressable
+      testID={`today-week-${date}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${dayLabel(date, props.today, dots)}${selected ? ', gewählt' : ''}`}
+      accessibilityState={{ selected }}
+      onPress={() => props.onSelect(date)}
+      style={(state) => ({
+        flex: 1,
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 4,
+        minHeight: 64,
+        opacity: state.pressed ? 0.7 : 1,
+      })}
+    >
+      <Text variant="caption" color={isToday ? 'accent' : 'muted'}>
+        {weekdayShort(date)}
+      </Text>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: selected ? theme.colors.text : 'transparent',
+          borderWidth: isToday && !selected ? 1.5 : 0,
+          borderColor: theme.colors.accent,
+        }}
+      >
+        <Text
+          variant="smallStrong"
+          style={{ color: selected ? theme.colors.bg : theme.colors.text }}
+        >
+          {String(parseISODate(date).getDate())}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 3, height: 8, alignItems: 'center' }}>
+        {dots.map((role) => (
+          <View key={role} testID={`today-week-${date}-dot-${role}`}>
+            <KindDot kind={role} size={6} />
+          </View>
+        ))}
+      </View>
+    </Pressable>
+  );
+}
+
+/** Desktop: a tile with the photo and title of the day's first entry and "+2" (AC-006). */
+function DayTile(props: DayProps) {
+  const theme = useTheme();
+  const recipesById = useRecipesById();
+  const restaurantsById = useRestaurantsById();
+  const activitiesById = useActivitiesById();
+  const { date } = props;
+  const { first, more } = dayTile(props.entries, date, props.slotOrder);
+  const dots = dayDots(props.entries, date);
+  const selected = date === props.shown;
+  const isToday = date === props.today;
+  const title = first
+    ? entryTitle(first, recipesById, props.entries, restaurantsById, activitiesById)
+    : undefined;
+  const recipe =
+    first?.recipeId && (first.kind === 'recipe' || first.kind === 'leftovers')
+      ? recipesById[first.recipeId]
+      : undefined;
+  const activity =
+    first?.kind === 'activity' && first.activityId ? activitiesById[first.activityId] : undefined;
+  const head = isToday ? 'Heute' : weekdayShort(date);
+  return (
+    <Pressable
+      testID={`today-week-${date}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${dayLabel(date, props.today, dots)}${selected ? ', gewählt' : ''}`}
+      accessibilityState={{ selected }}
+      onPress={() => props.onSelect(date)}
+      style={(state) => ({
+        flex: 1,
+        minWidth: 0,
+        padding: 8,
+        gap: 6,
+        borderRadius: theme.shape.radius.control,
+        borderWidth: selected ? 2 : 1,
+        borderColor: selected ? theme.colors.accent : theme.colors.border,
+        backgroundColor: theme.colors.surface,
+        opacity: state.pressed ? 0.7 : 1,
+      })}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Text variant="caption" color={isToday || selected ? 'accent' : 'muted'}>
+          {head}
+        </Text>
+        <Text variant="caption" color={isToday || selected ? 'accent' : 'muted'}>
+          {String(parseISODate(date).getDate())}
+        </Text>
+      </View>
+      {first ? (
+        <View>
+          <TilePhoto recipe={recipe} activity={activity} restaurant={first.kind === 'restaurant'} />
+          {more > 0 ? (
+            <View style={{ position: 'absolute', right: 4, bottom: 4 }}>
+              <Badge label={`+${more}`} testID={`today-week-${date}-more`} />
+            </View>
+          ) : null}
+        </View>
+      ) : (
+        <View
+          style={{
+            aspectRatio: 1.2,
+            borderRadius: theme.shape.radius.photo,
+            borderWidth: 1,
+            borderStyle: 'dashed',
+            borderColor: theme.colors.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon name="plus" size={18} color="muted" />
+        </View>
+      )}
+      <Text variant="caption" numberOfLines={2} style={{ minHeight: 32 }}>
+        {title ?? 'frei'}
+      </Text>
+    </Pressable>
+  );
+}
+
+function TilePhoto(props: { recipe?: Recipe; activity?: Activity; restaurant: boolean }) {
   const recipeImage = useRecipeImage(props.recipe);
   const activityPhoto = usePhoto(props.activity?.photoPath);
   const source = props.activity
@@ -147,7 +252,32 @@ function DayPhoto(props: { recipe?: Recipe; activity?: Activity }) {
     <Photo
       source={source}
       aspectRatio={1.2}
-      placeholderIcon={props.activity ? 'mountain' : 'utensils'}
+      placeholderIcon={props.activity ? 'mountain' : props.restaurant ? 'utensils' : 'chef-hat'}
     />
+  );
+}
+
+/** An absence below the days it covers, in the person's colour (rules of spec 0010). */
+function StripeLine(props: { stripe: AbsenceStripe; start: number; end: number }) {
+  const membersById = useMembersById();
+  const colors = useStripeColors(props.stripe, membersById);
+  return (
+    <View
+      style={{ height: 4 }}
+      testID={`today-week-stripe-${props.stripe.absenceIds[0] ?? props.stripe.key}`}
+      accessibilityLabel={stripeA11y(props.stripe, membersById)}
+    >
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: `${(props.start / 7) * 100}%`,
+          width: `${((props.end - props.start + 1) / 7) * 100}%`,
+          borderRadius: 2,
+          backgroundColor: colors.edge,
+        }}
+      />
+    </View>
   );
 }

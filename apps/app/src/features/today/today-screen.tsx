@@ -1,21 +1,24 @@
+import { useCurrentMember, useHousehold, usePlanEntries, useToday } from '@housekeeping/api';
 import {
-  rateRecipe,
-  useCurrentMember,
-  useHousehold,
-  usePlanEntries,
-  useRecipesById,
-  useToday,
-} from '@housekeeping/api';
-import { addDays, entriesForDay, formatLongDate } from '@housekeeping/core';
-import { Row, Screen, ScreenHeader, Stars, Surface, Text, useBreakpoint } from '@housekeeping/ui';
+  addDays,
+  entriesForDay,
+  overviewSections,
+  overviewTitle,
+  shiftShownDay,
+  weekNav,
+  type ISODate,
+} from '@housekeeping/core';
+import { Screen, ScreenHeader, useBreakpoint } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { useOnlineOnly } from '@/features/shell/offline';
 import { StartPageActions } from '@/features/shell/profile-button';
 
+import { TodayAbsence } from './today-absence';
 import { TodayChores } from './today-chores';
+import { CalendarButton, WeekNav } from './today-header';
 import { TodayMeals } from './today-meals';
+import { TodayRecap } from './today-recap';
 import { TodayShopping } from './today-shopping';
 import { WeekStrip } from './week-strip';
 
@@ -25,7 +28,13 @@ function greeting(hour: number): string {
   return 'Guten Abend';
 }
 
-/** "Übersicht" (tab, spec 0005 REQ-011): the day at a glance (F2, AC-017). */
+/**
+ * "Übersicht" (spec 0011, REQ-001): one shown day, as if it were today. Head, week strip,
+ * planned, "Für morgen", "Wie war's?" and "Zu tun" all follow it. The shown day lives only while
+ * the app runs: coming back from a detail page keeps it, a new start shows today (AC-008).
+ * Phone: head, week strip, planned, Wie war's?, Zu tun, Einkauf. Desktop (1,6 : 1): left week
+ * strip and planned, right Wie war's?, Zu tun and Einkauf.
+ */
 export function TodayScreen() {
   const { isPhone, bp } = useBreakpoint();
   // The time of day only picks the greeting; the date itself comes from useToday().
@@ -34,33 +43,81 @@ export function TodayScreen() {
   const me = useCurrentMember();
   const household = useHousehold();
   const planEntries = usePlanEntries();
+  // undefined = today, so the page follows the date when the day changes while the app runs.
+  const [picked, setPicked] = useState<ISODate | undefined>(undefined);
+  const shown = picked ?? today;
+  const show = (date: ISODate) => setPicked(date === today ? undefined : date);
+
   const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
   const slotOrder = slots.map((slot) => slot.id);
   const slotNames = Object.fromEntries(slots.map((slot) => [slot.id, slot.name]));
+  const sections = overviewSections(shown, today);
+  const isToday = shown === today;
 
-  const todayEntries = entriesForDay(planEntries, today, slotOrder);
-  const tomorrowEntries = entriesForDay(planEntries, addDays(today, 1), slotOrder);
-
+  const nav = (
+    <WeekNav
+      shown={shown}
+      today={today}
+      wide={!isPhone}
+      onPage={(weeks) => show(shiftShownDay(shown, weeks))}
+      onToday={() => setPicked(undefined)}
+    />
+  );
   const header = (
     <ScreenHeader
-      kicker={formatLongDate(today)}
-      title={`${greeting(hour)}, ${me.name}`}
-      right={isPhone ? <StartPageActions /> : undefined}
+      testID="today-header"
+      title={overviewTitle(shown, today)}
+      subtitle={isToday ? `${greeting(hour)}, ${me.name}` : undefined}
+      right={
+        isPhone ? (
+          <>
+            <CalendarButton shown={shown} />
+            <StartPageActions />
+          </>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {nav}
+            <CalendarButton shown={shown} />
+          </View>
+        )
+      }
     />
   );
 
-  const meals = (
-    <TodayMeals entries={todayEntries} tomorrowEntries={tomorrowEntries} slotNames={slotNames} />
+  const strip = (
+    <WeekStrip
+      shown={shown}
+      today={today}
+      slotOrder={slotOrder}
+      tiles={bp === 'desktop'}
+      onSelect={show}
+      label={weekNav(shown, today).label}
+    />
   );
+  const meals = (
+    <TodayMeals
+      shown={shown}
+      title={sections.planned}
+      entries={entriesForDay(planEntries, shown, slotOrder)}
+      nextDayEntries={entriesForDay(planEntries, addDays(shown, 1), slotOrder)}
+      slotNames={slotNames}
+      grid={!isPhone}
+    />
+  );
+  // "Wie war's?" only while today is shown (AC-022).
+  const recap = isToday ? <TodayRecap today={today} slotOrder={slotOrder} /> : null;
+  const chores = <TodayChores shown={shown} today={today} title={sections.chores} />;
 
   if (isPhone) {
     return (
       <Screen testID="today-screen" header={header}>
-        <Recap />
+        {nav}
+        {strip}
+        <TodayAbsence shown={shown} />
         {meals}
-        <TodayChores />
+        {recap}
+        {chores}
         <TodayShopping preview={false} />
-        <WeekStrip today={today} slotOrder={slotOrder} compact />
       </Screen>
     );
   }
@@ -71,52 +128,16 @@ export function TodayScreen() {
         style={{ flexDirection: 'row', gap: bp === 'desktop' ? 48 : 28, alignItems: 'flex-start' }}
       >
         <View style={{ flex: 1.6, minWidth: 0 }}>
+          {strip}
+          <TodayAbsence shown={shown} />
           {meals}
-          <WeekStrip today={today} slotOrder={slotOrder} compact={bp !== 'desktop'} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Recap />
-          <TodayChores />
+          {recap}
+          {chores}
           <TodayShopping preview />
         </View>
       </View>
     </Screen>
-  );
-}
-
-/** "Wie war's?": rate yesterday's dish with one tap (F2). */
-function Recap() {
-  const today = useToday();
-  const household = useHousehold();
-  const planEntries = usePlanEntries();
-  const recipesById = useRecipesById();
-  const me = useCurrentMember();
-  const online = useOnlineOnly();
-  const slotOrder = [...household.mealSlots].sort((a, b) => a.sort - b.sort).map((slot) => slot.id);
-  const cooked = entriesForDay(planEntries, addDays(today, -1), slotOrder)
-    .filter((entry) => entry.kind === 'recipe' && !entry.notCooked)
-    .flatMap((entry) => {
-      const recipe = entry.recipeId ? recipesById[entry.recipeId] : undefined;
-      return recipe ? [recipe] : [];
-    });
-  const recipe = cooked[cooked.length - 1];
-  if (!recipe) return null;
-  const mine = recipe.ratings[me.id] ?? 0;
-  return (
-    <Surface testID="recap" style={{ marginBottom: 22, gap: 6 }}>
-      <Text variant="smallStrong" color="muted">
-        Wie war’s?
-      </Text>
-      <Row justify="space-between" wrap gap={10}>
-        <Text variant="cardTitle" style={{ flexShrink: 1 }}>
-          Gestern: {recipe.title}
-        </Text>
-        <Stars
-          value={mine}
-          onChange={online.disabled ? undefined : (stars) => rateRecipe(recipe.id, stars)}
-          testID="recap-stars"
-        />
-      </Row>
-    </Surface>
   );
 }

@@ -1,18 +1,13 @@
-import {
-  completeChore,
-  createChore,
-  reassignChoreEvent,
-  useChores,
-  useCurrentMember,
-  useMembers,
-  useToday,
-} from '@housekeeping/api';
-import { choreBucket, isoWeekday, type Chore, type ChoreBucket } from '@housekeeping/core';
+import { createChore, useChoreEvents, useChores, useMembers, useToday } from '@housekeeping/api';
+import { choreBucket, isoWeekday, type Chore, type ChoreBucket, type Id } from '@housekeeping/core';
 import {
   Button,
   EmptyState,
   IconButton,
+  InfiniteList,
   List,
+  ListDetail,
+  RowTransition,
   Screen,
   ScreenHeader,
   Section,
@@ -22,17 +17,19 @@ import {
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { View } from 'react-native';
 
 import { StartPageActions } from '@/features/shell/profile-button';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useOnlineOnly } from '@/features/shell/offline';
 
+import { useChoreCheckWindow } from './chore-check-list';
 import { ChoreHistory } from './chore-history';
 import { ChoreRow } from './chore-row';
-import { ChoreSheet } from './chore-sheet';
+import { ChorePanel, ChoreSheet } from './chore-sheet';
+import { DoneSheet } from './done-sheet';
+import { HistoryEventPanel, HistoryEventSheet } from './history-event-sheet';
 import { NewChoreSheet } from './new-chore-sheet';
-import { SpontaneousSheet } from './spontaneous-sheet';
 
 type Tab = 'upcoming' | 'all' | 'history';
 type UpcomingBucket = Extract<ChoreBucket, 'today' | 'overdue' | 'flexible' | 'thisWeek'>;
@@ -47,164 +44,143 @@ const SECTION_TITLES: Record<UpcomingBucket, string> = {
 // Today first: overdue chores follow calmly instead of leading the screen.
 const UPCOMING_ORDER: UpcomingBucket[] = ['today', 'overdue', 'flexible', 'thisWeek'];
 
+function bucketsOf(chores: Chore[], today: string): Record<ChoreBucket, Chore[]> {
+  const result: Record<ChoreBucket, Chore[]> = {
+    today: [],
+    overdue: [],
+    flexible: [],
+    thisWeek: [],
+    later: [],
+    paused: [],
+    asNeeded: [],
+  };
+  for (const chore of chores) result[choreBucket(chore, today)].push(chore);
+  result.overdue.sort((a, b) => (a.nextDueOn ?? '').localeCompare(b.nextDueOn ?? ''));
+  result.thisWeek.sort((a, b) => (a.nextDueOn ?? '').localeCompare(b.nextDueOn ?? ''));
+  return result;
+}
+
+/**
+ * „Haushalt“ (REQ-008 to REQ-010): view tabs Anstehend · Alle · Verlauf with one content width
+ * (AC-046); on wide screens „Alle“ and „Verlauf“ are list and detail (AC-047). „Anstehend“ checks
+ * chores off with the collecting window (AC-033). Reading works offline; every write needs the
+ * network.
+ */
 export function ChoresScreen() {
   const chores = useChores();
-  const members = useMembers();
-  const me = useCurrentMember();
-  const today = useToday();
+  const events = useChoreEvents();
   const online = useOnlineOnly();
-  const { isWide } = useBreakpoint();
+  const { isPhone } = useBreakpoint();
 
   const [tab, setTab] = useState<Tab>('upcoming');
-  const [openChoreId, setOpenChoreId] = useState<string | undefined>(undefined);
+  const [choreId, setChoreId] = useState<Id | undefined>(undefined);
+  const [eventId, setEventId] = useState<Id | undefined>(undefined);
   const [creating, setCreating] = useState(false);
-  const [spontaneous, setSpontaneous] = useState(false);
+  const [logging, setLogging] = useState(false);
 
-  const buckets = useMemo(() => {
-    const result: Record<ChoreBucket, Chore[]> = {
-      today: [],
-      overdue: [],
-      flexible: [],
-      thisWeek: [],
-      later: [],
-      paused: [],
-      asNeeded: [],
-    };
-    for (const chore of chores) result[choreBucket(chore, today)].push(chore);
-    result.overdue.sort((a, b) => (a.nextDueOn ?? '').localeCompare(b.nextDueOn ?? ''));
-    result.thisWeek.sort((a, b) => (a.nextDueOn ?? '').localeCompare(b.nextDueOn ?? ''));
-    return result;
-  }, [chores, today]);
+  // Deleted on another device (or here) while open: the window or column just closes.
+  const openChore = chores.find((chore) => chore.id === choreId);
+  const openEvent = events.find((event) => event.id === eventId);
+  const split = !isPhone && tab !== 'upcoming';
 
-  const openChore = chores.find((chore) => chore.id === openChoreId);
-
-  const complete = (chore: Chore) => {
-    const eventId = completeChore(chore.id);
-    if (!eventId) return;
-    const other = members.find((member) => member.id !== me.id);
-    toast.show({
-      message: 'Erledigt von dir',
-      actionLabel: other?.name,
-      onAction: other
-        ? undoAction(() => {
-            reassignChoreEvent(eventId, other.id);
-            toast.show({ message: `Auf ${other.name} umgebucht` });
-          })
-        : undefined,
-    });
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    setChoreId(undefined);
+    setEventId(undefined);
   };
 
-  const row = (chore: Chore, options?: { detailed?: boolean; paused?: boolean }) => (
-    <ChoreRow
-      key={chore.id}
-      chore={chore}
-      today={today}
-      members={members}
-      checkDisabled={online.disabled}
-      onCheck={() => complete(chore)}
-      onOpen={() => setOpenChoreId(chore.id)}
-      detailed={options?.detailed}
-      paused={options?.paused}
-    />
-  );
-
-  const section = (bucket: UpcomingBucket) => {
-    const list = buckets[bucket];
-    if (list.length === 0) return null;
-    const points = list.reduce((sum, chore) => sum + chore.effort, 0);
-    return (
-      <Section
-        key={bucket}
-        title={SECTION_TITLES[bucket]}
-        meta={bucket === 'today' ? `ca. ${points} ${points === 1 ? 'Punkt' : 'Punkte'}` : undefined}
-        testID={`chores-${bucket}`}
-      >
-        <List>{list.map((chore) => row(chore))}</List>
-      </Section>
-    );
-  };
-
-  const upcomingCount =
-    buckets.today.length +
-    buckets.overdue.length +
-    buckets.flexible.length +
-    buckets.thisWeek.length;
-  const laterCount = buckets.later.length + buckets.paused.length;
-
-  const spontaneousLink = (
+  const doneLink = (
     <Button
       label="Was anderes erledigt?"
       icon="message-square-plus"
       variant="link"
-      onPress={() => setSpontaneous(true)}
+      onPress={() => setLogging(true)}
       disabled={online.disabled}
       hint={online.hint}
-      testID="chores-spontaneous"
+      testID="chores-done-open"
     />
   );
+  const offlineHint = online.hint ? (
+    <Text variant="small" color="warn" style={{ marginBottom: 8 }} testID="chores-offline-hint">
+      {online.hint}
+    </Text>
+  ) : null;
+  const listHeader = (
+    <View style={{ gap: 4, marginBottom: 8 }}>
+      {offlineHint}
+      {doneLink}
+    </View>
+  );
+  const empty = (
+    <ChoresEmpty disabled={online.disabled} hint={online.hint} onCreate={() => setCreating(true)} />
+  );
 
-  let body: ReactNode;
-  if (chores.length === 0 && tab !== 'history') {
-    body = (
-      <ChoresEmpty
-        disabled={online.disabled}
-        hint={online.hint}
-        onCreate={() => setCreating(true)}
-      />
-    );
-  } else if (tab === 'upcoming') {
-    const sections = UPCOMING_ORDER.map(section).filter((node) => node !== null);
-    const half = Math.ceil(sections.length / 2);
-    const left = sections.slice(0, half);
-    const right = sections.slice(half);
-    body = (
-      <Stack gap={0}>
-        {upcomingCount === 0 ? (
-          <EmptyState
-            icon="party-popper"
-            title="Alles erledigt"
-            text="Für diese Woche steht nichts mehr an."
-            testID="chores-upcoming-empty"
-          />
-        ) : isWide && sections.length > 1 ? (
-          <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
-            <View style={{ flex: 1, minWidth: 0 }}>{left}</View>
-            <View style={{ flex: 1, minWidth: 0 }}>{right}</View>
-          </View>
-        ) : (
-          [...left, ...right]
-        )}
-        <Stack gap={4}>
-          {spontaneousLink}
-          {laterCount > 0 ? (
-            <Button
-              label={`${laterCount} ${laterCount === 1 ? 'weitere Aufgabe' : 'weitere Aufgaben'} später – alle ansehen`}
-              variant="link"
-              onPress={() => setTab('all')}
-              testID="chores-show-all"
-            />
-          ) : null}
-        </Stack>
-      </Stack>
-    );
+  let body: ReactElement;
+  if (tab === 'upcoming') {
+    body =
+      chores.length === 0 ? (
+        <View>
+          {offlineHint}
+          {empty}
+        </View>
+      ) : (
+        <UpcomingChores
+          chores={chores}
+          onOpen={setChoreId}
+          onShowAll={() => changeTab('all')}
+          header={offlineHint}
+          doneLink={doneLink}
+        />
+      );
   } else if (tab === 'all') {
-    const sorted = [...chores].sort((a, b) => a.title.localeCompare(b.title, 'de'));
     body = (
-      <Stack gap={12}>
-        <List testID="chores-all">
-          {sorted.map((chore) =>
-            row(chore, { detailed: true, paused: choreBucket(chore, today) === 'paused' }),
-          )}
-        </List>
-        {spontaneousLink}
-      </Stack>
+      <ListDetail
+        list={
+          <AllChores
+            chores={chores}
+            selectedId={openChore?.id}
+            onOpen={setChoreId}
+            header={listHeader}
+            empty={empty}
+          />
+        }
+        detail={
+          openChore ? (
+            <ChorePanel
+              key={openChore.id}
+              chore={openChore}
+              onClose={() => setChoreId(undefined)}
+            />
+          ) : undefined
+        }
+        placeholder={{
+          icon: 'list-checks',
+          title: 'Wähl eine Aufgabe aus',
+          text: 'Hier siehst du Rhythmus, Termin und Verlauf und kannst sie bearbeiten.',
+        }}
+        testID="chores-split"
+      />
     );
   } else {
     body = (
-      <Stack gap={12}>
-        <ChoreHistory />
-        {spontaneousLink}
-      </Stack>
+      <ListDetail
+        list={<ChoreHistory selectedId={openEvent?.id} onSelect={setEventId} header={listHeader} />}
+        detail={
+          openEvent ? (
+            <HistoryEventPanel
+              key={openEvent.id}
+              event={openEvent}
+              onClose={() => setEventId(undefined)}
+            />
+          ) : undefined
+        }
+        placeholder={{
+          icon: 'history',
+          title: 'Wähl einen Eintrag aus',
+          text: 'Hier änderst du, wer es erledigt hat, oder entfernst den Eintrag.',
+        }}
+        testID="history-split"
+      />
     );
   }
 
@@ -212,6 +188,8 @@ export function ChoresScreen() {
     <Screen
       testID="chores-screen"
       tone="haushalt"
+      scroll={tab === 'upcoming'}
+      style={tab === 'upcoming' ? undefined : { flex: 1, paddingBottom: 0 }}
       header={
         <ScreenHeader
           title="Haushalt"
@@ -223,6 +201,7 @@ export function ChoresScreen() {
                 label="Neue Aufgabe"
                 onPress={() => setCreating(true)}
                 disabled={online.disabled}
+                hint={online.hint}
                 testID="chore-new"
               />
               <StartPageActions />
@@ -234,7 +213,7 @@ export function ChoresScreen() {
         <ViewTabs<Tab>
           label="Ansicht"
           value={tab}
-          onChange={setTab}
+          onChange={changeTab}
           options={[
             { value: 'upcoming', label: 'Anstehend' },
             { value: 'all', label: 'Alle' },
@@ -244,20 +223,150 @@ export function ChoresScreen() {
         />
       }
     >
-      {online.hint ? (
-        <Text variant="small" color="muted" style={{ marginTop: 8, marginBottom: 12 }}>
-          {online.hint}
-        </Text>
-      ) : null}
       {body}
-      <ChoreSheet
-        chore={openChore}
-        onClose={() => setOpenChoreId(undefined)}
-        onComplete={complete}
-      />
+      {openChore && !split ? (
+        <ChoreSheet key={openChore.id} chore={openChore} onClose={() => setChoreId(undefined)} />
+      ) : null}
+      {openEvent && !split ? (
+        <HistoryEventSheet
+          key={openEvent.id}
+          event={openEvent}
+          onClose={() => setEventId(undefined)}
+        />
+      ) : null}
       <NewChoreSheet visible={creating} onClose={() => setCreating(false)} />
-      <SpontaneousSheet visible={spontaneous} onClose={() => setSpontaneous(false)} />
+      <DoneSheet visible={logging} onClose={() => setLogging(false)} />
     </Screen>
+  );
+}
+
+/**
+ * „Anstehend“: today, overdue, flexible and this week's chores, checked off with one collecting
+ * window over all sections (AC-033); later and paused ones are behind „alle ansehen“, chores
+ * „bei Bedarf“ never count (AC-043).
+ */
+function UpcomingChores(props: {
+  chores: Chore[];
+  onOpen: (id: Id) => void;
+  onShowAll: () => void;
+  header: ReactElement | null;
+  doneLink: ReactElement;
+}) {
+  const members = useMembers();
+  const today = useToday();
+  const online = useOnlineOnly();
+  const { isWide } = useBreakpoint();
+  const buckets = useMemo(() => bucketsOf(props.chores, today), [props.chores, today]);
+  const upcoming = useMemo(() => UPCOMING_ORDER.flatMap((bucket) => buckets[bucket]), [buckets]);
+  const check = useChoreCheckWindow(upcoming);
+  // The rows the window still shows; booked ones keep their section until it closes.
+  const shown = new Set(check.rows.map((chore) => chore.id));
+  const sections = UPCOMING_ORDER.flatMap((bucket) => {
+    const list = buckets[bucket].filter((chore) => shown.has(chore.id));
+    if (list.length === 0) return [];
+    const points = list.reduce((sum, chore) => sum + chore.effort, 0);
+    return [
+      <Section
+        key={bucket}
+        title={SECTION_TITLES[bucket]}
+        meta={bucket === 'today' ? `ca. ${points} ${points === 1 ? 'Punkt' : 'Punkte'}` : undefined}
+        testID={`chores-${bucket}`}
+      >
+        <List>
+          {list.map((chore) => (
+            <RowTransition key={chore.id}>
+              <ChoreRow
+                chore={chore}
+                today={today}
+                members={members}
+                check={{
+                  checked: check.isChecked(chore),
+                  disabled: online.disabled,
+                  onToggle: () => check.toggle(chore),
+                }}
+                onOpen={() => props.onOpen(chore.id)}
+              />
+            </RowTransition>
+          ))}
+        </List>
+      </Section>,
+    ];
+  });
+  const half = Math.ceil(sections.length / 2);
+  const laterCount = buckets.later.length + buckets.paused.length;
+
+  return (
+    <Stack gap={0}>
+      {props.header}
+      {sections.length === 0 ? (
+        <EmptyState
+          icon="party-popper"
+          title="Alles erledigt"
+          text="Für diese Woche steht nichts mehr an."
+          testID="chores-upcoming-empty"
+        />
+      ) : isWide && sections.length > 1 ? (
+        <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>
+          <View style={{ flex: 1, minWidth: 0 }}>{sections.slice(0, half)}</View>
+          <View style={{ flex: 1, minWidth: 0 }}>{sections.slice(half)}</View>
+        </View>
+      ) : (
+        sections
+      )}
+      <Stack gap={4}>
+        {props.doneLink}
+        {laterCount > 0 ? (
+          <Button
+            label={`${laterCount} ${laterCount === 1 ? 'weitere Aufgabe' : 'weitere Aufgaben'} später – alle ansehen`}
+            variant="link"
+            onPress={props.onShowAll}
+            testID="chores-show-all"
+          />
+        ) : null}
+      </Stack>
+    </Stack>
+  );
+}
+
+/** „Alle“: every chore by title, „bei Bedarf“ and paused ones included (AC-043). */
+function AllChores(props: {
+  chores: Chore[];
+  selectedId?: Id;
+  onOpen: (id: Id) => void;
+  header: ReactElement;
+  empty: ReactElement;
+}) {
+  const members = useMembers();
+  const today = useToday();
+  const { isPhone } = useBreakpoint();
+  const sorted = useMemo(
+    () => [...props.chores].sort((a, b) => a.title.localeCompare(b.title, 'de')),
+    [props.chores],
+  );
+  return (
+    <InfiniteList
+      data={sorted}
+      keyExtractor={(chore) => chore.id}
+      renderItem={(chore) => (
+        <View style={{ marginBottom: 6 }}>
+          <List>
+            <ChoreRow
+              chore={chore}
+              today={today}
+              members={members}
+              detailed
+              paused={choreBucket(chore, today) === 'paused'}
+              selected={!isPhone && chore.id === props.selectedId}
+              onOpen={() => props.onOpen(chore.id)}
+            />
+          </List>
+        </View>
+      )}
+      restoreKey="chores-all"
+      ListHeaderComponent={props.header}
+      ListEmptyComponent={props.empty}
+      testID="chores-all"
+    />
   );
 }
 
@@ -308,7 +417,7 @@ function ChoresEmpty(props: { disabled: boolean; hint: string | undefined; onCre
       testID="chores-empty"
     >
       <Button
-        label="Erste Aufgabe anlegen"
+        label="Aufgabe anlegen"
         icon="plus"
         onPress={props.onCreate}
         disabled={props.disabled}

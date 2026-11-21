@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { recapItems } from './recap';
+import { recapDayLabel, recapItems } from './recap';
 import { enrico, makeRecipe, nadja } from './test-fixtures';
 import type { Activity, Id, MealPlanEntry, Recipe, Restaurant } from './types';
 
@@ -182,5 +182,13 @@ describe('REQ-003: "Wie war\'s?"', () => {
       entry({ id: 'z', kind: 'activity' }),
     ];
     expect(recap(gone)).toEqual([]);
+  });
+});
+
+describe('AC-015: the day of a "Wie war’s?" row', () => {
+  it('AC-015: "gestern", "vorgestern", then the weekday', () => {
+    expect(recapDayLabel('2026-11-22', today)).toBe('gestern');
+    expect(recapDayLabel('2026-11-21', today)).toBe('vorgestern');
+    expect(recapDayLabel('2026-11-20', today)).toBe('Freitag');
   });
 });

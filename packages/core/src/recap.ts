@@ -1,4 +1,4 @@
-import { addDays } from './dates';
+import { addDays, weekdayLong } from './dates';
 import { entriesForDay } from './meal-plan';
 import { ratedOnOrAfter } from './ratings';
 import type { Activity, Id, ISODate, MealPlanEntry, Recipe, Restaurant } from './types';
@@ -83,4 +83,11 @@ export function recapItems(input: {
     }
   }
   return items;
+}
+
+/** The day of a row: "gestern", "vorgestern", else the weekday ("Freitag", AC-015). */
+export function recapDayLabel(date: ISODate, today: ISODate): string {
+  if (date === addDays(today, -1)) return 'gestern';
+  if (date === addDays(today, -2)) return 'vorgestern';
+  return weekdayLong(date);
 }

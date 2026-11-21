@@ -1,11 +1,19 @@
-import { completeChore, snapshot, useChores, useMembers, useToday } from '@housekeeping/api';
 import {
-  choreBucket,
+  completeChore,
+  OfflineError,
+  useChoreEvents,
+  useChores,
+  useMembers,
+  useMembersById,
+} from '@housekeeping/api';
+import {
   choreMemberIds,
+  choresOfDay,
   daysOverdue,
   flexibleProgress,
   recurrenceLabel,
   type Chore,
+  type HouseholdRowItem,
   type ISODate,
 } from '@housekeeping/core';
 import {
@@ -13,38 +21,24 @@ import {
   Button,
   CheckRow,
   DueBar,
+  Icon,
   List,
+  ListRow,
+  RowTransition,
   Section,
   Text,
   toast,
+  useCheckWindow,
+  useTheme,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useIsFocused } from 'expo-router';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { View } from 'react-native';
 
-import { SpontaneousSheet } from '@/features/chores/spontaneous-sheet';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { DoneSheet } from '@/features/chores/done-sheet';
+import { useOnlineOnly } from '@/features/shell/offline';
 
-/** Flexible chores show up on "Heute" once this share of their interval has passed. */
-const FLEXIBLE_DUE_FROM = 0.8;
-
-interface DueChore {
-  chore: Chore;
-  order: number;
-}
-
-function dueChores(chores: Chore[], today: ISODate): Chore[] {
-  return chores
-    .flatMap((chore): DueChore[] => {
-      const bucket = choreBucket(chore, today);
-      if (bucket === 'overdue') return [{ chore, order: 0 }];
-      if (bucket === 'today') return [{ chore, order: 1 }];
-      if (bucket === 'flexible' && flexibleProgress(chore, today) >= FLEXIBLE_DUE_FROM)
-        return [{ chore, order: 2 }];
-      return [];
-    })
-    .sort((a, b) => a.order - b.order)
-    .map((entry) => entry.chore);
-}
+const FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 function dueText(chore: Chore, today: ISODate): string {
   const days = daysOverdue(chore, today);
@@ -52,73 +46,136 @@ function dueText(chore: Chore, today: ISODate): string {
   return days === 1 ? 'fällig seit 1 Tag' : `fällig seit ${days} Tagen`;
 }
 
-/** "Zu tun": chores due today, overdue ones and flexible ones that are nearly due. */
-export function TodayChores() {
+/**
+ * "Zu tun" of the shown day (spec 0011, REQ-005, AC-032): today the due chores with the check
+ * window — a tap strikes through, a second takes it back, 2 s after the last tap the checked ones
+ * are booked and leave; leaving the page books at once; no "Rückgängig" (AC-028 to AC-030). Later
+ * days show the planned dates, past days what was done, both only to look at.
+ *
+ * Built here for the "Übersicht" while the Haushalt gets its own check list (spec 0011, task 7);
+ * task 9 merges both.
+ */
+export function TodayChores(props: { shown: ISODate; today: ISODate; title: string }) {
   const chores = useChores();
+  const events = useChoreEvents();
   const members = useMembers();
-  const today = useToday();
-  const online = useOnlineOnly();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const due = dueChores(chores, today);
-  const points = due.reduce((sum, chore) => sum + chore.effort, 0);
-
-  const complete = (chore: Chore) => {
-    const restore = snapshot();
-    completeChore(chore.id);
-    toast.show({
-      message: `${chore.title} erledigt`,
-      actionLabel: 'Rückgängig',
-      onAction: undoAction(restore),
-    });
-  };
+  const day = choresOfDay({ chores, events, members, shown: props.shown, today: props.today });
 
   return (
     <Section
-      title="Zu tun"
-      meta={due.length > 0 ? `ca. ${points} Punkte` : undefined}
+      title={props.title}
       testID="today-chores"
+      meta={
+        day.kind === 'due' && day.chores.length > 0
+          ? `ca. ${day.chores.reduce((sum, chore) => sum + chore.effort, 0)} Punkte`
+          : undefined
+      }
     >
-      {due.length === 0 ? (
+      {day.kind === 'due' ? (
+        <DueChores chores={day.chores} today={props.today} />
+      ) : (
+        <ChoresToLookAt items={day.items} kind={day.kind} />
+      )}
+    </Section>
+  );
+}
+
+function DueChores(props: { chores: Chore[]; today: ISODate }) {
+  const members = useMembers();
+  const online = useOnlineOnly();
+  const focused = useIsFocused();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // Booked in the last window: stays struck through until the chore has left the list, so the
+  // row never flickers back to open before it goes (a refused booking brings it back open).
+  const [booked, setBooked] = useState<ReadonlySet<string>>(() => new Set());
+
+  const check = useCheckWindow<Chore>({
+    items: props.chores,
+    getId: (chore) => chore.id,
+    isChecked: (chore) => booked.has(chore.id),
+    onSettle: (ids) => {
+      const done = new Set<string>();
+      for (const id of ids) {
+        try {
+          if (completeChore(id) !== null) done.add(id);
+        } catch (error) {
+          toast.show({
+            message: error instanceof OfflineError ? (online.hint ?? FAILED) : FAILED,
+          });
+        }
+      }
+      if (done.size > 0) setBooked((current) => new Set([...current, ...done]));
+    },
+    announce: (chore, checked) => `${chore.title} ${checked ? 'abgehakt' : 'Haken entfernt'}`,
+  });
+
+  // Switching tabs keeps the page mounted: losing focus books at once (AC-030).
+  const settleNow = useEffectEvent(() => check.settle());
+  useEffect(() => {
+    if (!focused) settleNow();
+  }, [focused]);
+
+  // Forget booked chores once they have left, so one that comes back is open again (AC-034).
+  const dueIds = props.chores.map((chore) => chore.id).join('|');
+  const [seenIds, setSeenIds] = useState(dueIds);
+  if (seenIds !== dueIds) {
+    setSeenIds(dueIds);
+    const present = new Set(dueIds.split('|'));
+    setBooked((current) => new Set([...current].filter((id) => present.has(id))));
+  }
+
+  const rows = check.rows;
+
+  return (
+    <>
+      {rows.length === 0 ? (
         <Text color="muted" testID="today-chores-empty">
           Heute ist nichts fällig.
         </Text>
       ) : (
         <List>
-          {due.map((chore) => {
+          {rows.map((chore) => {
+            const checked = check.isChecked(chore);
             const flexible = chore.recurrence.type === 'flexible';
-            const progress = flexibleProgress(chore, today);
+            const progress = flexibleProgress(chore, props.today);
             const assignees = choreMemberIds(chore, members).flatMap((id) =>
               members.filter((member) => member.id === id),
             );
             return (
-              <CheckRow
-                key={chore.id}
-                testID={`today-chore-${chore.id}`}
-                title={chore.title}
-                checked={false}
-                disabled={online.disabled}
-                onToggle={() => complete(chore)}
-                subtitle={
-                  flexible ? (
-                    <View>
-                      <Text variant="small" color="muted">
-                        {recurrenceLabel(chore.recurrence)}
-                      </Text>
-                      <DueBar
-                        value={progress}
-                        label={progress >= 1 ? 'Ist fällig' : 'Bald fällig'}
-                      />
-                    </View>
-                  ) : (
-                    `${recurrenceLabel(chore.recurrence)} · ${dueText(chore, today)}`
-                  )
-                }
-                trailing={assignees.length > 0 ? <AvatarStack members={assignees} /> : undefined}
-              />
+              <RowTransition key={chore.id}>
+                <CheckRow
+                  testID={`today-chore-${chore.id}`}
+                  title={chore.title}
+                  checked={checked}
+                  disabled={online.disabled}
+                  onToggle={() => check.toggle(chore)}
+                  subtitle={
+                    flexible ? (
+                      <View>
+                        <Text variant="small" color="muted">
+                          {recurrenceLabel(chore.recurrence)}
+                        </Text>
+                        <DueBar
+                          value={progress}
+                          label={progress >= 1 ? 'Ist fällig' : 'Bald fällig'}
+                        />
+                      </View>
+                    ) : (
+                      `${recurrenceLabel(chore.recurrence)} · ${dueText(chore, props.today)}`
+                    )
+                  }
+                  trailing={assignees.length > 0 ? <AvatarStack members={assignees} /> : undefined}
+                />
+              </RowTransition>
             );
           })}
         </List>
       )}
+      {online.hint ? (
+        <Text variant="small" color="muted" style={{ marginTop: 6 }} testID="today-chores-offline">
+          {online.hint}
+        </Text>
+      ) : null}
       <View style={{ marginTop: 8 }}>
         <Button
           label="Was anderes erledigt?"
@@ -130,7 +187,57 @@ export function TodayChores() {
           testID="today-spontaneous"
         />
       </View>
-      <SpontaneousSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
-    </Section>
+      <DoneSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
+    </>
+  );
+}
+
+/** Another day: "○ Küche wischen (E)" planned, "✓ Fenster Wohnzimmer (N)" done; nothing to tap. */
+function ChoresToLookAt(props: { items: HouseholdRowItem[]; kind: 'planned' | 'done' }) {
+  const membersById = useMembersById();
+  if (props.items.length === 0) {
+    return (
+      <Text color="muted" testID="today-chores-empty">
+        {props.kind === 'done' ? 'An diesem Tag wurde nichts erledigt.' : 'Nichts geplant.'}
+      </Text>
+    );
+  }
+  return (
+    <List>
+      {props.items.map((item) => {
+        const people = item.memberIds.flatMap((id) => membersById[id] ?? []);
+        const title = item.approximate ? `${item.title}, etwa` : item.title;
+        return (
+          <ListRow
+            key={item.key}
+            testID={`today-chore-${item.key}`}
+            accessibilityLabel={`${item.status === 'done' ? 'Erledigt' : 'Geplant'}: ${title}`}
+            leading={
+              <View style={{ width: 24, alignItems: 'center' }}>
+                {item.status === 'done' ? <Icon name="check" size={18} color="muted" /> : <Ring />}
+              </View>
+            }
+            title={title}
+            trailing={people.length > 0 ? <AvatarStack members={people} /> : undefined}
+          />
+        );
+      })}
+    </List>
+  );
+}
+
+/** An empty ring for a chore that is planned, not done (as in the calendar's household row). */
+function Ring() {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        borderColor: theme.colors.checkLine,
+      }}
+    />
   );
 }

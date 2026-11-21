@@ -1,47 +1,161 @@
 import { useChoreEvents, useMembersById, useToday } from '@housekeeping/api';
-import { Avatar, EmptyState, List, ListRow } from '@housekeeping/ui';
-import { useMemo } from 'react';
+import { historyGroups, type ChoreEvent, type Id } from '@housekeeping/core';
+import {
+  Avatar,
+  EmptyState,
+  Icon,
+  InfiniteList,
+  List,
+  ListRow,
+  Row,
+  Text,
+  useBreakpoint,
+  useTheme,
+} from '@housekeeping/ui';
+import { useMemo, type ReactElement } from 'react';
+import { View } from 'react-native';
 
-import { historyLine } from './chore-labels';
+import { eventIcon, eventKindLabel } from './chore-labels';
+
+type HistoryItem =
+  | { type: 'year'; key: string; year: string }
+  | { type: 'month'; key: string; title: string }
+  | { type: 'week'; key: string; title: string }
+  | { type: 'row'; key: string; event: ChoreEvent; dayLabel: string };
 
 /**
- * "Verlauf": newest first. Every line carries its day ("… · heute"), so the list needs no extra
- * day headings.
+ * „Verlauf“ (REQ-010): months, within them weeks cut to the month, a year divider before the
+ * first month of another year; nothing is folded away, the month headings stick while scrolling
+ * (AC-056 to AC-058). A row shows the kind, the chore, who did it and the day („Fr 20.“); a tap
+ * opens the entry (AC-059 to AC-061).
  */
-export function ChoreHistory() {
+export function ChoreHistory(props: {
+  selectedId?: Id;
+  onSelect: (eventId: Id) => void;
+  header?: ReactElement;
+}) {
   const events = useChoreEvents();
   const membersById = useMembersById();
   const today = useToday();
-  // Stable sort: events of the same day keep their stored order, which is newest first.
-  const sorted = useMemo(
-    () => [...events].sort((a, b) => (a.doneOn < b.doneOn ? 1 : a.doneOn > b.doneOn ? -1 : 0)),
-    [events],
+  const theme = useTheme();
+  const { isPhone } = useBreakpoint();
+
+  const items = useMemo(
+    () =>
+      historyGroups(events, today).flatMap((month): HistoryItem[] => [
+        ...(month.yearDivider
+          ? [{ type: 'year' as const, key: `year-${month.yearDivider}`, year: month.yearDivider }]
+          : []),
+        { type: 'month', key: `month-${month.key}`, title: month.title },
+        ...month.weeks.flatMap((week): HistoryItem[] => [
+          { type: 'week', key: `week-${week.key}`, title: week.title },
+          ...week.rows.map((row): HistoryItem => ({
+            type: 'row',
+            key: row.event.id,
+            event: row.event,
+            dayLabel: row.dayLabel,
+          })),
+        ]),
+      ]),
+    [events, today],
   );
 
-  if (sorted.length === 0) {
-    return (
-      <EmptyState
-        icon="history"
-        title="Noch nichts erledigt"
-        text="Was ihr abhakt, steht hier – mit wer und wann."
-        testID="chore-history-empty"
-      />
-    );
-  }
-  return (
-    <List testID="chore-history">
-      {sorted.map((event) => {
+  const renderItem = (item: HistoryItem): ReactElement => {
+    switch (item.type) {
+      case 'year':
+        return (
+          <View
+            testID={`history-year-${item.year}`}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24 }}
+          >
+            <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+            <Text variant="smallStrong" color="muted">
+              {item.year}
+            </Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+          </View>
+        );
+      case 'month':
+        return (
+          <View
+            testID={`history-${item.key}`}
+            style={{ backgroundColor: theme.colors.bg, paddingTop: 16, paddingBottom: 4 }}
+          >
+            <Text variant="sectionLabel" heading>
+              {item.title}
+            </Text>
+          </View>
+        );
+      case 'week':
+        return (
+          <Text
+            variant="smallStrong"
+            color="muted"
+            testID={`history-${item.key}`}
+            style={{ marginTop: 10, marginBottom: 6 }}
+          >
+            {item.title}
+          </Text>
+        );
+      case 'row': {
+        const { event } = item;
         const member = membersById[event.doneBy];
         const name = member?.name ?? 'Jemand';
         return (
-          <ListRow
-            key={event.id}
-            testID={`history-${event.id}`}
-            title={historyLine(event, name, today)}
-            leading={member ? <Avatar name={member.name} color={member.color} /> : undefined}
-          />
+          <View style={{ marginBottom: 6 }}>
+            <List>
+              <ListRow
+                testID={`history-${event.id}`}
+                title={event.title}
+                accessibilityLabel={`${event.title}, ${eventKindLabel(event)} von ${name}, ${item.dayLabel}`}
+                subtitle={
+                  event.kind === 'skipped' ? (
+                    <Text variant="small" color="muted">
+                      übersprungen
+                    </Text>
+                  ) : undefined
+                }
+                leading={<Icon name={eventIcon(event)} size={18} color="muted" />}
+                trailing={
+                  <Row gap={10}>
+                    {member ? <Avatar name={member.name} color={member.color} /> : null}
+                    <Text
+                      variant="small"
+                      color="muted"
+                      style={{ minWidth: 44, textAlign: 'right' }}
+                      testID={`history-${event.id}-day`}
+                    >
+                      {item.dayLabel}
+                    </Text>
+                  </Row>
+                }
+                selected={!isPhone && event.id === props.selectedId}
+                onPress={() => props.onSelect(event.id)}
+              />
+            </List>
+          </View>
         );
-      })}
-    </List>
+      }
+    }
+  };
+
+  return (
+    <InfiniteList
+      data={items}
+      keyExtractor={(item) => item.key}
+      renderItem={renderItem}
+      isGroupHeader={(item) => item.type === 'month'}
+      restoreKey="chore-history"
+      ListHeaderComponent={props.header}
+      ListEmptyComponent={
+        <EmptyState
+          icon="history"
+          title="Noch nichts erledigt"
+          text="Was ihr abhakt, steht hier – mit wer und wann."
+          testID="chore-history-empty"
+        />
+      }
+      testID="chore-history"
+    />
   );
 }
