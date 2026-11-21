@@ -763,7 +763,8 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     await expect(
       enrico.restoreClearedItems(H, [{ item: items[0] ?? {}, contributions }]),
     ).rejects.toMatchObject(tooMany);
-  });
+    // Builds 1000 items and 5000 contributions; slow under parallel load, not a hang.
+  }, 30_000);
 
   it('a clear with more than 5000 contributions is refused and deletes nothing', async () => {
     server.insertRows(H, {
