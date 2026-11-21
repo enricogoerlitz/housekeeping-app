@@ -411,6 +411,31 @@ describe('a new cache version (AC-018)', () => {
     expect(await storage.get('queue')).toEqual([]);
   });
 
+  it('AC-024 (spec 0014): three checks waiting in the store queue are sent by an update with a new cache version', async () => {
+    const enrico = await startEnrico();
+    const open = getData()
+      .items.filter((item) => !item.checked)
+      .slice(0, 3);
+    expect(open).toHaveLength(3);
+    enrico.setSimulatedOffline(true);
+    for (const item of open) setItemChecked(item.id, true);
+    await settle(enrico);
+    await stopBackend();
+
+    // "Neu laden" or the next start: the new version brings a higher cache version.
+    const updated = await startEnrico({ cacheVersion: CACHE_VERSION + 1 });
+    const nadja = await startNadja();
+    await settle(updated, nadja);
+    for (const item of open) {
+      expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: true });
+      expect(getData().items.find((candidate) => candidate.id === item.id)?.checked).toBe(true);
+      expect(nadjaData(nadja).items.find((candidate) => candidate.id === item.id)?.checked).toBe(
+        true,
+      );
+    }
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
   it('drops the cache, but keeps the store queue, the chosen store and the chosen household', async () => {
     const itemId = await deviceWithOldCache(ENRICO);
     environment.setOnline(false);

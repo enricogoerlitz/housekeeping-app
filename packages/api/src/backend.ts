@@ -31,6 +31,7 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useSyncExternalStore } from 'react';
 
+import { appVersionGate, type VersionGate } from './app-version';
 import { diffHousehold, isReflected, sendable } from './changes';
 import { rowsToHousehold, rowsToMembers } from './db/mapping';
 import { dropMediaOutside } from './media-cache';
@@ -152,9 +153,13 @@ export interface EngineOptions {
   readActiveHouseholdId?: () => string | undefined;
   /** A pull came back without the user's own profile: the account no longer exists. */
   onAccountMissing?: () => void;
+  /** Below the minimum app version: no writes, the store queue waits (spec 0014, AC-025). */
+  versionGate?: VersionGate;
 }
 
 export interface Engine extends BackendHooks {
+  /** No connection (or the simulated one); unlike `isOffline`, not the version lock. */
+  isNetworkOffline(): boolean;
   /** Reads the cache from storage and builds the state; no network. */
   load(): Promise<void>;
   /** load(), then listens to the triggers and pulls. */
@@ -322,6 +327,7 @@ export function createEngine(options: EngineOptions): Engine {
   const { storage, userId } = options;
   const transport = switchable(options.transport);
   const environment = options.environment ?? browserEnvironment();
+  const versionGate = options.versionGate ?? appVersionGate;
   const cacheVersion = options.cacheVersion ?? CACHE_VERSION;
   const retentionDays = options.retentionDays ?? RETENTION_DAYS;
   const debounceMs = options.realtimeDebounceMs ?? 300;
@@ -369,6 +375,7 @@ export function createEngine(options: EngineOptions): Engine {
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let intervalTimer: ReturnType<typeof setInterval> | undefined;
   let unsubscribeEnvironment: (() => void) | undefined;
+  let unsubscribeVersionGate: (() => void) | undefined;
   const channels = new Map<string, () => void>();
   let running = false;
   /** Bumped by a reset; work started before it must not write its result. */
@@ -379,6 +386,8 @@ export function createEngine(options: EngineOptions): Engine {
   const unsent = () => (inFlight.length > 0 ? [...inFlight, ...queue] : queue);
   const isOffline = () => transport.isBlocked() || !environment.isOnline() || networkFailed;
   const canReachServer = () => !transport.isBlocked() && environment.isOnline();
+  /** Commands are refused offline and below the minimum app version (spec 0014, AC-025). */
+  const writesDisabled = () => isOffline() || versionGate.writesLocked();
 
   // ---------- visible state ----------
 
@@ -487,7 +496,7 @@ export function createEngine(options: EngineOptions): Engine {
       currentMemberId: userId,
       activeHouseholdId,
       households: sameHouseholds && previous ? previous.households : households,
-      offline: isOffline(),
+      offline: writesDisabled(),
       storeChoices,
     };
     if (
@@ -908,7 +917,8 @@ export function createEngine(options: EngineOptions): Engine {
       await sendCommit(next);
       return true;
     }
-    if (!head) return false;
+    // A held queue also holds the changes queued after its head (FIFO); releasing drains.
+    if (!head || versionGate.queueHeld()) return false;
     // A run of pack entries never overtakes a change queued after its first entry (FIFO).
     const run = packBatch(queue).filter((_, index, all) =>
       all.slice(0, index + 1).every((entry) => !next || seqOf(entry) < next.seq),
@@ -1050,7 +1060,7 @@ export function createEngine(options: EngineOptions): Engine {
   function undoable(): () => void {
     const mark = seq;
     return () => {
-      if (isOffline()) throw new OfflineError();
+      if (writesDisabled()) throw new OfflineError();
       const own = history.filter((entry) => entry.seq > mark && !entry.rejected).reverse();
       for (const entry of own) {
         if (!entry.inverse) continue;
@@ -1087,6 +1097,8 @@ export function createEngine(options: EngineOptions): Engine {
     stopTimers();
     unsubscribeEnvironment?.();
     unsubscribeEnvironment = undefined;
+    unsubscribeVersionGate?.();
+    unsubscribeVersionGate = undefined;
     updateChannels();
   }
 
@@ -1102,6 +1114,10 @@ export function createEngine(options: EngineOptions): Engine {
       },
       offline: () => rebuild(),
       foreground: () => void requestPull(),
+    });
+    unsubscribeVersionGate = versionGate.subscribe(() => {
+      rebuild();
+      void drain();
     });
     intervalTimer = setInterval(() => {
       if (environment.isVisible()) void requestPull();
@@ -1181,7 +1197,8 @@ export function createEngine(options: EngineOptions): Engine {
     getState: () => appState,
     getSyncState: () => syncState,
     resetLocalData,
-    isOffline,
+    isOffline: writesDisabled,
+    isNetworkOffline: isOffline,
     recordChange,
     enqueueStoreAction,
     undoable,
@@ -1360,13 +1377,22 @@ export async function householdCall<T>(send: (transport: Transport) => Promise<T
   return result;
 }
 
-/** A request that needs the server's answer and changes nothing (edge functions); refused offline. */
+/**
+ * A request that needs the server's answer (edge functions, storage, push devices); refused
+ * offline. Not refused below the minimum app version: the UI disables its edit actions there,
+ * and reads such as photo downloads go on (spec 0014, AC-025).
+ */
 export async function onlineCall<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
   const engine = current;
   const wire = currentWire;
   if (!engine || !wire) throw new Error('Not signed in');
-  if (engine.isOffline()) throw new OfflineError();
+  if (engine.isNetworkOffline()) throw new OfflineError();
   return send(wire);
+}
+
+/** No connection right now; unlike `isOffline` of the store, not the version lock. */
+export function isNetworkOffline(): boolean {
+  return current?.isNetworkOffline() ?? false;
 }
 
 /**

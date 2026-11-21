@@ -1,4 +1,4 @@
-import { useOffline } from '@housekeeping/api';
+import { useSyncState } from '@housekeeping/api';
 import {
   Fab,
   OfflineBanner,
@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '@/features/shell/app-sidebar';
 import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
+import { UpdateBanner, useUpdateBannerVisible } from '@/features/shell/update-banner';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 
@@ -45,12 +46,14 @@ const FULL_SCREEN_PAGES = new Set(['kochen', 'einkaufen']);
 export default function TabsLayout() {
   const { isPhone } = useBreakpoint();
   const theme = useTheme();
-  const offline = useOffline();
+  // No network: not the version lock, which disables editing too but has its own hint.
+  const offline = useSyncState().status === 'offline';
   const insets = useSafeAreaInsets();
   const showInstallHint = useInstallHintVisible();
+  const showUpdate = useUpdateBannerVisible();
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
-      {offline || showInstallHint ? (
+      {offline || showInstallHint || showUpdate ? (
         <View
           style={{
             paddingTop: insets.top + 6,
@@ -60,6 +63,7 @@ export default function TabsLayout() {
           }}
         >
           {offline ? <OfflineBanner /> : null}
+          <UpdateBanner />
           <InstallHint />
         </View>
       ) : null}

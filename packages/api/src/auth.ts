@@ -4,6 +4,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useSyncExternalStore } from 'react';
 
+import {
+  fetchPublishedVersion,
+  readMinAppVersion,
+  startAppVersionCheck,
+  VERSION_FILE_PATH,
+} from './app-version';
 import { browserEnvironment, resetLocalData, startBackend } from './backend';
 import { TEST_ACCOUNTS, TEST_PASSWORD, type TestAccountKey } from './dev-accounts';
 import { createIndexedDbStorage, type Storage } from './storage';
@@ -540,6 +546,8 @@ export function startAuth(
     cacheStorage?: Storage;
     /** See AuthControllerOptions.beforeSignOut (spec 0013, AC-042). */
     beforeSignOut?: () => Promise<void>;
+    /** The app's own version (spec 0014): starts the version check, signed in or not. */
+    appVersion?: string;
   } = {},
 ): AuthController {
   if (controller) return controller;
@@ -553,6 +561,19 @@ export function startAuth(
   const authCodeInUrl = href ? new URL(href).searchParams.has('code') : false;
 
   const supabase = createSupabaseClient(config, sessionStorage);
+  if (options.appVersion !== undefined) {
+    // Before the backend starts, so its store queue waits for the first answer (AC-025).
+    const origin = (globalThis as { location?: { origin?: string } }).location?.origin;
+    startAppVersionCheck({
+      own: options.appVersion,
+      environment: browserEnvironment(),
+      // Only the web app has a version file; native reads the minimum version alone.
+      readLatest: origin
+        ? () => fetchPublishedVersion((url, init) => fetch(url, init), origin + VERSION_FILE_PATH)
+        : () => Promise.resolve(null),
+      readMin: () => readMinAppVersion((fn) => supabase.rpc(fn)),
+    });
+  }
   controller = createAuthController({
     auth: supabase.auth,
     devLogin: config.devLogin,

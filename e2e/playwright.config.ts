@@ -48,10 +48,10 @@ export default defineConfig({
       },
     },
     {
-      // Only the files with width-specific criteria (layout, sidebar, split views) and the
-      // restaurants, which run completely at both widths.
+      // Only the files with width-specific criteria (layout, sidebar, split views), the
+      // restaurants, which run completely at both widths, and the version hint (spec 0014).
       name: 'desktop',
-      testMatch: /rundgang-(shell|restaurants)\.spec\.ts$/,
+      testMatch: /rundgang-(shell|restaurants|version)\.spec\.ts$/,
       use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } },
     },
   ],

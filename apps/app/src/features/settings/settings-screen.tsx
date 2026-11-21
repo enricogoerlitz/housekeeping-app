@@ -32,6 +32,7 @@ import {
   NotificationsScreen,
 } from '@/features/notifications/notifications-screen';
 import { ScrollColumn } from '@/features/shell/scroll-column';
+import { ownAppVersion } from '@/lib/app-version';
 import { features } from '@/lib/features';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
@@ -70,6 +71,7 @@ export function SettingsScreen(props: { section?: SettingsSection }) {
         <NotificationsRow onPress={() => router.push('/einstellungen/benachrichtigungen')} />
         <AppearanceSection />
         {features.ai ? <AiSection /> : null}
+        <VersionLine />
       </Screen>
     );
   }
@@ -88,7 +90,10 @@ export function SettingsScreen(props: { section?: SettingsSection }) {
       <ListDetail
         list={
           <ScrollColumn>
-            <SettingsList sections={sections} chosen={chosen} onChoose={setChosen} />
+            <Stack gap={16}>
+              <SettingsList sections={sections} chosen={chosen} onChoose={setChosen} />
+              <VersionLine />
+            </Stack>
           </ScrollColumn>
         }
         detail={
@@ -205,6 +210,15 @@ function ProfileSection(props: { withSignOut?: boolean }) {
         </View>
       </Stack>
     </Section>
+  );
+}
+
+/** „Version 2026.12.4“ at the very bottom (spec 0014, AC-021); locally „Version dev“. */
+function VersionLine() {
+  return (
+    <Text variant="caption" color="muted" align="center" testID="settings-version">
+      Version {ownAppVersion}
+    </Text>
   );
 }
 

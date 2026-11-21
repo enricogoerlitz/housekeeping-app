@@ -62,6 +62,7 @@ export {
   DueBar,
   EmptyState,
   OfflineBanner,
+  StatusBanner,
   Notice,
   ProposalCard,
   TypingIndicator,

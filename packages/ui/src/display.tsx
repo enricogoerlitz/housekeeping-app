@@ -562,6 +562,46 @@ export function OfflineBanner(props: { text?: string; testID?: string }) {
   );
 }
 
+/**
+ * A lasting hint at the top of the app with an optional action, announced politely by screen
+ * readers (e.g. a new app version). Orange like the offline hint, never red.
+ */
+export function StatusBanner(props: {
+  text: string;
+  icon: IconName;
+  action?: ReactNode;
+  testID?: string;
+}) {
+  const theme = useTheme();
+  return (
+    <ToneContext.Provider value={{ fg: theme.colors.warnText }}>
+      <View
+        testID={props.testID}
+        role="status"
+        aria-live="polite"
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          columnGap: 9,
+          rowGap: 6,
+          paddingLeft: 12,
+          paddingRight: props.action ? 6 : 12,
+          paddingVertical: props.action ? 4 : 9,
+          borderRadius: theme.shape.radius.control,
+          backgroundColor: theme.colors.warnBg,
+        }}
+      >
+        <Icon name={props.icon} size={17} />
+        <Text variant="smallStrong" style={{ flexGrow: 1, flexShrink: 1, flexBasis: 160 }}>
+          {props.text}
+        </Text>
+        {props.action}
+      </View>
+    </ToneContext.Provider>
+  );
+}
+
 /** A quiet hint box, e.g. "Passt nicht für Nadja" or "Curry geändert". */
 export function Notice(props: {
   text: string;

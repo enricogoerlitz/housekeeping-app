@@ -14,7 +14,13 @@
 import type { Activity, Id, Recipe } from '@housekeeping/core';
 import { useEffect, useSyncExternalStore } from 'react';
 
-import { deviceSession, onlineCall, WRITE_REJECTED_MESSAGE, type DeviceSession } from './backend';
+import {
+  deviceSession,
+  isNetworkOffline,
+  onlineCall,
+  WRITE_REJECTED_MESSAGE,
+  type DeviceSession,
+} from './backend';
 import {
   evictMedia,
   MEDIA_INDEX_KEY,
@@ -258,7 +264,8 @@ async function fetchPhoto(path: string, session: DeviceSession): Promise<Blob | 
   const stored = await session.storage.get(mediaKey(path));
   if (!isCurrent(session)) return undefined;
   if (isStoredMedia(stored)) return new Blob([stored.bytes], { type: 'image/jpeg' });
-  if (isOffline()) return undefined;
+  // A download is a read: it also runs below the minimum app version (spec 0014, AC-025).
+  if (isNetworkOffline()) return undefined;
   try {
     // The session's signal cancels the download at sign-out or when another user signs in.
     const downloaded = await onlineCall((transport) =>

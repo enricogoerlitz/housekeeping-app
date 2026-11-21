@@ -65,7 +65,10 @@ export interface AppState {
   currentMemberId: Id;
   activeHouseholdId: Id;
   households: Record<Id, HouseholdData>;
-  /** No connection right now (also the simulated one of the offline switch): only store actions. */
+  /**
+   * Only store actions right now: no connection (also the simulated one of the offline switch),
+   * or this app version is below the server's minimum (spec 0014, AC-025).
+   */
   offline: boolean;
   /**
    * The store last chosen in "Einkaufen" on this device, per household (spec 0006, REQ-007);
@@ -167,6 +170,7 @@ export type CommitOutcome = (error?: unknown) => void;
 
 /** What the store needs from the sync engine. */
 export interface BackendHooks {
+  /** Commands are refused: offline, or below the minimum app version (spec 0014). */
   isOffline(): boolean;
   recordChange<T>(
     spec: CommitSpec<T>,
@@ -205,7 +209,7 @@ function requireBackend(): BackendHooks {
   return backend;
 }
 
-/** No connection right now: only the store actions work. */
+/** Only the store actions work: no connection, or below the minimum app version. */
 export function isOffline(): boolean {
   return backend?.isOffline() ?? false;
 }

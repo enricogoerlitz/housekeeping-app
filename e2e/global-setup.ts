@@ -1,7 +1,7 @@
 // Global setup of the walk-through against the local backend (spec 0003, AC-033/AC-034):
 // 1. `pnpm db:reset`: migrations, test accounts and the demo households, dated from today.
-// 2. The production web export (`build:web`: CSP and service worker) with the developer switch
-//    and the local Supabase values. EXPO_PUBLIC_* values are baked in at export time, so the
+// 2. The production web export (`build:web`: CSP and service worker) with the developer switch,
+//    the local Supabase values and the app version 2026.12.4 (spec 0014). EXPO_PUBLIC_* values are baked in at export time, so the
 //    export is rebuilt whenever they, the app sources or the export itself changed.
 // 3. A static server on 127.0.0.1:8790 — the only e2e origin the edge functions' CORS and the
 //    Supabase redirect URLs allow.
@@ -15,6 +15,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const E2E_PORT = 8790;
+/** The version the e2e export is built as (spec 0014). */
+export const E2E_APP_VERSION = '2026.12.4';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -47,6 +49,7 @@ function buildInputs(env: NodeJS.ProcessEnv): string {
       env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       env.EXPO_PUBLIC_DEV_LOGIN,
       env.EXPO_PUBLIC_VAPID_PUBLIC_KEY,
+      env.EXPO_PUBLIC_APP_VERSION,
       git(['rev-parse', 'HEAD']),
       git(['diff', 'HEAD', '--', ...sources]),
       untracked,
@@ -125,7 +128,12 @@ export function resetDatabase(): void {
 export default async function globalSetup(): Promise<() => Promise<void>> {
   loadEnv();
   resetDatabase();
-  buildIfStale({ ...process.env, EXPO_PUBLIC_DEV_LOGIN: '1' });
+  // A release version, so the version check runs as in production (rundgang-version.spec.ts).
+  buildIfStale({
+    ...process.env,
+    EXPO_PUBLIC_DEV_LOGIN: '1',
+    EXPO_PUBLIC_APP_VERSION: E2E_APP_VERSION,
+  });
   const server = await startServer();
   return async () => {
     server?.kill();
