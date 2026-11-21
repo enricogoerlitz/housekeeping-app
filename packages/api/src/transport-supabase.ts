@@ -18,10 +18,12 @@ import {
   CheckResultSchema,
   ClearedItemsSchema,
   DeletedArticleSchema,
+  DeletedRecipeSchema,
   MergeArticlesResultSchema,
   MergeAreasResultSchema,
   NotAvailableResultSchema,
   RawPullResultSchema,
+  RestoredRecipeSchema,
   TransportError,
   classifyError,
   isRolledBack,
@@ -314,6 +316,10 @@ export function createSupabaseTransport(
         p_source_id: sourceId,
         p_target_id: targetId,
       }),
+    deleteRecipe: (recipeId, today) =>
+      parsed(DeletedRecipeSchema, 'delete_recipe', { recipe_id: recipeId, today }),
+    restoreRecipe: (recipeId) =>
+      parsed(RestoredRecipeSchema, 'restore_recipe', { recipe_id: recipeId }),
     setRecipeFavorite: (recipeId, favorite) =>
       nothing('set_recipe_favorite', { recipe_id: recipeId, favorite }),
     setRecipeRating: (recipeId, stars) =>

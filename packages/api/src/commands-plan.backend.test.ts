@@ -3,6 +3,7 @@
 import { addDays, entriesForDay, isoWeekday } from '@housekeeping/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import { saveAbsences } from './commands-household';
 import {
@@ -12,14 +13,15 @@ import {
   createAndPlanRestaurant,
   defaultEaterIds,
   movePlanEntry,
+  RECIPE_GONE_MESSAGE,
   removePlanEntry,
   updatePlanEntry,
 } from './commands-plan';
 import { readMapsLink } from './commands-restaurants';
 import { pantryCheckRows } from './commands-shopping';
 import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH, SLOT_MORNING } from './seed/demo';
-import { getData, snapshot } from './store';
-import type { ChangeOp } from './transport';
+import { getData, OfflineError, snapshot } from './store';
+import { TransportError, type ChangeOp } from './transport';
 
 const fx = withBackend();
 
@@ -399,5 +401,57 @@ describe('create while planning (spec 0004, REQ-008)', () => {
     ]);
     expect(sundayEvening[0]).toMatchObject({ recipeId: soup.recipeId, portions: 2 });
     expect(sundayEvening[1]).toMatchObject({ restaurantId: lokal.restaurantId });
+  });
+});
+
+describe('spec 0008: planning a recipe that was deleted meanwhile (E6)', () => {
+  it('the refused entry jumps back with "Das Rezept gibt es nicht mehr"', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    await fx.server.transport(NADJA).deleteRecipe('rec-lasagne', TODAY);
+    const id = addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-lasagne',
+      eaterIds: [ENRICO, NADJA],
+    });
+    expect(entryById(id)).toBeDefined();
+    await fx.settle();
+    expect(entryById(id)).toBeUndefined();
+    expect(messages).toEqual([RECIPE_GONE_MESSAGE]);
+    stop();
+  });
+
+  it('another refusal keeps the general hint', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    fx.server.failNext('apply_changes', new TransportError('permanent', 'boom', 400));
+    addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-lasagne',
+      eaterIds: [ENRICO],
+    });
+    await fx.settle();
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    stop();
+  });
+
+  it('negative: offline throws OfflineError', async () => {
+    await fx.startEnrico();
+    fx.environment.setOnline(false);
+    expect(() =>
+      addPlanEntry({
+        date: TODAY,
+        slotId: SLOT_DINNER,
+        kind: 'recipe',
+        recipeId: 'rec-lasagne',
+        eaterIds: [ENRICO],
+      }),
+    ).toThrow(OfflineError);
   });
 });

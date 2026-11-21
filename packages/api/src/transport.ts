@@ -29,6 +29,11 @@ export class TransportError extends Error {
     readonly status?: number,
     /** What the server added to the error as JSON (`detail`), e.g. who was faster for already_done. */
     readonly detail?: unknown,
+    /**
+     * The constraint a foreign key error (23503) names, e.g. `meal_plan_entries_recipe_fkey`
+     * when the recipe was deleted meanwhile (spec 0008, E6).
+     */
+    readonly constraint?: string,
   ) {
     super(`${kind}: ${code}`);
     this.name = 'TransportError';
@@ -74,6 +79,9 @@ function parseDetail(details: string | undefined): unknown {
   }
 }
 
+/** Postgres' message for a foreign key error names the constraint. */
+const FOREIGN_KEY_MESSAGE = /violates foreign key constraint "([a-z0-9_]+)"/;
+
 /** Classifies an HTTP status and a PostgREST error body (`message` carries our error code). */
 export function classifyError(
   status: number,
@@ -94,6 +102,7 @@ export function classifyError(
     code,
     status,
     parseDetail(error.details),
+    FOREIGN_KEY_MESSAGE.exec(message)?.[1],
   );
 }
 
@@ -224,6 +233,13 @@ export type MergeArticlesResult = z.infer<typeof MergeArticlesResultSchema>;
 /** merge_areas (spec 0007): how many articles moved. */
 export const MergeAreasResultSchema = z.number();
 
+/** delete_recipe (spec 0008, E3): how many plan entries became free text and how many went. */
+export const DeletedRecipeSchema = z.object({ converted: z.number(), removed: z.number() });
+export type DeletedRecipe = z.infer<typeof DeletedRecipeSchema>;
+
+/** restore_recipe (spec 0008, E4): false when the recipe exists again already. */
+export const RestoredRecipeSchema = z.boolean();
+
 /** sync_pull as sent: composite-key rows have no `id` yet (see db/tables.ts). */
 export const RawPullResultSchema = z.object({
   serverTime: z.string(),
@@ -275,6 +291,20 @@ export interface Transport {
   mergeArticles(sourceId: string, targetId: string): Promise<MergeArticlesResult>;
   /** Moves the articles of one area to another and deletes the source; `area_not_found`. */
   mergeAreas(sourceId: string, targetId: string): Promise<number>;
+  // Recipes (spec 0008)
+  /**
+   * Deletes a recipe (the only way, E2): entries up to `today` (the device's date, at most one day
+   * off the server's) become free text, later and noted ones go, ratings and favourites go; the
+   * server keeps a snapshot for 1 hour. `recipe_not_found` when missing or foreign,
+   * `invalid_value` for a date too far off.
+   */
+  deleteRecipe(recipeId: string, today: string): Promise<DeletedRecipe>;
+  /**
+   * "Rückgängig" of delete_recipe, only for the person who deleted, within 1 hour; false when the
+   * recipe exists again. `recipe_not_restorable` otherwise; a check error (e.g.
+   * `ingredient_article_invalid`) when an article or meal slot is gone meanwhile.
+   */
+  restoreRecipe(recipeId: string): Promise<boolean>;
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
@@ -341,6 +371,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     deleteArticle: guard(inner.deleteArticle.bind(inner)),
     mergeArticles: guard(inner.mergeArticles.bind(inner)),
     mergeAreas: guard(inner.mergeAreas.bind(inner)),
+    deleteRecipe: guard(inner.deleteRecipe.bind(inner)),
+    restoreRecipe: guard(inner.restoreRecipe.bind(inner)),
     setRecipeFavorite: guard(inner.setRecipeFavorite.bind(inner)),
     setRecipeRating: guard(inner.setRecipeRating.bind(inner)),
     setRestaurantFavorite: guard(inner.setRestaurantFavorite.bind(inner)),

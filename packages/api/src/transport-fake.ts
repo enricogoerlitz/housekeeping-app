@@ -4,14 +4,16 @@
 // photo bucket with its policies and limits (spec 0004), the household's shopping list with its
 // editing RPCs (spec 0006, ADR-0012: no list rows, one open item per article and household), and
 // the article catalog (spec 0007: ingredients point to an article, unique names, delete_article,
-// merge_articles with replaced_by, merge_areas), and chore entries only through complete_chore
-// and remove_chore_event with the checks of the database (spec 0011). Several transports (users,
-// devices) can share one server.
+// merge_articles with replaced_by, merge_areas), chore entries only through complete_chore
+// and remove_chore_event with the checks of the database (spec 0011), and recipes deleted only
+// through delete_recipe with a snapshot for restore_recipe (spec 0008, E2 to E4). Several
+// transports (users, devices) can share one server.
 import {
   addDays,
   compareTimestamps,
   isHalfStar,
   queueEffect,
+  RECIPE_LIMITS,
   type AiSearchRequest,
   type AiSearchResult,
   type AssistantReply,
@@ -61,6 +63,8 @@ type RpcName =
   | 'delete_article'
   | 'merge_articles'
   | 'merge_areas'
+  | 'delete_recipe'
+  | 'restore_recipe'
   | 'set_recipe_favorite'
   | 'set_recipe_rating'
   | 'set_restaurant_favorite'
@@ -180,8 +184,6 @@ const MAX_SYNONYMS = 30;
 const MAX_SYNONYMS_LENGTH = 2000;
 const totalLength = (texts: readonly string[]) =>
   texts.reduce((sum, text) => sum + Array.from(text).length, 0);
-/** recipes_check_ingredients: the "Hinweis" of an ingredient. */
-const PREP_NOTE_MAX_LENGTH = 200;
 const conflict = (code: string) => new TransportError('permanent', code, 409);
 
 const reject = (code: string) => new TransportError('permanent', code, 400);
@@ -191,7 +193,45 @@ function assertRestorableSize(items: ClearedItems): void {
   const contributions = items.reduce((sum, entry) => sum + (entry.contributions?.length ?? 0), 0);
   if (items.length > 1000 || contributions > 5000) throw reject('too_many_changes');
 }
-const foreignKey = () => new TransportError('permanent', '23503', 409);
+/** A foreign key error names its constraint, like Postgres (`meal_plan_entries_recipe_fkey`). */
+const foreignKey = (constraint: string) =>
+  new TransportError('permanent', '23503', 409, undefined, constraint);
+const constraintOf = (reference: { table: string; column: string }) =>
+  `${reference.table}_${reference.column.replace(/_id$/, '')}_fkey`;
+
+/** private.recipe_deletions (spec 0008, E4): what restore_recipe brings back. */
+interface RecipeDeletion {
+  householdId: string;
+  recipeId: string;
+  deletedBy: string;
+  /** Milliseconds, like the server clock. */
+  deletedAt: number;
+  recipe: Row;
+  ratings: { member_id: string; stars: unknown }[];
+  favorites: string[];
+  /** The old values of the entries that became free text, and the text written. */
+  converted: {
+    id: string;
+    kind: unknown;
+    recipe_id: unknown;
+    text: unknown;
+    variants: unknown;
+    new_text: string;
+  }[];
+  removed: Row[];
+}
+/** A snapshot can be restored for 1 hour. */
+const RESTORABLE_MS = 60 * 60 * 1000;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A row as an insert without its timestamps writes it: the server sets them anew. */
+function withoutTimestamps(row: Row): Row {
+  const copy = { ...row };
+  delete copy.created_at;
+  delete copy.updated_at;
+  delete copy.household_id;
+  return copy;
+}
 
 /** meal_plan_entries_kind_complete, for the case a cleared reference can break. */
 function checkPlanEntry(row: Row): void {
@@ -254,7 +294,7 @@ function checkIngredients(ingredients: unknown, tables: TableRows): void {
     if (typeof articleId !== 'string' || !tables.articles?.[articleId]) throw invalid();
     if (
       'prepNote' in ingredient &&
-      (typeof prepNote !== 'string' || Array.from(prepNote).length > PREP_NOTE_MAX_LENGTH)
+      (typeof prepNote !== 'string' || Array.from(prepNote).length > RECIPE_LIMITS.prepNote)
     ) {
       throw invalid();
     }
@@ -370,6 +410,8 @@ export function createFakeServer(): FakeServer {
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
+  /** private.recipe_deletions, one snapshot per household and recipe. */
+  const recipeDeletions = new Map<string, RecipeDeletion>();
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
 
   /** Server clock with microseconds, strictly increasing like `now()` in separate transactions. */
@@ -466,7 +508,7 @@ export function createFakeServer(): FakeServer {
         for (const row of Object.values(next[reference.table] ?? {})) {
           if (row[reference.column] !== id) continue;
           if (reference.onDelete === 'restrict') {
-            if (enforce) throw foreignKey();
+            if (enforce) throw foreignKey(constraintOf(reference));
             continue;
           }
           const cleared = { ...row, [reference.column]: null };
@@ -605,7 +647,7 @@ export function createFakeServer(): FakeServer {
     for (const reference of REFERENCES.filter((candidate) => candidate.table === table)) {
       const value = written[reference.column];
       if (value == null) continue;
-      if (!tables[reference.target]?.[String(value)]) throw foreignKey();
+      if (!tables[reference.target]?.[String(value)]) throw foreignKey(constraintOf(reference));
     }
   }
 
@@ -776,9 +818,9 @@ export function createFakeServer(): FakeServer {
     }
     if (isAsNeeded(chore) && nextDueOn !== null) throw reject('invalid_change');
     const members = new Set(memberIdsOf(householdId));
-    if (!members.has(completion.done_by)) throw foreignKey();
+    if (!members.has(completion.done_by)) throw foreignKey('chore_events_done_by_fkey');
     const assignee = completion.next_assignee_id ?? null;
-    if (assignee !== null && !members.has(assignee)) throw foreignKey();
+    if (assignee !== null && !members.has(assignee)) throw foreignKey('chores_next_assignee_fkey');
     if (tables.chore_events?.[completion.event_id]) throw conflict('23505');
 
     let next = withRow(tables, 'chore_events', {
@@ -929,7 +971,9 @@ export function createFakeServer(): FakeServer {
           if (op.table === 'households') {
             if (op.id !== householdId) throw new TransportError('permanent', 'row_not_found', 404);
             const storeId = op.changes.default_store_id;
-            if (typeof storeId === 'string' && !tables.stores?.[storeId]) throw foreignKey();
+            if (typeof storeId === 'string' && !tables.stores?.[storeId]) {
+              throw foreignKey('households_default_store_fkey');
+            }
             householdPatch = { ...householdPatch, ...op.changes };
             continue;
           }
@@ -1059,6 +1103,160 @@ export function createFakeServer(): FakeServer {
     if (stars === null) return undefined;
     if (!isHalfStar(stars)) throw reject('invalid_stars');
     return { stars };
+  }
+
+  // ---------- delete_recipe and restore_recipe (spec 0008, E3 to E6) ----------
+
+  function deleteRecipe(userId: string, recipeId: string, today: string) {
+    const householdId = locate(userId, 'recipes', recipeId);
+    if (!householdId) throw new TransportError('permanent', 'recipe_not_found', 500);
+    const current = new Date(Date.now()).toISOString().slice(0, 10);
+    if (!ISO_DATE.test(today) || today < addDays(current, -1) || today > addDays(current, 1)) {
+      throw reject('invalid_value');
+    }
+    let deletion: RecipeDeletion | undefined;
+    const result = transaction(householdId, (before) => {
+      const recipe = before.recipes?.[recipeId];
+      if (!recipe) throw new TransportError('permanent', 'recipe_not_found', 500);
+      const title = String(recipe.title);
+      const entries = Object.values(before.meal_plan_entries ?? {})
+        .filter((entry) => entry.recipe_id === recipeId)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const past = entries.filter((entry) => entry.date != null && String(entry.date) <= today);
+      // Later and noted entries, and leftovers without a recipe of those (recursively).
+      // In the order found: deleted in reverse, leftovers before their dish.
+      const found = entries
+        .filter((entry) => entry.date == null || String(entry.date) > today)
+        .map((entry) => entry.id);
+      const removedIds = new Set(found);
+      for (let index = 0; index < found.length; index++) {
+        for (const entry of Object.values(before.meal_plan_entries ?? {})) {
+          if (
+            entry.kind === 'leftovers' &&
+            entry.recipe_id == null &&
+            entry.leftovers_of_entry_id === found[index] &&
+            !removedIds.has(entry.id)
+          ) {
+            removedIds.add(entry.id);
+            found.push(entry.id);
+          }
+        }
+      }
+      const later = Object.values(before.meal_plan_entries ?? {})
+        .filter((entry) => removedIds.has(entry.id))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const converted = past.map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        recipe_id: entry.recipe_id,
+        text: entry.text ?? null,
+        variants: entry.variants,
+        new_text: entry.kind === 'leftovers' ? `Reste von ${title}` : title,
+      }));
+      const parentRows = (table: string) =>
+        Object.values(before[table] ?? {}).filter((row) => row.recipe_id === recipeId);
+      deletion = {
+        householdId,
+        recipeId,
+        deletedBy: userId,
+        deletedAt: Date.now(),
+        recipe,
+        ratings: parentRows('recipe_ratings').map((row) => ({
+          member_id: String(row.member_id),
+          stars: row.stars,
+        })),
+        favorites: parentRows('recipe_favorites').map((row) => String(row.member_id)),
+        converted,
+        removed: later,
+      };
+      let tables = before;
+      for (const entry of converted) {
+        const row = tables.meal_plan_entries?.[entry.id];
+        if (!row) continue;
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...row,
+          kind: 'text',
+          recipe_id: null,
+          variants: [],
+          text: entry.new_text,
+        });
+      }
+      tables = withoutRows(tables, 'meal_plan_entries', [...found].reverse());
+      tables = withoutRows(tables, 'recipes', [recipeId]);
+      return [tables, { converted: past.length, removed: later.length }];
+    });
+    for (const [key, kept] of recipeDeletions) {
+      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
+        recipeDeletions.delete(key);
+      }
+    }
+    if (deletion) recipeDeletions.set(`${householdId}:${recipeId}`, deletion);
+    return result;
+  }
+
+  function restoreRecipe(userId: string, recipeId: string): boolean {
+    const deletion = [...recipeDeletions.values()].find(
+      (candidate) =>
+        candidate.recipeId === recipeId &&
+        candidate.deletedBy === userId &&
+        isMember(userId, candidate.householdId) &&
+        candidate.deletedAt > Date.now() - RESTORABLE_MS,
+    );
+    if (!deletion) throw new TransportError('permanent', 'recipe_not_restorable', 500);
+    if ([...data.values()].some((tables) => tables.recipes?.[recipeId])) return false;
+    const { householdId } = deletion;
+    const current = new Set(memberIdsOf(householdId));
+    transaction(householdId, (before) => {
+      const recipe: Row = { ...withoutTimestamps(deletion.recipe), id: recipeId };
+      let tables = withRow(before, 'recipes', recipe);
+      checkIngredients(recipe.ingredients, tables);
+      checkRow(householdId, 'recipes', recipe, tables);
+      for (const rating of deletion.ratings) {
+        if (!current.has(rating.member_id)) continue;
+        const id = compositeId('recipe_ratings', { recipe_id: recipeId, ...rating });
+        tables = withRow(tables, 'recipe_ratings', { id, recipe_id: recipeId, ...rating });
+      }
+      for (const memberId of deletion.favorites) {
+        if (!current.has(memberId)) continue;
+        const row = { recipe_id: recipeId, member_id: memberId };
+        tables = withRow(tables, 'recipe_favorites', {
+          id: compositeId('recipe_favorites', row),
+          ...row,
+        });
+      }
+      const removedIds = new Set(deletion.removed.map((entry) => entry.id));
+      for (const entry of deletion.removed) {
+        if (tables.meal_plan_entries?.[entry.id]) continue;
+        const source = entry.leftovers_of_entry_id;
+        const keepSource =
+          source == null ||
+          Boolean(before.meal_plan_entries?.[String(source)]) ||
+          removedIds.has(String(source));
+        const eaters = Array.isArray(entry.eater_ids) ? entry.eater_ids.map(String) : [];
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...withoutTimestamps(entry),
+          leftovers_of_entry_id: keepSource ? (source ?? null) : null,
+          eater_ids: eaters.filter((id) => current.has(id)),
+          cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
+        });
+      }
+      for (const entry of deletion.converted) {
+        const row = tables.meal_plan_entries?.[entry.id];
+        if (!row || row.kind !== 'text' || row.recipe_id != null || row.text !== entry.new_text) {
+          continue;
+        }
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...row,
+          kind: entry.kind,
+          recipe_id: entry.recipe_id,
+          text: entry.text,
+          variants: entry.variants,
+        });
+      }
+      return [tables, undefined];
+    });
+    recipeDeletions.delete(`${householdId}:${recipeId}`);
+    return true;
   }
 
   // ---------- photo bucket (policies of storage.objects) ----------
@@ -1434,6 +1632,11 @@ export function createFakeServer(): FakeServer {
           }
           return result;
         }),
+
+      deleteRecipe: (recipeId, today) =>
+        run(userId, 'delete_recipe', () => deleteRecipe(userId, recipeId, today)),
+      restoreRecipe: (recipeId) =>
+        run(userId, 'restore_recipe', () => restoreRecipe(userId, recipeId)),
 
       mergeAreas: (sourceId, targetId) =>
         run(userId, 'merge_areas', () => {

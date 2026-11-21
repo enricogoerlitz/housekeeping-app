@@ -35,6 +35,7 @@ function seed() {
       { id: 'c-milk', item_id: 'i-milk', source: { kind: 'manual' }, count: 1 },
     ],
     recipes: [{ id: 'r1', title: 'Dal', servings: 2, course: 'main' }],
+    restaurants: [{ id: 'rest1', name: 'Trattoria' }],
   });
 }
 
@@ -252,7 +253,7 @@ describe('fake server: apply_changes (ADR-0011)', () => {
   it('rejects too many deletes', async () => {
     const deletes: RowOp[] = Array.from({ length: 21 }, (_, index) => ({
       kind: 'delete',
-      table: 'recipes',
+      table: 'restaurants',
       id: `r-${index}`,
     }));
     await expect(server.transport(ENRICO).applyChanges(H, deletes)).rejects.toMatchObject({
@@ -356,13 +357,15 @@ describe('fake server: sync_pull', () => {
     expect(first.small.profiles?.map((profile) => profile.id).sort()).toEqual([ENRICO, NADJA]);
 
     vi.setSystemTime(new Date('2026-11-20T10:05:00Z'));
-    await server.transport(NADJA).applyChanges(H, [{ kind: 'delete', table: 'recipes', id: 'r1' }]);
+    await server
+      .transport(NADJA)
+      .applyChanges(H, [{ kind: 'delete', table: 'restaurants', id: 'rest1' }]);
     const delta = await enrico.syncPull({
-      households: { [H]: { full: false, since: { recipes: first.serverTime } } },
+      households: { [H]: { full: false, since: { restaurants: first.serverTime } } },
     });
-    expect(delta.households[H]?.rows.recipes).toEqual([]);
+    expect(delta.households[H]?.rows.restaurants).toEqual([]);
     expect(delta.households[H]?.tombstones).toEqual([
-      { table: 'recipes', id: 'r1', deletedAt: expect.any(String) },
+      { table: 'restaurants', id: 'rest1', deletedAt: expect.any(String) },
     ]);
   });
 
@@ -419,17 +422,28 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
     row: { id, slot_id: 's1', eater_ids: [], ...row },
   });
 
-  it('refuses to delete a recipe that is in the plan (on delete restrict)', async () => {
+  it('refuses to delete a restaurant that is in the plan (on delete restrict)', async () => {
     const enrico = server.transport(ENRICO);
-    await enrico.applyChanges(H, [plan('e1', { kind: 'recipe', recipe_id: 'r1' })]);
+    await enrico.applyChanges(H, [plan('e1', { kind: 'restaurant', restaurant_id: 'rest1' })]);
     await expect(
-      enrico.applyChanges(H, [{ kind: 'delete', table: 'recipes', id: 'r1' }]),
-    ).rejects.toMatchObject({ kind: 'permanent', code: '23503' });
+      enrico.applyChanges(H, [{ kind: 'delete', table: 'restaurants', id: 'rest1' }]),
+    ).rejects.toMatchObject({
+      kind: 'permanent',
+      code: '23503',
+      constraint: 'meal_plan_entries_restaurant_fkey',
+    });
     await enrico.applyChanges(H, [
       { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
-      { kind: 'delete', table: 'recipes', id: 'r1' },
+      { kind: 'delete', table: 'restaurants', id: 'rest1' },
     ]);
-    expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
+    expect(server.row(H, 'restaurants', 'rest1')).toBeUndefined();
+  });
+
+  it('spec 0008, E2: never deletes a recipe through apply_changes (delete_recipe only)', async () => {
+    await expect(
+      server.transport(ENRICO).applyChanges(H, [{ kind: 'delete', table: 'recipes', id: 'r1' }]),
+    ).rejects.toMatchObject({ kind: 'permanent', code: 'invalid_change' });
+    expect(server.row(H, 'recipes', 'r1')).toBeDefined();
   });
 
   it('refuses to delete an article directly (delete_article only), and a reference to a missing row', async () => {
@@ -1605,5 +1619,256 @@ describe('fake server: ratings in half steps (spec 0011)', () => {
     await enrico.setRecipeRating('r1', 4);
     const second = String(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)?.updated_at);
     expect(second > first).toBe(true);
+  });
+});
+
+describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => {
+  const PHOTO = `${H}/recipes/r1/0b6f7a3e-1c1d-4a5e-9f00-123456789abc.jpg`;
+  const entryRow = (id: string, row: Record<string, unknown>): Row => ({
+    id,
+    slot_id: 's-evening',
+    kind: 'recipe',
+    recipe_id: 'r1',
+    eater_ids: [ENRICO, NADJA],
+    guests: 0,
+    portions: 2,
+    variants: [{ variantId: 'v-tofu', portions: 2 }],
+    cook_id: NADJA,
+    sort: 0,
+    not_cooked: false,
+    ...row,
+  });
+
+  beforeEach(async () => {
+    server.insertRows(H, {
+      recipes: [
+        {
+          id: 'r1',
+          title: 'Halloumi-Pfanne',
+          servings: 2,
+          course: 'main',
+          photo_path: PHOTO,
+          variants: [{ id: 'v-tofu', name: 'mit Tofu', isDefault: true }],
+          ingredients: [{ id: 'i1', articleId: 'a-milk', shoppingRule: 'count' }],
+        },
+      ],
+      meal_plan_entries: [
+        entryRow('e-mon', { date: '2026-11-16' }),
+        entryRow('e-today', { date: '2026-11-20' }),
+        entryRow('e-sat', { date: '2026-11-21' }),
+        entryRow('e-noted', { date: null }),
+        entryRow('e-left', {
+          date: '2026-11-17',
+          kind: 'leftovers',
+          leftovers_of_entry_id: 'e-mon',
+        }),
+        entryRow('e-other', { date: '2026-11-21', kind: 'text', recipe_id: null, text: 'Pizza' }),
+      ],
+    });
+    await server.transport(NADJA).setRecipeRating('r1', 5);
+    await server.transport(ENRICO).setRecipeRating('r1', 4.5);
+    await server.transport(NADJA).setRecipeFavorite('r1', true);
+  });
+
+  it('AC-043: up to today free text with the title, later and noted entries gone, ratings and favourites gone', async () => {
+    expect(await server.transport(ENRICO).deleteRecipe('r1', '2026-11-20')).toEqual({
+      converted: 3,
+      removed: 2,
+    });
+    expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
+    for (const id of ['e-mon', 'e-today']) {
+      expect(server.row(H, 'meal_plan_entries', id)).toMatchObject({
+        kind: 'text',
+        recipe_id: null,
+        variants: [],
+        text: 'Halloumi-Pfanne',
+        eater_ids: [ENRICO, NADJA],
+        cook_id: NADJA,
+      });
+    }
+    expect(server.row(H, 'meal_plan_entries', 'e-left')).toMatchObject({
+      kind: 'text',
+      text: 'Reste von Halloumi-Pfanne',
+      leftovers_of_entry_id: 'e-mon',
+    });
+    expect(server.row(H, 'meal_plan_entries', 'e-sat')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-noted')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-other')).toMatchObject({ text: 'Pizza' });
+    expect(server.rows(H, 'recipe_ratings')).toEqual([]);
+    expect(server.rows(H, 'recipe_favorites')).toEqual([]);
+    const pull = await server.transport(NADJA).syncPull({
+      households: { [H]: { full: false, since: { recipes: '2026-11-20T09:00:00Z' } } },
+    });
+    expect(pull.households[H]?.tombstones.map((t) => `${t.table}:${t.id}`).sort()).toEqual(
+      [
+        'meal_plan_entries:e-noted',
+        'meal_plan_entries:e-sat',
+        `recipe_favorites:r1:${NADJA}`,
+        `recipe_ratings:r1:${ENRICO}`,
+        `recipe_ratings:r1:${NADJA}`,
+        'recipes:r1',
+      ].sort(),
+    );
+  });
+
+  it('AC-044: restore brings back recipe, photo, both ratings, the favourite and every entry; only once', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.deleteRecipe('r1', '2026-11-20');
+    expect(await enrico.restoreRecipe('r1')).toBe(true);
+    expect(server.row(H, 'recipes', 'r1')).toMatchObject({
+      title: 'Halloumi-Pfanne',
+      photo_path: PHOTO,
+    });
+    expect(server.row(H, 'recipe_ratings', `r1:${NADJA}`)).toMatchObject({ stars: 5 });
+    expect(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)).toMatchObject({ stars: 4.5 });
+    expect(server.row(H, 'recipe_favorites', `r1:${NADJA}`)).toBeDefined();
+    for (const id of ['e-mon', 'e-today', 'e-sat', 'e-noted']) {
+      expect(server.row(H, 'meal_plan_entries', id)).toMatchObject({
+        kind: 'recipe',
+        recipe_id: 'r1',
+        variants: [{ variantId: 'v-tofu', portions: 2 }],
+      });
+    }
+    expect(server.row(H, 'meal_plan_entries', 'e-left')).toMatchObject({
+      kind: 'leftovers',
+      recipe_id: 'r1',
+      text: null,
+    });
+    await expect(enrico.restoreRecipe('r1')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'recipe_not_restorable',
+    });
+  });
+
+  it('negative: only the person who deleted can restore; a foreign member can do neither', async () => {
+    await expect(server.transport(STRANGER).deleteRecipe('r1', '2026-11-20')).rejects.toMatchObject(
+      { code: 'recipe_not_found' },
+    );
+    expect(server.row(H, 'recipes', 'r1')).toBeDefined();
+    expect(server.rows(H, 'meal_plan_entries')).toHaveLength(6);
+
+    await server.transport(ENRICO).deleteRecipe('r1', '2026-11-20');
+    for (const user of [NADJA, STRANGER]) {
+      await expect(server.transport(user).restoreRecipe('r1')).rejects.toMatchObject({
+        code: 'recipe_not_restorable',
+      });
+    }
+    expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
+    await expect(server.transport(ENRICO).deleteRecipe('r1', '2026-11-20')).rejects.toMatchObject({
+      code: 'recipe_not_found',
+    });
+  });
+
+  it('negative: a device date more than one day off is invalid_value and changes nothing', async () => {
+    for (const today of ['2026-11-18', '2026-11-22']) {
+      await expect(server.transport(ENRICO).deleteRecipe('r1', today)).rejects.toMatchObject({
+        kind: 'permanent',
+        code: 'invalid_value',
+      });
+    }
+    expect(server.row(H, 'recipes', 'r1')).toBeDefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-sat')).toBeDefined();
+    await expect(server.transport(ENRICO).deleteRecipe('r1', '2026-11-21')).resolves.toEqual({
+      converted: 4,
+      removed: 1,
+    });
+  });
+
+  it('failure: after 1 hour the snapshot is gone', async () => {
+    await server.transport(ENRICO).deleteRecipe('r1', '2026-11-20');
+    vi.setSystemTime(new Date('2026-11-20T11:00:01Z'));
+    await expect(server.transport(ENRICO).restoreRecipe('r1')).rejects.toMatchObject({
+      code: 'recipe_not_restorable',
+    });
+  });
+
+  it('failure: a changed free-text entry stays, a removed member is left out', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.deleteRecipe('r1', '2026-11-20');
+    await enrico.applyChanges(H, [
+      { kind: 'patch', table: 'meal_plan_entries', id: 'e-mon', changes: { text: 'Pfanne' } },
+    ]);
+    await enrico.removeMember(H, NADJA);
+    expect(await enrico.restoreRecipe('r1')).toBe(true);
+    expect(server.row(H, 'meal_plan_entries', 'e-mon')).toMatchObject({
+      kind: 'text',
+      text: 'Pfanne',
+    });
+    expect(server.row(H, 'meal_plan_entries', 'e-sat')).toMatchObject({
+      eater_ids: [ENRICO],
+      cook_id: null,
+    });
+    expect(server.row(H, 'recipe_ratings', `r1:${NADJA}`)).toBeUndefined();
+    expect(server.row(H, 'recipe_favorites', `r1:${NADJA}`)).toBeUndefined();
+    expect(server.row(H, 'recipe_ratings', `r1:${ENRICO}`)).toMatchObject({ stars: 4.5 });
+  });
+
+  it('failure: an article gone in between fails the restore as a whole; the snapshot stays', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.deleteRecipe('r1', '2026-11-20');
+    server.deleteRow(H, 'shopping_items', 'i-milk');
+    await enrico.deleteArticle('a-milk');
+    await expect(enrico.restoreRecipe('r1')).rejects.toMatchObject({
+      code: 'ingredient_article_invalid',
+    });
+    expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-sat')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-mon')).toMatchObject({ kind: 'text' });
+  });
+
+  it('a recipe that exists again answers false and changes nothing', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.deleteRecipe('r1', '2026-11-20');
+    server.insertRows(H, { recipes: [{ id: 'r1', title: 'Neu', servings: 2, course: 'main' }] });
+    expect(await enrico.restoreRecipe('r1')).toBe(false);
+    expect(server.row(H, 'recipes', 'r1')).toMatchObject({ title: 'Neu' });
+    expect(server.row(H, 'meal_plan_entries', 'e-sat')).toBeUndefined();
+  });
+
+  it('E3: leftovers without a recipe of a removed entry go too, and come back with their links', async () => {
+    server.insertRows(H, {
+      meal_plan_entries: [
+        entryRow('e-rest-sat', {
+          date: '2026-11-22',
+          kind: 'leftovers',
+          recipe_id: null,
+          variants: [],
+          leftovers_of_entry_id: 'e-sat',
+        }),
+        entryRow('e-rest-rest', {
+          date: '2026-11-19',
+          kind: 'leftovers',
+          recipe_id: null,
+          variants: [],
+          leftovers_of_entry_id: 'e-rest-sat',
+        }),
+      ],
+    });
+    const enrico = server.transport(ENRICO);
+    expect(await enrico.deleteRecipe('r1', '2026-11-20')).toEqual({ converted: 3, removed: 4 });
+    expect(server.row(H, 'meal_plan_entries', 'e-rest-sat')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-rest-rest')).toBeUndefined();
+    expect(await enrico.restoreRecipe('r1')).toBe(true);
+    expect(server.row(H, 'meal_plan_entries', 'e-rest-sat')).toMatchObject({
+      leftovers_of_entry_id: 'e-sat',
+    });
+    expect(server.row(H, 'meal_plan_entries', 'e-rest-rest')).toMatchObject({
+      leftovers_of_entry_id: 'e-rest-sat',
+    });
+  });
+
+  it('E6: planning the deleted recipe fails its foreign key (23503, meal_plan_entries_recipe_fkey)', async () => {
+    await server.transport(ENRICO).deleteRecipe('r1', '2026-11-20');
+    await expect(
+      server
+        .transport(NADJA)
+        .applyChanges(H, [
+          { kind: 'insert', table: 'meal_plan_entries', row: entryRow('e-new', { date: null }) },
+        ]),
+    ).rejects.toMatchObject({
+      kind: 'permanent',
+      code: '23503',
+      constraint: 'meal_plan_entries_recipe_fkey',
+    });
   });
 });

@@ -87,6 +87,35 @@ describe('deleting a recipe (REQ-012, E3)', () => {
     });
   });
 
+  it('E3: leftovers without their own recipe go with a removed entry, also leftovers of those', () => {
+    const plain = (id: string, of: string, date: string | null) =>
+      entry({
+        id,
+        date,
+        kind: 'leftovers',
+        recipeId: undefined,
+        leftoversOfEntryId: of,
+        variants: [],
+      });
+    const ofSaturday = plain('rest-sat', 'sat', '2026-11-22');
+    const ofThose = plain('rest-rest', 'rest-sat', '2026-11-19');
+    const ofMonday = plain('rest-mon', 'mon', '2026-11-17');
+    const withRecipe = entry({
+      id: 'rest-own',
+      kind: 'leftovers',
+      recipeId: 'rec-mango-curry',
+      leftoversOfEntryId: 'sat',
+      variants: [],
+    });
+    const effect = recipeDeletionEffect(
+      [monday, saturday, ofSaturday, ofThose, ofMonday, withRecipe],
+      halloumiPfanne,
+      today,
+    );
+    expect(effect.removedIds).toEqual(['sat', 'rest-sat', 'rest-rest']);
+    expect(effect.converted.map((converted) => converted.id)).toEqual(['mon']);
+  });
+
   it('AC-043: the notice says "Halloumi-Pfanne gelöscht"', () => {
     expect(recipeDeletedLabel('Halloumi-Pfanne')).toBe('Halloumi-Pfanne gelöscht');
   });

@@ -14,6 +14,7 @@ import {
 import { switchHousehold } from './commands-household';
 import { createRecipe, updateRecipe } from './commands-recipes';
 import { removePlanEntry } from './commands-plan';
+import { createRestaurant } from './commands-restaurants';
 import { chooseShoppingStore, setItemChecked } from './commands-shopping';
 import { fakeEnvironment, seededServer, type FakeEnvironment } from './backend-test-helpers';
 import { DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
@@ -752,14 +753,15 @@ describe('writes: changesets (ADR-0011)', () => {
     if (!recipe) throw new Error('fixture');
     const restore = snapshot();
     updateRecipe(recipe.id, { title: 'Kurz anders' });
-    const created = createRecipe({ title: 'Wieder weg' });
+    // A restaurant: recipes are deleted only by delete_recipe (spec 0008, E2).
+    const created = createRestaurant({ name: 'Wieder weg' });
     await settle();
     restore();
     expect(getData().recipes[0]?.title).toBe(recipe.title);
     await settle();
     expect(server.row(H, 'recipes', recipe.id)).toMatchObject({ title: recipe.title });
-    expect(server.row(H, 'recipes', created)).toBeUndefined();
-    expect(getData().recipes.some((candidate) => candidate.id === created)).toBe(false);
+    expect(server.row(H, 'restaurants', created)).toBeUndefined();
+    expect(getData().restaurants.some((candidate) => candidate.id === created)).toBe(false);
   });
 
   it('rpc path: the local effect shows at once and the inverse RPC undoes it', async () => {

@@ -288,6 +288,54 @@ describe('supabase transport', () => {
     expect(classified).toMatchObject({ kind, code, status });
   });
 
+  it('spec 0008, E6: a foreign key error keeps the name of its constraint', () => {
+    const error = classifyError(409, {
+      message:
+        'insert or update on table "meal_plan_entries" violates foreign key constraint "meal_plan_entries_recipe_fkey"',
+      code: '23503',
+      details: 'Key (household_id, recipe_id)=(h1, r1) is not present in table "recipes".',
+    });
+    expect(error).toMatchObject({
+      kind: 'permanent',
+      code: '23503',
+      constraint: 'meal_plan_entries_recipe_fkey',
+    });
+    expect(
+      classifyError(409, { message: 'ingredient_article_invalid', code: '23503' }),
+    ).toMatchObject({ code: 'ingredient_article_invalid', constraint: undefined });
+  });
+
+  it('spec 0008: delete_recipe and restore_recipe with their parameters and answers', async () => {
+    const { client, calls } = stubClient([
+      ok({ converted: 3, removed: 2 }),
+      ok(true),
+      ok({ converted: 'drei' }),
+      { data: null, error: { message: 'recipe_not_restorable', code: 'P0002' }, status: 500 },
+      { data: null, error: { message: 'invalid_value', code: '22023' }, status: 400 },
+    ]);
+    const transport = createSupabaseTransport(client);
+    expect(await transport.deleteRecipe('r1', '2026-11-20')).toEqual({ converted: 3, removed: 2 });
+    expect(await transport.restoreRecipe('r1')).toBe(true);
+    await expect(transport.deleteRecipe('r1', '2026-11-20')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    await expect(transport.restoreRecipe('r1')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'recipe_not_restorable',
+    });
+    await expect(transport.deleteRecipe('r1', '2026-11-25')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'invalid_value',
+    });
+    expect(calls).toEqual([
+      { fn: 'delete_recipe', args: { recipe_id: 'r1', today: '2026-11-20' } },
+      { fn: 'restore_recipe', args: { recipe_id: 'r1' } },
+      { fn: 'delete_recipe', args: { recipe_id: 'r1', today: '2026-11-20' } },
+      { fn: 'restore_recipe', args: { recipe_id: 'r1' } },
+      { fn: 'delete_recipe', args: { recipe_id: 'r1', today: '2026-11-25' } },
+    ]);
+  });
+
   it('spec 0011, AC-031: already_done keeps who and when from the details; numeric stars stay unrounded', async () => {
     const details = JSON.stringify({ done_by: 'u-nadja', done_at: '2026-11-20T09:02:00.1+00:00' });
     const { client, calls } = stubClient([

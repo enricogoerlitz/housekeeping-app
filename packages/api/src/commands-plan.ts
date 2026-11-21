@@ -13,9 +13,22 @@ import { createRecipe } from './commands-recipes';
 import { createRestaurant, type RestaurantDraft } from './commands-restaurants';
 import { indexById } from './queries';
 import { commit, getData, getState, newId, updateData } from './store';
+import { TransportError } from './transport';
 
 /** meal_plan_entries_note_length. */
 export const NOTE_MAX_LENGTH = 120;
+
+/** The hint when the server refuses an entry because its recipe was deleted (spec 0008, E6). */
+export const RECIPE_GONE_MESSAGE = 'Das Rezept gibt es nicht mehr';
+
+/** E6: the entry's recipe was deleted meanwhile (meal_plan_entries_recipe_fkey). */
+function recipeGone(error: unknown): string | undefined {
+  return error instanceof TransportError &&
+    error.code === '23503' &&
+    error.constraint === 'meal_plan_entries_recipe_fkey'
+    ? RECIPE_GONE_MESSAGE
+    : undefined;
+}
 
 export interface PlanEntryInput {
   /** null = "vorgemerkt", without a day. */
@@ -69,7 +82,11 @@ function cleanNote(note: string | undefined): string | undefined {
   return clean;
 }
 
-/** Adds a dish to a meal. A meal can hold several dishes, each with its own cook. */
+/**
+ * Adds a dish to a meal. A meal can hold several dishes, each with its own cook. When the server
+ * refuses it because the recipe was deleted meanwhile, the hint is "Das Rezept gibt es nicht
+ * mehr" (spec 0008, E6).
+ */
 export function addPlanEntry(input: PlanEntryInput): Id {
   const data = getData();
   if (input.kind === 'recipe' && !data.recipes.some((recipe) => recipe.id === input.recipeId)) {
@@ -97,7 +114,7 @@ export function addPlanEntry(input: PlanEntryInput): Id {
   const siblings = data.planEntries.filter(
     (entry) => entry.date === input.date && entry.slotId === input.slotId,
   );
-  return commit({ path: 'diff' }, () => {
+  return commit({ path: 'diff', rejectedMessage: recipeGone }, () => {
     const entry: MealPlanEntry = {
       id: newId(),
       date: input.date,

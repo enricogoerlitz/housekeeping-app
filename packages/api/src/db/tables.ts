@@ -150,11 +150,13 @@ export const NO_INSERT_TABLES: ReadonlySet<string> = new Set(['households', 'cho
 
 /**
  * Tables `apply_changes` never deletes from (allowlist `delete: false`): articles go through
- * delete_article (spec 0007, E4), chore entries through remove_chore_event (spec 0011).
+ * delete_article (spec 0007, E4), recipes through delete_recipe (spec 0008, E2), chore entries
+ * through remove_chore_event (spec 0011).
  */
 export const NO_DELETE_TABLES: ReadonlySet<string> = new Set([
   'households',
   'articles',
+  'recipes',
   'chore_events',
 ]);
 

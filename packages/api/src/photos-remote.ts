@@ -427,7 +427,7 @@ function writePhotoPath(table: PhotoTable, id: Id, photoPath: string | undefined
 }
 
 /** Deleting a file must not fail the action that made it unused; a leftover file is logged. */
-async function removeQuietly(path: string): Promise<void> {
+export async function removeQuietly(path: string): Promise<void> {
   try {
     await onlineCall((transport) => transport.removeMedia([path]));
   } catch (error) {

@@ -174,7 +174,12 @@ export function diffHousehold(
     const ops = diffRows(old, next, { table, allowedColumns, maxDeletes });
     if (ops.length === 0) continue;
     if (NO_DELETE_TABLES.has(table) && ops.some((op) => op.kind === 'delete')) {
-      const way = table === 'articles' ? 'delete_article' : 'remove_chore_event';
+      const way =
+        table === 'articles'
+          ? 'delete_article'
+          : table === 'recipes'
+            ? 'delete_recipe'
+            : 'remove_chore_event';
       throw new Error(`Deleting ${table} needs its own RPC (${way}).`);
     }
     if (NO_INSERT_TABLES.has(table) && ops.some((op) => op.kind === 'insert')) {

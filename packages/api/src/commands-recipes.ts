@@ -3,25 +3,47 @@ import {
   findArticleByName,
   isHalfStar,
   parseIngredientBlock,
+  RECIPE_LIMITS,
+  recipeDeletionEffect,
   resolveIngredientArticles,
+  sectionPatch,
+  validateSectionDraft,
   type Amount,
   type Article,
   type CatalogHit,
+  type DraftArticle,
   type Id,
+  type IngredientRow,
   type Recipe,
   type RecipeIngredient,
+  type RecipeSectionDraft,
   type ShoppingRule,
 } from '@housekeeping/core';
 
 import { catalogChoice, createArticle, insertArticles } from './commands-articles';
 import { INVALID_STARS } from './commands-restaurants';
+import { removeQuietly } from './photos-remote';
 import { buildRecipe } from './seed/demo';
 import { seedRecipes } from './seed/recipes-data';
 import { starterCatalogEntries } from './starter/entries';
-import { commit, commitConfirmed, getData, getState, newId, nowISO, updateData } from './store';
+import {
+  commit,
+  commitConfirmed,
+  getData,
+  getState,
+  isOffline,
+  newId,
+  nowISO,
+  OfflineError,
+  peekState,
+  updateData,
+} from './store';
 
-/** recipes_check_ingredients: the "Hinweis" of an ingredient. */
-export const PREP_NOTE_MAX_LENGTH = 200;
+/**
+ * recipes_check_ingredients: the "Hinweis" of an ingredient (core RECIPE_LIMITS). Only for the
+ * ingredient sheet of spec 0007 until T7 moves it to the section draft.
+ */
+export const PREP_NOTE_MAX_LENGTH = RECIPE_LIMITS.prepNote;
 
 function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
   updateData((data) => ({
@@ -319,6 +341,141 @@ export function addStep(recipeId: Id, text: string): void {
       steps: [...recipe.steps, { id: newId(), text: trimmed }],
     })),
   );
+}
+
+// ---------- Sections of the recipe page (spec 0008, REQ-007, REQ-008, E7 to E10) ----------
+
+export interface SectionSave {
+  /** Rows without an article: not saved, the section stays open with them (AC-032). */
+  open: IngredientRow[];
+  /**
+   * Resolves once the server took the change (at once when nothing changed); rejects with the
+   * server's error when it refused it. The change shows at once; a refusal jumps back and the
+   * general hint appears (onWriteRejected), so the section can reopen with its draft (E7).
+   */
+  confirmed: Promise<void>;
+}
+
+function draftArticleChoice(article: DraftArticle): IngredientArticleChoice {
+  return article.kind === 'hit' ? { hit: article.hit } : { newName: article.name };
+}
+
+/**
+ * "Fertig", another pen or leaving the page (E7): the draft's section as one apply_changes call
+ * with only the columns it changed since it was opened (AC-029). New and starter articles, the
+ * articles' Standard-Einkaufsregel and the plan entries of a removed variant (E10) ride in the
+ * same call. Throws the first problem of the draft ("Titel fehlt", AC-026) and OfflineError
+ * before anything changes; null when the recipe is gone (nothing is sent). For leaving the page
+ * pass core savablePart(draft).
+ */
+export function saveRecipeSection(recipeId: Id, draft: RecipeSectionDraft): SectionSave | null {
+  const [problem] = validateSectionDraft(draft);
+  if (problem) throw new Error(problem.message);
+  if (!getData().recipes.some((recipe) => recipe.id === recipeId)) return null;
+  if (isOffline()) throw new OfflineError();
+  let open: IngredientRow[] = [];
+  let failure: unknown;
+  const confirmed = commitConfirmed({ path: 'diff' }, () => {
+    try {
+      const data = getData();
+      const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
+      if (!recipe) throw new Error('Rezept nicht gefunden');
+      const patch = sectionPatch(recipe, draft, {
+        articles: data.articles,
+        createArticle: (article) => chosenArticle(draftArticleChoice(article)),
+        newId,
+        entries: data.planEntries,
+      });
+      open = patch.open;
+      for (const { articleId, rule } of patch.rules) {
+        const article = getData().articles.find((candidate) => candidate.id === articleId);
+        if (article) rememberRule(article, rule);
+      }
+      patchRecipe(recipeId, (current) => ({ ...current, ...patch.recipe }));
+      if (patch.entries.length > 0) {
+        const changed = new Map(patch.entries.map((entry) => [entry.id, entry]));
+        updateData((current) => ({
+          ...current,
+          planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
+        }));
+      }
+    } catch (error) {
+      failure = error;
+      throw error;
+    }
+  });
+  // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
+  confirmed.catch(() => {});
+  if (failure !== undefined) throw failure;
+  return { open, confirmed };
+}
+
+// ---------- Deleting (spec 0008, REQ-012, E1 to E5) ----------
+
+export interface RecipeDeletion {
+  recipeId: Id;
+  /** The recipe's own photo; discardRecipePhoto removes it once "Rückgängig" expired (E5). */
+  photoPath?: string;
+  /** Resolves once the server deleted the recipe; rejects when it refused (the recipe is back). */
+  confirmed: Promise<void>;
+}
+
+/**
+ * "Löschen" (AC-043): one delete_recipe call with the device's date. Shown at once as the server
+ * will do it (core recipeDeletionEffect): the recipe with its ratings and favourites is gone,
+ * entries up to today are free text, later and noted ones are gone. `snapshot()` taken before
+ * undoes it with restore_recipe (AC-044); a refusal jumps back with the general hint (AC-045).
+ * Throws OfflineError; undefined for a recipe that is not there.
+ */
+export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
+  const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) return undefined;
+  if (isOffline()) throw new OfflineError();
+  const today = getState().today;
+  const confirmed = commitConfirmed(
+    {
+      path: 'rpc',
+      send: (transport) => transport.deleteRecipe(recipeId, today),
+      inverse: (transport) => transport.restoreRecipe(recipeId),
+    },
+    () =>
+      updateData((data) => {
+        const effect = recipeDeletionEffect(data.planEntries, recipe, today);
+        const converted = new Map(effect.converted.map((entry) => [entry.id, entry]));
+        const removed = new Set(effect.removedIds);
+        return {
+          ...data,
+          recipes: data.recipes.filter((candidate) => candidate.id !== recipeId),
+          planEntries: data.planEntries.flatMap((entry) =>
+            removed.has(entry.id) ? [] : [converted.get(entry.id) ?? entry],
+          ),
+        };
+      }),
+  );
+  confirmed.catch(() => {});
+  return { recipeId, photoPath: recipe.photoPath, confirmed };
+}
+
+/**
+ * E5: removes the own photo of a deleted recipe when the notice "… gelöscht · Rückgängig" runs
+ * out (toast onExpire) — only after the server took the deletion and while the recipe has not
+ * come back ("Rückgängig"). Never throws; a file that cannot be removed stays in the household's
+ * folder.
+ */
+export async function discardRecipePhoto(deletion: RecipeDeletion): Promise<void> {
+  const path = deletion.photoPath;
+  if (!path) return;
+  try {
+    await deletion.confirmed;
+  } catch {
+    return;
+  }
+  const state = peekState();
+  if (!state) return;
+  const inUse = Object.values(state.households).some((data) =>
+    data.recipes.some((recipe) => recipe.id === deletion.recipeId || recipe.photoPath === path),
+  );
+  if (!inUse) await removeQuietly(path);
 }
 
 /** Favourites are per person: their own RPC; undo sends the opposite. */
