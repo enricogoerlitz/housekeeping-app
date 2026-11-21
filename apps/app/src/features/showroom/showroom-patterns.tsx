@@ -10,6 +10,7 @@ import {
   CheckRow,
   ChoiceChips,
   Chip,
+  Disclosure,
   EditableSection,
   EmptyState,
   FilterBar,
@@ -84,6 +85,7 @@ export function usePatternBlocks(): ReactNode[] {
     <TitleBarBlock key="titlebar" />,
     <MemberRatingsBlock key="ratings" />,
     <ExpiringToastBlock key="expire" />,
+    <DisclosureBlock key="disclosure" />,
   ];
 }
 
@@ -1094,6 +1096,91 @@ function ExpiringToastBlock() {
       <Text variant="small" color="muted" testID="showroom-expire-result">
         {result}
       </Text>
+    </Block>
+  );
+}
+
+// ---------- Spec 0012, REQ-004: foldable group "Gepackt (n)" ----------
+
+const SAMPLE_PACKING = ['Badehose', 'Sonnencreme', 'Handtuch', 'Sonnenbrille', 'Flip-Flops'];
+const initialPacking = (): CheckItem[] =>
+  SAMPLE_PACKING.map((name, index) => ({ id: name.toLowerCase(), name, checked: index < 2 }));
+
+function DisclosureBlock() {
+  const [items, setItems] = useState(initialPacking);
+  const setPacked = (id: string, checked: boolean) =>
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, checked } : item)));
+  const pack = useCheckWindow({
+    items,
+    getId: (item) => item.id,
+    isChecked: (item) => item.checked,
+    onToggle: (item, checked) => setPacked(item.id, checked),
+    announce: (item, checked) => `${item.name} ${checked ? 'gepackt' : 'wieder offen'}`,
+  });
+  const packed = items.filter((item) => item.checked && !pack.rows.includes(item));
+  return (
+    <Block
+      title="Aufklappbare Gruppe"
+      note={`Gepacktes gleitet ${CHECK_WINDOW_MS / 1000} s nach dem letzten Tipp in „Gepackt (n)“, eingeklappt. Antippen klappt auf; leer verschwindet die Gruppe.`}
+      testID="showroom-disclosure"
+    >
+      <Row gap={8}>
+        <Icon name="luggage" size={18} color="muted" />
+        <Text variant="smallStrong">
+          Strand {packed.length}/{items.length}
+        </Text>
+      </Row>
+      <List testID="showroom-disclosure-open">
+        {pack.rows.map((item) => (
+          <RowTransition key={item.id}>
+            <CheckRow
+              title={item.name}
+              checked={pack.isChecked(item)}
+              onToggle={() => pack.toggle(item)}
+              testID={`showroom-pack-${item.id}`}
+            />
+          </RowTransition>
+        ))}
+      </List>
+      <Disclosure
+        title="Gepackt"
+        count={packed.length}
+        expandedLabel="aufgeklappt"
+        collapsedLabel="eingeklappt"
+        testID="showroom-packed"
+      >
+        <List>
+          {packed.map((item) => (
+            <RowTransition key={item.id}>
+              <CheckRow
+                title={item.name}
+                checked
+                onToggle={() => setPacked(item.id, false)}
+                testID={`showroom-packed-${item.id}`}
+              />
+            </RowTransition>
+          ))}
+        </List>
+      </Disclosure>
+      <Disclosure
+        title="Schon aufgeklappt"
+        count={2}
+        expandedLabel="aufgeklappt"
+        collapsedLabel="eingeklappt"
+        defaultExpanded
+        testID="showroom-disclosure-open-example"
+      >
+        <Text variant="small" color="muted">
+          Zwei Beispielzeilen.
+        </Text>
+      </Disclosure>
+      <Button
+        label="Zurücksetzen"
+        size="sm"
+        variant="link"
+        onPress={() => setItems(initialPacking())}
+        testID="showroom-disclosure-reset"
+      />
     </Block>
   );
 }

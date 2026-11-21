@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useState, useSyncExternalStore, type ReactNode } from 'react';
 import Animated, {
   Easing,
+  FadeIn,
   FadeOut,
   LinearTransition,
   ReduceMotion,
@@ -84,7 +85,9 @@ export function useCheckWindow<T>(options: UseCheckWindowOptions<T>): CheckWindo
 // Leaving rows fade (exit), the rows below close the gap (on-screen movement); 200 ms each.
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 const EASE_IN_OUT = Easing.bezier(0.77, 0, 0.175, 1);
-const LEAVE = FadeOut.duration(200).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
+/** Also the folding body of `Disclosure`: fades stay with reduced motion, only movement goes. */
+export const LEAVE = FadeOut.duration(200).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
+export const ARRIVE = FadeIn.duration(200).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
 const CLOSE_GAP = LinearTransition.duration(200).easing(EASE_IN_OUT);
 
 /**

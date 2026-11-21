@@ -138,3 +138,4 @@ export {
 } from './shell';
 export { columnsFor, type GridColumnsOptions } from './grid-columns';
 export { EditableSection, type EditableSectionProps } from './editable-section';
+export { Disclosure, type DisclosureProps } from './disclosure';
