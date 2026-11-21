@@ -20,6 +20,11 @@
 //   rows, rows without `created_at` (local, not yet on the server) count as newest.
 // - A removed creator of an activity (`created_by` null) is simply unknown (undefined).
 // - `pendingSync` is client-only: it is set from the store queue, never stored.
+// - Spec 0012: the packed state of a Packstück (`packed`, `packed_at`, `packed_by`, `pack_seq`) is
+//   read and written to rows for the local view, but a diff never sends it (NEVER_SENT_COLUMNS):
+//   only set_packing_items_packed and restore_packing_items write it. `per_day` of a Reisetasche
+//   is a flag, of a Packliste the quantity per day (`perDay` undefined = fixed). A removed person
+//   (`member_id`, `packed_by` null) is undefined. The four packing tables keep creation order.
 import {
   compareTimestamps,
   normalizeText,
@@ -33,6 +38,10 @@ import {
   type Household,
   type MealPlanEntry,
   type Member,
+  type PackingBag,
+  type PackingBagItem,
+  type PackingItem,
+  type PackingListBag,
   type Recipe,
   type Restaurant,
   type Row,
@@ -369,6 +378,59 @@ const absenceRow = (householdId: string, absence: Absence) =>
     note: absence.note ?? null,
   }));
 
+const packingBagRow = (householdId: string, bag: PackingBag) =>
+  single('packing_bags', householdId, bag, () => ({
+    id: bag.id,
+    household_id: householdId,
+    name: bag.name,
+    member_id: bag.memberId ?? null,
+    sort: bag.sort,
+  }));
+
+const packingBagItemRow = (householdId: string, item: PackingBagItem) =>
+  single('packing_bag_items', householdId, item, () => ({
+    id: item.id,
+    household_id: householdId,
+    bag_id: item.bagId,
+    name: item.name,
+    quantity: item.quantity ?? null,
+    per_day: item.perDay,
+    sort: item.sort,
+  }));
+
+const packingListBagRow = (householdId: string, bag: PackingListBag) =>
+  single('packing_list_bags', householdId, bag, () => ({
+    id: bag.id,
+    household_id: householdId,
+    absence_id: bag.absenceId,
+    bag_id: bag.bagId ?? null,
+    name: bag.name,
+    member_id: bag.memberId ?? null,
+    sort: bag.sort,
+  }));
+
+const packingItemRow = (householdId: string, item: PackingItem) =>
+  single('packing_items', householdId, item, () => ({
+    id: item.id,
+    household_id: householdId,
+    list_bag_id: item.listBagId,
+    name: item.name,
+    quantity: item.quantity ?? null,
+    per_day: item.perDay ?? null,
+    sort: item.sort,
+    packed: item.packed,
+    packed_at: item.packedAt ?? null,
+    packed_by: item.packedBy ?? null,
+    pack_seq: item.packSeq,
+  }));
+
+/** The row of a bag of a packing list as an insert of `apply_changes` takes it. */
+export function packingListBagToRow(householdId: string, bag: PackingListBag): Row {
+  const row = packingListBagRow(householdId, bag).packing_list_bags?.[0];
+  if (!row) throw new Error('packing list bag row missing');
+  return row;
+}
+
 function householdRows(household: Household): HouseholdRows {
   return rowsOf(household.id, household, () => ({
     households: [
@@ -405,6 +467,10 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
     ...data.absences.map((absence) => absenceRow(householdId, absence)),
     ...data.feedback.map((entry) => feedbackRows(householdId, entry)),
+    ...data.packingBags.map((bag) => packingBagRow(householdId, bag)),
+    ...data.packingBagItems.map((item) => packingBagItemRow(householdId, item)),
+    ...data.packingListBags.map((bag) => packingListBagRow(householdId, bag)),
+    ...data.packingItems.map((item) => packingItemRow(householdId, item)),
   ];
   const result: HouseholdRows = {
     households: [],
@@ -427,6 +493,11 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     chores: [],
     chore_events: [],
     absences: [],
+    // Parents before children: the seed inserts in this order (seed-sql.ts).
+    packing_bags: [],
+    packing_bag_items: [],
+    packing_list_bags: [],
+    packing_items: [],
     feedback: [],
     feedback_votes: [],
   };
@@ -753,6 +824,51 @@ function toAbsence(row: Row): Absence {
   };
 }
 
+function toPackingBag(row: Row): PackingBag {
+  const r = row as Cached<'packing_bags'>;
+  return { id: r.id, name: r.name ?? '', memberId: opt(r.member_id), sort: r.sort ?? 0 };
+}
+
+function toPackingBagItem(row: Row): PackingBagItem {
+  const r = row as Cached<'packing_bag_items'>;
+  return {
+    id: r.id,
+    bagId: r.bag_id ?? '',
+    name: r.name ?? '',
+    quantity: opt(r.quantity),
+    perDay: r.per_day === true,
+    sort: r.sort ?? 0,
+  };
+}
+
+function toPackingListBag(row: Row): PackingListBag {
+  const r = row as Cached<'packing_list_bags'>;
+  return {
+    id: r.id,
+    absenceId: r.absence_id ?? '',
+    bagId: opt(r.bag_id),
+    name: r.name ?? '',
+    memberId: opt(r.member_id),
+    sort: r.sort ?? 0,
+  };
+}
+
+function toPackingItem(row: Row): PackingItem {
+  const r = row as Cached<'packing_items'>;
+  return {
+    id: r.id,
+    listBagId: r.list_bag_id ?? '',
+    name: r.name ?? '',
+    quantity: opt(r.quantity),
+    perDay: opt(r.per_day),
+    packed: r.packed === true,
+    packedAt: opt(r.packed_at),
+    packedBy: opt(r.packed_by),
+    packSeq: r.pack_seq ?? 0,
+    sort: r.sort ?? 0,
+  };
+}
+
 function plain<T>(tables: TableRows, table: string, order: Order, build: (row: Row) => T): T[] {
   return rowsOfTable(tables, table, order).map((row) => cached(row, [], () => build(row)));
 }
@@ -874,6 +990,22 @@ export function rowsToHousehold(
     ),
     absences: reuse(previous?.absences, plain(tables, 'absences', 'created', toAbsence)),
     feedback: reuse(previous?.feedback, feedback),
+    packingBags: reuse(
+      previous?.packingBags,
+      plain(tables, 'packing_bags', 'created', toPackingBag),
+    ),
+    packingBagItems: reuse(
+      previous?.packingBagItems,
+      plain(tables, 'packing_bag_items', 'created', toPackingBagItem),
+    ),
+    packingListBags: reuse(
+      previous?.packingListBags,
+      plain(tables, 'packing_list_bags', 'created', toPackingListBag),
+    ),
+    packingItems: reuse(
+      previous?.packingItems,
+      plain(tables, 'packing_items', 'created', toPackingItem),
+    ),
   };
   if (
     previous &&

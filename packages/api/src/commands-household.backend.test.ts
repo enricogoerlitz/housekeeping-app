@@ -19,6 +19,9 @@ import {
   toggleFeedbackVote,
 } from './commands-household';
 import { updateArticle } from './commands-articles';
+import { setPacked } from './commands-packing';
+import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
+import { TransportError } from './transport';
 import { ENRICO, NADJA } from './seed/demo';
 import { getData, getState, OfflineError, snapshot } from './store';
 
@@ -28,8 +31,11 @@ describe('diff path', () => {
   it('AC-013: an absence added here reaches the other device; undo of removing it re-inserts', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
+    const seeded = getData().absences.map((absence) => absence.id);
+    const ids = (absences: { id: string }[]) =>
+      absences.map((absence) => absence.id).filter((id) => !seeded.includes(id));
     saveAbsences({ replaceIds: [], memberIds: [NADJA], from: '2026-12-01', to: '2026-12-03' });
-    const id = getData().absences[0]?.id;
+    const [id] = ids(getData().absences);
     if (!id) throw new Error('no absence');
     await fx.settle(nadja);
     expect(fx.calls).toEqual([
@@ -47,24 +53,24 @@ describe('diff path', () => {
         ],
       },
     ]);
-    expect(fx.nadjaData(nadja).absences.map((absence) => absence.id)).toEqual([id]);
+    expect(ids(fx.nadjaData(nadja).absences)).toEqual([id]);
 
     fx.clearCalls();
     const restore = snapshot();
     removeAbsences([id]);
-    expect(getData().absences).toEqual([]);
+    expect(ids(getData().absences)).toEqual([]);
     await fx.settle(nadja);
     expect(fx.calls[0]?.args[1]).toEqual([{ kind: 'delete', table: 'absences', id }]);
-    expect(fx.nadjaData(nadja).absences).toEqual([]);
+    expect(ids(fx.nadjaData(nadja).absences)).toEqual([]);
 
     restore();
-    expect(getData().absences.map((absence) => absence.id)).toEqual([id]);
+    expect(ids(getData().absences)).toEqual([id]);
     await fx.settle(nadja);
     expect(fx.calls[1]?.args[1]).toEqual([
       expect.objectContaining({ kind: 'insert', table: 'absences', row: expect.anything() }),
     ]);
     expect(fx.server.row(H, 'absences', id)).toBeDefined();
-    expect(fx.nadjaData(nadja).absences.map((absence) => absence.id)).toEqual([id]);
+    expect(ids(fx.nadjaData(nadja).absences)).toEqual([id]);
   });
 
   it('feedback and article changes are one apply_changes call each', async () => {
@@ -250,7 +256,7 @@ describe('absences (spec 0010, REQ-010)', () => {
     expect(ours().map((absence) => absence.memberId)).toEqual([NADJA]);
   });
 
-  it('AC-036: editing replaces the rows of the stripe in one change', () => {
+  it('AC-036: editing replaces the rows of the stripe in one change (spec 0012: the row stays)', () => {
     saveAbsences({ replaceIds: [], memberIds: [ENRICO], ...mallorca });
     const [enricos] = ours();
     saveAbsences({
@@ -262,7 +268,7 @@ describe('absences (spec 0010, REQ-010)', () => {
     expect(ours()).toEqual([
       expect.objectContaining({ memberId: undefined, from: '2027-01-01', to: '2027-01-05' }),
     ]);
-    expect(getData().absences.some((absence) => absence.id === enricos?.id)).toBe(false);
+    expect(ours().map((absence) => absence.id)).toEqual([enricos?.id]);
   });
 
   it('AC-035, AC-044: "Bis" before "Von" or nobody chosen writes nothing; one day is fine', () => {
@@ -294,5 +300,198 @@ describe('absences (spec 0010, REQ-010)', () => {
     removeAbsences([first?.id ?? '']);
     expect(getData().absences).toHaveLength(count - 1);
     expect(ours()).toHaveLength(1);
+  });
+});
+
+describe('absences with a packing list (spec 0012, REQ-002, REQ-008)', () => {
+  const trip = { from: '2027-01-01', to: '2027-01-07', note: 'Sommer' };
+  const bagId = (name: string) => {
+    const found = getData().packingBags.find((bag) => bag.name === name);
+    if (!found) throw new Error(`fixture: ${name}`);
+    return found.id;
+  };
+  const listOf = (absenceId: string) => {
+    const listBags = getData().packingListBags.filter((bag) => bag.absenceId === absenceId);
+    const items = getData().packingItems.filter((item) =>
+      listBags.some((bag) => bag.id === item.listBagId),
+    );
+    return { listBags, items };
+  };
+
+  it('AC-011: Strand and Kulturbeutel at a household absence: 21 Packstücke in one call, T-Shirts 7×', async () => {
+    await fx.startEnrico();
+    const [id] = saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO, NADJA],
+      ...trip,
+      bagIds: [bagId('Strand'), bagId('Kulturbeutel')],
+    });
+    if (!id) throw new Error('no absence');
+    const { listBags, items } = listOf(id);
+    expect(listBags.map((bag) => [bag.name, bag.memberId])).toEqual([
+      ['Strand', undefined],
+      ['Kulturbeutel', NADJA],
+    ]);
+    expect(items).toHaveLength(21);
+    expect(items.find((item) => item.name === 'T-Shirts')?.quantity).toBe(7);
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(fx.server.rows(H, 'packing_list_bags').filter((r) => r.absence_id === id)).toHaveLength(
+      2,
+    );
+    expect(
+      fx.server
+        .rows(H, 'packing_items')
+        .find(
+          (row) =>
+            row.name === 'T-Shirts' &&
+            row.quantity === 7 &&
+            listBags.some((bag) => bag.id === row.list_bag_id),
+        ),
+    ).toBeDefined();
+  });
+
+  it('AC-012: without a chosen bag there is no packing list', async () => {
+    await fx.startEnrico();
+    const [id] = saveAbsences({ replaceIds: [], memberIds: [ENRICO], ...trip, bagIds: [] });
+    expect(listOf(id ?? '').listBags).toEqual([]);
+  });
+
+  it('AC-014: two separate absences get their own list: T-Shirts 4× and 7×', async () => {
+    await fx.startEnrico();
+    const [enricos] = saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO],
+      ...trip,
+      to: '2027-01-04',
+      bagIds: [bagId('Strand')],
+    });
+    const [nadjas] = saveAbsences({
+      replaceIds: [],
+      memberIds: [NADJA],
+      ...trip,
+      bagIds: [bagId('Strand')],
+    });
+    const tshirts = (absenceId: string | undefined) =>
+      listOf(absenceId ?? '').items.find((item) => item.name === 'T-Shirts')?.quantity;
+    expect([tshirts(enricos), tshirts(nadjas)]).toEqual([4, 7]);
+  });
+
+  it('AC-015: refused by the server: neither absence nor packing list, and the hint', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const before = getData().packingItems.length;
+    fx.server.failNext('apply_changes', new TransportError('permanent', '23514', 400));
+    const [id] = saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO, NADJA],
+      ...trip,
+      bagIds: [bagId('Strand')],
+    });
+    await fx.settle();
+    expect(getData().absences.some((absence) => absence.id === id)).toBe(false);
+    expect(getData().packingItems).toHaveLength(before);
+    expect(fx.server.row(H, 'absences', id ?? '')).toBeUndefined();
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    stop();
+  });
+
+  it('AC-037: a shorter absence shows open "je Tag" at once as 5×, packed ones stay 7×', async () => {
+    const engine = await fx.startEnrico();
+    const [id] = saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO, NADJA],
+      ...trip,
+      bagIds: [bagId('Wintersport')],
+    });
+    await fx.settle(engine);
+    const socks = listOf(id ?? '').items.find((item) => item.name === 'Socken');
+    if (!socks || !id) throw new Error('fixture');
+    setPacked(socks.id, true);
+    await fx.settle(engine);
+    fx.clearCalls();
+    saveAbsences({ replaceIds: [id], memberIds: [ENRICO, NADJA], ...trip, to: '2027-01-05' });
+    const quantity = (name: string) =>
+      listOf(id).items.find((item) => item.name === name)?.quantity;
+    expect([quantity('Skiunterwäsche'), quantity('Socken'), quantity('Handschuhe')]).toEqual([
+      5, 7, 2,
+    ]);
+    await fx.settle(engine);
+    expect(fx.calls).toEqual([
+      {
+        fn: 'applyChanges',
+        args: [H, [{ kind: 'patch', table: 'absences', id, changes: { to_on: '2027-01-05' } }]],
+      },
+    ]);
+    expect([quantity('Skiunterwäsche'), quantity('Socken')]).toEqual([5, 7]);
+  });
+
+  it('AC-039: changing the people keeps the absence and its packing list with what is packed', async () => {
+    const engine = await fx.startEnrico();
+    const [id] = saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO],
+      ...trip,
+      bagIds: [bagId('Strand'), bagId('Kulturbeutel')],
+    });
+    await fx.settle(engine);
+    if (!id) throw new Error('fixture');
+    const items = listOf(id).items.slice(0, 5);
+    for (const item of items) setPacked(item.id, true);
+    await fx.settle(engine);
+
+    expect(saveAbsences({ replaceIds: [id], memberIds: [ENRICO, NADJA], ...trip })).toEqual([id]);
+    await fx.settle(engine);
+    expect(getData().absences.find((absence) => absence.id === id)?.memberId).toBeUndefined();
+    expect(listOf(id).items).toHaveLength(21);
+    expect(listOf(id).items.filter((item) => item.packed)).toHaveLength(5);
+
+    expect(saveAbsences({ replaceIds: [id], memberIds: [NADJA], ...trip })).toEqual([id]);
+    await fx.settle(engine);
+    expect(fx.server.row(H, 'absences', id)).toMatchObject({ member_id: NADJA });
+    expect(listOf(id).items.filter((item) => item.packed)).toHaveLength(5);
+  });
+
+  it('decision 8: two rows becoming one move their bags along before the removal; same bag kept apart', async () => {
+    const engine = await fx.startEnrico();
+    const [enricos] = saveAbsences({
+      replaceIds: [],
+      memberIds: [ENRICO],
+      ...trip,
+      bagIds: [bagId('Strand')],
+    });
+    const [nadjas] = saveAbsences({
+      replaceIds: [],
+      memberIds: [NADJA],
+      ...trip,
+      bagIds: [bagId('Strand'), bagId('Kulturbeutel')],
+    });
+    await fx.settle(engine);
+    if (!enricos || !nadjas) throw new Error('fixture');
+    fx.clearCalls();
+    const written = saveAbsences({
+      replaceIds: [enricos, nadjas],
+      memberIds: [ENRICO, NADJA],
+      ...trip,
+    });
+    expect(written).toHaveLength(1);
+    const [kept] = written;
+    await fx.settle(engine);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    const ops = (fx.calls[0]?.args[1] ?? []) as { kind: string; table: string }[];
+    expect(ops.map((op) => `${op.kind} ${op.table}`)).toEqual([
+      'patch absences',
+      'patch packing_list_bags',
+      'patch packing_list_bags',
+      'delete absences',
+    ]);
+    const { listBags, items } = listOf(kept ?? '');
+    expect(listBags.map((bag) => bag.name).sort()).toEqual(['Kulturbeutel', 'Strand', 'Strand']);
+    expect(listBags.filter((bag) => bag.bagId === bagId('Strand'))).toHaveLength(1);
+    expect(items).toHaveLength(12 + 12 + 9);
+    expect(
+      fx.server.rows(H, 'packing_list_bags').filter((r) => r.absence_id === kept),
+    ).toHaveLength(3);
   });
 });

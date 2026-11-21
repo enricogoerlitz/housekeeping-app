@@ -1,5 +1,8 @@
 import {
+  absenceDays,
+  addDays,
   normalizeText,
+  orderedBags,
   recipeFitsPreference,
   searchArticles,
   summarizeItem,
@@ -16,6 +19,7 @@ import {
   buildRecipe,
   createInitialState,
   DEMO_HOUSEHOLD_ID,
+  NADJA,
   SLOT_MORNING,
   TEST_HOUSEHOLD_ID,
 } from './demo';
@@ -167,5 +171,69 @@ describe('starter catalog (AC-013)', () => {
       }
     }
     expect(clashes).toEqual([]);
+  });
+});
+
+describe('spec 0012: Reisetaschen and the packing list of "Urlaub Mallorca"', () => {
+  const bag = (name: string) => {
+    const found = getData().packingBags.find((candidate) => candidate.name === name);
+    if (!found) throw new Error(`Reisetasche ${name} missing`);
+    return found;
+  };
+  const itemsOf = (bagId: string) =>
+    getData().packingBagItems.filter((item) => item.bagId === bagId);
+
+  it('AC-001: Strand (12, with "T-Shirts · 1 je Tag"), Wintersport (18), Kulturbeutel (9, Nadja), Technik (6)', () => {
+    expect(orderedBags(getData().packingBags).map((candidate) => candidate.name)).toEqual([
+      'Strand',
+      'Wintersport',
+      'Kulturbeutel',
+      'Technik',
+    ]);
+    expect(itemsOf(bag('Strand').id)).toHaveLength(12);
+    expect(itemsOf(bag('Wintersport').id)).toHaveLength(18);
+    expect(itemsOf(bag('Kulturbeutel').id)).toHaveLength(9);
+    expect(itemsOf(bag('Technik').id)).toHaveLength(6);
+    expect(bag('Kulturbeutel').memberId).toBe(NADJA);
+    expect(itemsOf(bag('Strand').id).find((item) => item.name === 'T-Shirts')).toMatchObject({
+      quantity: 1,
+      perDay: true,
+    });
+    // AC-005: "Sonnencreme" is in Wintersport, not yet in Strand.
+    expect(itemsOf(bag('Wintersport').id).some((item) => item.name === 'Sonnencreme')).toBe(true);
+    expect(itemsOf(bag('Strand').id).some((item) => item.name === 'Sonnencreme')).toBe(false);
+  });
+
+  it('"Urlaub Mallorca" (whole household, in 12 days, 7 days) has Strand and Kulturbeutel, some packed', () => {
+    const mallorca = getData().absences.find((absence) => absence.note === 'Urlaub Mallorca');
+    if (!mallorca) throw new Error('Urlaub Mallorca missing');
+    expect(mallorca.memberId).toBeUndefined();
+    expect(mallorca.from).toBe(addDays(TODAY, 12));
+    expect(absenceDays(mallorca.from, mallorca.to)).toBe(7);
+    const listBags = getData().packingListBags.filter((lb) => lb.absenceId === mallorca.id);
+    expect(listBags.map((lb) => [lb.name, lb.bagId, lb.memberId])).toEqual([
+      ['Strand', bag('Strand').id, undefined],
+      ['Kulturbeutel', bag('Kulturbeutel').id, NADJA],
+    ]);
+    const items = getData().packingItems.filter((item) =>
+      listBags.some((lb) => lb.id === item.listBagId),
+    );
+    expect(items).toHaveLength(21);
+    expect(items.find((item) => item.name === 'T-Shirts')).toMatchObject({
+      quantity: 7,
+      perDay: 1,
+    });
+    const packed = items.filter((item) => item.packed);
+    expect(packed.length).toBeGreaterThan(0);
+    expect(packed.every((item) => item.packSeq === 1 && item.packedBy && item.packedAt)).toBe(true);
+    expect(items.filter((item) => !item.packed).every((item) => item.packSeq === 0)).toBe(true);
+  });
+
+  it('"Dienstreise Hamburg" (Nadja) has no packing list; the household "Test" has no bags (AC-002)', () => {
+    const hamburg = getData().absences.find((absence) => absence.note === 'Dienstreise Hamburg');
+    expect(hamburg?.memberId).toBe(NADJA);
+    expect(getData().packingListBags.some((lb) => lb.absenceId === hamburg?.id)).toBe(false);
+    expect(testHousehold().packingBags).toEqual([]);
+    expect(testHousehold().absences).toEqual([]);
   });
 });

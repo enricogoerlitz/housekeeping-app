@@ -172,6 +172,25 @@ describe('supabase transport', () => {
     ]);
   });
 
+  it('spec 0012: set_packing_items_packed with its parameters; a malformed answer is refused', async () => {
+    const { client, calls } = stubClient([
+      ok([{ item_id: 'p1', packed: true, pack_seq: 1 }]),
+      ok([{ item_id: 'p1', packed: 'ja', pack_seq: 1 }]),
+    ]);
+    const transport = createSupabaseTransport(client);
+    const changes = [{ item_id: 'p1', packed: true, seen_pack_seq: 0 }];
+    expect(await transport.setPackingItemsPacked('h1', changes)).toEqual([
+      { item_id: 'p1', packed: true, pack_seq: 1 },
+    ]);
+    await expect(transport.setPackingItemsPacked('h1', changes)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(calls).toEqual([
+      { fn: 'set_packing_items_packed', args: { p_household_id: 'h1', p_changes: changes } },
+      { fn: 'set_packing_items_packed', args: { p_household_id: 'h1', p_changes: changes } },
+    ]);
+  });
+
   it('spec 0006: adjust_item_count and clear_shopping_list with their parameters and answers', async () => {
     const removed = {
       item_id: 'i1',

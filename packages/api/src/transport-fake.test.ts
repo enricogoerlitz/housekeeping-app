@@ -1872,3 +1872,331 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
     });
   });
 });
+
+describe('fake server: packing (spec 0012, like the database)', () => {
+  const FOREIGN = 'h-2';
+  /** A seven-day absence with one bag: an open, a packed (pack_seq 3) and a "je Tag" Packstück. */
+  function seedPacking() {
+    server.addHousehold({ id: FOREIGN, name: 'Fremd' }, [STRANGER]);
+    server.insertRows(H, {
+      absences: [{ id: 'abs-1', member_id: null, from_on: '2027-01-01', to_on: '2027-01-07' }],
+      packing_bags: [{ id: 'bag-strand', name: 'Strand', member_id: null, sort: 0 }],
+      packing_bag_items: [
+        {
+          id: 'bi-1',
+          bag_id: 'bag-strand',
+          name: 'Badehose',
+          quantity: 2,
+          per_day: false,
+          sort: 0,
+        },
+      ],
+      packing_list_bags: [
+        { id: 'lb-1', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
+      ],
+      packing_items: [
+        { id: 'p-open', list_bag_id: 'lb-1', name: 'Badehose', quantity: 2, sort: 0 },
+        {
+          id: 'p-packed',
+          list_bag_id: 'lb-1',
+          name: 'Sonnenbrille',
+          sort: 1,
+          packed: true,
+          packed_at: '2026-11-19T10:00:00.000Z',
+          packed_by: NADJA,
+          pack_seq: 3,
+        },
+        { id: 'p-day', list_bag_id: 'lb-1', name: 'T-Shirts', quantity: 7, per_day: 1, sort: 2 },
+      ],
+    });
+    server.insertRows(FOREIGN, {
+      absences: [{ id: 'abs-x', member_id: null, from_on: '2027-01-01', to_on: '2027-01-02' }],
+      packing_list_bags: [{ id: 'lb-x', absence_id: 'abs-x', bag_id: null, name: 'X', sort: 0 }],
+      packing_items: [{ id: 'p-x', list_bag_id: 'lb-x', name: 'Fremd', sort: 0 }],
+    });
+  }
+  const change = (item_id: string, packed: boolean, seen_pack_seq = 0) => ({
+    item_id,
+    packed,
+    seen_pack_seq,
+  });
+  const state = (id: string) => {
+    const row = server.row(H, 'packing_items', id);
+    return (
+      row && {
+        packed: row.packed,
+        pack_seq: row.pack_seq,
+        packed_by: row.packed_by ?? null,
+        packed_at: row.packed_at ?? null,
+      }
+    );
+  };
+
+  beforeEach(seedPacking);
+
+  it('ADR-0013 rule table, like packing_rpcs.test.sql', async () => {
+    const enrico = server.transport(ENRICO);
+    // not packed + pack → packed (pack_seq + 1, packed_by, packed_at)
+    expect(await enrico.setPackingItemsPacked(H, [change('p-open', true)])).toEqual([
+      { item_id: 'p-open', packed: true, pack_seq: 1 },
+    ]);
+    expect(state('p-open')).toMatchObject({ packed: true, pack_seq: 1, packed_by: ENRICO });
+    expect(state('p-open')?.packed_at).toEqual(expect.any(String));
+    // packed + pack → unchanged
+    expect(await enrico.setPackingItemsPacked(H, [change('p-packed', true, 0)])).toEqual([
+      { item_id: 'p-packed', packed: true, pack_seq: 3 },
+    ]);
+    expect(state('p-packed')?.packed_by).toBe(NADJA);
+    // packed + unpack with another seq → stays packed ("Abhaken gewinnt", AC-023)
+    expect(await enrico.setPackingItemsPacked(H, [change('p-packed', false, 2)])).toEqual([
+      { item_id: 'p-packed', packed: true, pack_seq: 3 },
+    ]);
+    // packed + unpack with the seq seen → not packed
+    expect(await enrico.setPackingItemsPacked(H, [change('p-packed', false, 3)])).toEqual([
+      { item_id: 'p-packed', packed: false, pack_seq: 4 },
+    ]);
+    expect(state('p-packed')).toEqual({
+      packed: false,
+      pack_seq: 4,
+      packed_by: null,
+      packed_at: null,
+    });
+    // not packed + unpack → unchanged
+    expect(await enrico.setPackingItemsPacked(H, [change('p-packed', false, 4)])).toEqual([
+      { item_id: 'p-packed', packed: false, pack_seq: 4 },
+    ]);
+  });
+
+  it('AC-026 / AC-030: one call for a run; missing and foreign ids are skipped (AC-024, AC-040, AC-025)', async () => {
+    const enrico = server.transport(ENRICO);
+    const answer = await enrico.setPackingItemsPacked(H, [
+      change('p-day', true),
+      change('p-gone', true),
+      change('p-x', true),
+      change('p-packed', false, 1),
+    ]);
+    expect(answer).toEqual([
+      { item_id: 'p-day', packed: true, pack_seq: 1 },
+      { item_id: 'p-packed', packed: true, pack_seq: 3 },
+    ]);
+    expect(server.row(FOREIGN, 'packing_items', 'p-x')).toMatchObject({ packed: false });
+  });
+
+  it('AC-025: a foreign household is not_member; bad input is invalid_change / too_many_changes', async () => {
+    const enrico = server.transport(ENRICO);
+    await expect(
+      enrico.setPackingItemsPacked(FOREIGN, [change('p-x', true)]),
+    ).rejects.toMatchObject({ code: 'not_member' });
+    const refused = (changes: unknown) =>
+      expect(
+        enrico.setPackingItemsPacked(H, changes as ReturnType<typeof change>[]),
+      ).rejects.toMatchObject({ code: 'invalid_change' });
+    await refused([]);
+    await refused([{ ...change('p-open', true), name: 'x' }]);
+    await refused([{ item_id: 'p-open', packed: true }]);
+    await refused([{ ...change('p-open', true), packed: 'true' }]);
+    await refused([change('p-open', true, -1)]);
+    await refused([change('p-open', true, 1.5)]);
+    await refused([change('p-open', true), change('p-open', false)]);
+    await expect(
+      enrico.setPackingItemsPacked(
+        H,
+        Array.from({ length: 201 }, (_, index) => change(`p-${index}`, true)),
+      ),
+    ).rejects.toMatchObject({ code: 'too_many_changes' });
+    expect(state('p-open')).toMatchObject({ packed: false, pack_seq: 0 });
+  });
+
+  it('inserts start open; "je Tag" is computed from the absence; no patch of packing items', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [
+      {
+        kind: 'insert',
+        table: 'packing_items',
+        row: { id: 'p-new', list_bag_id: 'lb-1', name: 'Socken', quantity: 1, per_day: 2, sort: 3 },
+      },
+    ]);
+    expect(server.row(H, 'packing_items', 'p-new')).toMatchObject({
+      quantity: 14,
+      packed: false,
+      pack_seq: 0,
+    });
+    for (const op of [
+      {
+        kind: 'insert',
+        table: 'packing_items',
+        row: { id: 'p-cheat', list_bag_id: 'lb-1', name: 'X', sort: 0, packed: true },
+      },
+      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { name: 'Neu' } },
+      { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { name: 'Neu' } },
+    ] as RowOp[]) {
+      await expect(enrico.applyChanges(H, [op])).rejects.toMatchObject({ code: 'invalid_change' });
+    }
+  });
+
+  it('AC-037: changing the duration recalculates open "je Tag" items, packed ones keep theirs', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.setPackingItemsPacked(H, [change('p-day', true)]);
+    await enrico.applyChanges(H, [
+      {
+        kind: 'insert',
+        table: 'packing_items',
+        row: {
+          id: 'p-day2',
+          list_bag_id: 'lb-1',
+          name: 'Socken',
+          quantity: 7,
+          per_day: 1,
+          sort: 4,
+        },
+      },
+      { kind: 'patch', table: 'absences', id: 'abs-1', changes: { to_on: '2027-01-05' } },
+    ]);
+    expect(server.row(H, 'packing_items', 'p-day2')?.quantity).toBe(5);
+    expect(server.row(H, 'packing_items', 'p-day')?.quantity).toBe(7);
+    expect(server.row(H, 'packing_items', 'p-open')?.quantity).toBe(2);
+    // A bag moving to another absence follows its duration.
+    await enrico.applyChanges(H, [
+      {
+        kind: 'insert',
+        table: 'absences',
+        row: { id: 'abs-2', member_id: NADJA, from_on: '2027-02-01', to_on: '2027-02-03' },
+      },
+      { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { absence_id: 'abs-2' } },
+    ]);
+    expect(server.row(H, 'packing_items', 'p-day2')?.quantity).toBe(3);
+    // 365 days × 99 is capped at 9999.
+    await enrico.applyChanges(H, [
+      { kind: 'patch', table: 'absences', id: 'abs-2', changes: { to_on: '2028-01-31' } },
+      {
+        kind: 'insert',
+        table: 'packing_items',
+        row: { id: 'p-max', list_bag_id: 'lb-1', name: 'Viel', quantity: 99, per_day: 99, sort: 5 },
+      },
+    ]);
+    expect(server.row(H, 'packing_items', 'p-max')?.quantity).toBe(9999);
+  });
+
+  it('AC-038 / AC-009: cascades and set null leave tombstones; bag names are unique', async () => {
+    const enrico = server.transport(ENRICO);
+    await expect(
+      enrico.applyChanges(H, [
+        { kind: 'insert', table: 'packing_bags', row: { id: 'bag-2', name: 'strand', sort: 1 } },
+      ]),
+    ).rejects.toMatchObject({ code: '23505' });
+    await expect(
+      enrico.applyChanges(H, [
+        {
+          kind: 'insert',
+          table: 'packing_list_bags',
+          row: { id: 'lb-2', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 1 },
+        },
+      ]),
+    ).rejects.toMatchObject({ code: '23505' });
+    await expect(
+      enrico.applyChanges(H, [
+        {
+          kind: 'insert',
+          table: 'packing_list_bags',
+          row: { id: 'lb-3', absence_id: 'abs-x', name: 'Fremd', sort: 1 },
+        },
+      ]),
+    ).rejects.toMatchObject({ code: '23503' });
+    await expect(
+      enrico.applyChanges(H, [
+        {
+          kind: 'insert',
+          table: 'packing_bags',
+          row: { id: 'bag-3', name: 'Für Fremde', member_id: STRANGER, sort: 1 },
+        },
+      ]),
+    ).rejects.toMatchObject({ code: '23503' });
+
+    await enrico.applyChanges(H, [{ kind: 'delete', table: 'packing_bags', id: 'bag-strand' }]);
+    expect(server.row(H, 'packing_bag_items', 'bi-1')).toBeUndefined();
+    expect(server.row(H, 'packing_list_bags', 'lb-1')).toMatchObject({ bag_id: null });
+    expect(server.rows(H, 'packing_items')).toHaveLength(3);
+
+    await enrico.applyChanges(H, [{ kind: 'delete', table: 'absences', id: 'abs-1' }]);
+    expect(server.rows(H, 'packing_list_bags')).toEqual([]);
+    expect(server.rows(H, 'packing_items')).toEqual([]);
+    const pulled = await enrico.syncPull({ households: { [H]: { full: false, since: {} } } });
+    const tombstones = pulled.households[H]?.tombstones.map((t) => `${t.table}:${t.id}`) ?? [];
+    expect(tombstones).toEqual(
+      expect.arrayContaining([
+        'packing_bags:bag-strand',
+        'packing_bag_items:bi-1',
+        'packing_list_bags:lb-1',
+        'packing_items:p-open',
+        'packing_items:p-packed',
+        'packing_items:p-day',
+      ]),
+    );
+  });
+
+  it('AC-034 / AC-035: restore_packing_items brings back the packed state, bounded', async () => {
+    const enrico = server.transport(ENRICO);
+    await enrico.applyChanges(H, [{ kind: 'delete', table: 'packing_list_bags', id: 'lb-1' }]);
+    const result = await enrico.applyChanges(H, [
+      {
+        kind: 'insert',
+        table: 'packing_list_bags',
+        row: { id: 'lb-1', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
+      },
+      {
+        kind: 'restore_packing_items',
+        items: [
+          {
+            id: 'p-packed',
+            list_bag_id: 'lb-1',
+            name: 'Sonnenbrille',
+            sort: 1,
+            packed: true,
+            packed_at: '2030-01-01T00:00:00.000Z',
+            packed_by: NADJA,
+            pack_seq: 2_000_000,
+          },
+          { id: 'p-day', list_bag_id: 'lb-1', name: 'T-Shirts', quantity: 1, per_day: 1, sort: 2 },
+        ],
+      },
+    ]);
+    expect(result.results[0]).toEqual({ restored: 2 });
+    expect(state('p-packed')).toMatchObject({ packed: true, packed_by: NADJA, pack_seq: 999_000 });
+    expect(Date.parse(String(state('p-packed')?.packed_at))).toBeLessThanOrEqual(Date.now());
+    expect(server.row(H, 'packing_items', 'p-day')).toMatchObject({ quantity: 7, packed: false });
+
+    await expect(
+      enrico.applyChanges(H, [
+        {
+          kind: 'restore_packing_items',
+          items: [{ id: 'p-y', list_bag_id: 'lb-1', name: 'Y', packed: true, packed_by: STRANGER }],
+        },
+      ]),
+    ).rejects.toMatchObject({ code: '23503' });
+    await expect(
+      enrico.applyChanges(H, [
+        {
+          kind: 'restore_packing_items',
+          items: [{ id: 'p-packed', list_bag_id: 'lb-1', name: 'Y' }],
+        },
+      ]),
+    ).rejects.toMatchObject({ code: '23505' });
+    await expect(
+      enrico.applyChanges(H, [
+        {
+          kind: 'restore_packing_items',
+          items: Array.from({ length: 201 }, (_, index) => ({
+            id: `p-r${index}`,
+            list_bag_id: 'lb-1',
+            name: 'R',
+          })),
+        },
+      ]),
+    ).rejects.toMatchObject({ code: 'too_many_changes' });
+  });
+
+  it('removing a member clears "für" and "gepackt von"', async () => {
+    await server.transport(ENRICO).removeMember(H, NADJA);
+    expect(server.row(H, 'packing_items', 'p-packed')).toMatchObject({ packed_by: null });
+  });
+});

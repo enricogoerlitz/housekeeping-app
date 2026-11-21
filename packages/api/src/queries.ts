@@ -4,10 +4,14 @@ import {
   type Article,
   type Id,
   type Member,
+  type PackingItem,
+  type PackingListBag,
   type Recipe,
   type Restaurant,
   type Store,
 } from '@housekeeping/core';
+
+import { useMemo } from 'react';
 
 import { useAppSelector, useDataSelector } from './store';
 
@@ -36,6 +40,34 @@ export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
 export const useAbsences = () => useDataSelector((data) => data.absences);
 export const useFeedback = () => useDataSelector((data) => data.feedback);
+/** Spec 0012: Reisetaschen and their Packstücke in creation order (core orderedBags, bagItemsOf). */
+export const usePackingBags = () => useDataSelector((data) => data.packingBags);
+export const usePackingBagItems = () => useDataSelector((data) => data.packingBagItems);
+/** Every bag of a packing list and every Packstück of the household (calendar, Übersicht). */
+export const usePackingListBags = () => useDataSelector((data) => data.packingListBags);
+export const usePackingItems = () => useDataSelector((data) => data.packingItems);
+
+export interface PackingList {
+  listBags: PackingListBag[];
+  items: PackingItem[];
+}
+
+/**
+ * The packing list of these absences (the absences of one Urlaubsseite): their bags and those
+ * bags' Packstücke, in creation order; order them with core packingSections. Recomputed only
+ * when the ids or the packing rows change.
+ */
+export function usePackingList(absenceIds: readonly Id[]): PackingList {
+  const listBags = usePackingListBags();
+  const items = usePackingItems();
+  const key = absenceIds.join(',');
+  return useMemo(() => {
+    const ids = new Set(key.split(','));
+    const own = listBags.filter((bag) => ids.has(bag.absenceId));
+    const bagIds = new Set(own.map((bag) => bag.id));
+    return { listBags: own, items: items.filter((item) => bagIds.has(item.listBagId)) };
+  }, [key, listBags, items]);
+}
 
 /**
  * The store "Einkaufen" sorts for (spec 0006, D26): the one chosen on this device, else the

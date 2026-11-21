@@ -19,6 +19,10 @@ export const ID_TABLES = [
   'meal_plan_entries',
   'shopping_items',
   'shopping_contributions',
+  'packing_bags',
+  'packing_bag_items',
+  'packing_list_bags',
+  'packing_items',
 ] as const;
 
 /**
@@ -138,9 +142,55 @@ export const WRITABLE_COLUMNS = {
   shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
   households: ['name', 'meal_slots', 'default_store_id'],
+  // Spec 0012: the packed state (packed, packed_at, packed_by, pack_seq) is never here; it goes
+  // through set_packing_items_packed and restore_packing_items.
+  packing_bags: ['name', 'member_id', 'sort'],
+  packing_bag_items: ['bag_id', 'name', 'quantity', 'per_day', 'sort'],
+  packing_list_bags: ['absence_id', 'bag_id', 'name', 'member_id', 'sort'],
+  packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort'],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 
 export type WritableTable = keyof typeof WRITABLE_COLUMNS;
+
+/**
+ * Tables whose patch allowlist is narrower than their insert columns (spec 0012): a bag of a
+ * packing list keeps its name and person as a copy, a Packstück of a packing list is never patched
+ * (only its "je Tag" quantity changes, by the server, see DERIVED_COLUMNS).
+ */
+export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = {
+  packing_list_bags: ['absence_id', 'bag_id', 'sort'],
+  packing_items: [],
+};
+
+/**
+ * Columns the server computes itself after another change (spec 0012, decision 3: "je Tag" after
+ * a change of the duration or of the absence of a bag). A diff shows the new value at once but
+ * never sends a patch of them.
+ */
+export const DERIVED_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = {
+  packing_items: ['quantity'],
+};
+
+/** A reference to a parent row that the database follows on delete. */
+export interface ChildReference {
+  table: WritableTable;
+  column: string;
+}
+
+/**
+ * `on delete cascade` (spec 0012, decision 7): deleting the parent deletes these children, each
+ * with its tombstone, so a diff sends only the parent's delete. The fake server cascades the same.
+ */
+export const CASCADE_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
+  absences: [{ table: 'packing_list_bags', column: 'absence_id' }],
+  packing_list_bags: [{ table: 'packing_items', column: 'list_bag_id' }],
+  packing_bags: [{ table: 'packing_bag_items', column: 'bag_id' }],
+};
+
+/** `on delete set null`: deleting the parent clears the reference; the diff does not send it. */
+export const SET_NULL_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
+  packing_bags: [{ table: 'packing_list_bags', column: 'bag_id' }],
+};
 
 /**
  * Tables `apply_changes` never inserts into (allowlist `insert: []`): the household comes from

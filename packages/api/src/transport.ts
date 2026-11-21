@@ -152,13 +152,44 @@ export interface ChoreCompletion {
   next_assignee_id?: string | null;
 }
 
+/**
+ * One Packstück as restore_packing_items puts it back (spec 0012, "Rückgängig" after removing):
+ * with its packed state, which only the server writes. The server bounds the values.
+ */
+export interface RestorePackingItem {
+  id: string;
+  list_bag_id: string;
+  name: string;
+  quantity?: number | null;
+  per_day?: number | null;
+  sort?: number;
+  packed?: boolean;
+  packed_at?: string | null;
+  packed_by?: string | null;
+  pack_seq?: number;
+}
+
 /** A row operation, or one of the domain operations `apply_changes` allows. */
 export type ChangeOp =
   | RowOp
   | { kind: 'add_contributions'; entries: AddEntry[] }
   | { kind: 'remove_contributions'; ids: string[] }
   | { kind: 'complete_chore'; completion: ChoreCompletion }
-  | { kind: 'remove_chore_event'; id: string };
+  | { kind: 'remove_chore_event'; id: string }
+  | { kind: 'restore_packing_items'; items: RestorePackingItem[] };
+
+/** One change of set_packing_items_packed (ADR-0013). */
+export interface PackChange {
+  item_id: string;
+  packed: boolean;
+  seen_pack_seq: number;
+}
+
+/** The answer of set_packing_items_packed: the found Packstücke; missing ones are left out. */
+export const PackResultSchema = z.array(
+  z.object({ item_id: z.string(), packed: z.boolean(), pack_seq: z.number() }),
+);
+export type PackResult = z.infer<typeof PackResultSchema>;
 
 /** already_done (spec 0011, AC-031): who booked the chore that day, and when. */
 export const AlreadyDoneDetailSchema = z.object({ done_by: z.string(), done_at: z.string() });
@@ -267,6 +298,11 @@ export interface Transport {
   /** Puts entries on the household's shopping list; `not_member` for a foreign household. */
   addShoppingContributions(householdId: string, entries: readonly AddEntry[]): Promise<AddResult>;
   assignArticleArea(articleId: string, areaId: string | null): Promise<AssignAreaResult>;
+  /**
+   * Packs and unpacks Packstücke of the household in one transaction ("Abhaken gewinnt" via
+   * pack_seq, ADR-0013); 1–200 changes. `not_member` for a foreign household.
+   */
+  setPackingItemsPacked(householdId: string, changes: readonly PackChange[]): Promise<PackResult>;
   clearCheckedItems(householdId: string): Promise<ClearedItems>;
   /** "Liste leeren": every item, open and checked, returned for the undo. */
   clearShoppingList(householdId: string): Promise<ClearedItems>;
@@ -363,6 +399,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     setItemNotAvailable: guard(inner.setItemNotAvailable.bind(inner)),
     addShoppingContributions: guard(inner.addShoppingContributions.bind(inner)),
     assignArticleArea: guard(inner.assignArticleArea.bind(inner)),
+    setPackingItemsPacked: guard(inner.setPackingItemsPacked.bind(inner)),
     clearCheckedItems: guard(inner.clearCheckedItems.bind(inner)),
     clearShoppingList: guard(inner.clearShoppingList.bind(inner)),
     adjustItemCount: guard(inner.adjustItemCount.bind(inner)),

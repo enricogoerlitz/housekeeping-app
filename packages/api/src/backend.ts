@@ -10,6 +10,7 @@ import {
   dropSettled,
   enqueue,
   needsFullLoad,
+  packBatch,
   parseStoredQueue,
   pullRequestFor,
   rejectFrom,
@@ -17,6 +18,7 @@ import {
   visibleTables,
   type Changeset,
   type HouseholdCache,
+  type PackEntry,
   type Row,
   type RowOp,
   type SmallRow,
@@ -59,7 +61,7 @@ import { createSupabaseTransport, fromSupabaseClient } from './transport-supabas
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
  * What is not cache survives the bump: the store queue and the choices made on this device.
  */
-export const CACHE_VERSION = 5;
+export const CACHE_VERSION = 6;
 /** Retention of `deleted_records` on the server (pg_cron). */
 const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
@@ -333,12 +335,15 @@ export function createEngine(options: EngineOptions): Engine {
   /** The store last chosen in "Einkaufen" per household (spec 0006), stored like the household. */
   let storeChoices: Record<string, string | null> = {};
 
-  // Store queue: waiting entries, the one being sent, and answered ones shown until the next pull.
+  // Store queue: waiting entries, the ones being sent (one, or a run of pack entries), and
+  // answered ones shown until the next pull.
   let queue: StoreQueueEntry[] = [];
-  let inFlight: StoreQueueEntry | undefined;
+  let inFlight: StoreQueueEntry[] = [];
   let settling: { entry: StoreQueueEntry; confirmedAt: number }[] = [];
   const entrySeq = new WeakMap<StoreQueueEntry, number>();
   const knownCheckSeq = new Map<string, number>();
+  /** pack_seq of Packstücke as the server answered, newer than the cache until the next pull. */
+  const knownPackSeq = new Map<string, number>();
 
   let commits: OutboxCommit[] = [];
   let history: OutboxCommit[] = [];
@@ -357,6 +362,7 @@ export function createEngine(options: EngineOptions): Engine {
   let pullAgain = false;
   let drainPromise: Promise<void> | undefined;
   let drainAgain = false;
+  let drainScheduled = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let retryAttempt = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -369,7 +375,7 @@ export function createEngine(options: EngineOptions): Engine {
   /** A reset engine writes nothing to the device any more (the storage belongs to the next start). */
   let cleared = false;
 
-  const unsent = () => (inFlight ? [inFlight, ...queue] : queue);
+  const unsent = () => (inFlight.length > 0 ? [...inFlight, ...queue] : queue);
   const isOffline = () => transport.isBlocked() || !environment.isOnline() || networkFailed;
   const canReachServer = () => !transport.isBlocked() && environment.isOnline();
 
@@ -794,10 +800,14 @@ export function createEngine(options: EngineOptions): Engine {
     });
   }
 
-  /** Sends the first store-queue entry. False when it has to wait (transient failure). */
-  async function sendEntry(entry: StoreQueueEntry): Promise<boolean> {
-    queue = queue.slice(1);
-    inFlight = entry;
+  /**
+   * Sends the first store-queue entry, or the run of pack entries at the front as one
+   * set_packing_items_packed call (ADR-0013). False when it has to wait (transient failure).
+   */
+  async function sendEntry(entry: StoreQueueEntry, run: readonly PackEntry[]): Promise<boolean> {
+    const sent: StoreQueueEntry[] = run.length > 0 ? [...run] : [entry];
+    queue = queue.slice(sent.length);
+    inFlight = sent;
     void persistQueue();
     try {
       const ids: Record<string, string> = {};
@@ -824,7 +834,27 @@ export function createEngine(options: EngineOptions): Engine {
       } else if (entry.kind === 'assignArea') {
         await transport.assignArticleArea(entry.articleId, entry.areaId);
       } else if (entry.kind === 'pack') {
-        throw new Error('Packing entries are not sent yet (spec 0012, task 5).');
+        const answer = await transport.setPackingItemsPacked(
+          entry.householdId,
+          run.map((packing) => ({
+            item_id: packing.itemId,
+            packed: packing.packed,
+            seen_pack_seq: packing.seenPackSeq,
+          })),
+        );
+        // Packstücke missing from the answer are gone meanwhile: their entries are done (AC-024).
+        // The counters are known before anything else can be queued, so a later unpack of the
+        // same Packstück carries the new one.
+        const seqs = new Map(answer.map((row) => [row.item_id, row.pack_seq]));
+        for (const [itemId, packSeq] of seqs) knownPackSeq.set(itemId, packSeq);
+        rewriteQueue((entries) =>
+          entries.map((candidate) => {
+            const packSeq = candidate.kind === 'pack' ? seqs.get(candidate.itemId) : undefined;
+            return candidate.kind === 'pack' && packSeq !== undefined
+              ? { ...candidate, seenPackSeq: packSeq }
+              : candidate;
+          }),
+        );
       } else {
         const [answer] = await transport.addShoppingContributions(entry.householdId, [
           toAddEntry(entry),
@@ -839,17 +869,17 @@ export function createEngine(options: EngineOptions): Engine {
       if (Object.keys(ids).length > 0) rewriteQueue((entries) => remapQueue(entries, ids));
       noteSuccess();
       retryAttempt = 0;
-      settling.push({ entry, confirmedAt: startedGeneration });
-      inFlight = undefined;
+      for (const done of sent) settling.push({ entry: done, confirmedAt: startedGeneration });
+      inFlight = [];
       void persistQueue();
       rebuild();
       void requestPull();
       return true;
     } catch (error) {
-      inFlight = undefined;
+      inFlight = [];
       if (isTransient(error)) {
         noteFailure(error);
-        queue = [entry, ...queue];
+        queue = [...sent, ...queue];
         void persistQueue();
         rebuild();
         scheduleRetry();
@@ -870,11 +900,17 @@ export function createEngine(options: EngineOptions): Engine {
     const next = commits.find((entry) => entry.changeset.status === 'pending');
     const head = queue[0];
     if (!next && !head) return false;
-    if (next && (!head || next.seq < (entrySeq.get(head) ?? Number.POSITIVE_INFINITY))) {
+    const seqOf = (entry: StoreQueueEntry) => entrySeq.get(entry) ?? Number.POSITIVE_INFINITY;
+    if (next && (!head || next.seq < seqOf(head))) {
       await sendCommit(next);
       return true;
     }
-    return head ? sendEntry(head) : false;
+    if (!head) return false;
+    // A run of pack entries never overtakes a change queued after its first entry (FIFO).
+    const run = packBatch(queue).filter((_, index, all) =>
+      all.slice(0, index + 1).every((entry) => !next || seqOf(entry) < next.seq),
+    );
+    return sendEntry(head, run);
   }
 
   function drain(): Promise<void> {
@@ -910,12 +946,12 @@ export function createEngine(options: EngineOptions): Engine {
     if (!old || !next) throw new Error(`Household ${householdId} is not loaded`);
     const change =
       old === next
-        ? { ops: [], inverse: [] }
+        ? { ops: [], inverse: [], send: [], sendInverse: [] }
         : diffHousehold(old, next, {
             mode: spec.path === 'diff' ? 'send' : 'local',
             maxDeletes: spec.path === 'diff' ? spec.maxDeletes : undefined,
           });
-    if (spec.path === 'diff' && change.ops.length === 0) {
+    if (spec.path === 'diff' && change.send.length === 0) {
       republish();
       onOutcome?.();
       return;
@@ -929,15 +965,15 @@ export function createEngine(options: EngineOptions): Engine {
       changeset: { id: `changeset-${seq}`, householdId, ops: change.ops, status: 'pending' },
       send:
         spec.path === 'diff'
-          ? (wire) => wire.applyChanges(householdId, sendable(change.ops))
+          ? (wire) => wire.applyChanges(householdId, sendable(change.send))
           : (wire) => spec.send(wire, context),
     };
     if (spec.path === 'diff') {
       // Nothing to undo (e.g. only an article was created, which undo keeps): no empty call.
-      if (change.inverse.length > 0) {
+      if (change.sendInverse.length > 0) {
         entry.inverse = {
           ops: change.inverse,
-          send: (wire) => wire.applyChanges(householdId, sendable(change.inverse)),
+          send: (wire) => wire.applyChanges(householdId, sendable(change.sendInverse)),
         };
       }
     } else if (spec.inverse) {
@@ -959,7 +995,7 @@ export function createEngine(options: EngineOptions): Engine {
       if (!tables) continue;
       const confirmed = applyQueue(
         tables,
-        [...settling.map((settled) => settled.entry), ...(inFlight ? [inFlight] : [])],
+        [...settling.map((settled) => settled.entry), ...inFlight],
         householdId,
       );
       const expected = confirmed[table]?.[id];
@@ -982,6 +1018,14 @@ export function createEngine(options: EngineOptions): Engine {
     } else if (action.kind === 'assignArea') {
       entry = action;
       baseRow = expectedRow('articles', action.articleId).expected;
+    } else if (action.kind === 'pack') {
+      // The counter the device last saw: the cached row, or a newer answer to its own pack entry.
+      // The expected row includes the run in flight, so an unpack queued meanwhile ("Rückgängig")
+      // is kept instead of being taken for "no change" (ADR-0013).
+      const { server, expected } = expectedRow('packing_items', action.itemId);
+      const seen = Math.max(Number(server?.pack_seq ?? 0), knownPackSeq.get(action.itemId) ?? 0);
+      entry = { ...action, seenPackSeq: seen };
+      baseRow = expected;
     } else {
       entry = action;
     }
@@ -990,7 +1034,14 @@ export function createEngine(options: EngineOptions): Engine {
     queue = next;
     void persistQueue();
     rebuild();
-    void drain();
+    // Sent after the current task: entries queued together ("Alles einpacken", one per
+    // Packstück) leave as one run instead of the first one alone (ADR-0013).
+    if (drainScheduled) return;
+    drainScheduled = true;
+    queueMicrotask(() => {
+      drainScheduled = false;
+      void drain();
+    });
   }
 
   function undoable(): () => void {
@@ -1072,12 +1123,13 @@ export function createEngine(options: EngineOptions): Engine {
     cache = undefined;
     persisted.clear();
     queue = [];
-    inFlight = undefined;
+    inFlight = [];
     settling = [];
     for (const entry of commits) report(entry, new TransportError('permanent', 'reset'));
     commits = [];
     history = [];
     knownCheckSeq.clear();
+    knownPackSeq.clear();
     chosenHouseholdId = undefined;
     storeChoices = {};
     await storage.clear();

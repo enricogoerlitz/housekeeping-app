@@ -358,3 +358,31 @@ pack_seq}]` der gefundenen Packstücke.
   Packliste löschen löscht ihre Packstücke. Jede mitgelöschte Zeile bekommt ihren Grabstein, das
   Gerät schickt also nur die Löschung der Eltern-Zeile. Verlässt jemand den Haushalt, werden
   „für“ und „gepackt von“ leer; die eigenen Abwesenheiten gehen samt Packliste mit.
+
+**Gerät (Spec 0012, Task 5 und 6):**
+
+- **Bündeln beim Senden.** Die Warteschlange schickt die zusammenhängende Folge von
+  Pack-Einträgen am Anfang (`core.packBatch`: ein Haushalt, höchstens 200, bis zum ersten Eintrag
+  anderer Art) als einen Aufruf `set_packing_items_packed`. Eine Folge überholt nie eine Änderung,
+  die nach ihrem ersten Eintrag entstand. Einträge, die im selben Schritt entstehen („Alles
+  einpacken“), gehen gemeinsam los: Das Senden startet erst nach dem laufenden Schritt.
+- **Zähler.** Den gesehenen `pack_seq` füllt die Engine aus der Zeile im Cache oder aus der
+  letzten eigenen Antwort (der größere Wert). Die Antwort schreibt die neuen Zähler sofort in die
+  noch wartenden Einträge desselben Packstücks; die gesendete Folge zählt bis zur Antwort zum
+  erwarteten Stand, damit ein „Rückgängig“ während des Sendens nicht als „keine Änderung“
+  wegfällt. Fehlt ein Packstück in der Antwort, ist es inzwischen weg: Der Eintrag ist erledigt,
+  ohne Hinweis. Ein vorübergehender Fehler lässt die ganze Folge stehen; ein dauerhafter verwirft
+  sie und protokolliert nur den Fehlercode.
+- **Kaskaden im Diff.** Löscht ein Befehl eine Eltern-Zeile (Abwesenheit, Reisetasche, Tasche der
+  Packliste), zeigt das Gerät ihre Kinder sofort als gelöscht, schickt aber nur die Löschung der
+  Eltern-Zeile (`CASCADE_CHILDREN` in `db/tables.ts`); ebenso wird das Leeren eines Verweises auf
+  sie (`SET_NULL_CHILDREN`: `packing_list_bags.bag_id`) nicht geschickt. Die Kind-Zeilen zählen
+  nicht gegen die 20 Löschungen je Aufruf, auch nicht beim „Rückgängig“ einer neuen Packliste.
+- **Vom Server gerechnet.** Eine neu gerechnete „je Tag“-Anzahl (`DERIVED_COLUMNS`:
+  `packing_items.quantity`) zeigt das Gerät sofort, schickt sie aber nie; `packing_items` hat
+  keinen Patch, `packing_list_bags` nur `absence_id`, `bag_id`, `sort` (`PATCH_COLUMNS`). Die
+  Gepackt-Spalten stehen in `NEVER_SENT_COLUMNS`.
+- **„Rückgängig“ nach dem Entfernen** eines Packstücks oder einer Tasche der Packliste schickt
+  die Tasche (falls nötig) und `restore_packing_items` mit dem gepackten Stand in einem Aufruf.
+- **Cache-Version 6.** Die vier Tabellen ändern die Form des Caches; Warteschlange, Haushalts- und
+  Marktwahl bleiben beim Wechsel erhalten.

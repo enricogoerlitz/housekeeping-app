@@ -484,4 +484,70 @@ describe('mapping between domain and rows', () => {
       diffHousehold(data, removed, { mode: 'send', maxDeletes: { chore_events: 1 } }),
     ).toThrow();
   });
+
+  it('spec 0012: the four packing tables go there and back; packed state is read, never written', () => {
+    const { data } = demo();
+    expect(data.packingBags.length).toBeGreaterThan(0);
+    const rows = householdToRows(data);
+    const packed = data.packingItems.find((item) => item.packed);
+    if (!packed) throw new Error('fixture: no packed item');
+    expect(rows.packing_items?.find((row) => row.id === packed.id)).toMatchObject({
+      list_bag_id: packed.listBagId,
+      name: packed.name,
+      packed: true,
+      packed_by: packed.packedBy,
+      pack_seq: packed.packSeq,
+    });
+    const nadjasBag = data.packingBags.find((bag) => bag.memberId === NADJA);
+    expect(rows.packing_bags?.find((row) => row.id === nadjasBag?.id)).toMatchObject({
+      member_id: NADJA,
+    });
+    const { tables, small } = asServerTables(rows);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(back.packingBags).toEqual(data.packingBags);
+    expect(back.packingBagItems).toEqual(data.packingBagItems);
+    expect(back.packingListBags).toEqual(data.packingListBags);
+    expect(back.packingItems).toEqual(data.packingItems);
+
+    // A new Packstück is inserted without packed*/pack_seq (only the server writes them).
+    const listBag = data.packingListBags[0];
+    if (!listBag) throw new Error('fixture');
+    const added: HouseholdData = {
+      ...back,
+      packingItems: [
+        ...back.packingItems,
+        {
+          id: 'pi-new',
+          listBagId: listBag.id,
+          name: 'Schnorchel',
+          packed: false,
+          packSeq: 0,
+          sort: 99,
+        },
+      ],
+    };
+    const { send } = diffHousehold(back, added, { mode: 'send' });
+    expect(send).toEqual([
+      {
+        kind: 'insert',
+        table: 'packing_items',
+        row: {
+          id: 'pi-new',
+          list_bag_id: listBag.id,
+          name: 'Schnorchel',
+          quantity: null,
+          per_day: null,
+          sort: 99,
+        },
+      },
+    ]);
+    // A diff never changes the packed state; that goes through set_packing_items_packed.
+    const changed: HouseholdData = {
+      ...back,
+      packingItems: back.packingItems.map((item) =>
+        item.id === packed.id ? { ...item, packed: false } : item,
+      ),
+    };
+    expect(() => diffHousehold(back, changed, { mode: 'send' })).toThrow();
+  });
 });

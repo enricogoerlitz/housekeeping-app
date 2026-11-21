@@ -87,7 +87,7 @@ const DATE_COLUMNS = new Set([
   'from_on',
   'to_on',
 ]);
-const TIMESTAMP_COLUMNS = new Set(['created_at', 'checked_at']);
+const TIMESTAMP_COLUMNS = new Set(['created_at', 'checked_at', 'packed_at']);
 /** Tables the app lists newest first: ties in created_at must keep the demo's order there too. */
 const NEWEST_FIRST = new Set(['recipes', 'restaurants', 'activities', 'feedback']);
 /**
@@ -404,6 +404,10 @@ const TIMESTAMPED_TABLES = [
   'chores',
   'chore_events',
   'absences',
+  'packing_bags',
+  'packing_bag_items',
+  'packing_list_bags',
+  'packing_items',
   'feedback',
   'feedback_votes',
 ];
@@ -420,6 +424,8 @@ const TOP_LEVEL = [
   'chores',
   'choreEvents',
   'feedback',
+  'absences',
+  'packingBags',
 ] as const;
 
 function topLevelIds(data: HouseholdData, ids: Record<string, string>): Record<string, string> {

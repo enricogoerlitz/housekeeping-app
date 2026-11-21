@@ -394,8 +394,21 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0011: version 5 for asNeeded, the recorded state, createdAt and ratedAt; version 4 loads again', () => {
-    expect(CACHE_VERSION).toBe(5);
+  it('spec 0012: version 6 for the packing tables; version 5 loads again', () => {
+    expect(CACHE_VERSION).toBe(6);
+  });
+
+  it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {
+    const item = server.rows(H, 'packing_items').find((row) => row.packed !== true);
+    if (!item) throw new Error('fixture: no open Packstück');
+    const entry = { kind: 'pack', householdId: H, itemId: item.id, packed: true, seenPackSeq: 0 };
+    await storage.setMany([
+      ['meta', { version: 5, userId: ENRICO, householdIds: [H] }],
+      ['queue', [entry]],
+    ]);
+    await startEnrico();
+    expect(server.row(H, 'packing_items', item.id)).toMatchObject({ packed: true, pack_seq: 1 });
+    expect(await storage.get('queue')).toEqual([]);
   });
 
   it('drops the cache, but keeps the store queue, the chosen store and the chosen household', async () => {
@@ -996,5 +1009,202 @@ describe('writes: store queue (ADR-0008 addendum)', () => {
     setItemChecked(item.id, false);
     await settle(enrico);
     expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
+  });
+});
+
+describe('spec 0012: packing in the store queue (ADR-0013)', () => {
+  const packingItem = (predicate: (item: { packed: boolean }) => boolean, skip = 0) => {
+    const item = getData().packingItems.filter(predicate)[skip];
+    if (!item) throw new Error('fixture: Packstück missing');
+    return item;
+  };
+  const pack = (itemId: string, packed = true): StoreAction => ({
+    kind: 'pack',
+    householdId: H,
+    itemId,
+    packed,
+  });
+  const writes = () =>
+    server.calls.filter((call) => call.fn !== 'sync_pull').map((call) => call.fn);
+
+  it('AC-026: a run of pack entries goes as one call; a check in between splits it', async () => {
+    const enrico = await startEnrico();
+    const open = getData().packingItems.filter((item) => !item.packed);
+    const milk = itemByArticle(getData().items, 'Milch');
+    if (open.length < 7 || !milk) throw new Error('fixture');
+    server.calls.length = 0;
+    enrico.setSimulatedOffline(true);
+    for (const item of open.slice(0, 3)) queueStoreAction(pack(item.id));
+    setItemChecked(milk.id, true);
+    for (const item of open.slice(3, 7)) queueStoreAction(pack(item.id));
+    expect(getData().packingItems.filter((item) => item.packed).length).toBe(
+      getData().packingItems.length - open.length + 7,
+    );
+    await settle(enrico);
+    expect(writes()).toEqual([]);
+
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(writes()).toEqual([
+      'set_packing_items_packed',
+      'set_shopping_item_checked',
+      'set_packing_items_packed',
+    ]);
+    for (const item of open.slice(0, 7)) {
+      expect(server.row(H, 'packing_items', item.id)).toMatchObject({
+        packed: true,
+        packed_by: ENRICO,
+        pack_seq: item.packSeq + 1,
+      });
+    }
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
+  it('a transient failure keeps all seven entries and sends them again later', async () => {
+    const enrico = await startEnrico();
+    const open = getData()
+      .packingItems.filter((item) => !item.packed)
+      .slice(0, 7);
+    server.failNext('set_packing_items_packed', new TransportError('transient', 'http_503', 503));
+    for (const item of open) queueStoreAction(pack(item.id));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(server.calls.filter((call) => call.fn === 'set_packing_items_packed')).toHaveLength(1);
+    await enrico.whenIdle();
+    expect(await storage.get('queue')).toHaveLength(7);
+    for (const item of open) {
+      expect(getData().packingItems.find((shown) => shown.id === item.id)?.packed).toBe(true);
+    }
+    await settle(enrico);
+    for (const item of open) {
+      expect(server.row(H, 'packing_items', item.id)).toMatchObject({ packed: true });
+    }
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
+  it('a permanent refusal (not_member) drops the run and logs only the code', async () => {
+    const enrico = await startEnrico();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const item = packingItem((candidate) => !candidate.packed);
+    server.failNext('set_packing_items_packed', new TransportError('permanent', 'not_member', 403));
+    queueStoreAction(pack(item.id));
+    await settle(enrico);
+    expect(warn).toHaveBeenCalledWith('Store action dropped: not_member');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(item.id);
+    expect(server.row(H, 'packing_items', item.id)).toMatchObject({ packed: false });
+    expect(getData().packingItems.find((candidate) => candidate.id === item.id)?.packed).toBe(
+      false,
+    );
+    expect(await storage.get('queue')).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it('AC-024 / AC-040: packed offline, the absence deleted meanwhile: gone, no hint', async () => {
+    const enrico = await startEnrico();
+    const messages: string[] = [];
+    const stopListening = onWriteRejected((message) => messages.push(message));
+    const item = packingItem((candidate) => !candidate.packed);
+    const listBag = getData().packingListBags.find((bag) => bag.id === item.listBagId);
+    if (!listBag) throw new Error('fixture');
+    enrico.setSimulatedOffline(true);
+    queueStoreAction(pack(item.id));
+    await server
+      .transport(NADJA)
+      .applyChanges(H, [{ kind: 'delete', table: 'absences', id: listBag.absenceId }]);
+
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(writes()).toContain('set_packing_items_packed');
+    expect(getData().packingItems.some((candidate) => candidate.id === item.id)).toBe(false);
+    expect(getData().absences.some((absence) => absence.id === listBag.absenceId)).toBe(false);
+    expect(messages).toEqual([]);
+    expect(await storage.get('queue')).toEqual([]);
+    stopListening();
+  });
+
+  it('AC-023: an offline unpack loses against packing again by someone else', async () => {
+    const enrico = await startEnrico();
+    const item = packingItem((candidate) => candidate.packed);
+    const shown = () => getData().packingItems.find((candidate) => candidate.id === item.id);
+    enrico.setSimulatedOffline(true);
+    queueStoreAction(pack(item.id, false));
+    expect(shown()?.packed).toBe(false);
+
+    const nadja = server.transport(NADJA);
+    await nadja.setPackingItemsPacked(H, [
+      { item_id: item.id, packed: false, seen_pack_seq: item.packSeq },
+    ]);
+    await nadja.setPackingItemsPacked(H, [
+      { item_id: item.id, packed: true, seen_pack_seq: item.packSeq + 1 },
+    ]);
+
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(server.row(H, 'packing_items', item.id)).toMatchObject({
+      packed: true,
+      packed_by: NADJA,
+      pack_seq: item.packSeq + 2,
+    });
+    expect(shown()?.packed).toBe(true);
+  });
+
+  it('packing back and forth before sending sends nothing', async () => {
+    const enrico = await startEnrico();
+    const item = packingItem((candidate) => !candidate.packed);
+    server.calls.length = 0;
+    enrico.setSimulatedOffline(true);
+    queueStoreAction(pack(item.id));
+    queueStoreAction(pack(item.id, false));
+    expect(await storage.get('queue')).toEqual([]);
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(writes()).toEqual([]);
+  });
+
+  it('AC-026: an unpack queued while the run is in flight is kept and sent with the new counter', async () => {
+    const inner = server.transport(ENRICO);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const transport: Transport = {
+      ...inner,
+      setPackingItemsPacked: async (householdId, changes) => {
+        await gate;
+        return inner.setPackingItemsPacked(householdId, changes);
+      },
+    };
+    const enrico = await startEnrico({ transport });
+    const open = getData()
+      .packingItems.filter((item) => !item.packed)
+      .slice(0, 2);
+    for (const item of open) queueStoreAction(pack(item.id));
+    await vi.advanceTimersByTimeAsync(0);
+    // "Rückgängig" while the run is on its way: the counter entries must not cancel against it.
+    for (const item of open) queueStoreAction(pack(item.id, false));
+    expect(await storage.get('queue')).toHaveLength(4);
+    release();
+    await settle(enrico);
+    for (const item of open) {
+      expect(server.row(H, 'packing_items', item.id)).toMatchObject({
+        packed: false,
+        pack_seq: item.packSeq + 2,
+      });
+    }
+    expect(getData().packingItems.filter((item) => open.some((o) => o.id === item.id))).toEqual(
+      open.map((item) => expect.objectContaining({ packed: false })),
+    );
+  });
+
+  it('a pack entry of another household ends the run (one call per household)', async () => {
+    const enrico = await startEnrico();
+    const item = packingItem((candidate) => !candidate.packed);
+    server.calls.length = 0;
+    enrico.setSimulatedOffline(true);
+    queueStoreAction(pack(item.id));
+    queueStoreAction({ kind: 'pack', householdId: 'hh-test', itemId: 'pi-foreign', packed: true });
+    enrico.setSimulatedOffline(false);
+    await settle(enrico);
+    expect(writes()).toEqual(['set_packing_items_packed', 'set_packing_items_packed']);
+    expect(server.row(H, 'packing_items', item.id)).toMatchObject({ packed: true });
   });
 });

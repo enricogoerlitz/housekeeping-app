@@ -7,6 +7,7 @@ import {
   normalizeText,
   parseISODate,
   parseIngredientLine,
+  planPackingLists,
   splitVariants,
   toISODate,
   weekdayShort,
@@ -20,6 +21,10 @@ import {
   type ISODate,
   type MealPlanEntry,
   type Member,
+  type PackingBag,
+  type PackingBagItem,
+  type PackingItem,
+  type PackingListBag,
   type Recipe,
   type Restaurant,
   type ShoppingItem,
@@ -781,8 +786,157 @@ function buildDemoData(today: ISODate): HouseholdData {
     items,
     chores,
     choreEvents,
-    absences: [],
     feedback,
+    ...buildPacking(today),
+  };
+}
+
+// ---------- Reisetaschen and packing lists (spec 0012) ----------
+
+/** "Name", "2 Name" (fixed quantity) or "1/Tag Name" (per day). */
+const BAG_CONTENTS: { id: string; name: string; memberId?: Id; items: string[] }[] = [
+  {
+    id: 'bag-strand',
+    name: 'Strand',
+    items: [
+      '2 Badehose',
+      '1/Tag T-Shirts',
+      '3 Shorts',
+      '2 Strandtuch',
+      'Sonnenbrille',
+      'Sonnenhut',
+      'Flip-Flops',
+      'Strandtasche',
+      'Taucherbrille',
+      'After-Sun',
+      'Buch',
+      'Kartenspiel',
+    ],
+  },
+  {
+    id: 'bag-wintersport',
+    name: 'Wintersport',
+    items: [
+      'Skijacke',
+      'Skihose',
+      '1/Tag Skiunterwäsche',
+      '1/Tag Socken',
+      'Mütze',
+      '2 Handschuhe',
+      'Schal',
+      'Skibrille',
+      'Helm',
+      'Sonnencreme',
+      'Lippenpflege',
+      '2 Fleecepullover',
+      'Thermoskanne',
+      '4 Wärmepads',
+      'Skipass',
+      'Hüttenschuhe',
+      'Rucksack',
+      'Pflaster',
+    ],
+  },
+  {
+    id: 'bag-kulturbeutel',
+    name: 'Kulturbeutel',
+    memberId: NADJA,
+    items: [
+      'Zahnbürste',
+      'Zahnpasta',
+      'Shampoo',
+      'Duschgel',
+      'Deo',
+      'Haarbürste',
+      'Gesichtscreme',
+      'Wattepads',
+      'Nagelschere',
+    ],
+  },
+  {
+    id: 'bag-technik',
+    name: 'Technik',
+    items: ['2 Ladekabel', 'Kopfhörer', 'Powerbank', 'Reiseadapter', 'Kamera', 'E-Reader'],
+  },
+];
+
+/** Packed already for "Urlaub Mallorca": by whom, per Packstück name. */
+const PACKED_FOR_MALLORCA: Record<string, Id> = {
+  Badehose: ENRICO,
+  Strandtuch: ENRICO,
+  Sonnenbrille: ENRICO,
+  Buch: ENRICO,
+  Zahnbürste: NADJA,
+  Zahnpasta: NADJA,
+};
+
+function bagItem(bagId: Id, line: string, sort: number): PackingBagItem {
+  const perDay = /^(\d+)\/Tag (.+)$/.exec(line);
+  const fixed = /^(\d+) (.+)$/.exec(line);
+  const [, count, name] = perDay ?? fixed ?? [line, undefined, line];
+  return {
+    id: `bi-${bagId.slice(4)}-${sort + 1}`,
+    bagId,
+    name: name ?? line,
+    quantity: count === undefined ? undefined : Number(count),
+    perDay: perDay !== null,
+    sort,
+  };
+}
+
+/**
+ * Reisetaschen "Strand", "Wintersport", "Kulturbeutel" (Nadja) and "Technik"; "Urlaub Mallorca"
+ * (whole household, in 12 days, 7 days) with Strand and Kulturbeutel, some packed; "Dienstreise
+ * Hamburg" (Nadja) without a packing list.
+ */
+function buildPacking(
+  today: ISODate,
+): Pick<
+  HouseholdData,
+  'absences' | 'packingBags' | 'packingBagItems' | 'packingListBags' | 'packingItems'
+> {
+  const packingBags: PackingBag[] = BAG_CONTENTS.map((bag, sort) => ({
+    id: bag.id,
+    name: bag.name,
+    memberId: bag.memberId,
+    sort,
+  }));
+  const packingBagItems = BAG_CONTENTS.flatMap((bag) =>
+    bag.items.map((line, sort) => bagItem(bag.id, line, sort)),
+  );
+  const mallorca = {
+    id: 'abs-mallorca',
+    from: addDays(today, 12),
+    to: addDays(today, 18),
+    note: 'Urlaub Mallorca',
+  };
+  const hamburg = {
+    id: 'abs-hamburg',
+    memberId: NADJA,
+    from: addDays(today, 26),
+    to: addDays(today, 27),
+    note: 'Dienstreise Hamburg',
+  };
+  let counter = 0;
+  const plan = planPackingLists({
+    absences: [mallorca],
+    bagIds: ['bag-strand', 'bag-kulturbeutel'],
+    bags: packingBags,
+    bagItems: packingBagItems,
+    newId: () => `pack-mallorca-${++counter}`,
+  });
+  const packedAt = `${addDays(today, -1)}T18:00:00.000Z`;
+  const packingItems: PackingItem[] = plan.items.map((item) => {
+    const by = PACKED_FOR_MALLORCA[item.name];
+    return by ? { ...item, packed: true, packedAt, packedBy: by, packSeq: 1 } : item;
+  });
+  const packingListBags: PackingListBag[] = plan.listBags;
+  return {
+    absences: [mallorca, hamburg],
+    packingBags,
+    packingBagItems,
+    packingListBags,
+    packingItems,
   };
 }
 
@@ -807,6 +961,10 @@ function buildTestData(today: ISODate): HouseholdData {
     choreEvents: [],
     absences: [],
     feedback: [],
+    packingBags: [],
+    packingBagItems: [],
+    packingListBags: [],
+    packingItems: [],
   };
 }
 

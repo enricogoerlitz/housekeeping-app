@@ -22,6 +22,7 @@ import {
   MergeArticlesResultSchema,
   MergeAreasResultSchema,
   NotAvailableResultSchema,
+  PackResultSchema,
   RawPullResultSchema,
   RestoredRecipeSchema,
   TransportError,
@@ -274,6 +275,11 @@ export function createSupabaseTransport(
       parsed(NotAvailableResultSchema, 'set_shopping_item_not_available', {
         p_item_id: itemId,
         p_value: value,
+      }),
+    setPackingItemsPacked: (householdId, changes) =>
+      parsed(PackResultSchema, 'set_packing_items_packed', {
+        p_household_id: householdId,
+        p_changes: changes,
       }),
     addShoppingContributions: (householdId, entries) =>
       parsed(AddResultSchema, 'add_shopping_contributions', {

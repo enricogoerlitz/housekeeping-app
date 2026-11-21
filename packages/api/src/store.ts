@@ -11,6 +11,10 @@ import type {
   ISODate,
   MealPlanEntry,
   Member,
+  PackingBag,
+  PackingBagItem,
+  PackingItem,
+  PackingListBag,
   Recipe,
   Restaurant,
   RowOp,
@@ -37,6 +41,12 @@ export interface HouseholdData {
   choreEvents: ChoreEvent[];
   absences: Absence[];
   feedback: FeedbackEntry[];
+  /** Spec 0012: Reisetaschen and their Packstücke (in creation order; sort with core). */
+  packingBags: PackingBag[];
+  packingBagItems: PackingBagItem[];
+  /** Taschen der Packlisten and their Packstücke (in creation order). */
+  packingListBags: PackingListBag[];
+  packingItems: PackingItem[];
 }
 
 export interface AppState {
@@ -107,9 +117,14 @@ export interface RpcContext<T> {
   ops: RowOp[];
 }
 
-/** One of the four store-mode actions; `seenCheckSeq` is filled in by the engine. */
+/**
+ * One of the four store-mode actions or packing (ADR-0013); `seenCheckSeq` and `seenPackSeq` are
+ * filled in by the engine from what the device last saw of the server.
+ */
 export type StoreAction =
-  { kind: 'check'; itemId: string; checked: boolean } | Exclude<StoreQueueEntry, { kind: 'check' }>;
+  | { kind: 'check'; itemId: string; checked: boolean }
+  | { kind: 'pack'; householdId: string; itemId: string; packed: boolean }
+  | Exclude<StoreQueueEntry, { kind: 'check' | 'pack' }>;
 
 /**
  * How a command's change reaches the server (ADR-0011):

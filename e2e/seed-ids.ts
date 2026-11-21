@@ -578,6 +578,12 @@ export const seedIds = {
   'fb-1': '2fd686a1-72ad-50fb-a858-40b7e4523fef',
   'fb-2': '4bf5559b-332f-513d-8afd-512839319b5e',
   'fb-3': 'ddfed5c7-7fe2-5156-a843-bf533be9ecc5',
+  'abs-mallorca': 'c66bc195-adde-5d8d-a132-d7f4f0e37b7d',
+  'abs-hamburg': 'db3ec107-3657-5c8c-9b36-66ae1e6bd891',
+  'bag-strand': 'e5666659-25f5-56a5-bd8f-74e9c89b8234',
+  'bag-wintersport': '6e91826f-4c57-5d1f-9a3b-017c6f129ce3',
+  'bag-kulturbeutel': 'f229b585-5756-5787-999c-ffdce00a69c2',
+  'bag-technik': '32e8db95-60b2-5517-b01f-f7af5c7b8827',
 } as const;
 
 /** Top-level entities of the household "Test" (same slugs, other ids). */

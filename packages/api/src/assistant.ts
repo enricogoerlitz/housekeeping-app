@@ -117,7 +117,7 @@ function runCommands(commands: AssistantCommand[]): void {
         }
       }
       const rows = getData();
-      const { ops } = diffHousehold(before, rows, { mode: 'send' });
+      const { send } = diffHousehold(before, rows, { mode: 'send' });
       // Chore entries are domain ops (spec 0011), booked on top of the row changes.
       const choreOps = commands.filter(isChoreCommand).flatMap(bookChoreCommand);
       // Always the household's shopping list (ADR-0012): the items of the call's household.
@@ -129,7 +129,7 @@ function runCommands(commands: AssistantCommand[]): void {
           if (local) additions.push(local.entry);
         }
       }
-      return [...sendable(ops), ...choreOps, ...addContributionOps(additions)];
+      return [...sendable(send), ...choreOps, ...addContributionOps(additions)];
     },
   );
 }

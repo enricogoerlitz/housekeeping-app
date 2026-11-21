@@ -13,6 +13,7 @@ export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
+export * from './commands-packing';
 export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';

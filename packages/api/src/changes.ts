@@ -10,9 +10,13 @@ import {
 
 import { householdToRows } from './db/mapping';
 import {
+  CASCADE_CHILDREN,
   COMPOSITE_TABLES,
+  DERIVED_COLUMNS,
   NO_DELETE_TABLES,
   NO_INSERT_TABLES,
+  PATCH_COLUMNS,
+  SET_NULL_CHILDREN,
   WRITABLE_COLUMNS,
   type WritableTable,
 } from './db/tables';
@@ -33,6 +37,10 @@ const TABLE_ORDER = [
   'chores',
   'chore_events',
   'absences',
+  'packing_bags',
+  'packing_bag_items',
+  'packing_list_bags',
+  'packing_items',
   'feedback',
   ...Object.keys(COMPOSITE_TABLES),
   'household_members',
@@ -47,6 +55,102 @@ export interface HouseholdChange {
   ops: RowOp[];
   /** Operations that turn after back into before ("Rückgängig"). */
   inverse: RowOp[];
+  /**
+   * What of `ops` goes to the server (mode 'send'): without what the database does itself —
+   * deleting the children of a deleted row (cascade), clearing a reference to it (set null) and
+   * recalculating derived columns (spec 0012, decisions 3 and 7). Mode 'local': `ops`.
+   */
+  send: RowOp[];
+  /** The same for `inverse`. */
+  sendInverse: RowOp[];
+}
+
+/** Ids of rows that are in `before` but not in `after`, per table. */
+function deletedIds(before: Record<string, Row[]>, after: Record<string, Row[]>) {
+  const deleted = new Map<string, Set<string>>();
+  for (const [table, rows] of Object.entries(before)) {
+    const kept = new Set((after[table] ?? []).map((row) => row.id));
+    const gone = rows.filter((row) => !kept.has(row.id)).map((row) => row.id);
+    if (gone.length > 0) deleted.set(table, new Set(gone));
+  }
+  return deleted;
+}
+
+/**
+ * Rows the database deletes itself because their parent goes in the same change (recursively:
+ * an absence takes its bags of the packing list, they take their Packstücke).
+ */
+function cascadedIds(
+  before: Record<string, Row[]>,
+  deleted: Map<string, Set<string>>,
+): Map<string, Set<string>> {
+  const cascaded = new Map<string, Set<string>>();
+  const visit = (parent: string, ids: ReadonlySet<string>) => {
+    for (const child of CASCADE_CHILDREN[parent as WritableTable] ?? []) {
+      const gone = deleted.get(child.table);
+      const found = (before[child.table] ?? []).filter(
+        (row) => gone?.has(row.id) && ids.has(String(row[child.column])),
+      );
+      if (found.length === 0) continue;
+      const own = cascaded.get(child.table) ?? new Set<string>();
+      for (const row of found) own.add(row.id);
+      cascaded.set(child.table, own);
+      visit(child.table, new Set(found.map((row) => row.id)));
+    }
+  };
+  for (const [table, ids] of deleted) visit(table, ids);
+  return cascaded;
+}
+
+/** Whether the server does this operation itself (set null of a deleted parent, derived columns). */
+function doneByServer(
+  op: RowOp,
+  before: Map<string, Row>,
+  deleted: Map<string, Set<string>>,
+  parentOf: (table: string, column: string) => string | undefined,
+): boolean {
+  if (op.kind !== 'patch') return false;
+  const derived = DERIVED_COLUMNS[op.table as WritableTable] ?? [];
+  return Object.entries(op.changes).every(([column, value]) => {
+    if (derived.includes(column)) return true;
+    const parent = parentOf(op.table, column);
+    const old = before.get(op.id)?.[column];
+    return (
+      parent !== undefined &&
+      value === null &&
+      typeof old === 'string' &&
+      deleted.get(parent)?.has(old) === true
+    );
+  });
+}
+
+function setNullParent(table: string, column: string): string | undefined {
+  for (const [parent, children] of Object.entries(SET_NULL_CHILDREN)) {
+    if (children.some((child) => child.table === table && child.column === column)) return parent;
+  }
+  return undefined;
+}
+
+/** The ops of one direction without what the server does itself (see HouseholdChange.send). */
+function toSend(
+  ops: readonly RowOp[],
+  before: Record<string, Row[]>,
+  deleted: Map<string, Set<string>>,
+  cascaded: Map<string, Set<string>>,
+): RowOp[] {
+  const rows = new Map<string, Map<string, Row>>();
+  const rowsOf = (table: string) => {
+    let byId = rows.get(table);
+    if (!byId) {
+      byId = new Map((before[table] ?? []).map((row) => [row.id, row]));
+      rows.set(table, byId);
+    }
+    return byId;
+  };
+  return ops.filter((op) => {
+    if (op.kind === 'delete') return cascaded.get(op.table)?.has(op.id) !== true;
+    return !doneByServer(op, rowsOf(op.table), deleted, setNullParent);
+  });
 }
 
 /**
@@ -135,7 +239,8 @@ function withCreatedAt(ops: RowOp[], rows: readonly Row[]): RowOp[] {
 /**
  * The change between two states of a household.
  * - mode 'send' (diff path): only writable columns, deletes as declared, and no per-member or
- *   membership rows (those have their own RPCs) — anything else throws before sending.
+ *   membership rows (those have their own RPCs) — anything else throws before sending. Rows the
+ *   database deletes itself with their parent do not count as deletes.
  * - mode 'local' (rpc path): any column, any number of deletes; only shown, never sent.
  */
 export function diffHousehold(
@@ -147,6 +252,10 @@ export function diffHousehold(
   const afterRows = householdToRows(after);
   const forward = new Map<string, RowOp[]>();
   const backward = new Map<string, RowOp[]>();
+  const removed = deletedIds(beforeRows, afterRows);
+  const added = deletedIds(afterRows, beforeRows);
+  const cascaded = cascadedIds(beforeRows, removed);
+  const cascadedBack = cascadedIds(afterRows, added);
 
   for (const table of new Set([...Object.keys(beforeRows), ...Object.keys(afterRows)])) {
     const old = beforeRows[table] ?? [];
@@ -171,7 +280,15 @@ export function diffHousehold(
       allowedColumns = WRITABLE_COLUMNS[table as WritableTable] ?? [];
       maxDeletes = table === 'households' ? 0 : (options.maxDeletes?.[table] ?? 0);
     }
-    const ops = diffRows(old, next, { table, allowedColumns, maxDeletes });
+    // Children deleted with their parent are the database's deletes, not the command's.
+    const withParent = cascaded.get(table);
+    const declared = withParent ? old.filter((row) => !withParent.has(row.id)) : old;
+    diffRows(declared, next, { table, allowedColumns, maxDeletes });
+    const ops = diffRows(old, next, {
+      table,
+      allowedColumns,
+      maxDeletes: Number.POSITIVE_INFINITY,
+    });
     if (ops.length === 0) continue;
     if (NO_DELETE_TABLES.has(table) && ops.some((op) => op.kind === 'delete')) {
       const way =
@@ -185,6 +302,7 @@ export function diffHousehold(
     if (NO_INSERT_TABLES.has(table) && ops.some((op) => op.kind === 'insert')) {
       throw new Error(`Inserting into ${table} needs its own RPC (complete_chore).`);
     }
+    assertPatchable(table, ops);
     const both = [...old, ...next];
     forward.set(table, withCreatedAt(selfReferencesFirst(ops, both), next));
     // Undo never deletes from these tables: an article created by the command stays, as when it
@@ -198,7 +316,32 @@ export function diffHousehold(
       backward.set(table, withCreatedAt(selfReferencesFirst(undo, both), old));
     }
   }
-  return { ops: ordered(forward), inverse: ordered(backward) };
+  const ops = ordered(forward);
+  const inverse = ordered(backward);
+  if (options.mode === 'local') return { ops, inverse, send: ops, sendInverse: inverse };
+  return {
+    ops,
+    inverse,
+    send: toSend(ops, beforeRows, removed, cascaded),
+    sendInverse: toSend(inverse, afterRows, added, cascadedBack),
+  };
+}
+
+/**
+ * Patches the database refuses (PATCH_COLUMNS): a Packstück of a packing list keeps its name, a bag
+ * of a packing list its copy. A derived column (DERIVED_COLUMNS) is shown, never sent.
+ */
+function assertPatchable(table: string, ops: readonly RowOp[]): void {
+  const patchable = PATCH_COLUMNS[table as WritableTable];
+  if (!patchable) return;
+  const derived = DERIVED_COLUMNS[table as WritableTable] ?? [];
+  for (const op of ops) {
+    if (op.kind !== 'patch') continue;
+    const refused = Object.keys(op.changes).find(
+      (column) => !patchable.includes(column) && !derived.includes(column),
+    );
+    if (refused) throw new Error(`${table}.${refused} cannot be changed after inserting.`);
+  }
 }
 
 /** What goes over the wire: insert rows without the columns the server sets. */

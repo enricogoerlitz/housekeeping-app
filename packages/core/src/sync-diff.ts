@@ -6,7 +6,7 @@ import type { RowOp } from './sync-overlay';
 
 /**
  * Columns a client never sends: set by the server (`id` is only sent on insert), or writable only
- * through the store RPCs.
+ * through the store RPCs (the packed state of a Packstück: set_packing_items_packed, spec 0012).
  */
 export const NEVER_SENT_COLUMNS = [
   'id',
@@ -18,6 +18,10 @@ export const NEVER_SENT_COLUMNS = [
   'checked_by',
   'check_seq',
   'not_available',
+  'packed',
+  'packed_at',
+  'packed_by',
+  'pack_seq',
 ] as const;
 
 const NEVER_SENT = new Set<string>(NEVER_SENT_COLUMNS);

@@ -6,12 +6,17 @@
 // the article catalog (spec 0007: ingredients point to an article, unique names, delete_article,
 // merge_articles with replaced_by, merge_areas), chore entries only through complete_chore
 // and remove_chore_event with the checks of the database (spec 0011), and recipes deleted only
-// through delete_recipe with a snapshot for restore_recipe (spec 0008, E2 to E4). Several
-// transports (users, devices) can share one server.
+// through delete_recipe with a snapshot for restore_recipe (spec 0008, E2 to E4), and
+// Reisetaschen and Packlisten (spec 0012: grants and allowlist, cascades and set null, "je Tag"
+// computed on insert and after a change of the duration, set_packing_items_packed with
+// "Abhaken gewinnt" via pack_seq, restore_packing_items). Several transports (users, devices) can
+// share one server.
 import {
+  absenceDays,
   addDays,
   compareTimestamps,
   isHalfStar,
+  packQuantity,
   queueEffect,
   RECIPE_LIMITS,
   type AiSearchRequest,
@@ -28,10 +33,12 @@ import {
 } from '@housekeeping/core';
 
 import {
+  CASCADE_CHILDREN,
   COMPOSITE_TABLES,
   ID_TABLES,
   NO_DELETE_TABLES,
   NO_INSERT_TABLES,
+  PATCH_COLUMNS,
   WRITABLE_COLUMNS,
   compositeId,
   withCompositeIds,
@@ -45,6 +52,8 @@ import {
   type AddResult,
   type ChangeOp,
   type ClearedItems,
+  type PackChange,
+  type PackResult,
   type RawPullResult,
   type Transport,
 } from './transport';
@@ -55,6 +64,7 @@ type RpcName =
   | 'set_shopping_item_not_available'
   | 'add_shopping_contributions'
   | 'assign_article_area'
+  | 'set_packing_items_packed'
   | 'clear_checked_items'
   | 'clear_shopping_list'
   | 'adjust_item_count'
@@ -148,6 +158,10 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
     { table: 'activity_ratings', column: 'activity_id' },
   ],
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
+  // Spec 0012: the same table as the diff uses (db/tables.ts).
+  ...Object.fromEntries(
+    Object.entries(CASCADE_CHILDREN).map(([table, children]) => [table, [...(children ?? [])]]),
+  ),
 };
 
 /**
@@ -158,7 +172,8 @@ const REFERENCES: {
   table: string;
   column: string;
   target: string;
-  onDelete: 'restrict' | 'set null';
+  /** cascade: the reference must exist; deleting is in CASCADES. */
+  onDelete: 'restrict' | 'set null' | 'cascade';
 }[] = [
   { table: 'meal_plan_entries', column: 'recipe_id', target: 'recipes', onDelete: 'restrict' },
   {
@@ -177,7 +192,119 @@ const REFERENCES: {
   { table: 'shopping_items', column: 'article_id', target: 'articles', onDelete: 'restrict' },
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
+  { table: 'packing_bag_items', column: 'bag_id', target: 'packing_bags', onDelete: 'cascade' },
+  { table: 'packing_list_bags', column: 'absence_id', target: 'absences', onDelete: 'cascade' },
+  { table: 'packing_list_bags', column: 'bag_id', target: 'packing_bags', onDelete: 'set null' },
+  {
+    table: 'packing_items',
+    column: 'list_bag_id',
+    target: 'packing_list_bags',
+    onDelete: 'cascade',
+  },
 ];
+
+/** Columns of the packing tables that point to a member of the household (set null on leave). */
+const PACKING_MEMBER_COLUMNS: { table: string; column: string; constraint: string }[] = [
+  { table: 'packing_bags', column: 'member_id', constraint: 'packing_bags_member_fkey' },
+  { table: 'packing_list_bags', column: 'member_id', constraint: 'packing_list_bags_member_fkey' },
+  { table: 'packing_items', column: 'packed_by', constraint: 'packing_items_packed_by_fkey' },
+];
+
+/** The open state of a Packstück: what an insert by a member always starts with. */
+const OPEN_PACKING_ITEM = { packed: false, packed_at: null, packed_by: null, pack_seq: 0 };
+
+const PACK_CHANGE_KEYS = ['item_id', 'packed', 'seen_pack_seq'].join(',');
+const RESTORE_KEYS = new Set([
+  'id',
+  'list_bag_id',
+  'name',
+  'quantity',
+  'per_day',
+  'sort',
+  'packed',
+  'packed_at',
+  'packed_by',
+  'pack_seq',
+]);
+
+const isTrimmedName = (value: unknown, max: number) =>
+  typeof value === 'string' &&
+  value.length >= 1 &&
+  Array.from(value).length <= max &&
+  value === value.trim();
+const inRange = (value: unknown, min: number, max: number) =>
+  value === null ||
+  value === undefined ||
+  (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max);
+
+/** The check constraints of the packing tables (spec 0012, packing migration). */
+function checkPackingRow(table: string, row: Row, tables: TableRows): void {
+  const invalid = () => new TransportError('permanent', '23514', 400);
+  if (table === 'packing_bags') {
+    if (!isTrimmedName(row.name, 60)) throw invalid();
+    const name = String(row.name).toLowerCase();
+    const clash = Object.values(tables.packing_bags ?? {}).some(
+      (other) => other.id !== row.id && String(other.name).toLowerCase() === name,
+    );
+    if (clash) throw conflict('23505');
+  } else if (table === 'packing_bag_items') {
+    if (!isTrimmedName(row.name, 120) || !inRange(row.quantity, 1, 99)) throw invalid();
+    if (row.per_day === true && row.quantity == null) throw invalid();
+  } else if (table === 'packing_list_bags') {
+    if (!isTrimmedName(row.name, 60)) throw invalid();
+    const clash =
+      row.bag_id != null &&
+      Object.values(tables.packing_list_bags ?? {}).some(
+        (other) =>
+          other.id !== row.id && other.absence_id === row.absence_id && other.bag_id === row.bag_id,
+      );
+    if (clash) throw conflict('23505');
+  } else if (table === 'packing_items') {
+    if (
+      !isTrimmedName(row.name, 120) ||
+      !inRange(row.quantity, 1, 9999) ||
+      !inRange(row.per_day, 1, 99) ||
+      (row.per_day != null && row.quantity == null)
+    ) {
+      throw invalid();
+    }
+  }
+}
+
+/** "Je Tag" like the database: per day × days of the absence of its bag, at most 9999. */
+function perDayQuantity(tables: TableRows, row: Row): unknown {
+  if (row.per_day == null) return row.quantity;
+  const listBag = tables.packing_list_bags?.[String(row.list_bag_id)];
+  const absence = listBag ? tables.absences?.[String(listBag.absence_id)] : undefined;
+  if (!absence) return row.quantity;
+  return packQuantity(
+    Number(row.per_day),
+    absenceDays(String(absence.from_on), String(absence.to_on)),
+  );
+}
+
+/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one absence (AC-037). */
+function recalcPacking(tables: TableRows, absenceId: string): TableRows {
+  let next = tables;
+  const bagIds = new Set(
+    Object.values(tables.packing_list_bags ?? {})
+      .filter((bag) => bag.absence_id === absenceId)
+      .map((bag) => bag.id),
+  );
+  for (const item of Object.values(tables.packing_items ?? {})) {
+    if (!bagIds.has(String(item.list_bag_id)) || item.per_day == null || item.packed === true) {
+      continue;
+    }
+    const quantity = perDayQuantity(next, item);
+    if (quantity !== item.quantity) {
+      next = {
+        ...next,
+        packing_items: { ...next.packing_items, [item.id]: { ...item, quantity } },
+      };
+    }
+  }
+  return next;
+}
 
 /** articles_synonyms_size (spec 0007): at most 30 synonyms with 2000 characters in all. */
 const MAX_SYNONYMS = 30;
@@ -506,7 +633,7 @@ export function createFakeServer(): FakeServer {
       next = { ...next, [table]: kept };
       for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
         for (const row of Object.values(next[reference.table] ?? {})) {
-          if (row[reference.column] !== id) continue;
+          if (row[reference.column] !== id || reference.onDelete === 'cascade') continue;
           if (reference.onDelete === 'restrict') {
             if (enforce) throw foreignKey(constraintOf(reference));
             continue;
@@ -566,6 +693,117 @@ export function createFakeServer(): FakeServer {
   function memberOf(userId: string, householdId: string): string {
     if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
     return householdId;
+  }
+
+  /** The packing tables point to members with composite foreign keys (spec 0012). */
+  function checkPackingMembers(
+    householdId: string,
+    table: string,
+    row: Record<string, unknown>,
+  ): void {
+    const memberIds = new Set(memberIdsOf(householdId));
+    for (const reference of PACKING_MEMBER_COLUMNS) {
+      const value = row[reference.column];
+      if (reference.table === table && value != null && !memberIds.has(String(value))) {
+        throw foreignKey(reference.constraint);
+      }
+    }
+  }
+
+  /** private.restore_packing_items (spec 0012, AC-034, AC-035): Packstücke with their state. */
+  function restorePackingItems(
+    tables: TableRows,
+    householdId: string,
+    items: unknown,
+  ): [TableRows, { restored: number }] {
+    if (!Array.isArray(items) || items.length === 0) throw reject('invalid_change');
+    if (items.length > 200) throw reject('too_many_changes');
+    let next = tables;
+    for (const element of items as unknown[]) {
+      if (!isPlainObject(element) || Object.keys(element).some((key) => !RESTORE_KEYS.has(key))) {
+        throw reject('invalid_change');
+      }
+      if (!isText(element.id) || !isText(element.list_bag_id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (next.packing_items?.[element.id]) throw conflict('23505');
+      const packed = element.packed === true;
+      const time = now();
+      const at = isText(element.packed_at) ? element.packed_at : time;
+      const row: Row = {
+        id: element.id,
+        list_bag_id: element.list_bag_id,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day: element.per_day ?? null,
+        sort: element.sort ?? 0,
+        packed,
+        packed_at: packed ? (compareTimestamps(at, time) > 0 ? time : at) : null,
+        packed_by: packed ? (element.packed_by ?? null) : null,
+        pack_seq: Math.min(Math.max(Number(element.pack_seq ?? 0), 0), 999_000),
+      };
+      row.quantity = perDayQuantity(next, row);
+      next = withRow(next, 'packing_items', row);
+      checkReferences(next, 'packing_items', row);
+      checkPackingRow('packing_items', row, next);
+      checkPackingMembers(householdId, 'packing_items', row);
+    }
+    return [next, { restored: items.length }];
+  }
+
+  /** private.set_packing_items_packed (ADR-0013): the rule table per Packstück, one transaction. */
+  function setPackingItemsPacked(
+    userId: string,
+    householdId: string,
+    changes: readonly PackChange[],
+  ): PackResult {
+    memberOf(userId, householdId);
+    const list = changes as unknown;
+    if (!Array.isArray(list) || list.length === 0) throw reject('invalid_change');
+    if (list.length > 200) throw reject('too_many_changes');
+    // The database also wants a lower-case UUID; the test data use readable ids.
+    for (const candidate of list as unknown[]) {
+      if (!isPlainObject(candidate)) throw reject('invalid_change');
+      const { item_id: itemId, packed, seen_pack_seq: seen } = candidate;
+      if (
+        Object.keys(candidate).sort().join(',') !== PACK_CHANGE_KEYS ||
+        !isText(itemId) ||
+        typeof packed !== 'boolean' ||
+        typeof seen !== 'number' ||
+        !Number.isInteger(seen) ||
+        seen < 0 ||
+        seen > 1_000_000
+      ) {
+        throw reject('invalid_change');
+      }
+    }
+    const byId = new Map(changes.map((change) => [change.item_id.toLowerCase(), change]));
+    if (byId.size !== changes.length) throw reject('invalid_change');
+    return transaction(householdId, (tables) => {
+      let next = tables;
+      const answer: PackResult = [];
+      const found = Object.values(tables.packing_items ?? {})
+        .filter((item) => byId.has(item.id.toLowerCase()))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      for (const item of found) {
+        const change = byId.get(item.id.toLowerCase());
+        if (!change) continue;
+        let row = item;
+        const seq = Number(item.pack_seq ?? 0);
+        if (change.packed && item.packed !== true) {
+          row = { ...item, packed: true, packed_at: now(), packed_by: userId, pack_seq: seq + 1 };
+        } else if (!change.packed && item.packed === true && seq === change.seen_pack_seq) {
+          row = { ...item, packed: false, packed_at: null, packed_by: null, pack_seq: seq + 1 };
+        }
+        if (row !== item) next = withRow(next, 'packing_items', row);
+        answer.push({
+          item_id: row.id,
+          packed: row.packed === true,
+          pack_seq: Number(row.pack_seq ?? 0),
+        });
+      }
+      return [next, answer];
+    });
   }
 
   /** Newest first by created_at, then id (the database's `order by created_at desc, id desc`). */
@@ -654,7 +892,10 @@ export function createFakeServer(): FakeServer {
   function checkColumns(table: string, columns: string[], insert: boolean): void {
     if (!Object.hasOwn(WRITABLE_COLUMNS, table)) throw reject('invalid_change');
     if (insert && NO_INSERT_TABLES.has(table)) throw reject('invalid_change');
-    const allowed = new Set<string>(WRITABLE_COLUMNS[table as WritableTable]);
+    const allowed = new Set<string>(
+      (!insert && PATCH_COLUMNS[table as WritableTable]) ||
+        WRITABLE_COLUMNS[table as WritableTable],
+    );
     if (insert) {
       allowed.add('id');
       allowed.add('household_id');
@@ -900,7 +1141,9 @@ export function createFakeServer(): FakeServer {
         ? Math.max(op.ids.length, 1)
         : op.kind === 'add_contributions'
           ? Math.max(op.entries.length, 1)
-          : 1,
+          : op.kind === 'restore_packing_items'
+            ? Math.max(Array.isArray(op.items) ? op.items.length : 1, 1)
+            : 1,
     );
     const deletes = sum((op) =>
       // complete_chore too: done of a one-off chore deletes it, known only under the lock.
@@ -938,6 +1181,10 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeChoreEvent(tables, op.id);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'restore_packing_items') {
+          const [next, restored] = restorePackingItems(tables, householdId, op.items);
+          tables = next;
+          results.push(restored);
         } else if (op.kind === 'insert') {
           checkColumns(op.table, Object.keys(op.row), true);
           if (op.row.household_id !== undefined && op.row.household_id !== householdId) {
@@ -954,18 +1201,30 @@ export function createFakeServer(): FakeServer {
                   check_seq: 0,
                   not_available: false,
                 }
-              : {};
+              : op.table === 'packing_items'
+                ? OPEN_PACKING_ITEM
+                : {};
           tables = withRow(tables, op.table, {
             ...defaults,
             ...op.row,
             ...(op.table === 'feedback' ? { author_id: userId } : {}),
             ...(op.table === 'activities' ? { created_by: userId } : {}),
           });
+          // packing_items_before_insert: "je Tag" from the absence, whatever the device sent.
+          const inserted = tables[op.table]?.[op.row.id];
+          if (op.table === 'packing_items' && inserted) {
+            tables = withRow(tables, op.table, {
+              ...inserted,
+              quantity: perDayQuantity(tables, inserted),
+            });
+          }
           if (op.table === 'recipes') checkIngredients(op.row.ingredients, tables);
           if (op.table === 'articles')
             checkArticleKeys(tables.articles?.[op.row.id] ?? op.row, tables);
           checkReferences(tables, op.table, op.row);
           checkRow(householdId, op.table, tables[op.table]?.[op.row.id] ?? op.row, tables);
+          checkPackingRow(op.table, tables[op.table]?.[op.row.id] ?? op.row, tables);
+          checkPackingMembers(householdId, op.table, op.row);
         } else if (op.kind === 'patch') {
           checkColumns(op.table, Object.keys(op.changes), false);
           if (op.table === 'households') {
@@ -993,6 +1252,17 @@ export function createFakeServer(): FakeServer {
           }
           checkReferences(tables, op.table, op.changes);
           checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
+          checkPackingRow(op.table, tables[op.table]?.[op.id] ?? row, tables);
+          checkPackingMembers(householdId, op.table, op.changes);
+          // absences_recalc_packing and packing_list_bags_recalc (AC-037).
+          const changed = (column: string) =>
+            column in op.changes && op.changes[column] !== row[column];
+          if (op.table === 'absences' && (changed('from_on') || changed('to_on'))) {
+            tables = recalcPacking(tables, op.id);
+          }
+          if (op.table === 'packing_list_bags' && changed('absence_id')) {
+            tables = recalcPacking(tables, String(op.changes.absence_id));
+          }
         } else {
           if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || NO_DELETE_TABLES.has(op.table)) {
             throw reject('invalid_change');
@@ -1361,6 +1631,11 @@ export function createFakeServer(): FakeServer {
             addContributions(tables, householdId, entries),
           );
         }),
+
+      setPackingItemsPacked: (householdId, changes) =>
+        run(userId, 'set_packing_items_packed', () =>
+          setPackingItemsPacked(userId, householdId, changes),
+        ),
 
       assignArticleArea: (articleId, areaId) =>
         run(userId, 'assign_article_area', () => {
@@ -1849,6 +2124,17 @@ export function createFakeServer(): FakeServer {
           members = members.filter(
             (m) => !(m.household_id === householdId && m.profile_id === profileId),
           );
+          // on delete set null (member_id / packed_by) of the packing tables (spec 0012).
+          transaction(householdId, (tables) => {
+            let next = tables;
+            for (const reference of PACKING_MEMBER_COLUMNS) {
+              for (const row of Object.values(next[reference.table] ?? {})) {
+                if (row[reference.column] !== profileId) continue;
+                next = withRow(next, reference.table, { ...row, [reference.column]: null });
+              }
+            }
+            return [next, undefined];
+          });
           notify(householdId);
         }),
 
@@ -1964,7 +2250,9 @@ export function createFakeServer(): FakeServer {
                   check_seq: 0,
                   not_available: false,
                 }
-              : {};
+              : table === 'packing_items'
+                ? OPEN_PACKING_ITEM
+                : {};
           after = withRow(after, table, { ...defaults, ...row });
         }
       }
