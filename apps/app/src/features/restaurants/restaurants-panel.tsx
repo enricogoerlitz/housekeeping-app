@@ -1,49 +1,67 @@
 import { useCurrentMember, usePlanEntries, useRestaurants, useToday } from '@housekeeping/api';
 import {
+  applyRestaurantListFilter,
+  cuisineFacets,
+  EMPTY_RESTAURANT_LIST_FILTER,
+  filterButtonLabel,
   fuzzyIncludes,
+  removeRestaurantFilterChip,
+  RESTAURANT_SORTS,
+  restaurantCountLabel,
+  restaurantEmptyLabel,
+  restaurantFilterChips,
+  restaurantFilterCount,
+  restaurantShowLabel,
   restaurantVisits,
   routeId,
+  sortRestaurantList,
+  toggleRestaurantFavorites,
   type Id,
   type Restaurant,
+  type RestaurantListSort,
 } from '@housekeeping/core';
 import {
   Button,
   Chip,
   EmptyState,
+  FilterBar,
   Icon,
   IconButton,
+  InfiniteList,
+  ListDetail,
   Menu,
   Row,
   Screen,
   ScreenHeader,
-  Stack,
   Stars,
   Surface,
   Text,
   TextField,
   useBreakpoint,
   useTheme,
+  type MenuOption,
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
 
+import { useOpenRecipe } from '@/features/recipes/navigation';
+import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
+import { StarterSheet } from '@/features/recipes/starter-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
-import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
 import { lastVisitLabel, restaurantMeta } from './labels';
 import { RestaurantDetail } from './restaurant-detail';
+import { RestaurantFilterPanel } from './restaurant-filter-panel';
+import { useRestaurantListState } from './restaurant-list-state';
 
-type RestaurantSort = 'name' | 'rating' | 'recent';
+type NewKind = 'recipe' | 'restaurant' | 'starter';
 
-const SORTS: { value: RestaurantSort; label: string }[] = [
-  { value: 'name', label: 'A–Z' },
-  { value: 'rating', label: 'Bewertung' },
-  { value: 'recent', label: 'Zuletzt' },
-];
-
+/** Restaurant cards in the grid: at least this wide (one column on phones, three at 1440 px). */
+const CARD_MIN_WIDTH = 320;
+/** The list column next to an open restaurant on wide screens ("Liste und Detail"). */
 const LIST_COLUMN_WIDTH = 380;
 
 type SheetRequest = Pick<AddRestaurantSheetProps, 'initialText' | 'initialName' | 'focus'>;
@@ -58,7 +76,18 @@ function matches(query: string, restaurant: Restaurant): boolean {
   );
 }
 
-/** "Essen → Restaurants": search, favourites, sort; on wide screens list and detail side by side. */
+/** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", else the menu text (T2, decision 6). */
+function sortShortLabel(sort: RestaurantListSort): string {
+  if (sort === 'lastVisit') return 'Zuletzt';
+  return RESTAURANT_SORTS.find((entry) => entry.value === sort)?.label ?? '';
+}
+
+/**
+ * "Essen → Restaurants" (spec 0008, REQ-005): the same search and filter row as for recipes,
+ * with Favoriten, Küche, Preisniveau and the own rating, the sort menu incl. "Zufall", and an
+ * endless list; on wide screens list and detail side by side (spec 0002). Search, filters, sort
+ * and the random order stay while the app runs (E14).
+ */
 export function RestaurantsPanel(props: { switcher: ReactNode }) {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -67,20 +96,22 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
     share?: string | string[];
     shareName?: string | string[];
   }>();
-  const { isWide, isPhone, bp } = useBreakpoint();
+  const { isWide, isPhone } = useBreakpoint();
   const online = useOnlineOnly();
   const restaurants = useRestaurants();
   const entries = usePlanEntries();
   const today = useToday();
   const me = useCurrentMember();
+  const list = useRestaurantListState();
+  const openRecipe = useOpenRecipe();
 
-  const [query, setQuery] = useState('');
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [sort, setSort] = useState<RestaurantSort>('name');
   const [sheet, setSheet] = useState<SheetRequest | undefined>();
+  const [newRecipeOpen, setNewRecipeOpen] = useState(false);
+  const [starterOpen, setStarterOpen] = useState(false);
 
   const selectedId = isWide ? routeId(params.rid) : undefined;
-  // The share target opens the sheet through the URL, so a reload keeps it open (AC-008).
+  // The share target and "+ → Restaurant" on the recipes view open the sheet through the URL, so
+  // a reload keeps it open (spec 0002, AC-008).
   const shared: SheetRequest | undefined =
     param(params.add) === '1'
       ? { initialText: param(params.share), initialName: param(params.shareName), focus: 'name' }
@@ -96,87 +127,88 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
     if (shared) router.setParams({ add: undefined, share: undefined, shareName: undefined });
   };
 
-  const visitsById = new Map(
-    restaurants.map((restaurant) => [
-      restaurant.id,
-      restaurantVisits(restaurant.id, entries, today),
-    ]),
+  const { query, filter, sort, shuffle } = list;
+  const cuisines = useMemo(() => cuisineFacets(restaurants), [restaurants]);
+  const visitsById = useMemo(
+    () =>
+      new Map(
+        restaurants.map((restaurant) => [
+          restaurant.id,
+          restaurantVisits(restaurant.id, entries, today),
+        ]),
+      ),
+    [restaurants, entries, today],
   );
-  const filtered = restaurants.filter(
-    (restaurant) =>
-      (!favoritesOnly || restaurant.favoriteOf.includes(me.id)) &&
-      (!query.trim() || matches(query, restaurant)),
-  );
-  const results = [...filtered].sort((a, b) => {
-    if (sort === 'rating') {
-      const byRating = (b.ratings[me.id] ?? 0) - (a.ratings[me.id] ?? 0);
-      if (byRating !== 0) return byRating;
-    }
-    if (sort === 'recent') {
-      // Never visited goes last.
-      const daysA = visitsById.get(a.id)?.daysSince ?? Number.POSITIVE_INFINITY;
-      const daysB = visitsById.get(b.id)?.daysSince ?? Number.POSITIVE_INFINITY;
-      if (daysA !== daysB) return daysA - daysB;
-    }
-    return a.name.localeCompare(b.name, 'de');
-  });
+  const results = useMemo(() => {
+    const searched = query.trim()
+      ? restaurants.filter((restaurant) => matches(query, restaurant))
+      : restaurants;
+    const filtered = applyRestaurantListFilter(searched, filter, me.id);
+    return sortRestaurantList(filtered, sort, { me: me.id, entries, today, shuffle });
+  }, [query, restaurants, filter, me.id, sort, entries, today, shuffle]);
 
+  const newOptions: MenuOption<NewKind>[] = [
+    { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
+    { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
+    { value: 'starter', label: 'Starter-Rezepte' },
+  ];
+  const onNew = (kind: NewKind) => {
+    if (kind === 'recipe') setNewRecipeOpen(true);
+    else if (kind === 'starter') setStarterOpen(true);
+    else setSheet({ focus: 'link' });
+  };
+
+  // The same "+" as on "Essen → Rezepte" (spec 0008, AC-003): one header for both views.
   const header = (
     <ScreenHeader
       title="Essen"
       right={
         <>
-          {isPhone ? (
-            <IconButton
-              icon="plus"
-              label="Restaurant hinzufügen"
-              variant="soft"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => setSheet({ focus: 'link' })}
-              testID="restaurant-add"
-            />
-          ) : (
-            <Button
-              label="Restaurant hinzufügen"
-              icon="plus"
-              size="sm"
-              disabled={online.disabled}
-              hint={online.hint}
-              onPress={() => setSheet({ focus: 'link' })}
-              testID="restaurant-add"
-            />
-          )}
+          <Menu
+            trigger={isPhone ? 'icon' : 'button'}
+            icon="plus"
+            label="Neu"
+            accessibilityLabel="Neu anlegen"
+            options={newOptions}
+            onChange={onNew}
+            testID="recipe-new"
+          />
           <StartPageActions />
         </>
       }
     />
   );
   const offlineHint = online.hint ? (
-    <Text
-      variant="small"
-      color="warn"
-      testID="restaurant-offline-hint"
-      style={{ marginBottom: 12 }}
-    >
+    <Text variant="small" color="warn" testID="restaurant-offline-hint">
       {online.hint}
     </Text>
   ) : null;
 
-  const sheets = sheetRequest ? (
-    <AddRestaurantSheet
-      key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
-      {...sheetRequest}
-      onClose={closeSheet}
-      onCreated={open}
-      onOpenExisting={open}
-    />
-  ) : null;
+  const sheets = (
+    <>
+      {sheetRequest ? (
+        <AddRestaurantSheet
+          key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
+          {...sheetRequest}
+          onClose={closeSheet}
+          onCreated={open}
+          onOpenExisting={open}
+        />
+      ) : null}
+      <NewRecipeSheet
+        visible={newRecipeOpen}
+        onClose={() => setNewRecipeOpen(false)}
+        onCreated={openRecipe}
+      />
+      <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
+    </>
+  );
 
+  // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (restaurants.length === 0) {
     return (
       <Screen testID="restaurants-screen" tone="essen" header={header} tabs={props.switcher}>
-        {offlineHint}
+        {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="utensils"
           title="Noch keine Restaurants"
@@ -206,123 +238,143 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
     );
   }
 
-  const compact = selectedId !== undefined;
-  const columns = isPhone || compact ? 1 : bp === 'desktop' ? 3 : 2;
-  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const ids = restaurants.map((restaurant) => restaurant.id);
+  const filterCount = restaurantFilterCount(filter);
+  const sortLabel = sortShortLabel(sort);
   const toolbar = (
-    <Stack gap={8}>
-      <TextField
-        round
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Restaurants suchen …"
-        accessibilityLabel="Restaurants suchen"
-        returnKeyType="search"
-        left={<Icon name="search" size={19} color="muted" />}
-        right={
-          query ? (
-            <IconButton
-              icon="x"
-              label="Suche leeren"
-              onPress={() => setQuery('')}
-              testID="restaurant-search-clear"
-            />
-          ) : undefined
-        }
-        testID="restaurant-search"
-      />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 8, paddingBottom: 2 }}
-        style={{ flexGrow: 0 }}
-      >
+    <FilterBar
+      search={
+        <TextField
+          round
+          value={query}
+          onChangeText={list.setQuery}
+          placeholder="Restaurants suchen …"
+          accessibilityLabel="Restaurants suchen"
+          returnKeyType="search"
+          left={<Icon name="search" size={19} color="muted" />}
+          right={
+            query ? (
+              <IconButton
+                icon="x"
+                label="Suche leeren"
+                onPress={() => list.setQuery('')}
+                testID="restaurant-search-clear"
+              />
+            ) : undefined
+          }
+          testID="restaurant-search"
+        />
+      }
+      filterLabel={filterButtonLabel(filterCount)}
+      activeCount={filterCount}
+      sort={
         <Menu
           label={sortLabel}
           accessibilityLabel={`Sortierung: ${sortLabel}`}
           icon="arrow-up-down"
           value={sort}
-          onChange={setSort}
-          options={SORTS}
+          onChange={(next) => list.setSort(next, ids)}
+          options={[...RESTAURANT_SORTS]}
           testID="restaurant-sort"
         />
-        <Chip
-          label="Favoriten"
-          icon="heart"
-          selected={favoritesOnly}
-          onPress={() => setFavoritesOnly(!favoritesOnly)}
-          testID="rfilter-favorites"
-        />
-      </ScrollView>
-    </Stack>
-  );
-  const listBody = (
-    <>
-      <Text variant="small" color="muted" testID="restaurant-count" style={{ marginBottom: 12 }}>
-        {results.length === 1 ? '1 Restaurant' : `${results.length} Restaurants`}
-      </Text>
-      {results.length === 0 ? (
-        <EmptyState
-          icon="search"
-          title="Nichts gefunden"
-          text="Probiere ein anderes Wort oder nimm den Filter heraus."
-          testID="restaurants-no-results"
-        />
-      ) : (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          {results.map((restaurant) => (
-            <View
-              key={restaurant.id}
-              style={{ width: columns === 1 ? '100%' : columns === 2 ? '48.5%' : '31.8%' }}
-            >
-              <RestaurantCard
-                restaurant={restaurant}
-                myRating={restaurant.ratings[me.id] ?? 0}
-                isFavorite={restaurant.favoriteOf.includes(me.id)}
-                lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
-                selected={restaurant.id === selectedId}
-                onPress={() => open(restaurant.id)}
-              />
-            </View>
+      }
+      chips={
+        <>
+          {sort === 'random' ? (
+            <Chip
+              label="Neu mischen"
+              icon="refresh-cw"
+              onPress={() => list.reshuffle(ids)}
+              testID="restaurant-reshuffle"
+            />
+          ) : null}
+          {restaurantFilterChips(filter, cuisines).map((chip) => (
+            <Chip
+              key={`${chip.kind}-${chip.value}`}
+              label={chip.label}
+              selected
+              removable
+              accessibilityLabel={`${chip.label} entfernen`}
+              onPress={() => list.setFilter(removeRestaurantFilterChip(filter, chip))}
+              testID={`restaurant-chip-${chip.kind}-${String(chip.value).replace('.', '-')}`}
+            />
           ))}
-        </View>
-      )}
-    </>
+          <Chip
+            label="Favoriten"
+            icon="heart"
+            selected={filter.favorites}
+            onPress={() => list.setFilter(toggleRestaurantFavorites(filter))}
+            testID="restaurant-quick-favorites"
+          />
+        </>
+      }
+      panelTitle="Filter"
+      panel={
+        <RestaurantFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />
+      }
+      resetLabel="Zurücksetzen"
+      onReset={() => list.setFilter(EMPTY_RESTAURANT_LIST_FILTER)}
+      applyLabel={restaurantShowLabel(results.length)}
+      collapseLabel="Einklappen"
+      testID="restaurant-filters"
+    />
   );
 
-  if (compact && selectedId !== undefined) {
-    return (
-      <Screen
-        testID="restaurants-screen"
-        tone="essen"
-        header={header}
-        tabs={props.switcher}
-        scroll={false}
-        style={{ flex: 1, paddingBottom: 0 }}
-      >
-        <View style={{ flex: 1, flexDirection: 'row', gap: 32 }}>
-          <View style={{ width: LIST_COLUMN_WIDTH }}>
-            <ScrollColumn>
-              <View style={{ paddingVertical: 8 }}>{toolbar}</View>
-              {offlineHint}
-              {listBody}
-            </ScrollColumn>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <ScrollColumn>
-              <View style={{ paddingTop: 8 }}>
-                <RestaurantDetail
-                  restaurantId={selectedId}
-                  onClose={() => router.setParams({ rid: undefined })}
-                />
-              </View>
-            </ScrollColumn>
-          </View>
+  const empty = (
+    <EmptyState
+      icon={query.trim() ? 'search' : 'list-filter'}
+      title={restaurantEmptyLabel(query)}
+      text={query.trim() ? 'Probiere ein anderes Wort.' : undefined}
+      testID="restaurants-no-results"
+    >
+      {filterCount > 0 ? (
+        <Button
+          label="Filter zurücksetzen"
+          variant="secondary"
+          onPress={() => list.setFilter(EMPTY_RESTAURANT_LIST_FILTER)}
+          testID="restaurants-reset-filters"
+        />
+      ) : null}
+    </EmptyState>
+  );
+
+  const split = selectedId !== undefined;
+  const restaurantList = (
+    <InfiniteList<Restaurant>
+      // A new round (filter, sort, mixing) starts at the top; its place is kept per round. The
+      // grid and the narrow list column keep separate places.
+      key={`${split ? 'column' : 'grid'}-${list.round}`}
+      restoreKey={`restaurants-${split ? 'column' : 'grid'}-${list.round}`}
+      data={results}
+      keyExtractor={(restaurant) => restaurant.id}
+      renderItem={(restaurant) => (
+        // The grid spaces its rows itself; the plain column needs the gap per card.
+        <View style={split ? { marginBottom: 12 } : { flexGrow: 1 }}>
+          <RestaurantCard
+            restaurant={restaurant}
+            myRating={restaurant.ratings[me.id] ?? 0}
+            isFavorite={restaurant.favoriteOf.includes(me.id)}
+            lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
+            selected={restaurant.id === selectedId}
+            onPress={() => open(restaurant.id)}
+          />
         </View>
-        {sheets}
-      </Screen>
-    );
-  }
+      )}
+      minColumnWidth={split ? undefined : CARD_MIN_WIDTH}
+      ListHeaderComponent={
+        <View style={{ gap: 6, marginBottom: 12 }}>
+          {offlineHint}
+          {results.length > 0 ? (
+            <Text variant="small" color="muted" testID="restaurant-count">
+              {restaurantCountLabel(results.length)}
+            </Text>
+          ) : null}
+        </View>
+      }
+      ListEmptyComponent={empty}
+      testID="restaurant-list"
+    />
+  );
 
   return (
     <Screen
@@ -331,9 +383,26 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
       header={header}
       tabs={props.switcher}
       toolbar={toolbar}
+      scroll={false}
+      clearFab={false}
+      style={{ flex: 1, paddingTop: 0, paddingBottom: 0 }}
     >
-      {offlineHint}
-      {listBody}
+      {split ? (
+        <ListDetail
+          list={restaurantList}
+          detail={
+            <RestaurantDetail
+              restaurantId={selectedId}
+              onClose={() => router.setParams({ rid: undefined })}
+            />
+          }
+          placeholder={{ icon: 'utensils', title: 'Wähl ein Restaurant aus' }}
+          listWidth={LIST_COLUMN_WIDTH}
+          testID="restaurants-split"
+        />
+      ) : (
+        restaurantList
+      )}
       {sheets}
     </Screen>
   );
@@ -361,12 +430,14 @@ function RestaurantCard(props: {
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,
         borderRadius: theme.shape.radius.card,
+        // Cards of one grid row share its height.
+        flexGrow: 1,
       })}
     >
       <Surface
         padding={12}
         style={[
-          { flexDirection: 'row', alignItems: 'center', gap: 12 },
+          { flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
           props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
         ]}
       >
@@ -403,6 +474,7 @@ function RestaurantCard(props: {
             </Text>
           ) : null}
           <Row gap={8} wrap>
+            {/* The own rating in half stars (spec 0008, REQ-011, AC-041). */}
             {props.myRating ? (
               <Stars value={props.myRating} size={13} testID={`restaurant-${id}-stars`} />
             ) : null}

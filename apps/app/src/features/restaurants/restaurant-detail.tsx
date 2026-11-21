@@ -10,18 +10,14 @@ import {
 } from '@housekeeping/api';
 import { priceLabel, restaurantVisits, type Id, type Restaurant } from '@housekeeping/core';
 import {
-  Avatar,
   Badge,
   Button,
   EmptyState,
   Icon,
   IconButton,
-  List,
-  ListRow,
   Row,
   Section,
   Stack,
-  Stars,
   Text,
   TextField,
   toast,
@@ -32,6 +28,7 @@ import { View } from 'react-native';
 
 import { DetailPage } from '@/features/shell/detail-page';
 import { FavoriteButton } from '@/features/shell/favorite-button';
+import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { visitsLabel } from './labels';
@@ -98,7 +95,6 @@ function RestaurantDetailBody(props: {
 
   const visits = restaurantVisits(restaurant.id, entries, today);
   const isFavorite = restaurant.favoriteOf.includes(me.id);
-  const mine = restaurant.ratings[me.id] ?? 0;
   const notesChanged = notes.trim() !== (restaurant.notes ?? '');
   const meta = [restaurant.cuisine, priceLabel(restaurant.priceLevel)].filter(Boolean).join(' · ');
 
@@ -181,18 +177,16 @@ function RestaurantDetailBody(props: {
               ))}
             </Row>
           ) : null}
-          <Row gap={10}>
-            <Stars
-              value={mine}
-              onChange={
-                online.disabled ? undefined : (stars) => rateRestaurant(restaurant.id, stars)
-              }
-              testID="restaurant-stars"
-            />
-            <Text variant="caption" color="muted">
-              {mine ? 'Deine Bewertung' : 'Noch nicht bewertet'}
-            </Text>
-          </Row>
+          {/* "Du" with the own half stars, the others only to look at (spec 0008, E15, AC-041). */}
+          <MemberRatings
+            ratings={restaurant.ratings}
+            members={members}
+            me={me.id}
+            onRate={(stars) => rateRestaurant(restaurant.id, stars)}
+            disabled={online.disabled}
+            hint={online.hint}
+            testID="restaurant-stars"
+          />
           <Row gap={10} wrap style={{ marginTop: 4 }}>
             <Button
               label="Route"
@@ -209,32 +203,6 @@ function RestaurantDetailBody(props: {
             />
           </Row>
         </Stack>
-
-        <Section title="Bewertungen" testID="restaurant-ratings">
-          <List>
-            {members.map((member) => {
-              const rating = restaurant.ratings[member.id] ?? 0;
-              return (
-                <ListRow
-                  key={member.id}
-                  testID={`restaurant-rating-${member.id}`}
-                  leading={<Avatar name={member.name} color={member.color} />}
-                  title={member.id === me.id ? `${member.name} (du)` : member.name}
-                  subtitle={restaurant.favoriteOf.includes(member.id) ? 'Favorit' : undefined}
-                  trailing={
-                    rating ? (
-                      <Stars value={rating} size={16} />
-                    ) : (
-                      <Text variant="small" color="muted">
-                        noch keine
-                      </Text>
-                    )
-                  }
-                />
-              );
-            })}
-          </List>
-        </Section>
 
         <Section title="Notiz" testID="restaurant-notes-section">
           <Stack gap={10}>

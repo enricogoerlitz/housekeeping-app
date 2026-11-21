@@ -643,3 +643,12 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
 6. Einplanen: ‹ › verschiebt den gewählten Tag um ganze Wochen (`pagePlanChoice`).
 7. Rezept-Aktionen in der Kopfzeile erst ab Desktop; Tablet unter dem Kopf; Handy mit „Kochen“ in
    zweiter Zeile (44-pt-Knöpfe). „Foto entfernen“ im ⋯, wenn ein eigenes Foto da ist.
+
+## Entscheidungen beim Bauen (App, T8, 21.11.2026)
+
+1. Das „+“-Menü der Restaurant-Ansicht ist derselbe Kopf wie bei „Rezepte“ (`recipe-new`);
+   „Rezept“ und „Starter-Rezepte“ öffnen die Fenster aus `features/recipes`.
+2. Sortierknopf: „Zuletzt“ als Kurztext, sonst der Menütext.
+3. Die Suchzeile steht über die ganze Breite, auch in „Liste und Detail“.
+4. Der Abschnitt „Bewertungen“ auf der Restaurantseite entfällt (`MemberRatings` zeigt alle
+   Mitglieder, E15); „Favorit“ je anderem Mitglied wird nicht mehr gezeigt (kein AC verlangt es).
