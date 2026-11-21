@@ -120,6 +120,21 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await nav(page, 'index');
   await openSettings(page);
   await back(page);
+  // "Artikel" (spec 0007): search, "Artikel bearbeiten" with its area step, "+ Neu".
+  await openManaged(page, 'articles');
+  await expect(tid(page, 'articles-screen')).toBeVisible();
+  await tid(page, 'articles-search').fill('Kokosmilch');
+  await tid(page, `article-${seedIds['art-kokosmilch']}`).click();
+  await expect(tid(page, 'article-sheet')).toBeVisible();
+  await expect(tid(page, 'article-delete-reason')).toBeVisible();
+  await tid(page, 'article-area').click();
+  await expect(tid(page, 'article-area-search')).toBeVisible();
+  await tid(page, 'article-step-back').click();
+  await tid(page, 'article-done').click();
+  await tid(page, 'articles-new').click();
+  await expect(tid(page, 'new-article-sheet')).toBeVisible();
+  await tid(page, 'new-article-sheet-close').click();
+  await leaveManaged(page);
   await openManaged(page, 'stores');
   await tid(page, `store-${seedIds['store-rewe']}`).click();
   await expect(tid(page, 'store-order-screen')).toBeVisible();

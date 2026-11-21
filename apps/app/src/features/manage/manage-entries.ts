@@ -26,8 +26,7 @@ export interface ManageGroup {
   entries: ManageEntry[];
 }
 
-// "Artikel" (spec 0007) and "Reisetaschen" (spec 0012) get their entries with their pages
-// (spec 0005, open question 1). "Aktivitäten" lives in the calendar's area (spec 0010, REQ-008).
+// "Reisetaschen" (spec 0012) gets its entry with its page (spec 0005, open question 1). "Aktivitäten" lives in the calendar's area (spec 0010, REQ-008).
 export const MANAGE_GROUPS: ManageGroup[] = [
   {
     key: 'plan',
@@ -53,6 +52,13 @@ export const MANAGE_GROUPS: ManageGroup[] = [
     key: 'shopping',
     title: 'Einkaufen',
     entries: [
+      {
+        key: 'articles',
+        label: 'Artikel',
+        icon: 'package',
+        href: '/artikel',
+        route: '(artikel)',
+      },
       {
         key: 'stores',
         label: 'Märkte & Bereiche',

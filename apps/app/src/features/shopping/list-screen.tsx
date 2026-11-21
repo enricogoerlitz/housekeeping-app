@@ -168,7 +168,7 @@ interface Dictation {
   items: { index: number; item: DictatedItem }[];
 }
 
-type MoreAction = 'clear-done' | 'clear-list' | 'stores';
+type MoreAction = 'clear-done' | 'clear-list' | 'stores' | 'articles';
 
 export function ListScreen() {
   const items = useShoppingItems();
@@ -278,9 +278,13 @@ export function ListScreen() {
       hint: online.hint,
     },
     { value: 'stores', label: 'Märkte & Bereiche' },
+    { value: 'articles', label: 'Artikel' },
   ];
   const onMore = (action: MoreAction) => {
     if (action === 'stores') openManageEntry('/maerkte');
+    // "Zurück" on "Artikel" leads to the list again (spec 0007, AC-021).
+    else if (action === 'articles')
+      openManageEntry({ pathname: '/artikel', params: { von: 'liste' } });
     else if (online.disabled) return;
     else if (action === 'clear-done') clearDone();
     else if (items.length > 0) setConfirmClear(true);

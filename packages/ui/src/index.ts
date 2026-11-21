@@ -108,6 +108,7 @@ export {
 export { SwipeToRemove, type SwipeToRemoveProps } from './swipe-row';
 export { FilterBar, type FilterBarProps } from './filter-bar';
 export { InfiniteList, type InfiniteListProps } from './infinite-list';
+export { ListDetail, type ListDetailProps } from './list-detail';
 export {
   Screen,
   ScreenHeader,

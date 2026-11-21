@@ -249,7 +249,8 @@ export async function back(page: Page): Promise<void> {
 }
 
 /** A page under "Verwalten" (spec 0005, REQ-010): `manage-entry-<key>` / `nav-manage-<key>`. */
-export type ManagedPage = 'activities' | 'absences' | 'stores' | 'members' | 'feedback';
+export type ManagedPage =
+  'activities' | 'absences' | 'articles' | 'stores' | 'members' | 'feedback';
 
 /**
  * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page, then the

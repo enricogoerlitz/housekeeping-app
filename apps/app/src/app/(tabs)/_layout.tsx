@@ -82,6 +82,7 @@ export default function TabsLayout() {
         {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
         <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
         <Tabs.Screen name="abwesenheiten" options={{ title: 'Abwesenheiten' }} />
+        <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
         <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
         <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
         <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />

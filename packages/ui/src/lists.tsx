@@ -125,6 +125,8 @@ export interface ListRowProps {
   onPress?: () => void;
   disabled?: boolean;
   strike?: boolean;
+  /** The row shown in the detail column next to the list ("Liste und Detail"), in `accentSoft`. */
+  selected?: boolean;
   /** Accessible name when the title is not a plain string. */
   accessibilityLabel?: string;
   testID?: string;
@@ -186,6 +188,19 @@ export function ListRow(props: ListRowProps) {
       : index > 0
         ? { borderTopWidth: 1, borderTopColor: c.border }
         : {};
+  // Hairline rows have no side padding; the highlight gets some without moving the text.
+  const highlight: ViewStyle | null = props.selected
+    ? {
+        backgroundColor: c.accentSoft,
+        ...(list === 'hairline'
+          ? {
+              paddingHorizontal: 10,
+              marginHorizontal: -10,
+              borderRadius: theme.shape.radius.control,
+            }
+          : {}),
+      }
+    : null;
 
   // A tile is a surface of its own: text on it must not inherit the tone colour.
   const wrap = (node: ReactNode) =>
@@ -241,12 +256,13 @@ export function ListRow(props: ListRowProps) {
         accessibilityLabel={
           props.accessibilityLabel ?? (typeof props.title === 'string' ? props.title : undefined)
         }
-        accessibilityState={{ disabled: !!props.disabled }}
+        accessibilityState={{ disabled: !!props.disabled, selected: !!props.selected }}
         disabled={props.disabled}
         onPress={props.onPress}
         style={(state) => [
           layout,
           frame,
+          highlight,
           { opacity: props.disabled ? 0.45 : state.pressed ? 0.6 : 1 },
           focusRing(theme, (state as { focused?: boolean }).focused),
         ]}

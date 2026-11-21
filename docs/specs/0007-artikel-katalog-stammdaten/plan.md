@@ -351,7 +351,24 @@ flowchart LR
   „Neu“, Liste und Detail am Desktop mit Hervorhebung, „+ Neu“, Umbenennen mit „Gibt es schon“,
   Synonym-Chips, „In Rezepten“ öffnet das Rezept, „Löschen“ ausgegraut mit Grund, Löschen +
   „Rückgängig“, Zusammenführen mit Dialog, offline ausgegraut mit Hinweis.
-- **Status:** offen
+- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Umgesetzt:** `features/articles/` (`articles-screen.tsx`, `article-sheet.tsx` mit Schritten
+  „Bereich“ und „Zusammenführen mit …“, `merge-article-dialog.tsx`, `new-article-sheet.tsx`,
+  `labels.ts`), Route `(artikel)/artikel.tsx` mit `AreaStack`, Eintrag `articles` unter „Verwalten“
+  → „Einkaufen“, „Liste“ ⋯ → „Artikel“ (`?von=liste`). Neu in `packages/ui`: `ListDetail`
+  (`list-detail.tsx`, auch für Spec 0011) und `ListRow selected`; `DESIGN.md` ergänzt. Dev-Smoke
+  öffnet „Artikel“, ein Fenster und „+ Neu“. Klick-Durchlauf 390/1440 px: `tmp/0007/t5-*`.
+- **Abweichungen:**
+  - Filterzeile ohne `FilterBar`: Suche, „↕ A–Z ▾“ und die fünf Chips (einfach wählbar) wie auf
+    „Aktivitäten“, weil AC-021 kein Filterfeld nennt.
+  - „+ Neu“ ist „Suchen oder anlegen“ über Haushalt und Starter-Katalog mit Bremse; ein Treffer
+    öffnet den vorhandenen Artikel statt eines Doppelten.
+  - Der Name wird mit „Fertig“, Enter oder beim Verlassen des Felds gespeichert, alle anderen
+    Felder sofort (jede Änderung nimmt den Artikel aus „Neu aus Rezepten“).
+  - Die Standard-Einkaufsregel lässt sich setzen, aber nicht wieder auf „nicht festgelegt“
+    zurückstellen.
+  - Bereich neu anlegen und zuordnen sind zwei Schreibvorgänge (wie in „Posten bearbeiten“).
+  - Filter in der Adresse: `/artikel?filter=ohne-bereich` (für „Ohne Bereich ›“, AC-051 in T6).
 
 ### Task 6 — `ui`-Liste zum Ordnen und App „Märkte & Bereiche“
 
