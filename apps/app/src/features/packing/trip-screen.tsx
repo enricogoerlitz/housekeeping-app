@@ -37,7 +37,7 @@ import {
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -51,20 +51,78 @@ import { TripSection } from './trip-section';
 
 type TripAction = 'reset' | 'delete';
 
+/** Where the Urlaubsseite was opened from, `?von=…`; anything else counts as the calendar. */
+const ORIGINS = {
+  abwesenheiten: { label: 'Abwesenheiten', tab: 'abwesenheiten', href: '/abwesenheiten' },
+  uebersicht: { label: 'Übersicht', tab: 'index', href: '/' },
+} as const;
+
+type TripOrigin = keyof typeof ORIGINS;
+
+function tripOrigin(von: string | string[] | undefined): TripOrigin | undefined {
+  const value = Array.isArray(von) ? von[0] : von;
+  return value === 'abwesenheiten' || value === 'uebersicht' ? value : undefined;
+}
+
+/** The tab shown before the current one (tab history), or undefined. */
+function previousTab(state: unknown): string | undefined {
+  if (typeof state !== 'object' || state === null) return undefined;
+  const { history, routes } = state as { history?: unknown; routes?: unknown };
+  if (!Array.isArray(history) || !Array.isArray(routes)) return undefined;
+  const entry: unknown = history[history.length - 2];
+  const key = typeof entry === 'object' && entry !== null ? (entry as { key?: unknown }).key : null;
+  const route: unknown = routes.find(
+    (candidate: unknown) =>
+      typeof candidate === 'object' &&
+      candidate !== null &&
+      (candidate as { key?: unknown }).key === key,
+  );
+  const name =
+    typeof route === 'object' && route !== null ? (route as { name?: unknown }).name : null;
+  return typeof name === 'string' ? name : undefined;
+}
+
+/**
+ * "Zurück" of the Urlaubsseite: opened from "Abwesenheiten" or from the card on the "Übersicht"
+ * it leads back there ("‹ Abwesenheiten", "‹ Übersicht"), otherwise to the calendar underneath
+ * ("‹ Kalender"); the same rule as for "Aktivitäten" (spec 0010, REQ-008).
+ */
+function useTripBack(): { label: string; back: () => void } {
+  const router = useRouter();
+  const navigation = useNavigation();
+  const params = useLocalSearchParams<{ von?: string | string[] }>();
+  const origin = tripOrigin(params.von);
+  if (origin) {
+    const target = ORIGINS[origin];
+    return {
+      label: target.label,
+      back: () => {
+        const tabs = navigation.getParent();
+        // The calendar's tab gets its first page back, so it shows the calendar later.
+        if (router.canDismiss()) router.dismissAll();
+        // Back in the tab history when it came from there, so "Zurück" on that page still leads
+        // to where it was opened from; after a reload the origin is opened anew.
+        if (tabs && previousTab(tabs.getState()) === target.tab) tabs.goBack();
+        else router.navigate(target.href);
+      },
+    };
+  }
+  return {
+    label: 'Kalender',
+    back: () => (router.canGoBack() ? router.back() : router.replace('/kalender')),
+  };
+}
+
 /** The Urlaubsseite of an absence, `/kalender/urlaub/[id]` (spec 0012, REQ-003, decision 14). */
 export function TripScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
-  const router = useRouter();
   // Only a uuid reaches the lookup; anything else shows "gibt es nicht mehr".
   const absenceId = routeId(params.id);
-  const back = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/kalender');
-  };
-  return <TripPage absenceId={absenceId} onBack={back} />;
+  const { label, back } = useTripBack();
+  return <TripPage absenceId={absenceId} onBack={back} backLabel={label} />;
 }
 
-function TripPage(props: { absenceId: Id | undefined; onBack: () => void }) {
+function TripPage(props: { absenceId: Id | undefined; onBack: () => void; backLabel: string }) {
   const absences = useAbsences();
   const members = useMembers();
   // Set when this page deletes its absence: it leaves blank instead of "gibt es nicht mehr".
@@ -78,7 +136,9 @@ function TripPage(props: { absenceId: Id | undefined; onBack: () => void }) {
       <Screen
         testID="trip-screen"
         tone="plan"
-        header={<ScreenHeader title="Abwesenheit" onBack={props.onBack} backLabel="Kalender" />}
+        header={
+          <ScreenHeader title="Abwesenheit" onBack={props.onBack} backLabel={props.backLabel} />
+        }
       >
         <EmptyState
           icon="calendar-off"
@@ -100,6 +160,7 @@ function TripPage(props: { absenceId: Id | undefined; onBack: () => void }) {
     <TripBody
       stripe={stripe}
       onBack={props.onBack}
+      backLabel={props.backLabel}
       onDeleted={() => {
         setLeaving(true);
         props.onBack();
@@ -114,7 +175,12 @@ function TripPage(props: { absenceId: Id | undefined; onBack: () => void }) {
  * progress "Packliste · 12 von 30 gepackt" and one section per bag; side by side on wide screens
  * (AC-018). A stripe of several absences shows their packing lists one below the other (decision 9).
  */
-function TripBody(props: { stripe: AbsenceStripe; onBack: () => void; onDeleted: () => void }) {
+function TripBody(props: {
+  stripe: AbsenceStripe;
+  onBack: () => void;
+  backLabel: string;
+  onDeleted: () => void;
+}) {
   const { stripe } = props;
   const members = useMembers();
   const today = useToday();
@@ -157,8 +223,12 @@ function TripBody(props: { stripe: AbsenceStripe; onBack: () => void; onDeleted:
   };
 
   const reset = () => {
-    resetPackingList(stripe.absenceIds);
     setDialog(undefined);
+    try {
+      resetPackingList(stripe.absenceIds);
+    } catch {
+      toast.show({ message: FAILED });
+    }
   };
 
   const actions = (
@@ -204,7 +274,7 @@ function TripBody(props: { stripe: AbsenceStripe; onBack: () => void; onDeleted:
         <ScreenHeader
           title={head.title}
           onBack={props.onBack}
-          backLabel="Kalender"
+          backLabel={props.backLabel}
           right={actions}
           testID="trip-title"
         />

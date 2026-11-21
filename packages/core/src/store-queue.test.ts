@@ -8,6 +8,7 @@ import {
   parseStoredQueue,
   queueEffect,
   remapQueue,
+  requeue,
   type QueuedContribution,
   type StoreQueueEntry,
 } from './store-queue';
@@ -455,6 +456,41 @@ describe('packBatch (ADR-0013)', () => {
     const queue = Array.from({ length: 230 }, (_, index) => pack(`p${index}`, true));
     expect(PACK_BATCH_LIMIT).toBe(200);
     expect(packBatch(queue)).toEqual(queue.slice(0, 200));
+  });
+
+  it('security check 0012: stops before a second entry for the same Packstück', () => {
+    const queue = [pack('p1', true), pack('p2', true), pack('p1', false, 1), pack('p3', true)];
+    expect(packBatch(queue)).toEqual([pack('p1', true), pack('p2', true)]);
+  });
+});
+
+describe('requeue (security check 0012: transient failure while sending)', () => {
+  it('AC-027: a counter entry queued during the failed run cancels its sent entry', () => {
+    const sent = [pack('p1', true), pack('p2', true), pack('p3', true)];
+    const queued = [pack('p2', false), check('i1', true)];
+    expect(requeue(sent, queued)).toEqual([pack('p1', true), pack('p3', true), check('i1', true)]);
+    expect(packBatch(requeue(sent, queued))).toEqual([pack('p1', true), pack('p3', true)]);
+  });
+
+  it('a check counter entry cancels the sent check the same way', () => {
+    expect(requeue([check('i1', true)], [check('i1', false), check('i2', true)])).toEqual([
+      check('i2', true),
+    ]);
+  });
+
+  it('keeps the sent entries in front and in order when nothing cancels', () => {
+    const sent = [pack('p1', true), pack('p2', true)];
+    const queued = [pack('p3', true), check('i1', true)];
+    expect(requeue(sent, queued)).toEqual([...sent, ...queued]);
+  });
+
+  it('never merges across an add, so the order relative to it is kept', () => {
+    const add = addEntry('t9', [contribution('c9', 'Salz')]);
+    expect(requeue([check('i1', true)], [add, check('i1', false)])).toEqual([
+      check('i1', true),
+      add,
+      check('i1', false),
+    ]);
   });
 });
 

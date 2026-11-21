@@ -232,7 +232,8 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // The Urlaubsseite of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007): head and progress, a
   // Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the windows behind
   // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens from its row in
-  // "Abwesenheiten" (task 10); "‹ Kalender" leads to the calendar underneath.
+  // "Abwesenheiten" (task 10); "‹ Abwesenheiten" leads back there (task 12). "Abbrechen" in the
+  // reset dialog leaves every Haken as it was (AC-029).
   const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
   await openManaged(page, 'absences');
@@ -256,13 +257,19 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'trip-more-reset').click();
   await expect(tid(page, 'trip-reset-dialog')).toContainText('Alle 7 Haken entfernen?');
   await tid(page, 'trip-reset-dialog-cancel').click();
+  await expect(tid(page, 'trip-reset-dialog')).toHaveCount(0);
+  await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 7 von 21 gepackt');
+  await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
   await back(page);
+  await expect(tid(page, 'absences-screen')).toBeVisible();
+  await leaveManaged(page);
+  await nav(page, 'kalender');
   await expect(tid(page, 'calendar-screen')).toBeVisible();
   await nav(page, 'index');
 
   // The card "Reisetasche" on the Übersicht (spec 0012, AC-042, AC-044): "Urlaub Mallorca"
   // starts in 12 days, so only a week later the card stands below "Einkauf", counted from the
-  // shown day; a tap opens the Urlaubsseite.
+  // shown day; a tap opens the Urlaubsseite, and "‹ Übersicht" leads back (task 12).
   const mallorcaCard = `today-packing-${seedIds['abs-mallorca']}`;
   await expect(tid(page, mallorcaCard)).toHaveCount(0);
   await tid(page, 'today-week-next').click();
@@ -271,7 +278,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, `${mallorcaCard}-open`).click();
   await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
   await back(page);
-  await nav(page, 'index');
+  await expect(tid(page, 'today-screen')).toBeVisible();
   await tid(page, 'today-week-today').click();
 
   // A household with nothing planned and no chores: the empty states.

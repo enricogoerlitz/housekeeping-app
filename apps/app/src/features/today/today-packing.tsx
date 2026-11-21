@@ -68,8 +68,12 @@ function TodayPackingCard(props: { card: PackingCard }) {
           .join(', ')}
         onPress={() =>
           router.push(
-            { pathname: '/kalender/urlaub/[id]', params: { id: card.absenceId } },
-            // The calendar stays underneath, as for an activity (spec 0005).
+            {
+              pathname: '/kalender/urlaub/[id]',
+              params: { id: card.absenceId, von: 'uebersicht' },
+            },
+            // The calendar stays underneath, as for an activity (spec 0005); "‹ Übersicht" leads
+            // back here (spec 0012, task 12).
             { withAnchor: true },
           )
         }

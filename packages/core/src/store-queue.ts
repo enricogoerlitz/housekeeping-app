@@ -175,6 +175,22 @@ export function enqueue(
 }
 
 /**
+ * The queue after a transient failure: the entries that were being sent go back in front, merged
+ * with what was queued meanwhile as if they had never left. A counter entry queued while they
+ * were in flight ("Rückgängig", a second tap) cancels its sent entry, so a run never names the
+ * same Packstück or item twice (security check spec 0012).
+ */
+export function requeue(
+  sent: readonly StoreQueueEntry[],
+  queue: readonly StoreQueueEntry[],
+): StoreQueueEntry[] {
+  return [...sent, ...queue].reduce<StoreQueueEntry[]>(
+    (merged, entry) => enqueue(merged, entry, undefined),
+    [],
+  );
+}
+
+/**
  * Rewrites temporary ids (items and articles created offline) to the ids the server returned.
  * Packstücke are never created offline, so pack entries stay as they are.
  */
@@ -325,13 +341,17 @@ export function applyQueue(
 /**
  * The pack entries sent together as one `set_packing_items_packed` call (ADR-0013): the
  * contiguous run of pack entries at the front of the queue, of the first entry's household, at
- * most PACK_BATCH_LIMIT. Empty when the queue does not start with a pack entry.
+ * most PACK_BATCH_LIMIT, and never the same Packstück twice (the server refuses a call with a
+ * repeated id as a whole). Empty when the queue does not start with a pack entry.
  */
 export function packBatch(queue: readonly StoreQueueEntry[]): PackEntry[] {
   const batch: PackEntry[] = [];
+  const itemIds = new Set<string>();
   for (const entry of queue) {
     if (entry.kind !== 'pack' || batch.length === PACK_BATCH_LIMIT) break;
     if (batch[0] && entry.householdId !== batch[0].householdId) break;
+    if (itemIds.has(entry.itemId)) break;
+    itemIds.add(entry.itemId);
     batch.push(entry);
   }
   return batch;

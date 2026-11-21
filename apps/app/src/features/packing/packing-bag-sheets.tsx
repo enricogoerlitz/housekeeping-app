@@ -165,6 +165,7 @@ export function BagItemSheet(props: { itemId: Id; onClose: () => void }) {
       message: `${item.name} entfernt`,
       actionLabel: 'Rückgängig',
       onAction: undoAction(restore),
+      duration: 5000,
     });
   };
 

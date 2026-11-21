@@ -161,7 +161,7 @@ create index packing_items_household_id_packed_by_idx on public.packing_items (h
 -- quantity from the absence of its bag, whatever the device sent. The RPCs (security definer, run
 -- as the owner: restore_packing_items) and the seed keep the packed state they write. Security
 -- invoker: the bag is read under the caller's RLS; a bag the caller cannot see leaves the row to
--- fail on RLS or the foreign key. "Je Tag" = least(per_day × (to_on − from_on + 1), 9999).
+-- fail on RLS or the foreign key. "Je Tag" = least(per_day × (to_on − from_on + 1), 9999), in bigint.
 create function private.packing_items_before_insert()
 returns trigger
 language plpgsql
@@ -182,7 +182,8 @@ begin
     join public.absences a on a.household_id = b.household_id and a.id = b.absence_id
     where b.household_id = new.household_id and b.id = new.list_bag_id;
     if v_days is not null then
-      new.quantity := least(new.per_day * v_days, 9999);
+      -- In bigint: per_day × days overflows integer for absurdly long absences.
+      new.quantity := least(new.per_day::bigint * v_days, 9999)::integer;
     end if;
   end if;
   return new;
@@ -213,13 +214,13 @@ security definer
 set search_path = ''
 as $$
   update public.packing_items i
-  set quantity = least(i.per_day * (a.to_on - a.from_on + 1), 9999)
+  set quantity = least(i.per_day::bigint * (a.to_on - a.from_on + 1), 9999)::integer
   from public.packing_list_bags b
   join public.absences a on a.household_id = b.household_id and a.id = b.absence_id
   where b.household_id = p_household_id and b.absence_id = p_absence_id
     and i.household_id = b.household_id and i.list_bag_id = b.id
     and i.per_day is not null and not i.packed
-    and i.quantity is distinct from least(i.per_day * (a.to_on - a.from_on + 1), 9999);
+    and i.quantity is distinct from least(i.per_day::bigint * (a.to_on - a.from_on + 1), 9999)::integer;
 $$;
 
 revoke execute on function private.recalc_packing_quantities(uuid, uuid) from public, anon, authenticated;

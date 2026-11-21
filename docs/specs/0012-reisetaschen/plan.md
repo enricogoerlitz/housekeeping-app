@@ -1,5 +1,5 @@
 ---
-status: offen # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-21
 spec: 0012
 ---
@@ -295,7 +295,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   actions (ADR-0008 addendum)“ → „except the store-mode actions and packing (ADR-0008 addendum,
   ADR-0013)“), `docs/architecture/sync.md` (Tabelle „Ziel“: Packen ohne Netz)
 - **Test:** keiner (Dokumentation); `pnpm format:check`
-- **Status:** erledigt (21.11.2026)
+- **Status:** erledigt (21.11.2026, Commit `c9df750`)
 
 **Text des Nachtrags** (steht vollständig in ADR-0013; hier die Kurzform für `sync.md`):
 
@@ -330,7 +330,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   unverändert mit 4 von 9 gepackt (AC-009); Mitglied entfernen → `member_id`/`packed_by` leer;
   direkter `update`/`insert` auf `packed*`/`pack_seq` → 42501; Insert durch `authenticated` mit
   allen erlaubten Spalten startet offen; `sync_pull` liefert die vier Tabellen und ihre Grabsteine.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `c8ae963` zusammen mit Task 2; rot: `tmp/0012/pgtap-task1-red.txt`)
 
 ### Task 2 — Datenbank: Pack-RPC, Wiederherstellen, `apply_changes` (Agent DB, Welle A, nach Task 1)
 
@@ -354,7 +354,9 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   (AC-015); Patch auf `packing_items` → `invalid_change`; Insert mit `packed` → `invalid_change`;
   `restore_packing_items` stellt „gepackt von Nadja, um …“ her, `packed_at` in der Zukunft wird
   `now()`, `packed_by` außerhalb des Haushalts → 23503, mehr als 200 → `too_many_changes`.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `c8ae963`; rot: `tmp/0012/pgtap-task2-red.txt`). Der Commit trägt
+  auch Arbeit aus Spec 0008 (`restore_recipe` behält `created_at`, `delete_recipe` nimmt übrige
+  Ketten ohne Rezept mit; Trailer `Spec: 0008`, rot: `tmp/0012/pgtap-0008-followups-red.txt`).
 
 ### Task 3 — core: Regeln für Reisetaschen und Packlisten (Agent core, Welle A)
 
@@ -390,7 +392,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   gemeldet; `packingCards`: AC-042 (16.11. keine, 23.11. „beginnt in 7 Tagen“), AC-043 (KW 49 ja,
   KW 50 nein), AC-044 („alles gepackt ✓“), AC-045 (zwei Karten, keine für „Dienstreise Hamburg“);
   `stripeHasPackingList` (AC-046).
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `5961ec5` zusammen mit Task 4; rot: `tmp/0012/core-red.txt`)
 
 ### Task 4 — core: Packen in der Laden-Warteschlange (Agent core, Welle A, nach Task 3)
 
@@ -410,7 +412,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   Haushalt an und schneidet bei 200; ein `pack`-Eintrag ohne Packstück im Cache ändert nichts
   (AC-024, AC-040); alte gespeicherte Warteschlange ohne `pack` liest sich unverändert, ein
   kaputter `pack`-Eintrag wird gezählt und verworfen.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `5961ec5`)
 
 ### Task 5 — api: Abbildung, Sync, Senden der Pack-Folgen, Fake (Agent api, Welle B)
 
@@ -437,7 +439,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   Warteschlange; Fake und pgTAP stimmen in der Regeltabelle überein (gemeinsame Fälle). Integration
   (`pnpm test:integration`): zwei Geräte, Nadja offline packt fünf, wieder online → Enrico sieht
   fünf (AC-022); Abhaken gewinnt (AC-023); Zurücksetzen offline gegen neu Gepacktes (AC-030).
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `fecd81a` zusammen mit Task 6)
 
 ### Task 6 — api: Befehle für Reisetaschen, Packlisten und Abwesenheiten, Seed (Agent api, Welle B, nach Task 5)
 
@@ -465,7 +467,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   dessen Rückgängig und `resetPackingList` wirft offline `OfflineError` (AC-036); `removeAbsences`
   einer Abwesenheit mit Packliste sendet eine Löschung, und die Packliste verschwindet sofort
   (AC-038). Seed: `demo.test.ts` prüft die neuen Reisetaschen und „Urlaub Mallorca“.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `fecd81a`)
 
 ### Task 7 — ui: Taschen-Symbol und aufklappbare Gruppe (Agent ui, Welle B)
 
@@ -479,7 +481,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   „Erledigt (n)“ der Liste bleibt unverändert (keine Änderung an `features/shopping/*`)
 - **Test (zuerst rot):** reine Funktion `disclosureLabel("Gepackt", 4, expanded)` für die Ansage
   „Gepackt, 4, eingeklappt“; Zustand ein- und ausklappen ohne Netz und ohne Uhr.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `4fc2d22`)
 
 ### Task 8 — App: Verwalten → Reisetaschen (Agent Reisetaschen, Welle C)
 
@@ -497,7 +499,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   (AC-004), „Sonn“ → „Sonnencreme“ (AC-005), Ziehen und Pfeile, zweiter Browser sieht die
   Reihenfolge (AC-006), „strand“ und leerer Name (AC-007), Duplizieren (AC-008), Löschen +
   Rückgängig (AC-009), offline ausgegraut mit Hinweis.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `837598c` zusammen mit Task 9; Klick-Durchlauf `tmp/0012/t8-*`)
 
 ### Task 9 — App: Urlaubsseite mit Packliste (Agent Urlaubsseite, Welle C)
 
@@ -521,7 +523,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   (AC-033), Tasche entfernen + Rückgängig (AC-034), Wischen + Rückgängig (AC-035), offline
   ausgegraut, Haken gehen (AC-036), Löschen mit Dialog (AC-038), Screenreader-Ansage „Badehose
   gepackt“, „Bewegung reduzieren“.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `837598c`; Klick-Durchlauf `tmp/0012/t9/`)
 
 ### Task 10 — App: Abwesenheit-Fenster, Seite „Abwesenheiten“, Kalender (Agent Abwesenheit, Welle D)
 
@@ -541,7 +543,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   Server-Fehler (Fake über „Offline simulieren“ während des Speicherns, AC-015), Dauer ändern
   (AC-037), Löschen auf „Abwesenheiten“ mit und ohne Packliste (AC-038), Personen ändern (AC-039),
   Streifen mit und ohne Symbol, Tipp öffnet die Urlaubsseite (AC-046), offline ausgegraut.
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, Commit `bfbb037`; Klick-Durchlauf `tmp/0012/t10/`)
 
 ### Task 11 — App: Karte „Reisetasche“ auf der Übersicht (Agent Übersicht, Welle D)
 
@@ -554,7 +556,7 @@ In Welle B berührt Task 7 nur `packages/ui` und `docs/design/DESIGN.md`.
   bis eine Woche vor dem Urlaub (AC-042), Urlaubswoche und Woche danach (AC-043), alles gepackt und
   Tipp (AC-044), zwei Karten und keine für „Dienstreise Hamburg“ (AC-045, Testdaten im lokalen
   Haushalt angelegt), offline sichtbar.
-- **Status:** erledigt (21.11.2026, noch nicht committet). Klick-Durchlauf 390 und 1440 px
+- **Status:** erledigt (21.11.2026, Commit `ced9d72`). Klick-Durchlauf 390 und 1440 px
   (`tmp/0012/t11/t11-*`, Testdaten „T11 Kurztrip“ danach wieder gelöscht): heute keine Karte, Mi
   25.11. keine, Do 26.11. „beginnt in 7 Tagen“ (AC-042), Sa 28.11. zwei Karten, Enricos mit Avatar
   und „alles gepackt ✓“ (AC-044, AC-045), KW 49 „läuft bis Mi 9.12.“ (AC-043), KW 50 „vorbei“, KW
@@ -575,7 +577,10 @@ supabase test db`, `pnpm test:integration`, `/security-check` auf den Diff von T
   und dunkel) für Reisetaschen, Urlaubsseite, Abwesenheit-Fenster und Übersicht-Karte,
   `impeccable`-Kritik der Urlaubsseite und der Reisetaschen, `review-animations` für Wegleiten nach
   „Gepackt (n)“ und das Aufklappen, Offline-Durchlauf in der PWA (Neuladen ohne Netz, AC-022).
-- **Status:** offen
+- **Status:** erledigt (21.11.2026, noch nicht committet; Commit folgt durch den Eigentümer).
+  Befunde aus Security-Check und Spec-Audit behoben (Entscheidungen B7 bis B12 unten),
+  Nachweis unten. `/ui-verify`, `impeccable` und `review-animations` laufen gesammelt am Ende
+  aller Wellen (Entscheidung B12).
 
 ## Erwartete e2e-Brüche (für `tmp/brief/e2e-impact.md`)
 
@@ -651,7 +656,7 @@ festgehalten):
   auch bei „alles gepackt ✓“, weil die Karte immer zur Urlaubsseite führt (AC-044). Der
   Screenreader hört einen Knopf „Packliste Urlaub Mallorca öffnen, Enrico, 12/30 gepackt, beginnt
   in 7 Tagen“ (das ✓ wird nicht vorgelesen).
-- **B2 — Tipp auf die Karte** öffnet `/kalender/urlaub/<id>` mit dem Kalender darunter, wie eine
+- **B2 — Tipp auf die Karte** (abgelöst durch B10) öffnet `/kalender/urlaub/<id>` mit dem Kalender darunter, wie eine
   Aktivität von der „Übersicht“ (Spec 0005). „‹ Kalender“ führt deshalb in den Kalender, nicht
   zurück zur „Übersicht“. Für die Abschluss-Prüfung der Logik vorgemerkt.
 - **B3 — Ganze Zeile einer Reisetasche antippbar.** `ReorderList` hat `onPress(key)`: Name und
@@ -670,17 +675,97 @@ festgehalten):
   Showroom. Test: `packages/ui/src/check-window.test.ts` „keep in done (spec 0012, AC-021)“, rot
   (`tmp/0012/t11-red-check-window.txt`), dann grün.
 
+**Task 12** (Befunde aus `/security-check` und Spec-Audit, vom Eigentümer vorab freigegeben):
+
+- **B7 — Warteschlange nach einem vorübergehenden Fehler (Security-Check, Hinweis 1).** Bisher kam
+  die gesendete Folge unverändert zurück an den Anfang (`queue = [...sent, ...queue]`). Stand
+  inzwischen ein Gegen-Eintrag für dasselbe Packstück in der Warteschlange (zweiter Tipp,
+  „Rückgängig“), nannte die nächste Folge das Packstück zweimal; der Server lehnte den ganzen Aufruf
+  dauerhaft ab (`invalid_change`), und alle Haken der Folge (z. B. 29 nach „Alles einpacken“)
+  gingen still verloren. Jetzt: `core.requeue(sent, queue)` reiht die gesendeten Einträge über das
+  normale `enqueue` wieder ein, Gegen-Einträge heben sich auf; zusätzlich hält `core.packBatch` vor
+  einem zweiten Eintrag desselben Packstücks an (zweite Verteidigungslinie). Haken des
+  Einkaufspostens (`check`) hatten dasselbe Muster, aber ohne Datenverlust (je Haken ein Aufruf,
+  der zweite bekam den neuen Zähler); sie laufen jetzt über denselben Weg und senden nichts mehr
+  doppelt. Tests (zuerst rot: `tmp/0012/t12/red-core-store-queue.txt`,
+  `tmp/0012/t12/red-api-backend.txt`): core `store-queue.test.ts` („requeue …“, „packBatch …
+  stops before a second entry“), api `backend.test.ts` („security check 0012: a 503 during a run,
+  a toggle meanwhile, the retry loses nothing“ und dasselbe für einen Haken).
+- **B8 — „Je Tag“ in `bigint` (Security-Check, Hinweis 2).** `least(per_day × Tage, 9999)` lief in
+  `integer` und lief bei absurd langen Abwesenheiten (ab rund 21,7 Mio. Tagen bei 99 je Tag) mit
+  22003 über; das Einfügen oder das Ändern der Dauer scheiterte. Jetzt `per_day::bigint × …`, dann
+  `::integer` (Einfüge-Trigger und `recalc_packing_quantities`, nur `…_packing.sql`). pgTAP
+  `packing_tables.test.sql` „Security check 0012“: 30 Mio. Tage × 99 → 9999 beim Einfügen und beim
+  Ändern der Dauer (zuerst rot: `tmp/0012/t12/red-pgtap-overflow.txt`).
+- **B9 — `restore_packing_items` (Security-Check, Hinweis 3), nur dokumentiert.** Über das
+  „Rückgängig“ nach dem Entfernen kann ein Mitglied `packed_by` und `packed_at` innerhalb des
+  eigenen Haushalts frei setzen (begrenzt auf Mitglieder und `≤ now()`). „Gepackt von“ ist deshalb
+  keine verlässliche Aussage, nur ein Hinweis; bewusst hingenommen, steht in `sync.md`.
+- **B10 — Zurück von der Urlaubsseite (Spec-Audit).** Aus „Abwesenheiten“ geöffnet führt „‹
+  Abwesenheiten“ dorthin zurück, von der Karte der „Übersicht“ „‹ Übersicht“; sonst „‹ Kalender“
+  wie bisher. Die Einstiege hängen `?von=abwesenheiten` bzw. `?von=uebersicht` an; die Seite nimmt
+  nur diese zwei Werte an, alles andere gilt als Kalender. Beim Zurück bekommt der Kalender-Tab
+  seine erste Seite zurück, dann geht es in der Tab-Historie zurück, wenn der vorige Tab der
+  Herkunft entspricht (so führt „Zurück“ auf „Abwesenheiten“ am Handy weiter zu „Verwalten“), sonst
+  wird die Herkunft neu geöffnet (nach Neuladen). Wie die Regel von Spec 0010 für „Aktivitäten“.
+  Löst B2 ab; Spec REQ-003 trägt den Vermerk. Beleg: `pnpm e2e:dev` (beide Wege) und
+  `tmp/0012/t12/pwa/back.spec.ts` bei 390 und 1440 px (`b4-*.png`).
+- **B11 — Kleinigkeiten (Spec-Audit).** Der Hinweis nach dem Entfernen eines Packstücks aus einer
+  Reisetasche bietet „Rückgängig“ 5 s lang wie alle anderen (`packing-bag-sheets.tsx`);
+  „Zurücksetzen“ auf der Urlaubsseite fängt einen Fehler ab und zeigt den allgemeinen Hinweis
+  („Hat nicht geklappt – bitte noch einmal versuchen“). AC-006: Zwei gleichzeitige Umsortierungen
+  mischen sich je Packstück; Offene Frage 6 der Spec ist damit entschieden (hingenommene
+  Abweichung). Neue Belege: AC-027 als api-Test mit zwei Geräten gegen den Fake und als Schritt im
+  Integrationstest; AC-029 („Abbrechen“ lässt alles gepackt) in `e2e/dev/smoke.spec.ts`.
+- **B12 — Ansicht prüfen am Ende aller Wellen.** `/ui-verify` (390, 768, 1440 px, hell und dunkel),
+  `impeccable`-Kritik und `review-animations` für Reisetaschen, Urlaubsseite, Abwesenheit-Fenster
+  und Übersicht-Karte laufen gesammelt mit der vollen e2e-Suite am Ende aller Wellen (Vorgabe des
+  Eigentümers); bis dahin gelten die Klick-Durchläufe `tmp/0012/t8-*`, `t9/`, `t10/`, `t11/`, `t12/`.
+
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 21.11.2026, Task 12. Belege in `tmp/0012/t12/` (rot vor grün, Gate-Ausgaben, PWA-Lauf).
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün
-- [ ] `pnpm test:integration` grün (Packen mit zwei Geräten)
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet
-- [ ] `/security-check` gelaufen (Task 1, 2, 4, 5, 6)
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft (Packen, Alles einpacken, Zurücksetzen,
-      PWA neu laden)
-- [ ] ADR-0013 angenommen, `31-sync.md`, `AGENTS.md`, `sync.md` nachgezogen
-- [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+- [x] Alle AC haben einen Test oder einen Klick-Beleg (Rückverfolgbarkeitstabelle der Spec); die
+      Logik-Tests waren je Task zuerst rot (Belege `tmp/0012/*-red.txt`, `tmp/0012/t12/red-*.txt`).
+      Der neue AC-027-Test deckt bestehendes Verhalten ab; dass er scheitern kann, zeigt eine
+      gezielte Mutation (nur das erste Packstück einer Folge senden → „expected … length of 9 but
+      got 3“, `tmp/0012/t12/red-ac027-mutation.txt`).
+- [x] `pnpm format:check` grün. `pnpm check`: Lint ohne Fehler, alle Unit-Tests grün (core 945,
+      api 657 + 12 übersprungen, ui 221, edge 84); `typecheck` von `api` und `app` scheitert
+      ausschließlich an halbfertigen Dateien der parallel laufenden Spec 0009 (`Recipe.kind`,
+      `recipes-screen.tsx`, `pantry-check-sheet.tsx`, `week-strip.tsx` u. a.), in keiner Datei
+      dieser Spec (`tmp/0012/t12/gate-check.txt`). `build:web` (Export mit Entwickler-Schalter
+      über das e2e-Setup) grün: CSP und Service Worker vorhanden.
+- [x] `pnpm db:reset && pnpm exec supabase test db` grün: 27 Dateien, 1652 Tests
+      (`tmp/0012/t12/gate-pgtap.txt`).
+- [x] `pnpm test:integration` grün: 7 Dateien, 12 Tests, darunter Packen mit zwei Geräten
+      (AC-022, AC-023, AC-027, AC-030; `tmp/0012/t12/integration.txt`).
+- [x] `pnpm e2e:dev` grün (`tmp/0012/t12/e2e-dev.txt`), mit AC-029 und den neuen Zurück-Wegen.
+- [ ] `/ui-verify`, `impeccable`, `review-animations`: gesammelt am Ende aller Wellen
+      (Entscheidung B12); bis dahin Klick-Durchläufe `tmp/0012/t8-*`, `t9/`, `t10/`, `t11/`, `t12/`.
+- [x] `/security-check` gelaufen (Task 1, 2, 4, 5, 6): 0 kritisch, 0 hoch, 0 mittel, 0 niedrig,
+      3 Hinweise, siehe Tabelle.
+- [x] Spec-Audit (`spec-auditor`): alle 46 AC umgesetzt; die offenen Punkte sind mit B10 und B11
+      geschlossen (AC-027-Test, AC-029-Beleg, Toast 5 s, Fehler beim Zurücksetzen, Zurück-Wege,
+      Offene Frage 6, PWA).
+- [x] Offline-Verhalten geprüft: Packen, „Alles einpacken“ und Zurücksetzen über die Fake- und
+      Integrationstests; **PWA neu laden ohne Netz** (AC-022) mit dem gebauten Web-Export und
+      Service Worker (`tmp/0012/t12/pwa/pwa.spec.ts`, Lauf `run.txt`, Bilder `1-…` bis `3-…`):
+      Urlaubsseite laden, Netz aus, neu laden → Packliste mit Offline-Hinweis; ein Packstück
+      offline gepackt, erneut neu geladen → bleibt gepackt; Netz an → ein zweites Gerät (Nadja)
+      sieht es gepackt.
+- [x] ADR-0013 angenommen, `31-sync.md`, `AGENTS.md`, `sync.md` nachgezogen (Task 0; Nachtrag Spec
+      0012 in `sync.md` um B7 bis B9 ergänzt).
+- [x] Glossar geprüft: Reisetasche, Packliste, Tasche der Packliste, Urlaubsseite, Packstück und
+      Laden-Warteschlange stehen mit ihren Code-Namen; Task 12 bringt keinen neuen Begriff.
+      Rückverfolgbarkeitstabelle der Spec je AC mit Task und Test; Spec 0010 trägt die Hinweise
+      bei AC-032, AC-037 und AC-038; `tmp/brief/e2e-impact.md` hat den Abschnitt „Task 12“.
+
+**Security-Check (Task 1, 2, 4, 5, 6):**
+
+| #   | Befund                                                                                                                                                                                   | Schwere | Ergebnis                                                                          |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------- |
+| 1   | Vorübergehender Fehler während einer Pack-Folge: Gegen-Eintrag in der Warteschlange → nächste Folge nennt ein Packstück doppelt → `invalid_change` → die ganze Folge geht still verloren | Hinweis | behoben (B7), Tests in core und api, zuerst rot; Haken des Einkaufspostens ebenso |
+| 2   | `per_day × Tage` in `integer` läuft bei absurd langen Abwesenheiten über (22003)                                                                                                         | Hinweis | behoben (B8), pgTAP mit 30 Mio. Tagen, zuerst rot                                 |
+| 3   | `restore_packing_items` lässt ein Mitglied `packed_by`/`packed_at` im eigenen Haushalt setzen                                                                                            | Hinweis | dokumentiert (B9, `sync.md`): „gepackt von“ ist keine verlässliche Aussage        |

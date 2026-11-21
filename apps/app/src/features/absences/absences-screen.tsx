@@ -86,12 +86,15 @@ export function AbsencesScreen() {
     );
   };
 
-  // The Urlaubsseite belongs to the calendar: the calendar stays underneath, so its "‹ Kalender"
-  // always leads there, whether the calendar was open before or not.
+  // The Urlaubsseite belongs to the calendar, which stays underneath; "‹ Abwesenheiten" leads back
+  // here (spec 0012, task 12).
   const open = (stripe: AbsenceStripe) => {
     const id = stripe.absenceIds[0];
     if (id) {
-      router.push({ pathname: '/kalender/urlaub/[id]', params: { id } }, { withAnchor: true });
+      router.push(
+        { pathname: '/kalender/urlaub/[id]', params: { id, von: 'abwesenheiten' } },
+        { withAnchor: true },
+      );
     }
   };
 

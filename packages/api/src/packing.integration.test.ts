@@ -1,7 +1,7 @@
 // Packing without network against the running local stack (spec 0012, ADR-0013): two devices,
 // Nadja packs offline and both see the result once she is online again (AC-022); "Abhaken gewinnt"
 // against a re-pack by Enrico (AC-023); resetting offline keeps what was packed again meanwhile
-// (AC-030). The test writes only an absence it creates itself and deletes it again (the packing
+// (AC-030); "Alles einpacken" offline reaches the other device (AC-027). The test writes only an absence it creates itself and deletes it again (the packing
 // list goes with it), so the seed stays as it was. Skipped unless SUPABASE_LOCAL=1, e.g.
 //
 //   set -a; . ./.env; set +a; SUPABASE_LOCAL=1 \
@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createEngine, startBackend, stopBackend, type Environment } from './backend';
 import { saveAbsences } from './commands-household';
-import { resetPackingList, setPacked } from './commands-packing';
+import { packAll, resetPackingList, setPacked } from './commands-packing';
 import { TEST_ACCOUNTS, TEST_PASSWORD } from './dev-accounts';
 import { DEMO_HOUSEHOLD_ID } from './seed/demo';
 import { seedHouseholdId } from './seed/seed-sql';
@@ -47,7 +47,7 @@ afterEach(async () => {
 });
 
 describe.skipIf(!enabled)('spec 0012: packing without network in the local stack', () => {
-  it('AC-022, AC-023, AC-030: two devices, offline packing, checking wins', async () => {
+  it('AC-022, AC-023, AC-027, AC-030: two devices, offline packing, checking wins', async () => {
     const enrico = await signedIn(0);
     const nadja = await signedIn(1);
     const householdId = await seedHouseholdId(DEMO_HOUSEHOLD_ID);
@@ -158,6 +158,19 @@ describe.skipIf(!enabled)('spec 0012: packing without network in the local stack
           .filter((item) => item.listBagId === listBag?.id && item.packed)
           .map((item) => item.id),
       ).toEqual([second]);
+
+      // AC-027: Nadja packs everything offline at once; online again, Enrico sees all 12 packed.
+      engine.setSimulatedOffline(true);
+      packAll(listBag?.id ?? '');
+      expect(
+        (await serverItems(items.map((item) => item.id))).filter((row) => row.packed),
+      ).toHaveLength(1);
+      engine.setSimulatedOffline(false);
+      await engine.whenIdle();
+      await engine.pull();
+      expect(
+        (await enricoSees()).filter((item) => item.listBagId === listBag?.id && item.packed),
+      ).toHaveLength(12);
     } finally {
       enricoDevice.stop();
       if (absenceId) {

@@ -1001,6 +1001,35 @@ describe('writes: store queue (ADR-0008 addendum)', () => {
     expect(await storage.get('queue')).toEqual([]);
   });
 
+  it('security check 0012: a 503 while a check is in flight, unchecked meanwhile: nothing resent', async () => {
+    const inner = server.transport(ENRICO);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const transport: Transport = {
+      ...inner,
+      setItemChecked: async (itemId, checked, seenCheckSeq) => {
+        await gate;
+        return inner.setItemChecked(itemId, checked, seenCheckSeq);
+      },
+    };
+    const enrico = await startEnrico({ transport });
+    const item = getData().items.find((candidate) => !candidate.checked);
+    if (!item) throw new Error('fixture');
+    server.calls.length = 0;
+    server.failNext('set_shopping_item_checked', new TransportError('transient', 'http_503', 503));
+    setItemChecked(item.id, true);
+    await vi.advanceTimersByTimeAsync(0);
+    setItemChecked(item.id, false);
+    release();
+    await settle(enrico);
+    expect(server.calls.filter((call) => call.fn === 'set_shopping_item_checked')).toHaveLength(1);
+    expect(server.row(H, 'shopping_items', item.id)).toMatchObject({ checked: false });
+    expect(getData().items.find((candidate) => candidate.id === item.id)?.checked).toBe(false);
+    expect(await storage.get('queue')).toEqual([]);
+  });
+
   it('store actions run offline; a later uncheck of an own check is sent with the new seq', async () => {
     const enrico = await startEnrico();
     const item = getData().items.find((candidate) => !candidate.checked);
@@ -1193,6 +1222,48 @@ describe('spec 0012: packing in the store queue (ADR-0013)', () => {
     expect(getData().packingItems.filter((item) => open.some((o) => o.id === item.id))).toEqual(
       open.map((item) => expect.objectContaining({ packed: false })),
     );
+  });
+
+  it('security check 0012: a 503 during a run, a toggle meanwhile, the retry loses nothing', async () => {
+    const inner = server.transport(ENRICO);
+    const sentChanges: string[][] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const transport: Transport = {
+      ...inner,
+      setPackingItemsPacked: async (householdId, changes) => {
+        sentChanges.push(changes.map((change) => change.item_id));
+        await gate;
+        return inner.setPackingItemsPacked(householdId, changes);
+      },
+    };
+    const enrico = await startEnrico({ transport });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const open = getData().packingItems.filter((item) => !item.packed);
+    const [toggled] = open;
+    if (open.length < 3 || !toggled) throw new Error('fixture');
+    server.failNext('set_packing_items_packed', new TransportError('transient', 'http_503', 503));
+    for (const item of open) queueStoreAction(pack(item.id));
+    await vi.advanceTimersByTimeAsync(0);
+    // Unpacked again while the run is on its way; then the run fails transiently.
+    queueStoreAction(pack(toggled.id, false));
+    release();
+    await settle(enrico);
+
+    for (const ids of sentChanges) expect(new Set(ids).size).toBe(ids.length);
+    expect(warn).not.toHaveBeenCalled();
+    expect(server.row(H, 'packing_items', toggled.id)).toMatchObject({
+      packed: false,
+      pack_seq: toggled.packSeq,
+    });
+    for (const item of open.slice(1)) {
+      expect(server.row(H, 'packing_items', item.id)).toMatchObject({ packed: true });
+    }
+    expect(getData().packingItems.find((item) => item.id === toggled.id)?.packed).toBe(false);
+    expect(await storage.get('queue')).toEqual([]);
+    warn.mockRestore();
   });
 
   it('a pack entry of another household ends the run (one call per household)', async () => {

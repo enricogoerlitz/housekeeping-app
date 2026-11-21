@@ -289,6 +289,34 @@ describe('Packen (REQ-004 to REQ-006)', () => {
     expect(writes()).toEqual([]);
   });
 
+  it('AC-027: "Alles einpacken" offline, online again: the other device sees all seven packed', async () => {
+    const engine = await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const section = listBag('Kulturbeutel');
+    const open = itemsOf(section.id).filter((item) => !item.packed);
+    expect(open).toHaveLength(7);
+    engine.setSimulatedOffline(true);
+    packAll(section.id);
+    await fx.settle(engine, nadja);
+    expect(writes()).toEqual([]);
+    const packedOnNadja = () =>
+      fx
+        .nadjaData(nadja)
+        .packingItems.filter((item) => item.listBagId === section.id && item.packed);
+    expect(packedOnNadja()).toHaveLength(2);
+
+    engine.setSimulatedOffline(false);
+    await fx.settle(engine, nadja);
+    expect(writes()).toEqual(['setPackingItemsPacked']);
+    expect(packedOnNadja()).toHaveLength(9);
+    for (const item of open) {
+      expect(fx.server.row(H, 'packing_items', item.id)).toMatchObject({
+        packed: true,
+        packed_by: ENRICO,
+      });
+    }
+  });
+
   it('AC-026: online, the undo after the run was sent unpacks exactly the seven', async () => {
     const engine = await fx.startEnrico();
     const nadja = await fx.startNadja();

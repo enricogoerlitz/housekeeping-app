@@ -6,7 +6,7 @@
 -- set null when a member leaves, and sync_pull.
 begin;
 \ir _helpers.psql
-select plan(144);
+select plan(147);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -52,7 +52,8 @@ insert into fx (key) values
   ('it_tshirts'), ('it_socken'), ('it_badehose'), ('it_p1'), ('it_p2'), ('it_p3'), ('it_o1'), ('it_o2'), ('it_o3'),
   ('it_mia_packed'), ('it_mia'), ('it_move'), ('it_b'),
   ('iso_bag'), ('iso_bag_item'), ('iso_list_bag'), ('iso_item'),
-  ('new_tshirts'), ('new_fixed'), ('new_short'), ('new_long'), ('new_open');
+  ('new_tshirts'), ('new_fixed'), ('new_short'), ('new_long'), ('new_open'),
+  ('huge_trip'), ('lb_huge'), ('new_huge');
 
 -- ===================== Fixtures (as postgres) =====================
 insert into public.absences (id, household_id, member_id, from_on, to_on) values
@@ -299,6 +300,24 @@ select results_eq(
 select is(
   (select quantity from public.packing_items where id = tests.fx('new_open')), null,
   'T1 packing_items: an item without quantity has none');
+
+-- ===================== Security check 0012: absurdly long absence =====================
+-- 30 million days × 99 overflows integer; the quantity is computed in bigint and capped.
+insert into public.absences (id, household_id, member_id, from_on, to_on) values
+  (tests.fx('huge_trip'), tests.fx('home_a'), tests.fx('mia'), '2027-01-01', date '2027-01-01' + 30000000);
+insert into public.packing_list_bags (id, household_id, absence_id, bag_id, name, member_id, sort) values
+  (tests.fx('lb_huge'), tests.fx('home_a'), tests.fx('huge_trip'), null, 'Strand', null, 0);
+select tests.authenticate_as(tests.fx('enrico'));
+select lives_ok(
+  format($$ insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort)
+            values (%L, %L, %L, 'T-Shirts', 1, 99, 0) $$, tests.fx('new_huge'), tests.fx('home_a'), tests.fx('lb_huge')),
+  'Security check 0012 packing_items: 99 per day for 30 million days does not overflow on insert');
+select lives_ok(
+  format($$ update public.absences set to_on = to_on + 1 where id = %L $$, tests.fx('huge_trip')),
+  'Security check 0012 absences: changing the duration of a 30-million-day absence does not overflow');
+select tests.clear_authentication();
+select is(tests.qty('new_huge'), 9999, 'Security check 0012 packing_items: the quantity of a huge absence is capped at 9999');
+delete from public.absences where id = tests.fx('huge_trip');
 
 -- ===================== AC-037: changing the duration =====================
 select tests.backdate('packing_items', 'it_tshirts');

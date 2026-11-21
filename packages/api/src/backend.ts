@@ -15,6 +15,7 @@ import {
   pullRequestFor,
   rejectFrom,
   remapQueue,
+  requeue,
   visibleTables,
   type Changeset,
   type HouseholdCache,
@@ -879,7 +880,8 @@ export function createEngine(options: EngineOptions): Engine {
       inFlight = [];
       if (isTransient(error)) {
         noteFailure(error);
-        queue = [...sent, ...queue];
+        // Back in front, merged with entries queued meanwhile, so counter entries cancel.
+        queue = requeue(sent, queue);
         void persistQueue();
         rebuild();
         scheduleRetry();
