@@ -1804,6 +1804,7 @@ export type Database = {
       };
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
+      min_app_version: { Args: Record<PropertyKey, never>; Returns: string };
       register_push_subscription: {
         Args: { p_auth: string; p_device_label: string; p_endpoint: string; p_p256dh: string };
         Returns: string;

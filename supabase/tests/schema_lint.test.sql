@@ -17,6 +17,11 @@ create temp table lint_household_tables_without_sync (name text primary key);
 insert into lint_household_tables_without_sync values
   ('deleted_records'); -- the tombstone log itself
 
+-- Functions that anon may execute (public on purpose, read no data).
+create temp table lint_functions_for_anon (signature text primary key);
+insert into lint_functions_for_anon values
+  ('min_app_version()'); -- spec 0014: the app checks the minimum version before sign-in
+
 -- Functions in private that authenticated may execute (used by RLS policies or as RPC bodies).
 create temp table lint_private_functions_for_authenticated (signature text primary key);
 insert into lint_private_functions_for_authenticated values
@@ -205,8 +210,10 @@ select is_empty(
 
 -- 11
 select is_empty(
-  $$ select signature from lint_functions where has_function_privilege('anon', oid, 'execute') $$,
-  'anon cannot execute any function in public or private'
+  $$ select signature from lint_functions
+     where has_function_privilege('anon', oid, 'execute')
+       and signature not in (select signature from lint_functions_for_anon) $$,
+  'anon executes only the reviewed functions in public or private'
 );
 
 -- 12

@@ -278,3 +278,25 @@ $$;
 create extension if not exists pg_cron with schema pg_catalog;
 
 select cron.schedule('purge-deleted-records', '15 3 * * *', 'select private.purge_deleted_records()');
+
+-- ---------------------------------------------------------------------------------------------
+-- Minimum app version (spec 0014, REQ-004, ADR-0015)
+-- ---------------------------------------------------------------------------------------------
+
+-- The oldest app version (JJJJ.M.N) that may still work with this server. Below it the app locks
+-- editing and holds back the store queue. A function, not a table: a contract migration replaces
+-- it with `create or replace` (header `-- contract: <reason>; min_app_version: <version>`), so the
+-- value changes atomically with the change that needs it and nobody can set it through the API.
+-- Readable without sign-in, so the app can check before signing in. Start value below every real
+-- version.
+create function public.min_app_version()
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select '2026.1.1'::text
+$$;
+
+revoke all on function public.min_app_version() from public;
+grant execute on function public.min_app_version() to anon, authenticated;
