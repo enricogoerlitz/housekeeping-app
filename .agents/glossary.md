@@ -244,12 +244,11 @@ Restaurant-Einträgen. Reserviert wird weiter in den Karten-Apps; die App hält 
 
 ### Einkaufsliste
 
-Die Liste der Einkaufsposten des Haushalts. **Genau eine je Haushalt** (Spec 0006, D25); weitere
-Listen wurden in sie zusammengeführt. Auf der Seite „Liste“ wird sie bearbeitet, in „Einkaufen“
-abgehakt.
+Die Liste der Einkaufsposten des Haushalts. **Genau eine je Haushalt** (Spec 0006, D25): Sie ist
+die Menge der Einkaufsposten des Haushalts und hat keinen eigenen Namen und keine eigene Zeile
+(ADR-0012). Auf der Seite „Liste“ wird sie bearbeitet, in „Einkaufen“ abgehakt.
 
-- **Im Code:** `ShoppingList`, `shopping_lists`; `is_default` bzw. `Household.defaultListId` und
-  der Markt an der Liste (`store_id`) werden mit Spec 0006 nicht mehr gelesen und später entfernt
+- **Im Code:** keine eigene Tabelle; `shopping_items.household_id` (`ShoppingItem` ohne Listen-Kennung)
 - **Nicht verwenden:** Standardliste (historisch, bis Spec 0006: die Liste, in die der Wochenplan
   schrieb), Einkaufszettel
 - **Siehe auch:** [Einkaufsposten](#einkaufsposten), [Standardmarkt](#standardmarkt)
