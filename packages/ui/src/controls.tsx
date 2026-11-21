@@ -1,10 +1,11 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   Pressable,
   Switch as RNSwitch,
   TextInput,
   View,
   type GestureResponderEvent,
+  type HostInstance,
   type StyleProp,
   type TextInputProps,
   type ViewProps,
@@ -120,9 +121,11 @@ export interface IconButtonProps {
   /** Explains why the button is disabled or what it does (screen readers). */
   hint?: string;
   testID?: string;
+  /** E.g. to give the focus back to the button. */
+  ref?: Ref<HostInstance>;
 }
 
-export function IconButton(props: IconButtonProps) {
+export function IconButton({ ref, ...props }: IconButtonProps) {
   const theme = useTheme();
   const area = useAreaColors();
   const variant = props.variant ?? 'plain';
@@ -133,6 +136,7 @@ export function IconButton(props: IconButtonProps) {
     (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
   return (
     <Pressable
+      ref={ref}
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.label}

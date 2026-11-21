@@ -5,13 +5,15 @@ import {
   InfiniteList,
   List,
   ListRow,
+  MediaCard,
   Surface,
   Text,
+  useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
 import { View } from 'react-native';
 
-import { ENDLESS_ROWS } from './showroom-data';
+import { ENDLESS_ROWS, ENDLESS_TILES } from './showroom-data';
 
 /**
  * AC-042 and AC-010: 1000 sample rows without pages, a sticky heading every 100 rows. The list
@@ -46,6 +48,35 @@ export function EndlessDemo(props: { onOpen: (row: number) => void }) {
           </View>
         )
       }
+    />
+  );
+}
+
+/**
+ * Spec 0008, AC-013 and AC-014: 150 tiles in A–Z order without pages, as a grid of tiles at
+ * least 260 px wide; two per row on phones.
+ */
+export function EndlessGridDemo(props: { onOpen: (row: number) => void }) {
+  const { isPhone } = useBreakpoint();
+  return (
+    <InfiniteList
+      data={ENDLESS_TILES}
+      keyExtractor={(tile) => tile.id}
+      minColumnWidth={260}
+      minColumns={2}
+      restoreKey="showroom-grid"
+      testID="showroom-grid"
+      renderItem={(tile) => (
+        <MediaCard
+          title={tile.title}
+          kicker={`Kachel ${tile.number} von ${ENDLESS_TILES.length}`}
+          layout="photoTop"
+          placeholderIcon="cooking-pot"
+          size={isPhone ? 'm' : 'l'}
+          onPress={() => props.onOpen(tile.number)}
+          testID={`showroom-grid-tile-${tile.number}`}
+        />
+      )}
     />
   );
 }

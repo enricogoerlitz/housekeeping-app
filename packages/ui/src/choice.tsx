@@ -13,6 +13,7 @@ import {
 
 import { ChipView, focusRing, IconButton } from './controls';
 import { type IconName } from './icons';
+import { menuKey } from './menu-keys';
 import { Icon, Text } from './primitives';
 import { useAreaColors, useTheme } from './theme-context';
 
@@ -241,8 +242,9 @@ const itemRole = (choice: boolean): object =>
     : { accessibilityRole: 'menuitem' };
 
 /**
- * A button with a short list that opens next to it, e.g. the sort order "↕ Zuletzt ▾". Arrow keys,
- * Home, End and Enter work on the web; Escape or a tap outside closes it.
+ * A button with a short list that opens next to it, e.g. the sort order "↕ Zuletzt ▾"; with
+ * `value` the current choice carries a check mark. Arrow keys, Home, End, Enter (and Space on a
+ * choice) work on the web; Escape or a tap outside closes it.
  */
 export function Menu<T extends string>(props: MenuProps<T>) {
   const theme = useTheme();
@@ -298,19 +300,19 @@ export function Menu<T extends string>(props: MenuProps<T>) {
   };
   const [focused, setFocused] = useState(0);
   const onKeyDown = (event: KeyEvent) => {
-    const target =
-      event.key === 'ArrowDown'
-        ? focused + 1
-        : event.key === 'ArrowUp'
-          ? focused - 1
-          : event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? props.options.length - 1
-              : undefined;
-    if (target === undefined) return;
+    const result = menuKey(event.key, focused, props.options.length, isChoice);
+    if (!result) return;
     event.preventDefault();
-    focusAt(target);
+    if ('focus' in result) focusAt(result.focus);
+  };
+  // Space picks on release: picking on keydown moves the focus to the trigger button, whose
+  // native keyup click would open the menu again.
+  const onKeyUp = (event: KeyEvent) => {
+    const result = menuKey(event.key, focused, props.options.length, isChoice);
+    if (!result || !('choose' in result)) return;
+    event.preventDefault();
+    const option = props.options[result.choose];
+    if (option && !option.disabled) choose(option.value);
   };
 
   const width = Math.max(anchor?.width ?? 0, iconOnly ? 260 : MENU_MIN_WIDTH);
@@ -401,7 +403,7 @@ export function Menu<T extends string>(props: MenuProps<T>) {
             borderColor: c.border,
             boxShadow: '0px 8px 24px rgba(0,0,0,0.16)',
           }}
-          {...({ onKeyDown } as object)}
+          {...({ onKeyDown, onKeyUp } as object)}
         >
           {props.options.map((option, index) => {
             const selected = option.value === props.value;

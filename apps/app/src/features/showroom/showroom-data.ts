@@ -95,3 +95,13 @@ export const ENDLESS_ROWS: EndlessRow[] = Array.from(
     ? [{ kind: 'group', id: `gruppe-${number}`, label: `Zeilen ${number}–${number + 99}` }, row]
     : [row];
 });
+
+/** Spec 0008, AC-013: 150 tiles; A–Z ends with "Rezept 150". */
+export const ENDLESS_TILES: { id: string; number: number; title: string }[] = Array.from(
+  { length: 150 },
+  (_, index) => ({
+    id: `kachel-${index + 1}`,
+    number: index + 1,
+    title: `Rezept ${String(index + 1).padStart(3, '0')}`,
+  }),
+);

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -7,6 +7,7 @@ import { Text } from './primitives';
 import { sheetFrame, type SheetSize } from './sheet-size';
 import { PageScrollContext } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
+import { createToastStore, type ToastOptions } from './toast-state';
 
 export interface SheetProps {
   visible: boolean;
@@ -130,62 +131,21 @@ export function Sheet(props: SheetProps) {
 
 // ---------- Toast with "Rückgängig" ----------
 
-export interface ToastOptions {
-  message: string;
-  /** e.g. "Rückgängig". */
-  actionLabel?: string;
-  onAction?: () => void;
-  /** Milliseconds; default 5000 (the undo window). */
-  duration?: number;
-}
+export type { ToastOptions };
 
-interface ToastState extends ToastOptions {
-  id: number;
-}
-
-let current: ToastState | null = null;
-let counter = 0;
-const listeners = new Set<() => void>();
-function emit() {
-  for (const listener of listeners) listener();
-}
+const store = createToastStore();
 
 /** Shows one short message at the bottom of the screen; a new toast replaces the previous one. */
 export const toast = {
-  show(options: ToastOptions) {
-    counter += 1;
-    current = { ...options, id: counter };
-    emit();
-  },
-  hide() {
-    current = null;
-    emit();
-  },
+  show: store.show,
+  /** Ends the toast without its action; its `onExpire` runs. */
+  hide: store.hide,
 };
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
 
 /** Mount once near the root, above the tab bar. `bottomOffset` keeps it clear of bars. */
 export function ToastHost(props: { bottomOffset?: number }) {
   const theme = useTheme();
-  const state = useSyncExternalStore(
-    subscribe,
-    () => current,
-    () => current,
-  );
-  useEffect(() => {
-    if (!state) return;
-    const id = state.id;
-    const timer = setTimeout(() => {
-      if (current?.id === id) toast.hide();
-    }, state.duration ?? 5000);
-    return () => clearTimeout(timer);
-  }, [state]);
+  const state = useSyncExternalStore(store.subscribe, store.get, store.get);
   if (!state) return null;
   const c = theme.colors;
   return (
@@ -227,11 +187,7 @@ export function ToastHost(props: { bottomOffset?: number }) {
               variant="link"
               size="sm"
               testID="toast-action"
-              onPress={() => {
-                // Hidden first: the action may show a toast of its own (e.g. "offline").
-                toast.hide();
-                state.onAction?.();
-              }}
+              onPress={() => store.act(state.id)}
             />
           ) : null}
         </View>

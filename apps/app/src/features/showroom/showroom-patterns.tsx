@@ -1,10 +1,16 @@
-import { matchSearchOrCreate, moveInOrder, orderAnnouncement } from '@housekeeping/core';
+import {
+  matchSearchOrCreate,
+  moveInOrder,
+  orderAnnouncement,
+  type Member,
+} from '@housekeeping/core';
 import {
   Button,
   CHECK_WINDOW_MS,
   CheckRow,
   ChoiceChips,
   Chip,
+  EditableSection,
   EmptyState,
   FilterBar,
   Icon,
@@ -14,6 +20,7 @@ import {
   ReorderList,
   Row,
   RowTransition,
+  ScreenHeader,
   SearchOrCreate,
   Section,
   Sheet,
@@ -23,11 +30,15 @@ import {
   Text,
   TextField,
   ViewTabs,
+  toast,
   useCheckWindow,
   type SheetSize,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+
+import { FavoriteButton } from '@/features/shell/favorite-button';
+import { MemberRatings } from '@/features/shell/member-ratings';
 
 import {
   KIND_LABELS,
@@ -68,6 +79,11 @@ export function usePatternBlocks(): ReactNode[] {
     <AddEntryBlock key="add" />,
     <FilterBlock key="filter" />,
     <ReorderBlock key="reorder" />,
+    <MenuBlock key="menu" />,
+    <EditableSectionBlock key="editable" />,
+    <TitleBarBlock key="titlebar" />,
+    <MemberRatingsBlock key="ratings" />,
+    <ExpiringToastBlock key="expire" />,
   ];
 }
 
@@ -855,6 +871,229 @@ function ReorderBlock() {
         disabledHint={OFFLINE_HINT}
         testID="showroom-reorder-offline"
       />
+    </Block>
+  );
+}
+
+// ---------- Spec 0008: menu, sections, title bar, ratings, toast running out ----------
+
+type SampleSort = 'zuletzt' | 'haeufig' | 'bewertung' | 'neu' | 'az' | 'zufall';
+const SAMPLE_SORTS: { value: SampleSort; label: string }[] = [
+  { value: 'zuletzt', label: 'Zuletzt gekocht' },
+  { value: 'haeufig', label: 'Am häufigsten' },
+  { value: 'bewertung', label: 'Bewertung' },
+  { value: 'neu', label: 'Neu' },
+  { value: 'az', label: 'A–Z' },
+  { value: 'zufall', label: 'Zufall' },
+];
+
+function MenuBlock() {
+  const [sort, setSort] = useState<SampleSort>('zuletzt');
+  const [action, setAction] = useState<string>();
+  const label =
+    sort === 'zuletzt' ? 'Zuletzt' : (SAMPLE_SORTS.find((s) => s.value === sort)?.label ?? '');
+  return (
+    <Block
+      title="Menü"
+      note="Der gewählte Wert trägt einen Haken. Im Web: Pfeiltasten, Pos1/Ende, Enter oder Leertaste wählen, Escape schließt."
+      testID="showroom-menu"
+    >
+      <Row gap={12}>
+        <Menu
+          label={label}
+          icon="arrow-up-down"
+          accessibilityLabel={`Sortierung: ${label}`}
+          options={SAMPLE_SORTS}
+          value={sort}
+          onChange={setSort}
+          testID="showroom-menu-sort"
+        />
+        <Menu
+          label="Aktionen"
+          trigger="icon"
+          accessibilityLabel="Weitere Aktionen"
+          options={[
+            { value: 'foto', label: 'Foto ändern' },
+            { value: 'loeschen', label: 'Löschen', disabled: true, hint: OFFLINE_HINT },
+          ]}
+          onChange={setAction}
+          testID="showroom-menu-actions"
+        />
+      </Row>
+      <Text variant="small" color="muted" testID="showroom-menu-value">
+        Sortierung: {SAMPLE_SORTS.find((s) => s.value === sort)?.label}
+        {action ? ` · zuletzt gewählt: ${action}` : ''}
+      </Text>
+    </Block>
+  );
+}
+
+type SampleSection = 'notizen' | 'zubereitung';
+
+function EditableSectionBlock() {
+  const [open, setOpen] = useState<SampleSection>();
+  const [offline, setOffline] = useState(false);
+  const [notes, setNotes] = useState('Mit doppelt Béchamel noch besser.');
+  const [draft, setDraft] = useState(notes);
+  const [error, setError] = useState<string>();
+  const edit = (section: SampleSection) => {
+    // Switching saves the open section, as "Fertig" does (spec 0008, AC-028).
+    if (open === 'notizen') setNotes(draft);
+    setDraft(notes);
+    setError(undefined);
+    setOpen(section);
+  };
+  const done = () => {
+    if (open === 'notizen' && draft.trim() === '') {
+      setError('Notiz fehlt');
+      return;
+    }
+    if (open === 'notizen') setNotes(draft);
+    setOpen(undefined);
+  };
+  return (
+    <Block
+      title="Abschnitt bearbeiten"
+      note="Stift öffnet genau einen Abschnitt, „Fertig“ schließt ihn. Ein anderer Stift speichert den offenen. Offline sind die Stifte ausgegraut."
+      testID="showroom-editable"
+    >
+      <SwitchRow label="Offline" value={offline} onValueChange={setOffline} />
+      <EditableSection
+        title="Notizen"
+        editing={open === 'notizen'}
+        onEdit={() => edit('notizen')}
+        onDone={done}
+        editLabel="Notizen bearbeiten"
+        doneLabel="Fertig"
+        disabled={offline}
+        hint={offline ? OFFLINE_HINT : undefined}
+        testID="showroom-editable-notes"
+      >
+        {open === 'notizen' ? (
+          <TextField
+            accessibilityLabel="Notizen"
+            value={draft}
+            onChangeText={setDraft}
+            multiline
+            error={error}
+          />
+        ) : (
+          <Text testID="showroom-editable-notes-text">{notes}</Text>
+        )}
+      </EditableSection>
+      <EditableSection
+        title="Zubereitung"
+        editing={open === 'zubereitung'}
+        onEdit={() => edit('zubereitung')}
+        onDone={done}
+        editLabel="Zubereitung bearbeiten"
+        doneLabel="Fertig"
+        disabled={offline}
+        hint={offline ? OFFLINE_HINT : undefined}
+        testID="showroom-editable-steps"
+      >
+        <Text color={open === 'zubereitung' ? 'text' : 'muted'}>
+          {open === 'zubereitung'
+            ? 'Hier stünden die Felder der Schritte.'
+            : '1. Kichererbsen kochen · 2. Pürieren · 3. Abschmecken'}
+        </Text>
+      </EditableSection>
+    </Block>
+  );
+}
+
+function TitleBarBlock() {
+  return (
+    <Block
+      title="Kopfzeile mit Titel beim Scrollen"
+      note="Für Seiten mit eigenem großen Titel (Rezeptseite). Auf dem Handy erscheint der Titel erst nach dem Scrollen in der schmalen Leiste, ab Tablet steht er von Anfang an da."
+      testID="showroom-titlebar"
+    >
+      <Surface>
+        <ScreenHeader
+          title="Lasagne"
+          titleOnScroll
+          backLabel="Essen"
+          onBack={() => undefined}
+          right={
+            <>
+              <FavoriteButton
+                active
+                disabled={false}
+                onPress={() => undefined}
+                testID="showroom-titlebar-favorite"
+              />
+              <Menu
+                label="Aktionen"
+                trigger="icon"
+                accessibilityLabel="Weitere Aktionen"
+                options={[{ value: 'foto', label: 'Foto ändern' }]}
+                onChange={() => undefined}
+              />
+            </>
+          }
+          testID="showroom-titlebar-title"
+        />
+      </Surface>
+    </Block>
+  );
+}
+
+// MemberRatings shows no avatars, so the colours stay empty.
+const SAMPLE_MEMBERS: Member[] = [
+  { id: 'enrico', name: 'Enrico', color: '', dietPreference: 'flexible', dislikes: [] },
+  { id: 'nadja', name: 'Nadja', color: '', dietPreference: 'vegetarian', dislikes: [] },
+  { id: 'lea', name: 'Lea', color: '', dietPreference: 'flexible', dislikes: [] },
+];
+
+function MemberRatingsBlock() {
+  const [ratings, setRatings] = useState<Record<string, number>>({ nadja: 5 });
+  const [offline, setOffline] = useState(false);
+  return (
+    <Block
+      title="Bewertungen der Mitglieder"
+      note="„Du“ setzt die eigenen Sterne in halben Schritten; die anderen stehen nur zur Anzeige, ohne Bewertung leer."
+      testID="showroom-ratings"
+    >
+      <SwitchRow label="Offline" value={offline} onValueChange={setOffline} />
+      <MemberRatings
+        ratings={ratings}
+        members={SAMPLE_MEMBERS}
+        me="enrico"
+        onRate={(stars) => setRatings((current) => ({ ...current, enrico: stars }))}
+        disabled={offline}
+        hint={offline ? OFFLINE_HINT : undefined}
+        testID="showroom-ratings-stars"
+      />
+    </Block>
+  );
+}
+
+function ExpiringToastBlock() {
+  const [result, setResult] = useState('–');
+  return (
+    <Block
+      title="Hinweis läuft aus"
+      note="„Rückgängig“ 5 Sekunden lang. Erst wenn der Hinweis ohne „Rückgängig“ ausläuft (oder ein neuer ihn ersetzt), passiert das Endgültige, z. B. das Foto löschen."
+      testID="showroom-expire"
+    >
+      <Button
+        label="Beispiel löschen"
+        variant="ghost"
+        onPress={() => {
+          setResult('Hinweis läuft …');
+          toast.show({
+            message: 'Halloumi-Pfanne gelöscht',
+            actionLabel: 'Rückgängig',
+            onAction: () => setResult('Rückgängig gemacht'),
+            onExpire: () => setResult('Abgelaufen – Foto wäre jetzt gelöscht'),
+          });
+        }}
+        testID="showroom-expire-show"
+      />
+      <Text variant="small" color="muted" testID="showroom-expire-result">
+        {result}
+      </Text>
     </Block>
   );
 }

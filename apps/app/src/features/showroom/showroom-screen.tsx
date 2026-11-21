@@ -52,7 +52,7 @@ import { ScrollView, View } from 'react-native';
 
 import { useSettings } from '@/lib/settings';
 
-import { EndlessDemo, EndlessDetail } from './showroom-endless';
+import { EndlessDemo, EndlessDetail, EndlessGridDemo } from './showroom-endless';
 import { usePatternBlocks } from './showroom-patterns';
 
 // Sample member colours come from the data in the real app; the showroom borrows theme colours
@@ -79,7 +79,7 @@ export function ShowroomScreen() {
   );
 }
 
-type ShowroomView = 'bausteine' | 'muster' | 'liste';
+type ShowroomView = 'bausteine' | 'muster' | 'liste' | 'raster';
 type AreaChoice = Tone | 'keiner';
 
 function ShowroomContent(props: {
@@ -95,8 +95,8 @@ function ShowroomContent(props: {
   const [view, setView] = useState<ShowroomView>('bausteine');
   const [area, setArea] = useState<AreaChoice>('essen');
   const [openRow, setOpenRow] = useState<number>();
-  // The endless list scrolls the page itself.
-  const listScrolls = view === 'liste';
+  // The endless list and grid scroll the page themselves.
+  const listScrolls = view === 'liste' || view === 'raster';
 
   const columns = (list: ReactNode[]) => {
     const half = Math.ceil(list.length / 2);
@@ -145,6 +145,7 @@ function ShowroomContent(props: {
             { value: 'bausteine', label: 'Bausteine' },
             { value: 'muster', label: 'Muster' },
             { value: 'liste', label: 'Endlos-Liste' },
+            { value: 'raster', label: 'Endlos-Raster' },
           ]}
           testID="showroom-view"
         />
@@ -164,7 +165,11 @@ function ShowroomContent(props: {
       {view === 'muster' ? columns(patterns) : null}
       {listScrolls ? (
         <View style={{ flex: 1 }}>
-          <EndlessDemo onOpen={setOpenRow} />
+          {view === 'liste' ? (
+            <EndlessDemo onOpen={setOpenRow} />
+          ) : (
+            <EndlessGridDemo onOpen={setOpenRow} />
+          )}
           {/* Like a page pushed onto the stack: the list stays mounted underneath (AC-043). */}
           {openRow !== undefined ? (
             <EndlessDetail row={openRow} onBack={() => setOpenRow(undefined)} />

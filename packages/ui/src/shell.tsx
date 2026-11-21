@@ -289,6 +289,12 @@ export interface ScreenHeaderProps {
   onBack?: () => void;
   /** Names where "Zurück" leads, e.g. "Kalender": shown as "‹ Kalender" above the title. */
   backLabel?: string;
+  /**
+   * For a page that shows its title big in its own content (spec 0008, AC-019, AC-020): one bar
+   * with "‹ Back", the title small and the buttons. On phones the title only appears once the
+   * page is scrolled; wider screens show it from the start.
+   */
+  titleOnScroll?: boolean;
   testID?: string;
 }
 
@@ -299,6 +305,7 @@ export interface ScreenHeaderProps {
 export function ScreenHeader(props: ScreenHeaderProps) {
   const { isPhone } = useBreakpoint();
   const { collapsed } = useContext(ScreenChromeContext);
+  if (props.titleOnScroll) return <TitleBar {...props} showTitle={!isPhone || collapsed} />;
   return (
     <View
       style={{
@@ -335,6 +342,50 @@ export function ScreenHeader(props: ScreenHeaderProps) {
         {props.subtitle && !collapsed ? (
           <Text variant="small" color="muted" style={{ marginTop: 4 }}>
             {props.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {props.right ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{props.right}</View>
+      ) : null}
+    </View>
+  );
+}
+
+/** The one-row header of `titleOnScroll`: back, the title once `showTitle`, the buttons. */
+function TitleBar(props: ScreenHeaderProps & { showTitle: boolean }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 44,
+        paddingTop: 8,
+        paddingBottom: 8,
+      }}
+    >
+      {props.onBack ? (
+        props.backLabel ? (
+          // BackLink aligns itself to the start; the wrapper centres it in the row.
+          <View>
+            <BackLink label={props.backLabel} onPress={props.onBack} />
+          </View>
+        ) : (
+          <View style={{ marginLeft: -8 }}>
+            <IconButton icon="arrow-left" label="Zurück" onPress={props.onBack} testID="back" />
+          </View>
+        )
+      ) : null}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {props.showTitle ? (
+          <Text
+            variant="cardTitle"
+            heading
+            numberOfLines={1}
+            testID={props.testID ?? 'screen-title'}
+          >
+            {props.title}
           </Text>
         ) : null}
       </View>
