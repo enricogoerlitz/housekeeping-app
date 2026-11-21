@@ -27,10 +27,15 @@ all places a change touches.
 
 ## Migrations
 
-- Create with `pnpm exec supabase migration new <snake_case_name>`. Never edit a migration that
-  has been committed — write a new one.
-- Changes are **expand → migrate → contract**: add the new column, backfill, and drop the old one
-  only when no released app version reads it any more. Installed apps update late.
+- Create with `pnpm exec supabase migration new <snake_case_name>`.
+- **Before the first production release** (spec 0014: the first `supabase db push` to the
+  production project) the migrations are rebased once into a baseline — one file per area, every
+  function in its final form, no data-migration code (ADR-0012). This exception is used up by
+  that rebase; it is not repeated.
+- **From the first production release on**, a committed migration is never edited, renamed or
+  deleted — write a new one. Changes are **expand → migrate → contract**: add the new column,
+  backfill, and drop the old one only when no released app version reads it any more. Installed
+  apps update late.
 - Never rename a column or table in place. Add, copy, switch, drop later.
 - No destructive change without saying so explicitly in the plan.
 

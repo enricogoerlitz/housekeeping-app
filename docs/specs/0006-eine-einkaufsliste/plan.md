@@ -21,6 +21,8 @@ neue RPCs für Liste leeren, ± und Wiederherstellen; Vorauswahl und Herkunft al
    Listen und die weiteren Listen werden gelöscht. Grabsteine entstehen über die vorhandenen Trigger.
 2. **Höchstens eine Liste je Haushalt:** `unique (household_id)` auf `shopping_lists`; kein Insert
    mehr über `apply_changes`/Grants (alte Apps bekommen eine Ablehnung → ehrlicher Hinweis);
+   auch **Löschen** der Liste ist gesperrt (sonst wäre „genau eine Liste“ verletzbar, die App
+   löscht nirgends Listen);
    `create_household` legt weiter genau eine an. `is_default`/`store_id` werden nicht mehr gelesen
    (expand → contract: Spalten bleiben vorerst).
 3. **RPCs:** `clear_shopping_list(list)` (alle Posten inkl. Erledigt, liefert Zeilen für Rückgängig),
