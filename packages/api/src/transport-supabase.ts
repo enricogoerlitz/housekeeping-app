@@ -17,6 +17,9 @@ import {
   AssignAreaResultSchema,
   CheckResultSchema,
   ClearedItemsSchema,
+  DeletedArticleSchema,
+  MergeArticlesResultSchema,
+  MergeAreasResultSchema,
   NotAvailableResultSchema,
   RawPullResultSchema,
   TransportError,
@@ -288,6 +291,18 @@ export function createSupabaseTransport(
       if (typeof data !== 'number') throw new TransportError('permanent', 'invalid_response');
       return data;
     },
+    deleteArticle: (articleId) =>
+      parsed(DeletedArticleSchema, 'delete_article', { p_article_id: articleId }),
+    mergeArticles: (sourceId, targetId) =>
+      parsed(MergeArticlesResultSchema, 'merge_articles', {
+        p_source_id: sourceId,
+        p_target_id: targetId,
+      }),
+    mergeAreas: (sourceId, targetId) =>
+      parsed(MergeAreasResultSchema, 'merge_areas', {
+        p_source_id: sourceId,
+        p_target_id: targetId,
+      }),
     setRecipeFavorite: (recipeId, favorite) =>
       nothing('set_recipe_favorite', { recipe_id: recipeId, favorite }),
     setRecipeRating: (recipeId, stars) =>

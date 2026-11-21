@@ -13,18 +13,21 @@ import type { Amount, Area, Article, Diet, Id, Recipe, ShoppingItem, ShoppingRul
 // how ingredients get their article without a human choice, and the rules of the page "Artikel".
 // Only the articles passed in are ever used, so callers hand in the active household's articles.
 
-/** Limits of the database (`articles_name_valid`, `articles_synonyms_size`). */
+/**
+ * Limits of the database (`articles_name_valid`, `articles_name_key_valid`,
+ * `articles_synonyms_size`, `articles_synonym_keys_size`), counted in code points like
+ * `char_length`. Keys count too: "ä" is two letters there.
+ */
 export const MAX_ARTICLE_NAME_LENGTH = 120;
 export const MAX_SYNONYMS = 30;
+export const MAX_SYNONYMS_LENGTH = 2000;
 
 const SIMILAR_THRESHOLD = 0.8;
 
-/** An article with the review fields that arrive with the article rows of spec 0007. */
-export type CatalogArticle = Article & {
-  /** "Neu aus Rezepten": created for an ingredient without a human choice. */
-  needsReview?: boolean;
-  createdAt?: string;
-};
+/** What name matching needs of an article; drafts about to be created have it too. */
+export type NamedArticle = Pick<Article, 'id' | 'name' | 'synonyms'>;
+
+const length = (text: string): number => Array.from(text).length;
 
 /** One entry of the starter catalog as core sees it; the api maps its area key to the name. */
 export interface StarterCatalogEntry {
@@ -66,11 +69,11 @@ function keysOf(article: { name: string; synonyms?: readonly string[] }): string
   return [article.name, ...(article.synonyms ?? [])].map(normalizeText);
 }
 
-function takenKeys(articles: readonly Article[]): Set<string> {
+function takenKeys(articles: readonly NamedArticle[]): Set<string> {
   return new Set(articles.flatMap(keysOf));
 }
 
-function findByKey<T extends Article>(key: string, articles: readonly T[]): T | undefined {
+function findByKey<T extends NamedArticle>(key: string, articles: readonly T[]): T | undefined {
   if (key === '') return undefined;
   return (
     articles.find((article) => normalizeText(article.name) === key) ??
@@ -80,7 +83,7 @@ function findByKey<T extends Article>(key: string, articles: readonly T[]): T | 
 
 /** Starter entries the household does not have yet: none of their names is taken (E10). */
 function availableStarterEntries(
-  articles: readonly Article[],
+  articles: readonly NamedArticle[],
   catalog: readonly StarterCatalogEntry[],
 ): StarterCatalogEntry[] {
   const taken = takenKeys(articles);
@@ -130,7 +133,7 @@ export function searchArticleCatalog<T extends Article>(
  */
 export function articleDraftFromStarter(
   entry: StarterCatalogEntry,
-  articles: readonly Article[],
+  articles: readonly NamedArticle[],
   areas: readonly Area[],
 ): ArticleDraft {
   const taken = takenKeys(articles);
@@ -170,14 +173,21 @@ export function defaultShoppingRuleFor(
   return amount?.unit !== undefined && amount.unit !== '' ? 'recipeAmount' : 'count';
 }
 
-/** First 120 characters, counted like the database (code points), without a trailing space. */
+const fits = (name: string): boolean =>
+  length(name) <= MAX_ARTICLE_NAME_LENGTH && length(normalizeText(name)) <= MAX_ARTICLE_NAME_LENGTH;
+
+/**
+ * The first 120 characters, counted like the database (code points), without a trailing space;
+ * shorter when the key would be longer than 120 ("ä" → "ae").
+ */
 function cutName(name: string): string {
-  const characters = Array.from(name);
-  if (characters.length <= MAX_ARTICLE_NAME_LENGTH) return name;
-  return characters.slice(0, MAX_ARTICLE_NAME_LENGTH).join('').trim();
+  if (fits(name)) return name;
+  const characters = Array.from(name).slice(0, MAX_ARTICLE_NAME_LENGTH);
+  while (characters.length > 0 && !fits(characters.join(''))) characters.pop();
+  return characters.join('').trim();
 }
 
-export type IngredientArticleResolution<T extends Article = Article> =
+export type IngredientArticleResolution<T extends NamedArticle = Article> =
   | { kind: 'existing'; article: T }
   | { kind: 'starter'; entry: StarterCatalogEntry; draft: ArticleDraft }
   | { kind: 'new'; draft: ArticleDraft };
@@ -188,7 +198,7 @@ export type IngredientArticleResolution<T extends Article = Article> =
  * new article "Neu aus Rezepten" without area, diet unknown, named with the first 120 characters.
  * Throws for a blank name.
  */
-export function resolveIngredientArticle<T extends Article>(
+export function resolveIngredientArticle<T extends NamedArticle>(
   name: string,
   articles: readonly T[],
   catalog: readonly StarterCatalogEntry[],
@@ -224,7 +234,7 @@ export function resolveIngredientArticle<T extends Article>(
 export function resolveIngredientArticles(
   names: readonly string[],
   context: {
-    articles: readonly Article[];
+    articles: readonly NamedArticle[];
     catalog: readonly StarterCatalogEntry[];
     areas: readonly Area[];
     newId: () => Id;
@@ -232,7 +242,7 @@ export function resolveIngredientArticles(
 ): { articleIds: Id[]; created: (ArticleDraft & { id: Id })[] } {
   const created: (ArticleDraft & { id: Id })[] = [];
   const articleIds = names.map((name) => {
-    const known: Article[] = [...context.articles, ...created];
+    const known: NamedArticle[] = [...context.articles, ...created];
     const result = resolveIngredientArticle(name, known, context.catalog, context.areas);
     if (result.kind === 'existing') return result.article.id;
     const article = { id: context.newId(), ...result.draft };
@@ -250,10 +260,26 @@ export type IngredientLineClass<T extends Article = Article> =
   /** Nothing fits: orange with "„…“ neu anlegen". */
   | { status: 'new'; line: ParsedIngredient };
 
+/** The hit spelled most like the key: a typo away (similarity ≥ 0.8) or its singular/plural. */
+function spelledAlike<T extends { name: string; synonyms: readonly string[] }>(
+  key: string,
+  hits: readonly T[],
+): T | undefined {
+  let best: { hit: T; score: number } | undefined;
+  for (const hit of hits) {
+    for (const candidate of keysOf(hit)) {
+      const score = isSingularPluralPair(key, candidate) ? 1 : similarity(key, candidate);
+      if (score >= SIMILAR_THRESHOLD && score > (best?.score ?? 0)) best = { hit, score };
+    }
+  }
+  return best?.hit;
+}
+
 /**
  * Sorts the lines of a pasted block (REQ-002): sure when an article or available starter entry
- * has the name as name or synonym; similar when "Suchen oder anlegen" would brake with "Meinst du
- * …?"; new otherwise. Empty lines and bullets are ignored.
+ * has the name as name or synonym; similar ("Meinst du …?") when one is spelled alike — a typo
+ * away or its singular/plural, never a word part ("Buttermilch" is no "Milch"); new otherwise.
+ * Empty lines and bullets are ignored.
  */
 export function classifyIngredientLines<T extends Article>(
   text: string,
@@ -262,9 +288,13 @@ export function classifyIngredientLines<T extends Article>(
 ): IngredientLineClass<T>[] {
   const hits = catalogHits(articles, catalog);
   return parseIngredientBlock(text).map((line): IngredientLineClass<T> => {
-    const result = matchSearchOrCreate(line.name, hits, { limit: 0 });
-    if (result.exact) return { status: 'sure', line, hit: result.exact };
-    if (result.similar) return { status: 'similar', line, suggestion: result.similar };
+    const key = normalizeText(line.name);
+    const exact =
+      hits.find((hit) => normalizeText(hit.name) === key) ??
+      hits.find((hit) => hit.synonyms.some((synonym) => normalizeText(synonym) === key));
+    if (exact) return { status: 'sure', line, hit: exact };
+    const similar = spelledAlike(key, hits);
+    if (similar) return { status: 'similar', line, suggestion: similar };
     return { status: 'new', line };
   });
 }
@@ -299,14 +329,15 @@ export type ArticleDraftProblem<T extends Article = Article> =
   /** `existing` is offered for "Zusammenführen …" (AC-030). */
   | { field: 'name'; kind: 'taken'; existing: T; message: string }
   | { field: 'synonyms'; kind: 'taken'; synonym: string; existing: T; message: string }
-  | { field: 'synonyms'; kind: 'tooMany'; message: string };
+  | { field: 'synonyms'; kind: 'tooMany'; message: string }
+  | { field: 'synonyms'; kind: 'tooLong'; message: string };
 
 /**
  * Checks name and synonyms of an article being created (no id) or edited (its id) against the
  * other articles: a name or synonym must not be the name or a synonym of another article (after
  * normalising, E6). Empty → "Name fehlt", taken → "Gibt es schon: Kokosmilch", a synonym taken →
- * "„Möhren“ ist schon ein Artikel"; at most 120 characters and 30 synonyms (after
- * cleanSynonyms). [] = fine.
+ * "„Möhren“ ist schon ein Artikel"; at most 120 characters, 30 synonyms and 2000 characters in
+ * all synonyms (after cleanSynonyms; the keys count too). [] = fine.
  */
 export function validateArticleDraft<T extends Article>(
   draft: { id?: Id; name: string; synonyms: readonly string[] },
@@ -318,7 +349,7 @@ export function validateArticleDraft<T extends Article>(
   const name = collapse(draft.name);
   if (name === '') {
     problems.push({ field: 'name', kind: 'missing', message: 'Name fehlt' });
-  } else if (Array.from(name).length > MAX_ARTICLE_NAME_LENGTH) {
+  } else if (!fits(name)) {
     problems.push({ field: 'name', kind: 'tooLong', message: 'Höchstens 120 Zeichen' });
   } else {
     const existing = findByKey(normalizeText(name), others);
@@ -335,6 +366,17 @@ export function validateArticleDraft<T extends Article>(
   const synonyms = cleanSynonyms(name, draft.synonyms);
   if (synonyms.length > MAX_SYNONYMS) {
     problems.push({ field: 'synonyms', kind: 'tooMany', message: 'Höchstens 30 Synonyme' });
+  }
+  const total = (texts: string[]) => texts.reduce((sum, text) => sum + length(text), 0);
+  if (
+    total(synonyms) > MAX_SYNONYMS_LENGTH ||
+    total(synonyms.map(normalizeText)) > MAX_SYNONYMS_LENGTH
+  ) {
+    problems.push({
+      field: 'synonyms',
+      kind: 'tooLong',
+      message: 'Höchstens 2000 Zeichen in allen Synonymen',
+    });
   }
   for (const synonym of synonyms) {
     const existing = findByKey(normalizeText(synonym), others);
@@ -432,16 +474,24 @@ export function similarArticleNames<T extends Article>(articles: readonly T[]): 
 
 export type ArticleFilter = 'all' | 'noArea' | 'pantry' | 'needsReview' | 'similar';
 
-function passes<T extends CatalogArticle>(
+/** What the filters need besides the articles: the look-alikes and the household's areas. */
+export interface ArticleFilterContext<T extends Article> {
+  /** From similarArticleNames. */
+  similar: ReadonlyMap<Id, readonly T[]>;
+  areas: readonly Area[];
+}
+
+function passes<T extends Article>(
   article: T,
   filter: ArticleFilter,
   similar: ReadonlyMap<Id, readonly T[]>,
+  areaIds: ReadonlySet<Id>,
 ): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'noArea':
-      return article.areaId === undefined;
+      return article.areaId === undefined || !areaIds.has(article.areaId);
     case 'pantry':
       return article.isPantry;
     case 'needsReview':
@@ -452,24 +502,25 @@ function passes<T extends CatalogArticle>(
 }
 
 /**
- * The filter chips of the page "Artikel": "Alle", "Ohne Bereich", "Vorrat", "Neu aus Rezepten",
- * "Ähnliche Namen" (with the map of similarArticleNames). Keeps the given order.
+ * The filter chips of the page "Artikel": "Alle", "Ohne Bereich" (also an area that no longer
+ * exists, like articleCountsByArea), "Vorrat", "Neu aus Rezepten", "Ähnliche Namen". Keeps the
+ * given order.
  */
-export function filterArticles<T extends CatalogArticle>(
+export function filterArticles<T extends Article>(
   articles: readonly T[],
   filter: ArticleFilter,
-  similar: ReadonlyMap<Id, readonly T[]>,
+  context: ArticleFilterContext<T>,
 ): T[] {
-  return articles.filter((article) => passes(article, filter, similar));
+  const areaIds = new Set(context.areas.map((area) => area.id));
+  return articles.filter((article) => passes(article, filter, context.similar, areaIds));
 }
 
 /** The numbers on the chips ("Ohne Bereich (2)"). */
-export function articleFilterCounts<T extends CatalogArticle>(
+export function articleFilterCounts<T extends Article>(
   articles: readonly T[],
-  similar: ReadonlyMap<Id, readonly T[]>,
+  context: ArticleFilterContext<T>,
 ): Record<ArticleFilter, number> {
-  const count = (filter: ArticleFilter): number =>
-    articles.filter((article) => passes(article, filter, similar)).length;
+  const count = (filter: ArticleFilter): number => filterArticles(articles, filter, context).length;
   return {
     all: articles.length,
     noArea: count('noArea'),
@@ -489,12 +540,8 @@ function byName(a: Article, b: Article): number {
  * "A–Z" by German order, or "Neu": created last first (AC-024); articles without a creation time
  * come last. Ties A–Z.
  */
-export function sortArticles<T extends CatalogArticle>(
-  articles: readonly T[],
-  by: ArticleSort,
-): T[] {
-  const time = (article: T): number =>
-    article.createdAt === undefined ? 0 : createdTime({ createdAt: article.createdAt });
+export function sortArticles<T extends Article>(articles: readonly T[], by: ArticleSort): T[] {
+  const time = (article: T): number => createdTime(article);
   return [...articles].sort((a, b) => (by === 'new' ? time(b) - time(a) : 0) || byName(a, b));
 }
 
@@ -544,7 +591,7 @@ export function articleUsage(
   return usage;
 }
 
-export interface MergePreview<T extends CatalogArticle> {
+export interface MergePreview<T extends Article> {
   /** "Milchkokos in Kokosmilch zusammenführen?" */
   title: string;
   /** "1 Rezept und 1 Posten ziehen um. Das lässt sich nicht rückgängig machen." */
@@ -575,7 +622,7 @@ function movesText(recipes: number, items: number): string {
  * source; Vorrat stays as at the target. Name and synonyms of the source become synonyms of the
  * target, keys already there fall away. The target leaves "Neu aus Rezepten".
  */
-export function mergeArticlesPreview<T extends CatalogArticle>(
+export function mergeArticlesPreview<T extends Article>(
   source: T,
   target: T,
   recipes: readonly Recipe[],
@@ -627,4 +674,59 @@ export function mergeTargets<T extends Article>(
     query,
     articles.filter((article) => article.id !== sourceId),
   ).matches;
+}
+
+export interface ArticleMergeEffect<T extends Article> {
+  /** The target as it is afterwards (mergeArticlesPreview). */
+  article: T;
+  recipes: Recipe[];
+  items: ShoppingItem[];
+  /** The source's open item that joined the target's open item, if any (it is gone). */
+  removedItemId?: Id;
+}
+
+/**
+ * What "Zusammenführen" changes, as the server does it in merge_articles (E8): every ingredient of
+ * the source points to the target (two rows in one recipe stay two, AC-039); when both are open on
+ * the list, the source's contributions join the target's open item and the source's item goes;
+ * every other item of the source belongs to the target. Unchanged recipes and items keep their
+ * identity. The caller removes the source article.
+ */
+export function applyArticleMerge<T extends Article>(
+  source: T,
+  target: T,
+  recipes: readonly Recipe[],
+  items: readonly ShoppingItem[],
+): ArticleMergeEffect<T> {
+  const nextRecipes = recipes.map((recipe) =>
+    recipe.ingredients.some((ingredient) => ingredient.articleId === source.id)
+      ? {
+          ...recipe,
+          ingredients: recipe.ingredients.map((ingredient) =>
+            ingredient.articleId === source.id
+              ? { ...ingredient, articleId: target.id }
+              : ingredient,
+          ),
+        }
+      : recipe,
+  );
+
+  const sourceOpen = items.find((item) => item.articleId === source.id && !item.checked);
+  const targetOpen = items.find((item) => item.articleId === target.id && !item.checked);
+  const joined = sourceOpen && targetOpen ? sourceOpen : undefined;
+  const nextItems = items.flatMap((item): ShoppingItem[] => {
+    if (item === joined) return [];
+    if (joined && item === targetOpen) {
+      return [{ ...item, contributions: [...item.contributions, ...joined.contributions] }];
+    }
+    return item.articleId === source.id ? [{ ...item, articleId: target.id }] : [item];
+  });
+
+  const effect: ArticleMergeEffect<T> = {
+    article: mergeArticlesPreview(source, target, recipes, items).merged,
+    recipes: nextRecipes,
+    items: nextItems,
+  };
+  if (joined) effect.removedItemId = joined.id;
+  return effect;
 }

@@ -1,4 +1,4 @@
-import { useRecipe } from '@housekeeping/api';
+import { useArticlesById, useRecipe } from '@housekeeping/api';
 import { ingredientsForVariant, routeId, stepsForVariants, type Recipe } from '@housekeeping/core';
 import {
   Button,
@@ -56,6 +56,7 @@ function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLe
   const variant = recipe.variants.find((candidate) => candidate.id === props.variantParam);
   const steps = stepsForVariants(recipe, variant ? [variant.id] : undefined);
   const ingredients = ingredientsForVariant(recipe, variant?.id);
+  const articlesById = useArticlesById();
   const [index, setIndex] = useState(0);
   const [showIngredients, setShowIngredients] = useState(false);
   const step = steps[Math.min(index, steps.length - 1)];
@@ -170,7 +171,7 @@ function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLe
                 {ingredients.map((ingredient) => (
                   <ListRow
                     key={ingredient.id}
-                    title={ingredient.name}
+                    title={articlesById[ingredient.articleId]?.name ?? ''}
                     leading={
                       <Text variant="bodyStrong" style={{ width: 76 }}>
                         {ingredient.amount?.text ?? ''}

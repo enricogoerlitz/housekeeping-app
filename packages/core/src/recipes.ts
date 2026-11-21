@@ -44,16 +44,14 @@ function searchableTexts(recipe: Recipe, articlesById: Record<Id, Article>): str
   if (recipe.notes !== undefined) texts.push(recipe.notes);
   if (recipe.description !== undefined) texts.push(recipe.description);
   for (const ingredient of recipe.ingredients) {
-    texts.push(ingredient.name);
-    const article =
-      ingredient.articleId === undefined ? undefined : articlesById[ingredient.articleId];
+    const article = articlesById[ingredient.articleId];
     if (article) texts.push(article.name, ...article.synonyms);
   }
   return texts;
 }
 
 /**
- * Keyword search over title, ingredient names, the names and synonyms of their articles, tags,
+ * Keyword search over title, the names and synonyms of the ingredients' articles, tags,
  * notes and description; typo tolerant; several words must all match. Recipes with every word in
  * the title come first, the given order is kept otherwise.
  * Empty query → all recipes in the given order.

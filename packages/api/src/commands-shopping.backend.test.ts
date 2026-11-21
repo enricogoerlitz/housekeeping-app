@@ -13,27 +13,31 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
-import { assignArticleArea, resolveArticle } from './commands-household';
+import { resolveArticle } from './commands-articles';
+import { assignArticleArea } from './commands-household';
 import { setIngredientShoppingNote } from './commands-recipes';
 import {
   addIngredientToList,
   addPlannedToList,
   addShoppingItemFromText,
   adjustItemCount,
+  ARTICLE_GONE_MESSAGE,
   clearCheckedItems,
-  AREA_NAME_MAX_LENGTH,
   clearShoppingList,
-  createArea,
-  createStore,
-  fullAreaOrder,
   ITEM_NOTE_MAX_LENGTH,
-  moveStoreArea,
   pantryCheckRows,
   removeShoppingItem,
   setItemNote,
   setItemNotAvailable,
-  setStoreAreaHidden,
 } from './commands-shopping';
+import {
+  AREA_NAME_MAX_LENGTH,
+  createArea,
+  createStore,
+  fullAreaOrder,
+  moveStoreArea,
+  setStoreAreaHidden,
+} from './commands-stores';
 import { NADJA } from './seed/demo';
 import { indexById } from './queries';
 import { getData, OfflineError, snapshot } from './store';
@@ -260,6 +264,20 @@ describe('from the meal plan', () => {
     expect(fx.calls.map((call) => call.fn)).toEqual(['addShoppingContributions']);
     expect(fx.calls[0]?.args[1]).toHaveLength(rows.length);
     expect(getData().items).toEqual(before);
+  });
+
+  it('spec 0007: an article deleted meanwhile on another device (23503): back, with its hint, no retry', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const before = getData().items;
+    fx.server.failNext('add_shopping_contributions', new TransportError('permanent', '23503', 409));
+    addShoppingItemFromText('Milch');
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['addShoppingContributions']);
+    expect(getData().items).toEqual(before);
+    expect(messages).toEqual([ARTICLE_GONE_MESSAGE]);
+    stop();
   });
 
   it('pantry check: undo removes exactly the added contributions', async () => {
@@ -728,7 +746,9 @@ describe('shopping list commands: input and local effect', () => {
 
   it('AC-023: "Ist alle" puts Kreuzkümmel on the list, and the snapshot undoes it', () => {
     const curry = recipe('rec-mango-curry');
-    const cumin = curry.ingredients.find((ingredient) => ingredient.name === 'Kreuzkümmel');
+    const cumin = curry.ingredients.find(
+      (ingredient) => articleName(ingredient.articleId) === 'Kreuzkümmel',
+    );
     if (!cumin) throw new Error('Kreuzkümmel missing');
     const undo = snapshot();
 
@@ -742,7 +762,9 @@ describe('shopping list commands: input and local effect', () => {
 
   it('"Ist alle" carries the ingredient\'s default shopping note onto the list', () => {
     const pizza = recipe('rec-pizza-margherita');
-    const mozzarella = pizza.ingredients.find((ingredient) => ingredient.name === 'Mozzarella');
+    const mozzarella = pizza.ingredients.find(
+      (ingredient) => articleName(ingredient.articleId) === 'Mozzarella',
+    );
     if (!mozzarella) throw new Error('Mozzarella missing');
     const added = addIngredientToList(pizza.id, mozzarella.id);
     const item = itemsOf().find((candidate) => candidate.id === added?.itemId);
@@ -817,7 +839,9 @@ describe('pantry check', () => {
 
   it('carries an ingredient’s default shopping note onto the list item', () => {
     const curry = recipe('rec-mango-curry');
-    const coconut = curry.ingredients.find((ingredient) => ingredient.name === 'Kokosmilch');
+    const coconut = curry.ingredients.find(
+      (ingredient) => articleName(ingredient.articleId) === 'Kokosmilch',
+    );
     if (!coconut) throw new Error('Kokosmilch missing');
     setIngredientShoppingNote(curry.id, coconut.id, '  Bio ');
 
@@ -836,13 +860,34 @@ describe('pantry check', () => {
     ).toBeUndefined();
   });
 
-  it('skips rows without article and unknown entries', () => {
+  it('skips unknown entries and rows whose article is gone', () => {
     expect(pantryCheckRows(['plan-weg'])).toEqual([]);
     expect(
       addPlannedToList([
-        { name: 'Frei', amount: '', sources: [], isPantry: false, contributions: [] },
+        {
+          articleId: 'art-weg',
+          name: 'Weg',
+          amount: '',
+          sources: [],
+          isPantry: false,
+          contributions: [],
+        },
       ]),
     ).toBe(0);
+  });
+
+  it('AC-016: every pantry-check row has an article of the household; none is "Nicht im Katalog"', async () => {
+    const curry = recipe('rec-mango-curry');
+    const [first] = curry.ingredients;
+    if (!first) throw new Error('fixture');
+    // An article deleted on another device before this device synced.
+    fx.server.deleteRow(H, 'articles', first.articleId);
+    await fx.settle();
+    const articles = indexById(getData().articles);
+    const rows = pantryCheckRows([], [{ recipeId: curry.id, portions: 4 }]);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => articles[row.articleId] !== undefined)).toBe(true);
+    expect(rows.some((row) => row.articleId === first.articleId)).toBe(false);
   });
 });
 
@@ -860,7 +905,9 @@ describe("the household's shopping list: local effect (spec 0006, ADR-0012)", ()
 
   it('AC-023 / REQ-001: "Ist alle" lands in the household\'s items', () => {
     const curry = recipe('rec-mango-curry');
-    const cumin = curry.ingredients.find((ingredient) => ingredient.name === 'Kreuzkümmel');
+    const cumin = curry.ingredients.find(
+      (ingredient) => articleName(ingredient.articleId) === 'Kreuzkümmel',
+    );
     if (!cumin) throw new Error('fixture');
     const added = addIngredientToList(curry.id, cumin.id);
     expect(itemsOf().some((item) => item.id === added?.itemId)).toBe(true);

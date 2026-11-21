@@ -180,3 +180,29 @@ describe('householdRow rules', () => {
     expect(row[today]?.map((item) => item.memberIds)).toEqual([[enrico.id, nadja.id], []]);
   });
 });
+
+describe('AC-043: "bei Bedarf" in the household row', () => {
+  const kitchenWindow = chore({
+    id: 'fk',
+    title: 'Fenster Küche',
+    recurrence: { type: 'asNeeded' },
+    assignment: { type: 'fixed', memberId: nadja.id },
+    // A stray date (the database forbids it) must not make it due or planned either.
+    nextDueOn: today,
+    nextAssigneeId: nadja.id,
+  });
+
+  it('AC-043: never stands as due or planned, only as done on the day it was done', () => {
+    const done: ChoreEvent = { ...badDone, id: 'ev-fk', choreId: 'fk', title: 'Fenster Küche' };
+    const row = householdRow({
+      chores: [kitchenWindow],
+      events: [done],
+      members,
+      from: '2026-11-16',
+      to: '2026-12-31',
+      today,
+    });
+    expect(Object.keys(row)).toEqual(['2026-11-16']);
+    expect(short(row['2026-11-16'])).toEqual([`✓ Fenster Küche (${nadja.id})`]);
+  });
+});

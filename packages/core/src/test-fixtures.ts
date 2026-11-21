@@ -24,7 +24,16 @@ export const vera: Member = {
 };
 
 function article(id: Id, name: string, rest: Partial<Article> = {}): Article {
-  return { id, name, synonyms: [], diet: 'vegan', isPantry: false, ...rest };
+  return {
+    id,
+    name,
+    synonyms: [],
+    diet: 'vegan',
+    isPantry: false,
+    needsReview: false,
+    createdAt: '',
+    ...rest,
+  };
 }
 
 export const articles: Article[] = [
@@ -69,13 +78,8 @@ export function makeRecipe(partial: Partial<Recipe> & Pick<Recipe, 'id' | 'title
   };
 }
 
-function ingredient(
-  id: Id,
-  articleId: Id | undefined,
-  name: string,
-  rest: Partial<RecipeIngredient> = {},
-): RecipeIngredient {
-  return { id, articleId, name, shoppingRule: 'count', ...rest };
+function ingredient(id: Id, articleId: Id, rest: Partial<RecipeIngredient> = {}): RecipeIngredient {
+  return { id, articleId, shoppingRule: 'count', ...rest };
 }
 
 export const mangoCurry: Recipe = makeRecipe({
@@ -89,25 +93,25 @@ export const mangoCurry: Recipe = makeRecipe({
     { id: 'v-haehnchen', name: 'mit Hähnchen', isDefault: false },
   ],
   ingredients: [
-    ingredient('i-kokos', 'art-kokosmilch', 'Kokosmilch', {
+    ingredient('i-kokos', 'art-kokosmilch', {
       amount: { text: '400 ml', qty: 400, unit: 'ml' },
       shoppingRule: 'recipeAmount',
     }),
-    ingredient('i-mango', 'art-mango', 'Mango', {
+    ingredient('i-mango', 'art-mango', {
       amount: { text: '1', qty: 1 },
       shoppingRule: 'recipeAmount',
     }),
-    ingredient('i-reis', 'art-reis', 'Reis', { amount: { text: '250 g', qty: 250, unit: 'g' } }),
-    ingredient('i-kreuz', 'art-kreuzkuemmel', 'Kreuzkümmel', {
+    ingredient('i-reis', 'art-reis', { amount: { text: '250 g', qty: 250, unit: 'g' } }),
+    ingredient('i-kreuz', 'art-kreuzkuemmel', {
       amount: { text: '1 TL', qty: 1, unit: 'TL' },
     }),
-    ingredient('i-salz', 'art-salz', 'Salz', { shoppingRule: 'skip' }),
-    ingredient('i-tofu', 'art-tofu', 'Räuchertofu', {
+    ingredient('i-salz', 'art-salz', { shoppingRule: 'skip' }),
+    ingredient('i-tofu', 'art-tofu', {
       amount: { text: '400 g', qty: 400, unit: 'g' },
       shoppingRule: 'recipeAmount',
       variantId: 'v-tofu',
     }),
-    ingredient('i-haehnchen', 'art-haehnchen', 'Hähnchenbrust', {
+    ingredient('i-haehnchen', 'art-haehnchen', {
       amount: { text: '400 g', qty: 400, unit: 'g' },
       shoppingRule: 'recipeAmount',
       variantId: 'v-haehnchen',
@@ -127,12 +131,12 @@ export const bolognese: Recipe = makeRecipe({
   totalMinutes: 45,
   tags: ['klassiker'],
   ingredients: [
-    ingredient('b-hack', 'art-hack', 'Hackfleisch', {
+    ingredient('b-hack', 'art-hack', {
       amount: { text: '500 g', qty: 500, unit: 'g' },
       shoppingRule: 'recipeAmount',
     }),
-    ingredient('b-spaghetti', 'art-spaghetti', 'Spaghetti'),
-    ingredient('b-moehren', 'art-moehren', 'Möhren', {
+    ingredient('b-spaghetti', 'art-spaghetti'),
+    ingredient('b-moehren', 'art-moehren', {
       amount: { text: '2', qty: 2 },
       shoppingRule: 'recipeAmount',
     }),
@@ -145,11 +149,11 @@ export const halloumiPfanne: Recipe = makeRecipe({
   servings: 2,
   totalMinutes: 20,
   ingredients: [
-    ingredient('h-halloumi', 'art-halloumi', 'Halloumi', {
+    ingredient('h-halloumi', 'art-halloumi', {
       amount: { text: '250 g', qty: 250, unit: 'g' },
       shoppingRule: 'recipeAmount',
     }),
-    ingredient('h-frischkaese', 'art-frischkaese', 'Frischkäse', {
+    ingredient('h-frischkaese', 'art-frischkaese', {
       shoppingNote: 'Philadelphia',
     }),
   ],

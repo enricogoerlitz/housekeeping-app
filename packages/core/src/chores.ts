@@ -1,3 +1,4 @@
+import { monthName } from './calendar';
 import {
   addDays,
   addMonths,
@@ -8,7 +9,16 @@ import {
   startOfWeek,
   weekdayShortName,
 } from './dates';
-import type { Assignment, Chore, Id, ISODate, Member, Recurrence } from './types';
+import type {
+  Assignment,
+  Chore,
+  ChoreEvent,
+  ChoreEventPrevious,
+  Id,
+  ISODate,
+  Member,
+  Recurrence,
+} from './types';
 
 // Upper bound for stepping an "every n months" chore past a very late completion (200 years of
 // monthly steps); it only guards against looping on broken dates.
@@ -22,14 +32,18 @@ function isPaused(chore: Chore, today: ISODate): boolean {
   return !activeMonths.includes(parseISODate(today).getMonth() + 1);
 }
 
-export type ChoreBucket = 'today' | 'overdue' | 'flexible' | 'thisWeek' | 'later' | 'paused';
+export type ChoreBucket =
+  'today' | 'overdue' | 'flexible' | 'thisWeek' | 'later' | 'paused' | 'asNeeded';
 /**
- * Where a chore shows up. Chores outside their activeMonths are "paused", flexible ones too.
+ * Where a chore shows up. "bei Bedarf" is never due and has its own bucket, whatever its season
+ * or a stray date, so it never counts among the chores "später" (spec 0011, AC-043).
+ * Chores outside their activeMonths are "paused", flexible ones too.
  * Otherwise flexible chores are always "flexible". Fixed chores: due today → "today",
  * earlier → "overdue", within the current Monday–Sunday week → "thisWeek", otherwise "later"
  * (also when no due date is set).
  */
 export function choreBucket(chore: Chore, today: ISODate): ChoreBucket {
+  if (chore.recurrence.type === 'asNeeded') return 'asNeeded';
   if (isPaused(chore, today)) return 'paused';
   if (chore.recurrence.type === 'flexible') return 'flexible';
 
@@ -48,9 +62,10 @@ export function flexibleProgress(chore: Chore, today: ISODate): number {
   if (chore.lastDoneOn === undefined || chore.recurrence.everyDays <= 0) return 1;
   return Math.max(0, daysBetween(chore.lastDoneOn, today) / chore.recurrence.everyDays);
 }
-/** Days a fixed chore is overdue (0 when not, and for flexible chores). */
+/** Days a fixed chore is overdue (0 when not, and for flexible and "bei Bedarf" chores). */
 export function daysOverdue(chore: Chore, today: ISODate): number {
-  if (chore.recurrence.type === 'flexible' || chore.nextDueOn === undefined) return 0;
+  const { type } = chore.recurrence;
+  if (type === 'flexible' || type === 'asNeeded' || chore.nextDueOn === undefined) return 0;
   return Math.max(0, daysBetween(chore.nextDueOn, today));
 }
 
@@ -76,7 +91,7 @@ function nextEveryMonths(scheduled: ISODate, every: number, doneOn: ISODate): IS
 
 /**
  * Next due date after completing the chore on doneOn; always after doneOn.
- * flexible → doneOn + everyDays; once → undefined. The others keep their rhythm:
+ * flexible → doneOn + everyDays; once and "bei Bedarf" → undefined. The others keep their rhythm:
  * - weekly: the next configured weekday after the later of doneOn and the scheduled date
  *   (chore.nextDueOn), so an early completion counts for the occurrence still ahead; with
  *   `every` > 1 that many weeks minus one are added.
@@ -91,6 +106,7 @@ export function nextDueAfter(chore: Chore, doneOn: ISODate): ISODate | undefined
 
   switch (recurrence.type) {
     case 'once':
+    case 'asNeeded':
       return undefined;
     case 'flexible':
       return addDays(doneOn, Math.max(1, recurrence.everyDays));
@@ -128,7 +144,7 @@ function weekdayList(weekdays: number[]): string {
 }
 
 /**
- * "einmalig", "wöchentlich Fr", "wöchentlich Mo, Do", "alle 2 Wochen Mo", "monatlich am 1.",
+ * "einmalig", "bei Bedarf", "wöchentlich Fr", "wöchentlich Mo, Do", "alle 2 Wochen Mo", "monatlich am 1.",
  * "monatlich", "alle 6 Monate", "jährlich", "etwa alle 10 Tage", "etwa wöchentlich",
  * "etwa alle 2 Wochen" (whole weeks are named as weeks).
  */
@@ -136,6 +152,8 @@ export function recurrenceLabel(recurrence: Recurrence): string {
   switch (recurrence.type) {
     case 'once':
       return 'einmalig';
+    case 'asNeeded':
+      return 'bei Bedarf';
     case 'weekly': {
       const rhythm = recurrence.every === 1 ? 'wöchentlich' : `alle ${recurrence.every} Wochen`;
       return `${rhythm} ${weekdayList(recurrence.weekdays)}`.trim();
@@ -183,4 +201,232 @@ export function choreMemberIds(chore: Chore, members: Member[]): Id[] {
   return ids.filter(
     (id): id is Id => id !== undefined && members.some((member) => member.id === id),
   );
+}
+
+// ---------- Spec 0011: completing, changing and the history chain ----------
+
+/**
+ * The first due date when a chore is created or its rhythm changes (spec 0011, Offene Frage 4 A
+ * and 11 A). Counted from today, or from tomorrow when the chore was already done today:
+ * - weekly: the next configured weekday (the start itself when nothing is configured);
+ * - monthly: the configured day, this month or the next, clamped to the month's length;
+ * - everyMonths: `every` months after the last time, never before the start; the start when it
+ *   was never done;
+ * - flexible: the interval after the last time, never before the start (a never done or
+ *   overdue chore is due right away, as flexibleProgress already shows it);
+ * - once: its own date; "bei Bedarf": none.
+ */
+export function firstDueOn(
+  recurrence: Recurrence,
+  today: ISODate,
+  lastDoneOn?: ISODate,
+): ISODate | undefined {
+  const start = lastDoneOn !== undefined && lastDoneOn >= today ? addDays(today, 1) : today;
+  const notBefore = (date: ISODate) => (date > start ? date : start);
+  switch (recurrence.type) {
+    case 'asNeeded':
+      return undefined;
+    case 'once':
+      return recurrence.date;
+    case 'weekly': {
+      for (let offset = 0; offset < 7; offset++) {
+        const date = addDays(start, offset);
+        if (recurrence.weekdays.includes(isoWeekday(date))) return date;
+      }
+      return start;
+    }
+    case 'monthly': {
+      const thisMonth = dayInMonth(start, 0, recurrence.day);
+      return thisMonth >= start ? thisMonth : dayInMonth(start, 1, recurrence.day);
+    }
+    case 'everyMonths':
+      if (lastDoneOn === undefined) return start;
+      return notBefore(addMonths(lastDoneOn, Math.max(1, Math.floor(recurrence.every))));
+    case 'flexible':
+      if (lastDoneOn === undefined) return start;
+      return notBefore(addDays(lastDoneOn, Math.max(1, recurrence.everyDays)));
+  }
+}
+
+/** Whose turn it is after the assignment changed (or for a new chore). */
+export function assigneeAfterAssignmentChange(
+  assignment: Assignment,
+  currentAssigneeId?: Id,
+): Id | undefined {
+  if (assignment.type === 'fixed') return assignment.memberId;
+  if (assignment.type !== 'rotating') return undefined;
+  const { memberIds } = assignment;
+  return currentAssigneeId !== undefined && memberIds.includes(currentAssigneeId)
+    ? currentAssigneeId
+    : memberIds[0];
+}
+
+export interface CompletionOutcome {
+  /** A one-off chore is gone once it is done. */
+  deletesChore: boolean;
+  nextDueOn: ISODate | undefined;
+  lastDoneOn: ISODate | undefined;
+  nextAssigneeId: Id | undefined;
+}
+
+/**
+ * The chore's new state after an entry for doneOn (REQ-005, REQ-006): "done" moves the date on
+ * (nextDueAfter), keeps the later of the old last time and doneOn, and hands a rotation on;
+ * "skipped" only moves the date. A flexible interval runs from the later of both days, so a late
+ * entry for an earlier day does not pull the date back. Done "einmalig" deletes the chore.
+ */
+export function completionOutcome(
+  chore: Chore,
+  input: { kind: 'done' | 'skipped'; doneOn: ISODate; doneBy: Id },
+): CompletionOutcome {
+  const { kind, doneOn, doneBy } = input;
+  if (kind === 'skipped') {
+    return {
+      deletesChore: false,
+      nextDueOn: nextDueAfter(chore, doneOn),
+      lastDoneOn: chore.lastDoneOn,
+      nextAssigneeId: chore.nextAssigneeId,
+    };
+  }
+  const lastDoneOn =
+    chore.lastDoneOn !== undefined && chore.lastDoneOn > doneOn ? chore.lastDoneOn : doneOn;
+  return {
+    deletesChore: chore.recurrence.type === 'once',
+    nextDueOn: nextDueAfter(chore, chore.recurrence.type === 'flexible' ? lastDoneOn : doneOn),
+    lastDoneOn,
+    nextAssigneeId: nextAssignee(chore, doneBy) ?? chore.nextAssigneeId,
+  };
+}
+
+function bookedTime(event: ChoreEvent): number {
+  // Not yet confirmed by the server: it was just booked on this device, so it is the latest.
+  if (event.createdAt === undefined) return Number.POSITIVE_INFINITY;
+  const time = Date.parse(event.createdAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+/**
+ * The entry of a chore that was booked last (createdAt, then id), not the one with the latest
+ * day: only so the recorded states form a clean chain (spec 0011, Offene Frage 9).
+ */
+export function latestBookedEvent(events: ChoreEvent[], choreId: Id): ChoreEvent | undefined {
+  let latest: ChoreEvent | undefined;
+  for (const event of events) {
+    if (event.choreId !== choreId) continue;
+    if (
+      latest === undefined ||
+      bookedTime(event) > bookedTime(latest) ||
+      (bookedTime(event) === bookedTime(latest) && event.id > latest.id)
+    ) {
+      latest = event;
+    }
+  }
+  return latest;
+}
+
+/**
+ * What changing "Erledigt von" does to the chore (AC-059): only the latest booked "done" entry of
+ * a chore that still exists hands the turn on, counted from the turn before that entry. Undefined
+ * when only the avatar of the entry changes.
+ */
+export function reassignOutcome(input: {
+  chore: Chore | undefined;
+  events: ChoreEvent[];
+  eventId: Id;
+  doneBy: Id;
+}): { nextAssigneeId: Id } | undefined {
+  const { chore } = input;
+  if (chore === undefined) return undefined;
+  const latest = latestBookedEvent(input.events, chore.id);
+  if (latest === undefined || latest.id !== input.eventId || latest.kind !== 'done') {
+    return undefined;
+  }
+  const before: Chore = {
+    ...chore,
+    nextAssigneeId: latest.previous?.nextAssigneeId ?? chore.nextAssigneeId,
+  };
+  const nextAssigneeId = nextAssignee(before, input.doneBy);
+  return nextAssigneeId === undefined ? undefined : { nextAssigneeId };
+}
+
+/**
+ * What removing a history entry restores (AC-060): the recorded state before it, when it is the
+ * latest booked entry of a chore that still exists. Undefined when only the entry goes.
+ */
+export function removalOutcome(input: {
+  chore: Chore | undefined;
+  events: ChoreEvent[];
+  eventId: Id;
+}): ChoreEventPrevious | undefined {
+  const { chore } = input;
+  if (chore === undefined) return undefined;
+  const latest = latestBookedEvent(input.events, chore.id);
+  if (latest === undefined || latest.id !== input.eventId) return undefined;
+  return latest.previous === undefined ? undefined : { ...latest.previous };
+}
+
+export interface ChoreDraftErrors {
+  title?: string;
+}
+
+/** Problems of the chore form (AC-052); an empty object when it can be saved. */
+export function validateChoreDraft(draft: { title: string }): ChoreDraftErrors {
+  return draft.title.trim() === '' ? { title: 'Titel fehlt' } : {};
+}
+
+const isMonth = (month: number) => Number.isInteger(month) && month >= 1 && month <= 12;
+
+/**
+ * The months of a season from…to (1–12, both inclusive), across the turn of the year when `to`
+ * comes before `from`: (10, 3) → [10, 11, 12, 1, 2, 3]. Empty for a month outside 1–12.
+ */
+export function seasonMonths(from: number, to: number): number[] {
+  if (!isMonth(from) || !isMonth(to)) return [];
+  const months: number[] = [];
+  for (let month = from; ; month = (month % 12) + 1) {
+    months.push(month);
+    if (month === to) return months;
+  }
+}
+
+/**
+ * "April–September", "Oktober–März", "Mai"; "" for all year (no months or all twelve). Months
+ * that do not form one stretch are listed: "Januar, März".
+ */
+export function seasonLabel(activeMonths: number[] | undefined): string {
+  const months = [...new Set(activeMonths ?? [])].filter(isMonth).sort((a, b) => a - b);
+  if (months.length === 0 || months.length === 12) return '';
+  const name = (month: number) => monthName(month - 1);
+  // One stretch, also across the turn of the year, has exactly one month without a predecessor
+  // and one without a successor.
+  const starts = months.filter((month) => !months.includes(month === 1 ? 12 : month - 1));
+  const ends = months.filter((month) => !months.includes(month === 12 ? 1 : month + 1));
+  const [start] = starts;
+  const [end] = ends;
+  if (starts.length !== 1 || start === undefined || end === undefined) {
+    return months.map(name).join(', ');
+  }
+  return start === end ? name(start) : `${name(start)}–${name(end)}`;
+}
+
+export interface DoneOnChoice {
+  date: ISODate;
+  label: 'heute' | 'gestern' | 'vorgestern';
+}
+
+/** The days "Als erledigt eintragen" offers (REQ-006): today, yesterday, the day before. */
+export function doneOnChoices(today: ISODate): DoneOnChoice[] {
+  return [
+    { date: today, label: 'heute' },
+    { date: addDays(today, -1), label: 'gestern' },
+    { date: addDays(today, -2), label: 'vorgestern' },
+  ];
+}
+
+/** "Nadja war schneller (10:02)" in local time (AC-031); without the time when it is unreadable. */
+export function fasterNotice(name: string, doneAt: string | undefined): string {
+  const date = doneAt === undefined ? undefined : new Date(doneAt);
+  if (date === undefined || Number.isNaN(date.getTime())) return `${name} war schneller`;
+  const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return `${name} war schneller (${time})`;
 }

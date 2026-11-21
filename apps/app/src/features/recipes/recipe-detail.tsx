@@ -278,7 +278,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
               title={<IngredientTitle ingredient={ingredient} />}
               accessibilityLabel={[
                 ingredient.amount ? scaleAmount(ingredient.amount, factor).text : '',
-                ingredient.name,
+                articlesById[ingredient.articleId]?.name,
                 ingredient.shoppingNote ? `(${ingredient.shoppingNote})` : '',
               ]
                 .filter(Boolean)
@@ -296,7 +296,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
                 <Row gap={0}>
                   <IconButton
                     icon="pencil"
-                    label={`Einkaufs-Zusatz für ${ingredient.name}`}
+                    label={`Einkaufs-Zusatz für ${articlesById[ingredient.articleId]?.name ?? ''}`}
                     disabled={online.disabled}
                     hint={online.hint}
                     onPress={() => setNoteFor(ingredient)}
@@ -304,7 +304,7 @@ function RecipeDetailBody(props: { recipe: Recipe; onBack?: () => void; onClose?
                   />
                   <IconButton
                     icon="shopping-basket"
-                    label={`${ingredient.name} ist alle`}
+                    label={`${articlesById[ingredient.articleId]?.name ?? ''} ist alle`}
                     onPress={() => markEmpty(ingredient)}
                     testID={`ingredient-empty-${ingredient.id}`}
                   />
@@ -552,10 +552,11 @@ function PhotoActions(props: { recipe: Recipe }) {
 /** Name plus the default "Zusatz" that goes onto the shopping list, e.g. "Mozzarella (Fior di Latte)". */
 function IngredientTitle(props: { ingredient: RecipeIngredient }) {
   const { ingredient } = props;
+  const article = useArticlesById()[ingredient.articleId];
   return (
     <View>
       <Text variant="rowTitle">
-        {ingredient.name}
+        {article?.name ?? ''}
         {ingredient.shoppingNote ? (
           <Text variant="body" color="muted" testID={`ingredient-shopping-note-${ingredient.id}`}>
             {' '}
@@ -582,6 +583,7 @@ function IngredientNoteSheet(props: {
   onClose: () => void;
 }) {
   const online = useOnlineOnly();
+  const name = useArticlesById()[props.ingredient.articleId]?.name ?? '';
   const [note, setNote] = useState(props.ingredient.shoppingNote ?? '');
   const save = () => {
     if (online.disabled) return;
@@ -611,11 +613,11 @@ function IngredientNoteSheet(props: {
     >
       <Stack gap={12}>
         <Text color="muted">
-          Steht auf der Einkaufsliste in Klammern hinter {props.ingredient.name}, wenn die Zutat aus
-          diesem Rezept auf die Liste kommt.
+          Steht auf der Einkaufsliste in Klammern hinter {name}, wenn die Zutat aus diesem Rezept
+          auf die Liste kommt.
         </Text>
         <TextField
-          label={`Zusatz für ${props.ingredient.name}`}
+          label={`Zusatz für ${name}`}
           value={note}
           onChangeText={setNote}
           placeholder="z. B. Fior di Latte, laktosefrei"

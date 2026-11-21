@@ -59,7 +59,7 @@ import { createSupabaseTransport, fromSupabaseClient } from './transport-supabas
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
  * What is not cache survives the bump: the store queue and the choices made on this device.
  */
-export const CACHE_VERSION = 3;
+export const CACHE_VERSION = 4;
 /** Retention of `deleted_records` on the server (pg_cron). */
 const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
@@ -178,6 +178,7 @@ interface OutboxCommit {
   rejected?: boolean;
   /** Told once whether the server took the change (commitConfirmed). */
   onOutcome?: CommitOutcome;
+  rejectedMessage?: (error: unknown) => string | undefined;
 }
 
 /** Tells the waiting caller once how its change ended. */
@@ -777,7 +778,7 @@ export function createEngine(options: EngineOptions): Engine {
         }
         commits = commits.filter((candidate) => !droppedIds.has(candidate.changeset.id));
         rebuild();
-        options.onWriteRejected?.(WRITE_REJECTED_MESSAGE);
+        options.onWriteRejected?.(entry.rejectedMessage?.(error) ?? WRITE_REJECTED_MESSAGE);
         return;
       }
     }
@@ -922,6 +923,7 @@ export function createEngine(options: EngineOptions): Engine {
     const entry: OutboxCommit = {
       seq,
       onOutcome,
+      rejectedMessage: spec.rejectedMessage,
       changeset: { id: `changeset-${seq}`, householdId, ops: change.ops, status: 'pending' },
       send:
         spec.path === 'diff'
@@ -929,10 +931,13 @@ export function createEngine(options: EngineOptions): Engine {
           : (wire) => spec.send(wire, context),
     };
     if (spec.path === 'diff') {
-      entry.inverse = {
-        ops: change.inverse,
-        send: (wire) => wire.applyChanges(householdId, sendable(change.inverse)),
-      };
+      // Nothing to undo (e.g. only an article was created, which undo keeps): no empty call.
+      if (change.inverse.length > 0) {
+        entry.inverse = {
+          ops: change.inverse,
+          send: (wire) => wire.applyChanges(householdId, sendable(change.inverse)),
+        };
+      }
     } else if (spec.inverse) {
       const inverse = spec.inverse;
       entry.inverse = {

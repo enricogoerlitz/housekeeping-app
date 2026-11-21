@@ -476,7 +476,8 @@ Die Regel, wann eine Aufgabe oder ein Dauerposten wiederkehrt: fest (z. B. wöch
 flexibel (z. B. etwa alle zwei Wochen nach der letzten Erledigung) oder **bei Bedarf**: nie fällig,
 steht nur unter „Alle“ und wird in „Was anderes erledigt?“ gefunden (Spec 0011, D27).
 
-- **Im Code:** `Recurrence`; „bei Bedarf“ (vorläufig) `type: 'asNeeded'`
+- **Im Code:** `Recurrence`; „bei Bedarf“ `type: 'asNeeded'` (eigener Topf `asNeeded` in
+  `choreBucket`)
 - **Nicht verwenden:** Intervall, Turnus, Wiederholung; für „bei Bedarf“ auch: spontan, ohne
   Termin
 
@@ -488,14 +489,16 @@ Wer eine Aufgabe erledigt: fest eine Person, abwechselnd, egal wer, oder zu zwei
 
 ### Erledigung
 
-Ein Eintrag im Verlauf des Haushaltsplans: wer hat wann was erledigt oder übersprungen. Ab Spec 0011
-entsteht „spontan“ nicht mehr: Was ohne passende Aufgabe erledigt wurde, legt eine Aufgabe „bei
-Bedarf“ an und ist eine normale Erledigung; alte „spontan“-Einträge bleiben. „Erledigt von“ lässt
-sich im Verlauf ändern; wird die jüngste Erledigung entfernt, gelten nächster Termin und
-Zuständigkeit wie davor (Spec 0011, Offene Frage 3).
+Ein Eintrag im Verlauf des Haushaltsplans: wer hat wann was erledigt oder übersprungen. Eine Art
+„spontan“ gibt es nicht (Spec 0011, Offene Frage 6): Was ohne passende Aufgabe erledigt wurde, legt
+eine Aufgabe „bei Bedarf“ an und ist eine normale Erledigung. „Erledigt von“ lässt sich im Verlauf
+ändern. Die _jüngste_ Erledigung einer Aufgabe ist die zuletzt gebuchte, nicht die mit dem
+jüngsten Tag. Nur bei ihr verschiebt „Erledigt von“ die Zuständigkeit, und nur wenn sie entfernt
+wird, gelten nächster Termin und Zuständigkeit wieder wie davor (Spec 0011, Offene Fragen 3 und 9).
 
-- **Im Code:** `ChoreEvent`, `chore_events` mit `kind: 'done' | 'skipped'` (`'spontaneous'` nur noch
-  in alten Einträgen); vorheriger Termin und vorherige Person (vorläufig) am `ChoreEvent`
+- **Im Code:** `ChoreEvent`, `chore_events` mit `kind: 'done' | 'skipped'`; der Stand davor
+  (Termin, letzte Erledigung, Person) als `ChoreEvent.previous` (Spalten `prev_*`, nur vom Server
+  gesetzt); gebucht um `ChoreEvent.createdAt`; jüngste Erledigung `latestBookedEvent`
 - **Nicht verwenden:** Buchung, Abhakung
 
 ### Abwesenheit

@@ -5,6 +5,8 @@ import './zod-config';
 
 export * from './queries';
 export * from './commands-household';
+export * from './commands-articles';
+export * from './commands-stores';
 export * from './commands-recipes';
 export * from './commands-plan';
 export * from './commands-shopping';
@@ -59,3 +61,4 @@ export { TEST_ACCOUNTS, type TestAccount, type TestAccountKey } from './dev-acco
 export { useHouseholdInvitations, useMyInvitations, type Invitation } from './households';
 export { starterAreas } from './starter/areas';
 export { starterCatalog } from './starter/catalog';
+export { starterCatalogEntries } from './starter/entries';

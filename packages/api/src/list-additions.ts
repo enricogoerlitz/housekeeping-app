@@ -10,7 +10,7 @@ import {
   type ShoppingContribution,
 } from '@housekeeping/core';
 
-import { resolveArticle } from './commands-household';
+import { resolveArticle } from './commands-articles';
 import { newId, nowISO, updateData } from './store';
 import type { AddEntry, ChangeOp } from './transport';
 

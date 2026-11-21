@@ -84,8 +84,8 @@ function buildAreas(): Area[] {
   }));
 }
 
-/** The starter catalog as household articles. */
-function buildArticles(): Article[] {
+/** The starter catalog as household articles, created with the household. */
+function buildArticles(createdAt: string): Article[] {
   return starterCatalog.map((entry) => ({
     id: `art-${slug(entry.name)}`,
     name: entry.name,
@@ -93,11 +93,21 @@ function buildArticles(): Article[] {
     areaId: areaId(entry.area),
     diet: entry.diet,
     isPantry: entry.pantry ?? false,
+    needsReview: false,
+    createdAt,
   }));
 }
 
-/** Turns the compact authoring format into a full recipe. */
+/**
+ * Turns the compact authoring format into a full recipe. Every ingredient names an article of
+ * `articles` (the database refuses anything else, spec 0007); a missing one throws.
+ */
 export function buildRecipe(seed: SeedRecipe, articles: Article[], createdAt: string): Recipe {
+  const articleIdOf = (name: string): string => {
+    const article = findArticleByName(name, articles);
+    if (!article) throw new Error(`Seed recipe "${seed.key}": no article "${name}"`);
+    return article.id;
+  };
   const variants = (seed.variants ?? []).map((name, index) => ({
     id: `${seed.key}-v${index + 1}`,
     name,
@@ -117,8 +127,7 @@ export function buildRecipe(seed: SeedRecipe, articles: Article[], createdAt: st
     variants,
     ingredients: seed.ingredients.map((ingredient, index) => ({
       id: `${seed.key}-i${index + 1}`,
-      articleId: findArticleByName(ingredient.article, articles)?.id,
-      name: ingredient.article,
+      articleId: articleIdOf(ingredient.article),
       amount: ingredient.amount
         ? (parseIngredientLine(`${ingredient.amount} ${ingredient.article}`)?.amount ?? {
             text: ingredient.amount,
@@ -222,13 +231,13 @@ function personalise(recipes: Recipe[], today: ISODate): Recipe[] {
 function buildDemoData(today: ISODate): HouseholdData {
   const areas = buildAreas();
   // "Geschenkpapier" has no area yet, so the list shows "Ohne Bereich" (spec 0001, AC-033).
-  const articles = buildArticles().map((article) =>
+  const createdAt = `${addDays(today, -40)}T12:00:00.000Z`;
+  const articles = buildArticles(createdAt).map((article) =>
     article.name === 'Geschenkpapier' ? { ...article, areaId: undefined } : article,
   );
   const articlesById: Record<Id, Article> = Object.fromEntries(
     articles.map((article) => [article.id, article]),
   );
-  const createdAt = `${addDays(today, -40)}T12:00:00.000Z`;
   const baseRecipes = personalise(
     seedRecipes.map((seed) => buildRecipe(seed, articles, createdAt)),
     today,
@@ -726,7 +735,7 @@ function buildDemoData(today: ISODate): HouseholdData {
 }
 
 /** An empty household: shows the empty states, with the starter catalog already available. */
-function buildTestData(): HouseholdData {
+function buildTestData(today: ISODate): HouseholdData {
   return {
     household: {
       id: TEST_HOUSEHOLD_ID,
@@ -735,7 +744,7 @@ function buildTestData(): HouseholdData {
       mealSlots: mealSlots(),
     },
     areas: buildAreas(),
-    articles: buildArticles(),
+    articles: buildArticles(`${addDays(today, -40)}T12:00:00.000Z`),
     stores: [],
     recipes: [],
     restaurants: [],
@@ -757,7 +766,7 @@ export function createInitialState(today: ISODate): AppState {
     activeHouseholdId: DEMO_HOUSEHOLD_ID,
     households: {
       [DEMO_HOUSEHOLD_ID]: buildDemoData(today),
-      [TEST_HOUSEHOLD_ID]: buildTestData(),
+      [TEST_HOUSEHOLD_ID]: buildTestData(today),
     },
     offline: false,
   };

@@ -152,6 +152,17 @@ export const AdjustResultSchema = z
   .nullable();
 export type AdjustResult = z.infer<typeof AdjustResultSchema>;
 
+/** delete_article (spec 0007): the deleted row as stored, for "Rückgängig". */
+export const DeletedArticleSchema = z.looseObject({ id: z.string() });
+export type DeletedArticle = z.infer<typeof DeletedArticleSchema>;
+
+/** merge_articles (spec 0007): the recipes rewritten and the items of the source moved. */
+export const MergeArticlesResultSchema = z.object({ recipes: z.number(), items: z.number() });
+export type MergeArticlesResult = z.infer<typeof MergeArticlesResultSchema>;
+
+/** merge_areas (spec 0007): how many articles moved. */
+export const MergeAreasResultSchema = z.number();
+
 /** sync_pull as sent: composite-key rows have no `id` yet (see db/tables.ts). */
 export const RawPullResultSchema = z.object({
   serverTime: z.string(),
@@ -190,6 +201,19 @@ export interface Transport {
    * checked ones checked. Returns how many came back.
    */
   restoreClearedItems(householdId: string, items: ClearedItems): Promise<number>;
+  // Catalog (spec 0007)
+  /**
+   * Deletes an unused article and returns its row. `article_in_use` when a recipe or an item
+   * (open or checked) uses it, `article_not_found` when it is missing or foreign.
+   */
+  deleteArticle(articleId: string): Promise<DeletedArticle>;
+  /**
+   * Merges the source into the target (one transaction). `invalid_value` for the same id,
+   * `article_not_found`, `too_many_synonyms` (nothing changes).
+   */
+  mergeArticles(sourceId: string, targetId: string): Promise<MergeArticlesResult>;
+  /** Moves the articles of one area to another and deletes the source; `area_not_found`. */
+  mergeAreas(sourceId: string, targetId: string): Promise<number>;
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
@@ -253,6 +277,9 @@ export function switchable(inner: Transport): SwitchableTransport {
     adjustItemCount: guard(inner.adjustItemCount.bind(inner)),
     removeContributions: guard(inner.removeContributions.bind(inner)),
     restoreClearedItems: guard(inner.restoreClearedItems.bind(inner)),
+    deleteArticle: guard(inner.deleteArticle.bind(inner)),
+    mergeArticles: guard(inner.mergeArticles.bind(inner)),
+    mergeAreas: guard(inner.mergeAreas.bind(inner)),
     setRecipeFavorite: guard(inner.setRecipeFavorite.bind(inner)),
     setRecipeRating: guard(inner.setRecipeRating.bind(inner)),
     setRestaurantFavorite: guard(inner.setRestaurantFavorite.bind(inner)),

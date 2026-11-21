@@ -23,16 +23,16 @@ describe('recipe variants', () => {
   });
 
   it('AC-020: "mit Hähnchen" lists Hähnchenbrust instead of Räuchertofu', () => {
-    const names = ingredientsForVariant(mangoCurry, 'v-haehnchen').map((i) => i.name);
-    expect(names).toContain('Hähnchenbrust');
-    expect(names).not.toContain('Räuchertofu');
-    expect(names).toContain('Kokosmilch');
+    const names = ingredientsForVariant(mangoCurry, 'v-haehnchen').map((i) => i.articleId);
+    expect(names).toContain('art-haehnchen');
+    expect(names).not.toContain('art-tofu');
+    expect(names).toContain('art-kokosmilch');
   });
 
   it('uses the default variant when none is given and all ingredients without variants', () => {
-    const names = ingredientsForVariant(mangoCurry).map((i) => i.name);
-    expect(names).toContain('Räuchertofu');
-    expect(names).not.toContain('Hähnchenbrust');
+    const names = ingredientsForVariant(mangoCurry).map((i) => i.articleId);
+    expect(names).toContain('art-tofu');
+    expect(names).not.toContain('art-haehnchen');
     expect(ingredientsForVariant(bolognese)).toEqual(bolognese.ingredients);
   });
 });

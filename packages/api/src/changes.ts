@@ -34,6 +34,8 @@ const TABLE_ORDER = [
 
 /** Tables only dedicated RPCs write (`apply_changes` refuses them). */
 const RPC_ONLY = new Set([...Object.keys(COMPOSITE_TABLES), 'household_members']);
+/** Tables `apply_changes` never deletes from: articles go through delete_article (spec 0007, E4). */
+const RPC_DELETE_ONLY = new Set(['articles']);
 const NEVER_SENT = new Set<string>(NEVER_SENT_COLUMNS);
 
 export interface HouseholdChange {
@@ -167,22 +169,21 @@ export function diffHousehold(
     }
     const ops = diffRows(old, next, { table, allowedColumns, maxDeletes });
     if (ops.length === 0) continue;
+    if (RPC_DELETE_ONLY.has(table) && ops.some((op) => op.kind === 'delete')) {
+      throw new Error(`Deleting ${table} needs its own RPC (delete_article).`);
+    }
     const both = [...old, ...next];
     forward.set(table, withCreatedAt(selfReferencesFirst(ops, both), next));
-    backward.set(
+    // Undo never deletes from these tables: an article created by the command stays, as when it
+    // was created by a list addition.
+    const undo = diffRows(next, old, {
       table,
-      withCreatedAt(
-        selfReferencesFirst(
-          diffRows(next, old, {
-            table,
-            allowedColumns,
-            maxDeletes: Number.POSITIVE_INFINITY,
-          }),
-          both,
-        ),
-        old,
-      ),
-    );
+      allowedColumns,
+      maxDeletes: Number.POSITIVE_INFINITY,
+    }).filter((op) => !(RPC_DELETE_ONLY.has(table) && op.kind === 'delete'));
+    if (undo.length > 0) {
+      backward.set(table, withCreatedAt(selfReferencesFirst(undo, both), old));
+    }
   }
   return { ops: ordered(forward), inverse: ordered(backward) };
 }

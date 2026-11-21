@@ -1,8 +1,11 @@
 // An in-memory server that implements the RPC contracts of spec 0003 for unit tests: membership
 // checks, the apply_changes allowlist with all-or-nothing, "Abhaken gewinnt" with check_seq, the
 // add merge (core queueEffect has the same rules as the server), deletion log and sync_pull, the
-// photo bucket with its policies and limits (spec 0004), and the household's shopping list with its
-// editing RPCs (spec 0006, ADR-0012: no list rows, one open item per article and household). Several transports (users, devices) can share one server.
+// photo bucket with its policies and limits (spec 0004), the household's shopping list with its
+// editing RPCs (spec 0006, ADR-0012: no list rows, one open item per article and household), and
+// the article catalog (spec 0007: ingredients point to an article, unique names, delete_article,
+// merge_articles with replaced_by, merge_areas). Several transports (users, devices) can share
+// one server.
 import {
   compareTimestamps,
   queueEffect,
@@ -49,6 +52,9 @@ type RpcName =
   | 'adjust_item_count'
   | 'remove_contributions'
   | 'restore_cleared_items'
+  | 'delete_article'
+  | 'merge_articles'
+  | 'merge_areas'
   | 'set_recipe_favorite'
   | 'set_recipe_rating'
   | 'set_restaurant_favorite'
@@ -160,7 +166,17 @@ const REFERENCES: {
   },
   { table: 'shopping_items', column: 'article_id', target: 'articles', onDelete: 'restrict' },
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
+  { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
 ];
+
+/** Tables `apply_changes` never deletes from: articles go through delete_article (spec 0007, E4). */
+const NO_DIRECT_DELETE = new Set(['articles']);
+
+/** articles_synonyms_size (spec 0007): at most 30 synonyms. */
+const MAX_SYNONYMS = 30;
+/** recipes_check_ingredients: the "Hinweis" of an ingredient. */
+const PREP_NOTE_MAX_LENGTH = 200;
+const conflict = (code: string) => new TransportError('permanent', code, 409);
 
 const reject = (code: string) => new TransportError('permanent', code, 400);
 
@@ -195,7 +211,51 @@ const isManual = (row: Row) =>
   row.source !== null &&
   (row.source as { kind?: unknown }).kind === 'manual';
 
-/** Row checks of the database that a client bug could break (spec 0004, 0006). */
+const keysOf = (row: Row): string[] =>
+  Array.isArray(row.synonym_keys) ? row.synonym_keys.map(String) : [];
+
+/**
+ * articles_keys_unique, articles_household_id_name_key_key and articles_name_key_not_synonym
+ * (spec 0007, E6): no name or synonym of an article is the name or a synonym of another.
+ */
+function checkArticleKeys(row: Row, tables: TableRows): void {
+  const others = Object.values(tables.articles ?? {}).filter((other) => other.id !== row.id);
+  const own = keysOf(row);
+  const taken = others.some(
+    (other) =>
+      own.includes(String(other.name_key)) ||
+      keysOf(other).some((key) => key === row.name_key || own.includes(key)),
+  );
+  if (taken) throw conflict('name_taken');
+  if (own.includes(String(row.name_key))) throw new TransportError('permanent', '23514', 400);
+  if (others.some((other) => other.name_key === row.name_key)) throw conflict('23505');
+}
+
+/**
+ * recipes_check_ingredients (spec 0007, REQ-001): every ingredient is an object pointing to an
+ * article of the household, with an optional Hinweis of at most 200 characters. (The database
+ * also wants a lower-case UUID; the test data use readable ids.)
+ */
+function checkIngredients(ingredients: unknown, tables: TableRows): void {
+  const invalid = () => conflict('ingredient_article_invalid');
+  if (ingredients == null) return;
+  if (!Array.isArray(ingredients)) throw invalid();
+  for (const ingredient of ingredients as unknown[]) {
+    if (typeof ingredient !== 'object' || ingredient === null || Array.isArray(ingredient)) {
+      throw invalid();
+    }
+    const { articleId, prepNote } = ingredient as Record<string, unknown>;
+    if (typeof articleId !== 'string' || !tables.articles?.[articleId]) throw invalid();
+    if (
+      'prepNote' in ingredient &&
+      (typeof prepNote !== 'string' || Array.from(prepNote).length > PREP_NOTE_MAX_LENGTH)
+    ) {
+      throw invalid();
+    }
+  }
+}
+
+/** Row checks of the database that a client bug could break (spec 0004, 0006, 0007). */
 function checkRow(householdId: string, table: string, row: Row, tables: TableRows): void {
   if (
     table === 'shopping_contributions' &&
@@ -218,6 +278,14 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
+  // areas_household_id_name_idx (spec 0007, AC-052).
+  if (table === 'areas') {
+    const name = String(row.name).toLowerCase();
+    const clash = Object.values(tables.areas ?? {}).some(
+      (other) => other.id !== row.id && String(other.name).toLowerCase() === name,
+    );
+    if (clash) throw conflict('23505');
+  }
   // shopping_items_open_article_idx: one open item per article and household.
   if (table === 'shopping_items' && row.checked !== true) {
     const clash = Object.values(tables.shopping_items ?? {}).some(
@@ -235,7 +303,8 @@ export function createFakeServer(): FakeServer {
   let members: SmallRow[] = [];
   let invitations: SmallRow[] = [];
   const data = new Map<string, TableRows>();
-  let deletions: (Tombstone & { householdId: string })[] = [];
+  /** `replacedBy`: deleted_records.replaced_by, set by merge_articles (spec 0007, E5). */
+  let deletions: (Tombstone & { householdId: string; replacedBy?: string })[] = [];
   const subscribers = new Map<string, Set<() => void>>();
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
@@ -355,6 +424,37 @@ export function createFakeServer(): FakeServer {
   /** The household holding a row the user can see (RLS), or undefined. */
   function locate(userId: string, table: string, id: string): string | undefined {
     return householdsOf(userId).find((householdId) => data.get(householdId)?.[table]?.[id]);
+  }
+
+  /**
+   * private.resolve_store_item: the item itself, else the item that replaced it after a merge
+   * (at most 5 references, only inside the tombstone's household, which must be the caller's).
+   */
+  function resolveStoreItem(
+    userId: string,
+    itemId: string,
+  ): { householdId: string; itemId: string; replaced: boolean } | undefined {
+    const direct = locate(userId, 'shopping_items', itemId);
+    if (direct) return { householdId: direct, itemId, replaced: false };
+    const mine = new Set(householdsOf(userId));
+    let id = itemId;
+    for (let step = 0; step < 5; step++) {
+      const tombstone = [...deletions]
+        .reverse()
+        .find(
+          (deletion) =>
+            deletion.table === 'shopping_items' &&
+            deletion.id === id &&
+            deletion.replacedBy !== undefined &&
+            mine.has(deletion.householdId),
+        );
+      if (!tombstone?.replacedBy) return undefined;
+      id = tombstone.replacedBy;
+      if (data.get(tombstone.householdId)?.shopping_items?.[id]) {
+        return { householdId: tombstone.householdId, itemId: id, replaced: true };
+      }
+    }
+    return undefined;
   }
 
   /** The list actions take the household id: a foreign one is refused, never answered empty. */
@@ -607,22 +707,40 @@ export function createFakeServer(): FakeServer {
             ...(op.table === 'feedback' ? { author_id: userId } : {}),
             ...(op.table === 'activities' ? { created_by: userId } : {}),
           });
+          if (op.table === 'recipes') checkIngredients(op.row.ingredients, tables);
+          if (op.table === 'articles')
+            checkArticleKeys(tables.articles?.[op.row.id] ?? op.row, tables);
           checkReferences(tables, op.table, op.row);
           checkRow(householdId, op.table, tables[op.table]?.[op.row.id] ?? op.row, tables);
         } else if (op.kind === 'patch') {
           checkColumns(op.table, Object.keys(op.changes), false);
           if (op.table === 'households') {
             if (op.id !== householdId) throw new TransportError('permanent', 'row_not_found', 404);
+            const storeId = op.changes.default_store_id;
+            if (typeof storeId === 'string' && !tables.stores?.[storeId]) throw foreignKey();
             householdPatch = { ...householdPatch, ...op.changes };
             continue;
           }
           const row = tables[op.table]?.[op.id];
           if (!row) throw new TransportError('permanent', 'row_not_found', 404);
           tables = withRow(tables, op.table, { ...row, ...op.changes });
+          if (op.table === 'recipes' && 'ingredients' in op.changes) {
+            checkIngredients(op.changes.ingredients, tables);
+          }
+          if (
+            op.table === 'articles' &&
+            ('name_key' in op.changes || 'synonym_keys' in op.changes)
+          ) {
+            checkArticleKeys(tables.articles?.[op.id] ?? row, tables);
+          }
           checkReferences(tables, op.table, op.changes);
           checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
         } else {
-          if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || op.table === 'households') {
+          if (
+            !Object.hasOwn(WRITABLE_COLUMNS, op.table) ||
+            op.table === 'households' ||
+            NO_DIRECT_DELETE.has(op.table)
+          ) {
             throw reject('invalid_change');
           }
           tables = withoutRows(tables, op.table, [op.id]);
@@ -630,10 +748,18 @@ export function createFakeServer(): FakeServer {
       }
       return [tables, { applied: ops.length, results }];
     });
-    if (householdPatch) {
-      const household = households.get(householdId);
-      if (household)
-        households.set(householdId, { ...household, ...householdPatch, updated_at: now() });
+    const household = households.get(householdId);
+    const patched = household && householdPatch ? { ...household, ...householdPatch } : household;
+    // households_default_store_fkey: a deleted default store is cleared (on delete set null).
+    const storeGone =
+      typeof patched?.default_store_id === 'string' &&
+      !data.get(householdId)?.stores?.[patched.default_store_id];
+    if (patched && (householdPatch || storeGone)) {
+      households.set(householdId, {
+        ...patched,
+        ...(storeGone ? { default_store_id: null } : {}),
+        updated_at: now(),
+      });
     }
     return result;
   }
@@ -740,10 +866,11 @@ export function createFakeServer(): FakeServer {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
 
-      setItemChecked: (itemId, checked, seenCheckSeq) =>
+      setItemChecked: (requestedItemId, checked, seenCheckSeq) =>
         run(userId, 'set_shopping_item_checked', () => {
-          const householdId = locate(userId, 'shopping_items', itemId);
-          if (!householdId) return null;
+          const resolved = resolveStoreItem(userId, requestedItemId);
+          if (!resolved) return null;
+          const { householdId, itemId, replaced } = resolved;
           return transaction(householdId, (tables) => {
             const item = tables.shopping_items?.[itemId];
             if (!item) return [tables, null];
@@ -765,8 +892,11 @@ export function createFakeServer(): FakeServer {
               };
               return [withRow(tables, 'shopping_items', next), answer(next)];
             }
-            // Checking wins: unchecking only applies to the state the device has seen.
-            if (item.checked !== true || seq !== seenCheckSeq) return [tables, answer(item)];
+            // Checking wins: unchecking only applies to the state the device has seen; the seq
+            // seen for a merged-away item is the old item's.
+            if (replaced || item.checked !== true || seq !== seenCheckSeq) {
+              return [tables, answer(item)];
+            }
             const open = Object.values(tables.shopping_items ?? {}).find(
               (other) =>
                 other.id !== itemId &&
@@ -797,10 +927,11 @@ export function createFakeServer(): FakeServer {
           });
         }),
 
-      setItemNotAvailable: (itemId, value) =>
+      setItemNotAvailable: (requestedItemId, value) =>
         run(userId, 'set_shopping_item_not_available', () => {
-          const householdId = locate(userId, 'shopping_items', itemId);
-          if (!householdId) return null;
+          const resolved = resolveStoreItem(userId, requestedItemId);
+          if (!resolved) return null;
+          const { householdId, itemId } = resolved;
           return transaction(householdId, (tables) => {
             const item = tables.shopping_items?.[itemId];
             if (!item) return [tables, null];
@@ -962,6 +1093,159 @@ export function createFakeServer(): FakeServer {
             );
           }
           return removed;
+        }),
+
+      deleteArticle: (articleId) =>
+        run(userId, 'delete_article', () => {
+          const householdId = locate(userId, 'articles', articleId);
+          if (!householdId) throw new TransportError('permanent', 'article_not_found', 500);
+          return transaction(householdId, (tables) => {
+            const article = tables.articles?.[articleId];
+            if (!article) throw new TransportError('permanent', 'article_not_found', 500);
+            const inRecipe = Object.values(tables.recipes ?? {}).some(
+              (recipe) =>
+                Array.isArray(recipe.ingredients) &&
+                (recipe.ingredients as { articleId?: unknown }[]).some(
+                  (ingredient) => ingredient.articleId === articleId,
+                ),
+            );
+            const onList = Object.values(tables.shopping_items ?? {}).some(
+              (item) => item.article_id === articleId,
+            );
+            if (inRecipe || onList) throw reject('article_in_use');
+            return [withoutRows(tables, 'articles', [articleId]), { ...article }];
+          });
+        }),
+
+      mergeArticles: (sourceId, targetId) =>
+        run(userId, 'merge_articles', () => {
+          if (!sourceId || !targetId || sourceId === targetId) throw reject('invalid_value');
+          const householdId = locate(userId, 'articles', sourceId);
+          const notFound = () => new TransportError('permanent', 'article_not_found', 500);
+          if (!householdId || !data.get(householdId)?.articles?.[targetId]) throw notFound();
+          let replaced: { from: string; to: string } | undefined;
+          const result = transaction(householdId, (before) => {
+            const source = before.articles?.[sourceId];
+            const target = before.articles?.[targetId];
+            if (!source || !target) throw notFound();
+            let tables = before;
+            // 1. Recipes.
+            let recipes = 0;
+            for (const recipe of Object.values(tables.recipes ?? {})) {
+              const ingredients = Array.isArray(recipe.ingredients)
+                ? (recipe.ingredients as Record<string, unknown>[])
+                : [];
+              if (!ingredients.some((ingredient) => ingredient.articleId === sourceId)) continue;
+              recipes += 1;
+              tables = withRow(tables, 'recipes', {
+                ...recipe,
+                ingredients: ingredients.map((ingredient) =>
+                  ingredient.articleId === sourceId
+                    ? { ...ingredient, articleId: targetId }
+                    : ingredient,
+                ),
+              });
+            }
+            // 2. Both open on the list: one item.
+            let items = 0;
+            const openOf = (articleId: string) =>
+              Object.values(tables.shopping_items ?? {}).find(
+                (item) => item.article_id === articleId && item.checked !== true,
+              );
+            const sourceOpen = openOf(sourceId);
+            const targetOpen = openOf(targetId);
+            if (sourceOpen && targetOpen) {
+              for (const row of Object.values(tables.shopping_contributions ?? {})) {
+                if (row.item_id === sourceOpen.id) {
+                  tables = withRow(tables, 'shopping_contributions', {
+                    ...row,
+                    item_id: targetOpen.id,
+                  });
+                }
+              }
+              tables = withoutRows(tables, 'shopping_items', [sourceOpen.id]);
+              replaced = { from: sourceOpen.id, to: targetOpen.id };
+              items += 1;
+            }
+            // 3. Every other item of the source.
+            for (const item of Object.values(tables.shopping_items ?? {})) {
+              if (item.article_id !== sourceId) continue;
+              tables = withRow(tables, 'shopping_items', { ...item, article_id: targetId });
+              items += 1;
+            }
+            // 6. Names of the source as synonyms of the target, without duplicate keys.
+            const synonyms: string[] = [];
+            const keys: string[] = [];
+            const pairs = (row: Row): [string, string][] =>
+              (Array.isArray(row.synonyms) ? row.synonyms.map(String) : []).map(
+                (synonym, index) => [synonym, keysOf(row)[index] ?? ''],
+              );
+            for (const [synonym, key] of [
+              ...pairs(target),
+              [String(source.name), String(source.name_key)] as [string, string],
+              ...pairs(source),
+            ]) {
+              if (key === '' || key === target.name_key || keys.includes(key)) continue;
+              synonyms.push(synonym);
+              keys.push(key);
+            }
+            if (synonyms.length > MAX_SYNONYMS) throw reject('too_many_synonyms');
+            // 4. and 5.: empty values of the target filled, the source deleted.
+            tables = withoutRows(tables, 'articles', [sourceId]);
+            tables = withRow(tables, 'articles', {
+              ...target,
+              area_id: target.area_id ?? source.area_id ?? null,
+              diet: target.diet === 'unknown' ? source.diet : target.diet,
+              default_shopping_rule:
+                target.default_shopping_rule ?? source.default_shopping_rule ?? null,
+              needs_review: false,
+              synonyms,
+              synonym_keys: keys,
+            });
+            return [tables, { recipes, items }];
+          });
+          if (replaced) {
+            const { from, to } = replaced;
+            deletions = deletions.map((deletion) =>
+              deletion.householdId === householdId &&
+              deletion.table === 'shopping_items' &&
+              deletion.id === from &&
+              deletion.replacedBy === undefined
+                ? { ...deletion, replacedBy: to }
+                : deletion,
+            );
+          }
+          return result;
+        }),
+
+      mergeAreas: (sourceId, targetId) =>
+        run(userId, 'merge_areas', () => {
+          if (!sourceId || !targetId || sourceId === targetId) throw reject('invalid_value');
+          const householdId = locate(userId, 'areas', sourceId);
+          const notFound = () => new TransportError('permanent', 'area_not_found', 500);
+          if (!householdId || !data.get(householdId)?.areas?.[targetId]) throw notFound();
+          return transaction(householdId, (before) => {
+            let tables = before;
+            let moved = 0;
+            for (const article of Object.values(tables.articles ?? {})) {
+              if (article.area_id !== sourceId) continue;
+              tables = withRow(tables, 'articles', { ...article, area_id: targetId });
+              moved += 1;
+            }
+            for (const store of Object.values(tables.stores ?? {})) {
+              const order = Array.isArray(store.area_order) ? store.area_order.map(String) : [];
+              const hidden = Array.isArray(store.hidden_area_ids)
+                ? store.hidden_area_ids.map(String)
+                : [];
+              if (!order.includes(sourceId) && !hidden.includes(sourceId)) continue;
+              tables = withRow(tables, 'stores', {
+                ...store,
+                area_order: order.filter((id) => id !== sourceId),
+                hidden_area_ids: hidden.filter((id) => id !== sourceId),
+              });
+            }
+            return [withoutRows(tables, 'areas', [sourceId]), moved];
+          });
         }),
 
       setRecipeFavorite: (recipeId, favorite) =>

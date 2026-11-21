@@ -51,6 +51,10 @@ export interface Article {
   isPantry: boolean;
   /** "Standard-Einkaufsregel" for new recipe ingredients; undefined = derived (spec 0007, E7). */
   defaultShoppingRule?: ShoppingRule;
+  /** "Neu aus Rezepten": created for an ingredient without a person's choice (spec 0007, E1). */
+  needsReview: boolean;
+  /** Server time of creation; set locally until the server row arrives. */
+  createdAt: string;
 }
 
 export interface Store {
@@ -76,10 +80,8 @@ export type ShoppingRule = 'count' | 'recipeAmount' | 'skip';
 
 export interface RecipeIngredient {
   id: Id;
-  /** Undefined when the name could not be matched to an article. */
-  articleId?: Id;
-  /** Display name as written in the recipe. */
-  name: string;
+  /** The article of the household; the recipe shows its name (spec 0007, REQ-001). */
+  articleId: Id;
   amount?: Amount;
   /** Undefined = base ingredient, used by every variant. */
   variantId?: Id;
@@ -125,8 +127,10 @@ export interface Recipe {
   leadTime?: { text: string; hoursBefore: number };
   /** Member ids who marked the recipe as favourite. */
   favoriteOf: Id[];
-  /** Rating 1–5 per member id. */
+  /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;
+  /** When each member last set their rating (timestamp; read-only, set by the server). */
+  ratedAt?: Record<Id, string>;
   notes?: string;
   lastCookedOn?: ISODate;
   cookedCount: number;
@@ -184,7 +188,10 @@ export interface Restaurant {
   tags: string[];
   notes?: string;
   favoriteOf: Id[];
+  /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;
+  /** When each member last set their rating (timestamp; read-only, set by the server). */
+  ratedAt?: Record<Id, string>;
   createdAt: string;
 }
 
@@ -204,8 +211,10 @@ export interface Activity {
   mapsUrl?: string;
   tags: string[];
   favoriteOf: Id[];
-  /** Rating 1–5 per member id. */
+  /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;
+  /** When each member last set their rating (timestamp; read-only, set by the server). */
+  ratedAt?: Record<Id, string>;
   createdBy?: Id;
   createdAt: string;
 }
@@ -251,7 +260,9 @@ export type Recurrence =
   | { type: 'weekly'; every: number; weekdays: number[] } // 1 = Monday … 7 = Sunday
   | { type: 'monthly'; day: number }
   | { type: 'everyMonths'; every: number }
-  | { type: 'flexible'; everyDays: number };
+  | { type: 'flexible'; everyDays: number }
+  /** "bei Bedarf": never due, found in "Was anderes erledigt?" (spec 0011, D27). */
+  | { type: 'asNeeded' };
 
 export type Assignment =
   | { type: 'fixed'; memberId: Id }
@@ -281,6 +292,19 @@ export interface ChoreEvent {
   kind: 'done' | 'skipped' | 'spontaneous';
   doneOn: ISODate;
   doneBy: Id;
+  /** When it was booked (timestamp; read-only). Orders the history chain, spec 0011. */
+  createdAt?: string;
+  /**
+   * The chore's state before this entry was booked; only set when the server recorded it.
+   * Removing the latest booked entry restores it (spec 0011, Offene Frage 3).
+   */
+  previous?: ChoreEventPrevious;
+}
+
+export interface ChoreEventPrevious {
+  nextDueOn?: ISODate;
+  lastDoneOn?: ISODate;
+  nextAssigneeId?: Id;
 }
 
 export interface Absence {

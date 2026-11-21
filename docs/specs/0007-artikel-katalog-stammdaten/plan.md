@@ -84,6 +84,30 @@ Offene Fragen 7 bis 11):
   (`?von=liste`), damit „Zurück“ zur Liste führt (AC-021), wie `?von=verwalten` in Spec 0010.
   „Bereiche“ ist die Ansicht `?ansicht=bereiche` von `/maerkte`.
 
+**Entscheidungen zu den offenen Punkten aus T2** (vom Lead freigegeben, 21.11.2026):
+
+- **D-a — Zusätzliche Prüftexte:** „Höchstens 120 Zeichen“, „Höchstens 30 Synonyme“ und
+  „Höchstens 80 Zeichen“ (Bereich) bleiben.
+- **D-b — Synonym eines anderen Artikels:** Ist ein Synonym schon Synonym eines anderen Artikels,
+  zeigt das Feld ebenfalls „„X“ ist schon ein Artikel“.
+- **D-c — Starter-Eintrag ausblenden:** Ein Eintrag des Starter-Katalogs erscheint nicht mehr,
+  sobald irgendein Name oder Synonym von ihm im Haushalt vergeben ist.
+- **D-d — „Meinst du …?“ beim Einfügen nur nach Schreibweise:** `classifyIngredientLines` nennt
+  einen Vorschlag nur bei Ähnlichkeit ≥ 0,8 oder Einzahl/Mehrzahl, nie über Wortteile
+  („Buttermilch“ ergibt kein „Meinst du Milch?“).
+- **D-e — App strenger als die Datenbank bei Bereichsnamen:** Die App vergleicht mit
+  `normalizeText` (Umlaute, Leerzeichen), die Datenbank mit `lower(name)`; bleibt so.
+- **D-f — 2000 Zeichen für alle Synonyme:** `validateArticleDraft` prüft auch die Gesamtlänge der
+  Synonyme und ihrer Schlüssel („Höchstens 2000 Zeichen in allen Synonymen“), wie
+  `articles_synonyms_size` und `articles_synonym_keys_size`.
+- **D-g — „Ohne Bereich“:** `filterArticles('noArea')` zählt Artikel mit einem nicht (mehr)
+  vorhandenen Bereich als ohne Bereich, wie `articleCountsByArea`; dafür bekommen
+  `filterArticles` und `articleFilterCounts` die Bereiche des Haushalts.
+- **D-h — Wettlauf Löschen gegen Hinzufügen:** Löscht ein Gerät einen Artikel, während ein anderes
+  ihn auf die Liste setzt, scheitert `add_shopping_contributions` am Fremdschlüssel (23503). Die
+  App nimmt das Hinzufügen zurück und zeigt „Den Artikel gibt es nicht mehr – bitte noch einmal
+  hinzufügen“, ohne erneuten Versuch (Text: Annahme, Spec Offene Frage 12).
+
 ## Datenbank und Sync
 
 Umsetzung mit dem `db-change`-Skill und `supabase-postgres-best-practices`. Alles in den
@@ -264,7 +288,29 @@ flowchart LR
   behält die Warteschlange; Integrationstest gegen die lokale Datenbank: Haken offline auf
   „Milchkokos“, Zusammenführen, Warteschlange senden → „Kokosmilch“ abgehakt, kein Fehler
   (AC-040); „Milchkokos“ in „Was fehlt?“ → „Kokosmilch“ (AC-037).
-- **Status:** offen
+- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Umgesetzt:** `commands-articles.ts` (`resolveArticle`, `insertArticles`, `createArticle`,
+  `updateArticle`, `confirmArticle`, `deleteArticle`, `mergeArticles`, `catalogChoice`),
+  `commands-stores.ts` (umgezogen: `createArea`, `createStore`, `fullAreaOrder`, `moveStoreArea`,
+  `setStoreAreaHidden`, `AREA_NAME_MAX_LENGTH`; neu: `renameStore`, `setDefaultStore`,
+  `deleteStore`, `renameArea`, `moveArea`, `mergeAreas`, `deleteArea`, `addAreaToStore`), Zutaten
+  mit Artikelwahl in `commands-recipes.ts` (`addIngredient`, `addIngredients`, `updateIngredient`,
+  `IngredientArticleChoice`), `starter/entries.ts` (`starterCatalogEntries`), Transport
+  (`deleteArticle`, `mergeArticles`, `mergeAreas`), Fake-Server mit den Prüfungen von T1,
+  `CACHE_VERSION` 4, Mapping der neuen Artikelspalten, `rejectedMessage` je Befehl im Abgleich.
+  In `core`: `applyArticleMerge` (lokale Wirkung des Zusammenführens), D-d, D-f, D-g.
+- **Abweichungen:**
+  - `Article.needsReview` und `Article.createdAt` sind Pflicht; `CatalogArticle` aus T2 entfällt
+    (jetzt `Article`), Abgleich der Namen über `NamedArticle`.
+  - AC-020: Gekürzt wird so, dass auch der Schlüssel höchstens 120 Zeichen hat
+    (`articles_name_key_valid`; „ä“ zählt dort doppelt). Das Beispiel der Spec („geschält“) wird
+    deshalb auf 119 Zeichen gekürzt (Spec Offene Frage 13).
+  - Ein Diff schickt nie ein Löschen von Artikeln (`changes.ts`); „Rückgängig“ eines Befehls, der
+    einen Artikel angelegt hat, lässt den Artikel stehen und nimmt nur den Rest zurück (Spec
+    Offene Frage 14).
+  - `addIngredientsFromText` (Einfügen und neues Rezept bis T7) und `replaceIngredient`
+    (Assistent) ordnen Namen nach REQ-004 zu; neue Artikel sind „Neu aus Rezepten“.
+  - `articleForIngredientName` entfällt (unbenutzt, nur für Zutaten ohne Artikel).
 
 ### Task 4 — Zutat zeigt immer auf einen Artikel (Umstellung)
 
@@ -280,7 +326,16 @@ flowchart LR
 - **Test:** core: Beiträge aus einem Rezept tragen nie den Hinweis (AC-011, AC-012), Ernährung
   ohne Sonderfall „ohne Artikel“; api: Vorratscheck-Zeilen haben immer einen Artikel; der Seed
   enthält keine Zutat ohne Artikel. Rein mechanisch sonst, `pnpm check` grün.
-- **Status:** offen
+- **Status:** fertig (nicht committet, Commit durch den Lead)
+- **Abweichungen:**
+  - Zusätzlich `supabase/functions/_shared/context.ts`: Assistent und KI-Suche lesen die Namen der
+    Zutaten jetzt aus `articles` (vorher `ingredient.name` aus dem Rezept-JSON); Testhaushalt der
+    Edge-Funktionen mit Artikeln.
+  - `contributionsFromEntry` liefert jede Zutat mit ihrer `articleId`; Zeilen, deren Artikel auf
+    dem Gerät (noch) fehlt, lässt erst `pantryCheckRows` weg, weil `canPutOnList` ohne Artikel
+    rechnet. „Nicht im Katalog“ entfällt im Vorratscheck.
+  - `shopping-picker.ts`, `recipe-variants.ts`, `list-picker.tsx` und `recipe-meta.tsx` brauchten
+    keine Änderung.
 
 ### Task 5 — App: Seite „Artikel“, „Artikel bearbeiten“, Zusammenführen
 

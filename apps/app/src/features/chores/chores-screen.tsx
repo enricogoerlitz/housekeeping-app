@@ -68,6 +68,7 @@ export function ChoresScreen() {
       thisWeek: [],
       later: [],
       paused: [],
+      asNeeded: [],
     };
     for (const chore of chores) result[choreBucket(chore, today)].push(chore);
     result.overdue.sort((a, b) => (a.nextDueOn ?? '').localeCompare(b.nextDueOn ?? ''));

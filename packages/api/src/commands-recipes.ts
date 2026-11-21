@@ -1,15 +1,25 @@
 import {
-  parseIngredientBlock,
+  defaultShoppingRuleFor,
   findArticleByName,
+  parseIngredientBlock,
+  resolveIngredientArticles,
+  type Amount,
+  type Article,
+  type CatalogHit,
   type Id,
   type Recipe,
   type RecipeIngredient,
+  type ShoppingRule,
 } from '@housekeeping/core';
 
-import { resolveArticle } from './commands-household';
+import { catalogChoice, createArticle, insertArticles } from './commands-articles';
 import { buildRecipe } from './seed/demo';
 import { seedRecipes } from './seed/recipes-data';
+import { starterCatalogEntries } from './starter/entries';
 import { commit, getData, getState, newId, nowISO, updateData } from './store';
+
+/** recipes_check_ingredients: the "Hinweis" of an ingredient. */
+export const PREP_NOTE_MAX_LENGTH = 200;
 
 function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
   updateData((data) => ({
@@ -59,24 +69,47 @@ export function updateRecipe(
 }
 
 /**
- * Adds ingredients from a pasted or dictated block, one per line ("200 ml Kokosmilch").
- * Names are matched to articles; unknown names become new articles.
- * Returns the number of ingredients added.
+ * The articles for names nobody chose an article for (REQ-004, E1): name or synonym, then the
+ * starter catalog, otherwise a new article "Neu aus Rezepten". Inside the running command, so new
+ * articles ride in its change. Returns the article per name, in order.
+ */
+function articlesForNames(names: readonly string[]): Article[] {
+  const data = getData();
+  const { articleIds, created } = resolveIngredientArticles(names, {
+    articles: data.articles,
+    catalog: starterCatalogEntries,
+    areas: data.areas,
+    newId,
+  });
+  insertArticles(created);
+  const byId = new Map(getData().articles.map((article) => [article.id, article]));
+  return articleIds.map((id) => {
+    const article = byId.get(id);
+    if (!article) throw new Error(`Article ${id} missing`);
+    return article;
+  });
+}
+
+/**
+ * Adds ingredients from a pasted or dictated block, one per line ("200 ml Kokosmilch"), without a
+ * person choosing the articles: each name gets its article by the rule of REQ-004 (new ones are
+ * "Neu aus Rezepten"). Returns the number of ingredients added.
  */
 export function addIngredientsFromText(recipeId: Id, text: string, variantId?: Id): number {
   const parsed = parseIngredientBlock(text);
   if (parsed.length === 0) return 0;
   // New articles ride in the same change as the recipe.
   return commit({ path: 'diff' }, () => {
-    const ingredients: RecipeIngredient[] = parsed.map((line) => {
-      const { article } = resolveArticle(line.name);
+    const articles = articlesForNames(parsed.map((line) => line.name));
+    const ingredients: RecipeIngredient[] = parsed.map((line, index) => {
+      const article = articles[index];
+      if (!article) throw new Error('Article missing');
       return {
         id: newId(),
         articleId: article.id,
-        name: line.name,
         amount: line.amount,
         variantId,
-        shoppingRule: article.isPantry ? 'count' : line.amount?.unit ? 'recipeAmount' : 'count',
+        shoppingRule: defaultShoppingRuleFor(article, line.amount),
       };
     });
     patchRecipe(recipeId, (recipe) => ({
@@ -84,6 +117,156 @@ export function addIngredientsFromText(recipeId: Id, text: string, variantId?: I
       ingredients: [...recipe.ingredients, ...ingredients],
     }));
     return ingredients.length;
+  });
+}
+
+/** How an ingredient gets its article in "Suchen oder anlegen" (REQ-001). */
+export type IngredientArticleChoice =
+  /** An article of the household. */
+  | { articleId: Id }
+  /** A hit of core searchArticleCatalog; a starter entry becomes a household article (AC-003). */
+  | { hit: CatalogHit<Article> }
+  /** "„Drachenfrucht“ neu anlegen" (AC-002): an article that exists by that name is used. */
+  | { newName: string };
+
+export interface IngredientInput {
+  article: IngredientArticleChoice;
+  amount?: Amount;
+  /**
+   * Set when the person chose the rule: it also becomes the article's Standard-Einkaufsregel in
+   * the same change (E7). Without it the article's rule is preselected (AC-005).
+   */
+  shoppingRule?: ShoppingRule;
+  /** Einkaufs-Zusatz, goes to the list ("Philadelphia"). */
+  shoppingNote?: string;
+  /** Hinweis, only for cooking ("fein gehackt"); at most 200 characters. */
+  prepNote?: string;
+  variantId?: Id;
+  group?: string;
+}
+
+function noteOf(text: string | undefined, max?: number): string | undefined {
+  const trimmed = text?.replace(/\s+/g, ' ').trim();
+  if (!trimmed) return undefined;
+  if (max !== undefined && Array.from(trimmed).length > max) {
+    throw new Error(`Höchstens ${max} Zeichen`);
+  }
+  return trimmed;
+}
+
+/** The article of a choice, created inside the running command when needed. */
+function chosenArticle(choice: IngredientArticleChoice): Article {
+  if ('hit' in choice) return catalogChoice(choice.hit);
+  if ('newName' in choice) {
+    const existing = findArticleByName(choice.newName, getData().articles);
+    if (existing) return existing;
+    const id = createArticle({ name: choice.newName });
+    const created = getData().articles.find((article) => article.id === id);
+    if (!created) throw new Error('Name fehlt');
+    return created;
+  }
+  const article = getData().articles.find((candidate) => candidate.id === choice.articleId);
+  if (!article) throw new Error('Den Artikel gibt es nicht mehr.');
+  return article;
+}
+
+/** E7: a rule chosen at an ingredient becomes the article's Standard-Einkaufsregel. */
+function rememberRule(article: Article, rule: ShoppingRule | undefined): void {
+  if (rule === undefined || article.defaultShoppingRule === rule) return;
+  updateData((data) => ({
+    ...data,
+    articles: data.articles.map((candidate) =>
+      candidate.id === article.id ? { ...candidate, defaultShoppingRule: rule } : candidate,
+    ),
+  }));
+}
+
+function ingredientFrom(input: IngredientInput): RecipeIngredient {
+  const article = chosenArticle(input.article);
+  rememberRule(article, input.shoppingRule);
+  const ingredient: RecipeIngredient = {
+    id: newId(),
+    articleId: article.id,
+    shoppingRule: input.shoppingRule ?? defaultShoppingRuleFor(article, input.amount),
+  };
+  if (input.amount) ingredient.amount = input.amount;
+  const shoppingNote = noteOf(input.shoppingNote);
+  if (shoppingNote) ingredient.shoppingNote = shoppingNote;
+  const prepNote = noteOf(input.prepNote, PREP_NOTE_MAX_LENGTH);
+  if (prepNote) ingredient.prepNote = prepNote;
+  if (input.variantId) ingredient.variantId = input.variantId;
+  if (input.group) ingredient.group = input.group;
+  return ingredient;
+}
+
+/**
+ * Adds ingredients whose article a person chose (REQ-001, REQ-002: the lines of a pasted block
+ * that have one, AC-010). A new or starter article rides in the same change. Online only. Returns
+ * the number added.
+ */
+export function addIngredients(recipeId: Id, inputs: readonly IngredientInput[]): number {
+  if (inputs.length === 0) return 0;
+  return commit({ path: 'diff' }, () => {
+    const ingredients = inputs.map(ingredientFrom);
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      ingredients: [...recipe.ingredients, ...ingredients],
+    }));
+    return ingredients.length;
+  });
+}
+
+/** "+ Zutat" (AC-001 to AC-005): one ingredient; returns its id. */
+export function addIngredient(recipeId: Id, input: IngredientInput): Id {
+  return commit({ path: 'diff' }, () => {
+    const ingredient = ingredientFrom(input);
+    patchRecipe(recipeId, (recipe) => ({
+      ...recipe,
+      ingredients: [...recipe.ingredients, ingredient],
+    }));
+    return ingredient.id;
+  });
+}
+
+/**
+ * Changes an ingredient: its article, amount, rule (E7: goes to the article too), Einkaufs-Zusatz
+ * or Hinweis; blank text removes a note. Online only.
+ */
+export function updateIngredient(
+  recipeId: Id,
+  ingredientId: Id,
+  patch: Partial<Omit<IngredientInput, 'variantId' | 'group'>>,
+): void {
+  commit({ path: 'diff' }, () => {
+    const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+    const current = recipe?.ingredients.find((candidate) => candidate.id === ingredientId);
+    if (!recipe || !current) throw new Error('Die Zutat gibt es nicht mehr.');
+    const next: RecipeIngredient = { ...current };
+    if (patch.article) {
+      next.articleId = chosenArticle(patch.article).id;
+    }
+    if (patch.amount) next.amount = patch.amount;
+    if (patch.shoppingRule) {
+      next.shoppingRule = patch.shoppingRule;
+      const article = getData().articles.find((candidate) => candidate.id === next.articleId);
+      if (article) rememberRule(article, patch.shoppingRule);
+    }
+    if ('shoppingNote' in patch) {
+      const note = noteOf(patch.shoppingNote);
+      if (note) next.shoppingNote = note;
+      else delete next.shoppingNote;
+    }
+    if ('prepNote' in patch) {
+      const note = noteOf(patch.prepNote, PREP_NOTE_MAX_LENGTH);
+      if (note) next.prepNote = note;
+      else delete next.prepNote;
+    }
+    patchRecipe(recipeId, (own) => ({
+      ...own,
+      ingredients: own.ingredients.map((ingredient) =>
+        ingredient.id === ingredientId ? next : ingredient,
+      ),
+    }));
   });
 }
 
@@ -111,12 +294,16 @@ export function removeIngredient(recipeId: Id, ingredientId: Id): void {
   );
 }
 
-/** Replaces one ingredient's article and amount text (used by assistant proposals). */
+/**
+ * Replaces one ingredient's article and amount text (assistant proposals): nobody chose the
+ * article, so it follows the rule of REQ-004 (a new one is "Neu aus Rezepten").
+ */
 export function replaceIngredient(recipeId: Id, ingredientId: Id, line: string): void {
   const [parsed] = parseIngredientBlock(line);
   if (!parsed) throw new Error('Die Zutat fehlt.');
   commit({ path: 'diff' }, () => {
-    const { article } = resolveArticle(parsed.name);
+    const [article] = articlesForNames([parsed.name]);
+    if (!article) throw new Error('Article missing');
     patchRecipe(recipeId, (recipe) => ({
       ...recipe,
       ingredients: recipe.ingredients.map((ingredient) =>
@@ -124,7 +311,6 @@ export function replaceIngredient(recipeId: Id, ingredientId: Id, line: string):
           ? {
               ...ingredient,
               articleId: article.id,
-              name: parsed.name,
               amount: parsed.amount ?? ingredient.amount,
             }
           : ingredient,
@@ -210,21 +396,23 @@ export function listStarterRecipes(): StarterRecipeInfo[] {
   }));
 }
 
-/** Copies starter recipes into the household's recipe book; they are normal recipes afterwards. */
+/**
+ * Copies starter recipes into the household's recipe book; they are normal recipes afterwards.
+ * An article the household lacks follows the rule of REQ-004 (starter catalog, else "Neu aus
+ * Rezepten"), in the same change.
+ */
 export function adoptStarterRecipes(keys: string[]): number {
-  const data = getData();
-  const titles = new Set(data.recipes.map((recipe) => recipe.title));
-  const adopted = seedRecipes
-    .filter((seed) => keys.includes(seed.key) && !titles.has(seed.title))
-    .map((seed) => ({ ...buildRecipe(seed, data.articles, nowISO()), id: newId() }));
-  if (adopted.length === 0) return 0;
-  commit({ path: 'diff' }, () =>
-    updateData((current) => ({ ...current, recipes: [...adopted, ...current.recipes] })),
-  );
-  return adopted.length;
-}
-
-/** Article of an ingredient by its written name, when the ingredient was not linked yet. */
-export function articleForIngredientName(name: string) {
-  return findArticleByName(name, getData().articles);
+  const titles = new Set(getData().recipes.map((recipe) => recipe.title));
+  const chosen = seedRecipes.filter((seed) => keys.includes(seed.key) && !titles.has(seed.title));
+  if (chosen.length === 0) return 0;
+  commit({ path: 'diff' }, () => {
+    articlesForNames(chosen.flatMap((seed) => seed.ingredients.map((entry) => entry.article)));
+    const articles = getData().articles;
+    const adopted = chosen.map((seed) => ({
+      ...buildRecipe(seed, articles, nowISO()),
+      id: newId(),
+    }));
+    updateData((current) => ({ ...current, recipes: [...adopted, ...current.recipes] }));
+  });
+  return chosen.length;
 }

@@ -101,6 +101,10 @@ export function weekdayShortName(weekday: number): string {
 export function weekdayShort(iso: ISODate): string {
   return weekdayShortName(isoWeekday(iso));
 }
+/** "Montag" … "Sonntag". */
+export function weekdayLong(iso: ISODate): string {
+  return WEEKDAYS_LONG[isoWeekday(iso) - 1] ?? '';
+}
 /** "Donnerstag, 20. November". */
 export function formatLongDate(iso: ISODate): string {
   const date = parseISODate(iso);

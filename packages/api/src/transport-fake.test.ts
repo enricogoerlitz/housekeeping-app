@@ -1,4 +1,4 @@
-import { normalizeText, type RowOp } from '@housekeeping/core';
+import { normalizeText, type Row, type RowOp } from '@housekeeping/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFakeServer, type FakeServer } from './transport-fake';
@@ -417,11 +417,11 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
     expect(server.row(H, 'recipes', 'r1')).toBeUndefined();
   });
 
-  it('refuses to delete an article that is on a list, and a reference to a missing row', async () => {
+  it('refuses to delete an article directly (delete_article only), and a reference to a missing row', async () => {
     const enrico = server.transport(ENRICO);
     await expect(
       enrico.applyChanges(H, [{ kind: 'delete', table: 'articles', id: 'a-milk' }]),
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toMatchObject({ code: 'invalid_change' });
     await expect(
       enrico.applyChanges(H, [plan('e2', { kind: 'recipe', recipe_id: 'r-missing' })]),
     ).rejects.toMatchObject({ code: '23503' });
@@ -843,5 +843,350 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
         },
       ]),
     ).rejects.toMatchObject({ code: '23514' });
+  });
+});
+
+describe('fake server: article catalog (spec 0007, like the database)', () => {
+  const H2 = 'h-2';
+  const article = (id: string, name: string, rest: Record<string, unknown> = {}): Row => {
+    const synonyms = (rest.synonyms as string[] | undefined) ?? [];
+    return {
+      id,
+      name,
+      name_key: normalizeText(name),
+      synonyms,
+      synonym_keys: synonyms.map(normalizeText),
+      area_id: null,
+      diet: 'unknown',
+      is_pantry: false,
+      default_shopping_rule: null,
+      needs_review: false,
+      ...rest,
+    };
+  };
+  const ingredient = (id: string, articleId: string, rest: Record<string, unknown> = {}) => ({
+    id,
+    articleId,
+    shoppingRule: 'count',
+    ...rest,
+  });
+  const contribution = (id: string, itemId: string, rest: Record<string, unknown> = {}) => ({
+    id,
+    item_id: itemId,
+    source: { kind: 'manual' },
+    count: 1,
+    qty: null,
+    unit: null,
+    note: null,
+    ...rest,
+  });
+
+  beforeEach(() => {
+    server.addHousehold({ id: H2, name: 'WG Köln' }, [STRANGER]);
+    server.insertRows(H2, {
+      areas: [{ id: 'area-keller', name: 'Keller', sort: 0 }],
+      articles: [article('a-kokosnuss', 'Kokosnuss')],
+    });
+    server.insertRows(H, {
+      areas: [
+        { id: 'area-konserven', name: 'Konserven & Saucen', sort: 0 },
+        { id: 'area-drogerie', name: 'Drogerie', sort: 1 },
+        { id: 'area-hygiene', name: 'Drogerie & Hygiene', sort: 2 },
+      ],
+      articles: [
+        article('a-mk', 'Milchkokos', {
+          synonyms: ['Kokosdrink'],
+          area_id: 'area-konserven',
+          is_pantry: true,
+          needs_review: true,
+        }),
+        article('a-km', 'Kokosmilch', { diet: 'vegan' }),
+        article('a-df', 'Drachenfrucht'),
+        article('a-seife', 'Seife', { area_id: 'area-drogerie' }),
+      ],
+      stores: [
+        {
+          id: 'store-rewe',
+          name: 'Rewe',
+          area_order: ['area-drogerie', 'area-hygiene'],
+          hidden_area_ids: ['area-drogerie'],
+        },
+      ],
+      recipes: [
+        {
+          id: 'r-curry',
+          title: 'Curry',
+          servings: 2,
+          course: 'main',
+          ingredients: [
+            ingredient('i1', 'a-mk', { shoppingNote: 'Bio' }),
+            ingredient('i2', 'a-km'),
+          ],
+        },
+      ],
+      shopping_items: [
+        { id: 'i-mk', article_id: 'a-mk' },
+        { id: 'i-km', article_id: 'a-km' },
+      ],
+      shopping_contributions: [
+        contribution('c-mk', 'i-mk', { note: 'Bio' }),
+        contribution('c-km', 'i-km', {
+          source: { kind: 'recipe', recipeId: 'r-curry', label: 'Mango-Curry (Sa)' },
+        }),
+      ],
+    });
+  });
+
+  describe('delete_article', () => {
+    it('AC-033: deletes an unused article with a tombstone and returns its row', async () => {
+      const enrico = server.transport(ENRICO);
+      const deleted = await enrico.deleteArticle('a-df');
+      expect(deleted).toMatchObject({ id: 'a-df', household_id: H, name: 'Drachenfrucht' });
+      expect(server.row(H, 'articles', 'a-df')).toBeUndefined();
+      const pull = await enrico.syncPull({ households: { [H]: { full: false, since: {} } } });
+      expect(pull.households[H]?.tombstones).toContainEqual(
+        expect.objectContaining({ table: 'articles', id: 'a-df' }),
+      );
+    });
+
+    it('AC-034: refuses an article in a recipe, open or checked on the list', async () => {
+      const enrico = server.transport(ENRICO);
+      await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
+      await enrico.applyChanges(H, [
+        { kind: 'patch', table: 'recipes', id: 'r-curry', changes: { ingredients: [] } },
+      ]);
+      await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
+      await enrico.setItemChecked('i-km', true, 0);
+      await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
+      expect(server.row(H, 'articles', 'a-km')).toBeDefined();
+    });
+
+    it('a foreign or missing article is not found', async () => {
+      await expect(server.transport(ENRICO).deleteArticle('a-kokosnuss')).rejects.toMatchObject({
+        code: 'article_not_found',
+      });
+      await expect(server.transport(STRANGER).deleteArticle('a-df')).rejects.toMatchObject({
+        code: 'article_not_found',
+      });
+      expect(server.row(H2, 'articles', 'a-kokosnuss')).toBeDefined();
+    });
+
+    it('AC-033: "Rückgängig" inserts the returned row again through apply_changes', async () => {
+      const enrico = server.transport(ENRICO);
+      await enrico.deleteArticle('a-df');
+      await enrico.applyChanges(H, [
+        {
+          kind: 'insert',
+          table: 'articles',
+          row: { ...article('a-df', 'Drachenfrucht'), household_id: H },
+        },
+      ]);
+      expect(server.row(H, 'articles', 'a-df')).toMatchObject({ name: 'Drachenfrucht' });
+    });
+  });
+
+  describe('merge_articles', () => {
+    it('AC-036: recipes, the open item and the synonyms move to the target, the source goes', async () => {
+      const result = await server.transport(ENRICO).mergeArticles('a-mk', 'a-km');
+      expect(result).toEqual({ recipes: 1, items: 1 });
+      expect(server.row(H, 'recipes', 'r-curry')?.ingredients).toEqual([
+        ingredient('i1', 'a-km', { shoppingNote: 'Bio' }),
+        ingredient('i2', 'a-km'),
+      ]);
+      expect(server.row(H, 'shopping_items', 'i-mk')).toBeUndefined();
+      expect(
+        server
+          .rows(H, 'shopping_contributions')
+          .filter((row) => row.item_id === 'i-km')
+          .map((row) => row.id),
+      ).toEqual(['c-mk', 'c-km']);
+      expect(server.row(H, 'articles', 'a-mk')).toBeUndefined();
+      expect(server.row(H, 'articles', 'a-km')).toMatchObject({
+        synonyms: ['Milchkokos', 'Kokosdrink'],
+        synonym_keys: ['milchkokos', 'kokosdrink'],
+      });
+    });
+
+    it('AC-038: empty data of the target are filled, Vorrat stays, the target is reviewed', async () => {
+      await server.transport(ENRICO).mergeArticles('a-mk', 'a-km');
+      expect(server.row(H, 'articles', 'a-km')).toMatchObject({
+        area_id: 'area-konserven',
+        diet: 'vegan',
+        is_pantry: false,
+        needs_review: false,
+      });
+    });
+
+    it('AC-040: checking or "nicht da" on the source item reaches the target item', async () => {
+      const enrico = server.transport(ENRICO);
+      await enrico.mergeArticles('a-mk', 'a-km');
+      expect(await enrico.setItemChecked('i-mk', true, 0)).toMatchObject({
+        item_id: 'i-km',
+        checked: true,
+      });
+      // Unchecking a replaced item does nothing: the seq seen belongs to the old item.
+      expect(await enrico.setItemChecked('i-mk', false, 0)).toMatchObject({
+        item_id: 'i-km',
+        checked: true,
+      });
+      expect(await enrico.setItemNotAvailable('i-mk', true)).toEqual({
+        item_id: 'i-km',
+        not_available: true,
+      });
+      expect(await server.transport(STRANGER).setItemChecked('i-mk', true, 0)).toBeNull();
+    });
+
+    it('AC-041: the same article, a foreign target and a foreign caller are refused; nothing changes', async () => {
+      const enrico = server.transport(ENRICO);
+      await expect(enrico.mergeArticles('a-mk', 'a-mk')).rejects.toMatchObject({
+        code: 'invalid_value',
+      });
+      await expect(enrico.mergeArticles('a-mk', 'a-kokosnuss')).rejects.toMatchObject({
+        code: 'article_not_found',
+      });
+      await expect(server.transport(STRANGER).mergeArticles('a-mk', 'a-km')).rejects.toMatchObject({
+        code: 'article_not_found',
+      });
+      expect(server.row(H, 'articles', 'a-mk')).toBeDefined();
+      expect(server.row(H2, 'articles', 'a-kokosnuss')).toBeDefined();
+    });
+
+    it('open question 11: more than 30 synonyms are refused and nothing changes', async () => {
+      const enrico = server.transport(ENRICO);
+      const words = Array.from({ length: 29 }, (_, index) => `Wort ${index}`);
+      await enrico.applyChanges(H, [
+        {
+          kind: 'patch',
+          table: 'articles',
+          id: 'a-km',
+          changes: { synonyms: words, synonym_keys: words.map(normalizeText) },
+        },
+      ]);
+      await expect(enrico.mergeArticles('a-mk', 'a-km')).rejects.toMatchObject({
+        code: 'too_many_synonyms',
+      });
+      expect(server.row(H, 'articles', 'a-mk')).toBeDefined();
+      expect(server.row(H, 'shopping_items', 'i-mk')).toBeDefined();
+    });
+  });
+
+  describe('merge_areas', () => {
+    it('AC-054: moves the articles, removes the source from every store and deletes it', async () => {
+      expect(await server.transport(ENRICO).mergeAreas('area-drogerie', 'area-hygiene')).toBe(1);
+      expect(server.row(H, 'articles', 'a-seife')).toMatchObject({ area_id: 'area-hygiene' });
+      expect(server.row(H, 'stores', 'store-rewe')).toMatchObject({
+        area_order: ['area-hygiene'],
+        hidden_area_ids: [],
+      });
+      expect(server.row(H, 'areas', 'area-drogerie')).toBeUndefined();
+    });
+
+    it('AC-056: a foreign area and the same area are refused', async () => {
+      await expect(
+        server.transport(ENRICO).mergeAreas('area-keller', 'area-hygiene'),
+      ).rejects.toMatchObject({ code: 'area_not_found' });
+      await expect(
+        server.transport(ENRICO).mergeAreas('area-hygiene', 'area-hygiene'),
+      ).rejects.toMatchObject({ code: 'invalid_value' });
+      expect(server.row(H2, 'areas', 'area-keller')).toBeDefined();
+    });
+
+    it('E9: deleting an area clears it on its articles; deleting the default store clears it', async () => {
+      const enrico = server.transport(ENRICO);
+      await enrico.applyChanges(H, [
+        { kind: 'patch', table: 'households', id: H, changes: { default_store_id: 'store-rewe' } },
+      ]);
+      await enrico.applyChanges(H, [
+        { kind: 'delete', table: 'areas', id: 'area-drogerie' },
+        { kind: 'delete', table: 'stores', id: 'store-rewe' },
+      ]);
+      expect(server.row(H, 'articles', 'a-seife')).toMatchObject({ area_id: null });
+      const pull = await enrico.syncPull({ households: {} });
+      expect(pull.small.households?.find((row) => row.id === H)).toMatchObject({
+        default_store_id: null,
+      });
+    });
+  });
+
+  describe('ingredients point to an article of the household', () => {
+    const save = (ingredients: unknown[]) =>
+      server
+        .transport(ENRICO)
+        .applyChanges(H, [
+          { kind: 'patch', table: 'recipes', id: 'r-curry', changes: { ingredients } },
+        ]);
+
+    it.each([
+      ['without articleId', [{ id: 'x', shoppingRule: 'count' }]],
+      ['with an unknown article', [ingredient('x', 'a-missing')]],
+      ['with a foreign article', [ingredient('x', 'a-kokosnuss')]],
+      [
+        'with a Hinweis over 200 characters',
+        [ingredient('x', 'a-km', { prepNote: 'x'.repeat(201) })],
+      ],
+      ['with a Hinweis of null', [ingredient('x', 'a-km', { prepNote: null })]],
+      ['that is no object', ['Kokosmilch']],
+    ])('AC-006: refuses an ingredient %s; the recipe stays', async (_, ingredients) => {
+      await expect(save(ingredients)).rejects.toMatchObject({
+        kind: 'permanent',
+        code: 'ingredient_article_invalid',
+      });
+      expect(server.row(H, 'recipes', 'r-curry')?.ingredients).toHaveLength(2);
+    });
+
+    it('AC-011: accepts an article of the household with a Hinweis of 200 characters', async () => {
+      await save([ingredient('x', 'a-km', { prepNote: 'x'.repeat(200) })]);
+      expect(server.row(H, 'recipes', 'r-curry')?.ingredients).toHaveLength(1);
+    });
+  });
+
+  describe('names are unique per household (E6)', () => {
+    const insert = (row: Row, householdId = H, userId = ENRICO) =>
+      server
+        .transport(userId)
+        .applyChanges(householdId, [{ kind: 'insert', table: 'articles', row }]);
+
+    it('AC-031: a synonym that is the name or a synonym of another article is taken', async () => {
+      await expect(
+        insert(article('a-x', 'Kokos-Milch', { synonyms: ['Milchkokos'] })),
+      ).rejects.toMatchObject({ code: 'name_taken' });
+      await expect(
+        insert(article('a-x', 'Kokos-Milch', { synonyms: ['kokosdrink'] })),
+      ).rejects.toMatchObject({ code: 'name_taken' });
+    });
+
+    it("AC-030: a name that is another article's name or synonym is taken", async () => {
+      await expect(insert(article('a-x', 'kokosmilch'))).rejects.toMatchObject({ code: '23505' });
+      await expect(insert(article('a-x', 'Kokosdrink'))).rejects.toMatchObject({
+        code: 'name_taken',
+      });
+    });
+
+    it('the own name as synonym is refused (articles_name_key_not_synonym)', async () => {
+      await expect(
+        insert(article('a-x', 'Kokos-Milch', { synonyms: ['kokos-milch'] })),
+      ).rejects.toMatchObject({ code: '23514' });
+    });
+
+    it('AC-052: an area name in another case is taken; other households may use it', async () => {
+      const enrico = server.transport(ENRICO);
+      await expect(
+        enrico.applyChanges(H, [
+          { kind: 'insert', table: 'areas', row: { id: 'area-x', name: 'drogerie', sort: 9 } },
+        ]),
+      ).rejects.toMatchObject({ code: '23505' });
+      await expect(
+        enrico.applyChanges(H, [
+          { kind: 'patch', table: 'areas', id: 'area-hygiene', changes: { name: 'DROGERIE' } },
+        ]),
+      ).rejects.toMatchObject({ code: '23505' });
+      await server
+        .transport(STRANGER)
+        .applyChanges(H2, [
+          { kind: 'insert', table: 'areas', row: { id: 'area-y', name: 'Drogerie', sort: 1 } },
+        ]);
+      await insert(article('a-y', 'Milchkokos'), H2, STRANGER);
+      expect(server.row(H2, 'articles', 'a-y')).toBeDefined();
+    });
   });
 });

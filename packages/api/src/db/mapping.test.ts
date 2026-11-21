@@ -44,6 +44,7 @@ function asServerTables(rows: HouseholdRows): {
 /** Server-only columns the domain does not carry; left out when comparing rows. */
 function withoutServerColumns(rows: HouseholdRows): Record<string, Row[]> {
   const domainHasCreatedAt = new Set([
+    'articles',
     'recipes',
     'restaurants',
     'activities',
@@ -110,6 +111,35 @@ describe('mapping between domain and rows', () => {
     expect(sortById(withoutServerColumns(again))).toEqual(sortById(withoutServerColumns(original)));
   });
 
+  it('spec 0007: articles carry the Standard-Einkaufsregel, "Neu aus Rezepten" and their creation time', () => {
+    const { data } = demo();
+    const [first, second] = data.articles;
+    if (!first || !second) throw new Error('fixture');
+    const changed: HouseholdData = {
+      ...data,
+      articles: [
+        { ...first, defaultShoppingRule: 'recipeAmount', needsReview: true },
+        { ...second, defaultShoppingRule: undefined, needsReview: false },
+      ],
+    };
+    const rows = householdToRows(changed);
+    expect(rows.articles?.[0]).toMatchObject({
+      default_shopping_rule: 'recipeAmount',
+      needs_review: true,
+      created_at: first.createdAt,
+    });
+    expect(rows.articles?.[1]).toMatchObject({ default_shopping_rule: null, needs_review: false });
+
+    const { tables, small } = asServerTables(rows);
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(back.articles[0]).toMatchObject({
+      defaultShoppingRule: 'recipeAmount',
+      needsReview: true,
+      createdAt: first.createdAt,
+    });
+    expect(back.articles[1]).not.toHaveProperty('defaultShoppingRule');
+  });
+
   it('writes the snake_case columns, the camelCase recipe json and the article keys', () => {
     const { data } = demo();
     const rows = householdToRows(data);
@@ -123,8 +153,9 @@ describe('mapping between domain and rows', () => {
     });
     const ingredient = (curry?.ingredients as Record<string, unknown>[])[0];
     expect(Object.keys(ingredient ?? {})).toEqual(
-      expect.arrayContaining(['id', 'articleId', 'name', 'shoppingRule']),
+      expect.arrayContaining(['id', 'articleId', 'shoppingRule']),
     );
+    expect(ingredient).not.toHaveProperty('name');
     expect((curry?.variants as Record<string, unknown>[])[0]).toMatchObject({ isDefault: true });
 
     const carrots = rows.articles?.find((row) => row.name === 'Möhren');

@@ -80,11 +80,10 @@ describe('splitVariants', () => {
         { id: 'v-b', name: 'mit Speck', isDefault: false },
       ],
       ingredients: [
-        { id: 'i1', articleId: 'art-halloumi', name: 'Halloumi', shoppingRule: 'count' },
+        { id: 'i1', articleId: 'art-halloumi', shoppingRule: 'count' },
         {
           id: 'i2',
           articleId: 'art-hack',
-          name: 'Hackfleisch',
           shoppingRule: 'count',
           variantId: 'v-b',
         },
@@ -105,18 +104,16 @@ describe('splitVariants', () => {
         { id: 'v-veg', name: 'mit Halloumi', isDefault: false },
       ],
       ingredients: [
-        { id: 'a', name: 'Geheimzutat', shoppingRule: 'count', variantId: 'v-unknown' },
+        { id: 'a', articleId: 'art-geheim', shoppingRule: 'count', variantId: 'v-unknown' },
         {
           id: 'b',
           articleId: 'art-lachs',
-          name: 'Lachs',
           shoppingRule: 'count',
           variantId: 'v-fish',
         },
         {
           id: 'c',
           articleId: 'art-halloumi',
-          name: 'Halloumi',
           shoppingRule: 'count',
           variantId: 'v-veg',
         },
@@ -150,7 +147,7 @@ describe('splitVariants', () => {
     const secret = makeRecipe({
       id: 'r-secret',
       title: 'Omas Eintopf',
-      ingredients: [{ id: 'i1', name: 'Geheimzutat', shoppingRule: 'count' }],
+      ingredients: [{ id: 'i1', articleId: 'art-geheim', shoppingRule: 'count' }],
     });
     expect(splitVariants(secret, [nadja], 0, articlesById).misfitMemberIds).toEqual([]);
     // A real conflict stays one.
@@ -169,11 +166,10 @@ describe('splitVariants', () => {
         {
           id: 'a',
           articleId: 'art-hack',
-          name: 'Hackfleisch',
           shoppingRule: 'count',
           variantId: 'v-meat',
         },
-        { id: 'b', name: 'Geheimzutat', shoppingRule: 'count', variantId: 'v-unknown' },
+        { id: 'b', articleId: 'art-geheim', shoppingRule: 'count', variantId: 'v-unknown' },
       ],
     });
     expect(splitVariants(stew, [nadja], 0, articlesById)).toEqual({

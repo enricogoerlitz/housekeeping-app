@@ -8,17 +8,14 @@ import {
   recipeSource,
   summarizeItem,
   weekdayShort,
-  type Area,
   type Id,
   type MealPlanEntry,
   type PlanEntryVariant,
   type PlannedContribution,
   type ShoppingContribution,
   type ShoppingItem,
-  type Store,
 } from '@housekeeping/core';
 
-import { resolveArticle } from './commands-household';
 import {
   addLocally,
   addTextLocally,
@@ -38,11 +35,18 @@ import {
   updateData,
   type CommitSpec,
 } from './store';
-import { AdjustResultSchema, ClearedItemsSchema, type AddEntry } from './transport';
+import { AdjustResultSchema, ClearedItemsSchema, TransportError, type AddEntry } from './transport';
 
 export type { AddedItem } from './list-additions';
 
 // ---------- Contributions on the list (server merge, ADR-0011) ----------
+
+/**
+ * The hint when the article was deleted on another device while this addition was on its way
+ * (delete_article and add_shopping_contributions racing: the item's foreign key fails, 23503).
+ * Not retried; typing the name again creates the article anew.
+ */
+export const ARTICLE_GONE_MESSAGE = 'Den Artikel gibt es nicht mehr – bitte noch einmal hinzufügen';
 
 /**
  * A command that puts things on the household's shopping list (ADR-0012: the household's items):
@@ -57,6 +61,10 @@ function putOnList<T>(run: () => { result: T; entries: AddEntry[] }): T {
         transport.addShoppingContributions(context.householdId, context.result.entries),
       inverse: (transport, context) =>
         transport.removeContributions(contributionIds(context.result.entries)),
+      rejectedMessage: (error) =>
+        error instanceof TransportError && error.code === '23503'
+          ? ARTICLE_GONE_MESSAGE
+          : undefined,
     },
     run,
   ).result;
@@ -289,8 +297,8 @@ export function chooseShoppingStore(storeId: Id | null): void {
 // ---------- From the meal plan or any recipe, with the pantry check ----------
 
 export interface PantryCheckRow {
-  /** Undefined for ingredients without an article; those cannot be put on the list. */
-  articleId?: Id;
+  articleId: Id;
+  /** The article's name. */
   name: string;
   /** "400 ml", "2×" … summed over all selected dishes. */
   amount: string;
@@ -356,14 +364,14 @@ export function pantryCheckRows(
   }
   for (const chosen of recipes) planned.push(...recipeContributions(chosen, data));
 
-  const rows = new Map<string, PantryCheckRow>();
+  const rows = new Map<Id, PantryCheckRow>();
   for (const contribution of planned) {
-    const key = contribution.articleId ?? `text:${contribution.name}`;
-    const row = rows.get(key) ?? {
-      articleId: contribution.articleId,
-      name: contribution.articleId
-        ? (articlesById[contribution.articleId]?.name ?? contribution.name)
-        : contribution.name,
+    // An article deleted on another device before this one synced has nothing to put on the list.
+    const article = articlesById[contribution.articleId];
+    if (!article) continue;
+    const row = rows.get(article.id) ?? {
+      articleId: article.id,
+      name: article.name,
       amount: '',
       sources: [],
       isPantry: contribution.isPantry,
@@ -371,13 +379,13 @@ export function pantryCheckRows(
     };
     row.contributions.push(contribution);
     if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
-    rows.set(key, row);
+    rows.set(article.id, row);
   }
   return [...rows.values()].map((row) => ({
     ...row,
     amount: summarizeItem({
       id: 'preview',
-      articleId: row.articleId ?? 'preview',
+      articleId: row.articleId,
       contributions: row.contributions.map((contribution, index) =>
         toContribution(contribution, `preview-${index}`),
       ),
@@ -411,13 +419,13 @@ function toContribution(planned: PlannedContribution, id: Id): ShoppingContribut
  */
 export function addPlannedToList(rows: PantryCheckRow[]): number {
   const articles = indexById(getData().articles);
-  const kept = rows.filter((row) => row.articleId && articles[row.articleId]);
+  const kept = rows.filter((row) => articles[row.articleId]);
   if (kept.length === 0) return 0;
   return putOnList(() => ({
     result: kept.length,
     entries: kept.map((row) => {
-      const article = articles[row.articleId ?? ''];
-      if (!article) throw new Error(`Article ${row.articleId ?? ''} missing`);
+      const article = articles[row.articleId];
+      if (!article) throw new Error(`Article ${row.articleId} missing`);
       return addLocally(
         article,
         row.contributions.map((planned) => toContribution(planned, newId())),
@@ -431,13 +439,9 @@ export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem |
   const data = getData();
   const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
   const ingredient = recipe?.ingredients.find((candidate) => candidate.id === ingredientId);
-  if (!recipe || !ingredient) return null;
-  if (ingredient.articleId && !indexById(data.articles)[ingredient.articleId]) return null;
+  const article = ingredient && indexById(data.articles)[ingredient.articleId];
+  if (!recipe || !ingredient || !article) return null;
   return putOnList(() => {
-    const { article, created } = ingredient.articleId
-      ? { article: indexById(getData().articles)[ingredient.articleId], created: false }
-      : resolveArticle(ingredient.name);
-    if (!article) throw new Error(`Article ${ingredient.articleId ?? ''} missing`);
     const { itemId, entry } = addLocally(article, [
       {
         id: newId(),
@@ -447,7 +451,7 @@ export function addIngredientToList(recipeId: Id, ingredientId: Id): AddedItem |
       },
     ]);
     return {
-      result: { itemId, articleName: article.name, createdArticle: created },
+      result: { itemId, articleName: article.name, createdArticle: false },
       entries: [entry],
     };
   });
@@ -459,93 +463,4 @@ export function splitItems(items: ShoppingItem[]): { open: ShoppingItem[]; done:
     open: items.filter((item) => !item.checked),
     done: items.filter((item) => item.checked),
   };
-}
-
-// ---------- Areas ----------
-
-/** areas_name_valid in the database. */
-export const AREA_NAME_MAX_LENGTH = 80;
-
-/**
- * "„Deko“ neu anlegen" under "Bereich" (AC-024): a new area of the household, last in the order
- * without store. A name that exists already (any case) returns that area instead of a second
- * one. Online only; assigning it to an article is `assignArticleArea`.
- */
-export function createArea(name: string): Id {
-  const trimmed = name.trim().replace(/\s+/g, ' ');
-  if (!trimmed) throw new Error('Name fehlt');
-  if (trimmed.length > AREA_NAME_MAX_LENGTH) {
-    throw new Error(`Höchstens ${AREA_NAME_MAX_LENGTH} Zeichen`);
-  }
-  const { areas } = getData();
-  const existing = areas.find((area) => normalizeText(area.name) === normalizeText(trimmed));
-  if (existing) return existing.id;
-  const area: Area = {
-    id: newId(),
-    name: trimmed,
-    sort: areas.reduce((max, candidate) => Math.max(max, candidate.sort), 0) + 1,
-  };
-  commit({ path: 'diff' }, () => updateData((data) => ({ ...data, areas: [...data.areas, area] })));
-  return area.id;
-}
-
-// ---------- Stores ----------
-
-export function createStore(name: string): Id {
-  const trimmed = name.trim();
-  if (!trimmed) throw new Error('Name fehlt');
-  const data = getData();
-  const store: Store = {
-    id: newId(),
-    name: trimmed,
-    areaOrder: [...data.areas].sort((a, b) => a.sort - b.sort).map((area) => area.id),
-    hiddenAreaIds: [],
-  };
-  commit({ path: 'diff' }, () =>
-    updateData((current) => ({ ...current, stores: [...current.stores, store] })),
-  );
-  return store.id;
-}
-
-/** The complete walking order of a store: its own order, then the remaining areas. */
-export function fullAreaOrder(store: Store): Id[] {
-  const rest = [...getData().areas]
-    .sort((a, b) => a.sort - b.sort)
-    .map((area) => area.id)
-    .filter((id) => !store.areaOrder.includes(id));
-  return [...store.areaOrder, ...rest];
-}
-
-/** Moves an area to a new position in the store's walking order. */
-export function moveStoreArea(storeId: Id, areaId: Id, toIndex: number): void {
-  commit({ path: 'diff' }, () =>
-    updateData((data) => ({
-      ...data,
-      stores: data.stores.map((store) => {
-        if (store.id !== storeId) return store;
-        const order = fullAreaOrder(store).filter((id) => id !== areaId);
-        const index = Math.max(0, Math.min(order.length, toIndex));
-        order.splice(index, 0, areaId);
-        return { ...store, areaOrder: order };
-      }),
-    })),
-  );
-}
-
-export function setStoreAreaHidden(storeId: Id, areaId: Id, hidden: boolean): void {
-  commit({ path: 'diff' }, () =>
-    updateData((data) => ({
-      ...data,
-      stores: data.stores.map((store) =>
-        store.id === storeId
-          ? {
-              ...store,
-              hiddenAreaIds: hidden
-                ? [...new Set([...store.hiddenAreaIds, areaId])]
-                : store.hiddenAreaIds.filter((id) => id !== areaId),
-            }
-          : store,
-      ),
-    })),
-  );
 }

@@ -221,7 +221,6 @@ describe('ingredientLine', () => {
     const frischkaese: RecipeIngredient = {
       id: 'i-frischkaese',
       articleId: 'art-frischkaese',
-      name: 'Frischkäse',
       amount: { text: '200 g', qty: 200, unit: 'g' },
       shoppingRule: 'count',
       shoppingNote: 'Philadelphia',

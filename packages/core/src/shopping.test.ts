@@ -125,21 +125,53 @@ describe('contributionsFromEntry', () => {
     expect(rows.find((row) => row.name === 'Halloumi')).not.toHaveProperty('note');
   });
 
-  it('counts free-text ingredients and amounts that are not numbers as one piece', () => {
+  it('counts amounts that are not numbers as one piece, named like the article', () => {
     const recipe = {
       ...halloumiPfanne,
       ingredients: [
         {
           id: 'x',
-          name: 'Kräuter',
+          articleId: 'art-milch',
           amount: { text: 'etwas' },
           shoppingRule: 'recipeAmount' as const,
         },
       ],
     };
     const [row] = contributionsFromEntry(curryEntry({ variants: [] }), recipe, articlesById, 'Do');
-    expect(row).toMatchObject({ name: 'Kräuter', count: 1, isPantry: false });
-    expect(row).not.toHaveProperty('articleId');
+    expect(row).toMatchObject({ articleId: 'art-milch', name: 'Milch', count: 1, isPantry: false });
+  });
+
+  it('AC-016: every contribution carries the article of its ingredient', () => {
+    const recipe = {
+      ...halloumiPfanne,
+      ingredients: [
+        { id: 'x', articleId: 'art-weg', shoppingRule: 'count' as const },
+        { id: 'y', articleId: 'art-milch', shoppingRule: 'count' as const },
+      ],
+    };
+    const rows = contributionsFromEntry(curryEntry({ variants: [] }), recipe, articlesById, 'Do');
+    expect(rows.map((row) => [row.articleId, row.name])).toEqual([
+      ['art-weg', ''],
+      ['art-milch', 'Milch'],
+    ]);
+  });
+
+  it('AC-011, AC-012: the Hinweis never goes to the list, the Einkaufs-Zusatz does', () => {
+    const recipe = {
+      ...halloumiPfanne,
+      ingredients: [
+        {
+          id: 'x',
+          articleId: 'art-frischkaese',
+          shoppingRule: 'count' as const,
+          shoppingNote: 'Philadelphia',
+          prepNote: 'zimmerwarm',
+        },
+      ],
+    };
+    const rows = contributionsFromEntry(curryEntry({ variants: [] }), recipe, articlesById, 'Do');
+    expect(rows).toEqual([expect.objectContaining({ name: 'Frischkäse', note: 'Philadelphia' })]);
+    expect(JSON.stringify(rows)).not.toContain('zimmerwarm');
   });
 });
 
@@ -271,6 +303,8 @@ describe('groupItems', () => {
       areaId: 'area-getraenke',
       diet: 'vegan',
       isPantry: false,
+      needsReview: false,
+      createdAt: '',
     },
     'art-futter': {
       id: 'art-futter',
@@ -279,6 +313,8 @@ describe('groupItems', () => {
       areaId: 'area-tier',
       diet: 'meat',
       isPantry: false,
+      needsReview: false,
+      createdAt: '',
     },
   };
   const items = [

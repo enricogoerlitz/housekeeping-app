@@ -53,7 +53,7 @@ function rowNote(row: PantryCheckRow): string | undefined {
 }
 
 function rowKey(row: PantryCheckRow): string {
-  return row.articleId ?? `text:${row.name}`;
+  return row.articleId;
 }
 
 export interface PantryCheckSheetProps {
@@ -240,7 +240,6 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   const pantry = rows.filter((row) => row.isPantry);
   const renderRow = (row: PantryCheckRow) => {
     const isKept = kept.has(rowKey(row));
-    const usable = row.articleId !== undefined;
     return (
       <ListRow
         key={rowKey(row)}
@@ -249,16 +248,14 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         // Selected reads as normal text with a tick; deselected ("haben wir") is faded and struck
         // through (REQ-009).
         strike={!isKept}
-        subtitle={usable ? row.sources.join(' · ') : 'Nicht im Katalog – bitte von Hand eintragen'}
-        disabled={!usable}
+        subtitle={row.sources.join(' · ')}
         onPress={() => toggleRow(row)}
         leading={
           <Checkbox
             checked={isKept}
             label={row.name}
-            disabled={!usable}
             onChange={() => toggleRow(row)}
-            testID={`pc-row-${row.articleId ?? row.name}-check`}
+            testID={`pc-row-${row.articleId}-check`}
           />
         }
         trailing={
@@ -271,7 +268,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         accessibilityLabel={`${row.name}${row.amount ? ` ${row.amount}` : ''}, ${
           isKept ? 'kommt auf die Liste' : 'haben wir'
         }`}
-        testID={`pc-row-${row.articleId ?? row.name}`}
+        testID={`pc-row-${row.articleId}`}
       />
     );
   };
@@ -361,7 +358,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   );
 }
 
-/** What starts selected in the pantry check: everything except "Vorrat" and unknown articles. */
+/** What starts selected in the pantry check: everything except "Vorrat". */
 function defaultKept(rows: PantryCheckRow[]): Set<string> {
-  return new Set(rows.filter((row) => !row.isPantry && row.articleId).map(rowKey));
+  return new Set(rows.filter((row) => !row.isPantry).map(rowKey));
 }

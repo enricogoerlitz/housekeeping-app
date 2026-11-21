@@ -460,3 +460,20 @@ Wird am Ende ausgefüllt.
 - [ ] `/security-check` gelaufen (Task 1, 2, 5)
 - [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
 - [ ] Glossar und Rückverfolgbarkeitstabelle aktuell
+
+## Entscheidungen beim Bauen (core, Tasks 3–4, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. Eine flexible Aufgabe, die nie erledigt wurde, ist ab heute fällig. „Alle n Monate“ zählt ab der
+   letzten Erledigung, aber nie vor heute.
+2. AC-003: drei Tipps auf ‹ führen von KW 49 nach KW 46 (Spec-Text korrigiert, vorher „fünfmal“).
+3. Abwesenheitszeile: „Enrico und Vera sind abwesend …“, für den ganzen Haushalt „Alle …“.
+4. Die Punkte der Wochenleiste kommen nur aus Planeinträgen, nicht aus Aufgaben.
+5. „Morgen, …“ und „Gestern, …“ zeigen nie eine Jahreszahl; andere Tage nur, wenn das Jahr nicht
+   das aktuelle ist.
+6. Ein Nachtrag für einen früheren Tag zieht das Intervall einer flexiblen Aufgabe nicht zurück.
+7. Ein noch nicht bestätigter Eintrag (ohne `createdAt`) gilt als zuletzt gebucht.
+8. „Wie war's?“: Ist der jüngste Eintrag „Nicht gemacht“, erscheint ein älterer Eintrag desselben
+   Ziels aus den drei Tagen.
+9. Saison-Eingabe als Monatszahlen 1–12.

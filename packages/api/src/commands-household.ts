@@ -1,10 +1,8 @@
 import {
-  findArticleByName,
   normalizeText,
   planAbsenceWrite,
   validateAbsenceDraft,
   type Absence,
-  type Article,
   type FeedbackEntry,
   type Id,
   type ISODate,
@@ -43,39 +41,6 @@ export function switchHousehold(householdId: Id): void {
 /** The offline switch (dev and e2e): blocks the transport, so the app behaves as without network. */
 export function setOffline(offline: boolean): void {
   simulateOffline(offline);
-}
-
-/**
- * Finds the article for a typed name (name or synonym) or creates a new one.
- * A new article has no area and an unknown diet until someone sets them.
- * Runs inside the calling command, so a new article is part of that command's change.
- */
-export function resolveArticle(name: string): { article: Article; created: boolean } {
-  const trimmed = name.trim().replace(/\s+/g, ' ');
-  const existing = findArticleByName(trimmed, getData().articles);
-  if (existing) return { article: existing, created: false };
-  const article: Article = {
-    id: newId(),
-    name: trimmed,
-    synonyms: [],
-    diet: 'unknown',
-    isPantry: false,
-  };
-  updateData((data) => ({ ...data, articles: [...data.articles, article] }));
-  return { article, created: true };
-}
-
-type ArticlePatch = Partial<Pick<Article, 'areaId' | 'isPantry' | 'diet' | 'synonyms'>>;
-
-export function updateArticle(articleId: Id, patch: ArticlePatch): void {
-  commit({ path: 'diff' }, () =>
-    updateData((data) => ({
-      ...data,
-      articles: data.articles.map((article) =>
-        article.id === articleId ? { ...article, ...patch } : article,
-      ),
-    })),
-  );
 }
 
 /** Assigning an area applies to the article from now on, on every list. A store action. */

@@ -119,7 +119,7 @@ export type StoreAction =
  *   undoable.
  * The four store actions do not go through commit but through `queueStoreAction`.
  */
-export type CommitSpec<T> =
+export type CommitSpec<T> = (
   | { path: 'diff'; maxDeletes?: Partial<Record<string, number>> }
   | {
       path: 'rpc';
@@ -129,7 +129,14 @@ export type CommitSpec<T> =
         context: RpcContext<T>,
         response: unknown,
       ) => Promise<unknown>;
-    };
+    }
+) & {
+  /**
+   * The hint when the server refuses this change, for refusals with a known cause (e.g. the
+   * article was deleted meanwhile); undefined = "Hat nicht geklappt – bitte noch einmal versuchen".
+   */
+  rejectedMessage?: (error: unknown) => string | undefined;
+};
 
 /** How the server took a change: no error = applied; otherwise refused (or lost) with the error. */
 export type CommitOutcome = (error?: unknown) => void;

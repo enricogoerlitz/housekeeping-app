@@ -22,7 +22,7 @@ function recipe(id: Id, title: string, partial: Partial<Recipe> = {}): Recipe {
   return makeRecipe({
     id,
     title,
-    ingredients: [{ id: `${id}-i`, articleId: 'art-mango', name: 'Mango', shoppingRule: 'count' }],
+    ingredients: [{ id: `${id}-i`, articleId: 'art-mango', shoppingRule: 'count' }],
     ...partial,
   });
 }
@@ -243,7 +243,7 @@ describe('canPutOnList', () => {
 
   it('AC-061: a recipe without ingredients, or with only "skip" ingredients, cannot', () => {
     const skipOnly = recipe('rec-x', 'Salat', {
-      ingredients: [{ id: 'x', articleId: 'art-salz', name: 'Salz', shoppingRule: 'skip' }],
+      ingredients: [{ id: 'x', articleId: 'art-salz', shoppingRule: 'skip' }],
     });
     expect(canPutOnList(entry('plan-x', TODAY), recipe('rec-x', 'X', { ingredients: [] }))).toBe(
       false,
@@ -267,7 +267,7 @@ describe('canPutRecipeOnList', () => {
 
   it('AC-060: a recipe without ingredients, or with only "skip" ingredients, cannot', () => {
     const skipOnly = recipe('rec-x', 'Salat', {
-      ingredients: [{ id: 'x', articleId: 'art-salz', name: 'Salz', shoppingRule: 'skip' }],
+      ingredients: [{ id: 'x', articleId: 'art-salz', shoppingRule: 'skip' }],
     });
     expect(canPutRecipeOnList(recipe('rec-x', 'Kürbissuppe', { ingredients: [] }), 2, [])).toBe(
       false,

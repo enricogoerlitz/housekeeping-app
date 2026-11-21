@@ -47,12 +47,14 @@ const RecipeRow = z.object({
   ingredients: z.array(z.unknown()).nullish(),
 });
 const Variant = z.object({ id: text, name: text });
+// An ingredient names its article (spec 0007); the name shown is the article's.
 const Ingredient = z.object({
   id: text,
-  name: text,
+  articleId: text,
   amount: z.object({ text: z.string() }).nullish(),
   variantId: z.string().nullish(),
 });
+const ArticleRow = z.object({ id: text, name: text });
 
 function rows<T>(schema: z.ZodType<T>, data: unknown): T[] {
   if (!Array.isArray(data)) return [];
@@ -66,6 +68,21 @@ async function read<T>(query: Query, schema: z.ZodType<T>): Promise<T[]> {
   const { data, error } = await query;
   if (error) throw new Error(`context query failed: ${error.code ?? 'unknown'}`);
   return rows(schema, data);
+}
+
+/** The ingredients with their article's name; one whose article is not visible is left out. */
+function named(
+  ingredients: z.infer<typeof Ingredient>[],
+  names: ReadonlyMap<string, string>,
+): (z.infer<typeof Ingredient> & { name: string })[] {
+  return ingredients.flatMap((ingredient) => {
+    const name = names.get(ingredient.articleId);
+    return name === undefined ? [] : [{ ...ingredient, name }];
+  });
+}
+
+async function articleNames(query: Query): Promise<Map<string, string>> {
+  return new Map((await read(query, ArticleRow)).map((article) => [article.id, article.name]));
 }
 
 /** "YYYY-MM-DD" in Europe/Berlin, the household's calendar. */
@@ -144,6 +161,18 @@ export async function loadAssistantContext(
       ? await read(select('profiles', 'id, name, diet_preference').in('id', memberIds), ProfileRow)
       : [];
   const recipe = open[0];
+  const ingredients = rows(Ingredient, recipe?.ingredients);
+  const names =
+    ingredients.length > 0
+      ? await articleNames(
+          select('articles', 'id, name')
+            .eq('household_id', householdId)
+            .in(
+              'id',
+              ingredients.map((ingredient) => ingredient.articleId),
+            ),
+        )
+      : new Map<string, string>();
   return {
     today,
     household: { id: household.id, name: household.name },
@@ -166,7 +195,7 @@ export async function loadAssistantContext(
       title: recipe.title,
       servings: recipe.servings ?? undefined,
       variants: rows(Variant, recipe.variants),
-      ingredients: rows(Ingredient, recipe.ingredients).map((ingredient) => ({
+      ingredients: named(ingredients, names).map((ingredient) => ({
         id: ingredient.id,
         name: ingredient.name,
         amount: ingredient.amount?.text,
@@ -204,14 +233,17 @@ export async function loadRecipeIndex(
   client: UserClient,
   householdId: string,
 ): Promise<RecipeIndexEntry[]> {
-  const recipes = await read(
-    client
-      .from('recipes')
-      .select('id, title, tags, course, cuisine, total_minutes, variants, ingredients')
-      .eq('household_id', householdId)
-      .limit(MAX_RECIPES),
-    RecipeRow,
-  );
+  const [recipes, names] = await Promise.all([
+    read(
+      client
+        .from('recipes')
+        .select('id, title, tags, course, cuisine, total_minutes, variants, ingredients')
+        .eq('household_id', householdId)
+        .limit(MAX_RECIPES),
+      RecipeRow,
+    ),
+    articleNames(client.from('articles').select('id, name').eq('household_id', householdId)),
+  ]);
   return recipes.map((recipe) => ({
     id: recipe.id,
     title: recipe.title,
@@ -220,6 +252,8 @@ export async function loadRecipeIndex(
     cuisine: recipe.cuisine,
     minutes: recipe.total_minutes ?? undefined,
     variants: rows(Variant, recipe.variants).map((variant) => variant.name),
-    ingredients: [...new Set(rows(Ingredient, recipe.ingredients).map((i) => i.name))],
+    ingredients: [
+      ...new Set(named(rows(Ingredient, recipe.ingredients), names).map((i) => i.name)),
+    ],
   }));
 }

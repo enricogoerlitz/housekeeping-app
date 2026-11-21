@@ -36,17 +36,11 @@ describe('deriveRecipeDiet', () => {
     expect(deriveRecipeDiet(mangoCurry, undefined, articlesById)).toBe('vegan');
   });
 
-  it('counts ingredients without (known) article and recipes without ingredients as unknown', () => {
-    const withFreeText = makeRecipe({
-      id: 'r',
-      title: 'Brot',
-      ingredients: [{ id: 'i', name: 'Sauerteig', shoppingRule: 'count' }],
-    });
-    expect(deriveRecipeDiet(withFreeText, undefined, articlesById)).toBe('unknown');
+  it('counts an ingredient whose article is gone and a recipe without ingredients as unknown', () => {
     const withMissingArticle = makeRecipe({
       id: 'r2',
       title: 'Brot',
-      ingredients: [{ id: 'i', articleId: 'art-weg', name: 'Weg', shoppingRule: 'count' }],
+      ingredients: [{ id: 'i', articleId: 'art-weg', shoppingRule: 'count' }],
     });
     expect(deriveRecipeDiet(withMissingArticle, undefined, articlesById)).toBe('unknown');
     expect(deriveRecipeDiet(makeRecipe({ id: 'e', title: 'Leer' }), undefined, articlesById)).toBe(

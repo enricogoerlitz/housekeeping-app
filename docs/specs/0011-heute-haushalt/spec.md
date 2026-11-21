@@ -151,7 +151,7 @@ Angenommen  die „Übersicht“ zeigt Freitag, 20.11.2026
 Wenn        ich zweimal auf › tippe
 Dann        zeigt die Wochenleiste KW 49 mit Mo 30. November bis So 6. Dezember
 Und         gewählt ist Freitag, 4. Dezember, und der Titel heißt „Freitag, 4. Dezember“
-Wenn        ich fünfmal auf ‹ tippe
+Wenn        ich dreimal auf ‹ tippe
 Dann        zeigt die Wochenleiste KW 46 mit Mo 9. bis So 15. November, gewählt ist Freitag, 13.
 ```
 

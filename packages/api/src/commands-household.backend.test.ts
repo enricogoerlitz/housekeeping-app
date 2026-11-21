@@ -17,8 +17,8 @@ import {
   saveAbsences,
   switchHousehold,
   toggleFeedbackVote,
-  updateArticle,
 } from './commands-household';
+import { updateArticle } from './commands-articles';
 import { ENRICO, NADJA } from './seed/demo';
 import { getData, getState, OfflineError, snapshot } from './store';
 

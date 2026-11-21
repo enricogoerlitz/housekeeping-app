@@ -42,7 +42,8 @@ function flexibleDue(chore: Chore, everyDays: number): ISODate | undefined {
 }
 
 function isDueToday(chore: Chore, today: ISODate): boolean {
-  if (!isActiveIn(chore, today)) return false;
+  // "bei Bedarf" is never due, even with a stray date (spec 0011, AC-043).
+  if (chore.recurrence.type === 'asNeeded' || !isActiveIn(chore, today)) return false;
   const due =
     chore.recurrence.type === 'flexible'
       ? flexibleDue(chore, Math.max(1, chore.recurrence.everyDays))
@@ -58,6 +59,7 @@ function futureDates(
 ): { date: ISODate; assigneeId?: Id }[] {
   const { recurrence } = chore;
   const result: { date: ISODate; assigneeId?: Id }[] = [];
+  if (recurrence.type === 'asNeeded') return result;
   if (recurrence.type === 'once') {
     const date = chore.nextDueOn ?? recurrence.date;
     if (date !== undefined && date > today) result.push({ date, assigneeId: chore.nextAssigneeId });

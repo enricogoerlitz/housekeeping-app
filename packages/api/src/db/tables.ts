@@ -45,7 +45,17 @@ export type HouseholdTable = IdTable | CompositeTable;
  */
 export const WRITABLE_COLUMNS = {
   areas: ['name', 'sort'],
-  articles: ['name', 'name_key', 'synonyms', 'synonym_keys', 'area_id', 'diet', 'is_pantry'],
+  articles: [
+    'name',
+    'name_key',
+    'synonyms',
+    'synonym_keys',
+    'area_id',
+    'diet',
+    'is_pantry',
+    'default_shopping_rule',
+    'needs_review',
+  ],
   stores: ['name', 'area_order', 'hidden_area_ids'],
   recipes: [
     'title',

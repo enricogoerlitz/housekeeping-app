@@ -28,6 +28,14 @@ export function householdTables(): { [table: string]: Row[] } {
       { id: NADJA, name: 'Nadja', diet_preference: 'vegetarian' },
       { id: 'stranger', name: 'Fremd', diet_preference: 'flexible' },
     ],
+    // Ingredients point to articles (spec 0007); the recipe JSON carries no names.
+    articles: [
+      { ...h, id: 'a-chicken', name: 'Hähnchenbrust' },
+      { ...h, id: 'a-cream', name: 'Sahne' },
+      { ...h, id: 'a-tofu', name: 'Tofu' },
+      { ...h, id: 'a-raeuchertofu', name: 'Räuchertofu' },
+      { household_id: 'other-household', id: 'a-foreign', name: 'Fremdartikel' },
+    ],
     recipes: [
       {
         ...h,
@@ -43,19 +51,18 @@ export function householdTables(): { [table: string]: Row[] } {
           {
             id: 'i-chicken',
             articleId: 'a-chicken',
-            name: 'Hähnchenbrust',
             amount: { text: '400 g', qty: 400, unit: 'g' },
             shoppingRule: 'recipeAmount',
           },
           {
             id: 'i-cream',
-            name: 'Sahne',
+            articleId: 'a-cream',
             amount: { text: '200 ml', qty: 200, unit: 'ml' },
             shoppingRule: 'count',
             shoppingNote: 'Kochsahne',
             group: 'Soße',
           },
-          { id: 'i-tofu', name: 'Tofu', variantId: 'v-veg', shoppingRule: 'count' },
+          { id: 'i-tofu', articleId: 'a-tofu', variantId: 'v-veg', shoppingRule: 'count' },
         ],
       },
       {
@@ -71,7 +78,7 @@ export function householdTables(): { [table: string]: Row[] } {
         ingredients: [
           {
             id: 'i-pasta-tofu',
-            name: 'Räuchertofu',
+            articleId: 'a-raeuchertofu',
             amount: { text: '200 g', qty: 200, unit: 'g' },
             shoppingRule: 'count',
           },

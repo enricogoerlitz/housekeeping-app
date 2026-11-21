@@ -207,6 +207,41 @@ describe('supabase transport', () => {
     ]);
   });
 
+  it('spec 0007: delete_article, merge_articles and merge_areas with their parameters and answers', async () => {
+    const deleted = {
+      id: 'a1',
+      household_id: 'h1',
+      name: 'Drachenfrucht',
+      name_key: 'drachenfrucht',
+    };
+    const { client, calls } = stubClient([
+      ok(deleted),
+      ok({ recipes: 1, items: 2 }),
+      ok(12),
+      ok({ recipes: 'eins', items: 2 }),
+      { data: null, error: { message: 'article_in_use', code: 'P0001' }, status: 400 },
+    ]);
+    const transport = createSupabaseTransport(client);
+    expect(await transport.deleteArticle('a1')).toEqual(deleted);
+    expect(await transport.mergeArticles('a-mk', 'a-km')).toEqual({ recipes: 1, items: 2 });
+    expect(await transport.mergeAreas('area-1', 'area-2')).toBe(12);
+    await expect(transport.mergeArticles('a-mk', 'a-km')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'invalid_response',
+    });
+    await expect(transport.deleteArticle('a1')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'article_in_use',
+    });
+    expect(calls).toEqual([
+      { fn: 'delete_article', args: { p_article_id: 'a1' } },
+      { fn: 'merge_articles', args: { p_source_id: 'a-mk', p_target_id: 'a-km' } },
+      { fn: 'merge_areas', args: { p_source_id: 'area-1', p_target_id: 'area-2' } },
+      { fn: 'merge_articles', args: { p_source_id: 'a-mk', p_target_id: 'a-km' } },
+      { fn: 'delete_article', args: { p_article_id: 'a1' } },
+    ]);
+  });
+
   it.each([
     [0, { message: 'TypeError: fetch failed', code: '' }, 'transient', 'network'],
     [408, { message: 'timeout' }, 'transient', 'timeout'],
@@ -228,6 +263,21 @@ describe('supabase transport', () => {
     [500, { message: 'last_member', code: 'P0001' }, 'permanent', 'last_member'],
     [500, { message: 'row_not_found', code: 'P0002' }, 'permanent', 'row_not_found'],
     [500, { message: 'invitation_not_found', code: 'P0001' }, 'permanent', 'invitation_not_found'],
+    // spec 0007: what the catalog's checks raise on purpose is permanent and keeps its code.
+    [400, { message: 'too_many_synonyms', code: '22023' }, 'permanent', 'too_many_synonyms'],
+    [409, { message: 'name_taken', code: '23505' }, 'permanent', 'name_taken'],
+    [
+      409,
+      { message: 'ingredient_article_invalid', code: '23503' },
+      'permanent',
+      'ingredient_article_invalid',
+    ],
+    [
+      409,
+      { message: 'insert or update on table "shopping_items" violates foreign key', code: '23503' },
+      'permanent',
+      '23503',
+    ],
   ] as const)('classifies status %i as %s', (status, error, kind, code) => {
     const classified = classifyError(status, error);
     expect(classified).toBeInstanceOf(TransportError);

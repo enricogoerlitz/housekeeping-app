@@ -14,8 +14,8 @@ import type {
 } from './types';
 
 export interface PlannedContribution {
-  /** Undefined when the ingredient has no article (free text). */
-  articleId?: Id;
+  articleId: Id;
+  /** The article's name. */
   name: string;
   count?: number;
   qty?: number;
@@ -66,17 +66,17 @@ export function contributionsFromEntry(
         : (portionsByVariant.get(ingredient.variantId) ?? 0);
     if (portions <= 0) continue;
 
-    const article =
-      ingredient.articleId === undefined ? undefined : articlesById[ingredient.articleId];
+    const article = articlesById[ingredient.articleId];
+    // The Hinweis (prepNote) is for cooking only and never travels to the list (AC-011).
     const contribution: PlannedContribution = {
-      name: ingredient.name,
+      articleId: ingredient.articleId,
+      name: article?.name ?? '',
       isPantry: article?.isPantry ?? false,
       ...(ingredient.shoppingNote ? { note: ingredient.shoppingNote } : {}),
       recipeId: recipe.id,
       entryId: entry.id,
       label,
     };
-    if (ingredient.articleId !== undefined) contribution.articleId = ingredient.articleId;
 
     const amount = ingredient.amount;
     if (ingredient.shoppingRule === 'count' || amount?.qty === undefined) {

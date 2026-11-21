@@ -39,7 +39,8 @@ export function combineDiets(diets: Diet[]): Diet {
 /**
  * Diet of a recipe for one variant: base ingredients plus that variant's ingredients.
  * variantId undefined → default variant (or base only when the recipe has no variants).
- * Ingredients without an article count as "unknown", and so does a recipe without ingredients.
+ * An ingredient whose article is unknown here counts as "unknown", and so does a recipe without
+ * ingredients.
  */
 export function deriveRecipeDiet(
   recipe: Recipe,
@@ -51,11 +52,7 @@ export function deriveRecipeDiet(
   // list would call it vegan.
   if (ingredients.length === 0) return 'unknown';
   return combineDiets(
-    ingredients.map((ingredient) =>
-      ingredient.articleId === undefined
-        ? 'unknown'
-        : (articlesById[ingredient.articleId]?.diet ?? 'unknown'),
-    ),
+    ingredients.map((ingredient) => articlesById[ingredient.articleId]?.diet ?? 'unknown'),
   );
 }
 /** vegan pref → only vegan; vegetarian pref → vegan or vegetarian; flexible → everything. */

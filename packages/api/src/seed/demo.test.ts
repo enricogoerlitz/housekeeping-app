@@ -12,7 +12,13 @@ import { indexById } from '../queries';
 import { starterAreas } from '../starter/areas';
 import { starterCatalog } from '../starter/catalog';
 import { TODAY } from '../backend-test-helpers';
-import { createInitialState, DEMO_HOUSEHOLD_ID, SLOT_MORNING, TEST_HOUSEHOLD_ID } from './demo';
+import {
+  buildRecipe,
+  createInitialState,
+  DEMO_HOUSEHOLD_ID,
+  SLOT_MORNING,
+  TEST_HOUSEHOLD_ID,
+} from './demo';
 import { seedRecipes } from './recipes-data';
 
 const DIETS: Diet[] = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'];
@@ -70,14 +76,28 @@ describe('sample household (AC-012)', () => {
     expect(data.chores.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('links every ingredient of every seed recipe to a catalog article', () => {
+  it('spec 0007: every ingredient points to an article of the household and has no free-text name', () => {
+    const articles = indexById(getData().articles);
     const unlinked = getData().recipes.flatMap((recipe) =>
       recipe.ingredients
-        .filter((ingredient) => ingredient.articleId === undefined)
-        .map((ingredient) => `${recipe.title}: ${ingredient.name}`),
+        .filter((ingredient) => !articles[ingredient.articleId])
+        .map((ingredient) => `${recipe.title}: ${ingredient.id}`),
     );
     expect(unlinked).toEqual([]);
+    const withName = getData().recipes.flatMap((recipe) =>
+      recipe.ingredients.filter((ingredient) => Object.hasOwn(ingredient, 'name')),
+    );
+    expect(withName).toEqual([]);
     expect(getData().recipes).toHaveLength(seedRecipes.length);
+  });
+
+  it('spec 0007 (plan point 9): buildRecipe refuses an ingredient without a catalog article', () => {
+    const [seed] = seedRecipes;
+    if (!seed) throw new Error('fixture');
+    const broken = { ...seed, ingredients: [{ amount: '1', article: 'Drachenfrucht-Sirup' }] };
+    expect(() => buildRecipe(broken, getData().articles, '2026-11-01T12:00:00.000Z')).toThrow(
+      'Drachenfrucht-Sirup',
+    );
   });
 
   it('gives every seeded shopping item a readable amount or source', () => {

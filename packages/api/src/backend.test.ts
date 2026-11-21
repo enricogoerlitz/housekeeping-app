@@ -393,6 +393,10 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
+  it('spec 0007: version 4 for the new article fields; a device on version 3 loads again', () => {
+    expect(CACHE_VERSION).toBe(4);
+  });
+
   it('drops the cache, but keeps the store queue, the chosen store and the chosen household', async () => {
     const itemId = await deviceWithOldCache(ENRICO);
     environment.setOnline(false);

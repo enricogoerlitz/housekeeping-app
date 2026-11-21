@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   articleDraftFromStarter,
   articleFilterCounts,
+  applyArticleMerge,
   articleUsage,
   classifyIngredientLines,
   cleanSynonyms,
@@ -18,11 +19,10 @@ import {
   similarArticleNames,
   sortArticles,
   validateArticleDraft,
-  type CatalogArticle,
   type StarterCatalogEntry,
 } from './article-catalog';
 import { similarity } from './text';
-import type { Area, Id, Recipe, RecipeIngredient, ShoppingItem } from './types';
+import type { Area, Article, Id, Recipe, RecipeIngredient, ShoppingItem } from './types';
 
 // Counts the expensive comparisons of similarArticleNames without changing what they return.
 vi.mock('./text', async (importOriginal) => {
@@ -30,8 +30,17 @@ vi.mock('./text', async (importOriginal) => {
   return { ...original, similarity: vi.fn(original.similarity) };
 });
 
-function article(id: Id, name: string, rest: Partial<CatalogArticle> = {}): CatalogArticle {
-  return { id, name, synonyms: [], diet: 'unknown', isPantry: false, ...rest };
+function article(id: Id, name: string, rest: Partial<Article> = {}): Article {
+  return {
+    id,
+    name,
+    synonyms: [],
+    diet: 'unknown',
+    isPantry: false,
+    needsReview: false,
+    createdAt: '',
+    ...rest,
+  };
 }
 
 const areas: Area[] = [
@@ -57,7 +66,7 @@ const mango = article('a-mango', 'Mango', { areaId: 'area-obst', diet: 'vegan' }
 const salz = article('a-salz', 'Salz', { diet: 'vegan', isPantry: true });
 const tomaten = article('a-tomaten', 'Tomaten', { areaId: 'area-obst', diet: 'vegan' });
 
-const household: CatalogArticle[] = [kokosmilch, kokosmilchLight, moehren, mango, salz, tomaten];
+const household: Article[] = [kokosmilch, kokosmilchLight, moehren, mango, salz, tomaten];
 
 const starter: StarterCatalogEntry[] = [
   {
@@ -73,7 +82,7 @@ const starter: StarterCatalogEntry[] = [
 ];
 
 function ingredient(id: Id, articleId: Id, rest: Partial<RecipeIngredient> = {}): RecipeIngredient {
-  return { id, articleId, name: '', shoppingRule: 'count', ...rest };
+  return { id, articleId, shoppingRule: 'count', ...rest };
 }
 
 function recipe(id: Id, title: string, ingredients: RecipeIngredient[]): Recipe {
@@ -268,7 +277,8 @@ describe('resolveIngredientArticle', () => {
     const long = `Tomaten, geschält, aus der Dose ${'x'.repeat(150)}`.slice(0, 150);
     const result = resolveIngredientArticle(long, household, starter, areas);
     expect(result.kind).toBe('new');
-    expect(result.kind === 'new' && result.draft.name).toBe(long.slice(0, 120));
+    // "ä" is two letters in the key: 120 characters would give a key of 121, so 119 remain.
+    expect(result.kind === 'new' && result.draft.name).toBe(long.slice(0, 119));
     expect(result.kind === 'new' && result.draft.needsReview).toBe(true);
   });
 
@@ -285,6 +295,11 @@ describe('resolveIngredientArticle', () => {
     const emoji = `${'a'.repeat(119)}🍅🍅`;
     const withEmoji = resolveIngredientArticle(emoji, household, starter, areas);
     expect(withEmoji.kind === 'new' && withEmoji.draft.name).toBe(`${'a'.repeat(119)}🍅`);
+  });
+
+  it('AC-020: the key fits too (articles_name_key_valid): umlauts count twice there', () => {
+    const result = resolveIngredientArticle('ä'.repeat(150), household, starter, areas);
+    expect(result.kind === 'new' && result.draft.name).toBe('ä'.repeat(60));
   });
 
   it('a blank name is rejected', () => {
@@ -331,7 +346,7 @@ describe('resolveIngredientArticles', () => {
       areas,
       newId: ids(),
     });
-    const after: CatalogArticle[] = [...household, ...first.created];
+    const after = [...household, ...first.created];
     const second = resolveIngredientArticles(['Feta', 'Milchkokos', 'Kichererbsen'], {
       articles: after,
       catalog: starter,
@@ -380,6 +395,17 @@ describe('classifyIngredientLines', () => {
       'Kokosmilch',
       'Tomaten',
     ]);
+  });
+
+  it('AC-009: word parts are not similar ("Buttermilch" is no "Meinst du Milch?")', () => {
+    const withMilk = [...household, article('a-milch', 'Milch')];
+    const lines = classifyIngredientLines('1 l Buttermilch\n200 ml Milchkokos', withMilk, starter);
+    expect(lines.map((line) => line.status)).toEqual(['new', 'new']);
+  });
+
+  it('AC-009: a typo of a starter entry is similar too', () => {
+    const [line] = classifyIngredientLines('1 Dose Kichererbsn', household, starter);
+    expect(line?.status === 'similar' && line.suggestion.name).toBe('Kichererbsen');
   });
 
   it('AC-008: an exact synonym is sure', () => {
@@ -474,6 +500,10 @@ describe('validateArticleDraft', () => {
 
   it('a name of 120 characters is fine, 121 are too long', () => {
     expect(validateArticleDraft({ name: 'a'.repeat(120), synonyms: [] }, list)).toEqual([]);
+    // The key of 61 umlauts has 122 letters (articles_name_key_valid).
+    expect(validateArticleDraft({ name: 'ä'.repeat(61), synonyms: [] }, list)[0]?.kind).toBe(
+      'tooLong',
+    );
     expect(validateArticleDraft({ name: 'a'.repeat(121), synonyms: [] }, list)[0]?.kind).toBe(
       'tooLong',
     );
@@ -487,6 +517,33 @@ describe('validateArticleDraft', () => {
     expect(validateArticleDraft({ name: 'Drachenfrucht', synonyms }, list)).toEqual([
       { field: 'synonyms', kind: 'tooMany', message: 'Höchstens 30 Synonyme' },
     ]);
+  });
+});
+
+describe('validateArticleDraft: length of all synonyms', () => {
+  it('2000 characters in all synonyms are fine, 2001 are too many (articles_synonyms_size)', () => {
+    const synonyms = (last: number) =>
+      Array.from(
+        { length: 20 },
+        (_, index) => `${String(index).padStart(2, '0')}${'x'.repeat(index === 19 ? last : 98)}`,
+      );
+    expect(validateArticleDraft({ name: 'Drachenfrucht', synonyms: synonyms(98) }, [])).toEqual([]);
+    expect(validateArticleDraft({ name: 'Drachenfrucht', synonyms: synonyms(99) }, [])).toEqual([
+      {
+        field: 'synonyms',
+        kind: 'tooLong',
+        message: 'Höchstens 2000 Zeichen in allen Synonymen',
+      },
+    ]);
+  });
+
+  it('counts the keys too: umlauts become two letters there (articles_synonym_keys_size)', () => {
+    // 20 synonyms of 100 characters: 2000 as typed, more than 2000 as keys ("ä" → "ae").
+    const synonyms = Array.from(
+      { length: 20 },
+      (_, index) => `${String(index).padStart(2, '0')}ä${'x'.repeat(97)}`,
+    );
+    expect(validateArticleDraft({ name: 'Drachenfrucht', synonyms }, [])[0]?.kind).toBe('tooLong');
   });
 });
 
@@ -547,15 +604,27 @@ describe('filters, counts and sorting', () => {
 
   it('AC-023: "Ohne Bereich" shows only articles without area', () => {
     const similar = similarArticleNames(list);
-    expect(sortArticles(filterArticles(list, 'noArea', similar), 'name')).toEqual([
+    expect(sortArticles(filterArticles(list, 'noArea', { similar, areas }), 'name')).toEqual([
       drachenfrucht,
       geschenkpapier,
     ]);
   });
 
+  it('AC-051: an article whose area is gone counts as "Ohne Bereich", like articleCountsByArea', () => {
+    const orphan = article('a-orphan', 'Katzenfutter', { areaId: 'area-deleted' });
+    const withOrphan = [...list, orphan];
+    const context = { similar: similarArticleNames(withOrphan), areas };
+    expect(sortArticles(filterArticles(withOrphan, 'noArea', context), 'name')).toEqual([
+      drachenfrucht,
+      geschenkpapier,
+      orphan,
+    ]);
+    expect(articleFilterCounts(withOrphan, context).noArea).toBe(3);
+  });
+
   it('AC-023: "Ähnliche Namen" pairs Zwiebel and Zwiebeln with each other', () => {
     const similar = similarArticleNames(list);
-    expect(sortArticles(filterArticles(list, 'similar', similar), 'name')).toEqual([
+    expect(sortArticles(filterArticles(list, 'similar', { similar, areas }), 'name')).toEqual([
       zwiebel,
       zwiebeln,
     ]);
@@ -564,7 +633,7 @@ describe('filters, counts and sorting', () => {
   });
 
   it('AC-021: the chips count their articles', () => {
-    expect(articleFilterCounts(list, similarArticleNames(list))).toEqual({
+    expect(articleFilterCounts(list, { similar: similarArticleNames(list), areas })).toEqual({
       all: 6,
       noArea: 2,
       pantry: 1,
@@ -576,9 +645,9 @@ describe('filters, counts and sorting', () => {
   it('AC-027: an empty filter gives an empty list and a count of 0', () => {
     const none = [zwiebel, reis];
     const similar = similarArticleNames(none);
-    expect(filterArticles(none, 'needsReview', similar)).toEqual([]);
-    expect(articleFilterCounts(none, similar).needsReview).toBe(0);
-    expect(filterArticles([], 'all', new Map())).toEqual([]);
+    expect(filterArticles(none, 'needsReview', { similar, areas })).toEqual([]);
+    expect(articleFilterCounts(none, { similar, areas }).needsReview).toBe(0);
+    expect(filterArticles([], 'all', { similar: new Map(), areas })).toEqual([]);
   });
 
   it('AC-021: "Alle" lists every article, A–Z by German order', () => {
@@ -589,7 +658,7 @@ describe('filters, counts and sorting', () => {
       'apfelmus',
       'Zucker',
     ]);
-    expect(filterArticles(list, 'all', new Map())).toHaveLength(6);
+    expect(filterArticles(list, 'all', { similar: new Map(), areas })).toHaveLength(6);
   });
 
   it('AC-024: "Neu" puts the article created last on top', () => {
@@ -613,7 +682,7 @@ describe('filters, counts and sorting', () => {
   });
 
   it('pantry filter shows the Vorrat articles', () => {
-    expect(filterArticles(list, 'pantry', new Map())).toEqual([reis]);
+    expect(filterArticles(list, 'pantry', { similar: new Map(), areas })).toEqual([reis]);
   });
 });
 
@@ -851,5 +920,67 @@ describe('mergeTargets', () => {
 
   it('AC-041: only the articles passed in are targets', () => {
     expect(mergeTargets('Kokosnuss', 'a-mk', [milchkokos])).toEqual([]);
+  });
+});
+
+describe('applyArticleMerge', () => {
+  const milchkokos = article('a-mk', 'Milchkokos', { synonyms: ['Kokosdrink'], needsReview: true });
+  const contribution = (id: string, label?: string) =>
+    label
+      ? { id, source: { kind: 'recipe' as const, recipeId: 'r-mc', label }, count: 1 }
+      : { id, source: { kind: 'manual' as const }, count: 1, note: 'Bio' };
+
+  it('AC-036: recipes point to the target, both open items become one with both contributions', () => {
+    const curry = recipe('r-curry', 'Curry', [ingredient('i1', 'a-mk', { shoppingNote: 'Bio' })]);
+    const mangoCurry = recipe('r-mc', 'Mango-Curry', [ingredient('i2', 'a-kokosmilch')]);
+    const source = item('s-mk', 'a-mk', { contributions: [contribution('c-hand')] });
+    const target = item('s-km', 'a-kokosmilch', {
+      contributions: [contribution('c-mc', 'Mango-Curry (Sa)')],
+    });
+
+    const result = applyArticleMerge(milchkokos, kokosmilch, [curry, mangoCurry], [source, target]);
+
+    expect(result.recipes[0]?.ingredients).toEqual([
+      ingredient('i1', 'a-kokosmilch', { shoppingNote: 'Bio' }),
+    ]);
+    expect(result.recipes[1]).toBe(mangoCurry);
+    expect(result.items).toEqual([
+      {
+        ...target,
+        contributions: [contribution('c-mc', 'Mango-Curry (Sa)'), contribution('c-hand')],
+      },
+    ]);
+    expect(result.article).toMatchObject({
+      id: 'a-kokosmilch',
+      synonyms: ['Milchkokos', 'Kokosdrink'],
+      needsReview: false,
+    });
+    expect(result.removedItemId).toBe('s-mk');
+  });
+
+  it('AC-039: both in one recipe stay two rows with their other data', () => {
+    const curry = recipe('r', 'Curry', [
+      ingredient('i1', 'a-mk', { amount: { text: '200 ml', qty: 200, unit: 'ml' } }),
+      ingredient('i2', 'a-kokosmilch', { amount: { text: '400 ml', qty: 400, unit: 'ml' } }),
+    ]);
+    const [merged] = applyArticleMerge(milchkokos, kokosmilch, [curry], []).recipes;
+    expect(merged?.ingredients.map((entry) => [entry.articleId, entry.amount?.text])).toEqual([
+      ['a-kokosmilch', '200 ml'],
+      ['a-kokosmilch', '400 ml'],
+    ]);
+  });
+
+  it('other items of the source (checked, or open without an open target) move to the target', () => {
+    const done = item('s-done', 'a-mk', { checked: true });
+    const open = item('s-open', 'a-mk');
+    const other = item('s-other', 'a-mango');
+    const result = applyArticleMerge(milchkokos, kokosmilch, [], [done, open, other]);
+    expect(result.items.map((entry) => [entry.id, entry.articleId, entry.checked])).toEqual([
+      ['s-done', 'a-kokosmilch', true],
+      ['s-open', 'a-kokosmilch', false],
+      ['s-other', 'a-mango', false],
+    ]);
+    expect(result.items[2]).toBe(other);
+    expect(result.removedItemId).toBeUndefined();
   });
 });

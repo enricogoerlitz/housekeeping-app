@@ -34,6 +34,7 @@ import {
   type Row,
   type ShoppingContribution,
   type ShoppingItem,
+  type ShoppingRule,
   type SmallRow,
   type Store,
   type TableRows,
@@ -255,6 +256,9 @@ const articleRow = (householdId: string, article: Article) =>
     area_id: article.areaId ?? null,
     diet: article.diet,
     is_pantry: article.isPantry,
+    default_shopping_rule: article.defaultShoppingRule ?? null,
+    needs_review: article.needsReview,
+    ...(article.createdAt ? { created_at: article.createdAt } : {}),
   }));
 
 const storeRow = (householdId: string, store: Store) =>
@@ -617,6 +621,11 @@ function toArticle(row: Row): Article {
     areaId: opt(r.area_id),
     diet: (r.diet ?? 'unknown') as Article['diet'],
     isPantry: r.is_pantry === true,
+    ...(r.default_shopping_rule
+      ? { defaultShoppingRule: r.default_shopping_rule as ShoppingRule }
+      : {}),
+    needsReview: r.needs_review === true,
+    createdAt: r.created_at ?? '',
   };
 }
 

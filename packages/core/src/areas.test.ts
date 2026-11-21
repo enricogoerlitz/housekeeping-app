@@ -15,7 +15,16 @@ const kuehlung: Area = { id: 'area-kuehlung', name: 'Kühlung', sort: 1 };
 const areas = [getraenke, kuehlung];
 
 function article(id: string, areaId?: string): Article {
-  return { id, name: id, synonyms: [], diet: 'unknown', isPantry: false, areaId };
+  return {
+    id,
+    name: id,
+    synonyms: [],
+    diet: 'unknown',
+    isPantry: false,
+    needsReview: false,
+    createdAt: '',
+    areaId,
+  };
 }
 
 describe('validateAreaName', () => {
