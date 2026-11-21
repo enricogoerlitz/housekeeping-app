@@ -10,7 +10,7 @@ import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { ChoreFormFields, useChoreDraft } from './chore-form';
+import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
 
 /** "Neue Aufgabe": only the title is required; everything else has a sensible default. */
 export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) {
@@ -20,9 +20,11 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   const online = useOnlineOnly();
   const [draft, update, reset] = useChoreDraft(() => newChoreDraft(today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
+  const time = useChoreTime(undefined);
 
   const close = () => {
     reset();
+    time.reset();
     setErrors({});
     props.onClose();
   };
@@ -30,9 +32,10 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   const save = () => {
     const found = choreDraftErrors(draft);
     setErrors(found);
-    if (found.title || found.weekdays) return;
+    const read = time.read();
+    if (found.title || found.weekdays || !read.ok) return;
     try {
-      createChore(choreFieldsOf(draft, members));
+      createChore({ ...choreFieldsOf(draft, members), dueTime: read.time });
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
       return;
@@ -75,6 +78,8 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
         onSubmit={save}
         today={today}
         members={members}
+        time={time}
+        offlineHint={online.hint}
         autoFocus
       />
     </Sheet>

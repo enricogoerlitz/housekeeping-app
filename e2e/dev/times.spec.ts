@@ -1,0 +1,185 @@
+import type { Page } from '@playwright/test';
+
+import {
+  day,
+  expect,
+  goOffline,
+  inThisWeek,
+  nav,
+  open,
+  showPlanWeek,
+  test,
+  tid,
+  TODAY,
+} from '../helpers';
+import { seedIds } from '../seed-ids';
+
+// Spec 0013, task 9 — times on a chore and the reservation of a restaurant entry, and the pages a
+// notification opens (`/haushalt?aufgabe=…`, `/kalender?tag=…&eintrag=…`). Runs in the dev smoke
+// (playwright.dev.config.ts) on a phone after one fresh seed: "Bad putzen" is due today,
+// "Müll rausbringen" the day after tomorrow at 19:00, and "Trattoria Da Enzo" (plan-enzo-2) is
+// planned the day after tomorrow in the evening, reserved for 19:30.
+
+const BAD = seedIds['chore-bad'];
+const MUELL = seedIds['chore-muell'];
+const ENZO = seedIds['plan-enzo-2'];
+const LASAGNE = seedIds['plan-2'];
+const EISLAUFEN = seedIds['plan-eislaufen-1'];
+const UNKNOWN = '00000000-0000-4000-8000-000000000000';
+const IN_TWO_DAYS = day(2);
+
+/** The "Übersicht" shows `date` (a day of this or the next week). */
+async function showOverviewDay(page: Page, date: string): Promise<void> {
+  await nav(page, 'index');
+  if (!inThisWeek(date)) await tid(page, 'today-week-next').click();
+  await tid(page, `today-week-${date}`).click();
+}
+
+/** Opens "Bearbeiten" of the chore in the sheet that is open. */
+async function editChore(page: Page): Promise<void> {
+  await tid(page, 'chore-edit').click();
+  await expect(tid(page, 'chore-due-time')).toBeVisible();
+}
+
+test('AC-022, AC-025: a time on "Bad putzen" shows in Haushalt, Zu tun and the household row; ✕ removes it', async ({
+  page,
+}) => {
+  await open(page, '/haushalt');
+  await tid(page, `chore-${BAD}`).click();
+  await editChore(page);
+  await expect(tid(page, 'chore-due-time')).toHaveValue('');
+
+  // Only five-minute steps (Decision 4); the hint names the own setting (Offene Frage 3 d).
+  await tid(page, 'chore-due-time').fill('19:03');
+  await tid(page, 'chore-save').click();
+  await expect(tid(page, 'chore-due-time-error')).toHaveText('Bitte in 5-Minuten-Schritten');
+  await tid(page, 'chore-due-time').fill('19');
+  await expect(tid(page, 'chore-sheet')).toContainText(
+    'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)',
+  );
+  await tid(page, 'chore-save').click();
+  await expect(tid(page, 'chore-sheet')).toContainText('19:00');
+  await tid(page, 'chore-sheet-close').click();
+  await expect(tid(page, `chore-${BAD}`)).toContainText('Bad putzen · 19:00');
+
+  await nav(page, 'index');
+  await expect(tid(page, `today-chore-${BAD}`)).toContainText('Bad putzen · 19:00');
+  await nav(page, 'kalender');
+  await expect(tid(page, `chore-occ-open-${BAD}`)).toContainText('Bad putzen · 19:00');
+
+  // ✕ removes the time (AC-025).
+  await nav(page, 'haushalt');
+  await tid(page, `chore-${BAD}`).click();
+  await editChore(page);
+  await expect(tid(page, 'chore-due-time')).toHaveValue('19:00');
+  await tid(page, 'chore-due-time-clear').click();
+  await expect(tid(page, 'chore-due-time')).toHaveValue('');
+  await tid(page, 'chore-save').click();
+  await tid(page, 'chore-sheet-close').click();
+  await expect(tid(page, `chore-${BAD}`)).not.toContainText('19:00');
+  await nav(page, 'index');
+  await expect(tid(page, `today-chore-${BAD}`)).not.toContainText('19:00');
+});
+
+test('AC-022: the seeded "Müll rausbringen · 19:00" on its day in Zu tun and in the household row', async ({
+  page,
+}) => {
+  await open(page, '/');
+  await showOverviewDay(page, IN_TWO_DAYS);
+  await expect(tid(page, 'today-chores')).toContainText('Müll rausbringen · 19:00');
+  await nav(page, 'kalender');
+  await showPlanWeek(page, IN_TWO_DAYS);
+  await expect(tid(page, `chore-occ-plan-${MUELL}-${IN_TWO_DAYS}`)).toContainText(
+    'Müll rausbringen · 19:00',
+  );
+});
+
+test('AC-027, AC-029, AC-037: the reservation link opens the entry with Route; set 19:30, remind 1 h', async ({
+  page,
+}) => {
+  await open(page, `/kalender?tag=${IN_TWO_DAYS}&eintrag=${ENZO}`);
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
+  await expect(tid(page, 'entry-sheet')).toContainText('Trattoria Da Enzo');
+  await expect(tid(page, 'entry-route')).toBeVisible();
+  await expect(tid(page, 'entry-reserved-at')).toHaveValue('19:30');
+  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 2 h vorher');
+
+  // ✕: no time, no reminder.
+  await tid(page, 'entry-reserved-at-clear').click();
+  await expect(tid(page, 'entry-reserved-at')).toHaveValue('');
+  await expect(tid(page, 'entry-remind')).toBeHidden();
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await expect(tid(page, `entry-${ENZO}`)).not.toContainText('19:30');
+
+  // Typed as "1930", saved with "Fertig" (AC-027); a wrong time keeps the window open.
+  await tid(page, `entry-${ENZO}`).click();
+  await tid(page, 'entry-reserved-at').fill('25:00');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-reserved-at-error')).toHaveText('Keine gültige Uhrzeit');
+  await tid(page, 'entry-reserved-at').fill('1930');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await expect(tid(page, `entry-${ENZO}`)).toContainText('Trattoria Da Enzo · 19:30');
+
+  await tid(page, `entry-${ENZO}`).click();
+  await expect(tid(page, 'entry-reserved-at')).toHaveValue('19:30');
+  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 2 h vorher');
+  await tid(page, 'entry-remind').click();
+  await tid(page, 'entry-remind-60').click();
+  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 1 h vorher');
+  await tid(page, 'entry-done').click();
+  await tid(page, `entry-${ENZO}`).click();
+  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 1 h vorher');
+  await tid(page, 'entry-done').click();
+
+  // The card on the "Übersicht" of that day shows the time.
+  await showOverviewDay(page, IN_TWO_DAYS);
+  await expect(tid(page, `today-meal-${ENZO}`)).toContainText('19:30');
+});
+
+test('AC-030: recipe and activity entries have neither "Reserviert um" nor "Erinnern"', async ({
+  page,
+}) => {
+  await open(page, `/kalender?tag=${TODAY}&eintrag=${LASAGNE}`);
+  await expect(tid(page, 'entry-sheet')).toContainText('Lasagne');
+  await expect(tid(page, 'entry-reserved-at')).toBeHidden();
+  await expect(tid(page, 'entry-remind')).toBeHidden();
+  await tid(page, 'entry-done').click();
+  await tid(page, `entry-${EISLAUFEN}`).click();
+  await expect(tid(page, 'entry-sheet')).toContainText('Eislaufen');
+  await expect(tid(page, 'entry-reserved-at')).toBeHidden();
+  await expect(tid(page, 'entry-remind')).toBeHidden();
+});
+
+test('AC-037, AC-038: the chore link opens the chore; unknown or broken ids open the page without a window', async ({
+  page,
+}) => {
+  await open(page, `/haushalt?aufgabe=${MUELL}&haushalt=${seedIds['hh-demo']}`);
+  await expect(tid(page, 'chore-sheet')).toBeVisible();
+  await expect(tid(page, 'chore-sheet')).toContainText('Müll rausbringen');
+
+  await open(page, `/haushalt?aufgabe=${UNKNOWN}`);
+  await expect(tid(page, 'chores-screen')).toBeVisible();
+  await expect(tid(page, 'chore-sheet')).toBeHidden();
+  await open(page, '/haushalt?aufgabe=kaputt');
+  await expect(tid(page, 'chores-screen')).toBeVisible();
+  await expect(tid(page, 'chore-sheet')).toBeHidden();
+
+  await open(page, `/kalender?tag=${IN_TWO_DAYS}&eintrag=${UNKNOWN}`);
+  await expect(tid(page, `day-${IN_TWO_DAYS}`)).toBeVisible();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+});
+
+test('offline: the time of a chore and the reservation are greyed out with the hint', async ({
+  page,
+}) => {
+  await open(page, `/kalender?tag=${IN_TWO_DAYS}`);
+  await goOffline(page);
+  await tid(page, `entry-${ENZO}`).click();
+  await expect(tid(page, 'entry-sheet')).toContainText('Offline – zum Bearbeiten brauchst du Netz');
+  await expect(tid(page, 'entry-reserved-at')).not.toBeEditable();
+  await expect(tid(page, 'entry-reserved-at-clear')).toBeHidden();
+  await tid(page, 'entry-remind').click();
+  await expect(tid(page, 'entry-remind-60')).toBeDisabled();
+});

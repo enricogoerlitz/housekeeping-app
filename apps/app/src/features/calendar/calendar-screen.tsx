@@ -10,6 +10,7 @@ import {
   weekRangeLabel,
   type AbsenceStripe,
   type CalendarView,
+  type Id,
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
@@ -26,13 +27,8 @@ import {
   useBreakpoint,
   type MenuOption,
 } from '@housekeeping/ui';
-import {
-  useLocalSearchParams,
-  useNavigation,
-  useRouter,
-  type NativeStackNavigationProp,
-} from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { AbsenceSheet } from '@/features/absences/absence-sheet';
@@ -42,6 +38,7 @@ import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useSettings } from '@/lib/settings';
+import { useHandedTarget } from '@/lib/target-params';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
@@ -56,6 +53,9 @@ const VIEWS: { value: CalendarView; label: string }[] = [
 ];
 
 type MoreAction = 'household-row' | 'absence-new' | 'absences';
+
+/** `/kalender?tag=…` from the "Übersicht"; with `eintrag` and `haushalt` from a notification. */
+const TARGET_PARAMS = ['tag', 'eintrag', 'haushalt'] as const;
 
 /** The day of the month whose entries stand under the grid on phones: today, else the first. */
 function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
@@ -81,7 +81,10 @@ export function CalendarScreen() {
   const [start, setStart] = useState<ISODate>(() => periodStart('week', today));
   const [selected, setSelected] = useState<ISODate>(today);
   const [adding, setAdding] = useState<AddTarget | undefined>();
-  const [openEntry, setOpenEntry] = useState<MealPlanEntry | undefined>();
+  const [openEntryId, setOpenEntryId] = useState<Id | undefined>();
+  // Removed on another device while open: the window just closes.
+  const openEntry = data.entries.find((entry) => entry.id === openEntryId);
+  const setOpenEntry = (entry: MealPlanEntry | undefined) => setOpenEntryId(entry?.id);
   const [pantryCheck, setPantryCheck] = useState(false);
   const [newAbsence, setNewAbsence] = useState(false);
 
@@ -90,25 +93,23 @@ export function CalendarScreen() {
     setStart(nextStart);
     if (nextView === 'month') setSelected(defaultSelected(nextStart, today));
   };
-  // The day handed over by the "Übersicht": taken once, then the parameter is cleared, so the same
-  // link works again and paging is not pulled back to it.
+  // The day handed over by the "Übersicht" or a notification: taken once, then the parameters are
+  // cleared, so the same link works again and paging is not pulled back to it. A notification's
+  // entry opens its window; an unknown entry opens nothing (spec 0013, AC-037, AC-038).
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
+  const target = useHandedTarget('/kalender', TARGET_PARAMS);
   const handedDay = calendarDayParam(params.tag);
-  const [takenDay, setTakenDay] = useState<ISODate | undefined>();
-  if (handedDay !== takenDay) {
-    setTakenDay(handedDay);
+  const handedEntryId = target.screen === 'calendar' ? target.entryId : undefined;
+  const [taken, setTaken] = useState<{ day?: ISODate; entryId?: Id }>({});
+  if (handedDay !== taken.day || handedEntryId !== taken.entryId) {
+    setTaken({ day: handedDay, entryId: handedEntryId });
     if (handedDay) {
       setView('week');
       setStart(periodStart('week', handedDay));
       setSelected(handedDay);
     }
+    if (handedEntryId) setOpenEntryId(handedEntryId);
   }
-  // On this screen's own route: router.setParams would set it on the focused tab route above it.
-  const navigation = useNavigation<NativeStackNavigationProp<{ index: { tag?: string } }>>();
-  const hasParam = params.tag !== undefined;
-  useEffect(() => {
-    if (hasParam) navigation.setParams({ tag: undefined });
-  }, [hasParam, navigation]);
 
   const changeView = (next: CalendarView) => {
     if (next !== view) show(next, switchView(view, next, start, today));
@@ -332,6 +333,7 @@ export function CalendarScreen() {
       {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
       {openEntry ? (
         <EntrySheet
+          key={openEntry.id}
           entryId={openEntry.id}
           weekDates={weekDates(openEntry.date ?? start)}
           onClose={() => setOpenEntry(undefined)}

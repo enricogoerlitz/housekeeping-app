@@ -10,6 +10,7 @@ import {
   type Member,
   type PlanEntryVariant,
   type Recipe,
+  type TimeOfDay,
 } from '@housekeeping/core';
 
 /** "Mo 17". */
@@ -82,4 +83,9 @@ export function splitSummary(recipe: Recipe, variants: PlanEntryVariant[]): stri
 /** "Passt nicht für Nadja", "Passt nicht für Enrico und Nadja". */
 export function misfitText(members: Member[]): string {
   return `Passt nicht für ${members.map((member) => member.name).join(' und ')}`;
+}
+
+/** "Reserviert um" of a restaurant entry (spec 0013, REQ-008); other kinds never have one. */
+export function reservationTime(entry: MealPlanEntry): TimeOfDay | undefined {
+  return entry.kind === 'restaurant' ? entry.reservedAt : undefined;
 }

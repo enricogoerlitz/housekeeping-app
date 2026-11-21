@@ -10,6 +10,7 @@ import {
   formatLongDate,
   plannedAllLabel,
   withNote,
+  withTime,
   type Activity,
   type ISODate,
   type MealPlanEntry,
@@ -125,7 +126,8 @@ export function TodayMeals(props: TodayMealsProps) {
       return (
         <PlannedCard
           entry={entry}
-          kicker={slotName}
+          // "Abend · 19:30": the reservation (spec 0013, AC-027).
+          kicker={withTime(slotName, entry.reservedAt)}
           title={restaurant.name}
           meta={restaurant.cuisine}
           placeholderIcon="utensils"

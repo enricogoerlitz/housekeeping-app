@@ -5,6 +5,7 @@ import {
   daysOverdue,
   flexibleProgress,
   recurrenceLabel,
+  withTime,
   type Chore,
   type HouseholdRowItem,
   type ISODate,
@@ -94,7 +95,7 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
               <RowTransition key={chore.id}>
                 <CheckRow
                   testID={`today-chore-${chore.id}`}
-                  title={chore.title}
+                  title={withTime(chore.title, chore.dueTime)}
                   checked={checked}
                   disabled={online.disabled}
                   onToggle={() => check.toggle(chore)}

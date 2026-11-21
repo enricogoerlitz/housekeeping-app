@@ -1,5 +1,9 @@
+import { useNotificationSettings } from '@housekeeping/api';
 import {
+  choreTimeHint,
+  formatTime,
   monthName,
+  parseTimeInput,
   seasonLabel,
   seasonMonths,
   weekdayShortName,
@@ -11,8 +15,18 @@ import {
   type ChoreRhythm,
   type ISODate,
   type Member,
+  type TimeOfDay,
 } from '@housekeeping/core';
-import { Chip, ChoiceChips, Row, Stack, SwitchRow, Text, TextField } from '@housekeeping/ui';
+import {
+  Chip,
+  ChoiceChips,
+  Row,
+  Stack,
+  SwitchRow,
+  Text,
+  TextField,
+  TimeField,
+} from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
 import { DateChips } from './date-chips';
@@ -268,7 +282,72 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
   );
 }
 
-/** The whole form: title, room, rhythm, assignment, effort, season. */
+/**
+ * „Uhrzeit“ of a chore (spec 0013, REQ-007): typed text, read with core `parseTimeInput` on save.
+ * It is not part of the core draft; the sheets add it to the chore's fields.
+ */
+export interface ChoreTime {
+  text: string;
+  error: string | undefined;
+  setText: (text: string) => void;
+  /** Reads the text; an invalid time shows its error and returns ok: false. */
+  read: () => { ok: true; time: TimeOfDay | undefined } | { ok: false };
+  reset: () => void;
+}
+
+export function useChoreTime(initial: TimeOfDay | undefined): ChoreTime {
+  const start = initial ? formatTime(initial) : '';
+  const [text, setTextState] = useState(start);
+  const [error, setError] = useState<string>();
+  return {
+    text,
+    error,
+    setText: (next) => {
+      setTextState(next);
+      setError(undefined);
+    },
+    read: () => {
+      const result = parseTimeInput(text);
+      if (!result.ok) {
+        setError(result.error);
+        return { ok: false };
+      }
+      return { ok: true, time: result.time };
+    },
+    reset: () => {
+      setTextState(start);
+      setError(undefined);
+    },
+  };
+}
+
+/**
+ * The field „Uhrzeit (optional)“ with ✕ and, with a time, whether the own setting „Aufgaben mit
+ * Uhrzeit“ reminds (AC-022, Offene Frage 3 d). Offline it is greyed out with the hint.
+ */
+function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
+  const settings = useNotificationSettings();
+  const { time } = props;
+  // Without the settings row yet, the server's default counts: chore reminders are on (D36).
+  const reminds = settings?.choreRemindersEnabled ?? true;
+  return (
+    <TimeField
+      label="Uhrzeit (optional)"
+      placeholder="z. B. 19:00"
+      value={time.text}
+      onChangeText={time.setText}
+      onClear={() => time.setText('')}
+      clearLabel="Uhrzeit entfernen"
+      emptyLabel="keine Uhrzeit"
+      error={time.error}
+      hint={props.offlineHint ?? (time.text.trim() ? choreTimeHint(reminds) : undefined)}
+      disabled={props.offlineHint !== undefined}
+      testID="chore-due-time"
+    />
+  );
+}
+
+/** The whole form: title, room, rhythm, assignment, time, effort, season. */
 export function ChoreFormFields(props: {
   draft: ChoreDraft;
   update: DraftUpdate;
@@ -277,6 +356,9 @@ export function ChoreFormFields(props: {
   onSubmit: () => void;
   today: ISODate;
   members: Member[];
+  time: ChoreTime;
+  /** Offline: the time is greyed out with this hint (the other fields stay as they were). */
+  offlineHint?: string;
   autoFocus?: boolean;
 }) {
   const { draft, update } = props;
@@ -313,6 +395,7 @@ export function ChoreFormFields(props: {
         weekdayError={props.errors.weekdays}
       />
       <AssignmentField draft={draft} update={update} members={props.members} />
+      <ChoreTimeField time={props.time} offlineHint={props.offlineHint} />
       <Field label="Aufwand">
         <ChoiceChips<ChoreEffortChoice>
           label="Aufwand"

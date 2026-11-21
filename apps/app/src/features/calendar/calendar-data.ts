@@ -19,6 +19,7 @@ import {
   entryLineLabel,
   householdRow,
   stripeHasPackingList,
+  withTime,
   type AbsenceStripe,
   type HouseholdRowItem,
   type Id,
@@ -28,7 +29,7 @@ import {
 } from '@housekeeping/core';
 import { useMemo } from 'react';
 
-import { entryTitle } from '@/features/meal-plan/labels';
+import { entryTitle, reservationTime } from '@/features/meal-plan/labels';
 
 /** Everything the three views read, resolved once per render of the calendar (spec 0010). */
 export function useCalendarData() {
@@ -79,12 +80,18 @@ export function useCalendarData() {
     stripes,
     /** The entries of a day, by Tageszeit and kind (spec 0004, AC-002). */
     dayEntries: (date: ISODate) => entriesForDay(byDate.get(date) ?? [], date, slotOrder),
-    /** The text of an entry's row: a collection with the number of its recipes (spec 0009, AC-022). */
+    /**
+     * The text of an entry's row: a collection with the number of its recipes (spec 0009,
+     * AC-022), a reserved restaurant with its time, "Trattoria Da Enzo · 19:30" (spec 0013, AC-027).
+     */
     lineTitleOf: (entry: MealPlanEntry) =>
-      entryLineLabel(
-        entry,
-        entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
-        book,
+      withTime(
+        entryLineLabel(
+          entry,
+          entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
+          book,
+        ),
+        reservationTime(entry),
       ),
     slotName: (slotId: Id) => slots.find((slot) => slot.id === slotId)?.name ?? '',
     /** The stripe carries the bag icon: one of its absences has a packing list (spec 0012, AC-046). */

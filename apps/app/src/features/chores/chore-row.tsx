@@ -4,6 +4,7 @@ import {
   flexibleProgress,
   recurrenceLabel,
   relativeDayLabel,
+  withTime,
   type Chore,
   type ISODate,
   type Member,
@@ -53,7 +54,7 @@ export function ChoreRow(props: ChoreRowProps) {
   return (
     <ListRow
       testID={`chore-${chore.id}`}
-      title={chore.title}
+      title={withTime(chore.title, chore.dueTime)}
       strike={checked}
       selected={props.selected}
       accessibilityLabel={`${chore.title}, Details`}

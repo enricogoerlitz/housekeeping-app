@@ -2,6 +2,7 @@ import {
   movePlanEntry,
   NOTE_MAX_LENGTH,
   removePlanEntry,
+  setReservation,
   snapshot,
   updatePlanEntry,
   useActivitiesById,
@@ -11,16 +12,37 @@ import {
   useRecipesById,
   useRestaurantsById,
 } from '@housekeeping/api';
-import type { Id, ISODate } from '@housekeeping/core';
-import { Button, Chip, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import {
+  DEFAULT_REMIND_MINUTES,
+  formatTime,
+  parseTimeInput,
+  REMIND_CHOICES,
+  remindLabel,
+  type Id,
+  type ISODate,
+  type MealPlanEntry,
+  type TimeOfDay,
+} from '@housekeeping/core';
+import {
+  Button,
+  Chip,
+  Menu,
+  Row,
+  Sheet,
+  Stack,
+  Text,
+  TextField,
+  TimeField,
+  toast,
+} from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
-import { RouteSheet } from '@/features/restaurants/route-sheet';
+import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { dayLabel, entryTitle } from './labels';
@@ -35,7 +57,8 @@ function Label(props: { children: string }) {
 
 /**
  * Actions for one entry in the plan: open the recipe, restaurant or activity, the Zusatz and
- * "Route" of an activity, move, change the cook, remove.
+ * "Route" of an activity, "Route", "Reserviert um" and "Erinnern … vorher" of a restaurant (spec
+ * 0013, REQ-008), move, change the cook, remove. "Fertig" saves a typed time and closes.
  */
 export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: () => void }) {
   const router = useRouter();
@@ -50,25 +73,36 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   const openRestaurant = useOpenRestaurant();
   const [routeOpen, setRouteOpen] = useState(false);
   const entry = entries.find((candidate) => candidate.id === props.entryId);
+  const reservation = useReservationDraft(entry);
   if (!entry) return null;
   const title = entryTitle(entry, recipesById, entries, restaurantsById, activitiesById);
   const activity =
     entry.kind === 'activity' && entry.activityId ? activitiesById[entry.activityId] : undefined;
-
-  if (routeOpen && activity) {
-    return (
-      <RouteSheet
-        restaurant={{
+  const restaurant =
+    entry.kind === 'restaurant' && entry.restaurantId
+      ? restaurantsById[entry.restaurantId]
+      : undefined;
+  // "Route" only where there is a place (plan, Decision 11): a map link or an address.
+  const routeTarget: RouteTarget | undefined = activity
+    ? hasPlace(activity)
+      ? {
           name: activity.name,
           address: activity.address,
           location: activity.location,
           placeName: activity.placeName,
-        }}
-        visible
-        onClose={() => setRouteOpen(false)}
-      />
-    );
+        }
+      : undefined
+    : restaurant && (restaurant.location || restaurant.address)
+      ? restaurant
+      : undefined;
+
+  if (routeOpen && routeTarget) {
+    return <RouteSheet restaurant={routeTarget} visible onClose={() => setRouteOpen(false)} />;
   }
+
+  const done = () => {
+    if (entry.kind !== 'restaurant' || reservation.save()) props.onClose();
+  };
 
   const move = (date: ISODate | null, slotId?: Id) => {
     movePlanEntry(entry.id, date, slotId);
@@ -90,7 +124,14 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   };
 
   return (
-    <Sheet visible onClose={props.onClose} title={title} testID="entry-sheet" size="m">
+    <Sheet
+      visible
+      onClose={props.onClose}
+      title={title}
+      testID="entry-sheet"
+      size="m"
+      footer={<Button label="Fertig" full onPress={done} testID="entry-done" />}
+    >
       <Stack gap={20}>
         {online.hint ? (
           <Text variant="small" color="warn">
@@ -126,7 +167,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
                 router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activity.id } });
               }}
             />
-            {hasPlace(activity) ? (
+            {routeTarget ? (
               <Button
                 label="Route"
                 icon="map-pin"
@@ -146,16 +187,35 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
           />
         ) : null}
         {entry.restaurantId && entry.kind === 'restaurant' ? (
-          <Button
-            label="Restaurant öffnen"
-            icon="utensils"
-            variant="secondary"
-            testID="entry-open-restaurant"
-            onPress={() => {
-              const restaurantId = entry.restaurantId;
-              props.onClose();
-              if (restaurantId) openRestaurant(restaurantId);
-            }}
+          <Row gap={10} wrap>
+            <Button
+              label="Restaurant öffnen"
+              icon="utensils"
+              variant="secondary"
+              testID="entry-open-restaurant"
+              onPress={() => {
+                const restaurantId = entry.restaurantId;
+                props.onClose();
+                if (restaurantId) openRestaurant(restaurantId);
+              }}
+            />
+            {routeTarget ? (
+              <Button
+                label="Route"
+                icon="map-pin"
+                variant="secondary"
+                testID="entry-route"
+                onPress={() => setRouteOpen(true)}
+              />
+            ) : null}
+          </Row>
+        ) : null}
+        {entry.kind === 'restaurant' ? (
+          <ReservationFields
+            entry={entry}
+            draft={reservation}
+            disabled={online.disabled}
+            hint={online.hint}
           />
         ) : null}
         <View>
@@ -278,6 +338,127 @@ function NoteField(props: { entryId: Id; note?: string; disabled: boolean }) {
           disabled={props.disabled}
           onPress={save}
           testID="entry-note-save"
+        />
+      ) : null}
+    </View>
+  );
+}
+
+interface ReservationDraft {
+  text: string;
+  error: string | undefined;
+  setText: (text: string) => void;
+  /** Saves the typed time if it changed; false (with the error shown) when it cannot. */
+  save: () => boolean;
+  clear: () => void;
+}
+
+/**
+ * The typed "Reserviert um" of a restaurant entry: saved on Enter, when the field loses focus and
+ * with "Fertig" (AC-027); ✕ removes it at once. Only five-minute steps (Decision 4).
+ */
+function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft {
+  const stored = entry?.reservedAt;
+  const [text, setTextState] = useState(stored ? formatTime(stored) : '');
+  const [error, setError] = useState<string>();
+  // What was sent last: blur and "Fertig" come one after the other, before the next render.
+  const saved = useRef<TimeOfDay | undefined>(stored);
+
+  const write = (time: TimeOfDay | undefined): boolean => {
+    if (!entry || time === saved.current) return true;
+    try {
+      setReservation(entry.id, { reservedAt: time ?? null });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+      return false;
+    }
+    saved.current = time;
+    toast.show({
+      message: time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt',
+    });
+    return true;
+  };
+
+  return {
+    text,
+    error,
+    setText: (next) => {
+      setTextState(next);
+      setError(undefined);
+    },
+    save: () => {
+      const result = parseTimeInput(text);
+      if (!result.ok) {
+        setError(result.error);
+        return false;
+      }
+      return write(result.time);
+    },
+    clear: () => {
+      setTextState('');
+      setError(undefined);
+      write(undefined);
+    },
+  };
+}
+
+/**
+ * "Reserviert um 19:30 ✕" and, with a time, "Erinnern 2 h vorher ▾" (spec 0013, D43, AC-027,
+ * AC-029). Offline both are greyed out with the hint.
+ */
+function ReservationFields(props: {
+  entry: MealPlanEntry;
+  draft: ReservationDraft;
+  disabled: boolean;
+  hint: string | undefined;
+}) {
+  const { entry, draft } = props;
+  const remind = entry.remindMinutesBefore ?? DEFAULT_REMIND_MINUTES;
+  return (
+    <View style={{ gap: 12 }}>
+      <TimeField
+        label="Reserviert um"
+        placeholder="z. B. 19:30"
+        value={draft.text}
+        onChangeText={draft.setText}
+        onBlur={() => {
+          if (!props.disabled) draft.save();
+        }}
+        onSubmitEditing={() => {
+          if (!props.disabled) draft.save();
+        }}
+        onClear={draft.clear}
+        clearLabel="Reservierung entfernen"
+        emptyLabel="keine Reservierung"
+        error={draft.error}
+        hint={props.hint ?? 'Die Uhrzeit, für die ihr reserviert habt.'}
+        disabled={props.disabled}
+        testID="entry-reserved-at"
+      />
+      {entry.reservedAt ? (
+        <Menu<string>
+          label={`Erinnern ${remindLabel(remind)}`}
+          accessibilityLabel={`Erinnern: ${remindLabel(remind)}`}
+          icon="bell"
+          value={String(remind)}
+          options={REMIND_CHOICES.map((minutes) => ({
+            value: String(minutes),
+            label: remindLabel(minutes),
+            disabled: props.disabled,
+            hint: props.hint,
+          }))}
+          onChange={(value) => {
+            const minutes = REMIND_CHOICES.find((choice) => String(choice) === value);
+            if (minutes === undefined || minutes === remind) return;
+            try {
+              setReservation(entry.id, { remindMinutesBefore: minutes });
+            } catch {
+              toast.show({ message: 'Hat nicht geklappt – bitte noch einmal versuchen' });
+              return;
+            }
+            toast.show({ message: `Erinnerung ${remindLabel(minutes)}` });
+          }}
+          testID="entry-remind"
         />
       ) : null}
     </View>

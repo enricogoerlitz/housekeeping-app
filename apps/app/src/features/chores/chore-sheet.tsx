@@ -16,6 +16,7 @@ import {
   choreDraftFrom,
   choreFieldsOf,
   seasonLabel,
+  withTime,
   type Chore,
   type ChoreDraftErrors,
   type ChoreEvent,
@@ -38,7 +39,7 @@ import { View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
-import { ChoreFormFields, useChoreDraft } from './chore-form';
+import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
 import { choreFacts, dayWithDate, eventIcon, eventKindLabel } from './chore-labels';
 
 const RECENT_ENTRIES = 3;
@@ -100,6 +101,7 @@ function useChoreDetail(props: ChoreDetailProps): {
   const [editing, setEditing] = useState(false);
   const [draft, update, reset] = useChoreDraft(() => choreDraftFrom(chore, today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
+  const time = useChoreTime(chore.dueTime);
   const recent = useMemo(() => recentEntries(events, chore), [events, chore]);
   const asNeeded = chore.recurrence.type === 'asNeeded';
 
@@ -112,6 +114,7 @@ function useChoreDetail(props: ChoreDetailProps): {
 
   const startEditing = () => {
     reset();
+    time.reset();
     setErrors({});
     setEditing(true);
   };
@@ -119,9 +122,14 @@ function useChoreDetail(props: ChoreDetailProps): {
   const save = () => {
     const found = choreDraftErrors(draft);
     setErrors(found);
-    if (found.title || found.weekdays) return;
+    const read = time.read();
+    if (found.title || found.weekdays || !read.ok) return;
     try {
-      updateChore(chore.id, choreFieldsOf(draft, members, chore));
+      // An empty field removes the time (✕, AC-025).
+      updateChore(chore.id, {
+        ...choreFieldsOf(draft, members, chore),
+        dueTime: read.time ?? null,
+      });
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
       return;
@@ -142,6 +150,8 @@ function useChoreDetail(props: ChoreDetailProps): {
           onSubmit={save}
           today={today}
           members={members}
+          time={time}
+          offlineHint={online.hint}
         />
       ),
       footer: (
@@ -198,7 +208,7 @@ function useChoreDetail(props: ChoreDetailProps): {
             {asNeeded
               ? 'Ohne Termin – bei Bedarf'
               : chore.nextDueOn
-                ? `Nächstes Mal ${dayWithDate(chore.nextDueOn)}`
+                ? withTime(`Nächstes Mal ${dayWithDate(chore.nextDueOn)}`, chore.dueTime)
                 : 'Noch kein Termin'}
           </Text>
           {lastDone ? (

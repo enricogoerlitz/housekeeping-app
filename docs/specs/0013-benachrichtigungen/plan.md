@@ -924,3 +924,18 @@ Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
    dass `pg_net` Kong über den Containernamen erreicht. Ausgaben von `db-reset.mjs` englisch wie
    die übrigen Meldungen des Skripts.
 7. `e2e/global-setup.ts` nimmt `EXPO_PUBLIC_VAPID_PUBLIC_KEY` in den Build-Marker auf.
+
+## Entscheidungen beim Bauen (App, Task 9, 21.11.2026)
+
+1. Das Eintrags-Fenster hat bei jedem Eintrag unten „Fertig“; eine getippte Reservierung speichert bei
+   Enter, beim Verlassen des Felds und mit „Fertig“; ✕ entfernt sie sofort.
+2. „Erinnern“ erscheint erst, wenn eine Reservierungszeit gesetzt ist.
+3. Der Text des Uhrzeit-Felds liegt in der App (`useChoreTime`); der core-`ChoreDraft` bleibt.
+4. `apps/app/src/lib/target-params.ts` (`targetOfParams`, `useHandedTarget`): Ziel-Parameter prüfen,
+   bei `haushalt=` den Haushalt wechseln (fremde Kennungen ignoriert), Parameter danach löschen.
+5. Der Kalender merkt sich den offenen Eintrag per Kennung; wird er gelöscht, schließt das Fenster.
+6. Restaurant-Einträge haben „Route“, wenn das Restaurant einen Ort hat.
+
+Offen für Task 8: AC-007 (`ensureDevicePush` beim Speichern einer Aufgabe mit Uhrzeit und einer
+Reservierung), `/?haushalt=…` (Übersicht, auch Kaltstart über `openWindow`), Fehlertext unter dem
+Uhrzeit-Feld bei 390 px sichtbar machen.

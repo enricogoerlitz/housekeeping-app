@@ -22,6 +22,7 @@ import { View } from 'react-native';
 
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useHandedTarget } from '@/lib/target-params';
 
 import { useChoreCheckWindow } from './chore-check-list';
 import { ChoreHistory } from './chore-history';
@@ -32,6 +33,9 @@ import { HistoryEventPanel, HistoryEventSheet } from './history-event-sheet';
 import { NewChoreSheet } from './new-chore-sheet';
 
 type Tab = 'upcoming' | 'all' | 'history';
+
+/** `/haushalt?aufgabe=<id>&haushalt=<id>`: the chore of a reminder (spec 0013, AC-037). */
+const TARGET_PARAMS = ['aufgabe', 'haushalt'] as const;
 type UpcomingBucket = Extract<ChoreBucket, 'today' | 'overdue' | 'flexible' | 'thisWeek'>;
 
 const SECTION_TITLES: Record<UpcomingBucket, string> = {
@@ -77,6 +81,20 @@ export function ChoresScreen() {
   const [eventId, setEventId] = useState<Id | undefined>(undefined);
   const [creating, setCreating] = useState(false);
   const [logging, setLogging] = useState(false);
+
+  // The chore a notification opens: taken once on "Anstehend", where it opens as a window. An
+  // unknown chore opens nothing (AC-038).
+  const target = useHandedTarget('/haushalt', TARGET_PARAMS);
+  const handedChoreId = target.screen === 'chore' ? target.choreId : undefined;
+  const [takenChoreId, setTakenChoreId] = useState<Id | undefined>();
+  if (handedChoreId !== takenChoreId) {
+    setTakenChoreId(handedChoreId);
+    if (handedChoreId) {
+      setTab('upcoming');
+      setChoreId(handedChoreId);
+      setEventId(undefined);
+    }
+  }
 
   // Deleted on another device (or here) while open: the window or column just closes.
   const openChore = chores.find((chore) => chore.id === choreId);
