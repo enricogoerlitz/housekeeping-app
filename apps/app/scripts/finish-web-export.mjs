@@ -5,6 +5,11 @@
 // 2. Service worker dist/sw.js with the precache list (workbox-build injectManifest) and the
 //    external registration script dist/register-sw.js (no inline script, so no CSP hash needed).
 // 3. The Speech SDK's audio worklet as a same-origin file (it would otherwise use a blob: URL).
+// 4. dist/version.json (spec 0014): the version from EXPO_PUBLIC_APP_VERSION (release `JJJJ.M.N`,
+//    `vorschau` in the preview, `dev` when unset) and the commit from GITHUB_SHA (`local` when
+//    unset). The app fetches it to notice a new release, so it is never precached (AC-023);
+//    staticwebapp.config.json (from public/) is not precached either: Static Web Apps reads it
+//    at deploy time, and one file it does not serve would fail the whole precache.
 // Web push (spec 0013): the build fails without EXPO_PUBLIC_VAPID_PUBLIC_KEY, like without the
 // Supabase origin; check-web-export.mjs checks its form. The CSP needs nothing for push (the push
 // service talks to the browser, not to the page).
@@ -118,6 +123,15 @@ writeFileSync(indexPath, html);
 
 // ---------- 2. Service worker ----------
 
+// Written first, so the globIgnores below have something to keep out of the precache.
+writeFileSync(
+  path.join(dist, 'version.json'),
+  `${JSON.stringify({
+    version: process.env.EXPO_PUBLIC_APP_VERSION?.trim() || 'dev',
+    commit: process.env.GITHUB_SHA?.trim() || 'local',
+  })}\n`,
+);
+
 writeFileSync(
   path.join(dist, 'register-sw.js'),
   `// Registers the service worker of the exported web app (see sw.js).
@@ -140,6 +154,8 @@ const { count, size, warnings } = await injectManifest({
     'sw.js',
     'register-sw.js',
     'metadata.json',
+    'version.json',
+    'staticwebapp.config.json',
     // Needed only for dictation, which needs the network anyway.
     '_expo/static/js/web/microsoft.cognitiveservices.speech-*.js',
     'speech-processor.js',

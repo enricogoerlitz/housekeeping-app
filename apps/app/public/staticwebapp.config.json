@@ -1,0 +1,32 @@
+{
+  "globalHeaders": {
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Robots-Tag": "noindex",
+    "Cache-Control": "no-cache"
+  },
+  "routes": [
+    { "route": "/index.html", "headers": { "Cache-Control": "no-cache" } },
+    { "route": "/sw.js", "headers": { "Cache-Control": "no-cache" } },
+    { "route": "/register-sw.js", "headers": { "Cache-Control": "no-cache" } },
+    { "route": "/version.json", "headers": { "Cache-Control": "no-cache" } },
+    {
+      "route": "/_expo/static/*",
+      "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/_expo/*",
+      "/assets/*",
+      "/icons/*",
+      "/*.{js,css,json,map,webmanifest,html,png,jpg,jpeg,webp,svg,ico,ttf,otf,woff,woff2,txt}"
+    ]
+  },
+  "mimeTypes": {
+    ".webmanifest": "application/manifest+json"
+  }
+}

@@ -8,7 +8,7 @@
     "test": {},
     "build:web": {
       "dependsOn": ["^typecheck"],
-      "env": ["EXPO_PUBLIC_*"],
+      "env": ["EXPO_PUBLIC_*", "GITHUB_SHA"],
       "passThroughEnv": ["VAPID_PRIVATE_KEY", "PUSH_SEND_SECRET"],
       "outputs": ["dist/**"]
     }
