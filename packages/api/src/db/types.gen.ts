@@ -454,6 +454,7 @@ export type Database = {
           active_months: number[] | null;
           assignment: NonNullable<Json>;
           created_at: string;
+          due_time: string | null;
           effort: number;
           household_id: string;
           id: string;
@@ -470,6 +471,7 @@ export type Database = {
           active_months?: number[] | null;
           assignment: NonNullable<Json>;
           created_at?: string;
+          due_time?: string | null;
           effort?: number;
           household_id: string;
           id?: string;
@@ -485,6 +487,7 @@ export type Database = {
           active_months?: number[] | null;
           assignment?: NonNullable<Json>;
           created_at?: string;
+          due_time?: string | null;
           effort?: number;
           household_id?: string;
           id?: string;
@@ -795,6 +798,7 @@ export type Database = {
           id: string;
           meal_slots: NonNullable<Json>;
           name: string;
+          timezone: string;
           updated_at: string;
         };
         ComputedFields: never;
@@ -804,6 +808,7 @@ export type Database = {
           id?: string;
           meal_slots?: NonNullable<Json>;
           name: string;
+          timezone?: string;
           updated_at?: string;
         };
         Update: {
@@ -812,6 +817,7 @@ export type Database = {
           id?: string;
           meal_slots?: NonNullable<Json>;
           name?: string;
+          timezone?: string;
           updated_at?: string;
         };
         Relationships: [
@@ -840,6 +846,8 @@ export type Database = {
           note: string | null;
           portions: number;
           recipe_id: string | null;
+          remind_minutes_before: number;
+          reserved_at: string | null;
           restaurant_id: string | null;
           slot_id: string;
           sort: number;
@@ -863,6 +871,8 @@ export type Database = {
           note?: string | null;
           portions?: number;
           recipe_id?: string | null;
+          remind_minutes_before?: number;
+          reserved_at?: string | null;
           restaurant_id?: string | null;
           slot_id: string;
           sort?: number;
@@ -885,6 +895,8 @@ export type Database = {
           note?: string | null;
           portions?: number;
           recipe_id?: string | null;
+          remind_minutes_before?: number;
+          reserved_at?: string | null;
           restaurant_id?: string | null;
           slot_id?: string;
           sort?: number;
@@ -934,6 +946,67 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'restaurants';
             referencedColumns: ['household_id', 'id'];
+          },
+        ];
+      };
+      notification_settings: {
+        Row: {
+          activities_eve_at: string;
+          activities_eve_enabled: boolean;
+          chore_reminders_enabled: boolean;
+          created_at: string;
+          daily_summary_at: string;
+          daily_summary_enabled: boolean;
+          daily_summary_parts: string[];
+          household_id: string;
+          id: string;
+          member_id: string;
+          reservation_reminders_enabled: boolean;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          activities_eve_at?: string;
+          activities_eve_enabled?: boolean;
+          chore_reminders_enabled?: boolean;
+          created_at?: string;
+          daily_summary_at?: string;
+          daily_summary_enabled?: boolean;
+          daily_summary_parts?: string[];
+          household_id: string;
+          id?: string;
+          member_id: string;
+          reservation_reminders_enabled?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          activities_eve_at?: string;
+          activities_eve_enabled?: boolean;
+          chore_reminders_enabled?: boolean;
+          created_at?: string;
+          daily_summary_at?: string;
+          daily_summary_enabled?: boolean;
+          daily_summary_parts?: string[];
+          household_id?: string;
+          id?: string;
+          member_id?: string;
+          reservation_reminders_enabled?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notification_settings_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'notification_settings_member_fkey';
+            columns: ['household_id', 'member_id'];
+            isOneToOne: true;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
           },
         ];
       };
@@ -1718,12 +1791,29 @@ export type Database = {
       delete_article: { Args: { p_article_id: string }; Returns: Json };
       delete_recipe: { Args: { recipe_id: string; today: string }; Returns: Json };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
+      list_push_subscriptions: {
+        Args: { p_current_endpoint?: string };
+        Returns: {
+          created_at: string;
+          device_label: string;
+          id: string;
+          is_current: boolean;
+          last_success_at: string;
+          status: string;
+        }[];
+      };
       merge_areas: { Args: { p_source_id: string; p_target_id: string }; Returns: number };
       merge_articles: { Args: { p_source_id: string; p_target_id: string }; Returns: Json };
+      register_push_subscription: {
+        Args: { p_auth: string; p_device_label: string; p_endpoint: string; p_p256dh: string };
+        Returns: string;
+      };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
+      remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
       restore_recipe: { Args: { recipe_id: string }; Returns: boolean };
+      send_test_push: { Args: { p_endpoint: string }; Returns: undefined };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };
         Returns: undefined;
@@ -1733,6 +1823,10 @@ export type Database = {
       set_packing_items_packed: {
         Args: { p_changes: Json; p_household_id: string };
         Returns: Json;
+      };
+      set_push_subscription_enabled: {
+        Args: { p_enabled: boolean; p_endpoint: string };
+        Returns: undefined;
       };
       set_recipe_favorite: { Args: { favorite: boolean; recipe_id: string }; Returns: undefined };
       set_recipe_rating: { Args: { recipe_id: string; stars: number }; Returns: undefined };
@@ -1750,6 +1844,7 @@ export type Database = {
         Returns: Json;
       };
       sync_pull: { Args: { p_request: Json }; Returns: Json };
+      unregister_push_subscription: { Args: { p_endpoint: string }; Returns: undefined };
     };
     Enums: {
       [_ in never]: never;

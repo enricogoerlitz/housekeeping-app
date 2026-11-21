@@ -24,7 +24,8 @@ set search_path = ''
 as $$
 declare
   -- The synced household tables (db-handoff T6, spec 0004; packing tables spec 0012; collection_recipes
-  -- spec 0009). Small tables are listed separately below.
+  -- spec 0009; notification_settings spec 0013, where RLS returns only the caller's own row).
+  -- Small tables are listed separately below.
   c_tables constant text[] := array[
     'areas', 'articles', 'stores',
     'recipes', 'recipe_favorites', 'recipe_ratings', 'collection_recipes',
@@ -32,7 +33,7 @@ declare
     'activities', 'activity_favorites', 'activity_ratings',
     'absences', 'feedback', 'feedback_votes',
     'packing_bags', 'packing_bag_items', 'packing_list_bags', 'packing_items',
-    'chores', 'chore_events', 'meal_plan_entries',
+    'chores', 'chore_events', 'meal_plan_entries', 'notification_settings',
     'shopping_items', 'shopping_contributions'];
 
   v_household_id uuid;

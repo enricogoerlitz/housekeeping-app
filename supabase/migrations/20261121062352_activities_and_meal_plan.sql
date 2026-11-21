@@ -244,6 +244,9 @@ grant execute on function public.set_activity_rating(uuid, numeric) to authentic
 -- * leftovers_of_entry_id is cleared when the source entry is deleted; leftovers keep their
 --   recipe_id (the client copies it from the source), so they stay valid.
 -- * cook_id is cleared when the person is removed; eater_ids are checked by trigger.
+-- * reserved_at (time of day, 5-minute steps) only on restaurant entries, with the reminder
+--   remind_minutes_before (spec 0013, REQ-008, D43); the reminder value exists on every row and
+--   only matters with a reservation.
 create table public.meal_plan_entries (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
@@ -273,6 +276,10 @@ create table public.meal_plan_entries (
   cook_id uuid,
   sort integer not null default 0,
   not_cooked boolean not null default false,
+  reserved_at time
+    constraint meal_plan_entries_reserved_at_five_minutes check (private.is_five_minute_time(reserved_at)),
+  remind_minutes_before smallint not null default 120
+    constraint meal_plan_entries_remind_minutes_before_valid check (remind_minutes_before in (30, 60, 120, 180, 240)),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint meal_plan_entries_household_id_id_key unique (household_id, id),
@@ -286,6 +293,7 @@ create table public.meal_plan_entries (
       else false
     end),
   constraint meal_plan_entries_note_only_activity check (note is null or kind = 'activity'),
+  constraint meal_plan_entries_reservation_only_restaurant check (reserved_at is null or kind = 'restaurant'),
   constraint meal_plan_entries_recipe_fkey foreign key (household_id, recipe_id)
     references public.recipes (household_id, id) on delete restrict,
   constraint meal_plan_entries_restaurant_fkey foreign key (household_id, restaurant_id)
@@ -345,10 +353,10 @@ create trigger meal_plan_entries_check_refs before insert or update of slot_id, 
 grant select, delete on public.meal_plan_entries to authenticated;
 grant insert (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id, text, note,
               leftovers_of_entry_id,
-              eater_ids, guests, portions, variants, cook_id, sort, not_cooked)
+              eater_ids, guests, portions, variants, cook_id, sort, not_cooked, reserved_at, remind_minutes_before)
   on public.meal_plan_entries to authenticated;
 grant update (date, slot_id, kind, recipe_id, restaurant_id, activity_id, text, note, leftovers_of_entry_id,
-              eater_ids, guests, portions, variants, cook_id, sort, not_cooked)
+              eater_ids, guests, portions, variants, cook_id, sort, not_cooked, reserved_at, remind_minutes_before)
   on public.meal_plan_entries to authenticated;
 select private.attach_household_policies('public.meal_plan_entries');
 select private.attach_sync_triggers('public.meal_plan_entries');

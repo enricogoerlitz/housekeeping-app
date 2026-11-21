@@ -148,6 +148,22 @@ grant execute on function private.household_id_from_topic(text) to authenticated
 -- Helpers for household-scoped tables
 -- ---------------------------------------------------------------------------------------------
 
+-- Times of day that notifications use (spec 0013, Decision 4): whole minutes in 5-minute steps,
+-- like the 5-minute tick of the scheduler, so a message comes exactly at the time shown. Used by
+-- check constraints of tables members write (settings, chores, meal plan), hence the grant; it
+-- reads no data. null passes (the column decides whether a time is required).
+create function private.is_five_minute_time(p_time time)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p_time is null
+    or (extract(second from p_time) = 0 and extract(minute from p_time)::integer % 5 = 0)
+$$;
+
+grant execute on function private.is_five_minute_time(time) to authenticated;
+
 -- Conventions of every household-scoped table (see `docs/architecture/sync.md`): id (client may
 -- supply it), household_id with `on delete cascade` from households, server-set created_at /
 -- updated_at, unique (household_id, id) as the target of composite foreign keys, index

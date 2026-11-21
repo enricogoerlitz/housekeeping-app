@@ -3,7 +3,7 @@
 -- trigger or search_path never reaches production silently. Exceptions are listed explicitly.
 begin;
 \ir _helpers.psql
-select plan(14);
+select plan(15);
 
 -- Tables in public that are not scoped by household_id (reviewed exceptions).
 create temp table lint_tables_without_household_id (name text primary key);
@@ -51,7 +51,14 @@ insert into lint_private_functions_for_authenticated values
   ('private.restore_recipe(uuid)'),         -- spec 0008: "Rückgängig" of delete_recipe
   ('private.set_packing_items_packed(uuid,jsonb)'), -- spec 0012: the only way to pack (ADR-0013)
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing
-  ('private.assert_restorable_size(jsonb)'); -- security invoker, a size check without data access
+  ('private.assert_restorable_size(jsonb)'), -- security invoker, a size check without data access
+  ('private.is_five_minute_time(time without time zone)'), -- spec 0013: used by check constraints, no data access
+  ('private.register_push_subscription(text,text,text,text)'), -- spec 0013: push subscriptions (ADR-0014)
+  ('private.set_push_subscription_enabled(text,boolean)'),
+  ('private.unregister_push_subscription(text)'),
+  ('private.remove_push_subscription(uuid)'),
+  ('private.list_push_subscriptions(text)'),     -- online-only read of the own devices, never synced
+  ('private.send_test_push(text)');
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls
@@ -226,6 +233,17 @@ select is_empty(
             or has_schema_privilege('anon', n.oid, 'create')
             or has_schema_privilege('authenticated', n.oid, 'create')) $$,
   'schema private is not usable by anon and not writable by the API roles'
+);
+
+-- 15 (ADR-0014): tables in private (per-person data and server logs) have RLS on and no grants.
+select is_empty(
+  $$ select c.relname from pg_catalog.pg_class c
+     where c.relnamespace = 'private'::regnamespace and c.relkind in ('r', 'p')
+       and (not c.relrowsecurity
+            or has_table_privilege('authenticated', c.oid, 'select,insert,update,delete,truncate,references,trigger')
+            or has_table_privilege('anon', c.oid, 'select,insert,update,delete,truncate,references,trigger')
+            or has_any_column_privilege('authenticated', c.oid, 'select,insert,update,references')) $$,
+  'every table in private has row level security and no grant to the API roles'
 );
 
 select * from finish();

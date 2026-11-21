@@ -54,6 +54,10 @@ create table public.households (
       end
     ),
   default_store_id uuid,
+  -- The local time of every notification (spec 0013, Decision 16). Not editable in the app (no
+  -- grant); the scheduler skips a household whose zone Postgres does not know.
+  timezone text not null default 'Europe/Berlin'
+    constraint households_timezone_length check (char_length(timezone) between 1 and 64),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

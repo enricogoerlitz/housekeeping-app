@@ -6,12 +6,13 @@
 
 ## Ziel
 
-| Ohne Netz möglich                                                                                     | Braucht Netz                               |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen               |
-| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen  |
-| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen       |
-| **Packen**, „Alles einpacken“, „Für die Rückreise zurücksetzen“ (ADR-0013)                            | Packstücke und Taschen ergänzen, entfernen |
+| Ohne Netz möglich                                                                                     | Braucht Netz                                               |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen                               |
+| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen                  |
+| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen                       |
+| **Packen**, „Alles einpacken“, „Für die Rückreise zurücksetzen“ (ADR-0013)                            | Packstücke und Taschen ergänzen, entfernen                 |
+| Benachrichtigungen **empfangen** (der Server stellt zu, ADR-0014)                                     | Benachrichtigungen einstellen, Geräte anmelden und ansehen |
 
 Ohne Netz sind Bearbeiten-Aktionen sichtbar deaktiviert, mit dem Hinweis „Offline – zum Bearbeiten
 brauchst du Netz“. Das ist ein normaler Zustand, kein Fehler.
@@ -378,7 +379,9 @@ die Tasks 2 und 5 von Spec 0012.
   Kopie, Reihenfolge; dieselbe Reisetasche höchstens einmal je Abwesenheit) und `packing_items`
   (Packstücke der Packliste). `sync_pull` liefert alle vier.
 - **„Je Tag“ rechnet der Server.** Ein Trigger vor dem Einfügen setzt bei `per_day` die Anzahl auf
-  `least(per_day × Tage, 9999)` (Tage = `to_on − from_on + 1`), egal was das Gerät schickt. Ändern
+  `least(per_day × Tage, 9999)` (Tage = `to_on − from_on + 1`), egal was das Gerät schickt.
+  Gerechnet wird in `bigint`, damit auch eine absurd lange Abwesenheit nicht überläuft
+  (Security-Check, Task 12). Ändern
   sich Von oder Bis einer Abwesenheit oder zieht eine Tasche der Packliste zu einer anderen
   Abwesenheit, rechnet ein Trigger die **offenen** „je Tag“-Packstücke dieser Abwesenheit neu;
   gepackte behalten ihre Anzahl. Nur geänderte Zeilen werden geschrieben und bekommen ein neues
@@ -397,6 +400,9 @@ pack_seq}]` der gefundenen Packstücke.
   Elemente mit `id`, `list_bag_id`, `name` (Pflicht) und `quantity`, `per_day`, `sort`, `packed`,
   `packed_at`, `packed_by`, `pack_seq`; einfaches Einfügen (vorhandene Kennung → 23505, fremde
   Tasche oder fremde Person → 23503), `packed_at` höchstens `now()`, `pack_seq` 0 bis 999000.
+  Ein Mitglied kann darüber `packed_by` und `packed_at` innerhalb des eigenen Haushalts frei
+  setzen: „gepackt von“ ist deshalb keine verlässliche Aussage, nur ein Hinweis (bewusst
+  hingenommen, Security-Check Task 12).
 - **Kaskaden:** Abwesenheit löschen löscht ihre Taschen der Packliste und deren Packstücke;
   Reisetasche löschen löscht ihre Packstücke und leert `packing_list_bags.bag_id`; Tasche der
   Packliste löschen löscht ihre Packstücke. Jede mitgelöschte Zeile bekommt ihren Grabstein, das
@@ -407,7 +413,7 @@ pack_seq}]` der gefundenen Packstücke.
 
 - **Bündeln beim Senden.** Die Warteschlange schickt die zusammenhängende Folge von
   Pack-Einträgen am Anfang (`core.packBatch`: ein Haushalt, höchstens 200, bis zum ersten Eintrag
-  anderer Art) als einen Aufruf `set_packing_items_packed`. Eine Folge überholt nie eine Änderung,
+  anderer Art, jedes Packstück höchstens einmal) als einen Aufruf `set_packing_items_packed`. Eine Folge überholt nie eine Änderung,
   die nach ihrem ersten Eintrag entstand. Einträge, die im selben Schritt entstehen („Alles
   einpacken“), gehen gemeinsam los: Das Senden startet erst nach dem laufenden Schritt.
 - **Zähler.** Den gesehenen `pack_seq` füllt die Engine aus der Zeile im Cache oder aus der
@@ -417,6 +423,13 @@ pack_seq}]` der gefundenen Packstücke.
   wegfällt. Fehlt ein Packstück in der Antwort, ist es inzwischen weg: Der Eintrag ist erledigt,
   ohne Hinweis. Ein vorübergehender Fehler lässt die ganze Folge stehen; ein dauerhafter verwirft
   sie und protokolliert nur den Fehlercode.
+- **Nach einem vorübergehenden Fehler** kommen die gesendeten Einträge wieder an den Anfang und
+  werden dabei wie neu eingereiht mit dem zusammengefasst, was inzwischen dazukam
+  (`core.requeue`): Ein Gegen-Eintrag (zweiter Tipp, „Rückgängig“) während des Sendens hebt den
+  gesendeten Eintrag auf. Sonst stünde dasselbe Packstück zweimal in der nächsten Folge, der
+  Server lehnte den ganzen Aufruf als `invalid_change` ab, und alle Haken der Folge gingen still
+  verloren. Zusätzlich hält `packBatch` vor einer Wiederholung desselben Packstücks an. Für Haken
+  des Einkaufspostens gilt dasselbe Zusammenfassen (Security-Check, Task 12).
 - **Kaskaden im Diff.** Löscht ein Befehl eine Eltern-Zeile (Abwesenheit, Reisetasche, Tasche der
   Packliste), zeigt das Gerät ihre Kinder sofort als gelöscht, schickt aber nur die Löschung der
   Eltern-Zeile (`CASCADE_CHILDREN` in `db/tables.ts`); ebenso wird das Leeren eines Verweises auf
@@ -430,3 +443,58 @@ pack_seq}]` der gefundenen Packstücke.
   die Tasche (falls nötig) und `restore_packing_items` mit dem gepackten Stand in einem Aufruf.
 - **Cache-Version 6.** Die vier Tabellen ändern die Form des Caches; Warteschlange, Haushalts- und
   Marktwahl bleiben beim Wechsel erhalten.
+
+## Nachtrag Spec 0013 — Benachrichtigungen
+
+Entschieden in ADR-0014: Web Push mit VAPID; die Datenbank plant, die Edge Function `push-send`
+stellt nur zu. Ohne Netz kommen Nachrichten trotzdem an (der Server stellt zu); einstellen,
+Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
+
+**Datenbank (Spec 0013, Task 1 und 2):**
+
+- **Neue Spalten:** `households.timezone` (Standard „Europe/Berlin“, kein Grant zum Schreiben,
+  nicht in der Allowlist), `chores.due_time` und `meal_plan_entries.reserved_at` (Uhrzeit in
+  5-Minuten-Schritten, `private.is_five_minute_time`), `meal_plan_entries.remind_minutes_before`
+  (30, 60, 120, 180 oder 240, Standard 120). `reserved_at` gibt es nur bei Restaurant-Einträgen
+  (Check, 23514). Alle drei schreibbaren Spalten stehen in `apply_changes` bei `insert` und
+  `patch`.
+- **`notification_settings`** ist eine normale synchronisierte Haushaltstabelle (Grabstein,
+  `updated_at`, Realtime-Signal, `sync_pull`), aber RLS liefert jedem Mitglied nur **die eigene
+  Zeile**. Der Server legt sie beim Eintritt in den Haushalt an (Trigger an
+  `household_members`, Standardwerte nur in den Spaltendefaults); das Mitglied ändert nur die
+  sieben Einstellungs-Spalten (`apply_changes`: kein `insert`, kein `delete`, Patch der eigenen
+  Zeile; eine fremde Zeile ergibt `row_not_found`). Wer den Haushalt verlässt, verliert die Zeile
+  per Fremdschlüssel; der Grabstein enthält nur die Kennung.
+- **Nicht synchronisiert, im Schema `private`** (RLS an, keine Policies, keine Grants):
+  `push_subscriptions` (gehört einer Person; Push-Adresse und Schlüssel verlassen die Datenbank
+  nur Richtung `push-send`) und `notification_deliveries` (Zustell-Protokoll des Servers, ohne
+  Inhalt, 30 Tage). Erreichbar nur über die RPCs `register_push_subscription`,
+  `set_push_subscription_enabled`, `unregister_push_subscription`, `remove_push_subscription`,
+  `list_push_subscriptions` (einziges Lesen ohne Cache: nur die eigenen Geräte, nie Adresse oder
+  Schlüssel), `send_test_push` und über den Zeitplaner.
+- **Takt:** `pg_cron` ruft alle 5 Minuten `private.run_notification_tick()`. Er wertet zuerst die
+  Antworten des letzten Takts aus, liest Adresse und Geheimnis aus dem Vault (`push_send_url`,
+  `push_send_secret`; fehlen sie: Warnung `push_not_configured`, kein Protokoll, kein Aufruf),
+  sucht die fälligen Nachrichten in der Ortszeit des Haushalts
+  (`private.notification_candidates(p_now)`), schreibt sie je aktivem Gerät mit eindeutigem
+  Schlüssel ins Protokoll (`on conflict do nothing`) und gibt nur die neu geschriebenen in
+  Bündeln von höchstens 50 per `net.http_post` an `push-send`. Eine Transaktions-Sperre schließt
+  überlappende Takte aus.
+- **Fenster und Schlüssel:** gesendet wird, was seit höchstens 30 Minuten fällig ist; was später
+  käme, entfällt. Schlüssel: `daily:<haushalt>:<person>:<tag>`, `eve:<haushalt>:<person>:<tag>`,
+  `chore:<aufgabe>:<tag>`, `reservation:<eintrag>:<tag>:<HH:MM>`, `test:<uuid>`. Die Uhrzeit der
+  Einstellung steht nicht im Schlüssel (neue Uhrzeit, kein zweiter Überblick), die der
+  Reservierung schon (verlegt → neue Erinnerung). Höchstens einmal: ein Fehler wird vermerkt,
+  nicht wiederholt.
+- **Stumm:** wer am Sendetag oder am Tag, um den es geht, abwesend ist (oder der ganze Haushalt),
+  bekommt nichts; Empfänger sind immer aktuelle Mitglieder.
+- **Antworten:** `push-send` antwortet `{results: [{id, status}]}`. 2xx → `sent`; 404/410 →
+  `gone`, das Abo gilt als „nicht erreichbar“ und bekommt nichts mehr; sonst `failed`. Antwortet
+  `push-send` selbst mit einem Fehler oder gar nicht binnen einer Stunde, sind alle Nachrichten
+  des Bündels `failed`.
+- **Grenzen:** höchstens 10 Geräte je Person (`too_many_devices`), 3 Proben in 10 Minuten
+  (`rate_limited`), Push-Adresse nur `https://` zu einem bekannten Push-Dienst ohne Port und
+  Anmeldedaten, höchstens 1024 Zeichen (`invalid_subscription`), Text höchstens 400 Zeichen.
+- **Doppelte Regeln:** „fällig“ (`private.chore_due_state`) und „wer ist dran“
+  (`private.chore_assignees`) stehen auch in SQL; `notification_parity.test.sql` hält sie mit
+  `dueChores` und `choreMemberIds` in `packages/core` im Gleichlauf.

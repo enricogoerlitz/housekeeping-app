@@ -19,4 +19,4 @@ neue abgelöst.
 | [0011](0011-schreibweg-mit-lokaler-ueberlagerung.md)                  | Schreibweg: lokal anwenden, eine RPC je Befehl, Überlagerung            | angenommen          |
 | [0012](0012-neuaufbau-der-migrationen-vor-der-ersten-auslieferung.md) | Migrationen einmalig vor der ersten Auslieferung neu aufbauen           | angenommen          |
 | [0013](0013-packen-ohne-netz.md)                                      | Packen ohne Netz über die Laden-Warteschlange, „Abhaken gewinnt“        | angenommen          |
-| [0014](0014-zustellung-von-benachrichtigungen.md)                     | Web Push mit VAPID; die Datenbank plant, `push-send` stellt nur zu      | vorgeschlagen       |
+| [0014](0014-zustellung-von-benachrichtigungen.md)                     | Web Push mit VAPID; die Datenbank plant, `push-send` stellt nur zu      | angenommen          |

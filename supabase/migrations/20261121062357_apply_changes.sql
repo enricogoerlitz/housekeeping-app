@@ -38,6 +38,8 @@ declare
   -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011).
   -- The packed state of packing items (packed, packed_at, packed_by, pack_seq) is written only by
   -- set_packing_items_packed and restore_packing_items; packing items are never patched (spec 0012).
+  -- Notification settings rows are created by the server and only patched, and RLS lets a member
+  -- patch only her own row (spec 0013, Decision 3). households.timezone is never written (D16).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
                          "patch":  ["name", "sort"], "delete": true},
@@ -78,17 +80,23 @@ declare
                                     "spec_ref"],
                          "patch":  ["kind", "text", "status", "screen", "reason", "spec_ref"], "delete": true},
     "chores":           {"insert": ["id", "household_id", "title", "room", "recurrence", "assignment", "effort",
-                                    "next_due_on", "next_assignee_id", "last_done_on", "active_months"],
+                                    "next_due_on", "next_assignee_id", "last_done_on", "active_months", "due_time"],
                          "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",
-                                    "next_assignee_id", "last_done_on", "active_months"], "delete": true},
+                                    "next_assignee_id", "last_done_on", "active_months", "due_time"], "delete": true},
     "chore_events":     {"insert": [],
                          "patch":  ["chore_id", "done_by"], "delete": false},
     "meal_plan_entries": {"insert": ["id", "household_id", "date", "slot_id", "kind", "recipe_id", "restaurant_id",
                                      "activity_id", "text", "note", "leftovers_of_entry_id", "eater_ids", "guests",
-                                     "portions", "variants", "cook_id", "sort", "not_cooked"],
+                                     "portions", "variants", "cook_id", "sort", "not_cooked", "reserved_at",
+                                     "remind_minutes_before"],
                           "patch":  ["date", "slot_id", "kind", "recipe_id", "restaurant_id", "activity_id", "text",
                                      "note", "leftovers_of_entry_id", "eater_ids", "guests", "portions", "variants",
-                                     "cook_id", "sort", "not_cooked"], "delete": true},
+                                     "cook_id", "sort", "not_cooked", "reserved_at", "remind_minutes_before"],
+                          "delete": true},
+    "notification_settings": {"insert": [],
+                              "patch":  ["daily_summary_enabled", "daily_summary_at", "daily_summary_parts",
+                                         "activities_eve_enabled", "activities_eve_at", "chore_reminders_enabled",
+                                         "reservation_reminders_enabled"], "delete": false},
     "shopping_items":   {"insert": ["id", "household_id", "article_id"],
                          "patch":  ["article_id"], "delete": true},
     "shopping_contributions": {"insert": ["id", "household_id", "item_id", "source", "count", "qty", "unit", "note"],

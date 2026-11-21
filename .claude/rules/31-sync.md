@@ -11,6 +11,10 @@ The concept is in `docs/architecture/sync.md` (ADR-0008). These rules must never
 
 - **Reads come from the local cache.** UI code reads reactively from the cache in `packages/api`.
   It never awaits a network request to show data.
+- **One online-only read:** the person's own push subscriptions ("Deine Geräte") come from
+  `list_push_subscriptions`, never from the cache, and show an offline hint without network
+  (ADR-0014). Push subscriptions and the delivery log are never synced. Notification settings
+  are a normal synced table, readable only by the member herself.
 - **Writes are online.** They go straight to Supabase (API or RPC), followed by a delta sync. When
   offline, write actions are disabled with a clear hint. They are never queued silently.
 - **Offline writes exist only in store mode and for packing**: check/uncheck ("checking wins"),

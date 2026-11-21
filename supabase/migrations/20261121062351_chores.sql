@@ -50,6 +50,9 @@ create table public.chores (
     constraint chores_active_months_valid check (
       cardinality(active_months) between 1 and 12
       and active_months <@ '{1,2,3,4,5,6,7,8,9,10,11,12}'::smallint[]),
+  -- Optional time of day on the due date: the reminder "Müll rausbringen · 19:00" (spec 0013, D42).
+  due_time time
+    constraint chores_due_time_five_minutes check (private.is_five_minute_time(due_time)),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   -- "Bei Bedarf" is never due (spec 0011, REQ-007).
@@ -99,10 +102,10 @@ create trigger chores_check_members before insert or update of assignment on pub
 
 grant select, delete on public.chores to authenticated;
 grant insert (id, household_id, title, room, recurrence, assignment, effort, next_due_on, next_assignee_id,
-              last_done_on, active_months)
+              last_done_on, active_months, due_time)
   on public.chores to authenticated;
 grant update (title, room, recurrence, assignment, effort, next_due_on, next_assignee_id, last_done_on,
-              active_months)
+              active_months, due_time)
   on public.chores to authenticated;
 select private.attach_household_policies('public.chores');
 select private.attach_sync_triggers('public.chores');

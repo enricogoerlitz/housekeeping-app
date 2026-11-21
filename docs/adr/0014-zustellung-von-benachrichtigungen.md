@@ -1,5 +1,5 @@
 ---
-status: vorgeschlagen
+status: angenommen
 datum: 2026-11-21
 autor: agent
 betrifft:
@@ -19,9 +19,9 @@ betrifft:
 
 ## Status
 
-`vorgeschlagen` · Entwurf zu Spec 0013 („Benachrichtigungen“). Die fachlichen Entscheidungen D36
-bis D43 (UI-Konzept v2, Abschnitt 6) sind freigegeben, darunter D40 (Rechte des Zeitplaners). Diese
-ADR hält fest, **womit** zugestellt wird, **wer** plant und **wo** Schlüssel, Push-Abos und das
+`angenommen` · 21.11.2026, vom Eigentümer mit dem Plan zu Spec 0013 („Benachrichtigungen“) vorab
+freigegeben. Die fachlichen Entscheidungen D36 bis D43 (UI-Konzept v2, Abschnitt 6) sind
+freigegeben, darunter D40 (Rechte des Zeitplaners). Diese ADR hält fest, **womit** zugestellt wird, **wer** plant und **wo** Schlüssel, Push-Abos und das
 Zustell-Protokoll liegen. Sie präzisiert Regel 4 und Regel 5 aus `AGENTS.md`; ein eigener Nachtrag
 zu ADR-0008 ist damit nicht nötig.
 
@@ -63,19 +63,19 @@ nur zu, mit dem privaten VAPID-Schlüssel, und hat **weder Datenbankzugang noch 
 
 Im Einzelnen:
 
-| Teil              | Festlegung                                                                                                                                                                                                                                                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Zustellweg        | Web Push (RFC 8030), Inhalt verschlüsselt nach RFC 8291 (`aes128gcm`), VAPID nach RFC 8292. Push-Dienste: Google (FCM), Mozilla, Apple, Microsoft (WNS). Der Service Worker der PWA zeigt die Nachricht an und öffnet beim Tipp eine geprüfte Seite der App.                                                     |
-| Zeitplaner        | `pg_cron` alle 5 Minuten → `private.run_notification_tick()` (`security definer`, nur für den Cron-Job). Uhrzeiten sind Ortszeit des Haushalts (`households.timezone`); umgerechnet wird erst im Takt. Was mehr als 30 Minuten zu spät käme, wird verworfen.                                                     |
-| Einmaligkeit      | Zustell-Protokoll mit eindeutigem Schlüssel je Nachricht und Push-Abo; „höchstens einmal“: ein Fehler wird vermerkt, nicht wiederholt.                                                                                                                                                                           |
-| Übergabe          | `pg_net` → `push-send` mit Kopfzeile `x-push-secret`; Adresse und Geheimnis liegen im Vault (`push_send_url`, `push_send_secret`). Die Antwort (Status je Nachricht) wertet der nächste Takt aus: 404/410 schaltet das Abo ab.                                                                                   |
-| `push-send`       | `verify_jwt = false`, prüft das Geheimnis zeitkonstant, den Inhalt mit Zod und die Push-Adresse gegen eine Liste bekannter Push-Dienste; liest nur `PUSH_SEND_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Kein Supabase-Client, kein `SUPABASE_SERVICE_ROLE_KEY`, kein `SUPABASE_DB_URL`. |
-| Schlüssel         | Ein VAPID-Schlüsselpaar je Umgebung (lokal, Produktion). Der öffentliche Schlüssel kommt als `EXPO_PUBLIC_VAPID_PUBLIC_KEY` in den App-Build; der private nur als Secret der Function. Werte setzt der Eigentümer selbst; Agenten sehen sie nie.                                                                 |
-| Push-Abos         | `private.push_subscriptions`: gehören einer Person (`profile_id`), nicht einem Haushalt; RLS an, keine Grants; nur über `security definer`-RPCs, die nach `auth.uid()` filtern. **Nicht synchronisiert.** Die Push-Adresse verlässt die Datenbank nur Richtung `push-send`, nie Richtung App.                    |
-| Zustell-Protokoll | `private.notification_deliveries`: gehört dem Server, für die App unerreichbar, 30 Tage aufbewahrt. **Nicht synchronisiert.**                                                                                                                                                                                    |
-| Einstellungen     | `public.notification_settings` je Mitglied und Haushalt: haushaltsbezogen und synchronisiert nach Regel 5, aber nur für das Mitglied selbst lesbar und änderbar.                                                                                                                                                 |
-| Lesen ohne Cache  | „Deine Geräte“ liest online über eine RPC, nicht aus dem lokalen Speicher; ohne Netz zeigt die Seite einen Hinweis. Das ist die einzige Ausnahme von Regel 4 beim Lesen.                                                                                                                                         |
-| Nativ (später)    | Expo Push mit denselben Einstellungen und demselben Zeitplaner; nur der Zustellweg kommt dazu. Eigene Spec, eigener Nachtrag zu dieser ADR.                                                                                                                                                                      |
+| Teil              | Festlegung                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zustellweg        | Web Push (RFC 8030), Inhalt verschlüsselt nach RFC 8291 (`aes128gcm`), VAPID nach RFC 8292. Push-Dienste: Google (FCM), Mozilla, Apple, Microsoft (WNS). Der Service Worker der PWA zeigt die Nachricht an und öffnet beim Tipp eine geprüfte Seite der App.                                                                                                                                                                                                               |
+| Zeitplaner        | `pg_cron` alle 5 Minuten → `private.run_notification_tick()` (`security definer`, nur für den Cron-Job). Uhrzeiten sind Ortszeit des Haushalts (`households.timezone`); umgerechnet wird erst im Takt. Was mehr als 30 Minuten zu spät käme, wird verworfen.                                                                                                                                                                                                               |
+| Einmaligkeit      | Zustell-Protokoll mit eindeutigem Schlüssel je Nachricht und Push-Abo; „höchstens einmal“: ein Fehler wird vermerkt, nicht wiederholt.                                                                                                                                                                                                                                                                                                                                     |
+| Übergabe          | `pg_net` → `push-send` mit Kopfzeile `x-push-secret`; Adresse und Geheimnis liegen im Vault (`push_send_url`, `push_send_secret`). Die Antwort (Status je Nachricht) wertet der nächste Takt aus: 404/410 schaltet das Abo ab.                                                                                                                                                                                                                                             |
+| `push-send`       | `verify_jwt = false`, verschlüsselt und signiert mit der gepflegten Deno-Bibliothek `jsr:@negrel/webpush` (WebCrypto, Version festgenagelt; keine selbst gebaute Kryptografie), prüft das Geheimnis zeitkonstant, den Inhalt mit Zod und die Push-Adresse gegen eine Liste bekannter Push-Dienste; liest nur `PUSH_SEND_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Kein Supabase-Client, kein `SUPABASE_SERVICE_ROLE_KEY`, kein `SUPABASE_DB_URL`. |
+| Schlüssel         | Ein VAPID-Schlüsselpaar je Umgebung (lokal, Produktion). Der öffentliche Schlüssel kommt als `EXPO_PUBLIC_VAPID_PUBLIC_KEY` in den App-Build; der private nur als Secret der Function. Werte setzt der Eigentümer selbst; Agenten sehen sie nie.                                                                                                                                                                                                                           |
+| Push-Abos         | `private.push_subscriptions`: gehören einer Person (`profile_id`), nicht einem Haushalt; RLS an, keine Grants; nur über `security definer`-RPCs, die nach `auth.uid()` filtern. **Nicht synchronisiert.** Die Push-Adresse verlässt die Datenbank nur Richtung `push-send`, nie Richtung App.                                                                                                                                                                              |
+| Zustell-Protokoll | `private.notification_deliveries`: gehört dem Server, für die App unerreichbar, 30 Tage aufbewahrt. **Nicht synchronisiert.**                                                                                                                                                                                                                                                                                                                                              |
+| Einstellungen     | `public.notification_settings` je Mitglied und Haushalt: haushaltsbezogen und synchronisiert nach Regel 5, aber nur für das Mitglied selbst lesbar und änderbar.                                                                                                                                                                                                                                                                                                           |
+| Lesen ohne Cache  | „Deine Geräte“ liest online über eine RPC, nicht aus dem lokalen Speicher; ohne Netz zeigt die Seite einen Hinweis. Das ist die einzige Ausnahme von Regel 4 beim Lesen.                                                                                                                                                                                                                                                                                                   |
+| Nativ (später)    | Expo Push mit denselben Einstellungen und demselben Zeitplaner; nur der Zustellweg kommt dazu. Eigene Spec, eigener Nachtrag zu dieser ADR.                                                                                                                                                                                                                                                                                                                                |
 
 ## Betrachtete Optionen
 
@@ -88,7 +88,9 @@ Zwei Fragen waren zu entscheiden: der **Zustellweg** und **wer plant**.
 - **Pro:** kostenlos; kein Konto bei einem Push-Anbieter, kein Apple-Developer-Account nötig. Geht
   heute schon in jedem Desktop-Browser und auf Android, nach der Betriebs-Spec (0014) auch auf dem
   iPhone als installierte PWA. Kein fremdes Skript in der Web-App, die CSP bleibt unverändert. Ein
-  offener Standard: Die Verschlüsselung lässt sich mit den Testvektoren der RFCs prüfen.
+  offener Standard: Die Verschlüsselung lässt sich mit den Testvektoren der RFCs prüfen. Für
+  Verschlüsselung (RFC 8291) und VAPID-Signatur (RFC 8292) gibt es kleine, gepflegte Bibliotheken
+  auf WebCrypto; wir nutzen `jsr:@negrel/webpush` statt eigener Kryptografie.
 - **Contra:** Auf iPhone und iPad nur als installierte PWA ab iOS 16.4; im Safari-Tab gar nicht.
   Push-Dienste geben keine Zustellgarantie und löschen Abos ohne Vorwarnung. Der Inhalt läuft (Ende
   zu Ende verschlüsselt) über Server von Apple, Google, Mozilla bzw. Microsoft. Lokal braucht es
@@ -198,6 +200,10 @@ Stand 21.11.2026; vor einer Kostenentscheidung neu prüfen (ADR-0007).
 - **Zweite Stelle für Fachregeln:** „fällig“, „überfällig“, „wer ist dran“ und „wer isst mit“
   stehen in SQL und in `packages/core`. Gleichlauf-Tests mit denselben Fällen sind Pflicht; eine
   Änderung an einer Stelle braucht die andere.
+- **Neue Abhängigkeit** `jsr:@negrel/webpush`, nur in `supabase/functions/push-send`, nicht in
+  der App. Selbst gebaute Kryptografie wäre das größere Risiko; die Testvektoren aus RFC 8291 und
+  RFC 8292 laufen als Tests gegen die Bibliothek. Version beim Bau festnageln, Aktualisierungen
+  mit Blick auf den Diff.
 - **Neue personenbezogene Daten:** Push-Adresse und Gerätename. Nachrichten enthalten nur Titel,
   Text und Ziel-Link; sie laufen verschlüsselt über die Server der Push-Dienste.
 - **Ausnahmen von Regel 4 und 5** (siehe unten). Jede weitere Ausnahme braucht eine eigene ADR.
@@ -230,3 +236,5 @@ Stand 21.11.2026; vor einer Kostenentscheidung neu prüfen (ADR-0007).
 - Wenn die doppelten Fachregeln in SQL und `core` auseinanderlaufen oder deutlich wachsen (dann:
   Planung in eine Function mit eng begrenzter Rolle verlegen).
 - Wenn Supabase `pg_net`, `pg_cron` oder den Vault im Free-Tarif einschränkt.
+- Wenn `jsr:@negrel/webpush` nicht mehr gepflegt wird oder eine Sicherheitslücke hat (dann: andere
+  gepflegte Bibliothek, nicht selbst bauen).

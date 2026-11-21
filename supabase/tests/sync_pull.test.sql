@@ -81,7 +81,7 @@ select is(
 select is(
   (select array_agg(k order by k) from pulled, jsonb_object_keys(r -> 'households' -> tests.fx('home_a')::text -> 'rows') k),
   array['absences', 'activities', 'activity_favorites', 'activity_ratings', 'areas', 'articles', 'chore_events', 'chores',
-        'collection_recipes', 'feedback', 'feedback_votes', 'meal_plan_entries',
+        'collection_recipes', 'feedback', 'feedback_votes', 'meal_plan_entries', 'notification_settings',
         'packing_bag_items', 'packing_bags', 'packing_items', 'packing_list_bags',
         'recipe_favorites', 'recipe_ratings', 'recipes', 'restaurant_favorites', 'restaurant_ratings', 'restaurants',
         'shopping_contributions', 'shopping_items', 'stores'],
