@@ -1,5 +1,5 @@
 ---
-status: offen # offen | in-arbeit | erledigt
+status: erledigt # offen | in-arbeit | erledigt
 datum: 2026-11-21
 spec: 0009
 ---
@@ -465,7 +465,7 @@ flowchart LR
     - Sammlung inzwischen mit 50 Zeilen → Fehler, nichts halb.
     - Einfügen auf ein gelöschtes Rezept → 23503.
   - **Sync:** `sync_pull` liefert `collection_recipes` und ihre Grabsteine.
-- **Status:** offen
+- **Status:** erledigt, Commit 6d62e8a (rot: `tmp/0009/red-T1.txt`, Mutationsprobe `mutation-T1.txt`)
 
 ### Task 2 — core: Modell, Auflösen, Liste „Essen“, Einkauf
 
@@ -497,7 +497,7 @@ flowchart LR
   - Randfälle: Variante fehlt im Rezept → Standard (Offene Frage 4); lokal fehlendes Rezept fällt
     weg; leere Sammlung „unbekannt“; `coverPhotos` mit 0, 1, 3 und 5 Fotos und mit eigenem Foto;
     Grenzen 50/20.
-- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t2.txt`, `red-t3.txt`)
+- **Status:** erledigt, Commit 7b65da5 (rot: `tmp/0009/red-t2.txt`, `red-t3.txt`)
 
 ### Task 3 — core: Kalender, Übersicht, Löschen, „gekocht“, Entwürfe
 
@@ -539,7 +539,7 @@ flowchart LR
     (Kopf: 10 übernommen, 0 → „1 bis 100 Portionen“).
   - Reste ohne Sammlungen; `contentsChanges` (nur geänderte Spalten, Löschungen, Reihenfolge);
     AC-008/AC-010 (`collectionChoices`, `recipePickerRows`).
-- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t2.txt`, `red-t3.txt`)
+- **Status:** erledigt, Commit 7b65da5 (rot: `tmp/0009/red-t2.txt`, `red-t3.txt`)
 
 ### Task 4 — api: Abbildung, Sync, Befehle, Fake, Seed
 
@@ -580,7 +580,7 @@ db:seed:gen`), `index.ts`.
     Rezept an, Nadjas Gerät sieht den Inhalt nach dem Pull, das Konto „WG“ sieht nichts (AC-011).
     Enrico löscht das Rezept, Nadjas Gerät sieht es aus der Sammlung verschwinden, „Rückgängig“
     bringt es zurück (AC-033).
-- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t4.txt`)
+- **Status:** erledigt, Commit 7b65da5 (rot: `tmp/0009/red-t4.txt`)
 
 ### Task 5 — ui: Foto-Collage
 
@@ -595,7 +595,7 @@ db:seed:gen`), `index.ts`.
     kommt er hier dazu (Texte vom Aufrufer).
 - **Test (zuerst rot):** `collageLayout(0…5)` ergibt Platzhalter, ganz, zwei Spalten, 2×2 und
   höchstens vier. Der Showroom wird bei 390 und 1440 px angesehen.
-- **Status:** gebaut, nicht committet (rot: `tmp/0009/red-t5.txt`)
+- **Status:** erledigt, Commit 95f50fa (rot: `tmp/0009/red-t5.txt`)
 
 ### Task 6 — App: „Essen“, Fenster „Neu“, Seite der Sammlung (lesen und Kopf)
 
@@ -622,7 +622,7 @@ db:seed:gen`), `index.ts`.
   - AC-029 mit zwei Browsern.
   - Offline: alle Stifte und Knöpfe ausgegraut.
   - Fremde Kennung in der Adresse.
-- **Status:** gebaut, nicht committet (Klick-Durchlauf `tmp/0009/t6-click.mjs`, Belege
+- **Status:** erledigt, Commit 0cb4943 (Klick-Durchlauf `tmp/0009/t6-click.mjs`, Belege
   `tmp/0009/t6-*`)
 
 ### Task 7 — App: Kalender, Einplanen, Vorratscheck, Übersicht
@@ -646,7 +646,7 @@ db:seed:gen`), `index.ts`.
   - AC-027 mit dem Seed-Eintrag und AC-014 (Mengen im Vorratscheck).
   - AC-030 und Spec 0011 AC-012 und AC-015 mit dem Seed-Eintrag von vorgestern.
   - Offline: Einplanen ausgegraut.
-- **Status:** offen
+- **Status:** erledigt, Commit 2d208b6 (rot: `tmp/0009/red-t7.txt`, Klick-Durchlauf `tmp/0009/t7-click.mjs`, Belege `tmp/0009/t7-*`)
 
 ### Task 8 — App: „Enthält“ bearbeiten und Fenster „Rezepte zu …“, eigene Zutaten
 
@@ -670,7 +670,7 @@ db:seed:gen`), `index.ts`.
   - Entfernen und Portionen gleichzeitig.
   - Tastatur.
   - Offline.
-- **Status:** offen
+- **Status:** erledigt, Commit 38f94fd (Klick-Durchlauf `tmp/0009/t8-click.mjs`, Belege `tmp/0009/t8-*`)
 
 ### Task 9 — App: „Zu Sammlung hinzufügen“ und Lösch-Hinweise
 
@@ -688,7 +688,7 @@ db:seed:gen`), `index.ts`.
   - AC-009 und AC-010.
   - AC-032 und AC-033 mit „Rückgängig“, auch mit eigenem Foto der Sammlung.
   - Offline.
-- **Status:** offen
+- **Status:** erledigt, Commit 38f94fd (gemeinsam mit T8; Belege `tmp/0009/t9-*`)
 
 ### Task 10 — Abschluss: Doku, Sicherheit, Nachweis
 
@@ -712,7 +712,7 @@ db`, `pnpm test:integration`.
   - `spec-auditor`.
   - `/ui-verify` und `impeccable` gesammelt am Ende aller Wellen; bis dahin gelten die
     Klick-Durchläufe.
-- **Status:** offen
+- **Status:** erledigt (Abschluss-Commit dieser Aufgabe; rot: `tmp/0009/red-t10-restore.txt`, `red-t10-rounding.txt`, `red-t10-contents.txt`)
 
 ## Erwartete E2E-Brüche (für `tmp/brief/e2e-impact.md`)
 
@@ -944,23 +944,103 @@ Abschnitt „Entscheidungen beim Bauen (Bereich, Tn, Datum)“.
     T6 es liefert.
   - Offline ist „+ Hinzufügen“ im Kalender schon ganz ausgegraut (vorhanden); das deckt das
     Einplanen und Anlegen von Sammlungen ab.
-- _T8/T9:_ …
+- _T8/T9 (App, 21.11.2026):_ siehe Abschnitt „Entscheidungen beim Bauen (App, T8/T9, 21.11.2026)“
+  unten.
+- _T10 (Abschluss, 21.11.2026; vom Eigentümer vorab freigegeben):_
+  - **Sicherheit, Hinweis 1 behoben:** `restore_recipe` fügt die Zeilen von `collection_recipes`
+    mit `on conflict (household_id, collection_id, recipe_id) do nothing` ein statt mit
+    `on conflict do nothing`. Hat ein Mitglied eines anderen Haushalts die Kennung einer Zeile
+    inzwischen belegt, scheitert „Rückgängig“ jetzt laut mit 23505, und nichts kommt halb zurück;
+    vorher fehlte die Zeile still. Geändert in der Grundlage `20261121062348_recipes.sql` (noch
+    nicht ausgeliefert, ADR-0012); pgTAP „T10 restore_recipe …“ in `collections.test.sql`, zuerst
+    rot (`tmp/0009/red-t10-restore.txt`).
+  - **Sicherheit, Hinweis 2 hingenommen:** Die Grenze von 50 Rezepten je Sammlung ist unter
+    gleichzeitigen Aufrufen nicht hart (zwei Aufrufe können zusammen knapp darüber kommen). Sie
+    schützt vor Fehlern im Gerät, nicht vor Mitgliedern (wie die Grenzen von `apply_changes`).
+  - **Konflikt „entfernt / Portionen ändern“:** Kommt die Entfernung eines Rezepts per Sync an,
+    bevor das andere Gerät bei „Enthält“ „Fertig“ wählt, schickt das Gerät nichts, zeigt „Hat
+    nicht geklappt – bitte noch einmal versuchen“ und öffnet den Abschnitt mit dem aktuellen Stand
+    (getippte Änderungen gehen dabei verloren, wie bei jedem Zurückspringen nach ADR-0011). Regel
+    `core.contentsRowsGone` (Zeilen, die der Entwurf selbst entfernt, und neu hinzugekommene
+    zählen nicht). Die Regel „beim Verlassen den gültigen Teil speichern“ steht jetzt als
+    `core.savableContents` in `collection-editor.ts`; `use-section-editor.ts` nutzt beide.
+  - **Rundung auf der Liste:** Umgerechnete Mengen mit Einkaufsregel „Rezeptmenge“ werden für
+    Liste und Vorratscheck aufgerundet (`core.buyableQty`, angewendet in
+    `contributionsFromEntry`): zählbare Einheiten auf ganze Stück, g und ml auf ganze Zahlen, kg
+    und l auf eine Nachkommastelle. EL und TL behalten zwei Nachkommastellen (keine Kaufeinheit),
+    Prise, Msp. und Handvoll bleiben. Die Rezeptansicht (`scaleAmount`) bleibt genau. Gilt für
+    Rezepte und Sammlungen gleich. „Kopf“ ist keine erkannte Einheit („1 Kopfsalat“ ist eine
+    Menge ohne Einheit und wird schon immer auf ganze Stück aufgerundet). Die Tests der Specs
+    0006, 0007 und 0008 bleiben unverändert grün: Ihre Mengen waren schon ganzzahlig bzw. ganz
+    in g/ml (core 1020 Tests, api 743).
+  - **Einfügen:** „Sack“ (Säcke) und „Kasten“ (Kästen) sind zählbare Einheiten im Parser
+    („1 Sack Grillkohle“ → Grillkohle, 1 Sack). Sie bleiben im Plural unverändert („2 Sack“) wie
+    „Bund“. Der Seed trägt bei Grillkohle und Bier jetzt die Einheit (`seed.sql` neu erzeugt).
+  - **AC-001:** Leere „Eigene Zutaten“ einer Sammlung zeigen in der Leseansicht „+ Zutat“; der
+    Knopf öffnet den Abschnitt (offline ausgegraut wie der Stift).
+  - **AC-029 / AC-030 automatisiert:** api „AC-029 …“ (Nadja bewertet und favorisiert, Enricos
+    Gerät sieht es, das enthaltene Rezept bleibt) und „AC-030, spec 0011 AC-024 …“ sowie pgTAP
+    „AC-029 …“. Sie prüfen vorhandenes Verhalten und waren deshalb sofort grün.
+  - **Abweichung E13 hingenommen:** Die Seite der Sammlung ist auf dem Tablet einspaltig, wie die
+    Rezeptseite (Spec 0008, E12); zweispaltig erst ab Breakpoint `desktop`. Die Spec nennt unter
+    „Plattformen“ Tablet und Desktop zweispaltig.
+  - **`/ui-verify` und `impeccable`** laufen gesammelt am Ende aller Wellen (Merkzettel
+    „Abschluss-Review“); bis dahin gelten die Klick-Durchläufe von T6 bis T9.
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 21.11.2026, Abschluss T10 (Belege in `tmp/0009/`).
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist, oder einen Klick-Beleg
-      (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm db:reset` und `pnpm exec supabase test db` grün
-- [ ] `pnpm test:integration` grün (Sammlung mit zwei Konten, fremder Haushalt, Löschen und
-      Rückgängig)
-- [ ] `pnpm e2e:dev` grün
-- [ ] `/ui-verify` gelaufen, Befunde behoben oder begründet (Endwelle)
-- [ ] `/security-check` gelaufen (T1, T4, T9)
-- [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
-- [ ] Glossar, `sync.md`, Hinweise in Spec 0008/0010/0011 und Rückverfolgbarkeitstabelle aktuell
+- [x] Alle AC haben einen Test oder einen Klick-Beleg (Rückverfolgbarkeit in `spec.md`). Rot vor
+      Grün je Aufgabe: `red-T1.txt`, `red-t2.txt`, `red-t3.txt`, `red-t4.txt`, `red-t5.txt`,
+      `red-t7.txt`, `red-t10-restore.txt`, `red-t10-rounding.txt`, `red-t10-contents.txt`. Die
+      Tests zu AC-029/AC-030 (api, pgTAP) prüfen vorhandenes Verhalten und waren sofort grün.
+- [x] `pnpm format:check && pnpm check` grün (`t10-gate-format.txt`, `t10-gate-check.txt`: core
+      1020, ui 238, edge 186, api 743 Tests). Ein erster Lauf hatte eine Zeitüberschreitung in
+      `transport-fake.test.ts` („up to 1000 contributions“, 5 s unter Last); einzeln und im
+      zweiten Gesamtlauf grün. `pnpm build:web` läuft in der Endwelle (braucht den VAPID-Schlüssel
+      aus Spec 0013).
+- [x] `pnpm db:reset` und `pnpm exec supabase test db` grün: 32 Dateien, 1900 Tests
+      (`t10-gate-pgtap.txt`), darunter `collections.test.sql` mit 120 Tests.
+- [x] `pnpm test:integration` grün: 9 Dateien, 17 Tests (`t10-gate-integration.txt`), darunter
+      `collections.integration.test.ts` (zwei Konten, anderer Haushalt, abgemeldet, Löschen und
+      Rückgängig).
+- [x] `pnpm e2e:dev` grün: 13 Tests (`t10-gate-e2e-dev.txt`). Ein erster Lauf scheiterte nur am
+      Aufräumen von `test-results` durch einen gleichzeitigen Lauf von Spec 0013 (`ENOENT` der
+      Trace-Datei, `t10-gate-e2e-dev-run1.txt`).
+- [ ] `/ui-verify` und `impeccable`: gesammelt am Ende aller Wellen (Merkzettel
+      „Abschluss-Review“); bis dahin gelten die Klick-Durchläufe von T6 bis T9 bei 390 und
+      1440 px.
+- [x] `/security-check` gelaufen (T1, T4, T9; Ergebnis unten).
+- [x] Offline-Verhalten geprüft: api-Test „offline: every collection command throws
+      OfflineError …“, Klick-Belege `t6-*-offline.png`, `t7-*-offline-calendar.png`,
+      `t8-*-offline.png`, `t9-1440-offline.png`.
+- [x] Glossar („Rezept“, „Sammlung“, „Enthaltenes Rezept“ ohne „vorläufig“, „Einkaufsregel“ mit
+      Rundung), `sync.md` („Nachtrag Spec 0009“), Hinweise in Spec 0008 (AC-003), 0010 (AC-021)
+      und 0011 (Rückverfolgbarkeit AC-012, AC-015, AC-024), `docs/specs/README.md` und
+      `tmp/brief/e2e-impact.md` aktuell.
+
+**Sicherheit (`/security-check` auf T1, T4, T9):** 0 Befunde, 2 Hinweise.
+
+| #   | Hinweis                                                                                                                                                                             | Schwere | Entscheidung                                                                                                                 |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `restore_recipe` fügt `collection_recipes` mit `on conflict do nothing` ohne Ziel ein: belegt ein fremder Haushalt die Kennung einer Zeile, fehlt die Zeile nach „Rückgängig“ still | niedrig | behoben in T10: `on conflict (household_id, collection_id, recipe_id) do nothing`, sonst 23505; pgTAP „T10 restore_recipe …“ |
+| 2   | Die Grenze von 50 Rezepten je Sammlung ist unter gleichzeitigen Aufrufen nicht hart                                                                                                 | niedrig | hingenommen: schützt vor Fehlern im Gerät, nicht vor Mitgliedern (wie die Grenzen von `apply_changes`)                       |
+
+**Spec-Audit (`spec-auditor`), Lücken und was daraus wurde:**
+
+1. Konfliktzeile „entfernt / Portionen ändern“: „Enthält“ schloss still, wenn die Entfernung vor
+   „Fertig“ per Sync ankam → behoben (`core.contentsRowsGone`, Hinweis und Neuöffnen mit dem
+   aktuellen Stand); `savableContents` nach core verschoben.
+2. Rundung auf der Liste war nicht entschieden → entschieden und gebaut (`core.buyableQty`,
+   Glossar „Einkaufsregel“, Spec REQ-005).
+3. AC-029 und die Bewertungs-Hälften von AC-030 / Spec 0011 AC-024 ohne automatisierten Test →
+   api- und pgTAP-Tests ergänzt.
+4. AC-001: „+ Zutat“ fehlte in leeren „Eigenen Zutaten“ → ergänzt (`collection-add-ingredient`).
+5. Tablet einspaltig statt zweispaltig (E13) → bewusste Abweichung, festgehalten (wie Spec 0008,
+   E12).
+6. „1 Sack Grillkohle“ / „1 Kasten Bier“ wurden beim Einfügen nicht als Einheit erkannt →
+   „Sack“ und „Kasten“ im Parser.
 
 ## Entscheidungen beim Bauen (App, T8/T9, 21.11.2026)
 
@@ -972,9 +1052,9 @@ Wird am Ende ausgefüllt.
    A–Z als `SelectRow`; der Fuß zählt nur neu angekreuzte.
 4. Beim Verlassen speichert „Enthält“ den gültigen Teil (ungültige Portionen behalten den alten Wert,
    > 20 Entfernungen speichern nichts). Die Regel liegt vorerst in der App (`use-section-editor.ts`);
-   Kandidat für core (`savableContents`) im Abschluss T10.
+   > Kandidat für core (`savableContents`) im Abschluss T10.
 5. „Zu Sammlung hinzufügen“ steht als erster Eintrag im ⋯ der Rezeptseite.
 
-Offen für T10: Kommt eine Entfernung per Sync an, bevor das andere Gerät „Fertig“ wählt, schließt der
-Abschnitt still (Endstand stimmt, aber kein Hinweis wie in der Konflikttabelle) → Hinweis zeigen,
-wenn Zeilen des Entwurfs inzwischen fehlen.
+Erledigt in T10: Kommt eine Entfernung per Sync an, bevor das andere Gerät „Fertig“ wählt, zeigt
+der Abschnitt jetzt den allgemeinen Hinweis und öffnet sich mit dem aktuellen Stand; die Regel aus
+Punkt 4 steht als `savableContents` in core (siehe „T10“ oben).

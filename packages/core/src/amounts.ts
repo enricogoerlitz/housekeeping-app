@@ -23,6 +23,10 @@ const UNIT_BY_SPELLING = new Map<string, string>([
   ['scheiben', 'Scheibe'],
   ['becher', 'Becher'],
   ['glas', 'Glas'],
+  ['sack', 'Sack'],
+  ['säcke', 'Sack'],
+  ['kasten', 'Kasten'],
+  ['kästen', 'Kasten'],
   ['stange', 'Stange'],
   ['stangen', 'Stange'],
   ['handvoll', 'Handvoll'],
@@ -51,7 +55,12 @@ const PIECE_UNITS = new Set([
   'Becher',
   'Glas',
   'Stange',
+  'Sack',
+  'Kasten',
 ]);
+// Units bought by weight or volume and how many decimals the shop sells them in (spec 0009,
+// REQ-005): whole grams and millilitres, kilograms and litres to one decimal.
+const BUYABLE_DECIMALS: Record<string, number> = { g: 0, ml: 0, kg: 1, l: 1 };
 
 const FRACTION_CHARS: Record<string, number> = {
   '½': 1 / 2,
@@ -254,7 +263,7 @@ export interface ParsedIngredient {
  * "1 Prise Salz" → { name: "Salz", amount: { text: "1 Prise", qty: 1, unit: "Prise" } }
  * "½ Bund Koriander", "1,5 kg Kartoffeln", "2–3 EL Öl" (qty = upper bound 3), "Salz" (no amount).
  * Known units: g, kg, ml, l, EL, TL, Prise, Bund, Zehe(n), Dose(n), Packung(en), Stück, Scheibe(n),
- * Becher, Glas, Stange(n), Handvoll, Msp. Plural spellings are stored as the singular unit
+ * Becher, Glas, Stange(n), Sack (Säcke), Kasten (Kästen), Handvoll, Msp. Plural spellings are stored as the singular unit
  * ("2 Dosen Mais" → unit "Dose"); amount.text keeps what was written. Blank line → null.
  */
 export function parseIngredientLine(line: string): ParsedIngredient | null {
@@ -312,6 +321,23 @@ function roundScaled(value: number, unit: string | undefined): number {
     if (quarters > 0) return quarters;
   }
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * The quantity of a scaled recipe amount as it goes on the shopping list and into the pantry check
+ * (spec 0009, REQ-005; glossary "Einkaufsregel"): rounded up to what can be bought. Countable units
+ * (Glas, Dose, Becher, Packung, Stück, Bund, Sack, Kasten, …) to whole pieces, g and ml to whole
+ * numbers, kg and l to one decimal. Spoon measures (EL, TL) keep two decimals, Prise, Msp. and
+ * Handvoll stay as they are. "0,75 Glas" → 1, "56,25 g" → 57, "1,125 kg" → 1,2. The recipe itself
+ * shows the exact scaled amount (scaleAmount).
+ */
+export function buyableQty(qty: number, unit: string): number {
+  if (NON_SCALING_UNITS.has(unit)) return qty;
+  const decimals = PIECE_UNITS.has(unit) ? 0 : BUYABLE_DECIMALS[unit];
+  if (decimals === undefined) return Math.round((qty + Number.EPSILON) * 100) / 100;
+  const scale = 10 ** decimals;
+  // The small tolerance keeps float noise (0.30000000000000004) from adding a whole step.
+  return Math.ceil(qty * scale - 1e-6) / scale;
 }
 
 /**

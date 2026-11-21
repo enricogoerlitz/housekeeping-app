@@ -6,7 +6,7 @@
 -- AC-032, AC-033 (server), the conflict table and the negative tests of the risk table in plan.md.
 begin;
 \ir _helpers.psql
-select plan(112);
+select plan(120);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -447,6 +447,41 @@ select results_eq(
   $$ values ('collection', 0) $$,
   'E11 restore_recipe: … as a collection, with the rows it had when it was deleted');
 
+-- ===================== A row id taken in another household =====================
+-- Row ids are unique across households. While Grillgemüse is deleted, a member of WG who saw the
+-- id of its row in Grillabend creates a row with that id in his own household. "Rückgängig" must
+-- then fail loudly instead of silently leaving the row out (security check of T10).
+insert into fx (key) values ('nachos');
+select tests.authenticate_as(tests.fx('enrico'));
+select is((select public.delete_recipe(tests.fx('grillgemuese'), current_date) ->> 'collections'), '2',
+  'T10 delete_recipe: Grillgemüse is removed from Grillabend and the collection created above');
+select tests.authenticate_as(tests.fx('ben'));
+select public.apply_changes(tests.fx('home_b'), jsonb_build_array(
+  jsonb_build_object('kind', 'insert', 'table', 'recipes',
+    'row', jsonb_build_object('id', tests.fx('nachos'), 'title', 'Nachos')),
+  jsonb_build_object('kind', 'insert', 'table', 'collection_recipes',
+    'row', jsonb_build_object('id', tests.fx('l_g_gemuese'), 'collection_id', tests.fx('wg_abend'),
+                              'recipe_id', tests.fx('nachos')))));
+select tests.authenticate_as(tests.fx('enrico'));
+select throws_ok(tests.restore_sql('grillgemuese'), '23505', null,
+  'T10 restore_recipe: a row id taken in another household makes the restore fail loudly');
+select tests.clear_authentication();
+select is(
+  jsonb_build_object(
+    'grillgemuese', (select count(*)::int from public.recipes where id = tests.fx('grillgemuese')),
+    'snapshot', (select count(*)::int from private.recipe_deletions where recipe_id = tests.fx('grillgemuese'))),
+  '{"grillgemuese": 0, "snapshot": 1}'::jsonb,
+  'T10 restore_recipe: … nothing is restored halfway and the snapshot stays');
+select tests.authenticate_as(tests.fx('ben'));
+select public.apply_changes(tests.fx('home_b'), jsonb_build_array(
+  jsonb_build_object('kind', 'delete', 'table', 'collection_recipes', 'id', tests.fx('l_g_gemuese'))));
+select tests.authenticate_as(tests.fx('enrico'));
+select is((select public.restore_recipe(tests.fx('grillgemuese'))), true,
+  'T10 restore_recipe: once the id is free again, Grillgemüse comes back');
+select tests.clear_authentication();
+select is(tests.links('grillabend'), (select doc from before_contents where k = 'grillabend'),
+  'T10 restore_recipe: … with its row in Grillabend, servings, variant and order');
+
 -- ===================== The limit on "Rückgängig" =====================
 select tests.authenticate_as(tests.fx('enrico'));
 select is((select public.delete_recipe(tests.fx('tzatziki'), current_date) ->> 'collections'), '1',
@@ -480,6 +515,24 @@ select is(
    where c.household_id = tests.fx('home_a')),
   (select doc from links_a_before),
   'E11 delete_recipe: WG''s deletion leaves the rows of Enrico & Nadja alone');
+
+-- ===================== AC-029: rating and favourite of a collection =====================
+select tests.authenticate_as(tests.fx('nadja'));
+select public.set_recipe_rating(tests.fx('kartoffelsalat'), 3);
+select lives_ok(format('select public.set_recipe_rating(%L, 4.5)', tests.fx('grillabend')),
+  'AC-029 set_recipe_rating: Nadja rates Grillabend with 4,5');
+select lives_ok(format('select public.set_recipe_favorite(%L, true)', tests.fx('grillabend')),
+  'AC-029 set_recipe_favorite: … and marks it as her favourite');
+select tests.clear_authentication();
+select results_eq(
+  format($$ select r.title, coalesce((select array_agg(x.member_id::text || ':' || x.stars::text order by x.member_id)
+                                      from public.recipe_ratings x where x.recipe_id = r.id), '{}'),
+                    (select count(*)::int from public.recipe_favorites f where f.recipe_id = r.id)
+            from public.recipes r where r.id in (%L, %L) order by r.title $$,
+         tests.fx('grillabend'), tests.fx('kartoffelsalat')),
+  format($$ values ('Grillabend', array[%L], 1), ('Kartoffelsalat', array[%L], 0) $$,
+         tests.fx('nadja')::text || ':4.5', tests.fx('nadja')::text || ':3.0'),
+  'AC-029: Grillabend has Nadja''s 4,5 and her favourite; Kartoffelsalat keeps her 3, Enrico''s stay empty');
 
 -- ===================== Sync =====================
 create temp table pulled (r jsonb) on commit drop;

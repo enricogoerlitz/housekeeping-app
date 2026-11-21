@@ -526,7 +526,8 @@ der Delta-Abgleich liest nur `updated_at`.
    beschreiben die Verlaufszeile jetzt wie gebaut (Titel, Avatar, Tag „Fr 20.“, AC-058) statt
    „· heute“.
 
-Offen bis Spec 0009: AC-012, AC-024 und die Zeile „Grillabend“ in AC-015.
+AC-012, AC-024 und die Zeile „Grillabend“ in AC-015 sind mit Spec 0009 geprüft (T3, T4, T7, T10;
+Rückverfolgbarkeit in der Spec nachgetragen).
 
 ## Entscheidungen beim Bauen (core, Tasks 3–4, 21.11.2026)
 

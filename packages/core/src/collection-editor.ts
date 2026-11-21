@@ -199,6 +199,41 @@ export function validateContentsDraft(draft: ContentsDraft): ContentsProblem[] {
   return problems;
 }
 
+/**
+ * What leaving the page or opening another pen saves of "Enthält" (spec 0008, E7): the draft when
+ * it is valid; a row with invalid portions keeps its stored portions and the rest is saved; more
+ * than 20 removed at once saves nothing (undefined).
+ */
+export function savableContents<T extends ContentsDraft>(draft: T): T | undefined {
+  const problems = validateContentsDraft(draft);
+  if (problems.length === 0) return draft;
+  if (problems.some((problem) => problem.field === 'removed')) return undefined;
+  const invalid = new Set(problems.map((problem) => problem.key));
+  const stored = new Map(draft.base.map((row) => [row.id, row]));
+  return {
+    ...draft,
+    rows: draft.rows.map((row) => {
+      if (!invalid.has(row.id)) return row;
+      const servings = stored.get(row.id)?.servings;
+      return { ...row, servings: servings === undefined ? '' : String(servings) };
+    }),
+  };
+}
+
+/**
+ * True when a row the draft still shows was removed meanwhile on another device (the sync brought
+ * the tombstone before "Fertig"). Its changes would go nowhere, so the section says "Hat nicht
+ * geklappt – bitte noch einmal versuchen" and opens again with the current rows (conflict table).
+ * Rows the draft removes as well, and rows added meanwhile, do not count.
+ */
+export function contentsRowsGone(
+  draft: ContentsDraft,
+  current: readonly Pick<CollectionRecipe, 'id'>[],
+): boolean {
+  const ids = new Set(current.map((row) => row.id));
+  return draft.rows.some((row) => !ids.has(row.id));
+}
+
 /** Columns of a row "Fertig" changes; a key holding undefined clears the column. */
 export type CollectionRecipePatch = Partial<
   Pick<CollectionRecipe, 'servings' | 'variantId' | 'sort'>

@@ -127,7 +127,8 @@ Wenn        ich „Trattoria Da Enzo“ öffne und „Zurück“ wähle
 Dann        ist weiterhin „Restaurants“ aktiv
 ```
 
-**AC-003 — Neu**
+**AC-003 — Neu** (geändert durch Spec 0009, AC-001: das Menü bietet zusätzlich „Sammlung“, das
+Fenster heißt „Neu“ und hat die Auswahl-Chips „Rezept · Sammlung“)
 
 ```gherkin
 Angenommen  „Essen“ ist offen und ich bin online

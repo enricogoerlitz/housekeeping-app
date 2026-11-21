@@ -3,14 +3,16 @@ import {
   saveCollectionContents,
   saveRecipeSection,
   useCollectionContents,
+  WRITE_REJECTED_MESSAGE,
   type SectionSave,
 } from '@housekeeping/api';
 import {
   addIngredientRows,
   contentsDraft,
+  contentsRowsGone,
+  savableContents,
   savablePart,
   sectionDraft,
-  setContentServings,
   validateContentsDraft,
   validateSectionDraft,
   type CollectionContent,
@@ -76,20 +78,9 @@ function validate(draft: OpenDraft): Problem[] {
   return draft.section === 'contents' ? validateContentsDraft(draft) : validateSectionDraft(draft);
 }
 
-/**
- * Leaving the page or opening another pen saves the valid part (E7). For "Enthält" a row with
- * invalid portions keeps its stored portions; more than 20 removed at once saves nothing.
- */
+/** Leaving the page or opening another pen saves the valid part (E7; core savableContents). */
 function savable(draft: OpenDraft): OpenDraft | undefined {
-  if (draft.section !== 'contents') return savablePart(draft);
-  const problems = validateContentsDraft(draft);
-  if (problems.some((problem) => problem.field === 'removed')) return undefined;
-  return problems.reduce<ContentsSectionDraft>((next, problem) => {
-    const stored = draft.base.find((row) => row.id === problem.key);
-    if (!stored) return next;
-    const servings = stored.servings === undefined ? '' : String(stored.servings);
-    return { ...setContentServings(next, stored.id, servings), section: 'contents' };
-  }, draft);
+  return draft.section === 'contents' ? savableContents(draft) : savablePart(draft);
 }
 
 function openDraft(
@@ -155,6 +146,18 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
         setState({ draft, attempted: true });
         return;
       }
+      // Conflict table: a row removed meanwhile on another device. Its changes would go nowhere,
+      // so the section says so and opens again with the current rows.
+      if (
+        draft.section === 'contents' &&
+        contentsRowsGone(
+          draft,
+          contents.map((content) => content.row),
+        )
+      ) {
+        setState({ draft: openDraft(recipe, contents, 'contents'), error: WRITE_REJECTED_MESSAGE });
+        return;
+      }
       const result = trySave(recipeId, draft);
       if ('error' in result) {
         setState({ draft, error: result.error });
@@ -169,7 +172,7 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
       setState(save.reopened ? { draft: save.reopened } : {});
       watch(save, draft, save.reopened);
     },
-    [recipeId, watch],
+    [recipe, contents, recipeId, watch],
   );
 
   /** Leaving the page: the valid part, without waiting and without reopening (E7). */

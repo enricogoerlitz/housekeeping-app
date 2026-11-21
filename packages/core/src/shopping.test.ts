@@ -111,6 +111,33 @@ describe('contributionsFromEntry', () => {
     expect(contributionsFromEntry(entry, recipe, articlesById, 'Mi')[0]?.count).toBe(3);
   });
 
+  it('Spec 0009 REQ-005: scaled amounts are rounded up to buyable values', () => {
+    const ingredient = (id: string, text: string, qty: number, unit: string) => ({
+      id,
+      articleId: 'art-mango',
+      amount: { text, qty, unit },
+      shoppingRule: 'recipeAmount' as const,
+    });
+    const recipe = {
+      ...halloumiPfanne,
+      servings: 4,
+      ingredients: [
+        ingredient('a', '1 Glas', 1, 'Glas'),
+        ingredient('b', '75 g', 75, 'g'),
+        ingredient('c', '1,5 kg', 1.5, 'kg'),
+        ingredient('d', '2 EL', 2, 'EL'),
+      ],
+    };
+    const entry = curryEntry({ portions: 3, variants: [] });
+    const rows = contributionsFromEntry(entry, recipe, articlesById, 'Mi');
+    expect(rows.map((row) => [row.qty, row.unit])).toEqual([
+      [1, 'Glas'],
+      [57, 'g'],
+      [1.2, 'kg'],
+      [1.5, 'EL'],
+    ]);
+  });
+
   it('uses the default variant for entries without variant rows', () => {
     const entry = curryEntry({ portions: 4, variants: [] });
     const names = contributionsFromEntry(entry, mangoCurry, articlesById, 'Mi').map((r) => r.name);

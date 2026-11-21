@@ -15,7 +15,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0006](0006-eine-einkaufsliste/spec.md)         | Eine Einkaufsliste                                         | umgesetzt   |
 | [0007](0007-artikel-katalog-stammdaten/spec.md) | Artikel-Katalog und Stammdaten                             | umgesetzt   |
 | [0008](0008-essen-rezept-editor/spec.md)        | Essen und Rezept-Editor                                    | umgesetzt   |
-| [0009](0009-sammlungen/spec.md)                 | Sammlungen                                                 | freigegeben |
+| [0009](0009-sammlungen/spec.md)                 | Sammlungen                                                 | umgesetzt   |
 | [0010](0010-kalender-abwesenheiten/spec.md)     | Kalender und Abwesenheiten                                 | freigegeben |
 | [0011](0011-heute-haushalt/spec.md)             | Übersicht und Haushalt                                     | umgesetzt   |
 | [0012](0012-reisetaschen/spec.md)               | Reisetaschen                                               | umgesetzt   |

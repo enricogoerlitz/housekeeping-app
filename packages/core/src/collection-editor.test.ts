@@ -5,6 +5,7 @@ import {
   collectionChoices,
   contentsChanges,
   contentsDraft,
+  contentsRowsGone,
   moveContent,
   NEW_ENTRY_KINDS,
   newCollectionRecipes,
@@ -13,6 +14,7 @@ import {
   newRecipe,
   recipePickerRows,
   removeContent,
+  savableContents,
   setContentServings,
   setContentVariant,
   takeOverLabel,
@@ -198,6 +200,76 @@ describe('"Enthält" (REQ-003, REQ-005)', () => {
     expect(validateContentsDraft(big)).toEqual([
       { field: 'removed', message: 'Höchstens 20 Rezepte auf einmal entfernen' },
     ]);
+  });
+});
+
+describe('"Enthält" when leaving the page (E7, plan T8 decision 4)', () => {
+  it('a valid draft is saved as it is', () => {
+    const next = setContentServings(draft(), 'cr-kartoffelsalat', '10');
+    expect(savableContents(next)).toBe(next);
+  });
+
+  it('a row with invalid portions keeps its stored portions, the rest is saved', () => {
+    const next = setContentVariant(
+      setContentServings(draft(), 'cr-grillgemuese', '0'),
+      'cr-grillgemuese',
+      'v-vegan',
+    );
+    const part = savableContents(next);
+    expect(part?.rows[1]).toEqual({
+      id: 'cr-grillgemuese',
+      recipeId: grillgemuese.id,
+      servings: '8',
+      variantId: 'v-vegan',
+    });
+    expect(part && contentsChanges(part)).toEqual([
+      { type: 'patch', id: 'cr-grillgemuese', values: { variantId: 'v-vegan' } },
+    ]);
+  });
+
+  it('invalid portions of a row that inherits go back to "übernimmt"', () => {
+    const part = savableContents(setContentServings(draft(), 'cr-kartoffelsalat', '101'));
+    expect(part?.rows[0]?.servings).toBe('');
+    expect(part && contentsChanges(part)).toEqual([]);
+  });
+
+  it('E15: more than 20 removed at once saves nothing', () => {
+    const recipes = Array.from({ length: 21 }, (_, index) =>
+      makeRecipe({ id: `rec-${index}`, title: `Rezept ${index}` }),
+    );
+    const rows = recipes.map((recipe, sort): CollectionRecipe => ({
+      id: `cr-${sort}`,
+      collectionId: grillabend.id,
+      recipeId: recipe.id,
+      sort,
+    }));
+    const byId = Object.fromEntries(recipes.map((recipe) => [recipe.id, recipe]));
+    let big = contentsDraft(grillabend, collectionContents(grillabend, rows, byId));
+    for (const row of rows) big = removeContent(big, row.id);
+    expect(savableContents(big)).toBeUndefined();
+  });
+});
+
+describe('"Enthält" after a change of another device (conflict table)', () => {
+  it('a row of the draft removed meanwhile on another device: the draft is out of date', () => {
+    const open = setContentServings(draft(), 'cr-kartoffelsalat', '10');
+    const synced = grillabendRecipes.filter((row) => row.id !== 'cr-kartoffelsalat');
+    expect(contentsRowsGone(open, synced)).toBe(true);
+  });
+
+  it('nothing removed, or only rows this draft removes as well: up to date', () => {
+    expect(contentsRowsGone(draft(), grillabendRecipes)).toBe(false);
+    const removing = removeContent(draft(), 'cr-kartoffelsalat');
+    const synced = grillabendRecipes.filter((row) => row.id !== 'cr-kartoffelsalat');
+    expect(contentsRowsGone(removing, synced)).toBe(false);
+  });
+
+  it('a row added meanwhile on another device does not make the draft out of date', () => {
+    const synced: CollectionRecipe[] = [
+      ...grillabendRecipes,
+      { id: 'cr-tzatziki', collectionId: grillabend.id, recipeId: tzatziki.id, sort: 2 },
+    ];
+    expect(contentsRowsGone(draft(), synced)).toBe(false);
   });
 });
 

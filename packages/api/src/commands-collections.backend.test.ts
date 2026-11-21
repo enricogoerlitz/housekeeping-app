@@ -3,6 +3,7 @@
 // limit 50). Seed: "Grillabend" for 6 with Nudelsalat (übernimmt) and Gemischter Salat (8 Port.),
 // planned next Saturday evening and the day before yesterday; "Sommerfest" is empty.
 import {
+  averageRating,
   collectionContentLabel,
   collectionContents,
   contentsDraft,
@@ -16,7 +17,7 @@ import {
 } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
-import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
+import { createEngine, onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import {
   addRecipeToCollection,
@@ -25,10 +26,17 @@ import {
   saveCollectionContents,
 } from './commands-collections';
 import { createAndPlanRecipe, splitForEaters } from './commands-plan';
-import { createRecipe, deleteRecipe, saveRecipeSection } from './commands-recipes';
+import {
+  createRecipe,
+  deleteRecipe,
+  rateRecipe,
+  saveRecipeSection,
+  toggleFavorite,
+} from './commands-recipes';
 import { pantryCheckRows } from './commands-shopping';
 import { indexById } from './queries';
 import { ENRICO, NADJA, SLOT_DINNER } from './seed/demo';
+import { createMemoryStorage } from './storage';
 import { getData, OfflineError, snapshot } from './store';
 import type { ChangeOp } from './transport';
 
@@ -432,6 +440,64 @@ describe('spec 0009: planning, the list and the sections of a collection', () =>
     expect(() => saveRecipeSection(GRILLABEND, asRecipe)).toThrow(
       'Der Abschnitt passt nicht zur Art',
     );
+  });
+});
+
+describe('spec 0009: rating and favourite of a collection (REQ-009)', () => {
+  it('AC-029: Nadja gives Grillabend 4,5 and ♡; Nudelsalat keeps her 3; Enrico sees her 4,5, his own stays empty', async () => {
+    const nadja = await fx.startAs(NADJA);
+    await fx.server.transport(NADJA).setRecipeRating(NUDELSALAT, 3);
+    await nadja.pull();
+    const enrico = createEngine({
+      transport: fx.server.transport(ENRICO),
+      storage: createMemoryStorage(),
+      userId: ENRICO,
+      environment: fx.environment,
+    });
+    await enrico.start();
+    fx.clearCalls();
+    const before = recipe(NUDELSALAT);
+    expect(before?.ratings[NADJA]).toBe(3);
+
+    rateRecipe(GRILLABEND, 4.5);
+    toggleFavorite(GRILLABEND);
+    await fx.settle(nadja, enrico);
+
+    expect(fx.calls).toEqual([
+      { fn: 'setRecipeRating', args: [GRILLABEND, 4.5] },
+      { fn: 'setRecipeFavorite', args: [GRILLABEND, true] },
+    ]);
+    const grillabend = recipe(GRILLABEND);
+    expect(grillabend?.ratings[NADJA]).toBe(4.5);
+    expect(grillabend && averageRating(grillabend)).toBe(4.5);
+    expect(grillabend?.favoriteOf).toContain(NADJA);
+    // The contained recipe is untouched: same ratings and favourites as before.
+    expect(recipe(NUDELSALAT)?.ratings).toEqual(before?.ratings);
+    expect(recipe(NUDELSALAT)?.favoriteOf).toEqual(before?.favoriteOf);
+
+    const seen = enrico.getState()?.households[H]?.recipes ?? [];
+    const seenGrillabend = seen.find((candidate) => candidate.id === GRILLABEND);
+    expect(seenGrillabend?.ratings[NADJA]).toBe(4.5);
+    expect(seenGrillabend?.ratings[ENRICO]).toBeUndefined();
+    expect(seen.find((candidate) => candidate.id === NUDELSALAT)?.ratings[NADJA]).toBe(3);
+    enrico.stop();
+  });
+
+  it('AC-030, spec 0011 AC-024: 4 stars from "Wie war\'s?" go to Grillabend alone; the contained recipes get no new rating', async () => {
+    await fx.startEnrico();
+    const contained = contentsOf(GRILLABEND).map((content) => content.recipe);
+    expect(contained.map((candidate) => candidate.id)).toEqual([NUDELSALAT, SALAT]);
+    // "Wie war's?" rates a collection like a recipe (plan E17, T4: rateRecipe, not rateActivity).
+    rateRecipe(GRILLABEND, 4);
+    await fx.settle();
+    expect(fx.calls).toEqual([{ fn: 'setRecipeRating', args: [GRILLABEND, 4] }]);
+    expect(recipe(GRILLABEND)?.ratings[ENRICO]).toBe(4);
+    for (const before of contained) {
+      expect(recipe(before.id)?.ratings).toEqual(before.ratings);
+      expect(fx.server.row(H, 'recipe_ratings', `${before.id}:${ENRICO}`)?.stars).toBe(
+        before.ratings[ENRICO],
+      );
+    }
   });
 });
 

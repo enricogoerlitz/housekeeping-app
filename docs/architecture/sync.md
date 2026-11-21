@@ -300,6 +300,52 @@ regelt die erste Spec mit Fotos.
 - **Kein neuer Cache:** keine neue synchronisierte Tabelle, keine neue Spalte; die
   Cache-Version bleibt.
 
+## Nachtrag Spec 0009 — Sammlungen
+
+- **Eine Sammlung ist ein Rezept mit anderer Art:** `recipes.kind` (`'recipe'` oder
+  `'collection'`, Standard `'recipe'`). Die Art steht im `insert`-Grant und in der
+  `insert`-Allowlist von `apply_changes`, aber weder im `update`-Grant noch in `patch`; direkt
+  ergibt eine Änderung 42501, über `apply_changes` `invalid_change`. Für Wege mit `security
+definer` wirft der Trigger `recipes_kind_immutable` `kind_immutable` (22023) für jede Rolle.
+  Eine Sammlung hat keine Gerichtart, Zeit, Küche, Schlagworte, Varianten, Schritte und keinen
+  Vorlauf, und keine ihrer eigenen Zutaten hat eine Variante (Check `recipes_kind_fields`, 23514);
+  dafür ist `recipes.course` nullbar und bei Rezepten Pflicht. Bewertung, Favorit, Foto, Suche,
+  Einplanen und „Wie war's?“ laufen unverändert über die Wege der Rezepte.
+- **Neue Tabelle `collection_recipes`** (Glossar „Enthaltenes Rezept“), synchronisiert wie jede
+  Haushaltstabelle (RLS über `attach_household_policies`, `updated_at` und Grabstein über
+  `attach_sync_triggers`, `sync_pull` direkt nach `recipe_ratings`). Spalten: Sammlung, Rezept,
+  eigene Portionen (leer = wie die Sammlung), Variante (leer = Standardvariante), `sort`.
+  Zusammengesetzte Fremdschlüssel `(household_id, collection_id)` und `(household_id, recipe_id)`
+  auf `recipes` mit Kaskade halten beide Seiten im selben Haushalt (23503). Ein Rezept steht
+  höchstens einmal in einer Sammlung (`collection_recipes_recipe_once`, 23505). Änderbar sind nur
+  `servings`, `variant_id` und `sort`; Sammlung, Rezept und Haushalt einer Zeile nie. Der Trigger
+  `collection_recipes_check` (vor `insert`, security invoker) lässt nur Rezepte in Sammlungen zu
+  (`collection_recipe_kind_invalid`, 23514) und höchstens 50 je Sammlung
+  (`too_many_collection_recipes`, 23514; unter gleichzeitigen Aufrufen nicht hart, hingenommen).
+- **Löschen und „Rückgängig“ nehmen die Inhalte mit:** `delete_recipe` sperrt zusätzlich alle
+  Zeilen von `collection_recipes` der Sammlung bzw. des Rezepts (nach den Planeinträgen, vor den
+  Resten), legt sie vollständig in den Schnappschuss (`collection_recipes`) und meldet in
+  `collections`, aus wie vielen Sammlungen ein Rezept entfernt wurde. Die Kaskade löscht die
+  Zeilen mit Grabsteinen; die enthaltenen Rezepte einer gelöschten Sammlung bleiben unverändert.
+  `restore_recipe` setzt `kind` aus dem Schnappschuss und fügt die Zeilen mit ihren Kennungen,
+  Portionen, Varianten und `sort` wieder ein, aber nur, wo die andere Seite im Haushalt noch
+  existiert. Ist das Rezept dort inzwischen wieder enthalten, bleibt die vorhandene Zeile
+  (`on conflict (household_id, collection_id, recipe_id) do nothing`). Ist eine Zeilen-Kennung
+  inzwischen in einem anderen Haushalt vergeben, scheitert „Rückgängig“ laut mit 23505, ebenso an
+  einer inzwischen vollen Sammlung; dann kommt nichts zurück.
+- **„Gekocht“ aus dem Kalender, ohne Spalte:** `core.cookingHistory` zählt jeden Planeintrag mit
+  Tag bis einschließlich heute ohne „nicht gekocht“ für sein Rezept und bei einer Sammlung für
+  jedes Rezept, das sie heute enthält. `withCookingHistory` verbindet das mit den gespeicherten
+  Werten (`last_cooked_on` = Maximum, `cooked_count` = Summe). Gerechnet wird auf dem Gerät, auch
+  offline; es gibt keinen Trigger und keinen Schreibweg.
+- **Auf dem Gerät:** `HouseholdData.collectionRecipes`; `changes.ts` schickt eine neue Sammlung
+  vor ihren Zeilen (`TABLE_ORDER`). Jede Aktion ist ein Aufruf (Plan E12): „n Rezepte übernehmen“,
+  „+ Neue Sammlung“ samt Zeile und „Enthält“ → „Fertig“ (Patches und Löschungen, höchstens 20)
+  je ein `apply_changes`. Kommt die Entfernung eines Rezepts per Sync an, bevor das andere Gerät
+  bei „Enthält“ „Fertig“ wählt, schickt das Gerät nichts, zeigt „Hat nicht geklappt – bitte noch
+  einmal versuchen“ und öffnet den Abschnitt mit dem aktuellen Stand (`core.contentsRowsGone`).
+  Die Cache-Version ist 7.
+
 ## Nachtrag Spec 0011 — Erledigungen mit Bedingung, Bewertungen in halben Schritten
 
 - **Erledigungen nur über Domänen-Operationen:** Mitglieder haben auf `chore_events` nur noch

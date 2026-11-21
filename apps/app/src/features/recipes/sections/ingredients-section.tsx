@@ -97,6 +97,7 @@ export function IngredientsSection(props: {
           variantId={props.variantId}
           onVariant={props.onVariant}
           servings={props.servings}
+          frame={frame}
         />
       )}
     </EditableSection>
@@ -108,8 +109,9 @@ function IngredientsRead(props: {
   variantId: Id | undefined;
   onVariant: (id: Id) => void;
   servings: number;
+  frame: ReturnType<typeof useSectionFrame>;
 }) {
-  const { recipe, variantId } = props;
+  const { recipe, variantId, frame } = props;
   const articlesById = useArticlesById();
   // ⋯ → "Artikel bearbeiten" (spec 0007, AC-007) and, from there, "Zusammenführen" (REQ-007).
   const [articleFor, setArticleFor] = useState<Id | undefined>();
@@ -142,7 +144,21 @@ function IngredientsRead(props: {
         </View>
       ) : null}
       {ingredients.length === 0 ? (
-        <Text color="muted">Noch keine Zutaten.</Text>
+        <Stack gap={8}>
+          <Text color="muted">Noch keine Zutaten.</Text>
+          {/* An empty collection invites its own ingredients (spec 0009, AC-001): opens the section. */}
+          {recipe.kind === 'collection' ? (
+            <Button
+              label="Zutat"
+              icon="plus"
+              variant="link"
+              onPress={frame.onEdit}
+              disabled={frame.disabled}
+              hint={frame.hint}
+              testID="collection-add-ingredient"
+            />
+          ) : null}
+        </Stack>
       ) : (
         <List>
           {ingredients.map((ingredient) => (

@@ -283,8 +283,8 @@ function buildCollections(
     description: 'Würstchen vom Grill, zwei Salate und alles, was dazugehört.',
     ingredients: [
       own(1, 'Bratwurst', { text: '12', qty: 12 }, 'recipeAmount'),
-      own(2, 'Grillkohle', { text: '1 Sack', qty: 1 }, 'count'),
-      own(3, 'Bier', { text: '1 Kasten', qty: 1 }, 'count'),
+      own(2, 'Grillkohle', { text: '1 Sack', qty: 1, unit: 'Sack' }, 'count'),
+      own(3, 'Bier', { text: '1 Kasten', qty: 1, unit: 'Kasten' }, 'count'),
       own(4, 'Grillanzünder', undefined, 'count'),
     ],
     favoriteOf: [ENRICO],

@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-20
 ---
 
@@ -296,6 +296,11 @@ Und         „Fertig“ speichert sie erst, wenn ein Artikel gewählt oder neu 
   „seine Portionen in der Sammlung × Faktor“ umgerechnet, eigene Zutaten mit Einkaufsregel
   „Rezeptmenge“ mit dem Faktor. Für Anzahl, Rezeptmenge und Rundung gelten die Regeln aus dem
   Glossar („Einkaufsregel“).
+- **Rundung (Entscheidung beim Abschluss, Plan T10):** Auf der Einkaufsliste und im Vorratscheck
+  werden umgerechnete Mengen auf kaufbare Werte aufgerundet: zählbare Einheiten (Glas, Dose,
+  Becher, Packung, Stück, Bund, Sack, Kasten, …) auf ganze Stück, g und ml auf ganze Zahlen, kg
+  und l auf eine Nachkommastelle („0,75 Glas“ → „1 Glas“, „56,25 g“ → „57 g“). Die Rezeptansicht
+  zeigt weiter die genaue umgerechnete Menge. Das gilt für Rezepte wie für Sammlungen.
 - Jedes enthaltene Rezept nutzt die Variante, die in der Sammlung gewählt ist (Standard: seine
   Standardvariante). Beim Einplanen einer Sammlung gibt es keine Aufteilung auf Varianten.
 
@@ -635,15 +640,46 @@ je ein Schreibvorgang, der ganz oder gar nicht gelingt.
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md)     | Test |
-| ------- | ----------------- | ------------------ | ---- |
-| REQ-001 | AC-001 bis AC-003 | T3, T6             | —    |
-| REQ-002 | AC-004, AC-005    | T2, T5, T6         | —    |
-| REQ-003 | AC-006 bis AC-011 | T1, T3, T4, T8, T9 | —    |
-| REQ-004 | AC-012, AC-013    | T3, T8             | —    |
-| REQ-005 | AC-014 bis AC-017 | T2, T3, T4, T7, T8 | —    |
-| REQ-006 | AC-018 bis AC-020 | T2, T6             | —    |
-| REQ-007 | AC-021 bis AC-024 | T3, T4, T7         | —    |
-| REQ-008 | AC-025 bis AC-028 | T2, T4, T6, T7     | —    |
-| REQ-009 | AC-029 bis AC-031 | T3, T6, T7         | —    |
-| REQ-010 | AC-032, AC-033    | T1, T3, T4, T9     | —    |
+„E2E (Endwelle)“: reine Oberfläche, geprüft im Klick-Durchlauf bei 390 und 1440 px gegen den
+lokalen Stack; die automatisierten e2e-Tests laufen einmal am Ende aller Wellen. „api“ meint
+`packages/api/src/commands-collections.backend.test.ts`, wenn keine Datei genannt ist. Die Spalte
+„Beleg“ nennt Bildschirmfotos und Protokolle in `tmp/0009/`. Die Konflikttabelle prüfen pgTAP
+`collections.test.sql`, api „23505 …“, „row_not_found …“, „23503 …“ und core
+`collection-editor.test.ts` „„Enthält“ after a change of another device …“ (Beleg
+`tmp/0009/t8-390-conflict-removed.png`).
+
+| REQ     | AC     | Task (plan.md) | Test                                                                                                                                                             | Beleg                                                                                 |
+| ------- | ------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 | 3, 4, 6, 10    | core `collection-editor.test.ts` „AC-001 …“, api „AC-001, AC-002 …“; Menü, Seite und „+ Zutat“ E2E (Endwelle)                                                    | `tmp/0009/t6-390-new-menu.png`, `tmp/0009/t6-1440-new-collection-page.png`            |
+| REQ-001 | AC-002 | 3, 4, 6        | core `collection-editor.test.ts` „AC-002 …“, api „AC-002 …“                                                                                                      | `tmp/0009/t6-390-new-collection.png`                                                  |
+| REQ-001 | AC-003 | 3, 4, 6        | core `collection-editor.test.ts` „AC-003 …“, api „AC-003 …“                                                                                                      | `tmp/0009/t6-390-results.txt`                                                         |
+| REQ-002 | AC-004 | 2, 5, 6        | core `collections.test.ts` „AC-004 …“, ui `collage-layout.test.ts` „AC-004 …“                                                                                    | `tmp/0009/t6-390-grillabend.png`, `tmp/0009/t6-1440-grillabend.png`                   |
+| REQ-002 | AC-005 | 2, 5, 6        | core `collections.test.ts` „AC-005 …“, ui `collage-layout.test.ts` „AC-005 …“                                                                                    | `tmp/0009/t6-390-own-photo.png`, `tmp/0009/t6-1440-own-photo-tile.png`                |
+| REQ-003 | AC-006 | 2, 3, 4, 8     | core `collections.test.ts`, core `collection-editor.test.ts` „AC-006 …“, api „AC-006 …“                                                                          | `tmp/0009/t8-390-picker.png`, `tmp/0009/t8-390-contents-saved.png`                    |
+| REQ-003 | AC-007 | 8              | E2E (Endwelle); `createRecipe` aus Spec 0008                                                                                                                     | `tmp/0009/t8-390-picker-new.png`, `tmp/0009/t8-1440-picker-new.png`                   |
+| REQ-003 | AC-008 | 3, 4, 9        | core `collection-editor.test.ts` „AC-008 …“, api „AC-008 …“, `collections.integration.test.ts` „AC-008 …“                                                        | `tmp/0009/t9-390-sheet.png`, `tmp/0009/t9-390-added.png`, `tmp/0009/t9-390-new.png`   |
+| REQ-003 | AC-009 | 1, 3, 4, 9     | pgTAP `collections.test.sql` „AC-009 …“, core `collection-editor.test.ts`, api „AC-009 …“, `collections.integration.test.ts`                                     | `tmp/0009/t9-390-menu.png`                                                            |
+| REQ-003 | AC-010 | 1, 3, 4, 8, 9  | pgTAP `collections.test.sql` „AC-010 …“, core `collection-editor.test.ts` „AC-010 …“, api „AC-010 …“, „23505 …“                                                  | `tmp/0009/t8-390-picker-contained.png`, `tmp/0009/t8-390-conflict-same-recipe.png`    |
+| REQ-003 | AC-011 | 1, 4           | pgTAP `collections.test.sql` „AC-011 …“, `collections.integration.test.ts` „… AC-011 …“                                                                          | —                                                                                     |
+| REQ-004 | AC-012 | 3, 8           | core `recipe-editor.test.ts` „AC-012 …“                                                                                                                          | `tmp/0009/t8-390-own-ingredients.png`, `tmp/0009/t8-390-own-ingredients-open-row.png` |
+| REQ-004 | AC-013 | 3, 8           | core `recipe-editor.test.ts` „AC-013 …“                                                                                                                          | `tmp/0009/t8-390-row-sheet.png`                                                       |
+| REQ-005 | AC-014 | 2, 4, 7, 10    | core `collections.test.ts` „AC-014 …“, api „AC-027 / AC-014 …“, core `amounts.test.ts`/`shopping.test.ts` „Spec 0009 REQ-005 …“ (Rundung)                        | `tmp/0009/t7-390-pantry.png`, `tmp/0009/t7-1440-pantry.png`                           |
+| REQ-005 | AC-015 | 2, 3, 4, 8     | core `collections.test.ts`, core `collection-editor.test.ts`, `recipe-editor.test.ts` „AC-015 …“, api „AC-015 …“                                                 | `tmp/0009/t8-390-contents-saved.png`                                                  |
+| REQ-005 | AC-016 | 2, 3, 4, 7, 8  | core `collections.test.ts`, core `collection-editor.test.ts` „AC-016 …“, api „AC-016 …“, „AC-016 (Einplanen) …“                                                  | `tmp/0009/t8-390-contents-edit.png`, `tmp/0009/t7-390-add-step-two.png`               |
+| REQ-005 | AC-017 | 3, 4, 6, 8     | core `collection-editor.test.ts`, `recipe-editor.test.ts` „AC-017 …“, api „AC-017 …“                                                                             | `tmp/0009/t6-390-head-invalid.png`, `tmp/0009/t8-390-row-invalid.png`                 |
+| REQ-006 | AC-018 | 2, 6           | core `recipe-list.test.ts` „AC-018 …“, core `collections.test.ts` „AC-018 …“                                                                                     | `tmp/0009/t6-390-filter-collections.png`, `tmp/0009/t6-1440-filter-panel.png`         |
+| REQ-006 | AC-019 | 2, 6           | core `recipe-list.test.ts` „AC-019 …“                                                                                                                            | `tmp/0009/t6-390-filter-panel.png`                                                    |
+| REQ-006 | AC-020 | 2, 6           | core `recipe-list.test.ts` „AC-020 …“, core `collections.test.ts` „AC-020 …“                                                                                     | `tmp/0009/t6-390-list.png`                                                            |
+| REQ-007 | AC-021 | 3, 4, 7        | api „AC-021 …“                                                                                                                                                   | `tmp/0009/t7-390-add-collections.png`, `tmp/0009/t7-390-calendar-after-create.png`    |
+| REQ-007 | AC-022 | 3, 6, 7        | core `calendar.test.ts` „AC-022 …“                                                                                                                               | `tmp/0009/t6-390-plan.png`, `tmp/0009/t7-390-calendar.png`                            |
+| REQ-007 | AC-023 | 3, 7           | core `meal-plan.test.ts` „AC-023 …“                                                                                                                              | `tmp/0009/t7-1440-calendar.png`                                                       |
+| REQ-007 | AC-024 | 2, 3, 7        | core `calendar.test.ts` „AC-022, AC-024 …“, `shopping-picker.test.ts` „AC-024 …“, core `collections.test.ts`                                                     | `tmp/0009/t6-390-sommerfest.png`, `tmp/0009/t7-390-calendar-after-create.png`         |
+| REQ-008 | AC-025 | 2, 4, 6        | core `collections.test.ts` „AC-025 …“, core `shopping-list.test.ts` „AC-025, AC-027 …“, api „AC-025 …“                                                           | `tmp/0009/t6-390-pantry.png`, `tmp/0009/t6-1440-pantry.png`                           |
+| REQ-008 | AC-026 | 2              | core `collections.test.ts` „AC-026 …“                                                                                                                            | —                                                                                     |
+| REQ-008 | AC-027 | 2, 4, 7        | core `shopping-picker.test.ts` „AC-027 …“, core `collections.test.ts`, api „AC-027 / AC-014 …“                                                                   | `tmp/0009/t7-390-pick.png`, `tmp/0009/t7-1440-pick.png`                               |
+| REQ-008 | AC-028 | 2, 6           | core `collections.test.ts` „AC-028 …“                                                                                                                            | `tmp/0009/t6-390-sommerfest.png`                                                      |
+| REQ-009 | AC-029 | 4, 6, 10       | pgTAP `collections.test.sql` „AC-029 …“, api „AC-029 …“                                                                                                          | `tmp/0009/t6-1440-ac029-enrico.png`                                                   |
+| REQ-009 | AC-030 | 3, 4, 7, 10    | core `recap.test.ts` „AC-030, spec 0011 AC-024 …“, api „AC-030, spec 0011 AC-024 …“                                                                              | `tmp/0009/t7-390-recap.png`, `tmp/0009/t7-1440-recap.png`                             |
+| REQ-009 | AC-031 | 3, 6           | core `cooking-history.test.ts` „AC-031 …“                                                                                                                        | `tmp/0009/t6-390-list.png`                                                            |
+| REQ-010 | AC-032 | 1, 3, 4, 9     | pgTAP `collections.test.sql` „AC-032 …“, core `recipe-deletion.test.ts` „AC-032 …“, api „AC-032 …“                                                               | `tmp/0009/t9-390-collection-deleted.png`, `tmp/0009/t9-390-collection-restored.png`   |
+| REQ-010 | AC-033 | 1, 3, 4, 9, 10 | pgTAP `collections.test.sql` „AC-033 …“ und „T10 restore_recipe …“, core `recipe-deletion.test.ts` „AC-033 …“, api „AC-033 …“, `collections.integration.test.ts` | `tmp/0009/t9-390-deleted.png`, `tmp/0009/t9-1440-deleted.png`                         |

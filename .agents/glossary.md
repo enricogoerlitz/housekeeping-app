@@ -77,7 +77,13 @@ Eine Anleitung zum Kochen mit Titel, Portionen, Zutaten und Schritten. Jedes Rez
 **Art**: „Rezept“ oder „Sammlung“ (Spec 0009); bestehende Rezepte sind von der Art „Rezept“, und
 die Art ändert sich nach dem Anlegen nicht.
 
-- **Im Code:** `Recipe`, `recipes`; Art (vorläufig) `kind: 'recipe' | 'collection'`
+„Zuletzt gekocht“ und wie oft gekocht rechnet das Gerät aus dem Kalender: Jeder Eintrag mit Tag
+bis einschließlich heute ohne „nicht gekocht“ zählt für sein Rezept, bei einer Sammlung auch für
+jedes Rezept, das sie enthält; die gespeicherten Werte sind die Vorgeschichte (Spec 0009, E10).
+
+- **Im Code:** `Recipe`, `recipes`; Art `RecipeKind` (`Recipe.kind: 'recipe' | 'collection'`,
+  `recipes.kind`); gekocht `lastCookedOn`, `cookedCount`, aus dem Kalender `cookingHistory`,
+  `withCookingHistory`
 - **Siehe auch:** [Sammlung](#sammlung), [Küche](#küche), [Schlagwort](#schlagwort)
 
 ### Küche
@@ -140,7 +146,14 @@ Zahl + Einheit erkennbar, wird sie beim Umrechnen der Portionen mitskaliert.
 Legt fest, wie eine Rezeptzutat auf die Einkaufsliste kommt: **Anzahl** (Standard 1×),
 **Rezeptmenge** oder **nicht übernehmen**.
 
-- **Im Code:** `ShoppingRule` mit `count` · `recipeAmount` · `skip`
+Bei „Rezeptmenge“ wird die Menge auf die geplanten Portionen umgerechnet und für Liste und
+Vorratscheck auf eine kaufbare Menge **aufgerundet** (Spec 0009, REQ-005): zählbare Einheiten
+(Glas, Dose, Becher, Packung, Stück, Bund, Sack, Kasten, …) und Mengen ohne Einheit auf ganze
+Stück, g und ml auf ganze Zahlen, kg und l auf eine Nachkommastelle („0,75 Glas“ → „1 Glas“,
+„56,25 g“ → „57 g“). EL und TL behalten zwei Nachkommastellen, Prise, Msp. und Handvoll bleiben,
+wie sie sind. Das Rezept selbst zeigt die genaue umgerechnete Menge.
+
+- **Im Code:** `ShoppingRule` mit `count` · `recipeAmount` · `skip`; Aufrunden `buyableQty`
 - **Siehe auch:** [Standard-Einkaufsregel](#standard-einkaufsregel)
 
 ### Standard-Einkaufsregel
@@ -492,7 +505,7 @@ eingeplant, bewertet und favorisiert; „Auf die Liste“ bringt die eigenen Zut
 der enthaltenen Rezepte, skaliert, durch den Vorratscheck. Hat keine Zubereitung, keine Varianten,
 keine Küche und enthält keine Sammlungen (Spec 0009, D14, D15).
 
-- **Im Code (vorläufig):** `Recipe` mit `kind: 'collection'`; enthaltene Rezepte siehe
+- **Im Code:** `Recipe` mit `kind: 'collection'`; enthaltene Rezepte siehe
   [Enthaltenes Rezept](#enthaltenes-rezept). Einen eigenen Typ `Collection` bzw. eine Tabelle
   `collections` gibt es nicht.
 - **Nicht verwenden:** Vorlage (ist für Wochen reserviert), Paket, Menü
@@ -508,7 +521,7 @@ Ein Rezept in einer Sammlung, mit eigenen Portionen (leer = wie die Sammlung), g
 Sammlungen; das Rezept selbst bleibt unberührt, wenn man es aus einer Sammlung entfernt (Spec
 0009).
 
-- **Im Code (vorläufig):** `CollectionRecipe`, `collection_recipes`
+- **Im Code:** `CollectionRecipe`, `collection_recipes`
 - **Nicht verwenden:** Unterrezept, Bestandteil
 
 ### Aufgabe

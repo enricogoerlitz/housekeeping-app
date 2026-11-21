@@ -1,4 +1,4 @@
-import { formatAmount, formatQty, scaleAmount } from './amounts';
+import { buyableQty, formatAmount, formatQty } from './amounts';
 import { createdTime } from './dates';
 import { defaultVariantId } from './recipe-variants';
 import type {
@@ -35,7 +35,8 @@ export interface PlannedContribution {
  * variant's portions / recipe.servings (entries without variant rows use the default variant).
  * Ingredients of variants nobody eats are omitted.
  * Shopping rule "skip" → omitted; "count" → count 1 (never scaled); "recipeAmount" → scaled qty
- * and unit (count when the amount has no unit, rounded up; count 1 when it is not a number).
+ * and unit, rounded up to a buyable value (buyableQty: "0,75 Glas" → 1 Glas, "56,25 g" → 57 g);
+ * count when the amount has no unit, rounded up; count 1 when it is not a number.
  * dayLabel is the short weekday used in the label, e.g. "Mi".
  */
 export function contributionsFromEntry(
@@ -87,7 +88,7 @@ export function contributionsFromEntry(
         // The small tolerance keeps float noise (2.0000000000000004) from adding a whole piece.
         contribution.count = Math.max(1, Math.ceil(amount.qty * factor - 1e-9));
       } else {
-        contribution.qty = scaleAmount(amount, factor).qty;
+        contribution.qty = buyableQty(amount.qty * factor, amount.unit);
         contribution.unit = amount.unit;
       }
     }

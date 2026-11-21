@@ -558,9 +558,9 @@ $$;
 --   created_at (trigger recipes_stamp_restored); the ingredient check runs again;
 -- * ratings and favourites of people who are still members;
 -- * its collection_recipes rows with their ids, servings, variant and order, but only those whose
---   other side (collection or contained recipe) still exists in the household; existing rows are
---   left alone (spec 0009, E11). check_collection_recipe runs again: a collection that holds 50
---   recipes by now makes the whole restore fail;
+--   other side (collection or contained recipe) still exists in the household; a row whose recipe
+--   is in that collection again by now is left alone (spec 0009, E11). check_collection_recipe runs
+--   again: a collection that holds 50 recipes by now makes the whole restore fail;
 -- * the removed entries (existing ids are left alone), eaters only current members, the cook
 --   cleared if no longer a member, a leftovers link cleared if its source is gone;
 -- * the free-text entries become recipe entries again, but only while they are still unchanged
@@ -572,7 +572,8 @@ $$;
 -- one of her households, older than 1 hour, already restored, or the id is taken by a recipe of
 -- another household meanwhile), plus whatever a check raises
 -- when an article or a meal slot is gone in between (e.g. ingredient_article_invalid, invalid_slot,
--- 23503) or a collection is full (too_many_collection_recipes) — then nothing is restored.
+-- 23503), a collection is full (too_many_collection_recipes) or a row id is taken in another
+-- household meanwhile (23505) — then nothing is restored.
 create function private.restore_recipe(p_recipe_id uuid)
 returns boolean
 language plpgsql
@@ -639,7 +640,9 @@ begin
                 where r.household_id = v_household_id
                   and r.id = case when c.collection_id = p_recipe_id then c.recipe_id else c.collection_id end)
   order by c.collection_id, c.sort, c.id
-  on conflict do nothing;
+  -- Only "already contained again" is skipped. A row id taken in the meantime (ids are unique
+  -- across households) fails loudly with 23505 instead of silently dropping the row.
+  on conflict (household_id, collection_id, recipe_id) do nothing;
 
   insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id,
                                         text, note, leftovers_of_entry_id, eater_ids, guests, portions, variants,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buyableQty,
   formatAmount,
   formatQty,
   parseAmount,
@@ -250,8 +251,72 @@ describe('parseAmount', () => {
     expect(parseAmount('2 große')).toEqual({ text: '2 große' });
   });
 
+  it('Spec 0009 AC-014: "1 Sack" and "1 Kasten" are count-like units', () => {
+    expect(parseAmount('1 Sack')).toEqual({ text: '1 Sack', qty: 1, unit: 'Sack' });
+    expect(parseAmount('2 Säcke')).toEqual({ text: '2 Säcke', qty: 2, unit: 'Sack' });
+    expect(parseAmount('1 Kasten')).toEqual({ text: '1 Kasten', qty: 1, unit: 'Kasten' });
+    expect(parseAmount('2 Kästen')).toEqual({ text: '2 Kästen', qty: 2, unit: 'Kasten' });
+    expect(parseIngredientLine('1 Sack Grillkohle')).toEqual({
+      name: 'Grillkohle',
+      amount: { text: '1 Sack', qty: 1, unit: 'Sack' },
+    });
+    expect(parseIngredientLine('1 Kasten Bier')).toEqual({
+      name: 'Bier',
+      amount: { text: '1 Kasten', qty: 1, unit: 'Kasten' },
+    });
+    // Measure nouns: "2 Sack", "2 Kasten", like "2 Bund"; scaled like other countable units.
+    expect(formatAmount(2, 'Sack')).toBe('2 Sack');
+    expect(scaleAmount({ text: '1 Kasten', qty: 1, unit: 'Kasten' }, 1.37).qty).toBe(1.25);
+  });
+
   it('blank is no amount', () => {
     expect(parseAmount('')).toBeUndefined();
     expect(parseAmount('   ')).toBeUndefined();
+  });
+});
+
+describe('buyableQty', () => {
+  it('Spec 0009 REQ-005: count-like units round up to whole pieces ("0,75 Glas" → "1 Glas")', () => {
+    expect(buyableQty(0.75, 'Glas')).toBe(1);
+    expect(buyableQty(1.25, 'Dose')).toBe(2);
+    expect(buyableQty(0.5, 'Bund')).toBe(1);
+    for (const unit of [
+      'Becher',
+      'Packung',
+      'Stück',
+      'Sack',
+      'Kasten',
+      'Zehe',
+      'Scheibe',
+      'Stange',
+    ]) {
+      expect(buyableQty(1.1, unit)).toBe(2);
+    }
+    expect(buyableQty(2, 'Dose')).toBe(2);
+  });
+
+  it('Spec 0009 REQ-005: g and ml round up to whole numbers ("56,25 g" → "57 g")', () => {
+    expect(buyableQty(56.25, 'g')).toBe(57);
+    expect(buyableQty(83.33, 'ml')).toBe(84);
+    expect(buyableQty(600, 'ml')).toBe(600);
+  });
+
+  it('Spec 0009 REQ-005: kg and l round up to one decimal', () => {
+    expect(buyableQty(1.125, 'kg')).toBe(1.2);
+    expect(buyableQty(1.5, 'kg')).toBe(1.5);
+    expect(buyableQty(0.33, 'l')).toBe(0.4);
+  });
+
+  it('does not round up for floating point noise', () => {
+    // 0.1 × 3 is 0.30000000000000004 in floating point.
+    expect(buyableQty(0.1 * 3, 'kg')).toBe(0.3);
+    expect(buyableQty((2.7 * 10) / 9, 'Dose')).toBe(3);
+    expect(buyableQty(100.00000000001, 'g')).toBe(100);
+  });
+
+  it('leaves spoon measures at two decimals and pinches as they are', () => {
+    expect(buyableQty(1.333333, 'EL')).toBe(1.33);
+    expect(buyableQty(0.5, 'TL')).toBe(0.5);
+    expect(buyableQty(1, 'Prise')).toBe(1);
   });
 });

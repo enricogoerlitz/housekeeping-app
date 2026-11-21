@@ -447,7 +447,8 @@ am 21.11.2026, bisher nur aus der gezeigten Woche). Der zweite Schritt hat Tages
 isst mit?“, Variante, „Wer kocht?“ und bei Aktivitäten den Zusatz. Aus einem Tag ohne Tageszeit
 ist „Abend“ vorausgewählt.
 
-**AC-021**
+**AC-021** (geändert durch Spec 0009, AC-021: Tab „Sammlungen“ zwischen „Rezepte“ und
+„Restaurants“, unter „Alle“ „+ als Sammlung · Restaurant · Aktivität“)
 
 ```gherkin
 Angenommen  die Woche KW 53, am Samstag, 2.1., abends ist noch nichts
