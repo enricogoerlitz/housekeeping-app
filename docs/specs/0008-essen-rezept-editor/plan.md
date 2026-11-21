@@ -614,3 +614,20 @@ Wird am Ende ausgefüllt.
 - [ ] `/security-check` gelaufen (T1, T3, T6)
 - [ ] Offline-Verhalten wie in der Spec beschrieben geprüft
 - [ ] Glossar, `sync.md` und Rückverfolgbarkeitstabelle aktuell
+
+## Entscheidungen beim Bauen (core, T2, 21.11.2026)
+
+Mit der Empfehlung entschieden (Enrico hat vorab freigegeben):
+
+1. AC-033 folgt E10: Nur die entfernte Variante gibt ihre Portionen an die Standardvariante ab
+   („Hähnchen 1 · Garnelen 1“ → „Garnelen 2“; „Tofu 1 · Hähnchen 1“ → „Tofu 1 · Garnelen 1“).
+   Das ältere Beispiel im Plan ist damit überholt.
+2. Prüftexte: Zeit „0 bis 10000 Minuten“, Vorlauf „1 bis 168 Stunden“, „Höchstens 30
+   Schlagworte“ / „Höchstens 1000 Zeichen in allen Schlagworten“, Byte-Grenze „Zu viel Text –
+   bitte kürzen“, leerer Variantenname „Name fehlt“; leere Schritte fallen beim Speichern weg.
+3. Die 200 000-Byte-Prüfung bildet die jsonb-Textform nach (Näherung, Server prüft verbindlich).
+4. Die Grenze von 300 Zutaten zählt orange Zeilen mit.
+5. Gleichstand der Küchen-Schreibweise: erste nach `localeCompare('de')`.
+6. Sortierknopf: Kurztexte nur für „Zuletzt“ und „A–Z“, sonst der Menütext.
+7. Umgewandelte Reste behalten `leftoversOfEntryId` (wie der Server in T1).
+8. Namen in core: `recipeShowLabel`/`recipeEmptyLabel` bzw. `restaurant…` (flache Exporte).
