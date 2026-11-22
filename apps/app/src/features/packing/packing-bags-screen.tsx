@@ -14,12 +14,13 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
+import { usePageParams } from '@/lib/url-state';
 
 import { PackingBagPanel } from './packing-bag-detail';
 import { BagNameSheet } from './packing-bag-sheets';
@@ -131,13 +132,22 @@ export function PackingBagsScreen() {
   const router = useRouter();
   const back = useBackToManage();
   const { isPhone } = useBreakpoint();
-  const [chosenId, setChosenId] = useState<Id | undefined>();
+  // The chosen bag stands in the address (spec 0019, REQ-014); on phones the same `tasche`
+  // opens the bag's page.
+  const address = usePageParams('reisetaschen');
+  const chosenId = address.params.tasche;
+  const replace = address.replace;
+  useEffect(() => {
+    if (!isPhone || !chosenId) return;
+    replace({ tasche: undefined });
+    router.push({ pathname: '/reisetasche/[id]', params: { id: chosenId } });
+  }, [isPhone, chosenId, replace, router]);
 
   // On wide screens a bag is always shown: the chosen one, else the first.
   const selected = bags.find((bag) => bag.id === chosenId) ?? bags[0];
   const select = (bagId: Id) => {
     if (isPhone) router.push({ pathname: '/reisetasche/[id]', params: { id: bagId } });
-    else setChosenId(bagId);
+    else replace({ tasche: bagId });
   };
 
   return (
@@ -163,8 +173,8 @@ export function PackingBagsScreen() {
                 key={selected.id}
                 bagId={selected.id}
                 showTitle
-                onOpen={setChosenId}
-                onDeleted={() => setChosenId(undefined)}
+                onOpen={(bagId) => replace({ tasche: bagId })}
+                onDeleted={() => replace({ tasche: undefined })}
               />
             ) : undefined
           }

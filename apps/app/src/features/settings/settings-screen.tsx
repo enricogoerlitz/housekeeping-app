@@ -27,7 +27,7 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 
 import { useSignedInEmail } from '@/features/household/household-forms';
@@ -40,12 +40,27 @@ import { devicePushSupport } from '@/features/notifications/web-push-platform';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { ownAppVersion } from '@/lib/app-version';
 import { features } from '@/lib/features';
+import { usePageParams } from '@/lib/url-state';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
 import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
 
 export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
+
+/** The section in the address, `?abschnitt=…` (spec 0019, REQ-014). */
+const SECTION_OF_SLUG = {
+  profil: 'profile',
+  darstellung: 'appearance',
+  ki: 'ai',
+  benachrichtigungen: 'notifications',
+} as const satisfies Record<string, SettingsSection>;
+const SLUG_OF_SECTION = {
+  profile: 'profil',
+  appearance: 'darstellung',
+  ai: 'ki',
+  notifications: 'benachrichtigungen',
+} as const satisfies Record<SettingsSection, keyof typeof SECTION_OF_SLUG>;
 
 const SECTION_TITLES: Record<SettingsSection, string> = {
   profile: 'Profil',
@@ -64,7 +79,11 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
 export function SettingsScreen(props: { section?: SettingsSection }) {
   const router = useRouter();
   const { isPhone } = useBreakpoint();
-  const [chosen, setChosen] = useState<SettingsSection>(props.section ?? 'profile');
+  const address = usePageParams('einstellungen');
+  const slug = address.params.abschnitt;
+  const chosen: SettingsSection = slug ? SECTION_OF_SLUG[slug] : (props.section ?? 'profile');
+  const setChosen = (next: SettingsSection) =>
+    address.replace({ abschnitt: next === 'profile' ? undefined : SLUG_OF_SECTION[next] });
 
   if (isPhone && props.section === 'notifications') return <NotificationsScreen />;
 

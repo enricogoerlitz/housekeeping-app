@@ -31,6 +31,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
+import { usePageParams } from '@/lib/url-state';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 type Kind = FeedbackEntry['kind'];
@@ -61,6 +62,18 @@ const STATUS_TONE: Record<Status, BadgeProps['tone']> = {
   done: 'success',
 };
 const FILTERS: Filter[] = ['all', 'new', 'accepted', 'rejected', 'done'];
+const STATUS_OF_SLUG = {
+  neu: 'new',
+  angenommen: 'accepted',
+  abgelehnt: 'rejected',
+  erledigt: 'done',
+} as const satisfies Record<string, Status>;
+const SLUG_OF_STATUS = {
+  new: 'neu',
+  accepted: 'angenommen',
+  rejected: 'abgelehnt',
+  done: 'erledigt',
+} as const satisfies Record<Status, keyof typeof STATUS_OF_SLUG>;
 
 /** Open entries that look like the text being typed, so people add "+1" instead of a duplicate. */
 function similarEntries(text: string, entries: FeedbackEntry[]): FeedbackEntry[] {
@@ -77,7 +90,12 @@ export function FeedbackScreen() {
   const back = useBackToManage();
   const { isWide } = useBreakpoint();
   const entries = useFeedback();
-  const [filter, setFilter] = useState<Filter>('all');
+  // The status filter stands in the address, `?filter=neu` (spec 0019, REQ-011).
+  const address = usePageParams('feedback');
+  const slug = address.params.filter;
+  const filter: Filter = slug ? STATUS_OF_SLUG[slug] : 'all';
+  const setFilter = (next: Filter) =>
+    address.replace({ filter: next === 'all' ? undefined : SLUG_OF_STATUS[next] });
 
   const sorted = useMemo(
     () => [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),

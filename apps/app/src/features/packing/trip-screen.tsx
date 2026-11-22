@@ -12,7 +12,6 @@ import {
   absenceDeleteDialog,
   packingProgress,
   packingSections,
-  routeId,
   startsInLabel,
   tripHeader,
   tripStripe,
@@ -37,12 +36,13 @@ import {
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { AbsenceSheet } from '@/features/absences/absence-sheet';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useAddressedId } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { FAILED } from './packing-labels';
 import { TripAddBagSheet } from './trip-add-bag-sheet';
@@ -51,75 +51,22 @@ import { TripSection } from './trip-section';
 
 type TripAction = 'reset' | 'delete';
 
-/** Where the Urlaubsseite was opened from, `?von=…`; anything else counts as the calendar. */
-const ORIGINS = {
-  reisen: { label: 'Reisen', tab: 'reisen', href: '/reisen' },
-  uebersicht: { label: 'Übersicht', tab: 'index', href: '/' },
-} as const;
-
-type TripOrigin = keyof typeof ORIGINS;
-
-function tripOrigin(von: string | string[] | undefined): TripOrigin | undefined {
-  const value = Array.isArray(von) ? von[0] : von;
-  return value === 'reisen' || value === 'uebersicht' ? value : undefined;
-}
-
-/** The tab shown before the current one (tab history), or undefined. */
-function previousTab(state: unknown): string | undefined {
-  if (typeof state !== 'object' || state === null) return undefined;
-  const { history, routes } = state as { history?: unknown; routes?: unknown };
-  if (!Array.isArray(history) || !Array.isArray(routes)) return undefined;
-  const entry: unknown = history[history.length - 2];
-  const key = typeof entry === 'object' && entry !== null ? (entry as { key?: unknown }).key : null;
-  const route: unknown = routes.find(
-    (candidate: unknown) =>
-      typeof candidate === 'object' &&
-      candidate !== null &&
-      (candidate as { key?: unknown }).key === key,
-  );
-  const name =
-    typeof route === 'object' && route !== null ? (route as { name?: unknown }).name : null;
-  return typeof name === 'string' ? name : undefined;
-}
-
-/**
- * "Zurück" of the Urlaubsseite: opened from "Reisen" or from the card on the "Übersicht"
- * it leads back there ("‹ Reisen", "‹ Übersicht"), otherwise to the calendar underneath
- * ("‹ Kalender"); the same rule as for "Aktivitäten" (spec 0010, REQ-008).
- */
-function useTripBack(): { label: string; back: () => void } {
-  const router = useRouter();
-  const navigation = useNavigation();
-  const params = useLocalSearchParams<{ von?: string | string[] }>();
-  const origin = tripOrigin(params.von);
-  if (origin) {
-    const target = ORIGINS[origin];
-    return {
-      label: target.label,
-      back: () => {
-        const tabs = navigation.getParent();
-        // The calendar's tab gets its first page back, so it shows the calendar later.
-        if (router.canDismiss()) router.dismissAll();
-        // Back in the tab history when it came from there, so "Zurück" on that page still leads
-        // to where it was opened from; after a reload the origin is opened anew.
-        if (tabs && previousTab(tabs.getState()) === target.tab) tabs.goBack();
-        else router.navigate(target.href);
-      },
-    };
-  }
-  return {
-    label: 'Kalender',
-    back: () => (router.canGoBack() ? router.back() : router.replace('/kalender')),
-  };
-}
-
 /** The Urlaubsseite of an absence, `/kalender/reise/[id]` (spec 0012, REQ-003, decision 14). */
 export function TripScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
-  // Only a uuid reaches the lookup; anything else shows "gibt es nicht mehr".
-  const absenceId = routeId(params.id);
-  const { label, back } = useTripBack();
-  return <TripPage absenceId={absenceId} onBack={back} backLabel={label} />;
+  const { params } = usePageParams('reise');
+  // "Zurück" of the Urlaubsseite: opened from "Reisen" or from the card on the "Übersicht" it
+  // leads back there, otherwise to the calendar (spec 0019, REQ-006).
+  const { label, back } = useOriginBack(params.von, 'kalender');
+  // Only a uuid of an own household reaches the lookup; anything else shows "gibt es nicht mehr".
+  const found = useAddressedId('absences', params.id);
+  if (found === 'switching') return null;
+  return (
+    <TripPage
+      absenceId={found === 'shown' ? params.id : undefined}
+      onBack={back}
+      backLabel={label}
+    />
+  );
 }
 
 function TripPage(props: { absenceId: Id | undefined; onBack: () => void; backLabel: string }) {

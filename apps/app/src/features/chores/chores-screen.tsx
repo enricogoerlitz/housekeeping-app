@@ -89,11 +89,17 @@ export function ChoresScreen() {
   const choreFound = useAddressedId('chores', params.aufgabe);
   const eventFound = useAddressedId('choreEvents', params.verlauf);
   const handed = params.haushalt !== undefined;
-  useMissingObject(params.aufgabe, choreFound !== 'missing' || handed, 'Diese Aufgabe gibt es nicht mehr', () =>
-    address.replace({ aufgabe: undefined }),
+  useMissingObject(
+    params.aufgabe,
+    choreFound !== 'missing' || handed,
+    'Diese Aufgabe gibt es nicht mehr',
+    () => address.replace({ aufgabe: undefined }),
   );
-  useMissingObject(params.verlauf, eventFound !== 'missing' || handed, 'Diesen Eintrag gibt es nicht mehr', () =>
-    address.replace({ verlauf: undefined }),
+  useMissingObject(
+    params.verlauf,
+    eventFound !== 'missing' || handed,
+    'Diesen Eintrag gibt es nicht mehr',
+    () => address.replace({ verlauf: undefined }),
   );
   const split = !isPhone && tab !== 'upcoming';
   const creating = params.fenster === 'neu-aufgabe';

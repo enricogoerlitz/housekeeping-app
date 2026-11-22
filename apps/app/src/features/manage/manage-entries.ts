@@ -57,7 +57,7 @@ export const MANAGE_GROUPS: ManageGroup[] = [
   },
   {
     key: 'shopping',
-    title: 'Einkaufen',
+    title: 'Einkauf',
     entries: [
       {
         key: 'articles',
@@ -77,7 +77,7 @@ export const MANAGE_GROUPS: ManageGroup[] = [
   },
   {
     key: 'household',
-    title: 'Haushalt',
+    title: 'Haushalt & Konto',
     entries: [
       {
         key: 'members',

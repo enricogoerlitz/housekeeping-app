@@ -240,9 +240,15 @@ export interface OriginBack {
  * state), otherwise to the origin's start page; never out of the app (AC-018). `von` is the
  * page's parameter, `own` its section without one.
  */
-export function useOriginBack(von: Origin | undefined, own: Origin): OriginBack {
+export function useOriginBack(
+  von: Origin | undefined,
+  own: Origin,
+  /** Without `von`: the page's own list instead of the section's start, e.g. "Märkte". */
+  home?: { label: string; href: string },
+): OriginBack {
   const router = useRouter();
   const section = von ?? own;
+  const fallback = von === undefined && home ? home.href : sectionHref(section);
   // The address the page was opened from: still the current one while it renders first.
   const [opener] = useState(() => current);
   const back = useCallback(() => {
@@ -251,7 +257,8 @@ export function useOriginBack(von: Origin | undefined, own: Origin): OriginBack 
       else router.back();
       return;
     }
-    router.navigate(sectionHref(section) as never);
-  }, [opener, router, section]);
-  return { section, label: SECTION_LABEL[section], back };
+    router.navigate(fallback as never);
+  }, [opener, router, section, fallback]);
+  const label = von === undefined && home ? home.label : SECTION_LABEL[section];
+  return { section, label, back };
 }
