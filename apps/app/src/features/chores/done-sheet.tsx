@@ -9,15 +9,18 @@ import {
   type DoneTarget,
 } from '@housekeeping/api';
 import {
+  addDays,
+  BACKFILL_DAYS,
   choreDraftErrors,
+  choreDayLabel,
   doneOnChoices,
   matchSearchOrCreate,
   newChoreDraft,
   plannedFieldsOf,
   recurrenceLabel,
   type Chore,
-  type DoneOnChoice,
   type Id,
+  type ISODate,
 } from '@housekeeping/core';
 import {
   Button,
@@ -33,10 +36,12 @@ import {
 import { useMemo, useState } from 'react';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { AssignmentField, RhythmField, useChoreDraft } from './chore-form';
 
-type DayLabel = DoneOnChoice['label'];
+/** The day menu: a quick day, or „Datum …“ for the month calendar (spec 0026, REQ-007). */
+type DayChoice = ISODate | 'pick';
 
 /** What „Als erledigt eintragen“ books right now. */
 type Choice = { kind: 'chore'; chore: Chore } | { kind: 'new'; title: string };
@@ -45,7 +50,7 @@ const NEW_KEY = 'new';
 
 /**
  * „Was hast du erledigt?“ (REQ-006): search over all chores; a hit counts as done on the chosen
- * day (heute, gestern, vorgestern) by the chosen person, and its next date moves on as when
+ * day (heute, gestern, vorgestern or „Datum …“ up to 30 days back, spec 0026) by the chosen person, and its next date moves on as when
  * checking it off (AC-036 to AC-038). Without a hit a new chore „bei Bedarf“ is created and booked
  * (AC-039); with „Mehr Angaben“ it gets a rhythm and an assignment right away (AC-040). A
  * look-alike brakes with „Meinst du …?“ (AC-041). Searching works offline, booking does not
@@ -61,7 +66,8 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Choice | undefined>(undefined);
   const [doneBy, setDoneBy] = useState<Id>(me.id);
-  const [day, setDay] = useState<DayLabel>('heute');
+  const [doneOn, setDoneOn] = useState<ISODate>(today);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   // Without „Mehr Angaben“ a new chore is „bei Bedarf“ for anyone (D27).
   const [draft, update, resetDraft] = useChoreDraft(() => ({
@@ -76,7 +82,8 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
   const result = matchSearchOrCreate(query, items);
   const title = query.trim();
   const choices = doneOnChoices(today);
-  const doneOn = choices.find((choice) => choice.label === day)?.date ?? today;
+  const dayLabel =
+    choices.find((choice) => choice.date === doneOn)?.label ?? choreDayLabel(doneOn, today);
 
   // Typing the exact name counts as choosing it. A fresh name becomes a new chore without a tap
   // on „als neue Aufgabe“ when nothing else matches or when „Mehr Angaben“ were filled in.
@@ -96,7 +103,8 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
     setQuery('');
     setPicked(undefined);
     setDoneBy(me.id);
-    setDay('heute');
+    setDoneOn(today);
+    setPicking(false);
     setError(undefined);
     resetDraft();
     props.onClose();
@@ -181,15 +189,38 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
                 />
               ))}
             </Row>
-            <Menu<DayLabel>
-              label={day}
-              accessibilityLabel={`Tag: ${day}`}
-              value={day}
-              onChange={setDay}
-              options={choices.map((option) => ({ value: option.label, label: option.label }))}
+            <Menu<DayChoice>
+              label={dayLabel}
+              accessibilityLabel={`Tag: ${dayLabel}`}
+              value={doneOn}
+              onChange={(choice) => {
+                if (choice === 'pick') {
+                  setPicking(true);
+                  return;
+                }
+                setPicking(false);
+                setDoneOn(choice);
+              }}
+              options={[
+                ...choices.map((option) => ({ value: option.date, label: option.label })),
+                { value: 'pick' as const, label: 'Datum …' },
+              ]}
               testID="chore-done-day"
             />
           </Row>
+          {picking ? (
+            <PlanDateCalendar
+              month={doneOn}
+              today={today}
+              marked={doneOn}
+              isDisabled={(date) => date > today || date < addDays(today, -BACKFILL_DAYS)}
+              onSelect={(date) => {
+                setDoneOn(date);
+                setPicking(false);
+              }}
+              testID="chore-done-calendar"
+            />
+          ) : null}
           {error ? (
             <Text variant="small" color="warn" testID="chore-done-error">
               {error}

@@ -74,7 +74,7 @@ import {
   useActivityForm,
 } from '@/features/activities/activity-form';
 import { activityPlaceLine } from '@/features/activities/labels';
-import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-form';
 import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';

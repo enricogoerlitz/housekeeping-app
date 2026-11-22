@@ -50,7 +50,7 @@ import { View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
 import { useMoveEntry } from '@/features/calendar/move-entry';
-import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';

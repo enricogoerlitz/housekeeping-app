@@ -32,7 +32,7 @@ import { Button, Chip, Stack, SwitchRow, Text, TextField, TimeField } from '@hou
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { loadDevicePushState, useDevicePushState } from '@/features/notifications/device-store';
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { devicePushSupport } from '@/features/notifications/web-push-platform';
