@@ -1,3 +1,4 @@
+-- contract: accepted_at entfällt, angenommene Einladungen werden gelöscht (Spec 0027); min_app_version: 2026.11.1
 -- Spec 0027 "Verwalten und Konto": invitations live only while open (withdraw_invitation,
 -- accept_invitation deletes), the own profile through update_profile with the fixed palette, the
 -- last member deletes the household (delete_household after the app removed its photos,
@@ -14,6 +15,17 @@ drop policy households_select on public.households;
 drop policy household_invitations_select on public.household_invitations;
 drop index public.household_invitations_open_email_idx;
 alter table public.household_invitations drop column accepted_at;
+
+-- Contract (scripts/ci/migrations.mjs): the minimum app version is the latest published one; it
+-- may not exceed it (scripts/release/version.mjs). Grants of the function stay.
+create or replace function public.min_app_version()
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select '2026.11.1'::text
+$$;
 create index household_invitations_email_idx on public.household_invitations (email);
 
 -- households: members read and edit; an invited person reads the household she is invited to

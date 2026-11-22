@@ -362,6 +362,10 @@ staticwebapp hostname` kennt kein „Standard setzen“. Durchführen: Enrico (P
 20. AC-022 prüft pgTAP nacheinander (wer zuerst beitritt, verhindert das Löschen) und dass beide
     Funktionen dieselbe Zeile `for update` sperren; zwei echte Sitzungen gleichzeitig laufen nicht
     in pgTAP.
+21. Beim Zusammenführen (Claude, 22.11.2026): Das Streichen von `accepted_at` ist ein Rückbau; die
+    Migration trägt den Kopf `-- contract: …; min_app_version: 2026.11.1` und hebt
+    `public.min_app_version()` auf die zuletzt veröffentlichte Version (höher lässt die Pipeline
+    nicht zu; es gibt keine Altlasten vor v1).
 
 ## Daten
 
