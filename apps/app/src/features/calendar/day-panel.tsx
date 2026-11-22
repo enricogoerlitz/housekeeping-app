@@ -28,6 +28,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import { AbsenceStripeView, EntryLine, HouseholdDay } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
+import { useDraggedKind } from './calendar-drag';
 
 export interface DayPanelProps {
   data: CalendarData;
@@ -54,7 +55,8 @@ export interface DayPanelProps {
  * The day window of month and year (spec 0016, REQ-006): the day with its week strip, the trips
  * of the day, its chores, then every Tageszeit with its entries and "+ Hinzufügen", at the end
  * "Reise eintragen" and "Woche anzeigen ›". It leaves the grid usable: another day, paging and
- * opening an entry keep it open (AC-022, AC-025, AC-027).
+ * opening an entry keep it open (AC-022, AC-025, AC-027). Its entries can be dragged onto the
+ * grid (AC-008).
  */
 export function DayPanel(props: DayPanelProps) {
   const theme = useTheme();
@@ -69,10 +71,14 @@ export function DayPanel(props: DayPanelProps) {
   });
   const chores = props.showHousehold ? (data.householdRow(date, date)[date] ?? []) : [];
   const bottom = panelPlacement(width) === 'bottom';
+  // While something is dragged the panel shrinks to its header line, so the grid is free; an
+  // entry from the panel goes onto a day of the grid (spec 0016, AC-008).
+  const dragging = useDraggedKind() !== null;
 
   return (
     <DockedPanel
       open={props.open}
+      state={dragging ? 'collapsed' : undefined}
       onClose={props.onClose}
       label="Tages-Fenster"
       closeLabel="Tages-Fenster schließen"
@@ -91,7 +97,7 @@ export function DayPanel(props: DayPanelProps) {
       }
     >
       <SwipeArea
-        enabled={bottom}
+        enabled={bottom && !dragging}
         onSwipe={(step) => props.onChooseDay(addDays(date, step))}
         style={{ gap: space.m }}
         testID="day-panel-swipe"

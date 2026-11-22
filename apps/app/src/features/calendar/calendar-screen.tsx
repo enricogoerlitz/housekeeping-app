@@ -1,11 +1,17 @@
 import {
   calendarDayParam,
+  dragRange,
+  dragTargetText,
   formatLongDate,
   monthTitle,
+  moveBounds,
   orderSlotEntries,
+  parseDragSourceKey,
+  parseMoveTargetKey,
   periodContains,
   periodForDay,
   periodStart,
+  rangeLabel,
   shiftPeriod,
   switchView,
   weekDates,
@@ -19,6 +25,7 @@ import {
 import {
   Button,
   Chip,
+  DragProvider,
   IconButton,
   Menu,
   Screen,
@@ -47,8 +54,11 @@ import { useHandedTarget } from '@/lib/target-params';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
+import { CalendarDragProvider, ParkedTarget, TripRangeBanner } from './calendar-drag';
 import { DayPanel } from './day-panel';
 import { MonthView } from './month-view';
+import { useEntryTitle, useMoveEntry } from './move-entry';
+import { PlannedLaterStrip } from './planned-later-strip';
 import { WeekView } from './week-view';
 import { YearView } from './year-view';
 
@@ -106,11 +116,33 @@ export function CalendarScreen() {
   useHideAssistantButton(selected !== undefined && focused && panelPlacement(width) === 'bottom');
   const [adding, setAdding] = useState<AddTarget | undefined>();
   const [openEntryId, setOpenEntryId] = useState<Id | undefined>();
+  // The screen reader's way to move: the entry window with "Verschieben" first.
+  const [moveFirst, setMoveFirst] = useState(false);
   // Removed on another device while open: the window just closes.
   const openEntry = data.entries.find((entry) => entry.id === openEntryId);
-  const setOpenEntry = (entry: MealPlanEntry | undefined) => setOpenEntryId(entry?.id);
+  const setOpenEntry = (entry: MealPlanEntry | undefined) => {
+    setMoveFirst(false);
+    setOpenEntryId(entry?.id);
+  };
+  const openMove = (entry: MealPlanEntry) => {
+    setMoveFirst(true);
+    setOpenEntryId(entry.id);
+  };
+  // "Vorgemerkt · n" under the grid of month and year is unfolded (only on this device).
+  const [laterOpen, setLaterOpen] = useState(false);
   const [pantryCheck, setPantryCheck] = useState(false);
   const [newAbsence, setNewAbsence] = useState(false);
+
+  // Dragging (spec 0016, REQ-001 to REQ-004, REQ-007): the entry on the finger, or the trip
+  // drawn from `anchor` to `current`; `sheet` keeps the days marked while "Reise eintragen" is open.
+  const moveEntry = useMoveEntry();
+  const titleOf = useEntryTitle();
+  const [draggedEntryId, setDraggedEntryId] = useState<Id | null>(null);
+  const [trip, setTrip] = useState<{
+    anchor: ISODate;
+    current: ISODate;
+    phase: 'drawing' | 'sheet';
+  } | null>(null);
 
   const show = (nextView: CalendarView, nextStart: ISODate) => {
     setView(nextView);
@@ -153,6 +185,96 @@ export function CalendarScreen() {
   };
   const page = (steps: number) => show(view, shiftPeriod(view, start, steps));
   const toToday = () => show(view, periodStart(view, today));
+
+  // In the year a trip ends at the edge of the year (REQ-007).
+  const tripYear = view === 'year' ? Number(start.slice(0, 4)) : undefined;
+  const tripRange = (anchor: ISODate, current: ISODate) => dragRange(anchor, current, tripYear);
+  const range = trip ? tripRange(trip.anchor, trip.current) : null;
+  const draggedEntry = data.entries.find((entry) => entry.id === draggedEntryId);
+  const bounds = draggedEntry ? moveBounds(draggedEntry, data.entries) : null;
+  const entryOf = (sourceKey: string) => {
+    const source = parseDragSourceKey(sourceKey);
+    return source?.kind === 'entry'
+      ? data.entries.find((entry) => entry.id === source.entryId)
+      : undefined;
+  };
+  const targetText = (targetKey: string, sourceKey: string) => {
+    const entry = entryOf(sourceKey);
+    const target = parseMoveTargetKey(targetKey);
+    if (!entry || !target) return null;
+    return dragTargetText({
+      entry,
+      target,
+      entries: data.entries,
+      slots: data.slots,
+      title: titleOf(entry),
+    });
+  };
+  const onLift = (sourceKey: string) => {
+    const source = parseDragSourceKey(sourceKey);
+    if (source?.kind === 'trip') {
+      setTrip({ anchor: source.date, current: source.date, phase: 'drawing' });
+      announce(rangeLabel(source.date, source.date));
+      return;
+    }
+    const entry = entryOf(sourceKey);
+    if (!entry) return;
+    setDraggedEntryId(entry.id);
+    announce(`${titleOf(entry)} angefasst`);
+  };
+  const onHover = (targetKey: string | null, sourceKey: string) => {
+    if (targetKey === null) return;
+    const source = parseDragSourceKey(sourceKey);
+    const target = parseMoveTargetKey(targetKey);
+    if (source?.kind === 'trip') {
+      if (target?.kind !== 'day') return;
+      setTrip({ anchor: source.date, current: target.date, phase: 'drawing' });
+      const { from, to } = tripRange(source.date, target.date);
+      announce(rangeLabel(from, to));
+      return;
+    }
+    const text = targetText(targetKey, sourceKey);
+    if (text) announce(text.label);
+  };
+  const onDrop = (targetKey: string, sourceKey: string) => {
+    const source = parseDragSourceKey(sourceKey);
+    const target = parseMoveTargetKey(targetKey);
+    if (source?.kind === 'trip') {
+      // Only a trip comes of it (AC-031): "Reise eintragen" with the days, me chosen.
+      setTrip(
+        target?.kind === 'day'
+          ? { anchor: source.date, current: target.date, phase: 'sheet' }
+          : null,
+      );
+      return;
+    }
+    setDraggedEntryId(null);
+    const entry = entryOf(sourceKey);
+    if (entry && target) moveEntry(entry, target);
+  };
+  const onCancel = (sourceKey: string, refusedKey: string | null) => {
+    if (parseDragSourceKey(sourceKey)?.kind === 'trip') {
+      setTrip(null);
+      return;
+    }
+    setDraggedEntryId(null);
+    const entry = entryOf(sourceKey);
+    const refused = refusedKey === null ? null : parseMoveTargetKey(refusedKey);
+    // A refused target says why (AC-015); nothing is saved.
+    if (entry && refused) moveEntry(entry, refused);
+    else if (entry) announce(`${titleOf(entry)} zurückgelegt`);
+  };
+  const isAllowed = (targetKey: string, sourceKey: string) =>
+    parseDragSourceKey(sourceKey)?.kind === 'trip'
+      ? parseMoveTargetKey(targetKey)?.kind === 'day'
+      : (targetText(targetKey, sourceKey)?.allowed ?? true);
+  const targetLabel = (targetKey: string, sourceKey: string) =>
+    targetText(targetKey, sourceKey)?.label ?? null;
+  // Paging at the edges (AC-009); a trip in the year stays in its year.
+  const onPage =
+    trip?.phase === 'drawing' && view === 'year'
+      ? undefined
+      : (direction: -1 | 1) => page(direction);
 
   const householdOn =
     view === 'week'
@@ -294,121 +416,159 @@ export function CalendarScreen() {
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
   const lastSlotId = data.slots[data.slots.length - 1]?.id;
 
+  const laterStrip = (
+    <PlannedLaterStrip
+      data={data}
+      entries={later}
+      expanded={laterOpen}
+      onToggle={() => setLaterOpen(!laterOpen)}
+      onOpenEntry={setOpenEntry}
+    />
+  );
+
   return (
-    <Screen
-      tone="plan"
-      testID="calendar-screen"
-      header={<ScreenHeader title="Kalender" right={actions} />}
-      tabs={tabs}
-      aside={
-        <DayPanel
-          data={data}
-          open={selected !== undefined}
-          date={panelDay}
-          onClose={() => setDayOpen(false)}
-          onChooseDay={chooseDay}
-          // Chores follow the household row of the month, in the year too (REQ-006).
-          showHousehold={settings.householdRow.month}
-          onAdd={onAdd}
-          onOpenEntry={setOpenEntry}
-          onOpenStripe={openStripe}
-          onNewTrip={(date) => {
-            if (!online.disabled) setNewTrip(date);
-          }}
-          onShowWeek={(date) => show('week', periodStart('week', date))}
-          returnFocusRef={returnFocus}
-        />
-      }
+    <DragProvider
+      style={{ flex: 1 }}
+      testID="calendar-drag-area"
+      onLift={onLift}
+      onHover={onHover}
+      onDrop={onDrop}
+      onCancel={onCancel}
+      isAllowed={isAllowed}
+      targetLabel={targetLabel}
+      onPage={onPage}
     >
-      {view === 'week' ? (
-        <WeekView
-          data={data}
-          weekStart={start}
-          showHousehold={householdOn}
-          wide={isWide}
-          onAdd={onAdd}
-          onOpenEntry={setOpenEntry}
-          onOpenStripe={openStripe}
-        />
-      ) : null}
-      {view === 'month' ? (
-        <MonthView
-          data={data}
-          monthStart={start}
-          selected={selected}
-          onOpenDay={openDay}
-          registerDay={registerDay}
-          showHousehold={householdOn}
-          wide={isWide}
-          onOpenEntry={setOpenEntry}
-          onOpenStripe={openStripe}
-        />
-      ) : null}
-      {view === 'year' ? (
-        <YearView
-          data={data}
-          year={Number(start.slice(0, 4))}
-          columns={isPhone ? 3 : bp === 'desktop' ? 4 : 3}
-          selected={selected}
-          onOpenDay={openDay}
-          registerDay={registerDay}
-          onOpenMonth={(monthStart) => show('month', monthStart)}
-          onOpenStripe={openStripe}
-        />
-      ) : null}
-      {view === 'week' ? (
-        <Section
-          title="Vorgemerkt"
-          testID="planned-later"
-          action={
-            lastSlotId ? (
-              <Button
-                label="vormerken"
-                icon="plus"
-                variant="link"
-                size="sm"
-                disabled={online.disabled}
-                hint={online.hint}
-                testID="add-later"
-                onPress={() => onAdd({ date: null, slotId: lastSlotId })}
-              />
-            ) : undefined
+      <CalendarDragProvider value={{ bounds, range, openMove }}>
+        <Screen
+          tone="plan"
+          testID="calendar-screen"
+          header={<ScreenHeader title="Kalender" right={actions} />}
+          tabs={tabs}
+          aside={
+            <DayPanel
+              data={data}
+              open={selected !== undefined}
+              date={panelDay}
+              onClose={() => setDayOpen(false)}
+              onChooseDay={chooseDay}
+              // Chores follow the household row of the month, in the year too (REQ-006).
+              showHousehold={settings.householdRow.month}
+              onAdd={onAdd}
+              onOpenEntry={setOpenEntry}
+              onOpenStripe={openStripe}
+              onNewTrip={(date) => {
+                if (!online.disabled) setNewTrip(date);
+              }}
+              onShowWeek={(date) => show('week', periodStart('week', date))}
+              returnFocusRef={returnFocus}
+            />
           }
         >
-          {later.length === 0 ? (
-            <Text color="muted">
-              Nichts vorgemerkt. Hier landet, was bald dran sein soll, aber noch keinen Tag hat.
-            </Text>
-          ) : (
-            <View style={{ flexDirection: isPhone ? 'column' : 'row', flexWrap: 'wrap', gap: 6 }}>
-              {later.map((entry) => (
-                <View key={entry.id} style={isPhone ? undefined : { width: 280 }}>
-                  <EntryLine entry={entry} data={data} onPress={setOpenEntry} />
-                </View>
-              ))}
-            </View>
-          )}
-        </Section>
-      ) : null}
-      {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
-      {openEntry ? (
-        <EntrySheet
-          key={openEntry.id}
-          entryId={openEntry.id}
-          weekDates={weekDates(openEntry.date ?? start)}
-          onClose={() => setOpenEntry(undefined)}
-        />
-      ) : null}
-      {pantryCheck ? (
-        <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
-      ) : null}
-      {newAbsence ? <AbsenceSheet onClose={() => setNewAbsence(false)} /> : null}
-      {newTrip ? (
-        <AbsenceSheet
-          initialRange={{ from: newTrip, to: newTrip }}
-          onClose={() => setNewTrip(undefined)}
-        />
-      ) : null}
-    </Screen>
+          {view === 'week' ? (
+            <WeekView
+              data={data}
+              weekStart={start}
+              showHousehold={householdOn}
+              wide={isWide}
+              onAdd={onAdd}
+              onOpenEntry={setOpenEntry}
+              onOpenStripe={openStripe}
+            />
+          ) : null}
+          {view === 'month' ? (
+            <MonthView
+              data={data}
+              monthStart={start}
+              selected={selected}
+              onOpenDay={openDay}
+              registerDay={registerDay}
+              showHousehold={householdOn}
+              wide={isWide}
+              onOpenEntry={setOpenEntry}
+              onOpenStripe={openStripe}
+            />
+          ) : null}
+          {view === 'month' ? laterStrip : null}
+          {view === 'year' ? (
+            <YearView
+              data={data}
+              year={Number(start.slice(0, 4))}
+              columns={isPhone ? 3 : bp === 'desktop' ? 4 : 3}
+              selected={selected}
+              onOpenDay={openDay}
+              registerDay={registerDay}
+              onOpenMonth={(monthStart) => show('month', monthStart)}
+              onOpenStripe={openStripe}
+              belowGrid={laterStrip}
+            />
+          ) : null}
+          {view === 'week' ? (
+            <ParkedTarget>
+              <Section
+                title="Vorgemerkt"
+                testID="planned-later"
+                action={
+                  lastSlotId ? (
+                    <Button
+                      label="vormerken"
+                      icon="plus"
+                      variant="link"
+                      size="sm"
+                      disabled={online.disabled}
+                      hint={online.hint}
+                      testID="add-later"
+                      onPress={() => onAdd({ date: null, slotId: lastSlotId })}
+                    />
+                  ) : undefined
+                }
+              >
+                {later.length === 0 ? (
+                  <Text color="muted">
+                    Nichts vorgemerkt. Hier landet, was bald dran sein soll, aber noch keinen Tag
+                    hat.
+                  </Text>
+                ) : (
+                  <View
+                    style={{ flexDirection: isPhone ? 'column' : 'row', flexWrap: 'wrap', gap: 6 }}
+                  >
+                    {later.map((entry) => (
+                      <View key={entry.id} style={isPhone ? undefined : { width: 280 }}>
+                        <EntryLine entry={entry} data={data} onPress={setOpenEntry} />
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </Section>
+            </ParkedTarget>
+          ) : null}
+          {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
+          {openEntry ? (
+            <EntrySheet
+              key={openEntry.id}
+              entryId={openEntry.id}
+              moveFirst={moveFirst}
+              weekDates={weekDates(openEntry.date ?? start)}
+              onClose={() => setOpenEntry(undefined)}
+            />
+          ) : null}
+          {pantryCheck ? (
+            <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
+          ) : null}
+          {newAbsence ? <AbsenceSheet onClose={() => setNewAbsence(false)} /> : null}
+          {newTrip ? (
+            <AbsenceSheet
+              initialRange={{ from: newTrip, to: newTrip }}
+              onClose={() => setNewTrip(undefined)}
+            />
+          ) : null}
+          {trip?.phase === 'sheet' && range ? (
+            <AbsenceSheet initialRange={range} focusNote onClose={() => setTrip(null)} />
+          ) : null}
+        </Screen>
+      </CalendarDragProvider>
+      <TripRangeBanner
+        label={trip?.phase === 'drawing' && range ? rangeLabel(range.from, range.to) : null}
+      />
+    </DragProvider>
   );
 }

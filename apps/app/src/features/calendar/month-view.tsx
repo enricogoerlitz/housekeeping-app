@@ -1,6 +1,7 @@
 import {
   dayKinds,
   formatLongDate,
+  isSelectableMoveDay,
   monthGrid,
   overflow,
   parseISODate,
@@ -14,6 +15,13 @@ import { Platform, Pressable, View, type HostInstance, type ViewStyle } from 're
 
 import { AbsenceStripeView, EntryLine, useStripeColors } from './calendar-parts';
 import { dayLabel, dayRoles, type CalendarData } from './calendar-data';
+import {
+  PALE_OPACITY,
+  RangeMark,
+  TripSource,
+  WeekRowTarget,
+  useCalendarDrag,
+} from './calendar-drag';
 
 export interface MonthViewProps {
   data: CalendarData;
@@ -40,13 +48,17 @@ type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 const QUIET_PRESSABLE =
   Platform.OS === 'web' ? ({ tabIndex: -1, 'aria-hidden': true } as object) : {};
 
+const FILL: ViewStyle = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 };
+
 function tasksLabel(count: number): string {
   return count === 1 ? '1 Aufgabe' : `${count} Aufgaben`;
 }
 
 /**
  * The month (spec 0010, REQ-004; D20). A tap on a day opens the day window (spec 0016, REQ-006);
- * there is no day list under the grid and no small menu behind "+n weitere" any more.
+ * there is no day list under the grid and no small menu behind "+n weitere" any more. Each week
+ * is one drop target resolved to its days (REQ-002); holding or dragging over days from a free
+ * area or a day number draws a trip (REQ-007).
  */
 export function MonthView(props: MonthViewProps) {
   return props.wide ? <MonthGridDesktop {...props} /> : <MonthPhone {...props} />;
@@ -148,8 +160,15 @@ function DayNumber(props: {
   );
 }
 
+/** Days the dragged entry cannot go to are pale (AC-015). */
+function useRefused(): (date: ISODate) => boolean {
+  const { bounds } = useCalendarDrag();
+  return (date) => bounds !== null && !isSelectableMoveDay(bounds, date);
+}
+
 function MonthPhone(props: MonthViewProps) {
   const theme = useTheme();
+  const refused = useRefused();
   const { data } = props;
   const weeks = monthGrid(props.monthStart);
   const month = props.monthStart.slice(0, 7);
@@ -161,44 +180,54 @@ function MonthPhone(props: MonthViewProps) {
     <View style={{ marginBottom: 22 }} testID="month-phone">
       <WeekdayHeads />
       {weeks.map((week) => (
-        <View key={week[0]}>
+        <WeekRowTarget key={week[0]} dates={week}>
           <View style={{ flexDirection: 'row' }}>
             {week.map((date) => {
               const choreCount = (chores[date] ?? []).length;
               const dots = dayKinds(dayRoles(data, date, choreCount));
               const selected = date === props.selected;
               return (
-                <Pressable
+                <TripSource
                   key={date}
-                  ref={(node) => props.registerDay(date, node)}
-                  testID={`month-day-${date}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={dayLabel(data, date, choreCount)}
-                  accessibilityState={{ selected }}
-                  onPress={() => props.onOpenDay(date)}
-                  style={(state) => [
-                    { flex: 1, alignItems: 'center', paddingVertical: 4, minHeight: 48 },
-                    focusRing(theme, (state as PressState).focused),
-                  ]}
+                  date={date}
+                  style={{ flex: 1, opacity: refused(date) ? PALE_OPACITY : 1 }}
                 >
-                  <DayNumber
-                    date={date}
-                    inMonth={date.slice(0, 7) === month}
-                    selected={selected}
-                    isToday={date === data.today}
-                    size={32}
-                  />
-                  <View style={{ flexDirection: 'row', gap: 3, height: 8, alignItems: 'center' }}>
-                    {dots.map((role) => (
-                      <KindDot key={role} kind={role} size={5} />
-                    ))}
-                  </View>
-                </Pressable>
+                  {(guardPress) => (
+                    <Pressable
+                      ref={(node) => props.registerDay(date, node)}
+                      testID={`month-day-${date}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={dayLabel(data, date, choreCount)}
+                      accessibilityState={{ selected }}
+                      onPress={guardPress(() => props.onOpenDay(date))}
+                      style={(state) => [
+                        { alignItems: 'center', paddingVertical: 4, minHeight: 48 },
+                        focusRing(theme, (state as PressState).focused),
+                      ]}
+                    >
+                      <RangeMark date={date} />
+                      <DayNumber
+                        date={date}
+                        inMonth={date.slice(0, 7) === month}
+                        selected={selected}
+                        isToday={date === data.today}
+                        size={32}
+                      />
+                      <View
+                        style={{ flexDirection: 'row', gap: 3, height: 8, alignItems: 'center' }}
+                      >
+                        {dots.map((role) => (
+                          <KindDot key={role} kind={role} size={5} />
+                        ))}
+                      </View>
+                    </Pressable>
+                  )}
+                </TripSource>
               );
             })}
           </View>
           <StripeLines week={week} data={data} />
-        </View>
+        </WeekRowTarget>
       ))}
     </View>
   );
@@ -206,6 +235,7 @@ function MonthPhone(props: MonthViewProps) {
 
 function MonthGridDesktop(props: MonthViewProps) {
   const theme = useTheme();
+  const refused = useRefused();
   const c = theme.colors;
   const { data } = props;
   const weeks = monthGrid(props.monthStart);
@@ -219,6 +249,7 @@ function MonthGridDesktop(props: MonthViewProps) {
     borderRightWidth: 1,
     borderColor: c.border,
     backgroundColor: date === data.today ? c.accentSoft : 'transparent',
+    opacity: refused(date) ? PALE_OPACITY : 1,
   });
 
   return (
@@ -237,41 +268,50 @@ function MonthGridDesktop(props: MonthViewProps) {
           return segment ? [{ stripe, segment }] : [];
         });
         return (
-          <View key={weekFirst} style={{ borderTopWidth: 1, borderColor: c.border }}>
+          <WeekRowTarget
+            key={weekFirst}
+            dates={week}
+            style={{ borderTopWidth: 1, borderColor: c.border }}
+          >
             <View style={{ flexDirection: 'row' }}>
               {week.map((date) => {
                 const choreCount = (chores[date] ?? []).length;
                 const selected = date === props.selected;
                 return (
                   <View key={date} style={cell(date)}>
-                    <Pressable
-                      ref={(node) => props.registerDay(date, node)}
-                      testID={`month-day-${date}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={dayLabel(data, date, choreCount)}
-                      accessibilityState={{ selected }}
-                      onPress={() => props.onOpenDay(date)}
-                      style={(state) => {
-                        const { hovered, focused } = state as PressState;
-                        return [
-                          {
-                            paddingHorizontal: 4,
-                            paddingTop: 4,
-                            alignItems: 'flex-start',
-                            backgroundColor: hovered ? c.surfaceSunken : 'transparent',
-                          },
-                          focusRing(theme, focused),
-                        ];
-                      }}
-                    >
-                      <DayNumber
-                        date={date}
-                        inMonth={date.slice(0, 7) === month}
-                        selected={selected}
-                        isToday={false}
-                        size={26}
-                      />
-                    </Pressable>
+                    <RangeMark date={date} />
+                    <TripSource date={date}>
+                      {(guardPress) => (
+                        <Pressable
+                          ref={(node) => props.registerDay(date, node)}
+                          testID={`month-day-${date}`}
+                          accessibilityRole="button"
+                          accessibilityLabel={dayLabel(data, date, choreCount)}
+                          accessibilityState={{ selected }}
+                          onPress={guardPress(() => props.onOpenDay(date))}
+                          style={(state) => {
+                            const { hovered, focused } = state as PressState;
+                            return [
+                              {
+                                paddingHorizontal: 4,
+                                paddingTop: 4,
+                                alignItems: 'flex-start',
+                                backgroundColor: hovered ? c.surfaceSunken : 'transparent',
+                              },
+                              focusRing(theme, focused),
+                            ];
+                          }}
+                        >
+                          <DayNumber
+                            date={date}
+                            inMonth={date.slice(0, 7) === month}
+                            selected={selected}
+                            isToday={false}
+                            size={26}
+                          />
+                        </Pressable>
+                      )}
+                    </TripSource>
                   </View>
                 );
               })}
@@ -304,15 +344,24 @@ function MonthGridDesktop(props: MonthViewProps) {
                 const { shown, more } = overflow(data.dayEntries(date));
                 const choreCount = (chores[date] ?? []).length;
                 return (
-                  <View key={date} style={[cell(date), { minHeight: 96 }]}>
-                    <Pressable
-                      {...QUIET_PRESSABLE}
-                      focusable={false}
-                      accessible={false}
-                      testID={`month-day-${date}-area`}
-                      onPress={() => props.onOpenDay(date)}
-                      style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-                    />
+                  <View
+                    key={date}
+                    style={[cell(date), { minHeight: 96 }]}
+                    testID={`month-cell-${date}`}
+                  >
+                    <RangeMark date={date} />
+                    <TripSource date={date} style={FILL}>
+                      {(guardPress) => (
+                        <Pressable
+                          {...QUIET_PRESSABLE}
+                          focusable={false}
+                          accessible={false}
+                          testID={`month-day-${date}-area`}
+                          onPress={guardPress(() => props.onOpenDay(date))}
+                          style={FILL}
+                        />
+                      )}
+                    </TripSource>
                     <View
                       pointerEvents="box-none"
                       style={{ gap: 2, paddingHorizontal: 4, paddingBottom: 6 }}
@@ -341,7 +390,7 @@ function MonthGridDesktop(props: MonthViewProps) {
                 );
               })}
             </View>
-          </View>
+          </WeekRowTarget>
         );
       })}
     </View>
