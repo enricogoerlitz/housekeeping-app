@@ -269,9 +269,12 @@ describe('preparing the copy in the runner', () => {
 // The Supabase CLI of the repository validates offline (`config validate` never contacts the API
 // and reads no .env without --resolve-env). Skipped where it is not installed.
 const cli = path.join(root, 'node_modules/.bin/supabase');
+// The npm shim exists even where the CLI binary was not downloaded (e.g. CI installs without
+// the package's postinstall), so probe the binary itself.
+const cliRuns = existsSync(cli) && spawnSync(cli, ['--version'], { encoding: 'utf8' }).status === 0;
 describe(
   'Supabase CLI: config validate',
-  { skip: !existsSync(cli) && 'supabase CLI not installed' },
+  { skip: !cliRuns && 'supabase CLI binary not available' },
   () => {
     const validate = (text) => {
       const workdir = mkdtempSync(path.join(tmp, 'validate-'));
