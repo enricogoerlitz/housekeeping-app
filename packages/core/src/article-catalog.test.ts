@@ -651,6 +651,7 @@ describe('filters, counts and sorting', () => {
       pantry: 1,
       needsReview: 1,
       similar: 2,
+      unknownDiet: 6,
     });
   });
 

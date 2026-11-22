@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { articleFilterCounts, filterArticles } from './article-catalog';
 import { collectionDiet } from './collections';
 import {
   deriveRecipeDiet,
@@ -104,5 +105,15 @@ describe('non_food', () => {
     expect(collectionDiet(abend, [], byId)).toBe('unknown');
     const withWurst = { ...abend, ingredients: [ing('kohle'), ing('wurst')] };
     expect(collectionDiet(withWurst, [], byId)).toBe('meat');
+  });
+});
+
+describe('the filter "Ernährung unbekannt" on "Artikel"', () => {
+  it('AC-030: lists exactly the articles without a diet, not those "kein Lebensmittel"', () => {
+    const context = { similar: new Map(), areas: [] };
+    expect(filterArticles(items, 'unknownDiet', context).map((entry) => entry.name)).toEqual([
+      'Grillanzünder',
+    ]);
+    expect(articleFilterCounts(items, context).unknownDiet).toBe(1);
   });
 });

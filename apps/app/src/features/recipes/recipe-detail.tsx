@@ -9,7 +9,7 @@ import {
 import {
   canPutRecipeOnList,
   chooseVariant,
-  deriveRecipeDiet,
+  recipeDietChip,
   shownVariantId,
   type Id,
   type Recipe,
@@ -166,10 +166,8 @@ function RecipeDetailBody(props: {
   const editor = useSectionEditor(recipe);
 
   const activeVariantId = shownVariantId(recipe, variantChoice);
-  const diet =
-    recipe.ingredients.length > 0
-      ? deriveRecipeDiet(recipe, activeVariantId, articlesById)
-      : undefined;
+  // No chip without food (spec 0023, AC-029: only "kein Lebensmittel").
+  const diet = recipeDietChip(recipe, activeVariantId, articlesById);
   const shownVariants = activeVariantId
     ? [{ variantId: activeVariantId, portions: shownServings }]
     : [];
@@ -220,7 +218,12 @@ function RecipeDetailBody(props: {
   const head = (
     <Stack gap={16} style={{ flex: 1, minWidth: 0 }}>
       <HeadSection recipe={recipe} desktop={desktop} editor={editor} />
-      <ClassificationSection recipe={recipe} diet={diet} editor={editor} />
+      <ClassificationSection
+        recipe={recipe}
+        diet={diet}
+        variantId={activeVariantId}
+        editor={editor}
+      />
       <MemberRatings
         ratings={recipe.ratings}
         members={members}
