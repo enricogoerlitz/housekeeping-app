@@ -18,7 +18,7 @@ import type {
 // ---------- Kinds and settings ----------
 
 export type NotificationKind =
-  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'reservationReminders';
+  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'reservationReminders' | 'entryReminders';
 
 /** In the order of the page (concept 3.14). */
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
@@ -26,6 +26,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   'activitiesEve',
   'choreReminders',
   'reservationReminders',
+  'entryReminders',
 ];
 
 const ENABLED_FIELD = {
@@ -33,6 +34,7 @@ const ENABLED_FIELD = {
   activitiesEve: 'activitiesEveEnabled',
   choreReminders: 'choreRemindersEnabled',
   reservationReminders: 'reservationRemindersEnabled',
+  entryReminders: 'entryRemindersEnabled',
 } as const satisfies Record<NotificationKind, keyof NotificationSettings>;
 
 export function kindEnabled(settings: NotificationSettings, kind: NotificationKind): boolean {
@@ -127,6 +129,8 @@ export function kindSubtitle(
     case 'activitiesEve':
       return formatTime(settings.activitiesEveAt);
     case 'choreReminders':
+    // Spec 0017, REQ-007: no time of its own; it is set per entry.
+    case 'entryReminders':
       return undefined;
     case 'reservationReminders':
       return `${remindLabel(DEFAULT_REMIND_MINUTES)}, je Eintrag änderbar`;

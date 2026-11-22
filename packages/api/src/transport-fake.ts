@@ -21,6 +21,7 @@ import {
   addDays,
   compareTimestamps,
   isHalfStar,
+  isReminderPast,
   packQuantity,
   queueEffect,
   RECIPE_LIMITS,
@@ -575,7 +576,7 @@ function checkCollectionRecipeInsert(row: Row, tables: TableRows): void {
 const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
 const TIME_COLUMNS: Record<string, readonly string[]> = {
   chores: ['due_time'],
-  meal_plan_entries: ['reserved_at'],
+  meal_plan_entries: ['reserved_at', 'reminder_at'],
   notification_settings: ['daily_summary_at', 'activities_eve_at'],
 };
 const REMIND_MINUTES = new Set([30, 60, 120, 180, 240]);
@@ -604,6 +605,7 @@ function checkNotificationColumns(table: string, row: Row): void {
     if (row.remind_minutes_before != null && !REMIND_MINUTES.has(Number(row.remind_minutes_before)))
       throw violated();
     if (row.reserved_at != null && row.kind !== 'restaurant') throw violated();
+    checkReminderColumns(row);
   }
   if (table === 'notification_settings') {
     const parts = row.daily_summary_parts;
@@ -617,6 +619,63 @@ function checkNotificationColumns(table: string, row: Row): void {
       throw violated();
     }
   }
+}
+
+// C0, DEL and C1: Postgres `[[:cntrl:]]`.
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
+ * Spec 0017: meal_plan_entries_reminder_day_offset_valid, _reminder_text_valid,
+ * _reminder_complete, _reminder_text_needs_time and _reminder_needs_date.
+ */
+function checkReminderColumns(row: Row): void {
+  const violated = () => new TransportError('permanent', '23514', 400);
+  const offset = row.reminder_day_offset;
+  const text = row.reminder_text;
+  if (offset != null && !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= 366))
+    throw violated();
+  if (
+    text != null &&
+    (typeof text !== 'string' ||
+      [...text].length < 1 ||
+      [...text].length > 80 ||
+      text !== text.trim() ||
+      CONTROL_CHARACTER.test(text))
+  )
+    throw violated();
+  if ((offset == null) !== (row.reminder_at == null)) throw violated();
+  if (text != null && row.reminder_at == null) throw violated();
+  if (row.reminder_at != null && row.date == null) throw violated();
+}
+
+/**
+ * meal_plan_entries_clear_reminder and meal_plan_entries_check_reminder (spec 0017): back to
+ * "Vorgemerkt" clears the reminder; on insert, and on a change of the reminder on the same day,
+ * its moment must lie in the future in the household's zone (`reminder_in_past`). Moving the
+ * entry is never refused.
+ */
+function reminderTriggers(previous: Row | undefined, next: Row, timeZone: string): Row {
+  let row = next;
+  if (previous && previous.date != null && row.date == null) {
+    row = { ...row, reminder_day_offset: null, reminder_at: null, reminder_text: null };
+  }
+  if (row.reminder_at == null || row.reminder_day_offset == null || row.date == null) return row;
+  if (
+    previous &&
+    (row.date !== previous.date ||
+      (row.reminder_day_offset === previous.reminder_day_offset &&
+        row.reminder_at === previous.reminder_at))
+  ) {
+    return row;
+  }
+  const reminder = {
+    offsetDays: Number(row.reminder_day_offset),
+    at: String(row.reminder_at).slice(0, 5),
+  };
+  if (isReminderPast(String(row.date), reminder, new Date(), timeZone)) {
+    throw new TransportError('permanent', 'reminder_in_past', 400);
+  }
+  return row;
 }
 
 /** private.is_push_endpoint: https, a known push service, no port, no credentials (AC-044). */
@@ -771,6 +830,7 @@ export function createFakeServer(): FakeServer {
         activities_eve_at: '19:00:00',
         chore_reminders_enabled: true,
         reservation_reminders_enabled: true,
+        entry_reminders_enabled: true,
       }),
       undefined,
     ]);
@@ -1427,6 +1487,7 @@ export function createFakeServer(): FakeServer {
     if (opCount > 200 || deletes > 20 || contributions > 500) throw reject('too_many_changes');
 
     let householdPatch: Record<string, unknown> | undefined;
+    const timeZone = String(households.get(householdId)?.timezone ?? 'Europe/Berlin');
     const result = transaction(householdId, (before) => {
       let tables = before;
       const results: unknown[] = [];
@@ -1473,7 +1534,13 @@ export function createFakeServer(): FakeServer {
                   ? // Column defaults: a collection must send course null (spec 0009, T1).
                     { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
                   : op.table === 'meal_plan_entries'
-                    ? { reserved_at: null, remind_minutes_before: 120 }
+                    ? {
+                        reserved_at: null,
+                        remind_minutes_before: 120,
+                        reminder_day_offset: null,
+                        reminder_at: null,
+                        reminder_text: null,
+                      }
                     : op.table === 'chores'
                       ? { due_time: null }
                       : {};
@@ -1490,6 +1557,9 @@ export function createFakeServer(): FakeServer {
           );
           // packing_items_before_insert: "je Tag" from the absence, whatever the device sent.
           const inserted = tables[op.table]?.[op.row.id];
+          if (op.table === 'meal_plan_entries' && inserted) {
+            tables = withRow(tables, op.table, reminderTriggers(undefined, inserted, timeZone));
+          }
           if (op.table === 'packing_items' && inserted) {
             tables = withRow(tables, op.table, {
               ...inserted,
@@ -1521,7 +1591,12 @@ export function createFakeServer(): FakeServer {
           }
           if (op.table === 'chore_events' && 'chore_id' in op.changes)
             checkChoreLink(tables, row, op.changes.chore_id);
-          tables = withRow(tables, op.table, withDbTimes(op.table, { ...row, ...op.changes }));
+          const patched = withDbTimes(op.table, { ...row, ...op.changes });
+          tables = withRow(
+            tables,
+            op.table,
+            op.table === 'meal_plan_entries' ? reminderTriggers(row, patched, timeZone) : patched,
+          );
           if (op.table === 'recipes' && 'ingredients' in op.changes) {
             checkIngredients(op.changes.ingredients, tables);
           }

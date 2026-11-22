@@ -369,4 +369,5 @@ export const notificationDefaults: NotificationSettings = {
   activitiesEveAt: '19:00',
   choreRemindersEnabled: true,
   reservationRemindersEnabled: true,
+  entryRemindersEnabled: true,
 };

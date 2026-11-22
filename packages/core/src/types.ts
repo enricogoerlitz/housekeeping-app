@@ -2,6 +2,9 @@
 // Dates are ISO strings without time ("2026-11-20"); timestamps are full ISO strings.
 import { z } from 'zod';
 
+// Type only: reminder.ts imports its schemas from here.
+import type { EntryReminder } from './reminder';
+
 export type Id = string;
 export type ISODate = string;
 
@@ -31,6 +34,11 @@ export interface Household {
   memberIds: Id[];
   mealSlots: MealSlot[];
   defaultStoreId?: Id;
+  /**
+   * `households.timezone` (IANA, e.g. "Europe/Berlin"): every reminder is judged in it (spec 0017,
+   * Decision 5). Read only; nobody writes it from the app.
+   */
+  timeZone: string;
 }
 
 // ---------- Articles, areas, stores ----------
@@ -193,6 +201,8 @@ export interface MealPlanEntry {
   reservedAt?: TimeOfDay;
   /** "Erinnern … vorher"; undefined = DEFAULT_REMIND_MINUTES (the column default, 120). */
   remindMinutesBefore?: RemindMinutes;
+  /** Spec 0017: "Erinnern" at a day before the entry and a time; only on entries with a day. */
+  reminder?: EntryReminder;
 }
 
 // ---------- Restaurants ----------
@@ -450,6 +460,8 @@ export const NotificationSettingsSchema = z.object({
   activitiesEveAt: TimeOfDaySchema,
   choreRemindersEnabled: z.boolean(),
   reservationRemindersEnabled: z.boolean(),
+  /** Spec 0017, REQ-007: "Erinnerungen an Einträgen", on at the start. */
+  entryRemindersEnabled: z.boolean(),
 });
 export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
 
