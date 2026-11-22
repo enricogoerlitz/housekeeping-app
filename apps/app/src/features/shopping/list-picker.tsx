@@ -7,11 +7,9 @@ import {
   listPickerEntryLabel,
   searchRecipes,
   sortRecipes,
-  weekRangeLabel,
   type Id,
-  type ISODate,
   type ListPickerEntry,
-  type ListPickerWeek,
+  type ListPickerPage,
   type Recipe,
   type RecipeBook,
 } from '@housekeeping/core';
@@ -77,22 +75,23 @@ function SelectRow(props: {
   );
 }
 
-/** "‹ KW 47 · 16.–22. Nov ›": the fixed head of step 1 (AC-050). */
-export function WeekPager(props: { week: ISODate; onShift: (weeks: 1 | -1) => void }) {
+/** "‹ 22.–28. Nov ›": the fixed head of step 1; ‹ ends at today (spec 0025, AC-001, AC-002). */
+export function PagePager(props: { page: ListPickerPage; onShift: (direction: 1 | -1) => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
       <IconButton
         icon="chevron-left"
-        label="Vorige Woche"
+        label="Vorige sieben Tage"
+        disabled={!props.page.canGoBack}
         onPress={() => props.onShift(-1)}
         testID="pick-week-prev"
       />
       <Text variant="bodyStrong" align="center" style={{ flex: 1 }} testID="pick-week-title">
-        {weekRangeLabel(props.week)}
+        {props.page.title}
       </Text>
       <IconButton
         icon="chevron-right"
-        label="Nächste Woche"
+        label="Nächste sieben Tage"
         onPress={() => props.onShift(1)}
         testID="pick-week-next"
       />
@@ -126,11 +125,12 @@ function DayHead(props: {
 }
 
 /**
- * Step 1 "Was soll auf die Liste?" (REQ-008): the recipe entries of one week by day, then recipes
- * chosen without a day and "Vorgemerkt". A tap on a day selects all its entries (AC-052).
+ * Step 1 "Was soll auf die Liste?" (spec 0025, REQ-001): the recipe entries of seven days by
+ * calendar week and day, then recipes chosen without a day and "Vorgemerkt". A tap on a day
+ * selects all its entries (AC-052).
  */
 export function ListPickerStep(props: {
-  week: ListPickerWeek;
+  page: ListPickerPage;
   selected: ReadonlySet<Id>;
   onToggleEntry: (entryId: Id) => void;
   onToggleDay: (entryIds: Id[]) => void;
@@ -149,37 +149,44 @@ export function ListPickerStep(props: {
       testID={`pick-entry-${row.entry.id}`}
     />
   );
-  const nothing =
-    props.week.days.length === 0 && props.week.parked.length === 0 && props.chosen.length === 0;
+  const { page } = props;
+  const nothing = page.groups.length === 0 && page.parked.length === 0 && props.chosen.length === 0;
   return (
     <View>
       {nothing ? (
         <EmptyState
           icon="calendar-days"
           title="Nichts zum Einkaufen geplant"
-          text="Blättere zu einer anderen Woche oder wähle ein Rezept."
+          text="Blättere zu anderen Tagen oder wähle ein Rezept."
           testID="pick-empty"
         />
       ) : null}
-      {props.week.days.length === 0 && !nothing ? (
+      {page.groups.length === 0 && !nothing ? (
         <Text color="muted" testID="pick-week-empty" style={{ marginTop: 8 }}>
-          In dieser Woche ist kein Rezept geplant.
+          In diesen sieben Tagen ist kein Rezept geplant.
         </Text>
       ) : null}
-      {props.week.days.map((day) => {
-        const ids = day.entries.map((row) => row.entry.id);
-        return (
-          <View key={day.date} testID={`pick-day-${day.date}`}>
-            <DayHead
-              label={listPickerDayLabel(day)}
-              allSelected={ids.every((id) => props.selected.has(id))}
-              onPress={() => props.onToggleDay(ids)}
-              testID={`pick-day-${day.date}-head`}
-            />
-            <List>{day.entries.map(entryRow)}</List>
-          </View>
-        );
-      })}
+      {page.groups.map((group) => (
+        <View key={group.weekNumber} testID={`pick-kw-${group.weekNumber}`}>
+          <Text variant="smallStrong" color="muted" style={{ marginTop: 12 }}>
+            {group.label}
+          </Text>
+          {group.days.map((day) => {
+            const ids = day.entries.map((row) => row.entry.id);
+            return (
+              <View key={day.date} testID={`pick-day-${day.date}`}>
+                <DayHead
+                  label={listPickerDayLabel(day)}
+                  allSelected={ids.every((id) => props.selected.has(id))}
+                  onPress={() => props.onToggleDay(ids)}
+                  testID={`pick-day-${day.date}-head`}
+                />
+                <List>{day.entries.map(entryRow)}</List>
+              </View>
+            );
+          })}
+        </View>
+      ))}
       {props.chosen.length > 0 ? (
         <View testID="pick-without-day">
           <GroupLabel>Ohne Tag</GroupLabel>
@@ -198,10 +205,10 @@ export function ListPickerStep(props: {
           </List>
         </View>
       ) : null}
-      {props.week.parked.length > 0 ? (
+      {page.parked.length > 0 ? (
         <View testID="pick-parked">
           <GroupLabel>Vorgemerkt</GroupLabel>
-          <List>{props.week.parked.map(entryRow)}</List>
+          <List>{page.parked.map(entryRow)}</List>
         </View>
       ) : null}
     </View>

@@ -1,6 +1,4 @@
 import {
-  addShoppingItemFromText,
-  assignArticleArea,
   clearCheckedItems,
   setItemChecked,
   setItemNotAvailable,
@@ -13,8 +11,7 @@ import {
 } from '@housekeeping/api';
 import {
   finishSummary,
-  listProgress,
-  parseSmartInput,
+  runProgress,
   shoppingModeGroups,
   summarizeItem,
   type Article,
@@ -28,12 +25,12 @@ import {
   haptic,
   Icon,
   IconButton,
+  Menu,
   ProgressBar,
   RowTransition,
   Screen,
   Sheet,
   Text,
-  TextField,
   toast,
   useBreakpoint,
   useCheckWindow,
@@ -49,15 +46,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { undoAction } from '@/features/shell/offline';
+import { AreaPicker } from '@/features/stores/area-picker';
 
 import { useActiveShopper } from './active-shopper';
+import { useShoppingRun } from './shopping-run';
+import { SmartComposer } from './smart-composer';
 import { StoreChoiceSheet, WITHOUT_STORE_LABEL } from './store-choice-sheet';
 
 /** Decision 6 of spec 0003: clearing is a write, so offline "Fertig" only leaves the mode. */
 const FINISH_OFFLINE_HINT = 'Abgehakte räumen wir auf, sobald du Netz hast';
 // "Einkaufen" is one column at reading width on every screen (spec 0005, D5).
 const SHOPPING_MAX_WIDTH = 760;
-const ADD_FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 function SmRow(props: {
   item: ShoppingItem;
@@ -68,6 +67,8 @@ function SmRow(props: {
   onNotHere?: () => void;
   onBackHere?: () => void;
   onAssignArea?: () => void;
+  /** "Liegt woanders …" in ⋯ of every open row (spec 0025, REQ-011). */
+  onElsewhere?: () => void;
 }) {
   const theme = useTheme();
   const { item, checked } = props;
@@ -146,6 +147,17 @@ function SmRow(props: {
           onPress={props.onBackHere}
         />
       ) : null}
+      {props.onElsewhere ? (
+        <Menu<'elsewhere'>
+          trigger="icon"
+          icon="ellipsis"
+          label="Mehr"
+          accessibilityLabel={`Mehr zu ${name}`}
+          options={[{ value: 'elsewhere', label: 'Liegt woanders …' }]}
+          onChange={() => props.onElsewhere?.()}
+          testID={`sm-more-${item.id}`}
+        />
+      ) : null}
     </View>
   );
 }
@@ -190,23 +202,27 @@ export function ShoppingModeScreen() {
       `${articlesById[item.articleId]?.name ?? 'Posten'} ${checked ? 'abgehakt' : 'wieder offen'}`,
   });
 
-  const progress = listProgress(items);
+  // Progress and "Im Wagen" count this Einkaufsgang only (spec 0025, REQ-013).
+  const run = useShoppingRun(items);
+  const progress = runProgress(run, items);
   const shownIds = new Set(check.rows.map((item) => item.id));
   const groups = shoppingModeGroups(check.rows, articlesById, areas, store);
-  const inCart = items.filter((item) => !shownIds.has(item.id));
+  const inCart = progress.inCart.filter((item) => !shownIds.has(item.id));
 
   const close = () => {
     if (router.canGoBack()) router.back();
     else router.replace('/liste');
   };
 
-  // "Fertig" (AC-047): online the checked items leave the list with "Rückgängig"; offline it only
-  // leaves "Einkaufen" and the tidying waits for the network.
+  // "Fertig" (AC-043): online every checked item leaves the list, also older ones, with
+  // "Rückgängig"; the hint counts this Einkaufsgang. Offline it only leaves "Einkaufen" and the
+  // tidying waits for the network.
   const finish = () => {
-    const summary = finishSummary(items);
-    if (summary.bought > 0 && offline) {
+    const summary = finishSummary(run, items);
+    const anyChecked = items.some((item) => item.checked);
+    if (anyChecked && offline) {
       toast.show({ message: FINISH_OFFLINE_HINT });
-    } else if (summary.bought > 0) {
+    } else if (anyChecked) {
       const restore = snapshot();
       clearCheckedItems();
       toast.show({
@@ -283,7 +299,17 @@ export function ShoppingModeScreen() {
       }}
     >
       <View style={{ width: '100%', maxWidth: SHOPPING_MAX_WIDTH, alignSelf: 'center' }}>
-        <AddItemField />
+        {/* The same input as "Was fehlt?", without microphone and assistant (REQ-012). */}
+        <SmartComposer
+          framed={false}
+          placeholder="+ Posten hinzufügen"
+          label="Posten hinzufügen"
+          inputTestID="shopping-add-input"
+          submitTestID="shopping-add-submit"
+          onAdded={(added) =>
+            toast.show({ message: `${added.articleName} steht auf der Liste`, duration: 2500 })
+          }
+        />
       </View>
     </View>
   );
@@ -306,6 +332,7 @@ export function ShoppingModeScreen() {
             item.notAvailable && !checked ? () => setItemNotAvailable(item.id, false) : undefined
           }
           onAssignArea={groupKey === 'none' && !checked ? () => setAreaFor(item) : undefined}
+          onElsewhere={groupKey !== undefined && !checked ? () => setAreaFor(item) : undefined}
         />
       </RowTransition>
     );
@@ -355,7 +382,7 @@ export function ShoppingModeScreen() {
         </View>
       ) : null}
       {areaFor ? (
-        <AreaSheet
+        <ElsewhereSheet
           item={areaFor}
           article={articlesById[areaFor.articleId]}
           onClose={() => setAreaFor(undefined)}
@@ -376,96 +403,31 @@ export function ShoppingModeScreen() {
 }
 
 /**
- * "Posten hinzufügen" in the store (AC-046): works offline through the store queue; the new row
- * lands in its area or under "Ohne Bereich".
+ * "Wo liegt Ingwer?" (spec 0025, REQ-011): the one area picker; the area applies to the article
+ * from now on, on every list and for every member. A store action, offline too.
  */
-function AddItemField() {
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | undefined>();
-  const submit = () => {
-    if (!parseSmartInput(text)) {
-      setError('Was fehlt denn?');
-      return;
-    }
-    try {
-      const added = addShoppingItemFromText(text);
-      if (!added) return;
-      setText('');
-      setError(undefined);
-      toast.show({ message: `${added.articleName} steht auf der Liste`, duration: 2500 });
-    } catch {
-      setError(ADD_FAILED);
-    }
-  };
-  return (
-    <TextField
-      accessibilityLabel="Posten hinzufügen"
-      placeholder="+ Posten hinzufügen"
-      value={text}
-      round
-      onChangeText={(value) => {
-        setText(value);
-        setError(undefined);
-      }}
-      onSubmitEditing={submit}
-      returnKeyType="done"
-      blurOnSubmit={false}
-      error={error}
-      right={
-        <IconButton
-          icon="plus"
-          label="Hinzufügen"
-          disabled={text.trim() === ''}
-          onPress={submit}
-          testID="shopping-add-submit"
-        />
-      }
-      testID="shopping-add-input"
-    />
-  );
-}
-
-function AreaSheet(props: {
+function ElsewhereSheet(props: {
   item: ShoppingItem;
   article: Article | undefined;
   onClose: () => void;
 }) {
-  const areas = useAreas();
-  const theme = useTheme();
   const name = props.article?.name ?? 'Artikel';
-  const sorted = [...areas].sort((a, b) => a.sort - b.sort);
   return (
-    <Sheet visible onClose={props.onClose} title={`Wo liegt ${name}?`} testID="area-sheet" size="s">
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {sorted.map((area) => (
-          <Pressable
-            key={area.id}
-            testID={`area-tile-${area.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={area.name}
-            onPress={() => {
-              assignArticleArea(props.item.articleId, area.id);
-              props.onClose();
-              toast.show({ message: `${name} liegt jetzt unter ${area.name}`, duration: 2500 });
-            }}
-            style={(state) => ({
-              flexBasis: '45%',
-              flexGrow: 1,
-              minHeight: 64,
-              justifyContent: 'center',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: theme.shape.radius.control,
-              backgroundColor: theme.colors.surface,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              opacity: state.pressed ? 0.6 : 1,
-            })}
-          >
-            <Text variant="bodyStrong">{area.name}</Text>
-          </Pressable>
-        ))}
-      </View>
+    <Sheet visible onClose={props.onClose} title={`Wo liegt ${name}?`} testID="area-sheet" size="m">
+      <AreaPicker
+        articleId={props.item.articleId}
+        currentAreaId={props.article?.areaId}
+        onPicked={(areaName) => {
+          props.onClose();
+          toast.show({
+            message: areaName
+              ? `${name} liegt jetzt unter ${areaName}`
+              : `${name} steht jetzt unter „Ohne Bereich“`,
+            duration: 2500,
+          });
+        }}
+        testID="area-picker"
+      />
     </Sheet>
   );
 }

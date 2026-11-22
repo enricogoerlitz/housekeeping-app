@@ -20,10 +20,18 @@ const FILTER_LABELS: Record<ArticleFilter, string> = {
   pantry: 'Vorrat',
   needsReview: 'Neu aus Rezepten',
   similar: 'Ähnliche Namen',
+  unused: 'Unbenutzt',
 };
-export const FILTERS: ArticleFilter[] = ['all', 'noArea', 'pantry', 'needsReview', 'similar'];
-// "Alle" and "Vorrat" carry no number (AC-021).
-const COUNTED = new Set<ArticleFilter>(['noArea', 'needsReview', 'similar']);
+export const FILTERS: ArticleFilter[] = [
+  'all',
+  'noArea',
+  'pantry',
+  'needsReview',
+  'similar',
+  'unused',
+];
+// "Alle" and "Vorrat" carry no number (AC-021); "Unbenutzt (1)" does (spec 0025, AC-046).
+const COUNTED = new Set<ArticleFilter>(['noArea', 'needsReview', 'similar', 'unused']);
 
 /** "Ohne Bereich (2)". */
 export function filterChipLabel(filter: ArticleFilter, counts: Record<ArticleFilter, number>) {
@@ -45,6 +53,7 @@ const FILTER_PARAMS: Record<string, ArticleFilter> = {
   vorrat: 'pantry',
   'neu-aus-rezepten': 'needsReview',
   'aehnliche-namen': 'similar',
+  unbenutzt: 'unused',
 };
 export function filterFromParam(param: string | undefined): ArticleFilter {
   return (param !== undefined && FILTER_PARAMS[param]) || 'all';
@@ -53,7 +62,7 @@ export function filterFromParam(param: string | undefined): ArticleFilter {
 /** The address value of a filter; "Alle" is the default and stays out (spec 0019). */
 export function filterParam(
   filter: ArticleFilter,
-): 'ohne-bereich' | 'vorrat' | 'neu-aus-rezepten' | 'aehnliche-namen' | undefined {
+): 'ohne-bereich' | 'vorrat' | 'neu-aus-rezepten' | 'aehnliche-namen' | 'unbenutzt' | undefined {
   const entry = Object.entries(FILTER_PARAMS).find(([, value]) => value === filter);
   return entry?.[0] as ReturnType<typeof filterParam>;
 }

@@ -7,6 +7,7 @@ import {
   Icon,
   List,
   ListDetail,
+  Menu,
   ListRow,
   Screen,
   ScreenHeader,
@@ -40,6 +41,13 @@ function StoresList(props: { selectedId?: Id; onSelect: (storeId: Id) => void })
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
   const [creating, setCreating] = useState(false);
+  // "Reihenfolge übernehmen von …" (spec 0025, AC-050); '' = "Wie die Bereiche" (AC-051).
+  const [copyFrom, setCopyFrom] = useState('');
+  const copyOptions = [
+    { value: '', label: 'Wie die Bereiche' },
+    ...stores.map((store) => ({ value: store.id, label: store.name })),
+  ];
+  const copyLabel = copyOptions.find((option) => option.value === copyFrom)?.label ?? '';
 
   return (
     <View testID="stores-list">
@@ -98,18 +106,37 @@ function StoresList(props: { selectedId?: Id; onSelect: (storeId: Id) => void })
           onSubmit={(name) => {
             let storeId: Id;
             try {
-              storeId = createStore(name);
+              storeId = createStore(name, copyFrom || undefined);
             } catch (caught) {
               return messageOf(caught);
             }
             setCreating(false);
+            setCopyFrom('');
             toast.show({ message: `„${name.trim()}“ angelegt` });
             props.onSelect(storeId);
             return undefined;
           }}
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            setCreating(false);
+            setCopyFrom('');
+          }}
           testID="store-new-sheet"
-        />
+        >
+          {stores.length > 0 ? (
+            <View style={{ marginTop: 12, gap: 6, alignItems: 'flex-start' }}>
+              <Text variant="smallStrong">Reihenfolge übernehmen von …</Text>
+              <Menu
+                label={copyLabel}
+                accessibilityLabel={`Reihenfolge übernehmen von: ${copyLabel}`}
+                icon="copy"
+                value={copyFrom}
+                onChange={setCopyFrom}
+                options={copyOptions}
+                testID="store-new-copy"
+              />
+            </View>
+          ) : null}
+        </NameSheet>
       ) : null}
     </View>
   );
