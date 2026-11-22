@@ -433,6 +433,20 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (22.11.2026).
     `fenster=profil|umbenennen|bearbeiten`); die Übersicht schreibt kein `zeit`. Reise ist keine
     Detailseite mehr (0022), Aktivitäten liegen unter „Verwalten“ (0024): AC-013, AC-017, AC-038
     angepasst.
+16. Beim Bau (22.11.2026): Ein Fenster bekommt im Browser einen eigenen Verlaufseintrag als Kopie
+    des Seiten-Eintrags; „Zurück“ auf diese Kopie fängt `apps/app/src/lib/url-state.ts` vor dem
+    Router ab und schließt nur das Fenster. Grund: Der Router legt für reine Parameter-Änderungen
+    keinen Eintrag an und würde die Seite sonst neu aufbauen (Scroll-Position und Zustand weg).
+17. Beim Bau: Restaurant-Filter (`preis`, `bewertung`) und der Bewertungsfilter der Rezepte stehen
+    zusätzlich in der Liste; Rezepte und Restaurants teilen sich die Namen, beim Wechsel der Ansicht
+    tauscht „Essen“ sie gegen die zuletzt verlassenen der anderen Ansicht (nur im Speicher).
+18. Beim Bau: Das Hinzufügen-Fenster des Kalenders bleibt ohne Adresse, bis Spec 0021 Tageszeiten
+    durch Uhrzeiten (`zeit`) ersetzt; „Neu“ in Essen merkt die Art (Rezept/Sammlung) nur im Speicher.
+19. Beim Bau: Zum Stand der Annahme zu ER-35 (Entscheidung 13): Die Fläche hinter der Statusleiste
+    hat ab dem ersten Bild die Farbe der Kopfzeile (`theme-boot.js`, `theme-color` je Theme, zur
+    Laufzeit nachgeführt); Kopfzeilen und Fenster halten den oberen sicheren Rand ein.
+20. Beim Bau: `apple-mobile-web-app-status-bar-style` ist `default` (dunkle Schrift auf hellem
+    Theme); ob iOS damit im dunklen Theme helle Schrift zeigt, prüft Enrico (Entscheidung 14).
 
 ## Daten
 
@@ -448,34 +462,37 @@ der Parameter in `target-params.ts`, die Parameter `view`, `rid`, `add`, `share`
 
 | Risiko                                                    | Gegenmaßnahme                                                     | Test                                         |
 | --------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
-| Offene Weiterleitung nach der Anmeldung                   | Nur Pfade mit genau einem führenden `/`, kein Schema, kein `//`   | Unit `AC-048` in `core`                      |
-| Adresse zeigt Daten eines fremden Haushalts               | Auflösen nur im lokalen Speicher der eigenen Haushalte            | Unit `AC-050`; pgTAP-Isolation unverändert   |
+| Offene Weiterleitung nach der Anmeldung                   | Nur Pfade mit genau einem führenden `/`, kein Schema, kein `//`   | Unit `AC-047`, `AC-048` in `core`            |
+| Adresse zeigt Daten eines fremden Haushalts               | Auflösen nur im lokalen Speicher der eigenen Haushalte            | Unit `AC-050` (core, api); pgTAP unverändert |
 | Wechsel in einen Haushalt per Adresse ohne Mitgliedschaft | Wechsel nur, wenn die Id in einem eigenen Haushalt liegt          | Unit `AC-051` mit fremder Id                 |
 | Abgemeldet: Adresse verrät Inhalte                        | Anmeldeseite zeigt nichts aus der Adresse                         | `AC-047` abgemeldet                          |
 | Ungültige Parameter lassen eine Seite abstürzen           | Zod-Prüfung je Parameter in `core`, ungültig = ignorieren         | Unit `AC-034`, `AC-039`, `AC-052`            |
-| „+“ offline doppelt oder verloren                         | Bestehende Aktion „Posten hinzufügen“ mit Client-Id, Wiederholung | `AC-030`, `AC-031`; Abbruch mitten im Senden |
+| „+“ offline doppelt oder verloren                         | Bestehende Aktion „Posten hinzufügen“ mit Client-Id, Wiederholung | api `AC-030`, `AC-031` (Fake-Server)         |
 
 ## Umsetzung
 
-- [ ] 1. `packages/ui`: eine Funktion für den Tastatur-Fokusrahmen, alle Bausteine darauf; Rahmen
+- [x] 1. `packages/ui`: eine Funktion für den Tastatur-Fokusrahmen, alle Bausteine darauf; Rahmen
       nicht abgeschnitten (AC-004–AC-006).
-- [ ] 2. `packages/ui`: `Text` standardmäßig nicht markierbar, Inhalt ausdrücklich markierbar;
+- [x] 2. `packages/ui`: `Text` standardmäßig nicht markierbar, Inhalt ausdrücklich markierbar;
       `-webkit-touch-callout` an Bedienelementen (AC-001–AC-003).
-- [ ] 3. `packages/ui`: Hover nur mit `hover: hover` und `pointer: fine`, Hover für Kacheln, Zeilen,
+- [x] 3. `packages/ui`: Hover nur mit `hover: hover` und `pointer: fine`, Hover für Kacheln, Zeilen,
       Chips, Tagesleiste (AC-007, AC-008).
-- [ ] 4. `Menu` und `Popover`: Lage beim Ausblenden halten, Fokus nur bei Tastatur (AC-009–AC-011).
-- [ ] 5. Navigation: Bereich → Startseite, `von` an allen Detailseiten, Hervorhebung, Haushaltszeile,
+- [x] 4. `Menu` und `Popover`: Lage beim Ausblenden halten, Fokus nur bei Tastatur (AC-009–AC-011).
+- [x] 5. Navigation: Bereich → Startseite, `von` an allen Detailseiten, Hervorhebung, Haushaltszeile,
       Gruppennamen (AC-012–AC-021).
-- [ ] 6. `index.html`, Manifest, Theme: `viewport-fit=cover`, `theme-color` je Theme und zur
+- [x] 6. `index.html`, Manifest, Theme: `viewport-fit=cover`, `theme-color` je Theme und zur
       Laufzeit, Hintergrund vor dem Start; Insets an Toast, Einkaufsmodus, Fenster, Tages-Fenster
       (AC-022–AC-025). Auf Enricos iPhone prüfen.
-- [ ] 7. Tippflächen, Overscroll, Text-Size-Adjust (AC-026–AC-028).
-- [ ] 8. Offline-Banner, ein Hinweis je Bildschirm, „+“ über die Laden-Warteschlange (AC-029–AC-031).
-- [ ] 9. `packages/core`: Liste aller Parameter mit Zod-Prüfung; Hilfen zum Lesen, Ersetzen,
+- [x] 7. Tippflächen, Overscroll, Text-Size-Adjust (AC-026–AC-028).
+- [x] 8. Offline-Banner, ein Hinweis je Bildschirm, „+“ über die Laden-Warteschlange (AC-029–AC-031).
+- [x] 9. `packages/core`: Liste aller Parameter mit Zod-Prüfung; Hilfen zum Lesen, Ersetzen,
       Hinzufügen (AC-054, AC-055).
-- [ ] 10. Listen, Kalender, Fenster, Auswahl, Kochmodus auf die Adresse umstellen (AC-032–AC-046).
-- [ ] 11. Rückkehr nach der Anmeldung, Ids sicher auflösen (AC-047–AC-053); `/security-check`.
-- [ ] Aufräumen: `focusRing`, Modul-Speicher der Listen, Löschen der Parameter in
+- [x] 10. Listen, Kalender, Fenster, Auswahl, Kochmodus auf die Adresse umstellen (AC-032–AC-046).
+- [x] 11. Rückkehr nach der Anmeldung, Ids sicher auflösen (AC-047–AC-053); `/security-check`.
+- [x] Aufräumen: `focusRing`, Modul-Speicher der Listen, Löschen der Parameter in
       `target-params.ts`, alte Parameternamen.
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`; `/ui-verify` Handy und Desktop,
-      hell und dunkel; iPhone als installierte Web-App.
+- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün (22.11.2026); Rauchtest
+      im Browser (Handy 390 px, Desktop 1280 px) für AC-012/014, 016, 018, 032, 034, 036, 039,
+      040, 042, 045–047, 052, 053 grün; `/security-check`: keine hohen Befunde, Steuerzeichen im
+      Rückweg nachgebessert. Offen: `/ui-verify` (Spec 0028) und iPhone als installierte Web-App
+      (Enrico, Entscheidungen 13, 14).
