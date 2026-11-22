@@ -270,7 +270,8 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
   const newId = () => `new-${++counter}`;
   const now = '2026-11-22T12:00:00.000Z';
 
-  it('AC-021: "Hackfleisch 125 g" with the same Herkunft and on the same item', () => {
+  // 500 g for 4 portions, 1 portion: 125 g, bought as 130 g (spec 0025, REQ-008).
+  it('AC-021: "Hackfleisch 130 g" with the same Herkunft and on the same item', () => {
     const next = recomputeEntryContributions({
       items: [hack, eier],
       entry: { ...lasagne, eaterIds: [nadja.id], portions: 1 },
@@ -282,7 +283,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
     const item = next.find((candidate) => candidate.id === 'item-hack');
     expect(item?.contributions).toEqual([
       expect.objectContaining({
-        qty: 125,
+        qty: 130,
         unit: 'g',
         source: expect.objectContaining({ entryId: 'lasagne', label: 'Lasagne (Mo)' }),
       }),

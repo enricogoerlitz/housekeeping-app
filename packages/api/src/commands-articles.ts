@@ -198,6 +198,8 @@ export function deleteArticle(articleId: Id): void {
       updateData((current) => ({
         ...current,
         articles: current.articles.filter((article) => article.id !== articleId),
+        // Only a checked item can be left (articleUsage); it goes with the article (AC-047).
+        items: current.items.filter((item) => item.articleId !== articleId),
       })),
   );
 }

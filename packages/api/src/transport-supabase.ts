@@ -19,6 +19,7 @@ import {
   ClearedItemsSchema,
   DeletedArticleSchema,
   DeletedRecipeSchema,
+  ManualAmountResultSchema,
   MergeArticlesResultSchema,
   MergeAreasResultSchema,
   NotAvailableResultSchema,
@@ -266,11 +267,12 @@ export function createSupabaseTransport(
         p_household_id: householdId,
         p_ops: ops,
       }),
-    setItemChecked: (itemId, checked, seenCheckSeq) =>
+    setItemChecked: (itemId, checked, seenCheckSeq, onList) =>
       parsed(CheckResultSchema, 'set_shopping_item_checked', {
         p_item_id: itemId,
         p_checked: checked,
         p_seen_check_seq: seenCheckSeq,
+        p_on_list: onList ?? false,
       }),
     setItemNotAvailable: (itemId, value) =>
       parsed(NotAvailableResultSchema, 'set_shopping_item_not_available', {
@@ -302,6 +304,26 @@ export function createSupabaseTransport(
       const data = await call('remove_contributions', { p_ids: ids });
       if (typeof data !== 'number') throw new TransportError('permanent', 'invalid_response');
       return data;
+    },
+    setManualAmount: (itemId, amount) =>
+      parsed(ManualAmountResultSchema, 'set_manual_amount', {
+        p_item_id: itemId,
+        p_count: amount.count ?? null,
+        p_qty: amount.qty ?? null,
+        p_unit: amount.unit ?? null,
+      }),
+    removeItemContributions: (itemId, ids) =>
+      parsed(ClearedItemsSchema.nullable(), 'remove_item_contributions', {
+        p_item_id: itemId,
+        p_ids: ids,
+      }),
+    createStore: async (householdId, storeId, name, copyFrom) => {
+      await call('create_store', {
+        p_household_id: householdId,
+        p_store_id: storeId,
+        p_name: name,
+        p_copy_from: copyFrom,
+      });
     },
     restoreClearedItems: async (householdId, items) => {
       const data = await call('restore_cleared_items', {

@@ -111,7 +111,7 @@ describe('contributionsFromEntry', () => {
     expect(contributionsFromEntry(entry, recipe, articlesById, 'Mi')[0]?.count).toBe(3);
   });
 
-  it('Spec 0009 REQ-005: scaled amounts are rounded up to buyable values', () => {
+  it('AC-030: scaled amounts are rounded up to buyable values', () => {
     const ingredient = (id: string, text: string, qty: number, unit: string) => ({
       id,
       articleId: 'art-mango',
@@ -132,10 +132,30 @@ describe('contributionsFromEntry', () => {
     const rows = contributionsFromEntry(entry, recipe, articlesById, 'Mi');
     expect(rows.map((row) => [row.qty, row.unit])).toEqual([
       [1, 'Glas'],
-      [57, 'g'],
+      [60, 'g'],
       [1.2, 'kg'],
       [1.5, 'EL'],
     ]);
+  });
+
+  it('AC-031: with factor 1 the amount stays as in the recipe ("75 g"), for 8 portions 150 g', () => {
+    const recipe = {
+      ...halloumiPfanne,
+      servings: 4,
+      ingredients: [
+        {
+          id: 'r',
+          articleId: 'art-mango',
+          amount: { text: '75 g', qty: 75, unit: 'g' },
+          shoppingRule: 'recipeAmount' as const,
+        },
+      ],
+    };
+    const qtyFor = (portions: number) =>
+      contributionsFromEntry(curryEntry({ portions, variants: [] }), recipe, articlesById, 'Mo')[0]
+        ?.qty;
+    expect(qtyFor(4)).toBe(75);
+    expect(qtyFor(8)).toBe(150);
   });
 
   it('uses the default variant for entries without variant rows', () => {
@@ -241,7 +261,7 @@ describe('summarizeItem', () => {
     expect(summarizeItem(mixed).amount).toBe('3× · 500 g · 2 Dosen');
   });
 
-  it('collects distinct notes and sources and flags recurring items', () => {
+  it('collects distinct notes and sources', () => {
     const cheese = item({
       id: 'i',
       articleId: 'x',
@@ -249,7 +269,6 @@ describe('summarizeItem', () => {
         manual('a', { note: 'Gouda' }),
         manual('b', { note: 'Gouda' }),
         manual('c', { note: '' }),
-        { id: 'd', source: { kind: 'recurring' } },
         {
           id: 'e',
           source: { kind: 'recipe', recipeId: 'r', label: 'Lasagne (Mo)' },
@@ -260,8 +279,7 @@ describe('summarizeItem', () => {
     expect(summarizeItem(cheese)).toEqual({
       amount: '',
       notes: ['Gouda', 'gerieben'],
-      sources: ['von Hand', 'Dauerposten', 'Lasagne (Mo)'],
-      isRecurring: true,
+      sources: ['von Hand', 'Lasagne (Mo)'],
     });
   });
 });

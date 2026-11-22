@@ -64,7 +64,7 @@ import { createSupabaseTransport, fromSupabaseClient } from './transport-supabas
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
  * What is not cache survives the bump: the store queue and the choices made on this device.
  */
-export const CACHE_VERSION = 11;
+export const CACHE_VERSION = 12;
 /** Retention of `deleted_records` on the server (pg_cron). */
 const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
@@ -840,6 +840,7 @@ export function createEngine(options: EngineOptions): Engine {
           entry.itemId,
           entry.checked,
           entry.seenCheckSeq,
+          entry.onList,
         );
         if (answer) {
           knownCheckSeq.set(answer.item_id, answer.check_seq);
@@ -1037,7 +1038,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (action.kind === 'check') {
       const { server, expected } = expectedRow('shopping_items', action.itemId);
       const seen = Math.max(Number(server?.check_seq ?? 0), knownCheckSeq.get(action.itemId) ?? 0);
-      entry = { ...action, seenCheckSeq: seen };
+      entry = { ...action, onList: action.onList ?? false, seenCheckSeq: seen };
       baseRow = expected;
     } else if (action.kind === 'notAvailable') {
       entry = action;

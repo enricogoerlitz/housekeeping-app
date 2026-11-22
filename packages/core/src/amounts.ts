@@ -117,7 +117,6 @@ const PIECE_UNITS = new Set([
 const SIZE = /^(klein|mittelgroß|groß|gehäuft|gestrichen)(e|er|es|en|em)?$/i;
 // Units bought by weight or volume and how many decimals the shop sells them in (spec 0009,
 // REQ-005): whole grams and millilitres, kilograms and litres to one decimal.
-const BUYABLE_DECIMALS: Record<string, number> = { g: 0, ml: 0, kg: 1, l: 1 };
 
 const FRACTION_CHARS: Record<string, number> = {
   '½': 1 / 2,
@@ -368,6 +367,29 @@ export function parseAmount(text: string): Amount | undefined {
   return unit === undefined ? { text: input } : { text: input, qty, unit };
 }
 
+/** The hint under an amount that is no count and no quantity (spec 0025, AC-012, AC-029). */
+export const AMOUNT_NOT_RECOGNIZED = 'Menge nicht erkannt – z. B. 500 g oder 2';
+
+/** An amount typed for an item: a count ("2") or a quantity with unit ("500 g"); {} = none. */
+export interface ItemAmount {
+  count?: number;
+  qty?: number;
+  unit?: string;
+}
+
+/**
+ * The field "Von Hand" in "Posten bearbeiten" and the amount of a row in the pantry check (spec
+ * 0025, REQ-003, REQ-007): "2" → 2×, "500 g", "1 Kasten"; blank → nothing. Undefined when it is
+ * not recognised ("viel", 0, "1,5" without unit): a count is a whole number from 1 to 10000.
+ */
+export function parseItemAmount(text: string): ItemAmount | undefined {
+  const amount = parseAmount(text);
+  if (amount === undefined) return {};
+  if (amount.qty === undefined || amount.qty <= 0) return undefined;
+  if (amount.unit !== undefined) return { qty: amount.qty, unit: amount.unit };
+  return Number.isInteger(amount.qty) && amount.qty <= 10000 ? { count: amount.qty } : undefined;
+}
+
 /**
  * The hint under "Menge" (spec 0023, REQ-001): whether the amount follows the portions. Nothing for
  * an empty field.
@@ -411,21 +433,37 @@ function roundScaled(value: number, unit: string | undefined): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+// Spoon measures are bought by the half (spec 0025, REQ-008).
+const HALF_STEP_UNITS = new Set(['EL', 'TL']);
+
+/** Rounds up to a multiple of `step`; the small tolerance keeps float noise from adding a step. */
+function ceilTo(qty: number, step: number): number {
+  const steps = Math.ceil(qty / step - 1e-6);
+  return Math.round(steps * step * 1000) / 1000;
+}
+
+/** g and ml: below 250 in steps of 10, up to 999 of 50, from 1000 on of 100 (shown as kg / l). */
+function gramStep(qty: number): number {
+  if (qty < 250) return 10;
+  return qty < 1000 ? 50 : 100;
+}
+
 /**
  * The quantity of a scaled recipe amount as it goes on the shopping list and into the pantry check
- * (spec 0009, REQ-005; glossary "Einkaufsregel"): rounded up to what can be bought. Countable units
- * (Glas, Dose, Becher, Packung, Stück, Bund, Sack, Kasten, …) to whole pieces, g and ml to whole
- * numbers, kg and l to one decimal. Spoon measures (EL, TL) keep two decimals, Prise, Msp. and
- * Handvoll stay as they are. "0,75 Glas" → 1, "56,25 g" → 57, "1,125 kg" → 1,2. The recipe itself
- * shows the exact scaled amount (scaleAmount).
+ * (spec 0025, REQ-008; glossary "Einkaufsregel"): rounded up to what can be bought. g and ml in
+ * steps of 10, 50 or 100 ("57 g" → 60, "438 g" → 450, "1125 g" → 1200), kg and l to one decimal,
+ * countable units (Glas, Dose, Becher, Packung, Stück, Bund, Sack, Kasten, …) to whole pieces, EL
+ * and TL to halves; Prise, Msp. and Handvoll stay as they are, other units keep two decimals. The
+ * caller leaves amounts with factor 1 alone; the recipe itself shows the exact scaled amount
+ * (scaleAmount).
  */
 export function buyableQty(qty: number, unit: string): number {
   if (NON_SCALING_UNITS.has(unit)) return qty;
-  const decimals = PIECE_UNITS.has(unit) ? 0 : BUYABLE_DECIMALS[unit];
-  if (decimals === undefined) return Math.round((qty + Number.EPSILON) * 100) / 100;
-  const scale = 10 ** decimals;
-  // The small tolerance keeps float noise (0.30000000000000004) from adding a whole step.
-  return Math.ceil(qty * scale - 1e-6) / scale;
+  if (PIECE_UNITS.has(unit)) return ceilTo(qty, 1);
+  if (HALF_STEP_UNITS.has(unit)) return ceilTo(qty, 0.5);
+  if (unit === 'g' || unit === 'ml') return ceilTo(qty, gramStep(qty - 1e-6));
+  if (unit === 'kg' || unit === 'l') return ceilTo(qty, 0.1);
+  return Math.round((qty + Number.EPSILON) * 100) / 100;
 }
 
 /**

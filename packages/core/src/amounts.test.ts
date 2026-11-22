@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AMOUNT_NOT_RECOGNIZED,
   buyableQty,
   formatAmount,
   formatQty,
   parseAmount,
   parseIngredientBlock,
   parseIngredientLine,
+  parseItemAmount,
   parseSmartInput,
   scaleAmount,
 } from './amounts';
@@ -295,13 +297,18 @@ describe('buyableQty', () => {
     expect(buyableQty(2, 'Dose')).toBe(2);
   });
 
-  it('Spec 0009 REQ-005: g and ml round up to whole numbers ("56,25 g" → "57 g")', () => {
-    expect(buyableQty(56.25, 'g')).toBe(57);
-    expect(buyableQty(83.33, 'ml')).toBe(84);
+  it('AC-030: g and ml round up in steps of 10, 50 and 100 ("57 g" → 60 g, "438 g" → 450 g)', () => {
+    expect(buyableQty(57, 'g')).toBe(60);
+    expect(buyableQty(112.5, 'g')).toBe(120);
+    expect(buyableQty(438, 'g')).toBe(450);
+    expect(buyableQty(1125, 'g')).toBe(1200);
+    expect(buyableQty(83.33, 'ml')).toBe(90);
+    expect(buyableQty(250, 'ml')).toBe(250);
+    expect(buyableQty(251, 'ml')).toBe(300);
     expect(buyableQty(600, 'ml')).toBe(600);
   });
 
-  it('Spec 0009 REQ-005: kg and l round up to one decimal', () => {
+  it('AC-030: kg and l round up to one decimal', () => {
     expect(buyableQty(1.125, 'kg')).toBe(1.2);
     expect(buyableQty(1.5, 'kg')).toBe(1.5);
     expect(buyableQty(0.33, 'l')).toBe(0.4);
@@ -312,11 +319,35 @@ describe('buyableQty', () => {
     expect(buyableQty(0.1 * 3, 'kg')).toBe(0.3);
     expect(buyableQty((2.7 * 10) / 9, 'Dose')).toBe(3);
     expect(buyableQty(100.00000000001, 'g')).toBe(100);
+    expect(buyableQty(0.1 * 3 * 1000, 'g')).toBe(300);
   });
 
-  it('leaves spoon measures at two decimals and pinches as they are', () => {
-    expect(buyableQty(1.333333, 'EL')).toBe(1.33);
+  it('AC-030: spoon measures round up to halves, pinches stay, other units keep two decimals', () => {
+    expect(buyableQty(1.33, 'EL')).toBe(1.5);
     expect(buyableQty(0.5, 'TL')).toBe(0.5);
+    expect(buyableQty(2.1, 'TL')).toBe(2.5);
     expect(buyableQty(1, 'Prise')).toBe(1);
+    expect(buyableQty(1.5, 'Handvoll')).toBe(1.5);
+    expect(buyableQty(0.75, 'Glas')).toBe(1);
+  });
+});
+
+describe('parseItemAmount (spec 0025, REQ-003, REQ-007)', () => {
+  it('AC-009, AC-010: a count, a quantity with unit, or nothing', () => {
+    expect(parseItemAmount('2')).toEqual({ count: 2 });
+    expect(parseItemAmount('1 Kasten')).toEqual({ qty: 1, unit: 'Kasten' });
+    expect(parseItemAmount('1 kg')).toEqual({ qty: 1, unit: 'kg' });
+    expect(parseItemAmount(' 500g ')).toEqual({ qty: 500, unit: 'g' });
+    expect(parseItemAmount('1 Packung')).toEqual({ qty: 1, unit: 'Packung' });
+    expect(parseItemAmount('')).toEqual({});
+    expect(parseItemAmount('   ')).toEqual({});
+  });
+
+  it('AC-012, AC-029: "viel", 0 or a broken count is not recognised', () => {
+    expect(parseItemAmount('viel')).toBeUndefined();
+    expect(parseItemAmount('0')).toBeUndefined();
+    expect(parseItemAmount('1,5')).toBeUndefined();
+    expect(parseItemAmount('0 g')).toBeUndefined();
+    expect(AMOUNT_NOT_RECOGNIZED).toBe('Menge nicht erkannt – z. B. 500 g oder 2');
   });
 });

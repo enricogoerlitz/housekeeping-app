@@ -4,7 +4,7 @@
 -- RPCs take the household id; households stay independent of each other. Rule table: docs/architecture/sync.md ("Abhaken: offline").
 begin;
 \ir _helpers.psql
-select plan(92);
+select plan(90);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -137,24 +137,18 @@ select is(
   public.set_shopping_item_checked(tests.fx('gone'), false, 1), null,
   'AC-025 set_shopping_item_checked: a deleted item → null, no error (uncheck)');
 
--- Unchecking while another open item of the same article exists: merge into the open item.
+-- One item per article (spec 0025, S-03): unchecking never meets a second open item, because
+-- none can exist next to the checked one.
 select tests.clear_authentication();
-insert into public.shopping_items (id, household_id, article_id, checked, checked_at, checked_by, check_seq)
-values (tests.fx('item_milch_old'), tests.fx('home_a'), tests.fx('milch'), true, now(), tests.fx('nadja'), 4);
+select throws_ok(
+  format($$ insert into public.shopping_items (id, household_id, article_id, checked, checked_at, checked_by, check_seq)
+            values (%L, %L, %L, true, now(), %L, 4) $$,
+         tests.fx('item_milch_old'), tests.fx('home_a'), tests.fx('milch'), tests.fx('nadja')),
+  '23505', null, 'S-03 shopping_items: no second item of Milch, so unchecking needs no merge');
+-- A second contribution on Milch for remove_contributions below.
 insert into public.shopping_contributions (id, household_id, item_id)
-values (tests.fx('c_milch_old'), tests.fx('home_a'), tests.fx('item_milch_old'));
+values (tests.fx('c_milch_old'), tests.fx('home_a'), tests.fx('item_milch'));
 select tests.authenticate_as(tests.fx('enrico'));
-select is(
-  public.set_shopping_item_checked(tests.fx('item_milch_old'), false, 4),
-  jsonb_build_object('item_id', tests.fx('item_milch'), 'checked', false, 'check_seq', 2),
-  'T4 set_shopping_item_checked: unchecking next to an open item returns the open item');
-select results_eq(
-  format($$ select id from public.shopping_contributions where item_id = %L order by id $$, tests.fx('item_milch')),
-  format($$ select unnest(array[%L, %L]::uuid[]) order by 1 $$, tests.fx('c_milch'), tests.fx('c_milch_old')),
-  'T4 set_shopping_item_checked: the contributions are merged into the open item');
-select is(
-  (select count(*)::int from public.shopping_items where id = tests.fx('item_milch_old')), 0,
-  'T4 set_shopping_item_checked: the unchecked duplicate is deleted');
 
 -- Foreign household and anon.
 select tests.authenticate_as(tests.fx('ben'));
