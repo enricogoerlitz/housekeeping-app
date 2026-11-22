@@ -9,6 +9,8 @@ import {
   itemCount,
   listHeadline,
   manualAmountText,
+  noteChangeHint,
+  originRows,
   MAX_ITEM_COUNT,
   originSummary,
   recipeSource,
@@ -460,5 +462,39 @@ describe('manualAmountText (spec 0025, AC-010)', () => {
     expect(manualAmountText(item([manual('a', 2)]))).toBe('2');
     expect(manualAmountText(item([fromPlan('l', 'Lasagne', 'Mo')]))).toBe('');
     expect(manualAmountText(item([{ ...manual('b'), qty: 2, unit: 'Kasten' }]))).toBe('2 Kasten');
+  });
+});
+
+describe('noteChangeHint (spec 0025, REQ-004)', () => {
+  const mozzarella = item([
+    fromPlan('l', 'Lasagne', 'Mo', { count: 1, note: 'Fior di Latte' }),
+    { ...manual('h', 1) },
+  ]);
+
+  it('AC-015: changing the Zusatz names the recipe Zusatz it replaces', () => {
+    expect(noteChangeHint(mozzarella, 'Büffel')).toBe(
+      'Ersetzt den Zusatz „Fior di Latte“ aus Lasagne (Mo)',
+    );
+  });
+
+  it('AC-016: clearing it says it removes it; without a recipe Zusatz no hint', () => {
+    expect(noteChangeHint(mozzarella, '  ')).toBe(
+      'Entfernt den Zusatz „Fior di Latte“ aus Lasagne (Mo)',
+    );
+    expect(noteChangeHint(mozzarella, 'Fior di Latte')).toBeUndefined();
+    expect(noteChangeHint(item([manual('a', 1)]), 'Bio')).toBeUndefined();
+  });
+});
+
+describe('originRows (spec 0025, AC-010)', () => {
+  it('AC-010: one row per recipe origin with its amount and contributions; "von Hand" stays out', () => {
+    const moehren = item([
+      fromPlan('l', 'Lasagne', 'Mo', { count: 1 }),
+      { ...manual('h'), qty: 500, unit: 'g' },
+      fromPlan('l2', 'Lasagne', 'Mo', { count: 1 }),
+    ]);
+    expect(originRows(moehren)).toEqual([
+      { label: 'Lasagne (Mo)', amount: '2×', contributionIds: ['l', 'l2'] },
+    ]);
   });
 });

@@ -7,11 +7,14 @@ import { describe, expect, it } from 'vitest';
 import { H, withBackend } from './backend-test-helpers';
 import { createArticle, deleteArticle } from './commands-articles';
 import {
+  addPlannedToList,
   addShoppingItemFromText,
+  pantryCheckRows,
   removeItemOrigin,
   removeShoppingItem,
   setItemChecked,
   setManualAmount,
+  withPantryAmount,
 } from './commands-shopping';
 import { createStore } from './commands-stores';
 import { getData, OfflineError, snapshot } from './store';
@@ -259,5 +262,49 @@ describe('a new store (REQ-015)', () => {
       area_order: sorted,
       hidden_area_ids: [],
     });
+  });
+});
+
+describe('the pantry check (REQ-007)', () => {
+  const curry = [{ recipeId: 'rec-mango-curry', portions: 8 }];
+  const rowOf = (name: string) => need(pantryCheckRows([], curry).find((row) => row.name === name));
+
+  it('AC-027: "schon auf der Liste: 1×"; − makes 1×; taking it over gives Mango 2×', async () => {
+    await fx.startEnrico();
+    addShoppingItemFromText('1 Mango');
+    await fx.settle();
+    const mango = rowOf('Mango');
+    expect(mango).toMatchObject({ amount: '2×', count: 2, onList: '1×' });
+    const less = withPantryAmount(mango, { count: 1 });
+    expect(less).toMatchObject({ amount: '1×', count: 1 });
+    addPlannedToList([less]);
+    await fx.settle();
+    expect(summarizeItem(need(itemOf('Mango'))).amount).toBe('2×');
+  });
+
+  it('AC-028: "1 Packung" instead of 800 ml keeps the origin "Mango-Curry"', async () => {
+    await fx.startEnrico();
+    const kokos = withPantryAmount(rowOf('Kokosmilch'), { qty: 1, unit: 'Packung' });
+    expect(kokos.amount).toBe('1 Packung');
+    expect(kokos.count).toBeUndefined();
+    addPlannedToList([kokos]);
+    await fx.settle();
+    const item = need(itemOf('Kokosmilch'));
+    expect(originSummary(item)).toContain('Mango-Curry: 1 Packung');
+  });
+
+  it('Decision 4: with two dishes the first carries the amount, the second keeps its origin', async () => {
+    await fx.startEnrico();
+    const rows = pantryCheckRows(
+      [],
+      [
+        { recipeId: 'rec-mango-curry', portions: 4 },
+        { recipeId: 'rec-mango-curry', portions: 4 },
+      ],
+    );
+    const mango = need(rows.find((row) => row.name === 'Mango'));
+    const changed = withPantryAmount(mango, { count: 3 });
+    expect(changed.contributions.map((c) => c.count)).toEqual([3, undefined]);
+    expect(changed.contributions).toHaveLength(2);
   });
 });

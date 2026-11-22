@@ -80,6 +80,52 @@ export function manualAmountText(item: ShoppingItem): string {
   return amount.replace(/^(\d+(?:,\d+)?)×$/, '$1');
 }
 
+export interface OriginRow {
+  /** "Lasagne (Mo)". */
+  label: string;
+  /** Its summed amount, "1×", "" when it brings none. */
+  amount: string;
+  contributionIds: Id[];
+}
+
+/**
+ * The origins from recipes in "Posten bearbeiten", each with ✕ (spec 0025, AC-010): grouped by
+ * label in the order they came. "von Hand" is the field, not a row.
+ */
+export function originRows(item: ShoppingItem): OriginRow[] {
+  const byLabel = new Map<string, ShoppingContribution[]>();
+  for (const contribution of item.contributions) {
+    if (contribution.source.kind === 'manual') continue;
+    const label = originLabel(contribution.source);
+    byLabel.set(label, [...(byLabel.get(label) ?? []), contribution]);
+  }
+  return [...byLabel].map(([label, contributions]) => ({
+    label,
+    amount: summarizeItem({ ...item, contributions }).amount,
+    contributionIds: contributions.map((contribution) => contribution.id),
+  }));
+}
+
+/**
+ * The hint under "Zusatz" when the change replaces what a recipe brought (spec 0025, AC-015,
+ * AC-016): "Ersetzt den Zusatz „Fior di Latte“ aus Lasagne (Mo)", "Entfernt den Zusatz …" when it
+ * is cleared. Undefined when no recipe Zusatz changes.
+ */
+export function noteChangeHint(item: ShoppingItem, note: string): string | undefined {
+  const next = note.trim();
+  const replaced = item.contributions.filter(
+    (contribution) =>
+      contribution.source.kind === 'recipe' &&
+      contribution.note !== undefined &&
+      contribution.note !== '' &&
+      contribution.note !== next,
+  );
+  const first = replaced[0];
+  if (!first) return undefined;
+  const from = [...new Set(replaced.map((contribution) => originLabel(contribution.source)))];
+  return `${next === '' ? 'Entfernt' : 'Ersetzt'} den Zusatz „${first.note}“ aus ${from.join(', ')}`;
+}
+
 /** A dish (recipe or collection) the open items come from (spec 0025, AC-017). */
 export interface ListDish {
   recipeId: Id;

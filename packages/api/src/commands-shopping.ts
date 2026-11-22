@@ -2,6 +2,7 @@ import {
   adjustItemCount as countAdjustment,
   AMOUNT_NOT_RECOGNIZED,
   applyContributionChanges,
+  itemCount,
   collectionContributions,
   contentsInBook,
   contributionsFromEntry,
@@ -14,6 +15,7 @@ import {
   weekdayShort,
   type Article,
   type Id,
+  type ItemAmount,
   type MealPlanEntry,
   type PlanEntryVariant,
   type PlannedContribution,
@@ -433,8 +435,44 @@ export interface PantryCheckRow {
   sources: string[];
   /** "Vorrat" articles start unchecked. */
   isPantry: boolean;
+  /** The amount as a pure count ("2×"), for "− n× +"; undefined for quantities (spec 0025). */
+  count?: number;
+  /** "schon auf der Liste: 1×": the article's open item on the list (spec 0025, AC-027). */
+  onList?: string;
   /** From a recipe chosen directly, `entryId` is empty: there is no plan entry. */
   contributions: PlannedContribution[];
+}
+
+/** The amount shown on a pantry-check row and, for pure counts, the count. */
+function rowAmount(row: Pick<PantryCheckRow, 'articleId' | 'contributions'>): {
+  amount: string;
+  count?: number;
+} {
+  const preview: ShoppingItem = {
+    id: 'preview',
+    articleId: row.articleId,
+    contributions: row.contributions.map((contribution, index) =>
+      toContribution(contribution, `preview-${index}`),
+    ),
+    checked: false,
+    createdAt: '',
+  };
+  const count = itemCount(preview);
+  return { amount: summarizeItem(preview).amount, ...(count === undefined ? {} : { count }) };
+}
+
+/**
+ * A changed amount on a pantry-check row (spec 0025, REQ-007, Decision 4): the first contribution
+ * carries it, the others keep their origin without an amount, so "steht schon auf der Liste"
+ * still knows every dish. Returns a new row.
+ */
+export function withPantryAmount(row: PantryCheckRow, amount: ItemAmount): PantryCheckRow {
+  const contributions = row.contributions.map((contribution, index) => {
+    const { count: _count, qty: _qty, unit: _unit, ...origin } = contribution;
+    return index === 0 ? { ...origin, ...amount } : origin;
+  });
+  const { count: _old, ...rest } = row;
+  return { ...rest, contributions, ...rowAmount({ articleId: row.articleId, contributions }) };
 }
 
 /**
@@ -544,18 +582,14 @@ export function pantryCheckRows(
     if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
     rows.set(article.id, row);
   }
-  return [...rows.values()].map((row) => ({
-    ...row,
-    amount: summarizeItem({
-      id: 'preview',
-      articleId: row.articleId,
-      contributions: row.contributions.map((contribution, index) =>
-        toContribution(contribution, `preview-${index}`),
-      ),
-      checked: false,
-      createdAt: '',
-    }).amount,
-  }));
+  const openByArticle = new Map(
+    data.items.filter((item) => !item.checked).map((item) => [item.articleId, item]),
+  );
+  return [...rows.values()].map((row) => {
+    const open = openByArticle.get(row.articleId);
+    const onList = open ? summarizeItem(open).amount : undefined;
+    return { ...row, ...rowAmount(row), ...(onList ? { onList } : {}) };
+  });
 }
 
 function toContribution(planned: PlannedContribution, id: Id): ShoppingContribution {
