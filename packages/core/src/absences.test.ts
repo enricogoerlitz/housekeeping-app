@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   absenceEndLabel,
+  absenceWhoHint,
   absenceStripes,
   inRange,
   openRangeField,
@@ -462,5 +463,22 @@ describe('choosing the period in the month calendar (REQ-010)', () => {
 
   it('ignores a tap while the calendar is closed', () => {
     expect(pickRangeDate(start, '2027-01-01')).toBe(start);
+  });
+});
+
+describe('the hint under "Wer?" (spec 0018, K-12)', () => {
+  it('AC-021: only Enrico chosen says "Nur Enrico", Enrico and Nadja "Ganzer Haushalt"', () => {
+    expect(absenceWhoHint([enrico.id], members)).toBe('Nur Enrico');
+    expect(absenceWhoHint([nadja.id, enrico.id], members)).toBe('Ganzer Haushalt');
+  });
+
+  it('AC-021: several but not all are named in household order', () => {
+    expect(absenceWhoHint([vera.id, enrico.id], wg)).toBe('Nur Enrico und Vera');
+    expect(absenceWhoHint([nadja.id], wg)).toBe('Nur Nadja');
+    expect(absenceWhoHint([vera.id, nadja.id, enrico.id], wg)).toBe('Ganzer Haushalt');
+  });
+
+  it('AC-021: nobody chosen asks who is away', () => {
+    expect(absenceWhoHint([], members)).toBe('Wähle, wer weg ist');
   });
 });

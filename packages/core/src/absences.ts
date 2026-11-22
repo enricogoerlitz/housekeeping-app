@@ -249,6 +249,19 @@ export function validateAbsenceDraft(input: { memberIds: Id[]; from: ISODate; to
   return { toBeforeFrom: input.to < input.from, noOne: input.memberIds.length === 0 };
 }
 
+/**
+ * The hint under "Wer?" in "Abwesenheit eintragen" describes who is chosen (spec 0018, AC-021):
+ * "Nur Enrico", "Nur Enrico und Vera", everyone "Ganzer Haushalt"; names in household order.
+ */
+export function absenceWhoHint(memberIds: readonly Id[], members: readonly Member[]): string {
+  const chosen = members.filter((member) => memberIds.includes(member.id));
+  if (chosen.length === 0) return 'Wähle, wer weg ist';
+  if (chosen.length === members.length) return 'Ganzer Haushalt';
+  const names = chosen.map((member) => member.name);
+  const last = names.pop();
+  return `Nur ${names.length > 0 ? `${names.join(', ')} und ${last}` : last}`;
+}
+
 /** The two date fields and which one the open month calendar is choosing (null = closed). */
 export interface RangePick {
   from: ISODate;
