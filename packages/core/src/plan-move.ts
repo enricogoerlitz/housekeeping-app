@@ -218,3 +218,64 @@ export function planMove(input: {
   });
   return { ...outcome, message };
 }
+
+/** What the calendar drags: an entry, or the first day of a trip drawn across days (REQ-007). */
+export type CalendarDragSource = { kind: 'entry'; entryId: Id } | { kind: 'trip'; date: ISODate };
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The id a drag source registers under: "entry:<id>" or "trip:<date>". */
+export function dragSourceKey(source: CalendarDragSource): string {
+  return source.kind === 'entry' ? `entry:${source.entryId}` : `trip:${source.date}`;
+}
+
+/** The source behind a key of `dragSourceKey`, or null for any other text. */
+export function parseDragSourceKey(key: string): CalendarDragSource | null {
+  const colon = key.indexOf(':');
+  if (colon < 0) return null;
+  const kind = key.slice(0, colon);
+  const value = key.slice(colon + 1);
+  if (kind === 'entry' && value !== '') return { kind: 'entry', entryId: value };
+  if (kind === 'trip' && ISO_DAY.test(value)) return { kind: 'trip', date: value };
+  return null;
+}
+
+/** The id a drop target registers under: "slot:<date>:<slotId>", "day:<date>" or "parked". */
+export function moveTargetKey(target: DropTarget): string {
+  if (target.kind === 'parked') return 'parked';
+  if (target.kind === 'day') return `day:${target.date}`;
+  return `slot:${target.date}:${target.slotId}`;
+}
+
+/** The target behind a key of `moveTargetKey`, or null (e.g. the own id of a grid of days). */
+export function parseMoveTargetKey(key: string): DropTarget | null {
+  if (key === 'parked') return { kind: 'parked' };
+  const [kind, date, ...rest] = key.split(':');
+  if (date === undefined || !ISO_DAY.test(date)) return null;
+  if (kind === 'day' && rest.length === 0) return { kind: 'day', date };
+  const slotId = rest.join(':');
+  if (kind === 'slot' && slotId !== '') return { kind: 'slot', date, slotId };
+  return null;
+}
+
+/**
+ * The label on the dragged entry, because the finger covers the target (AC-001, AC-013,
+ * AC-015): where it would land ("Fr 27.11. · Abend", "Vormerken"), or why the target refuses
+ * it. `title` is the entry's name in the plan.
+ */
+export function dragTargetText(input: {
+  entry: MealPlanEntry;
+  target: DropTarget;
+  entries: readonly MealPlanEntry[];
+  slots: readonly { id: Id; name: string }[];
+  title: string;
+}): { allowed: boolean; label: string } {
+  const outcome = dropOutcome(input.entry, input.target, input.entries);
+  if (outcome.kind === 'blocked') {
+    return { allowed: false, label: blockedText(outcome.reason, input.title) };
+  }
+  const date = outcome.kind === 'move' ? outcome.date : input.entry.date;
+  const slotId = outcome.kind === 'move' ? outcome.slotId : input.entry.slotId;
+  const slotName = input.slots.find((slot) => slot.id === slotId)?.name ?? '';
+  return { allowed: true, label: moveTargetLabel(date, slotName) };
+}
