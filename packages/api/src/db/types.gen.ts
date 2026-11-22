@@ -1863,7 +1863,10 @@ export type Database = {
       delete_activity: { Args: { activity_id: string; today: string }; Returns: Json };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
       delete_household: { Args: { household_id: string }; Returns: undefined };
-      delete_recipe: { Args: { recipe_id: string; today: string }; Returns: Json };
+      delete_recipe: {
+        Args: { recipe_id: string; today: string; with_list?: boolean };
+        Returns: Json;
+      };
       delete_restaurant: { Args: { restaurant_id: string; today: string }; Returns: Json };
       household_media_names: { Args: { household_id: string }; Returns: string[] };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };

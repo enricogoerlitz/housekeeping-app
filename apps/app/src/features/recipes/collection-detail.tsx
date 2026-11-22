@@ -68,7 +68,11 @@ export function CollectionDetailBody(props: {
   const [planning, setPlanning] = useState(false);
   const photo = useRecipePhoto(collection);
   const editor = useSectionEditor(collection);
-  const remove = useDeleteRecipe(collection, props.onBack, props.onDeleting);
+  const { remove, dialog: deleteDialog } = useDeleteRecipe(
+    collection,
+    props.onBack,
+    props.onDeleting,
+  );
 
   // AC-025, AC-028: for the collection's own portions; nothing in it reads "Noch nichts enthalten".
   const canGoOnList = canPutCollectionOnList(collection, contents);
@@ -96,6 +100,7 @@ export function CollectionDetailBody(props: {
       />
       {desktop ? actions : null}
       <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} />
+      {deleteDialog}
     </>
   );
 

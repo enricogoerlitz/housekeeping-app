@@ -183,7 +183,7 @@ function RecipeDetailBody(props: {
     });
   };
 
-  const remove = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
+  const { remove, dialog: deleteDialog } = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
 
   const actions = (
     <RecipeActions
@@ -212,6 +212,7 @@ function RecipeDetailBody(props: {
         onDelete={remove}
         onAddToCollection={() => setAddingToCollection(true)}
       />
+      {deleteDialog}
     </>
   );
 

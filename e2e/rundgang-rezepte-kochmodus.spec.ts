@@ -6,11 +6,14 @@ import {
   expect,
   freshSeed,
   goOffline,
+  nav,
   nestedSeedId,
   only,
   open,
+  showPlanWeek,
   test,
   tid,
+  tidPrefix,
   toastMessage,
 } from './helpers';
 import { seedIds } from './seed-ids';
@@ -174,6 +177,44 @@ test('AC-049: deleting names the planned entries that go', async ({ page }) => {
     'Halloumi-Pfanne gelöscht · 1 geplanter Eintrag entfällt',
   );
   await back(page);
+});
+
+test('Decision 15: deleting asks about the ingredients of the entries that go and takes them off', async ({
+  page,
+}) => {
+  // Halloumi-Pfanne next week, and only it put on the list from the calendar.
+  await open(page, `/rezept/${HALLOUMI}`);
+  await tid(page, 'recipe-plan').click();
+  await tid(page, 'plan-recipe-week-next').click();
+  await tid(page, 'plan-recipe-save').click();
+  await nav(page, 'kalender');
+  await showPlanWeek(page, day(7));
+  await tid(page, 'plan-to-list').click();
+  for (const check of await tidPrefix(page, 'pick-entry-')
+    .and(page.locator('[role="checkbox"]'))
+    .all()) {
+    const id = (await check.getAttribute('data-testid'))?.replace(/-check$/, '') ?? '';
+    const halloumi = (await tid(page, id).innerText()).includes('Halloumi-Pfanne');
+    const selected = (await check.getAttribute('aria-checked')) === 'true';
+    if (halloumi !== selected) await check.click();
+  }
+  await tid(page, 'pc-next').click();
+  await tid(page, 'pc-apply').click();
+  await expect(tid(page, 'pantry-check-sheet')).toBeHidden();
+
+  await open(page, `/rezept/${HALLOUMI}`);
+  await tid(page, 'recipe-more').click();
+  await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
+  await expect(tid(page, 'recipe-delete-dialog')).toContainText('Halloumi-Pfanne löschen?');
+  await expect(tid(page, 'recipe-delete-message')).toContainText(
+    /^Für 1 geplanten Eintrag (steht 1 Zutat|stehen \d+ Zutaten) auf der Einkaufsliste\.$/,
+  );
+  await tid(page, 'recipe-delete-with-list').click();
+  await expect(toastMessage(page)).toContainText(
+    /^Halloumi-Pfanne gelöscht · 1 geplanter Eintrag entfällt · \d+ Zutaten? von der Liste genommen/,
+  );
+  await nav(page, 'liste');
+  await expect(page.getByText('Halloumi-Pfanne')).toHaveCount(0);
 });
 
 test('AC-053 / AC-054: the plan window shows dates and reaches any day', async ({ page }) => {

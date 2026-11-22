@@ -297,6 +297,22 @@ export function entryListShare(
 }
 
 /**
+ * How many open items hold contributions of these entries (spec 0023, Decision 15: the entries a
+ * deleted recipe or collection takes along). Checked items do not count, as in entryListShare.
+ */
+export function entriesOnList(items: readonly ShoppingItem[], entryIds: readonly Id[]): number {
+  const ids = new Set(entryIds);
+  return items.filter(
+    (item) =>
+      !item.checked &&
+      item.contributions.some(
+        (c) =>
+          c.source.kind === 'recipe' && c.source.entryId !== undefined && ids.has(c.source.entryId),
+      ),
+  ).length;
+}
+
+/**
  * "Zutaten auch von der Liste nehmen" (REQ-015, AC-041): only the entry's contributions on open
  * items go; an item with other contributions stays with them, an empty one goes, a checked one
  * stays as it is.

@@ -469,9 +469,9 @@ select is((select count(*)::int from private.deletions where household_id = test
 select is(
   (select array_agg(p.oid::regprocedure::text order by 1)
    from pg_catalog.pg_proc p
-   where p.oid in ('private.delete_recipe(uuid,date)'::regprocedure, 'private.restore_recipe(uuid)'::regprocedure)
+   where p.oid in ('private.delete_recipe(uuid,date,boolean)'::regprocedure, 'private.restore_recipe(uuid)'::regprocedure)
      and p.prosecdef and 'search_path=""' = any (p.proconfig)),
-  array['private.delete_recipe(uuid,date)', 'private.restore_recipe(uuid)'],
+  array['private.restore_recipe(uuid)', 'private.delete_recipe(uuid,date,boolean)'],
   'E6 delete_recipe/restore_recipe: security definer with an empty search_path');
 select ok(
   not has_function_privilege('authenticated', 'private.purge_deletions()', 'execute'),

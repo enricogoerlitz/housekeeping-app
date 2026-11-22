@@ -59,7 +59,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.complete_chore(uuid,jsonb)'),   -- spec 0011: domain op of apply_changes, the only way to book
   ('private.remove_chore_event(uuid,uuid)'), -- spec 0011: domain op of apply_changes, the only way to remove
   ('private.change_chore_event_day(uuid,jsonb)'), -- spec 0026: domain op of apply_changes, the only way to move an entry
-  ('private.delete_recipe(uuid,date)'),     -- spec 0008: the only way to delete a recipe
+  ('private.delete_recipe(uuid,date,boolean)'), -- spec 0008: the only way to delete a recipe (0023: with the list)
   ('private.restore_recipe(uuid)'),         -- spec 0008: "Rückgängig" of delete_recipe
   ('private.delete_restaurant(uuid,date)'), -- spec 0024: the only way to delete a restaurant
   ('private.restore_restaurant(uuid)'),     -- spec 0024: "Rückgängig" of delete_restaurant
