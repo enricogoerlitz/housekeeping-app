@@ -2592,6 +2592,8 @@ export function createFakeServer(): FakeServer {
             throw new TransportError('permanent', 'not_member', 403);
           }
           if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
+          // Closed for new members before the photos go (security check 22.11.2026).
+          invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
           return [...media.keys()]
             .filter((path) => mediaHousehold(userId, path) === householdId)
             .sort();

@@ -229,6 +229,7 @@ set search_path = ''
 as $$
   select coalesce(bool_and(d = btrim(d) and char_length(d) between 1 and 40), true)
     and count(distinct lower(d)) = count(d)
+    and array_position(p_dislikes, null) is null
   from unnest(p_dislikes) d
 $$;
 
@@ -281,14 +282,34 @@ $$;
 -- Deleting a household (REQ-005, Decision 3)
 -- ---------------------------------------------------------------------------------------------
 
+-- Before the photos go: under a lock on the household, check again that the caller is its last
+-- member and drop its open invitations, so nobody can join between deleting the photos and
+-- delete_household (security check 22.11.2026). Definer: members cannot delete invitations.
+create function private.close_household_for_deletion(p_household_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform 1 from public.households h where h.id = p_household_id for update;
+  if not exists (
+    select 1 from public.household_members m
+    where m.household_id = p_household_id and m.profile_id = auth.uid()
+  ) or (select count(*) from public.household_members m where m.household_id = p_household_id) <> 1 then
+    raise exception 'not_last_member' using errcode = 'P0001';
+  end if;
+  delete from public.household_invitations i where i.household_id = p_household_id;
+end
+$$;
+
 -- The names of the household's photos, for the app to delete them before delete_household. As the
 -- caller: the storage policies show only her households' objects. Like delete_household it refuses
--- unless the caller is its last member, so no photo is deleted for a household that stays
--- (AC-022; the remaining window is the one of delete_household itself).
+-- unless the caller is its last member, so no photo is deleted for a household that stays, and it
+-- closes the household to new members first (AC-022).
 create function private.household_media_names(p_household_id uuid)
 returns setof text
 language plpgsql
-stable
 set search_path = ''
 as $$
 begin
@@ -304,6 +325,7 @@ begin
   if (select count(*) from public.household_members m where m.household_id = p_household_id) > 1 then
     raise exception 'not_last_member' using errcode = 'P0001';
   end if;
+  perform private.close_household_for_deletion(p_household_id);
 
   return query
     select o.name from storage.objects o
@@ -356,6 +378,7 @@ $$;
 grant execute on function private.withdraw_invitation(uuid) to authenticated;
 grant execute on function private.update_profile(text, text, text, text[]) to authenticated;
 grant execute on function private.household_media_names(uuid) to authenticated;
+grant execute on function private.close_household_for_deletion(uuid) to authenticated;
 grant execute on function private.delete_household(uuid) to authenticated;
 
 create function public.withdraw_invitation(invitation_id uuid)
@@ -373,7 +396,6 @@ as $$ select private.update_profile($1, $2, $3, $4) $$;
 create function public.household_media_names(household_id uuid)
 returns setof text
 language sql
-stable
 set search_path = ''
 as $$ select private.household_media_names($1) $$;
 

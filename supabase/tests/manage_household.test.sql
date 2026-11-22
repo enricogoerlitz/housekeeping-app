@@ -4,7 +4,7 @@
 -- Negative paths throughout: a foreign household, signed out, invalid input, the failure path.
 begin;
 \ir _helpers.psql
-select plan(91);
+select plan(93);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -198,6 +198,8 @@ select throws_ok($$ select public.update_profile('Nadja', '#2F7F7A', 'vegan', ar
   '22023', 'invalid_dislikes', 'AC-012: an empty dislike is refused');
 select throws_ok($$ select public.update_profile('Nadja', '#2F7F7A', 'vegan', null) $$,
   '22023', 'invalid_dislikes', 'AC-012: missing dislikes are refused');
+select throws_ok($$ select public.update_profile('Nadja', '#2F7F7A', 'vegan', array['Kohl', null]) $$,
+  '22023', 'invalid_dislikes', 'AC-012: a null among the dislikes is refused (security check 22.11.2026)');
 select lives_ok(
   $$ select public.update_profile('Nadja K.', '#2F7F7A', 'vegetarian', array(select 'Zutat ' || n from generate_series(1, 50) n)) $$,
   'AC-010: 50 dislikes are allowed');
@@ -334,11 +336,20 @@ insert into storage.objects (bucket_id, name) values
   ('household-media', tests.fx('wg') || '/restaurants/' || tests.fx('restaurant') || '/' || gen_random_uuid() || '.jpg'),
   ('household-media', tests.fx('home') || '/recipes/' || gen_random_uuid() || '/' || gen_random_uuid() || '.jpg');
 
+select tests.clear_authentication();
+insert into public.household_invitations (household_id, email, invited_by)
+values (tests.fx('wg'), 'mia@example.com', tests.fx('enrico'));
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
   (select count(*)::int from public.household_media_names(tests.fx('wg'))),
   2,
   'REQ-005: household_media_names lists the photos Enrico may delete (activities and recipes)');
+select tests.clear_authentication();
+select is(
+  (select count(*)::int from public.household_invitations where household_id = tests.fx('wg')),
+  0,
+  'AC-022: listing the photos for deletion drops the open invitations, so nobody joins while they go');
+select tests.authenticate_as(tests.fx('enrico'));
 select tests.authenticate_as(tests.fx('ben'));
 select throws_ok(format('select * from public.household_media_names(%L)', tests.fx('wg')),
   '42501', 'not_member', 'AC-021: Ben lists no photo of "WG Köln" (not_member)');
