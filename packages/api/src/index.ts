@@ -32,6 +32,12 @@ export {
   usePhoto,
 } from './photos-remote';
 export { snapshot, OfflineError, type HouseholdData, type AppState } from './store';
+export {
+  addressedIn,
+  useAddressedObject,
+  type AddressedKind,
+  type AddressedObject,
+} from './addressed';
 export { useAppVersionState } from './app-version';
 export {
   browserEnvironment,

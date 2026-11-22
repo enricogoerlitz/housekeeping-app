@@ -435,6 +435,93 @@ export function sectionOfOrigin(von: string | undefined, own: Origin): Origin {
   return (ORIGINS as readonly string[]).includes(von ?? '') ? (von as Origin) : own;
 }
 
+/** The start page of each section (REQ-005). */
+export const SECTION_START: Record<Origin, string> = {
+  uebersicht: '/',
+  essen: '/rezepte',
+  kalender: '/kalender',
+  liste: '/liste',
+  haushalt: '/haushalt',
+  verwalten: '/verwalten',
+  reisen: '/reisen',
+};
+
+export function sectionOfStartPath(pathname: string): Origin | undefined {
+  return ORIGINS.find((origin) => SECTION_START[origin] === pathname);
+}
+
+const OWN_SECTION: readonly [prefix: string, section: Origin][] = [
+  ['/rezepte', 'essen'],
+  ['/rezept/', 'essen'],
+  ['/restaurant/', 'essen'],
+  ['/kalender', 'kalender'],
+  ['/liste', 'liste'],
+  ['/einkaufen', 'liste'],
+  ['/haushalt', 'haushalt'],
+  ['/reisen', 'reisen'],
+];
+
+/**
+ * The section a page highlights in the tab bar and the sidebar (REQ-006): a start page its own,
+ * a detail page its origin from `von`, or without one the section it lives in. Pages under
+ * "Verwalten" (articles, stores, bags, members, feedback, settings) belong to "Verwalten".
+ */
+export function sectionOfPath(pathname: string, von: string | undefined): Origin {
+  const start = sectionOfStartPath(pathname);
+  if (start) return start;
+  const own =
+    OWN_SECTION.find(([prefix]) => pathname === prefix || pathname.startsWith(prefix))?.[1] ??
+    'verwalten';
+  return sectionOfOrigin(von, own);
+}
+
+/**
+ * Parameters that show an object or open a window (spec appendix). A section's start page drops
+ * them when the section is chosen again (REQ-005), so it shows no window and no detail.
+ */
+export const OBJECT_PARAMS = [
+  'eintrag',
+  'aufgabe',
+  'verlauf',
+  'posten',
+  'artikel',
+  'restaurant',
+  'aktivitaet',
+  'markt',
+  'tasche',
+  'reise',
+  'feedback',
+] as const;
+const OPENING_PARAMS = new Set<string>([
+  ...OBJECT_PARAMS,
+  'fenster',
+  'zeit',
+  'link',
+  'name',
+  'haushalt',
+]);
+
+/** The address of a start page as left, without what opens a window or a detail (AC-012, AC-013). */
+export function startPageHref(href: string): string {
+  const at = href.indexOf('?');
+  if (at < 0) return href;
+  const path = href.slice(0, at);
+  try {
+    const kept = href
+      .slice(at + 1)
+      .split('&')
+      .filter((pair) => {
+        if (pair === '') return false;
+        const name = decodeURIComponent(pair.split('=')[0] ?? '');
+        decodeURIComponent(pair.split('=')[1] ?? '');
+        return !OPENING_PARAMS.has(name);
+      });
+    return kept.length > 0 ? `${path}?${kept.join('&')}` : path;
+  } catch {
+    return path;
+  }
+}
+
 // ---------- Sign-in ----------
 
 const RETURN_PATH = /^\/[A-Za-z0-9\-._~%!$&'()*+,;=:@/?]*$/;

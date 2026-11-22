@@ -11,7 +11,12 @@ import {
   recipeListToParams,
   resolveAddressedId,
   safeReturnPath,
+  ORIGINS,
+  SECTION_START,
   sectionOfOrigin,
+  sectionOfPath,
+  sectionOfStartPath,
+  startPageHref,
 } from './url-params';
 
 const LASAGNE = '0b4a3c52-8e5f-4d1a-9b7e-2f6d8c9a1e01';
@@ -229,5 +234,51 @@ describe('sectionOfOrigin', () => {
     expect(sectionOfOrigin('quatsch', 'essen')).toBe('essen');
     expect(sectionOfOrigin(undefined, 'essen')).toBe('essen');
     expect(sectionOfOrigin('uebersicht', 'essen')).toBe('uebersicht');
+  });
+});
+
+describe('sectionOfPath', () => {
+  it('AC-018: a detail page belongs to its own section without `von`', () => {
+    expect(sectionOfPath(`/rezept/${LASAGNE}`, undefined)).toBe('essen');
+    expect(sectionOfPath(`/rezept/${LASAGNE}`, 'quatsch')).toBe('essen');
+    expect(sectionOfPath(`/restaurant/${LASAGNE}`, undefined)).toBe('essen');
+    expect(sectionOfPath(`/markt/${LASAGNE}`, undefined)).toBe('verwalten');
+    expect(sectionOfPath('/kalender/aktivitaeten', undefined)).toBe('kalender');
+    expect(sectionOfPath('/einkaufen', undefined)).toBe('liste');
+    expect(sectionOfPath('/einstellungen/benachrichtigungen', undefined)).toBe('verwalten');
+  });
+  it('AC-015: with `von` the origin is the section', () => {
+    expect(sectionOfPath(`/rezept/${LASAGNE}`, 'uebersicht')).toBe('uebersicht');
+  });
+  it('a start page is always its own section', () => {
+    expect(sectionOfPath('/rezepte', 'uebersicht')).toBe('essen');
+  });
+});
+
+describe('startPageHref', () => {
+  it('AC-012: the start page keeps search and filter but no window and no object', () => {
+    expect(startPageHref(`/rezepte?suche=curry&restaurant=${LASAGNE}&fenster=neu`)).toBe(
+      '/rezepte?suche=curry',
+    );
+  });
+  it('AC-013: the calendar keeps view and day, the entry window closes', () => {
+    expect(
+      startPageHref(`/kalender?ansicht=monat&tag=2026-12-09&eintrag=${LASAGNE}&fenster=tag`),
+    ).toBe('/kalender?ansicht=monat&tag=2026-12-09');
+  });
+  it('a query that cannot be decoded gives the bare path', () => {
+    expect(startPageHref('/rezepte?suche=%E0%A4%A')).toBe('/rezepte');
+  });
+});
+
+describe('sectionOfStartPath', () => {
+  it('names the section of a start page and nothing for other pages', () => {
+    expect(sectionOfStartPath('/')).toBe('uebersicht');
+    expect(sectionOfStartPath('/rezepte')).toBe('essen');
+    expect(sectionOfStartPath('/kalender')).toBe('kalender');
+    expect(sectionOfStartPath(`/rezept/${LASAGNE}`)).toBeUndefined();
+  });
+  it('every section has a start path', () => {
+    for (const origin of ORIGINS) expect(sectionOfStartPath(SECTION_START[origin])).toBe(origin);
   });
 });

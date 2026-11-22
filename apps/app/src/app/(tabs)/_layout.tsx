@@ -1,4 +1,5 @@
 import { useSyncState } from '@housekeeping/api';
+import type { Origin } from '@housekeeping/core';
 import {
   Fab,
   OfflineBanner,
@@ -18,6 +19,7 @@ import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hin
 import { UpdateBanner, useUpdateBannerVisible } from '@/features/shell/update-banner';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
+import { useActiveSection, useOpenSection } from '@/lib/url-state';
 
 // The keys stay the test ids of the tab bar and the sidebar (`tab-rezepte`, `nav-liste`); the
 // areas with their own stack are route groups, so their pages keep their addresses.
@@ -29,16 +31,16 @@ const NAV: NavItem[] = [
   { key: 'haushalt', label: 'Haushalt', icon: 'list-checks', tone: 'haushalt' },
 ];
 
-const ROUTE_OF_KEY: Record<string, string> = {
-  index: 'index',
-  rezepte: '(essen)',
+const SECTION_OF_KEY: Record<string, Origin> = {
+  index: 'uebersicht',
+  rezepte: 'essen',
   kalender: 'kalender',
-  liste: '(liste)',
+  liste: 'liste',
   haushalt: 'haushalt',
 };
-const KEY_OF_ROUTE = Object.fromEntries(
-  Object.entries(ROUTE_OF_KEY).map(([key, route]) => [route, key]),
-);
+const KEY_OF_SECTION = Object.fromEntries(
+  Object.entries(SECTION_OF_KEY).map(([key, section]) => [section, key]),
+) as Partial<Record<Origin, string>>;
 
 /** Cooking and store mode cover the tab bar on phones; the sidebar stays (spec 0005, D5). */
 const FULL_SCREEN_PAGES = new Set(['kochen', 'einkaufen']);
@@ -117,19 +119,15 @@ function Navigation(props: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
-  // A page outside the five areas highlights no tab (AC-002, AC-054).
-  const activeKey = KEY_OF_ROUTE[activeRoute] ?? '';
+  // A detail page highlights the section it came from (`von`); a page under "Verwalten"
+  // highlights no tab (spec 0019, REQ-006; spec 0005, AC-054).
+  const section = useActiveSection();
+  const activeKey = (section && KEY_OF_SECTION[section]) ?? '';
+  const openSection = useOpenSection();
+  // A section always shows its start page as last left, without detail or window (REQ-005).
   const select = (key: string) => {
-    const route = props.state.routes.find((candidate) => candidate.name === ROUTE_OF_KEY[key]);
-    if (!route) return;
-    // A tab with its own stack goes back to its first page on a second tap.
-    const event = props.emitter.emit({
-      type: 'tabPress',
-      target: route.key,
-      canPreventDefault: true,
-    });
-    if (event.defaultPrevented) return;
-    props.navigateToTab(route.key);
+    const target = SECTION_OF_KEY[key];
+    if (target) openSection(target);
   };
 
   if (!isPhone) {
