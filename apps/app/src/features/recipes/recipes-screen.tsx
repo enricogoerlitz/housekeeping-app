@@ -22,6 +22,7 @@ import {
   recipeListCountLabel,
   recipeShowLabel,
   recipeSortShortLabel,
+  FOOD_LIST_CLEARED,
   removeFilterChip,
   searchRecipes,
   sortRecipeList,
@@ -50,7 +51,6 @@ import {
   useBreakpoint,
   type MenuOption,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -60,6 +60,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
+import { usePageParams, type PageAddress } from '@/lib/url-state';
 
 import { AiSearchPanel } from './ai-search-panel';
 import { useOpenRecipe } from './navigation';
@@ -79,6 +80,23 @@ const FOOD_VIEWS: { value: FoodView; label: string }[] = [
 
 type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
 
+type FoodParams = PageAddress<'rezepte'>['params'];
+
+/**
+ * The list parameters of each view as last left while the app runs: both views share the names
+ * (`suche`, `favoriten`, …), so switching the view swaps them (spec 0019, REQ-005, REQ-011).
+ */
+const leftView: Partial<Record<FoodView, FoodParams>> = {};
+
+function listParams(params: FoodParams): FoodParams {
+  const kept: Record<string, unknown> = {};
+  for (const name of Object.keys(FOOD_LIST_CLEARED)) {
+    const value = (params as Record<string, unknown>)[name];
+    if (value !== undefined) kept[name] = value;
+  }
+  return kept as FoodParams;
+}
+
 /** Recipe tiles: at least 260 px wide, two side by side on phones (AC-014). */
 const TILE_MIN_WIDTH = 260;
 
@@ -88,8 +106,8 @@ const TILE_MIN_WIDTH = 260;
  * Search, filters, sort and the random order stay while the app runs (E14).
  */
 export function RecipesScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ view?: string | string[] }>();
+  const address = usePageParams('rezepte');
+  const { params } = address;
   const { isPhone } = useBreakpoint();
   const online = useOnlineOnly();
   const assistant = useAssistant();
@@ -104,21 +122,24 @@ export function RecipesScreen() {
   const list = useRecipeListState();
   const openRecipe = useOpenRecipe();
 
-  // The window "Neu" with the kind chosen in "+" preselected (spec 0009, AC-001, AC-002).
-  const [newSheet, setNewSheet] = useState<{ open: boolean; kind: RecipeKind }>({
-    open: false,
-    kind: 'recipe',
-  });
-  const openNew = (kind: RecipeKind) => setNewSheet({ open: true, kind });
+  // The window "Neu" with the kind chosen in "+" preselected (spec 0009, AC-001, AC-002); the
+  // window stands in the address (`fenster=neu`), the kind only here.
+  const [newKind, setNewKind] = useState<RecipeKind>('recipe');
+  const newSheet = { open: params.fenster === 'neu', kind: newKind };
+  const openNew = (kind: RecipeKind) => {
+    setNewKind(kind);
+    address.open({ fenster: 'neu' });
+  };
   const [starterOpen, setStarterOpen] = useState(false);
 
-  const { query, filter, sort, shuffle } = list;
+  const { query, filter, sort } = list;
   // "Zuletzt gekocht" and "Lange nicht gekocht" count what the calendar says was cooked, for a
   // collection also its recipes (spec 0009, E10, AC-031).
   const recipes = useMemo(
     () => withCookingHistory(stored, cookingHistory(entries, book.collectionRecipes, today)),
     [stored, entries, book.collectionRecipes, today],
   );
+  const shuffle = list.shuffleFor(recipes.map((recipe) => recipe.id));
   const cuisines = useMemo(() => cuisineFacets(recipes), [recipes]);
   const results = useMemo(() => {
     const searched = searchRecipes(query, recipes, articlesById);
@@ -140,21 +161,22 @@ export function RecipesScreen() {
   const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
   const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
 
-  // The chosen side lives in the URL, so a reload or a deep link keeps it.
-  const view: FoodView =
-    (Array.isArray(params.view) ? params.view[0] : params.view) === 'restaurants'
-      ? 'restaurants'
-      : 'recipes';
+  // The chosen side lives in the address, so a reload or a deep link keeps it.
+  const view: FoodView = params.ansicht === 'restaurants' ? 'restaurants' : 'recipes';
+  const viewPatch = (next: FoodView): FoodParams => {
+    leftView[view] = listParams(params);
+    return {
+      ...FOOD_LIST_CLEARED,
+      ...leftView[next],
+      ansicht: next === 'restaurants' ? 'restaurants' : undefined,
+      restaurant: undefined,
+    };
+  };
   const switcher = (
     <ViewTabs
       label="Rezepte oder Restaurants"
       value={view}
-      onChange={(next) =>
-        router.setParams({
-          view: next === 'restaurants' ? 'restaurants' : undefined,
-          rid: undefined,
-        })
-      }
+      onChange={(next) => address.replace(viewPatch(next))}
       options={FOOD_VIEWS}
       testID="food-switch"
     />
@@ -173,7 +195,7 @@ export function RecipesScreen() {
     if (kind === 'recipe' || kind === 'collection') openNew(kind);
     else if (kind === 'starter') setStarterOpen(true);
     // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
-    else router.setParams({ view: 'restaurants', add: '1' });
+    else address.open({ ...viewPatch('restaurants'), fenster: 'neu-restaurant' });
   };
 
   const header = (
@@ -206,7 +228,7 @@ export function RecipesScreen() {
       <NewRecipeSheet
         visible={newSheet.open}
         kind={newSheet.kind}
-        onClose={() => setNewSheet({ ...newSheet, open: false })}
+        onClose={() => address.close({ fenster: undefined })}
         onCreated={openRecipe}
       />
       <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />

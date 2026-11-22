@@ -17,12 +17,13 @@ import {
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { View } from 'react-native';
 
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { useHandedTarget } from '@/lib/target-params';
+import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
+import { usePageParams } from '@/lib/url-state';
 
 import { useChoreCheckWindow } from './chore-check-list';
 import { ChoreHistory } from './chore-history';
@@ -34,8 +35,8 @@ import { NewChoreSheet } from './new-chore-sheet';
 
 type Tab = 'upcoming' | 'all' | 'history';
 
-/** `/haushalt?aufgabe=<id>&haushalt=<id>`: the chore of a reminder (spec 0013, AC-037). */
-const TARGET_PARAMS = ['aufgabe', 'haushalt'] as const;
+const TAB_OF_VIEW = { anstehend: 'upcoming', alle: 'all', verlauf: 'history' } as const;
+const VIEW_OF_TAB = { upcoming: 'anstehend', all: 'alle', history: 'verlauf' } as const;
 type UpcomingBucket = Extract<ChoreBucket, 'today' | 'overdue' | 'flexible' | 'thisWeek'>;
 
 const SECTION_TITLES: Record<UpcomingBucket, string> = {
@@ -76,36 +77,53 @@ export function ChoresScreen() {
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
 
-  const [tab, setTab] = useState<Tab>('upcoming');
-  const [choreId, setChoreId] = useState<Id | undefined>(undefined);
-  const [eventId, setEventId] = useState<Id | undefined>(undefined);
-  const [creating, setCreating] = useState(false);
-  const [logging, setLogging] = useState(false);
+  const address = usePageParams('haushalt');
+  const { params } = address;
+  const tab: Tab = params.ansicht ? TAB_OF_VIEW[params.ansicht] : 'upcoming';
+  useHandedHousehold(params.haushalt, address.replace);
 
-  // The chore a notification opens: taken once on "Anstehend", where it opens as a window. An
-  // unknown chore opens nothing (AC-038).
-  const target = useHandedTarget('/haushalt', TARGET_PARAMS);
-  const handedChoreId = target.screen === 'chore' ? target.choreId : undefined;
-  const [takenChoreId, setTakenChoreId] = useState<Id | undefined>();
-  if (handedChoreId !== takenChoreId) {
-    setTakenChoreId(handedChoreId);
-    if (handedChoreId) {
-      setTab('upcoming');
-      setChoreId(handedChoreId);
-      setEventId(undefined);
-    }
-  }
-
-  // Deleted on another device (or here) while open: the window or column just closes.
-  const openChore = chores.find((chore) => chore.id === choreId);
-  const openEvent = events.find((event) => event.id === eventId);
+  // Deleted on another device (or here) while open: the window or column just closes; an id the
+  // household does not have closes with a toast (AC-052). Another own household's switches.
+  const openChore = chores.find((chore) => chore.id === params.aufgabe);
+  const openEvent = events.find((event) => event.id === params.verlauf);
+  const choreFound = useAddressedId('chores', params.aufgabe);
+  const eventFound = useAddressedId('choreEvents', params.verlauf);
+  const handed = params.haushalt !== undefined;
+  useMissingObject(params.aufgabe, choreFound !== 'missing' || handed, 'Diese Aufgabe gibt es nicht mehr', () =>
+    address.replace({ aufgabe: undefined }),
+  );
+  useMissingObject(params.verlauf, eventFound !== 'missing' || handed, 'Diesen Eintrag gibt es nicht mehr', () =>
+    address.replace({ verlauf: undefined }),
+  );
   const split = !isPhone && tab !== 'upcoming';
+  const creating = params.fenster === 'neu-aufgabe';
+  const logging = params.fenster === 'erledigt';
 
-  const changeTab = (next: Tab) => {
-    setTab(next);
-    setChoreId(undefined);
-    setEventId(undefined);
+  // On wide screens "Alle" and "Verlauf" select in place; elsewhere the chore opens as a window,
+  // which adds a history entry (REQ-013, REQ-014).
+  const select = (patch: { aufgabe?: Id; verlauf?: Id }) => {
+    if (split) address.replace(patch);
+    else address.open(patch);
   };
+  const deselect = (patch: { aufgabe?: undefined; verlauf?: undefined }) => {
+    if (split) address.replace(patch);
+    else address.close(patch);
+  };
+  const setChoreId = (id: Id | undefined) =>
+    id ? select({ aufgabe: id }) : deselect({ aufgabe: undefined });
+  const setEventId = (id: Id | undefined) =>
+    id ? select({ verlauf: id }) : deselect({ verlauf: undefined });
+  const setCreating = (open: boolean) =>
+    open ? address.open({ fenster: 'neu-aufgabe' }) : address.close({ fenster: undefined });
+  const setLogging = (open: boolean) =>
+    open ? address.open({ fenster: 'erledigt' }) : address.close({ fenster: undefined });
+
+  const changeTab = (next: Tab) =>
+    address.replace({
+      ansicht: VIEW_OF_TAB[next],
+      aufgabe: undefined,
+      verlauf: undefined,
+    });
 
   const doneLink = (
     <Button

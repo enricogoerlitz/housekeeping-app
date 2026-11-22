@@ -13,7 +13,6 @@ import {
   restaurantFilterCount,
   restaurantShowLabel,
   restaurantVisits,
-  routeId,
   sortRestaurantList,
   toggleRestaurantFavorites,
   type Id,
@@ -42,11 +41,12 @@ import {
   useTheme,
   type MenuOption,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
+import { usePageParams } from '@/lib/url-state';
 import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
 import { StarterSheet } from '@/features/recipes/starter-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
@@ -66,10 +66,6 @@ const CARD_MIN_WIDTH = 320;
 const LIST_COLUMN_WIDTH = 380;
 
 type SheetRequest = Pick<AddRestaurantSheetProps, 'initialText' | 'initialName' | 'focus'>;
-
-function param(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 function matches(query: string, restaurant: Restaurant): boolean {
   return [restaurant.name, restaurant.cuisine, restaurant.address, ...restaurant.tags].some(
@@ -91,12 +87,8 @@ function sortShortLabel(sort: RestaurantListSort): string {
  */
 export function RestaurantsPanel(props: { switcher: ReactNode }) {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    rid?: string | string[];
-    add?: string | string[];
-    share?: string | string[];
-    shareName?: string | string[];
-  }>();
+  const address = usePageParams('rezepte');
+  const { params } = address;
   const { isWide, isPhone } = useBreakpoint();
   const online = useOnlineOnly();
   const restaurants = useRestaurants();
@@ -106,32 +98,44 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
   const list = useRestaurantListState();
   const openRecipe = useOpenRecipe();
 
-  const [sheet, setSheet] = useState<SheetRequest | undefined>();
+  // Where "Restaurant hinzufügen" puts the cursor; the window itself stands in the address.
+  const [focus, setFocus] = useState<SheetRequest['focus']>('link');
   const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
     open: false,
     kind: 'recipe',
   });
   const [starterOpen, setStarterOpen] = useState(false);
 
-  const selectedId = isWide ? routeId(params.rid) : undefined;
-  // The share target and "+ → Restaurant" on the recipes view open the sheet through the URL, so
-  // a reload keeps it open (spec 0002, AC-008).
-  const shared: SheetRequest | undefined =
-    param(params.add) === '1'
-      ? { initialText: param(params.share), initialName: param(params.shareName), focus: 'name' }
+  // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
+  // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
+  const selectedId = isWide ? params.restaurant : undefined;
+  const addressed = params.restaurant;
+  const replace = address.replace;
+  useEffect(() => {
+    if (isWide || !addressed) return;
+    replace({ restaurant: undefined });
+    router.push({ pathname: '/restaurant/[id]', params: { id: addressed } }, { withAnchor: true });
+  }, [isWide, addressed, replace, router]);
+  // "+ → Restaurant", the empty state and the share target open the window through the address,
+  // so a reload keeps it open (spec 0002, AC-008); a shared link fills it.
+  const shared = params.link !== undefined || params.name !== undefined;
+  const sheetRequest: SheetRequest | undefined =
+    params.fenster === 'neu-restaurant'
+      ? { initialText: params.link, initialName: params.name, focus: shared ? 'name' : focus }
       : undefined;
-  const sheetRequest = sheet ?? shared;
+  const setSheet = (request: { focus: SheetRequest['focus'] }) => {
+    setFocus(request.focus);
+    address.open({ fenster: 'neu-restaurant' });
+  };
 
   const open = (restaurantId: Id) => {
-    if (isWide) router.setParams({ rid: restaurantId });
+    if (isWide) address.replace({ restaurant: restaurantId });
     else router.push({ pathname: '/restaurant/[id]', params: { id: restaurantId } });
   };
-  const closeSheet = () => {
-    setSheet(undefined);
-    if (shared) router.setParams({ add: undefined, share: undefined, shareName: undefined });
-  };
+  const closeSheet = () => address.close({ fenster: undefined, link: undefined, name: undefined });
 
-  const { query, filter, sort, shuffle } = list;
+  const { query, filter, sort } = list;
+  const shuffle = list.shuffleFor(restaurants.map((restaurant) => restaurant.id));
   const cuisines = useMemo(() => cuisineFacets(restaurants), [restaurants]);
   const visitsById = useMemo(
     () =>
@@ -399,7 +403,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
           detail={
             <RestaurantDetail
               restaurantId={selectedId}
-              onClose={() => router.setParams({ rid: undefined })}
+              onClose={() => address.replace({ restaurant: undefined })}
             />
           }
           placeholder={{ icon: 'utensils', title: 'Wähl ein Restaurant aus' }}

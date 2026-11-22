@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_RECIPE_LIST_FILTER } from './recipe-list';
+import { EMPTY_RESTAURANT_LIST_FILTER } from './restaurant-list';
 import {
   calendarFromParams,
   cookingStepFromParam,
@@ -10,6 +11,8 @@ import {
   recipeListFromParams,
   recipeListToParams,
   resolveAddressedId,
+  restaurantListFromParams,
+  restaurantListToParams,
   safeReturnPath,
   ORIGINS,
   SECTION_START,
@@ -169,6 +172,36 @@ describe('recipe list in the address', () => {
     };
     const href = pageHref('/rezepte', 'rezepte', recipeListToParams(state));
     expect(recipeListFromParams(readPageParams('rezepte', rawOf(href)).values)).toEqual(state);
+  });
+});
+
+describe('restaurant list in the address', () => {
+  it('AC-043: the restaurant view with its filter survives the round trip', () => {
+    const state = {
+      query: 'pizza',
+      filter: {
+        favorites: true,
+        cuisines: ['italienisch'],
+        priceLevels: [1, 2] as (1 | 2)[],
+        minRating: 4 as const,
+      },
+      sort: 'rating' as const,
+    };
+    const href = pageHref('/rezepte', 'rezepte', {
+      ansicht: 'restaurants',
+      ...restaurantListToParams(state),
+    });
+    expect(href).toBe(
+      '/rezepte?ansicht=restaurants&suche=pizza&favoriten=1&kueche=italienisch&bewertung=4&preis=1&preis=2&sortierung=bewertung',
+    );
+    expect(restaurantListFromParams(readPageParams('rezepte', rawOf(href)).values)).toEqual(state);
+  });
+  it('"A–Z" is the default and stays out; an unknown sort gives it', () => {
+    expect(
+      restaurantListToParams({ query: '', filter: EMPTY_RESTAURANT_LIST_FILTER, sort: 'title' })
+        .sortierung,
+    ).toBeUndefined();
+    expect(restaurantListFromParams({ sortierung: 'haeufig' }).sort).toBe('title');
   });
 });
 

@@ -11,6 +11,13 @@ import {
   type RecipeListSort,
   type TimeLimit,
 } from './recipe-list';
+import {
+  DEFAULT_RESTAURANT_SORT,
+  EMPTY_RESTAURANT_LIST_FILTER,
+  type PriceLevel,
+  type RestaurantListFilter,
+  type RestaurantListSort,
+} from './restaurant-list';
 import type { Course, Id, ISODate, RecipeKind } from './types';
 
 // Spec 0019 "Zustand in der Adresse" (REQ-018): every parameter of every page, with its values,
@@ -246,8 +253,8 @@ export const PAGE_PARAMS = {
   },
   /** The Web Share target keeps the names the manifest gives it. */
   teilen: {
-    url: one(z.string().max(2000)),
-    text: one(z.string().max(2000)),
+    url: one(z.string()),
+    text: one(z.string()),
   },
 } as const satisfies Record<string, Record<string, ParamSpec>>;
 
@@ -398,6 +405,75 @@ export function recipeListToParams(state: RecipeListAddressState): PageParams<'r
     sortierung: state.sort === DEFAULT_RECIPE_SORT ? undefined : RECIPE_SORT_SLUGS[state.sort],
   };
 }
+
+// ---------- Restaurant list ----------
+
+export interface RestaurantListAddressState {
+  query: string;
+  filter: RestaurantListFilter;
+  sort: RestaurantListSort;
+}
+
+const RESTAURANT_SORT_OF: Record<string, RestaurantListSort> = {
+  zuletzt: 'lastVisit',
+  bewertung: 'rating',
+  name: 'title',
+  zufall: 'random',
+};
+const RESTAURANT_SORT_SLUG: Record<RestaurantListSort, (typeof RESTAURANT_SORT_SLUGS)[number]> = {
+  lastVisit: 'zuletzt',
+  rating: 'bewertung',
+  title: 'name',
+  random: 'zufall',
+};
+
+/** Search, filter and sort of "Essen → Restaurants" from the address (AC-043). */
+export function restaurantListFromParams(
+  values: PageParams<'rezepte'>,
+): RestaurantListAddressState {
+  const filter: RestaurantListFilter = {
+    ...EMPTY_RESTAURANT_LIST_FILTER,
+    favorites: values.favoriten === '1',
+    cuisines: values.kueche ?? [],
+    priceLevels: (values.preis ?? []).map((level) => Number(level) as PriceLevel),
+  };
+  if (values.bewertung) filter.minRating = Number(values.bewertung) as MinRating;
+  return {
+    query: values.suche ?? '',
+    filter,
+    sort: RESTAURANT_SORT_OF[values.sortierung ?? ''] ?? DEFAULT_RESTAURANT_SORT,
+  };
+}
+
+/** The address values of the restaurant list; undefined clears the parameter. */
+export function restaurantListToParams(state: RestaurantListAddressState): PageParams<'rezepte'> {
+  const { filter } = state;
+  return {
+    suche: state.query.trim() === '' ? undefined : state.query,
+    favoriten: filter.favorites ? '1' : undefined,
+    kueche: [...filter.cuisines],
+    bewertung: filter.minRating ? (String(filter.minRating) as '4' | '4.5') : undefined,
+    preis: filter.priceLevels.map((level) => String(level) as '1' | '2' | '3' | '4'),
+    sortierung:
+      state.sort === DEFAULT_RESTAURANT_SORT ? undefined : RESTAURANT_SORT_SLUG[state.sort],
+  };
+}
+
+/** Every list parameter of "Essen", cleared: switching the view starts from these. */
+export const FOOD_LIST_CLEARED: PageParams<'rezepte'> = {
+  suche: undefined,
+  art: undefined,
+  favoriten: undefined,
+  ernaehrung: undefined,
+  dauer: undefined,
+  'fuer-alle': undefined,
+  selten: undefined,
+  gang: undefined,
+  kueche: undefined,
+  bewertung: undefined,
+  preis: undefined,
+  sortierung: undefined,
+};
 
 // ---------- Calendar ----------
 
