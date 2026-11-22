@@ -1,9 +1,9 @@
 import {
   OfflineError,
   updateNotificationSettings,
-  useHousehold,
+  useActiveHouseholdId,
   useHouseholdsMap,
-  useNotificationSettings,
+  useNotificationSettingsOf,
   WRITE_REJECTED_MESSAGE,
   type NotificationSettingsPatch,
 } from '@housekeeping/api';
@@ -14,8 +14,9 @@ import {
   isLastSummaryPart,
   kindEnabled,
   kindEnabledPatch,
-  kindsSectionTitle,
+  kindsScopeNote,
   kindSubtitle,
+  notificationsHouseholdId,
   NOTIFICATION_KINDS,
   TIME_FIELD_WORDS,
   toggleSummaryPart,
@@ -27,6 +28,7 @@ import {
 import {
   Button,
   Chip,
+  ChoiceChips,
   Row,
   Section,
   Sheet,
@@ -36,6 +38,7 @@ import {
   TimeField,
   toast,
 } from '@housekeeping/ui';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -70,9 +73,9 @@ function isTimed(kind: NotificationKind): kind is TimedKind {
 }
 
 /** Writes the patch; offline or refused, a calm toast instead (the switches are greyed anyway). */
-function save(patch: NotificationSettingsPatch): boolean {
+function save(patch: NotificationSettingsPatch, householdId: string): boolean {
   try {
-    updateNotificationSettings(patch);
+    updateNotificationSettings(patch, householdId);
     return true;
   } catch (error) {
     toast.show({ message: error instanceof OfflineError ? error.message : WRITE_REJECTED_MESSAGE });
@@ -80,17 +83,56 @@ function save(patch: NotificationSettingsPatch): boolean {
   }
 }
 
-export function KindsSection() {
-  const settings = useNotificationSettings();
+/**
+ * Spec 0027, REQ-008: with several households, "Was und wann" chooses whose settings it shows;
+ * the choice is `fuer-haushalt` in the address and never switches the household of the app
+ * (Decision 7). A foreign or unknown id shows the active household (AC-034).
+ */
+function useSettingsHousehold(): { householdId: string; choose: (householdId: string) => void } {
   const households = useHouseholdsMap();
-  const household = useHousehold();
+  const activeId = useActiveHouseholdId();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ 'fuer-haushalt'?: string | string[] }>();
+  const raw = params['fuer-haushalt'];
+  const requested = Array.isArray(raw) ? raw[0] : raw;
+  return {
+    householdId: notificationsHouseholdId(requested, Object.keys(households), activeId),
+    choose: (householdId) => router.setParams({ 'fuer-haushalt': householdId }),
+  };
+}
+
+export function KindsSection() {
+  const households = useHouseholdsMap();
+  const { householdId, choose } = useSettingsHousehold();
+  const settings = useNotificationSettingsOf(householdId);
   const online = useOnlineOnly();
   const ensureDevicePush = useEnsureDevicePush();
   const [open, setOpen] = useState<TimedKind>();
-  const title = kindsSectionTitle(Object.keys(households).length > 1 ? household.name : undefined);
+  const several = Object.keys(households).length > 1;
+  const name = households[householdId]?.household.name ?? '';
 
   return (
-    <Section title={title} testID="notif-kinds">
+    <Section
+      title={several ? 'Was und wann' : 'Was und wann · gilt für alle Geräte'}
+      testID="notif-kinds"
+    >
+      {several ? (
+        <Stack gap={6} style={{ marginBottom: 12 }}>
+          <ChoiceChips<string>
+            label="Haushalt der Einstellungen"
+            value={householdId}
+            onChange={choose}
+            options={Object.values(households).map((data) => ({
+              value: data.household.id,
+              label: data.household.name,
+            }))}
+            testID="notif-household"
+          />
+          <Text variant="small" color="muted" testID="notif-household-note">
+            {kindsScopeNote(name)}
+          </Text>
+        </Stack>
+      ) : null}
       {settings ? (
         <Stack gap={4}>
           {NOTIFICATION_KINDS.map((kind) => {
@@ -104,7 +146,7 @@ export function KindsSection() {
               onValueChange: (on: boolean) => {
                 // The browser's question first, inside the tap (Decision 26, AC-007).
                 if (asksForPushPermission({ kind: 'switch', on })) ensureDevicePush();
-                save(kindEnabledPatch(kind, on));
+                save(kindEnabledPatch(kind, on), householdId);
               },
             };
             return isTimed(kind) ? (
@@ -134,9 +176,10 @@ export function KindsSection() {
       )}
       {settings && open ? (
         <KindSheet
-          key={open}
+          key={`${householdId}-${open}`}
           kind={open}
           settings={settings}
+          householdId={householdId}
           offlineHint={online.hint}
           onClose={() => setOpen(undefined)}
         />
@@ -149,6 +192,7 @@ export function KindsSection() {
 function KindSheet(props: {
   kind: TimedKind;
   settings: NotificationSettings;
+  householdId: string;
   offlineHint: string | undefined;
   onClose: () => void;
 }) {
@@ -166,6 +210,7 @@ function KindSheet(props: {
       ensureDevicePush();
     const saved = save(
       daily ? { dailySummaryAt: time, dailySummaryParts: parts } : { activitiesEveAt: time },
+      props.householdId,
     );
     if (saved) props.onClose();
   };

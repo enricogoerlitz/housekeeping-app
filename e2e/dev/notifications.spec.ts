@@ -63,9 +63,9 @@ test('AC-001, AC-011: "Benachrichtigungen · 2 an" in the settings, the sections
   await expect(tid(page, 'notifications-screen')).toBeVisible();
 
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
-  // Enrico belongs to two households: the section names the active one (Offene Frage 3 e).
-  await expect(tid(page, 'notif-kinds')).toContainText(
-    'Was und wann · Enrico & Nadja · gilt für alle Geräte',
+  // Enrico belongs to two households: the choice starts at the active one (spec 0027, AC-032).
+  await expect(tid(page, 'notif-household-note')).toHaveText(
+    'Gilt für „Enrico & Nadja“ auf allen deinen Geräten.',
   );
   await expect(tid(page, 'notif-devices')).toContainText('Deine Geräte');
   await expect(tid(page, 'notif-kinds')).toContainText('Während einer Reise kommt nichts.');
@@ -199,8 +199,8 @@ test('AC-037, Decision 12: "/?haushalt=…" opens the Übersicht of that househo
   await expect(tid(page, 'today-screen')).toBeVisible();
   await openSettings(page);
   await tid(page, 'settings-notifications-row').click();
-  await expect(tid(page, 'notif-kinds')).toContainText(
-    'Was und wann · Test · gilt für alle Geräte',
+  await expect(tid(page, 'notif-household-note')).toHaveText(
+    'Gilt für „Test“ auf allen deinen Geräten.',
   );
 
   // A broken id changes nothing; back to the demo household.

@@ -72,6 +72,8 @@ export interface ButtonProps {
   testID?: string;
   /** Explains why the button is disabled or what it does (screen readers, tooltip on web). */
   hint?: string;
+  /** Accessible name when it says more than the label (spec 0027, AC-039). */
+  accessibilityLabel?: string;
 }
 
 export function Button(props: ButtonProps) {
@@ -92,7 +94,7 @@ export function Button(props: ButtonProps) {
     <Pressable
       testID={props.testID}
       accessibilityRole="button"
-      accessibilityLabel={props.label}
+      accessibilityLabel={props.accessibilityLabel ?? props.label}
       accessibilityHint={props.hint}
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}

@@ -440,16 +440,6 @@ export function base64UrlToBytes(text: string): Uint8Array | undefined {
   return bytes;
 }
 
-/**
- * The title of "Was und wann": with the household's name when the person belongs to several, as
- * the settings hold per household (Offene Frage 3 e, Decision 25).
- */
-export function kindsSectionTitle(householdName: string | undefined): string {
-  return householdName === undefined
-    ? 'Was und wann · gilt für alle Geräte'
-    : `Was und wann · ${householdName} · gilt für alle Geräte`;
-}
-
 export interface ThisDeviceView {
   switchOn: boolean;
   switchDisabled: boolean;

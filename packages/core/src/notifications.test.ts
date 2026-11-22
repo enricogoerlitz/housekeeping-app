@@ -16,7 +16,6 @@ import {
   kindEnabled,
   kindEnabledPatch,
   kindSubtitle,
-  kindsSectionTitle,
   NOTIFICATION_KINDS,
   notificationsRowLabel,
   notificationTargetHref,
@@ -629,13 +628,6 @@ describe('the page wiring of this device (Task 8)', () => {
     expect(base64UrlToBytes('a+b/')).toBeUndefined();
     expect(base64UrlToBytes('A')).toBeUndefined();
     expect(base64UrlToBytes('ab!c')).toBeUndefined();
-  });
-
-  it('AC-001, Offene Frage 3 e: the household is named when the person has several', () => {
-    expect(kindsSectionTitle(undefined)).toBe('Was und wann · gilt für alle Geräte');
-    expect(kindsSectionTitle('Enrico & Nadja')).toBe(
-      'Was und wann · Enrico & Nadja · gilt für alle Geräte',
-    );
   });
 });
 
