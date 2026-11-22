@@ -92,6 +92,7 @@ export {
 } from './choice';
 export { Sheet, toast, ToastHost, type SheetProps, type ToastOptions } from './overlay';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
+export { DockedPanel, type DockedPanelProps, type DockedPanelState } from './docked-panel';
 export { CHECK_WINDOW_MS } from './check-window';
 export {
   useCheckWindow,
