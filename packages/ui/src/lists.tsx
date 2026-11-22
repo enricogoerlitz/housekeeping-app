@@ -319,6 +319,8 @@ export interface CheckRowProps {
   checked: boolean;
   onToggle?: () => void;
   trailing?: ReactNode;
+  /** Buttons of their own outside the press area, e.g. ⋯ (see ListRow `controls`). */
+  controls?: ReactNode;
   disabled?: boolean;
   /** Opens details; the checkbox still toggles on its own. */
   onPress?: () => void;
@@ -337,6 +339,7 @@ export function CheckRow(props: CheckRowProps) {
       disabled={props.disabled}
       onPress={props.onPress}
       trailing={props.trailing}
+      controls={props.controls}
       leading={
         <Checkbox
           testID={props.testID ? `${props.testID}-check` : undefined}

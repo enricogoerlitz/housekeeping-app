@@ -131,6 +131,9 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'activity-plan').click();
   await expect(tid(page, 'plan-recipe-title')).toHaveText('Eislaufen');
   await tid(page, 'plan-recipe-sheet-close').click();
+  // On phones the activity is its own page; closing the window stays on it (spec 0024, REQ-009).
+  await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
+  await back(page);
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await nav(page, 'kalender');
   await expect(tid(page, 'calendar-screen')).toBeVisible();
@@ -261,11 +264,11 @@ test('dev smoke: every screen renders without a React warning or error', async (
     await leaveManaged(page);
   }
 
-  // The Urlaubsseite of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007): head and progress, a
-  // Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the windows behind
-  // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens from its row in
-  // "Reisen" (task 10); "‹ Reisen" leads back there (task 12). "Abbrechen" in the
-  // reset dialog leaves every Haken as it was (AC-029).
+  // The trip window of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007; spec 0022): head and
+  // progress, a Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the
+  // windows behind "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens
+  // from its row in "Reisen" and ✕ closes it there. "Abbrechen" in the reset dialog leaves every
+  // Haken as it was (AC-029).
   const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
   await openManaged(page, 'trips');
@@ -278,7 +281,10 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, `${strand}-packed-body`)).toContainText('Sonnenhut');
   await tid(page, `${strand}-more`).click();
   await expect(tid(page, `${strand}-more-pack-all`)).toBeVisible();
+  // Escape closes only the menu, not the window below it.
   await page.keyboard.press('Escape');
+  await expect(tid(page, `${strand}-more-pack-all`)).toBeHidden();
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await tid(page, `${strand}-add`).click();
   await expect(tid(page, 'trip-add-item-also')).toBeVisible();
   await tid(page, 'trip-add-item-sheet-close').click();
@@ -292,7 +298,8 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'trip-reset-dialog')).toHaveCount(0);
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 7 von 21 gepackt');
   await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
-  await back(page);
+  // Since spec 0022 the trip is a window over "Reisen"; ✕ closes it there.
+  await tid(page, 'trip-window-close').click();
   await expect(tid(page, 'trips-screen')).toBeVisible();
   await leaveManaged(page);
   await nav(page, 'kalender');
@@ -301,8 +308,8 @@ test('dev smoke: every screen renders without a React warning or error', async (
 
   // The card "Reisetasche" on the Übersicht (spec 0012, AC-042, AC-044): "Urlaub Mallorca"
   // starts in 12 days, so only a week later the card stands below "Einkauf"; it still counts
-  // from today (spec 0018, AC-020); a tap opens the Urlaubsseite, and "‹ Übersicht" leads back
-  // (task 12).
+  // from today (spec 0018, AC-020); a tap opens the trip window, and ✕ closes it on the
+  // Übersicht.
   const mallorcaCard = `today-packing-${seedIds['trip-mallorca']}`;
   await expect(tid(page, mallorcaCard)).toHaveCount(0);
   await tid(page, 'today-week-next').click();
@@ -310,7 +317,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 12 Tagen');
   await tid(page, `${mallorcaCard}-open`).click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
-  await back(page);
+  await tid(page, 'trip-window-close').click();
   await expect(tid(page, 'today-screen')).toBeVisible();
   await tid(page, 'today-week-today').click();
 

@@ -146,7 +146,8 @@ export function TripSection(props: { section: PackingSection }) {
             checked={check.isChecked(item)}
             onToggle={() => check.toggle(item)}
             onPress={() => setEditingId(item.id)}
-            trailing={
+            // Outside the row's press area, which opens the Packstück window: no nested buttons.
+            controls={
               // Also on phones next to the swipe, so screen readers can remove a Packstück.
               <Menu<'edit' | 'remove'>
                 trigger="icon"

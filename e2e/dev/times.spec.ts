@@ -53,17 +53,17 @@ test('AC-022, AC-025: a time on "Bad putzen" shows in Haushalt, Zu tun and the h
   await expectTime(page, 'chore-due-time', '');
   await expect(tid(page, 'chore-due-time-minute')).toBeDisabled();
   await expect(tid(page, 'chore-due-time-clear')).toBeHidden();
+  await expect(tid(page, 'chore-remind')).toHaveCount(0);
 
-  // Spec 0027, AC-029: "Minute" offers the twelve five-minute steps; the hint names the own
-  // setting (Offene Frage 3 d).
+  // Spec 0027, AC-029: "Minute" offers the twelve five-minute steps. With a time the switch
+  // "Erinnern" appears, on, with its hint (spec 0027, REQ-009, AC-035; Offene Frage 3 d).
   await chooseTime(page, 'chore-due-time', '19:00');
   await expectTime(page, 'chore-due-time', '19:00');
   await expect(tid(page, 'chore-due-time-minute')).toBeEnabled();
   await expect(tid(page, 'chore-due-time-minute').locator('option')).toHaveCount(12);
   await expect(tid(page, 'chore-due-time-hour')).toHaveAccessibleName('Uhrzeit, Stunde');
-  await expect(tid(page, 'chore-sheet')).toContainText(
-    'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)',
-  );
+  await expect(tid(page, 'chore-remind').locator('input')).toBeChecked();
+  await expect(tid(page, 'chore-sheet')).toContainText('Erinnert zur Uhrzeit, wer dran ist.');
   await tid(page, 'chore-save').click();
   await expect(tid(page, 'chore-sheet')).toContainText('19:00');
   await tid(page, 'chore-sheet-close').click();

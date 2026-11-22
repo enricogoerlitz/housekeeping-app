@@ -139,7 +139,9 @@ test('AC-012, AC-003: Tagesüberblick at 6:45 with "Essen" and "Aufgaben" stays 
     '6:45 · Essen · Aufgaben',
   );
   await back(page);
-  await expect(tid(page, 'settings-notifications-row')).toContainText('2 an');
+  // The defaults "Aufgaben mit Uhrzeit" and "Erinnerungen an Einträgen" plus the Tagesüberblick
+  // (AC-001; spec 0021, AC-039).
+  await expect(tid(page, 'settings-notifications-summary')).toHaveText('3 an · dieses Gerät aus');
   expect(await permissionAsks(page)).toBe(0);
 
   // Back to the defaults for the other tests of the run.
