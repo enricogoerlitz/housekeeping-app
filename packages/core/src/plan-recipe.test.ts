@@ -6,6 +6,7 @@ import {
   pagePlanChoice,
   planButtonLabel,
   plannedNotice,
+  addedNotice,
   planWeek,
   weekDays,
   withPlanDay,
@@ -51,6 +52,14 @@ describe('plan a recipe from its page (REQ-009)', () => {
   it('AC-025 (0018): the notice names weekday, date and Tageszeit', () => {
     expect(plannedNotice('2026-11-25', 'Abend')).toBe('Eingeplant: Mi 25.11., Abend');
     expect(plannedNotice('2027-01-05', 'Mittag')).toBe('Eingeplant: Di 5.1., Mittag');
+  });
+
+  it('spec 0016: the notice after adding names the date, with the year when it is not this one', () => {
+    expect(addedNotice('Lasagne', '2026-11-28', '2026-11-22')).toBe('„Lasagne“ steht am Sa 28.11.');
+    expect(addedNotice('Lasagne', '2027-01-16', '2026-11-22')).toBe(
+      '„Lasagne“ steht am Sa 16.1.2027',
+    );
+    expect(addedNotice('Shakshuka', null, '2026-11-22')).toBe('„Shakshuka“ ist vorgemerkt');
   });
 
   it('AC-035: weeks page without limit, forward and back', () => {

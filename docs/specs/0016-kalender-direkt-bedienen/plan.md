@@ -3,7 +3,10 @@
 Spec: `docs/specs/0016-kalender-direkt-bedienen/spec.md` (8 REQ, 34 AC). Branch
 `feat/0016-kalender-direkt-bedienen`. Baut auf Spec 0018 auf (K-03 in `entry-sheet.tsx`, Texte in
 `absence-sheet.tsx`). Keine Datenbank-Änderung: Verschieben nutzt `movePlanEntry`, das schon heute
-`sort` ans Ende der Art setzt; Reisen nutzen `saveAbsences`.
+`sort` ans Ende der Art setzt und im selben `apply_changes`-Aufruf den Tag in der Herkunft der
+Beiträge auf der Einkaufsliste nachzieht („Mango-Curry (Sa)“ → „(So)“, AC-017; die Beschriftung ist
+gespeichert, der Test zu AC-017 hatte gezeigt, dass sie sonst beim alten Tag blieb); Reisen nutzen
+`saveAbsences`.
 
 ## Entscheidungen
 
@@ -34,8 +37,9 @@ Spec: `docs/specs/0016-kalender-direkt-bedienen/spec.md` (8 REQ, 34 AC). Branch
 5. **Abbrechen:** ohne Ziel loslassen, Escape, zweiter Zeiger, Android-Zurück, Übernahme durch einen
    ScrollView. Bei „Bewegung reduzieren“ keine Rückgleit-Animation.
 6. **Tages-Fenster** ist ein neues, nicht-modales Fenster in `packages/ui`
-   (`docked-panel.tsx`): unten halbe Höhe, ganze Höhe oder eine Zeile; ab 700 px rechts. Der
-   vorhandene `Sheet` (RN-Modal) sperrt alles darunter und passt deshalb nicht.
+   (`docked-panel.tsx`): unten halbe Höhe, ganze Höhe oder eine Zeile; rechts ab 1100 px
+   (Entscheidung 10). Der vorhandene `Sheet` (RN-Modal) sperrt alles darunter und passt deshalb
+   nicht.
 7. **„Anderes Datum …“** nutzt einen neuen `MonthCalendar` in `packages/ui` (Felder mindestens
    44 pt, gesperrte Tage, Pfeiltasten überspringen sie); `RangeCalendar` im Reise-Fenster wird
    darauf umgestellt. Die 14-Tage-Grenze `PLAN_AHEAD_DAYS` beim Einplanen entfällt.
@@ -48,6 +52,14 @@ Spec: `docs/specs/0016-kalender-direkt-bedienen/spec.md` (8 REQ, 34 AC). Branch
     ihrem Ende, wie es verdeckt (`Screen` über `AsideInsetContext`), und der Assistent-Knopf weicht
     (`useHideAssistantButton`). Öffnen und Tageswechsel werden dem Screenreader angesagt
     („Tages-Fenster, Freitag, 27. November“).
+11. **Kleine Ergänzungen ohne eigene Anforderung**, bei der Umsetzung entstanden:
+    - Der Hinweis nach dem Hinzufügen aus dem Kalender nennt das volle Datum („„Lasagne“ steht am
+      Sa 28.11.“), mit Jahr, wenn es nicht das laufende ist, weil der Kalender jetzt über Monate
+      und Jahre blättert und „Sa 28“ dann mehrdeutig wäre.
+    - Der Showroom zeigt das Tages-Fenster und das Ziehen von Chips zwischen Kästen, damit
+      `docked-panel` und `drag-drop` ohne Kalender ansehbar sind.
+    - Der Fehlertext der Packliste „Diese Reise gibt es nicht mehr.“ endet mit Punkt wie die
+      anderen ganzen Sätze.
 
 ## Logik in `packages/core` (rein, mit Tests)
 

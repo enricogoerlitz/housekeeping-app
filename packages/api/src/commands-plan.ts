@@ -13,8 +13,10 @@ import {
   type MealPlanEntry,
   type PlanEntryVariant,
   type RecipeKind,
+  relabelForDay,
   type RemindMinutes,
   RemindMinutesSchema,
+  type ShoppingItem,
   type TimeOfDay,
   type VariantSplit,
 } from '@housekeeping/core';
@@ -371,7 +373,9 @@ export function setEntryReminder(entryId: Id, input: EntryReminderInput | null):
 /**
  * Moves a dish to another day (or to "vorgemerkt" with date null) and optionally another meal.
  * The reminder keeps its distance in days and so moves along (spec 0017, AC-021); "vorgemerkt"
- * clears it in the same patch (AC-023), and undo brings date and reminder back together.
+ * clears it in the same patch (AC-023), and undo brings date and reminder back together. Its
+ * contributions on the shopping list stay and their Herkunft names the new day, "Mango-Curry
+ * (So)" (spec 0016, AC-017); all in the same call.
  */
 export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): void {
   commit({ path: 'diff' }, () =>
@@ -396,8 +400,37 @@ export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): v
               }
             : candidate,
         ),
+        items: entry.date === date ? data.items : relabelContributions(data.items, entryId, date),
       };
     }),
+  );
+}
+
+function relabelContributions(
+  items: readonly ShoppingItem[],
+  entryId: Id,
+  date: ISODate | null,
+): ShoppingItem[] {
+  return items.map((item) =>
+    item.contributions.some(
+      (contribution) =>
+        contribution.source.kind === 'recipe' && contribution.source.entryId === entryId,
+    )
+      ? {
+          ...item,
+          contributions: item.contributions.map((contribution) =>
+            contribution.source.kind === 'recipe' && contribution.source.entryId === entryId
+              ? {
+                  ...contribution,
+                  source: {
+                    ...contribution.source,
+                    label: relabelForDay(contribution.source.label, date),
+                  },
+                }
+              : contribution,
+          ),
+        }
+      : item,
   );
 }
 
