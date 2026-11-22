@@ -380,6 +380,24 @@ describe('all delivery workflows', () => {
     }
   });
 
+  test('secrets set confirms with --yes and overrides every fixed value of [edge_runtime.secrets]', () => {
+    // The CLI pushes the fixed values of config.toml with every `secrets set`; a local value such
+    // as VAPID_SUBJECT = "https://localhost" must never reach a cloud project.
+    const config = readFileSync(path.join(root, 'supabase/config.toml'), 'utf8');
+    const section = config.split(/^\[edge_runtime\.secrets\]$/m)[1].split(/^\[/m)[0];
+    const fixed = [...section.matchAll(/^([A-Z0-9_]+)\s*=\s*"(?!env\()/gm)].map((m) => m[1]);
+    assert.ok(fixed.includes('VAPID_SUBJECT'));
+    for (const file of ['preview.yml', 'release.yml', 'redeploy-web.yml']) {
+      for (const [id, job] of Object.entries(jobsOf(file))) {
+        for (const run of runs(job).filter((r) => /supabase secrets set/.test(r))) {
+          assert.match(run, / --yes /, `${file} ${id}`);
+          for (const name of fixed)
+            assert.match(run, new RegExp(`"${name}=`), `${file} ${id}: ${name}`);
+        }
+      }
+    }
+  });
+
   test('the pooler address comes from the job environment and is checked before the first database command', () => {
     for (const file of ['preview.yml', 'release.yml', 'redeploy-web.yml']) {
       for (const [id, job] of Object.entries(jobsOf(file))) {
@@ -541,11 +559,11 @@ describe('preview.yml (Task 7)', () => {
     assert.equal((preview.text.match(/PREVIEW_INVITE_EMAILS }}/g) ?? []).length, 1);
   });
 
-  test('decision 8: the preview sets only ALLOWED_ORIGINS, no push or AI values', () => {
+  test('decision 8: the preview sets only ALLOWED_ORIGINS and VAPID_SUBJECT, no push keys or AI values', () => {
     const job = jobs['supabase-vorschau'];
     assert.equal(
       steps(job)[stepIndex(job, /supabase secrets set/)].run,
-      `supabase secrets set ${REMOTE_REF} "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"`,
+      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" "VAPID_SUBJECT=$PREVIEW_WEB_ORIGIN"`,
     );
     assert.doesNotMatch(JSON.stringify(preview.doc), /FOUNDRY_|VAPID_PRIVATE|PUSH_SEND_SECRET/);
   });
@@ -721,7 +739,7 @@ describe('release.yml (Task 8)', () => {
     assert.doesNotMatch(runs(job).join('\n'), /--dry-run|--include-seed|--include-all/);
     assert.equal(
       steps(job)[stepIndex(job, /supabase secrets set/)].run,
-      `supabase secrets set ${REMOTE_REF} "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN"`,
+      `supabase secrets set ${REMOTE_REF} --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "VAPID_SUBJECT=$PRODUCTION_WEB_ORIGIN"`,
     );
     assert.doesNotMatch(JSON.stringify(release.doc), /FOUNDRY_|VAPID_PRIVATE|PUSH_SEND_SECRET/);
   });
