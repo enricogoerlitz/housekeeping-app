@@ -1,8 +1,10 @@
 import {
   calendarDayParam,
+  formatLongDate,
   monthTitle,
   orderSlotEntries,
   periodContains,
+  periodForDay,
   periodStart,
   shiftPeriod,
   switchView,
@@ -24,12 +26,14 @@ import {
   Section,
   Text,
   ViewTabs,
+  announce,
+  panelPlacement,
   useBreakpoint,
   type MenuOption,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View, type HostInstance } from 'react-native';
 
 import { AbsenceSheet } from '@/features/absences/absence-sheet';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
@@ -37,11 +41,13 @@ import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useHideAssistantButton } from '@/lib/assistant';
 import { useSettings } from '@/lib/settings';
 import { useHandedTarget } from '@/lib/target-params';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
+import { DayPanel } from './day-panel';
 import { MonthView } from './month-view';
 import { WeekView } from './week-view';
 import { YearView } from './year-view';
@@ -57,7 +63,7 @@ type MoreAction = 'household-row' | 'absence-new' | 'absences';
 /** `/kalender?tag=…` from the "Übersicht"; with `eintrag` and `haushalt` from a notification. */
 const TARGET_PARAMS = ['tag', 'eintrag', 'haushalt'] as const;
 
-/** The day of the month whose entries stand under the grid on phones: today, else the first. */
+/** The week "Auf die Einkaufsliste" takes in the month without a chosen day: today's, else the first. */
 function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
   return periodContains('month', monthStart, today) ? today : monthStart;
 }
@@ -74,12 +80,30 @@ export function CalendarScreen() {
   const settings = useSettings();
   const router = useRouter();
   const online = useOnlineOnly();
-  const { isPhone, isWide, bp } = useBreakpoint();
+  const { isPhone, isWide, bp, width } = useBreakpoint();
+  const focused = useIsFocused();
   const { today } = data;
 
   const [view, setView] = useState<CalendarView>('week');
   const [start, setStart] = useState<ISODate>(() => periodStart('week', today));
-  const [selected, setSelected] = useState<ISODate>(today);
+  // The day window of month and year (spec 0016, REQ-006). `panelDay` stays while it slides away.
+  const [panelDay, setPanelDay] = useState<ISODate>(today);
+  const [dayOpen, setDayOpen] = useState(false);
+  const selected = dayOpen && view !== 'week' ? panelDay : undefined;
+  const [newTrip, setNewTrip] = useState<ISODate | undefined>();
+  // Every day cell of month and year, so the day gets the focus back when the window closes and
+  // a later drag (spec 0016, REQ-001) can find its targets.
+  const dayCells = useRef(new Map<ISODate, HostInstance>());
+  const registerDay = useCallback((date: ISODate, node: HostInstance | null) => {
+    if (node) dayCells.current.set(date, node);
+    else dayCells.current.delete(date);
+  }, []);
+  const returnFocus = useRef<{ focus: () => void }>(null);
+  useEffect(() => {
+    returnFocus.current = { focus: () => dayCells.current.get(panelDay)?.focus() };
+  }, [panelDay]);
+  // The floating assistant button would cover the lower part of the day window.
+  useHideAssistantButton(selected !== undefined && focused && panelPlacement(width) === 'bottom');
   const [adding, setAdding] = useState<AddTarget | undefined>();
   const [openEntryId, setOpenEntryId] = useState<Id | undefined>();
   // Removed on another device while open: the window just closes.
@@ -91,7 +115,20 @@ export function CalendarScreen() {
   const show = (nextView: CalendarView, nextStart: ISODate) => {
     setView(nextView);
     setStart(nextStart);
-    if (nextView === 'month') setSelected(defaultSelected(nextStart, today));
+    // The week has no day window; month and year keep the chosen day (AC-027).
+    if (nextView === 'week') setDayOpen(false);
+  };
+  const openDay = (date: ISODate) => {
+    announce(
+      selected === undefined ? `Tages-Fenster, ${formatLongDate(date)}` : formatLongDate(date),
+    );
+    setPanelDay(date);
+    setDayOpen(true);
+  };
+  // From the week strip or a swipe: the grid follows when the day is out of view (AC-023).
+  const chooseDay = (date: ISODate) => {
+    openDay(date);
+    setStart(periodForDay(view, start, date));
   };
   // The day handed over by the "Übersicht" or a notification: taken once, then the parameters are
   // cleared, so the same link works again and paging is not pulled back to it. A notification's
@@ -106,13 +143,13 @@ export function CalendarScreen() {
     if (handedDay) {
       setView('week');
       setStart(periodStart('week', handedDay));
-      setSelected(handedDay);
+      setDayOpen(false);
     }
     if (handedEntryId) setOpenEntryId(handedEntryId);
   }
 
   const changeView = (next: CalendarView) => {
-    if (next !== view) show(next, switchView(view, next, start, today));
+    if (next !== view) show(next, switchView(view, next, start, today, selected));
   };
   const page = (steps: number) => show(view, shiftPeriod(view, start, steps));
   const toToday = () => show(view, periodStart(view, today));
@@ -123,7 +160,9 @@ export function CalendarScreen() {
       : view === 'month'
         ? settings.householdRow.month
         : false;
-  const shownWeek = weekDates(view === 'month' ? selected : start);
+  const shownWeek = weekDates(
+    view === 'month' ? (selected ?? defaultSelected(start, today)) : start,
+  );
 
   const moreOptions: MenuOption<MoreAction>[] = [
     // The year never shows chores, so it has no switch for them (AC-019).
@@ -261,6 +300,25 @@ export function CalendarScreen() {
       testID="calendar-screen"
       header={<ScreenHeader title="Kalender" right={actions} />}
       tabs={tabs}
+      aside={
+        <DayPanel
+          data={data}
+          open={selected !== undefined}
+          date={panelDay}
+          onClose={() => setDayOpen(false)}
+          onChooseDay={chooseDay}
+          // Chores follow the household row of the month, in the year too (REQ-006).
+          showHousehold={settings.householdRow.month}
+          onAdd={onAdd}
+          onOpenEntry={setOpenEntry}
+          onOpenStripe={openStripe}
+          onNewTrip={(date) => {
+            if (!online.disabled) setNewTrip(date);
+          }}
+          onShowWeek={(date) => show('week', periodStart('week', date))}
+          returnFocusRef={returnFocus}
+        />
+      }
     >
       {view === 'week' ? (
         <WeekView
@@ -278,13 +336,12 @@ export function CalendarScreen() {
           data={data}
           monthStart={start}
           selected={selected}
-          onSelect={setSelected}
+          onOpenDay={openDay}
+          registerDay={registerDay}
           showHousehold={householdOn}
           wide={isWide}
-          onAdd={onAdd}
           onOpenEntry={setOpenEntry}
           onOpenStripe={openStripe}
-          onOpenDay={(date) => show('week', periodStart('week', date))}
         />
       ) : null}
       {view === 'year' ? (
@@ -292,6 +349,9 @@ export function CalendarScreen() {
           data={data}
           year={Number(start.slice(0, 4))}
           columns={isPhone ? 3 : bp === 'desktop' ? 4 : 3}
+          selected={selected}
+          onOpenDay={openDay}
+          registerDay={registerDay}
           onOpenMonth={(monthStart) => show('month', monthStart)}
           onOpenStripe={openStripe}
         />
@@ -343,6 +403,12 @@ export function CalendarScreen() {
         <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
       ) : null}
       {newAbsence ? <AbsenceSheet onClose={() => setNewAbsence(false)} /> : null}
+      {newTrip ? (
+        <AbsenceSheet
+          initialRange={{ from: newTrip, to: newTrip }}
+          onClose={() => setNewTrip(undefined)}
+        />
+      ) : null}
     </Screen>
   );
 }

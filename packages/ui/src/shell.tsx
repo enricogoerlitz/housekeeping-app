@@ -62,6 +62,12 @@ export interface PageScrollControl {
 
 export const PageScrollControlContext = createContext<PageScrollControl | undefined>(undefined);
 
+/**
+ * Set by Screen around its `aside`: a DockedPanel at the bottom reports the height it covers, so
+ * the page gets that much room at its end.
+ */
+export const AsideInsetContext = createContext<((height: number) => void) | undefined>(undefined);
+
 export interface ScreenProps {
   children?: ReactNode;
   /**
@@ -79,8 +85,8 @@ export interface ScreenProps {
   /** Fixed content below the scroll area, e.g. a ComposerBar. */
   footer?: ReactNode;
   /**
-   * A DockedPanel: from 700 px it stands right of the scroll area, below header and tabs; on
-   * phones it lies over the lower part of the screen area, above the tab bar.
+   * A DockedPanel: from 1100 px it stands right of the scroll area, below header and tabs; on
+   * phones and tablets it lies over the lower part of the screen area, above the tab bar.
    */
   aside?: ReactNode;
   /**
@@ -128,6 +134,7 @@ export function Screen(props: ScreenProps) {
     now: 0,
   });
   const [toolbarHeight, setToolbarHeight] = useState(0);
+  const [asideInset, setAsideInset] = useState(0);
 
   const scrollY = useSharedValue(0);
   const isCollapsed = useSharedValue(false);
@@ -202,7 +209,10 @@ export function Screen(props: ScreenProps) {
     <View
       style={[
         inner,
-        { paddingTop: 8, paddingBottom: (props.clearFab ?? true) ? 96 : 24 },
+        {
+          paddingTop: 8,
+          paddingBottom: Math.max((props.clearFab ?? true) ? 96 : 24, asideInset + 24),
+        },
         props.style,
       ]}
     >
@@ -244,6 +254,9 @@ export function Screen(props: ScreenProps) {
     </ScreenChromeContext.Provider>
   ) : null;
   const tabs = props.tabs ? <View style={inner}>{props.tabs}</View> : null;
+  const aside = props.aside ? (
+    <AsideInsetContext.Provider value={setAsideInset}>{props.aside}</AsideInsetContext.Provider>
+  ) : null;
 
   if (!overlay) {
     return (
@@ -265,7 +278,7 @@ export function Screen(props: ScreenProps) {
           {props.aside ? (
             <View style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' }}>
               <View style={{ flex: 1 }}>{body}</View>
-              {props.aside}
+              {aside}
             </View>
           ) : (
             body
@@ -316,7 +329,7 @@ export function Screen(props: ScreenProps) {
             {tabs}
             <Animated.View pointerEvents="none" style={[line, chromeLine]} />
           </View>
-          {props.aside}
+          {aside}
         </View>
         {props.footer}
       </View>

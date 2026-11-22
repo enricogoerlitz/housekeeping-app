@@ -22,6 +22,8 @@ const RUBBER_STIFFNESS = 0.55;
 const SIDE_MIN = 320;
 const SIDE_MAX = 400;
 const SIDE_SHARE = 0.3;
+/** The desktop breakpoint of `useBreakpoint`. */
+const SIDE_FROM = 1100;
 
 /**
  * Heights in the space between the top of the screen area and its bottom edge (the tab bar):
@@ -94,7 +96,16 @@ export function stepPanel(state: DockedPanelState, direction: 'up' | 'down'): Pa
   return state === 'full' ? 'half' : 'closed';
 }
 
-/** Width of the panel beside the content from 700 px: about 30 % of the window, 320–400 px. */
+/**
+ * Where the panel stands: beside the content from the desktop width on, at the bottom below it.
+ * Tablets keep the bottom panel too: in iPad portrait (768–820 px) the 256 px sidebar and a
+ * 320 px panel would leave the month grid only 120–250 px.
+ */
+export function panelPlacement(windowWidth: number): 'bottom' | 'side' {
+  return windowWidth >= SIDE_FROM ? 'side' : 'bottom';
+}
+
+/** Width of the panel beside the content: about 30 % of the window, 320–400 px. */
 export function sidePanelWidth(windowWidth: number): number {
   return Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(windowWidth * SIDE_SHARE)));
 }

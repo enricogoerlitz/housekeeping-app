@@ -5,6 +5,7 @@ import {
   dragHeight,
   isTap,
   panelHeights,
+  panelPlacement,
   sidePanelWidth,
   snapHeight,
   snapPanel,
@@ -127,11 +128,21 @@ describe('tap and keyboard steps', () => {
   });
 });
 
-describe('side panel from 700 px (REQ-006)', () => {
+describe('side panel (REQ-006)', () => {
   it('AC-024: is 320 to 400 px wide, about 30 % of the window', () => {
-    expect(sidePanelWidth(768)).toBe(320);
+    expect(sidePanelWidth(1100)).toBe(330);
     expect(sidePanelWidth(1200)).toBe(360);
     expect(sidePanelWidth(1440)).toBe(400);
     expect(sidePanelWidth(2560)).toBe(400);
+  });
+
+  it('AC-022 / AC-024: stands at the bottom on phones and tablets, beside the content from 1100 px', () => {
+    expect(panelPlacement(390)).toBe('bottom');
+    // iPad portrait: beside the 256 px sidebar a 320 px panel would leave the grid 120–250 px.
+    expect(panelPlacement(768)).toBe('bottom');
+    expect(panelPlacement(820)).toBe('bottom');
+    expect(panelPlacement(1099)).toBe('bottom');
+    expect(panelPlacement(1100)).toBe('side');
+    expect(panelPlacement(1440)).toBe('side');
   });
 });

@@ -56,8 +56,14 @@ const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
  * Reisetaschen; "Speichern · 21 Packstücke" creates the absence and its packing list in one call
  * (spec 0012, AC-011 to AC-015). Editing keeps the packing list; when a person's absence goes
  * away with its own list, a dialog names that list before anything is saved (decision 8).
+ * `initialRange` fills "Von" and "Bis" of a new one, e.g. the day of the day window (spec 0016,
+ * AC-032).
  */
-export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => void }) {
+export function AbsenceSheet(props: {
+  stripe?: AbsenceStripe;
+  initialRange?: { from: ISODate; to: ISODate };
+  onClose: () => void;
+}) {
   const members = useMembers();
   const me = useCurrentMember();
   const today = useToday();
@@ -72,11 +78,13 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       : [me.id],
   );
   const [range, setRange] = useState<RangePick>({
-    from: editing?.from ?? today,
-    to: editing?.to ?? today,
+    from: editing?.from ?? props.initialRange?.from ?? today,
+    to: editing?.to ?? props.initialRange?.to ?? today,
     editing: null,
   });
-  const [month, setMonth] = useState<ISODate>(startOfMonth(editing?.from ?? today));
+  const [month, setMonth] = useState<ISODate>(
+    startOfMonth(editing?.from ?? props.initialRange?.from ?? today),
+  );
   const [note, setNote] = useState(editing?.note ?? '');
   const [bagIds, setBagIds] = useState<Id[]>([]);
   const [confirming, setConfirming] = useState(false);
