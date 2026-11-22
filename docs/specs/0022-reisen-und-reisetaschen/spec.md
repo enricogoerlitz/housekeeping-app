@@ -275,6 +275,11 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
     Packstück); die Gepackt-Spalten bleiben gesperrt.
 17. **Beim Bau:** „Übernehmen“ ist die Domain-Op `adopt_bag_changes` von `apply_changes`; ihr
     „Rückgängig“ ist dieselbe Op umgekehrt (ein inzwischen Gepacktes bleibt auch dabei unberührt).
+18. **Beim Zusammenführen (22.11.2026):** Die Migrationen laufen nach der von Spec 0027 und
+    übernehmen deren Feedback-Liste in `apply_changes`; das Streichen von `absences` trägt den Kopf
+    `-- contract: …; min_app_version: 2026.11.1`. Das Reise-Fenster (`reise`) und „Neue Reise“
+    (`fenster=neu-reise`) laufen über `usePageParams` von Spec 0019 (Öffnen legt einen
+    Verlaufseintrag an, „Zurück“ schließt); `reise` gilt auch auf `/reisetaschen`.
 
 ## Daten
 

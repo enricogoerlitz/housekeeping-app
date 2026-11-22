@@ -42,6 +42,22 @@ test('AC-001 / AC-006 (0022): the window over "Reisen" and over the "Übersicht"
   await expect(page).not.toHaveURL(/reise=/);
 });
 
+test('AC-007 (0022), REQ-013 (0019): the trip window and "Neue Reise" are windows in the address; Back closes them', async ({
+  page,
+}) => {
+  await openFromTrips(page, MALLORCA);
+  await expect(page).toHaveURL(new RegExp(`/reisen\\?reise=${MALLORCA}`));
+  await page.goBack();
+  await expect(tid(page, 'trip-window')).toBeHidden();
+  await expect(page).toHaveURL(/\/reisen$/);
+  await expect(tid(page, 'trips-screen')).toBeVisible();
+
+  await tid(page, 'trips-new').click();
+  await expect(page).toHaveURL(/\/reisen\?fenster=neu-reise$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/reisen$/);
+});
+
 test('AC-011 / AC-013 (0022): changing the note shows "Speichern", the window stays open; ✕ with changes asks', async ({
   page,
 }) => {
