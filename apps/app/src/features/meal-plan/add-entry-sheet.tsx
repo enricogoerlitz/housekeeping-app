@@ -23,6 +23,7 @@ import {
 } from '@housekeeping/api';
 import {
   addDays,
+  addedNotice,
   collectionRecipeCountLabel,
   contentsInBook,
   formatPickerDate,
@@ -320,7 +321,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const done = (title: string, planned: ISODate | null) => {
     props.onClose();
     toast.show({
-      message: planned ? `„${title}“ steht am ${dayLabel(planned)}` : `„${title}“ ist vorgemerkt`,
+      message: addedNotice(title, planned, today),
     });
   };
   const created = (title: string, planned: ISODate | null) => {

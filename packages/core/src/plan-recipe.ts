@@ -1,4 +1,4 @@
-import { weekRangeLabel } from './calendar';
+import { formatPickerDate, weekRangeLabel } from './calendar';
 import { addDays, formatShortDate, startOfWeek, weekDates, weekdayShort } from './dates';
 import { defaultEaters } from './meal-plan';
 import type { Absence, Id, ISODate, MealSlot, Member } from './types';
@@ -76,6 +76,20 @@ export function planButtonLabel(date: ISODate | null, slotName: string): string 
 export function plannedNotice(date: ISODate | null, slotName: string): string {
   if (date === null) return 'Vorgemerkt';
   return `Eingeplant: ${weekdayShort(date)} ${formatShortDate(date)}, ${slotName}`;
+}
+
+/**
+ * The notice after adding from the calendar: "„Lasagne“ steht am Sa 28.11.", with the year when it
+ * is not the current one ("Sa 16.1.2027"), "„Shakshuka“ ist vorgemerkt" without a day (spec 0016:
+ * the calendar pages over months and years, a weekday and day alone are ambiguous).
+ */
+export function addedNotice(title: string, date: ISODate | null, today: ISODate): string {
+  if (date === null) return `„${title}“ ist vorgemerkt`;
+  const day =
+    date.slice(0, 4) === today.slice(0, 4)
+      ? `${weekdayShort(date)} ${formatShortDate(date)}`
+      : formatPickerDate(date);
+  return `„${title}“ steht am ${day}`;
 }
 
 /**
