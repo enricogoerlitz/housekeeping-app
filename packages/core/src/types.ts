@@ -211,7 +211,8 @@ export interface MealPlanEntry {
   variants: PlanEntryVariant[];
   cookId?: Id;
   sort: number;
-  notCooked?: boolean;
+  /** "Nicht gemacht" (spec 0020, REQ-008): it did not happen; counts for no history or rating. */
+  notDone?: boolean;
   /**
    * "Uhrzeit (optional)" (spec 0021, REQ-013): when it starts, the reserved time of a restaurant;
    * only on restaurant and activity entries.

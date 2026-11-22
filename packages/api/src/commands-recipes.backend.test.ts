@@ -612,7 +612,7 @@ describe('spec 0008: saving a section (REQ-007, REQ-008, E7, E10)', () => {
         portions: 1,
         variants: [{ variantId: chicken.id, portions: 1 }],
         sort: index,
-        not_cooked: false,
+        not_done: false,
       })),
     });
     await engine.pull();

@@ -76,7 +76,7 @@ insert into public.recipe_favorites (household_id, recipe_id, member_id) values
   (tests.fx('home_a'), tests.fx('halloumi'), tests.fx('mia'));
 insert into public.meal_plan_entries
   (id, household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id, text, eater_ids, guests, portions,
-   variants, cook_id, sort, not_cooked) values
+   variants, cook_id, sort, not_done) values
   (tests.fx('e_past'), tests.fx('home_a'), current_date - 5, tests.fx('slot_abend'), 'recipe', tests.fx('halloumi'),
    null, null, array[tests.fx('enrico'), tests.fx('nadja'), tests.fx('mia')], 1, 4,
    '[{"variantId": "v1", "portions": 2}, {"variantId": "v2", "portions": 2}]', tests.fx('mia'), 0, false),

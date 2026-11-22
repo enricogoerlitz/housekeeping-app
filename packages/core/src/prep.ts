@@ -70,7 +70,7 @@ export function prepItems(input: {
 }): PrepItem[] {
   const slotNames = new Map(input.slots.map((slot) => [slot.id, slot.name]));
   return input.entries.flatMap((entry): PrepItem[] => {
-    if (entry.kind !== 'recipe' || entry.date === null || entry.notCooked) return [];
+    if (entry.kind !== 'recipe' || entry.date === null || entry.notDone) return [];
     const planned =
       entry.recipeId === undefined ? undefined : input.book.recipesById[entry.recipeId];
     if (planned === undefined) return [];

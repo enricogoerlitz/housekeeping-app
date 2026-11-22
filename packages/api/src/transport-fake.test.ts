@@ -1645,7 +1645,7 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
     variants: [{ variantId: 'v-tofu', portions: 2 }],
     cook_id: NADJA,
     sort: 0,
-    not_cooked: false,
+    not_done: false,
     ...row,
   });
 

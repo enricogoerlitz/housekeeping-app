@@ -359,7 +359,7 @@ describe('visitsOf', () => {
         restaurantId: 'act-bouldern',
       }),
       planned('unplanned', null),
-      planned('skipped', '2026-11-12', { notCooked: true }),
+      planned('skipped', '2026-11-12', { notDone: true }),
     ];
     expect(visitsOf('activity', 'act-bouldern', entries, today)).toEqual({
       count: 1,
@@ -463,7 +463,7 @@ describe('leftovers from the seven days before (REQ-011)', () => {
 
   it('AC-047: a future target day counts planned dishes, not those marked "nicht gekocht"', () => {
     const future = [
-      entry({ id: 'pizza', date: '2026-11-21', notCooked: true }),
+      entry({ id: 'pizza', date: '2026-11-21', notDone: true }),
       entry({ id: 'gulasch', date: '2026-11-23' }),
     ];
     expect(leftoverCandidates(future, '2026-11-27', slots, {}).map((e) => e.id)).toEqual([

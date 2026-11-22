@@ -790,7 +790,7 @@ export type Database = {
           id: string;
           kind: string;
           leftovers_of_entry_id: string | null;
-          not_cooked: boolean;
+          not_done: boolean;
           note: string | null;
           portions: number;
           recipe_id: string | null;
@@ -817,7 +817,7 @@ export type Database = {
           id?: string;
           kind: string;
           leftovers_of_entry_id?: string | null;
-          not_cooked?: boolean;
+          not_done?: boolean;
           note?: string | null;
           portions?: number;
           recipe_id?: string | null;
@@ -843,7 +843,7 @@ export type Database = {
           id?: string;
           kind?: string;
           leftovers_of_entry_id?: string | null;
-          not_cooked?: boolean;
+          not_done?: boolean;
           note?: string | null;
           portions?: number;
           recipe_id?: string | null;

@@ -72,7 +72,7 @@ export function recapItems(input: {
   for (let back = 1; back <= RECAP_DAYS; back++) {
     const date = addDays(input.today, -back);
     for (const entry of entriesForDay(input.entries, date, input.slotOrder)) {
-      if (entry.notCooked) continue;
+      if (entry.notDone) continue;
       if (entry.eaterIds.length > 0 && !entry.eaterIds.includes(memberId)) continue;
       const found = target(entry);
       if (found === undefined) continue;

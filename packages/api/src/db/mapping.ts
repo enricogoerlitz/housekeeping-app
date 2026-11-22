@@ -5,7 +5,7 @@
 // ratings, votes) fold into `favoriteOf`, `ratings` and `votes`.
 //
 // Documented normalisations (a round trip is equal modulo these):
-// - null in a row ⇄ undefined (missing) in the domain; `not_cooked` / `not_available` false ⇄
+// - null in a row ⇄ undefined (missing) in the domain; `not_done` / `not_available` false ⇄
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
@@ -357,7 +357,7 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     variants: json(entry.variants),
     cook_id: entry.cookId ?? null,
     sort: entry.sort,
-    not_cooked: entry.notCooked ?? false,
+    not_done: entry.notDone ?? false,
     starts_at: entry.startsAt === undefined ? null : toDbTime(entry.startsAt),
     reminder_day_offset: entry.reminder?.offsetDays ?? null,
     reminder_at: entry.reminder ? toDbTime(entry.reminder.at) : null,
@@ -853,7 +853,7 @@ function toPlanEntry(row: Row): MealPlanEntry {
     variants: (r.variants ?? []) as unknown as MealPlanEntry['variants'],
     cookId: opt(r.cook_id),
     sort: r.sort ?? 0,
-    notCooked: r.not_cooked ? true : undefined,
+    notDone: r.not_done ? true : undefined,
     startsAt: fromDbTime(r.starts_at),
     reminder: toReminder(r),
   };

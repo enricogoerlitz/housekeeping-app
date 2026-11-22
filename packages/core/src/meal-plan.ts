@@ -207,7 +207,7 @@ export function visitsOf(
   for (const entry of entries) {
     const targetId = kind === 'restaurant' ? entry.restaurantId : entry.activityId;
     if (entry.kind !== kind || targetId !== id || entry.date === null) continue;
-    if (entry.date > today || entry.notCooked) continue;
+    if (entry.date > today || entry.notDone) continue;
     dates.push(entry.date);
   }
   dates.sort().reverse();
@@ -268,7 +268,7 @@ function leftoverSources(
         beforeTarget(entry, target, slotOrder, targetSlotId) &&
         (entry.kind === 'recipe' || entry.kind === 'text') &&
         (entry.recipeId === undefined || recipesById[entry.recipeId]?.kind !== 'collection') &&
-        !entry.notCooked,
+        !entry.notDone,
     )
     .sort(
       (a, b) =>

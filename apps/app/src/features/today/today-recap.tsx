@@ -129,7 +129,7 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
   const notDone = (item: RecapItem) => {
     setValues((current) => withoutKey(current, rowId(item)));
     try {
-      updatePlanEntry(item.entry.id, { notCooked: true });
+      updatePlanEntry(item.entry.id, { notDone: true });
     } catch (error) {
       toast.show({
         message: error instanceof OfflineError ? (online.hint ?? FAILED) : FAILED,
@@ -139,7 +139,7 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
     toast.show({
       message: notDoneMessage(item.title),
       actionLabel: 'Rückgängig',
-      onAction: undoAction(() => updatePlanEntry(item.entry.id, { notCooked: false })),
+      onAction: undoAction(() => updatePlanEntry(item.entry.id, { notDone: false })),
     });
   };
 

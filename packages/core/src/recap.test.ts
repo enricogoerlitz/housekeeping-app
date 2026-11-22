@@ -99,7 +99,7 @@ describe('REQ-003: "Wie war\'s?"', () => {
     const yesterday = [
       entry({ id: 'oma', kind: 'text', text: 'Essen bei Oma' }),
       entry({ id: 'reste', kind: 'leftovers', leftoversOfEntryId: 'fr' }),
-      entry({ id: 'pizza', recipeId: 'pizza', notCooked: true }),
+      entry({ id: 'pizza', recipeId: 'pizza', notDone: true }),
     ];
     expect(recap(yesterday)).toEqual([]);
   });
@@ -169,7 +169,7 @@ describe('REQ-003: "Wie war\'s?"', () => {
         kind: 'activity',
         activityId: 'bouldern',
         slotId: 'slot-vormittag',
-        notCooked: true,
+        notDone: true,
       }),
     ];
     expect(recap(sunday)).toEqual([]);
