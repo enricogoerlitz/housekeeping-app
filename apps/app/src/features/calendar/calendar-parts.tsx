@@ -184,7 +184,7 @@ export function EntryLine(props: {
         size={size}
         detail={
           reminder ? (
-            <ReminderBell label={reminder.label} testID={`entry-${entry.id}-reminder`} />
+            <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
           ) : undefined
         }
         onPress={guardPress(() => props.onPress(entry))}
