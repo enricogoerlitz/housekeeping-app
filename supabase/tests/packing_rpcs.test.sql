@@ -269,8 +269,8 @@ select throws_ok(
   '22023', 'invalid_change', 'T2 apply_changes: an insert with packed is rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'packing_items', 'id', tests.fx('open'), 'changes', jsonb_build_object('name', 'X')))),
-  '22023', 'invalid_change', 'T2 apply_changes: packing items cannot be patched');
+    'kind', 'patch', 'table', 'packing_items', 'id', tests.fx('open'), 'changes', jsonb_build_object('pack_seq', 5)))),
+  '22023', 'invalid_change', 'T2 apply_changes: the packed state of packing items is never patched');
 
 -- ===================== restore_packing_items (AC-034, AC-035) =====================
 -- Nadja removed "Strand" with two packed items; "Rückgängig" inserts the bag and restores them.

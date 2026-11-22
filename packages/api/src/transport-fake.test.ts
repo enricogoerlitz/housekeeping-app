@@ -2031,7 +2031,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
     expect(state('p-open')).toMatchObject({ packed: false, pack_seq: 0 });
   });
 
-  it('inserts start open; "je Tag" is computed from the trip; no patch of packing items', async () => {
+  it('inserts start open; "je Tag" is computed from the trip; no patch of the packed state', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
       {
@@ -2051,7 +2051,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         table: 'packing_items',
         row: { id: 'p-cheat', list_bag_id: 'lb-1', name: 'X', sort: 0, packed: true },
       },
-      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { name: 'Neu' } },
+      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { pack_seq: 4 } },
       { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { name: 'Neu' } },
     ] as RowOp[]) {
       await expect(enrico.applyChanges(H, [op])).rejects.toMatchObject({ code: 'invalid_change' });

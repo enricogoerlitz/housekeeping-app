@@ -285,6 +285,8 @@ describe('Packliste: creating', () => {
       packed: false,
       packSeq: 0,
       sort: 0,
+      bagItemId: expect.any(String),
+      fromBag: true,
     });
     expect(plan.items.find((item) => item.name === 'Badehose')).toMatchObject({
       quantity: 2,
@@ -417,9 +419,11 @@ describe('Packliste: extending', () => {
         listBagId: 'l-strand',
         name: 'Schnorchel',
         quantity: undefined,
+        perDay: undefined,
         packed: false,
         packSeq: 0,
         sort: 9,
+        fromBag: false,
       },
     });
   });

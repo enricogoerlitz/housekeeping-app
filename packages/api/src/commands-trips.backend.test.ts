@@ -7,8 +7,9 @@ import { H, withBackend } from './backend-test-helpers';
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { removeMember } from './commands-household';
 import { setPacked } from './commands-packing';
-import { createTrip, removeTrip, updateTrip } from './commands-trips';
-import { ENRICO, NADJA } from './seed/demo';
+import { addPlanEntry } from './commands-plan';
+import { createTrip, removeTrip, takeTravellersOut, updateTrip } from './commands-trips';
+import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH } from './seed/demo';
 import { getData, snapshot } from './store';
 import { TransportError } from './transport';
 
@@ -228,5 +229,60 @@ describe('somebody leaves the household (AC-044)', () => {
     expect(listOf(shared).items).toHaveLength(12);
     expect(tripOf(yoga)).toBeUndefined();
     expect(listOf(yoga).items).toEqual([]);
+  });
+});
+
+describe('taking travellers out of planned dishes (REQ-007, K-02)', () => {
+  const plan = (text: string, date: string, eaterIds: string[], slotId = SLOT_DINNER) =>
+    addPlanEntry({
+      date,
+      slotId,
+      kind: 'text',
+      text,
+      eaterIds,
+      portions: eaterIds.length,
+      cookId: ENRICO,
+    });
+  const entryOf = (id: string) => getData().planEntries.find((entry) => entry.id === id);
+
+  it('AC-021: Lasagne keeps Nadja without cook, Shakshuka is parked, in one call; "Rückgängig" restores', async () => {
+    const engine = await fx.startEnrico();
+    const lasagne = plan('Lasagne', '2027-03-01', [ENRICO, NADJA]);
+    const shakshuka = plan('Shakshuka', '2027-03-03', [ENRICO], SLOT_LUNCH);
+    await fx.settle(engine);
+    fx.clearCalls();
+    const restore = snapshot();
+    expect(
+      takeTravellersOut([
+        { entryId: lasagne, memberIds: [ENRICO] },
+        { entryId: shakshuka, memberIds: [ENRICO] },
+      ]),
+    ).toBe(2);
+    expect(entryOf(lasagne)).toMatchObject({ eaterIds: [NADJA], cookId: undefined });
+    expect(entryOf(shakshuka)).toMatchObject({ date: null, eaterIds: [ENRICO], portions: 1 });
+    await fx.settle(engine);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(fx.server.row(H, 'meal_plan_entries', shakshuka)).toMatchObject({ date: null });
+    restore();
+    await fx.settle(engine);
+    expect(fx.server.row(H, 'meal_plan_entries', shakshuka)).toMatchObject({ date: '2027-03-03' });
+    expect(fx.server.row(H, 'meal_plan_entries', lasagne)).toMatchObject({
+      eater_ids: [ENRICO, NADJA],
+    });
+  });
+
+  it('AC-025: an entry deleted meanwhile is left out; a server error changes nothing and shows the hint', async () => {
+    const engine = await fx.startEnrico();
+    const lasagne = plan('Lasagne', '2027-03-01', [ENRICO, NADJA]);
+    await fx.settle(engine);
+    expect(takeTravellersOut([{ entryId: 'gone', memberIds: [ENRICO] }])).toBe(0);
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    fx.server.failNext('apply_changes', new TransportError('permanent', '23514', 400));
+    takeTravellersOut([{ entryId: lasagne, memberIds: [ENRICO] }]);
+    await fx.settle(engine);
+    expect(entryOf(lasagne)?.eaterIds).toEqual([ENRICO, NADJA]);
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    stop();
   });
 });

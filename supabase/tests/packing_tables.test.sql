@@ -133,7 +133,7 @@ select * from tests.tenant_isolation('packing_items',
   jsonb_build_object('id', tests.fx('iso_item'), 'household_id', tests.fx('home_a'), 'list_bag_id', tests.fx('lb_kultur'),
                      'name', 'Kopfhörer', 'quantity', 1, 'per_day', null, 'sort', 20),
   jsonb_build_object('name', 'Kopfhörer 2'),
-  tests.fx('enrico'), tests.fx('ben'), true, false);
+  tests.fx('enrico'), tests.fx('ben'));
 
 -- ===================== updated_at is server-set =====================
 select tests.backdate('packing_bags', 'kultur');
@@ -288,8 +288,8 @@ select throws_ok(
   format('update public.packing_items set pack_seq = 5 where id = %L', tests.fx('it_socken')),
   '42501', null, 'T1 packing_items: a member cannot change pack_seq by a direct update');
 select throws_ok(
-  format('update public.packing_items set quantity = 3 where id = %L', tests.fx('it_badehose')),
-  '42501', null, 'T1 packing_items: a member cannot change the quantity of a packing item');
+  format('update public.packing_items set list_bag_id = %L where id = %L', tests.fx('lb_short'), tests.fx('it_badehose')),
+  '42501', null, 'T1 packing_items: a member cannot move a packing item to another bag');
 
 -- ===================== Insert trigger: "je Tag" and open state (AC-011, AC-014) =====================
 insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort) values
@@ -490,8 +490,10 @@ select ok(
   and not has_any_column_privilege('anon', 'public.packing_bags', 'select,insert,update'),
   'T1: nothing for anon');
 select ok(
-  not has_any_column_privilege('authenticated', 'public.packing_items', 'update'),
-  'T1 packing_items: no update grant at all');
+  not has_column_privilege('authenticated', 'public.packing_items', 'packed', 'update')
+  and not has_column_privilege('authenticated', 'public.packing_items', 'pack_seq', 'update')
+  and not has_column_privilege('authenticated', 'public.packing_items', 'list_bag_id', 'update'),
+  'T1 packing_items: no update grant on the packed state or the bag (spec 0022: name, quantity, je Tag)');
 
 select * from finish();
 rollback;

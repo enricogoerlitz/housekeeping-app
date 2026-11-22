@@ -164,7 +164,8 @@ export const WRITABLE_COLUMNS = {
   packing_bags: ['name', 'member_id', 'sort'],
   packing_bag_items: ['bag_id', 'name', 'quantity', 'per_day', 'sort'],
   packing_list_bags: ['trip_id', 'bag_id', 'name', 'member_id', 'sort'],
-  packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort'],
+  // Spec 0022: the origin in the Reisetasche (bag_item_id, from_bag).
+  packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort', 'bag_item_id', 'from_bag'],
   // Spec 0013, Decision 3: only these are patched, never household_id or member_id.
   notification_settings: [
     'daily_summary_enabled',
@@ -191,7 +192,8 @@ export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = 
   recipes: WRITABLE_COLUMNS.recipes.filter((column) => column !== 'kind'),
   collection_recipes: ['servings', 'variant_id', 'sort'],
   packing_list_bags: ['bag_id', 'sort'],
-  packing_items: [],
+  // Spec 0022, REQ-009: name, count, "je Tag" and the link; sent by updatePackingItem itself.
+  packing_items: ['name', 'quantity', 'per_day', 'bag_item_id', 'from_bag'],
   trip_members: [],
 };
 
@@ -226,6 +228,7 @@ export const CASCADE_CHILDREN: Partial<Record<WritableTable, readonly ChildRefer
 /** `on delete set null`: deleting the parent clears the reference; the diff does not send it. */
 export const SET_NULL_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
   packing_bags: [{ table: 'packing_list_bags', column: 'bag_id' }],
+  packing_bag_items: [{ table: 'packing_items', column: 'bag_item_id' }],
 };
 
 /**

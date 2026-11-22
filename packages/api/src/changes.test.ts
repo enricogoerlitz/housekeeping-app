@@ -161,7 +161,7 @@ describe('spec 0012: what the server computes (plan, decision 3)', () => {
     ]);
   });
 
-  it('a Packstück of a packing list is never patched otherwise; a list bag keeps its copy', () => {
+  it('spec 0022: a Packstück of a packing list is renamed with a patch; a list bag keeps its copy', () => {
     const before = withThirtyItems();
     const renamed: HouseholdData = {
       ...before,
@@ -169,7 +169,9 @@ describe('spec 0012: what the server computes (plan, decision 3)', () => {
         item.id === 'pi-30-1' ? { ...item, name: 'Neu' } : item,
       ),
     };
-    expect(() => diffHousehold(before, renamed, { mode: 'send' })).toThrow(/packing_items/);
+    expect(diffHousehold(before, renamed, { mode: 'send' }).send).toEqual([
+      { kind: 'patch', table: 'packing_items', id: 'pi-30-1', changes: { name: 'Neu' } },
+    ]);
     const bagRenamed: HouseholdData = {
       ...before,
       packingListBags: before.packingListBags.map((bag) =>

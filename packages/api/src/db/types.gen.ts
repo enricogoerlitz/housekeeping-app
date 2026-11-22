@@ -1073,7 +1073,9 @@ export type Database = {
       };
       packing_items: {
         Row: {
+          bag_item_id: string | null;
           created_at: string;
+          from_bag: boolean;
           household_id: string;
           id: string;
           list_bag_id: string;
@@ -1089,7 +1091,9 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          bag_item_id?: string | null;
           created_at?: string;
+          from_bag?: boolean;
           household_id: string;
           id?: string;
           list_bag_id: string;
@@ -1104,7 +1108,9 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          bag_item_id?: string | null;
           created_at?: string;
+          from_bag?: boolean;
           household_id?: string;
           id?: string;
           list_bag_id?: string;
@@ -1119,6 +1125,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: 'packing_items_bag_item_fkey';
+            columns: ['household_id', 'bag_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'packing_bag_items';
+            referencedColumns: ['household_id', 'id'];
+          },
           {
             foreignKeyName: 'packing_items_household_id_fkey';
             columns: ['household_id'];

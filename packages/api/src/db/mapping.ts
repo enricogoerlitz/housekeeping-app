@@ -479,6 +479,8 @@ const packingItemRow = (householdId: string, item: PackingItem) =>
     packed_at: item.packedAt ?? null,
     packed_by: item.packedBy ?? null,
     pack_seq: item.packSeq,
+    bag_item_id: item.bagItemId ?? null,
+    from_bag: item.fromBag ?? false,
   }));
 
 const settingsRow = (householdId: string, settings: NotificationSettings) =>
@@ -976,6 +978,8 @@ function toPackingItem(row: Row): PackingItem {
     packedBy: opt(r.packed_by),
     packSeq: r.pack_seq ?? 0,
     sort: r.sort ?? 0,
+    bagItemId: opt(r.bag_item_id),
+    fromBag: r.from_bag === true,
   };
 }
 

@@ -168,6 +168,27 @@ export interface RestorePackingItem {
   packed_at?: string | null;
   packed_by?: string | null;
   pack_seq?: number;
+  bag_item_id?: string | null;
+  from_bag?: boolean;
+}
+
+/** A Packstück of a packing list as adopt_bag_changes inserts or updates it (spec 0022). */
+export interface AdoptPackingItem {
+  id: string;
+  name: string;
+  quantity?: number | null;
+  per_day?: number | null;
+  sort?: number;
+  bag_item_id?: string | null;
+  from_bag?: boolean;
+}
+
+/** adopt_bag_changes (spec 0022, REQ-012): touches only Packstücke still open on the server. */
+export interface AdoptBagChange {
+  list_bag_id: string;
+  insert?: AdoptPackingItem[];
+  update?: Omit<AdoptPackingItem, 'sort' | 'bag_item_id' | 'from_bag'>[];
+  delete?: string[];
 }
 
 /** A row operation, or one of the domain operations `apply_changes` allows. */
@@ -177,7 +198,8 @@ export type ChangeOp =
   | { kind: 'remove_contributions'; ids: string[] }
   | { kind: 'complete_chore'; completion: ChoreCompletion }
   | { kind: 'remove_chore_event'; id: string }
-  | { kind: 'restore_packing_items'; items: RestorePackingItem[] };
+  | { kind: 'restore_packing_items'; items: RestorePackingItem[] }
+  | { kind: 'adopt_bag_changes'; change: AdoptBagChange };
 
 /** One change of set_packing_items_packed (ADR-0013). */
 export interface PackChange {

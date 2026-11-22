@@ -428,6 +428,10 @@ export interface PackingItem {
   /** Counter for "Abhaken gewinnt" (ADR-0013). */
   packSeq: number;
   sort: number;
+  /** Spec 0022: the Packstück of the Reisetasche it came from; undefined once that one is gone. */
+  bagItemId?: Id;
+  /** It came from the Reisetasche (copied or saved there too); false = added by hand. */
+  fromBag?: boolean;
 }
 
 // ---------- Notifications (spec 0013) ----------

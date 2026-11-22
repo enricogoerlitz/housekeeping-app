@@ -225,6 +225,12 @@ const REFERENCES: {
   { table: 'packing_list_bags', column: 'bag_id', target: 'packing_bags', onDelete: 'set null' },
   {
     table: 'packing_items',
+    column: 'bag_item_id',
+    target: 'packing_bag_items',
+    onDelete: 'set null',
+  },
+  {
+    table: 'packing_items',
     column: 'list_bag_id',
     target: 'packing_list_bags',
     onDelete: 'cascade',
@@ -253,6 +259,8 @@ const RESTORE_KEYS = new Set([
   'packed_at',
   'packed_by',
   'pack_seq',
+  'bag_item_id',
+  'from_bag',
 ]);
 
 const isTrimmedName = (value: unknown, max: number) =>
@@ -1079,6 +1087,8 @@ export function createFakeServer(): FakeServer {
         packed_at: packed ? (compareTimestamps(at, time) > 0 ? time : at) : null,
         packed_by: packed ? (element.packed_by ?? null) : null,
         pack_seq: Math.min(Math.max(Number(element.pack_seq ?? 0), 0), 999_000),
+        bag_item_id: element.bag_item_id ?? null,
+        from_bag: element.from_bag === true,
       };
       row.quantity = perDayQuantity(next, row);
       next = withRow(next, 'packing_items', row);
@@ -1087,6 +1097,87 @@ export function createFakeServer(): FakeServer {
       checkPackingMembers(householdId, 'packing_items', row);
     }
     return [next, { restored: items.length }];
+  }
+
+  /**
+   * private.adopt_bag_changes (spec 0022, AC-036 to AC-038): appends, updates and deletes
+   * Packstücke of one bag of the packing list; packed or missing ones are skipped.
+   */
+  function adoptBagChanges(
+    tables: TableRows,
+    householdId: string,
+    change: unknown,
+  ): [TableRows, { inserted: number; updated: number; deleted: number }] {
+    if (!isPlainObject(change) || !isText(change.list_bag_id)) throw reject('invalid_change');
+    const listBagId = change.list_bag_id;
+    if (!tables.packing_list_bags?.[listBagId]) throw reject('invalid_change');
+    const list = (value: unknown): unknown[] => {
+      if (value === undefined) return [];
+      if (!Array.isArray(value)) throw reject('invalid_change');
+      return value as unknown[];
+    };
+    const inserts = list(change.insert);
+    const updates = list(change.update);
+    const deletes = list(change.delete);
+    if (inserts.length + updates.length + deletes.length > 200) throw reject('too_many_changes');
+    let next = tables;
+    let inserted = 0;
+    let updated = 0;
+    for (const element of inserts) {
+      if (!isPlainObject(element) || !isText(element.id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (next.packing_items?.[element.id]) throw conflict('23505');
+      const time = now();
+      const row: Row = {
+        ...OPEN_PACKING_ITEM,
+        id: element.id,
+        list_bag_id: listBagId,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day: element.per_day ?? null,
+        sort: element.sort ?? 0,
+        bag_item_id: element.bag_item_id ?? null,
+        from_bag: element.from_bag !== false,
+        created_at: time,
+        updated_at: time,
+      };
+      row.quantity = perDayQuantity(next, row);
+      next = withRow(next, 'packing_items', row);
+      checkReferences(next, 'packing_items', row);
+      checkPackingRow('packing_items', row, next);
+      inserted += 1;
+    }
+    for (const element of updates) {
+      if (!isPlainObject(element) || !isText(element.id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (
+        Object.keys(element).some((key) => !['id', 'name', 'quantity', 'per_day'].includes(key))
+      ) {
+        throw reject('invalid_change');
+      }
+      const row = next.packing_items?.[element.id];
+      if (!row || row.list_bag_id !== listBagId || row.packed === true) continue;
+      const patched: Row = {
+        ...row,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day: element.per_day ?? null,
+        updated_at: now(),
+      };
+      patched.quantity = perDayQuantity(next, patched);
+      checkPackingRow('packing_items', patched, next);
+      next = withRow(next, 'packing_items', patched);
+      updated += 1;
+    }
+    const gone = deletes.filter((id): id is string => {
+      const row = isText(id) ? next.packing_items?.[id] : undefined;
+      return row !== undefined && row.list_bag_id === listBagId && row.packed !== true;
+    });
+    next = withoutRows(next, 'packing_items', gone);
+    void householdId;
+    return [next, { inserted, updated, deleted: gone.length }];
   }
 
   /** private.set_packing_items_packed (ADR-0013): the rule table per Packstück, one transaction. */
@@ -1481,7 +1572,14 @@ export function createFakeServer(): FakeServer {
           ? Math.max(op.entries.length, 1)
           : op.kind === 'restore_packing_items'
             ? Math.max(Array.isArray(op.items) ? op.items.length : 1, 1)
-            : 1,
+            : op.kind === 'adopt_bag_changes'
+              ? Math.max(
+                  (op.change.insert?.length ?? 0) +
+                    (op.change.update?.length ?? 0) +
+                    (op.change.delete?.length ?? 0),
+                  1,
+                )
+              : 1,
     );
     const deletes = sum((op) =>
       // complete_chore too: done of a one-off chore deletes it, known only under the lock.
@@ -1489,7 +1587,9 @@ export function createFakeServer(): FakeServer {
         ? 1
         : op.kind === 'remove_contributions'
           ? op.ids.length
-          : 0,
+          : op.kind === 'adopt_bag_changes'
+            ? (op.change.delete?.length ?? 0)
+            : 0,
     );
     const contributions = sum((op) =>
       op.kind === 'add_contributions'
@@ -1524,6 +1624,10 @@ export function createFakeServer(): FakeServer {
           const [next, restored] = restorePackingItems(tables, householdId, op.items);
           tables = next;
           results.push(restored);
+        } else if (op.kind === 'adopt_bag_changes') {
+          const [next, adopted] = adoptBagChanges(tables, householdId, op.change);
+          tables = next;
+          results.push(adopted);
         } else if (op.kind === 'insert') {
           checkColumns(op.table, Object.keys(op.row), true);
           if (op.row.household_id !== undefined && op.row.household_id !== householdId) {
@@ -1603,7 +1707,12 @@ export function createFakeServer(): FakeServer {
           }
           if (op.table === 'chore_events' && 'chore_id' in op.changes)
             checkChoreLink(tables, row, op.changes.chore_id);
-          const patched = withDbTimes(op.table, { ...row, ...op.changes });
+          const merged = withDbTimes(op.table, { ...row, ...op.changes });
+          // packing_items_before_update (spec 0022): "je Tag" from the trip, also when packed.
+          const patched =
+            op.table === 'packing_items' && ('quantity' in op.changes || 'per_day' in op.changes)
+              ? { ...merged, quantity: perDayQuantity(tables, merged) }
+              : merged;
           tables = withRow(
             tables,
             op.table,

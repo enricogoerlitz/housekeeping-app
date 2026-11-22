@@ -55,6 +55,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.delete_recipe(uuid,date)'),     -- spec 0008: the only way to delete a recipe
   ('private.restore_recipe(uuid)'),         -- spec 0008: "Rückgängig" of delete_recipe
   ('private.set_packing_items_packed(uuid,jsonb)'), -- spec 0012: the only way to pack (ADR-0013)
+  ('private.adopt_bag_changes(uuid,jsonb)'),        -- spec 0022: domain op of apply_changes, "Übernehmen"
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing
   ('private.assert_restorable_size(jsonb)'), -- security invoker, a size check without data access
   ('private.is_five_minute_time(time without time zone)'), -- spec 0013: used by check constraints, no data access

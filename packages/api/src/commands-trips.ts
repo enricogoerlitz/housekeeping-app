@@ -2,14 +2,17 @@ import {
   packingSaveProblem,
   planPackingList,
   recalcPerDay,
+  recomputeEntryContributions,
   tripDays,
   validateTripDraft,
+  withoutTravellers,
   type Id,
   type ISODate,
+  type MealPlanEntry,
   type Trip,
 } from '@housekeeping/core';
 
-import { commit, getData, newId, updateData } from './store';
+import { commit, getData, getState, newId, nowISO, updateData } from './store';
 
 // Trips (spec 0022, REQ-003 to REQ-005, REQ-015): one trip with its people and one packing list.
 // Every command is one change (ADR-0011), sent as one apply_changes call.
@@ -138,4 +141,51 @@ export function removeTrip(tripId: Id): void {
       };
     }),
   );
+}
+
+/**
+ * "Rausnehmen (n)" (REQ-007, AC-021 to AC-025): takes the chosen travellers out of these dishes
+ * and lets the open items of the shopping list follow, in one call (all or nothing). An entry
+ * that is gone meanwhile is left out. Returns how many dishes were changed.
+ */
+export function takeTravellersOut(offers: readonly { entryId: Id; memberIds: Id[] }[]): number {
+  const data = getData();
+  const members = getState().members;
+  const recipesById = new Map(data.recipes.map((recipe) => [recipe.id, recipe]));
+  const articlesById = Object.fromEntries(data.articles.map((article) => [article.id, article]));
+  const found = offers.flatMap((offer) => {
+    const entry = data.planEntries.find((candidate) => candidate.id === offer.entryId);
+    return entry ? [{ entry, memberIds: offer.memberIds }] : [];
+  });
+  if (found.length === 0) return 0;
+  const now = nowISO();
+  let items = data.items;
+  const changed = new Map<Id, MealPlanEntry>();
+  for (const { entry, memberIds } of found) {
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+    const next = withoutTravellers({ entry, memberIds, recipe, members, articlesById });
+    changed.set(entry.id, next);
+    items = recomputeEntryContributions({ items, entry: next, recipe, articlesById, newId, now });
+  }
+  const itemIds = new Set(items.map((item) => item.id));
+  const contributionIds = new Set(
+    items.flatMap((item) => item.contributions.map((contribution) => contribution.id)),
+  );
+  const removedItems = data.items.filter((item) => !itemIds.has(item.id)).length;
+  const removedContributions = data.items
+    .flatMap((item) => item.contributions)
+    .filter((contribution) => !contributionIds.has(contribution.id)).length;
+  commit(
+    {
+      path: 'diff',
+      maxDeletes: { shopping_items: removedItems, shopping_contributions: removedContributions },
+    },
+    () =>
+      updateData((current) => ({
+        ...current,
+        planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
+        items,
+      })),
+  );
+  return found.length;
 }
