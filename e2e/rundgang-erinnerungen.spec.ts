@@ -240,6 +240,9 @@ test('AC-010: "Anderes Datum …" offers today up to the entry’s day and shows
 test('AC-011 / AC-012: a past moment and an odd minute are refused under the time', async ({
   page,
 }) => {
+  // 0:05 must lie in the past and 23:55 ahead: outside 0:10–23:45 the test says nothing.
+  const minutes = new Date().getHours() * 60 + new Date().getMinutes();
+  test.skip(minutes < 10 || minutes > 23 * 60 + 45, 'runs between 0:10 and 23:45 local time');
   await planAndOpen(page, TODAY, 'Curry heute');
   await toggle(page, 'entry-reminder-switch').click();
   await expect(tid(page, 'entry-reminder-day-dayBefore')).toHaveAttribute('aria-disabled', 'true');
