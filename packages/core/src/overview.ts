@@ -9,7 +9,7 @@ import {
   weekRangeLabel,
   type KindRole,
 } from './calendar';
-import { choreBucket, flexibleProgress } from './chores';
+import { dueChores, householdAwayNotice } from './chore-schedule';
 import { addDays, isoWeekNumber, parseISODate, startOfWeek, weekdayLong } from './dates';
 import { householdRow, type HouseholdRowItem } from './household-row';
 import { entriesForDay } from './meal-plan';
@@ -139,52 +139,40 @@ export function tripLines(input: { trips: Trip[]; members: Member[]; date: ISODa
   });
 }
 
-/** Flexible chores show up under "Zu tun" once this share of their interval has passed. */
-export const FLEXIBLE_DUE_FROM = 0.8;
-
-/**
- * "Zu tun" today (unchanged from spec 0001): overdue chores first, then due today, then flexible
- * ones that are nearly due. "bei Bedarf" never shows up.
- */
-export function dueChores(chores: Chore[], today: ISODate): Chore[] {
-  const rank = (chore: Chore): number | undefined => {
-    const bucket = choreBucket(chore, today);
-    if (bucket === 'overdue') return 0;
-    if (bucket === 'today') return 1;
-    if (bucket === 'flexible' && flexibleProgress(chore, today) >= FLEXIBLE_DUE_FROM) return 2;
-    return undefined;
-  };
-  return chores
-    .flatMap((chore) => {
-      const order = rank(chore);
-      return order === undefined ? [] : [{ chore, order }];
-    })
-    .sort((a, b) => a.order - b.order)
-    .map((entry) => entry.chore);
-}
-
 export type ChoresOfDay =
   /** Today: chores to check off. */
   | { kind: 'due'; chores: Chore[]; items: HouseholdRowItem[] }
   /** A later day: the dates computed from each rhythm, only to look at. */
   | { kind: 'planned'; items: HouseholdRowItem[] }
   /** A past day: what was done, only to look at. */
-  | { kind: 'done'; items: HouseholdRowItem[] };
+  | { kind: 'done'; items: HouseholdRowItem[] }
+  /**
+   * Today or a later day the whole household is away (REQ-013): instead of the list "Ihr seid
+   * unterwegs – Aufgaben warten bis Fr 11.12.".
+   */
+  | { kind: 'away'; notice: string; items: HouseholdRowItem[] };
 
 /**
  * The chores of the shown day (AC-032): today what is due, later days the planned dates and past
  * days what was done, both from the household row (spec 0010). "bei Bedarf" never shows.
- * For today `items` is empty; the rows come from `chores`.
+ * For today `items` is empty; the rows come from `chores`. Days of a trip of the whole household
+ * from today on show the notice instead (spec 0026, AC-049, AC-050).
  */
 export function choresOfDay(input: {
   chores: Chore[];
   events: ChoreEvent[];
   members: Member[];
+  trips: Trip[];
   shown: ISODate;
   today: ISODate;
 }): ChoresOfDay {
   const { shown, today } = input;
-  if (shown === today) return { kind: 'due', chores: dueChores(input.chores, today), items: [] };
+  const away = { members: input.members, trips: input.trips };
+  const notice = shown >= today ? householdAwayNotice(shown, today, away) : undefined;
+  if (notice !== undefined) return { kind: 'away', notice, items: [] };
+  if (shown === today) {
+    return { kind: 'due', chores: dueChores(input.chores, today, away), items: [] };
+  }
   const items = householdRow({ ...input, from: shown, to: shown })[shown] ?? [];
   return shown > today ? { kind: 'planned', items } : { kind: 'done', items };
 }

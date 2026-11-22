@@ -1,4 +1,4 @@
-import { validateChoreDraft, seasonMonths, type ChoreDraftErrors } from './chores';
+import { firstDueOn, validateChoreDraft, seasonMonths, type ChoreDraftErrors } from './chores';
 import { parseISODate } from './dates';
 import type { Assignment, Chore, Id, ISODate, Member, Recurrence } from './types';
 
@@ -9,8 +9,11 @@ import type { Assignment, Chore, Id, ISODate, Member, Recurrence } from './types
 export type ChoreRhythm = 'once' | 'weekly' | 'monthly' | 'months' | 'flexible' | 'asNeeded';
 export type ChoreEffortChoice = '1' | '2' | '3';
 
-/** A part of the form that, untouched, keeps the stored value of the chore. */
-export type ChoreDraftPart = 'rhythm' | 'assignment' | 'season';
+/**
+ * A part of the form that, untouched, keeps the stored value of the chore; „Nächstes Mal“
+ * (`nextDue`) follows the suggestion until it is chosen (spec 0026, REQ-002).
+ */
+export type ChoreDraftPart = 'rhythm' | 'assignment' | 'season' | 'nextDue';
 
 export interface ChoreDraft {
   title: string;
@@ -29,6 +32,14 @@ export interface ChoreDraft {
   /** Months 1–12, both inclusive; `to` before `from` runs across the turn of the year. */
   seasonFrom: number;
   seasonTo: number;
+  /** The day the form was opened: the suggestions count from it. */
+  today: ISODate;
+  /** „Nächstes Mal“ as stored or chosen; the suggestion while it is untouched (REQ-002). */
+  nextDueOn?: ISODate;
+  /** „Zuletzt erledigt (optional)“, only when creating (REQ-002, decision 9). */
+  lastDoneOn?: ISODate;
+  /** „Als Nächstes dran“ of an alternating chore (REQ-003). */
+  nextAssigneeId?: Id;
   /**
    * Whether rhythm, assignment or season were changed in the form. Untouched, the chore keeps its
    * stored value, so saving a new title neither moves the date, hands the turn on nor narrows a
@@ -46,6 +57,12 @@ export interface ChoreFields {
   effort: 1 | 2 | 3;
   /** Empty = all year. */
   activeMonths: number[];
+  /** „Nächstes Mal“ (none for „Einmalig“ and „Bei Bedarf“: their date is the rhythm's). */
+  nextDueOn?: ISODate;
+  /** „Zuletzt erledigt“ when creating; no history entry (decision 9). */
+  lastDoneOn?: ISODate;
+  /** „Als Nächstes dran“ of an alternating chore. */
+  nextAssigneeId?: Id;
 }
 
 /** A new chore: weekly, alternating, 1 point, all year (spec 0003, AC-036). */
@@ -69,7 +86,8 @@ export function newChoreDraft(
     seasonOn: false,
     seasonFrom: 4,
     seasonTo: 9,
-    touched: { rhythm: false, assignment: false, season: false },
+    today,
+    touched: { rhythm: false, assignment: false, season: false, nextDue: false },
   };
 }
 
@@ -98,7 +116,8 @@ export function choreDraftFrom(chore: Chore, today: ISODate, meId: Id): ChoreDra
     title: chore.title,
     room: chore.room ?? '',
     rhythm: rhythmOf(recurrence),
-    onceDate: recurrence.type === 'once' ? recurrence.date : undefined,
+    // "Später" moves next_due_on of a one-off chore, so the form shows that day (AC-002).
+    onceDate: recurrence.type === 'once' ? (chore.nextDueOn ?? recurrence.date) : undefined,
     weekdays: recurrence.type === 'weekly' ? recurrence.weekdays : [],
     everyWeeks: recurrence.type === 'weekly' ? recurrence.every : draft.everyWeeks,
     monthDay: recurrence.type === 'monthly' ? recurrence.day : draft.monthDay,
@@ -110,7 +129,51 @@ export function choreDraftFrom(chore: Chore, today: ISODate, meId: Id): ChoreDra
     seasonOn: season !== undefined,
     seasonFrom: season?.from ?? draft.seasonFrom,
     seasonTo: season?.to ?? draft.seasonTo,
+    nextDueOn: chore.nextDueOn,
+    lastDoneOn: chore.lastDoneOn,
+    nextAssigneeId: chore.nextAssigneeId,
   };
+}
+
+/** Rhythms with „Nächstes Mal“ (REQ-002, AC-008). */
+export function hasNextDueField(rhythm: ChoreRhythm): boolean {
+  return (
+    rhythm === 'weekly' || rhythm === 'monthly' || rhythm === 'months' || rhythm === 'flexible'
+  );
+}
+
+/**
+ * „Nächstes Mal“ shown in the form (REQ-002, AC-004 to AC-007): a day chosen in the field stays;
+ * a stored chore with its rhythm untouched keeps its date; otherwise the suggestion of firstDueOn
+ * from „Zuletzt erledigt“ (never before today), which follows the rhythm while it changes.
+ */
+export function draftNextDueOn(draft: ChoreDraft): ISODate | undefined {
+  if (!hasNextDueField(draft.rhythm)) return undefined;
+  if (draft.touched.nextDue && draft.nextDueOn !== undefined) return draft.nextDueOn;
+  if (!draft.touched.rhythm && draft.nextDueOn !== undefined) return draft.nextDueOn;
+  return firstDueOn(recurrenceOf(draft), draft.today, draft.lastDoneOn);
+}
+
+/**
+ * The patch of a tap on a rhythm (REQ-004, AC-011): creating, „Bei Bedarf“ makes the assignment
+ * „Egal“ unless it was chosen already.
+ */
+export function rhythmPatch(
+  draft: ChoreDraft,
+  rhythm: ChoreRhythm,
+  isNew: boolean,
+): Partial<ChoreDraft> {
+  return isNew && rhythm === 'asNeeded' && !draft.touched.assignment
+    ? { rhythm, assignment: 'anyone' }
+    : { rhythm };
+}
+
+/**
+ * „Als Nächstes dran“ (REQ-003, AC-009, AC-010): the chosen person, else whose turn it is, else
+ * the first of the order; it survives switching to „Fest“ and back.
+ */
+export function draftNextAssignee(draft: ChoreDraft, rotation: readonly Id[]): Id | undefined {
+  return rotation.find((id) => id === draft.nextAssigneeId) ?? rotation[0];
 }
 
 function recurrenceOf(draft: ChoreDraft): Recurrence {
@@ -163,11 +226,14 @@ export function choreDraftErrors(draft: ChoreDraft): ChoreDraftErrors {
  */
 export function choreFieldsOf(draft: ChoreDraft, members: Member[], stored?: Chore): ChoreFields {
   const keep = (part: ChoreDraftPart) => stored !== undefined && !draft.touched[part];
+  const assignment =
+    stored && keep('assignment') ? stored.assignment : assignmentOf(draft, members);
+  const nextDueOn = draftNextDueOn(draft);
   return {
     title: draft.title,
     room: draft.room,
     recurrence: stored && keep('rhythm') ? stored.recurrence : recurrenceOf(draft),
-    assignment: stored && keep('assignment') ? stored.assignment : assignmentOf(draft, members),
+    assignment,
     effort: Number(draft.effort) as 1 | 2 | 3,
     activeMonths:
       stored && keep('season')
@@ -175,6 +241,13 @@ export function choreFieldsOf(draft: ChoreDraft, members: Member[], stored?: Cho
         : draft.seasonOn
           ? seasonMonths(draft.seasonFrom, draft.seasonTo)
           : [],
+    ...(nextDueOn !== undefined && { nextDueOn }),
+    ...(stored === undefined && draft.lastDoneOn !== undefined && hasNextDueField(draft.rhythm)
+      ? { lastDoneOn: draft.lastDoneOn }
+      : {}),
+    ...(assignment.type === 'rotating' && {
+      nextAssigneeId: draftNextAssignee(draft, assignment.memberIds),
+    }),
   };
 }
 

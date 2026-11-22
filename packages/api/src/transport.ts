@@ -154,6 +154,19 @@ export interface ChoreCompletion {
 }
 
 /**
+ * change_chore_event_day (spec 0026, REQ-007): moves an entry to another day. With the chore's
+ * state the device saw; for the latest booked entry the chore's next date (computed by core
+ * dayChangeOutcome) follows, the last time is computed by the server.
+ */
+export interface ChoreEventDayChange {
+  event_id: string;
+  done_on: string;
+  /** The chore's state as complete_chore compares it; left out for an entry of a deleted chore. */
+  seen?: ChoreCompletion['seen'];
+  next_due_on?: string | null;
+}
+
+/**
  * One Packstück as restore_packing_items puts it back (spec 0012, "Rückgängig" after removing):
  * with its packed state, which only the server writes. The server bounds the values.
  */
@@ -203,6 +216,7 @@ export type ChangeOp =
   | { kind: 'replace_entry_contributions'; entry_ids: string[]; entries: AddEntry[] }
   | { kind: 'complete_chore'; completion: ChoreCompletion }
   | { kind: 'remove_chore_event'; id: string }
+  | { kind: 'change_chore_event_day'; change: ChoreEventDayChange }
   | { kind: 'restore_packing_items'; items: RestorePackingItem[] }
   | { kind: 'adopt_bag_changes'; change: AdoptBagChange };
 

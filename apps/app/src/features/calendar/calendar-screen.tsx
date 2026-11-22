@@ -699,6 +699,13 @@ export function CalendarScreen() {
               key={openChore.id}
               chore={openChore}
               onClose={() => setOpenChore(undefined)}
+              // „Alle Einträge ›“: the history of „Haushalt“ filtered by the chore (spec 0026, AC-025).
+              onShowEntries={() =>
+                router.navigate({
+                  pathname: '/haushalt',
+                  params: { ansicht: 'verlauf', 'nur-aufgabe': openChore.id },
+                })
+              }
             />
           ) : null}
           {pantryCheck && focused ? (

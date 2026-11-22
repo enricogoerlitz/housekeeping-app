@@ -1,7 +1,11 @@
 import { useNotificationSettings } from '@housekeeping/api';
 import {
   choreTimeHint,
+  draftNextAssignee,
+  draftNextDueOn,
+  hasNextDueField,
   monthName,
+  rhythmPatch,
   seasonLabel,
   seasonMonths,
   TIME_FIELD_WORDS,
@@ -76,13 +80,19 @@ function Field(props: { label: string; children: ReactNode }) {
   );
 }
 
-/** Rhythm chips and the details of the chosen rhythm. `prefix` keeps test ids apart. */
+/**
+ * Rhythm chips and the details of the chosen rhythm. `prefix` keeps test ids apart. With `dates`
+ * (the chore form) also „Nächstes Mal“ and, creating, „Zuletzt erledigt (optional)“ (spec 0026,
+ * REQ-002); `isNew`: „Bei Bedarf“ makes the assignment „Egal“ (REQ-004).
+ */
 export function RhythmField(props: {
   draft: ChoreDraft;
   update: DraftUpdate;
   today: ISODate;
   weekdayError?: string;
   prefix?: string;
+  isNew?: boolean;
+  dates?: boolean;
 }) {
   const { draft, update } = props;
   const id = (name: string) => `${props.prefix ?? ''}${name}`;
@@ -101,7 +111,7 @@ export function RhythmField(props: {
             key={option.value}
             label={option.label}
             selected={draft.rhythm === option.value}
-            onPress={() => set({ rhythm: option.value })}
+            onPress={() => set(rhythmPatch(draft, option.value, props.isNew ?? false))}
             testID={id(`rec-${option.value}`)}
           />
         ))}
@@ -112,6 +122,7 @@ export function RhythmField(props: {
           value={draft.onceDate}
           onChange={(onceDate) => set({ onceDate })}
           noneLabel="Ohne Datum"
+          min={props.today}
           testIDPrefix={id('once-date')}
         />
       ) : null}
@@ -187,6 +198,34 @@ export function RhythmField(props: {
           Wird nie fällig. Du findest sie unter „Alle“ und bei „Was anderes erledigt?“.
         </Text>
       ) : null}
+      {props.dates && hasNextDueField(draft.rhythm) ? (
+        <Stack gap={12}>
+          {props.isNew ? (
+            <Field label="Zuletzt erledigt (optional)">
+              <DateChips
+                today={props.today}
+                past
+                value={draft.lastDoneOn}
+                onChange={(lastDoneOn) => update({ lastDoneOn })}
+                noneLabel="Ohne Datum"
+                max={props.today}
+                testIDPrefix={id('last-done')}
+              />
+            </Field>
+          ) : null}
+          <Field label={draft.rhythm === 'flexible' ? 'Nächstes Mal etwa' : 'Nächstes Mal'}>
+            <DateChips
+              today={props.today}
+              value={draftNextDueOn(draft)}
+              onChange={(nextDueOn) => {
+                if (nextDueOn) update({ nextDueOn }, 'nextDue');
+              }}
+              min={props.today}
+              testIDPrefix={id('next-due')}
+            />
+          </Field>
+        </Stack>
+      ) : null}
     </Field>
   );
 }
@@ -214,6 +253,27 @@ export function AssignmentField(props: {
           />
         ))}
       </Row>
+      {draft.assignment === 'rotating' ? (
+        <Field label="Als Nächstes dran">
+          <Row wrap gap={8}>
+            {props.members.map((member) => (
+              <Chip
+                key={member.id}
+                label={member.name}
+                icon="user"
+                selected={
+                  draftNextAssignee(
+                    draft,
+                    props.members.map((entry) => entry.id),
+                  ) === member.id
+                }
+                onPress={() => props.update({ nextAssigneeId: member.id })}
+                testID={id(`next-${member.id}`)}
+              />
+            ))}
+          </Row>
+        </Field>
+      ) : null}
       {draft.assignment === 'fixed' ? (
         <Row wrap gap={8}>
           {props.members.map((member) => (
@@ -334,6 +394,8 @@ export function ChoreFormFields(props: {
   /** Offline: the time is greyed out with this hint (the other fields stay as they were). */
   offlineHint?: string;
   autoFocus?: boolean;
+  /** „Neue Aufgabe“: „Zuletzt erledigt“ and „Bei Bedarf“ → „Egal“ (spec 0026). */
+  isNew?: boolean;
 }) {
   const { draft, update } = props;
   return (
@@ -367,6 +429,8 @@ export function ChoreFormFields(props: {
         }}
         today={props.today}
         weekdayError={props.errors.weekdays}
+        isNew={props.isNew}
+        dates
       />
       <AssignmentField draft={draft} update={update} members={props.members} />
       <ChoreTimeField time={props.time} offlineHint={props.offlineHint} />

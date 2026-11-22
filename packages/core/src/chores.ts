@@ -1,14 +1,5 @@
 import { monthName } from './calendar';
-import {
-  addDays,
-  addMonths,
-  dayInMonth,
-  daysBetween,
-  isoWeekday,
-  parseISODate,
-  startOfWeek,
-  weekdayShortName,
-} from './dates';
+import { addDays, addMonths, dayInMonth, isoWeekday, weekdayShortName } from './dates';
 import { compareTimestamps } from './sync-delta';
 import type {
   Assignment,
@@ -24,51 +15,6 @@ import type {
 // Upper bound for stepping an "every n months" chore past a very late completion (200 years of
 // monthly steps); it only guards against looping on broken dates.
 const MAX_MONTH_STEPS = 2400;
-
-function isPaused(chore: Chore, today: ISODate): boolean {
-  const { activeMonths } = chore;
-  // An empty list is treated like a missing one: a chore that is active in no month is not a
-  // schedule anyone means.
-  if (activeMonths === undefined || activeMonths.length === 0) return false;
-  return !activeMonths.includes(parseISODate(today).getMonth() + 1);
-}
-
-export type ChoreBucket =
-  'today' | 'overdue' | 'flexible' | 'thisWeek' | 'later' | 'paused' | 'asNeeded';
-/**
- * Where a chore shows up. "bei Bedarf" is never due and has its own bucket, whatever its season
- * or a stray date, so it never counts among the chores "später" (spec 0011, AC-043).
- * Chores outside their activeMonths are "paused", flexible ones too.
- * Otherwise flexible chores are always "flexible". Fixed chores: due today → "today",
- * earlier → "overdue", within the current Monday–Sunday week → "thisWeek", otherwise "later"
- * (also when no due date is set).
- */
-export function choreBucket(chore: Chore, today: ISODate): ChoreBucket {
-  if (chore.recurrence.type === 'asNeeded') return 'asNeeded';
-  if (isPaused(chore, today)) return 'paused';
-  if (chore.recurrence.type === 'flexible') return 'flexible';
-
-  const due = chore.nextDueOn;
-  if (due === undefined) return 'later';
-  if (due === today) return 'today';
-  if (due < today) return 'overdue';
-  return due <= addDays(startOfWeek(today), 6) ? 'thisWeek' : 'later';
-}
-/**
- * Share of the flexible interval that has passed since lastDoneOn: 0…1 and beyond when overdue.
- * 1 when the chore was never done, 0 for chores that are not flexible.
- */
-export function flexibleProgress(chore: Chore, today: ISODate): number {
-  if (chore.recurrence.type !== 'flexible') return 0;
-  if (chore.lastDoneOn === undefined || chore.recurrence.everyDays <= 0) return 1;
-  return Math.max(0, daysBetween(chore.lastDoneOn, today) / chore.recurrence.everyDays);
-}
-/** Days a fixed chore is overdue (0 when not, and for flexible and "bei Bedarf" chores). */
-export function daysOverdue(chore: Chore, today: ISODate): number {
-  const { type } = chore.recurrence;
-  if (type === 'flexible' || type === 'asNeeded' || chore.nextDueOn === undefined) return 0;
-  return Math.max(0, daysBetween(chore.nextDueOn, today));
-}
 
 function nextWeekly(reference: ISODate, every: number, weekdays: number[]): ISODate {
   const weeksToSkip = Math.max(1, Math.floor(every)) - 1;
@@ -187,50 +133,16 @@ export function assignmentLabel(assignment: Assignment, members: Member[]): stri
       return 'zu zweit';
   }
 }
-/**
- * Member ids shown as avatars for a chore: the next assignee, both for "together", and for
- * rotating only whose turn it is (spec 0018, AC-016) — the next assignee when it is in the
- * rotation, else the first rotation member, as in the household row. Ids that are not among the
- * given members are left out.
- */
-export function choreMemberIds(chore: Chore, members: Member[]): Id[] {
-  const { assignment } = chore;
-  if (assignment.type === 'together') return members.map((member) => member.id);
-  const known = (id: Id | undefined): id is Id =>
-    id !== undefined && members.some((member) => member.id === id);
-
-  if (assignment.type === 'rotating') {
-    const rotation = assignment.memberIds.filter(known);
-    const turn = rotation.find((id) => id === chore.nextAssigneeId) ?? rotation[0];
-    return turn === undefined ? [] : [turn];
-  }
-  const id =
-    chore.nextAssigneeId ?? (assignment.type === 'fixed' ? assignment.memberId : undefined);
-  return known(id) ? [id] : [];
-}
-
-/**
- * What the screen reader says for the avatar of an alternating chore: "dran: Nadja" (spec 0018,
- * AC-016); undefined for every other assignment, whose avatars are read by name.
- */
-export function choreTurnLabel(chore: Chore, members: Member[]): string | undefined {
-  if (chore.assignment.type !== 'rotating') return undefined;
-  const [turn] = choreMemberIds(chore, members);
-  const member = members.find((candidate) => candidate.id === turn);
-  return member ? `dran: ${member.name}` : undefined;
-}
-
 // ---------- Spec 0011: completing, changing and the history chain ----------
 
 /**
- * The first due date when a chore is created or its rhythm changes (spec 0011, Offene Frage 4 A
- * and 11 A). Counted from today, or from tomorrow when the chore was already done today:
+ * The suggested first date when a chore is created or its rhythm changes (spec 0011, Offene Frage
+ * 4 A and 11 A; spec 0026, REQ-002, decision 8). Counted from today, or from tomorrow when the
+ * chore was already done today, never before that start:
  * - weekly: the next configured weekday (the start itself when nothing is configured);
  * - monthly: the configured day, this month or the next, clamped to the month's length;
- * - everyMonths: `every` months after the last time, never before the start; the start when it
- *   was never done;
- * - flexible: the interval after the last time, never before the start (a never done or
- *   overdue chore is due right away, as flexibleProgress already shows it);
+ * - everyMonths: `every` months after the last time, without one `every` months after today;
+ * - flexible: the interval after the last time, without one the interval after today;
  * - once: its own date; "bei Bedarf": none.
  */
 export function firstDueOn(
@@ -257,11 +169,9 @@ export function firstDueOn(
       return thisMonth >= start ? thisMonth : dayInMonth(start, 1, recurrence.day);
     }
     case 'everyMonths':
-      if (lastDoneOn === undefined) return start;
-      return notBefore(addMonths(lastDoneOn, Math.max(1, Math.floor(recurrence.every))));
+      return notBefore(addMonths(lastDoneOn ?? today, Math.max(1, Math.floor(recurrence.every))));
     case 'flexible':
-      if (lastDoneOn === undefined) return start;
-      return notBefore(addDays(lastDoneOn, Math.max(1, recurrence.everyDays)));
+      return notBefore(addDays(lastDoneOn ?? today, Math.max(1, recurrence.everyDays)));
   }
 }
 
@@ -442,18 +352,61 @@ export function seasonLabel(activeMonths: number[] | undefined): string {
   return start === end ? name(start) : `${name(start)}–${name(end)}`;
 }
 
+/** How many days back an entry can be booked or moved (REQ-007, decision 11). */
+export const BACKFILL_DAYS = 30;
+
+/** A day an entry may stand on: today back to today − 30 (AC-020). */
+export function isBackfillDay(day: ISODate, today: ISODate): boolean {
+  return day <= today && day >= addDays(today, -BACKFILL_DAYS);
+}
+
 export interface DoneOnChoice {
   date: ISODate;
   label: 'heute' | 'gestern' | 'vorgestern';
 }
 
-/** The days "Als erledigt eintragen" offers (REQ-006): today, yesterday, the day before. */
+/** The quick days of "Was anderes erledigt?" before „Datum …“ (REQ-007). */
 export function doneOnChoices(today: ISODate): DoneOnChoice[] {
   return [
     { date: today, label: 'heute' },
     { date: addDays(today, -1), label: 'gestern' },
     { date: addDays(today, -2), label: 'vorgestern' },
   ];
+}
+
+/**
+ * What moving an entry to another day does to its chore (REQ-007, AC-021, AC-022): for the latest
+ * booked entry of a chore that still exists and recorded its state before, date and last time are
+ * computed again from that state, as if it had been booked on the new day (the turn stays).
+ * Undefined when only the day of the entry changes.
+ */
+export function dayChangeOutcome(input: {
+  chore: Chore | undefined;
+  events: ChoreEvent[];
+  eventId: Id;
+  doneOn: ISODate;
+}): { nextDueOn: ISODate | undefined; lastDoneOn: ISODate | undefined } | undefined {
+  const { chore } = input;
+  if (chore === undefined) return undefined;
+  const latest = latestBookedEvent(input.events, chore.id);
+  if (latest === undefined || latest.id !== input.eventId || latest.previous === undefined) {
+    return undefined;
+  }
+  const before: Chore = {
+    ...chore,
+    nextDueOn: latest.previous.nextDueOn,
+    lastDoneOn: latest.previous.lastDoneOn,
+    nextAssigneeId: latest.previous.nextAssigneeId,
+  };
+  const outcome = completionOutcome(before, {
+    kind: latest.kind,
+    doneOn: input.doneOn,
+    doneBy: latest.doneBy,
+  });
+  return {
+    nextDueOn: chore.recurrence.type === 'asNeeded' ? undefined : outcome.nextDueOn,
+    lastDoneOn: latest.kind === 'done' ? outcome.lastDoneOn : chore.lastDoneOn,
+  };
 }
 
 /** The network dropped while checking off, nothing was booked (spec 0018, AC-024). */

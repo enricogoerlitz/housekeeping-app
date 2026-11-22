@@ -88,6 +88,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
         time={time}
         offlineHint={online.hint}
         autoFocus
+        isNew
       />
     </Sheet>
   );
