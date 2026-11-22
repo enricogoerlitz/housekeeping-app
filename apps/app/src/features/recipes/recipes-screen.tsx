@@ -48,6 +48,7 @@ import {
   TextField,
   TypingIndicator,
   ViewTabs,
+  tabSwipe,
   useBreakpoint,
   type MenuOption,
 } from '@housekeeping/ui';
@@ -172,17 +173,20 @@ export function RecipesScreen() {
       restaurant: undefined,
     };
   };
+  const changeView = (next: FoodView) => address.replace(viewPatch(next));
   const switcher = (
     <ViewTabs
       label="Rezepte oder Restaurants"
       value={view}
-      onChange={(next) => address.replace(viewPatch(next))}
+      onChange={changeView}
       options={FOOD_VIEWS}
       testID="food-switch"
     />
   );
+  // On phones a sideways swipe changes the view (spec 0029, REQ-003).
+  const swipe = tabSwipe(FOOD_VIEWS, view, changeView);
 
-  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} />;
+  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} swipe={swipe} />;
 
   const ids = recipes.map((recipe) => recipe.id);
   const newOptions: MenuOption<NewKind>[] = [
@@ -238,7 +242,7 @@ export function RecipesScreen() {
   // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (recipes.length === 0) {
     return (
-      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher}>
+      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher} tabSwipe={swipe}>
         {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="book-open"
@@ -428,6 +432,7 @@ export function RecipesScreen() {
       tone="essen"
       header={header}
       tabs={switcher}
+      tabSwipe={swipe}
       toolbar={toolbar}
       scroll={false}
       clearFab={false}

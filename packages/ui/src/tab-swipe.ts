@@ -46,14 +46,12 @@ export function tabSwipeOffset(dx: number, position: Pick<TabSwipePosition, 'ind
 /** On release: +1 to the next tab, -1 to the previous one, 0 to spring back. */
 export function tabSwipeStep(dx: number, vx: number, position: TabSwipePosition): -1 | 0 | 1 {
   if (dx === 0 || !hasNeighbour(dx, position)) return 0;
+  const fast = Math.abs(vx) >= FLICK_VELOCITY;
+  // Thrown back towards the start: the person changed their mind.
+  if (fast && Math.sign(vx) !== Math.sign(dx)) return 0;
   const far = Math.abs(dx) >= Math.max(COMMIT_MIN, position.width * COMMIT_SHARE);
-  const flick =
-    Math.abs(dx) >= FLICK_DISTANCE &&
-    Math.abs(vx) >= FLICK_VELOCITY &&
-    Math.sign(vx) === Math.sign(dx);
+  const flick = fast && Math.abs(dx) >= FLICK_DISTANCE;
   if (!far && !flick) return 0;
-  if (far && vx !== 0 && Math.sign(vx) !== Math.sign(dx) && Math.abs(vx) >= FLICK_VELOCITY)
-    return 0;
   return dx < 0 ? 1 : -1;
 }
 

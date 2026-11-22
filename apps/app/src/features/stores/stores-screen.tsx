@@ -11,6 +11,7 @@ import {
   Screen,
   ScreenHeader,
   Text,
+  tabSwipe,
   toast,
   useBreakpoint,
   ViewTabs,
@@ -166,6 +167,8 @@ export function StoresScreen() {
           testID="stores-view"
         />
       }
+      // On phones a sideways swipe changes the view (spec 0029, REQ-003).
+      tabSwipe={tabSwipe(VIEW_OPTIONS, view, setView)}
       scroll={!split}
       style={split ? { flex: 1, paddingBottom: 0 } : undefined}
     >

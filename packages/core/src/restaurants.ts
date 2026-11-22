@@ -29,6 +29,54 @@ export function routeLinks(
   };
 }
 
+export type MapsApp = 'apple' | 'google';
+
+/** How "Route" opens a map app (spec 0029, REQ-004). */
+export type RouteOpening =
+  /** As a link in a new tab: browser tabs, Android, desktop. */
+  | { kind: 'new-tab'; url: string }
+  /**
+   * By the app's scheme in the same window, so no empty in-app browser stays behind in the
+   * installed iPhone web app; `fallback` opens when the app is not installed.
+   */
+  | { kind: 'app-scheme'; url: string; fallback?: string };
+
+/**
+ * The opening for a map app. In the installed web app on iPhone and iPad a new window becomes an
+ * in-app browser that stays empty once a universal link has jumped to the app (WebKit bug 199029),
+ * so the app is opened by its scheme instead: `maps:` with the parameters of `maps.apple.com`,
+ * `comgooglemaps:` with `daddr` (Google "Maps URL Scheme for iOS").
+ */
+export function routeOpening(
+  app: MapsApp,
+  place: Parameters<typeof routeLinks>[0],
+  environment: { installedIosApp: boolean },
+): RouteOpening {
+  const links = routeLinks(place);
+  const url = links[app];
+  if (!environment.installedIosApp) return { kind: 'new-tab', url };
+  if (app === 'apple') {
+    return { kind: 'app-scheme', url: url.replace('https://maps.apple.com/', 'maps://') };
+  }
+  // The same destination as the website link: coordinates, else the encoded name and address.
+  const destination = url.slice(url.indexOf('destination=') + 'destination='.length);
+  return { kind: 'app-scheme', url: `comgooglemaps://?daddr=${destination}`, fallback: url };
+}
+
+/**
+ * Whether this is the web app installed on an iPhone or iPad's home screen. iPadOS reports itself
+ * as a Mac; only the touch points tell it apart from a Mac with a mouse.
+ */
+export function isInstalledIosApp(device: {
+  userAgent: string;
+  maxTouchPoints: number;
+  standalone: boolean;
+}): boolean {
+  if (!device.standalone) return false;
+  if (/iPhone|iPad|iPod/.test(device.userAgent)) return true;
+  return /Macintosh/.test(device.userAgent) && device.maxTouchPoints > 1;
+}
+
 /** An existing restaurant with the same normalised name, or within ~40 m of the same location. */
 export function findDuplicateRestaurant(
   candidate: { name?: string; location?: GeoPoint },
