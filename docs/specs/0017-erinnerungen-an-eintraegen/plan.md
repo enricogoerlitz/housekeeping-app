@@ -68,24 +68,39 @@ at, text} | null)`, Erinnerung als optionales Feld in `addPlanEntry`, `movePlanE
 
 ## Bedrohungsmodell
 
-| Risiko                                        | Gegenmaßnahme                                                                                                              | Test                                                                                           |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Text auf Sperrbildschirmen anderer Mitglieder | bewusst hingenommen (ADR-0014 Nachtrag): nur Haushaltsmitglieder, Art je Person abschaltbar, Text nie im Zustell-Protokoll | pgTAP: Protokoll ohne Text                                                                     |
-| Untergeschobene Empfänger                     | Empfänger nur vom Server beim Senden aus `eater_ids` und Mitgliedschaft; kein Feld dafür                                   | pgTAP: fremde Kennung in `eater_ids` abgelehnt (vorhandene Prüfung), nur Mitesser bekommen sie |
-| Fremder Haushalt, abgemeldet                  | RLS; `apply_changes` erzwingt `p_household_id`                                                                             | pgTAP: fremder Haushalt, `anon`                                                                |
-| Ungültige Eingabe                             | Checks in der Datenbank (Uhrzeit, Abstand, Länge, Steuerzeichen), Zod im Client                                            | pgTAP + core                                                                                   |
-| Erinnerung in der Vergangenheit               | Trigger beim Setzen; Verschieben bleibt erlaubt                                                                            | pgTAP                                                                                          |
-| Viele Erinnerungen (Spam)                     | höchstens eine je Eintrag, Bündel ≤ 50, nur eingeladene Mitglieder; hingenommen                                            | —                                                                                              |
-| Zeitzonenfehler, Zeitumstellung               | nur `households.timezone`; Test 28.3.2027                                                                                  | pgTAP Planer                                                                                   |
-| Doppelt oder verspätet                        | eindeutiger Dedupe-Schlüssel, 30-Minuten-Fenster, Ablauf am Ende des Sendetags                                             | pgTAP Planer                                                                                   |
-| Alte App v2026.11.1 nach dem Einspielen       | rein ergänzende Spalten; Vormerken leert per Trigger                                                                       | pgTAP: Patch nur `date = null`                                                                 |
-| Gelöschter Eintrag, ausgetretenes Mitglied    | fällt im Kandidaten-Join weg                                                                                               | pgTAP Planer                                                                                   |
+| Risiko                                        | Gegenmaßnahme                                                                                                                                   | Test                                                                                           |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Text auf Sperrbildschirmen anderer Mitglieder | bewusst hingenommen (ADR-0014 Nachtrag): nur Haushaltsmitglieder, Art je Person abschaltbar, Text nie im Zustell-Protokoll                      | pgTAP: Protokoll ohne Text                                                                     |
+| Untergeschobene Empfänger                     | Empfänger nur vom Server beim Senden aus `eater_ids` und Mitgliedschaft; kein Feld dafür                                                        | pgTAP: fremde Kennung in `eater_ids` abgelehnt (vorhandene Prüfung), nur Mitesser bekommen sie |
+| Fremder Haushalt, abgemeldet                  | RLS; `apply_changes` erzwingt `p_household_id`                                                                                                  | pgTAP: fremder Haushalt, `anon`                                                                |
+| Ungültige Eingabe                             | Checks in der Datenbank (Uhrzeit, Abstand, Länge, Steuerzeichen), Zod im Client                                                                 | pgTAP + core                                                                                   |
+| Erinnerung in der Vergangenheit               | Trigger beim Setzen; Verschieben bleibt erlaubt                                                                                                 | pgTAP                                                                                          |
+| Viele Erinnerungen (Spam)                     | höchstens eine je Eintrag, Bündel ≤ 50, nur eingeladene Mitglieder; je Haushalt und Planerlauf höchstens 50 Einträge, der Rest im nächsten Lauf | pgTAP Planer: 55 Einträge → 50, dann 5                                                         |
+| Zeitzonenfehler, Zeitumstellung               | nur `households.timezone`; Test 28.3.2027                                                                                                       | pgTAP Planer                                                                                   |
+| Doppelt oder verspätet                        | eindeutiger Dedupe-Schlüssel, 30-Minuten-Fenster, Ablauf am Ende des Sendetags                                                                  | pgTAP Planer                                                                                   |
+| Alte App v2026.11.1 nach dem Einspielen       | rein ergänzende Spalten; Vormerken leert per Trigger                                                                                            | pgTAP: Patch nur `date = null`                                                                 |
+| Gelöschter Eintrag, ausgetretenes Mitglied    | fällt im Kandidaten-Join weg                                                                                                                    | pgTAP Planer                                                                                   |
+
+## Sicherheitsprüfung 22.11.2026
+
+`/security-check` über Migration, Planer, api und die neuen Fenster: 0 kritisch, 0 hoch, 0 mittel.
+
+| Befund                                                                                       | Stufe   | Umgang                                                                                                   |
+| -------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| Beliebig viele Erinnerungen je Haushalt und Lauf verdrängen die Zustellung anderer Haushalte | niedrig | behoben: höchstens 50 Einträge je Haushalt und Lauf, bereits zugestellte zählen nicht mit; pgTAP         |
+| Unsichtbare und richtungsändernde Unicode-Zeichen im Text („Woran erinnern?“)                | niedrig | behoben: Datenbank, core und Fake-Transport weisen dieselbe Zeichenliste ab, ohne Locale; pgTAP und core |
+| „Nicht in der Vergangenheit“ greift nicht, wenn ein Patch zugleich den Tag ändert            | Hinweis | hingenommen: nötig für AC-022 und AC-023; Datenqualität, keine Sicherheitsgrenze                         |
+| Alte App v2026.11.1: Art ist an, aber dort nicht abschaltbar                                 | Hinweis | hingenommen (ADR-0014 Nachtrag)                                                                          |
+| Text steht bis zum Senden in der Warteschlange von `pg_net`                                  | Hinweis | bekannt seit Spec 0013; nicht im Zustell-Protokoll                                                       |
+
+Die Migration `20261122143506_entry_reminders.sql` wurde dafür direkt geändert: Sie lag nur auf dem
+Feature-Branch und war weder in der Vorschau noch in der Produktion eingespielt.
 
 ## Nachweis
 
 - [ ] pgTAP rot zuerst, dann grün: `entry_reminders.test.sql`, Planer, Gleichlauf
 - [ ] core und api rot zuerst, dann grün
 - [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `/security-check` über Migration, Planer und api
+- [x] `/security-check` über Migration, Planer und api (22.11.2026, siehe oben)
 - [ ] spec-auditor
 - [ ] e2e gesammelt am Ende aller Specs

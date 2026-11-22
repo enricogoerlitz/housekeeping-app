@@ -621,8 +621,10 @@ function checkNotificationColumns(table: string, row: Row): void {
   }
 }
 
-// C0, DEL and C1: Postgres `[[:cntrl:]]`.
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
+// C0, DEL, C1 and invisible or direction-changing characters, as the check
+// `meal_plan_entries_reminder_text_valid` refuses them.
+const CONTROL_CHARACTER =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
 
 /**
  * Spec 0017: meal_plan_entries_reminder_day_offset_valid, _reminder_text_valid,

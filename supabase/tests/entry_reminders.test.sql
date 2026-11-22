@@ -6,7 +6,7 @@
 -- the "not in the past" check holds whenever the test runs.
 begin;
 \ir _helpers.psql
-select plan(55);
+select plan(57);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -133,6 +133,10 @@ select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('reminder_text'
   'AC-015 meal_plan_entries: a line break is refused');
 select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('reminder_text', E'Fleisch\tauftauen')), '23514', null,
   'REQ-004 meal_plan_entries: a tab is refused');
+select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('reminder_text', E'Fleisch \u202Eauftauen')), '23514', null,
+  'AC-015 meal_plan_entries: a reminder text with a direction override is refused');
+select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('reminder_text', E'Fleisch\u200Bauftauen')), '23514', null,
+  'AC-015 meal_plan_entries: a reminder text with an invisible character is refused');
 select throws_ok(tests.patch_sql('e_lasagne', '{"reminder_text": " Fleisch auftauen"}'), '23514', null,
   'REQ-004 meal_plan_entries: a space at the start is refused');
 select throws_ok(tests.patch_sql('e_lasagne', '{"reminder_text": "Fleisch auftauen "}'), '23514', null,

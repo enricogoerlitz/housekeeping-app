@@ -28,7 +28,9 @@ alter table public.meal_plan_entries
   add column reminder_text text
     constraint meal_plan_entries_reminder_text_valid check (
       char_length(reminder_text) between 1 and 80 and reminder_text = btrim(reminder_text)
-      and reminder_text !~ '[[:cntrl:]]'),
+      -- C0, DEL, C1 and the invisible or direction-changing characters (soft hyphen, zero-width,
+      -- line and paragraph separators, bidi controls, word joiners, BOM); no locale dependence.
+      and reminder_text !~ '[\u0001-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]'),
   add constraint meal_plan_entries_reminder_complete check ((reminder_day_offset is null) = (reminder_at is null)),
   add constraint meal_plan_entries_reminder_text_needs_time check (reminder_text is null or reminder_at is not null),
   add constraint meal_plan_entries_reminder_needs_date check (reminder_at is null or date is not null);
@@ -455,16 +457,25 @@ as $$
     left join lateral (select p.name from private.meal_slot_positions((due.e).household_id) p
                        where p.slot_id = (due.e).slot_id limit 1) sl on true
     where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes'
+      and not exists (select 1 from private.notification_deliveries nd
+                      where nd.dedupe_key = format('entry:%s:%s:%s', (due.e).id, due.day,
+                                                   to_char((due.e).reminder_at, 'HH24:MI')))
+  ), capped as (
+    -- Security check 22.11.2026: at most 50 entries per household and tick, so one household
+    -- cannot crowd out the others; the rest goes out with the next ticks of the 30-minute window.
+    select message.*, row_number() over (partition by message.household_id order by message.due_at, message.id) as n
+    from message
   )
   select message.household_id, m.profile_id, 'entry_reminder',
          format('entry:%s:%s:%s', message.id, message.day, to_char(message.reminder_at, 'HH24:MI')), message.due_at,
          (message.day + 1)::timestamp at time zone message.timezone, 'Housekeeping', message.body,
          format('/kalender?tag=%s&eintrag=%s&haushalt=%s', message.date, message.id, message.household_id)
-  from message
+  from capped message
   join public.household_members m on m.household_id = message.household_id
   join public.notification_settings s
     on s.household_id = m.household_id and s.member_id = m.profile_id and s.entry_reminders_enabled
-  where (message.kind = 'activity' or cardinality(message.eater_ids) = 0 or m.profile_id = any (message.eater_ids))
+  where message.n <= 50
+    and (message.kind = 'activity' or cardinality(message.eater_ids) = 0 or m.profile_id = any (message.eater_ids))
     and not private.is_silent(message.household_id, m.profile_id, message.day)
     and not private.is_silent(message.household_id, m.profile_id, message.date)
 $$;

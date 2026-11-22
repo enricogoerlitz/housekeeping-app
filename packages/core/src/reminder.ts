@@ -30,8 +30,10 @@ export const MAX_REMINDER_TEXT = 80;
 /** REQ-005: the body of the notification holds at most 400 characters. */
 export const MAX_REMINDER_MESSAGE = 400;
 
-// C0, DEL and C1, as the database refuses them (`[[:cntrl:]]`).
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
+// C0, DEL, C1 and invisible or direction-changing characters, exactly as the database refuses
+// them (check `meal_plan_entries_reminder_text_valid`).
+const CONTROL_CHARACTER =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
 
 /** Characters as Postgres counts them (`char_length`): code points, not UTF-16 units. */
 function charLength(text: string): number {

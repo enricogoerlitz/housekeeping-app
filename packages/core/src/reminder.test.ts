@@ -383,6 +383,11 @@ describe('cleanReminderText and reminderTextCounter', () => {
       'a\u0000b',
       'a\u007fb',
       'a\u0085b',
+      'Fleisch \u202Eauftauen',
+      'Fleisch\u200Bauftauen',
+      'a\u2028b',
+      'a\u00adb',
+      'a\ufeffb',
     ]) {
       expect(cleanReminderText(text)).toEqual({ ok: false, error: 'Ohne Zeilenumbrüche' });
     }

@@ -5,7 +5,7 @@
 -- Europe/Berlin, "Lasagne" on Saturday, 28.11.2026, evening.
 begin;
 \ir _helpers.psql
-select plan(40);
+select plan(42);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -272,6 +272,23 @@ select tests.reminder('e_eis', 0, '08:00');
 delete from public.household_members where household_id = tests.fx('home') and profile_id = tests.fx('nadja');
 select is(tests.msgs('2026-11-29 08:00'), 'E: Erinnerung: Eislaufen (Hohenschönhausen) · heute Vormittag',
   'AC-020 entry reminder: Nadja left the household, only Enrico gets it');
+
+-- ===================== Security check 2026-11-22: at most 50 per household and tick =====================
+-- One household with many reminders at the same moment must not crowd out the others; what is
+-- left over goes out with the next tick inside the 30-minute window.
+insert into public.meal_plan_entries (household_id, date, slot_id, kind, text, eater_ids,
+                                      reminder_day_offset, reminder_at)
+select tests.fx('schmidt'), '2026-12-05', tests.fx('s_jana'), 'text', 'Eintrag ' || n, '{}', 0, '12:00'
+from generate_series(1, 55) n;
+select is((select count(distinct c.dedupe_key)::int from tests.c('2026-12-05 12:00', 'schmidt') c),
+  50, 'security check entry reminder: at most 50 entries of one household in one tick');
+insert into fx (key, id) values ('jana_phone', tests.add_push_subscription(tests.fx('jana'), 'jana_phone'));
+select tests.tick('2026-12-05 12:00');
+select tests.tick('2026-12-05 12:05');
+select is(
+  (select count(*)::int from private.notification_deliveries d
+   where d.kind = 'entry_reminder' and d.household_id = tests.fx('schmidt')),
+  55, 'security check entry reminder: the five left over go out with the next tick');
 
 alter table public.meal_plan_entries enable trigger meal_plan_entries_check_reminder;
 
