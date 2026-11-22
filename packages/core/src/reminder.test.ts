@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { slotStartTime } from './prep';
 import {
   cleanReminderText,
   dayChipFor,
-  defaultReminderTime,
   EntryReminderSchema,
   householdClock,
   initialReminder,
@@ -64,17 +64,17 @@ describe('householdClock', () => {
   });
 });
 
-describe('defaultReminderTime', () => {
+describe('slotStartTime as the reminder default', () => {
   it('AC-002: evening starts at 17:00', () => {
-    expect(defaultReminderTime('Abend')).toBe('17:00');
+    expect(slotStartTime('Abend')).toBe('17:00');
   });
 
   it('REQ-003, Offene Frage 6: by name — Vormittag 08:00, Mittag 11:00, otherwise 08:00', () => {
-    expect(defaultReminderTime('Vormittag')).toBe('08:00');
-    expect(defaultReminderTime('Mittag')).toBe('11:00');
-    expect(defaultReminderTime('Frühstück')).toBe('08:00');
-    expect(defaultReminderTime('Nachmittag')).toBe('08:00');
-    expect(defaultReminderTime(' Abend ')).toBe('17:00');
+    expect(slotStartTime('Vormittag')).toBe('08:00');
+    expect(slotStartTime('Mittag')).toBe('11:00');
+    expect(slotStartTime('Frühstück')).toBe('08:00');
+    expect(slotStartTime('Nachmittag')).toBe('08:00');
+    expect(slotStartTime(' Abend ')).toBe('17:00');
   });
 });
 

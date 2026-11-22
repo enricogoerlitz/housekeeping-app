@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { addDays } from './dates';
 import {
+  addPresetSlot,
   defaultEaters,
   entriesForDay,
   leftoverCandidates,
@@ -507,5 +508,27 @@ describe('Sammlungen in a Tageszeit and as leftovers (spec 0009)', () => {
         (e) => e.id,
       ),
     ).toEqual(['dal']);
+  });
+});
+
+describe('spec 0020 REQ-005: addPresetSlot', () => {
+  it('AC-020: "Abend" is preselected, wherever it stands', () => {
+    expect(
+      addPresetSlot([
+        { id: 'abend', name: 'Abend', sort: 1 },
+        { id: 'spaet', name: 'Spät', sort: 2 },
+        { id: 'mittag', name: 'Mittag', sort: 0 },
+      ]),
+    ).toBe('abend');
+  });
+
+  it('AC-026: without "Abend" the last one ("Mittag" after "Frühstück")', () => {
+    expect(
+      addPresetSlot([
+        { id: 'mittag', name: 'Mittag', sort: 1 },
+        { id: 'fruehstueck', name: 'Frühstück', sort: 0 },
+      ]),
+    ).toBe('mittag');
+    expect(addPresetSlot([])).toBeUndefined();
   });
 });

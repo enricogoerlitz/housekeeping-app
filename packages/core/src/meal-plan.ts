@@ -9,6 +9,7 @@ import type {
   Id,
   ISODate,
   MealPlanEntry,
+  MealSlot,
   Member,
   PlanEntryVariant,
   Recipe,
@@ -183,6 +184,16 @@ export function entriesForDay(
   return entries
     .filter((entry) => entry.date === date)
     .sort((a, b) => slotPosition(a) - slotPosition(b) || compareInSlot(a, b));
+}
+
+/**
+ * The Tageszeit preselected when a day is added to as a whole (spec 0020, REQ-005, Entscheidung
+ * 14): the one named "Abend", else the last; also the "+" of the month (0021) and "Einplanen" at
+ * a restaurant (0024).
+ */
+export function addPresetSlot(slots: readonly MealSlot[]): Id | undefined {
+  const sorted = [...slots].sort((a, b) => a.sort - b.sort);
+  return (sorted.find((slot) => slot.name.trim() === 'Abend') ?? sorted[sorted.length - 1])?.id;
 }
 
 export interface Visits {

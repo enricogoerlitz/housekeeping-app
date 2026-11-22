@@ -43,6 +43,7 @@ export * from './recipe-deletion';
 export * from './plan-recipe';
 export * from './packing';
 export * from './packing-actions';
+export * from './prep';
 export * from './collections';
 export * from './collection-editor';
 export * from './cooking';
