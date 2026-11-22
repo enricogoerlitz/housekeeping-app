@@ -1,26 +1,74 @@
 import { describe, expect, it } from 'vitest';
 
-import { switchRowParts, timeFieldA11yValue, timeFieldShowsClear } from './time-field-state';
+import {
+  hourOptions,
+  minuteOptions,
+  switchRowParts,
+  timeFieldParts,
+  timeFieldShowsClear,
+  timeSelectLabel,
+  timeWithHour,
+  timeWithMinute,
+} from './time-field-state';
 
-// The words a feature passes in; ui holds no copy of its own.
-const EMPTY = 'keine Uhrzeit';
-
-describe('TimeField (spec 0013, Decision 27)', () => {
-  it('AC-022: a screen reader hears the time, "19:00"', () => {
-    expect(timeFieldA11yValue('19:00', EMPTY)).toBe('19:00');
-    expect(timeFieldA11yValue(' 7.30 ', EMPTY)).toBe('7.30');
+describe('TimeField: hour and minute (spec 0027, REQ-007)', () => {
+  it('AC-029: "Stunde" offers exactly 0–23, "Minute" exactly the twelve five-minute steps', () => {
+    expect(hourOptions(false).map((option) => option.label)).toEqual(
+      Array.from({ length: 24 }, (_, hour) => String(hour)),
+    );
+    expect(minuteOptions(false).map((option) => option.label)).toEqual([
+      '00',
+      '05',
+      '10',
+      '15',
+      '20',
+      '25',
+      '30',
+      '35',
+      '40',
+      '45',
+      '50',
+      '55',
+    ]);
   });
 
-  it('AC-025: an empty field is announced as "keine Uhrzeit"', () => {
-    expect(timeFieldA11yValue('', EMPTY)).toBe('keine Uhrzeit');
-    expect(timeFieldA11yValue('   ', EMPTY)).toBe('keine Uhrzeit');
+  it('AC-029: 7:30 shows "7" and "30"; choosing 6 and 45 gives 06:45', () => {
+    expect(timeFieldParts('07:30')).toEqual({ hour: '07', minute: '30' });
+    const hour = timeWithHour('07:30', '06');
+    expect(hour).toBe('06:30');
+    expect(timeWithMinute(hour, '45')).toBe('06:45');
+    const label = (value: string) =>
+      hourOptions(false).find((option) => option.value === value)?.label;
+    expect(label('07')).toBe('7');
   });
 
-  it('AC-025: ✕ shows only with a time and while the field can be edited', () => {
-    expect(timeFieldShowsClear('19:00', true)).toBe(true);
-    expect(timeFieldShowsClear('', true)).toBe(false);
-    expect(timeFieldShowsClear(' ', true)).toBe(false);
-    expect(timeFieldShowsClear('19:00', false)).toBe(false);
+  it('AC-030: without a time both show "–" and choosing 19 gives 19:00', () => {
+    expect(timeFieldParts(undefined)).toEqual({ hour: '', minute: '' });
+    expect(hourOptions(true)[0]).toEqual({ value: '', label: '–' });
+    expect(minuteOptions(true)[0]).toEqual({ value: '', label: '–' });
+    expect(timeWithHour(undefined, '19')).toBe('19:00');
+  });
+
+  it('AC-030: "–" as hour removes the time; a minute without an hour changes nothing', () => {
+    expect(timeWithHour('19:30', '')).toBeUndefined();
+    expect(timeWithMinute(undefined, '30')).toBeUndefined();
+    expect(timeWithMinute('19:00', '')).toBe('19:00');
+  });
+
+  it('AC-030: ✕ shows only for an optional time that is set and can be edited', () => {
+    expect(timeFieldShowsClear({ value: '19:00', optional: true, editable: true })).toBe(true);
+    expect(timeFieldShowsClear({ value: undefined, optional: true, editable: true })).toBe(false);
+    expect(timeFieldShowsClear({ value: '19:00', optional: false, editable: true })).toBe(false);
+    expect(timeFieldShowsClear({ value: '19:00', optional: true, editable: false })).toBe(false);
+  });
+
+  it('AC-031: a screen reader hears "Uhrzeit, Stunde" as the name of the hour', () => {
+    expect(timeSelectLabel('Uhrzeit', 'Stunde')).toBe('Uhrzeit, Stunde');
+    expect(timeSelectLabel('Uhrzeit', 'Minute')).toBe('Uhrzeit, Minute');
+  });
+
+  it('a time outside the choices is never offered, the field keeps the stored value', () => {
+    expect(timeFieldParts('nonsense')).toEqual({ hour: '', minute: '' });
   });
 });
 

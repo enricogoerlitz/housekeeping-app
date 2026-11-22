@@ -1,12 +1,22 @@
 import {
   addFeedback,
+  deleteFeedback,
+  editFeedback,
   toggleFeedbackVote,
   useCurrentMemberId,
   useFeedback,
   useMembersById,
   useToday,
 } from '@housekeeping/api';
-import { fuzzyIncludes, relativeDayLabel, toISODate, type FeedbackEntry } from '@housekeeping/core';
+import {
+  feedbackActions,
+  feedbackDeletePrompt,
+  FEEDBACK_STATUS_NOTE,
+  fuzzyIncludes,
+  relativeDayLabel,
+  toISODate,
+  type FeedbackEntry,
+} from '@housekeeping/core';
 import {
   Badge,
   Button,
@@ -14,10 +24,12 @@ import {
   ChoiceChips,
   EmptyState,
   Icon,
+  Menu,
   Row,
   Screen,
   ScreenHeader,
   Section,
+  Sheet,
   Stack,
   Surface,
   Text,
@@ -31,6 +43,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
+import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { usePageParams } from '@/lib/url-state';
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -106,6 +119,9 @@ export function FeedbackScreen() {
   const list = (
     <Section title="Einträge" meta={`${entries.length}`} testID="fb-list-section">
       <Stack gap={12}>
+        <Text variant="small" color="muted" testID="fb-status-note">
+          {FEEDBACK_STATUS_NOTE}
+        </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {FILTERS.map((value) => (
             <Chip
@@ -261,6 +277,11 @@ function FeedbackCard(props: { entry: FeedbackEntry }) {
   const own = entry.authorId === me;
   const day = relativeDayLabel(toISODate(new Date(entry.createdAt)), today);
   const voteLabel = entry.votes.length > 0 ? `+1 · ${entry.votes.length}` : '+1';
+  const actions = feedbackActions(entry, me);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const names = new Map(Object.values(membersById).map((member) => [member.id, member.name]));
+  const prompt = feedbackDeletePrompt(entry, names);
 
   return (
     <Surface testID={`fb-entry-${entry.id}`} style={{ gap: 10 }}>
@@ -282,7 +303,42 @@ function FeedbackCard(props: { entry: FeedbackEntry }) {
             </Text>
           ) : null}
         </View>
+        {actions.length > 0 ? (
+          <Menu<'edit' | 'delete'>
+            label="Mehr"
+            accessibilityLabel="Mehr zu diesem Feedback"
+            icon="ellipsis"
+            trigger="icon"
+            options={actions.map((action) => ({
+              value: action,
+              label: action === 'edit' ? 'Bearbeiten' : 'Löschen',
+              disabled: online.disabled,
+              hint: online.hint,
+            }))}
+            onChange={(action) => (action === 'edit' ? setEditing(true) : setDeleting(true))}
+            testID={`fb-more-${entry.id}`}
+          />
+        ) : null}
       </Row>
+      {editing ? <EditFeedbackSheet entry={entry} onClose={() => setEditing(false)} /> : null}
+      {deleting ? (
+        <TripConfirmDialog
+          title={prompt.title}
+          message={prompt.message}
+          confirmLabel="Löschen"
+          needsNetwork
+          onConfirm={() => {
+            setDeleting(false);
+            try {
+              deleteFeedback(entry.id);
+            } catch (error) {
+              toast.show({ message: error instanceof Error ? error.message : String(error) });
+            }
+          }}
+          onCancel={() => setDeleting(false)}
+          testID="fb-delete-dialog"
+        />
+      ) : null}
       <Row justify="space-between" gap={10}>
         <Row gap={6}>
           <Badge
@@ -306,5 +362,74 @@ function FeedbackCard(props: { entry: FeedbackEntry }) {
         />
       </Row>
     </Surface>
+  );
+}
+
+/** "Feedback bearbeiten" (spec 0027, AC-025): kind and text of the own entry while it is new. */
+function EditFeedbackSheet(props: { entry: FeedbackEntry; onClose: () => void }) {
+  const online = useOnlineOnly();
+  const [kind, setKind] = useState<Kind>(props.entry.kind);
+  const [text, setText] = useState(props.entry.text);
+  const [error, setError] = useState<string>();
+  const empty = text.trim() === '';
+
+  const save = () => {
+    try {
+      editFeedback(props.entry.id, { kind, text });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      return;
+    }
+    props.onClose();
+  };
+
+  return (
+    <Sheet
+      visible
+      size="m"
+      title="Feedback bearbeiten"
+      onClose={props.onClose}
+      testID="fb-edit-sheet"
+      footer={
+        <Button
+          label="Speichern"
+          icon="check"
+          full
+          disabled={empty || online.disabled}
+          hint={online.hint ?? (empty ? 'Schreib zuerst, worum es geht' : undefined)}
+          onPress={save}
+          testID="fb-edit-save"
+        />
+      }
+    >
+      <Stack gap={14}>
+        <ChoiceChips<Kind>
+          label="Art"
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'idea', label: 'Idee' },
+            { value: 'problem', label: 'Problem' },
+            { value: 'praise', label: 'Lob' },
+          ]}
+          disabled={online.disabled}
+          testID="fb-edit-kind"
+        />
+        <TextField
+          accessibilityLabel={`${KIND_LABEL[kind]} beschreiben`}
+          placeholder={KIND_PLACEHOLDER[kind]}
+          value={text}
+          onChangeText={(value) => {
+            setText(value);
+            setError(undefined);
+          }}
+          multiline
+          editable={!online.disabled}
+          error={error}
+          hint={online.hint}
+          testID="fb-edit-text"
+        />
+      </Stack>
+    </Sheet>
   );
 }

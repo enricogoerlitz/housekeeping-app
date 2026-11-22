@@ -20,11 +20,13 @@ import {
   selectableReminderDays,
   switchedOnDraft,
   thisDeviceRegistered,
+  TIME_FIELD_WORDS,
   type EntryReminder,
   type Id,
   type ISODate,
   type ReminderDraft,
   type ReminderSave,
+  type TimeOfDay,
 } from '@housekeeping/core';
 import { Button, Chip, Stack, SwitchRow, Text, TextField, TimeField } from '@housekeeping/ui';
 import { useEffect, useRef, useState } from 'react';
@@ -40,8 +42,8 @@ import { entryReminderLabels, ReminderBell } from './reminder-bell';
 
 // Spec 0017 "Erinnern" (REQ-001 to REQ-004, REQ-007): the switch and, when it is on, "Tag",
 // "Uhrzeit" and "Woran erinnern? (optional)". The add window keeps the draft until "Einplanen";
-// the entry window sends switch, chips and time right away and the text with Enter, leaving the
-// field and "Fertig" (REQ-002). The checks come from core (`reminderSave`).
+// the entry window sends switch, chips and a chosen time right away and the text with Enter,
+// leaving the field and "Fertig" (REQ-002). The checks come from core (`reminderSave`).
 
 type FieldError = { field: 'day' | 'time' | 'text'; error: string };
 
@@ -53,9 +55,8 @@ export interface ReminderForm {
   stored: EntryReminder | undefined;
   toggle: (on: boolean) => void;
   chooseDay: (offsetDays: number) => void;
-  setTime: (text: string) => void;
-  clearTime: () => void;
-  commitTime: () => void;
+  /** A chosen time is a finished input: the entry window sends it at once (spec 0027). */
+  chooseTime: (time: TimeOfDay) => void;
   setText: (text: string) => void;
   commitText: () => void;
   /** "Einplanen" in the add window: what the draft means; an invalid one shows its hint. */
@@ -104,7 +105,7 @@ export function useReminderForm(options: {
    */
   const send = (next: ReminderDraft, how?: { quietWithoutTime?: boolean }): boolean => {
     // Switched on or a chip chosen before a time is typed: it waits for the time (REQ-003).
-    if (how?.quietWithoutTime && next.on && next.time.trim() === '') return true;
+    if (how?.quietWithoutTime && next.on && next.time === undefined) return true;
     const decision = decide(next);
     if (decision.action === 'invalid') {
       setError({ field: decision.field, error: decision.error });
@@ -151,16 +152,10 @@ export function useReminderForm(options: {
       update(next);
       send(next, { quietWithoutTime: true });
     },
-    setTime: (time) => {
-      setDraft({ ...draft, time });
-      if (error?.field === 'time') setError(undefined);
-    },
-    clearTime: () => {
-      setDraft({ ...draft, time: '' });
-      if (error?.field === 'time') setError(undefined);
-    },
-    commitTime: () => {
-      send(draft);
+    chooseTime: (time) => {
+      const next = { ...draft, time };
+      update(next);
+      send(next);
     },
     setText: (text) => {
       setDraft({ ...draft, text });
@@ -321,18 +316,12 @@ export function ReminderBlock(props: {
           </View>
           <TimeField
             label="Uhrzeit"
-            placeholder="z. B. 17:00"
+            {...TIME_FIELD_WORDS}
             value={draft.time}
-            onChangeText={form.setTime}
-            onBlur={() => {
-              if (!disabled) form.commitTime();
+            // Required: "–" is offered only while there is no time yet, never chosen again.
+            onChange={(time) => {
+              if (time !== undefined && !disabled) form.chooseTime(time);
             }}
-            onSubmitEditing={() => {
-              if (!disabled) form.commitTime();
-            }}
-            onClear={form.clearTime}
-            clearLabel="Uhrzeit leeren"
-            emptyLabel="keine Uhrzeit"
             error={fieldError('time')}
             hint={disabled ? props.hint : undefined}
             disabled={disabled}

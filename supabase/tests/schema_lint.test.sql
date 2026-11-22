@@ -33,6 +33,11 @@ insert into lint_private_functions_for_authenticated values
   ('private.accept_invitation(uuid)'),
   ('private.decline_invitation(uuid)'),
   ('private.remove_member(uuid,uuid)'),
+  ('private.withdraw_invitation(uuid)'), -- spec 0027
+  ('private.update_profile(text,text,text,text[])'),
+  ('private.household_media_names(uuid)'), -- security invoker, reads storage.objects under RLS
+  ('private.close_household_for_deletion(uuid)'), -- definer, rechecks last member under a lock
+  ('private.delete_household(uuid)'),
   ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
   ('private.set_recipe_favorite(uuid,boolean)'),
   ('private.set_recipe_rating(uuid,numeric)'),

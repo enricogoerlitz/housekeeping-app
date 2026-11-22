@@ -1,8 +1,10 @@
 import type { Page } from '@playwright/test';
 
 import {
+  chooseTime,
   day,
   expect,
+  expectTime,
   goOffline,
   inThisWeek,
   nav,
@@ -47,13 +49,18 @@ test('AC-022, AC-025: a time on "Bad putzen" shows in Haushalt, Zu tun and the h
   await open(page, '/haushalt');
   await tid(page, `chore-${BAD}`).click();
   await editChore(page);
-  await expect(tid(page, 'chore-due-time')).toHaveValue('');
+  // Spec 0027, AC-030: without a time both show "–", "Minute" is greyed out and ✕ is missing.
+  await expectTime(page, 'chore-due-time', '');
+  await expect(tid(page, 'chore-due-time-minute')).toBeDisabled();
+  await expect(tid(page, 'chore-due-time-clear')).toBeHidden();
 
-  // Only five-minute steps (Decision 4); the hint names the own setting (Offene Frage 3 d).
-  await tid(page, 'chore-due-time').fill('19:03');
-  await tid(page, 'chore-save').click();
-  await expect(tid(page, 'chore-due-time-error')).toHaveText('Bitte in 5-Minuten-Schritten');
-  await tid(page, 'chore-due-time').fill('19');
+  // Spec 0027, AC-029: "Minute" offers the twelve five-minute steps; the hint names the own
+  // setting (Offene Frage 3 d).
+  await chooseTime(page, 'chore-due-time', '19:00');
+  await expectTime(page, 'chore-due-time', '19:00');
+  await expect(tid(page, 'chore-due-time-minute')).toBeEnabled();
+  await expect(tid(page, 'chore-due-time-minute').locator('option')).toHaveCount(12);
+  await expect(tid(page, 'chore-due-time-hour')).toHaveAccessibleName('Uhrzeit, Stunde');
   await expect(tid(page, 'chore-sheet')).toContainText(
     'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)',
   );
@@ -71,9 +78,9 @@ test('AC-022, AC-025: a time on "Bad putzen" shows in Haushalt, Zu tun and the h
   await nav(page, 'haushalt');
   await tid(page, `chore-${BAD}`).click();
   await editChore(page);
-  await expect(tid(page, 'chore-due-time')).toHaveValue('19:00');
+  await expectTime(page, 'chore-due-time', '19:00');
   await tid(page, 'chore-due-time-clear').click();
-  await expect(tid(page, 'chore-due-time')).toHaveValue('');
+  await expectTime(page, 'chore-due-time', '');
   await tid(page, 'chore-save').click();
   await tid(page, 'chore-sheet-close').click();
   await expect(tid(page, `chore-${BAD}`)).not.toContainText('19:00');
@@ -101,29 +108,26 @@ test('AC-027, AC-029, AC-037: the reservation link opens the entry with Route; s
   await expect(tid(page, 'entry-sheet')).toBeVisible();
   await expect(tid(page, 'entry-sheet')).toContainText('Trattoria Da Enzo');
   await expect(tid(page, 'entry-route')).toBeVisible();
-  await expect(tid(page, 'entry-reserved-at')).toHaveValue('19:30');
+  await expectTime(page, 'entry-reserved-at', '19:30');
   await expect(tid(page, 'entry-remind')).toContainText('Erinnern 2 h vorher');
 
   // ✕: no time, no reminder.
   await tid(page, 'entry-reserved-at-clear').click();
-  await expect(tid(page, 'entry-reserved-at')).toHaveValue('');
+  await expectTime(page, 'entry-reserved-at', '');
   await expect(tid(page, 'entry-remind')).toBeHidden();
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
   await expect(tid(page, `entry-${ENZO}`)).not.toContainText('19:30');
 
-  // Typed as "1930", saved with "Fertig" (AC-027); a wrong time keeps the window open.
+  // Chosen as 19 and 30, saved as chosen (AC-027; spec 0027, REQ-007).
   await tid(page, `entry-${ENZO}`).click();
-  await tid(page, 'entry-reserved-at').fill('25:00');
-  await tid(page, 'entry-done').click();
-  await expect(tid(page, 'entry-reserved-at-error')).toHaveText('Keine gültige Uhrzeit');
-  await tid(page, 'entry-reserved-at').fill('1930');
+  await chooseTime(page, 'entry-reserved-at', '19:30');
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
   await expect(tid(page, `entry-${ENZO}`)).toContainText('Trattoria Da Enzo · 19:30');
 
   await tid(page, `entry-${ENZO}`).click();
-  await expect(tid(page, 'entry-reserved-at')).toHaveValue('19:30');
+  await expectTime(page, 'entry-reserved-at', '19:30');
   await expect(tid(page, 'entry-remind')).toContainText('Erinnern 2 h vorher');
   await tid(page, 'entry-remind').click();
   await tid(page, 'entry-remind-60').click();
@@ -178,7 +182,8 @@ test('offline: the time of a chore and the reservation are greyed out with the h
   await goOffline(page);
   await tid(page, `entry-${ENZO}`).click();
   await expect(tid(page, 'entry-sheet')).toContainText('Offline – zum Bearbeiten brauchst du Netz');
-  await expect(tid(page, 'entry-reserved-at')).not.toBeEditable();
+  await expect(tid(page, 'entry-reserved-at-hour')).toBeDisabled();
+  await expect(tid(page, 'entry-reserved-at-minute')).toBeDisabled();
   await expect(tid(page, 'entry-reserved-at-clear')).toBeHidden();
   await tid(page, 'entry-remind').click();
   await expect(tid(page, 'entry-remind-60')).toBeDisabled();

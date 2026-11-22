@@ -130,6 +130,8 @@ jobs:
       PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
       PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
       PRODUCTION_WEB_ORIGIN_WILDCARD: ${{ vars.PRODUCTION_WEB_ORIGIN }}/**
+      # Spec 0027, AC-043: the azurestaticapps.net address that must redirect to the own domain.
+      PRODUCTION_OLD_WEB_ORIGIN: ${{ vars.PRODUCTION_OLD_WEB_ORIGIN }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       # For `supabase config diff` inside verify.mjs (read-only), which compares the hashed secret.
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -148,4 +150,4 @@ jobs:
       - name: Konfiguration für das Produktionsprojekt
         run: node scripts/ci/supabase-remote.mjs production
       - name: Produktion von außen prüfen
-        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$COMMIT"
+        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$COMMIT" ${PRODUCTION_OLD_WEB_ORIGIN:+--old-origin "$PRODUCTION_OLD_WEB_ORIGIN"}

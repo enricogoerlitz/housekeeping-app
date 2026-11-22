@@ -447,6 +447,8 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (22.11.2026).
     Laufzeit nachgeführt); Kopfzeilen und Fenster halten den oberen sicheren Rand ein.
 20. Beim Bau: `apple-mobile-web-app-status-bar-style` ist `default` (dunkle Schrift auf hellem
     Theme); ob iOS damit im dunklen Theme helle Schrift zeigt, prüft Enrico (Entscheidung 14).
+21. Beim Zusammenführen mit 0027: `fenster=profil`, `fenster=umbenennen` und `fuer-haushalt` laufen
+    über `usePageParams`; „Bearbeiten“ im Feedback bleibt ohne eigenen Parameter (Anhang: `feedback`).
 
 ## Daten
 

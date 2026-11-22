@@ -4,7 +4,7 @@
 -- invitations directly.
 begin;
 \ir _helpers.psql
-select plan(42);
+select plan(43);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select on fx to anon, authenticated;
@@ -27,16 +27,15 @@ select results_eq(
   $$ values ('Anna'), ('Carla') $$,
   'AC-011 profiles: a member sees her own profile and those of her co-members only'
 );
-update public.profiles set name = 'Hacked' where id = (select id from fx where key = 'ben');
-update public.profiles set name = 'Hacked' where id = (select id from fx where key = 'carla');
-update public.profiles
-set name = 'Anna B.', color = '#123ABC', diet_preference = 'vegan', dislikes = array['Rosenkohl']
-where id = (select id from fx where key = 'anna');
-select results_eq(
-  $$ select name, color, diet_preference, dislikes from public.profiles
-     where id = (select id from fx where key = 'anna') $$,
-  $$ values ('Anna B.', '#123ABC', 'vegan', array['Rosenkohl']) $$,
-  'T2 profiles: a person updates her own name, colour, diet and dislikes'
+select throws_ok(
+  $$ update public.profiles set name = 'Hacked' where id = (select id from fx where key = 'carla') $$,
+  '42501', null,
+  'AC-012 (spec 0027) profiles: nobody updates a profile directly, only through update_profile'
+);
+select throws_ok(
+  $$ update public.profiles set name = 'Anna B.' where id = (select id from fx where key = 'anna') $$,
+  '42501', null,
+  'AC-012 (spec 0027) profiles: not even her own'
 );
 select throws_ok(
   $$ update public.profiles set email = 'ben@example.com' where id = (select id from fx where key = 'anna') $$,
@@ -54,9 +53,9 @@ select throws_ok(
   'T2 profiles: created_at cannot be written'
 );
 select throws_ok(
-  $$ update public.profiles set color = 'red' where id = (select id from fx where key = 'anna') $$,
-  '23514', null,
-  'T2 profiles: the colour must be a hex colour'
+  $$ update public.profiles set color = '#3E6C8E' where id = (select id from fx where key = 'anna') $$,
+  '42501', null,
+  'T2 profiles: the colour cannot be written directly'
 );
 select throws_ok(
   $$ insert into public.profiles (id, name, email, color) values (gen_random_uuid(), 'X', 'x@example.com', '#000000') $$,
@@ -209,9 +208,9 @@ select throws_ok(
   'AC-011 household_invitations: nobody invites into a foreign household directly'
 );
 select throws_ok(
-  $$ update public.household_invitations set accepted_at = now() $$,
+  $$ update public.household_invitations set email = 'x@example.com' $$,
   '42501', null,
-  'T2 household_invitations: invitations cannot be accepted by a direct update'
+  'T2 household_invitations: invitations cannot be changed by a direct update'
 );
 select throws_ok(
   $$ delete from public.household_invitations $$,

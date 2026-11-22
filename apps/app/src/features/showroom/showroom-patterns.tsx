@@ -4,7 +4,7 @@ import {
   matchSearchOrCreate,
   moveInOrder,
   orderAnnouncement,
-  parseTimeInput,
+  TIME_FIELD_WORDS,
   type Member,
 } from '@housekeeping/core';
 import {
@@ -1348,48 +1348,31 @@ function SelectRowBlock() {
   );
 }
 
-// ---------- Spec 0013: time field and a switch with details ----------
+// ---------- Spec 0013 and 0027: time field and a switch with details ----------
 
 function TimeBlock() {
   const [offline, setOffline] = useState(false);
-  const [text, setText] = useState('19:00');
-  const [error, setError] = useState<string>();
+  const [time, setTime] = useState<string | undefined>('19:00');
   const [summaryOn, setSummaryOn] = useState(false);
   const [summaryAt, setSummaryAt] = useState('07:30');
-  const read = () => {
-    const parsed = parseTimeInput(text);
-    if (!parsed.ok) {
-      setError(parsed.error);
-      return;
-    }
-    setError(undefined);
-    setText(parsed.time === undefined ? '' : formatTime(parsed.time));
-    if (parsed.time !== undefined) setSummaryAt(parsed.time);
-  };
   return (
     <Block
       title="Uhrzeit und Schalter mit Detail"
-      note="Eintippen: „19“, „1930“, „7.30“. Nur 5-Minuten-Schritte, ✕ leert das Feld. Beim Schalter mit Detail öffnen Titel und „›“ die Einstellung, der Schalter bleibt eigener Knopf."
+      note="„Stunde“ und „Minute“ wählen, nur 5-Minuten-Schritte; ✕ entfernt die Uhrzeit. Beim Schalter mit Detail öffnen Titel und „›“ die Einstellung, der Schalter bleibt eigener Knopf."
       testID="showroom-time"
     >
       <SwitchRow label="Offline" value={offline} onValueChange={setOffline} />
       <TimeField
-        label="Uhrzeit"
-        value={text}
-        onChangeText={(value) => {
-          setText(value);
-          setError(undefined);
+        label="Uhrzeit (optional)"
+        accessibilityName="Uhrzeit"
+        {...TIME_FIELD_WORDS}
+        value={time}
+        onChange={(value) => {
+          setTime(value);
+          if (value !== undefined) setSummaryAt(value);
         }}
-        onBlur={read}
-        onSubmitEditing={read}
-        onClear={() => {
-          setText('');
-          setError(undefined);
-        }}
+        optional
         clearLabel="Uhrzeit entfernen"
-        emptyLabel="keine Uhrzeit"
-        placeholder="z. B. 19:00"
-        error={error}
         disabled={offline}
         hint={offline ? OFFLINE_HINT : undefined}
         testID="showroom-time-field"

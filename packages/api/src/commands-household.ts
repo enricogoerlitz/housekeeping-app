@@ -1,4 +1,7 @@
 import {
+  feedbackActions,
+  householdRename,
+  profileDraftErrors,
   absenceDays,
   packingSaveProblem,
   planAbsenceWrite,
@@ -9,10 +12,11 @@ import {
   type PackingListBag,
   type FeedbackEntry,
   type Id,
+  type ProfileDraft,
   type ISODate,
 } from '@housekeeping/core';
 
-import { householdCall, WRITE_REJECTED_MESSAGE } from './backend';
+import { householdCall, onlineCall, WRITE_REJECTED_MESSAGE } from './backend';
 import { starterPayload } from './starter/payload';
 import {
   commit,
@@ -226,6 +230,52 @@ export function addFeedback(input: {
   });
 }
 
+/** The own entry, or an error: only the author edits (while new) or deletes (spec 0027, AC-027). */
+function ownFeedback(feedbackId: Id, action: 'edit' | 'delete'): FeedbackEntry {
+  const entry = getData().feedback.find((candidate) => candidate.id === feedbackId);
+  if (!entry || !feedbackActions(entry, getState().currentMemberId).includes(action)) {
+    throw new Error('Das geht nur bei deinem eigenen Feedback.');
+  }
+  return entry;
+}
+
+/** "Feedback bearbeiten" (spec 0027, AC-025): kind and text; votes, date and status stay. */
+export function editFeedback(
+  feedbackId: Id,
+  input: { kind: FeedbackEntry['kind']; text: string },
+): void {
+  const text = input.text.trim();
+  if (!text) throw new Error('Schreib zuerst, worum es geht');
+  ownFeedback(feedbackId, 'edit');
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      feedback: data.feedback.map((entry) =>
+        entry.id === feedbackId ? { ...entry, kind: input.kind, text } : entry,
+      ),
+    })),
+  );
+}
+
+/** "Löschen" of the own entry (spec 0027, AC-026): its "+1" go with it (on delete cascade). */
+export function deleteFeedback(feedbackId: Id): void {
+  ownFeedback(feedbackId, 'delete');
+  commit(
+    {
+      path: 'rpc',
+      send: (transport, context) =>
+        transport.applyChanges(context.householdId, [
+          { kind: 'delete', table: 'feedback', id: feedbackId },
+        ]),
+    },
+    () =>
+      updateData((data) => ({
+        ...data,
+        feedback: data.feedback.filter((entry) => entry.id !== feedbackId),
+      })),
+  );
+}
+
 /** "+1": supports someone else's feedback; a second call takes the vote back. */
 export function toggleFeedbackVote(feedbackId: Id): void {
   const me = getState().currentMemberId;
@@ -257,7 +307,11 @@ export function toggleFeedbackVote(feedbackId: Id): void {
 
 export const INVALID_EMAIL_MESSAGE = 'Das ist keine E-Mail-Adresse';
 export const LAST_MEMBER_MESSAGE = 'Du bist das letzte Mitglied des Haushalts.';
-export const INVITATION_GONE_MESSAGE = 'Die Einladung gibt es nicht mehr.';
+export const INVITATION_GONE_MESSAGE = 'Diese Einladung gibt es nicht mehr.';
+export const NOT_LAST_MEMBER_MESSAGE =
+  'Inzwischen ist noch jemand Mitglied. Löschen geht nur als letztes Mitglied.';
+export const PROFILE_NOT_SAVED_MESSAGE =
+  'Nicht gespeichert – bitte mit Netz noch einmal versuchen.';
 
 const MESSAGES: Record<string, string> = {
   invalid_email: INVALID_EMAIL_MESSAGE,
@@ -266,20 +320,22 @@ const MESSAGES: Record<string, string> = {
   invalid_name: 'Der Name passt nicht – höchstens 80 Zeichen.',
   already_member: 'Diese Person ist schon Mitglied.',
   member_not_found: 'Diese Person ist kein Mitglied mehr.',
+  not_last_member: NOT_LAST_MEMBER_MESSAGE,
 };
 
 /** Same rule as `private.is_valid_email` on the server. */
 const EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 
 /** One RPC, then a pull; a refusal becomes a German message (offline: OfflineError). */
-async function householdRpc<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
+async function householdRpc<T>(
+  send: (transport: Transport) => Promise<T>,
+  fallback = WRITE_REJECTED_MESSAGE,
+): Promise<T> {
   try {
     return await householdCall(send);
   } catch (error) {
     if (!(error instanceof TransportError)) throw error;
-    throw new Error(
-      (error.kind === 'permanent' ? MESSAGES[error.code] : undefined) ?? WRITE_REJECTED_MESSAGE,
-    );
+    throw new Error((error.kind === 'permanent' ? MESSAGES[error.code] : undefined) ?? fallback);
   }
 }
 
@@ -305,6 +361,66 @@ export function acceptInvitation(invitationId: Id): Promise<Id> {
 
 export function declineInvitation(invitationId: Id): Promise<void> {
   return householdRpc((transport) => transport.declineInvitation(invitationId));
+}
+
+/** "Zurückziehen" (spec 0027, REQ-001): the invitation is deleted, no question, no undo. */
+export function withdrawInvitation(invitationId: Id): Promise<void> {
+  return householdRpc((transport) => transport.withdrawInvitation(invitationId));
+}
+
+/**
+ * "Profil bearbeiten" (spec 0027, REQ-003): the own profile through update_profile. A refusal or
+ * a lost connection keeps the window open with "Nicht gespeichert …" (AC-013).
+ */
+export function updateProfile(draft: ProfileDraft): Promise<void> {
+  const error = profileDraftErrors(draft).name;
+  if (error) return Promise.reject(new Error(error));
+  const profile = {
+    name: draft.name.trim(),
+    color: draft.color,
+    dietPreference: draft.dietPreference,
+    dislikes: [...draft.dislikes],
+  };
+  return householdRpc((transport) => transport.updateProfile(profile), PROFILE_NOT_SAVED_MESSAGE);
+}
+
+/**
+ * "Haushalt umbenennen" (spec 0027, REQ-004): a patch of the active household; the last name to
+ * arrive wins (AC-016). 'kept' when nothing changed (AC-015).
+ */
+export function renameHousehold(input: string): 'saved' | 'kept' {
+  const decision = householdRename(getData().household.name, input);
+  if (decision.action === 'invalid') throw new Error(decision.error);
+  if (decision.action === 'keep') return 'kept';
+  commit({ path: 'diff' }, () =>
+    updateData((data) => ({ ...data, household: { ...data.household, name: decision.name } })),
+  );
+  return 'saved';
+}
+
+/**
+ * "Endgültig löschen" (spec 0027, REQ-005, Decision 3): the household's photos first, then
+ * delete_household, which refuses with media_remaining while photos are left. A failure on the
+ * way leaves the household with its rows; trying again is safe (AC-023). The pull after it drops
+ * the household and its photos from the device.
+ */
+export async function deleteHousehold(householdId: Id): Promise<void> {
+  const name = getState().households[householdId]?.household.name ?? '';
+  const notDone = `Löschen nicht abgeschlossen – „${name}“ ist noch da. Bitte mit Netz noch einmal löschen.`;
+  try {
+    const names = await onlineCall((transport) => transport.householdMediaNames(householdId));
+    for (let start = 0; start < names.length; start += 100) {
+      const batch = names.slice(start, start + 100);
+      await onlineCall((transport) => transport.removeMedia(batch));
+    }
+    await householdCall((transport) => transport.deleteHousehold(householdId));
+  } catch (error) {
+    if (!(error instanceof TransportError)) throw error;
+    if (error.kind === 'permanent' && error.code === 'not_last_member') {
+      throw new Error(NOT_LAST_MEMBER_MESSAGE);
+    }
+    throw new Error(notDone);
+  }
 }
 
 /** Removes a person (or oneself: leaving) from the active household (AC-012). */

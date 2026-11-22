@@ -189,13 +189,6 @@ describe('validateReminder', () => {
     });
   });
 
-  it('REQ-003: reads typed times like the time field of spec 0013', () => {
-    expect(validateReminder({ ...base, time: '1730' })).toEqual({
-      ok: true,
-      reminder: { offsetDays: 0, at: '17:30' },
-    });
-  });
-
   it('AC-011: a moment in the past is refused with "Liegt in der Vergangenheit"', () => {
     const curry = { ...base, entryDate: '2026-11-25' };
     expect(validateReminder({ ...curry, time: '11:00' })).toEqual({
@@ -223,23 +216,21 @@ describe('validateReminder', () => {
     expect(validateReminder({ ...curry, timeZone: 'America/New_York' }).ok).toBe(true);
   });
 
-  it('AC-012: a time outside 5-minute steps shows the message of the time field', () => {
-    expect(validateReminder({ ...base, time: '17:03' })).toEqual({
-      ok: false,
-      field: 'time',
-      error: 'Bitte in 5-Minuten-Schritten',
-    });
+  it('AC-012: a time outside the choices of the time field is no valid time (spec 0027)', () => {
+    for (const time of ['17:03', '1730', '25:00']) {
+      expect(validateReminder({ ...base, time }), time).toEqual({
+        ok: false,
+        field: 'time',
+        error: 'Keine gültige Uhrzeit',
+      });
+    }
   });
 
   it('REQ-003: the time is required', () => {
-    expect(validateReminder({ ...base, time: '' })).toEqual({
+    expect(validateReminder({ ...base, time: undefined })).toEqual({
       ok: false,
       field: 'time',
-      error: 'Bitte eine Uhrzeit eingeben',
-    });
-    expect(validateReminder({ ...base, time: '25:00' })).toMatchObject({
-      ok: false,
-      field: 'time',
+      error: 'Bitte eine Uhrzeit wählen',
     });
   });
 

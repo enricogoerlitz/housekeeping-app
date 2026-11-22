@@ -1,6 +1,7 @@
 import { switchHousehold, useActiveHouseholdId, useHouseholdsMap } from '@housekeeping/api';
 import {
   Icon,
+  IconButton,
   List,
   ListRow,
   Screen,
@@ -14,8 +15,11 @@ import {
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
+import { useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 import { CreateHouseholdForm, InviteForm, MemberList, MyInvitations } from './household-forms';
+import { DeleteHouseholdBlock, RenameHouseholdSheet } from './household-sheets';
 
 /**
  * "Verwalten" → "Haushalt & Mitglieder" (spec 0005, AC-056): the active household with its
@@ -28,12 +32,16 @@ export function MembersScreen() {
   const households = useHouseholdsMap();
   const activeId = useActiveHouseholdId();
   const active = households[activeId]?.household;
+  const online = useOnlineOnly();
+  const address = usePageParams('mitglieder');
+  const renaming = address.params.fenster === 'umbenennen';
 
   const members = (
     <Section title="Mitglieder" testID="settings-household">
       <Stack gap={14}>
         <MemberList />
         <InviteForm />
+        <DeleteHouseholdBlock />
       </Stack>
     </Section>
   );
@@ -58,9 +66,23 @@ export function MembersScreen() {
           title={active?.name ?? 'Haushalt'}
           kicker="Haushalt & Mitglieder"
           onBack={back}
+          right={
+            <IconButton
+              icon="pencil"
+              label="Haushalt umbenennen"
+              variant="soft"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => address.open({ fenster: 'umbenennen' })}
+              testID="household-rename"
+            />
+          }
         />
       }
     >
+      {renaming ? (
+        <RenameHouseholdSheet onClose={() => address.close({ fenster: undefined })} />
+      ) : null}
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>{members}</View>

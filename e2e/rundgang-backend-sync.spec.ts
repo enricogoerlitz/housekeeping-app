@@ -2,6 +2,8 @@ import type { BrowserContext, Page } from '@playwright/test';
 
 import {
   accessToken,
+  chooseTime,
+  expectTime,
   createTestHousehold,
   day,
   doneItem,
@@ -657,13 +659,13 @@ test('AC-008 / AC-009 (0018): "Fertig" saves "Reserviert um"; refused, the windo
   await expect(toastMessage(page)).toHaveText(`„${name}“ angelegt und eingeplant`);
   const entry = page.locator(PLAN_ENTRY).filter({ hasText: name });
 
-  // AC-008: the typed time is saved with "Fertig".
+  // AC-008: the chosen time is saved (spec 0027: a choice is a finished input).
   await entry.click();
-  await tid(page, 'entry-reserved-at').fill('19:30');
+  await chooseTime(page, 'entry-reserved-at', '19:30');
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
   await entry.click();
-  await expect(tid(page, 'entry-reserved-at')).toHaveValue('19:30');
+  await expectTime(page, 'entry-reserved-at', '19:30');
 
   // AC-009: the server refuses; the window stays open with the time, and no success is claimed.
   await page.route('**/rest/v1/rpc/apply_changes', (route) =>
@@ -678,21 +680,23 @@ test('AC-008 / AC-009 (0018): "Fertig" saves "Reserviert um"; refused, the windo
       },
     }),
   );
-  await tid(page, 'entry-reserved-at').fill('20:00');
-  await expect(toastMessage(page)).toHaveCount(0);
   const toasts = await recordToasts(page);
-  await tid(page, 'entry-done').click();
+  await chooseTime(page, 'entry-reserved-at', '20:00');
   await expect(toastMessage(page)).toHaveText(REJECTED);
+  await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeVisible();
-  await expect(tid(page, 'entry-reserved-at')).toHaveValue('20:00');
-  expect(await toasts(), 'no success before the server confirmed').toEqual([REJECTED]);
+  await expectTime(page, 'entry-reserved-at', '20:00');
+  expect(
+    (await toasts()).filter((message) => message !== REJECTED),
+    'no success before the server confirmed',
+  ).toEqual([]);
 
   // Online again, the next "Fertig" saves it.
   await page.unroute('**/rest/v1/rpc/apply_changes');
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
   await entry.click();
-  await expect(tid(page, 'entry-reserved-at')).toHaveValue('20:00');
+  await expectTime(page, 'entry-reserved-at', '20:00');
 });
 
 test('REQ-004 (0018): the question to leave closes when its household goes away while it is open', async ({

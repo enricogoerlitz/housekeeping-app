@@ -359,7 +359,7 @@ describe('applyMemberships', () => {
   });
 
   it('keeps open invitations to households the user is not a member of yet (to accept them)', () => {
-    const invitation = { id: 'i1', household_id: H2, email: 'p1@example.com', accepted_at: null };
+    const invitation = { id: 'i1', household_id: H2, email: 'p1@example.com' };
     const cache: SyncCache = {
       ...loadedCache(),
       small: {

@@ -12,8 +12,16 @@ import {
   useHouseholdsMap,
   useMembers,
   useMyInvitations,
+  withdrawInvitation,
 } from '@housekeeping/api';
-import { memberRemovalPrompt, type MemberRemovalPrompt } from '@housekeeping/core';
+import {
+  invitationHint,
+  invitedNotice,
+  memberProfileLine,
+  memberRemovalPrompt,
+  withdrawnNotice,
+  type MemberRemovalPrompt,
+} from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -118,8 +126,12 @@ export function InviteForm() {
 
   const submit = async () => {
     setError(undefined);
+    const address = email.trim().toLowerCase();
     const invited = await run(() => inviteMember(email), setError);
-    if (invited) setEmail('');
+    if (invited) {
+      setEmail('');
+      toast.show({ message: invitedNotice(address) });
+    }
   };
 
   return (
@@ -136,7 +148,8 @@ export function InviteForm() {
         keyboardType="email-address"
         returnKeyType="send"
         error={error}
-        hint={online.hint ?? 'Wer eingeladen ist, kann sich mit Google anmelden.'}
+        // Spec 0027, AC-006/AC-007: the Google hint stays, also offline (Decision 11).
+        hint={invitationHint(online.hint)}
         editable={!online.disabled}
         testID="household-invite-input"
       />
@@ -156,6 +169,8 @@ export function InviteForm() {
 /**
  * Members of the active household and its open invitations („Eingeladen“). „Entfernen“ and
  * „Verlassen“ ask first; the server call happens only on the confirmation (spec 0018, REQ-004).
+ * „Zurückziehen“ withdraws an invitation without asking (spec 0027, REQ-001, Decision 2); the
+ * last member has no „Verlassen“, only „Haushalt löschen“ below (AC-017).
  */
 export function MemberList() {
   const members = useMembers();
@@ -176,6 +191,15 @@ export function MemberList() {
     setAsking(undefined);
   }
 
+  const withdraw = (invitationId: string, email: string) =>
+    run(
+      async () => {
+        await withdrawInvitation(invitationId);
+        toast.show({ message: withdrawnNotice(email) });
+      },
+      (message) => toast.show({ message }),
+    );
+
   const remove = (profileId: string, name: string) =>
     run(
       async () => {
@@ -192,21 +216,25 @@ export function MemberList() {
       <List testID="household-members">
         {members.map((member) => {
           const self = member.id === me;
+          const last = members.length === 1;
           return (
             <ListRow
               key={member.id}
               title={self ? `${member.name} (du)` : member.name}
+              subtitle={memberProfileLine(member)}
               leading={<Avatar name={member.name} color={member.color} size="m" />}
               trailing={
-                <Button
-                  label={self ? 'Verlassen' : 'Entfernen'}
-                  variant="link"
-                  size="sm"
-                  disabled={online.disabled || busy}
-                  hint={online.hint}
-                  onPress={() => setAsking({ id: member.id, name: member.name })}
-                  testID={`household-member-remove-${member.id}`}
-                />
+                last ? undefined : (
+                  <Button
+                    label={self ? 'Verlassen' : 'Entfernen'}
+                    variant="link"
+                    size="sm"
+                    disabled={online.disabled || busy}
+                    hint={online.hint}
+                    onPress={() => setAsking({ id: member.id, name: member.name })}
+                    testID={`household-member-remove-${member.id}`}
+                  />
+                )
               }
               testID={`household-member-${member.id}`}
             />
@@ -221,6 +249,17 @@ export function MemberList() {
               <View style={{ width: 36, alignItems: 'center' }}>
                 <Icon name="mail" color="muted" />
               </View>
+            }
+            trailing={
+              <Button
+                label="Zurückziehen"
+                variant="link"
+                size="sm"
+                disabled={online.disabled || busy}
+                hint={online.hint}
+                onPress={() => void withdraw(invitation.id, invitation.email)}
+                testID={`household-invitation-withdraw-${invitation.id}`}
+              />
             }
             testID={`household-invitation-${invitation.id}`}
           />
