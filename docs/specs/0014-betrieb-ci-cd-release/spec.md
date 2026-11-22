@@ -384,14 +384,15 @@ Und         auf „develop“ ändert sich nichts, bis Enrico „develop“ in d
 
 **Offline:** betrifft keine App-Bedienung (GitHub).
 
-**AC-006 — Umfang** (geändert am 21.11.2026: PRs nach `develop` und `main`, auch „preview“ gesperrt)
+**AC-006 — Umfang** (geändert am 21.11.2026: PRs nach `develop` und `main`, auch „preview“ gesperrt; geändert am 22.11.2026: die E2E-Suiten laufen nur noch lokal, weil sie in der Pipeline rund 20 Minuten brauchen)
 
 ```gherkin
 Angenommen  eine PR nach „develop“ oder „main“, die Code ändert
 Wenn        die Checks laufen
 Dann        laufen „pnpm format:check“, „pnpm check“ (Lint, Typprüfung, Unit-Tests, Edge-Verträge),
-            „pnpm exec supabase test db“, „pnpm build:web“ samt CSP- und SWA-Konfigurationsprüfung,
-            „pnpm e2e“ und „pnpm e2e:dev“ gegen den lokalen Stack
+            „pnpm exec supabase test db“, „pnpm build:web“ samt CSP- und SWA-Konfigurationsprüfung
+Und         „pnpm e2e“ und „pnpm e2e:dev“ laufen nicht in der Pipeline; sie laufen lokal vor einer
+            Veröffentlichung
 Und         keiner dieser Jobs kann ein Secret der Umgebungen „preview“, „production“, „backup“ oder
             „restore-test“ lesen
 Und         dieselben Checks laufen nach jedem Zusammenführen noch einmal auf „develop“ bzw. „main“

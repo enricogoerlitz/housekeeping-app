@@ -53,9 +53,12 @@ Die Rulesets liegen als Dateien in `infra/github/` und gelten ohne Umgehung, auc
 
 Pflicht-Checks sind die Jobnamen aus `.github/workflows/checks.yml` ohne „Änderungen“:
 `Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`, `Datenbank (pgTAP)`, `Deno-Lock`,
-`E2E`, jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
+jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
 verlangt; Freigaben (Reviews) auch nicht, weil es nur einen Besitzer gibt. Ein Jobname und die
 Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das.
+
+Die E2E-Suiten (`pnpm e2e`, `pnpm e2e:dev`) laufen seit 22.11.2026 nicht mehr in der Pipeline, nur
+lokal: vor jeder Veröffentlichung einmal beide ausführen (Spec 0014, AC-006).
 
 ```sh
 # Anlegen (einmal, Runbook B7)
@@ -297,17 +300,42 @@ Projekt erst löschen, wenn alles stimmt.
 Bei Verdacht auf Abfluss sofort, sonst zum Ablaufdatum. Immer: neuen Wert setzen, einen Lauf
 abwarten, dann den alten widerrufen.
 
-| Was                                 | Wo neu setzen                                                                                                                 | Alten widerrufen                                                                                 |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Supabase-Zugangstoken (je Umgebung) | Account → Access Tokens, gleiche Rechte wie im Runbook C3, Ablauf 90 Tage → `gh secret set SUPABASE_ACCESS_TOKEN --env …`     | Access Tokens → altes löschen                                                                    |
-| Google-Client-Secret                | Google Auth Platform → Client „Housekeeping Web“ → neues Secret → `GOOGLE_CLIENT_SECRET` in `production` und `preview`        | nach der nächsten Veröffentlichung und Vorschau das alte deaktivieren                            |
-| Deployment-Token einer SWA          | `az staticwebapp secrets reset-api-key -n <SWA_NAME> -g "$RG"`; die Pipeline holt es zur Laufzeit                             | entfällt (das alte ist damit ungültig)                                                           |
-| Push-Geheimnis `PUSH_SEND_SECRET`   | `supabase secrets set PUSH_SEND_SECRET=…` und im SQL-Editor `vault.update_secret(<id von push_send_secret>, '<neu>')`         | entfällt                                                                                         |
-| VAPID-Schlüsselpaar                 | nur bei Abfluss: `node scripts/push-keys.mjs --out …`, Function-Secrets, `PRODUCTION_VAPID_PUBLIC_KEY`, neue Veröffentlichung | entfällt; alle Geräte müssen Benachrichtigungen neu einschalten                                  |
-| Passwort von `backup_reader`        | SQL-Editor: `alter role backup_reader with password '<neu>';` → `BACKUP_DB_URL` in `backup`                                   | entfällt                                                                                         |
-| S3-Schlüssel Storage                | Storage → Settings → S3 Connection → neuer Schlüssel → `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`               | alten Schlüssel löschen                                                                          |
-| Sicherungsschlüssel (`age`)         | `age-keygen -o …` → `BACKUP_AGE_RECIPIENT` (`backup`), `BACKUP_AGE_IDENTITY` (`restore-test`)                                 | **den alten privaten Schlüssel 12 Monate aufheben**: ältere Sicherungen sind damit verschlüsselt |
-| Azure-Identitäten                   | kein Schlüssel (OIDC); bei Verdacht die föderierte Anmeldung löschen und neu anlegen (Runbook B3, `ident`)                    | `az identity federated-credential delete …`                                                      |
+| Was                                                    | Wo neu setzen                                                                                                                                                                 | Alten widerrufen                                                                                 |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Supabase-Zugangstoken (ein Token für beide Umgebungen) | Account → Access Tokens, Rechte wie unter „Supabase-Zugangstoken: Einstellungen“, Ablauf 90 Tage → `gh secret set SUPABASE_ACCESS_TOKEN --env production` und `--env preview` | Access Tokens → altes löschen                                                                    |
+| Google-Client-Secret                                   | Google Auth Platform → Client „Housekeeping Web“ → neues Secret → `GOOGLE_CLIENT_SECRET` in `production` und `preview`                                                        | nach der nächsten Veröffentlichung und Vorschau das alte deaktivieren                            |
+| Deployment-Token einer SWA                             | `az staticwebapp secrets reset-api-key -n <SWA_NAME> -g "$RG"`; die Pipeline holt es zur Laufzeit                                                                             | entfällt (das alte ist damit ungültig)                                                           |
+| Push-Geheimnis `PUSH_SEND_SECRET`                      | `supabase secrets set PUSH_SEND_SECRET=…` und im SQL-Editor `vault.update_secret(<id von push_send_secret>, '<neu>')`                                                         | entfällt                                                                                         |
+| VAPID-Schlüsselpaar                                    | nur bei Abfluss: `node scripts/push-keys.mjs --out …`, Function-Secrets, `PRODUCTION_VAPID_PUBLIC_KEY`, neue Veröffentlichung                                                 | entfällt; alle Geräte müssen Benachrichtigungen neu einschalten                                  |
+| Passwort von `backup_reader`                           | SQL-Editor: `alter role backup_reader with password '<neu>';` → `BACKUP_DB_URL` in `backup`                                                                                   | entfällt                                                                                         |
+| S3-Schlüssel Storage                                   | Storage → Settings → S3 Connection → neuer Schlüssel → `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`                                                               | alten Schlüssel löschen                                                                          |
+| Sicherungsschlüssel (`age`)                            | `age-keygen -o …` → `BACKUP_AGE_RECIPIENT` (`backup`), `BACKUP_AGE_IDENTITY` (`restore-test`)                                                                                 | **den alten privaten Schlüssel 12 Monate aufheben**: ältere Sicherungen sind damit verschlüsselt |
+| Azure-Identitäten                                      | kein Schlüssel (OIDC); bei Verdacht die föderierte Anmeldung löschen und neu anlegen (Runbook B3, `ident`)                                                                    | `az identity federated-credential delete …`                                                      |
+
+### Supabase-Zugangstoken: Einstellungen
+
+Stand 22.11.2026. Ein Token für beide Umgebungen, Name `github-housekeeping-app-token`. Diese Seite
+enthält keine Werte.
+
+- **Ressourcenzugriff:** Organization, beide Organisationen (`housekeeping-prod`, `housekeeping-test`)
+- **Ablauf:** 90 Tage
+- **Berechtigungen** (Preset „Custom“); alles, was hier nicht steht, ist **None**:
+
+| Bereich                     | Berechtigung                                                                                                           | Wofür                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Project                     | Project Settings: Read · Advisors: Read · Logs: Read                                                                   | Lesen für `supabase link` und Diagnose                              |
+| Database                    | Database: Read-write · Migrations: Read-write · Backups: Read · Database Config: Read                                  | `db push`, Vorschau-Reset (`db reset`), `db dump` für die Sicherung |
+| Application services        | Auth Config: Read-write · Data API Config: Read-write · Edge Functions: Read-write · Edge Function Secrets: Read-write | `config push`, `functions deploy`, `secrets set ALLOWED_ORIGINS`    |
+| Infrastructure and delivery | alles None                                                                                                             | nicht gebraucht                                                     |
+| Account and organization    | Organizations: Read · Projects (account-wide): Read · Organization Projects: Read                                      | Projekt-Auswahl für `supabase link`                                 |
+
+Die Liste folgt den Befehlen in `.github/workflows/` (`preview.yml`, `release.yml`, `backup.yml`). Wenn
+ein Lauf mit „permission denied“ scheitert, genau diese eine Berechtigung ergänzen und hier nachtragen.
+
+**Abweichung vom Runbook C3:** Dort war je Umgebung ein eigenes Token vorgesehen. Entschieden am
+22.11.2026: ein Token für beide Umgebungen. Die Vorschau läuft bei jedem Merge nach `develop` und
+hat damit dieselben Rechte auf die Produktion. Das Risiko ist bewusst akzeptiert. Vor dem ersten
+Produktivbetrieb mit echten Haushaltsdaten (Nadja) wieder auf zwei Tokens umstellen.
 
 ## Ablaufdaten und regelmäßige Aufgaben
 

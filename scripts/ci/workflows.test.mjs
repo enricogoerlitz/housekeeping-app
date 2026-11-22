@@ -37,10 +37,9 @@ const REQUIRED_CHECKS = [
   'Prüfungen',
   'Datenbank (pgTAP)',
   'Deno-Lock',
-  'E2E',
 ];
 /** Jobs that skip on a docs-only pull request (AC-011); the others always run. */
-const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Deno-Lock', 'E2E'];
+const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Deno-Lock'];
 
 describe('all workflows', () => {
   test('the old ci.yml is replaced by checks.yml', () => {
@@ -194,22 +193,19 @@ describe('checks.yml', () => {
     assert.match(runOf('Migrationen'), /node scripts\/ci\/migrations\.mjs --base "\$base"/);
   });
 
-  test('AC-006: format, check, web build, pgTAP and both e2e runs', () => {
+  test('AC-006: format, check, web build and pgTAP; the e2e suites run locally only', () => {
     assert.match(runOf('Prüfungen'), /pnpm format:check/);
     assert.match(runOf('Prüfungen'), /pnpm check/);
     assert.match(runOf('Prüfungen'), /pnpm build:web/);
     assert.match(runOf('Datenbank (pgTAP)'), /supabase db start/);
     assert.match(runOf('Datenbank (pgTAP)'), /supabase test db/);
-    assert.match(runOf('E2E'), /supabase start/);
-    assert.match(runOf('E2E'), /pnpm e2e\n/);
-    assert.match(runOf('E2E'), /pnpm e2e:dev/);
+    for (const { file, text } of workflows) {
+      assert.doesNotMatch(text, /pnpm e2e/, file);
+    }
   });
 
   test('throwaway VAPID keys per run, masked, before the web build and the local stack', () => {
-    for (const [name, before] of [
-      ['Prüfungen', /pnpm build:web/],
-      ['E2E', /supabase start/],
-    ]) {
+    for (const [name, before] of [['Prüfungen', /pnpm build:web/]]) {
       const list = runs(job(name));
       const keys = list.findIndex((run) =>
         /node scripts\/push-keys\.mjs --out "\$RUNNER_TEMP\//.test(run),
