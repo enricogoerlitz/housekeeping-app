@@ -141,6 +141,15 @@ describe('backup.yml', () => {
     assert.doesNotMatch(text, /aws s3 (cp|mv|rm|rb|mb)\b/);
   });
 
+  test('a missing photo bucket (before the first release) gives zero photos; other errors fail', () => {
+    const step = steps(job).find((s) => s.name === 'Fotos sichern');
+    assert.match(step.run, /NoSuchBucket/);
+    assert.match(step.run, /::warning::Bucket household-media fehlt/);
+    assert.match(step.run, /mkdir -p \.\/media/);
+    // Anything else than a missing bucket is printed and ends the step red.
+    assert.match(step.run, /exit 1/);
+  });
+
   test('AC-052: one archive, encrypted with age to the public key, then the manifest', () => {
     const tar = cmds.findIndex((c) => /\btar -cz/.test(c));
     assert.ok(tar >= 0);
