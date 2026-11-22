@@ -115,10 +115,10 @@ export function EntrySheet(props: {
   const current = entries.find((candidate) => candidate.id === props.entryId);
   // Removed on another device while the window is open: it stays with what was typed, and
   // closing says it did not work (AC-027); a second close closes.
-  const last = useRef(current);
-  if (current) last.current = current;
+  const [last, setLast] = useState(current);
+  if (current && current !== last) setLast(current);
   const gone = current === undefined;
-  const entry = current ?? last.current;
+  const entry = current ?? last;
   const recipe = entry?.recipeId ? recipesById[entry.recipeId] : undefined;
 
   // The typed fields (REQ-008, REQ-013), saved on closing.
