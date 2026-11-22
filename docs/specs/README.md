@@ -26,7 +26,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0017](0017-erinnerungen-an-eintraegen/spec.md)     | Erinnerungen an Kalendereinträgen                                      | freigegeben |
 | [0018](0018-logikfehler-welle-1/spec.md)            | Fehler aus dem Logik-Review, Welle 1                                   | freigegeben |
 | [0019](0019-bedienung-und-adresse/spec.md)          | Bedienung überall und Zustand in der Adresse                           | freigegeben |
-| [0020](0020-uebersicht-sieben-tage/spec.md)         | Übersicht: sieben Tage ab gestern                                      | freigegeben |
+| [0020](0020-uebersicht-sieben-tage/spec.md)         | Übersicht: sieben Tage ab gestern                                      | umgesetzt   |
 | [0021](0021-kalender-und-eintraege/spec.md)         | Kalender am Desktop und Einträge vollständig bearbeiten                | freigegeben |
 | [0022](0022-reisen-und-reisetaschen/spec.md)        | Reisen im Kalender, Reisetaschen und Packlisten                        | freigegeben |
 | [0023](0023-rezepte-und-kochmodus/spec.md)          | Rezepte bearbeiten, Kochmodus neu, Starter-Rezepte entfernt            | freigegeben |

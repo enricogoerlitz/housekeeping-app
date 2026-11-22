@@ -152,7 +152,7 @@ export const WRITABLE_COLUMNS = {
     'variants',
     'cook_id',
     'sort',
-    'not_cooked',
+    'not_done',
     // Spec 0021: "Uhrzeit" of restaurants and activities.
     'starts_at',
     // Spec 0017: the reminder of the entry.

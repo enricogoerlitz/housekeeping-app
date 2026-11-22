@@ -185,6 +185,17 @@ export function entriesForDay(
     .sort((a, b) => slotPosition(a) - slotPosition(b) || compareInSlot(a, b));
 }
 
+/**
+ * The switch "Nicht gemacht" in the entry window (spec 0020, REQ-008, Entscheidung 10): only for an
+ * entry of a day before today and never for leftovers; today "nicht gemacht" rather means removing.
+ */
+export function canMarkNotDone(
+  entry: Pick<MealPlanEntry, 'date' | 'kind'>,
+  today: ISODate,
+): boolean {
+  return entry.date !== null && entry.date < today && entry.kind !== 'leftovers';
+}
+
 export interface Visits {
   count: number;
   lastOn?: ISODate;
@@ -207,7 +218,7 @@ export function visitsOf(
   for (const entry of entries) {
     const targetId = kind === 'restaurant' ? entry.restaurantId : entry.activityId;
     if (entry.kind !== kind || targetId !== id || entry.date === null) continue;
-    if (entry.date > today || entry.notCooked) continue;
+    if (entry.date > today || entry.notDone) continue;
     dates.push(entry.date);
   }
   dates.sort().reverse();
@@ -268,7 +279,7 @@ function leftoverSources(
         beforeTarget(entry, target, slotOrder, targetSlotId) &&
         (entry.kind === 'recipe' || entry.kind === 'text') &&
         (entry.recipeId === undefined || recipesById[entry.recipeId]?.kind !== 'collection') &&
-        !entry.notCooked,
+        !entry.notDone,
     )
     .sort(
       (a, b) =>

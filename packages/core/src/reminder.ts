@@ -10,6 +10,7 @@ import {
 } from './dates';
 import { withNote } from './meal-plan';
 import { formatTime } from './notifications';
+import { slotStartTime } from './prep';
 import {
   TimeOfDaySchema,
   type Id,
@@ -107,18 +108,6 @@ export function isReminderPast(
 
 // ---------- Defaults and days ----------
 
-const DEFAULT_TIMES: Record<string, TimeOfDay> = {
-  Vormittag: '08:00',
-  Mittag: '11:00',
-  Abend: '17:00',
-};
-const FALLBACK_TIME: TimeOfDay = '08:00';
-
-/** REQ-003, Offene Frage 1 A and 6 A: by the Tageszeit's name; renamed or own ones get 08:00. */
-export function defaultReminderTime(slotName: string): TimeOfDay {
-  return DEFAULT_TIMES[slotName.trim()] ?? FALLBACK_TIME;
-}
-
 /**
  * The values when "Erinnern" is switched on (REQ-003): "Am Tag" and the default time; a default
  * already in the past leaves the time empty, and the switch saves only with a valid time.
@@ -129,7 +118,8 @@ export function initialReminder(
   now: Date,
   timeZone: string,
 ): { offsetDays: number; at: TimeOfDay | undefined } {
-  const at = defaultReminderTime(slotName);
+  // REQ-003, Offene Frage 1 A and 6 A: the Kochbeginn of the Tageszeit (spec 0020).
+  const at = slotStartTime(slotName);
   const past = isReminderPast(entryDate, { offsetDays: 0, at }, now, timeZone);
   return { offsetDays: 0, at: past ? undefined : at };
 }

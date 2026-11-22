@@ -30,7 +30,7 @@ export function cookingHistory(
   };
   for (const entry of entries) {
     if (entry.kind !== 'recipe' || entry.recipeId === undefined) continue;
-    if (entry.date === null || entry.date > today || entry.notCooked) continue;
+    if (entry.date === null || entry.date > today || entry.notDone) continue;
     count(entry.recipeId, entry.date);
     for (const row of collectionRecipes) {
       if (row.collectionId === entry.recipeId) count(row.recipeId, entry.date);

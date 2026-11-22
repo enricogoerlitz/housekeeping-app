@@ -6,12 +6,12 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
-  addDays,
+  addPresetSlot,
   entriesForDay,
   overviewSections,
+  overviewSubline,
   overviewTitle,
-  shiftShownDay,
-  weekNav,
+  shiftOverview,
   type ISODate,
 } from '@housekeeping/core';
 import { Screen, ScreenHeader, Text, useBreakpoint } from '@housekeeping/ui';
@@ -19,20 +19,22 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { HouseholdLine } from '@/features/household/household-line';
+import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useHandedHousehold } from '@/lib/addressed';
 import { usePageParams } from '@/lib/url-state';
 import { TripWindowHost } from '@/features/trips/trip-window';
 
-import { TodayTrips } from './today-trips';
+import { DayStrip } from './day-strip';
 import { TodayChores } from './today-chores';
-import { CalendarButton, WeekNav } from './today-header';
+import { OverviewNav } from './today-header';
 import { TodayMeals } from './today-meals';
 import { TodayPacking } from './today-packing';
+import { TodayPrep } from './today-prep';
 import { TodayRecap } from './today-recap';
 import { TodayShopping } from './today-shopping';
-import { WeekStrip } from './week-strip';
+import { TodayTrips } from './today-trips';
 
 function greeting(hour: number): string {
   if (hour < 11) return 'Guten Morgen';
@@ -41,11 +43,12 @@ function greeting(hour: number): string {
 }
 
 /**
- * "Übersicht" (spec 0011, REQ-001): one shown day, as if it were today. Head, week strip,
- * planned, "Für morgen", "Wie war's?" and "Zu tun" all follow it. The shown day stands in the
- * address (`/?tag=…`, spec 0019): coming back from a detail page and a reload keep it.
- * Phone: head, week strip, planned, Wie war's?, Zu tun, Einkauf, Reisetasche. Desktop (1,6 : 1):
- * left week strip and planned, right Wie war's?, Zu tun, Einkauf and Reisetasche (spec 0012).
+ * "Übersicht" (spec 0011, REQ-001; spec 0020): one shown day, as if it were today. Head,
+ * Tagesleiste (seven days from yesterday), Vorbereitung, planned, "Wie war's?" and "Zu tun" all
+ * follow it. The shown day stands in the address (`/?tag=…`, spec 0019): coming back from a detail
+ * page and a reload keep it. Phone: head, Tagesleiste, planned, Wie war's?, Zu tun, Einkauf,
+ * Reisetasche. Desktop (1,6 : 1): left Tagesleiste and planned, right Wie war's?, Zu tun, Einkauf
+ * and Reisetasche (spec 0012).
  */
 export function TodayScreen() {
   const address = usePageParams('uebersicht');
@@ -61,6 +64,8 @@ export function TodayScreen() {
   const households = useHouseholdsMap();
   const planEntries = usePlanEntries();
   const online = useOnlineOnly();
+  // "+" and "Hinzufügen" of an empty day (spec 0020, REQ-005); one shown day, so not in the address.
+  const [adding, setAdding] = useState<AddTarget | undefined>();
   // Once for the whole page, not per section (spec 0019, REQ-010, AC-029); the disabled buttons
   // keep it as their hint.
   const offlineHint = online.hint ? (
@@ -77,13 +82,19 @@ export function TodayScreen() {
   const slotNames = Object.fromEntries(slots.map((slot) => [slot.id, slot.name]));
   const sections = overviewSections(shown, today);
   const isToday = shown === today;
+  // The day as a whole: no Tageszeit in the title, "Abend" (else the last) in step 2 (AC-020).
+  const presetSlot = addPresetSlot(slots);
+  const addTo = (date: ISODate) => {
+    show(date);
+    if (presetSlot) setAdding({ date, slotId: presetSlot, slotChosen: false });
+  };
 
   const nav = (
-    <WeekNav
+    <OverviewNav
       shown={shown}
       today={today}
-      wide={!isPhone}
-      onPage={(weeks) => show(shiftShownDay(shown, weeks))}
+      row={isPhone}
+      onPage={(steps) => show(shiftOverview(shown, steps))}
       onToday={() => address.replace({ tag: undefined })}
     />
   );
@@ -97,43 +108,38 @@ export function TodayScreen() {
           <HouseholdLine name={household.name} />
         ) : null
       }
-      subtitle={isToday ? `${greeting(hour)}, ${me.name}` : undefined}
-      right={
-        isPhone ? (
-          <>
-            <CalendarButton shown={shown} />
-            <StartPageActions />
-          </>
-        ) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {nav}
-            <CalendarButton shown={shown} />
-          </View>
-        )
-      }
+      // Always exactly one line, so nothing below moves (REQ-002, AC-007, AC-008).
+      subtitle={overviewSubline(shown, today, `${greeting(hour)}, ${me.name}`)}
+      right={isPhone ? <StartPageActions /> : nav}
     />
   );
 
   const strip = (
-    <WeekStrip
-      shown={shown}
-      today={today}
-      slotOrder={slotOrder}
-      tiles={bp === 'desktop'}
-      onSelect={show}
-      label={weekNav(shown, today).label}
-    />
+    <>
+      <DayStrip
+        shown={shown}
+        today={today}
+        slotOrder={slotOrder}
+        tiles={bp === 'desktop'}
+        onSelect={show}
+        onAdd={addTo}
+      />
+      <TodayPrep shown={shown} today={today} />
+    </>
   );
   const meals = (
     <TodayMeals
       shown={shown}
       title={sections.planned}
       entries={entriesForDay(planEntries, shown, slotOrder)}
-      nextDayEntries={entriesForDay(planEntries, addDays(shown, 1), slotOrder)}
       slotNames={slotNames}
       grid={!isPhone}
+      onAdd={() => addTo(shown)}
     />
   );
+  const addSheet = adding ? (
+    <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} />
+  ) : null;
   // "Wie war's?" only while today is shown (AC-022).
   const recap = isToday ? <TodayRecap today={today} slotOrder={slotOrder} /> : null;
   const chores = <TodayChores shown={shown} today={today} title={sections.chores} />;
@@ -151,6 +157,7 @@ export function TodayScreen() {
         <TodayShopping preview={false} />
         <TodayPacking shown={shown} />
         <TripWindowHost page="uebersicht" />
+        {addSheet}
       </Screen>
     );
   }
@@ -174,6 +181,7 @@ export function TodayScreen() {
         </View>
       </View>
       <TripWindowHost page="uebersicht" />
+      {addSheet}
     </Screen>
   );
 }

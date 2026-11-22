@@ -265,7 +265,7 @@ export function updatePlanEntry(
       | 'portions'
       | 'variants'
       | 'cookId'
-      | 'notCooked'
+      | 'notDone'
       | 'text'
       | 'note'
       | 'kind'

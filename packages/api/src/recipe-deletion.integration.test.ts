@@ -138,7 +138,7 @@ describe.skipIf(!enabled)('spec 0008: deleting a recipe in the local stack', () 
               portions: 1,
               variants: [],
               sort: 0,
-              not_cooked: false,
+              not_done: false,
             },
           },
         ]),

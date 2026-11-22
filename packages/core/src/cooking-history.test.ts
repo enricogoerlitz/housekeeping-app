@@ -68,7 +68,7 @@ describe('E10: cooked according to the calendar', () => {
 
   it('AC-031: "Nicht gemacht" takes the entry back out', () => {
     const history = cookingHistory(
-      [{ ...saturday, notCooked: true }],
+      [{ ...saturday, notDone: true }],
       grillabendRecipes,
       '2026-11-21',
     );

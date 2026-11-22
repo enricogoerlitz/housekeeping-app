@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-22
 ---
 
@@ -258,6 +258,13 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
     ändern auch 0021 (Uhrzeit, Zusatz) und 0026 (Aufgaben-Texte); gebaut wird nach 0021, jede Migration
     ersetzt die Funktion vollständig.
 
+15. Beim Bau (Claude, 22.11.2026): Karte und Kachel tragen denselben Titel; Reste heißen dort
+    „Reste von <Rezept>“, solange das Rezept da ist, sonst wie im Kalender („Reste von Donnerstag“).
+16. Beim Bau: Die Abschnitte liegen ab gestern im Sieben-Tage-Takt; ein Tag gehört immer zu genau
+    einem Abschnitt, so bleibt die Leiste beim Wählen eines Tags im Abschnitt stehen.
+17. Beim Bau: „Schon fällig“ gilt für einen Beginn vor jetzt (Uhrzeit des Haushalts, minutengenau);
+    im Tagesüberblick ist „jetzt“ die eingestellte Uhrzeit des Tagesüberblicks.
+
 ## Daten
 
 - `meal_plan_entries.not_cooked` → `not_done` (Code `notDone`); Feldlisten in `apply_changes`,
@@ -271,29 +278,32 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 
 ## Risiken
 
-| Risiko                                                          | Gegenmaßnahme                                        | Test                                                         |
-| --------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
-| Vorbereitung aus fremdem Haushalt im Tagesüberblick             | jede Verbindung über `household_id`                  | pgTAP AC-035 (fremde Sammlung)                               |
-| `not_done` an fremdem Eintrag, abgemeldet, ungültig, alter Name | `apply_changes` prüft Mitgliedschaft, Feldliste, Typ | pgTAP: fremd, `anon` (42501), `"ja"`, `not_cooked` abgelehnt |
-| Eintrag gelöscht beim Markieren                                 | Ablehnung, Überlagerung springt zurück, Toast        | api-Test, AC-039                                             |
-| Sync bricht durch Spaltennamen                                  | App und Migration zusammen; Produktion-Reset (0028)  | `pnpm test:integration`                                      |
-| SQL und TS rechnen Vorbereitung verschieden                     | gleiche Fälle in beiden                              | `notification_parity.test.sql`, `prep.test.ts`               |
+| Risiko                                                          | Gegenmaßnahme                                        | Test                                                       |
+| --------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| Vorbereitung aus fremdem Haushalt im Tagesüberblick             | jede Verbindung über `household_id`                  | `daily_summary_prep.test.sql` AC-035 (fremde Sammlung)     |
+| `not_done` an fremdem Eintrag, abgemeldet, ungültig, alter Name | `apply_changes` prüft Mitgliedschaft, Feldliste, Typ | `plan_entry_not_done.test.sql`: fremd, `anon`, `"ja"`, alt |
+| Eintrag gelöscht beim Markieren                                 | Ablehnung, Überlagerung springt zurück, Toast        | `ratings.backend.test.ts` AC-039, pgTAP `row_not_found`    |
+| Sync bricht durch Spaltennamen                                  | App und Migration zusammen; Produktion-Reset (0028)  | `pnpm test:integration`                                    |
+| SQL und TS rechnen Vorbereitung verschieden                     | gleiche Fälle in beiden                              | `daily_summary_prep.test.sql`, `prep.test.ts`              |
+| Ungültiger Vorlauf (1,5 h, riesig) bricht den Takt für alle     | `prep_items` und core nehmen nur 1–168 ganze Stunden | `daily_summary_prep.test.sql` „security“, `prep.test.ts`   |
 
 ## Umsetzung
 
-- [ ] 1. core `overview.ts`: Abschnitt, Blättern ±7, Zeitraum und Ansage, Zeile unter dem Titel,
+- [x] 1. core `overview.ts`: Abschnitt, Blättern ±7, Zeitraum und Ansage, Zeile unter dem Titel,
       „Heute“ aktiv (AC-001–AC-003, AC-005–AC-008, AC-011)
-- [ ] 2. app Kopf und `DayStrip`: feste Zeile, fester „Heute“-Platz, Zeitraum fester Breite, ohne
+- [x] 2. app Kopf und `DayStrip`: feste Zeile, fester „Heute“-Platz, Zeitraum fester Breite, ohne
       Kalender-Symbol, Streifen nach Abschnitt (AC-004, AC-009, AC-010)
-- [ ] 3. core `tileEntry` statt `dayTile`; `packingCards` nach Abschnitt (AC-012–AC-016, AC-043)
-- [ ] 4. app `EntryPicture` für Karte und Kachel (AC-017–AC-019)
-- [ ] 5. core `addPresetSlot` (auch Kalender); app „+“ und „Hinzufügen“ mit `AddEntrySheet`
+- [x] 3. core `tileEntry` statt `dayTile`; `packingCards` nach Abschnitt (AC-012–AC-016, AC-043)
+- [x] 4. app `EntryPicture` für Karte und Kachel (AC-017–AC-019)
+- [x] 5. core `addPresetSlot` (auch Kalender); app „+“ und „Hinzufügen“ mit `AddEntrySheet`
       (AC-020–AC-026)
-- [ ] 6. core `slotStartTime` (aus `reminder.ts`) und `prepLines`; app Zeilen unter der Leiste
+- [x] 6. core `slotStartTime` (aus `reminder.ts`) und `prepLines`; app Zeilen unter der Leiste
       (AC-027–AC-032)
-- [ ] 7. supabase Tagesüberblick + pgTAP inkl. Parität; `/security-check` (AC-033–AC-035)
-- [ ] 8. `not_cooked` → `not_done` (`db-change`-Skill), pgTAP-Negativtests; `/security-check`
-- [ ] 9. Toast mit „Rückgängig“, Schalter im Eintragsfenster (mit Spec 0021 abstimmen), „Letztes Mal
+- [x] 7. supabase Tagesüberblick + pgTAP inkl. Parität; `/security-check` (AC-033–AC-035)
+- [x] 8. `not_cooked` → `not_done` (`db-change`-Skill), pgTAP-Negativtests; `/security-check`
+- [x] 9. Toast mit „Rückgängig“, Schalter im Eintragsfenster (mit Spec 0021 abstimmen), „Letztes Mal
       ★ n“, „Passt so“ (AC-036–AC-042)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
-      `pnpm test:integration`, `/ui-verify` Handy/Desktop hell/dunkel
+- [x] Nachweis (22.11.2026): `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 47
+      Dateien/2492 Tests grün (über den DB-Lock), `pnpm test:integration` 17 grün, e2e
+      (`rundgang-uebersicht.spec.ts` neu) nur typgeprüft; `/security-check`: 0 kritisch/hoch, der
+      mittlere Befund „ungültiger Vorlauf legt den Takt lahm“ ist behoben; `/ui-verify` in 0028

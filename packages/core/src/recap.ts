@@ -1,6 +1,6 @@
 import { addDays, weekdayLong } from './dates';
 import { entriesForDay } from './meal-plan';
-import { ratedOnOrAfter } from './ratings';
+import { formatStars, ratedOnOrAfter } from './ratings';
 import type { Activity, Id, ISODate, MealPlanEntry, Recipe, Restaurant } from './types';
 
 // "Wie war's?" (spec 0011, REQ-003): what a member has not rated yet from the last three days.
@@ -15,7 +15,7 @@ export interface RecapItem {
   /** The recipe (also a collection), restaurant or activity that gets the rating. */
   targetId: Id;
   title: string;
-  /** The member's earlier rating, prefilled (AC-020). */
+  /** The member's earlier rating; the stars start empty and show it faded (spec 0020, AC-040). */
   stars?: number;
 }
 
@@ -72,7 +72,7 @@ export function recapItems(input: {
   for (let back = 1; back <= RECAP_DAYS; back++) {
     const date = addDays(input.today, -back);
     for (const entry of entriesForDay(input.entries, date, input.slotOrder)) {
-      if (entry.notCooked) continue;
+      if (entry.notDone) continue;
       if (entry.eaterIds.length > 0 && !entry.eaterIds.includes(memberId)) continue;
       const found = target(entry);
       if (found === undefined) continue;
@@ -97,4 +97,17 @@ export function recapDayLabel(date: ISODate, today: ISODate): string {
   if (date === addDays(today, -1)) return 'gestern';
   if (date === addDays(today, -2)) return 'vorgestern';
   return weekdayLong(date);
+}
+
+/**
+ * The faded earlier rating beside empty stars (spec 0020, REQ-009, AC-040, AC-042): "Letztes Mal
+ * ★ 4", "Letztes Mal ★ 3,5"; undefined without an own rating (then no "Passt so" either).
+ */
+export function recapEarlierLabel(stars: number | undefined): string | undefined {
+  return stars === undefined ? undefined : `Letztes Mal ★ ${formatStars(stars)}`;
+}
+
+/** The hint with "Rückgängig" after "Nicht gemacht" (spec 0020, REQ-008, AC-036). */
+export function notDoneMessage(title: string): string {
+  return `„${title}“ als nicht gemacht markiert`;
 }

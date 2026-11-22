@@ -1,5 +1,6 @@
 import {
   addDays,
+  addPresetSlot,
   dayMonthLabel,
   sharedHeight,
   stripeLabelDate,
@@ -342,7 +343,8 @@ function WeekList(props: WeekViewProps) {
   const last = dates[6] ?? addDays(props.weekStart, 6);
   const weekStripes = data.stripes.filter((stripe) => stripeSegment(stripe, first, last));
   const chores = props.showHousehold ? data.householdRow(first, last) : {};
-  const lastSlotId = data.slots[data.slots.length - 1]?.id;
+  // "Abend", else the last (spec 0020, Entscheidung 14).
+  const presetSlotId = addPresetSlot(data.slots);
   // While an entry is dragged every Tageszeit of every day is a target, also the empty ones
   // (spec 0016, AC-006); otherwise only Tageszeiten with entries show (spec 0010, AC-008).
   const allSlots = useLiftedKind() === 'entry';
@@ -425,7 +427,7 @@ function WeekList(props: WeekViewProps) {
                   </SlotTarget>
                 );
               })}
-              <AddToDay date={date} slotId={lastSlotId} onAdd={props.onAdd} />
+              <AddToDay date={date} slotId={presetSlotId} onAdd={props.onAdd} />
             </View>
           </View>
         );

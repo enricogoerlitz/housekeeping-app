@@ -89,7 +89,7 @@ where household_id = tests.fx('home');
 -- ===================== Daily summary (AC-015 to AC-018) =====================
 select is(
   tests.body('2026-11-20 07:30', 'E', 'daily_summary'),
-  'Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Für morgen: Kichererbsen einweichen',
+  'Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Vorbereiten: Kichererbsen einweichen (bis ca. 23 Uhr)',
   'AC-015 daily summary: Enrico''s text at 7:30');
 select is(tests.body('2026-11-20 07:25', 'E', 'daily_summary'), null,
   'AC-015 daily summary: the 7:25 tick sends nothing yet');
@@ -137,8 +137,8 @@ update public.notification_settings set daily_summary_enabled = true where membe
 -- overdue chore; leftovers and free text on Sunday with a chore at a time and an "anyone" chore.
 select is(
   tests.body('2026-11-21 07:30', 'E', 'daily_summary'),
-  'Heute: Eislaufen (Hohenschönhausen, Vormittag) · Hummus (Mittag, du kochst) · Trattoria Da Enzo (Abend, 19:30) · Bad putzen (du, fällig seit gestern)',
-  'Decision 11 daily summary: activity with Zusatz, cook, reservation time and an overdue chore, in the order of the day');
+  'Heute: Eislaufen (Hohenschönhausen, Vormittag) · Hummus (Mittag, du kochst) · Trattoria Da Enzo (Abend, 19:30) · Bad putzen (du, fällig seit gestern) · Vorbereiten: Kichererbsen einweichen (schon fällig)',
+  'Decision 11 daily summary: activity with Zusatz, cook, reservation time and an overdue chore, in the order of the day; spec 0020 AC-031: the missed soaking is "schon fällig"');
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id, text, eater_ids, sort)
 values (tests.fx('home'), '2026-11-22', tests.fx('s_mittag'), 'leftovers', tests.fx('r_lasagne'), tests.fx('e_lasagne'), null, '{}', 0),
        (tests.fx('home'), '2026-11-22', tests.fx('s_morgen'), 'text', null, null, 'Pfannkuchen', '{}', 0);
