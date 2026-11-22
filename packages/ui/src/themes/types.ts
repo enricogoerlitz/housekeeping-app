@@ -15,6 +15,10 @@ export interface ThemeColors {
   bg: string;
   surface: string;
   surfaceSunken: string;
+  /** What floats above the page, e.g. the dragged entry; lighter than `surface` in dark mode. */
+  surfaceRaised: string;
+  /** The CSS box-shadow of a raised surface; in dark mode with a faint light rim. */
+  shadowRaised: string;
   border: string;
   text: string;
   textMuted: string;

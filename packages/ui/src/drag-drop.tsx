@@ -4,6 +4,8 @@
 // the targets do not render per move. The session logic lives in drag-controller.ts.
 
 import {
+  createContext,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -35,13 +37,17 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { DragContext, measureNode, useDragController } from './drag-context';
 import {
+  badgeTop,
   createDragController,
+  ghostSize,
+  ghostStart,
   type DragCallbacks,
   type DragController,
   type DropGrid,
   type DragSink,
 } from './drag-controller';
 import type { Rect } from './drop-targets';
+import { EDGE_ZONE_INSET } from './edge-pager';
 import { haptic } from './haptics';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
@@ -55,6 +61,15 @@ const RETURN_SPRING = { duration: 300, dampingRatio: 0.9 } as const;
 const DROP_FADE_MS = 150;
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 const LABEL_GAP = 6;
+/** Room the target label needs above the ghost; with less it hangs below. */
+const LABEL_ROOM = 36;
+// Lifting: the entry grows a little, critically damped (no bounce: no force was applied yet).
+const LIFT_SCALE = 1.03;
+const LIFT_SPRING = { duration: 200, dampingRatio: 1 } as const;
+const ZONE_FADE_MS = 150;
+/** The ‹ › handle sits in the margin the zones keep to the screen edge. */
+const EDGE_HANDLE_WIDTH = 16;
+const EDGE_HANDLE_HEIGHT = 56;
 
 export interface DragProviderProps extends DragCallbacks {
   children?: ReactNode;
@@ -85,7 +100,14 @@ export function DragProvider(props: DragProviderProps) {
   const grabX = useSharedValue(0);
   const grabY = useSharedValue(0);
   const ghostWidth = useSharedValue(0);
+  const ghostHeight = useSharedValue(0);
   const ghostOpacity = useSharedValue(0);
+  const ghostScale = useSharedValue(1);
+  // The source's own width and grab point: a capped ghost grows back to them on the glide back.
+  const sourceWidth = useSharedValue(0);
+  const sourceGrabX = useSharedValue(0);
+  const windowWidth = useSharedValue(0);
+  const windowHeight = useSharedValue(0);
   // In the right half of the window the label grows to the left, so it is not cut off.
   const labelEnd = useSharedValue(false);
   const highlight = useSharedValue<{ rect: Rect; allowed: boolean } | null>(null);
@@ -103,6 +125,11 @@ export function DragProvider(props: DragProviderProps) {
       lift: () => {
         haptic('lift');
         ghostOpacity.set(0);
+        cancelAnimation(ghostScale);
+        ghostScale.set(1);
+        const size = Dimensions.get('window');
+        windowWidth.set(size.width);
+        windowHeight.set(size.height);
         // Android back cancels a drag before it closes anything else (no such key on the web).
         if (Platform.OS !== 'web') {
           back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -129,9 +156,16 @@ export function DragProvider(props: DragProviderProps) {
       geometry: ({ origin, grab, size }) => {
         originX.set(origin.x);
         originY.set(origin.y);
-        grabX.set(grab.x);
+        const fitted = ghostSize(size.width, grab.x);
+        grabX.set(fitted.grabX);
         grabY.set(grab.y);
-        ghostWidth.set(size.width);
+        ghostWidth.set(fitted.width);
+        ghostHeight.set(size.height);
+        sourceWidth.set(size.width);
+        sourceGrabX.set(grab.x);
+        if (ghostOpacity.get() === 0 && !reducedMotion.get()) {
+          ghostScale.set(withSpring(LIFT_SCALE, LIFT_SPRING));
+        }
         ghostOpacity.set(1);
       },
       highlight: (rect, allowed) => highlight.set(rect ? { rect, allowed } : null),
@@ -153,6 +187,9 @@ export function DragProvider(props: DragProviderProps) {
           return;
         }
         if (!returnTo) return;
+        ghostScale.set(withSpring(1, RETURN_SPRING));
+        ghostWidth.set(withSpring(sourceWidth.get(), RETURN_SPRING));
+        grabX.set(withSpring(sourceGrabX.get(), RETURN_SPRING));
         pointerX.set(withSpring(returnTo.x, RETURN_SPRING));
         pointerY.set(
           withSpring(returnTo.y, RETURN_SPRING, () => {
@@ -168,6 +205,14 @@ export function DragProvider(props: DragProviderProps) {
     return self;
   });
 
+  const [pointer] = useState<DragPointer>(() => ({
+    pointerX,
+    pointerY,
+    originX,
+    originY,
+    windowWidth,
+  }));
+
   const container = useRef<HostInstance>(null);
   useLayoutEffect(() => {
     controller.setContainer((done) => measureNode(container.current, done));
@@ -179,21 +224,40 @@ export function DragProvider(props: DragProviderProps) {
   // Leaving the screen mid-drag ends the drag.
   useEffect(() => () => controller.abort(), [controller]);
 
-  const ghostStyle = useAnimatedStyle(() => ({
-    width: ghostWidth.get(),
-    opacity: ghostOpacity.get(),
-    transform: [
-      { translateX: pointerX.get() - originX.get() - grabX.get() },
-      { translateY: pointerY.get() - originY.get() - grabY.get() },
-    ],
-  }));
-  const labelStyle = useAnimatedStyle(() =>
-    labelEnd.get() ? { left: 'auto', right: 0 } : { left: 0, right: 'auto' },
-  );
+  // The ghost hangs on the pointer at the grab point but stays inside the window.
+  const ghostStyle = useAnimatedStyle(() => {
+    const width = ghostWidth.get();
+    const left = ghostStart(pointerX.get(), grabX.get(), width, windowWidth.get());
+    const top = ghostStart(pointerY.get(), grabY.get(), ghostHeight.get(), windowHeight.get());
+    return {
+      width,
+      opacity: ghostOpacity.get(),
+      transform: [
+        { translateX: left - originX.get() },
+        { translateY: top - originY.get() },
+        { scale: ghostScale.get() },
+      ],
+    };
+  });
+  // The label grows away from the nearer side edge and hangs below the ghost at the top edge.
+  const labelStyle = useAnimatedStyle(() => {
+    const top = ghostStart(pointerY.get(), grabY.get(), ghostHeight.get(), windowHeight.get());
+    const below = top < LABEL_ROOM;
+    return {
+      left: labelEnd.get() ? 'auto' : 0,
+      right: labelEnd.get() ? 0 : 'auto',
+      top: below ? '100%' : 'auto',
+      bottom: below ? 'auto' : '100%',
+      marginTop: below ? LABEL_GAP : 0,
+      marginBottom: below ? 0 : LABEL_GAP,
+    };
+  });
 
   return (
     <View ref={container} style={style} testID={testID}>
-      <DragContext.Provider value={controller}>{children}</DragContext.Provider>
+      <DragContext.Provider value={controller}>
+        <DragPointerContext.Provider value={pointer}>{children}</DragPointerContext.Provider>
+      </DragContext.Provider>
       <View pointerEvents="none" style={OVERLAY}>
         <DropHighlight
           highlight={highlight}
@@ -219,6 +283,57 @@ const OVERLAY: ViewStyle = {
 };
 
 type Shared<T> = ReturnType<typeof useSharedValue<T>>;
+
+/** The pointer of the running drag in window coordinates, for badges that follow it. */
+interface DragPointer {
+  pointerX: Shared<number>;
+  pointerY: Shared<number>;
+  originX: Shared<number>;
+  originY: Shared<number>;
+  windowWidth: Shared<number>;
+}
+
+const DragPointerContext = createContext<DragPointer | null>(null);
+
+function useDragPointer(): DragPointer {
+  const pointer = useContext(DragPointerContext);
+  if (!pointer) throw new Error('A DragBadge needs a DragProvider above it.');
+  return pointer;
+}
+
+/**
+ * A badge that floats above the pointer while dragging, centred on it and kept inside the window,
+ * e.g. the days of a trip being drawn: near the finger, where the eye is, and never over the
+ * header. Render it as a child of the DragProvider while it has something to say.
+ */
+export function DragBadge(props: { children: ReactNode }) {
+  const pointer = useDragPointer();
+  const width = useSharedValue(0);
+  const height = useSharedValue(0);
+  const style = useAnimatedStyle(() => {
+    const w = width.get();
+    const left = ghostStart(pointer.pointerX.get(), w / 2, w, pointer.windowWidth.get());
+    return {
+      opacity: w > 0 ? 1 : 0,
+      transform: [
+        { translateX: left - pointer.originX.get() },
+        { translateY: badgeTop(pointer.pointerY.get(), height.get()) - pointer.originY.get() },
+      ],
+    };
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      onLayout={(event) => {
+        width.set(event.nativeEvent.layout.width);
+        height.set(event.nativeEvent.layout.height);
+      }}
+      style={[{ position: 'absolute', left: 0, top: 0, zIndex: 1001, elevation: 1001 }, style]}
+    >
+      {props.children}
+    </Animated.View>
+  );
+}
 
 interface OverlayPartProps {
   controller: DragController<ReactNode>;
@@ -263,21 +378,28 @@ function DropHighlight(
   );
 }
 
-/** ‹ and › at the left and right edge while dragging, where holding turns the page. */
+/**
+ * Slim ‹ and › handles in the margin at the left and right edge while dragging; holding in the
+ * zone next to one turns the page and fills it with the accent. They cover no content, so nothing
+ * looks refused that is not.
+ */
 function EdgeZones(props: OverlayPartProps) {
   const snapshot = useSnapshot(props.controller);
   if (snapshot.phase !== 'dragging' || !snapshot.zones) return null;
+  const { previous, next } = snapshot.zones;
   return (
     <>
-      <EdgeZone
-        rect={snapshot.zones.previous}
+      <EdgeHandle
+        x={previous.x - EDGE_ZONE_INSET + (EDGE_ZONE_INSET - EDGE_HANDLE_WIDTH) / 2}
+        middleY={previous.y + previous.height / 2}
         active={snapshot.zone === 'previous'}
         icon="chevron-left"
         originX={props.originX}
         originY={props.originY}
       />
-      <EdgeZone
-        rect={snapshot.zones.next}
+      <EdgeHandle
+        x={next.x + next.width + (EDGE_ZONE_INSET - EDGE_HANDLE_WIDTH) / 2}
+        middleY={next.y + next.height / 2}
         active={snapshot.zone === 'next'}
         icon="chevron-right"
         originX={props.originX}
@@ -287,37 +409,50 @@ function EdgeZones(props: OverlayPartProps) {
   );
 }
 
-function EdgeZone(props: {
-  rect: Rect;
+function EdgeHandle(props: {
+  /** Left edge and vertical middle in window coordinates. */
+  x: number;
+  middleY: number;
   active: boolean;
   icon: 'chevron-left' | 'chevron-right';
   originX: Shared<number>;
   originY: Shared<number>;
 }) {
   const theme = useTheme();
-  const { rect, originX, originY } = props;
+  const c = theme.colors;
+  const reduced = useReducedMotion();
+  const opacity = useSharedValue(reduced ? 1 : 0);
+  useEffect(() => {
+    if (!reduced) opacity.set(withTiming(1, { duration: ZONE_FADE_MS, easing: EASE_OUT }));
+  }, [opacity, reduced]);
+  const { x, middleY, originX, originY } = props;
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: rect.x - originX.get() }, { translateY: rect.y - originY.get() }],
+    opacity: opacity.get(),
+    transform: [
+      { translateX: x - originX.get() },
+      { translateY: middleY - EDGE_HANDLE_HEIGHT / 2 - originY.get() },
+    ],
   }));
   return (
     <Animated.View
+      testID={`drag-edge-${props.icon === 'chevron-left' ? 'previous' : 'next'}`}
       style={[
         {
           position: 'absolute',
           left: 0,
           top: 0,
-          width: rect.width,
-          height: rect.height,
+          width: EDGE_HANDLE_WIDTH,
+          height: EDGE_HANDLE_HEIGHT,
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: theme.shape.radius.control,
-          backgroundColor: props.active ? theme.colors.accentSoft : theme.colors.surfaceSunken,
-          opacity: props.active ? 0.95 : 0.7,
+          borderRadius: theme.shape.radius.chip,
+          backgroundColor: props.active ? c.accent : c.surfaceRaised,
+          boxShadow: c.shadowRaised,
         },
         style,
       ]}
     >
-      <Icon name={props.icon} size={24} color={props.active ? 'accent' : 'muted'} />
+      <Icon name={props.icon} size={14} color={props.active ? 'onAccent' : 'muted'} />
     </Animated.View>
   );
 }
@@ -342,8 +477,8 @@ function DragGhost(props: {
           left: 0,
           top: 0,
           borderRadius: theme.shape.radius.control,
-          backgroundColor: c.surface,
-          boxShadow: '0px 8px 24px rgba(0,0,0,0.18), 0px 1px 3px rgba(0,0,0,0.16)',
+          backgroundColor: c.surfaceRaised,
+          boxShadow: c.shadowRaised,
         },
         props.style,
       ]}
@@ -353,8 +488,6 @@ function DragGhost(props: {
           style={[
             {
               position: 'absolute',
-              bottom: '100%',
-              marginBottom: LABEL_GAP,
               paddingHorizontal: 10,
               paddingVertical: 4,
               borderRadius: theme.shape.radius.chip,

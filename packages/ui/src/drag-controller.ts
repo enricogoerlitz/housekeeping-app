@@ -133,6 +133,38 @@ export interface DragController<P> {
   getSnapshot: () => DragSnapshot<P>;
 }
 
+/** A wide source (a row of the day window) floats narrower, so it does not cover the target. */
+export const GHOST_MAX_WIDTH = 280;
+/** The ghost keeps this distance to the window's edges. */
+export const GHOST_EDGE_MARGIN = 8;
+
+/** The ghost's width and where along it the pointer holds it: at the same share as the source. */
+export function ghostSize(width: number, grabX: number): { width: number; grabX: number } {
+  'worklet';
+  if (width <= GHOST_MAX_WIDTH) return { width, grabX };
+  return { width: GHOST_MAX_WIDTH, grabX: (grabX / width) * GHOST_MAX_WIDTH };
+}
+
+/**
+ * Where the ghost starts along one axis of the window: at the grab point under the pointer, but
+ * never past the window's edges (else the target label of a wide entry at the left edge is cut).
+ */
+export function ghostStart(pointer: number, grab: number, size: number, window: number): number {
+  'worklet';
+  const last = window - GHOST_EDGE_MARGIN - size;
+  return Math.max(GHOST_EDGE_MARGIN, Math.min(pointer - grab, last));
+}
+
+/** A badge on the pointer keeps this distance to it, so the finger does not cover it. */
+export const BADGE_CLEARANCE = 56;
+
+/** The top of a badge of `height` above the pointer, or below it where the window ends above. */
+export function badgeTop(pointerY: number, height: number): number {
+  'worklet';
+  const above = pointerY - BADGE_CLEARANCE - height;
+  return above >= GHOST_EDGE_MARGIN ? above : pointerY + BADGE_CLEARANCE;
+}
+
 /** Measure again this often while the page scrolls along. */
 const SCROLL_MEASURE_MS = 100;
 /** Frames to wait for the new layout after lifting or paging. */

@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  BADGE_CLEARANCE,
+  GHOST_EDGE_MARGIN,
+  badgeTop,
+  GHOST_MAX_WIDTH,
   createDragController,
+  ghostSize,
+  ghostStart,
   type DragCallbacks,
   type DragSink,
   type Measure,
@@ -434,5 +440,29 @@ describe('drag controller', () => {
     unsubscribe();
     controller.move({ x: 250, y: 120 });
     expect(listener).toHaveBeenCalledTimes(afterLift);
+  });
+});
+
+describe('ghost geometry', () => {
+  it('a wide source floats at most 280 px wide, held at the same share of its width', () => {
+    expect(ghostSize(520, 390)).toEqual({ width: GHOST_MAX_WIDTH, grabX: 210 });
+    expect(ghostSize(200, 50)).toEqual({ width: 200, grabX: 50 });
+  });
+
+  it('the ghost hangs on the pointer at the grab point', () => {
+    expect(ghostStart(200, 50, 120, 390)).toBe(150);
+  });
+
+  it('the ghost stays inside the window at the edges', () => {
+    // Dragged to the left edge, a ghost grabbed at its right end would leave the window.
+    expect(ghostStart(30, 250, 280, 390)).toBe(GHOST_EDGE_MARGIN);
+    expect(ghostStart(380, 10, 280, 390)).toBe(390 - GHOST_EDGE_MARGIN - 280);
+    // Wider than the window: it starts at the margin.
+    expect(ghostStart(100, 50, 500, 390)).toBe(GHOST_EDGE_MARGIN);
+  });
+
+  it('a badge floats above the finger, and below it at the top of the window', () => {
+    expect(badgeTop(400, 28)).toBe(400 - BADGE_CLEARANCE - 28);
+    expect(badgeTop(40, 28)).toBe(40 + BADGE_CLEARANCE);
   });
 });
