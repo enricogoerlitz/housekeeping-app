@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import {
   Pressable,
   ScrollView,
   View,
   type LayoutChangeEvent,
+  type ScrollViewInstance,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -44,6 +45,18 @@ const ScreenChromeContext = createContext({ collapsed: false });
 export const PageScrollContext = createContext<
   { inset: number; onScroll: (y: number) => void } | undefined
 >(undefined);
+
+/**
+ * The scroll switch of a Screen that scrolls itself (spec 0016, plan decision 2): a drag turns
+ * the page's scrolling off on native while an entry hangs on the finger, and scrolls the page
+ * along at the top and bottom edges.
+ */
+export interface PageScrollControl {
+  setScrollEnabled: (enabled: boolean) => void;
+  scrollBy: (dy: number) => void;
+}
+
+export const PageScrollControlContext = createContext<PageScrollControl | undefined>(undefined);
 
 export interface ScreenProps {
   children?: ReactNode;
@@ -130,6 +143,14 @@ export function Screen(props: ScreenProps) {
       toolbarShift.set(shift);
     }
   };
+  const scrollView = useRef<ScrollViewInstance>(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [scrollControl] = useState<PageScrollControl>(() => ({
+    setScrollEnabled,
+    scrollBy: (dy) => {
+      scrollView.current?.scrollTo({ y: Math.max(0, scrollY.get() + dy), animated: false });
+    },
+  }));
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       onPageScroll(event.contentOffset.y);
@@ -181,14 +202,18 @@ export function Screen(props: ScreenProps) {
       </PageScrollContext.Provider>
     ) : (
       <Animated.ScrollView
+        ref={scrollView}
         style={{ flex: 1, marginTop: top, opacity: measured ? 1 : 0 }}
         contentContainerStyle={{ paddingTop: inset }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {content}
+        <PageScrollControlContext.Provider value={scrollControl}>
+          {content}
+        </PageScrollControlContext.Provider>
       </Animated.ScrollView>
     );
   const line: ViewStyle = {
