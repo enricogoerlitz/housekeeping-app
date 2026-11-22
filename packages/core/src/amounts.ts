@@ -294,6 +294,29 @@ export function parseAmount(text: string): Amount | undefined {
   return unit === undefined ? { text: input } : { text: input, qty, unit };
 }
 
+/** The hint under an amount that is no count and no quantity (spec 0025, AC-012, AC-029). */
+export const AMOUNT_NOT_RECOGNIZED = 'Menge nicht erkannt – z. B. 500 g oder 2';
+
+/** An amount typed for an item: a count ("2") or a quantity with unit ("500 g"); {} = none. */
+export interface ItemAmount {
+  count?: number;
+  qty?: number;
+  unit?: string;
+}
+
+/**
+ * The field "Von Hand" in "Posten bearbeiten" and the amount of a row in the pantry check (spec
+ * 0025, REQ-003, REQ-007): "2" → 2×, "500 g", "1 Kasten"; blank → nothing. Undefined when it is
+ * not recognised ("viel", 0, "1,5" without unit): a count is a whole number from 1 to 10000.
+ */
+export function parseItemAmount(text: string): ItemAmount | undefined {
+  const amount = parseAmount(text);
+  if (amount === undefined) return {};
+  if (amount.qty === undefined || amount.qty <= 0) return undefined;
+  if (amount.unit !== undefined) return { qty: amount.qty, unit: amount.unit };
+  return Number.isInteger(amount.qty) && amount.qty <= 10000 ? { count: amount.qty } : undefined;
+}
+
 /** Splits a pasted block into lines and parses each; empty lines and bullets ("- ", "• ") are ignored. */
 export function parseIngredientBlock(text: string): ParsedIngredient[] {
   return text

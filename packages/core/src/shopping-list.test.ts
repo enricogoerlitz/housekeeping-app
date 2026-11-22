@@ -8,6 +8,7 @@ import {
   dishLabel,
   itemCount,
   listHeadline,
+  manualAmountText,
   MAX_ITEM_COUNT,
   originSummary,
   recipeSource,
@@ -449,5 +450,15 @@ describe('Herkunft after moving the plan entry (spec 0016)', () => {
 
   it('a label without a day stays as it is', () => {
     expect(relabelForDay('Mango-Curry', '2026-11-22')).toBe('Mango-Curry');
+  });
+});
+
+describe('manualAmountText (spec 0025, AC-010)', () => {
+  it('AC-010: the field "Von Hand" starts with the manual share: "500 g", "2", or empty', () => {
+    const moehren = item([fromPlan('l', 'Lasagne', 'Mo'), { ...manual('h'), qty: 500, unit: 'g' }]);
+    expect(manualAmountText(moehren)).toBe('500 g');
+    expect(manualAmountText(item([manual('a', 2)]))).toBe('2');
+    expect(manualAmountText(item([fromPlan('l', 'Lasagne', 'Mo')]))).toBe('');
+    expect(manualAmountText(item([{ ...manual('b'), qty: 2, unit: 'Kasten' }]))).toBe('2 Kasten');
   });
 });

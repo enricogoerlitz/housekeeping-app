@@ -69,6 +69,17 @@ export function originSummary(item: ShoppingItem): string {
     .join(' · ');
 }
 
+/**
+ * What the field "Von Hand" starts with (spec 0025, AC-010): the summed manual share as typed,
+ * "500 g", "2" for a count; empty without one.
+ */
+export function manualAmountText(item: ShoppingItem): string {
+  const manual = item.contributions.filter((contribution) => contribution.source.kind === 'manual');
+  if (manual.length === 0) return '';
+  const { amount } = summarizeItem({ ...item, contributions: manual });
+  return amount.replace(/^(\d+(?:,\d+)?)×$/, '$1');
+}
+
 /** A dish (recipe or collection) the open items come from (spec 0025, AC-017). */
 export interface ListDish {
   recipeId: Id;

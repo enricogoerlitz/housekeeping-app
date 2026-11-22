@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AMOUNT_NOT_RECOGNIZED,
   buyableQty,
   formatAmount,
   formatQty,
   parseAmount,
   parseIngredientBlock,
   parseIngredientLine,
+  parseItemAmount,
   parseSmartInput,
   scaleAmount,
 } from './amounts';
@@ -327,5 +329,25 @@ describe('buyableQty', () => {
     expect(buyableQty(1, 'Prise')).toBe(1);
     expect(buyableQty(1.5, 'Handvoll')).toBe(1.5);
     expect(buyableQty(0.75, 'Glas')).toBe(1);
+  });
+});
+
+describe('parseItemAmount (spec 0025, REQ-003, REQ-007)', () => {
+  it('AC-009, AC-010: a count, a quantity with unit, or nothing', () => {
+    expect(parseItemAmount('2')).toEqual({ count: 2 });
+    expect(parseItemAmount('1 Kasten')).toEqual({ qty: 1, unit: 'Kasten' });
+    expect(parseItemAmount('1 kg')).toEqual({ qty: 1, unit: 'kg' });
+    expect(parseItemAmount(' 500g ')).toEqual({ qty: 500, unit: 'g' });
+    expect(parseItemAmount('1 Packung')).toEqual({ qty: 1, unit: 'Packung' });
+    expect(parseItemAmount('')).toEqual({});
+    expect(parseItemAmount('   ')).toEqual({});
+  });
+
+  it('AC-012, AC-029: "viel", 0 or a broken count is not recognised', () => {
+    expect(parseItemAmount('viel')).toBeUndefined();
+    expect(parseItemAmount('0')).toBeUndefined();
+    expect(parseItemAmount('1,5')).toBeUndefined();
+    expect(parseItemAmount('0 g')).toBeUndefined();
+    expect(AMOUNT_NOT_RECOGNIZED).toBe('Menge nicht erkannt – z. B. 500 g oder 2');
   });
 });

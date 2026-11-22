@@ -4,11 +4,13 @@ import {
   articleDraftFromStarter,
   articleFilterCounts,
   applyArticleMerge,
+  articlesInArea,
   articleUsage,
   classifyIngredientLines,
   cleanSynonyms,
   defaultShoppingRuleFor,
   filterArticles,
+  usedArticleIds,
   mergeArticlesPreview,
   mergeTargets,
   missingArticlesLabel,
@@ -650,7 +652,26 @@ describe('filters, counts and sorting', () => {
       pantry: 1,
       needsReview: 1,
       similar: 2,
+      unused: 6,
     });
+  });
+
+  it('AC-046: "Unbenutzt" lists articles in no recipe and not open on the list', () => {
+    const recipes = [recipe('r-dal', 'Linsen-Dal', [ingredient('i1', 'a-reis')])];
+    const items = [item('s1', 'a-zwiebel'), item('s2', 'a-gp', { checked: true })];
+    const context = { similar: new Map(), areas, usedIds: usedArticleIds(recipes, items) };
+    expect(sortArticles(filterArticles(list, 'unused', context), 'name')).toEqual([
+      drachenfrucht,
+      geschenkpapier,
+      milchkokos,
+      zwiebeln,
+    ]);
+    expect(articleFilterCounts(list, context).unused).toBe(4);
+  });
+
+  it('AC-045: an area as filter keeps only its articles', () => {
+    expect(articlesInArea(list, 'area-obst')).toEqual([zwiebeln, zwiebel]);
+    expect(articlesInArea(list, undefined)).toBe(list);
   });
 
   it('AC-027: an empty filter gives an empty list and a count of 0', () => {
@@ -807,20 +828,21 @@ describe('articleUsage', () => {
     );
   });
 
-  it('AC-034: only open on the list → "Steht auf der Einkaufsliste"', () => {
+  it('AC-048: open on the list → "Steht offen auf der Einkaufsliste"', () => {
     const usage = articleUsage('a-milch', recipes, [item('s1', 'a-milch')]);
     expect(usage).toEqual({
       recipes: [],
       openItems: 1,
       doneItems: 0,
       canDelete: false,
-      deleteBlockedReason: 'Steht auf der Einkaufsliste',
+      deleteBlockedReason: 'Steht offen auf der Einkaufsliste',
     });
   });
 
-  it('AC-034: a done item on the list also blocks deleting', () => {
+  it('AC-047: a done item on the list does not block deleting; it goes with it', () => {
     const usage = articleUsage('a-milch', [], [item('s1', 'a-milch', { checked: true })]);
-    expect(usage).toMatchObject({ doneItems: 1, canDelete: false });
+    expect(usage).toMatchObject({ doneItems: 1, canDelete: true });
+    expect(usage.deleteBlockedReason).toBeUndefined();
   });
 
   it('AC-033: unused → can delete', () => {
@@ -1032,17 +1054,38 @@ describe('applyArticleMerge', () => {
     ]);
   });
 
-  it('other items of the source (checked, or open without an open target) move to the target', () => {
-    const done = item('s-done', 'a-mk', { checked: true });
+  it('the item of the source moves to the target when the target has none', () => {
     const open = item('s-open', 'a-mk');
     const other = item('s-other', 'a-mango');
-    const result = applyArticleMerge(milchkokos, kokosmilch, [], [done, open, other]);
+    const result = applyArticleMerge(milchkokos, kokosmilch, [], [open, other]);
     expect(result.items.map((entry) => [entry.id, entry.articleId, entry.checked])).toEqual([
-      ['s-done', 'a-kokosmilch', true],
       ['s-open', 'a-kokosmilch', false],
       ['s-other', 'a-mango', false],
     ]);
-    expect(result.items[2]).toBe(other);
+    expect(result.items[1]).toBe(other);
     expect(result.removedItemId).toBeUndefined();
+  });
+
+  it('S-03: an open source reopens the checked target with only its need', () => {
+    const source = item('s-open', 'a-mk');
+    const target = item('t-done', 'a-kokosmilch', { checked: true, checkedBy: 'm-nadja' });
+    const result = applyArticleMerge(milchkokos, kokosmilch, [], [source, target]);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 't-done',
+        checked: false,
+        contributions: source.contributions,
+      }),
+    ]);
+    expect(result.items[0]?.checkedBy).toBeUndefined();
+    expect(result.removedItemId).toBe('s-open');
+  });
+
+  it('S-03: a checked source adds nothing to the target', () => {
+    const source = item('s-done', 'a-mk', { checked: true });
+    const target = item('t-open', 'a-kokosmilch');
+    const result = applyArticleMerge(milchkokos, kokosmilch, [], [source, target]);
+    expect(result.items).toEqual([target]);
+    expect(result.removedItemId).toBe('s-done');
   });
 });
