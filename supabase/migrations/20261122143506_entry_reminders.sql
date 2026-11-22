@@ -342,3 +342,200 @@ begin
   return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
 end
 $$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Scheduler: entry reminders (plan, Decision 3)
+-- ---------------------------------------------------------------------------------------------
+
+-- "Mo" … "So" and "Montag" … "Sonntag" without to_char's locale (TM), which depends on the
+-- server's lc_time. Same names as core dates.ts.
+create function private.weekday_short(p_day date)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$ select (array['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'])[extract(isodow from p_day)::integer] $$;
+
+create function private.weekday_long(p_day date)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select (array['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'])
+         [extract(isodow from p_day)::integer]
+$$;
+
+-- The name of an entry as the calendar shows it (apps/app meal-plan labels entryTitle, REQ-004):
+-- recipe title, "Reste von <Wochentag>" (or "Reste"), the restaurant's name, the activity with
+-- its Zusatz "Eislaufen (Hohenschönhausen)", otherwise the free text.
+create function private.plan_entry_title(p_entry public.meal_plan_entries)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select case (p_entry).kind
+    when 'recipe' then coalesce(
+      (select rc.title from public.recipes rc where rc.household_id = (p_entry).household_id and rc.id = (p_entry).recipe_id),
+      'Rezept')
+    when 'leftovers' then coalesce(
+      (select 'Reste von ' || private.weekday_long(src.date) from public.meal_plan_entries src
+       where src.household_id = (p_entry).household_id and src.id = (p_entry).leftovers_of_entry_id and src.date is not null),
+      'Reste')
+    when 'restaurant' then coalesce(
+      (select r.name from public.restaurants r where r.household_id = (p_entry).household_id and r.id = (p_entry).restaurant_id),
+      (p_entry).text, 'Restaurant')
+    when 'activity' then coalesce(
+      (select a.name from public.activities a where a.household_id = (p_entry).household_id and a.id = (p_entry).activity_id),
+      (p_entry).text, 'Aktivität')
+      || coalesce(' (' || nullif(btrim((p_entry).note), '') || ')', '')
+    else coalesce((p_entry).text, '')
+  end
+$$;
+
+-- "Erinnerung: <Name> · <Wann>[ · <Text>]" (REQ-005). <Wann> is "heute <Tageszeit>" on the day of
+-- the entry, "morgen <Tageszeit>" the day before, otherwise "<Mo> <T>.<M>., <Tageszeit>"; without a
+-- (known) meal slot the Tageszeit is left out. A long name is cut with "…" so the message has at
+-- most 400 characters.
+create function private.entry_reminder_body(p_name text, p_day_offset integer, p_entry_date date, p_slot_name text,
+                                            p_text text)
+returns text
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  c_max constant integer := 400;
+  c_prefix constant text := 'Erinnerung: ';
+  v_slot text := nullif(p_slot_name, '');
+  v_rest text;
+  v_room integer;
+begin
+  v_rest := ' · '
+    || case p_day_offset
+         when 0 then 'heute' || coalesce(' ' || v_slot, '')
+         when 1 then 'morgen' || coalesce(' ' || v_slot, '')
+         else private.weekday_short(p_entry_date) || ' ' || to_char(p_entry_date, 'FMDD.FMMM.')
+              || coalesce(', ' || v_slot, '')
+       end
+    || coalesce(' · ' || p_text, '');
+  v_room := c_max - char_length(c_prefix) - char_length(v_rest);
+  if char_length(p_name) > v_room then
+    return c_prefix || left(p_name, greatest(v_room - 1, 0)) || '…' || v_rest;
+  end if;
+  return c_prefix || p_name || v_rest;
+end
+$$;
+
+-- Reminders whose send day (date − offset) is today or yesterday in the household's zone and
+-- whose moment lies within the last 30 minutes (Decision 5 of spec 0013: no catching up).
+-- Recipients: members with the kind on; for an activity everyone, otherwise who is in
+-- eater_ids (empty = everyone). Silent on the send day and on the day of the entry. Expires at
+-- the end of the send day. Deleted entries and members who left drop out through the joins.
+create function private.entry_reminder_candidates(p_now timestamptz)
+returns table (household_id uuid, profile_id uuid, kind text, dedupe_key text, due_at timestamptz,
+               expires_at timestamptz, title text, body text, url text)
+language sql
+stable
+set search_path = ''
+as $$
+  with due as (
+    select e, h.timezone, d.day, (d.day + e.reminder_at) at time zone h.timezone as due_at
+    from private.notification_households(p_now) h
+    cross join lateral (values (h.today - 1), (h.today)) d (day)
+    join public.meal_plan_entries e
+      on e.household_id = h.household_id and e.reminder_at is not null and e.date - e.reminder_day_offset = d.day
+  ), message as (
+    select (due.e).id, (due.e).household_id, (due.e).date, (due.e).kind, (due.e).eater_ids, (due.e).reminder_at,
+           due.timezone, due.day, due.due_at,
+           private.entry_reminder_body(private.plan_entry_title(due.e), (due.e).reminder_day_offset, (due.e).date,
+                                       sl.name, (due.e).reminder_text) as body
+    from due
+    left join lateral (select p.name from private.meal_slot_positions((due.e).household_id) p
+                       where p.slot_id = (due.e).slot_id limit 1) sl on true
+    where due.due_at <= p_now and due.due_at >= p_now - interval '30 minutes'
+  )
+  select message.household_id, m.profile_id, 'entry_reminder',
+         format('entry:%s:%s:%s', message.id, message.day, to_char(message.reminder_at, 'HH24:MI')), message.due_at,
+         (message.day + 1)::timestamp at time zone message.timezone, 'Housekeeping', message.body,
+         format('/kalender?tag=%s&eintrag=%s&haushalt=%s', message.date, message.id, message.household_id)
+  from message
+  join public.household_members m on m.household_id = message.household_id
+  join public.notification_settings s
+    on s.household_id = m.household_id and s.member_id = m.profile_id and s.entry_reminders_enabled
+  where (message.kind = 'activity' or cardinality(message.eater_ids) = 0 or m.profile_id = any (message.eater_ids))
+    and not private.is_silent(message.household_id, m.profile_id, message.day)
+    and not private.is_silent(message.household_id, m.profile_id, message.date)
+$$;
+
+create or replace function private.notification_candidates(p_now timestamptz)
+returns table (household_id uuid, profile_id uuid, kind text, dedupe_key text, due_at timestamptz,
+               expires_at timestamptz, title text, body text, url text)
+language sql
+stable
+set search_path = ''
+as $$
+  select * from private.daily_summary_candidates(p_now)
+  union all
+  select * from private.activities_eve_candidates(p_now)
+  union all
+  select * from private.chore_reminder_candidates(p_now)
+  union all
+  select * from private.reservation_reminder_candidates(p_now)
+  union all
+  select * from private.entry_reminder_candidates(p_now)
+$$;
+
+-- Unchanged from the notifications migration except the urgency: entry reminders are high
+-- (Offene Frage 8), like chores and reservations.
+create or replace function private.run_notification_tick(p_now timestamptz default now())
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_config record;
+  v_messages jsonb;
+  v_count integer;
+  v_bundle jsonb;
+begin
+  if not pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended('housekeeping.notification_tick', 0)) then
+    return 0;
+  end if;
+
+  perform private.collect_push_responses(p_now);
+
+  select * into v_config from private.push_send_config();
+  if v_config.url is null or v_config.secret is null then
+    raise warning 'push_not_configured';
+    return 0;
+  end if;
+
+  with candidates as (
+    select * from private.notification_candidates(p_now)
+  ), inserted as (
+    insert into private.notification_deliveries (dedupe_key, subscription_id, profile_id, household_id, kind, due_at)
+    select c.dedupe_key, s.id, c.profile_id, c.household_id, c.kind, c.due_at
+    from candidates c
+    join private.push_subscriptions s on s.profile_id = c.profile_id and s.enabled and s.gone_at is null
+    on conflict (dedupe_key, subscription_id) do nothing
+    returning id, subscription_id, profile_id, dedupe_key
+  )
+  select coalesce(jsonb_agg(private.push_message(
+           i.id, s, extract(epoch from c.expires_at - p_now)::integer,
+           case when c.kind in ('chore_reminder', 'reservation_reminder', 'entry_reminder') then 'high' else 'normal' end,
+           c.title, c.body, c.url) order by i.id), '[]')
+  into v_messages
+  from inserted i
+  join private.push_subscriptions s on s.id = i.subscription_id
+  join candidates c on c.dedupe_key = i.dedupe_key and c.profile_id = i.profile_id;
+
+  v_count := jsonb_array_length(v_messages);
+  for v_bundle in select b from private.push_bundles(v_messages) b loop
+    perform private.post_push_bundle(v_config.url, v_config.secret, v_bundle);
+  end loop;
+  return v_count;
+end
+$$;
