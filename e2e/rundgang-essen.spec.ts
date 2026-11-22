@@ -133,9 +133,11 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   const before = Number((await count.innerText()).match(/\d+/)?.[0]);
 
   await tid(page, 'recipe-new').click();
-  for (const option of ['recipe', 'collection', 'restaurant', 'starter']) {
+  // Spec 0023, AC-045: exactly "Rezept", "Sammlung", "Restaurant".
+  for (const option of ['recipe', 'collection', 'restaurant']) {
     await expect(tid(page, `recipe-new-${option}`), option).toBeVisible();
   }
+  await expect(tid(page, 'recipe-new-starter')).toHaveCount(0);
   await tid(page, 'recipe-new-recipe').click();
   await expect(tid(page, 'new-recipe-kind-recipe')).toHaveAttribute('aria-checked', 'true');
   await tid(page, 'new-recipe-title').fill('Linsen-Dal');

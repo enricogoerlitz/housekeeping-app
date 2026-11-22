@@ -48,8 +48,6 @@ import {
   TextField,
   TypingIndicator,
   ViewTabs,
-  useBreakpoint,
-  type MenuOption,
 } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -64,11 +62,11 @@ import { usePageParams, type PageAddress } from '@/lib/url-state';
 
 import { AiSearchPanel } from './ai-search-panel';
 import { useOpenRecipe } from './navigation';
+import { FoodNewMenu, type FoodNewKind } from './new-menu';
 import { NewRecipeSheet } from './new-recipe-sheet';
 import { RecipeFilterPanel } from './recipe-filter-panel';
 import { RecipeTile } from './recipe-grid';
 import { useRecipeListState } from './recipe-list-state';
-import { StarterSheet } from './starter-sheet';
 import { useAiSearch } from './use-ai-search';
 
 type FoodView = 'recipes' | 'restaurants';
@@ -77,8 +75,6 @@ const FOOD_VIEWS: { value: FoodView; label: string }[] = [
   { value: 'recipes', label: 'Rezepte' },
   { value: 'restaurants', label: 'Restaurants' },
 ];
-
-type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
 
 type FoodParams = PageAddress<'rezepte'>['params'];
 
@@ -108,7 +104,6 @@ const TILE_MIN_WIDTH = 260;
 export function RecipesScreen() {
   const address = usePageParams('rezepte');
   const { params } = address;
-  const { isPhone } = useBreakpoint();
   const online = useOnlineOnly();
   const assistant = useAssistant();
   const settings = useSettings();
@@ -130,7 +125,6 @@ export function RecipesScreen() {
     setNewKind(kind);
     address.open({ fenster: 'neu' });
   };
-  const [starterOpen, setStarterOpen] = useState(false);
 
   const { query, filter, sort } = list;
   // "Zuletzt gekocht" and "Lange nicht gekocht" count what the calendar says was cooked, for a
@@ -185,15 +179,8 @@ export function RecipesScreen() {
   if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} />;
 
   const ids = recipes.map((recipe) => recipe.id);
-  const newOptions: MenuOption<NewKind>[] = [
-    { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
-    { value: 'collection', label: 'Sammlung', disabled: online.disabled, hint: online.hint },
-    { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
-    { value: 'starter', label: 'Starter-Rezepte' },
-  ];
-  const onNew = (kind: NewKind) => {
+  const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') openNew(kind);
-    else if (kind === 'starter') setStarterOpen(true);
     // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
     else address.open({ ...viewPatch('restaurants'), fenster: 'neu-restaurant' });
   };
@@ -203,15 +190,7 @@ export function RecipesScreen() {
       title="Essen"
       right={
         <>
-          <Menu
-            trigger={isPhone ? 'icon' : 'button'}
-            icon="plus"
-            label="Neu"
-            accessibilityLabel="Neu anlegen"
-            options={newOptions}
-            onChange={onNew}
-            testID="recipe-new"
-          />
+          <FoodNewMenu onNew={onNew} />
           <StartPageActions />
         </>
       }
@@ -224,18 +203,16 @@ export function RecipesScreen() {
   ) : null;
 
   const sheets = (
-    <>
-      <NewRecipeSheet
-        visible={newSheet.open}
-        kind={newSheet.kind}
-        onClose={() => address.close({ fenster: undefined })}
-        onCreated={openRecipe}
-      />
-      <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
-    </>
+    <NewRecipeSheet
+      visible={newSheet.open}
+      kind={newSheet.kind}
+      onClose={() => address.close({ fenster: undefined })}
+      onCreated={openRecipe}
+    />
   );
 
-  // Nothing created yet: no search and no filter row, only the first step (AC-018).
+  // Nothing created yet: no search and no filter row, only the first step (AC-018; spec 0023,
+  // REQ-011: no starter recipes any more).
   if (recipes.length === 0) {
     return (
       <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher}>
@@ -243,27 +220,25 @@ export function RecipesScreen() {
         <EmptyState
           icon="book-open"
           title="Noch keine Rezepte"
-          text={
-            features.ai
-              ? 'Fangt mit einem Titel an, übernehmt Klassiker oder beschreibt, worauf ihr Lust habt.'
-              : 'Fangt mit einem Titel an oder übernehmt Klassiker.'
-          }
+          text="Legt euer erstes Rezept an. Ein Titel reicht; Zutaten, Schritte und Links kommen später dazu."
           testID="recipes-empty"
         >
           <Button
-            label="Titel eingeben"
+            label="Rezept anlegen"
             icon="pencil"
             disabled={online.disabled}
             hint={online.hint}
             onPress={() => openNew('recipe')}
-            testID="empty-recipe-title"
+            testID="empty-recipe-new"
           />
           <Button
-            label="Starter-Rezepte ansehen"
-            icon="book-open"
+            label="Sammlung anlegen"
+            icon="layers"
             variant="secondary"
-            onPress={() => setStarterOpen(true)}
-            testID="empty-starter"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => openNew('collection')}
+            testID="empty-collection-new"
           />
           {features.ai ? (
             <Button
@@ -369,7 +344,7 @@ export function RecipesScreen() {
       panel={<RecipeFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />}
       resetLabel="Zurücksetzen"
       onReset={() => list.setFilter(EMPTY_RECIPE_LIST_FILTER)}
-      applyLabel={recipeShowLabel(results.length)}
+      applyLabel={recipeShowLabel(results)}
       collapseLabel="Einklappen"
       testID="recipe-filters"
     />
