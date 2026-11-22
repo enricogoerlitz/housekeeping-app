@@ -1,5 +1,5 @@
 import { weekRangeLabel } from './calendar';
-import { addDays, startOfWeek, weekDates, weekdayShort } from './dates';
+import { addDays, formatShortDate, startOfWeek, weekDates, weekdayShort } from './dates';
 import { defaultEaters } from './meal-plan';
 import type { Absence, Id, ISODate, MealSlot, Member } from './types';
 
@@ -69,9 +69,13 @@ export function planButtonLabel(date: ISODate | null, slotName: string): string 
   return date === null ? 'Vormerken' : `Am ${weekdayShort(date)} ${slotName} einplanen`;
 }
 
-/** The notice after planning, before "Ansehen": "Eingeplant: Sa Abend" or "Vorgemerkt". */
+/**
+ * The notice after planning, before "Ansehen": "Eingeplant: Mi 25.11., Abend" (spec 0018,
+ * AC-025) or "Vorgemerkt".
+ */
 export function plannedNotice(date: ISODate | null, slotName: string): string {
-  return date === null ? 'Vorgemerkt' : `Eingeplant: ${weekdayShort(date)} ${slotName}`;
+  if (date === null) return 'Vorgemerkt';
+  return `Eingeplant: ${weekdayShort(date)} ${formatShortDate(date)}, ${slotName}`;
 }
 
 /**

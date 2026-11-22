@@ -9,6 +9,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
+  absenceWhoHint,
   droppedPackingListMessage,
   formatPickerDate,
   inRange,
@@ -91,7 +92,6 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
   const problems = validateAbsenceDraft({ memberIds: who, from: range.from, to: range.to });
   // While "Bis" is being chosen right after "Von", the old "Bis" is not a mistake yet (AC-042).
   const showToError = problems.toBeforeFrom && range.editing !== 'to';
-  const everyone = members.length > 0 && members.every((member) => who.includes(member.id));
 
   const toggle = (id: string) =>
     setWho(who.includes(id) ? who.filter((candidate) => candidate !== id) : [...who, id]);
@@ -184,11 +184,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
             ))}
           </View>
           <Text variant="caption" color="muted" testID="absence-who-hint">
-            {problems.noOne
-              ? 'Wähle, wer weg ist'
-              : everyone
-                ? 'Alle gewählt: gilt für den ganzen Haushalt'
-                : 'Alle gewählt = ganzer Haushalt'}
+            {absenceWhoHint(who, members)}
           </Text>
         </Stack>
         <Stack gap={8}>

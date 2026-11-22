@@ -148,10 +148,12 @@ function RecipeDetailBody(props: {
   // AC-060: the same rule as the calendar picker (AC-061) — something to buy, or nothing to do.
   const canGoOnList = canPutRecipeOnList(recipe, shownServings, shownVariants);
 
+  // The cooking mode cooks the portions shown here (spec 0018, AC-004).
   const startCooking = () => {
+    const params = { id: recipe.id, portionen: String(shownServings) };
     router.push({
       pathname: '/rezept/[id]/kochen',
-      params: activeVariantId ? { id: recipe.id, variant: activeVariantId } : { id: recipe.id },
+      params: activeVariantId ? { ...params, variant: activeVariantId } : params,
     });
   };
 

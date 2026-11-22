@@ -56,7 +56,8 @@ test('AC-001: "Benachrichtigungen · 2 an" under the avatar opens the page; "Ver
   await fakePermission(page, 'default');
   await open(page, '/');
   await openSettings(page);
-  await expect(tid(page, 'settings-notifications-row')).toContainText('2 an');
+  // Not registered on this device yet (spec 0018, AC-022).
+  await expect(tid(page, 'settings-notifications-summary')).toHaveText('2 an · dieses Gerät aus');
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
   await expect(tid(page, 'notif-kinds')).toContainText('gilt für alle Geräte');

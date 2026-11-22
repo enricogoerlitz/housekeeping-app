@@ -16,7 +16,13 @@ import {
   type AuthErrorLike,
   type SessionLike,
 } from './auth';
-import { resetLocalData, startBackend, stopBackend, type Environment } from './backend';
+import {
+  resetLocalData,
+  startBackend,
+  stopBackend,
+  unsentStoreChangeCount,
+  type Environment,
+} from './backend';
 import { TEST_ACCOUNTS, TEST_PASSWORD } from './dev-accounts';
 import { householdToRows, membersToRows } from './db/mapping';
 import { createInitialState, DEMO_HOUSEHOLD_ID, ENRICO } from './seed/demo';
@@ -615,6 +621,58 @@ describe('AC-003: sign-out with the real engine', () => {
     expect(await storage.get(`household:${H}`)).toBeUndefined();
     expect(peekState()).toBeUndefined();
     expect(control.getState().status).toBe('signedOut');
+  });
+
+  /** Signed in, then offline with `count` checks waiting in the store queue. */
+  async function signedInWithWaitingChecks(count: number) {
+    const auth = fakeAuth();
+    auth.session = session(ENRICO);
+    const environment = offlineEnvironment();
+    const control = realController(auth, environment);
+    await control.start();
+    await vi.waitFor(async () => expect(await storage.get(`household:${H}`)).toBeDefined());
+    environment.setOnline(false);
+    const open = getState().households[H]?.items.filter((item) => !item.checked) ?? [];
+    if (open.length < count) throw new Error('fixture: not enough open items');
+    for (const item of open.slice(0, count)) {
+      queueStoreAction({ kind: 'check', itemId: item.id, checked: true });
+    }
+    if (count > 0) {
+      await vi.waitFor(async () => expect(await storage.get('queue')).toHaveLength(count));
+    }
+    return control;
+  }
+
+  it('spec 0018, AC-013: three checks waiting offline count as 3 unsent changes', async () => {
+    await signedInWithWaitingChecks(3);
+    expect(unsentStoreChangeCount()).toBe(3);
+  });
+
+  it('spec 0018, AC-013: asking ("Abbrechen") changes nothing: signed in, the 3 still queued', async () => {
+    const control = await signedInWithWaitingChecks(3);
+    // The app only reads the count before asking; nothing is cleared until the confirmation.
+    unsentStoreChangeCount();
+    expect(control.getState().status).toBe('signedIn');
+    expect(await storage.get('queue')).toHaveLength(3);
+    expect(unsentStoreChangeCount()).toBe(3);
+  });
+
+  it('spec 0018, AC-014: with an empty queue nothing is unsent', async () => {
+    await signedInWithWaitingChecks(0);
+    expect(unsentStoreChangeCount()).toBe(0);
+  });
+
+  it('spec 0018, AC-015: "Trotzdem abmelden" is the old sign-out: queue and cache gone', async () => {
+    const control = await signedInWithWaitingChecks(3);
+    await control.signOut();
+    expect(unsentStoreChangeCount()).toBe(0);
+    expect(await storage.get('queue')).toBeUndefined();
+    expect(await storage.get(`household:${H}`)).toBeUndefined();
+    expect(control.getState().status).toBe('signedOut');
+  });
+
+  it('spec 0018, AC-014: signed out there is nothing to count', () => {
+    expect(unsentStoreChangeCount()).toBe(0);
   });
 
   it('another user on the same device never sees the previous cache', async () => {

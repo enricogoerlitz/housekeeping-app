@@ -96,3 +96,18 @@ export function appVersionState(input: {
   if (latest && compareParsed(latest, own) > 0) return 'neu-verfuegbar';
   return 'aktuell';
 }
+
+/**
+ * Why edit actions are greyed out (spec 0018, AC-023): `writesLocked` covers both causes, so a
+ * lock with network and an unsupported version is the version ("Bitte neu laden"); without
+ * network it stays offline, the hint the app always had.
+ */
+export function editLockReason(input: {
+  writesLocked: boolean;
+  networkOffline: boolean;
+  version: AppVersionState;
+}): 'offline' | 'version' | undefined {
+  if (!input.writesLocked) return undefined;
+  if (!input.networkOffline && input.version === 'nicht-unterstuetzt') return 'version';
+  return 'offline';
+}

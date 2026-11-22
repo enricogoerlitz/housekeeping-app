@@ -302,13 +302,14 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await nav(page, 'index');
 
   // The card "Reisetasche" on the Übersicht (spec 0012, AC-042, AC-044): "Urlaub Mallorca"
-  // starts in 12 days, so only a week later the card stands below "Einkauf", counted from the
-  // shown day; a tap opens the Urlaubsseite, and "‹ Übersicht" leads back (task 12).
+  // starts in 12 days, so only a week later the card stands below "Einkauf"; it still counts
+  // from today (spec 0018, AC-020); a tap opens the Urlaubsseite, and "‹ Übersicht" leads back
+  // (task 12).
   const mallorcaCard = `today-packing-${seedIds['abs-mallorca']}`;
   await expect(tid(page, mallorcaCard)).toHaveCount(0);
   await tid(page, 'today-week-next').click();
   await expect(tid(page, `${mallorcaCard}-progress`)).toHaveText('7/21 gepackt');
-  await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 5 Tagen');
+  await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 12 Tagen');
   await tid(page, `${mallorcaCard}-open`).click();
   await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
   await back(page);

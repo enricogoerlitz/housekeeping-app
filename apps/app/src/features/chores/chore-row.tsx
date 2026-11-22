@@ -1,5 +1,6 @@
 import {
   choreMemberIds,
+  choreTurnLabel,
   daysOverdue,
   flexibleProgress,
   recurrenceLabel,
@@ -48,6 +49,8 @@ export function ChoreRow(props: ChoreRowProps) {
           : undefined;
   const memberIds = choreMemberIds(chore, props.members);
   const avatars = props.members.filter((member) => memberIds.includes(member.id));
+  // Alternating: only whose turn it is, read as "dran: Nadja" (spec 0018, AC-016).
+  const turn = choreTurnLabel(chore, props.members);
   const progress = flexibleProgress(chore, today);
   const checked = check?.checked ?? false;
 
@@ -57,7 +60,7 @@ export function ChoreRow(props: ChoreRowProps) {
       title={withTime(chore.title, chore.dueTime)}
       strike={checked}
       selected={props.selected}
-      accessibilityLabel={`${chore.title}, Details`}
+      accessibilityLabel={[chore.title, turn, 'Details'].filter(Boolean).join(', ')}
       onPress={props.onOpen}
       leading={
         check ? (
@@ -99,7 +102,7 @@ export function ChoreRow(props: ChoreRowProps) {
       }
       trailing={
         avatars.length > 0 ? (
-          <AvatarStack members={avatars} />
+          <AvatarStack members={avatars} accessibilityLabel={turn} />
         ) : (
           <Row>
             <Text variant="caption" color="muted">

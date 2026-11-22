@@ -5,6 +5,7 @@ import {
   assignmentLabel,
   choreBucket,
   choreMemberIds,
+  choreTurnLabel,
   completionOutcome,
   daysOverdue,
   doneOnChoices,
@@ -14,6 +15,7 @@ import {
   latestBookedEvent,
   nextAssignee,
   nextDueAfter,
+  OFFLINE_CHECK_NOTICE,
   reassignOutcome,
   recurrenceLabel,
   removalOutcome,
@@ -89,7 +91,8 @@ describe('AC-036: "Staubsaugen" weekly on Saturday, rotating', () => {
       nextAssigneeId: enrico.id,
     });
     expect(choreBucket(vacuum, today)).toBe('thisWeek');
-    expect(choreMemberIds(vacuum, [enrico, nadja])).toEqual([enrico.id, nadja.id]);
+    // Spec 0018, AC-016: the row shows only whose turn it is.
+    expect(choreMemberIds(vacuum, [enrico, nadja])).toEqual([enrico.id]);
     expect(recurrenceLabel(vacuum.recurrence)).toBe('wöchentlich Sa');
     expect(assignmentLabel(vacuum.assignment, [enrico, nadja])).toBe('abwechselnd');
   });
@@ -244,6 +247,52 @@ describe('labels', () => {
         members,
       ),
     ).toEqual([enrico.id]);
+  });
+});
+
+describe('spec 0018, REQ-006: "Abwechselnd" shows whose turn it is', () => {
+  const members = [enrico, nadja];
+  const rotating: Assignment = { type: 'rotating', memberIds: [enrico.id, nadja.id] };
+
+  it('AC-016: "Bad putzen" alternating, Nadja\'s turn: only Nadja, read as "dran: Nadja"', () => {
+    const bath = chore({ assignment: rotating, nextAssigneeId: nadja.id });
+    expect(choreMemberIds(bath, members)).toEqual([nadja.id]);
+    expect(choreTurnLabel(bath, members)).toBe('dran: Nadja');
+  });
+
+  it('AC-016: without a known turn the first rotation member is up, as in the household row', () => {
+    expect(choreMemberIds(chore({ assignment: rotating }), members)).toEqual([enrico.id]);
+    expect(choreMemberIds(chore({ assignment: rotating, nextAssigneeId: 'weg' }), members)).toEqual(
+      [enrico.id],
+    );
+    expect(
+      choreMemberIds(
+        chore({ assignment: { type: 'rotating', memberIds: ['weg', nadja.id] } }),
+        members,
+      ),
+    ).toEqual([nadja.id]);
+    expect(choreTurnLabel(chore({ assignment: rotating }), members)).toBe('dran: Enrico');
+  });
+
+  it('AC-017: "Fenster putzen" together keeps both avatars and no turn label', () => {
+    const windows = chore({ title: 'Fenster putzen', assignment: { type: 'together' } });
+    expect(choreMemberIds(windows, members)).toEqual([enrico.id, nadja.id]);
+    expect(choreTurnLabel(windows, members)).toBeUndefined();
+    expect(choreTurnLabel(chore(), members)).toBeUndefined();
+  });
+
+  it('AC-016: an empty rotation shows nobody', () => {
+    const empty = chore({ assignment: { type: 'rotating', memberIds: [] } });
+    expect(choreMemberIds(empty, members)).toEqual([]);
+    expect(choreTurnLabel(empty, members)).toBeUndefined();
+  });
+});
+
+describe('spec 0018, AC-024', () => {
+  it('AC-024: the network drops while checking off: says what to do', () => {
+    expect(OFFLINE_CHECK_NOTICE).toBe(
+      'Offline – nichts wurde abgehakt. Mit Netz noch einmal abhaken.',
+    );
   });
 });
 
