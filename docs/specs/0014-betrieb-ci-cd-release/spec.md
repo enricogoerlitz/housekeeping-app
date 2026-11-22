@@ -195,6 +195,7 @@ und Belege stehen in `plan.md` unter „Entscheidungen beim Bauen“ (Nummern in
 | AC-034, Tabelle „Azure-Ressourcen“            | West Europe, Standard-Adresse der Static Web App             | Static Web Apps in East US 2, Speicher und Identitäten in Germany West Central; eigene Domains `house.kuschel-nest.de` und `test.house.kuschel-nest.de` (Nicht-Ziel „Keine eigene Domain“ aufgehoben) |
 | AC-052, AC-054                                | `daily/<Datum>`, Löschen nach 30 Tagen                       | `daily/<Datum>/<Lauf>`, zusätzlich `release/v<Version>/`; Löschen nach 31 Tagen (18)                                                                                                                  |
 | Azure-Anmeldung der Umgebungen                | Betreff `repo:enricogoerlitz/housekeeping-app:environment:…` | unveränderlicher Betreff von GitHub mit Besitzer- und Repo-ID (12, 20)                                                                                                                                |
+| AC-069                                        | Vorschau bei jedem Push nach `develop`                       | Vorschau nur von Hand (`gh workflow run preview.yml --ref develop`); `develop` sammelt, Tests laufen lokal (Entscheidung Enrico, 22.11.2026)                                                          |
 
 ## Abhängigkeiten, Voraussetzungen und kritischer Pfad
 
@@ -497,7 +498,7 @@ Dann        melden alle Pflicht-Checks ein Ergebnis, und die PR lässt sich zusa
 **AC-012 — Vorschau-Adresse** — verworfen am 21.11.2026: siehe AC-069 (eine feste Vorschau für
 `develop` statt einer Adresse je PR).
 
-**AC-069 — Vorschau zeigt `develop`** (neu am 21.11.2026)
+**AC-069 — Vorschau zeigt `develop`** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“) (neu am 21.11.2026)
 
 ```gherkin
 Angenommen  die PR „feat: Reisetaschen packen (#41)“ wird nach „develop“ zusammengeführt, und die

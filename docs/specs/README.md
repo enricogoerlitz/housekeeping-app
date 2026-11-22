@@ -22,4 +22,6 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0013](0013-benachrichtigungen/spec.md)             | Benachrichtigungen                                         | umgesetzt   |
 | [0014](0014-betrieb-ci-cd-release/spec.md)          | Betrieb: Branching, CI/CD und Release (Welle 6, nach 0013) | freigegeben |
 | [0015](0015-native-apps-anmeldung-speicher/spec.md) | Native Apps: Anmeldung und Speicher                        | entwurf     |
+| [0016](0016-kalender-direkt-bedienen/spec.md)       | Kalender direkt bedienen: Ziehen, Tages-Fenster, Reisen    | freigegeben |
+| [0017](0017-erinnerungen-an-eintraegen/spec.md)     | Erinnerungen an Kalendereinträgen                          | freigegeben |
 | [0018](0018-logikfehler-welle-1/spec.md)            | Fehler aus dem Logik-Review, Welle 1                       | freigegeben |
