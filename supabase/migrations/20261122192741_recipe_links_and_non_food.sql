@@ -1,3 +1,4 @@
+-- contract: recipes.source entfällt, Starter-Rezepte entfallen (Spec 0023); min_app_version: 2026.11.1
 -- Spec 0023 — recipes: links, the diet "kein Lebensmittel", checks of step timers and groups, and
 -- no starter recipes any more. Wave 2 builds a clean target schema without regard to v2026.11.1
 -- (docs/specs/README.md, "Welle 2"), so recipes.source is dropped at once.
