@@ -8,6 +8,7 @@ import { formatLongDate } from '@housekeeping/core';
 
 import {
   ACTIVE,
+  openManaged,
   NADJA,
   PLAN_ENTRY,
   SLOT_DINNER,
@@ -79,7 +80,7 @@ function activityRoute(_page: Page, id: string): string {
 /** "Aktivitäten" under "Verwalten" (spec 0024, REQ-009). */
 async function openActivities(page: Page): Promise<void> {
   await nav(page, 'kalender');
-  await tid(page, 'nav-manage-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await settle(page);
 }
@@ -251,7 +252,7 @@ test('AC-004: "Aktivitäten" lists Eislaufen and Bouldern with picture, name and
   page,
 }) => {
   await open(page, '/kalender');
-  await tid(page, 'nav-manage-activities').click();
+  await openManaged(page, 'activities');
   await expect(page).toHaveURL(/\/aktivitaeten/);
   for (const [id, name] of [
     [EISLAUFEN, 'Eislaufen'],
@@ -747,7 +748,7 @@ test('AC-023, AC-021: "Neue Aktivität" without a name creates nothing; "Kletter
   await expect.poll(() => slotTitles(page, SATURDAY, SLOT_DINNER)).toContain(name);
   expect(await slotTitles(page, SATURDAY, SLOT_DINNER)).toHaveLength(planned.length + 1);
   expect(await activityCount()).toBe(before + 1);
-  await tid(page, 'nav-manage-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-screen')).toContainText(name);
 });
 

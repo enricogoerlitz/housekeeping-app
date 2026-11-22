@@ -78,17 +78,20 @@ test('AC-019: "Anderes Datum …" moves Lasagne two months on and keeps "Abend"'
 test('AC-020: "Einplanen" of Eislaufen reaches a day more than 14 days ahead', async ({ page }) => {
   const target = dayInMonth(TODAY, 2, 16);
   await open(page, `/aktivitaet/${EISLAUFEN}`);
+  // Spec 0024, REQ-006: the window "Einplanen" of the recipes, on the first Tageszeit.
   await tid(page, 'activity-plan').click();
-  await expect(tid(page, 'add-entry-activity-chosen')).toContainText('Eislaufen');
-  await tid(page, 'add-entry-day-other').click();
-  await expect(tid(page, 'add-entry-date-title')).toHaveText(monthTitle(TODAY));
-  await tid(page, 'add-entry-date-next').click();
-  await tid(page, 'add-entry-date-next').click();
-  await tid(page, `add-entry-date-day-${target}`).click();
-  await expect(tid(page, 'add-entry-date-picker')).toHaveCount(0);
-  await expect(tid(page, 'add-entry-day-other')).toHaveAttribute('aria-selected', 'true');
-  await tid(page, `add-entry-slot-${SLOT_MORNING}`).click();
-  await tid(page, 'add-entry-save').click();
+  await expect(tid(page, 'plan-recipe-title')).toHaveText('Eislaufen');
+  await tid(page, 'plan-recipe-other-date').click();
+  await expect(tid(page, 'plan-recipe-calendar-title')).toHaveText(monthTitle(TODAY));
+  await tid(page, 'plan-recipe-calendar-next').click();
+  await tid(page, 'plan-recipe-calendar-next').click();
+  await tid(page, `plan-recipe-calendar-day-${target}`).click();
+  await expect(tid(page, 'plan-recipe-calendar')).toHaveCount(0);
+  await expect(tid(page, `plan-recipe-slot-${SLOT_MORNING}`)).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await tid(page, 'plan-recipe-save').click();
 
   await nav(page, 'kalender');
   await expectEntryAt(page, target, 'Eislaufen', SLOT_MORNING);

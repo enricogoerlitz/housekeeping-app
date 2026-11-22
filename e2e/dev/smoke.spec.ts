@@ -124,16 +124,15 @@ test('dev smoke: every screen renders without a React warning or error', async (
 
   // Verwalten → Aktivitäten: the page, one activity, the add sheet's tabs and its "Neu anlegen"
   // forms (spec 0010, REQ-007, REQ-008; spec 0024, REQ-009).
-  await tid(page, 'nav-manage-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await tid(page, `activity-${seedIds['act-eislaufen']}`).click();
   await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
   await tid(page, 'activity-plan').click();
-  await expect(tid(page, 'add-entry-activity-chosen')).toHaveText('Eislaufen');
-  await tid(page, 'add-entry-sheet-close').click();
-  await back(page);
+  await expect(tid(page, 'plan-recipe-title')).toHaveText('Eislaufen');
+  await tid(page, 'plan-recipe-sheet-close').click();
   await expect(tid(page, 'activities-screen')).toBeVisible();
-  await back(page);
+  await nav(page, 'kalender');
   await expect(tid(page, 'calendar-screen')).toBeVisible();
   await tid(page, `add-${TODAY}`).click();
   await tid(page, 'add-entry-tab-activities').click();
@@ -321,7 +320,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   for (const key of ['rezepte', 'kalender', 'liste', 'haushalt', 'index'] as const) {
     await nav(page, key);
   }
-  await tid(page, 'nav-manage-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-empty')).toBeVisible();
 
   // Signing out: no screen stays behind that still reads the household, which exists only while
