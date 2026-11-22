@@ -847,6 +847,9 @@ export type Database = {
           portions: number;
           recipe_id: string | null;
           remind_minutes_before: number;
+          reminder_at: string | null;
+          reminder_day_offset: number | null;
+          reminder_text: string | null;
           reserved_at: string | null;
           restaurant_id: string | null;
           slot_id: string;
@@ -872,6 +875,9 @@ export type Database = {
           portions?: number;
           recipe_id?: string | null;
           remind_minutes_before?: number;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
           reserved_at?: string | null;
           restaurant_id?: string | null;
           slot_id: string;
@@ -896,6 +902,9 @@ export type Database = {
           portions?: number;
           recipe_id?: string | null;
           remind_minutes_before?: number;
+          reminder_at?: string | null;
+          reminder_day_offset?: number | null;
+          reminder_text?: string | null;
           reserved_at?: string | null;
           restaurant_id?: string | null;
           slot_id?: string;
@@ -958,6 +967,7 @@ export type Database = {
           daily_summary_at: string;
           daily_summary_enabled: boolean;
           daily_summary_parts: string[];
+          entry_reminders_enabled: boolean;
           household_id: string;
           id: string;
           member_id: string;
@@ -973,6 +983,7 @@ export type Database = {
           daily_summary_at?: string;
           daily_summary_enabled?: boolean;
           daily_summary_parts?: string[];
+          entry_reminders_enabled?: boolean;
           household_id: string;
           id?: string;
           member_id: string;
@@ -987,6 +998,7 @@ export type Database = {
           daily_summary_at?: string;
           daily_summary_enabled?: boolean;
           daily_summary_parts?: string[];
+          entry_reminders_enabled?: boolean;
           household_id?: string;
           id?: string;
           member_id?: string;
