@@ -60,6 +60,8 @@ export interface DragCallbacks {
 /** Scrolls the page while the pointer is in a band at the top or bottom. */
 export interface PageScroller {
   scrollBy: (dy: number) => void;
+  /** The scrolling area; its visible part holds the bands (else the drag area does). */
+  measure?: Measure;
 }
 
 export interface LiftRequest<P> {
@@ -170,7 +172,7 @@ interface Session<P> {
   liftRect: Rect | null;
   sourceRect: Rect | null;
   container: Rect | null;
-  hoverRect: Rect | null;
+  scrollArea: Rect | null;
   pager: EdgePagerState;
   lastFrame: number | null;
   lastMeasure: number;
@@ -200,11 +202,13 @@ export function createDragController<P>(
     listeners.forEach((listener) => listener());
   };
 
-  const viewport = (current: Session<P>): Rect => {
+  /** The visible part of an area (the whole window while it is not measured). */
+  const visible = (area: Rect | null): Rect => {
     const size = windowSize();
     const screen = { x: 0, y: 0, width: size.width, height: size.height };
-    return current.container ? intersect(current.container, screen) : screen;
+    return area ? intersect(area, screen) : screen;
   };
+  const viewport = (current: Session<P>): Rect => visible(current.container);
 
   const zonesOf = (current: Session<P>): DragSnapshot<P>['zones'] => {
     if (!callbacks.onPage) return null;
@@ -251,7 +255,6 @@ export function createDragController<P>(
     const sourceId = current.request.sourceId;
     const previous = snapshot.hover;
     if (hit === null) {
-      current.hoverRect = null;
       sink.highlight(null, false);
       if (previous !== null) {
         publish({ hover: null });
@@ -260,7 +263,6 @@ export function createDragController<P>(
       return;
     }
     const isAllowed = allowed(hit.id);
-    current.hoverRect = hit.rect;
     sink.highlight(hit.rect, isAllowed);
     if (previous?.id === hit.id && previous.allowed === isAllowed) return;
     publish({
@@ -307,6 +309,9 @@ export function createDragController<P>(
       const zones = zonesOf(current);
       if (!sameZones(zones, snapshot.zones)) publish({ zones });
       sendGeometry(current);
+    });
+    current.request.scroller?.measure?.((rect) => {
+      if (fresh()) current.scrollArea = rect;
     });
     current.request.measureSource((rect) => {
       if (!fresh()) return;
@@ -382,7 +387,7 @@ export function createDragController<P>(
         liftRect: null,
         sourceRect: null,
         container: null,
-        hoverRect: null,
+        scrollArea: null,
         pager: EDGE_PAGER_IDLE,
         lastFrame: null,
         lastMeasure: 0,
@@ -443,9 +448,13 @@ export function createDragController<P>(
       const relative = { x: current.point.x - area.x, y: current.point.y - area.y };
       const size = { width: area.width, height: area.height };
 
-      const speed = current.request.scroller ? autoScrollSpeed(relative.y, size) : 0;
+      const scroller = current.request.scroller;
+      const bands = visible(current.scrollArea ?? current.container);
+      // Only inside the scrolling area: over a fixed header the pointer may rest to cancel.
+      const inBands = current.point.y >= bands.y && current.point.y < bands.y + bands.height;
+      const speed = scroller && inBands ? autoScrollSpeed(current.point.y - bands.y, bands) : 0;
       if (speed !== 0) {
-        if (dt > 0) current.request.scroller?.scrollBy((speed * dt) / 1000);
+        if (dt > 0) scroller?.scrollBy((speed * dt) / 1000);
         current.scrolling = true;
         if (time - current.lastMeasure >= SCROLL_MEASURE_MS) measureAll(time);
       } else if (current.scrolling) {

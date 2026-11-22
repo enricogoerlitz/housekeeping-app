@@ -54,6 +54,10 @@ export const PageScrollContext = createContext<
 export interface PageScrollControl {
   setScrollEnabled: (enabled: boolean) => void;
   scrollBy: (dy: number) => void;
+  /** The scroll area in window coordinates, where the bands that scroll along lie. */
+  measure: (
+    done: (rect: { x: number; y: number; width: number; height: number } | null) => void,
+  ) => void;
 }
 
 export const PageScrollControlContext = createContext<PageScrollControl | undefined>(undefined);
@@ -149,6 +153,11 @@ export function Screen(props: ScreenProps) {
     setScrollEnabled,
     scrollBy: (dy) => {
       scrollView.current?.scrollTo({ y: Math.max(0, scrollY.get() + dy), animated: false });
+    },
+    measure: (done) => {
+      const view = scrollView.current;
+      if (!view) done(null);
+      else view.measureInWindow((x, y, width, height) => done({ x, y, width, height }));
     },
   }));
   const scrollHandler = useAnimatedScrollHandler({

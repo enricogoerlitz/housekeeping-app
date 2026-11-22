@@ -217,6 +217,31 @@ describe('drag controller', () => {
     expect(measured).toHaveBeenCalled();
   });
 
+  it('the bands lie at the edges of the scrolling area, below a fixed header', () => {
+    const scrollBy = vi.fn();
+    const { controller } = setup();
+    controller.lift({
+      sourceId: 'lasagne',
+      point: { x: 30, y: 120 },
+      preview: 'Lasagne',
+      measureSource: at({ x: 10, y: 110, width: 80, height: 20 }),
+      scroller: { scrollBy, measure: at({ x: 0, y: 100, width: 400, height: 600 }) },
+      onAbort: () => undefined,
+    });
+    // 40 px under the window top is header, not band: nothing scrolls.
+    controller.move({ x: 200, y: 40 });
+    controller.frame(0);
+    controller.frame(16);
+    expect(scrollBy).not.toHaveBeenCalled();
+    // 20 px into the scroll area scrolls up; 20 px above its bottom (y 680) scrolls down.
+    controller.move({ x: 200, y: 120 });
+    controller.frame(32);
+    expect(scrollBy.mock.calls[0]?.[0]).toBeLessThan(0);
+    controller.move({ x: 200, y: 680 });
+    controller.frame(48);
+    expect(scrollBy.mock.calls[1]?.[0]).toBeGreaterThan(0);
+  });
+
   it('AC-009: holding in the right zone turns the page and measures after the new layout', () => {
     const onPage = vi.fn();
     const { controller, lift } = setup({ onPage });
