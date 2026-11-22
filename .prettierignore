@@ -10,3 +10,6 @@ tmp/
 .claude/skills/
 .agents/skills/
 skills-lock.json
+
+# Claude Code agent worktrees (git-ignored, full copies of the repo)
+.claude/worktrees/

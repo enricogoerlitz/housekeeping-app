@@ -559,3 +559,25 @@ test('AC-025: Enrico checks "Eier" offline, Nadja deletes it; online again it is
   expect(await serverItems(householdId, 'Eier')).toEqual([]);
   expect(await toasts(), 'no error after coming back online').toEqual([]);
 });
+
+test('AC-001 (0018): a new recipe keeps its pasted ingredients, also after a reload', async ({
+  page,
+}) => {
+  const householdId = await createTestHousehold(`Zutaten ${unique()}`);
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  const title = `Dal mit Zutaten ${unique()}`;
+  await nav(page, 'rezepte');
+  await tid(page, 'recipe-new').click();
+  await tid(page, 'recipe-new-recipe').click();
+  await tid(page, 'new-recipe-title').fill(title);
+  await tid(page, 'new-recipe-ingredients').fill('200 g rote Linsen\n1 Dose Kokosmilch');
+  await tid(page, 'new-recipe-save').click();
+  await expect(tid(page, 'recipe-title')).toHaveText(title);
+  const ingredients = tid(page, 'recipe-ingredients');
+  await expect(ingredients).toContainText('Linsen', SYNC);
+  await expect(ingredients).toContainText('Kokosmilch');
+  await page.reload();
+  await expect(tid(page, 'recipe-ingredients')).toContainText('Linsen', SYNC);
+  await expect(tid(page, 'recipe-ingredients')).toContainText('Kokosmilch');
+});
