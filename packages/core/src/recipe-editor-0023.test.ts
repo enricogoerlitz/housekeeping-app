@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { amountScalingHint } from './amounts';
 import {
-  addIngredientRows,
+  addPastedRows,
   ingredientRowOf,
   keepDuplicateRow,
   newIngredientRow,
@@ -42,7 +42,7 @@ function pasted(key: string, articleId: Id, amountText = '', variantId?: Id): In
 
 describe('REQ-006: pasted duplicates', () => {
   it('AC-019: "400 ml Kokosmilch" again is a duplicate, "1 Möhren" is not', () => {
-    const draft = addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
+    const draft = addPastedRows(sectionDraft(mangoCurry, 'ingredients'), [
       pasted('p1', 'art-kokosmilch', '400 ml'),
       pasted('p2', 'art-moehren', '1'),
     ]);
@@ -53,7 +53,7 @@ describe('REQ-006: pasted duplicates', () => {
 
   it('AC-019: a duplicate is not saved, also not when leaving the page', () => {
     const base = sectionDraft(mangoCurry, 'ingredients');
-    const draft = addIngredientRows(base, [pasted('p1', 'art-kokosmilch', '400 ml')]);
+    const draft = addPastedRows(base, [pasted('p1', 'art-kokosmilch', '400 ml')]);
     const patch = sectionPatch(mangoCurry, draft, context);
     expect(patch.recipe).toEqual({});
     expect(patch.open.map((row) => row.key)).toEqual(['p1']);
@@ -63,7 +63,7 @@ describe('REQ-006: pasted duplicates', () => {
 
   it('AC-020: "Trotzdem hinzufügen" saves it a second time', () => {
     const draft = keepDuplicateRow(
-      addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
+      addPastedRows(sectionDraft(mangoCurry, 'ingredients'), [
         pasted('p1', 'art-kokosmilch', '400 ml'),
       ]),
       'p1',
@@ -76,7 +76,7 @@ describe('REQ-006: pasted duplicates', () => {
 
   it('AC-021: the same article further up in the same text is a duplicate', () => {
     const empty = { ...mangoCurry, ingredients: [], variants: [] };
-    const draft = addIngredientRows(sectionDraft(empty, 'ingredients'), [
+    const draft = addPastedRows(sectionDraft(empty, 'ingredients'), [
       pasted('z1', 'art-moehren', '1'),
       pasted('z2', 'art-moehren', '2'),
     ]);
@@ -84,7 +84,7 @@ describe('REQ-006: pasted duplicates', () => {
   });
 
   it('another variant is no duplicate', () => {
-    const draft = addIngredientRows(sectionDraft(mangoCurry, 'ingredients'), [
+    const draft = addPastedRows(sectionDraft(mangoCurry, 'ingredients'), [
       pasted('p1', 'art-kokosmilch', '400 ml', 'v-tofu'),
     ]);
     expect(draft.rows.at(-1)?.duplicate ?? false).toBe(false);

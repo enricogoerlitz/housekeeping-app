@@ -920,11 +920,19 @@ function rowArticleKey(row: IngredientRow): string | undefined {
   return article.kind === 'new' ? `name:${normalizeText(article.name)}` : undefined;
 }
 
-/**
- * Pasted rows at the end of the section (spec 0023, REQ-006): a row whose article is in the
- * section already for the same variant, or in a row further up of `rows`, is marked as duplicate.
- */
 export function addIngredientRows(
+  draft: IngredientsDraft,
+  rows: readonly IngredientRow[],
+): IngredientsDraft {
+  return { ...draft, rows: [...draft.rows, ...rows] };
+}
+
+/**
+ * Pasted rows ("Mehrere einfügen", "Zutaten einfügen") at the end of the section (spec 0023,
+ * REQ-006): a row whose article is in the section already for the same variant, or in a row
+ * further up of `rows`, is marked as duplicate. A row added with "+ Zutat" is never one.
+ */
+export function addPastedRows(
   draft: IngredientsDraft,
   rows: readonly IngredientRow[],
 ): IngredientsDraft {
