@@ -19,7 +19,16 @@ import { createActivity, type ActivityDraft } from './commands-activities';
 import { createRecipe } from './commands-recipes';
 import { createRestaurant, type RestaurantDraft } from './commands-restaurants';
 import { indexById } from './queries';
-import { commit, getData, getState, newId, updateData } from './store';
+import {
+  commit,
+  commitConfirmed,
+  getData,
+  getState,
+  isOffline,
+  newId,
+  OfflineError,
+  updateData,
+} from './store';
 import { checkTime } from './times';
 import { TransportError } from './transport';
 
@@ -246,6 +255,41 @@ export function setReservation(
       }),
     })),
   );
+}
+
+/**
+ * "Fertig" in an entry's window (spec 0018, REQ-003): the typed Zusatz of an activity and the
+ * "Reserviert um" of a restaurant as one patch. Resolves once the server took it, rejects when it
+ * refused it (the entry springs back, and onWriteRejected reports the general hint), so the
+ * window can stay open with the typed text (AC-009). Nothing changed resolves at once and sends
+ * nothing. Throws "Keine gültige Uhrzeit", "Der Zusatz ist zu lang …" and OfflineError before
+ * anything changes.
+ */
+export function saveEntryFields(
+  entryId: Id,
+  fields: { note?: string; reservedAt?: TimeOfDay | null },
+): Promise<void> {
+  const note = 'note' in fields ? cleanNote(fields.note) : undefined;
+  checkTime(fields.reservedAt);
+  if (isOffline()) throw new OfflineError();
+  const confirmed = commitConfirmed({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      planEntries: data.planEntries.map((entry) => {
+        if (entry.id !== entryId) return entry;
+        return {
+          ...entry,
+          ...('note' in fields && entry.kind === 'activity' ? { note } : {}),
+          ...(fields.reservedAt !== undefined
+            ? { reservedAt: fields.reservedAt ?? undefined }
+            : {}),
+        };
+      }),
+    })),
+  );
+  // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
+  confirmed.catch(() => {});
+  return confirmed;
 }
 
 /** Moves a dish to another day (or to "vorgemerkt" with date null) and optionally another meal. */
