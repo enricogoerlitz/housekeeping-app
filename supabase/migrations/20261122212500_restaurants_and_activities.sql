@@ -1,3 +1,4 @@
+-- contract: purge_recipe_deletions entfällt, Löschen von Restaurants und Aktivitäten läuft über delete_restaurant und delete_activity (Spec 0024); min_app_version: 2026.11.1
 -- Spec 0024 — restaurants and activities: website, a photo for restaurants, deleting both with
 -- "Rückgängig" (critical path: deletion, storage policies, migration). Clean target before the
 -- first productively used version (wave 2 rules, docs/specs/README.md): no expand/contract.
@@ -969,4 +970,15 @@ begin
 
   return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
 end
+$$;
+
+-- Contract (scripts/ci/migrations.mjs): the minimum app version stays the latest published one;
+-- it may not exceed it (scripts/release/version.mjs). Grants of the function stay.
+create or replace function public.min_app_version()
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select '2026.11.1'::text
 $$;
