@@ -7,7 +7,6 @@ import type {
   ISODate,
   NotificationSettings,
   OwnPushSubscription,
-  RemindMinutes,
   TimeOfDay,
 } from './types';
 
@@ -17,15 +16,15 @@ import type {
 
 // ---------- Kinds and settings ----------
 
+/** Spec 0021, REQ-014: the reservation has no kind of its own; its reminder is the entry's. */
 export type NotificationKind =
-  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'reservationReminders' | 'entryReminders';
+  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'entryReminders';
 
 /** In the order of the page (concept 3.14). */
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   'dailySummary',
   'activitiesEve',
   'choreReminders',
-  'reservationReminders',
   'entryReminders',
 ];
 
@@ -33,7 +32,6 @@ const ENABLED_FIELD = {
   dailySummary: 'dailySummaryEnabled',
   activitiesEve: 'activitiesEveEnabled',
   choreReminders: 'choreRemindersEnabled',
-  reservationReminders: 'reservationRemindersEnabled',
   entryReminders: 'entryRemindersEnabled',
 } as const satisfies Record<NotificationKind, keyof NotificationSettings>;
 
@@ -113,7 +111,7 @@ export function toggleSummaryPart(
 
 /**
  * The line under a kind (AC-011): "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung",
- * "19:00", "2 h vorher, je Eintrag änderbar"; chores with a time have none.
+ * "19:00"; chores with a time and entry reminders have none.
  */
 export function kindSubtitle(
   settings: NotificationSettings,
@@ -132,8 +130,6 @@ export function kindSubtitle(
     // Spec 0017, REQ-007: no time of its own; it is set per entry.
     case 'entryReminders':
       return undefined;
-    case 'reservationReminders':
-      return `${remindLabel(DEFAULT_REMIND_MINUTES)}, je Eintrag änderbar`;
   }
 }
 
@@ -158,15 +154,6 @@ export function choreTimeHint(choreRemindersEnabled: boolean): string {
   return choreRemindersEnabled
     ? 'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)'
     : 'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus';
-}
-
-/** "Erinnern … vorher" of a reservation (Offene Frage 2 A, Decision 14). */
-export const REMIND_CHOICES: readonly RemindMinutes[] = [30, 60, 120, 180, 240];
-export const DEFAULT_REMIND_MINUTES: RemindMinutes = 120;
-
-/** "30 Min vorher", "1 h vorher", "2 h vorher" (AC-029). */
-export function remindLabel(minutes: RemindMinutes): string {
-  return minutes < 60 ? `${minutes} Min vorher` : `${minutes / 60} h vorher`;
 }
 
 /**

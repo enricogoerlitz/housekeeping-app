@@ -53,7 +53,6 @@ const KIND_LABELS: Record<NotificationKind, string> = {
   dailySummary: 'Tagesüberblick',
   activitiesEve: 'Aktivitäten am Vortag',
   choreReminders: 'Aufgaben mit Uhrzeit',
-  reservationReminders: 'Restaurant-Reservierung',
   entryReminders: 'Erinnerungen an Einträgen',
 };
 
@@ -61,11 +60,10 @@ const KIND_IDS: Record<NotificationKind, string> = {
   dailySummary: 'daily-summary',
   activitiesEve: 'activities-eve',
   choreReminders: 'chore-reminders',
-  reservationReminders: 'reservation-reminders',
   entryReminders: 'entry-reminders',
 };
 
-/** Kinds with a time of their own; the reservation's lead time is set per entry. */
+/** Kinds with a time of their own; an entry's reminder is set at the entry (spec 0021). */
 type TimedKind = 'dailySummary' | 'activitiesEve';
 
 function isTimed(kind: NotificationKind): kind is TimedKind {

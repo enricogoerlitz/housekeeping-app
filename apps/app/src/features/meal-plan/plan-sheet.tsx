@@ -39,7 +39,7 @@ import { View } from 'react-native';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { CookPicker, EaterPicker, FieldLabel, SplitFields } from './plan-fields';
+import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Das hat nicht geklappt.';
@@ -86,9 +86,25 @@ export function PlanSheet(props: {
   // AC-055, AC-056: members or trips that arrive later count while the eaters are untouched.
   const [touched, setTouched] = useState(false);
   const [seen, setSeen] = useState({ members, trips });
+  // Spec 0021, REQ-006: counters for portions and variants that follow eaters and guests.
+  const portions = usePortions(recipe, () => {
+    const first = recipe ? splitForEaters(recipe.id, choice.eaterIds, choice.guests) : undefined;
+    return {
+      eaterIds: choice.eaterIds,
+      guests: choice.guests,
+      portions: first?.portions ?? 0,
+      variants: (recipe?.variants ?? []).map((variant) => ({
+        variantId: variant.id,
+        portions: first?.variants.find((row) => row.variantId === variant.id)?.portions ?? 0,
+      })),
+    };
+  });
   if (seen.members !== members || seen.trips !== trips) {
     setSeen({ members, trips });
-    setChoice(refreshPlanEaters(choice, touched, members, trips));
+    const refreshed = refreshPlanEaters(choice, touched, members, trips);
+    if (refreshed.eaterIds !== choice.eaterIds)
+      portions.reset(refreshed.eaterIds, refreshed.guests);
+    setChoice(refreshed);
   }
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -100,7 +116,11 @@ export function PlanSheet(props: {
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
   const noEaters = choice.eaterIds.length + choice.guests === 0;
 
-  const update = (next: PlanChoice) => {
+  const update = (next: PlanChoice, counted = false) => {
+    // Another day starts the counters over from those present; a choice of eaters counts on.
+    if (!counted && (next.eaterIds !== choice.eaterIds || next.guests !== choice.guests)) {
+      portions.reset(next.eaterIds, next.guests);
+    }
     setChoice(next);
     setError(undefined);
   };
@@ -136,7 +156,12 @@ export function PlanSheet(props: {
     try {
       props.onPlan(
         choice,
-        split ? { portions: split.portions, variants: split.variants } : undefined,
+        split
+          ? {
+              portions: portions.state.portions,
+              variants: portions.state.variants.filter((row) => row.portions > 0),
+            }
+          : undefined,
       );
     } catch (caught) {
       setError(message(caught));
@@ -258,15 +283,23 @@ export function PlanSheet(props: {
           guests={choice.guests}
           onEaters={(eaterIds) => {
             setTouched(true);
-            update({ ...choice, eaterIds });
+            portions.setEaters(eaterIds);
+            update({ ...choice, eaterIds }, true);
           }}
           onGuests={(guests) => {
             setTouched(true);
-            update({ ...choice, guests });
+            portions.setGuests(guests);
+            update({ ...choice, guests }, true);
           }}
         />
         {recipe && split ? (
-          <SplitFields recipe={recipe} split={split} misfits={misfits} testID="plan-recipe" />
+          <PortionFields
+            recipe={recipe}
+            state={portions.state}
+            onChange={portions.setState}
+            misfits={misfits}
+            testID="plan-recipe"
+          />
         ) : null}
         {recipe ? (
           <CookPicker

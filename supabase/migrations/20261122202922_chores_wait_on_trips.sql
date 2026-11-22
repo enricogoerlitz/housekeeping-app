@@ -329,15 +329,15 @@ begin
     select e.id, e.sort, coalesce(sl.pos, 2147483647) as pos,
            case e.kind when 'activity' then 0 when 'restaurant' then 2 else 1 end as kind_rank,
            case e.kind
-             when 'activity' then a.name || private.parenthesize(array[e.note, sl.name])
-             when 'restaurant' then r.name || private.parenthesize(array[sl.name, private.format_time(e.reserved_at)])
+             when 'activity' then a.name || private.parenthesize(array[e.note, sl.name, private.format_time(e.starts_at)])
+             when 'restaurant' then r.name || private.parenthesize(array[e.note, sl.name, private.format_time(e.starts_at)])
              else
                case e.kind
                  when 'leftovers' then 'Reste: ' || coalesce(rc.title, src_rc.title, src.text, 'Reste')
                  when 'text' then e.text
                  else rc.title
                end
-               || private.parenthesize(array[sl.name, case when e.cook_id = p_profile_id then 'du kochst' end])
+               || private.parenthesize(array[e.note, sl.name, case when e.cook_id = p_profile_id then 'du kochst' end])
            end as segment
     from public.meal_plan_entries e
     left join private.meal_slot_positions(p_household_id) sl on sl.slot_id = e.slot_id
@@ -683,6 +683,7 @@ declare
   -- packing list stays at its trip (spec 0022, Daten).
   -- Notification settings rows are created by the server and only patched, and RLS lets a member
   -- patch only her own row (spec 0013, Decision 3). households.timezone is never written (D16).
+  -- A plan entry's time is starts_at (spec 0021); the reservation reminder is gone.
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
                          "patch":  ["name", "sort"], "delete": true},
@@ -732,17 +733,17 @@ declare
                          "patch":  ["chore_id", "done_by"], "delete": false},
     "meal_plan_entries": {"insert": ["id", "household_id", "date", "slot_id", "kind", "recipe_id", "restaurant_id",
                                      "activity_id", "text", "note", "leftovers_of_entry_id", "eater_ids", "guests",
-                                     "portions", "variants", "cook_id", "sort", "not_cooked", "reserved_at",
-                                     "remind_minutes_before", "reminder_day_offset", "reminder_at", "reminder_text"],
+                                     "portions", "variants", "cook_id", "sort", "not_cooked", "starts_at",
+                                     "reminder_day_offset", "reminder_at", "reminder_text"],
                           "patch":  ["date", "slot_id", "kind", "recipe_id", "restaurant_id", "activity_id", "text",
                                      "note", "leftovers_of_entry_id", "eater_ids", "guests", "portions", "variants",
-                                     "cook_id", "sort", "not_cooked", "reserved_at", "remind_minutes_before",
-                                     "reminder_day_offset", "reminder_at", "reminder_text"],
+                                     "cook_id", "sort", "not_cooked", "starts_at", "reminder_day_offset", "reminder_at",
+                                     "reminder_text"],
                           "delete": true},
     "notification_settings": {"insert": [],
                               "patch":  ["daily_summary_enabled", "daily_summary_at", "daily_summary_parts",
                                          "activities_eve_enabled", "activities_eve_at", "chore_reminders_enabled",
-                                         "reservation_reminders_enabled", "entry_reminders_enabled"], "delete": false},
+                                         "entry_reminders_enabled"], "delete": false},
     "shopping_items":   {"insert": ["id", "household_id", "article_id"],
                          "patch":  ["article_id"], "delete": true},
     "shopping_contributions": {"insert": ["id", "household_id", "item_id", "source", "count", "qty", "unit", "note"],
@@ -780,13 +781,15 @@ begin
   end if;
   -- A domain op counts as its elements: every id of remove_contributions is a delete and an op,
   -- every entry of add_contributions, every item of restore_packing_items and every element of
-  -- adopt_bag_changes is an op (its deletes count as deletes). The
+  -- adopt_bag_changes is an op (its deletes count as deletes). replace_entry_contributions counts
+  -- as its entries and as one delete (spec 0021, REQ-007). The
   -- contributions of all entries are capped too.
   -- complete_chore counts as a delete: done of a one-off chore deletes it, which is known only
   -- once the chore is locked.
   select coalesce(sum(case when o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'
                              then greatest(jsonb_array_length(o -> 'ids'), 1)
-                           when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
+                           when o ->> 'kind' in ('add_contributions', 'replace_entry_contributions')
+                                and jsonb_typeof(o -> 'entries') = 'array'
                              then greatest(jsonb_array_length(o -> 'entries'), 1)
                            when o ->> 'kind' = 'restore_packing_items' and jsonb_typeof(o -> 'items') = 'array'
                              then greatest(jsonb_array_length(o -> 'items'), 1)
@@ -795,7 +798,8 @@ begin
                                            + coalesce(jsonb_array_length(case when jsonb_typeof(o -> 'change' -> 'update') = 'array' then o -> 'change' -> 'update' end), 0)
                                            + coalesce(jsonb_array_length(case when jsonb_typeof(o -> 'change' -> 'delete') = 'array' then o -> 'change' -> 'delete' end), 0), 1)
                            else 1 end), 0),
-         count(*) filter (where o ->> 'kind' in ('delete', 'complete_chore', 'remove_chore_event'))
+         count(*) filter (where o ->> 'kind' in ('delete', 'complete_chore', 'remove_chore_event',
+                                                 'replace_entry_contributions'))
            + coalesce(sum(jsonb_array_length(o -> 'ids'))
                         filter (where o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'), 0)
            + coalesce(sum(jsonb_array_length(o -> 'change' -> 'delete'))
@@ -806,7 +810,8 @@ begin
   from jsonb_array_elements(p_ops) o
   cross join lateral (
     select count(*) as contributions
-    from jsonb_array_elements(case when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
+    from jsonb_array_elements(case when o ->> 'kind' in ('add_contributions', 'replace_entry_contributions')
+                                        and jsonb_typeof(o -> 'entries') = 'array'
                                    then o -> 'entries' else '[]' end) e
     cross join lateral jsonb_array_elements(case when jsonb_typeof(e -> 'contributions') = 'array'
                                                  then e -> 'contributions' else '[]' end) x
@@ -826,6 +831,13 @@ begin
     if v_kind = 'add_contributions' then
       v_results := v_results || jsonb_build_array(private.add_shopping_contributions(p_household_id, v_op -> 'entries'));
       continue;
+    elsif v_kind = 'change_chore_event_day' then
+      v_results := v_results || jsonb_build_array(private.change_chore_event_day(p_household_id, v_op -> 'change'));
+      continue;
+    elsif v_kind = 'replace_entry_contributions' then
+      v_results := v_results || jsonb_build_array(
+        private.replace_entry_contributions(p_household_id, v_op -> 'entry_ids', v_op -> 'entries'));
+      continue;
     elsif v_kind = 'remove_contributions' then
       if jsonb_typeof(v_op -> 'ids') is distinct from 'array' then
         raise exception 'invalid_change' using errcode = '22023';
@@ -835,9 +847,6 @@ begin
       continue;
     elsif v_kind = 'complete_chore' then
       v_results := v_results || jsonb_build_array(private.complete_chore(p_household_id, v_op -> 'completion'));
-      continue;
-    elsif v_kind = 'change_chore_event_day' then
-      v_results := v_results || jsonb_build_array(private.change_chore_event_day(p_household_id, v_op -> 'change'));
       continue;
     elsif v_kind = 'remove_chore_event' then
       if jsonb_typeof(v_op -> 'id') is distinct from 'string' then

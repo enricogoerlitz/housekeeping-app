@@ -47,7 +47,6 @@ const DEFAULTS = {
   activitiesEveEnabled: false,
   activitiesEveAt: '19:00',
   choreRemindersEnabled: true,
-  reservationRemindersEnabled: true,
   entryRemindersEnabled: true,
 };
 

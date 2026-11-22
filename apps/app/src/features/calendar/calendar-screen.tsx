@@ -10,6 +10,7 @@ import {
   parseDragSourceKey,
   parseMoveTargetKey,
   periodContains,
+  periodNavLabel,
   periodStart,
   rangeLabel,
   shiftPeriod,
@@ -34,14 +35,18 @@ import {
   Text,
   ViewTabs,
   announce,
+  columnsFor,
+  keyboardFocusRing,
   panelPlacement,
   useBreakpoint,
+  useTheme,
   type MenuOption,
 } from '@housekeeping/ui';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View, type HostInstance } from 'react-native';
+import { Pressable, View, type HostInstance } from 'react-native';
 
+import { ChoreSheet } from '@/features/chores/chore-sheet';
 import { TripSheet } from '@/features/trips/trip-sheet';
 import { TripWindowHost, useTripWindow } from '@/features/trips/trip-window';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
@@ -56,7 +61,13 @@ import { usePageParams } from '@/lib/url-state';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
-import { CalendarDragProvider, ParkedTarget, TripRangeBanner } from './calendar-drag';
+import {
+  CalendarDragProvider,
+  CalendarSwipe,
+  ParkedTarget,
+  TripRangeBanner,
+} from './calendar-drag';
+import { useFillHeight } from './calendar-fill';
 import { DayPanel } from './day-panel';
 import { MonthView } from './month-view';
 import { useEntryTitle, useMoveEntry } from './move-entry';
@@ -71,6 +82,10 @@ const VIEWS: { value: CalendarView; label: string }[] = [
 ];
 
 type MoreAction = 'household-row' | 'trips-new' | 'trips';
+
+/** "Vorgemerkt" in the desktop week: columns of equal width, each at least this wide (REQ-001). */
+const PARKED_COLUMN = 220;
+const PARKED_GAP = 6;
 
 /** The week "Auf die Einkaufsliste" takes in the month without a chosen day: today's, else the first. */
 function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
@@ -91,9 +106,23 @@ export function CalendarScreen() {
   const router = useRouter();
   const tripWindow = useTripWindow('kalender');
   const online = useOnlineOnly();
+  const theme = useTheme();
   const { isPhone, isWide, bp, width } = useBreakpoint();
   const focused = useIsFocused();
   const { today } = data;
+  // From 1100 px the calendar fills the window's height (spec 0021, REQ-001).
+  const {
+    markerRef: markFill,
+    onMarkerLayout: onFillLayout,
+    available,
+  } = useFillHeight(bp === 'desktop');
+  const [belowHeight, setBelowHeight] = useState(0);
+  const gridHeight = available === null ? undefined : available - belowHeight;
+  const [parkedWidth, setParkedWidth] = useState(0);
+  // Opening, a change of view, paging and "Heute" put today (or the chosen day) under the tabs
+  // on phones and scrolling tablets (spec 0021, REQ-004); choosing a day does not.
+  const [scrollRequest, setScrollRequest] = useState(0);
+  const requestScroll = () => setScrollRequest((count) => count + 1);
 
   const address = usePageParams('kalender');
   const { params } = address;
@@ -133,6 +162,19 @@ export function CalendarScreen() {
     'Diesen Eintrag gibt es nicht mehr',
     () => address.replace({ eintrag: undefined }),
   );
+  // The chore window from the household row, month and day window (spec 0021, REQ-016, AC-043).
+  const openChore = data.chores.find((chore) => chore.id === params.aufgabe);
+  const choreFound = useAddressedId('chores', params.aufgabe);
+  useMissingObject(
+    params.aufgabe,
+    choreFound !== 'missing' && params.haushalt === undefined,
+    'Diese Aufgabe gibt es nicht mehr',
+    () => address.replace({ aufgabe: undefined }),
+  );
+  const setOpenChore = (choreId: Id | undefined) => {
+    if (choreId) address.open({ aufgabe: choreId });
+    else address.close({ aufgabe: undefined });
+  };
   const setOpenEntry = (entry: MealPlanEntry | undefined) => {
     setMoveFirst(false);
     if (entry) address.open({ eintrag: entry.id });
@@ -163,9 +205,9 @@ export function CalendarScreen() {
 
   /** The day in the address: today is the default and stays out of it. */
   const dayParam = (date: ISODate) => (date === today ? undefined : date);
-  const show = (nextView: CalendarView, nextStart: ISODate) => {
+  const show = (nextView: CalendarView, nextStart: ISODate, chosen: ISODate = day) => {
     // The chosen day stays while it is in the new period; paging chooses the period's start.
-    const nextDay = periodContains(nextView, nextStart, day) ? day : nextStart;
+    const nextDay = periodContains(nextView, nextStart, chosen) ? chosen : nextStart;
     address.replace({
       ansicht: calendarViewSlug(nextView),
       tag: dayParam(nextDay),
@@ -185,17 +227,27 @@ export function CalendarScreen() {
   const chooseDay = openDay;
 
   const changeView = (next: CalendarView) => {
-    if (next !== view) show(next, switchView(view, next, start, today, selected));
+    if (next === view) return;
+    show(next, switchView(view, next, start, today, selected));
+    requestScroll();
   };
-  const page = (steps: number) => show(view, shiftPeriod(view, start, steps));
-  const toToday = () => show(view, periodStart(view, today));
+  const page = (steps: number) => {
+    show(view, shiftPeriod(view, start, steps));
+    requestScroll();
+  };
+  // "Heute" chooses today itself, so the week and the year open at it (REQ-004).
+  const toToday = () => {
+    show(view, periodStart(view, today), today);
+    requestScroll();
+  };
 
   // In the year a trip ends at the edge of the year (REQ-007).
   const tripYear = view === 'year' ? Number(start.slice(0, 4)) : undefined;
   const tripRange = (anchor: ISODate, current: ISODate) => dragRange(anchor, current, tripYear);
   const range = trip ? tripRange(trip.anchor, trip.current) : null;
   const draggedEntry = data.entries.find((entry) => entry.id === draggedEntryId);
-  const bounds = draggedEntry ? moveBounds(draggedEntry, data.entries) : null;
+  // The household's order of Tageszeiten decides what "later" means (spec 0021, REQ-012).
+  const bounds = draggedEntry ? moveBounds(draggedEntry, data.entries, data.slotOrder) : null;
   const entryOf = (sourceKey: string) => {
     const source = parseDragSourceKey(sourceKey);
     return source?.kind === 'entry'
@@ -291,7 +343,7 @@ export function CalendarScreen() {
   );
 
   const moreOptions: MenuOption<MoreAction>[] = [
-    // The year never shows chores, so it has no switch for them (AC-019).
+    // The year always shows the dot of a chore, so it has no switch (spec 0021, REQ-017).
     ...(view === 'year'
       ? []
       : [
@@ -362,28 +414,87 @@ export function CalendarScreen() {
         ? monthTitle(start)
         : start.slice(0, 4);
   const unit = view === 'week' ? 'Woche' : view === 'month' ? 'Monat' : 'Jahr';
-  const nav = (
+  const prev = (
+    <IconButton
+      icon="chevron-left"
+      label={view === 'week' ? 'Vorige Woche' : `Voriger ${unit}`}
+      testID="week-prev"
+      onPress={() => page(-1)}
+    />
+  );
+  const next = (
+    <IconButton
+      icon="chevron-right"
+      label={view === 'week' ? 'Nächste Woche' : `Nächster ${unit}`}
+      testID="week-next"
+      onPress={() => page(1)}
+    />
+  );
+  // Phones (spec 0021, REQ-018, AC-046): the arrows at the edges, the label in a fixed slot
+  // between them; outside today's period the label leads back to it with "Heute ›".
+  const phoneLabel = periodNavLabel(view, start, today);
+  const phoneNav = (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }} testID="calendar-phone-nav">
+      {prev}
+      <View style={{ flex: 1, minWidth: 0, height: 44, justifyContent: 'center' }}>
+        {phoneLabel.today ? (
+          <Text
+            variant="smallStrong"
+            testID="calendar-title"
+            numberOfLines={1}
+            style={{ textAlign: 'center' }}
+          >
+            {phoneLabel.label}
+          </Text>
+        ) : (
+          <Pressable
+            testID="week-today"
+            accessibilityRole="button"
+            accessibilityLabel="Zurück zu heute"
+            onPress={toToday}
+            style={(state) => {
+              const { pressed, focused: keyFocus } = state as {
+                pressed: boolean;
+                focused?: boolean;
+              };
+              return [
+                {
+                  height: 44,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: theme.shape.radius.control,
+                  opacity: pressed ? 0.7 : 1,
+                },
+                keyboardFocusRing(theme, keyFocus),
+              ];
+            }}
+          >
+            <Text variant="smallStrong" testID="calendar-title" numberOfLines={1}>
+              {phoneLabel.label}
+            </Text>
+            <Text variant="caption" color="accent" testID="calendar-today-hint">
+              Heute ›
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      {next}
+    </View>
+  );
+  const nav = isPhone ? (
+    phoneNav
+  ) : (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      <IconButton
-        icon="chevron-left"
-        label={view === 'week' ? 'Vorige Woche' : `Voriger ${unit}`}
-        testID="week-prev"
-        onPress={() => page(-1)}
-      />
+      {prev}
       <Text
         variant="smallStrong"
         testID="calendar-title"
-        style={{ minWidth: isPhone ? 0 : 190, textAlign: 'center', flexShrink: 1 }}
+        style={{ minWidth: 190, textAlign: 'center', flexShrink: 1 }}
         numberOfLines={1}
       >
         {title}
       </Text>
-      <IconButton
-        icon="chevron-right"
-        label={view === 'week' ? 'Nächste Woche' : `Nächster ${unit}`}
-        testID="week-next"
-        onPress={() => page(1)}
-      />
+      {next}
       <Chip
         label="Heute"
         selected={periodContains(view, start, today)}
@@ -416,15 +527,23 @@ export function CalendarScreen() {
   const openStripe = (stripe: TripStripe) => tripWindow.open(stripe.tripId);
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
   const lastSlotId = data.slots[data.slots.length - 1]?.id;
+  // What stands under the grid takes its height from the room the desktop grid fills.
+  const measureBelow = (height: number) =>
+    setBelowHeight((current) => (current === height ? current : height));
+  const parkedColumns = columnsFor(parkedWidth, { minColumnWidth: PARKED_COLUMN, gap: PARKED_GAP });
+  const parkedCellWidth =
+    parkedWidth > 0 ? (parkedWidth - (parkedColumns - 1) * PARKED_GAP) / parkedColumns : undefined;
 
   const laterStrip = (
-    <PlannedLaterStrip
-      data={data}
-      entries={later}
-      expanded={laterOpen}
-      onToggle={() => setLaterOpen(!laterOpen)}
-      onOpenEntry={setOpenEntry}
-    />
+    <View onLayout={(event) => measureBelow(event.nativeEvent.layout.height)}>
+      <PlannedLaterStrip
+        data={data}
+        entries={later}
+        expanded={laterOpen}
+        onToggle={() => setLaterOpen(!laterOpen)}
+        onOpenEntry={setOpenEntry}
+      />
+    </View>
   );
 
   return (
@@ -443,6 +562,8 @@ export function CalendarScreen() {
         <Screen
           tone="plan"
           testID="calendar-screen"
+          // A desktop calendar that fills the window ends at the page's edge (REQ-001).
+          clearFab={bp !== 'desktop'}
           header={<ScreenHeader title="Kalender" right={actions} />}
           tabs={tabs}
           aside={
@@ -452,8 +573,7 @@ export function CalendarScreen() {
               date={panelDay}
               onClose={() => address.close({ fenster: undefined })}
               onChooseDay={chooseDay}
-              // Chores follow the household row of the month, in the year too (REQ-006).
-              showHousehold={settings.householdRow.month}
+              onOpenChore={setOpenChore}
               onAdd={onAdd}
               onOpenEntry={setOpenEntry}
               onOpenStripe={openStripe}
@@ -465,81 +585,109 @@ export function CalendarScreen() {
             />
           }
         >
-          {view === 'week' ? (
-            <WeekView
-              data={data}
-              weekStart={start}
-              showHousehold={householdOn}
-              wide={isWide}
-              onAdd={onAdd}
-              onOpenEntry={setOpenEntry}
-              onOpenStripe={openStripe}
-            />
-          ) : null}
-          {view === 'month' ? (
-            <MonthView
-              data={data}
-              monthStart={start}
-              selected={selected}
-              onOpenDay={openDay}
-              registerDay={registerDay}
-              showHousehold={householdOn}
-              wide={isWide}
-              onOpenEntry={setOpenEntry}
-              onOpenStripe={openStripe}
-            />
-          ) : null}
+          <View ref={(node) => markFill(node)} onLayout={onFillLayout} />
+          <CalendarSwipe enabled={isPhone} onSwipe={page}>
+            {view === 'week' ? (
+              <WeekView
+                data={data}
+                weekStart={start}
+                showHousehold={householdOn}
+                wide={isWide}
+                height={gridHeight}
+                scrollDay={day}
+                scrollRequest={scrollRequest}
+                onAdd={onAdd}
+                onOpenEntry={setOpenEntry}
+                onOpenStripe={openStripe}
+                onOpenChore={setOpenChore}
+              />
+            ) : null}
+            {view === 'month' ? (
+              <MonthView
+                data={data}
+                monthStart={start}
+                selected={selected}
+                onOpenDay={openDay}
+                registerDay={registerDay}
+                showHousehold={householdOn}
+                wide={isWide}
+                height={gridHeight}
+                onAdd={onAdd}
+                onOpenEntry={setOpenEntry}
+                onOpenStripe={openStripe}
+                onOpenChore={setOpenChore}
+              />
+            ) : null}
+            {view === 'year' ? (
+              <YearView
+                data={data}
+                year={Number(start.slice(0, 4))}
+                columns={isPhone ? 3 : bp === 'desktop' ? 4 : 3}
+                selected={selected}
+                onOpenDay={openDay}
+                registerDay={registerDay}
+                onOpenMonth={(monthStart) => {
+                  show('month', monthStart);
+                  requestScroll();
+                }}
+                onOpenStripe={openStripe}
+                belowGrid={laterStrip}
+                height={gridHeight}
+                scrollMonth={day}
+                scrollRequest={scrollRequest}
+              />
+            ) : null}
+          </CalendarSwipe>
           {view === 'month' ? laterStrip : null}
-          {view === 'year' ? (
-            <YearView
-              data={data}
-              year={Number(start.slice(0, 4))}
-              columns={isPhone ? 3 : bp === 'desktop' ? 4 : 3}
-              selected={selected}
-              onOpenDay={openDay}
-              registerDay={registerDay}
-              onOpenMonth={(monthStart) => show('month', monthStart)}
-              onOpenStripe={openStripe}
-              belowGrid={laterStrip}
-            />
-          ) : null}
           {view === 'week' ? (
             <ParkedTarget>
-              <Section
-                title="Vorgemerkt"
-                testID="planned-later"
-                action={
-                  lastSlotId ? (
-                    <Button
-                      label="vormerken"
-                      icon="plus"
-                      variant="link"
-                      size="sm"
-                      disabled={online.disabled}
-                      hint={online.hint}
-                      testID="add-later"
-                      onPress={() => onAdd({ date: null, slotId: lastSlotId })}
-                    />
-                  ) : undefined
-                }
-              >
-                {later.length === 0 ? (
-                  <Text color="muted">
-                    Nichts vorgemerkt. Hier landet, was bald dran sein soll, aber noch keinen Tag
-                    hat.
-                  </Text>
-                ) : (
-                  <View
-                    style={{ flexDirection: isPhone ? 'column' : 'row', flexWrap: 'wrap', gap: 6 }}
-                  >
-                    {later.map((entry) => (
-                      <View key={entry.id} style={isPhone ? undefined : { width: 280 }}>
-                        <EntryLine entry={entry} data={data} onPress={setOpenEntry} />
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </Section>
+              <View onLayout={(event) => measureBelow(event.nativeEvent.layout.height)}>
+                <Section
+                  title="Vorgemerkt"
+                  testID="planned-later"
+                  action={
+                    lastSlotId ? (
+                      <Button
+                        label="vormerken"
+                        icon="plus"
+                        variant="link"
+                        size="sm"
+                        disabled={online.disabled}
+                        hint={online.hint}
+                        testID="add-later"
+                        onPress={() => onAdd({ date: null, slotId: lastSlotId })}
+                      />
+                    ) : undefined
+                  }
+                >
+                  {later.length === 0 ? (
+                    <Text color="muted">
+                      Nichts vorgemerkt. Hier landet, was bald dran sein soll, aber noch keinen Tag
+                      hat.
+                    </Text>
+                  ) : (
+                    // From 700 px a grid of equal columns, each at least 220 px (REQ-001).
+                    <View
+                      style={{
+                        flexDirection: isPhone ? 'column' : 'row',
+                        flexWrap: 'wrap',
+                        gap: PARKED_GAP,
+                      }}
+                      testID="planned-later-grid"
+                      onLayout={(event) => setParkedWidth(event.nativeEvent.layout.width)}
+                    >
+                      {later.map((entry) => (
+                        <View
+                          key={entry.id}
+                          style={isPhone ? undefined : { width: parkedCellWidth ?? PARKED_COLUMN }}
+                        >
+                          <EntryLine entry={entry} data={data} onPress={setOpenEntry} />
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </Section>
+              </View>
             </ParkedTarget>
           ) : null}
           {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
@@ -551,6 +699,20 @@ export function CalendarScreen() {
               moveFirst={moveFirst}
               weekDates={weekDates(openEntry.date ?? start)}
               onClose={() => setOpenEntry(undefined)}
+            />
+          ) : null}
+          {openChore && focused ? (
+            <ChoreSheet
+              key={openChore.id}
+              chore={openChore}
+              onClose={() => setOpenChore(undefined)}
+              // „Alle Einträge ›“: the history of „Haushalt“ filtered by the chore (spec 0026, AC-025).
+              onShowEntries={() =>
+                router.navigate({
+                  pathname: '/haushalt',
+                  params: { ansicht: 'verlauf', 'nur-aufgabe': openChore.id },
+                })
+              }
             />
           ) : null}
           {pantryCheck && focused ? (

@@ -147,7 +147,7 @@ async function planActivity(page: Page, date: string, slotId: string, id: string
   await planOn(page, date, slotId, async () => {
     await tid(page, 'add-entry-tab-activities').click();
     await tid(page, `add-entry-activity-${id}`).click();
-    if (note) await tid(page, 'add-entry-activity-note').fill(note);
+    if (note) await tid(page, 'add-entry-note').fill(note);
   });
 }
 

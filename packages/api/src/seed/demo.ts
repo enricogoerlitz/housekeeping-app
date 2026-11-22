@@ -825,8 +825,8 @@ function buildDemoData(today: ISODate): HouseholdData {
     visit(-33, 'rest-pho', 'plan-pho-2'),
     visit(-61, 'rest-pho', 'plan-pho-3'),
     visit(-19, 'rest-enzo', 'plan-enzo-1'),
-    // Spec 0013, AC-027: the day after tomorrow in the evening, reserved for 19:30, after the curry.
-    { ...visit(2, 'rest-enzo', 'plan-enzo-2'), sort: 1, reservedAt: '19:30' },
+    // Spec 0021, REQ-013: the day after tomorrow in the evening, at 19:30, after the curry.
+    { ...visit(2, 'rest-enzo', 'plan-enzo-2'), sort: 1, startsAt: '19:30' },
   );
 
   // ---------- Activities (spec 0004) ----------

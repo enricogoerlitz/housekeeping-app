@@ -224,18 +224,38 @@ export function visitsOf(
 export const LEFTOVER_DAYS = 7;
 
 /**
- * Dishes "Reste" offers for a target day (REQ-011): recipes and free text planned from
- * target − 7 to target − 1, without leftovers of leftovers, without collections (glossary "Reste",
- * spec 0009) and without "nicht gekocht"; the youngest day first, within a day the later
- * Tageszeit first.
+ * Whether an entry lies before the target place: an earlier day, or the target day in an earlier
+ * Tageszeit than `targetSlotId` (spec 0021, REQ-012). Without a target slot only earlier days.
  */
-export function leftoverCandidates(
+function beforeTarget(
+  entry: MealPlanEntry,
+  target: ISODate,
+  slotOrder: Id[],
+  targetSlotId: Id | undefined,
+): boolean {
+  if (entry.date === null) return false;
+  if (entry.date < target) return true;
+  if (entry.date > target || targetSlotId === undefined) return false;
+  const position = (slotId: Id) => {
+    const index = slotOrder.indexOf(slotId);
+    return index === -1 ? slotOrder.length : index;
+  };
+  return position(entry.slotId) < position(targetSlotId);
+}
+
+/**
+ * Dishes a target place can take leftovers of: recipes and free text before it, without
+ * leftovers of leftovers, without collections (glossary "Reste", spec 0009) and without
+ * "nicht gekocht"; the youngest day first, within a day the later Tageszeit first.
+ */
+function leftoverSources(
   entries: MealPlanEntry[],
   target: ISODate,
   slotOrder: Id[],
   recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+  targetSlotId: Id | undefined,
+  from: ISODate | undefined,
 ): MealPlanEntry[] {
-  const first = addDays(target, -LEFTOVER_DAYS);
   const slotPosition = (entry: MealPlanEntry): number => {
     const index = slotOrder.indexOf(entry.slotId);
     return index === -1 ? -1 : index;
@@ -244,8 +264,8 @@ export function leftoverCandidates(
     .filter(
       (entry) =>
         entry.date !== null &&
-        entry.date >= first &&
-        entry.date < target &&
+        (from === undefined || entry.date >= from) &&
+        beforeTarget(entry, target, slotOrder, targetSlotId) &&
         (entry.kind === 'recipe' || entry.kind === 'text') &&
         (entry.recipeId === undefined || recipesById[entry.recipeId]?.kind !== 'collection') &&
         !entry.notCooked,
@@ -259,10 +279,45 @@ export function leftoverCandidates(
 }
 
 /**
- * The day in "Reste von Linsen-Dal (Mo)": the weekday within the target's calendar week, else
- * weekday and date ("So 22.11."), so the same weekday a week earlier stays clear.
+ * Dishes "Reste" offers for a target day (REQ-011): recipes and free text planned from
+ * target − 7 to target − 1 and, with `targetSlotId`, the target day in an earlier Tageszeit
+ * (spec 0021, REQ-012, AC-032); the youngest first.
  */
-export function leftoversDayLabel(source: ISODate, target: ISODate): string {
+export function leftoverCandidates(
+  entries: MealPlanEntry[],
+  target: ISODate,
+  slotOrder: Id[],
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+  targetSlotId?: Id,
+): MealPlanEntry[] {
+  return leftoverSources(
+    entries,
+    target,
+    slotOrder,
+    recipesById,
+    targetSlotId,
+    addDays(target, -LEFTOVER_DAYS),
+  );
+}
+
+/** "Ältere Reste …" (spec 0021, REQ-012, AC-033): every earlier dish, without a limit in days. */
+export function olderLeftoverCandidates(
+  entries: MealPlanEntry[],
+  target: ISODate,
+  slotOrder: Id[],
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+  targetSlotId?: Id,
+): MealPlanEntry[] {
+  return leftoverSources(entries, target, slotOrder, recipesById, targetSlotId, undefined);
+}
+
+/**
+ * The day in "Reste von Linsen-Dal (Mo)": the Tageszeit for the same day ("(Mittag)", spec 0021,
+ * AC-032), the weekday within the target's calendar week, else weekday and date ("So 22.11."), so
+ * the same weekday a week earlier stays clear.
+ */
+export function leftoversDayLabel(source: ISODate, target: ISODate, slotName?: string): string {
+  if (source === target && slotName) return slotName;
   if (startOfWeek(source) === startOfWeek(target)) return weekdayShort(source);
   return `${weekdayShort(source)} ${formatShortDate(source)}`;
 }

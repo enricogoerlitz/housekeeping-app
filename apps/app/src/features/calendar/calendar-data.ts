@@ -16,6 +16,8 @@ import {
 import {
   tripStripes,
   dayA11yLabel,
+  entryCountRole,
+  type CountRole,
   entriesForDay,
   entryKindRole,
   entryLineLabel,
@@ -33,7 +35,7 @@ import {
 } from '@housekeeping/core';
 import { useMemo } from 'react';
 
-import { entryTitle, reservationTime } from '@/features/meal-plan/labels';
+import { entryTime, entryTitle } from '@/features/meal-plan/labels';
 
 /** Everything the three views read, resolved once per render of the calendar (spec 0010). */
 export function useCalendarData() {
@@ -86,7 +88,7 @@ export function useCalendarData() {
     dayEntries: (date: ISODate) => entriesForDay(byDate.get(date) ?? [], date, slotOrder),
     /**
      * The text of an entry's row: a collection with the number of its recipes (spec 0009,
-     * AC-022), a reserved restaurant with its time, "Trattoria Da Enzo · 19:30" (spec 0013, AC-027).
+     * AC-022), a restaurant or activity with its time, "Trattoria Da Enzo (Tisch für 6) · 19:30" (spec 0021).
      */
     lineTitleOf: (entry: MealPlanEntry) =>
       withTime(
@@ -95,7 +97,7 @@ export function useCalendarData() {
           entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
           book,
         ),
-        reservationTime(entry),
+        entryTime(entry),
       ),
     slotName: (slotId: Id) => slots.find((slot) => slot.id === slotId)?.name ?? '',
     /** The stripe carries the bag icon: its trip has a packing list (spec 0012, AC-046). */
@@ -121,9 +123,16 @@ export function dayRoles(data: CalendarData, date: ISODate, choreCount = 0): Kin
   return choreCount > 0 ? [...roles, ...Array<KindRole>(choreCount).fill('chore')] : roles;
 }
 
-/** "Freitag, 27. November: 1 Aktivität, 1 Rezept, Nadja unterwegs" (spec 0016, platforms). */
+/**
+ * "Freitag, 27. November: 1 Aktivität, 1 Rezept, 2 Essen, Nadja unterwegs" (spec 0016, platforms;
+ * spec 0021, AC-013: free text and leftovers are "Essen").
+ */
 export function dayLabel(data: CalendarData, date: ISODate, choreCount = 0): string {
-  return dayA11yLabel(date, dayRoles(data, date, choreCount), data.travellerNames(date));
+  const roles: CountRole[] = data
+    .dayEntries(date)
+    .map((entry) => entryCountRole(entry, data.recipesById));
+  if (choreCount > 0) roles.push(...Array<CountRole>(choreCount).fill('chore'));
+  return dayA11yLabel(date, roles, data.travellerNames(date));
 }
 
 /** "Enrico", "Enrico und Nadja", "Ganzer Haushalt": who a stripe stands for. */

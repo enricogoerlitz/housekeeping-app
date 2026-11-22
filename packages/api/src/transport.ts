@@ -209,6 +209,11 @@ export type ChangeOp =
   | RowOp
   | { kind: 'add_contributions'; entries: AddEntry[] }
   | { kind: 'remove_contributions'; ids: string[] }
+  /**
+   * Spec 0021, REQ-007/REQ-015: the entries' contributions on open items go, `entries` are added
+   * like add_contributions, emptied open items go; one delete however many contributions.
+   */
+  | { kind: 'replace_entry_contributions'; entry_ids: string[]; entries: AddEntry[] }
   | { kind: 'complete_chore'; completion: ChoreCompletion }
   | { kind: 'remove_chore_event'; id: string }
   | { kind: 'change_chore_event_day'; change: ChoreEventDayChange }

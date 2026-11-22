@@ -229,9 +229,36 @@ export function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(', ')} und ${names[names.length - 1] ?? ''}`;
 }
 
-const KIND_NAMES: Record<KindRole, [one: string, many: string]> = {
+/**
+ * What a day's item counts as in its screen-reader text: its kind role, but free text and leftovers
+ * are "Essen" (spec 0021, REQ-005, Decision 11), while their dot stays that of a recipe.
+ */
+export type CountRole = KindRole | 'meal';
+
+/** Order of the counts: as the dots, with "Essen" after the recipes. */
+const COUNT_ROLES: CountRole[] = [
+  'activity',
+  'recipe',
+  'meal',
+  'collection',
+  'restaurant',
+  'chore',
+];
+
+/** The count role of an entry: "Essen" for free text and leftovers, else `entryKindRole`. */
+export function entryCountRole(
+  entry: Pick<MealPlanEntry, 'kind' | 'recipeId'>,
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): CountRole {
+  return entry.kind === 'text' || entry.kind === 'leftovers'
+    ? 'meal'
+    : entryKindRole(entry, recipesById);
+}
+
+const KIND_NAMES: Record<CountRole, [one: string, many: string]> = {
   activity: ['Aktivität', 'Aktivitäten'],
   recipe: ['Rezept', 'Rezepte'],
+  meal: ['Essen', 'Essen'],
   collection: ['Sammlung', 'Sammlungen'],
   restaurant: ['Restaurant', 'Restaurants'],
   chore: ['Aufgabe', 'Aufgaben'],
@@ -243,10 +270,10 @@ const KIND_NAMES: Record<KindRole, [one: string, many: string]> = {
  */
 export function dayA11yLabel(
   date: ISODate,
-  roles: readonly KindRole[],
+  roles: readonly CountRole[],
   travellerNames: readonly string[],
 ): string {
-  const parts = KIND_ROLES.flatMap((role) => {
+  const parts = COUNT_ROLES.flatMap((role) => {
     const count = roles.filter((candidate) => candidate === role).length;
     if (count === 0) return [];
     const [one, many] = KIND_NAMES[role];
@@ -289,6 +316,69 @@ export function rangeLabel(from: ISODate, to: ISODate): string {
 /** The month "Anderes Datum …" opens with: the entry's, for a "vorgemerkt" entry today's (REQ-005). */
 export function monthPickerStart(date: ISODate | null, today: ISODate): ISODate {
   return startOfMonth(date ?? today);
+}
+
+/**
+ * The Tageszeit the add window preselects when a day is chosen without one (spec 0020, REQ-005;
+ * spec 0021, REQ-003): the one named "Abend", else the household's last.
+ */
+export function addPresetSlot(
+  slots: readonly Pick<MealSlot, 'id' | 'name' | 'sort'>[],
+): Id | undefined {
+  const evening = slots.find((slot) => slot.name === 'Abend');
+  if (evening) return evening.id;
+  return [...slots].sort((a, b) => a.sort - b.sort)[slots.length - 1]?.id;
+}
+
+/**
+ * The height each of `count` rows gets from `available` px on the desktop (spec 0021, REQ-001):
+ * an equal share, at least `min`.
+ */
+export function sharedHeight(available: number, count: number, min: number): number {
+  if (count <= 0) return min;
+  return Math.max(min, Math.floor(available / count));
+}
+
+/**
+ * How many lines of a desktop month day, `lineHeights` in px in their order, show in `height` px
+ * (spec 0021, REQ-001, AC-003): all when they fit, else as many as fit above "+n weitere"
+ * (`moreHeight`), at least `min`.
+ */
+export function fittingItems(
+  lineHeights: readonly number[],
+  height: number,
+  moreHeight: number,
+  min = 3,
+): number {
+  const count = lineHeights.length;
+  if (lineHeights.reduce((sum, line) => sum + line, 0) <= height) return count;
+  let used = moreHeight;
+  let fit = 0;
+  for (const line of lineHeights) {
+    if (used + line > height) break;
+    used += line;
+    fit += 1;
+  }
+  return Math.min(count, Math.max(min, fit));
+}
+
+/**
+ * The label in the middle of the phone header (spec 0021, REQ-018, AC-046): "16.–22. Nov",
+ * "November 2026", "2026"; `today` when the period holds today, else it leads back to it.
+ */
+export function periodNavLabel(
+  view: CalendarView,
+  start: ISODate,
+  today: ISODate,
+): { label: string; today: boolean } {
+  const first = periodStart(view, start);
+  const label =
+    view === 'week'
+      ? dateRangeLabel(first, addDays(first, 6))
+      : view === 'month'
+        ? monthTitle(first)
+        : first.slice(0, 4);
+  return { label, today: periodContains(view, first, today) };
 }
 
 export interface DaySheetContent {

@@ -15,7 +15,7 @@
 -- `planEntryTitle` and `reminderMessage` in reminder.test.ts, with the same cases and names.
 begin;
 \ir _helpers.psql
-select plan(57);
+select plan(62);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -110,43 +110,54 @@ select is(tests.assignees('next_nadja'), array[tests.fx('enrico')],
   'choreMemberIds parity: a removed next assignee falls back to the fixed member (next_assignee_id is cleared)');
 
 -- ===================== reminderMessage (reminder.test.ts, spec 0017) =====================
-select is(private.entry_reminder_body('Lasagne', 0, '2026-11-28', 'Abend', null),
+select is(private.entry_reminder_body('Lasagne', 0, '2026-11-28', 'Abend', null, null),
   'Erinnerung: Lasagne · heute Abend',
   'AC-016 reminderMessage parity: on the day, "Erinnerung: Lasagne · heute Abend"');
-select is(private.entry_reminder_body('Lasagne', 1, '2026-11-28', 'Abend', 'Fleisch auftauen'),
+select is(private.entry_reminder_body('Lasagne', 1, '2026-11-28', 'Abend', null, 'Fleisch auftauen'),
   'Erinnerung: Lasagne · morgen Abend · Fleisch auftauen',
   'AC-014 reminderMessage parity: the day before with text');
-select is(private.entry_reminder_body('Lasagne', 2, '2026-11-28', 'Abend', null),
+select is(private.entry_reminder_body('Lasagne', 2, '2026-11-28', 'Abend', null, null),
   'Erinnerung: Lasagne · Sa 28.11., Abend',
   'REQ-005 reminderMessage parity: further ahead with weekday and date, "Sa 28.11., Abend"');
-select is(private.entry_reminder_body('Lasagne', 3, '2027-03-05', 'Abend', null),
+select is(private.entry_reminder_body('Lasagne', 3, '2027-03-05', 'Abend', null, null),
   'Erinnerung: Lasagne · Fr 5.3., Abend',
   'REQ-005 reminderMessage parity: day and month without leading zeros, "Fr 5.3., Abend"');
-select is(private.entry_reminder_body('Lasagne', 1, '2026-11-29', 'Mittag', null),
+select is(private.entry_reminder_body('Lasagne', 1, '2026-11-29', 'Mittag', null, null),
   'Erinnerung: Lasagne · morgen Mittag',
   'AC-019 reminderMessage parity: "Erinnerung: Lasagne · morgen Mittag"');
-select is(private.entry_reminder_body('Eislaufen (Hohenschönhausen)', 0, '2026-11-29', 'Vormittag', null),
+select is(private.entry_reminder_body('Eislaufen (Hohenschönhausen)', 0, '2026-11-29', 'Vormittag', null, null),
   'Erinnerung: Eislaufen (Hohenschönhausen) · heute Vormittag',
   'REQ-004 reminderMessage parity: an activity is named with its Zusatz');
-select is(private.entry_reminder_body('Lasagne', 0, '2026-11-28', '', null),
+select is(private.entry_reminder_body('Lasagne', 0, '2026-11-28', '', null, null),
   'Erinnerung: Lasagne · heute',
   'REQ-005 reminderMessage parity: without a (known) Tageszeit it is left out (today)');
-select is(private.entry_reminder_body('Lasagne', 1, '2026-11-28', null, 'Käse'),
+select is(private.entry_reminder_body('Lasagne', 1, '2026-11-28', null, null, 'Käse'),
   'Erinnerung: Lasagne · morgen · Käse',
   'REQ-005 reminderMessage parity: without a (known) Tageszeit it is left out (the day before, with text)');
-select is(private.entry_reminder_body('Lasagne', 2, '2026-11-28', '', null),
+select is(private.entry_reminder_body('Lasagne', 2, '2026-11-28', '', null, null),
   'Erinnerung: Lasagne · Sa 28.11.',
   'REQ-005 reminderMessage parity: without a (known) Tageszeit it is left out (with the date)');
-select is(char_length(private.entry_reminder_body(repeat('L', 500), 1, '2026-11-28', 'Abend', 'Käse')), 400,
+select is(char_length(private.entry_reminder_body(repeat('L', 500), 1, '2026-11-28', 'Abend', null, 'Käse')), 400,
   'REQ-005 reminderMessage parity: a very long name is shortened to at most 400 characters');
-select ok(private.entry_reminder_body(repeat('L', 500), 1, '2026-11-28', 'Abend', 'Käse')
+select ok(private.entry_reminder_body(repeat('L', 500), 1, '2026-11-28', 'Abend', null, 'Käse')
             like 'Erinnerung: LLL%L… · morgen Abend · Käse',
   'REQ-005 reminderMessage parity: only the name is cut, with "…"');
-select is(private.entry_reminder_body(repeat('N', 400 - 12 - 14), 0, '2026-11-28', 'Abend', null),
+select is(private.entry_reminder_body(repeat('N', 400 - 12 - 14), 0, '2026-11-28', 'Abend', null, null),
   'Erinnerung: ' || repeat('N', 400 - 12 - 14) || ' · heute Abend',
   'REQ-005 reminderMessage parity: a name that fits exactly is not shortened');
-select is(char_length(private.entry_reminder_body(repeat('🍝', 500), 0, '2026-11-28', 'Abend', null)), 400,
+select is(char_length(private.entry_reminder_body(repeat('🍝', 500), 0, '2026-11-28', 'Abend', null, null)), 400,
   'REQ-005 reminderMessage parity: shortening counts characters, not UTF-16 units');
+
+-- Spec 0021, REQ-014: with a time the message names it instead of the Tageszeit.
+select is(private.entry_reminder_body('Trattoria Da Enzo', 0, '2026-11-28', 'Abend', '19:30', null),
+  'Erinnerung: Trattoria Da Enzo · heute 19:30',
+  'AC-037 reminderMessage parity: with a time, "Erinnerung: Trattoria Da Enzo · heute 19:30"');
+select is(private.entry_reminder_body('Trattoria Da Enzo', 1, '2026-11-28', 'Abend', '19:30', null),
+  'Erinnerung: Trattoria Da Enzo · morgen 19:30',
+  'REQ-014 reminderMessage parity: the day before with the time, "morgen 19:30"');
+select is(private.entry_reminder_body('Trattoria Da Enzo', 3, '2026-11-28', 'Abend', '09:05', 'Tisch'),
+  'Erinnerung: Trattoria Da Enzo · Sa 28.11., 9:05 · Tisch',
+  'REQ-014 reminderMessage parity: further ahead "Sa 28.11., 9:05", the time without a leading zero');
 
 -- ===================== planEntryTitle (reminder.test.ts, spec 0017) =====================
 insert into fx (key) values ('r_lasagne'), ('rest1'), ('act1'), ('src'), ('src_planless'), ('slot');
@@ -203,6 +214,13 @@ select is(tests.title('{"kind": "activity", "note": "  "}'), 'Aktivität',
   'REQ-004 planEntryTitle parity: a blank Zusatz is no Zusatz; without name and text "Aktivität"');
 select is(tests.title('{"kind": "party", "text": "Neu"}'), 'Neu',
   'planEntryTitle parity: falls back to the text for a kind this version does not know');
+
+select is(tests.title(jsonb_build_object('recipe_id', tests.fx('r_lasagne'), 'note', 'doppelte Menge')),
+  'Lasagne (doppelte Menge)',
+  'AC-023 planEntryTitle parity: every kind carries its Zusatz, "Lasagne (doppelte Menge)"');
+select is(tests.title(jsonb_build_object('kind', 'restaurant', 'restaurant_id', tests.fx('rest1'), 'note', 'Tisch für 6')),
+  'Mama Lu (Tisch für 6)',
+  'AC-023 planEntryTitle parity: a restaurant with its Zusatz');
 
 -- ===================== Spec 0026: trips move chores (chore-schedule.test.ts) =====================
 -- The fixtures of chore-schedule.test.ts: household "Enrico & Nadja" (a fresh one, the one above

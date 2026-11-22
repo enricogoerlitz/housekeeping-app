@@ -37,6 +37,7 @@ import { hasPlace } from '@/features/activities/labels';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useCoverSources } from '@/features/recipes/recipe-cover';
+import { entryTime } from '@/features/meal-plan/labels';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
 
@@ -126,8 +127,8 @@ export function TodayMeals(props: TodayMealsProps) {
       return (
         <PlannedCard
           entry={entry}
-          // "Abend · 19:30": the reservation (spec 0013, AC-027).
-          kicker={withTime(slotName, entry.reservedAt)}
+          // "Vormittag · 10:30": the time of a restaurant or activity (spec 0021, AC-035).
+          kicker={withTime(slotName, entryTime(entry))}
           title={restaurant.name}
           meta={restaurant.cuisine}
           placeholderIcon="utensils"

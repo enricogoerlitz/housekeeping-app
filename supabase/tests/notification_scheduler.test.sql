@@ -3,7 +3,7 @@
 -- time. Example day: Friday, 20.11.2026, household "Enrico & Nadja" in Europe/Berlin.
 begin;
 \ir _helpers.psql
-select plan(67);
+select plan(63);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -62,7 +62,7 @@ insert into public.recipes (id, household_id, title, notes, lead_time) values
 insert into public.restaurants (id, household_id, name, address, notes)
 values (tests.fx('enzo'), tests.fx('home'), 'Trattoria Da Enzo', 'Hauptstraße 1', 'GEHEIM-Restaurantnotiz');
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id,
-                                      note, eater_ids, cook_id, reserved_at) values
+                                      note, eater_ids, cook_id, starts_at) values
   (tests.fx('e_boulder'), tests.fx('home'), '2026-11-20', tests.fx('s_vor'), 'activity', null, null, tests.fx('a_boulder'),
    null, '{}', null, null),
   (tests.fx('e_lasagne'), tests.fx('home'), '2026-11-20', tests.fx('s_abend'), 'recipe', tests.fx('r_lasagne'), null, null,
@@ -305,46 +305,34 @@ select is(tests.body('2026-11-20 10:00', 'E', 'chore_reminder'), 'Bad putzen · 
   'AC-026 chore reminder: … and without the trip Enrico gets it');
 update public.chores set due_time = null where id = tests.fx('c_bad');
 
--- ===================== Reservations (AC-027 to AC-031) =====================
+-- ===================== Uhrzeit and the one reminder (spec 0021, REQ-013, REQ-014) =====================
+select is(
+  (select count(*)::int from tests.c_between('2026-11-20 00:00', '2026-11-22 00:00') c
+   where c.kind in ('reservation_reminder', 'entry_reminder')),
+  0, 'AC-039 scheduler: a restaurant with a time but without "Erinnern" sends nothing (no reservation reminder)');
+alter table public.meal_plan_entries disable trigger meal_plan_entries_check_reminder;
+update public.meal_plan_entries set reminder_day_offset = 0, reminder_at = '17:30' where id = tests.fx('e_enzo');
+alter table public.meal_plan_entries enable trigger meal_plan_entries_check_reminder;
 select is(
   (select string_agg(c.who || ': ' || c.body, ' | ' order by c.who) from tests.c('2026-11-21 17:30') c
+   where c.kind = 'entry_reminder'),
+  'E: Erinnerung: Trattoria Da Enzo · heute 19:30 | N: Erinnerung: Trattoria Da Enzo · heute 19:30',
+  'AC-037 entry reminder: at 17:30 both get "Erinnerung: Trattoria Da Enzo · heute 19:30"');
+select is(tests.body('2026-11-21 17:25', 'E', 'entry_reminder'), null, 'AC-037 entry reminder: not before 17:30');
+select is(
+  (select count(*)::int from tests.c_between('2026-11-20 00:00', '2026-11-23 00:00', '5 minutes') c
    where c.kind = 'reservation_reminder'),
-  'E: Trattoria Da Enzo um 19:30 · in 2 Stunden · Route › | N: Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
-  'AC-028 reservation: both eat along, both get it 2 hours before');
-select is(
-  (select jsonb_build_object('key', c.dedupe_key, 'expires', c.expires_at, 'url', c.url)
-   from tests.c('2026-11-21 17:30') c where c.who = 'E' and c.kind = 'reservation_reminder'),
-  jsonb_build_object('key', format('reservation:%s:2026-11-21:19:30', tests.fx('e_enzo')),
-                     'expires', tests.berlin('2026-11-21 19:30'),
-                     'url', format('/kalender?tag=2026-11-21&eintrag=%s&haushalt=%s', tests.fx('e_enzo'), tests.fx('home'))),
-  'Decisions 6, 12, 13 reservation: key with the time, expiry at the reservation, link to the entry');
-select is(tests.body('2026-11-21 17:25', 'E', 'reservation_reminder'), null, 'AC-028 reservation: not before 17:30');
-update public.meal_plan_entries set eater_ids = array[tests.fx('enrico')] where id = tests.fx('e_enzo');
-select is(
-  (select string_agg(c.who, ',') from tests.c('2026-11-21 17:30') c where c.kind = 'reservation_reminder'), 'E',
-  'AC-028 reservation: Nadja does not eat along → only Enrico');
-update public.meal_plan_entries set eater_ids = '{}' where id = tests.fx('e_enzo');
-
-update public.meal_plan_entries set remind_minutes_before = 60 where id = tests.fx('e_enzo');
-select is(tests.body('2026-11-21 17:30', 'E', 'reservation_reminder'), null,
-  'AC-029 reservation: with "1 h vorher" nothing at 17:30');
-select is(tests.body('2026-11-21 18:30', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 1 Stunde · Route ›',
-  'AC-029 reservation: at 18:30 with "in 1 Stunde"');
-update public.meal_plan_entries set remind_minutes_before = 30 where id = tests.fx('e_enzo');
-update public.restaurants set address = null where id = tests.fx('enzo');
-select is(tests.body('2026-11-21 19:00', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 30 Minuten',
-  'Decision 11 reservation: "in 30 Minuten", and no "Route" without a place');
-update public.restaurants set address = 'Hauptstraße 1' where id = tests.fx('enzo');
-update public.meal_plan_entries set remind_minutes_before = 120 where id = tests.fx('e_enzo');
-
-select is(tests.body('2026-11-21 18:30', 'E', 'reservation_reminder'), null,
-  'AC-031 reservation: entered at 18:30 for 19:30 with 2 h → 17:30 is more than 30 minutes ago, nothing');
-select is(tests.body('2026-11-21 17:55', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
-  'Decision 5 reservation: 25 minutes late is still sent');
-select is(tests.body('2026-11-21 18:00', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
-  'Decision 5 reservation: exactly 30 minutes late is still sent');
-select is(tests.body('2026-11-21 18:01', 'E', 'reservation_reminder'), null,
-  'AC-031, Decision 5 reservation: more than 30 minutes late is dropped');
+  0, 'AC-039 scheduler: no message of the kind reservation_reminder any more');
+update public.meal_plan_entries set starts_at = '10:30' where id = tests.fx('e_eis');
+select is(tests.body('2026-11-20 19:00', 'E', 'activities_eve'), 'Morgen: Eislaufen (Hohenschönhausen), Vormittag, 10:30 · Kino, Abend',
+  'REQ-013 activities eve: "Morgen: Eislaufen (Hohenschönhausen), Vormittag, 10:30"');
+select ok(tests.body('2026-11-21 07:30', 'E', 'daily_summary') like 'Heute: Eislaufen (Hohenschönhausen, Vormittag, 10:30) · %',
+  'REQ-013 daily summary: "Eislaufen (Hohenschönhausen, Vormittag, 10:30)"');
+update public.meal_plan_entries set starts_at = null where id = tests.fx('e_eis');
+update public.meal_plan_entries set note = 'doppelte Menge' where id = tests.fx('e_hummus');
+select ok(tests.body('2026-11-21 07:30', 'E', 'daily_summary') like '% · Hummus (doppelte Menge, Mittag, du kochst) · %',
+  'REQ-008 daily summary: the Zusatz of a recipe stands with its name');
+update public.meal_plan_entries set note = null where id = tests.fx('e_hummus');
 
 -- ===================== Time zone and daylight saving (AC-033) =====================
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, text, eater_ids)
@@ -400,7 +388,7 @@ select is(
 select is(
   (select string_agg(distinct c.kind, ',' order by c.kind) from tests.c_between('2026-11-21 00:00', '2026-11-23 00:00') c
    where c.who = 'N'),
-  'chore_reminder,daily_summary,reservation_reminder',
+  'chore_reminder,daily_summary,entry_reminder',
   'AC-035 silent: Nadja gets her messages as usual (spec 0026: also the turn she stands in for)');
 select is(
   (select string_agg(c.who || ': ' || c.body, ' | ') from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'),
@@ -445,12 +433,12 @@ select is(
   'AC-036 removed member: no candidate for Nadja in any household');
 
 -- Settings off for a kind means nothing of that kind (AC-014 for the other kinds).
-update public.notification_settings set activities_eve_enabled = false, reservation_reminders_enabled = false
+update public.notification_settings set activities_eve_enabled = false, entry_reminders_enabled = false
 where member_id = tests.fx('enrico');
 select is(
   (select count(*)::int from tests.c_between('2026-11-20 17:00', '2026-11-21 19:30') c
-   where c.kind in ('activities_eve', 'reservation_reminder')),
-  0, 'AC-014 switched off: no activities eve and no reservation reminder');
+   where c.kind in ('activities_eve', 'entry_reminder')),
+  0, 'AC-014 switched off: no activities eve and no entry reminder');
 
 select * from finish();
 rollback;

@@ -13,7 +13,7 @@
 // computed on insert and after a change of the duration, set_packing_items_packed with
 // "Abhaken gewinnt" via pack_seq, restore_packing_items), and notifications (spec 0013: one
 // settings row per member created on joining, readable and patchable only by herself, the
-// five-minute times and the reservation only on restaurant entries; the push subscriptions of a
+// five-minute times and the time only on restaurant and activity entries; the push subscriptions of a
 // person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
 // (users, devices) can share one server.
 import {
@@ -596,16 +596,15 @@ function checkCollectionRecipeInsert(row: Row, tables: TableRows): void {
   if (count >= 50) throw reject('too_many_collection_recipes');
 }
 
-// ---------- spec 0013: times, reservation, notification settings ----------
+// ---------- spec 0013: times, notification settings (spec 0021: starts_at) ----------
 
 /** private.is_five_minute_time: "HH:MM" or "HH:MM:SS" with seconds 0, minutes in steps of 5. */
 const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
 const TIME_COLUMNS: Record<string, readonly string[]> = {
   chores: ['due_time'],
-  meal_plan_entries: ['reserved_at', 'reminder_at'],
+  meal_plan_entries: ['starts_at', 'reminder_at'],
   notification_settings: ['daily_summary_at', 'activities_eve_at'],
 };
-const REMIND_MINUTES = new Set([30, 60, 120, 180, 240]);
 const SUMMARY_PARTS = new Set(['meals', 'activities', 'chores', 'prep']);
 
 /** A row as Postgres keeps it: a `time` reads back as "HH:MM:SS"; an invalid one is 23514. */
@@ -624,13 +623,13 @@ function withDbTimes(table: string, row: Row): Row {
   return next;
 }
 
-/** meal_plan_entries_remind_minutes_before_valid, _reservation_only_restaurant, the parts check. */
+/** meal_plan_entries_starts_at_only_timed (spec 0021), the reminder and the parts check. */
 function checkNotificationColumns(table: string, row: Row): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   if (table === 'meal_plan_entries') {
-    if (row.remind_minutes_before != null && !REMIND_MINUTES.has(Number(row.remind_minutes_before)))
+    if (row.starts_at != null && row.kind !== 'restaurant' && row.kind !== 'activity') {
       throw violated();
-    if (row.reserved_at != null && row.kind !== 'restaurant') throw violated();
+    }
     checkReminderColumns(row);
   }
   if (table === 'notification_settings') {
@@ -856,7 +855,6 @@ export function createFakeServer(): FakeServer {
         activities_eve_enabled: false,
         activities_eve_at: '19:00:00',
         chore_reminders_enabled: true,
-        reservation_reminders_enabled: true,
         entry_reminders_enabled: true,
       }),
       undefined,
@@ -1461,6 +1459,47 @@ export function createFakeServer(): FakeServer {
     return [next, results];
   }
 
+  /** Like private.replace_entry_contributions (spec 0021, REQ-007, REQ-015). */
+  function replaceEntryContributions(
+    tables: TableRows,
+    householdId: string,
+    entryIds: readonly string[],
+    entries: readonly AddEntry[],
+  ): [TableRows, { removed: number; added: AddResult }] {
+    if (!Array.isArray(entryIds) || entryIds.length === 0 || !Array.isArray(entries)) {
+      throw reject('invalid_change');
+    }
+    if (entryIds.length > 200) throw reject('too_many_changes');
+    const items = tables.shopping_items ?? {};
+    const own = Object.values(tables.shopping_contributions ?? {}).filter((row) => {
+      const source = row.source as { kind?: string; entryId?: string } | null;
+      const item = items[String(row.item_id)];
+      return (
+        source?.kind === 'recipe' &&
+        entryIds.includes(String(source.entryId)) &&
+        item !== undefined &&
+        item.checked !== true
+      );
+    });
+    const emptied = new Set(own.map((row) => String(row.item_id)));
+    let next = withoutRows(
+      tables,
+      'shopping_contributions',
+      own.map((row) => String(row.id)),
+    );
+    let added: AddResult = [];
+    if (entries.length > 0) [next, added] = addContributions(next, householdId, entries);
+    const left = new Set(
+      Object.values(next.shopping_contributions ?? {}).map((row) => String(row.item_id)),
+    );
+    next = withoutRows(
+      next,
+      'shopping_items',
+      [...emptied].filter((id) => !left.has(id) && next.shopping_items?.[id]?.checked !== true),
+    );
+    return [next, { removed: own.length, added }];
+  }
+
   function removeContributionRows(tables: TableRows, ids: readonly string[]): [TableRows, number] {
     const existing = ids.filter((id) => tables.shopping_contributions?.[id]);
     const itemIds = new Set(
@@ -1685,7 +1724,7 @@ export function createFakeServer(): FakeServer {
     const opCount = sum((op) =>
       op.kind === 'remove_contributions'
         ? Math.max(op.ids.length, 1)
-        : op.kind === 'add_contributions'
+        : op.kind === 'add_contributions' || op.kind === 'replace_entry_contributions'
           ? Math.max(op.entries.length, 1)
           : op.kind === 'restore_packing_items'
             ? Math.max(Array.isArray(op.items) ? op.items.length : 1, 1)
@@ -1700,7 +1739,10 @@ export function createFakeServer(): FakeServer {
     );
     const deletes = sum((op) =>
       // complete_chore too: done of a one-off chore deletes it, known only under the lock.
-      op.kind === 'delete' || op.kind === 'complete_chore' || op.kind === 'remove_chore_event'
+      op.kind === 'delete' ||
+      op.kind === 'complete_chore' ||
+      op.kind === 'remove_chore_event' ||
+      op.kind === 'replace_entry_contributions'
         ? 1
         : op.kind === 'remove_contributions'
           ? op.ids.length
@@ -1709,7 +1751,7 @@ export function createFakeServer(): FakeServer {
             : 0,
     );
     const contributions = sum((op) =>
-      op.kind === 'add_contributions'
+      op.kind === 'add_contributions' || op.kind === 'replace_entry_contributions'
         ? op.entries.reduce((total, entry) => total + entry.contributions.length, 0)
         : 0,
     );
@@ -1729,6 +1771,15 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeContributionRows(tables, op.ids);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'replace_entry_contributions') {
+          const [next, replaced] = replaceEntryContributions(
+            tables,
+            householdId,
+            op.entry_ids,
+            op.entries,
+          );
+          tables = next;
+          results.push(replaced);
         } else if (op.kind === 'complete_chore') {
           const [next, booked] = completeChore(tables, householdId, op.completion);
           tables = next;
@@ -1772,8 +1823,7 @@ export function createFakeServer(): FakeServer {
                     { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
                   : op.table === 'meal_plan_entries'
                     ? {
-                        reserved_at: null,
-                        remind_minutes_before: 120,
+                        starts_at: null,
                         reminder_day_offset: null,
                         reminder_at: null,
                         reminder_text: null,

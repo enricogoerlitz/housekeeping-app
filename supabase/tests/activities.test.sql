@@ -302,10 +302,10 @@ select throws_ok(
   format($$ insert into public.meal_plan_entries (household_id, slot_id, kind) values (%L, %L, 'activity') $$,
          tests.fx('home_a'), tests.fx('slot_a')),
   '23514', null, 'AC-023 meal_plan_entries: kind activity needs activity_id');
-select throws_ok(
+select lives_ok(
   format($$ insert into public.meal_plan_entries (household_id, slot_id, kind, recipe_id, note) values (%L, %L, 'recipe', %L, 'Oma') $$,
          tests.fx('home_a'), tests.fx('slot_a'), tests.fx('recipe_a')),
-  '23514', null, 'REQ-005 meal_plan_entries: a note is only allowed on an activity entry');
+  'Spec 0021, REQ-008 meal_plan_entries: every kind may have a Zusatz (was: only activities)');
 select throws_ok(
   format($$ insert into public.meal_plan_entries (household_id, slot_id, kind, activity_id, note) values (%L, %L, 'activity', %L, %L) $$,
          tests.fx('home_a'), tests.fx('slot_a'), tests.fx('act_a'), repeat('z', 121)),
