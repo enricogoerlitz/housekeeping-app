@@ -258,6 +258,13 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
     ändern auch 0021 (Uhrzeit, Zusatz) und 0026 (Aufgaben-Texte); gebaut wird nach 0021, jede Migration
     ersetzt die Funktion vollständig.
 
+15. Beim Bau (Claude, 22.11.2026): Karte und Kachel tragen denselben Titel; Reste heißen dort
+    „Reste von <Rezept>“, solange das Rezept da ist, sonst wie im Kalender („Reste von Donnerstag“).
+16. Beim Bau: Die Abschnitte liegen ab gestern im Sieben-Tage-Takt; ein Tag gehört immer zu genau
+    einem Abschnitt, so bleibt die Leiste beim Wählen eines Tags im Abschnitt stehen.
+17. Beim Bau: „Schon fällig“ gilt für einen Beginn vor jetzt (Uhrzeit des Haushalts, minutengenau);
+    im Tagesüberblick ist „jetzt“ die eingestellte Uhrzeit des Tagesüberblicks.
+
 ## Daten
 
 - `meal_plan_entries.not_cooked` → `not_done` (Code `notDone`); Feldlisten in `apply_changes`,
@@ -281,15 +288,15 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 
 ## Umsetzung
 
-- [ ] 1. core `overview.ts`: Abschnitt, Blättern ±7, Zeitraum und Ansage, Zeile unter dem Titel,
+- [x] 1. core `overview.ts`: Abschnitt, Blättern ±7, Zeitraum und Ansage, Zeile unter dem Titel,
       „Heute“ aktiv (AC-001–AC-003, AC-005–AC-008, AC-011)
-- [ ] 2. app Kopf und `DayStrip`: feste Zeile, fester „Heute“-Platz, Zeitraum fester Breite, ohne
+- [x] 2. app Kopf und `DayStrip`: feste Zeile, fester „Heute“-Platz, Zeitraum fester Breite, ohne
       Kalender-Symbol, Streifen nach Abschnitt (AC-004, AC-009, AC-010)
-- [ ] 3. core `tileEntry` statt `dayTile`; `packingCards` nach Abschnitt (AC-012–AC-016, AC-043)
-- [ ] 4. app `EntryPicture` für Karte und Kachel (AC-017–AC-019)
+- [x] 3. core `tileEntry` statt `dayTile`; `packingCards` nach Abschnitt (AC-012–AC-016, AC-043)
+- [x] 4. app `EntryPicture` für Karte und Kachel (AC-017–AC-019)
 - [ ] 5. core `addPresetSlot` (auch Kalender); app „+“ und „Hinzufügen“ mit `AddEntrySheet`
       (AC-020–AC-026)
-- [ ] 6. core `slotStartTime` (aus `reminder.ts`) und `prepLines`; app Zeilen unter der Leiste
+- [x] 6. core `slotStartTime` (aus `reminder.ts`) und `prepLines`; app Zeilen unter der Leiste
       (AC-027–AC-032)
 - [ ] 7. supabase Tagesüberblick + pgTAP inkl. Parität; `/security-check` (AC-033–AC-035)
 - [ ] 8. `not_cooked` → `not_done` (`db-change`-Skill), pgTAP-Negativtests; `/security-check`
