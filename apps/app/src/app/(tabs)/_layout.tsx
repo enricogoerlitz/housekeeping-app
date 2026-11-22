@@ -127,7 +127,8 @@ function Navigation(props: BottomTabBarProps) {
   return (
     <View>
       {/* On the list the assistant entry sits in the input bar, so the thumb zone stays free. */}
-      {features.ai && activeKey !== 'liste' ? (
+      {/* A panel at the bottom (the day window) hides it, so it covers none of its controls. */}
+      {features.ai && activeKey !== 'liste' && !assistant.buttonHidden ? (
         <Fab
           icon="sparkles"
           label="Assistent"

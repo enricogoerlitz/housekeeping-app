@@ -32,6 +32,7 @@ export {
   SwitchRow,
   Stars,
   TextField,
+  focusRing,
   type ButtonProps,
   type IconButtonProps,
   type ChipProps,

@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
 import { PanResponder, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 
 import { claimsSwipe, swipeStep } from './swipe-step';
 
@@ -24,20 +25,31 @@ const WEB_PAN_Y: ViewStyle | null =
  * change as buttons, too.
  */
 export function SwipeArea(props: SwipeAreaProps) {
-  const live = useRef(props);
-  useLayoutEffect(() => {
-    live.current = props;
-  });
-  const [responder] = useState(() =>
-    PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-        live.current.enabled !== false && claimsSwipe(gesture.dx, gesture.dy),
+  const enabled = useSharedValue(props.enabled !== false);
+  useEffect(() => {
+    enabled.set(props.enabled !== false);
+  }, [props.enabled, enabled]);
+
+  // The handlers are created once; a finished swipe reaches the caller through this state.
+  const [swiped, setSwiped] = useState<{ step: 1 | -1; count: number }>();
+  const report = useEffectEvent((step: 1 | -1) => props.onSwipe(step));
+  useEffect(() => {
+    if (swiped) report(swiped.step);
+  }, [swiped]);
+
+  const [responder] = useState(() => {
+    const claims = (dx: number, dy: number) => enabled.get() && claimsSwipe(dx, dy);
+    return PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_event, gesture) => claims(gesture.dx, gesture.dy),
+      onMoveShouldSetPanResponder: (_event, gesture) => claims(gesture.dx, gesture.dy),
       onPanResponderRelease: (_event, gesture) => {
         const step = swipeStep(gesture.dx, gesture.vx);
-        if (step !== 0) live.current.onSwipe(step);
+        if (step !== 0) {
+          setSwiped((previous) => ({ step, count: (previous?.count ?? 0) + 1 }));
+        }
       },
-    }),
-  );
+    });
+  });
   return (
     <View {...responder.panHandlers} testID={props.testID} style={[WEB_PAN_Y, props.style]}>
       {props.children}
