@@ -19,11 +19,11 @@ import {
   Text,
   useBreakpoint,
   useToastClearance,
+  useBottomInset,
 } from '@housekeeping/ui';
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePageParams } from '@/lib/url-state';
 
@@ -86,7 +86,8 @@ function Cooking(props: {
 }) {
   const { recipe } = props;
   const { isPhone } = useBreakpoint();
-  const insets = useSafeAreaInsets();
+  // Above the home bar with its gap (spec 0029, REQ-002).
+  const bottomEdge = useBottomInset();
   const variant = recipe.variants.find((candidate) => candidate.id === props.variantParam);
   const steps = stepsForVariants(recipe, variant ? [variant.id] : undefined);
   const ingredients = cookingIngredients(recipe, variant?.id, props.servings);
@@ -96,7 +97,7 @@ function Cooking(props: {
   const [showIngredients, setShowIngredients] = useState(false);
   // No tab bar here: the toast stands above the step buttons (AC-024).
   const [footerHeight, setFooterHeight] = useState<number | undefined>();
-  useToastClearance(footerHeight === undefined ? undefined : footerHeight - insets.bottom);
+  useToastClearance(footerHeight === undefined ? undefined : footerHeight - bottomEdge);
   const step = steps[Math.min(index, steps.length - 1)];
   const last = index >= steps.length - 1;
 
@@ -116,7 +117,7 @@ function Cooking(props: {
               alignSelf: 'center',
               paddingHorizontal: isPhone ? 16 : 36,
               paddingTop: 14,
-              paddingBottom: 14 + insets.bottom,
+              paddingBottom: 14 + bottomEdge,
             }}
           >
             <Row gap={12}>
