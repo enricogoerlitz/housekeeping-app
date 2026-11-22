@@ -44,7 +44,6 @@ export function newRecipe(input: {
   title: string;
   servings: number;
   createdAt: string;
-  source?: string;
 }): Recipe {
   const recipe: Recipe = {
     id: input.id,
@@ -59,9 +58,9 @@ export function newRecipe(input: {
     ratings: {},
     cookedCount: 0,
     createdAt: input.createdAt,
+    links: [],
   };
   if (input.kind === 'recipe') recipe.course = 'main';
-  if (input.source !== undefined) recipe.source = input.source;
   return recipe;
 }
 

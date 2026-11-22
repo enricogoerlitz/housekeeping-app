@@ -80,6 +80,7 @@ describe('window "Neu" (REQ-001)', () => {
       ratings: {},
       cookedCount: 0,
       createdAt: created,
+      links: [],
     });
     const recipe = newRecipe({
       id: 'rec-x',
@@ -87,9 +88,8 @@ describe('window "Neu" (REQ-001)', () => {
       title: 'Rösti',
       servings: 2,
       createdAt: created,
-      source: 'https://example.org',
     });
-    expect(recipe).toMatchObject({ kind: 'recipe', course: 'main', source: 'https://example.org' });
+    expect(recipe).toMatchObject({ kind: 'recipe', course: 'main', links: [] });
   });
 });
 

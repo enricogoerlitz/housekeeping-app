@@ -53,12 +53,7 @@ function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
  * creates a collection (spec 0009, AC-001, AC-002): without course, sent with course null (E3).
  * Throws "Titel fehlt" (AC-003) or "Höchstens 200 Zeichen" before anything changes.
  */
-export function createRecipe(input: {
-  title: string;
-  servings?: number;
-  source?: string;
-  kind?: RecipeKind;
-}): Id {
+export function createRecipe(input: { title: string; servings?: number; kind?: RecipeKind }): Id {
   const problem = newEntryTitleProblem(input.title);
   if (problem) throw new Error(problem);
   return commit({ path: 'diff' }, () => {
@@ -68,7 +63,6 @@ export function createRecipe(input: {
       title: input.title,
       servings: input.servings ?? 2,
       createdAt: nowISO(),
-      source: input.source,
     });
     updateData((data) => ({ ...data, recipes: [recipe, ...data.recipes] }));
     return recipe.id;

@@ -1,5 +1,12 @@
 import { formatQty } from './amounts';
-import { combineDiets, deriveRecipeDiet, dietFitsPreference, recipeFitsPreference } from './diet';
+import {
+  combineDiets,
+  deriveRecipeDiet,
+  dietFitsPreference,
+  foodDiets,
+  recipeFitsPreference,
+} from './diet';
+import { ingredientsForVariant } from './recipe-variants';
 import { defaultVariantId } from './recipe-variants';
 import { contributionsFromEntry, type PlannedContribution } from './shopping';
 import { recipeSource } from './shopping-list';
@@ -127,21 +134,24 @@ export function collectionContentLabel(content: CollectionContent): string {
 
 /**
  * The diet of everything in the collection (AC-020): its own ingredients and each contained recipe
- * in its chosen variant, combined like the ingredients of a recipe. An empty collection is
- * "unknown", like a recipe without ingredients.
+ * in its chosen variant, combined like the ingredients of a recipe; "kein Lebensmittel" does not
+ * count (spec 0023, REQ-008). A collection without food is "unknown", like a recipe without
+ * ingredients.
  */
 export function collectionDiet(
   collection: Pick<Recipe, 'ingredients'>,
   contents: readonly CollectionContent[],
   articlesById: Record<Id, Article>,
 ): Diet {
-  if (collection.ingredients.length === 0 && contents.length === 0) return 'unknown';
-  return combineDiets([
-    ...collection.ingredients.map(
-      (ingredient) => articlesById[ingredient.articleId]?.diet ?? 'unknown',
+  const diets = [
+    ...foodDiets(collection.ingredients, articlesById),
+    ...contents.flatMap((content) =>
+      foodDiets(ingredientsForVariant(content.recipe, content.variantId), articlesById).length === 0
+        ? []
+        : [deriveRecipeDiet(content.recipe, content.variantId, articlesById)],
     ),
-    ...contents.map((content) => deriveRecipeDiet(content.recipe, content.variantId, articlesById)),
-  ]);
+  ];
+  return diets.length === 0 ? 'unknown' : combineDiets(diets);
 }
 
 /** A collection fits a preference only when everything in it fits (AC-020). */
