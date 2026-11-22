@@ -1,6 +1,7 @@
 import {
   Icon,
   Text,
+  keyboardFocusRing,
   ThemeProvider,
   themeFamilies,
   useTheme,
@@ -56,14 +57,7 @@ function ThemeCard(props: {
           borderColor: props.selected ? c.accent : c.border,
           opacity: state.pressed ? 0.8 : 1,
         },
-        (state as { focused?: boolean }).focused
-          ? {
-              outlineWidth: 2,
-              outlineColor: c.text,
-              outlineStyle: 'solid' as const,
-              outlineOffset: 2,
-            }
-          : null,
+        keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
       ]}
     >
       {/* The preview renders with the theme it shows, independent of the active one. */}

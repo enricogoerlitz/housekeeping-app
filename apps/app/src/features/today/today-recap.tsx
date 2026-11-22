@@ -165,11 +165,6 @@ export function TodayRecap(props: { today: ISODate; slotOrder: string[] }) {
           </RowTransition>
         ))}
       </List>
-      {online.hint ? (
-        <Text variant="small" color="muted" style={{ marginTop: 6 }} testID="today-recap-offline">
-          {online.hint}
-        </Text>
-      ) : null}
     </Section>
   );
 }

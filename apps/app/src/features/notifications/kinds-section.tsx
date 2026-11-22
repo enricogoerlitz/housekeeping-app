@@ -38,10 +38,10 @@ import {
   TimeField,
   toast,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 import { useEnsureDevicePush } from './use-device-push';
 
@@ -91,13 +91,14 @@ function save(patch: NotificationSettingsPatch, householdId: string): boolean {
 function useSettingsHousehold(): { householdId: string; choose: (householdId: string) => void } {
   const households = useHouseholdsMap();
   const activeId = useActiveHouseholdId();
-  const router = useRouter();
-  const params = useLocalSearchParams<{ 'fuer-haushalt'?: string | string[] }>();
-  const raw = params['fuer-haushalt'];
-  const requested = Array.isArray(raw) ? raw[0] : raw;
+  const address = usePageParams('benachrichtigungen');
   return {
-    householdId: notificationsHouseholdId(requested, Object.keys(households), activeId),
-    choose: (householdId) => router.setParams({ 'fuer-haushalt': householdId }),
+    householdId: notificationsHouseholdId(
+      address.params['fuer-haushalt'],
+      Object.keys(households),
+      activeId,
+    ),
+    choose: (householdId) => address.replace({ 'fuer-haushalt': householdId }),
   };
 }
 

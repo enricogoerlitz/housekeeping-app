@@ -32,8 +32,9 @@ export {
   SwitchRow,
   Stars,
   TextField,
-  focusRing,
   keyboardFocusRing,
+  keyboardFocused,
+  FOCUS_RING_ROOM,
   type ButtonProps,
   type IconButtonProps,
   type ChipProps,
@@ -92,7 +93,17 @@ export {
   type MenuProps,
   type PopoverProps,
 } from './choice';
-export { Sheet, toast, ToastHost, type SheetProps, type ToastOptions } from './overlay';
+export {
+  OVERSCROLL_CONTAIN,
+  Sheet,
+  toast,
+  ToastHost,
+  useToastClearance,
+  type SheetProps,
+  type ToastOptions,
+} from './overlay';
+export { ScrollRow, type ScrollRowProps } from './scroll-row';
+export { useFinePointer, useHover } from './pointer';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
 export { DockedPanel, type DockedPanelProps, type DockedPanelState } from './docked-panel';
 export { panelPlacement } from './docked-panel-state';

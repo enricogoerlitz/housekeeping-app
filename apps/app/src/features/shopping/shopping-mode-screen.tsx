@@ -38,12 +38,14 @@ import {
   useBreakpoint,
   useCheckWindow,
   useTheme,
+  useToastClearance,
   WIDE_GUTTER,
   expandableA11y,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { undoAction } from '@/features/shell/offline';
@@ -166,6 +168,10 @@ export function ShoppingModeScreen() {
   const shopper = useActiveShopper();
   const theme = useTheme();
   const { isWide } = useBreakpoint();
+  const insets = useSafeAreaInsets();
+  // Without the tab bar the toast stands above the input bar (spec 0019, AC-024).
+  const [footerHeight, setFooterHeight] = useState<number | undefined>();
+  useToastClearance(footerHeight === undefined ? undefined : footerHeight - insets.bottom);
 
   const [areaFor, setAreaFor] = useState<ShoppingItem | undefined>();
   const [choosingStore, setChoosingStore] = useState(false);
@@ -265,12 +271,15 @@ export function ShoppingModeScreen() {
   const footer = (
     <View
       testID="shopping-add-bar"
+      onLayout={(event) => setFooterHeight(Math.round(event.nativeEvent.layout.height))}
       style={{
         backgroundColor: theme.colors.barBg,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
         paddingHorizontal: isWide ? WIDE_GUTTER : theme.shape.gutter,
-        paddingVertical: 10,
+        paddingTop: 10,
+        // Above the home bar (AC-022).
+        paddingBottom: 10 + insets.bottom,
       }}
     >
       <View style={{ width: '100%', maxWidth: SHOPPING_MAX_WIDTH, alignSelf: 'center' }}>

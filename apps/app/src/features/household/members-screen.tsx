@@ -12,11 +12,11 @@ import {
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 import { CreateHouseholdForm, InviteForm, MemberList, MyInvitations } from './household-forms';
 import { DeleteHouseholdBlock, RenameHouseholdSheet } from './household-sheets';
@@ -33,7 +33,8 @@ export function MembersScreen() {
   const activeId = useActiveHouseholdId();
   const active = households[activeId]?.household;
   const online = useOnlineOnly();
-  const [renaming, setRenaming] = useState(false);
+  const address = usePageParams('mitglieder');
+  const renaming = address.params.fenster === 'umbenennen';
 
   const members = (
     <Section title="Mitglieder" testID="settings-household">
@@ -72,14 +73,16 @@ export function MembersScreen() {
               variant="soft"
               disabled={online.disabled}
               hint={online.hint}
-              onPress={() => setRenaming(true)}
+              onPress={() => address.open({ fenster: 'umbenennen' })}
               testID="household-rename"
             />
           }
         />
       }
     >
-      {renaming ? <RenameHouseholdSheet onClose={() => setRenaming(false)} /> : null}
+      {renaming ? (
+        <RenameHouseholdSheet onClose={() => address.close({ fenster: undefined })} />
+      ) : null}
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>{members}</View>

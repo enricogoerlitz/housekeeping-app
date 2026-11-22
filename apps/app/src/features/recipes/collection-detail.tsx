@@ -51,6 +51,7 @@ import { useDeleteRecipe } from './use-delete-recipe';
 export function CollectionDetailBody(props: {
   collection: Recipe;
   onBack: () => void;
+  backLabel: string;
   /** true while this page deletes its collection; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
@@ -151,7 +152,7 @@ export function CollectionDetailBody(props: {
         <ScreenHeader
           title={collection.title}
           titleOnScroll
-          backLabel="Essen"
+          backLabel={props.backLabel}
           onBack={props.onBack}
           right={headerRight}
           testID="recipe-bar-title"

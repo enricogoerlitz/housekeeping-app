@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
-import { focusRing, IconButton } from './controls';
+import { keyboardFocusRing, IconButton } from './controls';
 import {
   monthCalendarFocusDay,
   monthCalendarKey,
@@ -184,7 +184,7 @@ export function MonthCalendar(props: MonthCalendarProps) {
                         justifyContent: 'center',
                         borderRadius: MARK / 2,
                       },
-                      focusRing(theme, hasFocus),
+                      keyboardFocusRing(theme, hasFocus),
                     ];
                   }}
                 >

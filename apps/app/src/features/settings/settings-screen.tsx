@@ -45,6 +45,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { ownAppVersion } from '@/lib/app-version';
 import { features } from '@/lib/features';
+import { usePageParams } from '@/lib/url-state';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
 import { ProfileSheet } from './profile-sheet';
@@ -52,6 +53,20 @@ import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
 
 export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
+
+/** The section in the address, `?abschnitt=…` (spec 0019, REQ-014). */
+const SECTION_OF_SLUG = {
+  profil: 'profile',
+  darstellung: 'appearance',
+  ki: 'ai',
+  benachrichtigungen: 'notifications',
+} as const satisfies Record<string, SettingsSection>;
+const SLUG_OF_SECTION = {
+  profile: 'profil',
+  appearance: 'darstellung',
+  ai: 'ki',
+  notifications: 'benachrichtigungen',
+} as const satisfies Record<SettingsSection, keyof typeof SECTION_OF_SLUG>;
 
 const SECTION_TITLES: Record<SettingsSection, string> = {
   profile: 'Profil',
@@ -70,7 +85,11 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
 export function SettingsScreen(props: { section?: SettingsSection }) {
   const router = useRouter();
   const { isPhone } = useBreakpoint();
-  const [chosen, setChosen] = useState<SettingsSection>(props.section ?? 'profile');
+  const address = usePageParams('einstellungen');
+  const slug = address.params.abschnitt;
+  const chosen: SettingsSection = slug ? SECTION_OF_SLUG[slug] : (props.section ?? 'profile');
+  const setChosen = (next: SettingsSection) =>
+    address.replace({ abschnitt: next === 'profile' ? undefined : SLUG_OF_SECTION[next] });
 
   if (isPhone && props.section === 'notifications') return <NotificationsScreen />;
 
@@ -218,7 +237,8 @@ function ProfileSection(props: { withSignOut?: boolean }) {
   const email = useSignedInEmail();
   const signOut = useSignOut();
   const online = useOnlineOnly();
-  const [editing, setEditing] = useState(false);
+  const address = usePageParams('einstellungen');
+  const editing = address.params.fenster === 'profil';
   return (
     <Section title="Profil" testID="settings-profile">
       <Stack gap={12}>
@@ -235,14 +255,16 @@ function ProfileSection(props: { withSignOut?: boolean }) {
                 label="Profil bearbeiten"
                 disabled={online.disabled}
                 hint={online.hint}
-                onPress={() => setEditing(true)}
+                onPress={() => address.open({ fenster: 'profil' })}
                 testID="profile-edit"
               />
             }
             testID="profile-current"
           />
         </List>
-        {editing ? <ProfileSheet email={email} onClose={() => setEditing(false)} /> : null}
+        {editing ? (
+          <ProfileSheet email={email} onClose={() => address.close({ fenster: undefined })} />
+        ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {/* From tablet width "Abmelden" is the last row of the list on the left. */}
           {props.withSignOut ? (

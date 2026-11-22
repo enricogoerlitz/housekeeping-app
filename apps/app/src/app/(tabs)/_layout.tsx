@@ -1,4 +1,5 @@
 import { useSyncState } from '@housekeeping/api';
+import type { Origin } from '@housekeeping/core';
 import {
   Fab,
   OfflineBanner,
@@ -11,13 +12,15 @@ import {
 import { Tabs, useSegments } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '@/features/shell/app-sidebar';
+import { OFFLINE_BANNER_TEXT } from '@/features/shell/offline';
 import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
 import { UpdateBanner, useUpdateBannerVisible } from '@/features/shell/update-banner';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
+import { useActiveSection, useOpenSection } from '@/lib/url-state';
 
 // The keys stay the test ids of the tab bar and the sidebar (`tab-rezepte`, `nav-liste`); the
 // areas with their own stack are route groups, so their pages keep their addresses.
@@ -29,16 +32,16 @@ const NAV: NavItem[] = [
   { key: 'haushalt', label: 'Haushalt', icon: 'list-checks', tone: 'haushalt' },
 ];
 
-const ROUTE_OF_KEY: Record<string, string> = {
-  index: 'index',
-  rezepte: '(essen)',
+const SECTION_OF_KEY: Record<string, Origin> = {
+  index: 'uebersicht',
+  rezepte: 'essen',
   kalender: 'kalender',
-  liste: '(liste)',
+  liste: 'liste',
   haushalt: 'haushalt',
 };
-const KEY_OF_ROUTE = Object.fromEntries(
-  Object.entries(ROUTE_OF_KEY).map(([key, route]) => [route, key]),
-);
+const KEY_OF_SECTION = Object.fromEntries(
+  Object.entries(SECTION_OF_KEY).map(([key, section]) => [section, key]),
+) as Partial<Record<Origin, string>>;
 
 /** Cooking and store mode cover the tab bar on phones; the sidebar stays (spec 0005, D5). */
 const FULL_SCREEN_PAGES = new Set(['kochen', 'einkaufen']);
@@ -51,9 +54,18 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const showInstallHint = useInstallHintVisible();
   const showUpdate = useUpdateBannerVisible();
+  const banner = offline || showInstallHint || showUpdate;
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
-      {offline || showInstallHint || showUpdate ? (
+    // In landscape the notch and the rounded corners sit left and right (spec 0019, REQ-008).
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.colors.bg,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}
+    >
+      {banner ? (
         <View
           style={{
             paddingTop: insets.top + 6,
@@ -62,37 +74,42 @@ export default function TabsLayout() {
             gap: 6,
           }}
         >
-          {offline ? <OfflineBanner /> : null}
+          {offline ? <OfflineBanner text={OFFLINE_BANNER_TEXT} /> : null}
           <UpdateBanner />
           <InstallHint />
         </View>
       ) : null}
-      <Tabs
-        tabBar={(props) => <Navigation {...props} />}
-        // "Zurück" from a page under "Verwalten" or the settings returns to the tab it was opened
-        // from (spec 0005, AC-054).
-        backBehavior="history"
-        screenOptions={{
-          headerShown: false,
-          tabBarPosition: isPhone ? 'bottom' : 'left',
-          sceneStyle: { backgroundColor: theme.colors.bg },
-        }}
+      {/* The banner already keeps the status bar clear; the pages below must not do it again. */}
+      <SafeAreaInsetsContext.Provider
+        value={{ ...insets, top: banner ? 0 : insets.top, left: 0, right: 0 }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
-        <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
-        <Tabs.Screen name="kalender" options={{ title: 'Kalender' }} />
-        <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
-        <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
-        {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
-        <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
-        <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
-        <Tabs.Screen name="reisen" options={{ title: 'Reisen' }} />
-        <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
-        <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
-        <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
-        <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />
-        <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen' }} />
-      </Tabs>
+        <Tabs
+          tabBar={(props) => <Navigation {...props} />}
+          // "Zurück" from a page under "Verwalten" or the settings returns to the tab it was opened
+          // from (spec 0005, AC-054).
+          backBehavior="history"
+          screenOptions={{
+            headerShown: false,
+            tabBarPosition: isPhone ? 'bottom' : 'left',
+            sceneStyle: { backgroundColor: theme.colors.bg },
+          }}
+        >
+          <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
+          <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
+          <Tabs.Screen name="kalender" options={{ title: 'Kalender' }} />
+          <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
+          <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
+          {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
+          <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
+          <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
+          <Tabs.Screen name="reisen" options={{ title: 'Reisen' }} />
+          <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
+          <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
+          <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
+          <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />
+          <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen' }} />
+        </Tabs>
+      </SafeAreaInsetsContext.Provider>
     </View>
   );
 }
@@ -103,19 +120,15 @@ function Navigation(props: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
-  // A page outside the five areas highlights no tab (AC-002, AC-054).
-  const activeKey = KEY_OF_ROUTE[activeRoute] ?? '';
+  // A detail page highlights the section it came from (`von`); a page under "Verwalten"
+  // highlights no tab (spec 0019, REQ-006; spec 0005, AC-054).
+  const section = useActiveSection();
+  const activeKey = (section && KEY_OF_SECTION[section]) ?? '';
+  const openSection = useOpenSection();
+  // A section always shows its start page as last left, without detail or window (REQ-005).
   const select = (key: string) => {
-    const route = props.state.routes.find((candidate) => candidate.name === ROUTE_OF_KEY[key]);
-    if (!route) return;
-    // A tab with its own stack goes back to its first page on a second tap.
-    const event = props.emitter.emit({
-      type: 'tabPress',
-      target: route.key,
-      canPreventDefault: true,
-    });
-    if (event.defaultPrevented) return;
-    props.navigateToTab(route.key);
+    const target = SECTION_OF_KEY[key];
+    if (target) openSection(target);
   };
 
   if (!isPhone) {

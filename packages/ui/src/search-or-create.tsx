@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
-import { Button, IconButton, TextField, focusRing } from './controls';
+import { Button, IconButton, TextField, keyboardFocusRing } from './controls';
 import { expandableA11y } from './expandable';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
@@ -140,7 +140,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                   borderRadius: theme.shape.radius.control,
                   opacity: disabled ? 0.45 : state.pressed ? 0.6 : 1,
                 },
-                focusRing(theme, (state as { focused?: boolean }).focused),
+                keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
               ]}
             >
               <Icon name="plus" size={20} color="accent" />
@@ -202,7 +202,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                 alignSelf: 'flex-start',
                 opacity: state.pressed ? 0.6 : 1,
               },
-              focusRing(theme, (state as { focused?: boolean }).focused),
+              keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
             ]}
           >
             <Text variant="smallStrong" color="accent">

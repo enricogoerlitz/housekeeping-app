@@ -209,7 +209,7 @@ test.describe('shell at phone width', () => {
     await goOffline(page);
     await nav(page, 'rezepte');
     const banner = tid(page, 'offline-banner');
-    await expect(banner).toHaveText('Offline – Lesen und Abhaken gehen');
+    await expect(banner).toHaveText('Offline – Lesen, Einkaufen und Packen gehen');
     const color = parseRgb(await banner.evaluate((el) => getComputedStyle(el).backgroundColor));
     const h = hue(color);
     expect(h >= 15 && h <= 50, `banner hue ${h} is orange`).toBe(true);

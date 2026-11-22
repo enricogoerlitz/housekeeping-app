@@ -206,7 +206,9 @@ test.describe('with the service worker', () => {
     await page.reload();
     await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 20_000 });
     await expect(tid(page, 'today-meals')).toContainText('Lasagne');
-    await expect(tid(page, 'offline-banner')).toHaveText('Offline – Lesen und Abhaken gehen');
+    await expect(tid(page, 'offline-banner')).toHaveText(
+      'Offline – Lesen, Einkaufen und Packen gehen',
+    );
     await nav(page, 'liste');
     await expect(itemRows(page, 'Milch')).toHaveCount(1);
   });

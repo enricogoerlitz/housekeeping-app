@@ -47,6 +47,8 @@ export interface ActivityDetailProps {
   activityId: Id;
   /** Shows a back arrow (own page). */
   onBack?: () => void;
+  /** The origin on the back link (spec 0019, REQ-006). */
+  backLabel?: string;
   /** Shows a close button (split view on wide screens). */
   onClose?: () => void;
   /** Opens another activity (after saving or for a duplicate). */
@@ -62,7 +64,13 @@ export function ActivityDetail(props: ActivityDetailProps) {
   const router = useRouter();
   if (!activity) {
     return (
-      <DetailPage onBack={props.onBack} title="Aktivität" tone="plan" testID="activity-screen">
+      <DetailPage
+        onBack={props.onBack}
+        backLabel={props.backLabel}
+        title="Aktivität"
+        tone="plan"
+        testID="activity-screen"
+      >
         <EmptyState
           icon="mountain"
           title="Aktivität nicht gefunden"
@@ -113,6 +121,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
   return (
     <DetailPage
       onBack={props.onBack}
+      backLabel={props.backLabel}
       title={activity.name}
       titleTestID="activity-title"
       right={favorite}
@@ -145,7 +154,9 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             </Text>
           )}
           {activity.description ? (
-            <Text testID="activity-description">{activity.description}</Text>
+            <Text selectable testID="activity-description">
+              {activity.description}
+            </Text>
           ) : null}
           {place ? (
             <Row gap={6} align="flex-start">

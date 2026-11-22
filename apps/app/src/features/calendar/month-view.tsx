@@ -10,7 +10,7 @@ import {
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
-import { Button, KindDot, Text, keyboardFocusRing, useTheme } from '@housekeeping/ui';
+import { Button, KindDot, Text, keyboardFocusRing, useHover, useTheme } from '@housekeeping/ui';
 import { Platform, Pressable, View, type HostInstance, type ViewStyle } from 'react-native';
 
 import { AbsenceStripeView, EntryLine, useStripeColors } from './calendar-parts';
@@ -235,6 +235,7 @@ function MonthPhone(props: MonthViewProps) {
 
 function MonthGridDesktop(props: MonthViewProps) {
   const theme = useTheme();
+  const hover = useHover();
   const refused = useRefused();
   const c = theme.colors;
   const { data } = props;
@@ -295,7 +296,7 @@ function MonthGridDesktop(props: MonthViewProps) {
                                 paddingHorizontal: 4,
                                 paddingTop: 4,
                                 alignItems: 'flex-start',
-                                backgroundColor: hovered ? c.surfaceSunken : 'transparent',
+                                backgroundColor: hover(hovered) ? c.surfaceSunken : 'transparent',
                               },
                               keyboardFocusRing(theme, focused),
                             ];

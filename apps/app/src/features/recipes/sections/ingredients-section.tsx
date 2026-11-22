@@ -175,6 +175,7 @@ function IngredientsRead(props: {
               leading={
                 <Text
                   variant="bodyStrong"
+                  selectable
                   style={{ width: 76 }}
                   testID={`ingredient-amount-${ingredient.id}`}
                 >
@@ -471,7 +472,8 @@ function IngredientTitle(props: { ingredient: RecipeIngredient }) {
   const article = useArticlesById()[ingredient.articleId];
   return (
     <View>
-      <Text variant="rowTitle">
+      {/* Content to copy stays selectable, unlike the controls around it (spec 0019, AC-002). */}
+      <Text variant="rowTitle" selectable>
         {article?.name ?? ''}
         {ingredient.prepNote ? (
           <Text variant="body" testID={`ingredient-prep-note-${ingredient.id}`}>

@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { announce } from './announce';
-import { IconButton, focusRing, keyboardFocus } from './controls';
+import { IconButton, keyboardFocusRing, keyboardFocus } from './controls';
 import { haptic } from './haptics';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
@@ -393,7 +393,7 @@ function ReorderRow(props: ReorderRowProps) {
                   borderRadius: theme.shape.radius.control,
                   opacity: state.pressed ? 0.6 : 1,
                 },
-                focusRing(theme, pressFocused),
+                keyboardFocusRing(theme, pressFocused),
               ]}
             >
               <Text variant="rowTitle" color={item.muted ? 'muted' : 'text'} numberOfLines={2}>
@@ -436,7 +436,7 @@ function ReorderRow(props: ReorderRowProps) {
                   opacity: props.disabled ? 0.4 : 1,
                 },
                 props.disabled ? null : WEB_HANDLE,
-                focusRing(theme, focused),
+                keyboardFocusRing(theme, focused),
               ]}
             >
               <Icon name="grip-vertical" size={20} color="muted" />

@@ -1,16 +1,21 @@
-import { routeId } from '@housekeeping/core';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAddressedId } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { RestaurantDetail } from './restaurant-detail';
 
 /** A restaurant on its own page (phones, deep links). */
 export function RestaurantScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
-  const router = useRouter();
-  // Only a uuid reaches the lookup; anything else shows "nicht gefunden".
-  const id = routeId(params.id);
-  // To the restaurants of "Essen", also after a deep link: the stack's first page would otherwise
-  // keep the restaurant id as a recipe id (spec 0005, AC-004).
-  const back = () => router.dismissTo({ pathname: '/rezepte', params: { view: 'restaurants' } });
-  return <RestaurantDetail restaurantId={id ?? ''} onBack={back} />;
+  const { params } = usePageParams('restaurant');
+  // "‹ Essen" (the restaurant list) or the section it came from (spec 0019, REQ-006).
+  const origin = useOriginBack(params.von, 'essen');
+  // Only an id of an own household reaches the lookup; anything else shows "nicht gefunden".
+  const found = useAddressedId('restaurants', params.id);
+  if (found === 'switching') return null;
+  return (
+    <RestaurantDetail
+      restaurantId={found === 'shown' ? (params.id ?? '') : ''}
+      onBack={origin.back}
+      backLabel={origin.label}
+    />
+  );
 }

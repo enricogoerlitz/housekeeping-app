@@ -520,14 +520,61 @@ describe("the household's shopping list (spec 0006, ADR-0012)", () => {
     stop();
   });
 
+  it('AC-030 (0019): offline "+" on "Milch 1×" shows 2× as pending and sends it once online', async () => {
+    const engine = await fx.startEnrico();
+    const milk = itemOf('Milch');
+    if (!milk) throw new Error('fixture');
+    const count = milk.contributions.reduce((sum, part) => sum + (part.count ?? 0), 0);
+    engine.setSimulatedOffline(true);
+    expect(adjustItemCount(milk.id, 1)).toEqual({ count: count + 1, removed: false });
+    const shown = itemOf('Milch');
+    expect(shown?.id).toBe(milk.id);
+    expect(shown?.pendingSync).toBe(true);
+    expect(shown?.contributions.reduce((sum, part) => sum + (part.count ?? 0), 0)).toBe(count + 1);
+    expect(await fx.storage.get('queue')).toEqual([
+      expect.objectContaining({ kind: 'add', householdId: H }),
+    ]);
+    await fx.settle(engine);
+    expect(fx.calls).toEqual([]);
+
+    engine.setSimulatedOffline(false);
+    await fx.settle(engine);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['addShoppingContributions']);
+    const counts = fx.server
+      .rows(H, 'shopping_contributions')
+      .filter((row) => row.item_id === milk.id)
+      .reduce((sum, row) => sum + Number(row.count ?? 0), 0);
+    expect(counts).toBe(count + 1);
+    expect(await fx.storage.get('queue')).toEqual([]);
+  });
+
+  it('AC-031 (0019): an item deleted elsewhere before the "+" is sent comes back as a new one', async () => {
+    const engine = await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const milk = itemOf('Milch');
+    if (!milk) throw new Error('fixture');
+    engine.setSimulatedOffline(true);
+    adjustItemCount(milk.id, 1);
+    fx.server.deleteRow(H, 'shopping_items', milk.id);
+    await fx.settle(nadja);
+    engine.setSimulatedOffline(false);
+    await fx.settle(engine);
+    const milks = fx.server
+      .rows(H, 'shopping_items')
+      .filter((row) => row.article_id === milk.articleId);
+    expect(milks).toHaveLength(1);
+    expect(milks[0]?.id).not.toBe(milk.id);
+  });
+
   it('AC-019: offline, ±, Zusatz, entfernen and leeren are refused with the offline hint', async () => {
     const engine = await fx.startEnrico();
     const milk = itemOf('Milch');
     if (!milk) throw new Error('fixture');
     engine.setSimulatedOffline(true);
     const before = getData();
-    expect(() => adjustItemCount(milk.id, 1)).toThrow(OfflineError);
-    expect(() => adjustItemCount(milk.id, 1)).toThrow('Offline – zum Bearbeiten brauchst du Netz');
+    // Spec 0019: "+" goes through the store queue offline (AC-030); "−" stays online (AC-031).
+    expect(() => adjustItemCount(milk.id, -1)).toThrow(OfflineError);
+    expect(() => adjustItemCount(milk.id, -1)).toThrow('Offline – zum Bearbeiten brauchst du Netz');
     expect(() => setItemNote(milk.id, 'laktosefrei')).toThrow(OfflineError);
     expect(() => removeShoppingItem(milk.id)).toThrow(OfflineError);
     expect(() => clearShoppingList()).toThrow(OfflineError);

@@ -30,11 +30,11 @@ import {
   useTheme,
   type IconName,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
+import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useCoverSources } from '@/features/recipes/recipe-cover';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
@@ -97,13 +97,13 @@ function badgeFor(entry: MealPlanEntry, collection: boolean) {
  * (AC-013). Below: "Für morgen" for the day after the shown one (AC-014).
  */
 export function TodayMeals(props: TodayMealsProps) {
-  const router = useRouter();
   const theme = useTheme();
   const recipesById = useRecipesById();
   const restaurantsById = useRestaurantsById();
   const activitiesById = useActivitiesById();
   const openRecipe = useOpenRecipe();
   const openRestaurant = useOpenRestaurant();
+  const openActivity = useOpenActivity();
   const openCalendarAt = useOpenCalendarAt();
   const [routeFor, setRouteFor] = useState<RouteTarget | undefined>();
   const allLabel = plannedAllLabel(props.entries.length);
@@ -142,16 +142,7 @@ export function TodayMeals(props: TodayMealsProps) {
           entry={entry}
           activity={activity}
           slotName={slotName}
-          onPress={
-            activity
-              ? () =>
-                  router.push(
-                    { pathname: '/kalender/aktivitaet/[id]', params: { id: activity.id } },
-                    // The plan stays underneath, so a tap on "Plan" leads to it (spec 0005).
-                    { withAnchor: true },
-                  )
-              : undefined
-          }
+          onPress={activity ? () => openActivity(activity.id) : undefined}
           onRoute={
             activity && hasPlace(activity)
               ? () =>

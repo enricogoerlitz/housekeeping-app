@@ -15,21 +15,19 @@ import {
   useBreakpoint,
   ViewTabs,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 import { AreasView } from './areas-view';
 import { messageOf, viewFromParam, VIEW_OPTIONS, type StoresView } from './labels';
 import { NameSheet } from './store-dialogs';
 import { StoreOrderPanel } from './store-order-screen';
-
-const firstParam = (value: string | string[] | undefined) =>
-  Array.isArray(value) ? value[0] : value;
 
 /**
  * The stores (REQ-008): each with "n Bereiche · m ausgeblendet" and "Standard", then "+ Neuer
@@ -127,9 +125,18 @@ export function StoresScreen() {
   const router = useRouter();
   const back = useBackToManage();
   const { isPhone } = useBreakpoint();
-  const params = useLocalSearchParams<{ ansicht?: string | string[] }>();
-  const view = viewFromParam(firstParam(params.ansicht));
-  const [chosenId, setChosenId] = useState<Id | undefined>();
+  // View and the chosen store stand in the address (spec 0019, REQ-011, REQ-014); on phones the
+  // same `markt` opens the store's page.
+  const address = usePageParams('maerkte');
+  const { params } = address;
+  const view = viewFromParam(params.ansicht);
+  const chosenId = params.markt;
+  const replace = address.replace;
+  useEffect(() => {
+    if (!isPhone || !chosenId) return;
+    replace({ markt: undefined });
+    router.push({ pathname: '/markt/[id]', params: { id: chosenId } });
+  }, [isPhone, chosenId, replace, router]);
 
   // On wide screens a store is always shown: the chosen one, else the default, else the first.
   const selected =
@@ -139,10 +146,10 @@ export function StoresScreen() {
 
   const select = (storeId: Id) => {
     if (isPhone) router.push({ pathname: '/markt/[id]', params: { id: storeId } });
-    else setChosenId(storeId);
+    else address.replace({ markt: storeId });
   };
   const setView = (next: StoresView) =>
-    router.setParams({ ansicht: next === 'bereiche' ? 'bereiche' : undefined });
+    address.replace({ ansicht: next === 'bereiche' ? 'bereiche' : undefined, markt: undefined });
 
   const split = view === 'maerkte' && !isPhone;
   return (
@@ -176,7 +183,7 @@ export function StoresScreen() {
               <StoreOrderPanel
                 key={selected.id}
                 storeId={selected.id}
-                onDeleted={() => setChosenId(undefined)}
+                onDeleted={() => address.replace({ markt: undefined })}
                 showTitle
               />
             ) : undefined

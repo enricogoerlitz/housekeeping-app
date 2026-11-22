@@ -1,4 +1,10 @@
-import { useCurrentMember, useHousehold, usePlanEntries, useToday } from '@housekeeping/api';
+import {
+  useCurrentMember,
+  useHousehold,
+  useHouseholdsMap,
+  usePlanEntries,
+  useToday,
+} from '@housekeeping/api';
 import {
   addDays,
   entriesForDay,
@@ -8,12 +14,15 @@ import {
   weekNav,
   type ISODate,
 } from '@housekeeping/core';
-import { Screen, ScreenHeader, useBreakpoint } from '@housekeeping/ui';
+import { Screen, ScreenHeader, Text, useBreakpoint } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { HouseholdLine } from '@/features/household/household-line';
 import { StartPageActions } from '@/features/shell/profile-button';
-import { useHandedTarget } from '@/lib/target-params';
+import { useOnlineOnly } from '@/features/shell/offline';
+import { useHandedHousehold } from '@/lib/addressed';
+import { usePageParams } from '@/lib/url-state';
 
 import { TodayAbsence } from './today-absence';
 import { TodayChores } from './today-chores';
@@ -32,28 +41,35 @@ function greeting(hour: number): string {
 
 /**
  * "Übersicht" (spec 0011, REQ-001): one shown day, as if it were today. Head, week strip,
- * planned, "Für morgen", "Wie war's?" and "Zu tun" all follow it. The shown day lives only while
- * the app runs: coming back from a detail page keeps it, a new start shows today (AC-008).
+ * planned, "Für morgen", "Wie war's?" and "Zu tun" all follow it. The shown day stands in the
+ * address (`/?tag=…`, spec 0019): coming back from a detail page and a reload keep it.
  * Phone: head, week strip, planned, Wie war's?, Zu tun, Einkauf, Reisetasche. Desktop (1,6 : 1):
  * left week strip and planned, right Wie war's?, Zu tun, Einkauf and Reisetasche (spec 0012).
  */
-/** A tap on the Tagesüberblick opens `/?haushalt=…` (spec 0013, Decision 12, AC-037). */
-const TARGET_PARAMS = ['haushalt'] as const;
-
 export function TodayScreen() {
-  // An own household other than the active one becomes active; the parameter is then cleared.
-  useHandedTarget('/', TARGET_PARAMS);
+  const address = usePageParams('uebersicht');
+  // A tap on the Tagesüberblick opens `/?haushalt=…` (spec 0013, Decision 12, AC-037): an own
+  // household other than the active one becomes active; the parameter then leaves.
+  useHandedHousehold(address.params.haushalt, address.replace);
   const { isPhone, bp } = useBreakpoint();
   // The time of day only picks the greeting; the date itself comes from useToday().
   const [hour] = useState(() => new Date().getHours());
   const today = useToday();
   const me = useCurrentMember();
   const household = useHousehold();
+  const households = useHouseholdsMap();
   const planEntries = usePlanEntries();
-  // undefined = today, so the page follows the date when the day changes while the app runs.
-  const [picked, setPicked] = useState<ISODate | undefined>(undefined);
-  const shown = picked ?? today;
-  const show = (date: ISODate) => setPicked(date === today ? undefined : date);
+  const online = useOnlineOnly();
+  // Once for the whole page, not per section (spec 0019, REQ-010, AC-029); the disabled buttons
+  // keep it as their hint.
+  const offlineHint = online.hint ? (
+    <Text variant="small" color="warn" testID="today-offline-hint">
+      {online.hint}
+    </Text>
+  ) : null;
+  // No day = today, so the page follows the date when the day changes while the app runs.
+  const shown = address.params.tag ?? today;
+  const show = (date: ISODate) => address.replace({ tag: date === today ? undefined : date });
 
   const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
   const slotOrder = slots.map((slot) => slot.id);
@@ -67,13 +83,19 @@ export function TodayScreen() {
       today={today}
       wide={!isPhone}
       onPage={(weeks) => show(shiftShownDay(shown, weeks))}
-      onToday={() => setPicked(undefined)}
+      onToday={() => address.replace({ tag: undefined })}
     />
   );
   const header = (
     <ScreenHeader
       testID="today-header"
       title={overviewTitle(shown, today)}
+      // On phones the active household above the title, with more than one (REQ-007, AC-019).
+      above={
+        isPhone && Object.keys(households).length > 1 ? (
+          <HouseholdLine name={household.name} />
+        ) : null
+      }
       subtitle={isToday ? `${greeting(hour)}, ${me.name}` : undefined}
       right={
         isPhone ? (
@@ -118,6 +140,7 @@ export function TodayScreen() {
   if (isPhone) {
     return (
       <Screen testID="today-screen" header={header}>
+        {offlineHint}
         {nav}
         {strip}
         <TodayAbsence shown={shown} />
@@ -132,6 +155,7 @@ export function TodayScreen() {
 
   return (
     <Screen testID="today-screen" header={header}>
+      {offlineHint}
       <View
         style={{ flexDirection: 'row', gap: bp === 'desktop' ? 48 : 28, alignItems: 'flex-start' }}
       >
