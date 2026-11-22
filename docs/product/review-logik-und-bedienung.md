@@ -63,6 +63,20 @@ umgesetzt wird.
 Eine gemeinsame Lösung für die neuen Grenzen wäre **ein Baustein „Anderes Datum …“**. Er hängt am
 Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheitsfenster schon hat.
 
+## Entscheidungen von Enrico (22.11.2026)
+
+Enrico übernimmt **alle Empfehlungen** dieses Dokuments. Die harten Änderungen hat er einzeln
+entschieden:
+
+| Befund | Entscheidung                                                                                                                                                            |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H-03   | **Ja:** Die Rotation überspringt Reisende, feste Termine während einer Reise des ganzen Haushalts rücken auf den ersten Tag danach, „Zu tun“ bleibt in der Zeit leer    |
+| V-04   | **Ja:** Haushalt umbenennen; „Haushalt löschen“ nur für das letzte Mitglied, mit Bestätigung, endgültig mit allen Daten und Fotos                                       |
+| X-02   | **Ja:** Aktivitäten und Restaurants löschen mit Rückgängig; vergangene Einträge bleiben als Verlauf, künftige entfallen mit Hinweis                                     |
+| X-08   | **Nein:** Die Google-Anmeldung bleibt auf „Testing“. Umgesetzt wird die Alternative: Hinweis im Fenster „Einladen“, neue Adressen bei Google als Testnutzer einzutragen |
+
+Umsetzung nach den Kalender-Specs 0016 und 0017, in eigenen Specs je Bereich.
+
 ## Von Claude freigegeben (22.11.2026)
 
 Auf Enricos Auftrag hat Claude die eindeutigsten Logikfehler ausgewählt und freigegeben: Fälle, in
