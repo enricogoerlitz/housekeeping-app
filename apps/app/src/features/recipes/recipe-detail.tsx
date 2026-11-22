@@ -13,6 +13,7 @@ import {
   shownVariantId,
   type Id,
   type Recipe,
+  type VariantChoice,
 } from '@housekeeping/core';
 import {
   Button,
@@ -32,6 +33,7 @@ import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
+import { usePageParams } from '@/lib/url-state';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
 import { CollectionDetailBody } from './collection-detail';
@@ -137,14 +139,28 @@ function RecipeDetailBody(props: {
   const articlesById = useArticlesById();
   const { bp, isPhone } = useBreakpoint();
   const desktop = bp === 'desktop';
-  // Displayed portions are local; when the recipe's own portions change (assistant), they follow.
-  const [portions, setPortions] = useState({ base: recipe.servings, shown: recipe.servings });
-  const shownServings = portions.base === recipe.servings ? portions.shown : recipe.servings;
+  // Portions, variant and the windows "Einplanen", "Zur Sammlung" and "Vorratscheck" stand in the
+  // address (spec 0019, REQ-013): `/rezept/<id>?portionen=6&fenster=einplanen`. The recipe's own
+  // portions are the default and stay out of it.
+  const address = usePageParams('rezept');
+  const { params } = address;
+  const shownServings = params.portionen ?? recipe.servings;
+  const setPortions = (value: number) =>
+    address.replace({ portionen: value === recipe.servings ? undefined : value });
   // AC-033: a new default after "Fertig" is preselected; a removed variant falls back to it.
-  const [variantChoice, setVariantChoice] = useState(() => chooseVariant(recipe));
-  const [pantryCheck, setPantryCheck] = useState(false);
-  const [planning, setPlanning] = useState(false);
-  const [addingToCollection, setAddingToCollection] = useState(false);
+  const variantChoice = chooseVariant(recipe, params.variante);
+  const setVariantChoice = (choice: VariantChoice) =>
+    address.replace({
+      variante: choice.variantId === choice.defaultId ? undefined : choice.variantId,
+    });
+  const windowOf = (fenster: 'einplanen' | 'sammlung' | 'vorratscheck') => ({
+    open: params.fenster === fenster,
+    set: (open: boolean) =>
+      open ? address.open({ fenster }) : address.close({ fenster: undefined }),
+  });
+  const { open: planning, set: setPlanning } = windowOf('einplanen');
+  const { open: addingToCollection, set: setAddingToCollection } = windowOf('sammlung');
+  const { open: pantryCheck, set: setPantryCheck } = windowOf('vorratscheck');
   const photo = useRecipePhoto(recipe);
   const editor = useSectionEditor(recipe);
 
@@ -223,7 +239,7 @@ function RecipeDetailBody(props: {
       variantId={activeVariantId}
       onVariant={(id: Id) => setVariantChoice(chooseVariant(recipe, id))}
       servings={shownServings}
-      onServings={(value) => setPortions({ base: recipe.servings, shown: Math.max(1, value) })}
+      onServings={(value) => setPortions(Math.max(1, value))}
       editor={editor}
     />
   );

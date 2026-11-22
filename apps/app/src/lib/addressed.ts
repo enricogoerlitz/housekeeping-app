@@ -43,13 +43,15 @@ export function useHandedHousehold(
 /**
  * An object parameter whose object is not in the active household (AC-052): a toast with
  * `message`, no window, and `clear` removes the parameter. An object that was shown and then
- * removed (another device) just closes, without the toast.
+ * removed (another device) just closes, with `goneMessage` if given.
  */
 export function useMissingObject(
   id: Id | undefined,
   present: boolean,
   message: string,
   clear: () => void,
+  /** Said instead of nothing when the shown object went away, e.g. "Milch steht nicht mehr …". */
+  goneMessage?: string,
 ): void {
   const seen = useRef<Id | undefined>(undefined);
   useEffect(() => {
@@ -59,6 +61,7 @@ export function useMissingObject(
   useEffect(() => {
     if (!missing) return;
     if (seen.current !== id) toast.show({ message });
+    else if (goneMessage) toast.show({ message: goneMessage });
     clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per missing id
   }, [missing, id]);

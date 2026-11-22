@@ -255,7 +255,14 @@ function MiniDay(props: {
           accessibilityState={{ selected: props.selected }}
           onPress={guardPress(props.onPress)}
           style={(state) => [
-            { alignItems: 'center', paddingVertical: 1, backgroundColor: background },
+            // At least 24 × 24 px to click (spec 0019, REQ-009, AC-028); the day stays small.
+            {
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 24,
+              paddingVertical: 1,
+              backgroundColor: background,
+            },
             keyboardFocusRing(theme, (state as PressState).focused),
           ]}
         >
