@@ -584,8 +584,11 @@ frei wählbar, auch über Monats- und Jahresgrenzen und in der Vergangenheit (Sp
 AC-044). Kann eine Packliste haben (Spec 0012).
 
 - **Im Code:** `Absence`, `absences`; ganzer Haushalt = ohne `memberId`
-- **In der Oberfläche:** „Reise“, „Reisen“, ohne Notiz „unterwegs“ (Spec 0016, REQ-008, Entwurf).
+- **In der Oberfläche:** „Reise“, „Reisen“, ohne Notiz „unterwegs“ (Spec 0016, REQ-008).
   Specs, Regeln und Code sprechen weiter von der Abwesenheit.
+- **Adressen:** die Seite „Reisen“ unter `/reisen`, die Seite einer Reise mit Packliste unter
+  `/kalender/reise/<id>` (Spec 0016, REQ-008); die alten Adressen `/abwesenheiten` und
+  `/kalender/urlaub/<id>` leiten nicht weiter.
 - **Nicht verwenden:** Urlaub (ist nur ein Fall davon), Pause
 - **Siehe auch:** [Abwesenheits-Streifen](#abwesenheits-streifen), [Packliste](#packliste)
 
@@ -615,7 +618,7 @@ ohne Einschalten kommt keine (Spec 0017, Entwurf). Sie geht mit, wenn der Eintra
 ### Abwesenheits-Streifen
 
 Die Darstellung einer oder mehrerer Abwesenheiten im Kalender und auf der „Übersicht“: ein Streifen
-mit Notiz (ohne Notiz „abwesend“), Ende („bis Mo 4.1.“) und Avataren. Abwesenheiten mit gleichem
+mit Notiz (ohne Notiz „unterwegs“, bis Spec 0016 „abwesend“), Ende („bis Mo 4.1.“) und Avataren. Abwesenheiten mit gleichem
 Von, Bis und gleicher Notiz bilden einen Streifen. Eine Person: zart in ihrer Farbe; mehrere oder
 der ganze Haushalt: neutral (Spec 0010). Ein Tipp öffnet ab Spec 0012 die Urlaubsseite, vorher
 „Abwesenheit bearbeiten“; mit Packliste trägt er ein Taschen-Symbol.
