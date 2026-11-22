@@ -521,6 +521,15 @@ describe('reminderMessage', () => {
     ).toBe('Erinnerung: Eislaufen (Hohenschönhausen) · heute Vormittag');
   });
 
+  it('REQ-005: without a (known) Tageszeit it is left out, like the scheduler', () => {
+    const noSlot = { ...lasagne, slotName: '' };
+    expect(reminderMessage({ ...noSlot, offsetDays: 0 })).toBe('Erinnerung: Lasagne · heute');
+    expect(reminderMessage({ ...noSlot, offsetDays: 1, text: 'Käse' })).toBe(
+      'Erinnerung: Lasagne · morgen · Käse',
+    );
+    expect(reminderMessage({ ...noSlot, offsetDays: 2 })).toBe('Erinnerung: Lasagne · Sa 28.11.');
+  });
+
   it('REQ-005: a very long name is shortened with "…" to at most 400 characters', () => {
     const long = 'L'.repeat(500);
     const message = reminderMessage({ ...lasagne, title: long, offsetDays: 1, text: 'Käse' });

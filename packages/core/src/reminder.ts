@@ -348,7 +348,8 @@ const ELLIPSIS = '…';
  * - <when>, by `offsetDays` (the entry lies that many days after the sending day):
  *   0 → "heute <Tageszeit>", 1 → "morgen <Tageszeit>", otherwise
  *   "<Mo|Di|Mi|Do|Fr|Sa|So> <day>.<month>., <Tageszeit>" of the entry's day, day and month without
- *   leading zeros ("Sa 28.11., Abend", "Fr 5.3., Abend"). <Tageszeit> is the slot's name as is.
+ *   leading zeros ("Sa 28.11., Abend", "Fr 5.3., Abend"). <Tageszeit> is the slot's name as is;
+ *   an empty name (the entry's slot is unknown) leaves it out: "heute", "Sa 28.11.".
  * - <text>: the reminder's text when set (already trimmed, 1–80 characters).
  * - At most 400 characters, counted in code points (`char_length`): when longer, only the name
  *   is cut, to its first (400 − length of the rest − 1) characters followed by "…".
@@ -360,13 +361,15 @@ export function reminderMessage(input: {
   offsetDays: number;
   text?: string;
 }): string {
-  const { entryDate, slotName, offsetDays } = input;
+  const { entryDate, offsetDays } = input;
+  // Without a (known) Tageszeit it is left out, as the scheduler does (no trailing space or comma).
+  const slot = input.slotName === '' ? undefined : input.slotName;
   const when =
     offsetDays === 0
-      ? `heute ${slotName}`
+      ? `heute${slot ? ` ${slot}` : ''}`
       : offsetDays === 1
-        ? `morgen ${slotName}`
-        : `${weekdayShort(entryDate)} ${formatShortDate(entryDate)}, ${slotName}`;
+        ? `morgen${slot ? ` ${slot}` : ''}`
+        : `${weekdayShort(entryDate)} ${formatShortDate(entryDate)}${slot ? `, ${slot}` : ''}`;
   const rest = ` · ${when}${input.text ? ` · ${input.text}` : ''}`;
   const room = MAX_REMINDER_MESSAGE - charLength(MESSAGE_PREFIX) - charLength(rest);
   const name = [...input.title];

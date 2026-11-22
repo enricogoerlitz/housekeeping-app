@@ -6,9 +6,12 @@
 -- private.chore_assignees follows Decision 9 of the plan, which differs from choreMemberIds in
 -- two cases on purpose: a rotation with a next person reminds only that person (AC-023), and
 -- "egal wer" means everyone (empty array), where choreMemberIds returns nobody.
+--
+-- Spec 0017 (plan, Decision 3): private.plan_entry_title and private.entry_reminder_body against
+-- `planEntryTitle` and `reminderMessage` in reminder.test.ts, with the same cases and names.
 begin;
 \ir _helpers.psql
-select plan(17);
+select plan(44);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -101,6 +104,101 @@ select is(tests.assignees('rotating_next'), array[tests.fx('nadja')],
 delete from public.household_members where household_id = tests.fx('home') and profile_id = tests.fx('nadja');
 select is(tests.assignees('next_nadja'), array[tests.fx('enrico')],
   'choreMemberIds parity: a removed next assignee falls back to the fixed member (next_assignee_id is cleared)');
+
+-- ===================== reminderMessage (reminder.test.ts, spec 0017) =====================
+select is(private.entry_reminder_body('Lasagne', 0, '2026-11-28', 'Abend', null),
+  'Erinnerung: Lasagne · heute Abend',
+  'AC-016 reminderMessage parity: on the day, "Erinnerung: Lasagne · heute Abend"');
+select is(private.entry_reminder_body('Lasagne', 1, '2026-11-28', 'Abend', 'Fleisch auftauen'),
+  'Erinnerung: Lasagne · morgen Abend · Fleisch auftauen',
+  'AC-014 reminderMessage parity: the day before with text');
+select is(private.entry_reminder_body('Lasagne', 2, '2026-11-28', 'Abend', null),
+  'Erinnerung: Lasagne · Sa 28.11., Abend',
+  'REQ-005 reminderMessage parity: further ahead with weekday and date, "Sa 28.11., Abend"');
+select is(private.entry_reminder_body('Lasagne', 3, '2027-03-05', 'Abend', null),
+  'Erinnerung: Lasagne · Fr 5.3., Abend',
+  'REQ-005 reminderMessage parity: day and month without leading zeros, "Fr 5.3., Abend"');
+select is(private.entry_reminder_body('Lasagne', 1, '2026-11-29', 'Mittag', null),
+  'Erinnerung: Lasagne · morgen Mittag',
+  'AC-019 reminderMessage parity: "Erinnerung: Lasagne · morgen Mittag"');
+select is(private.entry_reminder_body('Eislaufen (Hohenschönhausen)', 0, '2026-11-29', 'Vormittag', null),
+  'Erinnerung: Eislaufen (Hohenschönhausen) · heute Vormittag',
+  'REQ-004 reminderMessage parity: an activity is named with its Zusatz');
+select is(private.entry_reminder_body('Lasagne', 0, '2026-11-28', '', null),
+  'Erinnerung: Lasagne · heute',
+  'REQ-005 reminderMessage parity: without a (known) Tageszeit it is left out (today)');
+select is(private.entry_reminder_body('Lasagne', 1, '2026-11-28', null, 'Käse'),
+  'Erinnerung: Lasagne · morgen · Käse',
+  'REQ-005 reminderMessage parity: without a (known) Tageszeit it is left out (the day before, with text)');
+select is(private.entry_reminder_body('Lasagne', 2, '2026-11-28', '', null),
+  'Erinnerung: Lasagne · Sa 28.11.',
+  'REQ-005 reminderMessage parity: without a (known) Tageszeit it is left out (with the date)');
+select is(char_length(private.entry_reminder_body(repeat('L', 500), 1, '2026-11-28', 'Abend', 'Käse')), 400,
+  'REQ-005 reminderMessage parity: a very long name is shortened to at most 400 characters');
+select ok(private.entry_reminder_body(repeat('L', 500), 1, '2026-11-28', 'Abend', 'Käse')
+            like 'Erinnerung: LLL%L… · morgen Abend · Käse',
+  'REQ-005 reminderMessage parity: only the name is cut, with "…"');
+select is(private.entry_reminder_body(repeat('N', 400 - 12 - 14), 0, '2026-11-28', 'Abend', null),
+  'Erinnerung: ' || repeat('N', 400 - 12 - 14) || ' · heute Abend',
+  'REQ-005 reminderMessage parity: a name that fits exactly is not shortened');
+select is(char_length(private.entry_reminder_body(repeat('🍝', 500), 0, '2026-11-28', 'Abend', null)), 400,
+  'REQ-005 reminderMessage parity: shortening counts characters, not UTF-16 units');
+
+-- ===================== planEntryTitle (reminder.test.ts, spec 0017) =====================
+insert into fx (key) values ('r_lasagne'), ('rest1'), ('act1'), ('src'), ('src_planless'), ('slot');
+update public.households
+set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot'), 'name', 'Abend', 'sort', 0))
+where id = tests.fx('home');
+insert into public.recipes (id, household_id, title) values (tests.fx('r_lasagne'), tests.fx('home'), 'Lasagne');
+insert into public.restaurants (id, household_id, name) values (tests.fx('rest1'), tests.fx('home'), 'Mama Lu');
+insert into public.activities (id, household_id, name, name_key)
+values (tests.fx('act1'), tests.fx('home'), 'Eislaufen', 'eislaufen');
+insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id) values
+  (tests.fx('src'), tests.fx('home'), '2026-11-26', tests.fx('slot'), 'recipe', tests.fx('r_lasagne')),
+  (tests.fx('src_planless'), tests.fx('home'), null, tests.fx('slot'), 'recipe', tests.fx('r_lasagne'));
+-- The name of an entry given by its columns (not stored: references may point nowhere, the kind
+-- may be one this version does not know).
+create function tests.title(p_entry jsonb) returns text language sql
+as $$
+  select private.plan_entry_title(jsonb_populate_record(null::public.meal_plan_entries,
+    jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home'), 'slot_id', tests.fx('slot'),
+                       'kind', 'recipe') || p_entry))
+$$;
+
+select is(tests.title(jsonb_build_object('recipe_id', tests.fx('r_lasagne'))), 'Lasagne',
+  'REQ-004 planEntryTitle parity: a recipe is named by its title');
+select is(tests.title(jsonb_build_object('recipe_id', gen_random_uuid())), 'Rezept',
+  'REQ-004 planEntryTitle parity: a recipe that is gone is "Rezept"');
+select is(tests.title('{"kind": "text", "text": "Pizza"}'), 'Pizza',
+  'REQ-004 planEntryTitle parity: free text is named by its text');
+select is(tests.title('{"kind": "text"}'), '',
+  'REQ-004 planEntryTitle parity: free text without a text is empty');
+select is(tests.title(jsonb_build_object('kind', 'leftovers', 'leftovers_of_entry_id', tests.fx('src'))),
+  'Reste von Donnerstag',
+  'REQ-004 planEntryTitle parity: leftovers name the weekday of their source');
+select is(tests.title(jsonb_build_object('kind', 'leftovers', 'leftovers_of_entry_id', gen_random_uuid())),
+  'Reste',
+  'REQ-004 planEntryTitle parity: leftovers of a source that is gone are "Reste"');
+select is(tests.title(jsonb_build_object('kind', 'leftovers', 'leftovers_of_entry_id', tests.fx('src_planless'))),
+  'Reste',
+  'REQ-004 planEntryTitle parity: leftovers of a source without a day are "Reste"');
+select is(tests.title(jsonb_build_object('kind', 'restaurant', 'restaurant_id', tests.fx('rest1'), 'text', 'Alt')),
+  'Mama Lu',
+  'REQ-004 planEntryTitle parity: a restaurant by its name');
+select is(tests.title(jsonb_build_object('kind', 'restaurant', 'restaurant_id', gen_random_uuid(), 'text', 'Alt')),
+  'Alt',
+  'REQ-004 planEntryTitle parity: a restaurant that is gone by the text');
+select is(tests.title('{"kind": "restaurant"}'), 'Restaurant',
+  'REQ-004 planEntryTitle parity: a restaurant without name and text is "Restaurant"');
+select is(tests.title(jsonb_build_object('kind', 'activity', 'activity_id', tests.fx('act1'), 'note', 'Hohenschönhausen')),
+  'Eislaufen (Hohenschönhausen)',
+  'REQ-004 planEntryTitle parity: an activity with its Zusatz, "Eislaufen (Hohenschönhausen)"');
+select is(tests.title('{"kind": "activity", "text": "Zoo"}'), 'Zoo',
+  'REQ-004 planEntryTitle parity: an activity without its row by the text');
+select is(tests.title('{"kind": "activity", "note": "  "}'), 'Aktivität',
+  'REQ-004 planEntryTitle parity: a blank Zusatz is no Zusatz; without name and text "Aktivität"');
+select is(tests.title('{"kind": "party", "text": "Neu"}'), 'Neu',
+  'planEntryTitle parity: falls back to the text for a kind this version does not know');
 
 select * from finish();
 rollback;
