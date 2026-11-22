@@ -5,7 +5,7 @@
 //   node --test scripts/ci/conventions.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -302,5 +302,17 @@ describe('CLI', () => {
     const { status, output } = run(cwd, [], { GITHUB_EVENT_NAME: 'push' });
     assert.equal(status, 0, output);
     assert.match(output, /keine PR/i);
+  });
+});
+
+describe('pull request template', () => {
+  test('AC-005: a new PR starts with the spec line, a test section and the critical-path checklist', () => {
+    const template = readFileSync(path.join(root, '.github/pull_request_template.md'), 'utf8');
+    assert.match(template, /^Spec: NNNN$/m);
+    assert.match(template, /„ohne Spec, weil …“/);
+    assert.match(template, /^## Tests$/m);
+    for (const item of ['Bedrohungsmodell', 'Negativtests', '/security-check']) {
+      assert.match(template, new RegExp(`^- \\[ \\] .*${item.replace('/', '\\/')}`, 'm'), item);
+    }
   });
 });

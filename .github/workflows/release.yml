@@ -183,6 +183,13 @@ jobs:
             echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
             exit 1
           fi
+          # The address must belong to the project of this environment: the pooler user is
+          # postgres.<ref>. Only the comparison result is printed, never the address.
+          rest="${SUPABASE_POOLER_URL#*://}"
+          if [ "${rest%%:*}" != "postgres.${SUPABASE_PROJECT_REF}" ]; then
+            echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
+            exit 1
+          fi
       - name: Migrationshistorie der Produktion
         # A foreign history stops the release (runbook B5); it is never repaired by hand.
         run: |
@@ -259,6 +266,13 @@ jobs:
         run: |
           if [ -z "$SUPABASE_POOLER_URL" ]; then
             echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
+            exit 1
+          fi
+          # The address must belong to the project of this environment: the pooler user is
+          # postgres.<ref>. Only the comparison result is printed, never the address.
+          rest="${SUPABASE_POOLER_URL#*://}"
+          if [ "${rest%%:*}" != "postgres.${SUPABASE_PROJECT_REF}" ]; then
+            echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
             exit 1
           fi
       - name: Migrationen

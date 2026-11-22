@@ -114,6 +114,14 @@ jobs:
             echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
             exit 1
           fi
+          # The address must belong to the project of this environment: the pooler user is
+          # postgres.<ref>. A production address in the preview secret stops here, before the
+          # reset. Only the comparison result is printed, never the address.
+          rest="${SUPABASE_POOLER_URL#*://}"
+          if [ "${rest%%:*}" != "postgres.${SUPABASE_PROJECT_REF}" ]; then
+            echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
+            exit 1
+          fi
       - name: Datenbank neu aufsetzen
         # Migrations of develop on an empty database; the seed of config.toml is the local one.
         run: supabase db reset --remote="$SUPABASE_POOLER_URL" --no-seed --yes
