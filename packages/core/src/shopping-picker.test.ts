@@ -7,8 +7,10 @@ import {
   listPickerContinueLabel,
   listPickerDayLabel,
   listPickerEntryLabel,
+  listPickerPage,
   listPickerPreselection,
-  listPickerWeek,
+  listPickerStart,
+  shiftListPickerStart,
   toggleDaySelection,
   type ListPickerInput,
 } from './shopping-picker';
@@ -115,7 +117,7 @@ function input(partial: Partial<ListPickerInput> = {}): ListPickerInput {
     collectionRecipes: [],
     items,
     today: TODAY,
-    week: TODAY,
+    start: TODAY,
     slotOrder: SLOTS,
     ...partial,
   };
@@ -123,116 +125,129 @@ function input(partial: Partial<ListPickerInput> = {}): ListPickerInput {
 
 const titles = (rows: { recipe: Recipe }[]): string[] => rows.map((row) => row.recipe.title);
 
-describe('listPickerPreselection', () => {
-  it('AC-049: from the list, preselects what is planned from today to Sunday and not yet on the list', () => {
-    expect(listPickerPreselection(input())).toEqual(['plan-lasagne', 'plan-kuerbis', 'plan-dal']);
+// Spec 0025, REQ-001: today is Sunday, 22 November 2026 (KW 47: 16.–22. Nov, KW 48: 23.–29. Nov,
+// KW 49: 30. Nov – 6. Dez). Mango-Curry (Mi 25) is on the list already.
+describe('listPickerPage (spec 0025, REQ-001)', () => {
+  const SUNDAY = '2026-11-22';
+  const grillBook: RecipeBook = {
+    recipesById: { ...recipesById, ...grillRecipesById },
+    collectionRecipes: grillabendRecipes,
+  };
+  const page0025: MealPlanEntry[] = [
+    entry('plan-lasagne-fr', '2026-11-20', { recipeId: 'rec-lasagne' }),
+    entry('plan-shakshuka', SUNDAY),
+    entry('plan-lasagne', '2026-11-23'),
+    entry('plan-curry', '2026-11-25'),
+    entry('plan-enzo', '2026-11-27', {
+      kind: 'restaurant',
+      recipeId: undefined,
+      restaurantId: 'rest-enzo',
+    }),
+    entry('plan-grill', '2026-11-28', { recipeId: grillabend.id, portions: 3 }),
+    entry('plan-eislaufen', '2026-11-28', {
+      kind: 'activity',
+      recipeId: undefined,
+      activityId: 'act-eis',
+      sort: 1,
+    }),
+    entry('plan-shakshuka-di', '2026-12-01', { recipeId: 'rec-shakshuka' }),
+    entry('plan-dal', null),
+  ];
+  const pageInput = (partial: Partial<ListPickerInput> = {}): ListPickerInput => ({
+    ...input({ entries: page0025, today: SUNDAY, start: SUNDAY }),
+    ...grillBook,
+    ...partial,
+  });
+  const shown = (page: ReturnType<typeof listPickerPage>) =>
+    page.groups.map((group) => [
+      group.label,
+      group.days.map((day) => [listPickerDayLabel(day), day.entries.map((row) => row.label)]),
+    ]);
+
+  it('AC-001: seven days from today, grouped by KW, without past days, restaurants and activities', () => {
+    const page = listPickerPage(pageInput());
+    expect(page.title).toBe('22.–28. Nov');
+    expect(page.canGoBack).toBe(false);
+    expect(shown(page)).toEqual([
+      ['KW 47 · 22. Nov', [['So 22 · heute', ['Shakshuka']]]],
+      [
+        'KW 48 · 23.–28. Nov',
+        [
+          ['Mo 23', ['Lasagne']],
+          ['Mi 25', ['Mango-Curry']],
+          ['Sa 28', ['Grillabend (2 Rezepte)']],
+        ],
+      ],
+    ]);
+    const curry = page.groups[1]?.days[1]?.entries[0];
+    expect(curry?.onList).toBe(true);
+    expect(titles(page.parked)).toEqual(['Linsen-Dal']);
   });
 
-  it('AC-051: from the plan in KW 48, preselects that week only', () => {
-    expect(listPickerPreselection(input({ week: '2026-11-25' }))).toEqual(['plan-paella']);
-  });
-
-  it('AC-054: a past week preselects nothing', () => {
-    expect(listPickerPreselection(input({ week: '2026-11-11' }))).toEqual([]);
-  });
-
-  it('AC-061: a recipe without ingredients is not preselected', () => {
-    const empty = {
-      ...recipesById,
-      'rec-kuerbis': recipe('rec-kuerbis', 'Kürbissuppe', { ingredients: [] }),
-    };
-    expect(listPickerPreselection(input({ recipesById: empty }))).toEqual([
+  it('AC-001: preselects what the start page plans and is not on the list yet', () => {
+    expect(listPickerPreselection(pageInput())).toEqual([
+      'plan-shakshuka',
       'plan-lasagne',
-      'plan-dal',
+      'plan-grill',
     ]);
   });
 
-  it('AC-039: after the list was cleared, Lasagne is preselected again', () => {
-    const lasagneItem: ShoppingItem = {
-      id: 'item-zwiebeln',
-      articleId: 'art-zwiebeln',
-      checked: false,
-      createdAt: '2026-11-19T08:00:00.000Z',
-      contributions: [
-        {
-          id: 'c-z',
-          source: {
-            kind: 'recipe',
-            recipeId: 'rec-lasagne',
-            entryId: 'plan-lasagne',
-            label: 'Lasagne (Fr)',
-          },
-          count: 2,
-        },
-      ],
+  it('AC-002: › shows the next seven days, ‹ comes back to today and stops there', () => {
+    const next = shiftListPickerStart(SUNDAY, SUNDAY, 1);
+    expect(next).toBe('2026-11-29');
+    const page = listPickerPage(pageInput({ start: next }));
+    expect(page.title).toBe('29. Nov – 5. Dez');
+    expect(page.canGoBack).toBe(true);
+    expect(shown(page)).toEqual([['KW 49 · 30. Nov – 5. Dez', [['Di 1', ['Shakshuka']]]]]);
+    expect(shiftListPickerStart(next, SUNDAY, -1)).toBe(SUNDAY);
+  });
+
+  it('AC-003: from the calendar in KW 49 the page starts on its Monday; ‹ steps back to today', () => {
+    const start = listPickerStart(SUNDAY, '2026-12-02');
+    expect(start).toBe('2026-11-30');
+    expect(listPickerPage(pageInput({ start })).title).toBe('30. Nov – 6. Dez');
+    expect(listPickerPreselection(pageInput({ start }))).toEqual(['plan-shakshuka-di']);
+    const back = shiftListPickerStart(start, SUNDAY, -1);
+    expect(back).toBe('2026-11-23');
+    expect(listPickerPage(pageInput({ start: back })).title).toBe('23.–29. Nov');
+    expect(shiftListPickerStart(back, SUNDAY, -1)).toBe(SUNDAY);
+  });
+
+  it('AC-004: from the calendar in KW 46 or KW 47 the page starts today', () => {
+    expect(listPickerStart(SUNDAY, '2026-11-11')).toBe(SUNDAY);
+    expect(listPickerStart(SUNDAY, '2026-11-18')).toBe(SUNDAY);
+    expect(listPickerStart(SUNDAY)).toBe(SUNDAY);
+  });
+
+  it('AC-005: across the turn of the year, KW 52 and KW 53', () => {
+    const today = '2026-12-27';
+    const entries = [entry('plan-shakshuka', today), entry('plan-lasagne', '2027-01-02')];
+    const page = listPickerPage(pageInput({ today, start: today, entries }));
+    expect(page.title).toBe('27. Dez – 2. Jan');
+    expect(page.groups.map((group) => group.label)).toEqual([
+      'KW 52 · 27. Dez',
+      'KW 53 · 28. Dez – 2. Jan',
+    ]);
+  });
+
+  it('AC-006: seven days without a recipe have no groups; Vorgemerkt stays', () => {
+    const page = listPickerPage(pageInput({ start: '2026-12-06' }));
+    expect(page.groups).toEqual([]);
+    expect(titles(page.parked)).toEqual(['Linsen-Dal']);
+  });
+
+  it('AC-061: a recipe without ingredients is left out, and so is its day', () => {
+    const empty = {
+      ...grillBook.recipesById,
+      'rec-lasagne': recipe('rec-lasagne', 'Lasagne', { ingredients: [] }),
     };
-    expect(listPickerPreselection(input({ items: [lasagneItem] }))).not.toContain('plan-lasagne');
-    expect(listPickerPreselection(input({ items: [] }))).toContain('plan-lasagne');
+    const page = listPickerPage(pageInput({ recipesById: empty }));
+    expect(page.groups[1]?.days.map((day) => day.date)).toEqual(['2026-11-25', '2026-11-28']);
   });
 
   it('a checked item still counts as on the list (REQ-008: "offen oder erledigt")', () => {
     const checked = items.map((row) => ({ ...row, checked: true }));
-    expect(listPickerPreselection(input({ items: checked }))).not.toContain('plan-curry');
-  });
-});
-
-describe('listPickerWeek', () => {
-  it('AC-049: shows recipe days of KW 47, past and on-list hints, Vorgemerkt at the bottom', () => {
-    const week = listPickerWeek(input());
-
-    expect(week.weekStart).toBe('2026-11-16');
-    expect(week.weekNumber).toBe(47);
-    expect(week.days.map((day) => day.date)).toEqual([
-      '2026-11-19',
-      '2026-11-20',
-      '2026-11-21',
-      '2026-11-22',
-    ]);
-
-    const [thursday, friday, saturday, sunday] = week.days;
-    expect(thursday).toMatchObject({ isPast: true, isToday: false });
-    expect(titles(thursday?.entries ?? [])).toEqual(['Shakshuka']);
-    expect(friday).toMatchObject({ isPast: false, isToday: true });
-    expect(friday?.entries.map((row) => [row.recipe.title, row.onList])).toEqual([
-      ['Lasagne', false],
-      ['Mango-Curry', true],
-    ]);
-    expect(titles(saturday?.entries ?? [])).toEqual(['Kürbissuppe']);
-    expect(titles(sunday?.entries ?? [])).toEqual(['Linsen-Dal']);
-    expect(titles(week.parked)).toEqual(['Halloumi-Pfanne']);
-  });
-
-  it('AC-049: restaurants and activities are not in the window', () => {
-    const ids = listPickerWeek(input()).days.flatMap((day) =>
-      day.entries.map((row) => row.entry.id),
-    );
-    expect(ids).not.toContain('plan-enzo');
-    expect(ids).not.toContain('plan-bouldern');
-  });
-
-  it('AC-050: any day inside KW 48 shows KW 48 with Paella', () => {
-    const week = listPickerWeek(input({ week: '2026-11-29' }));
-    expect(week.weekStart).toBe('2026-11-23');
-    expect(week.weekNumber).toBe(48);
-    expect(week.days.map((day) => [day.date, titles(day.entries)])).toEqual([
-      ['2026-11-23', ['Paella']],
-    ]);
-    expect(titles(week.parked)).toEqual(['Halloumi-Pfanne']);
-  });
-
-  it('AC-061: a recipe without ingredients is left out, and so is its day when nothing else is there', () => {
-    const empty = {
-      ...recipesById,
-      'rec-kuerbis': recipe('rec-kuerbis', 'Kürbissuppe', { ingredients: [] }),
-    };
-    const week = listPickerWeek(input({ recipesById: empty }));
-    expect(week.days.map((day) => day.date)).toEqual(['2026-11-19', '2026-11-20', '2026-11-22']);
-  });
-
-  it('a week without anything to buy has no days, only Vorgemerkt', () => {
-    const week = listPickerWeek(input({ week: '2026-12-07' }));
-    expect(week.days).toEqual([]);
-    expect(titles(week.parked)).toEqual(['Halloumi-Pfanne']);
+    expect(listPickerPreselection(pageInput({ items: checked }))).not.toContain('plan-curry');
   });
 
   it('orders Vorgemerkt by slot, then as in a slot', () => {
@@ -241,8 +256,8 @@ describe('listPickerWeek', () => {
       entry('plan-halloumi', null),
       entry('plan-shakshuka', null, { slotId: 'slot-mittag', sort: 5 }),
     ];
-    const week = listPickerWeek(input({ entries: parked }));
-    expect(titles(week.parked)).toEqual(['Shakshuka', 'Halloumi-Pfanne', 'Linsen-Dal']);
+    const page = listPickerPage(pageInput({ entries: parked }));
+    expect(titles(page.parked)).toEqual(['Shakshuka', 'Halloumi-Pfanne', 'Linsen-Dal']);
   });
 });
 
@@ -316,13 +331,9 @@ describe('toggleDaySelection', () => {
 });
 
 describe('listPickerDayLabel', () => {
-  it('AC-049: "Do 19 · vorbei", "Fr 20 · heute", "Sa 21"', () => {
-    const [thursday, friday, saturday] = listPickerWeek(input()).days;
-    expect([thursday, friday, saturday].map((day) => day && listPickerDayLabel(day))).toEqual([
-      'Do 19 · vorbei',
-      'Fr 20 · heute',
-      'Sa 21',
-    ]);
+  it('AC-001: "So 22 · heute", "Mo 23"', () => {
+    expect(listPickerDayLabel({ date: '2026-11-22', isToday: true })).toBe('So 22 · heute');
+    expect(listPickerDayLabel({ date: '2026-11-23', isToday: false })).toBe('Mo 23');
   });
 });
 
@@ -355,10 +366,10 @@ describe('Sammlungen in step 1 (spec 0009, REQ-008)', () => {
     entry('plan-leer', '2026-11-22', { recipeId: leer.id, sort: 1 }),
   ];
   const grillInput = (): ListPickerInput => ({ ...input({ entries: grillPlan }), ...grillBook });
+  const pageDays = () => listPickerPage(grillInput()).groups.flatMap((group) => group.days);
 
   it('AC-027: "Grillabend (2 Rezepte)" stands under Sa 21 and is preselected', () => {
-    const week = listPickerWeek(grillInput());
-    const saturday = week.days.find((day) => day.date === '2026-11-21');
+    const saturday = pageDays().find((day) => day.date === '2026-11-21');
     expect(saturday?.entries.map((row) => row.label)).toEqual([
       'Kürbissuppe',
       'Grillabend (2 Rezepte)',
@@ -370,7 +381,7 @@ describe('Sammlungen in step 1 (spec 0009, REQ-008)', () => {
     expect(canPutOnList(entry('plan-leer', TODAY, { recipeId: leer.id }), leer, grillBook)).toBe(
       false,
     );
-    const sunday = listPickerWeek(grillInput()).days.find((day) => day.date === '2026-11-22');
+    const sunday = pageDays().find((day) => day.date === '2026-11-22');
     expect(sunday?.entries.map((row) => row.entry.id)).toEqual(['plan-dal']);
   });
 

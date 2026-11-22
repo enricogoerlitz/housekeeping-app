@@ -157,7 +157,7 @@ describe('supabase transport', () => {
       { fn: 'apply_changes', args: { p_household_id: 'h1', p_ops: [op] } },
       {
         fn: 'set_shopping_item_checked',
-        args: { p_item_id: 'i1', p_checked: true, p_seen_check_seq: 2 },
+        args: { p_item_id: 'i1', p_checked: true, p_seen_check_seq: 2, p_on_list: false },
       },
       { fn: 'set_shopping_item_not_available', args: { p_item_id: 'i1', p_value: true } },
       { fn: 'add_shopping_contributions', args: { p_household_id: 'h1', p_entries: [] } },

@@ -487,6 +487,7 @@ export type ArticleFilter =
   | 'pantry'
   | 'needsReview'
   | 'similar'
+  | 'unused'
   /** "Ernährung unbekannt" (spec 0023, REQ-008): not set yet; "kein Lebensmittel" is set. */
   | 'unknownDiet';
 
@@ -495,6 +496,32 @@ export interface ArticleFilterContext<T extends Article> {
   /** From similarArticleNames. */
   similar: ReadonlyMap<Id, readonly T[]>;
   areas: readonly Area[];
+  /** From usedArticleIds; without it every article counts as unused. */
+  usedIds?: ReadonlySet<Id>;
+}
+
+/**
+ * Articles in a recipe or open on the list (spec 0025, AC-046): the others are "Unbenutzt" and
+ * can be deleted; a checked item goes with the article (M-02).
+ */
+export function usedArticleIds(
+  recipes: readonly Recipe[],
+  items: readonly ShoppingItem[],
+): Set<Id> {
+  const ids = new Set<Id>();
+  for (const recipe of recipes) {
+    for (const ingredient of recipe.ingredients) ids.add(ingredient.articleId);
+  }
+  for (const item of items) if (!item.checked) ids.add(item.articleId);
+  return ids;
+}
+
+/** "Bereich: Obst & Gemüse ✕" on "Artikel" (spec 0025, AC-045); no area = all. */
+export function articlesInArea<T extends Article>(
+  articles: readonly T[],
+  areaId: Id | undefined,
+): readonly T[] {
+  return areaId === undefined ? articles : articles.filter((article) => article.areaId === areaId);
 }
 
 function passes<T extends Article>(
@@ -502,6 +529,7 @@ function passes<T extends Article>(
   filter: ArticleFilter,
   similar: ReadonlyMap<Id, readonly T[]>,
   areaIds: ReadonlySet<Id>,
+  usedIds: ReadonlySet<Id>,
 ): boolean {
   switch (filter) {
     case 'all':
@@ -514,6 +542,8 @@ function passes<T extends Article>(
       return article.needsReview === true;
     case 'similar':
       return (similar.get(article.id)?.length ?? 0) > 0;
+    case 'unused':
+      return !usedIds.has(article.id);
     case 'unknownDiet':
       return article.diet === 'unknown';
   }
@@ -521,8 +551,8 @@ function passes<T extends Article>(
 
 /**
  * The filter chips of the page "Artikel": "Alle", "Ohne Bereich" (also an area that no longer
- * exists, like articleCountsByArea), "Vorrat", "Neu aus Rezepten", "Ähnliche Namen". Keeps the
- * given order.
+ * exists, like articleCountsByArea), "Vorrat", "Neu aus Rezepten", "Ähnliche Namen", "Unbenutzt"
+ * (spec 0025). Keeps the given order.
  */
 export function filterArticles<T extends Article>(
   articles: readonly T[],
@@ -530,7 +560,8 @@ export function filterArticles<T extends Article>(
   context: ArticleFilterContext<T>,
 ): T[] {
   const areaIds = new Set(context.areas.map((area) => area.id));
-  return articles.filter((article) => passes(article, filter, context.similar, areaIds));
+  const usedIds = context.usedIds ?? new Set<Id>();
+  return articles.filter((article) => passes(article, filter, context.similar, areaIds, usedIds));
 }
 
 /** The numbers on the chips ("Ohne Bereich (2)"). */
@@ -545,6 +576,7 @@ export function articleFilterCounts<T extends Article>(
     pantry: count('pantry'),
     needsReview: count('needsReview'),
     similar: count('similar'),
+    unused: count('unused'),
     unknownDiet: count('unknownDiet'),
   };
 }
@@ -582,9 +614,9 @@ function recipesUsing(articleId: Id, recipes: readonly Recipe[]): Recipe[] {
 }
 
 /**
- * Where an article is used, for "In Rezepten" and "Löschen": unused articles can be deleted;
- * otherwise "Wird in 2 Rezepten verwendet – zusammenführen statt löschen" or "Steht auf der
- * Einkaufsliste" (AC-033, AC-034).
+ * Where an article is used, for "In Rezepten" and "Löschen": an article in no recipe and not open
+ * on the list can be deleted, a checked item goes with it (spec 0025, M-02); otherwise "Wird in 2
+ * Rezepten verwendet – zusammenführen statt löschen" or "Steht offen auf der Einkaufsliste".
  */
 export function articleUsage(
   articleId: Id,
@@ -599,13 +631,13 @@ export function articleUsage(
     recipes: used,
     openItems,
     doneItems,
-    canDelete: used.length === 0 && own.length === 0,
+    canDelete: used.length === 0 && openItems === 0,
   };
   if (used.length > 0) {
     const recipesText = used.length === 1 ? '1 Rezept' : `${used.length} Rezepten`;
     usage.deleteBlockedReason = `Wird in ${recipesText} verwendet – zusammenführen statt löschen`;
-  } else if (own.length > 0) {
-    usage.deleteBlockedReason = 'Steht auf der Einkaufsliste';
+  } else if (openItems > 0) {
+    usage.deleteBlockedReason = 'Steht offen auf der Einkaufsliste';
   }
   return usage;
 }
@@ -712,10 +744,11 @@ export interface ArticleMergeEffect<T extends Article> {
 
 /**
  * What "Zusammenführen" changes, as the server does it in merge_articles (E8): every ingredient of
- * the source points to the target (two rows in one recipe stay two, AC-039); when both are open on
- * the list, the source's contributions join the target's open item and the source's item goes;
- * every other item of the source belongs to the target. Unchanged recipes and items keep their
- * identity. The caller removes the source article.
+ * the source points to the target (two rows in one recipe stay two, AC-039). One item per article
+ * (spec 0025): without an item of the target the source's item belongs to the target; else an
+ * open source brings its contributions to the target's item (reopening a checked one with only
+ * them, like adding), a checked source brings nothing, and the source's item goes. Unchanged
+ * recipes and items keep their identity. The caller removes the source article.
  */
 export function applyArticleMerge<T extends Article>(
   source: T,
@@ -736,13 +769,18 @@ export function applyArticleMerge<T extends Article>(
       : recipe,
   );
 
-  const sourceOpen = items.find((item) => item.articleId === source.id && !item.checked);
-  const targetOpen = items.find((item) => item.articleId === target.id && !item.checked);
-  const joined = sourceOpen && targetOpen ? sourceOpen : undefined;
+  const sourceItem = items.find((item) => item.articleId === source.id);
+  const targetItem = items.find((item) => item.articleId === target.id);
+  const joined = sourceItem && targetItem ? sourceItem : undefined;
   const nextItems = items.flatMap((item): ShoppingItem[] => {
     if (item === joined) return [];
-    if (joined && item === targetOpen) {
-      return [{ ...item, contributions: [...item.contributions, ...joined.contributions] }];
+    if (joined && item === targetItem) {
+      if (joined.checked) return [item];
+      if (!item.checked) {
+        return [{ ...item, contributions: [...item.contributions, ...joined.contributions] }];
+      }
+      const { checkedAt, checkedBy, notAvailable, checkedOnList, ...kept } = item;
+      return [{ ...kept, checked: false, contributions: joined.contributions }];
     }
     return item.articleId === source.id ? [{ ...item, articleId: target.id }] : [item];
   });

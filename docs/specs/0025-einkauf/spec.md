@@ -314,6 +314,22 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
     ADR-0008 nennt bisher nur den Einkaufsmodus; diese Spec ergänzt einen Nachtrag „gilt auch auf
     Liste und Artikel“ (Aktionen und Konfliktregeln unverändert, „ein Posten je Artikel“ jetzt auch für
     erledigte Posten).
+16. Beim Bau (Claude, 22.11.2026): `restore_cleared_items` und `merge_articles` bei einem schon
+    vorhandenen Posten desselben Artikels — ein offener Eintrag tritt bei (ein erledigter Posten
+    wird dabei wieder offen, wie beim Hinzufügen), ein erledigter Eintrag kommt nicht zurück (der
+    Posten von heute gewinnt).
+17. Beim Bau: `set_manual_amount(item, count, qty, unit)` nimmt Anzahl oder Menge, nicht beides;
+    der früheste Beitrag „von Hand“ behält Kennung, Platz und Zusatz.
+    `create_store(household, id, name, copy_from)` nimmt eine Client-ID wie die anderen Schreibwege.
+18. Beim Bau: `created_at` beim Wiederherstellen bleibt über `set_timestamps`, das ein früheres
+    `created_at` nur während einer Wiederherstellung (Transaktions-Einstellung) und nie für die
+    API-Rollen übernimmt.
+19. Beim Bau: Der Einkaufsgang liegt im Sitzungsspeicher des Tabs (nur Posten-Kennungen); Neuladen
+    behält ihn, Verlassen von „Einkaufen“ löscht ihn. „Fertig“ räumt alle erledigten Posten ab,
+    sobald es welche gibt.
+20. Beim Bau: `create_store` ohne Vorlage legt die Bereiche in ihrer Reihenfolge an, nichts
+    ausgeblendet (wie bisher, Spec 0007 AC-043); „Ohne Bereich“ im Wähler ist auch offline
+    wählbar (Laden-Aktion).
 
 ## Daten
 
@@ -334,26 +350,41 @@ not null default false` (gesetzt von `set_shopping_item_checked(…, p_on_list)`
 
 ## Risiken
 
-| Risiko                                           | Gegenmaßnahme                                          | Test                                   |
-| ------------------------------------------------ | ------------------------------------------------------ | -------------------------------------- |
-| Fremder Haushalt ändert Menge/Herkunft/Artikel   | RPCs prüfen Mitgliedschaft (`not_member`), RLS         | pgTAP je neuer RPC, fremd + anon       |
-| Warteschlange mit altem Eintrag (`onList` fehlt) | Schema mit Standardwert, Eintrag nie blockierend       | core `store-queue.test.ts`             |
-| Eindeutigkeit bricht Rückgängig/Zusammenführen   | restore und merge vereinen in den vorhandenen Posten   | pgTAP `restore_cleared_items`, `merge` |
-| Ungültige Menge oder Ids                         | Checks wie `shopping_contributions_*`, `invalid_value` | pgTAP Grenzwerte                       |
-| Artikel löschen nimmt offenen Posten mit         | `article_in_use` bei offenem Posten                    | pgTAP `delete_article`                 |
-| Gesendete Änderung scheitert                     | Überlagerung zurück, Hinweis „Hat nicht geklappt …“    | api `commands-shopping.backend.test`   |
+| Risiko                                           | Gegenmaßnahme                                              | Test                                                                                                                        |
+| ------------------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Fremder Haushalt ändert Menge/Herkunft/Artikel   | RPCs prüfen Mitgliedschaft (`not_member`), RLS             | pgTAP `einkauf_rpcs.test.sql` (Ben und anon je neuer RPC)                                                                   |
+| Warteschlange mit altem Eintrag (`onList` fehlt) | Schema mit Standardwert, Eintrag nie blockierend           | core `store-queue.test.ts` („stored entry of the older app“), api `backend.test.ts`                                         |
+| Eindeutigkeit bricht Rückgängig/Zusammenführen   | restore und merge vereinen in den vorhandenen Posten       | pgTAP `einkauf_rpcs`, `shopping_list_rpcs` (AC-037), `article_rpcs` (AC-036)                                                |
+| Ungültige Menge oder Ids                         | Checks wie `shopping_contributions_*`, `invalid_value`     | pgTAP `einkauf_rpcs` (AC-012, leere Ids), core `parseItemAmount`                                                            |
+| Artikel löschen nimmt offenen Posten mit         | `article_in_use` bei offenem Posten                        | pgTAP `einkauf_rpcs` (AC-047, AC-048), `article_rpcs`                                                                       |
+| Gesendete Änderung scheitert                     | Überlagerung zurück, Hinweis „Hat nicht geklappt …“        | api `commands-einkauf.backend.test.ts` (AC-041)                                                                             |
+| `created_at` beim Wiederherstellen erzwungen     | nur Funktionseigentümer bei gesetzter Einstellung, ≤ now() | pgTAP `einkauf_rpcs` (AC-011 „never later than now()“); Security-Check: Hinweis offen (untere Grenze, nur eigener Haushalt) |
 
 ## Umsetzung
 
-- [ ] 1. core: Seiten und Gruppen „+ Aus Kalender“, Vorauswahl (AC-001–AC-006)
-- [ ] 2. core: Rundung `buyableQty` (AC-030, AC-031); eine Suche + exakte Namen (AC-032–AC-035)
-- [ ] 3. core: Kopfzeile, Text „Liste leeren“, Einkaufsgang-Fortschritt, `activeShopper` (AC-017–AC-019, AC-025, AC-042–AC-044)
-- [ ] 4. supabase (db-change): Eindeutigkeit, `checked_on_list`, neue RPCs, `created_at` beim Wiederherstellen, `delete_article`, `create_store`, Bereichs-Trigger, `recurring` weg; pgTAP (AC-009–AC-013, AC-020–AC-025, AC-042, AC-047, AC-048, AC-050)
-- [ ] 5. api: Befehle und Warteschlange `onList` (AC-009–AC-013, AC-022–AC-024, AC-040, AC-041)
-- [ ] 6. app Liste: Eingabezeile, Posten-Fenster, Wischen rechts (AC-007–AC-016, AC-020–AC-023)
-- [ ] 7. app Vorratscheck (AC-026–AC-029); Bereichswähler + „Liegt woanders …“ (AC-036–AC-039)
-- [ ] 8. app Einkaufen: Eingabe, Fortschritt (AC-040–AC-044); Artikel/Märkte (AC-045–AC-051)
-- [ ] 9. Aufräumen: Seed ohne Doppelposten und `recurring`, tote Exporte; `/security-check`
-- [ ] 10. Nachtrag zu ADR-0008: Laden-Aktionen auch auf der Liste, ein Posten je Artikel
+- [x] 1. core: Seiten und Gruppen „+ Aus Kalender“, Vorauswahl (AC-001–AC-006)
+- [x] 2. core: Rundung `buyableQty` (AC-030, AC-031); eine Suche + exakte Namen (AC-032–AC-035)
+- [x] 3. core: Kopfzeile, Text „Liste leeren“, Einkaufsgang-Fortschritt, `activeShopper` (AC-017–AC-019, AC-025, AC-042–AC-044)
+- [x] 4. supabase (db-change): Eindeutigkeit, `checked_on_list`, neue RPCs, `created_at` beim Wiederherstellen, `delete_article`, `create_store`, Bereichs-Trigger, `recurring` weg; pgTAP (AC-009–AC-013, AC-020–AC-025, AC-042, AC-047, AC-048, AC-050)
+- [x] 5. api: Befehle und Warteschlange `onList` (AC-009–AC-013, AC-022–AC-024, AC-040, AC-041)
+- [x] 6. app Liste: Eingabezeile, Posten-Fenster, Wischen rechts (AC-007–AC-016, AC-020–AC-023)
+- [x] 7. app Vorratscheck (AC-026–AC-029); Bereichswähler + „Liegt woanders …“ (AC-036–AC-039)
+- [x] 8. app Einkaufen: Eingabe, Fortschritt (AC-040–AC-044); Artikel/Märkte (AC-045–AC-051)
+- [x] 9. Aufräumen: Seed ohne Doppelposten und `recurring`, tote Exporte; `/security-check`
+- [x] 10. Nachtrag zu ADR-0008: Laden-Aktionen auch auf der Liste, ein Posten je Artikel
       (Entscheidung 15)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+
+## Nachweis
+
+Stand 22.11.2026, Branch `feat/0025-einkauf`:
+
+- `pnpm format:check && pnpm check`: grün (core 1313, api 879 Tests).
+- `pnpm exec supabase test db` nach `pnpm db:reset`: PASS (neu `einkauf_rpcs.test.sql`, 67 Tests;
+  angepasst `shopping_tables`, `store_rpcs`, `article_rpcs`, `shopping_list_rpcs`, `schema_lint`).
+- `pnpm build:web`: grün. e2e (`rundgang-einkauf.spec.ts` neu, `rundgang-liste.spec.ts` angepasst):
+  nur typgeprüft, läuft in Spec 0028.
+- Security-Check (Migration und Befehle): 0 kritisch/hoch/mittel/niedrig, 2 Hinweise;
+  Rollenprüfung in `set_timestamps` auf den Eigentümer umgestellt, untere Grenze für
+  `created_at` offen (wirkt nur im eigenen Haushalt).
+- Glossar (Entscheidung 13) bleibt für den Hauptlauf.

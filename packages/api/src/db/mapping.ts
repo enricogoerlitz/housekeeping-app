@@ -283,6 +283,7 @@ function itemRows(householdId: string, item: ShoppingItem): HouseholdRows {
         checked_at: item.checkedAt ?? null,
         checked_by: item.checkedBy ?? null,
         not_available: item.notAvailable ?? false,
+        checked_on_list: item.checkedOnList ?? false,
         ...(item.createdAt ? { created_at: item.createdAt } : {}),
       } satisfies Cached<'shopping_items'>,
     ],
@@ -799,6 +800,7 @@ function toItem(row: Row, contributions: Row[], pending: boolean): ShoppingItem 
     checkedAt: opt(r.checked_at),
     checkedBy: opt(r.checked_by),
     notAvailable: r.not_available ? true : undefined,
+    ...(r.checked_on_list === true ? { checkedOnList: true } : {}),
     ...(pending ? { pendingSync: true } : {}),
     createdAt: r.created_at ?? '',
   };

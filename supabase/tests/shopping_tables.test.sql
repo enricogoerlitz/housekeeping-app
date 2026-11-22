@@ -1,7 +1,7 @@
 -- Shopping items and contributions (spec 0003, T3). Check state (checked, checked_at,
 -- checked_by, check_seq, not_available) changes only through the store RPCs of T4: a client
 -- cannot set it on insert or change it by update. Items belong to the household: there is no list
--- table (ADR-0012), and a household has at most one open item per article.
+-- table (ADR-0012), and a household has at most one item per article (spec 0025, S-03).
 begin;
 \ir _helpers.psql
 select plan(22);
@@ -31,9 +31,9 @@ select hasnt_table('public', 'shopping_lists', 'ADR-0012: there is no table shop
 select hasnt_column('public', 'households', 'default_list_id', 'ADR-0012: households has no default_list_id');
 select hasnt_column('public', 'shopping_items', 'list_id', 'ADR-0012: shopping_items has no list_id');
 select is(
-  (select indexdef from pg_indexes where schemaname = 'public' and indexname = 'shopping_items_open_article_idx'),
-  'CREATE UNIQUE INDEX shopping_items_open_article_idx ON public.shopping_items USING btree (household_id, article_id) WHERE (NOT checked)',
-  'ADR-0012 shopping_items: the open item is unique per household and article');
+  (select indexdef from pg_indexes where schemaname = 'public' and indexname = 'shopping_items_household_id_article_id_key'),
+  'CREATE UNIQUE INDEX shopping_items_household_id_article_id_key ON public.shopping_items USING btree (household_id, article_id)',
+  'S-03 shopping_items: the item is unique per household and article, open or checked');
 
 -- ===================== Check state belongs to the store RPCs =====================
 select tests.authenticate_as(tests.fx('anna'));
@@ -87,7 +87,7 @@ select results_eq(
 select tests.clear_authentication();
 revoke insert (checked, checked_at, checked_by, check_seq, not_available) on public.shopping_items from authenticated;
 
--- ===================== One open item per article and household =====================
+-- ===================== One item per article and household =====================
 select tests.authenticate_as(tests.fx('anna'));
 select throws_ok(
   format($$ insert into public.shopping_items (household_id, article_id) values (%L, %L) $$,
@@ -99,19 +99,19 @@ select tests.clear_authentication();
 update public.shopping_items set checked = true, checked_at = now(), checked_by = tests.fx('anna'), check_seq = 1
 where id = tests.fx('item_a');
 select tests.authenticate_as(tests.fx('anna'));
-select lives_ok(
+select throws_ok(
   format($$ insert into public.shopping_items (household_id, article_id) values (%L, %L) $$,
          tests.fx('home_a'), tests.fx('article_a')),
-  'ADR-0012 shopping_items: an open Milch next to a checked one in the same household is allowed');
+  '23505', null, 'S-03 shopping_items: an open Milch next to a checked one in the same household is rejected');
 select tests.authenticate_as(tests.fx('ben'));
 select lives_ok(
   format($$ insert into public.shopping_items (household_id, article_id) values (%L, %L) $$,
          tests.fx('home_b'), tests.fx('article_b')),
   'ADR-0012 shopping_items: household B has its own open Milch while A has one');
 select tests.clear_authentication();
-select throws_ok(
+select lives_ok(
   format($$ update public.shopping_items set checked = false where id = %L $$, tests.fx('item_a')),
-  '23505', null, 'T3 shopping_items: unchecking cannot create a second open item (the RPC must merge)');
+  'S-03 shopping_items: unchecking the one item of an article needs no merge');
 select throws_ok(
   format($$ update public.shopping_items set checked_by = %L where id = %L $$, tests.fx('ben'), tests.fx('item_a')),
   '23503', null, 'T3 shopping_items: checked_by must be a member of the household');

@@ -1,18 +1,16 @@
-import { addShoppingItemFromText, useArticles } from '@housekeeping/api';
+import { addShoppingItemFromText, useArticles, type AddedItem } from '@housekeeping/api';
 import {
   formatAmount,
+  matchSearchOrCreate,
   parseSmartInput,
-  searchArticles,
   suggestSimilarArticle,
   type Article,
   type SmartInput,
 } from '@housekeeping/core';
-import { Button, Chip, ComposerBar, IconButton, Text, TextField, toast } from '@housekeeping/ui';
+import { Button, Chip, ComposerBar, IconButton, Text, TextField } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 
-// Frequent articles as one-tap tiles; all of them exist in the starter catalog.
-const QUICK_ADD = ['Milch', 'Brot', 'Eier', 'Bananen', 'Butter', 'Käse', 'Tomaten', 'Joghurt'];
 const MAX_SUGGESTIONS = 4;
 
 function amountText(parsed: SmartInput): string | undefined {
@@ -49,8 +47,10 @@ function ChipRow(props: { children: ReactNode; testID?: string }) {
 }
 
 /**
- * The input bar of the shopping list: smart input with live preview, article suggestions,
- * quick-add tiles, dictation and the assistant. Adding works offline too (ADR-0008 addendum).
+ * "Was fehlt?" on the list and "Posten hinzufügen" in "Einkaufen" (spec 0025, REQ-002, REQ-012):
+ * one input with live preview, the matching articles of the one search (REQ-009), the brake
+ * "Meinst du …?" and a plus "Hinzufügen"; on the list also dictation and the assistant. No tiles
+ * of frequent articles (ER-31). Adding works offline too (store queue, ADR-0008 addendum).
  */
 export function SmartComposer(props: {
   /** Without it there is no microphone button (AI switched off, spec 0005, AC-044). */
@@ -61,6 +61,14 @@ export function SmartComposer(props: {
   dictateDisabled?: boolean;
   /** Without it there is no assistant button (AI switched off). */
   onAssistant?: () => void;
+  /** False: the caller's bar holds the field ("Einkaufen"); else the list's input bar. */
+  framed?: boolean;
+  placeholder?: string;
+  label?: string;
+  inputTestID?: string;
+  submitTestID?: string;
+  /** Runs after an item went on the list, e.g. for a hint in "Einkaufen". */
+  onAdded?: (added: AddedItem) => void;
 }) {
   const articles = useArticles();
   const [text, setText] = useState('');
@@ -72,8 +80,11 @@ export function SmartComposer(props: {
   const [fieldKey, setFieldKey] = useState(0);
 
   const parsed = parseSmartInput(text);
-  const suggestions = parsed ? searchArticles(parsed.name, articles, MAX_SUGGESTIONS) : [];
+  const suggestions = parsed
+    ? matchSearchOrCreate(parsed.name, articles, { limit: MAX_SUGGESTIONS }).matches
+    : [];
   const amount = parsed ? amountText(parsed) : undefined;
+  const empty = text.trim() === '';
 
   const submit = (line: string, refocus: boolean, checkSimilar = true) => {
     if (!line.trim()) return;
@@ -85,22 +96,18 @@ export function SmartComposer(props: {
     }
     setBrake(undefined);
     try {
-      addShoppingItemFromText(line);
+      const added = addShoppingItemFromText(line);
       setText('');
       setError(undefined);
       if (refocus) setFieldKey(fieldKey + 1);
+      if (added) props.onAdded?.(added);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
     }
   };
 
-  const quickAdd = (name: string) => {
-    const added = addShoppingItemFromText(name);
-    if (added) toast.show({ message: `${added.articleName} auf der Liste`, duration: 2000 });
-  };
-
-  return (
-    <ComposerBar testID="composer">
+  const content = (
+    <>
       {brake ? (
         <View
           testID="smart-brake"
@@ -139,33 +146,21 @@ export function SmartComposer(props: {
             <ChipRow testID="smart-suggestions">
               {suggestions.map((match) => (
                 <Chip
-                  key={match.article.id}
+                  key={match.item.id}
                   label={
                     match.matchedSynonym
-                      ? `${match.article.name} · auch: ${match.matchedSynonym}`
-                      : match.article.name
+                      ? `${match.item.name} · auch: ${match.matchedSynonym}`
+                      : match.item.name
                   }
                   icon="plus"
-                  testID={`suggestion-${match.article.id}`}
-                  onPress={() => submit(withName(parsed, match.article.name), true)}
+                  testID={`suggestion-${match.item.id}`}
+                  onPress={() => submit(withName(parsed, match.item.name), true)}
                 />
               ))}
             </ChipRow>
           ) : null}
         </>
-      ) : (
-        <ChipRow testID="quick-add">
-          {QUICK_ADD.map((name) => (
-            <Chip
-              key={name}
-              label={name}
-              icon="plus"
-              testID={`quick-${name}`}
-              onPress={() => quickAdd(name)}
-            />
-          ))}
-        </ChipRow>
-      )}
+      ) : null}
       <TextField
         key={fieldKey}
         autoFocus={fieldKey > 0}
@@ -175,14 +170,14 @@ export function SmartComposer(props: {
           setError(undefined);
           setBrake(undefined);
         }}
-        placeholder="Was fehlt? z. B. 2 Käse (Gouda)"
-        accessibilityLabel="Artikel hinzufügen"
-        returnKeyType="send"
+        placeholder={props.placeholder ?? 'Was fehlt? z. B. 2 Käse (Gouda)'}
+        accessibilityLabel={props.label ?? 'Artikel hinzufügen'}
+        returnKeyType="done"
         blurOnSubmit={false}
         onSubmitEditing={() => submit(text, false)}
         error={error}
         round
-        testID="smart-input"
+        testID={props.inputTestID ?? 'smart-input'}
         right={
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             {props.onAssistant ? (
@@ -204,15 +199,19 @@ export function SmartComposer(props: {
               />
             ) : null}
             <IconButton
-              icon="send"
+              icon="plus"
               label="Hinzufügen"
               variant="filled"
-              testID="smart-submit"
+              disabled={empty}
+              testID={props.submitTestID ?? 'smart-submit'}
               onPress={() => submit(text, true)}
             />
           </View>
         }
       />
-    </ComposerBar>
+    </>
   );
+
+  if (props.framed === false) return <View style={{ gap: 8 }}>{content}</View>;
+  return <ComposerBar testID="composer">{content}</ComposerBar>;
 }

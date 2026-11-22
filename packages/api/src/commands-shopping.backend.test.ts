@@ -198,14 +198,11 @@ describe('removing and clearing', () => {
     removeShoppingItem(milk.id);
     expect(getData().items.some((item) => item.id === milk.id)).toBe(false);
     await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
-    expect(fx.calls[0]?.args[1]).toEqual([
-      ...milk.contributions.map((contribution) => ({
-        kind: 'delete',
-        table: 'shopping_contributions',
-        id: contribution.id,
-      })),
-      { kind: 'delete', table: 'shopping_items', id: milk.id },
+    // One remove_item_contributions call, so the undo can restore the place (spec 0025).
+    expect(fx.calls.map((call) => call.fn)).toEqual(['removeItemContributions']);
+    expect(fx.calls[0]?.args).toEqual([
+      milk.id,
+      milk.contributions.map((contribution) => contribution.id),
     ]);
     expect(fx.server.row(H, 'shopping_items', milk.id)).toBeUndefined();
   });
@@ -358,9 +355,15 @@ describe('stores (diff path)', () => {
     moveStoreArea(storeId, area.id, 0);
     setStoreAreaHidden(storeId, area.id, true);
     await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(Array(3).fill('applyChanges'));
-    expect(fx.calls.map((call) => (call.args[1] as { kind: string; table: string }[])[0])).toEqual([
-      expect.objectContaining({ kind: 'insert', table: 'stores' }),
+    // The store comes from create_store (spec 0025), its order from patches.
+    expect(fx.calls.map((call) => call.fn)).toEqual([
+      'createStore',
+      'applyChanges',
+      'applyChanges',
+    ]);
+    expect(
+      fx.calls.slice(1).map((call) => (call.args[1] as { kind: string; table: string }[])[0]),
+    ).toEqual([
       expect.objectContaining({ kind: 'patch', table: 'stores' }),
       expect.objectContaining({ kind: 'patch', table: 'stores' }),
     ]);
@@ -731,7 +734,10 @@ describe("the household's shopping list (spec 0006, ADR-0012)", () => {
     expect(fx.server.row(H, 'shopping_items', milk.id)).toBeUndefined();
     undo();
     await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges', 'applyChanges']);
+    expect(fx.calls.map((call) => call.fn)).toEqual([
+      'removeItemContributions',
+      'restoreClearedItems',
+    ]);
     expect(fx.server.row(H, 'shopping_items', milk.id)).toBeDefined();
     expect(itemOf('Milch')?.contributions).toEqual(milk.contributions);
   });

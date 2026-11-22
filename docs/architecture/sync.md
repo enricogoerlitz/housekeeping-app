@@ -568,3 +568,16 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   hält das Abmelden nicht auf) vor dem Löschen von Cache und Warteschlange. Die App meldet dort
   den Browser vom Push ab und ruft mit Netz `unregister_push_subscription`; ohne Netz bleibt die
   Zeile, bis der Push-Dienst 404/410 meldet.
+
+## Nachtrag Spec 0025 — Laden-Aktionen auf der Liste, ein Posten je Artikel
+
+- „Abhaken“, „Posten hinzufügen“ und „Bereich zuordnen“ gehen auch auf „Liste“ und in „Posten
+  bearbeiten“ / „Artikel bearbeiten“ über die Laden-Warteschlange (Nachtrag 2026-11-22 zu
+  ADR-0008). Ein Haken auf der Liste trägt `onList` (Standard `false`) und setzt
+  `shopping_items.checked_on_list`; „kauft gerade ein“ übergeht solche Haken.
+- `shopping_items` ist eindeutig je `(household_id, article_id)`. `restore_cleared_items` behält
+  `created_at` (höchstens `now()`), damit „Rückgängig“ einen Posten an seine Stelle zurückbringt;
+  `private.set_timestamps` übernimmt ein früheres `created_at` nur während einer Wiederherstellung
+  und nur für den Eigentümer der Funktionen.
+- Neue Schreibwege, alle online und je eine Transaktion: `set_manual_amount`,
+  `remove_item_contributions` (auch für „Entfernen“), `create_store`.

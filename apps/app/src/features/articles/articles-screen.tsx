@@ -1,7 +1,9 @@
-import { useAreas, useArticles } from '@housekeeping/api';
+import { useAreas, useArticles, useRecipes, useShoppingItems } from '@housekeeping/api';
 import {
   articleFilterCounts,
+  articlesInArea,
   filterArticles,
+  usedArticleIds,
   searchArticleList,
   similarArticleNames,
   sortArticles,
@@ -62,8 +64,10 @@ interface ArticleRow {
  * Detail", AC-025). Reading and searching work offline; editing needs the network.
  */
 export function ArticlesScreen() {
-  const articles = useArticles();
+  const allArticles = useArticles();
   const areas = useAreas();
+  const recipes = useRecipes();
+  const items = useShoppingItems();
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
   // Filter, search, sort, the chosen article and "Neuer Artikel" stand in the address (spec 0019,
@@ -74,6 +78,13 @@ export function ArticlesScreen() {
   const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
 
   const filter: ArticleFilter = filterFromParam(params.filter);
+  // "Bereich: Obst & Gemüse ✕" from a row on "Bereiche" or "Bereich ▾" (spec 0025, AC-045).
+  const areaFilter = areas.find((area) => area.id === params.bereich);
+  const setAreaFilter = (areaId: Id | undefined) => address.replace({ bereich: areaId });
+  const articles = useMemo(
+    () => articlesInArea(allArticles, areaFilter?.id),
+    [allArticles, areaFilter],
+  );
   const sort: ArticleSort = params.sortierung === 'neu' ? 'new' : 'name';
   const query = params.suche ?? '';
   const selectedId = params.artikel;
@@ -99,7 +110,9 @@ export function ArticlesScreen() {
 
   // "Ähnliche Namen" compares every name with every other: once per data state.
   const similar = useMemo(() => similarArticleNames(articles), [articles]);
-  const context = useMemo(() => ({ similar, areas }), [similar, areas]);
+  // "Unbenutzt": in no recipe and not open on the list (AC-046).
+  const usedIds = useMemo(() => usedArticleIds(recipes, items), [recipes, items]);
+  const context = useMemo(() => ({ similar, areas, usedIds }), [similar, areas, usedIds]);
   const counts = useMemo(() => articleFilterCounts(articles, context), [articles, context]);
   const areaNames = useMemo(() => new Map(areas.map((area) => [area.id, area.name])), [areas]);
 
@@ -115,7 +128,7 @@ export function ArticlesScreen() {
   }, [articles, filter, context, query, sort]);
 
   // Deleted or merged on another device while it was open: the editor just closes.
-  const selected = articles.find((article) => article.id === selectedId);
+  const selected = allArticles.find((article) => article.id === selectedId);
 
   const startCreating = (name = '') => {
     setNewName(name);
@@ -192,6 +205,27 @@ export function ArticlesScreen() {
           options={SORT_OPTIONS}
           testID="articles-sort"
         />
+        {areaFilter ? (
+          <Chip
+            label={`Bereich: ${areaFilter.name} ✕`}
+            selected
+            accessibilityLabel={`Bereich ${areaFilter.name}, Filter entfernen`}
+            onPress={() => setAreaFilter(undefined)}
+            testID="articles-area-filter"
+          />
+        ) : (
+          <Menu
+            label="Bereich ▾"
+            accessibilityLabel="Nach Bereich filtern"
+            icon="map-pin"
+            value=""
+            onChange={(areaId: string) => setAreaFilter(areaId || undefined)}
+            options={[...areas]
+              .sort((a, b) => a.sort - b.sort)
+              .map((area) => ({ value: area.id, label: area.name }))}
+            testID="articles-area-menu"
+          />
+        )}
         {FILTERS.map((key) => (
           <Chip
             key={key}

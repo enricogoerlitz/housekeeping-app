@@ -35,7 +35,8 @@ export interface PlannedContribution {
  * variant's portions / recipe.servings (entries without variant rows use the default variant).
  * Ingredients of variants nobody eats are omitted.
  * Shopping rule "skip" → omitted; "count" → count 1 (never scaled); "recipeAmount" → scaled qty
- * and unit, rounded up to a buyable value (buyableQty: "0,75 Glas" → 1 Glas, "56,25 g" → 57 g);
+ * and unit, rounded up to a buyable value unless the factor is 1 (buyableQty: "0,75 Glas" → 1
+ * Glas, "56,25 g" → 60 g);
  * count when the amount has no unit, rounded up; count 1 when it is not a number.
  * dayLabel is the short weekday used in the label, e.g. "Mi".
  */
@@ -88,7 +89,8 @@ export function contributionsFromEntry(
         // The small tolerance keeps float noise (2.0000000000000004) from adding a whole piece.
         contribution.count = Math.max(1, Math.ceil(amount.qty * factor - 1e-9));
       } else {
-        contribution.qty = buyableQty(amount.qty * factor, amount.unit);
+        // Factor 1 keeps the recipe's value ("75 g" stays, AC-031).
+        contribution.qty = factor === 1 ? amount.qty : buyableQty(amount.qty * factor, amount.unit);
         contribution.unit = amount.unit;
       }
     }
@@ -112,11 +114,9 @@ function formatSum(qty: number, unit: string): string {
     : formatAmount(qty, unit);
 }
 
-/** The Herkunft of one contribution: the stored recipe label, "von Hand" or "Dauerposten". */
+/** The Herkunft of one contribution: the stored recipe label or "von Hand". */
 export function originLabel(source: ContributionSource): string {
-  if (source.kind === 'manual') return 'von Hand';
-  if (source.kind === 'recurring') return 'Dauerposten';
-  return source.label;
+  return source.kind === 'manual' ? 'von Hand' : source.label;
 }
 
 function distinct(values: string[]): string[] {
@@ -128,9 +128,8 @@ export interface ItemSummary {
   amount: string;
   /** Distinct notes of all contributions, in order. */
   notes: string[];
-  /** Human readable origins: "Lasagne (Mo)", "von Hand", "Dauerposten". */
+  /** Human readable origins: "Lasagne (Mo)", "von Hand". */
   sources: string[];
-  isRecurring: boolean;
 }
 /**
  * Sums counts and same-unit quantities of all contributions of an item; kg and g, l and ml are
@@ -163,9 +162,6 @@ export function summarizeItem(item: ShoppingItem): ItemSummary {
       ),
     ),
     sources: distinct(item.contributions.map((contribution) => originLabel(contribution.source))),
-    isRecurring: item.contributions.some(
-      (contribution) => contribution.source.kind === 'recurring',
-    ),
   };
 }
 
@@ -196,7 +192,7 @@ export function addContribution(
   if (checked) {
     // The old contributions were bought and "nicht da" belonged to that trip; neither carries
     // over to the new need.
-    const { checkedAt, checkedBy, notAvailable, ...kept } = checked;
+    const { checkedAt, checkedBy, notAvailable, checkedOnList, ...kept } = checked;
     const reopened: ShoppingItem = { ...kept, checked: false, contributions: [contribution] };
     return items.map((item) => (item === checked ? reopened : item));
   }
@@ -269,6 +265,6 @@ export function groupItems(
   return groups.filter((group) => group.items.length > 0);
 }
 /** Checked items out of all items of a list. */
-export function listProgress(items: ShoppingItem[]): { done: number; total: number } {
+export function listProgress(items: readonly ShoppingItem[]): { done: number; total: number } {
   return { done: items.filter((item) => item.checked).length, total: items.length };
 }
