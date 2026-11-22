@@ -564,7 +564,8 @@ Wenn        sich auf einem Gerät mit erteilter Erlaubnis das Abo geändert hat 
 Dann        meldet sich das Gerät von selbst neu an
 ```
 
-**AC-040 — Minimaler Inhalt**
+**AC-040 — Minimaler Inhalt** (ergänzt am 22.11.2026: Ausnahme für den eigens geschriebenen Text einer
+Erinnerung an einem Eintrag, Spec 0017, ADR-0014 Nachtrag)
 
 ```gherkin
 Angenommen  der Zeitplaner baut eine Nachricht für Enrico

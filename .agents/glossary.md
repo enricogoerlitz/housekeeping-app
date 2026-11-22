@@ -604,9 +604,11 @@ bedienbar, ab 700 px steht es rechts neben dem Raster (Spec 0016, REQ-006, Entwu
 ### Erinnerung
 
 Eine Benachrichtigung, die jemand an einem einzelnen Planeintrag einschaltet, mit Tag und Uhrzeit;
-ohne Einschalten kommt keine (Spec 0017, Entwurf). Sie geht mit, wenn der Eintrag verschoben wird.
+ohne Einschalten kommt keine (Spec 0017). Sie geht mit, wenn der Eintrag verschoben wird. Die Art
+auf der Seite „Benachrichtigungen“ heißt „Erinnerungen an Einträgen“.
 
-- **Im Code:** noch nicht gebaut
+- **Im Code:** Spalten `reminder_day_offset`, `reminder_at`, `reminder_text` an `meal_plan_entries`;
+  Einstellung `entry_reminders_enabled`; Art `entry_reminder`; core `reminder.ts`
 - **Abgrenzung:** Die _Reservierungs-Erinnerung_ am Restaurant-Eintrag („Erinnern 2 h vorher“,
   Spec 0013) hängt an der Reservierungsuhrzeit. Der _Tagesüberblick_ und „Aktivitäten am Vortag“
   sind Arten von Benachrichtigungen je Person, keine Erinnerungen an einem Eintrag.
