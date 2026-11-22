@@ -413,6 +413,10 @@ describe('all delivery workflows', () => {
         assert.ok(job.environment, `${file} ${id}`);
         const guard = runs(job).findIndex((run) => /-z "\$SUPABASE_POOLER_URL"/.test(run));
         assert.ok(guard !== -1 && guard < first, `${file} ${id}`);
+        // The address must belong to the project of this environment (security check 22.11.2026):
+        // a production address in the preview secret would let the preview reset production.
+        const check = runs(job)[guard];
+        assert.match(check, /"postgres\.\$\{SUPABASE_PROJECT_REF\}"/, `${file} ${id}`);
       }
     }
   });
