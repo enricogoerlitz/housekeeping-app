@@ -3,6 +3,10 @@
 Stand: 22.11.2026, Branch `feat/0014-betrieb-ci-cd-release` (Commit `bd23fe5`), nach Abschluss
 der Specs 0001–0014.
 
+**Abgleich mit v2026.11.1 (erste Veröffentlichung, 22.11.2026):** Seit dem Rundgang hat sich am
+App-Code nichts geändert (Oberfläche, Logik, Daten, Migrationen); alle Befunde gelten unverändert.
+Neu sind X-08 und X-09 aus der Einrichtung von Produktion und Vorschau.
+
 ## Worum es geht
 
 Die ganze App wurde einmal so durchgeklickt, wie ein Mensch sie benutzt. Dazu lief der echte
@@ -61,7 +65,7 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 
 ## Zusammenfassung
 
-94 Befunde: **13 hoch, 31 mittel, 50 niedrig**.
+96 Befunde: **13 hoch, 32 mittel, 51 niedrig**.
 
 ### Die zehn wichtigsten
 
@@ -178,6 +182,8 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | X-05 | Navigation              | Zurück-Beschriftungen uneinheitlich, Desktop „Zurück: Kalender“ falsch, falscher Tab hervorgehoben                                            | niedrig | Ziel immer aus der Herkunft ableiten                                                   | S       |
 | X-06 | Version                 | Bei veralteter Version steht an Knöpfen der Offline-Text                                                                                      | niedrig | Eigener Hinweis „Bitte neu laden“                                                      | S       |
 | X-07 | Offline                 | Toast „Offline – nichts wurde abgehakt“ sagt nicht, was zu tun ist                                                                            | niedrig | „… Mit Netz noch einmal abhaken.“                                                      | S       |
+| X-08 | Einladen                | Eingeladene scheitern an Google, solange die Google-App auf „Testing“ steht                                                                   | mittel  | Google-App auf „In Production“ (nur E-Mail/Profil, keine Prüfung)                      | S       |
+| X-09 | Adressen                | Alte `azurestaticapps.net`-Adressen laden die App, Anmelden scheitert dort                                                                    | niedrig | Eigene Domain in Azure als Standard setzen (leitet um)                                 | S       |
 
 ## Übersicht
 
@@ -1017,6 +1023,20 @@ Kleinigkeiten, alle niedrig, Aufwand S, beide Breiten:
   0011): Die Zeile steht wieder offen, gebucht wird nichts. Der Toast „Offline – nichts wurde
   abgehakt“ sagt aber nicht, was zu tun ist. Besser: „… Mit Netz noch einmal abhaken.“
   (`tmp/review/shots/E-phone-21-ac034-abbruch.png`)
+- **X-08 Einladen scheitert an Google · mittel · S · beide:** Wer in der App eingeladen wird, kommt
+  trotzdem nicht hinein, solange die Google-Anmeldung auf „Testing“ steht: Google weist jede Adresse
+  ab, die nicht in der Google-Konsole unter „Zielgruppe → Testnutzer“ steht, und zwar mit einer
+  eigenen Fehlerseite, bevor die App die Einladung überhaupt prüft. Wer einlädt, erfährt davon
+  nichts. **Empfehlung:** Die Google-App auf „In Production“ stellen. Weil sie nur E-Mail und Profil
+  abfragt, verlangt Google dafür keine Prüfung; danach entscheidet allein die Einladung der App.
+  Sonst wenigstens im Fenster „Einladen“ der Hinweis „Neue Adressen zusätzlich bei Google als
+  Testnutzer eintragen“.
+- **X-09 Alte Adressen · niedrig · S · beide:** Seit den eigenen Domains (`house.kuschel-nest.de`,
+  `test.house.kuschel-nest.de`) laden die alten Adressen `*.azurestaticapps.net` die App weiter. Die
+  Anmeldung dort scheitert mit „Anmelden hat nicht geklappt“, weil Supabase nach Google auf die
+  eingetragene Domain zurückleitet und der Browser dort den Anmeldestart nicht kennt (so am
+  22.11. in der Vorschau passiert). **Empfehlung:** In Azure bei beiden Static Web Apps die eigene
+  Domain als Standard setzen („Set default“); dann leiten die alten Adressen auf sie um.
 
 ## Bekannte Punkte aus dem Bau
 
