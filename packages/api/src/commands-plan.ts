@@ -1,21 +1,30 @@
 import {
+  checkEntryNote,
+  checkEntryText,
   cleanReminderText,
+  collectionContributions,
   collectionDiet,
   contentsInBook,
+  contributionsFromEntry,
   defaultEaters,
   dietFitsPreference,
+  entryListShare,
   EntryReminderSchema,
+  MAX_ENTRY_NOTE,
+  MAX_GUESTS,
+  MAX_PORTIONS,
+  recomputeEntryContributions,
+  removeEntryContributions,
   splitVariants,
   validateReminder,
   type EntryReminder,
+  type FieldCheck,
   type Id,
   type ISODate,
   type MealPlanEntry,
   type PlanEntryVariant,
   type RecipeKind,
   relabelForDay,
-  type RemindMinutes,
-  RemindMinutesSchema,
   type ShoppingItem,
   type TimeOfDay,
   type VariantSplit,
@@ -32,6 +41,7 @@ import {
   getState,
   isOffline,
   newId,
+  nowISO,
   OfflineError,
   updateData,
 } from './store';
@@ -39,7 +49,7 @@ import { checkTime } from './times';
 import { TransportError } from './transport';
 
 /** meal_plan_entries_note_length. */
-export const NOTE_MAX_LENGTH = 120;
+export const NOTE_MAX_LENGTH = MAX_ENTRY_NOTE;
 
 /** The hint when the server refuses an entry because its recipe was deleted (spec 0008, E6). */
 export const RECIPE_GONE_MESSAGE = 'Das Rezept gibt es nicht mehr';
@@ -62,8 +72,10 @@ export interface PlanEntryInput {
   restaurantId?: Id;
   activityId?: Id;
   text?: string;
-  /** Zusatz, kept only on activities: "Eislaufen (Hohenschönhausen)". */
+  /** Zusatz of any kind: "Eislaufen (Hohenschönhausen)", "Lasagne (doppelte Menge)". */
   note?: string;
+  /** Spec 0021, REQ-013: "Uhrzeit (optional)", only for restaurants and activities. */
+  startsAt?: TimeOfDay;
   leftoversOfEntryId?: Id;
   eaterIds: Id[];
   guests?: number;
@@ -161,13 +173,9 @@ export type PlanSlotInput = Omit<
   'kind' | 'recipeId' | 'restaurantId' | 'activityId' | 'text' | 'leftoversOfEntryId'
 >;
 
-/** The trimmed Zusatz (empty → none); "Der Zusatz ist zu lang …" over 120 characters. */
+/** The trimmed Zusatz (empty → none); the hint of checkEntryNote otherwise (REQ-008). */
 function cleanNote(note: string | undefined): string | undefined {
-  const clean = note?.trim() || undefined;
-  if (clean && clean.length > NOTE_MAX_LENGTH) {
-    throw new Error(`Der Zusatz ist zu lang (höchstens ${NOTE_MAX_LENGTH} Zeichen)`);
-  }
-  return clean;
+  return fieldValue(checkEntryNote(note ?? ''));
 }
 
 /**
@@ -192,8 +200,10 @@ export function addPlanEntry(input: PlanEntryInput): Id {
   ) {
     throw new Error('Aktivität nicht gefunden');
   }
-  if (input.kind === 'text' && !input.text?.trim()) throw new Error('Der Text fehlt.');
-  const note = input.kind === 'activity' ? cleanNote(input.note) : undefined;
+  const text = input.kind === 'text' ? fieldValue(checkEntryText(input.text ?? '')) : input.text;
+  const note = cleanNote(input.note);
+  const timed = input.kind === 'restaurant' || input.kind === 'activity';
+  checkTime(input.startsAt);
   const reminder = input.reminder
     ? checkedReminder({ date: input.date }, input.reminder)
     : undefined;
@@ -214,8 +224,9 @@ export function addPlanEntry(input: PlanEntryInput): Id {
       recipeId: input.recipeId,
       restaurantId: input.restaurantId,
       activityId: input.kind === 'activity' ? input.activityId : undefined,
-      text: input.text?.trim(),
+      text: text?.trim(),
       note,
+      startsAt: timed ? input.startsAt : undefined,
       leftoversOfEntryId: input.leftoversOfEntryId,
       eaterIds: input.eaterIds,
       guests,
@@ -232,8 +243,8 @@ export function addPlanEntry(input: PlanEntryInput): Id {
 
 /**
  * Changes an entry. The Zusatz is trimmed (empty removes it). An entry that is no longer an
- * activity loses its activity and Zusatz (meal_plan_entries_note_only_activity); one that is no
- * longer a restaurant loses its reservation (meal_plan_entries_reservation_only_restaurant).
+ * activity loses its activity; one that is neither restaurant nor activity loses its time
+ * (meal_plan_entries_starts_at_only_timed).
  */
 export function updatePlanEntry(
   entryId: Id,
@@ -269,80 +280,151 @@ export function updatePlanEntry(
       planEntries: data.planEntries.map((entry) => {
         if (entry.id !== entryId) return entry;
         const next = { ...entry, ...clean };
-        const withoutReservation =
-          next.kind === 'restaurant' ? next : { ...next, reservedAt: undefined };
-        return withoutReservation.kind === 'activity'
-          ? withoutReservation
-          : { ...withoutReservation, activityId: undefined, note: undefined };
+        const timed = next.kind === 'restaurant' || next.kind === 'activity';
+        const withTime = timed ? next : { ...next, startsAt: undefined };
+        return withTime.kind === 'activity' ? withTime : { ...withTime, activityId: undefined };
       }),
     })),
   );
 }
 
 /**
- * "Reserviert um" and "Erinnern … vorher" of a restaurant entry (spec 0013, REQ-008, AC-027,
- * AC-029): `reservedAt` null removes the time (✕), undefined leaves it; the reminder is one of
- * 30, 60, 120, 180, 240 minutes. Only a restaurant entry takes a time: the server refuses it on
- * any other (AC-030) and the entry springs back with the general hint. Throws "Keine gültige
- * Uhrzeit" before sending.
+ * What the window of an entry saves when it closes (spec 0021, REQ-009): the typed fields, who
+ * eats and how much, and the text of the reminder. Leaving a field out leaves it as it is.
  */
-export function setReservation(
-  entryId: Id,
-  reservation: { reservedAt?: TimeOfDay | null; remindMinutesBefore?: RemindMinutes },
-): void {
-  checkTime(reservation.reservedAt);
-  const { remindMinutesBefore } = reservation;
-  if (remindMinutesBefore !== undefined) RemindMinutesSchema.parse(remindMinutesBefore);
-  commit({ path: 'diff' }, () =>
-    updateData((data) => ({
-      ...data,
-      planEntries: data.planEntries.map((entry) => {
-        if (entry.id !== entryId) return entry;
-        return {
-          ...entry,
-          ...(reservation.reservedAt !== undefined
-            ? { reservedAt: reservation.reservedAt ?? undefined }
-            : {}),
-          ...(remindMinutesBefore !== undefined ? { remindMinutesBefore } : {}),
-        };
-      }),
-    })),
-  );
+export interface EntryFields {
+  /** "Was gibt es?" of a free text. */
+  text?: string;
+  /** "Zusatz"; empty removes it. */
+  note?: string;
+  /** "Uhrzeit (optional)" of a restaurant or activity; null removes it. */
+  startsAt?: TimeOfDay | null;
+  eaterIds?: Id[];
+  guests?: number;
+  portions?: number;
+  /** Rows of every variant as the counters show them; rows with 0 are not stored. */
+  variants?: PlanEntryVariant[];
+  /** "Woran erinnern?" of the reminder as typed (empty: no text); only with a reminder. */
+  reminderText?: string;
+}
+
+function fieldValue(check: FieldCheck): string | undefined {
+  if (!check.ok) throw new Error(check.error);
+  return check.value;
 }
 
 /**
- * "Fertig" in an entry's window (spec 0018, REQ-003): the typed Zusatz of an activity and the
- * "Reserviert um" of a restaurant as one patch. Resolves once the server took it, rejects when it
- * refused it (the entry springs back, and onWriteRejected reports the general hint), so the
- * window can stay open with the typed text (AC-009). Nothing changed resolves at once and sends
- * nothing. Throws "Keine gültige Uhrzeit", "Der Zusatz ist zu lang …" and OfflineError before
- * anything changes.
+ * Saves what the window of an entry holds when it closes (spec 0021, REQ-009), in one call: the
+ * fields, and when portions or variants change the entry's contributions on open items of the
+ * shopping list follow (REQ-007, recomputeEntryContributions), all or nothing (ADR-0011). Throws
+ * the field's hint ("Bitte etwas eintragen", "Höchstens 120 Zeichen", "Ohne Zeilenumbrüche",
+ * "Keine gültige Uhrzeit", the reminder's hints), "Den Eintrag gibt es nicht mehr" and
+ * OfflineError before anything changes. Resolves once the server took it with the Herkunft of the
+ * contributions that followed ("Lasagne (Sa)"), or undefined; rejects when it refused it (the entry
+ * and the list spring back, onWriteRejected reports the general hint), so the window can stay
+ * open (AC-027). Nothing changed resolves at once and sends nothing.
  */
-export function saveEntryFields(
-  entryId: Id,
-  fields: { note?: string; reservedAt?: TimeOfDay | null },
-): Promise<void> {
-  const note = 'note' in fields ? cleanNote(fields.note) : undefined;
-  checkTime(fields.reservedAt);
+export function saveEntry(entryId: Id, fields: EntryFields): Promise<string | undefined> {
+  const data = getData();
+  const entry = data.planEntries.find((candidate) => candidate.id === entryId);
+  if (!entry) throw new Error('Den Eintrag gibt es nicht mehr');
+  const next: MealPlanEntry = { ...entry };
+  if (fields.text !== undefined && entry.kind === 'text') {
+    next.text = fieldValue(checkEntryText(fields.text));
+  }
+  if (fields.note !== undefined) next.note = fieldValue(checkEntryNote(fields.note));
+  if (fields.startsAt !== undefined && (entry.kind === 'restaurant' || entry.kind === 'activity')) {
+    checkTime(fields.startsAt);
+    next.startsAt = fields.startsAt ?? undefined;
+  }
+  if (fields.eaterIds !== undefined) next.eaterIds = [...fields.eaterIds];
+  if (fields.guests !== undefined) next.guests = fields.guests;
+  if (fields.portions !== undefined) next.portions = fields.portions;
+  if (fields.variants !== undefined) {
+    next.variants = fields.variants.filter((row) => row.portions > 0);
+  }
+  if (fields.reminderText !== undefined && entry.reminder) {
+    next.reminder = checkedReminder(entry, {
+      offsetDays: entry.reminder.offsetDays,
+      at: entry.reminder.at,
+      text: fields.reminderText,
+    });
+  }
+  if (
+    next.guests < 0 ||
+    next.guests > MAX_GUESTS ||
+    next.portions < 0 ||
+    next.portions > MAX_PORTIONS
+  ) {
+    throw new Error('Hat nicht geklappt – bitte noch einmal versuchen');
+  }
+  if (JSON.stringify(next) === JSON.stringify(entry)) return Promise.resolve(undefined);
   if (isOffline()) throw new OfflineError();
-  const confirmed = commitConfirmed({ path: 'diff' }, () =>
-    updateData((data) => ({
-      ...data,
-      planEntries: data.planEntries.map((entry) => {
-        if (entry.id !== entryId) return entry;
-        return {
-          ...entry,
-          ...('note' in fields && entry.kind === 'activity' ? { note } : {}),
-          ...(fields.reservedAt !== undefined
-            ? { reservedAt: fields.reservedAt ?? undefined }
-            : {}),
-        };
-      }),
-    })),
-  );
+
+  const amountsChanged =
+    next.portions !== entry.portions ||
+    JSON.stringify(next.variants) !== JSON.stringify(entry.variants);
+  const share = amountsChanged ? entryListShare(data.items, entryId) : undefined;
+  const items = share ? followedItems(next) : data.items;
+  const itemIds = new Set(items.map((item) => item.id));
+  const contributionIds = new Set(items.flatMap((item) => item.contributions.map((c) => c.id)));
+  const confirmed = commitConfirmed(
+    {
+      path: 'diff',
+      maxDeletes: {
+        shopping_items: data.items.filter((item) => !itemIds.has(item.id)).length,
+        shopping_contributions: data.items
+          .flatMap((item) => item.contributions)
+          .filter((contribution) => !contributionIds.has(contribution.id)).length,
+      },
+      rejectedMessage: recipeGone,
+    },
+    () =>
+      updateData((current) => ({
+        ...current,
+        planEntries: current.planEntries.map((candidate) =>
+          candidate.id === entryId ? next : candidate,
+        ),
+        items,
+      })),
+  ).then(() => (share && items !== data.items ? share.label : undefined));
   // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
   confirmed.catch(() => {});
   return confirmed;
+}
+
+/**
+ * The shopping list after the entry's portions or variants changed (REQ-007): what "Auf die
+ * Einkaufsliste" would put on it for the new state, on the open items (spec 0025 adapts the rule
+ * in core, not here).
+ */
+function followedItems(entry: MealPlanEntry): ShoppingItem[] {
+  const data = getData();
+  const recipe = entry.recipeId
+    ? data.recipes.find((candidate) => candidate.id === entry.recipeId)
+    : undefined;
+  if (entry.kind !== 'recipe' || !recipe) return data.items;
+  const articlesById = indexById(data.articles);
+  const planned =
+    recipe.kind === 'collection'
+      ? collectionContributions(
+          recipe,
+          contentsInBook(recipe, {
+            recipesById: indexById(data.recipes),
+            collectionRecipes: data.collectionRecipes,
+          }),
+          articlesById,
+          { portions: entry.portions, entry },
+        )
+      : contributionsFromEntry(entry, recipe, articlesById, '');
+  return recomputeEntryContributions({
+    items: data.items,
+    entryId: entry.id,
+    planned,
+    articlesById,
+    newId,
+    now: nowISO(),
+  }).items;
 }
 
 /**
@@ -437,21 +519,39 @@ function relabelContributions(
 /**
  * Removes a dish. Leftovers of it that name no recipe go with it: without their dish they would
  * mean nothing, and the database refuses leftovers without recipe and dish. Leftovers with a
- * recipe stay (the server clears their link).
+ * recipe stay (the server clears their link). With `withList` ("Zutaten auch von der Liste
+ * nehmen", spec 0021, REQ-015) the entry's contributions on open items go in the same call, an
+ * item left empty with them; other contributions and checked items stay (AC-041). Returns the
+ * number of items it took contributions from.
  */
-export function removePlanEntry(entryId: Id): void {
+export function removePlanEntry(entryId: Id, options: { withList?: boolean } = {}): number {
+  const data = getData();
   const removed = new Set([
     entryId,
-    ...getData()
-      .planEntries.filter((entry) => entry.leftoversOfEntryId === entryId && !entry.recipeId)
+    ...data.planEntries
+      .filter((entry) => entry.leftoversOfEntryId === entryId && !entry.recipeId)
       .map((entry) => entry.id),
   ]);
-  commit({ path: 'diff', maxDeletes: { meal_plan_entries: removed.size } }, () =>
-    updateData((data) => ({
-      ...data,
-      planEntries: data.planEntries.filter((entry) => !removed.has(entry.id)),
-    })),
+  const share = options.withList ? entryListShare(data.items, entryId) : undefined;
+  const items = share ? removeEntryContributions(data.items, entryId) : data.items;
+  const itemIds = new Set(items.map((item) => item.id));
+  commit(
+    {
+      path: 'diff',
+      maxDeletes: {
+        meal_plan_entries: removed.size,
+        shopping_items: data.items.filter((item) => !itemIds.has(item.id)).length,
+        shopping_contributions: share?.contributions ?? 0,
+      },
+    },
+    () =>
+      updateData((current) => ({
+        ...current,
+        planEntries: current.planEntries.filter((entry) => !removed.has(entry.id)),
+        items,
+      })),
   );
+  return share?.articles ?? 0;
 }
 
 // ---------- Create while planning (spec 0004, REQ-008) ----------

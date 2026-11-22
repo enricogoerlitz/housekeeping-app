@@ -716,7 +716,6 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     activities_eve_enabled: false,
     activities_eve_at: '19:00:00',
     chore_reminders_enabled: true,
-    reservation_reminders_enabled: true,
     entry_reminders_enabled: true,
     created_at: SERVER_TIME,
     updated_at: SERVER_TIME,
@@ -742,7 +741,6 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
       activitiesEveEnabled: false,
       activitiesEveAt: '19:00',
       choreRemindersEnabled: true,
-      reservationRemindersEnabled: true,
       entryRemindersEnabled: true,
     });
   });
@@ -838,32 +836,18 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     );
   });
 
-  it('AC-027, AC-029: a reservation and its reminder go there and back; 120 (the default) reads as undefined', () => {
+  it('spec 0021, AC-035: the time of an entry goes there and back as starts_at', () => {
     const { data } = demo();
     const rows = householdToRows(data);
-    const reserved = rows.meal_plan_entries?.find((row) => row.reserved_at !== null);
-    expect(reserved).toMatchObject({
-      kind: 'restaurant',
-      reserved_at: '19:30:00',
-      remind_minutes_before: 120,
-    });
+    const timed = rows.meal_plan_entries?.find((row) => row.starts_at !== null);
+    expect(timed).toMatchObject({ kind: 'restaurant', starts_at: '19:30:00' });
     const recipeRow = rows.meal_plan_entries?.find((row) => row.kind === 'recipe');
-    expect(recipeRow).toMatchObject({ reserved_at: null, remind_minutes_before: 120 });
-    const id = String(reserved?.id);
+    expect(recipeRow).toMatchObject({ starts_at: null });
+    expect(recipeRow).not.toHaveProperty('remind_minutes_before');
+    const id = String(timed?.id);
     const { tables, small } = asServerTables(rows);
     const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
-    const entry = back.planEntries.find((candidate) => candidate.id === id);
-    expect(entry?.reservedAt).toBe('19:30');
-    expect(entry?.remindMinutesBefore).toBeUndefined();
-    const oneHour = { ...tables.meal_plan_entries?.[id], id, remind_minutes_before: 60 };
-    const changed = rowsToHousehold(
-      { ...tables, meal_plan_entries: { ...tables.meal_plan_entries, [id]: oneHour } },
-      small,
-      DEMO_HOUSEHOLD_ID,
-    );
-    expect(changed.planEntries.find((candidate) => candidate.id === id)?.remindMinutesBefore).toBe(
-      60,
-    );
+    expect(back.planEntries.find((candidate) => candidate.id === id)?.startsAt).toBe('19:30');
   });
 });
 
@@ -968,7 +952,6 @@ describe('spec 0017: entry reminders in the rows', () => {
       activities_eve_enabled: false,
       activities_eve_at: '19:00:00',
       chore_reminders_enabled: true,
-      reservation_reminders_enabled: true,
     };
     tables.notification_settings = { 'ns-enrico': row };
     const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });

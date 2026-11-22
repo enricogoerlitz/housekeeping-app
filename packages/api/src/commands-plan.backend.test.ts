@@ -15,13 +15,12 @@ import {
   movePlanEntry,
   RECIPE_GONE_MESSAGE,
   removePlanEntry,
-  saveEntryFields,
+  saveEntry,
   setEntryReminder,
-  setReservation,
   updatePlanEntry,
 } from './commands-plan';
 import { readMapsLink } from './commands-restaurants';
-import { addPlannedToList, pantryCheckRows } from './commands-shopping';
+import { addPlannedToList, addShoppingItemFromText, pantryCheckRows } from './commands-shopping';
 import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH, SLOT_MORNING } from './seed/demo';
 import { getData, OfflineError, snapshot } from './store';
 import { TransportError, type ChangeOp } from './transport';
@@ -249,7 +248,9 @@ describe('meal plan commands: input and local effect', () => {
     expect(() => addPlanEntry({ ...base, kind: 'recipe', recipeId: 'rec-weg' })).toThrow(
       'Rezept nicht gefunden',
     );
-    expect(() => addPlanEntry({ ...base, kind: 'text', text: '  ' })).toThrow('Der Text fehlt.');
+    expect(() => addPlanEntry({ ...base, kind: 'text', text: '  ' })).toThrow(
+      'Bitte etwas eintragen',
+    );
     expect(getData().planEntries).toHaveLength(before);
   });
 });
@@ -306,11 +307,11 @@ describe('activities in the plan (spec 0004)', () => {
         activityId: 'act-bouldern',
         note: 'x'.repeat(121),
       }),
-    ).toThrow('Der Zusatz ist zu lang (höchstens 120 Zeichen)');
+    ).toThrow('Höchstens 120 Zeichen');
     expect(getData().planEntries).toBe(before);
   });
 
-  it('keeps a Zusatz only on activities', () => {
+  it('spec 0021, AC-023: every kind keeps its Zusatz, "Trattoria Da Enzo (Tisch am Fenster)"', () => {
     const id = addPlanEntry({
       date: saturday,
       slotId: SLOT_DINNER,
@@ -319,7 +320,7 @@ describe('activities in the plan (spec 0004)', () => {
       note: 'Tisch am Fenster',
       eaterIds: [ENRICO],
     });
-    expect(entryById(id)?.note).toBeUndefined();
+    expect(entryById(id)?.note).toBe('Tisch am Fenster');
   });
 
   it('edits the Zusatz; an empty one is removed', () => {
@@ -331,7 +332,7 @@ describe('activities in the plan (spec 0004)', () => {
     expect(entryById(entry.id)?.note).toBeUndefined();
   });
 
-  it('switching an activity entry to another kind drops its activity and Zusatz', () => {
+  it('switching an activity entry to another kind drops its activity and time, keeps its Zusatz', () => {
     const entry = getData().planEntries.find(
       (candidate) => candidate.kind === 'activity' && candidate.note,
     );
@@ -339,7 +340,8 @@ describe('activities in the plan (spec 0004)', () => {
     updatePlanEntry(entry.id, { kind: 'text', text: 'Spazieren gehen' });
     expect(entryById(entry.id)).toMatchObject({ kind: 'text', text: 'Spazieren gehen' });
     expect(entryById(entry.id)?.activityId).toBeUndefined();
-    expect(entryById(entry.id)?.note).toBeUndefined();
+    expect(entryById(entry.id)?.startsAt).toBeUndefined();
+    expect(entryById(entry.id)?.note).toBe(entry.note);
   });
 });
 
@@ -459,181 +461,234 @@ describe('spec 0008: planning a recipe that was deleted meanwhile (E6)', () => {
   });
 });
 
-describe('spec 0013: reservation of a restaurant entry', () => {
-  const planEnzo = () =>
+async function saveEntryAndSettle(...args: Parameters<typeof saveEntry>) {
+  const saved = saveEntry(...args);
+  await fx.settle();
+  return saved;
+}
+
+describe('spec 0021, REQ-009: closing the window saves the entry in one call', () => {
+  const plan = (input: Partial<Parameters<typeof addPlanEntry>[0]>) =>
     addPlanEntry({
       date: addDays(TODAY, 1),
       slotId: SLOT_DINNER,
-      kind: 'restaurant',
-      restaurantId: 'rest-enzo',
-      eaterIds: [ENRICO, NADJA],
-    });
-
-  it('AC-027: "Reserviert um 19:30" is one patch; Nadja sees it with the default reminder', async () => {
-    await fx.startEnrico();
-    const nadja = await fx.startNadja();
-    const id = planEnzo();
-    await fx.settle(nadja);
-    fx.clearCalls();
-    setReservation(id, { reservedAt: '19:30' });
-    expect(entryById(id)?.reservedAt).toBe('19:30');
-    await fx.settle(nadja);
-    expect(opsOf(0)).toEqual([
-      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reserved_at: '19:30:00' } },
-    ]);
-    const seen = fx.nadjaData(nadja).planEntries.find((entry) => entry.id === id);
-    expect(seen?.reservedAt).toBe('19:30');
-    expect(seen?.remindMinutesBefore).toBeUndefined();
-    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({
-      reserved_at: '19:30:00',
-      remind_minutes_before: 120,
-    });
-  });
-
-  it('AC-029: "1 h vorher" patches only the reminder; ✕ removes the time', async () => {
-    await fx.startEnrico();
-    const id = planEnzo();
-    setReservation(id, { reservedAt: '19:30' });
-    await fx.settle();
-    fx.clearCalls();
-    setReservation(id, { remindMinutesBefore: 60 });
-    expect(entryById(id)?.remindMinutesBefore).toBe(60);
-    setReservation(id, { reservedAt: null });
-    await fx.settle();
-    expect(opsOf(0)).toEqual([
-      { kind: 'patch', table: 'meal_plan_entries', id, changes: { remind_minutes_before: 60 } },
-    ]);
-    expect(opsOf(1)).toEqual([
-      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reserved_at: null } },
-    ]);
-    expect(entryById(id)?.reservedAt).toBeUndefined();
-  });
-
-  it('AC-030: a reservation on "Lasagne" is refused by the server and springs back', async () => {
-    await fx.startEnrico();
-    const messages: string[] = [];
-    const stop = onWriteRejected((message) => messages.push(message));
-    const lasagne = getData().planEntries.find((entry) => entry.recipeId === 'rec-lasagne');
-    if (!lasagne) throw new Error('fixture');
-    setReservation(lasagne.id, { reservedAt: '19:30' });
-    await fx.settle();
-    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
-    expect(entryById(lasagne.id)?.reservedAt).toBeUndefined();
-    expect(fx.server.row(H, 'meal_plan_entries', lasagne.id)).toMatchObject({ reserved_at: null });
-    stop();
-  });
-
-  it('the database checks: five-minute time, reminder 30/60/120/180/240 (23514)', async () => {
-    await fx.startEnrico();
-    const id = planEnzo();
-    await fx.settle();
-    const patch = (changes: Record<string, unknown>) =>
-      fx.server
-        .transport(ENRICO)
-        .applyChanges(H, [{ kind: 'patch', table: 'meal_plan_entries', id, changes }]);
-    await expect(patch({ reserved_at: '19:33' })).rejects.toMatchObject({ code: '23514' });
-    await expect(patch({ remind_minutes_before: 90 })).rejects.toMatchObject({ code: '23514' });
-    expect(() => setReservation(id, { reservedAt: '19:33' })).toThrow('Keine gültige Uhrzeit');
-    expect(() => setReservation(id, { remindMinutesBefore: 90 as 60 })).toThrow();
-  });
-
-  it('an entry that stops being a restaurant loses its reservation', async () => {
-    await fx.startEnrico();
-    const id = planEnzo();
-    setReservation(id, { reservedAt: '19:30' });
-    await fx.settle();
-    updatePlanEntry(id, { kind: 'text', text: 'Pizza bestellen', restaurantId: undefined });
-    await fx.settle();
-    expect(entryById(id)).toMatchObject({ kind: 'text', reservedAt: undefined });
-    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({ reserved_at: null });
-  });
-
-  it('REQ-008: offline throws OfflineError', async () => {
-    await fx.startEnrico();
-    const id = planEnzo();
-    await fx.settle();
-    fx.environment.setOnline(false);
-    expect(() => setReservation(id, { reservedAt: '19:30' })).toThrow(OfflineError);
-  });
-});
-
-describe('spec 0018, REQ-003: "Fertig" saves the open fields of an entry', () => {
-  const plan = (
-    input: { kind: 'activity'; activityId: string } | { kind: 'restaurant'; restaurantId: string },
-  ) =>
-    addPlanEntry({
-      date: addDays(TODAY, 1),
-      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-mango-curry',
       eaterIds: [ENRICO, NADJA],
       ...input,
     });
+  const ownContributions = (entryId: string, checked = false) =>
+    getData()
+      .items.filter((item) => item.checked === checked)
+      .flatMap((item) =>
+        item.contributions
+          .filter((c) => c.source.kind === 'recipe' && c.source.entryId === entryId)
+          .map((c) => ({ articleId: item.articleId, ...c })),
+      );
 
-  it('AC-007: the typed Zusatz "Halle Nord" of "Bouldern" is one patch, confirmed by the server', async () => {
+  it('AC-025: the typed Zusatz "Hohenschönhausen" of "Eislaufen" is one patch, confirmed', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
-    const id = plan({ kind: 'activity', activityId: 'act-bouldern' });
+    const id = plan({ kind: 'activity', activityId: 'act-bouldern', recipeId: undefined });
     await fx.settle(nadja);
     fx.clearCalls();
-    const saved = saveEntryFields(id, { note: ' Halle Nord ' });
-    expect(entryById(id)?.note).toBe('Halle Nord');
+    const saved = saveEntry(id, { note: ' Hohenschönhausen ' });
     await fx.settle(nadja);
     await expect(saved).resolves.toBeUndefined();
     expect(opsOf(0)).toEqual([
-      { kind: 'patch', table: 'meal_plan_entries', id, changes: { note: 'Halle Nord' } },
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { note: 'Hohenschönhausen' } },
     ]);
     expect(fx.nadjaData(nadja).planEntries.find((entry) => entry.id === id)?.note).toBe(
-      'Halle Nord',
+      'Hohenschönhausen',
     );
   });
 
-  it('AC-008: "Reserviert um 19:30" of "Trattoria Da Enzo" is saved the same way', async () => {
+  it('AC-023: a recipe gets the Zusatz "doppelte Menge"; a restaurant is planned with one', async () => {
     await fx.startEnrico();
-    const id = plan({ kind: 'restaurant', restaurantId: 'rest-enzo' });
+    const id = plan({});
+    const enzo = plan({
+      kind: 'restaurant',
+      recipeId: undefined,
+      restaurantId: 'rest-enzo',
+      note: 'Tisch für 6',
+    });
     await fx.settle();
-    fx.clearCalls();
-    const saved = saveEntryFields(id, { reservedAt: '19:30' });
-    await fx.settle();
-    await expect(saved).resolves.toBeUndefined();
-    expect(opsOf(0)).toEqual([
-      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reserved_at: '19:30:00' } },
-    ]);
-    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({ reserved_at: '19:30:00' });
+    await saveEntryAndSettle(id, { note: 'doppelte Menge' });
+    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({ note: 'doppelte Menge' });
+    expect(fx.server.row(H, 'meal_plan_entries', enzo)).toMatchObject({ note: 'Tisch für 6' });
   });
 
-  it('AC-008: nothing changed sends nothing and resolves at once', async () => {
+  it('AC-022: the free text changes; empty or with a line break it is refused before sending', async () => {
     await fx.startEnrico();
-    const id = plan({ kind: 'activity', activityId: 'act-bouldern' });
+    const id = plan({ kind: 'text', recipeId: undefined, text: 'Essen bei Oam' });
     await fx.settle();
+    await saveEntryAndSettle(id, { text: 'Essen bei Oma' });
+    expect(entryById(id)?.text).toBe('Essen bei Oma');
     fx.clearCalls();
-    await expect(saveEntryFields(id, {})).resolves.toBeUndefined();
-    await expect(saveEntryFields(id, { note: '  ' })).resolves.toBeUndefined();
+    expect(() => saveEntry(id, { text: '  ' })).toThrow('Bitte etwas eintragen');
+    expect(() => saveEntry(id, { note: 'mit\nKuchen' })).toThrow('Ohne Zeilenumbrüche');
     expect(fx.calls).toEqual([]);
   });
 
-  it('AC-009: a refusal rejects, the entry springs back and the general hint is reported', async () => {
+  it('AC-035: "Uhrzeit 10:30" of an activity is starts_at; a recipe takes no time', async () => {
+    await fx.startEnrico();
+    const id = plan({ kind: 'activity', recipeId: undefined, activityId: 'act-bouldern' });
+    const curry = plan({});
+    await fx.settle();
+    fx.clearCalls();
+    await saveEntryAndSettle(id, { startsAt: '10:30' });
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { starts_at: '10:30:00' } },
+    ]);
+    fx.clearCalls();
+    await expect(saveEntry(curry, { startsAt: '10:30' })).resolves.toBeUndefined();
+    expect(fx.calls).toEqual([]);
+    expect(() => saveEntry(id, { startsAt: '10:33' })).toThrow('Keine gültige Uhrzeit');
+  });
+
+  it('AC-015: eaters, guests and portions are one patch', async () => {
+    await fx.startEnrico();
+    const id = plan({ eaterIds: [ENRICO], kind: 'recipe', recipeId: 'rec-mango-curry' });
+    await fx.settle();
+    fx.clearCalls();
+    await saveEntryAndSettle(id, { eaterIds: [ENRICO, NADJA], portions: 3 });
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({
+        kind: 'patch',
+        id,
+        changes: expect.objectContaining({ eater_ids: [ENRICO, NADJA], portions: 3 }),
+      }),
+    ]);
+  });
+
+  it('AC-019: twice the portions → the open items follow in the same call, with the hint label', async () => {
+    await fx.startEnrico();
+    const id = plan({});
+    const rows = pantryCheckRows([id]).filter((row) => !row.isPantry);
+    addPlannedToList(rows);
+    await fx.settle();
+    const entry = entryById(id);
+    if (!entry) throw new Error('fixture');
+    fx.clearCalls();
+    const saved = saveEntry(id, {
+      portions: entry.portions * 2,
+      variants: entry.variants.map((row) => ({ ...row, portions: row.portions * 2 })),
+    });
+    await fx.settle();
+    await expect(saved).resolves.toMatch(/^Mango-Curry \(/);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    const expected = pantryCheckRows([id])
+      .filter((row) => !row.isPantry)
+      .flatMap((row) =>
+        row.contributions.map((c) => ({ articleId: row.articleId, qty: c.qty, count: c.count })),
+      );
+    const actual = ownContributions(id).map((c) => ({
+      articleId: c.articleId,
+      qty: c.qty,
+      count: c.count,
+    }));
+    expect(actual).toEqual(expect.arrayContaining(expected));
+    expect(actual).toHaveLength(expected.length);
+    for (const c of ownContributions(id)) {
+      expect(fx.server.row(H, 'shopping_contributions', c.id)).toMatchObject({
+        qty: c.qty ?? null,
+      });
+    }
+  });
+
+  it('AC-021: a checked item stays; when the server refuses, entry and list spring back', async () => {
     await fx.startEnrico();
     const messages: string[] = [];
     const stop = onWriteRejected((message) => messages.push(message));
-    const id = plan({ kind: 'activity', activityId: 'act-bouldern' });
+    const id = plan({});
+    addPlannedToList(pantryCheckRows([id]).filter((row) => !row.isPantry));
     await fx.settle();
-    fx.server.failNext('apply_changes', new TransportError('permanent', '23514', 400));
-    const saved = saveEntryFields(id, { note: 'Halle Nord' });
+    const before = getData().items;
+    const entry = entryById(id);
+    if (!entry) throw new Error('fixture');
+    fx.server.failNext('apply_changes', new TransportError('permanent', '23503', 400));
+    const saved = saveEntry(id, { portions: entry.portions + 2 });
     saved.catch(() => {});
     await fx.settle();
-    await expect(saved).rejects.toMatchObject({ code: '23514' });
+    await expect(saved).rejects.toMatchObject({ code: '23503' });
     expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
-    expect(entryById(id)?.note).toBeUndefined();
+    expect(entryById(id)?.portions).toBe(entry.portions);
+    expect(getData().items).toEqual(before);
     stop();
   });
 
-  it('negative: offline and an invalid time throw before anything changes', async () => {
+  it('REQ-007: nothing of the entry on the list changes nothing on it', async () => {
     await fx.startEnrico();
-    const id = plan({ kind: 'restaurant', restaurantId: 'rest-enzo' });
+    const id = plan({});
     await fx.settle();
-    expect(() => saveEntryFields(id, { reservedAt: '19:33' })).toThrow('Keine gültige Uhrzeit');
+    const before = getData().items;
+    await expect(saveEntryAndSettle(id, { portions: 5 })).resolves.toBeUndefined();
+    expect(getData().items).toBe(before);
+  });
+
+  it('negative: offline and a gone entry throw before anything changes', async () => {
+    await fx.startEnrico();
+    const id = plan({});
+    await fx.settle();
+    expect(() => saveEntry('gone', { note: 'x' })).toThrow('Den Eintrag gibt es nicht mehr');
     fx.environment.setOnline(false);
-    expect(() => saveEntryFields(id, { reservedAt: '19:30' })).toThrow(OfflineError);
-    expect(entryById(id)?.reservedAt).toBeUndefined();
+    expect(() => saveEntry(id, { note: 'doppelte Menge' })).toThrow(OfflineError);
+    expect(entryById(id)?.note).toBeUndefined();
+  });
+});
+
+describe('spec 0021, REQ-015: removing an entry with its contributions', () => {
+  it('AC-040, AC-041: entry and its contributions go in one call; "von Hand" stays; undo brings all back', async () => {
+    await fx.startEnrico();
+    const id = addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-mango-curry',
+      eaterIds: [ENRICO, NADJA],
+    });
+    const rows = pantryCheckRows([id]).filter((row) => !row.isPantry);
+    addPlannedToList(rows);
+    const first = rows[0];
+    if (!first) throw new Error('fixture');
+    addShoppingItemFromText(first.name);
+    await fx.settle();
+    const before = getData().items;
+    const restore = snapshot();
+    fx.clearCalls();
+    expect(removePlanEntry(id, { withList: true })).toBe(rows.length);
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(entryById(id)).toBeUndefined();
+    const left = getData().items.filter((item) => !item.checked);
+    expect(
+      left.some((item) =>
+        item.contributions.some((c) => c.source.kind === 'recipe' && c.source.entryId === id),
+      ),
+    ).toBe(false);
+    const manual = left.find((item) => item.articleId === first.articleId);
+    expect(manual?.contributions.map((c) => c.source.kind)).toEqual(['manual']);
+    restore();
+    await fx.settle();
+    expect(entryById(id)).toBeDefined();
+    expect(getData().items.length).toBe(before.length);
+  });
+
+  it('REQ-015: "Nur aus dem Plan nehmen" keeps the contributions', async () => {
+    await fx.startEnrico();
+    const id = addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-mango-curry',
+      eaterIds: [ENRICO],
+    });
+    addPlannedToList(pantryCheckRows([id]).filter((row) => !row.isPantry));
+    await fx.settle();
+    const before = getData().items;
+    expect(removePlanEntry(id)).toBe(0);
+    await fx.settle();
+    expect(getData().items).toEqual(before);
   });
 });
 
@@ -1027,7 +1082,7 @@ describe('spec 0016, REQ-004: moving an entry', () => {
       restaurantId: 'rest-enzo',
       eaterIds: [ENRICO, NADJA],
     });
-    setReservation(enzo, { reservedAt: '19:30' });
+    void saveEntry(enzo, { startsAt: '19:30' });
     const curry = addPlanEntry({
       date: saturday,
       slotId: SLOT_DINNER,
@@ -1074,10 +1129,10 @@ describe('spec 0016, REQ-004: moving an entry', () => {
         source: expect.objectContaining({ entryId: curry, label: 'Mango-Curry (So)' }),
       });
     }
-    expect(entryById(enzo)).toMatchObject({ date: sunday, reservedAt: '19:30' });
+    expect(entryById(enzo)).toMatchObject({ date: sunday, startsAt: '19:30' });
     expect(fx.server.row(H, 'meal_plan_entries', enzo)).toMatchObject({
       date: sunday,
-      reserved_at: '19:30:00',
+      starts_at: '19:30:00',
     });
     expect(fromCurry().map((item) => originSummary(item))).toEqual(
       before.map((origin) => origin.replace('Mango-Curry (Sa)', 'Mango-Curry (So)')),

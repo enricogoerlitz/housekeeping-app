@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   canStepPortions,
   changeEaters,
+  checkEntryNote,
+  checkEntryText,
   entryListShare,
   MAX_GUESTS,
   MAX_PORTIONS,
@@ -312,5 +314,21 @@ describe('removing an entry with its contributions (REQ-015)', () => {
       item('i-hack', 'hack', [manual]),
       item('i-alt', 'salz', [contribution('c-alt', { count: 1 })], true),
     ]);
+  });
+});
+
+describe('the typed fields of an entry (REQ-008)', () => {
+  it('AC-022: "Was gibt es?" is required, at most 500 characters, without a line break', () => {
+    expect(checkEntryText(' Essen bei Oma ')).toEqual({ ok: true, value: 'Essen bei Oma' });
+    expect(checkEntryText('  ')).toEqual({ ok: false, error: 'Bitte etwas eintragen' });
+    expect(checkEntryText('a\nb')).toEqual({ ok: false, error: 'Ohne Zeilenumbrüche' });
+    expect(checkEntryText('x'.repeat(501))).toEqual({ ok: false, error: 'Höchstens 500 Zeichen' });
+  });
+
+  it('AC-024: the Zusatz is optional, at most 120 characters, without a line break', () => {
+    expect(checkEntryNote(' doppelte Menge ')).toEqual({ ok: true, value: 'doppelte Menge' });
+    expect(checkEntryNote('  ')).toEqual({ ok: true, value: undefined });
+    expect(checkEntryNote('a\nb')).toEqual({ ok: false, error: 'Ohne Zeilenumbrüche' });
+    expect(checkEntryNote('x'.repeat(121))).toEqual({ ok: false, error: 'Höchstens 120 Zeichen' });
   });
 });

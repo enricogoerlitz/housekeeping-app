@@ -15,6 +15,37 @@ import type {
   ShoppingItem,
 } from './types';
 
+/** meal_plan_entries_text_length and _note_length. */
+export const MAX_ENTRY_TEXT = 500;
+export const MAX_ENTRY_NOTE = 120;
+
+// meal_plan_entries_text_no_control and _note_no_control refuse every control character.
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+export type FieldCheck = { ok: true; value: string | undefined } | { ok: false; error: string };
+
+function checkField(input: string, max: number, required: boolean): FieldCheck {
+  const value = input.trim();
+  if (value === '')
+    return required
+      ? { ok: false, error: 'Bitte etwas eintragen' }
+      : { ok: true, value: undefined };
+  if (CONTROL.test(value)) return { ok: false, error: 'Ohne Zeilenumbrüche' };
+  if ([...value].length > max) return { ok: false, error: `Höchstens ${max} Zeichen` };
+  return { ok: true, value };
+}
+
+/** "Was gibt es?" of a free text (REQ-008, AC-022): required, at most 500, no line break. */
+export function checkEntryText(input: string): FieldCheck {
+  return checkField(input, MAX_ENTRY_TEXT, true);
+}
+
+/** "Zusatz" of any entry (REQ-008, AC-024): empty is none, at most 120, no line break. */
+export function checkEntryNote(input: string): FieldCheck {
+  return checkField(input, MAX_ENTRY_NOTE, false);
+}
+
 /** meal_plan_entries_portions_valid and _guests_valid. */
 export const MAX_PORTIONS = 1000;
 export const MAX_GUESTS = 100;
