@@ -49,7 +49,6 @@ import {
   TypingIndicator,
   ViewTabs,
   tabSwipe,
-  useBreakpoint,
 } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
