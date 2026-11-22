@@ -17,6 +17,7 @@ import {
   type EntryFields,
 } from '@housekeeping/api';
 import {
+  canMarkNotDone,
   checkEntryNote,
   checkEntryText,
   entryListShare,
@@ -42,6 +43,7 @@ import {
   Row,
   Sheet,
   Stack,
+  SwitchRow,
   Text,
   TextField,
   TimeField,
@@ -584,6 +586,16 @@ export function EntrySheet(props: {
             </View>
           </View>
         )}
+        {canMarkNotDone(entry, today) ? (
+          // Saved at once like the other switches of the window (spec 0020, REQ-008, AC-037).
+          <SwitchRow
+            label="Nicht gemacht"
+            value={entry.notDone === true}
+            disabled={online.disabled}
+            onValueChange={(notDone) => updatePlanEntry(entry.id, { notDone })}
+            testID="entry-not-done"
+          />
+        ) : null}
         <Button
           label="Aus dem Plan nehmen"
           icon="trash"

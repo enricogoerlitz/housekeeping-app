@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays } from './dates';
 import { addPresetSlot } from './calendar';
 import {
+  canMarkNotDone,
   defaultEaters,
   entriesForDay,
   leftoverCandidates,
@@ -569,5 +570,23 @@ describe('spec 0020 REQ-005: addPresetSlot', () => {
       ]),
     ).toBe('mittag');
     expect(addPresetSlot([])).toBeUndefined();
+  });
+});
+
+describe('spec 0020 REQ-008: the switch "Nicht gemacht" in the entry window', () => {
+  const today = '2026-11-22';
+  it('AC-037: an entry of a day before today has it, of every kind but leftovers', () => {
+    for (const kind of ['recipe', 'text', 'restaurant', 'activity'] as const) {
+      expect(canMarkNotDone(entry({ id: kind, kind, date: '2026-11-21' }), today)).toBe(true);
+    }
+  });
+
+  it('AC-038: not today, not later, not for leftovers, not without a day', () => {
+    expect(canMarkNotDone(entry({ id: 'heute', date: today }), today)).toBe(false);
+    expect(canMarkNotDone(entry({ id: 'di', date: '2026-11-24' }), today)).toBe(false);
+    expect(
+      canMarkNotDone(entry({ id: 'reste', kind: 'leftovers', date: '2026-11-21' }), today),
+    ).toBe(false);
+    expect(canMarkNotDone(entry({ id: 'vorgemerkt', date: null }), today)).toBe(false);
   });
 });
