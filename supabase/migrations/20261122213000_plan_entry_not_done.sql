@@ -4,9 +4,11 @@
 -- productively used version (wave 2 rules): no expand/contract; the column keeps its grants.
 --
 -- * meal_plan_entries.not_cooked becomes not_done.
--- * apply_changes: the allowlist names not_done (otherwise unchanged from remind_per_chore, spec 0027).
--- * restore_recipe writes not_done back (otherwise unchanged from recipe_links_and_non_food);
---   a snapshot taken before this migration restores its entries as done.
+-- * apply_changes: the allowlist names not_done (otherwise unchanged from
+--   restaurants_and_activities, spec 0024).
+-- * Undoing a deletion (private.restore_plan_entries, spec 0024) fills the entries from the table
+--   type, so it writes not_done without a change; a snapshot taken before this migration restores
+--   its entries as done.
 
 alter table public.meal_plan_entries rename column not_cooked to not_done;
 
@@ -30,8 +32,8 @@ declare
   -- collection) is set on insert and never patched (spec 0009, E2). A collection_recipes row keeps
   -- its collection and its recipe; only servings, variant and order change (spec 0009, E4).
   -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011);
-  -- their day changes only by change_chore_event_day (spec 0026, REQ-007). „Erinnern“ is the chore
-  -- column remind_at_due_time (spec 0027, REQ-009).
+  -- their day changes only by change_chore_event_day (spec 0026, REQ-007).
+  -- „Erinnern“ is the chore column remind_at_due_time (spec 0027, REQ-009).
   -- The packed state of packing items (packed, packed_at, packed_by, pack_seq) is written only by
   -- set_packing_items_packed and restore_packing_items; a packing item's name, quantity, "je Tag"
   -- and link to its Reisetasche are patched (spec 0022, REQ-009).
@@ -40,6 +42,7 @@ declare
   -- Notification settings rows are created by the server and only patched, and RLS lets a member
   -- patch only her own row (spec 0013, Decision 3). households.timezone is never written (D16).
   -- A plan entry's time is starts_at (spec 0021); the reservation reminder is gone.
+  -- Restaurants and activities are deleted only by delete_restaurant / delete_activity (spec 0024).
   -- "Nicht gemacht" is not_done on every kind (spec 0020, REQ-008).
   c_allowlist constant jsonb := $json${
     "areas":            {"insert": ["id", "household_id", "name", "sort"],
@@ -60,13 +63,13 @@ declare
                                       "sort"],
                            "patch":  ["servings", "variant_id", "sort"], "delete": true},
     "restaurants":      {"insert": ["id", "household_id", "name", "address", "lat", "lng", "maps_url", "cuisine",
-                                    "price_level", "tags", "notes"],
+                                    "price_level", "tags", "notes", "website_url", "photo_path"],
                          "patch":  ["name", "address", "lat", "lng", "maps_url", "cuisine", "price_level", "tags",
-                                    "notes"], "delete": true},
+                                    "notes", "website_url", "photo_path"], "delete": false},
     "activities":       {"insert": ["id", "household_id", "name", "name_key", "description", "photo_path", "place_name",
-                                    "address", "lat", "lng", "maps_url", "tags", "created_by"],
+                                    "address", "lat", "lng", "maps_url", "website_url", "created_by"],
                          "patch":  ["name", "name_key", "description", "photo_path", "place_name", "address", "lat",
-                                    "lng", "maps_url", "tags"], "delete": true},
+                                    "lng", "maps_url", "website_url"], "delete": false},
     "trips":            {"insert": ["id", "household_id", "from_on", "to_on", "note"],
                          "patch":  ["from_on", "to_on", "note"], "delete": true},
     "trip_members":     {"insert": ["id", "household_id", "trip_id", "member_id"],
@@ -278,116 +281,6 @@ begin
   end loop;
 
   return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
-end
-$$;
-
--- ---------------------------------------------------------------------------------------------
--- restore_recipe
--- ---------------------------------------------------------------------------------------------
-
-create or replace function private.restore_recipe(p_recipe_id uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_deletion private.recipe_deletions;
-  v_snapshot jsonb;
-  v_household_id uuid;
-  v_existing_household_id uuid;
-begin
-  if auth.uid() is null then
-    raise exception 'not_authenticated' using errcode = '42501';
-  end if;
-
-  select d.* into v_deletion
-  from private.recipe_deletions d
-  join public.household_members m on m.household_id = d.household_id and m.profile_id = auth.uid()
-  where d.recipe_id = p_recipe_id and d.deleted_by = auth.uid() and d.deleted_at > now() - interval '1 hour'
-  for update of d;
-  if not found then
-    raise exception 'recipe_not_restorable' using errcode = 'P0002';
-  end if;
-  v_snapshot := v_deletion.snapshot;
-  v_household_id := v_deletion.household_id;
-
-  -- Recipe ids are unique across households. Back in this household: nothing to do. Taken in
-  -- another one (e.g. by a former member who saw the id): refused, never reported as success.
-  select r.household_id into v_existing_household_id from public.recipes r where r.id = p_recipe_id;
-  if v_existing_household_id = v_household_id then
-    return false;
-  elsif v_existing_household_id is not null then
-    raise exception 'recipe_not_restorable' using errcode = 'P0002';
-  end if;
-
-  perform pg_catalog.set_config('private.restore_created_at', coalesce(v_snapshot -> 'recipe' ->> 'created_at', ''), true);
-  insert into public.recipes (id, household_id, kind, title, photo, photo_path, description, servings, total_minutes,
-                              course, cuisine, tags, variants, ingredients, steps, lead_time, notes, last_cooked_on,
-                              cooked_count, links)
-  select r.id, v_household_id, r.kind, r.title, r.photo, r.photo_path, r.description, r.servings, r.total_minutes,
-         r.course, r.cuisine, r.tags, r.variants, r.ingredients, r.steps, r.lead_time, r.notes, r.last_cooked_on,
-         r.cooked_count, r.links
-  from jsonb_populate_record(null::public.recipes, v_snapshot -> 'recipe') r;
-  perform pg_catalog.set_config('private.restore_created_at', '', true);
-
-  insert into public.recipe_ratings (household_id, recipe_id, member_id, stars)
-  select v_household_id, p_recipe_id, x.member_id, x.stars
-  from jsonb_to_recordset(v_snapshot -> 'ratings') x (member_id uuid, stars numeric)
-  where exists (select 1 from public.household_members m
-                where m.household_id = v_household_id and m.profile_id = x.member_id);
-
-  insert into public.recipe_favorites (household_id, recipe_id, member_id)
-  select v_household_id, p_recipe_id, x.member_id
-  from jsonb_array_elements_text(v_snapshot -> 'favorites') f (member_id_text)
-  cross join lateral (select f.member_id_text::uuid as member_id) x
-  where exists (select 1 from public.household_members m
-                where m.household_id = v_household_id and m.profile_id = x.member_id);
-
-  insert into public.collection_recipes (id, household_id, collection_id, recipe_id, servings, variant_id, sort)
-  select c.id, v_household_id, c.collection_id, c.recipe_id, c.servings, c.variant_id, c.sort
-  from jsonb_populate_recordset(null::public.collection_recipes, v_snapshot -> 'collection_recipes') c
-  where exists (select 1 from public.recipes r
-                where r.household_id = v_household_id
-                  and r.id = case when c.collection_id = p_recipe_id then c.recipe_id else c.collection_id end)
-  order by c.collection_id, c.sort, c.id
-  -- Only "already contained again" is skipped. A row id taken in the meantime (ids are unique
-  -- across households) fails loudly with 23505 instead of silently dropping the row.
-  on conflict (household_id, collection_id, recipe_id) do nothing;
-
-  insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id,
-                                        text, note, leftovers_of_entry_id, eater_ids, guests, portions, variants,
-                                        cook_id, sort, not_done)
-  select e.id, v_household_id, e.date, e.slot_id, e.kind, e.recipe_id, e.restaurant_id, e.activity_id,
-         e.text, e.note,
-         case when e.leftovers_of_entry_id is null
-                or exists (select 1 from public.meal_plan_entries s
-                           where s.household_id = v_household_id and s.id = e.leftovers_of_entry_id)
-                or exists (select 1 from jsonb_array_elements(v_snapshot -> 'removed') s
-                           where (s ->> 'id')::uuid = e.leftovers_of_entry_id)
-              then e.leftovers_of_entry_id end,
-         array(select u.id from unnest(e.eater_ids) with ordinality u (id, ord)
-               where exists (select 1 from public.household_members m
-                             where m.household_id = v_household_id and m.profile_id = u.id)
-               order by u.ord),
-         e.guests, e.portions, e.variants,
-         case when exists (select 1 from public.household_members m
-                           where m.household_id = v_household_id and m.profile_id = e.cook_id)
-              then e.cook_id end,
-         e.sort, e.not_done
-  from jsonb_populate_recordset(null::public.meal_plan_entries, v_snapshot -> 'removed') e
-  on conflict (id) do nothing;
-
-  update public.meal_plan_entries e
-  set kind = c.kind, recipe_id = c.recipe_id, text = c.text, variants = c.variants
-  from jsonb_to_recordset(v_snapshot -> 'converted') c (id uuid, kind text, recipe_id uuid, text text, variants jsonb,
-                                                        new_text text)
-  where e.household_id = v_household_id and e.id = c.id
-    and e.kind = 'text' and e.recipe_id is null and e.text = c.new_text;
-
-  delete from private.recipe_deletions d
-  where d.household_id = v_household_id and d.recipe_id = p_recipe_id;
-  return true;
 end
 $$;
 

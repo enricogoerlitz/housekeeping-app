@@ -10,7 +10,7 @@ import {
   type Id,
 } from '@housekeeping/core';
 
-import { INVALID_STARS, resolveMapsShortLink } from './commands-restaurants';
+import { checkWebsite, INVALID_STARS, resolveMapsShortLink } from './commands-restaurants';
 import { commit, getData, getState, newId, nowISO, updateData } from './store';
 
 /** Where an activity takes place; every field optional. */
@@ -26,6 +26,8 @@ export interface ActivityPlace {
 export interface ActivityDraft extends ActivityPlace {
   name: string;
   description?: string;
+  /** "Webseite" as typed; "https://" is added (spec 0024, REQ-003). */
+  websiteUrl?: string;
 }
 
 export type ActivityLinkReading =
@@ -35,7 +37,10 @@ export type ActivityLinkReading =
   | { status: 'invalid' };
 
 type ActivityPatch = Partial<
-  Pick<Activity, 'name' | 'description' | 'placeName' | 'address' | 'location' | 'mapsUrl'>
+  Pick<
+    Activity,
+    'name' | 'description' | 'placeName' | 'address' | 'location' | 'mapsUrl' | 'websiteUrl'
+  >
 >;
 
 const trimmed = (text: string | undefined) => text?.trim() || undefined;
@@ -57,6 +62,7 @@ function checkName(name: string, ownId?: Id): string {
  */
 export function createActivity(draft: ActivityDraft): Id {
   const name = checkName(draft.name);
+  const websiteUrl = checkWebsite(draft.websiteUrl);
   return commit({ path: 'diff' }, () => {
     const activity: Activity = {
       id: newId(),
@@ -66,7 +72,7 @@ export function createActivity(draft: ActivityDraft): Id {
       address: trimmed(draft.address),
       location: draft.location,
       mapsUrl: draft.mapsUrl,
-      tags: [],
+      websiteUrl,
       favoriteOf: [],
       ratings: {},
       createdBy: getState().currentMemberId,
@@ -93,6 +99,7 @@ export function updateActivity(id: Id, patch: ActivityPatch): void {
   if ('description' in patch) clean.description = trimmed(patch.description);
   if ('placeName' in patch) clean.placeName = trimmed(patch.placeName);
   if ('address' in patch) clean.address = trimmed(patch.address);
+  if ('websiteUrl' in patch) clean.websiteUrl = checkWebsite(patch.websiteUrl);
   commit({ path: 'diff' }, () => patchActivity(id, (activity) => ({ ...activity, ...clean })));
 }
 

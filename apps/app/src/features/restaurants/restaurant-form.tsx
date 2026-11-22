@@ -1,37 +1,86 @@
 import {
   readMapsLink,
+  removeRestaurantPhoto,
   resolveMapsShortLink,
+  setRestaurantPhoto,
+  useRestaurants,
   type LinkReading,
   type RestaurantDraft,
 } from '@housekeeping/api';
-import { priceLabel, type GeoPoint, type Restaurant } from '@housekeeping/core';
+import {
+  addTag,
+  normalizeText,
+  normalizeWebsite,
+  priceLabel,
+  tagValues,
+  type GeoPoint,
+  type Id,
+  type Restaurant,
+} from '@housekeeping/core';
 import { Button, Chip, Icon, Notice, Row, Stack, Text, TextField } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { ValuePicker } from '@/features/recipes/sections/classification-section';
+import {
+  PhotoChoiceField,
+  savePhotoChoice,
+  usePhotoChoice,
+  type PhotoChoice,
+} from '@/features/shell/own-photo';
+
 const PRICE_LEVELS: NonNullable<Restaurant['priceLevel']>[] = [1, 2, 3, 4];
+
+/** restaurants_tags_size (spec 0024, REQ-001: "wie am Rezept, höchstens 30"). */
+const MAX_TAGS = 30;
+
+/** The symbol of restaurants wherever they have no photo (spec 0024, REQ-004). */
+export const RESTAURANT_ICON = 'utensils';
 
 type PlaceReading = Extract<LinkReading, { status: 'place' }>;
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Das hat nicht geklappt.';
 
+/** Which field gets the keyboard first; "notes" from "Notiz bearbeiten" (spec 0024, REQ-002). */
+export type RestaurantFormFocus = 'link' | 'name' | 'notes';
+
 /**
- * State of the restaurant form: a map link at the top fills it; only the name is required. The
- * fields render with `RestaurantFormFields`; the save button lives with whoever shows the form
- * ("Restaurant hinzufügen" or the plan's add sheet).
+ * State of the restaurant form, for "Restaurant hinzufügen", "Neu → Restaurant" of the plan and
+ * "Restaurant bearbeiten" (spec 0024, REQ-001, prefilled from `restaurant`): a map link at the top
+ * fills it; only the name is required. The fields render with `RestaurantFormFields`; the save
+ * button lives with whoever shows the form.
  */
-export function useRestaurantForm(initialText?: string, initialName?: string) {
-  const [initial] = useState(() => readInitial(initialText, initialName));
+export function useRestaurantForm(
+  initialText?: string,
+  initialName?: string,
+  restaurant?: Restaurant,
+) {
+  const restaurants = useRestaurants();
+  const [initial] = useState(() =>
+    restaurant
+      ? { link: restaurant.mapsUrl ?? '', name: restaurant.name, reading: undefined }
+      : readInitial(initialText, initialName),
+  );
   const [link, setLink] = useState(initial.link);
   const [reading, setReading] = useState<LinkReading | undefined>(initial.reading);
+  // The saved link and coordinates of the restaurant being edited, until the link is changed.
+  const [kept, setKept] = useState<{ mapsUrl?: string; location?: GeoPoint }>({
+    mapsUrl: restaurant?.mapsUrl,
+    location: restaurant?.location,
+  });
   const [linkError, setLinkError] = useState<string | undefined>();
   const [name, setNameValue] = useState(initial.name);
   const [nameError, setNameError] = useState<string | undefined>();
-  const [cuisine, setCuisine] = useState('');
-  const [address, setAddress] = useState('');
-  const [priceLevel, setPriceLevel] = useState<Restaurant['priceLevel']>();
-  const [notes, setNotes] = useState('');
+  const [cuisine, setCuisine] = useState(restaurant?.cuisine ?? '');
+  const [address, setAddress] = useState(restaurant?.address ?? '');
+  const [priceLevel, setPriceLevel] = useState<Restaurant['priceLevel']>(restaurant?.priceLevel);
+  const [tags, setTagsValue] = useState<string[]>(restaurant?.tags ?? []);
+  const [tagsError, setTagsError] = useState<string | undefined>();
+  const [website, setWebsiteValue] = useState(restaurant?.websiteUrl ?? '');
+  const [websiteError, setWebsiteError] = useState<string | undefined>();
+  const [notes, setNotes] = useState(restaurant?.notes ?? '');
+  const photoChoice = usePhotoChoice(restaurant?.photoPath);
   const [saving, setSaving] = useState(false);
 
   const place: PlaceReading | undefined = reading?.status === 'place' ? reading : undefined;
@@ -41,9 +90,19 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
     setNameValue(value);
     setNameError(undefined);
   };
+  const setWebsite = (value: string) => {
+    setWebsiteValue(value);
+    setWebsiteError(undefined);
+  };
+  const setTags = (next: string[]) => {
+    setTagsValue(next);
+    setTagsError(next.length > MAX_TAGS ? `Höchstens ${MAX_TAGS} Schlagworte` : undefined);
+  };
 
   const changeLink = (text: string) => {
     setLink(text);
+    // AC-001 (REQ-001): an emptied or changed link takes the saved link and coordinates with it.
+    setKept({});
     // A name the previous link filled in belongs to that link, not to the person.
     const filledName = place?.draft.name;
     if (!text.trim()) {
@@ -51,7 +110,7 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
       setLinkError(undefined);
       return;
     }
-    const next = readMapsLink(text);
+    const next = readMapsLink(text, restaurant?.id);
     if (next.status === 'invalid') {
       setReading(undefined);
       setLinkError('Das ist kein Karten-Link');
@@ -68,11 +127,17 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
   };
 
   /**
-   * Resolves a short link (AC-005, AC-031) and checks the name. Returns the draft to save, or
-   * undefined after showing the problem at its field.
+   * Resolves a short link (AC-005, AC-031) and checks name, tags and website. Returns the draft to
+   * save, or undefined after showing the problem at its field.
    */
   const submit = async (): Promise<RestaurantDraft | undefined> => {
-    if (duplicate || saving) return undefined;
+    if (duplicate || saving || photoChoice.preparing) return undefined;
+    const checkedWebsite = normalizeWebsite(website);
+    if ('problem' in checkedWebsite) {
+      setWebsiteError(checkedWebsite.problem);
+      return undefined;
+    }
+    if (tags.length > MAX_TAGS) return undefined;
     let resolved: RestaurantDraft | undefined;
     if (reading?.status === 'short') {
       setSaving(true);
@@ -85,14 +150,17 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
         setSaving(false);
       }
     }
-    const location: GeoPoint | undefined = place?.draft.location ?? resolved?.location;
+    const location: GeoPoint | undefined =
+      place?.draft.location ?? resolved?.location ?? kept.location;
     const draft: RestaurantDraft = {
       name: name.trim() || resolved?.name || '',
       address: address.trim() || resolved?.address,
       location,
-      mapsUrl: place?.draft.mapsUrl ?? resolved?.mapsUrl,
+      mapsUrl: place?.draft.mapsUrl ?? resolved?.mapsUrl ?? kept.mapsUrl,
       cuisine: cuisine.trim() || resolved?.cuisine,
       priceLevel: priceLevel ?? resolved?.priceLevel,
+      tags,
+      websiteUrl: checkedWebsite.url,
       notes: notes.trim() || undefined,
     };
     if (!draft.name.trim()) {
@@ -103,6 +171,8 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
   };
 
   return {
+    restaurant,
+    restaurants,
     link,
     changeLink,
     reading,
@@ -119,9 +189,18 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
     setAddress,
     priceLevel,
     setPriceLevel,
+    tags,
+    setTags,
+    tagsError,
+    website,
+    setWebsite,
+    websiteError,
     notes,
     setNotes,
-    saving,
+    photoChoice,
+    /** What happens with the photo on saving (saveRestaurantPhoto). */
+    photo: photoChoice.photo,
+    saving: saving || photoChoice.preparing,
     duplicate,
     submit,
   };
@@ -129,14 +208,26 @@ export function useRestaurantForm(initialText?: string, initialName?: string) {
 
 export type RestaurantForm = ReturnType<typeof useRestaurantForm>;
 
-/** Link, name, cuisine, address, price and note of a restaurant (spec 0002). */
+/** Saves the photo choice after the restaurant exists (a new one right after it was created). */
+export function saveRestaurantPhoto(restaurantId: Id, choice: PhotoChoice): void {
+  savePhotoChoice(
+    choice,
+    (blob) => setRestaurantPhoto(restaurantId, blob),
+    () => removeRestaurantPhoto(restaurantId),
+  );
+}
+
+/**
+ * Link, name, cuisine, address, price, Schlagworte, website, photo and note of a restaurant
+ * (spec 0002; spec 0024, REQ-001).
+ */
 export function RestaurantFormFields(props: {
   form: RestaurantForm;
   /** The restaurant the link points to already exists: open it (or choose it) instead (AC-009). */
   onOpenExisting: (restaurant: Restaurant) => void;
   openLabel?: string;
   /** Which field gets the keyboard first. */
-  focus?: 'link' | 'name';
+  focus?: RestaurantFormFocus;
 }) {
   const { form } = props;
   const confirmation = form.place
@@ -147,6 +238,7 @@ export function RestaurantFormFields(props: {
         .filter(Boolean)
         .join(' · ')
     : undefined;
+  const taken = new Set(form.tags.map(normalizeText));
   return (
     <Stack gap={16}>
       <Stack gap={8}>
@@ -158,7 +250,7 @@ export function RestaurantFormFields(props: {
           autoFocus={props.focus === 'link'}
           error={form.linkError}
           hint={
-            form.reading
+            form.reading || form.link
               ? undefined
               : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
           }
@@ -247,12 +339,56 @@ export function RestaurantFormFields(props: {
           ))}
         </Row>
       </View>
+      <View style={{ gap: 6 }}>
+        <Text variant="smallStrong">Schlagworte</Text>
+        {form.tags.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} testID="restaurant-tags">
+            {form.tags.map((tag) => (
+              <Chip
+                key={tag}
+                label={tag}
+                removable
+                accessibilityLabel={`Schlagwort ${tag} entfernen`}
+                onPress={() => form.setTags(form.tags.filter((other) => other !== tag))}
+                testID={`restaurant-tag-${tag}`}
+              />
+            ))}
+          </View>
+        ) : null}
+        <ValuePicker
+          label="Schlagwort"
+          placeholder="Schlagwort suchen oder anlegen"
+          values={tagValues(form.restaurants).filter((tag) => !taken.has(normalizeText(tag)))}
+          onPick={(tag) => form.setTags(addTag(form.tags, tag))}
+          testID="restaurant-tag"
+        />
+        {form.tagsError ? (
+          <Text variant="small" color="warn" testID="restaurant-tags-error">
+            {form.tagsError}
+          </Text>
+        ) : null}
+      </View>
+      <TextField
+        label="Webseite"
+        value={form.website}
+        onChangeText={form.setWebsite}
+        placeholder="z. B. trattoria-da-enzo.de"
+        keyboardType="url"
+        error={form.websiteError}
+        testID="restaurant-website"
+      />
+      <PhotoChoiceField
+        state={form.photoChoice}
+        placeholderIcon={RESTAURANT_ICON}
+        testPrefix="restaurant"
+      />
       <TextField
         label="Notiz"
         value={form.notes}
         onChangeText={form.setNotes}
         placeholder="z. B. Am Wochenende reservieren"
         multiline
+        autoFocus={props.focus === 'notes'}
         testID="restaurant-notes"
       />
     </Stack>

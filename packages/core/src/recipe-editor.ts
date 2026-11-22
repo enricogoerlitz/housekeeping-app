@@ -806,10 +806,13 @@ export function cuisineValues(recipes: readonly Recipe[]): string[] {
   return cuisineFacets(recipes).map((facet) => facet.label);
 }
 
-/** The household's tags, most used first, each in its most common spelling (AC-024). */
-export function tagValues(recipes: readonly Recipe[]): string[] {
+/**
+ * The household's tags, most used first, each in its most common spelling (AC-024); of recipes,
+ * or of restaurants (spec 0024, REQ-001).
+ */
+export function tagValues(rows: readonly { tags: readonly string[] }[]): string[] {
   return spellingFacets(
-    recipes.flatMap((recipe) => recipe.tags),
+    rows.flatMap((row) => row.tags),
     normalizeText,
   ).map((facet) => facet.label);
 }

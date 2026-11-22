@@ -8,9 +8,33 @@ import {
   LINK_LIMIT_HINT,
   MAX_LINKS,
   normalizeWebUrl,
+  normalizeWebsite,
   validateLink,
 } from './web-link';
 import type { RecipeLink } from './types';
+
+describe('normalizeWebsite (spec 0024, REQ-003)', () => {
+  it('AC-008: "https://" is added to a typed website', () => {
+    expect(normalizeWebsite(' trattoria-da-enzo.de ')).toEqual({
+      url: 'https://trattoria-da-enzo.de',
+    });
+  });
+
+  it('AC-009: only http and https, and a host with a dot', () => {
+    for (const input of ['javascript:alert(1)', 'ftp://enzo.de', 'mailto:info@enzo.de']) {
+      expect(normalizeWebsite(input)).toEqual({
+        problem: 'Nur Adressen mit http:// oder https://',
+      });
+    }
+    for (const input of ['trattoria da enzo', 'localhost']) {
+      expect(normalizeWebsite(input)).toEqual({ problem: 'Keine gültige Adresse' });
+    }
+  });
+
+  it('AC-011: an empty field removes the website', () => {
+    expect(normalizeWebsite('   ')).toEqual({ url: undefined });
+  });
+});
 
 describe('normalizeWebUrl', () => {
   it('AC-031: keeps an https address as it is', () => {

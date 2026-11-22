@@ -1,3 +1,5 @@
+import { useRouter } from 'expo-router';
+
 import { useAddressedId } from '@/lib/addressed';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
@@ -5,7 +7,9 @@ import { RestaurantDetail } from './restaurant-detail';
 
 /** A restaurant on its own page (phones, deep links). */
 export function RestaurantScreen() {
-  const { params } = usePageParams('restaurant');
+  const address = usePageParams('restaurant');
+  const { params } = address;
+  const router = useRouter();
   // "‹ Essen" (the restaurant list) or the section it came from (spec 0019, REQ-006).
   const origin = useOriginBack(params.von, 'essen');
   // Only an id of an own household reaches the lookup; anything else shows "nicht gefunden".
@@ -16,6 +20,18 @@ export function RestaurantScreen() {
       restaurantId={found === 'shown' ? (params.id ?? '') : ''}
       onBack={origin.back}
       backLabel={origin.label}
+      window={params.fenster === 'route' ? undefined : params.fenster}
+      onWindow={(window) =>
+        window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+      }
+      // Spec 0024, REQ-010: after "Löschen" back to the list it came from.
+      onDeleted={origin.back}
+      onOpen={(restaurantId) =>
+        router.replace({
+          pathname: '/restaurant/[id]',
+          params: params.von ? { id: restaurantId, von: params.von } : { id: restaurantId },
+        })
+      }
     />
   );
 }

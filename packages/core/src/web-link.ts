@@ -53,6 +53,14 @@ export function normalizeWebUrl(input: string): { url: string } | { problem: str
   return isWebUrl(url) ? { url } : { problem: INVALID };
 }
 
+/**
+ * The optional "Webseite" of a restaurant or an activity (spec 0024, REQ-003): like
+ * normalizeWebUrl, but an empty field means no website.
+ */
+export function normalizeWebsite(input: string): { url: string | undefined } | { problem: string } {
+  return input.trim() === '' ? { url: undefined } : normalizeWebUrl(input);
+}
+
 /** The host in lower case without "www." and port: "chefkoch.de". */
 export function linkHost(url: string): string {
   const host = /^[a-z][a-z0-9+.-]*:\/\/([^/?#:]*)/i.exec(url)?.[1] ?? url;

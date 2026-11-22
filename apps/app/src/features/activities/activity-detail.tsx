@@ -1,5 +1,4 @@
 import {
-  preparePhoto,
   rateActivity,
   removeActivityPhoto,
   setActivityPhoto,
@@ -8,11 +7,10 @@ import {
   useCurrentMember,
   useHousehold,
   useMembers,
-  usePhoto,
   usePlanEntries,
   useToday,
 } from '@housekeeping/api';
-import { daysBetween, formatLongDate, visitsOf, type Activity, type Id } from '@housekeeping/core';
+import { isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -21,27 +19,33 @@ import {
   IconButton,
   List,
   ListRow,
+  Menu,
+  openExternalLink,
   Row,
   Section,
   Stack,
   Stars,
   Text,
-  toast,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 
-import { AddEntrySheet } from '@/features/meal-plan/add-entry-sheet';
+import { PlanPlaceSheet } from '@/features/meal-plan/plan-place-sheet';
 import { RouteSheet } from '@/features/restaurants/route-sheet';
 import { DetailPage } from '@/features/shell/detail-page';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
+import { DetailPhotoBlock } from '@/features/shell/own-photo';
+import { useDeletePlace } from '@/features/shell/use-delete-place';
+import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 
 import { ActivityFormSheet } from './activity-form';
-import { ActivityPhoto } from './activity-photo';
-import { activityVisitsLabel, daysAgoLabel, hasPlace } from './labels';
+import { ACTIVITY_ICON } from './activity-photo';
+import { activityVisitsLabel, hasPlace } from './labels';
+
+/** The windows of an activity's detail; they stand in the address (spec 0019, REQ-013). */
+export type ActivityWindow = 'bearbeiten' | 'einplanen';
 
 export interface ActivityDetailProps {
   activityId: Id;
@@ -49,15 +53,21 @@ export interface ActivityDetailProps {
   onBack?: () => void;
   /** The origin on the back link (spec 0019, REQ-006). */
   backLabel?: string;
-  /** Shows a close button (split view on wide screens). */
+  /** Shows a close button (next to the list on wide screens, spec 0024, REQ-008). */
   onClose?: () => void;
+  /** The open window and how to open or close one (address of the page showing the detail). */
+  window?: ActivityWindow;
+  onWindow: (window: ActivityWindow | undefined) => void;
+  /** After "Löschen": the grid or the list (spec 0024, REQ-010). */
+  onDeleted: () => void;
   /** Opens another activity (after saving or for a duplicate). */
   onOpen: (activityId: Id) => void;
 }
 
 /**
- * One activity: photo, place and "Route", rating and favourite per person, when it was done and
- * "Einplanen" (AC-009–011, AC-015, AC-016, AC-020).
+ * One activity: photo, place, "Route" and "Webseite", rating and favourite per person, when it was
+ * done, "Einplanen", "Bearbeiten" and ⋯ "Löschen" (spec 0004, AC-009–011, AC-015, AC-016, AC-020;
+ * spec 0024).
  */
 export function ActivityDetail(props: ActivityDetailProps) {
   const activity = useActivity(props.activityId);
@@ -80,7 +90,8 @@ export function ActivityDetail(props: ActivityDetailProps) {
           <Button
             label="Zu den Aktivitäten"
             icon="arrow-left"
-            onPress={() => router.replace('/kalender/aktivitaeten')}
+            // Next to the list back to the grid, keeping search and filter.
+            onPress={props.onClose ?? (() => router.replace('/aktivitaeten'))}
             testID="activity-not-found-back"
           />
         </EmptyState>
@@ -99,14 +110,18 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
   const entries = usePlanEntries();
   const today = useToday();
   const [routeOpen, setRouteOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [planning, setPlanning] = useState(false);
+  const historySection: SectionRef = useRef(null);
+  const jumpToHistory = useVisitsJump(historySection);
+  const remove = useDeletePlace('activity', activity, props.onDeleted);
 
   const visits = visitsOf('activity', activity.id, entries, today);
   const isFavorite = activity.favoriteOf.includes(me.id);
   const mine = activity.ratings[me.id] ?? 0;
-  const firstSlotId = [...household.mealSlots].sort((a, b) => a.sort - b.sort)[0]?.id;
+  const hasSlot = household.mealSlots.length > 0;
   const place = [activity.placeName, activity.address].filter(Boolean).join(', ');
+  const website =
+    activity.websiteUrl && isWebUrl(activity.websiteUrl) ? activity.websiteUrl : undefined;
+  const visitsLabel = activityVisitsLabel(visits);
 
   const favorite = (
     <FavoriteButton
@@ -117,6 +132,19 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       onPress={() => toggleActivityFavorite(activity.id)}
     />
   );
+  const more = (
+    <Menu<'delete'>
+      trigger="icon"
+      icon="ellipsis"
+      label="Mehr"
+      accessibilityLabel={`Mehr zu ${activity.name}`}
+      options={[
+        { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
+      ]}
+      onChange={remove}
+      testID="activity-more"
+    />
+  );
 
   return (
     <DetailPage
@@ -124,7 +152,12 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
       backLabel={props.backLabel}
       title={activity.name}
       titleTestID="activity-title"
-      right={favorite}
+      right={
+        <Row gap={4}>
+          {favorite}
+          {more}
+        </Row>
+      }
       tone="plan"
       testID="activity-screen"
     >
@@ -141,11 +174,21 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             ) : (
               <View />
             )}
-            {favorite}
+            <Row gap={4}>
+              {favorite}
+              {more}
+            </Row>
           </Row>
         )}
 
-        <PhotoBlock activity={activity} />
+        <DetailPhotoBlock
+          photoPath={activity.photoPath}
+          name={activity.name}
+          placeholderIcon={ACTIVITY_ICON}
+          onChange={(photo) => setActivityPhoto(activity.id, photo)}
+          onRemove={() => removeActivityPhoto(activity.id)}
+          testPrefix="activity"
+        />
 
         <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
           {props.onBack ? null : (
@@ -166,12 +209,11 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
               </Text>
             </Row>
           ) : null}
-          <Row gap={6}>
-            <Icon name="history" size={16} color="muted" />
-            <Text variant="small" color="muted" testID="activity-visits">
-              {activityVisitsLabel(visits) ?? 'Noch nicht gemacht'}
-            </Text>
-          </Row>
+          <VisitsLine
+            label={visitsLabel ?? 'Noch nicht gemacht'}
+            onPress={visitsLabel ? jumpToHistory : undefined}
+            testID="activity-visits"
+          />
           <Row gap={10}>
             <Stars
               value={mine}
@@ -197,13 +239,22 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
                 testID="activity-route"
               />
             ) : null}
+            {website ? (
+              <Button
+                label="Webseite"
+                icon="external-link"
+                variant="secondary"
+                onPress={() => openExternalLink(website)}
+                testID="activity-website-open"
+              />
+            ) : null}
             <Button
               label="Einplanen"
               icon="calendar-plus"
               variant="secondary"
-              disabled={online.disabled || !firstSlotId}
+              disabled={online.disabled || !hasSlot}
               hint={online.hint}
-              onPress={() => setPlanning(true)}
+              onPress={() => props.onWindow('einplanen')}
               testID="activity-plan"
             />
             <Button
@@ -212,7 +263,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
               variant="secondary"
               disabled={online.disabled}
               hint={online.hint}
-              onPress={() => setEditing(true)}
+              onPress={() => props.onWindow('bearbeiten')}
               testID="activity-edit"
             />
           </Row>
@@ -244,124 +295,30 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
           </List>
         </Section>
 
-        <Section title="Verlauf" testID="activity-history">
-          {visits.dates.length === 0 ? (
-            <Text color="muted">
-              Noch nicht gemacht. Vergangene Tage aus dem Plan stehen dann hier.
-            </Text>
-          ) : (
-            <List>
-              {visits.dates.map((date, index) => (
-                <ListRow
-                  key={`${date}-${index}`}
-                  testID={`activity-history-${index}`}
-                  leading={<Icon name="calendar-days" size={20} color="muted" />}
-                  title={formatLongDate(date)}
-                  subtitle={daysAgoLabel(daysBetween(date, today))}
-                />
-              ))}
-            </List>
-          )}
-        </Section>
+        <VisitList
+          ref={historySection}
+          title="Verlauf"
+          dates={visits.dates}
+          empty="Noch nicht gemacht. Vergangene Tage aus dem Plan stehen dann hier."
+          testID="activity-history"
+        />
 
         <RouteSheet restaurant={activity} visible={routeOpen} onClose={() => setRouteOpen(false)} />
-        {editing ? (
+        {props.window === 'bearbeiten' ? (
           <ActivityFormSheet
             activity={activity}
-            onClose={() => setEditing(false)}
+            onClose={() => props.onWindow(undefined)}
             onOpenExisting={props.onOpen}
           />
         ) : null}
-        {planning && firstSlotId ? (
-          <AddEntrySheet
-            target={{ date: today, slotId: firstSlotId }}
-            activityId={activity.id}
-            onClose={() => setPlanning(false)}
+        {props.window === 'einplanen' && hasSlot ? (
+          <PlanPlaceSheet
+            kind="activity"
+            place={activity}
+            onClose={() => props.onWindow(undefined)}
           />
         ) : null}
       </View>
     </DetailPage>
-  );
-}
-
-/** The photo with "Foto ändern" and "Foto entfernen"; both need the network (AC-009–011). */
-function PhotoBlock(props: { activity: Activity }) {
-  const { activity } = props;
-  const online = useOnlineOnly();
-  const photo = usePhoto(activity.photoPath);
-  const [busy, setBusy] = useState<'upload' | 'remove' | undefined>();
-  const [error, setError] = useState<string | undefined>();
-  const hasPhoto = !!activity.photoPath;
-
-  const fail = (caught: unknown) =>
-    setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
-
-  const change = () =>
-    pickPhotoFile((file) => {
-      setError(undefined);
-      setBusy('upload');
-      preparePhoto(file)
-        .then((prepared) => setActivityPhoto(activity.id, prepared))
-        .then(() => toast.show({ message: 'Foto gespeichert' }))
-        .catch(fail)
-        .finally(() => setBusy(undefined));
-    });
-
-  const remove = () => {
-    setError(undefined);
-    setBusy('remove');
-    removeActivityPhoto(activity.id)
-      .then(() => toast.show({ message: 'Foto entfernt' }))
-      .catch(fail)
-      .finally(() => setBusy(undefined));
-  };
-
-  return (
-    <View style={{ gap: 8 }}>
-      <View style={{ maxWidth: 560 }}>
-        <ActivityPhoto activity={activity} aspectRatio={16 / 9} testID="activity-image" />
-      </View>
-      {photo.loading ? (
-        <Text variant="caption" color="muted">
-          Foto wird geladen …
-        </Text>
-      ) : null}
-      {CAN_PICK_PHOTO ? (
-        <Row gap={12} wrap>
-          <Button
-            label={hasPhoto ? 'Foto ändern' : 'Foto hinzufügen'}
-            icon="camera"
-            variant="link"
-            size="sm"
-            disabled={online.disabled || busy !== undefined}
-            hint={online.hint}
-            onPress={change}
-            testID="activity-photo-change"
-          />
-          {hasPhoto ? (
-            <Button
-              label="Foto entfernen"
-              icon="trash"
-              variant="link"
-              size="sm"
-              disabled={online.disabled || busy !== undefined}
-              hint={online.hint}
-              onPress={remove}
-              testID="activity-photo-remove"
-            />
-          ) : null}
-        </Row>
-      ) : null}
-      {busy ? (
-        <Text variant="small" color="muted" testID="activity-photo-busy">
-          {busy === 'upload' ? 'Foto wird hochgeladen …' : 'Foto wird entfernt …'}
-        </Text>
-      ) : null}
-      {error ? (
-        <Text variant="small" color="warn" testID="activity-photo-error">
-          {error}
-        </Text>
-      ) : null}
-    </View>
   );
 }

@@ -51,11 +51,13 @@ import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
 import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { OwnPhoto } from '@/features/shell/own-photo';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
 import { lastVisitLabel, restaurantMeta } from './labels';
 import { RestaurantDetail } from './restaurant-detail';
 import { RestaurantFilterPanel } from './restaurant-filter-panel';
+import { RESTAURANT_ICON } from './restaurant-form';
 import { useRestaurantListState } from './restaurant-list-state';
 
 /** Restaurant cards in the grid: at least this wide (one column on phones, three at 1440 px). */
@@ -391,7 +393,18 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
           detail={
             <RestaurantDetail
               restaurantId={selectedId}
-              onClose={() => address.replace({ restaurant: undefined })}
+              onClose={() => address.replace({ restaurant: undefined, fenster: undefined })}
+              window={
+                params.fenster === 'bearbeiten' || params.fenster === 'einplanen'
+                  ? params.fenster
+                  : undefined
+              }
+              onWindow={(window) =>
+                window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+              }
+              // Spec 0024, REQ-010: after "Löschen" the grid, with search and filter.
+              onDeleted={() => address.replace({ restaurant: undefined, fenster: undefined })}
+              onOpen={open}
             />
           }
           placeholder={{ icon: 'utensils', title: 'Wähl ein Restaurant aus' }}
@@ -439,18 +452,15 @@ function RestaurantCard(props: {
           props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
         ]}
       >
-        <View
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: theme.shape.radius.photo,
-            backgroundColor: theme.colors.surfaceSunken,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name="utensils" size={22} color="muted" />
-        </View>
+        {/* The own photo, else the cutlery (spec 0024, REQ-004). */}
+        <OwnPhoto
+          photoPath={restaurant.photoPath}
+          name={restaurant.name}
+          placeholderIcon={RESTAURANT_ICON}
+          width={48}
+          height={48}
+          testID={`restaurant-${id}`}
+        />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Row gap={6}>
             <Text variant="rowTitle" numberOfLines={1} style={{ flexShrink: 1 }}>

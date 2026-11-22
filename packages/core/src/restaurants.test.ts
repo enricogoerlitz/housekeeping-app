@@ -110,7 +110,6 @@ describe('routeLinks', () => {
       name: 'Eislaufen',
       placeName: 'Eisstadion Hohenschönhausen',
       location: { lat: 52.55, lng: 13.5 },
-      tags: [],
       favoriteOf: [],
       ratings: {},
       createdAt: '2026-11-01T12:00:00.000Z',

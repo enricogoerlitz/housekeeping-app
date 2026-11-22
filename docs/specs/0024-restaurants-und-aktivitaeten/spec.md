@@ -189,6 +189,12 @@ Alle Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026, außer wo ve
    Datum …“), ergänzt um „Uhrzeit (optional)“ und „Zusatz“. Ein Fenster für alles, passend zum
    Kalender in KW; 0024 baut kein eigenes. Ersetzt die „14 Tage ab heute“ aus Entscheidung 4.
 9. Besuche: Abschnitt „Besuche“ (Glossar „Besuch“) am Restaurant, „Verlauf“ bleibt an der Aktivität (gebaut).
+10. Beim Bau (Claude, 22.11.2026): Der Freitext trägt Name und Zusatz in einem Text, „Zusatz“ wird geleert („Eislaufen (Halle Nord)“, auch am Restaurant, seit 0021 hat jede Art einen Zusatz); „Rückgängig“ setzt Zusatz und Uhrzeit zurück.
+11. Beim Bau: „Rückgängig“ stellt die entfallenen Einträge mit allen Spalten wieder her (auch Erinnerung und Uhrzeit), über eine gemeinsame Funktion `private.restore_plan_entries`, die nun auch `restore_recipe` nutzt (vorher gingen Erinnerungen dort verloren).
+12. Beim Bau: Ein beim Einplanen neu angelegtes Restaurant oder eine Aktivität bleibt bei „Rückgängig“ bestehen (wie Artikel), weil `apply_changes` sie nicht mehr löscht; der Eintrag geht.
+13. Beim Bau: Der Kommentar im Kopf der eingefrorenen Storage-Migration bleibt stehen; die neue Migration ersetzt seine Aussage, 0028 fasst beide zusammen.
+14. Beim Bau: Fenster „bearbeiten“/„einplanen“ stehen in der Adresse (`/rezepte?…&restaurant=…&fenster=bearbeiten`, `/aktivitaeten?aktivitaet=…&fenster=…`, `/aktivitaet/<id>?fenster=…`); die Fokus-Wahl „Notiz“ ist nicht in der Adresse.
+15. Beim Bau: Die Zeile „Zuletzt …“ springt mit Scrollen und Fokus auf die Überschrift nur im Browser (PWA); ohne Besuch ist sie kein Knopf.
 
 - Ändert ältere AC: 0002 AC-010 (Notiz jetzt im Fenster); 0004 Nicht-Ziel „Keine Fotos für Restaurants“; 0005 AC-002 (Aktivität hebt keinen Tab hervor); 0010 AC-001 (kein ▲), REQ-008/AC-025–027/AC-039–041 (Adresse `/aktivitaeten`, kein ▲); 0004 Daten „Löschen löscht sein Foto“ (erst nach „Rückgängig“-Frist).
 - Glossar (Hauptsitzung): neu „Webseite“ (`websiteUrl`/`website_url`); „Aktivität“ (Adresse `/aktivitaeten`, unter Verwalten, kein ▲); „Restaurant“ (Foto, Webseite); „Verlauf“ wird auch für Aktivitäten benutzt — Abgrenzung nötig.
@@ -203,27 +209,27 @@ Alle Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026, außer wo ve
 
 ## Risiken
 
-| Risiko                                           | Gegenmaßnahme                                                                                     | Test             |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------- | ---------------- |
-| Fremder Haushalt löscht/holt zurück              | RPC prüft Mitgliedschaft, `…_not_found`                                                           | pgTAP Isolation  |
-| Abgemeldet                                       | `not_authenticated`, kein Grant für `anon`                                                        | pgTAP            |
-| Andere Person holt zurück, Bewertungen gefälscht | nur löschende Person, Schnappschuss nur serverseitig (`private`, keine Grants)                    | pgTAP            |
-| Löschen am RPC vorbei                            | kein `delete`-Grant, Allowlist false, FK `restrict`                                               | pgTAP            |
-| Gleichzeitiges Einplanen beim Löschen            | Sperre `for update`, FK 23503 → „… gibt es nicht mehr.“                                           | pgTAP, api-Test  |
-| Zweites Gerät hält Gelöschtes                    | Grabsteine `restaurants`, Bewertungen, Favoriten, `meal_plan_entries`; `updated_at` der Freitexte | api-Backend-Test |
-| `javascript:`-Link als Webseite                  | Prüfung im Gerät und in der Datenbank, `noopener`                                                 | core + pgTAP     |
-| Foto in fremdem Ordner                           | Pfad-Check + Storage-Policy                                                                       | pgTAP            |
-| Foto verwaist (App bricht ab)                    | hingenommen wie Spec 0008 E5                                                                      | —                |
+| Risiko                                           | Gegenmaßnahme                                                                                     | Test                                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Fremder Haushalt löscht/holt zurück              | RPC prüft Mitgliedschaft, `…_not_found`                                                           | `restaurants_and_activities.test.sql` (AC-038), `commands-places.backend.test.ts` |
+| Abgemeldet                                       | `not_authenticated`, kein Grant für `anon`                                                        | `restaurants_and_activities.test.sql` (anon)                                      |
+| Andere Person holt zurück, Bewertungen gefälscht | nur löschende Person, Schnappschuss nur serverseitig (`private`, keine Grants)                    | `restaurants_and_activities.test.sql`, `recipe_deletion.test.sql`                 |
+| Löschen am RPC vorbei                            | kein `delete`-Grant, Allowlist false, FK `restrict`                                               | `restaurants_and_activities.test.sql`, `apply_changes.test.sql`                   |
+| Gleichzeitiges Einplanen beim Löschen            | Sperre `for update`, FK 23503 → „… gibt es nicht mehr.“                                           | pgTAP (23503), `commands-places.backend.test.ts` (AC-020, AC-022)                 |
+| Zweites Gerät hält Gelöschtes                    | Grabsteine `restaurants`, Bewertungen, Favoriten, `meal_plan_entries`; `updated_at` der Freitexte | pgTAP (Grabsteine), `commands-places.backend.test.ts` (AC-034)                    |
+| `javascript:`-Link als Webseite                  | Prüfung im Gerät und in der Datenbank, `noopener`                                                 | `web-link.test.ts`, pgTAP (AC-010)                                                |
+| Foto in fremdem Ordner                           | Pfad-Check + Storage-Policy                                                                       | `restaurants_and_activities.test.sql` (AC-015)                                    |
+| Foto verwaist (App bricht ab)                    | hingenommen wie Spec 0008 E5                                                                      | —                                                                                 |
 
 ## Umsetzung
 
-- [ ] 1. Migration + pgTAP rot zuerst: Spalten, Checks, Storage-Regex, `private.deletions` samt Umzug von `private.recipe_deletions`, vier RPCs, Grants/Allowlist (AC-010, AC-015, AC-034–038)
-- [ ] 2. core: Webadresse prüfen, `deletionEffect` für Restaurant/Aktivität, Löschhinweis, `plannedNotice` mit Jahr (AC-008/009, AC-018, AC-034)
-- [ ] 3. api: Mapping, Fake-Transport, `updateRestaurant` voll, Restaurant-Foto (`PhotoTable`), `deleteRestaurant`/`deleteActivity` mit Rückgängig, `CACHE_VERSION` (AC-001–005, AC-012–014, AC-035–037)
-- [ ] 4. Formular und „Restaurant bearbeiten“, Notiz nur lesen, Schlagworte, Webseite, Foto (AC-001–009, AC-011–014)
-- [ ] 5. Einplanen-Fenster für Restaurant und Aktivität (AC-016–022)
-- [ ] 6. Besuche/Verlauf antippbar (AC-023–025)
-- [ ] 7. Route-Gruppe `(aktivitaeten)`, Verwalten-Eintrag, Berg-Knopf weg, Links umstellen, Aktivitäten in `ListDetail` (AC-026–033)
-- [ ] 8. ⋯ „Löschen“ an beiden Detailansichten (AC-034–036)
-- [ ] 9. `/ui-verify` (Handy, Tablet, Desktop), `/security-check`, spec-auditor
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] 1. Migration + pgTAP rot zuerst: Spalten, Checks, Storage-Regex, `private.deletions` samt Umzug von `private.recipe_deletions`, vier RPCs, Grants/Allowlist (AC-010, AC-015, AC-034–038)
+- [x] 2. core: Webadresse prüfen, `deletionEffect` für Restaurant/Aktivität, Löschhinweis, `plannedNotice` mit Jahr (AC-008/009, AC-018, AC-034)
+- [x] 3. api: Mapping, Fake-Transport, `updateRestaurant` voll, Restaurant-Foto (`PhotoTable`), `deleteRestaurant`/`deleteActivity` mit Rückgängig, `CACHE_VERSION` (AC-001–005, AC-012–014, AC-035–037)
+- [x] 4. Formular und „Restaurant bearbeiten“, Notiz nur lesen, Schlagworte, Webseite, Foto (AC-001–009, AC-011–014)
+- [x] 5. Einplanen-Fenster für Restaurant und Aktivität (AC-016–022)
+- [x] 6. Besuche/Verlauf antippbar (AC-023–025)
+- [x] 7. Route-Gruppe `(aktivitaeten)`, Verwalten-Eintrag, Berg-Knopf weg, Links umstellen, Aktivitäten in `ListDetail` (AC-026–033)
+- [x] 8. ⋯ „Löschen“ an beiden Detailansichten (AC-034–036)
+- [x] 9. `/security-check` (0 Befunde, 1 Hinweis: das Foto geht nach dem Hinweis, obwohl der Server bis 1 h zurückholen kann — gewollt wie Spec 0008 E5, das App-„Rückgängig“ gilt 5 s), spec-auditor (UI-AC nur über e2e belegt, die erst in 0028 laufen). `/ui-verify` läuft nach der Welle-2-Regel einmal in 0028.
+- [x] Nachweis (22.11.2026, nach Merge von 0021 und 0026): `pnpm format:check && pnpm check` grün, `pnpm build:web` grün, `pnpm exec supabase test db` 2514 Tests grün, e2e-Typprüfung grün.

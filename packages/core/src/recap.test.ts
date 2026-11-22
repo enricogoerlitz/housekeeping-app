@@ -38,7 +38,6 @@ const enzo: Restaurant = {
 const bouldern: Activity = {
   id: 'bouldern',
   name: 'Bouldern',
-  tags: [],
   favoriteOf: [],
   ratings: {},
   createdAt: '2026-10-01T12:00:00.000Z',

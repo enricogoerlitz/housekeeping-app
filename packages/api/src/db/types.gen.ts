@@ -40,8 +40,8 @@ export type Database = {
           name_key: string;
           photo_path: string | null;
           place_name: string | null;
-          tags: string[];
           updated_at: string;
+          website_url: string | null;
         };
         ComputedFields: never;
         Insert: {
@@ -58,8 +58,8 @@ export type Database = {
           name_key: string;
           photo_path?: string | null;
           place_name?: string | null;
-          tags?: string[];
           updated_at?: string;
+          website_url?: string | null;
         };
         Update: {
           address?: string | null;
@@ -75,8 +75,8 @@ export type Database = {
           name_key?: string;
           photo_path?: string | null;
           place_name?: string | null;
-          tags?: string[];
           updated_at?: string;
+          website_url?: string | null;
         };
         Relationships: [
           {
@@ -1539,9 +1539,11 @@ export type Database = {
           maps_url: string | null;
           name: string;
           notes: string | null;
+          photo_path: string | null;
           price_level: number | null;
           tags: string[];
           updated_at: string;
+          website_url: string | null;
         };
         ComputedFields: never;
         Insert: {
@@ -1555,9 +1557,11 @@ export type Database = {
           maps_url?: string | null;
           name: string;
           notes?: string | null;
+          photo_path?: string | null;
           price_level?: number | null;
           tags?: string[];
           updated_at?: string;
+          website_url?: string | null;
         };
         Update: {
           address?: string | null;
@@ -1570,9 +1574,11 @@ export type Database = {
           maps_url?: string | null;
           name?: string;
           notes?: string | null;
+          photo_path?: string | null;
           price_level?: number | null;
           tags?: string[];
           updated_at?: string;
+          website_url?: string | null;
         };
         Relationships: [
           {
@@ -1854,9 +1860,11 @@ export type Database = {
         Returns: Json;
       };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
+      delete_activity: { Args: { activity_id: string; today: string }; Returns: Json };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
       delete_household: { Args: { household_id: string }; Returns: undefined };
       delete_recipe: { Args: { recipe_id: string; today: string }; Returns: Json };
+      delete_restaurant: { Args: { restaurant_id: string; today: string }; Returns: Json };
       household_media_names: { Args: { household_id: string }; Returns: string[] };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
       list_push_subscriptions: {
@@ -1881,8 +1889,10 @@ export type Database = {
       remove_item_contributions: { Args: { p_ids: string[]; p_item_id: string }; Returns: Json };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
+      restore_activity: { Args: { activity_id: string }; Returns: boolean };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
       restore_recipe: { Args: { recipe_id: string }; Returns: boolean };
+      restore_restaurant: { Args: { restaurant_id: string }; Returns: boolean };
       send_test_push: { Args: { p_endpoint: string }; Returns: undefined };
       set_activity_favorite: {
         Args: { activity_id: string; favorite: boolean };

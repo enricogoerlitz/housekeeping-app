@@ -833,7 +833,6 @@ function buildDemoData(today: ISODate): HouseholdData {
   const activity = (id: string, name: string, extra: Partial<Activity>): Activity => ({
     id,
     name,
-    tags: [],
     favoriteOf: [],
     ratings: {},
     createdBy: ENRICO,
