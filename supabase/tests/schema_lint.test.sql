@@ -58,7 +58,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.merge_articles(uuid,uuid)'),    -- spec 0007
   ('private.complete_chore(uuid,jsonb)'),   -- spec 0011: domain op of apply_changes, the only way to book
   ('private.remove_chore_event(uuid,uuid)'), -- spec 0011: domain op of apply_changes, the only way to remove
-  ('private.delete_recipe(uuid,date)'),     -- spec 0008: the only way to delete a recipe
+  ('private.delete_recipe(uuid,date,boolean)'), -- spec 0008: the only way to delete a recipe (0023: with the list)
   ('private.restore_recipe(uuid)'),         -- spec 0008: "Rückgängig" of delete_recipe
   ('private.set_packing_items_packed(uuid,jsonb)'), -- spec 0012: the only way to pack (ADR-0013)
   ('private.adopt_bag_changes(uuid,jsonb)'),        -- spec 0022: domain op of apply_changes, "Übernehmen"

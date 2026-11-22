@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { deletedNotice, recipeDeletionEffect } from './recipe-deletion';
+import { entriesOnList } from './entry-edit';
+import { deletedNotice, deletionListQuestion, recipeDeletionEffect } from './recipe-deletion';
 import {
   enrico,
   grillabend,
@@ -9,7 +10,7 @@ import {
   kartoffelsalat,
   nadja,
 } from './test-fixtures';
-import type { CollectionRecipe, MealPlanEntry } from './types';
+import type { CollectionRecipe, MealPlanEntry, ShoppingItem } from './types';
 
 function entry(partial: Partial<MealPlanEntry> & Pick<MealPlanEntry, 'id'>): MealPlanEntry {
   return {
@@ -220,5 +221,59 @@ describe('the notice names the entries that go (spec 0023, REQ-012)', () => {
   it('AC-052: nothing planned: only "Shakshuka gelöscht"', () => {
     expect(deletedNotice('Shakshuka', { entries: 0, collections: 0 })).toBe('Shakshuka gelöscht');
     expect(deletedNotice('Shakshuka', {})).toBe('Shakshuka gelöscht');
+  });
+});
+
+describe('ingredients of the entries that go (spec 0023, Decision 15)', () => {
+  const source = (entryId: string) => ({
+    kind: 'recipe' as const,
+    recipeId: 'rec-lasagne',
+    entryId,
+    label: 'Lasagne (Sa)',
+  });
+  const item = (id: string, entryIds: string[], checked = false): ShoppingItem => ({
+    id,
+    articleId: `art-${id}`,
+    checked,
+    createdAt: '2026-11-22T10:00:00Z',
+    contributions: entryIds.map((entryId, index) => ({
+      id: `${id}-${index}`,
+      source: entryId === 'hand' ? { kind: 'manual' } : source(entryId),
+      count: 1,
+    })),
+  });
+  const items = [
+    item('hack', ['sat', 'hand']),
+    item('platten', ['sat', 'tue']),
+    item('salz', ['sat'], true),
+    item('milch', ['hand']),
+  ];
+
+  it('Decision 15: counts the open items holding contributions of the entries that go', () => {
+    expect(entriesOnList(items, ['sat', 'tue'])).toBe(2);
+    expect(entriesOnList(items, ['tue'])).toBe(1);
+    expect(entriesOnList(items, ['other'])).toBe(0);
+    expect(entriesOnList(items, [])).toBe(0);
+  });
+
+  it('Decision 15: the question names the entries and the ingredients', () => {
+    expect(deletionListQuestion({ entries: 2, ingredients: 3 })).toBe(
+      'Für 2 geplante Einträge stehen 3 Zutaten auf der Einkaufsliste.',
+    );
+    expect(deletionListQuestion({ entries: 1, ingredients: 1 })).toBe(
+      'Für 1 geplanten Eintrag steht 1 Zutat auf der Einkaufsliste.',
+    );
+  });
+
+  it('Decision 15: the notice says how many ingredients left the list', () => {
+    expect(deletedNotice('Lasagne', { entries: 2, ingredients: 3, collections: 1 })).toBe(
+      'Lasagne gelöscht · 2 geplante Einträge entfallen · 3 Zutaten von der Liste genommen · auch aus 1 Sammlung entfernt',
+    );
+    expect(deletedNotice('Lasagne', { entries: 1, ingredients: 1 })).toBe(
+      'Lasagne gelöscht · 1 geplanter Eintrag entfällt · 1 Zutat von der Liste genommen',
+    );
+    expect(deletedNotice('Lasagne', { entries: 1, ingredients: 0 })).toBe(
+      'Lasagne gelöscht · 1 geplanter Eintrag entfällt',
+    );
   });
 });
