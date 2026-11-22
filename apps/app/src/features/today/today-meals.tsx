@@ -12,6 +12,7 @@ import {
   withNote,
   withTime,
   type Activity,
+  type Restaurant,
   type ISODate,
   type MealPlanEntry,
   type Recipe,
@@ -125,13 +126,11 @@ export function TodayMeals(props: TodayMealsProps) {
       entry.kind === 'activity' && entry.activityId ? activitiesById[entry.activityId] : undefined;
     if (restaurant) {
       return (
-        <PlannedCard
+        <RestaurantCard
           entry={entry}
+          restaurant={restaurant}
           // "Vormittag · 10:30": the time of a restaurant or activity (spec 0021, AC-035).
           kicker={withTime(slotName, entryTime(entry))}
-          title={restaurant.name}
-          meta={restaurant.cuisine}
-          placeholderIcon="utensils"
           onPress={() => openRestaurant(restaurant.id)}
           corner={<RouteButton entryId={entry.id} onPress={() => setRouteFor(restaurant)} />}
         />
@@ -362,6 +361,29 @@ function RouteButton(props: { entryId: string; onPress: () => void }) {
 }
 
 /** An activity: its own photo, "Bouldern (Boulderhalle Ost)", the place (AC-009). */
+/** A planned restaurant with its own photo, else the cutlery (spec 0024, REQ-004). */
+function RestaurantCard(props: {
+  entry: MealPlanEntry;
+  restaurant: Restaurant;
+  kicker: string;
+  onPress: () => void;
+  corner: ReactNode;
+}) {
+  const photo = usePhoto(props.restaurant.photoPath);
+  return (
+    <PlannedCard
+      entry={props.entry}
+      kicker={props.kicker}
+      title={props.restaurant.name}
+      meta={props.restaurant.cuisine}
+      image={photo.uri ? { uri: photo.uri } : undefined}
+      placeholderIcon="utensils"
+      onPress={props.onPress}
+      corner={props.corner}
+    />
+  );
+}
+
 function ActivityCard(props: {
   entry: MealPlanEntry;
   activity?: Activity;
