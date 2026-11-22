@@ -38,6 +38,13 @@ Reise beginnt, ob dieses Gerät Benachrichtigungen bekommt, warum Knöpfe gesper
 - **Keine Änderung an Datenbank, Sync oder Warteschlange**; nur App, `packages/core` und
   `packages/api`.
 
+**Ersetzt oder ändert:**
+
+| Bisher                                                                      | Neu                                  |
+| --------------------------------------------------------------------------- | ------------------------------------ |
+| Spec 0012, AC-042 (Entscheidung 15): Packkarte zählt ab dem gewählten Tag   | AC-020: Packkarte zählt ab heute     |
+| Spec 0001, AC-036: Aufgabe „abwechselnd“ erscheint „mit beiden Mitgliedern“ | AC-016: nur die Person, die dran ist |
+
 ## Anforderungen und Akzeptanzkriterien
 
 Beispiele: Haushalt „Enrico & Nadja“, angemeldet ist Enrico. Heute ist Sonntag, 22.11.2026.
@@ -127,13 +134,13 @@ Dann        schließt das Fenster
 Und         beim erneuten Öffnen steht als Zusatz „Halle Nord“
 ```
 
-**AC-008 — Zusatz und Uhrzeit zusammen**
+**AC-008 — Uhrzeit beim Restaurant** (geändert am 22.11.2026: Einen Zusatz gibt es nur bei
+Aktivitäten; ein Restaurant-Eintrag hat stattdessen „Reserviert um“)
 
 ```gherkin
-Angenommen  im Restaurant-Eintrag „Trattoria Da Enzo“ habe ich „Reserviert um“ auf 19:30 gesetzt und
-            als Zusatz „Tisch am Fenster“ getippt
+Angenommen  im Restaurant-Eintrag „Trattoria Da Enzo“ habe ich „Reserviert um“ auf 19:30 gesetzt
 Wenn        ich „Fertig“ wähle
-Dann        sind beide Werte gespeichert
+Dann        ist 19:30 gespeichert
 ```
 
 **AC-009 — Fehlerfall**
