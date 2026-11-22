@@ -55,7 +55,6 @@ export const NOTE_MAX_LENGTH = MAX_ENTRY_NOTE;
 /** The hint when the server refuses an entry because its recipe was deleted (spec 0008, E6). */
 export const RECIPE_GONE_MESSAGE = 'Das Rezept gibt es nicht mehr';
 
-/** E6: the entry's recipe was deleted meanwhile (meal_plan_entries_recipe_fkey). */
 /** Planning a restaurant or an activity deleted meanwhile (spec 0024, AC-020, AC-022). */
 export const RESTAURANT_GONE_MESSAGE = 'Das Restaurant gibt es nicht mehr.';
 export const ACTIVITY_GONE_MESSAGE = 'Die Aktivität gibt es nicht mehr.';
@@ -66,6 +65,7 @@ const GONE_MESSAGES: Record<string, string> = {
   meal_plan_entries_activity_fkey: ACTIVITY_GONE_MESSAGE,
 };
 
+/** E6: the entry's recipe, restaurant or activity was deleted meanwhile (its foreign key). */
 function recipeGone(error: unknown): string | undefined {
   return error instanceof TransportError && error.code === '23503' && error.constraint
     ? GONE_MESSAGES[error.constraint]

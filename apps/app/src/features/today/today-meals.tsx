@@ -360,7 +360,6 @@ function RouteButton(props: { entryId: string; onPress: () => void }) {
   );
 }
 
-/** An activity: its own photo, "Bouldern (Boulderhalle Ost)", the place (AC-009). */
 /** A planned restaurant with its own photo, else the cutlery (spec 0024, REQ-004). */
 function RestaurantCard(props: {
   entry: MealPlanEntry;
@@ -384,6 +383,7 @@ function RestaurantCard(props: {
   );
 }
 
+/** An activity: its own photo, "Bouldern (Boulderhalle Ost)", the place (AC-009). */
 function ActivityCard(props: {
   entry: MealPlanEntry;
   activity?: Activity;

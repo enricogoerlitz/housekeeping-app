@@ -699,7 +699,6 @@ grant execute on function public.restore_restaurant(uuid) to authenticated;
 grant execute on function public.delete_activity(uuid, date) to authenticated;
 grant execute on function public.restore_activity(uuid) to authenticated;
 
--- >>> apply_changes
 -- ---------------------------------------------------------------------------------------------
 -- apply_changes: website_url, photo_path; no delete of restaurants and activities (otherwise
 -- unchanged from 20261122192950_plan_entry_fields)
@@ -964,4 +963,3 @@ begin
   return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
 end
 $$;
--- <<< apply_changes

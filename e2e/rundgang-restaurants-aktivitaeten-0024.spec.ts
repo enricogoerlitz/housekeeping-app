@@ -1,4 +1,5 @@
 import {
+  back,
   chooseTime,
   expect,
   freshSeed,
@@ -6,6 +7,7 @@ import {
   isPhone,
   open,
   openManaged,
+  secondDevice,
   test,
   tid,
   toastMessage,
@@ -160,4 +162,80 @@ test('AC-034, AC-035: "Löschen" with the notice, "Rückgängig" brings everythi
   await open(page, `/kalender?tag=${TODAY}`);
   await open(page, `/kalender?eintrag=${ENZO_LATER}`);
   await expect(tid(page, 'entry-sheet')).toContainText('Trattoria Da Enzo');
+});
+
+const BURGER = seedIds['rest-burger'];
+const EISLAUFEN_TODAY = seedIds['plan-eislaufen-1'];
+
+test('AC-024: Bouldern "Zuletzt … · 3-mal" jumps to "Verlauf", a day opens its week', async ({
+  page,
+}) => {
+  await open(page, `/aktivitaet/${BOULDERN}`);
+  await tid(page, 'activity-visits-jump').click();
+  await expect(tid(page, 'activity-history-0')).toBeInViewport();
+  await tid(page, 'activity-history-0').click();
+  await expect(page).toHaveURL(/\/kalender\?tag=/);
+});
+
+test('AC-025: without a visit the line is no button and "Besuche" says so', async ({ page }) => {
+  await open(page, `/restaurant/${BURGER}`);
+  await expect(tid(page, 'restaurant-visits')).toHaveText('Noch kein Besuch im Plan');
+  await expect(tid(page, 'restaurant-visits-jump')).toHaveCount(0);
+  await expect(tid(page, 'restaurant-history-empty')).toHaveText(
+    'Noch kein Besuch. Vergangene Tage aus dem Kalender stehen dann hier.',
+  );
+});
+
+test('AC-031: on the phone "Zurück" leads to "Aktivitäten", then to "Verwalten"', async ({
+  page,
+}) => {
+  test.skip(!isPhone(page), 'phones only');
+  await open(page, '/liste');
+  await openManaged(page, 'activities');
+  await tid(page, `activity-${EISLAUFEN}`).click();
+  await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
+  await back(page);
+  await expect(tid(page, 'activities-screen')).toBeVisible();
+  await back(page);
+  await expect(tid(page, 'manage-screen')).toBeVisible();
+});
+
+test('AC-032: "Aktivität öffnen" in the entry window opens the activity', async ({ page }) => {
+  await open(page, `/kalender?eintrag=${EISLAUFEN_TODAY}`);
+  await tid(page, 'entry-open-activity').click();
+  if (isPhone(page)) await expect(page).toHaveURL(new RegExp(`/aktivitaet/${EISLAUFEN}`));
+  else await expect(page).toHaveURL(new RegExp(`/aktivitaeten\\?.*aktivitaet=${EISLAUFEN}`));
+  await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
+});
+
+test.describe('desktop', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('AC-027: a new name shows left and right, the search stays', async ({ page }) => {
+    await open(page, `/aktivitaeten?suche=eis&aktivitaet=${EISLAUFEN}`);
+    await tid(page, 'activity-edit').click();
+    await tid(page, 'activity-name').fill('Eislaufen Neuss');
+    await tid(page, 'activity-save').click();
+    await expect(tid(page, 'activity-title')).toHaveText('Eislaufen Neuss');
+    await expect(tid(page, `activity-${EISLAUFEN}`)).toContainText('Eislaufen Neuss');
+    await expect(tid(page, 'activity-search')).toHaveValue('eis');
+  });
+
+  test('AC-029: deleted on the other device, the detail says "Restaurant nicht gefunden"', async ({
+    page,
+    browser,
+  }) => {
+    await open(page, `/rezepte?ansicht=restaurants&restaurant=${BURGER}`);
+    await expect(tid(page, 'restaurant-title')).toHaveText('Brooklyn Burger Bar');
+    const nadja = await secondDevice(browser, 'nadja');
+    await nadja.page.goto(`/restaurant/${BURGER}`);
+    await tid(nadja.page, 'restaurant-more').click();
+    await nadja.page.getByRole('menuitem', { name: 'Löschen' }).click();
+    await expect(toastMessage(nadja.page)).toContainText('gelöscht');
+    await nadja.context.close();
+    await page.reload();
+    await expect(tid(page, 'restaurant-not-found')).toBeVisible();
+    await tid(page, 'restaurant-not-found-back').click();
+    await expect(tid(page, 'restaurants-split')).toHaveCount(0);
+  });
 });
