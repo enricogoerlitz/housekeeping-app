@@ -1,11 +1,15 @@
 import {
-  signOut,
   useCurrentMember,
   useNotificationSettings,
   useSyncState,
   useToday,
 } from '@housekeeping/api';
-import { dietPreferenceLabel, enabledKindsLabel, toISODate } from '@housekeeping/core';
+import {
+  dietPreferenceLabel,
+  notificationsRowLabel,
+  thisDeviceRegistered,
+  toISODate,
+} from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -23,19 +27,22 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useSignedInEmail } from '@/features/household/household-forms';
+import { loadDevicePushState, useDevicePushState } from '@/features/notifications/device-store';
 import {
   NotificationsContent,
   NotificationsScreen,
 } from '@/features/notifications/notifications-screen';
+import { devicePushSupport } from '@/features/notifications/web-push-platform';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { ownAppVersion } from '@/lib/app-version';
 import { features } from '@/lib/features';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
+import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
 
 export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
@@ -120,39 +127,62 @@ function SettingsList(props: {
   chosen: SettingsSection;
   onChoose: (section: SettingsSection) => void;
 }) {
-  const settings = useNotificationSettings();
+  const notifications = useNotificationsRowLabel();
+  const signOut = useSignOut();
   return (
-    <List>
-      {props.sections.map((section) => (
+    <>
+      <List>
+        {props.sections.map((section) => (
+          <ListRow
+            key={section}
+            title={SECTION_TITLES[section]}
+            trailing={
+              section === 'notifications' && notifications ? (
+                <Text variant="small" color="muted">
+                  {notifications}
+                </Text>
+              ) : undefined
+            }
+            selected={section === props.chosen}
+            onPress={() => props.onChoose(section)}
+            testID={`settings-nav-${section}`}
+          />
+        ))}
         <ListRow
-          key={section}
-          title={SECTION_TITLES[section]}
-          trailing={
-            section === 'notifications' && settings ? (
-              <Text variant="small" color="muted">
-                {enabledKindsLabel(settings)}
-              </Text>
-            ) : undefined
-          }
-          selected={section === props.chosen}
-          onPress={() => props.onChoose(section)}
-          testID={`settings-nav-${section}`}
+          title="Abmelden"
+          leading={<Icon name="log-out" color="muted" />}
+          hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
+          onPress={signOut.request}
+          testID="settings-sign-out"
         />
-      ))}
-      <ListRow
-        title="Abmelden"
-        leading={<Icon name="log-out" color="muted" />}
-        hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
-        onPress={() => void signOut()}
-        testID="settings-sign-out"
-      />
-    </List>
+      </List>
+      {signOut.dialog}
+    </>
   );
+}
+
+/**
+ * "2 an · dieses Gerät aus" or "2 an" (AC-001, spec 0018 AC-022), from what this device remembers
+ * about its registration, so it works offline. Undefined until the settings are loaded.
+ */
+function useNotificationsRowLabel(): string | undefined {
+  const settings = useNotificationSettings();
+  const device = useDevicePushState();
+  useEffect(() => {
+    void loadDevicePushState();
+  }, []);
+  if (!settings) return undefined;
+  const deviceOn = thisDeviceRegistered({
+    support: devicePushSupport(),
+    wanted: device.wanted,
+    ...(device.endpoint ? { storedEndpoint: device.endpoint } : {}),
+  });
+  return notificationsRowLabel(settings, deviceOn);
 }
 
 /** "Benachrichtigungen · 2 an ›" on phones (AC-001). */
 function NotificationsRow(props: { onPress: () => void }) {
-  const settings = useNotificationSettings();
+  const label = useNotificationsRowLabel();
   return (
     <Section testID="settings-notifications">
       <List>
@@ -161,9 +191,9 @@ function NotificationsRow(props: { onPress: () => void }) {
           leading={<Icon name="bell" color="muted" />}
           trailing={
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              {settings ? (
-                <Text variant="small" color="muted">
-                  {enabledKindsLabel(settings)}
+              {label ? (
+                <Text variant="small" color="muted" testID="settings-notifications-summary">
+                  {label}
                 </Text>
               ) : null}
               <Icon name="chevron-right" color="muted" />
@@ -180,6 +210,7 @@ function NotificationsRow(props: { onPress: () => void }) {
 function ProfileSection(props: { withSignOut?: boolean }) {
   const me = useCurrentMember();
   const email = useSignedInEmail();
+  const signOut = useSignOut();
   return (
     <Section title="Profil" testID="settings-profile">
       <Stack gap={12}>
@@ -202,12 +233,13 @@ function ProfileSection(props: { withSignOut?: boolean }) {
               variant="ghost"
               size="sm"
               hint="Meldet dich ab und löscht die Daten auf diesem Gerät"
-              onPress={() => void signOut()}
+              onPress={signOut.request}
               testID="settings-sign-out"
             />
           ) : null}
           <SyncLine />
         </View>
+        {signOut.dialog}
       </Stack>
     </Section>
   );

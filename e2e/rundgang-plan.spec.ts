@@ -243,3 +243,32 @@ test('AC-038 (0001) / AC-033 / AC-037 (0010): with Enrico away on Saturday only 
   await tid(page, 'toast-action').click();
   await expect(tid(page, 'absences-upcoming')).toContainText('Fortbildung Köln');
 });
+
+test('AC-018 / AC-019 (0018): an exact recipe name offers no new recipe; a similar one still does', async ({
+  page,
+}) => {
+  await openCalendarAt(page, THURSDAY);
+  await tid(page, `add-${THURSDAY}`).click();
+  await tid(page, 'add-entry-search').fill('lasagne ');
+  await expect(tid(page, `add-entry-recipe-${seedIds['rec-lasagne']}`)).toBeVisible();
+  await expect(tid(page, 'add-entry-new-recipe')).toHaveCount(0);
+  await tid(page, 'add-entry-search').fill('Lasagne vegetarisch');
+  await expect(tid(page, 'add-entry-new-recipe')).toHaveText(
+    '+ „Lasagne vegetarisch“ als Rezept anlegen',
+  );
+});
+
+test('AC-021 (0018): the absence window names who is chosen: "Nur Enrico", then "Ganzer Haushalt"', async ({
+  page,
+}) => {
+  await open(page, '/');
+  await openManaged(page, 'absences');
+  await tid(page, 'absence-new').click();
+  await expect(tid(page, `absence-member-${member('m-enrico')}`)).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(tid(page, 'absence-who-hint')).toHaveText(`Nur ${ENRICO}`);
+  await tid(page, `absence-member-${member('m-nadja')}`).click();
+  await expect(tid(page, 'absence-who-hint')).toHaveText('Ganzer Haushalt');
+});

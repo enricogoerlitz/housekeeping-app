@@ -9,6 +9,8 @@ import {
   queueEffect,
   remapQueue,
   requeue,
+  signOutWarning,
+  unsentChangeCount,
   type QueuedContribution,
   type StoreQueueEntry,
 } from './store-queue';
@@ -515,5 +517,37 @@ describe('parseStoredQueue: packing', () => {
       { kind: 'pack', householdId: 'h1', itemId: '', packed: false, seenPackSeq: 0 },
     ];
     expect(parseStoredQueue(stored)).toEqual({ entries: [valid], dropped: 6 });
+  });
+});
+
+describe('unsentChangeCount and signOutWarning: sign-out with unsent changes (spec 0018, REQ-005)', () => {
+  it('AC-013: counts every waiting entry of the store queue, store actions and packing', () => {
+    const queue: StoreQueueEntry[] = [
+      check('i1', true),
+      { kind: 'notAvailable', itemId: 'i2', value: true },
+      addEntry('t1', [contribution('c1', 'Salz')]),
+      { kind: 'assignArea', articleId: 'milk', areaId: 'a1' },
+      pack('p1', true),
+      pack('p2', true),
+    ];
+    expect(unsentChangeCount(queue)).toBe(6);
+  });
+
+  it('AC-013: three checks offline are "3 Änderungen"', () => {
+    const queue = [check('i1', true), check('i2', true), check('i3', true)];
+    expect(signOutWarning(unsentChangeCount(queue))).toBe(
+      '3 Änderungen sind noch nicht gesendet. Beim Abmelden gehen sie verloren.',
+    );
+  });
+
+  it('AC-013: one waiting change is named in the singular', () => {
+    expect(signOutWarning(unsentChangeCount([pack('p1', true)]))).toBe(
+      '1 Änderung ist noch nicht gesendet. Beim Abmelden geht sie verloren.',
+    );
+  });
+
+  it('AC-014: an empty queue needs no question', () => {
+    expect(unsentChangeCount([])).toBe(0);
+    expect(signOutWarning(0)).toBeUndefined();
   });
 });

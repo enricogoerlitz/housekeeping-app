@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { editDistance, fuzzyIncludes, normalizeText, similarity } from './text';
+import { editDistance, fuzzyIncludes, hasExactName, normalizeText, similarity } from './text';
 
 describe('normalizeText', () => {
   it('lower-cases, trims, collapses whitespace and folds umlauts', () => {
@@ -60,5 +60,26 @@ describe('fuzzyIncludes', () => {
     expect(fuzzyIncludes('tfu', 'Tofu')).toBe(false);
     expect(fuzzyIncludes('spageti', 'Spaghetti')).toBe(true);
     expect(fuzzyIncludes('spgeti', 'Spaghetti')).toBe(false);
+  });
+});
+
+describe('hasExactName (spec 0018, REQ-007)', () => {
+  const recipes = ['Lasagne', 'Mango-Curry'];
+
+  it('AC-018: "lasagne " is the recipe "Lasagne": case and spaces at the edges do not count', () => {
+    expect(hasExactName('lasagne ', recipes)).toBe(true);
+    expect(hasExactName('  LASAGNE', recipes)).toBe(true);
+    expect(hasExactName('Lasagne', [' lasagne '])).toBe(true);
+  });
+
+  it('AC-019: a similar name is no exact hit', () => {
+    expect(hasExactName('Lasagne vegetarisch', recipes)).toBe(false);
+    expect(hasExactName('Lasagn', recipes)).toBe(false);
+    expect(hasExactName('Mango Curry', recipes)).toBe(false);
+  });
+
+  it('negative: an empty query never is a hit, nor is an empty list', () => {
+    expect(hasExactName('  ', ['', ' '])).toBe(false);
+    expect(hasExactName('Lasagne', [])).toBe(false);
   });
 });

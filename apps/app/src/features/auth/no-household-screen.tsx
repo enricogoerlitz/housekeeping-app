@@ -1,4 +1,4 @@
-import { signOut, useMyInvitations, useSyncState } from '@housekeeping/api';
+import { useMyInvitations, useSyncState } from '@housekeeping/api';
 import {
   Button,
   Notice,
@@ -15,10 +15,12 @@ import {
   MyInvitations,
   useSignedInEmail,
 } from '@/features/household/household-forms';
+import { useSignOut } from '@/features/settings/sign-out';
 
 /** Signed in, but in no household yet: accept an invitation or create one. */
 export function NoHouseholdScreen() {
   const sync = useSyncState();
+  const signOut = useSignOut();
   const invitations = useMyInvitations();
   const email = useSignedInEmail();
   return (
@@ -45,10 +47,11 @@ export function NoHouseholdScreen() {
           icon="log-out"
           variant="ghost"
           size="sm"
-          onPress={() => void signOut()}
+          onPress={signOut.request}
           testID="no-household-sign-out"
         />
       </Stack>
+      {signOut.dialog}
     </Screen>
   );
 }

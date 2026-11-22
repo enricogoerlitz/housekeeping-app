@@ -53,6 +53,26 @@ export function enabledKindsLabel(settings: NotificationSettings): string {
   return count === 0 ? 'Alle aus' : `${count} an`;
 }
 
+/**
+ * The same row naming this device (spec 0018, AC-022): "2 an · dieses Gerät aus" while kinds are
+ * on but nothing reaches this device; "2 an" once it is registered.
+ */
+export function notificationsRowLabel(settings: NotificationSettings, deviceOn: boolean): string {
+  const kinds = enabledKindsLabel(settings);
+  const anyOn = NOTIFICATION_KINDS.some((kind) => kindEnabled(settings, kind));
+  return anyOn && !deviceOn ? `${kinds} · dieses Gerät aus` : kinds;
+}
+
+/**
+ * Whether this device is registered for notifications, from what it remembers itself (works
+ * offline): switched on here, with a push address registered, where push is supported.
+ */
+export function thisDeviceRegistered(
+  state: Pick<DeviceState, 'support' | 'wanted' | 'storedEndpoint'>,
+): boolean {
+  return state.support === 'supported' && state.wanted === true && !!state.storedEndpoint;
+}
+
 /** The fixed order of the parts, also in the notification itself. */
 export const DAILY_SUMMARY_PARTS: readonly DailySummaryPart[] = [
   'meals',

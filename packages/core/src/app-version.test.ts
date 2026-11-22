@@ -5,6 +5,7 @@ import {
   APP_VERSION_PREVIEW,
   appVersionState,
   compareAppVersions,
+  editLockReason,
   formatAppVersion,
   nextAppVersion,
   parseAppVersion,
@@ -174,6 +175,35 @@ describe('appVersionState', () => {
     expect(appVersionState({ own: '', latest: '2026.12.5', min: '2026.12.5' })).toBe('aktuell');
     expect(appVersionState({ own: '2026.12', latest: '2026.12.5', min: '2026.12.5' })).toBe(
       'aktuell',
+    );
+  });
+});
+
+describe('editLockReason: why edit actions are greyed out (spec 0018, AC-023)', () => {
+  it('AC-023: below the minimum version and online it is the version, not the network', () => {
+    expect(
+      editLockReason({ writesLocked: true, networkOffline: false, version: 'nicht-unterstuetzt' }),
+    ).toBe('version');
+  });
+
+  it('AC-023: offline it stays the network, also below the minimum version', () => {
+    expect(
+      editLockReason({ writesLocked: true, networkOffline: true, version: 'nicht-unterstuetzt' }),
+    ).toBe('offline');
+    expect(editLockReason({ writesLocked: true, networkOffline: true, version: 'aktuell' })).toBe(
+      'offline',
+    );
+  });
+
+  it('AC-023: nothing locked, no reason', () => {
+    expect(
+      editLockReason({ writesLocked: false, networkOffline: false, version: 'neu-verfuegbar' }),
+    ).toBeUndefined();
+  });
+
+  it('a lock with no known cause reads as offline, the hint the app always had', () => {
+    expect(editLockReason({ writesLocked: true, networkOffline: false, version: 'aktuell' })).toBe(
+      'offline',
     );
   });
 });

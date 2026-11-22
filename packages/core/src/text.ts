@@ -23,6 +23,19 @@ export function normalizeText(text: string): string {
 }
 
 /**
+ * True when one of the names is the query, ignoring case and spaces at the edges: the add window
+ * then offers no "+ „…“ als Rezept anlegen" for it (spec 0018, AC-018). An empty query is never a
+ * hit.
+ */
+export function hasExactName(query: string, names: Iterable<string>): boolean {
+  const key = (text: string) => text.trim().toLocaleLowerCase('de-DE');
+  const wanted = key(query);
+  if (wanted === '') return false;
+  for (const name of names) if (key(name) === wanted) return true;
+  return false;
+}
+
+/**
  * Edit distance between two strings: insertions, deletions, substitutions and swaps of two
  * neighbouring characters each count as one ("halumi" ↔ "halloumi" = 2, "tofu" ↔ "tfou" = 1).
  */

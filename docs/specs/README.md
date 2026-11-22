@@ -24,3 +24,4 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0015](0015-native-apps-anmeldung-speicher/spec.md) | Native Apps: Anmeldung und Speicher                        | entwurf     |
 | [0016](0016-kalender-direkt-bedienen/spec.md)       | Kalender direkt bedienen: Ziehen, Tages-Fenster, Reisen    | freigegeben |
 | [0017](0017-erinnerungen-an-eintraegen/spec.md)     | Erinnerungen an Kalendereinträgen                          | freigegeben |
+| [0018](0018-logikfehler-welle-1/spec.md)            | Fehler aus dem Logik-Review, Welle 1                       | freigegeben |

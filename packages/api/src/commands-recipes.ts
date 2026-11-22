@@ -75,6 +75,30 @@ export function createRecipe(input: {
   });
 }
 
+/**
+ * "Neu" → "Rezept" with "Zutaten einfügen" (spec 0008, AC-021; spec 0018, REQ-001): the recipe and
+ * its pasted rows with an article in one change, so they never depend on the recipe page picking
+ * them up (E-01). New and starter articles ride in the same call. Returns the rows the page opens
+ * in the section "Zutaten": those without an article, or every row when the rows have a problem
+ * (a Hinweis over the limit), so the section shows it. Throws like createRecipe and OfflineError.
+ */
+export function createRecipeWithIngredients(
+  input: { title: string },
+  rows: readonly IngredientRow[],
+): { recipeId: Id; open: IngredientRow[] } {
+  const problem = newEntryTitleProblem(input.title);
+  if (problem) throw new Error(problem);
+  if (isOffline()) throw new OfflineError();
+  return commit({ path: 'diff' }, () => {
+    const recipeId = createRecipe({ title: input.title, kind: 'recipe' });
+    const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+    if (!recipe || rows.length === 0) return { recipeId, open: [] };
+    const draft = addIngredientRows(sectionDraft(recipe, 'ingredients'), rows);
+    if (validateSectionDraft(draft).length > 0) return { recipeId, open: [...rows] };
+    return { recipeId, open: saveRecipeSection(recipeId, draft)?.open ?? [] };
+  });
+}
+
 export function updateRecipe(
   recipeId: Id,
   patch: Partial<
