@@ -124,7 +124,7 @@ export function KindsSection() {
             </Text>
           ) : null}
           <Text variant="small" color="muted">
-            Während Abwesenheiten bist du stumm.
+            Während einer Reise kommt nichts.
           </Text>
         </Stack>
       ) : (

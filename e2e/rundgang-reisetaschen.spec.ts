@@ -47,7 +47,7 @@ function tripBag(page: Page, name: string): Locator {
     .filter({ hasText: name });
 }
 
-/** Opens the Urlaubsseite of "Urlaub Mallorca" from "Verwalten" → "Abwesenheiten". */
+/** Opens the Urlaubsseite of "Urlaub Mallorca" from "Verwalten" → "Reisen". */
 async function openMallorca(page: Page): Promise<void> {
   await open(page, '/');
   await openManaged(page, 'absences');
@@ -165,7 +165,7 @@ test('AC-016 / AC-020 / AC-021: the Urlaubsseite of "Urlaub Mallorca"; packing m
   await openMallorca(page);
   await expect(tid(page, 'trip-starts')).toHaveText('beginnt in 12 Tagen');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
-  await expect(tid(page, 'back')).toContainText('Abwesenheiten');
+  await expect(tid(page, 'back')).toContainText('Reisen');
 
   const before = (await tripBag(page, 'Strand').locator('[data-testid$="-counter"]').innerText())
     .trim()

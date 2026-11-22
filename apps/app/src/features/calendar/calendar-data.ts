@@ -15,15 +15,19 @@ import {
 } from '@housekeeping/api';
 import {
   absenceStripes,
+  dayA11yLabel,
   entriesForDay,
+  entryKindRole,
   entryLineLabel,
   householdRow,
   stripeHasPackingList,
+  travellersOn,
   withTime,
   type AbsenceStripe,
   type HouseholdRowItem,
   type Id,
   type ISODate,
+  type KindRole,
   type MealPlanEntry,
   type Member,
 } from '@housekeeping/core';
@@ -96,6 +100,13 @@ export function useCalendarData() {
     slotName: (slotId: Id) => slots.find((slot) => slot.id === slotId)?.name ?? '',
     /** The stripe carries the bag icon: one of its absences has a packing list (spec 0012, AC-046). */
     hasPackingList: (stripe: AbsenceStripe) => stripeHasPackingList(stripe, listBags),
+    /** Names of the members away on that day, for the day's screen-reader text (spec 0016). */
+    travellerNames: (date: ISODate): string[] =>
+      travellersOn(
+        members.map((member) => member.id),
+        date,
+        absences,
+      ).map((id) => membersById[id]?.name ?? 'Jemand'),
     /** The household row from…to (both inclusive), by date. */
     householdRow: (from: ISODate, to: ISODate): Record<ISODate, HouseholdRowItem[]> =>
       householdRow({ chores, events, members, from, to, today }),
@@ -103,6 +114,17 @@ export function useCalendarData() {
 }
 
 export type CalendarData = ReturnType<typeof useCalendarData>;
+
+/** One kind role per item of the day, `choreCount` chores included (dots and screen readers). */
+export function dayRoles(data: CalendarData, date: ISODate, choreCount = 0): KindRole[] {
+  const roles = data.dayEntries(date).map((entry) => entryKindRole(entry, data.recipesById));
+  return choreCount > 0 ? [...roles, ...Array<KindRole>(choreCount).fill('chore')] : roles;
+}
+
+/** "Freitag, 27. November: 1 Aktivität, 1 Rezept, Nadja unterwegs" (spec 0016, platforms). */
+export function dayLabel(data: CalendarData, date: ISODate, choreCount = 0): string {
+  return dayA11yLabel(date, dayRoles(data, date, choreCount), data.travellerNames(date));
+}
 
 /** "Enrico", "Enrico und Nadja", "Ganzer Haushalt": who a stripe stands for. */
 export function stripeWho(stripe: AbsenceStripe, membersById: Record<Id, Member>): string {

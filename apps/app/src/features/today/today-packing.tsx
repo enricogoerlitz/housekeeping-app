@@ -71,7 +71,7 @@ function TodayPackingCard(props: { card: PackingCard }) {
         onPress={() =>
           router.push(
             {
-              pathname: '/kalender/urlaub/[id]',
+              pathname: '/kalender/reise/[id]',
               params: { id: card.absenceId, von: 'uebersicht' },
             },
             // The calendar stays underneath, as for an activity (spec 0005); "‹ Übersicht" leads

@@ -53,7 +53,7 @@ type TripAction = 'reset' | 'delete';
 
 /** Where the Urlaubsseite was opened from, `?von=…`; anything else counts as the calendar. */
 const ORIGINS = {
-  abwesenheiten: { label: 'Abwesenheiten', tab: 'abwesenheiten', href: '/abwesenheiten' },
+  reisen: { label: 'Reisen', tab: 'reisen', href: '/reisen' },
   uebersicht: { label: 'Übersicht', tab: 'index', href: '/' },
 } as const;
 
@@ -61,7 +61,7 @@ type TripOrigin = keyof typeof ORIGINS;
 
 function tripOrigin(von: string | string[] | undefined): TripOrigin | undefined {
   const value = Array.isArray(von) ? von[0] : von;
-  return value === 'abwesenheiten' || value === 'uebersicht' ? value : undefined;
+  return value === 'reisen' || value === 'uebersicht' ? value : undefined;
 }
 
 /** The tab shown before the current one (tab history), or undefined. */
@@ -83,8 +83,8 @@ function previousTab(state: unknown): string | undefined {
 }
 
 /**
- * "Zurück" of the Urlaubsseite: opened from "Abwesenheiten" or from the card on the "Übersicht"
- * it leads back there ("‹ Abwesenheiten", "‹ Übersicht"), otherwise to the calendar underneath
+ * "Zurück" of the Urlaubsseite: opened from "Reisen" or from the card on the "Übersicht"
+ * it leads back there ("‹ Reisen", "‹ Übersicht"), otherwise to the calendar underneath
  * ("‹ Kalender"); the same rule as for "Aktivitäten" (spec 0010, REQ-008).
  */
 function useTripBack(): { label: string; back: () => void } {
@@ -113,7 +113,7 @@ function useTripBack(): { label: string; back: () => void } {
   };
 }
 
-/** The Urlaubsseite of an absence, `/kalender/urlaub/[id]` (spec 0012, REQ-003, decision 14). */
+/** The Urlaubsseite of an absence, `/kalender/reise/[id]` (spec 0012, REQ-003, decision 14). */
 export function TripScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   // Only a uuid reaches the lookup; anything else shows "gibt es nicht mehr".
@@ -136,13 +136,11 @@ function TripPage(props: { absenceId: Id | undefined; onBack: () => void; backLa
       <Screen
         testID="trip-screen"
         tone="plan"
-        header={
-          <ScreenHeader title="Abwesenheit" onBack={props.onBack} backLabel={props.backLabel} />
-        }
+        header={<ScreenHeader title="Reise" onBack={props.onBack} backLabel={props.backLabel} />}
       >
         <EmptyState
           icon="calendar-off"
-          title="Diese Abwesenheit gibt es nicht mehr"
+          title="Diese Reise gibt es nicht mehr"
           text="Vielleicht hat sie jemand gelöscht."
           testID="trip-not-found"
         >
@@ -213,12 +211,12 @@ function TripBody(props: {
     toast.show(
       restore
         ? {
-            message: 'Abwesenheit gelöscht',
+            message: 'Reise gelöscht',
             actionLabel: 'Rückgängig',
             onAction: undoAction(restore),
             duration: 5000,
           }
-        : { message: 'Abwesenheit und Packliste gelöscht' },
+        : { message: 'Reise und Packliste gelöscht' },
     );
   };
 
@@ -235,7 +233,7 @@ function TripBody(props: {
     <Row gap={4}>
       <IconButton
         icon="pencil"
-        label="Abwesenheit bearbeiten"
+        label="Reise bearbeiten"
         disabled={online.disabled}
         hint={online.hint}
         onPress={() => setEditing(true)}
@@ -245,7 +243,7 @@ function TripBody(props: {
         trigger="icon"
         icon="ellipsis"
         label="Mehr"
-        accessibilityLabel="Mehr zur Abwesenheit"
+        accessibilityLabel="Mehr zur Reise"
         options={[
           {
             value: 'reset',
@@ -255,7 +253,7 @@ function TripBody(props: {
           },
           {
             value: 'delete',
-            label: 'Abwesenheit löschen',
+            label: 'Reise löschen',
             disabled: online.disabled,
             hint: online.hint,
           },
@@ -337,7 +335,7 @@ function TripBody(props: {
       ) : null}
       {dialog === 'delete' && deleteMessage ? (
         <TripConfirmDialog
-          title="Abwesenheit löschen?"
+          title="Reise löschen?"
           message={deleteMessage}
           confirmLabel="Löschen"
           needsNetwork

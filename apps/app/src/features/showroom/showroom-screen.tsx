@@ -53,7 +53,7 @@ import { ScrollView, View } from 'react-native';
 import { useSettings } from '@/lib/settings';
 
 import { EndlessDemo, EndlessDetail, EndlessGridDemo } from './showroom-endless';
-import { usePatternBlocks } from './showroom-patterns';
+import { useDockedPanelDemo, usePatternBlocks } from './showroom-patterns';
 
 // Sample member colours come from the data in the real app; the showroom borrows theme colours
 // so it stays free of colour literals.
@@ -92,6 +92,7 @@ function ShowroomContent(props: {
   const { isWide } = useBreakpoint();
   const blocks = useBlocks();
   const patterns = usePatternBlocks();
+  const docked = useDockedPanelDemo();
   const [view, setView] = useState<ShowroomView>('bausteine');
   const [area, setArea] = useState<AreaChoice>('essen');
   const [openRow, setOpenRow] = useState<number>();
@@ -116,6 +117,7 @@ function ShowroomContent(props: {
       clearFab={false}
       tone={area === 'keiner' ? undefined : area}
       scroll={!listScrolls}
+      aside={view === 'muster' ? docked.panel : undefined}
       style={listScrolls ? { flex: 1, paddingTop: 0, paddingBottom: 0 } : undefined}
       header={
         <ScreenHeader
@@ -162,7 +164,7 @@ function ShowroomContent(props: {
       }
     >
       {view === 'bausteine' ? columns(blocks) : null}
-      {view === 'muster' ? columns(patterns) : null}
+      {view === 'muster' ? columns([docked.block, ...patterns]) : null}
       {listScrolls ? (
         <View style={{ flex: 1 }}>
           {view === 'liste' ? (

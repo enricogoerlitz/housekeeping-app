@@ -86,7 +86,7 @@ export default function TabsLayout() {
         {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
         <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
         <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
-        <Tabs.Screen name="abwesenheiten" options={{ title: 'Abwesenheiten' }} />
+        <Tabs.Screen name="reisen" options={{ title: 'Reisen' }} />
         <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
         <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
         <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
@@ -127,7 +127,8 @@ function Navigation(props: BottomTabBarProps) {
   return (
     <View>
       {/* On the list the assistant entry sits in the input bar, so the thumb zone stays free. */}
-      {features.ai && activeKey !== 'liste' ? (
+      {/* A panel at the bottom (the day window) hides it, so it covers none of its controls. */}
+      {features.ai && activeKey !== 'liste' && !assistant.buttonHidden ? (
         <Fab
           icon="sparkles"
           label="Assistent"

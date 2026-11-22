@@ -9,16 +9,23 @@ import {
   type AbsenceStripe,
   type ISODate,
 } from '@housekeeping/core';
-import { Icon, List, ListRow, Section, Text, useTheme } from '@housekeeping/ui';
-import { Pressable, View } from 'react-native';
+import { Icon, List, ListRow, Section, Text, focusRing, useTheme } from '@housekeeping/ui';
+import { Pressable, View, type HostInstance } from 'react-native';
 
 import { StripeBadges, stripeA11y } from './calendar-parts';
-import { stripeWho, type CalendarData } from './calendar-data';
+import { dayLabel, stripeWho, type CalendarData } from './calendar-data';
 
 export interface YearViewProps {
   data: CalendarData;
   year: number;
   columns: number;
+  /** The day of the open day window; it is marked. */
+  selected: ISODate | undefined;
+  /** A tap on a day opens the day window (spec 0016, AC-023). */
+  onOpenDay: (date: ISODate) => void;
+  /** Every day cell registers here, e.g. to get the focus back when the day window closes. */
+  registerDay: (date: ISODate, node: HostInstance | null) => void;
+  /** A tap on the month name opens the month. */
   onOpenMonth: (monthStart: ISODate) => void;
   onOpenStripe: (stripe: AbsenceStripe) => void;
 }
@@ -28,7 +35,8 @@ const TINT_ALPHA = '33';
 
 /**
  * The year (spec 0010, REQ-005): twelve small months with a dot on days with entries and absences
- * tinted, then the year's absences as a list. Chores never show here.
+ * tinted, then the year's absences as a list. Chores never show here. A tap on a day opens the
+ * day window, a tap on the month name the month (spec 0016, AC-023).
  */
 export function YearView(props: YearViewProps) {
   const { data } = props;
@@ -54,7 +62,10 @@ export function YearView(props: YearViewProps) {
                   monthStart={monthStart}
                   data={data}
                   plannedDays={plannedDays}
-                  onPress={() => props.onOpenMonth(monthStart)}
+                  selected={props.selected}
+                  onOpenDay={props.onOpenDay}
+                  registerDay={props.registerDay}
+                  onOpenMonth={() => props.onOpenMonth(monthStart)}
                 />
               </View>
             ))}
@@ -62,10 +73,10 @@ export function YearView(props: YearViewProps) {
         ))}
       </View>
       <View style={{ marginTop: 24 }}>
-        <Section title={`Abwesenheiten ${props.year}`} testID="year-absences">
+        <Section title={`Reisen ${props.year}`} testID="year-absences">
           {stripes.length === 0 ? (
             <Text color="muted" testID="year-absences-empty">
-              {`Keine Abwesenheiten ${props.year}`}
+              {`Keine Reisen ${props.year}`}
             </Text>
           ) : (
             <List>
@@ -105,35 +116,47 @@ export function YearView(props: YearViewProps) {
   );
 }
 
+type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
+
 function MiniMonth(props: {
   monthStart: ISODate;
   data: CalendarData;
   plannedDays: Set<ISODate>;
-  onPress: () => void;
+  selected: ISODate | undefined;
+  onOpenDay: (date: ISODate) => void;
+  registerDay: (date: ISODate, node: HostInstance | null) => void;
+  onOpenMonth: () => void;
 }) {
   const theme = useTheme();
   const month = props.monthStart.slice(0, 7);
   const index = parseISODate(props.monthStart).getMonth();
   const name = monthName(index);
   return (
-    <Pressable
-      testID={`year-month-${index + 1}`}
-      accessibilityRole="button"
-      accessibilityLabel={`${name} öffnen`}
-      onPress={props.onPress}
-      style={(state) => {
-        const { pressed, hovered } = state as { pressed: boolean; hovered?: boolean };
-        return {
-          padding: 6,
-          borderRadius: theme.shape.radius.card,
-          backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
-          opacity: pressed ? 0.7 : 1,
-        };
-      }}
-    >
-      <Text variant="smallStrong" style={{ marginBottom: 4 }}>
-        {name.toUpperCase()}
-      </Text>
+    <View testID={`year-month-${index + 1}`} style={{ padding: 6 }}>
+      <Pressable
+        testID={`year-month-${index + 1}-open`}
+        accessibilityRole="button"
+        accessibilityLabel={`${name} öffnen`}
+        onPress={props.onOpenMonth}
+        style={(state) => {
+          const { pressed, hovered, focused } = state as PressState;
+          return [
+            {
+              alignSelf: 'flex-start',
+              justifyContent: 'center',
+              minHeight: 32,
+              marginLeft: -6,
+              paddingHorizontal: 6,
+              borderRadius: theme.shape.radius.control,
+              backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+              opacity: pressed ? 0.7 : 1,
+            },
+            focusRing(theme, focused),
+          ];
+        }}
+      >
+        <Text variant="smallStrong">{name.toUpperCase()}</Text>
+      </Pressable>
       <View style={{ flexDirection: 'row' }}>
         {WEEKDAY_INITIALS.map((initial, position) => (
           <Text
@@ -155,6 +178,9 @@ function MiniMonth(props: {
                 date={date}
                 data={props.data}
                 planned={props.plannedDays.has(date)}
+                selected={date === props.selected}
+                onPress={() => props.onOpenDay(date)}
+                register={(node) => props.registerDay(date, node)}
               />
             ) : (
               <View key={date} style={{ flex: 1 }} />
@@ -162,11 +188,18 @@ function MiniMonth(props: {
           )}
         </View>
       ))}
-    </Pressable>
+    </View>
   );
 }
 
-function MiniDay(props: { date: ISODate; data: CalendarData; planned: boolean }) {
+function MiniDay(props: {
+  date: ISODate;
+  data: CalendarData;
+  planned: boolean;
+  selected: boolean;
+  onPress: () => void;
+  register: (node: HostInstance | null) => void;
+}) {
   const theme = useTheme();
   const absence = yearDayAbsence(props.date, props.data.absences);
   const member = absence.kind === 'one' ? props.data.membersById[absence.memberId] : undefined;
@@ -181,18 +214,36 @@ function MiniDay(props: { date: ISODate; data: CalendarData; planned: boolean })
       ? absence.memberIds.flatMap((id) => props.data.membersById[id] ?? [])
       : [];
   const isToday = props.date === props.data.today;
+  const c = theme.colors;
   return (
-    <View
-      style={{ flex: 1, alignItems: 'center', paddingVertical: 1, backgroundColor: background }}
+    <Pressable
+      ref={(node) => props.register(node)}
       testID={`year-day-${props.date}`}
+      accessibilityRole="button"
+      accessibilityLabel={dayLabel(props.data, props.date)}
+      accessibilityState={{ selected: props.selected }}
+      onPress={props.onPress}
+      style={(state) => [
+        { flex: 1, alignItems: 'center', paddingVertical: 1, backgroundColor: background },
+        focusRing(theme, (state as PressState).focused),
+      ]}
     >
-      <Text
-        variant="caption"
-        color={isToday ? 'accent' : 'text'}
-        style={{ fontSize: 10, lineHeight: 13 }}
+      <View
+        style={{
+          alignSelf: 'stretch',
+          alignItems: 'center',
+          borderRadius: 3,
+          backgroundColor: props.selected ? c.text : 'transparent',
+        }}
       >
-        {String(parseISODate(props.date).getDate())}
-      </Text>
+        <Text
+          variant="caption"
+          color={props.selected ? undefined : isToday ? 'accent' : 'text'}
+          style={[{ fontSize: 10, lineHeight: 13 }, props.selected ? { color: c.bg } : null]}
+        >
+          {String(parseISODate(props.date).getDate())}
+        </Text>
+      </View>
       <View style={{ height: 3, alignItems: 'center', justifyContent: 'center' }}>
         {props.planned ? (
           <View
@@ -211,6 +262,6 @@ function MiniDay(props: { date: ISODate; data: CalendarData; planned: boolean })
           style={{ alignSelf: 'stretch', height: 1.5, marginTop: 1, backgroundColor: person.color }}
         />
       ))}
-    </View>
+    </Pressable>
   );
 }

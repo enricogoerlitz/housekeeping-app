@@ -83,9 +83,9 @@ describe('absence stripes', () => {
     expect(stripes).toHaveLength(2);
   });
 
-  it('AC-030: without a note the stripe says "abwesend"', () => {
+  it('AC-030 (0010), AC-033 (0016): without a note the stripe says "unterwegs"', () => {
     const [stripe] = absenceStripes([absence({ ...enricoMallorca, note: undefined })], members);
-    expect(stripe && stripeText(stripe)).toBe('abwesend');
+    expect(stripe && stripeText(stripe)).toBe('unterwegs');
     expect(absenceEndLabel('2027-01-01')).toBe('bis Fr 1.1.');
   });
 

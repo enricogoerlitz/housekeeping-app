@@ -12,16 +12,12 @@ import {
   absenceWhoHint,
   droppedPackingListMessage,
   formatPickerDate,
-  inRange,
-  monthGrid,
   monthTitle,
   openRangeField,
-  parseISODate,
   pickRangeDate,
   planAbsenceWrite,
   planPackingLists,
   saveLabel,
-  shiftPeriod,
   startOfMonth,
   validateAbsenceDraft,
   type AbsenceStripe,
@@ -33,7 +29,7 @@ import {
   Avatar,
   Button,
   Chip,
-  IconButton,
+  MonthCalendar,
   Sheet,
   Stack,
   Text,
@@ -54,14 +50,20 @@ import { AbsenceBagChips } from './absence-bag-chips';
 const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /**
- * "Abwesenheit eintragen" and "Abwesenheit bearbeiten" (spec 0010, REQ-010; D23): who, from, to
+ * "Reise eintragen" and "Reise bearbeiten" (spec 0010, REQ-010; D23): who, from, to
  * and a note. All members chosen is the whole household, otherwise one absence per person.
  * Editing a stripe edits all absences it stands for, in one change. Entering one also offers the
  * Reisetaschen; "Speichern · 21 Packstücke" creates the absence and its packing list in one call
  * (spec 0012, AC-011 to AC-015). Editing keeps the packing list; when a person's absence goes
  * away with its own list, a dialog names that list before anything is saved (decision 8).
+ * `initialRange` fills "Von" and "Bis" of a new one, e.g. the day of the day window (spec 0016,
+ * AC-032).
  */
-export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => void }) {
+export function AbsenceSheet(props: {
+  stripe?: AbsenceStripe;
+  initialRange?: { from: ISODate; to: ISODate };
+  onClose: () => void;
+}) {
   const members = useMembers();
   const me = useCurrentMember();
   const today = useToday();
@@ -76,11 +78,13 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       : [me.id],
   );
   const [range, setRange] = useState<RangePick>({
-    from: editing?.from ?? today,
-    to: editing?.to ?? today,
+    from: editing?.from ?? props.initialRange?.from ?? today,
+    to: editing?.to ?? props.initialRange?.to ?? today,
     editing: null,
   });
-  const [month, setMonth] = useState<ISODate>(startOfMonth(editing?.from ?? today));
+  const [month, setMonth] = useState<ISODate>(
+    startOfMonth(editing?.from ?? props.initialRange?.from ?? today),
+  );
   const [note, setNote] = useState(editing?.note ?? '');
   const [bagIds, setBagIds] = useState<Id[]>([]);
   const [confirming, setConfirming] = useState(false);
@@ -146,7 +150,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       toast.show({ message: messageOf(failure) });
       return;
     }
-    toast.show({ message: editing ? 'Abwesenheit geändert' : 'Abwesenheit eingetragen' });
+    toast.show({ message: editing ? 'Reise geändert' : 'Reise eingetragen' });
     props.onClose();
   };
 
@@ -154,7 +158,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
     <Sheet
       visible
       onClose={props.onClose}
-      title={editing ? 'Abwesenheit bearbeiten' : 'Abwesenheit eintragen'}
+      title={editing ? 'Reise bearbeiten' : 'Reise eintragen'}
       testID="absence-sheet"
       size="m"
       footer={
@@ -229,7 +233,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       </Stack>
       {confirming && droppedMessage ? (
         <TripConfirmDialog
-          title="Abwesenheit ändern?"
+          title="Reise ändern?"
           message={droppedMessage}
           confirmLabel="Speichern"
           needsNetwork
@@ -311,91 +315,23 @@ function RangeCalendar(props: {
   onMonth: (month: ISODate) => void;
   onPick: (date: ISODate) => void;
 }) {
-  const theme = useTheme();
   const { range } = props;
-  const currentMonth = props.month.slice(0, 7);
   return (
-    <View
-      testID="range-picker"
-      style={{
-        padding: 8,
-        borderRadius: theme.shape.radius.card,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <IconButton
-          icon="chevron-left"
-          label="Voriger Monat"
-          onPress={() => props.onMonth(shiftPeriod('month', props.month, -1))}
-          testID="range-prev"
-        />
-        <Text variant="bodyStrong" testID="range-title">
-          {monthTitle(props.month)}
-        </Text>
-        <IconButton
-          icon="chevron-right"
-          label="Nächster Monat"
-          onPress={() => props.onMonth(shiftPeriod('month', props.month, 1))}
-          testID="range-next"
-        />
-      </View>
-      <Text variant="caption" color="muted" style={{ textAlign: 'center', marginBottom: 4 }}>
-        {range.editing === 'from' ? 'Wähle „Von“' : 'Wähle „Bis“'}
-      </Text>
-      <View style={{ flexDirection: 'row' }}>
-        {WEEKDAY_HEADS.map((head) => (
-          <Text key={head} variant="caption" color="muted" style={{ flex: 1, textAlign: 'center' }}>
-            {head}
-          </Text>
-        ))}
-      </View>
-      {monthGrid(props.month).map((week) => (
-        <View key={week[0]} style={{ flexDirection: 'row' }}>
-          {week.map((date) => {
-            if (date.slice(0, 7) !== currentMonth) return <View key={date} style={{ flex: 1 }} />;
-            const marked = inRange(date, range.from, range.to);
-            const edge = date === range.from || date === range.to;
-            return (
-              <Pressable
-                key={date}
-                testID={`range-day-${date}`}
-                accessibilityRole="button"
-                accessibilityLabel={formatPickerDate(date)}
-                accessibilityState={{ selected: marked }}
-                onPress={() => props.onPick(date)}
-                style={{ flex: 1, alignItems: 'center', paddingVertical: 2 }}
-              >
-                <View
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 19,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: edge
-                      ? theme.colors.accent
-                      : marked
-                        ? theme.colors.accentSoft
-                        : 'transparent',
-                    borderWidth: date === props.today && !edge ? 1 : 0,
-                    borderColor: theme.colors.accent,
-                  }}
-                >
-                  <Text
-                    variant="small"
-                    style={{ color: edge ? theme.colors.onAccent : theme.colors.text }}
-                  >
-                    {String(parseISODate(date).getDate())}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
-    </View>
+    <MonthCalendar
+      month={props.month}
+      onMonthChange={props.onMonth}
+      onSelect={props.onPick}
+      title={monthTitle(props.month)}
+      weekdayLabels={WEEKDAY_HEADS}
+      previousLabel="Voriger Monat"
+      nextLabel="Nächster Monat"
+      dayLabel={formatPickerDate}
+      marked={{ from: range.from, to: range.to }}
+      focusDate={range.editing === 'to' ? range.to : range.from}
+      today={props.today}
+      hint={range.editing === 'from' ? 'Wähle „Von“' : 'Wähle „Bis“'}
+      testID="range"
+    />
   );
 }
 

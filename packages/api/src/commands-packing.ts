@@ -229,7 +229,7 @@ export function removePackingBagItem(itemId: Id): void {
 export function addBagToPackingList(absenceId: Id, bagId: Id): Id {
   const data = getData();
   const absence = data.absences.find((candidate) => candidate.id === absenceId);
-  if (!absence) throw new Error('Diese Abwesenheit gibt es nicht mehr');
+  if (!absence) throw new Error('Diese Reise gibt es nicht mehr.');
   const plan = planAddBagToList({
     absence,
     bag: requireBag(bagId),

@@ -13,6 +13,7 @@ export * from './diet';
 export * from './recipes';
 export * from './meal-plan';
 export * from './calendar';
+export * from './plan-move';
 export * from './absences';
 export * from './household-row';
 export * from './shopping';

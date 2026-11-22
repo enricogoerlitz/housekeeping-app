@@ -56,7 +56,7 @@ test('AC-001, AC-011: "Benachrichtigungen · 2 an" in the settings, the sections
     'Was und wann · Enrico & Nadja · gilt für alle Geräte',
   );
   await expect(tid(page, 'notif-devices')).toContainText('Deine Geräte');
-  await expect(tid(page, 'notif-kinds')).toContainText('Während Abwesenheiten bist du stumm.');
+  await expect(tid(page, 'notif-kinds')).toContainText('Während einer Reise kommt nichts.');
 
   await expect(toggle(page, 'notif-kind-daily-summary')).not.toBeChecked();
   await expect(tid(page, 'notif-kind-daily-summary-detail')).toContainText(
