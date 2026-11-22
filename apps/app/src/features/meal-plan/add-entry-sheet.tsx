@@ -86,7 +86,7 @@ import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-for
 import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { addSheetTitle, dayLabel, entryTitle } from './labels';
+import { addSheetTitle, dayLabel } from './labels';
 import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 
@@ -316,7 +316,12 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const split = recipe ? splitForEaters(recipe.id, eaterIds, guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
   // Spec 0021, REQ-006: counters for portions and variants, following eaters and guests.
-  const portions = usePortions(recipe, () => ({ eaterIds: [], guests: 0, portions: 0, variants: [] }));
+  const portions = usePortions(recipe, () => ({
+    eaterIds: [],
+    guests: 0,
+    portions: 0,
+    variants: [],
+  }));
   const timed = choice?.kind === 'restaurant' || choice?.kind === 'activity';
 
   const choose = (next: Choice) => {
@@ -622,7 +627,9 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           key={leftover.source.id}
           title={leftover.title}
           leading={<Icon name="refresh-cw" size={18} color="muted" />}
-          onPress={() => choose({ kind: 'leftovers', source: leftover.source, title: leftover.title })}
+          onPress={() =>
+            choose({ kind: 'leftovers', source: leftover.source, title: leftover.title })
+          }
           testID={`add-entry-leftover-${leftover.source.id}`}
         />
       ))}
@@ -793,7 +800,6 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           />
         ) : null}
       </List>
-
     </Stack>
   );
 

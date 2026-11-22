@@ -2,8 +2,7 @@ import {
   movePlanEntry,
   NOTE_MAX_LENGTH,
   removePlanEntry,
-  saveEntryFields,
-  setReservation,
+  saveEntry,
   snapshot,
   updatePlanEntry,
   useActivitiesById,
@@ -12,30 +11,34 @@ import {
   usePlanEntries,
   useRecipesById,
   useRestaurantsById,
+  useShoppingItems,
   useToday,
+  WRITE_REJECTED_MESSAGE,
+  type EntryFields,
 } from '@housekeeping/api';
 import {
-  asksForPushPermission,
-  DEFAULT_REMIND_MINUTES,
-  formatTime,
+  checkEntryNote,
+  checkEntryText,
+  entryListShare,
+  householdClock,
   isSelectableMoveDay,
+  MAX_ENTRY_TEXT,
   monthPickerStart,
   moveBounds,
-  householdClock,
   offersReminder,
+  reminderAfterStart,
+  startOfWeek,
   TIME_FIELD_WORDS,
-  REMIND_CHOICES,
-  remindLabel,
+  variantRows,
+  weekDates,
   type DropTarget,
   type Id,
   type ISODate,
-  type MealPlanEntry,
   type TimeOfDay,
 } from '@housekeeping/core';
 import {
   Button,
   Chip,
-  Menu,
   Row,
   Sheet,
   Stack,
@@ -51,7 +54,6 @@ import { View } from 'react-native';
 import { hasPlace } from '@/features/activities/labels';
 import { useMoveEntry } from '@/features/calendar/move-entry';
 import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
-import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
@@ -59,6 +61,7 @@ import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { dayLabel, entryTitle } from './labels';
+import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
 
@@ -70,13 +73,20 @@ function Label(props: { children: string }) {
   );
 }
 
+/** The names of the fields in "Nicht gespeichert: Was gibt es?" (REQ-009). */
+const FIELD_NAMES = { text: 'Was gibt es?', note: 'Zusatz' } as const;
+type TypedField = keyof typeof FIELD_NAMES;
+
+const zutaten = (count: number) => (count === 1 ? '1 Zutat' : `${count} Zutaten`);
+
 /**
- * Actions for one entry in the plan: open the recipe, restaurant or activity, the Zusatz and
- * "Route" of an activity, "Route", "Reserviert um" and "Erinnern … vorher" of a restaurant (spec
- * 0013, REQ-008), move, change the cook, remove. "Fertig" saves the typed Zusatz and time and
- * closes once the server took them; on a refusal the window stays open with the typed text and
- * the general hint (spec 0018, REQ-003). "Erinnern" (spec 0017, REQ-002) sends switch, day and time
- * at once; "Fertig" sends its text the same way. Offline it only closes.
+ * The window of one entry in the plan (spec 0021): everything chosen when planning can be changed
+ * here — "Was gibt es?", "Zusatz", "Uhrzeit (optional)" of restaurants and activities, "Wer isst
+ * mit?", guests, portions and variants, day and Tageszeit, "Wer kocht?" and "Erinnern". Day,
+ * Tageszeit, cook and the switch, day and time of the reminder are saved at once and the window
+ * stays open (REQ-010); everything else is saved in one call when it closes, however it closes
+ * (REQ-009), and the shopping list follows the portions (REQ-007). An invalid field keeps it open
+ * with its reason; a second ✕ closes it with what is valid. Offline it only closes.
  */
 export function EntrySheet(props: {
   entryId: Id;
@@ -92,25 +102,45 @@ export function EntrySheet(props: {
   const activitiesById = useActivitiesById();
   const members = useMembers();
   const household = useHousehold();
+  const items = useShoppingItems();
   const online = useOnlineOnly();
   const openRecipe = useOpenRecipe();
   const openRestaurant = useOpenRestaurant();
   const openActivity = useOpenActivity();
   const [routeOpen, setRouteOpen] = useState(false);
   const [pickingDate, setPickingDate] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const moveEntry = useMoveEntry();
   const today = useToday();
   const entry = entries.find((candidate) => candidate.id === props.entryId);
-  const reservation = useReservationDraft(entry);
-  const note = useNoteDraft(entry);
+  const recipe = entry?.recipeId ? recipesById[entry.recipeId] : undefined;
+
+  // The typed fields (REQ-008, REQ-013), saved on closing.
+  const [text, setText] = useState(entry?.text ?? '');
+  const [note, setNote] = useState(entry?.note ?? '');
+  const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>(entry?.startsAt);
+  const [errors, setErrors] = useState<Partial<Record<TypedField, string>>>({});
+  const [refused, setRefused] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  // A second ✕ after a hint closes with what is valid (REQ-009, AC-026).
+  const hinted = useRef(false);
+  const portions = usePortions(recipe?.kind === 'recipe' ? recipe : undefined, () => ({
+    eaterIds: entry?.eaterIds ?? [],
+    guests: entry?.guests ?? 0,
+    portions: entry?.portions ?? 0,
+    variants:
+      recipe?.kind === 'recipe'
+        ? variantRows(recipe, entry?.variants ?? [], entry?.portions ?? 0)
+        : [],
+  }));
   const reminder = useReminderForm({
     entryDate: entry?.date ?? today,
     slotName: household.mealSlots.find((slot) => slot.id === entry?.slotId)?.name ?? '',
     stored: entry?.reminder,
     entryId: entry?.id,
+    startsAt,
   });
-  const [saving, setSaving] = useState(false);
-  // A late answer must not close a window opened after this one was closed with ✕.
+  // A late answer must not close a window opened after this one was closed.
   const open = useRef(true);
   useEffect(
     () => () => {
@@ -126,6 +156,8 @@ export function EntrySheet(props: {
     entry.kind === 'restaurant' && entry.restaurantId
       ? restaurantsById[entry.restaurantId]
       : undefined;
+  const timed = entry.kind === 'restaurant' || entry.kind === 'activity';
+  const eats = entry.kind === 'recipe' || entry.kind === 'restaurant';
   // "Route" only where there is a place (plan, Decision 11): a map link or an address.
   const routeTarget: RouteTarget | undefined = activity
     ? hasPlace(activity)
@@ -145,7 +177,6 @@ export function EntrySheet(props: {
     entry.date,
     householdClock(new Date(), household.timeZone).date,
   );
-
   // A passed day offers no block, but its reminder still shows: "Erinnerung vorbei" (REQ-006).
   const pastReminder = remindable
     ? undefined
@@ -155,33 +186,103 @@ export function EntrySheet(props: {
     return <RouteSheet restaurant={routeTarget} visible onClose={() => setRouteOpen(false)} />;
   }
 
-  const done = () => {
+  /** The typed fields that changed, and the hint of each invalid one. */
+  const collect = (): { fields: EntryFields; invalid: Partial<Record<TypedField, string>> } => {
+    const fields: EntryFields = {};
+    const invalid: Partial<Record<TypedField, string>> = {};
+    if (entry.kind === 'text' && text.trim() !== (entry.text ?? '')) {
+      const check = checkEntryText(text);
+      if (check.ok) fields.text = text;
+      else invalid.text = check.error;
+    }
+    if (note.trim() !== (entry.note ?? '')) {
+      const check = checkEntryNote(note);
+      if (check.ok) fields.note = note;
+      else invalid.note = check.error;
+    }
+    if (timed && startsAt !== entry.startsAt) fields.startsAt = startsAt ?? null;
+    const state = portions.state;
+    if (eats) {
+      fields.eaterIds = state.eaterIds;
+      fields.guests = state.guests;
+      fields.portions = state.portions;
+      if (state.variants.length > 0) fields.variants = state.variants;
+    }
+    if (
+      reminder.draft.on &&
+      entry.reminder &&
+      reminder.draft.text !== (entry.reminder.text ?? '')
+    ) {
+      fields.reminderText = reminder.draft.text;
+    }
+    return { fields, invalid };
+  };
+
+  const send = (fields: EntryFields, after: () => void) => {
+    let saved: Promise<string | undefined>;
+    try {
+      saved = saveEntry(entry.id, fields);
+    } catch (caught) {
+      setRefused(caught instanceof Error ? caught.message : WRITE_REJECTED_MESSAGE);
+      return;
+    }
+    setSaving(true);
+    saved.then(
+      (listLabel) => {
+        if (!open.current) return;
+        setSaving(false);
+        after();
+        if (listLabel) toast.show({ message: `Einkaufsliste angepasst: ${listLabel}` });
+      },
+      // The entry and the list sprang back; what was typed stays (AC-027).
+      () => {
+        if (!open.current) return;
+        setSaving(false);
+        setRefused(WRITE_REJECTED_MESSAGE);
+      },
+    );
+  };
+
+  /** Every way of closing saves (REQ-009): "Fertig" (`done`), ✕, Escape, swipe down, back. */
+  const close = (how: 'done' | 'dismiss') => {
     if (online.disabled) {
       props.onClose();
       return;
     }
     if (saving) return;
-    if (entry.kind === 'restaurant' && !reservation.save()) return;
-    // Closing is the success here; a toast before the server answered could be wrong (AC-009).
-    if (entry.kind === 'activity' && !note.save({ notify: false })) return;
-    if (remindable && !reminder.save()) return;
-    setSaving(true);
-    Promise.all([reservation.pending(), note.pending(), reminder.pending()]).then(
-      () => {
-        if (open.current) props.onClose();
-      },
-      // The refusal's hint comes from onWriteRejected; the typed text stays (AC-009).
-      () => {
-        if (open.current) setSaving(false);
-      },
-    );
+    const { fields, invalid } = collect();
+    const names = (Object.keys(invalid) as TypedField[]).map((field) => FIELD_NAMES[field]);
+    if (names.length > 0 && !(how === 'dismiss' && hinted.current)) {
+      hinted.current = true;
+      setErrors(invalid);
+      return;
+    }
+    send(fields, () => {
+      props.onClose();
+      if (names.length > 0) toast.show({ message: `Nicht gespeichert: ${names.join(', ')}` });
+    });
   };
 
-  // Day chips, "Vormerken" and "Anderes Datum …" move as dragging does (spec 0016, REQ-005).
-  const moveTo = (target: DropTarget) => {
-    if (moveEntry(entry, target) === 'moved') props.onClose();
+  /** Enter saves one field at once (REQ-009); the window stays open. */
+  const saveField = (field: TypedField) => {
+    if (online.disabled) return;
+    const check = field === 'text' ? checkEntryText(text) : checkEntryNote(note);
+    if (!check.ok) {
+      setErrors({ ...errors, [field]: check.error });
+      return;
+    }
+    send(field === 'text' ? { text } : { note }, () => {});
   };
-  const bounds = moveBounds(entry, entries);
+
+  // Day chips, "Vormerken" and "Anderes Datum …" move as dragging does (spec 0016, REQ-005); the
+  // window stays open with the new state (REQ-010).
+  const moveTo = (target: DropTarget) => {
+    if (moveEntry(entry, target) === 'moved') setPickingDate(false);
+  };
+  const slotOrder = [...household.mealSlots].sort((a, b) => a.sort - b.sort).map((slot) => slot.id);
+  const bounds = moveBounds(entry, entries, slotOrder);
+  // The week of the entry's day, after "Anderes Datum …" too (AC-029).
+  const chipDates = entry.date ? weekDates(startOfWeek(entry.date)) : props.weekDates;
 
   const changeSlot = (slotId: Id) => {
     if (entry.date) {
@@ -190,25 +291,36 @@ export function EntrySheet(props: {
     }
     movePlanEntry(entry.id, null, slotId);
     toast.show({ message: `„${title}“ ist vorgemerkt` });
-    props.onClose();
   };
 
-  const remove = () => {
+  const share = entryListShare(items, entry.id);
+  const remove = (withList: boolean) => {
     const restore = snapshot();
-    removePlanEntry(entry.id);
+    const taken = removePlanEntry(entry.id, { withList });
+    setConfirmRemove(false);
     props.onClose();
     toast.show({
-      message: `„${title}“ entfernt`,
+      message:
+        taken > 0
+          ? `${title} entfernt · ${zutaten(taken)} von der Liste genommen`
+          : `„${title}“ entfernt`,
       actionLabel: 'Rückgängig',
       onAction: undoAction(restore),
     });
+  };
+
+  const setField = (field: TypedField, value: string) => {
+    if (field === 'text') setText(value);
+    else setNote(value);
+    if (errors[field]) setErrors({ ...errors, [field]: undefined });
+    setRefused(undefined);
   };
 
   const moveSection = (
     <View testID="entry-move-section">
       <Label>Verschieben</Label>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {props.weekDates.map((date) => (
+        {chipDates.map((date) => (
           <Chip
             key={date}
             label={dayLabel(date)}
@@ -253,11 +365,26 @@ export function EntrySheet(props: {
   return (
     <Sheet
       visible
-      onClose={props.onClose}
+      onClose={() => close('dismiss')}
       title={title}
       testID="entry-sheet"
       size="m"
-      footer={<Button label="Fertig" full disabled={saving} onPress={done} testID="entry-done" />}
+      footer={
+        <Stack gap={6}>
+          {refused ? (
+            <Text variant="small" color="warn" testID="entry-refused">
+              {refused}
+            </Text>
+          ) : null}
+          <Button
+            label="Fertig"
+            full
+            disabled={saving}
+            onPress={() => close('done')}
+            testID="entry-done"
+          />
+        </Stack>
+      }
     >
       <Stack gap={20}>
         {props.moveFirst ? moveSection : null}
@@ -268,11 +395,7 @@ export function EntrySheet(props: {
         ) : null}
         {entry.recipeId && entry.kind === 'recipe' ? (
           <Button
-            label={
-              recipesById[entry.recipeId]?.kind === 'collection'
-                ? 'Sammlung öffnen'
-                : 'Rezept öffnen'
-            }
+            label={recipe?.kind === 'collection' ? 'Sammlung öffnen' : 'Rezept öffnen'}
             icon="book-open"
             variant="secondary"
             testID="entry-open-recipe"
@@ -282,16 +405,26 @@ export function EntrySheet(props: {
             }}
           />
         ) : null}
-        {activity ? (
+        {activity || restaurant ? (
           <Row gap={10} wrap>
-            <Button
-              label="Aktivität öffnen"
-              icon="mountain"
-              variant="secondary"
-              testID="entry-open-activity"
-              // The entry stays open underneath: "Zurück" returns to it (spec 0019, AC-016).
-              onPress={() => openActivity(activity.id)}
-            />
+            {activity ? (
+              <Button
+                label="Aktivität öffnen"
+                icon="mountain"
+                variant="secondary"
+                testID="entry-open-activity"
+                // The entry stays open underneath: "Zurück" returns to it (spec 0019, AC-016).
+                onPress={() => openActivity(activity.id)}
+              />
+            ) : restaurant ? (
+              <Button
+                label="Restaurant öffnen"
+                icon="utensils"
+                variant="secondary"
+                testID="entry-open-restaurant"
+                onPress={() => openRestaurant(restaurant.id)}
+              />
+            ) : null}
             {routeTarget ? (
               <Button
                 label="Route"
@@ -303,37 +436,76 @@ export function EntrySheet(props: {
             ) : null}
           </Row>
         ) : null}
-        {entry.kind === 'activity' ? <NoteField draft={note} disabled={online.disabled} /> : null}
-        {entry.restaurantId && entry.kind === 'restaurant' ? (
-          <Row gap={10} wrap>
-            <Button
-              label="Restaurant öffnen"
-              icon="utensils"
-              variant="secondary"
-              testID="entry-open-restaurant"
-              onPress={() => {
-                if (entry.restaurantId) openRestaurant(entry.restaurantId);
-              }}
-            />
-            {routeTarget ? (
-              <Button
-                label="Route"
-                icon="map-pin"
-                variant="secondary"
-                testID="entry-route"
-                onPress={() => setRouteOpen(true)}
-              />
-            ) : null}
-          </Row>
-        ) : null}
-        {entry.kind === 'restaurant' ? (
-          <ReservationFields
-            entry={entry}
-            draft={reservation}
-            disabled={online.disabled}
-            hint={online.hint}
+        {entry.kind === 'text' ? (
+          <TextField
+            label="Was gibt es?"
+            value={text}
+            onChangeText={(value) => setField('text', value)}
+            maxLength={MAX_ENTRY_TEXT}
+            placeholder="z. B. Essen bei Oma"
+            editable={!online.disabled}
+            error={errors.text}
+            returnKeyType="done"
+            onSubmitEditing={() => saveField('text')}
+            testID="entry-text-input"
           />
         ) : null}
+        {eats ? (
+          <EaterPicker
+            members={members}
+            eaterIds={portions.state.eaterIds}
+            guests={portions.state.guests}
+            onEaters={portions.setEaters}
+            onGuests={portions.setGuests}
+            disabled={online.disabled}
+          />
+        ) : null}
+        {entry.kind === 'recipe' && recipe ? (
+          <PortionFields
+            recipe={recipe}
+            state={portions.state}
+            onChange={portions.setState}
+            misfits={[]}
+            disabled={online.disabled}
+            testID="entry"
+          />
+        ) : null}
+        {timed ? (
+          <TimeField
+            label="Uhrzeit (optional)"
+            {...TIME_FIELD_WORDS}
+            value={startsAt}
+            optional
+            clearLabel="Uhrzeit entfernen"
+            onChange={(time) => {
+              const next = time as TimeOfDay | undefined;
+              if (remindable && !online.disabled) reminder.followTime(startsAt, next);
+              setStartsAt(next);
+              setRefused(undefined);
+            }}
+            hint={
+              online.hint ??
+              (entry.kind === 'restaurant'
+                ? 'Die Uhrzeit, für die ihr reserviert habt.'
+                : 'Wann es losgeht.')
+            }
+            disabled={online.disabled}
+            testID="entry-time"
+          />
+        ) : null}
+        <TextField
+          label="Zusatz"
+          value={note}
+          onChangeText={(value) => setField('note', value)}
+          maxLength={NOTE_MAX_LENGTH}
+          placeholder="z. B. doppelte Menge"
+          editable={!online.disabled}
+          error={errors.note}
+          hint="Steht im Kalender in Klammern hinter dem Namen."
+          returnKeyType="done"
+          onSubmitEditing={() => saveField('note')}
+          testID="entry-note-input"
+        />
         {remindable ? (
           <ReminderBlock
             form={reminder}
@@ -344,6 +516,7 @@ export function EntrySheet(props: {
               router.push('/einstellungen/benachrichtigungen');
             }}
             entryTitle={title}
+            afterStart={entry.reminder ? reminderAfterStart(entry.reminder, startsAt) : false}
             testID="entry-reminder"
           />
         ) : pastReminder ? (
@@ -364,7 +537,10 @@ export function EntrySheet(props: {
                   key={slot.id}
                   label={slot.name}
                   selected={entry.slotId === slot.id}
-                  disabled={online.disabled}
+                  disabled={
+                    online.disabled ||
+                    (entry.date !== null && !isSelectableMoveDay(bounds, entry.date, slot.id))
+                  }
                   testID={`entry-slot-${slot.id}`}
                   onPress={() => changeSlot(slot.id)}
                 />
@@ -401,212 +577,46 @@ export function EntrySheet(props: {
           disabled={online.disabled}
           hint={online.hint}
           testID="entry-remove"
-          onPress={remove}
+          onPress={() => (share ? setConfirmRemove(true) : remove(false))}
         />
       </Stack>
+      {confirmRemove && share ? (
+        <Sheet
+          visible
+          size="s"
+          title={`${entryTitle(entry, recipesById, entries)} aus dem Plan nehmen?`}
+          onClose={() => setConfirmRemove(false)}
+          testID="entry-remove-dialog"
+          footer={
+            <Stack gap={8}>
+              <Button
+                label="Zutaten auch von der Liste nehmen"
+                full
+                onPress={() => remove(true)}
+                testID="entry-remove-with-list"
+              />
+              <Button
+                label="Nur aus dem Plan nehmen"
+                variant="secondary"
+                full
+                onPress={() => remove(false)}
+                testID="entry-remove-plan-only"
+              />
+              <Button
+                label="Abbrechen"
+                variant="ghost"
+                full
+                onPress={() => setConfirmRemove(false)}
+                testID="entry-remove-cancel"
+              />
+            </Stack>
+          }
+        >
+          <Text testID="entry-remove-message">
+            {`Für ${share.label} stehen ${zutaten(share.articles)} auf der Einkaufsliste.`}
+          </Text>
+        </Sheet>
+      ) : null}
     </Sheet>
-  );
-}
-
-interface NoteDraft {
-  note: string;
-  error: string | undefined;
-  changed: boolean;
-  setNote: (note: string) => void;
-  /**
-   * Sends the typed Zusatz if it changed; false (with the error shown) when it cannot. `notify`
-   * (default true) shows "Zusatz gespeichert" at once, as "Zusatz speichern" and Enter do.
-   */
-  save: (options?: { notify?: boolean }) => boolean;
-  /** Resolves once the server took what was sent last, rejects when it refused it. */
-  pending: () => Promise<void>;
-}
-
-/** The typed Zusatz of an activity entry: saved with "Zusatz speichern", Enter and "Fertig". */
-function useNoteDraft(entry: MealPlanEntry | undefined): NoteDraft {
-  const stored = entry?.note ?? '';
-  const [note, setNoteState] = useState(stored);
-  const [error, setError] = useState<string>();
-  const sent = useRef<Promise<void>>(Promise.resolve());
-  const changed = note.trim() !== stored;
-
-  return {
-    note,
-    error,
-    changed,
-    setNote: (next) => {
-      setNoteState(next);
-      if (error) setError(undefined);
-    },
-    save: ({ notify = true } = {}) => {
-      if (!entry || !changed) return true;
-      try {
-        sent.current = saveEntryFields(entry.id, { note });
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
-        return false;
-      }
-      if (notify) toast.show({ message: note.trim() ? 'Zusatz gespeichert' : 'Zusatz entfernt' });
-      return true;
-    },
-    pending: () => sent.current,
-  };
-}
-
-/** The Zusatz of an activity in the plan, "Eislaufen (Hohenschönhausen)" (AC-013). */
-function NoteField(props: { draft: NoteDraft; disabled: boolean }) {
-  const { draft } = props;
-  const save = () => {
-    if (!props.disabled) draft.save();
-  };
-
-  return (
-    <View style={{ gap: 8 }}>
-      <TextField
-        label="Zusatz"
-        value={draft.note}
-        onChangeText={draft.setNote}
-        maxLength={NOTE_MAX_LENGTH}
-        placeholder="z. B. Hohenschönhausen"
-        editable={!props.disabled}
-        error={draft.error}
-        hint="Steht im Plan in Klammern hinter dem Namen."
-        returnKeyType="done"
-        onSubmitEditing={save}
-        testID="entry-note-input"
-      />
-      {draft.changed ? (
-        <Button
-          label="Zusatz speichern"
-          icon="check"
-          size="sm"
-          variant="secondary"
-          disabled={props.disabled}
-          onPress={save}
-          testID="entry-note-save"
-        />
-      ) : null}
-    </View>
-  );
-}
-
-interface ReservationDraft {
-  value: TimeOfDay | undefined;
-  /** Saves a chosen time at once; no time removes it (✕ or "–"). */
-  choose: (time: TimeOfDay | undefined) => void;
-  /** "Fertig": sends the chosen time again if the server refused it; false with an error. */
-  save: () => boolean;
-  error: string | undefined;
-  /** Resolves once the server took the time sent last, rejects when it refused it. */
-  pending: () => Promise<void>;
-}
-
-/**
- * "Reserviert um" of a restaurant entry, chosen from hour and minute (spec 0027, REQ-007): a
- * choice is a finished input and is saved at once (AC-027); its notice waits for the server
- * (spec 0018, AC-009). Choosing asks for this device's permission inside the tap (spec 0013,
- * AC-007, Decision 26).
- */
-function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft {
-  const stored = entry?.reservedAt;
-  const [value, setValue] = useState(stored);
-  const [error, setError] = useState<string>();
-  // What was sent last; null after a refusal, so "Fertig" sends the chosen time again.
-  const saved = useRef<TimeOfDay | null | undefined>(stored);
-  const sent = useRef<Promise<void>>(Promise.resolve());
-  const ensureDevicePush = useEnsureDevicePush();
-
-  const write = (time: TimeOfDay | undefined, notify: boolean): boolean => {
-    if (!entry || time === saved.current) return true;
-    let taken: Promise<void>;
-    try {
-      taken = saveEntryFields(entry.id, { reservedAt: time ?? null });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
-      return false;
-    }
-    saved.current = time;
-    sent.current = taken.catch((refusal: unknown) => {
-      if (saved.current === time) saved.current = null;
-      throw refusal;
-    });
-    const message = time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt';
-    if (notify)
-      sent.current.then(
-        () => toast.show({ message }),
-        () => {},
-      );
-    // Only "Fertig" waits for it; the hint of a refusal comes from onWriteRejected.
-    sent.current.catch(() => {});
-    return true;
-  };
-
-  const choose = (time: TimeOfDay | undefined) => {
-    setValue(time);
-    setError(undefined);
-    const before = saved.current ?? undefined;
-    if (entry && asksForPushPermission({ kind: 'time', gesture: 'tap', before, after: time })) {
-      ensureDevicePush();
-    }
-    write(time, true);
-  };
-
-  // "Fertig" closes as its success, so it says nothing of its own (AC-009).
-  return { value, choose, save: () => write(value, false), error, pending: () => sent.current };
-}
-
-/**
- * "Reserviert um 19:30 ✕" and, with a time, "Erinnern 2 h vorher ▾" (spec 0013, D43, AC-027,
- * AC-029). Offline both are greyed out with the hint.
- */
-function ReservationFields(props: {
-  entry: MealPlanEntry;
-  draft: ReservationDraft;
-  disabled: boolean;
-  hint: string | undefined;
-}) {
-  const { entry, draft } = props;
-  const remind = entry.remindMinutesBefore ?? DEFAULT_REMIND_MINUTES;
-  return (
-    <View style={{ gap: 12 }}>
-      <TimeField
-        label="Reserviert um"
-        {...TIME_FIELD_WORDS}
-        value={draft.value}
-        onChange={draft.choose}
-        optional
-        clearLabel="Reservierung entfernen"
-        error={draft.error}
-        hint={props.hint ?? 'Die Uhrzeit, für die ihr reserviert habt.'}
-        disabled={props.disabled}
-        testID="entry-reserved-at"
-      />
-      {entry.reservedAt ? (
-        <Menu<string>
-          label={`Erinnern ${remindLabel(remind)}`}
-          accessibilityLabel={`Erinnern: ${remindLabel(remind)}`}
-          icon="bell"
-          value={String(remind)}
-          options={REMIND_CHOICES.map((minutes) => ({
-            value: String(minutes),
-            label: remindLabel(minutes),
-            disabled: props.disabled,
-            hint: props.hint,
-          }))}
-          onChange={(value) => {
-            const minutes = REMIND_CHOICES.find((choice) => String(choice) === value);
-            if (minutes === undefined || minutes === remind) return;
-            try {
-              setReservation(entry.id, { remindMinutesBefore: minutes });
-            } catch {
-              toast.show({ message: 'Hat nicht geklappt – bitte noch einmal versuchen' });
-              return;
-            }
-            toast.show({ message: `Erinnerung ${remindLabel(minutes)}` });
-          }}
-          testID="entry-remind"
-        />
-      ) : null}
-    </View>
   );
 }

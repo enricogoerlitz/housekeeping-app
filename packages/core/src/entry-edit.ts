@@ -20,7 +20,6 @@ export const MAX_ENTRY_TEXT = 500;
 export const MAX_ENTRY_NOTE = 120;
 
 // meal_plan_entries_text_no_control and _note_no_control refuse every control character.
-// eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 export type FieldCheck = { ok: true; value: string | undefined } | { ok: false; error: string };
