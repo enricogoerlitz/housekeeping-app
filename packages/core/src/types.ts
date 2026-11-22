@@ -338,6 +338,11 @@ export interface Chore {
   activeMonths?: number[];
   /** "Uhrzeit": reminder on the due day (spec 0013, REQ-007); undefined = none. */
   dueTime?: TimeOfDay;
+  /**
+   * „Erinnern“ (spec 0027, REQ-009): false = the time is only shown, nobody is reminded; only with
+   * a time. Undefined = on, the default.
+   */
+  remindAtDueTime?: boolean;
 }
 
 export interface ChoreEvent {

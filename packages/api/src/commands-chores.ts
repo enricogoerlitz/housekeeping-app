@@ -9,6 +9,7 @@ import {
   firstDueOn,
   isBackfillDay,
   reassignOutcome,
+  remindAtDueTimeFor,
   removalOutcome,
   validateChoreDraft,
   type Assignment,
@@ -53,6 +54,11 @@ export interface ChoreInput {
    * without one.
    */
   dueTime?: TimeOfDay | null;
+  /**
+   * „Erinnern“ (spec 0027, REQ-009). Editing without it keeps the chore's; without a time it is
+   * always saved as on (AC-038).
+   */
+  remindAtDueTime?: boolean;
   /**
    * „Nächstes Mal“ (spec 0026, REQ-002): today or later. Creating without one takes
    * core.firstDueOn; editing without one keeps the date unless the rhythm changed.
@@ -174,6 +180,9 @@ function newChore(input: ChoreInput, today: ISODate): Chore {
       chosenTurn(input.assignment, input.nextAssigneeId) ??
       assigneeAfterAssignmentChange(input.assignment),
     dueTime: input.dueTime ?? undefined,
+    remindAtDueTime: remindAtDueTimeFor(input.dueTime ?? undefined, input.remindAtDueTime ?? true)
+      ? undefined
+      : false,
   };
 }
 
@@ -396,6 +405,7 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
       ...data,
       chores: data.chores.map((chore): Chore => {
         if (chore.id !== choreId) return chore;
+        const dueTime = input.dueTime === undefined ? chore.dueTime : (input.dueTime ?? undefined);
         return {
           ...chore,
           title: input.title.trim(),
@@ -404,7 +414,13 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
           assignment: input.assignment,
           effort: input.effort ?? chore.effort,
           activeMonths: input.activeMonths?.length ? input.activeMonths : undefined,
-          dueTime: input.dueTime === undefined ? chore.dueTime : (input.dueTime ?? undefined),
+          dueTime,
+          remindAtDueTime: remindAtDueTimeFor(
+            dueTime,
+            input.remindAtDueTime ?? chore.remindAtDueTime !== false,
+          )
+            ? undefined
+            : false,
           nextDueOn:
             input.recurrence.type === 'asNeeded'
               ? undefined
