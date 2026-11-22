@@ -1168,3 +1168,9 @@ Wird am Ende ausgefüllt.
       Konfiguration gelesen wird.
     - `config diff` meldete lokale Werte: Pooler-Größen (lokal aus) auf die Werte des Free-Tarifs
       (15, 200), der ungenutzte Vektorspeicher aus.
+14. **Sicherung im Release mit `secrets: inherit` (22.11.2026).** Die erste Veröffentlichung hielt
+    vor den Migrationen an: Die als wiederverwendbarer Workflow aufgerufene Sicherung sah
+    `BACKUP_DB_URL` leer („BACKUP_DB_URL ohne Passwort“), eigenständig gestartet dagegen nicht. Ein
+    aufgerufener Workflow bekommt die Secrets seiner Umgebung nur mit `secrets: inherit`; der Test
+    in `scripts/ci/workflows.test.mjs` verlangt das. Auf Repo-Ebene gibt es keine Secrets, es
+    kommen also nur die der Umgebung `backup` an (AC-053 bleibt erfüllt).
