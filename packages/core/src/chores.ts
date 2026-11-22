@@ -188,20 +188,36 @@ export function assignmentLabel(assignment: Assignment, members: Member[]): stri
   }
 }
 /**
- * Member ids shown as avatars for a chore: the next assignee, both for "together", all rotation
- * members for rotating. Ids that are not among the given members are left out.
+ * Member ids shown as avatars for a chore: the next assignee, both for "together", and for
+ * rotating only whose turn it is (spec 0018, AC-016) — the next assignee when it is in the
+ * rotation, else the first rotation member, as in the household row. Ids that are not among the
+ * given members are left out.
  */
 export function choreMemberIds(chore: Chore, members: Member[]): Id[] {
   const { assignment } = chore;
   if (assignment.type === 'together') return members.map((member) => member.id);
+  const known = (id: Id | undefined): id is Id =>
+    id !== undefined && members.some((member) => member.id === id);
 
-  const ids =
-    assignment.type === 'rotating'
-      ? assignment.memberIds
-      : [chore.nextAssigneeId ?? (assignment.type === 'fixed' ? assignment.memberId : undefined)];
-  return ids.filter(
-    (id): id is Id => id !== undefined && members.some((member) => member.id === id),
-  );
+  if (assignment.type === 'rotating') {
+    const rotation = assignment.memberIds.filter(known);
+    const turn = rotation.find((id) => id === chore.nextAssigneeId) ?? rotation[0];
+    return turn === undefined ? [] : [turn];
+  }
+  const id =
+    chore.nextAssigneeId ?? (assignment.type === 'fixed' ? assignment.memberId : undefined);
+  return known(id) ? [id] : [];
+}
+
+/**
+ * What the screen reader says for the avatar of an alternating chore: "dran: Nadja" (spec 0018,
+ * AC-016); undefined for every other assignment, whose avatars are read by name.
+ */
+export function choreTurnLabel(chore: Chore, members: Member[]): string | undefined {
+  if (chore.assignment.type !== 'rotating') return undefined;
+  const [turn] = choreMemberIds(chore, members);
+  const member = members.find((candidate) => candidate.id === turn);
+  return member ? `dran: ${member.name}` : undefined;
 }
 
 // ---------- Spec 0011: completing, changing and the history chain ----------
@@ -439,6 +455,10 @@ export function doneOnChoices(today: ISODate): DoneOnChoice[] {
     { date: addDays(today, -2), label: 'vorgestern' },
   ];
 }
+
+/** The network dropped while checking off, nothing was booked (spec 0018, AC-024). */
+export const OFFLINE_CHECK_NOTICE =
+  'Offline – nichts wurde abgehakt. Mit Netz noch einmal abhaken.';
 
 /** "Nadja war schneller (10:02)" in local time (AC-031); without the time when it is unreadable. */
 export function fasterNotice(name: string, doneAt: string | undefined): string {

@@ -1,6 +1,7 @@
 import { useChoreEvents, useChores, useMembers, useMembersById } from '@housekeeping/api';
 import {
   choreMemberIds,
+  choreTurnLabel,
   choresOfDay,
   daysOverdue,
   flexibleProgress,
@@ -114,7 +115,14 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
                       `${recurrenceLabel(chore.recurrence)} · ${dueText(chore, props.today)}`
                     )
                   }
-                  trailing={assignees.length > 0 ? <AvatarStack members={assignees} /> : undefined}
+                  trailing={
+                    assignees.length > 0 ? (
+                      <AvatarStack
+                        members={assignees}
+                        accessibilityLabel={choreTurnLabel(chore, members)}
+                      />
+                    ) : undefined
+                  }
                 />
               </RowTransition>
             );

@@ -65,10 +65,18 @@ export function Avatar(props: AvatarProps) {
 export function AvatarStack(props: {
   members: { id: string; name: string; color: string }[];
   size?: keyof typeof AVATAR_SIZES;
+  /** Read instead of the names, as one image, e.g. "dran: Nadja" (text from the app). */
+  accessibilityLabel?: string;
 }) {
   const theme = useTheme();
+  const labelled = props.accessibilityLabel !== undefined;
   return (
-    <View style={{ flexDirection: 'row' }}>
+    <View
+      style={{ flexDirection: 'row' }}
+      accessible={labelled || undefined}
+      accessibilityRole={labelled ? 'image' : undefined}
+      accessibilityLabel={props.accessibilityLabel}
+    >
       {props.members.map((member, index) => (
         <View
           key={member.id}
