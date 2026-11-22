@@ -249,8 +249,13 @@ export function useOriginBack(
   const router = useRouter();
   const section = von ?? own;
   const fallback = von === undefined && home ? home.href : sectionHref(section);
-  // The address the page was opened from: still the current one while it renders first.
-  const [opener] = useState(() => current);
+  // The address the page was opened from: still the current one while it renders first. After
+  // a deep link the router may mount the page again once it is ready; then "current" is the page
+  // itself, which is no origin.
+  const pathname = usePathname();
+  const [opener] = useState(() =>
+    current && current.href.split('?')[0] !== pathname ? current : undefined,
+  );
   const back = useCallback(() => {
     if (opener && opener.section === section) {
       if (isWeb) window.history.back();
