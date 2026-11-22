@@ -5,6 +5,7 @@ import {
   OfflineBanner,
   TAB_BAR_HEIGHT,
   TabBar,
+  useBottomInset,
   useBreakpoint,
   useTheme,
   type NavItem,
@@ -117,7 +118,7 @@ export default function TabsLayout() {
 function Navigation(props: BottomTabBarProps) {
   const { isPhone } = useBreakpoint();
   const assistant = useAssistant();
-  const insets = useSafeAreaInsets();
+  const bottom = useBottomInset();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
   // A detail page highlights the section it came from (`von`); a page under "Verwalten"
@@ -146,7 +147,7 @@ function Navigation(props: BottomTabBarProps) {
           icon="sparkles"
           label="Assistent"
           onPress={() => assistant.open()}
-          bottom={TAB_BAR_HEIGHT + insets.bottom + 14}
+          bottom={TAB_BAR_HEIGHT + bottom + 14}
         />
       ) : null}
       <TabBar items={NAV} activeKey={activeKey} onSelect={select} />
