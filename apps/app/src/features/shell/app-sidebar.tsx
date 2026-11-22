@@ -13,7 +13,7 @@ import {
   type NavItem,
   type SidebarGroup,
 } from '@housekeeping/ui';
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -42,7 +42,6 @@ export function AppSidebar(props: AppSidebarProps) {
   const assistant = useAssistant();
   const offline = useOffline();
   const open = useOpenManageEntry();
-  const pathname = usePathname();
   const [switching, setSwitching] = useState(false);
 
   const groups: SidebarGroup[] = [
@@ -54,9 +53,7 @@ export function AppSidebar(props: AppSidebarProps) {
           key: entry.key,
           label: entry.label,
           icon: entry.icon,
-          active:
-            (entry.route !== undefined && entry.route === props.activeRoute) ||
-            (entry.pathPrefix !== undefined && pathname.startsWith(entry.pathPrefix)),
+          active: entry.route !== undefined && entry.route === props.activeRoute,
           onPress: () => open(entry.href),
           testID: `nav-manage-${entry.key}`,
         })),

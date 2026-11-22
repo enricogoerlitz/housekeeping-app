@@ -77,7 +77,7 @@ test('AC-019: "Anderes Datum …" moves Lasagne two months on and keeps "Abend"'
 
 test('AC-020: "Einplanen" of Eislaufen reaches a day more than 14 days ahead', async ({ page }) => {
   const target = dayInMonth(TODAY, 2, 16);
-  await open(page, `/kalender/aktivitaet/${EISLAUFEN}`);
+  await open(page, `/aktivitaet/${EISLAUFEN}`);
   await tid(page, 'activity-plan').click();
   await expect(tid(page, 'add-entry-activity-chosen')).toContainText('Eislaufen');
   await tid(page, 'add-entry-day-other').click();

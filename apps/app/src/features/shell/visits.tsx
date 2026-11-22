@@ -36,8 +36,9 @@ export function VisitsLine(props: { label: string; onPress?: () => void; testID:
     <Row gap={6}>
       <Icon name="history" size={16} color="muted" />
       <Text variant="small" color="muted" testID={props.testID}>
-        {props.onPress ? `${props.label} ›` : props.label}
+        {props.label}
       </Text>
+      {props.onPress ? <Icon name="chevron-right" size={14} color="muted" /> : null}
     </Row>
   );
   if (!props.onPress) return content;

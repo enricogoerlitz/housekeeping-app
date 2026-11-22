@@ -6,6 +6,7 @@ import {
   EmptyState,
   Icon,
   IconButton,
+  ListDetail,
   Menu,
   Row,
   Screen,
@@ -18,16 +19,18 @@ import {
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
-import { useIsFocused } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
+import { ActivityDetail } from './activity-detail';
 import { ActivityFormSheet } from './activity-form';
 import { ActivityPhoto } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
-import { useOpenActivity } from './navigation';
 
 type ActivitySort = 'name' | 'rating' | 'recent';
 
@@ -46,12 +49,18 @@ function matches(query: string, activity: Activity): boolean {
   );
 }
 
+/** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
+const LIST_COLUMN_WIDTH = 380;
+
 /**
- * "Aktivitäten" as its own page in the calendar's area (spec 0010, REQ-008; spec 0004, AC-004,
- * AC-005): search, favourites, sort; an activity opens as its own page.
+ * "Aktivitäten" as its own page under "Verwalten" (spec 0024, REQ-008, REQ-009; spec 0004,
+ * AC-004, AC-005): search, favourites, sort. On phones an activity opens as its own page; from
+ * 700 px the grid of cards, and with a chosen activity the list on the left (chosen one
+ * highlighted) and the activity on the right with ✕ back to the grid.
  */
 export function ActivitiesScreen() {
-  const { isPhone, bp } = useBreakpoint();
+  const { isPhone, isWide, bp } = useBreakpoint();
+  const router = useRouter();
   const online = useOnlineOnly();
   const activities = useActivities();
   const entries = usePlanEntries();
@@ -60,8 +69,8 @@ export function ActivitiesScreen() {
   // Search, favourites, sort and "Neue Aktivität" stand in the address (spec 0019, REQ-011).
   const address = usePageParams('aktivitaeten');
   const { params } = address;
-  // "‹ Verwalten" when opened from there, otherwise "‹ Kalender" (spec 0010, REQ-008; AC-017).
-  const { label: backLabel, back } = useOriginBack(params.von, 'kalender');
+  // "‹ Verwalten", or the section it was opened from (spec 0019, REQ-006).
+  const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
   const focused = useIsFocused();
 
   const query = params.suche ?? '';
@@ -75,12 +84,25 @@ export function ActivitiesScreen() {
   const setCreating = (open: boolean) =>
     open ? address.open({ fenster: 'neu-aktivitaet' }) : address.close({ fenster: undefined });
 
-  const openActivity = useOpenActivity();
-  // From the new activity on to its page: the window leaves the address first.
+  // On wide screens the chosen activity stands in the address and replaces the entry (spec 0019,
+  // REQ-014); on phones the same address opens its page, with the list underneath.
+  const selectedId = isWide ? params.aktivitaet : undefined;
+  const addressed = params.aktivitaet;
+  const replace = address.replace;
+  useEffect(() => {
+    if (isWide || !addressed) return;
+    replace({ aktivitaet: undefined });
+    router.push({ pathname: '/aktivitaet/[id]', params: { id: addressed } }, { withAnchor: true });
+  }, [isWide, addressed, replace, router]);
+  // From a new activity on to it: the window leaves the address first.
   const open = (activityId: Id) => {
-    address.replace({ fenster: undefined });
-    openActivity(activityId);
+    if (isWide) address.replace({ fenster: undefined, aktivitaet: activityId });
+    else {
+      address.replace({ fenster: undefined });
+      router.push({ pathname: '/aktivitaet/[id]', params: { id: activityId } });
+    }
   };
+  const closeDetail = () => address.replace({ aktivitaet: undefined, fenster: undefined });
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
@@ -170,7 +192,8 @@ export function ActivitiesScreen() {
     );
   }
 
-  const columns = isPhone ? 1 : bp === 'desktop' ? 3 : 2;
+  const split = selectedId !== undefined;
+  const columns = isPhone || split ? 1 : bp === 'desktop' ? 3 : 2;
   const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
   const toolbar = (
     <Stack gap={8}>
@@ -243,6 +266,7 @@ export function ActivitiesScreen() {
                 myRating={activity.ratings[me.id] ?? 0}
                 isFavorite={activity.favoriteOf.includes(me.id)}
                 visits={visitsById.get(activity.id)}
+                selected={activity.id === selectedId}
                 onPress={() => open(activity.id)}
               />
             </View>
@@ -252,10 +276,48 @@ export function ActivitiesScreen() {
     </>
   );
 
+  const detailWindow =
+    params.fenster === 'bearbeiten' || params.fenster === 'einplanen' ? params.fenster : undefined;
   return (
-    <Screen testID="activities-screen" tone="plan" header={header} toolbar={toolbar}>
-      {offlineHint}
-      {listBody}
+    <Screen
+      testID="activities-screen"
+      tone="plan"
+      header={header}
+      toolbar={toolbar}
+      scroll={!split}
+      style={split ? { flex: 1, paddingBottom: 0 } : undefined}
+    >
+      {split ? (
+        <ListDetail
+          list={
+            <ScrollColumn>
+              {offlineHint}
+              {listBody}
+            </ScrollColumn>
+          }
+          detail={
+            <ActivityDetail
+              activityId={selectedId}
+              onClose={closeDetail}
+              window={detailWindow}
+              onWindow={(window) =>
+                window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+              }
+              // Spec 0024, REQ-010: after "Löschen" the grid, with search and filter.
+              onDeleted={closeDetail}
+              onOpen={open}
+            />
+          }
+          placeholder={{ icon: 'mountain', title: 'Wähl eine Aktivität aus' }}
+          listWidth={LIST_COLUMN_WIDTH}
+          testID="activities-split"
+        />
+      ) : (
+        <>
+          {offlineHint}
+          {listBody}
+        </>
+      )}
       {sheet}
     </Screen>
   );
@@ -266,6 +328,7 @@ function ActivityCard(props: {
   myRating: number;
   isFavorite: boolean;
   visits?: Visits;
+  selected?: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -278,13 +341,20 @@ function ActivityCard(props: {
       testID={`activity-${id}`}
       accessibilityRole="button"
       accessibilityLabel={activity.name}
+      accessibilityState={{ selected: !!props.selected }}
       onPress={props.onPress}
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,
         borderRadius: theme.shape.radius.card,
       })}
     >
-      <Surface padding={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <Surface
+        padding={12}
+        style={[
+          { flexDirection: 'row', alignItems: 'center', gap: 12 },
+          props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
+        ]}
+      >
         <ActivityPhoto activity={activity} width={56} height={56} testID={`activity-${id}`} />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Row gap={6}>

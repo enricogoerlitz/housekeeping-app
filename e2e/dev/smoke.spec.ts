@@ -122,10 +122,9 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await back(page);
 
-  // Kalender → ▲ Aktivitäten: the page, one activity on its own page, the add sheet's tabs and
-  // its "Neu anlegen" forms (spec 0010, REQ-007, REQ-008).
-  await nav(page, 'kalender');
-  await tid(page, 'calendar-activities').click();
+  // Verwalten → Aktivitäten: the page, one activity, the add sheet's tabs and its "Neu anlegen"
+  // forms (spec 0010, REQ-007, REQ-008; spec 0024, REQ-009).
+  await tid(page, 'nav-manage-activities').click();
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await tid(page, `activity-${seedIds['act-eislaufen']}`).click();
   await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
@@ -322,8 +321,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   for (const key of ['rezepte', 'kalender', 'liste', 'haushalt', 'index'] as const) {
     await nav(page, key);
   }
-  await nav(page, 'kalender');
-  await tid(page, 'calendar-activities').click();
+  await tid(page, 'nav-manage-activities').click();
   await expect(tid(page, 'activities-empty')).toBeVisible();
 
   // Signing out: no screen stays behind that still reads the household, which exists only while
