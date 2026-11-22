@@ -118,7 +118,9 @@ jobs:
         # Migrations of develop on an empty database; the seed of config.toml is the local one.
         run: supabase db reset --remote="$SUPABASE_POOLER_URL" --no-seed --yes
       - name: Beispieldaten
-        run: supabase db query --remote="$SUPABASE_POOLER_URL" --yes --file supabase/preview-seed.sql
+        # Management API with the ref (HTTP, no IPv6 needed): it takes a file of many statements,
+        # the pooler would send it as one prepared statement and fail.
+        run: supabase db query --remote="$SUPABASE_PROJECT_REF" --yes --file supabase/preview-seed.sql
       - name: Einladungen
         env:
           PREVIEW_INVITE_EMAILS: ${{ secrets.PREVIEW_INVITE_EMAILS }}

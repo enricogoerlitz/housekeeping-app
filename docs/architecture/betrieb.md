@@ -342,7 +342,7 @@ Produktivbetrieb mit echten Haushaltsdaten (Nadja) wieder auf zwei Tokens umstel
 ### Pooler-Adresse für Datenbank-Befehle
 
 Die GitHub-Runner haben kein IPv6. Alles, was die Pipeline direkt an der Datenbank tut (`db reset`
-der Vorschau, Beispieldaten, `migration list`, `db push`), läuft deshalb über den Session-Pooler
+der Vorschau, `migration list`, `db push`; die Beispieldaten gehen über die Management-API), läuft deshalb über den Session-Pooler
 (Plan 0014, Entscheidung beim Bauen 10). Je Umgebung `preview` und `production` gibt es das Secret
 `SUPABASE_POOLER_URL`:
 
