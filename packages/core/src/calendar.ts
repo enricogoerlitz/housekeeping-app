@@ -318,6 +318,62 @@ export function monthPickerStart(date: ISODate | null, today: ISODate): ISODate 
   return startOfMonth(date ?? today);
 }
 
+/**
+ * The Tageszeit the add window preselects when a day is chosen without one (spec 0020, REQ-005;
+ * spec 0021, REQ-003): the one named "Abend", else the household's last.
+ */
+export function addPresetSlot(
+  slots: readonly Pick<MealSlot, 'id' | 'name' | 'sort'>[],
+): Id | undefined {
+  const evening = slots.find((slot) => slot.name === 'Abend');
+  if (evening) return evening.id;
+  return [...slots].sort((a, b) => a.sort - b.sort)[slots.length - 1]?.id;
+}
+
+/**
+ * The height each of `count` rows gets from `available` px on the desktop (spec 0021, REQ-001):
+ * an equal share, at least `min`.
+ */
+export function sharedHeight(available: number, count: number, min: number): number {
+  if (count <= 0) return min;
+  return Math.max(min, Math.floor(available / count));
+}
+
+/**
+ * How many of `count` lines of a desktop month day show in `height` px (spec 0021, REQ-001,
+ * AC-003): all when they fit, else as many as fit beside "+n weitere", at least three.
+ */
+export function fittingItems(
+  count: number,
+  height: number,
+  lineHeight: number,
+  moreHeight: number,
+  min = 3,
+): number {
+  if (count * lineHeight <= height) return count;
+  const fit = Math.floor((height - moreHeight) / lineHeight);
+  return Math.min(count, Math.max(min, fit));
+}
+
+/**
+ * The label in the middle of the phone header (spec 0021, REQ-018, AC-046): "16.–22. Nov",
+ * "November 2026", "2026"; `today` when the period holds today, else it leads back to it.
+ */
+export function periodNavLabel(
+  view: CalendarView,
+  start: ISODate,
+  today: ISODate,
+): { label: string; today: boolean } {
+  const first = periodStart(view, start);
+  const label =
+    view === 'week'
+      ? dateRangeLabel(first, addDays(first, 6))
+      : view === 'month'
+        ? monthTitle(first)
+        : first.slice(0, 4);
+  return { label, today: periodContains(view, first, today) };
+}
+
 export interface DaySheetContent {
   /** "Fr 27. November"; the window shows it in capitals. */
   title: string;

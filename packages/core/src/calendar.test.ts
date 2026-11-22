@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { TripStripe } from './trips';
 import {
+  addPresetSlot,
   dateRangeLabel,
+  fittingItems,
+  periodNavLabel,
+  sharedHeight,
   dayA11yLabel,
   entryCountRole,
   dayKinds,
@@ -395,5 +399,58 @@ describe('spec 0016: day window, range drag and changing the view', () => {
     expect(roles).toEqual(['meal', 'recipe', 'meal']);
     expect(dayA11yLabel('2026-11-27', roles, [])).toBe('Freitag, 27. November: 1 Rezept, 2 Essen');
     expect(dayA11yLabel('2026-11-27', ['meal'], [])).toBe('Freitag, 27. November: 1 Essen');
+  });
+});
+
+describe('spec 0021: the calendar on the desktop and the phone header', () => {
+  const slot = (id: string, name: string, sort: number): MealSlot => ({ id, name, sort });
+
+  it('AC-008: "+" in the month preselects "Abend", without one the last Tageszeit', () => {
+    const slots = [
+      slot('abend', 'Abend', 3),
+      slot('mittag', 'Mittag', 2),
+      slot('vm', 'Vormittag', 1),
+    ];
+    expect(addPresetSlot(slots)).toBe('abend');
+    expect(addPresetSlot([slot('spaet', 'Spät', 9), slot('frueh', 'Früh', 1)])).toBe('spaet');
+    expect(addPresetSlot([])).toBeUndefined();
+  });
+
+  it('AC-001, AC-002: the Tageszeiten share the free height, each at least 120 px', () => {
+    expect(sharedHeight(900, 3, 120)).toBe(300);
+    expect(sharedHeight(1200, 3, 120)).toBe(400);
+    expect(sharedHeight(200, 3, 120)).toBe(120);
+    expect(sharedHeight(0, 0, 120)).toBe(120);
+  });
+
+  it('AC-003: five entries in a low row show three and "+2 weitere", a high row shows all', () => {
+    // 24 px per line, 28 px for "+n weitere".
+    expect(fittingItems(5, 60, 24, 28)).toBe(3);
+    expect(fittingItems(5, 100, 24, 28)).toBe(3);
+    expect(fittingItems(5, 119, 24, 28)).toBe(3);
+    expect(fittingItems(5, 120, 24, 28)).toBe(5);
+    expect(fittingItems(6, 130, 24, 28)).toBe(4);
+    expect(fittingItems(2, 10, 24, 28)).toBe(2);
+    expect(fittingItems(0, 10, 24, 28)).toBe(0);
+  });
+
+  it('AC-046: the phone header names the period and offers "Heute ›" outside today’s', () => {
+    const now = '2026-11-22';
+    expect(periodNavLabel('week', '2026-11-16', now)).toEqual({ label: '16.–22. Nov', today: true });
+    expect(periodNavLabel('week', '2026-11-23', now)).toEqual({
+      label: '23.–29. Nov',
+      today: false,
+    });
+    expect(periodNavLabel('week', '2026-11-30', now)).toEqual({
+      label: '30. Nov – 6. Dez',
+      today: false,
+    });
+    expect(periodNavLabel('month', '2026-11-01', now)).toEqual({
+      label: 'November 2026',
+      today: true,
+    });
+    expect(periodNavLabel('month', '2026-12-01', now).today).toBe(false);
+    expect(periodNavLabel('year', '2026-01-01', now)).toEqual({ label: '2026', today: true });
+    expect(periodNavLabel('year', '2027-01-01', now)).toEqual({ label: '2027', today: false });
   });
 });
