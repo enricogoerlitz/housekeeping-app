@@ -122,7 +122,8 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
     }
     if (saving) return;
     if (entry.kind === 'restaurant' && !reservation.save('tap')) return;
-    if (entry.kind === 'activity' && !note.save()) return;
+    // Closing is the success here; a toast before the server answered could be wrong (AC-009).
+    if (entry.kind === 'activity' && !note.save({ notify: false })) return;
     setSaving(true);
     Promise.all([reservation.pending(), note.pending()]).then(
       () => {
@@ -323,8 +324,11 @@ interface NoteDraft {
   error: string | undefined;
   changed: boolean;
   setNote: (note: string) => void;
-  /** Sends the typed Zusatz if it changed; false (with the error shown) when it cannot. */
-  save: () => boolean;
+  /**
+   * Sends the typed Zusatz if it changed; false (with the error shown) when it cannot. `notify`
+   * (default true) shows "Zusatz gespeichert" at once, as "Zusatz speichern" and Enter do.
+   */
+  save: (options?: { notify?: boolean }) => boolean;
   /** Resolves once the server took what was sent last, rejects when it refused it. */
   pending: () => Promise<void>;
 }
@@ -345,7 +349,7 @@ function useNoteDraft(entry: MealPlanEntry | undefined): NoteDraft {
       setNoteState(next);
       if (error) setError(undefined);
     },
-    save: () => {
+    save: ({ notify = true } = {}) => {
       if (!entry || !changed) return true;
       try {
         sent.current = saveEntryFields(entry.id, { note });
@@ -353,7 +357,7 @@ function useNoteDraft(entry: MealPlanEntry | undefined): NoteDraft {
         setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
         return false;
       }
-      toast.show({ message: note.trim() ? 'Zusatz gespeichert' : 'Zusatz entfernt' });
+      if (notify) toast.show({ message: note.trim() ? 'Zusatz gespeichert' : 'Zusatz entfernt' });
       return true;
     },
     pending: () => sent.current,
