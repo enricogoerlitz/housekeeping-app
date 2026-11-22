@@ -331,7 +331,8 @@ Umgebungen `preview` und `production`.
 
 **Abweichung vom Runbook C3:** Dort waren je Umgebung ein eigenes, eingeschränktes Token vorgesehen.
 Die Vorschau läuft bei jedem Merge nach `develop` und hat damit dieselben Rechte auf die Produktion.
-Vor dem Produktivbetrieb mit echten Haushaltsdaten (Nadja) auf zwei Tokens umstellen.
+Am 22.11.2026 nach der ersten Veröffentlichung bestätigt: Es bleibt bei einem Token (Entscheidung
+Enrico).
 
 ### Pooler-Adresse für Datenbank-Befehle
 
