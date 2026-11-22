@@ -1,11 +1,13 @@
 // Chore commands (spec 0003, spec 0011). Entries are booked only by the domain op complete_chore
 // with the state the device saw and removed only by remove_chore_event; chores themselves are
 // rows. Every command is one apply_changes call (ADR-0011). Dates and persons come from core.
+// Spec 0026: entries go 30 days back and change their day by change_chore_event_day; „Später“
+// takes a day; the form sets „Nächstes Mal“, „Zuletzt erledigt“ and „Als Nächstes dran“.
 import {
-  addDays,
   assigneeAfterAssignmentChange,
-  doneOnChoices,
+  dayChangeOutcome,
   firstDueOn,
+  isBackfillDay,
   reassignOutcome,
   removalOutcome,
   validateChoreDraft,
@@ -21,6 +23,7 @@ import {
   bookingRejected,
   bookLocally,
   completionOp,
+  seenState,
   type Booking,
   type BookingInput,
 } from './chore-booking';
@@ -30,7 +33,7 @@ import { checkTime } from './times';
 import type { ChangeOp } from './transport';
 
 export interface CompletionOptions {
-  /** Heute, gestern or vorgestern (REQ-006); default today. Other days throw before sending. */
+  /** Today back to today − 30 (spec 0026, REQ-007); default today. Other days throw before sending. */
   doneOn?: ISODate;
   /** Who did it ("Erledigt von"); default the signed-in member. */
   doneBy?: Id;
@@ -50,6 +53,15 @@ export interface ChoreInput {
    * without one.
    */
   dueTime?: TimeOfDay | null;
+  /**
+   * „Nächstes Mal“ (spec 0026, REQ-002): today or later. Creating without one takes
+   * core.firstDueOn; editing without one keeps the date unless the rhythm changed.
+   */
+  nextDueOn?: ISODate;
+  /** „Zuletzt erledigt“ when creating: up to today, without a history entry (decision 9). */
+  lastDoneOn?: ISODate;
+  /** „Als Nächstes dran“ of an alternating chore (REQ-003): a person of the rotation. */
+  nextAssigneeId?: Id;
 }
 
 /** A chore that does not exist yet, from „Was anderes erledigt?“; default „bei Bedarf“, anyone. */
@@ -69,14 +81,26 @@ export interface LoggedEntry {
 export interface ChoreEventRemoval {
   /** The latest booked entry: date, last time and person of before come back (AC-060). */
   restoresChore: boolean;
-  /** "Rückgängig" can book it again: it restored the chore and lies within the last three days. */
+  /** "Rückgängig" can book it again: it restored the chore and lies within the last 30 days. */
   undoable: boolean;
 }
 
 function checkDay(doneOn: ISODate, today: ISODate): void {
-  if (!doneOnChoices(today).some((choice) => choice.date === doneOn)) {
-    throw new Error('Nur heute, gestern oder vorgestern');
-  }
+  if (!isBackfillDay(doneOn, today)) throw new Error('Nur bis 30 Tage zurück');
+}
+
+/** „Nächstes Mal“ and „Später“ take today or a later day. */
+function checkNextDue(day: ISODate | undefined, today: ISODate): void {
+  if (day !== undefined && day < today) throw new Error('Nur ab heute');
+}
+
+/** „Als Nächstes dran“ counts only for a person of the rotation. */
+function chosenTurn(assignment: Assignment, nextAssigneeId: Id | undefined): Id | undefined {
+  return assignment.type === 'rotating' &&
+    nextAssigneeId !== undefined &&
+    assignment.memberIds.includes(nextAssigneeId)
+    ? nextAssigneeId
+    : undefined;
 }
 
 /** One booking as one apply_changes call; undo removes the entry again. */
@@ -127,6 +151,11 @@ function newChore(input: ChoreInput, today: ISODate): Chore {
   const errors = validateChoreDraft(input);
   if (errors.title) throw new Error(errors.title);
   checkTime(input.dueTime);
+  checkNextDue(input.nextDueOn, today);
+  if (input.lastDoneOn !== undefined && input.lastDoneOn > today) {
+    throw new Error('Nur bis heute');
+  }
+  const asNeeded = input.recurrence.type === 'asNeeded';
   return {
     id: newId(),
     title: input.title.trim(),
@@ -135,8 +164,15 @@ function newChore(input: ChoreInput, today: ISODate): Chore {
     assignment: input.assignment,
     effort: input.effort ?? 1,
     activeMonths: input.activeMonths?.length ? input.activeMonths : undefined,
-    nextDueOn: firstDueOn(input.recurrence, today),
-    nextAssigneeId: assigneeAfterAssignmentChange(input.assignment),
+    nextDueOn: asNeeded
+      ? undefined
+      : input.recurrence.type === 'once'
+        ? input.recurrence.date
+        : (input.nextDueOn ?? firstDueOn(input.recurrence, today, input.lastDoneOn)),
+    lastDoneOn: input.lastDoneOn,
+    nextAssigneeId:
+      chosenTurn(input.assignment, input.nextAssigneeId) ??
+      assigneeAfterAssignmentChange(input.assignment),
     dueTime: input.dueTime ?? undefined,
   };
 }
@@ -227,7 +263,7 @@ export function removeChoreEvent(eventId: Id): ChoreEventRemoval | null {
     chore !== undefined &&
     after !== undefined &&
     event.doneBy !== '' &&
-    doneOnChoices(state.today).some((choice) => choice.date === event.doneOn) &&
+    isBackfillDay(event.doneOn, state.today) &&
     (chore.nextDueOn === undefined || chore.nextDueOn > event.doneOn);
   const rebook: ChangeOp | undefined =
     undoable && chore && after
@@ -260,19 +296,71 @@ export function removeChoreEvent(eventId: Id): ChoreEventRemoval | null {
   return { restoresChore: restored !== undefined, undoable };
 }
 
-/** „Später“: moves only this occurrence by one day („bei Bedarf“ has no date to move). */
-export function postponeChore(choreId: Id): void {
-  const today = getState().today;
+/**
+ * „Später“ (spec 0026, REQ-005): moves only the next date to `day` (today or later, as chosen in
+ * the menu); rhythm, last time and person stay, nothing goes into the history. „Bei Bedarf“ has
+ * no date to move. Throws for a day before today.
+ */
+export function postponeChore(choreId: Id, day: ISODate): void {
+  checkNextDue(day, getState().today);
   commit({ path: 'diff' }, () =>
     updateData((data) => ({
       ...data,
-      chores: data.chores.map((chore) => {
-        if (chore.id !== choreId || chore.recurrence.type === 'asNeeded') return chore;
-        const from = chore.nextDueOn && chore.nextDueOn > today ? chore.nextDueOn : today;
-        return { ...chore, nextDueOn: addDays(from, 1) };
-      }),
+      chores: data.chores.map((chore) =>
+        chore.id !== choreId || chore.recurrence.type === 'asNeeded'
+          ? chore
+          : { ...chore, nextDueOn: day },
+      ),
     })),
   );
+}
+
+/**
+ * „Datum ändern“ of a history entry (spec 0026, REQ-007): the entry moves to `doneOn` (today back
+ * to today − 30). For the latest booked entry of a chore that still exists, date and last time
+ * are computed again from the state before it (core dayChangeOutcome); otherwise only the day
+ * changes. The server refuses when the chore changed meanwhile or the entry is gone (AC-023);
+ * the change then springs back with the general hint. False for an unknown entry.
+ */
+export function changeChoreEventDay(eventId: Id, doneOn: ISODate): boolean {
+  const state = getState();
+  const data = getData();
+  const event = data.choreEvents.find((candidate) => candidate.id === eventId);
+  if (!event) return false;
+  checkDay(doneOn, state.today);
+  const chore = data.chores.find((candidate) => candidate.id === event.choreId);
+  const outcome = dayChangeOutcome({ chore, events: data.choreEvents, eventId, doneOn });
+  const change: ChangeOp = {
+    kind: 'change_chore_event_day',
+    change: {
+      event_id: eventId,
+      done_on: doneOn,
+      ...(chore && { seen: seenState(chore, data.choreEvents) }),
+      ...(outcome && { next_due_on: outcome.nextDueOn ?? null }),
+    },
+  };
+  commit(
+    {
+      path: 'rpc',
+      send: (transport, context) => transport.applyChanges(context.householdId, [change]),
+    },
+    () =>
+      updateData((current) => ({
+        ...current,
+        choreEvents: current.choreEvents.map((candidate) =>
+          candidate.id === eventId ? { ...candidate, doneOn } : candidate,
+        ),
+        chores:
+          chore && outcome
+            ? current.chores.map((candidate) =>
+                candidate.id === chore.id
+                  ? { ...candidate, nextDueOn: outcome.nextDueOn, lastDoneOn: outcome.lastDoneOn }
+                  : candidate,
+              )
+            : current.chores,
+      })),
+  );
+  return true;
 }
 
 /**
@@ -299,6 +387,9 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
   if (errors.title) throw new Error(errors.title);
   checkTime(input.dueTime);
   const today = getState().today;
+  const stored = getData().chores.find((chore) => chore.id === choreId);
+  // An untouched „Nächstes Mal“ may lie in the past (overdue); only a new day must not.
+  if (input.nextDueOn !== stored?.nextDueOn) checkNextDue(input.nextDueOn, today);
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   commit({ path: 'diff' }, () =>
     updateData((data) => ({
@@ -314,12 +405,21 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
           effort: input.effort ?? chore.effort,
           activeMonths: input.activeMonths?.length ? input.activeMonths : undefined,
           dueTime: input.dueTime === undefined ? chore.dueTime : (input.dueTime ?? undefined),
-          nextDueOn: same(chore.recurrence, input.recurrence)
-            ? chore.nextDueOn
-            : firstDueOn(input.recurrence, today, chore.lastDoneOn),
-          nextAssigneeId: same(chore.assignment, input.assignment)
-            ? chore.nextAssigneeId
-            : assigneeAfterAssignmentChange(input.assignment, chore.nextAssigneeId),
+          nextDueOn:
+            input.recurrence.type === 'asNeeded'
+              ? undefined
+              : input.recurrence.type === 'once' && !same(chore.recurrence, input.recurrence)
+                ? input.recurrence.date
+                : // A changed day was chosen; the stored day stands for „unchanged“.
+                  ((input.nextDueOn !== chore.nextDueOn ? input.nextDueOn : undefined) ??
+                  (same(chore.recurrence, input.recurrence)
+                    ? chore.nextDueOn
+                    : firstDueOn(input.recurrence, today, chore.lastDoneOn))),
+          nextAssigneeId:
+            chosenTurn(input.assignment, input.nextAssigneeId) ??
+            (same(chore.assignment, input.assignment)
+              ? chore.nextAssigneeId
+              : assigneeAfterAssignmentChange(input.assignment, chore.nextAssigneeId)),
         };
       }),
     })),

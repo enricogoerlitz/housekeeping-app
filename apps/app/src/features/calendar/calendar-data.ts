@@ -111,7 +111,7 @@ export function useCalendarData() {
       ).map((id) => membersById[id]?.name ?? 'Jemand'),
     /** The household row from…to (both inclusive), by date. */
     householdRow: (from: ISODate, to: ISODate): Record<ISODate, HouseholdRowItem[]> =>
-      householdRow({ chores, events, members, from, to, today }),
+      householdRow({ chores, events, members, trips, from, to, today }),
   };
 }
 

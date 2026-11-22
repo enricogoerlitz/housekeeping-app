@@ -1421,7 +1421,7 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
 
   it.each([
     ['a kind other than done/skipped', { kind: 'spontaneous' }],
-    ['a day before today − 3', { done_on: '2026-11-16' }],
+    ['a day before today − 31 (spec 0026)', { done_on: '2026-10-19' }],
     ['a day after today + 1', { done_on: '2026-11-22' }],
     ['a date not after the day', { next_due_on: '2026-11-20' }],
     ['an unknown field', { title: 'Fremder Titel' }],

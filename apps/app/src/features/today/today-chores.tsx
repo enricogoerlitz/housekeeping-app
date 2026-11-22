@@ -1,10 +1,12 @@
-import { useChoreEvents, useChores, useMembers, useMembersById } from '@housekeeping/api';
+import { useChoreEvents, useChores, useMembersById } from '@housekeeping/api';
 import {
+  choreDueLabel,
   choreMemberIds,
   choreTurnLabel,
   choresOfDay,
-  daysOverdue,
+  duePoints,
   flexibleProgress,
+  pointsLabel,
   recurrenceLabel,
   withTime,
   type Chore,
@@ -27,41 +29,48 @@ import {
 import { View } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
+import { flexibleBarLabel } from '@/features/chores/chore-row';
 import { DoneSheet } from '@/features/chores/done-sheet';
+import { useChoreAway } from '@/features/chores/use-chore-away';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { usePageParams } from '@/lib/url-state';
-
-function dueText(chore: Chore, today: ISODate): string {
-  const days = daysOverdue(chore, today);
-  if (days === 0) return 'heute';
-  return days === 1 ? 'fällig seit 1 Tag' : `fällig seit ${days} Tagen`;
-}
 
 /**
  * "Zu tun" of the shown day (spec 0011, REQ-005, AC-032): today the due chores (core dueChores)
  * with the one chore check window of the Haushalt — a tap strikes through, a second takes it
  * back, 2 s after the last tap the checked ones are booked and leave; leaving the page books at
  * once; no "Rückgängig" (AC-028 to AC-031). Later days show the planned dates, past days what was
- * done, both only to look at and without "Was anderes erledigt?".
+ * done, both only to look at and without "Was anderes erledigt?". Next to the title the points of
+ * today (spec 0026, REQ-010); during a trip of the whole household the sentence of REQ-013.
  */
 export function TodayChores(props: { shown: ISODate; today: ISODate; title: string }) {
   const chores = useChores();
   const events = useChoreEvents();
-  const members = useMembers();
-  const day = choresOfDay({ chores, events, members, shown: props.shown, today: props.today });
+  const away = useChoreAway();
+  const day = choresOfDay({
+    chores,
+    events,
+    members: [...away.members],
+    trips: [...away.trips],
+    shown: props.shown,
+    today: props.today,
+  });
 
   return (
     <Section
       title={props.title}
       testID="today-chores"
-      meta={
-        day.kind === 'due' && day.chores.length > 0
-          ? `ca. ${day.chores.reduce((sum, chore) => sum + chore.effort, 0)} Punkte`
-          : undefined
-      }
+      meta={day.kind === 'due' ? pointsLabel(duePoints(chores, props.today, away)) : undefined}
     >
       {day.kind === 'due' ? (
         <DueChores chores={day.chores} today={props.today} />
+      ) : day.kind === 'away' ? (
+        <>
+          <Text color="muted" testID="today-chores-away">
+            {day.notice}
+          </Text>
+          {props.shown === props.today ? <DoneLink /> : null}
+        </>
       ) : (
         <ChoresToLookAt items={day.items} kind={day.kind} />
       )}
@@ -69,14 +78,36 @@ export function TodayChores(props: { shown: ISODate; today: ISODate; title: stri
   );
 }
 
-function DueChores(props: { chores: Chore[]; today: ISODate }) {
-  const members = useMembers();
+/** "Was anderes erledigt?" under "Zu tun" today, also during a trip (AC-049). */
+function DoneLink() {
   const online = useOnlineOnly();
   // "Was hast du erledigt?" stands in the address, `/?fenster=erledigt` (spec 0019).
   const address = usePageParams('uebersicht');
   const sheetOpen = address.params.fenster === 'erledigt';
   const setSheetOpen = (open: boolean) =>
     open ? address.open({ fenster: 'erledigt' }) : address.close({ fenster: undefined });
+  return (
+    <>
+      <View style={{ marginTop: 8 }}>
+        <Button
+          label="Was anderes erledigt?"
+          icon="plus"
+          variant="link"
+          disabled={online.disabled}
+          hint={online.hint}
+          onPress={() => setSheetOpen(true)}
+          testID="today-spontaneous"
+        />
+      </View>
+      <DoneSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
+    </>
+  );
+}
+
+function DueChores(props: { chores: Chore[]; today: ISODate }) {
+  const away = useChoreAway();
+  const members = away.members;
+  const online = useOnlineOnly();
   const check = useChoreCheckWindow(props.chores);
 
   const rows = check.rows;
@@ -93,7 +124,7 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
             const checked = check.isChecked(chore);
             const flexible = chore.recurrence.type === 'flexible';
             const progress = flexibleProgress(chore, props.today);
-            const assignees = choreMemberIds(chore, members).flatMap((id) =>
+            const assignees = choreMemberIds(chore, props.today, away).flatMap((id) =>
               members.filter((member) => member.id === id),
             );
             return (
@@ -110,20 +141,19 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
                         <Text variant="small" color="muted">
                           {recurrenceLabel(chore.recurrence)}
                         </Text>
-                        <DueBar
-                          value={progress}
-                          label={progress >= 1 ? 'Ist fällig' : 'Bald fällig'}
-                        />
+                        <DueBar value={progress} label={flexibleBarLabel(progress)} />
                       </View>
                     ) : (
-                      `${recurrenceLabel(chore.recurrence)} · ${dueText(chore, props.today)}`
+                      [recurrenceLabel(chore.recurrence), choreDueLabel(chore, props.today, away)]
+                        .filter(Boolean)
+                        .join(' · ')
                     )
                   }
                   trailing={
                     assignees.length > 0 ? (
                       <AvatarStack
                         members={assignees}
-                        accessibilityLabel={choreTurnLabel(chore, members)}
+                        accessibilityLabel={choreTurnLabel(chore, props.today, away)}
                       />
                     ) : undefined
                   }
@@ -133,18 +163,7 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
           })}
         </List>
       )}
-      <View style={{ marginTop: 8 }}>
-        <Button
-          label="Was anderes erledigt?"
-          icon="plus"
-          variant="link"
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={() => setSheetOpen(true)}
-          testID="today-spontaneous"
-        />
-      </View>
-      <DoneSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <DoneLink />
     </>
   );
 }

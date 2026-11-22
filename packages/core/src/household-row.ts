@@ -1,10 +1,21 @@
+import {
+  canDoChoreOn,
+  choreIsPaused,
+  choreMemberIds,
+  choreTurn,
+  firstFreeDay,
+  storedDueOn,
+  type ChoreAway,
+} from './chore-schedule';
 import { nextAssignee, nextDueAfter } from './chores';
-import { addDays, parseISODate } from './dates';
+import { addDays } from './dates';
 import { withTime } from './notifications';
-import type { Chore, ChoreEvent, Id, ISODate, Member } from './types';
+import type { Chore, ChoreEvent, Id, ISODate, Member, Trip } from './types';
 
 // The household row of the calendar (spec 0010, REQ-006): past days show what was done, today what
-// is due or overdue, future days the dates computed from each chore's rhythm. Nothing is stored.
+// is due or overdue, future days the dates computed from each chore's rhythm. Trips move every
+// date to the first day somebody who can do the chore is at home (spec 0026, REQ-011, REQ-012).
+// Nothing is stored.
 
 export interface HouseholdRowItem {
   key: string;
@@ -22,77 +33,54 @@ export interface HouseholdRowItem {
 // Guards the stepping through a rhythm against broken dates; a range is at most a year.
 const MAX_STEPS = 400;
 
-function isActiveIn(chore: Chore, date: ISODate): boolean {
-  const months = chore.activeMonths;
-  if (months === undefined || months.length === 0) return true;
-  return months.includes(parseISODate(date).getMonth() + 1);
+/** Whose turn it is for the avatar on `day`; "egal wer" shows nobody, "zu zweit" everyone. */
+function avatarsOn(chore: Chore, day: ISODate, away: ChoreAway): Id[] {
+  return choreMemberIds(chore, day, away);
 }
 
-/** Whose turn it is for the avatar; "egal wer" shows nobody, "zu zweit" everyone. */
-function turnOf(chore: Chore, assigneeId: Id | undefined, members: Member[]): Id[] {
-  const { assignment } = chore;
-  if (assignment.type === 'together') return members.map((member) => member.id);
-  if (assignment.type === 'anyone') return [];
-  if (assignment.type === 'fixed') return [assignment.memberId];
-  const id = assigneeId ?? assignment.memberIds[0];
-  return id === undefined ? [] : [id];
-}
-
-/** When a flexible chore is due next: the interval after the last time, else its due date. */
-function flexibleDue(chore: Chore, everyDays: number): ISODate | undefined {
-  return chore.lastDoneOn !== undefined ? addDays(chore.lastDoneOn, everyDays) : chore.nextDueOn;
-}
-
-function isDueToday(chore: Chore, today: ISODate): boolean {
+/** Open today: its date is reached and somebody who can do it is at home (AC-028, AC-037). */
+function isOpenToday(chore: Chore, today: ISODate, away: ChoreAway): boolean {
   // "bei Bedarf" is never due, even with a stray date (spec 0011, AC-043).
-  if (chore.recurrence.type === 'asNeeded' || !isActiveIn(chore, today)) return false;
-  const due =
-    chore.recurrence.type === 'flexible'
-      ? flexibleDue(chore, Math.max(1, chore.recurrence.everyDays))
-      : (chore.nextDueOn ?? (chore.recurrence.type === 'once' ? chore.recurrence.date : undefined));
-  return due !== undefined && due <= today;
+  if (chore.recurrence.type === 'asNeeded' || choreIsPaused(chore, today)) return false;
+  const stored = storedDueOn(chore);
+  return stored !== undefined && stored <= today && canDoChoreOn(chore, today, away);
 }
 
-/** Computed dates of one chore after today up to `to`, with the person whose turn it is. */
+/**
+ * The days a chore shows up after today up to `to`, each moved to its first free day, with who
+ * does it. The rhythm goes on as if it was done on that day by that person, so dates of a trip
+ * that land on the same day show once (AC-034, AC-048).
+ */
 function futureDates(
   chore: Chore,
   today: ISODate,
   to: ISODate,
-): { date: ISODate; assigneeId?: Id }[] {
-  const { recurrence } = chore;
-  const result: { date: ISODate; assigneeId?: Id }[] = [];
-  if (recurrence.type === 'asNeeded') return result;
-  if (recurrence.type === 'once') {
-    const date = chore.nextDueOn ?? recurrence.date;
-    if (date !== undefined && date > today) result.push({ date, assigneeId: chore.nextAssigneeId });
-    return result;
-  }
-  if (recurrence.type === 'flexible') {
-    const every = Math.max(1, recurrence.everyDays);
-    let date = flexibleDue(chore, every);
-    if (date === undefined) return result;
-    if (date <= today) date = addDays(today, every);
-    for (let step = 0; step < MAX_STEPS && date <= to; step++) {
-      result.push({ date, assigneeId: chore.nextAssigneeId });
-      date = addDays(date, every);
-    }
-    return result;
-  }
-
-  let date = chore.nextDueOn;
+  away: ChoreAway,
+): { date: ISODate; scheduled: ISODate; memberIds: Id[] }[] {
+  const result: { date: ISODate; scheduled: ISODate; memberIds: Id[] }[] = [];
+  let date = storedDueOn(chore);
   if (date === undefined) return result;
-  let assigneeId = chore.nextAssigneeId;
+  let current: Chore = chore;
   const advance = (doneOn: ISODate) => {
-    const current: Chore = { ...chore, nextDueOn: date, nextAssigneeId: assigneeId };
-    const doer = turnOf(chore, assigneeId, [])[0];
-    if (doer !== undefined) assigneeId = nextAssignee(current, doer) ?? assigneeId;
-    date = nextDueAfter(current, doneOn);
+    const doer = choreTurn(current, doneOn, away).actingId;
+    const scheduled: Chore = { ...current, nextDueOn: date };
+    const nextAssigneeId =
+      doer !== undefined
+        ? (nextAssignee(scheduled, doer) ?? current.nextAssigneeId)
+        : current.nextAssigneeId;
+    date =
+      chore.recurrence.type === 'flexible'
+        ? addDays(doneOn, Math.max(1, Math.floor(chore.recurrence.everyDays)))
+        : nextDueAfter(scheduled, doneOn);
+    current = { ...current, nextDueOn: date, nextAssigneeId };
   };
-  // Due or overdue: the rhythm goes on as if it were done today (OFFEN in plan.md).
-  if (date <= today) advance(today);
-  for (let step = 0; step < MAX_STEPS && date !== undefined && date <= to; step++) {
-    result.push({ date, assigneeId });
-    advance(date);
+  // Due or overdue and done today: the rhythm goes on from today (OFFEN in spec 0010's plan).
+  if (date <= today && isOpenToday(chore, today, away)) advance(today);
+  for (let step = 0; step < MAX_STEPS && date !== undefined; step++) {
+    const shown = firstFreeDay(current, date > today ? date : addDays(today, 1), away);
+    if (shown > to) break;
+    result.push({ date: shown, scheduled: date, memberIds: avatarsOn(current, shown, away) });
+    advance(shown);
   }
   return result;
 }
@@ -100,16 +88,20 @@ function futureDates(
 /**
  * The household row for every day from…to (both inclusive), keyed by date. Days without chores
  * are missing. Today lists the open chores first and what was done today at the end (AC-018).
+ * Only the household's own trips count (AC-044); days the whole household is away stay empty but
+ * for what was done (AC-051).
  */
 export function householdRow(input: {
   chores: Chore[];
   events: ChoreEvent[];
   members: Member[];
+  trips: Trip[];
   from: ISODate;
   to: ISODate;
   today: ISODate;
 }): Record<ISODate, HouseholdRowItem[]> {
-  const { chores, events, members, from, to, today } = input;
+  const { chores, events, from, to, today } = input;
+  const away: ChoreAway = { members: input.members, trips: input.trips };
   const row: Record<ISODate, HouseholdRowItem[]> = {};
   const push = (date: ISODate, item: HouseholdRowItem) => {
     (row[date] ??= []).push(item);
@@ -117,12 +109,12 @@ export function householdRow(input: {
 
   if (from <= today && today <= to) {
     for (const chore of chores) {
-      if (!isDueToday(chore, today)) continue;
+      if (!isOpenToday(chore, today, away)) continue;
       push(today, {
         key: `open-${chore.id}`,
         choreId: chore.id,
         title: withTime(chore.title, chore.dueTime),
-        memberIds: turnOf(chore, chore.nextAssigneeId, members),
+        memberIds: avatarsOn(chore, today, away),
         status: 'open',
         approximate: false,
       });
@@ -150,20 +142,35 @@ export function householdRow(input: {
   }
 
   if (to > today) {
+    const planned: { item: HouseholdRowItem; date: ISODate; stored: ISODate; title: string }[] = [];
     for (const chore of chores) {
+      if (chore.recurrence.type === 'asNeeded') continue;
       const approximate = chore.recurrence.type === 'flexible';
-      for (const { date, assigneeId } of futureDates(chore, today, to)) {
-        if (date < from || !isActiveIn(chore, date)) continue;
-        push(date, {
-          key: `plan-${chore.id}-${date}`,
-          choreId: chore.id,
-          title: withTime(chore.title, chore.dueTime),
-          memberIds: turnOf(chore, assigneeId, members),
-          status: 'planned',
-          approximate,
+      for (const { date, scheduled, memberIds } of futureDates(chore, today, to, away)) {
+        if (date < from || choreIsPaused(chore, date)) continue;
+        planned.push({
+          date,
+          stored: scheduled,
+          title: chore.title,
+          item: {
+            key: `plan-${chore.id}-${date}`,
+            choreId: chore.id,
+            title: withTime(chore.title, chore.dueTime),
+            memberIds,
+            status: 'planned',
+            approximate,
+          },
         });
       }
     }
+    // Chores moved onto the same day stand by their stored date, then title (REQ-011).
+    planned.sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.stored.localeCompare(b.stored) ||
+        a.title.localeCompare(b.title, 'de'),
+    );
+    for (const { date, item } of planned) push(date, item);
   }
   return row;
 }
