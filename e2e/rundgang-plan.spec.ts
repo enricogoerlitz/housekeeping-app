@@ -7,7 +7,6 @@ import {
   PLAN_ENTRY,
   SLOT_DINNER,
   TODAY,
-  back,
   day,
   expect,
   freshSeed,
