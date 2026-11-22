@@ -140,6 +140,21 @@ describe('spec 0020 REQ-006: the prep lines under the Tagesleiste', () => {
     expect(lines([tonight], '2026-11-23', '10:00')).toEqual([]);
   });
 
+  it('AC-031: when Monday is today, the missed start of Sunday evening is "Schon fällig"', () => {
+    const dinner = entry({ id: 'h', date: '2026-11-23', recipeId: 'hummus' });
+    const monday = prepLines({
+      entries: [dinner],
+      book: { recipesById, collectionRecipes },
+      slots,
+      shown: '2026-11-23',
+      today: '2026-11-23',
+      now: '08:00',
+    });
+    expect(monday.map((line) => line.text)).toEqual([
+      'Schon fällig: Kichererbsen einweichen · Hummus (heute Abend)',
+    ]);
+  });
+
   it('AC-031: a time of today that has passed is "Schon fällig" too', () => {
     const tuesday = entry({ id: 'b', date: '2026-11-24', recipeId: 'bulgogi' });
     expect(lines([tuesday], today, '17:30')).toEqual([
