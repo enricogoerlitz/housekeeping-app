@@ -26,11 +26,22 @@ import {
   type MealPlanEntry,
   type Recipe,
 } from '@housekeeping/core';
-import { Badge, Icon, KindDot, Photo, Text, useTheme } from '@housekeeping/ui';
+import {
+  Badge,
+  Icon,
+  KindDot,
+  Photo,
+  Text,
+  keyboardFocusRing,
+  useHover,
+  useTheme,
+} from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
 import { stripeA11y, useStripeColors } from '@/features/calendar/calendar-parts';
 import { entryTitle } from '@/features/meal-plan/labels';
+
+type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 
 const KIND_NAMES: Record<KindRole, string> = {
   recipe: 'Rezept',
@@ -108,6 +119,7 @@ function dayLabel(date: ISODate, today: ISODate, dots: KindRole[]): string {
 /** Phone: weekday, date in a circle (filled when chosen, ringed for today), the kinds' dots. */
 function DayColumn(props: DayProps) {
   const theme = useTheme();
+  const hover = useHover();
   const recipesById = useRecipesById();
   const { date } = props;
   const dots = dayDots(props.entries, date, recipesById);
@@ -120,14 +132,22 @@ function DayColumn(props: DayProps) {
       accessibilityLabel={`${dayLabel(date, props.today, dots)}${selected ? ', gewählt' : ''}`}
       accessibilityState={{ selected }}
       onPress={() => props.onSelect(date)}
-      style={(state) => ({
-        flex: 1,
-        alignItems: 'center',
-        gap: 4,
-        paddingVertical: 4,
-        minHeight: 64,
-        opacity: state.pressed ? 0.7 : 1,
-      })}
+      // Hover only with a mouse, the ring only with the keyboard (spec 0019, REQ-002, REQ-003).
+      style={(state) => [
+        {
+          flex: 1,
+          alignItems: 'center',
+          gap: 4,
+          paddingVertical: 4,
+          minHeight: 64,
+          borderRadius: theme.shape.radius.control,
+          opacity: state.pressed ? 0.7 : 1,
+        },
+        hover((state as PressState).hovered)
+          ? { backgroundColor: theme.colors.surfaceSunken }
+          : null,
+        keyboardFocusRing(theme, (state as PressState).focused),
+      ]}
     >
       <Text variant="caption" color={isToday ? 'accent' : 'muted'}>
         {weekdayShort(date)}
@@ -165,6 +185,7 @@ function DayColumn(props: DayProps) {
 /** Desktop: a tile with the photo and title of the day's first entry and "+2" (AC-006). */
 function DayTile(props: DayProps) {
   const theme = useTheme();
+  const hover = useHover();
   const recipesById = useRecipesById();
   const restaurantsById = useRestaurantsById();
   const activitiesById = useActivitiesById();
@@ -190,17 +211,22 @@ function DayTile(props: DayProps) {
       accessibilityLabel={`${dayLabel(date, props.today, dots)}${selected ? ', gewählt' : ''}`}
       accessibilityState={{ selected }}
       onPress={() => props.onSelect(date)}
-      style={(state) => ({
-        flex: 1,
-        minWidth: 0,
-        padding: 8,
-        gap: 6,
-        borderRadius: theme.shape.radius.control,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? theme.colors.accent : theme.colors.border,
-        backgroundColor: theme.colors.surface,
-        opacity: state.pressed ? 0.7 : 1,
-      })}
+      style={(state) => [
+        {
+          flex: 1,
+          minWidth: 0,
+          padding: 8,
+          gap: 6,
+          borderRadius: theme.shape.radius.control,
+          borderWidth: selected ? 2 : 1,
+          borderColor: selected ? theme.colors.accent : theme.colors.border,
+          backgroundColor: hover((state as PressState).hovered)
+            ? theme.colors.surfaceSunken
+            : theme.colors.surface,
+          opacity: state.pressed ? 0.7 : 1,
+        },
+        keyboardFocusRing(theme, (state as PressState).focused),
+      ]}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
         <Text variant="caption" color={isToday || selected ? 'accent' : 'muted'}>

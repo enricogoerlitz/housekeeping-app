@@ -1,7 +1,8 @@
 import { Children, createContext, isValidElement, useContext, type ReactNode } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
-import { Checkbox, CheckboxMark, IconButton, focusRing } from './controls';
+import { Checkbox, CheckboxMark, IconButton, keyboardFocusRing } from './controls';
+import { useHover } from './pointer';
 import { Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
 
@@ -143,6 +144,7 @@ export interface ListRowProps {
 }
 
 export function ListRow(props: ListRowProps) {
+  const hover = useHover();
   const theme = useTheme();
   const index = useContext(RowIndexContext);
   const insideTone = useContext(ToneContext) !== undefined;
@@ -249,7 +251,10 @@ export function ListRow(props: ListRowProps) {
               paddingLeft: paddingHorizontal,
             },
             { opacity: state.pressed ? 0.6 : 1 },
-            focusRing(theme, (state as { focused?: boolean }).focused),
+            hover((state as { hovered?: boolean }).hovered)
+              ? { backgroundColor: theme.colors.surfaceSunken }
+              : null,
+            keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
           ]}
         >
           {content}
@@ -289,7 +294,10 @@ export function ListRow(props: ListRowProps) {
           frame,
           highlight,
           { opacity: props.disabled ? 0.45 : state.pressed ? 0.6 : 1 },
-          focusRing(theme, (state as { focused?: boolean }).focused),
+          hover((state as { hovered?: boolean }).hovered) && !props.disabled
+            ? { backgroundColor: theme.colors.surfaceSunken }
+            : null,
+          keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
         ]}
       >
         {content}

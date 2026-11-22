@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { icons, type IconName } from './icons';
+import { useHover } from './pointer';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
 import {
   IDLE_STAR_POINTER,
@@ -31,13 +32,6 @@ import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
 
-/** Visible keyboard focus ring, the same on every control. */
-export function focusRing(theme: Theme, focused: boolean | undefined): ViewStyle | null {
-  return focused
-    ? { outlineWidth: 2, outlineColor: theme.colors.text, outlineStyle: 'solid', outlineOffset: 2 }
-    : null;
-}
-
 /** On the web a click also focuses a focusable view; only keyboard focus gets the ring. */
 export function keyboardFocus(event: unknown): boolean {
   const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
@@ -45,15 +39,32 @@ export function keyboardFocus(event: unknown): boolean {
 }
 
 /**
- * `focusRing` for a Pressable's `focused` state that leaves out the focus a click or a tap gives
- * on the web: the style is computed right after the focus moved, so the focused element tells
- * whether it is `:focus-visible`. Native focus comes only from a keyboard or a screen reader.
+ * The focus ring, the same on every control, and only for keyboard focus (spec 0019, REQ-002):
+ * the style is computed right after the focus moved, so the focused element tells whether it is
+ * `:focus-visible`; a click or a tap gives none. Native focus comes only from a keyboard or a
+ * screen reader. Drawn 2 px outside the control, so a container must leave that room
+ * (`FOCUS_RING_ROOM`, e.g. `ScrollRow`).
  */
 export function keyboardFocusRing(theme: Theme, focused: boolean | undefined): ViewStyle | null {
-  if (!focused) return null;
-  const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
-  return focusRing(theme, doc === undefined || keyboardFocus({ target: doc.activeElement }));
+  if (!keyboardFocused(focused)) return null;
+  return {
+    outlineWidth: 2,
+    outlineColor: theme.colors.text,
+    outlineStyle: 'solid',
+    outlineOffset: FOCUS_RING_OFFSET,
+  };
 }
+
+/** A Pressable's `focused` that came from a keyboard (or, natively, a screen reader). */
+export function keyboardFocused(focused: boolean | undefined): boolean {
+  if (!focused) return false;
+  const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
+  return doc === undefined || keyboardFocus({ target: doc.activeElement });
+}
+
+const FOCUS_RING_OFFSET = 2;
+/** The room the ring needs around a control: width plus offset. */
+export const FOCUS_RING_ROOM = 2 + FOCUS_RING_OFFSET;
 
 type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 // react-native-web passes `onKeyDown` through to the DOM; native has no such prop and ignores it.
@@ -72,10 +83,13 @@ export interface ButtonProps {
   testID?: string;
   /** Explains why the button is disabled or what it does (screen readers, tooltip on web). */
   hint?: string;
+  /** Accessible name when it says more than the label (spec 0027, AC-039). */
+  accessibilityLabel?: string;
 }
 
 export function Button(props: ButtonProps) {
   const theme = useTheme();
+  const hover = useHover();
   const area = useAreaColors();
   const variant = props.variant ?? 'primary';
   const small = props.size === 'sm';
@@ -92,7 +106,7 @@ export function Button(props: ButtonProps) {
     <Pressable
       testID={props.testID}
       accessibilityRole="button"
-      accessibilityLabel={props.label}
+      accessibilityLabel={props.accessibilityLabel ?? props.label}
       accessibilityHint={props.hint}
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
@@ -109,7 +123,7 @@ export function Button(props: ButtonProps) {
             paddingHorizontal: variant === 'link' ? 0 : small ? 14 : 18,
             borderRadius: theme.shape.radius.button,
             alignSelf: props.full ? 'stretch' : 'flex-start',
-            opacity: props.disabled ? 0.45 : pressed ? 0.75 : hovered ? 0.9 : 1,
+            opacity: props.disabled ? 0.45 : pressed ? 0.75 : hover(hovered) ? 0.9 : 1,
           },
           variant === 'primary' ? { backgroundColor: area?.fill ?? c.accent } : null,
           variant === 'secondary' ? { backgroundColor: c.surfaceSunken } : null,
@@ -147,6 +161,7 @@ export interface IconButtonProps {
 
 export function IconButton({ ref, ...props }: IconButtonProps) {
   const theme = useTheme();
+  const hover = useHover();
   const area = useAreaColors();
   const variant = props.variant ?? 'plain';
   const size = props.size ?? 40;
@@ -177,7 +192,7 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
             opacity: props.disabled ? 0.4 : pressed ? 0.6 : 1,
           },
           variant === 'filled' ? { backgroundColor: area?.fill ?? theme.colors.accent } : null,
-          variant === 'soft' || (variant === 'plain' && hovered)
+          variant === 'soft' || (variant === 'plain' && hover(hovered) && !props.disabled)
             ? { backgroundColor: theme.colors.surfaceSunken }
             : null,
           keyboardFocusRing(theme, focused),
@@ -216,6 +231,7 @@ export function Chip(props: ChipProps) {
 /** A chip as a button (filters, toggles) or as one option of a ChoiceChips group. */
 export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const theme = useTheme();
+  const hover = useHover();
   const c = theme.colors;
   const tone = props.tone ? c.tones[props.tone] : undefined;
   const background = props.selected ? c.accent : tone ? tone.bg : c.surface;
@@ -270,11 +286,14 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
       onPress={props.onPress}
       hitSlop={4}
       style={(state) => {
-        const { pressed, focused } = state as PressState;
+        const { pressed, hovered, focused } = state as PressState;
         return [
           base,
           { opacity: props.disabled ? 0.45 : pressed ? 0.7 : 1 },
-          focusRing(theme, focused),
+          hover(hovered) && !props.selected && !tone && !props.disabled
+            ? { backgroundColor: c.surfaceSunken }
+            : null,
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -331,7 +350,7 @@ export function Checkbox(props: CheckboxProps) {
         return [
           checkboxFace(theme, props.checked),
           { opacity: props.disabled ? 0.45 : pressed ? 0.6 : 1 },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -421,7 +440,7 @@ export function SwitchRow(props: SwitchRowProps) {
                 borderRadius: theme.shape.radius.control,
                 opacity: props.detailDisabled ? 0.45 : pressed ? 0.6 : 1,
               },
-              focusRing(theme, focused),
+              keyboardFocusRing(theme, focused),
             ];
           }}
         >
@@ -563,7 +582,7 @@ export function Stars(props: StarsProps) {
       style={[
         { flexDirection: 'row', gap: STAR_GAP },
         props.disabled ? { opacity: 0.45 } : null,
-        interactive ? focusRing(theme, focused) : null,
+        interactive ? keyboardFocusRing(theme, focused) : null,
       ]}
       {...(interactive ? ({ onKeyDown } as object) : null)}
     >

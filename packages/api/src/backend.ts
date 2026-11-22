@@ -175,6 +175,11 @@ export interface Engine extends BackendHooks {
   resetLocalData(): Promise<void>;
   /** Store-queue entries the server has not confirmed yet, also the ones being sent. */
   unsentStoreChanges(): number;
+  /**
+   * "Jetzt abgleichen" (spec 0027, REQ-010): sends what waits in the queues, then pulls. True
+   * when a pull was applied.
+   */
+  syncNow(): Promise<boolean>;
 }
 
 /** A changeset waiting in the outbox, and what is needed to undo it. */
@@ -1217,6 +1222,12 @@ export function createEngine(options: EngineOptions): Engine {
     getSyncState: () => syncState,
     resetLocalData,
     unsentStoreChanges: () => unsentChangeCount(unsent()),
+    async syncNow() {
+      const before = lastSyncedAt;
+      await drain();
+      await requestPull();
+      return lastSyncedAt !== before;
+    },
     isOffline: writesDisabled,
     isNetworkOffline: isOffline,
     recordChange,
@@ -1416,6 +1427,20 @@ export async function onlineCall<T>(send: (transport: Transport) => Promise<T>):
   if (!engine || !wire) throw new Error('Not signed in');
   if (engine.isNetworkOffline()) throw new OfflineError();
   return send(wire);
+}
+
+export const SYNC_FAILED_MESSAGE =
+  'Abgleich hat nicht geklappt – bitte später noch einmal versuchen.';
+
+/**
+ * "Jetzt abgleichen" (spec 0027, REQ-010): the store queue first (AC-040), then the newest state.
+ * Offline: OfflineError; a failed pull: SYNC_FAILED_MESSAGE, the old time stays (AC-041).
+ */
+export async function syncNow(): Promise<void> {
+  const engine = current;
+  if (!engine) throw new Error('Not signed in');
+  if (engine.isNetworkOffline()) throw new OfflineError();
+  if (!(await engine.syncNow())) throw new Error(SYNC_FAILED_MESSAGE);
 }
 
 /** No connection right now; unlike `isOffline` of the store, not the version lock. */

@@ -10,7 +10,7 @@ import {
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
-import { Badge, Button, Icon, Text, space, useTheme } from '@housekeeping/ui';
+import { Badge, Button, Icon, Text, space, useHover, useTheme } from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -80,6 +80,7 @@ function AddToDay(props: { date: ISODate; slotId: Id | undefined; onAdd: WeekVie
 /** An empty or filled cell of the desktop grid: "+" shows on hover and on focus. */
 function AddCell(props: { date: ISODate; slotId: Id; onAdd: WeekViewProps['onAdd'] }) {
   const theme = useTheme();
+  const hover = useHover();
   const online = useOnlineOnly();
   return (
     <Pressable
@@ -98,8 +99,8 @@ function AddCell(props: { date: ISODate; slotId: Id; onAdd: WeekViewProps['onAdd
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: 4,
-          opacity: hovered || focused ? 1 : 0,
-          backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+          opacity: hover(hovered) || focused ? 1 : 0,
+          backgroundColor: hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
         };
       }}
     >

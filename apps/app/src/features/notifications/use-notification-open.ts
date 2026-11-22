@@ -11,7 +11,7 @@ import { onWorkerOpen } from './web-push-platform';
  * A tap on a notification while the app is open (spec 0013, AC-037): the service worker posts the
  * path; it is checked once more (AC-038, anything unknown → "Übersicht"), an own household other
  * than the active one becomes active (Decision 12), then the page opens. A cold start comes as an
- * address instead (`openWindow`), which the pages read themselves (`useHandedTarget`).
+ * address instead (`openWindow`), which the pages read themselves (`usePageParams`).
  */
 export function useNotificationOpen(): void {
   const router = useRouter();

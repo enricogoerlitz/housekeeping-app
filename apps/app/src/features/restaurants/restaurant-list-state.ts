@@ -1,50 +1,29 @@
 import {
-  DEFAULT_RESTAURANT_SORT,
-  EMPTY_RESTAURANT_LIST_FILTER,
+  restaurantListFromParams,
+  restaurantListToParams,
   shuffleOrder,
   type Id,
   type RestaurantListFilter,
   type RestaurantListSort,
 } from '@housekeeping/core';
-import { useSyncExternalStore } from 'react';
+import { useState } from 'react';
 
-// Search, filter, sort and the random order of "Essen → Restaurants" while the app runs (spec
-// 0008, REQ-005, E14): opening a restaurant, switching tabs or views keeps them; a restart starts
-// over with "A–Z". Mirrors recipe-list-state.ts.
+import { usePageParams } from '@/lib/url-state';
+
+// Search, filter and sort of "Essen → Restaurants" stand in the address next to
+// `ansicht=restaurants` (spec 0019, REQ-011); only the random order is drawn anew per page load.
+// Mirrors recipe-list-state.ts.
+
+let shuffle: readonly Id[] = [];
+let round = 0;
 
 export interface RestaurantListState {
   query: string;
   filter: RestaurantListFilter;
   sort: RestaurantListSort;
-  /** The random order of all restaurant ids, drawn when "Zufall" is chosen or mixed again. */
-  shuffle: readonly Id[];
-  /**
-   * Counts the changes of filter, sort and order. The list keeps its scroll position per round,
-   * so each change starts at the top and "Zurück" returns to the same place.
-   */
+  /** Counts the changes of filter, sort and order; each change starts the list at the top. */
   round: number;
 }
-
-let state: RestaurantListState = {
-  query: '',
-  filter: EMPTY_RESTAURANT_LIST_FILTER,
-  sort: DEFAULT_RESTAURANT_SORT,
-  shuffle: [],
-  round: 0,
-};
-const listeners = new Set<() => void>();
-
-function update(next: Partial<RestaurantListState>, restart: boolean) {
-  state = { ...state, ...next, round: restart ? state.round + 1 : state.round };
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-const snapshot = () => state;
 
 export interface RestaurantListActions {
   setQuery: (query: string) => void;
@@ -53,18 +32,36 @@ export interface RestaurantListActions {
   setSort: (sort: RestaurantListSort, ids: readonly Id[]) => void;
   /** "⟳ Neu mischen". */
   reshuffle: (ids: readonly Id[]) => void;
+  /** The random order over the given ids; drawn once after a reload with "Zufall". */
+  shuffleFor: (ids: readonly Id[]) => readonly Id[];
 }
 
-const actions: RestaurantListActions = {
-  setQuery: (query) => update({ query }, false),
-  setFilter: (filter) => update({ filter }, true),
-  setSort: (sort, ids) =>
-    update(sort === 'random' ? { sort, shuffle: shuffleOrder(ids, Math.random) } : { sort }, true),
-  reshuffle: (ids) => update({ shuffle: shuffleOrder(ids, Math.random) }, true),
-};
-
-/** The list state of "Essen → Restaurants" and its changes. */
+/** The list state of "Essen → Restaurants" and its changes; each change replaces the address. */
 export function useRestaurantListState(): RestaurantListState & RestaurantListActions {
-  const current = useSyncExternalStore(subscribe, snapshot, snapshot);
-  return { ...current, ...actions };
+  const { params, replace } = usePageParams('rezepte');
+  const state = restaurantListFromParams(params);
+  const [, rerender] = useState(0);
+  const write = (next: Partial<typeof state>, restart: boolean) => {
+    if (restart) round += 1;
+    replace(restaurantListToParams({ ...state, ...next }));
+  };
+  return {
+    ...state,
+    round,
+    setQuery: (query) => write({ query }, false),
+    setFilter: (filter) => write({ filter }, true),
+    setSort: (sort, ids) => {
+      if (sort === 'random') shuffle = shuffleOrder(ids, Math.random);
+      write({ sort }, true);
+    },
+    reshuffle: (ids) => {
+      shuffle = shuffleOrder(ids, Math.random);
+      round += 1;
+      rerender((count) => count + 1);
+    },
+    shuffleFor: (ids) => {
+      if (shuffle.length === 0 && ids.length > 0) shuffle = shuffleOrder(ids, Math.random);
+      return shuffle;
+    },
+  };
 }

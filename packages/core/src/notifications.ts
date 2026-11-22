@@ -139,40 +139,8 @@ export function kindSubtitle(
 
 // ---------- Times ----------
 
-export type TimeInputResult =
-  { ok: true; time: TimeOfDay | undefined } | { ok: false; error: string };
-
-const TIME_ERRORS = {
-  invalid: 'Keine gültige Uhrzeit',
-  step: 'Bitte in 5-Minuten-Schritten',
-  required: 'Bitte eine Uhrzeit eingeben',
-};
-
-/** "19", "7", "1930", "730", "19:30", "7.30": hour alone, digits, or with ":" or ".". */
-const TIME_INPUT = /^(?:(\d{1,2})|(\d{1,2})(\d{2})|(\d{1,2})[:.](\d{2}))$/;
-
-/**
- * Reads a typed time (Decision 27). Empty means no time, unless one is required. Only full
- * five-minute steps count, as the scheduler runs every 5 minutes (Decision 4).
- */
-export function parseTimeInput(input: string, options?: { required?: boolean }): TimeInputResult {
-  const text = input.trim();
-  if (text === '') {
-    return options?.required
-      ? { ok: false, error: TIME_ERRORS.required }
-      : { ok: true, time: undefined };
-  }
-  const match = TIME_INPUT.exec(text);
-  if (!match) return { ok: false, error: TIME_ERRORS.invalid };
-  const hour = Number(match[1] ?? match[2] ?? match[4]);
-  const minute = Number(match[3] ?? match[5] ?? 0);
-  if (hour > 23 || minute > 59) return { ok: false, error: TIME_ERRORS.invalid };
-  if (minute % 5 !== 0) return { ok: false, error: TIME_ERRORS.step };
-  return {
-    ok: true,
-    time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
-  };
-}
+/** The names of the two selects of every time field (spec 0027, REQ-007). */
+export const TIME_FIELD_WORDS = { hourLabel: 'Stunde', minuteLabel: 'Minute' } as const;
 
 /** "7:30", "19:00": like the texts of the scheduler (`H:MM`). */
 export function formatTime(time: TimeOfDay): string {
@@ -470,16 +438,6 @@ export function base64UrlToBytes(text: string): Uint8Array | undefined {
     }
   }
   return bytes;
-}
-
-/**
- * The title of "Was und wann": with the household's name when the person belongs to several, as
- * the settings hold per household (Offene Frage 3 e, Decision 25).
- */
-export function kindsSectionTitle(householdName: string | undefined): string {
-  return householdName === undefined
-    ? 'Was und wann · gilt für alle Geräte'
-    : `Was und wann · ${householdName} · gilt für alle Geräte`;
 }
 
 export interface ThisDeviceView {

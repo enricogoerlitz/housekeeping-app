@@ -60,6 +60,9 @@ export const usePackingItems = () => useDataSelector((data) => data.packingItems
  * (listPushDevices).
  */
 export const useNotificationSettings = () => useDataSelector((data) => data.notificationSettings);
+/** Spec 0027, REQ-008: the own settings of another household of mine (from the cache). */
+export const useNotificationSettingsOf = (householdId: string) =>
+  useAppSelector((state) => state.households[householdId]?.notificationSettings);
 
 export interface PackingList {
   listBags: PackingListBag[];

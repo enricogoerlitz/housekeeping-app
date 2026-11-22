@@ -18,17 +18,21 @@ import {
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useIsFocused } from 'expo-router';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityFormSheet } from './activity-form';
 import { ActivityPhoto } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
+import { useOpenActivity } from './navigation';
 
 type ActivitySort = 'name' | 'rating' | 'recent';
+
+const SORT_OF_SLUG = { name: 'name', bewertung: 'rating', zuletzt: 'recent' } as const;
+const SLUG_OF_SORT = { name: 'name', rating: 'bewertung', recent: 'zuletzt' } as const;
 
 const SORTS: { value: ActivitySort; label: string }[] = [
   { value: 'name', label: 'Name' },
@@ -47,53 +51,40 @@ function matches(query: string, activity: Activity): boolean {
 }
 
 /**
- * "Back" of the page "Aktivitäten" (spec 0010, REQ-008): opened from "Verwalten" on a phone it
- * leads there ("‹ Verwalten"), otherwise back to the calendar underneath ("‹ Kalender"), which
- * still shows the view and period it had (AC-025, AC-040).
- */
-function useActivitiesBack(): { label: string; back: () => void } {
-  const router = useRouter();
-  const { isPhone } = useBreakpoint();
-  const params = useLocalSearchParams<{ von?: string | string[] }>();
-  const from = Array.isArray(params.von) ? params.von[0] : params.von;
-  if (from === 'verwalten' && isPhone) {
-    return {
-      label: 'Verwalten',
-      back: () => {
-        // The calendar's tab gets its first page back before "Verwalten" shows, so the tab shows
-        // the calendar again later instead of this page.
-        router.replace('/kalender');
-        router.navigate('/verwalten');
-      },
-    };
-  }
-  return {
-    label: 'Kalender',
-    back: () => (router.canGoBack() ? router.back() : router.replace('/kalender')),
-  };
-}
-
-/**
  * "Aktivitäten" as its own page in the calendar's area (spec 0010, REQ-008; spec 0004, AC-004,
  * AC-005): search, favourites, sort; an activity opens as its own page.
  */
 export function ActivitiesScreen() {
-  const router = useRouter();
   const { isPhone, bp } = useBreakpoint();
   const online = useOnlineOnly();
   const activities = useActivities();
   const entries = usePlanEntries();
   const today = useToday();
   const me = useCurrentMember();
-  const { label: backLabel, back } = useActivitiesBack();
+  // Search, favourites, sort and "Neue Aktivität" stand in the address (spec 0019, REQ-011).
+  const address = usePageParams('aktivitaeten');
+  const { params } = address;
+  // "‹ Verwalten" when opened from there, otherwise "‹ Kalender" (spec 0010, REQ-008; AC-017).
+  const { label: backLabel, back } = useOriginBack(params.von, 'kalender');
+  const focused = useIsFocused();
 
-  const [query, setQuery] = useState('');
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [sort, setSort] = useState<ActivitySort>('name');
-  const [creating, setCreating] = useState(false);
+  const query = params.suche ?? '';
+  const favoritesOnly = params.favoriten === '1';
+  const sort: ActivitySort = SORT_OF_SLUG[params.sortierung ?? 'name'];
+  const creating = params.fenster === 'neu-aktivitaet' && focused;
+  const setQuery = (next: string) => address.replace({ suche: next });
+  const setFavoritesOnly = (next: boolean) =>
+    address.replace({ favoriten: next ? '1' : undefined });
+  const setSort = (next: ActivitySort) => address.replace({ sortierung: SLUG_OF_SORT[next] });
+  const setCreating = (open: boolean) =>
+    open ? address.open({ fenster: 'neu-aktivitaet' }) : address.close({ fenster: undefined });
 
-  const open = (activityId: Id) =>
-    router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } });
+  const openActivity = useOpenActivity();
+  // From the new activity on to its page: the window leaves the address first.
+  const open = (activityId: Id) => {
+    address.replace({ fenster: undefined });
+    openActivity(activityId);
+  };
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),

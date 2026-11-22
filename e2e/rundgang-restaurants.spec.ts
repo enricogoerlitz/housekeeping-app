@@ -163,7 +163,7 @@ test('0002 AC-005: a short link is recognised and saved with the place the serve
   page,
 }) => {
   const place = aiFixtures.resolveMapsLink();
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   const before = await restaurantCount(page);
   await newRestaurant(page);
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/AbC123');
@@ -180,7 +180,7 @@ test('0002 AC-005: a short link is recognised and saved with the place the serve
 test('0002 AC-006: text that is not a map link shows an error and leaves the form empty', async ({
   page,
 }) => {
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   await newRestaurant(page);
   await tid(page, 'restaurant-link').fill('hallo welt');
   await expect(tid(page, 'restaurant-link-error')).toHaveText('Das ist kein Karten-Link');
@@ -191,7 +191,7 @@ test('0002 AC-006: text that is not a map link shows an error and leaves the for
 test('0002 AC-007: saving without a name creates nothing and shows "Name fehlt"', async ({
   page,
 }) => {
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   const count = tid(page, 'restaurant-count');
   const before = await count.innerText();
   await newRestaurant(page);
@@ -218,7 +218,7 @@ test('0002 AC-008: /teilen opens "Restaurant hinzufügen" prefilled in the activ
 test('0002 AC-009: the same link again offers "Öffnen" instead of a second entry', async ({
   page,
 }) => {
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   const count = await tid(page, 'restaurant-count').innerText();
   await newRestaurant(page);
   await tid(page, 'restaurant-link').fill(ENZO_LINK);
@@ -237,7 +237,7 @@ test('0002 AC-010: 5 stars, favourite and a note show in the list and on the det
   // Deviation: in the demo data "Trattoria Da Enzo" already has Enrico's 5 stars, both hearts
   // and the note "Trüffelpasta! …", so tapping the heart there would remove it. The flow is
   // proven on "Brooklyn Burger Bar" (4 stars, no heart, no note).
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   await expect(tid(page, `${BURGER}-favorite`)).toBeHidden();
   await expect(tid(page, `${BURGER}-stars`)).toHaveAttribute('aria-label', '4 von 5 Sternen');
   await tid(page, BURGER).click();
@@ -294,7 +294,7 @@ test('0002 AC-012: "Route" on Heute opens Apple Karten or Google Maps at Enzo’
 });
 
 test('0002 AC-013: "Pho Saigon" shows "Zuletzt: vor 12 Tagen · 3 Besuche"', async ({ page }) => {
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   await tid(page, PHO).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await expect(tid(page, 'restaurant-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3 Besuche');
@@ -303,7 +303,7 @@ test('0002 AC-013: "Pho Saigon" shows "Zuletzt: vor 12 Tagen · 3 Besuche"', asy
 test('0002 offline: restaurants stay readable, editing is greyed out, the route still works', async ({
   page,
 }) => {
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   await goOffline(page);
   await expect(tid(page, 'restaurant-offline-hint')).toBeVisible();
   await tid(page, 'recipe-new').click();
@@ -322,9 +322,9 @@ test.describe('restaurants at desktop width', () => {
   test('0002 AC-001: wide screens show restaurant list and restaurant side by side', async ({
     page,
   }) => {
-    await open(page, '/rezepte?view=restaurants');
+    await open(page, '/rezepte?ansicht=restaurants');
     await tid(page, PHO).click();
-    await expect(page).toHaveURL(new RegExp(`rid=${seedIds['rest-pho']}`));
+    await expect(page).toHaveURL(new RegExp(`restaurant=${seedIds['rest-pho']}`));
     const list = await tid(page, PHO).boundingBox();
     const detail = await tid(page, 'restaurant-detail').boundingBox();
     expect(list && detail && list.x + list.width <= detail.x, 'list left of detail').toBe(true);

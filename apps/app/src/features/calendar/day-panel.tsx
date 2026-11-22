@@ -18,6 +18,7 @@ import {
   panelPlacement,
   space,
   useBreakpoint,
+  useHover,
   useTheme,
 } from '@housekeeping/ui';
 import type { RefObject } from 'react';
@@ -259,6 +260,7 @@ function AddLine(props: {
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const hover = useHover();
   return (
     <Pressable
       testID={props.testID}
@@ -283,7 +285,7 @@ function AddLine(props: {
             paddingHorizontal: space.s,
             borderRadius: theme.shape.radius.control,
             backgroundColor:
-              hovered && !props.disabled ? theme.colors.surfaceSunken : 'transparent',
+              hover(hovered) && !props.disabled ? theme.colors.surfaceSunken : 'transparent',
             opacity: props.disabled ? 0.45 : pressed ? 0.7 : 1,
           },
           keyboardFocusRing(theme, focused),

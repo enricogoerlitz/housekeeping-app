@@ -44,7 +44,7 @@ export function TodayPacking(props: { shown: ISODate }) {
 
 function TodayPackingCard(props: { card: PackingCard }) {
   const { card } = props;
-  const tripWindow = useTripWindow();
+  const tripWindow = useTripWindow('uebersicht');
   const theme = useTheme();
   const membersById = useMembersById();
   const owners = card.memberIds.flatMap((id) => membersById[id] ?? []);

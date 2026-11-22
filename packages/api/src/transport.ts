@@ -399,6 +399,25 @@ export interface Transport {
   acceptInvitation(invitationId: string): Promise<string>;
   declineInvitation(invitationId: string): Promise<void>;
   removeMember(householdId: string, profileId: string): Promise<void>;
+  /** Spec 0027: a member withdraws an invitation of her household; `invitation_not_found`. */
+  withdrawInvitation(invitationId: string): Promise<void>;
+  /**
+   * Spec 0027: the caller's own profile; `invalid_name`, `invalid_color`, `invalid_diet`,
+   * `invalid_dislikes`.
+   */
+  updateProfile(profile: {
+    name: string;
+    color: string;
+    dietPreference: string;
+    dislikes: readonly string[];
+  }): Promise<void>;
+  /** Spec 0027: the names of the household's photos the caller may delete. */
+  householdMediaNames(householdId: string): Promise<string[]>;
+  /**
+   * Spec 0027: the last member deletes the household; `not_member`, `not_last_member`,
+   * `media_remaining` (nothing is deleted then).
+   */
+  deleteHousehold(householdId: string): Promise<void>;
   // Push devices (spec 0013, ADR-0014): only the caller's own, online only, never cached.
   /**
    * Registers this browser's subscription for the caller (upsert by address: it moves to her).
@@ -487,6 +506,10 @@ export function switchable(inner: Transport): SwitchableTransport {
     acceptInvitation: guard(inner.acceptInvitation.bind(inner)),
     declineInvitation: guard(inner.declineInvitation.bind(inner)),
     removeMember: guard(inner.removeMember.bind(inner)),
+    withdrawInvitation: guard(inner.withdrawInvitation.bind(inner)),
+    updateProfile: guard(inner.updateProfile.bind(inner)),
+    householdMediaNames: guard(inner.householdMediaNames.bind(inner)),
+    deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
     registerPushSubscription: guard(inner.registerPushSubscription.bind(inner)),
     setPushSubscriptionEnabled: guard(inner.setPushSubscriptionEnabled.bind(inner)),
     unregisterPushSubscription: guard(inner.unregisterPushSubscription.bind(inner)),

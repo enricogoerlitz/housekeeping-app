@@ -49,7 +49,7 @@ export function UpcomingPackingLists() {
   const listBags = usePackingListBags();
   const items = usePackingItems();
   const today = useToday();
-  const tripWindow = useTripWindow();
+  const tripWindow = useTripWindow('reisetaschen');
   const rows = upcomingPackingLists({
     trips: tripStripes(trips, members),
     listBags,

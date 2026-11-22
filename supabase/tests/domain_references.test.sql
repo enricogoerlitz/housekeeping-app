@@ -239,9 +239,12 @@ select throws_ok(
 select throws_ok(
   tests.complete_sql('home_a', 'chore_a', 'forgotten', 'dora'),
   '22023', 'invalid_change', 'T3 chore_events: an unknown kind is rejected');
+-- The status is the developer's (spec 0027, Decision 10): checked as postgres.
+select tests.clear_authentication();
 select throws_ok(
   format($$ insert into public.feedback (household_id, kind, text, status) values (%L, 'idea', 'X', 'maybe') $$, tests.fx('home_a')),
   '23514', null, 'T3 feedback: an unknown status is rejected');
+select tests.authenticate_as(tests.fx('dora'));
 select throws_ok(
   format($$ insert into public.shopping_contributions (household_id, item_id, source) values (%L, %L, '{"kind": "magic"}') $$,
          tests.fx('home_a'), tests.fx('item_a')),

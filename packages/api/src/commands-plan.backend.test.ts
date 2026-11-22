@@ -885,7 +885,7 @@ describe('entry reminders (spec 0017, diff path)', () => {
     [
       'AC-012: a time outside 5-minute steps',
       { offsetDays: 0, at: '17:03' },
-      'Bitte in 5-Minuten-Schritten',
+      'Keine gültige Uhrzeit',
     ],
     [
       'AC-013: a day after the entry',

@@ -29,7 +29,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { IconButton, focusRing, keyboardFocus } from './controls';
+import { IconButton, keyboardFocusRing, keyboardFocus } from './controls';
 import {
   dragHeight,
   isTap,
@@ -436,7 +436,7 @@ function PhonePanel(props: PhonePanelProps) {
                 justifyContent: 'flex-end',
                 borderRadius: theme.shape.radius.control,
               },
-              focusRing(theme, handleFocused),
+              keyboardFocusRing(theme, handleFocused),
             ]}
           >
             <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: c.textMuted }} />
@@ -449,7 +449,7 @@ function PhonePanel(props: PhonePanelProps) {
           contentContainerStyle={{
             paddingHorizontal: 20,
             paddingTop: 6,
-            paddingBottom: 20 + BLEED + Math.max(0, hidden),
+            paddingBottom: 20 + BLEED + Math.max(0, hidden) + insets.bottom,
           }}
         >
           {props.children}

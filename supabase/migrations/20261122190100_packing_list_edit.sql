@@ -236,6 +236,8 @@ declare
   -- table → columns an insert may set, columns a patch may set, whether rows may be deleted.
   -- household_id may be sent on insert but must equal p_household_id; it is always forced.
   -- created_by (activities) and author_id (feedback) are overwritten by their insert triggers.
+  -- Feedback: status, reason and spec_ref are the developer's; RLS lets only the author patch
+  -- (while new) or delete (spec 0027, REQ-006).
   -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
   -- Recipes are deleted only by delete_recipe (spec 0008, E2). The kind of a recipe (recipe or
   -- collection) is set on insert and never patched (spec 0009, E2). A collection_recipes row keeps
@@ -287,9 +289,8 @@ declare
     "packing_items":    {"insert": ["id", "household_id", "list_bag_id", "name", "quantity", "per_day", "sort",
                                     "bag_item_id", "from_bag"],
                          "patch":  ["name", "quantity", "per_day", "bag_item_id", "from_bag"], "delete": true},
-    "feedback":         {"insert": ["id", "household_id", "kind", "text", "status", "author_id", "screen", "reason",
-                                    "spec_ref"],
-                         "patch":  ["kind", "text", "status", "screen", "reason", "spec_ref"], "delete": true},
+    "feedback":         {"insert": ["id", "household_id", "kind", "text", "author_id", "screen"],
+                         "patch":  ["kind", "text"], "delete": true},
     "chores":           {"insert": ["id", "household_id", "title", "room", "recurrence", "assignment", "effort",
                                     "next_due_on", "next_assignee_id", "last_done_on", "active_months", "due_time"],
                          "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",

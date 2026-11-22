@@ -661,7 +661,6 @@ export type Database = {
       };
       household_invitations: {
         Row: {
-          accepted_at: string | null;
           created_at: string;
           email: string;
           household_id: string;
@@ -671,7 +670,6 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
-          accepted_at?: string | null;
           created_at?: string;
           email: string;
           household_id: string;
@@ -680,7 +678,6 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          accepted_at?: string | null;
           created_at?: string;
           email?: string;
           household_id?: string;
@@ -1854,7 +1851,9 @@ export type Database = {
       create_household: { Args: { name: string; starter: Json }; Returns: string };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
+      delete_household: { Args: { household_id: string }; Returns: undefined };
       delete_recipe: { Args: { recipe_id: string; today: string }; Returns: Json };
+      household_media_names: { Args: { household_id: string }; Returns: string[] };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
       list_push_subscriptions: {
         Args: { p_current_endpoint?: string };
@@ -1911,6 +1910,11 @@ export type Database = {
       };
       sync_pull: { Args: { p_request: Json }; Returns: Json };
       unregister_push_subscription: { Args: { p_endpoint: string }; Returns: undefined };
+      update_profile: {
+        Args: { color: string; diet_preference: string; dislikes: string[]; name: string };
+        Returns: undefined;
+      };
+      withdraw_invitation: { Args: { invitation_id: string }; Returns: undefined };
     };
     Enums: {
       [_ in never]: never;

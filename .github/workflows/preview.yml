@@ -217,6 +217,8 @@ jobs:
       PREVIEW_SUPABASE_URL: ${{ vars.PREVIEW_SUPABASE_URL }}
       PREVIEW_WEB_ORIGIN: ${{ vars.PREVIEW_WEB_ORIGIN }}
       PREVIEW_WEB_ORIGIN_WILDCARD: ${{ vars.PREVIEW_WEB_ORIGIN }}/**
+      # Spec 0027, AC-043: the azurestaticapps.net address that must redirect to the own domain.
+      PREVIEW_OLD_WEB_ORIGIN: ${{ vars.PREVIEW_OLD_WEB_ORIGIN }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       # For `supabase config diff` inside verify.mjs, which compares the hashed secret.
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -234,4 +236,4 @@ jobs:
         run: node scripts/ci/supabase-remote.mjs preview
       - name: Vorschau von außen prüfen
         # AC-013 (CSP names only the preview project), AC-069 (version.json names this commit).
-        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA"
+        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA" ${PREVIEW_OLD_WEB_ORIGIN:+--old-origin "$PREVIEW_OLD_WEB_ORIGIN"}

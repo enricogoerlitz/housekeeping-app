@@ -33,8 +33,9 @@ function toInvitation(row: SmallRow, households: readonly SmallRow[]): Invitatio
   };
 }
 
+// Every invitation is open: accepting, declining and withdrawing delete it (spec 0027, Decision 1).
 function openInvitations(small: Small): readonly SmallRow[] {
-  return (small.household_invitations ?? []).filter((row) => !row.accepted_at);
+  return small.household_invitations ?? [];
 }
 
 /** Open invitations of a household (shown as „Eingeladen“, AC-008). */

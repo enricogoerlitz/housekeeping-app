@@ -45,15 +45,17 @@ import {
   type MenuOption,
   expandableA11y,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useMissingObject } from '@/lib/addressed';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
+import { usePageParams } from '@/lib/url-state';
 import { useDictation } from '@/lib/use-dictation';
 
 import { useActiveShopper } from './active-shopper';
@@ -184,10 +186,15 @@ export function ListScreen() {
   const openManageEntry = useOpenManageEntry();
   const { isPhone, isWide } = useBreakpoint();
 
-  const [pantryCheck, setPantryCheck] = useState(false);
+  // The open item and "Vorratscheck" stand in the address (spec 0019, REQ-013): `/liste?posten=…`.
+  const address = usePageParams('liste');
+  const { params } = address;
+  const focused = useIsFocused();
+  const pantryCheck = params.fenster === 'vorratscheck' && focused;
+  const setPantryCheck = (open: boolean) =>
+    open ? address.open({ fenster: 'vorratscheck' }) : address.close({ fenster: undefined });
   const [showDone, setShowDone] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [editing, setEditing] = useState<{ itemId: string; name: string } | undefined>();
   const [dictation, setDictation] = useState<Dictation | undefined>();
   const speech = useDictation();
   const [nothingHeard, setNothingHeard] = useState(false);
@@ -197,12 +204,26 @@ export function ListScreen() {
   const groups = groupItems(open, articlesById, areas);
   const headline = listHeadline(items, recipesById);
 
-  const openItem = (itemId: string, name: string) => setEditing({ itemId, name });
-  // Someone else removed the item while its window was open (AC-027).
-  const itemGone = () => {
-    if (editing) toast.show({ message: `${editing.name} steht nicht mehr auf der Liste` });
-    setEditing(undefined);
-  };
+  const openItemId = params.posten;
+  const openItemRow = items.find((item) => item.id === openItemId);
+  const openName = openItemRow ? (articlesById[openItemRow.articleId]?.name ?? '') : undefined;
+  const [lastName, setLastName] = useState<string | undefined>();
+  if (openName !== undefined && openName !== lastName) setLastName(openName);
+  const editing =
+    openItemRow && focused ? { itemId: openItemRow.id, name: openName ?? '' } : undefined;
+  const openItem = (itemId: string) => address.open({ posten: itemId });
+  const setEditing = (next: undefined) => address.close({ posten: next });
+  // Someone else removed the item while its window was open (AC-027); an unknown item in the
+  // address opens nothing and says so (AC-052).
+  const clearItem = () => address.replace({ posten: undefined });
+  useMissingObject(
+    openItemId,
+    openItemRow !== undefined,
+    'Diesen Posten gibt es nicht mehr',
+    clearItem,
+    lastName ? `${lastName} steht nicht mehr auf der Liste` : undefined,
+  );
+  const itemGone = clearItem;
 
   const showDictated = (transcript: string, dictated: DictatedItem[]) => {
     setNothingHeard(dictated.length === 0);

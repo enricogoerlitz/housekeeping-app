@@ -11,7 +11,9 @@ import {
 import {
   PLAN_ENTRY,
   TODAY,
+  chooseTime,
   day,
+  expectTime,
   expect,
   freshSeed,
   goOffline,
@@ -104,7 +106,7 @@ async function planAndOpen(page: Page, date: ISODate, title: string): Promise<vo
 async function planWithReminder(page: Page, date: ISODate, title: string): Promise<void> {
   await startFreeText(page, date, title);
   await toggle(page, 'add-entry-reminder-switch').click();
-  await expect(tid(page, 'add-entry-reminder-time')).toHaveValue('17:00');
+  await expectTime(page, 'add-entry-reminder-time', '17:00');
   await tid(page, 'add-entry-save').click();
   await expect(tid(page, 'add-entry-sheet')).toBeHidden();
 }
@@ -143,7 +145,7 @@ test('AC-002: switched on: "Am Tag" and 17:00 in the evening; the entry then rem
     'aria-selected',
     'true',
   );
-  await expect(tid(page, 'add-entry-reminder-time')).toHaveValue('17:00');
+  await expectTime(page, 'add-entry-reminder-time', '17:00');
   await expect(tid(page, 'add-entry-reminder')).toContainText('Woran erinnern? (optional)');
   await tid(page, 'add-entry-save').click();
   await expect(tid(page, 'add-entry-sheet')).toBeHidden();
@@ -179,7 +181,7 @@ test('AC-005 / AC-009 / AC-014: switched on later, "Am Vortag" 18:00 with a text
   await planAndOpen(page, AHEAD, 'Lasagne später');
   await toggle(page, 'entry-reminder-switch').click();
   await tid(page, 'entry-reminder-day-dayBefore').click();
-  await tid(page, 'entry-reminder-time').fill('18:00');
+  await chooseTime(page, 'entry-reminder-time', '18:00');
   await tid(page, 'entry-reminder-text').fill('Fleisch auftauen');
   await expect(tid(page, 'entry-reminder')).toContainText('16/80');
   await tid(page, 'entry-done').click();
@@ -188,7 +190,7 @@ test('AC-005 / AC-009 / AC-014: switched on later, "Am Vortag" 18:00 with a text
   await entryRow(page, AHEAD, 'Lasagne später').click();
   await expect(tid(page, 'entry-reminder')).toContainText(label(AHEAD, 1, '18:00'));
   await expect(tid(page, 'entry-reminder-day-dayBefore')).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'entry-reminder-time')).toHaveValue('18:00');
+  await expectTime(page, 'entry-reminder-time', '18:00');
   await expect(tid(page, 'entry-reminder-text')).toHaveValue('Fleisch auftauen');
 });
 
@@ -209,7 +211,7 @@ test('AC-006: switched off, everything goes; on again starts from the defaults',
 
   await toggle(page, 'entry-reminder-switch').click();
   await expect(tid(page, 'entry-reminder-day-sameDay')).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'entry-reminder-time')).toHaveValue('17:00');
+  await expectTime(page, 'entry-reminder-time', '17:00');
   await expect(tid(page, 'entry-reminder-text')).toHaveValue('');
 });
 
@@ -230,31 +232,25 @@ test('AC-010: "Anderes Datum …" offers today up to the entry’s day and shows
   const chosen = addDays(AHEAD, -2);
   if (monthTitle(chosen) !== monthTitle(AHEAD)) await tid(page, 'entry-reminder-date-prev').click();
   await tid(page, `entry-reminder-date-day-${chosen}`).click();
-  await tid(page, 'entry-reminder-time').fill('9:00');
-  await tid(page, 'entry-reminder-time').press('Enter');
+  await chooseTime(page, 'entry-reminder-time', '09:00');
   await expect(tid(page, 'entry-reminder')).toContainText(label(AHEAD, 2, '09:00'));
   await expect(tid(page, 'entry-reminder-day-otherDate')).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, 'entry-reminder-day-otherDate')).not.toHaveText('Anderes Datum …');
 });
 
-test('AC-011 / AC-012: a past moment and an odd minute are refused under the time', async ({
-  page,
-}) => {
+test('AC-011: a past moment is refused under the time', async ({ page }) => {
   // 0:05 must lie in the past and 23:55 ahead: outside 0:10–23:45 the test says nothing.
   const minutes = new Date().getHours() * 60 + new Date().getMinutes();
   test.skip(minutes < 10 || minutes > 23 * 60 + 45, 'runs between 0:10 and 23:45 local time');
   await planAndOpen(page, TODAY, 'Curry heute');
   await toggle(page, 'entry-reminder-switch').click();
   await expect(tid(page, 'entry-reminder-day-dayBefore')).toHaveAttribute('aria-disabled', 'true');
-  await tid(page, 'entry-reminder-time').fill('0:05');
-  await tid(page, 'entry-reminder-time').press('Enter');
+  await chooseTime(page, 'entry-reminder-time', '00:05');
   await expect(tid(page, 'entry-reminder-time-error')).toHaveText('Liegt in der Vergangenheit');
 
-  await tid(page, 'entry-reminder-time').fill('23:53');
-  await tid(page, 'entry-reminder-time').press('Enter');
-  await expect(tid(page, 'entry-reminder-time-error')).toHaveText('Bitte in 5-Minuten-Schritten');
-  await tid(page, 'entry-reminder-time').fill('23:55');
-  await tid(page, 'entry-reminder-time').press('Enter');
+  // Spec 0027, AC-029: only five-minute steps can be chosen, so no step message exists.
+  await expect(tid(page, 'entry-reminder-time-minute').locator('option')).toHaveCount(12);
+  await chooseTime(page, 'entry-reminder-time', '23:55');
   await expect(tid(page, 'entry-reminder-time-error')).toHaveCount(0);
   await expect(tid(page, 'entry-reminder')).toContainText(label(TODAY, 0, '23:55'));
 });
@@ -365,8 +361,7 @@ test('AC-022: moved before its reminder, the toast says so, the entry shows "Eri
   await planAndOpen(page, AHEAD, title);
   await toggle(page, 'entry-reminder-switch').click();
   await tid(page, 'entry-reminder-day-dayBefore').click();
-  await tid(page, 'entry-reminder-time').fill('18:00');
-  await tid(page, 'entry-reminder-time').press('Enter');
+  await chooseTime(page, 'entry-reminder-time', '18:00');
   await expect(tid(page, 'entry-reminder-bell')).toHaveText(label(AHEAD, 1, '18:00'));
 
   // "Am Vortag" of tonight is yesterday, 18:00: always in the past.

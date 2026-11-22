@@ -99,6 +99,20 @@ export function tid(page: Page, id: string): Locator {
   return page.locator(`[data-testid="${id}"]${ACTIVE}`).first();
 }
 
+/** Chooses "19:30" in a time field (spec 0027, REQ-007), or "–" (no time) with undefined. */
+export async function chooseTime(page: Page, id: string, time: string | undefined): Promise<void> {
+  const [hour = '', minute = ''] = time === undefined ? [] : time.split(':');
+  await tid(page, `${id}-hour`).selectOption(hour === '' ? '' : hour.padStart(2, '0'));
+  if (minute !== '') await tid(page, `${id}-minute`).selectOption(minute);
+}
+
+/** The time a time field shows: "19:30", or "" for "–". */
+export async function expectTime(page: Page, id: string, time: string): Promise<void> {
+  const [hour = '', minute = ''] = time === '' ? [] : time.split(':');
+  await expect(tid(page, `${id}-hour`)).toHaveValue(hour === '' ? '' : hour.padStart(2, '0'));
+  await expect(tid(page, `${id}-minute`)).toHaveValue(minute);
+}
+
 /** All elements on the active screen whose test id starts with `prefix`. */
 export function tidPrefix(page: Page, prefix: string): Locator {
   return page.locator(`[data-testid^="${prefix}"]${ACTIVE}`);

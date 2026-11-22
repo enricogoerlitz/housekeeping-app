@@ -3,7 +3,7 @@
 -- them herself, also on her first sign-in (AC-008, decision 7).
 begin;
 \ir _helpers.psql
-select plan(26);
+select plan(27);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select on fx to authenticated;
@@ -13,8 +13,14 @@ insert into fx values ('wg', tests.create_household('WG Köln', array[(select id
 insert into public.household_invitations (household_id, email, invited_by) values
   ((select id from fx where key = 'home'), 'nadja@example.com', (select id from fx where key = 'enrico')),
   ((select id from fx where key = 'wg'), 'nadja@example.com', (select id from fx where key = 'enrico')),
-  ((select id from fx where key = 'home'), 'old@example.com', (select id from fx where key = 'enrico'));
-update public.household_invitations set accepted_at = now() - interval '1 day' where email = 'old@example.com';
+  ((select id from fx where key = 'home'), 'old@example.com', (select id from fx where key = 'enrico')),
+  ((select id from fx where key = 'home'), 'tom@example.com', (select id from fx where key = 'enrico')),
+  ((select id from fx where key = 'wg'), 'tom@example.com', (select id from fx where key = 'enrico'));
+-- Spec 0027: withdrawing deletes the invitation (Decision 1). old@ is withdrawn completely, tom@
+-- only from "Enrico & Nadja".
+delete from public.household_invitations where email = 'old@example.com';
+delete from public.household_invitations
+where email = 'tom@example.com' and household_id = (select id from fx where key = 'home');
 
 -- p_user_metadata: what Supabase Auth copies from the provider's claims; Google sends
 -- email_verified as a boolean (supabase/auth internal/api/provider Claims).
@@ -51,7 +57,12 @@ select is(
 select is(
   private.before_user_created_hook(pg_temp.hook_event('old@example.com', 'google')),
   '{"error": {"http_code": 403, "message": "not_invited"}}'::jsonb,
-  'AC-002: an invitation that was already accepted does not admit a new account'
+  'AC-001 (spec 0027): a withdrawn invitation does not admit a new account'
+);
+select is(
+  private.before_user_created_hook(pg_temp.hook_event('tom@example.com', 'google')),
+  '{}'::jsonb,
+  'AC-005 (spec 0027): with one of two invitations withdrawn the other still admits him'
 );
 select is(
   private.before_user_created_hook(pg_temp.hook_event(null, 'google')),
@@ -97,10 +108,9 @@ select ok(
 );
 select ok(
   has_column_privilege('supabase_auth_admin', 'public.household_invitations', 'email', 'select')
-  and has_column_privilege('supabase_auth_admin', 'public.household_invitations', 'accepted_at', 'select')
   and not has_column_privilege('supabase_auth_admin', 'public.household_invitations', 'household_id', 'select')
   and not has_table_privilege('supabase_auth_admin', 'public.household_invitations', 'insert,update,delete'),
-  'T2: supabase_auth_admin may only read email and accepted_at of invitations'
+  'T2: supabase_auth_admin may only read the email of invitations'
 );
 select is(
   (select array_agg(p.cmd::text || ' to ' || array_to_string(p.roles, ','))
@@ -144,14 +154,14 @@ select is(
 );
 select is(
   (select count(*)::int from public.household_invitations
-   where email = 'nadja@example.com' and accepted_at is null),
+   where email = 'nadja@example.com'),
   2,
   'AC-008: her invitations stay open until she accepts them'
 );
 select tests.authenticate_as((select id from fx where key = 'nadja'));
 select is(
   (select array_agg(household_id order by household_id) from public.household_invitations
-   where email = 'nadja@example.com' and accepted_at is null),
+   where email = 'nadja@example.com'),
   (select array_agg(id order by id) from fx where key in ('home', 'wg')),
   'AC-008: after her first sign-in she sees both open invitations'
 );
@@ -186,7 +196,7 @@ select is(
 );
 select is(
   (select count(*)::int from public.household_invitations
-   where email = 'old@example.com' and accepted_at < now()),
+   where email = 'tom@example.com'),
   1,
   'T2: invitations for other addresses stay untouched'
 );

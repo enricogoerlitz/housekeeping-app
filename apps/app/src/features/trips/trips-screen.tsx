@@ -39,6 +39,7 @@ import { useBackToManage } from '@/features/manage/navigation';
 import { FAILED } from '@/features/packing/packing-labels';
 import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 import { TripSheet, TripWho } from './trip-sheet';
 import { TripWindowHost, useTripWindow } from './trip-window';
@@ -58,8 +59,9 @@ export function TripsScreen() {
   const listBags = usePackingListBags();
   const items = usePackingItems();
   const online = useOnlineOnly();
-  const tripWindow = useTripWindow();
-  const [creating, setCreating] = useState(false);
+  const tripWindow = useTripWindow('reisen');
+  const address = usePageParams('reisen');
+  const creating = address.params.fenster === 'neu-reise';
   const [deleting, setDeleting] = useState<{ stripe: TripStripe; message: string }>();
 
   const { upcoming, past } = splitUpcomingPast(tripStripes(trips, members), today);
@@ -154,7 +156,7 @@ export function TripsScreen() {
               variant="soft"
               disabled={online.disabled}
               hint={online.hint}
-              onPress={() => setCreating(true)}
+              onPress={() => address.open({ fenster: 'neu-reise' })}
               testID="trips-new"
             />
           }
@@ -178,7 +180,7 @@ export function TripsScreen() {
             icon="plus"
             disabled={online.disabled}
             hint={online.hint}
-            onPress={() => setCreating(true)}
+            onPress={() => address.open({ fenster: 'neu-reise' })}
             testID="trips-empty-new"
           />
         </EmptyState>
@@ -198,8 +200,8 @@ export function TripsScreen() {
           ) : null}
         </>
       )}
-      {creating ? <TripSheet onClose={() => setCreating(false)} /> : null}
-      <TripWindowHost />
+      {creating ? <TripSheet onClose={() => address.close({ fenster: undefined })} /> : null}
+      <TripWindowHost page="reisen" />
       {deleting ? (
         <TripConfirmDialog
           title="Reise löschen?"

@@ -14,7 +14,6 @@ import {
 import {
   packingProgress,
   packingSections,
-  routeId,
   startsInLabel,
   stripeOf,
   tripDeleteDialog,
@@ -38,7 +37,6 @@ import {
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -47,33 +45,37 @@ import { TripAddBagSheet } from '@/features/packing/trip-add-bag-sheet';
 import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { TripSection } from '@/features/packing/trip-section';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 import { TripMealsDialog } from './trip-meals-dialog';
 import { TripFields, type TripFieldValues } from './trip-sheet';
 
 type TripAction = 'reset' | 'delete';
 
+/** The pages the trip window opens over (spec 0019 appendix, "Reise-Fenster"). */
+export type TripWindowPage = 'uebersicht' | 'kalender' | 'reisen' | 'reisetaschen';
+
 /**
- * The open trip window in the address (`?reise=<id>`, spec 0022, REQ-002): every page that shows
- * trips opens it over itself; a reload opens it again. Only a uuid is taken.
+ * The open trip window in the address (`?reise=<id>`, spec 0022, REQ-002; spec 0019, REQ-018):
+ * every page that shows trips opens it over itself; a reload opens it again. Only a uuid is taken.
+ * Opening adds a history entry, so Back closes it like every window (spec 0019, REQ-013).
  */
-export function useTripWindow(): {
+export function useTripWindow(page: TripWindowPage): {
   tripId: Id | undefined;
   open: (id: Id) => void;
   close: () => void;
 } {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ reise?: string | string[] }>();
+  const address = usePageParams(page);
   return {
-    tripId: routeId(params.reise),
-    open: (id) => router.setParams({ reise: id }),
-    close: () => router.setParams({ reise: undefined }),
+    tripId: address.params.reise,
+    open: (id) => address.open({ reise: id }),
+    close: () => address.close({ reise: undefined }),
   };
 }
 
 /** Renders the trip window of the address over the current page. */
-export function TripWindowHost() {
-  const { tripId, close } = useTripWindow();
+export function TripWindowHost(props: { page: TripWindowPage }) {
+  const { tripId, close } = useTripWindow(props.page);
   return tripId ? <TripWindow key={tripId} tripId={tripId} onClose={close} /> : null;
 }
 

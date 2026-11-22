@@ -24,12 +24,12 @@ import {
   Text,
   useTheme,
 } from '@housekeeping/ui';
-import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
 import { DoneSheet } from '@/features/chores/done-sheet';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { usePageParams } from '@/lib/url-state';
 
 function dueText(chore: Chore, today: ISODate): string {
   const days = daysOverdue(chore, today);
@@ -72,7 +72,11 @@ export function TodayChores(props: { shown: ISODate; today: ISODate; title: stri
 function DueChores(props: { chores: Chore[]; today: ISODate }) {
   const members = useMembers();
   const online = useOnlineOnly();
-  const [sheetOpen, setSheetOpen] = useState(false);
+  // "Was hast du erledigt?" stands in the address, `/?fenster=erledigt` (spec 0019).
+  const address = usePageParams('uebersicht');
+  const sheetOpen = address.params.fenster === 'erledigt';
+  const setSheetOpen = (open: boolean) =>
+    open ? address.open({ fenster: 'erledigt' }) : address.close({ fenster: undefined });
   const check = useChoreCheckWindow(props.chores);
 
   const rows = check.rows;
@@ -129,11 +133,6 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
           })}
         </List>
       )}
-      {online.hint ? (
-        <Text variant="small" color="muted" style={{ marginTop: 6 }} testID="today-chores-offline">
-          {online.hint}
-        </Text>
-      ) : null}
       <View style={{ marginTop: 8 }}>
         <Button
           label="Was anderes erledigt?"

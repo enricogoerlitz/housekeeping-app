@@ -216,7 +216,7 @@ test('AC-031: a short link is resolved by the server: name and coordinates of th
     route.fulfill({ body: 'map stub', contentType: 'text/plain' }),
   );
   const place = aiFixtures.resolveMapsLink();
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   await tid(page, 'recipe-new').click();
   await tid(page, 'recipe-new-restaurant').click();
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/Kurz123');
@@ -241,7 +241,7 @@ test('AC-032: a link that does not lead to Google Maps: "Das ist kein Karten-Lin
   await page.route('**/functions/v1/resolve-maps-link', (route) =>
     fulfilError(route, 'not_a_maps_link'),
   );
-  await open(page, '/rezepte?view=restaurants');
+  await open(page, '/rezepte?ansicht=restaurants');
   const count = await tid(page, 'restaurant-count').innerText();
   await tid(page, 'recipe-new').click();
   await tid(page, 'recipe-new-restaurant').click();

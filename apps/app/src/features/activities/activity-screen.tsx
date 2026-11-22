@@ -1,24 +1,29 @@
-import { routeId } from '@housekeeping/core';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+
+import { useAddressedId } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityDetail } from './activity-detail';
 
 /** An activity on its own page in the calendar's area (spec 0010, AC-026). */
 export function ActivityScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const { params } = usePageParams('aktivitaet');
   const router = useRouter();
-  // Only a uuid reaches the lookup; anything else shows "nicht gefunden".
-  const id = routeId(params.id);
-  const back = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/kalender/aktivitaeten');
-  };
+  // "‹ Kalender" or the section it came from, e.g. "‹ Verwalten" (spec 0019, AC-017).
+  const origin = useOriginBack(params.von, 'kalender');
+  // Only an id of an own household reaches the lookup; anything else shows "nicht gefunden".
+  const found = useAddressedId('activities', params.id);
+  if (found === 'switching') return null;
   return (
     <ActivityDetail
-      activityId={id ?? ''}
-      onBack={back}
+      activityId={found === 'shown' ? (params.id ?? '') : ''}
+      onBack={origin.back}
+      backLabel={origin.label}
       onOpen={(activityId) =>
-        router.replace({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } })
+        router.replace({
+          pathname: '/kalender/aktivitaet/[id]',
+          params: params.von ? { id: activityId, von: params.von } : { id: activityId },
+        })
       }
     />
   );

@@ -206,7 +206,9 @@ test.describe('with the service worker', () => {
     await page.reload();
     await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 20_000 });
     await expect(tid(page, 'today-meals')).toContainText('Lasagne');
-    await expect(tid(page, 'offline-banner')).toHaveText('Offline – Lesen und Abhaken gehen');
+    await expect(tid(page, 'offline-banner')).toHaveText(
+      'Offline – Lesen, Einkaufen und Packen gehen',
+    );
     await nav(page, 'liste');
     await expect(itemRows(page, 'Milch')).toHaveCount(1);
   });
@@ -478,7 +480,8 @@ test('AC-011 (0018): "Verlassen" asks first with the way back; "Abbrechen" keeps
   page,
 }) => {
   const name = `Verlassen ${unique()}`;
-  const householdId = await createTestHousehold(name);
+  // Spec 0027, AC-017: the last member has no "Verlassen"; Nadja makes Enrico one of two.
+  const householdId = await createTestHousehold(name, { withNadja: true });
   await open(page, '/');
   await switchHousehold(page, householdId);
   await openManaged(page, 'members');

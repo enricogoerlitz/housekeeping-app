@@ -9,7 +9,6 @@ import {
   weekdayShort,
 } from './dates';
 import { withNote } from './meal-plan';
-import { parseTimeInput } from './notifications';
 import {
   TimeOfDaySchema,
   type Id,
@@ -210,7 +209,8 @@ const PAST_ERROR = 'Liegt in der Vergangenheit';
 export function validateReminder(input: {
   entryDate: ISODate;
   offsetDays: number;
-  time: string;
+  /** The chosen "HH:MM"; anything else is refused like the server would. */
+  time: string | undefined;
   now: Date;
   timeZone: string;
 }): ReminderValidation {
@@ -221,11 +221,12 @@ export function validateReminder(input: {
   if (offsetDays > MAX_REMINDER_OFFSET_DAYS) {
     return { ok: false, field: 'day', error: 'Höchstens 366 Tage vorher' };
   }
-  const parsed = parseTimeInput(input.time, { required: true });
-  if (!parsed.ok) return { ok: false, field: 'time', error: parsed.error };
-  // `required` guarantees a time; the check keeps the type honest.
-  if (parsed.time === undefined) return { ok: false, field: 'time', error: PAST_ERROR };
-  const reminder = { offsetDays, at: parsed.time };
+  if (input.time === undefined || input.time === '') {
+    return { ok: false, field: 'time', error: 'Bitte eine Uhrzeit wählen' };
+  }
+  const parsed = TimeOfDaySchema.safeParse(input.time);
+  if (!parsed.success) return { ok: false, field: 'time', error: 'Keine gültige Uhrzeit' };
+  const reminder = { offsetDays, at: parsed.data };
   if (isReminderPast(input.entryDate, reminder, input.now, input.timeZone)) {
     return { ok: false, field: 'time', error: PAST_ERROR };
   }

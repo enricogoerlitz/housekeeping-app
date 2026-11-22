@@ -23,7 +23,7 @@ import {
   moveBounds,
   householdClock,
   offersReminder,
-  parseTimeInput,
+  TIME_FIELD_WORDS,
   REMIND_CHOICES,
   remindLabel,
   type DropTarget,
@@ -52,6 +52,7 @@ import { hasPlace } from '@/features/activities/labels';
 import { useMoveEntry } from '@/features/calendar/move-entry';
 import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
+import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
@@ -94,6 +95,7 @@ export function EntrySheet(props: {
   const online = useOnlineOnly();
   const openRecipe = useOpenRecipe();
   const openRestaurant = useOpenRestaurant();
+  const openActivity = useOpenActivity();
   const [routeOpen, setRouteOpen] = useState(false);
   const [pickingDate, setPickingDate] = useState(false);
   const moveEntry = useMoveEntry();
@@ -159,7 +161,7 @@ export function EntrySheet(props: {
       return;
     }
     if (saving) return;
-    if (entry.kind === 'restaurant' && !reservation.save('tap')) return;
+    if (entry.kind === 'restaurant' && !reservation.save()) return;
     // Closing is the success here; a toast before the server answered could be wrong (AC-009).
     if (entry.kind === 'activity' && !note.save({ notify: false })) return;
     if (remindable && !reminder.save()) return;
@@ -274,10 +276,9 @@ export function EntrySheet(props: {
             icon="book-open"
             variant="secondary"
             testID="entry-open-recipe"
+            // The entry stays open underneath: "Zurück" returns to it (spec 0019, AC-016).
             onPress={() => {
-              const recipeId = entry.recipeId;
-              props.onClose();
-              if (recipeId) openRecipe(recipeId);
+              if (entry.recipeId) openRecipe(entry.recipeId);
             }}
           />
         ) : null}
@@ -288,10 +289,8 @@ export function EntrySheet(props: {
               icon="mountain"
               variant="secondary"
               testID="entry-open-activity"
-              onPress={() => {
-                props.onClose();
-                router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activity.id } });
-              }}
+              // The entry stays open underneath: "Zurück" returns to it (spec 0019, AC-016).
+              onPress={() => openActivity(activity.id)}
             />
             {routeTarget ? (
               <Button
@@ -313,9 +312,7 @@ export function EntrySheet(props: {
               variant="secondary"
               testID="entry-open-restaurant"
               onPress={() => {
-                const restaurantId = entry.restaurantId;
-                props.onClose();
-                if (restaurantId) openRestaurant(restaurantId);
+                if (entry.restaurantId) openRestaurant(entry.restaurantId);
               }}
             />
             {routeTarget ? (
@@ -494,48 +491,33 @@ function NoteField(props: { draft: NoteDraft; disabled: boolean }) {
 }
 
 interface ReservationDraft {
-  text: string;
+  value: TimeOfDay | undefined;
+  /** Saves a chosen time at once; no time removes it (✕ or "–"). */
+  choose: (time: TimeOfDay | undefined) => void;
+  /** "Fertig": sends the chosen time again if the server refused it; false with an error. */
+  save: () => boolean;
   error: string | undefined;
-  setText: (text: string) => void;
-  /**
-   * Saves the typed time if it changed; false (with the error shown) when it cannot. Only Enter
-   * and "Fertig" ask for this device's permission, leaving the field does not (AC-007).
-   */
-  save: (gesture: 'tap' | 'enter' | 'blur') => boolean;
-  clear: () => void;
   /** Resolves once the server took the time sent last, rejects when it refused it. */
   pending: () => Promise<void>;
 }
 
 /**
- * The typed "Reserviert um" of a restaurant entry: saved on Enter, when the field loses focus and
- * with "Fertig" (AC-027); ✕ removes it at once. Only five-minute steps (Decision 4). The browser's
- * permission is asked only on Enter and "Fertig" (AC-007): a time saved on blur is asked for when
- * "Fertig" or Enter confirms it.
+ * "Reserviert um" of a restaurant entry, chosen from hour and minute (spec 0027, REQ-007): a
+ * choice is a finished input and is saved at once (AC-027); its notice waits for the server
+ * (spec 0018, AC-009). Choosing asks for this device's permission inside the tap (spec 0013,
+ * AC-007, Decision 26).
  */
 function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft {
   const stored = entry?.reservedAt;
-  const [text, setTextState] = useState(stored ? formatTime(stored) : '');
+  const [value, setValue] = useState(stored);
   const [error, setError] = useState<string>();
-  // What was sent last: blur and "Fertig" come one after the other, before the next render.
+  // What was sent last; null after a refusal, so "Fertig" sends the chosen time again.
   const saved = useRef<TimeOfDay | null | undefined>(stored);
   const sent = useRef<Promise<void>>(Promise.resolve());
-  // The time last confirmed with Enter or "Fertig" (or the stored one): blur saves without asking.
-  const confirmed = useRef<TimeOfDay | undefined>(stored);
   const ensureDevicePush = useEnsureDevicePush();
 
-  const write = (
-    time: TimeOfDay | undefined,
-    gesture: 'tap' | 'enter' | 'blur',
-    notify = false,
-  ): boolean => {
-    if (!entry) return true;
-    // Asked first, inside the tap or key press (spec 0013, AC-007, Decision 26).
-    if (asksForPushPermission({ kind: 'time', gesture, before: confirmed.current, after: time })) {
-      ensureDevicePush();
-    }
-    if (gesture !== 'blur') confirmed.current = time;
-    if (time === saved.current) return true;
+  const write = (time: TimeOfDay | undefined, notify: boolean): boolean => {
+    if (!entry || time === saved.current) return true;
     let taken: Promise<void>;
     try {
       taken = saveEntryFields(entry.id, { reservedAt: time ?? null });
@@ -544,44 +526,33 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
       return false;
     }
     saved.current = time;
-    // Refused: the entry sprang back, so the next "Fertig" sends the typed time again (AC-009).
     sent.current = taken.catch((refusal: unknown) => {
       if (saved.current === time) saved.current = null;
       throw refusal;
     });
-    const notice = () =>
-      toast.show({ message: time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt' });
-    // "Fertig" ('tap') closes as its success. Leaving the field comes right before "Fertig", so
-    // its notice waits for the server (spec 0018, AC-009); Enter and ✕ say it at once as before.
-    if (gesture === 'blur') sent.current.then(notice, () => {});
-    else if (gesture === 'enter' || notify) notice();
+    const message = time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt';
+    if (notify)
+      sent.current.then(
+        () => toast.show({ message }),
+        () => {},
+      );
     // Only "Fertig" waits for it; the hint of a refusal comes from onWriteRejected.
     sent.current.catch(() => {});
     return true;
   };
 
-  return {
-    text,
-    error,
-    setText: (next) => {
-      setTextState(next);
-      setError(undefined);
-    },
-    save: (gesture) => {
-      const result = parseTimeInput(text);
-      if (!result.ok) {
-        setError(result.error);
-        return false;
-      }
-      return write(result.time, gesture);
-    },
-    clear: () => {
-      setTextState('');
-      setError(undefined);
-      write(undefined, 'tap', true);
-    },
-    pending: () => sent.current,
+  const choose = (time: TimeOfDay | undefined) => {
+    setValue(time);
+    setError(undefined);
+    const before = saved.current ?? undefined;
+    if (entry && asksForPushPermission({ kind: 'time', gesture: 'tap', before, after: time })) {
+      ensureDevicePush();
+    }
+    write(time, true);
   };
+
+  // "Fertig" closes as its success, so it says nothing of its own (AC-009).
+  return { value, choose, save: () => write(value, false), error, pending: () => sent.current };
 }
 
 /**
@@ -600,18 +571,11 @@ function ReservationFields(props: {
     <View style={{ gap: 12 }}>
       <TimeField
         label="Reserviert um"
-        placeholder="z. B. 19:30"
-        value={draft.text}
-        onChangeText={draft.setText}
-        onBlur={() => {
-          if (!props.disabled) draft.save('blur');
-        }}
-        onSubmitEditing={() => {
-          if (!props.disabled) draft.save('enter');
-        }}
-        onClear={draft.clear}
+        {...TIME_FIELD_WORDS}
+        value={draft.value}
+        onChange={draft.choose}
+        optional
         clearLabel="Reservierung entfernen"
-        emptyLabel="keine Reservierung"
         error={draft.error}
         hint={props.hint ?? 'Die Uhrzeit, für die ihr reserviert habt.'}
         disabled={props.disabled}

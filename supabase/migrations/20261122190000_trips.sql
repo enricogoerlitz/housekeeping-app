@@ -1,3 +1,4 @@
+-- contract: absences entfällt, Reisen ersetzen Abwesenheiten (Spec 0022); min_app_version: 2026.11.1
 -- Spec 0022 (REQ-014, REQ-015) — "Reise" is the one term: trips + trip_members replace absences.
 -- Clean target before v1 (review wave 2): no expand/contract, absences is dropped here.
 --
@@ -104,6 +105,17 @@ drop trigger absences_recalc_packing on public.absences;
 drop function private.absences_recalc_packing();
 drop function private.recalc_packing_quantities(uuid, uuid);
 drop table public.absences;
+
+-- Contract (scripts/ci/migrations.mjs): the minimum app version stays the latest published one;
+-- it may not exceed it (scripts/release/version.mjs). Grants of the function stay.
+create or replace function public.min_app_version()
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select '2026.11.1'::text
+$$;
 
 select private.attach_household_policies('public.trips');
 select private.attach_sync_triggers('public.trips');
@@ -273,6 +285,8 @@ declare
   -- table → columns an insert may set, columns a patch may set, whether rows may be deleted.
   -- household_id may be sent on insert but must equal p_household_id; it is always forced.
   -- created_by (activities) and author_id (feedback) are overwritten by their insert triggers.
+  -- Feedback: status, reason and spec_ref are the developer's; RLS lets only the author patch
+  -- (while new) or delete (spec 0027, REQ-006).
   -- Articles are deleted only by delete_article and merge_articles (spec 0007, E4).
   -- Recipes are deleted only by delete_recipe (spec 0008, E2). The kind of a recipe (recipe or
   -- collection) is set on insert and never patched (spec 0009, E2). A collection_recipes row keeps
@@ -322,9 +336,8 @@ declare
                           "patch":  ["bag_id", "sort"], "delete": true},
     "packing_items":    {"insert": ["id", "household_id", "list_bag_id", "name", "quantity", "per_day", "sort"],
                          "patch":  [], "delete": true},
-    "feedback":         {"insert": ["id", "household_id", "kind", "text", "status", "author_id", "screen", "reason",
-                                    "spec_ref"],
-                         "patch":  ["kind", "text", "status", "screen", "reason", "spec_ref"], "delete": true},
+    "feedback":         {"insert": ["id", "household_id", "kind", "text", "author_id", "screen"],
+                         "patch":  ["kind", "text"], "delete": true},
     "chores":           {"insert": ["id", "household_id", "title", "room", "recurrence", "assignment", "effort",
                                     "next_due_on", "next_assignee_id", "last_done_on", "active_months", "due_time"],
                          "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",

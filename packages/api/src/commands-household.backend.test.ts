@@ -130,8 +130,8 @@ describe('household, invitation, membership (wait for the server)', () => {
     await expect(removeMember(ENRICO)).rejects.toThrow(
       'Du bist das letzte Mitglied des Haushalts.',
     );
-    await expect(acceptInvitation('inv-x')).rejects.toThrow('Die Einladung gibt es nicht mehr.');
-    await expect(declineInvitation('inv-x')).rejects.toThrow('Die Einladung gibt es nicht mehr.');
+    await expect(acceptInvitation('inv-x')).rejects.toThrow('Diese Einladung gibt es nicht mehr.');
+    await expect(declineInvitation('inv-x')).rejects.toThrow('Diese Einladung gibt es nicht mehr.');
   });
 
   it('offline these calls fail with the offline message and send nothing', async () => {

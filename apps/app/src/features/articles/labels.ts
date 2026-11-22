@@ -50,6 +50,14 @@ export function filterFromParam(param: string | undefined): ArticleFilter {
   return (param !== undefined && FILTER_PARAMS[param]) || 'all';
 }
 
+/** The address value of a filter; "Alle" is the default and stays out (spec 0019). */
+export function filterParam(
+  filter: ArticleFilter,
+): 'ohne-bereich' | 'vorrat' | 'neu-aus-rezepten' | 'aehnliche-namen' | undefined {
+  const entry = Object.entries(FILTER_PARAMS).find(([, value]) => value === filter);
+  return entry?.[0] as ReturnType<typeof filterParam>;
+}
+
 export const DIET_OPTIONS: ChoiceOption<Diet>[] = (
   ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'] as const
 ).map((diet) => ({ value: diet, label: dietLabel(diet) }));

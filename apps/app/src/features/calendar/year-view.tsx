@@ -10,7 +10,16 @@ import {
   type TripStripe,
   type ISODate,
 } from '@housekeeping/core';
-import { Icon, List, ListRow, Section, Text, focusRing, useTheme } from '@housekeeping/ui';
+import {
+  Icon,
+  List,
+  ListRow,
+  Section,
+  Text,
+  keyboardFocusRing,
+  useHover,
+  useTheme,
+} from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
@@ -140,6 +149,7 @@ function MiniMonth(props: {
   onOpenMonth: () => void;
 }) {
   const theme = useTheme();
+  const hover = useHover();
   const month = props.monthStart.slice(0, 7);
   const index = parseISODate(props.monthStart).getMonth();
   const name = monthName(index);
@@ -160,10 +170,10 @@ function MiniMonth(props: {
               marginLeft: -6,
               paddingHorizontal: 6,
               borderRadius: theme.shape.radius.control,
-              backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+              backgroundColor: hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
               opacity: pressed ? 0.7 : 1,
             },
-            focusRing(theme, focused),
+            keyboardFocusRing(theme, focused),
           ];
         }}
       >
@@ -245,8 +255,15 @@ function MiniDay(props: {
           accessibilityState={{ selected: props.selected }}
           onPress={guardPress(props.onPress)}
           style={(state) => [
-            { alignItems: 'center', paddingVertical: 1, backgroundColor: background },
-            focusRing(theme, (state as PressState).focused),
+            // At least 24 × 24 px to click (spec 0019, REQ-009, AC-028); the day stays small.
+            {
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 24,
+              paddingVertical: 1,
+              backgroundColor: background,
+            },
+            keyboardFocusRing(theme, (state as PressState).focused),
           ]}
         >
           <RangeMark date={props.date} />

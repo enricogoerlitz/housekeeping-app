@@ -3,6 +3,8 @@ import { editLockReason } from '@housekeeping/core';
 import { toast } from '@housekeeping/ui';
 
 export const OFFLINE_EDIT_HINT = 'Offline – zum Bearbeiten brauchst du Netz';
+/** The banner above every page without network (spec 0019, REQ-010, AC-029). */
+export const OFFLINE_BANNER_TEXT = 'Offline – Lesen, Einkaufen und Packen gehen';
 /** Below the minimum app version with network (spec 0018, AC-023; ADR-0015). */
 export const VERSION_EDIT_HINT = 'Bitte neu laden, um zu bearbeiten';
 
