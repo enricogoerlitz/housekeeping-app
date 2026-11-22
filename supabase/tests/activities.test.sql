@@ -51,10 +51,10 @@ select * from tests.tenant_isolation('activities',
   jsonb_build_object('id', tests.fx('act_iso'), 'household_id', tests.fx('home_a'), 'name', 'Bouldern',
                      'name_key', 'bouldern', 'description', 'In der Halle', 'place_name', 'Boulderhalle',
                      'address', 'Halle 1, Berlin', 'lat', 52.5, 'lng', 13.4,
-                     'maps_url', 'https://maps.app.goo.gl/abc', 'tags', array['drinnen']),
+                     'maps_url', 'https://maps.app.goo.gl/abc', 'website_url', 'https://boulderhalle.de'),
   jsonb_build_object('name', 'Bouldern (Halle)', 'name_key', 'bouldern halle', 'description', 'Mit Kurs',
-                     'tags', array['sport'], 'photo_path', tests.media('home_a', 'activities', 'act_iso') || gen_random_uuid() || '.jpg'),
-  tests.fx('anna'), tests.fx('ben'));
+                     'website_url', null, 'photo_path', tests.media('home_a', 'activities', 'act_iso') || gen_random_uuid() || '.jpg'),
+  tests.fx('anna'), tests.fx('ben'), false); -- deleted only by delete_activity (spec 0024)
 
 -- ===================== created_by (4) =====================
 select tests.authenticate_as(tests.fx('dora'));
@@ -127,9 +127,8 @@ select throws_ok(
   format($$ update public.activities set lat = 50, lng = null where id = %L $$, tests.fx('act_a')),
   '23514', null, 'REQ-003 activities: latitude and longitude come together');
 select throws_ok(
-  format($$ update public.activities set tags = %L where id = %L $$,
-         (select array_agg('t' || n) from generate_series(1, 31) n), tests.fx('act_a')),
-  '23514', null, 'REQ-003 activities: more than 30 tags are rejected');
+  format($$ update public.activities set website_url = 'javascript:alert(1)' where id = %L $$, tests.fx('act_a')),
+  '23514', null, 'AC-010 activities: a website must be an http(s) address (spec 0024)');
 select tests.authenticate_as(tests.fx('ben'));
 select lives_ok(
   format($$ insert into public.activities (household_id, name, name_key) values (%L, 'Eislaufen', 'eislaufen') $$,
@@ -325,11 +324,11 @@ select throws_ok(
 select tests.authenticate_as(tests.fx('anna'));
 select throws_ok(
   format($$ delete from public.activities where id = %L $$, tests.fx('act_a')),
-  '23503', null, 'REQ-006 activities: a planned activity cannot be deleted (its entries stay what they were)');
+  '42501', null, 'AC-038 activities: no direct delete, only delete_activity (spec 0024)');
 delete from public.meal_plan_entries where activity_id = tests.fx('act_a');
 select is(
-  tests.affected(format($$ delete from public.activities where id = %L $$, tests.fx('act_a'))), 1,
-  'REQ-002 activities: without entries the activity can be deleted');
+  public.delete_activity(tests.fx('act_a'), current_date), '{"converted": 0, "removed": 0}'::jsonb,
+  'REQ-010 delete_activity: without entries the activity is deleted (spec 0024)');
 select is(
   (select count(*)::int from public.deleted_records
    where (table_name = 'activities' and record_id = tests.fx('act_a')::text)

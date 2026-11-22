@@ -318,8 +318,8 @@ values (tests.fx('packing_item'), tests.fx('wg'), tests.fx('list_bag'), 'Zahnbü
 insert into public.household_invitations (household_id, email, invited_by) values (tests.fx('wg'), 'tom@example.com', tests.fx('enrico'));
 insert into private.notification_deliveries (dedupe_key, profile_id, household_id, kind, due_at)
 values ('daily:wg', tests.fx('enrico'), tests.fx('wg'), 'daily_summary', now());
-insert into private.recipe_deletions (household_id, recipe_id, deleted_by, snapshot)
-values (tests.fx('wg'), gen_random_uuid(), tests.fx('enrico'), '{}');
+insert into private.deletions (household_id, kind, target_id, deleted_by, snapshot)
+values (tests.fx('wg'), 'recipe', gen_random_uuid(), tests.fx('enrico'), '{}');
 insert into public.deleted_records (household_id, table_name, record_id) values (tests.fx('wg'), 'recipes', gen_random_uuid());
 select tests.add_push_subscription(tests.fx('enrico'), 'laptop');
 -- The same in "Kuschelnest", which must stay.
@@ -330,11 +330,13 @@ select is(
   null,
   'AC-019: the fixture fills every table with household data (a new table must be added here)');
 
--- Photos: one an activity has, and one in another sub-folder (restaurants, spec 0024).
+-- Photos: one an activity has, a recipe's, a restaurant's (spec 0024), and one in a sub-folder the
+-- storage policies do not know.
 insert into storage.objects (bucket_id, name) values
   ('household-media', tests.fx('wg') || '/activities/' || tests.fx('activity') || '/' || gen_random_uuid() || '.jpg'),
   ('household-media', tests.fx('wg') || '/recipes/' || tests.fx('recipe') || '/' || gen_random_uuid() || '.jpg'),
   ('household-media', tests.fx('wg') || '/restaurants/' || tests.fx('restaurant') || '/' || gen_random_uuid() || '.jpg'),
+  ('household-media', tests.fx('wg') || '/notes/' || tests.fx('restaurant') || '/' || gen_random_uuid() || '.jpg'),
   ('household-media', tests.fx('home') || '/recipes/' || gen_random_uuid() || '/' || gen_random_uuid() || '.jpg');
 
 select tests.clear_authentication();
@@ -343,8 +345,8 @@ values (tests.fx('wg'), 'mia@example.com', tests.fx('enrico'));
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
   (select count(*)::int from public.household_media_names(tests.fx('wg'))),
-  2,
-  'REQ-005: household_media_names lists the photos Enrico may delete (activities and recipes)');
+  3,
+  'REQ-005: household_media_names lists the photos Enrico may delete (activities, recipes, restaurants)');
 select tests.clear_authentication();
 select is(
   (select count(*)::int from public.household_invitations where household_id = tests.fx('wg')),
@@ -377,11 +379,11 @@ select tests.authenticate_as(tests.fx('enrico'));
 select is(
   tests.affected(format($$ delete from storage.objects where bucket_id = 'household-media' and name like %L $$,
                         tests.fx('wg') || '/%')),
-  1, 'AC-023: the second attempt deletes the remaining photo the app lists');
+  2, 'AC-023: the second attempt deletes the remaining photos the app lists');
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   'P0001', 'media_remaining', 'REQ-005: a photo in any other sub-folder of the household still blocks');
 select tests.clear_authentication();
-delete from storage.objects where bucket_id = 'household-media' and name like tests.fx('wg') || '/restaurants/%';
+delete from storage.objects where bucket_id = 'household-media' and name like tests.fx('wg') || '/notes/%';
 
 select tests.authenticate_as(tests.fx('enrico'));
 select lives_ok(format('select public.delete_household(%L)', tests.fx('wg')),

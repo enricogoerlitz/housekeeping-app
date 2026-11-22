@@ -202,6 +202,8 @@ function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdR
         price_level: restaurant.priceLevel ?? null,
         tags: restaurant.tags,
         notes: restaurant.notes ?? null,
+        website_url: restaurant.websiteUrl ?? null,
+        photo_path: restaurant.photoPath ?? null,
         ...(restaurant.createdAt ? { created_at: restaurant.createdAt } : {}),
       } satisfies Cached<'restaurants'>,
     ],
@@ -236,7 +238,7 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
         lat: activity.location?.lat ?? null,
         lng: activity.location?.lng ?? null,
         maps_url: activity.mapsUrl ?? null,
-        tags: activity.tags,
+        website_url: activity.websiteUrl ?? null,
         created_by: activity.createdBy ?? null,
         ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
       } satisfies Cached<'activities'>,
@@ -726,6 +728,8 @@ function toRestaurant(row: Row, favorites: Row[], ratings: Row[]): Restaurant {
     priceLevel: opt(r.price_level) as Restaurant['priceLevel'],
     tags: r.tags ?? [],
     notes: opt(r.notes),
+    websiteUrl: opt(r.website_url),
+    photoPath: opt(r.photo_path),
     favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
@@ -749,7 +753,7 @@ function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
         ? { lat: r.lat, lng: r.lng }
         : undefined,
     mapsUrl: opt(r.maps_url),
-    tags: r.tags ?? [],
+    websiteUrl: opt(r.website_url),
     favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),

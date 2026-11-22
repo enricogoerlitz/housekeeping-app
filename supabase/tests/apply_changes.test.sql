@@ -101,17 +101,17 @@ select results_eq(
   'T5 apply_changes: the patch changed only the given columns, the article references the new area');
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'insert', 'table', 'restaurants',
-                       'row', jsonb_build_object('id', tests.fx('new_restaurant'), 'name', 'Pho Nam')))),
-  'AC-015 apply_changes: a restaurant to delete');
+    jsonb_build_object('kind', 'insert', 'table', 'areas',
+                       'row', jsonb_build_object('id', tests.fx('new_restaurant'), 'name', 'Getränke')))),
+  'AC-015 apply_changes: an area to delete (restaurants go through delete_restaurant, spec 0024)');
 select is(
   tests.apply('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'delete', 'table', 'restaurants', 'id', tests.fx('new_restaurant')),
-    jsonb_build_object('kind', 'delete', 'table', 'restaurants', 'id', tests.fx('new_restaurant')))),
+    jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', tests.fx('new_restaurant')),
+    jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', tests.fx('new_restaurant')))),
   '{"applied": 2, "results": []}'::jsonb,
   'AC-015 apply_changes: delete removes the row; deleting a missing row is harmless');
 select is(
-  (select count(*)::int from public.restaurants where id = tests.fx('new_restaurant'))
+  (select count(*)::int from public.areas where id = tests.fx('new_restaurant'))
   + (select count(*)::int from public.deleted_records where record_id = tests.fx('new_restaurant')::text), 1,
   'AC-015 apply_changes: the row is gone and the delete leaves one tombstone');
 select throws_ok(
@@ -444,11 +444,11 @@ select throws_ok(
     'kind', 'patch', 'table', 'recipes', 'id', tests.fx('recipe_b'), 'changes', jsonb_build_object('title', 'Gemischt')))),
   'P0002', 'row_not_found', 'T5 apply_changes: a member of A and B cannot patch a B row in a call for A');
 select is(
-  tests.apply('home_a', jsonb_build_array(jsonb_build_object('kind', 'delete', 'table', 'restaurants', 'id', tests.fx('restaurant_b')))),
+  tests.apply('home_a', jsonb_build_array(jsonb_build_object('kind', 'delete', 'table', 'areas', 'id', tests.fx('area_b')))),
   '{"applied": 1, "results": []}'::jsonb,
   'T5 apply_changes: a delete of a B row in a call for A hits nothing');
 select is(
-  (select count(*)::int from public.restaurants where id = tests.fx('restaurant_b')), 1,
+  (select count(*)::int from public.areas where id = tests.fx('area_b')), 1,
   'T5 apply_changes: … and the B row still exists');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
@@ -470,7 +470,7 @@ select is(
     jsonb_build_object('kind', 'insert', 'table', 'activities',
                        'row', jsonb_build_object('id', tests.fx('new_activity'), 'name', 'Klettern im Wald',
                                                  'name_key', 'klettern im wald', 'created_by', tests.fx('nadja'),
-                                                 'tags', jsonb_build_array('draußen'))),
+                                                 'website_url', 'https://kletterwald.de')),
     jsonb_build_object('kind', 'insert', 'table', 'meal_plan_entries',
                        'row', jsonb_build_object('id', tests.fx('new_entry'), 'date', '2026-11-21',
                                                  'slot_id', tests.fx('slot_a'), 'kind', 'activity',
@@ -490,7 +490,7 @@ select lives_ok(
                          'name', 'Klettern', 'name_key', 'klettern', 'description', 'Mit Seil',
                          'photo_path', tests.fx('home_a') || '/activities/' || tests.fx('new_activity') || '/' || md5('a')::uuid || '.jpg',
                          'place_name', 'Kletterwald', 'address', 'Am Wald 1, Berlin', 'lat', 52.4, 'lng', 13.2,
-                         'maps_url', 'https://maps.app.goo.gl/k', 'tags', jsonb_build_array('sport'))),
+                         'maps_url', 'https://maps.app.goo.gl/k', 'website_url', null)),
     jsonb_build_object('kind', 'patch', 'table', 'meal_plan_entries', 'id', tests.fx('new_entry'),
                        'changes', jsonb_build_object('note', 'Wuhletal')),
     jsonb_build_object('kind', 'patch', 'table', 'recipes', 'id', tests.fx('recipe_a'),
@@ -541,13 +541,11 @@ select throws_ok(
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
     'kind', 'delete', 'table', 'activities', 'id', tests.fx('new_activity')))),
-  '23503', null, 'REQ-005 apply_changes: a planned activity cannot be deleted on its own');
-select is(
-  tests.apply('home_a', jsonb_build_array(
-    jsonb_build_object('kind', 'delete', 'table', 'meal_plan_entries', 'id', tests.fx('new_entry')),
-    jsonb_build_object('kind', 'delete', 'table', 'activities', 'id', tests.fx('new_activity')))),
-  '{"applied": 2, "results": []}'::jsonb,
-  'REQ-002 apply_changes: its entries and the activity are deleted in one call');
+  '22023', 'invalid_change', 'AC-038 apply_changes: activities are deleted only by delete_activity (spec 0024)');
+select throws_ok(
+  tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
+    'kind', 'delete', 'table', 'restaurants', 'id', tests.fx('restaurant_a')))),
+  '22023', 'invalid_change', 'AC-038 apply_changes: restaurants are deleted only by delete_restaurant (spec 0024)');
 
 -- ===================== Limits =====================
 select tests.authenticate_as(tests.fx('enrico'));

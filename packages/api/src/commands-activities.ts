@@ -66,7 +66,6 @@ export function createActivity(draft: ActivityDraft): Id {
       address: trimmed(draft.address),
       location: draft.location,
       mapsUrl: draft.mapsUrl,
-      tags: [],
       favoriteOf: [],
       ratings: {},
       createdBy: getState().currentMemberId,
