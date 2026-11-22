@@ -59,6 +59,8 @@ const light: ThemeColors = {
   bg: '#FAF6EE',
   surface: '#FFFDF9',
   surfaceSunken: '#F1E9DA',
+  surfaceRaised: '#FFFDF9',
+  shadowRaised: '0px 10px 28px rgba(43,33,25,0.20), 0px 2px 6px rgba(43,33,25,0.14)',
   border: '#E4D9C6',
   text: '#2B2119',
   textMuted: '#6F6152',
@@ -96,6 +98,9 @@ const dark: ThemeColors = {
   bg: '#1B1613',
   surface: '#251F1A',
   surfaceSunken: '#30281F',
+  surfaceRaised: '#342B24',
+  shadowRaised:
+    '0px 0px 0px 1px rgba(255,255,255,0.12), 0px 12px 32px rgba(0,0,0,0.6), 0px 2px 6px rgba(0,0,0,0.4)',
   border: '#3D3329',
   text: '#F4ECDF',
   textMuted: '#B5A691',

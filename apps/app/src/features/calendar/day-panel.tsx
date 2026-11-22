@@ -14,7 +14,7 @@ import {
   Icon,
   SwipeArea,
   Text,
-  focusRing,
+  keyboardFocusRing,
   panelPlacement,
   space,
   useBreakpoint,
@@ -195,8 +195,9 @@ function WeekStrip(props: {
   const c = theme.colors;
   return (
     <View
-      // The days get the panel's side margins too, so seven of them fit at 44 pt.
-      style={{ flexDirection: 'row', marginHorizontal: -space.l }}
+      // The days get most of the panel's side margins too, so seven of them fit at 44 pt; the
+      // rest keeps the first and last day off the panel's edge.
+      style={{ flexDirection: 'row', marginHorizontal: -space.l, paddingHorizontal: space.xs }}
       testID="day-panel-week-strip"
     >
       {props.week.map((date) => {
@@ -226,7 +227,7 @@ function WeekStrip(props: {
                   borderColor: c.accent,
                   opacity: pressed ? 0.7 : 1,
                 },
-                focusRing(theme, focused),
+                keyboardFocusRing(theme, focused),
               ];
             }}
           >
@@ -279,7 +280,7 @@ function AddLine(props: {
               hovered && !props.disabled ? theme.colors.surfaceSunken : 'transparent',
             opacity: props.disabled ? 0.45 : pressed ? 0.7 : 1,
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >

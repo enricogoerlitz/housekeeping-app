@@ -1,5 +1,5 @@
 import type { MealPlanEntry } from '@housekeeping/core';
-import { Icon, Text, expandableA11y, focusRing, space, useTheme } from '@housekeeping/ui';
+import { Icon, Text, expandableA11y, keyboardFocusRing, space, useTheme } from '@housekeeping/ui';
 import { Platform, Pressable, View } from 'react-native';
 
 import { EntryLine } from './calendar-parts';
@@ -73,7 +73,7 @@ export function PlannedLaterStrip(props: {
               borderRadius: theme.shape.radius.control,
               opacity: pressed ? 0.7 : 1,
             },
-            focusRing(theme, focused),
+            keyboardFocusRing(theme, focused),
           ];
         }}
       >

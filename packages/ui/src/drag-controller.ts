@@ -80,11 +80,15 @@ export interface LiftRequest<P> {
 export interface DragSink {
   lift: () => void;
   pointer: (point: Point) => void;
-  /** Where the drag area lies, where the source was grabbed and how large it is. */
+  /**
+   * Where the drag area lies, where the source was grabbed and how large it is, and the visible
+   * part of the drag area (the ghost stays inside it).
+   */
   geometry: (geometry: {
     origin: Point;
     grab: Point;
     size: { width: number; height: number };
+    area: Rect;
   }) => void;
   /** The single highlight, in window coordinates; null hides it. */
   highlight: (rect: Rect | null, allowed: boolean) => void;
@@ -131,6 +135,45 @@ export interface DragController<P> {
   isAllowed: (targetId: string) => boolean;
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => DragSnapshot<P>;
+}
+
+/** A wide source (a row of the day window) floats narrower, so it does not cover the target. */
+export const GHOST_MAX_WIDTH = 280;
+/** The ghost keeps this distance to the window's edges. */
+export const GHOST_EDGE_MARGIN = 8;
+
+/** The ghost's width and where along it the pointer holds it: at the same share as the source. */
+export function ghostSize(width: number, grabX: number): { width: number; grabX: number } {
+  'worklet';
+  if (width <= GHOST_MAX_WIDTH) return { width, grabX };
+  return { width: GHOST_MAX_WIDTH, grabX: (grabX / width) * GHOST_MAX_WIDTH };
+}
+
+/**
+ * Where the ghost starts along one axis: at the grab point under the pointer, but never past the
+ * edges of the visible drag area from `start` to `end` (else a wide entry at the left edge, and
+ * its target label, are cut off).
+ */
+export function ghostStart(
+  pointer: number,
+  grab: number,
+  size: number,
+  start: number,
+  end: number,
+): number {
+  'worklet';
+  const last = end - GHOST_EDGE_MARGIN - size;
+  return Math.max(start + GHOST_EDGE_MARGIN, Math.min(pointer - grab, last));
+}
+
+/** A badge on the pointer keeps this distance to it, so the finger does not cover it. */
+export const BADGE_CLEARANCE = 56;
+
+/** The top of a badge of `height` above the pointer, or below it where the window ends above. */
+export function badgeTop(pointerY: number, height: number): number {
+  'worklet';
+  const above = pointerY - BADGE_CLEARANCE - height;
+  return above >= GHOST_EDGE_MARGIN ? above : pointerY + BADGE_CLEARANCE;
 }
 
 /** Measure again this often while the page scrolls along. */
@@ -180,6 +223,13 @@ interface Session<P> {
    * (a trip of one day on a Monday) must not turn the page.
    */
   pagerArmed: boolean;
+  /**
+   * True until the page scrolls along or turns: a layout change the lift causes (empty slots
+   * appearing above the source) is scrolled away, so the source stays under the pointer.
+   */
+  anchored: boolean;
+  /** The target under the pointer as last hit, in window coordinates. */
+  hoverRect: Rect | null;
   lastFrame: number | null;
   lastMeasure: number;
   scrolling: boolean;
@@ -258,6 +308,7 @@ export function createDragController<P>(
     const current = session;
     if (!current) return;
     const hit = targetAt(current.point);
+    current.hoverRect = hit?.rect ?? null;
     const sourceId = current.request.sourceId;
     const previous = snapshot.hover;
     if (hit === null) {
@@ -299,6 +350,7 @@ export function createDragController<P>(
       origin: { x: origin.x, y: origin.y },
       grab,
       size: { width: source.width, height: source.height },
+      area: viewport(current),
     });
   };
 
@@ -322,7 +374,18 @@ export function createDragController<P>(
     current.request.measureSource((rect) => {
       if (!fresh()) return;
       // Scrolling moves the source and paging may remove it; the glide back goes to where it is.
+      const previous = current.sourceRect;
       current.sourceRect = rect;
+      const scroller = current.request.scroller;
+      // Only when it moved since the last measurement: a page that cannot scroll further must not
+      // be asked again and again.
+      if (current.anchored && scroller && rect && previous && current.liftRect) {
+        const drift = rect.y - current.liftRect.y;
+        if (rect.y !== previous.y && Math.abs(drift) >= 1) {
+          scroller.scrollBy(drift);
+          current.pendingFrames = LAYOUT_FRAMES;
+        }
+      }
       if (rect && !current.liftRect) {
         current.liftRect = rect;
         publish({ sourceRect: rect });
@@ -396,6 +459,8 @@ export function createDragController<P>(
         scrollArea: null,
         pager: EDGE_PAGER_IDLE,
         pagerArmed: false,
+        anchored: true,
+        hoverRect: null,
         lastFrame: null,
         lastMeasure: 0,
         scrolling: false,
@@ -463,6 +528,7 @@ export function createDragController<P>(
       if (speed !== 0) {
         if (dt > 0) scroller?.scrollBy((speed * dt) / 1000);
         current.scrolling = true;
+        current.anchored = false;
         if (time - current.lastMeasure >= SCROLL_MEASURE_MS) measureAll(time);
       } else if (current.scrolling) {
         current.scrolling = false;
@@ -474,11 +540,14 @@ export function createDragController<P>(
         current.pagerArmed = lifted === null || edgeZoneAt(relative.x, size) !== lifted;
       }
       if (callbacks.onPage && current.pagerArmed) {
-        const step = edgePagerStep(current.pager, { x: relative.x, time, viewport: size });
+        const hover = current.hoverRect;
+        const target = hover ? { x: hover.x - area.x, width: hover.width } : null;
+        const step = edgePagerStep(current.pager, { x: relative.x, time, viewport: size, target });
         current.pager = step.state;
         publish({ zone: step.state.zone });
         if (step.page !== 0) {
           callbacks.onPage(step.page);
+          current.anchored = false;
           // The new period renders first; its targets are measured once it is laid out.
           current.pendingFrames = LAYOUT_FRAMES;
           return;
