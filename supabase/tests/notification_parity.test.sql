@@ -7,11 +7,15 @@
 -- two cases on purpose: a rotation with a next person reminds only that person (AC-023), and
 -- "egal wer" means everyone (empty array), where choreMemberIds returns nobody.
 --
+-- Spec 0026 (REQ-014, AC-056): the trip rule — private.chore_due_state, chore_count_day,
+-- chore_acting_assignee, chore_assignees and chore_due_text against chore-schedule.test.ts, with
+-- the same fixtures and names; AC-044/AC-057: only the household's own trips count.
+--
 -- Spec 0017 (plan, Decision 3): private.plan_entry_title and private.entry_reminder_body against
 -- `planEntryTitle` and `reminderMessage` in reminder.test.ts, with the same cases and names.
 begin;
 \ir _helpers.psql
-select plan(44);
+select plan(57);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -19,7 +23,7 @@ as $$ select id from fx where key = p_key $$;
 create function tests.state(p_key text, p_day date default '2026-11-20') returns text language sql
 as $$ select private.chore_due_state(c, p_day) from public.chores c where c.id = tests.fx(p_key) $$;
 create function tests.assignees(p_key text) returns uuid[] language sql
-as $$ select private.chore_assignees(c) from public.chores c where c.id = tests.fx(p_key) $$;
+as $$ select private.chore_assignees(c, '2026-11-20') from public.chores c where c.id = tests.fx(p_key) $$;
 
 insert into fx (key, id) values
   ('enrico', tests.create_user('enrico@example.com', 'Enrico')),
@@ -199,6 +203,143 @@ select is(tests.title('{"kind": "activity", "note": "  "}'), 'Aktivität',
   'REQ-004 planEntryTitle parity: a blank Zusatz is no Zusatz; without name and text "Aktivität"');
 select is(tests.title('{"kind": "party", "text": "Neu"}'), 'Neu',
   'planEntryTitle parity: falls back to the text for a kind this version does not know');
+
+-- ===================== Spec 0026: trips move chores (chore-schedule.test.ts) =====================
+-- The fixtures of chore-schedule.test.ts: household "Enrico & Nadja" (a fresh one, the one above
+-- lost Nadja), "Urlaub Mallorca" 4.–10.12.2026 for both, "Dienstreise Hamburg" 18.–19.12.2026
+-- only Enrico; a second household with its own trip and chores (AC-044, AC-057).
+insert into fx (key, id) values ('vera', tests.create_user('vera@example.com', 'Vera'));
+insert into fx (key, id) values
+  ('home2', tests.create_household('Enrico & Nadja 2', array[tests.fx('enrico'), tests.fx('nadja')])),
+  ('wg', tests.create_household('WG Berlin', array[tests.fx('enrico'), tests.fx('vera')]));
+insert into fx (key) values
+  ('mallorca'), ('hamburg'), ('wg_trip'),
+  ('p_bad'), ('p_fenster'), ('p_staub'), ('p_muell'), ('p_fp'), ('p_blumen'), ('p_keller'), ('p_pflanzen'),
+  ('p_paket'), ('p_bad_r'), ('wg_muell'), ('wg_blumen');
+insert into public.trips (id, household_id, from_on, to_on, note) values
+  (tests.fx('mallorca'), tests.fx('home2'), '2026-12-04', '2026-12-10', 'Urlaub Mallorca'),
+  (tests.fx('hamburg'), tests.fx('home2'), '2026-12-18', '2026-12-19', 'Dienstreise Hamburg'),
+  (tests.fx('wg_trip'), tests.fx('wg'), '2026-12-04', '2026-12-20', 'Ski');
+insert into public.trip_members (household_id, trip_id, member_id) values
+  (tests.fx('home2'), tests.fx('mallorca'), tests.fx('enrico')),
+  (tests.fx('home2'), tests.fx('mallorca'), tests.fx('nadja')),
+  (tests.fx('home2'), tests.fx('hamburg'), tests.fx('enrico')),
+  (tests.fx('wg'), tests.fx('wg_trip'), tests.fx('enrico'));
+
+insert into public.chores (id, household_id, title, recurrence, assignment, next_due_on, next_assignee_id, last_done_on,
+                           due_time) values
+  (tests.fx('p_bad'), tests.fx('home2'), 'Bad putzen', '{"type": "weekly", "every": 1, "weekdays": [5]}',
+   jsonb_build_object('type', 'fixed', 'memberId', tests.fx('nadja')), '2026-12-04', tests.fx('nadja'), null, null),
+  (tests.fx('p_fenster'), tests.fx('home2'), 'Fenster Wohnzimmer', '{"type": "everyMonths", "every": 2}',
+   jsonb_build_object('type', 'fixed', 'memberId', tests.fx('enrico')), '2026-12-07', tests.fx('enrico'), null, null),
+  (tests.fx('p_staub'), tests.fx('home2'), 'Staubsaugen', '{"type": "weekly", "every": 1, "weekdays": [1, 4]}',
+   '{"type": "anyone"}', '2026-12-07', null, null, null),
+  (tests.fx('p_muell'), tests.fx('home2'), 'Müll rausbringen', '{"type": "weekly", "every": 1, "weekdays": [6]}',
+   jsonb_build_object('type', 'fixed', 'memberId', tests.fx('enrico')), '2026-12-19', tests.fx('enrico'), null, '19:00'),
+  (tests.fx('p_fp'), tests.fx('home2'), 'Fenster putzen', '{"type": "monthly", "day": 19}',
+   '{"type": "together"}', '2026-12-19', null, null, null),
+  (tests.fx('p_blumen'), tests.fx('home2'), 'Blumen gießen', '{"type": "weekly", "every": 1, "weekdays": [5]}',
+   '{"type": "anyone"}', '2026-12-18', null, null, null),
+  (tests.fx('p_keller'), tests.fx('home2'), 'Keller aufräumen', '{"type": "once", "date": "2026-11-30"}',
+   jsonb_build_object('type', 'fixed', 'memberId', tests.fx('enrico')), '2026-11-30', tests.fx('enrico'), null, null),
+  (tests.fx('p_pflanzen'), tests.fx('home2'), 'Pflanzen gießen', '{"type": "flexible", "everyDays": 3}',
+   '{"type": "anyone"}', '2026-12-06', null, '2026-12-03', null),
+  (tests.fx('p_paket'), tests.fx('home2'), 'Paket abholen', '{"type": "once", "date": "2026-12-05"}',
+   '{"type": "anyone"}', '2026-12-05', null, null, null),
+  (tests.fx('p_bad_r'), tests.fx('home2'), 'Bad putzen', '{"type": "weekly", "every": 1, "weekdays": [5]}',
+   jsonb_build_object('type', 'rotating', 'memberIds', jsonb_build_array(tests.fx('enrico'), tests.fx('nadja'))),
+   '2026-12-18', tests.fx('enrico'), null, null),
+  (tests.fx('wg_muell'), tests.fx('wg'), 'Müll rausbringen', '{"type": "weekly", "every": 1, "weekdays": [6]}',
+   jsonb_build_object('type', 'fixed', 'memberId', tests.fx('enrico')), '2026-12-05', tests.fx('enrico'), null, null),
+  (tests.fx('wg_blumen'), tests.fx('wg'), 'Blumen gießen', '{"type": "weekly", "every": 1, "weekdays": [6]}',
+   '{"type": "anyone"}', '2026-12-05', null, null, null);
+
+-- parityLine of chore-schedule.test.ts: the Zähltag, one character per day 1.12.–27.12. ("."
+-- not due, "t" today, "o" overdue, "f" flexible) and who does it ("e", "n", "-").
+create function tests.parity_line(p_key text) returns text language sql
+as $$
+  select coalesce(private.chore_count_day(c)::text, '-') || ' '
+         || string_agg(case private.chore_due_state(c, d.day) when 'overdue' then 'o' when 'today' then 't'
+                         when 'flexible_due' then 'f' else '.' end, '' order by d.day) || ' '
+         || string_agg(case private.chore_acting_assignee(c, d.day) when tests.fx('enrico') then 'e'
+                         when tests.fx('nadja') then 'n' else '-' end, '' order by d.day)
+  from public.chores c
+  cross join lateral (select g::date as day from generate_series('2026-12-01'::date, '2026-12-27'::date, '1 day') g) d
+  where c.id = tests.fx(p_key)
+  group by c.id
+$$;
+create function tests.label(p_key text, p_day date) returns text language sql
+as $$ select private.chore_due_text(c, p_day) from public.chores c where c.id = tests.fx(p_key) $$;
+
+select is(
+  jsonb_build_object(
+    'bad', tests.parity_line('p_bad'), 'fenster', tests.parity_line('p_fenster'), 'staub', tests.parity_line('p_staub'),
+    'muell', tests.parity_line('p_muell'), 'fp', tests.parity_line('p_fp'), 'blumen', tests.parity_line('p_blumen'),
+    'keller', tests.parity_line('p_keller'), 'pflanzen', tests.parity_line('p_pflanzen'),
+    'paket', tests.parity_line('p_paket'), 'bad-r', tests.parity_line('p_bad_r')),
+  jsonb_build_object(
+    'bad', '2026-12-11 ..........toooooooooooooooo nnnnnnnnnnnnnnnnnnnnnnnnnnn',
+    'fenster', '2026-12-11 ..........toooooo..oooooooo eeeeeeeeeeeeeeeeeeeeeeeeeee',
+    'staub', '2026-12-11 ..........toooooooooooooooo ---------------------------',
+    'muell', '2026-12-20 ...................tooooooo eeeeeeeeeeeeeeeeeeeeeeeeeee',
+    'fp', '2026-12-20 ...................tooooooo ---------------------------',
+    'blumen', '2026-12-18 .................tooooooooo ---------------------------',
+    'keller', '2026-11-30 ooo.......ooooooo..oooooooo eeeeeeeeeeeeeeeeeeeeeeeeeee',
+    'pflanzen', '2026-12-11 ..........fffffffffffffffff ---------------------------',
+    'paket', '2026-12-11 ..........toooooooooooooooo ---------------------------',
+    'bad-r', '2026-12-18 .................tooooooooo nnnnnnnnnnnnnnnnnnneeeeeeee'),
+  'AC-056: due state, Zähltag and person for every day 1.12.–27.12.');
+
+select is(array[tests.label('p_bad', '2026-12-03'), tests.label('p_fenster', '2026-12-03')],
+  array['nach der Reise am Fr 11.12.', 'nach der Reise am Fr 11.12.'],
+  'AC-033: on Thu 3.12. both "nach der Reise am Fr 11.12."');
+select is(array[tests.label('p_bad', '2026-12-11'), tests.label('p_fenster', '2026-12-11'), tests.label('p_bad', '2026-12-12')],
+  array['heute, nach der Reise', 'heute, nach der Reise', 'fällig seit gestern'],
+  'AC-033: Fri 11.12. "Bad putzen", then "Fenster Wohnzimmer", each "heute, nach der Reise"; Sat "fällig seit gestern"');
+select is(array[tests.label('p_muell', '2026-12-17'), tests.label('p_fp', '2026-12-17'), tests.label('p_blumen', '2026-12-18')],
+  array['nach der Reise am So 20.12.', 'nach der Reise am So 20.12.', 'heute'],
+  'AC-035: Hamburg moves the fixed and the together chore to Sun 20.12., not the one for anyone');
+select is(array[tests.label('p_keller', '2026-12-05'), tests.label('p_keller', '2026-12-11')],
+  array['nach der Reise am Fr 11.12.', 'fällig seit 11 Tagen'],
+  'AC-036: open since Mon 30.11.: hidden on Sat 5.12., "fällig seit 11 Tagen" on Fri 11.12.');
+select is(tests.label('p_pflanzen', '2026-12-11'), 'jetzt fällig',
+  'AC-037: the flexible clock runs on: hidden 6.–10.12., "jetzt fällig" with a full bar on 11.12.');
+select is(tests.label('p_paket', '2026-11-22'), 'nach der Reise am Fr 11.12.',
+  'AC-038: a one-off date moves, a one-off chore without a date stays under "Ohne Termin"');
+select is(
+  (select array_agg(c.title order by c.title) from public.chores c
+   where c.household_id = tests.fx('home2') and private.chore_due_state(c, '2026-12-05') is not null),
+  null::text[],
+  'AC-033: Sat 5.12. nothing under "Zu tun" or "Noch offen"');
+select is(
+  (select private.chore_assignees(c, '2026-12-16') from public.chores c where c.id = tests.fx('p_bad_r')),
+  array[tests.fx('nadja')],
+  'AC-045: on Wed 16.12. Nadja stands in for Enrico; after her it is Enrico again from Fri 25.12.');
+
+-- AC-057: the other household's trip moves nothing here, and ours nothing there.
+select is(
+  (select array[private.chore_due_state(c, '2026-12-11'), private.chore_due_state(c, '2026-12-21')]
+   from public.chores c where c.id = tests.fx('wg_muell')),
+  array[null, 'today'],
+  'AC-057: the trip of "WG Berlin" moves its own chore of Enrico (waits until 21.12.)');
+select is(
+  (select private.chore_due_state(c, '2026-12-05') from public.chores c where c.id = tests.fx('wg_blumen')),
+  'today',
+  'AC-044: Mallorca of "Enrico & Nadja" does not move a chore of "WG Berlin" (Vera is at home)');
+select is(
+  (select private.chore_count_day(c) from public.chores c where c.id = tests.fx('wg_muell')),
+  '2026-12-21'::date,
+  'AC-057: only trips of the own household count (Enrico is away in "WG Berlin" until 20.12.)');
+
+-- A trip of more than 400 days stops the search (MAX_WAIT_DAYS).
+insert into fx (key) values ('long');
+insert into public.trips (id, household_id, from_on, to_on) values (tests.fx('long'), tests.fx('wg'), '2026-12-01', '2028-06-30');
+insert into public.trip_members (household_id, trip_id, member_id) values
+  (tests.fx('wg'), tests.fx('long'), tests.fx('enrico')), (tests.fx('wg'), tests.fx('long'), tests.fx('vera'));
+select is(
+  (select private.chore_first_free_day(c, '2026-12-01') from public.chores c where c.id = tests.fx('wg_blumen')),
+  '2026-12-01'::date + 400,
+  'a trip of more than 400 days does not loop: the search stops after MAX_WAIT_DAYS');
 
 select * from finish();
 rollback;
