@@ -828,7 +828,8 @@ $$;
 -- "+ Neuer Markt" (spec 0025, REQ-015): a store of the household with the client's id (null = a
 -- new one) and the name (stores_name_valid). With p_copy_from the walking order and the hidden
 -- areas of that store of the same household are copied once ("Reihenfolge übernehmen von …",
--- AC-050); without it both are empty ("Wie die Bereiche", AC-051). Returns the new row.
+-- AC-050); without it the walking order is the household's areas in their own order and nothing
+-- is hidden ("Wie die Bereiche", AC-051; spec 0007, AC-043). Returns the new row.
 -- Errors: not_member (42501), store_not_found (P0002, also for another household's store).
 -- Security invoker: RLS decides.
 create function public.create_store(p_household_id uuid, p_store_id uuid, p_name text, p_copy_from uuid)
@@ -855,7 +856,11 @@ begin
 
   insert into public.stores (id, household_id, name, area_order, hidden_area_ids)
   values (coalesce(p_store_id, gen_random_uuid()), p_household_id, btrim(p_name),
-          coalesce(v_source.area_order, '{}'), coalesce(v_source.hidden_area_ids, '{}'))
+          case when p_copy_from is null
+               then (select coalesce(array_agg(a.id order by a.sort, a.id), '{}')
+                     from public.areas a where a.household_id = p_household_id)
+               else v_source.area_order end,
+          coalesce(v_source.hidden_area_ids, '{}'))
   returning * into v_store;
   return to_jsonb(v_store);
 end

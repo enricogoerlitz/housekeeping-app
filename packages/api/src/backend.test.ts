@@ -491,7 +491,8 @@ describe('stored store queue (security check, spec 0006)', () => {
       });
       await settle(engine);
       expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
-      expect(await storage.get('queue')).toEqual([valid]);
+      // Stored again as parsed: the older entry gains onList false (spec 0025).
+      expect(await storage.get('queue')).toEqual([{ ...valid, onList: false }]);
 
       environment.setOnline(true);
       await settle(engine);

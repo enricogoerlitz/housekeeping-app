@@ -840,6 +840,7 @@ export function createEngine(options: EngineOptions): Engine {
           entry.itemId,
           entry.checked,
           entry.seenCheckSeq,
+          entry.onList,
         );
         if (answer) {
           knownCheckSeq.set(answer.item_id, answer.check_seq);
@@ -1037,7 +1038,7 @@ export function createEngine(options: EngineOptions): Engine {
     if (action.kind === 'check') {
       const { server, expected } = expectedRow('shopping_items', action.itemId);
       const seen = Math.max(Number(server?.check_seq ?? 0), knownCheckSeq.get(action.itemId) ?? 0);
-      entry = { ...action, seenCheckSeq: seen };
+      entry = { ...action, onList: action.onList ?? false, seenCheckSeq: seen };
       baseRow = expected;
     } else if (action.kind === 'notAvailable') {
       entry = action;

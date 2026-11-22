@@ -5,13 +5,14 @@ import {
   addContribution,
   normalizeText,
   parseSmartInput,
+  withExactArticleName,
   type Article,
   type Id,
   type ShoppingContribution,
 } from '@housekeeping/core';
 
 import { resolveArticle } from './commands-articles';
-import { newId, nowISO, updateData } from './store';
+import { getData, newId, nowISO, updateData } from './store';
 import type { AddEntry, ChangeOp } from './transport';
 
 function appendContribution(
@@ -86,8 +87,10 @@ export function addContributionOps(entries: readonly AddEntry[]): ChangeOp[] {
 export function typedContribution(
   text: string,
 ): { name: string; contribution: ShoppingContribution } | null {
-  const parsed = parseSmartInput(text);
-  if (!parsed) return null;
+  const typed = parseSmartInput(text);
+  if (!typed) return null;
+  // "2 Mozzarella (Fior di Latte)" is that article when it exists (spec 0025, AC-034).
+  const parsed = withExactArticleName(typed, getData().articles);
   return {
     name: parsed.name,
     contribution: {

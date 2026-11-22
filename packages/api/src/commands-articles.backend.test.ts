@@ -319,7 +319,9 @@ describe('deleteArticle', () => {
     expect(() => deleteArticle(byName('Kokosmilch').id)).toThrow(
       /^Wird in \d+ Rezept(en)? verwendet – zusammenführen statt löschen$/,
     );
-    expect(() => deleteArticle(byName('Geschenkpapier').id)).toThrow('Steht auf der Einkaufsliste');
+    expect(() => deleteArticle(byName('Geschenkpapier').id)).toThrow(
+      'Steht offen auf der Einkaufsliste',
+    );
     await fx.settle();
     expect(fx.calls).toEqual([]);
   });

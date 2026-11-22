@@ -300,8 +300,8 @@ select results_eq(
 select results_eq(
   format('select area_order, hidden_area_ids from public.stores where id = %L',
          public.create_store(tests.fx('home_a'), tests.fx('lidl'), 'Lidl', null) ->> 'id'),
-  $$ values ('{}'::uuid[], '{}'::uuid[]) $$,
-  'AC-051 create_store: without a choice like the areas, nothing hidden');
+  format($$ values (array[%L, %L]::uuid[], '{}'::uuid[]) $$, tests.fx('drogerie'), tests.fx('obst')),
+  'AC-051 create_store: without a choice the areas in their own order, nothing hidden');
 select throws_ok(
   format('select public.create_store(%L, gen_random_uuid(), %L, %L)', tests.fx('home_a'), 'Netto', tests.fx('store_b')),
   'P0002', 'store_not_found', 'AC-050 create_store: a store of another household cannot be copied');
