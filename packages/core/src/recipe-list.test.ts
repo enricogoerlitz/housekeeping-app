@@ -121,7 +121,7 @@ describe('recipe list: quick chips and filter panel (REQ-002)', () => {
     };
     const shown = applyRecipeListFilter(recipes, filter, context);
     expect(shown).toHaveLength(13);
-    expect(recipeShowLabel(shown.length)).toBe('13 Rezepte zeigen');
+    expect(recipeShowLabel(shown)).toBe('13 Rezepte zeigen');
     expect(activeFilterCount(filter)).toBe(2);
     expect(filterButtonLabel(activeFilterCount(filter))).toBe('Filter (2)');
     expect(activeFilterChips(filter, facets).map((chip) => chip.label)).toEqual([
@@ -130,9 +130,18 @@ describe('recipe list: quick chips and filter panel (REQ-002)', () => {
     ]);
   });
 
+  it('spec 0023 AC-057: the button counts like the line over the list', () => {
+    const plain = Array.from({ length: 26 }, () => ({ kind: 'recipe' as const }));
+    const collections = [{ kind: 'collection' as const }, { kind: 'collection' as const }];
+    expect(recipeShowLabel([...plain, ...collections])).toBe('26 Rezepte · 2 Sammlungen zeigen');
+    expect(recipeShowLabel(plain)).toBe('26 Rezepte zeigen');
+    expect(recipeShowLabel(collections)).toBe('2 Sammlungen zeigen');
+    expect(recipeShowLabel([])).toBe('0 Rezepte zeigen');
+  });
+
   it('AC-005: "Filter" without a count when nothing is active; "1 Rezept zeigen"', () => {
     expect(filterButtonLabel(activeFilterCount(EMPTY_RECIPE_LIST_FILTER))).toBe('Filter');
-    expect(recipeShowLabel(1)).toBe('1 Rezept zeigen');
+    expect(recipeShowLabel([{ kind: 'recipe' }])).toBe('1 Rezept zeigen');
   });
 
   it('AC-006: a quick chip adds to a panel filter, and diet holds one value', () => {
@@ -195,7 +204,7 @@ describe('recipe list: quick chips and filter panel (REQ-002)', () => {
       maxMinutes: 15,
     };
     const shown = applyRecipeListFilter(recipes, filter, context);
-    expect(recipeShowLabel(shown.length)).toBe('0 Rezepte zeigen');
+    expect(recipeShowLabel(shown)).toBe('0 Rezepte zeigen');
     expect(recipeEmptyLabel('')).toBe('Keine Rezepte für diese Filter');
     expect(applyRecipeListFilter(recipes, EMPTY_RECIPE_LIST_FILTER, context)).toHaveLength(24);
   });

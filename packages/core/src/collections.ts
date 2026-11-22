@@ -116,8 +116,9 @@ export function collectionSummary(
 }
 
 /**
- * A row under "Enthält": "Kartoffelsalat · 6 Port.", "Grillgemüse · vegan · 8 Port.". The variant
- * is named only when the recipe has variants and another than its default is chosen (AC-016).
+ * A row under "Enthält": "Kartoffelsalat · 6 Port. (wie Sammlung)" for portions taken from the
+ * collection (spec 0023, AC-058), "Grillgemüse · vegan · 8 Port.". The variant is named only when
+ * the recipe has variants and another than its default is chosen (AC-016).
  */
 export function collectionContentLabel(content: CollectionContent): string {
   const { recipe } = content;
@@ -126,7 +127,8 @@ export function collectionContentLabel(content: CollectionContent): string {
     const variant = recipe.variants.find((candidate) => candidate.id === content.variantId);
     if (variant) parts.push(variant.name);
   }
-  parts.push(`${formatQty(content.servings)} Port.`);
+  const portions = `${formatQty(content.servings)} Port.`;
+  parts.push(content.inherits ? `${portions} (wie Sammlung)` : portions);
   return parts.join(' · ');
 }
 

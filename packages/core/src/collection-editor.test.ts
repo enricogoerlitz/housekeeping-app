@@ -112,7 +112,7 @@ describe('"Enthält" (REQ-003, REQ-005)', () => {
     );
     expect(
       collectionContents(grillabend, saved, grillRecipesById).map(collectionContentLabel),
-    ).toEqual(['Kartoffelsalat · 6 Port.', 'Grillgemüse · vegan · 8 Port.']);
+    ).toEqual(['Kartoffelsalat · 6 Port. (wie Sammlung)', 'Grillgemüse · vegan · 8 Port.']);
   });
 
   it('AC-015: own portions, and back to "übernimmt"', () => {

@@ -368,6 +368,18 @@ export function parseAmount(text: string): Amount | undefined {
   return unit === undefined ? { text: input } : { text: input, qty, unit };
 }
 
+/**
+ * The hint under "Menge" (spec 0023, REQ-001): whether the amount follows the portions. Nothing for
+ * an empty field.
+ */
+export function amountScalingHint(text: string): string | undefined {
+  const amount = parseAmount(text);
+  if (amount === undefined) return undefined;
+  const scales =
+    amount.qty !== undefined && (amount.unit === undefined || !NON_SCALING_UNITS.has(amount.unit));
+  return scales ? 'Wird mit den Portionen umgerechnet' : 'Bleibt beim Umrechnen gleich';
+}
+
 /** Splits a pasted block into lines and parses each; empty lines and bullets ("- ", "• ") are ignored. */
 export function parseIngredientBlock(text: string): ParsedIngredient[] {
   return text

@@ -77,11 +77,25 @@ export function recipeDeletionEffect(
 }
 
 /**
- * The notice after deleting: "Halloumi-Pfanne gelöscht" (AC-043; "Rückgängig" is the action); a
- * recipe that was in collections adds "· auch aus 2 Sammlungen entfernt" (spec 0009, AC-033).
+ * The notice after deleting a recipe, a collection, a restaurant or an activity (spec 0023,
+ * REQ-012; spec 0024, REQ-010), before "Rückgängig": "Lasagne gelöscht", then the planned entries
+ * that go ("· 1 geplanter Eintrag entfällt", "· 2 geplante Einträge entfallen": later days, noted
+ * ones and leftovers depending on them), then for a recipe in collections "· auch aus 2 Sammlungen
+ * entfernt" (spec 0009, AC-033). Parts at 0 are left out.
  */
-export function recipeDeletedLabel(title: string, collections: number): string {
-  if (collections <= 0) return `${title} gelöscht`;
-  const where = collections === 1 ? '1 Sammlung' : `${collections} Sammlungen`;
-  return `${title} gelöscht · auch aus ${where} entfernt`;
+export function deletedNotice(
+  title: string,
+  counts: { entries?: number; collections?: number },
+): string {
+  const parts = [`${title} gelöscht`];
+  const entries = counts.entries ?? 0;
+  if (entries === 1) parts.push('1 geplanter Eintrag entfällt');
+  else if (entries > 1) parts.push(`${entries} geplante Einträge entfallen`);
+  const collections = counts.collections ?? 0;
+  if (collections > 0) {
+    parts.push(
+      `auch aus ${collections === 1 ? '1 Sammlung' : `${collections} Sammlungen`} entfernt`,
+    );
+  }
+  return parts.join(' · ');
 }
