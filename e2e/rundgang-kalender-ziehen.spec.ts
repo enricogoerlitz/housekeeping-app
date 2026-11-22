@@ -294,8 +294,8 @@ test.describe('desktop', () => {
     if (!area) throw new Error('drag area not laid out');
 
     await mouseGrab(page, await centerOf(entry(page, LASAGNE)));
-    // The paging zone lies 20 px inside the right edge and is 48 px wide.
-    await mouseTo(page, { x: area.x + area.width - 20 - 24, y: area.y + area.height / 2 });
+    // The paging zone lies 20 px inside the right edge and is 32 px wide.
+    await mouseTo(page, { x: area.x + area.width - 20 - 16, y: area.y + area.height / 2 });
     await expect(tid(page, 'calendar-title')).toHaveText(weekRangeLabel(nextMonday));
     const target = tid(page, `week-slot-${tuesday}-${SLOT_DINNER}`);
     await mouseTo(page, await centerOf(target));
