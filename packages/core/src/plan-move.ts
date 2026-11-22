@@ -1,6 +1,7 @@
 import { formatPickerDate, joinNames } from './calendar';
 import { addDays, formatShortDate, weekdayShort } from './dates';
 import { isAbsent, LEFTOVER_DAYS } from './meal-plan';
+import { isReminderPast } from './reminder';
 import type { Absence, Id, ISODate, MealPlanEntry } from './types';
 
 // Moving a plan entry by dragging or "Anderes Datum …" (spec 0016, REQ-001 to REQ-005).
@@ -135,10 +136,13 @@ export function moveTargetLabel(date: ISODate | null, slotName: string): string 
   return date === null ? 'Vormerken' : `${shortDay(date)} · ${slotName}`;
 }
 
+const REMINDER_PAST_SUFFIX = ' · Erinnerung liegt in der Vergangenheit';
+
 /**
  * The toast after a move (AC-001, AC-013, AC-016, AC-019): "Lasagne → Fr 27.11., Abend", with the
  * year when it is not the current one ("Fr 8.1.2027"), "Lasagne vorgemerkt" without a day, and
- * " · Nadja ist dann auf Reise" for eaters travelling on that day.
+ * " · Nadja ist dann auf Reise" for eaters travelling on that day. A reminder that now lies in the
+ * past adds " · Erinnerung liegt in der Vergangenheit" (spec 0017, AC-022).
  */
 export function moveToastText(input: {
   title: string;
@@ -146,6 +150,7 @@ export function moveToastText(input: {
   slotName: string;
   today: ISODate;
   travellerNames?: readonly string[];
+  reminderPast?: boolean;
 }): string {
   if (input.date === null) return `${input.title} vorgemerkt`;
   const day =
@@ -157,7 +162,8 @@ export function moveToastText(input: {
     names.length === 0
       ? ''
       : ` · ${joinNames(names)} ${names.length === 1 ? 'ist' : 'sind'} dann auf Reise`;
-  return `${input.title} → ${day}, ${input.slotName}${travel}`;
+  const reminder = input.reminderPast ? REMINDER_PAST_SUFFIX : '';
+  return `${input.title} → ${day}, ${input.slotName}${travel}${reminder}`;
 }
 
 /** Why the target refused the entry (AC-015); `dishTitle` is the title of the dish. */
@@ -189,7 +195,9 @@ export type PlanMove =
 
 /**
  * One move as dragging and "Anderes Datum …" do it (REQ-004, REQ-005): where the entry lands and
- * the toast after it, or why the target refuses it. `title` is the entry's name in the plan.
+ * the toast after it, or why the target refuses it. `title` is the entry's name in the plan. The
+ * reminder keeps its distance in days and is judged at the new day in the household's zone
+ * `timeZone` (spec 0017, REQ-006); parking clears it, so then nothing is added (AC-023).
  */
 export function planMove(input: {
   entry: MealPlanEntry;
@@ -200,6 +208,8 @@ export function planMove(input: {
   slots: readonly { id: Id; name: string }[];
   title: string;
   today: ISODate;
+  now: Date;
+  timeZone: string;
 }): PlanMove {
   const outcome = dropOutcome(input.entry, input.target, input.entries);
   if (outcome.kind === 'same') return outcome;
@@ -215,6 +225,10 @@ export function planMove(input: {
     slotName: input.slots.find((slot) => slot.id === outcome.slotId)?.name ?? '',
     today: input.today,
     travellerNames,
+    reminderPast:
+      input.entry.reminder !== undefined &&
+      outcome.date !== null &&
+      isReminderPast(outcome.date, input.entry.reminder, input.now, input.timeZone),
   });
   return { ...outcome, message };
 }

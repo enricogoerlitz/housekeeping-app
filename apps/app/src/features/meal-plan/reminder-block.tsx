@@ -14,7 +14,6 @@ import {
   reminderDay,
   reminderDayChoices,
   reminderDraftFrom,
-  reminderLabel,
   reminderReachHint,
   reminderSave,
   reminderTextCounter,
@@ -37,6 +36,7 @@ import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { devicePushSupport } from '@/features/notifications/web-push-platform';
 
 import { FieldLabel } from './plan-fields';
+import { entryReminderLabels, ReminderBell } from './reminder-bell';
 
 // Spec 0017 "Erinnern" (REQ-001 to REQ-004, REQ-007): the switch and, when it is on, "Tag",
 // "Uhrzeit" and "Woran erinnern? (optional)". The add window keeps the draft until "Einplanen";
@@ -201,6 +201,8 @@ export function ReminderBlock(props: {
   disabled: boolean;
   hint: string | undefined;
   onOpenSettings: () => void;
+  /** The entry's name for the bell's screen-reader text, "Lasagne, Erinnerung Freitag 18 Uhr". */
+  entryTitle?: string;
   testID: string;
 }) {
   const { form, disabled, testID } = props;
@@ -217,6 +219,14 @@ export function ReminderBlock(props: {
     kindEnabled: settings?.entryRemindersEnabled ?? true,
     deviceRegistered,
   });
+  const bell = form.stored
+    ? entryReminderLabels(
+        { date: entryDate, reminder: form.stored },
+        props.entryTitle ?? '',
+        household.timeZone,
+        now,
+      )
+    : undefined;
   const fieldError = (field: FieldError['field']) =>
     form.error?.field === field ? form.error.error : undefined;
 
@@ -234,9 +244,6 @@ export function ReminderBlock(props: {
       <Stack gap={4}>
         <SwitchRow
           label="Erinnern"
-          description={
-            form.stored ? reminderLabel(entryDate, form.stored, now, household.timeZone) : undefined
-          }
           value={draft.on}
           onValueChange={(on) => {
             setPicking(false);
@@ -245,6 +252,14 @@ export function ReminderBlock(props: {
           disabled={disabled}
           testID={`${testID}-switch`}
         />
+        {bell ? (
+          <ReminderBell
+            label={bell.label}
+            accessibilityLabel={props.entryTitle ? bell.accessibilityLabel : bell.label}
+            size="row"
+            testID={`${testID}-bell`}
+          />
+        ) : null}
         {draft.on && reach ? (
           <View
             style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}

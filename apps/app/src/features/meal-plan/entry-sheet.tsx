@@ -59,6 +59,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { dayLabel, entryTitle } from './labels';
 import { ReminderBlock, useReminderForm } from './reminder-block';
+import { entryReminderLabels, ReminderBell } from './reminder-bell';
 
 function Label(props: { children: string }) {
   return (
@@ -142,6 +143,11 @@ export function EntrySheet(props: {
     entry.date,
     householdClock(new Date(), household.timeZone).date,
   );
+
+  // A passed day offers no block, but its reminder still shows: "Erinnerung vorbei" (REQ-006).
+  const pastReminder = remindable
+    ? undefined
+    : entryReminderLabels(entry, title, household.timeZone);
 
   if (routeOpen && routeTarget) {
     return <RouteSheet restaurant={routeTarget} visible onClose={() => setRouteOpen(false)} />;
@@ -340,7 +346,15 @@ export function EntrySheet(props: {
               props.onClose();
               router.push('/einstellungen/benachrichtigungen');
             }}
+            entryTitle={title}
             testID="entry-reminder"
+          />
+        ) : pastReminder ? (
+          <ReminderBell
+            label={pastReminder.label}
+            accessibilityLabel={pastReminder.accessibilityLabel}
+            size="row"
+            testID="entry-reminder-bell"
           />
         ) : null}
         {props.moveFirst ? null : moveSection}
