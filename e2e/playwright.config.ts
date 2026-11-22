@@ -50,9 +50,11 @@ export default defineConfig({
     {
       // Only the files with width-specific criteria (layout, sidebar, split views), the
       // restaurants, which run completely at both widths, the version hint (spec 0014) and the
-      // list-and-detail pages of the household (spec 0011) and the articles (spec 0007).
+      // list-and-detail pages of the household (spec 0011), the articles (spec 0007) and the day
+      // window of the calendar beside the grid and dragging with the mouse (spec 0016).
       name: 'desktop',
-      testMatch: /rundgang-(shell|restaurants|version|haushalt|artikel)\.spec\.ts$/,
+      testMatch:
+        /rundgang-(shell|restaurants|version|haushalt|artikel|kalender-tag|kalender-ziehen)\.spec\.ts$/,
       use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } },
     },
   ],

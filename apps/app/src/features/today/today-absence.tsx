@@ -5,7 +5,7 @@ import { View } from 'react-native';
 
 /**
  * Absences on the shown day as quiet lines (AC-007): "Nadja · Urlaub Mallorca · bis Do 26.11.",
- * without a note "Nadja ist abwesend bis Do 26.11."; nothing when nobody is away.
+ * without a note "Nadja ist unterwegs bis Do 26.11."; nothing when nobody is away.
  */
 export function TodayAbsence(props: { shown: ISODate }) {
   const absences = useAbsences();

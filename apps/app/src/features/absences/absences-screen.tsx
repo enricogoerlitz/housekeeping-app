@@ -39,7 +39,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { AbsenceSheet, AbsenceWho } from './absence-sheet';
 
 /**
- * "Abwesenheiten" (spec 0010, AC-037), from the calendar's ⋯ and from "Verwalten": "Kommend"
+ * "Reisen" (spec 0010, AC-037), from the calendar's ⋯ and from "Verwalten": "Kommend"
  * earliest first, "Vergangen" newest first, rows grouped like the stripes. A tap opens the
  * Urlaubsseite (spec 0012, AC-016). Deleting an absence with a packing list asks first and names
  * it; without one there is 5 s "Rückgängig" (AC-038).
@@ -77,22 +77,22 @@ export function AbsencesScreen() {
     toast.show(
       restore
         ? {
-            message: 'Abwesenheit gelöscht',
+            message: 'Reise gelöscht',
             actionLabel: 'Rückgängig',
             onAction: undoAction(restore),
             duration: 5000,
           }
-        : { message: 'Abwesenheit und Packliste gelöscht' },
+        : { message: 'Reise und Packliste gelöscht' },
     );
   };
 
-  // The Urlaubsseite belongs to the calendar, which stays underneath; "‹ Abwesenheiten" leads back
+  // The Urlaubsseite belongs to the calendar, which stays underneath; "‹ Reisen" leads back
   // here (spec 0012, task 12).
   const open = (stripe: AbsenceStripe) => {
     const id = stripe.absenceIds[0];
     if (id) {
       router.push(
-        { pathname: '/kalender/urlaub/[id]', params: { id, von: 'abwesenheiten' } },
+        { pathname: '/kalender/reise/[id]', params: { id, von: 'reisen' } },
         { withAnchor: true },
       );
     }
@@ -118,7 +118,7 @@ export function AbsencesScreen() {
         controls={
           <IconButton
             icon="trash"
-            label={`Abwesenheit von ${who} löschen`}
+            label={`Reise von ${who} löschen`}
             disabled={online.disabled}
             hint={online.hint}
             onPress={() => remove(stripe)}
@@ -135,12 +135,12 @@ export function AbsencesScreen() {
       clearFab={false}
       header={
         <ScreenHeader
-          title="Abwesenheiten"
+          title="Reisen"
           onBack={back}
           right={
             <IconButton
               icon="plus"
-              label="Abwesenheit eintragen"
+              label="Reise eintragen"
               variant="soft"
               disabled={online.disabled}
               hint={online.hint}
@@ -182,7 +182,7 @@ export function AbsencesScreen() {
       {creating ? <AbsenceSheet onClose={() => setCreating(false)} /> : null}
       {deleting ? (
         <TripConfirmDialog
-          title="Abwesenheit löschen?"
+          title="Reise löschen?"
           message={deleting.message}
           confirmLabel="Löschen"
           needsNetwork

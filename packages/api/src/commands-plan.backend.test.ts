@@ -1,6 +1,6 @@
 // Meal plan commands (spec 0003): all on the diff path; removing an entry declares
 // its delete and takes recipe-less leftovers of it along (the database would refuse to keep them).
-import { addDays, entriesForDay, isoWeekday } from '@housekeeping/core';
+import { addDays, entriesForDay, isoWeekday, originSummary } from '@housekeeping/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
@@ -20,7 +20,7 @@ import {
   updatePlanEntry,
 } from './commands-plan';
 import { readMapsLink } from './commands-restaurants';
-import { pantryCheckRows } from './commands-shopping';
+import { addPlannedToList, pantryCheckRows } from './commands-shopping';
 import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH, SLOT_MORNING } from './seed/demo';
 import { getData, OfflineError, snapshot } from './store';
 import { TransportError, type ChangeOp } from './transport';
@@ -633,5 +633,122 @@ describe('spec 0018, REQ-003: "Fertig" saves the open fields of an entry', () =>
     fx.environment.setOnline(false);
     expect(() => saveEntryFields(id, { reservedAt: '19:30' })).toThrow(OfflineError);
     expect(entryById(id)?.reservedAt).toBeUndefined();
+  });
+});
+
+describe('spec 0016, REQ-004: moving an entry', () => {
+  const lasagne = () => {
+    const entry = getData().planEntries.find((candidate) => candidate.recipeId === 'rec-lasagne');
+    if (!entry) throw new Error('lasagne missing');
+    return entry;
+  };
+
+  it('AC-014: "Rückgängig" brings back day and Tageszeit', async () => {
+    await fx.startEnrico();
+    const before = lasagne();
+    const restore = snapshot();
+    movePlanEntry(before.id, addDays(TODAY, 40), SLOT_LUNCH);
+    expect(entryById(before.id)).toMatchObject({ date: addDays(TODAY, 40), slotId: SLOT_LUNCH });
+    restore();
+    expect(entryById(before.id)).toMatchObject({ date: before.date, slotId: before.slotId });
+    await fx.settle();
+    expect(fx.server.row(H, 'meal_plan_entries', before.id)).toMatchObject({
+      date: before.date,
+      slot_id: before.slotId,
+    });
+  });
+
+  it('AC-017: moved to Sunday, the reservation stays "19:30" and the list origin reads "(So)"', async () => {
+    await fx.startEnrico();
+    const saturday = '2026-11-21';
+    const sunday = '2026-11-22';
+    const enzo = addPlanEntry({
+      date: saturday,
+      slotId: SLOT_DINNER,
+      kind: 'restaurant',
+      restaurantId: 'rest-enzo',
+      eaterIds: [ENRICO, NADJA],
+    });
+    setReservation(enzo, { reservedAt: '19:30' });
+    const curry = addPlanEntry({
+      date: saturday,
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-mango-curry',
+      eaterIds: [ENRICO, NADJA],
+    });
+    const rows = pantryCheckRows([curry]).filter((row) => !row.isPantry);
+    expect(addPlannedToList(rows)).toBe(rows.length);
+    await fx.settle();
+    const fromCurry = () =>
+      getData().items.filter((item) =>
+        item.contributions.some(
+          (contribution) =>
+            contribution.source.kind === 'recipe' && contribution.source.entryId === curry,
+        ),
+      );
+    expect(fromCurry().length).toBeGreaterThan(0);
+    const before = fromCurry().map((item) => originSummary(item));
+    expect(before.every((origin) => origin.includes('Mango-Curry (Sa)'))).toBe(true);
+
+    fx.clearCalls();
+    movePlanEntry(enzo, sunday);
+    const undo = snapshot();
+    movePlanEntry(curry, sunday);
+    await fx.settle();
+
+    // The dish and the labels of its contributions go in one call (one transaction).
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges', 'applyChanges']);
+    const curryOps = opsOf(1);
+    expect(curryOps.filter((op) => 'table' in op && op.table === 'meal_plan_entries')).toHaveLength(
+      1,
+    );
+    const contributionIds = fromCurry().flatMap((item) =>
+      item.contributions
+        .filter((c) => c.source.kind === 'recipe' && c.source.entryId === curry)
+        .map((c) => c.id),
+    );
+    expect(
+      curryOps.filter((op) => 'table' in op && op.table === 'shopping_contributions'),
+    ).toHaveLength(contributionIds.length);
+    for (const id of contributionIds) {
+      expect(fx.server.row(H, 'shopping_contributions', id)).toMatchObject({
+        source: expect.objectContaining({ entryId: curry, label: 'Mango-Curry (So)' }),
+      });
+    }
+    expect(entryById(enzo)).toMatchObject({ date: sunday, reservedAt: '19:30' });
+    expect(fx.server.row(H, 'meal_plan_entries', enzo)).toMatchObject({
+      date: sunday,
+      reserved_at: '19:30:00',
+    });
+    expect(fromCurry().map((item) => originSummary(item))).toEqual(
+      before.map((origin) => origin.replace('Mango-Curry (Sa)', 'Mango-Curry (So)')),
+    );
+
+    // "Rückgängig" (AC-014) brings the day of the Herkunft back as well.
+    undo();
+    await fx.settle();
+    expect(fromCurry().map((item) => originSummary(item))).toEqual(before);
+    for (const id of contributionIds) {
+      expect(fx.server.row(H, 'shopping_contributions', id)).toMatchObject({
+        source: expect.objectContaining({ label: 'Mango-Curry (Sa)' }),
+      });
+    }
+  });
+
+  it('AC-018: an entry deleted meanwhile is refused with the general hint and then gone', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const { id } = lasagne();
+    await fx.server
+      .transport(NADJA)
+      .applyChanges(H, [{ kind: 'delete', table: 'meal_plan_entries', id }]);
+    movePlanEntry(id, addDays(TODAY, 2));
+    expect(entryById(id)?.date).toBe(addDays(TODAY, 2));
+    await fx.settle();
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(entryById(id)).toBeUndefined();
+    stop();
   });
 });

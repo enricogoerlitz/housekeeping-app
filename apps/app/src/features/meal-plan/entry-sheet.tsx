@@ -12,14 +12,19 @@ import {
   usePlanEntries,
   useRecipesById,
   useRestaurantsById,
+  useToday,
 } from '@housekeeping/api';
 import {
   asksForPushPermission,
   DEFAULT_REMIND_MINUTES,
   formatTime,
+  isSelectableMoveDay,
+  monthPickerStart,
+  moveBounds,
   parseTimeInput,
   REMIND_CHOICES,
   remindLabel,
+  type DropTarget,
   type Id,
   type ISODate,
   type MealPlanEntry,
@@ -42,6 +47,8 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
+import { useMoveEntry } from '@/features/calendar/move-entry';
+import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
@@ -65,7 +72,13 @@ function Label(props: { children: string }) {
  * closes once the server took them; on a refusal the window stays open with the typed text and
  * the general hint (spec 0018, REQ-003). Offline it only closes.
  */
-export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: () => void }) {
+export function EntrySheet(props: {
+  entryId: Id;
+  weekDates: ISODate[];
+  onClose: () => void;
+  /** "Verschieben" first: the screen reader's way to move an entry (spec 0016, platforms). */
+  moveFirst?: boolean;
+}) {
   const router = useRouter();
   const entries = usePlanEntries();
   const recipesById = useRecipesById();
@@ -77,6 +90,9 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   const openRecipe = useOpenRecipe();
   const openRestaurant = useOpenRestaurant();
   const [routeOpen, setRouteOpen] = useState(false);
+  const [pickingDate, setPickingDate] = useState(false);
+  const moveEntry = useMoveEntry();
+  const today = useToday();
   const entry = entries.find((candidate) => candidate.id === props.entryId);
   const reservation = useReservationDraft(entry);
   const note = useNoteDraft(entry);
@@ -136,11 +152,19 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
     );
   };
 
-  const move = (date: ISODate | null, slotId?: Id) => {
-    movePlanEntry(entry.id, date, slotId);
-    toast.show({
-      message: date ? `„${title}“ liegt jetzt auf ${dayLabel(date)}` : `„${title}“ ist vorgemerkt`,
-    });
+  // Day chips, "Vormerken" and "Anderes Datum …" move as dragging does (spec 0016, REQ-005).
+  const moveTo = (target: DropTarget) => {
+    if (moveEntry(entry, target) === 'moved') props.onClose();
+  };
+  const bounds = moveBounds(entry, entries);
+
+  const changeSlot = (slotId: Id) => {
+    if (entry.date) {
+      moveTo({ kind: 'slot', date: entry.date, slotId });
+      return;
+    }
+    movePlanEntry(entry.id, null, slotId);
+    toast.show({ message: `„${title}“ ist vorgemerkt` });
     props.onClose();
   };
 
@@ -155,6 +179,52 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
     });
   };
 
+  const moveSection = (
+    <View testID="entry-move-section">
+      <Label>Verschieben</Label>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {props.weekDates.map((date) => (
+          <Chip
+            key={date}
+            label={dayLabel(date)}
+            selected={entry.date === date}
+            disabled={online.disabled}
+            testID={`entry-move-${date}`}
+            onPress={() => moveTo({ kind: 'day', date })}
+          />
+        ))}
+        <Chip
+          label="Vormerken"
+          icon="bookmark"
+          selected={entry.date === null}
+          disabled={online.disabled}
+          testID="entry-move-later"
+          onPress={() => moveTo({ kind: 'parked' })}
+        />
+        <Chip
+          label="Anderes Datum …"
+          icon="calendar-days"
+          selected={pickingDate}
+          disabled={online.disabled}
+          testID="entry-move-other"
+          onPress={() => setPickingDate(!pickingDate)}
+        />
+      </View>
+      {pickingDate ? (
+        <View style={{ marginTop: 12 }}>
+          <PlanDateCalendar
+            month={monthPickerStart(entry.date, today)}
+            today={today}
+            marked={entry.date}
+            isDisabled={(date) => online.disabled || !isSelectableMoveDay(bounds, date)}
+            onSelect={(date) => moveTo({ kind: 'day', date })}
+            testID="entry-move-date"
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <Sheet
       visible
@@ -165,6 +235,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
       footer={<Button label="Fertig" full disabled={saving} onPress={done} testID="entry-done" />}
     >
       <Stack gap={20}>
+        {props.moveFirst ? moveSection : null}
         {online.hint ? (
           <Text variant="small" color="warn">
             {online.hint}
@@ -243,29 +314,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
             hint={online.hint}
           />
         ) : null}
-        <View>
-          <Label>Verschieben</Label>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {props.weekDates.map((date) => (
-              <Chip
-                key={date}
-                label={dayLabel(date)}
-                selected={entry.date === date}
-                disabled={online.disabled}
-                testID={`entry-move-${date}`}
-                onPress={() => move(date)}
-              />
-            ))}
-            <Chip
-              label="Vormerken"
-              icon="bookmark"
-              selected={entry.date === null}
-              disabled={online.disabled}
-              testID="entry-move-later"
-              onPress={() => move(null)}
-            />
-          </View>
-        </View>
+        {props.moveFirst ? null : moveSection}
         {household.mealSlots.length > 1 ? (
           <View>
             <Label>Tageszeit</Label>
@@ -277,7 +326,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
                   selected={entry.slotId === slot.id}
                   disabled={online.disabled}
                   testID={`entry-slot-${slot.id}`}
-                  onPress={() => move(entry.date, slot.id)}
+                  onPress={() => changeSlot(slot.id)}
                 />
               ))}
             </View>

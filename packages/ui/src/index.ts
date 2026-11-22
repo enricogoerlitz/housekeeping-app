@@ -32,6 +32,8 @@ export {
   SwitchRow,
   Stars,
   TextField,
+  focusRing,
+  keyboardFocusRing,
   type ButtonProps,
   type IconButtonProps,
   type ChipProps,
@@ -92,6 +94,9 @@ export {
 } from './choice';
 export { Sheet, toast, ToastHost, type SheetProps, type ToastOptions } from './overlay';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
+export { DockedPanel, type DockedPanelProps, type DockedPanelState } from './docked-panel';
+export { panelPlacement } from './docked-panel-state';
+export { SwipeArea, type SwipeAreaProps } from './swipe-area';
 export { CHECK_WINDOW_MS } from './check-window';
 export {
   useCheckWindow,
@@ -144,3 +149,59 @@ export { expandableA11y, type ExpandedWords } from './expandable';
 export { PhotoCollage, type PhotoCollageProps } from './display';
 export { SelectRow, type SelectRowProps } from './lists';
 export { TimeField, type TimeFieldProps } from './time-field';
+export {
+  DragBadge,
+  DragProvider,
+  useDragSource,
+  useDropTarget,
+  useDraggedSource,
+  useLiftedSource,
+  type DragProviderProps,
+  type DragCallbacks,
+  type DragSourceOptions,
+  type DragSourceBinding,
+  type DropGrid,
+  type DropTargetOptions,
+  type DropTargetState,
+} from './drag-drop';
+export {
+  hitTest,
+  gridCellAt,
+  cellRect,
+  type Point,
+  type Rect,
+  type GridShape,
+  type CellGrid,
+  type DropTarget,
+} from './drop-targets';
+export {
+  dragGestureStep,
+  pendingLiftAt,
+  DRAG_IDLE,
+  MOUSE_DRAG_DISTANCE,
+  TOUCH_HOLD_MS,
+  TOUCH_SLOP,
+  type PointerKind,
+  type DragGestureState,
+  type DragGestureEvent,
+  type DragGestureStep,
+  type DragEffect,
+} from './drag-gesture-state';
+export {
+  autoScrollSpeed,
+  edgeZoneAt,
+  edgePagerStep,
+  EDGE_PAGER_IDLE,
+  AUTO_SCROLL_BAND,
+  AUTO_SCROLL_MAX_SPEED,
+  EDGE_ZONE_INSET,
+  EDGE_ZONE_WIDTH,
+  EDGE_FIRST_PAGE_MS,
+  EDGE_REPEAT_PAGE_MS,
+  type Viewport,
+  type EdgeZone,
+  type EdgePagerState,
+  type EdgePagerStep,
+} from './edge-pager';
+export { monthCalendarKey, type MonthCalendarKeyResult } from './month-calendar-nav';
+export { MonthCalendar, type MonthCalendarProps } from './month-calendar';

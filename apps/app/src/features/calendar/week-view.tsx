@@ -10,7 +10,7 @@ import {
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
-import { Badge, Button, Icon, Text, useTheme } from '@housekeeping/ui';
+import { Badge, Button, Icon, Text, space, useTheme } from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -18,6 +18,7 @@ import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
 
 import { AbsenceStripeView, EntryLine, HouseholdDay, useStripeColors } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
+import { DayHeadTarget, RangeMark, SlotTarget, TripSource, useLiftedKind } from './calendar-drag';
 
 export interface WeekViewProps {
   data: CalendarData;
@@ -139,17 +140,28 @@ function WeekGrid(props: WeekViewProps) {
 
   return (
     <View style={{ marginBottom: 24, gap: 6 }} testID="week-grid">
+      {/* From 700 px a trip is drawn over the day heads (spec 0016, REQ-007). */}
       <View style={{ flexDirection: 'row', gap: 4 }}>
         <View style={{ width: LABEL_WIDTH }} />
         {dates.map((date) => (
-          <View key={date} style={{ flex: 1, minWidth: 0, paddingHorizontal: 4 }}>
-            <DayHead date={date} today={data.today} />
-          </View>
+          <DayHeadTarget key={date} date={date} style={{ flex: 1, minWidth: 0 }}>
+            <TripSource
+              date={date}
+              style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: space.xs }}
+            >
+              {() => (
+                <>
+                  <RangeMark date={date} />
+                  <DayHead date={date} today={data.today} />
+                </>
+              )}
+            </TripSource>
+          </DayHeadTarget>
         ))}
       </View>
       {stripes.length > 0 ? (
         <View style={{ flexDirection: 'row', gap: 4 }} testID="week-absence-row">
-          <RowLabel>Abwesenheit</RowLabel>
+          <RowLabel>Reise</RowLabel>
           <View style={{ flex: 1, gap: 3 }}>
             {stripes.map(({ stripe, segment }) => (
               <View key={stripe.key} style={{ position: 'relative', height: 26 }}>
@@ -204,7 +216,13 @@ function WeekGrid(props: WeekViewProps) {
         >
           <RowLabel>{slot.name}</RowLabel>
           {dates.map((date) => (
-            <View key={date} style={[cell(date), { minHeight: 64 }]}>
+            <SlotTarget
+              key={date}
+              date={date}
+              slotId={slot.id}
+              style={[cell(date), { minHeight: 64 }]}
+              testID={`week-slot-${date}-${slot.id}`}
+            >
               {data
                 .dayEntries(date)
                 .filter((entry) => entry.slotId === slot.id)
@@ -212,11 +230,27 @@ function WeekGrid(props: WeekViewProps) {
                   <EntryLine key={entry.id} entry={entry} data={data} onPress={props.onOpenEntry} />
                 ))}
               <AddCell date={date} slotId={slot.id} onAdd={props.onAdd} />
-            </View>
+            </SlotTarget>
           ))}
         </View>
       ))}
     </View>
+  );
+}
+
+/** An empty Tageszeit shown as a place to drop an entry while one is dragged (AC-006). */
+function EmptySlot() {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        minHeight: 36,
+        borderRadius: theme.shape.radius.control,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: theme.colors.border,
+      }}
+    />
   );
 }
 
@@ -258,6 +292,9 @@ function WeekList(props: WeekViewProps) {
   const weekStripes = data.stripes.filter((stripe) => stripeSegment(stripe, first, last));
   const chores = props.showHousehold ? data.householdRow(first, last) : {};
   const lastSlotId = data.slots[data.slots.length - 1]?.id;
+  // While an entry is dragged every Tageszeit of every day is a target, also the empty ones
+  // (spec 0016, AC-006); otherwise only Tageszeiten with entries show (spec 0010, AC-008).
+  const allSlots = useLiftedKind() === 'entry';
 
   return (
     <View style={{ marginBottom: 22 }} testID="week-list">
@@ -299,9 +336,15 @@ function WeekList(props: WeekViewProps) {
               ) : null}
               {data.slots.map((slot) => {
                 const slotEntries = entries.filter((entry) => entry.slotId === slot.id);
-                if (slotEntries.length === 0) return null;
+                if (slotEntries.length === 0 && !allSlots) return null;
                 return (
-                  <View key={slot.id} style={{ gap: 4 }}>
+                  <SlotTarget
+                    key={slot.id}
+                    date={date}
+                    slotId={slot.id}
+                    style={{ gap: 4 }}
+                    testID={`week-slot-${date}-${slot.id}`}
+                  >
                     <Text variant="caption" color="muted">
                       {slot.name}
                     </Text>
@@ -313,7 +356,8 @@ function WeekList(props: WeekViewProps) {
                         onPress={props.onOpenEntry}
                       />
                     ))}
-                  </View>
+                    {slotEntries.length === 0 ? <EmptySlot /> : null}
+                  </SlotTarget>
                 );
               })}
               <AddToDay date={date} slotId={lastSlotId} onAdd={props.onAdd} />

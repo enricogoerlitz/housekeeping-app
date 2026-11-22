@@ -38,6 +38,23 @@ export function focusRing(theme: Theme, focused: boolean | undefined): ViewStyle
     : null;
 }
 
+/** On the web a click also focuses a focusable view; only keyboard focus gets the ring. */
+export function keyboardFocus(event: unknown): boolean {
+  const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
+  return target?.matches?.(':focus-visible') ?? true;
+}
+
+/**
+ * `focusRing` for a Pressable's `focused` state that leaves out the focus a click or a tap gives
+ * on the web: the style is computed right after the focus moved, so the focused element tells
+ * whether it is `:focus-visible`. Native focus comes only from a keyboard or a screen reader.
+ */
+export function keyboardFocusRing(theme: Theme, focused: boolean | undefined): ViewStyle | null {
+  if (!focused) return null;
+  const doc = (globalThis as { document?: { activeElement?: unknown } }).document;
+  return focusRing(theme, doc === undefined || keyboardFocus({ target: doc.activeElement }));
+}
+
 type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 // react-native-web passes `onKeyDown` through to the DOM; native has no such prop and ignores it.
 type KeyEvent = { key: string; preventDefault: () => void };
@@ -97,7 +114,7 @@ export function Button(props: ButtonProps) {
           variant === 'primary' ? { backgroundColor: area?.fill ?? c.accent } : null,
           variant === 'secondary' ? { backgroundColor: c.surfaceSunken } : null,
           variant === 'ghost' ? { borderWidth: 1.5, borderColor: c.border } : null,
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -163,7 +180,7 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
           variant === 'soft' || (variant === 'plain' && hovered)
             ? { backgroundColor: theme.colors.surfaceSunken }
             : null,
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >

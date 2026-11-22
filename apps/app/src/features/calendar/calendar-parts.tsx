@@ -1,6 +1,7 @@
 import {
   absenceEndLabel,
   dateRangeLabel,
+  dragSourceKey,
   entryKindRole,
   stripeText,
   type AbsenceStripe,
@@ -16,14 +17,17 @@ import {
   KindLine,
   RowTransition,
   Text,
+  toast,
+  useDragSource,
   useTheme,
 } from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
 import { stripeWho, type CalendarData } from './calendar-data';
+import { LIFTED_OPACITY, useCalendarDrag } from './calendar-drag';
 
 // Member colours come from the data; a stripe of one person is tinted with them at this opacity
 // (spec 0010, REQ-009: "zart in ihrer Mitgliederfarbe").
@@ -39,7 +43,7 @@ export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, M
 }
 
 /**
- * Screen-reader text of a stripe: "Enrico abwesend, Urlaub Mallorca, 1.–4. Jan", with a packing
+ * Screen-reader text of a stripe: "Enrico unterwegs, Urlaub Mallorca, 1.–4. Jan", with a packing
  * list ", mit Packliste" (spec 0012, AC-046).
  */
 export function stripeA11y(
@@ -48,7 +52,7 @@ export function stripeA11y(
   hasPackingList = false,
 ): string {
   return [
-    `${stripeWho(stripe, membersById)} abwesend`,
+    `${stripeWho(stripe, membersById)} unterwegs`,
     stripe.note,
     dateRangeLabel(stripe.from, stripe.to),
     hasPackingList ? 'mit Packliste' : undefined,
@@ -97,7 +101,7 @@ export function AbsenceStripeView(props: {
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={stripeA11y(stripe, data.membersById, packing)}
-      accessibilityHint="Urlaubsseite öffnen"
+      accessibilityHint="Seite der Reise öffnen"
       onPress={() => props.onPress(stripe)}
       style={(state) => ({
         flexDirection: 'row',
@@ -130,7 +134,12 @@ export function AbsenceStripeView(props: {
   );
 }
 
-/** A plan entry as a calendar line: symbol, text and the kind's edge (D19). */
+/**
+ * A plan entry as a calendar line: symbol, text and the kind's edge (D19). It can be dragged to
+ * another day, Tageszeit or "Vorgemerkt" (spec 0016, REQ-001): held with a finger, pressed and
+ * moved with the mouse; its old place stays as a pale outline. Offline nothing lifts and the hint
+ * shows (AC-005). For screen readers the action "Verschieben" opens the entry window there.
+ */
 export function EntryLine(props: {
   entry: MealPlanEntry;
   data: CalendarData;
@@ -140,17 +149,36 @@ export function EntryLine(props: {
   compact?: boolean;
 }) {
   const { entry, data } = props;
+  const online = useOnlineOnly();
+  const { openMove } = useCalendarDrag();
   const title = data.lineTitleOf(entry);
+  const kind = entryKindRole(entry, data.recipesById);
+  const size = props.compact ? 'compact' : 'row';
+  const {
+    ref,
+    props: sourceProps,
+    style,
+    dragging,
+    guardPress,
+  } = useDragSource({
+    id: dragSourceKey({ kind: 'entry', entryId: entry.id }),
+    preview: () => <KindLine kind={kind} title={title} size={size} />,
+    disabled: online.disabled,
+    onBlocked: () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT }),
+  });
   return (
-    <KindLine
-      kind={entryKindRole(entry, data.recipesById)}
-      title={title}
-      prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
-      size={props.compact ? 'compact' : 'row'}
-      onPress={() => props.onPress(entry)}
-      accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${title}` : title}
-      testID={`entry-${entry.id}`}
-    />
+    <View ref={ref} {...sourceProps} style={[style, dragging ? { opacity: LIFTED_OPACITY } : null]}>
+      <KindLine
+        kind={kind}
+        title={title}
+        prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
+        size={size}
+        onPress={guardPress(() => props.onPress(entry))}
+        accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${title}` : title}
+        accessibilityAction={{ label: 'Verschieben', onAction: () => openMove(entry) }}
+        testID={`entry-${entry.id}`}
+      />
+    </View>
   );
 }
 

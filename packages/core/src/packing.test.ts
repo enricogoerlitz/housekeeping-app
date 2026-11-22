@@ -560,7 +560,7 @@ describe('Urlaubsseite', () => {
       [enrico, nadja],
     );
     expect(oneDay && tripHeader(oneDay, [enrico, nadja])).toEqual({
-      title: 'abwesend',
+      title: 'unterwegs',
       memberIds: [nadja.id],
       period: 'Mo 28.12.',
       duration: '1 Tag',

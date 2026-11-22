@@ -599,7 +599,7 @@ export function droppedPackingListMessage(
 
 export interface PackingCard {
   absenceId: Id;
-  /** The note of the absence, else "abwesend"; the card reads "Reisetasche · <title>". */
+  /** The note of the absence, else "unterwegs"; the card reads "Reisetasche · <title>". */
   title: string;
   /** The avatar; undefined for the whole household. */
   memberId?: Id;

@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
+import { absenceEndLabel } from '@housekeeping/core';
 
 import {
   ENRICO,
@@ -26,7 +27,7 @@ import { seedIds } from './seed-ids';
 
 // Spec 0001 — the weekly meal plan (REQ-006) and absences (AC-038), now in "Kalender" (spec 0010):
 // one "+ Hinzufügen" per day with one search for every kind, the second step in the same window,
-// the views Woche, Monat and Jahr, and the page "Abwesenheiten". The seed is dated from the real
+// the views Woche, Monat and Jahr, and the page "Reisen". The seed is dated from the real
 // today: "Thursday" of the ACs is today + 3 (no dish planned), "Saturday" today + 5. The tests add
 // to the calendar in order, so the file starts from a fresh seed.
 
@@ -65,11 +66,21 @@ async function openCalendarAt(page: Page, date: string): Promise<void> {
 async function pickRange(page: Page, from: string, to: string): Promise<void> {
   await tid(page, 'absence-from').click();
   for (const date of [from, to]) {
-    for (let step = 0; step < 3 && !(await tid(page, `range-day-${date}`).isVisible()); step += 1) {
+    for (
+      let step = 0;
+      step < 14 && !(await tid(page, `range-day-${date}`).isVisible());
+      step += 1
+    ) {
       await tid(page, 'range-next').click();
     }
     await tid(page, `range-day-${date}`).click();
   }
+}
+
+/** REQ-008 (0016): the screen shows no "Abwesenheit", "Abwesenheiten" or "abwesend", also not to a screen reader. */
+async function expectNoAbsenceWord(page: Page): Promise<void> {
+  await expect(page.locator('body')).not.toContainText(/abwesen/i, { useInnerText: true });
+  await expect(page.locator('[aria-label*="bwesen" i]')).toHaveCount(0);
 }
 
 test('AC-024 (0001) / AC-021 / AC-023 (0010): Mango-Curry for both splits the variants; the second step has a way back', async ({
@@ -169,7 +180,8 @@ test('AC-014 / AC-025 (0010): Woche, Monat and Jahr; ▲ opens "Aktivitäten" an
   await tid(page, 'calendar-view-year').click();
   await expect(tid(page, 'year-view')).toBeVisible();
   await expect(tidPrefix(page, 'year-month-')).toHaveCount(12);
-  await tid(page, 'year-month-3').click();
+  // The month name opens the month; a day opens the day window (spec 0016, AC-023).
+  await tid(page, 'year-month-3-open').click();
   await expect(tid(page, 'month-phone')).toBeVisible();
   await expect(tid(page, 'calendar-title')).toHaveText(/^März /);
   await tid(page, 'calendar-view-week').click();
@@ -190,7 +202,7 @@ test('AC-035 / AC-044 (0010): "Bis" before "Von" and nobody chosen save nothing'
   await open(page, '/');
   await openManaged(page, 'absences');
   await tid(page, 'absence-new').click();
-  await expect(tid(page, 'absence-sheet')).toContainText('Abwesenheit eintragen');
+  await expect(tid(page, 'absence-sheet')).toContainText('Reise eintragen');
   await pickRange(page, day(5), day(5));
   await tid(page, 'absence-to').click();
   await tid(page, `range-day-${day(4)}`).click();
@@ -232,16 +244,34 @@ test('AC-038 (0001) / AC-033 / AC-037 (0010): with Enrico away on Saturday only 
   await page.keyboard.press('Escape');
 
   // AC-037: deleting a row without a packing list offers "Rückgängig" for 5 seconds.
-  await open(page, '/abwesenheiten');
+  await open(page, '/reisen');
   const row = tid(page, 'absences-upcoming')
     .locator('[data-testid^="absence-"][data-testid$="-open"]')
     .filter({ hasText: 'Fortbildung Köln' });
   const rowId = ((await row.getAttribute('data-testid')) ?? '').replace(/-open$/, '');
   await tid(page, `${rowId}-remove`).click();
-  await expect(toastMessage(page)).toHaveText('Abwesenheit gelöscht');
+  await expect(toastMessage(page)).toHaveText('Reise gelöscht');
   await expect(tid(page, 'absences-upcoming')).not.toContainText('Fortbildung Köln');
   await tid(page, 'toast-action').click();
   await expect(tid(page, 'absences-upcoming')).toContainText('Fortbildung Köln');
+});
+
+test('AC-034 (0016): "Reisen" lives at /reisen and a trip at /kalender/reise/<id>; the old addresses are gone', async ({
+  page,
+}) => {
+  const mallorca = seedIds['abs-mallorca'];
+  await open(page, '/');
+  await openManaged(page, 'absences');
+  await expect(page).toHaveURL(/\/reisen$/);
+  await expect(tid(page, 'absences-screen')).toContainText('Reisen');
+  await tid(page, `absence-${mallorca}-open`).click();
+  await expect(page).toHaveURL(new RegExp(`/kalender/reise/${mallorca}(\\?|$)`));
+  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+
+  for (const path of ['/abwesenheiten', `/kalender/urlaub/${mallorca}`]) {
+    await open(page, path);
+    await expect(tid(page, 'not-found')).toContainText('Nicht gefunden');
+  }
 });
 
 test('AC-018 / AC-019 (0018): an exact recipe name offers no new recipe; a similar one still does', async ({
@@ -271,4 +301,41 @@ test('AC-021 (0018): the absence window names who is chosen: "Nur Enrico", then 
   await expect(tid(page, 'absence-who-hint')).toHaveText(`Nur ${ENRICO}`);
   await tid(page, `absence-member-${member('m-nadja')}`).click();
   await expect(tid(page, 'absence-who-hint')).toHaveText('Ganzer Haushalt');
+});
+
+test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a note reads "unterwegs"; nowhere "Abwesenheit"', async ({
+  page,
+}) => {
+  const year = Number(TODAY.slice(0, 4)) + 1;
+  const from = `${year}-01-01`;
+  const to = `${year}-01-04`;
+  await open(page, '/kalender');
+  await tid(page, 'calendar-more').click();
+  await expect(tid(page, 'calendar-more-absence-new')).toHaveText('Reise eintragen');
+  await expect(tid(page, 'calendar-more-absences')).toHaveText('Reisen');
+  await expectNoAbsenceWord(page);
+
+  await tid(page, 'calendar-more-absence-new').click();
+  await expect(tid(page, 'absence-sheet')).toContainText('Reise eintragen');
+  await expectNoAbsenceWord(page);
+  await pickRange(page, from, to);
+  await tid(page, 'absence-save').click();
+  await expect(tid(page, 'absence-sheet')).toBeHidden();
+
+  await tid(page, 'calendar-view-year').click();
+  await tid(page, 'week-next').click();
+  await expect(tid(page, 'calendar-title')).toHaveText(String(year));
+  await expect(tid(page, 'year-absences')).toContainText(`Reisen ${year}`);
+  await tid(page, `year-day-${from}`).click();
+  const stripe = tid(page, 'day-panel')
+    .locator('[data-testid^="day-panel-stripe-"]')
+    .filter({ hasText: 'unterwegs' });
+  await expect(stripe).toContainText(absenceEndLabel(to));
+  await expectNoAbsenceWord(page);
+
+  await tid(page, 'calendar-more').click();
+  await tid(page, 'calendar-more-absences').click();
+  await expect(page).toHaveURL(/\/reisen$/);
+  await expect(tid(page, 'absences-screen')).toContainText('Reisen');
+  await expectNoAbsenceWord(page);
 });

@@ -43,6 +43,10 @@ const TEXT_PAIRS: [fg: Role, bg: Role][] = [
   ['fabText', 'fabBg'],
   ['accent', 'bg'],
   ['accent', 'surface'],
+  // The dragged entry floats on the raised surface (spec 0016).
+  ['text', 'surfaceRaised'],
+  ['textMuted', 'surfaceRaised'],
+  ['accent', 'surfaceRaised'],
 ];
 // Non-text UI (WCAG 1.4.11): the check mark fill and the assistant button must stand out from
 // the card and the page by at least 3:1.
