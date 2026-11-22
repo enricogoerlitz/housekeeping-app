@@ -77,8 +77,8 @@ test('AC-001, AC-011: "Benachrichtigungen · 2 an" in the settings, the sections
   await expect(toggle(page, 'notif-kind-activities-eve')).not.toBeChecked();
   await expect(tid(page, 'notif-kind-activities-eve-detail')).toContainText('19:00');
   await expect(toggle(page, 'notif-kind-chore-reminders')).toBeChecked();
-  await expect(toggle(page, 'notif-kind-reservation-reminders')).toBeChecked();
-  await expect(tid(page, 'notif-kinds')).toContainText('2 h vorher, je Eintrag änderbar');
+  // Spec 0021, AC-039: no "Restaurant-Reservierung" any more.
+  await expect(tid(page, 'notif-kinds')).not.toContainText('Restaurant-Reservierung');
 
   // No entry under "Verwalten".
   await back(page);
@@ -139,7 +139,7 @@ test('AC-012, AC-003: Tagesüberblick at 6:45 with "Essen" and "Aufgaben" stays 
     '6:45 · Essen · Aufgaben',
   );
   await back(page);
-  await expect(tid(page, 'settings-notifications-row')).toContainText('3 an');
+  await expect(tid(page, 'settings-notifications-row')).toContainText('2 an');
   expect(await permissionAsks(page)).toBe(0);
 
   // Back to the defaults for the other tests of the run.

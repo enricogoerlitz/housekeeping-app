@@ -406,6 +406,23 @@ Tageszeit desselben Tags zählt); 0004 Nicht-Ziel „Kein Zusatz für Rezepte un
     angepasste Menge (kein Merkmal „von Hand angepasst“ am Beitrag); der Hinweis „Einkaufsliste
     angepasst“ sagt es. Vorwahl der Tageszeit kommt aus Spec 0020 (`addPresetSlot`).
 
+Beim Bau entschieden (Claude, 22.11.2026, jeweils die einfachste zur Spec passende Lösung):
+
+15. Der Text der Erinnerung geht beim Schließen im selben Aufruf mit (`saveEntry`, `reminderText`);
+    Verlassen des Felds speichert ihn nicht mehr, Enter weiter sofort.
+16. Eine Regel für die Liste: `recomputeEntryContributions` in `packages/core/src/entry-edit.ts`;
+    der Reisende-raus-Weg aus Spec 0022 nutzt sie über `followEntryOnList`. Neu gerechnet wird nur,
+    wenn sich Portionen oder Varianten ändern; eine neue Zutat ohne offenen Posten bekommt einen neuen
+    Posten (ein abgehakter wird nicht wieder geöffnet). Spec 0025 passt die Regel dort an.
+17. „Ältere Reste …“ zeigt alle früheren Gerichte, auch die der letzten sieben Tage.
+18. Im Tagesüberblick steht der Zusatz als erste Angabe in der Klammer: „Hummus (doppelte Menge,
+    Mittag, du kochst)“.
+19. Das Fenster „… aus dem Plan nehmen?“ hat drei Knöpfe untereinander; „Zutaten auch von der Liste
+    nehmen“ ist der Hauptknopf (vorgewählt).
+20. REQ-004 nur im Browser (die App ist PWA-only); REQ-019 nutzt das vorhandene Wischen aus
+    `packages/ui` (`SwipeArea`), sein Test liegt dort. Handy-Monat: der Punkt „Aufgabe“ folgt weiter
+    dem Schalter der Haushalt-Zeile; im Jahr ist er immer da.
+
 OFFEN: keine.
 
 ## Daten
@@ -446,12 +463,12 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
       (AC-013); Erinnerungsvorschlag und Text (AC-037, AC-038)
 - [x] 3. Api: Speichern beim Schließen in einem Aufruf, Entfernen mit Beiträgen (AC-025–AC-027,
       AC-040)
-- [ ] 4. Eintragsfenster: Felder, Schließen, Chips offen (AC-015, AC-022–AC-029, AC-035)
-- [ ] 5. Hinzufügen-Fenster: Zähler, Zusatz, Uhrzeit, Tab „Reste“ (AC-017, AC-030, AC-031)
-- [ ] 6. Benachrichtigungen-Seite ohne Reservierung (AC-039)
+- [x] 4. Eintragsfenster: Felder, Schließen, Chips offen (AC-015, AC-022–AC-029, AC-035)
+- [x] 5. Hinzufügen-Fenster: Zähler, Zusatz, Uhrzeit, Tab „Reste“ (AC-017, AC-030, AC-031)
+- [x] 6. Benachrichtigungen-Seite ohne Reservierung (AC-039)
 - [ ] 7. Kalender: Höhe, Monat-Aussehen, „+“, Scrollen zu heute, Kleinigkeiten (AC-001–AC-014)
-- [ ] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
-- [ ] 9. Nachtrag Review 0002: Aufgaben erledigen und Fenster im Kalender, Aufgaben in Monat und
+- [x] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
+- [x] 9. Nachtrag Review 0002: Aufgaben erledigen und Fenster im Kalender, Aufgaben in Monat und
       Jahr, fester Handy-Kopf mit „Heute ›“, Wischen blättert (AC-042–AC-048)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
       `/ui-verify`, `/security-check`
