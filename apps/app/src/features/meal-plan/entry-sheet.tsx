@@ -112,7 +112,13 @@ export function EntrySheet(props: {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const moveEntry = useMoveEntry();
   const today = useToday();
-  const entry = entries.find((candidate) => candidate.id === props.entryId);
+  const current = entries.find((candidate) => candidate.id === props.entryId);
+  // Removed on another device while the window is open: it stays with what was typed, and
+  // closing says it did not work (AC-027); a second close closes.
+  const last = useRef(current);
+  if (current) last.current = current;
+  const gone = current === undefined;
+  const entry = current ?? last.current;
   const recipe = entry?.recipeId ? recipesById[entry.recipeId] : undefined;
 
   // The typed fields (REQ-008, REQ-013), saved on closing.
@@ -220,6 +226,10 @@ export function EntrySheet(props: {
 
   const send = (fields: EntryFields, after: () => void) => {
     let saved: Promise<string | undefined>;
+    if (gone) {
+      setRefused(WRITE_REJECTED_MESSAGE);
+      return;
+    }
     try {
       saved = saveEntry(entry.id, fields);
     } catch (caught) {
@@ -250,6 +260,10 @@ export function EntrySheet(props: {
       return;
     }
     if (saving) return;
+    if (gone && (how === 'dismiss' || refused)) {
+      props.onClose();
+      return;
+    }
     const { fields, invalid } = collect();
     const names = (Object.keys(invalid) as TypedField[]).map((field) => FIELD_NAMES[field]);
     if (names.length > 0 && !(how === 'dismiss' && hinted.current)) {

@@ -466,9 +466,10 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 - [x] 4. Eintragsfenster: Felder, Schließen, Chips offen (AC-015, AC-022–AC-029, AC-035)
 - [x] 5. Hinzufügen-Fenster: Zähler, Zusatz, Uhrzeit, Tab „Reste“ (AC-017, AC-030, AC-031)
 - [x] 6. Benachrichtigungen-Seite ohne Reservierung (AC-039)
-- [ ] 7. Kalender: Höhe, Monat-Aussehen, „+“, Scrollen zu heute, Kleinigkeiten (AC-001–AC-014)
+- [x] 7. Kalender: Höhe, Monat-Aussehen, „+“, Scrollen zu heute, Kleinigkeiten (AC-001–AC-014)
 - [x] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
 - [x] 9. Nachtrag Review 0002: Aufgaben erledigen und Fenster im Kalender, Aufgaben in Monat und
       Jahr, fester Handy-Kopf mit „Heute ›“, Wischen blättert (AC-042–AC-048)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
-      `/ui-verify`, `/security-check`
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 39 Dateien/2261 Tests
+      grün (über den DB-Lock), e2e nur typgeprüft; `/security-check` (22.11.: 0 kritisch/hoch/mittel,
+      der niedrige Befund „Format-Zeichen im Zusatz“ ist behoben, `*_no_format`); `/ui-verify` in 0028

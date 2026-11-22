@@ -57,7 +57,14 @@ alter table public.meal_plan_entries rename column reserved_at to starts_at;
 alter table public.meal_plan_entries
   add constraint meal_plan_entries_starts_at_five_minutes check (private.is_five_minute_time(starts_at)),
   add constraint meal_plan_entries_starts_at_only_timed
-    check (starts_at is null or kind in ('restaurant', 'activity'));
+    check (starts_at is null or kind in ('restaurant', 'activity')),
+  -- Free text and Zusatz now name every kind in notifications: besides the control characters
+  -- (text_no_control, note_no_control) also the invisible or direction-changing ones, exactly as
+  -- for reminder_text (security check 22.11.2026).
+  add constraint meal_plan_entries_text_no_format
+    check (text !~ '[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]'),
+  add constraint meal_plan_entries_note_no_format
+    check (note !~ '[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]');
 
 -- ---------------------------------------------------------------------------------------------
 -- apply_changes: the allowlist (otherwise unchanged from packing_list_edit)

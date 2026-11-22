@@ -329,6 +329,7 @@ describe('the typed fields of an entry (REQ-008)', () => {
     expect(checkEntryNote(' doppelte Menge ')).toEqual({ ok: true, value: 'doppelte Menge' });
     expect(checkEntryNote('  ')).toEqual({ ok: true, value: undefined });
     expect(checkEntryNote('a\nb')).toEqual({ ok: false, error: 'Ohne Zeilenumbrüche' });
+    expect(checkEntryNote('a\u202eb')).toEqual({ ok: false, error: 'Ohne Zeilenumbrüche' });
     expect(checkEntryNote('x'.repeat(121))).toEqual({ ok: false, error: 'Höchstens 120 Zeichen' });
   });
 });

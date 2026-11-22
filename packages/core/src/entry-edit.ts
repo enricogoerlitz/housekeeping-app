@@ -19,8 +19,10 @@ import type {
 export const MAX_ENTRY_TEXT = 500;
 export const MAX_ENTRY_NOTE = 120;
 
-// meal_plan_entries_text_no_control and _note_no_control refuse every control character.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+// meal_plan_entries_text_no_control/_no_format and _note_no_control/_no_format: control
+// characters and the invisible or direction-changing ones, as for the reminder's text.
+const CONTROL =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
 
 export type FieldCheck = { ok: true; value: string | undefined } | { ok: false; error: string };
 

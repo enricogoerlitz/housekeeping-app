@@ -5,7 +5,7 @@
 -- household and a signed-out caller cannot. The reservation reminder is gone (AC-039).
 begin;
 \ir _helpers.psql
-select plan(26);
+select plan(27);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -97,6 +97,8 @@ select lives_ok(tests.patch_sql('e_enzo', '{"note": "Tisch für 6"}'),
 select lives_ok(tests.patch_sql('e_oma', '{"note": "mit Kuchen"}'), 'REQ-008 apply_changes: free text gets a Zusatz');
 select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('note', 'doppelte' || chr(10) || 'Menge')), '23514', null,
   'AC-024 apply_changes: a Zusatz with a line break is refused');
+select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('note', 'doppelte' || chr(8238) || 'Menge')), '23514', null,
+  'Risiken apply_changes: a Zusatz with a direction-changing character is refused (it reaches notifications)');
 select throws_ok(tests.patch_sql('e_lasagne', jsonb_build_object('note', repeat('x', 121))), '23514', null,
   'REQ-008 apply_changes: a Zusatz over 120 characters is refused');
 
