@@ -1174,3 +1174,9 @@ Wird am Ende ausgefüllt.
     aufgerufener Workflow bekommt die Secrets seiner Umgebung nur mit `secrets: inherit`; der Test
     in `scripts/ci/workflows.test.mjs` verlangt das. Auf Repo-Ebene gibt es keine Secrets, es
     kommen also nur die der Umgebung `backup` an (AC-053 bleibt erfüllt).
+15. **Sicherung ohne Foto-Bucket vor der ersten Veröffentlichung (22.11.2026).** Das Release sichert vor
+    den Migrationen; in der leeren Produktion gibt es `household-media` deshalb noch nicht, und
+    `aws s3 sync` brach mit „NoSuchBucket“ ab. Fehlt der Bucket, gibt es jetzt eine Warnung und null
+    Fotos; jeder andere Fehler bricht weiter ab. Ein später verlorener Bucket fällt in der Prüfung nach
+    jeder Auslieferung auf („Foto-Bucket“). Außerdem: Das Passwort der Rolle `backup_reader` passte
+    nicht zu `BACKUP_DB_URL` und wurde im SQL-Editor angeglichen (`alter role … with password`).
