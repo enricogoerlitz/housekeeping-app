@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { articlesById, enrico, makeRecipe, mangoCurry, nadja } from './test-fixtures';
 import {
-  recomputeEntryContributions,
+  followEntryOnList,
   tripMealLine,
   tripMealOffers,
   tripMealsDoneText,
@@ -271,7 +271,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
   const now = '2026-11-22T12:00:00.000Z';
 
   it('AC-021: "Hackfleisch 125 g" with the same Herkunft and on the same item', () => {
-    const next = recomputeEntryContributions({
+    const next = followEntryOnList({
       items: [hack, eier],
       entry: { ...lasagne, eaterIds: [nadja.id], portions: 1 },
       recipe: lasagneRecipe,
@@ -291,7 +291,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
   });
 
   it('AC-021: a parked dish takes its contributions away; "Eier" goes', () => {
-    const next = recomputeEntryContributions({
+    const next = followEntryOnList({
       items: [hack, eier],
       entry: { ...shakshuka, date: null },
       articlesById,
@@ -304,7 +304,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
   it('checked items stay, and nothing on the list means no change', () => {
     const checked = { ...hack, checked: true };
     expect(
-      recomputeEntryContributions({
+      followEntryOnList({
         items: [checked],
         entry: { ...lasagne, portions: 1 },
         recipe: lasagneRecipe,
@@ -314,7 +314,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
       }),
     ).toEqual([checked]);
     expect(
-      recomputeEntryContributions({
+      followEntryOnList({
         items: [eier],
         entry: { ...lasagne, portions: 1 },
         recipe: lasagneRecipe,

@@ -17,7 +17,8 @@ import type {
 // ---------- Kinds and settings ----------
 
 /** Spec 0021, REQ-014: the reservation has no kind of its own; its reminder is the entry's. */
-export type NotificationKind = 'dailySummary' | 'activitiesEve' | 'choreReminders' | 'entryReminders';
+export type NotificationKind =
+  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'entryReminders';
 
 /** In the order of the page (concept 3.14). */
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [

@@ -180,7 +180,6 @@ describe('times in five-minute steps (Decision 4)', () => {
       'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus',
     );
   });
-
 });
 
 const chromeMac =

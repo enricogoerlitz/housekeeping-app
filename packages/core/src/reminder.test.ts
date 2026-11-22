@@ -572,7 +572,11 @@ describe('spec 0021: the time of an entry and its one reminder (REQ-008, REQ-013
     const lasagne = makeRecipe({ id: 'lasagne', title: 'Lasagne' });
     const recipesById = { lasagne };
     expect(
-      planEntryTitle(entry({ id: 'e', recipeId: 'lasagne', note: 'doppelte Menge' }), recipesById, []),
+      planEntryTitle(
+        entry({ id: 'e', recipeId: 'lasagne', note: 'doppelte Menge' }),
+        recipesById,
+        [],
+      ),
     ).toBe('Lasagne (doppelte Menge)');
     expect(
       planEntryTitle(
@@ -617,9 +621,9 @@ describe('spec 0021: the time of an entry and its one reminder (REQ-008, REQ-013
 
   it('AC-037, AC-038: the first time switches "Erinnern" on, a later change does not move it', () => {
     const base = { entryDate: SATURDAY, now: SATURDAY_NOON, timeZone: BERLIN };
-    expect(timeReminder({ ...base, before: undefined, after: '19:30', reminder: undefined })).toEqual(
-      { offsetDays: 0, at: '17:30' },
-    );
+    expect(
+      timeReminder({ ...base, before: undefined, after: '19:30', reminder: undefined }),
+    ).toEqual({ offsetDays: 0, at: '17:30' });
     expect(
       timeReminder({
         ...base,

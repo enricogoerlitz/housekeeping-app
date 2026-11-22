@@ -4,6 +4,7 @@ import type { TripStripe } from './trips';
 import {
   dateRangeLabel,
   dayA11yLabel,
+  entryCountRole,
   dayKinds,
   dayMonthLabel,
   dayMonthLongLabel,
@@ -383,5 +384,16 @@ describe('spec 0016: day window, range drag and changing the view', () => {
       'Freitag, 27. November: 2 Rezepte, 1 Aufgabe, Enrico und Nadja unterwegs',
     );
     expect(dayA11yLabel('2026-12-01', [], [])).toBe('Dienstag, 1. Dezember');
+  });
+
+  it('spec 0021, AC-013: free text and leftovers count as "Essen", "1 Rezept, 2 Essen"', () => {
+    const roles = [
+      entryCountRole({ kind: 'text' }, {}),
+      entryCountRole({ kind: 'recipe', recipeId: 'lasagne' }, {}),
+      entryCountRole({ kind: 'leftovers', recipeId: 'dal' }, {}),
+    ];
+    expect(roles).toEqual(['meal', 'recipe', 'meal']);
+    expect(dayA11yLabel('2026-11-27', roles, [])).toBe('Freitag, 27. November: 1 Rezept, 2 Essen');
+    expect(dayA11yLabel('2026-11-27', ['meal'], [])).toBe('Freitag, 27. November: 1 Essen');
   });
 });

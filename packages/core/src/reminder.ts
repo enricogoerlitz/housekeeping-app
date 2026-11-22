@@ -314,7 +314,10 @@ export function planEntryTitle(
   restaurantsById: Record<Id, { name: string }> = {},
   activitiesById: Record<Id, { name: string }> = {},
 ): string {
-  return withNote(entryName(entry, recipesById, entries, restaurantsById, activitiesById), entry.note);
+  return withNote(
+    entryName(entry, recipesById, entries, restaurantsById, activitiesById),
+    entry.note,
+  );
 }
 
 /** The name alone, without the Zusatz: also the title of the entry's window. */

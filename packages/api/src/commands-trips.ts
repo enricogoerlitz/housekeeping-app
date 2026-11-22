@@ -2,7 +2,7 @@ import {
   packingSaveProblem,
   planPackingList,
   recalcPerDay,
-  recomputeEntryContributions,
+  followEntryOnList,
   tripDays,
   validateTripDraft,
   withoutTravellers,
@@ -165,7 +165,7 @@ export function takeTravellersOut(offers: readonly { entryId: Id; memberIds: Id[
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     const next = withoutTravellers({ entry, memberIds, recipe, members, articlesById });
     changed.set(entry.id, next);
-    items = recomputeEntryContributions({ items, entry: next, recipe, articlesById, newId, now });
+    items = followEntryOnList({ items, entry: next, recipe, articlesById, newId, now });
   }
   const itemIds = new Set(items.map((item) => item.id));
   const contributionIds = new Set(

@@ -16,6 +16,8 @@ import {
 import {
   tripStripes,
   dayA11yLabel,
+  entryCountRole,
+  type CountRole,
   entriesForDay,
   entryKindRole,
   entryLineLabel,
@@ -121,9 +123,16 @@ export function dayRoles(data: CalendarData, date: ISODate, choreCount = 0): Kin
   return choreCount > 0 ? [...roles, ...Array<KindRole>(choreCount).fill('chore')] : roles;
 }
 
-/** "Freitag, 27. November: 1 Aktivität, 1 Rezept, Nadja unterwegs" (spec 0016, platforms). */
+/**
+ * "Freitag, 27. November: 1 Aktivität, 1 Rezept, 2 Essen, Nadja unterwegs" (spec 0016, platforms;
+ * spec 0021, AC-013: free text and leftovers are "Essen").
+ */
 export function dayLabel(data: CalendarData, date: ISODate, choreCount = 0): string {
-  return dayA11yLabel(date, dayRoles(data, date, choreCount), data.travellerNames(date));
+  const roles: CountRole[] = data
+    .dayEntries(date)
+    .map((entry) => entryCountRole(entry, data.recipesById));
+  if (choreCount > 0) roles.push(...Array<CountRole>(choreCount).fill('chore'));
+  return dayA11yLabel(date, roles, data.travellerNames(date));
 }
 
 /** "Enrico", "Enrico und Nadja", "Ganzer Haushalt": who a stripe stands for. */

@@ -229,9 +229,36 @@ export function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(', ')} und ${names[names.length - 1] ?? ''}`;
 }
 
-const KIND_NAMES: Record<KindRole, [one: string, many: string]> = {
+/**
+ * What a day's item counts as in its screen-reader text: its kind role, but free text and leftovers
+ * are "Essen" (spec 0021, REQ-005, Decision 11), while their dot stays that of a recipe.
+ */
+export type CountRole = KindRole | 'meal';
+
+/** Order of the counts: as the dots, with "Essen" after the recipes. */
+const COUNT_ROLES: CountRole[] = [
+  'activity',
+  'recipe',
+  'meal',
+  'collection',
+  'restaurant',
+  'chore',
+];
+
+/** The count role of an entry: "Essen" for free text and leftovers, else `entryKindRole`. */
+export function entryCountRole(
+  entry: Pick<MealPlanEntry, 'kind' | 'recipeId'>,
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): CountRole {
+  return entry.kind === 'text' || entry.kind === 'leftovers'
+    ? 'meal'
+    : entryKindRole(entry, recipesById);
+}
+
+const KIND_NAMES: Record<CountRole, [one: string, many: string]> = {
   activity: ['Aktivität', 'Aktivitäten'],
   recipe: ['Rezept', 'Rezepte'],
+  meal: ['Essen', 'Essen'],
   collection: ['Sammlung', 'Sammlungen'],
   restaurant: ['Restaurant', 'Restaurants'],
   chore: ['Aufgabe', 'Aufgaben'],
@@ -243,10 +270,10 @@ const KIND_NAMES: Record<KindRole, [one: string, many: string]> = {
  */
 export function dayA11yLabel(
   date: ISODate,
-  roles: readonly KindRole[],
+  roles: readonly CountRole[],
   travellerNames: readonly string[],
 ): string {
-  const parts = KIND_ROLES.flatMap((role) => {
+  const parts = COUNT_ROLES.flatMap((role) => {
     const count = roles.filter((candidate) => candidate === role).length;
     if (count === 0) return [];
     const [one, many] = KIND_NAMES[role];

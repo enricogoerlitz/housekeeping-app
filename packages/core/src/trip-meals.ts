@@ -1,4 +1,5 @@
-import { addContribution, contributionsFromEntry } from './shopping';
+import { recomputeEntryContributions } from './entry-edit';
+import { contributionsFromEntry } from './shopping';
 import { formatShortDate, weekdayShort } from './dates';
 import { splitVariants } from './meal-plan';
 import type {
@@ -161,12 +162,10 @@ export function withoutTravellers(input: {
 
 /**
  * The open items of the shopping list after an entry changed (spec 0021, REQ-007; AC-021): the
- * contributions with the entry's Herkunft on items not checked are computed anew for its new
- * portions and variants (an ingredient no longer needed goes, an emptied item goes); a parked
- * entry takes them all away. When nothing of the entry is on the list, nothing changes; checked
- * items stay as they are. `dayLabel` is the short weekday in the Herkunft ("Mo").
+ * one rule of `recomputeEntryContributions` for its new portions and variants; a parked entry or
+ * one without its recipe takes the contributions away. `newId` and `now` as there.
  */
-export function recomputeEntryContributions(input: {
+export function followEntryOnList(input: {
   items: readonly ShoppingItem[];
   entry: MealPlanEntry;
   recipe?: Recipe;
@@ -174,70 +173,17 @@ export function recomputeEntryContributions(input: {
   newId: () => Id;
   now: string;
 }): ShoppingItem[] {
-  const { entry } = input;
-  const ofEntry = (item: ShoppingItem) =>
-    item.contributions.some(
-      (contribution) =>
-        contribution.source.kind === 'recipe' && contribution.source.entryId === entry.id,
-    );
-  if (!input.items.some(ofEntry)) return [...input.items];
-  const open = input.items.filter((item) => !item.checked);
-  const labelOf = () => {
-    for (const item of input.items) {
-      for (const contribution of item.contributions) {
-        if (contribution.source.kind === 'recipe' && contribution.source.entryId === entry.id) {
-          return contribution.source.label;
-        }
-      }
-    }
-    return undefined;
-  };
-  const label = labelOf();
-  // Without the entry's contributions on open items; an item left empty goes at the end.
-  let next: ShoppingItem[] = input.items.map((item) => {
-    if (item.checked || !ofEntry(item)) return item;
-    const contributions = item.contributions.filter(
-      (contribution) =>
-        !(contribution.source.kind === 'recipe' && contribution.source.entryId === entry.id),
-    );
-    return { ...item, contributions };
-  });
-  const withoutEmpty = (items: ShoppingItem[]) =>
-    items.filter((item) => item.checked || item.contributions.length > 0);
-  if (entry.date === null || !input.recipe || open.length === 0) return withoutEmpty(next);
-  const recipe = input.recipe;
-  const planned = contributionsFromEntry(entry, recipe, input.articlesById, '').map(
-    (contribution) => ({ ...contribution, label: label ?? contribution.label }),
-  );
-  // Ingredients that only stood on checked items are not put on the list again.
-  const checkedArticles = new Set(
-    input.items.filter((item) => item.checked && ofEntry(item)).map((item) => item.articleId),
-  );
-  for (const contribution of planned) {
-    if (checkedArticles.has(contribution.articleId)) continue;
-    const before = input.items.find(
-      (item) => !item.checked && ofEntry(item) && item.articleId === contribution.articleId,
-    );
-    if (!before && contribution.isPantry) continue;
-    next = addContribution(
-      next,
-      contribution.articleId,
-      {
-        id: input.newId(),
-        source: {
-          kind: 'recipe',
-          recipeId: contribution.recipeId,
-          entryId: entry.id,
-          label: contribution.label,
-        },
-        count: contribution.count,
-        qty: contribution.qty,
-        unit: contribution.unit,
-        note: contribution.note,
-      },
-      input.newId(),
-      input.now,
-    );
-  }
-  return withoutEmpty(next);
+  const { entry, recipe } = input;
+  const planned =
+    entry.date === null || !recipe
+      ? []
+      : contributionsFromEntry(entry, recipe, input.articlesById, '');
+  return recomputeEntryContributions({
+    items: input.items,
+    entryId: entry.id,
+    planned,
+    articlesById: input.articlesById,
+    newId: input.newId,
+    now: input.now,
+  }).items;
 }
