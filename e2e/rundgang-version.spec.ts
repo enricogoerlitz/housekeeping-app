@@ -148,11 +148,9 @@ test.describe('version without network and below the minimum (spec 0014)', () =>
     await expect(banner.getByRole('button', { name: 'Neu laden' })).toBeVisible();
     await expect(tid(page, 'offline-banner')).toHaveCount(0);
 
-    // Editing is locked like offline, with the same hint.
+    // Editing is locked like offline, with its own hint (spec 0018, AC-023).
     await nav(page, 'rezepte');
-    await expect(tid(page, 'recipe-offline-hint')).toHaveText(
-      'Offline – zum Bearbeiten brauchst du Netz',
-    );
+    await expect(tid(page, 'recipe-offline-hint')).toHaveText('Bitte neu laden, um zu bearbeiten');
 
     // Checking in store mode works on the device, but waits in the store queue.
     await nav(page, 'liste');

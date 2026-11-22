@@ -18,6 +18,7 @@ import {
   kindSubtitle,
   kindsSectionTitle,
   NOTIFICATION_KINDS,
+  notificationsRowLabel,
   notificationTargetHref,
   parseNotificationTarget,
   parseTimeInput,
@@ -27,6 +28,7 @@ import {
   REMIND_CHOICES,
   remindLabel,
   serverDeviceStatus,
+  thisDeviceRegistered,
   thisDeviceView,
   toggleSummaryPart,
   withTime,
@@ -54,6 +56,33 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
         reservationRemindersEnabled: false,
       }),
     ).toBe('Alle aus');
+  });
+
+  it('spec 0018, AC-022: kinds on, this device not registered: "2 an · dieses Gerät aus"', () => {
+    expect(notificationsRowLabel(notificationDefaults, false)).toBe('2 an · dieses Gerät aus');
+  });
+
+  it('spec 0018, AC-022: once this device is registered: "2 an"', () => {
+    expect(notificationsRowLabel(notificationDefaults, true)).toBe('2 an');
+  });
+
+  it('spec 0018, AC-022: with every kind off the device does not matter: "Alle aus"', () => {
+    const off = {
+      ...notificationDefaults,
+      choreRemindersEnabled: false,
+      reservationRemindersEnabled: false,
+    };
+    expect(notificationsRowLabel(off, false)).toBe('Alle aus');
+    expect(notificationsRowLabel(off, true)).toBe('Alle aus');
+  });
+
+  it('spec 0018, AC-022: registered = wanted here, an address registered, push supported', () => {
+    const on = { support: 'supported', wanted: true, storedEndpoint: 'https://push/1' } as const;
+    expect(thisDeviceRegistered(on)).toBe(true);
+    expect(thisDeviceRegistered({ ...on, wanted: false })).toBe(false);
+    expect(thisDeviceRegistered({ ...on, wanted: undefined })).toBe(false);
+    expect(thisDeviceRegistered({ support: 'supported', wanted: true })).toBe(false);
+    expect(thisDeviceRegistered({ ...on, support: 'unsupported' })).toBe(false);
   });
 
   it('AC-011: the defaults: only chores with a time and reservations are on', () => {
