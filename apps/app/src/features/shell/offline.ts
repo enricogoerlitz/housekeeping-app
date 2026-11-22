@@ -1,15 +1,31 @@
-import { OfflineError, useOffline } from '@housekeeping/api';
+import { OfflineError, useAppVersionState, useOffline, useSyncState } from '@housekeeping/api';
+import { editLockReason } from '@housekeeping/core';
 import { toast } from '@housekeeping/ui';
 
 export const OFFLINE_EDIT_HINT = 'Offline – zum Bearbeiten brauchst du Netz';
+/** Below the minimum app version with network (spec 0018, AC-023; ADR-0015). */
+export const VERSION_EDIT_HINT = 'Bitte neu laden, um zu bearbeiten';
 
 /**
  * For actions that need the network (everything except reading and the store-mode actions):
- * `disabled` greys the control out, `hint` explains why.
+ * `disabled` greys the control out, `hint` explains why — offline, or a version the server no
+ * longer supports.
  */
 export function useOnlineOnly(): { offline: boolean; disabled: boolean; hint: string | undefined } {
   const offline = useOffline();
-  return { offline, disabled: offline, hint: offline ? OFFLINE_EDIT_HINT : undefined };
+  const networkOffline = useSyncState().status === 'offline';
+  const version = useAppVersionState();
+  const reason = editLockReason({ writesLocked: offline, networkOffline, version });
+  return {
+    offline,
+    disabled: offline,
+    hint:
+      reason === 'version'
+        ? VERSION_EDIT_HINT
+        : reason === 'offline'
+          ? OFFLINE_EDIT_HINT
+          : undefined,
+  };
 }
 
 const OFFLINE_UNDO_HINT = 'Offline – zum Rückgängigmachen brauchst du Netz';
