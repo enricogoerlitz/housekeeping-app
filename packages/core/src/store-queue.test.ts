@@ -77,12 +77,12 @@ function addEntry(
   };
 }
 
-const check = (itemId: string, checked: boolean, seenCheckSeq = 0): StoreQueueEntry => ({
-  kind: 'check',
-  itemId,
-  checked,
-  seenCheckSeq,
-});
+const check = (
+  itemId: string,
+  checked: boolean,
+  seenCheckSeq = 0,
+  onList = false,
+): StoreQueueEntry => ({ kind: 'check', itemId, checked, seenCheckSeq, onList });
 
 describe('enqueue and queueEffect: checking', () => {
   it('AC-021: checking offline is queued and visible at once', () => {
@@ -153,6 +153,52 @@ describe('enqueue and queueEffect: checking', () => {
     const visible = applyQueue(tables, reloaded, 'h1');
     expect(['i1', 'i3', 'i4'].map((id) => item(visible, id)?.checked)).toEqual([true, true, true]);
     expect(reloaded).toEqual(queue);
+  });
+});
+
+describe('checking on "Liste" (spec 0025, REQ-006)', () => {
+  it('AC-024: offline a check on the list is visible at once and marked "auf der Liste"', () => {
+    const tables = base();
+    const queue = enqueue([], check('i1', true, 0, true), item(tables, 'i1'));
+    expect(item(applyQueue(tables, queue, 'h1'), 'i1')).toMatchObject({
+      checked: true,
+      checked_on_list: true,
+    });
+  });
+
+  it('AC-022: "Rückgängig" takes the check and its mark back', () => {
+    const tables = base();
+    tables.shopping_items = {
+      ...tables.shopping_items,
+      i2: { ...tables.shopping_items?.i2, id: 'i2', checked: true, checked_on_list: true },
+    };
+    const queue = enqueue([], check('i2', false, 3), item(tables, 'i2'));
+    expect(item(applyQueue(tables, queue, 'h1'), 'i2')).toMatchObject({
+      checked: false,
+      checked_on_list: false,
+    });
+  });
+
+  it('a check in the store is not marked', () => {
+    const tables = base();
+    const queue = enqueue([], check('i1', true), item(tables, 'i1'));
+    expect(item(applyQueue(tables, queue, 'h1'), 'i1')?.checked_on_list).toBe(false);
+  });
+
+  it('a stored entry of the older app without onList is kept as a check in the store', () => {
+    const old = { kind: 'check', itemId: 'i1', checked: true, seenCheckSeq: 2 };
+    expect(parseStoredQueue([old])).toEqual({ entries: [check('i1', true, 2)], dropped: 0 });
+  });
+
+  it('adding to an item checked on the list reopens it without the mark', () => {
+    const tables = base();
+    tables.shopping_items = {
+      ...tables.shopping_items,
+      i1: { ...tables.shopping_items?.i1, id: 'i1', checked: true, checked_on_list: true },
+    };
+    const name = String(tables.articles?.[String(tables.shopping_items.i1?.article_id)]?.name);
+    const added = applyQueue(tables, [addEntry('t1', [contribution('k1', name)])], 'h1');
+    expect(item(added, 'i1')).toMatchObject({ checked: false, checked_on_list: false });
   });
 });
 

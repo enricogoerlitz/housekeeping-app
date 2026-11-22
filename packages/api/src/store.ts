@@ -135,7 +135,7 @@ export interface RpcContext<T> {
  * filled in by the engine from what the device last saw of the server.
  */
 export type StoreAction =
-  | { kind: 'check'; itemId: string; checked: boolean }
+  | { kind: 'check'; itemId: string; checked: boolean; onList?: boolean }
   | { kind: 'pack'; householdId: string; itemId: string; packed: boolean }
   | Exclude<StoreQueueEntry, { kind: 'check' | 'pack' }>;
 

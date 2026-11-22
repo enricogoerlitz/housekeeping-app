@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0021: version 12 for starts_at instead of the reservation (after 0023: 11); version 11 loads again', () => {
-    expect(CACHE_VERSION).toBe(12);
+  it('spec 0021: version 13 for starts_at instead of the reservation (after 0025: 12); version 12 loads again', () => {
+    expect(CACHE_VERSION).toBe(13);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {
@@ -491,7 +491,8 @@ describe('stored store queue (security check, spec 0006)', () => {
       });
       await settle(engine);
       expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
-      expect(await storage.get('queue')).toEqual([valid]);
+      // Stored again as parsed: the older entry gains onList false (spec 0025).
+      expect(await storage.get('queue')).toEqual([{ ...valid, onList: false }]);
 
       environment.setOnline(true);
       await settle(engine);

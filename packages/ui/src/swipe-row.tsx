@@ -19,6 +19,13 @@ export interface SwipeToRemoveProps {
   onRemove: () => void;
   /** Text behind the row, e.g. "Entfernen". */
   label: string;
+  /**
+   * Optional second action: runs once the row was swiped far enough to the right, e.g. "Erledigt"
+   * on the shopping list (spec 0025, REQ-006). Without it only the left swipe exists.
+   */
+  onSwipeRight?: () => void;
+  /** Text behind the row on the left for the right swipe, e.g. "Erledigt". */
+  rightLabel?: string;
   /** False: no swipe (wider screens, offline); the row behaves like a plain row. */
   enabled?: boolean;
   testID?: string;
@@ -34,24 +41,28 @@ const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 const SPRING_BACK = { damping: 22, stiffness: 260 };
 const COVER_MS = 250;
 
-const isHorizontalLeft = (gesture: PanResponderGestureState) =>
-  gesture.dx < -START_DISTANCE && Math.abs(gesture.dx) > 2 * Math.abs(gesture.dy);
+const isHorizontal = (gesture: PanResponderGestureState, both: boolean) =>
+  (gesture.dx < -START_DISTANCE || (both && gesture.dx > START_DISTANCE)) &&
+  Math.abs(gesture.dx) > 2 * Math.abs(gesture.dy);
 
 /**
- * A list row that is removed by swiping it to the left (spec 0006, REQ-004): it follows the finger
+ * A list row that is removed by swiping it to the left (spec 0006, REQ-004), and with
+ * `onSwipeRight` handled by swiping it to the right (spec 0025, REQ-006): it follows the finger
  * 1:1, springs back when let go early and slides out past a third of its width. Behind it the
- * caller's label says what happens. Not the only way: the row's own window offers "Entfernen" too,
- * for screen readers and wider screens without swipe.
+ * caller's label says what happens. Not the only way: the row's own window offers both actions
+ * too, for screen readers and wider screens without swipe.
  */
 export function SwipeToRemove(props: SwipeToRemoveProps) {
   const theme = useTheme();
   const reduced = useReducedMotion();
   const offset = useSharedValue(0);
   const width = useSharedValue(0);
-  const [leaving, setLeaving] = useState(false);
+  const [leaving, setLeaving] = useState<'left' | 'right' | undefined>();
+  const both = props.onSwipeRight !== undefined;
   // While and just after a swipe a cover lies over the row, so letting go is never a tap on it.
   const [swiping, setSwiping] = useState(false);
   const remove = useEffectEvent(() => props.onRemove());
+  const swipeRight = useEffectEvent(() => props.onSwipeRight?.());
 
   // The handlers only move the row and say when it leaves; the effect below removes it.
   const [responder] = useState(() => {
@@ -61,20 +72,22 @@ export function SwipeToRemove(props: SwipeToRemoveProps) {
       moving = false;
     };
     return PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_event, gesture) => isHorizontalLeft(gesture),
-      onMoveShouldSetPanResponder: (_event, gesture) => isHorizontalLeft(gesture),
+      onMoveShouldSetPanResponderCapture: (_event, gesture) => isHorizontal(gesture, both),
+      onMoveShouldSetPanResponder: (_event, gesture) => isHorizontal(gesture, both),
       onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_event, gesture) => {
         if (!moving) {
           moving = true;
           setSwiping(true);
         }
-        offset.set(Math.min(0, gesture.dx));
+        offset.set(both ? gesture.dx : Math.min(0, gesture.dx));
       },
       onPanResponderRelease: (_event, gesture) => {
-        const far = width.get() > 0 && -gesture.dx > width.get() * REMOVE_SHARE;
-        if (far || gesture.vx < -REMOVE_VELOCITY) setLeaving(true);
-        else offset.set(withSpring(0, SPRING_BACK));
+        const far = width.get() > 0 && Math.abs(gesture.dx) > width.get() * REMOVE_SHARE;
+        if ((far && gesture.dx < 0) || gesture.vx < -REMOVE_VELOCITY) setLeaving('left');
+        else if (both && ((far && gesture.dx > 0) || gesture.vx > REMOVE_VELOCITY)) {
+          setLeaving('right');
+        } else offset.set(withSpring(0, SPRING_BACK));
         stop();
         setTimeout(() => setSwiping(false), COVER_MS);
       },
@@ -90,7 +103,7 @@ export function SwipeToRemove(props: SwipeToRemoveProps) {
     if (!leaving) return;
     if (!reduced) {
       offset.set(
-        withTiming(-width.get(), {
+        withTiming(leaving === 'left' ? -width.get() : width.get(), {
           duration: LEAVE_MS,
           easing: EASE_OUT,
           reduceMotion: ReduceMotion.Never,
@@ -99,10 +112,11 @@ export function SwipeToRemove(props: SwipeToRemoveProps) {
     }
     const timer = setTimeout(
       () => {
-        remove();
-        // Still here (e.g. the removal was refused): the row comes back.
+        if (leaving === 'left') remove();
+        else swipeRight();
+        // Still here (e.g. the removal was refused, or the row stays): the row comes back.
         offset.set(0);
-        setLeaving(false);
+        setLeaving(undefined);
       },
       reduced ? 0 : LEAVE_MS,
     );
@@ -132,16 +146,26 @@ export function SwipeToRemove(props: SwipeToRemoveProps) {
           right: 0,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'flex-end',
+          justifyContent: both ? 'space-between' : 'flex-end',
           gap: 8,
           paddingHorizontal: 16,
           backgroundColor: theme.colors.surfaceSunken,
         }}
       >
-        <Icon name="trash" size={18} color="muted" />
-        <Text variant="smallStrong" color="muted">
-          {props.label}
-        </Text>
+        {both ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="check" size={18} color="muted" />
+            <Text variant="smallStrong" color="muted">
+              {props.rightLabel ?? ''}
+            </Text>
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Icon name="trash" size={18} color="muted" />
+          <Text variant="smallStrong" color="muted">
+            {props.label}
+          </Text>
+        </View>
       </View>
       <Animated.View
         {...responder.panHandlers}

@@ -20,6 +20,7 @@ const FILTER_LABELS: Record<ArticleFilter, string> = {
   pantry: 'Vorrat',
   needsReview: 'Neu aus Rezepten',
   similar: 'Ähnliche Namen',
+  unused: 'Unbenutzt',
   unknownDiet: 'Ernährung unbekannt',
 };
 export const FILTERS: ArticleFilter[] = [
@@ -28,10 +29,17 @@ export const FILTERS: ArticleFilter[] = [
   'pantry',
   'needsReview',
   'similar',
+  'unused',
   'unknownDiet',
 ];
-// "Alle" and "Vorrat" carry no number (AC-021).
-const COUNTED = new Set<ArticleFilter>(['noArea', 'needsReview', 'similar', 'unknownDiet']);
+// "Alle" and "Vorrat" carry no number (AC-021); "Unbenutzt (1)" does (spec 0025, AC-046).
+const COUNTED = new Set<ArticleFilter>([
+  'noArea',
+  'needsReview',
+  'similar',
+  'unused',
+  'unknownDiet',
+]);
 
 /** "Ohne Bereich (2)". */
 export function filterChipLabel(filter: ArticleFilter, counts: Record<ArticleFilter, number>) {
@@ -53,6 +61,7 @@ const FILTER_PARAMS: Record<string, ArticleFilter> = {
   vorrat: 'pantry',
   'neu-aus-rezepten': 'needsReview',
   'aehnliche-namen': 'similar',
+  unbenutzt: 'unused',
   'ernaehrung-unbekannt': 'unknownDiet',
 };
 export function filterFromParam(param: string | undefined): ArticleFilter {
@@ -67,6 +76,7 @@ export function filterParam(
   | 'vorrat'
   | 'neu-aus-rezepten'
   | 'aehnliche-namen'
+  | 'unbenutzt'
   | 'ernaehrung-unbekannt'
   | undefined {
   const entry = Object.entries(FILTER_PARAMS).find(([, value]) => value === filter);

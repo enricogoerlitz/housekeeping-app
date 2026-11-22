@@ -1,8 +1,9 @@
 import { spellingScore } from './articles';
 import { fuzzyIncludes, normalizeText } from './text';
 
-// Matching rule of the building block "Suchen oder anlegen" (spec 0005, REQ-006). The specs that
-// use the block only decide what is searched; how it matches lives here and nowhere else.
+// Matching rule of the building block "Suchen oder anlegen" (spec 0005, REQ-006) and the one search
+// for articles (spec 0025, REQ-009: "Was fehlt?", "Posten hinzufügen", "Artikel", Zutat and the
+// area picker). The specs that use it only decide what is searched; how it matches lives here.
 
 export interface SearchOrCreateItem {
   id: string;
@@ -19,7 +20,7 @@ export interface SearchOrCreateMatch<T> {
 }
 
 export interface SearchOrCreateResult<T> {
-  /** Hits, best first: exact > prefix > substring > typo > word part. */
+  /** Hits, best first: exact > prefix > substring or all words in any order > typo > word part. */
   matches: SearchOrCreateMatch<T>[];
   /** The item whose name or synonym is the query; then there is nothing to create. */
   exact?: T;
@@ -62,6 +63,12 @@ function longestWordPart(query: string, text: string): number {
   return longest;
 }
 
+/** Every word of a query of several words is part of the text, in any order ("bio ei"). */
+function allWordsIncluded(query: string, text: string): boolean {
+  const words = query.split(/[ -]+/).filter((word) => word !== '');
+  return words.length > 1 && words.every((word) => text.includes(word));
+}
+
 interface Scored<T> extends SearchOrCreateMatch<T> {
   score: number;
   /** Word-part hits only: the longest shared piece; more is a better explanation. */
@@ -77,7 +84,7 @@ function scoreText(
   if (t === query) return { score: SCORE.exact, piece: 0 };
   if (t.startsWith(query))
     return { score: isSynonym ? SCORE.prefixSynonym : SCORE.prefix, piece: 0 };
-  if (t.includes(query))
+  if (t.includes(query) || allWordsIncluded(query, t))
     return { score: isSynonym ? SCORE.substringSynonym : SCORE.substring, piece: 0 };
   if (fuzzyIncludes(query, t)) return { score: SCORE.typo, piece: 0 };
   const piece = longestWordPart(query, t);

@@ -212,6 +212,7 @@ export const PAGE_PARAMS = {
         'vorrat',
         'neu-aus-rezepten',
         'aehnliche-namen',
+        'unbenutzt',
         'ernaehrung-unbekannt',
       ]),
     ),

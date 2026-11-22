@@ -1643,6 +1643,7 @@ export type Database = {
           checked: boolean;
           checked_at: string | null;
           checked_by: string | null;
+          checked_on_list: boolean;
           created_at: string;
           household_id: string;
           id: string;
@@ -1656,6 +1657,7 @@ export type Database = {
           checked?: boolean;
           checked_at?: string | null;
           checked_by?: string | null;
+          checked_on_list?: boolean;
           created_at?: string;
           household_id: string;
           id?: string;
@@ -1668,6 +1670,7 @@ export type Database = {
           checked?: boolean;
           checked_at?: string | null;
           checked_by?: string | null;
+          checked_on_list?: boolean;
           created_at?: string;
           household_id?: string;
           id?: string;
@@ -1678,7 +1681,7 @@ export type Database = {
           {
             foreignKeyName: 'shopping_items_article_fkey';
             columns: ['household_id', 'article_id'];
-            isOneToOne: false;
+            isOneToOne: true;
             referencedRelation: 'articles';
             referencedColumns: ['household_id', 'id'];
           },
@@ -1843,6 +1846,10 @@ export type Database = {
       clear_shopping_list: { Args: { p_household_id: string }; Returns: Json };
       consume_ai_quota: { Args: { amount: number; kind: string }; Returns: boolean };
       create_household: { Args: { name: string; starter: Json }; Returns: string };
+      create_store: {
+        Args: { p_copy_from: string; p_household_id: string; p_name: string; p_store_id: string };
+        Returns: Json;
+      };
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
       delete_household: { Args: { household_id: string }; Returns: undefined };
@@ -1868,6 +1875,7 @@ export type Database = {
         Returns: string;
       };
       remove_contributions: { Args: { p_ids: string[] }; Returns: number };
+      remove_item_contributions: { Args: { p_ids: string[]; p_item_id: string }; Returns: Json };
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
@@ -1879,6 +1887,10 @@ export type Database = {
       };
       set_activity_rating: { Args: { activity_id: string; stars: number }; Returns: undefined };
       set_feedback_vote: { Args: { feedback_id: string; voted: boolean }; Returns: undefined };
+      set_manual_amount: {
+        Args: { p_count: number; p_item_id: string; p_qty: number; p_unit: string };
+        Returns: Json;
+      };
       set_packing_items_packed: {
         Args: { p_changes: Json; p_household_id: string };
         Returns: Json;
@@ -1895,7 +1907,12 @@ export type Database = {
       };
       set_restaurant_rating: { Args: { restaurant_id: string; stars: number }; Returns: undefined };
       set_shopping_item_checked: {
-        Args: { p_checked: boolean; p_item_id: string; p_seen_check_seq: number };
+        Args: {
+          p_checked: boolean;
+          p_item_id: string;
+          p_on_list?: boolean;
+          p_seen_check_seq: number;
+        };
         Returns: Json;
       };
       set_shopping_item_not_available: {

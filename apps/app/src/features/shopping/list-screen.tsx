@@ -14,6 +14,7 @@ import {
   type DictatedItem,
 } from '@housekeeping/api';
 import {
+  dishLabel,
   groupItems,
   itemCount,
   listHeadline,
@@ -51,7 +52,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { StartPageActions } from '@/features/shell/profile-button';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useMissingObject } from '@/lib/addressed';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
@@ -60,8 +61,8 @@ import { useDictation } from '@/lib/use-dictation';
 
 import { useActiveShopper } from './active-shopper';
 import { CountStepper, removeWithUndo } from './item-controls';
-import { ItemSheet } from './item-sheet';
-import { ClearListSheet } from './list-sheets';
+import { checkOnList, ItemSheet } from './item-sheet';
+import { ClearListSheet, DishesSheet } from './list-sheets';
 import { PantryCheckSheet } from './pantry-check-sheet';
 import { SmartComposer } from './smart-composer';
 
@@ -79,12 +80,15 @@ function PendingDot(props: { itemId: string }) {
 
 /**
  * An open item on "Liste" (D24): no checkbox; "− 2× +" for pure counts, "500 g ›" for
- * quantities. A tap opens "Posten bearbeiten"; on phones a swipe to the left removes it.
+ * quantities. A tap opens "Posten bearbeiten"; on phones a swipe to the left removes it (online)
+ * and a swipe to the right marks it as done, offline too (spec 0025, REQ-006).
  */
 function ItemRow(props: {
   item: ShoppingItem;
   article: Article | undefined;
   swipe: boolean;
+  /** Removing needs the network; offline the swipe to the left only says so. */
+  canRemove: boolean;
   onOpen: (itemId: string, name: string) => void;
 }) {
   const { item } = props;
@@ -125,7 +129,11 @@ function ItemRow(props: {
     <SwipeToRemove
       label="Entfernen"
       enabled={props.swipe}
-      onRemove={() => removeWithUndo(item.id, name)}
+      onRemove={() =>
+        props.canRemove ? removeWithUndo(item.id, name) : toast.show({ message: OFFLINE_EDIT_HINT })
+      }
+      rightLabel="Erledigt"
+      onSwipeRight={() => checkOnList(item.id, name)}
       testID={`item-${item.id}-swipe`}
     >
       {row}
@@ -195,6 +203,7 @@ export function ListScreen() {
     open ? address.open({ fenster: 'vorratscheck' }) : address.close({ fenster: undefined });
   const [showDone, setShowDone] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [showDishes, setShowDishes] = useState(false);
   const [dictation, setDictation] = useState<Dictation | undefined>();
   const speech = useDictation();
   const [nothingHeard, setNothingHeard] = useState(false);
@@ -321,7 +330,8 @@ export function ListScreen() {
             key={item.id}
             item={item}
             article={articlesById[item.articleId]}
-            swipe={isPhone && !online.disabled}
+            swipe={isPhone}
+            canRemove={!online.disabled}
             onOpen={openItem}
           />
         ))}
@@ -361,9 +371,23 @@ export function ListScreen() {
         >
           Einkaufsliste
         </Text>
-        <Text variant="small" color="muted" numberOfLines={2} testID="list-headline">
-          {headline.label}
-        </Text>
+        {headline.dishes.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${headline.label}. Gerichte zeigen`}
+            onPress={() => setShowDishes(true)}
+            style={{ minHeight: 24, alignSelf: 'flex-start' }}
+            testID="list-headline-button"
+          >
+            <Text variant="small" color="muted" numberOfLines={2} testID="list-headline">
+              {`${headline.label} ›`}
+            </Text>
+          </Pressable>
+        ) : (
+          <Text variant="small" color="muted" numberOfLines={2} testID="list-headline">
+            {headline.label}
+          </Text>
+        )}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {more}
@@ -557,9 +581,16 @@ export function ListScreen() {
       ) : null}
       {confirmClear ? (
         <ClearListSheet
-          count={items.length}
+          open={open.length}
+          done={done.length}
           onConfirm={clearList}
           onClose={() => setConfirmClear(false)}
+        />
+      ) : null}
+      {showDishes ? (
+        <DishesSheet
+          rows={headline.dishes.map((dish) => ({ key: dish.recipeId, label: dishLabel(dish) }))}
+          onClose={() => setShowDishes(false)}
         />
       ) : null}
       {pantryCheck ? (

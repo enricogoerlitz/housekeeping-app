@@ -10,7 +10,7 @@ import {
   TextField,
   toast,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -29,6 +29,8 @@ export function NameSheet(props: {
   onSubmit: (name: string) => string | undefined;
   onClose: () => void;
   testID: string;
+  /** More fields below the name, e.g. "Reihenfolge übernehmen von …" (spec 0025, AC-050). */
+  children?: ReactNode;
 }) {
   const online = useOnlineOnly();
   const [name, setName] = useState(props.initialName ?? '');
@@ -79,6 +81,7 @@ export function NameSheet(props: {
         onSubmitEditing={submit}
         testID={`${props.testID}-name`}
       />
+      {props.children}
     </Sheet>
   );
 }
