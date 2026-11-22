@@ -283,9 +283,9 @@ describe(
         recursive: true,
       });
       writeFileSync(path.join(workdir, 'supabase/config.toml'), text);
-      // With CI=true the CLI prints a human summary instead of its JSON report.
-      const env = { ...process.env };
-      delete env.CI;
+      // In CI (CI, GITHUB_ACTIONS, …) the CLI prints a human summary instead of its JSON report;
+      // a minimal environment keeps the JSON report everywhere.
+      const env = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' };
       const result = spawnSync(cli, ['config', 'validate', '--workdir', workdir], {
         encoding: 'utf8',
         env,
