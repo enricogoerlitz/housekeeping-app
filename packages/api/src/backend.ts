@@ -16,6 +16,7 @@ import {
   rejectFrom,
   remapQueue,
   requeue,
+  unsentChangeCount,
   visibleTables,
   type Changeset,
   type HouseholdCache,
@@ -172,6 +173,8 @@ export interface Engine extends BackendHooks {
   getSyncState(): SyncState;
   /** Sign-out or another user: empties cache, store queue and outbox on this device. */
   resetLocalData(): Promise<void>;
+  /** Store-queue entries the server has not confirmed yet, also the ones being sent. */
+  unsentStoreChanges(): number;
 }
 
 /** A changeset waiting in the outbox, and what is needed to undo it. */
@@ -1197,6 +1200,7 @@ export function createEngine(options: EngineOptions): Engine {
     getState: () => appState,
     getSyncState: () => syncState,
     resetLocalData,
+    unsentStoreChanges: () => unsentChangeCount(unsent()),
     isOffline: writesDisabled,
     isNetworkOffline: isOffline,
     recordChange,
@@ -1337,6 +1341,14 @@ export async function resetLocalData(): Promise<void> {
   if (!engine) return;
   await stopBackend();
   await engine.resetLocalData();
+}
+
+/**
+ * What sign-out would lose (spec 0018, REQ-005): the store actions and packing on this device the
+ * server has not confirmed. Read only; 0 while nobody is signed in.
+ */
+export function unsentStoreChangeCount(): number {
+  return current?.unsentStoreChanges() ?? 0;
 }
 
 /** "Hat nicht geklappt – bitte noch einmal versuchen" (AC-019): the app shows it as a toast. */

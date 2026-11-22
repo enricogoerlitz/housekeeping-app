@@ -356,3 +356,20 @@ export function packBatch(queue: readonly StoreQueueEntry[]): PackEntry[] {
   }
   return batch;
 }
+
+/**
+ * How many changes sign-out would lose (spec 0018, REQ-005): every entry not yet confirmed by the
+ * server, store actions and packing alike. Each entry is one action as the person made it, since
+ * repeated taps on the same item already collapse in the queue (enqueue).
+ */
+export function unsentChangeCount(unsent: readonly StoreQueueEntry[]): number {
+  return unsent.length;
+}
+
+/** The question before sign-out (AC-013); undefined = nothing waits, sign out at once (AC-014). */
+export function signOutWarning(count: number): string | undefined {
+  if (count <= 0) return undefined;
+  return count === 1
+    ? '1 Änderung ist noch nicht gesendet. Beim Abmelden geht sie verloren.'
+    : `${count} Änderungen sind noch nicht gesendet. Beim Abmelden gehen sie verloren.`;
+}

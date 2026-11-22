@@ -149,7 +149,17 @@ test('AC-003: signing out with a check waiting offline empties the device and sh
   await expect(page.locator('[data-testid^="item-"][data-testid$="-pending"]')).toHaveCount(1);
 
   await openSettings(page);
+  // Spec 0018, AC-013: the waiting check makes sign-out ask; "Abbrechen" keeps everything.
   await tid(page, 'settings-sign-out').click();
+  await expect(tid(page, 'sign-out-dialog-message')).toHaveText(
+    '1 Änderung ist noch nicht gesendet. Beim Abmelden geht sie verloren.',
+  );
+  await tid(page, 'sign-out-dialog-cancel').click();
+  await expect(tid(page, 'sign-out-dialog')).toHaveCount(0);
+  await expect(tid(page, 'settings-sign-out')).toBeVisible();
+  // AC-015: "Trotzdem abmelden" is the sign-out as before.
+  await tid(page, 'settings-sign-out').click();
+  await tid(page, 'sign-out-dialog-confirm').click();
   await expect(tid(page, 'login-screen')).toBeVisible();
   expect(await cachedKeys(page), 'local cache and store queue').toBe(0);
   const keys = await page.evaluate(() => Object.keys(window.localStorage));

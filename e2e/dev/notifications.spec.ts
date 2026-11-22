@@ -45,7 +45,8 @@ test('AC-001, AC-011: "Benachrichtigungen · 2 an" in the settings, the sections
   await login(page, 'enrico');
   await openSettings(page);
   await expect(tid(page, 'settings-notifications-row')).toContainText('Benachrichtigungen');
-  await expect(tid(page, 'settings-notifications-row')).toContainText('2 an');
+  // The development server has no push, so this device is never registered (spec 0018, AC-022).
+  await expect(tid(page, 'settings-notifications-summary')).toHaveText('2 an · dieses Gerät aus');
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notifications-screen')).toBeVisible();
 
