@@ -11,7 +11,7 @@
 // bytes in the device storage next to the cache (bound to the user's session, cleared at sign-out,
 // dropped with a household the user lost) and shown through blob: URLs. Offline only what is
 // stored shows (AC-011). The store keeps about 50 MB.
-import type { Activity, Id, Recipe } from '@housekeeping/core';
+import type { Id } from '@housekeeping/core';
 import { useEffect, useSyncExternalStore } from 'react';
 
 import {
@@ -402,35 +402,39 @@ export function usePhoto(path: string | undefined): PhotoView {
 // Setting and removing
 // ---------------------------------------------------------------------------------------------
 
-type PhotoTable = 'activities' | 'recipes';
+type PhotoTable = 'activities' | 'recipes' | 'restaurants';
+
+const NOT_FOUND: Record<PhotoTable, string> = {
+  activities: 'Aktivität nicht gefunden',
+  recipes: 'Rezept nicht gefunden',
+  restaurants: 'Restaurant nicht gefunden',
+};
 
 function photoPathOf(table: PhotoTable, id: Id): string | undefined {
-  const data = getData();
-  const row: Activity | Recipe | undefined =
-    table === 'activities'
-      ? data.activities.find((activity) => activity.id === id)
-      : data.recipes.find((recipe) => recipe.id === id);
-  if (!row)
-    throw new Error(table === 'activities' ? 'Aktivität nicht gefunden' : 'Rezept nicht gefunden');
+  const rows: readonly { id: Id; photoPath?: string }[] = getData()[table];
+  const row = rows.find((candidate) => candidate.id === id);
+  if (!row) throw new Error(NOT_FOUND[table]);
   return row.photoPath;
 }
 
+function withPhotoPath<T extends { id: Id; photoPath?: string }>(
+  rows: readonly T[],
+  id: Id,
+  photoPath: string | undefined,
+): T[] {
+  return rows.map((row) => (row.id === id ? { ...row, photoPath } : row));
+}
+
 function writePhotoPath(table: PhotoTable, id: Id, photoPath: string | undefined): void {
-  updateData((data) =>
-    table === 'activities'
-      ? {
-          ...data,
-          activities: data.activities.map((activity) =>
-            activity.id === id ? { ...activity, photoPath } : activity,
-          ),
-        }
-      : {
-          ...data,
-          recipes: data.recipes.map((recipe) =>
-            recipe.id === id ? { ...recipe, photoPath } : recipe,
-          ),
-        },
-  );
+  updateData((data) => {
+    if (table === 'activities') {
+      return { ...data, activities: withPhotoPath(data.activities, id, photoPath) };
+    }
+    if (table === 'restaurants') {
+      return { ...data, restaurants: withPhotoPath(data.restaurants, id, photoPath) };
+    }
+    return { ...data, recipes: withPhotoPath(data.recipes, id, photoPath) };
+  });
 }
 
 /** Deleting a file must not fail the action that made it unused; a leftover file is logged. */
@@ -505,6 +509,19 @@ export function removeActivityPhoto(activityId: Id): Promise<void> {
 /** Sets the recipe's own photo; it is shown instead of the sample photo (AC-017). */
 export function setRecipePhoto(recipeId: Id, photo: Blob): Promise<void> {
   return setPhoto('recipes', recipeId, photo);
+}
+
+/**
+ * Sets the restaurant's own photo (spec 0024, REQ-004, AC-012) and deletes the one it replaces.
+ * Online only (OfflineError); German messages from toPhotoError.
+ */
+export function setRestaurantPhoto(restaurantId: Id, photo: Blob): Promise<void> {
+  return setPhoto('restaurants', restaurantId, photo);
+}
+
+/** Removes the restaurant's photo: the path is cleared, then the file is deleted (AC-013). */
+export function removeRestaurantPhoto(restaurantId: Id): Promise<void> {
+  return removePhoto('restaurants', restaurantId);
 }
 
 /** Removes the recipe's own photo; the sample photo shows again (AC-018). */
