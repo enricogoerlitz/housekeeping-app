@@ -1,28 +1,26 @@
 import {
-  removeAbsences,
+  removeTrip,
   resetPackingList,
   snapshot,
-  useAbsences,
+  useTrips,
   useMembers,
-  useMembersById,
   usePackingList,
   useToday,
 } from '@housekeeping/api';
 import {
-  absenceDeleteDialog,
+  tripDeleteDialog,
   packingProgress,
   packingSections,
   routeId,
   startsInLabel,
+  stripeOf,
   tripHeader,
-  tripStripe,
-  type AbsenceStripe,
+  type TripStripe,
   type Id,
   type PackingItem,
   type PackingListBag,
 } from '@housekeeping/core';
 import {
-  Avatar,
   AvatarStack,
   Button,
   EmptyState,
@@ -41,7 +39,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { AbsenceSheet } from '@/features/absences/absence-sheet';
+import { TripSheet } from '@/features/trips/trip-sheet';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { FAILED } from './packing-labels';
@@ -51,7 +49,7 @@ import { TripSection } from './trip-section';
 
 type TripAction = 'reset' | 'delete';
 
-/** Where the Urlaubsseite was opened from, `?von=…`; anything else counts as the calendar. */
+/** Where the trip page was opened from, `?von=…`; anything else counts as the calendar. */
 const ORIGINS = {
   reisen: { label: 'Reisen', tab: 'reisen', href: '/reisen' },
   uebersicht: { label: 'Übersicht', tab: 'index', href: '/' },
@@ -83,7 +81,7 @@ function previousTab(state: unknown): string | undefined {
 }
 
 /**
- * "Zurück" of the Urlaubsseite: opened from "Reisen" or from the card on the "Übersicht"
+ * "Zurück" of the trip page: opened from "Reisen" or from the card on the "Übersicht"
  * it leads back there ("‹ Reisen", "‹ Übersicht"), otherwise to the calendar underneath
  * ("‹ Kalender"); the same rule as for "Aktivitäten" (spec 0010, REQ-008).
  */
@@ -113,22 +111,22 @@ function useTripBack(): { label: string; back: () => void } {
   };
 }
 
-/** The Urlaubsseite of an absence, `/kalender/reise/[id]` (spec 0012, REQ-003, decision 14). */
+/** The page of a trip, `/kalender/reise/[id]` (spec 0012, REQ-003, decision 14). */
 export function TripScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   // Only a uuid reaches the lookup; anything else shows "gibt es nicht mehr".
-  const absenceId = routeId(params.id);
+  const tripId = routeId(params.id);
   const { label, back } = useTripBack();
-  return <TripPage absenceId={absenceId} onBack={back} backLabel={label} />;
+  return <TripPage tripId={tripId} onBack={back} backLabel={label} />;
 }
 
-function TripPage(props: { absenceId: Id | undefined; onBack: () => void; backLabel: string }) {
-  const absences = useAbsences();
+function TripPage(props: { tripId: Id | undefined; onBack: () => void; backLabel: string }) {
+  const trips = useTrips();
   const members = useMembers();
-  // Set when this page deletes its absence: it leaves blank instead of "gibt es nicht mehr".
+  // Set when this page deletes its trip: it leaves blank instead of "gibt es nicht mehr".
   const [leaving, setLeaving] = useState(false);
-  const stripe =
-    props.absenceId === undefined ? undefined : tripStripe(props.absenceId, absences, members);
+  const trip = trips.find((candidate) => candidate.id === props.tripId);
+  const stripe = trip ? stripeOf(trip, members) : undefined;
 
   if (leaving) return <Screen testID="trip-screen" />;
   if (!stripe) {
@@ -169,12 +167,12 @@ function TripPage(props: { absenceId: Id | undefined; onBack: () => void; backLa
 
 /**
  * Head with note as title, who, period, days and "beginnt in 12 Tagen" (AC-016); ✎ edits the
- * absence, ⋯ resets for the way home (AC-028, works offline) or deletes it (AC-038). Below the
+ * trip, ⋯ resets for the way home (AC-028, works offline) or deletes it (AC-038). Below the
  * progress "Packliste · 12 von 30 gepackt" and one section per bag; side by side on wide screens
- * (AC-018). A stripe of several absences shows their packing lists one below the other (decision 9).
+ * (AC-018).
  */
 function TripBody(props: {
-  stripe: AbsenceStripe;
+  stripe: TripStripe;
   onBack: () => void;
   backLabel: string;
   onDeleted: () => void;
@@ -183,14 +181,14 @@ function TripBody(props: {
   const members = useMembers();
   const today = useToday();
   const online = useOnlineOnly();
-  const { listBags, items } = usePackingList(stripe.absenceIds);
+  const { listBags, items } = usePackingList(stripe.tripId);
   const [editing, setEditing] = useState(false);
   const [dialog, setDialog] = useState<TripAction | undefined>();
 
   const head = tripHeader(stripe, members);
   const people = members.filter((member) => head.memberIds.includes(member.id));
   const progress = packingProgress(items);
-  const deleteMessage = absenceDeleteDialog(stripe.absenceIds, listBags, items);
+  const deleteMessage = tripDeleteDialog(stripe.tripId, listBags, items);
 
   const remove = () => {
     if (online.disabled) return;
@@ -201,7 +199,7 @@ function TripBody(props: {
     }
     const restore = deleteMessage ? undefined : snapshot();
     try {
-      removeAbsences(stripe.absenceIds);
+      removeTrip(stripe.tripId);
     } catch {
       toast.show({ message: FAILED });
       return;
@@ -223,7 +221,7 @@ function TripBody(props: {
   const reset = () => {
     setDialog(undefined);
     try {
-      resetPackingList(stripe.absenceIds);
+      resetPackingList(stripe.tripId);
     } catch {
       toast.show({ message: FAILED });
     }
@@ -311,17 +309,9 @@ function TripBody(props: {
         </Stack>
       ) : null}
 
-      {stripe.absenceIds.map((absenceId) => (
-        <TripPackingList
-          key={absenceId}
-          absenceId={absenceId}
-          showOwner={stripe.absenceIds.length > 1}
-          listBags={listBags}
-          items={items}
-        />
-      ))}
+      <TripPackingList tripId={stripe.tripId} listBags={listBags} items={items} />
 
-      {editing ? <AbsenceSheet stripe={stripe} onClose={() => setEditing(false)} /> : null}
+      {editing ? <TripSheet stripe={stripe} onClose={() => setEditing(false)} /> : null}
       {dialog === 'reset' ? (
         <TripConfirmDialog
           title={`Alle ${progress.packed} Haken entfernen?`}
@@ -348,21 +338,12 @@ function TripBody(props: {
   );
 }
 
-/** The packing list of one absence: its bags, "+ Reisetasche hinzufügen", or the empty state. */
-function TripPackingList(props: {
-  absenceId: Id;
-  showOwner: boolean;
-  listBags: PackingListBag[];
-  items: PackingItem[];
-}) {
+/** The packing list of the trip: its bags, "+ Reisetasche hinzufügen", or the empty state. */
+function TripPackingList(props: { tripId: Id; listBags: PackingListBag[]; items: PackingItem[] }) {
   const online = useOnlineOnly();
   const { isWide } = useBreakpoint();
-  const absences = useAbsences();
-  const membersById = useMembersById();
   const [adding, setAdding] = useState(false);
-  const sections = packingSections(props.listBags, props.items, props.absenceId);
-  const memberId = absences.find((absence) => absence.id === props.absenceId)?.memberId;
-  const owner = memberId ? membersById[memberId] : undefined;
+  const sections = packingSections(props.listBags, props.items, props.tripId);
 
   const addButton = (
     <Button
@@ -372,26 +353,18 @@ function TripPackingList(props: {
       disabled={online.disabled}
       hint={online.hint}
       onPress={() => setAdding(true)}
-      testID={`trip-add-bag-open-${props.absenceId}`}
+      testID={`trip-add-bag-open-${props.tripId}`}
     />
   );
 
   return (
-    <View testID={`trip-list-${props.absenceId}`} style={{ marginBottom: 24 }}>
-      {props.showOwner && owner ? (
-        <Row gap={8} align="center" style={{ marginBottom: 12 }}>
-          <Avatar name={owner.name} color={owner.color} size="s" />
-          <Text variant="heading" heading>
-            {`Packliste von ${owner.name}`}
-          </Text>
-        </Row>
-      ) : null}
+    <View testID={`trip-list-${props.tripId}`} style={{ marginBottom: 24 }}>
       {sections.length === 0 ? (
         <EmptyState
           icon="luggage"
           title="Noch keine Packliste"
           text="Hänge eine Reisetasche an, dann entsteht die Packliste."
-          testID={`trip-empty-${props.absenceId}`}
+          testID={`trip-empty-${props.tripId}`}
         >
           {addButton}
         </EmptyState>
@@ -416,9 +389,7 @@ function TripPackingList(props: {
           <View style={{ alignItems: 'flex-start' }}>{addButton}</View>
         </>
       )}
-      {adding ? (
-        <TripAddBagSheet absenceId={props.absenceId} onClose={() => setAdding(false)} />
-      ) : null}
+      {adding ? <TripAddBagSheet tripId={props.tripId} onClose={() => setAdding(false)} /> : null}
     </View>
   );
 }

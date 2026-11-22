@@ -1,11 +1,11 @@
 import {
-  absenceDays,
   addDays,
   normalizeText,
   orderedBags,
   recipeFitsPreference,
   searchArticles,
   summarizeItem,
+  tripDays,
   weekDates,
   type Diet,
 } from '@housekeeping/core';
@@ -19,6 +19,7 @@ import {
   buildRecipe,
   createInitialState,
   DEMO_HOUSEHOLD_ID,
+  ENRICO,
   NADJA,
   SLOT_MORNING,
   TEST_HOUSEHOLD_ID,
@@ -206,13 +207,13 @@ describe('spec 0012: Reisetaschen and the packing list of "Urlaub Mallorca"', ()
     expect(itemsOf(bag('Strand').id).some((item) => item.name === 'Sonnencreme')).toBe(false);
   });
 
-  it('"Urlaub Mallorca" (whole household, in 12 days, 7 days) has Strand and Kulturbeutel, some packed', () => {
-    const mallorca = getData().absences.find((absence) => absence.note === 'Urlaub Mallorca');
+  it('"Urlaub Mallorca" (Enrico and Nadja, in 12 days, 7 days) has Strand and Kulturbeutel, some packed', () => {
+    const mallorca = getData().trips.find((trip) => trip.note === 'Urlaub Mallorca');
     if (!mallorca) throw new Error('Urlaub Mallorca missing');
-    expect(mallorca.memberId).toBeUndefined();
+    expect(mallorca.members.map((member) => member.memberId)).toEqual([ENRICO, NADJA]);
     expect(mallorca.from).toBe(addDays(TODAY, 12));
-    expect(absenceDays(mallorca.from, mallorca.to)).toBe(7);
-    const listBags = getData().packingListBags.filter((lb) => lb.absenceId === mallorca.id);
+    expect(tripDays(mallorca.from, mallorca.to)).toBe(7);
+    const listBags = getData().packingListBags.filter((lb) => lb.tripId === mallorca.id);
     expect(listBags.map((lb) => [lb.name, lb.bagId, lb.memberId])).toEqual([
       ['Strand', bag('Strand').id, undefined],
       ['Kulturbeutel', bag('Kulturbeutel').id, NADJA],
@@ -232,11 +233,11 @@ describe('spec 0012: Reisetaschen and the packing list of "Urlaub Mallorca"', ()
   });
 
   it('"Dienstreise Hamburg" (Nadja) has no packing list; the household "Test" has no bags (AC-002)', () => {
-    const hamburg = getData().absences.find((absence) => absence.note === 'Dienstreise Hamburg');
-    expect(hamburg?.memberId).toBe(NADJA);
-    expect(getData().packingListBags.some((lb) => lb.absenceId === hamburg?.id)).toBe(false);
+    const hamburg = getData().trips.find((trip) => trip.note === 'Dienstreise Hamburg');
+    expect(hamburg?.members.map((member) => member.memberId)).toEqual([NADJA]);
+    expect(getData().packingListBags.some((lb) => lb.tripId === hamburg?.id)).toBe(false);
     expect(testHousehold().packingBags).toEqual([]);
-    expect(testHousehold().absences).toEqual([]);
+    expect(testHousehold().trips).toEqual([]);
   });
 });
 

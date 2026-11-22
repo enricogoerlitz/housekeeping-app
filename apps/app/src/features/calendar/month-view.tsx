@@ -6,14 +6,14 @@ import {
   overflow,
   parseISODate,
   stripeSegment,
-  type AbsenceStripe,
+  type TripStripe,
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
 import { Button, KindDot, Text, keyboardFocusRing, useTheme } from '@housekeeping/ui';
 import { Platform, Pressable, View, type HostInstance, type ViewStyle } from 'react-native';
 
-import { AbsenceStripeView, EntryLine, useStripeColors } from './calendar-parts';
+import { TripStripeView, EntryLine, useStripeColors } from './calendar-parts';
 import { dayLabel, dayRoles, type CalendarData } from './calendar-data';
 import {
   PALE_OPACITY,
@@ -36,7 +36,7 @@ export interface MonthViewProps {
   showHousehold: boolean;
   wide: boolean;
   onOpenEntry: (entry: MealPlanEntry) => void;
-  onOpenStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: TripStripe) => void;
 }
 
 const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -103,12 +103,7 @@ function StripeLines(props: { week: ISODate[]; data: CalendarData }) {
   );
 }
 
-function StripeLine(props: {
-  stripe: AbsenceStripe;
-  start: number;
-  end: number;
-  data: CalendarData;
-}) {
+function StripeLine(props: { stripe: TripStripe; start: number; end: number; data: CalendarData }) {
   const colors = useStripeColors(props.stripe, props.data.membersById);
   return (
     <View style={{ height: 3 }}>
@@ -329,7 +324,7 @@ function MonthGridDesktop(props: MonthViewProps) {
                         paddingHorizontal: 2,
                       }}
                     >
-                      <AbsenceStripeView
+                      <TripStripeView
                         stripe={stripe}
                         data={data}
                         separator=" · "

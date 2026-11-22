@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AbsenceStripe } from './absences';
+import type { TripStripe } from './trips';
 import {
   dateRangeLabel,
   dayA11yLabel,
@@ -261,9 +261,9 @@ describe('spec 0016: day window, range drag and changing the view', () => {
   const dal = planned('dal', 'recipe', '2026-11-27', 'abend', 1);
   const elsewhere = planned('elsewhere', 'recipe', '2026-11-28', 'abend');
   const parked = planned('parked', 'recipe', null, 'abend');
-  const hamburg: AbsenceStripe = {
-    key: 'm|2026-11-27|2026-11-29|Hamburg',
-    absenceIds: ['a1'],
+  const hamburg: TripStripe = {
+    key: 'a1',
+    tripId: 'a1',
     memberIds: ['nadja'],
     household: false,
     from: '2026-11-27',

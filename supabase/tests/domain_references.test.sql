@@ -41,7 +41,7 @@ insert into fx (key) values
   ('slot_a'), ('slot_b'),
   ('area_a'), ('area_b'), ('article_a'), ('article_b'), ('store_a'), ('store_b'),
   ('recipe_a'), ('recipe_b'), ('restaurant_a'), ('restaurant_b'), ('chore_a'), ('chore_b'),
-  ('entry_a'), ('entry_b'), ('item_a'), ('item_b'), ('event_a');
+  ('entry_a'), ('entry_b'), ('item_a'), ('item_b'), ('event_a'), ('trip_a'), ('trip_b'), ('trip_e');
 
 update public.households h
 set meal_slots = jsonb_build_array(jsonb_build_object(
@@ -50,6 +50,12 @@ set meal_slots = jsonb_build_array(jsonb_build_object(
 where h.id in (tests.fx('home_a'), tests.fx('home_b'));
 
 -- The same set of rows in both households (as postgres).
+insert into public.trips (id, household_id, from_on, to_on) values
+  (tests.fx('trip_a'), tests.fx('home_a'), '2026-12-01', '2026-12-02'),
+  (tests.fx('trip_b'), tests.fx('home_b'), '2026-12-01', '2026-12-02');
+insert into public.trip_members (household_id, trip_id, member_id) values
+  (tests.fx('home_a'), tests.fx('trip_a'), tests.fx('dora')),
+  (tests.fx('home_b'), tests.fx('trip_b'), tests.fx('dora'));
 insert into public.areas (id, household_id, name, sort) values
   (tests.fx('area_a'), tests.fx('home_a'), 'Obst', 0), (tests.fx('area_b'), tests.fx('home_b'), 'Obst', 0);
 insert into public.articles (id, household_id, name, name_key, area_id) values
@@ -133,9 +139,9 @@ select throws_ok(
   format($$ update public.chore_events set done_by = %L where id = %L $$, tests.fx('ben'), tests.fx('event_a')),
   '23503', null, 'T3 chore_events: an update cannot book the event on a non-member');
 select throws_ok(
-  format($$ insert into public.absences (household_id, member_id, from_on, to_on) values (%L, %L, '2026-12-01', '2026-12-02') $$,
-         tests.fx('home_a'), tests.fx('ben')),
-  '23503', null, 'T3 absences: member_id of a non-member is rejected');
+  format($$ insert into public.trip_members (household_id, trip_id, member_id) values (%L, %L, %L) $$,
+         tests.fx('home_a'), tests.fx('trip_a'), tests.fx('ben')),
+  '23503', null, 'AC-042 trip_members: member_id of a non-member is rejected');
 select throws_ok(
   format($$ update public.chores set next_assignee_id = %L where id = %L $$, tests.fx('ben'), tests.fx('chore_a')),
   '23503', null, 'T3 chores: next_assignee_id of a non-member is rejected');
@@ -152,10 +158,10 @@ select lives_ok(
          jsonb_build_object('type', 'rotating', 'memberIds', array[tests.fx('dora'), tests.fx('emil')]),
          tests.fx('emil'), tests.fx('chore_a')),
   'T3 chores: a rotation of members is accepted');
-select lives_ok(
-  format($$ insert into public.absences (household_id, member_id, from_on, to_on) values (%L, null, '2026-12-24', '2026-12-26') $$,
-         tests.fx('home_a')),
-  'T3 absences: member_id null is an absence of the whole household');
+select throws_ok(
+  format($$ insert into public.trip_members (household_id, trip_id, member_id) values (%L, %L, %L) $$,
+         tests.fx('home_a'), tests.fx('trip_b'), tests.fx('dora')),
+  '23503', null, 'AC-042 trip_members: a person of both households cannot join a trip of the other one');
 
 -- ===================== Domain checks =====================
 select throws_ok(
@@ -191,10 +197,10 @@ select throws_ok(
          tests.fx('home_a'), tests.fx('slot_a')),
   '23514', null, 'T3 meal_plan_entries: an unknown kind is rejected');
 select throws_ok(
-  format($$ insert into public.absences (household_id, from_on, to_on) values (%L, '2026-12-03', '2026-12-01') $$,
+  format($$ insert into public.trips (household_id, from_on, to_on) values (%L, '2026-12-03', '2026-12-01') $$,
          tests.fx('home_a')),
-  '23514', 'new row for relation "absences" violates check constraint "absences_range_valid"',
-  'T3 absences: to_on before from_on is rejected');
+  '23514', 'new row for relation "trips" violates check constraint "trips_range_valid"',
+  'AC-043 trips: to_on before from_on is rejected');
 select throws_ok(
   format($$ insert into public.recipes (household_id, title, servings, course) values (%L, 'X', 0, 'main') $$, tests.fx('home_a')),
   '23514', null, 'T3 recipes: servings must be at least 1');
@@ -271,13 +277,18 @@ select results_eq(
 
 -- ===================== Removing a member =====================
 select tests.clear_authentication();
-insert into public.absences (household_id, member_id, from_on, to_on)
-values (tests.fx('home_a'), tests.fx('emil'), '2026-12-01', '2026-12-02');
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('trip_e'), tests.fx('home_a'), '2026-12-01', '2026-12-02');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home_a'), tests.fx('trip_e'), tests.fx('emil'));
+set constraints all immediate;
 update public.meal_plan_entries set eater_ids = array[tests.fx('dora'), tests.fx('emil')] where id = tests.fx('entry_a');
 select tests.authenticate_as(tests.fx('emil'));
 select public.set_recipe_rating(tests.fx('recipe_a'), 5::numeric);
 select tests.authenticate_as(tests.fx('dora'));
 select public.remove_member(tests.fx('home_a'), tests.fx('emil'));
+-- The check of the last person runs at the end of the transaction (deferred).
+set constraints all immediate;
 
 select results_eq(
   format($$ select cook_id from public.meal_plan_entries where id = %L $$, tests.fx('entry_a')),
@@ -288,9 +299,9 @@ select results_eq(
   $$ values (null::uuid) $$,
   'T3 chore_events: removing the member keeps the event and clears done_by');
 select is(
-  (select count(*)::int from public.absences where member_id = tests.fx('emil')),
+  (select count(*)::int from public.trips where id = tests.fx('trip_e')),
   0,
-  'T3 absences: removing a member deletes her personal absences');
+  'AC-044 trips: removing the only person of a trip deletes the trip');
 select is(
   (select count(*)::int from public.recipe_ratings where member_id = tests.fx('emil')),
   0,

@@ -1,7 +1,7 @@
 import { orderAnnouncement } from '@housekeeping/core';
 import type { ReorderListLabels } from '@housekeeping/ui';
 
-// Words of "Reisetaschen" and the Urlaubsseite (spec 0012). Task 9 appends its own exports at the
+// Words of "Reisetaschen" and the trip window (spec 0012). Task 9 appends its own exports at the
 // end of this file.
 
 /** The words of the ordering list of a bag's Packstücke (AC-006). */

@@ -5,7 +5,7 @@ import {
   stripeSegment,
   stripesOn,
   weekDates,
-  type AbsenceStripe,
+  type TripStripe,
   type Id,
   type ISODate,
   type MealPlanEntry,
@@ -16,7 +16,7 @@ import { Pressable, View } from 'react-native';
 import { useOnlineOnly } from '@/features/shell/offline';
 import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
 
-import { AbsenceStripeView, EntryLine, HouseholdDay, useStripeColors } from './calendar-parts';
+import { TripStripeView, EntryLine, HouseholdDay, useStripeColors } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
 import { DayHeadTarget, RangeMark, SlotTarget, TripSource, useLiftedKind } from './calendar-drag';
 
@@ -28,7 +28,7 @@ export interface WeekViewProps {
   wide: boolean;
   onAdd: (target: AddTarget) => void;
   onOpenEntry: (entry: MealPlanEntry) => void;
-  onOpenStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: TripStripe) => void;
 }
 
 const LABEL_WIDTH = 92;
@@ -160,7 +160,7 @@ function WeekGrid(props: WeekViewProps) {
         ))}
       </View>
       {stripes.length > 0 ? (
-        <View style={{ flexDirection: 'row', gap: 4 }} testID="week-absence-row">
+        <View style={{ flexDirection: 'row', gap: 4 }} testID="week-trip-row">
           <RowLabel>Reise</RowLabel>
           <View style={{ flex: 1, gap: 3 }}>
             {stripes.map(({ stripe, segment }) => (
@@ -174,7 +174,7 @@ function WeekGrid(props: WeekViewProps) {
                     width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
                   }}
                 >
-                  <AbsenceStripeView
+                  <TripStripeView
                     stripe={stripe}
                     data={data}
                     separator=" · "
@@ -261,7 +261,7 @@ function EmptySlot() {
 }
 
 /** The bars left of a phone's day: one per stripe of the week, in a fixed column. */
-function StripeBars(props: { stripes: AbsenceStripe[]; date: ISODate; data: CalendarData }) {
+function StripeBars(props: { stripes: TripStripe[]; date: ISODate; data: CalendarData }) {
   return (
     <View style={{ flexDirection: 'row', gap: 2, width: props.stripes.length * 5 }}>
       {props.stripes.map((stripe) => (
@@ -276,7 +276,7 @@ function StripeBars(props: { stripes: AbsenceStripe[]; date: ISODate; data: Cale
   );
 }
 
-function StripeBar(props: { stripe: AbsenceStripe; on: boolean; data: CalendarData }) {
+function StripeBar(props: { stripe: TripStripe; on: boolean; data: CalendarData }) {
   const colors = useStripeColors(props.stripe, props.data.membersById);
   return (
     <View
@@ -328,7 +328,7 @@ function WeekList(props: WeekViewProps) {
             >
               <DayHead date={date} today={data.today} upper />
               {labelled.map((stripe) => (
-                <AbsenceStripeView
+                <TripStripeView
                   key={stripe.key}
                   stripe={stripe}
                   data={data}

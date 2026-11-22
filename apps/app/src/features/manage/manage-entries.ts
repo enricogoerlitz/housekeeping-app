@@ -47,7 +47,7 @@ export const MANAGE_GROUPS: ManageGroup[] = [
         route: '(reisetaschen)',
       },
       {
-        key: 'absences',
+        key: 'trips',
         label: 'Reisen',
         icon: 'calendar-off',
         href: '/reisen',

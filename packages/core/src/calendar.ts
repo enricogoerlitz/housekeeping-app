@@ -1,4 +1,4 @@
-import { stripesOn, type AbsenceStripe } from './absences';
+import { stripesOn, type TripStripe } from './trips';
 import {
   addDays,
   addMonths,
@@ -165,7 +165,7 @@ export function dayMonthLongLabel(iso: ISODate): string {
   return `${weekdayShort(iso)} ${day(iso)}. ${monthName(monthIndex(iso))}`;
 }
 
-/** "Fr 1.1.2027": the date fields of the absence window. */
+/** "Fr 1.1.2027": the date fields of the trip window. */
 export function formatPickerDate(iso: ISODate): string {
   return `${weekdayShort(iso)} ${day(iso)}.${monthIndex(iso) + 1}.${iso.slice(0, 4)}`;
 }
@@ -296,7 +296,7 @@ export interface DaySheetContent {
   title: string;
   /** Monday … Sunday of the day's week, for the week strip. */
   week: ISODate[];
-  stripes: AbsenceStripe[];
+  stripes: TripStripe[];
   /** Every Tageszeit of the household in its order, also the empty ones. */
   slots: { slot: MealSlot; entries: MealPlanEntry[] }[];
   /** No plan entry on that day. */
@@ -313,7 +313,7 @@ export function daySheetContent(input: {
   date: ISODate;
   entries: readonly MealPlanEntry[];
   slots: readonly MealSlot[];
-  stripes: AbsenceStripe[];
+  stripes: TripStripe[];
 }): DaySheetContent {
   const ofDay = input.entries.filter((entry) => entry.date === input.date);
   const slots = [...input.slots]

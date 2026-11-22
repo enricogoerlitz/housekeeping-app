@@ -25,55 +25,6 @@ export type Database = {
   };
   public: {
     Tables: {
-      absences: {
-        Row: {
-          created_at: string;
-          from_on: string;
-          household_id: string;
-          id: string;
-          member_id: string | null;
-          note: string | null;
-          to_on: string;
-          updated_at: string;
-        };
-        ComputedFields: never;
-        Insert: {
-          created_at?: string;
-          from_on: string;
-          household_id: string;
-          id?: string;
-          member_id?: string | null;
-          note?: string | null;
-          to_on: string;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          from_on?: string;
-          household_id?: string;
-          id?: string;
-          member_id?: string | null;
-          note?: string | null;
-          to_on?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'absences_household_id_fkey';
-            columns: ['household_id'];
-            isOneToOne: false;
-            referencedRelation: 'households';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'absences_member_fkey';
-            columns: ['household_id', 'member_id'];
-            isOneToOne: false;
-            referencedRelation: 'household_members';
-            referencedColumns: ['household_id', 'profile_id'];
-          },
-        ];
-      };
       activities: {
         Row: {
           address: string | null;
@@ -1193,7 +1144,6 @@ export type Database = {
       };
       packing_list_bags: {
         Row: {
-          absence_id: string;
           bag_id: string | null;
           created_at: string;
           household_id: string;
@@ -1201,11 +1151,11 @@ export type Database = {
           member_id: string | null;
           name: string;
           sort: number;
+          trip_id: string;
           updated_at: string;
         };
         ComputedFields: never;
         Insert: {
-          absence_id: string;
           bag_id?: string | null;
           created_at?: string;
           household_id: string;
@@ -1213,10 +1163,10 @@ export type Database = {
           member_id?: string | null;
           name: string;
           sort?: number;
+          trip_id: string;
           updated_at?: string;
         };
         Update: {
-          absence_id?: string;
           bag_id?: string | null;
           created_at?: string;
           household_id?: string;
@@ -1224,16 +1174,10 @@ export type Database = {
           member_id?: string | null;
           name?: string;
           sort?: number;
+          trip_id?: string;
           updated_at?: string;
         };
         Relationships: [
-          {
-            foreignKeyName: 'packing_list_bags_absence_fkey';
-            columns: ['household_id', 'absence_id'];
-            isOneToOne: false;
-            referencedRelation: 'absences';
-            referencedColumns: ['household_id', 'id'];
-          },
           {
             foreignKeyName: 'packing_list_bags_bag_fkey';
             columns: ['household_id', 'bag_id'];
@@ -1254,6 +1198,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: 'household_members';
             referencedColumns: ['household_id', 'profile_id'];
+          },
+          {
+            foreignKeyName: 'packing_list_bags_trip_fkey';
+            columns: ['household_id', 'trip_id'];
+            isOneToOne: false;
+            referencedRelation: 'trips';
+            referencedColumns: ['household_id', 'id'];
           },
         ];
       };
@@ -1775,6 +1726,95 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: 'stores_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      trip_members: {
+        Row: {
+          created_at: string;
+          household_id: string;
+          id: string;
+          member_id: string;
+          trip_id: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          household_id: string;
+          id?: string;
+          member_id: string;
+          trip_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          household_id?: string;
+          id?: string;
+          member_id?: string;
+          trip_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'trip_members_household_id_fkey';
+            columns: ['household_id'];
+            isOneToOne: false;
+            referencedRelation: 'households';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'trip_members_member_fkey';
+            columns: ['household_id', 'member_id'];
+            isOneToOne: false;
+            referencedRelation: 'household_members';
+            referencedColumns: ['household_id', 'profile_id'];
+          },
+          {
+            foreignKeyName: 'trip_members_trip_fkey';
+            columns: ['household_id', 'trip_id'];
+            isOneToOne: false;
+            referencedRelation: 'trips';
+            referencedColumns: ['household_id', 'id'];
+          },
+        ];
+      };
+      trips: {
+        Row: {
+          created_at: string;
+          from_on: string;
+          household_id: string;
+          id: string;
+          note: string | null;
+          to_on: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          created_at?: string;
+          from_on: string;
+          household_id: string;
+          id?: string;
+          note?: string | null;
+          to_on: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          from_on?: string;
+          household_id?: string;
+          id?: string;
+          note?: string | null;
+          to_on?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'trips_household_id_fkey';
             columns: ['household_id'];
             isOneToOne: false;
             referencedRelation: 'households';

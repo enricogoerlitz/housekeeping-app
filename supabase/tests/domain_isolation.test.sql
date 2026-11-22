@@ -5,7 +5,7 @@
 -- chore events only through the domain ops complete_chore / remove_chore_event (spec 0011).
 begin;
 \ir _helpers.psql
-select plan(11 * 15 + 17 + 5 * 7);
+select plan(12 * 15 + 17 + 5 * 7);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -22,7 +22,7 @@ insert into fx (key, id) values
   ('home_b', tests.create_household('B', array[tests.fx('ben')]));
 insert into fx (key) values
   ('slot_a'), ('area_a'), ('article_a'), ('article_a2'), ('article_a3'), ('store_a'),
-  ('recipe_a'), ('restaurant_a'), ('chore_a'), ('event_a'), ('item_a'), ('feedback_a');
+  ('recipe_a'), ('restaurant_a'), ('chore_a'), ('event_a'), ('item_a'), ('feedback_a'), ('trip_a');
 
 -- ---------- Fixtures in household A (as postgres) ----------
 update public.households
@@ -48,6 +48,10 @@ insert into public.shopping_items (id, household_id, article_id)
 values (tests.fx('item_a'), tests.fx('home_a'), tests.fx('article_a'));
 insert into public.feedback (id, household_id, kind, text, author_id)
 values (tests.fx('feedback_a'), tests.fx('home_a'), 'idea', 'Dunkler Modus', tests.fx('anna'));
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('trip_a'), tests.fx('home_a'), '2026-12-10', '2026-12-12');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home_a'), tests.fx('trip_a'), tests.fx('anna'));
 
 -- ---------- Tables members write directly ----------
 select * from tests.tenant_isolation('areas',
@@ -82,11 +86,18 @@ select * from tests.tenant_isolation('restaurants',
   '{"price_level": 2, "notes": "Mittags günstig"}',
   tests.fx('anna'), tests.fx('ben'));
 
-select * from tests.tenant_isolation('absences',
-  jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'member_id', tests.fx('anna'),
+select * from tests.tenant_isolation('trips',
+  jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'),
                      'from_on', '2026-12-01', 'to_on', '2026-12-03', 'note', 'Dienstreise'),
   '{"to_on": "2026-12-04"}',
   tests.fx('anna'), tests.fx('ben'));
+
+-- Spec 0022: the people of a trip are only inserted and deleted.
+select * from tests.tenant_isolation('trip_members',
+  jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'trip_id', tests.fx('trip_a'),
+                     'member_id', tests.fx('carla')),
+  jsonb_build_object('member_id', tests.fx('anna')),
+  tests.fx('anna'), tests.fx('ben'), true, false);
 
 select * from tests.tenant_isolation('feedback',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'kind', 'problem',

@@ -14,20 +14,20 @@ import { messageOf } from './packing-labels';
 
 /**
  * "+ Reisetasche hinzufügen" (AC-033): every Reisetasche not yet on this packing list; a tap copies
- * it with open Packstücke at the end, "je Tag" counted with the absence's days.
+ * it with open Packstücke at the end, "je Tag" counted with the trip's days.
  */
-export function TripAddBagSheet(props: { absenceId: Id; onClose: () => void }) {
+export function TripAddBagSheet(props: { tripId: Id; onClose: () => void }) {
   const online = useOnlineOnly();
   const bags = usePackingBags();
   const bagItems = usePackingBagItems();
   const listBags = usePackingListBags();
   const membersById = useMembersById();
-  const choices = addableBags(bags, listBags, props.absenceId);
+  const choices = addableBags(bags, listBags, props.tripId);
 
   const add = (bagId: Id, name: string) => {
     if (online.disabled) return;
     try {
-      addBagToPackingList(props.absenceId, bagId);
+      addBagToPackingList(props.tripId, bagId);
     } catch (failure) {
       toast.show({ message: messageOf(failure) });
       return;

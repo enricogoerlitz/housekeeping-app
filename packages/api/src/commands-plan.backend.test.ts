@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
-import { saveAbsences } from './commands-household';
+import { createTrip } from './commands-trips';
 import {
   addPlanEntry,
   createAndPlanActivity,
@@ -183,7 +183,7 @@ describe('meal plan commands: input and local effect', () => {
   it('AC-038: with Enrico away on Saturday only Nadja is preselected', () => {
     const saturday = addDays(TODAY, 1);
     expect(isoWeekday(saturday)).toBe(6);
-    saveAbsences({ replaceIds: [], memberIds: [ENRICO], from: saturday, to: addDays(saturday, 2) });
+    createTrip({ memberIds: [ENRICO], from: saturday, to: addDays(saturday, 2) });
     expect(defaultEaterIds(saturday)).toEqual([NADJA]);
     expect(defaultEaterIds(TODAY)).toEqual([ENRICO, NADJA]);
   });

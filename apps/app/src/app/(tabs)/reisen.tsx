@@ -1,5 +1,5 @@
-import { AbsencesScreen } from '@/features/absences/absences-screen';
+import { TripsScreen } from '@/features/trips/trips-screen';
 
-export default function AbsencesRoute() {
-  return <AbsencesScreen />;
+export default function TripsRoute() {
+  return <TripsScreen />;
 }

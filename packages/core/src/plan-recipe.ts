@@ -1,7 +1,7 @@
 import { formatPickerDate, weekRangeLabel } from './calendar';
 import { addDays, formatShortDate, startOfWeek, weekDates, weekdayShort } from './dates';
 import { defaultEaters } from './meal-plan';
-import type { Absence, Id, ISODate, MealSlot, Member } from './types';
+import type { Id, ISODate, MealSlot, Member, Trip } from './types';
 
 // The window "Einplanen" on the recipe page (spec 0008, REQ-009, E11): weeks from Monday, the
 // preselection and the texts of the button and the notice.
@@ -24,13 +24,13 @@ export function weekDays(weekStart: ISODate): { date: ISODate; label: string }[]
   return weekDates(weekStart).map((date) => ({ date, label: weekdayShort(date) }));
 }
 
-/** Ids for "Wer isst mit?": everyone not absent that day; everyone without a day (AC-036). */
+/** Ids for "Wer isst mit?": everyone not on a trip that day; everyone without a day (AC-036). */
 export function eatersForDay(
   members: readonly Member[],
   date: ISODate | null,
-  absences: readonly Absence[],
+  trips: readonly Trip[],
 ): Id[] {
-  return defaultEaters([...members], date, [...absences]).map((member) => member.id);
+  return defaultEaters(members, date, trips).map((member) => member.id);
 }
 
 export interface PlanChoice {
@@ -52,13 +52,13 @@ export function defaultPlanChoice(
   today: ISODate,
   slots: readonly MealSlot[],
   members: readonly Member[],
-  absences: readonly Absence[],
+  trips: readonly Trip[],
 ): PlanChoice {
   const last = [...slots].sort((a, b) => a.sort - b.sort).at(-1);
   return {
     date: today,
     slotId: last?.id,
-    eaterIds: eatersForDay(members, today, absences),
+    eaterIds: eatersForDay(members, today, trips),
     guests: 0,
     cookId: undefined,
   };
@@ -94,15 +94,15 @@ export function addedNotice(title: string, date: ISODate | null, today: ISODate)
 
 /**
  * Another day, or null for "Ohne Tag vormerken": "Wer isst mit?" goes back to those present that
- * day, so nobody absent stays chosen without notice; guests, Tageszeit and cook stay (E11, AC-036).
+ * day, so nobody travelling stays chosen without notice; guests, Tageszeit and cook stay (E11, AC-036).
  */
 export function withPlanDay(
   choice: PlanChoice,
   date: ISODate | null,
   members: readonly Member[],
-  absences: readonly Absence[],
+  trips: readonly Trip[],
 ): PlanChoice {
-  return { ...choice, date, eaterIds: eatersForDay(members, date, absences) };
+  return { ...choice, date, eaterIds: eatersForDay(members, date, trips) };
 }
 
 /**
@@ -114,8 +114,8 @@ export function pagePlanChoice(
   choice: PlanChoice,
   weeks: number,
   members: readonly Member[],
-  absences: readonly Absence[],
+  trips: readonly Trip[],
 ): PlanChoice {
   if (choice.date === null) return choice;
-  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members, absences);
+  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members, trips);
 }

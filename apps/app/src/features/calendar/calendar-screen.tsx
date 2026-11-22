@@ -16,7 +16,7 @@ import {
   switchView,
   weekDates,
   weekRangeLabel,
-  type AbsenceStripe,
+  type TripStripe,
   type CalendarView,
   type Id,
   type ISODate,
@@ -42,7 +42,7 @@ import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, type HostInstance } from 'react-native';
 
-import { AbsenceSheet } from '@/features/absences/absence-sheet';
+import { TripSheet } from '@/features/trips/trip-sheet';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
 import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
@@ -68,7 +68,7 @@ const VIEWS: { value: CalendarView; label: string }[] = [
   { value: 'year', label: 'Jahr' },
 ];
 
-type MoreAction = 'household-row' | 'absence-new' | 'absences';
+type MoreAction = 'household-row' | 'trips-new' | 'trips';
 
 /** `/kalender?tag=…` from the "Übersicht"; with `eintrag` and `haushalt` from a notification. */
 const TARGET_PARAMS = ['tag', 'eintrag', 'haushalt'] as const;
@@ -131,7 +131,7 @@ export function CalendarScreen() {
   // "Vorgemerkt · n" under the grid of month and year is unfolded (only on this device).
   const [laterOpen, setLaterOpen] = useState(false);
   const [pantryCheck, setPantryCheck] = useState(false);
-  const [newAbsence, setNewAbsence] = useState(false);
+  const [enteringTrip, setEnteringTrip] = useState(false);
 
   // Dragging (spec 0016, REQ-001 to REQ-004, REQ-007): the entry on the finger, or the trip
   // drawn from `anchor` to `current`; `sheet` keeps the days marked while "Reise eintragen" is open.
@@ -297,12 +297,12 @@ export function CalendarScreen() {
           },
         ]),
     {
-      value: 'absence-new',
+      value: 'trips-new',
       label: 'Reise eintragen',
       disabled: online.disabled,
       hint: online.hint,
     },
-    { value: 'absences', label: 'Reisen' },
+    { value: 'trips', label: 'Reisen' },
   ];
   const onMore = (action: MoreAction) => {
     if (action === 'household-row') {
@@ -310,8 +310,8 @@ export function CalendarScreen() {
       settings.update({
         householdRow: { ...settings.householdRow, [view]: !householdOn },
       });
-    } else if (action === 'absence-new') {
-      if (!online.disabled) setNewAbsence(true);
+    } else if (action === 'trips-new') {
+      if (!online.disabled) setEnteringTrip(true);
     } else {
       router.navigate('/reisen');
     }
@@ -408,9 +408,9 @@ export function CalendarScreen() {
   );
 
   const onAdd = (target: AddTarget) => setAdding(target);
-  // A stripe leads to its Urlaubsseite (spec 0012, AC-016, AC-046); editing happens there (✎).
-  const openStripe = (stripe: AbsenceStripe) => {
-    const id = stripe.absenceIds[0];
+  // A stripe leads to its trip (spec 0012, AC-016, AC-046); editing happens there (✎).
+  const openStripe = (stripe: TripStripe) => {
+    const id = stripe.tripId;
     if (id) router.push({ pathname: '/kalender/reise/[id]', params: { id } });
   };
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
@@ -554,15 +554,15 @@ export function CalendarScreen() {
           {pantryCheck ? (
             <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
           ) : null}
-          {newAbsence ? <AbsenceSheet onClose={() => setNewAbsence(false)} /> : null}
+          {enteringTrip ? <TripSheet onClose={() => setEnteringTrip(false)} /> : null}
           {newTrip ? (
-            <AbsenceSheet
+            <TripSheet
               initialRange={{ from: newTrip, to: newTrip }}
               onClose={() => setNewTrip(undefined)}
             />
           ) : null}
           {trip?.phase === 'sheet' && range ? (
-            <AbsenceSheet initialRange={range} focusNote onClose={() => setTrip(null)} />
+            <TripSheet initialRange={range} focusNote onClose={() => setTrip(null)} />
           ) : null}
         </Screen>
       </CalendarDragProvider>

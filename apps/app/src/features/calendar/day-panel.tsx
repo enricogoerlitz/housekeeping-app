@@ -4,7 +4,7 @@ import {
   formatLongDate,
   parseISODate,
   weekdayShort,
-  type AbsenceStripe,
+  type TripStripe,
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
@@ -26,7 +26,7 @@ import { Pressable, View } from 'react-native';
 import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { AbsenceStripeView, EntryLine, HouseholdDay } from './calendar-parts';
+import { TripStripeView, EntryLine, HouseholdDay } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
 import { useDraggedKind } from './calendar-drag';
 
@@ -42,7 +42,7 @@ export interface DayPanelProps {
   showHousehold: boolean;
   onAdd: (target: AddTarget) => void;
   onOpenEntry: (entry: MealPlanEntry) => void;
-  onOpenStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: TripStripe) => void;
   /** "Reise eintragen" with from = to = the day (AC-032). */
   onNewTrip: (date: ISODate) => void;
   /** "Woche anzeigen ›". */
@@ -116,12 +116,12 @@ export function DayPanel(props: DayPanelProps) {
         {content.stripes.length > 0 ? (
           <View style={{ gap: space.xs }}>
             {content.stripes.map((stripe) => (
-              <AbsenceStripeView
+              <TripStripeView
                 key={stripe.key}
                 stripe={stripe}
                 data={data}
                 onPress={props.onOpenStripe}
-                testID={`day-panel-stripe-${stripe.absenceIds[0] ?? ''}`}
+                testID={`day-panel-stripe-${stripe.tripId}`}
               />
             ))}
           </View>

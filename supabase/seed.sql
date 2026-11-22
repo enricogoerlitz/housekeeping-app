@@ -26,7 +26,8 @@ alter table public.shopping_items disable trigger shopping_items_set_timestamps;
 alter table public.shopping_contributions disable trigger shopping_contributions_set_timestamps;
 alter table public.chores disable trigger chores_set_timestamps;
 alter table public.chore_events disable trigger chore_events_set_timestamps;
-alter table public.absences disable trigger absences_set_timestamps;
+alter table public.trips disable trigger trips_set_timestamps;
+alter table public.trip_members disable trigger trip_members_set_timestamps;
 alter table public.packing_bags disable trigger packing_bags_set_timestamps;
 alter table public.packing_bag_items disable trigger packing_bag_items_set_timestamps;
 alter table public.packing_list_bags disable trigger packing_list_bags_set_timestamps;
@@ -733,9 +734,14 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
   ('ce26be3d-b20d-53c0-888b-f51cc027ab61', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '3b116f4c-3ab4-5c3b-997b-574b39484db8', 'Fenster Wohnzimmer', 'done', ((now() at time zone 'Europe/Berlin')::date - 63), '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000009)),
   ('76cda384-e7b7-52ab-8244-e61de068b125', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '3b116f4c-3ab4-5c3b-997b-574b39484db8', 'Fenster Wohnzimmer', 'done', ((now() at time zone 'Europe/Berlin')::date - 400), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000010));
 
-insert into public.absences (id, household_id, member_id, from_on, to_on, note, created_at) values
-  ('c66bc195-adde-5d8d-a132-d7f4f0e37b7d', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', null, ((now() at time zone 'Europe/Berlin')::date + 12), ((now() at time zone 'Europe/Berlin')::date + 18), 'Urlaub Mallorca', now() + make_interval(days => -120, secs => 0.000000)),
-  ('db3ec107-3657-5c8c-9b36-66ae1e6bd891', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '64399031-c98c-5692-9e99-923924bfff3d', ((now() at time zone 'Europe/Berlin')::date + 26), ((now() at time zone 'Europe/Berlin')::date + 27), 'Dienstreise Hamburg', now() + make_interval(days => -120, secs => 0.000001));
+insert into public.trips (id, household_id, from_on, to_on, note, created_at) values
+  ('15f4f2cb-0d29-548d-b8bc-db781c114159', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 12), ((now() at time zone 'Europe/Berlin')::date + 18), 'Urlaub Mallorca', now() + make_interval(days => -120, secs => 0.000000)),
+  ('50dc9a05-496e-5e15-80a4-3bb93fb890b9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 26), ((now() at time zone 'Europe/Berlin')::date + 27), 'Dienstreise Hamburg', now() + make_interval(days => -120, secs => 0.000001));
+
+insert into public.trip_members (id, household_id, trip_id, member_id, created_at) values
+  ('978ce603-15fe-591e-b1b1-28d644da3e36', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000000)),
+  ('9131dd27-38c7-5545-905f-90ba53f29e0c', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000001)),
+  ('4d14a633-8bbf-5c39-952d-862d07818d5e', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '50dc9a05-496e-5e15-80a4-3bb93fb890b9', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000002));
 
 insert into public.packing_bags (id, household_id, name, member_id, sort, created_at) values
   ('e5666659-25f5-56a5-bd8f-74e9c89b8234', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Strand', null, 0, now() + make_interval(days => -120, secs => 0.000000)),
@@ -790,9 +796,9 @@ insert into public.packing_bag_items (id, household_id, bag_id, name, quantity, 
   ('98fba85b-fd28-5f82-be5b-2b4fd7ea8db9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '32e8db95-60b2-5517-b01f-f7af5c7b8827', 'Kamera', null, false, 4, now() + make_interval(days => -120, secs => 0.000043)),
   ('b8bb50d7-3ba1-501b-8efe-f7a6b3838e90', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '32e8db95-60b2-5517-b01f-f7af5c7b8827', 'E-Reader', null, false, 5, now() + make_interval(days => -120, secs => 0.000044));
 
-insert into public.packing_list_bags (id, household_id, absence_id, bag_id, name, member_id, sort, created_at) values
-  ('99c677f5-da3d-5eca-b90a-a123438e8a43', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'c66bc195-adde-5d8d-a132-d7f4f0e37b7d', 'e5666659-25f5-56a5-bd8f-74e9c89b8234', 'Strand', null, 0, now() + make_interval(days => -120, secs => 0.000000)),
-  ('b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'c66bc195-adde-5d8d-a132-d7f4f0e37b7d', 'f229b585-5756-5787-999c-ffdce00a69c2', 'Kulturbeutel', '64399031-c98c-5692-9e99-923924bfff3d', 1, now() + make_interval(days => -120, secs => 0.000001));
+insert into public.packing_list_bags (id, household_id, trip_id, bag_id, name, member_id, sort, created_at) values
+  ('99c677f5-da3d-5eca-b90a-a123438e8a43', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'e5666659-25f5-56a5-bd8f-74e9c89b8234', 'Strand', null, 0, now() + make_interval(days => -120, secs => 0.000000)),
+  ('b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'f229b585-5756-5787-999c-ffdce00a69c2', 'Kulturbeutel', '64399031-c98c-5692-9e99-923924bfff3d', 1, now() + make_interval(days => -120, secs => 0.000001));
 
 insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort, packed, packed_at, packed_by, pack_seq, created_at) values
   ('7a34f62c-c716-5101-ba21-9f64a08112f4', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Badehose', 2, null, 0, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, now() + make_interval(days => -120, secs => 0.000000)),
@@ -1338,6 +1344,8 @@ update public.households set default_store_id = null where id = '263209f8-b95d-5
 
 
 
+
+set constraints all immediate;
 alter table public.profiles enable trigger profiles_set_timestamps;
 alter table public.households enable trigger households_set_timestamps;
 alter table public.household_members enable trigger household_members_set_timestamps;
@@ -1359,7 +1367,8 @@ alter table public.shopping_items enable trigger shopping_items_set_timestamps;
 alter table public.shopping_contributions enable trigger shopping_contributions_set_timestamps;
 alter table public.chores enable trigger chores_set_timestamps;
 alter table public.chore_events enable trigger chore_events_set_timestamps;
-alter table public.absences enable trigger absences_set_timestamps;
+alter table public.trips enable trigger trips_set_timestamps;
+alter table public.trip_members enable trigger trip_members_set_timestamps;
 alter table public.packing_bags enable trigger packing_bags_set_timestamps;
 alter table public.packing_bag_items enable trigger packing_bag_items_set_timestamps;
 alter table public.packing_list_bags enable trigger packing_list_bags_set_timestamps;

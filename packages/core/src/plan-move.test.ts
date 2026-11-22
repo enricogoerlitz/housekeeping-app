@@ -15,7 +15,8 @@ import {
   planMove,
   travellersOn,
 } from './plan-move';
-import type { Absence, MealPlanEntry } from './types';
+import { trip } from './test-fixtures';
+import type { MealPlanEntry } from './types';
 
 // Today in the spec's examples: Sunday, 22 November 2026; the week after runs from 23 to 29.11.
 const today = '2026-11-22';
@@ -312,7 +313,7 @@ describe('texts while and after moving', () => {
 });
 
 describe('travellersOn', () => {
-  const nadjaAway: Absence = { id: 'a1', memberId: 'nadja', from: '2026-11-27', to: '2026-11-29' };
+  const nadjaAway = trip('a1', ['nadja'], '2026-11-27', '2026-11-29');
 
   it('AC-016: eaters who are travelling on the target day, in the order of the eaters', () => {
     expect(travellersOn(['enrico', 'nadja'], '2026-11-27', [nadjaAway])).toEqual(['nadja']);
@@ -321,7 +322,7 @@ describe('travellersOn', () => {
   });
 
   it('AC-016: a trip of the whole household covers every eater', () => {
-    const household: Absence = { id: 'a2', from: '2026-11-27', to: '2026-11-27' };
+    const household = trip('a2', ['enrico', 'nadja'], '2026-11-27', '2026-11-27');
     expect(travellersOn(['enrico', 'nadja'], '2026-11-27', [household])).toEqual([
       'enrico',
       'nadja',
@@ -349,7 +350,7 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
     slots,
     title: 'Lasagne',
     today,
-    absences: [],
+    trips: [],
     now,
     timeZone: 'Europe/Berlin',
   };
@@ -371,16 +372,11 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
   });
 
   it('AC-016: the toast names the eaters travelling on the target day', () => {
-    const nadjaAway: Absence = {
-      id: 'a1',
-      memberId: 'nadja',
-      from: '2026-11-27',
-      to: '2026-11-29',
-    };
+    const nadjaAway = trip('a1', ['nadja'], '2026-11-27', '2026-11-29');
     expect(
       planMove({
         ...base,
-        absences: [nadjaAway],
+        trips: [nadjaAway],
         entry: lasagne,
         target: { kind: 'slot', date: '2026-11-27', slotId: 'mittag' },
         entries: [lasagne],

@@ -1,7 +1,7 @@
 import {
-  removeAbsences,
+  removeTrip,
   snapshot,
-  useAbsences,
+  useTrips,
   useMembers,
   useMembersById,
   usePackingItems,
@@ -9,11 +9,11 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
-  absenceDeleteDialog,
-  absenceStripes,
+  tripDeleteDialog,
+  tripStripes,
   dateRangeLabel,
   splitUpcomingPast,
-  type AbsenceStripe,
+  type TripStripe,
 } from '@housekeeping/core';
 import {
   EmptyState,
@@ -36,17 +36,17 @@ import { FAILED } from '@/features/packing/packing-labels';
 import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
-import { AbsenceSheet, AbsenceWho } from './absence-sheet';
+import { TripSheet, TripWho } from './trip-sheet';
 
 /**
  * "Reisen" (spec 0010, AC-037), from the calendar's ⋯ and from "Verwalten": "Kommend"
- * earliest first, "Vergangen" newest first, rows grouped like the stripes. A tap opens the
- * Urlaubsseite (spec 0012, AC-016). Deleting an absence with a packing list asks first and names
+ * earliest first, "Vergangen" newest first, one row per trip. A tap opens the
+ * trip (spec 0012, AC-016). Deleting a trip with a packing list asks first and names
  * it; without one there is 5 s "Rückgängig" (AC-038).
  */
-export function AbsencesScreen() {
+export function TripsScreen() {
   const back = useBackToManage();
-  const absences = useAbsences();
+  const trips = useTrips();
   const members = useMembers();
   const membersById = useMembersById();
   const today = useToday();
@@ -55,13 +55,13 @@ export function AbsencesScreen() {
   const online = useOnlineOnly();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<{ stripe: AbsenceStripe; message: string }>();
+  const [deleting, setDeleting] = useState<{ stripe: TripStripe; message: string }>();
 
-  const { upcoming, past } = splitUpcomingPast(absenceStripes(absences, members), today);
+  const { upcoming, past } = splitUpcomingPast(tripStripes(trips, members), today);
 
-  const remove = (stripe: AbsenceStripe, confirmed = false) => {
+  const remove = (stripe: TripStripe, confirmed = false) => {
     if (online.disabled) return;
-    const message = absenceDeleteDialog(stripe.absenceIds, listBags, items);
+    const message = tripDeleteDialog(stripe.tripId, listBags, items);
     if (message && !confirmed) {
       setDeleting({ stripe, message });
       return;
@@ -69,7 +69,7 @@ export function AbsencesScreen() {
     setDeleting(undefined);
     const restore = message ? undefined : snapshot();
     try {
-      removeAbsences(stripe.absenceIds);
+      removeTrip(stripe.tripId);
     } catch {
       toast.show({ message: FAILED });
       return;
@@ -86,10 +86,10 @@ export function AbsencesScreen() {
     );
   };
 
-  // The Urlaubsseite belongs to the calendar, which stays underneath; "‹ Reisen" leads back
+  // The trip belongs to the calendar, which stays underneath; "‹ Reisen" leads back
   // here (spec 0012, task 12).
-  const open = (stripe: AbsenceStripe) => {
-    const id = stripe.absenceIds[0];
+  const open = (stripe: TripStripe) => {
+    const id = stripe.tripId;
     if (id) {
       router.push(
         { pathname: '/kalender/reise/[id]', params: { id, von: 'reisen' } },
@@ -98,21 +98,21 @@ export function AbsencesScreen() {
     }
   };
 
-  const row = (stripe: AbsenceStripe) => {
+  const row = (stripe: TripStripe) => {
     const who = stripeWho(stripe, membersById);
     const year = stripe.to.slice(0, 4) === today.slice(0, 4) ? '' : ` ${stripe.to.slice(0, 4)}`;
     return (
       <ListRow
         key={stripe.key}
-        testID={`absence-${stripe.absenceIds[0] ?? ''}`}
+        testID={`trip-${stripe.tripId}`}
         title={who}
         subtitle={[`${dateRangeLabel(stripe.from, stripe.to)}${year}`, stripe.note]
           .filter(Boolean)
           .join(' · ')}
         leading={
-          stripe.household ? <Icon name="house" color="muted" /> : <AbsenceWho stripe={stripe} />
+          stripe.household ? <Icon name="house" color="muted" /> : <TripWho stripe={stripe} />
         }
-        // Reading the Urlaubsseite works offline; editing happens there (✎).
+        // Reading the trip works offline; editing happens there (✎).
         onPress={() => open(stripe)}
         // Outside the row's press area, so the two buttons do not nest.
         controls={
@@ -122,7 +122,7 @@ export function AbsencesScreen() {
             disabled={online.disabled}
             hint={online.hint}
             onPress={() => remove(stripe)}
-            testID={`absence-${stripe.absenceIds[0] ?? ''}-remove`}
+            testID={`trip-${stripe.tripId}-remove`}
           />
         }
       />
@@ -131,7 +131,7 @@ export function AbsencesScreen() {
 
   return (
     <Screen
-      testID="absences-screen"
+      testID="trips-screen"
       clearFab={false}
       header={
         <ScreenHeader
@@ -145,7 +145,7 @@ export function AbsencesScreen() {
               disabled={online.disabled}
               hint={online.hint}
               onPress={() => setCreating(true)}
-              testID="absence-new"
+              testID="trips-new"
             />
           }
         />
@@ -161,25 +161,25 @@ export function AbsencesScreen() {
           icon="calendar-off"
           title="Niemand ist weg"
           text="Tragt Dienstreisen oder Urlaub ein: Wer weg ist, fehlt bei „Wer isst mit?“."
-          testID="absence-empty"
+          testID="trips-empty"
         />
       ) : (
         <>
-          <Section title="Kommend" testID="absences-upcoming">
+          <Section title="Kommend" testID="trips-upcoming">
             {upcoming.length === 0 ? (
               <Text color="muted">Nichts geplant.</Text>
             ) : (
-              <List testID="absence-list">{upcoming.map(row)}</List>
+              <List testID="trips-list">{upcoming.map(row)}</List>
             )}
           </Section>
           {past.length > 0 ? (
-            <Section title="Vergangen" testID="absences-past">
+            <Section title="Vergangen" testID="trips-past">
               <List>{past.map(row)}</List>
             </Section>
           ) : null}
         </>
       )}
-      {creating ? <AbsenceSheet onClose={() => setCreating(false)} /> : null}
+      {creating ? <TripSheet onClose={() => setCreating(false)} /> : null}
       {deleting ? (
         <TripConfirmDialog
           title="Reise löschen?"
@@ -188,7 +188,7 @@ export function AbsencesScreen() {
           needsNetwork
           onConfirm={() => remove(deleting.stripe, true)}
           onCancel={() => setDeleting(undefined)}
-          testID="absence-delete-dialog"
+          testID="trips-delete-dialog"
         />
       ) : null}
     </Screen>

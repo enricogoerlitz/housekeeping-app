@@ -252,6 +252,13 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 11. **Glossar** (Hauptsitzung): „Abwesenheit“ → „Reise“ (`Trip`, `trips`, `trip_members`);
     „Urlaubsseite“ → „Reise-Fenster“ (`TripWindow`); „Abwesenheits-Streifen“ → „Reise-Streifen“
     (`TripStripe`); „Kommende Packliste“ neu; „Packstück“ mit `bagItemId`.
+12. **Beim Bau (Claude, 22.11.2026):** `trip_members` hat eine eigene `id` (PK) und
+    `unique (household_id, trip_id, member_id)` statt des PK `trip_id+member_id`: so schreibt der
+    allgemeine Diff-Weg (`apply_changes`, „Rückgängig“) Personen wie jede andere Zeile, ohne eigene
+    RPC. „Mindestens eine Person“ prüft ein verzögerter Constraint-Trigger am Ende der Transaktion;
+    das Entfernen der letzten Person wird abgelehnt, außer sie hat den Haushalt verlassen (dann
+    geht die Reise samt Packliste). Bestehende Abwesenheiten werden in der Migration zu Reisen mit
+    derselben id.
 
 ## Daten
 

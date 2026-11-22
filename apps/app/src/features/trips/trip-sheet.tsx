@@ -1,26 +1,23 @@
 import {
-  saveAbsences,
-  useAbsences,
+  createTrip,
+  updateTrip,
   useCurrentMember,
   useMembers,
   usePackingBagItems,
   usePackingBags,
-  usePackingList,
   useToday,
 } from '@housekeeping/api';
 import {
-  absenceWhoHint,
-  droppedPackingListMessage,
+  tripWhoHint,
   formatPickerDate,
   monthTitle,
   openRangeField,
   pickRangeDate,
-  planAbsenceWrite,
-  planPackingLists,
+  planPackingList,
   saveLabel,
   startOfMonth,
-  validateAbsenceDraft,
-  type AbsenceStripe,
+  validateTripDraft,
+  type TripStripe,
   type Id,
   type ISODate,
   type RangePick,
@@ -42,25 +39,22 @@ import { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { messageOf } from '@/features/packing/packing-labels';
-import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { AbsenceBagChips } from './absence-bag-chips';
+import { TripBagChips } from './trip-bag-chips';
 
 const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /**
- * "Reise eintragen" and "Reise bearbeiten" (spec 0010, REQ-010; D23): who, from, to
- * and a note. All members chosen is the whole household, otherwise one absence per person.
- * Editing a stripe edits all absences it stands for, in one change. Entering one also offers the
- * Reisetaschen; "Speichern · 21 Packstücke" creates the absence and its packing list in one call
- * (spec 0012, AC-011 to AC-015). Editing keeps the packing list; when a person's absence goes
- * away with its own list, a dialog names that list before anything is saved (decision 8).
+ * "Reise eintragen" and "Reise bearbeiten" (spec 0010, REQ-010; spec 0022, REQ-003, REQ-004):
+ * who, from, to and a note of one trip. Entering one also offers the Reisetaschen; "Speichern ·
+ * 21 Packstücke" creates the trip, its people and its packing list in one call. Editing keeps the
+ * packing list, whoever is on the trip.
  * `initialRange` fills "Von" and "Bis" of a new one, e.g. the day of the day window (spec 0016,
  * AC-032) or the days drawn over the grid (AC-028).
  */
-export function AbsenceSheet(props: {
-  stripe?: AbsenceStripe;
+export function TripSheet(props: {
+  stripe?: TripStripe;
   initialRange?: { from: ISODate; to: ISODate };
   /** The cursor starts in "Notiz", after a trip was drawn over the days (spec 0016, REQ-007). */
   focusNote?: boolean;
@@ -72,13 +66,7 @@ export function AbsenceSheet(props: {
   const online = useOnlineOnly();
   const editing = props.stripe;
 
-  const [who, setWho] = useState<string[]>(() =>
-    editing
-      ? editing.household
-        ? members.map((member) => member.id)
-        : editing.memberIds
-      : [me.id],
-  );
+  const [who, setWho] = useState<string[]>(() => (editing ? editing.memberIds : [me.id]));
   const [range, setRange] = useState<RangePick>({
     from: editing?.from ?? props.initialRange?.from ?? today,
     to: editing?.to ?? props.initialRange?.to ?? today,
@@ -89,13 +77,10 @@ export function AbsenceSheet(props: {
   );
   const [note, setNote] = useState(editing?.note ?? '');
   const [bagIds, setBagIds] = useState<Id[]>([]);
-  const [confirming, setConfirming] = useState(false);
-  const absences = useAbsences();
   const bags = usePackingBags();
   const bagItems = usePackingBagItems();
-  const packingList = usePackingList(editing?.absenceIds ?? []);
 
-  const problems = validateAbsenceDraft({ memberIds: who, from: range.from, to: range.to });
+  const problems = validateTripDraft({ memberIds: who, from: range.from, to: range.to });
   // While "Bis" is being chosen right after "Von", the old "Bis" is not a mistake yet (AC-042).
   const showToError = problems.toBeforeFrom && range.editing !== 'to';
 
@@ -110,44 +95,29 @@ export function AbsenceSheet(props: {
     setMonth(startOfMonth(range[field]));
   };
 
-  // What saving would write, as saveAbsences plans it: the Packstücke of the new packing lists
-  // for the button, and the lists that would go with a removed absence for the dialog.
-  const plan = planAbsenceWrite({
-    existing: editing ? absences.filter((absence) => editing.absenceIds.includes(absence.id)) : [],
-    memberIds: who,
-    allMemberIds: members.map((member) => member.id),
-    from: range.from,
-    to: range.to,
-    packingList,
-  });
+  // The Packstücke of the new packing list, for the button.
   const newItemCount =
     editing || bagIds.length === 0
       ? 0
-      : planPackingLists({
-          absences: plan.create.map((row, index) => ({ id: `draft-${index}`, ...row })),
+      : planPackingList({
+          trip: { id: 'draft', from: range.from, to: range.to },
           bagIds,
           bags,
           bagItems,
           newId: () => 'draft',
         }).items.length;
-  const droppedMessage = droppedPackingListMessage(plan.droppedPackingLists, members);
 
   const save = () => {
     if (online.disabled || problems.noOne || problems.toBeforeFrom) return;
-    if (droppedMessage && !confirming) {
-      setConfirming(true);
-      return;
-    }
-    setConfirming(false);
+    const fields = {
+      memberIds: who,
+      from: range.from,
+      to: range.to,
+      note: note.trim(),
+    };
     try {
-      saveAbsences({
-        replaceIds: editing?.absenceIds ?? [],
-        memberIds: who,
-        from: range.from,
-        to: range.to,
-        note: note.trim() || undefined,
-        bagIds: editing ? undefined : bagIds,
-      });
+      if (editing) updateTrip(editing.tripId, fields);
+      else createTrip({ ...fields, bagIds });
     } catch (failure) {
       toast.show({ message: messageOf(failure) });
       return;
@@ -161,7 +131,7 @@ export function AbsenceSheet(props: {
       visible
       onClose={props.onClose}
       title={editing ? 'Reise bearbeiten' : 'Reise eintragen'}
-      testID="absence-sheet"
+      testID="trip-sheet"
       size="m"
       footer={
         <Button
@@ -170,8 +140,8 @@ export function AbsenceSheet(props: {
           full
           onPress={save}
           disabled={online.disabled || problems.noOne}
-          hint={online.hint ?? (problems.noOne ? 'Wähle, wer weg ist' : undefined)}
-          testID="absence-save"
+          hint={online.hint ?? (problems.noOne ? 'Wähle, wer unterwegs ist' : undefined)}
+          testID="trip-save"
         />
       }
     >
@@ -185,12 +155,12 @@ export function AbsenceSheet(props: {
                 label={member.name}
                 selected={who.includes(member.id)}
                 onPress={() => toggle(member.id)}
-                testID={`absence-member-${member.id}`}
+                testID={`trip-member-${member.id}`}
               />
             ))}
           </View>
-          <Text variant="caption" color="muted" testID="absence-who-hint">
-            {absenceWhoHint(who, members)}
+          <Text variant="caption" color="muted" testID="trip-who-hint">
+            {tripWhoHint(who, members)}
           </Text>
         </Stack>
         <Stack gap={8}>
@@ -199,7 +169,7 @@ export function AbsenceSheet(props: {
             value={range.from}
             open={range.editing === 'from'}
             onPress={() => openField('from')}
-            testID="absence-from"
+            testID="trip-from"
           />
           <DateField
             label="Bis"
@@ -207,7 +177,7 @@ export function AbsenceSheet(props: {
             open={range.editing === 'to'}
             onPress={() => openField('to')}
             error={showToError ? '„Bis“ liegt vor „Von“' : undefined}
-            testID="absence-to"
+            testID="trip-to"
           />
           {range.editing ? (
             <RangeCalendar
@@ -225,26 +195,12 @@ export function AbsenceSheet(props: {
           value={note}
           onChangeText={setNote}
           autoFocus={props.focusNote}
-          testID="absence-note"
+          testID="trip-note"
         />
-        <Text variant="small" color="muted">
-          Wer weg ist, fehlt bei „Wer isst mit?“.
-        </Text>
         {editing ? null : (
-          <AbsenceBagChips selected={bagIds} onChange={setBagIds} disabled={online.disabled} />
+          <TripBagChips selected={bagIds} onChange={setBagIds} disabled={online.disabled} />
         )}
       </Stack>
-      {confirming && droppedMessage ? (
-        <TripConfirmDialog
-          title="Reise ändern?"
-          message={droppedMessage}
-          confirmLabel="Speichern"
-          needsNetwork
-          onConfirm={save}
-          onCancel={() => setConfirming(false)}
-          testID="absence-drop-dialog"
-        />
-      ) : null}
     </Sheet>
   );
 }
@@ -308,7 +264,7 @@ function DateField(props: {
 }
 
 /**
- * The month calendar in the absence window: starts with the field's month, ‹ › page without a
+ * The month calendar in the trip window: starts with the field's month, ‹ › page without a
  * limit, the range from "Von" to "Bis" is marked across months and years (AC-042).
  */
 function RangeCalendar(props: {
@@ -339,7 +295,7 @@ function RangeCalendar(props: {
 }
 
 /** Avatars of a stripe for list rows: the house for the whole household. */
-export function AbsenceWho(props: { stripe: AbsenceStripe }) {
+export function TripWho(props: { stripe: TripStripe }) {
   const members = useMembers();
   const people = props.stripe.household
     ? members

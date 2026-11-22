@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { absenceEndLabel, absenceStripes, stripesOn } from './absences';
+import { stripesOn, tripEndLabel, tripStripes } from './trips';
 import {
   dayKinds,
   entryKindRole,
@@ -13,16 +13,7 @@ import { choreBucket, flexibleProgress } from './chores';
 import { addDays, isoWeekNumber, parseISODate, startOfWeek, weekdayLong } from './dates';
 import { householdRow, type HouseholdRowItem } from './household-row';
 import { entriesForDay } from './meal-plan';
-import type {
-  Absence,
-  Chore,
-  ChoreEvent,
-  Id,
-  ISODate,
-  MealPlanEntry,
-  Member,
-  Recipe,
-} from './types';
+import type { Chore, ChoreEvent, Id, ISODate, MealPlanEntry, Member, Recipe, Trip } from './types';
 
 // The "Übersicht" (spec 0011, REQ-001, REQ-002): one shown day, as if it were today, and the
 // week around it. Nothing here is stored; the shown day lives only while the app runs.
@@ -114,7 +105,7 @@ export function plannedAllLabel(count: number): string | undefined {
   return count >= PLANNED_ALL_FROM ? `Alle ${count} ›` : undefined;
 }
 
-export interface AbsenceLine {
+export interface TripLine {
   key: string;
   /** The people of the line; empty for the whole household. */
   memberIds: Id[];
@@ -127,28 +118,24 @@ function joinNames(names: string[]): string {
 }
 
 /**
- * The quiet lines about absences on the shown day (AC-007, Offene Frage 2 e): "Nadja · Urlaub
+ * The quiet lines about trips on the shown day (AC-007, Offene Frage 2 e): "Nadja · Urlaub
  * Mallorca · bis Do 26.11.", without a note "Nadja ist unterwegs bis Do 26.11."; several people
  * "Enrico und Vera sind unterwegs …", the whole household "Alle …". One line per stripe.
  */
-export function absenceLines(input: {
-  absences: Absence[];
-  members: Member[];
-  date: ISODate;
-}): AbsenceLine[] {
+export function tripLines(input: { trips: Trip[]; members: Member[]; date: ISODate }): TripLine[] {
   const { members, date } = input;
-  return stripesOn(absenceStripes(input.absences, members), date).map((stripe) => {
+  return stripesOn(tripStripes(input.trips, members), date).map((stripe) => {
     const names = stripe.household
       ? ['Alle']
       : stripe.memberIds.map((id) => members.find((member) => member.id === id)?.name ?? '');
     const who = joinNames(names.filter((name) => name !== ''));
-    const end = absenceEndLabel(stripe.to);
+    const end = tripEndLabel(stripe.to);
     const plural = stripe.household || stripe.memberIds.length > 1;
     const text =
       stripe.note !== undefined
         ? `${who} · ${stripe.note} · ${end}`
         : `${who} ${plural ? 'sind' : 'ist'} unterwegs ${end}`;
-    return { key: stripe.key, memberIds: stripe.memberIds, text };
+    return { key: stripe.key, memberIds: stripe.household ? [] : stripe.memberIds, text };
   });
 }
 

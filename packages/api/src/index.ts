@@ -5,6 +5,7 @@ import './zod-config';
 
 export * from './queries';
 export * from './commands-household';
+export * from './commands-trips';
 export * from './commands-articles';
 export * from './commands-stores';
 export * from './commands-recipes';

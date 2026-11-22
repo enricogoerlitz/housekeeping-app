@@ -17,12 +17,12 @@
 // person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
 // (users, devices) can share one server.
 import {
-  absenceDays,
   addDays,
   compareTimestamps,
   isHalfStar,
   isReminderPast,
   packQuantity,
+  tripDays,
   queueEffect,
   RECIPE_LIMITS,
   type AiSearchRequest,
@@ -220,7 +220,8 @@ const REFERENCES: {
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
   { table: 'packing_bag_items', column: 'bag_id', target: 'packing_bags', onDelete: 'cascade' },
-  { table: 'packing_list_bags', column: 'absence_id', target: 'absences', onDelete: 'cascade' },
+  { table: 'packing_list_bags', column: 'trip_id', target: 'trips', onDelete: 'cascade' },
+  { table: 'trip_members', column: 'trip_id', target: 'trips', onDelete: 'cascade' },
   { table: 'packing_list_bags', column: 'bag_id', target: 'packing_bags', onDelete: 'set null' },
   {
     table: 'packing_items',
@@ -264,10 +265,19 @@ const inRange = (value: unknown, min: number, max: number) =>
   value === undefined ||
   (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max);
 
-/** The check constraints of the packing tables (spec 0012, packing migration). */
+/** The check constraints of the packing tables (spec 0012) and of trips (spec 0022). */
 function checkPackingRow(table: string, row: Row, tables: TableRows): void {
   const invalid = () => new TransportError('permanent', '23514', 400);
-  if (table === 'packing_bags') {
+  if (table === 'trips') {
+    if (String(row.to_on) < String(row.from_on)) throw invalid();
+    if (typeof row.note === 'string' && Array.from(row.note).length > 500) throw invalid();
+  } else if (table === 'trip_members') {
+    const clash = Object.values(tables.trip_members ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.trip_id === row.trip_id && other.member_id === row.member_id,
+    );
+    if (clash) throw conflict('23505');
+  } else if (table === 'packing_bags') {
     if (!isTrimmedName(row.name, 60)) throw invalid();
     const name = String(row.name).toLowerCase();
     const clash = Object.values(tables.packing_bags ?? {}).some(
@@ -283,7 +293,7 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
       row.bag_id != null &&
       Object.values(tables.packing_list_bags ?? {}).some(
         (other) =>
-          other.id !== row.id && other.absence_id === row.absence_id && other.bag_id === row.bag_id,
+          other.id !== row.id && other.trip_id === row.trip_id && other.bag_id === row.bag_id,
       );
     if (clash) throw conflict('23505');
   } else if (table === 'packing_items') {
@@ -298,24 +308,21 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
   }
 }
 
-/** "Je Tag" like the database: per day × days of the absence of its bag, at most 9999. */
+/** "Je Tag" like the database: per day × days of the trip of its bag, at most 9999. */
 function perDayQuantity(tables: TableRows, row: Row): unknown {
   if (row.per_day == null) return row.quantity;
   const listBag = tables.packing_list_bags?.[String(row.list_bag_id)];
-  const absence = listBag ? tables.absences?.[String(listBag.absence_id)] : undefined;
-  if (!absence) return row.quantity;
-  return packQuantity(
-    Number(row.per_day),
-    absenceDays(String(absence.from_on), String(absence.to_on)),
-  );
+  const trip = listBag ? tables.trips?.[String(listBag.trip_id)] : undefined;
+  if (!trip) return row.quantity;
+  return packQuantity(Number(row.per_day), tripDays(String(trip.from_on), String(trip.to_on)));
 }
 
-/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one absence (AC-037). */
-function recalcPacking(tables: TableRows, absenceId: string): TableRows {
+/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one trip (AC-037). */
+function recalcPacking(tables: TableRows, tripId: string): TableRows {
   let next = tables;
   const bagIds = new Set(
     Object.values(tables.packing_list_bags ?? {})
-      .filter((bag) => bag.absence_id === absenceId)
+      .filter((bag) => bag.trip_id === tripId)
       .map((bag) => bag.id),
   );
   for (const item of Object.values(tables.packing_items ?? {})) {
@@ -1030,6 +1037,9 @@ export function createFakeServer(): FakeServer {
     row: Record<string, unknown>,
   ): void {
     const memberIds = new Set(memberIdsOf(householdId));
+    if (table === 'trip_members' && 'member_id' in row && !memberIds.has(String(row.member_id))) {
+      throw foreignKey('trip_members_member_fkey');
+    }
     for (const reference of PACKING_MEMBER_COLUMNS) {
       const value = row[reference.column];
       if (reference.table === table && value != null && !memberIds.has(String(value))) {
@@ -1557,7 +1567,7 @@ export function createFakeServer(): FakeServer {
               ...(op.table === 'activities' ? { created_by: userId } : {}),
             }),
           );
-          // packing_items_before_insert: "je Tag" from the absence, whatever the device sent.
+          // packing_items_before_insert: "je Tag" from the trip, whatever the device sent.
           const inserted = tables[op.table]?.[op.row.id];
           if (op.table === 'meal_plan_entries' && inserted) {
             tables = withRow(tables, op.table, reminderTriggers(undefined, inserted, timeZone));
@@ -1612,14 +1622,11 @@ export function createFakeServer(): FakeServer {
           checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
           checkPackingRow(op.table, tables[op.table]?.[op.id] ?? row, tables);
           checkPackingMembers(householdId, op.table, op.changes);
-          // absences_recalc_packing and packing_list_bags_recalc (AC-037).
+          // trips_recalc_packing (AC-037; spec 0022, AC-011).
           const changed = (column: string) =>
             column in op.changes && op.changes[column] !== row[column];
-          if (op.table === 'absences' && (changed('from_on') || changed('to_on'))) {
+          if (op.table === 'trips' && (changed('from_on') || changed('to_on'))) {
             tables = recalcPacking(tables, op.id);
-          }
-          if (op.table === 'packing_list_bags' && changed('absence_id')) {
-            tables = recalcPacking(tables, String(op.changes.absence_id));
           }
         } else {
           if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || NO_DELETE_TABLES.has(op.table)) {
@@ -1627,6 +1634,13 @@ export function createFakeServer(): FakeServer {
           }
           tables = withoutRows(tables, op.table, [op.id]);
         }
+      }
+      // trips_need_member and trip_members_last_gone, deferred to the end of the call (AC-043).
+      const withPeople = new Set(
+        Object.values(tables.trip_members ?? {}).map((row) => String(row.trip_id)),
+      );
+      if (Object.keys(tables.trips ?? {}).some((tripId) => !withPeople.has(tripId))) {
+        throw new TransportError('permanent', 'trip_without_members', 400);
       }
       return [tables, { applied: ops.length, results }];
     });
@@ -2529,6 +2543,22 @@ export function createFakeServer(): FakeServer {
               Object.values(tables.notification_settings ?? {})
                 .filter((row) => row.member_id === profileId)
                 .map((row) => row.id),
+            );
+            // Spec 0022, AC-044: she leaves her trips; a trip without anybody goes with its list.
+            next = withoutRows(
+              next,
+              'trip_members',
+              Object.values(next.trip_members ?? {})
+                .filter((row) => row.member_id === profileId)
+                .map((row) => row.id),
+            );
+            const withPeople = new Set(
+              Object.values(next.trip_members ?? {}).map((row) => String(row.trip_id)),
+            );
+            next = withoutRows(
+              next,
+              'trips',
+              Object.keys(next.trips ?? {}).filter((tripId) => !withPeople.has(tripId)),
             );
             for (const reference of PACKING_MEMBER_COLUMNS) {
               for (const row of Object.values(next[reference.table] ?? {})) {

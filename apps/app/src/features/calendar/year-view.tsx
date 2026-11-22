@@ -5,9 +5,9 @@ import {
   monthName,
   parseISODate,
   stripesOfYear,
-  yearDayAbsence,
+  yearDayTrip,
   yearMonths,
-  type AbsenceStripe,
+  type TripStripe,
   type ISODate,
 } from '@housekeeping/core';
 import { Icon, List, ListRow, Section, Text, focusRing, useTheme } from '@housekeeping/ui';
@@ -36,7 +36,7 @@ export interface YearViewProps {
   registerDay: (date: ISODate, node: HostInstance | null) => void;
   /** A tap on the month name opens the month. */
   onOpenMonth: (monthStart: ISODate) => void;
-  onOpenStripe: (stripe: AbsenceStripe) => void;
+  onOpenStripe: (stripe: TripStripe) => void;
   /** Under the grid, before the year's trips: the strip "Vorgemerkt" (spec 0016, REQ-003). */
   belowGrid?: ReactNode;
 }
@@ -45,8 +45,8 @@ const WEEKDAY_INITIALS = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
 const TINT_ALPHA = '33';
 
 /**
- * The year (spec 0010, REQ-005): twelve small months with a dot on days with entries and absences
- * tinted, then the year's absences as a list. Chores never show here. A tap on a day opens the
+ * The year (spec 0010, REQ-005): twelve small months with a dot on days with entries and trips
+ * tinted, then the year's trips as a list. Chores never show here. A tap on a day opens the
  * day window, a tap on the month name the month (spec 0016, AC-023).
  */
 export function YearView(props: YearViewProps) {
@@ -85,9 +85,9 @@ export function YearView(props: YearViewProps) {
       </View>
       {props.belowGrid}
       <View style={{ marginTop: 24 }}>
-        <Section title={`Reisen ${props.year}`} testID="year-absences">
+        <Section title={`Reisen ${props.year}`} testID="year-trips">
           {stripes.length === 0 ? (
-            <Text color="muted" testID="year-absences-empty">
+            <Text color="muted" testID="year-trips-empty">
               {`Keine Reisen ${props.year}`}
             </Text>
           ) : (
@@ -106,7 +106,7 @@ export function YearView(props: YearViewProps) {
                   leading={<StripeBadges stripe={stripe} members={data.members} />}
                   trailing={
                     data.hasPackingList(stripe) ? (
-                      <View testID={`year-absence-${stripe.absenceIds[0] ?? ''}-bag`}>
+                      <View testID={`year-trip-${stripe.tripId}-bag`}>
                         <Icon name="luggage" size={16} color="muted" />
                       </View>
                     ) : undefined
@@ -117,7 +117,7 @@ export function YearView(props: YearViewProps) {
                     data.hasPackingList(stripe),
                   )}
                   onPress={() => props.onOpenStripe(stripe)}
-                  testID={`year-absence-${stripe.absenceIds[0] ?? ''}`}
+                  testID={`year-trip-${stripe.tripId}`}
                 />
               ))}
             </List>
@@ -218,17 +218,17 @@ function MiniDay(props: {
 }) {
   const theme = useTheme();
   const { bounds } = useCalendarDrag();
-  const absence = yearDayAbsence(props.date, props.data.absences);
-  const member = absence.kind === 'one' ? props.data.membersById[absence.memberId] : undefined;
+  const coverage = yearDayTrip(props.date, props.data.stripes);
+  const member = coverage.kind === 'one' ? props.data.membersById[coverage.memberId] : undefined;
   const background =
-    absence.kind === 'household'
+    coverage.kind === 'household'
       ? theme.colors.surfaceSunken
       : member
         ? `${member.color}${TINT_ALPHA}`
         : 'transparent';
   const lines =
-    absence.kind === 'several'
-      ? absence.memberIds.flatMap((id) => props.data.membersById[id] ?? [])
+    coverage.kind === 'several'
+      ? coverage.memberIds.flatMap((id) => props.data.membersById[id] ?? [])
       : [];
   const isToday = props.date === props.data.today;
   const c = theme.colors;

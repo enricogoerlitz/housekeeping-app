@@ -15,7 +15,7 @@ import { View } from 'react-native';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useHandedTarget } from '@/lib/target-params';
 
-import { TodayAbsence } from './today-absence';
+import { TodayTrips } from './today-trips';
 import { TodayChores } from './today-chores';
 import { CalendarButton, WeekNav } from './today-header';
 import { TodayMeals } from './today-meals';
@@ -120,7 +120,7 @@ export function TodayScreen() {
       <Screen testID="today-screen" header={header}>
         {nav}
         {strip}
-        <TodayAbsence shown={shown} />
+        <TodayTrips shown={shown} />
         {meals}
         {recap}
         {chores}
@@ -137,7 +137,7 @@ export function TodayScreen() {
       >
         <View style={{ flex: 1.6, minWidth: 0 }}>
           {strip}
-          <TodayAbsence shown={shown} />
+          <TodayTrips shown={shown} />
           {meals}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>

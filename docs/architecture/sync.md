@@ -483,7 +483,7 @@ pack_seq}]` der gefundenen Packstücke.
   nicht gegen die 20 Löschungen je Aufruf, auch nicht beim „Rückgängig“ einer neuen Packliste.
 - **Vom Server gerechnet.** Eine neu gerechnete „je Tag“-Anzahl (`DERIVED_COLUMNS`:
   `packing_items.quantity`) zeigt das Gerät sofort, schickt sie aber nie; `packing_items` hat
-  keinen Patch, `packing_list_bags` nur `absence_id`, `bag_id`, `sort` (`PATCH_COLUMNS`). Die
+  keinen Patch, `packing_list_bags` nur `bag_id`, `sort` (die Packliste bleibt bei ihrer Reise, Spec 0022) (`PATCH_COLUMNS`). Die
   Gepackt-Spalten stehen in `NEVER_SENT_COLUMNS`.
 - **„Rückgängig“ nach dem Entfernen** eines Packstücks oder einer Tasche der Packliste schickt
   die Tasche (falls nötig) und `restore_packing_items` mit dem gepackten Stand in einem Aufruf.

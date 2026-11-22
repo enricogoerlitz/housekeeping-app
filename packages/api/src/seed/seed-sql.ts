@@ -458,7 +458,8 @@ const TIMESTAMPED_TABLES = [
   'shopping_contributions',
   'chores',
   'chore_events',
-  'absences',
+  'trips',
+  'trip_members',
   'packing_bags',
   'packing_bag_items',
   'packing_list_bags',
@@ -479,7 +480,7 @@ const TOP_LEVEL = [
   'chores',
   'choreEvents',
   'feedback',
-  'absences',
+  'trips',
   'packingBags',
 ] as const;
 
@@ -546,7 +547,8 @@ export async function generateSeed(
         },
       );
     }),
-    toggle('enable'),
+    // The deferred checks of trips (spec 0022) run before the triggers go back on.
+    'set constraints all immediate;\n' + toggle('enable'),
   ].join('\n');
 
   const demo = households[0]?.[1];

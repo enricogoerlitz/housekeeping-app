@@ -69,7 +69,7 @@ const nameTaken = (name: string) => (error: unknown) =>
 
 // ---------- Reisetaschen (REQ-001) ----------
 
-/** "+ Neue Reisetasche" (also "+ Neue" in the absence window, AC-013): at the end of the page. */
+/** "+ Neue Reisetasche" (also in the trip window, AC-013, spec 0022 AC-034): at the end of the page. */
 export function createPackingBag(input: { name: string; memberId?: Id }): Id {
   const name = checkedBagName(input.name);
   const bag: PackingBag = {
@@ -226,12 +226,12 @@ export function removePackingBagItem(itemId: Id): void {
 // ---------- Packliste ergänzen und kürzen (REQ-007) ----------
 
 /** "+ Reisetasche hinzufügen" (AC-033): a copy at the end of the packing list; its id. */
-export function addBagToPackingList(absenceId: Id, bagId: Id): Id {
+export function addBagToPackingList(tripId: Id, bagId: Id): Id {
   const data = getData();
-  const absence = data.absences.find((candidate) => candidate.id === absenceId);
-  if (!absence) throw new Error('Diese Reise gibt es nicht mehr.');
+  const trip = data.trips.find((candidate) => candidate.id === tripId);
+  if (!trip) throw new Error('Diese Reise gibt es nicht mehr.');
   const plan = planAddBagToList({
-    absence,
+    trip,
     bag: requireBag(bagId),
     bagItems: data.packingBagItems,
     listBags: data.packingListBags,
@@ -417,14 +417,14 @@ export function packAll(listBagId: Id): () => void {
 }
 
 /**
- * "Für die Rückreise zurücksetzen" (AC-028 to AC-030): unpacks every packed Packstück of the
- * packing lists of these absences (the absences of one Urlaubsseite); returns how many. Works
- * offline; a Packstück packed again elsewhere meanwhile stays packed ("Abhaken gewinnt").
+ * "Für die Rückreise zurücksetzen" (AC-028 to AC-030; spec 0022, AC-018): unpacks every packed
+ * Packstück of the trip's packing list; returns how many. Works offline; a Packstück packed again
+ * elsewhere meanwhile stays packed ("Abhaken gewinnt").
  */
-export function resetPackingList(absenceIds: readonly Id[]): number {
+export function resetPackingList(tripId: Id): number {
   const data = getData();
   const listBagIds = new Set(
-    data.packingListBags.filter((bag) => absenceIds.includes(bag.absenceId)).map((bag) => bag.id),
+    data.packingListBags.filter((bag) => bag.tripId === tripId).map((bag) => bag.id),
   );
   const items = data.packingItems.filter((item) => listBagIds.has(item.listBagId));
   const entries = resetEntries(getState().activeHouseholdId, items);
