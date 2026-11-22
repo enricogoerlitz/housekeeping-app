@@ -778,6 +778,10 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   if (table === 'chores' && isAsNeeded(row) && row.next_due_on != null) {
     throw new TransportError('permanent', '23514', 400);
   }
+  // chores_remind_needs_time: only a chore with a time can be silent (spec 0027, AC-038).
+  if (table === 'chores' && row.remind_at_due_time === false && row.due_time == null) {
+    throw new TransportError('permanent', '23514', 400);
+  }
   // areas_household_id_name_idx (spec 0007, AC-052).
   if (table === 'areas') {
     const name = String(row.name).toLowerCase();
@@ -1829,7 +1833,7 @@ export function createFakeServer(): FakeServer {
                         reminder_text: null,
                       }
                     : op.table === 'chores'
-                      ? { due_time: null }
+                      ? { due_time: null, remind_at_due_time: true }
                       : {};
           if (op.table === 'collection_recipes') checkCollectionRecipeInsert(op.row, tables);
           tables = withRow(

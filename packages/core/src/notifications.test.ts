@@ -175,9 +175,7 @@ describe('times in five-minute steps (Decision 4)', () => {
 
   it('AC-035 (spec 0027): the hint under „Erinnern“, on and off', () => {
     expect(choreRemindHint(true, true)).toBe('Erinnert zur Uhrzeit, wer dran ist.');
-    expect(choreRemindHint(false, true)).toBe(
-      'Keine Erinnerung – die Uhrzeit wird nur angezeigt.',
-    );
+    expect(choreRemindHint(false, true)).toBe('Keine Erinnerung – die Uhrzeit wird nur angezeigt.');
   });
 
   it('AC-037 (spec 0027): with the own „Aufgaben mit Uhrzeit“ off, „Erinnern“ adds why you get none', () => {
