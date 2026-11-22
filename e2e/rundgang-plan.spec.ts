@@ -169,7 +169,8 @@ test('AC-014 / AC-025 (0010): Woche, Monat and Jahr; ▲ opens "Aktivitäten" an
   await tid(page, 'calendar-view-year').click();
   await expect(tid(page, 'year-view')).toBeVisible();
   await expect(tidPrefix(page, 'year-month-')).toHaveCount(12);
-  await tid(page, 'year-month-3').click();
+  // The month name opens the month; a day opens the day window (spec 0016, AC-023).
+  await tid(page, 'year-month-3-open').click();
   await expect(tid(page, 'month-phone')).toBeVisible();
   await expect(tid(page, 'calendar-title')).toHaveText(/^März /);
   await tid(page, 'calendar-view-week').click();
