@@ -18,7 +18,9 @@ import {
   reminderSave,
   reminderTextCounter,
   selectableReminderDays,
+  suggestedReminder,
   switchedOnDraft,
+  timeReminder,
   thisDeviceRegistered,
   TIME_FIELD_WORDS,
   type EntryReminder,
@@ -42,8 +44,8 @@ import { entryReminderLabels, ReminderBell } from './reminder-bell';
 
 // Spec 0017 "Erinnern" (REQ-001 to REQ-004, REQ-007): the switch and, when it is on, "Tag",
 // "Uhrzeit" and "Woran erinnern? (optional)". The add window keeps the draft until "Einplanen";
-// the entry window sends switch, chips and a chosen time right away and the text with Enter,
-// leaving the field and "Fertig" (REQ-002). The checks come from core (`reminderSave`).
+// the entry window sends switch, chips and a chosen time right away, the text with Enter and on
+// closing the window (spec 0021, REQ-009). The checks come from core (`reminderSave`).
 
 type FieldError = { field: 'day' | 'time' | 'text'; error: string };
 
@@ -63,6 +65,11 @@ export interface ReminderForm {
   check: () => ReminderSave;
   /** "Fertig" in the entry window: sends what is pending; false when a hint is shown instead. */
   save: () => boolean;
+  /**
+   * The entry's time changed (spec 0021, REQ-014): its first time switches "Erinnern" on with the
+   * suggestion two hours before; a later change leaves the reminder where it is.
+   */
+  followTime: (before: TimeOfDay | undefined, after: TimeOfDay | undefined) => void;
   /** Resolves once the server took what was sent last, rejects when it refused it. */
   pending: () => Promise<void>;
 }
@@ -76,6 +83,8 @@ export function useReminderForm(options: {
   slotName: string;
   stored?: EntryReminder;
   entryId?: Id;
+  /** Spec 0021, REQ-014: with a time, switching on suggests two hours before it. */
+  startsAt?: TimeOfDay;
 }): ReminderForm {
   const { entryDate, entryId } = options;
   const household = useHousehold();
@@ -141,9 +150,15 @@ export function useReminderForm(options: {
     toggle: (on) => {
       // The browser's question first, inside the tap (spec 0013, AC-007; AC-026).
       if (asksForPushPermission({ kind: 'switch', on })) ensureDevicePush();
-      const next = on
-        ? switchedOnDraft(entryDate, options.slotName, new Date(), household.timeZone)
-        : REMINDER_OFF_DRAFT;
+      const suggestion =
+        on && options.startsAt
+          ? suggestedReminder(entryDate, options.startsAt, new Date(), household.timeZone)
+          : undefined;
+      const next = !on
+        ? REMINDER_OFF_DRAFT
+        : suggestion
+          ? { on: true, offsetDays: suggestion.offsetDays, time: suggestion.at, text: '' }
+          : switchedOnDraft(entryDate, options.slotName, new Date(), household.timeZone);
       update(next);
       send(next, { quietWithoutTime: true });
     },
@@ -170,6 +185,21 @@ export function useReminderForm(options: {
       return decision;
     },
     save: () => send(draft),
+    followTime: (before, after) => {
+      if (draft.on) return;
+      const suggestion = timeReminder({
+        entryDate,
+        before,
+        after,
+        reminder: base.current,
+        now: new Date(),
+        timeZone: household.timeZone,
+      });
+      if (!suggestion) return;
+      const next = { on: true, offsetDays: suggestion.offsetDays, time: suggestion.at, text: '' };
+      update(next);
+      send(next);
+    },
     pending: () => sent.current,
   };
 }
@@ -198,6 +228,8 @@ export function ReminderBlock(props: {
   onOpenSettings: () => void;
   /** The entry's name for the bell's screen-reader text, "Lasagne, Erinnerung Freitag 18 Uhr". */
   entryTitle?: string;
+  /** Spec 0021, AC-038: the reminder lies after the entry's time. */
+  afterStart?: boolean;
   testID: string;
 }) {
   const { form, disabled, testID } = props;
@@ -322,7 +354,10 @@ export function ReminderBlock(props: {
             onChange={(time) => {
               if (time !== undefined && !disabled) form.chooseTime(time);
             }}
-            error={fieldError('time')}
+            error={
+              fieldError('time') ??
+              (props.afterStart ? 'Die Erinnerung liegt nach der Uhrzeit' : undefined)
+            }
             hint={disabled ? props.hint : undefined}
             disabled={disabled}
             testID={`${testID}-time`}
@@ -331,9 +366,7 @@ export function ReminderBlock(props: {
             label="Woran erinnern? (optional)"
             value={draft.text}
             onChangeText={form.setText}
-            onBlur={() => {
-              if (!disabled) form.commitText();
-            }}
+            // Leaving the field keeps the text; closing the window saves it (spec 0021, REQ-009).
             onSubmitEditing={() => {
               if (!disabled) form.commitText();
             }}

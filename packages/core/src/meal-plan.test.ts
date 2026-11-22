@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { addDays } from './dates';
+import { addPresetSlot } from './calendar';
 import {
-  addPresetSlot,
   defaultEaters,
   entriesForDay,
   leftoverCandidates,
   leftoversDayLabel,
+  olderLeftoverCandidates,
   orderSlotEntries,
   splitVariants,
   variantSummary,
@@ -481,6 +482,44 @@ describe('leftovers from the seven days before (REQ-011)', () => {
 
   it('AC-049: nothing cooked in the seven days before is an empty list', () => {
     expect(leftoverCandidates(plan, '2027-02-01', slots, {})).toEqual([]);
+  });
+});
+
+describe('Reste after spec 0021 (REQ-011, REQ-012)', () => {
+  const order = ['slot-vormittag', 'slot-mittag', 'slot-abend'];
+  const dal = entry({ id: 'dal', date: '2026-11-22', slotId: 'slot-mittag' });
+  const plan = [
+    entry({ id: 'lasagne-alt', date: '2026-11-04' }),
+    entry({ id: 'lasagne', date: '2026-11-18' }),
+    entry({ id: 'shakshuka', date: '2026-11-20' }),
+    entry({ id: 'curry', date: '2026-11-21' }),
+    dal,
+  ];
+
+  it('AC-030: for Mo 23.11. noon the four dishes of the week before, youngest first', () => {
+    expect(
+      leftoverCandidates(plan, '2026-11-23', order, {}, 'slot-mittag').map((e) => e.id),
+    ).toEqual(['dal', 'curry', 'shakshuka', 'lasagne']);
+  });
+
+  it('AC-032: the same day in an earlier Tageszeit comes first, "(Mittag)"; not for an earlier one', () => {
+    expect(
+      leftoverCandidates(plan, '2026-11-22', order, {}, 'slot-abend').map((e) => e.id),
+    ).toEqual(['dal', 'curry', 'shakshuka', 'lasagne']);
+    expect(
+      leftoverCandidates(plan, '2026-11-22', order, {}, 'slot-vormittag').map((e) => e.id),
+    ).toEqual(['curry', 'shakshuka', 'lasagne']);
+    expect(
+      leftoverCandidates(plan, '2026-11-22', order, {}, 'slot-mittag').map((e) => e.id),
+    ).toEqual(['curry', 'shakshuka', 'lasagne']);
+    expect(leftoversDayLabel('2026-11-22', '2026-11-22', 'Mittag')).toBe('Mittag');
+  });
+
+  it('AC-033: "Ältere Reste …" offers every earlier dish without a limit, youngest first', () => {
+    expect(
+      olderLeftoverCandidates(plan, '2026-11-22', order, {}, 'slot-abend').map((e) => e.id),
+    ).toEqual(['dal', 'curry', 'shakshuka', 'lasagne', 'lasagne-alt']);
+    expect(leftoversDayLabel('2026-11-04', '2026-11-22')).toBe('Mi 4.11.');
   });
 });
 

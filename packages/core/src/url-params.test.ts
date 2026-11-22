@@ -64,6 +64,12 @@ describe('readPageParams', () => {
     expect(read.invalid).toEqual(['aufgabe']);
   });
 
+  it('spec 0021, AC-043: the chore window opened from the calendar stands in its address', () => {
+    const chore = '6f1c2b0e-8a4d-4f7e-9b3a-2d5c6e7f8a90';
+    expect(readPageParams('kalender', { aufgabe: chore }).values).toEqual({ aufgabe: chore });
+    expect(readPageParams('kalender', { aufgabe: 'abc' }).invalid).toEqual(['aufgabe']);
+  });
+
   it('of a repeated single parameter the first counts; a repeated list parameter keeps all', () => {
     const read = readPageParams('rezepte', {
       suche: ['curry', 'reis'],

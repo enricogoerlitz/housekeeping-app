@@ -6,7 +6,6 @@ import {
   bytesToBase64Url,
   choreTimeHint,
   dailySummaryPartLabel,
-  DEFAULT_REMIND_MINUTES,
   deviceAction,
   deviceLabel,
   deviceRowLabel,
@@ -23,8 +22,6 @@ import {
   permissionStatus,
   pushSupport,
   pushSupportHint,
-  REMIND_CHOICES,
-  remindLabel,
   serverDeviceStatus,
   thisDeviceRegistered,
   thisDeviceView,
@@ -42,35 +39,33 @@ const ENTRY = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 
 describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
   // Spec 0017, REQ-007: "Erinnerungen an Einträgen" is a third kind that is on at the start.
-  it('AC-001: the row in the settings reads "3 an" with the defaults', () => {
-    expect(enabledKindsLabel(notificationDefaults)).toBe('3 an');
+  it('AC-001, spec 0021 AC-039: the row in the settings reads "2 an" with the defaults', () => {
+    expect(enabledKindsLabel(notificationDefaults)).toBe('2 an');
   });
 
   it('AC-001: counts every kind that is on, "Alle aus" when none is', () => {
-    expect(enabledKindsLabel({ ...notificationDefaults, dailySummaryEnabled: true })).toBe('4 an');
+    expect(enabledKindsLabel({ ...notificationDefaults, dailySummaryEnabled: true })).toBe('3 an');
     expect(
       enabledKindsLabel({
         ...notificationDefaults,
         choreRemindersEnabled: false,
-        reservationRemindersEnabled: false,
         entryRemindersEnabled: false,
       }),
     ).toBe('Alle aus');
   });
 
-  it('spec 0018, AC-022: kinds on, this device not registered: "3 an · dieses Gerät aus"', () => {
-    expect(notificationsRowLabel(notificationDefaults, false)).toBe('3 an · dieses Gerät aus');
+  it('spec 0018, AC-022: kinds on, this device not registered: "2 an · dieses Gerät aus"', () => {
+    expect(notificationsRowLabel(notificationDefaults, false)).toBe('2 an · dieses Gerät aus');
   });
 
-  it('spec 0018, AC-022: once this device is registered: "3 an"', () => {
-    expect(notificationsRowLabel(notificationDefaults, true)).toBe('3 an');
+  it('spec 0018, AC-022: once this device is registered: "2 an"', () => {
+    expect(notificationsRowLabel(notificationDefaults, true)).toBe('2 an');
   });
 
   it('spec 0018, AC-022: with every kind off the device does not matter: "Alle aus"', () => {
     const off = {
       ...notificationDefaults,
       choreRemindersEnabled: false,
-      reservationRemindersEnabled: false,
       entryRemindersEnabled: false,
     };
     expect(notificationsRowLabel(off, false)).toBe('Alle aus');
@@ -86,13 +81,21 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
     expect(thisDeviceRegistered({ ...on, support: 'unsupported' })).toBe(false);
   });
 
-  it('AC-011, spec 0017 REQ-007: the defaults: chores with a time, reservations and entry reminders are on', () => {
+  it('AC-011, spec 0017 REQ-007: the defaults: chores with a time and entry reminders are on', () => {
     expect(NOTIFICATION_KINDS.map((kind) => kindEnabled(notificationDefaults, kind))).toEqual([
       false,
       false,
       true,
       true,
-      true,
+    ]);
+  });
+
+  it('spec 0021, AC-039: "Erinnerungen an Einträgen" is there, "Restaurant-Reservierung" is not', () => {
+    expect(NOTIFICATION_KINDS).toEqual([
+      'dailySummary',
+      'activitiesEve',
+      'choreReminders',
+      'entryReminders',
     ]);
   });
 
@@ -101,15 +104,12 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
     expect(kindEnabledPatch('entryReminders', false)).toEqual({ entryRemindersEnabled: false });
   });
 
-  it('AC-011: subtitles "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung", "19:00", "2 h vorher, je Eintrag änderbar"', () => {
+  it('AC-011: subtitles "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung", "19:00"', () => {
     expect(kindSubtitle(notificationDefaults, 'dailySummary')).toBe(
       '7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung',
     );
     expect(kindSubtitle(notificationDefaults, 'activitiesEve')).toBe('19:00');
     expect(kindSubtitle(notificationDefaults, 'choreReminders')).toBeUndefined();
-    expect(kindSubtitle(notificationDefaults, 'reservationReminders')).toBe(
-      '2 h vorher, je Eintrag änderbar',
-    );
   });
 
   it('AC-012: the subtitle follows the chosen time and parts, always in the fixed order', () => {
@@ -125,9 +125,6 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
     expect(kindEnabledPatch('dailySummary', true)).toEqual({ dailySummaryEnabled: true });
     expect(kindEnabledPatch('activitiesEve', false)).toEqual({ activitiesEveEnabled: false });
     expect(kindEnabledPatch('choreReminders', false)).toEqual({ choreRemindersEnabled: false });
-    expect(kindEnabledPatch('reservationReminders', true)).toEqual({
-      reservationRemindersEnabled: true,
-    });
   });
 
   it('Decision 25: parts of the Tagesüberblick toggle, the last one cannot be deselected', () => {
@@ -182,18 +179,6 @@ describe('times in five-minute steps (Decision 4)', () => {
     expect(choreTimeHint(false)).toBe(
       'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus',
     );
-  });
-
-  it('AC-029: "Erinnern" offers 30 min to 4 h, default 2 h', () => {
-    expect(REMIND_CHOICES).toEqual([30, 60, 120, 180, 240]);
-    expect(DEFAULT_REMIND_MINUTES).toBe(120);
-    expect(REMIND_CHOICES.map(remindLabel)).toEqual([
-      '30 Min vorher',
-      '1 h vorher',
-      '2 h vorher',
-      '3 h vorher',
-      '4 h vorher',
-    ]);
   });
 });
 

@@ -54,7 +54,8 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
       entries,
       trips,
       members,
-      slots: household.mealSlots,
+      // In the household's order: it decides what "later" means (spec 0021, REQ-012).
+      slots: [...household.mealSlots].sort((a, b) => a.sort - b.sort),
       title: titleOf(entry),
       today,
       now: new Date(),

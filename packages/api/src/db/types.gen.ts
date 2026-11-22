@@ -794,14 +794,13 @@ export type Database = {
           note: string | null;
           portions: number;
           recipe_id: string | null;
-          remind_minutes_before: number;
           reminder_at: string | null;
           reminder_day_offset: number | null;
           reminder_text: string | null;
-          reserved_at: string | null;
           restaurant_id: string | null;
           slot_id: string;
           sort: number;
+          starts_at: string | null;
           text: string | null;
           updated_at: string;
           variants: NonNullable<Json>;
@@ -822,14 +821,13 @@ export type Database = {
           note?: string | null;
           portions?: number;
           recipe_id?: string | null;
-          remind_minutes_before?: number;
           reminder_at?: string | null;
           reminder_day_offset?: number | null;
           reminder_text?: string | null;
-          reserved_at?: string | null;
           restaurant_id?: string | null;
           slot_id: string;
           sort?: number;
+          starts_at?: string | null;
           text?: string | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
@@ -849,14 +847,13 @@ export type Database = {
           note?: string | null;
           portions?: number;
           recipe_id?: string | null;
-          remind_minutes_before?: number;
           reminder_at?: string | null;
           reminder_day_offset?: number | null;
           reminder_text?: string | null;
-          reserved_at?: string | null;
           restaurant_id?: string | null;
           slot_id?: string;
           sort?: number;
+          starts_at?: string | null;
           text?: string | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
@@ -919,7 +916,6 @@ export type Database = {
           household_id: string;
           id: string;
           member_id: string;
-          reservation_reminders_enabled: boolean;
           updated_at: string;
         };
         ComputedFields: never;
@@ -935,7 +931,6 @@ export type Database = {
           household_id: string;
           id?: string;
           member_id: string;
-          reservation_reminders_enabled?: boolean;
           updated_at?: string;
         };
         Update: {
@@ -950,7 +945,6 @@ export type Database = {
           household_id?: string;
           id?: string;
           member_id?: string;
-          reservation_reminders_enabled?: boolean;
           updated_at?: string;
         };
         Relationships: [

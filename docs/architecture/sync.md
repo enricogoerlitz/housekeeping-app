@@ -175,7 +175,9 @@ regelt die erste Spec mit Fotos.
   Nachricht enthält keine Zeilendaten.
 - **Vertrauensmodell der Grenzen:** `apply_changes` nimmt höchstens 200 Operationen und
   20 Löschungen je Aufruf an; jede ID in einer `remove_contributions`-Operation zählt als Löschung
-  und als Operation. Die Grenzen fangen Fehler im Client ab (etwa einen Diff, der versehentlich
+  und als Operation. `replace_entry_contributions` (Spec 0021) zählt als eine Löschung: Sie nimmt
+  nur die Beiträge der genannten Planeinträge (höchstens 200) von offenen Posten, so folgt die Liste
+  auch einem Gericht mit mehr als 20 Zutaten in einem Aufruf. Die Grenzen fangen Fehler im Client ab (etwa einen Diff, der versehentlich
   ganze Tabellen löscht), keine böswilligen Mitglieder: Ein Mitglied darf Zeilen seines Haushalts
   ohnehin direkt über die API löschen. Schutz gegen Fremde geben RLS und die Spaltenrechte.
 - **Einladungen** werden immer selbst angenommen (`accept_invitation`) oder abgelehnt

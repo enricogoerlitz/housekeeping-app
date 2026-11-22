@@ -2,16 +2,18 @@ import {
   packingSaveProblem,
   planPackingList,
   recalcPerDay,
-  recomputeEntryContributions,
+  followEntryOnList,
   tripDays,
   validateTripDraft,
   withoutTravellers,
   type Id,
+  type EntryAddition,
   type ISODate,
   type MealPlanEntry,
   type Trip,
 } from '@housekeeping/core';
 
+import { commitEntriesWithList } from './list-additions';
 import { commit, getData, getState, newId, nowISO, updateData } from './store';
 
 // Trips (spec 0022, REQ-003 to REQ-005, REQ-015): one trip with its people and one packing list.
@@ -160,32 +162,31 @@ export function takeTravellersOut(offers: readonly { entryId: Id; memberIds: Id[
   if (found.length === 0) return 0;
   const now = nowISO();
   let items = data.items;
+  const additions: EntryAddition[] = [];
+  let listChanged = false;
   const changed = new Map<Id, MealPlanEntry>();
   for (const { entry, memberIds } of found) {
     const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     const next = withoutTravellers({ entry, memberIds, recipe, members, articlesById });
     changed.set(entry.id, next);
-    items = recomputeEntryContributions({ items, entry: next, recipe, articlesById, newId, now });
+    const followed = followEntryOnList({ items, entry: next, recipe, articlesById, newId, now });
+    items = followed.items;
+    listChanged ||= followed.changed;
+    additions.push(...followed.additions);
   }
-  const itemIds = new Set(items.map((item) => item.id));
-  const contributionIds = new Set(
-    items.flatMap((item) => item.contributions.map((contribution) => contribution.id)),
-  );
-  const removedItems = data.items.filter((item) => !itemIds.has(item.id)).length;
-  const removedContributions = data.items
-    .flatMap((item) => item.contributions)
-    .filter((contribution) => !contributionIds.has(contribution.id)).length;
-  commit(
-    {
-      path: 'diff',
-      maxDeletes: { shopping_items: removedItems, shopping_contributions: removedContributions },
-    },
-    () =>
-      updateData((current) => ({
-        ...current,
-        planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
-        items,
-      })),
-  );
+  const changeEntries = () =>
+    updateData((current) => ({
+      ...current,
+      planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
+    }));
+  if (!listChanged) {
+    commit({ path: 'diff' }, changeEntries);
+  } else {
+    // The list follows in the same call, however many ingredients (replace_entry_contributions).
+    commitEntriesWithList({ entryIds: [...changed.keys()] }, changeEntries, () => ({
+      items,
+      additions,
+    }));
+  }
   return found.length;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { articlesById, enrico, makeRecipe, mangoCurry, nadja } from './test-fixtures';
 import {
-  recomputeEntryContributions,
+  followEntryOnList,
   tripMealLine,
   tripMealOffers,
   tripMealsDoneText,
@@ -272,14 +272,14 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
 
   // 500 g for 4 portions, 1 portion: 125 g, bought as 130 g (spec 0025, REQ-008).
   it('AC-021: "Hackfleisch 130 g" with the same Herkunft and on the same item', () => {
-    const next = recomputeEntryContributions({
+    const next = followEntryOnList({
       items: [hack, eier],
       entry: { ...lasagne, eaterIds: [nadja.id], portions: 1 },
       recipe: lasagneRecipe,
       articlesById,
       newId,
       now,
-    });
+    }).items;
     const item = next.find((candidate) => candidate.id === 'item-hack');
     expect(item?.contributions).toEqual([
       expect.objectContaining({
@@ -292,37 +292,39 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
   });
 
   it('AC-021: a parked dish takes its contributions away; "Eier" goes', () => {
-    const next = recomputeEntryContributions({
+    const next = followEntryOnList({
       items: [hack, eier],
       entry: { ...shakshuka, date: null },
       articlesById,
       newId,
       now,
     });
-    expect(next.map((item) => item.id)).toEqual(['item-hack']);
+    expect(next.items.map((item) => item.id)).toEqual(['item-hack']);
+    // The server takes them away in the same call (replace_entry_contributions), adds nothing.
+    expect(next.additions).toEqual([]);
   });
 
   it('checked items stay, and nothing on the list means no change', () => {
     const checked = { ...hack, checked: true };
     expect(
-      recomputeEntryContributions({
+      followEntryOnList({
         items: [checked],
         entry: { ...lasagne, portions: 1 },
         recipe: lasagneRecipe,
         articlesById,
         newId,
         now,
-      }),
+      }).items,
     ).toEqual([checked]);
     expect(
-      recomputeEntryContributions({
+      followEntryOnList({
         items: [eier],
         entry: { ...lasagne, portions: 1 },
         recipe: lasagneRecipe,
         articlesById,
         newId,
         now,
-      }),
+      }).items,
     ).toEqual([eier]);
   });
 });

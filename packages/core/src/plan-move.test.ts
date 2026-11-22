@@ -113,21 +113,24 @@ describe('dropOutcome: where a dropped entry lands', () => {
   });
 });
 
-describe('moveBounds: leftovers stay behind their dish (spec 0010, REQ-011)', () => {
+describe('moveBounds: leftovers stay behind their dish (spec 0010, REQ-011; spec 0021, REQ-012)', () => {
   const entries = [lasagne, lasagneLeftovers];
+  const order = ['vormittag', 'mittag', 'abend'];
 
-  it('AC-015: a dish with leftovers on Fri cannot go to Fri–Sun, but to Thu and back to 20.11.', () => {
-    const bounds = moveBounds(lasagne, entries);
+  it('AC-015: a dish with leftovers on Fri noon cannot go to Fri evening or later, but to Thu and far back', () => {
+    const bounds = moveBounds(lasagne, entries, order);
     expect(isSelectableMoveDay(bounds, '2026-11-26')).toBe(true);
     expect(isSelectableMoveDay(bounds, '2026-11-20')).toBe(true);
+    expect(isSelectableMoveDay(bounds, '2026-11-01')).toBe(true);
     expect(isSelectableMoveDay(bounds, '2026-11-27')).toBe(false);
     expect(isSelectableMoveDay(bounds, '2026-11-28')).toBe(false);
-    expect(isSelectableMoveDay(bounds, '2026-11-29')).toBe(false);
-    expect(isSelectableMoveDay(bounds, '2026-11-19')).toBe(false);
+    expect(isSelectableMoveDay(bounds, '2027-01-08')).toBe(false);
+    expect(isSelectableMoveDay(bounds, '2026-11-27', 'vormittag')).toBe(true);
+    expect(isSelectableMoveDay(bounds, '2026-11-27', 'mittag')).toBe(false);
   });
 
   it('AC-015: dropping the dish on Saturday is refused with the leftovers day', () => {
-    const outcome = dropOutcome(lasagne, { kind: 'day', date: '2026-11-28' }, entries);
+    const outcome = dropOutcome(lasagne, { kind: 'day', date: '2026-11-28' }, entries, order);
     expect(outcome).toEqual({
       kind: 'blocked',
       reason: { kind: 'leftovers-planned', leftoversDate: '2026-11-27' },
@@ -138,27 +141,60 @@ describe('moveBounds: leftovers stay behind their dish (spec 0010, REQ-011)', ()
     );
   });
 
-  it('AC-015: leftovers more than seven days after the dish are refused', () => {
-    const outcome = dropOutcome(
-      lasagneLeftovers,
-      { kind: 'slot', date: '2026-12-03', slotId: 'mittag' },
-      entries,
+  it('AC-034: the dish dragged onto the Tageszeit of its leftovers on the same day is refused', () => {
+    const dal = entry({ id: 'dal', date: today, slotId: 'mittag' });
+    const dalLeftovers = entry({
+      id: 'dal-reste',
+      kind: 'leftovers',
+      date: today,
+      slotId: 'abend',
+      leftoversOfEntryId: 'dal',
+    });
+    const plan = [dal, dalLeftovers];
+    const onEvening = dropOutcome(dal, { kind: 'slot', date: today, slotId: 'abend' }, plan, order);
+    if (onEvening.kind !== 'blocked') throw new Error('expected blocked');
+    expect(blockedText(onEvening.reason, 'Linsen-Dal')).toBe(
+      'Reste von Linsen-Dal stehen schon am So 22.11.',
     );
-    expect(outcome).toEqual({ kind: 'blocked', reason: { kind: 'too-far' } });
-    if (outcome.kind !== 'blocked') throw new Error('expected blocked');
-    expect(blockedText(outcome.reason, 'Lasagne')).toBe(
-      'Reste gehen bis sieben Tage nach dem Gericht',
+    const leftoversMorning = dropOutcome(
+      dalLeftovers,
+      { kind: 'slot', date: today, slotId: 'vormittag' },
+      plan,
+      order,
     );
-    expect(dropOutcome(lasagneLeftovers, { kind: 'day', date: '2026-12-02' }, entries)).toEqual({
+    if (leftoversMorning.kind !== 'blocked') throw new Error('expected blocked');
+    expect(blockedText(leftoversMorning.reason, 'Linsen-Dal')).toBe(
+      'Reste stehen immer nach ihrem Gericht',
+    );
+    expect(
+      dropOutcome(dalLeftovers, { kind: 'slot', date: today, slotId: 'mittag' }, plan, order).kind,
+    ).toBe('blocked');
+    expect(dropOutcome(dalLeftovers, { kind: 'day', date: '2026-12-10' }, plan, order)).toEqual({
       kind: 'move',
-      date: '2026-12-02',
-      slotId: 'mittag',
+      date: '2026-12-10',
+      slotId: 'abend',
+    });
+  });
+
+  it('AC-033: leftovers may lie any number of days after their dish (no seven-day limit)', () => {
+    expect(
+      dropOutcome(
+        lasagneLeftovers,
+        { kind: 'slot', date: '2026-12-03', slotId: 'mittag' },
+        entries,
+        order,
+      ),
+    ).toEqual({ kind: 'move', date: '2026-12-03', slotId: 'mittag' });
+    expect(dropOutcome(lasagne, { kind: 'day', date: '2026-11-19' }, entries, order)).toEqual({
+      kind: 'move',
+      date: '2026-11-19',
+      slotId: 'abend',
     });
   });
 
   it('AC-015: leftovers on or before the day of their dish are refused', () => {
     for (const date of ['2026-11-25', '2026-11-24']) {
-      const outcome = dropOutcome(lasagneLeftovers, { kind: 'day', date }, entries);
+      const outcome = dropOutcome(lasagneLeftovers, { kind: 'day', date }, entries, order);
       expect(outcome).toEqual({
         kind: 'blocked',
         reason: { kind: 'before-dish', dishDate: '2026-11-25' },
@@ -168,46 +204,39 @@ describe('moveBounds: leftovers stay behind their dish (spec 0010, REQ-011)', ()
     }
   });
 
-  it('AC-015: a dish moved more than seven days before its leftovers is refused', () => {
-    expect(dropOutcome(lasagne, { kind: 'day', date: '2026-11-19' }, entries)).toEqual({
-      kind: 'blocked',
-      reason: { kind: 'too-far' },
-    });
-  });
-
-  it('AC-015: with several leftovers the dish stays before the first and within 7 days of the last', () => {
+  it('AC-015: with several leftovers the dish stays before the first', () => {
     const later = entry({
       id: 'reste-2',
       kind: 'leftovers',
       date: '2026-11-30',
       leftoversOfEntryId: 'lasagne',
     });
-    const bounds = moveBounds(lasagne, [...entries, later]);
-    expect(bounds.earliest?.date).toBe('2026-11-23');
-    expect(bounds.latest?.date).toBe('2026-11-26');
-    expect(isSelectableMoveDay(bounds, '2026-11-22')).toBe(false);
-    expect(isSelectableMoveDay(bounds, '2026-11-23')).toBe(true);
+    const bounds = moveBounds(lasagne, [...entries, later], order);
+    expect(bounds.before?.place).toEqual({ date: '2026-11-27', slot: 1 });
+    expect(bounds.after).toBeUndefined();
+    expect(isSelectableMoveDay(bounds, '2026-11-26')).toBe(true);
+    expect(isSelectableMoveDay(bounds, '2026-11-29')).toBe(false);
   });
 
   it('REQ-004: a dish with planned leftovers cannot be parked', () => {
-    expect(moveBounds(lasagne, entries).parked).toEqual({
+    expect(moveBounds(lasagne, entries, order).parked).toEqual({
       kind: 'leftovers-planned',
       leftoversDate: '2026-11-27',
     });
-    expect(dropOutcome(lasagne, { kind: 'parked' }, entries)).toEqual({
+    expect(dropOutcome(lasagne, { kind: 'parked' }, entries, order)).toEqual({
       kind: 'blocked',
       reason: { kind: 'leftovers-planned', leftoversDate: '2026-11-27' },
     });
   });
 
   it('open question 6: leftovers can be parked, and a dish whose leftovers are parked too', () => {
-    expect(dropOutcome(lasagneLeftovers, { kind: 'parked' }, entries)).toEqual({
+    expect(dropOutcome(lasagneLeftovers, { kind: 'parked' }, entries, order)).toEqual({
       kind: 'move',
       date: null,
       slotId: 'mittag',
     });
     const parkedLeftovers = { ...lasagneLeftovers, date: null };
-    expect(dropOutcome(lasagne, { kind: 'parked' }, [lasagne, parkedLeftovers])).toEqual({
+    expect(dropOutcome(lasagne, { kind: 'parked' }, [lasagne, parkedLeftovers], order)).toEqual({
       kind: 'move',
       date: null,
       slotId: 'abend',
@@ -216,26 +245,22 @@ describe('moveBounds: leftovers stay behind their dish (spec 0010, REQ-011)', ()
 
   it('open question 6: leftovers of a parked dish may go to any day', () => {
     const parkedDish = { ...lasagne, date: null };
-    const bounds = moveBounds(lasagneLeftovers, [parkedDish, lasagneLeftovers]);
-    expect(bounds).toEqual({});
+    const bounds = moveBounds(lasagneLeftovers, [parkedDish, lasagneLeftovers], order);
+    expect(bounds.after).toBeUndefined();
+    expect(bounds.before).toBeUndefined();
     expect(isSelectableMoveDay(bounds, '2027-03-01')).toBe(true);
   });
 
   it('leftovers whose dish no longer exists have no bounds', () => {
-    expect(moveBounds(lasagneLeftovers, [lasagneLeftovers])).toEqual({});
+    const bounds = moveBounds(lasagneLeftovers, [lasagneLeftovers], order);
+    expect(bounds.after).toBeUndefined();
+    expect(bounds.before).toBeUndefined();
   });
 
   it('an entry without leftovers can go anywhere, also into the past', () => {
-    const bounds = moveBounds(lasagne, [lasagne, halloumi]);
-    expect(bounds).toEqual({});
+    const bounds = moveBounds(lasagne, [lasagne, halloumi], order);
+    expect(bounds.parked).toBeUndefined();
     expect(isSelectableMoveDay(bounds, '2020-01-01')).toBe(true);
-  });
-
-  it('AC-021: with leftovers on 27.11. the 27th and all later days are not selectable', () => {
-    const bounds = moveBounds(lasagne, entries);
-    expect(isSelectableMoveDay(bounds, '2026-11-26')).toBe(true);
-    expect(isSelectableMoveDay(bounds, '2026-11-27')).toBe(false);
-    expect(isSelectableMoveDay(bounds, '2027-01-08')).toBe(false);
   });
 });
 
@@ -605,11 +630,11 @@ describe('dragTargetText: the label on the dragged entry', () => {
     expect(
       dragTargetText({
         entry: lasagneLeftovers,
-        target: { kind: 'day', date: '2026-12-03' },
+        target: { kind: 'day', date: '2026-11-24' },
         entries: [lasagne, lasagneLeftovers],
         slots,
         title: 'Reste von Lasagne',
       }),
-    ).toEqual({ allowed: false, label: 'Reste gehen bis sieben Tage nach dem Gericht' });
+    ).toEqual({ allowed: false, label: 'Reste stehen immer nach ihrem Gericht' });
   });
 });

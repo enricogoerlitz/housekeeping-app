@@ -135,6 +135,8 @@ export const PAGE_PARAMS = {
     eintrag: one(Uuid),
     zeit: one(Time),
     reise: one(Uuid),
+    /** The chore window of a chore in the calendar (spec 0021, REQ-016). */
+    aufgabe: one(Uuid),
     haushalt: Haushalt,
   },
   rezepte: {
