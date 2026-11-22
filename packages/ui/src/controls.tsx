@@ -106,10 +106,7 @@ export function Button(props: ButtonProps) {
     <Pressable
       testID={props.testID}
       accessibilityRole="button"
-      accessibilityLabel={
-        props.accessibilityLabel ??
-        (props.detail === undefined ? props.label : `${props.label} ${props.detail}`)
-      }
+      accessibilityLabel={props.accessibilityLabel ?? props.label}
       accessibilityHint={props.hint}
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
@@ -288,7 +285,10 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
     <Pressable
       testID={props.testID}
       accessibilityRole={props.role}
-      accessibilityLabel={props.accessibilityLabel ?? props.label}
+      accessibilityLabel={
+        props.accessibilityLabel ??
+        (props.detail === undefined ? props.label : `${props.label} ${props.detail}`)
+      }
       accessibilityHint={props.hint}
       accessibilityState={
         props.role === 'radio'
