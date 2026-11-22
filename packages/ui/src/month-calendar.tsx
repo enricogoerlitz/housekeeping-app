@@ -167,6 +167,8 @@ export function MonthCalendar(props: MonthCalendarProps) {
                   accessibilityRole="button"
                   accessibilityLabel={props.dayLabel(date)}
                   accessibilityState={{ selected: marked, disabled }}
+                  // react-native-web ignores accessibilityState; the browser needs the attribute.
+                  aria-selected={marked}
                   disabled={disabled}
                   tabIndex={date === entry ? 0 : -1}
                   onFocus={() => setFocused(date)}
