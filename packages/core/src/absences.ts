@@ -55,9 +55,9 @@ export function absenceStripes(absences: Absence[], members: Member[]): AbsenceS
     );
 }
 
-/** The text on a stripe: its note, else "abwesend" (D22). */
+/** The text on a stripe: its note, else "unterwegs" (D22; spec 0016, REQ-008). */
 export function stripeText(stripe: Pick<AbsenceStripe, 'note'>): string {
-  return stripe.note ?? 'abwesend';
+  return stripe.note ?? 'unterwegs';
 }
 
 /** "bis Mo 4.1.": every stripe shows its end. */
@@ -250,7 +250,7 @@ export function validateAbsenceDraft(input: { memberIds: Id[]; from: ISODate; to
 }
 
 /**
- * The hint under "Wer?" in "Abwesenheit eintragen" describes who is chosen (spec 0018, AC-021):
+ * The hint under "Wer?" in "Reise eintragen" describes who is chosen (spec 0018, AC-021):
  * "Nur Enrico", "Nur Enrico und Vera", everyone "Ganzer Haushalt"; names in household order.
  */
 export function absenceWhoHint(memberIds: readonly Id[], members: readonly Member[]): string {

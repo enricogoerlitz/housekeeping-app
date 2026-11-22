@@ -128,8 +128,8 @@ function joinNames(names: string[]): string {
 
 /**
  * The quiet lines about absences on the shown day (AC-007, Offene Frage 2 e): "Nadja · Urlaub
- * Mallorca · bis Do 26.11.", without a note "Nadja ist abwesend bis Do 26.11."; several people
- * "Enrico und Vera sind abwesend …", the whole household "Alle …". One line per stripe.
+ * Mallorca · bis Do 26.11.", without a note "Nadja ist unterwegs bis Do 26.11."; several people
+ * "Enrico und Vera sind unterwegs …", the whole household "Alle …". One line per stripe.
  */
 export function absenceLines(input: {
   absences: Absence[];
@@ -147,7 +147,7 @@ export function absenceLines(input: {
     const text =
       stripe.note !== undefined
         ? `${who} · ${stripe.note} · ${end}`
-        : `${who} ${plural ? 'sind' : 'ist'} abwesend ${end}`;
+        : `${who} ${plural ? 'sind' : 'ist'} unterwegs ${end}`;
     return { key: stripe.key, memberIds: stripe.memberIds, text };
   });
 }

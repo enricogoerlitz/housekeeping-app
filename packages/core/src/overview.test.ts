@@ -154,10 +154,10 @@ describe('AC-007: the absence line', () => {
     expect(absenceLines({ absences: [trip], members, date: '2026-11-20' })).toEqual([]);
   });
 
-  it('AC-007: without a note it reads "Nadja ist abwesend bis Do 26.11."', () => {
+  it('AC-007, AC-033 (0016): without a note it reads "Nadja ist unterwegs bis Do 26.11."', () => {
     const plain = { ...trip, note: undefined };
     expect(absenceLines({ absences: [plain], members, date: '2026-11-23' })[0]?.text).toBe(
-      'Nadja ist abwesend bis Do 26.11.',
+      'Nadja ist unterwegs bis Do 26.11.',
     );
   });
 
@@ -168,7 +168,7 @@ describe('AC-007: the absence line', () => {
       { id: 'v', memberId: vera.id, from: '2026-11-21', to: '2026-11-22' },
     ];
     expect(absenceLines({ absences: both, members: three, date: '2026-11-21' })[0]?.text).toBe(
-      'Enrico und Vera sind abwesend bis So 22.11.',
+      'Enrico und Vera sind unterwegs bis So 22.11.',
     );
     const household: Absence = { id: 'h', from: '2026-11-21', to: '2026-11-22', note: 'Berlin' };
     expect(absenceLines({ absences: [household], members, date: '2026-11-22' })).toEqual([
