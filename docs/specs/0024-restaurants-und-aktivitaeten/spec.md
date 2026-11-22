@@ -231,5 +231,5 @@ Alle Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026, außer wo ve
 - [x] 6. Besuche/Verlauf antippbar (AC-023–025)
 - [x] 7. Route-Gruppe `(aktivitaeten)`, Verwalten-Eintrag, Berg-Knopf weg, Links umstellen, Aktivitäten in `ListDetail` (AC-026–033)
 - [x] 8. ⋯ „Löschen“ an beiden Detailansichten (AC-034–036)
-- [ ] 9. `/ui-verify` (Handy, Tablet, Desktop), `/security-check`, spec-auditor
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] 9. `/security-check` (0 Befunde, 1 Hinweis: das Foto geht nach dem Hinweis, obwohl der Server bis 1 h zurückholen kann — gewollt wie Spec 0008 E5, das App-„Rückgängig“ gilt 5 s), spec-auditor (UI-AC nur über e2e belegt, die erst in 0028 laufen). `/ui-verify` läuft nach der Welle-2-Regel einmal in 0028.
+- [x] Nachweis (22.11.2026, nach Merge von 0021 und 0026): `pnpm format:check && pnpm check` grün, `pnpm build:web` grün, `pnpm exec supabase test db` 2514 Tests grün, e2e-Typprüfung grün.

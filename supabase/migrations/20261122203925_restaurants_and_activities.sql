@@ -701,7 +701,7 @@ grant execute on function public.restore_activity(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
 -- apply_changes: website_url, photo_path; no delete of restaurants and activities (otherwise
--- unchanged from 20261122192950_plan_entry_fields)
+-- unchanged from 20261122202922_chores_wait_on_trips)
 -- ---------------------------------------------------------------------------------------------
 
 create or replace function public.apply_changes(p_household_id uuid, p_ops jsonb)
@@ -719,7 +719,8 @@ declare
   -- Recipes are deleted only by delete_recipe (spec 0008, E2). The kind of a recipe (recipe or
   -- collection) is set on insert and never patched (spec 0009, E2). A collection_recipes row keeps
   -- its collection and its recipe; only servings, variant and order change (spec 0009, E4).
-  -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011).
+  -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011);
+  -- their day changes only by change_chore_event_day (spec 0026, REQ-007).
   -- The packed state of packing items (packed, packed_at, packed_by, pack_seq) is written only by
   -- set_packing_items_packed and restore_packing_items; a packing item's name, quantity, "je Tag"
   -- and link to its Reisetasche are patched (spec 0022, REQ-009).
@@ -875,6 +876,9 @@ begin
     -- entries on the shopping list of p_household_id.
     if v_kind = 'add_contributions' then
       v_results := v_results || jsonb_build_array(private.add_shopping_contributions(p_household_id, v_op -> 'entries'));
+      continue;
+    elsif v_kind = 'change_chore_event_day' then
+      v_results := v_results || jsonb_build_array(private.change_chore_event_day(p_household_id, v_op -> 'change'));
       continue;
     elsif v_kind = 'replace_entry_contributions' then
       v_results := v_results || jsonb_build_array(
