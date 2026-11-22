@@ -196,6 +196,8 @@ describe('recomputeEntryContributions (REQ-007)', () => {
     item('i-hack', 'hack', [contribution('c-hack', { qty: 250, unit: 'g' })]),
     item('i-platten', 'platten', [contribution('c-platten', { count: 1 })]),
   ];
+  const fresh = (partial: Partial<ShoppingContribution>) =>
+    expect.objectContaining({ ...partial, source, id: expect.stringMatching(/^new-/) });
 
   it('AC-019: 4 portions → "Hackfleisch 500 g", "Lasagneplatten 1×"; the Herkunft stays', () => {
     const result = recomputeEntryContributions({
@@ -208,9 +210,26 @@ describe('recomputeEntryContributions (REQ-007)', () => {
     });
     expect(result.changed).toBe(true);
     expect(result.items).toEqual([
-      item('i-hack', 'hack', [contribution('c-hack', { qty: 500, unit: 'g' })]),
-      item('i-platten', 'platten', [contribution('c-platten', { count: 1 })]),
+      { ...list[0], contributions: [fresh({ qty: 500, unit: 'g' })] },
+      { ...list[1], contributions: [fresh({ count: 1 })] },
     ]);
+    // What the server does in the same call (replace_entry_contributions): the same items.
+    expect(result.additions).toEqual([
+      { articleId: 'hack', itemId: 'i-hack', contributions: [fresh({ qty: 500, unit: 'g' })] },
+      { articleId: 'platten', itemId: 'i-platten', contributions: [fresh({ count: 1 })] },
+    ]);
+  });
+
+  it('AC-019: the same amounts again are no change', () => {
+    const result = recomputeEntryContributions({
+      items: list,
+      entryId: 'e1',
+      planned: [planned('hack', { qty: 250, unit: 'g' }), planned('platten', { count: 1 })],
+      articlesById: byId,
+      newId,
+      now,
+    });
+    expect(result.changed).toBe(false);
   });
 
   it('AC-020: an ingredient that falls away goes, an empty item with it', () => {
@@ -223,9 +242,10 @@ describe('recomputeEntryContributions (REQ-007)', () => {
       now,
     });
     expect(result.items.map((each) => each.id)).toEqual(['i-platten']);
+    expect(result.additions.map((each) => each.articleId)).toEqual(['platten']);
   });
 
-  it('REQ-007: a new ingredient comes onto the list, a pantry article does not', () => {
+  it('REQ-007: a new ingredient comes onto the list, a new pantry article does not', () => {
     const result = recomputeEntryContributions({
       items: list,
       entryId: 'e1',
@@ -240,10 +260,51 @@ describe('recomputeEntryContributions (REQ-007)', () => {
       now,
     });
     const tofuItem = result.items.find((each) => each.articleId === 'tofu');
-    expect(tofuItem?.contributions).toEqual([
-      expect.objectContaining({ qty: 200, unit: 'g', source }),
-    ]);
+    expect(tofuItem?.contributions).toEqual([fresh({ qty: 200, unit: 'g' })]);
+    expect(result.additions.find((each) => each.articleId === 'tofu')?.itemId).toBe(tofuItem?.id);
     expect(result.items.some((each) => each.articleId === 'salz')).toBe(false);
+    expect(result.additions.some((each) => each.articleId === 'salz')).toBe(false);
+  });
+
+  it('REQ-007: a pantry article that stood on the list from the entry follows', () => {
+    const withSalz = [...list, item('i-salz', 'salz', [contribution('c-salz', { count: 1 })])];
+    const result = recomputeEntryContributions({
+      items: withSalz,
+      entryId: 'e1',
+      planned: [planned('salz', { count: 2 })],
+      articlesById: byId,
+      newId,
+      now,
+    });
+    expect(result.items).toEqual([{ ...withSalz[2], contributions: [fresh({ count: 2 })] }]);
+  });
+
+  it('REQ-007 (spec 0025, REQ-013): a new ingredient whose article is checked reopens it with the new amount', () => {
+    const bought = item(
+      'i-tofu',
+      'tofu',
+      [{ id: 'c-old', source: { kind: 'manual' }, count: 1 }],
+      true,
+    );
+    const result = recomputeEntryContributions({
+      items: [...list, { ...bought, checkedAt: now, checkedBy: 'nadja' }],
+      entryId: 'e1',
+      planned: [
+        planned('hack', { qty: 250, unit: 'g' }),
+        planned('platten', { count: 1 }),
+        planned('tofu', { qty: 200, unit: 'g' }),
+      ],
+      articlesById: { ...byId, tofu: { ...hack, id: 'tofu', name: 'Tofu' } },
+      newId,
+      now,
+    });
+    const tofuItem = result.items.find((each) => each.articleId === 'tofu');
+    expect(tofuItem).toEqual({
+      ...bought,
+      checked: false,
+      contributions: [fresh({ qty: 200, unit: 'g' })],
+    });
+    expect(result.items.filter((each) => each.articleId === 'tofu')).toHaveLength(1);
   });
 
   it('AC-041: a contribution of another origin on the same item stays', () => {
@@ -260,6 +321,7 @@ describe('recomputeEntryContributions (REQ-007)', () => {
       now,
     });
     expect(result.items).toEqual([item('i-hack', 'hack', [manual])]);
+    expect(result.additions).toEqual([]);
   });
 
   it('AC-021: a checked item stays checked and unchanged', () => {
@@ -276,6 +338,7 @@ describe('recomputeEntryContributions (REQ-007)', () => {
     });
     expect(result.items).toEqual(checked);
     expect(result.changed).toBe(false);
+    expect(result.additions).toEqual([]);
   });
 
   it('REQ-007: nothing of the entry on the list changes nothing', () => {
@@ -288,7 +351,7 @@ describe('recomputeEntryContributions (REQ-007)', () => {
       newId,
       now,
     });
-    expect(result).toEqual({ items: other, changed: false });
+    expect(result).toEqual({ items: other, changed: false, additions: [] });
   });
 });
 

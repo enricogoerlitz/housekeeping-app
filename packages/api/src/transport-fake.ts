@@ -1457,6 +1457,47 @@ export function createFakeServer(): FakeServer {
     return [next, results];
   }
 
+  /** Like private.replace_entry_contributions (spec 0021, REQ-007, REQ-015). */
+  function replaceEntryContributions(
+    tables: TableRows,
+    householdId: string,
+    entryIds: readonly string[],
+    entries: readonly AddEntry[],
+  ): [TableRows, { removed: number; added: AddResult }] {
+    if (!Array.isArray(entryIds) || entryIds.length === 0 || !Array.isArray(entries)) {
+      throw reject('invalid_change');
+    }
+    if (entryIds.length > 200) throw reject('too_many_changes');
+    const items = tables.shopping_items ?? {};
+    const own = Object.values(tables.shopping_contributions ?? {}).filter((row) => {
+      const source = row.source as { kind?: string; entryId?: string } | null;
+      const item = items[String(row.item_id)];
+      return (
+        source?.kind === 'recipe' &&
+        entryIds.includes(String(source.entryId)) &&
+        item !== undefined &&
+        item.checked !== true
+      );
+    });
+    const emptied = new Set(own.map((row) => String(row.item_id)));
+    let next = withoutRows(
+      tables,
+      'shopping_contributions',
+      own.map((row) => String(row.id)),
+    );
+    let added: AddResult = [];
+    if (entries.length > 0) [next, added] = addContributions(next, householdId, entries);
+    const left = new Set(
+      Object.values(next.shopping_contributions ?? {}).map((row) => String(row.item_id)),
+    );
+    next = withoutRows(
+      next,
+      'shopping_items',
+      [...emptied].filter((id) => !left.has(id) && next.shopping_items?.[id]?.checked !== true),
+    );
+    return [next, { removed: own.length, added }];
+  }
+
   function removeContributionRows(tables: TableRows, ids: readonly string[]): [TableRows, number] {
     const existing = ids.filter((id) => tables.shopping_contributions?.[id]);
     const itemIds = new Set(
@@ -1616,7 +1657,7 @@ export function createFakeServer(): FakeServer {
     const opCount = sum((op) =>
       op.kind === 'remove_contributions'
         ? Math.max(op.ids.length, 1)
-        : op.kind === 'add_contributions'
+        : op.kind === 'add_contributions' || op.kind === 'replace_entry_contributions'
           ? Math.max(op.entries.length, 1)
           : op.kind === 'restore_packing_items'
             ? Math.max(Array.isArray(op.items) ? op.items.length : 1, 1)
@@ -1631,7 +1672,10 @@ export function createFakeServer(): FakeServer {
     );
     const deletes = sum((op) =>
       // complete_chore too: done of a one-off chore deletes it, known only under the lock.
-      op.kind === 'delete' || op.kind === 'complete_chore' || op.kind === 'remove_chore_event'
+      op.kind === 'delete' ||
+      op.kind === 'complete_chore' ||
+      op.kind === 'remove_chore_event' ||
+      op.kind === 'replace_entry_contributions'
         ? 1
         : op.kind === 'remove_contributions'
           ? op.ids.length
@@ -1640,7 +1684,7 @@ export function createFakeServer(): FakeServer {
             : 0,
     );
     const contributions = sum((op) =>
-      op.kind === 'add_contributions'
+      op.kind === 'add_contributions' || op.kind === 'replace_entry_contributions'
         ? op.entries.reduce((total, entry) => total + entry.contributions.length, 0)
         : 0,
     );
@@ -1660,6 +1704,15 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeContributionRows(tables, op.ids);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'replace_entry_contributions') {
+          const [next, replaced] = replaceEntryContributions(
+            tables,
+            householdId,
+            op.entry_ids,
+            op.entries,
+          );
+          tables = next;
+          results.push(replaced);
         } else if (op.kind === 'complete_chore') {
           const [next, booked] = completeChore(tables, householdId, op.completion);
           tables = next;

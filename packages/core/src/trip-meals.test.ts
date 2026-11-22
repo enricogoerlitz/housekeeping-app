@@ -279,7 +279,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
       articlesById,
       newId,
       now,
-    });
+    }).items;
     const item = next.find((candidate) => candidate.id === 'item-hack');
     expect(item?.contributions).toEqual([
       expect.objectContaining({
@@ -299,7 +299,9 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
       newId,
       now,
     });
-    expect(next.map((item) => item.id)).toEqual(['item-hack']);
+    expect(next.items.map((item) => item.id)).toEqual(['item-hack']);
+    // The server takes them away in the same call (replace_entry_contributions), adds nothing.
+    expect(next.additions).toEqual([]);
   });
 
   it('checked items stay, and nothing on the list means no change', () => {
@@ -312,7 +314,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
         articlesById,
         newId,
         now,
-      }),
+      }).items,
     ).toEqual([checked]);
     expect(
       followEntryOnList({
@@ -322,7 +324,7 @@ describe('the shopping list follows (spec 0021, REQ-007)', () => {
         articlesById,
         newId,
         now,
-      }),
+      }).items,
     ).toEqual([eier]);
   });
 });

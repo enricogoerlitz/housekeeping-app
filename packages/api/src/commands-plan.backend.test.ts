@@ -1,6 +1,13 @@
 // Meal plan commands (spec 0003): all on the diff path; removing an entry declares
 // its delete and takes recipe-less leftovers of it along (the database would refuse to keep them).
-import { addDays, entriesForDay, isoWeekday, originSummary } from '@housekeeping/core';
+import {
+  addDays,
+  entriesForDay,
+  ingredientDrafts,
+  isoWeekday,
+  originSummary,
+  rowsFromIngredientDrafts,
+} from '@housekeeping/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
@@ -19,10 +26,13 @@ import {
   setEntryReminder,
   updatePlanEntry,
 } from './commands-plan';
+import { insertArticles } from './commands-articles';
+import { createRecipeWithIngredients } from './commands-recipes';
 import { readMapsLink } from './commands-restaurants';
 import { addPlannedToList, addShoppingItemFromText, pantryCheckRows } from './commands-shopping';
 import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH, SLOT_MORNING } from './seed/demo';
-import { getData, OfflineError, snapshot } from './store';
+import { commit, getData, OfflineError, snapshot } from './store';
+import { starterCatalogEntries } from './starter/entries';
 import { TransportError, type ChangeOp } from './transport';
 
 const fx = withBackend();
@@ -689,6 +699,87 @@ describe('spec 0021, REQ-015: removing an entry with its contributions', () => {
     expect(removePlanEntry(id)).toBe(0);
     await fx.settle();
     expect(getData().items).toEqual(before);
+  });
+});
+
+describe('spec 0021: a dish with more than 20 ingredients on the list (one call, no delete limit)', () => {
+  let key = 0;
+  /** "Grillabend" with 25 ingredients, planned for tomorrow and all of them on the list. */
+  async function grillabend(): Promise<string> {
+    await fx.startEnrico();
+    const names = Array.from({ length: 25 }, (_, index) => `Zutat ${index + 1}`);
+    commit({ path: 'diff' }, () =>
+      insertArticles(
+        names.map((name) => ({
+          name,
+          synonyms: [],
+          diet: 'vegan' as const,
+          isPantry: false,
+          needsReview: false,
+        })),
+      ),
+    );
+    const lines = names.map((name) => `100 g ${name}`).join('\n');
+    const rows = rowsFromIngredientDrafts(
+      ingredientDrafts(lines, getData().articles, starterCatalogEntries, () => `paste-${++key}`),
+    );
+    const { recipeId } = createRecipeWithIngredients({ title: 'Grillabend' }, rows);
+    const id = addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId,
+      eaterIds: [ENRICO, NADJA],
+    });
+    addPlannedToList(pantryCheckRows([id]).filter((row) => !row.isPantry));
+    await fx.settle();
+    return id;
+  }
+  const serverContributions = (entryId: string) =>
+    fx.server
+      .rows(H, 'shopping_contributions')
+      .filter((row) => (row.source as { entryId?: string } | null)?.entryId === entryId);
+
+  it('AC-019: twice the portions of 25 ingredients follow in the same call', async () => {
+    const id = await grillabend();
+    expect(serverContributions(id)).toHaveLength(25);
+    const entry = entryById(id);
+    if (!entry) throw new Error('fixture');
+    fx.clearCalls();
+    const saved = saveEntry(id, { portions: entry.portions * 2 });
+    await fx.settle();
+    await expect(saved).resolves.toMatch(/^Grillabend \(/);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(opsOf(0)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'replace_entry_contributions', entry_ids: [id] }),
+      ]),
+    );
+    const onServer = serverContributions(id);
+    expect(onServer).toHaveLength(25);
+    expect(new Set(onServer.map((row) => Number(row.qty)))).toEqual(new Set([200]));
+    const local = getData().items.flatMap((item) =>
+      item.contributions.filter((c) => c.source.kind === 'recipe' && c.source.entryId === id),
+    );
+    expect(local.map((c) => c.id).sort()).toEqual(onServer.map((row) => row.id).sort());
+  });
+
+  it('AC-040: removing it with its 25 ingredients is one call; undo brings everything back', async () => {
+    const id = await grillabend();
+    const items = getData().items.length;
+    const restore = snapshot();
+    fx.clearCalls();
+    expect(removePlanEntry(id, { withList: true })).toBe(25);
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(fx.server.row(H, 'meal_plan_entries', id)).toBeUndefined();
+    expect(serverContributions(id)).toEqual([]);
+    expect(getData().items.length).toBe(items - 25);
+    restore();
+    await fx.settle();
+    expect(fx.server.row(H, 'meal_plan_entries', id)).toBeDefined();
+    expect(serverContributions(id)).toHaveLength(25);
+    expect(getData().items.length).toBe(items);
   });
 });
 

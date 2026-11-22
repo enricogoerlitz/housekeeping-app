@@ -12,7 +12,9 @@
 --   Tageszeit in the entry reminder ("Erinnerung: Trattoria Da Enzo · heute 19:30"); the daily
 --   summary and the evening before carry Zusatz and time ("Eislaufen (Hohenschönhausen,
 --   Vormittag, 10:30)", "Morgen: Eislaufen (Hohenschönhausen), Vormittag, 10:30").
--- * apply_changes: the allowlist knows starts_at and loses the dropped columns.
+-- * apply_changes: the allowlist knows starts_at and loses the dropped columns; the domain op
+--   replace_entry_contributions lets the shopping list follow an entry in the same call (REQ-007,
+--   REQ-015), counted as one delete however many contributions it removes.
 
 -- ---------------------------------------------------------------------------------------------
 -- The reservation reminder goes first: its function reads the columns that go.
@@ -65,6 +67,75 @@ alter table public.meal_plan_entries
     check (text !~ '[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]'),
   add constraint meal_plan_entries_note_no_format
     check (note !~ '[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]');
+
+-- ---------------------------------------------------------------------------------------------
+-- replace_entry_contributions: the shopping list follows a plan entry (REQ-007, REQ-015)
+-- ---------------------------------------------------------------------------------------------
+
+-- Deletes the contributions of these plan entries (source.entryId, ≤ 200 entries) on open items
+-- of p_household_id, adds p_entries exactly like add_contributions (one item per article: joins
+-- the open item, reopens a checked one with the new amount, or creates one) and then deletes the
+-- open items it emptied. Checked items keep the entry's contributions (AC-021). apply_changes
+-- counts it as one delete: what it removes is bounded by the entries named, not by the caller,
+-- so a dish with more than 20 ingredients can follow its portions and be removed with them.
+-- Errors: invalid_change (22023), too_many_changes (22023). Security invoker: RLS applies, and
+-- add_shopping_contributions checks the membership itself.
+create function private.replace_entry_contributions(p_household_id uuid, p_entry_ids jsonb, p_entries jsonb)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_entry_ids text[];
+  v_item_ids uuid[];
+  v_removed integer;
+  v_added jsonb := '[]';
+begin
+  if jsonb_typeof(p_entry_ids) is distinct from 'array'
+     or jsonb_typeof(p_entries) is distinct from 'array'
+     or jsonb_array_length(p_entry_ids) = 0
+     or jsonb_path_exists(p_entry_ids, '$[*] ? (!(@.type() == "string"))') then
+    raise exception 'invalid_change' using errcode = '22023';
+  end if;
+  if jsonb_array_length(p_entry_ids) > 200 then
+    raise exception 'too_many_changes' using errcode = '22023';
+  end if;
+  begin
+    v_entry_ids := array(select x::uuid::text from jsonb_array_elements_text(p_entry_ids) x);
+  exception when invalid_text_representation then
+    raise exception 'invalid_change' using errcode = '22023';
+  end;
+
+  with removed as (
+    delete from public.shopping_contributions c
+    using public.shopping_items i
+    where c.household_id = p_household_id
+      and i.household_id = c.household_id and i.id = c.item_id and not i.checked
+      and c.source ->> 'kind' = 'recipe'
+      and lower(c.source ->> 'entryId') = any (v_entry_ids)
+    returning c.item_id
+  )
+  select count(*)::integer, coalesce(array_agg(distinct r.item_id), '{}')
+  into v_removed, v_item_ids
+  from removed r;
+
+  if jsonb_array_length(p_entries) > 0 then
+    v_added := private.add_shopping_contributions(p_household_id, p_entries);
+  end if;
+
+  delete from public.shopping_items i
+  where i.household_id = p_household_id and i.id = any (v_item_ids) and not i.checked
+    and not exists (
+      select 1 from public.shopping_contributions c
+      where c.household_id = i.household_id and c.item_id = i.id
+    );
+
+  return jsonb_build_object('removed', v_removed, 'added', v_added);
+end
+$$;
+
+revoke all on function private.replace_entry_contributions(uuid, jsonb, jsonb) from public, anon;
+grant execute on function private.replace_entry_contributions(uuid, jsonb, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
 -- apply_changes: the allowlist (otherwise unchanged from recipe_links_and_non_food)
@@ -191,13 +262,15 @@ begin
   end if;
   -- A domain op counts as its elements: every id of remove_contributions is a delete and an op,
   -- every entry of add_contributions, every item of restore_packing_items and every element of
-  -- adopt_bag_changes is an op (its deletes count as deletes). The
+  -- adopt_bag_changes is an op (its deletes count as deletes). replace_entry_contributions counts
+  -- as its entries and as one delete (spec 0021, REQ-007). The
   -- contributions of all entries are capped too.
   -- complete_chore counts as a delete: done of a one-off chore deletes it, which is known only
   -- once the chore is locked.
   select coalesce(sum(case when o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'
                              then greatest(jsonb_array_length(o -> 'ids'), 1)
-                           when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
+                           when o ->> 'kind' in ('add_contributions', 'replace_entry_contributions')
+                                and jsonb_typeof(o -> 'entries') = 'array'
                              then greatest(jsonb_array_length(o -> 'entries'), 1)
                            when o ->> 'kind' = 'restore_packing_items' and jsonb_typeof(o -> 'items') = 'array'
                              then greatest(jsonb_array_length(o -> 'items'), 1)
@@ -206,7 +279,8 @@ begin
                                            + coalesce(jsonb_array_length(case when jsonb_typeof(o -> 'change' -> 'update') = 'array' then o -> 'change' -> 'update' end), 0)
                                            + coalesce(jsonb_array_length(case when jsonb_typeof(o -> 'change' -> 'delete') = 'array' then o -> 'change' -> 'delete' end), 0), 1)
                            else 1 end), 0),
-         count(*) filter (where o ->> 'kind' in ('delete', 'complete_chore', 'remove_chore_event'))
+         count(*) filter (where o ->> 'kind' in ('delete', 'complete_chore', 'remove_chore_event',
+                                                 'replace_entry_contributions'))
            + coalesce(sum(jsonb_array_length(o -> 'ids'))
                         filter (where o ->> 'kind' = 'remove_contributions' and jsonb_typeof(o -> 'ids') = 'array'), 0)
            + coalesce(sum(jsonb_array_length(o -> 'change' -> 'delete'))
@@ -217,7 +291,8 @@ begin
   from jsonb_array_elements(p_ops) o
   cross join lateral (
     select count(*) as contributions
-    from jsonb_array_elements(case when o ->> 'kind' = 'add_contributions' and jsonb_typeof(o -> 'entries') = 'array'
+    from jsonb_array_elements(case when o ->> 'kind' in ('add_contributions', 'replace_entry_contributions')
+                                        and jsonb_typeof(o -> 'entries') = 'array'
                                    then o -> 'entries' else '[]' end) e
     cross join lateral jsonb_array_elements(case when jsonb_typeof(e -> 'contributions') = 'array'
                                                  then e -> 'contributions' else '[]' end) x
@@ -236,6 +311,10 @@ begin
     -- entries on the shopping list of p_household_id.
     if v_kind = 'add_contributions' then
       v_results := v_results || jsonb_build_array(private.add_shopping_contributions(p_household_id, v_op -> 'entries'));
+      continue;
+    elsif v_kind = 'replace_entry_contributions' then
+      v_results := v_results || jsonb_build_array(
+        private.replace_entry_contributions(p_household_id, v_op -> 'entry_ids', v_op -> 'entries'));
       continue;
     elsif v_kind = 'remove_contributions' then
       if jsonb_typeof(v_op -> 'ids') is distinct from 'array' then

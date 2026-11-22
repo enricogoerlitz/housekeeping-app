@@ -33,6 +33,7 @@ import {
 import { createActivity, type ActivityDraft } from './commands-activities';
 import { createRecipe } from './commands-recipes';
 import { createRestaurant, type RestaurantDraft } from './commands-restaurants';
+import { commitEntriesWithList } from './list-additions';
 import { indexById } from './queries';
 import {
   commit,
@@ -365,29 +366,26 @@ export function saveEntry(entryId: Id, fields: EntryFields): Promise<string | un
     next.portions !== entry.portions ||
     JSON.stringify(next.variants) !== JSON.stringify(entry.variants);
   const share = amountsChanged ? entryListShare(data.items, entryId) : undefined;
-  const items = share ? followedItems(next) : data.items;
-  const itemIds = new Set(items.map((item) => item.id));
-  const contributionIds = new Set(items.flatMap((item) => item.contributions.map((c) => c.id)));
-  const confirmed = commitConfirmed(
-    {
-      path: 'diff',
-      maxDeletes: {
-        shopping_items: data.items.filter((item) => !itemIds.has(item.id)).length,
-        shopping_contributions: data.items
-          .flatMap((item) => item.contributions)
-          .filter((contribution) => !contributionIds.has(contribution.id)).length,
-      },
-      rejectedMessage: recipeGone,
-    },
-    () =>
-      updateData((current) => ({
-        ...current,
-        planEntries: current.planEntries.map((candidate) =>
-          candidate.id === entryId ? next : candidate,
-        ),
-        items,
-      })),
-  ).then(() => (share && items !== data.items ? share.label : undefined));
+  const followed = share ? followedItems(next) : undefined;
+  const writeEntry = () =>
+    updateData((current) => ({
+      ...current,
+      planEntries: current.planEntries.map((candidate) =>
+        candidate.id === entryId ? next : candidate,
+      ),
+    }));
+  if (share && followed?.changed) {
+    // The list follows in the same call, however many ingredients (replace_entry_contributions).
+    const { confirmed } = commitEntriesWithList(
+      { entryIds: [entryId], rejectedMessage: recipeGone },
+      writeEntry,
+      () => followed,
+    );
+    return confirmed.then(() => share.label);
+  }
+  const confirmed = commitConfirmed({ path: 'diff', rejectedMessage: recipeGone }, writeEntry).then(
+    () => undefined,
+  );
   // The caller may not wait for it; a refusal is reported through onWriteRejected anyway.
   confirmed.catch(() => {});
   return confirmed;
@@ -398,12 +396,14 @@ export function saveEntry(entryId: Id, fields: EntryFields): Promise<string | un
  * Einkaufsliste" would put on it for the new state, on the open items (spec 0025 adapts the rule
  * in core, not here).
  */
-function followedItems(entry: MealPlanEntry): ShoppingItem[] {
+function followedItems(entry: MealPlanEntry): ReturnType<typeof recomputeEntryContributions> {
   const data = getData();
   const recipe = entry.recipeId
     ? data.recipes.find((candidate) => candidate.id === entry.recipeId)
     : undefined;
-  if (entry.kind !== 'recipe' || !recipe) return data.items;
+  if (entry.kind !== 'recipe' || !recipe) {
+    return { items: data.items, changed: false, additions: [] };
+  }
   const articlesById = indexById(data.articles);
   const planned =
     recipe.kind === 'collection'
@@ -424,7 +424,7 @@ function followedItems(entry: MealPlanEntry): ShoppingItem[] {
     articlesById,
     newId,
     now: nowISO(),
-  }).items;
+  });
 }
 
 /**
@@ -533,25 +533,23 @@ export function removePlanEntry(entryId: Id, options: { withList?: boolean } = {
       .map((entry) => entry.id),
   ]);
   const share = options.withList ? entryListShare(data.items, entryId) : undefined;
-  const items = share ? removeEntryContributions(data.items, entryId) : data.items;
-  const itemIds = new Set(items.map((item) => item.id));
-  commit(
-    {
-      path: 'diff',
-      maxDeletes: {
-        meal_plan_entries: removed.size,
-        shopping_items: data.items.filter((item) => !itemIds.has(item.id)).length,
-        shopping_contributions: share?.contributions ?? 0,
-      },
-    },
-    () =>
-      updateData((current) => ({
-        ...current,
-        planEntries: current.planEntries.filter((entry) => !removed.has(entry.id)),
-        items,
-      })),
+  const dropEntries = () =>
+    updateData((current) => ({
+      ...current,
+      planEntries: current.planEntries.filter((entry) => !removed.has(entry.id)),
+    }));
+  if (!share) {
+    commit({ path: 'diff', maxDeletes: { meal_plan_entries: removed.size } }, dropEntries);
+    return 0;
+  }
+  // "Zutaten auch von der Liste nehmen": one call however many ingredients
+  // (replace_entry_contributions without additions); undo brings entry and contributions back.
+  commitEntriesWithList(
+    { entryIds: [entryId], maxDeletes: { meal_plan_entries: removed.size } },
+    dropEntries,
+    (current) => ({ items: removeEntryContributions(current.items, entryId), additions: [] }),
   );
-  return share?.articles ?? 0;
+  return share.articles;
 }
 
 // ---------- Create while planning (spec 0004, REQ-008) ----------

@@ -172,7 +172,7 @@ export function followEntryOnList(input: {
   articlesById: Record<Id, Article>;
   newId: () => Id;
   now: string;
-}): ShoppingItem[] {
+}): ReturnType<typeof recomputeEntryContributions> {
   const { entry, recipe } = input;
   const planned =
     entry.date === null || !recipe
@@ -185,5 +185,5 @@ export function followEntryOnList(input: {
     articlesById: input.articlesById,
     newId: input.newId,
     now: input.now,
-  }).items;
+  });
 }

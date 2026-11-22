@@ -3,6 +3,7 @@
 // removed (REQ-015). Spec 0025 builds the list schema; the list rules live only here, so it can
 // adapt them in one place.
 import { splitVariants } from './meal-plan';
+import { addContribution } from './shopping';
 import { defaultVariantId } from './recipe-variants';
 import type { PlannedContribution } from './shopping';
 import type {
@@ -200,14 +201,32 @@ function ofEntry(contribution: ShoppingContribution, entryId: Id): boolean {
   return contribution.source.kind === 'recipe' && contribution.source.entryId === entryId;
 }
 
+/** Contributions the server puts on one article's item in the same call (`add_contributions`). */
+export interface EntryAddition {
+  articleId: Id;
+  /** The item they land on locally: the article's item, or a new one with this id. */
+  itemId: Id;
+  contributions: ShoppingContribution[];
+}
+
+const withoutIds = (items: readonly ShoppingItem[]) =>
+  JSON.stringify(
+    items.map((item) => ({
+      ...item,
+      contributions: item.contributions.map(({ id: _id, ...rest }) => rest),
+    })),
+  );
+
 /**
  * Puts the contributions of an entry on the list as "Auf die Einkaufsliste" would set them for
- * its new state (REQ-007): on items that are not checked the entry's contributions per article are
- * replaced by `planned` (ids kept where possible, the Herkunft stays); an ingredient that falls
- * away goes, and an item left empty with it; a new ingredient joins the article's open item or
- * gets a new one, unless its article is "Vorrat". Articles whose item with the entry's
- * contribution is checked stay as they are (AC-021). When nothing of the entry is on the list,
- * nothing changes. `planned` is what contributionsFromEntry/collectionContributions return.
+ * its new state (REQ-007), the way the server's `replace_entry_contributions` does it in the same
+ * call: the entry's contributions on open items go, then `planned` is added (new ids, the Herkunft
+ * stays) and an open item left empty goes. One item per article (spec 0025, REQ-013): an addition
+ * joins the article's open item, reopens its checked item with the new amount or gets a new item.
+ * Not added: articles whose checked item holds the entry's contribution (they stay as they are,
+ * AC-021) and "Vorrat" articles that did not stand on an open item of the entry. When nothing of
+ * the entry is on the list, nothing changes. `planned` is what
+ * contributionsFromEntry/collectionContributions return; `additions` is what the server adds.
  */
 export function recomputeEntryContributions(input: {
   items: readonly ShoppingItem[];
@@ -216,79 +235,48 @@ export function recomputeEntryContributions(input: {
   articlesById: Record<Id, Article>;
   newId: () => Id;
   now: string;
-}): { items: ShoppingItem[]; changed: boolean } {
+}): { items: ShoppingItem[]; changed: boolean; additions: EntryAddition[] } {
   const { entryId } = input;
   const items = [...input.items];
   const holders = items.filter((item) => item.contributions.some((c) => ofEntry(c, entryId)));
-  if (holders.length === 0) return { items, changed: false };
+  if (holders.length === 0) return { items, changed: false, additions: [] };
 
   const existingSource = holders
     .flatMap((item) => item.contributions)
     .find((contribution) => ofEntry(contribution, entryId))?.source;
-  const plannedByArticle = new Map<Id, PlannedContribution[]>();
-  for (const contribution of input.planned) {
-    plannedByArticle.set(contribution.articleId, [
-      ...(plannedByArticle.get(contribution.articleId) ?? []),
-      contribution,
-    ]);
-  }
-  const toContribution = (planned: PlannedContribution, id: Id): ShoppingContribution => ({
-    id,
-    source:
-      existingSource && existingSource.kind === 'recipe'
-        ? existingSource
-        : { kind: 'recipe', recipeId: planned.recipeId, entryId, label: planned.label },
-    ...(planned.count === undefined ? {} : { count: planned.count }),
-    ...(planned.qty === undefined ? {} : { qty: planned.qty }),
-    ...(planned.unit === undefined ? {} : { unit: planned.unit }),
-    ...(planned.note === undefined ? {} : { note: planned.note }),
-  });
+  const keptArticles = new Set(holders.filter((item) => item.checked).map((i) => i.articleId));
+  const openArticles = new Set(holders.filter((item) => !item.checked).map((i) => i.articleId));
+  const emptied = new Set(holders.filter((item) => !item.checked).map((item) => item.id));
 
-  let changed = false;
-  const handled = new Set<Id>();
-  const next: ShoppingItem[] = [];
-  for (const item of items) {
-    const own = item.contributions.filter((contribution) => ofEntry(contribution, entryId));
-    if (own.length === 0) {
-      next.push(item);
-      continue;
-    }
-    handled.add(item.articleId);
-    if (item.checked) {
-      next.push(item);
-      continue;
-    }
-    const wanted = plannedByArticle.get(item.articleId) ?? [];
-    const replaced = wanted.map((planned, index) =>
-      toContribution(planned, own[index]?.id ?? input.newId()),
-    );
-    const others = item.contributions.filter((contribution) => !ofEntry(contribution, entryId));
-    const contributions = [...others, ...replaced];
-    if (JSON.stringify(contributions) !== JSON.stringify(item.contributions)) changed = true;
-    if (contributions.length > 0) next.push({ ...item, contributions });
+  let next = removeEntryContributions(items, entryId, { keepEmpty: true });
+  const additions: EntryAddition[] = [];
+  for (const planned of input.planned) {
+    if (keptArticles.has(planned.articleId)) continue;
+    const pantry = input.articlesById[planned.articleId]?.isPantry ?? planned.isPantry;
+    if (pantry && !openArticles.has(planned.articleId)) continue;
+    const contribution: ShoppingContribution = {
+      id: input.newId(),
+      source:
+        existingSource && existingSource.kind === 'recipe'
+          ? existingSource
+          : { kind: 'recipe', recipeId: planned.recipeId, entryId, label: planned.label },
+      ...(planned.count === undefined ? {} : { count: planned.count }),
+      ...(planned.qty === undefined ? {} : { qty: planned.qty }),
+      ...(planned.unit === undefined ? {} : { unit: planned.unit }),
+      ...(planned.note === undefined ? {} : { note: planned.note }),
+    };
+    const known = additions.find((addition) => addition.articleId === planned.articleId);
+    const itemId =
+      known?.itemId ??
+      next.find((item) => item.articleId === planned.articleId)?.id ??
+      input.newId();
+    next = addContribution(next, planned.articleId, contribution, itemId, input.now);
+    if (known) known.contributions.push(contribution);
+    else additions.push({ articleId: planned.articleId, itemId, contributions: [contribution] });
   }
-
-  for (const [articleId, wanted] of plannedByArticle) {
-    if (handled.has(articleId)) continue;
-    const article = input.articlesById[articleId];
-    if (!article || article.isPantry) continue;
-    const added = wanted.map((planned) => toContribution(planned, input.newId()));
-    changed = true;
-    const open = next.findIndex((item) => item.articleId === articleId && !item.checked);
-    const target = next[open];
-    if (target) {
-      next[open] = { ...target, contributions: [...target.contributions, ...added] };
-    } else {
-      next.push({
-        id: input.newId(),
-        articleId,
-        contributions: added,
-        checked: false,
-        createdAt: input.now,
-      });
-    }
-  }
-  return { items: changed ? next : items, changed };
+  next = next.filter((item) => !emptied.has(item.id) || item.contributions.length > 0);
+  const changed = withoutIds(next) !== withoutIds(items);
+  return { items: changed ? next : items, changed, additions };
 }
 
 /**
@@ -316,10 +304,11 @@ export function entryListShare(
 export function removeEntryContributions(
   items: readonly ShoppingItem[],
   entryId: Id,
+  options: { keepEmpty?: boolean } = {},
 ): ShoppingItem[] {
   return items.flatMap((item) => {
     if (item.checked || !item.contributions.some((c) => ofEntry(c, entryId))) return [item];
     const contributions = item.contributions.filter((c) => !ofEntry(c, entryId));
-    return contributions.length > 0 ? [{ ...item, contributions }] : [];
+    return contributions.length > 0 || options.keepEmpty ? [{ ...item, contributions }] : [];
   });
 }
