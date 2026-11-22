@@ -958,6 +958,20 @@ describe('entry reminders (spec 0017, diff path)', () => {
     expect(entryById(id)).toBeUndefined();
   });
 
+  it('AC-008, spec 0018 AC-009: resolves once the server took it, rejects when it refused it', async () => {
+    await fx.startEnrico();
+    const id = await lasagne();
+    const taken = setEntryReminder(id, { offsetDays: 0, at: '17:00' });
+    await fx.settle();
+    await expect(taken).resolves.toBeUndefined();
+    const stop = onWriteRejected(() => {});
+    fx.server.deleteRow(H, 'meal_plan_entries', id);
+    const refused = setEntryReminder(id, { offsetDays: 1, at: '18:00' });
+    await fx.settle();
+    stop();
+    await expect(refused).rejects.toBeDefined();
+  });
+
   it('AC-013: only the text changes once the moment has passed: it is not judged again', async () => {
     await fx.startEnrico();
     const id = addPlanEntry({

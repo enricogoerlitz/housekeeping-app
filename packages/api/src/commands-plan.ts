@@ -348,13 +348,15 @@ export function saveEntryFields(
  * One patch of the three columns, refused offline (OfflineError). Throws before sending for an
  * entry without a day or one that is gone, and with the hints of `checkedReminder`. When the
  * entry was removed on another device meanwhile, the server refuses it and onWriteRejected
- * reports the general hint (AC-008).
+ * reports the general hint (AC-008). Resolves once the server took it and rejects when it refused
+ * it, so "Fertig" can stay open (spec 0018, AC-009); a caller that does not wait may ignore it.
  */
-export function setEntryReminder(entryId: Id, input: EntryReminderInput | null): void {
+export function setEntryReminder(entryId: Id, input: EntryReminderInput | null): Promise<void> {
   const entry = getData().planEntries.find((candidate) => candidate.id === entryId);
   if (!entry) throw new Error('Den Eintrag gibt es nicht mehr');
   const reminder = input === null ? undefined : checkedReminder(entry, input);
-  commit({ path: 'diff' }, () =>
+  if (isOffline()) throw new OfflineError();
+  const confirmed = commitConfirmed({ path: 'diff' }, () =>
     updateData((data) => ({
       ...data,
       planEntries: data.planEntries.map((candidate) =>
@@ -362,6 +364,8 @@ export function setEntryReminder(entryId: Id, input: EntryReminderInput | null):
       ),
     })),
   );
+  confirmed.catch(() => {});
+  return confirmed;
 }
 
 /**
