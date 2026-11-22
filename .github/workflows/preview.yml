@@ -132,7 +132,9 @@ jobs:
         run: supabase functions deploy --remote="$SUPABASE_PROJECT_REF" --prune --yes
       - name: Secrets der Functions
         # Only the allowed origin; no FOUNDRY_* and no push values in the preview (decision 8).
-        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"
+        # Fixed values of [edge_runtime.secrets] in config.toml are pushed too; every one is
+        # overridden here so no local value (VAPID_SUBJECT = https://localhost) reaches the project.
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN" "VAPID_SUBJECT=$PREVIEW_WEB_ORIGIN"
 
   web-vorschau:
     name: Web Vorschau

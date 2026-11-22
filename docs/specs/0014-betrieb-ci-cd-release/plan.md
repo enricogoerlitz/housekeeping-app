@@ -1140,3 +1140,11 @@ Wird am Ende ausgefüllt.
     ersten Datenbank-Befehl bricht mit klarer Meldung ab, wenn das Secret fehlt;
     `scripts/ci/workflows.test.mjs` prüft beides. Der IPv4-Zusatz von Supabase (kostenpflichtig)
     war die Alternative.
+11. **`secrets set` überschreibt jeden festen Wert aus `[edge_runtime.secrets]` (22.11.2026).** Die
+    CLI schickt bei `supabase secrets set` auch die festen Werte der `config.toml` mit; ohne Gegenmittel
+    hätte die erste Veröffentlichung `VAPID_SUBJECT` der Produktion durch `https://localhost` ersetzt.
+    Vorschau und Release übergeben deshalb `VAPID_SUBJECT` mit der Web-Adresse der Umgebung (für die
+    Produktion derselbe Wert wie im Runbook C6) und bestätigen mit `--yes`;
+    `scripts/ci/workflows.test.mjs` verlangt für jeden festen Wert eine Übergabe. Gegen das
+    Vorschau-Projekt ohne `.env` geprüft: mit und ohne `VAPID_SUBJECT`-Argument „Set 2 secrets“, der
+    übergebene Wert ersetzt also den aus der Konfiguration.

@@ -271,7 +271,9 @@ jobs:
         run: supabase functions deploy --remote="$SUPABASE_PROJECT_REF" --prune --yes
       - name: Secrets der Functions
         # AC-045: only the allowed origin; never FOUNDRY_*, push values are Enrico's (runbook C6).
-        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN"
+        # Fixed values of [edge_runtime.secrets] in config.toml are pushed too; every one is
+        # overridden here so no local value (VAPID_SUBJECT = https://localhost) reaches the project.
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "VAPID_SUBJECT=$PRODUCTION_WEB_ORIGIN"
 
   web-ausliefern:
     name: Web ausliefern v${{ needs.version.outputs.version }}
