@@ -21,6 +21,9 @@ export function slotStartTime(slotName: string): TimeOfDay {
   return SLOT_START_TIMES[slotName.trim()] ?? FALLBACK_START;
 }
 
+/** The longest Vorlauf the recipe editor allows (RECIPE_LIMITS.leadTimeHoursMax). */
+const MAX_PREP_HOURS = 168;
+
 /** A start between 0 and 6 Uhr counts as the evening before (Entscheidung 9). */
 const NIGHT_ENDS_HOUR = 6;
 
@@ -81,7 +84,10 @@ export function prepItems(input: {
         ? contentsInBook(planned, input.book).map((content) => content.recipe)
         : [planned];
     return withLead.flatMap((recipe): PrepItem[] => {
-      if (!recipe.leadTime) return [];
+      // Only what the editor writes (1–168 whole hours), as in SQL.
+      const hours = recipe.leadTime?.hoursBefore;
+      if (!recipe.leadTime || !Number.isInteger(hours) || hours === undefined) return [];
+      if (hours < 1 || hours > MAX_PREP_HOURS) return [];
       const start = prepStart(date, slotStartTime(slotName), recipe.leadTime.hoursBefore);
       return [
         {

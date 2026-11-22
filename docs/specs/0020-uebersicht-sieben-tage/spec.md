@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-22
 ---
 
@@ -278,13 +278,14 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 
 ## Risiken
 
-| Risiko                                                          | Gegenmaßnahme                                        | Test                                                         |
-| --------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
-| Vorbereitung aus fremdem Haushalt im Tagesüberblick             | jede Verbindung über `household_id`                  | pgTAP AC-035 (fremde Sammlung)                               |
-| `not_done` an fremdem Eintrag, abgemeldet, ungültig, alter Name | `apply_changes` prüft Mitgliedschaft, Feldliste, Typ | pgTAP: fremd, `anon` (42501), `"ja"`, `not_cooked` abgelehnt |
-| Eintrag gelöscht beim Markieren                                 | Ablehnung, Überlagerung springt zurück, Toast        | api-Test, AC-039                                             |
-| Sync bricht durch Spaltennamen                                  | App und Migration zusammen; Produktion-Reset (0028)  | `pnpm test:integration`                                      |
-| SQL und TS rechnen Vorbereitung verschieden                     | gleiche Fälle in beiden                              | `notification_parity.test.sql`, `prep.test.ts`               |
+| Risiko                                                          | Gegenmaßnahme                                        | Test                                                       |
+| --------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| Vorbereitung aus fremdem Haushalt im Tagesüberblick             | jede Verbindung über `household_id`                  | `daily_summary_prep.test.sql` AC-035 (fremde Sammlung)     |
+| `not_done` an fremdem Eintrag, abgemeldet, ungültig, alter Name | `apply_changes` prüft Mitgliedschaft, Feldliste, Typ | `plan_entry_not_done.test.sql`: fremd, `anon`, `"ja"`, alt |
+| Eintrag gelöscht beim Markieren                                 | Ablehnung, Überlagerung springt zurück, Toast        | `ratings.backend.test.ts` AC-039, pgTAP `row_not_found`    |
+| Sync bricht durch Spaltennamen                                  | App und Migration zusammen; Produktion-Reset (0028)  | `pnpm test:integration`                                    |
+| SQL und TS rechnen Vorbereitung verschieden                     | gleiche Fälle in beiden                              | `daily_summary_prep.test.sql`, `prep.test.ts`              |
+| Ungültiger Vorlauf (1,5 h, riesig) bricht den Takt für alle     | `prep_items` und core nehmen nur 1–168 ganze Stunden | `daily_summary_prep.test.sql` „security“, `prep.test.ts`   |
 
 ## Umsetzung
 
@@ -294,13 +295,15 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
       Kalender-Symbol, Streifen nach Abschnitt (AC-004, AC-009, AC-010)
 - [x] 3. core `tileEntry` statt `dayTile`; `packingCards` nach Abschnitt (AC-012–AC-016, AC-043)
 - [x] 4. app `EntryPicture` für Karte und Kachel (AC-017–AC-019)
-- [ ] 5. core `addPresetSlot` (auch Kalender); app „+“ und „Hinzufügen“ mit `AddEntrySheet`
+- [x] 5. core `addPresetSlot` (auch Kalender); app „+“ und „Hinzufügen“ mit `AddEntrySheet`
       (AC-020–AC-026)
 - [x] 6. core `slotStartTime` (aus `reminder.ts`) und `prepLines`; app Zeilen unter der Leiste
       (AC-027–AC-032)
-- [ ] 7. supabase Tagesüberblick + pgTAP inkl. Parität; `/security-check` (AC-033–AC-035)
-- [ ] 8. `not_cooked` → `not_done` (`db-change`-Skill), pgTAP-Negativtests; `/security-check`
-- [ ] 9. Toast mit „Rückgängig“, Schalter im Eintragsfenster (mit Spec 0021 abstimmen), „Letztes Mal
+- [x] 7. supabase Tagesüberblick + pgTAP inkl. Parität; `/security-check` (AC-033–AC-035)
+- [x] 8. `not_cooked` → `not_done` (`db-change`-Skill), pgTAP-Negativtests; `/security-check`
+- [x] 9. Toast mit „Rückgängig“, Schalter im Eintragsfenster (mit Spec 0021 abstimmen), „Letztes Mal
       ★ n“, „Passt so“ (AC-036–AC-042)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
-      `pnpm test:integration`, `/ui-verify` Handy/Desktop hell/dunkel
+- [x] Nachweis (22.11.2026): `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 46
+      Dateien/2475 Tests grün (über den DB-Lock), `pnpm test:integration` 17 grün, e2e
+      (`rundgang-uebersicht.spec.ts` neu) nur typgeprüft; `/security-check`: 0 kritisch/hoch, der
+      mittlere Befund „ungültiger Vorlauf legt den Takt lahm“ ist behoben; `/ui-verify` in 0028

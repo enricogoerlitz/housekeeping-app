@@ -65,13 +65,19 @@ as $$
     join public.recipes col on col.household_id = p.household_id and col.id = p.recipe_id and col.kind = 'collection'
     join public.collection_recipes cr on cr.household_id = p.household_id and cr.collection_id = col.id
     join public.recipes rc on rc.household_id = p.household_id and rc.id = cr.recipe_id
-  ), starts as (
+  ), valid as (
+    -- Only what the editor writes: 1 to 168 whole hours. The case guards the cast, so a Vorlauf
+    -- written otherwise is no line and never aborts the tick for every household.
     select w.*, btrim(w.lead_time ->> 'text') as lead_text,
-           (w.date + private.slot_start_time(w.slot_name)) - make_interval(hours => (w.lead_time ->> 'hoursBefore')::int)
-             as moment
+           case when jsonb_typeof(w.lead_time -> 'hoursBefore') = 'number'
+                     and (w.lead_time ->> 'hoursBefore') ~ '^[0-9]{1,3}$'
+                then (w.lead_time ->> 'hoursBefore')::int end as hours_before
     from with_lead w
-    where jsonb_typeof(w.lead_time -> 'hoursBefore') = 'number'
-      and coalesce(btrim(w.lead_time ->> 'text'), '') <> ''
+  ), starts as (
+    select v.*, (v.date + private.slot_start_time(v.slot_name)) - make_interval(hours => v.hours_before) as moment
+    from valid v
+    where v.hours_before between 1 and 168
+      and coalesce(v.lead_text, '') <> ''
   ), days as (
     select s.*,
            case when s.moment::time < time '06:00' then s.moment::date - 1 else s.moment::date end as start_day,

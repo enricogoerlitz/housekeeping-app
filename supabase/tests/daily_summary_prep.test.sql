@@ -4,7 +4,7 @@
 -- "Enrico & Nadja" with Vormittag, Mittag, Abend; the summary comes at 7:30.
 begin;
 \ir _helpers.psql
-select plan(20);
+select plan(22);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -158,6 +158,18 @@ select ok(
   coalesce(private.daily_summary_body(tests.fx('home'), tests.fx('enrico'), '2026-11-22', '{meals,activities,chores,prep}'), '')
     not like '%Teig%',
   'AC-035: … and appears in no message of Enrico''s');
+
+-- A Vorlauf the editor would never write (1–168 whole hours, recipe-editor.ts) is no line and
+-- never breaks the scheduler's tick for every household (/security-check, 22.11.2026).
+update public.recipes set lead_time = '{"text": "Kaputt", "hoursBefore": 1.5}' where id = tests.fx('hummus');
+update public.recipes set lead_time = '{"text": "Riesig", "hoursBefore": 2000000000}' where id = tests.fx('bulgogi');
+update public.recipes set lead_time = '{"text": "Exponent", "hoursBefore": 1e12}' where id = tests.fx('spiesse');
+update public.meal_plan_entries set date = '2026-11-23' where id in (tests.fx('e_hummus_mo'), tests.fx('e_bulgogi'), tests.fx('e_grill'));
+select lives_ok($$ select * from private.prep_items(tests.fx('home'), '2026-11-22', '08:00') $$,
+  'security: an invalid hoursBefore does not break prep_items');
+select is(
+  (select count(*)::int from private.prep_items(tests.fx('home'), '2026-11-22', '08:00')), 0,
+  'security: … and gives no line');
 
 select * from finish();
 rollback;
