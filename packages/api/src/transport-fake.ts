@@ -56,6 +56,7 @@ import {
   ManualAmountResultSchema,
   TransportError,
   type ChoreCompletion,
+  type ChoreEventDayChange,
   type AddEntry,
   type AddResult,
   type ChangeOp,
@@ -496,6 +497,7 @@ const COMPLETION_KEYS = new Set([
   'next_due_on',
   'next_assignee_id',
 ]);
+const DAY_CHANGE_KEYS = new Set(['event_id', 'done_on', 'seen', 'next_due_on']);
 const SEEN_KEYS = new Set(['next_due_on', 'last_done_on', 'next_assignee_id', 'latest_event_id']);
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isTextOrNull = (value: unknown) => value === undefined || value === null || isText(value);
@@ -1526,9 +1528,9 @@ export function createFakeServer(): FakeServer {
 
   /**
    * private.complete_chore (spec 0011): books only while the chore still shows the seen state;
-   * the title comes from the chore, the state before from the stored row. A day outside today − 3
-   * … today + 1 (server date, UTC), a date not after the day, or a date for "bei Bedarf" is
-   * invalid_change.
+   * the title comes from the chore, the state before from the stored row. A day outside today − 31
+   * … today + 1 (server date, UTC; spec 0026), a date not after the day, or a date for "bei
+   * Bedarf" is invalid_change.
    */
   function completeChore(
     tables: TableRows,
@@ -1539,7 +1541,7 @@ export function createFakeServer(): FakeServer {
     const today = new Date().toISOString().slice(0, 10);
     const nextDueOn = completion.next_due_on ?? null;
     if (
-      completion.done_on < addDays(today, -3) ||
+      completion.done_on < addDays(today, -31) ||
       completion.done_on > addDays(today, 1) ||
       (nextDueOn !== null && nextDueOn <= completion.done_on)
     ) {
@@ -1614,6 +1616,71 @@ export function createFakeServer(): FakeServer {
       next = withRow(next, 'chores', { ...chore, next_due_on: nextDueOn });
     }
     return [next, { event_id: completion.event_id }];
+  }
+
+  /**
+   * private.change_chore_event_day (spec 0026, REQ-007): moves an entry to another day; the chore
+   * must still show the seen state (chore_changed). For its latest booked entry with a recorded
+   * state the chore's date follows as sent and the last time as the database computes it.
+   */
+  function changeChoreEventDay(
+    tables: TableRows,
+    change: unknown,
+  ): [TableRows, { event_id: string; moved_chore: boolean }] {
+    if (!isPlainObject(change)) throw reject('invalid_change');
+    const value = change as Partial<ChoreEventDayChange> & Record<string, unknown>;
+    const today = new Date().toISOString().slice(0, 10);
+    const nextDueOn = value.next_due_on ?? null;
+    if (
+      !Object.keys(value).every((key) => DAY_CHANGE_KEYS.has(key)) ||
+      !isText(value.event_id) ||
+      !isText(value.done_on) ||
+      !isTextOrNull(value.next_due_on) ||
+      (value.seen !== undefined && !isPlainObject(value.seen)) ||
+      value.done_on < addDays(today, -31) ||
+      value.done_on > addDays(today, 1) ||
+      (nextDueOn !== null && nextDueOn <= value.done_on)
+    ) {
+      throw reject('invalid_change');
+    }
+    const event = tables.chore_events?.[value.event_id];
+    if (!event) throw new TransportError('permanent', 'chore_event_not_found', 404);
+    let next = tables;
+    let moved = false;
+    const chore = typeof event.chore_id === 'string' ? tables.chores?.[event.chore_id] : undefined;
+    if (chore) {
+      const latest = Object.values(tables.chore_events ?? {})
+        .filter((row) => row.chore_id === chore.id)
+        .sort(newestFirst)[0];
+      const seen = value.seen;
+      const same = (column: 'next_due_on' | 'last_done_on' | 'next_assignee_id') =>
+        (seen?.[column] ?? null) === (chore[column] ?? null);
+      if (
+        seen === undefined ||
+        !same('next_due_on') ||
+        !same('last_done_on') ||
+        !same('next_assignee_id') ||
+        (seen.latest_event_id ?? null) !== (latest?.id ?? null)
+      ) {
+        throw reject('chore_changed');
+      }
+      if (latest?.id === event.id && event.prev_recorded === true) {
+        const before = event.prev_last_done_on == null ? null : String(event.prev_last_done_on);
+        next = withRow(next, 'chores', {
+          ...chore,
+          next_due_on: isAsNeeded(chore) ? null : nextDueOn,
+          last_done_on:
+            event.kind === 'done'
+              ? before !== null && before > value.done_on
+                ? before
+                : value.done_on
+              : (chore.last_done_on ?? null),
+        });
+        moved = true;
+      }
+    }
+    next = withRow(next, 'chore_events', { ...event, done_on: value.done_on });
+    return [next, { event_id: event.id, moved_chore: moved }];
   }
 
   /**
@@ -1721,6 +1788,10 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeChoreEvent(tables, op.id);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'change_chore_event_day') {
+          const [next, changed] = changeChoreEventDay(tables, op.change);
+          tables = next;
+          results.push(changed);
         } else if (op.kind === 'restore_packing_items') {
           const [next, restored] = restorePackingItems(tables, householdId, op.items);
           tables = next;

@@ -425,8 +425,8 @@ select is(tests.state('kueche'), tests.st(current_date + 4, null, 'nadja'),
 -- ===================== Invalid input =====================
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
-    tests.completion('kueche', 'ev_x', 'done', current_date - 4, 'nadja', current_date + 7, 'nadja'))),
-  '22023', 'invalid_change', 'Offene Frage 10 complete_chore: a day before today - 3 is invalid');
+    tests.completion('kueche', 'ev_x', 'done', current_date - 32, 'nadja', current_date + 7, 'nadja'))),
+  '22023', 'invalid_change', 'spec 0026 AC-020 complete_chore: a day before today - 31 is invalid');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
     tests.completion('kueche', 'ev_x', 'done', current_date + 2, 'nadja', current_date + 7, 'nadja'))),

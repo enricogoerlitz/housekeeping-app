@@ -36,7 +36,7 @@ import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';

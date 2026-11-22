@@ -5,7 +5,7 @@
 -- * private.slot_start_time: the Kochbeginn of a Tageszeit (Entscheidung 8).
 -- * private.prep_items: the Vorbereitungen to start on a day at a time.
 -- * private.daily_summary_body: only its part "Vorbereitung" changes ("Für morgen" goes, now
---   "Vorbereiten: …"); the rest is unchanged from plan_entry_fields (spec 0021).
+--   "Vorbereiten: …"); the rest is unchanged from chores_wait_on_trips (spec 0026).
 
 -- The Kochbeginn of a Tageszeit by its name (core slotStartTime): Vormittag 8, Mittag 11, Abend 17,
 -- renamed or own ones 8 Uhr.
@@ -135,17 +135,21 @@ begin
   ) x
   where x.segment is not null;
 
-  select coalesce(array_agg(x.segment order by x.rank, x.title, x.id), '{}')
+  -- Spec 0026 (REQ-009, REQ-011, REQ-012): due after trips, the stand-in of a rotation, "fällig
+  -- seit …" instead of "überfällig", in the order of core dueChores.
+  select coalesce(array_agg(x.segment order by x.rank, x.overdue_since desc nulls last, x.stored, x.title, x.id), '{}')
   into v_chores
   from (
     select c.id, c.title,
            case st.state when 'overdue' then 0 when 'today' then 1 else 2 end as rank,
+           case when st.state = 'overdue' then private.chore_count_day(c) end as overdue_since,
+           private.chore_stored_due_on(c) as stored,
            c.title || private.parenthesize(array[
              case when c.assignment ->> 'type' in ('fixed', 'rotating') then 'du' end,
-             case when c.next_due_on = p_day then private.format_time(c.due_time) end,
-             case when st.state = 'overdue' then 'überfällig' end]) as segment
+             case when st.state = 'today' then private.format_time(c.due_time) end,
+             case when st.state = 'overdue' then private.chore_due_text(c, p_day) end]) as segment
     from public.chores c
-    cross join lateral (select private.chore_due_state(c, p_day) as state, private.chore_assignees(c) as assignees) st
+    cross join lateral (select private.chore_due_state(c, p_day) as state, private.chore_assignees(c, p_day) as assignees) st
     where 'chores' = any (p_parts)
       and c.household_id = p_household_id
       and st.state is not null

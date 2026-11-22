@@ -4,7 +4,6 @@ import {
   calendarDayParam,
   choresOfDay,
   dayDots,
-  dueChores,
   overviewSections,
   tripLines,
   overviewTitle,
@@ -15,6 +14,7 @@ import {
   shiftOverview,
   tileEntry,
 } from './overview';
+import { dueChores, withoutTrips } from './chore-schedule';
 import { enrico, grillabend, nadja, trip, vera } from './test-fixtures';
 import type { Chore, ChoreEvent, MealPlanEntry, Trip } from './types';
 
@@ -257,7 +257,7 @@ describe('AC-032: choresOfDay', () => {
     doneBy: nadja.id,
   };
   const chores = [kitchen, bath, trash, sheets, plants, kitchenWindow];
-  const input = { chores, events: [window], members, today };
+  const input = { chores, events: [window], members, trips: [], today };
 
   it('AC-028: today lists overdue, due and nearly due flexible chores, never "bei Bedarf"', () => {
     const day = choresOfDay({ ...input, shown: today });
@@ -267,7 +267,11 @@ describe('AC-032: choresOfDay', () => {
       'bad',
       'bett',
     ]);
-    expect(dueChores(chores, today).map((item) => item.id)).toEqual(['muell', 'bad', 'bett']);
+    expect(dueChores(chores, today, withoutTrips(members)).map((item) => item.id)).toEqual([
+      'muell',
+      'bad',
+      'bett',
+    ]);
   });
 
   it('AC-032: Saturday shows "Küche wischen" planned with Enrico', () => {
