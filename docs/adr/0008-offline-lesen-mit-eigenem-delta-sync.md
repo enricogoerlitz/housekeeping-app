@@ -112,3 +112,24 @@ Festgelegt im Feature-Konzept (Entscheidung 8): Im Laden fehlt oft das Netz, als
   Aktionen. Sie ist geordnet und läuft je Aktion über eine eigene RPC. Vorübergehende Fehler
   werden wiederholt, dauerhafte verworfen und protokolliert.
 - Weitere Offline-Aktionen brauchen wie bisher eine Spec und einen weiteren Nachtrag.
+
+## Nachtrag 2026-11-22 — Laden-Aktionen auch auf der Liste und am Artikel (Spec 0025)
+
+Spec 0025 (Entscheidung 15, abgestimmt mit Spec 0019) nutzt drei der vier Laden-Aktionen auch
+außerhalb des Einkaufsmodus. Es kommt **keine neue Aktion** hinzu, die Konfliktregeln bleiben
+unverändert.
+
+| Wo                                                            | Laden-Aktion      | Unterschied                                                                                                                |
+| ------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| „Liste“: nach rechts wischen, „Als erledigt markieren“        | abhaken           | Der Eintrag trägt `onList`; der Server setzt `checked_on_list`, damit „… kauft gerade ein“ nur Haken aus „Einkaufen“ zählt |
+| „Liste“: „+“ an einer Zeile, „Was fehlt?“                     | Posten hinzufügen | keiner (seit Spec 0019)                                                                                                    |
+| „Posten bearbeiten“, „Artikel bearbeiten“, „Liegt woanders …“ | Bereich zuordnen  | keiner; ein **neuer** Bereich braucht weiter Netz                                                                          |
+
+- „Ein Posten je Artikel“ gilt jetzt für **jeden** Posten, offen oder erledigt (Eindeutigkeit
+  `(household_id, article_id)`). Kommt ein erledigter Artikel wieder dazu, wird derselbe Posten
+  mit der neuen Menge geöffnet; Wiederherstellen und Zusammenführen vereinen in den vorhandenen
+  Posten.
+- Ein gespeicherter Eintrag einer älteren App ohne `onList` gilt als Haken im Laden und wird nie
+  verworfen.
+- Alles andere auf der Liste (Menge „Von Hand“, ✕ an einer Herkunft, Entfernen, Leeren, Zusatz)
+  bleibt online.

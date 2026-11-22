@@ -24,7 +24,8 @@
 
 -- As before, with one exception: while a restore function runs (transaction setting
 -- housekeeping.keep_created_at = 'on', set only by security definer functions) an insert by the
--- function owner keeps the created_at it names, at most now(). The API roles can never keep one.
+-- function owner (postgres) keeps the created_at it names, at most now(). No other role, the API
+-- roles included, can ever keep one.
 create or replace function private.set_timestamps()
 returns trigger
 language plpgsql
@@ -34,7 +35,7 @@ begin
   if tg_op = 'INSERT' then
     if new.created_at is null
        or new.created_at > now()
-       or current_user in ('authenticated', 'anon')
+       or current_user <> 'postgres'
        or coalesce(current_setting('housekeeping.keep_created_at', true), '') <> 'on' then
       new.created_at := now();
     end if;
