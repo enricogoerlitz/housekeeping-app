@@ -25,12 +25,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import {
-  adoptStarterRecipes,
   createRecipe,
   createRecipeWithIngredients,
   deleteRecipe,
   discardRecipePhoto,
-  listStarterRecipes,
   rateRecipe,
   replaceIngredient,
   saveRecipeSection,
@@ -65,24 +63,6 @@ describe('diff path', () => {
     expect(opsOf(0)).toEqual([
       expect.objectContaining({ kind: 'patch', table: 'recipes', id: recipe.id }),
     ]);
-  });
-
-  it('adopting a starter recipe inserts it in one call', async () => {
-    const engine = await fx.startEnrico();
-    const data = getData();
-    const starter = listStarterRecipes().find((candidate) => {
-      const own = data.recipes.find((recipe) => recipe.title === candidate.title);
-      return own && !data.planEntries.some((entry) => entry.recipeId === own.id);
-    });
-    const own = data.recipes.find((recipe) => recipe.title === starter?.title);
-    if (!starter || !own) throw new Error('fixture');
-    fx.server.deleteRow(H, 'recipes', own.id);
-    await engine.pull();
-    expect(adoptStarterRecipes([starter.key])).toBe(1);
-    await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
-    expect(opsOf(0)).toEqual([expect.objectContaining({ kind: 'insert', table: 'recipes' })]);
-    expect(fx.server.rows(H, 'recipes').some((row) => row.title === starter.title)).toBe(true);
   });
 });
 
@@ -364,44 +344,6 @@ describe('ingredients with an article (spec 0007, through the section "Zutaten")
     expect(ingredients[0]?.articleId).toBe(articleByName('Möhren').id);
     expect(articleByName('Milchkokos')).toMatchObject({ needsReview: true, diet: 'unknown' });
     expect(ingredients[1]?.articleId).toBe(articleByName('Milchkokos').id);
-  });
-
-  it('AC-016: adopting a starter recipe re-creates a missing article from the starter catalog', async () => {
-    const engine = await fx.startEnrico();
-    const data = getData();
-    const starter = listStarterRecipes().find((candidate) => {
-      const own = data.recipes.find((recipe) => recipe.title === candidate.title);
-      return own && !data.planEntries.some((entry) => entry.recipeId === own.id);
-    });
-    const own = data.recipes.find((recipe) => recipe.title === starter?.title);
-    const [first] = own?.ingredients ?? [];
-    const article = data.articles.find((candidate) => candidate.id === first?.articleId);
-    if (!starter || !own || !article) throw new Error('fixture');
-    fx.server.deleteRow(H, 'recipes', own.id);
-    // The household renamed the article: the starter entry is free again.
-    fx.server.insertRows(H, {
-      articles: [
-        {
-          ...fx.server.row(H, 'articles', article.id),
-          id: article.id,
-          name: `${article.name} (alt)`,
-          name_key: `${article.name.toLowerCase()} alt`,
-          synonyms: [],
-          synonym_keys: [],
-        },
-      ],
-    });
-    await engine.pull();
-    expect(adoptStarterRecipes([starter.key])).toBe(1);
-    await fx.settle();
-    expect(opsOf(0).map((op) => [op.kind, 'table' in op ? op.table : ''])).toEqual([
-      ['insert', 'articles'],
-      ['insert', 'recipes'],
-    ]);
-    const created = articleByName(article.name);
-    expect(created).toMatchObject({ needsReview: false, isPantry: article.isPantry });
-    const adopted = getData().recipes.find((recipe) => recipe.title === starter.title);
-    expect(adopted?.ingredients[0]?.articleId).toBe(created.id);
   });
 });
 

@@ -18,6 +18,8 @@ import type {
 // What a member who eats everything is served first. "unknown" comes last: a variant is not
 // preferred just because its ingredients could not be identified.
 const FLEXIBLE_RANK: Record<Diet, number> = {
+  // Never derived for a variant (spec 0023, REQ-008); listed for the type only.
+  non_food: 0,
   unknown: 0,
   vegan: 1,
   vegetarian: 2,

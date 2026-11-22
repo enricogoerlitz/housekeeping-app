@@ -1,5 +1,6 @@
 import { parseAmount } from './amounts';
-import { defaultShoppingRuleFor, type CatalogHit } from './article-catalog';
+import { defaultShoppingRuleFor, missingArticlesLabel, type CatalogHit } from './article-catalog';
+import { groupProblem } from './ingredient-groups';
 import type { DraftArticle, IngredientDraft } from './ingredient-drafts';
 import { cuisineFacets, spellingFacets } from './recipe-list';
 import { matchSearchOrCreate, type SearchOrCreateResult } from './search-or-create';
@@ -12,10 +13,12 @@ import type {
   Recipe,
   RecipeIngredient,
   RecipeKind,
+  RecipeLink,
   RecipeStep,
   RecipeVariant,
   ShoppingRule,
 } from './types';
+import { LINK_LIMIT_HINT, MAX_LINKS } from './web-link';
 
 // Editing the recipe page section by section (spec 0008, REQ-007, REQ-008, E7 to E10). A section
 // has a draft that lives in the page; "Fertig" checks it (validateSectionDraft) and turns it into a
@@ -24,7 +27,7 @@ import type {
 // A collection (spec 0009, E3, E13) has the sections head (without time), ingredients ("Eigene
 // Zutaten", without variants) and notes; its contents are edited in collection-editor.ts.
 
-export type RecipeSection = 'head' | 'classification' | 'ingredients' | 'steps' | 'notes';
+export type RecipeSection = 'head' | 'classification' | 'ingredients' | 'steps' | 'notes' | 'links';
 
 /**
  * Limits of the fields (E8): those of the database checks (`recipes_*`, recipes_check_ingredients),
@@ -99,6 +102,12 @@ export interface IngredientRow {
   /** Undefined = Basis. */
   variantId?: Id;
   group: string;
+  /**
+   * A pasted row whose article is in the recipe already, for the same variant, or further up in the
+   * same text (spec 0023, REQ-006): open with "Steht schon im Rezept" until "Weglassen" or
+   * "Trotzdem hinzufügen"; never saved before that.
+   */
+  duplicate?: boolean;
 }
 
 export interface IngredientsFields {
@@ -115,6 +124,11 @@ export interface StepsFields {
 
 export interface NotesFields {
   notes: string;
+}
+
+/** "Links" (spec 0023, REQ-009): the links as checked in the window "Link" (web-link.ts). */
+export interface LinksFields {
+  links: RecipeLink[];
 }
 
 export interface HeadDraft extends HeadFields {
@@ -142,9 +156,13 @@ export interface NotesDraft extends NotesFields {
   section: 'notes';
   base: NotesFields;
 }
+export interface LinksDraft extends LinksFields {
+  section: 'links';
+  base: LinksFields;
+}
 
 export type RecipeSectionDraft =
-  HeadDraft | ClassificationDraft | IngredientsDraft | StepsDraft | NotesDraft;
+  HeadDraft | ClassificationDraft | IngredientsDraft | StepsDraft | NotesDraft | LinksDraft;
 
 function headFields(recipe: Recipe): HeadFields {
   return {
@@ -190,6 +208,7 @@ export function sectionDraft(recipe: Recipe, section: 'classification'): Classif
 export function sectionDraft(recipe: Recipe, section: 'ingredients'): IngredientsDraft;
 export function sectionDraft(recipe: Recipe, section: 'steps'): StepsDraft;
 export function sectionDraft(recipe: Recipe, section: 'notes'): NotesDraft;
+export function sectionDraft(recipe: Recipe, section: 'links'): LinksDraft;
 export function sectionDraft(recipe: Recipe, section: RecipeSection): RecipeSectionDraft;
 export function sectionDraft(recipe: Recipe, section: RecipeSection): RecipeSectionDraft {
   switch (section) {
@@ -209,6 +228,8 @@ export function sectionDraft(recipe: Recipe, section: RecipeSection): RecipeSect
       return { section, ...stepsFields(recipe), base: stepsFields(recipe) };
     case 'notes':
       return { section, notes: recipe.notes ?? '', base: { notes: recipe.notes ?? '' } };
+    case 'links':
+      return { section, links: [...recipe.links], base: { links: recipe.links } };
   }
 }
 
@@ -229,7 +250,8 @@ export type SectionField =
   | 'step'
   | 'leadTimeText'
   | 'leadTimeHours'
-  | 'notes';
+  | 'notes'
+  | 'links';
 
 export interface SectionProblem {
   field: SectionField;
@@ -398,6 +420,8 @@ function ingredientsProblems(draft: IngredientsDraft): SectionProblem[] {
         message: tooLong(RECIPE_LIMITS.prepNote),
       });
     }
+    const group = groupProblem(row.group);
+    if (group) problems.push({ field: 'ingredient', key: row.key, message: group });
   }
   if (draft.rows.length > RECIPE_LIMITS.ingredients) {
     problems.push({ field: 'ingredients', message: 'Höchstens 300 Zutaten' });
@@ -461,6 +485,8 @@ export function validateSectionDraft(draft: RecipeSectionDraft): SectionProblem[
       return length(draft.notes.trim()) > RECIPE_LIMITS.notes
         ? [{ field: 'notes', message: tooLong(RECIPE_LIMITS.notes) }]
         : [];
+    case 'links':
+      return draft.links.length > MAX_LINKS ? [{ field: 'links', message: LINK_LIMIT_HINT }] : [];
   }
 }
 
@@ -488,7 +514,7 @@ export function savablePart(draft: RecipeSectionDraft): RecipeSectionDraft {
       };
     case 'ingredients': {
       const rows = fields.size === 0 ? draft.rows : draft.base.ingredients.map(rowFromIngredient);
-      const ready = rows.filter((row) => row.article !== undefined);
+      const ready = rows.filter((row) => row.article !== undefined && !row.duplicate);
       if (fields.size === 0 && ready.length === draft.rows.length) return draft;
       return {
         ...draft,
@@ -508,6 +534,8 @@ export function savablePart(draft: RecipeSectionDraft): RecipeSectionDraft {
     }
     case 'notes':
       return fields.size === 0 ? draft : { ...draft, notes: draft.base.notes };
+    case 'links':
+      return fields.size === 0 ? draft : { ...draft, links: [...draft.base.links] };
   }
 }
 
@@ -529,6 +557,7 @@ export type RecipePatch = Partial<
     | 'steps'
     | 'leadTime'
     | 'notes'
+    | 'links'
   >
 >;
 
@@ -667,7 +696,7 @@ function ingredientsPatch(
   const rules = new Map<Id, ShoppingRule>();
 
   for (const row of draft.rows) {
-    if (row.article === undefined) {
+    if (row.article === undefined || row.duplicate) {
       open.push(row);
       continue;
     }
@@ -746,6 +775,8 @@ export function sectionPatch(
           { notes: draft.base.notes.trim() || undefined },
         ),
       );
+    case 'links':
+      return only(changed({ links: draft.links }, { links: draft.base.links }));
   }
 }
 
@@ -808,6 +839,20 @@ function moveTo<T>(items: readonly T[], index: number, toIndex: number): T[] {
   return next;
 }
 
+const STEP_TIMER_PROBLEM = '1 bis 600 Minuten';
+
+/** "Timer (Min)" of the window "Schritt" (spec 0023, REQ-005): whole minutes; blank = no timer. */
+export function parseStepTimer(text: string): number | undefined {
+  const minutes = wholeNumber(text);
+  return minutes !== undefined && minutes >= 1 && minutes <= 600 ? minutes : undefined;
+}
+
+/** "1 bis 600 Minuten" for anything but blank or a whole number from 1 to 600 (AC-016). */
+export function stepTimerProblem(text: string): string | undefined {
+  if (text.trim() === '') return undefined;
+  return parseStepTimer(text) === undefined ? STEP_TIMER_PROBLEM : undefined;
+}
+
 /** "+ Schritt"; a blank step is left out on saving. */
 export function addStep(draft: StepsDraft, text: string, id: Id): StepsDraft {
   return { ...draft, steps: [...draft.steps, { id, text }] };
@@ -817,6 +862,20 @@ export function updateStepText(draft: StepsDraft, id: Id, text: string): StepsDr
   return {
     ...draft,
     steps: draft.steps.map((step) => (step.id === id ? { ...step, text } : step)),
+  };
+}
+
+/** "Timer (Min)" of a step (spec 0023, REQ-005): whole minutes, undefined = no timer (AC-017). */
+export function setStepTimer(draft: StepsDraft, id: Id, minutes: number | undefined): StepsDraft {
+  return {
+    ...draft,
+    steps: draft.steps.map((step) => {
+      if (step.id !== id) return step;
+      const next = { ...step };
+      if (minutes === undefined) delete next.timerMinutes;
+      else next.timerMinutes = minutes;
+      return next;
+    }),
   };
 }
 
@@ -865,11 +924,111 @@ export function rowsFromIngredientDrafts(drafts: readonly IngredientDraft[]): In
   });
 }
 
+/** What a row's article is, for duplicates: the household article, a starter entry or a new name. */
+function rowArticleKey(row: IngredientRow): string | undefined {
+  const { article } = row;
+  if (article === undefined) return undefined;
+  const id = existingArticleId(article);
+  if (id !== undefined) return `article:${id}`;
+  if (article.kind === 'hit') return `name:${normalizeText(article.hit.name)}`;
+  return article.kind === 'new' ? `name:${normalizeText(article.name)}` : undefined;
+}
+
 export function addIngredientRows(
   draft: IngredientsDraft,
   rows: readonly IngredientRow[],
 ): IngredientsDraft {
   return { ...draft, rows: [...draft.rows, ...rows] };
+}
+
+/**
+ * Pasted rows ("Mehrere einfügen", "Zutaten einfügen") at the end of the section (spec 0023,
+ * REQ-006): a row whose article is in the section already for the same variant, or in a row
+ * further up of `rows`, is marked as duplicate. A row added with "+ Zutat" is never one.
+ */
+export function addPastedRows(
+  draft: IngredientsDraft,
+  rows: readonly IngredientRow[],
+): IngredientsDraft {
+  const seen = new Set(
+    draft.rows.flatMap((row) => {
+      const key = rowArticleKey(row);
+      return key === undefined || row.duplicate ? [] : [`${row.variantId ?? ''}|${key}`];
+    }),
+  );
+  const added = rows.map((row) => {
+    const key = rowArticleKey(row);
+    if (key === undefined) return row;
+    const variantKey = `${row.variantId ?? ''}|${key}`;
+    if (seen.has(variantKey)) return { ...row, duplicate: true };
+    seen.add(variantKey);
+    return row;
+  });
+  return { ...draft, rows: [...draft.rows, ...added] };
+}
+
+/** "Trotzdem hinzufügen" on a duplicate: saved like any other row. */
+export function keepDuplicateRow(draft: IngredientsDraft, key: string): IngredientsDraft {
+  return mapRow(draft, key, (row) => {
+    const next = { ...row };
+    delete next.duplicate;
+    return next;
+  });
+}
+
+/**
+ * The notice of the section after "Fertig" with open rows (AC-018, AC-019): "5 Zutaten
+ * gespeichert · 2 brauchen noch einen Artikel · 1 steht schon im Rezept"; without saved ones it
+ * starts with "2 Zutaten brauchen …". Undefined without open rows.
+ */
+export function pastedSaveNotice(
+  saved: number,
+  open: readonly IngredientRow[],
+): string | undefined {
+  const missing = open.filter((row) => row.article === undefined).length;
+  const duplicates = open.filter((row) => row.article !== undefined && row.duplicate).length;
+  if (missing === 0 && duplicates === 0) return undefined;
+  const parts: string[] = [];
+  if (saved > 0) parts.push(saved === 1 ? '1 Zutat gespeichert' : `${saved} Zutaten gespeichert`);
+  const first = parts.length === 0;
+  if (missing > 0) {
+    if (first) parts.push(missingArticlesLabel(missing));
+    else
+      parts.push(
+        missing === 1 ? '1 braucht noch einen Artikel' : `${missing} brauchen noch einen Artikel`,
+      );
+  }
+  if (duplicates > 0) {
+    const zutat = parts.length === 0 ? (duplicates === 1 ? ' Zutat' : ' Zutaten') : '';
+    parts.push(
+      duplicates === 1
+        ? `1${zutat} steht schon im Rezept`
+        : `${duplicates}${zutat} stehen schon im Rezept`,
+    );
+  }
+  return parts.join(' · ');
+}
+
+/** The row of a stored ingredient, for "Zutat bearbeiten" from the read view (REQ-002). */
+export function ingredientRowOf(recipe: Recipe, ingredientId: Id): IngredientRow | undefined {
+  const ingredient = recipe.ingredients.find((candidate) => candidate.id === ingredientId);
+  return ingredient ? rowFromIngredient(ingredient) : undefined;
+}
+
+/**
+ * Puts a row in place of the row with its key; a row not in the draft goes to `index` (clamped),
+ * else to the end. "Zutat bearbeiten" and "Rückgängig" after "Entfernen" from the read view.
+ */
+export function placeIngredientRow(
+  draft: IngredientsDraft,
+  row: IngredientRow,
+  index?: number,
+): IngredientsDraft {
+  if (draft.rows.some((candidate) => candidate.key === row.key)) {
+    return mapRow(draft, row.key, () => row);
+  }
+  const at = Math.max(0, Math.min(index ?? draft.rows.length, draft.rows.length));
+  return { ...draft, rows: [...draft.rows.slice(0, at), row, ...draft.rows.slice(at)] };
 }
 
 function mapRow(
@@ -950,12 +1109,13 @@ export function removeIngredient(draft: IngredientsDraft, key: string): Ingredie
 
 /**
  * Rows that will not be saved (AC-032): without an article, or whose household article is gone
- * (deleted or merged on another device; then without article). missingArticlesLabel names them.
+ * (deleted or merged on another device; then without article), and duplicates waiting for a
+ * decision (spec 0023, REQ-006). pastedSaveNotice names them.
  */
 export function openRows(draft: IngredientsDraft, articles: readonly Article[]): IngredientRow[] {
   const known = new Set(articles.map((article) => article.id));
   return draft.rows.flatMap((row) => {
-    if (row.article === undefined) return [row];
+    if (row.article === undefined || row.duplicate) return [row];
     const id = existingArticleId(row.article);
     return id !== undefined && !known.has(id) ? [orangeRow(row)] : [];
   });

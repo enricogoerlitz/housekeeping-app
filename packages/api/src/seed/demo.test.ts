@@ -26,7 +26,7 @@ import {
 } from './demo';
 import { seedRecipes } from './recipes-data';
 
-const DIETS: Diet[] = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'];
+const DIETS: Diet[] = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown', 'non_food'];
 
 // The sample households are the source of the local seed (`pnpm db:seed:gen`) and of the fake
 // server in the command tests.

@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { View, type HostInstance } from 'react-native';
+import { useEffect, useEffectEvent, useRef, type ReactNode } from 'react';
+import { Platform, View, type HostInstance } from 'react-native';
 
 import { Button, IconButton } from './controls';
 import { Section } from './lists';
@@ -17,6 +17,17 @@ export interface EditableSectionProps {
   editLabel: string;
   /** Text of the button that closes the section, e.g. "Fertig". */
   doneLabel: string;
+  /**
+   * "Abbrechen" next to "Fertig" (spec 0023, REQ-003): closes without saving and without asking;
+   * Escape on the web does the same while no window or menu is open above it. Usable offline.
+   */
+  onCancel?: () => void;
+  cancelLabel?: string;
+  /**
+   * Opened, the section scrolls so that its head with "Abbrechen" and "Fertig" stands at the top
+   * (on phones, spec 0023, AC-012); without animation when the system asks for reduced motion.
+   */
+  scrollOnOpen?: boolean;
   /** Greys out the pencil, e.g. offline; `hint` says why. "Fertig" stays usable. */
   disabled?: boolean;
   hint?: string;
@@ -41,8 +52,9 @@ export interface EditableSectionProps {
  */
 export function EditableSection(props: EditableSectionProps) {
   const pencil = useRef<HostInstance>(null);
+  const box = useRef<HostInstance>(null);
   const closedHere = useRef(false);
-  const { editing } = props;
+  const { editing, scrollOnOpen } = props;
   useEffect(() => {
     // Only after this section's own "Fertig": a pencil elsewhere keeps its focus.
     if (editing || !closedHere.current) return;
@@ -50,8 +62,35 @@ export function EditableSection(props: EditableSectionProps) {
     pencil.current?.focus();
   }, [editing]);
 
+  const cancel = useEffectEvent(() => {
+    closedHere.current = true;
+    props.onCancel?.();
+  });
+  const cancellable = props.onCancel !== undefined;
+  useEffect(() => {
+    if (!editing || !cancellable || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // A window or menu above closes first; it handles its own Escape (AC-011).
+      if (document.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      cancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing, cancellable]);
+
+  useEffect(() => {
+    if (!editing || !scrollOnOpen || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const node = box.current as unknown as {
+      scrollIntoView?: (options: { block: 'start'; behavior: 'auto' | 'smooth' }) => void;
+    } | null;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    node?.scrollIntoView?.({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+  }, [editing, scrollOnOpen]);
+
   const id = (part: string) => (props.testID ? `${props.testID}-${part}` : undefined);
-  const control = editing ? (
+  const done = (
     <Button
       label={props.doneLabel}
       icon="check"
@@ -62,6 +101,25 @@ export function EditableSection(props: EditableSectionProps) {
       }}
       testID={id('done')}
     />
+  );
+  const control = editing ? (
+    props.onCancel ? (
+      <Row gap={8}>
+        <Button
+          label={props.cancelLabel ?? ''}
+          variant="ghost"
+          size="sm"
+          onPress={() => {
+            closedHere.current = true;
+            props.onCancel?.();
+          }}
+          testID={id('cancel')}
+        />
+        {done}
+      </Row>
+    ) : (
+      done
+    )
   ) : (
     // The Section title row aligns on the baseline; the pencil sits centred on it.
     <View style={{ marginVertical: props.inline ? 0 : -8, marginRight: -8 }}>
@@ -90,6 +148,7 @@ export function EditableSection(props: EditableSectionProps) {
   if (props.inline) {
     return (
       <View
+        ref={box}
         testID={props.testID}
         style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}
       >
@@ -99,8 +158,10 @@ export function EditableSection(props: EditableSectionProps) {
     );
   }
   return (
-    <Section title={props.title} testID={props.testID} action={action}>
-      {props.children}
-    </Section>
+    <View ref={box}>
+      <Section title={props.title} testID={props.testID} action={action}>
+        {props.children}
+      </Section>
+    </View>
   );
 }

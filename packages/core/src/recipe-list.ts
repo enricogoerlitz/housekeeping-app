@@ -421,9 +421,12 @@ export function recipeListCountLabel(recipes: readonly Pick<Recipe, 'kind'>[]): 
   return plain === 0 ? collectionLabel : `${recipeCountLabel(plain)} · ${collectionLabel}`;
 }
 
-/** The button in the panel's foot: "13 Rezepte zeigen", "1 Rezept zeigen" (AC-005, AC-008). */
-export function recipeShowLabel(count: number): string {
-  return `${recipeCountLabel(count)} zeigen`;
+/**
+ * The button in the panel's foot, counted like the line over the list (spec 0023, AC-057):
+ * "26 Rezepte · 2 Sammlungen zeigen", "13 Rezepte zeigen", "2 Sammlungen zeigen", "0 Rezepte zeigen".
+ */
+export function recipeShowLabel(recipes: readonly Pick<Recipe, 'kind'>[]): string {
+  return `${recipeListCountLabel(recipes)} zeigen`;
 }
 
 /**

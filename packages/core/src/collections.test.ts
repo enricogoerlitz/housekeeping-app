@@ -96,7 +96,7 @@ describe('REQ-003, REQ-005: what a collection contains', () => {
   it('AC-015: a recipe that takes the portions follows a change of the collection', () => {
     const contents = contentsOf({ ...grillabend, servings: 10 });
     expect(contents.map(collectionContentLabel)).toEqual([
-      'Kartoffelsalat · 10 Port.',
+      'Kartoffelsalat · 10 Port. (wie Sammlung)',
       'Grillgemüse · 8 Port.',
     ]);
   });
@@ -107,8 +107,8 @@ describe('REQ-003, REQ-005: what a collection contains', () => {
       { id: 'cr-2', collectionId: grillabend.id, recipeId: grillgemuese.id, sort: 1 },
     ];
     expect(contentsOf(grillabend, rows).map(collectionContentLabel)).toEqual([
-      'Kartoffelsalat · 6 Port.',
-      'Grillgemüse · 6 Port.',
+      'Kartoffelsalat · 6 Port. (wie Sammlung)',
+      'Grillgemüse · 6 Port. (wie Sammlung)',
     ]);
   });
 
@@ -117,7 +117,7 @@ describe('REQ-003, REQ-005: what a collection contains', () => {
       row.recipeId === grillgemuese.id ? { ...row, variantId: 'v-vegan' } : row,
     );
     expect(contentsOf(grillabend, rows).map(collectionContentLabel)).toEqual([
-      'Kartoffelsalat · 6 Port.',
+      'Kartoffelsalat · 6 Port. (wie Sammlung)',
       'Grillgemüse · vegan · 8 Port.',
     ]);
   });

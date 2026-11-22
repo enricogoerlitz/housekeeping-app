@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { recipeDeletedLabel, recipeDeletionEffect } from './recipe-deletion';
+import { deletedNotice, recipeDeletionEffect } from './recipe-deletion';
 import {
   enrico,
   grillabend,
@@ -126,7 +126,7 @@ describe('deleting a recipe (REQ-012, E3)', () => {
   });
 
   it('AC-043: the notice says "Halloumi-Pfanne gelöscht"', () => {
-    expect(recipeDeletedLabel('Halloumi-Pfanne', 0)).toBe('Halloumi-Pfanne gelöscht');
+    expect(deletedNotice('Halloumi-Pfanne', { collections: 0 })).toBe('Halloumi-Pfanne gelöscht');
   });
 });
 
@@ -143,10 +143,10 @@ describe('deleting with Sammlungen (spec 0009, REQ-010)', () => {
     const effect = recipeDeletionEffect([], kartoffelsalat, today, rows);
     expect(effect.removedCollectionRecipeIds).toEqual(['cr-kartoffelsalat', 'cr-buffet-salat']);
     expect(effect.collections).toBe(2);
-    expect(recipeDeletedLabel(kartoffelsalat.title, effect.collections)).toBe(
+    expect(deletedNotice(kartoffelsalat.title, { collections: effect.collections })).toBe(
       'Kartoffelsalat gelöscht · auch aus 2 Sammlungen entfernt',
     );
-    expect(recipeDeletedLabel(kartoffelsalat.title, 1)).toBe(
+    expect(deletedNotice(kartoffelsalat.title, { collections: 1 })).toBe(
       'Kartoffelsalat gelöscht · auch aus 1 Sammlung entfernt',
     );
   });
@@ -174,6 +174,51 @@ describe('deleting with Sammlungen (spec 0009, REQ-010)', () => {
     expect(effect.collections).toBe(0);
     expect(effect.removedIds).toEqual(['sa']);
     expect(effect.converted.map((converted) => converted.text)).toEqual(['Grillabend']);
-    expect(recipeDeletedLabel(grillabend.title, effect.collections)).toBe('Grillabend gelöscht');
+    expect(deletedNotice(grillabend.title, { collections: effect.collections })).toBe(
+      'Grillabend gelöscht',
+    );
+  });
+});
+
+describe('the notice names the entries that go (spec 0023, REQ-012)', () => {
+  const lasagne = { id: halloumiPfanne.id, title: 'Lasagne' };
+  const day = '2026-11-22';
+
+  it('AC-049: one past and two later entries: "Lasagne gelöscht · 2 geplante Einträge entfallen"', () => {
+    const entries = [
+      entry({ id: 'past', date: '2026-11-20' }),
+      entry({ id: 'later', date: '2026-11-25' }),
+      entry({ id: 'december', date: '2026-12-04' }),
+    ];
+    const effect = recipeDeletionEffect(entries, lasagne, day, []);
+    expect(
+      deletedNotice(lasagne.title, {
+        entries: effect.removedIds.length,
+        collections: effect.collections,
+      }),
+    ).toBe('Lasagne gelöscht · 2 geplante Einträge entfallen');
+    expect(effect.converted.map((converted) => converted.text)).toEqual(['Lasagne']);
+  });
+
+  it('AC-050: tomorrow and noted count both: "Grillabend gelöscht · 2 geplante Einträge entfallen"', () => {
+    const entries = [
+      entry({ id: 'tomorrow', recipeId: grillabend.id, date: '2026-11-23' }),
+      entry({ id: 'noted', recipeId: grillabend.id, date: null }),
+    ];
+    const effect = recipeDeletionEffect(entries, grillabend, day, grillabendRecipes);
+    expect(deletedNotice(grillabend.title, { entries: effect.removedIds.length })).toBe(
+      'Grillabend gelöscht · 2 geplante Einträge entfallen',
+    );
+  });
+
+  it('AC-051: one entry and one collection', () => {
+    expect(deletedNotice('Mango-Curry', { entries: 1, collections: 1 })).toBe(
+      'Mango-Curry gelöscht · 1 geplanter Eintrag entfällt · auch aus 1 Sammlung entfernt',
+    );
+  });
+
+  it('AC-052: nothing planned: only "Shakshuka gelöscht"', () => {
+    expect(deletedNotice('Shakshuka', { entries: 0, collections: 0 })).toBe('Shakshuka gelöscht');
+    expect(deletedNotice('Shakshuka', {})).toBe('Shakshuka gelöscht');
   });
 });
