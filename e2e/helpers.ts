@@ -56,6 +56,11 @@ export function inThisWeek(date: ISODate): boolean {
   return weekDates(TODAY).includes(date);
 }
 
+/** True when `date` lies in yesterday to today + 5, the Übersicht's first section (spec 0020). */
+export function inTodaysSection(date: ISODate): boolean {
+  return Array.from({ length: 7 }, (_, index) => day(index - 1)).includes(date);
+}
+
 /** The three Tageszeiten of the demo household (spec 0004, AC-001). */
 export const SLOT_MORNING = seedIds['slot-vormittag'];
 export const SLOT_LUNCH = seedIds['slot-mittag'];

@@ -6,7 +6,7 @@ import {
   expect,
   expectTime,
   goOffline,
-  inThisWeek,
+  inTodaysSection,
   nav,
   open,
   showPlanWeek,
@@ -33,7 +33,7 @@ const IN_TWO_DAYS = day(2);
 /** The "Übersicht" shows `date` (a day of this or the next week). */
 async function showOverviewDay(page: Page, date: string): Promise<void> {
   await nav(page, 'index');
-  if (!inThisWeek(date)) await tid(page, 'today-week-next').click();
+  if (!inTodaysSection(date)) await tid(page, 'today-week-next').click();
   await tid(page, `today-week-${date}`).click();
 }
 

@@ -6,7 +6,7 @@ import {
   day,
   expect,
   freshSeed,
-  inThisWeek,
+  inTodaysSection,
   isoWeekday,
   leaveManaged,
   nav,
@@ -34,9 +34,9 @@ const BAD = seedIds['chore-bad'];
 /** Chore rows in a list (not their check box or badges). */
 const CHORE_ROW = '[data-testid^="chore-"][role="button"]';
 
-/** Shows `date` on the Übersicht: pages the week strip when the day is in another week. */
+/** Shows `date` on the Übersicht: pages the Tagesleiste when the day is in another section. */
 async function showDay(page: Page, date: string): Promise<void> {
-  if (!inThisWeek(date)) await tid(page, 'today-week-next').click();
+  if (!inTodaysSection(date)) await tid(page, 'today-week-next').click();
   await tid(page, `today-week-${date}`).click();
 }
 
@@ -48,13 +48,17 @@ test.describe('Haushalt and Übersicht at phone width', () => {
   }) => {
     await open(page, '/');
     await expect(page.getByText(/^Guten (Morgen|Tag|Abend), Enrico/)).toBeVisible();
-    await expect(tid(page, 'today-week-label')).toHaveText(/^Diese Woche · KW \d+$/);
+    // Spec 0020, AC-007: the range without "KW", "Heute" greyed out in today's section.
+    await expect(tid(page, 'today-range')).toHaveText(/^\S\S \d+\.\d+\. – \S\S \d+\.\d+\.$/);
+    await expect(tid(page, 'today-week-today')).toBeDisabled();
     await expect(tid(page, 'today-meals')).toContainText('Heute geplant');
     await expect(tid(page, `today-meal-${seedIds['plan-2']}`)).toContainText('Lasagne');
     await expect(tid(page, `today-meal-${seedIds['plan-2']}`)).toContainText('Abend');
-    await expect(tid(page, `today-prep-${seedIds['plan-8']}`)).toHaveText(
-      'Für morgen: Kichererbsen einweichen (12 h) · Kichererbsen-Eintopf',
+    // Spec 0020, AC-027: the latest start of tomorrow's Vorlauf lies today.
+    await expect(tid(page, 'today-prep')).toContainText(
+      /^Heute (bis ca\. \d+ Uhr|Abend): Kichererbsen einweichen · Kichererbsen-Eintopf \(morgen /,
     );
+    await expect(page.getByText('Für morgen')).toHaveCount(0);
     await expect(tid(page, 'today-chores')).toContainText('Bad putzen');
     await expect(tid(page, 'today-shopping-count')).toHaveText(/\d+ offen/);
     // "Wie war's?" asks about the last three days only while today is shown (AC-022).
@@ -69,7 +73,8 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await open(page, '/');
     await showDay(page, day(1));
     await expect(tid(page, 'today-meals')).toContainText('Geplant am');
-    await expect(tid(page, 'today-week-today')).toBeVisible();
+    // Spec 0020, Entscheidung 1: tomorrow lies in today's section, "Heute" stays greyed out.
+    await expect(tid(page, 'today-week-today')).toBeDisabled();
     const card = tid(page, `today-meal-${seedIds['plan-8']}`);
     await expect(card).toContainText('Kichererbsen-Eintopf');
     await card.click();
@@ -78,10 +83,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await back(page);
     await nav(page, 'index');
     await expect(tid(page, `today-meal-${seedIds['plan-8']}`)).toBeVisible();
-    await expect(tid(page, 'today-week-today')).toBeVisible();
 
     // The seed plans "Grillabend" next Saturday (today on a Saturday).
-    await tid(page, 'today-week-today').click();
+    await tid(page, `today-week-${TODAY}`).click();
     const saturday = day((6 - isoWeekday(TODAY) + 7) % 7);
     await showDay(page, saturday);
     const grill = seedIds['plan-grillabend-sa'];
