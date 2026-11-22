@@ -41,7 +41,7 @@ export function HeadSection(props: {
             {props.badge}
           </Row>
           {recipe.description ? (
-            <Text color="muted" testID="recipe-description">
+            <Text color="muted" selectable testID="recipe-description">
               {recipe.description}
             </Text>
           ) : null}

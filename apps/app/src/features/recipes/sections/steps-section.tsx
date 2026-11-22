@@ -71,7 +71,9 @@ export function StepsSection(props: {
               <Row key={step.id} gap={12} align="flex-start">
                 <StepNumber value={index + 1} />
                 <Stack gap={4} style={{ flex: 1 }}>
-                  <Text testID={`recipe-step-${step.id}`}>{step.text}</Text>
+                  <Text selectable testID={`recipe-step-${step.id}`}>
+                    {step.text}
+                  </Text>
                   {step.timerMinutes ? (
                     <Row gap={5}>
                       <Icon name="timer" size={15} color="muted" />

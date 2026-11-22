@@ -269,7 +269,9 @@ function FeedbackCard(props: { entry: FeedbackEntry }) {
           <Icon name={KIND_ICON[entry.kind]} size={20} color="muted" />
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <Text testID={`fb-text-${entry.id}`}>{entry.text}</Text>
+          <Text selectable testID={`fb-text-${entry.id}`}>
+            {entry.text}
+          </Text>
           <Text variant="caption" color="muted">
             {KIND_LABEL[entry.kind]} · {author} · {day}
             {entry.screen && entry.screen !== 'Feedback' ? ` · ${entry.screen}` : ''}

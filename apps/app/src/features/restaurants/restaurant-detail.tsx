@@ -169,6 +169,7 @@ function RestaurantDetailBody(props: {
               <Text
                 variant="small"
                 color="muted"
+                selectable
                 style={{ flexShrink: 1 }}
                 testID="restaurant-address-text"
               >

@@ -154,7 +154,9 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             </Text>
           )}
           {activity.description ? (
-            <Text testID="activity-description">{activity.description}</Text>
+            <Text selectable testID="activity-description">
+              {activity.description}
+            </Text>
           ) : null}
           {place ? (
             <Row gap={6} align="flex-start">

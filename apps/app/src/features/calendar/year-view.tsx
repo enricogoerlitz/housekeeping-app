@@ -10,7 +10,16 @@ import {
   type AbsenceStripe,
   type ISODate,
 } from '@housekeeping/core';
-import { Icon, List, ListRow, Section, Text, keyboardFocusRing, useTheme } from '@housekeeping/ui';
+import {
+  Icon,
+  List,
+  ListRow,
+  Section,
+  Text,
+  keyboardFocusRing,
+  useHover,
+  useTheme,
+} from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
@@ -140,6 +149,7 @@ function MiniMonth(props: {
   onOpenMonth: () => void;
 }) {
   const theme = useTheme();
+  const hover = useHover();
   const month = props.monthStart.slice(0, 7);
   const index = parseISODate(props.monthStart).getMonth();
   const name = monthName(index);
@@ -160,7 +170,7 @@ function MiniMonth(props: {
               marginLeft: -6,
               paddingHorizontal: 6,
               borderRadius: theme.shape.radius.control,
-              backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+              backgroundColor: hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
               opacity: pressed ? 0.7 : 1,
             },
             keyboardFocusRing(theme, focused),

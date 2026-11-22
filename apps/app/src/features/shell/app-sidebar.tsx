@@ -7,6 +7,8 @@ import {
   Stack,
   SwitchRow,
   Text,
+  keyboardFocusRing,
+  useHover,
   useTheme,
   type NavItem,
   type SidebarGroup,
@@ -138,6 +140,7 @@ function ProfileEntry(props: { active: boolean }) {
   const theme = useTheme();
   const member = useCurrentMember();
   const router = useRouter();
+  const hover = useHover();
   return (
     <Pressable
       testID="profile-button"
@@ -153,16 +156,10 @@ function ProfileEntry(props: { active: boolean }) {
             gap: 10,
             padding: 8,
             borderRadius: theme.shape.radius.control,
-            backgroundColor: props.active || hovered ? theme.colors.surfaceSunken : 'transparent',
+            backgroundColor:
+              props.active || hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
           },
-          focused
-            ? {
-                outlineWidth: 2,
-                outlineColor: theme.colors.text,
-                outlineStyle: 'solid' as const,
-                outlineOffset: 2,
-              }
-            : null,
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
