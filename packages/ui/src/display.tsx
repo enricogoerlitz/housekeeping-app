@@ -557,7 +557,7 @@ export function EmptyState(props: EmptyStateProps) {
 }
 
 /** The calm offline hint: orange, never red. */
-export function OfflineBanner(props: { text?: string; testID?: string }) {
+export function OfflineBanner(props: { text: string; testID?: string }) {
   const theme = useTheme();
   return (
     <ToneContext.Provider value={{ fg: theme.colors.warnText }}>
@@ -576,7 +576,7 @@ export function OfflineBanner(props: { text?: string; testID?: string }) {
       >
         <Icon name="wifi-off" size={17} />
         <Text variant="smallStrong" style={{ flex: 1 }}>
-          {props.text ?? 'Offline – Lesen und Abhaken gehen'}
+          {props.text}
         </Text>
       </View>
     </ToneContext.Provider>

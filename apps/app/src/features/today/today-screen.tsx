@@ -14,12 +14,13 @@ import {
   weekNav,
   type ISODate,
 } from '@housekeeping/core';
-import { Screen, ScreenHeader, useBreakpoint } from '@housekeeping/ui';
+import { Screen, ScreenHeader, Text, useBreakpoint } from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { HouseholdLine } from '@/features/household/household-line';
 import { StartPageActions } from '@/features/shell/profile-button';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { useHandedHousehold } from '@/lib/addressed';
 import { usePageParams } from '@/lib/url-state';
 
@@ -58,6 +59,14 @@ export function TodayScreen() {
   const household = useHousehold();
   const households = useHouseholdsMap();
   const planEntries = usePlanEntries();
+  const online = useOnlineOnly();
+  // Once for the whole page, not per section (spec 0019, REQ-010, AC-029); the disabled buttons
+  // keep it as their hint.
+  const offlineHint = online.hint ? (
+    <Text variant="small" color="warn" testID="today-offline-hint">
+      {online.hint}
+    </Text>
+  ) : null;
   // No day = today, so the page follows the date when the day changes while the app runs.
   const shown = address.params.tag ?? today;
   const show = (date: ISODate) => address.replace({ tag: date === today ? undefined : date });
@@ -131,6 +140,7 @@ export function TodayScreen() {
   if (isPhone) {
     return (
       <Screen testID="today-screen" header={header}>
+        {offlineHint}
         {nav}
         {strip}
         <TodayAbsence shown={shown} />
@@ -145,6 +155,7 @@ export function TodayScreen() {
 
   return (
     <Screen testID="today-screen" header={header}>
+      {offlineHint}
       <View
         style={{ flexDirection: 'row', gap: bp === 'desktop' ? 48 : 28, alignItems: 'flex-start' }}
       >

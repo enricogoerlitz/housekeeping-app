@@ -15,6 +15,7 @@ import { View } from 'react-native';
 import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '@/features/shell/app-sidebar';
+import { OFFLINE_BANNER_TEXT } from '@/features/shell/offline';
 import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
 import { UpdateBanner, useUpdateBannerVisible } from '@/features/shell/update-banner';
 import { useAssistant } from '@/lib/assistant';
@@ -73,7 +74,7 @@ export default function TabsLayout() {
             gap: 6,
           }}
         >
-          {offline ? <OfflineBanner /> : null}
+          {offline ? <OfflineBanner text={OFFLINE_BANNER_TEXT} /> : null}
           <UpdateBanner />
           <InstallHint />
         </View>

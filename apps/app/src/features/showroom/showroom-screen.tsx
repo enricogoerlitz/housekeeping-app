@@ -50,6 +50,7 @@ import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { OFFLINE_BANNER_TEXT } from '@/features/shell/offline';
 import { useSettings } from '@/lib/settings';
 
 import { EndlessDemo, EndlessDetail, EndlessGridDemo } from './showroom-endless';
@@ -569,7 +570,7 @@ function ProgressBlock() {
 function StateBlock() {
   return (
     <Block title="Zustände" testID="showroom-states">
-      <OfflineBanner testID="showroom-offline-banner" />
+      <OfflineBanner text={OFFLINE_BANNER_TEXT} testID="showroom-offline-banner" />
       <Notice text="Passt nicht für Nadja" />
       <Notice
         text="Curry geändert"

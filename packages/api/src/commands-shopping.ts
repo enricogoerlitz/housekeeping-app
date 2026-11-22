@@ -217,13 +217,22 @@ export interface CountChange {
  * One tap on + or − on "Liste" (REQ-003), one `adjust_item_count` call: + raises the share "von
  * Hand", − lowers it first, then the most recent other contribution; − on 1× removes the item,
  * and `snapshot()` taken before brings it back. Null when the step is not possible (an item with
- * quantities, 99× reached, unknown item). Online only.
+ * quantities, 99× reached, unknown item). Online only, except + (spec 0019, AC-030).
  */
 export function adjustItemCount(itemId: Id, delta: 1 | -1): CountChange | null {
-  const item = getData().items.find((candidate) => candidate.id === itemId);
+  const data = getData();
+  const item = data.items.find((candidate) => candidate.id === itemId);
   if (!item) return null;
   const step = countAdjustment(item, delta, newId());
   if (!step) return null;
+  // Offline "+" is the store action "Posten hinzufügen" (spec 0019, Decision 10, AC-030): one
+  // more of the article, by name, so a deleted item comes back as a new one (AC-031).
+  if (delta === 1 && isOffline()) {
+    const name = data.articles.find((article) => article.id === item.articleId)?.name;
+    if (!name) return null;
+    queueAdd(name, { id: newId(), source: { kind: 'manual' }, count: 1 });
+    return { count: step.count, removed: false };
+  }
   const removed = step.removesItem;
   return commit<CountChange>(
     {

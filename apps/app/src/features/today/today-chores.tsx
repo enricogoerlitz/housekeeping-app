@@ -129,11 +129,6 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
           })}
         </List>
       )}
-      {online.hint ? (
-        <Text variant="small" color="muted" style={{ marginTop: 6 }} testID="today-chores-offline">
-          {online.hint}
-        </Text>
-      ) : null}
       <View style={{ marginTop: 8 }}>
         <Button
           label="Was anderes erledigt?"
