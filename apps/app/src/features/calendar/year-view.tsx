@@ -1,5 +1,6 @@
 import {
   dateRangeLabel,
+  isSelectableMoveDay,
   monthGrid,
   monthName,
   parseISODate,
@@ -10,10 +11,18 @@ import {
   type ISODate,
 } from '@housekeeping/core';
 import { Icon, List, ListRow, Section, Text, focusRing, useTheme } from '@housekeeping/ui';
+import type { ReactNode } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
 import { StripeBadges, stripeA11y } from './calendar-parts';
 import { dayLabel, stripeWho, type CalendarData } from './calendar-data';
+import {
+  PALE_OPACITY,
+  RangeMark,
+  TripSource,
+  WeekRowTarget,
+  useCalendarDrag,
+} from './calendar-drag';
 
 export interface YearViewProps {
   data: CalendarData;
@@ -28,6 +37,8 @@ export interface YearViewProps {
   /** A tap on the month name opens the month. */
   onOpenMonth: (monthStart: ISODate) => void;
   onOpenStripe: (stripe: AbsenceStripe) => void;
+  /** Under the grid, before the year's trips: the strip "Vorgemerkt" (spec 0016, REQ-003). */
+  belowGrid?: ReactNode;
 }
 
 const WEEKDAY_INITIALS = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
@@ -72,6 +83,7 @@ export function YearView(props: YearViewProps) {
           </View>
         ))}
       </View>
+      {props.belowGrid}
       <View style={{ marginTop: 24 }}>
         <Section title={`Reisen ${props.year}`} testID="year-absences">
           {stripes.length === 0 ? (
@@ -170,7 +182,11 @@ function MiniMonth(props: {
         ))}
       </View>
       {monthGrid(props.monthStart).map((week) => (
-        <View key={week[0]} style={{ flexDirection: 'row' }}>
+        <WeekRowTarget
+          key={week[0]}
+          dates={week.map((date) => (date.slice(0, 7) === month ? date : null))}
+          style={{ flexDirection: 'row' }}
+        >
           {week.map((date) =>
             date.slice(0, 7) === month ? (
               <MiniDay
@@ -186,7 +202,7 @@ function MiniMonth(props: {
               <View key={date} style={{ flex: 1 }} />
             ),
           )}
-        </View>
+        </WeekRowTarget>
       ))}
     </View>
   );
@@ -201,6 +217,7 @@ function MiniDay(props: {
   register: (node: HostInstance | null) => void;
 }) {
   const theme = useTheme();
+  const { bounds } = useCalendarDrag();
   const absence = yearDayAbsence(props.date, props.data.absences);
   const member = absence.kind === 'one' ? props.data.membersById[absence.memberId] : undefined;
   const background =
@@ -215,53 +232,65 @@ function MiniDay(props: {
       : [];
   const isToday = props.date === props.data.today;
   const c = theme.colors;
+  // Days the dragged entry cannot go to are pale (spec 0016, AC-015).
+  const refused = bounds !== null && !isSelectableMoveDay(bounds, props.date);
   return (
-    <Pressable
-      ref={(node) => props.register(node)}
-      testID={`year-day-${props.date}`}
-      accessibilityRole="button"
-      accessibilityLabel={dayLabel(props.data, props.date)}
-      accessibilityState={{ selected: props.selected }}
-      onPress={props.onPress}
-      style={(state) => [
-        { flex: 1, alignItems: 'center', paddingVertical: 1, backgroundColor: background },
-        focusRing(theme, (state as PressState).focused),
-      ]}
-    >
-      <View
-        style={{
-          alignSelf: 'stretch',
-          alignItems: 'center',
-          borderRadius: 3,
-          backgroundColor: props.selected ? c.text : 'transparent',
-        }}
-      >
-        <Text
-          variant="caption"
-          color={props.selected ? undefined : isToday ? 'accent' : 'text'}
-          style={[{ fontSize: 10, lineHeight: 13 }, props.selected ? { color: c.bg } : null]}
+    <TripSource date={props.date} style={{ flex: 1, opacity: refused ? PALE_OPACITY : 1 }}>
+      {(guardPress) => (
+        <Pressable
+          ref={(node) => props.register(node)}
+          testID={`year-day-${props.date}`}
+          accessibilityRole="button"
+          accessibilityLabel={dayLabel(props.data, props.date)}
+          accessibilityState={{ selected: props.selected }}
+          onPress={guardPress(props.onPress)}
+          style={(state) => [
+            { alignItems: 'center', paddingVertical: 1, backgroundColor: background },
+            focusRing(theme, (state as PressState).focused),
+          ]}
         >
-          {String(parseISODate(props.date).getDate())}
-        </Text>
-      </View>
-      <View style={{ height: 3, alignItems: 'center', justifyContent: 'center' }}>
-        {props.planned ? (
+          <RangeMark date={props.date} />
           <View
             style={{
-              width: 3,
-              height: 3,
-              borderRadius: 2,
-              backgroundColor: theme.colors.textMuted,
+              alignSelf: 'stretch',
+              alignItems: 'center',
+              borderRadius: 3,
+              backgroundColor: props.selected ? c.text : 'transparent',
             }}
-          />
-        ) : null}
-      </View>
-      {lines.map((person) => (
-        <View
-          key={person.id}
-          style={{ alignSelf: 'stretch', height: 1.5, marginTop: 1, backgroundColor: person.color }}
-        />
-      ))}
-    </Pressable>
+          >
+            <Text
+              variant="caption"
+              color={props.selected ? undefined : isToday ? 'accent' : 'text'}
+              style={[{ fontSize: 10, lineHeight: 13 }, props.selected ? { color: c.bg } : null]}
+            >
+              {String(parseISODate(props.date).getDate())}
+            </Text>
+          </View>
+          <View style={{ height: 3, alignItems: 'center', justifyContent: 'center' }}>
+            {props.planned ? (
+              <View
+                style={{
+                  width: 3,
+                  height: 3,
+                  borderRadius: 2,
+                  backgroundColor: theme.colors.textMuted,
+                }}
+              />
+            ) : null}
+          </View>
+          {lines.map((person) => (
+            <View
+              key={person.id}
+              style={{
+                alignSelf: 'stretch',
+                height: 1.5,
+                marginTop: 1,
+                backgroundColor: person.color,
+              }}
+            />
+          ))}
+        </Pressable>
+      )}
+    </TripSource>
   );
 }

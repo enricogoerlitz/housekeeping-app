@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   blockedText,
+  dragSourceKey,
+  dragTargetText,
   dropOutcome,
+  moveTargetKey,
+  parseDragSourceKey,
+  parseMoveTargetKey,
   isSelectableMoveDay,
   moveBounds,
   moveTargetLabel,
@@ -380,5 +385,123 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
         entries: [lasagne],
       }),
     ).toEqual({ kind: 'same' });
+  });
+});
+
+describe('drag keys: what the calendar registers as sources and targets', () => {
+  it('AC-001: a field of the week, a day and "Vorgemerkt" round-trip through their key', () => {
+    const targets = [
+      { kind: 'slot', date: '2026-11-27', slotId: 'abend' },
+      { kind: 'day', date: '2026-11-30' },
+      { kind: 'parked' },
+    ] as const;
+    for (const target of targets) {
+      expect(parseMoveTargetKey(moveTargetKey(target))).toEqual(target);
+    }
+    expect(moveTargetKey({ kind: 'slot', date: '2026-11-27', slotId: 'abend' })).toBe(
+      'slot:2026-11-27:abend',
+    );
+  });
+
+  it('AC-028: an entry and the start day of a trip round-trip through their key', () => {
+    expect(parseDragSourceKey(dragSourceKey({ kind: 'entry', entryId: 'lasagne' }))).toEqual({
+      kind: 'entry',
+      entryId: 'lasagne',
+    });
+    expect(parseDragSourceKey(dragSourceKey({ kind: 'trip', date: '2026-12-07' }))).toEqual({
+      kind: 'trip',
+      date: '2026-12-07',
+    });
+  });
+
+  it('rejects keys that are no source or target of the calendar', () => {
+    for (const key of [
+      '',
+      'week:2026-11-23',
+      'day:27.11.',
+      'slot:2026-11-27',
+      'slot:2026-11-27:',
+    ]) {
+      expect(parseMoveTargetKey(key)).toBeNull();
+    }
+    for (const key of ['', 'entry:', 'trip:morgen', 'day:2026-11-27']) {
+      expect(parseDragSourceKey(key)).toBeNull();
+    }
+  });
+});
+
+describe('dragTargetText: the label on the dragged entry', () => {
+  const slots = [
+    { id: 'mittag', name: 'Mittag' },
+    { id: 'abend', name: 'Abend' },
+  ];
+
+  it('AC-001: a field of the week names day and Tageszeit', () => {
+    expect(
+      dragTargetText({
+        entry: lasagne,
+        target: { kind: 'slot', date: '2026-11-27', slotId: 'abend' },
+        entries: [lasagne],
+        slots,
+        title: 'Lasagne',
+      }),
+    ).toEqual({ allowed: true, label: 'Fr 27.11. · Abend' });
+  });
+
+  it('AC-007: a day of the month keeps the Tageszeit of the entry', () => {
+    expect(
+      dragTargetText({
+        entry: lasagne,
+        target: { kind: 'day', date: '2026-11-30' },
+        entries: [lasagne],
+        slots,
+        title: 'Lasagne',
+      }),
+    ).toEqual({ allowed: true, label: 'Mo 30.11. · Abend' });
+  });
+
+  it('AC-013: "Vorgemerkt" says "Vormerken"', () => {
+    expect(
+      dragTargetText({
+        entry: lasagne,
+        target: { kind: 'parked' },
+        entries: [lasagne],
+        slots,
+        title: 'Lasagne',
+      }),
+    ).toEqual({ allowed: true, label: 'Vormerken' });
+  });
+
+  it('AC-003: the old place is allowed and named as it is', () => {
+    expect(
+      dragTargetText({
+        entry: lasagne,
+        target: { kind: 'day', date: '2026-11-25' },
+        entries: [lasagne],
+        slots,
+        title: 'Lasagne',
+      }),
+    ).toEqual({ allowed: true, label: 'Mi 25.11. · Abend' });
+  });
+
+  it('AC-015: a refused target is not allowed and says why', () => {
+    expect(
+      dragTargetText({
+        entry: lasagne,
+        target: { kind: 'day', date: '2026-11-28' },
+        entries: [lasagne, lasagneLeftovers],
+        slots,
+        title: 'Lasagne',
+      }),
+    ).toEqual({ allowed: false, label: 'Reste von Lasagne stehen schon am Fr 27.11.' });
+    expect(
+      dragTargetText({
+        entry: lasagneLeftovers,
+        target: { kind: 'day', date: '2026-12-03' },
+        entries: [lasagne, lasagneLeftovers],
+        slots,
+        title: 'Reste von Lasagne',
+      }),
+    ).toEqual({ allowed: false, label: 'Reste gehen bis sieben Tage nach dem Gericht' });
   });
 });

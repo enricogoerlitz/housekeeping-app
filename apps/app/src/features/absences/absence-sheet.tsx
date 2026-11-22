@@ -57,11 +57,13 @@ const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
  * (spec 0012, AC-011 to AC-015). Editing keeps the packing list; when a person's absence goes
  * away with its own list, a dialog names that list before anything is saved (decision 8).
  * `initialRange` fills "Von" and "Bis" of a new one, e.g. the day of the day window (spec 0016,
- * AC-032).
+ * AC-032) or the days drawn over the grid (AC-028).
  */
 export function AbsenceSheet(props: {
   stripe?: AbsenceStripe;
   initialRange?: { from: ISODate; to: ISODate };
+  /** The cursor starts in "Notiz", after a trip was drawn over the days (spec 0016, REQ-007). */
+  focusNote?: boolean;
   onClose: () => void;
 }) {
   const members = useMembers();
@@ -222,6 +224,7 @@ export function AbsenceSheet(props: {
           placeholder="z. B. Urlaub Mallorca"
           value={note}
           onChangeText={setNote}
+          autoFocus={props.focusNote}
           testID="absence-note"
         />
         <Text variant="small" color="muted">

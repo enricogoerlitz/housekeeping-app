@@ -153,6 +153,7 @@ export {
   useDragSource,
   useDropTarget,
   useDraggedSource,
+  useLiftedSource,
   type DragProviderProps,
   type DragCallbacks,
   type DragSourceOptions,

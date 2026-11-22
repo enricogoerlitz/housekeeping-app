@@ -108,14 +108,15 @@ export function useDragSource(options: DragSourceOptions): DragSourceBinding {
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onCancel);
       window.addEventListener('pointerdown', onOtherDown, true);
-      window.addEventListener('keydown', onKey);
+      // Capture phase: Escape ends the drag before it closes a panel listening on the window.
+      window.addEventListener('keydown', onKey, true);
       window.addEventListener('blur', onCancel);
       detach.current = () => {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onCancel);
         window.removeEventListener('pointerdown', onOtherDown, true);
-        window.removeEventListener('keydown', onKey);
+        window.removeEventListener('keydown', onKey, true);
         window.removeEventListener('blur', onCancel);
         detach.current = () => undefined;
       };

@@ -265,6 +265,23 @@ describe('drag controller', () => {
     expect(late).toHaveBeenCalled();
   });
 
+  it('AC-029: a drag that lifts inside a zone turns no page until the pointer has left it', () => {
+    const onPage = vi.fn();
+    const { controller, lift } = setup({ onPage });
+    // Holding a Monday at the left edge of a phone grid, e.g. for a trip of one day.
+    lift('trip', { x: EDGE_ZONE_INSET + 10, y: 300 });
+    controller.frame(1000);
+    controller.frame(1000 + EDGE_FIRST_PAGE_MS * 3);
+    expect(onPage).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().zone).toBeNull();
+    controller.move({ x: 200, y: 300 });
+    controller.frame(5000);
+    controller.move({ x: EDGE_ZONE_INSET + 10, y: 300 });
+    controller.frame(6000);
+    controller.frame(6000 + EDGE_FIRST_PAGE_MS);
+    expect(onPage).toHaveBeenCalledWith(-1);
+  });
+
   it('without onPage there are no paging zones', () => {
     const { controller, lift } = setup();
     lift();
