@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import {
   addDays,
   blockedText,
+  dayMonthLongLabel,
   formatPickerDate,
   monthGrid,
   moveTargetLabel,
@@ -21,6 +22,7 @@ import {
   day,
   expect,
   freshSeed,
+  goOffline,
   isoWeekday,
   open,
   test,
@@ -43,6 +45,8 @@ freshSeed();
 const LASAGNE = seedIds['plan-2'];
 const CURRY_YESTERDAY = seedIds['plan-1'];
 const ENRICO = seedIds['m-enrico'];
+const MALLORCA = seedIds['abs-mallorca'];
+const OFFLINE_HINT = 'Offline – zum Bearbeiten brauchst du Netz';
 /** A day in the same week and grid row as today. */
 const NEIGHBOUR = isoWeekday(TODAY) === 7 ? day(-1) : day(1);
 /** A finger lifts an entry after 400 ms (drag-gesture-state.ts); hold a little longer. */
@@ -115,6 +119,62 @@ async function mouseTo(page: Page, to: Point): Promise<void> {
 
 async function undo(page: Page): Promise<void> {
   await tid(page, 'toast-action').click();
+}
+
+/** Low in the free area of a day of the month grid, below its entries. */
+async function freeArea(page: Page, date: ISODate): Promise<Point> {
+  const area = tid(page, `month-day-${date}-area`);
+  await scrollToCenter(area);
+  const box = await area.boundingBox();
+  if (!box) throw new Error('free area not laid out');
+  return { x: box.x + box.width / 2, y: box.y + box.height - 8 };
+}
+
+/** "Bad putzen" in today's household row of the week (the seed has it due today). */
+function choreToday(page: Page): Locator {
+  return tid(page, `household-row-${TODAY}`)
+    .locator('[data-testid^="chore-occ-"]:visible')
+    .filter({ hasText: 'Bad putzen' })
+    .first();
+}
+
+/** Turns the week until the stripe "Urlaub Mallorca" (today + 12 to + 18) shows. */
+async function showMallorcaWeek(page: Page): Promise<Locator> {
+  const stripe = tid(page, `absence-stripe-${MALLORCA}`);
+  for (let step = 0; step < 3 && !(await stripe.isVisible()); step += 1) {
+    await tid(page, 'week-next').click();
+  }
+  await expect(stripe).toBeVisible();
+  return stripe;
+}
+
+/**
+ * Holds `source` with a finger (phone) or presses it with the mouse (desktop), moves onto
+ * `over`, and checks on the way that nothing hangs on the pointer: no target label, no marked
+ * days, and on the phone the week does not open its empty Tageszeiten as targets (AC-006).
+ */
+async function tryToDrag(page: Page, source: Locator, over: Locator): Promise<void> {
+  await scrollToCenter(source);
+  const from = await centerOf(source);
+  const slots = await tidPrefix(page, 'week-slot-').count();
+  if (test.info().project.name === 'phone') {
+    const touch = await finger(page);
+    await touch.hold(from);
+    await touch.move(await centerOf(over));
+    await expectNothingLifted(page, slots);
+    await touch.lift();
+  } else {
+    await mouseGrab(page, from);
+    await mouseTo(page, await centerOf(over));
+    await expectNothingLifted(page, slots);
+    await page.mouse.up();
+  }
+}
+
+async function expectNothingLifted(page: Page, slots: number): Promise<void> {
+  await expect(tid(page, 'drag-label')).toHaveCount(0);
+  await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
+  await expect(tidPrefix(page, 'week-slot-')).toHaveCount(slots);
 }
 
 function lasagneToast(date: ISODate | null, slotName: string): string {
@@ -222,6 +282,63 @@ test.describe('phone', () => {
     await expect(tid(page, 'planned-later-strip')).toHaveCount(0);
   });
 
+  test('AC-005: offline a held entry does not lift; the hint shows and the tap does not open it', async ({
+    page,
+  }) => {
+    await open(page, '/kalender');
+    await goOffline(page);
+    const dinner = tid(page, `week-slot-${TODAY}-${SLOT_DINNER}`);
+    const lasagne = entry(page, LASAGNE, dinner);
+    await scrollToCenter(lasagne);
+    const slots = await tidPrefix(page, 'week-slot-').count();
+    const touch = await finger(page);
+    const from = await centerOf(lasagne);
+    await touch.hold(from);
+
+    await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
+    await touch.move({ x: from.x, y: from.y + 160 });
+    await expectNothingLifted(page, slots);
+    await touch.lift();
+
+    await expect(entry(page, LASAGNE, dinner)).toBeVisible();
+    await expect(tid(page, 'entry-sheet')).toHaveCount(0);
+  });
+
+  test('AC-008: in the year, from the day window onto another day; the window shows its day again', async ({
+    page,
+  }) => {
+    test.skip(
+      NEIGHBOUR.slice(0, 4) !== TODAY.slice(0, 4),
+      'the neighbour day lies in another year',
+    );
+    const title = (date: ISODate) => dayMonthLongLabel(date).toUpperCase();
+    await open(page, '/kalender');
+    await tid(page, 'calendar-view-year').click();
+    await tid(page, `year-day-${TODAY}`).click();
+    const panel = tid(page, 'day-panel');
+    await expect(tid(page, 'day-panel-title')).toHaveText(title(TODAY), { useInnerText: true });
+    const height = (page.viewportSize()?.height ?? 0) * 0.2;
+
+    const touch = await finger(page);
+    await touch.hold(await centerOf(entry(page, LASAGNE, panel)));
+    await expect.poll(async () => (await panel.boundingBox())?.height ?? 0).toBeLessThan(height);
+    await touch.move(await centerOf(tid(page, `year-day-${NEIGHBOUR}`)));
+    await expect(tid(page, 'drag-label')).toHaveText(moveTargetLabel(NEIGHBOUR, 'Abend'));
+    await touch.lift();
+
+    await expect(toastMessage(page)).toHaveText(lasagneToast(NEIGHBOUR, 'Abend'));
+    await expect(tid(page, 'day-panel-title')).toHaveText(title(TODAY), { useInnerText: true });
+    await expect.poll(async () => (await panel.boundingBox())?.height ?? 0).toBeGreaterThan(height);
+    await expect(entry(page, LASAGNE, panel)).toHaveCount(0);
+    await tid(page, `year-day-${NEIGHBOUR}`).click();
+    await expect(tid(page, 'day-panel-title')).toHaveText(title(NEIGHBOUR), { useInnerText: true });
+    await expect(entry(page, LASAGNE, panel)).toBeVisible();
+
+    await undo(page);
+    await tid(page, `year-day-${TODAY}`).click();
+    await expect(entry(page, LASAGNE, panel)).toBeVisible();
+  });
+
   test('AC-029: a finger draws a trip in the year, backwards and across the month boundary', async ({
     page,
   }) => {
@@ -281,6 +398,46 @@ test.describe('desktop', () => {
     await expect(
       entry(page, LASAGNE, tid(page, `week-slot-${TODAY}-${SLOT_DINNER}`)),
     ).toBeVisible();
+  });
+
+  test('AC-005: offline the mouse lifts nothing; the hint shows and Lasagne stays', async ({
+    page,
+  }) => {
+    await open(page, '/kalender');
+    await expect(tid(page, 'week-grid')).toBeVisible();
+    await goOffline(page);
+    const dinner = tid(page, `week-slot-${TODAY}-${SLOT_DINNER}`);
+    const lunch = tid(page, `week-slot-${NEIGHBOUR}-${SLOT_LUNCH}`);
+    await mouseGrab(page, await centerOf(entry(page, LASAGNE, dinner)));
+
+    await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
+    await mouseTo(page, await centerOf(lunch));
+    await expect(tid(page, 'drag-label')).toHaveCount(0);
+    await page.mouse.up();
+
+    await expect(entry(page, LASAGNE, dinner)).toBeVisible();
+    await expect(lunch.locator(`[data-testid="entry-${LASAGNE}"]`)).toHaveCount(0);
+    await expect(tid(page, 'entry-sheet')).toHaveCount(0);
+  });
+
+  test('AC-031: offline drawing over days marks nothing and shows the hint', async ({ page }) => {
+    await open(page, '/kalender');
+    await tid(page, 'calendar-view-month').click();
+    await goOffline(page);
+    const [monday, , wednesday] = monthGrid(`${TODAY.slice(0, 7)}-01`)[1] ?? [];
+    if (!monday || !wednesday) throw new Error('month grid too short');
+    const from = await freeArea(page, monday);
+    const to = await freeArea(page, wednesday);
+
+    await mouseGrab(page, from);
+    await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
+    await mouseTo(page, to);
+    await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
+    await expect(tid(page, 'trip-range-label')).toHaveCount(0);
+    await page.mouse.up();
+
+    await expect(tid(page, 'absence-sheet')).toHaveCount(0);
+    await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
   });
 
   test('AC-009: held at the right edge the week turns and the entry stays on the pointer', async ({
@@ -382,17 +539,8 @@ test.describe('desktop', () => {
     const [monday3, , wednesday3] = third;
     if (!monday || !friday || !monday3 || !wednesday3) throw new Error('month grid too short');
 
-    /** Low in the free area of a day, below its entries. */
-    const freeArea = async (date: ISODate): Promise<Point> => {
-      const area = tid(page, `month-day-${date}-area`);
-      await scrollToCenter(area);
-      const box = await area.boundingBox();
-      if (!box) throw new Error('free area not laid out');
-      return { x: box.x + box.width / 2, y: box.y + box.height - 8 };
-    };
-
-    await mouseGrab(page, await freeArea(monday));
-    await mouseTo(page, await freeArea(friday));
+    await mouseGrab(page, await freeArea(page, monday));
+    await mouseTo(page, await freeArea(page, friday));
     await expect(tid(page, 'trip-range-label')).toHaveText(rangeLabel(monday, friday));
     for (const date of second.slice(0, 5)) {
       await expect(tid(page, `trip-range-day-${date}`)).toBeVisible();
@@ -414,8 +562,8 @@ test.describe('desktop', () => {
 
     const stripes = tid(page, 'month-grid').locator('[data-testid^="absence-stripe-"]:visible');
     const before = await stripes.count();
-    await mouseGrab(page, await freeArea(monday3));
-    await mouseTo(page, await freeArea(wednesday3));
+    await mouseGrab(page, await freeArea(page, monday3));
+    await mouseTo(page, await freeArea(page, wednesday3));
     await expect(tid(page, 'trip-range-label')).toHaveText(rangeLabel(monday3, wednesday3));
     await page.mouse.up();
     await expect(tid(page, 'absence-sheet')).toBeVisible();
@@ -424,4 +572,18 @@ test.describe('desktop', () => {
     await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
     await expect(stripes).toHaveCount(before);
   });
+});
+
+test('AC-010: a chore of the household row and a trip stripe do not lift', async ({ page }) => {
+  await open(page, '/kalender');
+  const chore = choreToday(page);
+  await tryToDrag(page, chore, tid(page, `week-slot-${TODAY}-${SLOT_DINNER}`));
+  await expect(choreToday(page)).toBeVisible();
+  await expect(toastMessage(page)).toHaveCount(0);
+
+  const stripe = await showMallorcaWeek(page);
+  await tryToDrag(page, stripe, tid(page, 'calendar-title'));
+  await expect(page).toHaveURL(/\/kalender(\?|$)/);
+  await expect(tid(page, `absence-stripe-${MALLORCA}`)).toBeVisible();
+  await expect(toastMessage(page)).toHaveCount(0);
 });
