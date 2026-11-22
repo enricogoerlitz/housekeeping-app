@@ -119,7 +119,7 @@ function useChoreDetail(props: ChoreDetailProps): {
   const [editing, setEditing] = useState(false);
   const [draft, update, reset] = useChoreDraft(() => choreDraftFrom(chore, today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
-  const time = useChoreTime(chore.dueTime);
+  const time = useChoreTime(chore.dueTime, chore.remindAtDueTime !== false);
   const recent = useMemo(() => recentEntries(events, chore), [events, chore]);
   const asNeeded = chore.recurrence.type === 'asNeeded';
 
@@ -156,6 +156,7 @@ function useChoreDetail(props: ChoreDetailProps): {
       updateChore(chore.id, {
         ...choreFieldsOf(draft, members, chore),
         dueTime: time.value ?? null,
+        remindAtDueTime: time.remind,
       });
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });

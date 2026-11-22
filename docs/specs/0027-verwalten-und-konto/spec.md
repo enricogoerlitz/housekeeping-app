@@ -366,6 +366,10 @@ staticwebapp hostname` kennt kein „Standard setzen“. Durchführen: Enrico (P
     Migration trägt den Kopf `-- contract: …; min_app_version: 2026.11.1` und hebt
     `public.min_app_version()` auf die zuletzt veröffentlichte Version (höher lässt die Pipeline
     nicht zu; es gibt keine Altlasten vor v1).
+22. REQ-009 beim Bauen (Claude, 22.11.2026): Der Satz zu „Aufgaben mit Uhrzeit“ (AC-037) steht nur
+    bei „Erinnern“ an; aus erinnert ohnehin niemanden. Entfernt man im Formular die Uhrzeit, springt
+    „Erinnern“ sofort wieder auf an (wie gespeichert, `remindAtDueTimeFor`). Im Code ist
+    `Chore.remindAtDueTime` nur `false`, wenn aus; fehlt es, ist es an. `CACHE_VERSION` 14.
 
 ## Daten
 
@@ -400,7 +404,7 @@ null or remind_at_due_time`; in `apply_changes` und `private.chore_reminder_cand
 | Teilfehler Datenbank ↔ Foto-Speicher                                                        | Fotos zuerst, Datenbank lehnt mit `media_remaining` ab; Wiederholen ist sicher                        | pgTAP AC-021/AC-023 `media_remaining`, vitest `commands-account` AC-023 |
 | Upload zwischen Foto-Prüfung und Commit                                                     | Upload braucht Mitgliedschaft, nach Commit unmöglich; Fenster eines Wimpernschlags, nur eigene Geräte | in Risiken vermerkt (Security-Check: niedrig)                           |
 | Kaskade scheitert an zusammengesetzten Fremdschlüsseln (`set null` auf `household_members`) | pgTAP mit voll befülltem Haushalt aller Tabellen                                                      | pgTAP AC-019 (jede Tabelle mit `household_id`)                          |
-| Profil, Feedback oder Aufgabe einer anderen Person ändern                                   | RLS eigene Zeile bzw. Autor; Checks für Farbe, Länge, Anzahl                                          | pgTAP AC-012, AC-027; AC-038 nach 0026                                  |
+| Profil, Feedback oder Aufgabe einer anderen Person ändern                                   | RLS eigene Zeile bzw. Autor; Checks für Farbe, Länge, Anzahl                                          | pgTAP AC-012, AC-027; `chore_remind` AC-038                             |
 | Zurückgezogene Adresse kommt doch herein                                                    | Hook prüft nur existierende Einladungen                                                               | pgTAP `auth.test.sql`, `manage_household` AC-001, AC-005                |
 | Andere Geräte behalten Daten oder Warteschlange blockiert                                   | `applyMemberships` und `dropMediaOutside`; dauerhafte Fehler werden verworfen                         | vitest `commands-account` AC-019 (Gerät hält nichts mehr)               |
 
@@ -419,7 +423,7 @@ null or remind_at_due_time`; in `apply_changes` und `private.chore_reminder_cand
 - [x] 7. `TimeField` als Auswahl in `packages/ui`, an allen vier Stellen; tote Tipp-Logik entfernen
       (AC-029–AC-031)
 - [x] 8. Haushaltsauswahl auf „Benachrichtigungen“ (AC-032–AC-034)
-- [ ] 9. **nach 0026** (nicht in diesem Branch) — Nach Spec 0026: `chores.remind_at_due_time`, Zeitplaner, Schalter im Formular
+- [x] 9. Nach Spec 0026: `chores.remind_at_due_time`, Zeitplaner, Schalter im Formular
       (AC-035–AC-038)
 - [x] 10. `syncNow` in `packages/api` (drain, dann pull), Zeile als Knopf (AC-039–AC-041)
 - [x] 11. (Code und `betrieb.md` fertig; Portal-Schritt und Variablen: Enrico) Azure: Domain als Standard (Enrico), Umleitungs-Prüfung in `scripts/release/verify.mjs`
@@ -439,3 +443,12 @@ Stand 22.11.2026, Branch `feat/0027-verwalten-und-konto` (ohne REQ-009):
   `chooseTime`/`expectTime`).
 - Security-Check (kritischer Pfad): ein mittlerer Befund (Fotos vor der Server-Prüfung gelöscht)
   behoben (E16), ein niedriger (Upload zwischen Prüfung und Commit) unter Risiken.
+
+Stand 22.11.2026, Branch `feat/0027-erinnern-je-aufgabe` (REQ-009, nach Spec 0026):
+
+- Rot zuerst: `notifications.test.ts` (3 Tests), `commands-chores.backend.test.ts` und
+  `backend.test.ts` (5 Tests), `supabase/tests/chore_remind.test.sql` (ohne Spalte) liefen rot.
+- `pnpm format:check && pnpm check`: grün. `pnpm db:reset && pnpm exec supabase test db` (über
+  `db-lock.sh`): `Result: PASS`, `chore_remind` 17 Tests (Spalte, Schreiben, Zeitplaner, fremder
+  Haushalt, abgemeldet, Parität mit `remindAtDueTimeFor`). `pnpm build:web`: grün. e2e nur
+  typgeprüft (`rundgang-verwalten.spec.ts`, AC-035/AC-038).

@@ -42,7 +42,11 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
     )
       ensureDevicePush();
     try {
-      createChore({ ...choreFieldsOf(draft, members), dueTime: time.value });
+      createChore({
+        ...choreFieldsOf(draft, members),
+        dueTime: time.value,
+        remindAtDueTime: time.remind,
+      });
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
       return;
