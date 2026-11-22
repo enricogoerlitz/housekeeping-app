@@ -44,9 +44,13 @@ describe('plan a recipe from its page (REQ-009)', () => {
     ]);
   });
 
-  it('AC-034: the button and the notice name day and Tageszeit', () => {
+  it('AC-034: the button names day and Tageszeit', () => {
     expect(planButtonLabel('2026-11-21', 'Abend')).toBe('Am Sa Abend einplanen');
-    expect(plannedNotice('2026-11-21', 'Abend')).toBe('Eingeplant: Sa Abend');
+  });
+
+  it('AC-025 (0018): the notice names weekday, date and Tageszeit', () => {
+    expect(plannedNotice('2026-11-25', 'Abend')).toBe('Eingeplant: Mi 25.11., Abend');
+    expect(plannedNotice('2027-01-05', 'Mittag')).toBe('Eingeplant: Di 5.1., Mittag');
   });
 
   it('AC-035: weeks page without limit, forward and back', () => {

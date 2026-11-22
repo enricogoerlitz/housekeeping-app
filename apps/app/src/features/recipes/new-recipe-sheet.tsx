@@ -1,4 +1,4 @@
-import { createRecipe, useArticles } from '@housekeeping/api';
+import { createRecipe, createRecipeWithIngredients, useArticles } from '@housekeeping/api';
 import {
   NEW_ENTRY_KINDS,
   newEntryTakesIngredients,
@@ -26,9 +26,9 @@ export interface NewRecipeSheetProps {
 /**
  * The window "Neu" (spec 0009, E16): the choice chips "Rezept · Sammlung" and a title are enough
  * (AC-001 to AC-003). For a recipe, ingredients can be pasted right away (spec 0008, AC-021,
- * AC-022): the pasted lines go to the new recipe's page, which saves those with an article and
- * opens the section "Zutaten" with the rest orange, "Artikel wählen" (spec 0007, AC-010; spec
- * 0008, E9). A new collection opens on its page, empty.
+ * AC-022): the pasted lines with an article are saved with the new recipe (spec 0018, REQ-001);
+ * its page opens the section "Zutaten" with the rest orange, "Artikel wählen" (spec 0007, AC-010;
+ * spec 0008, E9). A new collection opens on its page, empty.
  */
 export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const online = useOnlineOnly();
@@ -61,12 +61,19 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     }
     let recipeId: Id;
     try {
-      recipeId = createRecipe({ title, kind });
+      if (takesIngredients) {
+        // E-01 (spec 0018): the rows with an article are saved with the recipe; only the orange
+        // ones wait for its page.
+        const created = createRecipeWithIngredients({ title }, rowsFromText(ingredients, articles));
+        recipeId = created.recipeId;
+        handOverIngredientRows(recipeId, created.open);
+      } else {
+        recipeId = createRecipe({ title, kind });
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt.');
       return;
     }
-    if (takesIngredients) handOverIngredientRows(recipeId, rowsFromText(ingredients, articles));
     close();
     props.onCreated(recipeId);
   };
