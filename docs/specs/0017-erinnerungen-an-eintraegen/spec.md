@@ -240,6 +240,10 @@ Wenn        ich 16:00 eintrage
 Dann        verschwindet der Hinweis und am Eintrag steht „Erinnerung Mi 16:00“
 ```
 
+Gilt so im Hinzufügen-Fenster. Im Eintragsfenster speichert schon das Einschalten die vorgeschlagene
+Uhrzeit (REQ-002, hier 17:00); eine danach abgelehnte Eingabe wie 11:00 lässt diese gespeicherte
+Erinnerung stehen, wie bei AC-012 und AC-013 (geklärt bei der Umsetzung, 22.11.2026).
+
 **AC-012 — Keine 5-Minuten-Uhrzeit**
 
 ```gherkin
@@ -426,6 +430,11 @@ Wenn        ich ihn entferne und nicht „Rückgängig“ wähle
 Dann        wird am Samstag um 17:00 nichts gesendet
 ```
 
+Randfall (geklärt bei der Umsetzung, 22.11.2026): Ist die Erinnerung beim „Rückgängig“ schon
+verstrichen, kommt der Eintrag ohne sie zurück. Die Datenbank lehnt eine Erinnerung in der
+Vergangenheit beim Anlegen ab, und sonst ginge das ganze Rückgängig verloren; gesendet würde sie
+ohnehin nicht mehr.
+
 ### REQ-007 — Je Person und je Gerät
 
 > Die Seite „Benachrichtigungen“ hat die Art „Erinnerungen an Einträgen“, die jede Person für sich
@@ -531,12 +540,12 @@ Dann        lehnt der Server ab und Enricos Einstellung bleibt an
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC             | Task (plan.md) | Test |
-| ------- | -------------- | -------------- | ---- |
-| REQ-001 | AC-001–AC-004  | —              | —    |
-| REQ-002 | AC-005–AC-008  | —              | —    |
-| REQ-003 | AC-009–AC-013  | —              | —    |
-| REQ-004 | AC-014, AC-015 | —              | —    |
-| REQ-005 | AC-016–AC-020  | —              | —    |
-| REQ-006 | AC-021–AC-024  | —              | —    |
-| REQ-007 | AC-025–AC-027  | —              | —    |
+| REQ     | AC             | Task (plan.md) | Test                                                                                                                    |
+| ------- | -------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001–AC-004  | 5, 6           | e2e `rundgang-erinnerungen` AC-001–AC-003; core `reminder-form.test`; api `commands-plan.backend.test` AC-002–AC-004    |
+| REQ-002 | AC-005–AC-008  | 5–7            | e2e `rundgang-erinnerungen` AC-005–AC-007, Glocke; pgTAP `entry_reminders.test`; api AC-006, AC-008                     |
+| REQ-003 | AC-009–AC-013  | 3, 5           | core `reminder.test`, `reminder-form.test` AC-009–AC-012; pgTAP `entry_reminders.test` AC-011–AC-013; e2e AC-010–AC-012 |
+| REQ-004 | AC-014, AC-015 | 1–3            | Planer-pgTAP AC-014; pgTAP AC-015; core `reminder.test` AC-015; e2e AC-014, AC-015                                      |
+| REQ-005 | AC-016–AC-020  | 2              | pgTAP `entry_reminder_scheduler.test` AC-016–AC-020; `notification_parity.test`                                         |
+| REQ-006 | AC-021–AC-024  | 4, 9           | core `plan-move.test` AC-021–AC-023; api AC-022, AC-024; pgTAP AC-021, AC-023, AC-024; e2e AC-021–AC-023                |
+| REQ-007 | AC-025–AC-027  | 4, 8           | api `commands-notifications.test` AC-025; pgTAP AC-027; e2e AC-026, `rundgang-benachrichtigungen`                       |

@@ -85,13 +85,13 @@ at, text} | null)`, Erinnerung als optionales Feld in `addPlanEntry`, `movePlanE
 
 `/security-check` über Migration, Planer, api und die neuen Fenster: 0 kritisch, 0 hoch, 0 mittel.
 
-| Befund                                                                                       | Stufe   | Umgang                                                                                                   |
-| -------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| Beliebig viele Erinnerungen je Haushalt und Lauf verdrängen die Zustellung anderer Haushalte | niedrig | behoben: höchstens 50 Einträge je Haushalt und Lauf, bereits zugestellte zählen nicht mit; pgTAP         |
-| Unsichtbare und richtungsändernde Unicode-Zeichen im Text („Woran erinnern?“)                | niedrig | behoben: Datenbank, core und Fake-Transport weisen dieselbe Zeichenliste ab, ohne Locale; pgTAP und core |
-| „Nicht in der Vergangenheit“ greift nicht, wenn ein Patch zugleich den Tag ändert            | Hinweis | hingenommen: nötig für AC-022 und AC-023; Datenqualität, keine Sicherheitsgrenze                         |
-| Alte App v2026.11.1: Art ist an, aber dort nicht abschaltbar                                 | Hinweis | hingenommen (ADR-0014 Nachtrag)                                                                          |
-| Text steht bis zum Senden in der Warteschlange von `pg_net`                                  | Hinweis | bekannt seit Spec 0013; nicht im Zustell-Protokoll                                                       |
+| Befund                                                                                       | Stufe   | Umgang                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Beliebig viele Erinnerungen je Haushalt und Lauf verdrängen die Zustellung anderer Haushalte | niedrig | behoben: höchstens 50 Einträge je Haushalt und Lauf, bereits zugestellte zählen nicht mit; nie zustellbare (kein Gerät, Art aus, Ruhe) belegen im 30-Minuten-Fenster weiter einen Platz, das trifft nur den eigenen Haushalt; pgTAP |
+| Unsichtbare und richtungsändernde Unicode-Zeichen im Text („Woran erinnern?“)                | niedrig | behoben: Datenbank, core und Fake-Transport weisen dieselbe Zeichenliste ab, ohne Locale; pgTAP und core                                                                                                                            |
+| „Nicht in der Vergangenheit“ greift nicht, wenn ein Patch zugleich den Tag ändert            | Hinweis | hingenommen: nötig für AC-022 und AC-023; Datenqualität, keine Sicherheitsgrenze                                                                                                                                                    |
+| Alte App v2026.11.1: Art ist an, aber dort nicht abschaltbar                                 | Hinweis | hingenommen (ADR-0014 Nachtrag)                                                                                                                                                                                                     |
+| Text steht bis zum Senden in der Warteschlange von `pg_net`                                  | Hinweis | bekannt seit Spec 0013; nicht im Zustell-Protokoll                                                                                                                                                                                  |
 
 Die Migration `20261122143506_entry_reminders.sql` wurde dafür direkt geändert: Sie lag nur auf dem
 Feature-Branch und war weder in der Vorschau noch in der Produktion eingespielt.
@@ -102,5 +102,5 @@ Feature-Branch und war weder in der Vorschau noch in der Produktion eingespielt.
 - [ ] core und api rot zuerst, dann grün
 - [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
 - [x] `/security-check` über Migration, Planer und api (22.11.2026, siehe oben)
-- [ ] spec-auditor
+- [x] spec-auditor (22.11.2026): 27 AC umgesetzt; AC-011 im Eintragsfenster und der Randfall zu AC-024 in der Spec geklärt
 - [ ] e2e gesammelt am Ende aller Specs
