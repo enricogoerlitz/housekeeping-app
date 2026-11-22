@@ -15,6 +15,7 @@ import {
   movePlanEntry,
   RECIPE_GONE_MESSAGE,
   removePlanEntry,
+  saveEntryFields,
   setReservation,
   updatePlanEntry,
 } from './commands-plan';
@@ -552,5 +553,85 @@ describe('spec 0013: reservation of a restaurant entry', () => {
     await fx.settle();
     fx.environment.setOnline(false);
     expect(() => setReservation(id, { reservedAt: '19:30' })).toThrow(OfflineError);
+  });
+});
+
+describe('spec 0018, REQ-003: "Fertig" saves the open fields of an entry', () => {
+  const plan = (
+    input: { kind: 'activity'; activityId: string } | { kind: 'restaurant'; restaurantId: string },
+  ) =>
+    addPlanEntry({
+      date: addDays(TODAY, 1),
+      slotId: SLOT_DINNER,
+      eaterIds: [ENRICO, NADJA],
+      ...input,
+    });
+
+  it('AC-007: the typed Zusatz "Halle Nord" of "Bouldern" is one patch, confirmed by the server', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const id = plan({ kind: 'activity', activityId: 'act-bouldern' });
+    await fx.settle(nadja);
+    fx.clearCalls();
+    const saved = saveEntryFields(id, { note: ' Halle Nord ' });
+    expect(entryById(id)?.note).toBe('Halle Nord');
+    await fx.settle(nadja);
+    await expect(saved).resolves.toBeUndefined();
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { note: 'Halle Nord' } },
+    ]);
+    expect(fx.nadjaData(nadja).planEntries.find((entry) => entry.id === id)?.note).toBe(
+      'Halle Nord',
+    );
+  });
+
+  it('AC-008: "Reserviert um 19:30" of "Trattoria Da Enzo" is saved the same way', async () => {
+    await fx.startEnrico();
+    const id = plan({ kind: 'restaurant', restaurantId: 'rest-enzo' });
+    await fx.settle();
+    fx.clearCalls();
+    const saved = saveEntryFields(id, { reservedAt: '19:30' });
+    await fx.settle();
+    await expect(saved).resolves.toBeUndefined();
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reserved_at: '19:30:00' } },
+    ]);
+    expect(fx.server.row(H, 'meal_plan_entries', id)).toMatchObject({ reserved_at: '19:30:00' });
+  });
+
+  it('AC-008: nothing changed sends nothing and resolves at once', async () => {
+    await fx.startEnrico();
+    const id = plan({ kind: 'activity', activityId: 'act-bouldern' });
+    await fx.settle();
+    fx.clearCalls();
+    await expect(saveEntryFields(id, {})).resolves.toBeUndefined();
+    await expect(saveEntryFields(id, { note: '  ' })).resolves.toBeUndefined();
+    expect(fx.calls).toEqual([]);
+  });
+
+  it('AC-009: a refusal rejects, the entry springs back and the general hint is reported', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const id = plan({ kind: 'activity', activityId: 'act-bouldern' });
+    await fx.settle();
+    fx.server.failNext('apply_changes', new TransportError('permanent', '23514', 400));
+    const saved = saveEntryFields(id, { note: 'Halle Nord' });
+    saved.catch(() => {});
+    await fx.settle();
+    await expect(saved).rejects.toMatchObject({ code: '23514' });
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(entryById(id)?.note).toBeUndefined();
+    stop();
+  });
+
+  it('negative: offline and an invalid time throw before anything changes', async () => {
+    await fx.startEnrico();
+    const id = plan({ kind: 'restaurant', restaurantId: 'rest-enzo' });
+    await fx.settle();
+    expect(() => saveEntryFields(id, { reservedAt: '19:33' })).toThrow('Keine gültige Uhrzeit');
+    fx.environment.setOnline(false);
+    expect(() => saveEntryFields(id, { reservedAt: '19:30' })).toThrow(OfflineError);
+    expect(entryById(id)?.reservedAt).toBeUndefined();
   });
 });

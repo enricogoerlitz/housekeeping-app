@@ -658,8 +658,13 @@ describe('Übersicht und Kalender', () => {
   };
   const listBags = [listBag({ id: 'l1', absenceId: trip.id })];
   const items = itemsOf('l1', 30, 12);
-  const cards = (shownDay: string, absences = [trip, hamburg], bags = listBags, rows = items) =>
-    packingCards({ shownDay, absences, listBags: bags, items: rows });
+  const cards = (
+    shownDay: string,
+    absences = [trip, hamburg],
+    bags = listBags,
+    rows = items,
+    today = shownDay,
+  ) => packingCards({ shownDay, today, absences, listBags: bags, items: rows });
 
   it('AC-042: no card two weeks before, from 7 days before "beginnt in 7 Tagen"', () => {
     expect(cards('2026-11-16')).toEqual([]);
@@ -709,6 +714,13 @@ describe('Übersicht und Kalender', () => {
       ['a-e', enrico.id, '1/2 gepackt'],
       ['a-n', nadja.id, '0/3 gepackt'],
     ]);
+  });
+
+  it('AC-020 (0018): the card counts "beginnt in n Tagen" from today, not from the shown day', () => {
+    const mallorca: Absence = { id: 'abs-m', from: '2026-12-04', to: '2026-12-11' };
+    const bags = [listBag({ id: 'lm', absenceId: mallorca.id })];
+    const shown = cards('2026-11-27', [mallorca], bags, itemsOf('lm', 3), '2026-11-22');
+    expect(shown.map((card) => card.startsIn)).toEqual(['beginnt in 12 Tagen']);
   });
 
   it('AC-046: a stripe with a packing list carries the bag icon, one without does not', () => {

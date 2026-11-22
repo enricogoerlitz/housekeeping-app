@@ -3,6 +3,7 @@ import {
   useMembersById,
   usePackingItems,
   usePackingListBags,
+  useToday,
 } from '@housekeeping/api';
 import { packingCards, type ISODate, type PackingCard } from '@housekeeping/core';
 import { Avatar, Icon, ProgressBar, Row, Section, Text, useTheme } from '@housekeeping/ui';
@@ -13,14 +14,15 @@ import { Pressable } from 'react-native';
  * The cards "Reisetasche" at the bottom of the Übersicht (spec 0012, REQ-009, D33): one per
  * packing list whose absence has a day in the shown week or starts 1 to 7 days after the shown
  * day, earliest first (AC-042, AC-043, AC-045). Bar, "12/30 gepackt ›" or "alles gepackt ✓"
- * (AC-044), and "beginnt in 7 Tagen" counted from the shown day (decision 15). A tap opens the
+ * (AC-044), and "beginnt in 12 Tagen" counted from today (spec 0018, AC-020). A tap opens the
  * Urlaubsseite. Read from the cache only, so it shows offline too.
  */
 export function TodayPacking(props: { shown: ISODate }) {
   const absences = useAbsences();
   const listBags = usePackingListBags();
   const items = usePackingItems();
-  const cards = packingCards({ shownDay: props.shown, absences, listBags, items });
+  const today = useToday();
+  const cards = packingCards({ shownDay: props.shown, today, absences, listBags, items });
   if (cards.length === 0) return null;
   return (
     <>

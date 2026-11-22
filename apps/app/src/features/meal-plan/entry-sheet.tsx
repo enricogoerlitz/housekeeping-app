@@ -2,6 +2,7 @@ import {
   movePlanEntry,
   NOTE_MAX_LENGTH,
   removePlanEntry,
+  saveEntryFields,
   setReservation,
   snapshot,
   updatePlanEntry,
@@ -37,7 +38,7 @@ import {
   toast,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
@@ -60,7 +61,9 @@ function Label(props: { children: string }) {
 /**
  * Actions for one entry in the plan: open the recipe, restaurant or activity, the Zusatz and
  * "Route" of an activity, "Route", "Reserviert um" and "Erinnern … vorher" of a restaurant (spec
- * 0013, REQ-008), move, change the cook, remove. "Fertig" saves a typed time and closes.
+ * 0013, REQ-008), move, change the cook, remove. "Fertig" saves the typed Zusatz and time and
+ * closes once the server took them; on a refusal the window stays open with the typed text and
+ * the general hint (spec 0018, REQ-003). Offline it only closes.
  */
 export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: () => void }) {
   const router = useRouter();
@@ -76,6 +79,16 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   const [routeOpen, setRouteOpen] = useState(false);
   const entry = entries.find((candidate) => candidate.id === props.entryId);
   const reservation = useReservationDraft(entry);
+  const note = useNoteDraft(entry);
+  const [saving, setSaving] = useState(false);
+  // A late answer must not close a window opened after this one was closed with ✕.
+  const open = useRef(true);
+  useEffect(
+    () => () => {
+      open.current = false;
+    },
+    [],
+  );
   if (!entry) return null;
   const title = entryTitle(entry, recipesById, entries, restaurantsById, activitiesById);
   const activity =
@@ -103,7 +116,23 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   }
 
   const done = () => {
-    if (entry.kind !== 'restaurant' || reservation.save('tap')) props.onClose();
+    if (online.disabled) {
+      props.onClose();
+      return;
+    }
+    if (saving) return;
+    if (entry.kind === 'restaurant' && !reservation.save('tap')) return;
+    if (entry.kind === 'activity' && !note.save()) return;
+    setSaving(true);
+    Promise.all([reservation.pending(), note.pending()]).then(
+      () => {
+        if (open.current) props.onClose();
+      },
+      // The refusal's hint comes from onWriteRejected; the typed text stays (AC-009).
+      () => {
+        if (open.current) setSaving(false);
+      },
+    );
   };
 
   const move = (date: ISODate | null, slotId?: Id) => {
@@ -132,7 +161,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
       title={title}
       testID="entry-sheet"
       size="m"
-      footer={<Button label="Fertig" full onPress={done} testID="entry-done" />}
+      footer={<Button label="Fertig" full disabled={saving} onPress={done} testID="entry-done" />}
     >
       <Stack gap={20}>
         {online.hint ? (
@@ -180,14 +209,7 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
             ) : null}
           </Row>
         ) : null}
-        {entry.kind === 'activity' ? (
-          <NoteField
-            key={entry.id}
-            entryId={entry.id}
-            note={entry.note}
-            disabled={online.disabled}
-          />
-        ) : null}
+        {entry.kind === 'activity' ? <NoteField draft={note} disabled={online.disabled} /> : null}
         {entry.restaurantId && entry.kind === 'restaurant' ? (
           <Row gap={10} wrap>
             <Button
@@ -296,42 +318,71 @@ export function EntrySheet(props: { entryId: Id; weekDates: ISODate[]; onClose: 
   );
 }
 
-/** The Zusatz of an activity in the plan, "Eislaufen (Hohenschönhausen)" (AC-013). */
-function NoteField(props: { entryId: Id; note?: string; disabled: boolean }) {
-  const [note, setNote] = useState(props.note ?? '');
-  const [error, setError] = useState<string>();
-  const changed = note.trim() !== (props.note ?? '');
+interface NoteDraft {
+  note: string;
+  error: string | undefined;
+  changed: boolean;
+  setNote: (note: string) => void;
+  /** Sends the typed Zusatz if it changed; false (with the error shown) when it cannot. */
+  save: () => boolean;
+  /** Resolves once the server took what was sent last, rejects when it refused it. */
+  pending: () => Promise<void>;
+}
 
+/** The typed Zusatz of an activity entry: saved with "Zusatz speichern", Enter and "Fertig". */
+function useNoteDraft(entry: MealPlanEntry | undefined): NoteDraft {
+  const stored = entry?.note ?? '';
+  const [note, setNoteState] = useState(stored);
+  const [error, setError] = useState<string>();
+  const sent = useRef<Promise<void>>(Promise.resolve());
+  const changed = note.trim() !== stored;
+
+  return {
+    note,
+    error,
+    changed,
+    setNote: (next) => {
+      setNoteState(next);
+      if (error) setError(undefined);
+    },
+    save: () => {
+      if (!entry || !changed) return true;
+      try {
+        sent.current = saveEntryFields(entry.id, { note });
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+        return false;
+      }
+      toast.show({ message: note.trim() ? 'Zusatz gespeichert' : 'Zusatz entfernt' });
+      return true;
+    },
+    pending: () => sent.current,
+  };
+}
+
+/** The Zusatz of an activity in the plan, "Eislaufen (Hohenschönhausen)" (AC-013). */
+function NoteField(props: { draft: NoteDraft; disabled: boolean }) {
+  const { draft } = props;
   const save = () => {
-    if (props.disabled || !changed) return;
-    try {
-      updatePlanEntry(props.entryId, { note });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
-      return;
-    }
-    toast.show({ message: note.trim() ? 'Zusatz gespeichert' : 'Zusatz entfernt' });
+    if (!props.disabled) draft.save();
   };
 
   return (
     <View style={{ gap: 8 }}>
       <TextField
         label="Zusatz"
-        value={note}
-        onChangeText={(value) => {
-          setNote(value);
-          if (error) setError(undefined);
-        }}
+        value={draft.note}
+        onChangeText={draft.setNote}
         maxLength={NOTE_MAX_LENGTH}
         placeholder="z. B. Hohenschönhausen"
         editable={!props.disabled}
-        error={error}
+        error={draft.error}
         hint="Steht im Plan in Klammern hinter dem Namen."
         returnKeyType="done"
         onSubmitEditing={save}
         testID="entry-note-input"
       />
-      {changed ? (
+      {draft.changed ? (
         <Button
           label="Zusatz speichern"
           icon="check"
@@ -356,6 +407,8 @@ interface ReservationDraft {
    */
   save: (gesture: 'tap' | 'enter' | 'blur') => boolean;
   clear: () => void;
+  /** Resolves once the server took the time sent last, rejects when it refused it. */
+  pending: () => Promise<void>;
 }
 
 /**
@@ -369,7 +422,8 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
   const [text, setTextState] = useState(stored ? formatTime(stored) : '');
   const [error, setError] = useState<string>();
   // What was sent last: blur and "Fertig" come one after the other, before the next render.
-  const saved = useRef<TimeOfDay | undefined>(stored);
+  const saved = useRef<TimeOfDay | null | undefined>(stored);
+  const sent = useRef<Promise<void>>(Promise.resolve());
   // The time last confirmed with Enter or "Fertig" (or the stored one): blur saves without asking.
   const confirmed = useRef<TimeOfDay | undefined>(stored);
   const ensureDevicePush = useEnsureDevicePush();
@@ -382,13 +436,21 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
     }
     if (gesture !== 'blur') confirmed.current = time;
     if (time === saved.current) return true;
+    let taken: Promise<void>;
     try {
-      setReservation(entry.id, { reservedAt: time ?? null });
+      taken = saveEntryFields(entry.id, { reservedAt: time ?? null });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
       return false;
     }
     saved.current = time;
+    // Refused: the entry sprang back, so the next "Fertig" sends the typed time again (AC-009).
+    sent.current = taken.catch((refusal: unknown) => {
+      if (saved.current === time) saved.current = null;
+      throw refusal;
+    });
+    // Only "Fertig" waits for it; the hint of a refusal comes from onWriteRejected.
+    sent.current.catch(() => {});
     toast.show({
       message: time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt',
     });
@@ -415,6 +477,7 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
       setError(undefined);
       write(undefined, 'tap');
     },
+    pending: () => sent.current,
   };
 }
 
