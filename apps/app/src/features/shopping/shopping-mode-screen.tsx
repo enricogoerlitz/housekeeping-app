@@ -38,11 +38,11 @@ import {
   useToastClearance,
   WIDE_GUTTER,
   expandableA11y,
+  useBottomInset,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { undoAction } from '@/features/shell/offline';
@@ -180,10 +180,11 @@ export function ShoppingModeScreen() {
   const shopper = useActiveShopper();
   const theme = useTheme();
   const { isWide } = useBreakpoint();
-  const insets = useSafeAreaInsets();
+  // Above the home bar with its gap (spec 0029, REQ-002).
+  const bottomEdge = useBottomInset();
   // Without the tab bar the toast stands above the input bar (spec 0019, AC-024).
   const [footerHeight, setFooterHeight] = useState<number | undefined>();
-  useToastClearance(footerHeight === undefined ? undefined : footerHeight - insets.bottom);
+  useToastClearance(footerHeight === undefined ? undefined : footerHeight - bottomEdge);
 
   const [areaFor, setAreaFor] = useState<ShoppingItem | undefined>();
   const [choosingStore, setChoosingStore] = useState(false);
@@ -295,7 +296,7 @@ export function ShoppingModeScreen() {
         paddingHorizontal: isWide ? WIDE_GUTTER : theme.shape.gutter,
         paddingTop: 10,
         // Above the home bar (AC-022).
-        paddingBottom: 10 + insets.bottom,
+        paddingBottom: 10 + bottomEdge,
       }}
     >
       <View style={{ width: '100%', maxWidth: SHOPPING_MAX_WIDTH, alignSelf: 'center' }}>

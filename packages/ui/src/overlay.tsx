@@ -1,11 +1,27 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
+import Animated, {
+  Easing,
+  ReduceMotion,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
+
+import { bottomInset } from './bottom-inset';
 
 import { Button, IconButton } from './controls';
 import { Text } from './primitives';
 import { sheetFrame, type SheetSize } from './sheet-size';
-import { PageScrollContext, PageScrollControlContext, TAB_BAR_HEIGHT } from './shell';
+import {
+  PageScrollContext,
+  PageScrollControlContext,
+  TAB_BAR_HEIGHT,
+  useBottomInset,
+} from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { createToastStore, type ToastOptions } from './toast-state';
 
@@ -26,19 +42,66 @@ export interface SheetProps {
   testID?: string;
 }
 
-/** A bottom sheet on phones and a centred dialog on wider screens. */
+// Spec 0029, REQ-001: the scrim fades in place, only the sheet travels; 250 ms in, 200 ms out.
+const OPEN_MS = 250;
+const CLOSE_MS = 200;
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+
+/**
+ * A bottom sheet on phones and a centred dialog on wider screens. On phones the scrim fades while
+ * only the sheet slides up; with reduced motion, and from tablet width on, both only fade. The
+ * window stays mounted until it has faded out.
+ */
 export function Sheet(props: SheetProps) {
   const theme = useTheme();
   const { isPhone, width, height } = useBreakpoint();
   const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
   const c = theme.colors;
   const frame = sheetFrame(props.size, { width, height });
+  const slide = isPhone && !reduced;
+
+  const [mounted, setMounted] = useState(props.visible);
+  // Mounted at once on opening; unmounted only once the fade-out has finished.
+  if (props.visible && !mounted) setMounted(true);
+  const progress = useSharedValue(0);
+  // The sheet's own height once measured; until then the screen height keeps it out of sight.
+  const travel = useSharedValue(height);
+  useEffect(() => {
+    if (props.visible) {
+      progress.set(
+        withTiming(1, { duration: OPEN_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.Never }),
+      );
+    } else {
+      // Opened again while fading out (AC-004): the new animation cancels this one, which then
+      // does not unmount.
+      progress.set(
+        withTiming(
+          0,
+          { duration: CLOSE_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.Never },
+          (finished) => {
+            if (finished) scheduleOnRN(setMounted, false);
+          },
+        ),
+      );
+    }
+  }, [props.visible, progress]);
+
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
+  const sheetStyle = useAnimatedStyle(() =>
+    slide
+      ? { transform: [{ translateY: (1 - progress.get()) * travel.get() }] }
+      : { opacity: progress.get() },
+  );
+  // While fading out the window takes no taps, and a tap on the scrim closes nothing twice.
+  const close = props.visible ? props.onClose : undefined;
+
   return (
     <Modal
-      visible={props.visible}
+      visible={mounted}
       transparent
-      animationType={isPhone ? 'slide' : 'fade'}
-      onRequestClose={props.onClose}
+      animationType="none"
+      onRequestClose={() => close?.()}
       statusBarTranslucent
     >
       <ToneContext.Provider value={undefined}>
@@ -54,34 +117,38 @@ export function Sheet(props: SheetProps) {
               paddingRight: insets.right,
             }}
           >
-            <Pressable
-              accessibilityLabel="Schließen"
-              accessibilityRole="button"
-              onPress={props.onClose}
-              style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0,
-                backgroundColor: c.scrim,
-              }}
-            />
-            <View
+            <Animated.View
+              style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, scrimStyle]}
+            >
+              <Pressable
+                accessibilityLabel="Schließen"
+                accessibilityRole="button"
+                onPress={close}
+                testID={props.testID ? `${props.testID}-scrim` : undefined}
+                style={{ flex: 1, backgroundColor: c.scrim }}
+              />
+            </Animated.View>
+            <Animated.View
               testID={props.testID}
               accessibilityViewIsModal
-              style={{
-                backgroundColor: c.bg,
-                borderTopLeftRadius: theme.shape.radius.sheet,
-                borderTopRightRadius: theme.shape.radius.sheet,
-                borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
-                borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
-                maxHeight: frame.maxHeight,
-                height: frame.height,
-                width: frame.width,
-                maxWidth: '100%',
-                paddingBottom: isPhone ? Math.max(insets.bottom, 12) : 0,
-              }}
+              pointerEvents={props.visible ? 'auto' : 'none'}
+              onLayout={(event) => travel.set(event.nativeEvent.layout.height)}
+              style={[
+                {
+                  backgroundColor: c.bg,
+                  borderTopLeftRadius: theme.shape.radius.sheet,
+                  borderTopRightRadius: theme.shape.radius.sheet,
+                  borderBottomLeftRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                  borderBottomRightRadius: isPhone ? 0 : theme.shape.radius.sheet,
+                  maxHeight: frame.maxHeight,
+                  height: frame.height,
+                  width: frame.width,
+                  maxWidth: '100%',
+                  // Above the home bar with its gap (spec 0029, AC-007).
+                  paddingBottom: isPhone ? bottomInset(insets.bottom, 12) : 0,
+                },
+                sheetStyle,
+              ]}
             >
               <View
                 style={{
@@ -134,7 +201,7 @@ export function Sheet(props: SheetProps) {
                   {props.footer}
                 </View>
               ) : null}
-            </View>
+            </Animated.View>
           </View>
         </PageScrollContext.Provider>
       </ToneContext.Provider>
@@ -188,6 +255,7 @@ export function useToastClearance(height: number | undefined): void {
 export function ToastHost() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const bottomEdge = useBottomInset();
   const { isPhone } = useBreakpoint();
   const state = useSyncExternalStore(store.subscribe, store.get, store.get);
   const bar = useSyncExternalStore(subscribeClearance, clearanceSnapshot, clearanceSnapshot);
@@ -201,7 +269,7 @@ export function ToastHost() {
         position: 'absolute',
         left: insets.left,
         right: insets.right,
-        bottom: insets.bottom + below + (isPhone ? 12 : 24),
+        bottom: bottomEdge + below + (isPhone ? 12 : 24),
         alignItems: 'center',
         paddingHorizontal: 16,
       }}
