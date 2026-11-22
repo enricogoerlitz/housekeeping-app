@@ -16,6 +16,7 @@ import type { HostInstance } from 'react-native';
 import { measureNode, useDragController, type DragSourceOptions } from './drag-context';
 import {
   DRAG_IDLE,
+  blockDisabledLift,
   dragGestureStep,
   pendingLiftAt,
   type DragEffect,
@@ -69,7 +70,11 @@ export function useDragGesture(options: DragSourceOptions, platform: GesturePlat
         input.type === 'up'
           ? { ...input, target: controller.getSnapshot().hover?.id ?? null }
           : input;
-      const step = dragGestureStep(state.current, event);
+      const { options: current, platform: host, scroll: page } = latest.current;
+      const step = blockDisabledLift(
+        dragGestureStep(state.current, event),
+        current.disabled === true,
+      );
       state.current = step.state;
       clearTimeout(timer.current);
       const liftAt = pendingLiftAt(step.state);
@@ -81,15 +86,12 @@ export function useDragGesture(options: DragSourceOptions, platform: GesturePlat
       }
       if (step.state.phase === 'dragging' && event.type === 'move') controller.move(event.point);
 
-      const { options: current, platform: host, scroll: page } = latest.current;
       switch (step.effect?.type) {
+        case 'blocked':
+          current.onBlocked?.();
+          break;
         case 'lift': {
-          if (current.disabled || step.state.phase !== 'dragging') {
-            // Offline: nothing lifts, and the click of this press must not open the entry.
-            state.current = { phase: 'idle', swallowClick: true };
-            current.onBlocked?.();
-            break;
-          }
+          if (step.state.phase !== 'dragging') break;
           const lifted = controller.lift({
             sourceId: current.id,
             point: step.state.point,
