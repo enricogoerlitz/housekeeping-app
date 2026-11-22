@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 
 import { collageInsets, collageLayout } from './collage-layout';
-import { Button, Checkbox, focusRing } from './controls';
+import { Button, Checkbox, keyboardFocusRing } from './controls';
+import { useHover } from './pointer';
 import type { IconName } from './icons';
 import { Icon, Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
@@ -317,6 +318,7 @@ export interface MediaCardProps {
 /** A card with a picture: recipe tiles, today's meals. */
 export function MediaCard(props: MediaCardProps) {
   const theme = useTheme();
+  const hover = useHover();
   const layout = !props.layout || props.layout === 'auto' ? theme.shape.media : props.layout;
   const large = props.size === 'l';
   const cover = (size: Pick<PhotoProps, 'width' | 'height' | 'aspectRatio' | 'radius'>) =>
@@ -368,7 +370,8 @@ export function MediaCard(props: MediaCardProps) {
   );
   // The corner (e.g. a "Route" button or a heart) is never placed inside the pressable card:
   // a button inside a button is invalid on the web and unreachable for screen readers.
-  const card = (content: ReactNode) =>
+  // With a mouse the card's surface sinks while the pointer is on it (spec 0019, AC-007).
+  const card = (content: (hovered: boolean) => ReactNode) =>
     props.onPress ? (
       <Pressable
         testID={props.testID}
@@ -377,21 +380,21 @@ export function MediaCard(props: MediaCardProps) {
         onPress={props.onPress}
         style={(state) => [
           { flex: 1, opacity: state.pressed ? 0.75 : 1, borderRadius: theme.shape.radius.card },
-          focusRing(theme, (state as { focused?: boolean }).focused),
+          keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
         ]}
       >
-        {content}
+        {(state) => content(hover((state as { hovered?: boolean }).hovered))}
       </Pressable>
     ) : (
       <View testID={props.testID} style={{ flex: 1 }}>
-        {content}
+        {content(false)}
       </View>
     );
   if (layout === 'photoTop')
     return (
       <View style={{ flex: 1 }}>
-        {card(
-          <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
+        {card((hovered) => (
+          <Surface padding={0} sunken={hovered} style={{ overflow: 'hidden', flex: 1 }}>
             <View>
               {cover({
                 height: props.photoAspectRatio ? undefined : large ? 190 : 122,
@@ -404,8 +407,8 @@ export function MediaCard(props: MediaCardProps) {
               ) : null}
             </View>
             <View style={{ padding: 12, paddingTop: 10 }}>{text}</View>
-          </Surface>,
-        )}
+          </Surface>
+        ))}
         {props.corner ? (
           <View style={{ position: 'absolute', top: 8, right: 8 }}>{props.corner}</View>
         ) : null}
@@ -418,20 +421,30 @@ export function MediaCard(props: MediaCardProps) {
   });
   const rowStyle = { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 } as const;
   if (!props.corner)
-    return card(
-      <Surface padding={large ? 12 : 9} style={rowStyle}>
+    return card((hovered) => (
+      <Surface padding={large ? 12 : 9} sunken={hovered} style={rowStyle}>
         {thumb}
         {text}
-      </Surface>,
-    );
+      </Surface>
+    ));
   return (
     <Surface padding={large ? 12 : 9} style={rowStyle}>
-      {card(
-        <View style={rowStyle}>
+      {card((hovered) => (
+        <View
+          style={[
+            rowStyle,
+            hovered
+              ? {
+                  backgroundColor: theme.colors.surfaceSunken,
+                  borderRadius: theme.shape.radius.control,
+                }
+              : null,
+          ]}
+        >
           {thumb}
           {text}
-        </View>,
-      )}
+        </View>
+      ))}
       {props.corner}
     </Surface>
   );
@@ -879,6 +892,7 @@ export interface KindLineProps {
  * fill (spec 0010, D19, AC-009).
  */
 export function KindLine(props: KindLineProps) {
+  const hover = useHover();
   const theme = useTheme();
   const compact = props.size === 'compact';
   const title = (
@@ -958,10 +972,10 @@ export function KindLine(props: KindLineProps) {
         return [
           {
             borderRadius: 4,
-            backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+            backgroundColor: hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
             opacity: pressed ? 0.7 : 1,
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >

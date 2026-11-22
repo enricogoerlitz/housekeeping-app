@@ -10,7 +10,7 @@ import {
   type AbsenceStripe,
   type ISODate,
 } from '@housekeeping/core';
-import { Icon, List, ListRow, Section, Text, focusRing, useTheme } from '@housekeeping/ui';
+import { Icon, List, ListRow, Section, Text, keyboardFocusRing, useTheme } from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
@@ -163,7 +163,7 @@ function MiniMonth(props: {
               backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
               opacity: pressed ? 0.7 : 1,
             },
-            focusRing(theme, focused),
+            keyboardFocusRing(theme, focused),
           ];
         }}
       >
@@ -246,7 +246,7 @@ function MiniDay(props: {
           onPress={guardPress(props.onPress)}
           style={(state) => [
             { alignItems: 'center', paddingVertical: 1, backgroundColor: background },
-            focusRing(theme, (state as PressState).focused),
+            keyboardFocusRing(theme, (state as PressState).focused),
           ]}
         >
           <RangeMark date={props.date} />

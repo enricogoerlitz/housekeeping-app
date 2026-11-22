@@ -1,11 +1,11 @@
-import { useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, IconButton } from './controls';
 import { Text } from './primitives';
 import { sheetFrame, type SheetSize } from './sheet-size';
-import { PageScrollContext, PageScrollControlContext } from './shell';
+import { PageScrollContext, PageScrollControlContext, TAB_BAR_HEIGHT } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { createToastStore, type ToastOptions } from './toast-state';
 
@@ -48,6 +48,10 @@ export function Sheet(props: SheetProps) {
               flex: 1,
               justifyContent: isPhone ? 'flex-end' : 'center',
               alignItems: isPhone ? 'stretch' : 'center',
+              // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
+              paddingTop: insets.top,
+              paddingLeft: insets.left,
+              paddingRight: insets.right,
             }}
           >
             <Pressable
@@ -103,7 +107,8 @@ export function Sheet(props: SheetProps) {
               {props.header ? <View style={{ paddingHorizontal: 20 }}>{props.header}</View> : null}
               <ScrollView
                 keyboardShouldPersistTaps="handled"
-                style={frame.height ? { flex: 1 } : undefined}
+                // Scrolled to the end, a drag does not move the page behind (AC-027).
+                style={[frame.height ? { flex: 1 } : null, OVERSCROLL_CONTAIN]}
                 contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, paddingTop: 6 }}
               >
                 {/* A drag inside the sheet must not switch the page below. */}
@@ -132,6 +137,9 @@ export function Sheet(props: SheetProps) {
   );
 }
 
+/** On the web: a scrolling panel keeps its scroll to itself (spec 0019, REQ-009). */
+export const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;
+
 // ---------- Toast with "Rückgängig" ----------
 
 export type { ToastOptions };
@@ -145,20 +153,50 @@ export const toast = {
   hide: store.hide,
 };
 
-/** Mount once near the root, above the tab bar. `bottomOffset` keeps it clear of bars. */
-export function ToastHost(props: { bottomOffset?: number }) {
+// A page without the tab bar (store mode, cooking mode) names the height of its own bottom bar,
+// so the toast stands above it (spec 0019, AC-024).
+let clearance: number | undefined;
+const clearanceListeners = new Set<() => void>();
+function setClearance(next: number | undefined) {
+  clearance = next;
+  for (const listener of clearanceListeners) listener();
+}
+function subscribeClearance(listener: () => void): () => void {
+  clearanceListeners.add(listener);
+  return () => clearanceListeners.delete(listener);
+}
+const clearanceSnapshot = () => clearance;
+
+/**
+ * Keeps the toast above this page's own bottom bar of `height` points (above the home bar) while
+ * the page is shown; undefined gives the default (above the tab bar on phones).
+ */
+export function useToastClearance(height: number | undefined): void {
+  useEffect(() => {
+    if (height === undefined) return;
+    setClearance(height);
+    return () => setClearance(undefined);
+  }, [height]);
+}
+
+/** Mount once near the root: above the tab bar and the home bar on phones (AC-024). */
+export function ToastHost() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { isPhone } = useBreakpoint();
   const state = useSyncExternalStore(store.subscribe, store.get, store.get);
+  const bar = useSyncExternalStore(subscribeClearance, clearanceSnapshot, clearanceSnapshot);
   if (!state) return null;
   const c = theme.colors;
+  const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
   return (
     <View
       pointerEvents="box-none"
       style={{
         position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: props.bottomOffset ?? 100,
+        left: insets.left,
+        right: insets.right,
+        bottom: insets.bottom + below + (isPhone ? 12 : 24),
         alignItems: 'center',
         paddingHorizontal: 16,
       }}

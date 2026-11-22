@@ -11,7 +11,7 @@
     "build:web": "expo export --platform web && node scripts/finish-web-export.mjs && node scripts/check-web-export.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/check-web-export.test.mjs scripts/sw-push.test.mjs"
+    "test": "node --test scripts/check-web-export.test.mjs scripts/sw-push.test.mjs scripts/theme-boot.test.mjs"
   },
   "dependencies": {
     "@housekeeping/api": "workspace:*",

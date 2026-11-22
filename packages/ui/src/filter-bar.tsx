@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { Button, Chip } from './controls';
 import { Surface } from './primitives';
 import { Sheet } from './overlay';
+import { ScrollRow } from './scroll-row';
 import { useBreakpoint } from './theme-context';
 
 export interface FilterBarProps {
@@ -63,13 +64,7 @@ export function FilterBar(props: FilterBarProps) {
   return (
     <View testID={props.testID} style={{ gap: 10 }}>
       {props.search}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        style={{ flexGrow: 0 }}
-        contentContainerStyle={{ gap: 8, alignItems: 'center', paddingVertical: 2 }}
-      >
+      <ScrollRow>
         <Chip
           label={props.filterLabel}
           icon="list-filter"
@@ -79,7 +74,7 @@ export function FilterBar(props: FilterBarProps) {
         />
         {props.sort}
         {props.chips}
-      </ScrollView>
+      </ScrollRow>
       {isPhone ? (
         <Sheet
           visible={open}

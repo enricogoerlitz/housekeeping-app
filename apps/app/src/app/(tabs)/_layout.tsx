@@ -11,7 +11,7 @@ import {
 import { Tabs, useSegments } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '@/features/shell/app-sidebar';
 import { InstallHint, useInstallHintVisible } from '@/features/shell/install-hint';
@@ -51,9 +51,18 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const showInstallHint = useInstallHintVisible();
   const showUpdate = useUpdateBannerVisible();
+  const banner = offline || showInstallHint || showUpdate;
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
-      {offline || showInstallHint || showUpdate ? (
+    // In landscape the notch and the rounded corners sit left and right (spec 0019, REQ-008).
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.colors.bg,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}
+    >
+      {banner ? (
         <View
           style={{
             paddingTop: insets.top + 6,
@@ -67,32 +76,37 @@ export default function TabsLayout() {
           <InstallHint />
         </View>
       ) : null}
-      <Tabs
-        tabBar={(props) => <Navigation {...props} />}
-        // "Zurück" from a page under "Verwalten" or the settings returns to the tab it was opened
-        // from (spec 0005, AC-054).
-        backBehavior="history"
-        screenOptions={{
-          headerShown: false,
-          tabBarPosition: isPhone ? 'bottom' : 'left',
-          sceneStyle: { backgroundColor: theme.colors.bg },
-        }}
+      {/* The banner already keeps the status bar clear; the pages below must not do it again. */}
+      <SafeAreaInsetsContext.Provider
+        value={{ ...insets, top: banner ? 0 : insets.top, left: 0, right: 0 }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
-        <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
-        <Tabs.Screen name="kalender" options={{ title: 'Kalender' }} />
-        <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
-        <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
-        {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
-        <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
-        <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
-        <Tabs.Screen name="reisen" options={{ title: 'Reisen' }} />
-        <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
-        <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
-        <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
-        <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />
-        <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen' }} />
-      </Tabs>
+        <Tabs
+          tabBar={(props) => <Navigation {...props} />}
+          // "Zurück" from a page under "Verwalten" or the settings returns to the tab it was opened
+          // from (spec 0005, AC-054).
+          backBehavior="history"
+          screenOptions={{
+            headerShown: false,
+            tabBarPosition: isPhone ? 'bottom' : 'left',
+            sceneStyle: { backgroundColor: theme.colors.bg },
+          }}
+        >
+          <Tabs.Screen name="index" options={{ title: 'Übersicht' }} />
+          <Tabs.Screen name="(essen)" options={{ title: 'Essen' }} />
+          <Tabs.Screen name="kalender" options={{ title: 'Kalender' }} />
+          <Tabs.Screen name="(liste)" options={{ title: 'Liste' }} />
+          <Tabs.Screen name="haushalt" options={{ title: 'Haushalt' }} />
+          {/* Not in the tab bar: "Verwalten" with its pages, and the personal settings. */}
+          <Tabs.Screen name="verwalten" options={{ title: 'Verwalten' }} />
+          <Tabs.Screen name="(reisetaschen)" options={{ title: 'Reisetaschen' }} />
+          <Tabs.Screen name="reisen" options={{ title: 'Reisen' }} />
+          <Tabs.Screen name="(artikel)" options={{ title: 'Artikel' }} />
+          <Tabs.Screen name="(maerkte)" options={{ title: 'Märkte & Bereiche' }} />
+          <Tabs.Screen name="mitglieder" options={{ title: 'Haushalt & Mitglieder' }} />
+          <Tabs.Screen name="feedback" options={{ title: 'Feedback' }} />
+          <Tabs.Screen name="einstellungen" options={{ title: 'Einstellungen' }} />
+        </Tabs>
+      </SafeAreaInsetsContext.Provider>
     </View>
   );
 }

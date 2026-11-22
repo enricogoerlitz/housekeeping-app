@@ -16,7 +16,8 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { IconButton, focusRing } from './controls';
+import { IconButton, keyboardFocusRing } from './controls';
+import { useHover } from './pointer';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
 import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
@@ -480,7 +481,7 @@ function BackLink(props: { label: string; onPress: () => void }) {
             borderRadius: theme.shape.radius.control,
             opacity: pressed ? 0.6 : 1,
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -546,7 +547,7 @@ export function TabBar(props: TabBarProps) {
                 opacity: state.pressed ? 0.6 : 1,
                 borderRadius: 12,
               },
-              focusRing(theme, (state as { focused?: boolean }).focused),
+              keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
             ]}
           >
             <View
@@ -614,6 +615,7 @@ export interface SidebarProps extends TabBarProps {
  * `accentSoft`, also in "Frisch", where area colours belong to the screen, not the navigation.
  */
 export function Sidebar(props: SidebarProps) {
+  const hover = useHover();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const c = theme.colors;
@@ -645,9 +647,9 @@ export function Sidebar(props: SidebarProps) {
                 paddingHorizontal: 10,
                 marginBottom: 12,
                 borderRadius: theme.shape.radius.control,
-                backgroundColor: hovered ? c.surfaceSunken : 'transparent',
+                backgroundColor: hover(hovered) ? c.surfaceSunken : 'transparent',
               },
-              focusRing(theme, focused),
+              keyboardFocusRing(theme, focused),
             ];
           }}
         >
@@ -717,6 +719,7 @@ export function Sidebar(props: SidebarProps) {
 
 /** One row of the sidebar: an area (role tab) or a page in a group (a link). */
 function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
+  const hover = useHover();
   const theme = useTheme();
   const c = theme.colors;
   const { entry } = props;
@@ -742,9 +745,13 @@ function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
             minHeight: props.tab ? 46 : 44,
             paddingHorizontal: 12,
             borderRadius: theme.shape.radius.control,
-            backgroundColor: active ? c.accentSoft : hovered ? c.surfaceSunken : 'transparent',
+            backgroundColor: active
+              ? c.accentSoft
+              : hover(hovered)
+                ? c.surfaceSunken
+                : 'transparent',
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -797,7 +804,7 @@ export function Fab(props: FabProps) {
           opacity: state.pressed ? 0.8 : 1,
           boxShadow: '0px 6px 18px rgba(0,0,0,0.22), 0px 1px 3px rgba(0,0,0,0.18)',
         },
-        focusRing(theme, (state as { focused?: boolean }).focused),
+        keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
       ]}
     >
       <ToneContext.Provider value={{ fg: c.fabText }}>
