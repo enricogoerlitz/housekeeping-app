@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import { createActivity, updateActivity } from './commands-activities';
+import { ACTIVITY_GONE_MESSAGE, addPlanEntry, RESTAURANT_GONE_MESSAGE } from './commands-plan';
 import { deleteActivity, deleteRestaurant, discardPlacePhoto } from './commands-places';
 import { createRestaurant, readMapsLink, updateRestaurant } from './commands-restaurants';
 import { removeRestaurantPhoto, setRestaurantPhoto } from './photos-remote';
@@ -95,6 +96,35 @@ describe('Restaurant bearbeiten (REQ-001)', () => {
     expect(restaurant('rest-burger')).toBeUndefined();
     stop();
   });
+});
+
+describe('Einplanen (REQ-005, REQ-006)', () => {
+  it.each([
+    ['AC-020', 'restaurant', 'rest-burger', RESTAURANT_GONE_MESSAGE],
+    ['AC-022', 'activity', 'act-spieleabend', ACTIVITY_GONE_MESSAGE],
+  ] as const)(
+    '%s: planning a %s Nadja deleted meanwhile makes no entry and says so',
+    async (_, kind, id, hint) => {
+      await fx.startEnrico();
+      const messages: string[] = [];
+      const stop = onWriteRejected((message) => messages.push(message));
+      const wire = fx.server.transport(NADJA);
+      await (kind === 'restaurant'
+        ? wire.deleteRestaurant(id, TODAY)
+        : wire.deleteActivity(id, TODAY));
+      const planned = addPlanEntry({
+        date: TODAY,
+        slotId: getData().planEntries[0]?.slotId ?? '',
+        kind,
+        ...(kind === 'restaurant' ? { restaurantId: id } : { activityId: id }),
+        eaterIds: [ENRICO],
+      });
+      await fx.settle();
+      expect(messages).toEqual([hint]);
+      expect(entry(planned)).toBeUndefined();
+      stop();
+    },
+  );
 });
 
 describe('Webseite (REQ-003)', () => {
