@@ -24,9 +24,13 @@ Spec: `docs/specs/0016-kalender-direkt-bedienen/spec.md` (8 REQ, 34 AC). Branch
      beim Abheben schaltet ein Scroll-Regler im `PageScrollContext` das Scrollen ab.
 3. **Ziele** melden sich mit Kennung und Ref an. Gemessen wird nur beim Abheben, nach dem Blättern
    und nach automatischem Scrollen (`measureInWindow`): in der Woche jedes Feld, in Monat und Jahr
-   je Monat ein Rechteck, der Tag wird berechnet (12 statt 365 Messungen).
+   je Wochenzeile ein Rechteck, der Tag wird berechnet (rund 60 statt 365 Messungen). Gebaut je
+   Zeile statt je Monat (Task 9), weil Reise-Streifen und Aufgaben die Zeilen eines Monats
+   unterschiedlich hoch machen.
 4. **Ränder:** oben und unten 64 px Mitscrollen (rAF); links und rechts Zonen mit ‹ › mindestens
-   20 px vom Bildschirmrand (Zurück-Geste), blättern nach 600 ms, dann alle 900 ms.
+   20 px vom Bildschirmrand (Zurück-Geste), blättern nach 600 ms, dann alle 900 ms. Beginnt das
+   Ziehen in einer Zone (Montag im Handy-Raster, eine Reise für einen Tag), blättert sie erst,
+   wenn der Zeiger sie einmal verlassen hat (Task 9).
 5. **Abbrechen:** ohne Ziel loslassen, Escape, zweiter Zeiger, Android-Zurück, Übernahme durch einen
    ScrollView. Bei „Bewegung reduzieren“ keine Rückgleit-Animation.
 6. **Tages-Fenster** ist ein neues, nicht-modales Fenster in `packages/ui`
