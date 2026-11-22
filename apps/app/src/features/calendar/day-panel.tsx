@@ -5,6 +5,7 @@ import {
   parseISODate,
   weekdayShort,
   type TripStripe,
+  type Id,
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
@@ -39,8 +40,8 @@ export interface DayPanelProps {
   onClose: () => void;
   /** Another day from the week strip or a swipe. */
   onChooseDay: (date: ISODate) => void;
-  /** The household row is on for the month: the day's chores stand in the panel. */
-  showHousehold: boolean;
+  /** A tap on a chore's name: its chore window (spec 0021, AC-043). */
+  onOpenChore: (choreId: Id) => void;
   onAdd: (target: AddTarget) => void;
   onOpenEntry: (entry: MealPlanEntry) => void;
   onOpenStripe: (stripe: TripStripe) => void;
@@ -70,7 +71,8 @@ export function DayPanel(props: DayPanelProps) {
     slots: data.slots,
     stripes: data.stripes,
   });
-  const chores = props.showHousehold ? (data.householdRow(date, date)[date] ?? []) : [];
+  // The day's chores always stand here, whatever the month's household row (spec 0021, AC-012).
+  const chores = data.householdRow(date, date)[date] ?? [];
   const bottom = panelPlacement(width) === 'bottom';
   // While something is dragged the panel shrinks to its header line, so the grid is free; an
   // entry from the panel goes onto a day of the grid (spec 0016, AC-008).
@@ -129,7 +131,7 @@ export function DayPanel(props: DayPanelProps) {
         ) : null}
         {chores.length > 0 ? (
           <View testID="day-panel-chores">
-            <HouseholdDay items={chores} isToday={date === data.today} data={data} />
+            <HouseholdDay items={chores} data={data} onOpenChore={props.onOpenChore} />
           </View>
         ) : null}
         {content.empty ? (

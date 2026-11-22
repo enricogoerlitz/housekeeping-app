@@ -30,6 +30,9 @@ import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import { stripeWho, type CalendarData } from './calendar-data';
 import { LIFTED_OPACITY, useCalendarDrag } from './calendar-drag';
 
+/** Corners of a day's field in the week and of a day's tile in the month (spec 0021, REQ-002). */
+export const CELL_RADIUS = 6;
+
 // Member colours come from the data; a stripe of one person is tinted with them at this opacity
 // (spec 0010, REQ-009: "zart in ihrer Mitgliederfarbe").
 const TINT_ALPHA = '2E';
@@ -205,25 +208,17 @@ function People(props: { ids: Id[]; data: CalendarData }) {
   return people.length > 0 ? <AvatarStack members={people} size="xs" /> : null;
 }
 
-/** An empty ring for a chore that is not done: "○ Müll rausbringen". */
-function Ring() {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        width: 13,
-        height: 13,
-        borderRadius: 7,
-        borderWidth: 1.5,
-        borderColor: theme.colors.checkLine,
-      }}
-    />
-  );
-}
-
-/** A chore of a past or future day: done with ✓, planned with ○; nothing to tap. */
-function ChoreLine(props: { item: HouseholdRowItem; data: CalendarData; compact?: boolean }) {
+/** A booked chore: ✓, and a tap on its name opens the chore window while the chore exists. */
+function ChoreLine(props: {
+  item: HouseholdRowItem;
+  data: CalendarData;
+  compact?: boolean;
+  onOpenChore: (choreId: Id) => void;
+}) {
   const { item } = props;
+  const choreId = props.data.chores.some((chore) => chore.id === item.choreId)
+    ? item.choreId
+    : undefined;
   return (
     <KindLine
       kind="chore"
@@ -231,35 +226,40 @@ function ChoreLine(props: { item: HouseholdRowItem; data: CalendarData; compact?
       quiet
       dashed={item.approximate}
       size={props.compact ? 'compact' : 'row'}
-      leading={item.status === 'done' ? <Icon name="check" size={14} color="muted" /> : <Ring />}
+      leading={<Icon name="check" size={14} color="muted" />}
       trailing={<People ids={item.memberIds} data={props.data} />}
-      accessibilityLabel={`${item.status === 'done' ? 'Erledigt' : 'Geplant'}: ${choreTitle(item)}`}
+      onPress={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
+      accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
       testID={`chore-occ-${item.key}`}
     />
   );
 }
 
 /**
- * The household row of today: due chores are checked with the one chore check window of
- * „Anstehend“ and „Zu tun“ (spec 0011, REQ-005); 2 s after the last tap the completions are
- * booked and stand as ✓ at the end of the day (spec 0010, AC-018). Leaving the calendar books at
- * once; a refusal brings the box back with the hint, e.g. „Nadja war schneller (10:02)“ (AC-031,
- * AC-034). Offline the boxes are greyed out (spec 0010, AC-020).
+ * The household row of one day (spec 0021, REQ-016): every chore that is due or planned can be
+ * checked on any day, also a future one, with the one chore check window of „Anstehend“ and „Zu
+ * tun“ (spec 0011, REQ-005); 2 s after the last tap it is booked as done today, as on „Haushalt“
+ * (AC-042). Leaving the calendar books at once; a refusal brings the box back with the hint, e.g.
+ * „Nadja war schneller (10:02)“. A tap on the name opens the chore window (AC-043). Offline the
+ * boxes are greyed out (spec 0010, AC-020); booked chores stand with ✓.
  */
-function HouseholdToday(props: {
+export function HouseholdDay(props: {
   items: HouseholdRowItem[];
   data: CalendarData;
   compact?: boolean;
+  onOpenChore: (choreId: Id) => void;
 }) {
   const online = useOnlineOnly();
-  const open = props.items.filter((item) => item.status === 'open');
-  const done = props.items.filter((item) => item.status !== 'open');
-  const itemOf = new Map(open.map((item) => [item.choreId ?? '', item]));
+  const choreOf = (item: HouseholdRowItem) =>
+    item.status === 'done'
+      ? undefined
+      : props.data.chores.find((chore) => chore.id === item.choreId);
+  const due = props.items.filter((item) => choreOf(item) !== undefined);
+  const rest = props.items.filter((item) => choreOf(item) === undefined);
+  const itemOf = new Map(due.map((item) => [item.choreId ?? '', item]));
   // In the order of the household row.
-  const openChores = open.flatMap(
-    (item) => props.data.chores.find((chore) => chore.id === item.choreId) ?? [],
-  );
-  const check = useChoreCheckWindow(openChores);
+  const dueChores = due.flatMap((item) => choreOf(item) ?? []);
+  const check = useChoreCheckWindow(dueChores);
   return (
     <>
       {check.rows.map((chore) => {
@@ -273,6 +273,7 @@ function HouseholdToday(props: {
               title={choreTitle(item)}
               quiet
               struck={checked}
+              dashed={item.approximate}
               size={props.compact ? 'compact' : 'row'}
               leading={
                 <Checkbox
@@ -284,33 +285,21 @@ function HouseholdToday(props: {
                 />
               }
               trailing={<People ids={item.memberIds} data={props.data} />}
-              accessibilityLabel={online.hint ? `${item.title}. ${online.hint}` : undefined}
+              onPress={() => props.onOpenChore(chore.id)}
+              accessibilityLabel={`${choreTitle(item)}, Details`}
               testID={`chore-occ-${item.key}`}
             />
           </RowTransition>
         );
       })}
-      {done.map((item) => (
-        <ChoreLine key={item.key} item={item} data={props.data} compact={props.compact} />
-      ))}
-    </>
-  );
-}
-
-/** The household row of one day: today checkable, other days read only. */
-export function HouseholdDay(props: {
-  items: HouseholdRowItem[];
-  isToday: boolean;
-  data: CalendarData;
-  compact?: boolean;
-}) {
-  if (props.isToday) {
-    return <HouseholdToday items={props.items} data={props.data} compact={props.compact} />;
-  }
-  return (
-    <>
-      {props.items.map((item) => (
-        <ChoreLine key={item.key} item={item} data={props.data} compact={props.compact} />
+      {rest.map((item) => (
+        <ChoreLine
+          key={item.key}
+          item={item}
+          data={props.data}
+          compact={props.compact}
+          onOpenChore={props.onOpenChore}
+        />
       ))}
     </>
   );

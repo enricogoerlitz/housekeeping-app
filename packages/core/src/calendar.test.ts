@@ -424,19 +424,24 @@ describe('spec 0021: the calendar on the desktop and the phone header', () => {
   });
 
   it('AC-003: five entries in a low row show three and "+2 weitere", a high row shows all', () => {
-    // 24 px per line, 28 px for "+n weitere".
-    expect(fittingItems(5, 60, 24, 28)).toBe(3);
-    expect(fittingItems(5, 100, 24, 28)).toBe(3);
-    expect(fittingItems(5, 119, 24, 28)).toBe(3);
-    expect(fittingItems(5, 120, 24, 28)).toBe(5);
-    expect(fittingItems(6, 130, 24, 28)).toBe(4);
-    expect(fittingItems(2, 10, 24, 28)).toBe(2);
-    expect(fittingItems(0, 10, 24, 28)).toBe(0);
+    // 24 px per entry line, 28 px for a chore with its box, 28 px for "+n weitere".
+    const lines = (count: number) => Array<number>(count).fill(24);
+    expect(fittingItems(lines(5), 60, 28)).toBe(3);
+    expect(fittingItems(lines(5), 100, 28)).toBe(3);
+    expect(fittingItems(lines(5), 119, 28)).toBe(3);
+    expect(fittingItems(lines(5), 120, 28)).toBe(5);
+    expect(fittingItems(lines(6), 130, 28)).toBe(4);
+    expect(fittingItems([24, 24, 28, 28], 100, 28)).toBe(3);
+    expect(fittingItems(lines(2), 10, 28)).toBe(2);
+    expect(fittingItems([], 10, 28)).toBe(0);
   });
 
   it('AC-046: the phone header names the period and offers "Heute ›" outside today’s', () => {
     const now = '2026-11-22';
-    expect(periodNavLabel('week', '2026-11-16', now)).toEqual({ label: '16.–22. Nov', today: true });
+    expect(periodNavLabel('week', '2026-11-16', now)).toEqual({
+      label: '16.–22. Nov',
+      today: true,
+    });
     expect(periodNavLabel('week', '2026-11-23', now)).toEqual({
       label: '23.–29. Nov',
       today: false,

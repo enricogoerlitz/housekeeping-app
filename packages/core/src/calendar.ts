@@ -340,18 +340,25 @@ export function sharedHeight(available: number, count: number, min: number): num
 }
 
 /**
- * How many of `count` lines of a desktop month day show in `height` px (spec 0021, REQ-001,
- * AC-003): all when they fit, else as many as fit beside "+n weitere", at least three.
+ * How many lines of a desktop month day, `lineHeights` in px in their order, show in `height` px
+ * (spec 0021, REQ-001, AC-003): all when they fit, else as many as fit above "+n weitere"
+ * (`moreHeight`), at least `min`.
  */
 export function fittingItems(
-  count: number,
+  lineHeights: readonly number[],
   height: number,
-  lineHeight: number,
   moreHeight: number,
   min = 3,
 ): number {
-  if (count * lineHeight <= height) return count;
-  const fit = Math.floor((height - moreHeight) / lineHeight);
+  const count = lineHeights.length;
+  if (lineHeights.reduce((sum, line) => sum + line, 0) <= height) return count;
+  let used = moreHeight;
+  let fit = 0;
+  for (const line of lineHeights) {
+    if (used + line > height) break;
+    used += line;
+    fit += 1;
+  }
   return Math.min(count, Math.max(min, fit));
 }
 
