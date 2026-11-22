@@ -102,6 +102,8 @@ export {
   type SheetProps,
   type ToastOptions,
 } from './overlay';
+export { HOME_BAR_GAP, bottomInset } from './bottom-inset';
+export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { ScrollRow, type ScrollRowProps } from './scroll-row';
 export { useFinePointer, useHover } from './pointer';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
@@ -141,6 +143,7 @@ export {
   Fab,
   ComposerBar,
   TAB_BAR_HEIGHT,
+  useBottomInset,
   SIDEBAR_WIDTH,
   CONTENT_MAX_WIDTH,
   WIDE_GUTTER,

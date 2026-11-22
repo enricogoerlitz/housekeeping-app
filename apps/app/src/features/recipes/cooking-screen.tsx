@@ -33,11 +33,11 @@ import {
   Text,
   useBreakpoint,
   useToastClearance,
+  useBottomInset,
 } from '@housekeeping/ui';
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePageParams } from '@/lib/url-state';
 
@@ -106,7 +106,8 @@ function Cooking(props: {
   const { isPhone, bp } = useBreakpoint();
   // Two columns from 1100 px (spec 0023, Decision 4): the tablet in portrait has too little room.
   const twoColumns = bp === 'desktop';
-  const insets = useSafeAreaInsets();
+  // Above the home bar with its gap (spec 0029, REQ-002).
+  const bottomEdge = useBottomInset();
   const variant = recipe.variants.find((candidate) => candidate.id === props.variantParam);
   const steps = stepsForVariants(recipe, variant ? [variant.id] : undefined);
   const ingredients = cookingIngredients(recipe, variant?.id, props.servings);
@@ -119,7 +120,7 @@ function Cooking(props: {
   const now = useClock(Object.values(timers).some((timer) => timer.startedAt !== undefined));
   // No tab bar here: the toast stands above the step buttons (AC-024).
   const [footerHeight, setFooterHeight] = useState<number | undefined>();
-  useToastClearance(footerHeight === undefined ? undefined : footerHeight - insets.bottom);
+  useToastClearance(footerHeight === undefined ? undefined : footerHeight - bottomEdge);
   useWakeLock();
   useArrowKeys(index, steps.length, setIndex);
   const step = steps[Math.min(index, steps.length - 1)];
@@ -177,7 +178,7 @@ function Cooking(props: {
               alignSelf: 'center',
               paddingHorizontal: isPhone ? 16 : 36,
               paddingTop: 14,
-              paddingBottom: 14 + insets.bottom,
+              paddingBottom: 14 + bottomEdge,
             }}
           >
             <Row gap={12}>

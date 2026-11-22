@@ -39,6 +39,7 @@ import {
   TextField,
   useBreakpoint,
   useTheme,
+  type TabSwipe,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -82,7 +83,7 @@ function sortShortLabel(sort: RestaurantListSort): string {
  * endless list; on wide screens list and detail side by side (spec 0002). Search, filters, sort
  * and the random order stay while the app runs (E14).
  */
-export function RestaurantsPanel(props: { switcher: ReactNode }) {
+export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }) {
   const router = useRouter();
   const address = usePageParams('rezepte');
   const { params } = address;
@@ -197,7 +198,13 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
   // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (restaurants.length === 0) {
     return (
-      <Screen testID="restaurants-screen" tone="essen" header={header} tabs={props.switcher}>
+      <Screen
+        testID="restaurants-screen"
+        tone="essen"
+        header={header}
+        tabs={props.switcher}
+        tabSwipe={props.swipe}
+      >
         {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="utensils"
@@ -372,6 +379,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
       tone="essen"
       header={header}
       tabs={props.switcher}
+      tabSwipe={props.swipe}
       toolbar={toolbar}
       scroll={false}
       clearFab={false}

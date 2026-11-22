@@ -48,6 +48,8 @@ import {
   TextField,
   TypingIndicator,
   ViewTabs,
+  tabSwipe,
+  useBreakpoint,
 } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -166,17 +168,20 @@ export function RecipesScreen() {
       restaurant: undefined,
     };
   };
+  const changeView = (next: FoodView) => address.replace(viewPatch(next));
   const switcher = (
     <ViewTabs
       label="Rezepte oder Restaurants"
       value={view}
-      onChange={(next) => address.replace(viewPatch(next))}
+      onChange={changeView}
       options={FOOD_VIEWS}
       testID="food-switch"
     />
   );
+  // On phones a sideways swipe changes the view (spec 0029, REQ-003).
+  const swipe = tabSwipe(FOOD_VIEWS, view, changeView);
 
-  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} />;
+  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} swipe={swipe} />;
 
   const ids = recipes.map((recipe) => recipe.id);
   const onNew = (kind: FoodNewKind) => {
@@ -215,7 +220,7 @@ export function RecipesScreen() {
   // REQ-011: no starter recipes any more).
   if (recipes.length === 0) {
     return (
-      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher}>
+      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher} tabSwipe={swipe}>
         {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="book-open"
@@ -403,6 +408,7 @@ export function RecipesScreen() {
       tone="essen"
       header={header}
       tabs={switcher}
+      tabSwipe={swipe}
       toolbar={toolbar}
       scroll={false}
       clearFab={false}

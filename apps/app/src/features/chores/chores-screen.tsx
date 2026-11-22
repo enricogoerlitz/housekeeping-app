@@ -14,6 +14,7 @@ import {
   Stack,
   Text,
   ViewTabs,
+  tabSwipe,
   toast,
   useBreakpoint,
 } from '@housekeeping/ui';
@@ -34,6 +35,12 @@ import { HistoryEventPanel, HistoryEventSheet } from './history-event-sheet';
 import { NewChoreSheet } from './new-chore-sheet';
 
 type Tab = 'upcoming' | 'all' | 'history';
+
+const TAB_OPTIONS: { value: Tab; label: string }[] = [
+  { value: 'upcoming', label: 'Anstehend' },
+  { value: 'all', label: 'Alle' },
+  { value: 'history', label: 'Verlauf' },
+];
 
 const TAB_OF_VIEW = { anstehend: 'upcoming', alle: 'all', verlauf: 'history' } as const;
 const VIEW_OF_TAB = { upcoming: 'anstehend', all: 'alle', history: 'verlauf' } as const;
@@ -256,14 +263,12 @@ export function ChoresScreen() {
           label="Ansicht"
           value={tab}
           onChange={changeTab}
-          options={[
-            { value: 'upcoming', label: 'Anstehend' },
-            { value: 'all', label: 'Alle' },
-            { value: 'history', label: 'Verlauf' },
-          ]}
+          options={TAB_OPTIONS}
           testID="chores-tab"
         />
       }
+      // On phones a sideways swipe changes the tab (spec 0029, REQ-003).
+      tabSwipe={tabSwipe(TAB_OPTIONS, tab, changeTab)}
     >
       {body}
       {openChore && !split ? (
