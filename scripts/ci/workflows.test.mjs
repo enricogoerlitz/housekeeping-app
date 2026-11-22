@@ -856,3 +856,23 @@ test('workflow files parse as YAML', () => {
   for (const { file, doc } of workflows) assert.equal(typeof doc, 'object', file);
   assert.ok(existsSync(path.join(root, '.github/dependabot.yml')));
 });
+
+describe('spec 0027, AC-043: every delivery checks that the old address redirects', () => {
+  for (const [file, variable] of [
+    ['release.yml', 'PRODUCTION_OLD_WEB_ORIGIN'],
+    ['redeploy-web.yml', 'PRODUCTION_OLD_WEB_ORIGIN'],
+    ['preview.yml', 'PREVIEW_OLD_WEB_ORIGIN'],
+  ]) {
+    test(`${file} passes --old-origin from the variable ${variable}`, () => {
+      const jobs = Object.values(byFile(file).doc.jobs);
+      const verifying = jobs.filter((job) =>
+        runs(job).some((run) => run.includes('scripts/release/verify.mjs')),
+      );
+      assert.ok(verifying.length > 0);
+      for (const job of verifying) {
+        assert.ok(runs(job).some((run) => run.includes(`--old-origin "$${variable}"`)));
+        assert.equal(job.env[variable], `\${{ vars.${variable} }}`);
+      }
+    });
+  }
+});

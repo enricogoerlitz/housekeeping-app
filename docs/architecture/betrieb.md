@@ -18,18 +18,19 @@ ST=sthousekeepingbkpger
 
 ## Stand der Einrichtung (21.11.2026)
 
-| Teil                     | Stand                                                                                                                                                                                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Zweige                   | `develop` ist der Standard-Zweig; `main` ist immer auslieferbar                                                                                                                                                                                         |
-| GitHub-Umgebungen        | `preview` (nur Zweig `develop`), `production`, `backup`, `restore-test` (je nur Zweig `main`)                                                                                                                                                           |
-| Static Web Apps          | `swa-housekeeping-app-prd` (Produktion) und `swa-housekeeping-app-preview` (Vorschau), beide Tarif Free in **East US 2** (West Europe am 21.11.2026 erneut abgelehnt; dort liegen nur App-Dateien), beide ohne Staging-Umgebungen (`Disabled`)          |
-| Web-Adresse Produktion   | `https://brave-bush-089e7a80f.6.azurestaticapps.net` (Variable `PRODUCTION_WEB_ORIGIN`); Vorschau: Variable `PREVIEW_WEB_ORIGIN`                                                                                                                        |
-| Storage für Sicherungen  | `sthousekeepingbkpger` in **Germany West Central** (West Europe abgelehnt), Container `backups`, Unveränderlichkeit 30 Tage (**noch nicht gesperrt**, siehe [unten](#unveränderlichkeit-sperren)), Lebenszyklus aus `infra/azure/backup-lifecycle.json` |
-| Eigene Rollen            | „Housekeeping SWA Deploy Token Reader“ (je an einer SWA), „Housekeeping Backup Writer“ (am Container); Vorlagen in `infra/azure/`                                                                                                                       |
-| Identitäten (Azure)      | `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`, `id-housekeeping-restore` in Germany West Central, je mit föderierten Anmeldedaten für genau eine GitHub-Umgebung                                                   |
-| Budget                   | 10 € im Monat, E-Mail bei 80 % und 100 %                                                                                                                                                                                                                |
-| GitHub-Variablen gesetzt | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID` (je Umgebung), `SWA_NAME` (je Umgebung), `SWA_RESOURCE_GROUP`, `BACKUP_STORAGE_ACCOUNT`, `PRODUCTION_WEB_ORIGIN`, `PREVIEW_WEB_ORIGIN`                                                    |
-| Noch offen               | `SUPABASE_PROJECT_REF` (je Umgebung) und Runbook B5: die Supabase-CLI ist noch nicht angemeldet, beides macht Enrico. Dazu C1 bis C11 (Secrets, Google, Push, Sicherung) und B7 (Rulesets)                                                              |
+| Teil                     | Stand                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zweige                   | `develop` ist der Standard-Zweig; `main` ist immer auslieferbar                                                                                                                                                                                                                                                                                                                    |
+| GitHub-Umgebungen        | `preview` (nur Zweig `develop`), `production`, `backup`, `restore-test` (je nur Zweig `main`)                                                                                                                                                                                                                                                                                      |
+| Static Web Apps          | `swa-housekeeping-app-prd` (Produktion) und `swa-housekeeping-app-preview` (Vorschau), beide Tarif Free in **East US 2** (West Europe am 21.11.2026 erneut abgelehnt; dort liegen nur App-Dateien), beide ohne Staging-Umgebungen (`Disabled`)                                                                                                                                     |
+| Web-Adressen             | Produktion `https://house.kuschel-nest.de` (Variable `PRODUCTION_WEB_ORIGIN`), Vorschau `https://test.house.kuschel-nest.de` (Variable `PREVIEW_WEB_ORIGIN`)                                                                                                                                                                                                                       |
+| Alte Adressen            | `https://brave-bush-089e7a80f.6.azurestaticapps.net` (Produktion) und die `azurestaticapps.net`-Adresse der Vorschau: leitet um (Variablen `PRODUCTION_OLD_WEB_ORIGIN`, `PREVIEW_OLD_WEB_ORIGIN`), siehe [Eigene Domain als Standard](#eigene-domain-als-standard)                                                                                                                 |
+| Storage für Sicherungen  | `sthousekeepingbkpger` in **Germany West Central** (West Europe abgelehnt), Container `backups`, Unveränderlichkeit 30 Tage (**noch nicht gesperrt**, siehe [unten](#unveränderlichkeit-sperren)), Lebenszyklus aus `infra/azure/backup-lifecycle.json`                                                                                                                            |
+| Eigene Rollen            | „Housekeeping SWA Deploy Token Reader“ (je an einer SWA), „Housekeeping Backup Writer“ (am Container); Vorlagen in `infra/azure/`                                                                                                                                                                                                                                                  |
+| Identitäten (Azure)      | `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`, `id-housekeeping-restore` in Germany West Central, je mit föderierten Anmeldedaten für genau eine GitHub-Umgebung                                                                                                                                                                              |
+| Budget                   | 10 € im Monat, E-Mail bei 80 % und 100 %                                                                                                                                                                                                                                                                                                                                           |
+| GitHub-Variablen gesetzt | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID` (je Umgebung), `SWA_NAME` (je Umgebung), `SWA_RESOURCE_GROUP`, `BACKUP_STORAGE_ACCOUNT`, `PRODUCTION_WEB_ORIGIN`, `PREVIEW_WEB_ORIGIN`                                                                                                                                                                               |
+| Noch offen               | `SUPABASE_PROJECT_REF` (je Umgebung) und Runbook B5: die Supabase-CLI ist noch nicht angemeldet, beides macht Enrico. Dazu C1 bis C11 (Secrets, Google, Push, Sicherung) und B7 (Rulesets). Spec 0027: eigene Domain als Standard in beiden Static Web Apps und die Variablen `PRODUCTION_OLD_WEB_ORIGIN`, `PREVIEW_OLD_WEB_ORIGIN` (Enrico, [unten](#eigene-domain-als-standard)) |
 
 ## Zweige und Schutz
 
@@ -151,6 +152,48 @@ gh run watch --exit-status "$(gh run list --workflow redeploy-web.yml --limit 1 
 
 Das Paket enthält die Supabase-Adresse von damals; nach einem Wechsel des Supabase-Projekts hilft
 das nicht (siehe Notfall, Schritt 6).
+
+## Eigene Domain als Standard
+
+Spec 0027, REQ-011: Die eigene Domain ist in beiden Static Web Apps Standard, sodass die
+`azurestaticapps.net`-Adresse dauerhaft (301 oder 308) auf dieselbe Seite der eigenen Domain
+umleitet. `az staticwebapp hostname` kennt kein „Standard setzen“; der Schritt geht im Portal und
+macht Enrico:
+
+1. Azure-Portal → `swa-housekeeping-app-prd` → „Benutzerdefinierte Domänen“ → `house.kuschel-nest.de`
+   → „Als Standard festlegen“.
+2. Dasselbe in `swa-housekeeping-app-preview` mit `test.house.kuschel-nest.de`.
+3. Die alten Adressen als GitHub-Variablen setzen (keine Secrets):
+   `gh variable set PRODUCTION_OLD_WEB_ORIGIN --env production --body https://brave-bush-089e7a80f.6.azurestaticapps.net -R "$R"`
+   und `gh variable set PREVIEW_OLD_WEB_ORIGIN --env preview --body <alte Vorschau-Adresse> -R "$R"`
+   (die alte Vorschau-Adresse steht im Portal unter „Übersicht“ → „URL“).
+4. Prüfen (gibt nur Statuszeile und Ziel aus, kein Secret):
+
+```sh
+curl -sI https://brave-bush-089e7a80f.6.azurestaticapps.net/kalender | grep -i -E '^(HTTP|location)'
+curl -sI https://house.kuschel-nest.de/ | grep -i '^HTTP'
+```
+
+Erwartet: `HTTP/2 301` oder `308` mit `location: https://house.kuschel-nest.de/kalender`, die eigene
+Domain antwortet mit `200`. Jeder Lauf von Veröffentlichung, Vorschau und erneuter
+Web-Auslieferung prüft das (`verify.mjs --old-origin`, Prüfung „Alte Adresse“); antwortet die alte
+Adresse mit `200`, ist der Lauf rot mit „Alte Adresse leitet nicht um“, fehlt die Variable, mit
+„Alte Adresse nicht angegeben“. Supabase lässt als Rücksprung schon nur die eigenen Domains zu
+(`supabase/config.toml`).
+
+## Neue Person einladen
+
+Spec 0027, REQ-002: Die Google-Anmeldung steht auf „Testen“ (Enricos Entscheidung zu X-08). Wer
+neu dazukommt, braucht deshalb zwei Einträge:
+
+1. In der App einladen: „Verwalten“ → „Haushalt & Mitglieder“ → „Einladen“.
+2. Google Cloud Console → „Google Auth Platform“ → „Zielgruppe“ → „Testnutzer“ → Adresse hinzufügen.
+   Das kann nur Enrico als Inhaber des Projekts.
+3. Danach meldet sich die Person mit Google an und nimmt die Einladung an.
+
+Fehlt der Eintrag bei Google, zeigt Google beim Anmelden seine Seite „Zugriff blockiert“ mit
+„Fehler 403: access_denied“; die App erfährt davon nichts. Späteres Eintragen genügt, die Einladung
+bleibt offen. Google erlaubt höchstens 100 Testnutzer.
 
 ## Erste Anmeldung in einer leeren Produktion
 
