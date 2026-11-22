@@ -41,13 +41,9 @@ const SORTS: { value: ActivitySort; label: string }[] = [
 ];
 
 function matches(query: string, activity: Activity): boolean {
-  return [
-    activity.name,
-    activity.description,
-    activity.placeName,
-    activity.address,
-    ...activity.tags,
-  ].some((field) => field !== undefined && fuzzyIncludes(query, field));
+  return [activity.name, activity.description, activity.placeName, activity.address].some(
+    (field) => field !== undefined && fuzzyIncludes(query, field),
+  );
 }
 
 /**
