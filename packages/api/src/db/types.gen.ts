@@ -413,6 +413,7 @@ export type Database = {
           next_assignee_id: string | null;
           next_due_on: string | null;
           recurrence: NonNullable<Json>;
+          remind_at_due_time: boolean;
           room: string | null;
           title: string;
           updated_at: string;
@@ -430,6 +431,7 @@ export type Database = {
           next_assignee_id?: string | null;
           next_due_on?: string | null;
           recurrence: NonNullable<Json>;
+          remind_at_due_time?: boolean;
           room?: string | null;
           title: string;
           updated_at?: string;
@@ -446,6 +448,7 @@ export type Database = {
           next_assignee_id?: string | null;
           next_due_on?: string | null;
           recurrence?: NonNullable<Json>;
+          remind_at_due_time?: boolean;
           room?: string | null;
           title?: string;
           updated_at?: string;

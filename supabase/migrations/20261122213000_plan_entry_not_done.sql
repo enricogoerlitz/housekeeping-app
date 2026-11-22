@@ -4,7 +4,7 @@
 -- productively used version (wave 2 rules): no expand/contract; the column keeps its grants.
 --
 -- * meal_plan_entries.not_cooked becomes not_done.
--- * apply_changes: the allowlist names not_done (otherwise unchanged from chores_wait_on_trips, spec 0026).
+-- * apply_changes: the allowlist names not_done (otherwise unchanged from remind_per_chore, spec 0027).
 -- * restore_recipe writes not_done back (otherwise unchanged from recipe_links_and_non_food);
 --   a snapshot taken before this migration restores its entries as done.
 
@@ -30,7 +30,8 @@ declare
   -- collection) is set on insert and never patched (spec 0009, E2). A collection_recipes row keeps
   -- its collection and its recipe; only servings, variant and order change (spec 0009, E4).
   -- Chore events are booked and removed only by complete_chore / remove_chore_event (spec 0011);
-  -- their day changes only by change_chore_event_day (spec 0026, REQ-007).
+  -- their day changes only by change_chore_event_day (spec 0026, REQ-007). „Erinnern“ is the chore
+  -- column remind_at_due_time (spec 0027, REQ-009).
   -- The packed state of packing items (packed, packed_at, packed_by, pack_seq) is written only by
   -- set_packing_items_packed and restore_packing_items; a packing item's name, quantity, "je Tag"
   -- and link to its Reisetasche are patched (spec 0022, REQ-009).
@@ -82,9 +83,11 @@ declare
     "feedback":         {"insert": ["id", "household_id", "kind", "text", "author_id", "screen"],
                          "patch":  ["kind", "text"], "delete": true},
     "chores":           {"insert": ["id", "household_id", "title", "room", "recurrence", "assignment", "effort",
-                                    "next_due_on", "next_assignee_id", "last_done_on", "active_months", "due_time"],
+                                    "next_due_on", "next_assignee_id", "last_done_on", "active_months", "due_time",
+                                    "remind_at_due_time"],
                          "patch":  ["title", "room", "recurrence", "assignment", "effort", "next_due_on",
-                                    "next_assignee_id", "last_done_on", "active_months", "due_time"], "delete": true},
+                                    "next_assignee_id", "last_done_on", "active_months", "due_time",
+                                    "remind_at_due_time"], "delete": true},
     "chore_events":     {"insert": [],
                          "patch":  ["chore_id", "done_by"], "delete": false},
     "meal_plan_entries": {"insert": ["id", "household_id", "date", "slot_id", "kind", "recipe_id", "restaurant_id",

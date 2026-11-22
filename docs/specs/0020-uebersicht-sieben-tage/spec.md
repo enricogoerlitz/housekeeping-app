@@ -303,7 +303,7 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 - [x] 8. `not_cooked` → `not_done` (`db-change`-Skill), pgTAP-Negativtests; `/security-check`
 - [x] 9. Toast mit „Rückgängig“, Schalter im Eintragsfenster (mit Spec 0021 abstimmen), „Letztes Mal
       ★ n“, „Passt so“ (AC-036–AC-042)
-- [x] Nachweis (22.11.2026): `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 46
-      Dateien/2475 Tests grün (über den DB-Lock), `pnpm test:integration` 17 grün, e2e
+- [x] Nachweis (22.11.2026): `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 47
+      Dateien/2492 Tests grün (über den DB-Lock), `pnpm test:integration` 17 grün, e2e
       (`rundgang-uebersicht.spec.ts` neu) nur typgeprüft; `/security-check`: 0 kritisch/hoch, der
       mittlere Befund „ungültiger Vorlauf legt den Takt lahm“ ist behoben; `/ui-verify` in 0028
