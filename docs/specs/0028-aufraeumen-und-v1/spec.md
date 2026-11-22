@@ -143,10 +143,28 @@ schreiben. Offline: offline lesend; der alte Stand im Gerät wird verworfen.
 ## Daten
 
 Entfällt in der Produktion: alle Haushaltsdaten und Fotos aus v2026.11.1 (Testdaten). Die
-gesammelten „Entfällt“-Listen der Specs 0019–0027 (Datenbank und Code) stehen beim Bau in
-`tmp/spec-welle-2/reports.md` und werden hier vor Task 2 als Liste eingetragen. Personenbezogene
-Daten: Die Konten in `auth.users` bleiben (Entscheidung 3); Push-Abos des alten Stands werden mit
-den Haushalten gelöscht und beim nächsten Einschalten neu angelegt.
+gesammelten „Entfällt“-Listen der Specs 0019–0027 (Stand der Planung; maßgeblich bleibt der
+Abschnitt „Daten“ jeder Spec):
+
+- 0019: `focusRing`, Stores des Listen-Moduls, alte Parameternamen (`view`, `rid`, …).
+- 0020: `not_cooked` (→ `not_done`), `weekNav`, `dayTile`, `CalendarButton`, doppelte
+  Kennzeichen-Tabellen.
+- 0021: `remind_minutes_before`, `reservation_reminders_enabled`,
+  `reservation_reminder_candidates`, Art `reservation_reminder`, `note_only_activity`; Code
+  `REMIND_CHOICES`, `setReservation`, `too-far`.
+- 0022: Tabelle `absences` (→ `trips`, `trip_members`), `packing_list_bags_recalc`,
+  `planAbsenceWrite` samt Umhängen der Packliste, Route `/kalender/reise/<id>`, `TripScreen`.
+- 0023: `recipes.source`, Starter-Rezepte in Code, Daten und Tests, doppeltes „Neu“-Menü
+  (`recipes-screen.tsx`, `restaurants-panel.tsx`).
+- 0024: `activities.tags`, direktes Löschrecht auf Restaurants und Aktivitäten,
+  `recipe_deletions` (→ `private.deletions`); Code `ManageEntry.pathPrefix`, `von=verwalten`,
+  alte Kalender-Routen der Aktivitäten, Inline-Notizfeld.
+- 0025: `recurring`, `searchArticles`, `QUICK_ADD`, zweiter Bereichswähler, Zweig „Abhaken
+  zurücknehmen und zusammenführen“.
+- 0026: siehe dort unter „Daten → Entfällt“.
+- 0027: `household_invitations.accepted_at`, Wieder-Öffnen in `invite_member`, Feedback-Grants
+  auf `status`/`reason`/`spec_ref`, `parseTimeInput` mit `TIME_ERRORS`, `timeFieldA11yValue`,
+  `kindsSectionTitle`.
 
 ## Risiken
 
@@ -161,7 +179,7 @@ den Haushalten gelöscht und beim nächsten Einschalten neu angelegt.
 
 ## Umsetzung
 
-- [ ] 1. Liste „Entfällt“ aus 0019–0027 hier eintragen (AC-004)
+- [x] 1. Liste „Entfällt“ aus 0019–0027 hier eintragen (AC-004; beim Bau gegen die Specs prüfen)
 - [ ] 2. Tote Objekte in Datenbank und Code entfernen (AC-004, AC-005, AC-007)
 - [ ] 3. Code-Review, Befunde beheben (AC-006, AC-008)
 - [ ] 4. Migrationen zu neuer Basis zusammenfassen, ADR-0012-Nachtrag, Regeln anpassen (AC-001–AC-003)

@@ -144,4 +144,4 @@ permissions.
   trailer and the PR description.
 - `main` only receives the release PR from `develop` and PRs from `hotfix/<slug>` branched off
   `main`, both as merge commits. Never push to, open a PR to or merge into `main` yourself.
-- Never push or open a pull request unless asked.
+- Push and open PRs to `develop` for your own work; squash-merge them yourself once CI is green.

@@ -35,3 +35,38 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0026](0026-haushaltsaufgaben-und-reisen/spec.md)   | Haushaltsaufgaben: Termine, Später, Nachtragen und Reisen              | freigegeben |
 | [0027](0027-verwalten-und-konto/spec.md)            | Verwalten und Konto: Einladungen, Profil, Haushalt, Benachrichtigungen | freigegeben |
 | [0028](0028-aufraeumen-und-v1/spec.md)              | Aufräumen und erste produktive Version                                 | freigegeben |
+
+## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
+
+Stand 22.11.2026: alle zehn Specs freigegeben, noch nichts gebaut. Quelle der Wünsche:
+`docs/product/review-enrico-2026-11-22.md` (ER-01–ER-36) und
+`docs/product/review-logik-und-bedienung.md`. Bei Widerspruch gilt Enricos Review.
+
+**Reihenfolge** (Gruppen parallel, je Spec ein Branch `feat/NNNN-slug` und eine PR):
+
+1. 0019 (Adress-Parameter, ui-Grundlagen) · 0022 (zuerst die Umbenennung `absences` → `trips`,
+   `trip_members`) · 0027 ohne REQ-009 (zuerst die Uhrzeit-Auswahl „Stunde“/„Minute“).
+2. 0021 (nach 0019, 0022 und der Uhrzeit-Auswahl) · 0023 (nach 0019; legt `private.is_web_url`,
+   den gemeinsamen Lösch-Hinweis und das gemeinsame Einplanen-Fenster an) · 0025 (nach 0019; ihr
+   Listen-Schema vor 0021 REQ-007 mergen).
+3. 0020 (nach 0021) · 0024 (nach 0021 und 0023) · 0026 (nach 0022; `daily_summary_body` nach
+   0020/0021).
+4. 0027 REQ-009 (nach 0026), danach 0028.
+
+**Nacheinander mergen**, weil mehrere Specs dieselben Stellen ändern: die Positivliste in
+`apply_changes`, `private.daily_summary_body`, `chore_reminder_candidates`,
+`add-entry-sheet.tsx`/`entry-sheet.tsx`, `plan-recipe-sheet.tsx`, `kinds-section.tsx`,
+`CACHE_VERSION`, die Parameterliste in `packages/core`.
+
+**Regeln dieser Welle**
+
+- Erste produktiv genutzte Version: sauberes Zielschema ohne Rücksicht auf v2026.11.1, keine
+  Übergangslösungen, keine Weiterleitungen alter Adressen. Neue Migrationsdateien sind erlaubt;
+  0028 fasst sie zu einer neuen Basis zusammen und setzt die Produktion zu einem von Enrico
+  bestätigten Zeitpunkt frisch auf.
+- Je Spec: Unit- und pgTAP-Tests rot zuerst, `pnpm format:check && pnpm check && pnpm build:web`.
+  Neue e2e-Tests nur typprüfen; die volle e2e-Suite läuft einmal in 0028.
+- `/security-check` und `spec-auditor` nur bei kritischen Pfaden; `/ui-verify` einmal in 0028.
+- Lokale Datenbank nur mit `pnpm db:reset` zurücksetzen (lädt `DEV_OWNER_EMAIL` wieder ein).
+- Enricos nächstes Review kommt erst, wenn die Welle in der Vorschau läuft; die Vorschau startet
+  nur von Hand (`gh workflow run preview.yml --ref develop`).
