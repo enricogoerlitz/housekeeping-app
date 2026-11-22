@@ -1,5 +1,6 @@
 import { moveInOrder } from './areas';
-import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
+import { daysBetween, formatShortDate, weekdayShort } from './dates';
+import { overviewSection } from './overview';
 import { normalizeText } from './text';
 import { stripeText, tripEndLabel, type TripStripe } from './trips';
 import type {
@@ -600,8 +601,9 @@ export interface PackingCard {
 
 /**
  * The cards "Reisetasche" of the Übersicht (D33, decision 15): one per trip with at least one
- * bag, when the week (Mo–So) of the shown day holds a day of it or it starts 1 to 7 days after
- * the shown day; earliest first. "beginnt in n Tagen" counts from today (spec 0018, AC-020).
+ * bag, when the Abschnitt of the shown day (spec 0020, REQ-010) holds a day of it or it starts 1
+ * to 7 days after the shown day; earliest first. "beginnt in n Tagen" counts from today (spec
+ * 0018, AC-020).
  */
 export function packingCards(input: {
   shownDay: ISODate;
@@ -610,13 +612,12 @@ export function packingCards(input: {
   listBags: readonly PackingListBag[];
   items: readonly PackingItem[];
 }): PackingCard[] {
-  const monday = startOfWeek(input.shownDay);
-  const sunday = addDays(monday, 6);
+  const section = overviewSection(input.shownDay, input.today);
   return [...input.trips]
     .filter((trip) => {
       const ahead = daysBetween(input.shownDay, trip.from);
-      const inWeek = trip.from <= sunday && trip.to >= monday;
-      return inWeek || (ahead >= 1 && ahead <= 7);
+      const inSection = trip.from <= section.to && trip.to >= section.from;
+      return inSection || (ahead >= 1 && ahead <= 7);
     })
     .sort(
       (a, b) =>

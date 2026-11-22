@@ -1,16 +1,17 @@
 import { z } from 'zod';
 
 import { stripesOn, tripEndLabel, tripStripes } from './trips';
-import {
-  dayKinds,
-  entryKindRole,
-  monthName,
-  overflow,
-  weekRangeLabel,
-  type KindRole,
-} from './calendar';
+import { dayKinds, entryKindRole, monthName, type KindRole } from './calendar';
 import { choreBucket, flexibleProgress } from './chores';
-import { addDays, isoWeekNumber, parseISODate, startOfWeek, weekdayLong } from './dates';
+import {
+  addDays,
+  daysBetween,
+  formatLongDate,
+  formatShortDate,
+  parseISODate,
+  weekdayLong,
+  weekdayShort,
+} from './dates';
 import { householdRow, type HouseholdRowItem } from './household-row';
 import { entriesForDay } from './meal-plan';
 import type { Chore, ChoreEvent, Id, ISODate, MealPlanEntry, Member, Recipe, Trip } from './types';
@@ -37,22 +38,65 @@ export function overviewTitle(shown: ISODate, today: ISODate): string {
   return `${weekday}, ${dayWithMonth(shown, today)}`;
 }
 
-/** ‹ › go a whole week back or on and keep the weekday (Offene Frage 2 a, AC-003). */
-export function shiftShownDay(shown: ISODate, weeks: number): ISODate {
-  return addDays(shown, 7 * weeks);
+// ---------- Seven days from yesterday (spec 0020, REQ-001, REQ-002) ----------
+
+/** Days of a section of the Tagesleiste and how far ‹ › go. */
+export const OVERVIEW_DAYS = 7;
+
+export interface OverviewSection {
+  from: ISODate;
+  to: ISODate;
+  /** The seven days in order. */
+  dates: ISODate[];
 }
 
 /**
- * What stands between ‹ and ›: "Diese Woche · KW 47" in the week of today, otherwise the
- * week's range ("KW 49 · 30. Nov – 6. Dez", for the screen reader). The button "Heute" takes
- * the middle as soon as any other day is shown (AC-002, AC-062).
+ * The Abschnitt of the shown day (AC-001, AC-005, AC-006): the sections are laid from yesterday
+ * on in steps of seven days, so today's section runs from yesterday to today + 5 and every other
+ * one keeps that rhythm.
  */
-export function weekNav(shown: ISODate, today: ISODate): { label: string; showToday: boolean } {
-  const label =
-    startOfWeek(shown) === startOfWeek(today)
-      ? `Diese Woche · KW ${isoWeekNumber(shown)}`
-      : weekRangeLabel(shown);
-  return { label, showToday: shown !== today };
+export function overviewSection(shown: ISODate, today: ISODate): OverviewSection {
+  const anchor = addDays(today, -1);
+  const steps = Math.floor(daysBetween(anchor, shown) / OVERVIEW_DAYS);
+  const from = addDays(anchor, steps * OVERVIEW_DAYS);
+  const dates = Array.from({ length: OVERVIEW_DAYS }, (_, index) => addDays(from, index));
+  return { from, to: addDays(from, OVERVIEW_DAYS - 1), dates };
+}
+
+/** ‹ › move section and shown day by seven days (AC-002, AC-003). */
+export function shiftOverview(shown: ISODate, steps: number): ISODate {
+  return addDays(shown, OVERVIEW_DAYS * steps);
+}
+
+function isInTodaysSection(shown: ISODate, today: ISODate): boolean {
+  return overviewSection(shown, today).from === overviewSection(today, today).from;
+}
+
+/**
+ * What stands between ‹ and › (AC-007, AC-011): "Sa 21.11. – Fr 27.11." without week number and
+ * year, read out as "Samstag, 21. November, bis Freitag, 27. November". "Heute" can be tapped only
+ * outside today's section (Entscheidung 1).
+ */
+export function overviewNav(
+  shown: ISODate,
+  today: ISODate,
+): { label: string; a11yLabel: string; todayActive: boolean } {
+  const { from, to } = overviewSection(shown, today);
+  return {
+    label: `${weekdayShort(from)} ${formatShortDate(from)} – ${weekdayShort(to)} ${formatShortDate(to)}`,
+    a11yLabel: `${formatLongDate(from)}, bis ${formatLongDate(to)}`,
+    todayActive: !isInTodaysSection(shown, today),
+  };
+}
+
+/**
+ * The one line under the title (AC-007, AC-008, Entscheidung 2): the greeting in today's section,
+ * whichever day of it is chosen; outside "In 7 Tagen" / "Vor 8 Tagen".
+ */
+export function overviewSubline(shown: ISODate, today: ISODate, greeting: string): string {
+  if (isInTodaysSection(shown, today)) return greeting;
+  const days = daysBetween(today, shown);
+  return days > 0 ? `In ${days} Tagen` : `Vor ${-days} Tagen`;
 }
 
 /**
@@ -87,14 +131,54 @@ export function dayDots(
   );
 }
 
-/** A desktop tile: the first entry of the day in the day's order and how many more (AC-006). */
-export function dayTile(
+/**
+ * Rank of an entry in a tile (REQ-003, Entscheidung 4): first the meals proper (collection,
+ * recipe, restaurant), then leftovers and free text, then activities; lower is more important.
+ */
+function tileGroup(
+  entry: MealPlanEntry,
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): { group: number; inGroup: number } {
+  switch (entry.kind) {
+    case 'recipe':
+      return { group: 0, inGroup: entryKindRole(entry, recipesById) === 'collection' ? 0 : 1 };
+    case 'restaurant':
+      return { group: 0, inGroup: 2 };
+    case 'leftovers':
+      return { group: 1, inGroup: 0 };
+    case 'text':
+      return { group: 1, inGroup: 1 };
+    case 'activity':
+      return { group: 2, inGroup: 0 };
+  }
+}
+
+/**
+ * The desktop tile (REQ-003, AC-012–AC-016): the most important entry of the day and how many
+ * others it has. Within a group the later Tageszeit wins, then the kind, then the calendar order
+ * of the Tageszeit. Chores, trips and reserved entries are no plan entries of the day.
+ */
+export function tileEntry(
   entries: MealPlanEntry[],
   date: ISODate,
   slotOrder: Id[],
-): { first: MealPlanEntry | undefined; more: number } {
-  const { shown, more } = overflow(entriesForDay(entries, date, slotOrder), 1);
-  return { first: shown[0], more };
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): { entry: MealPlanEntry | undefined; more: number } {
+  const ofDay = entriesForDay(entries, date, slotOrder);
+  // Calendar order of the day, so equal ranks keep it.
+  const position = new Map(ofDay.map((entry, index) => [entry.id, index]));
+  const slotRank = (entry: MealPlanEntry) => slotOrder.indexOf(entry.slotId);
+  const ranked = [...ofDay].sort((a, b) => {
+    const ra = tileGroup(a, recipesById);
+    const rb = tileGroup(b, recipesById);
+    return (
+      ra.group - rb.group ||
+      slotRank(b) - slotRank(a) ||
+      ra.inGroup - rb.inGroup ||
+      (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0)
+    );
+  });
+  return { entry: ranked[0], more: Math.max(0, ofDay.length - 1) };
 }
 
 /** From this many entries the planned section links "Alle n ›" into the calendar (AC-011). */
