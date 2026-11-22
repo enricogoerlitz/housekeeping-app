@@ -259,6 +259,22 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
     das Entfernen der letzten Person wird abgelehnt, außer sie hat den Haushalt verlassen (dann
     geht die Reise samt Packliste). Bestehende Abwesenheiten werden in der Migration zu Reisen mit
     derselben id.
+13. **Beim Bau:** Das Reise-Fenster steht als `?reise=<id>` in der Adresse der Seite, auf der es
+    offen ist (Spec 0019 ist auf diesem Branch noch nicht gebaut; beim Zusammenführen auf deren
+    Parameter-Schema umstellen).
+14. **Beim Bau:** „Verlängern oder Hinzunehmen bietet nur die jetzt betroffenen Gerichte an“ heißt:
+    nur Person-Tag-Paare, die vor dem Speichern nicht auf der Reise lagen; einmal mit „So lassen“
+    abgelehnte Gerichte werden bei einer bloßen Notiz-Änderung nicht erneut angeboten.
+15. **Beim Bau:** Portionen sinken nur bei Rezepten und Sammlungen (wie 0021 REQ-006); Freitext und
+    Reste behalten ihre Portionen, Restaurants haben keine. Die Neuberechnung der Einkaufsliste
+    (0021 REQ-007) ist in `core/trip-meals.ts` (`recomputeEntryContributions`) gebaut; 0021 soll
+    sie beim Zusammenführen übernehmen oder ersetzen.
+16. **Beim Bau:** Ein Tipp auf ein Packstück öffnet sein Fenster, das Kästchen packt (`CheckRow`
+    `onPress`); zusätzlich ⋯ → „Bearbeiten“. `packing_items` bekommt neben `name, quantity, per_day`
+    auch Update auf `bag_item_id, from_bag` („… in der Reisetasche speichern“ verknüpft das
+    Packstück); die Gepackt-Spalten bleiben gesperrt.
+17. **Beim Bau:** „Übernehmen“ ist die Domain-Op `adopt_bag_changes` von `apply_changes`; ihr
+    „Rückgängig“ ist dieselbe Op umgekehrt (ein inzwischen Gepacktes bleibt auch dabei unberührt).
 
 ## Daten
 
@@ -279,22 +295,34 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 
 ## Risiken
 
-| Risiko                                               | Gegenmaßnahme                                                  | Test                                    |
-| ---------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------- |
-| Fremder Haushalt hängt Person/Tasche an fremde Reise | zusammengesetzte FKs mit `household_id`, RLS                   | pgTAP `trips.test.sql` (AC-042)         |
-| Update-Grant öffnet Gepackt-Spalten                  | Column-Grant nur `name, quantity, per_day`                     | pgTAP (AC-043)                          |
-| Offline-Pack-Einträge laufen ins Leere nach Umbau    | Warteschlange unverändert, fehlende Packstücke still verworfen | core `store-queue.test.ts`, api backend |
-| Übernehmen überschreibt Gepacktes                    | Server prüft `packed` beim Ausführen in einer Transaktion      | pgTAP (AC-038)                          |
-| Rausnehmen halb ausgeführt                           | ein Aufruf für Plan und Liste, alles oder nichts               | api backend (AC-025)                    |
-| Letzte Person geht, Reise bleibt ohne Person         | Trigger löscht Reise samt Packliste, Tombstones                | pgTAP (AC-044)                          |
+| Risiko                                               | Gegenmaßnahme                                                  | Test                                                                               |
+| ---------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Fremder Haushalt hängt Person/Tasche an fremde Reise | zusammengesetzte FKs mit `household_id`, RLS                   | pgTAP `trips.test.sql`, `domain_references` (AC-042)                               |
+| Update-Grant öffnet Gepackt-Spalten                  | Column-Grant nur `name, quantity, per_day`                     | pgTAP `packing_list_edit.test.sql`, `trips.test.sql` (AC-043)                      |
+| Offline-Pack-Einträge laufen ins Leere nach Umbau    | Warteschlange unverändert, fehlende Packstücke still verworfen | core `store-queue.test.ts`, api `backend.test.ts` (AC-024/AC-040 „Reise gelöscht“) |
+| Übernehmen überschreibt Gepacktes                    | Server prüft `packed` beim Ausführen in einer Transaktion      | pgTAP `packing_list_edit.test.sql`, api `packing-edit.backend.test.ts` (AC-038)    |
+| Rausnehmen halb ausgeführt                           | ein Aufruf für Plan und Liste, alles oder nichts               | api `commands-trips.backend.test.ts` (AC-025)                                      |
+| Letzte Person geht, Reise bleibt ohne Person         | Trigger löscht Reise samt Packliste, Tombstones                | pgTAP `trips.test.sql`, `packing_tables.test.sql` (AC-044)                         |
 
 ## Umsetzung
 
-- [ ] 1. Migration `trips`, `trip_members`, Packlisten-Spalten, `is_silent`, `apply_changes`; pgTAP (AC-041–AC-045)
-- [ ] 2. core: `trips.ts` (Umbenennung, Streifen je Reise), `parsePackingLine` mit „je Tag“ (AC-031–AC-033), Rausnehmen-Plan (AC-021–AC-027), Abweichung Reisetasche (AC-036–AC-038)
-- [ ] 3. api: Befehle Reise speichern/ändern/löschen, Rausnehmen, Packstück ändern, Übernehmen; Umbenennung (AC-008–AC-018, AC-028–AC-030)
-- [ ] 4. app: Reise-Fenster ersetzt Seite und `AbsenceSheet`; Öffnen von allen Stellen; Route entfernt (AC-001–AC-018)
-- [ ] 5. app: K-02-Dialog (AC-021–AC-027); Packstück-Fenster, „Neue Reisetasche“ (AC-028–AC-035)
-- [ ] 6. app: „Reisen“-Zeilen, Hinweis auf Reisetasche, „Kommende Packlisten“ (AC-019, AC-020, AC-036–AC-040)
-- [ ] 7. Aufräumen nach „Entfällt“, Prüfskript (AC-041); `/security-check`
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] 1. Migration `trips`, `trip_members`, Packlisten-Spalten, `is_silent`, `apply_changes`; pgTAP (AC-041–AC-045)
+- [x] 2. core: `trips.ts` (Umbenennung, Streifen je Reise), `parsePackingLine` mit „je Tag“ (AC-031–AC-033), Rausnehmen-Plan (AC-021–AC-027), Abweichung Reisetasche (AC-036–AC-038)
+- [x] 3. api: Befehle Reise speichern/ändern/löschen, Rausnehmen, Packstück ändern, Übernehmen; Umbenennung (AC-008–AC-018, AC-028–AC-030)
+- [x] 4. app: Reise-Fenster ersetzt Seite und `AbsenceSheet`; Öffnen von allen Stellen; Route entfernt (AC-001–AC-018)
+- [x] 5. app: K-02-Dialog (AC-021–AC-027); Packstück-Fenster, „Neue Reisetasche“ (AC-028–AC-035)
+- [x] 6. app: „Reisen“-Zeilen, Hinweis auf Reisetasche, „Kommende Packlisten“ (AC-019, AC-020, AC-036–AC-040)
+- [x] 7. Aufräumen nach „Entfällt“, Prüfskript (AC-041); `/security-check`
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+
+### Nachweis (22.11.2026)
+
+- `pnpm format:check && pnpm check` grün (core 1244, api 834 Tests, Skript-Test AC-041), `pnpm
+build:web` grün, `pnpm exec supabase test db` über die Sperre: 37 Dateien, 2145 Tests, PASS;
+  e2e nur typgeprüft (`rundgang-reise-fenster.spec.ts` neu).
+- Security-Check (security-auditor) auf den Migrationen und Befehlen: keine Befunde, zwei Hinweise
+  (`restore_packing_items` schreibt wie bisher den Packzustand nach ADR-0013;
+  `adopt_bag_changes` ist für `authenticated` ausführbar, weil `apply_changes` als Invoker läuft).
+- Offen: ✕ oben links auf dem Handy (AC-002, das gemeinsame `Sheet` hat ✕ rechts); der Satz zur
+  Wirkung unter „Wer?“ kommt mit Spec 0026; die übrigen e2e-Rundgänge (Reisetaschen, Plan,
+  Smoke) sind nur auf die neuen Test-IDs gebracht und laufen erst in 0028.
