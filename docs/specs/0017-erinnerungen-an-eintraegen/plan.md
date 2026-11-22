@@ -42,6 +42,13 @@ Benachrichtigungen, Planer, neue Migration nach der ersten Veröffentlichung.
 at, text} | null)`, Erinnerung als optionales Feld in `addPlanEntry`, `movePlanEntry(id, null)`
    leert sie im selben Patch. `CACHE_VERSION` 8 → 9 (neue Spalten und Default).
 5. **Zeitzone:** Alle Rechnungen in `households.timezone`; die Spalte kommt read-only in den Cache.
+6. **Bei der Umsetzung entschieden (22.11.2026):**
+   - „Am Vortag“ ist bei einem Eintrag von heute ausgegraut mit „Liegt in der Vergangenheit“.
+   - Die Formulare „Anlegen und einplanen“ (neues Rezept, Restaurant, Aktivität) haben keinen Block
+     „Erinnern“; REQ-001 nennt nur den zweiten Schritt des Hinzufügen-Fensters. Die Erinnerung lässt
+     sich danach im Eintragsfenster setzen (REQ-002).
+   - `setEntryReminder` wartet auf die Bestätigung des Servers wie `saveEntryFields`, damit „Fertig“
+     bei einer Ablehnung offen bleibt.
 
 ## Aufgaben
 
