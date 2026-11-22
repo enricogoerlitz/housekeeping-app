@@ -485,9 +485,13 @@ describe('preview.yml (Task 7)', () => {
   const preview = byFile('preview.yml');
   const jobs = jobsOf('preview.yml');
 
-  test('AC-069, AC-071: runs on develop (push and by hand), never on a pull request', () => {
-    assert.deepEqual(Object.keys(preview.doc.on).sort(), ['push', 'workflow_dispatch']);
-    assert.deepEqual(preview.doc.on.push.branches, ['develop']);
+  test('AC-069, AC-071: runs only by hand (changed 22.11.2026), never on a push or pull request', () => {
+    assert.deepEqual(Object.keys(preview.doc.on), ['workflow_dispatch']);
+  });
+
+  test('AC-069: a run by hand from another branch than develop stops before anything is delivered', () => {
+    // The environment "preview" only allows develop as well; this stops earlier and visibly.
+    assert.equal(jobs.checks.if, "github.ref == 'refs/heads/develop'");
   });
 
   test('AC-069: one run at a time, a waiting run is replaced by a newer push', () => {

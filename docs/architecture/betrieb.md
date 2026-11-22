@@ -80,9 +80,16 @@ gh pr create --base develop --title "feat: …"   # Beschreibung mit „Spec: NN
 ```
 
 Nach grünen Checks mit **„Squash and merge“** zusammenführen. Die Oberfläche schlägt auf `develop`
-die zuletzt gewählte Art vor; für Feature-PRs immer Squash wählen. Danach baut `preview.yml` die
-Vorschau neu auf (frische Beispieldaten, kein Testkonto); kurz darauf zeigt die Vorschau-Adresse den
-neuen Stand.
+die zuletzt gewählte Art vor; für Feature-PRs immer Squash wählen. `develop` sammelt die Arbeit; die Vorschau startet
+nicht mehr von selbst (seit 22.11.2026). Wer den Stand von `develop` auf
+https://test.house.kuschel-nest.de sehen will, startet sie von Hand:
+
+```sh
+gh workflow run preview.yml --ref develop
+```
+
+Sie baut die Vorschau neu auf (frische Beispieldaten, kein Testkonto). Zum Ausprobieren reicht oft
+der lokale Stand (`pnpm dev`).
 
 ### Freigabe (Veröffentlichung)
 
@@ -330,7 +337,7 @@ bewusst akzeptiert und begrenzt: nur die zwei Organisationen, 90 Tage Laufzeit, 
 Umgebungen `preview` und `production`.
 
 **Abweichung vom Runbook C3:** Dort waren je Umgebung ein eigenes, eingeschränktes Token vorgesehen.
-Die Vorschau läuft bei jedem Merge nach `develop` und hat damit dieselben Rechte auf die Produktion.
+Die Vorschau läuft auf `develop` und hat damit dieselben Rechte auf die Produktion.
 Am 22.11.2026 nach der ersten Veröffentlichung bestätigt: Es bleibt bei einem Token (Entscheidung
 Enrico).
 
@@ -353,11 +360,11 @@ fehlt“ ab.
 
 ## Ablaufdaten und regelmäßige Aufgaben
 
-| Was                    | Wann                                         | Was tun                                                                           |
-| ---------------------- | -------------------------------------------- | --------------------------------------------------------------------------------- |
-| Supabase-Zugangstokens | 90 Tage nach Anlage (im Kalender vorgemerkt) | Schlüsselwechsel, siehe oben                                                      |
-| Zeitpläne in GitHub    | nach 60 Tagen ohne Aktivität im Repo         | [Zeitpläne wieder einschalten](#zeitpläne-wieder-einschalten)                     |
-| Vorschau-Projekt       | pausiert nach 7 Tagen ohne Vorschau-Lauf     | Dashboard → „Restore project“; der nächste Lauf auf `develop` meldet es sonst rot |
-| Wiederherstellungstest | jeden Monatsersten                           | rot → Meldung lesen; „Sicherung zu alt“ heißt meist: Zeitplan aus                 |
-| Azure-Budget           | E-Mail bei 8 € und 10 €                      | Kosten im Portal prüfen (Cost Management)                                         |
-| Dependabot-PRs         | wöchentlich                                  | Diff der Action lesen, dann Squash nach `develop`                                 |
+| Was                    | Wann                                         | Was tun                                                                      |
+| ---------------------- | -------------------------------------------- | ---------------------------------------------------------------------------- |
+| Supabase-Zugangstokens | 90 Tage nach Anlage (im Kalender vorgemerkt) | Schlüsselwechsel, siehe oben                                                 |
+| Zeitpläne in GitHub    | nach 60 Tagen ohne Aktivität im Repo         | [Zeitpläne wieder einschalten](#zeitpläne-wieder-einschalten)                |
+| Vorschau-Projekt       | pausiert nach 7 Tagen ohne Vorschau-Lauf     | Dashboard → „Restore project“; der nächste Vorschau-Lauf meldet es sonst rot |
+| Wiederherstellungstest | jeden Monatsersten                           | rot → Meldung lesen; „Sicherung zu alt“ heißt meist: Zeitplan aus            |
+| Azure-Budget           | E-Mail bei 8 € und 10 €                      | Kosten im Portal prüfen (Cost Management)                                    |
+| Dependabot-PRs         | wöchentlich                                  | Diff der Action lesen, dann Squash nach `develop`                            |
