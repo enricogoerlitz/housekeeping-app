@@ -1,6 +1,6 @@
 import { useNotificationSettings } from '@housekeeping/api';
 import {
-  choreTimeHint,
+  choreRemindHint,
   draftNextAssignee,
   draftNextDueOn,
   hasNextDueField,
@@ -342,42 +342,73 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
 }
 
 /**
- * „Uhrzeit“ of a chore (spec 0013, REQ-007; chosen from hour and minute, spec 0027 REQ-007). It
- * is not part of the core draft; the sheets add it to the chore's fields.
+ * „Uhrzeit“ of a chore (spec 0013, REQ-007; chosen from hour and minute, spec 0027 REQ-007) with
+ * its switch „Erinnern“ (spec 0027, REQ-009). It is not part of the core draft; the sheets add it
+ * to the chore's fields.
  */
 export interface ChoreTime {
   value: TimeOfDay | undefined;
   set: (time: TimeOfDay | undefined) => void;
+  remind: boolean;
+  setRemind: (remind: boolean) => void;
   reset: () => void;
 }
 
-export function useChoreTime(initial: TimeOfDay | undefined): ChoreTime {
-  const [value, set] = useState(initial);
-  return { value, set, reset: () => set(initial) };
+export function useChoreTime(initial: TimeOfDay | undefined, initialRemind = true): ChoreTime {
+  const [value, setValue] = useState(initial);
+  const [remind, setRemind] = useState(initialRemind);
+  return {
+    value,
+    // Without a time „Erinnern“ is on, so a time chosen again reminds (AC-038).
+    set: (time) => {
+      setValue(time);
+      if (time === undefined) setRemind(true);
+    },
+    remind,
+    setRemind,
+    reset: () => {
+      setValue(initial);
+      setRemind(initialRemind);
+    },
+  };
 }
 
 /**
- * The field „Uhrzeit (optional)“ with ✕ and, with a time, whether the own setting „Aufgaben mit
- * Uhrzeit“ reminds (AC-022, Offene Frage 3 d). Offline it is greyed out with the hint.
+ * The field „Uhrzeit (optional)“ with ✕ and, with a time, the switch „Erinnern“ for the whole
+ * household; its hint says whether it reminds and whether the own setting „Aufgaben mit Uhrzeit“
+ * keeps it from you (AC-035, AC-037). Offline both are greyed out with the hint.
  */
 function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
   const settings = useNotificationSettings();
   const { time } = props;
+  const offline = props.offlineHint !== undefined;
   // Without the settings row yet, the server's default counts: chore reminders are on (D36).
-  const reminds = settings?.choreRemindersEnabled ?? true;
+  const ownOn = settings?.choreRemindersEnabled ?? true;
   return (
-    <TimeField
-      label="Uhrzeit (optional)"
-      accessibilityName="Uhrzeit"
-      {...TIME_FIELD_WORDS}
-      value={time.value}
-      onChange={time.set}
-      optional
-      clearLabel="Uhrzeit entfernen"
-      hint={props.offlineHint ?? (time.value ? choreTimeHint(reminds) : undefined)}
-      disabled={props.offlineHint !== undefined}
-      testID="chore-due-time"
-    />
+    <Stack gap={4}>
+      <TimeField
+        label="Uhrzeit (optional)"
+        accessibilityName="Uhrzeit"
+        {...TIME_FIELD_WORDS}
+        value={time.value}
+        onChange={time.set}
+        optional
+        clearLabel="Uhrzeit entfernen"
+        hint={props.offlineHint}
+        disabled={offline}
+        testID="chore-due-time"
+      />
+      {time.value ? (
+        <SwitchRow
+          label="Erinnern"
+          description={choreRemindHint(time.remind, ownOn)}
+          value={time.remind}
+          onValueChange={time.setRemind}
+          disabled={offline}
+          testID="chore-remind"
+        />
+      ) : null}
+    </Stack>
   );
 }
 

@@ -1,5 +1,6 @@
 import {
   accessToken,
+  chooseTime,
   createTestHousehold,
   expect,
   goOffline,
@@ -20,7 +21,7 @@ import { seedIds } from './seed-ids';
 // Spec 0027 — "Verwalten und Konto": withdrawing an invitation and the Google hint (REQ-001,
 // REQ-002), the own profile (REQ-003), renaming and deleting a household (REQ-004, REQ-005), the
 // own feedback (REQ-006), the household of "Benachrichtigungen" (REQ-008) and "Jetzt abgleichen"
-// (REQ-010). Each writing test makes its own household; the server rules are pgTAP's
+// (REQ-010), „Erinnern“ per chore (REQ-009). Each writing test makes its own household; the server rules are pgTAP's
 // (supabase/tests/manage_household.test.sql). Runs once in spec 0028.
 
 only('phone');
@@ -158,4 +159,23 @@ test('AC-039, AC-041: "Jetzt abgleichen" is a button; offline it is greyed out',
   await expect(row).toContainText('Zuletzt abgeglichen: heute');
   await goOffline(page);
   await expect(row).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('AC-035, AC-038: „Erinnern“ comes with a time; off it only shows the time; a new time is on again', async ({
+  page,
+}) => {
+  const remind = () => tid(page, 'chore-remind');
+  await login(page, 'enrico');
+  await open(page, '/haushalt?fenster=neu-aufgabe');
+  await expect(remind()).toHaveCount(0);
+  await chooseTime(page, 'chore-due-time', '19:00');
+  await expect(remind().locator('input')).toBeChecked();
+  await expect(remind()).toContainText('Erinnert zur Uhrzeit, wer dran ist.');
+  await remind().locator('input').click();
+  await expect(remind().locator('input')).not.toBeChecked();
+  await expect(remind()).toContainText('Keine Erinnerung – die Uhrzeit wird nur angezeigt.');
+  await chooseTime(page, 'chore-due-time', undefined);
+  await expect(remind()).toHaveCount(0);
+  await chooseTime(page, 'chore-due-time', '18:00');
+  await expect(remind().locator('input')).toBeChecked();
 });

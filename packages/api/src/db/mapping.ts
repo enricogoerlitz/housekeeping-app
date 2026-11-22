@@ -391,6 +391,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     last_done_on: chore.lastDoneOn ?? null,
     active_months: chore.activeMonths ?? null,
     due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
+    remind_at_due_time: chore.remindAtDueTime !== false,
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -888,6 +889,8 @@ function toChore(row: Row): Chore {
     lastDoneOn: opt(r.last_done_on),
     activeMonths: opt(r.active_months),
     dueTime: fromDbTime(r.due_time),
+    // Undefined is on, the default (spec 0027, REQ-009).
+    remindAtDueTime: r.remind_at_due_time === false ? false : undefined,
   };
 }
 

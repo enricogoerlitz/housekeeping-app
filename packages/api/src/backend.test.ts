@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0024: version 14 for website and restaurant photo (after 0021: 13); version 13 loads again', () => {
-    expect(CACHE_VERSION).toBe(14);
+  it('spec 0024 and 0027: version 15 for website and restaurant photo and „Erinnern“ per chore (after 0021: 13); version 14 loads again', () => {
+    expect(CACHE_VERSION).toBe(15);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

@@ -671,6 +671,103 @@ describe('spec 0013: the time of a chore', () => {
   });
 });
 
+describe('spec 0027, REQ-009: „Erinnern“ per chore', () => {
+  it('AC-035: switching „Erinnern“ off is one patch; the time stays and Nadja sees it off', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    expect(trash.remindAtDueTime).not.toBe(false);
+    updateChore('chore-muell', { ...trash, remindAtDueTime: false });
+    expect(choreById('chore-muell')).toMatchObject({ dueTime: '19:00', remindAtDueTime: false });
+    await fx.settle(nadja);
+    expect(rejected).toEqual([]);
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'chores', id: 'chore-muell', changes: { remind_at_due_time: false } },
+    ]);
+    expect(fx.nadjaData(nadja).chores.find((chore) => chore.id === 'chore-muell')).toMatchObject({
+      dueTime: '19:00',
+      remindAtDueTime: false,
+    });
+  });
+
+  it('AC-038: removing the time switches „Erinnern“ on again, in the same patch', async () => {
+    await fx.startEnrico();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    updateChore('chore-muell', { ...trash, remindAtDueTime: false });
+    await fx.settle();
+    updateChore('chore-muell', { ...trash, dueTime: null, remindAtDueTime: false });
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(opsOf(1)).toEqual([
+      {
+        kind: 'patch',
+        table: 'chores',
+        id: 'chore-muell',
+        changes: { due_time: null, remind_at_due_time: true },
+      },
+    ]);
+    expect(choreById('chore-muell')?.remindAtDueTime).not.toBe(false);
+  });
+
+  it('AC-038: a new chore without a time is saved with „Erinnern“ on; with one, as chosen', async () => {
+    await fx.startEnrico();
+    const plain = createChore({
+      title: 'Blumen gießen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'anyone' },
+      remindAtDueTime: false,
+    });
+    const quiet = createChore({
+      title: 'Matratze drehen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'anyone' },
+      dueTime: '18:00',
+      remindAtDueTime: false,
+    });
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(fx.server.row(H, 'chores', plain)).toMatchObject({
+      due_time: null,
+      remind_at_due_time: true,
+    });
+    expect(fx.server.row(H, 'chores', quiet)).toMatchObject({
+      due_time: '18:00:00',
+      remind_at_due_time: false,
+    });
+  });
+
+  it('AC-038: the server refuses „Erinnern“ off without a time (23514) and a foreign household', async () => {
+    await fx.startEnrico();
+    const off = { remind_at_due_time: false };
+    await expect(
+      fx.server
+        .transport(ENRICO)
+        .applyChanges(H, [{ kind: 'patch', table: 'chores', id: 'chore-bad', changes: off }]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      fx.server
+        .transport(ENRICO)
+        .applyChanges(crypto.randomUUID(), [
+          { kind: 'patch', table: 'chores', id: 'chore-muell', changes: off },
+        ]),
+    ).rejects.toMatchObject({ kind: 'permanent', code: 'not_member' });
+    expect(fx.server.row(H, 'chores', 'chore-muell')).toMatchObject({ remind_at_due_time: true });
+  });
+
+  it('REQ-009: switching „Erinnern“ is refused offline', async () => {
+    await fx.startEnrico();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    fx.environment.setOnline(false);
+    expect(() => updateChore('chore-muell', { ...trash, remindAtDueTime: false })).toThrow(
+      OfflineError,
+    );
+    expect(choreById('chore-muell')?.remindAtDueTime).not.toBe(false);
+  });
+});
+
 describe('spec 0026: dates, Später, Nachtragen', () => {
   it('AC-019: "Was anderes erledigt?" books a day up to 30 days back', async () => {
     await fx.startEnrico();

@@ -132,6 +132,7 @@ export const WRITABLE_COLUMNS = {
     'last_done_on',
     'active_months',
     'due_time',
+    'remind_at_due_time',
   ],
   // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011).
   chore_events: ['chore_id', 'done_by'],
