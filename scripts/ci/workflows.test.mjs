@@ -654,6 +654,9 @@ describe('release.yml (Task 8)', () => {
     assert.equal(jobs.sicherung.uses, './.github/workflows/backup.yml');
     assert.deepEqual(jobs.sicherung.permissions, { contents: 'read', 'id-token': 'write' });
     assert.equal(jobs.sicherung.with.prefix, 'release/v${{ needs.version.outputs.version }}');
+    // A called workflow sees the secrets of its environment only with `secrets: inherit`; without
+    // it BACKUP_DB_URL was empty in the first release ("BACKUP_DB_URL ohne Passwort").
+    assert.equal(jobs.sicherung.secrets, 'inherit');
     assert.ok(needsOf(jobs.sicherung).includes('pakete-pruefen'));
     for (const id of ['web-bauen', 'supabase-pruefen', 'pakete-pruefen', 'sicherung']) {
       assert.ok(needsOf(jobs['supabase-ausliefern']).includes(id), id);

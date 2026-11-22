@@ -224,6 +224,8 @@ jobs:
       id-token: write
     with:
       prefix: release/v${{ needs.version.outputs.version }}
+    # The called job runs in the environment "backup"; its secrets reach it only with inherit.
+    secrets: inherit
 
   supabase-ausliefern:
     name: Supabase ausliefern
