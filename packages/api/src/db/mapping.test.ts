@@ -222,7 +222,7 @@ describe('mapping between domain and rows', () => {
       lat: 52.55,
       lng: 13.5,
       maps_url: expect.stringMatching(/^https:\/\//),
-      tags: [],
+      website_url: null,
       created_by: ENRICO,
       created_at: expect.any(String),
     });

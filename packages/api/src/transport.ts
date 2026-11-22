@@ -322,6 +322,13 @@ export type DeletedRecipe = z.infer<typeof DeletedRecipeSchema>;
 /** restore_recipe (spec 0008, E4): false when the recipe exists again already. */
 export const RestoredRecipeSchema = z.boolean();
 
+/**
+ * delete_restaurant / delete_activity (spec 0024, REQ-010): how many plan entries became free text
+ * and how many went.
+ */
+export const DeletedPlaceSchema = z.object({ converted: z.number(), removed: z.number() });
+export type DeletedPlace = z.infer<typeof DeletedPlaceSchema>;
+
 /** sync_pull as sent: composite-key rows have no `id` yet (see db/tables.ts). */
 export const RawPullResultSchema = z.object({
   serverTime: z.string(),
@@ -434,6 +441,19 @@ export interface Transport {
    * `ingredient_article_invalid`) when an article or meal slot is gone meanwhile.
    */
   restoreRecipe(recipeId: string): Promise<boolean>;
+  // Restaurants and activities (spec 0024, REQ-010)
+  /**
+   * Deletes a restaurant (the only way): entries up to `today` become free text with the name,
+   * later and noted ones go; the server keeps a snapshot for 1 hour. `restaurant_not_found` when
+   * missing or foreign, `invalid_value` for a date too far off.
+   */
+  deleteRestaurant(restaurantId: string, today: string): Promise<DeletedPlace>;
+  /** "Rückgängig" of delete_restaurant; false when it exists again. `restaurant_not_restorable`. */
+  restoreRestaurant(restaurantId: string): Promise<boolean>;
+  /** Like deleteRestaurant; the free text carries the Zusatz. `activity_not_found`. */
+  deleteActivity(activityId: string, today: string): Promise<DeletedPlace>;
+  /** "Rückgängig" of delete_activity; false when it exists again. `activity_not_restorable`. */
+  restoreActivity(activityId: string): Promise<boolean>;
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
@@ -546,6 +566,10 @@ export function switchable(inner: Transport): SwitchableTransport {
     mergeAreas: guard(inner.mergeAreas.bind(inner)),
     deleteRecipe: guard(inner.deleteRecipe.bind(inner)),
     restoreRecipe: guard(inner.restoreRecipe.bind(inner)),
+    deleteRestaurant: guard(inner.deleteRestaurant.bind(inner)),
+    restoreRestaurant: guard(inner.restoreRestaurant.bind(inner)),
+    deleteActivity: guard(inner.deleteActivity.bind(inner)),
+    restoreActivity: guard(inner.restoreActivity.bind(inner)),
     setRecipeFavorite: guard(inner.setRecipeFavorite.bind(inner)),
     setRecipeRating: guard(inner.setRecipeRating.bind(inner)),
     setRestaurantFavorite: guard(inner.setRestaurantFavorite.bind(inner)),
