@@ -478,3 +478,14 @@ begin
   return jsonb_build_object('applied', jsonb_array_length(p_ops), 'results', v_results);
 end
 $$;
+
+-- Contract (scripts/ci/migrations.mjs): the minimum app version stays the latest published one;
+-- it may not exceed it (scripts/release/version.mjs). Grants of the function stay.
+create or replace function public.min_app_version()
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select '2026.11.1'::text
+$$;
