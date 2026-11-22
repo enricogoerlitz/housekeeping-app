@@ -481,7 +481,15 @@ export function similarArticleNames<T extends Article>(articles: readonly T[]): 
   return result;
 }
 
-export type ArticleFilter = 'all' | 'noArea' | 'pantry' | 'needsReview' | 'similar' | 'unused';
+export type ArticleFilter =
+  | 'all'
+  | 'noArea'
+  | 'pantry'
+  | 'needsReview'
+  | 'similar'
+  | 'unused'
+  /** "Ernährung unbekannt" (spec 0023, REQ-008): not set yet; "kein Lebensmittel" is set. */
+  | 'unknownDiet';
 
 /** What the filters need besides the articles: the look-alikes and the household's areas. */
 export interface ArticleFilterContext<T extends Article> {
@@ -536,6 +544,8 @@ function passes<T extends Article>(
       return (similar.get(article.id)?.length ?? 0) > 0;
     case 'unused':
       return !usedIds.has(article.id);
+    case 'unknownDiet':
+      return article.diet === 'unknown';
   }
 }
 
@@ -567,6 +577,7 @@ export function articleFilterCounts<T extends Article>(
     needsReview: count('needsReview'),
     similar: count('similar'),
     unused: count('unused'),
+    unknownDiet: count('unknownDiet'),
   };
 }
 

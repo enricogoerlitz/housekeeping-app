@@ -37,6 +37,7 @@ import { COLLECTION_BADGE } from './recipe-grid';
 import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
+import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
 import { useSectionEditor } from './sections/use-section-editor';
 import { useDeleteRecipe } from './use-delete-recipe';
@@ -142,7 +143,13 @@ export function CollectionDetailBody(props: {
       title="Eigene Zutaten"
     />
   );
-  const notes = <NotesSection recipe={collection} editor={editor} />;
+  // "Links" stand under "Notizen" (spec 0023, REQ-009).
+  const notes = (
+    <>
+      <NotesSection recipe={collection} editor={editor} />
+      <LinksSection recipe={collection} editor={editor} />
+    </>
+  );
 
   return (
     <Screen

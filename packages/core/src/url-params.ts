@@ -205,7 +205,14 @@ export const PAGE_PARAMS = {
   },
   artikel: {
     filter: one(
-      oneOf(['ohne-bereich', 'vorrat', 'neu-aus-rezepten', 'aehnliche-namen', 'unbenutzt']),
+      oneOf([
+        'ohne-bereich',
+        'vorrat',
+        'neu-aus-rezepten',
+        'aehnliche-namen',
+        'unbenutzt',
+        'ernaehrung-unbekannt',
+      ]),
     ),
     bereich: one(Uuid),
     suche: one(Text),

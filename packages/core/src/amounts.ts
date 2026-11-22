@@ -1,14 +1,21 @@
 import type { Amount } from './types';
 
-// EL and TL are only recognised in exactly this spelling; every other unit is matched without
-// regard to case.
-const CASE_SENSITIVE_UNITS = new Set(['EL', 'TL']);
-// Lower-case spelling → the singular spelling stored as the unit.
+// Lower-case spelling → the singular spelling stored as the unit; matched without regard to case
+// (spec 0023, REQ-007: "el" and "tl" too).
 const UNIT_BY_SPELLING = new Map<string, string>([
   ['g', 'g'],
+  ['gramm', 'g'],
   ['kg', 'kg'],
+  ['kilo', 'kg'],
+  ['kilogramm', 'kg'],
   ['ml', 'ml'],
+  ['milliliter', 'ml'],
   ['l', 'l'],
+  ['liter', 'l'],
+  ['el', 'EL'],
+  ['esslöffel', 'EL'],
+  ['tl', 'TL'],
+  ['teelöffel', 'TL'],
   ['prise', 'Prise'],
   ['prisen', 'Prise'],
   ['bund', 'Bund'],
@@ -18,11 +25,37 @@ const UNIT_BY_SPELLING = new Map<string, string>([
   ['dosen', 'Dose'],
   ['packung', 'Packung'],
   ['packungen', 'Packung'],
+  ['pck.', 'Packung'],
+  ['pck', 'Packung'],
+  ['pkg.', 'Packung'],
+  ['pkg', 'Packung'],
+  ['päckchen', 'Päckchen'],
+  ['flasche', 'Flasche'],
+  ['flaschen', 'Flasche'],
+  ['tüte', 'Tüte'],
+  ['tüten', 'Tüte'],
+  ['beutel', 'Beutel'],
+  ['netz', 'Netz'],
+  ['netze', 'Netz'],
+  ['würfel', 'Würfel'],
+  ['rolle', 'Rolle'],
+  ['rollen', 'Rolle'],
+  ['tafel', 'Tafel'],
+  ['tafeln', 'Tafel'],
+  ['kopf', 'Kopf'],
+  ['köpfe', 'Kopf'],
+  ['knolle', 'Knolle'],
+  ['knollen', 'Knolle'],
+  ['zweig', 'Zweig'],
+  ['zweige', 'Zweig'],
+  ['blatt', 'Blatt'],
+  ['blätter', 'Blatt'],
   ['stück', 'Stück'],
   ['scheibe', 'Scheibe'],
   ['scheiben', 'Scheibe'],
   ['becher', 'Becher'],
   ['glas', 'Glas'],
+  ['gläser', 'Glas'],
   ['sack', 'Sack'],
   ['säcke', 'Sack'],
   ['kasten', 'Kasten'],
@@ -42,6 +75,15 @@ const UNIT_PLURALS: Record<string, string> = {
   Packung: 'Packungen',
   Scheibe: 'Scheiben',
   Stange: 'Stangen',
+  Flasche: 'Flaschen',
+  Tüte: 'Tüten',
+  Netz: 'Netze',
+  Rolle: 'Rollen',
+  Tafel: 'Tafeln',
+  Kopf: 'Köpfe',
+  Knolle: 'Knollen',
+  Zweig: 'Zweige',
+  Blatt: 'Blätter',
 };
 const NON_SCALING_UNITS = new Set(['Prise', 'Msp.', 'Handvoll']);
 // Countable things: nobody measures 1,37 Dosen, so scaled values snap to quarters.
@@ -57,7 +99,22 @@ const PIECE_UNITS = new Set([
   'Stange',
   'Sack',
   'Kasten',
+  'Päckchen',
+  'Flasche',
+  'Tüte',
+  'Beutel',
+  'Netz',
+  'Würfel',
+  'Rolle',
+  'Tafel',
+  'Kopf',
+  'Knolle',
+  'Zweig',
+  'Blatt',
 ]);
+// A size between number and unit or article belongs to the amount (spec 0023, REQ-007, E-09):
+// "1 kleine Dose", "2 große", "1 gehäufter EL". Any ending; scaled it ends in "-e" unless exactly 1.
+const SIZE = /^(klein|mittelgroß|groß|gehäuft|gestrichen)(e|er|es|en|em)?$/i;
 // Units bought by weight or volume and how many decimals the shop sells them in (spec 0009,
 // REQ-005): whole grams and millilitres, kilograms and litres to one decimal.
 
@@ -84,8 +141,11 @@ function collapseWhitespace(text: string): string {
 }
 
 function findUnit(token: string): string | undefined {
-  if (CASE_SENSITIVE_UNITS.has(token)) return token;
   return UNIT_BY_SPELLING.get(token.normalize('NFC').toLowerCase());
+}
+
+function isSize(token: string): boolean {
+  return SIZE.test(token.normalize('NFC'));
 }
 
 function parseNumber(text: string): number | undefined {
@@ -107,6 +167,8 @@ interface LeadingAmount {
   /** For ranges the upper bound. */
   qty: number;
   unit?: string;
+  /** A size word as written ("kleine"), part of `text`. */
+  size?: string;
   /** The amount as written: "2–3 EL", "500g", "2x". */
   text: string;
   /** What follows the amount; never empty. */
@@ -133,11 +195,19 @@ function splitLeadingAmount(input: string): LeadingAmount | undefined {
     return { qty, text: input.slice(0, input.length - rest.length).trim(), rest };
   }
 
-  const [, gap = '', token = '', rest = ''] = /^( ?)(\S*)(?: (.*))?$/.exec(after) ?? [];
+  const [, gap = '', first = '', afterFirst = ''] = /^( ?)(\S*)(?: (.*))?$/.exec(after) ?? [];
+  // "1 kleine Dose Mais": the size, then the unit and the name.
+  const size = gap !== '' && afterFirst !== '' && isSize(first) ? first : undefined;
+  const [, token = '', rest = ''] =
+    size === undefined ? ['', first, afterFirst] : (/^(\S*)(?: (.*))?$/.exec(afterFirst) ?? []);
+  const sized = size === undefined ? {} : { size };
   const unit = findUnit(token);
   if (unit !== undefined && rest !== '') {
-    const text = input.slice(0, numberText.length + gap.length + token.length);
-    return { qty, unit, text, rest };
+    const text = input.slice(0, input.length - rest.length).trim();
+    return { qty, unit, text, rest, ...sized };
+  }
+  if (size !== undefined) {
+    return { qty, text: `${numberText} ${size}`, rest: afterFirst.trim(), ...sized };
   }
   if (gap !== '' && token !== '') return { qty, text: numberText, rest: after.trim() };
   return undefined;
@@ -213,7 +283,7 @@ export function parseSmartInput(text: string): SmartInput | null {
   const input = leadingNumberWordToDigits(typed);
 
   const leading = splitLeadingAmount(input);
-  const notes: string[] = [];
+  const notes: string[] = leading?.size === undefined ? [] : [leading.size];
   // The amount is split off first because its decimal comma must not start a note ("1,5 kg").
   const withoutParentheses = (leading?.rest ?? input).replace(
     PARENTHESES,
@@ -288,7 +358,10 @@ export function parseAmount(text: string): Amount | undefined {
   const match = LEADING_NUMBER.exec(input);
   const qty = match ? parseNumber(match[2] ?? match[1] ?? '') : undefined;
   if (!match || qty === undefined) return { text: input };
-  const token = input.slice(match[0].length).trim();
+  const rest = input.slice(match[0].length).trim();
+  if (rest === '') return { text: input, qty };
+  const [first = '', ...others] = rest.split(' ');
+  const token = isSize(first) ? others.join(' ') : rest;
   if (token === '') return { text: input, qty };
   const unit = findUnit(token);
   return unit === undefined ? { text: input } : { text: input, qty, unit };
@@ -317,6 +390,18 @@ export function parseItemAmount(text: string): ItemAmount | undefined {
   return Number.isInteger(amount.qty) && amount.qty <= 10000 ? { count: amount.qty } : undefined;
 }
 
+/**
+ * The hint under "Menge" (spec 0023, REQ-001): whether the amount follows the portions. Nothing for
+ * an empty field.
+ */
+export function amountScalingHint(text: string): string | undefined {
+  const amount = parseAmount(text);
+  if (amount === undefined) return undefined;
+  const scales =
+    amount.qty !== undefined && (amount.unit === undefined || !NON_SCALING_UNITS.has(amount.unit));
+  return scales ? 'Wird mit den Portionen umgerechnet' : 'Bleibt beim Umrechnen gleich';
+}
+
 /** Splits a pasted block into lines and parses each; empty lines and bullets ("- ", "• ") are ignored. */
 export function parseIngredientBlock(text: string): ParsedIngredient[] {
   return text
@@ -332,8 +417,11 @@ export function formatQty(qty: number): string {
 /** "600 ml", "1,5 kg", "3" (no unit), "2 Dosen" (unit "Dose"). */
 export function formatAmount(qty: number, unit?: string): string {
   if (unit === undefined || unit === '') return formatQty(qty);
-  const shown = qty === 1 ? unit : (UNIT_PLURALS[unit] ?? unit);
-  return `${formatQty(qty)} ${shown}`;
+  return `${formatQty(qty)} ${shownUnit(qty, unit)}`;
+}
+
+function shownUnit(qty: number, unit: string): string {
+  return qty === 1 ? unit : (UNIT_PLURALS[unit] ?? unit);
 }
 
 function roundScaled(value: number, unit: string | undefined): number {
@@ -389,5 +477,17 @@ export function scaleAmount(amount: Amount, factor: number): Amount {
   if (amount.unit !== undefined && NON_SCALING_UNITS.has(amount.unit)) return amount;
 
   const qty = roundScaled(amount.qty * factor, amount.unit);
-  return { ...amount, text: formatAmount(qty, amount.unit), qty };
+  const size = sizeOf(amount.text);
+  if (size === undefined) return { ...amount, text: formatAmount(qty, amount.unit), qty };
+  const shownSize = qty === 1 ? size : `${SIZE.exec(size.normalize('NFC'))?.[1] ?? size}e`;
+  const unit = amount.unit === undefined ? '' : ` ${shownUnit(qty, amount.unit)}`;
+  return { ...amount, text: `${formatQty(qty)} ${shownSize}${unit}`, qty };
+}
+
+/** The size word of an amount text ("1 kleine Dose" → "kleine"), if any. */
+function sizeOf(text: string): string | undefined {
+  const match = LEADING_NUMBER.exec(collapseWhitespace(text));
+  if (!match) return undefined;
+  const first = collapseWhitespace(text).slice(match[0].length).trim().split(' ')[0] ?? '';
+  return isSize(first) ? first : undefined;
 }

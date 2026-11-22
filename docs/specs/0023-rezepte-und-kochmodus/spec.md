@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-22
 ---
 
@@ -390,7 +390,24 @@ Alle ENTSCHIEDEN von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.20
 15. **Zutaten beim Löschen eines Rezepts oder einer Sammlung** (Claude, 22.11.2026): Entfallen
     künftige Einträge, bietet der Hinweis dieselbe Wahl wie beim Löschen eines Eintrags („Zutaten
     auch von der Liste nehmen“, Spec 0021); gleiche Funktion aus `packages/core`.
-16. OFFEN: keine.
+16. OFFEN: Entscheidung 15 (Wahl „Zutaten auch von der Liste nehmen“ im Lösch-Hinweis) braucht die
+    Funktion aus Spec 0021, die beim Bau von 0023 noch nicht auf `develop` war; sie kommt mit dem
+    Merge von 0021 bzw. in Spec 0024 dazu. Der Lösch-Hinweis selbst (REQ-012) ist gebaut.
+17. Beim Bau entschieden (Claude, 22.11.2026, einfachste Lösung): Gruppe ≤ 60 Zeichen ist der Check
+    `recipes_ingredients_group_valid` (23514) statt einer Erweiterung des Triggers
+    `recipes_check_ingredients`; Schritt-Timer der Check `recipes_steps_timer_valid`.
+18. Größenangaben in der Eingabezeile der Liste landen im Zusatz („2 große Zwiebeln“ → Zwiebeln, 2,
+    Zusatz „große“), weil ein Listenposten keine Mengenangabe als Text hat. „Gläser“ → Glas; „Glas“
+    behält wie bisher keine Mehrzahl.
+19. Fenster „Link“: leere Adresse „Adresse fehlt“; Steuerzeichen in der Bezeichnung entfernt das
+    Gerät (unsichtbar), die Datenbank lehnt sie ab; doppelt heißt: dieselbe normalisierte Adresse.
+20. Unter „Menge“ steht bei leerem Feld nichts; aus der Leseansicht „für 4 Portionen · Wird mit den
+    Portionen umgerechnet“.
+21. Einplanen-Fenster: ein anderer Tag oder ‹ › setzt „Wer isst mit?“ auf die Anwesenden zurück
+    (E11) und gilt danach wieder als unberührt.
+22. Kochmodus: pausierte Timer stehen nicht oben; „Zurücksetzen“ ist ein Link neben dem Chip, ein
+    abgelaufener Timer setzt sich mit einem Tipp auf den Chip zurück.
+23. „+ Zutat“ markiert keine Dubletten, nur eingefügte Zeilen (`addPastedRows`).
 
 ## Daten
 
@@ -417,31 +434,37 @@ Alle ENTSCHIEDEN von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.20
 
 ## Risiken
 
-| Risiko                                              | Gegenmaßnahme                                                              | Test                                       |
-| --------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------ |
-| `javascript:`/`data:`-Link wird als Skript geöffnet | nur http(s) auf Gerät und in DB; vor dem Öffnen erneut geprüft; `noopener` | core `web-link.test.ts`, pgTAP, AC-033/035 |
-| Seite greift über `window.opener` auf die App zu    | `noopener`, `noreferrer`                                                   | ui-Test des Link-Bausteins                 |
-| App oder Server ruft fremde Seite ab (SSRF, Spur)   | kein Abruf, keine Vorschau; Edge Functions unverändert                     | Review, `/security-check`                  |
-| Fremder Haushalt liest oder ändert Links            | bestehende RLS auf `recipes`                                               | pgTAP fremder Haushalt und `anon`          |
-| Riesige oder viele Links                            | Check ≤ 10, ≤ 2000/80 Zeichen                                              | pgTAP AC-035                               |
-| Migration bricht Seeds oder Sync                    | Seeds ohne `source`, Allowlist und Cache-Version angepasst                 | `supabase test db`, api-Backend-Tests      |
-| Löschen entfernt mehr als angezeigt                 | Zahl aus `recipeDeletionEffect`, dieselbe Regel wie der Server             | core `recipe-deletion.test.ts`             |
-| Server lehnt Speichern ab                           | Overlay springt zurück, Hinweis (ADR-0011)                                 | api-Test AC-004 Fehlerfall                 |
+| Risiko                                              | Gegenmaßnahme                                                              | Test                                                                                        |
+| --------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `javascript:`/`data:`-Link wird als Skript geöffnet | nur http(s) auf Gerät und in DB; vor dem Öffnen erneut geprüft; `noopener` | core `web-link.test.ts` (AC-033, AC-035), pgTAP `recipe_links.test.sql`                     |
+| Seite greift über `window.opener` auf die App zu    | `noopener`, `noreferrer`, `opener = null`                                  | ui `open-in-new-tab.test.ts`                                                                |
+| App oder Server ruft fremde Seite ab (SSRF, Spur)   | kein Abruf, keine Vorschau; Edge Functions unverändert                     | `/security-check` 22.11.2026: keine Befunde über „niedrig“ (s. u.)                          |
+| Fremder Haushalt liest oder ändert Links            | bestehende RLS auf `recipes`                                               | pgTAP `recipe_links.test.sql` „AC-036 …“ (fremder Haushalt, `anon`, `apply_changes`)        |
+| Riesige oder viele Links                            | Check ≤ 10, ≤ 2000/80 Zeichen                                              | pgTAP „AC-035 …“, „AC-034 …“                                                                |
+| Migration bricht Seeds oder Sync                    | Seeds ohne `source`, Allowlist und Cache-Version 11                        | `supabase test db` grün, api `backend.test.ts` „spec 0023: version 11 …“, `seed-sql` Check  |
+| Löschen entfernt mehr als angezeigt                 | Zahl aus `recipeDeletionEffect`, dieselbe Regel wie der Server             | core `recipe-deletion.test.ts` (AC-049–AC-052), api `commands-recipes-0023.backend.test.ts` |
+| Server lehnt Speichern ab                           | Overlay springt zurück, Hinweis (ADR-0011)                                 | api „AC-004 (Fehler) …“, „AC-008 (Offline) …“                                               |
+
+`/security-check` (22.11.2026, Diff gegen `develop`): [hinweis] `is_web_url` lässt IP- und
+IDN-Rechnernamen zu, ohne Folgen, weil nie abgerufen wird und der Host unter der Bezeichnung steht;
+[niedrig] `toRecipe` übernimmt `links` ohne Zod, abgesichert durch den DB-Check
+`recipes_links_valid` (wie `ingredients`, `steps`). Sonst keine Befunde.
 
 ## Umsetzung
 
-- [ ] 1. Migration: `links`, Checks für Timer, Gruppe, `non_food`; `source` raus; Allowlist; Seeds;
+- [x] 1. Migration: `links`, Checks für Timer, Gruppe, `non_food`; `source` raus; Allowlist; Seeds;
       pgTAP rot zuerst (AC-035, AC-028, AC-047)
-- [ ] 2. core: Web-Adresse prüfen, Gruppen ordnen, Einheiten und Größenangaben, `non_food` im
+- [x] 2. core: Web-Adresse prüfen, Gruppen ordnen, Einheiten und Größenangaben, `non_food` im
       Ableiten, Dubletten und Einfüge-Hinweis, Lösch-Hinweis, Zählung, Texte (AC-013–AC-030,
       AC-049–AC-052, AC-057, AC-058)
-- [ ] 3. api: Links speichern, Zutat einzeln speichern/entfernen, Starter-Rezepte und `source`
+- [x] 3. api: Links speichern, Zutat einzeln speichern/entfernen, Starter-Rezepte und `source`
       entfernen, Starter-Katalog-Ernährung, Cache-Version (AC-004, AC-028, AC-032, AC-047)
-- [ ] 4. Rezeptseite: Zutatenfenster, ⋯-Menüs, „Abbrechen“, Rollen, Gruppen, Schritt-Timer,
+- [x] 4. Rezeptseite: Zutatenfenster, ⋯-Menüs, „Abbrechen“, Rollen, Gruppen, Schritt-Timer,
       Einfügen, Abschnitt „Links“, Chip „unbekannt“ (AC-001–AC-021, AC-026–AC-027, AC-031–AC-036)
-- [ ] 5. Kochmodus neu mit Wake Lock und Timern (AC-037–AC-044)
-- [ ] 6. Essen: Menü „Neu“ als ein Baustein, leere Seite, Lösch-Hinweis, Einplanen-Fenster,
+- [x] 5. Kochmodus neu mit Wake Lock und Timern (AC-037–AC-044)
+- [x] 6. Essen: Menü „Neu“ als ein Baustein, leere Seite, Lösch-Hinweis, Einplanen-Fenster,
       Filterknopf, „Enthält“, Filter auf „Artikel“ (AC-030, AC-045–AC-058)
-- [ ] 7. Dokumente: Glossar, `feature-konzept.md`, ältere Specs nach Entscheidung 13
-- [ ] 8. `/ui-verify` Handy und Desktop, `/security-check`
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] 7. Dokumente: Glossar, `feature-konzept.md`, ältere Specs nach Entscheidung 13
+- [x] 8. `/security-check` (s. Risiken); `/ui-verify` läuft nach den Regeln der Welle 2 einmal in
+      Spec 0028
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`

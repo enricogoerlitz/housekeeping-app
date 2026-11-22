@@ -9,7 +9,7 @@ import {
 import {
   canPutRecipeOnList,
   chooseVariant,
-  deriveRecipeDiet,
+  recipeDietChip,
   shownVariantId,
   type Id,
   type Recipe,
@@ -41,6 +41,7 @@ import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions'
 import { ClassificationSection } from './sections/classification-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
+import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
 import { StepsSection } from './sections/steps-section';
 import { useSectionEditor } from './sections/use-section-editor';
@@ -165,10 +166,8 @@ function RecipeDetailBody(props: {
   const editor = useSectionEditor(recipe);
 
   const activeVariantId = shownVariantId(recipe, variantChoice);
-  const diet =
-    recipe.ingredients.length > 0
-      ? deriveRecipeDiet(recipe, activeVariantId, articlesById)
-      : undefined;
+  // No chip without food (spec 0023, AC-029: only "kein Lebensmittel").
+  const diet = recipeDietChip(recipe, activeVariantId, articlesById);
   const shownVariants = activeVariantId
     ? [{ variantId: activeVariantId, portions: shownServings }]
     : [];
@@ -219,7 +218,12 @@ function RecipeDetailBody(props: {
   const head = (
     <Stack gap={16} style={{ flex: 1, minWidth: 0 }}>
       <HeadSection recipe={recipe} desktop={desktop} editor={editor} />
-      <ClassificationSection recipe={recipe} diet={diet} editor={editor} />
+      <ClassificationSection
+        recipe={recipe}
+        diet={diet}
+        variantId={activeVariantId}
+        editor={editor}
+      />
       <MemberRatings
         ratings={recipe.ratings}
         members={members}
@@ -244,7 +248,13 @@ function RecipeDetailBody(props: {
     />
   );
   const steps = <StepsSection recipe={recipe} variantId={activeVariantId} editor={editor} />;
-  const notes = <NotesSection recipe={recipe} editor={editor} />;
+  // "Links" stand under "Notizen" (spec 0023, REQ-009).
+  const notes = (
+    <>
+      <NotesSection recipe={recipe} editor={editor} />
+      <LinksSection recipe={recipe} editor={editor} />
+    </>
+  );
 
   return (
     <Screen

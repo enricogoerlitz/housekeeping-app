@@ -581,9 +581,9 @@ function StateBlock() {
         <EmptyState
           icon="book-open"
           title="Noch keine Rezepte"
-          text="Leg das erste an oder stöbere in den Starter-Rezepten."
+          text="Legt euer erstes Rezept an. Ein Titel reicht; Zutaten, Schritte und Links kommen später dazu."
         >
-          <Button label="Titel eingeben" icon="plus" />
+          <Button label="Rezept anlegen" icon="pencil" />
         </EmptyState>
       </Surface>
     </Block>
