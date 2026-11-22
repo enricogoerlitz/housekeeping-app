@@ -13,7 +13,7 @@
 // computed on insert and after a change of the duration, set_packing_items_packed with
 // "Abhaken gewinnt" via pack_seq, restore_packing_items), and notifications (spec 0013: one
 // settings row per member created on joining, readable and patchable only by herself, the
-// five-minute times and the reservation only on restaurant entries; the push subscriptions of a
+// five-minute times and the time only on restaurant and activity entries; the push subscriptions of a
 // person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
 // (users, devices) can share one server.
 import {
@@ -590,16 +590,15 @@ function checkCollectionRecipeInsert(row: Row, tables: TableRows): void {
   if (count >= 50) throw reject('too_many_collection_recipes');
 }
 
-// ---------- spec 0013: times, reservation, notification settings ----------
+// ---------- spec 0013: times, notification settings (spec 0021: starts_at) ----------
 
 /** private.is_five_minute_time: "HH:MM" or "HH:MM:SS" with seconds 0, minutes in steps of 5. */
 const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
 const TIME_COLUMNS: Record<string, readonly string[]> = {
   chores: ['due_time'],
-  meal_plan_entries: ['reserved_at', 'reminder_at'],
+  meal_plan_entries: ['starts_at', 'reminder_at'],
   notification_settings: ['daily_summary_at', 'activities_eve_at'],
 };
-const REMIND_MINUTES = new Set([30, 60, 120, 180, 240]);
 const SUMMARY_PARTS = new Set(['meals', 'activities', 'chores', 'prep']);
 
 /** A row as Postgres keeps it: a `time` reads back as "HH:MM:SS"; an invalid one is 23514. */
@@ -618,13 +617,13 @@ function withDbTimes(table: string, row: Row): Row {
   return next;
 }
 
-/** meal_plan_entries_remind_minutes_before_valid, _reservation_only_restaurant, the parts check. */
+/** meal_plan_entries_starts_at_only_timed (spec 0021), the reminder and the parts check. */
 function checkNotificationColumns(table: string, row: Row): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   if (table === 'meal_plan_entries') {
-    if (row.remind_minutes_before != null && !REMIND_MINUTES.has(Number(row.remind_minutes_before)))
+    if (row.starts_at != null && row.kind !== 'restaurant' && row.kind !== 'activity') {
       throw violated();
-    if (row.reserved_at != null && row.kind !== 'restaurant') throw violated();
+    }
     checkReminderColumns(row);
   }
   if (table === 'notification_settings') {
@@ -851,7 +850,6 @@ export function createFakeServer(): FakeServer {
         activities_eve_enabled: false,
         activities_eve_at: '19:00:00',
         chore_reminders_enabled: true,
-        reservation_reminders_enabled: true,
         entry_reminders_enabled: true,
       }),
       undefined,
@@ -1656,8 +1654,7 @@ export function createFakeServer(): FakeServer {
                     { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
                   : op.table === 'meal_plan_entries'
                     ? {
-                        reserved_at: null,
-                        remind_minutes_before: 120,
+                        starts_at: null,
                         reminder_day_offset: null,
                         reminder_at: null,
                         reminder_text: null,

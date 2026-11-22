@@ -150,8 +150,8 @@ export const WRITABLE_COLUMNS = {
     'cook_id',
     'sort',
     'not_cooked',
-    'reserved_at',
-    'remind_minutes_before',
+    // Spec 0021: "Uhrzeit" of restaurants and activities.
+    'starts_at',
     // Spec 0017: the reminder of the entry.
     'reminder_day_offset',
     'reminder_at',
@@ -175,7 +175,6 @@ export const WRITABLE_COLUMNS = {
     'activities_eve_enabled',
     'activities_eve_at',
     'chore_reminders_enabled',
-    'reservation_reminders_enabled',
     'entry_reminders_enabled',
   ],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;

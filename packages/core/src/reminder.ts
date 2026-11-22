@@ -9,6 +9,7 @@ import {
   weekdayShort,
 } from './dates';
 import { withNote } from './meal-plan';
+import { formatTime } from './notifications';
 import {
   TimeOfDaySchema,
   type Id,
@@ -313,6 +314,17 @@ export function planEntryTitle(
   restaurantsById: Record<Id, { name: string }> = {},
   activitiesById: Record<Id, { name: string }> = {},
 ): string {
+  return withNote(entryName(entry, recipesById, entries, restaurantsById, activitiesById), entry.note);
+}
+
+/** The name alone, without the Zusatz: also the title of the entry's window. */
+export function entryName(
+  entry: MealPlanEntry,
+  recipesById: Record<Id, { title: string }>,
+  entries: readonly MealPlanEntry[],
+  restaurantsById: Record<Id, { name: string }> = {},
+  activitiesById: Record<Id, { name: string }> = {},
+): string {
   switch (entry.kind) {
     case 'recipe':
       return (entry.recipeId ? recipesById[entry.recipeId]?.title : undefined) ?? 'Rezept';
@@ -327,15 +339,77 @@ export function planEntryTitle(
         'Restaurant'
       );
     case 'activity':
-      return withNote(
+      return (
         (entry.activityId ? activitiesById[entry.activityId]?.name : undefined) ??
-          entry.text ??
-          'Aktivität',
-        entry.note,
+        entry.text ??
+        'Aktivität'
       );
     default:
       return entry.text ?? '';
   }
+}
+
+// ---------- The time of an entry (spec 0021, REQ-014) ----------
+
+/** How long before the entry's time the suggested reminder lies. */
+const SUGGESTION_MINUTES = 120;
+const DAY_MINUTES = 24 * 60;
+
+function minutesOf(time: TimeOfDay): number {
+  const [hour = '0', minute = '0'] = time.split(':');
+  return Number(hour) * 60 + Number(minute);
+}
+
+function timeOf(minutes: number): TimeOfDay {
+  const hour = String(Math.floor(minutes / 60)).padStart(2, '0');
+  const minute = String(minutes % 60).padStart(2, '0');
+  return `${hour}:${minute}`;
+}
+
+/**
+ * The reminder suggested for an entry with a time (REQ-014): "Am Tag", two hours before; for a
+ * time before 02:00 "Am Vortag" at the hour that is two hours earlier. Undefined when that
+ * moment is not in the future in the household's zone (AC-038).
+ */
+export function suggestedReminder(
+  entryDate: ISODate,
+  startsAt: TimeOfDay,
+  now: Date,
+  timeZone: string,
+): { offsetDays: number; at: TimeOfDay } | undefined {
+  const minutes = minutesOf(startsAt) - SUGGESTION_MINUTES;
+  const reminder =
+    minutes < 0
+      ? { offsetDays: 1, at: timeOf(minutes + DAY_MINUTES) }
+      : { offsetDays: 0, at: timeOf(minutes) };
+  return isReminderPast(entryDate, reminder, now, timeZone) ? undefined : reminder;
+}
+
+/** AC-038: "Die Erinnerung liegt nach der Uhrzeit" — the moment is later than the entry's time. */
+export function reminderAfterStart(
+  reminder: Pick<EntryReminder, 'offsetDays' | 'at'>,
+  startsAt: TimeOfDay | undefined,
+): boolean {
+  if (startsAt === undefined) return false;
+  return minutesOf(reminder.at) - reminder.offsetDays * DAY_MINUTES > minutesOf(startsAt);
+}
+
+/**
+ * What a changed time does to "Erinnern" (REQ-014): the first time of an entry without a reminder
+ * switches it on with the suggestion; any later change leaves the reminder where it is.
+ */
+export function timeReminder(input: {
+  entryDate: ISODate;
+  before: TimeOfDay | undefined;
+  after: TimeOfDay | undefined;
+  reminder: EntryReminder | undefined;
+  now: Date;
+  timeZone: string;
+}): { offsetDays: number; at: TimeOfDay } | undefined {
+  if (input.before !== undefined || input.after === undefined || input.reminder !== undefined) {
+    return undefined;
+  }
+  return suggestedReminder(input.entryDate, input.after, input.now, input.timeZone);
 }
 
 const MESSAGE_PREFIX = 'Erinnerung: ';
@@ -352,7 +426,8 @@ const ELLIPSIS = '…';
  *   0 → "heute <Tageszeit>", 1 → "morgen <Tageszeit>", otherwise
  *   "<Mo|Di|Mi|Do|Fr|Sa|So> <day>.<month>., <Tageszeit>" of the entry's day, day and month without
  *   leading zeros ("Sa 28.11., Abend", "Fr 5.3., Abend"). <Tageszeit> is the slot's name as is;
- *   an empty name (the entry's slot is unknown) leaves it out: "heute", "Sa 28.11.".
+ *   an empty name (the entry's slot is unknown) leaves it out: "heute", "Sa 28.11.". An entry
+ *   with a time (spec 0021) names it instead, H:MM: "heute 19:30", "Sa 28.11., 9:05".
  * - <text>: the reminder's text when set (already trimmed, 1–80 characters).
  * - At most 400 characters, counted in code points (`char_length`): when longer, only the name
  *   is cut, to its first (400 − length of the rest − 1) characters followed by "…".
@@ -363,10 +438,17 @@ export function reminderMessage(input: {
   slotName: string;
   offsetDays: number;
   text?: string;
+  /** Spec 0021, REQ-014: the entry's time, named instead of the Tageszeit ("heute 19:30"). */
+  startsAt?: TimeOfDay;
 }): string {
   const { entryDate, offsetDays } = input;
   // Without a (known) Tageszeit it is left out, as the scheduler does (no trailing space or comma).
-  const slot = input.slotName === '' ? undefined : input.slotName;
+  const slot =
+    input.startsAt !== undefined
+      ? formatTime(input.startsAt)
+      : input.slotName === ''
+        ? undefined
+        : input.slotName;
   const when =
     offsetDays === 0
       ? `heute${slot ? ` ${slot}` : ''}`

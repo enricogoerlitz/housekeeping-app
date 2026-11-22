@@ -16,7 +16,10 @@ import {
   reminderLabel,
   reminderMessage,
   reminderTextCounter,
+  reminderAfterStart,
   selectableReminderDays,
+  suggestedReminder,
+  timeReminder,
   validateReminder,
 } from './reminder';
 import { makeRecipe } from './test-fixtures';
@@ -545,5 +548,96 @@ describe('reminderMessage', () => {
   it('REQ-005: shortening counts characters, not UTF-16 units', () => {
     const message = reminderMessage({ ...lasagne, title: '🍝'.repeat(500), offsetDays: 0 });
     expect([...message]).toHaveLength(400);
+  });
+});
+
+describe('spec 0021: the time of an entry and its one reminder (REQ-008, REQ-013, REQ-014)', () => {
+  const enzo = { title: 'Trattoria Da Enzo', entryDate: SATURDAY, slotName: 'Abend' };
+  // Saturday, 28.11.2026, 12:00 in Berlin.
+  const SATURDAY_NOON = new Date('2026-11-28T11:00:00Z');
+
+  it('AC-037: with a time the message names it, "Erinnerung: Trattoria Da Enzo · heute 19:30"', () => {
+    expect(reminderMessage({ ...enzo, offsetDays: 0, startsAt: '19:30' })).toBe(
+      'Erinnerung: Trattoria Da Enzo · heute 19:30',
+    );
+    expect(reminderMessage({ ...enzo, offsetDays: 1, startsAt: '19:30' })).toBe(
+      'Erinnerung: Trattoria Da Enzo · morgen 19:30',
+    );
+    expect(reminderMessage({ ...enzo, offsetDays: 3, startsAt: '09:05', text: 'Tisch' })).toBe(
+      'Erinnerung: Trattoria Da Enzo · Sa 28.11., 9:05 · Tisch',
+    );
+  });
+
+  it('AC-023: every kind carries its Zusatz, "Lasagne (doppelte Menge)"', () => {
+    const lasagne = makeRecipe({ id: 'lasagne', title: 'Lasagne' });
+    const recipesById = { lasagne };
+    expect(
+      planEntryTitle(entry({ id: 'e', recipeId: 'lasagne', note: 'doppelte Menge' }), recipesById, []),
+    ).toBe('Lasagne (doppelte Menge)');
+    expect(
+      planEntryTitle(
+        entry({ id: 'e', kind: 'restaurant', restaurantId: 'r', note: 'Tisch für 6' }),
+        {},
+        [],
+        { r: { name: 'Trattoria Da Enzo' } },
+      ),
+    ).toBe('Trattoria Da Enzo (Tisch für 6)');
+  });
+
+  it('AC-037: the suggestion for 19:30 is "Am Tag" 17:30', () => {
+    expect(suggestedReminder(SATURDAY, '19:30', SATURDAY_NOON, BERLIN)).toEqual({
+      offsetDays: 0,
+      at: '17:30',
+    });
+  });
+
+  it('REQ-014: a time before 02:00 is suggested "Am Vortag"', () => {
+    expect(suggestedReminder(SATURDAY, '01:30', NOW, BERLIN)).toEqual({
+      offsetDays: 1,
+      at: '23:30',
+    });
+    expect(suggestedReminder(SATURDAY, '02:00', NOW, BERLIN)).toEqual({
+      offsetDays: 0,
+      at: '00:00',
+    });
+  });
+
+  it('AC-038: no suggestion when two hours before lies in the past (Sa 18:30, time 19:30)', () => {
+    const at1830 = new Date('2026-11-28T17:30:00Z');
+    expect(suggestedReminder(SATURDAY, '19:30', at1830, BERLIN)).toBeUndefined();
+  });
+
+  it('AC-038: a reminder 17:30 lies after the time 17:00, not after 19:30', () => {
+    expect(reminderAfterStart({ offsetDays: 0, at: '17:30' }, '17:00')).toBe(true);
+    expect(reminderAfterStart({ offsetDays: 0, at: '17:30' }, '19:30')).toBe(false);
+    expect(reminderAfterStart({ offsetDays: 0, at: '17:30' }, '17:30')).toBe(false);
+    expect(reminderAfterStart({ offsetDays: 1, at: '23:30' }, '01:30')).toBe(false);
+    expect(reminderAfterStart({ offsetDays: 0, at: '17:30' }, undefined)).toBe(false);
+  });
+
+  it('AC-037, AC-038: the first time switches "Erinnern" on, a later change does not move it', () => {
+    const base = { entryDate: SATURDAY, now: SATURDAY_NOON, timeZone: BERLIN };
+    expect(timeReminder({ ...base, before: undefined, after: '19:30', reminder: undefined })).toEqual(
+      { offsetDays: 0, at: '17:30' },
+    );
+    expect(
+      timeReminder({
+        ...base,
+        before: '19:30',
+        after: '17:00',
+        reminder: { offsetDays: 0, at: '17:30' },
+      }),
+    ).toBeUndefined();
+    expect(
+      timeReminder({
+        ...base,
+        before: undefined,
+        after: '19:30',
+        reminder: { offsetDays: 1, at: '18:00' },
+      }),
+    ).toBeUndefined();
+    expect(
+      timeReminder({ ...base, before: '19:30', after: '20:00', reminder: undefined }),
+    ).toBeUndefined();
   });
 });

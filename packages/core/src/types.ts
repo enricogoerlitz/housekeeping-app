@@ -186,7 +186,10 @@ export interface MealPlanEntry {
   restaurantId?: Id;
   activityId?: Id;
   text?: string;
-  /** "Zusatz", shown in parentheses: "Eislaufen (Hohenschönhausen)". Only on activities. */
+  /**
+   * "Zusatz", shown in parentheses behind the name wherever the name stands: "Lasagne (doppelte
+   * Menge)", "Eislaufen (Hohenschönhausen)" (spec 0021, REQ-008); never in the Herkunft of the list.
+   */
   note?: string;
   leftoversOfEntryId?: Id;
   eaterIds: Id[];
@@ -197,10 +200,11 @@ export interface MealPlanEntry {
   cookId?: Id;
   sort: number;
   notCooked?: boolean;
-  /** "Reserviert um" (spec 0013, REQ-008); only on restaurant entries. */
-  reservedAt?: TimeOfDay;
-  /** "Erinnern … vorher"; undefined = DEFAULT_REMIND_MINUTES (the column default, 120). */
-  remindMinutesBefore?: RemindMinutes;
+  /**
+   * "Uhrzeit (optional)" (spec 0021, REQ-013): when it starts, the reserved time of a restaurant;
+   * only on restaurant and activity entries.
+   */
+  startsAt?: TimeOfDay;
   /** Spec 0017: "Erinnern" at a day before the entry and a time; only on entries with a day. */
   reminder?: EntryReminder;
 }
@@ -443,10 +447,6 @@ export interface PackingItem {
 export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5][05]$/);
 export type TimeOfDay = z.infer<typeof TimeOfDaySchema>;
 
-/** "Erinnern … vorher" of a reservation, in minutes (Offene Frage 2 A). */
-export const RemindMinutesSchema = z.literal([30, 60, 120, 180, 240]);
-export type RemindMinutes = z.infer<typeof RemindMinutesSchema>;
-
 /** The parts of the "Tagesüberblick": Essen, Aktivitäten, Aufgaben, Vorbereitung. */
 export const DailySummaryPartSchema = z.enum(['meals', 'activities', 'chores', 'prep']);
 export type DailySummaryPart = z.infer<typeof DailySummaryPartSchema>;
@@ -469,7 +469,6 @@ export const NotificationSettingsSchema = z.object({
   activitiesEveEnabled: z.boolean(),
   activitiesEveAt: TimeOfDaySchema,
   choreRemindersEnabled: z.boolean(),
-  reservationRemindersEnabled: z.boolean(),
   /** Spec 0017, REQ-007: "Erinnerungen an Einträgen", on at the start. */
   entryRemindersEnabled: z.boolean(),
 });
