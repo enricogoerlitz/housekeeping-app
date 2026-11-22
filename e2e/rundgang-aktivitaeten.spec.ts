@@ -15,12 +15,12 @@ import {
   SLOT_MORNING,
   TODAY,
   accessToken,
+  back,
   createAccount,
   day,
   deleteAccount,
   expect,
   freshSeed,
-  isPhone,
   nav,
   only,
   open,
@@ -35,7 +35,6 @@ import {
   switchHousehold,
   test,
   tid,
-  tidPrefix,
   toastMessage,
   unique,
 } from './helpers';
@@ -77,59 +76,79 @@ function activityRoute(_page: Page, id: string): string {
   return `/kalender/aktivitaet/${id}`;
 }
 
+/** "Aktivitäten" through ▲ in the calendar's head (spec 0010, AC-025). */
 async function openActivities(page: Page): Promise<void> {
   await nav(page, 'kalender');
-  await tid(page, 'plan-view-activities').click();
+  await tid(page, 'calendar-activities').click();
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await settle(page);
 }
 
-/** Everything one Tageszeit of one day shows: its label, its entries and "hinzufügen". */
-function slotBox(page: Page, date: string, slotId: string): Locator {
-  return tid(page, `add-${date}-${slotId}`).locator(isPhone(page) ? 'xpath=../..' : 'xpath=..');
+const SLOT_NAMES: Record<string, string> = {
+  [SLOT_MORNING]: 'Vormittag',
+  [SLOT_LUNCH]: 'Mittag',
+  [SLOT_DINNER]: 'Abend',
+};
+
+/** One day of the phone week: its head `day-<date>` and everything planned on it. */
+function dayBlock(page: Page, date: string): Locator {
+  return tid(page, `day-${date}`).locator('xpath=..');
 }
 
-/** The titles of the entries in one Tageszeit, top to bottom. */
-function slotTitles(page: Page, date: string, slotId: string): Promise<(string | null)[]> {
-  return slotBox(page, date, slotId)
+/**
+ * The titles of the entries in one Tageszeit, top to bottom. The phone week shows only the
+ * Tageszeiten with entries (spec 0010, AC-008), each as its name above its rows.
+ */
+async function slotTitles(page: Page, date: string, slotId: string): Promise<(string | null)[]> {
+  const rows = await dayBlock(page, date)
     .locator(PLAN_ENTRY)
-    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')));
+    .evaluateAll((elements) =>
+      elements.map((row) => ({
+        slot: row.parentElement?.firstElementChild?.textContent ?? '',
+        title: row.getAttribute('aria-label'),
+      })),
+    );
+  return rows.filter((row) => row.slot === SLOT_NAMES[slotId]).map((row) => row.title);
 }
 
-/** Opens the add sheet of one Tageszeit (the plan shows the week of `date`). */
-async function addTo(page: Page, date: string, slotId: string): Promise<void> {
-  await tid(page, `add-${date}-${slotId}`).click();
+/**
+ * Opens "+ Hinzufügen" of a day (the calendar shows the week of `date`); `pick` chooses the hit,
+ * then the Tageszeit is set in the second step and the entry is saved.
+ */
+async function planOn(
+  page: Page,
+  date: string,
+  slotId: string,
+  pick: () => Promise<void>,
+): Promise<void> {
+  await tid(page, `add-${date}`).click();
   await expect(tid(page, 'add-entry-sheet')).toBeVisible();
-}
-
-async function chooseMode(page: Page, mode: 'recipe' | 'restaurant' | 'activity'): Promise<void> {
-  await tid(page, `add-entry-mode-${mode}`).click();
-  await expect(tid(page, `add-entry-mode-${mode}`)).toHaveAttribute('aria-checked', 'true');
-}
-
-async function planRecipe(page: Page, date: string, slotId: string, search: string, id: string) {
-  await addTo(page, date, slotId);
-  await tid(page, 'add-entry-search').fill(search);
-  await tid(page, `add-entry-recipe-${id}`).click();
+  await pick();
+  await tid(page, `add-entry-slot-${slotId}`).click();
   await tid(page, 'add-entry-save').click();
   await expect(tid(page, 'add-entry-sheet')).toBeHidden();
 }
 
+async function planRecipe(page: Page, date: string, slotId: string, search: string, id: string) {
+  await planOn(page, date, slotId, async () => {
+    await tid(page, 'add-entry-search').fill(search);
+    await tid(page, `add-entry-recipe-${id}`).click();
+  });
+}
+
 async function planRestaurant(page: Page, date: string, slotId: string, id: string) {
-  await addTo(page, date, slotId);
-  await chooseMode(page, 'restaurant');
-  await tid(page, `add-entry-restaurant-${id}`).click();
-  await tid(page, 'add-entry-restaurant-save').click();
-  await expect(tid(page, 'add-entry-sheet')).toBeHidden();
+  await planOn(page, date, slotId, async () => {
+    await tid(page, 'add-entry-tab-restaurants').click();
+    await tid(page, `add-entry-restaurant-${id}`).click();
+  });
 }
 
 async function planActivity(page: Page, date: string, slotId: string, id: string, note = '') {
-  await addTo(page, date, slotId);
-  await chooseMode(page, 'activity');
-  await tid(page, `add-entry-activity-${id}`).click();
-  if (note) await tid(page, 'add-entry-activity-note').fill(note);
-  await tid(page, 'add-entry-activity-save').click();
-  await expect(tid(page, 'add-entry-sheet')).toBeHidden();
+  await planOn(page, date, slotId, async () => {
+    await tid(page, 'add-entry-tab-activities').click();
+    await tid(page, `add-entry-activity-${id}`).click();
+    if (note) await tid(page, 'add-entry-activity-note').fill(note);
+  });
 }
 
 /** Chooses a file in the picker the button opens. */
@@ -209,21 +228,18 @@ test.beforeEach(async ({ context }) => {
 
 // ---------- REQ-001: three Tageszeiten ----------
 
-test('AC-001: "Plan" shows each day with Vormittag, Mittag and Abend in this order', async ({
+test('AC-001: the calendar shows a day’s Tageszeiten in the order Vormittag, Mittag, Abend', async ({
   page,
 }) => {
   await open(page, '/kalender');
-  await expect(tid(page, 'screen-title')).toHaveText('Plan');
-  await expect(tid(page, 'plan-view-week')).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'plan-view-activities')).toHaveText('Aktivitäten');
+  await expect(tid(page, 'calendar-view-week')).toHaveAttribute('aria-selected', 'true');
+  // Today has Eislaufen in the morning, the leftovers at lunch and Lasagne in the evening.
+  const day = dayBlock(page, TODAY);
   const tops: number[] = [];
-  for (const [slotId, name] of [
-    [SLOT_MORNING, 'Vormittag'],
-    [SLOT_LUNCH, 'Mittag'],
-    [SLOT_DINNER, 'Abend'],
-  ] as const) {
-    await expect(slotBox(page, TODAY, slotId)).toContainText(name);
-    tops.push((await tid(page, `add-${TODAY}-${slotId}`).boundingBox())?.y ?? -1);
+  for (const name of ['Vormittag', 'Mittag', 'Abend']) {
+    const caption = day.getByText(name, { exact: true });
+    await expect(caption).toBeVisible();
+    tops.push((await caption.boundingBox())?.y ?? -1);
   }
   expect(tops).toEqual([...tops].sort((a, b) => a - b));
   expect(await slotTitles(page, TODAY, SLOT_MORNING)).toEqual(['Eislaufen (Hohenschönhausen)']);
@@ -235,8 +251,8 @@ test('AC-004: "Aktivitäten" lists Eislaufen and Bouldern with picture, name and
   page,
 }) => {
   await open(page, '/kalender');
-  await tid(page, 'plan-view-activities').click();
-  await expect(page).toHaveURL(/view=activities/);
+  await tid(page, 'calendar-activities').click();
+  await expect(page).toHaveURL(/\/kalender\/aktivitaeten/);
   for (const [id, name] of [
     [EISLAUFEN, 'Eislaufen'],
     [BOULDERN, 'Bouldern'],
@@ -248,7 +264,7 @@ test('AC-004: "Aktivitäten" lists Eislaufen and Bouldern with picture, name and
   await expect(tid(page, `activity-${BOULDERN}-last`)).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
   await expect(tid(page, `activity-${EISLAUFEN}-place`)).toHaveText('Eisstadion Hohenschönhausen');
   await expect(tid(page, 'activity-count')).toContainText('3');
-  // The side lives in the URL: a reload keeps it.
+  // The page has its own address: a reload keeps it.
   await page.reload();
   await expect(tid(page, `activity-${BOULDERN}`)).toBeVisible({ timeout: 30_000 });
 });
@@ -272,7 +288,7 @@ test('AC-016: Bouldern shows "Zuletzt: vor 12 Tagen · 3-mal" and the three past
   await tid(page, `activity-${BOULDERN}`).click();
   // On the phone the activity has its own page inside the tabs: the tab bar stays.
   await expect(page).toHaveURL(new RegExp(`/kalender/aktivitaet/${BOULDERN}$`));
-  await expect(tid(page, 'tab-plan')).toBeVisible();
+  await expect(tid(page, 'tab-kalender')).toBeVisible();
   await expect(tid(page, 'activity-title')).toHaveText('Bouldern');
   await expect(tid(page, 'activity-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
   for (const [index, ago] of [12, 30, 45].entries()) {
@@ -331,7 +347,7 @@ test('AC-008: "bouldern" offers "Gibt es schon: Bouldern" with "Öffnen" instead
   await expect(tid(page, 'activity-duplicate-open')).toHaveText(/Öffnen/);
   await tid(page, 'activity-duplicate-open').click();
   await expect(tid(page, 'activity-title')).toHaveText('Bouldern');
-  await nav(page, 'kalender');
+  await back(page);
   await expect(tid(page, 'activity-count')).toHaveText(before);
 });
 
@@ -495,31 +511,25 @@ test('AC-012: a member of another household cannot read, overwrite or delete a p
 
 // ---------- REQ-005: in the plan ----------
 
-test('AC-013: "Eislaufen (Hohenschönhausen)" on a free Saturday morning, with its photo; the pantry check takes nothing', async ({
+test('AC-013: "Eislaufen (Hohenschönhausen)" on a free Saturday morning; the pantry check does not offer it', async ({
   page,
 }) => {
   await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
   expect(await slotTitles(page, SATURDAY, SLOT_MORNING)).toEqual([]);
   await planActivity(page, SATURDAY, SLOT_MORNING, EISLAUFEN, 'Hohenschönhausen');
-  await expect(toastMessage(page)).toContainText('Eislaufen (Hohenschönhausen)');
 
-  const row = slotBox(page, SATURDAY, SLOT_MORNING).locator(PLAN_ENTRY);
+  const row = dayBlock(page, SATURDAY)
+    .locator(PLAN_ENTRY)
+    .filter({ hasText: 'Eislaufen (Hohenschönhausen)' });
   await expect(row).toHaveCount(1);
-  await expect(row).toHaveAttribute('aria-label', 'Eislaufen (Hohenschönhausen)');
-  await expect(row).toContainText('Aktivität');
-  // The photo of AC-009.
-  await expectOwnPhoto(row);
+  expect(await slotTitles(page, SATURDAY, SLOT_MORNING)).toEqual(['Eislaufen (Hohenschönhausen)']);
+  const entryId = ((await row.getAttribute('data-testid')) ?? '').replace(/^entry-/, '');
 
+  // Activities never appear in "Was soll auf die Liste?" (spec 0006, AC-049).
   await tid(page, 'plan-to-list').click();
-  for (const chip of await tidPrefix(page, 'pc-day-').all()) {
-    const id = await chip.getAttribute('data-testid');
-    const selected = (await chip.getAttribute('aria-selected')) === 'true';
-    if ((id === `pc-day-${SATURDAY}`) !== selected) await chip.click();
-  }
-  await expect(tid(page, `pc-day-${SATURDAY}`)).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'pc-dishes')).toHaveText('Noch kein Gericht gewählt.');
-  await expect(tid(page, 'pc-next')).toBeDisabled();
+  await expect(tid(page, 'pantry-check-sheet')).toContainText('Was soll auf die Liste?');
+  await expect(page.locator(`[data-testid="pick-entry-${entryId}"]${ACTIVE}`)).toHaveCount(0);
 });
 
 test('AC-014: "Route" at Eislaufen on "Heute" opens Apple Karten or Google Maps at the place', async ({
@@ -545,21 +555,17 @@ test('AC-015: Spieleabend has no place, so neither its page nor its plan entry h
   await expect(tid(page, 'activity-route')).toHaveCount(0);
 
   await nav(page, 'kalender');
-  await tid(page, 'plan-view-week').click();
   await showPlanWeek(page, FREE_LUNCH);
   await planActivity(page, FREE_LUNCH, SLOT_LUNCH, SPIELEABEND);
-  await slotBox(page, FREE_LUNCH, SLOT_LUNCH)
-    .locator(PLAN_ENTRY)
-    .filter({ hasText: 'Spieleabend' })
-    .click();
+  await dayBlock(page, FREE_LUNCH).locator(PLAN_ENTRY).filter({ hasText: 'Spieleabend' }).click();
   await expect(tid(page, 'entry-sheet')).toBeVisible();
   await expect(tid(page, 'entry-open-activity')).toBeVisible();
   await expect(tid(page, 'entry-route')).toHaveCount(0);
-  await tid(page, 'entry-sheet-close').click();
+  await tid(page, 'entry-done').click();
 
   // With a place there is one (Eislaufen this morning).
   await tid(page, 'week-today').click();
-  await slotBox(page, TODAY, SLOT_MORNING).locator(PLAN_ENTRY).first().click();
+  await tid(page, `entry-${EISLAUFEN_TODAY}`).click();
   await expect(tid(page, 'entry-route')).toBeVisible();
 });
 
@@ -591,7 +597,7 @@ test('AC-019: "Heute geplant" shows Eislaufen, Lasagne and Trattoria Da Enzo in 
   await expect(await badgeOf('Trattoria Da Enzo')).toHaveText('Restaurant');
 });
 
-test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device in the recipes, the recipe, "Heute" and the plan', async ({
+test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device in the recipes, the recipe and the Übersicht', async ({
   page,
   browser,
 }) => {
@@ -602,18 +608,14 @@ test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device 
   const nadja = await secondDevice(browser, 'nadja');
   await nadja.page.goto(`/rezept/${BOLOGNESE}`);
   await expect(tid(nadja.page, 'recipe-detail')).toBeVisible({ timeout: 30_000 });
-  await pickFile(nadja.page, 'recipe-photo-change', GPS_PHOTO);
-  await expect(tid(nadja.page, 'recipe-photo-remove')).toBeVisible(SYNC);
-  await expectOwnPhoto(tid(nadja.page, 'recipe-detail'));
+  await tid(nadja.page, 'recipe-more').click();
+  await pickFile(nadja.page, 'recipe-more-photo', GPS_PHOTO);
+  await expectOwnPhoto(tid(nadja.page, 'recipe-photo'));
   await nadja.context.close();
   await page.bringToFront();
   expect(await photoPathOf('recipes', BOLOGNESE)).toMatch(new RegExp(`^${DEMO}/recipes/`));
 
-  // Enrico's device learns the photo with the next sync.
-  const lunch = slotBox(page, TODAY, SLOT_LUNCH)
-    .locator(PLAN_ENTRY)
-    .filter({ hasText: 'Spaghetti Bolognese' });
-  await expectOwnPhoto(lunch);
+  // Enrico's device learns the photo with the next sync (the calendar rows have no photo).
   await nav(page, 'index');
   await expectOwnPhoto(
     tid(page, 'today-meals')
@@ -621,28 +623,32 @@ test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device 
       .filter({ hasText: 'Spaghetti Bolognese' }),
   );
   await nav(page, 'rezepte');
+  await tid(page, 'recipe-search').fill('Bolognese');
   await expectOwnPhoto(tid(page, `recipe-card-${BOLOGNESE}`));
   await tid(page, `recipe-card-${BOLOGNESE}`).click();
-  await expectOwnPhoto(tid(page, 'recipe-detail'));
+  await expectOwnPhoto(tid(page, 'recipe-photo'));
 });
 
 test('AC-018: "Foto entfernen" on Lasagne shows the sample photo again and deletes the upload', async ({
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}`);
-  const image = tid(page, 'recipe-detail').locator('img').first();
+  const image = tid(page, 'recipe-photo').locator('img').first();
   const sample = await image.getAttribute('src');
   expect(sample).not.toMatch(/^blob:/);
-  await pickFile(page, 'recipe-photo-change', GPS_PHOTO);
-  await expect(tid(page, 'recipe-photo-remove')).toBeVisible(SYNC);
-  await expectOwnPhoto(tid(page, 'recipe-detail'));
+  await tid(page, 'recipe-more').click();
+  await pickFile(page, 'recipe-more-photo', GPS_PHOTO);
+  await expectOwnPhoto(tid(page, 'recipe-photo'));
   const objectPath = await photoPathOf('recipes', LASAGNE);
   const enrico = await accessToken('enrico');
   expect(typeof (await download(objectPath ?? '', enrico))).not.toBe('number');
 
-  await tid(page, 'recipe-photo-remove').click();
-  await expect(tid(page, 'recipe-photo-remove')).toHaveCount(0, SYNC);
-  await expect(image).toHaveAttribute('src', sample ?? '');
+  await tid(page, 'recipe-more').click();
+  await tid(page, 'recipe-more-photo-remove').click();
+  await expect(image).toHaveAttribute('src', sample ?? '', SYNC);
+  await tid(page, 'recipe-more').click();
+  await expect(page.locator(`[data-testid="recipe-more-photo-remove"]${ACTIVE}`)).toHaveCount(0);
+  await page.keyboard.press('Escape');
   expect(await photoPathOf('recipes', LASAGNE)).toBeNull();
   await expect.poll(async () => typeof (await download(objectPath ?? '', enrico))).toBe('number');
 });
@@ -688,7 +694,9 @@ test('AC-002: in one Tageszeit activities come first, then recipes, then restaur
 }) => {
   await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
-  expect(await slotTitles(page, SATURDAY, SLOT_DINNER)).toEqual([]);
+  // The seed may already plan something on that evening (e.g. the collection „Grillabend“,
+  // depending on today's date); only the order of the four entries planned here matters.
+  const planned = ['Bouldern', 'Lasagne', 'Gemischter Salat', 'Trattoria Da Enzo'];
   await planRecipe(page, SATURDAY, SLOT_DINNER, 'Lasagne', LASAGNE);
   await planRecipe(
     page,
@@ -700,8 +708,12 @@ test('AC-002: in one Tageszeit activities come first, then recipes, then restaur
   await planRestaurant(page, SATURDAY, SLOT_DINNER, seedIds['rest-enzo']);
   await planActivity(page, SATURDAY, SLOT_DINNER, BOULDERN);
   await expect
-    .poll(() => slotTitles(page, SATURDAY, SLOT_DINNER))
-    .toEqual(['Bouldern', 'Lasagne', 'Gemischter Salat', 'Trattoria Da Enzo']);
+    .poll(async () =>
+      (await slotTitles(page, SATURDAY, SLOT_DINNER)).filter(
+        (title) => title !== null && planned.includes(title),
+      ),
+    )
+    .toEqual(planned);
 });
 
 test('AC-023, AC-021: "Neue Aktivität" without a name creates nothing; "Klettern im Wald" is created and planned', async ({
@@ -718,23 +730,24 @@ test('AC-023, AC-021: "Neue Aktivität" without a name creates nothing; "Kletter
   const before = await activityCount();
   await open(page, '/kalender');
   await showPlanWeek(page, SATURDAY);
-  const planned = await slotTitles(page, SATURDAY, SLOT_MORNING);
+  const planned = await slotTitles(page, SATURDAY, SLOT_DINNER);
 
-  await addTo(page, SATURDAY, SLOT_MORNING);
-  await chooseMode(page, 'activity');
+  await tid(page, `add-${SATURDAY}`).click();
+  await tid(page, 'add-entry-tab-activities').click();
   await tid(page, 'add-entry-new-activity').click();
   await tid(page, 'add-entry-new-activity-save').click();
   await expect(tid(page, 'activity-name-error')).toHaveText('Name fehlt');
   await expect(tid(page, 'add-entry-sheet')).toBeVisible();
   expect(await activityCount()).toBe(before);
-  expect(await slotTitles(page, SATURDAY, SLOT_MORNING)).toEqual(planned);
 
   await tid(page, 'activity-name').fill(name);
   await tid(page, 'add-entry-new-activity-save').click();
   await expect(toastMessage(page)).toHaveText(`„${name}“ angelegt und eingeplant`);
-  await expect.poll(() => slotTitles(page, SATURDAY, SLOT_MORNING)).toEqual([...planned, name]);
+  // A day without a Tageszeit plans in the evening (spec 0010, REQ-007).
+  await expect.poll(() => slotTitles(page, SATURDAY, SLOT_DINNER)).toContain(name);
+  expect(await slotTitles(page, SATURDAY, SLOT_DINNER)).toHaveLength(planned.length + 1);
   expect(await activityCount()).toBe(before + 1);
-  await tid(page, 'plan-view-activities').click();
+  await tid(page, 'calendar-activities').click();
   await expect(tid(page, 'activities-screen')).toContainText(name);
 });
 
@@ -746,19 +759,16 @@ test('AC-022: a new recipe and a new restaurant from a map link, created on Sund
   await open(page, '/kalender');
   await showPlanWeek(page, SUNDAY);
 
-  await addTo(page, SUNDAY, SLOT_DINNER);
+  await tid(page, `add-${SUNDAY}`).click();
+  await tid(page, 'add-entry-search').fill(soup);
   await tid(page, 'add-entry-new-recipe').click();
-  await tid(page, 'new-recipe-title').fill(soup);
+  await expect(tid(page, 'new-recipe-title')).toHaveValue(soup);
   await tid(page, 'add-entry-new-recipe-save').click();
   await expect(toastMessage(page)).toHaveText(`„${soup}“ angelegt und eingeplant`);
-  const dinner = slotBox(page, SUNDAY, SLOT_DINNER);
-  await expect(dinner.locator(PLAN_ENTRY).filter({ hasText: soup })).toHaveCount(1);
-  // Nothing is known about its diet yet: no "Passt nicht für …".
-  await expect(dinner.locator('[data-testid^="entry-misfit-"]')).toHaveCount(0);
+  await expect(dayBlock(page, SUNDAY).locator(PLAN_ENTRY).filter({ hasText: soup })).toHaveCount(1);
 
   // A short link, resolved by the (stubbed) edge function before saving.
-  await addTo(page, SUNDAY, SLOT_DINNER);
-  await chooseMode(page, 'restaurant');
+  await tid(page, `add-${SUNDAY}`).click();
   await tid(page, 'add-entry-new-restaurant').click();
   await tid(page, 'restaurant-link').fill(`https://maps.app.goo.gl/${unique()}`);
   await expect(tid(page, 'restaurant-link-short')).toBeVisible();
@@ -790,25 +800,21 @@ test.describe('at desktop width', () => {
     for (const name of ['Vormittag', 'Mittag', 'Abend']) {
       await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
     }
-    await expect(slotBox(page, TODAY, SLOT_MORNING)).toContainText('Eislaufen (Hohenschönhausen)');
+    await expect(tid(page, `entry-${EISLAUFEN_TODAY}`)).toContainText('Eislaufen');
   });
 
-  test('AC-004, AC-016: collection and activity side by side; a deep link keeps the sidebar', async ({
+  test('AC-004, AC-016: an activity opens as its own page; a deep link keeps the sidebar', async ({
     page,
   }) => {
     await open(page, '/kalender/aktivitaeten');
     await tid(page, `activity-${BOULDERN}`).click();
-    await expect(page).toHaveURL(new RegExp(`aid=${BOULDERN}`));
+    // Spec 0010, REQ-008: no split view any more, on every width its own page.
+    await expect(page).toHaveURL(new RegExp(`/kalender/aktivitaet/${BOULDERN}$`));
     await expect(tid(page, 'activity-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
-    const list = await tid(page, `activity-${BOULDERN}`).boundingBox();
-    const detail = await tid(page, 'activity-detail').boundingBox();
-    expect(list && detail && list.x + list.width <= detail.x, 'list left of detail').toBe(true);
-    await tid(page, 'activity-close').click();
-    await expect(tid(page, 'activity-detail')).toHaveCount(0);
 
     await page.goto(`/kalender/aktivitaet/${EISLAUFEN}`);
     await expect(tid(page, 'activity-title')).toHaveText('Eislaufen', SYNC);
-    await expect(tid(page, 'nav-plan')).toBeVisible();
+    await expect(tid(page, 'nav-kalender')).toBeVisible();
   });
 });
 

@@ -129,34 +129,65 @@ export async function nav(page: Page, key: TabKey): Promise<void> {
   await settle(page);
 }
 
-/** Selector of the dish rows in the plan (`entry-<uuid>`, not their cook, variants, … parts). */
+/** Selector of the calendar rows (`entry-<uuid>`, not the parts of the entry sheet). */
 export const PLAN_ENTRY = [
   '[data-testid^="entry-"]',
-  ':not([data-testid^="entry-cook-"])',
-  ':not([data-testid^="entry-restaurant-"])',
-  ':not([data-testid^="entry-activity-"])',
-  ':not([data-testid^="entry-variants-"])',
-  ':not([data-testid^="entry-misfit-"])',
-  ':not([data-testid^="entry-move"])',
-  ':not([data-testid^="entry-sheet"])',
+  ...[
+    'done',
+    'move',
+    'note',
+    'open-',
+    'remind',
+    'remove',
+    'reserved',
+    'route',
+    'sheet',
+    'slot-',
+  ].map((part) => `:not([data-testid^="entry-${part}"])`),
   ACTIVE,
 ].join('');
 
-/** Shopping list rows (open and done) whose article name is exactly `name`. */
+/**
+ * Shopping list rows (open and done) of the article `name`: the press area is labelled with the
+ * name, plus „(Zusatz)“ or „, 500 g“ when the row shows them (spec 0006, AC-008).
+ */
 export function itemRows(page: Page, name: string): Locator {
-  return page.locator(`[data-testid^="item-"][role="button"][aria-label="${name}"]${ACTIVE}`);
+  const base = `[data-testid^="item-"][role="button"]`;
+  return page.locator(
+    [`[aria-label="${name}"]`, `[aria-label^="${name} ("]`, `[aria-label^="${name}, "]`]
+      .map((label) => `${base}${label}${ACTIVE}`)
+      .join(', '),
+  );
 }
 
-/** The open (unchecked) row of `name` on the list screen. */
+/** The item id of a list row found with `itemRows` (`item-<id>` or its press area `-open`). */
+export async function itemIdOf(row: Locator): Promise<string> {
+  const testId = (await row.first().getAttribute('data-testid')) ?? '';
+  return testId.replace(/^item-/, '').replace(/-open$/, '');
+}
+
+/** The open row of `name` on the list screen (not under „Erledigt“). */
 export function openItem(page: Page, name: string): Locator {
-  return itemRows(page, name).filter({
-    has: page.locator('[role="checkbox"][aria-checked="false"]'),
-  });
+  return itemRows(page, name).and(page.locator(':not([data-testid="done-section"] *)'));
 }
 
-/** The checked row of `name` in "Erledigt" on the list screen. */
+/** Unfolds „Erledigt (n)“ on the list screen (it starts folded, spec 0006). */
+export async function showDone(page: Page): Promise<void> {
+  const rows = tid(page, 'done-section').locator('[data-testid^="item-"]');
+  if ((await rows.count()) === 0) await tid(page, 'done-toggle').click();
+  await expect(rows.first()).toBeVisible();
+}
+
+/** The checked row of `name` in "Erledigt" on the list screen (unfold it with `showDone`). */
 export function doneItem(page: Page, name: string): Locator {
   return tid(page, 'done-section').locator(`[aria-label="${name}"][role="button"]`);
+}
+
+/** The checkbox of the article `name` in „Einkaufen“ (`sm-item-<id>-check`). */
+export function shoppingCheck(page: Page, name: string): Locator {
+  return page.locator(
+    `[data-testid^="sm-item-"][data-testid$="-check"][aria-label="${name}"]${ACTIVE}`,
+  );
 }
 
 /** The toast message currently shown. */
@@ -207,18 +238,25 @@ export async function open(page: Page, route = '/', who: Account = 'enrico'): Pr
 export async function secondDevice(
   browser: Browser,
   who: Account,
-  options: { viewport?: { width: number; height: number } } = {},
+  options: {
+    viewport?: { width: number; height: number };
+    /** The service worker registers (push, spec 0013); blocked by default like the main page. */
+    serviceWorkers?: 'allow' | 'block';
+    /** Runs before the first page load, e.g. `page.addInitScript` for a faked browser API. */
+    beforeLoad?: (page: Page) => Promise<void>;
+  } = {},
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     baseURL: BASE_URL,
     locale: 'de-DE',
     timezoneId: 'Europe/Berlin',
-    serviceWorkers: 'block',
+    serviceWorkers: options.serviceWorkers ?? 'block',
     viewport: options.viewport ?? { width: 390, height: 844 },
   });
   await stubEdgeFunctions(context);
   const page = await context.newPage();
   watchConsole(page);
+  await options.beforeLoad?.(page);
   await login(page, who);
   return { context, page };
 }

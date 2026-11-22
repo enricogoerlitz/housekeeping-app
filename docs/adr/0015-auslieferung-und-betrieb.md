@@ -240,3 +240,22 @@ Anmeldung und Speicher“; Lock-Dateien für weitere Functions, wenn die KI eing
 - Die Fotos wachsen so, dass eine Sicherung aller Fotos je Nacht teuer oder langsam wird, oder das
   Azure-Budget (10 € im Monat) meldet sich.
 - Azure Static Web Apps ändert den Tarif Free, oder West Europe wird für das Abo verfügbar.
+
+## Nachtrag 2026-11-21 — Regionen bei der Einrichtung
+
+Bei der Einrichtung am 21.11.2026 nahm West Europe für das Abo erneut keine neuen Ressourcen an.
+Die Regionen weichen deshalb von „Ablage: Privates Storage-Konto (West Europe)“ in der Entscheidung
+ab; alles andere gilt unverändert.
+
+| Teil                   | Ressource                                                                                                     | Region                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Ablage der Sicherungen | Storage-Konto `sthousekeepingbkpger`                                                                          | **Germany West Central** |
+| Identitäten            | `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`, `id-housekeeping-restore` | **Germany West Central** |
+| Web (beide Apps)       | Static Web Apps `swa-housekeeping-app-prd` und `swa-housekeeping-app-preview`, Tarif Free                     | **East US 2**            |
+
+- Die Sicherungen, also die einzigen Nutzerdaten außerhalb von Supabase, bleiben in der EU.
+- In East US 2 liegen nur die gebauten App-Dateien, keine Nutzerdaten (wie schon für die
+  Produktions-App in „Kontext“ beschrieben).
+- Der Auslöser „West Europe wird für das Abo verfügbar“ unter „Wann diese Entscheidung neu
+  bewertet wird“ gilt jetzt für beide Static Web Apps; Storage und Identitäten müssen dafür nicht
+  umziehen.

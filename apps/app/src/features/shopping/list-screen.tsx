@@ -43,10 +43,11 @@ import {
   useBreakpoint,
   useTheme,
   type MenuOption,
+  expandableA11y,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { StartPageActions } from '@/features/shell/profile-button';
@@ -477,8 +478,10 @@ export function ListScreen() {
             <Pressable
               testID="done-toggle"
               accessibilityRole="button"
-              accessibilityState={{ expanded: showDone }}
-              accessibilityLabel={`Erledigt (${done.length})`}
+              {...expandableA11y(`Erledigt (${done.length})`, showDone, Platform.OS, {
+                expanded: 'aufgeklappt',
+                collapsed: 'eingeklappt',
+              })}
               onPress={() => setShowDone(!showDone)}
               style={{
                 flexDirection: 'row',

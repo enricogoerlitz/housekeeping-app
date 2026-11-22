@@ -1,6 +1,5 @@
 import {
   absenceDays,
-  normalizeText,
   packingSaveProblem,
   planAbsenceWrite,
   planPackingLists,
@@ -14,8 +13,7 @@ import {
 } from '@housekeeping/core';
 
 import { householdCall, WRITE_REJECTED_MESSAGE } from './backend';
-import { starterAreas } from './starter/areas';
-import { starterCatalog } from './starter/catalog';
+import { starterPayload } from './starter/payload';
 import {
   commit,
   getData,
@@ -272,22 +270,6 @@ const MESSAGES: Record<string, string> = {
 
 /** Same rule as `private.is_valid_email` on the server. */
 const EMAIL = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
-
-/** Starter areas and catalog in the format of `private.apply_starter` (keys from core). */
-export function starterPayload() {
-  return {
-    areas: starterAreas.map((area) => ({ key: area.key, name: area.name })),
-    articles: starterCatalog.map((article) => ({
-      name: article.name,
-      name_key: normalizeText(article.name),
-      synonyms: article.synonyms ?? [],
-      synonym_keys: (article.synonyms ?? []).map(normalizeText),
-      area: article.area,
-      diet: article.diet,
-      is_pantry: article.pantry ?? false,
-    })),
-  };
-}
 
 /** One RPC, then a pull; a refusal becomes a German message (offline: OfflineError). */
 async function householdRpc<T>(send: (transport: Transport) => Promise<T>): Promise<T> {

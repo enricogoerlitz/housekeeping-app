@@ -2,7 +2,6 @@ import type { BrowserContext, Page } from '@playwright/test';
 
 import {
   accessToken,
-  back,
   createTestHousehold,
   day,
   doneItem,
@@ -11,10 +10,14 @@ import {
   nav,
   only,
   open,
+  itemIdOf,
+  leaveManaged,
   openItem,
-  openSettings,
+  openManaged,
   PLAN_ENTRY,
   secondDevice,
+  shoppingCheck,
+  showDone,
   showPlanWeek,
   supabaseFetch,
   switchHousehold,
@@ -76,9 +79,14 @@ async function startShopping(page: Page): Promise<void> {
   await expect(tid(page, 'shopping-progress')).toBeVisible();
 }
 
-/** The check box of an item in store mode (open or done). */
-function smCheck(page: Page, name: string) {
-  return tidPrefix(page, 'sm-item-').locator(`[role="checkbox"][aria-label="${name}"]`);
+/** The check box of an item in "Einkaufen" ("Im Wagen" must be unfolded for checked ones). */
+const smCheck = shoppingCheck;
+
+/** Unfolds "Im Wagen (n)" in "Einkaufen" (it starts folded, spec 0006). */
+async function showInCart(page: Page): Promise<void> {
+  const rows = tid(page, 'sm-done').locator('[data-testid^="sm-item-"]');
+  if ((await rows.count()) === 0) await tid(page, 'sm-done-toggle').click();
+  await expect(rows.first()).toBeVisible();
 }
 
 /** Items of an article in a household, read through the API as Enrico. */
@@ -107,18 +115,6 @@ async function serverItems(
   }));
 }
 
-/** The id of a meal ("Mittag", "Abend") of a household, read through the API. */
-async function slotId(householdId: string, name: string): Promise<string> {
-  const [household] = (await (
-    await supabaseFetch(`/rest/v1/households?select=meal_slots&id=eq.${householdId}`, {
-      token: await accessToken('enrico'),
-    })
-  ).json()) as { meal_slots: { id: string; name: string }[] }[];
-  const slot = household?.meal_slots.find((candidate) => candidate.name === name);
-  if (!slot) throw new Error(`meal ${name} missing`);
-  return slot.id;
-}
-
 /** Records every toast text shown from now on (to prove that none appeared). */
 async function recordToasts(page: Page): Promise<() => Promise<string[]>> {
   await page.evaluate(() => {
@@ -145,11 +141,12 @@ test('AC-012: Enrico removes Nadja; the household disappears from her device wit
   await nadja.bringToFront();
   await nav(nadja, 'liste');
   await expect(openItem(nadja, 'Milch')).toHaveCount(1, SYNC);
-  await openSettings(nadja);
+  await openManaged(nadja, 'members');
   await expect(tid(nadja, `household-${householdId}-active`)).toBeVisible();
 
   await enrico.bringToFront();
-  await openSettings(enrico);
+  await nav(enrico, 'index');
+  await openManaged(enrico, 'members');
   await tid(enrico, `household-member-remove-${seedIds['m-nadja']}`).click();
   await expect(toastMessage(enrico)).toContainText('ist entfernt');
 
@@ -157,7 +154,7 @@ test('AC-012: Enrico removes Nadja; the household disappears from her device wit
   await expect(tid(nadja, `household-${householdId}`)).toHaveCount(0, SYNC);
   // Another of her households is active now, and the removed one's list is gone.
   await expect(tid(nadja, 'household-list').locator('[aria-label$=", aktiv"]')).toHaveCount(1);
-  await back(nadja);
+  await leaveManaged(nadja);
   await nav(nadja, 'liste');
   await expect(tid(nadja, 'screen-title')).toBeVisible();
   const cached = await nadja.evaluate(
@@ -188,6 +185,7 @@ test('AC-013: Enrico creates "Linsen-Dal Test"; it appears at Nadja without a re
   await enrico.bringToFront();
   await nav(enrico, 'rezepte');
   await tid(enrico, 'recipe-new').click();
+  await tid(enrico, 'recipe-new-recipe').click();
   await tid(enrico, 'new-recipe-title').fill(title);
   await tid(enrico, 'new-recipe-save').click();
   await expect(tid(enrico, 'recipe-title')).toHaveText(title);
@@ -200,14 +198,14 @@ test('AC-015: Enrico removes "Halloumi-Pfanne" from the plan; it disappears at N
   page,
   browser,
 }) => {
-  const { householdId, enrico, nadja } = await twoDevices(page, browser);
-  const dinner = await slotId(householdId, 'Abend');
+  const { enrico, nadja } = await twoDevices(page, browser);
   await nav(enrico, 'kalender');
-  await tid(enrico, `add-${TODAY}-${dinner}`).click();
+  await tid(enrico, `add-${TODAY}`).click();
   // The new household has no recipes: the dish is planned as free text.
-  await tid(enrico, 'add-entry-mode-text').click();
-  await tid(enrico, 'add-entry-text').fill('Halloumi-Pfanne');
-  await tid(enrico, 'add-entry-text-save').click();
+  await tid(enrico, 'add-entry-search').fill('Halloumi-Pfanne');
+  await tid(enrico, 'add-entry-new-text').click();
+  await expect(tid(enrico, 'add-entry-text')).toHaveValue('Halloumi-Pfanne');
+  await tid(enrico, 'add-entry-save').click();
   const entry = (p: Page) => p.locator(PLAN_ENTRY).filter({ hasText: 'Halloumi-Pfanne' });
   await expect(entry(enrico)).toHaveCount(1);
 
@@ -224,13 +222,51 @@ test('AC-015: Enrico removes "Halloumi-Pfanne" from the plan; it disappears at N
   await expect(entry(nadja)).toHaveCount(0, SYNC);
 });
 
+test('AC-011 / AC-027 (0006): a check in "Einkaufen" shows live on the list; an item removed elsewhere closes the open window', async ({
+  page,
+  browser,
+}) => {
+  const { enrico, nadja } = await twoDevices(page, browser);
+  await nav(enrico, 'liste');
+  for (const name of ['Milch', 'Brot']) {
+    await addItem(enrico, name);
+    await expect(openItem(enrico, name)).toHaveCount(1);
+  }
+  await nadja.bringToFront();
+  await nav(nadja, 'liste');
+  await expect(openItem(nadja, 'Brot')).toHaveCount(1, SYNC);
+
+  await enrico.bringToFront();
+  await startShopping(enrico);
+  await smCheck(enrico, 'Milch').click();
+  await nadja.bringToFront();
+  await expect(tid(nadja, 'list-active-shopper')).toHaveText(
+    'Enrico (Test) kauft gerade ein · 1 von 2',
+    SYNC,
+  );
+  await showDone(nadja);
+  await expect(doneItem(nadja, 'Milch')).toHaveCount(1);
+
+  // AC-027: Nadja has "Brot" open while Enrico removes it.
+  await openItem(nadja, 'Brot').click();
+  await expect(tid(nadja, 'item-sheet')).toBeVisible();
+  await enrico.bringToFront();
+  await tid(enrico, 'shopping-close').click();
+  await openItem(enrico, 'Brot').click();
+  await tid(enrico, 'item-sheet-remove').click();
+  await expect(openItem(enrico, 'Brot')).toHaveCount(0);
+  await nadja.bringToFront();
+  await expect(tid(nadja, 'item-sheet')).toBeHidden(SYNC);
+  await expect(toastMessage(nadja)).toHaveText('Brot steht nicht mehr auf der Liste');
+});
+
 test('AC-019: the server refuses a recipe change; the old value is back with a calm hint', async ({
   page,
   allowConsoleError,
 }) => {
   allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
-  // There is no rename in the app; the change is the ingredient note ("Zusatz") of a recipe,
-  // which takes the same path (apply_changes). The server's refusal is forced.
+  // The change is the ingredient note ("Zusatz") of a recipe, saved with the section's "Fertig"
+  // through apply_changes. The server's refusal is forced.
   await open(page, `/rezept/${seedIds['rec-pizza-margherita']}`);
   const note = tidPrefix(page, 'ingredient-shopping-note-');
   await expect(note).toHaveText('(Fior di Latte)');
@@ -250,11 +286,15 @@ test('AC-019: the server refuses a recipe change; the old value is back with a c
       },
     }),
   );
-  await tid(page, `ingredient-note-${ingredientId}`).click();
-  await tid(page, 'ingredient-note-input').fill('Büffelmozzarella');
-  await tid(page, 'ingredient-note-save').click();
+  await tid(page, 'recipe-ingredients-edit').click();
+  await tid(page, `recipe-row-menu-${ingredientId}`).click();
+  await tid(page, `recipe-row-menu-${ingredientId}-edit`).click();
+  await tid(page, 'ingredient-shopping-note').fill('Büffelmozzarella');
+  await tid(page, 'ingredient-save').click();
+  await tid(page, 'recipe-ingredients-done').click();
   await expect(toastMessage(page)).toHaveText(REJECTED);
-  await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText('(Fior di Latte)');
+  // Spec 0008 (E7): the section opens again with what was sent, so it can be tried again.
+  await expect(tid(page, 'recipe-ingredients-done')).toBeVisible();
   await page.unroute('**/rest/v1/rpc/apply_changes');
   await page.reload();
   await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText('(Fior di Latte)');
@@ -266,6 +306,11 @@ test('AC-020: a server error while taking over the pantry check puts nothing on 
 }) => {
   allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
   const curryDay = day(2);
+  // Earlier files may have put these on the demo list; the failed take-over must add nothing.
+  const before = {
+    Mango: await serverItems(seedIds['hh-demo'], 'Mango'),
+    Kokosmilch: await serverItems(seedIds['hh-demo'], 'Kokosmilch'),
+  };
   await open(page, '/kalender');
   await showPlanWeek(page, curryDay);
   await page.route('**/rest/v1/rpc/add_shopping_contributions', (route) =>
@@ -276,22 +321,29 @@ test('AC-020: a server error while taking over the pantry check puts nothing on 
     }),
   );
   await tid(page, 'plan-to-list').click();
-  for (const chip of await tidPrefix(page, 'pc-day-').all()) {
-    const id = await chip.getAttribute('data-testid');
-    const selected = (await chip.getAttribute('aria-selected')) === 'true';
-    if ((id === `pc-day-${curryDay}`) !== selected) await chip.click();
+  const curry = `pick-entry-${seedIds['plan-9']}-check`;
+  for (const check of await tidPrefix(page, 'pick-entry-')
+    .and(page.locator('[role="checkbox"]'))
+    .all()) {
+    const id = await check.getAttribute('data-testid');
+    const selected = (await check.getAttribute('aria-checked')) === 'true';
+    if ((id === curry) !== selected) await check.click();
   }
-  await expect(tid(page, 'pc-dishes')).toHaveText('Mango-Curry');
+  await expect(tid(page, 'pc-next')).toHaveText('Weiter: 1 Gericht');
   await tid(page, 'pc-next').click();
-  const needed = tidPrefix(page, 'pc-row-').locator('[role="checkbox"][aria-checked="true"]');
+  const needed = tidPrefix(page, 'pc-row-').and(
+    page.locator('[role="checkbox"][aria-checked="true"]'),
+  );
   expect(await needed.count()).toBeGreaterThan(1);
   await tid(page, 'pc-apply').click();
   await expect(toastMessage(page)).toHaveText(REJECTED);
 
   await nav(page, 'liste');
-  for (const name of ['Mango', 'Kokosmilch']) {
-    await expect(itemRows(page, name), name).toHaveCount(0);
-    expect(await serverItems(seedIds['hh-demo'], name), name).toEqual([]);
+  for (const name of ['Mango', 'Kokosmilch'] as const) {
+    await expect(openItem(page, name), name).toHaveCount(
+      before[name].filter((item) => !item.checked).length,
+    );
+    expect(await serverItems(seedIds['hh-demo'], name), name).toEqual(before[name]);
   }
 });
 
@@ -308,7 +360,7 @@ test('AC-021: Enrico checks "Milch" offline in store mode; online again, it is c
 
   await context.setOffline(true);
   await smCheck(enrico, 'Milch').click();
-  await expect(tid(enrico, 'sm-done')).toContainText('Milch');
+  await expect(smCheck(enrico, 'Milch')).toHaveAttribute('aria-checked', 'true');
   await expect(tid(enrico, 'offline-banner')).toBeVisible();
 
   await nadja.bringToFront();
@@ -318,7 +370,9 @@ test('AC-021: Enrico checks "Milch" offline in store mode; online again, it is c
   await enrico.bringToFront();
   await context.setOffline(false);
   await nadja.bringToFront();
-  await expect(doneItem(nadja, 'Milch')).toHaveCount(1, SYNC);
+  await expect(tid(nadja, 'done-toggle')).toBeVisible(SYNC);
+  await showDone(nadja);
+  await expect(doneItem(nadja, 'Milch')).toHaveCount(1);
   expect(await serverItems(householdId, 'Milch')).toEqual([{ checked: true, contributions: 1 }]);
 });
 
@@ -329,36 +383,49 @@ test('AC-022: checking wins — Enrico unchecks "Butter" offline, Nadja re-check
 }) => {
   const { householdId, enrico, nadja } = await twoDevices(page, browser);
   await nav(enrico, 'liste');
-  // Store mode needs something still to buy.
+  // "Einkaufen" needs something still to buy.
   await addItem(enrico, 'Milch');
   await addItem(enrico, 'Butter');
-  await openItem(enrico, 'Butter').locator('[role="checkbox"]').click();
-  await expect(doneItem(enrico, 'Butter')).toHaveCount(1);
+  await expect(openItem(enrico, 'Butter')).toHaveCount(1);
+  await startShopping(enrico);
+  await smCheck(enrico, 'Butter').click();
+  await expect(smCheck(enrico, 'Butter')).toHaveAttribute('aria-checked', 'true');
   await nadja.bringToFront();
   await nav(nadja, 'liste');
-  await expect(doneItem(nadja, 'Butter')).toHaveCount(1, SYNC);
+  await expect(tid(nadja, 'done-toggle')).toBeVisible(SYNC);
+  await showDone(nadja);
+  await expect(doneItem(nadja, 'Butter')).toHaveCount(1);
 
   await enrico.bringToFront();
-  await startShopping(enrico);
+  await showInCart(enrico);
   await context.setOffline(true);
   await smCheck(enrico, 'Butter').click();
   await expect(smCheck(enrico, 'Butter')).toHaveAttribute('aria-checked', 'false');
 
-  // Nadja takes the check back and sets it again, online.
+  // Nadja takes the check back and sets it again in "Einkaufen", online.
   await nadja.bringToFront();
-  await doneItem(nadja, 'Butter').click();
+  const butter = await itemIdOf(doneItem(nadja, 'Butter'));
+  await tid(nadja, `item-${butter}-check`).click();
   await expect(openItem(nadja, 'Butter')).toHaveCount(1);
-  await openItem(nadja, 'Butter').locator('[role="checkbox"]').click();
-  await expect(doneItem(nadja, 'Butter')).toHaveCount(1);
-
-  await enrico.bringToFront();
-  await context.setOffline(false);
-  await expect(smCheck(enrico, 'Butter')).toHaveAttribute('aria-checked', 'true', SYNC);
+  await startShopping(nadja);
+  await smCheck(nadja, 'Butter').click();
+  await expect(smCheck(nadja, 'Butter')).toHaveAttribute('aria-checked', 'true');
   await expect
     .poll(() => serverItems(householdId, 'Butter'), SYNC)
     .toEqual([{ checked: true, contributions: 1 }]);
-  await nadja.bringToFront();
-  await expect(doneItem(nadja, 'Butter')).toHaveCount(1);
+
+  await enrico.bringToFront();
+  await context.setOffline(false);
+  // Butter ends checked in "Im Wagen" on Enrico's device, too.
+  await expect(
+    enrico.locator('[data-testid^="sm-group-"] [role="checkbox"][aria-label="Butter"]'),
+  ).toHaveCount(0, SYNC);
+  await expect(
+    tid(enrico, 'sm-done').locator('[role="checkbox"][aria-label="Butter"]'),
+  ).toHaveAttribute('aria-checked', 'true');
+  await expect
+    .poll(() => serverItems(householdId, 'Butter'), SYNC)
+    .toEqual([{ checked: true, contributions: 1 }]);
 });
 
 test('AC-023: Enrico (offline) and Nadja both add "Brot": one item with both contributions', async ({
@@ -385,11 +452,14 @@ test('AC-023: Enrico (offline) and Nadja both add "Brot": one item with both con
   await expect
     .poll(() => serverItems(householdId, 'Brot'), SYNC)
     .toEqual([{ checked: false, contributions: 2 }]);
+  // One row with 2× on both devices (the offline row took the server's item id).
+  const count = async (device: Page) =>
+    tid(device, `item-${await itemIdOf(itemRows(device, 'Brot'))}-count`).innerText();
+  await expect.poll(() => count(enrico), SYNC).toBe('2×');
   await expect(itemRows(enrico, 'Brot')).toHaveCount(1);
-  await expect(itemRows(enrico, 'Brot').locator('[data-testid$="-amount"]')).toHaveText('2×', SYNC);
   await nadja.bringToFront();
+  await expect.poll(() => count(nadja), SYNC).toBe('2×');
   await expect(itemRows(nadja, 'Brot')).toHaveCount(1);
-  await expect(itemRows(nadja, 'Brot').locator('[data-testid$="-amount"]')).toHaveText('2×', SYNC);
 });
 
 test.describe('with the service worker', () => {
@@ -425,6 +495,7 @@ test.describe('with the service worker', () => {
     }
     await page.reload();
     await expect(tid(page, 'shopping-progress')).toBeVisible({ timeout: 20_000 });
+    await showInCart(page);
     for (const name of names) {
       await expect(smCheck(page, name)).toHaveAttribute('aria-checked', 'true');
       expect(await serverItems(demo, name), `${name} not yet on the server`).toEqual([
@@ -454,14 +525,13 @@ test('AC-025: Enrico checks "Eier" offline, Nadja deletes it; online again it is
   await startShopping(enrico);
   await context.setOffline(true);
   await smCheck(enrico, 'Eier').click();
-  await expect(tid(enrico, 'sm-done')).toContainText('Eier');
+  await expect(smCheck(enrico, 'Eier')).toHaveAttribute('aria-checked', 'true');
 
-  // Nadja deletes it: the app removes items by checking them and clearing "Erledigt".
+  // Nadja removes it in "Posten bearbeiten" (spec 0006, AC-025).
   await nadja.bringToFront();
   await nav(nadja, 'liste');
-  await openItem(nadja, 'Eier').locator('[role="checkbox"]').click();
-  await expect(doneItem(nadja, 'Eier')).toHaveCount(1);
-  await tid(nadja, 'clear-done').click();
+  await openItem(nadja, 'Eier').click();
+  await tid(nadja, 'item-sheet-remove').click();
   await expect(itemRows(nadja, 'Eier')).toHaveCount(0);
   await expect.poll(() => serverItems(householdId, 'Eier'), SYNC).toEqual([]);
 

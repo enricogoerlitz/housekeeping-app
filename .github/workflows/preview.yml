@@ -1,0 +1,215 @@
+# Preview of develop (spec 0014, REQ-003, plan Task 7, decisions 3, 6, 7, 8, 20). Every push to
+# develop (a squashed feature PR, a hand-back after a hotfix starts it by hand) delivers that state
+# to the Static Web App "Vorschau" and to the Supabase project "Vorschau" — never to production.
+#
+#   checks → web-bauen → supabase-vorschau → web-vorschau → pruefen
+#
+# - Red checks or a red web build: nothing is reset or delivered, the preview keeps its state
+#   (AC-070). The environment preview allows only develop (AC-071).
+# - One run at a time; a newer push waits and replaces any run still waiting (AC-069).
+# - The preview project is reset on every run (`db reset --remote --no-seed`, the one place the
+#   check "Konventionen" allows it, AC-010), then gets the preview seed without test accounts and
+#   the invitations of PREVIEW_INVITE_EMAILS (AC-014). Push stays off in the preview (decision 8).
+# - Jobs with an environment install no packages; the build job, which does, has no environment
+#   and no secret (decision 3).
+name: Vorschau
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: preview
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    name: Checks
+    uses: ./.github/workflows/checks.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  web-bauen:
+    name: Web bauen
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TURBO_TELEMETRY_DISABLED: 1
+      # Public values only (they end up in the bundle anyway).
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.PREVIEW_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PREVIEW_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_VAPID_PUBLIC_KEY: ${{ vars.PREVIEW_VAPID_PUBLIC_KEY }}
+      EXPO_PUBLIC_APP_VERSION: vorschau
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Variablen vorhanden
+        run: |
+          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY EXPO_PUBLIC_VAPID_PUBLIC_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Variable für $name fehlt (PREVIEW_SUPABASE_URL, PREVIEW_SUPABASE_PUBLISHABLE_KEY, PREVIEW_VAPID_PUBLIC_KEY)"
+              exit 1
+            fi
+          done
+      - run: pnpm install --frozen-lockfile
+      # Export, version.json with the commit (GITHUB_SHA), CSP and SWA configuration check.
+      - run: pnpm build:web
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: apps/app/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  supabase-vorschau:
+    name: Supabase Vorschau
+    needs: [checks, web-bauen]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: preview
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      PREVIEW_SUPABASE_URL: ${{ vars.PREVIEW_SUPABASE_URL }}
+      PREVIEW_WEB_ORIGIN: ${{ vars.PREVIEW_WEB_ORIGIN }}
+      PREVIEW_WEB_ORIGIN_WILDCARD: ${{ vars.PREVIEW_WEB_ORIGIN }}/**
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+      - name: Projektstatus
+        # AC-017: a paused project stops the run here, before anything is reset.
+        run: node scripts/ci/supabase-status.mjs
+      - name: Konfiguration für das Vorschau-Projekt
+        run: node scripts/ci/supabase-remote.mjs preview
+      - name: Datenbank neu aufsetzen
+        # Migrations of develop on an empty database; the seed of config.toml is the local one.
+        run: supabase db reset --remote="$SUPABASE_PROJECT_REF" --no-seed --yes
+      - name: Beispieldaten
+        run: supabase db query --remote="$SUPABASE_PROJECT_REF" --yes --file supabase/preview-seed.sql
+      - name: Einladungen
+        env:
+          PREVIEW_INVITE_EMAILS: ${{ secrets.PREVIEW_INVITE_EMAILS }}
+        run: node scripts/preview-invites.mjs
+      - name: Auth- und API-Konfiguration
+        run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
+      - name: Functions
+        # Docker bundling (no --use-api), so the frozen deno.lock of push-send applies (AC-074).
+        run: supabase functions deploy --remote="$SUPABASE_PROJECT_REF" --prune --yes
+      - name: Secrets der Functions
+        # Only the allowed origin; no FOUNDRY_* and no push values in the preview (decision 8).
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" "ALLOWED_ORIGINS=$PREVIEW_WEB_ORIGIN"
+
+  web-vorschau:
+    name: Web Vorschau
+    needs: [checks, web-bauen, supabase-vorschau]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: preview
+      url: ${{ vars.PREVIEW_WEB_ORIGIN }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SWA_NAME: ${{ vars.SWA_NAME }}
+      SWA_RESOURCE_GROUP: ${{ vars.SWA_RESOURCE_GROUP }}
+      # The production app, for the self-check only (runbook B3); its identity is bound to the
+      # environment production, so this job must not be able to read its deployment token.
+      PRODUCTION_SWA_NAME: swa-housekeeping-app-prd
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: dist
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Selbstprüfung „kein Zugriff auf die Produktion“
+        # AC-013. Output dropped: should the call ever succeed, it would print the token.
+        run: |
+          if az staticwebapp secrets list -n "$PRODUCTION_SWA_NAME" -g "$SWA_RESOURCE_GROUP" > /dev/null 2> "$RUNNER_TEMP/selfcheck.txt"; then
+            echo "::error::Die Vorschau kann das Deployment-Token der Produktion lesen – Rolle der Identität prüfen (AC-013)"
+            exit 1
+          fi
+          if ! grep -q 'AuthorizationFailed' "$RUNNER_TEMP/selfcheck.txt"; then
+            echo "::error::Selbstprüfung unklar: der Zugriff auf die Produktion scheiterte nicht an fehlenden Rechten"
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/selfcheck.txt"
+          echo "Zugriff auf die Produktion abgewiesen."
+      - id: token
+        name: Deployment-Token holen
+        run: |
+          token="$(az staticwebapp secrets list -n "$SWA_NAME" -g "$SWA_RESOURCE_GROUP" --query properties.apiKey -o tsv)"
+          if [ -z "$token" ]; then
+            echo "::error::Deployment-Token der Static Web App nicht lesbar"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.token.outputs.token }}
+          action: upload
+          app_location: dist
+          skip_app_build: true
+          skip_api_build: true
+
+  pruefen:
+    name: Prüfung nach der Auslieferung
+    needs: [checks, web-vorschau]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: preview
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.PREVIEW_SUPABASE_PUBLISHABLE_KEY }}
+      PREVIEW_SUPABASE_URL: ${{ vars.PREVIEW_SUPABASE_URL }}
+      PREVIEW_WEB_ORIGIN: ${{ vars.PREVIEW_WEB_ORIGIN }}
+      PREVIEW_WEB_ORIGIN_WILDCARD: ${{ vars.PREVIEW_WEB_ORIGIN }}/**
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      # For `supabase config diff` inside verify.mjs, which compares the hashed secret.
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+      - name: Konfiguration für das Vorschau-Projekt
+        run: node scripts/ci/supabase-remote.mjs preview
+      - name: Vorschau von außen prüfen
+        # AC-013 (CSP names only the preview project), AC-069 (version.json names this commit).
+        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA"

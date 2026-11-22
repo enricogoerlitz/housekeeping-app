@@ -781,28 +781,27 @@ for env in production backup restore-test; do
 done
 ```
 
-**B3 — Azure** (Enrico ist mit `az` angemeldet):
+**B3 — Azure** (Enrico ist mit `az` angemeldet; ausgeführt am 21.11.2026, die Befehle zeigen den
+tatsächlichen Stand). West Europe hat am 21.11.2026 weder die Static Web App „Vorschau“ noch das
+Storage-Konto angenommen: Beide SWAs liegen in East US 2 (nur App-Dateien), Storage-Konto und
+Identitäten in Germany West Central (Entscheidung 21, Ausgang „klappt nicht“).
 
 ```sh
 SUB=$(az account show --query id -o tsv); TENANT=$(az account show --query tenantId -o tsv)
 SCOPE="/subscriptions/$SUB/resourceGroups/$RG"; mkdir -p tmp/azure
 
-# Static Web Apps: Vorschau zuerst in West Europe (Entscheidung 21)
-az staticwebapp create -n swa-housekeeping-app-preview -g "$RG" -l westeurope --sku Free \
-  || az staticwebapp create -n swa-housekeeping-app-preview -g "$RG" -l eastus2 --sku Free
-# Nur wenn West Europe geklappt hat und die Produktions-SWA leer ist (noch nie ausgeliefert):
-#   az staticwebapp environment list -n swa-housekeeping-app-prd -g "$RG"
-#   az staticwebapp delete -n swa-housekeeping-app-prd -g "$RG" --yes
-#   az staticwebapp create -n swa-housekeeping-app-prd -g "$RG" -l westeurope --sku Free
+# Static Web Apps: West Europe am 21.11.2026 erneut abgelehnt, beide in East US 2
+az staticwebapp create -n swa-housekeeping-app-preview -g "$RG" -l eastus2 --sku Free
+# swa-housekeeping-app-prd besteht schon (East US 2, 20.11.2026) und bleibt.
 for swa in swa-housekeeping-app-prd swa-housekeeping-app-preview; do
   az resource update -g "$RG" -n "$swa" --resource-type Microsoft.Web/staticSites \
     --set properties.stagingEnvironmentPolicy=Disabled
   az staticwebapp show -n "$swa" -g "$RG" --query "{name:name, location:location, host:defaultHostname}" -o table
 done
 
-# Storage-Konto für Sicherungen
-ST=sthousekeepingbkpweu
-az storage account create -n "$ST" -g "$RG" -l westeurope --sku Standard_LRS --kind StorageV2 --access-tier Hot \
+# Storage-Konto für Sicherungen (West Europe abgelehnt, deshalb Germany West Central)
+ST=sthousekeepingbkpger
+az storage account create -n "$ST" -g "$RG" -l germanywestcentral --sku Standard_LRS --kind StorageV2 --access-tier Hot \
   --allow-blob-public-access false --allow-shared-key-access false --min-tls-version TLS1_2 --https-only true
 az storage container-rm create --storage-account "$ST" -g "$RG" -n backups --public-access off
 az storage container immutability-policy create --account-name "$ST" -g "$RG" -c backups --period 30 \
@@ -817,7 +816,7 @@ for role in role-swa-deploy-token role-backup-writer; do
 done
 
 # Identitäten mit föderierten Anmeldedaten je Umgebung
-ident() { az identity create -g "$RG" -n "$1" -l westeurope -o none
+ident() { az identity create -g "$RG" -n "$1" -l germanywestcentral -o none
   az identity federated-credential create -g "$RG" --identity-name "$1" -n "github-$2" \
     --issuer https://token.actions.githubusercontent.com \
     --subject "repo:$R:environment:$2" --audiences api://AzureADTokenExchange -o none; }
@@ -1045,8 +1044,8 @@ Ausführlich in `docs/architecture/betrieb.md` (Task 10). Kurz:
 - **Notfall-Wiederherstellung** (nie automatisch, immer Enricos Entscheidung):
 
 ```sh
-az storage blob list --account-name sthousekeepingbkpweu -c backups --prefix daily/ --auth-mode login -o table
-az storage blob download --account-name sthousekeepingbkpweu -c backups --auth-mode login \
+az storage blob list --account-name sthousekeepingbkpger -c backups --prefix daily/ --auth-mode login -o table
+az storage blob download --account-name sthousekeepingbkpger -c backups --auth-mode login \
   -n "daily/<Datum>/<Lauf-ID>/backup.tar.gz.age" -f tmp/restore/backup.tar.gz.age
 age -d -i <Schlüsseldatei aus dem Passwort-Manager> tmp/restore/backup.tar.gz.age | tar -xz -C tmp/restore
 # zuerst lokal einspielen und prüfen (Befehle in betrieb.md), erst dann in ein neues Projekt
@@ -1058,7 +1057,7 @@ age -d -i <Schlüsseldatei aus dem Passwort-Manager> tmp/restore/backup.tar.gz.a
 | --------------------------------------------------------------------------- | ---------------------------------------------------- |
 | zwei Static Web Apps Free, zwei Supabase-Projekte Free, GitHub (öffentlich) | 0 €                                                  |
 | Verwaltete Identitäten, eigene Rollen, Budget, OIDC                         | 0 €                                                  |
-| Storage-Konto Hot LRS West Europe, etwa 45 Sicherungen à 20–200 MB          | etwa 0,05–0,30 € (bei 1 GB Fotos je Sicherung ≈ 1 €) |
+| Storage-Konto Hot LRS Germany West Central, etwa 45 Sicherungen à 20–200 MB | etwa 0,05–0,30 € (bei 1 GB Fotos je Sicherung ≈ 1 €) |
 | Schreib- und Lesezugriffe, Abruf für den Test (unter den freien 100 GB)     | unter 0,01 €                                         |
 | **Summe**                                                                   | **unter 0,50 €**, Budget-Alarm bei 8 € und 10 €      |
 
@@ -1114,3 +1113,19 @@ Wird am Ende ausgefüllt.
 - [ ] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012)
 - [ ] Offline-Verhalten (AC-023, AC-039) auf dem iPhone geprüft
 - [ ] Glossar, ADR-0015 und Rückverfolgbarkeitstabelle aktuell
+
+## Entscheidungen beim Bauen (Tasks 7–8, 21.11.2026)
+
+1. Spike Entscheidung 6: `env()` in `[remotes.*].project_id` ist mit CLI 3.2.0 nicht nutzbar (Abschnitt
+   wird nach der wörtlichen Ref gewählt; fehlende Variable bricht lokale Befehle). Umgesetzt ist die
+   Ausweichlösung: Platzhalter-Refs in `config.toml`, `scripts/ci/supabase-remote.mjs` setzt im Runner
+   die echte Ref nach Prüfung gegen `<ENV>_SUPABASE_URL` und entfernt den anderen Abschnitt.
+2. Kein `supabase link`; alle Befehle mit `--remote="$SUPABASE_PROJECT_REF"` (Test erzwingt das).
+3. `sicherung` läuft nach `pakete-pruefen` (keine unveränderliche Sicherung für einen roten Build).
+4. `preview-seed.sql` wird von `gen-seed.ts` erzeugt und in `pnpm check` per `--check` verglichen.
+5. Hotfix-Erkennung in `scripts/release/hand-back.mjs`; Zweig und PR per `gh api`.
+6. Selbstprüfung der Vorschau-Identität gegen `swa-housekeeping-app-prd` (fester Name).
+7. Vorschau-Konten: `@vorschau.invalid`, kein Passwort, keine Identität, nicht bestätigt.
+8. `Azure/static-web-apps-deploy` auf den Kopf von `v1` gepinnt (keine Tags upstream).
+9. `release.yml` hat `workflow_dispatch` mit `erzwingen` (Veröffentlichung ohne Code-Änderung, z. B.
+   nach einer Notfall-Wiederherstellung mit neuem Projekt).
