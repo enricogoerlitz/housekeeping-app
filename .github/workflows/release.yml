@@ -163,6 +163,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_POOLER_URL: ${{ secrets.SUPABASE_POOLER_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -175,13 +176,20 @@ jobs:
       - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
         with:
           version: 3.2.0
+      - name: Pooler-Adresse vorhanden
+        # GitHub runners have no IPv6: database commands go through the session pooler (IPv4).
+        run: |
+          if [ -z "$SUPABASE_POOLER_URL" ]; then
+            echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
+            exit 1
+          fi
       - name: Migrationshistorie der Produktion
         # A foreign history stops the release (runbook B5); it is never repaired by hand.
         run: |
-          supabase migration list --remote="$SUPABASE_PROJECT_REF" --output-format json > "$RUNNER_TEMP/migrations.json" || true
+          supabase migration list --remote="$SUPABASE_POOLER_URL" --output-format json > "$RUNNER_TEMP/migrations.json" || true
           node scripts/release/supabase-guard.mjs "$RUNNER_TEMP/migrations.json"
       - name: Ausstehende Migrationen
-        run: supabase db push --remote="$SUPABASE_PROJECT_REF" --dry-run --skip-vault
+        run: supabase db push --remote="$SUPABASE_POOLER_URL" --dry-run --skip-vault
 
   pakete-pruefen:
     name: Pakete prüfen
@@ -226,6 +234,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_POOLER_URL: ${{ secrets.SUPABASE_POOLER_URL }}
       PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
       PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
       PRODUCTION_WEB_ORIGIN_WILDCARD: ${{ vars.PRODUCTION_WEB_ORIGIN }}/**
@@ -243,9 +252,16 @@ jobs:
           version: 3.2.0
       - name: Konfiguration für das Produktionsprojekt
         run: node scripts/ci/supabase-remote.mjs production
+      - name: Pooler-Adresse vorhanden
+        # GitHub runners have no IPv6: database commands go through the session pooler (IPv4).
+        run: |
+          if [ -z "$SUPABASE_POOLER_URL" ]; then
+            echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
+            exit 1
+          fi
       - name: Migrationen
         # Names the migrations it applies (AC-027). Never the seed; the Vault stays Enrico's.
-        run: supabase db push --remote="$SUPABASE_PROJECT_REF" --skip-vault --yes
+        run: supabase db push --remote="$SUPABASE_POOLER_URL" --skip-vault --yes
       - name: Auth- und API-Konfiguration
         # After the migrations: the hook points at a function they create (AC-040).
         run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes

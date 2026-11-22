@@ -331,6 +331,9 @@ function assertOrder(job, patterns, label) {
 // Built from pieces: the check "Konventionen" scans this file for the command it forbids.
 const RESET = new RegExp(['supabase', 'db', 'reset'].join(' '));
 const REMOTE_REF = '--remote="$SUPABASE_PROJECT_REF"';
+/** GitHub runners have no IPv6: commands that open a database connection use the session pooler. */
+const REMOTE_POOLER = '--remote="$SUPABASE_POOLER_URL"';
+const DATABASE_COMMAND = /^\s*supabase (db (reset|push|query|dump)|migration (list|repair))\b/;
 
 describe('all delivery workflows', () => {
   test('AC-006, decision 3: a job without an environment never reads a secret', () => {
@@ -359,7 +362,8 @@ describe('all delivery workflows', () => {
       for (const [id, job] of Object.entries(jobsOf(file))) {
         for (const run of runs(job)) {
           for (const line of run.split('\n').filter((l) => /^\s*supabase /.test(l))) {
-            assert.ok(line.includes(REMOTE_REF), `${file} ${id}: ${line.trim()}`);
+            const remote = DATABASE_COMMAND.test(line) ? REMOTE_POOLER : REMOTE_REF;
+            assert.ok(line.includes(remote), `${file} ${id}: ${line.trim()}`);
             assert.doesNotMatch(
               line,
               /--linked|--db-url|--include-seed|--use-api/,
@@ -369,6 +373,25 @@ describe('all delivery workflows', () => {
           if (/\bsupabase /.test(run))
             assert.equal(job.environment !== undefined, true, `${file} ${id}`);
         }
+      }
+    }
+  });
+
+  test('the pooler address comes from the job environment and is checked before the first database command', () => {
+    for (const file of ['preview.yml', 'release.yml', 'redeploy-web.yml']) {
+      for (const [id, job] of Object.entries(jobsOf(file))) {
+        const first = runs(job).findIndex((run) =>
+          run.split('\n').some((line) => DATABASE_COMMAND.test(line)),
+        );
+        if (first === -1) continue;
+        assert.equal(
+          job.env?.SUPABASE_POOLER_URL,
+          '${{ secrets.SUPABASE_POOLER_URL }}',
+          `${file} ${id}`,
+        );
+        assert.ok(job.environment, `${file} ${id}`);
+        const guard = runs(job).findIndex((run) => /-z "\$SUPABASE_POOLER_URL"/.test(run));
+        assert.ok(guard !== -1 && guard < first, `${file} ${id}`);
       }
     }
   });
