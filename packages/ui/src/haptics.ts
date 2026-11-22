@@ -1,8 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
-/** The meaningful moments that get a haptic (rule 40-ui): checking off an item, a drop. */
-export type HapticMoment = 'check' | 'drop';
+/**
+ * The meaningful moments that get a haptic (rule 40-ui): checking off an item, an entry lifting
+ * for a drag (spec 0016), a drop.
+ */
+export type HapticMoment = 'check' | 'lift' | 'drop';
 
 /**
  * A light tap on the device at the moment the visual changes; never the only feedback. On the web
@@ -10,9 +13,9 @@ export type HapticMoment = 'check' | 'drop';
  */
 export function haptic(moment: HapticMoment): void {
   if (Platform.OS === 'web') return;
-  // A drop is a drag that commits (light impact); a check is a small tick (selection).
+  // Lifting and dropping move a thing (light impact); a check is a small tick (selection).
   const run =
-    moment === 'drop'
+    moment !== 'check'
       ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
       : Haptics.selectionAsync();
   run.catch(() => undefined);
