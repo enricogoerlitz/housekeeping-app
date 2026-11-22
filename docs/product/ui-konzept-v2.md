@@ -533,8 +533,8 @@ im Kalender).
 
 **Was sich ändert**
 
-- **Kopf:** Titel „Essen“, ⊞ Verwalten, „+“ (Neu: Rezept · Sammlung · Restaurant; dazu
-  „Starter-Rezepte“), Avatar. Darunter Ansichts-Tabs **Rezepte · Restaurants**. Sammlungen stehen
+- **Kopf:** Titel „Essen“, ⊞ Verwalten, „+“ (Neu: Rezept · Sammlung · Restaurant; ohne
+  Starter-Rezepte seit Spec 0023), Avatar. Darunter Ansichts-Tabs **Rezepte · Restaurants**. Sammlungen stehen
   unter „Rezepte“ mit Kennzeichen „Sammlung“.
 - **Eine Such- und Filterzeile** (D10): Suchfeld, darunter eine Zeile mit [Filter (n)],
   [↕ Sortierung ▾] und seitlich wischbaren Schnell-Chips (Favoriten, < 30 Min, Vegetarisch, Vegan,
@@ -2134,8 +2134,8 @@ vom selben Tag dazu und gelten nach Enricos Regel „Empfehlung übernehmen“ a
 
 - **KI** in allen Formen (Assistent, KI-Suche, Sprache, Vorschläge). Sie bleibt ausgeblendet und
   bekommt am Ende eine eigene Spec.
-- **Besserer Starter-Rezeptkatalog** (Küchen, je Küche Gerichte, Beilagen und Desserts; Notiz in
-  `tmp/TMP.md`). Passt gut zum neuen Küche-Filter, ist aber Inhalt, nicht Oberfläche; eigene Spec.
+- _Entfallen (Spec 0023, REQ-011):_ ein besserer Starter-Rezeptkatalog; Starter-Rezepte gibt es
+  nicht mehr.
 - **Code-Review, Refactoring, Deployment und Versions-Hinweis** (TODOs in `tmp/TMP.md`). Davon hängt
   ab, ab wann Benachrichtigungen auf dem iPhone ankommen (öffentliche HTTPS-Adresse).
 - **Globale Suche** über Rezepte, Artikel und Aufgaben (war in der Design-Richtung angedeutet,
