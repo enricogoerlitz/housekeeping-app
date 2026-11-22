@@ -331,9 +331,12 @@ function assertOrder(job, patterns, label) {
 // Built from pieces: the check "Konventionen" scans this file for the command it forbids.
 const RESET = new RegExp(['supabase', 'db', 'reset'].join(' '));
 const REMOTE_REF = '--remote="$SUPABASE_PROJECT_REF"';
-/** GitHub runners have no IPv6: commands that open a database connection use the session pooler. */
+/**
+ * GitHub runners have no IPv6: commands that open a database connection use the session pooler.
+ * `db query` with the ref runs over the Management API (HTTP) and stays on the ref.
+ */
 const REMOTE_POOLER = '--remote="$SUPABASE_POOLER_URL"';
-const DATABASE_COMMAND = /^\s*supabase (db (reset|push|query|dump)|migration (list|repair))\b/;
+const DATABASE_COMMAND = /^\s*supabase (db (reset|push|dump)|migration (list|repair))\b/;
 
 describe('all delivery workflows', () => {
   test('AC-006, decision 3: a job without an environment never reads a secret', () => {

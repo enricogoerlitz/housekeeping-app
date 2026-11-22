@@ -1132,10 +1132,11 @@ Wird am Ende ausgefüllt.
 10. **Datenbank-Befehle über den Session-Pooler (22.11.2026).** Der erste Vorschau-Lauf scheiterte an
     `supabase db reset --remote=<ref>`: Die GitHub-Runner haben kein IPv6, die direkte Verbindung
     zur Datenbank geht nur über IPv6, und die CLI verlangt dann die Pooler-Adresse. `db reset`,
-    `db query`, `migration list` und `db push` laufen deshalb mit `--remote="$SUPABASE_POOLER_URL"`
+    `migration list` und `db push` laufen deshalb mit `--remote="$SUPABASE_POOLER_URL"`
     (Secret je Umgebung `preview` und `production`: Session-Pooler-Adresse mit Benutzer
     `postgres.<ref>` und dem Datenbank-Passwort des Projekts). Befehle über die Management-API
-    (`config push`, `functions deploy`, `secrets set`) bleiben bei der Ref. Ein Schritt vor dem
+    (`config push`, `functions deploy`, `secrets set` und `db query` für die Beispieldaten) bleiben bei
+    der Ref; `db query` über den Pooler scheiterte an einer Datei mit mehreren Befehlen. Ein Schritt vor dem
     ersten Datenbank-Befehl bricht mit klarer Meldung ab, wenn das Secret fehlt;
     `scripts/ci/workflows.test.mjs` prüft beides. Der IPv4-Zusatz von Supabase (kostenpflichtig)
     war die Alternative.
