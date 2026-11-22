@@ -61,7 +61,7 @@ test('AC-001: "Benachrichtigungen · 2 an" under the avatar opens the page; "Ver
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
   await expect(tid(page, 'notif-kinds')).toContainText('gilt für alle Geräte');
-  await expect(tid(page, 'notif-kinds')).toContainText('Während Abwesenheiten bist du stumm.');
+  await expect(tid(page, 'notif-kinds')).toContainText('Während einer Reise kommt nichts.');
   await expect(tid(page, 'notif-devices')).toContainText('Deine Geräte');
   // The export has a service worker: the switch is live (not the development server's hint).
   await expect(toggle(page, 'notif-device-switch')).toBeEnabled();

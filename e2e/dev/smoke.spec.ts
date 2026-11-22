@@ -266,7 +266,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // The Urlaubsseite of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007): head and progress, a
   // Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the windows behind
   // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens from its row in
-  // "Abwesenheiten" (task 10); "‹ Abwesenheiten" leads back there (task 12). "Abbrechen" in the
+  // "Reisen" (task 10); "‹ Reisen" leads back there (task 12). "Abbrechen" in the
   // reset dialog leaves every Haken as it was (AC-029).
   const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
