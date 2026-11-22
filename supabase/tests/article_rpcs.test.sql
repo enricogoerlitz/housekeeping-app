@@ -41,7 +41,7 @@ insert into fx (key) values
   ('konserven'), ('kokosmilch'), ('milchkokos'), ('drachenfrucht'), ('milch'), ('butter'), ('linsen'),
   ('tomaten'), ('tomate_x'), ('kokosnuss'), ('area_b'),
   ('curry'), ('mango_curry'), ('dal'), ('suppe'),
-  ('item_milchkokos'), ('item_milchkokos_old'), ('item_kokosmilch'), ('item_milch'), ('item_butter'), ('item_tomate_x'),
+  ('item_milchkokos'), ('item_kokosmilch'), ('item_milch'), ('item_butter'), ('item_tomate_x'),
   ('c_milchkokos'), ('c_kokosmilch'), ('c_milch'), ('c_butter'), ('c_tomate_x'), ('new_article'), ('unknown');
 
 insert into public.areas (id, household_id, name) values
@@ -74,11 +74,10 @@ insert into public.recipes (id, household_id, title, ingredients) values
   (tests.fx('dal'), tests.fx('home_a'), 'Linsen-Dal', jsonb_build_array(tests.ing('i1', tests.fx('linsen')))),
   (tests.fx('suppe'), tests.fx('home_a'), 'Tomatensuppe', jsonb_build_array(tests.ing('i1', tests.fx('tomate_x'))));
 
--- Milchkokos open ("von Hand: 1×", Zusatz "Bio") and once checked earlier; Kokosmilch open from
+-- Milchkokos open ("von Hand: 1×", Zusatz "Bio"); Kokosmilch open from
 -- Mango-Curry; Milch open; Butter only checked; Strauchtomate open.
 insert into public.shopping_items (id, household_id, article_id, checked, checked_at, checked_by, check_seq) values
   (tests.fx('item_milchkokos'), tests.fx('home_a'), tests.fx('milchkokos'), false, null, null, 0),
-  (tests.fx('item_milchkokos_old'), tests.fx('home_a'), tests.fx('milchkokos'), true, now(), tests.fx('nadja'), 1),
   (tests.fx('item_kokosmilch'), tests.fx('home_a'), tests.fx('kokosmilch'), false, null, null, 0),
   (tests.fx('item_milch'), tests.fx('home_a'), tests.fx('milch'), false, null, null, 0),
   (tests.fx('item_butter'), tests.fx('home_a'), tests.fx('butter'), true, now(), tests.fx('enrico'), 1),
@@ -196,10 +195,9 @@ select throws_ok(
   format('select public.delete_article(%L)', tests.fx('milch')),
   'P0001', 'article_in_use',
   'AC-034 delete_article: an article open on the list is not deleted');
-select throws_ok(
-  format('select public.delete_article(%L)', tests.fx('butter')),
-  'P0001', 'article_in_use',
-  'AC-034 delete_article: an article checked on the list is not deleted');
+select is(
+  public.delete_article(tests.fx('butter')) ->> 'name', 'Butter',
+  'AC-047 delete_article: an article only checked on the list is deleted with its item (spec 0025)');
 select throws_ok(
   format('select public.delete_article(%L)', tests.fx('kokosnuss')),
   'P0002', 'article_not_found',
@@ -225,8 +223,8 @@ select throws_ok(
 select tests.clear_authentication();
 select is(
   (select count(*)::int from public.articles
-   where id in (tests.fx('linsen'), tests.fx('milch'), tests.fx('butter'), tests.fx('kokosnuss'), tests.fx('drachenfrucht'))),
-  5,
+   where id in (tests.fx('linsen'), tests.fx('milch'), tests.fx('kokosnuss'), tests.fx('drachenfrucht'))),
+  4,
   'AC-034 delete_article: every refused article still exists');
 
 -- ===================== merge_articles: refused (AC-041, invalid input) =====================
@@ -323,8 +321,8 @@ select is(
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
   public.merge_articles(tests.fx('milchkokos'), tests.fx('kokosmilch')),
-  '{"recipes": 1, "items": 2}'::jsonb,
-  'AC-036 merge_articles: one recipe and two items of the source moved');
+  '{"recipes": 1, "items": 1}'::jsonb,
+  'AC-036 merge_articles: one recipe and the one item of the source moved');
 select tests.authenticate_as(tests.fx('nadja'));
 select is(
   (select ingredients from public.recipes where id = tests.fx('curry')),
@@ -353,10 +351,9 @@ select is(
    where table_name = 'shopping_items' and record_id = tests.fx('item_milchkokos')::text),
   tests.fx('item_kokosmilch')::text,
   'AC-040 merge_articles: the tombstone of the merged item names the item of the target');
-select results_eq(
-  format($$ select article_id, checked from public.shopping_items where id = %L $$, tests.fx('item_milchkokos_old')),
-  format($$ values (%L::uuid, true) $$, tests.fx('kokosmilch')),
-  'AC-036 merge_articles: the checked item of the source now belongs to the target');
+select is(
+  (select count(*)::int from public.shopping_items where article_id = tests.fx('kokosmilch')), 1,
+  'S-03 merge_articles: Kokosmilch has exactly one item on the list');
 select results_eq(
   format('select * from tests.article_state(%L)', tests.fx('kokosmilch')),
   format($$ values ('Kokosmilch'::text, 'kokosmilch'::text, '{Milchkokos, Kokosdrink}'::text[],

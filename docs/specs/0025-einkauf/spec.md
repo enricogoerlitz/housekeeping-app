@@ -314,6 +314,16 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
     ADR-0008 nennt bisher nur den Einkaufsmodus; diese Spec ergänzt einen Nachtrag „gilt auch auf
     Liste und Artikel“ (Aktionen und Konfliktregeln unverändert, „ein Posten je Artikel“ jetzt auch für
     erledigte Posten).
+16. Beim Bau (Claude, 22.11.2026): `restore_cleared_items` und `merge_articles` bei einem schon
+    vorhandenen Posten desselben Artikels — ein offener Eintrag tritt bei (ein erledigter Posten
+    wird dabei wieder offen, wie beim Hinzufügen), ein erledigter Eintrag kommt nicht zurück (der
+    Posten von heute gewinnt).
+17. Beim Bau: `set_manual_amount(item, count, qty, unit)` nimmt Anzahl oder Menge, nicht beides;
+    der früheste Beitrag „von Hand“ behält Kennung, Platz und Zusatz.
+    `create_store(household, id, name, copy_from)` nimmt eine Client-ID wie die anderen Schreibwege.
+18. Beim Bau: `created_at` beim Wiederherstellen bleibt über `set_timestamps`, das ein früheres
+    `created_at` nur während einer Wiederherstellung (Transaktions-Einstellung) und nie für die
+    API-Rollen übernimmt.
 
 ## Daten
 

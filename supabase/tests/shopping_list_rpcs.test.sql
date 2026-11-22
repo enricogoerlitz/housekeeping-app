@@ -298,8 +298,8 @@ select public.add_shopping_contributions(tests.fx('home_a'), jsonb_build_array(
                      'contributions', jsonb_build_array(jsonb_build_object('id', tests.fx('c_brot_new'), 'source', '{"kind": "manual"}'::jsonb, 'count', 1)))));
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
-  public.restore_cleared_items(tests.fx('home_a'), tests.kept('cleared')), 5,
-  'AC-037 restore_cleared_items: every cleared item is restored');
+  public.restore_cleared_items(tests.fx('home_a'), tests.kept('cleared')), 4,
+  'AC-037 restore_cleared_items: every cleared item is restored but the checked Brot, open again meanwhile');
 select results_eq(
   format($$ select i.id, i.checked, (select array_agg(c.id order by c.id) from public.shopping_contributions c where c.item_id = i.id)
             from public.shopping_items i where i.household_id = %L and i.article_id = %L $$, tests.fx('home_a'), tests.fx('milch')),
@@ -312,8 +312,8 @@ select is(
 select results_eq(
   format($$ select id, checked from public.shopping_items where household_id = %L and article_id = %L order by checked $$,
          tests.fx('home_a'), tests.fx('brot')),
-  format($$ values (%L::uuid, false), (%L::uuid, true) $$, tests.fx('item_brot_new'), tests.fx('item_brot')),
-  'AC-037 restore_cleared_items: a checked item comes back checked, next to the open item of the same article');
+  format($$ values (%L::uuid, false) $$, tests.fx('item_brot_new')),
+  'S-03 restore_cleared_items: a checked item does not come back next to the open item of the same article (spec 0025)');
 select results_eq(
   format($$ select id, checked from public.shopping_items where id in (%L, %L, %L) order by id $$,
          tests.fx('item_zw'), tests.fx('item_eier'), tests.fx('item_moehren')),
@@ -321,15 +321,15 @@ select results_eq(
          tests.fx('item_zw'), tests.fx('item_eier'), tests.fx('item_moehren')),
   'AC-037 restore_cleared_items: open items come back open with their ids');
 select is(
-  (select count(*)::int from public.shopping_contributions where household_id = tests.fx('home_a')), 7,
-  'AC-037 restore_cleared_items: every contribution is back, none twice');
+  (select count(*)::int from public.shopping_contributions where household_id = tests.fx('home_a')), 6,
+  'AC-037 restore_cleared_items: every contribution is back but the bought Brot, none twice');
 select is(
   public.restore_cleared_items(tests.fx('home_a'), tests.kept('cleared')), 0,
   'AC-037 restore_cleared_items: a repeated undo restores nothing');
 select is(
   (select count(*)::int from public.shopping_items where household_id = tests.fx('home_a'))
     + (select count(*)::int from public.shopping_contributions where household_id = tests.fx('home_a')),
-  6 + 7,
+  5 + 6,
   'AC-037 restore_cleared_items: a repeated undo duplicates no item and no contribution');
 
 -- ===================== ADR-0012: no list =====================
