@@ -525,8 +525,8 @@ export function tripHeader(stripe: AbsenceStripe, members: readonly Member[]): T
 
 /**
  * "beginnt in 12 Tagen", "beginnt morgen", "beginnt heute", during the absence "läuft bis Do
- * 7.1.", afterwards "vorbei" (decision 15). `day` is today on the Urlaubsseite (AC-016) and the
- * shown day on the card of the Übersicht (AC-042).
+ * 7.1.", afterwards "vorbei" (decision 15). `day` is today, on the Urlaubsseite (AC-016) as on
+ * the card of the Übersicht (spec 0018, AC-020).
  */
 export function startsInLabel(from: ISODate, to: ISODate, day: ISODate): string {
   const days = daysBetween(day, from);
@@ -607,17 +607,18 @@ export interface PackingCard {
   total: number;
   /** "12/30 gepackt", fully packed "alles gepackt ✓" (AC-042, AC-044). */
   progressLabel: string;
-  /** Counted from the shown day (AC-042). */
+  /** Counted from today, whatever day is shown (spec 0018, AC-020). */
   startsIn: string;
 }
 
 /**
  * The cards "Reisetasche" of the Übersicht (D33, decision 15): one per absence with at least one
  * bag, when the week (Mo–So) of the shown day holds a day of it or it starts 1 to 7 days after
- * the shown day; earliest first.
+ * the shown day; earliest first. "beginnt in n Tagen" counts from today (spec 0018, AC-020).
  */
 export function packingCards(input: {
   shownDay: ISODate;
+  today: ISODate;
   absences: readonly Absence[];
   listBags: readonly PackingListBag[];
   items: readonly PackingItem[];
@@ -652,7 +653,7 @@ export function packingCards(input: {
           progressLabel: allPacked
             ? 'alles gepackt ✓'
             : `${progress.packed}/${progress.total} gepackt`,
-          startsIn: startsInLabel(absence.from, absence.to, input.shownDay),
+          startsIn: startsInLabel(absence.from, absence.to, input.today),
         },
       ];
     });
