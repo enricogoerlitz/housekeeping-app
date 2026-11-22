@@ -162,11 +162,19 @@ export function MemberList() {
   const invitations = useHouseholdInvitations();
   const me = useCurrentMemberId();
   const households = useHouseholdsMap();
-  const householdName = households[useActiveHouseholdId()]?.household.name ?? '';
+  const activeHouseholdId = useActiveHouseholdId();
+  const householdName = households[activeHouseholdId]?.household.name ?? '';
   const householdCount = Object.keys(households).length;
   const online = useOnlineOnly();
   const { busy, run } = useAction();
   const [asking, setAsking] = useState<{ id: string; name: string } | undefined>();
+  // The question names one household, and the call acts on the active one: when another becomes
+  // active while it is open (e.g. removed on another device), it closes instead of acting there.
+  const [askedIn, setAskedIn] = useState(activeHouseholdId);
+  if (askedIn !== activeHouseholdId) {
+    setAskedIn(activeHouseholdId);
+    setAsking(undefined);
+  }
 
   const remove = (profileId: string, name: string) =>
     run(
