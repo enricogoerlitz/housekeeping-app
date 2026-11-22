@@ -1102,18 +1102,18 @@ Nacht (eigene Änderung, nicht in diesem Plan).
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 22.11.2026 nach der ersten Veröffentlichung; offen sind die Punkte ohne Haken.
 
 - [ ] Alle AC haben einen Test, der rot war und jetzt grün ist, oder einen Beleg aus Task 13/14
       (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün (`app_version.test.sql`)
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün (Job „Prüfungen“ in jedem Lauf, zuletzt Release-PR #10)
+- [x] `pnpm exec supabase test db` grün (Job „Datenbank (pgTAP)“, Release-PR #10)
 - [ ] `/ui-verify` für Hinweis und Einstellungen
 - [ ] `/security-check` über Workflows, Skripte, `infra/`, `config.toml`
 - [ ] Negativtests aus Task 13 belegt (`tmp/0014/`)
-- [ ] Erste Vorschau und erste Veröffentlichung grün, `verify.mjs` grün
+- [x] Erste Vorschau und erste Veröffentlichung grün, `verify.mjs` grün: Vorschau-Lauf 45004887517 (mit Domain erneut grün), Release-Lauf 45022167671, v2026.11.1 auf https://house.kuschel-nest.de; volle E2E lokal vorher grün (175 + 13). Unterwegs behoben: Entscheidungen beim Bauen 10–15
 - [ ] Erste Sicherung und Wiederherstellungstest grün, Unveränderlichkeit gesperrt
-- [ ] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012)
+- [x] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012, Nachtrag 22.11.2026)
 - [ ] Offline-Verhalten (AC-023, AC-039) auf dem iPhone geprüft
 - [ ] Glossar, ADR-0015 und Rückverfolgbarkeitstabelle aktuell
 

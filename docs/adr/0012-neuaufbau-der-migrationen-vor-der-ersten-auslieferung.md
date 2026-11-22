@@ -90,3 +90,9 @@ Schema-Änderungen vor dem Release (z. B. Spec 0007, 0011) ändern die Dateien d
 statt neue Flicken-Migrationen anzulegen. Damit gilt auch für sie: kein Code für die Übernahme
 alter Daten. Ab dem ersten `supabase db push` in das Produktionsprojekt gilt die Regel „nie
 ändern“ unverändert.
+
+## Nachtrag 22.11.2026: erste Veröffentlichung
+
+Die erste Veröffentlichung (v2026.11.1) hat die Grundlinie am 22.11.2026 in die Produktion gebracht
+(`supabase db push`). Seitdem gilt wieder „nie ändern“: Jede Schemaänderung ist eine neue Migration,
+nach expand → migrate → contract (`.claude/rules/30-database.md`).
