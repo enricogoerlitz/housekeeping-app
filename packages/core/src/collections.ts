@@ -6,8 +6,7 @@ import {
   foodDiets,
   recipeFitsPreference,
 } from './diet';
-import { ingredientsForVariant } from './recipe-variants';
-import { defaultVariantId } from './recipe-variants';
+import { defaultVariantId, ingredientsForVariant } from './recipe-variants';
 import { contributionsFromEntry, type PlannedContribution } from './shopping';
 import { recipeSource } from './shopping-list';
 import type {
