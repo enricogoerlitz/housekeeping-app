@@ -80,11 +80,15 @@ export interface LiftRequest<P> {
 export interface DragSink {
   lift: () => void;
   pointer: (point: Point) => void;
-  /** Where the drag area lies, where the source was grabbed and how large it is. */
+  /**
+   * Where the drag area lies, where the source was grabbed and how large it is, and the visible
+   * part of the drag area (the ghost stays inside it).
+   */
   geometry: (geometry: {
     origin: Point;
     grab: Point;
     size: { width: number; height: number };
+    area: Rect;
   }) => void;
   /** The single highlight, in window coordinates; null hides it. */
   highlight: (rect: Rect | null, allowed: boolean) => void;
@@ -146,13 +150,20 @@ export function ghostSize(width: number, grabX: number): { width: number; grabX:
 }
 
 /**
- * Where the ghost starts along one axis of the window: at the grab point under the pointer, but
- * never past the window's edges (else the target label of a wide entry at the left edge is cut).
+ * Where the ghost starts along one axis: at the grab point under the pointer, but never past the
+ * edges of the visible drag area from `start` to `end` (else a wide entry at the left edge, and
+ * its target label, are cut off).
  */
-export function ghostStart(pointer: number, grab: number, size: number, window: number): number {
+export function ghostStart(
+  pointer: number,
+  grab: number,
+  size: number,
+  start: number,
+  end: number,
+): number {
   'worklet';
-  const last = window - GHOST_EDGE_MARGIN - size;
-  return Math.max(GHOST_EDGE_MARGIN, Math.min(pointer - grab, last));
+  const last = end - GHOST_EDGE_MARGIN - size;
+  return Math.max(start + GHOST_EDGE_MARGIN, Math.min(pointer - grab, last));
 }
 
 /** A badge on the pointer keeps this distance to it, so the finger does not cover it. */
@@ -339,6 +350,7 @@ export function createDragController<P>(
       origin: { x: origin.x, y: origin.y },
       grab,
       size: { width: source.width, height: source.height },
+      area: viewport(current),
     });
   };
 

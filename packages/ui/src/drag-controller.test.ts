@@ -65,6 +65,7 @@ describe('drag controller', () => {
       origin: { x: 0, y: 0 },
       grab: { x: 20, y: 10 },
       size: { width: 80, height: 20 },
+      area: { x: 0, y: 0, width: 400, height: 800 },
     });
     const snapshot = controller.getSnapshot();
     expect(snapshot.phase).toBe('dragging');
@@ -450,15 +451,17 @@ describe('ghost geometry', () => {
   });
 
   it('the ghost hangs on the pointer at the grab point', () => {
-    expect(ghostStart(200, 50, 120, 390)).toBe(150);
+    expect(ghostStart(200, 50, 120, 0, 390)).toBe(150);
   });
 
-  it('the ghost stays inside the window at the edges', () => {
+  it('the ghost stays inside the visible drag area at the edges', () => {
     // Dragged to the left edge, a ghost grabbed at its right end would leave the window.
-    expect(ghostStart(30, 250, 280, 390)).toBe(GHOST_EDGE_MARGIN);
-    expect(ghostStart(380, 10, 280, 390)).toBe(390 - GHOST_EDGE_MARGIN - 280);
-    // Wider than the window: it starts at the margin.
-    expect(ghostStart(100, 50, 500, 390)).toBe(GHOST_EDGE_MARGIN);
+    expect(ghostStart(30, 250, 280, 0, 390)).toBe(GHOST_EDGE_MARGIN);
+    expect(ghostStart(380, 10, 280, 0, 390)).toBe(390 - GHOST_EDGE_MARGIN - 280);
+    // Wider than the area: it starts at the margin.
+    expect(ghostStart(100, 50, 500, 0, 390)).toBe(GHOST_EDGE_MARGIN);
+    // On the desktop the drag area begins right of the sidebar, which would clip the ghost.
+    expect(ghostStart(262, 250, 280, 256, 1440)).toBe(256 + GHOST_EDGE_MARGIN);
   });
 
   it('a badge floats above the finger, and below it at the top of the window', () => {

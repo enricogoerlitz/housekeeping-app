@@ -106,8 +106,11 @@ export function DragProvider(props: DragProviderProps) {
   // The source's own width and grab point: a capped ghost grows back to them on the glide back.
   const sourceWidth = useSharedValue(0);
   const sourceGrabX = useSharedValue(0);
-  const windowWidth = useSharedValue(0);
-  const windowHeight = useSharedValue(0);
+  // The visible part of the drag area in window coordinates: the ghost and badges stay inside.
+  const areaX = useSharedValue(0);
+  const areaY = useSharedValue(0);
+  const areaRight = useSharedValue(0);
+  const areaBottom = useSharedValue(0);
   // In the right half of the window the label grows to the left, so it is not cut off.
   const labelEnd = useSharedValue(false);
   const highlight = useSharedValue<{ rect: Rect; allowed: boolean } | null>(null);
@@ -127,9 +130,6 @@ export function DragProvider(props: DragProviderProps) {
         ghostOpacity.set(0);
         cancelAnimation(ghostScale);
         ghostScale.set(1);
-        const size = Dimensions.get('window');
-        windowWidth.set(size.width);
-        windowHeight.set(size.height);
         // Android back cancels a drag before it closes anything else (no such key on the web).
         if (Platform.OS !== 'web') {
           back = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -153,7 +153,11 @@ export function DragProvider(props: DragProviderProps) {
         pointerY.set(point.y);
         labelEnd.set(point.x > Dimensions.get('window').width / 2);
       },
-      geometry: ({ origin, grab, size }) => {
+      geometry: ({ origin, grab, size, area }) => {
+        areaX.set(area.x);
+        areaY.set(area.y);
+        areaRight.set(area.x + area.width);
+        areaBottom.set(area.y + area.height);
         originX.set(origin.x);
         originY.set(origin.y);
         const fitted = ghostSize(size.width, grab.x);
@@ -210,7 +214,8 @@ export function DragProvider(props: DragProviderProps) {
     pointerY,
     originX,
     originY,
-    windowWidth,
+    areaX,
+    areaRight,
   }));
 
   const container = useRef<HostInstance>(null);
@@ -227,8 +232,14 @@ export function DragProvider(props: DragProviderProps) {
   // The ghost hangs on the pointer at the grab point but stays inside the window.
   const ghostStyle = useAnimatedStyle(() => {
     const width = ghostWidth.get();
-    const left = ghostStart(pointerX.get(), grabX.get(), width, windowWidth.get());
-    const top = ghostStart(pointerY.get(), grabY.get(), ghostHeight.get(), windowHeight.get());
+    const left = ghostStart(pointerX.get(), grabX.get(), width, areaX.get(), areaRight.get());
+    const top = ghostStart(
+      pointerY.get(),
+      grabY.get(),
+      ghostHeight.get(),
+      areaY.get(),
+      areaBottom.get(),
+    );
     return {
       width,
       opacity: ghostOpacity.get(),
@@ -241,8 +252,14 @@ export function DragProvider(props: DragProviderProps) {
   });
   // The label grows away from the nearer side edge and hangs below the ghost at the top edge.
   const labelStyle = useAnimatedStyle(() => {
-    const top = ghostStart(pointerY.get(), grabY.get(), ghostHeight.get(), windowHeight.get());
-    const below = top < LABEL_ROOM;
+    const top = ghostStart(
+      pointerY.get(),
+      grabY.get(),
+      ghostHeight.get(),
+      areaY.get(),
+      areaBottom.get(),
+    );
+    const below = top - areaY.get() < LABEL_ROOM;
     return {
       left: labelEnd.get() ? 'auto' : 0,
       right: labelEnd.get() ? 0 : 'auto',
@@ -290,7 +307,8 @@ interface DragPointer {
   pointerY: Shared<number>;
   originX: Shared<number>;
   originY: Shared<number>;
-  windowWidth: Shared<number>;
+  areaX: Shared<number>;
+  areaRight: Shared<number>;
 }
 
 const DragPointerContext = createContext<DragPointer | null>(null);
@@ -312,7 +330,13 @@ export function DragBadge(props: { children: ReactNode }) {
   const height = useSharedValue(0);
   const style = useAnimatedStyle(() => {
     const w = width.get();
-    const left = ghostStart(pointer.pointerX.get(), w / 2, w, pointer.windowWidth.get());
+    const left = ghostStart(
+      pointer.pointerX.get(),
+      w / 2,
+      w,
+      pointer.areaX.get(),
+      pointer.areaRight.get(),
+    );
     return {
       opacity: w > 0 ? 1 : 0,
       transform: [
