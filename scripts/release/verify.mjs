@@ -421,23 +421,27 @@ function graphqlSql(searchPath) {
 }
 
 /** `{ row }` or `{ error }` of a read-only query; never the message of the database. */
-function readQuery(supabaseCli, ref, sql) {
+function readQuery(supabaseCli, ref, sql, { readOnly = true } = {}) {
   const { status, stdout, error } = supabaseCli([
     'db',
     'query',
     `--remote=${ref}`,
-    '--read-only',
+    // The read-only role of the CLI may not `set role authenticated`; the GraphQL probe therefore
+    // runs with --yes. It is a fixed select, and set_config(…, true) is local to its transaction.
+    readOnly ? '--read-only' : '--yes',
     '--output-format',
     'json',
     sql,
   ]);
   if (error) return { error: `supabase-CLI nicht ausführbar (${error})` };
   const text = stdout ?? '';
-  const data = parseJson(text.slice(Math.max(0, text.indexOf('{'))));
+  // Without an AI agent the CLI prints the rows as a JSON array; for an agent it wraps them in an
+  // object with `rows` and an untrusted-data boundary. Both are read.
+  const data = parseJson(text.slice(Math.max(0, text.search(/[[{]/))));
   if (data?._tag === 'Error' || status !== 0) {
     return { error: `Datenbankabfrage fehlgeschlagen (${data?.error?.code ?? `Exit ${status}`})` };
   }
-  const row = data?.rows?.[0];
+  const row = (Array.isArray(data) ? data : data?.rows)?.[0];
   return row ? { row } : { error: 'Datenbankabfrage ohne Ergebnis' };
 }
 
@@ -553,7 +557,9 @@ export async function runChecks({
 
   const ref = projectRef(supabase);
   const noRef = { error: 'Projekt-Ref nicht aus der Supabase-Adresse ableitbar' };
-  const asAuthenticated = ref ? readQuery(supabaseCli, ref, graphqlSql(apiSearchPath())) : noRef;
+  const asAuthenticated = ref
+    ? readQuery(supabaseCli, ref, graphqlSql(apiSearchPath()), { readOnly: false })
+    : noRef;
   if (asAuthenticated.error) {
     results.push(result('GraphQL ohne net (authenticated)', [asAuthenticated.error]));
   } else if (asAuthenticated.row.role !== 'authenticated') {

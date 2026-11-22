@@ -158,13 +158,15 @@ async function deliver(
 export async function handler(request: Request, deps: PushSendDeps): Promise<Response> {
   try {
     if (request.method !== 'POST') return reply(405, 'method_not_allowed', { Allow: 'POST' });
-    const secret = requireEnv(deps.env, 'PUSH_SEND_SECRET');
     const timestamp = freshTimestamp(
       request.headers.get('x-push-timestamp'),
       (deps.now ?? Date.now)(),
     );
     const signature = request.headers.get('x-push-signature');
+    // Unsigned requests are refused before any configuration is read: the preview has no push
+    // secrets (decision 8), and the answer must not reveal whether a project is configured.
     if (timestamp === null || signature === null) return reply(401, 'unauthorized');
+    const secret = requireEnv(deps.env, 'PUSH_SEND_SECRET');
 
     const bytes = await readLimitedBody(request, MAX_BODY_BYTES);
     if (bytes === null) return reply(413, 'payload_too_large');

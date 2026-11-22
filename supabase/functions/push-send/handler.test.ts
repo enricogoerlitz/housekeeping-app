@@ -205,6 +205,17 @@ describe('who may call push-send', () => {
     expect(deps.send).not.toHaveBeenCalled();
   });
 
+  it('AC-044: an unsigned request gets 401 even without PUSH_SEND_SECRET (preview, decision 8)', async () => {
+    const deps = fakeDeps({ env: { PUSH_SEND_SECRET: undefined } });
+    const response = await handler(
+      await request({ messages: [message(1)] }, { secret: null }),
+      deps,
+    );
+    expect(response.status).toBe(401);
+    expect(await json(response)).toEqual({ error: 'unauthorized' });
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+
   it('AC-045: without PUSH_SEND_SECRET it answers 500 and logs only the name', async () => {
     const spies = consoleSpies();
     const deps = fakeDeps({ env: { PUSH_SEND_SECRET: undefined } });

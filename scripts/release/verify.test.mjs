@@ -505,34 +505,30 @@ describe('wiring', () => {
         });
         return {
           status: 0,
-          stdout: JSON.stringify({
-            rows: [
-              {
-                role: 'authenticated',
-                introspection: unknown('__schema'),
-                probe: unknown('http_request_queueCollection'),
-              },
-            ],
-          }),
+          stdout: JSON.stringify([
+            {
+              role: 'authenticated',
+              introspection: unknown('__schema'),
+              probe: unknown('http_request_queueCollection'),
+            },
+          ]),
         };
       }
       return {
         status: 0,
-        stdout: JSON.stringify({
-          rows: [
-            {
-              example_accounts: 0,
-              seed_households: 0,
-              seed_accounts: 0,
-              bucket: {
-                public: false,
-                file_size_limit: 2097152,
-                allowed_mime_types: ['image/jpeg'],
-              },
-              sample_photo: 'c1437b0b/recipes/x.jpg',
+        stdout: JSON.stringify([
+          {
+            example_accounts: 0,
+            seed_households: 0,
+            seed_accounts: 0,
+            bucket: {
+              public: false,
+              file_size_limit: 2097152,
+              allowed_mime_types: ['image/jpeg'],
             },
-          ],
-        }),
+            sample_photo: 'c1437b0b/recipes/x.jpg',
+          },
+        ]),
       };
     };
     return { calls, cli };
@@ -579,15 +575,38 @@ describe('wiring', () => {
     assert.equal(rpc.init.headers.apikey, KEY);
   });
 
-  test('the database is only read: --read-only against the project of the address', async () => {
+  test('the CLI output of an agent run ({ rows } with a boundary) is read as well', async () => {
+    const plain = goodCli();
+    const wrapped = {
+      calls: plain.calls,
+      cli: (args) => {
+        const out = plain.cli(args);
+        if (args[0] !== 'db') return out;
+        const rows = JSON.parse(out.stdout);
+        return { ...out, stdout: `Target: project x\n${JSON.stringify({ boundary: 'b', rows })}` };
+      },
+    };
+    const results = await runChecks(options(goodNetwork(), wrapped));
+    for (const name of ['Keine Seed-Daten', 'Foto-Bucket', 'GraphQL ohne net (authenticated)']) {
+      assert.equal(results.find((r) => r.name === name)?.ok, true, name);
+    }
+  });
+
+  test('the database is only read: --read-only, except the GraphQL probe that must switch role', async () => {
     const cli = goodCli();
     await runChecks(options(goodNetwork(), cli));
     const queries = cli.calls.filter((args) => args[0] === 'db');
     assert.ok(queries.length >= 2);
     for (const args of queries) {
       assert.deepEqual(args.slice(0, 2), ['db', 'query']);
-      assert.ok(args.includes('--read-only'), args.join(' '));
       assert.ok(args.includes('--remote=abcdefghijklmnopqrst'), args.join(' '));
+      // The read-only role of the CLI may not `set role authenticated`; that one fixed query runs
+      // with --yes and only reads (set_config is local to its transaction).
+      const graphqlProbe = args.at(-1).includes('graphql_public.graphql');
+      assert.equal(args.includes('--read-only'), !graphqlProbe, args.join(' '));
+      assert.equal(args.includes('--yes'), graphqlProbe, args.join(' '));
+      if (graphqlProbe)
+        assert.doesNotMatch(args.at(-1), /\b(insert|update|delete|create|drop|alter)\b/i);
     }
     const diff = cli.calls.find((args) => args[0] === 'config');
     assert.deepEqual(diff, ['config', 'diff', '--remote=abcdefghijklmnopqrst', '--exit-code']);
