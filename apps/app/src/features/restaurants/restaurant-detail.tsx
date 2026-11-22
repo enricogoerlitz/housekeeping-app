@@ -38,6 +38,8 @@ export interface RestaurantDetailProps {
   restaurantId: Id;
   /** Shows a back arrow (own page). */
   onBack?: () => void;
+  /** The origin on the back link (spec 0019, REQ-006). */
+  backLabel?: string;
   /** Shows a close button (split view on wide screens). */
   onClose?: () => void;
 }
@@ -48,7 +50,13 @@ export function RestaurantDetail(props: RestaurantDetailProps) {
   const router = useRouter();
   if (!restaurant) {
     return (
-      <DetailPage onBack={props.onBack} title="Restaurant" tone="essen" testID="restaurant-screen">
+      <DetailPage
+        onBack={props.onBack}
+        backLabel={props.backLabel}
+        title="Restaurant"
+        tone="essen"
+        testID="restaurant-screen"
+      >
         <EmptyState
           icon="utensils"
           title="Restaurant nicht gefunden"
@@ -73,6 +81,7 @@ export function RestaurantDetail(props: RestaurantDetailProps) {
       key={restaurant.id}
       restaurant={restaurant}
       onBack={props.onBack}
+      backLabel={props.backLabel}
       onClose={props.onClose}
     />
   );
@@ -81,6 +90,8 @@ export function RestaurantDetail(props: RestaurantDetailProps) {
 function RestaurantDetailBody(props: {
   restaurant: Restaurant;
   onBack?: () => void;
+  /** The origin on the back link (spec 0019, REQ-006). */
+  backLabel?: string;
   onClose?: () => void;
 }) {
   const { restaurant } = props;
@@ -117,6 +128,7 @@ function RestaurantDetailBody(props: {
   return (
     <DetailPage
       onBack={props.onBack}
+      backLabel={props.backLabel}
       title={restaurant.name}
       titleTestID="restaurant-title"
       right={favorite}

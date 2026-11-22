@@ -148,6 +148,7 @@ export const PAGE_PARAMS = {
     restaurant: one(Uuid),
     link: one(z.string().max(2000)),
     name: one(Text),
+    von: Von,
   },
   rezept: {
     id: one(Uuid),

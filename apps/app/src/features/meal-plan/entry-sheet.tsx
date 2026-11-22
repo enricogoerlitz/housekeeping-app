@@ -52,6 +52,7 @@ import { hasPlace } from '@/features/activities/labels';
 import { useMoveEntry } from '@/features/calendar/move-entry';
 import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
+import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
@@ -94,6 +95,7 @@ export function EntrySheet(props: {
   const online = useOnlineOnly();
   const openRecipe = useOpenRecipe();
   const openRestaurant = useOpenRestaurant();
+  const openActivity = useOpenActivity();
   const [routeOpen, setRouteOpen] = useState(false);
   const [pickingDate, setPickingDate] = useState(false);
   const moveEntry = useMoveEntry();
@@ -274,10 +276,9 @@ export function EntrySheet(props: {
             icon="book-open"
             variant="secondary"
             testID="entry-open-recipe"
+            // The entry stays open underneath: "Zurück" returns to it (spec 0019, AC-016).
             onPress={() => {
-              const recipeId = entry.recipeId;
-              props.onClose();
-              if (recipeId) openRecipe(recipeId);
+              if (entry.recipeId) openRecipe(entry.recipeId);
             }}
           />
         ) : null}
@@ -288,10 +289,8 @@ export function EntrySheet(props: {
               icon="mountain"
               variant="secondary"
               testID="entry-open-activity"
-              onPress={() => {
-                props.onClose();
-                router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activity.id } });
-              }}
+              // The entry stays open underneath: "Zurück" returns to it (spec 0019, AC-016).
+              onPress={() => openActivity(activity.id)}
             />
             {routeTarget ? (
               <Button
@@ -313,9 +312,7 @@ export function EntrySheet(props: {
               variant="secondary"
               testID="entry-open-restaurant"
               onPress={() => {
-                const restaurantId = entry.restaurantId;
-                props.onClose();
-                if (restaurantId) openRestaurant(restaurantId);
+                if (entry.restaurantId) openRestaurant(entry.restaurantId);
               }}
             />
             {routeTarget ? (

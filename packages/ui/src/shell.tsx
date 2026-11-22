@@ -342,6 +342,8 @@ export interface ScreenHeaderProps {
   title: string;
   /** Small line above the title, e.g. the date. */
   kicker?: string;
+  /** A control above the title, e.g. the household on the phone's overview (spec 0019). */
+  above?: ReactNode;
   /** Small line below the title. */
   subtitle?: string;
   /** Content on the right: avatar, buttons, chips. They stay in the narrow bar. */
@@ -387,6 +389,7 @@ export function ScreenHeader(props: ScreenHeaderProps) {
         {props.onBack && props.backLabel && !collapsed ? (
           <BackLink label={props.backLabel} onPress={props.onBack} />
         ) : null}
+        {props.above && !collapsed ? props.above : null}
         {props.kicker && !collapsed ? (
           <Text variant="small" color="muted" style={{ marginBottom: 2 }}>
             {props.kicker}

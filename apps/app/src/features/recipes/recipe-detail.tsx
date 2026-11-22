@@ -47,8 +47,10 @@ import { useDeleteRecipe } from './use-delete-recipe';
 
 export interface RecipeDetailProps {
   recipeId: Id;
-  /** "‹ Essen": back to the list, at the same place (AC-015). */
+  /** "‹ Essen": back to the list, at the same place (AC-015), or to the origin (spec 0019). */
   onBack: () => void;
+  /** The origin's name on the back link, "Essen" without one. */
+  backLabel: string;
 }
 
 /**
@@ -63,7 +65,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
   const [leaving, setLeaving] = useState(false);
   if (!recipe) {
     if (leaving) return <Screen testID="recipe-screen" tone="essen" />;
-    return <RecipeGone onBack={props.onBack} />;
+    return <RecipeGone onBack={props.onBack} backLabel={props.backLabel} />;
   }
   // A collection has its own page at the same address (spec 0009, E13).
   if (recipe.kind === 'collection') {
@@ -72,6 +74,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
         key={recipe.id}
         collection={recipe}
         onBack={props.onBack}
+        backLabel={props.backLabel}
         onDeleting={setLeaving}
       />
     );
@@ -82,19 +85,26 @@ export function RecipeDetail(props: RecipeDetailProps) {
       key={recipe.id}
       recipe={recipe}
       onBack={props.onBack}
+      backLabel={props.backLabel}
       onDeleting={setLeaving}
     />
   );
 }
 
 /** AC-021: deleted elsewhere, or an address from another household. */
-function RecipeGone(props: { onBack: () => void }) {
-  const router = useRouter();
+function RecipeGone(props: { onBack: () => void; backLabel: string }) {
   return (
     <Screen
       testID="recipe-screen"
       tone="essen"
-      header={<ScreenHeader title="Rezept" titleOnScroll backLabel="Essen" onBack={props.onBack} />}
+      header={
+        <ScreenHeader
+          title="Rezept"
+          titleOnScroll
+          backLabel={props.backLabel}
+          onBack={props.onBack}
+        />
+      }
     >
       <EmptyState
         icon="book-open"
@@ -102,9 +112,9 @@ function RecipeGone(props: { onBack: () => void }) {
         testID="recipe-not-found"
       >
         <Button
-          label="Zu Essen"
+          label={`Zu ${props.backLabel}`}
           icon="arrow-left"
-          onPress={() => (router.canGoBack() ? props.onBack() : router.replace('/rezepte'))}
+          onPress={props.onBack}
           testID="recipe-not-found-back"
         />
       </EmptyState>
@@ -115,6 +125,7 @@ function RecipeGone(props: { onBack: () => void }) {
 function RecipeDetailBody(props: {
   recipe: Recipe;
   onBack: () => void;
+  backLabel: string;
   /** true while this page deletes its recipe; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
@@ -153,7 +164,7 @@ function RecipeDetailBody(props: {
     const params = { id: recipe.id, portionen: String(shownServings) };
     router.push({
       pathname: '/rezept/[id]/kochen',
-      params: activeVariantId ? { ...params, variant: activeVariantId } : params,
+      params: activeVariantId ? { ...params, variante: activeVariantId } : params,
     });
   };
 
@@ -227,7 +238,7 @@ function RecipeDetailBody(props: {
         <ScreenHeader
           title={recipe.title}
           titleOnScroll
-          backLabel="Essen"
+          backLabel={props.backLabel}
           onBack={props.onBack}
           right={headerRight}
           testID="recipe-bar-title"

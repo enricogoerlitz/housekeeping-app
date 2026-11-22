@@ -1,9 +1,8 @@
 import { useArticlesById, useRecipe } from '@housekeeping/api';
 import {
   cookingIngredients,
-  cookingServings,
+  cookingStepFromParam,
   ingredientLine,
-  routeId,
   servingsLabel,
   stepsForVariants,
   type Recipe,
@@ -19,28 +18,24 @@ import {
   Stack,
   Text,
   useBreakpoint,
+  useToastClearance,
 } from '@housekeeping/ui';
-import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
+import { usePageParams } from '@/lib/url-state';
 
 /**
  * Cooking mode: one step per screen in large type (F3, AC-023). Full screen on phones, the sidebar
  * stays on wider screens (spec 0005, D5).
  */
 export function CookingScreen() {
-  const params = useLocalSearchParams<{
-    id?: string | string[];
-    variant?: string | string[];
-    portionen?: string | string[];
-  }>();
+  // Step, variant and portions stand in the address, so a reload cooks on (spec 0019, REQ-015).
+  const { params, replace } = usePageParams('kochen');
   const router = useRouter();
-  const id = routeId(params.id);
+  const id = params.id;
   const recipe = useRecipe(id);
 
   const leave = () => {
@@ -69,8 +64,11 @@ export function CookingScreen() {
   return (
     <Cooking
       recipe={recipe}
-      variantParam={firstParam(params.variant)}
-      servings={cookingServings(params.portionen, recipe)}
+      variantParam={params.variante}
+      servings={params.portionen ?? recipe.servings}
+      step={params.schritt}
+      // The first step is the default and stays out of the address.
+      onStep={(index) => replace({ schritt: index > 0 ? index + 1 : undefined })}
       onLeave={leave}
     />
   );
@@ -81,6 +79,9 @@ function Cooking(props: {
   variantParam: string | undefined;
   /** The portions chosen on the recipe page (spec 0018, AC-004). */
   servings: number;
+  /** `schritt` from the address, 1-based; beyond the last gives the last (AC-046). */
+  step: number | undefined;
+  onStep: (index: number) => void;
   onLeave: () => void;
 }) {
   const { recipe } = props;
@@ -90,8 +91,12 @@ function Cooking(props: {
   const steps = stepsForVariants(recipe, variant ? [variant.id] : undefined);
   const ingredients = cookingIngredients(recipe, variant?.id, props.servings);
   const articlesById = useArticlesById();
-  const [index, setIndex] = useState(0);
+  const index = cookingStepFromParam(props.step, steps.length);
+  const setIndex = props.onStep;
   const [showIngredients, setShowIngredients] = useState(false);
+  // No tab bar here: the toast stands above the step buttons (AC-024).
+  const [footerHeight, setFooterHeight] = useState<number | undefined>();
+  useToastClearance(footerHeight === undefined ? undefined : footerHeight - insets.bottom);
   const step = steps[Math.min(index, steps.length - 1)];
   const last = index >= steps.length - 1;
 
@@ -104,6 +109,7 @@ function Cooking(props: {
       footer={
         steps.length > 0 ? (
           <View
+            onLayout={(event) => setFooterHeight(Math.round(event.nativeEvent.layout.height))}
             style={{
               width: '100%',
               maxWidth: 860,
@@ -176,7 +182,7 @@ function Cooking(props: {
           <Text variant="smallStrong" color="accent" testID="cook-step-index">
             Schritt {index + 1} von {steps.length}
           </Text>
-          <Text variant={isPhone ? 'title' : 'display'} testID="cook-step-text">
+          <Text variant={isPhone ? 'title' : 'display'} selectable testID="cook-step-text">
             {step.text}
           </Text>
           {step.timerMinutes ? <StepTimer key={step.id} minutes={step.timerMinutes} /> : null}

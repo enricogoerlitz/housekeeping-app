@@ -20,6 +20,8 @@ import {
 } from '@housekeeping/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
+
+import { useOpenActivity } from './navigation';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -92,8 +94,7 @@ export function ActivitiesScreen() {
   const [sort, setSort] = useState<ActivitySort>('name');
   const [creating, setCreating] = useState(false);
 
-  const open = (activityId: Id) =>
-    router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } });
+  const open = useOpenActivity();
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),

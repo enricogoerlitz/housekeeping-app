@@ -1,5 +1,6 @@
 import {
-  calendarDayParam,
+  calendarFromParams,
+  calendarViewSlug,
   dragRange,
   dragTargetText,
   formatLongDate,
@@ -9,7 +10,6 @@ import {
   parseDragSourceKey,
   parseMoveTargetKey,
   periodContains,
-  periodForDay,
   periodStart,
   rangeLabel,
   shiftPeriod,
@@ -38,7 +38,7 @@ import {
   useBreakpoint,
   type MenuOption,
 } from '@housekeeping/ui';
-import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, type HostInstance } from 'react-native';
 
@@ -48,9 +48,10 @@ import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useAddressedId, useHandedHousehold, useMissingObject } from '@/lib/addressed';
 import { useHideAssistantButton } from '@/lib/assistant';
 import { useSettings } from '@/lib/settings';
-import { useHandedTarget } from '@/lib/target-params';
+import { usePageParams } from '@/lib/url-state';
 
 import { EntryLine } from './calendar-parts';
 import { useCalendarData } from './calendar-data';
@@ -70,9 +71,6 @@ const VIEWS: { value: CalendarView; label: string }[] = [
 
 type MoreAction = 'household-row' | 'absence-new' | 'absences';
 
-/** `/kalender?tag=…` from the "Übersicht"; with `eintrag` and `haushalt` from a notification. */
-const TARGET_PARAMS = ['tag', 'eintrag', 'haushalt'] as const;
-
 /** The week "Auf die Einkaufsliste" takes in the month without a chosen day: today's, else the first. */
 function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
   return periodContains('month', monthStart, today) ? today : monthStart;
@@ -80,10 +78,11 @@ function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
 
 /**
  * "Kalender" (spec 0010): week, month and year with ‹ › and "Heute", ▲ Aktivitäten, ⊔ Auf die
- * Einkaufsliste and ⋯. View and period are the screen's state; the page "Aktivitäten" opens on top
- * of it, so "‹ Kalender" comes back to the same view (AC-025, AC-040). "/kalender?tag=JJJJ-MM-TT"
- * from the "Übersicht" shows the week of that day with the day selected; an invalid day is
- * ignored (spec 0011, AC-004, AC-011, AC-013).
+ * Einkaufsliste and ⋯. View, chosen day (which gives the period), the day window, the entry window
+ * and the windows "Reise eintragen" and "Auf die Einkaufsliste" stand in the address (spec 0019,
+ * REQ-012): paging and choosing a day replace the entry, opening a window adds one. Every jump
+ * into the calendar uses the same address (`/kalender?tag=…` from the "Übersicht", AC-038); an
+ * invalid day or view gives the week of today (AC-039).
  */
 export function CalendarScreen() {
   const data = useCalendarData();
@@ -94,13 +93,16 @@ export function CalendarScreen() {
   const focused = useIsFocused();
   const { today } = data;
 
-  const [view, setView] = useState<CalendarView>('week');
-  const [start, setStart] = useState<ISODate>(() => periodStart('week', today));
-  // The day window of month and year (spec 0016, REQ-006). `panelDay` stays while it slides away.
-  const [panelDay, setPanelDay] = useState<ISODate>(today);
-  const [dayOpen, setDayOpen] = useState(false);
-  const selected = dayOpen && view !== 'week' ? panelDay : undefined;
-  const [newTrip, setNewTrip] = useState<ISODate | undefined>();
+  const address = usePageParams('kalender');
+  const { params } = address;
+  const { view, day } = calendarFromParams(params, today);
+  const start = periodStart(view, day);
+  // The day window of month and year (spec 0016, REQ-006). The day stays while it slides away.
+  const panelDay = day;
+  const dayOpen = params.fenster === 'tag' && view !== 'week';
+  const selected = dayOpen ? panelDay : undefined;
+  // A notification's household becomes active once; the parameter then leaves (spec 0013).
+  useHandedHousehold(params.haushalt, address.replace);
   // Every day cell of month and year, so the day gets the focus back when the window closes and
   // a later drag (spec 0016, REQ-001) can find its targets.
   const dayCells = useRef(new Map<ISODate, HostInstance>());
@@ -114,24 +116,37 @@ export function CalendarScreen() {
   }, [panelDay]);
   // The floating assistant button would cover the lower part of the day window.
   useHideAssistantButton(selected !== undefined && focused && panelPlacement(width) === 'bottom');
+  // The add window keeps its target here until spec 0021 gives it times instead of slots.
   const [adding, setAdding] = useState<AddTarget | undefined>();
-  const [openEntryId, setOpenEntryId] = useState<Id | undefined>();
   // The screen reader's way to move: the entry window with "Verschieben" first.
   const [moveFirst, setMoveFirst] = useState(false);
-  // Removed on another device while open: the window just closes.
-  const openEntry = data.entries.find((entry) => entry.id === openEntryId);
+  // Removed on another device while open: the window just closes; an unknown id in the address
+  // closes it with a toast (AC-052).
+  const openEntry = data.entries.find((entry) => entry.id === params.eintrag);
+  // An entry of another own household switches there first (REQ-017).
+  const entryFound = useAddressedId('planEntries', params.eintrag);
+  useMissingObject(
+    params.eintrag,
+    entryFound !== 'missing' && params.haushalt === undefined,
+    'Diesen Eintrag gibt es nicht mehr',
+    () => address.replace({ eintrag: undefined }),
+  );
   const setOpenEntry = (entry: MealPlanEntry | undefined) => {
     setMoveFirst(false);
-    setOpenEntryId(entry?.id);
+    if (entry) address.open({ eintrag: entry.id });
+    else address.close({ eintrag: undefined });
   };
   const openMove = (entry: MealPlanEntry) => {
     setMoveFirst(true);
-    setOpenEntryId(entry.id);
+    address.open({ eintrag: entry.id });
   };
   // "Vorgemerkt · n" under the grid of month and year is unfolded (only on this device).
   const [laterOpen, setLaterOpen] = useState(false);
-  const [pantryCheck, setPantryCheck] = useState(false);
-  const [newAbsence, setNewAbsence] = useState(false);
+  const pantryCheck = params.fenster === 'aus-kalender';
+  const tripWindow = params.fenster === 'neu-reise';
+  const openWindow = (fenster: 'aus-kalender' | 'neu-reise', date?: ISODate) =>
+    address.open(date ? { fenster, tag: date } : { fenster });
+  const closeWindow = () => address.close({ fenster: undefined });
 
   // Dragging (spec 0016, REQ-001 to REQ-004, REQ-007): the entry on the finger, or the trip
   // drawn from `anchor` to `current`; `sheet` keeps the days marked while "Reise eintragen" is open.
@@ -144,41 +159,28 @@ export function CalendarScreen() {
     phase: 'drawing' | 'sheet';
   } | null>(null);
 
+  /** The day in the address: today is the default and stays out of it. */
+  const dayParam = (date: ISODate) => (date === today ? undefined : date);
   const show = (nextView: CalendarView, nextStart: ISODate) => {
-    setView(nextView);
-    setStart(nextStart);
-    // The week has no day window; month and year keep the chosen day (AC-027).
-    if (nextView === 'week') setDayOpen(false);
+    // The chosen day stays while it is in the new period; paging chooses the period's start.
+    const nextDay = periodContains(nextView, nextStart, day) ? day : nextStart;
+    address.replace({
+      ansicht: calendarViewSlug(nextView),
+      tag: dayParam(nextDay),
+      // The week has no day window; month and year keep the chosen day (AC-027).
+      fenster: nextView === 'week' && params.fenster === 'tag' ? undefined : params.fenster,
+    });
   };
+  // Choosing another day in an open day window replaces; opening it adds an entry (REQ-012).
+  // From the week strip or a swipe the grid follows, the period comes from the day (AC-023).
   const openDay = (date: ISODate) => {
     announce(
       selected === undefined ? `Tages-Fenster, ${formatLongDate(date)}` : formatLongDate(date),
     );
-    setPanelDay(date);
-    setDayOpen(true);
+    if (dayOpen) address.replace({ tag: dayParam(date) });
+    else address.open({ fenster: 'tag', tag: dayParam(date) });
   };
-  // From the week strip or a swipe: the grid follows when the day is out of view (AC-023).
-  const chooseDay = (date: ISODate) => {
-    openDay(date);
-    setStart(periodForDay(view, start, date));
-  };
-  // The day handed over by the "Übersicht" or a notification: taken once, then the parameters are
-  // cleared, so the same link works again and paging is not pulled back to it. A notification's
-  // entry opens its window; an unknown entry opens nothing (spec 0013, AC-037, AC-038).
-  const params = useLocalSearchParams<{ tag?: string | string[] }>();
-  const target = useHandedTarget('/kalender', TARGET_PARAMS);
-  const handedDay = calendarDayParam(params.tag);
-  const handedEntryId = target.screen === 'calendar' ? target.entryId : undefined;
-  const [taken, setTaken] = useState<{ day?: ISODate; entryId?: Id }>({});
-  if (handedDay !== taken.day || handedEntryId !== taken.entryId) {
-    setTaken({ day: handedDay, entryId: handedEntryId });
-    if (handedDay) {
-      setView('week');
-      setStart(periodStart('week', handedDay));
-      setDayOpen(false);
-    }
-    if (handedEntryId) setOpenEntryId(handedEntryId);
-  }
+  const chooseDay = openDay;
 
   const changeView = (next: CalendarView) => {
     if (next !== view) show(next, switchView(view, next, start, today, selected));
@@ -311,7 +313,7 @@ export function CalendarScreen() {
         householdRow: { ...settings.householdRow, [view]: !householdOn },
       });
     } else if (action === 'absence-new') {
-      if (!online.disabled) setNewAbsence(true);
+      if (!online.disabled) openWindow('neu-reise');
     } else {
       router.navigate('/reisen');
     }
@@ -334,7 +336,7 @@ export function CalendarScreen() {
           size={36}
           disabled={online.disabled}
           hint={online.hint}
-          onPress={() => setPantryCheck(true)}
+          onPress={() => openWindow('aus-kalender')}
           testID="plan-to-list"
         />
         <Menu<MoreAction>
@@ -449,7 +451,7 @@ export function CalendarScreen() {
               data={data}
               open={selected !== undefined}
               date={panelDay}
-              onClose={() => setDayOpen(false)}
+              onClose={() => address.close({ fenster: undefined })}
               onChooseDay={chooseDay}
               // Chores follow the household row of the month, in the year too (REQ-006).
               showHousehold={settings.householdRow.month}
@@ -457,7 +459,7 @@ export function CalendarScreen() {
               onOpenEntry={setOpenEntry}
               onOpenStripe={openStripe}
               onNewTrip={(date) => {
-                if (!online.disabled) setNewTrip(date);
+                if (!online.disabled) openWindow('neu-reise', date);
               }}
               onShowWeek={(date) => show('week', periodStart('week', date))}
               returnFocusRef={returnFocus}
@@ -542,7 +544,8 @@ export function CalendarScreen() {
             </ParkedTarget>
           ) : null}
           {adding ? <AddEntrySheet target={adding} onClose={() => setAdding(undefined)} /> : null}
-          {openEntry ? (
+          {/* A window stays in the address while a page opened from it is on top (AC-016). */}
+          {openEntry && focused ? (
             <EntrySheet
               key={openEntry.id}
               entryId={openEntry.id}
@@ -551,14 +554,13 @@ export function CalendarScreen() {
               onClose={() => setOpenEntry(undefined)}
             />
           ) : null}
-          {pantryCheck ? (
-            <PantryCheckSheet weekDates={shownWeek} onClose={() => setPantryCheck(false)} />
+          {pantryCheck && focused ? (
+            <PantryCheckSheet weekDates={shownWeek} onClose={closeWindow} />
           ) : null}
-          {newAbsence ? <AbsenceSheet onClose={() => setNewAbsence(false)} /> : null}
-          {newTrip ? (
+          {tripWindow && focused ? (
             <AbsenceSheet
-              initialRange={{ from: newTrip, to: newTrip }}
-              onClose={() => setNewTrip(undefined)}
+              initialRange={params.tag ? { from: params.tag, to: params.tag } : undefined}
+              onClose={closeWindow}
             />
           ) : null}
           {trip?.phase === 'sheet' && range ? (

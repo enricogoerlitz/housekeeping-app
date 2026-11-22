@@ -209,6 +209,15 @@ export function useOpenSection(): (section: Origin) => void {
   return useCallback((section: Origin) => router.navigate(sectionHref(section) as never), [router]);
 }
 
+/**
+ * The `von` for a detail page of section `own` opened from here: the current section when it is
+ * another one, so the page names it and leads back to it (REQ-006).
+ */
+export function originFor(own: Origin): Origin | undefined {
+  const section = current?.section;
+  return section === undefined || section === own ? undefined : section;
+}
+
 const SECTION_LABEL: Record<Origin, string> = {
   uebersicht: 'Übersicht',
   essen: 'Essen',
