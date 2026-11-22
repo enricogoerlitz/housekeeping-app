@@ -133,6 +133,23 @@ test.describe('navigation (REQ-005 to REQ-007)', () => {
     await expect(tid(page, 'recipe-screen')).toBeVisible();
   });
 
+  test('AC-012 (Rand): after "Zurück" from "Verwalten", "Übersicht" stays on the Übersicht', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, '/');
+    await tid(page, 'header-manage').click();
+    await expect(tid(page, 'manage-screen')).toBeVisible();
+    await back(page);
+    await expect(tid(page, 'today-screen')).toBeVisible();
+    await nav(page, 'index');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(tid(page, 'today-screen')).toBeVisible();
+    await nav(page, 'rezepte');
+    await nav(page, 'index');
+    await expect(tid(page, 'today-screen')).toBeVisible();
+  });
+
   test('AC-018: an unknown origin names "Essen" and leads to the recipe list', async ({ page }) => {
     await open(page, `/rezept/${LASAGNE}?von=quatsch`);
     await expect(tid(page, 'back-label')).toHaveText('Essen');

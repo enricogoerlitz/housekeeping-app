@@ -35,6 +35,30 @@ type KeyEvent = { key: string; preventDefault: () => void };
 type Anchor = { x: number; y: number; width: number; height: number };
 
 /**
+ * Escape on the web closes only this menu or popover, never a window below it. A modal of
+ * react-native-web closes on the keyup of Escape once it is the top one: while the menu still
+ * fades in (or out) that is the window below. So the menu takes the keyup first (capture on
+ * `window`) and stops it there.
+ */
+function useEscapeCloses(
+  isOpen: boolean,
+  hide: () => void,
+  trigger: { current: HostInstance | null },
+): void {
+  useEffect(() => {
+    if (!isOpen || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      hide();
+      trigger.current?.focus();
+    };
+    window.addEventListener('keyup', onKey, true);
+    return () => window.removeEventListener('keyup', onKey, true);
+  }, [isOpen, hide, trigger]);
+}
+
+/**
  * Open state of a menu or popover at its trigger (spec 0019, REQ-004). The position stays while
  * the modal fades out, so it closes where it was instead of jumping to the top left; `keyboard`
  * says whether it was opened with the keyboard, which alone moves the focus into it.
@@ -315,17 +339,8 @@ export function Menu<T extends string>(props: MenuProps<T>) {
     props.onChange(value);
     close();
   };
-  useEffect(() => {
-    // The modal does not report Escape on the web; close the menu here (spec 0010, platforms).
-    if (!isOpen || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      hide();
-      trigger.current?.focus();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, hide]);
+  // The modal does not report Escape on the web; close the menu here (spec 0010, platforms).
+  useEscapeCloses(isOpen, hide, trigger);
 
   const current = Math.max(
     0,
@@ -549,17 +564,8 @@ export function Popover(props: PopoverProps) {
     hide();
     trigger.current?.focus();
   };
-  useEffect(() => {
-    // Focus stays on the link, outside the modal, so the web needs its own Escape (spec 0010).
-    if (!isOpen || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      hide();
-      trigger.current?.focus();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, hide]);
+  // Focus stays on the link, outside the modal, so the web needs its own Escape (spec 0010).
+  useEscapeCloses(isOpen, hide, trigger);
 
   const width = Math.min(props.width ?? 320, window.width - 16);
   const maxHeight = Math.min(POPOVER_MAX_HEIGHT, window.height - 16);

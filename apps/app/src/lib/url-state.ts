@@ -180,9 +180,10 @@ export function PlaceTracker(): null {
   const params = useGlobalSearchParams<Raw>();
   const key = JSON.stringify(params);
   useEffect(() => {
-    const href = isWeb
-      ? window.location.pathname + window.location.search
-      : pathname + queryString(params);
+    // From the router, not from the browser's address: on the web the router writes that only
+    // after this effect, so it would still be the page before (Zurück from "Verwalten" left "/"
+    // remembered as "/verwalten", and "Übersicht" then opened "Verwalten" again).
+    const href = pathname + queryString(params);
     const von = typeof params.von === 'string' ? params.von : undefined;
     current = { href, section: sectionOfPath(pathname, von) };
     const start = sectionOfStartPath(pathname);
