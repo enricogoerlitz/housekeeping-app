@@ -62,6 +62,61 @@ function monthAway(
   return null;
 }
 
+/** The first day of the month `date` lies in. */
+export function monthOf(date: string): string {
+  const { year, month } = parse(date);
+  return format(Date.UTC(year, month, 1));
+}
+
+/** The first day of the month `months` away from the month of `date`; no limit either way. */
+export function shiftMonth(date: string, months: number): string {
+  const { year, month } = parse(date);
+  return format(Date.UTC(year, month + months, 1));
+}
+
+/**
+ * The weeks of the month of `month`, Monday to Sunday; days of the neighbouring months are null,
+ * so the grid shows only the month itself.
+ */
+export function monthCalendarWeeks(month: string): (string | null)[][] {
+  const { year, month: index } = parse(month);
+  const length = daysInMonth(year, index);
+  // getUTCDay: Sunday 0; the grid starts on Monday.
+  const lead = (new Date(Date.UTC(year, index, 1)).getUTCDay() + 6) % 7;
+  const cells: (string | null)[] = [
+    ...Array.from({ length: lead }, () => null),
+    ...Array.from({ length }, (_, day) => format(Date.UTC(year, index, day + 1))),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (string | null)[][] = [];
+  for (let start = 0; start < cells.length; start += 7) weeks.push(cells.slice(start, start + 7));
+  return weeks;
+}
+
+/**
+ * The day of the shown month that Tab enters on (roving focus): the marked day, else today, else
+ * the first free day; a blocked day never. Null when the month has no free day.
+ */
+export function monthCalendarFocusDay(
+  month: string,
+  marked: string | undefined,
+  today: string | undefined,
+  isDisabled: (date: string) => boolean,
+): string | null {
+  const shown = monthOf(month);
+  for (const candidate of [marked, today]) {
+    if (candidate !== undefined && monthOf(candidate) === shown && !isDisabled(candidate)) {
+      return candidate;
+    }
+  }
+  const { year, month: index } = parse(shown);
+  for (let day = 1; day <= daysInMonth(year, index); day += 1) {
+    const date = format(Date.UTC(year, index, day));
+    if (!isDisabled(date)) return date;
+  }
+  return null;
+}
+
 /**
  * What a key does while day `focused` has the focus. Arrows move a day or a week and skip blocked
  * days, PageUp and PageDown move a month; with no free day to go to, the focus stays. Enter picks
