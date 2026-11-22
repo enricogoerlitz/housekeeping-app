@@ -363,7 +363,12 @@ function DragGhost(props: {
             props.labelStyle,
           ]}
         >
-          <Text variant="smallStrong" color={hover.allowed ? 'onAccent' : 'warn'} numberOfLines={1}>
+          <Text
+            variant="smallStrong"
+            color={hover.allowed ? 'onAccent' : 'warn'}
+            numberOfLines={1}
+            testID="drag-label"
+          >
             {hover.label}
           </Text>
         </Animated.View>
