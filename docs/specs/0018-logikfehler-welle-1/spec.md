@@ -336,8 +336,10 @@ Dann        sagt der Toast „Eingeplant: Mi 25.11., Abend“
 
 - **Gelesen:** Rezepte, Planeinträge, Aufgaben mit Zuständigkeit, Abwesenheiten, Einstellungen zu
   Benachrichtigungen, Warteschlange, Mindestversion.
-- **Geschrieben:** Zutaten eines neuen Rezepts (vorhandener Befehl), Zusatz und Uhrzeit eines
-  Eintrags (vorhandene Befehle), Entfernen und Verlassen (vorhandene Befehle).
+- **Geschrieben:** Zutaten eines neuen Rezepts mit dem neuen Befehl `createRecipeWithIngredients`
+  in `packages/api`, Zusatz und „Reserviert um“ eines Eintrags beim „Fertig“ mit dem neuen Befehl
+  `saveEntryFields`. Beide schreiben über den vorhandenen Weg `apply_changes`, ohne neuen
+  Serveraufruf. Entfernen und Verlassen nutzen die vorhandenen Befehle.
 - **Datenbank:** keine Änderung. **Personenbezogen:** nichts Neues.
 
 ## Offene Fragen
@@ -348,13 +350,15 @@ Dann        sagt der Toast „Eingeplant: Mi 25.11., Abend“
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-003 | —              | —    |
-| REQ-002 | AC-004 bis AC-006 | —              | —    |
-| REQ-003 | AC-007 bis AC-009 | —              | —    |
-| REQ-004 | AC-010 bis AC-012 | —              | —    |
-| REQ-005 | AC-013 bis AC-015 | —              | —    |
-| REQ-006 | AC-016, AC-017    | —              | —    |
-| REQ-007 | AC-018, AC-019    | —              | —    |
-| REQ-008 | AC-020 bis AC-025 | —              | —    |
+| REQ     | AC                                | Task (plan.md) | Test                                                                                                                                                                                    |
+| ------- | --------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-003                 | 1              | `packages/api/src/commands-recipes.backend.test.ts`, `e2e/rundgang-backend-sync.spec.ts`                                                                                                |
+| REQ-002 | AC-004, AC-006 (AC-005 verworfen) | 1              | `packages/core/src/cooking.test.ts`, `e2e/rundgang-essen.spec.ts`                                                                                                                       |
+| REQ-003 | AC-007 bis AC-009                 | 2              | `packages/api/src/commands-plan.backend.test.ts`, `e2e/rundgang-backend-sync.spec.ts`                                                                                                   |
+| REQ-004 | AC-010 bis AC-012                 | 3              | `packages/core/src/membership.test.ts`, `e2e/rundgang-backend-sync.spec.ts` (AC-010, Haushaltswechsel bei offener Rückfrage), `e2e/rundgang-backend-anmeldung.spec.ts` (AC-011, AC-012) |
+| REQ-005 | AC-013 bis AC-015                 | 3              | `packages/core/src/store-queue.test.ts`, `packages/api/src/auth.test.ts`, `e2e/rundgang-backend-anmeldung.spec.ts`                                                                      |
+| REQ-006 | AC-016, AC-017                    | 2              | `packages/core/src/chores.test.ts`, `e2e/rundgang-haushalt.spec.ts`                                                                                                                     |
+| REQ-007 | AC-018, AC-019                    | 1              | `packages/core/src/text.test.ts`, `e2e/rundgang-plan.spec.ts`                                                                                                                           |
+| REQ-008 | AC-020, AC-021, AC-024            | 2              | `packages/core/src/packing.test.ts` (AC-020), `packages/core/src/absences.test.ts` und `e2e/rundgang-plan.spec.ts` (AC-021), `packages/core/src/chores.test.ts` (AC-024)                |
+| REQ-008 | AC-022, AC-023                    | 3              | `packages/core/src/notifications.test.ts` und `e2e/rundgang-benachrichtigungen.spec.ts` (AC-022), `packages/core/src/app-version.test.ts` und `e2e/rundgang-version.spec.ts` (AC-023)   |
+| REQ-008 | AC-025                            | 1              | `packages/core/src/plan-recipe.test.ts`                                                                                                                                                 |
