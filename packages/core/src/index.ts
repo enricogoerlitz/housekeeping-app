@@ -40,6 +40,7 @@ export * from './recipe-list';
 export * from './restaurant-list';
 export * from './recipe-editor';
 export * from './recipe-deletion';
+export * from './place-deletion';
 export * from './plan-recipe';
 export * from './packing';
 export * from './packing-actions';

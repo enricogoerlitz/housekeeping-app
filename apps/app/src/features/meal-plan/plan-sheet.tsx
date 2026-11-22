@@ -144,7 +144,7 @@ export function PlanSheet(props: {
     }
     props.onClose();
     toast.show({
-      message: plannedNotice(date, slotName),
+      message: plannedNotice(date, slotName, today),
       actionLabel: 'Ansehen',
       // AC-035: the calendar opens the week of that day; "Vorgemerkt" opens the calendar.
       onAction: () =>
