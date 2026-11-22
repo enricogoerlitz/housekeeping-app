@@ -41,6 +41,7 @@ import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions'
 import { ClassificationSection } from './sections/classification-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
+import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
 import { StepsSection } from './sections/steps-section';
 import { useSectionEditor } from './sections/use-section-editor';
@@ -244,7 +245,13 @@ function RecipeDetailBody(props: {
     />
   );
   const steps = <StepsSection recipe={recipe} variantId={activeVariantId} editor={editor} />;
-  const notes = <NotesSection recipe={recipe} editor={editor} />;
+  // "Links" stand under "Notizen" (spec 0023, REQ-009).
+  const notes = (
+    <>
+      <NotesSection recipe={recipe} editor={editor} />
+      <LinksSection recipe={recipe} editor={editor} />
+    </>
+  );
 
   return (
     <Screen

@@ -13,6 +13,7 @@ import {
   savablePart,
   sectionDraft,
   sectionPatch,
+  setStepTimer,
   stepTimerProblem,
   parseStepTimer,
   validateSectionDraft,
@@ -189,6 +190,22 @@ describe('REQ-005: the timer of a step', () => {
   it('AC-017: an empty field is no timer', () => {
     expect(parseStepTimer(' ')).toBeUndefined();
     expect(stepTimerProblem('')).toBeUndefined();
+  });
+
+  it('AC-015, AC-017: the timer is set and cleared on the step of the draft', () => {
+    const draft = sectionDraft(mangoCurry, 'steps');
+    const timed = setStepTimer(draft, 's-2', 35);
+    expect(timed.steps.find((step) => step.id === 's-2')?.timerMinutes).toBe(35);
+    const cleared = setStepTimer(timed, 's-2', undefined);
+    expect(cleared.steps.find((step) => step.id === 's-2')).toEqual({
+      id: 's-2',
+      text: 'Mango unterheben.',
+    });
+    expect(sectionPatch(mangoCurry, timed, context).recipe.steps?.at(-1)).toEqual({
+      id: 's-2',
+      text: 'Mango unterheben.',
+      timerMinutes: 35,
+    });
   });
 });
 

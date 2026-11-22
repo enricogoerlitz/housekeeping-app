@@ -865,6 +865,20 @@ export function updateStepText(draft: StepsDraft, id: Id, text: string): StepsDr
   };
 }
 
+/** "Timer (Min)" of a step (spec 0023, REQ-005): whole minutes, undefined = no timer (AC-017). */
+export function setStepTimer(draft: StepsDraft, id: Id, minutes: number | undefined): StepsDraft {
+  return {
+    ...draft,
+    steps: draft.steps.map((step) => {
+      if (step.id !== id) return step;
+      const next = { ...step };
+      if (minutes === undefined) delete next.timerMinutes;
+      else next.timerMinutes = minutes;
+      return next;
+    }),
+  };
+}
+
 export function removeStep(draft: StepsDraft, id: Id): StepsDraft {
   return { ...draft, steps: draft.steps.filter((step) => step.id !== id) };
 }
