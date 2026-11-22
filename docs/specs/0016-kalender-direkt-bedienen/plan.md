@@ -37,6 +37,13 @@ Spec: `docs/specs/0016-kalender-direkt-bedienen/spec.md` (8 REQ, 34 AC). Branch
    darauf umgestellt. Die 14-Tage-Grenze `PLAN_AHEAD_DAYS` beim Einplanen entfällt.
 8. **Keine Weiterleitung** von `/abwesenheiten` und `/kalender/urlaub/<id>` (Spec REQ-008).
 9. **Reste vormerken** erlaubt (Spec, Offene Frage 6).
+10. **Tages-Fenster rechts erst ab 1100 px** (Spec, Offene Frage 8): Tablets (700–1099 px) bekommen
+    das Fenster unten wie am Handy. Im iPad-Hochformat (768–820 px) blieben neben Seitenleiste
+    (256 px) und Fenster (320 px) nur 120–250 px fürs Raster. `panelPlacement` in
+    `docked-panel-state.ts`. Solange das Fenster unten offen ist, bekommt die Seite so viel Platz an
+    ihrem Ende, wie es verdeckt (`Screen` über `AsideInsetContext`), und der Assistent-Knopf weicht
+    (`useHideAssistantButton`). Öffnen und Tageswechsel werden dem Screenreader angesagt
+    („Tages-Fenster, Freitag, 27. November“).
 
 ## Logik in `packages/core` (rein, mit Tests)
 
