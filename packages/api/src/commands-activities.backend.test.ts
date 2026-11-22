@@ -152,7 +152,7 @@ describe('activities in the plan', () => {
     });
   });
 
-  it('switching away from an activity patches activity_id and note to null', async () => {
+  it('switching away from an activity patches activity_id to null and keeps the Zusatz (spec 0021)', async () => {
     await fx.startEnrico();
     const entry = getData().planEntries.find(
       (candidate) => candidate.kind === 'activity' && candidate.note,
@@ -165,13 +165,13 @@ describe('activities in the plan', () => {
         kind: 'patch',
         table: 'meal_plan_entries',
         id: entry.id,
-        changes: { kind: 'text', activity_id: null, text: 'Spazieren gehen', note: null },
+        changes: { kind: 'text', activity_id: null, text: 'Spazieren gehen' },
       },
     ]);
     expect(fx.server.row(H, 'meal_plan_entries', entry.id)).toMatchObject({
       kind: 'text',
       activity_id: null,
-      note: null,
+      note: entry.note,
     });
   });
 

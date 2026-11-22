@@ -9,6 +9,7 @@ import {
 } from '@housekeeping/core';
 import {
   DragBadge,
+  SwipeArea,
   Text,
   space,
   toast,
@@ -19,7 +20,7 @@ import {
   useTheme,
   type DragSourceBinding,
 } from '@housekeeping/ui';
-import { createContext, useContext, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { View, type HostInstance, type StyleProp, type ViewStyle } from 'react-native';
 
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
@@ -116,7 +117,10 @@ export function WeekRowTarget(props: {
   );
 }
 
-/** A Tageszeit of a day in the week (AC-001, AC-002, AC-006); not a target for a trip. */
+/**
+ * A Tageszeit of a day in the week (AC-001, AC-002, AC-006); not a target for a trip. A field the
+ * dragged entry may not go to is pale, by day and Tageszeit (spec 0021, REQ-012).
+ */
 export function SlotTarget(props: {
   date: ISODate;
   slotId: string;
@@ -126,6 +130,8 @@ export function SlotTarget(props: {
 }) {
   const ref = useRef<HostInstance>(null);
   const kind = useDraggedKind();
+  const { bounds } = useCalendarDrag();
+  const refused = bounds !== null && !isSelectableMoveDay(bounds, props.date, props.slotId);
   const target = useDropTarget(
     moveTargetKey({ kind: 'slot', date: props.date, slotId: props.slotId }),
     ref,
@@ -135,11 +141,50 @@ export function SlotTarget(props: {
     <View
       ref={ref}
       onLayout={target.onLayout}
-      style={[props.style, target.dimmed ? { opacity: PALE_OPACITY } : null]}
+      style={[props.style, target.dimmed || refused ? { opacity: PALE_OPACITY } : null]}
       testID={props.testID}
     >
       {props.children}
     </View>
+  );
+}
+
+/** A lifted drag ends this long before a swipe may page again, so its release never pages. */
+const SWIPE_AFTER_DRAG_MS = 400;
+
+/**
+ * The calendar body on phones (spec 0021, REQ-019): a sideways swipe pages like the arrows, left
+ * to the next period, right to the previous one. While an entry or a trip hangs on the finger it
+ * never pages (AC-048); a drag still begins only after holding (spec 0016), and a move sideways
+ * before that is a swipe. Paging has no animation, so reduced motion needs nothing else.
+ */
+export function CalendarSwipe(props: {
+  enabled: boolean;
+  onSwipe: (step: 1 | -1) => void;
+  children?: ReactNode;
+}) {
+  const kind = useDraggedKind();
+  const lastDrag = useRef(0);
+  useEffect(() => {
+    if (kind !== null)
+      return () => {
+        lastDrag.current = Date.now();
+      };
+    return undefined;
+  }, [kind]);
+  // Wider screens keep their touch handling (and horizontal panning) untouched.
+  if (!props.enabled) return <>{props.children}</>;
+  return (
+    <SwipeArea
+      enabled={kind === null}
+      onSwipe={(step) => {
+        if (kind !== null || Date.now() - lastDrag.current < SWIPE_AFTER_DRAG_MS) return;
+        props.onSwipe(step);
+      }}
+      testID="calendar-swipe"
+    >
+      {props.children}
+    </SwipeArea>
   );
 }
 

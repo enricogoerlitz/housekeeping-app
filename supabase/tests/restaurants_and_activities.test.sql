@@ -68,7 +68,7 @@ insert into public.activities (id, household_id, name, name_key, photo_path, web
 insert into public.activity_ratings (household_id, activity_id, member_id, stars) values
   (tests.fx('home_a'), tests.fx('eislaufen'), tests.fx('enrico'), 5);
 insert into public.meal_plan_entries
-  (id, household_id, date, slot_id, kind, restaurant_id, activity_id, note, reserved_at, eater_ids, guests, sort) values
+  (id, household_id, date, slot_id, kind, restaurant_id, activity_id, note, starts_at, eater_ids, guests, sort) values
   (tests.fx('e_past'), tests.fx('home_a'), current_date - 19, tests.fx('slot'), 'restaurant', tests.fx('enzo'), null,
    null, null, array[tests.fx('enrico'), tests.fx('nadja')], 0, 0),
   (tests.fx('e_future'), tests.fx('home_a'), current_date + 6, tests.fx('slot'), 'restaurant', tests.fx('enzo'), null,

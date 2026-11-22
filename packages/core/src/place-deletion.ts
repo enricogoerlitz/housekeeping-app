@@ -40,7 +40,7 @@ export function placeDeletionEffect(
       kind: 'text',
       text,
       note: undefined,
-      reservedAt: undefined,
+      startsAt: undefined,
     };
     if (kind === 'restaurant') next.restaurantId = undefined;
     else next.activityId = undefined;

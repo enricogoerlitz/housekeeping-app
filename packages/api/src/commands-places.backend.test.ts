@@ -205,7 +205,7 @@ describe('Löschen mit „Rückgängig“ (REQ-010)', () => {
       ratings: before?.ratings,
       favoriteOf: expect.arrayContaining([ENRICO, NADJA]),
     });
-    expect(entry('plan-enzo-2')).toMatchObject({ restaurantId: 'rest-enzo', reservedAt: '19:30' });
+    expect(entry('plan-enzo-2')).toMatchObject({ restaurantId: 'rest-enzo', startsAt: '19:30' });
     expect(entry('plan-enzo-1')).toMatchObject({ kind: 'restaurant', restaurantId: 'rest-enzo' });
     expect(fx.nadjaData(nadja).restaurants.some((r) => r.id === 'rest-enzo')).toBe(true);
   });

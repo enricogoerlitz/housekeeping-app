@@ -23,8 +23,8 @@ const eislaufen = { id: 'eislaufen', name: 'Eislaufen' };
 describe('placeDeletionEffect (spec 0024, REQ-010)', () => {
   const entries = [
     entry('past', { date: '2026-11-03', restaurantId: 'enzo' }),
-    entry('today', { date: '2026-11-22', restaurantId: 'enzo', reservedAt: '19:30' }),
-    entry('later', { date: '2026-11-28', restaurantId: 'enzo', reservedAt: '19:30' }),
+    entry('today', { date: '2026-11-22', restaurantId: 'enzo', startsAt: '19:30' }),
+    entry('later', { date: '2026-11-28', restaurantId: 'enzo', startsAt: '19:30' }),
     entry('noted', { date: null, restaurantId: 'enzo' }),
     entry('other', { date: '2026-11-28', restaurantId: 'pho' }),
     entry('eis-past', {
@@ -44,7 +44,7 @@ describe('placeDeletionEffect (spec 0024, REQ-010)', () => {
       ...entries[1],
       kind: 'text',
       restaurantId: undefined,
-      reservedAt: undefined,
+      startsAt: undefined,
       text: 'Trattoria Da Enzo',
     });
   });

@@ -437,7 +437,7 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
         kind: 'restaurant',
         restaurant_id: 'rest1',
         date: '2026-11-28',
-        reserved_at: '19:30',
+        starts_at: '19:30',
       }),
     ]);
     await enrico.setRestaurantRating('rest1', 4.5);
@@ -464,7 +464,7 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
     expect(await enrico.restoreRestaurant('rest1')).toBe(true);
     expect(server.row(H, 'restaurants', 'rest1')).toBeDefined();
     expect(server.row(H, 'meal_plan_entries', 'e-later')).toMatchObject({
-      reserved_at: '19:30:00',
+      starts_at: '19:30:00',
     });
     expect(server.row(H, 'meal_plan_entries', 'e-past')).toMatchObject({
       kind: 'restaurant',

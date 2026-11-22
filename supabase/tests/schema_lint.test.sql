@@ -51,6 +51,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_shopping_item_not_available(uuid,boolean)'),
   ('private.add_shopping_contributions(uuid,jsonb)'),
   ('private.remove_contributions(uuid[],uuid)'), -- security invoker, shared with apply_changes
+  ('private.replace_entry_contributions(uuid,jsonb,jsonb)'), -- spec 0021: security invoker, domain op of apply_changes
   ('private.consume_ai_quota(text,integer)'),
   ('private.restore_cleared_items(uuid,jsonb)'),
   ('private.delete_article(uuid)'),         -- spec 0007: the only way to delete an article
