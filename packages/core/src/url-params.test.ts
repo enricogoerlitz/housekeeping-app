@@ -284,9 +284,12 @@ describe('sectionOfPath', () => {
     expect(sectionOfPath(`/rezept/${LASAGNE}`, 'quatsch')).toBe('essen');
     expect(sectionOfPath(`/restaurant/${LASAGNE}`, undefined)).toBe('essen');
     expect(sectionOfPath(`/markt/${LASAGNE}`, undefined)).toBe('verwalten');
-    expect(sectionOfPath('/kalender/aktivitaeten', undefined)).toBe('kalender');
     expect(sectionOfPath('/einkaufen', undefined)).toBe('liste');
     expect(sectionOfPath('/einstellungen/benachrichtigungen', undefined)).toBe('verwalten');
+  });
+  it('AC-030 (0024): the activities live under "Verwalten", no tab is highlighted', () => {
+    expect(sectionOfPath('/aktivitaeten', undefined)).toBe('verwalten');
+    expect(sectionOfPath(`/aktivitaet/${LASAGNE}`, undefined)).toBe('verwalten');
   });
   it('AC-015: with `von` the origin is the section', () => {
     expect(sectionOfPath(`/rezept/${LASAGNE}`, 'uebersicht')).toBe('uebersicht');

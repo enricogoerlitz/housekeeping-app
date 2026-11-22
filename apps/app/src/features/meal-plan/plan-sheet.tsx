@@ -63,8 +63,15 @@ export function PlanSheet(props: {
   title: string;
   /** A recipe or a collection: the split over its variants and the cook. */
   recipe?: Recipe;
-  /** More fields under the Tageszeit: "Uhrzeit (optional)" and "Zusatz" (spec 0024). */
-  extra?: ReactNode;
+  /**
+   * More fields under the Tageszeit: "Uhrzeit (optional)" and "Zusatz" of a restaurant or an
+   * activity (spec 0024, REQ-005); a function sees the choice (no time while "vorgemerkt").
+   */
+  extra?: ReactNode | ((choice: PlanChoice) => ReactNode);
+  /** "Wer isst mit?"; an activity has none (spec 0024, REQ-006). Default true. */
+  eaters?: boolean;
+  /** The Tageszeit it opens with: the last ("Abend"), or the first for an activity (REQ-006). */
+  slot?: 'first' | 'last';
   /** Adds the entry; a thrown error is shown in the window. */
   onPlan: (choice: PlanChoice, split: PlanSplit | undefined) => void;
   onClose: () => void;
@@ -81,7 +88,7 @@ export function PlanSheet(props: {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>
-    defaultPlanChoice(today, household.mealSlots, members, trips),
+    defaultPlanChoice(today, household.mealSlots, members, trips, props.slot),
   );
   // AC-055, AC-056: members or trips that arrive later count while the eaters are untouched.
   const [touched, setTouched] = useState(false);
@@ -114,7 +121,8 @@ export function PlanSheet(props: {
   const slotName = slots.find((slot) => slot.id === choice.slotId)?.name ?? '';
   const split = recipe ? splitForEaters(recipe.id, choice.eaterIds, choice.guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
-  const noEaters = choice.eaterIds.length + choice.guests === 0;
+  const withEaters = props.eaters !== false;
+  const noEaters = withEaters && choice.eaterIds.length + choice.guests === 0;
 
   const update = (next: PlanChoice, counted = false) => {
     // Another day starts the counters over from those present; a choice of eaters counts on.
@@ -276,22 +284,24 @@ export function PlanSheet(props: {
             />
           </View>
         ) : null}
-        {props.extra}
-        <EaterPicker
-          members={members}
-          eaterIds={choice.eaterIds}
-          guests={choice.guests}
-          onEaters={(eaterIds) => {
-            setTouched(true);
-            portions.setEaters(eaterIds);
-            update({ ...choice, eaterIds }, true);
-          }}
-          onGuests={(guests) => {
-            setTouched(true);
-            portions.setGuests(guests);
-            update({ ...choice, guests }, true);
-          }}
-        />
+        {typeof props.extra === 'function' ? props.extra(choice) : props.extra}
+        {withEaters ? (
+          <EaterPicker
+            members={members}
+            eaterIds={choice.eaterIds}
+            guests={choice.guests}
+            onEaters={(eaterIds) => {
+              setTouched(true);
+              portions.setEaters(eaterIds);
+              update({ ...choice, eaterIds }, true);
+            }}
+            onGuests={(guests) => {
+              setTouched(true);
+              portions.setGuests(guests);
+              update({ ...choice, guests }, true);
+            }}
+          />
+        ) : null}
         {recipe && split ? (
           <PortionFields
             recipe={recipe}
