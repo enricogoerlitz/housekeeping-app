@@ -1,3 +1,4 @@
+-- contract: reserved_at, remind_minutes_before und die Reservierungs-Erinnerung entfallen (Spec 0021); min_app_version: 2026.11.1
 -- Spec 0021 — the calendar's entries edited in full (critical path: migration, scheduler). Clean
 -- target before the first productively used version (wave 2 rules): no expand/contract.
 --
@@ -686,4 +687,15 @@ begin
   end loop;
   return v_count;
 end
+$$;
+
+-- Contract (scripts/ci/migrations.mjs): the minimum app version stays the latest published one;
+-- it may not exceed it (scripts/release/version.mjs). Grants of the function stay.
+create or replace function public.min_app_version()
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select '2026.11.1'::text
 $$;
