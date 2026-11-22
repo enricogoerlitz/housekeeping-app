@@ -203,14 +203,15 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
     }, [leave]),
   );
 
-  // "Neues Rezept" with pasted rows: the sure ones are saved, the section opens with the rest.
-  const [handedOver] = useState(() => takeHandedOverRows(recipeId));
-  const pending = useRef(handedOver);
+  // "Neues Rezept" with orange rows: the section opens with them. Taken after the commit, so a
+  // render thrown away during the navigation cannot use them up (spec 0018, E-01).
   useEffect(() => {
-    const rows = pending.current;
-    pending.current = undefined;
+    const rows = takeHandedOverRows(recipeId);
+    // The rows come from outside React (the window "Neu"); opening the section with them is the
+    // synchronisation this effect exists for, once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (rows) finish(addIngredientRows(sectionDraft(recipe, 'ingredients'), rows));
-    // Runs once for the rows handed over at mount.
+    // Runs once for the rows handed over before the page opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
