@@ -2588,6 +2588,10 @@ export function createFakeServer(): FakeServer {
       householdMediaNames: (householdId) =>
         run(userId, 'household_media_names', () => {
           requireUser(userId);
+          if (!isMember(userId, householdId)) {
+            throw new TransportError('permanent', 'not_member', 403);
+          }
+          if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
           return [...media.keys()]
             .filter((path) => mediaHousehold(userId, path) === householdId)
             .sort();

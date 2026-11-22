@@ -4,7 +4,7 @@
 -- Negative paths throughout: a foreign household, signed out, invalid input, the failure path.
 begin;
 \ir _helpers.psql
-select plan(90);
+select plan(91);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -250,6 +250,9 @@ select is((select name from public.households where id = tests.fx('wg')), 'WG K�
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('home')),
   'P0001', 'not_last_member', 'AC-021: "Kuschelnest" has two members: not_last_member');
+select throws_ok(format('select * from public.household_media_names(%L)', tests.fx('home')),
+  'P0001', 'not_last_member',
+  'AC-022: the photo list is refused too, so the app deletes no photo of a household that stays');
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   'P0001', 'not_last_member', 'AC-022: Tom joined meanwhile: deleting "WG Köln" is refused');
 select tests.clear_authentication();
@@ -337,10 +340,8 @@ select is(
   2,
   'REQ-005: household_media_names lists the photos Enrico may delete (activities and recipes)');
 select tests.authenticate_as(tests.fx('ben'));
-select is(
-  (select count(*)::int from public.household_media_names(tests.fx('wg'))),
-  0,
-  'AC-021: Ben lists no photo of "WG Köln"');
+select throws_ok(format('select * from public.household_media_names(%L)', tests.fx('wg')),
+  '42501', 'not_member', 'AC-021: Ben lists no photo of "WG Köln" (not_member)');
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   'P0001', 'media_remaining', 'AC-021: while photos are stored: media_remaining');

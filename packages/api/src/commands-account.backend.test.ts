@@ -162,10 +162,16 @@ describe('Haushalt löschen (REQ-005)', () => {
 
   it('AC-021, AC-022: with a second member the server refuses with the German hint', async () => {
     await fx.startEnrico();
+    const path = photoPath(H);
+    await fx.server.transport(ENRICO).uploadMedia(path, jpeg());
+    fx.clearCalls();
     await expect(deleteHousehold(H)).rejects.toThrow(
       'Inzwischen ist noch jemand Mitglied. Löschen geht nur als letztes Mitglied.',
     );
     expect(getState().households[H]).toBeDefined();
+    // The server refuses before any photo is deleted.
+    expect(fx.calls.map((call) => call.fn)).toEqual(['householdMediaNames']);
+    expect(fx.server.media(path)).toBeDefined();
   });
 
   it('AC-023: a failure after part of the photos keeps the household; a second try deletes it', async () => {

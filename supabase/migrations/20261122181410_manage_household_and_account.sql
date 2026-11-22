@@ -282,17 +282,35 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 
 -- The names of the household's photos, for the app to delete them before delete_household. As the
--- caller: the storage policies show only her households' objects. Every sub-folder counts.
+-- caller: the storage policies show only her households' objects. Like delete_household it refuses
+-- unless the caller is its last member, so no photo is deleted for a household that stays
+-- (AC-022; the remaining window is the one of delete_household itself).
 create function private.household_media_names(p_household_id uuid)
 returns setof text
-language sql
+language plpgsql
 stable
 set search_path = ''
 as $$
-  select o.name from storage.objects o
-  where o.bucket_id = 'household-media'
-    and o.name like p_household_id::text || '/%'
-  order by o.name
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.household_members m
+    where m.household_id = p_household_id and m.profile_id = auth.uid()
+  ) then
+    raise exception 'not_member' using errcode = '42501';
+  end if;
+  if (select count(*) from public.household_members m where m.household_id = p_household_id) > 1 then
+    raise exception 'not_last_member' using errcode = 'P0001';
+  end if;
+
+  return query
+    select o.name from storage.objects o
+    where o.bucket_id = 'household-media'
+      and o.name like p_household_id::text || '/%'
+    order by o.name;
+end
 $$;
 
 -- The last member deletes the household with every row (cascade), its open invitations,
