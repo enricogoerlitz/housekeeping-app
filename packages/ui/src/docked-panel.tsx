@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -33,6 +34,7 @@ import {
   dragHeight,
   isTap,
   panelHeights,
+  panelPlacement,
   sidePanelWidth,
   snapHeight,
   snapPanel,
@@ -42,6 +44,7 @@ import {
   type PanelHeights,
   type PanelSnap,
 } from './docked-panel-state';
+import { AsideInsetContext } from './shell';
 import { useBreakpoint, useTheme } from './theme-context';
 
 export type { DockedPanelState };
@@ -95,10 +98,12 @@ type KeyEvent = { key: string; preventDefault: () => void };
 /**
  * A panel that leaves the page usable (spec 0016, REQ-006): on phones it sits at the bottom of the
  * screen area at half height, grows to full height or shrinks to its header line, and closes when
- * dragged down; from 700 px it stands beside the content with ✕. Put it into `Screen`'s `aside`.
+ * dragged down; from 1100 px it stands beside the content with ✕ (tablets keep it at the bottom,
+ * see `panelPlacement`). Put it into `Screen`'s `aside`.
  */
 export function DockedPanel(props: DockedPanelProps) {
-  const { isPhone } = useBreakpoint();
+  const { width } = useBreakpoint();
+  const bottom = panelPlacement(width) === 'bottom';
   // On phones the panel stays mounted until its closing slide has ended.
   const [mounted, setMounted] = useState(props.open);
   if (props.open && !mounted) setMounted(true);
@@ -139,7 +144,7 @@ export function DockedPanel(props: DockedPanelProps) {
     wasOpen.current = props.open;
   }, [props.open]);
 
-  if (!isPhone) return props.open ? <SidePanel {...props} /> : null;
+  if (!bottom) return props.open ? <SidePanel {...props} /> : null;
   if (!mounted) return null;
   return (
     <PhonePanel
@@ -365,6 +370,14 @@ function PhonePanel(props: PhonePanelProps) {
     if (name === 'increment') change(stepPanel(state, 'up'));
     if (name === 'decrement') change(stepPanel(state, 'down'));
   };
+
+  // The page behind gets this much room at its end, so its lowest content scrolls above the panel.
+  const reportInset = useContext(AsideInsetContext);
+  const covered = props.open && ready ? snapHeight(target, heights) : 0;
+  useEffect(() => {
+    reportInset?.(covered);
+  }, [reportInset, covered]);
+  useEffect(() => () => reportInset?.(0), [reportInset]);
 
   const hidden = heights.full - snapHeight(target, heights);
   return (

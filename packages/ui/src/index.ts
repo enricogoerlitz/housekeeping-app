@@ -93,6 +93,8 @@ export {
 export { Sheet, toast, ToastHost, type SheetProps, type ToastOptions } from './overlay';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
 export { DockedPanel, type DockedPanelProps, type DockedPanelState } from './docked-panel';
+export { panelPlacement } from './docked-panel-state';
+export { SwipeArea, type SwipeAreaProps } from './swipe-area';
 export { CHECK_WINDOW_MS } from './check-window';
 export {
   useCheckWindow,
