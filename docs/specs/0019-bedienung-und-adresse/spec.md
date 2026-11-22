@@ -56,7 +56,7 @@ im Kochmodus), Zutaten und Beschreibung in der Leseansicht, Notizen, Adresse des
 Feedback-Texte, alles in Eingabefeldern.
 
 - AC-001: Angenommen Desktop · Wenn ich über „Essen“ in der Seitenleiste, den Titel „Kalender“ und
-  „Diese Woche · KW 48“ ziehe oder doppelklicke · Dann wird nichts markiert.
+  die Wochen-Beschriftung der Übersicht ziehe oder doppelklicke · Dann wird nichts markiert.
 - AC-002: Angenommen Rezept „Lasagne“ in der Leseansicht · Wenn ich Schritt 2 und die Zutat
   „500 g Hackfleisch“ markiere und kopiere · Dann steht der Text in der Zwischenablage.
 - AC-003 (Rand): Angenommen Handy · Wenn ich lange auf „Speichern“ oder einen Tab drücke · Dann
@@ -200,7 +200,7 @@ Heute zu klein (Fläche, `hitSlop` wirkt im Web nicht): `IconButton` 40 bzw. 36,
 Tages-Fensters 64 × 20, „Rückgängig“ im Toast 36, Kalender-Streifen 26, „+“ der Woche 28, Tageszahl
 im Monat ≈ 30, Jahr-Tage ≈ 14. Die sichtbare Größe darf bleiben; die Tippfläche wächst.
 
-- AC-026: Angenommen Handy · Dann misst die Tippfläche von „‹ Essen“, ⋯, dem Chip „Heute“ und dem
+- AC-026: Angenommen Handy · Dann misst die Tippfläche von „‹ Essen“, ⋯, dem Chip „morgen“ in „Neue Aufgabe“ und dem
   Haken einer Aufgabe je mindestens 44 × 44 pt (Test über die gemessene Fläche).
 - AC-027: Angenommen Handy, das Fenster „Neue Aufgabe“ ist bis unten gescrollt · Wenn ich weiter
   ziehe · Dann bewegt sich die Seite dahinter nicht.
@@ -346,30 +346,30 @@ Namen deutsch, klein, ohne Umlaut. Objekt-Parameter (`eintrag`, `aufgabe`, `verl
 `artikel`, `restaurant`, `markt`, `tasche`, `reise`) zeigen das Objekt: als Fenster auf dem Handy, als
 Detail rechts am Desktop. `fenster=<name>` öffnet ein Fenster ohne eigenes Objekt.
 
-| Seite                    | Zustand                                | Parameter                                                                  | Beispiel                                                 |
-| ------------------------ | -------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Übersicht `/`            | gezeigter Tag                          | `tag`                                                                      | `/?tag=2026-11-24`                                       |
-| Übersicht (0020)         | Hinzufügen-Fenster mit Tageszeit       | `fenster=neu-eintrag`, `zeit=<Tageszeit-ID>`                              | `/?tag=2026-11-24&fenster=neu-eintrag&zeit=<ID Abend>`   |
-| Übersicht                | „Was hast du erledigt?“                | `fenster=erledigt`                                                         | `/?fenster=erledigt`                                     |
-| Kalender `/kalender`     | Ansicht, Tag                           | `ansicht=woche\|monat\|jahr`, `tag`                                        | `/kalender?ansicht=monat&tag=2026-12-09`                 |
-| Kalender                 | Tages-Fenster, Eintrag, Hinzufügen     | `fenster=tag`, `eintrag`, `fenster=neu-eintrag&zeit`                       | `/kalender?tag=2026-11-25&eintrag=<ID>`                  |
-| Kalender (0022)          | Reise-Fenster, neue Reise              | `reise`, `fenster=neu-reise`                                               | `/kalender?ansicht=monat&tag=2026-12-04&reise=<ID>`      |
-| Kalender                 | „Auf die Einkaufsliste“                | `fenster=vorratscheck`                                                     | `/kalender?tag=2026-11-25&fenster=vorratscheck`          |
-| Essen `/rezepte`         | Ansicht, Suche, Filter, Sortierung     | `ansicht=rezepte\|restaurants`, `suche`, `art`, `favoriten=1`, `ernaehrung`, `dauer`, `fuer-alle=1`, `selten=1`, `gang`, `kueche`, `sortierung` | `/rezepte?suche=curry&sortierung=haeufig`                |
-| Essen                    | Neu; Restaurant gewählt/neu            | `fenster=neu\|neu-restaurant`, `restaurant`, `link`, `name`                | `/rezepte?ansicht=restaurants&restaurant=<ID>`           |
-| Rezept `/rezept/[id]`    | Herkunft, Portionen, Variante, Fenster | `von`, `portionen`, `variante`, `fenster=einplanen\|sammlung\|vorratscheck` | `/rezept/<ID>?von=uebersicht&portionen=6`                |
-| Kochmodus                | Schritt, Variante, Portionen           | `schritt`, `variante`, `portionen`                                         | `/rezept/<ID>/kochen?schritt=3&portionen=6`              |
-| Restaurant (0024)        | Einplanen-Fenster, Route               | `fenster=einplanen\|route`, `von`                                          | `/restaurant/<ID>?fenster=einplanen`                     |
-| Aktivitäten (0024)       | Suche, Favoriten, Sortierung, Auswahl  | `suche`, `favoriten=1`, `sortierung`, `aktivitaet`, `fenster=neu-aktivitaet\|einplanen` | Pfad nach 0024                                           |
-| Liste `/liste`           | Posten, Vorratscheck                   | `posten`, `fenster=vorratscheck`                                           | `/liste?posten=<ID>`                                     |
-| Liste (0025)             | „Aus Kalender“ mit Startdatum          | `fenster=aus-kalender`, `tag`                                              | `/liste?fenster=aus-kalender&tag=2026-11-29`             |
-| Haushalt `/haushalt`     | Ansicht, Aufgabe, Verlauf, Neu         | `ansicht=anstehend\|alle\|verlauf`, `aufgabe`, `verlauf`, `fenster=neu-aufgabe\|erledigt` | `/haushalt?ansicht=alle&aufgabe=<ID>`                    |
-| Artikel `/artikel`       | Filter, Suche, Sortierung, Auswahl     | `filter`, `suche`, `sortierung=name\|neu`, `artikel`, `fenster=neu-artikel`, `von` | `/artikel?filter=ohne-bereich&artikel=<ID>`              |
-| Märkte `/maerkte`        | Ansicht, Markt                         | `ansicht=maerkte\|bereiche`, `markt`                                       | `/maerkte?markt=<ID>`                                    |
-| Reisetaschen             | Tasche                                 | `tasche`                                                                   | `/reisetaschen?tasche=<ID>`                              |
-| Einstellungen            | Abschnitt                              | `abschnitt`                                                                | `/einstellungen?abschnitt=darstellung`                   |
-| Feedback                 | Status-Filter                          | `filter`                                                                   | `/feedback?filter=offen`                                 |
-| Benachrichtigung         | Haushalt wechseln (einmalig)           | `haushalt` (wird nach dem Wechsel entfernt)                                | `/kalender?tag=2026-11-25&eintrag=<ID>&haushalt=<ID>`    |
+| Seite                 | Zustand                                | Parameter                                                                                                                                       | Beispiel                                               |
+| --------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Übersicht `/`         | gezeigter Tag                          | `tag`                                                                                                                                           | `/?tag=2026-11-24`                                     |
+| Übersicht (0020)      | Hinzufügen-Fenster mit Tageszeit       | `fenster=neu-eintrag`, `zeit=<Tageszeit-ID>`                                                                                                    | `/?tag=2026-11-24&fenster=neu-eintrag&zeit=<ID Abend>` |
+| Übersicht             | „Was hast du erledigt?“                | `fenster=erledigt`                                                                                                                              | `/?fenster=erledigt`                                   |
+| Kalender `/kalender`  | Ansicht, Tag                           | `ansicht=woche\|monat\|jahr`, `tag`                                                                                                             | `/kalender?ansicht=monat&tag=2026-12-09`               |
+| Kalender              | Tages-Fenster, Eintrag, Hinzufügen     | `fenster=tag`, `eintrag`, `fenster=neu-eintrag&zeit`                                                                                            | `/kalender?tag=2026-11-25&eintrag=<ID>`                |
+| Kalender (0022)       | Reise-Fenster, neue Reise              | `reise`, `fenster=neu-reise`                                                                                                                    | `/kalender?ansicht=monat&tag=2026-12-04&reise=<ID>`    |
+| Kalender              | „Auf die Einkaufsliste“                | `fenster=vorratscheck`                                                                                                                          | `/kalender?tag=2026-11-25&fenster=vorratscheck`        |
+| Essen `/rezepte`      | Ansicht, Suche, Filter, Sortierung     | `ansicht=rezepte\|restaurants`, `suche`, `art`, `favoriten=1`, `ernaehrung`, `dauer`, `fuer-alle=1`, `selten=1`, `gang`, `kueche`, `sortierung` | `/rezepte?suche=curry&sortierung=haeufig`              |
+| Essen                 | Neu; Restaurant gewählt/neu            | `fenster=neu\|neu-restaurant`, `restaurant`, `link`, `name`                                                                                     | `/rezepte?ansicht=restaurants&restaurant=<ID>`         |
+| Rezept `/rezept/[id]` | Herkunft, Portionen, Variante, Fenster | `von`, `portionen`, `variante`, `fenster=einplanen\|sammlung\|vorratscheck`                                                                     | `/rezept/<ID>?von=uebersicht&portionen=6`              |
+| Kochmodus             | Schritt, Variante, Portionen           | `schritt`, `variante`, `portionen`                                                                                                              | `/rezept/<ID>/kochen?schritt=3&portionen=6`            |
+| Restaurant (0024)     | Einplanen-Fenster, Route               | `fenster=einplanen\|route`, `von`                                                                                                               | `/restaurant/<ID>?fenster=einplanen`                   |
+| Aktivitäten (0024)    | Suche, Favoriten, Sortierung, Auswahl  | `suche`, `favoriten=1`, `sortierung`, `aktivitaet`, `fenster=neu-aktivitaet\|einplanen`                                                         | Pfad nach 0024                                         |
+| Liste `/liste`        | Posten, Vorratscheck                   | `posten`, `fenster=vorratscheck`                                                                                                                | `/liste?posten=<ID>`                                   |
+| Liste (0025)          | „Aus Kalender“ mit Startdatum          | `fenster=aus-kalender`, `tag`                                                                                                                   | `/liste?fenster=aus-kalender&tag=2026-11-29`           |
+| Haushalt `/haushalt`  | Ansicht, Aufgabe, Verlauf, Neu         | `ansicht=anstehend\|alle\|verlauf`, `aufgabe`, `verlauf`, `fenster=neu-aufgabe\|erledigt`                                                       | `/haushalt?ansicht=alle&aufgabe=<ID>`                  |
+| Artikel `/artikel`    | Filter, Suche, Sortierung, Auswahl     | `filter`, `suche`, `sortierung=name\|neu`, `artikel`, `fenster=neu-artikel`, `von`                                                              | `/artikel?filter=ohne-bereich&artikel=<ID>`            |
+| Märkte `/maerkte`     | Ansicht, Markt                         | `ansicht=maerkte\|bereiche`, `markt`                                                                                                            | `/maerkte?markt=<ID>`                                  |
+| Reisetaschen          | Tasche                                 | `tasche`                                                                                                                                        | `/reisetaschen?tasche=<ID>`                            |
+| Einstellungen         | Abschnitt                              | `abschnitt`                                                                                                                                     | `/einstellungen?abschnitt=<Abschnitt>`                 |
+| Feedback              | Status-Filter                          | `filter`                                                                                                                                        | `/feedback?filter=<Status>`                            |
+| Benachrichtigung      | Haushalt wechseln (einmalig)           | `haushalt` (wird nach dem Wechsel entfernt)                                                                                                     | `/kalender?tag=2026-11-25&eintrag=<ID>&haushalt=<ID>`  |
 
 Regel für neue Fenster: Ein neues Fenster bekommt `fenster=<name>` (Verb oder `neu-<objekt>`) oder,
 wenn es ein Objekt zeigt, dessen Objekt-Parameter; es wird in die Liste in `packages/core`
@@ -428,13 +428,13 @@ der Parameter in `target-params.ts`, die Parameter `view`, `rid`, `add`, `share`
 
 ## Risiken
 
-| Risiko                                                    | Gegenmaßnahme                                                     | Test                                     |
-| --------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------- |
-| Offene Weiterleitung nach der Anmeldung                   | Nur Pfade mit genau einem führenden `/`, kein Schema, kein `//`   | Unit `AC-048` in `core`                  |
-| Adresse zeigt Daten eines fremden Haushalts               | Auflösen nur im lokalen Speicher der eigenen Haushalte            | Unit `AC-050`; pgTAP-Isolation unverändert |
-| Wechsel in einen Haushalt per Adresse ohne Mitgliedschaft | Wechsel nur, wenn die Id in einem eigenen Haushalt liegt          | Unit `AC-051` mit fremder Id             |
-| Abgemeldet: Adresse verrät Inhalte                        | Anmeldeseite zeigt nichts aus der Adresse                         | `AC-047` abgemeldet                       |
-| Ungültige Parameter lassen eine Seite abstürzen           | Zod-Prüfung je Parameter in `core`, ungültig = ignorieren         | Unit `AC-034`, `AC-039`, `AC-052`        |
+| Risiko                                                    | Gegenmaßnahme                                                     | Test                                         |
+| --------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
+| Offene Weiterleitung nach der Anmeldung                   | Nur Pfade mit genau einem führenden `/`, kein Schema, kein `//`   | Unit `AC-048` in `core`                      |
+| Adresse zeigt Daten eines fremden Haushalts               | Auflösen nur im lokalen Speicher der eigenen Haushalte            | Unit `AC-050`; pgTAP-Isolation unverändert   |
+| Wechsel in einen Haushalt per Adresse ohne Mitgliedschaft | Wechsel nur, wenn die Id in einem eigenen Haushalt liegt          | Unit `AC-051` mit fremder Id                 |
+| Abgemeldet: Adresse verrät Inhalte                        | Anmeldeseite zeigt nichts aus der Adresse                         | `AC-047` abgemeldet                          |
+| Ungültige Parameter lassen eine Seite abstürzen           | Zod-Prüfung je Parameter in `core`, ungültig = ignorieren         | Unit `AC-034`, `AC-039`, `AC-052`            |
 | „+“ offline doppelt oder verloren                         | Bestehende Aktion „Posten hinzufügen“ mit Client-Id, Wiederholung | `AC-030`, `AC-031`; Abbruch mitten im Senden |
 
 ## Umsetzung
