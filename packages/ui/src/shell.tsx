@@ -62,6 +62,11 @@ export interface ScreenProps {
   /** Fixed content below the scroll area, e.g. a ComposerBar. */
   footer?: ReactNode;
   /**
+   * A DockedPanel: from 700 px it stands right of the scroll area, below header and tabs; on
+   * phones it lies over the lower part of the screen area, above the tab bar.
+   */
+  aside?: ReactNode;
+  /**
    * false for screens that manage their own scrolling. With a header on phones the scrolling child
    * must be an InfiniteList: it takes the header's space as its inset (PageScrollContext).
    */
@@ -223,7 +228,14 @@ export function Screen(props: ScreenProps) {
               <Animated.View pointerEvents="none" style={[line, chromeLine]} />
             </View>
           ) : null}
-          {body}
+          {props.aside ? (
+            <View style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' }}>
+              <View style={{ flex: 1 }}>{body}</View>
+              {props.aside}
+            </View>
+          ) : (
+            body
+          )}
           {props.footer}
         </View>
       </AreaToneContext.Provider>
@@ -270,6 +282,7 @@ export function Screen(props: ScreenProps) {
             {tabs}
             <Animated.View pointerEvents="none" style={[line, chromeLine]} />
           </View>
+          {props.aside}
         </View>
         {props.footer}
       </View>
