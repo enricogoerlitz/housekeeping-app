@@ -412,8 +412,10 @@ Beim Bau entschieden (Claude, 22.11.2026, jeweils die einfachste zur Spec passen
     Verlassen des Felds speichert ihn nicht mehr, Enter weiter sofort.
 16. Eine Regel für die Liste: `recomputeEntryContributions` in `packages/core/src/entry-edit.ts`;
     der Reisende-raus-Weg aus Spec 0022 nutzt sie über `followEntryOnList`. Neu gerechnet wird nur,
-    wenn sich Portionen oder Varianten ändern; eine neue Zutat ohne offenen Posten bekommt einen neuen
-    Posten (ein abgehakter wird nicht wieder geöffnet). Spec 0025 passt die Regel dort an.
+    wenn sich Portionen oder Varianten ändern. Nach Spec 0025 (ein Posten je Artikel, REQ-013): eine
+    neue Zutat kommt auf den offenen Posten ihres Artikels, öffnet einen abgehakten mit der neuen
+    Menge wieder (wie „Auf die Einkaufsliste“) oder bekommt einen neuen; ein abgehakter Posten mit
+    einem Beitrag des Eintrags bleibt, wie er ist (AC-021).
 17. „Ältere Reste …“ zeigt alle früheren Gerichte, auch die der letzten sieben Tage.
 18. Im Tagesüberblick steht der Zusatz als erste Angabe in der Klammer: „Hummus (doppelte Menge,
     Mittag, du kochst)“.
@@ -423,6 +425,23 @@ Beim Bau entschieden (Claude, 22.11.2026, jeweils die einfachste zur Spec passen
     `packages/ui` (`SwipeArea`), sein Test liegt dort. Handy-Monat: der Punkt „Aufgabe“ folgt weiter
     dem Schalter der Haushalt-Zeile; im Jahr ist er immer da.
 
+21. Liste und Eintrag in einem Aufruf ohne Löschgrenze: `apply_changes` kennt die Domänen-Operation
+    `replace_entry_contributions` (Einträge, neue Beiträge). Sie nimmt die Beiträge der Einträge von
+    offenen Posten, fügt die neuen wie `add_contributions` hinzu und löscht geleerte offene Posten;
+    sie zählt als eine Löschung, gleich wie viele Beiträge (begrenzt durch höchstens 200 Einträge).
+    So folgen auch Gerichte mit mehr als 20 Zutaten den Portionen (REQ-007), lassen sich mit ihren
+    Zutaten entfernen (REQ-015) und Reisende aus vielen Gerichten nehmen (Spec 0022). Neu gerechnete
+    Beiträge bekommen neue Kennungen; „Rückgängig“ setzt Zeilen und alte Beiträge im selben Aufruf
+    zurück.
+22. AC-009: Das ausgegraute „+“ im Desktop-Monat zeigt beim Klick den Hinweis „Offline – zum
+    Bearbeiten brauchst du Netz“ als Toast (wie beim Ziehen offline, Spec 0016) und öffnet weder das
+    Hinzufügen- noch das Tages-Fenster.
+23. AC-014, Reise-Streifen: gemessen am 22.11. im Web-Export bei 1440 × 900, Woche 30.11.–6.12.: der
+    Streifen „Urlaub Mallorca · bis Do 10.12.“ ist 435 px breit, sein Text 163 px und nicht gekürzt
+    (`scrollWidth` = `clientWidth`). Gekürzt („…“) wird nur, wenn der Abschnitt der Woche schmaler
+    ist als Abzeichen und Text (ein Tag ≈ 145 px) — das ist „solange er passt“; kein Umbau nötig.
+    Der e2e-Rundgang prüft es (`rundgang-kalender-0021.spec.ts`).
+
 OFFEN: keine.
 
 ## Daten
@@ -431,7 +450,9 @@ OFFEN: keine.
 ('restaurant','activity')`); Prüfregel `note_only_activity` entfällt (Zusatz für alle Arten);
 `apply_changes`-Allowlist entsprechend. Planer: `plan_entry_title` mit Zusatz für alle Arten,
 `entry_reminder_body` mit Uhrzeit statt Tageszeit, Tagesüberblick und Vortag mit `starts_at`.
-Beiträge neu rechnen/entfernen über den vorhandenen Weg `apply_changes` im selben Aufruf.
+Beiträge neu rechnen/entfernen über `apply_changes` im selben Aufruf, mit der Domänen-Operation
+`replace_entry_contributions` (`private.replace_entry_contributions`, security invoker; Entscheidung
+21).
 
 Entfällt: Spalte `meal_plan_entries.remind_minutes_before` samt Prüfregel,
 `notification_settings.reservation_reminders_enabled`, Funktion
@@ -444,15 +465,16 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 
 ## Risiken
 
-| Risiko                                                         | Gegenmaßnahme                                        | Test                                                 |
-| -------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| Fremder Haushalt ändert Eintrag oder Beiträge                  | RLS und `apply_changes`-Mitgliedsprüfung unverändert | pgTAP `domain_isolation`, neue Fälle `starts_at`     |
-| Uhrzeit an Rezept, 19:33, Zusatz mit Steuerzeichen, 1001 Port. | Prüfregeln in der Datenbank                          | pgTAP `entry_reminders`/neu `plan_entry_fields`      |
-| Abgemeldet schreibt                                            | `apply_changes` nur für `authenticated`              | pgTAP `apply_changes`                                |
-| Liste und Eintrag laufen auseinander                           | ein Aufruf, beide oder keins (ADR-0011)              | api `commands-plan.backend.test.ts` (AC-019, AC-021) |
-| Entfernen löscht fremde oder abgehakte Beiträge                | nur Herkunft dieses Eintrags, nur nicht abgehakt     | core `shopping-list.test.ts` (AC-041)                |
-| Nachricht in Core und SQL verschieden                          | Paritätstest                                         | pgTAP `notification_parity` (AC-037)                 |
-| Alte Reservierungs-Nachricht kommt doppelt oder weiter         | Funktion und Art entfallen                           | pgTAP `notification_scheduler` (AC-039)              |
+| Risiko                                                         | Gegenmaßnahme                                        | Test                                                             |
+| -------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
+| Fremder Haushalt ändert Eintrag oder Beiträge                  | RLS und `apply_changes`-Mitgliedsprüfung unverändert | pgTAP `domain_isolation`, neue Fälle `starts_at`                 |
+| Uhrzeit an Rezept, 19:33, Zusatz mit Steuerzeichen, 1001 Port. | Prüfregeln in der Datenbank                          | pgTAP `entry_reminders`/neu `plan_entry_fields`                  |
+| Abgemeldet schreibt                                            | `apply_changes` nur für `authenticated`              | pgTAP `apply_changes`                                            |
+| Liste und Eintrag laufen auseinander                           | ein Aufruf, beide oder keins (ADR-0011)              | api `commands-plan.backend.test.ts` (AC-019, AC-021)             |
+| Entfernen löscht fremde oder abgehakte Beiträge                | nur Herkunft dieses Eintrags, nur nicht abgehakt     | core `entry-edit.test.ts`, pgTAP `entry_contributions` (AC-041)  |
+| Mehr als 20 Zutaten scheitern an der Löschgrenze               | eine Domänen-Operation, zählt als eine Löschung      | pgTAP `entry_contributions`, api `commands-plan.backend.test.ts` |
+| Nachricht in Core und SQL verschieden                          | Paritätstest                                         | pgTAP `notification_parity` (AC-037)                             |
+| Alte Reservierungs-Nachricht kommt doppelt oder weiter         | Funktion und Art entfallen                           | pgTAP `notification_scheduler` (AC-039)                          |
 
 ## Umsetzung
 

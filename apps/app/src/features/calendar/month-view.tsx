@@ -19,6 +19,7 @@ import {
   KindDot,
   Text,
   keyboardFocusRing,
+  toast,
   useFinePointer,
   useHover,
   useTheme,
@@ -27,7 +28,7 @@ import { useState } from 'react';
 import { Platform, Pressable, View, type HostInstance, type ViewStyle } from 'react-native';
 
 import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
 import {
   CELL_RADIUS,
@@ -511,7 +512,8 @@ function MonthGridDesktop(props: MonthViewProps) {
 /**
  * "+" top right of a desktop day (spec 0021, REQ-003, AC-008): shows while the mouse is over the
  * day and on keyboard focus, opens the add window for that day with "Abend" preselected; outside
- * the day's trip source, so dragging on it draws no trip. Offline greyed out with the hint.
+ * the day's trip source, so dragging on it draws no trip. Offline greyed out, and a click shows
+ * the hint "Offline – zum Bearbeiten brauchst du Netz" (AC-009) instead of reaching the day.
  */
 function AddToDay(props: { date: ISODate; visible: boolean; onPress: () => void }) {
   const theme = useTheme();
@@ -524,8 +526,11 @@ function AddToDay(props: { date: ISODate; visible: boolean; onPress: () => void 
       accessibilityLabel={`Hinzufügen am ${formatLongDate(props.date)}`}
       accessibilityHint={online.hint}
       accessibilityState={{ disabled: online.disabled }}
-      disabled={online.disabled}
-      onPress={props.onPress}
+      onPress={
+        online.disabled
+          ? () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT })
+          : props.onPress
+      }
       style={(state) => {
         const { hovered, focused } = state as PressState;
         const shown = props.visible || focused === true;

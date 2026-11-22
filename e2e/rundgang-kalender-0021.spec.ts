@@ -7,6 +7,7 @@ import {
   shiftPeriod,
   startOfMonth,
   startOfWeek,
+  tripEndLabel,
   weekDates,
   type ISODate,
 } from '@housekeeping/core';
@@ -23,9 +24,11 @@ import {
   isoWeekday,
   only,
   open,
+  showPlanWeek,
   test,
   tid,
   tidPrefix,
+  toastMessage,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -244,6 +247,11 @@ test.describe('desktop', () => {
     const add = tid(page, `month-add-${NEIGHBOUR}`);
     await expect(add).toHaveAttribute('aria-disabled', 'true');
     await expect(add).toHaveAccessibleDescription(OFFLINE_HINT);
+    // Not only dimmed: a click says why, and neither the add window nor the day window opens.
+    await add.click();
+    await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
+    await expect(tid(page, 'add-entry-sheet')).toBeHidden();
+    await expect(tid(page, 'day-panel')).toBeHidden();
   });
 
   test('AC-014: a chore name in the week wraps onto at most two lines without "…"', async ({
@@ -258,6 +266,21 @@ test.describe('desktop', () => {
     await expect(chore).toBeVisible();
     const text = chore.getByText('Bad putzen');
     await expect(text).toHaveCSS('-webkit-line-clamp', '2');
+  });
+
+  test('AC-014: in the week of "Urlaub Mallorca" its stripe shows the whole text', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, '/kalender');
+    const trip = day(12);
+    await showPlanWeek(page, trip);
+    const label = tid(page, `trip-stripe-${MALLORCA}`).getByText(
+      `Urlaub Mallorca · ${tripEndLabel(addDays(trip, 6))}`,
+    );
+    await expect(label).toBeVisible();
+    // Not cut: the text is as wide as it needs (no "…").
+    expect(await label.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   });
 
   test('AC-042: a chore planned on a later day is checked there and booked as done today', async ({
