@@ -53,6 +53,7 @@ import { View, type HostInstance } from 'react-native';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 
+import { DragDropBlock } from './showroom-drag';
 import {
   KIND_LABELS,
   SAMPLE_ARTICLES,
@@ -101,6 +102,7 @@ export function usePatternBlocks(): ReactNode[] {
     <CollageBlock key="collage" />,
     <SelectRowBlock key="select" />,
     <TimeBlock key="time" />,
+    <DragDropBlock key="drag" />,
   ];
 }
 

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, IconButton } from './controls';
 import { Text } from './primitives';
 import { sheetFrame, type SheetSize } from './sheet-size';
-import { PageScrollContext } from './shell';
+import { PageScrollContext, PageScrollControlContext } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { createToastStore, type ToastOptions } from './toast-state';
 
@@ -106,7 +106,10 @@ export function Sheet(props: SheetProps) {
                 style={frame.height ? { flex: 1 } : undefined}
                 contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, paddingTop: 6 }}
               >
-                {props.children}
+                {/* A drag inside the sheet must not switch the page below. */}
+                <PageScrollControlContext.Provider value={undefined}>
+                  {props.children}
+                </PageScrollControlContext.Provider>
               </ScrollView>
               {props.footer ? (
                 <View

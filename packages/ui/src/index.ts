@@ -146,8 +146,22 @@ export { PhotoCollage, type PhotoCollageProps } from './display';
 export { SelectRow, type SelectRowProps } from './lists';
 export { TimeField, type TimeFieldProps } from './time-field';
 export {
+  DragProvider,
+  useDragSource,
+  useDropTarget,
+  useDraggedSource,
+  type DragProviderProps,
+  type DragCallbacks,
+  type DragSourceOptions,
+  type DragSourceBinding,
+  type DropGrid,
+  type DropTargetOptions,
+  type DropTargetState,
+} from './drag-drop';
+export {
   hitTest,
   gridCellAt,
+  cellRect,
   type Point,
   type Rect,
   type GridShape,

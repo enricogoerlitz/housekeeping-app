@@ -70,6 +70,18 @@ export function gridCellAt(point: Point, grid: CellGrid): number | null {
   return cell;
 }
 
+/** The rectangle of one cell of the grid (numbered as `gridCellAt` returns it). */
+export function cellRect(grid: CellGrid, cell: number): Rect {
+  const width = grid.rect.width / COLUMNS;
+  const height = grid.rows > 0 ? grid.rect.height / grid.rows : 0;
+  return {
+    x: grid.rect.x + (cell % COLUMNS) * width,
+    y: grid.rect.y + Math.floor(cell / COLUMNS) * height,
+    width,
+    height,
+  };
+}
+
 /**
  * The id of the target under the point, or null. Of nested targets the smallest wins (a cell
  * inside a bar); of equally large ones the later in the list, which is drawn on top. A grid

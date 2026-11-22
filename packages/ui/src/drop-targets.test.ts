@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { gridCellAt, hitTest, type DropTarget } from './drop-targets';
+import { cellRect, gridCellAt, hitTest, type DropTarget } from './drop-targets';
 
 const week: DropTarget[] = [
   { id: 'wed-evening', rect: { x: 0, y: 0, width: 100, height: 40 } },
@@ -92,5 +92,22 @@ describe('gridCellAt', () => {
     expect(
       gridCellAt({ x: 100, y: 200 }, { rect: { x: 100, y: 200, width: 0, height: 0 }, rows: 6 }),
     ).toBeNull();
+  });
+});
+
+describe('cellRect', () => {
+  const grid = { rect: { x: 10, y: 20, width: 70, height: 60 }, rows: 6 };
+
+  it('is the rectangle of one day of a month grid, for the single highlight', () => {
+    expect(cellRect(grid, 0)).toEqual({ x: 10, y: 20, width: 10, height: 10 });
+    expect(cellRect(grid, 9)).toEqual({ x: 30, y: 30, width: 10, height: 10 });
+    expect(cellRect(grid, 41)).toEqual({ x: 70, y: 70, width: 10, height: 10 });
+  });
+
+  it('lies under the point that gridCellAt mapped to the same cell', () => {
+    const point = { x: 47, y: 55 };
+    const cell = gridCellAt(point, grid);
+    expect(cell).toBe(3 * 7 + 3);
+    expect(hitTest(point, [{ id: 'day', rect: cellRect(grid, cell ?? -1) }])).toBe('day');
   });
 });
