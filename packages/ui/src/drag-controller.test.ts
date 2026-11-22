@@ -7,7 +7,7 @@ import {
   type Measure,
 } from './drag-controller';
 import type { Rect } from './drop-targets';
-import { EDGE_FIRST_PAGE_MS, EDGE_ZONE_INSET } from './edge-pager';
+import { EDGE_FIRST_PAGE_MS, EDGE_ZONE_INSET, EDGE_ZONE_WIDTH } from './edge-pager';
 
 const WINDOW = { width: 400, height: 800 };
 const CONTAINER: Rect = { x: 0, y: 0, width: 400, height: 800 };
@@ -248,8 +248,13 @@ describe('drag controller', () => {
     lift();
     const late = vi.fn(at({ x: 0, y: 0, width: 0, height: 0 }));
     expect(controller.getSnapshot().zones).toEqual({
-      previous: { x: EDGE_ZONE_INSET, y: 0, width: 48, height: 800 },
-      next: { x: 400 - EDGE_ZONE_INSET - 48, y: 0, width: 48, height: 800 },
+      previous: { x: EDGE_ZONE_INSET, y: 0, width: EDGE_ZONE_WIDTH, height: 800 },
+      next: {
+        x: 400 - EDGE_ZONE_INSET - EDGE_ZONE_WIDTH,
+        y: 0,
+        width: EDGE_ZONE_WIDTH,
+        height: 800,
+      },
     });
     controller.move({ x: 400 - EDGE_ZONE_INSET - 10, y: 300 });
     controller.frame(1000);
@@ -263,6 +268,83 @@ describe('drag controller', () => {
     controller.frame(1000 + EDGE_FIRST_PAGE_MS + 16);
     controller.frame(1000 + EDGE_FIRST_PAGE_MS + 32);
     expect(late).toHaveBeenCalled();
+  });
+
+  it('AC-009: over the middle of a day at the edge of a narrow grid no page turns', () => {
+    const onPage = vi.fn();
+    const onDrop = vi.fn();
+    const { controller, lift } = setup({ onPage, onDrop });
+    // A week of the phone month: seven days of 50 px from x 20.
+    controller.register('phone-week', {
+      measure: at({ x: 20, y: 600, width: 350, height: 50 }),
+      grid: { rows: 1, cellId: (cell) => `day-${cell}` },
+    });
+    lift('lasagne', { x: 80, y: 120 });
+    controller.frame(0);
+    controller.frame(16);
+    controller.move({ x: 46, y: 620 });
+    controller.frame(100);
+    controller.frame(100 + EDGE_FIRST_PAGE_MS * 4);
+    expect(onPage).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().zone).toBeNull();
+    // Pushing past the middle of the Monday towards the edge pages back.
+    controller.move({ x: 30, y: 620 });
+    controller.frame(6000);
+    expect(controller.getSnapshot().zone).toBe('previous');
+    controller.frame(6000 + EDGE_FIRST_PAGE_MS);
+    expect(onPage).toHaveBeenCalledWith(-1);
+  });
+
+  it('a layout change after the lift scrolls the page so the source stays under the pointer', () => {
+    const scrollBy = vi.fn();
+    const { controller } = setup();
+    // Empty slots appear above the source once it is lifted and push it 220 px down.
+    const source = vi
+      .fn<Measure>()
+      .mockImplementationOnce(at({ x: 10, y: 110, width: 80, height: 20 }))
+      .mockImplementationOnce(at({ x: 10, y: 330, width: 80, height: 20 }))
+      .mockImplementation(at({ x: 10, y: 110, width: 80, height: 20 }));
+    controller.lift({
+      sourceId: 'lasagne',
+      point: { x: 30, y: 400 },
+      preview: 'Lasagne',
+      measureSource: source,
+      scroller: { scrollBy },
+      onAbort: () => undefined,
+    });
+    controller.frame(0);
+    controller.frame(16);
+    expect(scrollBy).toHaveBeenCalledTimes(1);
+    expect(scrollBy).toHaveBeenCalledWith(220);
+    controller.frame(32);
+    controller.frame(48);
+    controller.frame(64);
+    expect(scrollBy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a source moved by scrolling along is not scrolled back', () => {
+    const scrollBy = vi.fn();
+    const { controller } = setup();
+    let sourceY = 110;
+    controller.lift({
+      sourceId: 'lasagne',
+      point: { x: 30, y: 400 },
+      preview: 'Lasagne',
+      measureSource: (done) => done({ x: 10, y: sourceY, width: 80, height: 20 }),
+      scroller: { scrollBy },
+      onAbort: () => undefined,
+    });
+    controller.frame(0);
+    controller.frame(16);
+    controller.move({ x: 200, y: 790 });
+    controller.frame(32);
+    sourceY = 50;
+    controller.move({ x: 200, y: 400 });
+    controller.frame(48);
+    controller.frame(64);
+    controller.frame(80);
+    expect(scrollBy.mock.calls.every(([dy]) => (dy as number) > 0)).toBe(true);
+    expect(scrollBy).toHaveBeenCalledTimes(1);
   });
 
   it('AC-029: a drag that lifts inside a zone turns no page until the pointer has left it', () => {
@@ -300,7 +382,7 @@ describe('drag controller', () => {
     expect(controller.getSnapshot().zones?.previous).toEqual({
       x: 100 + EDGE_ZONE_INSET,
       y: 0,
-      width: 48,
+      width: EDGE_ZONE_WIDTH,
       height: 800,
     });
   });

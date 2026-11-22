@@ -180,6 +180,13 @@ interface Session<P> {
    * (a trip of one day on a Monday) must not turn the page.
    */
   pagerArmed: boolean;
+  /**
+   * True until the page scrolls along or turns: a layout change the lift causes (empty slots
+   * appearing above the source) is scrolled away, so the source stays under the pointer.
+   */
+  anchored: boolean;
+  /** The target under the pointer as last hit, in window coordinates. */
+  hoverRect: Rect | null;
   lastFrame: number | null;
   lastMeasure: number;
   scrolling: boolean;
@@ -258,6 +265,7 @@ export function createDragController<P>(
     const current = session;
     if (!current) return;
     const hit = targetAt(current.point);
+    current.hoverRect = hit?.rect ?? null;
     const sourceId = current.request.sourceId;
     const previous = snapshot.hover;
     if (hit === null) {
@@ -322,7 +330,18 @@ export function createDragController<P>(
     current.request.measureSource((rect) => {
       if (!fresh()) return;
       // Scrolling moves the source and paging may remove it; the glide back goes to where it is.
+      const previous = current.sourceRect;
       current.sourceRect = rect;
+      const scroller = current.request.scroller;
+      // Only when it moved since the last measurement: a page that cannot scroll further must not
+      // be asked again and again.
+      if (current.anchored && scroller && rect && previous && current.liftRect) {
+        const drift = rect.y - current.liftRect.y;
+        if (rect.y !== previous.y && Math.abs(drift) >= 1) {
+          scroller.scrollBy(drift);
+          current.pendingFrames = LAYOUT_FRAMES;
+        }
+      }
       if (rect && !current.liftRect) {
         current.liftRect = rect;
         publish({ sourceRect: rect });
@@ -396,6 +415,8 @@ export function createDragController<P>(
         scrollArea: null,
         pager: EDGE_PAGER_IDLE,
         pagerArmed: false,
+        anchored: true,
+        hoverRect: null,
         lastFrame: null,
         lastMeasure: 0,
         scrolling: false,
@@ -463,6 +484,7 @@ export function createDragController<P>(
       if (speed !== 0) {
         if (dt > 0) scroller?.scrollBy((speed * dt) / 1000);
         current.scrolling = true;
+        current.anchored = false;
         if (time - current.lastMeasure >= SCROLL_MEASURE_MS) measureAll(time);
       } else if (current.scrolling) {
         current.scrolling = false;
@@ -474,11 +496,14 @@ export function createDragController<P>(
         current.pagerArmed = lifted === null || edgeZoneAt(relative.x, size) !== lifted;
       }
       if (callbacks.onPage && current.pagerArmed) {
-        const step = edgePagerStep(current.pager, { x: relative.x, time, viewport: size });
+        const hover = current.hoverRect;
+        const target = hover ? { x: hover.x - area.x, width: hover.width } : null;
+        const step = edgePagerStep(current.pager, { x: relative.x, time, viewport: size, target });
         current.pager = step.state;
         publish({ zone: step.state.zone });
         if (step.page !== 0) {
           callbacks.onPage(step.page);
+          current.anchored = false;
           // The new period renders first; its targets are measured once it is laid out.
           current.pendingFrames = LAYOUT_FRAMES;
           return;
