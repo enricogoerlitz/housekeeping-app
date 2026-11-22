@@ -56,7 +56,7 @@ describe('cooking mode portions (spec 0018, REQ-002)', () => {
     expect(servingsLabel(1)).toBe('1 Portion');
   });
 
-  it('AC-005: 8 portions show 300 g Linsen and name "8 Portionen"', () => {
+  it('any other portion count scales the same way: 8 portions show 300 g Linsen and name "8 Portionen"', () => {
     expect(amounts(cookingServings('8', lasagne))[0]).toEqual(['l-linsen', '300 g']);
     expect(servingsLabel(8)).toBe('8 Portionen');
   });
