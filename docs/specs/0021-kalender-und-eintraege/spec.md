@@ -312,6 +312,58 @@ wie bisher ohne Frage. Verschieben und Vormerken fragen nicht; die Herkunft nenn
   Zutaten entferne · Dann bleibt „Hackfleisch“ mit „von Hand: 1×“ (Und „Abbrechen“ ändert nichts; ein
   abgehakter Posten zählt nicht und bleibt).
 
+### Nachtrag aus Review 0002
+
+Vorgezogen aus Enricos Review 0002 (22.11.2026). Allgemeine Handy-Punkte (Hintergrund der Fenster,
+Abstände unten, Wischen zwischen Tabs, Karten-Link) regelt Spec 0029; `Sheet`, `shell.tsx`,
+`ViewTabs` und Karten-Links ändert diese Spec nicht.
+
+**REQ-016 — Aufgaben im Kalender erledigen und verwalten.** Eine Aufgabe im Kalender (Haushalt-Zeile
+der Woche, Monat, Tages-Fenster) lässt sich an jedem Tag abhaken, auch wenn sie erst in der Zukunft
+fällig ist; Abhaken bucht wie unter „Haushalt“ (`complete_chore`) mit dem heutigen Datum als
+Erledigt-Tag. Ein Tipp auf den Namen öffnet dasselbe Fenster der Aufgabe wie unter „Haushalt“
+(Bearbeiten, Verlauf, Überspringen …), nicht nur das Abhaken. Erledigte Vorkommen bleiben
+durchgestrichen wie bisher. Quelle: Review 0002. Offline: lesend; Abhaken und Fenster-Aktionen nur
+online (ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“).
+
+- AC-042: Angenommen heute So 22.11., „Bad putzen“ fällig am Fr 27.11. · Wenn ich im Kalender am
+  27.11. „Bad putzen“ abhake · Dann ist sie mit Erledigt-Tag So 22.11. gebucht, wie unter „Haushalt“.
+- AC-043: Wenn ich im Tages-Fenster des 27.11. auf „Bad putzen“ tippe · Dann öffnet sich das
+  Fenster „Bad putzen“ wie unter „Haushalt“ (Und offline ist der Haken ausgegraut).
+
+**REQ-017 — Aufgaben in Monat und Jahr.** Monat (Desktop und Tablet): mit eingeschalteter
+Haushalt-Zeile stehen die Aufgaben eines Tags als eigene Zeilen unter den Einträgen und zählen in
+„+n weitere“ mit; Handy-Monat: Aufgaben als Punkt der Art „Aufgabe“ (K-11). Jahr: jeder Tag mit
+fälligen Aufgaben zeigt den Punkt „Aufgabe“, und das Tages-Fenster zeigt sie (REQ-005); das Jahr
+bekommt keinen eigenen Schalter (der Punkt ist immer da). Quelle: Review 0002, K-11. Offline: lesend.
+
+- AC-044: Angenommen Desktop, Monat November, Haushalt-Zeile an, am 29.11. „Bad putzen“ und zwei
+  Einträge · Dann stehen am 29.11. beide Einträge und „Bad putzen“ als Zeile.
+- AC-045: Angenommen Jahr 2026 · Dann trägt der 29.11. den Punkt „Aufgabe“, und ein Tipp zeigt „Bad
+  putzen“ im Tages-Fenster.
+
+**REQ-018 — Handy-Kopf des Kalenders steht fest.** Auf dem Handy steht der linke Pfeil am linken
+Rand, der rechte am rechten Rand, die Beschriftung („16.–22. Nov“, „November 2026“, „2026“) mittig
+in einem festen Platz; eine längere oder kürzere Beschriftung verschiebt die Pfeile nicht. Ist die
+gezeigte Zeitspanne nicht die heutige, wird die Beschriftung zum Knopf „Zu heute“ (Unterzeile
+„Heute ›“ im selben Platz, Bildschirmleser „Zurück zu heute“); in der heutigen Zeitspanne ist sie nur
+Text. Tablet und Desktop bleiben, wie sie sind. Quelle: Review 0002. Offline: vollständig.
+
+- AC-046: Angenommen Handy, Woche 16.–22.11. · Wenn ich zur Woche 23.–29.11. blättere · Dann stehen
+  beide Pfeile an derselben Stelle wie vorher, und unter „23.–29. Nov“ steht „Heute ›“ · Wenn ich die
+  Beschriftung antippe · Dann zeigt der Kalender die Woche 16.–22.11. ohne „Heute ›“.
+
+**REQ-019 — Wischen blättert auf dem Handy.** Auf dem Handy blättert ein waagerechtes Wischen über
+den Kalender zur nächsten (nach links) oder vorigen (nach rechts) Zeitspanne der Ansicht (Woche,
+Monat, Jahr), wie die Pfeile. Ziehen eines Eintrags beginnt weiter erst nach Halten (Spec 0016) und
+blättert nie; das Tages-Fenster behält sein eigenes Wischen. Bei „Bewegung reduzieren“ ohne
+Animation. Die Pfeile bleiben. Quelle: Review 0002. Offline: vollständig.
+
+- AC-047: Angenommen Handy, Monat November · Wenn ich nach links wische · Dann zeigt der Kalender
+  Dezember 2026 · Wenn ich nach rechts wische · Dann wieder November.
+- AC-048: Angenommen Handy, Woche · Wenn ich „Lasagne“ halte und waagerecht ziehe · Dann wird sie
+  verschoben und die Woche blättert nicht.
+
 ## Entscheidungen
 
 Entschieden von Claude nach Enricos Regel „Empfehlung nehmen“ (22.11.2026).
@@ -354,6 +406,42 @@ Tageszeit desselben Tags zählt); 0004 Nicht-Ziel „Kein Zusatz für Rezepte un
     angepasste Menge (kein Merkmal „von Hand angepasst“ am Beitrag); der Hinweis „Einkaufsliste
     angepasst“ sagt es. Vorwahl der Tageszeit kommt aus Spec 0020 (`addPresetSlot`).
 
+Beim Bau entschieden (Claude, 22.11.2026, jeweils die einfachste zur Spec passende Lösung):
+
+15. Der Text der Erinnerung geht beim Schließen im selben Aufruf mit (`saveEntry`, `reminderText`);
+    Verlassen des Felds speichert ihn nicht mehr, Enter weiter sofort.
+16. Eine Regel für die Liste: `recomputeEntryContributions` in `packages/core/src/entry-edit.ts`;
+    der Reisende-raus-Weg aus Spec 0022 nutzt sie über `followEntryOnList`. Neu gerechnet wird nur,
+    wenn sich Portionen oder Varianten ändern. Nach Spec 0025 (ein Posten je Artikel, REQ-013): eine
+    neue Zutat kommt auf den offenen Posten ihres Artikels, öffnet einen abgehakten mit der neuen
+    Menge wieder (wie „Auf die Einkaufsliste“) oder bekommt einen neuen; ein abgehakter Posten mit
+    einem Beitrag des Eintrags bleibt, wie er ist (AC-021).
+17. „Ältere Reste …“ zeigt alle früheren Gerichte, auch die der letzten sieben Tage.
+18. Im Tagesüberblick steht der Zusatz als erste Angabe in der Klammer: „Hummus (doppelte Menge,
+    Mittag, du kochst)“.
+19. Das Fenster „… aus dem Plan nehmen?“ hat drei Knöpfe untereinander; „Zutaten auch von der Liste
+    nehmen“ ist der Hauptknopf (vorgewählt).
+20. REQ-004 nur im Browser (die App ist PWA-only); REQ-019 nutzt das vorhandene Wischen aus
+    `packages/ui` (`SwipeArea`), sein Test liegt dort. Handy-Monat: der Punkt „Aufgabe“ folgt weiter
+    dem Schalter der Haushalt-Zeile; im Jahr ist er immer da.
+
+21. Liste und Eintrag in einem Aufruf ohne Löschgrenze: `apply_changes` kennt die Domänen-Operation
+    `replace_entry_contributions` (Einträge, neue Beiträge). Sie nimmt die Beiträge der Einträge von
+    offenen Posten, fügt die neuen wie `add_contributions` hinzu und löscht geleerte offene Posten;
+    sie zählt als eine Löschung, gleich wie viele Beiträge (begrenzt durch höchstens 200 Einträge).
+    So folgen auch Gerichte mit mehr als 20 Zutaten den Portionen (REQ-007), lassen sich mit ihren
+    Zutaten entfernen (REQ-015) und Reisende aus vielen Gerichten nehmen (Spec 0022). Neu gerechnete
+    Beiträge bekommen neue Kennungen; „Rückgängig“ setzt Zeilen und alte Beiträge im selben Aufruf
+    zurück.
+22. AC-009: Das ausgegraute „+“ im Desktop-Monat zeigt beim Klick den Hinweis „Offline – zum
+    Bearbeiten brauchst du Netz“ als Toast (wie beim Ziehen offline, Spec 0016) und öffnet weder das
+    Hinzufügen- noch das Tages-Fenster.
+23. AC-014, Reise-Streifen: gemessen am 22.11. im Web-Export bei 1440 × 900, Woche 30.11.–6.12.: der
+    Streifen „Urlaub Mallorca · bis Do 10.12.“ ist 435 px breit, sein Text 163 px und nicht gekürzt
+    (`scrollWidth` = `clientWidth`). Gekürzt („…“) wird nur, wenn der Abschnitt der Woche schmaler
+    ist als Abzeichen und Text (ein Tag ≈ 145 px) — das ist „solange er passt“; kein Umbau nötig.
+    Der e2e-Rundgang prüft es (`rundgang-kalender-0021.spec.ts`).
+
 OFFEN: keine.
 
 ## Daten
@@ -362,7 +450,9 @@ OFFEN: keine.
 ('restaurant','activity')`); Prüfregel `note_only_activity` entfällt (Zusatz für alle Arten);
 `apply_changes`-Allowlist entsprechend. Planer: `plan_entry_title` mit Zusatz für alle Arten,
 `entry_reminder_body` mit Uhrzeit statt Tageszeit, Tagesüberblick und Vortag mit `starts_at`.
-Beiträge neu rechnen/entfernen über den vorhandenen Weg `apply_changes` im selben Aufruf.
+Beiträge neu rechnen/entfernen über `apply_changes` im selben Aufruf, mit der Domänen-Operation
+`replace_entry_contributions` (`private.replace_entry_contributions`, security invoker; Entscheidung
+21).
 
 Entfällt: Spalte `meal_plan_entries.remind_minutes_before` samt Prüfregel,
 `notification_settings.reservation_reminders_enabled`, Funktion
@@ -375,29 +465,33 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 
 ## Risiken
 
-| Risiko                                                         | Gegenmaßnahme                                        | Test                                                 |
-| -------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| Fremder Haushalt ändert Eintrag oder Beiträge                  | RLS und `apply_changes`-Mitgliedsprüfung unverändert | pgTAP `domain_isolation`, neue Fälle `starts_at`     |
-| Uhrzeit an Rezept, 19:33, Zusatz mit Steuerzeichen, 1001 Port. | Prüfregeln in der Datenbank                          | pgTAP `entry_reminders`/neu `plan_entry_fields`      |
-| Abgemeldet schreibt                                            | `apply_changes` nur für `authenticated`              | pgTAP `apply_changes`                                |
-| Liste und Eintrag laufen auseinander                           | ein Aufruf, beide oder keins (ADR-0011)              | api `commands-plan.backend.test.ts` (AC-019, AC-021) |
-| Entfernen löscht fremde oder abgehakte Beiträge                | nur Herkunft dieses Eintrags, nur nicht abgehakt     | core `shopping-list.test.ts` (AC-041)                |
-| Nachricht in Core und SQL verschieden                          | Paritätstest                                         | pgTAP `notification_parity` (AC-037)                 |
-| Alte Reservierungs-Nachricht kommt doppelt oder weiter         | Funktion und Art entfallen                           | pgTAP `notification_scheduler` (AC-039)              |
+| Risiko                                                         | Gegenmaßnahme                                        | Test                                                             |
+| -------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
+| Fremder Haushalt ändert Eintrag oder Beiträge                  | RLS und `apply_changes`-Mitgliedsprüfung unverändert | pgTAP `domain_isolation`, neue Fälle `starts_at`                 |
+| Uhrzeit an Rezept, 19:33, Zusatz mit Steuerzeichen, 1001 Port. | Prüfregeln in der Datenbank                          | pgTAP `entry_reminders`/neu `plan_entry_fields`                  |
+| Abgemeldet schreibt                                            | `apply_changes` nur für `authenticated`              | pgTAP `apply_changes`                                            |
+| Liste und Eintrag laufen auseinander                           | ein Aufruf, beide oder keins (ADR-0011)              | api `commands-plan.backend.test.ts` (AC-019, AC-021)             |
+| Entfernen löscht fremde oder abgehakte Beiträge                | nur Herkunft dieses Eintrags, nur nicht abgehakt     | core `entry-edit.test.ts`, pgTAP `entry_contributions` (AC-041)  |
+| Mehr als 20 Zutaten scheitern an der Löschgrenze               | eine Domänen-Operation, zählt als eine Löschung      | pgTAP `entry_contributions`, api `commands-plan.backend.test.ts` |
+| Nachricht in Core und SQL verschieden                          | Paritätstest                                         | pgTAP `notification_parity` (AC-037)                             |
+| Alte Reservierungs-Nachricht kommt doppelt oder weiter         | Funktion und Art entfallen                           | pgTAP `notification_scheduler` (AC-039)                          |
 
 ## Umsetzung
 
-- [ ] 1. Migration: `starts_at`, Prüfregeln, Entfallenes, `apply_changes`, Planer; pgTAP (AC-018,
+- [x] 1. Migration: `starts_at`, Prüfregeln, Entfallenes, `apply_changes`, Planer; pgTAP (AC-018,
       AC-024, AC-036, AC-039)
-- [ ] 2. Core: Reste-Regeln und `plan-move` mit Tageszeit, ohne `too-far` (AC-032–AC-034);
+- [x] 2. Core: Reste-Regeln und `plan-move` mit Tageszeit, ohne `too-far` (AC-032–AC-034);
       Portionen-Delta (AC-015–AC-018); Beiträge neu rechnen (AC-019–AC-021, AC-041); Zählen „Essen“
       (AC-013); Erinnerungsvorschlag und Text (AC-037, AC-038)
-- [ ] 3. Api: Speichern beim Schließen in einem Aufruf, Entfernen mit Beiträgen (AC-025–AC-027,
+- [x] 3. Api: Speichern beim Schließen in einem Aufruf, Entfernen mit Beiträgen (AC-025–AC-027,
       AC-040)
-- [ ] 4. Eintragsfenster: Felder, Schließen, Chips offen (AC-015, AC-022–AC-029, AC-035)
-- [ ] 5. Hinzufügen-Fenster: Zähler, Zusatz, Uhrzeit, Tab „Reste“ (AC-017, AC-030, AC-031)
-- [ ] 6. Benachrichtigungen-Seite ohne Reservierung (AC-039)
-- [ ] 7. Kalender: Höhe, Monat-Aussehen, „+“, Scrollen zu heute, Kleinigkeiten (AC-001–AC-014)
-- [ ] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
-      `/ui-verify`, `/security-check`
+- [x] 4. Eintragsfenster: Felder, Schließen, Chips offen (AC-015, AC-022–AC-029, AC-035)
+- [x] 5. Hinzufügen-Fenster: Zähler, Zusatz, Uhrzeit, Tab „Reste“ (AC-017, AC-030, AC-031)
+- [x] 6. Benachrichtigungen-Seite ohne Reservierung (AC-039)
+- [x] 7. Kalender: Höhe, Monat-Aussehen, „+“, Scrollen zu heute, Kleinigkeiten (AC-001–AC-014)
+- [x] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
+- [x] 9. Nachtrag Review 0002: Aufgaben erledigen und Fenster im Kalender, Aufgaben in Monat und
+      Jahr, fester Handy-Kopf mit „Heute ›“, Wischen blättert (AC-042–AC-048)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, pgTAP 39 Dateien/2261 Tests
+      grün (über den DB-Lock), e2e nur typgeprüft; `/security-check` (22.11.: 0 kritisch/hoch/mittel,
+      der niedrige Befund „Format-Zeichen im Zusatz“ ist behoben, `*_no_format`); `/ui-verify` in 0028

@@ -101,59 +101,43 @@ test('AC-022: the seeded "Müll rausbringen · 19:00" on its day in Zu tun and i
   );
 });
 
-test('AC-027, AC-029, AC-037: the reservation link opens the entry with Route; set 19:30, remind 1 h', async ({
+test('spec 0021 AC-035: the link opens the entry with Route; "Uhrzeit 19:30", ✕ removes it', async ({
   page,
 }) => {
   await open(page, `/kalender?tag=${IN_TWO_DAYS}&eintrag=${ENZO}`);
   await expect(tid(page, 'entry-sheet')).toBeVisible();
   await expect(tid(page, 'entry-sheet')).toContainText('Trattoria Da Enzo');
   await expect(tid(page, 'entry-route')).toBeVisible();
-  await expectTime(page, 'entry-reserved-at', '19:30');
-  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 2 h vorher');
+  await expectTime(page, 'entry-time', '19:30');
+  await expect(tid(page, 'entry-sheet')).not.toContainText('Erinnern 2 h vorher');
 
-  // ✕: no time, no reminder.
-  await tid(page, 'entry-reserved-at-clear').click();
-  await expectTime(page, 'entry-reserved-at', '');
-  await expect(tid(page, 'entry-remind')).toBeHidden();
+  // ✕ removes the time; closing saves it (spec 0021, REQ-009).
+  await tid(page, 'entry-time-clear').click();
+  await expectTime(page, 'entry-time', '');
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
   await expect(tid(page, `entry-${ENZO}`)).not.toContainText('19:30');
 
-  // Chosen as 19 and 30, saved as chosen (AC-027; spec 0027, REQ-007).
+  // Chosen as 19 and 30, saved as chosen (spec 0027, REQ-007).
   await tid(page, `entry-${ENZO}`).click();
-  await chooseTime(page, 'entry-reserved-at', '19:30');
+  await chooseTime(page, 'entry-time', '19:30');
   await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toBeHidden();
   await expect(tid(page, `entry-${ENZO}`)).toContainText('Trattoria Da Enzo · 19:30');
-
-  await tid(page, `entry-${ENZO}`).click();
-  await expectTime(page, 'entry-reserved-at', '19:30');
-  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 2 h vorher');
-  await tid(page, 'entry-remind').click();
-  await tid(page, 'entry-remind-60').click();
-  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 1 h vorher');
-  await tid(page, 'entry-done').click();
-  await tid(page, `entry-${ENZO}`).click();
-  await expect(tid(page, 'entry-remind')).toContainText('Erinnern 1 h vorher');
-  await tid(page, 'entry-done').click();
 
   // The card on the "Übersicht" of that day shows the time.
   await showOverviewDay(page, IN_TWO_DAYS);
   await expect(tid(page, `today-meal-${ENZO}`)).toContainText('19:30');
 });
 
-test('AC-030: recipe and activity entries have neither "Reserviert um" nor "Erinnern"', async ({
-  page,
-}) => {
+test('spec 0021 AC-036: a recipe entry has no "Uhrzeit", an activity has one', async ({ page }) => {
   await open(page, `/kalender?tag=${TODAY}&eintrag=${LASAGNE}`);
   await expect(tid(page, 'entry-sheet')).toContainText('Lasagne');
-  await expect(tid(page, 'entry-reserved-at')).toBeHidden();
-  await expect(tid(page, 'entry-remind')).toBeHidden();
+  await expect(tid(page, 'entry-time')).toBeHidden();
   await tid(page, 'entry-done').click();
   await tid(page, `entry-${EISLAUFEN}`).click();
   await expect(tid(page, 'entry-sheet')).toContainText('Eislaufen');
-  await expect(tid(page, 'entry-reserved-at')).toBeHidden();
-  await expect(tid(page, 'entry-remind')).toBeHidden();
+  await expect(tid(page, 'entry-time')).toBeVisible();
 });
 
 test('AC-037, AC-038: the chore link opens the chore; unknown or broken ids open the page without a window', async ({
@@ -175,16 +159,14 @@ test('AC-037, AC-038: the chore link opens the chore; unknown or broken ids open
   await expect(tid(page, 'entry-sheet')).toBeHidden();
 });
 
-test('offline: the time of a chore and the reservation are greyed out with the hint', async ({
+test('offline: the time of a chore and of a restaurant entry are greyed out with the hint', async ({
   page,
 }) => {
   await open(page, `/kalender?tag=${IN_TWO_DAYS}`);
   await goOffline(page);
   await tid(page, `entry-${ENZO}`).click();
   await expect(tid(page, 'entry-sheet')).toContainText('Offline – zum Bearbeiten brauchst du Netz');
-  await expect(tid(page, 'entry-reserved-at-hour')).toBeDisabled();
-  await expect(tid(page, 'entry-reserved-at-minute')).toBeDisabled();
-  await expect(tid(page, 'entry-reserved-at-clear')).toBeHidden();
-  await tid(page, 'entry-remind').click();
-  await expect(tid(page, 'entry-remind-60')).toBeDisabled();
+  await expect(tid(page, 'entry-time-hour')).toBeDisabled();
+  await expect(tid(page, 'entry-time-minute')).toBeDisabled();
+  await expect(tid(page, 'entry-time-clear')).toBeHidden();
 });

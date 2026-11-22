@@ -1,10 +1,10 @@
 -- Notification settings and the new time columns (spec 0013, Task 1): one row per member, created
 -- by the server with the defaults (AC-011), readable and editable only by the member herself
 -- (AC-012, AC-013), synced, gone with the membership (AC-036). chores.due_time (AC-022),
--- reservations only on restaurant entries (AC-027, AC-029, AC-030), households.timezone.
+-- the time of a restaurant entry (spec 0021, starts_at), households.timezone.
 begin;
 \ir _helpers.psql
-select plan(57);
+select plan(50);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -57,11 +57,11 @@ select is(
   (select jsonb_build_object(
      'daily', s.daily_summary_enabled, 'daily_at', s.daily_summary_at, 'parts', s.daily_summary_parts,
      'eve', s.activities_eve_enabled, 'eve_at', s.activities_eve_at,
-     'chores', s.chore_reminders_enabled, 'reservations', s.reservation_reminders_enabled)
+     'chores', s.chore_reminders_enabled, 'entries', s.entry_reminders_enabled)
    from public.notification_settings s where s.id = tests.settings_id('nadja')),
   jsonb_build_object('daily', false, 'daily_at', '07:30:00', 'parts', jsonb_build_array('meals', 'activities', 'chores', 'prep'),
-                     'eve', false, 'eve_at', '19:00:00', 'chores', true, 'reservations', true),
-  'AC-011 notification_settings: only chore and reservation reminders are on, 7:30 and 19:00, all four parts');
+                     'eve', false, 'eve_at', '19:00:00', 'chores', true, 'entries', true),
+  'AC-011 notification_settings: only chore and entry reminders are on, 7:30 and 19:00, all four parts (spec 0021: no reservation kind)');
 select tests.clear_authentication();
 insert into fx (key, id) values ('vera', tests.create_user('vera@example.com', 'Vera'));
 insert into public.household_members (household_id, profile_id) values (tests.fx('home_b'), tests.fx('vera'));
@@ -93,7 +93,7 @@ select lives_ok(
   tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'notification_settings', 'id', tests.settings_id('enrico'),
     'changes', jsonb_build_object('activities_eve_enabled', true, 'activities_eve_at', '18:30',
-                                  'chore_reminders_enabled', false, 'reservation_reminders_enabled', false)))),
+                                  'chore_reminders_enabled', false, 'entry_reminders_enabled', false)))),
   'AC-012 apply_changes: the own row is patchable through the write path');
 select is(
   (select activities_eve_at from public.notification_settings where id = tests.settings_id('enrico')), '18:30'::time,
@@ -234,51 +234,18 @@ select lives_ok(
       'assignment', '{"type": "anyone"}'::jsonb, 'due_time', '18:00')))),
   'AC-022 apply_changes: due_time is an insert column');
 
--- ===================== Reservations (AC-027, AC-029, AC-030) =====================
-select is(
-  (select remind_minutes_before from public.meal_plan_entries where id = tests.fx('e_trattoria')), 120::smallint,
-  'AC-027 meal_plan_entries: "Erinnern 2 h vorher" is the default');
+-- ===================== Uhrzeit of a restaurant (spec 0021, REQ-013; was the reservation) =====================
 select lives_ok(
   tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
     'kind', 'patch', 'table', 'meal_plan_entries', 'id', tests.fx('e_trattoria'),
-    'changes', jsonb_build_object('reserved_at', '19:30')))),
-  'AC-027 apply_changes: a restaurant entry gets "Reserviert um 19:30"');
-select lives_ok(
-  tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'meal_plan_entries', 'id', tests.fx('e_trattoria'),
-    'changes', jsonb_build_object('remind_minutes_before', 60)))),
-  'AC-029 apply_changes: "Erinnern 1 h vorher"');
-select is(
-  (select jsonb_build_object('at', reserved_at, 'before', remind_minutes_before)
-   from public.meal_plan_entries where id = tests.fx('e_trattoria')),
-  jsonb_build_object('at', '19:30:00', 'before', 60),
-  'AC-027 meal_plan_entries: reservation and reminder are stored');
+    'changes', jsonb_build_object('starts_at', '19:30')))),
+  'AC-037 apply_changes: a restaurant entry gets "Uhrzeit 19:30"');
 select throws_ok(
-  format('update public.meal_plan_entries set remind_minutes_before = 90 where id = %L', tests.fx('e_trattoria')),
-  '23514', null, 'AC-029 meal_plan_entries: only 30, 60, 120, 180 or 240 minutes');
+  format($$ update public.meal_plan_entries set starts_at = '19:32' where id = %L $$, tests.fx('e_trattoria')),
+  '23514', null, 'AC-036 meal_plan_entries: the time is a 5-minute step');
 select throws_ok(
-  format($$ update public.meal_plan_entries set reserved_at = '19:32' where id = %L $$, tests.fx('e_trattoria')),
-  '23514', null, 'Decision 4 meal_plan_entries: the reservation is a 5-minute step');
-select throws_ok(
-  format($$ update public.meal_plan_entries set reserved_at = '19:30' where id = %L $$, tests.fx('e_lasagne')),
-  '23514', null, 'AC-030 meal_plan_entries: "Lasagne" cannot get a reservation through the API');
-select throws_ok(
-  tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'meal_plan_entries', 'id', tests.fx('e_lasagne'),
-    'changes', jsonb_build_object('reserved_at', '19:30')))),
-  '23514', null, 'AC-030 apply_changes: "Lasagne" cannot get a reservation through the write path');
-select throws_ok(
-  tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
-    'kind', 'insert', 'table', 'meal_plan_entries', 'row', jsonb_build_object(
-      'id', gen_random_uuid(), 'date', '2026-11-22', 'slot_id', tests.fx('slot'), 'kind', 'recipe',
-      'recipe_id', tests.fx('lasagne'), 'reserved_at', '19:30')))),
-  '23514', null, 'AC-030 apply_changes: a new recipe entry cannot carry a reservation');
-select lives_ok(
-  tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
-    'kind', 'insert', 'table', 'meal_plan_entries', 'row', jsonb_build_object(
-      'id', gen_random_uuid(), 'date', '2026-11-22', 'slot_id', tests.fx('slot'), 'kind', 'restaurant',
-      'restaurant_id', tests.fx('trattoria'), 'reserved_at', '20:00', 'remind_minutes_before', 30)))),
-  'AC-027 apply_changes: a new restaurant entry may carry a reservation and its reminder');
+  format($$ update public.meal_plan_entries set starts_at = '19:30' where id = %L $$, tests.fx('e_lasagne')),
+  '23514', null, 'AC-036 meal_plan_entries: "Lasagne" cannot get a time through the API');
 
 -- ===================== households.timezone =====================
 select is(

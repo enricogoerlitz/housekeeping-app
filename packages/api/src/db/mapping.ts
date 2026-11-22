@@ -29,17 +29,15 @@
 //   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
 //   (`collection_recipes`) keep creation order; core orders them by `sort`.
 // - Spec 0013: times of day are "HH:MM" in the domain and "HH:MM:SS" in the rows, as Postgres
-//   returns a `time` (`due_time`, `reserved_at`, `daily_summary_at`, `activities_eve_at`); the rows
-//   write them with ":00", so a diff compares like with like. `remind_minutes_before` 120 (the
-//   column default) ⇄ undefined. Of `notification_settings` only the signed-in member's row is
-//   `notificationSettings` (RLS sends no other).
+//   returns a `time` (`due_time`, `starts_at`, `daily_summary_at`, `activities_eve_at`); the rows
+//   write them with ":00", so a diff compares like with like. Of `notification_settings` only
+//   the signed-in member's row is `notificationSettings` (RLS sends no other).
 // - Spec 0017: a reminder is the three columns `reminder_day_offset`, `reminder_at` ("HH:MM:SS"
 //   like every time) and `reminder_text` ⇄ `MealPlanEntry.reminder` (none = all three null).
 //   `entry_reminders_enabled` missing reads as its column default, on. `households.timezone` is
 //   `Household.timeZone`, read only: the rows never write it back.
 import {
   compareTimestamps,
-  DEFAULT_REMIND_MINUTES,
   normalizeText,
   type Activity,
   type Area,
@@ -360,8 +358,7 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     cook_id: entry.cookId ?? null,
     sort: entry.sort,
     not_cooked: entry.notCooked ?? false,
-    reserved_at: entry.reservedAt === undefined ? null : toDbTime(entry.reservedAt),
-    remind_minutes_before: entry.remindMinutesBefore ?? DEFAULT_REMIND_MINUTES,
+    starts_at: entry.startsAt === undefined ? null : toDbTime(entry.startsAt),
     reminder_day_offset: entry.reminder?.offsetDays ?? null,
     reminder_at: entry.reminder ? toDbTime(entry.reminder.at) : null,
     reminder_text: entry.reminder?.text ?? null,
@@ -495,7 +492,6 @@ const settingsRow = (householdId: string, settings: NotificationSettings) =>
     activities_eve_enabled: settings.activitiesEveEnabled,
     activities_eve_at: toDbTime(settings.activitiesEveAt),
     chore_reminders_enabled: settings.choreRemindersEnabled,
-    reservation_reminders_enabled: settings.reservationRemindersEnabled,
     entry_reminders_enabled: settings.entryRemindersEnabled,
   }));
 
@@ -858,11 +854,7 @@ function toPlanEntry(row: Row): MealPlanEntry {
     cookId: opt(r.cook_id),
     sort: r.sort ?? 0,
     notCooked: r.not_cooked ? true : undefined,
-    reservedAt: fromDbTime(r.reserved_at),
-    remindMinutesBefore:
-      r.remind_minutes_before == null || r.remind_minutes_before === DEFAULT_REMIND_MINUTES
-        ? undefined
-        : (r.remind_minutes_before as MealPlanEntry['remindMinutesBefore']),
+    startsAt: fromDbTime(r.starts_at),
     reminder: toReminder(r),
   };
 }
@@ -996,7 +988,6 @@ function toNotificationSettings(row: Row): NotificationSettings {
     activitiesEveEnabled: r.activities_eve_enabled === true,
     activitiesEveAt: fromDbTime(r.activities_eve_at) ?? '19:00',
     choreRemindersEnabled: r.chore_reminders_enabled === true,
-    reservationRemindersEnabled: r.reservation_reminders_enabled === true,
     entryRemindersEnabled: r.entry_reminders_enabled !== false,
   };
 }

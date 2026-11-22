@@ -4,14 +4,18 @@ import {
   monthGrid,
   monthName,
   parseISODate,
+  sharedHeight,
+  startOfMonth,
   stripesOfYear,
   yearDayTrip,
   yearMonths,
   type TripStripe,
+  type HouseholdRowItem,
   type ISODate,
 } from '@housekeeping/core';
 import {
   Icon,
+  KindDot,
   List,
   ListRow,
   Section,
@@ -32,6 +36,7 @@ import {
   WeekRowTarget,
   useCalendarDrag,
 } from './calendar-drag';
+import { useScrollTo } from './calendar-scroll';
 
 export interface YearViewProps {
   data: CalendarData;
@@ -48,15 +53,24 @@ export interface YearViewProps {
   onOpenStripe: (stripe: TripStripe) => void;
   /** Under the grid, before the year's trips: the strip "Vorgemerkt" (spec 0016, REQ-003). */
   belowGrid?: ReactNode;
+  /** Desktop: the grid's room in px down to "Vorgemerkt" (spec 0021, REQ-001); else natural. */
+  height?: number;
+  /** Phones and tablets: the month put under the tabs whenever `scrollRequest` changes (REQ-004). */
+  scrollMonth: ISODate;
+  scrollRequest: number;
 }
+
+const ROW_GAP = 14;
 
 const WEEKDAY_INITIALS = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
 const TINT_ALPHA = '33';
 
 /**
  * The year (spec 0010, REQ-005): twelve small months with a dot on days with entries and trips
- * tinted, then the year's trips as a list. Chores never show here. A tap on a day opens the
- * day window, a tap on the month name the month (spec 0016, AC-023).
+ * tinted, then the year's trips as a list. A day with chores carries the dot "Aufgabe", always,
+ * without a switch (spec 0021, REQ-017). A tap on a day opens the day window, a tap on the month
+ * name the month (spec 0016, AC-023). On the desktop the rows of months share the window's height
+ * (spec 0021, REQ-001); elsewhere the page opens at the current month (REQ-004).
  */
 export function YearView(props: YearViewProps) {
   const { data } = props;
@@ -70,18 +84,38 @@ export function YearView(props: YearViewProps) {
   const rows = Array.from({ length: Math.ceil(months.length / props.columns) }, (_, row) =>
     months.slice(row * props.columns, (row + 1) * props.columns),
   );
+  const year = String(props.year).padStart(4, '0');
+  const chores = data.householdRow(`${year}-01-01`, `${year}-12-31`);
+  const fill = props.height !== undefined;
+  const rowHeight =
+    props.height === undefined
+      ? undefined
+      : sharedHeight(props.height - (rows.length - 1) * ROW_GAP, rows.length, 0);
+  const registerMonth = useScrollTo({
+    enabled: !fill,
+    request: props.scrollRequest,
+    period: year,
+    target: startOfMonth(props.scrollMonth),
+    first: months[0] ?? props.scrollMonth,
+  });
 
   return (
     <View testID="year-view">
-      <View style={{ gap: 14 }}>
+      <View style={{ gap: ROW_GAP }}>
         {rows.map((row) => (
-          <View key={row[0]} style={{ flexDirection: 'row', gap: 10 }}>
+          <View key={row[0]} style={{ flexDirection: 'row', gap: 10, minHeight: rowHeight }}>
             {row.map((monthStart) => (
-              <View key={monthStart} style={{ flex: 1, minWidth: 0 }}>
+              <View
+                key={monthStart}
+                ref={(node) => registerMonth(monthStart, node)}
+                style={{ flex: 1, minWidth: 0 }}
+              >
                 <MiniMonth
                   monthStart={monthStart}
                   data={data}
                   plannedDays={plannedDays}
+                  chores={chores}
+                  fill={fill}
                   selected={props.selected}
                   onOpenDay={props.onOpenDay}
                   registerDay={props.registerDay}
@@ -143,6 +177,9 @@ function MiniMonth(props: {
   monthStart: ISODate;
   data: CalendarData;
   plannedDays: Set<ISODate>;
+  chores: Record<ISODate, HouseholdRowItem[]>;
+  /** The month stretches to the height of its row (desktop). */
+  fill: boolean;
   selected: ISODate | undefined;
   onOpenDay: (date: ISODate) => void;
   registerDay: (date: ISODate, node: HostInstance | null) => void;
@@ -154,7 +191,7 @@ function MiniMonth(props: {
   const index = parseISODate(props.monthStart).getMonth();
   const name = monthName(index);
   return (
-    <View testID={`year-month-${index + 1}`} style={{ padding: 6 }}>
+    <View testID={`year-month-${index + 1}`} style={{ padding: 6, flexGrow: 1 }}>
       <Pressable
         testID={`year-month-${index + 1}-open`}
         accessibilityRole="button"
@@ -195,7 +232,7 @@ function MiniMonth(props: {
         <WeekRowTarget
           key={week[0]}
           dates={week.map((date) => (date.slice(0, 7) === month ? date : null))}
-          style={{ flexDirection: 'row' }}
+          style={[{ flexDirection: 'row' }, props.fill ? { flexGrow: 1 } : null]}
         >
           {week.map((date) =>
             date.slice(0, 7) === month ? (
@@ -204,6 +241,8 @@ function MiniMonth(props: {
                 date={date}
                 data={props.data}
                 planned={props.plannedDays.has(date)}
+                choreCount={(props.chores[date] ?? []).length}
+                fill={props.fill}
                 selected={date === props.selected}
                 onPress={() => props.onOpenDay(date)}
                 register={(node) => props.registerDay(date, node)}
@@ -222,6 +261,8 @@ function MiniDay(props: {
   date: ISODate;
   data: CalendarData;
   planned: boolean;
+  choreCount: number;
+  fill: boolean;
   selected: boolean;
   onPress: () => void;
   register: (node: HostInstance | null) => void;
@@ -251,7 +292,7 @@ function MiniDay(props: {
           ref={(node) => props.register(node)}
           testID={`year-day-${props.date}`}
           accessibilityRole="button"
-          accessibilityLabel={dayLabel(props.data, props.date)}
+          accessibilityLabel={dayLabel(props.data, props.date, props.choreCount)}
           accessibilityState={{ selected: props.selected }}
           onPress={guardPress(props.onPress)}
           style={(state) => [
@@ -263,6 +304,7 @@ function MiniDay(props: {
               paddingVertical: 1,
               backgroundColor: background,
             },
+            props.fill ? { flexGrow: 1 } : null,
             keyboardFocusRing(theme, (state as PressState).focused),
           ]}
         >
@@ -283,7 +325,10 @@ function MiniDay(props: {
               {String(parseISODate(props.date).getDate())}
             </Text>
           </View>
-          <View style={{ height: 3, alignItems: 'center', justifyContent: 'center' }}>
+          <View
+            style={{ flexDirection: 'row', gap: 2, height: 3, justifyContent: 'center' }}
+            testID={props.choreCount > 0 ? `year-chore-${props.date}` : undefined}
+          >
             {props.planned ? (
               <View
                 style={{
@@ -294,6 +339,7 @@ function MiniDay(props: {
                 }}
               />
             ) : null}
+            {props.choreCount > 0 ? <KindDot kind="chore" size={3} /> : null}
           </View>
           {lines.map((person) => (
             <View
