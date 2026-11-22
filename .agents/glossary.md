@@ -53,11 +53,11 @@ mit dessen Angaben (Spec 0007). Gepflegt wird er auf der Seite „Artikel“ unt
 ### Neu aus Rezepten
 
 Markierung an einem Artikel, der für eine Zutat ohne Wahl eines Menschen neu entstanden ist, weil
-kein Artikel des Haushalts und kein Eintrag des Starter-Katalogs zum Namen passte: beim Übernehmen
-von Starter-Rezepten, bei Vorschlägen des Assistenten und in den Beispieldaten (Spec 0007, E1; es
-gibt keine Migration). Die Seite „Artikel“ zeigt diese zum Prüfen und Zusammenführen. Die
-Markierung fällt weg, sobald jemand den Artikel speichert, bestätigt („Passt so“), zusammenführt
-oder löscht (Spec 0007, Offene Frage 1).
+kein Artikel des Haushalts und kein Eintrag des Starter-Katalogs zum Namen passte: bei Vorschlägen
+des Assistenten und in den Beispieldaten (Spec 0007, E1; es gibt keine Migration). Starter-Rezepte
+gibt es nicht mehr (Spec 0023, REQ-011). Die Seite „Artikel“ zeigt diese zum Prüfen und
+Zusammenführen. Die Markierung fällt weg, sobald jemand den Artikel speichert, bestätigt („Passt
+so“), zusammenführt oder löscht (Spec 0007, Offene Frage 1).
 
 - **Im Code:** `Article.needsReview` (`articles.needs_review`); die Zuordnungsregel ist
   `resolveIngredientArticle` in `packages/core`
@@ -129,7 +129,7 @@ Rezept hinter der Zutat („2 Zwiebeln · fein gehackt“) und geht nie auf die 
 0007).
 
 - **Im Code:** `RecipeIngredient.prepNote` (höchstens 200 Zeichen)
-- **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Abwesenheit), Kommentar,
+- **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Reise), Kommentar,
   Anmerkung
 - **Abgrenzung:** Der _Zusatz_ geht auf die Liste („Frischkäse (Philadelphia)“), der Hinweis nicht.
 
@@ -177,19 +177,20 @@ Die Zuordnung von Rezepten oder Freitext zu Tagen und Mahlzeiten.
 
 ### Kalender
 
-Der Tab, der bis Spec 0010 „Plan“ hieß. Zeigt Planeinträge, Abwesenheiten und Aufgaben in den
+Der Tab, der bis Spec 0010 „Plan“ hieß. Zeigt Planeinträge, Reisen und Aufgaben in den
 Ansichten Woche, Monat und Jahr (D16).
 
 - **Im Code:** Adresse `/kalender`, alte Adressen unter `/plan` leiten dorthin (Spec 0010); kein
   eigener Datentyp, die Einträge bleiben `MealPlanEntry`
 - **Nicht verwenden:** Plan (für den Tab, ab Spec 0010), Planer
-- **Siehe auch:** [Haushalt-Zeile](#haushalt-zeile), [Abwesenheits-Streifen](#abwesenheits-streifen)
+- **Siehe auch:** [Haushalt-Zeile](#haushalt-zeile), [Reise-Streifen](#reise-streifen)
 
 ### Übersicht
 
 Der erste Tab und die Startseite der App, bis 21.11.2026 „Heute“. Zeigt einen Tag mit allem, was
-geplant und zu tun ist, und blättert durch die Wochen; ohne Auswahl ist es der heutige Tag (Spec
-0011). Umbenannt, weil die Seite nicht mehr nur heute zeigt (Spec 0005, AC-061).
+geplant und zu tun ist; ohne Auswahl ist es der heutige Tag. Die [Tagesleiste](#tagesleiste) oben
+wählt den Tag, darunter stehen die [Vorbereitungszeilen](#vorbereitungszeile) und „Geplant“ (Spec
+0011, Spec 0020). Umbenannt, weil die Seite nicht mehr nur heute zeigt (Spec 0005, AC-061).
 
 - **Im Code:** Adresse `/`, Route `index`, Test-IDs `tab-index` und `today-*` und der Ordner
   `features/today` bleiben (kein Umbenennen im Code nötig)
@@ -199,6 +200,48 @@ geplant und zu tun ist, und blättert durch die Wochen; ohne Auswahl ist es der 
   _Layout „Übersicht“_ (Spec 0005) ist das Desktop-Layout dieser Seite, kein zweiter Begriff. Der
   _Tagesüberblick_ ist eine Benachrichtigung (Spec 0013).
 - **Siehe auch:** [Kalender](#kalender), [Tagesüberblick](#tagesüberblick)
+
+### Tagesleiste
+
+Die Leiste oben auf der „Übersicht“ mit sieben Tagen ab gestern (gestern bis heute + 5); ‹ › verschieben
+sie und den gewählten Tag um sieben Tage (Spec 0020, REQ-001).
+
+- **Im Code:** `DayStrip`; Test-IDs bleiben vorerst
+- **Nicht verwenden:** Wochenleiste (alter Name, Mo–So), Tagesliste (so heißt die Liste am Handy im
+  Monat, Spec 0021)
+- **Abgrenzung:** Sie zeigt nicht die Kalenderwoche; der _Abschnitt_ ist ihr Zeitraum.
+
+### Abschnitt (Tagesleiste)
+
+Der Zeitraum, den die [Tagesleiste](#tagesleiste) gerade zeigt: sieben aufeinanderfolgende Tage, am
+Anfang gestern bis heute + 5 („heutiger Abschnitt“). Die Leiste springt um ganze Abschnitte (Spec
+0020).
+
+- **Im Code:** kein eigener Typ
+- **Nicht verwenden:** Woche (für diesen Zeitraum), Seite
+- **Abgrenzung:** Nicht der _Abschnitt der Rezeptseite_ und nicht die Gruppen der Seiten „Heute
+  geplant“, „Noch offen“ usw.
+
+### Kochbeginn
+
+Die feste Uhrzeit, ab der eine Tageszeit „losgeht“: Vormittag 8, Mittag 11, Abend 17 Uhr, sonst 8 Uhr.
+Dient dazu, den spätesten Start einer Vorbereitung auszurechnen, und ist zugleich der
+Erinnerungsvorschlag aus Spec 0017. Wird nicht gespeichert und nicht eingestellt (Spec 0020, E8).
+
+- **Im Code:** `slotStartTime` (`packages/core`, aus `reminder.ts`), in SQL gespiegelt als
+  `private.slot_start_time`
+- **Nicht verwenden:** Essenszeit, Startzeit der Tageszeit
+- **Abgrenzung:** Die _Uhrzeit (Eintrag)_ gehört einem einzelnen Eintrag und wird eingegeben.
+
+### Vorbereitungszeile
+
+Eine Zeile unter der [Tagesleiste](#tagesleiste), die an dem Tag steht, an dem man spätestens mit
+einer Vorbereitung anfangen muss: Tag des Eintrags + [Kochbeginn](#kochbeginn) − [Vorlauf](#vorlauf).
+Beispiel: „Heute bis ca. 23 Uhr: Kichererbsen einweichen · Hummus (morgen Mittag)“. Für den ganzen
+Haushalt; ersetzt „Für morgen“ (Spec 0020, REQ-006).
+
+- **Im Code:** `prepLines` (`packages/core`)
+- **Nicht verwenden:** Vorbereitung für morgen, Vortagszeile
 
 ### Wie war's?
 
@@ -247,12 +290,12 @@ Jahr nie; die Wahl liegt auf dem Gerät (Spec 0010, D18).
 ### Restaurant
 
 Ein Lokal, in das der Haushalt essen geht: Name, optional Adresse, Koordinaten, Karten-Link,
-Küche, Preisniveau, Schlagworte und eine Notiz für den Haushalt. Bewertung und Favorit gelten je
+[Webseite](#webseite), Foto, Küche, Preisniveau, Schlagworte und eine Notiz für den Haushalt. Bewertung und Favorit gelten je
 Mitglied. Wird meist aus einem geteilten Link von Google Maps oder Apple Karten angelegt und kann
 statt eines Rezepts im Wochenplan stehen.
 
-- **Im Code:** `Restaurant`, `restaurants`; im Wochenplan `MealPlanEntry` mit `kind: 'restaurant'`
-  und `restaurantId`
+- **Im Code:** `Restaurant`, `restaurants` (Foto `photoPath`/`photo_path`, Spec 0024); im Wochenplan
+  `MealPlanEntry` mit `kind: 'restaurant'` und `restaurantId`
 - **Nicht verwenden:** Lokal, Location, Gaststätte, Ort (für das Restaurant selbst)
 
 ### Besuch
@@ -263,21 +306,35 @@ Besuche“).
 
 - **Im Code:** abgeleitet mit `restaurantVisits` aus `MealPlanEntry` mit `kind: 'restaurant'`
 - **Nicht verwenden:** Termin, Check-in
-- **Abgrenzung:** Eine _Reservierung_ ist die Uhrzeit an einem Restaurant-Eintrag (Spec 0013), kein
+- **Abgrenzung:** Eine _Reservierung_ ist die Uhrzeit an einem Restaurant-Eintrag (Spec 0021), kein
   Besuch und kein Ersatz dafür.
 
 ### Reservierung
 
-Die Uhrzeit, für die an einem Restaurant-Eintrag im Kalender reserviert ist („Reserviert um
-19:30“), mit der Vorlaufzeit der Erinnerung („Erinnern 2 h vorher“, Standard 120 Minuten). Nur bei
-Restaurant-Einträgen. Reserviert wird weiter in den Karten-Apps; die App hält nur die Uhrzeit fest
-(Spec 0013, D43).
+Die Uhrzeit, für die an einem Restaurant-Eintrag reserviert ist; in der Oberfläche steht dafür das
+Feld „Uhrzeit (optional)“ mit dem Hinweis „Die Uhrzeit, für die ihr reserviert habt.“. Reserviert
+wird weiter in den Karten-Apps; die App hält nur die [Uhrzeit (Eintrag)](#uhrzeit-eintrag) fest. Eine
+eigene Reservierungs-Erinnerung gibt es seit Spec 0021 nicht mehr: Wer die Uhrzeit setzt, bekommt die
+[Erinnerung](#erinnerung) an dem Eintrag.
 
-- **Im Code:** am `MealPlanEntry` mit `kind: 'restaurant'`: `reservedAt` (`reserved_at`, Uhrzeit
-  `TimeOfDay`), `remindMinutesBefore` (`remind_minutes_before`, `RemindMinutes`: 30, 60, 120, 180,
-  240; Auswahl `REMIND_CHOICES`, Text `remindLabel`)
+- **Im Code:** kein eigener Bezeichner mehr; `meal_plan_entries.reserved_at` heißt seit Spec 0021
+  `starts_at` (siehe Uhrzeit (Eintrag)); `remind_minutes_before`, `REMIND_CHOICES` und
+  `reservation_reminders_enabled` entfallen
 - **Nicht verwenden:** Buchung, Termin
 - **Abgrenzung:** Ein _Besuch_ wird aus dem Wochenplan abgeleitet und hat keine Uhrzeit.
+
+### Uhrzeit (Eintrag)
+
+Die optionale Uhrzeit eines Restaurant- oder Aktivitäts-Eintrags im Kalender, in 5-Minuten-Schritten,
+Ortszeit des Haushalts: bei Restaurants die Reservierung, bei Aktivitäten „Wann es losgeht.“.
+Angezeigt als „Eislaufen (Hohenschönhausen) · 10:30“; Verschieben und Tageszeit-Wechsel lassen sie
+stehen. Andere Arten haben keine Uhrzeit (Spec 0021, REQ-013).
+
+- **Im Code:** `MealPlanEntry.startsAt` (`meal_plan_entries.starts_at`, `TimeOfDay`; nur bei
+  `kind` `restaurant` oder `activity`); vorher `reserved_at`
+- **Nicht verwenden:** Termin, Reservierungszeit (als Feldname)
+- **Abgrenzung:** Die _Uhrzeit (Aufgabe)_ gehört einer Aufgabe. Die _Tageszeit_ ist der Platz im Tag
+  (Vormittag, Mittag, Abend), keine Uhrzeit.
 
 ### Einkaufsliste
 
@@ -307,34 +364,35 @@ Rezeptseite oder über „Rezept wählen …“ steht ohne Tag („Mango-Curry�
 „Grillabend“ bzw. „Grillabend · Kartoffelsalat“ (Spec 0006, Spec 0009).
 
 - **Im Code:** `ShoppingContribution.source` (`ContributionSource`: `manual` · `recipe` mit
-  `label` · `recurring`)
+  `label`; `recurring` entfällt, Spec 0025)
 - **Nicht verwenden:** Quelle (in der Oberfläche), Ursprung
 
 ### Zusatz
 
-Freitext zu einem Beitrag eines Einkaufspostens, z. B. „laktosefrei“ oder „Gouda oder
-Emmentaler“. In der Liste steht er in Klammern hinter dem Artikel. Bringen mehrere Beiträge
-verschiedene Zusätze mit, stehen sie nebeneinander. Auch ein Planeintrag einer Aktivität kann
-einen Zusatz haben: „Eislaufen (Hohenschönhausen)“ (Spec 0004).
+Freitext zu einem Beitrag eines Einkaufspostens oder zu einem Planeintrag, z. B. „laktosefrei“ oder
+„Gouda oder Emmentaler“. In der Liste steht er in Klammern hinter dem Artikel; bringen mehrere
+Beiträge verschiedene Zusätze mit, stehen sie nebeneinander. Seit Spec 0021 hat **jede Art** von
+Planeintrag einen Zusatz (höchstens 120 Zeichen) und zeigt ihn überall, wo der Name steht: „Lasagne
+(doppelte Menge)“, „Eislaufen (Hohenschönhausen)“. In der Herkunft der Liste steht er nicht.
 
 - **Im Code:** `note` (am `ShoppingContribution` und am `MealPlanEntry`); an der Rezeptzutat
   `shoppingNote`
-- **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Abwesenheit), Kommentar
+- **Nicht verwenden:** Notiz (die gehört zu Rezept, Restaurant oder Reise), Kommentar
 - **Abgrenzung:** Der _Hinweis_ an einer Zutat ist nur fürs Kochen und geht nicht auf die Liste.
 
 ### Notiz
 
 Freitext des Haushalts an einem Rezept („Notizen“), einem Restaurant („Notiz“, z. B.
-„Trüffelpasta!“) oder einer Abwesenheit. An der Abwesenheit ist sie die Beschriftung des Streifens,
+„Trüffelpasta!“) oder einer Reise. An der Reise ist sie die Beschriftung des Streifens und der Titel des Fensters,
 z. B. „Urlaub Mallorca“ (Spec 0010, D22). Optional; gilt für alle Mitglieder, anders als Bewertung
 und Favorit.
 
-- **Im Code:** `notes` an `Recipe` und `Restaurant`, `note` an `Absence`
+- **Im Code:** `notes` an `Recipe` und `Restaurant`, `note` an `Trip`
 - **Nicht verwenden:** Kommentar, Anmerkung, Beschreibung
 - **Abgrenzung:** Der _Zusatz_ steht an einem Beitrag der Einkaufsliste oder einem Planeintrag, der
   _Hinweis_ an einer Rezeptzutat fürs Kochen; beide heißen nie „Notiz“. Die Beschreibung eines
   Rezepts oder einer Aktivität (`description`) ist ein eigenes Feld.
-- **Siehe auch:** [Zusatz](#zusatz), [Hinweis](#hinweis), [Abwesenheit](#abwesenheit)
+- **Siehe auch:** [Zusatz](#zusatz), [Hinweis](#hinweis), [Reise](#reise)
 
 ### Markt
 
@@ -382,6 +440,17 @@ optimiert zum Abhaken mit einer Hand. In der Oberfläche „Einkaufen“, auf de
 mit „Fertig“ (Spec 0005, D5).
 
 - **Im Code:** `ShoppingMode`
+- **Siehe auch:** [Einkaufsgang](#einkaufsgang)
+
+### Einkaufsgang
+
+Ein Einkauf im Laden von „Einkaufen“ öffnen bis „Fertig“ oder Verlassen. Er übersteht ein
+Neuladen. Fortschritt („3/15“) und „Im Wagen“ zählen nur, was beim Start offen war oder unterwegs
+dazukam; Erledigtes vom letzten Mal zählt nicht (Spec 0025, REQ-013).
+
+- **Im Code:** `ShoppingRun` (nicht `ShoppingTrip`: `trip` heißt nur die Reise)
+- **Nicht verwenden:** Trip, Tour, Einkaufstour, Einkaufsreise
+- **Abgrenzung:** Eine _Reise_ ist ein Zeitraum, in dem Personen unterwegs sind.
 
 ### Sync
 
@@ -414,7 +483,7 @@ Vorratscheck sind Vorrat-Posten abgewählt. Die App setzt die Markierung nie von
 
 Der Schritt vor dem Übernehmen auf die Einkaufsliste („Was brauchst du wirklich?“): Alle Posten
 werden gezeigt; Ausgewähltes ist normaler Text mit Haken, Abgewähltes („haben wir“) blass und
-durchgestrichen; Vorrat-Posten sind eingeklappt und abgewählt. Was abgewählt ist, kommt nicht auf
+durchgestrichen; Vorrat-Posten sind ausgeklappt, aber abgewählt (Spec 0025, E11; früher eingeklappt). Was abgewählt ist, kommt nicht auf
 die Liste. Von der Seite eines Rezepts oder einer Sammlung startet er direkt, sonst nach dem
 Schritt „Was soll auf die Liste?“ (Spec 0006, Spec 0009).
 
@@ -433,21 +502,16 @@ Namen trägt; wählt man ihn, entsteht der Haushalts-Artikel mit seinen Angaben 
   Standardartikel
 - **Siehe auch:** [Artikel-Katalog](#artikel-katalog)
 
-### Starter-Rezept
-
-Ein mitgeliefertes Rezept, das man ins eigene Rezeptbuch übernehmen kann. Danach ist es ein
-normales Rezept mit Herkunft „Starter“.
-
-- **Im Code:** `starterRecipes`
-
 ### Ernährungsform
 
 Wie sich eine Person ernährt (vegan, vegetarisch, flexibel) bzw. was ein Rezept oder eine Variante
-enthält (vegan, vegetarisch, mit Fisch, mit Fleisch, unbekannt). Bei Rezepten wird sie aus den
+enthält (vegan, vegetarisch, mit Fisch, mit Fleisch, unbekannt).
+Artikel können zusätzlich „kein Lebensmittel“ sein (Grillanzünder, Kaffeefilter); sie zählen beim
+Ableiten nicht mit (Spec 0023, REQ-008). Bei Rezepten wird sie aus den
 Ernährungseigenschaften der Artikel abgeleitet, bei Sammlungen aus allem, was sie enthalten (Spec
 0009).
 
-- **Im Code:** `Diet`; am Artikel `diet` (Ernährungseigenschaft), am Mitglied `dietPreference`
+- **Im Code:** `Diet` (mit `non_food` = „kein Lebensmittel“); am Artikel `diet` (Ernährungseigenschaft), am Mitglied `dietPreference`
 - **Nicht verwenden:** Kostform, Diät
 
 ### Variante
@@ -485,16 +549,17 @@ Die Einordnung eines Rezepts: Frühstück, Hauptgericht, Beilage, Dessert, Snack
 ### Vorlauf
 
 Eine Vorbereitung, die vor dem Kochtag nötig ist, z. B. „Kichererbsen einweichen, 12 Stunden
-vorher“. Erscheint am Vortag auf der „Übersicht“.
+vorher“. Erscheint seit Spec 0020 als [Vorbereitungszeile](#vorbereitungszeile) auf der „Übersicht“ an
+dem Tag, an dem man spätestens anfangen muss (nicht mehr nur am Vortag).
 
 - **Im Code:** `leadTime`
 
 ### Dauerposten
 
 Ein Artikel, der nach einem eigenen Rhythmus von selbst auf die Einkaufsliste kommt, z. B. „Milch
-montags“.
+montags“. **Nicht gebaut** (Spec 0025: Keine Dauerposten; die Herkunft `recurring` entfällt).
 
-- **Im Code:** `RecurringItem`, `recurring_items`
+- **Im Code:** keiner; der frühere Entwurf `RecurringItem`, `recurring_items` besteht nicht
 - **Nicht verwenden:** Abo, Standardposten
 
 ### Sammlung
@@ -548,6 +613,42 @@ steht nur unter „Alle“ und wird in „Was anderes erledigt?“ gefunden (Spe
 Wer eine Aufgabe erledigt: fest eine Person, abwechselnd, egal wer, oder zu zweit.
 
 - **Im Code:** `Assignment` mit `fixed` · `rotating` · `anyone` · `together`
+- **Siehe auch:** [Vertretung](#vertretung), [Termin nach Reisen](#termin-nach-reisen)
+
+### Termin nach Reisen
+
+Der Termin, ab dem eine Aufgabe tatsächlich fällig ist: statt des gespeicherten Termins der erste
+[freie Tag](#freier-tag) ab ihm, auch über überlappende Reisen. Gespeichert wird nichts, er wird
+berechnet; Ändern und Löschen einer Reise wirken sofort. Angezeigt als „nach der Reise am Fr 11.12.“,
+am Tag selbst „heute, nach der Reise“. Fälligkeitstexte: „heute“, „fällig seit gestern“, „fällig
+seit n Tagen“ (ab 2); der Haushalt-Abschnitt dafür heißt „Noch offen“ (früher „Fällig seit“, Wort
+„überfällig“ entfällt) (Spec 0026, REQ-009, REQ-011).
+
+- **Im Code:** Funktion in `packages/core` und in SQL gespiegelt (Zeitplaner), `chores.next_due_on`
+  bleibt unverändert
+- **Nicht verwenden:** verschobener Termin (das ist „Später“), überfällig, Nachholtermin
+- **Abgrenzung:** „Später“ verschiebt von Hand; der Termin nach Reisen rechnet die App.
+
+### Freier Tag
+
+Ein Tag, an dem jemand Zuständiges zu Hause ist: bei fester Zuständigkeit die Person, bei „Egal“ ein
+beliebiges Mitglied, bei „Zu zweit“ beide. An nicht freien Tagen ist die Aufgabe nirgends fällig
+(Spec 0026, REQ-011).
+
+- **Im Code:** Funktion in `packages/core` und in SQL (Zeitplaner), liest `trips`/`trip_members`
+- **Nicht verwenden:** Ruhetag, Anwesenheitstag
+- **Abgrenzung:** Der _Termin nach Reisen_ ist der erste freie Tag ab dem gespeicherten Termin.
+
+### Vertretung
+
+Bei „Abwechselnd“ die nächste Person der Reihenfolge, die zu Hause ist, wenn die reguläre Person auf
+einer Reise ist. Gespeichert bleibt die reguläre Person; die Reihenfolge ändert sich nie, nichts wird
+nachgeholt (Spec 0026, REQ-012).
+
+- **Im Code:** Funktion in `packages/core` und in SQL; `nextAssignee` bleibt unverändert
+- **Nicht verwenden:** Ersatz, Stellvertreter
+- **Abgrenzung:** Wer erledigt, bleibt die Person, die abhakt; die Vertretung ist nur, wer „dran“
+  ist.
 
 ### Erledigung
 
@@ -573,29 +674,33 @@ und Woche, mit einer Trennzeile beim Jahreswechsel (Spec 0011, REQ-010). Ein Tip
 - **Im Code:** Ansicht `history` im Haushalt, `ChoreHistory` (App), Gliederung `historyGroups`
   (`packages/core`); Test-IDs `history-*`
 - **Nicht verwenden:** Historie, Log, Protokoll
+- **Abgrenzung:** An einer Aktivität heißt der Abschnitt mit den Tagen, an denen sie im Plan stand,
+  ebenfalls „Verlauf“ (Spec 0024); beim Restaurant heißt er „Besuche“. Der _Verlauf_ des
+  Haushaltsplans listet Erledigungen von Aufgaben, nicht Planeinträge.
 
-### Abwesenheit
+### Reise
 
-Ein Zeitraum, in dem eine Person oder der ganze Haushalt nicht da ist. Sind beim Eintragen alle
-Mitglieder gewählt, entsteht eine Abwesenheit des ganzen Haushalts, sonst je Person eine (D23); die
-Notiz ist ihre Beschriftung (D22). Wirkt auf „Wer isst mit?“ und Benachrichtigungen (Spec 0013);
-Rotation und feste Termine bleiben vorerst unberührt (Spec 0010, Offene Frage 1). Von und Bis sind
-frei wählbar, auch über Monats- und Jahresgrenzen und in der Vergangenheit (Spec 0010, AC-042 bis
-AC-044). Kann eine Packliste haben (Spec 0012).
+Ein Zeitraum, in dem eine oder mehrere Personen unterwegs sind (Urlaub, Dienstreise, Besuch). Eine
+Reise hat Von, Bis, eine optionale Notiz (Titel, ohne Notiz „unterwegs“) und mindestens eine Person;
+stehen alle Mitglieder darauf, heißt sie „Ganzer Haushalt“ (nur abgeleitet, nicht gespeichert).
+Wirkt auf „Wer isst mit?“, Benachrichtigungen und Aufgaben ([Termin nach Reisen](#termin-nach-reisen),
+[Vertretung](#vertretung)). Von und Bis sind frei wählbar, auch über Monats- und Jahresgrenzen und in
+der Vergangenheit. Kann eine Packliste haben (Spec 0022). Hieß bis Spec 0022 „Abwesenheit“.
 
-- **Im Code:** `Absence`, `absences`; ganzer Haushalt = ohne `memberId`
-- **In der Oberfläche:** „Reise“, „Reisen“, ohne Notiz „unterwegs“ (Spec 0016, REQ-008).
-  Specs, Regeln und Code sprechen weiter von der Abwesenheit.
-- **Adressen:** die Seite „Reisen“ unter `/reisen`, die Seite einer Reise mit Packliste unter
-  `/kalender/reise/<id>` (Spec 0016, REQ-008); die alten Adressen `/abwesenheiten` und
-  `/kalender/urlaub/<id>` leiten nicht weiter.
-- **Nicht verwenden:** Urlaub (ist nur ein Fall davon), Pause
-- **Siehe auch:** [Abwesenheits-Streifen](#abwesenheits-streifen), [Packliste](#packliste)
+- **Im Code:** `Trip`, `trips` (eine Zeile je Reise) und `trip_members` (Person je Reise); vorher
+  `Absence`/`absences` (Spec 0022 benennt um, bis dahin gilt der alte Code)
+- **In der Oberfläche:** „Reise“, „Reisen“, ohne Notiz „unterwegs“ (Spec 0016, REQ-008)
+- **Adressen:** die Seite „Reisen“ unter `/reisen`; die Reise selbst ist ein Fenster über der
+  aktuellen Seite, in der Adresse als `reise=<ID>` (Spec 0019, Spec 0022); `/kalender/reise/<id>`
+  entfällt
+- **Nicht verwenden:** Abwesenheit (alter Name), Urlaub (ist nur ein Fall davon), Pause
+- **Siehe auch:** [Reise-Streifen](#reise-streifen), [Reise-Fenster](#reise-fenster),
+  [Packliste](#packliste)
 
 ### Tages-Fenster
 
 Das Fenster, das in den Ansichten „Monat“ und „Jahr“ nach einem Tipp auf einen Tag alles von diesem
-Tag zeigt: Abwesenheiten, Aufgaben und alle Tageszeiten mit ihren Einträgen, zum Ansehen und
+Tag zeigt: Reisen, Aufgaben und alle Tageszeiten mit ihren Einträgen, zum Ansehen und
 Bearbeiten, ohne die Ansicht zu wechseln. Auf dem Handy kommt es von unten und lässt das Raster
 bedienbar, ab 700 px steht es rechts neben dem Raster (Spec 0016, REQ-006, Entwurf).
 
@@ -612,23 +717,23 @@ auf der Seite „Benachrichtigungen“ heißt „Erinnerungen an Einträgen“.
 
 - **Im Code:** Spalten `reminder_day_offset`, `reminder_at`, `reminder_text` an `meal_plan_entries`;
   Einstellung `entry_reminders_enabled`; Art `entry_reminder`; core `reminder.ts`
-- **Abgrenzung:** Die _Reservierungs-Erinnerung_ am Restaurant-Eintrag („Erinnern 2 h vorher“,
-  Spec 0013) hängt an der Reservierungsuhrzeit. Der _Tagesüberblick_ und „Aktivitäten am Vortag“
+- **Abgrenzung:** Eine eigene _Reservierungs-Erinnerung_ („Erinnern 2 h vorher“, Spec 0013) gibt es
+  seit Spec 0021 nicht mehr; sie geht in diese Erinnerung auf (Uhrzeit am Eintrag setzen schaltet sie
+  ein, 2 Stunden vorher). Der _Tagesüberblick_ und „Aktivitäten am Vortag“
   sind Arten von Benachrichtigungen je Person, keine Erinnerungen an einem Eintrag.
 - **Nicht verwenden:** Alarm, Wecker, Termin
 
-### Abwesenheits-Streifen
+### Reise-Streifen
 
-Die Darstellung einer oder mehrerer Abwesenheiten im Kalender und auf der „Übersicht“: ein Streifen
-mit Notiz (ohne Notiz „unterwegs“, bis Spec 0016 „abwesend“), Ende („bis Mo 4.1.“) und Avataren. Abwesenheiten mit gleichem
-Von, Bis und gleicher Notiz bilden einen Streifen. Eine Person: zart in ihrer Farbe; mehrere oder
-der ganze Haushalt: neutral (Spec 0010). Ein Tipp öffnet ab Spec 0012 die Urlaubsseite, vorher
-„Abwesenheit bearbeiten“; mit Packliste trägt er ein Taschen-Symbol.
+Die Darstellung einer oder mehrerer Reisen im Kalender und auf der „Übersicht“: ein Streifen mit
+Notiz (ohne Notiz „unterwegs“), Ende („bis Mo 4.1.“) und Avataren. Reisen mit gleichem Von, Bis und
+gleicher Notiz bilden einen Streifen. Eine Person: zart in ihrer Farbe; mehrere oder der ganze
+Haushalt: neutral (Spec 0010). Ein Tipp öffnet das [Reise-Fenster](#reise-fenster); mit Packliste
+trägt er ein Taschen-Symbol. Hieß „Abwesenheits-Streifen“.
 
-- **Im Code (vorläufig):** `AbsenceStripe`, abgeleitet aus `Absence`, nicht gespeichert
-- **Nicht verwenden:** Urlaubsstreifen, Balken
-- **Abgrenzung:** Die _Urlaubsseite_ ist die Seite einer Abwesenheit mit ihrer Packliste (Spec
-  0012); der Name steht im Konzept und gilt für jede Abwesenheit, nicht nur für Urlaub.
+- **Im Code:** `TripStripe` (vorher `AbsenceStripe`), abgeleitet aus `Trip`, nicht gespeichert
+- **Nicht verwenden:** Abwesenheits-Streifen (alter Name), Urlaubsstreifen, Balken
+- **Abgrenzung:** Das _Reise-Fenster_ ist das Fenster mit allen Angaben der Reise.
 
 ### Reisetasche
 
@@ -638,22 +743,31 @@ je Haushalt), optional „für“ ein Mitglied, Packstücke mit Anzahl. Liegt un
 
 - **Im Code:** `PackingBag`, `packing_bags`; Regeln in `packages/core/src/packing.ts`
 - **Nicht verwenden:** Packvorlage, Koffer, Sammlung
-- **Abgrenzung:** Die _Packliste_ ist die Kopie für eine Abwesenheit.
+- **Abgrenzung:** Die _Packliste_ ist die Kopie für eine Reise.
 
 ### Packliste
 
-Die Liste zum Abhaken einer Abwesenheit: eine Kopie der angehängten Reisetaschen, gruppiert nach
-Tasche, auf der Urlaubsseite. Packen geht auch ohne Netz (Laden-Warteschlange, „Abhaken gewinnt“);
-„Für die Rückreise zurücksetzen“ nimmt alle Haken weg. Wird mit ihrer Abwesenheit gelöscht und zieht
-mit, wenn das Bearbeiten die Abwesenheit ersetzt (Spec 0012, AC-039; Spec 0010, REQ-010).
+Die Liste zum Abhaken einer Reise: eine Kopie der angehängten Reisetaschen, gruppiert nach
+Tasche, im [Reise-Fenster](#reise-fenster). Packen geht auch ohne Netz (Laden-Warteschlange, „Abhaken gewinnt“);
+„Für die Rückreise zurücksetzen“ nimmt alle Haken weg. Wird mit ihrer Reise gelöscht; das Bearbeiten einer Reise ersetzt sie nicht mehr (Spec 0012,
+AC-039; Spec 0022).
 
 - **Im Code:** kein eigener Datensatz; alle [Taschen der Packliste](#tasche-der-packliste)
-  (`packing_list_bags`) einer Abwesenheit mit ihren `packing_items`; Abschnitte `packingSections`
+  (`packing_list_bags`) einer Reise mit ihren `packing_items`; Abschnitte `packingSections`
 - **Nicht verwenden:** Checkliste, Kofferliste
+
+### Kommende Packliste
+
+Eine Zeile oben auf der Seite „Reisetaschen“ je kommender Reise mit Packliste (früheste zuerst):
+Titel, Zeitraum, Packstand („12/30 gepackt“ oder „alles gepackt ✓“), Avatare. Vergangene Reisen
+erscheinen nicht; ein Tipp öffnet das [Reise-Fenster](#reise-fenster) (Spec 0022, REQ-013).
+
+- **Im Code:** noch nicht gebaut (Spec 0022)
+- **Nicht verwenden:** Packübersicht, Packliste (für die Zeile; die Liste selbst ist die _Packliste_)
 
 ### Tasche der Packliste
 
-Eine an eine Abwesenheit angehängte Reisetasche: Abschnitt der Packliste mit Name und Mitglied als
+Eine an eine Reise angehängte Reisetasche: Abschnitt der Packliste mit Name und Mitglied als
 Kopie, Reihenfolge und Verweis auf die Herkunftstasche, der leer wird, wenn die Reisetasche gelöscht
 wird. „Aus der Packliste entfernen“ löscht sie samt ihren Packstücken (Spec 0012, Entscheidung 2).
 
@@ -662,25 +776,28 @@ wird. „Aus der Packliste entfernen“ löscht sie samt ihren Packstücken (Spe
 - **Abgrenzung:** Die _Reisetasche_ ist die Vorlage; ihre Änderung wirkt nie auf die Tasche der
   Packliste (D35).
 
-### Urlaubsseite
+### Reise-Fenster
 
-Die Seite einer Abwesenheit mit Kopf (Notiz, wer, Zeitraum, Dauer, „beginnt in 12 Tagen“),
-Fortschritt und Packliste. Öffnet sich über den Abwesenheits-Streifen, die Seite „Abwesenheiten“
-und die Karte „Reisetasche“ der „Übersicht“; gilt für jede Abwesenheit, nicht nur für Urlaub
-(Spec 0012, REQ-003).
+Das Fenster einer Reise mit Kopf (Titel = Notiz, „beginnt in 12 Tagen“, ⋯), den direkt änderbaren
+Feldern Wer?, Von, Bis und Notiz, Fortschritt und [Packliste](#packliste). Öffnet sich über der
+aktuellen Seite: aus dem [Reise-Streifen](#reise-streifen), dem Tages-Fenster, der Liste „Reisen“,
+der Karte „Reisetasche“ der „Übersicht“ und den [kommenden Packlisten](#kommende-packliste). Am Handy
+von unten in voller Höhe, ab 700 px in der Mitte (Spec 0022, REQ-001, REQ-002). Hieß „Urlaubsseite“
+und war eine eigene Seite.
 
-- **Im Code:** Adresse `/kalender/urlaub/[id]`; Kopf `tripHeader`, Streifen `tripStripe`
-  (`packages/core`)
-- **Nicht verwenden:** Reiseseite, Abwesenheitsdetail
+- **Im Code:** `TripWindow` (vorher Adresse `/kalender/urlaub/[id]`, `TripScreen`); Kopf `tripHeader`
+- **Nicht verwenden:** Urlaubsseite, Reiseseite, Abwesenheitsdetail
+- **Abgrenzung:** Das _Tages-Fenster_ zeigt einen Tag, nicht eine Reise.
 
 ### Packstück
 
 Eine Zeile einer Reisetasche oder Packliste: Name als Freitext und optionale Anzahl, fest („2×“)
-oder je Tag („1 je Tag“, gerechnet mit der Dauer der Abwesenheit, erster und letzter Tag
+oder je Tag („1 je Tag“, gerechnet mit der Dauer der Reise, erster und letzter Tag
 eingeschlossen). In der Packliste zusätzlich „gepackt“ (Spec 0012, D32).
 
 - **Im Code:** in der Reisetasche `PackingBagItem`, `packing_bag_items`; in der Packliste
-  `PackingItem`, `packing_items` (Anzahl je Tag in `perDay`, ausgerechnet in `quantity`)
+  `PackingItem`, `packing_items` (Anzahl je Tag in `perDay`, ausgerechnet in `quantity`; Verweis auf
+  das Packstück der Tasche `bagItemId`, Herkunft `fromBag`, Spec 0022)
 - **Nicht verwenden:** Artikel, Posten, Gegenstand
 - **Abgrenzung:** Packstücke sind keine Artikel und kommen nie auf die Einkaufsliste.
 
@@ -710,11 +827,12 @@ Was der Assistent über den Haushalt weiß, z. B. „unter der Woche höchstens 
 
 Die Freigabe einer Google-Adresse für einen Haushalt. Nur eingeladene Adressen können ein Konto
 anlegen; Mitglied wird die Person erst, wenn sie die Einladung annimmt (auch bei der ersten
-Anmeldung). Die Gesamtheit der offenen
+Anmeldung). Eine Einladung lebt nur, solange sie **offen** ist: Annehmen löscht sie, Zurückziehen
+auch; einen Zustand „angenommen“ gibt es nicht (Spec 0027, E1). Die Gesamtheit der offenen
 Einladungen ist die **Einladungsliste** (ADR-0003: „Allowlist“).
 
-- **Im Code:** `Invitation`, `household_invitations`
-- **Nicht verwenden:** Whitelist, Freischaltung
+- **Im Code:** `Invitation`, `household_invitations` (ohne `accepted_at`, Spec 0027)
+- **Nicht verwenden:** Whitelist, Freischaltung, angenommene Einladung
 
 ### Testkonto
 
@@ -762,19 +880,32 @@ die Änderung aus der Überlagerung und die Anzeige springt zurück.
 ### Aktivität
 
 Eine Unternehmung, die der Haushalt plant und nachhält, z. B. Eislaufen oder Bouldern. Hat Name,
-Beschreibung, Foto und optional einen Ort; steht im Wochenplan in einer Tageszeit, mit Zusatz in
-Klammern, z. B. „Eislaufen (Hohenschönhausen)“. Alle Aktivitäten stehen auf der Seite
-„Aktivitäten“ (ab Spec 0010 im Kalender-Bereich unter `/kalender/aktivitaeten`, erreichbar über ▲
-im Kalender und über „Verwalten“; Spec 0010, REQ-008).
+Beschreibung, Foto, [Webseite](#webseite) und optional einen Ort; steht im Wochenplan in einer
+Tageszeit, mit Zusatz in Klammern, z. B. „Eislaufen (Hohenschönhausen)“, und optional mit
+[Uhrzeit](#uhrzeit-eintrag). Alle Aktivitäten stehen auf der Seite „Aktivitäten“ unter „Verwalten“
+(Adresse `/aktivitaeten`, kein Berg-Symbol im Kalender mehr; Spec 0024, REQ-009).
 
 - **Im Code:** `Activity`, `activities`; Planeintrag `kind: 'activity'`
 - **Nicht verwenden:** Event, Termin, Freizeit (als Begriff für den Eintrag); „Sammlung
   ‚Aktivitäten‘“ (so heißt die Seite in Spec 0004)
+- **Abgrenzung:** Die Adressen `/kalender/aktivitaeten` und `/kalender/aktivitaet/<id>` (Spec 0010)
+  entfallen.
+
+### Webseite
+
+Die optionale Internetadresse eines Restaurants oder einer Aktivität (http oder https), in der
+Oberfläche „Webseite“. Geprüft nach einer gemeinsamen Regel, nie abgerufen (Spec 0024, REQ-003; Spec
+0023, REQ-009).
+
+- **Im Code:** `websiteUrl`, Spalte `website_url` an `restaurants` und `activities`; Prüfung
+  `private.is_web_url`
+- **Nicht verwenden:** Homepage, Link (die „Links“ am Rezept sind ein eigenes Feld, `recipes.links`),
+  Karten-Link (der führt zur Karten-App)
 
 ### Verwalten
 
 Die Gruppe der Seiten, die den Haushalt verwalten, in drei Blöcken: Planen (Aktivitäten,
-Reisetaschen, Abwesenheiten), Einkaufen (Artikel, Märkte & Bereiche), Haushalt (Haushalt &
+Reisetaschen, Reisen), Einkaufen (Artikel, Märkte & Bereiche), Haushalt (Haushalt &
 Mitglieder, Feedback). Am Desktop immer sichtbar in der Seitenleiste, auf dem Handy hinter ⊞ im Kopf
 jeder Tab-Startseite (Spec 0005, D2, D30).
 
@@ -790,7 +921,7 @@ Benachrichtigungen, Abmelden. Alles, was den Haushalt betrifft, steht unter „V
 
 - **Im Code:** Adresse `/einstellungen`
 - **Nicht verwenden:** Profil (für die ganze Seite), Optionen
-- **Abgrenzung:** Haushalte, Mitglieder, Einladungen, Märkte, Feedback und Abwesenheiten gehören zu
+- **Abgrenzung:** Haushalte, Mitglieder, Einladungen, Märkte, Feedback und Reisen gehören zu
   _Verwalten_.
 
 ### Sammel-Fenster
@@ -881,10 +1012,13 @@ dieses Gerät schickt, und nur an dieses (Spec 0013, REQ-003). Höchstens 3 in 1
 
 Die optionale Uhrzeit einer Aufgabe, zu der am Fälligkeitstag erinnert wird, wer dran ist („Müll
 rausbringen · 19:00“). In 5-Minuten-Schritten, Ortszeit des Haushalts; ✕ entfernt sie (Spec 0013,
-D42). Rezepte, Sammlungen und Aktivitäten haben keine Uhrzeit.
+D42). Rezepte und Sammlungen haben keine Uhrzeit; Restaurants und Aktivitäten haben die _Uhrzeit
+(Eintrag)_. Mit dem Schalter „Erinnern“ je Aufgabe (Spec 0027, REQ-009) lässt sich die Erinnerung
+ausschalten; die Uhrzeit wird dann nur angezeigt.
 
-- **Im Code:** `Chore.dueTime` (`TimeOfDay`, „HH:MM“), `chores.due_time`; anzeigen mit
-  `withTime`/`formatTime`, eintippen mit `TimeField` und `parseTimeInput`
+- **Im Code:** `Chore.dueTime` (`TimeOfDay`, „HH:MM“), `chores.due_time`; Schalter
+  „Erinnern“ `chores.remind_at_due_time` (Spec 0027); anzeigen mit `withTime`/`formatTime`, wählen mit
+  `TimeField` (Auswahl „Stunde“/„Minute“, Spec 0027, REQ-007)
 - **Nicht verwenden:** Termin, Deadline, Fälligkeitszeit
 
 ### Produktion

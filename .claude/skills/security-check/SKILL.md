@@ -90,7 +90,7 @@ scope is not useful.
 
 ### 5. Hand over
 
-Findings go into the "Nachweis" section of the feature's `plan.md` when this runs as part of a
+Findings go into the "Risiken" section of the feature's `spec.md` when this runs as part of a
 feature review. Otherwise report them and
 offer to fix — as a separate, agreed step.
 

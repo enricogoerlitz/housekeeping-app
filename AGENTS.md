@@ -84,18 +84,18 @@ nothing internal. `apps/app` composes all of them. Never import from an app into
 
 ## Workflow per feature
 
-| Step                  | Skill                                                                                                 | Output                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------- |
-| 1. Clarify the idea   | `brainstorming` (Superpowers)                                                                         | agreed scope, in conversation   |
-| 2. Write requirements | `/spec <slug>`                                                                                        | `docs/specs/NNNN-slug/spec.md`  |
-| 3. Plan               | `writing-plans` (Superpowers)                                                                         | `docs/specs/NNNN-slug/plan.md`  |
-| 4. Build              | `subagent-driven-development` or `executing-plans`, with `test-driven-development`                    | code + tests                    |
-| 5. Check the UI       | `/ui-verify`, then `impeccable` critique/audit                                                        | screenshots, findings           |
-| 6. Finish             | `verification-before-completion`, `/code-review`, `spec-auditor`, `/security-check` on critical paths | "Nachweis" section in `plan.md` |
+| Step                   | Skill                                                                              | Output                                    |
+| ---------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------- |
+| 1. Clarify the idea    | `brainstorming` (Superpowers)                                                      | agreed scope, in conversation             |
+| 2. Spec with tasks     | `/spec <slug>`                                                                     | `docs/specs/NNNN-slug/spec.md` (one file) |
+| 3. Build               | `subagent-driven-development` or `executing-plans`, with `test-driven-development` | code + tests                              |
+| 4. Finish              | `verification-before-completion`, `/code-review`                                   | ticked tasks and "Nachweis" in `spec.md`  |
+| 5. Critical paths only | `/security-check`, `spec-auditor`                                                  | findings fixed or noted under "Risiken"   |
+| 6. Once per wave       | `/ui-verify`, `impeccable`, full e2e                                               | screenshots, findings                     |
 
-**Path override for Superpowers:** its skills default to `docs/superpowers/…`. In this repository
-specs and plans always go to `docs/specs/NNNN-slug/spec.md` and `plan.md`, using the templates in
-`docs/specs/0000-template/`. This instruction takes precedence over the skill defaults.
+**One compact file per feature**, tasks and evidence included, no `plan.md` (overrides the
+Superpowers defaults `docs/superpowers/…`; specs 0001–0018 keep theirs). **Save tokens:** read
+only what a decision needs; mechanical subagent work goes to `model: "sonnet"`.
 
 Changes without a spec are fine when they do not change behaviour (refactors with green tests,
 dependency bumps, typos). Say that you are making one.

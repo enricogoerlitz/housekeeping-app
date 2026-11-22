@@ -42,7 +42,7 @@ docs/              Vision, Specs, ADRs, Architektur
 
 ## Arbeitsweise
 
-Jedes Feature startet als Spec in `docs/specs/NNNN-slug/` (`spec.md` + `plan.md`). Umgesetzt wird
+Jedes Feature startet als Spec in `docs/specs/NNNN-slug/spec.md` (eine Datei mit Aufgaben und Nachweis). Umgesetzt wird
 testgetrieben, mit Coding-Agents. Der Ablauf steht in [AGENTS.md](AGENTS.md).
 
 ### KI-Setup
