@@ -331,7 +331,8 @@ function DragGhost(props: {
   const theme = useTheme();
   const c = theme.colors;
   const snapshot = useSnapshot(props.controller);
-  if (snapshot.phase === 'idle') return null;
+  // A source without a preview (drawing a range over days) shows only the highlight.
+  if (snapshot.phase === 'idle' || snapshot.preview === null) return null;
   const hover = snapshot.hover;
   return (
     <Animated.View
@@ -362,7 +363,12 @@ function DragGhost(props: {
             props.labelStyle,
           ]}
         >
-          <Text variant="smallStrong" color={hover.allowed ? 'onAccent' : 'warn'} numberOfLines={1}>
+          <Text
+            variant="smallStrong"
+            color={hover.allowed ? 'onAccent' : 'warn'}
+            numberOfLines={1}
+            testID="drag-label"
+          >
             {hover.label}
           </Text>
         </Animated.View>
@@ -375,6 +381,8 @@ function DragGhost(props: {
 export interface DropTargetOptions {
   /** A month as one target, resolved to the day under the pointer (12 measurements, not 365). */
   grid?: DropGrid;
+  /** Not a target now, e.g. while something is dragged that it does not take. */
+  disabled?: boolean;
 }
 
 export interface DropTargetState {
@@ -398,19 +406,19 @@ export function useDropTarget(
   useLayoutEffect(() => {
     grid.current = options.grid;
   });
-  useLayoutEffect(
-    () =>
-      controller.register(id, {
-        measure: (done) => measureNode(ref.current, done),
-        get grid() {
-          return grid.current;
-        },
-      }),
-    [controller, id, ref],
-  );
+  const disabled = options.disabled === true;
+  useLayoutEffect(() => {
+    if (disabled) return undefined;
+    return controller.register(id, {
+      measure: (done) => measureNode(ref.current, done),
+      get grid() {
+        return grid.current;
+      },
+    });
+  }, [controller, id, ref, disabled]);
   const dimmed = useSyncExternalStore(
     controller.subscribe,
-    () => controller.getSnapshot().phase === 'dragging' && !controller.isAllowed(id),
+    () => !disabled && controller.getSnapshot().phase === 'dragging' && !controller.isAllowed(id),
   );
   return { dimmed, onLayout: controller.layoutChanged };
 }
@@ -419,4 +427,16 @@ export function useDropTarget(
 export function useDraggedSource(): string | null {
   const controller = useDragController();
   return useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().sourceId);
+}
+
+/**
+ * Like `useDraggedSource`, but only once the source was measured after lifting: a layout change
+ * it causes (e.g. empty slots that appear as targets) then does not shift where it was grabbed.
+ */
+export function useLiftedSource(): string | null {
+  const controller = useDragController();
+  return useSyncExternalStore(controller.subscribe, () => {
+    const snapshot = controller.getSnapshot();
+    return snapshot.sourceRect === null ? null : snapshot.sourceId;
+  });
 }

@@ -864,6 +864,11 @@ export interface KindLineProps {
   /** Muted text, e.g. the quiet household row. */
   quiet?: boolean;
   accessibilityLabel?: string;
+  /**
+   * A custom screen-reader action on the line, e.g. "Verschieben" as the way without dragging
+   * (spec 0016); it needs `onPress`.
+   */
+  accessibilityAction?: { label: string; onAction: () => void };
   testID?: string;
 }
 
@@ -910,6 +915,7 @@ export function KindLine(props: KindLineProps) {
       {props.trailing}
     </View>
   );
+  const action = props.accessibilityAction;
   if (!props.onPress) {
     return (
       <View testID={props.testID} accessibilityLabel={props.accessibilityLabel}>
@@ -922,6 +928,14 @@ export function KindLine(props: KindLineProps) {
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.accessibilityLabel ?? props.title}
+      accessibilityActions={action ? [{ name: 'move', label: action.label }] : undefined}
+      onAccessibilityAction={
+        action
+          ? (event) => {
+              if (event.nativeEvent.actionName === 'move') action.onAction();
+            }
+          : undefined
+      }
       onPress={props.onPress}
       style={(state) => {
         const { pressed, hovered, focused } = state as {

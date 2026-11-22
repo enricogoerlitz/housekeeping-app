@@ -12,7 +12,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import { planMove, type DropTarget, type MealPlanEntry } from '@housekeeping/core';
-import { toast } from '@housekeeping/ui';
+import { announce, toast } from '@housekeeping/ui';
 
 import { entryTitle } from '@/features/meal-plan/labels';
 import { OFFLINE_EDIT_HINT, undoAction } from '@/features/shell/offline';
@@ -22,6 +22,15 @@ const MOVE_FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
 
 /** What happened: moved, refused by the leftovers rule, the old place, or it failed. */
 export type MoveEntryResult = 'moved' | 'blocked' | 'same' | 'failed';
+
+/** The name of an entry in the plan, as moving and its texts use it ("Reste von Lasagne"). */
+export function useEntryTitle(): (entry: MealPlanEntry) => string {
+  const entries = usePlanEntries();
+  const recipesById = useRecipesById();
+  const restaurantsById = useRestaurantsById();
+  const activitiesById = useActivitiesById();
+  return (entry) => entryTitle(entry, recipesById, entries, restaurantsById, activitiesById);
+}
 
 /**
  * Moves a plan entry the way dragging and "Anderes Datum …" do (spec 0016, REQ-004, REQ-005):
@@ -36,9 +45,7 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
   const members = useMembers();
   const household = useHousehold();
   const today = useToday();
-  const recipesById = useRecipesById();
-  const restaurantsById = useRestaurantsById();
-  const activitiesById = useActivitiesById();
+  const titleOf = useEntryTitle();
 
   return (entry, target) => {
     const move = planMove({
@@ -48,12 +55,13 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
       absences,
       members,
       slots: household.mealSlots,
-      title: entryTitle(entry, recipesById, entries, restaurantsById, activitiesById),
+      title: titleOf(entry),
       today,
     });
     if (move.kind === 'same') return 'same';
     if (move.kind === 'blocked') {
       toast.show({ message: move.message });
+      announce(move.message);
       return 'blocked';
     }
     const restore = snapshot();
@@ -68,6 +76,7 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
       actionLabel: 'Rückgängig',
       onAction: undoAction(restore),
     });
+    announce(move.message);
     return 'moved';
   };
 }

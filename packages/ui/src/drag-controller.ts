@@ -18,6 +18,7 @@ import {
   EDGE_ZONE_WIDTH,
   autoScrollSpeed,
   edgePagerStep,
+  edgeZoneAt,
   type EdgePagerState,
   type EdgeZone,
   type Viewport,
@@ -174,6 +175,11 @@ interface Session<P> {
   container: Rect | null;
   scrollArea: Rect | null;
   pager: EdgePagerState;
+  /**
+   * False while the pointer stays in the zone it lifted in: holding still on a day at the edge
+   * (a trip of one day on a Monday) must not turn the page.
+   */
+  pagerArmed: boolean;
   lastFrame: number | null;
   lastMeasure: number;
   scrolling: boolean;
@@ -389,6 +395,7 @@ export function createDragController<P>(
         container: null,
         scrollArea: null,
         pager: EDGE_PAGER_IDLE,
+        pagerArmed: false,
         lastFrame: null,
         lastMeasure: 0,
         scrolling: false,
@@ -462,7 +469,11 @@ export function createDragController<P>(
         measureAll(time);
       }
 
-      if (callbacks.onPage) {
+      if (callbacks.onPage && !current.pagerArmed) {
+        const lifted = edgeZoneAt(current.request.point.x - area.x, size);
+        current.pagerArmed = lifted === null || edgeZoneAt(relative.x, size) !== lifted;
+      }
+      if (callbacks.onPage && current.pagerArmed) {
         const step = edgePagerStep(current.pager, { x: relative.x, time, viewport: size });
         current.pager = step.state;
         publish({ zone: step.state.zone });
