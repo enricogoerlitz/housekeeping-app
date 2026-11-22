@@ -9,8 +9,10 @@ import {
   type MealPlanEntry,
   type PlanEntryVariant,
   type RecipeKind,
+  relabelForDay,
   type RemindMinutes,
   RemindMinutesSchema,
+  type ShoppingItem,
   type TimeOfDay,
   type VariantSplit,
 } from '@housekeeping/core';
@@ -292,7 +294,11 @@ export function saveEntryFields(
   return confirmed;
 }
 
-/** Moves a dish to another day (or to "vorgemerkt" with date null) and optionally another meal. */
+/**
+ * Moves a dish to another day (or to "vorgemerkt" with date null) and optionally another meal.
+ * Its contributions on the shopping list stay and their Herkunft names the new day, "Mango-Curry
+ * (So)" (spec 0016, AC-017); all in the same call.
+ */
 export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): void {
   commit({ path: 'diff' }, () =>
     updateData((data) => {
@@ -310,8 +316,37 @@ export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): v
             ? { ...candidate, date, slotId: targetSlot, sort: siblings.length }
             : candidate,
         ),
+        items: entry.date === date ? data.items : relabelContributions(data.items, entryId, date),
       };
     }),
+  );
+}
+
+function relabelContributions(
+  items: readonly ShoppingItem[],
+  entryId: Id,
+  date: ISODate | null,
+): ShoppingItem[] {
+  return items.map((item) =>
+    item.contributions.some(
+      (contribution) =>
+        contribution.source.kind === 'recipe' && contribution.source.entryId === entryId,
+    )
+      ? {
+          ...item,
+          contributions: item.contributions.map((contribution) =>
+            contribution.source.kind === 'recipe' && contribution.source.entryId === entryId
+              ? {
+                  ...contribution,
+                  source: {
+                    ...contribution.source,
+                    label: relabelForDay(contribution.source.label, date),
+                  },
+                }
+              : contribution,
+          ),
+        }
+      : item,
   );
 }
 

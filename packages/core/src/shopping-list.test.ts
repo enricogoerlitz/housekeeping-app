@@ -9,6 +9,7 @@ import {
   MAX_ITEM_COUNT,
   originSummary,
   recipeSource,
+  relabelForDay,
   resolveShoppingStore,
   SHOPPER_ACTIVE_MINUTES,
 } from './shopping-list';
@@ -379,5 +380,22 @@ describe('resolveShoppingStore', () => {
 
   it('a default store that no longer exists → without store', () => {
     expect(resolveShoppingStore([aldi], undefined, rewe.id)).toBeUndefined();
+  });
+});
+
+describe('Herkunft after moving the plan entry (spec 0016)', () => {
+  it('AC-017: "Mango-Curry (Sa)" moved to Sunday reads "Mango-Curry (So)"', () => {
+    expect(relabelForDay('Mango-Curry (Sa)', '2026-11-22')).toBe('Mango-Curry (So)');
+  });
+
+  it('AC-017: a collection keeps both titles; parked, the day reads "vorgemerkt"', () => {
+    expect(relabelForDay('Grillabend · Kartoffelsalat (Sa)', null)).toBe(
+      'Grillabend · Kartoffelsalat (vorgemerkt)',
+    );
+    expect(relabelForDay('Dal (Linsen) (vorgemerkt)', '2026-11-23')).toBe('Dal (Linsen) (Mo)');
+  });
+
+  it('a label without a day stays as it is', () => {
+    expect(relabelForDay('Mango-Curry', '2026-11-22')).toBe('Mango-Curry');
   });
 });

@@ -5,6 +5,7 @@ import { listProgress, originLabel, summarizeItem } from './shopping';
 import type {
   ContributionSource,
   Id,
+  ISODate,
   MealPlanEntry,
   Member,
   Recipe,
@@ -29,13 +30,25 @@ export function recipeSource(
 ): Extract<ContributionSource, { kind: 'recipe' }> {
   const title = contained === undefined ? recipe.title : `${recipe.title} · ${contained.title}`;
   if (entry === undefined) return { kind: 'recipe', recipeId: recipe.id, label: title };
-  const day = entry.date === null ? 'vorgemerkt' : weekdayShort(entry.date);
+  const day = entryDayLabel(entry.date);
   return {
     kind: 'recipe',
     recipeId: recipe.id,
     entryId: entry.id,
     label: `${title} (${day})`,
   };
+}
+
+function entryDayLabel(date: ISODate | null): string {
+  return date === null ? 'vorgemerkt' : weekdayShort(date);
+}
+
+/**
+ * The label of a contribution whose plan entry moved to `date` (spec 0016, AC-017): the day at its
+ * end follows, "Mango-Curry (Sa)" → "Mango-Curry (So)". A label without a day stays.
+ */
+export function relabelForDay(label: string, date: ISODate | null): string {
+  return label.replace(/ \([^()]*\)$/, ` (${entryDayLabel(date)})`);
 }
 
 /**
