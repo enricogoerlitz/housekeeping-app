@@ -149,7 +149,7 @@ function WeekGrid(props: WeekViewProps) {
       </View>
       {stripes.length > 0 ? (
         <View style={{ flexDirection: 'row', gap: 4 }} testID="week-absence-row">
-          <RowLabel>Abwesenheit</RowLabel>
+          <RowLabel>Reise</RowLabel>
           <View style={{ flex: 1, gap: 3 }}>
             {stripes.map(({ stripe, segment }) => (
               <View key={stripe.key} style={{ position: 'relative', height: 26 }}>

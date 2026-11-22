@@ -108,7 +108,7 @@ const FIVE_TABS = [
   { value: 'alle', label: 'Alle' },
   { value: 'verlauf', label: 'Verlauf' },
   { value: 'vorlagen', label: 'Vorlagen' },
-  { value: 'abwesenheiten', label: 'Abwesenheiten' },
+  { value: 'reisen', label: 'Reisen' },
 ] as const;
 type FiveTab = (typeof FIVE_TABS)[number]['value'];
 

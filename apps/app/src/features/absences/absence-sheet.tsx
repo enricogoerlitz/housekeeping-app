@@ -54,7 +54,7 @@ import { AbsenceBagChips } from './absence-bag-chips';
 const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /**
- * "Abwesenheit eintragen" and "Abwesenheit bearbeiten" (spec 0010, REQ-010; D23): who, from, to
+ * "Reise eintragen" and "Reise bearbeiten" (spec 0010, REQ-010; D23): who, from, to
  * and a note. All members chosen is the whole household, otherwise one absence per person.
  * Editing a stripe edits all absences it stands for, in one change. Entering one also offers the
  * Reisetaschen; "Speichern · 21 Packstücke" creates the absence and its packing list in one call
@@ -146,7 +146,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       toast.show({ message: messageOf(failure) });
       return;
     }
-    toast.show({ message: editing ? 'Abwesenheit geändert' : 'Abwesenheit eingetragen' });
+    toast.show({ message: editing ? 'Reise geändert' : 'Reise eingetragen' });
     props.onClose();
   };
 
@@ -154,7 +154,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
     <Sheet
       visible
       onClose={props.onClose}
-      title={editing ? 'Abwesenheit bearbeiten' : 'Abwesenheit eintragen'}
+      title={editing ? 'Reise bearbeiten' : 'Reise eintragen'}
       testID="absence-sheet"
       size="m"
       footer={
@@ -229,7 +229,7 @@ export function AbsenceSheet(props: { stripe?: AbsenceStripe; onClose: () => voi
       </Stack>
       {confirming && droppedMessage ? (
         <TripConfirmDialog
-          title="Abwesenheit ändern?"
+          title="Reise ändern?"
           message={droppedMessage}
           confirmLabel="Speichern"
           needsNetwork

@@ -62,10 +62,10 @@ export function YearView(props: YearViewProps) {
         ))}
       </View>
       <View style={{ marginTop: 24 }}>
-        <Section title={`Abwesenheiten ${props.year}`} testID="year-absences">
+        <Section title={`Reisen ${props.year}`} testID="year-absences">
           {stripes.length === 0 ? (
             <Text color="muted" testID="year-absences-empty">
-              {`Keine Abwesenheiten ${props.year}`}
+              {`Keine Reisen ${props.year}`}
             </Text>
           ) : (
             <List>

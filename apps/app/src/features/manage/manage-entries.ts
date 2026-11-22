@@ -48,10 +48,10 @@ export const MANAGE_GROUPS: ManageGroup[] = [
       },
       {
         key: 'absences',
-        label: 'Abwesenheiten',
+        label: 'Reisen',
         icon: 'calendar-off',
-        href: '/abwesenheiten',
-        route: 'abwesenheiten',
+        href: '/reisen',
+        route: 'reisen',
       },
     ],
   },

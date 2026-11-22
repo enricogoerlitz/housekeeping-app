@@ -61,7 +61,7 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
         <EmptyState
           icon="luggage"
           title="Noch keine Reisetaschen"
-          text="Pack einmal zusammen, was in eine Tasche gehört, z. B. „Strand“ oder „Kulturbeutel“. Beim Eintragen einer Abwesenheit wird daraus die Packliste."
+          text="Pack einmal zusammen, was in eine Tasche gehört, z. B. „Strand“ oder „Kulturbeutel“. Beim Eintragen einer Reise wird daraus die Packliste."
           testID="bags-empty"
         >
           {newButton(true, 'Reisetasche anlegen')}

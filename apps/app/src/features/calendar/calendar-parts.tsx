@@ -39,7 +39,7 @@ export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, M
 }
 
 /**
- * Screen-reader text of a stripe: "Enrico abwesend, Urlaub Mallorca, 1.–4. Jan", with a packing
+ * Screen-reader text of a stripe: "Enrico unterwegs, Urlaub Mallorca, 1.–4. Jan", with a packing
  * list ", mit Packliste" (spec 0012, AC-046).
  */
 export function stripeA11y(
@@ -48,7 +48,7 @@ export function stripeA11y(
   hasPackingList = false,
 ): string {
   return [
-    `${stripeWho(stripe, membersById)} abwesend`,
+    `${stripeWho(stripe, membersById)} unterwegs`,
     stripe.note,
     dateRangeLabel(stripe.from, stripe.to),
     hasPackingList ? 'mit Packliste' : undefined,
@@ -97,7 +97,7 @@ export function AbsenceStripeView(props: {
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={stripeA11y(stripe, data.membersById, packing)}
-      accessibilityHint="Urlaubsseite öffnen"
+      accessibilityHint="Seite der Reise öffnen"
       onPress={() => props.onPress(stripe)}
       style={(state) => ({
         flexDirection: 'row',

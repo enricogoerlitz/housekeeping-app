@@ -137,11 +137,11 @@ export function CalendarScreen() {
         ]),
     {
       value: 'absence-new',
-      label: 'Abwesenheit eintragen',
+      label: 'Reise eintragen',
       disabled: online.disabled,
       hint: online.hint,
     },
-    { value: 'absences', label: 'Abwesenheiten' },
+    { value: 'absences', label: 'Reisen' },
   ];
   const onMore = (action: MoreAction) => {
     if (action === 'household-row') {
@@ -152,7 +152,7 @@ export function CalendarScreen() {
     } else if (action === 'absence-new') {
       if (!online.disabled) setNewAbsence(true);
     } else {
-      router.navigate('/abwesenheiten');
+      router.navigate('/reisen');
     }
   };
 
@@ -250,7 +250,7 @@ export function CalendarScreen() {
   // A stripe leads to its Urlaubsseite (spec 0012, AC-016, AC-046); editing happens there (✎).
   const openStripe = (stripe: AbsenceStripe) => {
     const id = stripe.absenceIds[0];
-    if (id) router.push({ pathname: '/kalender/urlaub/[id]', params: { id } });
+    if (id) router.push({ pathname: '/kalender/reise/[id]', params: { id } });
   };
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
   const lastSlotId = data.slots[data.slots.length - 1]?.id;

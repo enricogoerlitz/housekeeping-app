@@ -236,7 +236,7 @@ export function BagItemSheet(props: { itemId: Id; onClose: () => void }) {
         </Stack>
         <SwitchRow
           label="je Tag"
-          description="Die Anzahl gilt für jeden Tag der Abwesenheit, z. B. 1 T-Shirt je Tag."
+          description="Die Anzahl gilt für jeden Tag der Reise, z. B. 1 T-Shirt je Tag."
           value={perDay}
           disabled={online.disabled}
           onValueChange={(value) => {
