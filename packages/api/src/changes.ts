@@ -2,6 +2,7 @@
 // diffed per table (core diffRows). Pure; the engine decides where the operations go.
 import {
   diffRows,
+  isReminderPast,
   NEVER_SENT_COLUMNS,
   type Row,
   type RowOp,
@@ -376,5 +377,29 @@ export function isReflected(tables: TableRows, ops: readonly RowOp[]): boolean {
     return Object.entries(changes).every(
       ([column, value]) => NEVER_SENT.has(column) || sameJson(row[column], value),
     );
+  });
+}
+
+/**
+ * Undo after removing an entry inserts it again (spec 0017, REQ-006). A reminder whose moment has
+ * passed by then is left out of that insert: the database refuses a past reminder on insert
+ * (`reminder_in_past`), which would lose the whole undo, and it would not be sent anyway.
+ */
+export function withoutPassedReminders(
+  ops: readonly RowOp[],
+  now: Date,
+  timeZone: string,
+): RowOp[] {
+  return ops.map((op) => {
+    if (op.kind !== 'insert' || op.table !== 'meal_plan_entries') return op;
+    const { date, reminder_day_offset: offsetDays, reminder_at: at } = op.row;
+    if (typeof date !== 'string' || typeof offsetDays !== 'number' || typeof at !== 'string') {
+      return op;
+    }
+    if (!isReminderPast(date, { offsetDays, at: at.slice(0, 5) }, now, timeZone)) return op;
+    return {
+      ...op,
+      row: { ...op.row, reminder_day_offset: null, reminder_at: null, reminder_text: null },
+    };
   });
 }

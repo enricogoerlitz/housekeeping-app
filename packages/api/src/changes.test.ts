@@ -1,10 +1,10 @@
 // The diff of a command (changes.ts) for the packing tables (spec 0012, plan decisions 3 and 7):
 // rows the database deletes or clears itself (cascade, set null) and quantities its trigger
 // computes are shown locally but never sent, so deleting a parent stays one delete.
-import type { PackingItem } from '@housekeeping/core';
+import type { PackingItem, RowOp } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
-import { diffHousehold } from './changes';
+import { diffHousehold, withoutPassedReminders } from './changes';
 import { createInitialState, DEMO_HOUSEHOLD_ID } from './seed/demo';
 import type { HouseholdData } from './store';
 
@@ -168,5 +168,44 @@ describe('spec 0012: what the server computes (plan, decision 3)', () => {
       ),
     };
     expect(() => diffHousehold(before, bagRenamed, { mode: 'send' })).toThrow(/packing_list_bags/);
+  });
+});
+
+describe('spec 0017: undo inserts an entry again only with a reminder still to come', () => {
+  // 11:45 in Berlin on Friday 20.11.2026.
+  const NOW = new Date('2026-11-20T10:45:00Z');
+  const insert = (row: Record<string, unknown>): RowOp => ({
+    kind: 'insert',
+    table: 'meal_plan_entries',
+    row: { id: 'e1', date: '2026-11-20', ...row },
+  });
+
+  it('REQ-006: a passed reminder is dropped from the insert, the entry stays', () => {
+    const op = insert({ reminder_day_offset: 0, reminder_at: '11:30:00', reminder_text: 'Reis' });
+    expect(withoutPassedReminders([op], NOW, 'Europe/Berlin')).toEqual([
+      insert({ reminder_day_offset: null, reminder_at: null, reminder_text: null }),
+    ]);
+  });
+
+  it('AC-024: a reminder still to come stays; it is judged in the household zone', () => {
+    const op = insert({ reminder_day_offset: 0, reminder_at: '12:00:00' });
+    expect(withoutPassedReminders([op], NOW, 'Europe/Berlin')).toEqual([op]);
+    // 11:45 in Berlin is 10:45 in London: 11:30 is still to come there.
+    const london = insert({ reminder_day_offset: 0, reminder_at: '11:30:00' });
+    expect(withoutPassedReminders([london], NOW, 'Europe/London')).toEqual([london]);
+  });
+
+  it('leaves patches, other tables and entries without a reminder alone', () => {
+    const ops: RowOp[] = [
+      insert({ reminder_day_offset: null, reminder_at: null }),
+      {
+        kind: 'patch',
+        table: 'meal_plan_entries',
+        id: 'e1',
+        changes: { reminder_day_offset: 1, reminder_at: '08:00:00' },
+      },
+      { kind: 'insert', table: 'recipes', row: { id: 'r1', reminder_at: '08:00:00' } },
+    ];
+    expect(withoutPassedReminders(ops, NOW, 'Europe/Berlin')).toEqual(ops);
   });
 });
