@@ -25,10 +25,12 @@ import {
   addDays,
   collectionRecipeCountLabel,
   contentsInBook,
+  formatPickerDate,
   fuzzyIncludes,
   hasExactName,
   leftoverCandidates,
   leftoversDayLabel,
+  monthPickerStart,
   planCandidates,
   priceLabel,
   withNote,
@@ -67,6 +69,7 @@ import {
   useActivityForm,
 } from '@/features/activities/activity-form';
 import { activityPlaceLine } from '@/features/activities/labels';
+import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
 import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-form';
 import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -104,8 +107,8 @@ const TABS: { value: Tab; label: string }[] = [
 
 /** Hits per kind; the middle scrolls, the window keeps its size (AC-022). */
 const MAX_RESULTS = 60;
-/** Days "Einplanen" of an activity offers, from today. */
-const PLAN_AHEAD_DAYS = 14;
+/** Day chips "Einplanen" of an activity offers from today; "Anderes Datum …" reaches any day. */
+const DAY_CHIPS = 14;
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Das hat nicht geklappt.';
@@ -170,13 +173,19 @@ function NewHeading(props: { title: string; onBack: () => void }) {
   );
 }
 
-/** "Wann?" for "Einplanen" from an activity: a day of the next two weeks. */
+/**
+ * "Wann?" for "Einplanen" from an activity: a day of the next two weeks, or with "Anderes Datum …"
+ * any day in a month calendar (spec 0016, REQ-005, AC-020).
+ */
 function DayPicker(props: {
   value: ISODate | null;
   today: ISODate;
   onChange: (date: ISODate) => void;
 }) {
-  const days = Array.from({ length: PLAN_AHEAD_DAYS }, (_, offset) => addDays(props.today, offset));
+  const [picking, setPicking] = useState(false);
+  const days = Array.from({ length: DAY_CHIPS }, (_, offset) => addDays(props.today, offset));
+  // A day beyond the chips is shown on the last chip, so the choice stays visible.
+  const other = props.value !== null && !days.includes(props.value) ? props.value : undefined;
   return (
     <View style={{ gap: 6 }}>
       <FieldLabel>Wann?</FieldLabel>
@@ -195,7 +204,26 @@ function DayPicker(props: {
             testID={`add-entry-day-${date}`}
           />
         ))}
+        <Chip
+          label={other ? formatPickerDate(other) : 'Anderes Datum …'}
+          icon="calendar-days"
+          selected={picking || other !== undefined}
+          onPress={() => setPicking(!picking)}
+          testID="add-entry-day-other"
+        />
       </ScrollView>
+      {picking ? (
+        <PlanDateCalendar
+          month={monthPickerStart(props.value, props.today)}
+          today={props.today}
+          marked={props.value}
+          onSelect={(date) => {
+            props.onChange(date);
+            setPicking(false);
+          }}
+          testID="add-entry-date"
+        />
+      ) : null}
     </View>
   );
 }
