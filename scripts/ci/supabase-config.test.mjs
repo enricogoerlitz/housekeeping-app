@@ -283,13 +283,13 @@ describe(
         recursive: true,
       });
       writeFileSync(path.join(workdir, 'supabase/config.toml'), text);
-      // In CI (CI, GITHUB_ACTIONS, …) the CLI prints a human summary instead of its JSON report;
-      // a minimal environment keeps the JSON report everywhere.
-      const env = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' };
-      const result = spawnSync(cli, ['config', 'validate', '--workdir', workdir], {
-        encoding: 'utf8',
-        env,
-      });
+      // The report format is requested explicitly: by default the CLI prints text (JSON only when
+      // it detects an agent), so CI and terminals would otherwise differ.
+      const result = spawnSync(
+        cli,
+        ['config', 'validate', '--output-format', 'json', '--workdir', workdir],
+        { encoding: 'utf8' },
+      );
       return {
         status: result.status,
         report: JSON.parse(result.stdout.slice(result.stdout.indexOf('{'))),
