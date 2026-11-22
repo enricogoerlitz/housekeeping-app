@@ -1,7 +1,6 @@
 import type { Page } from '@playwright/test';
 
 import {
-  ENRICO,
   NADJA,
   back,
   day,
@@ -132,8 +131,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await tid(page, 'chores-tab-all').click();
     const row = tid(page, 'chores-all').locator(CHORE_ROW).filter({ hasText: 'Staubsaugen' });
     await expect(row).toHaveCount(1);
-    await expect(row.locator(`[role="img"][aria-label="${ENRICO}"]`)).toHaveCount(1);
-    await expect(row.locator(`[role="img"][aria-label="${NADJA}"]`)).toHaveCount(1);
+    // Spec 0018, AC-016: an alternating chore shows only the person whose turn it is.
+    await expect(row.locator('[role="img"][aria-label^="dran: "]')).toHaveCount(1);
+    await expect(row.locator(`[role="img"][aria-label="${NADJA}"]`)).toHaveCount(0);
 
     await tid(page, 'chore-new').click();
     await tid(page, 'chore-save').click();
