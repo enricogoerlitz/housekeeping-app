@@ -85,8 +85,8 @@ Dann        zeigt die Rezeptseite wie bisher „Noch keine Zutaten“
 
 ### REQ-002 — Kochmodus mit den gewählten Portionen (E-02)
 
-> Der Kochmodus rechnet die Mengen mit den Portionen, die beim Öffnen gewählt sind, auf der
-> Rezeptseite wie aus einem Planeintrag.
+> Der Kochmodus rechnet die Mengen mit den Portionen, die beim Öffnen auf der Rezeptseite gewählt
+> sind.
 
 **Offline:** offline vollständig (nur Anzeige).
 
@@ -100,13 +100,9 @@ Dann        zeigt der Kochmodus „225 g Linsen“
 Und         der Kochmodus nennt „6 Portionen“
 ```
 
-**AC-005 — aus einem Planeintrag**
-
-```gherkin
-Angenommen  im Kalender steht am Mittwoch abends „Lasagne“ mit 8 Portionen
-Wenn        ich daraus den Kochmodus öffne
-Dann        zeigt er „300 g Linsen“ und nennt „8 Portionen“
-```
+**AC-005 — aus einem Planeintrag** — verworfen am 22.11.2026: Die App hat keinen Weg von einem
+Planeintrag in den Kochmodus, nur „Kochen“ auf der Rezeptseite. Einen neuen Einstieg zu schaffen ist
+eine Gestaltungsfrage (Nicht-Ziel dieser Spec).
 
 **AC-006 — Variante bleibt**
 
