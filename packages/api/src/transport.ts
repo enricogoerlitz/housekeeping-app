@@ -430,9 +430,11 @@ export interface Transport {
    * Deletes a recipe (the only way, E2): entries up to `today` (the device's date, at most one day
    * off the server's) become free text, later and noted ones go, ratings and favourites go; the
    * server keeps a snapshot for 1 hour. `recipe_not_found` when missing or foreign,
-   * `invalid_value` for a date too far off.
+   * `invalid_value` for a date too far off. With `withList` ("Zutaten auch von der Liste nehmen",
+   * spec 0023, Decision 15) the contributions of the entries that go leave open items in the same
+   * transaction and come back with restoreRecipe.
    */
-  deleteRecipe(recipeId: string, today: string): Promise<DeletedRecipe>;
+  deleteRecipe(recipeId: string, today: string, withList?: boolean): Promise<DeletedRecipe>;
   /**
    * "Rückgängig" of delete_recipe, only for the person who deleted, within 1 hour; false when the
    * recipe exists again. `recipe_not_restorable` otherwise; a check error (e.g.

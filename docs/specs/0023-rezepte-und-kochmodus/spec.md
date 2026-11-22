@@ -390,9 +390,15 @@ Alle ENTSCHIEDEN von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.20
 15. **Zutaten beim Löschen eines Rezepts oder einer Sammlung** (Claude, 22.11.2026): Entfallen
     künftige Einträge, bietet der Hinweis dieselbe Wahl wie beim Löschen eines Eintrags („Zutaten
     auch von der Liste nehmen“, Spec 0021); gleiche Funktion aus `packages/core`.
-16. OFFEN: Entscheidung 15 (Wahl „Zutaten auch von der Liste nehmen“ im Lösch-Hinweis) braucht die
-    Funktion aus Spec 0021, die beim Bau von 0023 noch nicht auf `develop` war; sie kommt mit dem
-    Merge von 0021 bzw. in Spec 0024 dazu. Der Lösch-Hinweis selbst (REQ-012) ist gebaut.
+16. ERLEDIGT (22.11.2026, nach dem Merge von 0021): Entscheidung 15 ist gebaut. Stehen Zutaten der
+    entfallenden Einträge auf offenen Posten, fragt „Löschen“ zuerst in einem kleinen Fenster wie
+    beim Entfernen eines Eintrags: „Lasagne löschen?“, „Für 2 geplante Einträge stehen 3 Zutaten auf
+    der Einkaufsliste.“, „Zutaten auch von der Liste nehmen“ (Hauptknopf), „Nur löschen“,
+    „Abbrechen“; ohne solche Zutaten löscht es wie bisher ohne Frage. Danach „Lasagne gelöscht · 2
+    geplante Einträge entfallen · 3 Zutaten von der Liste genommen“. Die Zutaten gehen im selben
+    Aufruf (`delete_recipe(…, with_list)` mit `replace_entry_contributions` aus 0021), „Rückgängig“
+    bringt sie mit den Einträgen zurück (`restore_recipe`, `restore_cleared_items`). Zählen und
+    Text in `packages/core` (`entriesOnList`, `deletionListQuestion`, `deletedNotice`).
 17. Beim Bau entschieden (Claude, 22.11.2026, einfachste Lösung): Gruppe ≤ 60 Zeichen ist der Check
     `recipes_ingredients_group_valid` (23514) statt einer Erweiterung des Triggers
     `recipes_check_ingredients`; Schritt-Timer der Check `recipes_steps_timer_valid`.
@@ -434,16 +440,17 @@ Alle ENTSCHIEDEN von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.20
 
 ## Risiken
 
-| Risiko                                              | Gegenmaßnahme                                                              | Test                                                                                        |
-| --------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `javascript:`/`data:`-Link wird als Skript geöffnet | nur http(s) auf Gerät und in DB; vor dem Öffnen erneut geprüft; `noopener` | core `web-link.test.ts` (AC-033, AC-035), pgTAP `recipe_links.test.sql`                     |
-| Seite greift über `window.opener` auf die App zu    | `noopener`, `noreferrer`, `opener = null`                                  | ui `open-in-new-tab.test.ts`                                                                |
-| App oder Server ruft fremde Seite ab (SSRF, Spur)   | kein Abruf, keine Vorschau; Edge Functions unverändert                     | `/security-check` 22.11.2026: keine Befunde über „niedrig“ (s. u.)                          |
-| Fremder Haushalt liest oder ändert Links            | bestehende RLS auf `recipes`                                               | pgTAP `recipe_links.test.sql` „AC-036 …“ (fremder Haushalt, `anon`, `apply_changes`)        |
-| Riesige oder viele Links                            | Check ≤ 10, ≤ 2000/80 Zeichen                                              | pgTAP „AC-035 …“, „AC-034 …“                                                                |
-| Migration bricht Seeds oder Sync                    | Seeds ohne `source`, Allowlist und Cache-Version 11                        | `supabase test db` grün, api `backend.test.ts` „spec 0023: version 11 …“, `seed-sql` Check  |
-| Löschen entfernt mehr als angezeigt                 | Zahl aus `recipeDeletionEffect`, dieselbe Regel wie der Server             | core `recipe-deletion.test.ts` (AC-049–AC-052), api `commands-recipes-0023.backend.test.ts` |
-| Server lehnt Speichern ab                           | Overlay springt zurück, Hinweis (ADR-0011)                                 | api „AC-004 (Fehler) …“, „AC-008 (Offline) …“                                               |
+| Risiko                                              | Gegenmaßnahme                                                              | Test                                                                                          |
+| --------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `javascript:`/`data:`-Link wird als Skript geöffnet | nur http(s) auf Gerät und in DB; vor dem Öffnen erneut geprüft; `noopener` | core `web-link.test.ts` (AC-033, AC-035), pgTAP `recipe_links.test.sql`                       |
+| Seite greift über `window.opener` auf die App zu    | `noopener`, `noreferrer`, `opener = null`                                  | ui `open-in-new-tab.test.ts`                                                                  |
+| App oder Server ruft fremde Seite ab (SSRF, Spur)   | kein Abruf, keine Vorschau; Edge Functions unverändert                     | `/security-check` 22.11.2026: keine Befunde über „niedrig“ (s. u.)                            |
+| Fremder Haushalt liest oder ändert Links            | bestehende RLS auf `recipes`                                               | pgTAP `recipe_links.test.sql` „AC-036 …“ (fremder Haushalt, `anon`, `apply_changes`)          |
+| Riesige oder viele Links                            | Check ≤ 10, ≤ 2000/80 Zeichen                                              | pgTAP „AC-035 …“, „AC-034 …“                                                                  |
+| Migration bricht Seeds oder Sync                    | Seeds ohne `source`, Allowlist und Cache-Version 11                        | `supabase test db` grün, api `backend.test.ts` „spec 0023: version 11 …“, `seed-sql` Check    |
+| Löschen entfernt mehr als angezeigt                 | Zahl aus `recipeDeletionEffect`, dieselbe Regel wie der Server             | core `recipe-deletion.test.ts` (AC-049–AC-052), api `commands-recipes-0023.backend.test.ts`   |
+| Löschen mit Liste nimmt fremde/abgehakte Beiträge   | nur Beiträge der entfallenden Einträge auf offenen Posten, ein Aufruf      | pgTAP `recipe_deletion_list.test.sql`, api `commands-recipes.backend.test.ts` „Decision 15 …“ |
+| Server lehnt Speichern ab                           | Overlay springt zurück, Hinweis (ADR-0011)                                 | api „AC-004 (Fehler) …“, „AC-008 (Offline) …“                                                 |
 
 `/security-check` (22.11.2026, Diff gegen `develop`): [hinweis] `is_web_url` lässt IP- und
 IDN-Rechnernamen zu, ohne Folgen, weil nie abgerufen wird und der Host unter der Bezeichnung steht;

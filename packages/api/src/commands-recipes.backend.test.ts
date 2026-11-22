@@ -30,12 +30,14 @@ import {
   deleteRecipe,
   discardRecipePhoto,
   rateRecipe,
+  recipeDeletionListShare,
   replaceIngredient,
   saveRecipeSection,
   toggleFavorite,
 } from './commands-recipes';
 import { updateArticle } from './commands-articles';
 import { addPlanEntry } from './commands-plan';
+import { addPlannedToList, pantryCheckRows } from './commands-shopping';
 import { starterCatalogEntries } from './starter/entries';
 import { ENRICO, NADJA, SLOT_DINNER } from './seed/demo';
 import { getData, OfflineError, snapshot } from './store';
@@ -727,6 +729,60 @@ describe('spec 0008: deleting a recipe (REQ-012, E3 to E5)', () => {
     expect(fx.nadjaData(nadja).planEntries.find((entry) => entry.id === monday)).toMatchObject({
       kind: 'text',
       text: 'Halloumi-Pfanne',
+    });
+  });
+
+  describe('spec 0023, Decision 15: "Zutaten auch von der Liste nehmen"', () => {
+    const ofEntry = (entryId: string) =>
+      getData().items.flatMap((item) =>
+        item.contributions.filter(
+          (c) => c.source.kind === 'recipe' && c.source.entryId === entryId,
+        ),
+      );
+    const onServer = (entryId: string) =>
+      fx.server
+        .rows(H, 'shopping_contributions')
+        .filter((row) => (row.source as { entryId?: string } | null)?.entryId === entryId);
+    async function withList() {
+      const arranged = await arrange();
+      addPlannedToList(pantryCheckRows([arranged.saturday]).filter((row) => !row.isPantry));
+      await fx.settle();
+      fx.clearCalls();
+      return arranged;
+    }
+
+    it('Decision 15: names the entries that go and their ingredients on the list', async () => {
+      const { recipe, saturday } = await withList();
+      expect(recipeDeletionListShare(recipe.id)).toEqual({
+        entries: 1,
+        ingredients: ofEntry(saturday).length,
+      });
+      expect(ofEntry(saturday).length).toBeGreaterThan(0);
+      expect(recipeDeletionListShare('rec-unknown')).toBeUndefined();
+    });
+
+    it('Decision 15: with the list the ingredients go in the one delete_recipe call; undo brings them back', async () => {
+      const { recipe, saturday } = await withList();
+      const count = onServer(saturday).length;
+      const restore = snapshot();
+      expect(deleteRecipe(recipe.id, { withList: true })).toMatchObject({ ingredients: count });
+      expect(ofEntry(saturday)).toEqual([]);
+      await fx.settle();
+      expect(fx.calls).toEqual([{ fn: 'deleteRecipe', args: [recipe.id, TODAY, true] }]);
+      expect(onServer(saturday)).toEqual([]);
+      restore();
+      await fx.settle();
+      expect(onServer(saturday)).toHaveLength(count);
+      expect(ofEntry(saturday)).toHaveLength(count);
+    });
+
+    it('Decision 15: "Nur löschen" keeps the ingredients on the list', async () => {
+      const { recipe, saturday } = await withList();
+      const count = onServer(saturday).length;
+      expect(deleteRecipe(recipe.id)).toMatchObject({ ingredients: 0 });
+      await fx.settle();
+      expect(fx.calls).toEqual([{ fn: 'deleteRecipe', args: [recipe.id, TODAY] }]);
+      expect(onServer(saturday)).toHaveLength(count);
     });
   });
 

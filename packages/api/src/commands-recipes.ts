@@ -1,6 +1,7 @@
 import {
   addIngredientRows,
   addPastedRows,
+  entriesOnList,
   findArticleByName,
   ingredientRowOf,
   isHalfStar,
@@ -9,6 +10,7 @@ import {
   parseIngredientBlock,
   placeIngredientRow,
   recipeDeletionEffect,
+  removeEntryContributions,
   removeIngredient,
   resolveIngredientArticles,
   sectionDraft,
@@ -333,6 +335,11 @@ export interface RecipeDeletion {
    * core deletedNotice. 0 for a collection.
    */
   collections: number;
+  /**
+   * How many items of the list lost ingredients of those entries ("Zutaten auch von der Liste
+   * nehmen", spec 0023, Decision 15); 0 without it.
+   */
+  ingredients: number;
   /** The recipe's own photo; discardRecipePhoto removes it once "Rückgängig" expired (E5). */
   photoPath?: string;
   /** Resolves once the server deleted the recipe; rejects when it refused (the recipe is back). */
@@ -349,17 +356,25 @@ export interface RecipeDeletion {
  * also when restore_recipe answers false.
  * Throws OfflineError; undefined for a recipe that is not there.
  */
-export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
+export function deleteRecipe(
+  recipeId: Id,
+  options: { withList?: boolean } = {},
+): RecipeDeletion | undefined {
   const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
   if (!recipe) return undefined;
   if (isOffline()) throw new OfflineError();
   const today = getState().today;
   const data = getData();
   const effect = recipeDeletionEffect(data.planEntries, recipe, today, data.collectionRecipes);
+  const withList = options.withList === true;
+  const ingredients = withList ? entriesOnList(data.items, effect.removedIds) : 0;
   const confirmed = commitConfirmed(
     {
       path: 'rpc',
-      send: (transport) => transport.deleteRecipe(recipeId, today),
+      send: (transport) =>
+        withList
+          ? transport.deleteRecipe(recipeId, today, true)
+          : transport.deleteRecipe(recipeId, today),
       // false: the recipe is back by other means (same id, same household). Nothing was
       // restored, so "Rückgängig" did not happen; it is refused like any other refusal.
       inverse: async (transport) => {
@@ -386,6 +401,13 @@ export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
           planEntries: current.planEntries.flatMap((entry) =>
             removed.has(entry.id) ? [] : [converted.get(entry.id) ?? entry],
           ),
+          // Spec 0023, Decision 15: as delete_recipe does it with with_list.
+          items: withList
+            ? now.removedIds.reduce(
+                (items, entryId) => removeEntryContributions(items, entryId),
+                current.items,
+              )
+            : current.items,
         };
       }),
   );
@@ -394,8 +416,31 @@ export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
     recipeId,
     entries: effect.removedIds.length,
     collections: effect.collections,
+    ingredients,
     photoPath: recipe.photoPath,
     confirmed,
+  };
+}
+
+/**
+ * Before "Löschen" (spec 0023, Decision 15): the planned entries that would go and how many open
+ * items hold their ingredients; undefined for a recipe that is not there.
+ */
+export function recipeDeletionListShare(
+  recipeId: Id,
+): { entries: number; ingredients: number } | undefined {
+  const data = getData();
+  const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) return undefined;
+  const effect = recipeDeletionEffect(
+    data.planEntries,
+    recipe,
+    getState().today,
+    data.collectionRecipes,
+  );
+  return {
+    entries: effect.removedIds.length,
+    ingredients: entriesOnList(data.items, effect.removedIds),
   };
 }
 

@@ -345,8 +345,12 @@ export function createSupabaseTransport(
         p_source_id: sourceId,
         p_target_id: targetId,
       }),
-    deleteRecipe: (recipeId, today) =>
-      parsed(DeletedRecipeSchema, 'delete_recipe', { recipe_id: recipeId, today }),
+    deleteRecipe: (recipeId, today, withList) =>
+      parsed(DeletedRecipeSchema, 'delete_recipe', {
+        recipe_id: recipeId,
+        today,
+        ...(withList ? { with_list: true } : {}),
+      }),
     restoreRecipe: (recipeId) =>
       parsed(RestoredRecipeSchema, 'restore_recipe', { recipe_id: recipeId }),
     setRecipeFavorite: (recipeId, favorite) =>

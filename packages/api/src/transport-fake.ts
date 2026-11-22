@@ -399,6 +399,8 @@ interface RecipeDeletion {
   removed: Row[];
   /** Spec 0009: its rows as a collection and as a contained recipe, in full. */
   collectionRecipes: Row[];
+  /** Spec 0023, Decision 15: the contributions taken off the list, as restore_cleared_items takes. */
+  list: ClearedItems;
 }
 /** A snapshot can be restored for 1 hour. */
 const RESTORABLE_MS = 60 * 60 * 1000;
@@ -1956,9 +1958,72 @@ export function createFakeServer(): FakeServer {
     return { stars };
   }
 
+  /**
+   * restore_cleared_items within a transaction (also restore_recipe, spec 0023): one item per
+   * article; an open entry joins the item of today and reopens it when it is checked under another
+   * id, a checked entry stays out. Returns how many entries brought something back.
+   */
+  function restoreItemsInto(
+    tables: TableRows,
+    householdId: string,
+    items: ClearedItems,
+  ): [TableRows, number] {
+    let next = tables;
+    let restored = 0;
+    for (const { item, contributions } of items) {
+      const id = String(item.id);
+      if (item.household_id !== householdId || item.article_id == null) {
+        throw reject('invalid_entries');
+      }
+      // Missing = checked (like the RPC).
+      const checked = item.checked == null ? true : item.checked === true;
+      // One item per article (spec 0025): an open entry joins the item of today and
+      // reopens it when it is checked under another id; a checked entry stays out.
+      const existing = Object.values(next.shopping_items ?? {}).find(
+        (other) => other.article_id === item.article_id,
+      );
+      let targetId: string | undefined;
+      let inserted = false;
+      if (!existing) {
+        next = withRow(next, 'shopping_items', {
+          ...item,
+          id,
+          checked,
+          checked_at: checked ? notLater(item.checked_at) : null,
+          checked_by: checked ? (item.checked_by ?? null) : null,
+          check_seq: item.check_seq ?? 0,
+          not_available: item.not_available ?? false,
+          checked_on_list: checked && item.checked_on_list === true,
+          created_at: notLater(item.created_at),
+        });
+        inserted = true;
+        targetId = id;
+      } else if (!checked || existing.id === id) {
+        if (!checked && existing.checked === true && existing.id !== id) {
+          next = reopened(next, existing);
+        }
+        targetId = existing.id;
+      }
+      let added = 0;
+      for (const contribution of targetId === undefined ? [] : (contributions ?? [])) {
+        const contributionId = String(contribution.id);
+        if (next.shopping_contributions?.[contributionId]) continue;
+        next = withRow(next, 'shopping_contributions', {
+          ...contribution,
+          id: contributionId,
+          item_id: targetId,
+          created_at: notLater(contribution.created_at),
+        });
+        added += 1;
+      }
+      if (inserted || added > 0) restored += 1;
+    }
+    return [next, restored];
+  }
+
   // ---------- delete_recipe and restore_recipe (spec 0008, E3 to E6) ----------
 
-  function deleteRecipe(userId: string, recipeId: string, today: string) {
+  function deleteRecipe(userId: string, recipeId: string, today: string, withList = false) {
     const householdId = locate(userId, 'recipes', recipeId);
     if (!householdId) throw new TransportError('permanent', 'recipe_not_found', 500);
     const current = new Date(Date.now()).toISOString().slice(0, 10);
@@ -2023,8 +2088,28 @@ export function createFakeServer(): FakeServer {
         converted,
         removed: later,
         collectionRecipes,
+        list: [],
       };
       let tables = before;
+      if (withList && found.length > 0) {
+        // Spec 0023, Decision 15: the contributions of the entries that go, on open items, as
+        // restore_cleared_items takes them back; then off the list (replace_entry_contributions).
+        const ids = new Set(found);
+        const ofRemoved = (row: Row) => {
+          const source = row.source as { kind?: string; entryId?: string } | null;
+          return source?.kind === 'recipe' && ids.has(String(source.entryId));
+        };
+        deletion.list = Object.values(before.shopping_items ?? {})
+          .filter((item) => item.checked !== true)
+          .map((item) => ({
+            item,
+            contributions: Object.values(before.shopping_contributions ?? {}).filter(
+              (row) => row.item_id === item.id && ofRemoved(row),
+            ),
+          }))
+          .filter((entry) => entry.contributions.length > 0);
+        [tables] = replaceEntryContributions(tables, householdId, found, []);
+      }
       for (const entry of converted) {
         const row = tables.meal_plan_entries?.[entry.id];
         if (!row) continue;
@@ -2124,6 +2209,7 @@ export function createFakeServer(): FakeServer {
           cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
         });
       }
+      if (deletion.list.length > 0) [tables] = restoreItemsInto(tables, householdId, deletion.list);
       for (const entry of deletion.converted) {
         const row = tables.meal_plan_entries?.[entry.id];
         if (!row || row.kind !== 'text' || row.recipe_id != null || row.text !== entry.new_text) {
@@ -2313,59 +2399,7 @@ export function createFakeServer(): FakeServer {
         run(userId, 'restore_cleared_items', () => {
           const householdId = memberOf(userId, requestedHouseholdId);
           assertRestorableSize(items);
-          return transaction(householdId, (tables) => {
-            let next = tables;
-            let restored = 0;
-            for (const { item, contributions } of items) {
-              const id = String(item.id);
-              if (item.household_id !== householdId || item.article_id == null) {
-                throw reject('invalid_entries');
-              }
-              // Missing = checked (like the RPC).
-              const checked = item.checked == null ? true : item.checked === true;
-              // One item per article (spec 0025): an open entry joins the item of today and
-              // reopens it when it is checked under another id; a checked entry stays out.
-              const existing = Object.values(next.shopping_items ?? {}).find(
-                (other) => other.article_id === item.article_id,
-              );
-              let targetId: string | undefined;
-              let inserted = false;
-              if (!existing) {
-                next = withRow(next, 'shopping_items', {
-                  ...item,
-                  id,
-                  checked,
-                  checked_at: checked ? notLater(item.checked_at) : null,
-                  checked_by: checked ? (item.checked_by ?? null) : null,
-                  check_seq: item.check_seq ?? 0,
-                  not_available: item.not_available ?? false,
-                  checked_on_list: checked && item.checked_on_list === true,
-                  created_at: notLater(item.created_at),
-                });
-                inserted = true;
-                targetId = id;
-              } else if (!checked || existing.id === id) {
-                if (!checked && existing.checked === true && existing.id !== id) {
-                  next = reopened(next, existing);
-                }
-                targetId = existing.id;
-              }
-              let added = 0;
-              for (const contribution of targetId === undefined ? [] : (contributions ?? [])) {
-                const contributionId = String(contribution.id);
-                if (next.shopping_contributions?.[contributionId]) continue;
-                next = withRow(next, 'shopping_contributions', {
-                  ...contribution,
-                  id: contributionId,
-                  item_id: targetId,
-                  created_at: notLater(contribution.created_at),
-                });
-                added += 1;
-              }
-              if (inserted || added > 0) restored += 1;
-            }
-            return [next, restored];
-          });
+          return transaction(householdId, (tables) => restoreItemsInto(tables, householdId, items));
         }),
 
       removeContributions: (ids) =>
@@ -2631,8 +2665,10 @@ export function createFakeServer(): FakeServer {
           return result;
         }),
 
-      deleteRecipe: (recipeId, today) =>
-        run(userId, 'delete_recipe', () => deleteRecipe(userId, recipeId, today)),
+      deleteRecipe: (recipeId, today, withList) =>
+        run(userId, 'delete_recipe', () =>
+          deleteRecipe(userId, recipeId, today, withList === true),
+        ),
       restoreRecipe: (recipeId) =>
         run(userId, 'restore_recipe', () => restoreRecipe(userId, recipeId)),
 
