@@ -5,70 +5,55 @@ datum: JJJJ-MM-TT
 
 # NNNN — Feature-Titel
 
-## Problem
-
-Welches Problem wird für wen gelöst? Zwei bis vier Sätze aus Sicht der Nutzenden. Keine Lösung,
-kein Technikbegriff.
+**Quelle:** Wunsch oder Befund (z. B. ER-09, K-01). **Kritischer Pfad:** nein · ja: Migration,
+Löschen, RLS, Anmeldung, Sync, Infrastruktur.
 
 ## Ziel
 
-Woran erkennt man, dass es gelöst ist? Beobachtbar formuliert.
+Zwei bis vier Sätze aus Sicht der Nutzenden: welches Problem, woran man erkennt, dass es gelöst
+ist. Keine Technik.
 
 ## Nicht-Ziele
 
-Was dieses Feature ausdrücklich **nicht** tut. Mindestens zwei Punkte.
-
 - …
 - …
 
-## Anforderungen und Akzeptanzkriterien
+## Schon erledigt
 
-### REQ-001 — Kurztitel
+Nur wenn es das gibt: eine Zeile je Punkt mit Beleg (Spec, Datei).
 
-> Ein Satz, was gefordert ist.
+## Anforderungen
 
-**Offline:** offline vollständig · offline lesend · nur online — mit Begründung, wenn nicht
-vollständig.
+### Bereich
 
-**AC-001**
+**REQ-001 — Kurztitel.** Ein Satz, was gefordert ist. Quelle: … Offline: offline vollständig ·
+offline lesend · nur online (mit Grund).
 
-```gherkin
-Angenommen  <Ausgangszustand>
-Wenn        <Handlung>
-Dann        <beobachtbares Ergebnis>
-```
+- AC-001: Angenommen <Ausgangszustand> · Wenn <Handlung> · Dann <beobachtbares Ergebnis>
+- AC-002: Angenommen … · Wenn <Handlung, die schiefgehen kann> · Dann <definierte Reaktion>
 
-**AC-002 — Rand- oder Fehlerfall**
+## Entscheidungen
 
-```gherkin
-Angenommen  <Ausgangszustand>
-Wenn        <Handlung, die schiefgehen kann>
-Dann        <definierte Reaktion>
-```
-
-### REQ-002 — …
-
-## Offline und Konflikte
-
-Was passiert, wenn zwei Geräte offline dasselbe ändern? Welche Regel aus
-`docs/architecture/sync.md` greift? Was sieht man, solange etwas noch nicht synchronisiert ist?
-
-## Plattformen
-
-Besonderheiten für iPad, Web, Android (z. B. zweispaltig, Zurück-Taste, Tastaturkürzel).
+1. Entscheidung in ein, zwei Zeilen, mit Grund. Ändert sie ein AC einer älteren Spec, steht das
+   hier („ersetzt Spec 0006, AC-012“).
+2. OFFEN: Frage, Annahme, mit der gebaut wird.
 
 ## Daten
 
-Welche Daten werden gelesen, geschrieben, gelöscht? Personenbezogene Daten?
+Was gelesen, geschrieben, gelöscht wird; Schema-Änderungen; personenbezogene Daten.
+Entfällt: …
 
-## Offene Fragen
+## Risiken
 
-| #   | Frage | Optionen    | Empfehlung | Status                           |
-| --- | ----- | ----------- | ---------- | -------------------------------- |
-| 1   | …     | A: … / B: … | A, weil …  | OFFEN · BLOCKER · ENTSCHIEDEN: … |
+Nur bei kritischem Pfad.
 
-## Rückverfolgbarkeit
+| Risiko                                       | Gegenmaßnahme | Test      |
+| -------------------------------------------- | ------------- | --------- |
+| Mitglied eines fremden Haushalts sieht Daten | RLS           | pgTAP `…` |
 
-| REQ     | AC             | Task (plan.md) | Test |
-| ------- | -------------- | -------------- | ---- |
-| REQ-001 | AC-001, AC-002 | —              | —    |
+## Umsetzung
+
+- [ ] 1. Aufgabe (AC-001, AC-002)
+- [ ] 2. …
+- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün
+      (+ `pnpm exec supabase test db`, wenn die Datenbank betroffen ist)

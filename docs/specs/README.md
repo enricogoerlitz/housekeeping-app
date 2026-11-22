@@ -1,6 +1,6 @@
 # Specs
 
-Ein Ordner je Feature: `NNNN-slug/` mit `spec.md` (was und warum) und `plan.md` (wie, Aufgaben,
+Ein Ordner je Feature: `NNNN-slug/spec.md` – eine kompakte Datei mit Ziel, Anforderungen, Entscheidungen, Daten, Risiken (nur kritische Pfade), Aufgaben und Nachweis. Specs 0001–0018 haben noch ein getrenntes `plan.md` (wie, Aufgaben,
 Nachweis). Neue Specs entstehen mit dem `spec`-Skill aus der Vorlage `0000-template/`.
 
 Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.

@@ -86,5 +86,5 @@ status to `abgelöst durch ADR-NNNN`. The history of the reasoning is the point.
 - Do not write an ADR after the fact to justify a decision that was never weighed. Say instead
   that it was decided implicitly.
 - Do not invent alternatives you did not consider.
-- Do not write it as a design document. The design goes in the feature's `plan.md`.
+- Do not write it as a design document. The design goes in the feature's `spec.md`.
 - Do not skip the negative consequences.
