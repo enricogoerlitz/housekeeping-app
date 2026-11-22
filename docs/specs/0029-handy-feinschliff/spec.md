@@ -174,6 +174,12 @@ standalone`): App-Schema in demselben Fenster (`location.href`), weil `window.op
     Apple-Doku („Adopting unified Maps URLs“) beschreibt nur `https://maps.apple.com`, das Schema
     `maps:` steht nur in der archivierten Doku. Annahme: Die Rückfrage nimmt der Seite den Fokus,
     der Ersatz greift dann nicht.
+12. Beim Bau: Der Tab-Wisch nutzt `PanResponder` wie `SwipeArea` und `DockedPanel` (Gesture Handler
+    ist keine Abhängigkeit der App); er setzt nur Shared Values, Folgen und Einrasten laufen über
+    Reanimated. Die Richtung, aus der der neue Tab kommt, überlebt das Neu-Aufbauen der Seite
+    (Essen tauscht zwischen Rezepten und Restaurants den ganzen `Screen`).
+13. Beim Bau: Chromium hat keine Home-Leiste; den Abstand selbst (AC-005–AC-007) prüfen Unit-Tests
+    von `bottomInset`, der e2e-Test nur AC-008.
 
 ## Daten
 
@@ -184,16 +190,17 @@ Web.
 
 ## Umsetzung
 
-- [ ] 1. `packages/ui`: `HOME_BAR_GAP`, `bottomInset` mit Tests; Tab-Leiste, Assistent-Knopf, Toast,
+- [x] 1. `packages/ui`: `HOME_BAR_GAP`, `bottomInset` mit Tests; Tab-Leiste, Assistent-Knopf, Toast,
       Fenster, Einkaufsmodus, Kochmodus darauf (AC-005–AC-008).
-- [ ] 2. `packages/ui`: `Sheet` mit eigener Bewegung (Hintergrund blendet, Fenster fährt),
+- [x] 2. `packages/ui`: `Sheet` mit eigener Bewegung (Hintergrund blendet, Fenster fährt),
       reduzierte Bewegung, Schließen erst nach dem Ausblenden (AC-001–AC-004).
-- [ ] 3. `packages/ui`: reine Wisch-Regeln `tab-swipe.ts` mit Tests; `Screen` nimmt `tabSwipe` an und
+- [x] 3. `packages/ui`: reine Wisch-Regeln `tab-swipe.ts` mit Tests; `Screen` nimmt `tabSwipe` an und
       bewegt den Inhalt (AC-009–AC-014).
-- [ ] 4. Haushalt, Essen (Rezepte und Restaurants), Märkte & Bereiche geben `tabSwipe` an
+- [x] 4. Haushalt, Essen (Rezepte und Restaurants), Märkte & Bereiche geben `tabSwipe` an
       (AC-009–AC-011).
-- [ ] 5. `packages/core`: App-Schema-Links und Wahl der Öffnungsart mit Tests; `RouteSheet` öffnet
+- [x] 5. `packages/core`: App-Schema-Links und Wahl der Öffnungsart mit Tests; `RouteSheet` öffnet
       darüber (AC-015–AC-018).
-- [ ] 6. e2e-Tests (nur typgeprüft) für AC-001, AC-005, AC-009, AC-011, AC-015, AC-018.
+- [x] 6. e2e-Tests (nur typgeprüft) in `e2e/rundgang-handy.spec.ts` für AC-001, AC-002, AC-008–AC-012,
+      AC-015, AC-018.
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; e2e-Typprüfung grün. Offen:
       iPhone als installierte Web-App (Enrico, Entscheidung 11), `/ui-verify` in Spec 0028.
