@@ -624,8 +624,8 @@ am Tag selbst „heute, nach der Reise“. Fälligkeitstexte: „heute“, „f�
 seit n Tagen“ (ab 2); der Haushalt-Abschnitt dafür heißt „Noch offen“ (früher „Fällig seit“, Wort
 „überfällig“ entfällt) (Spec 0026, REQ-009, REQ-011).
 
-- **Im Code:** Funktion in `packages/core` und in SQL gespiegelt (Zeitplaner), `chores.next_due_on`
-  bleibt unverändert
+- **Im Code:** `choreDueOn` (`packages/core/src/chore-schedule.ts`), in SQL
+  `private.chore_count_day`; `chores.next_due_on` bleibt unverändert
 - **Nicht verwenden:** verschobener Termin (das ist „Später“), überfällig, Nachholtermin
 - **Abgrenzung:** „Später“ verschiebt von Hand; der Termin nach Reisen rechnet die App.
 
@@ -635,7 +635,8 @@ Ein Tag, an dem jemand Zuständiges zu Hause ist: bei fester Zuständigkeit die 
 beliebiges Mitglied, bei „Zu zweit“ beide. An nicht freien Tagen ist die Aufgabe nirgends fällig
 (Spec 0026, REQ-011).
 
-- **Im Code:** Funktion in `packages/core` und in SQL (Zeitplaner), liest `trips`/`trip_members`
+- **Im Code:** `canDoChoreOn`, `firstFreeDay` (`packages/core`), in SQL `private.chore_can_do_on`,
+  `private.chore_first_free_day`; liest `trips`/`trip_members`
 - **Nicht verwenden:** Ruhetag, Anwesenheitstag
 - **Abgrenzung:** Der _Termin nach Reisen_ ist der erste freie Tag ab dem gespeicherten Termin.
 
@@ -645,7 +646,8 @@ Bei „Abwechselnd“ die nächste Person der Reihenfolge, die zu Hause ist, wen
 einer Reise ist. Gespeichert bleibt die reguläre Person; die Reihenfolge ändert sich nie, nichts wird
 nachgeholt (Spec 0026, REQ-012).
 
-- **Im Code:** Funktion in `packages/core` und in SQL; `nextAssignee` bleibt unverändert
+- **Im Code:** `choreTurn` (`actingId`) in `packages/core`, in SQL `private.chore_acting_assignee`;
+  `nextAssignee` bleibt unverändert
 - **Nicht verwenden:** Ersatz, Stellvertreter
 - **Abgrenzung:** Wer erledigt, bleibt die Person, die abhakt; die Vertretung ist nur, wer „dran“
   ist.

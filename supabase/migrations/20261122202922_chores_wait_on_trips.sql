@@ -68,6 +68,9 @@ as $$
 $$;
 
 -- core firstFreeDay: the first free day from p_from on; gives up after MAX_WAIT_DAYS = 400 days.
+-- A day after p_from can only become free the day after a trip of the household ends, so only
+-- p_from and those days are checked (the same result as core's day-by-day search, but bounded by
+-- the number of trips rather than days: the scheduler runs this for every chore on every tick).
 create function private.chore_first_free_day(p_chore public.chores, p_from date)
 returns date
 language plpgsql
@@ -76,14 +79,22 @@ set search_path = ''
 as $$
 declare
   c_max_wait_days constant integer := 400;
-  v_step integer;
+  v_day date;
 begin
   if p_from is null then
     return null;
   end if;
-  for v_step in 0 .. c_max_wait_days - 1 loop
-    if private.chore_can_do_on(p_chore, p_from + v_step) then
-      return p_from + v_step;
+  for v_day in
+    select p_from
+    union
+    select t.to_on + 1
+    from public.trips t
+    where t.household_id = (p_chore).household_id
+      and t.to_on + 1 > p_from and t.to_on + 1 < p_from + c_max_wait_days
+    order by 1
+  loop
+    if private.chore_can_do_on(p_chore, v_day) then
+      return v_day;
     end if;
   end loop;
   return p_from + c_max_wait_days;
