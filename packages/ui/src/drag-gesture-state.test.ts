@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DRAG_IDLE,
+  blockDisabledLift,
   dragGestureStep,
   pendingLiftAt,
   type DragGestureEvent,
@@ -264,5 +265,66 @@ describe('drag gesture: the click after a drag', () => {
 
   it('a click without a drag passes', () => {
     expect(dragGestureStep(DRAG_IDLE, { type: 'click' }).effect).toBeNull();
+  });
+});
+
+describe('drag gesture: offline source', () => {
+  /** The steps of a disabled source, as the drag source runs them. */
+  function runDisabled(events: DragGestureEvent[]): DragGestureStep[] {
+    const steps: DragGestureStep[] = [];
+    let state = DRAG_IDLE;
+    for (const event of events) {
+      const step = blockDisabledLift(dragGestureStep(state, event), true);
+      steps.push(step);
+      state = step.state;
+    }
+    return steps;
+  }
+
+  it('AC-005: a held finger lifts nothing; the hint is due and the click of the press is swallowed', () => {
+    const steps = runDisabled([
+      touchDown,
+      { type: 'tick', time: 400 },
+      { type: 'move', pointerId: 1, point: { x: 300, y: 200 }, time: 500 },
+      { type: 'up', pointerId: 1, point: { x: 300, y: 200 }, time: 600, target: 'fri-evening' },
+      { type: 'click' },
+    ]);
+    expect(steps[1]?.effect).toEqual({ type: 'blocked' });
+    expect(steps.some((step) => step.state.phase === 'dragging')).toBe(false);
+    expect(steps.some((step) => step.effect?.type === 'lift' || step.effect?.type === 'drop')).toBe(
+      false,
+    );
+    expect(last(steps).effect).toEqual({ type: 'swallowClick' });
+  });
+
+  it('AC-005: a mouse drag lifts nothing and the hint is due', () => {
+    const steps = runDisabled([
+      mouseDown,
+      { type: 'move', pointerId: 1, point: { x: 110, y: 100 }, time: 10 },
+      { type: 'move', pointerId: 1, point: { x: 300, y: 200 }, time: 20 },
+      { type: 'up', pointerId: 1, point: { x: 300, y: 200 }, time: 30, target: 'fri-evening' },
+    ]);
+    expect(steps[1]?.effect).toEqual({ type: 'blocked' });
+    expect(steps.map((step) => step.state.phase)).toEqual(['pressed', 'idle', 'idle', 'idle']);
+    expect(steps.slice(2).map((step) => step.effect)).toEqual([null, null]);
+  });
+
+  it('AC-005: offline a short tap still opens the entry', () => {
+    const steps = runDisabled([
+      touchDown,
+      { type: 'up', pointerId: 1, point: { x: 101, y: 100 }, time: 120, target: null },
+      { type: 'click' },
+    ]);
+    expect(steps.map((step) => step.effect)).toEqual([null, null, null]);
+  });
+
+  it('an enabled source lifts as usual', () => {
+    const step = blockDisabledLift(dragGestureStep(DRAG_IDLE, touchDown), false);
+    const lifted = blockDisabledLift(
+      dragGestureStep(step.state, { type: 'tick', time: 400 }),
+      false,
+    );
+    expect(lifted.effect).toEqual({ type: 'lift' });
+    expect(lifted.state.phase).toBe('dragging');
   });
 });

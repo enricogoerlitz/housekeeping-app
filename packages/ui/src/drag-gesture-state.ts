@@ -37,7 +37,9 @@ export type DragEffect =
   | { type: 'drop'; target: string }
   | { type: 'cancel' }
   /** Stop this click: it ends a drag and must not open the entry. */
-  | { type: 'swallowClick' };
+  | { type: 'swallowClick' }
+  /** A disabled (offline) source would have lifted: show the hint instead (AC-005). */
+  | { type: 'blocked' };
 
 export interface DragGestureStep {
   state: DragGestureState;
@@ -145,6 +147,15 @@ function fromDragging(state: Dragging, event: DragGestureEvent): DragGestureStep
     case 'click':
       return stay(state);
   }
+}
+
+/**
+ * Offline (AC-005) a source must not lift: the press ends where it would have lifted, and the
+ * click of this press is swallowed so it does not open the entry either.
+ */
+export function blockDisabledLift(step: DragGestureStep, disabled: boolean): DragGestureStep {
+  if (!disabled || step.effect?.type !== 'lift') return step;
+  return { state: { phase: 'idle', swallowClick: true }, effect: { type: 'blocked' } };
 }
 
 export function dragGestureStep(state: DragGestureState, event: DragGestureEvent): DragGestureStep {
