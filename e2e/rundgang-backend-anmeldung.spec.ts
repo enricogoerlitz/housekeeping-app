@@ -473,3 +473,58 @@ test('AC-033: after `pnpm db:reset` the demo household, "Test" and the owner inv
   // Compared in-process; the address is never printed.
   expect(invitations.some((invitation) => invitation.email === owner)).toBe(true);
 });
+
+test('AC-011 (0018): "Verlassen" asks first with the way back; "Abbrechen" keeps the membership', async ({
+  page,
+}) => {
+  const name = `Verlassen ${unique()}`;
+  const householdId = await createTestHousehold(name);
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  await openManaged(page, 'members');
+  const leaveCalls: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/rpc/remove_member')) leaveCalls.push(request.url());
+  });
+  await tid(page, `household-member-remove-${seedIds['m-enrico']}`).click();
+  const dialog = tid(page, 'member-remove-dialog');
+  await expect(dialog).toContainText(`„${name}“ verlassen?`);
+  // Enrico has other households, so there is no "einziger Haushalt".
+  await expect(tid(page, 'member-remove-dialog-message')).toHaveText(
+    'Zurück kommst du nur mit einer neuen Einladung.',
+  );
+  await expect(tid(page, 'member-remove-dialog-confirm')).toHaveText('Verlassen');
+  await tid(page, 'member-remove-dialog-cancel').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
+  await expect(tid(page, `household-member-${seedIds['m-enrico']}`)).toBeVisible();
+  expect(leaveCalls, 'no server call without the confirmation').toEqual([]);
+});
+
+test('AC-012 (0018): leaving the only household says so in the question', async ({ page }) => {
+  const name = `Einziger ${unique()}`;
+  const email = `einzig-${unique()}@example.com`.toLowerCase();
+  const householdId = await createTestHousehold(name);
+  const invitationId = await rpc<string>(await accessToken('enrico'), 'invite_member', {
+    household_id: householdId,
+    email,
+  });
+  const accountId = createAccount(email, 'Einzig');
+  try {
+    await rpc(await accessToken({ email }), 'accept_invitation', { invitation_id: invitationId });
+    await signInAs(page, email);
+    await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 30_000 });
+    await openManaged(page, 'members');
+    await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
+    await tid(page, `household-member-remove-${accountId}`).click();
+    await expect(tid(page, 'member-remove-dialog')).toContainText(`„${name}“ verlassen?`);
+    await expect(tid(page, 'member-remove-dialog-message')).toHaveText(
+      'Das ist dein einziger Haushalt. Zurück kommst du nur mit einer neuen Einladung.',
+    );
+    await tid(page, 'member-remove-dialog-cancel').click();
+    await expect(tid(page, 'member-remove-dialog')).toHaveCount(0);
+    await expect(tid(page, `household-member-${accountId}`)).toBeVisible();
+  } finally {
+    deleteAccount(accountId);
+  }
+});
