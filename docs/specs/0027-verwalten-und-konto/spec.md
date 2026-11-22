@@ -206,8 +206,9 @@ online, gesperrt.
 
 **REQ-007 — Uhrzeit-Auswahl in 5-Minuten-Schritten.** Jede Uhrzeit wählt man aus „Stunde“ (0–23)
 und „Minute“ (00, 05, … 55): Tagesüberblick und Aktivitäten am Vortag („Uhrzeit“, Pflicht),
-Aufgabe („Uhrzeit (optional)“, ✕), Restaurant-Eintrag („Reserviert um“, ✕ entfernt die
-Reservierung), Erinnerung am Eintrag (Spec 0017, Pflicht). Wann gespeichert wird, bleibt je Stelle;
+Aufgabe („Uhrzeit (optional)“, ✕), Restaurant- und Aktivitäts-Eintrag („Uhrzeit (optional)“, ✕
+entfernt sie; Spec 0021 REQ-013, auch im Hinzufügen- und Einplanen-Fenster), Erinnerung am Eintrag
+(Spec 0017, Pflicht). Wann gespeichert wird, bleibt je Stelle;
 eine Wahl zählt als abgeschlossene Eingabe. Quelle: V-08 (Spec 0013, Offene Frage 5). Offline: wie
 die Stelle — gesperrt.
 
@@ -217,13 +218,14 @@ die Stelle — gesperrt.
 - AC-030: Angenommen „Bad putzen“ ohne Uhrzeit · Dann zeigen beide „–“, „Minute“ ist gesperrt, ✕ fehlt
   · Wenn Enrico „19“ wählt · Dann steht 19:00, „Minute“ ist bedienbar, ✕ erscheint · Und ✕ entfernt
   die Uhrzeit.
-- AC-031: Angenommen Desktop, „Reserviert um“ · Wenn Enrico mit Tab zu „Stunde“, „19“ tippt, Tab,
-  „3“ tippt · Dann steht 19:30, Pfeiltasten wechseln den Wert, ein Screenreader liest „Reserviert um,
-  Stunde, 19“ · Und auf dem iPhone öffnet ein Tipp das Auswahlrad des Systems.
+- AC-031: Angenommen Desktop, „Uhrzeit (optional)“ am Eintrag „Trattoria Da Enzo“ · Wenn Enrico mit
+  Tab zu „Stunde“, „19“ tippt, Tab, „3“ tippt · Dann steht 19:30, Pfeiltasten wechseln den Wert, ein
+  Screenreader liest „Uhrzeit, Stunde, 19“ · Und auf dem iPhone öffnet ein Tipp das Auswahlrad des Systems.
 
 **REQ-008 — Haushalt auf „Benachrichtigungen“ wählen.** Wer in mehreren Haushalten ist, wählt über
 „Was und wann“, für welchen Haushalt die Einstellungen gelten, ohne den Haushalt der App zu wechseln;
-die Wahl steht nach Spec 0019 in der Adresse. Quelle: V-09 (Spec 0013, Offene Frage 3e). Offline:
+die Wahl steht als `fuer-haushalt` in der Adresse (Anhang Spec 0019; wechselt nie den Haushalt der
+App). Quelle: V-09 (Spec 0013, Offene Frage 3e). Offline:
 lesend (alle eigenen Haushalte liegen im lokalen Speicher), ändern nur online.
 
 - AC-032: Angenommen Enrico in „Enrico & Nadja“ (aktiv, Tagesüberblick aus) und „WG Köln“
@@ -311,7 +313,9 @@ Alle `ENTSCHIEDEN` von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.
 6. Uhrzeit-Auswahl als zwei native Auswahlfelder statt Textfeld oder `<input type="time">`: iPhone
    bekommt das Systemrad, Tastatur und Screenreader gehen ohne Sonderbau, und iOS ignoriert `step`.
    Ersetzt Spec 0013, Plan-Entscheidung 27 („Uhrzeit eintippen“); `TimeField` gilt dann überall,
-   auch für Specs 0021, 0024 und 0026.
+   auch für Specs 0021 und 0024 (0026 bringt kein eigenes Uhrzeitfeld). Abgestimmt mit Spec 0021,
+   22.11.2026: „Reserviert um“ heißt dort „Uhrzeit (optional)“ und gilt für Restaurant und
+   Aktivität; Tipp-Fehlermeldungen entfallen auch dort.
 7. Der Haushaltsumschalter auf „Benachrichtigungen“ wechselt nicht den Haushalt der App; der Zähler
    „2 an“ der Einstellungszeile bleibt der des aktiven Haushalts. Ersetzt den Titel „Was und wann ·
    <Haushalt>“ aus Spec 0013 (`kindsSectionTitle`).

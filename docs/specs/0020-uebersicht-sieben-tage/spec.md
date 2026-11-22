@@ -251,6 +251,12 @@ Alle: Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
 13. Geänderte ältere Kriterien: Spec 0011 AC-001–AC-006, AC-009 (letzter Satz), AC-013, AC-014,
     AC-020, AC-021, AC-062; Spec 0012 AC-043; Spec 0013 AC-015 (letzter Teil); Spec 0009 Offene Frage
     7 und Spec 0011 Offene Fragen 1 und 7 damit entschieden.
+14. Abgestimmt mit Specs 0019, 0021, 0024, 0026, 22.11.2026: `addPresetSlot` („Abend“, sonst die
+    letzte) ist die eine Vorwahl, auch für das „+“ im Monat (0021) und das Einplanen-Fenster am
+    Restaurant (0024); die Adresse trägt dafür kein `zeit`. Der Schalter „Nicht gemacht“ speichert
+    sofort wie die anderen Schalter im Eintragsfenster (0021 REQ-009). `private.daily_summary_body`
+    ändern auch 0021 (Uhrzeit, Zusatz) und 0026 (Aufgaben-Texte); gebaut wird nach 0021, jede Migration
+    ersetzt die Funktion vollständig.
 
 ## Daten
 

@@ -23,8 +23,8 @@ Aufbau (ab Tablet Liste links, Gewähltes rechts), die Aktivitäten eine eigene 
 ## Nicht-Ziele
 
 - Kein Favicon der Webseite als Ersatzbild; ohne Foto bleibt der Platzhalter (Entscheidung 3).
-- Keine Uhrzeit an Aktivitäten (K-09) und kein Zusammenlegen von „Reserviert um“ mit „Erinnern“
-  (Spec 0017, OF 4) — beides Spec 0021; das Einplanen-Fenster übernimmt dann deren Feld.
+- Uhrzeit an Restaurant- und Aktivitäts-Einträgen und die eine Erinnerung je Eintrag (K-09) regelt
+  Spec 0021 (REQ-013, REQ-014); das Einplanen-Fenster nutzt deren Feld.
 - Keine Zurück-Beschriftung, keine Adress-Parameter, kein Fokus/Hover: Spec 0019 („steht nach Spec
   0019 in der Adresse“). Rezeptseite, ihr Einplanen und Löschhinweis: Spec 0023.
 - Kein Löschen aus der Liste heraus; keine Schlagworte an Aktivitäten, kein Schlagwort-Filter.
@@ -70,14 +70,13 @@ Restaurant“ des Hinzufügen-Fensters. Quelle: R-01. Offline: lesend, „Bearbe
 ### Webseite und Foto
 
 **REQ-003 — Webseite.** Restaurant und Aktivität haben das optionale Feld „Webseite“ (Beispiel „z. B.
-trattoria-da-enzo.de“); ohne Schema setzt das Gerät `https://` davor; gültig nur `http`/`https`,
-Rechnername mit Punkt, ohne Leer-/Steuerzeichen, ≤ 2000 Zeichen, sonst „Das ist keine Webadresse“.
-Die Datenbank prüft dieselbe Regel. Knopf „Webseite“ neben „Route“ öffnet einen neuen Tab
+trattoria-da-enzo.de“); Prüfung, Ergänzen von `https://` und Meldungen wie bei den Rezept-Links
+(Spec 0023 REQ-009), auf dem Gerät und in der Datenbank. Knopf „Webseite“ neben „Route“ öffnet einen neuen Tab
 (`noopener`, `noreferrer`); leeres Feld entfernt ihn. Quelle: ER-22. Offline: lesend; der Knopf
 bleibt bedienbar wie „Route“.
 
 - AC-008: Wenn ich „trattoria-da-enzo.de“ eintrage und speichere · Dann ist „https://trattoria-da-enzo.de“ gespeichert, „Webseite“ öffnet sie in einem neuen Tab, die App zeigt weiter „Trattoria Da Enzo“.
-- AC-009: Wenn ich nacheinander „javascript:alert(1)“, „ftp://enzo.de“, „mailto:info@enzo.de“, „trattoria da enzo“, „localhost“ speichern will · Dann zeigt das Feld jedes Mal „Das ist keine Webadresse“, das Fenster bleibt offen.
+- AC-009: Wenn ich nacheinander „javascript:alert(1)“, „ftp://enzo.de“, „mailto:info@enzo.de“ speichern will · Dann zeigt das Feld „Nur Adressen mit http:// oder https://“ · Wenn „trattoria da enzo“ oder „localhost“ · Dann „Keine gültige Adresse“; das Fenster bleibt jedes Mal offen.
 - AC-010: Wenn ein Mitglied an der App vorbei „javascript:alert(1)“ oder „https://enzo.de/ x“ als Webseite schreibt · Dann lehnt die Datenbank per Prüfregel ab.
 - AC-011: Wenn ich bei „Eislaufen“ „https://www.eisstadion-koeln.de“ speichere · Dann hat die Aktivität den Knopf „Webseite“ · Wenn ich das Feld leere · Dann ist er weg.
 
@@ -95,23 +94,25 @@ Besteck-Symbol. Quelle: ER-23. Offline: Ändern nur online, geladene Fotos sicht
 ### Einplanen
 
 **REQ-005 — Einplanen-Fenster am Restaurant.** „Einplanen“ öffnet das Fenster „Einplanen“ statt des
-Kalenders: Name; „Wann?“ (Chip „Heute“, 13 weitere Tage, „Anderes Datum …“); „Ohne Tag vormerken“;
-„Tageszeit“ (vorbelegt die letzte, „Abend“); „Wer isst mit?“ (alle, die an dem Tag nicht unterwegs
-sind) mit Gästen; „Reserviert um (optional)“, mit Uhrzeit „Erinnern 2 h vorher ▾“ (fehlt beim
-Vormerken). Knopf „Am Sa Abend einplanen“ bzw. „Vormerken“; ohne Mitesser gesperrt mit „Wähl aus,
+Kalenders. Es ist das Einplanen-Fenster der Rezepte (Spec 0023 REQ-013): Name; „Wann?“ als
+Woche mit Tages-Chips samt Datum, KW blättern ‹ ›, „Anderes Datum …“; „Ohne Tag vormerken“;
+„Tageszeit“ (Vorwahl nach Spec 0020 REQ-005: „Abend“, sonst die letzte); „Wer isst mit?“ (alle, die an dem Tag nicht unterwegs
+sind) mit Gästen; „Uhrzeit (optional)“ (Spec 0021 REQ-013, fehlt beim Vormerken; mit Uhrzeit
+schaltet sich die Erinnerung nach Spec 0021 REQ-014 ein); „Zusatz (optional)“ (Spec 0021 REQ-008).
+Knopf „Am Sa 28.11. Abend einplanen“ bzw. „Vormerken“; ohne Mitesser gesperrt mit „Wähl aus,
 wer mitisst.“ Danach bleibt die Seite, Hinweis „Eingeplant: Sa 28.11., Abend“ (anderes Jahr mit
 Jahreszahl) bzw. „Vorgemerkt“ mit „Ansehen“ → Kalender, Woche des Tags. Quelle: ER-21, R-02.
 Offline: nur online, „Einplanen“ ausgegraut.
 
-- AC-016: Wenn ich „Einplanen“ wähle · Dann sind „Heute“, „Abend“, Enrico und Nadja gewählt · Wenn ich „Sa 28.11.“, Reserviert um 19:30 und „Am Sa Abend einplanen“ wähle · Dann bin ich weiter auf der Restaurantseite, Hinweis „Eingeplant: Sa 28.11., Abend“, im Kalender Sa abends „Trattoria Da Enzo · 19:30“ mit Erinnerung 2 h vorher.
+- AC-016: Wenn ich am So 22.11. „Einplanen“ wähle · Dann zeigt das Fenster „KW 47 · 16.–22. Nov“, gewählt sind „So 22.11.“, „Abend“, Enrico und Nadja · Wenn ich ›, „Sa 28.11.“, Uhrzeit 19:30 und „Am Sa 28.11. Abend einplanen“ wähle · Dann bin ich weiter auf der Restaurantseite, Hinweis „Eingeplant: Sa 28.11., Abend“, im Kalender Sa abends „Trattoria Da Enzo · 19:30“ mit „Erinnern“ am Tag um 17:30.
 - AC-017: Wenn ich im Hinweis „Ansehen“ wähle · Dann zeigt der Kalender die Woche „KW 48 · 23.–29. Nov“.
-- AC-018: Wenn ich „Anderes Datum …“ → 15.1.2027 → „Mittag“ einplane · Dann „Eingeplant: Fr 15.1.2027, Mittag“ · Wenn ich „Ohne Tag vormerken“ wähle · Dann fehlt „Reserviert um“, Knopf „Vormerken“, Hinweis „Vorgemerkt“.
+- AC-018: Wenn ich „Anderes Datum …“ → 15.1.2027 → „Mittag“ einplane · Dann „Eingeplant: Fr 15.1.2027, Mittag“ · Wenn ich „Ohne Tag vormerken“ wähle · Dann fehlt „Uhrzeit“, Knopf „Vormerken“, Hinweis „Vorgemerkt“.
 - AC-019: Angenommen Nadja ist 26.–29.11. auf Reise · Wenn ich „Sa 28.11.“ wähle · Dann ist nur Enrico gewählt · Wenn ich ihn abwähle · Dann ist der Knopf gesperrt mit „Wähl aus, wer mitisst.“
 - AC-020: Angenommen Nadja hat das Restaurant inzwischen gelöscht · Wenn ich einplane · Dann entsteht kein Eintrag, Hinweis „Das Restaurant gibt es nicht mehr.“
 
 **REQ-006 — Dasselbe Fenster an der Aktivität.** Wie REQ-005, aber vorbelegt die erste Tageszeit
-(„Vormittag“), statt „Wer isst mit?“ und „Reserviert um“ das Feld „Zusatz (optional)“ (≤ 120
-Zeichen, „Steht im Kalender in Klammern hinter dem Namen.“); kein Suchfeld mehr. Quelle: R-04,
+(„Vormittag“) und ohne „Wer isst mit?“; „Uhrzeit (optional)“ und „Zusatz (optional)“ wie dort; kein
+Suchfeld mehr. Quelle: R-04,
 ER-34. Offline: nur online.
 
 - AC-021: Wenn ich bei „Eislaufen“ „Einplanen“, „Sa 5.12.“, Zusatz „Halle Nord“ wähle und einplane · Dann bleibe ich auf der Seite, Hinweis „Eingeplant: Sa 5.12., Vormittag“ mit „Ansehen“, im Kalender „Eislaufen (Halle Nord)“.
@@ -158,14 +159,15 @@ Adresse (ab Tablet mit Wahl). Quelle: ER-29, A-02. Offline: lesend.
 
 **REQ-010 — Löschen mit „Rückgängig“.** Menü ⋯ („Mehr zu <Name>“) der Detailansicht hat „Löschen“
 ohne Rückfrage. Einträge mit Tag bis einschließlich heute werden Freitext mit dem Namen (Aktivität
-mit Zusatz „Eislaufen (Halle Nord)“; „Reserviert um“ entfällt, „Erinnern“ bleibt), spätere und
-vorgemerkte entfallen. Hinweis „Trattoria Da Enzo gelöscht · 1 geplanter Termin entfällt“ (n:
-„n geplante Termine entfallen“, ohne: „Trattoria Da Enzo gelöscht“) mit 5 s „Rückgängig“; danach
+mit Zusatz „Eislaufen (Halle Nord)“; die Uhrzeit entfällt, weil Freitext keine hat, „Erinnern“
+bleibt), spätere und vorgemerkte entfallen. Hinweis nach Spec 0023 REQ-012: „Trattoria Da Enzo
+gelöscht · 1 geplanter Eintrag entfällt“ (n: „n geplante Einträge entfallen“, ohne: „Trattoria Da
+Enzo gelöscht“) mit 5 s „Rückgängig“; danach
 Raster bzw. Liste. Das Foto wird erst gelöscht, wenn der Hinweis ohne „Rückgängig“ endet und der
 Server bestätigt hat. Zurückholen nur durch die löschende Person, ≤ 1 h. Quelle: X-02, E-03.
 Offline: nur online, „Löschen“ ausgegraut.
 
-- AC-034: Wenn ich „Trattoria Da Enzo“ lösche · Dann Hinweis „Trattoria Da Enzo gelöscht · 1 geplanter Termin entfällt“, Di 3.11. steht „Trattoria Da Enzo“ als Freitext ohne Restaurant-Symbol, Sa 28.11. ist leer, Restaurant fehlt in Liste, Filter und Hinzufügen-Fenster, Nadjas Gerät nach dem Abgleich ebenso.
+- AC-034: Wenn ich „Trattoria Da Enzo“ lösche · Dann Hinweis „Trattoria Da Enzo gelöscht · 1 geplanter Eintrag entfällt“, Di 3.11. steht „Trattoria Da Enzo“ als Freitext ohne Restaurant-Symbol, Sa 28.11. ist leer, Restaurant fehlt in Liste, Filter und Hinzufügen-Fenster, Nadjas Gerät nach dem Abgleich ebenso.
 - AC-035: Wenn ich danach „Rückgängig“ wähle · Dann sind Restaurant mit Bewertungen und Favoriten, der Eintrag Sa 28.11. mit 19:30 und der Restaurant-Eintrag Di 3.11. zurück, auf beiden Geräten.
 - AC-036: Wenn ich „Eislaufen“ mit Foto lösche und den Hinweis auslaufen lasse · Dann steht So 8.11. „Eislaufen (Halle Nord)“ als Freitext, Sa 5.12. entfällt, die Fotodatei ist gelöscht; mit „Rückgängig“ bleibt sie.
 - AC-037: Angenommen Nadja hat den Freitext vom 3.11. vor meinem „Rückgängig“ in „Pizza bei Enzo“ geändert · Dann bleibt er so, der Rest kommt zurück.
@@ -178,22 +180,26 @@ Alle Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026, außer wo ve
 1. Bearbeiten als Fenster mit dem Anlege-Formular (R-01-Empfehlung); Notiz nur dort (R-04: kein stilles Speichern beim Verlassen).
 2. Webseite auch an Aktivitäten (Kletterhalle, Kino): ein Muster für beide. `https://` wird ergänzt, weil Links meist ohne Schema getippt werden.
 3. Kein Favicon (Enricos Idee): A Favicon über Dritte (Google) — schickt jede Webseite an einen Dienst, braucht Netz und CSP-Ausnahme · B Server holt es — neuer Abrufdienst, SSRF-Risiko · C Platzhalter. Gewählt C.
-4. Einplanen-Fenster: ein gemeinsames für Restaurant und Aktivität mit Tag-Chips + „Anderes Datum …“ (wie 0016), Hinweis mit „Ansehen“ wie beim Rezept. Kein „Erinnern“ aus 0017 im Fenster (wie beim Rezept). Abhängig von Spec 0021: legt sie „Reserviert um“ und „Erinnern“ zusammen oder führt eine Uhrzeit ein, tritt deren Feld an die Stelle von „Reserviert um“.
+4. Einplanen-Fenster: ein gemeinsames für Restaurant und Aktivität mit Tag-Chips + „Anderes Datum …“ (wie 0016), Hinweis mit „Ansehen“ wie beim Rezept. Kein Block „Erinnern“ im Fenster (wie beim Rezept). Abgestimmt mit Spec 0021, 22.11.2026: „Reserviert um“ und „Erinnern 2 h vorher“ entfallen; beide Arten bekommen „Uhrzeit (optional)“ und „Zusatz“, die Erinnerung schaltet sich mit der Uhrzeit ein (0021 REQ-014); Knopf mit Datum wie beim Rezept (Spec 0023 REQ-013).
 5. Aufbau: gebautes Restaurant-Muster (Raster bis zur Wahl, dann Liste und Detail mit ✕) auch für Aktivitäten, weil Enrico es so mag (ER-34); Rezepte bleiben ganze Seiten (lange Inhalte, Kochmodus).
 6. A-02: Enricos ER-29 schlägt die Empfehlung „ins ⋯-Menü“: kein Weg im Kalender-Kopf; Zugang über „Verwalten“.
-7. Löschen wie Rezepte (Spec 0008): vergangene Einträge als Freitext mit Namen statt Namens-Spalte oder Verweis auf Gelöschtes — gleiche Regel für alle drei, kein neues Datenfeld. „Heute“ zählt als Verlauf wie beim Rezept. Hinweistext gemeinsam mit 0023 (E-03) aus `packages/core`.
-8. Besuche: Abschnitt „Besuche“ (Glossar „Besuch“) am Restaurant, „Verlauf“ bleibt an der Aktivität (gebaut).
+7. Löschen wie Rezepte (Spec 0008): vergangene Einträge als Freitext mit Namen statt Namens-Spalte oder Verweis auf Gelöschtes — gleiche Regel für alle drei, kein neues Datenfeld. „Heute“ zählt als Verlauf wie beim Rezept. Hinweistext gemeinsam mit 0023 (E-03) aus `packages/core`. Abgestimmt mit Spec 0023, 22.11.2026: „geplanter Eintrag“ statt „geplanter Termin“ (Glossar „Eintrag“), Web-Adresse nach 0023 REQ-009.
+8. Abgestimmt mit Spec 0023, 22.11.2026: Restaurant und Aktivität nutzen das Einplanen-Fenster der
+   Rezepte (0023 REQ-013, Entscheidung 14: Woche mit Tages-Chips und Datum, KW blättern, „Anderes
+   Datum …“), ergänzt um „Uhrzeit (optional)“ und „Zusatz“. Ein Fenster für alles, passend zum
+   Kalender in KW; 0024 baut kein eigenes. Ersetzt die „14 Tage ab heute“ aus Entscheidung 4.
+9. Besuche: Abschnitt „Besuche“ (Glossar „Besuch“) am Restaurant, „Verlauf“ bleibt an der Aktivität (gebaut).
 
 - Ändert ältere AC: 0002 AC-010 (Notiz jetzt im Fenster); 0004 Nicht-Ziel „Keine Fotos für Restaurants“; 0005 AC-002 (Aktivität hebt keinen Tab hervor); 0010 AC-001 (kein ▲), REQ-008/AC-025–027/AC-039–041 (Adresse `/aktivitaeten`, kein ▲); 0004 Daten „Löschen löscht sein Foto“ (erst nach „Rückgängig“-Frist).
 - Glossar (Hauptsitzung): neu „Webseite“ (`websiteUrl`/`website_url`); „Aktivität“ (Adresse `/aktivitaeten`, unter Verwalten, kein ▲); „Restaurant“ (Foto, Webseite); „Verlauf“ wird auch für Aktivitäten benutzt — Abgrenzung nötig.
 
 ## Daten
 
-- `restaurants`: neu `website_url text` (Check `~* '^https?://[^[:space:][:cntrl:]]+$'`, ≤ 2000), `photo_path text` (Check wie Aktivitäten: `<household_id>/restaurants/<id>/<uuid>.jpg`). `activities`: neu `website_url` (gleicher Check).
+- `restaurants`: neu `website_url text` (Check `private.is_web_url(website_url)`, Spec 0023), `photo_path text` (Check wie Aktivitäten: `<household_id>/restaurants/<id>/<uuid>.jpg`). `activities`: neu `website_url` (gleicher Check).
 - Speicher: `private.media_household_id` erlaubt zusätzlich den Ordner `restaurants`.
-- Löschen: `delete_restaurant(id, today)`/`restore_restaurant(id)`, `delete_activity(id, today)`/`restore_activity(id)` (security definer, Muster `delete_recipe`); Schnappschuss in einer gemeinsamen Tabelle `private.deletions(household_id, kind, target_id, deleted_by, deleted_at, snapshot)`, 1 h, stündlich bereinigt; `recipe_deletions` zieht dorthin um (nach 0023). Kein `delete`-Grant mehr auf `restaurants`/`activities`, Allowlist `apply_changes` `"delete": false`, Patch um `website_url`, `photo_path`, `tags` (Restaurant) erweitern.
+- Löschen: `delete_restaurant(id, today)`/`restore_restaurant(id)`, `delete_activity(id, today)`/`restore_activity(id)` (security definer, Muster `delete_recipe`); Schnappschuss in einer gemeinsamen Tabelle `private.deletions(household_id, kind, target_id, deleted_by, deleted_at, snapshot)` (FK auf `households` on delete cascade, Spec 0027), 1 h, stündlich bereinigt; `private.recipe_deletions` zieht in dieser Spec dorthin um (`delete_recipe`/`restore_recipe` umgestellt, Verhalten unverändert). Kein `delete`-Grant mehr auf `restaurants`/`activities`, Allowlist `apply_changes` `"delete": false`, Patch um `website_url`, `photo_path`, `tags` (Restaurant) erweitern.
 - Cache: neue Felder `websiteUrl`, `photoPath`; `CACHE_VERSION` erhöhen; `updateRestaurant` nimmt alle Felder.
-- Entfällt: `activities.tags` (nie gesetzt), Route-Dateien `app/(tabs)/kalender/aktivitaeten.tsx`, `kalender/aktivitaet/[id].tsx`, `ManageEntry.pathPrefix`, Parameter `von=verwalten` samt `useActivitiesBack`, Berg-Knopf `calendar-activities`, Inline-Notizfeld und Speichern-Knopf der Restaurantseite, Kommentar „client deletes before deleting an activity“ im Storage-Migrationskopf.
+- Entfällt: `activities.tags` (nie gesetzt), Route-Dateien `app/(tabs)/kalender/aktivitaeten.tsx`, `kalender/aktivitaet/[id].tsx`, `ManageEntry.pathPrefix`, eigene Rückweg-Logik `useActivitiesBack` (Rückweg nach Spec 0019 über `von`), Berg-Knopf `calendar-activities`, Inline-Notizfeld und Speichern-Knopf der Restaurantseite, Kommentar „client deletes before deleting an activity“ im Storage-Migrationskopf.
 
 ## Risiken
 
@@ -211,7 +217,7 @@ Alle Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026, außer wo ve
 
 ## Umsetzung
 
-- [ ] 1. Migration + pgTAP rot zuerst: Spalten, Checks, Storage-Regex, `private.deletions`, vier RPCs, Grants/Allowlist (AC-010, AC-015, AC-034–038)
+- [ ] 1. Migration + pgTAP rot zuerst: Spalten, Checks, Storage-Regex, `private.deletions` samt Umzug von `private.recipe_deletions`, vier RPCs, Grants/Allowlist (AC-010, AC-015, AC-034–038)
 - [ ] 2. core: Webadresse prüfen, `deletionEffect` für Restaurant/Aktivität, Löschhinweis, `plannedNotice` mit Jahr (AC-008/009, AC-018, AC-034)
 - [ ] 3. api: Mapping, Fake-Transport, `updateRestaurant` voll, Restaurant-Foto (`PhotoTable`), `deleteRestaurant`/`deleteActivity` mit Rückgängig, `CACHE_VERSION` (AC-001–005, AC-012–014, AC-035–037)
 - [ ] 4. Formular und „Restaurant bearbeiten“, Notiz nur lesen, Schlagworte, Webseite, Foto (AC-001–009, AC-011–014)

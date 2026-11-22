@@ -195,9 +195,10 @@ online.
 „Links“ (Stift, „Abbrechen“, „Fertig“; leer „Noch keine Links.“) mit höchstens 10 Links; je Zeile
 die Bezeichnung und darunter der Host ohne „www.“ oder nur der Host, mit Symbol „öffnet extern“; ein
 Tipp öffnet in neuem Tab (`noopener`, `noreferrer`), die App bleibt. Fenster „Link“: „Adresse“
-(Pflicht), „Bezeichnung (freiwillig)“. Prüfung auf dem Gerät und in der Datenbank: Rand-Leerzeichen
-weg, ohne „://“ kommt „https://“ davor; nur `http`/`https` mit Host, ohne Leer- und Steuerzeichen,
-≤ 2000 Zeichen; Bezeichnung ≤ 80 Zeichen ohne Steuerzeichen; keine Adresse doppelt. Meldungen „Nur
+(Pflicht), „Bezeichnung (freiwillig)“. Prüfung auf dem Gerät und in der Datenbank (dieselbe Regel
+gilt für die Webseite von Restaurant und Aktivität, Spec 0024 REQ-003): Rand-Leerzeichen weg, ohne
+Schema („…:“ am Anfang) kommt „https://“ davor; nur `http`/`https` mit Rechnername mit Punkt, ohne
+Leer- und Steuerzeichen, ≤ 2000 Zeichen; Bezeichnung ≤ 80 Zeichen ohne Steuerzeichen; keine Adresse doppelt. Meldungen „Nur
 Adressen mit http:// oder https://“, „Keine gültige Adresse“, „Höchstens 2000 Zeichen“, „Höchstens
 80 Zeichen“, „Diesen Link gibt es schon“, „Höchstens 10 Links“. Weder Gerät noch Server rufen die
 Seite ab; ein Link, der die Prüfung auf dem Gerät nicht besteht, erscheint als Text ohne Tipp-Ziel.
@@ -209,9 +210,10 @@ Quelle: ER-20. Offline: lesen und öffnen offline, bearbeiten nur online.
 - AC-032: Wenn ich „chefkoch.de/r/1“ mit Bezeichnung „Omas Variante“ speichere · Dann ist
   „https://chefkoch.de/r/1“ gespeichert, die Zeile zeigt „Omas Variante“ über „chefkoch.de“, Nadja
   sieht sie ohne Neuladen.
-- AC-033 (Fehler): Wenn ich „javascript:alert(1)“, „data:text/html,hallo“ oder „ftp://server/datei“
-  übernehmen will · Dann bleibt das Fenster offen mit „Nur Adressen mit http:// oder https://“; bei
-  „https://“ oder „https://chef koch.de“ mit „Keine gültige Adresse“; nichts ist gespeichert.
+- AC-033 (Fehler): Wenn ich „javascript:alert(1)“, „data:text/html,hallo“, „mailto:info@enzo.de“
+  oder „ftp://server/datei“ übernehmen will · Dann bleibt das Fenster offen mit „Nur Adressen mit
+  http:// oder https://“; bei „https://“, „https://chef koch.de“ oder „localhost“ mit „Keine gültige
+  Adresse“; nichts ist gespeichert.
 - AC-034 (Grenzen): Angenommen 10 Links · Dann ist „+ Link“ ausgegraut mit „Höchstens 10 Links“;
   eine schon vorhandene Adresse ergibt „Diesen Link gibt es schon“.
 - AC-035 (Datenbank): Wenn ein Mitglied an der App vorbei „javascript:alert(1)“, 2001 Zeichen
@@ -292,8 +294,9 @@ bleiben. Quelle: ER-15. Offline: Anlegen nur online, Knöpfe ausgegraut.
 **REQ-012 — Löschen nennt die entfallenden Einträge.** Der Hinweis nach dem Löschen eines Rezepts
 oder einer Sammlung lautet „<Titel> gelöscht“, dann „1 geplanter Eintrag entfällt“ bzw. „n geplante
 Einträge entfallen“ (Einträge nach heute, vorgemerkte und davon abhängige Reste; nur wenn > 0), dann
-wie bisher „auch aus n Sammlung(en) entfernt“, mit „Rückgängig“ für 5 s. Quelle: E-03. Offline: nur
-online.
+wie bisher „auch aus n Sammlung(en) entfernt“, mit „Rückgängig“ für 5 s. Eine Funktion in
+`packages/core` bildet den Text, auch für Restaurant und Aktivität (Spec 0024 REQ-010). Quelle:
+E-03. Offline: nur online.
 
 - AC-049: Angenommen „Lasagne“ am 20.11., 25.11. und 4.12. im Kalender · Wenn ich sie lösche und
   „Rückgängig“ wähle · Dann hieß es „Lasagne gelöscht · 2 geplante Einträge entfallen“, am 20.11.
@@ -308,7 +311,7 @@ online.
 Sammlung zeigen die Tages-Chips Wochentag und Datum („Mi“ über „25.11.“); hinter „Ohne Tag
 vormerken“ steht „Anderes Datum …“ (Spec 0016, REQ-005: Monatskalender im Fenster, Start im Monat
 der Woche, ‹ › ohne Grenze; Tipp wählt den Tag und zeigt seine Woche); der Knopf heißt „Am Mi 25.11.
-Abend einplanen“. Solange „Wer isst mit?“ unberührt ist, rechnet das Fenster die Vorauswahl neu,
+Abend einplanen“. Zähler für Portionen und Varianten: Spec 0021 REQ-006. Solange „Wer isst mit?“ unberührt ist, rechnet das Fenster die Vorauswahl neu,
 wenn Mitglieder oder Reisen später ankommen. Quelle: E-11, E-12. Offline: nur online.
 
 - AC-053: Wenn ich am 22.11. auf „Lasagne“ „Einplanen“ wähle · Dann zeigt das Fenster „KW 47 ·
@@ -342,9 +345,11 @@ Alle ENTSCHIEDEN von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.20
 1. **Links als Spalte `recipes.links jsonb`** (Liste von `{url, label?}`), keine eigene Tabelle:
    Links gehören nur zum Rezept, haben keine eigene Kennung und folgen dem Muster von `ingredients`
    und `steps`; Tabelle bräuchte RLS, Löschtrigger, Sync-Eintrag und pgTAP ohne Nutzen.
-2. **Eine Prüffunktion für Web-Adressen in `packages/core`**, gemeinsam mit der Restaurant-Webseite
-   von Spec 0024; wer zuerst baut, legt sie an. Adresse ohne „://“ bekommt „https://“ (bequem beim
-   Einfügen).
+2. **Eine Prüffunktion für Web-Adressen in `packages/core`** und eine in SQL
+   (`private.is_web_url`), gemeinsam mit der Webseite von Spec 0024; wer zuerst baut, legt sie an.
+   Adresse ohne Schema bekommt „https://“ (bequem beim Einfügen). Abgestimmt mit Spec 0024,
+   22.11.2026: eine Regel und ein Meldungssatz für beide; Rechnername mit Punkt aus 0024 übernommen.
+   Lösch-Hinweis „n geplante Einträge entfallen“ gilt auch für Restaurant und Aktivität.
 3. **Kochmodus zeigt alle Zutaten**, weil die Daten keine Zuordnung zu Schritten kennen. Erkennen
    per Name im Schrittext (unsicher bei Beugung) und ein neues Datenfeld (Pflegeaufwand) verworfen.
 4. **Kochmodus-Layout:** zwei Spalten erst ab 1100 px; das Tablet im Hochformat hat neben der
@@ -376,12 +381,22 @@ Alle ENTSCHIEDEN von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.20
     REQ-008 (Reihenfolge im Zutatenfenster, ⋯-Einträge), Spec 0008 REQ-009 (Tage mit Datum), Spec
     0008 Nicht-Ziel „Kein neuer Kochmodus“ und Spec 0001 AC-023 („Zutaten anzeigen“ entfällt). Spec
     0003 hat kein AC zu Starter-Rezepten.
-14. OFFEN: keine.
+14. **Ein Einplanen-Fenster für alles** (Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026):
+    Rezept, Sammlung, Restaurant und Aktivität nutzen das Fenster aus REQ-013 – Woche mit
+    Tages-Chips und Datum, KW blättern, „Anderes Datum …“, Tageszeit, „Wer isst mit?“. Restaurant
+    und Aktivität zeigen zusätzlich „Uhrzeit (optional)“ und „Zusatz“ (Spec 0021). Wochen statt „14
+    Tage ab heute“, weil der Kalender in KW bleibt (ER-27/Kalender). 0023 baut das Fenster, 0024
+    nutzt es.
+15. **Zutaten beim Löschen eines Rezepts oder einer Sammlung** (Claude, 22.11.2026): Entfallen
+    künftige Einträge, bietet der Hinweis dieselbe Wahl wie beim Löschen eines Eintrags („Zutaten
+    auch von der Liste nehmen“, Spec 0021); gleiche Funktion aus `packages/core`.
+16. OFFEN: keine.
 
 ## Daten
 
-- `recipes.links jsonb not null default '[]'` mit Check (Array ≤ 10; je Element Objekt mit `url`
-  passend zu `^https?://[^\s/?#]+[^\s]*$`, ≤ 2000 Zeichen, ohne Steuerzeichen; `label` optional,
+- `recipes.links jsonb not null default '[]'` mit Check (Array ≤ 10; je Element Objekt mit `url`,
+  geprüft mit `private.is_web_url(url)` (http/https, Rechnername mit Punkt, ohne Leer- und Steuerzeichen,
+  ≤ 2000 Zeichen; auch für `website_url` in Spec 0024); `label` optional,
   1–80 Zeichen, ohne Steuerzeichen; keine `url` doppelt), Grants für insert/update, in der Allowlist
   von `apply_changes`; Sync und Cache (`CACHE_VERSION` +1), Typen neu erzeugen.
 - `articles.diet`: Check um `non_food` erweitert; Starter-Katalog setzt ihn (REQ-008).

@@ -34,7 +34,8 @@ Woche.
 - Keine Stundenansicht und keine Uhrzeit für Rezepte, Sammlungen, Freitext und Reste (D43 bleibt
   für sie); keine Reste von Restaurants (Take-away trägt man als Freitext ein).
 - Handy-Woche und Handy-Monat behalten ihr Aussehen. Hover, Fokus, Menüs und Adresse regelt Spec
-  0019; „Aus Kalender“ samt „aktualisieren“ (zweiter Teil von L-03) Spec 0025.
+  0019; „Aus Kalender“ Spec 0025 (dort entfällt „aktualisieren“ aus L-03, weil REQ-007 die Liste
+  nachführt).
 - Keine neuen Offline-Schreibvorgänge (ADR-0008).
 
 ## Schon erledigt
@@ -98,7 +99,8 @@ Handy-Monat unverändert. Quelle: ER-26. Offline: vollständig.
 
 **REQ-003 — Hinzufügen im Monat wie in der Woche.** Im Desktop-Monat erscheint beim Darüberfahren und
 bei Tastatur-Fokus oben rechts im Tag ein „+“ (mindestens 28 × 28 px, wie in der Woche); es öffnet
-das Hinzufügen-Fenster für den Tag mit vorgewähltem „Abend“ (Spec 0010, REQ-007), danach bleibt die
+das Hinzufügen-Fenster für den Tag mit der Vorwahl aus Spec 0020 REQ-005 („Abend“, sonst die letzte
+Tageszeit; `addPresetSlot`), danach bleibt die
 Ansicht. Es öffnet nicht das Tages-Fenster; Ziehen auf dem „+“ zeichnet keine Reise. Jahr, Handy und
 Tablet ohne Maus: Tages-Fenster. Quelle: ER-28. Offline: nur online; „+“ ausgegraut mit „Offline –
 zum Bearbeiten brauchst du Netz“.
@@ -164,7 +166,9 @@ lesend; Chips und Zähler ausgegraut.
 die App im selben Aufruf die Beiträge mit der Herkunft dieses Eintrags auf nicht abgehakten Posten
 neu, so wie „Auf die Einkaufsliste“ sie für den neuen Stand setzen würde; die Herkunft bleibt. Fällt
 eine Zutat weg, geht ihr Beitrag (ein leerer Posten verschwindet); kommt eine dazu, kommt sie auf die
-Liste, außer sie ist ein Vorrat-Artikel. Stand nichts vom Eintrag auf der Liste, ändert sich nichts.
+Liste, außer sie ist ein Vorrat-Artikel (ein Posten je Artikel nach Spec 0025 REQ-013). Eine im
+Vorratscheck angepasste Menge (Spec 0025 REQ-007) wird mit neu gerechnet. Stand nichts vom Eintrag auf
+der Liste, ändert sich nichts.
 Danach „Einkaufsliste angepasst: Lasagne (Sa)“. Quelle: K-01, L-03. Offline: nur online.
 
 - AC-019: Angenommen „Lasagne“ Sa, 2 Portionen, auf der Liste „Hackfleisch 250 g“ und
@@ -198,16 +202,15 @@ Ziehen, Android-Zurück) speichert alle geänderten Felder (Freitext, Zusatz, Uh
 Portionen, Varianten mit Liste, Text der Erinnerung) in einem Aufruf; Tag, Tageszeit, „Wer kocht?“
 und Schalter, Tag und Uhrzeit der Erinnerung speichern weiter sofort. „Zusatz speichern“ entfällt;
 Enter speichert ein Feld sofort. Ungültige Eingabe: Fenster bleibt offen mit dem Grund; ein zweites
-✕/Escape schließt, speichert das Gültige und zeigt „Nicht gespeichert: Uhrzeit“. Ablehnung durch den
+✕/Escape schließt, speichert das Gültige und zeigt „Nicht gespeichert: Was gibt es?“. Ablehnung durch den
 Server: Fenster bleibt offen, Getipptes bleibt, „Hat nicht geklappt – bitte noch einmal versuchen“.
 Quelle: K-03, K-01, K-05. Offline: Schließen schließt nur.
 
 - AC-025: Angenommen „Eislaufen“ offen, Zusatz „Hohenschönhausen“ getippt · Wenn ich ✕ wähle · Dann
   „Eislaufen (Hohenschönhausen)“ im Kalender, und es gab keinen Knopf „Zusatz speichern“.
-- AC-026: Angenommen bei „Trattoria Da Enzo“ Zusatz „Tisch für 6“ und Uhrzeit „19:33“ getippt · Wenn
-  ich „Fertig“ wähle · Dann bleibt das Fenster offen mit der Meldung für 5-Minuten-Schritte · Wenn ich
-  ✕ wähle · Dann schließt es, „Trattoria Da Enzo (Tisch für 6)“ ohne Uhrzeit, „Nicht gespeichert:
-  Uhrzeit“.
+- AC-026: Angenommen bei Freitext „Essen bei Oma“ Zusatz „mit Kuchen“ getippt und „Was gibt es?“
+  geleert · Wenn ich „Fertig“ wähle · Dann bleibt das Fenster offen mit „Bitte etwas eintragen“ · Wenn
+  ich ✕ wähle · Dann schließt es, „Essen bei Oma (mit Kuchen)“, „Nicht gespeichert: Was gibt es?“.
 - AC-027: Angenommen Zusatz „doppelte Menge“ getippt, Nadja hat „Lasagne“ inzwischen entfernt · Wenn
   ich ✕ wähle · Dann bleibt das Fenster offen mit „doppelte Menge“ und „Hat nicht geklappt – bitte
   noch einmal versuchen“.
@@ -257,8 +260,9 @@ ausgegraut). Quelle: K-07. Offline: nur online.
   ziehen ist erlaubt).
 
 **REQ-013 — Uhrzeit für Restaurants und Aktivitäten.** Restaurant- und Aktivitäts-Einträge haben im
-Eintragsfenster und im zweiten Schritt des Hinzufügen-Fensters „Uhrzeit (optional)“ (5-Minuten-
-Schritte wie Spec 0013, ✕ entfernt; Hinweis Restaurant „Die Uhrzeit, für die ihr reserviert habt.“,
+Eintragsfenster, im zweiten Schritt des Hinzufügen-Fensters und im Einplanen-Fenster (Spec 0024)
+„Uhrzeit (optional)“ (Auswahl „Stunde“/„Minute“ in 5-Minuten-Schritten nach Spec 0027 REQ-007, ✕
+entfernt; Hinweis Restaurant „Die Uhrzeit, für die ihr reserviert habt.“,
 Aktivität „Wann es losgeht.“). Angezeigt wie heute die Reservierung: „Eislaufen (Hohenschönhausen) ·
 10:30“, auf der Übersicht „Vormittag · 10:30“, im Tagesüberblick „Eislaufen (Hohenschönhausen,
 Vormittag, 10:30)“, am Vortag „Morgen: Eislaufen (Hohenschönhausen), Vormittag, 10:30“. Verschieben
@@ -267,8 +271,8 @@ lesend.
 
 - AC-035: Angenommen Sa 28.11. vormittags „Eislaufen“ · Wenn ich Uhrzeit „10:30“ speichere · Dann
   „Eislaufen · 10:30“ in der Woche und „Vormittag · 10:30“ auf der Übersicht am Samstag.
-- AC-036: Wenn ich „10:33“ eintippe · Dann die Meldung für 5-Minuten-Schritte (Und ein Aufruf am
-  Fenster vorbei mit einer Uhrzeit an „Lasagne“ wird vom Server abgelehnt).
+- AC-036: Wenn ich „Minute“ öffne · Dann bietet sie nur 00, 05, … 55 (Und ein Aufruf am Fenster
+  vorbei mit 10:33 oder mit einer Uhrzeit an „Lasagne“ wird vom Server abgelehnt).
 
 **REQ-014 — Eine Erinnerung je Eintrag.** Die Erinnerung aus Spec 0017 ist die einzige; „Erinnern n
 vorher“ an der Reservierung und die Art „Restaurant-Reservierung“ auf „Benachrichtigungen“ entfallen.
@@ -340,6 +344,15 @@ Geänderte Kriterien älterer Specs: 0013 REQ-008 (AC-027 bis AC-031), AC-011 (A
 nicht“; 0016 REQ-004 und AC-015 (7-Tage-Grenze entfällt), REQ-006 (Aufgaben im Tages-Fenster nur mit
 Haushalt-Zeile); 0010 REQ-004/AC-012 (höchstens drei je Tag → so viele, wie passen), REQ-011 (frühere
 Tageszeit desselben Tags zählt); 0004 Nicht-Ziel „Kein Zusatz für Rezepte und Restaurants“.
+
+12. Abgestimmt mit Spec 0027, 22.11.2026: Uhrzeit wird gewählt, nicht getippt (REQ-007 dort);
+    AC-026 und AC-036 prüfen deshalb Freitext bzw. die Auswahl statt „19:33“.
+13. Abgestimmt mit Spec 0024, 22.11.2026: Das Einplanen-Fenster für Restaurant und Aktivität
+    übernimmt „Uhrzeit (optional)“ und „Zusatz“ von hier; „Reserviert um“ und „Erinnern n vorher“
+    gibt es nirgends mehr.
+14. Abgestimmt mit Spec 0025, 22.11.2026: Neu rechnen überschreibt auch eine im Vorratscheck
+    angepasste Menge (kein Merkmal „von Hand angepasst“ am Beitrag); der Hinweis „Einkaufsliste
+    angepasst“ sagt es. Vorwahl der Tageszeit kommt aus Spec 0020 (`addPresetSlot`).
 
 OFFEN: keine.
 

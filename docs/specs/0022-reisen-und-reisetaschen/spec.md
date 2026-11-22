@@ -74,7 +74,8 @@ Spec 0019 in der Adresse; die Seite `/kalender/reise/<id>` entfällt. Quelle: ER
 
 **REQ-003 — Neue Reise anlegen.** Im Zustand „Reise eintragen“ (Ziehen, ⋯, Tages-Fenster, „+“ auf
 „Reisen“) wählt man Wer?, Von, Bis, Notiz und Reisetaschen-Chips; „Speichern · n Packstücke“ legt
-eine Reise mit allen Personen und einer Packliste in einem Schritt an und schließt. Quelle: ER-25.
+eine Reise mit allen Personen und einer Packliste in einem Schritt an und schließt. Unter „Wer?“
+steht der Satz zur Wirkung aus Spec 0026 REQ-015. Quelle: ER-25.
 Offline: nur online, „Speichern“ ausgegraut mit Offline-Hinweis.
 
 - AC-008: Angenommen ich habe im Dezember vom 4. bis 10.12. gezogen · Wenn ich Nadja dazu wähle, Notiz „Urlaub Mallorca“, Chips „Strand“ und „Kulturbeutel“ · Dann heißt der Knopf „Speichern · 18 Packstücke“; nach dem Tipp schließt das Fenster, „Reise eingetragen“, ein Streifen 4.–10.12., Packliste mit „T-Shirts 7×“.
@@ -119,10 +120,10 @@ Reste, Freitext, Restaurant; keine Aktivität.
 Reise nennt ein Dialog die Gerichte ab heute im Zeitraum, in denen eine Reisende mitisst
 („3 Gerichte im Zeitraum – Enrico rausnehmen?“, je Gericht eine angekreuzte Zeile, „Rausnehmen (3)“,
 „So lassen“); „Rausnehmen“ entfernt die Personen aus „Wer isst mit?“ und „Wer kocht?“, senkt die
-Portionen um eine je Person (in ihrer Variante nach der Aufteilung von Spec 0008, sonst der größten;
-mindestens 1), merkt ein Gericht ohne Esser und Gäste vor (Spec 0016, REQ-003; Zeile „danach
-vorgemerkt“) und rechnet offene Posten der Einkaufsliste mit diesen Herkünften neu bzw. nimmt sie
-weg (Hinweis im Dialog „Die Einkaufsliste wird angepasst.“); danach 5 s „Rückgängig“ für alles,
+Portionen nach der Regel aus Spec 0021 REQ-006 (eine je Person in ihrer Variante; mindestens 1),
+merkt ein Gericht ohne Esser und Gäste vor (Spec 0016, REQ-003; Zeile „danach vorgemerkt“) und
+rechnet offene Posten der Einkaufsliste nach Spec 0021 REQ-007 neu bzw. nimmt die Beiträge eines
+vorgemerkten Gerichts weg (Hinweis im Dialog „Die Einkaufsliste wird angepasst.“); danach 5 s „Rückgängig“ für alles,
 die Reise bleibt. Quelle: K-02. Offline: nur online.
 
 - AC-021: Wenn ich „Dienstreise Hamburg“ für Enrico 30.11.–2.12. speichere · Dann nennt der Dialog „Mo 30.11. · Abend · Lasagne“, „Di 1.12. · Abend · Mango-Curry“, „Mi 2.12. · Mittag · Shakshuka · danach vorgemerkt“, nicht „Eislaufen“ · Wenn „Rausnehmen (3)“ · Dann Lasagne: Nadja, 1 Portion, „Wer kocht?“ leer; Mango-Curry: Nadja, Tofu 1, Hähnchen entfällt; Shakshuka unter „Vorgemerkt“ (weiter Enrico, 1 Portion); Liste „Hackfleisch 125 g“, „Eier“ weg; Hinweis „Enrico aus 3 Gerichten genommen“ mit „Rückgängig“.
@@ -243,9 +244,14 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026.
    AC-016–AC-019, AC-044, AC-046 (Seite → Fenster), AC-038 (Löschen im Fenster), AC-039/Offene Frage
    4 (Umhängen entfällt); Spec 0016 AC-034 (Adresse) und Nicht-Ziel „Im Code bleibt `Absence`“;
    Spec 0010 D23 („alle gewählt = Haushalts-Abwesenheit“).
-9. **Glossar** (Hauptsitzung): „Abwesenheit“ → „Reise“ (`Trip`, `trips`, `trip_members`);
-   „Urlaubsseite“ → „Reise-Fenster“ (`TripWindow`); „Abwesenheits-Streifen“ → „Reise-Streifen“
-   (`TripStripe`); „Kommende Packliste“ neu; „Packstück“ mit `bagItemId`.
+9. Abgestimmt mit Spec 0021, 22.11.2026: Portionen und Liste folgen deren Regeln (REQ-006,
+   REQ-007). Anders als Vormerken von Hand (0021 Entscheidung 9, Beiträge bleiben) nimmt das
+   Vormerken durch „Rausnehmen“ die Beiträge von der Liste — es isst ja niemand mehr mit.
+10. Abgestimmt mit Spec 0026, 22.11.2026: Der Satz zur Wirkung einer Reise steht unter „Wer?“ beim
+    Anlegen (REQ-003); die leere Seite „Reisen“ behält ihren Text (AC-020).
+11. **Glossar** (Hauptsitzung): „Abwesenheit“ → „Reise“ (`Trip`, `trips`, `trip_members`);
+    „Urlaubsseite“ → „Reise-Fenster“ (`TripWindow`); „Abwesenheits-Streifen“ → „Reise-Streifen“
+    (`TripStripe`); „Kommende Packliste“ neu; „Packstück“ mit `bagItemId`.
 
 ## Daten
 

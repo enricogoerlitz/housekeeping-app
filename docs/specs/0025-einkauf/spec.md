@@ -22,8 +22,8 @@ Fortschritt zählt nur diesen Einkauf; Artikel lassen sich gezielt aufräumen.
 
 ## Nicht-Ziele
 
-- Keine Verbindung Kalender → Liste nach dem Übernehmen („Zutaten auch von der Liste nehmen?“,
-  „aktualisieren“): L-03, Spec 0021.
+- Kalender → Liste nach dem Übernehmen (Portionen ändern, „Zutaten auch von der Liste nehmen?“):
+  L-03, Spec 0021. „aktualisieren“ in „Aus Kalender“ entfällt (Entscheidung 14).
 - Keine neue Offline-Aktion: „Erledigt“ auf der Liste ist die Laden-Aktion „abhaken“ (ADR-0008
   Nachtrag); alles andere bleibt online.
 - Keine Dauerposten (die nie gebaute Herkunft `recurring` entfällt), keine Bestände mit Mengen.
@@ -91,8 +91,8 @@ Vorschau und passende Artikel. Quelle: ER-31. Offline: vollständig (Laden-Aktio
 **REQ-003 — Jede Menge änderbar, Herkunft einzeln entfernbar.** In „Posten bearbeiten“: reine
 Anzahlen behalten „− n× +“; sonst ersetzt das Feld „Von Hand“ beim „Fertig“ alle eigenen Beiträge
 durch einen (leer = keiner); jede Herkunft aus Rezepten hat ein ✕ (sofort, 5 s „Rückgängig“); ohne
-Beitrag ist der Posten entfernt. „Menge“ zeigt die Summe. Quelle: L-01. Offline: nur online, Feld
-und ✕ ausgegraut.
+Beitrag ist der Posten entfernt. „Menge“ zeigt die Summe. Quelle: L-01. Offline: nur online, Feld und ✕ ausgegraut;
+„+“ geht offline wie auf der Zeile (Spec 0019 REQ-010), „−“ nicht.
 
 - AC-009: Angenommen „Bier“ mit „von Hand: 2 Kasten“ · Wenn ich „Von Hand“ auf „1 Kasten“ setze und
   „Fertig“ · Dann „Bier 1 Kasten“, auch bei Nadja.
@@ -302,8 +302,18 @@ Alle nach Enricos Regel „Empfehlung nehmen“ (Claude, 22.11.2026).
 11. ER-08: Vorrat ausgeklappt; ändert Spec 0006, AC-055/AC-056, Spec 0009, AC-025.
 12. Laufreihenfolge bleibt Feld (`area_order`, `hidden_area_ids`): eine Reihenfolge = ein Schreibvorgang
     mit „letzte Änderung gewinnt“; eine Tabelle je Markt und Bereich brächte nur mehr Zeilen.
-13. Glossar (für den Hauptlauf): neu „Einkaufsgang“ (`ShoppingTrip`); „Vorratscheck“ (Vorrat
+13. Glossar (für den Hauptlauf): neu „Einkaufsgang“ (`ShoppingRun`, nicht `ShoppingTrip`: `trip`
+    heißt nach Spec 0022 nur die Reise); „Vorratscheck“ (Vorrat
     ausgeklappt), „Herkunft“ (ohne `recurring`), „Dauerposten“ (nicht gebaut) anpassen.
+14. Abgestimmt mit Spec 0021, 22.11.2026: L-03 „aktualisieren“ bei „steht schon auf der Liste“
+    entfällt — beide Specs schoben es einander zu; seit 0021 REQ-007 folgt die Liste den Portionen
+    selbst, Entfernen fragt (0021 REQ-015), Verschieben behält die Beiträge.
+15. Abgestimmt mit Spec 0019, 22.11.2026: Wischen „erledigt“ und „+“ auf der Liste sowie der
+    Bereichswähler in „Posten bearbeiten“ und „Artikel bearbeiten“ (REQ-010) sind die Laden-Aktionen
+    „abhaken“, „Posten hinzufügen“ und „Bereich zuordnen“ außerhalb des Einkaufsmodus. Der Nachtrag zu
+    ADR-0008 nennt bisher nur den Einkaufsmodus; diese Spec ergänzt einen Nachtrag „gilt auch auf
+    Liste und Artikel“ (Aktionen und Konfliktregeln unverändert, „ein Posten je Artikel“ jetzt auch für
+    erledigte Posten).
 
 ## Daten
 
@@ -344,4 +354,6 @@ not null default false` (gesetzt von `set_shopping_item_checked(…, p_on_list)`
 - [ ] 7. app Vorratscheck (AC-026–AC-029); Bereichswähler + „Liegt woanders …“ (AC-036–AC-039)
 - [ ] 8. app Einkaufen: Eingabe, Fortschritt (AC-040–AC-044); Artikel/Märkte (AC-045–AC-051)
 - [ ] 9. Aufräumen: Seed ohne Doppelposten und `recurring`, tote Exporte; `/security-check`
+- [ ] 10. Nachtrag zu ADR-0008: Laden-Aktionen auch auf der Liste, ein Posten je Artikel
+      (Entscheidung 15)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`

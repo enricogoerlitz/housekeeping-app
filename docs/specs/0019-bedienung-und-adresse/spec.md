@@ -36,7 +36,8 @@ zeigen dasselbe wieder.
   `-webkit-tap-highlight-color: transparent` und `touch-action: manipulation`.
 - Kein `100vh`: `html`, `body`, `#root` haben `height: 100%` (`apps/app/public/index.html`).
 - Hintergrund im dunklen Design: `SystemUI.setBackgroundColorAsync` (`apps/app/src/app/_layout.tsx`).
-- „Zurück“ zur Packkarte und zu „Reisen“: `von=uebersicht|reisen` (`features/packing/trip-screen.tsx`).
+- „Zurück“ der Reise-Seite (`features/packing/trip-screen.tsx`): entfällt mit der Seite, Spec 0022
+  ersetzt sie durch das Reise-Fenster.
 
 ## Anforderungen
 
@@ -56,7 +57,8 @@ im Kochmodus), Zutaten und Beschreibung in der Leseansicht, Notizen, Adresse des
 Feedback-Texte, alles in Eingabefeldern.
 
 - AC-001: Angenommen Desktop · Wenn ich über „Essen“ in der Seitenleiste, den Titel „Kalender“ und
-  die Wochen-Beschriftung der Übersicht ziehe oder doppelklicke · Dann wird nichts markiert.
+  den Zeitraum der Übersicht („Sa 21.11. – Fr 27.11.“, Spec 0020) ziehe oder doppelklicke · Dann wird
+  nichts markiert.
 - AC-002: Angenommen Rezept „Lasagne“ in der Leseansicht · Wenn ich Schritt 2 und die Zutat
   „500 g Hackfleisch“ markiere und kopiere · Dann steht der Text in der Zwischenablage.
 - AC-003 (Rand): Angenommen Handy · Wenn ich lange auf „Speichern“ oder einen Tab drücke · Dann
@@ -124,13 +126,14 @@ Bereich ist. Quelle: ER-07. Offline: vollständig.
 
 - AC-012: Angenommen ich habe in Essen „Lasagne“ geöffnet und bin zu „Liste“ gewechselt · Wenn ich
   „Essen“ wähle · Dann sehe ich die Rezeptliste, nicht „Lasagne“, mit der vorher eingestellten Suche.
-- AC-013: Angenommen ich bin in der Aktivität „Eislaufen“ (Bereich Kalender) · Wenn ich „Kalender“
-  wähle · Dann sehe ich den Kalender in der zuletzt gewählten Ansicht ohne offenes Fenster.
+- AC-013: Angenommen im Kalender ist der Eintrag „Trattoria Da Enzo“ offen und ich wechsle zu
+  „Liste“ · Wenn ich „Kalender“ wähle · Dann sehe ich den Kalender in der zuletzt gewählten Ansicht
+  ohne offenes Fenster.
 - AC-014 (Rand): Angenommen Essen-Liste → „Lasagne“ → „Liste“ → „Essen“ · Wenn ich danach zweimal die
   Zurück-Taste des Browsers drücke · Dann sehe ich zuerst „Liste“, dann „Lasagne“.
 
 **REQ-006 — „Zurück“ führt zur Herkunft und nennt sie.** Jede Detailseite (Rezept, Sammlung,
-Restaurant, Aktivität, Reise, Reisetasche, Markt, Artikel) kennt ihre Herkunft aus `von`, beschriftet
+Restaurant, Aktivität, Reisetasche, Markt, Artikel; die Reise ist nach Spec 0022 ein Fenster) kennt ihre Herkunft aus `von`, beschriftet
 „Zurück“ damit und hebt in Tab-Leiste oder Seitenleiste diesen Bereich hervor; ohne `von` gilt der
 eigene Bereich. Quelle: X-01, X-05, ER-07. Offline: vollständig.
 
@@ -143,13 +146,14 @@ Startseite der Herkunft. Werte von `von`: `uebersicht`, `essen`, `kalender`, `li
   die Übersicht wieder Dienstag, 24.11.
 - AC-016: Angenommen im Kalender ist der Eintrag „Trattoria Da Enzo“ offen · Wenn ich „Restaurant
   öffnen“ und dann „‹ Kalender“ wähle · Dann sehe ich dieselbe Woche mit dem offenen Eintrag.
-- AC-017: Angenommen Desktop, ich öffne „Aktivitäten“ aus „Haushalt“ · Dann heißt der Knopf
-  „‹ Haushalt“ und führt dorthin (heute „Zurück: Kalender“).
+- AC-017: Angenommen Handy, ich öffne über ⊞ „Verwalten“ die „Aktivitäten“ (Spec 0024) · Dann heißt
+  der Knopf „‹ Verwalten“ und führt dorthin (heute „Zurück: Kalender“).
 - AC-018 (Rand): Angenommen ich lade `/rezept/<ID der Lasagne>?von=quatsch` direkt · Dann steht
   „‹ Essen“, „Essen“ ist hervorgehoben, und „Zurück“ führt zur Rezeptliste, nicht aus der App.
 
 **REQ-007 — Haushalt und Namen in der Navigation.** Auf dem Handy steht bei mehr als einem Haushalt
-der Name des aktiven Haushalts als antippbare Zeile oben auf der Übersicht und öffnet „Haushalt
+der Name des aktiven Haushalts als antippbare Zeile über dem Titel der Übersicht (unter dem Titel
+bleibt nach Spec 0020 genau eine Zeile) und öffnet „Haushalt
 wechseln“; die Verwalten-Gruppen heißen „Planen“, „Einkauf“ und „Haushalt & Konto“. Quelle: X-04,
 V-12. Offline: lesend (Wechseln geht offline, es ist lokal).
 
@@ -232,8 +236,10 @@ Regeln für alle Seiten; die Namen stehen im Anhang.
 - In der Adresse: offenes Fenster und wofür (nur Ids), Ansicht (Tab), Filter, Suchtext, Sortierung,
   im Kalender Ansicht und Tag (daraus der Zeitraum), Auswahl in Liste und Detail, Herkunft `von`.
 - Nicht in der Adresse: ungespeicherte Eingaben, Toasts, Rückfragen, Fragen, die die App von sich
-  aus stellt („Wo kaufst du ein?“, „Wo liegt …?“), Auswahl-Fenster wie Menüs, Filter-Fenster und
-  „Haushalt wechseln“, der Assistent, Ziehen, Scroll-Position.
+  aus stellt („Wo kaufst du ein?“, „Wo liegt …?“), Auswahl-Fenster wie Menüs, Filter-Fenster,
+  Bereichswähler und „Haushalt wechseln“, der Assistent, Ziehen, Scroll-Position; Fenster für einen
+  Teil eines Objekts (Zutat, Schritt, Link, Packstück) und kleine Info-Fenster („Warum unbekannt?“,
+  „Aus diesen Gerichten“); Rückfragen wie „Rausnehmen“ (Spec 0022) oder „Haushalt löschen“.
 - Standardwerte fehlen in der Adresse (`/kalender` = Woche mit heute).
 
 **REQ-011 — Ansicht, Filter, Suche, Sortierung.** Jede Liste schreibt Ansicht, Filter, Suche und
@@ -255,8 +261,9 @@ Artikel, Märkte („Märkte / Bereiche“), Feedback.
 
 **REQ-012 — Kalender in der Adresse.** Ansicht, gewählter Tag (bestimmt Woche, Monat oder Jahr),
 Tages-Fenster, Eintrag-Fenster und Hinzufügen-Fenster stehen in der Adresse; Blättern und Tag wählen
-ersetzen, Fenster öffnen fügt hinzu. „Im Kalender planen“ und jeder andere Sprung in den Kalender
-nutzen dieselbe Adresse. Quelle: ER-05. Offline: vollständig (lesen); Fenster mit Schreibvorgängen
+ersetzen, Fenster öffnen fügt hinzu. Jeder Sprung in den Kalender („Alle n ›“ auf der Übersicht,
+„Ansehen“ nach dem Einplanen, Besuche nach Spec 0024; „Im Kalender planen ›“ ersetzt Spec 0020 durch
+„Hinzufügen“) nutzt dieselbe Adresse. Quelle: ER-05. Offline: vollständig (lesen); Fenster mit Schreibvorgängen
 sind offline wie bisher gesperrt.
 
 - AC-036: Angenommen Monat, ich wähle den 9.12. und öffne das Tages-Fenster · Dann ist die Adresse
@@ -264,8 +271,9 @@ sind offline wie bisher gesperrt.
   mit offenem Tages-Fenster für den 9.12. zu sehen.
 - AC-037: Angenommen Woche · Wenn ich dreimal „›“ tippe und dann „Zurück“ im Browser · Dann verlasse
   ich den Kalender und lande, wo ich vorher war.
-- AC-038: Angenommen die Übersicht zeigt Dienstag, 24.11. · Wenn ich „Im Kalender planen“ wähle ·
-  Dann ist die Adresse `/kalender?tag=2026-11-24` · Und „Zurück“ zeigt die Übersicht mit dem 24.11.
+- AC-038: Angenommen die Übersicht zeigt Dienstag, 24.11. mit drei Einträgen · Wenn ich „Alle 3 ›“
+  wähle · Dann ist die Adresse `/kalender?tag=2026-11-24` · Und „Zurück“ zeigt die Übersicht mit dem
+  24.11.
 - AC-039 (Rand): Angenommen `/kalender?tag=2026-13-40&ansicht=tag` · Dann zeigt der Kalender die
   Woche von heute in der Ansicht Woche, ohne Fehlermeldung.
 
@@ -287,8 +295,8 @@ Quelle: ER-05. Offline: vollständig (öffnen und schließen); Speichern wie bis
 in der Adresse und ersetzt den Eintrag; auf dem Handy öffnet derselbe Parameter das Fenster bzw. die
 Detailseite und fügt einen Eintrag hinzu. Quelle: ER-05. Offline: vollständig.
 
-Betrifft: Restaurants in Essen, Aufgaben und Verlauf in Haushalt, Artikel, Märkte, Reisetaschen,
-Einstellungen.
+Betrifft: Restaurants in Essen, Aktivitäten (Spec 0024), Aufgaben und Verlauf in Haushalt,
+Artikel, Märkte, Reisetaschen, Einstellungen.
 
 - AC-043: Angenommen Desktop, Essen → Restaurants · Wenn ich „Trattoria Da Enzo“ wähle · Dann ist die
   Adresse `/rezepte?ansicht=restaurants&restaurant=<ID>` · Und nach dem Neuladen ist sie gewählt.
@@ -343,33 +351,36 @@ Quelle: ER-05. Offline: vollständig.
 ## Anhang — Parameter in der Adresse
 
 Namen deutsch, klein, ohne Umlaut. Objekt-Parameter (`eintrag`, `aufgabe`, `verlauf`, `posten`,
-`artikel`, `restaurant`, `markt`, `tasche`, `reise`) zeigen das Objekt: als Fenster auf dem Handy, als
+`artikel`, `restaurant`, `aktivitaet`, `markt`, `tasche`, `reise`, `feedback`) zeigen das Objekt: als Fenster auf dem Handy, als
 Detail rechts am Desktop. `fenster=<name>` öffnet ein Fenster ohne eigenes Objekt.
 
-| Seite                 | Zustand                                | Parameter                                                                                                                                       | Beispiel                                               |
-| --------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Übersicht `/`         | gezeigter Tag                          | `tag`                                                                                                                                           | `/?tag=2026-11-24`                                     |
-| Übersicht (0020)      | Hinzufügen-Fenster mit Tageszeit       | `fenster=neu-eintrag`, `zeit=<Tageszeit-ID>`                                                                                                    | `/?tag=2026-11-24&fenster=neu-eintrag&zeit=<ID Abend>` |
-| Übersicht             | „Was hast du erledigt?“                | `fenster=erledigt`                                                                                                                              | `/?fenster=erledigt`                                   |
-| Kalender `/kalender`  | Ansicht, Tag                           | `ansicht=woche\|monat\|jahr`, `tag`                                                                                                             | `/kalender?ansicht=monat&tag=2026-12-09`               |
-| Kalender              | Tages-Fenster, Eintrag, Hinzufügen     | `fenster=tag`, `eintrag`, `fenster=neu-eintrag&zeit`                                                                                            | `/kalender?tag=2026-11-25&eintrag=<ID>`                |
-| Kalender (0022)       | Reise-Fenster, neue Reise              | `reise`, `fenster=neu-reise`                                                                                                                    | `/kalender?ansicht=monat&tag=2026-12-04&reise=<ID>`    |
-| Kalender              | „Auf die Einkaufsliste“                | `fenster=vorratscheck`                                                                                                                          | `/kalender?tag=2026-11-25&fenster=vorratscheck`        |
-| Essen `/rezepte`      | Ansicht, Suche, Filter, Sortierung     | `ansicht=rezepte\|restaurants`, `suche`, `art`, `favoriten=1`, `ernaehrung`, `dauer`, `fuer-alle=1`, `selten=1`, `gang`, `kueche`, `sortierung` | `/rezepte?suche=curry&sortierung=haeufig`              |
-| Essen                 | Neu; Restaurant gewählt/neu            | `fenster=neu\|neu-restaurant`, `restaurant`, `link`, `name`                                                                                     | `/rezepte?ansicht=restaurants&restaurant=<ID>`         |
-| Rezept `/rezept/[id]` | Herkunft, Portionen, Variante, Fenster | `von`, `portionen`, `variante`, `fenster=einplanen\|sammlung\|vorratscheck`                                                                     | `/rezept/<ID>?von=uebersicht&portionen=6`              |
-| Kochmodus             | Schritt, Variante, Portionen           | `schritt`, `variante`, `portionen`                                                                                                              | `/rezept/<ID>/kochen?schritt=3&portionen=6`            |
-| Restaurant (0024)     | Einplanen-Fenster, Route               | `fenster=einplanen\|route`, `von`                                                                                                               | `/restaurant/<ID>?fenster=einplanen`                   |
-| Aktivitäten (0024)    | Suche, Favoriten, Sortierung, Auswahl  | `suche`, `favoriten=1`, `sortierung`, `aktivitaet`, `fenster=neu-aktivitaet\|einplanen`                                                         | Pfad nach 0024                                         |
-| Liste `/liste`        | Posten, Vorratscheck                   | `posten`, `fenster=vorratscheck`                                                                                                                | `/liste?posten=<ID>`                                   |
-| Liste (0025)          | „Aus Kalender“ mit Startdatum          | `fenster=aus-kalender`, `tag`                                                                                                                   | `/liste?fenster=aus-kalender&tag=2026-11-29`           |
-| Haushalt `/haushalt`  | Ansicht, Aufgabe, Verlauf, Neu         | `ansicht=anstehend\|alle\|verlauf`, `aufgabe`, `verlauf`, `fenster=neu-aufgabe\|erledigt`                                                       | `/haushalt?ansicht=alle&aufgabe=<ID>`                  |
-| Artikel `/artikel`    | Filter, Suche, Sortierung, Auswahl     | `filter`, `suche`, `sortierung=name\|neu`, `artikel`, `fenster=neu-artikel`, `von`                                                              | `/artikel?filter=ohne-bereich&artikel=<ID>`            |
-| Märkte `/maerkte`     | Ansicht, Markt                         | `ansicht=maerkte\|bereiche`, `markt`                                                                                                            | `/maerkte?markt=<ID>`                                  |
-| Reisetaschen          | Tasche                                 | `tasche`                                                                                                                                        | `/reisetaschen?tasche=<ID>`                            |
-| Einstellungen         | Abschnitt                              | `abschnitt`                                                                                                                                     | `/einstellungen?abschnitt=<Abschnitt>`                 |
-| Feedback              | Status-Filter                          | `filter`                                                                                                                                        | `/feedback?filter=<Status>`                            |
-| Benachrichtigung      | Haushalt wechseln (einmalig)           | `haushalt` (wird nach dem Wechsel entfernt)                                                                                                     | `/kalender?tag=2026-11-25&eintrag=<ID>&haushalt=<ID>`  |
+| Seite                     | Zustand                                                             | Parameter                                                                                                                                                     | Beispiel                                               |
+| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Übersicht `/`             | gezeigter Tag                                                       | `tag`                                                                                                                                                         | `/?tag=2026-11-24`                                     |
+| Übersicht (0020)          | Hinzufügen-Fenster (Vorwahl gerechnet)                              | `fenster=neu-eintrag` (ohne `zeit`, Vorwahl nach 0020 REQ-005)                                                                                                | `/?tag=2026-11-24&fenster=neu-eintrag`                 |
+| Übersicht                 | „Was hast du erledigt?“                                             | `fenster=erledigt`                                                                                                                                            | `/?fenster=erledigt`                                   |
+| Kalender `/kalender`      | Ansicht, Tag                                                        | `ansicht=woche\|monat\|jahr`, `tag`                                                                                                                           | `/kalender?ansicht=monat&tag=2026-12-09`               |
+| Kalender                  | Tages-Fenster, Eintrag, Hinzufügen                                  | `fenster=tag`, `eintrag`, `fenster=neu-eintrag&zeit`                                                                                                          | `/kalender?tag=2026-11-25&eintrag=<ID>`                |
+| Reise-Fenster (0022)      | Reise über Kalender, Übersicht, Reisen, Reisetaschen; neue Reise    | `reise`; `fenster=neu-reise` (Kalender, Reisen)                                                                                                               | `/kalender?ansicht=monat&tag=2026-12-04&reise=<ID>`    |
+| Kalender                  | „Auf die Einkaufsliste“ (dasselbe Fenster wie „Aus Kalender“, 0025) | `fenster=aus-kalender`                                                                                                                                        | `/kalender?tag=2026-11-25&fenster=aus-kalender`        |
+| Essen `/rezepte`          | Ansicht, Suche, Filter, Sortierung                                  | `ansicht=rezepte\|restaurants`, `suche`, `art`, `favoriten=1`, `ernaehrung`, `dauer`, `fuer-alle=1`, `selten=1`, `gang`, `kueche`, `sortierung`               | `/rezepte?suche=curry&sortierung=haeufig`              |
+| Essen                     | Neu; Restaurant gewählt/neu                                         | `fenster=neu\|neu-restaurant`, `restaurant`, `link`, `name`                                                                                                   | `/rezepte?ansicht=restaurants&restaurant=<ID>`         |
+| Rezept `/rezept/[id]`     | Herkunft, Portionen, Variante, Fenster                              | `von`, `portionen`, `variante`, `fenster=einplanen\|sammlung\|vorratscheck`                                                                                   | `/rezept/<ID>?von=uebersicht&portionen=6`              |
+| Kochmodus                 | Schritt, Variante, Portionen                                        | `schritt`, `variante`, `portionen`                                                                                                                            | `/rezept/<ID>/kochen?schritt=3&portionen=6`            |
+| Restaurant (0024)         | Einplanen, Route, Bearbeiten                                        | `fenster=einplanen\|route\|bearbeiten`, `von` (auch neben `restaurant` in Essen)                                                                              | `/restaurant/<ID>?fenster=einplanen`                   |
+| Aktivitäten (0024)        | Suche, Favoriten, Sortierung, Auswahl                               | `suche`, `favoriten=1`, `sortierung`, `aktivitaet`, `fenster=neu-aktivitaet\|einplanen`; Handy `/aktivitaet/<ID>?fenster=einplanen`                           | `/aktivitaeten?aktivitaet=<ID>`                        |
+| Liste `/liste`            | Posten, Vorratscheck                                                | `posten`, `fenster=vorratscheck`                                                                                                                              | `/liste?posten=<ID>`                                   |
+| Liste (0025)              | „Aus Kalender“ mit Startdatum                                       | `fenster=aus-kalender`, `tag`                                                                                                                                 | `/liste?fenster=aus-kalender&tag=2026-11-29`           |
+| Haushalt `/haushalt`      | Ansicht, Aufgabe, Verlauf, Neu                                      | `ansicht=anstehend\|alle\|verlauf`, `aufgabe`, `verlauf`, `fenster=neu-aufgabe\|erledigt`                                                                     | `/haushalt?ansicht=alle&aufgabe=<ID>`                  |
+| Haushalt (0026)           | Verlauf nach Person und Aufgabe                                     | `person=<Mitglied-ID>`, `nur-aufgabe=<ID>` (nicht `aufgabe`: der öffnet die Aufgabe)                                                                          | `/haushalt?ansicht=verlauf&nur-aufgabe=<ID>`           |
+| Artikel `/artikel`        | Filter, Suche, Sortierung, Auswahl                                  | `filter=ohne-bereich\|unbenutzt\|ernaehrung-unbekannt`, `bereich=<ID>` (0023, 0025), `suche`, `sortierung=name\|neu`, `artikel`, `fenster=neu-artikel`, `von` | `/artikel?filter=ohne-bereich&artikel=<ID>`            |
+| Märkte `/maerkte`         | Ansicht, Markt, Neu (0025)                                          | `ansicht=maerkte\|bereiche`, `markt`, `fenster=neu-markt\|neu-bereich`                                                                                        | `/maerkte?markt=<ID>`                                  |
+| Reisetaschen              | Tasche                                                              | `tasche`                                                                                                                                                      | `/reisetaschen?tasche=<ID>`                            |
+| Einstellungen             | Abschnitt, Profil (0027)                                            | `abschnitt`, `fenster=profil`                                                                                                                                 | `/einstellungen?abschnitt=<Abschnitt>`                 |
+| Benachrichtigungen (0027) | Haushalt der Einstellungen                                          | `fuer-haushalt=<ID>` (wechselt nie den Haushalt der App; fremd oder unbekannt → aktiver Haushalt)                                                             | `/einstellungen/benachrichtigungen?fuer-haushalt=<ID>` |
+| Mitglieder (0027)         | Haushalt umbenennen                                                 | `fenster=umbenennen`                                                                                                                                          | `/mitglieder?fenster=umbenennen`                       |
+| Feedback                  | Status-Filter, Bearbeiten (0027)                                    | `filter`, `feedback`                                                                                                                                          | `/feedback?filter=<Status>`                            |
+| Benachrichtigung          | Haushalt wechseln (einmalig)                                        | `haushalt` (wird nach dem Wechsel entfernt)                                                                                                                   | `/kalender?tag=2026-11-25&eintrag=<ID>&haushalt=<ID>`  |
 
 Regel für neue Fenster: Ein neues Fenster bekommt `fenster=<name>` (Verb oder `neu-<objekt>`) oder,
 wenn es ein Objekt zeigt, dessen Objekt-Parameter; es wird in die Liste in `packages/core`
@@ -404,6 +415,7 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (22.11.2026).
 10. X-03 Liste: „+“ offline über die bestehende Aktion „Posten hinzufügen“ der
     Laden-Warteschlange, „−“ bleibt online; Grund: hinzufügen geht offline schon per Eintippen.
     Ändert 0025 die Mengenbedienung (L-01), gilt weiter: hinzufügen offline, verringern online.
+    Dass die Laden-Aktionen auch auf der Liste gelten, hält der ADR-0008-Nachtrag aus Spec 0025 fest.
 11. Filter-Fenster, Menüs, „Haushalt wechseln“, Assistent und Fragen der App stehen nicht in der
     Adresse: Sie sind Auswahl oder Rückfrage, kein Ort.
 12. Ändert ältere Kriterien: Banner-Text in Spec 0001 AC-010 und 0003 AC-004 wird „Offline – Lesen,
@@ -415,6 +427,12 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (22.11.2026).
 14. OFFEN: Wie iOS die Statusleiste einer installierten Web-App bei `theme-color` je Farbschema und
     `apple-mobile-web-app-status-bar-style` färbt, wird auf Enricos iPhone geprüft (Emulation zeigt es
     nicht). AC-023 ist das Ziel; die Meta-Kombination legt die Umsetzung fest.
+15. Abgestimmt mit Specs 0020–0027, 22.11.2026: Anhang um die neuen Fenster und Filter ergänzt
+    (Reise-Fenster auf vier Seiten, `aus-kalender` auch im Kalender statt `vorratscheck`, Aktivitäten
+    unter `/aktivitaeten`, Verlauf `person`/`nur-aufgabe`, Artikel `bereich`, `fuer-haushalt`,
+    `fenster=profil|umbenennen|bearbeiten`); die Übersicht schreibt kein `zeit`. Reise ist keine
+    Detailseite mehr (0022), Aktivitäten liegen unter „Verwalten“ (0024): AC-013, AC-017, AC-038
+    angepasst.
 
 ## Daten
 

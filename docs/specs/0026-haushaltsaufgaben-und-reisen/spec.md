@@ -209,8 +209,8 @@ Quelle: U-04. Offline: offline vollständig.
 
 ### Reisen wirken auf Aufgaben
 
-Begriffe: Eine Person **ist weg**, wenn eine Reise des Haushalts sie oder den ganzen Haushalt an
-diesem Tag einschließt (Von und Bis zählen). Der **ganze Haushalt ist weg**, wenn jedes Mitglied weg
+Begriffe: Eine Person **ist weg**, wenn sie an diesem Tag auf einer Reise des Haushalts steht
+(Spec 0022: `trips` + `trip_members`; Von und Bis zählen). Der **ganze Haushalt ist weg**, wenn jedes Mitglied weg
 ist, egal über welche Reisen. Ein Tag ist für eine Aufgabe **frei**, wenn jemand da ist, der sie
 erledigen kann:
 
@@ -301,7 +301,8 @@ Personen bekommt keinen eigenen Satz. Quelle: H-03. Offline: offline lesend.
   tun“, die Aufgaben stehen wie in AC-035.
 
 **REQ-014 — Benachrichtigungen nach derselben Regel.** Tagesüberblick und Erinnerung an Aufgaben mit
-Uhrzeit nutzen den Termin nach REQ-011 und die Vertretung nach REQ-012: an nicht freien Tagen nichts
+Uhrzeit (nur bei „Erinnern“ an, Spec 0027 REQ-009) nutzen den Termin nach REQ-011 und die
+Vertretung nach REQ-012: an nicht freien Tagen nichts
 zur Aufgabe, am neuen Tag zur Uhrzeit an die Person, die dann dran ist; wer weg ist, bekommt
 weiterhin nichts (Spec 0013, AC-035). Zeitplaner (SQL) und `packages/core` rechnen dasselbe;
 Paritätstests tragen die Namen der core-Tests. Quelle: H-03. Offline: entfällt (Server).
@@ -319,8 +320,7 @@ Paritätstests tragen die Namen der core-Tests. Quelle: H-03. Offline: entfällt
 - AC-057: Angenommen ein zweiter Haushalt mit eigener Reise und Aufgaben · Dann beeinflusst keine
   seiner Reisen Fälligkeit oder Empfänger von „Enrico & Nadja“ und umgekehrt (pgTAP).
 
-**REQ-015 — Satz zur Wirkung im Reise-Fenster.** Wo die App erklärt, was eine Reise bewirkt (heute
-„Reise eintragen“ und die leere Seite „Reisen“; Platz bestimmt Spec 0022), steht: „Wer weg ist, fehlt
+**REQ-015 — Satz zur Wirkung im Reise-Fenster.** Wo die App erklärt, was eine Reise bewirkt (unter „Wer?“ beim Anlegen im Reise-Fenster, Spec 0022 REQ-003), steht: „Wer weg ist, fehlt
 bei „Wer isst mit?“, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand
 erledigen kann, wartet bis danach.“ Quelle: H-03, Spec 0010 Offene Frage 1. Offline: Anzeige.
 
@@ -369,6 +369,10 @@ anders vermerkt.
 16. **Wer „dran“ ist, gilt für den nächsten Termin**, also schon vor der Reise die Vertretung (sonst
     springt der Avatar am Reisetag um).
 17. **Überspringen bei „Einmalig“ ausgeblendet**: es würde nur das Datum löschen.
+18. Abgestimmt mit Spec 0022, 22.11.2026: „weg“ heißt „steht auf einer Reise“ (`trip_members`); eine
+    Reise „des ganzen Haushalts“ ist nur abgeleitet und gilt nicht für später Beigetretene. Der Satz
+    zur Wirkung steht nur unter „Wer?“ beim Anlegen. Abgestimmt mit Spec 0027: dessen Schalter
+    „Erinnern“ an der Aufgabe kommt nach dieser Spec und gilt zusätzlich zu REQ-014.
 
 ## Daten
 
@@ -379,8 +383,7 @@ anders vermerkt.
 - **Neue Domänen-Operation** in `apply_changes`: Tag einer Erledigung ändern (`event_id`, `done_on`,
   gesehener Stand wie bei `complete_chore`, neuer Termin/„Zuletzt“ nur bei der jüngsten). Kein
   Update-Grant auf `chore_events.done_on`.
-- **Zeitplaner:** gemeinsame SQL-Funktionen für „Termin nach Reisen“ und „wer ist dran“ (liest
-  `absences` nur des Haushalts), genutzt von `chore_due_state`, `chore_assignees`,
+- **Zeitplaner:** gemeinsame SQL-Funktionen für „Termin nach Reisen“ und „wer ist dran“ (liest `trips`/`trip_members` aus Spec 0022, nur des Haushalts), genutzt von `chore_due_state`, `chore_assignees`,
   `chore_reminder_candidates`, `daily_summary_body`; Text „fällig seit …“ als eigene Funktion.
 - **Entfällt:** Link `chores-show-all`; Abschnitt „Fällig seit“; `doneOnChoices` als 3-Tage-Grenze
   und `checkDay`; `postponeChore` mit festem + 1; `dueText` in `today-chores.tsx` (doppelt zu
