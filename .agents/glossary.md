@@ -584,8 +584,33 @@ frei wählbar, auch über Monats- und Jahresgrenzen und in der Vergangenheit (Sp
 AC-044). Kann eine Packliste haben (Spec 0012).
 
 - **Im Code:** `Absence`, `absences`; ganzer Haushalt = ohne `memberId`
+- **In der Oberfläche:** „Reise“, „Reisen“, ohne Notiz „unterwegs“ (Spec 0016, REQ-008, Entwurf).
+  Specs, Regeln und Code sprechen weiter von der Abwesenheit.
 - **Nicht verwenden:** Urlaub (ist nur ein Fall davon), Pause
 - **Siehe auch:** [Abwesenheits-Streifen](#abwesenheits-streifen), [Packliste](#packliste)
+
+### Tages-Fenster
+
+Das Fenster, das in den Ansichten „Monat“ und „Jahr“ nach einem Tipp auf einen Tag alles von diesem
+Tag zeigt: Abwesenheiten, Aufgaben und alle Tageszeiten mit ihren Einträgen, zum Ansehen und
+Bearbeiten, ohne die Ansicht zu wechseln. Auf dem Handy kommt es von unten und lässt das Raster
+bedienbar, ab 700 px steht es rechts neben dem Raster (Spec 0016, REQ-006, Entwurf).
+
+- **Im Code:** noch nicht gebaut
+- **Nicht verwenden:** Tagesansicht (es gibt keine vierte Ansicht), Dropup, Tagesliste (die
+  ersetzt es)
+- **Siehe auch:** [Kalender](#kalender), [Tageszeit](#tageszeit)
+
+### Erinnerung
+
+Eine Benachrichtigung, die jemand an einem einzelnen Planeintrag einschaltet, mit Tag und Uhrzeit;
+ohne Einschalten kommt keine (Spec 0017, Entwurf). Sie geht mit, wenn der Eintrag verschoben wird.
+
+- **Im Code:** noch nicht gebaut
+- **Abgrenzung:** Die _Reservierungs-Erinnerung_ am Restaurant-Eintrag („Erinnern 2 h vorher“,
+  Spec 0013) hängt an der Reservierungsuhrzeit. Der _Tagesüberblick_ und „Aktivitäten am Vortag“
+  sind Arten von Benachrichtigungen je Person, keine Erinnerungen an einem Eintrag.
+- **Nicht verwenden:** Alarm, Wecker, Termin
 
 ### Abwesenheits-Streifen
 
