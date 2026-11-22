@@ -1,5 +1,7 @@
 import {
   collectionContentLabel,
+  inheritedServingsHint,
+  inheritedServingsPlaceholder,
   defaultVariantId,
   moveContent,
   removeContent,
@@ -109,14 +111,14 @@ export function ContentsSection(props: {
   );
 }
 
-/** The line under a recipe while "Enthält" is open: "vegan · 8 Port.", "übernimmt · 6 Port.". */
+/** The line under a recipe while "Enthält" is open: "vegan · 8 Port.", "6 Port. (wie Sammlung)". */
 function rowDetail(row: ContentsRow, recipe: Recipe | undefined, collection: Recipe): string {
   const variant =
     recipe && row.variantId !== undefined && row.variantId !== defaultVariantId(recipe)
       ? recipe.variants.find((candidate) => candidate.id === row.variantId)?.name
       : undefined;
   const servings = row.servings.trim();
-  const portions = servings ? `${servings} Port.` : `übernimmt · ${collection.servings} Port.`;
+  const portions = servings ? `${servings} Port.` : `${collection.servings} Port. (wie Sammlung)`;
   return [variant, portions].filter(Boolean).join(' · ');
 }
 
@@ -208,7 +210,7 @@ function ContentsFields(props: {
 
 /**
  * Portions and variant of one recipe in the collection (AC-015, AC-016): blank portions take the
- * collection's ("übernimmt"); the variant only for a recipe with variants. "Übernehmen" changes the
+ * collection's ("wie Sammlung", spec 0023, AC-058); the variant only for a recipe with variants. "Übernehmen" changes the
  * draft; "Fertig" of the section saves.
  */
 function ContentSheet(props: {
@@ -264,8 +266,8 @@ function ContentSheet(props: {
       <Stack gap={16}>
         <TextField
           label="Portionen"
-          placeholder={`übernimmt (${collection.servings})`}
-          hint={`Leer lassen: übernimmt die Portionen der Sammlung (${collection.servings})`}
+          placeholder={inheritedServingsPlaceholder(collection.servings)}
+          hint={inheritedServingsHint(collection.servings)}
           value={servings}
           onChangeText={(text) => {
             setServings(text);
