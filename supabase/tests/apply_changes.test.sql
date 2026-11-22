@@ -323,7 +323,7 @@ select throws_ok(
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
     'kind', 'insert', 'table', 'feedback',
-    'row', jsonb_build_object('id', gen_random_uuid(), 'kind', 'idea', 'text', 'x', 'status', 'new', 'author_id', tests.fx('nadja'))))),
+    'row', jsonb_build_object('id', gen_random_uuid(), 'kind', 'idea', 'text', 'x', 'author_id', tests.fx('nadja'))))),
   'T5 attack: feedback author_id may be sent on insert …');
 select is(
   (select author_id from public.feedback where text = 'x'), tests.fx('enrico'),

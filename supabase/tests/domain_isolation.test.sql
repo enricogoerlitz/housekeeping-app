@@ -91,7 +91,7 @@ select * from tests.tenant_isolation('absences',
 select * from tests.tenant_isolation('feedback',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'kind', 'problem',
                      'text', 'Liste springt'),
-  '{"status": "accepted", "reason": "Nachvollziehbar"}',
+  '{"text": "Liste springt nach oben"}',
   tests.fx('anna'), tests.fx('ben'));
 
 select * from tests.tenant_isolation('chores',

@@ -5,8 +5,9 @@ import type { Row } from './sync-delta';
 import type { RowOp } from './sync-overlay';
 
 /**
- * Columns a client never sends: set by the server (`id` is only sent on insert), or writable only
- * through the store RPCs (the packed state of a Packstück: set_packing_items_packed, spec 0012).
+ * Columns a client never sends: set by the server (`id` is only sent on insert), writable only
+ * through the store RPCs (the packed state of a Packstück: set_packing_items_packed, spec 0012),
+ * or the developer's (status, reason and spec reference of feedback, spec 0027 Decision 10).
  */
 export const NEVER_SENT_COLUMNS = [
   'id',
@@ -22,6 +23,9 @@ export const NEVER_SENT_COLUMNS = [
   'packed_at',
   'packed_by',
   'pack_seq',
+  'status',
+  'reason',
+  'spec_ref',
 ] as const;
 
 const NEVER_SENT = new Set<string>(NEVER_SENT_COLUMNS);

@@ -23,6 +23,7 @@ import {
   isHalfStar,
   isReminderPast,
   packQuantity,
+  PROFILE_COLORS,
   queueEffect,
   RECIPE_LIMITS,
   type AiSearchRequest,
@@ -93,6 +94,10 @@ type RpcName =
   | 'accept_invitation'
   | 'decline_invitation'
   | 'remove_member'
+  | 'withdraw_invitation'
+  | 'update_profile'
+  | 'household_media_names'
+  | 'delete_household'
   | 'register_push_subscription'
   | 'set_push_subscription_enabled'
   | 'unregister_push_subscription'
@@ -1652,9 +1657,7 @@ export function createFakeServer(): FakeServer {
     const serverTime = now();
     const mine = new Set(householdsOf(userId));
     const email = profiles.get(userId)?.email;
-    const openInvitations = invitations.filter(
-      (invitation) => invitation.email === email && invitation.accepted_at === null,
-    );
+    const openInvitations = invitations.filter((invitation) => invitation.email === email);
     const visibleHouseholds = new Set([
       ...mine,
       ...openInvitations.map((invitation) => String(invitation.household_id)),
@@ -2462,7 +2465,6 @@ export function createFakeServer(): FakeServer {
             household_id: householdId,
             email: address,
             invited_by: userId,
-            accepted_at: null,
             created_at: time,
             updated_at: time,
           });
@@ -2477,12 +2479,9 @@ export function createFakeServer(): FakeServer {
             (candidate) => candidate.id === invitationId && candidate.email === email,
           );
           if (!invitation) throw new TransportError('permanent', 'invitation_not_found', 404);
+          // Spec 0027, Decision 1: accepting deletes the invitation.
           const time = now();
-          invitations = invitations.map((candidate) =>
-            candidate === invitation
-              ? { ...candidate, accepted_at: time, updated_at: time }
-              : candidate,
-          );
+          invitations = invitations.filter((candidate) => candidate !== invitation);
           const householdId = String(invitation.household_id);
           members.push({
             household_id: householdId,
@@ -2538,6 +2537,81 @@ export function createFakeServer(): FakeServer {
             }
             return [next, undefined];
           });
+          notify(householdId);
+        }),
+
+      withdrawInvitation: (invitationId) =>
+        run(userId, 'withdraw_invitation', () => {
+          requireUser(userId);
+          const invitation = invitations.find(
+            (candidate) =>
+              candidate.id === invitationId && isMember(userId, String(candidate.household_id)),
+          );
+          if (!invitation) throw new TransportError('permanent', 'invitation_not_found', 404);
+          invitations = invitations.filter((candidate) => candidate !== invitation);
+          notify(String(invitation.household_id));
+        }),
+
+      updateProfile: (profile) =>
+        run(userId, 'update_profile', () => {
+          requireUser(userId);
+          const name = profile.name.trim();
+          if (!name || [...name].length > 80) throw reject('invalid_name');
+          if (!PROFILE_COLORS.some((color) => color.hex === profile.color)) {
+            throw reject('invalid_color');
+          }
+          if (!['vegan', 'vegetarian', 'flexible'].includes(profile.dietPreference)) {
+            throw reject('invalid_diet');
+          }
+          const keys = profile.dislikes.map((dislike) => dislike.toLowerCase());
+          const dislikesValid =
+            profile.dislikes.length <= 50 &&
+            new Set(keys).size === keys.length &&
+            profile.dislikes.every(
+              (dislike) =>
+                dislike === dislike.trim() && [...dislike].length >= 1 && [...dislike].length <= 40,
+            );
+          if (!dislikesValid) throw reject('invalid_dislikes');
+          const current = profiles.get(userId);
+          if (!current) throw new TransportError('permanent', 'not_authenticated', 401);
+          profiles.set(userId, {
+            ...current,
+            name,
+            color: profile.color,
+            diet_preference: profile.dietPreference,
+            dislikes: [...profile.dislikes],
+            updated_at: now(),
+          });
+          for (const householdId of householdsOf(userId)) notify(householdId);
+        }),
+
+      householdMediaNames: (householdId) =>
+        run(userId, 'household_media_names', () => {
+          requireUser(userId);
+          return [...media.keys()]
+            .filter((path) => mediaHousehold(userId, path) === householdId)
+            .sort();
+        }),
+
+      deleteHousehold: (householdId) =>
+        run(userId, 'delete_household', () => {
+          requireUser(userId);
+          if (!isMember(userId, householdId)) {
+            throw new TransportError('permanent', 'not_member', 403);
+          }
+          if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
+          if ([...media.keys()].some((path) => path.startsWith(`${householdId}/`))) {
+            throw reject('media_remaining');
+          }
+          // One transaction with the cascade: rows, members, invitations, tombstones.
+          households.delete(householdId);
+          members = members.filter((member) => member.household_id !== householdId);
+          invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
+          data.delete(householdId);
+          deletions = deletions.filter((tombstone) => tombstone.householdId !== householdId);
+          for (const [key, deletion] of recipeDeletions) {
+            if (deletion.householdId === householdId) recipeDeletions.delete(key);
+          }
           notify(householdId);
         }),
 

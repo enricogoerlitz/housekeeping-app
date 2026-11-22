@@ -348,6 +348,18 @@ export function createSupabaseTransport(
       nothing('decline_invitation', { invitation_id: invitationId }),
     removeMember: (householdId, profileId) =>
       nothing('remove_member', { household_id: householdId, profile_id: profileId }),
+    withdrawInvitation: (invitationId) =>
+      nothing('withdraw_invitation', { invitation_id: invitationId }),
+    updateProfile: (profile) =>
+      nothing('update_profile', {
+        name: profile.name,
+        color: profile.color,
+        diet_preference: profile.dietPreference,
+        dislikes: [...profile.dislikes],
+      }),
+    householdMediaNames: (householdId) =>
+      parsed(z.array(z.string()), 'household_media_names', { household_id: householdId }),
+    deleteHousehold: (householdId) => nothing('delete_household', { household_id: householdId }),
     registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
       id('register_push_subscription', {
         p_endpoint: endpoint,
