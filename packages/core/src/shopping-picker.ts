@@ -1,12 +1,13 @@
-// Step 1 of "Auf die Einkaufsliste" (spec 0006, REQ-008, D21): which plan entries the window
-// shows for a week and which of them start out selected.
+// Step 1 of "Auf die Einkaufsliste" (spec 0006, REQ-008; spec 0025, REQ-001): which plan entries
+// the window shows for seven days from a start day and which of them start out selected.
 import {
   collectionContributions,
   collectionRecipeCountLabel,
   contentsInBook,
   type RecipeBook,
 } from './collections';
-import { isoWeekNumber, parseISODate, startOfWeek, weekdayShort, weekDates } from './dates';
+import { dateRangeLabel } from './calendar';
+import { addDays, isoWeekNumber, parseISODate, startOfWeek, weekdayShort } from './dates';
 import { entriesForDay, orderSlotEntries } from './meal-plan';
 import { contributionsFromEntry } from './shopping';
 import type { Id, ISODate, MealPlanEntry, Recipe, ShoppingItem } from './types';
@@ -86,8 +87,8 @@ export interface ListPickerInput extends RecipeBook {
   /** All items of the list, open and checked. */
   items: readonly ShoppingItem[];
   today: ISODate;
-  /** Any day of the week to show; for the preselection the week the window opens with. */
-  week: ISODate;
+  /** First day of the seven shown (listPickerStart, shiftListPickerStart); never before today. */
+  start: ISODate;
   /** Meal slot ids in their order, for the order of entries within a day. */
   slotOrder: readonly Id[];
 }
@@ -104,19 +105,48 @@ export interface ListPickerEntry {
 export interface ListPickerDay {
   date: ISODate;
   isToday: boolean;
-  /** "vorbei": before today. */
-  isPast: boolean;
   entries: ListPickerEntry[];
 }
 
-export interface ListPickerWeek {
-  /** Monday of the week. */
-  weekStart: ISODate;
+export interface ListPickerGroup {
   weekNumber: number;
-  /** Only days with something to put on the list, Monday first. */
+  /** "KW 48 · 23.–28. Nov": the week and the days of it that the page shows. */
+  label: string;
+  /** Only days with something to put on the list. */
   days: ListPickerDay[];
-  /** "Vorgemerkt": entries without a day, the same in every week. */
+}
+
+export interface ListPickerPage {
+  start: ISODate;
+  /** The last of the seven days. */
+  end: ISODate;
+  /** "22.–28. Nov", "29. Nov – 5. Dez". */
+  title: string;
+  /** Weeks with at least one day to show; empty when nothing is planned (AC-006). */
+  groups: ListPickerGroup[];
+  /** "Vorgemerkt": entries without a day, the same on every page. */
   parked: ListPickerEntry[];
+  /** ‹ is possible: the page does not start today. */
+  canGoBack: boolean;
+}
+
+/** How many days one page of "Was soll auf die Liste?" shows (spec 0025, REQ-001). */
+export const LIST_PICKER_DAYS = 7;
+
+/**
+ * The first day of the window (Decision 2): from the calendar the Monday of the week shown there
+ * when it lies after today, else today (AC-003, AC-004).
+ */
+export function listPickerStart(today: ISODate, calendarWeek?: ISODate): ISODate {
+  if (calendarWeek === undefined) return today;
+  const monday = startOfWeek(calendarWeek);
+  return monday > today ? monday : today;
+}
+
+/** ‹ and › move by seven days; ‹ never goes before today (AC-002, AC-003). */
+export function shiftListPickerStart(start: ISODate, today: ISODate, direction: 1 | -1): ISODate {
+  const next = addDays(start, direction * LIST_PICKER_DAYS);
+  return next < today ? today : next;
 }
 
 function pickerEntries(
@@ -132,20 +162,36 @@ function pickerEntries(
   });
 }
 
-/** What the window shows for one week: its days with eligible recipe entries, then "Vorgemerkt". */
-export function listPickerWeek(input: ListPickerInput): ListPickerWeek {
+/**
+ * What the window shows for seven days from `start`: the days with eligible recipe entries,
+ * grouped by calendar week, then "Vorgemerkt" (REQ-001).
+ */
+export function listPickerPage(input: ListPickerInput): ListPickerPage {
   const onList = entryIdsOnList(input.items);
   const entries = [...input.entries];
-  const days = weekDates(input.week).flatMap((date): ListPickerDay[] => {
+  const dates = Array.from({ length: LIST_PICKER_DAYS }, (_, index) => addDays(input.start, index));
+  const end = dates[dates.length - 1] ?? input.start;
+
+  const groups: ListPickerGroup[] = [];
+  for (const date of dates) {
+    const weekNumber = isoWeekNumber(date);
+    const weekDays = dates.filter((day) => startOfWeek(day) === startOfWeek(date));
+    let group = groups.find((candidate) => candidate.weekNumber === weekNumber);
+    if (!group) {
+      const first = weekDays[0] ?? date;
+      const last = weekDays[weekDays.length - 1] ?? date;
+      group = { weekNumber, label: `KW ${weekNumber} · ${dateRangeLabel(first, last)}`, days: [] };
+      groups.push(group);
+    }
     const dayEntries = pickerEntries(
       entriesForDay(entries, date, [...input.slotOrder]),
       input,
       onList,
     );
-    return dayEntries.length === 0
-      ? []
-      : [{ date, isToday: date === input.today, isPast: date < input.today, entries: dayEntries }];
-  });
+    if (dayEntries.length > 0) {
+      group.days.push({ date, isToday: date === input.today, entries: dayEntries });
+    }
+  }
 
   const slotPosition = (entry: MealPlanEntry): number => {
     const index = input.slotOrder.indexOf(entry.slotId);
@@ -157,20 +203,24 @@ export function listPickerWeek(input: ListPickerInput): ListPickerWeek {
   );
 
   return {
-    weekStart: startOfWeek(input.week),
-    weekNumber: isoWeekNumber(input.week),
-    days,
+    start: input.start,
+    end,
+    title: dateRangeLabel(input.start, end),
+    groups: groups.filter((group) => group.days.length > 0),
     parked: pickerEntries(parked, input, onList),
+    canGoBack: input.start > input.today,
   };
 }
 
 /**
- * Entry ids selected when the window opens (D21 A): entries of the starting week from today on
- * that are not on the list yet. Past days, other weeks and "Vorgemerkt" start unselected.
+ * Entry ids selected when the window opens (Decision 2): entries of the start page that are not
+ * on the list yet. Other pages and "Vorgemerkt" start unselected.
  */
 export function listPickerPreselection(input: ListPickerInput): Id[] {
-  return listPickerWeek(input).days.flatMap((day) =>
-    day.isPast ? [] : day.entries.filter((row) => !row.onList).map((row) => row.entry.id),
+  return listPickerPage(input).groups.flatMap((group) =>
+    group.days.flatMap((day) =>
+      day.entries.filter((row) => !row.onList).map((row) => row.entry.id),
+    ),
   );
 }
 
@@ -188,13 +238,10 @@ export function toggleDaySelection(selected: ReadonlySet<Id>, dayEntryIds: reado
   return next;
 }
 
-/** The head of a day in the window: "Fr 20 · heute", "Do 19 · vorbei", "Sa 21". */
-export function listPickerDayLabel(
-  day: Pick<ListPickerDay, 'date' | 'isToday' | 'isPast'>,
-): string {
+/** The head of a day in the window: "So 22 · heute", "Mo 23". */
+export function listPickerDayLabel(day: Pick<ListPickerDay, 'date' | 'isToday'>): string {
   const label = `${weekdayShort(day.date)} ${parseISODate(day.date).getDate()}`;
-  if (day.isToday) return `${label} · heute`;
-  return day.isPast ? `${label} · vorbei` : label;
+  return day.isToday ? `${label} · heute` : label;
 }
 
 /** The button of step 1: "Weiter: 3 Gerichte", "Weiter: 1 Gericht", "Weiter" when none is chosen. */

@@ -69,34 +69,85 @@ export function originSummary(item: ShoppingItem): string {
     .join(' · ');
 }
 
+/** A dish (recipe or collection) the open items come from (spec 0025, AC-017). */
+export interface ListDish {
+  recipeId: Id;
+  title: string;
+  /** Open items with a contribution from it. */
+  items: number;
+}
+
 export interface ListHeadline {
   open: number;
-  /** Recipes the open items come from, in the order they appear, each once. */
-  recipeTitles: string[];
-  /** "3 offen · für Lasagne, Kürbissuppe"; "3 offen" without recipes. */
+  /** In the order they were added, each once. */
+  dishes: ListDish[];
+  /** "14 offen · aus 4 Gerichten", "3 offen · aus 1 Gericht"; "3 offen" without dishes. */
   label: string;
 }
+
+/** A stored label without the day and the contained recipe: "Grillabend · Salat (Sa)" → "Grillabend". */
+function dishTitleFromLabel(label: string): string {
+  return label.replace(/ \([^()]*\)$/, '').split(' · ')[0] ?? label;
+}
+
 /**
- * The line under "Einkaufsliste" (AC-008). A recipe that no longer exists is named by the label
- * stored with its contribution.
+ * The line under "Einkaufsliste" (spec 0025, REQ-005): open items and the dishes they come from,
+ * counted by recipe or collection ("Gerichte", Decision 7). A dish that no longer exists is named
+ * by the label stored with its contribution.
  */
 export function listHeadline(
   items: readonly ShoppingItem[],
   recipesById: Readonly<Record<Id, Recipe>>,
 ): ListHeadline {
-  const openItems = items.filter((item) => !item.checked);
-  const titles = new Set<string>();
+  const openItems = items
+    .filter((item) => !item.checked)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const dishes = new Map<Id, ListDish>();
   for (const item of openItems) {
+    const seen = new Set<Id>();
     for (const { source } of item.contributions) {
-      if (source.kind === 'recipe') titles.add(recipesById[source.recipeId]?.title ?? source.label);
+      if (source.kind !== 'recipe' || seen.has(source.recipeId)) continue;
+      seen.add(source.recipeId);
+      const dish = dishes.get(source.recipeId) ?? {
+        recipeId: source.recipeId,
+        title: recipesById[source.recipeId]?.title ?? dishTitleFromLabel(source.label),
+        items: 0,
+      };
+      dishes.set(source.recipeId, { ...dish, items: dish.items + 1 });
     }
   }
-  const recipeTitles = [...titles];
+  const list = [...dishes.values()];
+  const count = `${openItems.length} offen`;
   const label =
-    recipeTitles.length === 0
-      ? `${openItems.length} offen`
-      : `${openItems.length} offen · für ${recipeTitles.join(', ')}`;
-  return { open: openItems.length, recipeTitles, label };
+    list.length === 0
+      ? count
+      : `${count} · aus ${list.length} ${list.length === 1 ? 'Gericht' : 'Gerichten'}`;
+  return { open: openItems.length, dishes: list, label };
+}
+
+/** A row of "Aus diesen Gerichten": "Grillabend · 6 Posten". */
+export function dishLabel(dish: ListDish): string {
+  return `${dish.title} · ${dish.items} Posten`;
+}
+
+/**
+ * The question of "Liste leeren …" (spec 0025, AC-019): open and checked items named apart,
+ * "14 offene und 3 erledigte Posten werden entfernt, auch die aus dem Kalender."
+ */
+export function clearListQuestion(open: number, done: number): string {
+  const total = open + done;
+  const parts = [
+    open > 0 ? `${open} ${open === 1 ? 'offener' : 'offene'}` : '',
+    done > 0 ? `${done} ${done === 1 ? 'erledigter' : 'erledigte'}` : '',
+  ].filter(Boolean);
+  const verb = total === 1 ? 'wird entfernt' : 'werden entfernt';
+  const calendar =
+    open === 0
+      ? ''
+      : total === 1
+        ? ', auch wenn er aus dem Kalender kommt'
+        : ', auch die aus dem Kalender';
+  return `${parts.join(' und ')} Posten ${verb}${calendar}.`;
 }
 
 // ---------- + and − ----------
@@ -207,9 +258,10 @@ export interface ActiveShopper {
 }
 
 /**
- * Another member who checked an item within the last SHOPPER_ACTIVE_MINUTES, derived from
- * checkedAt/checkedBy alone (no presence, no store). The most recent one wins; the progress is
- * that of the whole list. "Fertig" removes the checked items, so the hint goes with them.
+ * Another member who checked an item in "Einkaufen" within the last SHOPPER_ACTIVE_MINUTES,
+ * derived from checkedAt/checkedBy alone (no presence, no store); a check made on "Liste" does not
+ * count (spec 0025, AC-025). The most recent one wins; the progress is that of the whole list.
+ * "Fertig" removes the checked items, so the hint goes with them.
  */
 export function activeShopper(
   items: readonly ShoppingItem[],
@@ -223,7 +275,12 @@ export function activeShopper(
 
   let latest: { member: Member; time: number } | undefined;
   for (const item of items) {
-    if (!item.checked || item.checkedBy === undefined || item.checkedBy === currentMemberId) {
+    if (
+      !item.checked ||
+      item.checkedOnList === true ||
+      item.checkedBy === undefined ||
+      item.checkedBy === currentMemberId
+    ) {
       continue;
     }
     const time = item.checkedAt === undefined ? Number.NaN : Date.parse(item.checkedAt);

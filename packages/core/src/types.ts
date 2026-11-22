@@ -259,9 +259,7 @@ export interface Activity {
 // ---------- Shopping ----------
 
 export type ContributionSource =
-  | { kind: 'manual' }
-  | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string }
-  | { kind: 'recurring' };
+  { kind: 'manual' } | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string };
 
 export interface ShoppingContribution {
   id: Id;
@@ -285,6 +283,8 @@ export interface ShoppingItem {
   checkedBy?: Id;
   /** Marked "nicht da" in store mode. */
   notAvailable?: boolean;
+  /** Checked on "Liste", not in store mode (spec 0025, REQ-006): no "kauft gerade ein". */
+  checkedOnList?: boolean;
   /** Changed offline and not yet confirmed by the server (shown as a small dot). */
   pendingSync?: boolean;
   createdAt: string;
