@@ -1,8 +1,10 @@
 import { useArticlesById, useRecipe } from '@housekeeping/api';
 import {
+  cookingIngredients,
+  cookingServings,
   ingredientLine,
-  ingredientsForVariant,
   routeId,
+  servingsLabel,
   stepsForVariants,
   type Recipe,
 } from '@housekeeping/core';
@@ -32,7 +34,11 @@ function firstParam(value: string | string[] | undefined): string | undefined {
  * stays on wider screens (spec 0005, D5).
  */
 export function CookingScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[]; variant?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id?: string | string[];
+    variant?: string | string[];
+    portionen?: string | string[];
+  }>();
   const router = useRouter();
   const id = routeId(params.id);
   const recipe = useRecipe(id);
@@ -60,16 +66,29 @@ export function CookingScreen() {
   if (recipe.kind === 'collection') {
     return <Redirect href={{ pathname: '/rezept/[id]', params: { id: recipe.id } }} />;
   }
-  return <Cooking recipe={recipe} variantParam={firstParam(params.variant)} onLeave={leave} />;
+  return (
+    <Cooking
+      recipe={recipe}
+      variantParam={firstParam(params.variant)}
+      servings={cookingServings(params.portionen, recipe)}
+      onLeave={leave}
+    />
+  );
 }
 
-function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLeave: () => void }) {
+function Cooking(props: {
+  recipe: Recipe;
+  variantParam: string | undefined;
+  /** The portions chosen on the recipe page (spec 0018, AC-004). */
+  servings: number;
+  onLeave: () => void;
+}) {
   const { recipe } = props;
   const { isPhone } = useBreakpoint();
   const insets = useSafeAreaInsets();
   const variant = recipe.variants.find((candidate) => candidate.id === props.variantParam);
   const steps = stepsForVariants(recipe, variant ? [variant.id] : undefined);
-  const ingredients = ingredientsForVariant(recipe, variant?.id);
+  const ingredients = cookingIngredients(recipe, variant?.id, props.servings);
   const articlesById = useArticlesById();
   const [index, setIndex] = useState(0);
   const [showIngredients, setShowIngredients] = useState(false);
@@ -132,8 +151,10 @@ function Cooking(props: { recipe: Recipe; variantParam: string | undefined; onLe
     >
       <Row justify="space-between" style={{ marginBottom: 16 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text variant="small" color="muted" numberOfLines={1}>
-            Kochmodus{variant ? ` · ${variant.name}` : ''}
+          <Text variant="small" color="muted" numberOfLines={1} testID="cook-subtitle">
+            {['Kochmodus', variant?.name, servingsLabel(props.servings)]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
           <Text variant="heading" heading numberOfLines={1}>
             {recipe.title}
