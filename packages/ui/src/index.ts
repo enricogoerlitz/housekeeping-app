@@ -33,6 +33,7 @@ export {
   Stars,
   TextField,
   focusRing,
+  keyboardFocusRing,
   type ButtonProps,
   type IconButtonProps,
   type ChipProps,

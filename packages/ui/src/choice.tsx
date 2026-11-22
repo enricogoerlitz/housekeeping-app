@@ -11,7 +11,7 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
-import { ChipView, focusRing, IconButton } from './controls';
+import { ChipView, focusRing, IconButton, keyboardFocusRing } from './controls';
 import { expandableA11y } from './expandable';
 import { type IconName } from './icons';
 import { menuKey } from './menu-keys';
@@ -146,7 +146,7 @@ export function ViewTabs<T extends string>(props: ViewTabsProps<T>) {
                   paddingBottom: 8,
                   borderRadius: 6,
                 },
-                focusRing(theme, (state as PressState).focused),
+                keyboardFocusRing(theme, (state as PressState).focused),
               ]}
             >
               <Text variant="bodyStrong" color={selected ? 'text' : 'muted'} numberOfLines={1}>
