@@ -98,9 +98,9 @@ Feature-Branch und war weder in der Vorschau noch in der Produktion eingespielt.
 
 ## Nachweis
 
-- [ ] pgTAP rot zuerst, dann grün: `entry_reminders.test.sql`, Planer, Gleichlauf
-- [ ] core und api rot zuerst, dann grün
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] pgTAP rot zuerst, dann grün: `entry_reminders.test.sql`, Planer, Gleichlauf (alle 2059 grün, 22.11.2026)
+- [x] core und api rot zuerst, dann grün
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün (22.11.2026)
 - [x] `/security-check` über Migration, Planer und api (22.11.2026, siehe oben)
 - [x] spec-auditor (22.11.2026): 27 AC umgesetzt; AC-011 im Eintragsfenster und der Randfall zu AC-024 in der Spec geklärt
 - [ ] e2e gesammelt am Ende aller Specs
