@@ -269,6 +269,8 @@ Projekt):
 - Function-Secrets `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUSH_SEND_SECRET`
   (`supabase secrets set --env-file …`, Runbook C6). Dieselben VAPID-Schlüssel wie vorher behalten,
   dann bleiben die Push-Anmeldungen der Geräte gültig.
+- Session-Pooler-Adresse des neuen Projekts (Benutzer `postgres.<neue-ref>`, Datenbank-Passwort) →
+  `SUPABASE_POOLER_URL` in `production`.
 - Neues eingeschränktes Zugangstoken → `SUPABASE_ACCESS_TOKEN` in `production`; Variablen
   `SUPABASE_PROJECT_REF` (`production`), `PRODUCTION_SUPABASE_URL`,
   `PRODUCTION_SUPABASE_PUBLISHABLE_KEY`.
@@ -336,6 +338,23 @@ ein Lauf mit „permission denied“ scheitert, genau diese eine Berechtigung er
 22.11.2026: ein Token für beide Umgebungen. Die Vorschau läuft bei jedem Merge nach `develop` und
 hat damit dieselben Rechte auf die Produktion. Das Risiko ist bewusst akzeptiert. Vor dem ersten
 Produktivbetrieb mit echten Haushaltsdaten (Nadja) wieder auf zwei Tokens umstellen.
+
+### Pooler-Adresse für Datenbank-Befehle
+
+Die GitHub-Runner haben kein IPv6. Alles, was die Pipeline direkt an der Datenbank tut (`db reset`
+der Vorschau, Beispieldaten, `migration list`, `db push`), läuft deshalb über den Session-Pooler
+(Plan 0014, Entscheidung beim Bauen 10). Je Umgebung `preview` und `production` gibt es das Secret
+`SUPABASE_POOLER_URL`:
+
+1. Im Dashboard des Projekts Connect → Direct → „Session pooler“, Type „URI“, Adresse kopieren.
+2. `[YOUR-PASSWORD]` durch das Datenbank-Passwort des Projekts ersetzen. Wer es nicht mehr weiß:
+   dort „Reset database password“; das betrifft nur den Benutzer `postgres`, nicht `backup_reader`.
+3. Im Terminal (die Adresse in der lokalen `.env` als `SUPABASE_POOLER_URL_<ENV>=…` ablegen):
+   `grep '^SUPABASE_POOLER_URL_PREVIEW=' .env | cut -d= -f2- | gh secret set SUPABASE_POOLER_URL --env preview`
+   bzw. mit `_PRODUCTION` und `--env production`.
+
+Fehlt das Secret, bricht der Lauf vor dem ersten Datenbank-Befehl mit „Secret SUPABASE_POOLER_URL
+fehlt“ ab.
 
 ## Ablaufdaten und regelmäßige Aufgaben
 
