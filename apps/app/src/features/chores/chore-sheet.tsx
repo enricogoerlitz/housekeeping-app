@@ -125,23 +125,22 @@ function useChoreDetail(props: ChoreDetailProps): {
   const save = () => {
     const found = choreDraftErrors(draft);
     setErrors(found);
-    const read = time.read();
-    if (found.title || found.weekdays || !read.ok) return;
+    if (found.title || found.weekdays) return;
     // A new time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
     if (
       asksForPushPermission({
         kind: 'time',
         gesture: 'tap',
         before: chore.dueTime,
-        after: read.time,
+        after: time.value,
       })
     )
       ensureDevicePush();
     try {
-      // An empty field removes the time (✕, AC-025).
+      // No time removes it (✕, AC-025).
       updateChore(chore.id, {
         ...choreFieldsOf(draft, members, chore),
-        dueTime: read.time ?? null,
+        dueTime: time.value ?? null,
       });
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });

@@ -1,5 +1,4 @@
 import { addDays } from './dates';
-import { formatTime, parseTimeInput } from './notifications';
 import {
   cleanReminderText,
   initialReminder,
@@ -9,7 +8,7 @@ import {
   type EntryReminder,
   type ReminderDayChipKey,
 } from './reminder';
-import type { ISODate } from './types';
+import type { ISODate, TimeOfDay } from './types';
 
 // Spec 0017: the block "Erinnern" as a form. Both windows hold the typed values as a draft; the
 // add window sends it with "Einplanen", the entry window right away (switch, chips, time) and
@@ -21,13 +20,18 @@ import type { ISODate } from './types';
 export interface ReminderDraft {
   on: boolean;
   offsetDays: number;
-  /** As typed ("17:00", "18", "7.30"); read with `parseTimeInput`. */
-  time: string;
+  /** The chosen "HH:MM"; none while a default lies in the past (REQ-003). */
+  time: TimeOfDay | undefined;
   text: string;
 }
 
 /** AC-001, AC-006: off, and switched on again it starts from the defaults with an empty text. */
-export const REMINDER_OFF_DRAFT: ReminderDraft = { on: false, offsetDays: 0, time: '', text: '' };
+export const REMINDER_OFF_DRAFT: ReminderDraft = {
+  on: false,
+  offsetDays: 0,
+  time: undefined,
+  text: '',
+};
 
 /** The draft of a stored reminder (REQ-002), or the switch off. */
 export function reminderDraftFrom(stored: EntryReminder | undefined): ReminderDraft {
@@ -35,7 +39,7 @@ export function reminderDraftFrom(stored: EntryReminder | undefined): ReminderDr
   return {
     on: true,
     offsetDays: stored.offsetDays,
-    time: formatTime(stored.at),
+    time: stored.at,
     text: stored.text ?? '',
   };
 }
@@ -54,7 +58,7 @@ export function switchedOnDraft(
   return {
     on: true,
     offsetDays: initial.offsetDays,
-    time: initial.at ? formatTime(initial.at) : '',
+    time: initial.at,
     text: '',
   };
 }
@@ -81,12 +85,8 @@ export function reminderSave(input: {
   if (!draft.on) return stored ? { action: 'clear' } : { action: 'keep' };
   const text = cleanReminderText(draft.text);
   if (!text.ok) return { action: 'invalid', field: 'text', error: text.error };
-  const parsed = parseTimeInput(draft.time, { required: true });
   const same =
-    stored !== undefined &&
-    parsed.ok &&
-    parsed.time === stored.at &&
-    draft.offsetDays === stored.offsetDays;
+    stored !== undefined && draft.time === stored.at && draft.offsetDays === stored.offsetDays;
   let reminder: EntryReminder;
   if (same) {
     if (text.text === stored.text) return { action: 'keep' };

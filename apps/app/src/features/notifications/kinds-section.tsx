@@ -11,18 +11,18 @@ import {
   asksForPushPermission,
   DAILY_SUMMARY_PARTS,
   dailySummaryPartLabel,
-  formatTime,
   isLastSummaryPart,
   kindEnabled,
   kindEnabledPatch,
   kindsSectionTitle,
   kindSubtitle,
   NOTIFICATION_KINDS,
-  parseTimeInput,
+  TIME_FIELD_WORDS,
   toggleSummaryPart,
   type DailySummaryPart,
   type NotificationKind,
   type NotificationSettings,
+  type TimeOfDay,
 } from '@housekeeping/core';
 import {
   Button,
@@ -155,25 +155,17 @@ function KindSheet(props: {
   const { kind, settings } = props;
   const daily = kind === 'dailySummary';
   const ensureDevicePush = useEnsureDevicePush();
-  const [text, setText] = useState(
-    formatTime(daily ? settings.dailySummaryAt : settings.activitiesEveAt),
+  const [time, setTime] = useState<TimeOfDay>(
+    daily ? settings.dailySummaryAt : settings.activitiesEveAt,
   );
-  const [error, setError] = useState<string>();
   const [parts, setParts] = useState<DailySummaryPart[]>(settings.dailySummaryParts);
 
   const submit = () => {
-    const read = parseTimeInput(text, { required: true });
-    if (!read.ok || read.time === undefined) {
-      setError(read.ok ? undefined : read.error);
-      return;
-    }
     // Setting a time of a kind that is on asks for this device (Decision 26).
     if (asksForPushPermission({ kind: 'kindTime', kindEnabled: kindEnabled(settings, kind) }))
       ensureDevicePush();
     const saved = save(
-      daily
-        ? { dailySummaryAt: read.time, dailySummaryParts: parts }
-        : { activitiesEveAt: read.time },
+      daily ? { dailySummaryAt: time, dailySummaryParts: parts } : { activitiesEveAt: time },
     );
     if (saved) props.onClose();
   };
@@ -207,17 +199,12 @@ function KindSheet(props: {
       <Stack gap={20}>
         <TimeField
           label="Uhrzeit"
-          placeholder={daily ? 'z. B. 7:30' : 'z. B. 19:00'}
-          value={text}
-          onChangeText={(next) => {
-            setText(next);
-            setError(undefined);
+          {...TIME_FIELD_WORDS}
+          value={time}
+          // The field is required: "–" is never offered, so a choice always holds a time.
+          onChange={(next) => {
+            if (next !== undefined) setTime(next);
           }}
-          onClear={() => setText('')}
-          clearLabel="Uhrzeit leeren"
-          emptyLabel="keine Uhrzeit"
-          onSubmitEditing={submit}
-          error={error}
           hint={
             daily ? 'Jeden Morgen, wenn es etwas gibt.' : 'Am Abend vor einem Tag mit Aktivitäten.'
           }

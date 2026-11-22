@@ -21,7 +21,6 @@ import {
   notificationsRowLabel,
   notificationTargetHref,
   parseNotificationTarget,
-  parseTimeInput,
   permissionStatus,
   pushSupport,
   pushSupportHint,
@@ -164,62 +163,7 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
   });
 });
 
-describe('times in five-minute steps (Decision 4 and 27)', () => {
-  it('reads "19", "1930", "19:30", "7.30" and more', () => {
-    const cases: [string, string][] = [
-      ['19', '19:00'],
-      ['7', '07:00'],
-      ['0', '00:00'],
-      ['1930', '19:30'],
-      ['730', '07:30'],
-      ['0745', '07:45'],
-      ['19:30', '19:30'],
-      ['7.30', '07:30'],
-      ['7:30', '07:30'],
-      [' 19.05 ', '19:05'],
-      ['23:55', '23:55'],
-    ];
-    for (const [input, time] of cases) {
-      expect(parseTimeInput(input), input).toEqual({ ok: true, time });
-    }
-  });
-
-  it('"19:03" asks for five-minute steps', () => {
-    expect(parseTimeInput('19:03')).toEqual({ ok: false, error: 'Bitte in 5-Minuten-Schritten' });
-    expect(parseTimeInput('1958')).toEqual({ ok: false, error: 'Bitte in 5-Minuten-Schritten' });
-  });
-
-  it('"25:00" and other nonsense is no valid time', () => {
-    for (const input of [
-      '25:00',
-      '24:00',
-      '19:60',
-      '1975',
-      '19:3',
-      '7:5',
-      'abc',
-      '19:30:00',
-      '-1',
-      '12345',
-    ]) {
-      expect(parseTimeInput(input), input).toEqual({ ok: false, error: 'Keine gültige Uhrzeit' });
-    }
-  });
-
-  it('AC-025: an empty field means no time; where a time is required it asks for one', () => {
-    expect(parseTimeInput('')).toEqual({ ok: true, time: undefined });
-    expect(parseTimeInput('   ')).toEqual({ ok: true, time: undefined });
-    expect(parseTimeInput('', { required: true })).toEqual({
-      ok: false,
-      error: 'Bitte eine Uhrzeit eingeben',
-    });
-  });
-
-  it('every parsed time passes the schema the api and the database use', () => {
-    const parsed = parseTimeInput('7.30');
-    expect(parsed.ok && TimeOfDaySchema.safeParse(parsed.time).success).toBe(true);
-  });
-
+describe('times in five-minute steps (Decision 4)', () => {
   it('shows times as "H:MM", like the texts of the scheduler', () => {
     expect(formatTime('07:30')).toBe('7:30');
     expect(formatTime('19:00')).toBe('19:00');

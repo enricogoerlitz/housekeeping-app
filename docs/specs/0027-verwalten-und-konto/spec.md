@@ -335,6 +335,17 @@ staticwebapp hostname` kennt kein „Standard setzen“. Durchführen: Enrico (P
 13. Ersetzt: Spec 0003 „Haushalte werden nie über die API gelöscht“ (Kommentar `households_select`)
     und „Wer eingeladen ist, kann sich mit Google anmelden“; Spec 0013 AC-022 (Hinweis unter der
     Uhrzeit, jetzt AC-035/AC-037); Spec 0005 Offene Frage 2 ist mit REQ-003 erledigt.
+14. Uhrzeit-Auswahl beim Bauen (Claude, 22.11.2026): Im Web das `select` des Browsers
+    (`time-select.web.tsx`), auf iOS/Android ein `Menu` (`time-select.tsx`, nur Rückfall, da nur die
+    PWA ausgeliefert wird). „Stunde“/„Minute“ stehen als `TIME_FIELD_WORDS` in `core`. Eine
+    gewählte Stunde ohne Minute ergibt „:00“; bei Pflicht-Uhrzeiten gibt es „–“ nur, solange keine
+    gewählt ist (Erinnerung, deren Vorschlag schon vorbei ist). Fehlt sie, heißt der Hinweis „Bitte
+    eine Uhrzeit wählen“; was nicht in 5-Minuten-Schritten liegt, lehnt die API mit „Keine gültige
+    Uhrzeit“ ab.
+15. „Reserviert um“ speichert jede Wahl sofort, der Hinweis „Reserviert um 19:30“ wartet auf den
+    Server; „Fertig“ sendet nach einer Ablehnung noch einmal. Die Beschriftung „Uhrzeit (optional)“
+    an Restaurant und Aktivität bringt Spec 0021 (REQ-013). `choreTimeHint` bleibt bis Aufgabe 9
+    (REQ-009), `kindsSectionTitle` bis Aufgabe 8.
 
 ## Daten
 
@@ -385,7 +396,7 @@ null or remind_at_due_time`; in `apply_changes` und `private.chore_reminder_cand
 - [ ] 5. `delete_household`, `household_media_names`, App-Ablauf Fotos → RPC, Fenster mit
       Namensbestätigung; Bedrohungstabelle als pgTAP und vitest (AC-017–AC-024)
 - [ ] 6. Feedback: Policies und Grants, ⋯ mit Bearbeiten und Löschen, Status-Satz (AC-025–AC-028)
-- [ ] 7. `TimeField` als Auswahl in `packages/ui`, an allen vier Stellen; tote Tipp-Logik entfernen
+- [x] 7. `TimeField` als Auswahl in `packages/ui`, an allen vier Stellen; tote Tipp-Logik entfernen
       (AC-029–AC-031)
 - [ ] 8. Haushaltsauswahl auf „Benachrichtigungen“ (AC-032–AC-034)
 - [ ] 9. Nach Spec 0026: `chores.remind_at_due_time`, Zeitplaner, Schalter im Formular

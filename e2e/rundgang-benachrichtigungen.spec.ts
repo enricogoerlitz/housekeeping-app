@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { back, expect, nav, only, open, openSettings, test, tid } from './helpers';
+import { back, chooseTime, expect, nav, only, open, openSettings, test, tid } from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0013 — the page "Benachrichtigungen" in the production export (with service worker and
@@ -125,7 +125,7 @@ test('AC-007 / AC-003: the browser is asked only when a kind is switched on or a
   await tid(page, 'chores-tab-all').click();
   await tid(page, `chore-${seedIds['chore-kueche']}`).click();
   await tid(page, 'chore-edit').click();
-  await tid(page, 'chore-due-time').fill('7:30');
+  await chooseTime(page, 'chore-due-time', '07:30');
   await tid(page, 'chore-save').click();
   await expect(tid(page, 'chore-sheet')).toContainText('7:30');
   await expect.poll(() => permissionAsks(page)).toBe(2);

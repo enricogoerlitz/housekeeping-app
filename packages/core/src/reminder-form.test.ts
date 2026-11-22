@@ -44,10 +44,10 @@ describe('offersReminder', () => {
 describe('reminderDraftFrom and switchedOnDraft', () => {
   it('AC-001: without a reminder the switch is off and the fields are empty', () => {
     expect(reminderDraftFrom(undefined)).toEqual(REMINDER_OFF_DRAFT);
-    expect(REMINDER_OFF_DRAFT).toEqual({ on: false, offsetDays: 0, time: '', text: '' });
+    expect(REMINDER_OFF_DRAFT).toEqual({ on: false, offsetDays: 0, time: undefined, text: '' });
   });
 
-  it('AC-005: a stored reminder shows as typed values ("18:00", its text)', () => {
+  it('AC-005: a stored reminder shows its time and text', () => {
     expect(reminderDraftFrom({ offsetDays: 1, at: '18:00', text: 'Fleisch auftauen' })).toEqual({
       on: true,
       offsetDays: 1,
@@ -57,7 +57,7 @@ describe('reminderDraftFrom and switchedOnDraft', () => {
     expect(reminderDraftFrom({ offsetDays: 0, at: '08:00' })).toEqual({
       on: true,
       offsetDays: 0,
-      time: '8:00',
+      time: '08:00',
       text: '',
     });
   });
@@ -75,7 +75,7 @@ describe('reminderDraftFrom and switchedOnDraft', () => {
     expect(switchedOnDraft(TODAY, 'Mittag', NOW, BERLIN)).toEqual({
       on: true,
       offsetDays: 0,
-      time: '',
+      time: undefined,
       text: '',
     });
   });
@@ -98,7 +98,7 @@ describe('reminderSave', () => {
       reminder: { offsetDays: 0, at: '17:00' },
     });
     expect(
-      at({ draft: { on: true, offsetDays: 1, time: '18', text: '  Fleisch auftauen ' } }),
+      at({ draft: { on: true, offsetDays: 1, time: '18:00', text: '  Fleisch auftauen ' } }),
     ).toEqual({
       action: 'set',
       reminder: { offsetDays: 1, at: '18:00', text: 'Fleisch auftauen' },
@@ -142,19 +142,19 @@ describe('reminderSave', () => {
     ).toEqual({ action: 'set', reminder: { offsetDays: 0, at: '11:00', text: 'Reis' } });
   });
 
-  it('AC-012: a time outside 5-minute steps shows the time field’s message', () => {
+  it('AC-012: a time outside the choices of the time field is no valid time (spec 0027)', () => {
     expect(at({ draft: { on: true, offsetDays: 0, time: '17:03', text: '' } })).toEqual({
       action: 'invalid',
       field: 'time',
-      error: 'Bitte in 5-Minuten-Schritten',
+      error: 'Keine gültige Uhrzeit',
     });
   });
 
   it('REQ-003: on without a time asks for one', () => {
-    expect(at({ draft: { on: true, offsetDays: 0, time: '', text: '' } })).toEqual({
+    expect(at({ draft: { on: true, offsetDays: 0, time: undefined, text: '' } })).toEqual({
       action: 'invalid',
       field: 'time',
-      error: 'Bitte eine Uhrzeit eingeben',
+      error: 'Bitte eine Uhrzeit wählen',
     });
   });
 

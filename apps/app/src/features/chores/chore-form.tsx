@@ -1,11 +1,10 @@
 import { useNotificationSettings } from '@housekeeping/api';
 import {
   choreTimeHint,
-  formatTime,
   monthName,
-  parseTimeInput,
   seasonLabel,
   seasonMonths,
+  TIME_FIELD_WORDS,
   weekdayShortName,
   type Assignment,
   type ChoreDraft,
@@ -283,42 +282,18 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
 }
 
 /**
- * „Uhrzeit“ of a chore (spec 0013, REQ-007): typed text, read with core `parseTimeInput` on save.
- * It is not part of the core draft; the sheets add it to the chore's fields.
+ * „Uhrzeit“ of a chore (spec 0013, REQ-007; chosen from hour and minute, spec 0027 REQ-007). It
+ * is not part of the core draft; the sheets add it to the chore's fields.
  */
 export interface ChoreTime {
-  text: string;
-  error: string | undefined;
-  setText: (text: string) => void;
-  /** Reads the text; an invalid time shows its error and returns ok: false. */
-  read: () => { ok: true; time: TimeOfDay | undefined } | { ok: false };
+  value: TimeOfDay | undefined;
+  set: (time: TimeOfDay | undefined) => void;
   reset: () => void;
 }
 
 export function useChoreTime(initial: TimeOfDay | undefined): ChoreTime {
-  const start = initial ? formatTime(initial) : '';
-  const [text, setTextState] = useState(start);
-  const [error, setError] = useState<string>();
-  return {
-    text,
-    error,
-    setText: (next) => {
-      setTextState(next);
-      setError(undefined);
-    },
-    read: () => {
-      const result = parseTimeInput(text);
-      if (!result.ok) {
-        setError(result.error);
-        return { ok: false };
-      }
-      return { ok: true, time: result.time };
-    },
-    reset: () => {
-      setTextState(start);
-      setError(undefined);
-    },
-  };
+  const [value, set] = useState(initial);
+  return { value, set, reset: () => set(initial) };
 }
 
 /**
@@ -333,14 +308,13 @@ function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
   return (
     <TimeField
       label="Uhrzeit (optional)"
-      placeholder="z. B. 19:00"
-      value={time.text}
-      onChangeText={time.setText}
-      onClear={() => time.setText('')}
+      accessibilityName="Uhrzeit"
+      {...TIME_FIELD_WORDS}
+      value={time.value}
+      onChange={time.set}
+      optional
       clearLabel="Uhrzeit entfernen"
-      emptyLabel="keine Uhrzeit"
-      error={time.error}
-      hint={props.offlineHint ?? (time.text.trim() ? choreTimeHint(reminds) : undefined)}
+      hint={props.offlineHint ?? (time.value ? choreTimeHint(reminds) : undefined)}
       disabled={props.offlineHint !== undefined}
       testID="chore-due-time"
     />
