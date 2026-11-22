@@ -1,4 +1,4 @@
-import { formatPickerDate } from './calendar';
+import { formatPickerDate, joinNames } from './calendar';
 import { addDays, formatShortDate, weekdayShort } from './dates';
 import { isAbsent, LEFTOVER_DAYS } from './meal-plan';
 import type { Absence, Id, ISODate, MealPlanEntry } from './types';
@@ -133,11 +133,6 @@ const shortDay = (iso: ISODate) => `${weekdayShort(iso)} ${formatShortDate(iso)}
 /** "Fr 27.11. · Abend" at the dragged entry; "Vormerken" over "Vorgemerkt" (AC-001, AC-013). */
 export function moveTargetLabel(date: ISODate | null, slotName: string): string {
   return date === null ? 'Vormerken' : `${shortDay(date)} · ${slotName}`;
-}
-
-function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names.join('');
-  return `${names.slice(0, -1).join(', ')} und ${names[names.length - 1] ?? ''}`;
 }
 
 /**

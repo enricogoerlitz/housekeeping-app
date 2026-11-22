@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
+import type { AbsenceStripe } from './absences';
 import {
   dateRangeLabel,
+  dayA11yLabel,
   dayKinds,
   dayMonthLabel,
   dayMonthLongLabel,
+  daySheetContent,
+  dragRange,
   entryKindRole,
   entryLineLabel,
   formatPickerDate,
   monthGrid,
+  monthPickerStart,
   monthTitle,
   overflow,
   periodContains,
   periodStart,
+  rangeLabel,
   shiftPeriod,
   switchView,
   weekRangeLabel,
@@ -26,7 +32,7 @@ import {
   kartoffelsalat,
   makeCollection,
 } from './test-fixtures';
-import type { MealPlanEntry } from './types';
+import type { MealPlanEntry, MealSlot } from './types';
 
 // Today in the spec's examples: Friday, 20 November 2026 (KW 47).
 const today = '2026-11-20';
@@ -230,5 +236,140 @@ describe('Sammlungen in the calendar (spec 0009, REQ-007)', () => {
     expect(entryKindRole({ ...entry('leftovers'), recipeId: grillabend.id }, recipesById)).toBe(
       'recipe',
     );
+  });
+});
+
+// Spec 0016: today is Sunday, 22 November 2026.
+describe('spec 0016: day window, range drag and changing the view', () => {
+  const today0016 = '2026-11-22';
+  const slots: MealSlot[] = [
+    { id: 'abend', name: 'Abend', sort: 2 },
+    { id: 'vormittag', name: 'Vormittag', sort: 0 },
+    { id: 'mittag', name: 'Mittag', sort: 1 },
+  ];
+  const planned = (
+    id: string,
+    kind: MealPlanEntry['kind'],
+    date: string | null,
+    slotId: string,
+    sort = 0,
+  ): MealPlanEntry => ({ ...entry(kind), id, date, slotId, sort });
+  const bouldern = planned('bouldern', 'activity', '2026-11-27', 'vormittag');
+  const lasagne = planned('lasagne', 'recipe', '2026-11-27', 'abend');
+  const trattoria = planned('trattoria', 'restaurant', '2026-11-27', 'abend');
+  const dal = planned('dal', 'recipe', '2026-11-27', 'abend', 1);
+  const elsewhere = planned('elsewhere', 'recipe', '2026-11-28', 'abend');
+  const parked = planned('parked', 'recipe', null, 'abend');
+  const hamburg: AbsenceStripe = {
+    key: 'm|2026-11-27|2026-11-29|Hamburg',
+    absenceIds: ['a1'],
+    memberIds: ['nadja'],
+    household: false,
+    from: '2026-11-27',
+    to: '2026-11-29',
+    note: 'Hamburg',
+  };
+
+  it('AC-022: the day window shows the day, its week, its trips and every Tageszeit', () => {
+    const content = daySheetContent({
+      date: '2026-11-27',
+      entries: [trattoria, dal, lasagne, bouldern, elsewhere, parked],
+      slots,
+      stripes: [hamburg],
+    });
+    expect(content.title).toBe('Fr 27. November');
+    expect(content.week).toEqual([
+      '2026-11-23',
+      '2026-11-24',
+      '2026-11-25',
+      '2026-11-26',
+      '2026-11-27',
+      '2026-11-28',
+      '2026-11-29',
+    ]);
+    expect(content.stripes).toEqual([hamburg]);
+    expect(content.slots.map((group) => group.slot.name)).toEqual(['Vormittag', 'Mittag', 'Abend']);
+    expect(content.slots.map((group) => group.entries.map((item) => item.id))).toEqual([
+      ['bouldern'],
+      [],
+      ['lasagne', 'dal', 'trattoria'],
+    ]);
+    expect(content.empty).toBe(false);
+  });
+
+  it('AC-026: an empty day says "Noch nichts geplant" and still lists every Tageszeit', () => {
+    const content = daySheetContent({
+      date: '2026-12-01',
+      entries: [lasagne, parked],
+      slots,
+      stripes: [hamburg],
+    });
+    expect(content.empty).toBe(true);
+    expect(content.emptyText).toBe('Noch nichts geplant');
+    expect(content.stripes).toEqual([]);
+    expect(content.slots.map((group) => [group.slot.id, group.entries.length])).toEqual([
+      ['vormittag', 0],
+      ['mittag', 0],
+      ['abend', 0],
+    ]);
+  });
+
+  it('AC-028: a drag from the 7th to the 11th December covers five days', () => {
+    const range = dragRange('2026-12-07', '2026-12-11');
+    expect(range).toEqual({ from: '2026-12-07', to: '2026-12-11' });
+    expect(rangeLabel(range.from, range.to)).toBe('Mo 7.12. – Fr 11.12. · 5 Tage');
+  });
+
+  it('AC-029: backwards and over the end of a month', () => {
+    const back = dragRange('2027-01-04', '2027-01-01', 2027);
+    expect(back).toEqual({ from: '2027-01-01', to: '2027-01-04' });
+    expect(rangeLabel(back.from, back.to)).toBe('Fr 1.1. – Mo 4.1. · 4 Tage');
+    expect(dragRange('2027-01-29', '2027-02-02', 2027)).toEqual({
+      from: '2027-01-29',
+      to: '2027-02-02',
+    });
+  });
+
+  it('AC-029: in the year view the drag ends at the edge of the year', () => {
+    expect(dragRange('2027-12-30', '2028-01-03', 2027)).toEqual({
+      from: '2027-12-30',
+      to: '2027-12-31',
+    });
+    expect(dragRange('2027-01-02', '2026-12-28', 2027)).toEqual({
+      from: '2027-01-01',
+      to: '2027-01-02',
+    });
+    // Without a year (month view) the range runs on into the next year.
+    expect(dragRange('2026-12-30', '2027-01-02')).toEqual({ from: '2026-12-30', to: '2027-01-02' });
+  });
+
+  it('AC-028: a single day is "1 Tag"', () => {
+    expect(dragRange('2026-12-07', '2026-12-07')).toEqual({ from: '2026-12-07', to: '2026-12-07' });
+    expect(rangeLabel('2026-12-07', '2026-12-07')).toBe('Mo 7.12. · 1 Tag');
+  });
+
+  it('AC-027: with a chosen day, month and week show that day', () => {
+    expect(switchView('year', 'month', '2027-01-01', today0016, '2027-01-08')).toBe('2027-01-01');
+    expect(switchView('month', 'week', '2027-01-01', today0016, '2027-01-08')).toBe('2027-01-04');
+    expect(switchView('month', 'year', '2027-01-01', today0016, '2027-01-08')).toBe('2027-01-01');
+    // Without a chosen day the rules of spec 0010 stay.
+    expect(switchView('year', 'month', '2027-01-01', today0016)).toBe('2027-01-01');
+    expect(switchView('year', 'month', '2026-01-01', today0016)).toBe('2026-11-01');
+  });
+
+  it('AC-019: "Anderes Datum …" starts with the month of the entry, a parked one with today', () => {
+    expect(monthPickerStart('2026-11-25', today0016)).toBe('2026-11-01');
+    expect(monthPickerStart('2027-01-08', today0016)).toBe('2027-01-01');
+    expect(monthPickerStart(null, '2027-02-10')).toBe('2027-02-01');
+  });
+
+  it('platforms: a day of the year reads "Freitag, 27. November: 1 Aktivität, 1 Rezept, Nadja unterwegs"', () => {
+    expect(dayA11yLabel('2026-11-27', ['activity', 'recipe'], ['Nadja'])).toBe(
+      'Freitag, 27. November: 1 Aktivität, 1 Rezept, Nadja unterwegs',
+    );
+    expect(dayA11yLabel('2026-11-27', ['recipe', 'recipe', 'chore'], ['Enrico', 'Nadja'])).toBe(
+      'Freitag, 27. November: 2 Rezepte, 1 Aufgabe, Enrico und Nadja unterwegs',
+    );
+    expect(dayA11yLabel('2026-12-01', [], [])).toBe('Dienstag, 1. Dezember');
   });
 });

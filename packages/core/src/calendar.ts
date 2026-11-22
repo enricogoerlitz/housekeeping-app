@@ -1,14 +1,20 @@
+import { stripesOn, type AbsenceStripe } from './absences';
 import {
   addDays,
   addMonths,
+  daysBetween,
+  formatLongDate,
+  formatShortDate,
   isoWeekNumber,
   parseISODate,
   startOfWeek,
   toISODate,
+  weekDates,
   weekdayShort,
 } from './dates';
 import { collectionEntryLabel, contentsInBook, type RecipeBook } from './collections';
-import type { Id, ISODate, MealPlanEntry, Recipe } from './types';
+import { orderSlotEntries } from './meal-plan';
+import type { Id, ISODate, MealPlanEntry, MealSlot, Recipe } from './types';
 
 // The calendar (spec 0010): week, month and year, their labels and how they lead into each other.
 
@@ -82,14 +88,17 @@ export function periodContains(view: CalendarView, start: ISODate, iso: ISODate)
  * Where a change of view leads (spec 0010, rules): week → month the month with most days of the
  * week (the one of its Thursday); month → week the week with today when today lies in the month,
  * else the week with the first; to the year its year; year → month or week the period with today
- * when today lies in that year, else January or the week with 1 January.
+ * when today lies in that year, else January or the week with 1 January. A day chosen in the
+ * day window leads to its week, month or year instead (spec 0016, AC-027).
  */
 export function switchView(
   from: CalendarView,
   to: CalendarView,
   start: ISODate,
   today: ISODate,
+  selected?: ISODate,
 ): ISODate {
+  if (selected !== undefined) return periodStart(to, selected);
   const reference = from === 'week' ? addDays(startOfWeek(start), 3) : periodStart(from, start);
   if (to === 'year') return periodStart('year', reference);
   if (from === 'week') return periodStart(to, reference);
@@ -197,4 +206,113 @@ export function dayKinds(roles: KindRole[], max = 3): KindRole[] {
 export function overflow<T>(items: readonly T[], max = 3): { shown: T[]; more: number } {
   if (items.length <= max) return { shown: [...items], more: 0 };
   return { shown: items.slice(0, max), more: items.length - max };
+}
+
+/** "Nadja", "Enrico und Nadja", "Enrico, Nadja und Vera". */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} und ${names[names.length - 1] ?? ''}`;
+}
+
+const KIND_NAMES: Record<KindRole, [one: string, many: string]> = {
+  activity: ['Aktivität', 'Aktivitäten'],
+  recipe: ['Rezept', 'Rezepte'],
+  collection: ['Sammlung', 'Sammlungen'],
+  restaurant: ['Restaurant', 'Restaurants'],
+  chore: ['Aufgabe', 'Aufgaben'],
+};
+
+/**
+ * The text of a day for screen readers (spec 0016, platforms): "Freitag, 27. November: 1 Aktivität,
+ * 1 Rezept, Nadja unterwegs"; `roles` holds one role per item of the day.
+ */
+export function dayA11yLabel(
+  date: ISODate,
+  roles: readonly KindRole[],
+  travellerNames: readonly string[],
+): string {
+  const parts = KIND_ROLES.flatMap((role) => {
+    const count = roles.filter((candidate) => candidate === role).length;
+    if (count === 0) return [];
+    const [one, many] = KIND_NAMES[role];
+    return [`${count} ${count === 1 ? one : many}`];
+  });
+  if (travellerNames.length > 0) parts.push(`${joinNames(travellerNames)} unterwegs`);
+  const head = formatLongDate(date);
+  return parts.length > 0 ? `${head}: ${parts.join(', ')}` : head;
+}
+
+/**
+ * The days a drag over the grid covers (spec 0016, REQ-007): start and current day inclusive, in
+ * either direction; in the year view (`clampYear`) it ends at the edge of the year.
+ */
+export function dragRange(
+  anchor: ISODate,
+  current: ISODate,
+  clampYear?: number,
+): { from: ISODate; to: ISODate } {
+  const clamp = (iso: ISODate): ISODate => {
+    if (clampYear === undefined) return iso;
+    const year = String(clampYear).padStart(4, '0');
+    if (iso < `${year}-01-01`) return `${year}-01-01`;
+    if (iso > `${year}-12-31`) return `${year}-12-31`;
+    return iso;
+  };
+  const [from, to] = [clamp(anchor), clamp(current)].sort();
+  return { from: from ?? anchor, to: to ?? anchor };
+}
+
+const shortDay = (iso: ISODate) => `${weekdayShort(iso)} ${formatShortDate(iso)}`;
+
+/** "Mo 7.12. – Fr 11.12. · 5 Tage", "Mo 7.12. · 1 Tag": over the grid while dragging (REQ-007). */
+export function rangeLabel(from: ISODate, to: ISODate): string {
+  const days = daysBetween(from, to) + 1;
+  const span = from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`;
+  return `${span} · ${days === 1 ? '1 Tag' : `${days} Tage`}`;
+}
+
+/** The month "Anderes Datum …" opens with: the entry's, for a "vorgemerkt" entry today's (REQ-005). */
+export function monthPickerStart(date: ISODate | null, today: ISODate): ISODate {
+  return startOfMonth(date ?? today);
+}
+
+export interface DaySheetContent {
+  /** "Fr 27. November"; the window shows it in capitals. */
+  title: string;
+  /** Monday … Sunday of the day's week, for the week strip. */
+  week: ISODate[];
+  stripes: AbsenceStripe[];
+  /** Every Tageszeit of the household in its order, also the empty ones. */
+  slots: { slot: MealSlot; entries: MealPlanEntry[] }[];
+  /** No plan entry on that day. */
+  empty: boolean;
+  emptyText: string;
+}
+
+/**
+ * What the day window shows (spec 0016, REQ-006, AC-022, AC-026): the day, its week, the trips
+ * covering it and all Tageszeiten with their entries in display order. Entries of a Tageszeit the
+ * household no longer has are left out, as in the week.
+ */
+export function daySheetContent(input: {
+  date: ISODate;
+  entries: readonly MealPlanEntry[];
+  slots: readonly MealSlot[];
+  stripes: AbsenceStripe[];
+}): DaySheetContent {
+  const ofDay = input.entries.filter((entry) => entry.date === input.date);
+  const slots = [...input.slots]
+    .sort((a, b) => a.sort - b.sort)
+    .map((slot) => ({
+      slot,
+      entries: orderSlotEntries(ofDay.filter((entry) => entry.slotId === slot.id)),
+    }));
+  return {
+    title: dayMonthLongLabel(input.date),
+    week: weekDates(input.date),
+    stripes: stripesOn(input.stripes, input.date),
+    slots,
+    empty: slots.every((group) => group.entries.length === 0),
+    emptyText: 'Noch nichts geplant',
+  };
 }
