@@ -285,6 +285,30 @@ describe('texts while and after moving', () => {
       }),
     ).toBe('Lasagne → Fr 27.11., Abend · Enrico und Nadja sind dann auf Reise');
   });
+
+  it('AC-022: a reminder now in the past adds "Erinnerung liegt in der Vergangenheit"', () => {
+    expect(
+      moveToastText({
+        title: 'Lasagne',
+        date: '2026-11-25',
+        slotName: 'Abend',
+        today,
+        reminderPast: true,
+      }),
+    ).toBe('Lasagne → Mi 25.11., Abend · Erinnerung liegt in der Vergangenheit');
+    expect(
+      moveToastText({
+        title: 'Lasagne',
+        date: '2026-11-27',
+        slotName: 'Abend',
+        today,
+        travellerNames: ['Nadja'],
+        reminderPast: true,
+      }),
+    ).toBe(
+      'Lasagne → Fr 27.11., Abend · Nadja ist dann auf Reise · Erinnerung liegt in der Vergangenheit',
+    );
+  });
 });
 
 describe('travellersOn', () => {
@@ -318,7 +342,17 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
     { id: 'mittag', name: 'Mittag' },
     { id: 'abend', name: 'Abend' },
   ];
-  const base = { members, slots, title: 'Lasagne', today, absences: [] };
+  // 12:00 in Berlin on `today`.
+  const now = new Date('2026-11-22T11:00:00Z');
+  const base = {
+    members,
+    slots,
+    title: 'Lasagne',
+    today,
+    absences: [],
+    now,
+    timeZone: 'Europe/Berlin',
+  };
 
   it('AC-019: "Anderes Datum …" keeps the Tageszeit and names the year', () => {
     expect(
@@ -385,6 +419,84 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
         entries: [lasagne],
       }),
     ).toEqual({ kind: 'same' });
+  });
+
+  describe('a reminder moves along (spec 0017, REQ-006)', () => {
+    // Spec 0017, AC-022: today is Wednesday, 25.11., 12:00; "Lasagne" on Saturday, 28.11., in the
+    // evening reminds "Am Vortag" at 18:00.
+    const wednesday = {
+      ...base,
+      today: '2026-11-25',
+      now: new Date('2026-11-25T11:00:00Z'),
+    };
+    const reminding = entry({
+      id: 'lasagne',
+      date: '2026-11-28',
+      recipeId: 'recipe-lasagne',
+      reminder: { offsetDays: 1, at: '18:00' },
+    });
+
+    it('AC-022: moved to tonight, the toast adds that the reminder lies in the past', () => {
+      expect(
+        planMove({
+          ...wednesday,
+          entry: reminding,
+          target: { kind: 'slot', date: '2026-11-25', slotId: 'abend' },
+          entries: [reminding],
+        }),
+      ).toEqual({
+        kind: 'move',
+        date: '2026-11-25',
+        slotId: 'abend',
+        message: 'Lasagne → Mi 25.11., Abend · Erinnerung liegt in der Vergangenheit',
+      });
+    });
+
+    it('AC-021: moved to a later day, the reminder still lies ahead and nothing is added', () => {
+      expect(
+        planMove({
+          ...wednesday,
+          entry: reminding,
+          target: { kind: 'slot', date: '2026-11-29', slotId: 'mittag' },
+          entries: [reminding],
+        }),
+      ).toMatchObject({ message: 'Lasagne → So 29.11., Mittag' });
+    });
+
+    it('AC-022: a reminder later today is not in the past', () => {
+      const sameDay = { ...reminding, reminder: { offsetDays: 0, at: '17:00' } };
+      expect(
+        planMove({
+          ...wednesday,
+          entry: sameDay,
+          target: { kind: 'day', date: '2026-11-25' },
+          entries: [sameDay],
+        }),
+      ).toMatchObject({ message: 'Lasagne → Mi 25.11., Abend' });
+    });
+
+    it('AC-023: "Vormerken" clears the reminder and says only "vorgemerkt"', () => {
+      expect(
+        planMove({
+          ...wednesday,
+          entry: reminding,
+          target: { kind: 'parked' },
+          entries: [reminding],
+        }),
+      ).toMatchObject({ message: 'Lasagne vorgemerkt' });
+    });
+
+    it('AC-022: without a reminder nothing is added, even on a past day', () => {
+      const plain = { ...reminding, reminder: undefined };
+      expect(
+        planMove({
+          ...wednesday,
+          entry: plain,
+          target: { kind: 'day', date: '2026-11-24' },
+          entries: [plain],
+        }),
+      ).toMatchObject({ message: 'Lasagne → Di 24.11., Abend' });
+    });
   });
 });
 

@@ -33,7 +33,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { useSyncExternalStore } from 'react';
 
 import { appVersionGate, type VersionGate } from './app-version';
-import { diffHousehold, isReflected, sendable } from './changes';
+import { diffHousehold, isReflected, sendable, withoutPassedReminders } from './changes';
 import { rowsToHousehold, rowsToMembers } from './db/mapping';
 import { dropMediaOutside } from './media-cache';
 import type { Storage } from './storage';
@@ -64,7 +64,7 @@ import { createSupabaseTransport, fromSupabaseClient } from './transport-supabas
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
  * What is not cache survives the bump: the store queue and the choices made on this device.
  */
-export const CACHE_VERSION = 8;
+export const CACHE_VERSION = 9;
 /** Retention of `deleted_records` on the server (pg_cron). */
 const RETENTION_DAYS = 30;
 export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
@@ -182,7 +182,12 @@ interface OutboxCommit {
   seq: number;
   changeset: Changeset;
   send: (transport: Transport) => Promise<unknown>;
-  inverse?: { ops: RowOp[]; send: (transport: Transport) => Promise<unknown> };
+  inverse?: {
+    ops: RowOp[];
+    send: (transport: Transport) => Promise<unknown>;
+    /** Diff path: the operations `send` sends, so undo can drop passed reminders (spec 0017). */
+    sendOps?: RowOp[];
+  };
   response?: unknown;
   /** The answer got lost: the next pull shows whether it arrived. */
   unknownOutcome?: boolean;
@@ -990,6 +995,7 @@ export function createEngine(options: EngineOptions): Engine {
         entry.inverse = {
           ops: change.inverse,
           send: (wire) => wire.applyChanges(householdId, sendable(change.sendInverse)),
+          sendOps: change.sendInverse,
         };
       }
     } else if (spec.inverse) {
@@ -1065,18 +1071,28 @@ export function createEngine(options: EngineOptions): Engine {
     return () => {
       if (writesDisabled()) throw new OfflineError();
       const own = history.filter((entry) => entry.seq > mark && !entry.rejected).reverse();
+      const now = new Date();
       for (const entry of own) {
-        if (!entry.inverse) continue;
+        const { inverse } = entry;
+        if (!inverse) continue;
+        const { householdId } = entry.changeset;
+        const timeZone = appState?.households[householdId]?.household.timeZone;
+        const { sendOps } = inverse;
+        // Spec 0017, REQ-006: an entry inserted again keeps only a reminder still to come.
+        const passed = (ops: RowOp[]) =>
+          timeZone === undefined ? ops : withoutPassedReminders(ops, now, timeZone);
         seq += 1;
         commits.push({
           seq,
           changeset: {
             id: `changeset-${seq}`,
-            householdId: entry.changeset.householdId,
-            ops: entry.inverse.ops,
+            householdId,
+            ops: sendOps ? passed(inverse.ops) : inverse.ops,
             status: 'pending',
           },
-          send: entry.inverse.send,
+          send: sendOps
+            ? (wire) => wire.applyChanges(householdId, sendable(passed(sendOps)))
+            : inverse.send,
         });
       }
       rebuild();

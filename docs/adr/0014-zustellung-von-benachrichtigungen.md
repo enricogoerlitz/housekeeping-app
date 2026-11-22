@@ -259,3 +259,18 @@ Inhalt. Die Zeile „Übergabe“ oben gilt deshalb mit dieser Änderung:
 - Dass die API das Schema `net` nicht ausliefert, ist die eigentliche Grenze. Sie ist lokal
   getestet (`scripts/api-schemas.test.mjs`, `notifications.integration.test.ts`) und für die Cloud
   ein Prüfpunkt der Spec 0014.
+
+## Nachtrag 22.11.2026: Erinnerungen an Einträgen (Spec 0017)
+
+- **Neue Art** `entry_reminder`: eine Erinnerung, die eine Person an einem einzelnen Planeintrag mit
+  Tag und Uhrzeit einschaltet. Sie läuft über denselben Planer (`pg_cron` alle 5 Minuten,
+  Zeitzone des Haushalts, 30-Minuten-Fenster, kein Nachholen, höchstens einmal je Gerät) als
+  weiterer Kandidat; Dringlichkeit hoch.
+- **Ausnahme von „nur Titel, Text, Link“ (Spec 0013, AC-040):** Der Text einer Erinnerung darf einen
+  kurzen, eigens für die Nachricht geschriebenen Text enthalten (höchstens 80 Zeichen, keine
+  Steuerzeichen). Er erscheint auf den Sperrbildschirmen der Empfänger; das ist bewusst
+  hingenommen, weil nur Mitglieder des Haushalts ihn bekommen und jede Person die Art abschalten
+  kann. Notizen von Rezepten, Restaurants und Reisen bleiben ausgeschlossen. Der Text steht nie im
+  Zustell-Protokoll.
+- **Empfänger** rechnet allein der Server beim Senden aus „Wer isst mit?“ (leer = alle; bei
+  Aktivitäten alle Mitglieder) und der Mitgliedschaft; kein Feld des Clients bestimmt sie.

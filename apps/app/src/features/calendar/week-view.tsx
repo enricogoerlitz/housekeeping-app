@@ -227,7 +227,13 @@ function WeekGrid(props: WeekViewProps) {
                 .dayEntries(date)
                 .filter((entry) => entry.slotId === slot.id)
                 .map((entry) => (
-                  <EntryLine key={entry.id} entry={entry} data={data} onPress={props.onOpenEntry} />
+                  <EntryLine
+                    key={entry.id}
+                    entry={entry}
+                    data={data}
+                    withReminder
+                    onPress={props.onOpenEntry}
+                  />
                 ))}
               <AddCell date={date} slotId={slot.id} onAdd={props.onAdd} />
             </SlotTarget>
@@ -353,6 +359,7 @@ function WeekList(props: WeekViewProps) {
                         key={entry.id}
                         entry={entry}
                         data={data}
+                        withReminder
                         onPress={props.onOpenEntry}
                       />
                     ))}

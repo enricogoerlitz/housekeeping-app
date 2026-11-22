@@ -69,8 +69,8 @@ In der Oberfläche heißt eine Abwesenheit ab Spec 0016 „Reise“; diese Spec 
 - **ADR-0014** (Zustellung) und Spec 0013, AC-040 (Inhalt der Nachrichten): Der optionale Text
   braucht einen Nachtrag, siehe Offene Frage 2.
 - **Kritischer Pfad:** Benachrichtigungen und Planer sowie eine Änderung am Datenmodell der
-  Planeinträge und der persönlichen Benachrichtigungs-Einstellungen. Vor der ersten Veröffentlichung
-  geschieht das in der Ausgangsfassung der Migrationen (ADR-0012). Der Plan braucht ein kurzes
+  Planeinträge und der persönlichen Benachrichtigungs-Einstellungen. Seit der ersten Veröffentlichung
+  (v2026.11.1, 22.11.2026) ist das eine neue, rein ergänzende Migration (Regel 30-database). Der Plan braucht ein kurzes
   Bedrohungsmodell, Negativtests (fremder Haushalt, abgemeldet, ungültige Uhrzeit, Zeitpunkt in der
   Vergangenheit, gelöschter Eintrag) und `/security-check`.
 
@@ -240,6 +240,10 @@ Wenn        ich 16:00 eintrage
 Dann        verschwindet der Hinweis und am Eintrag steht „Erinnerung Mi 16:00“
 ```
 
+Gilt so im Hinzufügen-Fenster. Im Eintragsfenster speichert schon das Einschalten die vorgeschlagene
+Uhrzeit (REQ-002, hier 17:00); eine danach abgelehnte Eingabe wie 11:00 lässt diese gespeicherte
+Erinnerung stehen, wie bei AC-012 und AC-013 (geklärt bei der Umsetzung, 22.11.2026).
+
 **AC-012 — Keine 5-Minuten-Uhrzeit**
 
 ```gherkin
@@ -263,9 +267,10 @@ Dann        lehnt der Server jeden dieser Aufrufe ab und der Eintrag bleibt unve
 
 **Offline:** nur online.
 
-**Regeln:** Der Text ist für die Nachricht geschrieben und hat nichts mit dem Zusatz eines Eintrags
-oder der Notiz eines Rezepts oder Restaurants zu tun; die erscheinen weiter nie in einer Nachricht
-(Spec 0013, AC-040). Zeilenumbrüche und andere Steuerzeichen sind nicht erlaubt; Leerzeichen am
+**Regeln:** Der Text ist für die Nachricht geschrieben und hat nichts mit der Notiz eines Rezepts
+oder Restaurants zu tun; die erscheint weiter nie in einer Nachricht (Spec 0013, AC-040). Der Name
+des Eintrags steht in der Nachricht wie im Kalender, bei Aktivitäten also mit Zusatz, z. B.
+„Eislaufen (Hohenschönhausen)“, wie schon im Tagesüberblick (geändert am 22.11.2026). Zeilenumbrüche und andere Steuerzeichen sind nicht erlaubt; Leerzeichen am
 Anfang und Ende fallen weg. Der Text gilt unter Annahme A der Offenen Frage 2.
 
 **AC-014 — Text steht in der Nachricht**
@@ -425,6 +430,11 @@ Wenn        ich ihn entferne und nicht „Rückgängig“ wähle
 Dann        wird am Samstag um 17:00 nichts gesendet
 ```
 
+Randfall (geklärt bei der Umsetzung, 22.11.2026): Ist die Erinnerung beim „Rückgängig“ schon
+verstrichen, kommt der Eintrag ohne sie zurück. Die Datenbank lehnt eine Erinnerung in der
+Vergangenheit beim Anlegen ab, und sonst ginge das ganze Rückgängig verloren; gesendet würde sie
+ohnehin nicht mehr.
+
 ### REQ-007 — Je Person und je Gerät
 
 > Die Seite „Benachrichtigungen“ hat die Art „Erinnerungen an Einträgen“, die jede Person für sich
@@ -517,22 +527,25 @@ Dann        lehnt der Server ab und Enricos Einstellung bleibt an
 
 ## Offene Fragen
 
-| #   | Frage                                                                                           | Optionen                                                                                                                                                                                                                                                                                                       | Empfehlung                                                                                              | Status           |
-| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------- |
-| 1   | Welche Werte stehen beim Einschalten?                                                           | A: „Am Tag“, Vormittag 08:00, Mittag 11:00, Abend 17:00 — Pro: ein Tipp genügt meist, Vorlauf zum Kochen; Contra: vier erfundene Standardzeiten · B: Tag und Uhrzeit leer, beides muss gewählt werden — Pro: nichts geraten; Contra: immer drei Tipps mehr                                                     | A, weil „einschalten und fertig“ der häufigste Fall ist und alles änderbar bleibt                       | OFFEN, Annahme A |
-| 2   | Darf ein frei geschriebener Text in der Nachricht stehen (Spec 0013, AC-040 verbietet Notizen)? | A: ja, nur dieser eigens dafür geschriebene Text, 80 Zeichen — Pro: „Fleisch auftauen“ ist der eigentliche Nutzen; Contra: Nachtrag zu ADR-0014 und AC-040 nötig, Text auf dem Sperrbildschirm · B: kein Text, nur Name und Zeit — Pro: Regel bleibt unverändert; Contra: man muss raten, woran                | A, weil der Text bewusst für die Nachricht geschrieben wird; Notizen und Zusätze bleiben ausgeschlossen | OFFEN, Annahme A |
-| 3   | Wer bekommt die Erinnerung?                                                                     | A: alle bei „Wer isst mit?“, leer oder ohne Angabe alle Mitglieder — Pro: wie die Reservierungs-Erinnerung (D39), kein neues Feld; Contra: Nadja bekommt Enricos „Fleisch auftauen“ auch · B: nur wer eingeschaltet hat — Pro: wie in Outlook; Contra: neues personenbezogenes Feld, der andere erfährt nichts | A, weil Einträge dem Haushalt gehören und jede Person die Art für sich ausschalten kann                 | OFFEN, Annahme A |
-| 4   | Reservierungs-Erinnerung und neue Erinnerung am Restaurant-Eintrag: zwei Blöcke oder einer?     | A: beide bleiben nebeneinander („Erinnern 2 h vorher“ an der Reservierung, „Erinnern“ für Tag und Uhrzeit) — Pro: Spec 0013 bleibt unberührt; Contra: zwei ähnliche Zeilen · B: zu einem Block zusammenlegen — Pro: ein Begriff; Contra: Umbau von gebautem Verhalten und Daten                                | A, weil B gebautes Verhalten ändert, ohne dass ein Problem bekannt ist; später neu bewerten             | OFFEN, Annahme A |
-| 5   | Haben Aktivitäten eine Angabe, wer dabei ist, die für Frage 3 zählt?                            | A: nein, bei Aktivitäten bekommen alle Mitglieder die Erinnerung (wie „Aktivitäten am Vortag“) · B: die Angabe am Eintrag zählt, falls es sie gibt                                                                                                                                                             | Im Plan am gebauten Stand prüfen; die Regel in REQ-005 deckt beide Fälle ab                             | OFFEN            |
+| #   | Frage                                                                                           | Optionen                                                                                                                                                                                                                                                                                                       | Empfehlung                                                                                              | Status                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Welche Werte stehen beim Einschalten?                                                           | A: „Am Tag“, Vormittag 08:00, Mittag 11:00, Abend 17:00 — Pro: ein Tipp genügt meist, Vorlauf zum Kochen; Contra: vier erfundene Standardzeiten · B: Tag und Uhrzeit leer, beides muss gewählt werden — Pro: nichts geraten; Contra: immer drei Tipps mehr                                                     | A, weil „einschalten und fertig“ der häufigste Fall ist und alles änderbar bleibt                       | OFFEN, Annahme A                                                                                                                                                                              |
+| 2   | Darf ein frei geschriebener Text in der Nachricht stehen (Spec 0013, AC-040 verbietet Notizen)? | A: ja, nur dieser eigens dafür geschriebene Text, 80 Zeichen — Pro: „Fleisch auftauen“ ist der eigentliche Nutzen; Contra: Nachtrag zu ADR-0014 und AC-040 nötig, Text auf dem Sperrbildschirm · B: kein Text, nur Name und Zeit — Pro: Regel bleibt unverändert; Contra: man muss raten, woran                | A, weil der Text bewusst für die Nachricht geschrieben wird; Notizen und Zusätze bleiben ausgeschlossen | OFFEN, Annahme A                                                                                                                                                                              |
+| 3   | Wer bekommt die Erinnerung?                                                                     | A: alle bei „Wer isst mit?“, leer oder ohne Angabe alle Mitglieder — Pro: wie die Reservierungs-Erinnerung (D39), kein neues Feld; Contra: Nadja bekommt Enricos „Fleisch auftauen“ auch · B: nur wer eingeschaltet hat — Pro: wie in Outlook; Contra: neues personenbezogenes Feld, der andere erfährt nichts | A, weil Einträge dem Haushalt gehören und jede Person die Art für sich ausschalten kann                 | OFFEN, Annahme A                                                                                                                                                                              |
+| 4   | Reservierungs-Erinnerung und neue Erinnerung am Restaurant-Eintrag: zwei Blöcke oder einer?     | A: beide bleiben nebeneinander („Erinnern 2 h vorher“ an der Reservierung, „Erinnern“ für Tag und Uhrzeit) — Pro: Spec 0013 bleibt unberührt; Contra: zwei ähnliche Zeilen · B: zu einem Block zusammenlegen — Pro: ein Begriff; Contra: Umbau von gebautem Verhalten und Daten                                | A, weil B gebautes Verhalten ändert, ohne dass ein Problem bekannt ist; später neu bewerten             | OFFEN, Annahme A                                                                                                                                                                              |
+| 5   | Haben Aktivitäten eine Angabe, wer dabei ist, die für Frage 3 zählt?                            | A: nein, bei Aktivitäten bekommen alle Mitglieder die Erinnerung (wie „Aktivitäten am Vortag“) · B: die Angabe am Eintrag zählt, falls es sie gibt                                                                                                                                                             | Im Plan am gebauten Stand prüfen; die Regel in REQ-005 deckt beide Fälle ab                             | ENTSCHIEDEN: bei Aktivitäten alle Mitglieder; ihre Liste „Wer isst mit?“ wird beim Einplanen still gesetzt und ist nicht änderbar (Claude nach Enricos Regel „Empfehlung nehmen“, 22.11.2026) |
+| 6   | Anfangsuhrzeit bei umbenannten oder eigenen Tageszeiten?                                        | A: nach Namen (Vormittag 08:00, Mittag 11:00, Abend 17:00), sonst 08:00 · B: nach Reihenfolge                                                                                                                                                                                                                  | A, weil der Name die Bedeutung trägt                                                                    | ENTSCHIEDEN: A (22.11.2026)                                                                                                                                                                   |
+| 7   | Höchster Abstand zwischen Erinnerung und Eintrag?                                               | A: 366 Tage · B: unbegrenzt                                                                                                                                                                                                                                                                                    | A, weil es ein Jahr Vorlauf abdeckt und die Datenbank eine Grenze prüfen kann                           | ENTSCHIEDEN: A (22.11.2026)                                                                                                                                                                   |
+| 8   | Dringlichkeit der Nachricht?                                                                    | A: hoch, wie Aufgabe und Reservierung · B: normal                                                                                                                                                                                                                                                              | A, weil sie zu einer Uhrzeit ankommen soll                                                              | ENTSCHIEDEN: A (22.11.2026)                                                                                                                                                                   |
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC             | Task (plan.md) | Test |
-| ------- | -------------- | -------------- | ---- |
-| REQ-001 | AC-001–AC-004  | —              | —    |
-| REQ-002 | AC-005–AC-008  | —              | —    |
-| REQ-003 | AC-009–AC-013  | —              | —    |
-| REQ-004 | AC-014, AC-015 | —              | —    |
-| REQ-005 | AC-016–AC-020  | —              | —    |
-| REQ-006 | AC-021–AC-024  | —              | —    |
-| REQ-007 | AC-025–AC-027  | —              | —    |
+| REQ     | AC             | Task (plan.md) | Test                                                                                                                    |
+| ------- | -------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001–AC-004  | 5, 6           | e2e `rundgang-erinnerungen` AC-001–AC-003; core `reminder-form.test`; api `commands-plan.backend.test` AC-002–AC-004    |
+| REQ-002 | AC-005–AC-008  | 5–7            | e2e `rundgang-erinnerungen` AC-005–AC-007, Glocke; pgTAP `entry_reminders.test`; api AC-006, AC-008                     |
+| REQ-003 | AC-009–AC-013  | 3, 5           | core `reminder.test`, `reminder-form.test` AC-009–AC-012; pgTAP `entry_reminders.test` AC-011–AC-013; e2e AC-010–AC-012 |
+| REQ-004 | AC-014, AC-015 | 1–3            | Planer-pgTAP AC-014; pgTAP AC-015; core `reminder.test` AC-015; e2e AC-014, AC-015                                      |
+| REQ-005 | AC-016–AC-020  | 2              | pgTAP `entry_reminder_scheduler.test` AC-016–AC-020; `notification_parity.test`                                         |
+| REQ-006 | AC-021–AC-024  | 4, 9           | core `plan-move.test` AC-021–AC-023; api AC-022, AC-024; pgTAP AC-021, AC-023, AC-024; e2e AC-021–AC-023                |
+| REQ-007 | AC-025–AC-027  | 4, 8           | api `commands-notifications.test` AC-025; pgTAP AC-027; e2e AC-026, `rundgang-benachrichtigungen`                       |

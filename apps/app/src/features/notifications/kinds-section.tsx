@@ -51,6 +51,7 @@ const KIND_LABELS: Record<NotificationKind, string> = {
   activitiesEve: 'Aktivitäten am Vortag',
   choreReminders: 'Aufgaben mit Uhrzeit',
   reservationReminders: 'Restaurant-Reservierung',
+  entryReminders: 'Erinnerungen an Einträgen',
 };
 
 const KIND_IDS: Record<NotificationKind, string> = {
@@ -58,6 +59,7 @@ const KIND_IDS: Record<NotificationKind, string> = {
   activitiesEve: 'activities-eve',
   choreReminders: 'chore-reminders',
   reservationReminders: 'reservation-reminders',
+  entryReminders: 'entry-reminders',
 };
 
 /** Kinds with a time of their own; the reservation's lead time is set per entry. */

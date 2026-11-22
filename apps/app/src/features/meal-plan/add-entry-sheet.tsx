@@ -29,13 +29,16 @@ import {
   formatPickerDate,
   fuzzyIncludes,
   hasExactName,
+  householdClock,
   leftoverCandidates,
   leftoversDayLabel,
   monthPickerStart,
+  offersReminder,
   planCandidates,
   priceLabel,
   withNote,
   type Activity,
+  type EntryReminder,
   type Id,
   type ISODate,
   type KindRole,
@@ -61,6 +64,7 @@ import {
   ViewTabs,
   toast,
 } from '@housekeeping/ui';
+import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 
@@ -77,6 +81,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import { addSheetTitle, dayLabel, entryTitle } from './labels';
 import { CookPicker, EaterPicker, FieldLabel, SplitFields } from './plan-fields';
+import { ReminderBlock, useReminderForm } from './reminder-block';
 
 export interface AddTarget {
   /** null = "Vormerken" without a day. */
@@ -278,6 +283,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const [newServings, setNewServings] = useState(DEFAULT_SERVINGS);
   const restaurantForm = useRestaurantForm();
   const activityForm = useActivityForm();
+  const router = useRouter();
 
   // A meal without a day can only be "vorgemerkt"; the switch then stays on.
   const date = later ? null : day;
@@ -285,6 +291,9 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const slotOrder = slots.map((slot) => slot.id);
   const slotName = slots.find((slot) => slot.id === slotId)?.name;
   const trimmed = query.trim();
+  // Spec 0017, REQ-001: "Erinnern" in the second step, only with a day (not for "Vormerken").
+  const reminder = useReminderForm({ entryDate: date ?? today, slotName: slotName ?? '' });
+  const remindable = offersReminder(date, householdClock(new Date(), household.timeZone).date);
 
   const recipe = choice?.kind === 'recipe' ? choice.recipe : undefined;
   const split = recipe ? splitForEaters(recipe.id, eaterIds, guests) : undefined;
@@ -338,6 +347,14 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
   const save = () => {
     if (!choice || online.disabled) return;
+    // A reminder that cannot be saved keeps the window open with its hint (REQ-003).
+    let checked: EntryReminder | undefined;
+    if (remindable) {
+      const decision = reminder.check();
+      if (decision.action === 'invalid') return;
+      if (decision.action === 'set') checked = decision.reminder;
+    }
+    const withReminder = checked ? { reminder: checked } : {};
     try {
       switch (choice.kind) {
         case 'recipe': {
@@ -352,6 +369,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             cookId,
             portions: split.portions,
             variants: split.variants,
+            ...withReminder,
           });
           done(choice.recipe.title, date);
           return;
@@ -364,6 +382,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             restaurantId: choice.restaurant.id,
             eaterIds,
             guests,
+            ...withReminder,
           });
           done(choice.restaurant.name, date);
           return;
@@ -376,6 +395,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
               activityId: choice.activity.id,
               note,
               eaterIds: defaultEaterIds(date),
+              ...withReminder,
             });
           } catch (caught) {
             setNoteError(message(caught));
@@ -395,6 +415,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             kind: 'text',
             text: value,
             eaterIds: defaultEaterIds(date),
+            ...withReminder,
           });
           done(value, date);
           return;
@@ -411,6 +432,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             eaterIds: eaters,
             portions: Math.max(1, eaters.length),
             variants: [],
+            ...withReminder,
           });
           done(choice.title, day);
           return;
@@ -805,6 +827,18 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
       ) : null}
       {recipe ? <CookPicker members={members} cookId={cookId} onChange={setCookId} /> : null}
       {choice.kind === 'activity' ? zusatz : null}
+      {remindable ? (
+        <ReminderBlock
+          form={reminder}
+          disabled={online.disabled}
+          hint={online.hint}
+          onOpenSettings={() => {
+            props.onClose();
+            router.push('/einstellungen/benachrichtigungen');
+          }}
+          testID="add-entry-reminder"
+        />
+      ) : null}
       {error && choice.kind !== 'text' ? (
         <Text variant="small" color="warn">
           {error}

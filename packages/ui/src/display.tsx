@@ -854,6 +854,8 @@ export interface KindLineProps {
   /** Replaces the kind's symbol, e.g. the check box of a chore that is due today. */
   leading?: ReactNode;
   trailing?: ReactNode;
+  /** A second line under the title, e.g. the bell of a reminder (spec 0017). */
+  detail?: ReactNode;
   onPress?: () => void;
   /** Flexible chores: dashed edge (spec 0010, REQ-006). */
   dashed?: boolean;
@@ -879,6 +881,19 @@ export interface KindLineProps {
 export function KindLine(props: KindLineProps) {
   const theme = useTheme();
   const compact = props.size === 'compact';
+  const title = (
+    <Text
+      variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
+      color={props.quiet || props.struck ? 'muted' : 'text'}
+      numberOfLines={compact ? 1 : 2}
+      style={[
+        props.detail ? { minWidth: 0 } : { flex: 1, minWidth: 0 },
+        props.struck ? { textDecorationLine: 'line-through' } : null,
+      ]}
+    >
+      {props.title}
+    </Text>
+  );
   const body = (
     <View
       style={{
@@ -901,17 +916,14 @@ export function KindLine(props: KindLineProps) {
       {props.leading ?? (
         <Icon name={KIND_ICONS[props.kind]} size={compact ? 13 : 15} color="muted" />
       )}
-      <Text
-        variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
-        color={props.quiet || props.struck ? 'muted' : 'text'}
-        numberOfLines={compact ? 1 : 2}
-        style={[
-          { flex: 1, minWidth: 0 },
-          props.struck ? { textDecorationLine: 'line-through' } : null,
-        ]}
-      >
-        {props.title}
-      </Text>
+      {props.detail ? (
+        <View style={{ flex: 1, minWidth: 0, paddingVertical: compact ? 1 : 3 }}>
+          {title}
+          {props.detail}
+        </View>
+      ) : (
+        title
+      )}
       {props.trailing}
     </View>
   );

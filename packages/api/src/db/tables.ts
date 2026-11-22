@@ -148,6 +148,10 @@ export const WRITABLE_COLUMNS = {
     'not_cooked',
     'reserved_at',
     'remind_minutes_before',
+    // Spec 0017: the reminder of the entry.
+    'reminder_day_offset',
+    'reminder_at',
+    'reminder_text',
   ],
   shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
@@ -158,7 +162,7 @@ export const WRITABLE_COLUMNS = {
   packing_bag_items: ['bag_id', 'name', 'quantity', 'per_day', 'sort'],
   packing_list_bags: ['absence_id', 'bag_id', 'name', 'member_id', 'sort'],
   packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort'],
-  // Spec 0013, Decision 3: only these seven are patched, never household_id or member_id.
+  // Spec 0013, Decision 3: only these are patched, never household_id or member_id.
   notification_settings: [
     'daily_summary_enabled',
     'daily_summary_at',
@@ -167,6 +171,7 @@ export const WRITABLE_COLUMNS = {
     'activities_eve_at',
     'chore_reminders_enabled',
     'reservation_reminders_enabled',
+    'entry_reminders_enabled',
   ],
 } as const satisfies Record<IdTable | 'households', readonly string[]>;
 

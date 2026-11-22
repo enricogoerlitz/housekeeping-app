@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0013: version 8 for notification settings, chore times and reservations; version 7 loads again', () => {
-    expect(CACHE_VERSION).toBe(8);
+  it('spec 0017: version 9 for entry reminders, their setting and the household zone; version 8 loads again', () => {
+    expect(CACHE_VERSION).toBe(9);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

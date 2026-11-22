@@ -1,7 +1,7 @@
 // Meal plan commands (spec 0003): all on the diff path; removing an entry declares
 // its delete and takes recipe-less leftovers of it along (the database would refuse to keep them).
 import { addDays, entriesForDay, isoWeekday, originSummary } from '@housekeeping/core';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
@@ -16,6 +16,7 @@ import {
   RECIPE_GONE_MESSAGE,
   removePlanEntry,
   saveEntryFields,
+  setEntryReminder,
   setReservation,
   updatePlanEntry,
 } from './commands-plan';
@@ -633,6 +634,363 @@ describe('spec 0018, REQ-003: "Fertig" saves the open fields of an entry', () =>
     fx.environment.setOnline(false);
     expect(() => saveEntryFields(id, { reservedAt: '19:30' })).toThrow(OfflineError);
     expect(entryById(id)?.reservedAt).toBeUndefined();
+  });
+});
+
+describe('entry reminders (spec 0017, diff path)', () => {
+  // Friday 20.11.2026, 11:00 in Berlin (withBackend); the household's zone is Europe/Berlin.
+  const SATURDAY = addDays(TODAY, 1);
+  const SUNDAY = addDays(TODAY, 2);
+  const stored = (id: string) => fx.server.row(H, 'meal_plan_entries', id);
+
+  async function lasagne(reminder?: { offsetDays: number; at: string; text?: string }) {
+    const id = addPlanEntry({
+      date: SATURDAY,
+      slotId: SLOT_DINNER,
+      kind: 'text',
+      text: 'Lasagne',
+      eaterIds: [ENRICO, NADJA],
+      ...(reminder ? { reminder } : {}),
+    });
+    await fx.settle();
+    fx.clearCalls();
+    return id;
+  }
+
+  it('AC-005, AC-014: setEntryReminder is one patch; the text is trimmed; the other device sees it', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const id = await lasagne();
+    setEntryReminder(id, { offsetDays: 1, at: '18:00', text: '  Fleisch auftauen ' });
+    expect(entryById(id)?.reminder).toEqual({
+      offsetDays: 1,
+      at: '18:00',
+      text: 'Fleisch auftauen',
+    });
+    await fx.settle(nadja);
+    expect(opsOf(0)).toEqual([
+      {
+        kind: 'patch',
+        table: 'meal_plan_entries',
+        id,
+        changes: {
+          reminder_day_offset: 1,
+          reminder_at: '18:00:00',
+          reminder_text: 'Fleisch auftauen',
+        },
+      },
+    ]);
+    expect(fx.nadjaData(nadja).planEntries.find((entry) => entry.id === id)?.reminder).toEqual({
+      offsetDays: 1,
+      at: '18:00',
+      text: 'Fleisch auftauen',
+    });
+  });
+
+  it('AC-006: null switches it off: all three columns null; an empty text is no text', async () => {
+    await fx.startEnrico();
+    const id = await lasagne({ offsetDays: 1, at: '18:00', text: 'Fleisch auftauen' });
+    setEntryReminder(id, { offsetDays: 1, at: '18:00', text: '   ' });
+    setEntryReminder(id, null);
+    expect(entryById(id)?.reminder).toBeUndefined();
+    await fx.settle();
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'meal_plan_entries', id, changes: { reminder_text: null } },
+    ]);
+    expect(opsOf(1)).toEqual([
+      {
+        kind: 'patch',
+        table: 'meal_plan_entries',
+        id,
+        changes: { reminder_day_offset: null, reminder_at: null },
+      },
+    ]);
+    expect(stored(id)).toMatchObject({
+      reminder_day_offset: null,
+      reminder_at: null,
+      reminder_text: null,
+    });
+  });
+
+  it('AC-002: addPlanEntry with a reminder inserts it in the same row', async () => {
+    await fx.startEnrico();
+    const id = addPlanEntry({
+      date: SATURDAY,
+      slotId: SLOT_DINNER,
+      kind: 'text',
+      text: 'Lasagne',
+      eaterIds: [ENRICO],
+      reminder: { offsetDays: 0, at: '17:00' },
+    });
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({
+        kind: 'insert',
+        row: expect.objectContaining({ id, reminder_day_offset: 0, reminder_at: '17:00:00' }),
+      }),
+    ]);
+    expect(stored(id)).toMatchObject({ reminder_day_offset: 0, reminder_at: '17:00:00' });
+  });
+
+  it('AC-003: "Vormerken" takes no reminder', async () => {
+    await fx.startEnrico();
+    expect(() =>
+      addPlanEntry({
+        date: null,
+        slotId: SLOT_DINNER,
+        kind: 'text',
+        text: 'Shakshuka',
+        eaterIds: [ENRICO],
+        reminder: { offsetDays: 0, at: '17:00' },
+      }),
+    ).toThrow();
+    await fx.settle();
+    expect(fx.calls).toEqual([]);
+  });
+
+  it('AC-021: moving to another day keeps offset, time and text; changing the meal keeps the time', async () => {
+    await fx.startEnrico();
+    const id = await lasagne({ offsetDays: 1, at: '18:00', text: 'Käse' });
+    movePlanEntry(id, SUNDAY, SLOT_LUNCH);
+    await fx.settle();
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({
+        kind: 'patch',
+        changes: expect.not.objectContaining({ reminder_day_offset: expect.anything() }),
+      }),
+    ]);
+    expect(stored(id)).toMatchObject({
+      date: SUNDAY,
+      slot_id: SLOT_LUNCH,
+      reminder_day_offset: 1,
+      reminder_at: '18:00:00',
+      reminder_text: 'Käse',
+    });
+    expect(entryById(id)?.reminder).toEqual({ offsetDays: 1, at: '18:00', text: 'Käse' });
+  });
+
+  it('AC-022: moving onto a day where the reminder has passed is not refused; undo brings it back', async () => {
+    await fx.startEnrico();
+    const id = await lasagne({ offsetDays: 1, at: '18:00' });
+    const restore = snapshot();
+    movePlanEntry(id, TODAY);
+    await fx.settle();
+    expect(stored(id)).toMatchObject({ date: TODAY, reminder_day_offset: 1 });
+    restore();
+    await fx.settle();
+    expect(stored(id)).toMatchObject({ date: SATURDAY, reminder_day_offset: 1 });
+  });
+
+  it('AC-023: "Vormerken" clears the reminder in the same patch; undo restores date and reminder', async () => {
+    await fx.startEnrico();
+    const id = await lasagne({ offsetDays: 0, at: '17:00', text: 'Käse kaufen' });
+    const restore = snapshot();
+    movePlanEntry(id, null);
+    expect(entryById(id)?.reminder).toBeUndefined();
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({
+        kind: 'patch',
+        id,
+        changes: expect.objectContaining({
+          date: null,
+          reminder_day_offset: null,
+          reminder_at: null,
+          reminder_text: null,
+        }),
+      }),
+    ]);
+    expect(stored(id)).toMatchObject({ date: null, reminder_at: null });
+    restore();
+    await fx.settle();
+    expect(stored(id)).toMatchObject({
+      date: SATURDAY,
+      reminder_day_offset: 0,
+      reminder_at: '17:00:00',
+      reminder_text: 'Käse kaufen',
+    });
+    expect(entryById(id)?.reminder).toEqual({ offsetDays: 0, at: '17:00', text: 'Käse kaufen' });
+  });
+
+  it('AC-024: removing and undo bring a future reminder back', async () => {
+    await fx.startEnrico();
+    const id = await lasagne({ offsetDays: 0, at: '17:00' });
+    const restore = snapshot();
+    removePlanEntry(id);
+    await fx.settle();
+    expect(stored(id)).toBeUndefined();
+    restore();
+    await fx.settle();
+    expect(stored(id)).toMatchObject({ reminder_day_offset: 0, reminder_at: '17:00:00' });
+    expect(entryById(id)?.reminder).toEqual({ offsetDays: 0, at: '17:00' });
+  });
+
+  it('REQ-006: undo after removing drops a reminder that has passed meanwhile and restores the entry', async () => {
+    await fx.startEnrico();
+    const rejected: string[] = [];
+    const stop = onWriteRejected((message) => rejected.push(message));
+    const id = addPlanEntry({
+      date: TODAY,
+      slotId: SLOT_DINNER,
+      kind: 'text',
+      text: 'Curry',
+      eaterIds: [ENRICO],
+      reminder: { offsetDays: 0, at: '11:30', text: 'Reis kochen' },
+    });
+    await fx.settle();
+    // 11:45 in Berlin: the reminder at 11:30 has passed and would not be sent anyway.
+    vi.setSystemTime(new Date('2026-11-20T10:45:00Z'));
+    const restore = snapshot();
+    removePlanEntry(id);
+    await fx.settle();
+    restore();
+    expect(entryById(id)?.reminder).toBeUndefined();
+    await fx.settle();
+    stop();
+    expect(rejected).toEqual([]);
+    expect(stored(id)).toMatchObject({
+      text: 'Curry',
+      reminder_day_offset: null,
+      reminder_at: null,
+      reminder_text: null,
+    });
+    expect(entryById(id)).toMatchObject({ text: 'Curry', reminder: undefined });
+  });
+
+  it('AC-004, REQ-002: offline nothing is set, cleared or added with a reminder', async () => {
+    await fx.startEnrico();
+    const id = await lasagne({ offsetDays: 0, at: '17:00' });
+    fx.environment.setOnline(false);
+    expect(() => setEntryReminder(id, { offsetDays: 1, at: '18:00' })).toThrow(OfflineError);
+    expect(() => setEntryReminder(id, null)).toThrow(OfflineError);
+    expect(() =>
+      addPlanEntry({
+        date: SATURDAY,
+        slotId: SLOT_LUNCH,
+        kind: 'text',
+        text: 'Suppe',
+        eaterIds: [ENRICO],
+        reminder: { offsetDays: 0, at: '10:00' },
+      }),
+    ).toThrow(OfflineError);
+    expect(entryById(id)?.reminder).toEqual({ offsetDays: 0, at: '17:00' });
+    await fx.settle();
+    expect(fx.calls).toEqual([]);
+  });
+
+  it.each([
+    ['AC-011: a moment in the past', { offsetDays: 1, at: '18:00' }, 'Liegt in der Vergangenheit'],
+    [
+      'AC-012: a time outside 5-minute steps',
+      { offsetDays: 0, at: '17:03' },
+      'Bitte in 5-Minuten-Schritten',
+    ],
+    [
+      'AC-013: a day after the entry',
+      { offsetDays: -1, at: '18:00' },
+      'Liegt nach dem Tag des Eintrags',
+    ],
+    [
+      'AC-013: more than 366 days before',
+      { offsetDays: 367, at: '18:00' },
+      'Höchstens 366 Tage vorher',
+    ],
+    [
+      'AC-015: 81 characters',
+      { offsetDays: 0, at: '17:00', text: 'x'.repeat(81) },
+      'Höchstens 80 Zeichen',
+    ],
+    [
+      'AC-015: a line break',
+      { offsetDays: 0, at: '17:00', text: 'Käse\nkaufen' },
+      'Ohne Zeilenumbrüche',
+    ],
+  ] as const)('%s is refused before anything is sent', async (_, reminder, message) => {
+    await fx.startEnrico();
+    // The day before an entry today is yesterday; every other case is about Saturday.
+    const id =
+      reminder.offsetDays === 1
+        ? addPlanEntry({
+            date: TODAY,
+            slotId: SLOT_DINNER,
+            kind: 'text',
+            text: 'Curry',
+            eaterIds: [ENRICO],
+          })
+        : await lasagne();
+    await fx.settle();
+    fx.clearCalls();
+    expect(() => setEntryReminder(id, reminder)).toThrow(message);
+    expect(entryById(id)?.reminder).toBeUndefined();
+    await fx.settle();
+    expect(fx.calls).toEqual([]);
+  });
+
+  it('AC-007: an entry without a day or one that is gone takes no reminder', async () => {
+    await fx.startEnrico();
+    const id = addPlanEntry({
+      date: null,
+      slotId: SLOT_DINNER,
+      kind: 'text',
+      text: 'Shakshuka',
+      eaterIds: [ENRICO],
+    });
+    await fx.settle();
+    fx.clearCalls();
+    expect(() => setEntryReminder(id, { offsetDays: 0, at: '17:00' })).toThrow();
+    expect(() => setEntryReminder('gone', { offsetDays: 0, at: '17:00' })).toThrow();
+    await fx.settle();
+    expect(fx.calls).toEqual([]);
+  });
+
+  it('AC-008: when the entry was removed on another device, the server refuses with the general hint', async () => {
+    await fx.startEnrico();
+    const id = await lasagne();
+    const rejected: string[] = [];
+    const stop = onWriteRejected((message) => rejected.push(message));
+    fx.server.deleteRow(H, 'meal_plan_entries', id);
+    setEntryReminder(id, { offsetDays: 0, at: '17:00' });
+    await fx.settle();
+    stop();
+    expect(rejected).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(entryById(id)).toBeUndefined();
+  });
+
+  it('AC-008, spec 0018 AC-009: resolves once the server took it, rejects when it refused it', async () => {
+    await fx.startEnrico();
+    const id = await lasagne();
+    const taken = setEntryReminder(id, { offsetDays: 0, at: '17:00' });
+    await fx.settle();
+    await expect(taken).resolves.toBeUndefined();
+    const stop = onWriteRejected(() => {});
+    fx.server.deleteRow(H, 'meal_plan_entries', id);
+    const refused = setEntryReminder(id, { offsetDays: 1, at: '18:00' });
+    await fx.settle();
+    stop();
+    await expect(refused).rejects.toBeDefined();
+  });
+
+  it('AC-013: only the text changes once the moment has passed: it is not judged again', async () => {
+    await fx.startEnrico();
+    const id = addPlanEntry({
+      date: TODAY,
+      slotId: SLOT_DINNER,
+      kind: 'text',
+      text: 'Curry',
+      eaterIds: [ENRICO],
+      reminder: { offsetDays: 0, at: '11:30' },
+    });
+    await fx.settle();
+    vi.setSystemTime(new Date('2026-11-20T10:45:00Z'));
+    fx.clearCalls();
+    setEntryReminder(id, { offsetDays: 0, at: '11:30', text: 'Reis' });
+    await fx.settle();
+    expect(stored(id)).toMatchObject({ reminder_at: '11:30:00', reminder_text: 'Reis' });
+    expect(() => setEntryReminder(id, { offsetDays: 0, at: '11:35' })).toThrow(
+      'Liegt in der Vergangenheit',
+    );
   });
 });
 

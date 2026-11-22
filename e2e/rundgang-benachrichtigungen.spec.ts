@@ -49,7 +49,7 @@ function permissionAsks(page: Page): Promise<number> {
   return page.evaluate(() => (window as unknown as { permissionAsks: number }).permissionAsks);
 }
 
-test('AC-001: "Benachrichtigungen · 2 an" under the avatar opens the page; "Verwalten" has no entry', async ({
+test('AC-001: "Benachrichtigungen · 3 an" under the avatar opens the page; "Verwalten" has no entry', async ({
   page,
 }) => {
   // Headless Chromium answers "denied" by itself; a browser that was never asked says "default".
@@ -57,7 +57,7 @@ test('AC-001: "Benachrichtigungen · 2 an" under the avatar opens the page; "Ver
   await open(page, '/');
   await openSettings(page);
   // Not registered on this device yet (spec 0018, AC-022).
-  await expect(tid(page, 'settings-notifications-summary')).toHaveText('2 an · dieses Gerät aus');
+  await expect(tid(page, 'settings-notifications-summary')).toHaveText('3 an · dieses Gerät aus');
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
   await expect(tid(page, 'notif-kinds')).toContainText('gilt für alle Geräte');

@@ -24,6 +24,7 @@ import {
 import { Pressable, View } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
+import { entryReminderLabels, ReminderBell } from '@/features/meal-plan/reminder-bell';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
 import { stripeWho, type CalendarData } from './calendar-data';
@@ -139,6 +140,8 @@ export function AbsenceStripeView(props: {
  * another day, Tageszeit or "Vorgemerkt" (spec 0016, REQ-001): held with a finger, pressed and
  * moved with the mouse; its old place stays as a pale outline. Offline nothing lifts and the hint
  * shows (AC-005). For screen readers the action "Verschieben" opens the entry window there.
+ * With `withReminder` (week and day panel) a reminder shows as a bell under the text, "Erinnerung
+ * Fr 18:00" (spec 0017, REQ-002); the dragged image stays without it, since the day moves.
  */
 export function EntryLine(props: {
   entry: MealPlanEntry;
@@ -147,6 +150,8 @@ export function EntryLine(props: {
   /** The Tageszeit in front, in day lists ("Vormittag ▲ Strandtag"). */
   withSlot?: boolean;
   compact?: boolean;
+  /** The bell of the entry's reminder under the text (spec 0017): week and day panel only. */
+  withReminder?: boolean;
 }) {
   const { entry, data } = props;
   const online = useOnlineOnly();
@@ -154,6 +159,10 @@ export function EntryLine(props: {
   const title = data.lineTitleOf(entry);
   const kind = entryKindRole(entry, data.recipesById);
   const size = props.compact ? 'compact' : 'row';
+  const reminder = props.withReminder
+    ? entryReminderLabels(entry, title, data.household.timeZone)
+    : undefined;
+  const spoken = reminder?.accessibilityLabel ?? title;
   const {
     ref,
     props: sourceProps,
@@ -173,8 +182,13 @@ export function EntryLine(props: {
         title={title}
         prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
         size={size}
+        detail={
+          reminder ? (
+            <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
+          ) : undefined
+        }
         onPress={guardPress(() => props.onPress(entry))}
-        accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${title}` : title}
+        accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken}
         accessibilityAction={{ label: 'Verschieben', onAction: () => openMove(entry) }}
         testID={`entry-${entry.id}`}
       />

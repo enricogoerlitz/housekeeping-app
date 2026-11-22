@@ -1,9 +1,13 @@
 import {
+  cleanReminderText,
   collectionDiet,
   contentsInBook,
   defaultEaters,
   dietFitsPreference,
+  EntryReminderSchema,
   splitVariants,
+  validateReminder,
+  type EntryReminder,
   type Id,
   type ISODate,
   type MealPlanEntry,
@@ -66,6 +70,49 @@ export interface PlanEntryInput {
   portions?: number;
   variants?: PlanEntryVariant[];
   cookId?: Id;
+  /** Spec 0017: "Erinnern", only with a day (REQ-001). */
+  reminder?: EntryReminderInput;
+}
+
+/**
+ * "Erinnern" as the form has it (spec 0017): days before the entry's day, the typed time and the
+ * typed "Woran erinnern?" (trimmed; empty is no text).
+ */
+export interface EntryReminderInput {
+  offsetDays: number;
+  at: string;
+  text?: string;
+}
+
+/**
+ * The reminder to store, checked like the database (REQ-003, REQ-004, AC-013, AC-015) in the
+ * household's time zone (Decision 5). Throws the hint of the field: "Liegt in der Vergangenheit",
+ * the time field's messages, "Höchstens 80 Zeichen", "Ohne Zeilenumbrüche". The moment is judged
+ * only when day or time change, like the database: a text alone may change once it has passed.
+ */
+function checkedReminder(
+  entry: Pick<MealPlanEntry, 'date' | 'reminder'>,
+  input: EntryReminderInput,
+): EntryReminder {
+  if (entry.date === null) throw new Error('Ohne Tag gibt es keine Erinnerung');
+  const text = cleanReminderText(input.text ?? '');
+  if (!text.ok) throw new Error(text.error);
+  const same = entry.reminder?.offsetDays === input.offsetDays && entry.reminder.at === input.at;
+  const validation = same
+    ? undefined
+    : validateReminder({
+        entryDate: entry.date,
+        offsetDays: input.offsetDays,
+        time: input.at,
+        now: new Date(),
+        timeZone: getData().household.timeZone,
+      });
+  if (validation && !validation.ok) throw new Error(validation.error);
+  return EntryReminderSchema.parse({
+    offsetDays: input.offsetDays,
+    at: validation?.reminder.at ?? input.at,
+    ...(text.text === undefined ? {} : { text: text.text }),
+  });
 }
 
 /** Who eats by default on a day: every member of the household who is not absent. */
@@ -147,6 +194,9 @@ export function addPlanEntry(input: PlanEntryInput): Id {
   }
   if (input.kind === 'text' && !input.text?.trim()) throw new Error('Der Text fehlt.');
   const note = input.kind === 'activity' ? cleanNote(input.note) : undefined;
+  const reminder = input.reminder
+    ? checkedReminder({ date: input.date }, input.reminder)
+    : undefined;
   const guests = input.guests ?? 0;
   const split =
     input.kind === 'recipe' && input.recipeId && !input.variants
@@ -173,6 +223,7 @@ export function addPlanEntry(input: PlanEntryInput): Id {
       variants: input.variants ?? split?.variants ?? [],
       cookId: input.cookId,
       sort: siblings.length,
+      reminder,
     };
     updateData((current) => ({ ...current, planEntries: [...current.planEntries, entry] }));
     return entry.id;
@@ -295,8 +346,35 @@ export function saveEntryFields(
 }
 
 /**
+ * "Erinnern" of an entry (spec 0017, REQ-002): sets or changes the reminder, null switches it off.
+ * One patch of the three columns, refused offline (OfflineError). Throws before sending for an
+ * entry without a day or one that is gone, and with the hints of `checkedReminder`. When the
+ * entry was removed on another device meanwhile, the server refuses it and onWriteRejected
+ * reports the general hint (AC-008). Resolves once the server took it and rejects when it refused
+ * it, so "Fertig" can stay open (spec 0018, AC-009); a caller that does not wait may ignore it.
+ */
+export function setEntryReminder(entryId: Id, input: EntryReminderInput | null): Promise<void> {
+  const entry = getData().planEntries.find((candidate) => candidate.id === entryId);
+  if (!entry) throw new Error('Den Eintrag gibt es nicht mehr');
+  const reminder = input === null ? undefined : checkedReminder(entry, input);
+  if (isOffline()) throw new OfflineError();
+  const confirmed = commitConfirmed({ path: 'diff' }, () =>
+    updateData((data) => ({
+      ...data,
+      planEntries: data.planEntries.map((candidate) =>
+        candidate.id === entryId ? { ...candidate, reminder } : candidate,
+      ),
+    })),
+  );
+  confirmed.catch(() => {});
+  return confirmed;
+}
+
+/**
  * Moves a dish to another day (or to "vorgemerkt" with date null) and optionally another meal.
- * Its contributions on the shopping list stay and their Herkunft names the new day, "Mango-Curry
+ * The reminder keeps its distance in days and so moves along (spec 0017, AC-021); "vorgemerkt"
+ * clears it in the same patch (AC-023), and undo brings date and reminder back together. Its
+ * contributions on the shopping list stay and their Herkunft names the new day, "Mango-Curry
  * (So)" (spec 0016, AC-017); all in the same call.
  */
 export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): void {
@@ -313,7 +391,13 @@ export function movePlanEntry(entryId: Id, date: ISODate | null, slotId?: Id): v
         ...data,
         planEntries: data.planEntries.map((candidate) =>
           candidate.id === entryId
-            ? { ...candidate, date, slotId: targetSlot, sort: siblings.length }
+            ? {
+                ...candidate,
+                date,
+                slotId: targetSlot,
+                sort: siblings.length,
+                ...(date === null ? { reminder: undefined } : {}),
+              }
             : candidate,
         ),
         items: entry.date === date ? data.items : relabelContributions(data.items, entryId, date),

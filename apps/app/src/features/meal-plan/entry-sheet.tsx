@@ -21,6 +21,8 @@ import {
   isSelectableMoveDay,
   monthPickerStart,
   moveBounds,
+  householdClock,
+  offersReminder,
   parseTimeInput,
   REMIND_CHOICES,
   remindLabel,
@@ -56,6 +58,8 @@ import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { dayLabel, entryTitle } from './labels';
+import { ReminderBlock, useReminderForm } from './reminder-block';
+import { entryReminderLabels, ReminderBell } from './reminder-bell';
 
 function Label(props: { children: string }) {
   return (
@@ -70,7 +74,8 @@ function Label(props: { children: string }) {
  * "Route" of an activity, "Route", "Reserviert um" and "Erinnern … vorher" of a restaurant (spec
  * 0013, REQ-008), move, change the cook, remove. "Fertig" saves the typed Zusatz and time and
  * closes once the server took them; on a refusal the window stays open with the typed text and
- * the general hint (spec 0018, REQ-003). Offline it only closes.
+ * the general hint (spec 0018, REQ-003). "Erinnern" (spec 0017, REQ-002) sends switch, day and time
+ * at once; "Fertig" sends its text the same way. Offline it only closes.
  */
 export function EntrySheet(props: {
   entryId: Id;
@@ -96,6 +101,12 @@ export function EntrySheet(props: {
   const entry = entries.find((candidate) => candidate.id === props.entryId);
   const reservation = useReservationDraft(entry);
   const note = useNoteDraft(entry);
+  const reminder = useReminderForm({
+    entryDate: entry?.date ?? today,
+    slotName: household.mealSlots.find((slot) => slot.id === entry?.slotId)?.name ?? '',
+    stored: entry?.reminder,
+    entryId: entry?.id,
+  });
   const [saving, setSaving] = useState(false);
   // A late answer must not close a window opened after this one was closed with ✕.
   const open = useRef(true);
@@ -127,6 +138,17 @@ export function EntrySheet(props: {
       ? restaurant
       : undefined;
 
+  // Spec 0017, AC-007: not for "vorgemerkt" and not for a day that has passed (household's date).
+  const remindable = offersReminder(
+    entry.date,
+    householdClock(new Date(), household.timeZone).date,
+  );
+
+  // A passed day offers no block, but its reminder still shows: "Erinnerung vorbei" (REQ-006).
+  const pastReminder = remindable
+    ? undefined
+    : entryReminderLabels(entry, title, household.timeZone);
+
   if (routeOpen && routeTarget) {
     return <RouteSheet restaurant={routeTarget} visible onClose={() => setRouteOpen(false)} />;
   }
@@ -140,8 +162,9 @@ export function EntrySheet(props: {
     if (entry.kind === 'restaurant' && !reservation.save('tap')) return;
     // Closing is the success here; a toast before the server answered could be wrong (AC-009).
     if (entry.kind === 'activity' && !note.save({ notify: false })) return;
+    if (remindable && !reminder.save()) return;
     setSaving(true);
-    Promise.all([reservation.pending(), note.pending()]).then(
+    Promise.all([reservation.pending(), note.pending(), reminder.pending()]).then(
       () => {
         if (open.current) props.onClose();
       },
@@ -312,6 +335,26 @@ export function EntrySheet(props: {
             draft={reservation}
             disabled={online.disabled}
             hint={online.hint}
+          />
+        ) : null}
+        {remindable ? (
+          <ReminderBlock
+            form={reminder}
+            disabled={online.disabled}
+            hint={online.hint}
+            onOpenSettings={() => {
+              props.onClose();
+              router.push('/einstellungen/benachrichtigungen');
+            }}
+            entryTitle={title}
+            testID="entry-reminder"
+          />
+        ) : pastReminder ? (
+          <ReminderBell
+            label={pastReminder.label}
+            accessibilityLabel={pastReminder.accessibilityLabel}
+            size="row"
+            testID="entry-reminder-bell"
           />
         ) : null}
         {props.moveFirst ? null : moveSection}

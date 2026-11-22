@@ -142,7 +142,13 @@ export function DayPanel(props: DayPanelProps) {
               {slot.name}
             </Text>
             {entries.map((entry) => (
-              <EntryLine key={entry.id} entry={entry} data={data} onPress={props.onOpenEntry} />
+              <EntryLine
+                key={entry.id}
+                entry={entry}
+                data={data}
+                withReminder
+                onPress={props.onOpenEntry}
+              />
             ))}
             <AddLine
               label={`Hinzufügen: ${slot.name}`}
