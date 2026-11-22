@@ -114,7 +114,7 @@ installierter Web-App (Enrico).
 ## Nachweis
 
 - [ ] Je AC ein Test, der rot war und jetzt grün ist, oder ein Klick- bzw. Gerätebeleg
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün (22.11.2026)
 - [ ] `pnpm e2e` und `pnpm e2e:dev` lokal grün
 - [x] `/ui-verify` (Handy, Tablet, Desktop, hell und dunkel) am 22.11.2026; Befunde 1–6 und 8–11 behoben, 7 (gekürzte Wochentitel am Tablet, älter als 0016) offen; Bewegung am Code beurteilt (Skill `review-animations` gibt es nicht)
 - [ ] Handtest iPhone-PWA: Halten, Ziehen, Rand, Reise ziehen (Enrico)
