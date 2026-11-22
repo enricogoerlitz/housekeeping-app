@@ -84,14 +84,14 @@ nothing internal. `apps/app` composes all of them. Never import from an app into
 
 ## Workflow per feature
 
-| Step                    | Skill                                                                              | Output                                         |
-| ----------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 1. Clarify the idea     | `brainstorming` (Superpowers)                                                      | agreed scope, in conversation                  |
-| 2. Spec with tasks      | `/spec <slug>`                                                                     | `docs/specs/NNNN-slug/spec.md` (one file)      |
-| 3. Build                | `subagent-driven-development` or `executing-plans`, with `test-driven-development` | code + tests                                   |
-| 4. Finish               | `verification-before-completion`, `/code-review`                                   | ticked tasks and "Nachweis" in `spec.md`       |
-| 5. Critical paths only  | `/security-check`, `spec-auditor`                                                  | findings fixed or noted under "Risiken"        |
-| 6. Once per wave        | `/ui-verify`, `impeccable`, full e2e                                               | screenshots, findings                          |
+| Step                   | Skill                                                                              | Output                                    |
+| ---------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------- |
+| 1. Clarify the idea    | `brainstorming` (Superpowers)                                                      | agreed scope, in conversation             |
+| 2. Spec with tasks     | `/spec <slug>`                                                                     | `docs/specs/NNNN-slug/spec.md` (one file) |
+| 3. Build               | `subagent-driven-development` or `executing-plans`, with `test-driven-development` | code + tests                              |
+| 4. Finish              | `verification-before-completion`, `/code-review`                                   | ticked tasks and "Nachweis" in `spec.md`  |
+| 5. Critical paths only | `/security-check`, `spec-auditor`                                                  | findings fixed or noted under "Risiken"   |
+| 6. Once per wave       | `/ui-verify`, `impeccable`, full e2e                                               | screenshots, findings                     |
 
 **One compact file per feature**, tasks and evidence included, no `plan.md` (overrides the
 Superpowers defaults `docs/superpowers/…`; specs 0001–0018 keep theirs). **Save tokens:** read
