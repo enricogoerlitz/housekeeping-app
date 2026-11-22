@@ -21,6 +21,9 @@ import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 
+import { TripWindowHost } from '@/features/trips/trip-window';
+
+import { UpcomingPackingLists } from './bag-trips';
 import { PackingBagPanel } from './packing-bag-detail';
 import { BagNameSheet } from './packing-bag-sheets';
 
@@ -57,6 +60,7 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
           {online.hint}
         </Text>
       ) : null}
+      <UpcomingPackingLists />
       {bags.length === 0 ? (
         <EmptyState
           icon="luggage"
@@ -176,6 +180,7 @@ export function PackingBagsScreen() {
           testID="bags-split"
         />
       )}
+      <TripWindowHost />
     </Screen>
   );
 }

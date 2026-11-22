@@ -1,0 +1,402 @@
+import {
+  removeTrip,
+  resetPackingList,
+  snapshot,
+  updateTrip,
+  useHousehold,
+  useMembers,
+  usePackingList,
+  usePlanEntries,
+  useToday,
+  useTrips,
+  type TripChanges,
+} from '@housekeeping/api';
+import {
+  packingProgress,
+  packingSections,
+  routeId,
+  startsInLabel,
+  stripeOf,
+  tripDeleteDialog,
+  tripHeader,
+  tripMealOffers,
+  validateTripDraft,
+  type Id,
+  type Trip,
+  type TripMealOffer,
+} from '@housekeeping/core';
+import {
+  AvatarStack,
+  Button,
+  EmptyState,
+  Menu,
+  ProgressBar,
+  Row,
+  Sheet,
+  Stack,
+  Text,
+  toast,
+  useBreakpoint,
+} from '@housekeeping/ui';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
+import { View } from 'react-native';
+
+import { FAILED, messageOf } from '@/features/packing/packing-labels';
+import { TripAddBagSheet } from '@/features/packing/trip-add-bag-sheet';
+import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
+import { TripSection } from '@/features/packing/trip-section';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+
+import { TripMealsDialog } from './trip-meals-dialog';
+import { TripFields, type TripFieldValues } from './trip-sheet';
+
+type TripAction = 'reset' | 'delete';
+
+/**
+ * The open trip window in the address (`?reise=<id>`, spec 0022, REQ-002): every page that shows
+ * trips opens it over itself; a reload opens it again. Only a uuid is taken.
+ */
+export function useTripWindow(): {
+  tripId: Id | undefined;
+  open: (id: Id) => void;
+  close: () => void;
+} {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ reise?: string | string[] }>();
+  return {
+    tripId: routeId(params.reise),
+    open: (id) => router.setParams({ reise: id }),
+    close: () => router.setParams({ reise: undefined }),
+  };
+}
+
+/** Renders the trip window of the address over the current page. */
+export function TripWindowHost() {
+  const { tripId, close } = useTripWindow();
+  return tripId ? <TripWindow key={tripId} tripId={tripId} onClose={close} /> : null;
+}
+
+function fieldsOf(trip: Trip): TripFieldValues {
+  return {
+    who: trip.members.map((member) => member.memberId),
+    range: { from: trip.from, to: trip.to, editing: null },
+    note: trip.note ?? '',
+  };
+}
+
+function sameWho(a: readonly Id[], b: readonly Id[]): boolean {
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
+
+/** Only the fields that differ from where editing began (AC-014). */
+function changesOf(base: TripFieldValues, draft: TripFieldValues): TripChanges {
+  const changes: TripChanges = {};
+  if (!sameWho(base.who, draft.who)) changes.memberIds = draft.who;
+  if (base.range.from !== draft.range.from) changes.from = draft.range.from;
+  if (base.range.to !== draft.range.to) changes.to = draft.range.to;
+  if (base.note.trim() !== draft.note.trim()) changes.note = draft.note.trim();
+  return changes;
+}
+
+/**
+ * The trip window (spec 0022, REQ-001 to REQ-005): head with the title (note, else "unterwegs"),
+ * "beginnt in 12 Tagen" and ⋯ ("Für die Rückreise zurücksetzen", "Reise löschen"); Wer?, Von,
+ * Bis and Notiz changed in place with "Speichern" only while something changed (the window stays
+ * open); then progress and the packing list, the bags as columns on wide screens. Offline the
+ * fields are greyed out and packing goes on (ADR-0013).
+ */
+export function TripWindow(props: { tripId: Id; onClose: () => void }) {
+  const trips = useTrips();
+  const members = useMembers();
+  const today = useToday();
+  const household = useHousehold();
+  const entries = usePlanEntries();
+  const online = useOnlineOnly();
+  const { isWide } = useBreakpoint();
+  const { listBags, items } = usePackingList(props.tripId);
+  const trip = trips.find((candidate) => candidate.id === props.tripId);
+  const [base, setBase] = useState<TripFieldValues>();
+  const [draft, setDraft] = useState<TripFieldValues>();
+  const [dialog, setDialog] = useState<TripAction | 'discard'>();
+  const [adding, setAdding] = useState(false);
+  const [offers, setOffers] = useState<TripMealOffer[]>();
+  const [leaving, setLeaving] = useState(false);
+
+  if (leaving) return null;
+  if (offers) {
+    return <TripMealsDialog offers={offers} onDone={() => setOffers(undefined)} />;
+  }
+  if (!trip) {
+    // Deleted on another device (AC-004): unsaved fields are dropped without an error.
+    return (
+      <Sheet visible size="s" title="Reise" onClose={props.onClose} testID="trip-window">
+        <EmptyState
+          icon="calendar-off"
+          title="Diese Reise gibt es nicht mehr"
+          text="Vielleicht hat sie jemand gelöscht."
+          testID="trip-not-found"
+        >
+          <Button label="Schließen" onPress={props.onClose} testID="trip-not-found-close" />
+        </EmptyState>
+      </Sheet>
+    );
+  }
+
+  const stripe = stripeOf(trip, members);
+  const head = tripHeader(stripe, members);
+  const people = members.filter((member) => head.memberIds.includes(member.id));
+  const progress = packingProgress(items);
+  const sections = packingSections(listBags, items, trip.id);
+  const deleteMessage = tripDeleteDialog(trip.id, listBags, items);
+  const values = draft ?? fieldsOf(trip);
+  const changes = base && draft ? changesOf(base, draft) : {};
+  const dirty = Object.keys(changes).length > 0;
+  const problems = validateTripDraft({
+    memberIds: values.who,
+    from: values.range.from,
+    to: values.range.to,
+  });
+
+  const edit = (next: TripFieldValues) => {
+    if (!base) setBase(fieldsOf(trip));
+    setDraft(next);
+  };
+
+  const close = () => {
+    if (dirty && dialog !== 'discard') {
+      setDialog('discard');
+      return;
+    }
+    props.onClose();
+  };
+
+  const save = () => {
+    if (online.disabled || !dirty || problems.noOne || problems.toBeforeFrom) return;
+    const before = { from: trip.from, to: trip.to, memberIds: fieldsOf(trip).who };
+    try {
+      updateTrip(trip.id, changes);
+    } catch (failure) {
+      toast.show({ message: messageOf(failure) });
+      return;
+    }
+    toast.show({ message: 'Reise geändert' });
+    const after = {
+      from: changes.from ?? trip.from,
+      to: changes.to ?? trip.to,
+      memberIds: changes.memberIds ?? before.memberIds,
+    };
+    setBase(undefined);
+    setDraft(undefined);
+    const found = tripMealOffers({
+      trip: after,
+      before,
+      entries,
+      slots: household.mealSlots,
+      today,
+    });
+    if (found.length > 0) setOffers(found);
+  };
+
+  const remove = () => {
+    if (online.disabled) return;
+    // With a packing list the dialog asks first, without one "Rückgängig" is enough (AC-016, AC-017).
+    if (deleteMessage && dialog !== 'delete') {
+      setDialog('delete');
+      return;
+    }
+    const restore = deleteMessage ? undefined : snapshot();
+    try {
+      removeTrip(trip.id);
+    } catch {
+      toast.show({ message: FAILED });
+      return;
+    }
+    setLeaving(true);
+    props.onClose();
+    toast.show(
+      restore
+        ? {
+            message: 'Reise gelöscht',
+            actionLabel: 'Rückgängig',
+            onAction: undoAction(restore),
+            duration: 5000,
+          }
+        : { message: 'Reise und Packliste gelöscht' },
+    );
+  };
+
+  const reset = () => {
+    setDialog(undefined);
+    try {
+      resetPackingList(trip.id);
+    } catch {
+      toast.show({ message: FAILED });
+    }
+  };
+
+  const addButton = (
+    <Button
+      label="Reisetasche hinzufügen"
+      icon="plus"
+      variant={sections.length === 0 ? 'primary' : 'ghost'}
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => setAdding(true)}
+      testID={`trip-add-bag-open-${trip.id}`}
+    />
+  );
+
+  return (
+    <Sheet
+      visible
+      size="l"
+      title={head.title}
+      onClose={close}
+      testID="trip-window"
+      header={
+        <Row gap={8} align="center" style={{ justifyContent: 'space-between' }}>
+          <Row gap={8} align="center" wrap>
+            <AvatarStack members={people} size="s" />
+            <Text variant="smallStrong" testID="trip-starts">
+              {startsInLabel(trip.from, trip.to, today)}
+            </Text>
+          </Row>
+          <Menu<TripAction>
+            trigger="icon"
+            icon="ellipsis"
+            label="Mehr"
+            accessibilityLabel="Mehr zur Reise"
+            options={[
+              {
+                value: 'reset',
+                label: 'Für die Rückreise zurücksetzen',
+                disabled: progress.packed === 0,
+                hint: progress.packed === 0 ? 'Noch nichts gepackt' : undefined,
+              },
+              {
+                value: 'delete',
+                label: 'Reise löschen',
+                disabled: online.disabled,
+                hint: online.hint,
+              },
+            ]}
+            onChange={(action) => (action === 'reset' ? setDialog('reset') : remove())}
+            testID="trip-more"
+          />
+        </Row>
+      }
+      footer={
+        dirty ? (
+          <Button
+            label="Speichern"
+            icon="check"
+            full
+            onPress={save}
+            disabled={online.disabled || problems.noOne}
+            hint={online.hint ?? (problems.noOne ? 'Wähle, wer unterwegs ist' : undefined)}
+            testID="trip-save"
+          />
+        ) : undefined
+      }
+    >
+      <Stack gap={24}>
+        <Stack gap={6}>
+          <TripFields
+            value={values}
+            onChange={edit}
+            disabled={online.disabled}
+            hint={online.hint}
+          />
+          <Text color="muted" testID="trip-subtitle">
+            {head.duration}
+          </Text>
+        </Stack>
+
+        {sections.length > 0 ? (
+          <Stack gap={8}>
+            <Text variant="bodyStrong" testID="trip-progress">
+              {`Packliste · ${progress.label}`}
+            </Text>
+            {/* The bar grows along a row; in a column it would have no height. */}
+            <Row>
+              <ProgressBar
+                value={progress.total === 0 ? 0 : progress.packed / progress.total}
+                label={progress.label}
+                testID="trip-progress-bar"
+              />
+            </Row>
+          </Stack>
+        ) : null}
+
+        <View testID={`trip-list-${trip.id}`}>
+          {sections.length === 0 ? (
+            <EmptyState
+              icon="luggage"
+              title="Noch keine Packliste"
+              text="Hänge eine Reisetasche an, dann entsteht die Packliste."
+              testID={`trip-empty-${trip.id}`}
+            >
+              {addButton}
+            </EmptyState>
+          ) : (
+            <>
+              <View
+                style={
+                  isWide
+                    ? { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 32 }
+                    : undefined
+                }
+              >
+                {sections.map((section) => (
+                  <View
+                    key={section.listBag.id}
+                    style={isWide ? { flexGrow: 1, flexBasis: 240, maxWidth: 420 } : undefined}
+                  >
+                    <TripSection section={section} />
+                  </View>
+                ))}
+              </View>
+              <View style={{ alignItems: 'flex-start' }}>{addButton}</View>
+            </>
+          )}
+        </View>
+      </Stack>
+
+      {adding ? <TripAddBagSheet tripId={trip.id} onClose={() => setAdding(false)} /> : null}
+      {dialog === 'reset' ? (
+        <TripConfirmDialog
+          title={`Alle ${progress.packed} Haken entfernen?`}
+          message="Alle Packstücke stehen danach wieder offen in ihren Taschen."
+          confirmLabel="Zurücksetzen"
+          needsNetwork={false}
+          onConfirm={reset}
+          onCancel={() => setDialog(undefined)}
+          testID="trip-reset-dialog"
+        />
+      ) : null}
+      {dialog === 'delete' && deleteMessage ? (
+        <TripConfirmDialog
+          title="Reise löschen?"
+          message={deleteMessage}
+          confirmLabel="Löschen"
+          needsNetwork
+          onConfirm={remove}
+          onCancel={() => setDialog(undefined)}
+          testID="trip-delete-dialog"
+        />
+      ) : null}
+      {dialog === 'discard' ? (
+        <TripConfirmDialog
+          title="Änderungen an der Reise verwerfen?"
+          confirmLabel="Verwerfen"
+          cancelLabel="Weiter bearbeiten"
+          needsNetwork={false}
+          onConfirm={props.onClose}
+          onCancel={() => setDialog(undefined)}
+          testID="trip-discard-dialog"
+        />
+      ) : null}
+    </Sheet>
+  );
+}

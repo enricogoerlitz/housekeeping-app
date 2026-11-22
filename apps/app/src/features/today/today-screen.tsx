@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { StartPageActions } from '@/features/shell/profile-button';
+import { TripWindowHost } from '@/features/trips/trip-window';
 import { useHandedTarget } from '@/lib/target-params';
 
 import { TodayTrips } from './today-trips';
@@ -126,6 +127,7 @@ export function TodayScreen() {
         {chores}
         <TodayShopping preview={false} />
         <TodayPacking shown={shown} />
+        <TripWindowHost />
       </Screen>
     );
   }
@@ -147,6 +149,7 @@ export function TodayScreen() {
           <TodayPacking shown={shown} />
         </View>
       </View>
+      <TripWindowHost />
     </Screen>
   );
 }

@@ -256,7 +256,7 @@ test('AC-038 (0001) / AC-033 / AC-037 (0010): with Enrico away on Saturday only 
   await expect(tid(page, 'trips-upcoming')).toContainText('Fortbildung Köln');
 });
 
-test('AC-034 (0016): "Reisen" lives at /reisen and a trip at /kalender/reise/<id>; the old addresses are gone', async ({
+test('AC-034 (0016), AC-007 (0022): "Reisen" lives at /reisen, a trip opens as ?reise=<id> over it; old addresses are gone', async ({
   page,
 }) => {
   const mallorca = seedIds['trip-mallorca'];
@@ -265,10 +265,16 @@ test('AC-034 (0016): "Reisen" lives at /reisen and a trip at /kalender/reise/<id
   await expect(page).toHaveURL(/\/reisen$/);
   await expect(tid(page, 'trips-screen')).toContainText('Reisen');
   await tid(page, `trip-${mallorca}-open`).click();
-  await expect(page).toHaveURL(new RegExp(`/kalender/reise/${mallorca}(\\?|$)`));
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(page).toHaveURL(new RegExp(`/reisen\\?reise=${mallorca}`));
+  await page.reload();
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
 
-  for (const path of ['/abwesenheiten', `/kalender/urlaub/${mallorca}`]) {
+  for (const path of [
+    '/abwesenheiten',
+    `/kalender/urlaub/${mallorca}`,
+    `/kalender/reise/${mallorca}`,
+  ]) {
     await open(page, path);
     await expect(tid(page, 'not-found')).toContainText('Nicht gefunden');
   }

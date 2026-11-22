@@ -52,7 +52,7 @@ async function openMallorca(page: Page): Promise<void> {
   await open(page, '/');
   await openManaged(page, 'trips');
   await tid(page, `trip-${MALLORCA}-open`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
 }
 
 test('AC-001 / AC-003 / AC-005 / AC-007: the bags list, a new bag with items, suggestions and name errors', async ({
@@ -153,7 +153,7 @@ test('AC-011 / AC-012 / AC-013: the absence window attaches bags; the button cou
     .locator('[data-testid^="trip-"][data-testid$="-open"]')
     .filter({ hasText: 'Zeltwochenende' });
   await row.click();
-  await expect(tid(page, 'trip-title')).toHaveText('Zeltwochenende');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Zeltwochenende');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 0 von 12 gepackt');
   await expect(tripBag(page, 'Strand')).toBeVisible();
   await expect(tripBag(page, 'Zelt')).toBeVisible();
@@ -258,7 +258,7 @@ test('AC-042 / AC-046: the Übersicht card a week ahead and the bag symbol on th
   await expect(tid(page, `today-packing-${MALLORCA}-progress`)).toHaveText(/^\d+\/\d+ gepackt$/);
   await expect(tid(page, `today-packing-${MALLORCA}-starts`)).toHaveText(/^beginnt in \d+ Tagen$/);
   await tid(page, `today-packing-${MALLORCA}-open`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await expect(tid(page, 'back')).toContainText('Übersicht');
   await back(page);
   await expect(tid(page, 'today-screen')).toBeVisible();
@@ -267,6 +267,6 @@ test('AC-042 / AC-046: the Übersicht card a week ahead and the bag symbol on th
   await showPlanWeek(page, day(12));
   await expect(tid(page, `trip-stripe-${MALLORCA}-bag`)).toBeVisible();
   await tid(page, `trip-stripe-${MALLORCA}`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await expect(tid(page, 'back')).toContainText('Kalender');
 });

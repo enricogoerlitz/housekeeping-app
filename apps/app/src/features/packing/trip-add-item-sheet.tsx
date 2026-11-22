@@ -64,7 +64,7 @@ export function TripAddItemSheet(props: { listBag: PackingListBag; onClose: () =
             setText(value);
             setError(undefined);
           }}
-          placeholder="z. B. 2 Badehose"
+          placeholder="z. B. 2 Badehose oder Socken 1 je Tag"
           error={error}
           hint={online.hint}
           editable={!online.disabled}

@@ -8,8 +8,9 @@ import {
 } from '@housekeeping/api';
 import { packingCards, tripStripes, type ISODate, type PackingCard } from '@housekeeping/core';
 import { AvatarStack, Icon, ProgressBar, Row, Section, Text, useTheme } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
+
+import { useTripWindow } from '@/features/trips/trip-window';
 
 /**
  * The cards "Reisetasche" at the bottom of the Übersicht (spec 0012, REQ-009, D33): one per
@@ -43,7 +44,7 @@ export function TodayPacking(props: { shown: ISODate }) {
 
 function TodayPackingCard(props: { card: PackingCard }) {
   const { card } = props;
-  const router = useRouter();
+  const tripWindow = useTripWindow();
   const theme = useTheme();
   const membersById = useMembersById();
   const owners = card.memberIds.flatMap((id) => membersById[id] ?? []);
@@ -73,17 +74,8 @@ function TodayPackingCard(props: { card: PackingCard }) {
         ]
           .filter(Boolean)
           .join(', ')}
-        onPress={() =>
-          router.push(
-            {
-              pathname: '/kalender/reise/[id]',
-              params: { id: card.tripId, von: 'uebersicht' },
-            },
-            // The calendar stays underneath, as for an activity (spec 0005); "‹ Übersicht" leads
-            // back here (spec 0012, task 12).
-            { withAnchor: true },
-          )
-        }
+        // Spec 0022, REQ-002: the trip window opens over the "Übersicht" (AC-006).
+        onPress={() => tripWindow.open(card.tripId)}
         style={(state) => ({
           opacity: state.pressed ? 0.7 : 1,
           borderRadius: theme.shape.radius.card,

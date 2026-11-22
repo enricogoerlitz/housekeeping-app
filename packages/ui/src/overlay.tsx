@@ -90,7 +90,12 @@ export function Sheet(props: SheetProps) {
                   paddingBottom: 6,
                 }}
               >
-                <Text variant="heading" heading style={{ flex: 1 }}>
+                <Text
+                  variant="heading"
+                  heading
+                  style={{ flex: 1 }}
+                  testID={props.testID ? `${props.testID}-title` : undefined}
+                >
                   {props.title}
                 </Text>
                 <IconButton

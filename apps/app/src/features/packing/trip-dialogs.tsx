@@ -11,6 +11,8 @@ export function TripConfirmDialog(props: {
   title: string;
   message?: string;
   confirmLabel: string;
+  /** "Abbrechen" unless given, e.g. "Weiter bearbeiten". */
+  cancelLabel?: string;
   needsNetwork: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -28,7 +30,7 @@ export function TripConfirmDialog(props: {
       footer={
         <Row gap={10} style={{ justifyContent: 'flex-end' }}>
           <Button
-            label="Abbrechen"
+            label={props.cancelLabel ?? 'Abbrechen'}
             variant="secondary"
             onPress={props.onCancel}
             testID={`${props.testID}-cancel`}

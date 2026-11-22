@@ -43,6 +43,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, type HostInstance } from 'react-native';
 
 import { TripSheet } from '@/features/trips/trip-sheet';
+import { TripWindowHost, useTripWindow } from '@/features/trips/trip-window';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
 import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
@@ -89,6 +90,7 @@ export function CalendarScreen() {
   const data = useCalendarData();
   const settings = useSettings();
   const router = useRouter();
+  const tripWindow = useTripWindow();
   const online = useOnlineOnly();
   const { isPhone, isWide, bp, width } = useBreakpoint();
   const focused = useIsFocused();
@@ -408,11 +410,8 @@ export function CalendarScreen() {
   );
 
   const onAdd = (target: AddTarget) => setAdding(target);
-  // A stripe leads to its trip (spec 0012, AC-016, AC-046); editing happens there (✎).
-  const openStripe = (stripe: TripStripe) => {
-    const id = stripe.tripId;
-    if (id) router.push({ pathname: '/kalender/reise/[id]', params: { id } });
-  };
+  // A stripe opens its trip window over the calendar (spec 0022, REQ-002).
+  const openStripe = (stripe: TripStripe) => tripWindow.open(stripe.tripId);
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
   const lastSlotId = data.slots[data.slots.length - 1]?.id;
 
@@ -564,6 +563,7 @@ export function CalendarScreen() {
           {trip?.phase === 'sheet' && range ? (
             <TripSheet initialRange={range} focusNote onClose={() => setTrip(null)} />
           ) : null}
+          <TripWindowHost />
         </Screen>
       </CalendarDragProvider>
       <TripRangeBanner

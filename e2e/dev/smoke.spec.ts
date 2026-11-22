@@ -272,7 +272,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
   await openManaged(page, 'trips');
   await tid(page, `trip-${seedIds['trip-mallorca']}`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
   await tid(page, `${sunHat}-check`).click();
   await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
@@ -311,7 +311,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, `${mallorcaCard}-progress`)).toHaveText('7/21 gepackt');
   await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 12 Tagen');
   await tid(page, `${mallorcaCard}-open`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await back(page);
   await expect(tid(page, 'today-screen')).toBeVisible();
   await tid(page, 'today-week-today').click();

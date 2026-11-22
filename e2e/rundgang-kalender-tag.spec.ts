@@ -133,7 +133,7 @@ test.describe('phone', () => {
     await expectPanelDay(page, addDays(MALLORCA, 1));
 
     await tid(page, `day-panel-stripe-${seedIds['trip-mallorca']}`).click();
-    await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+    await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
     await back(page);
     await expect(tid(page, 'day-panel')).toBeVisible();
     await expectPanelDay(page, addDays(MALLORCA, 1));
