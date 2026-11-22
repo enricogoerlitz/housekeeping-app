@@ -114,7 +114,7 @@ export function Button(props: ButtonProps) {
           variant === 'primary' ? { backgroundColor: area?.fill ?? c.accent } : null,
           variant === 'secondary' ? { backgroundColor: c.surfaceSunken } : null,
           variant === 'ghost' ? { borderWidth: 1.5, borderColor: c.border } : null,
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -180,7 +180,7 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
           variant === 'soft' || (variant === 'plain' && hovered)
             ? { backgroundColor: theme.colors.surfaceSunken }
             : null,
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
