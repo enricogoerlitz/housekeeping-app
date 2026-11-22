@@ -15,6 +15,7 @@ import {
 import {
   BackHandler,
   Dimensions,
+  Platform,
   View,
   type HostInstance,
   type NativeEventSubscription,
@@ -85,6 +86,8 @@ export function DragProvider(props: DragProviderProps) {
   const grabY = useSharedValue(0);
   const ghostWidth = useSharedValue(0);
   const ghostOpacity = useSharedValue(0);
+  // In the right half of the window the label grows to the left, so it is not cut off.
+  const labelEnd = useSharedValue(false);
   const highlight = useSharedValue<{ rect: Rect; allowed: boolean } | null>(null);
 
   const [controller] = useState(() => {
@@ -100,11 +103,13 @@ export function DragProvider(props: DragProviderProps) {
       lift: () => {
         haptic('lift');
         ghostOpacity.set(0);
-        // Android back cancels a drag before it closes anything else.
-        back = BackHandler.addEventListener('hardwareBackPress', () => {
-          self.abort();
-          return true;
-        });
+        // Android back cancels a drag before it closes anything else (no such key on the web).
+        if (Platform.OS !== 'web') {
+          back = BackHandler.addEventListener('hardwareBackPress', () => {
+            self.abort();
+            return true;
+          });
+        }
         loop += 1;
         const mine = loop;
         const tick = (time: number) => {
@@ -119,6 +124,7 @@ export function DragProvider(props: DragProviderProps) {
         cancelAnimation(pointerY);
         pointerX.set(point.x);
         pointerY.set(point.y);
+        labelEnd.set(point.x > Dimensions.get('window').width / 2);
       },
       geometry: ({ origin, grab, size }) => {
         originX.set(origin.x);
@@ -181,6 +187,9 @@ export function DragProvider(props: DragProviderProps) {
       { translateY: pointerY.get() - originY.get() - grabY.get() },
     ],
   }));
+  const labelStyle = useAnimatedStyle(() =>
+    labelEnd.get() ? { left: 'auto', right: 0 } : { left: 0, right: 'auto' },
+  );
 
   return (
     <View ref={container} style={style} testID={testID}>
@@ -193,7 +202,7 @@ export function DragProvider(props: DragProviderProps) {
           controller={controller}
         />
         <EdgeZones controller={controller} originX={originX} originY={originY} />
-        <DragGhost controller={controller} style={ghostStyle} />
+        <DragGhost controller={controller} style={ghostStyle} labelStyle={labelStyle} />
       </View>
     </View>
   );
@@ -317,6 +326,7 @@ function EdgeZone(props: {
 function DragGhost(props: {
   controller: DragController<ReactNode>;
   style: ReturnType<typeof useAnimatedStyle>;
+  labelStyle: ReturnType<typeof useAnimatedStyle>;
 }) {
   const theme = useTheme();
   const c = theme.colors;
@@ -338,22 +348,24 @@ function DragGhost(props: {
       ]}
     >
       {hover?.label ? (
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            bottom: '100%',
-            marginBottom: LABEL_GAP,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: theme.shape.radius.chip,
-            backgroundColor: hover.allowed ? c.accent : c.warnBg,
-          }}
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              bottom: '100%',
+              marginBottom: LABEL_GAP,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: theme.shape.radius.chip,
+              backgroundColor: hover.allowed ? c.accent : c.warnBg,
+            },
+            props.labelStyle,
+          ]}
         >
           <Text variant="smallStrong" color={hover.allowed ? 'onAccent' : 'warn'} numberOfLines={1}>
             {hover.label}
           </Text>
-        </View>
+        </Animated.View>
       ) : null}
       {snapshot.preview}
     </Animated.View>

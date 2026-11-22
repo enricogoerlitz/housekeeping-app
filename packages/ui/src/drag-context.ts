@@ -42,6 +42,11 @@ export interface DragSourceOptions {
   accessibilityAction?: { label: string; onAction: () => void };
 }
 
+/**
+ * Destructure it (`const { ref, props, style, dragging, guardPress } = useDragSource(…)`): the
+ * React Compiler takes an object with a `ref` field for a ref and skips a component that reads
+ * the others during render.
+ */
 export interface DragSourceBinding {
   /** Put on the View that is dragged (the whole entry). */
   ref: (node: HostInstance | null) => void;
