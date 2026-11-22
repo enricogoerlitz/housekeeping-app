@@ -19,7 +19,8 @@ export type StepTimers = Readonly<Record<Id, StepTimer>>;
 
 function remaining(timer: StepTimer, now: number): number {
   if (timer.startedAt === undefined) return timer.remainingMs;
-  return Math.max(0, timer.remainingMs - (now - timer.startedAt));
+  // A clock that has not ticked since the start reads as the start.
+  return Math.max(0, timer.remainingMs - Math.max(0, now - timer.startedAt));
 }
 
 /** "Start": from the full time, or on from a pause. */
