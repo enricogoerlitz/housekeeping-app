@@ -639,6 +639,62 @@ test('AC-007 / AC-009 (0018): "Fertig" saves the typed Zusatz; refused, the wind
   await expect(entry).toContainText('Halle Süd');
 });
 
+test('AC-008 / AC-009 (0018): "Fertig" saves "Reserviert um"; refused, the window stays open with the time and only the error hint', async ({
+  page,
+  allowConsoleError,
+}) => {
+  allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
+  const householdId = await createTestHousehold(`Reserviert ${unique()}`);
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  const name = `Trattoria ${unique()}`;
+  await nav(page, 'kalender');
+  await tid(page, `add-${TODAY}`).click();
+  await tid(page, 'add-entry-tab-restaurants').click();
+  await tid(page, 'add-entry-new-restaurant').click();
+  await tid(page, 'restaurant-name').fill(name);
+  await tid(page, 'add-entry-new-restaurant-save').click();
+  await expect(toastMessage(page)).toHaveText(`„${name}“ angelegt und eingeplant`);
+  const entry = page.locator(PLAN_ENTRY).filter({ hasText: name });
+
+  // AC-008: the typed time is saved with "Fertig".
+  await entry.click();
+  await tid(page, 'entry-reserved-at').fill('19:30');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await entry.click();
+  await expect(tid(page, 'entry-reserved-at')).toHaveValue('19:30');
+
+  // AC-009: the server refuses; the window stays open with the time, and no success is claimed.
+  await page.route('**/rest/v1/rpc/apply_changes', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      json: {
+        code: '23514',
+        message: 'new row for relation "meal_plan_entries" violates check constraint',
+        details: null,
+        hint: null,
+      },
+    }),
+  );
+  await tid(page, 'entry-reserved-at').fill('20:00');
+  await expect(toastMessage(page)).toHaveCount(0);
+  const toasts = await recordToasts(page);
+  await tid(page, 'entry-done').click();
+  await expect(toastMessage(page)).toHaveText(REJECTED);
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
+  await expect(tid(page, 'entry-reserved-at')).toHaveValue('20:00');
+  expect(await toasts(), 'no success before the server confirmed').toEqual([REJECTED]);
+
+  // Online again, the next "Fertig" saves it.
+  await page.unroute('**/rest/v1/rpc/apply_changes');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await entry.click();
+  await expect(tid(page, 'entry-reserved-at')).toHaveValue('20:00');
+});
+
 test('REQ-004 (0018): the question to leave closes when its household goes away while it is open', async ({
   page,
   browser,

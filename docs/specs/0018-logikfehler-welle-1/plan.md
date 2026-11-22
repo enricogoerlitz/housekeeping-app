@@ -38,7 +38,7 @@ Wo „Komponententest“ geplant war, prüft ein e2e-Test dasselbe (siehe „Vor
 
 - [ ] Je AC ein Test, der rot war und jetzt grün ist (oder begründet: nur Klick-Durchlauf)
 - [x] e2e-Tests der Verdrahtung rot → grün (am 22.11.2026 einzeln gelaufen): AC-004/AC-006 in
-      `e2e/rundgang-essen.spec.ts`; AC-007/AC-009 und REQ-004 (Rückfrage schließt beim
+      `e2e/rundgang-essen.spec.ts`; AC-007/AC-009, AC-008/AC-009 (Restaurant) und REQ-004 (Rückfrage schließt beim
       Haushaltswechsel) in `e2e/rundgang-backend-sync.spec.ts`; AC-011, AC-012 in
       `e2e/rundgang-backend-anmeldung.spec.ts`; AC-018/AC-019, AC-021 in `e2e/rundgang-plan.spec.ts`
 - [x] `pnpm format`, `pnpm lint`, `pnpm typecheck` und die Unit-Tests von core und api grün

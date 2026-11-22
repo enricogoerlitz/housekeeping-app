@@ -432,7 +432,11 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
   const confirmed = useRef<TimeOfDay | undefined>(stored);
   const ensureDevicePush = useEnsureDevicePush();
 
-  const write = (time: TimeOfDay | undefined, gesture: 'tap' | 'enter' | 'blur'): boolean => {
+  const write = (
+    time: TimeOfDay | undefined,
+    gesture: 'tap' | 'enter' | 'blur',
+    notify = false,
+  ): boolean => {
     if (!entry) return true;
     // Asked first, inside the tap or key press (spec 0013, AC-007, Decision 26).
     if (asksForPushPermission({ kind: 'time', gesture, before: confirmed.current, after: time })) {
@@ -453,11 +457,14 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
       if (saved.current === time) saved.current = null;
       throw refusal;
     });
+    const notice = () =>
+      toast.show({ message: time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt' });
+    // "Fertig" ('tap') closes as its success. Leaving the field comes right before "Fertig", so
+    // its notice waits for the server (spec 0018, AC-009); Enter and ✕ say it at once as before.
+    if (gesture === 'blur') sent.current.then(notice, () => {});
+    else if (gesture === 'enter' || notify) notice();
     // Only "Fertig" waits for it; the hint of a refusal comes from onWriteRejected.
     sent.current.catch(() => {});
-    toast.show({
-      message: time ? `Reserviert um ${formatTime(time)}` : 'Reservierung entfernt',
-    });
     return true;
   };
 
@@ -479,7 +486,7 @@ function useReservationDraft(entry: MealPlanEntry | undefined): ReservationDraft
     clear: () => {
       setTextState('');
       setError(undefined);
-      write(undefined, 'tap');
+      write(undefined, 'tap', true);
     },
     pending: () => sent.current,
   };
