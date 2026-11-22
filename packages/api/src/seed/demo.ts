@@ -158,7 +158,7 @@ export function buildRecipe(seed: SeedRecipe, articles: Article[], createdAt: st
     ratings: {},
     cookedCount: 0,
     createdAt,
-    source: 'Starter',
+    links: [],
   };
 }
 
@@ -272,6 +272,7 @@ function buildCollections(
     ratings: {},
     cookedCount: 0,
     createdAt: `${addDays(today, offset)}T12:00:00.000Z`,
+    links: [],
   });
   const own = (
     index: number,
@@ -488,14 +489,9 @@ function buildDemoData(today: ISODate): HouseholdData {
   manual('Milch', { count: 1 });
   manual('Möhren', { qty: 500, unit: 'g' });
   manual('Geschenkpapier');
-  items = addContribution(
-    items,
-    articleIdByName('Bananen'),
-    { id: 'contrib-r-bananen', source: { kind: 'recurring' } },
-    nextItemId(),
-    now,
-  );
-  for (const name of ['Brot', 'Butter']) {
+  manual('Bananen');
+  // Bought last time; one item per article (spec 0025, S-03), so nothing the Lasagne needs.
+  for (const name of ['Brot', 'Joghurt']) {
     const id = nextItemId();
     items = [
       ...items,

@@ -1,56 +1,11 @@
-import { editDistance, fuzzyIncludes, normalizeText, similarity } from './text';
+import type { SmartInput } from './amounts';
+import { editDistance, normalizeText, similarity } from './text';
 import type { Article } from './types';
 
-const DEFAULT_SEARCH_LIMIT = 8;
 const NUMBER_ENDINGS = ['n', 'en', 'e', 's'];
 // Shorter stems turn into other words with one of the endings ("Ei" → "Eis").
 const MIN_STEM_LENGTH = 3;
 
-export interface ArticleMatch {
-  article: Article;
-  /** Set when the query matched a synonym rather than the name ("Karotten" for Möhren). */
-  matchedSynonym?: string;
-  score: number;
-}
-
-function matchScore(query: string, text: string, isSynonym: boolean): number {
-  const normalized = normalizeText(text);
-  if (normalized === query) return 100;
-  if (normalized.startsWith(query)) return isSynonym ? 70 : 80;
-  if (normalized.includes(query)) return isSynonym ? 40 : 50;
-  return fuzzyIncludes(query, normalized) ? 20 : 0;
-}
-
-/**
- * Autocomplete over names and synonyms, best first: exact > prefix > substring > typo-tolerant;
- * a hit on the name beats the same kind of hit on a synonym. Equal scores: shorter name first,
- * then alphabetical. "Karot" finds Möhren with matchedSynonym "Karotten". Empty query → [].
- * At most `limit` results, 8 by default.
- */
-export function searchArticles(query: string, articles: Article[], limit?: number): ArticleMatch[] {
-  const q = normalizeText(query);
-  if (q === '') return [];
-
-  const matches: ArticleMatch[] = [];
-  for (const article of articles) {
-    let best: ArticleMatch = { article, score: matchScore(q, article.name, false) };
-    for (const synonym of article.synonyms) {
-      const score = matchScore(q, synonym, true);
-      // Strictly greater: on a tie the name, or the earlier synonym, is the better explanation.
-      if (score > best.score) best = { article, matchedSynonym: synonym, score };
-    }
-    if (best.score > 0) matches.push(best);
-  }
-
-  return matches
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.article.name.length - b.article.name.length ||
-        a.article.name.localeCompare(b.article.name, 'de'),
-    )
-    .slice(0, Math.max(0, limit ?? DEFAULT_SEARCH_LIMIT));
-}
 /** Exact match on the normalised name or a synonym; a name match wins over a synonym match. */
 export function findArticleByName(name: string, articles: Article[]): Article | undefined {
   const wanted = normalizeText(name);
@@ -61,6 +16,22 @@ export function findArticleByName(name: string, articles: Article[]): Article | 
       article.synonyms.some((synonym) => normalizeText(synonym) === wanted),
     )
   );
+}
+
+/**
+ * A typed line whose name together with its Zusatz is the exact name of an article (spec 0025,
+ * AC-034): "2 Mozzarella (Fior di Latte)" with the article "Mozzarella (Fior di Latte)" is that
+ * article without a Zusatz; "Tomaten, passiert" likewise. Otherwise the input as parsed (AC-035).
+ */
+export function withExactArticleName(input: SmartInput, articles: Article[]): SmartInput {
+  if (input.note === undefined) return input;
+  const exact =
+    findArticleByName(`${input.name} (${input.note})`, articles) ??
+    findArticleByName(`${input.name}, ${input.note}`, articles);
+  if (!exact) return input;
+  const result: SmartInput = { ...input, name: exact.name };
+  delete result.note;
+  return result;
 }
 
 /** True for the singular and plural of one word, both normalised ("tomate" ↔ "tomaten"). */

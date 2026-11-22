@@ -9,7 +9,8 @@ export type Id = string;
 export type ISODate = string;
 
 /** What an article, variant or recipe contains. Ordered from least to most restrictive to eat. */
-export type Diet = 'vegan' | 'vegetarian' | 'fish' | 'meat' | 'unknown';
+/** "kein Lebensmittel" (non_food) never counts when a diet is derived (spec 0023, REQ-008). */
+export type Diet = 'vegan' | 'vegetarian' | 'fish' | 'meat' | 'unknown' | 'non_food';
 /** How a member eats. */
 export type DietPreference = 'vegan' | 'vegetarian' | 'flexible';
 
@@ -102,6 +103,16 @@ export interface RecipeIngredient {
   group?: string;
 }
 
+/**
+ * A link to a page on the web (spec 0023, REQ-009): the address as normalised on the device
+ * (web-link.ts) and checked again by the database (private.is_web_url). The app never loads it.
+ */
+export interface RecipeLink {
+  url: string;
+  /** "Bezeichnung", 1–80 characters; without it the host is shown. */
+  label?: string;
+}
+
 export interface RecipeVariant {
   id: Id;
   name: string;
@@ -152,7 +163,8 @@ export interface Recipe {
   lastCookedOn?: ISODate;
   cookedCount: number;
   createdAt: string;
-  source?: string;
+  /** At most 10, each address once (spec 0023, REQ-009). */
+  links: RecipeLink[];
 }
 
 /** "Enthaltenes Rezept": a recipe in a collection (spec 0009, E4). */
@@ -259,9 +271,7 @@ export interface Activity {
 // ---------- Shopping ----------
 
 export type ContributionSource =
-  | { kind: 'manual' }
-  | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string }
-  | { kind: 'recurring' };
+  { kind: 'manual' } | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string };
 
 export interface ShoppingContribution {
   id: Id;
@@ -285,6 +295,8 @@ export interface ShoppingItem {
   checkedBy?: Id;
   /** Marked "nicht da" in store mode. */
   notAvailable?: boolean;
+  /** Checked on "Liste", not in store mode (spec 0025, REQ-006): no "kauft gerade ein". */
+  checkedOnList?: boolean;
   /** Changed offline and not yet confirmed by the server (shown as a small dot). */
   pendingSync?: boolean;
   createdAt: string;

@@ -29,7 +29,7 @@
 | --- | ------------------------------ | ---------------------------------------------------------------------------------------------------- | ------ |
 | F1  | **Haushalt, Profil und Start** | Mitglieder mit Farbe und Ernährung, Google-Login, Einladung, Start in zwei Minuten                   | 1      |
 | F2  | **Heute**                      | Startseite nach Tageszeit: Essen, Vorbereitung, Aufgaben, Einkauf                                    | 1      |
-| F3  | **Rezepte**                    | Schnell anlegen, filtern; Varianten (Tofu / Hähnchen / beide); Kochmodus; Starter-Rezepte            | 2      |
+| F3  | **Rezepte**                    | Schnell anlegen, filtern; Varianten (Tofu / Hähnchen / beide); Kochmodus; Links (Spec 0023)          | 2      |
 | F4  | **Wochenplan**                 | „Wer isst mit?“ je Mahlzeit, Rezept oder Freitext, Reste, Vormerken ohne Tag                         | 3      |
 | F5  | **Einkaufsliste**              | Smart-Eingabe, Vorratscheck, Dauerposten, Sammlungen, gemeinsam live, offline abhaken                | 3      |
 | F6  | **Märkte und Bereiche**        | Optional: Markt wählen, ruhiger Einkaufsmodus in Laufreihenfolge                                     | 3      |
@@ -149,7 +149,7 @@ Von dir festgelegt, nicht mehr offen:
   KI-Schalter. Die KI-Schalter werden lokal auf dem Gerät gespeichert.
 - **Mehrere Haushalte, Testhaushalt:** Wer einen Haushalt anlegt, ist dessen Verwalter. Man kann
   jederzeit einen weiteren anlegen, zum Beispiel „Test“, und oben zwischen Haushalten wechseln.
-  Starter-Katalog und Starter-Rezepte sind sofort da, ein Testhaushalt ist also in einer Minute
+  Der Starter-Katalog ist sofort da, ein Testhaushalt ist also in einer Minute
   voll benutzbar. Lokal in der Entwicklung legt zusätzlich ein Seed einen fertigen Testhaushalt mit
   Beispieldaten an.
 
@@ -161,8 +161,8 @@ Von dir festgelegt, nicht mehr offen:
    Sekunde eins da. Die Liste ist sofort sortiert.
 3. **Aufgaben-Vorlagen** zum Antippen: „Bad putzen – wöchentlich“, „Bettwäsche – alle 2 Wochen
    flexibel“ …
-4. **Starter-Rezepte** (F3): Klassiker durchstöbern und mit einem Tipp ins eigene Rezeptbuch
-   übernehmen, im Testhaushalt auch „alle übernehmen“.
+4. _Entfallen (Spec 0023, REQ-011):_ Starter-Rezepte gibt es nicht; eine leere Seite „Essen“
+   bietet „Rezept anlegen“ und „Sammlung anlegen“.
 5. **Mehrere Rezept-Links auf einmal** einfügen. Sie werden im Hintergrund importiert, danach
    heißt es „12 Entwürfe prüfen“.
 6. **Installations-Hinweis** (iOS Safari): Nach der ersten Liste erklären drei Bilder „Teilen →
@@ -283,18 +283,10 @@ Alle Wege landen **als Entwurf in derselben Rezeptmaske**.
   des Schritts. Bei beiden Varianten zeigt er beide Zutatensätze und markiert Schritte mit „nur
   Hähnchen“; vorab gibt es den Hinweis „2 Pfannen“.
 
-**Starter-Rezepte**
+**Starter-Rezepte** _(entfallen mit Spec 0023, REQ-011)_
 
-- Rund **150 Klassiker** der Alltagsküche (deutsch und international), mit Zutaten aus dem
-  Starter-Katalog, Varianten (vegetarisch / mit Fleisch) wo sinnvoll, Zeiten, Gerichtart,
-  Schlagworten und Schritten. Vorerst ohne Fotos.
-- **Herkunft:** einmalig während der Entwicklung mit unserer KI im festen Rezeptformat erzeugt,
-  durch den Zutaten-Parser geprüft und gegengelesen. **Nicht** von Rezeptseiten kopiert, wegen
-  Urheberrecht und Nutzungsbedingungen.
-- Sie liegen wie der Starter-Katalog fest in der App. Ins eigene Rezeptbuch kommen sie erst, wenn
-  man sie übernimmt; dort sind sie normale, änderbare Rezepte mit Herkunft „Starter“.
-- Nebeneffekt: Die Rezepte prüfen den Starter-Katalog. Jede Zutat muss einem Katalog-Artikel
-  entsprechen, sonst fehlt dort etwas.
+- Es gibt keine Starter-Rezepte und keine Herkunft „Starter“ (`recipes.source`). Die Beispieldaten
+  in Entwicklung und Vorschau behalten ihre Rezepte zum Testen; der Starter-Katalog bleibt.
 
 ### F4 — Wochenplan
 
@@ -853,7 +845,7 @@ _Geändert durch UI-Konzept v2 / Spec 0006 und 0009:_ `shopping_lists` entfällt
 eine Einkaufsliste je Haushalt ist die Menge seiner `shopping_items` (`household_id`). `collections` entfällt: Eine Sammlung ist ein Rezept der Art „Sammlung“; welche Rezepte
 sie enthält, steht in einer eigenen kleinen Tabelle (Konzept 4.3).
 
-**Fest in der App** (keine Tabellen): Starter-Katalog, Starter-Rezepte, vorgegebene Bereiche,
+**Fest in der App** (keine Tabellen): Starter-Katalog, vorgegebene Bereiche,
 Aufgaben-Vorlagen. **Nur lokal auf dem Gerät:** KI-Schalter.
 
 **Nicht synchronisiert** (nur online gelesen): KI-Tabellen, Suchindex, `user_settings`,

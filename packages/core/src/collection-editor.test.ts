@@ -80,6 +80,7 @@ describe('window "Neu" (REQ-001)', () => {
       ratings: {},
       cookedCount: 0,
       createdAt: created,
+      links: [],
     });
     const recipe = newRecipe({
       id: 'rec-x',
@@ -87,9 +88,8 @@ describe('window "Neu" (REQ-001)', () => {
       title: 'Rösti',
       servings: 2,
       createdAt: created,
-      source: 'https://example.org',
     });
-    expect(recipe).toMatchObject({ kind: 'recipe', course: 'main', source: 'https://example.org' });
+    expect(recipe).toMatchObject({ kind: 'recipe', course: 'main', links: [] });
   });
 });
 
@@ -112,7 +112,7 @@ describe('"Enthält" (REQ-003, REQ-005)', () => {
     );
     expect(
       collectionContents(grillabend, saved, grillRecipesById).map(collectionContentLabel),
-    ).toEqual(['Kartoffelsalat · 6 Port.', 'Grillgemüse · vegan · 8 Port.']);
+    ).toEqual(['Kartoffelsalat · 6 Port. (wie Sammlung)', 'Grillgemüse · vegan · 8 Port.']);
   });
 
   it('AC-015: own portions, and back to "übernimmt"', () => {

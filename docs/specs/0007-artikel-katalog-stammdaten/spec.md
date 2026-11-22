@@ -303,7 +303,8 @@ Wenn        die Migration läuft
 Dann        verweist die Zutat auf „Möhren“ und das Rezept zeigt „Möhren“
 ```
 
-**AC-016 — Starter-Katalog passt, Vorratscheck übernimmt**
+**AC-016 — Starter-Katalog passt, Vorratscheck übernimmt** (umgesetzt als Übernahme von
+Starter-Rezepten; sie entfällt mit Spec 0023, REQ-011, und mit ihr der Test)
 
 ```gherkin
 Angenommen  „Hummus“ hat die Zutat „Kichererbsen“ ohne Artikel; der Haushalt hat keinen Artikel

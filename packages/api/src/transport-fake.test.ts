@@ -711,7 +711,7 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     expect(pull.households[id]?.rows).not.toHaveProperty('shopping_lists');
   });
 
-  it('ADR-0012: adding puts the item into the household; one open item per article', async () => {
+  it('S-03: adding puts the item into the household; one item per article, open or checked', async () => {
     const enrico = server.transport(ENRICO);
     const [added] = await enrico.addShoppingContributions(H, [entry('Duschgel', 'c-d')]);
     expect(server.row(H, 'shopping_items', added?.item_id ?? '')).toMatchObject({
@@ -728,7 +728,7 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
       enrico.applyChanges(H, [
         { kind: 'insert', table: 'shopping_items', row: { id: 'i-milk-2', article_id: 'a-milk' } },
       ]),
-    ).resolves.toMatchObject({ applied: 1 });
+    ).rejects.toMatchObject({ code: '23505' });
   });
 
   it('B1: a foreign household is refused with not_member on add, clear and restore', async () => {
@@ -979,16 +979,25 @@ describe('fake server: article catalog (spec 0007, like the database)', () => {
       );
     });
 
-    it('AC-034: refuses an article in a recipe, open or checked on the list', async () => {
+    it('AC-048: refuses an article in a recipe or open on the list', async () => {
       const enrico = server.transport(ENRICO);
       await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
       await enrico.applyChanges(H, [
         { kind: 'patch', table: 'recipes', id: 'r-curry', changes: { ingredients: [] } },
       ]);
       await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
-      await enrico.setItemChecked('i-km', true, 0);
-      await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
       expect(server.row(H, 'articles', 'a-km')).toBeDefined();
+    });
+
+    it('AC-047: an article only checked on the list is deleted with its item', async () => {
+      const enrico = server.transport(ENRICO);
+      await enrico.applyChanges(H, [
+        { kind: 'patch', table: 'recipes', id: 'r-curry', changes: { ingredients: [] } },
+      ]);
+      await enrico.setItemChecked('i-km', true, 0);
+      await expect(enrico.deleteArticle('a-km')).resolves.toMatchObject({ id: 'a-km' });
+      expect(server.row(H, 'articles', 'a-km')).toBeUndefined();
+      expect(server.row(H, 'shopping_items', 'i-km')).toBeUndefined();
     });
 
     it('a foreign or missing article is not found', async () => {

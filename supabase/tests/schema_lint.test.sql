@@ -47,7 +47,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_activity_rating(uuid,numeric)'),
   ('private.media_household_id(text)'), -- used by the storage.objects policies (spec 0004)
   ('private.set_feedback_vote(uuid,boolean)'),
-  ('private.set_shopping_item_checked(uuid,boolean,integer)'),
+  ('private.set_shopping_item_checked(uuid,boolean,integer,boolean)'),
   ('private.set_shopping_item_not_available(uuid,boolean)'),
   ('private.add_shopping_contributions(uuid,jsonb)'),
   ('private.remove_contributions(uuid[],uuid)'), -- security invoker, shared with apply_changes
@@ -65,6 +65,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing
   ('private.assert_restorable_size(jsonb)'), -- security invoker, a size check without data access
   ('private.is_five_minute_time(time without time zone)'), -- spec 0013: used by check constraints, no data access
+  ('private.is_web_url(text)'),          -- spec 0023: used by check constraints, no data access
+  ('private.recipe_links_valid(jsonb)'), -- spec 0023: used by check constraints, no data access
   ('private.register_push_subscription(text,text,text,text)'), -- spec 0013: push subscriptions (ADR-0014)
   ('private.set_push_subscription_enabled(text,boolean)'),
   ('private.unregister_push_subscription(text)'),

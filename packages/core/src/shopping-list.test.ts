@@ -4,8 +4,13 @@ import {
   activeShopper,
   adjustItemCount,
   applyContributionChanges,
+  clearListQuestion,
+  dishLabel,
   itemCount,
   listHeadline,
+  manualAmountText,
+  noteChangeHint,
+  originRows,
   MAX_ITEM_COUNT,
   originSummary,
   recipeSource,
@@ -99,7 +104,6 @@ describe('recipeSource and originLabel', () => {
 
   it('AC-014: manual contributions read "von Hand"', () => {
     expect(originLabel({ kind: 'manual' })).toBe('von Hand');
-    expect(originLabel({ kind: 'recurring' })).toBe('Dauerposten');
   });
 });
 
@@ -255,32 +259,75 @@ describe('applyContributionChanges', () => {
   });
 });
 
-describe('listHeadline', () => {
+describe('listHeadline (spec 0025, REQ-005)', () => {
   const recipesById: Record<Id, Recipe> = {
     'rec-lasagne': makeRecipe({ id: 'rec-lasagne', title: 'Lasagne' }),
-    'rec-kürbissuppe': makeRecipe({ id: 'rec-kürbissuppe', title: 'Kürbissuppe' }),
+    'rec-grillabend': makeRecipe({ id: 'rec-grillabend', title: 'Grillabend' }),
+    'rec-mango-curry': makeRecipe({ id: 'rec-mango-curry', title: 'Mango-Curry' }),
+    'rec-shakshuka': makeRecipe({ id: 'rec-shakshuka', title: 'Shakshuka' }),
   };
+  const at = (minute: number) => `2026-11-22T08:${String(minute).padStart(2, '0')}:00.000Z`;
 
-  it('AC-008: "3 offen · für Lasagne, Kürbissuppe"', () => {
+  it('AC-017: "14 offen · aus 4 Gerichten", the dishes in the order they were added', () => {
     const items = [
-      item([fromPlan('a', 'Lasagne', 'Fr', { count: 2 })], { id: 'zwiebeln' }),
-      item([fromPlan('b', 'Kürbissuppe', 'Sa', { qty: 500, unit: 'g' })], { id: 'moehren' }),
-      item([manual('c', 2)], { id: 'milch' }),
-      item([fromPlan('d', 'Lasagne', 'Fr')], { id: 'tomaten' }),
-      item([fromPlan('e', 'Shakshuka', 'Do')], { id: 'eier', checked: true }),
+      ...Array.from({ length: 6 }, (_, index) =>
+        item([fromPlan(`g${index}`, 'Grillabend', 'Sa')], { id: `g${index}`, createdAt: at(1) }),
+      ),
+      ...Array.from({ length: 5 }, (_, index) =>
+        item([fromPlan(`l${index}`, 'Lasagne', 'Mo')], { id: `l${index}`, createdAt: at(2) }),
+      ),
+      item([fromPlan('m', 'Mango-Curry', 'Mi')], { id: 'm', createdAt: at(3) }),
+      item([fromPlan('s', 'Shakshuka', 'So'), fromPlan('s2', 'Lasagne', 'Mo')], {
+        id: 's',
+        createdAt: at(4),
+      }),
+      item([manual('h', 1)], { id: 'h', createdAt: at(5) }),
+      item([fromPlan('x', 'Lasagne', 'Mo')], { id: 'x', checked: true, createdAt: at(0) }),
     ];
-    expect(listHeadline(items, recipesById)).toEqual({
-      open: 4,
-      recipeTitles: ['Lasagne', 'Kürbissuppe'],
-      label: '4 offen · für Lasagne, Kürbissuppe',
-    });
+    const headline = listHeadline(items, recipesById);
+    expect(headline.label).toBe('14 offen · aus 4 Gerichten');
+    expect(headline.dishes.map((dish) => dishLabel(dish))).toEqual([
+      'Grillabend · 6 Posten',
+      'Lasagne · 6 Posten',
+      'Mango-Curry · 1 Posten',
+      'Shakshuka · 1 Posten',
+    ]);
   });
 
-  it('without recipes it only counts; an unknown recipe falls back to its stored label', () => {
-    expect(listHeadline([item([manual('a', 1)])], recipesById).label).toBe('1 offen');
-    expect(listHeadline([item([fromPlan('a', 'Paella', 'Mo')])], {}).recipeTitles).toEqual([
-      'Paella (Mo)',
-    ]);
+  it('AC-018: "3 offen · aus 1 Gericht"; only "von Hand" reads "3 offen" without dishes', () => {
+    const lasagne = [1, 2, 3].map((n) =>
+      item([fromPlan(`l${n}`, 'Lasagne', 'Mo')], { id: `${n}` }),
+    );
+    expect(listHeadline(lasagne, recipesById).label).toBe('3 offen · aus 1 Gericht');
+    const byHand = [1, 2, 3].map((n) => item([manual(`h${n}`, 1)], { id: `${n}` }));
+    expect(listHeadline(byHand, recipesById)).toEqual({ open: 3, dishes: [], label: '3 offen' });
+  });
+
+  it('a dish that no longer exists is named by its stored label without the day', () => {
+    const dishes = listHeadline([item([fromPlan('a', 'Paella', 'Mo')])], {}).dishes;
+    expect(dishes.map((dish) => dish.title)).toEqual(['Paella']);
+  });
+});
+
+describe('clearListQuestion (spec 0025, AC-019)', () => {
+  it('AC-019: names open and checked items apart', () => {
+    expect(clearListQuestion(14, 3)).toBe(
+      '14 offene und 3 erledigte Posten werden entfernt, auch die aus dem Kalender.',
+    );
+    expect(clearListQuestion(1, 0)).toBe(
+      '1 offener Posten wird entfernt, auch wenn er aus dem Kalender kommt.',
+    );
+  });
+
+  it('AC-019: only checked or only open items', () => {
+    expect(clearListQuestion(0, 2)).toBe('2 erledigte Posten werden entfernt.');
+    expect(clearListQuestion(0, 1)).toBe('1 erledigter Posten wird entfernt.');
+    expect(clearListQuestion(5, 0)).toBe(
+      '5 offene Posten werden entfernt, auch die aus dem Kalender.',
+    );
+    expect(clearListQuestion(1, 1)).toBe(
+      '1 offener und 1 erledigter Posten werden entfernt, auch die aus dem Kalender.',
+    );
   });
 });
 
@@ -350,6 +397,14 @@ describe('activeShopper', () => {
     const items = [checkedBy('milch', nadja.id, '2026-11-20T17:59:30.000Z')];
     expect(activeShopper(items, members, enrico.id, 'kaputt')).toBeUndefined();
   });
+
+  it('AC-025: a check made on "Liste" is no "kauft gerade ein"', () => {
+    const onList = {
+      ...checkedBy('milch', nadja.id, '2026-11-20T17:59:30.000Z'),
+      checkedOnList: true,
+    };
+    expect(activeShopper([onList, open('brot')], members, enrico.id, NOW)).toBeUndefined();
+  });
 });
 
 describe('resolveShoppingStore', () => {
@@ -397,5 +452,49 @@ describe('Herkunft after moving the plan entry (spec 0016)', () => {
 
   it('a label without a day stays as it is', () => {
     expect(relabelForDay('Mango-Curry', '2026-11-22')).toBe('Mango-Curry');
+  });
+});
+
+describe('manualAmountText (spec 0025, AC-010)', () => {
+  it('AC-010: the field "Von Hand" starts with the manual share: "500 g", "2", or empty', () => {
+    const moehren = item([fromPlan('l', 'Lasagne', 'Mo'), { ...manual('h'), qty: 500, unit: 'g' }]);
+    expect(manualAmountText(moehren)).toBe('500 g');
+    expect(manualAmountText(item([manual('a', 2)]))).toBe('2');
+    expect(manualAmountText(item([fromPlan('l', 'Lasagne', 'Mo')]))).toBe('');
+    expect(manualAmountText(item([{ ...manual('b'), qty: 2, unit: 'Kasten' }]))).toBe('2 Kasten');
+  });
+});
+
+describe('noteChangeHint (spec 0025, REQ-004)', () => {
+  const mozzarella = item([
+    fromPlan('l', 'Lasagne', 'Mo', { count: 1, note: 'Fior di Latte' }),
+    { ...manual('h', 1) },
+  ]);
+
+  it('AC-015: changing the Zusatz names the recipe Zusatz it replaces', () => {
+    expect(noteChangeHint(mozzarella, 'Büffel')).toBe(
+      'Ersetzt den Zusatz „Fior di Latte“ aus Lasagne (Mo)',
+    );
+  });
+
+  it('AC-016: clearing it says it removes it; without a recipe Zusatz no hint', () => {
+    expect(noteChangeHint(mozzarella, '  ')).toBe(
+      'Entfernt den Zusatz „Fior di Latte“ aus Lasagne (Mo)',
+    );
+    expect(noteChangeHint(mozzarella, 'Fior di Latte')).toBeUndefined();
+    expect(noteChangeHint(item([manual('a', 1)]), 'Bio')).toBeUndefined();
+  });
+});
+
+describe('originRows (spec 0025, AC-010)', () => {
+  it('AC-010: one row per recipe origin with its amount and contributions; "von Hand" stays out', () => {
+    const moehren = item([
+      fromPlan('l', 'Lasagne', 'Mo', { count: 1 }),
+      { ...manual('h'), qty: 500, unit: 'g' },
+      fromPlan('l2', 'Lasagne', 'Mo', { count: 1 }),
+    ]);
+    expect(originRows(moehren)).toEqual([
+      { label: 'Lasagne (Mo)', amount: '2×', contributionIds: ['l', 'l2'] },
+    ]);
   });
 });

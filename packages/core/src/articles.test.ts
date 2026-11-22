@@ -1,146 +1,44 @@
 import { describe, expect, it } from 'vitest';
 
-import { findArticleByName, searchArticles, spelledAlike, suggestSimilarArticle } from './articles';
+import {
+  findArticleByName,
+  spelledAlike,
+  suggestSimilarArticle,
+  withExactArticleName,
+} from './articles';
 import { articles } from './test-fixtures';
 import type { Article } from './types';
 
-const names = (matches: { article: Article }[]): string[] =>
-  matches.map((match) => match.article.name);
-
-describe('searchArticles', () => {
-  it('AC-013: "Karot" suggests Möhren via the synonym Karotten', () => {
-    const [first] = searchArticles('Karot', articles);
-    expect(first?.article.name).toBe('Möhren');
-    expect(first?.matchedSynonym).toBe('Karotten');
+describe('withExactArticleName (spec 0025, REQ-009)', () => {
+  const mozzarella = (name: string): Article => ({
+    id: `art-${name}`,
+    name,
+    synonyms: [],
+    diet: 'vegetarian',
+    isPantry: false,
+    needsReview: false,
+    createdAt: '2026-11-22T08:00:00.000Z',
   });
 
-  it('AC-013: tolerates a typo in a synonym ("Karoten")', () => {
-    expect(names(searchArticles('Karoten', articles))).toContain('Möhren');
+  it('AC-034: "2 Mozzarella (Fior di Latte)" is that article, 2×, without a Zusatz', () => {
+    const catalog = [mozzarella('Mozzarella'), mozzarella('Mozzarella (Fior di Latte)')];
+    const typed = { name: 'Mozzarella', count: 2, note: 'Fior di Latte' };
+    expect(withExactArticleName(typed, catalog)).toEqual({
+      name: 'Mozzarella (Fior di Latte)',
+      count: 2,
+    });
   });
 
-  it('ranks exact before prefix before substring', () => {
-    const extra: Article[] = [
-      ...articles,
-      {
-        id: 'art-milchreis',
-        name: 'Milchreis',
-        synonyms: [],
-        diet: 'vegetarian',
-        isPantry: false,
-        needsReview: false,
-        createdAt: '',
-      },
-    ];
-    expect(names(searchArticles('milch', extra))).toEqual([
-      'Milch',
-      'Milchreis',
-      'Kokosmilch',
-      'Mandelmilch',
-    ]);
+  it('AC-034: a name with a comma typed in full is that article', () => {
+    const catalog = [mozzarella('Tomaten, passiert')];
+    expect(withExactArticleName({ name: 'Tomaten', note: 'passiert' }, catalog)).toEqual({
+      name: 'Tomaten, passiert',
+    });
   });
 
-  it('prefers a hit on the name over the same kind of hit on a synonym', () => {
-    const list: Article[] = [
-      {
-        id: 'a',
-        name: 'Weizenmehl',
-        synonyms: ['Mehl'],
-        diet: 'vegan',
-        isPantry: true,
-        needsReview: false,
-        createdAt: '',
-      },
-      {
-        id: 'b',
-        name: 'Mehl',
-        synonyms: [],
-        diet: 'vegan',
-        isPantry: true,
-        needsReview: false,
-        createdAt: '',
-      },
-    ];
-    const [first, second] = searchArticles('Mehl', list);
-    expect(first?.article.id).toBe('b');
-    expect(first?.matchedSynonym).toBeUndefined();
-    expect(second?.matchedSynonym).toBe('Mehl');
-  });
-
-  it('ranks a prefix of the name above a prefix of a synonym, even for a longer name', () => {
-    const list: Article[] = [
-      {
-        id: 'm',
-        name: 'Möhren',
-        synonyms: ['Karotten'],
-        diet: 'vegan',
-        isPantry: false,
-        needsReview: false,
-        createdAt: '',
-      },
-      {
-        id: 'k',
-        name: 'Karottenkuchen',
-        synonyms: [],
-        diet: 'vegetarian',
-        isPantry: false,
-        needsReview: false,
-        createdAt: '',
-      },
-    ];
-    expect(names(searchArticles('karot', list))).toEqual(['Karottenkuchen', 'Möhren']);
-  });
-
-  it('orders equal scores by shorter name, then alphabetically', () => {
-    const list: Article[] = [
-      {
-        id: 'a',
-        name: 'Tomatenmark',
-        synonyms: [],
-        diet: 'vegan',
-        isPantry: false,
-        needsReview: false,
-        createdAt: '',
-      },
-      {
-        id: 'b',
-        name: 'Tomaten',
-        synonyms: [],
-        diet: 'vegan',
-        isPantry: false,
-        needsReview: false,
-        createdAt: '',
-      },
-      {
-        id: 'c',
-        name: 'Tomatensoße',
-        synonyms: [],
-        diet: 'vegan',
-        isPantry: false,
-        needsReview: false,
-        createdAt: '',
-      },
-    ];
-    expect(names(searchArticles('toma', list))).toEqual(['Tomaten', 'Tomatenmark', 'Tomatensoße']);
-  });
-
-  it('returns nothing for an empty query or no match', () => {
-    expect(searchArticles('  ', articles)).toEqual([]);
-    expect(searchArticles('xyzq', articles)).toEqual([]);
-  });
-
-  it('returns at most 8 results by default and respects a given limit', () => {
-    const many: Article[] = Array.from({ length: 12 }, (_, index) => ({
-      id: `a-${index}`,
-      name: `Saft ${index}`,
-      synonyms: [],
-      diet: 'vegan',
-      isPantry: false,
-      needsReview: false,
-      createdAt: '',
-    }));
-    expect(searchArticles('saft', many)).toHaveLength(8);
-    expect(searchArticles('saft', many, 3)).toHaveLength(3);
-    expect(searchArticles('saft', many, -1)).toEqual([]);
+  it('AC-035: with only "Mozzarella" the parentheses stay the Zusatz', () => {
+    const typed = { name: 'Mozzarella', note: 'Büffel' };
+    expect(withExactArticleName(typed, [mozzarella('Mozzarella')])).toEqual(typed);
   });
 });
 

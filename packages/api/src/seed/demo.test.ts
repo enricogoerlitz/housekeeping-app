@@ -3,7 +3,7 @@ import {
   normalizeText,
   orderedBags,
   recipeFitsPreference,
-  searchArticles,
+  matchSearchOrCreate,
   summarizeItem,
   tripDays,
   weekDates,
@@ -26,7 +26,7 @@ import {
 } from './demo';
 import { seedRecipes } from './recipes-data';
 
-const DIETS: Diet[] = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'];
+const DIETS: Diet[] = ['vegan', 'vegetarian', 'fish', 'meat', 'unknown', 'non_food'];
 
 // The sample households are the source of the local seed (`pnpm db:seed:gen`) and of the fake
 // server in the command tests.
@@ -157,8 +157,8 @@ describe('starter catalog (AC-013)', () => {
   });
 
   it('AC-013: "Karot" suggests Möhren, also known as Karotten', () => {
-    const [first] = searchArticles('Karot', getData().articles);
-    expect(first?.article.name).toBe('Möhren');
+    const [first] = matchSearchOrCreate('Karot', getData().articles).matches;
+    expect(first?.item.name).toBe('Möhren');
     expect(first?.matchedSynonym).toBe('Karotten');
   });
 

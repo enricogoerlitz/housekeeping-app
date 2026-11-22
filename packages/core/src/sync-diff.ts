@@ -19,6 +19,7 @@ export const NEVER_SENT_COLUMNS = [
   'checked_by',
   'check_seq',
   'not_available',
+  'checked_on_list',
   'packed',
   'packed_at',
   'packed_by',

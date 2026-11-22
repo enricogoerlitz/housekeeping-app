@@ -178,7 +178,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         notes: recipe.notes ?? null,
         last_cooked_on: recipe.lastCookedOn ?? null,
         cooked_count: recipe.cookedCount,
-        source: recipe.source ?? null,
+        links: json(recipe.links),
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
       } satisfies Cached<'recipes'>,
     ],
@@ -283,6 +283,7 @@ function itemRows(householdId: string, item: ShoppingItem): HouseholdRows {
         checked_at: item.checkedAt ?? null,
         checked_by: item.checkedBy ?? null,
         not_available: item.notAvailable ?? false,
+        checked_on_list: item.checkedOnList ?? false,
         ...(item.createdAt ? { created_at: item.createdAt } : {}),
       } satisfies Cached<'shopping_items'>,
     ],
@@ -706,7 +707,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     lastCookedOn: opt(r.last_cooked_on),
     cookedCount: r.cooked_count ?? 0,
     createdAt: r.created_at ?? '',
-    source: opt(r.source),
+    links: (r.links ?? []) as unknown as Recipe['links'],
   };
 }
 
@@ -799,6 +800,7 @@ function toItem(row: Row, contributions: Row[], pending: boolean): ShoppingItem 
     checkedAt: opt(r.checked_at),
     checkedBy: opt(r.checked_by),
     notAvailable: r.not_available ? true : undefined,
+    ...(r.checked_on_list === true ? { checkedOnList: true } : {}),
     ...(pending ? { pendingSync: true } : {}),
     createdAt: r.created_at ?? '',
   };

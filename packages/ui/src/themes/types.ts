@@ -64,6 +64,10 @@ export type TextVariant =
   | 'cardTitle'
   | 'rowTitle'
   | 'body'
+  /** Long text to read at a distance, e.g. a step of the cooking mode (spec 0023): UI font. */
+  | 'reading'
+  /** `reading` on wide screens. */
+  | 'readingLarge'
   | 'bodyStrong'
   | 'small'
   | 'smallStrong'

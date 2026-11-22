@@ -40,6 +40,11 @@ export const StoreQueueEntrySchema = z.union([
     itemId: z.string().min(1),
     checked: z.boolean(),
     seenCheckSeq: z.number().int().nonnegative(),
+    /**
+     * Checked on "Liste" rather than in "Einkaufen" (spec 0025, REQ-006): no "kauft gerade ein".
+     * An entry stored by an older app has none and counts as a check in the store.
+     */
+    onList: z.boolean().default(false),
   }),
   z.object({ kind: z.literal('notAvailable'), itemId: z.string().min(1), value: z.boolean() }),
   AddEntrySchema,
@@ -244,8 +249,9 @@ function addEffect(
     next = withRow(next, 'articles', article);
   }
 
-  // Same rules as addContribution: append to the open item, else reopen a checked one with only
-  // the new contributions (old ones were bought, "nicht da" belonged to that trip), else create.
+  // Same rules as addContribution and the server (one item per article, spec 0025): append to the
+  // open item, else reopen the checked one with only the new contributions (old ones were bought,
+  // "nicht da" belonged to that trip), else create.
   const forArticle = Object.values(next.shopping_items ?? {}).filter(
     (item) => item.article_id === article.id,
   );
@@ -262,6 +268,7 @@ function addEffect(
       checked_at: null,
       checked_by: null,
       not_available: false,
+      checked_on_list: false,
     });
     const kept = Object.entries(next.shopping_contributions ?? {}).filter(
       ([, contribution]) => contribution.item_id !== itemId,
@@ -278,6 +285,7 @@ function addEffect(
       checked_by: null,
       check_seq: 0,
       not_available: false,
+      checked_on_list: false,
     });
   }
 
@@ -326,7 +334,12 @@ export function queueEffect(
     return withRow(tables, 'shopping_items', { ...item, not_available: entry.value });
   }
   const cleared = entry.checked ? {} : { checked_at: null, checked_by: null };
-  return withRow(tables, 'shopping_items', { ...item, checked: entry.checked, ...cleared });
+  return withRow(tables, 'shopping_items', {
+    ...item,
+    checked: entry.checked,
+    checked_on_list: entry.checked && entry.onList,
+    ...cleared,
+  });
 }
 
 /** All entries applied in order: what the store queue adds to the household's server rows. */

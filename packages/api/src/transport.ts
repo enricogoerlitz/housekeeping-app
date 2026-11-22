@@ -290,6 +290,27 @@ export const AdjustResultSchema = z
   .nullable();
 export type AdjustResult = z.infer<typeof AdjustResultSchema>;
 
+/** set_manual_amount (spec 0025): a count or a quantity with an optional unit; none = empty. */
+export interface ManualAmount {
+  count?: number;
+  qty?: number;
+  unit?: string;
+}
+
+/** set_manual_amount: like adjust_item_count, the removed item comes back with restore. */
+export const ManualAmountResultSchema = z
+  .discriminatedUnion('removed', [
+    z.object({ item_id: z.string(), removed: z.literal(false) }),
+    z.object({
+      item_id: z.string(),
+      removed: z.literal(true),
+      item: LooseRowSchema,
+      contributions: z.array(LooseRowSchema),
+    }),
+  ])
+  .nullable();
+export type ManualAmountResult = z.infer<typeof ManualAmountResultSchema>;
+
 /** delete_article (spec 0007): the deleted row as stored, for "Rückgängig". */
 export const DeletedArticleSchema = z.looseObject({ id: z.string() });
 export type DeletedArticle = z.infer<typeof DeletedArticleSchema>;
@@ -351,7 +372,13 @@ export interface Transport {
   // Generic write (ADR-0011)
   applyChanges(householdId: string, ops: readonly ChangeOp[]): Promise<ApplyChangesResult>;
   // Store queue and list
-  setItemChecked(itemId: string, checked: boolean, seenCheckSeq: number): Promise<CheckResult>;
+  /** `onList`: checked on "Liste", not in "Einkaufen" (spec 0025, REQ-006). */
+  setItemChecked(
+    itemId: string,
+    checked: boolean,
+    seenCheckSeq: number,
+    onList?: boolean,
+  ): Promise<CheckResult>;
   setItemNotAvailable(itemId: string, value: boolean): Promise<NotAvailableResult>;
   /** Puts entries on the household's shopping list; `not_member` for a foreign household. */
   addShoppingContributions(householdId: string, entries: readonly AddEntry[]): Promise<AddResult>;
@@ -367,6 +394,18 @@ export interface Transport {
   /** One tap on + (delta > 0) or − (delta < 0); `invalid_value` beyond 0…99×. */
   adjustItemCount(itemId: string, delta: number): Promise<AdjustResult>;
   removeContributions(ids: readonly string[]): Promise<number>;
+  /**
+   * "Von Hand" (spec 0025, REQ-003): all manual contributions of the item become one with this
+   * amount (count or qty with unit; none = no manual one). Removing the last contribution removes
+   * the item and returns it for the undo; null when the item is gone. `invalid_value`.
+   */
+  setManualAmount(itemId: string, amount: ManualAmount): Promise<ManualAmountResult>;
+  /**
+   * ✕ at an origin, or removing a whole item (spec 0025): the given contributions of the item go,
+   * the item with them when nothing is left. Returns what restoreClearedItems puts back; null when
+   * the item is gone.
+   */
+  removeItemContributions(itemId: string, ids: readonly string[]): Promise<ClearedItems | null>;
   /**
    * Undo of clearing: open items come back open (joining an open item of the same article),
    * checked ones checked. Returns how many came back.
@@ -385,6 +424,16 @@ export interface Transport {
   mergeArticles(sourceId: string, targetId: string): Promise<MergeArticlesResult>;
   /** Moves the articles of one area to another and deletes the source; `area_not_found`. */
   mergeAreas(sourceId: string, targetId: string): Promise<number>;
+  /**
+   * "+ Neuer Markt" (spec 0025, REQ-015): with `copyFrom` the walking order and hidden areas of
+   * that store are copied once. `not_member`, `store_not_found`.
+   */
+  createStore(
+    householdId: string,
+    storeId: string,
+    name: string,
+    copyFrom: string | null,
+  ): Promise<void>;
   // Recipes (spec 0008)
   /**
    * Deletes a recipe (the only way, E2): entries up to `today` (the device's date, at most one day
@@ -502,6 +551,9 @@ export function switchable(inner: Transport): SwitchableTransport {
     clearShoppingList: guard(inner.clearShoppingList.bind(inner)),
     adjustItemCount: guard(inner.adjustItemCount.bind(inner)),
     removeContributions: guard(inner.removeContributions.bind(inner)),
+    setManualAmount: guard(inner.setManualAmount.bind(inner)),
+    removeItemContributions: guard(inner.removeItemContributions.bind(inner)),
+    createStore: guard(inner.createStore.bind(inner)),
     restoreClearedItems: guard(inner.restoreClearedItems.bind(inner)),
     deleteArticle: guard(inner.deleteArticle.bind(inner)),
     mergeArticles: guard(inner.mergeArticles.bind(inner)),

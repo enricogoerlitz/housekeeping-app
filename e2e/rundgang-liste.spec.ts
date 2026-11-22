@@ -96,7 +96,8 @@ test('AC-008 / AC-009 (0006): "Liste" shows groups with − 2× + or "500 g ›"
 }) => {
   await open(page, '/liste');
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
-  await expect(tid(page, 'list-headline')).toHaveText(/^\d+ offen · für Lasagne/);
+  // Spec 0025, AC-017: the dishes are counted, the list of them is one tap away.
+  await expect(tid(page, 'list-headline')).toHaveText(/^\d+ offen · aus \d+ Gerichten? ›$/);
   const milk = await itemIdOf(openItem(page, 'Milch'));
   await expect(tid(page, `item-${milk}-count`)).toHaveText('2×');
   await expect(tid(page, `item-${milk}-minus`)).toBeVisible();
@@ -400,7 +401,7 @@ test('AC-033 (0001): assigning an area in "Einkaufen" moves Bastelkleber out of 
   await expect(none).toContainText('Bastelkleber');
   await none.locator('[data-testid^="assign-area-"]').first().click();
   await expect(tid(page, 'area-sheet')).toBeVisible();
-  await tid(page, `area-tile-${area('obst-gemuese')}`).click();
+  await tid(page, `area-picker-option-${area('obst-gemuese')}`).click();
   await expect(tid(page, `sm-group-area:${area('obst-gemuese')}`)).toContainText('Bastelkleber');
   await expect(tid(page, 'sm-group-none')).toBeHidden();
 });
@@ -436,7 +437,9 @@ test('AC-049 / AC-053 / AC-054 (0006): step 1 picks entries of a week, a recipe 
   await tid(page, 'list-from-plan').click();
   const sheet = tid(page, 'pantry-check-sheet');
   await expect(sheet).toContainText('Was soll auf die Liste?');
-  await expect(tid(page, 'pick-week-title')).toHaveText(/^KW \d+ · /);
+  // Spec 0025, AC-001: seven days from today, "22.–28. Nov".
+  await expect(tid(page, 'pick-week-title')).toHaveText(/^\d{1,2}\./);
+  await expect(tid(page, 'pick-week-prev')).toBeDisabled();
   // Tonight's Lasagne is on the list already, so it is not preselected.
   const lasagne = tid(page, `pick-entry-${seedIds['plan-2']}-check`);
   await expect(lasagne).toHaveAttribute('aria-checked', 'false');
@@ -490,10 +493,10 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
     );
     await expect(tid(page, `pc-row-${article(key)}`), key).toContainText('Mango-Curry');
   }
-  // Pantry articles sit folded and deselected under "Vorrat & Gewürze".
-  await expect(tid(page, `pc-row-${article('reis')}`)).toBeHidden();
+  // Pantry articles stand open but deselected under "Vorrat & Gewürze" (spec 0025, AC-026).
+  await expect(tid(page, `pc-row-${article('reis')}`)).toBeVisible();
   await expect(tid(page, 'pc-pantry-toggle')).toContainText('Vorrat & Gewürze');
-  await expect(tid(page, 'pc-pantry-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(tid(page, 'pc-pantry-toggle')).toHaveAttribute('aria-expanded', 'true');
 
   // AC-057: back keeps the choice; deselecting everything greys out "0 übernehmen".
   await tid(page, 'pc-back').click();
@@ -521,7 +524,6 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
   await tid(page, `pc-row-${article('kokosmilch')}-check`).click();
   await expect(tid(page, 'pc-apply')).toHaveText('1 übernehmen');
 
-  await tid(page, 'pc-pantry-toggle').click();
   await expect(tid(page, 'pc-pantry-toggle')).toHaveAttribute('aria-expanded', 'true');
   for (const key of ['reis', 'kreuzkuemmel']) {
     await expect(tid(page, `pc-row-${article(key)}-check`), key).toHaveAttribute(
@@ -564,10 +566,13 @@ test('AC-035 / AC-036 (0006): "Liste leeren …" asks first; "Abbrechen" keeps i
   await tid(page, 'list-more').click();
   await tid(page, 'list-more-clear-list').click();
   await expect(tid(page, 'clear-list-sheet')).toContainText('Einkaufsliste leeren?');
+  // Spec 0025, AC-019: open and checked items named apart.
   await expect(tid(page, 'clear-list-text')).toHaveText(
-    /^Alle \d+ Posten werden entfernt, auch die aus dem Kalender\.$/,
+    /^\d+ offene und \d+ erledigte Posten werden entfernt, auch die aus dem Kalender\.$/,
   );
-  const total = Number((await tid(page, 'clear-list-text').innerText()).match(/\d+/)?.[0]);
+  const total = ((await tid(page, 'clear-list-text').innerText()).match(/\d+/g) ?? [])
+    .map(Number)
+    .reduce((sum, value) => sum + value, 0);
   await tid(page, 'clear-list-cancel').click();
   await expect(tid(page, 'clear-list-sheet')).toBeHidden();
   await expect(page.locator(`[data-testid^="item-"][role="button"]${ACTIVE}`)).toHaveCount(before);

@@ -8,7 +8,7 @@ import {
   collectionContents,
   contentsDraft,
   moveContent,
-  recipeDeletedLabel,
+  deletedNotice,
   removeContent,
   sectionDraft,
   setContentServings,
@@ -111,7 +111,10 @@ describe('spec 0009: contained recipes (REQ-003, E12)', () => {
   it('AC-006: two recipes go in with one call, taking the portions of the collection', async () => {
     await fx.startEnrico();
     expect(addRecipesToCollection(SOMMERFEST, [NUDELSALAT, SALAT])).toBe(2);
-    expect(labelsOf(SOMMERFEST)).toEqual(['Nudelsalat · 6 Port.', 'Gemischter Salat · 6 Port.']);
+    expect(labelsOf(SOMMERFEST)).toEqual([
+      'Nudelsalat · 6 Port. (wie Sammlung)',
+      'Gemischter Salat · 6 Port. (wie Sammlung)',
+    ]);
     await fx.settle();
     expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
     expect(opsOf(0)).toEqual([
@@ -258,7 +261,10 @@ describe('spec 0009: editing "Enthält" (E12, AC-015, AC-016)', () => {
     draft = setContentServings(draft, salat.id, '');
     draft = moveContent(removeContent(draft, nudel.id), dal.id, 0);
     saveCollectionContents(GRILLABEND, draft);
-    expect(labelsOf(GRILLABEND)).toEqual(['Linsen-Dal · 6 Port.', 'Gemischter Salat · 6 Port.']);
+    expect(labelsOf(GRILLABEND)).toEqual([
+      'Linsen-Dal · 6 Port. (wie Sammlung)',
+      'Gemischter Salat · 6 Port. (wie Sammlung)',
+    ]);
     await fx.settle();
     expect(opsOf(0)).toEqual([
       { kind: 'patch', table: 'collection_recipes', id: salat.id, changes: { servings: null } },
@@ -426,7 +432,10 @@ describe('spec 0009: planning, the list and the sections of a collection', () =>
     if (!collection) throw new Error('fixture');
     const head = sectionDraft(collection, 'head') as HeadDraft;
     const save = saveRecipeSection(GRILLABEND, { ...head, servings: '10', totalMinutes: '30' });
-    expect(labelsOf(GRILLABEND)).toEqual(['Nudelsalat · 10 Port.', 'Gemischter Salat · 8 Port.']);
+    expect(labelsOf(GRILLABEND)).toEqual([
+      'Nudelsalat · 10 Port. (wie Sammlung)',
+      'Gemischter Salat · 8 Port.',
+    ]);
     await fx.settle();
     await save?.confirmed;
     expect(opsOf(0)).toEqual([
@@ -509,7 +518,7 @@ describe('spec 0009: deleting with collections (AC-032, AC-033, E11)', () => {
     const restore = snapshot();
     const deletion = deleteRecipe(GRILLABEND);
     expect(deletion?.collections).toBe(0);
-    expect(recipeDeletedLabel('Grillabend', deletion?.collections ?? 0)).toBe(
+    expect(deletedNotice('Grillabend', { collections: deletion?.collections ?? 0 })).toBe(
       'Grillabend gelöscht',
     );
     expect(rowsOf(GRILLABEND)).toEqual([]);
@@ -537,7 +546,7 @@ describe('spec 0009: deleting with collections (AC-032, AC-033, E11)', () => {
     const restore = snapshot();
     const deletion = deleteRecipe(NUDELSALAT);
     expect(deletion?.collections).toBe(2);
-    expect(recipeDeletedLabel('Nudelsalat', deletion?.collections ?? 0)).toBe(
+    expect(deletedNotice('Nudelsalat', { collections: deletion?.collections ?? 0 })).toBe(
       'Nudelsalat gelöscht · auch aus 2 Sammlungen entfernt',
     );
     expect(labelsOf(GRILLABEND)).toEqual(['Gemischter Salat · 8 Port.']);

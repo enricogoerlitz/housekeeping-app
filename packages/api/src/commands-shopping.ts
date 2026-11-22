@@ -1,17 +1,21 @@
 import {
   adjustItemCount as countAdjustment,
+  AMOUNT_NOT_RECOGNIZED,
   applyContributionChanges,
+  itemCount,
   collectionContributions,
   contentsInBook,
   contributionsFromEntry,
   findArticleByName,
   normalizeText,
+  parseItemAmount,
   parseSmartInput,
   recipeSource,
   summarizeItem,
   weekdayShort,
   type Article,
   type Id,
+  type ItemAmount,
   type MealPlanEntry,
   type PlanEntryVariant,
   type PlannedContribution,
@@ -40,7 +44,13 @@ import {
   updateData,
   type CommitSpec,
 } from './store';
-import { AdjustResultSchema, ClearedItemsSchema, TransportError, type AddEntry } from './transport';
+import {
+  AdjustResultSchema,
+  ClearedItemsSchema,
+  ManualAmountResultSchema,
+  TransportError,
+  type AddEntry,
+} from './transport';
 
 export type { AddedItem } from './list-additions';
 
@@ -129,31 +139,22 @@ export function addShoppingItemFromText(text: string): AddedItem | null {
   });
 }
 
-/** Checking works offline too (store queue); such changes are marked until the next sync. */
-export function setItemChecked(itemId: Id, checked: boolean): void {
-  queueStoreAction({ kind: 'check', itemId, checked });
+/**
+ * Checking works offline too (store queue); such changes are marked until the next sync. On
+ * "Liste" (swipe right, "Als erledigt markieren") it is the same store action with `onList`, so it
+ * shows no "kauft gerade ein" (spec 0025, REQ-006).
+ */
+export function setItemChecked(
+  itemId: Id,
+  checked: boolean,
+  options: { onList?: boolean } = {},
+): void {
+  queueStoreAction({ kind: 'check', itemId, checked, onList: options.onList === true });
 }
 
 /** "Nicht da": the item stays open and moves to "Woanders kaufen". A store action. */
 export function setItemNotAvailable(itemId: Id, notAvailable: boolean): void {
   queueStoreAction({ kind: 'notAvailable', itemId, value: notAvailable });
-}
-
-/** Removes an item with all its contributions; undo with `snapshot()` (AC-025). Online only. */
-export function removeShoppingItem(itemId: Id): void {
-  const item = getData().items.find((candidate) => candidate.id === itemId);
-  if (!item) return;
-  commit(
-    {
-      path: 'diff',
-      maxDeletes: { shopping_items: 1, shopping_contributions: item.contributions.length },
-    },
-    () =>
-      updateData((data) => ({
-        ...data,
-        items: data.items.filter((candidate) => candidate.id !== itemId),
-      })),
-  );
 }
 
 /** Undo of a clearing RPC: puts back exactly what the server removed (restore_cleared_items). */
@@ -167,6 +168,57 @@ const restoreCleared: Extract<CommitSpec<unknown>, { path: 'rpc' }>['inverse'] =
     ? transport.restoreClearedItems(context.householdId, cleared.data)
     : 0;
 };
+
+export interface ItemRemoval {
+  /** The last contribution went, so the item is off the list ("Reibekäse entfernt"). */
+  removed: boolean;
+}
+
+/**
+ * ✕ at an origin in "Posten bearbeiten" (spec 0025, AC-010, AC-011): these contributions go, the
+ * item with them when nothing is left. One remove_item_contributions call; `snapshot()` taken
+ * before brings them back at their place (restore keeps created_at). Null when the item is gone.
+ * Online only.
+ */
+export function removeItemOrigin(itemId: Id, contributionIds: readonly Id[]): ItemRemoval | null {
+  const item = getData().items.find((candidate) => candidate.id === itemId);
+  if (!item) return null;
+  const ids = new Set(contributionIds);
+  const kept = item.contributions.filter((contribution) => !ids.has(contribution.id));
+  if (kept.length === item.contributions.length) return { removed: false };
+  const removed = kept.length === 0;
+  return commit(
+    {
+      path: 'rpc',
+      send: (transport) => transport.removeItemContributions(itemId, [...ids]),
+      inverse: restoreCleared,
+    },
+    () => {
+      updateData((data) => ({
+        ...data,
+        items: removed
+          ? data.items.filter((candidate) => candidate.id !== itemId)
+          : data.items.map((candidate) =>
+              candidate.id === itemId ? { ...candidate, contributions: kept } : candidate,
+            ),
+      }));
+      return { removed };
+    },
+  );
+}
+
+/**
+ * Removes an item with all its contributions (swipe left, "Entfernen"); undo with `snapshot()`
+ * puts it back at its place (spec 0025, AC-020). Online only.
+ */
+export function removeShoppingItem(itemId: Id): void {
+  const item = getData().items.find((candidate) => candidate.id === itemId);
+  if (!item || item.contributions.length === 0) return;
+  removeItemOrigin(
+    itemId,
+    item.contributions.map((contribution) => contribution.id),
+  );
+}
 
 /** Removes the items matching `cleared` from the list with its own RPC; returns how many. */
 function clearItems(
@@ -268,6 +320,69 @@ export function adjustItemCount(itemId: Id, delta: 1 | -1): CountChange | null {
   );
 }
 
+/**
+ * "Von Hand" in "Posten bearbeiten" (spec 0025, REQ-003): "1 Kasten", "2", or empty for none
+ * replaces every manual contribution of the item by one; origins from recipes stay. Throws
+ * AMOUNT_NOT_RECOGNIZED for "viel". Without any contribution left the item is removed, and
+ * `snapshot()` taken before brings it back. Null when the item is gone (AC-013). Online only.
+ */
+export function setManualAmount(itemId: Id, text: string): ItemRemoval | null {
+  const amount = parseItemAmount(text);
+  if (amount === undefined) throw new Error(AMOUNT_NOT_RECOGNIZED);
+  const item = getData().items.find((candidate) => candidate.id === itemId);
+  if (!item) return null;
+  const empty = amount.count === undefined && amount.qty === undefined;
+  const manual = item.contributions.filter((contribution) => contribution.source.kind === 'manual');
+  const first = manual[0];
+  const others = item.contributions.filter((contribution) => contribution.source.kind !== 'manual');
+  const replacement: ShoppingContribution[] = empty
+    ? []
+    : [
+        {
+          ...(first ?? { id: newId(), source: { kind: 'manual' } }),
+          count: amount.count,
+          qty: amount.qty,
+          unit: amount.unit,
+        },
+      ];
+  // The earliest manual contribution keeps its place among the origins, like the server.
+  const contributions = first
+    ? item.contributions.flatMap((contribution) =>
+        contribution === first
+          ? replacement
+          : contribution.source.kind === 'manual'
+            ? []
+            : [contribution],
+      )
+    : [...others, ...replacement];
+  const removed = contributions.length === 0;
+  return commit(
+    {
+      path: 'rpc',
+      send: (transport) => transport.setManualAmount(itemId, amount),
+      inverse: async (transport, context, response) => {
+        const answer = ManualAmountResultSchema.safeParse(response);
+        return answer.success && answer.data?.removed
+          ? transport.restoreClearedItems(context.householdId, [
+              { item: answer.data.item, contributions: answer.data.contributions },
+            ])
+          : 0;
+      },
+    },
+    () => {
+      updateData((data) => ({
+        ...data,
+        items: removed
+          ? data.items.filter((candidate) => candidate.id !== itemId)
+          : data.items.map((candidate) =>
+              candidate.id === itemId ? { ...candidate, contributions } : candidate,
+            ),
+      }));
+      return { removed };
+    },
+  );
+}
+
 /** shopping_contributions_note_length in the database (AC-022). */
 export const ITEM_NOTE_MAX_LENGTH = 200;
 
@@ -320,8 +435,44 @@ export interface PantryCheckRow {
   sources: string[];
   /** "Vorrat" articles start unchecked. */
   isPantry: boolean;
+  /** The amount as a pure count ("2×"), for "− n× +"; undefined for quantities (spec 0025). */
+  count?: number;
+  /** "schon auf der Liste: 1×": the article's open item on the list (spec 0025, AC-027). */
+  onList?: string;
   /** From a recipe chosen directly, `entryId` is empty: there is no plan entry. */
   contributions: PlannedContribution[];
+}
+
+/** The amount shown on a pantry-check row and, for pure counts, the count. */
+function rowAmount(row: Pick<PantryCheckRow, 'articleId' | 'contributions'>): {
+  amount: string;
+  count?: number;
+} {
+  const preview: ShoppingItem = {
+    id: 'preview',
+    articleId: row.articleId,
+    contributions: row.contributions.map((contribution, index) =>
+      toContribution(contribution, `preview-${index}`),
+    ),
+    checked: false,
+    createdAt: '',
+  };
+  const count = itemCount(preview);
+  return { amount: summarizeItem(preview).amount, ...(count === undefined ? {} : { count }) };
+}
+
+/**
+ * A changed amount on a pantry-check row (spec 0025, REQ-007, Decision 4): the first contribution
+ * carries it, the others keep their origin without an amount, so "steht schon auf der Liste"
+ * still knows every dish. Returns a new row.
+ */
+export function withPantryAmount(row: PantryCheckRow, amount: ItemAmount): PantryCheckRow {
+  const contributions = row.contributions.map((contribution, index) => {
+    const { count: _count, qty: _qty, unit: _unit, ...origin } = contribution;
+    return index === 0 ? { ...origin, ...amount } : origin;
+  });
+  const { count: _old, ...rest } = row;
+  return { ...rest, contributions, ...rowAmount({ articleId: row.articleId, contributions }) };
 }
 
 /**
@@ -431,18 +582,14 @@ export function pantryCheckRows(
     if (!row.sources.includes(contribution.label)) row.sources.push(contribution.label);
     rows.set(article.id, row);
   }
-  return [...rows.values()].map((row) => ({
-    ...row,
-    amount: summarizeItem({
-      id: 'preview',
-      articleId: row.articleId,
-      contributions: row.contributions.map((contribution, index) =>
-        toContribution(contribution, `preview-${index}`),
-      ),
-      checked: false,
-      createdAt: '',
-    }).amount,
-  }));
+  const openByArticle = new Map(
+    data.items.filter((item) => !item.checked).map((item) => [item.articleId, item]),
+  );
+  return [...rows.values()].map((row) => {
+    const open = openByArticle.get(row.articleId);
+    const onList = open ? summarizeItem(open).amount : undefined;
+    return { ...row, ...rowAmount(row), ...(onList ? { onList } : {}) };
+  });
 }
 
 function toContribution(planned: PlannedContribution, id: Id): ShoppingContribution {

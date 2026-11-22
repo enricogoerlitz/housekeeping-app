@@ -94,6 +94,7 @@ const JSON_COLUMNS = new Set([
   'ingredients',
   'steps',
   'lead_time',
+  'links',
   'source',
   'recurrence',
   'assignment',

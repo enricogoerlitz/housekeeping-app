@@ -137,4 +137,36 @@ describe('matchSearchOrCreate', () => {
     expect(matchSearchOrCreate('tee', many).matches).toHaveLength(8);
     expect(matchSearchOrCreate('tee', many, { limit: 3 }).matches).toHaveLength(3);
   });
+
+  describe('spec 0025, REQ-009: words in any order, word parts', () => {
+    const catalog: SearchOrCreateItem[] = [
+      { id: 'kokosmilch', name: 'Kokosmilch' },
+      { id: 'passierte', name: 'Passierte Tomaten' },
+      { id: 'bio-eier', name: 'Bio-Eier' },
+      { id: 'apfelsaft', name: 'Apfelsaft' },
+      { id: 'kokosbrot', name: 'Kokosbrot' },
+      { id: 'eisbein', name: 'Eisbein' },
+    ];
+
+    it('AC-032: "Milchko", "tomaten passiert", "bio ei" and "Saftapfel" find their article', () => {
+      expect(names('Milchko', catalog)[0]).toBe('Kokosmilch');
+      expect(names('tomaten passiert', catalog)[0]).toBe('Passierte Tomaten');
+      expect(names('bio ei', catalog)[0]).toBe('Bio-Eier');
+      expect(names('Saftapfel', catalog)[0]).toBe('Apfelsaft');
+    });
+
+    it('AC-032: all words in any order rank like a part of the name, before word parts', () => {
+      const result = matchSearchOrCreate('tomaten passiert', catalog);
+      expect(result.matches[0]?.wordPart).toBe(false);
+    });
+
+    it('AC-033: "Brotko" does not find Kokosbrot, "ei bio" not Eisbein', () => {
+      expect(names('Brotko', catalog)).not.toContain('Kokosbrot');
+      expect(names('ei bio', catalog)).not.toContain('Eisbein');
+    });
+
+    it('AC-033: "Milchko" does not brake with "Meinst du Kokosmilch?"', () => {
+      expect(matchSearchOrCreate('Milchko', catalog).similar).toBeUndefined();
+    });
+  });
 });

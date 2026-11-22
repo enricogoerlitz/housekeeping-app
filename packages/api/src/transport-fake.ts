@@ -53,6 +53,7 @@ import {
 } from './db/tables';
 import {
   AdjustResultSchema,
+  ManualAmountResultSchema,
   TransportError,
   type ChoreCompletion,
   type ChoreEventDayChange,
@@ -77,6 +78,9 @@ type RpcName =
   | 'clear_shopping_list'
   | 'adjust_item_count'
   | 'remove_contributions'
+  | 'set_manual_amount'
+  | 'remove_item_contributions'
+  | 'create_store'
   | 'restore_cleared_items'
   | 'delete_article'
   | 'merge_articles'
@@ -783,11 +787,10 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
     );
     if (clash) throw conflict('23505');
   }
-  // shopping_items_open_article_idx: one open item per article and household.
-  if (table === 'shopping_items' && row.checked !== true) {
+  // shopping_items_household_id_article_id_key: one item per article and household (spec 0025).
+  if (table === 'shopping_items') {
     const clash = Object.values(tables.shopping_items ?? {}).some(
-      (other) =>
-        other.id !== row.id && other.article_id === row.article_id && other.checked !== true,
+      (other) => other.id !== row.id && other.article_id === row.article_id,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
@@ -968,6 +971,47 @@ export function createFakeServer(): FakeServer {
     return { ...tables, [table]: { ...tables[table], [row.id]: row } };
   }
 
+  /** areas_leave_stores: the id leaves the walking order and the hidden areas of every store. */
+  function withoutAreaInStores(tables: TableRows, areaId: string): TableRows {
+    let next = tables;
+    for (const store of Object.values(tables.stores ?? {})) {
+      const order = Array.isArray(store.area_order) ? store.area_order.map(String) : [];
+      const hidden = Array.isArray(store.hidden_area_ids) ? store.hidden_area_ids.map(String) : [];
+      if (!order.includes(areaId) && !hidden.includes(areaId)) continue;
+      next = withRow(next, 'stores', {
+        ...store,
+        area_order: order.filter((id) => id !== areaId),
+        hidden_area_ids: hidden.filter((id) => id !== areaId),
+      });
+    }
+    return next;
+  }
+
+  /** Reopens a checked item for a new need: its bought contributions and check state go. */
+  function reopened(tables: TableRows, item: Row): TableRows {
+    let next = tables;
+    for (const row of Object.values(tables.shopping_contributions ?? {})) {
+      if (row.item_id === item.id) next = withoutRows(next, 'shopping_contributions', [row.id]);
+    }
+    return withRow(next, 'shopping_items', {
+      ...item,
+      checked: false,
+      checked_at: null,
+      checked_by: null,
+      not_available: false,
+      checked_on_list: false,
+      check_seq: Number(item.check_seq ?? 0) + 1,
+    });
+  }
+
+  /** The earlier of an entry's timestamp and now (restore_cleared_items keeps created_at). */
+  function notLater(value: unknown): string {
+    const time = now();
+    return typeof value === 'string' && value !== '' && compareTimestamps(value, time) < 0
+      ? value
+      : time;
+  }
+
   /** Deletes rows like the database; `enforce` false = an administrator ignoring restrict. */
   function withoutRows(
     tables: TableRows,
@@ -981,6 +1025,7 @@ export function createFakeServer(): FakeServer {
       const kept = { ...next[table] };
       delete kept[id];
       next = { ...next, [table]: kept };
+      if (table === 'areas') next = withoutAreaInStores(next, id);
       for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
         for (const row of Object.values(next[reference.table] ?? {})) {
           if (row[reference.column] !== id || reference.onDelete === 'cascade') continue;
@@ -2135,7 +2180,7 @@ export function createFakeServer(): FakeServer {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
 
-      setItemChecked: (requestedItemId, checked, seenCheckSeq) =>
+      setItemChecked: (requestedItemId, checked, seenCheckSeq, onList = false) =>
         run(userId, 'set_shopping_item_checked', () => {
           const resolved = resolveStoreItem(userId, requestedItemId);
           if (!resolved) return null;
@@ -2158,6 +2203,7 @@ export function createFakeServer(): FakeServer {
                 checked_by: userId,
                 check_seq: seq + 1,
                 not_available: false,
+                checked_on_list: onList,
               };
               return [withRow(tables, 'shopping_items', next), answer(next)];
             }
@@ -2166,30 +2212,12 @@ export function createFakeServer(): FakeServer {
             if (replaced || item.checked !== true || seq !== seenCheckSeq) {
               return [tables, answer(item)];
             }
-            const open = Object.values(tables.shopping_items ?? {}).find(
-              (other) =>
-                other.id !== itemId &&
-                other.article_id === item.article_id &&
-                other.checked !== true,
-            );
-            if (open) {
-              let next = tables;
-              for (const contribution of Object.values(tables.shopping_contributions ?? {})) {
-                if (contribution.item_id === itemId) {
-                  next = withRow(next, 'shopping_contributions', {
-                    ...contribution,
-                    item_id: open.id,
-                  });
-                }
-              }
-              next = withoutRows(next, 'shopping_items', [itemId]);
-              return [next, answer(open)];
-            }
             const next = {
               ...item,
               checked: false,
               checked_at: null,
               checked_by: null,
+              checked_on_list: false,
               check_seq: seq + 1,
             };
             return [withRow(tables, 'shopping_items', next), answer(next)];
@@ -2316,40 +2344,46 @@ export function createFakeServer(): FakeServer {
               }
               // Missing = checked (like the RPC).
               const checked = item.checked == null ? true : item.checked === true;
-              // An open item joins one that is open on the list again meanwhile (AC-037).
-              let targetId = checked
-                ? undefined
-                : Object.values(next.shopping_items ?? {}).find(
-                    (other) => other.article_id === item.article_id && other.checked !== true,
-                  )?.id;
+              // One item per article (spec 0025): an open entry joins the item of today and
+              // reopens it when it is checked under another id; a checked entry stays out.
+              const existing = Object.values(next.shopping_items ?? {}).find(
+                (other) => other.article_id === item.article_id,
+              );
+              let targetId: string | undefined;
               let inserted = false;
-              if (targetId === undefined) {
-                if (!next.shopping_items?.[id]) {
-                  next = withRow(next, 'shopping_items', {
-                    ...item,
-                    id,
-                    checked,
-                    checked_at: checked ? (item.checked_at ?? now()) : null,
-                    checked_by: checked ? (item.checked_by ?? null) : null,
-                    check_seq: item.check_seq ?? 0,
-                    not_available: item.not_available ?? false,
-                  });
-                  inserted = true;
-                }
+              if (!existing) {
+                next = withRow(next, 'shopping_items', {
+                  ...item,
+                  id,
+                  checked,
+                  checked_at: checked ? notLater(item.checked_at) : null,
+                  checked_by: checked ? (item.checked_by ?? null) : null,
+                  check_seq: item.check_seq ?? 0,
+                  not_available: item.not_available ?? false,
+                  checked_on_list: checked && item.checked_on_list === true,
+                  created_at: notLater(item.created_at),
+                });
+                inserted = true;
                 targetId = id;
+              } else if (!checked || existing.id === id) {
+                if (!checked && existing.checked === true && existing.id !== id) {
+                  next = reopened(next, existing);
+                }
+                targetId = existing.id;
               }
               let added = 0;
-              for (const contribution of contributions ?? []) {
+              for (const contribution of targetId === undefined ? [] : (contributions ?? [])) {
                 const contributionId = String(contribution.id);
                 if (next.shopping_contributions?.[contributionId]) continue;
                 next = withRow(next, 'shopping_contributions', {
                   ...contribution,
                   id: contributionId,
                   item_id: targetId,
+                  created_at: notLater(contribution.created_at),
                 });
                 added += 1;
               }
-              if (inserted || (targetId !== id && added > 0)) restored += 1;
+              if (inserted || added > 0) restored += 1;
             }
             return [next, restored];
           });
@@ -2369,6 +2403,117 @@ export function createFakeServer(): FakeServer {
           return removed;
         }),
 
+      setManualAmount: (itemId, amount) =>
+        run(userId, 'set_manual_amount', () => {
+          const { count, qty } = amount;
+          const unit = amount.unit?.trim() || undefined;
+          if (
+            (count !== undefined && qty !== undefined) ||
+            (count !== undefined && !(Number.isInteger(count) && count >= 1 && count <= 10000)) ||
+            (qty !== undefined && !(qty > 0 && qty <= 1_000_000)) ||
+            (unit !== undefined && (qty === undefined || unit.length > 20))
+          ) {
+            throw reject('invalid_value');
+          }
+          const householdId = locate(userId, 'shopping_items', itemId);
+          if (!householdId) return null;
+          return ManualAmountResultSchema.parse(
+            transaction(householdId, (tables) => {
+              const item = tables.shopping_items?.[itemId];
+              if (!item) return [tables, null];
+              const oldestFirst = (a: Row, b: Row) => newestFirst(b, a);
+              const own = Object.values(tables.shopping_contributions ?? {})
+                .filter((row) => row.item_id === itemId)
+                .sort(oldestFirst);
+              const manual = own.filter(isManual);
+              let next = tables;
+              let keptId: string | undefined;
+              if (count !== undefined || qty !== undefined) {
+                const first = manual[0];
+                keptId = first?.id ?? crypto.randomUUID();
+                next = withRow(next, 'shopping_contributions', {
+                  ...(first ?? {
+                    id: keptId,
+                    item_id: itemId,
+                    source: { kind: 'manual' },
+                    note: null,
+                  }),
+                  count: count ?? null,
+                  qty: qty ?? null,
+                  unit: unit ?? null,
+                });
+              }
+              next = withoutRows(
+                next,
+                'shopping_contributions',
+                manual.filter((row) => row.id !== keptId).map((row) => row.id),
+              );
+              const remains = Object.values(next.shopping_contributions ?? {}).some(
+                (row) => row.item_id === itemId,
+              );
+              if (remains) return [next, { item_id: itemId, removed: false }];
+              return [
+                withoutRows(next, 'shopping_items', [itemId]),
+                { item_id: itemId, removed: true, item, contributions: own },
+              ];
+            }),
+          );
+        }),
+
+      removeItemContributions: (itemId, ids) =>
+        run(userId, 'remove_item_contributions', () => {
+          if (ids.length === 0) throw reject('invalid_value');
+          if (ids.length > 1000) throw reject('too_many_changes');
+          const householdId = locate(userId, 'shopping_items', itemId);
+          if (!householdId) return null;
+          return transaction(householdId, (tables): [TableRows, ClearedItems | null] => {
+            const item = tables.shopping_items?.[itemId];
+            if (!item) return [tables, null];
+            const removed = Object.values(tables.shopping_contributions ?? {})
+              .filter((row) => row.item_id === itemId && ids.includes(row.id))
+              .sort((a, b) => newestFirst(b, a));
+            if (removed.length === 0) return [tables, []];
+            let next = withoutRows(
+              tables,
+              'shopping_contributions',
+              removed.map((row) => row.id),
+            );
+            const remains = Object.values(next.shopping_contributions ?? {}).some(
+              (row) => row.item_id === itemId,
+            );
+            if (!remains) next = withoutRows(next, 'shopping_items', [itemId]);
+            return [next, [{ item, contributions: removed }]];
+          });
+        }),
+
+      createStore: (requestedHouseholdId, storeId, name, copyFrom) =>
+        run(userId, 'create_store', () => {
+          const householdId = memberOf(userId, requestedHouseholdId);
+          transaction(householdId, (tables) => {
+            const source = copyFrom === null ? undefined : tables.stores?.[copyFrom];
+            if (copyFrom !== null && !source) {
+              throw new TransportError('permanent', 'store_not_found', 500);
+            }
+            const bySort = Object.values(tables.areas ?? {})
+              .sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0) || a.id.localeCompare(b.id))
+              .map((area) => area.id);
+            const row: Row = {
+              id: storeId,
+              name: name.trim(),
+              area_order: source
+                ? Array.isArray(source.area_order)
+                  ? [...source.area_order]
+                  : []
+                : bySort,
+              hidden_area_ids: Array.isArray(source?.hidden_area_ids)
+                ? [...source.hidden_area_ids]
+                : [],
+            };
+            checkRow(householdId, 'stores', row, tables);
+            return [withRow(tables, 'stores', row), undefined];
+          });
+        }),
+
       deleteArticle: (articleId) =>
         run(userId, 'delete_article', () => {
           const householdId = locate(userId, 'articles', articleId);
@@ -2383,11 +2528,18 @@ export function createFakeServer(): FakeServer {
                   (ingredient) => ingredient.articleId === articleId,
                 ),
             );
-            const onList = Object.values(tables.shopping_items ?? {}).some(
+            const items = Object.values(tables.shopping_items ?? {}).filter(
               (item) => item.article_id === articleId,
             );
-            if (inRecipe || onList) throw reject('article_in_use');
-            return [withoutRows(tables, 'articles', [articleId]), { ...article }];
+            if (inRecipe || items.some((item) => item.checked !== true)) {
+              throw reject('article_in_use');
+            }
+            const withoutItems = withoutRows(
+              tables,
+              'shopping_items',
+              items.map((item) => item.id),
+            );
+            return [withoutRows(withoutItems, 'articles', [articleId]), { ...article }];
           });
         }),
 
@@ -2420,32 +2572,34 @@ export function createFakeServer(): FakeServer {
                 ),
               });
             }
-            // 2. Both open on the list: one item.
+            // 2. The one item of the source (spec 0025): without an item of the target it moves;
+            // else an open source brings its contributions (and reopens a checked target), a
+            // checked one brings nothing, and the source's item goes.
             let items = 0;
-            const openOf = (articleId: string) =>
+            const itemOf = (articleId: string) =>
               Object.values(tables.shopping_items ?? {}).find(
-                (item) => item.article_id === articleId && item.checked !== true,
+                (item) => item.article_id === articleId,
               );
-            const sourceOpen = openOf(sourceId);
-            const targetOpen = openOf(targetId);
-            if (sourceOpen && targetOpen) {
-              for (const row of Object.values(tables.shopping_contributions ?? {})) {
-                if (row.item_id === sourceOpen.id) {
-                  tables = withRow(tables, 'shopping_contributions', {
-                    ...row,
-                    item_id: targetOpen.id,
-                  });
+            const sourceItem = itemOf(sourceId);
+            const targetItem = itemOf(targetId);
+            if (sourceItem && !targetItem) {
+              tables = withRow(tables, 'shopping_items', { ...sourceItem, article_id: targetId });
+              items = 1;
+            } else if (sourceItem && targetItem) {
+              if (sourceItem.checked !== true) {
+                if (targetItem.checked === true) tables = reopened(tables, targetItem);
+                for (const row of Object.values(tables.shopping_contributions ?? {})) {
+                  if (row.item_id === sourceItem.id) {
+                    tables = withRow(tables, 'shopping_contributions', {
+                      ...row,
+                      item_id: targetItem.id,
+                    });
+                  }
                 }
               }
-              tables = withoutRows(tables, 'shopping_items', [sourceOpen.id]);
-              replaced = { from: sourceOpen.id, to: targetOpen.id };
-              items += 1;
-            }
-            // 3. Every other item of the source.
-            for (const item of Object.values(tables.shopping_items ?? {})) {
-              if (item.article_id !== sourceId) continue;
-              tables = withRow(tables, 'shopping_items', { ...item, article_id: targetId });
-              items += 1;
+              tables = withoutRows(tables, 'shopping_items', [sourceItem.id]);
+              replaced = { from: sourceItem.id, to: targetItem.id };
+              items = 1;
             }
             // 6. Names of the source as synonyms of the target, without duplicate keys.
             const synonyms: string[] = [];

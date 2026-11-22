@@ -20,10 +20,26 @@ const FILTER_LABELS: Record<ArticleFilter, string> = {
   pantry: 'Vorrat',
   needsReview: 'Neu aus Rezepten',
   similar: 'Ähnliche Namen',
+  unused: 'Unbenutzt',
+  unknownDiet: 'Ernährung unbekannt',
 };
-export const FILTERS: ArticleFilter[] = ['all', 'noArea', 'pantry', 'needsReview', 'similar'];
-// "Alle" and "Vorrat" carry no number (AC-021).
-const COUNTED = new Set<ArticleFilter>(['noArea', 'needsReview', 'similar']);
+export const FILTERS: ArticleFilter[] = [
+  'all',
+  'noArea',
+  'pantry',
+  'needsReview',
+  'similar',
+  'unused',
+  'unknownDiet',
+];
+// "Alle" and "Vorrat" carry no number (AC-021); "Unbenutzt (1)" does (spec 0025, AC-046).
+const COUNTED = new Set<ArticleFilter>([
+  'noArea',
+  'needsReview',
+  'similar',
+  'unused',
+  'unknownDiet',
+]);
 
 /** "Ohne Bereich (2)". */
 export function filterChipLabel(filter: ArticleFilter, counts: Record<ArticleFilter, number>) {
@@ -45,6 +61,8 @@ const FILTER_PARAMS: Record<string, ArticleFilter> = {
   vorrat: 'pantry',
   'neu-aus-rezepten': 'needsReview',
   'aehnliche-namen': 'similar',
+  unbenutzt: 'unused',
+  'ernaehrung-unbekannt': 'unknownDiet',
 };
 export function filterFromParam(param: string | undefined): ArticleFilter {
   return (param !== undefined && FILTER_PARAMS[param]) || 'all';
@@ -53,13 +71,20 @@ export function filterFromParam(param: string | undefined): ArticleFilter {
 /** The address value of a filter; "Alle" is the default and stays out (spec 0019). */
 export function filterParam(
   filter: ArticleFilter,
-): 'ohne-bereich' | 'vorrat' | 'neu-aus-rezepten' | 'aehnliche-namen' | undefined {
+):
+  | 'ohne-bereich'
+  | 'vorrat'
+  | 'neu-aus-rezepten'
+  | 'aehnliche-namen'
+  | 'unbenutzt'
+  | 'ernaehrung-unbekannt'
+  | undefined {
   const entry = Object.entries(FILTER_PARAMS).find(([, value]) => value === filter);
   return entry?.[0] as ReturnType<typeof filterParam>;
 }
 
 export const DIET_OPTIONS: ChoiceOption<Diet>[] = (
-  ['vegan', 'vegetarian', 'fish', 'meat', 'unknown'] as const
+  ['vegan', 'vegetarian', 'fish', 'meat', 'non_food', 'unknown'] as const
 ).map((diet) => ({ value: diet, label: dietLabel(diet) }));
 
 /** No Standard-Einkaufsregel set yet: no chip is active. */
