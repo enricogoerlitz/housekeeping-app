@@ -38,6 +38,12 @@ export function focusRing(theme: Theme, focused: boolean | undefined): ViewStyle
     : null;
 }
 
+/** On the web a click also focuses a focusable view; only keyboard focus gets the ring. */
+export function keyboardFocus(event: unknown): boolean {
+  const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
+  return target?.matches?.(':focus-visible') ?? true;
+}
+
 type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 // react-native-web passes `onKeyDown` through to the DOM; native has no such prop and ignores it.
 type KeyEvent = { key: string; preventDefault: () => void };

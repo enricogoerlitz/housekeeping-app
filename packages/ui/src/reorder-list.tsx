@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { announce } from './announce';
-import { IconButton, focusRing } from './controls';
+import { IconButton, focusRing, keyboardFocus } from './controls';
 import { haptic } from './haptics';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
@@ -87,12 +87,6 @@ const WEB_HANDLE: ViewStyle | null =
   Platform.OS === 'web'
     ? ({ cursor: 'grab', touchAction: 'none', userSelect: 'none' } as unknown as ViewStyle)
     : null;
-
-/** On the web a click also focuses the handle; only keyboard focus gets the ring. */
-function keyboardFocus(event: unknown): boolean {
-  const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
-  return target?.matches?.(':focus-visible') ?? true;
-}
 
 interface Layout {
   y: number;
