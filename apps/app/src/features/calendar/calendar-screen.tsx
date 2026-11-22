@@ -343,7 +343,7 @@ export function CalendarScreen() {
   );
 
   const moreOptions: MenuOption<MoreAction>[] = [
-    // The year never shows chores, so it has no switch for them (AC-019).
+    // The year always shows the dot of a chore, so it has no switch (spec 0021, REQ-017).
     ...(view === 'year'
       ? []
       : [

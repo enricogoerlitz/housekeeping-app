@@ -172,9 +172,11 @@ export function CalendarSwipe(props: {
       };
     return undefined;
   }, [kind]);
+  // Wider screens keep their touch handling (and horizontal panning) untouched.
+  if (!props.enabled) return <>{props.children}</>;
   return (
     <SwipeArea
-      enabled={props.enabled && kind === null}
+      enabled={kind === null}
       onSwipe={(step) => {
         if (kind !== null || Date.now() - lastDrag.current < SWIPE_AFTER_DRAG_MS) return;
         props.onSwipe(step);
