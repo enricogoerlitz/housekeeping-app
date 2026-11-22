@@ -12,6 +12,7 @@ import {
   open,
   itemIdOf,
   leaveManaged,
+  NADJA,
   openItem,
   openManaged,
   PLAN_ENTRY,
@@ -147,8 +148,23 @@ test('AC-012: Enrico removes Nadja; the household disappears from her device wit
   await enrico.bringToFront();
   await nav(enrico, 'index');
   await openManaged(enrico, 'members');
+  // Spec 0018, AC-010: "Entfernen" asks first; "Abbrechen" sends nothing.
+  const removeCalls: string[] = [];
+  enrico.on('request', (request) => {
+    if (request.url().includes('/rpc/remove_member')) removeCalls.push(request.url());
+  });
   await tid(enrico, `household-member-remove-${seedIds['m-nadja']}`).click();
+  await expect(tid(enrico, 'member-remove-dialog')).toContainText(`${NADJA} aus „Zwei Geräte`);
+  await expect(tid(enrico, 'member-remove-dialog')).toContainText('“ entfernen?');
+  await tid(enrico, 'member-remove-dialog-cancel').click();
+  await expect(tid(enrico, 'member-remove-dialog')).toHaveCount(0);
+  await expect(tid(enrico, `household-member-${seedIds['m-nadja']}`)).toBeVisible();
+  expect(removeCalls, 'no server call before the confirmation').toEqual([]);
+
+  await tid(enrico, `household-member-remove-${seedIds['m-nadja']}`).click();
+  await tid(enrico, 'member-remove-dialog-confirm').click();
   await expect(toastMessage(enrico)).toContainText('ist entfernt');
+  expect(removeCalls).toHaveLength(1);
 
   await nadja.bringToFront();
   await expect(tid(nadja, `household-${householdId}`)).toHaveCount(0, SYNC);

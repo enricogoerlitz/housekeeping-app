@@ -46,5 +46,6 @@ export * from './collection-editor';
 export * from './cooking-history';
 export * from './notifications';
 export * from './app-version';
+export * from './membership';
 
 export const APP_NAME = 'Housekeeping';

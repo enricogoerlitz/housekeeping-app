@@ -6,11 +6,14 @@ import {
   removeMember,
   switchHousehold,
   useAuth,
+  useActiveHouseholdId,
   useCurrentMemberId,
   useHouseholdInvitations,
+  useHouseholdsMap,
   useMembers,
   useMyInvitations,
 } from '@housekeeping/api';
+import { memberRemovalPrompt, type MemberRemovalPrompt } from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -25,6 +28,7 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 // Household management (spec 0003, REQ-003): used by the settings and by the screen shown to a
@@ -149,13 +153,20 @@ export function InviteForm() {
   );
 }
 
-/** Members of the active household and its open invitations („Eingeladen“). */
+/**
+ * Members of the active household and its open invitations („Eingeladen“). „Entfernen“ and
+ * „Verlassen“ ask first; the server call happens only on the confirmation (spec 0018, REQ-004).
+ */
 export function MemberList() {
   const members = useMembers();
   const invitations = useHouseholdInvitations();
   const me = useCurrentMemberId();
+  const households = useHouseholdsMap();
+  const householdName = households[useActiveHouseholdId()]?.household.name ?? '';
+  const householdCount = Object.keys(households).length;
   const online = useOnlineOnly();
   const { busy, run } = useAction();
+  const [asking, setAsking] = useState<{ id: string; name: string } | undefined>();
 
   const remove = (profileId: string, name: string) =>
     run(
@@ -169,43 +180,80 @@ export function MemberList() {
     );
 
   return (
-    <List testID="household-members">
-      {members.map((member) => {
-        const self = member.id === me;
-        return (
+    <>
+      <List testID="household-members">
+        {members.map((member) => {
+          const self = member.id === me;
+          return (
+            <ListRow
+              key={member.id}
+              title={self ? `${member.name} (du)` : member.name}
+              leading={<Avatar name={member.name} color={member.color} size="m" />}
+              trailing={
+                <Button
+                  label={self ? 'Verlassen' : 'Entfernen'}
+                  variant="link"
+                  size="sm"
+                  disabled={online.disabled || busy}
+                  hint={online.hint}
+                  onPress={() => setAsking({ id: member.id, name: member.name })}
+                  testID={`household-member-remove-${member.id}`}
+                />
+              }
+              testID={`household-member-${member.id}`}
+            />
+          );
+        })}
+        {invitations.map((invitation) => (
           <ListRow
-            key={member.id}
-            title={self ? `${member.name} (du)` : member.name}
-            leading={<Avatar name={member.name} color={member.color} size="m" />}
-            trailing={
-              <Button
-                label={self ? 'Verlassen' : 'Entfernen'}
-                variant="link"
-                size="sm"
-                disabled={online.disabled || busy}
-                hint={online.hint}
-                onPress={() => void remove(member.id, member.name)}
-                testID={`household-member-remove-${member.id}`}
-              />
+            key={invitation.id}
+            title={invitation.email}
+            subtitle="Eingeladen"
+            leading={
+              <View style={{ width: 36, alignItems: 'center' }}>
+                <Icon name="mail" color="muted" />
+              </View>
             }
-            testID={`household-member-${member.id}`}
+            testID={`household-invitation-${invitation.id}`}
           />
-        );
-      })}
-      {invitations.map((invitation) => (
-        <ListRow
-          key={invitation.id}
-          title={invitation.email}
-          subtitle="Eingeladen"
-          leading={
-            <View style={{ width: 36, alignItems: 'center' }}>
-              <Icon name="mail" color="muted" />
-            </View>
-          }
-          testID={`household-invitation-${invitation.id}`}
+        ))}
+      </List>
+      {asking ? (
+        <MemberRemovalDialog
+          prompt={memberRemovalPrompt({
+            memberName: asking.name,
+            householdName,
+            self: asking.id === me,
+            householdCount,
+          })}
+          onConfirm={() => {
+            const { id, name } = asking;
+            setAsking(undefined);
+            void remove(id, name);
+          }}
+          onCancel={() => setAsking(undefined)}
         />
-      ))}
-    </List>
+      ) : null}
+    </>
+  );
+}
+
+/** The question before „Entfernen“ or „Verlassen“; Escape and Android-Zurück cancel (spec 0005). */
+function MemberRemovalDialog(props: {
+  prompt: MemberRemovalPrompt;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <TripConfirmDialog
+      title={props.prompt.title}
+      message={props.prompt.message}
+      confirmLabel={props.prompt.confirmLabel}
+      needsNetwork
+      onConfirm={props.onConfirm}
+      onCancel={props.onCancel}
+      testID="member-remove-dialog"
+    />
   );
 }
 
