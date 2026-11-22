@@ -14,10 +14,12 @@ import {
   ChoiceChips,
   Chip,
   Disclosure,
+  DockedPanel,
   EditableSection,
   EmptyState,
   FilterBar,
   Icon,
+  IconButton,
   KIND_ICONS,
   List,
   ListRow,
@@ -42,10 +44,11 @@ import {
   toast,
   useBreakpoint,
   useCheckWindow,
+  type DockedPanelState,
   type SheetSize,
 } from '@housekeeping/ui';
-import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { View, type HostInstance } from 'react-native';
 
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
@@ -1401,4 +1404,86 @@ function TimeBlock() {
       />
     </Block>
   );
+}
+
+// ---------- Spec 0016, REQ-006: a panel that leaves the page usable ----------
+
+const PANEL_ROWS = [
+  'Vormittag · Bouldern',
+  'Mittag · Linsen-Dal',
+  'Abend · Lasagne',
+  ...Array.from({ length: 14 }, (_, index) => `Eintrag ${index + 1}`),
+];
+
+/**
+ * The block and its panel apart: the panel belongs into the Screen's `aside`, outside the
+ * scrolling page.
+ */
+export function useDockedPanelDemo(): { block: ReactNode; panel: ReactNode } {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<DockedPanelState>('half');
+  const opener = useRef<HostInstance>(null);
+  const block = (
+    <Block
+      key="docked"
+      title="Fenster neben der Seite"
+      note="Die Seite bleibt bedienbar. Handy: unten in halber Höhe; am Griff nach oben groß, nach unten zu, ein Tipp auf den Griff wechselt die Größe. Ab 700 px rechts neben dem Inhalt. Escape und Android-Zurück schließen, der Fokus kehrt zum Knopf zurück."
+      testID="showroom-docked"
+    >
+      <Row wrap gap={8}>
+        <IconButton
+          ref={opener}
+          icon="calendar-days"
+          variant="soft"
+          label="Fenster öffnen"
+          onPress={() => {
+            setState('half');
+            setOpen(true);
+          }}
+          testID="showroom-docked-open"
+        />
+        <Button
+          label="Auf eine Zeile"
+          size="sm"
+          variant="secondary"
+          disabled={!open}
+          onPress={() => setState('collapsed')}
+          testID="showroom-docked-collapse"
+        />
+        <Button
+          label="Halbe Höhe"
+          size="sm"
+          variant="secondary"
+          disabled={!open}
+          onPress={() => setState('half')}
+          testID="showroom-docked-half"
+        />
+      </Row>
+    </Block>
+  );
+  const panel = (
+    <DockedPanel
+      open={open}
+      onClose={() => setOpen(false)}
+      state={state}
+      onStateChange={setState}
+      label="Beispiel-Fenster"
+      closeLabel="Schließen"
+      handleLabel="Größe ändern"
+      returnFocusRef={opener}
+      header={
+        <Text variant="sectionLabel" heading>
+          Fr 27. November
+        </Text>
+      }
+      testID="showroom-docked-panel"
+    >
+      <List>
+        {PANEL_ROWS.map((row) => (
+          <ListRow key={row} title={row} />
+        ))}
+      </List>
+    </DockedPanel>
+  );
+  return { block, panel };
 }
