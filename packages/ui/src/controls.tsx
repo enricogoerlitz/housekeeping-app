@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   Pressable,
@@ -696,6 +696,8 @@ export interface TextFieldProps extends Pick<
   left?: ReactNode;
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
+  /** The input itself, e.g. to move the focus into it after a choice. */
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -730,6 +732,7 @@ export function TextField(props: TextFieldProps) {
     accessibilityLabel,
     onFocus,
     onBlur,
+    inputRef,
     ...input
   } = props;
   return (
@@ -758,6 +761,7 @@ export function TextField(props: TextFieldProps) {
         {left}
         <TextInput
           {...input}
+          ref={inputRef}
           testID={testID}
           accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}
           placeholderTextColor={placeholderColor}

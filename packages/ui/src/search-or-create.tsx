@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { Platform, Pressable, View, type TextInput } from 'react-native';
 
 import { Button, IconButton, TextField, keyboardFocusRing } from './controls';
 import { expandableA11y } from './expandable';
@@ -50,6 +50,8 @@ export interface SearchOrCreateProps {
   /** "Mehr Angaben ▸": more fields that unfold in place, below the rows. */
   more?: { label: string; children: ReactNode };
   autoFocus?: boolean;
+  /** The search field, e.g. to put the focus back on it (spec 0023, AC-003). */
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
   /** Parts get `${testID}-input`, `-hit-<key>`, `-create-<key>`, `-brake`, `-more`. */
   testID?: string;
 }
@@ -83,6 +85,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
         placeholder={props.placeholder}
         accessibilityLabel={props.label}
         autoFocus={props.autoFocus}
+        inputRef={props.inputRef}
         returnKeyType="search"
         testID={id('input')}
         left={<Icon name="search" size={20} color="muted" />}
