@@ -373,17 +373,10 @@ export function CalendarScreen() {
     }
   };
 
-  // Five buttons share the phone's header with the title, so the calendar's own three sit closer.
+  // Four buttons share the phone's header with the title, so the calendar's own two sit closer.
   const actions = (
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <IconButton
-          icon="mountain"
-          label="Aktivitäten"
-          size={36}
-          onPress={() => router.push('/kalender/aktivitaeten')}
-          testID="calendar-activities"
-        />
         <IconButton
           icon="shopping-basket"
           label="Auf die Einkaufsliste"
@@ -706,6 +699,13 @@ export function CalendarScreen() {
               key={openChore.id}
               chore={openChore}
               onClose={() => setOpenChore(undefined)}
+              // „Alle Einträge ›“: the history of „Haushalt“ filtered by the chore (spec 0026, AC-025).
+              onShowEntries={() =>
+                router.navigate({
+                  pathname: '/haushalt',
+                  params: { ansicht: 'verlauf', 'nur-aufgabe': openChore.id },
+                })
+              }
             />
           ) : null}
           {pantryCheck && focused ? (

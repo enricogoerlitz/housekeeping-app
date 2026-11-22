@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { historyGroups } from './chore-history';
-import { enrico } from './test-fixtures';
+import { filterHistory, historyGroups } from './chore-history';
+import { enrico, nadja } from './test-fixtures';
 import type { ChoreEvent } from './types';
 
 const today = '2026-11-20';
@@ -96,5 +96,29 @@ describe('REQ-010: the history by month and week', () => {
 
   it('AC-061: no entries, no groups', () => {
     expect(historyGroups([], today)).toEqual([]);
+  });
+});
+
+describe('spec 0026, REQ-008: filtering the history', () => {
+  const list = [
+    event('a', '2026-11-20', { choreId: 'bad', doneBy: enrico.id }),
+    event('b', '2026-11-13', { choreId: 'bad', doneBy: nadja.id }),
+    event('c', '2026-11-12', { choreId: 'fk', doneBy: enrico.id }),
+    event('d', '2026-11-11', { choreId: undefined, doneBy: nadja.id }),
+  ];
+  const ids = (found: ChoreEvent[]) => found.map((item) => item.id);
+
+  it('AC-024: a person shows only her entries', () => {
+    expect(ids(filterHistory(list, { person: nadja.id }))).toEqual(['b', 'd']);
+    expect(ids(filterHistory(list, {}))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('AC-025: a chore shows only its entries; entries of deleted chores only without it', () => {
+    expect(ids(filterHistory(list, { choreId: 'bad' }))).toEqual(['a', 'b']);
+  });
+
+  it('AC-026: both filters together; nothing left is an empty list', () => {
+    expect(ids(filterHistory(list, { person: nadja.id, choreId: 'fk' }))).toEqual([]);
+    expect(ids(filterHistory(list, { person: nadja.id, choreId: 'bad' }))).toEqual(['b']);
   });
 });

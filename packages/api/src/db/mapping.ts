@@ -5,7 +5,7 @@
 // ratings, votes) fold into `favoriteOf`, `ratings` and `votes`.
 //
 // Documented normalisations (a round trip is equal modulo these):
-// - null in a row ⇄ undefined (missing) in the domain; `not_cooked` / `not_available` false ⇄
+// - null in a row ⇄ undefined (missing) in the domain; `not_done` / `not_available` false ⇄
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
@@ -200,6 +200,8 @@ function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdR
         price_level: restaurant.priceLevel ?? null,
         tags: restaurant.tags,
         notes: restaurant.notes ?? null,
+        website_url: restaurant.websiteUrl ?? null,
+        photo_path: restaurant.photoPath ?? null,
         ...(restaurant.createdAt ? { created_at: restaurant.createdAt } : {}),
       } satisfies Cached<'restaurants'>,
     ],
@@ -234,7 +236,7 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
         lat: activity.location?.lat ?? null,
         lng: activity.location?.lng ?? null,
         maps_url: activity.mapsUrl ?? null,
-        tags: activity.tags,
+        website_url: activity.websiteUrl ?? null,
         created_by: activity.createdBy ?? null,
         ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
       } satisfies Cached<'activities'>,
@@ -357,7 +359,7 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     variants: json(entry.variants),
     cook_id: entry.cookId ?? null,
     sort: entry.sort,
-    not_cooked: entry.notCooked ?? false,
+    not_done: entry.notDone ?? false,
     starts_at: entry.startsAt === undefined ? null : toDbTime(entry.startsAt),
     reminder_day_offset: entry.reminder?.offsetDays ?? null,
     reminder_at: entry.reminder ? toDbTime(entry.reminder.at) : null,
@@ -389,6 +391,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     last_done_on: chore.lastDoneOn ?? null,
     active_months: chore.activeMonths ?? null,
     due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
+    remind_at_due_time: chore.remindAtDueTime !== false,
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -722,6 +725,8 @@ function toRestaurant(row: Row, favorites: Row[], ratings: Row[]): Restaurant {
     priceLevel: opt(r.price_level) as Restaurant['priceLevel'],
     tags: r.tags ?? [],
     notes: opt(r.notes),
+    websiteUrl: opt(r.website_url),
+    photoPath: opt(r.photo_path),
     favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
@@ -745,7 +750,7 @@ function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
         ? { lat: r.lat, lng: r.lng }
         : undefined,
     mapsUrl: opt(r.maps_url),
-    tags: r.tags ?? [],
+    websiteUrl: opt(r.website_url),
     favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
@@ -853,7 +858,7 @@ function toPlanEntry(row: Row): MealPlanEntry {
     variants: (r.variants ?? []) as unknown as MealPlanEntry['variants'],
     cookId: opt(r.cook_id),
     sort: r.sort ?? 0,
-    notCooked: r.not_cooked ? true : undefined,
+    notDone: r.not_done ? true : undefined,
     startsAt: fromDbTime(r.starts_at),
     reminder: toReminder(r),
   };
@@ -884,6 +889,8 @@ function toChore(row: Row): Chore {
     lastDoneOn: opt(r.last_done_on),
     activeMonths: opt(r.active_months),
     dueTime: fromDbTime(r.due_time),
+    // Undefined is on, the default (spec 0027, REQ-009).
+    remindAtDueTime: r.remind_at_due_time === false ? false : undefined,
   };
 }
 

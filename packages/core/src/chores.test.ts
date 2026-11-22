@@ -3,15 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   assigneeAfterAssignmentChange,
   assignmentLabel,
-  choreBucket,
-  choreMemberIds,
-  choreTurnLabel,
   completionOutcome,
-  daysOverdue,
+  dayChangeOutcome,
   doneOnChoices,
   fasterNotice,
   firstDueOn,
-  flexibleProgress,
+  isBackfillDay,
   latestBookedEvent,
   nextAssignee,
   nextDueAfter,
@@ -23,11 +20,20 @@ import {
   seasonMonths,
   validateChoreDraft,
 } from './chores';
+import {
+  choreBucket,
+  choreMemberIds,
+  choreTurnLabel,
+  daysOverdue,
+  flexibleProgress,
+  withoutTrips,
+} from './chore-schedule';
 import { enrico, nadja } from './test-fixtures';
 import type { Assignment, Chore, ChoreEvent, Recurrence } from './types';
 
 // 2026-11-20 is a Friday; its week runs from Monday 16 to Sunday 22 November.
 const today = '2026-11-20';
+const home = withoutTrips([enrico, nadja]);
 
 function chore(partial: Partial<Chore> = {}): Chore {
   return {
@@ -42,28 +48,31 @@ function chore(partial: Partial<Chore> = {}): Chore {
 
 describe('choreBucket', () => {
   it('sorts fixed chores into today, overdue, this week and later', () => {
-    expect(choreBucket(chore({ nextDueOn: today }), today)).toBe('today');
-    expect(choreBucket(chore({ nextDueOn: '2026-11-18' }), today)).toBe('overdue');
-    expect(choreBucket(chore({ nextDueOn: '2026-11-22' }), today)).toBe('thisWeek');
-    expect(choreBucket(chore({ nextDueOn: '2026-11-23' }), today)).toBe('later');
-    expect(choreBucket(chore(), today)).toBe('later');
+    expect(choreBucket(chore({ nextDueOn: today }), today, home)).toBe('today');
+    expect(choreBucket(chore({ nextDueOn: '2026-11-18' }), today, home)).toBe('overdue');
+    expect(choreBucket(chore({ nextDueOn: '2026-11-22' }), today, home)).toBe('thisWeek');
+    expect(choreBucket(chore({ nextDueOn: '2026-11-23' }), today, home)).toBe('later');
+    expect(choreBucket(chore(), today, home)).toBe('later');
   });
 
   it('puts flexible chores under "flexible" whatever their date', () => {
     const flexible = chore({ recurrence: { type: 'flexible', everyDays: 7 }, nextDueOn: today });
-    expect(choreBucket(flexible, today)).toBe('flexible');
+    expect(choreBucket(flexible, today, home)).toBe('flexible');
   });
 
   it('pauses chores outside their active months; an empty list means all year', () => {
-    expect(choreBucket(chore({ nextDueOn: today, activeMonths: [4, 5, 6] }), today)).toBe('paused');
+    expect(choreBucket(chore({ nextDueOn: today, activeMonths: [4, 5, 6] }), today, home)).toBe(
+      'paused',
+    );
     expect(
       choreBucket(
         chore({ recurrence: { type: 'flexible', everyDays: 3 }, activeMonths: [7] }),
         today,
+        home,
       ),
     ).toBe('paused');
-    expect(choreBucket(chore({ nextDueOn: today, activeMonths: [11] }), today)).toBe('today');
-    expect(choreBucket(chore({ nextDueOn: today, activeMonths: [] }), today)).toBe('today');
+    expect(choreBucket(chore({ nextDueOn: today, activeMonths: [11] }), today, home)).toBe('today');
+    expect(choreBucket(chore({ nextDueOn: today, activeMonths: [] }), today, home)).toBe('today');
   });
 });
 
@@ -76,7 +85,7 @@ describe('AC-035: completing "Bad putzen"', () => {
     });
     const next = nextDueAfter(bathroom, today);
     expect(next).toBe('2026-11-27');
-    expect(choreBucket({ ...bathroom, nextDueOn: next }, today)).not.toBe('today');
+    expect(choreBucket({ ...bathroom, nextDueOn: next }, today, home)).not.toBe('today');
     expect(nextAssignee(bathroom, enrico.id)).toBe(nadja.id);
   });
 });
@@ -90,9 +99,9 @@ describe('AC-036: "Staubsaugen" weekly on Saturday, rotating', () => {
       nextDueOn: '2026-11-21',
       nextAssigneeId: enrico.id,
     });
-    expect(choreBucket(vacuum, today)).toBe('thisWeek');
+    expect(choreBucket(vacuum, today, home)).toBe('thisWeek');
     // Spec 0018, AC-016: the row shows only whose turn it is.
-    expect(choreMemberIds(vacuum, [enrico, nadja])).toEqual([enrico.id]);
+    expect(choreMemberIds(vacuum, today, withoutTrips([enrico, nadja]))).toEqual([enrico.id]);
     expect(recurrenceLabel(vacuum.recurrence)).toBe('wöchentlich Sa');
     expect(assignmentLabel(vacuum.assignment, [enrico, nadja])).toBe('abwechselnd');
   });
@@ -195,14 +204,14 @@ describe('progress and overdue days', () => {
   });
 
   it('counts overdue days of fixed chores only', () => {
-    expect(daysOverdue(chore({ nextDueOn: '2026-11-17' }), today)).toBe(3);
-    expect(daysOverdue(chore({ nextDueOn: '2026-11-25' }), today)).toBe(0);
-    expect(daysOverdue(chore(), today)).toBe(0);
+    expect(daysOverdue(chore({ nextDueOn: '2026-11-17' }), today, home)).toBe(3);
+    expect(daysOverdue(chore({ nextDueOn: '2026-11-25' }), today, home)).toBe(0);
+    expect(daysOverdue(chore(), today, home)).toBe(0);
     const flexible = chore({
       recurrence: { type: 'flexible', everyDays: 3 },
       nextDueOn: '2026-11-01',
     });
-    expect(daysOverdue(flexible, today)).toBe(0);
+    expect(daysOverdue(flexible, today, home)).toBe(0);
   });
 });
 
@@ -234,17 +243,21 @@ describe('labels', () => {
 
   it('shows the next assignee, everyone for "together", and drops unknown ids', () => {
     const members = [enrico, nadja];
-    expect(choreMemberIds(chore({ nextAssigneeId: nadja.id }), members)).toEqual([nadja.id]);
-    expect(choreMemberIds(chore(), members)).toEqual([enrico.id]);
-    expect(choreMemberIds(chore({ assignment: { type: 'together' } }), members)).toEqual([
-      enrico.id,
-      nadja.id,
-    ]);
-    expect(choreMemberIds(chore({ assignment: { type: 'anyone' } }), members)).toEqual([]);
+    expect(
+      choreMemberIds(chore({ nextAssigneeId: nadja.id }), today, withoutTrips(members)),
+    ).toEqual([nadja.id]);
+    expect(choreMemberIds(chore(), today, withoutTrips(members))).toEqual([enrico.id]);
+    expect(
+      choreMemberIds(chore({ assignment: { type: 'together' } }), today, withoutTrips(members)),
+    ).toEqual([enrico.id, nadja.id]);
+    expect(
+      choreMemberIds(chore({ assignment: { type: 'anyone' } }), today, withoutTrips(members)),
+    ).toEqual([]);
     expect(
       choreMemberIds(
         chore({ assignment: { type: 'rotating', memberIds: [enrico.id, 'weg'] } }),
-        members,
+        today,
+        withoutTrips(members),
       ),
     ).toEqual([enrico.id]);
   });
@@ -256,35 +269,44 @@ describe('spec 0018, REQ-006: "Abwechselnd" shows whose turn it is', () => {
 
   it('AC-016: "Bad putzen" alternating, Nadja\'s turn: only Nadja, read as "dran: Nadja"', () => {
     const bath = chore({ assignment: rotating, nextAssigneeId: nadja.id });
-    expect(choreMemberIds(bath, members)).toEqual([nadja.id]);
-    expect(choreTurnLabel(bath, members)).toBe('dran: Nadja');
+    expect(choreMemberIds(bath, today, withoutTrips(members))).toEqual([nadja.id]);
+    expect(choreTurnLabel(bath, today, withoutTrips(members))).toBe('dran: Nadja');
   });
 
   it('AC-016: without a known turn the first rotation member is up, as in the household row', () => {
-    expect(choreMemberIds(chore({ assignment: rotating }), members)).toEqual([enrico.id]);
-    expect(choreMemberIds(chore({ assignment: rotating, nextAssigneeId: 'weg' }), members)).toEqual(
-      [enrico.id],
-    );
+    expect(choreMemberIds(chore({ assignment: rotating }), today, withoutTrips(members))).toEqual([
+      enrico.id,
+    ]);
+    expect(
+      choreMemberIds(
+        chore({ assignment: rotating, nextAssigneeId: 'weg' }),
+        today,
+        withoutTrips(members),
+      ),
+    ).toEqual([enrico.id]);
     expect(
       choreMemberIds(
         chore({ assignment: { type: 'rotating', memberIds: ['weg', nadja.id] } }),
-        members,
+        today,
+        withoutTrips(members),
       ),
     ).toEqual([nadja.id]);
-    expect(choreTurnLabel(chore({ assignment: rotating }), members)).toBe('dran: Enrico');
+    expect(choreTurnLabel(chore({ assignment: rotating }), today, withoutTrips(members))).toBe(
+      'dran: Enrico',
+    );
   });
 
   it('AC-017: "Fenster putzen" together keeps both avatars and no turn label', () => {
     const windows = chore({ title: 'Fenster putzen', assignment: { type: 'together' } });
-    expect(choreMemberIds(windows, members)).toEqual([enrico.id, nadja.id]);
-    expect(choreTurnLabel(windows, members)).toBeUndefined();
-    expect(choreTurnLabel(chore(), members)).toBeUndefined();
+    expect(choreMemberIds(windows, today, withoutTrips(members))).toEqual([enrico.id, nadja.id]);
+    expect(choreTurnLabel(windows, today, withoutTrips(members))).toBeUndefined();
+    expect(choreTurnLabel(chore(), today, withoutTrips(members))).toBeUndefined();
   });
 
   it('AC-016: an empty rotation shows nobody', () => {
     const empty = chore({ assignment: { type: 'rotating', memberIds: [] } });
-    expect(choreMemberIds(empty, members)).toEqual([]);
-    expect(choreTurnLabel(empty, members)).toBeUndefined();
+    expect(choreMemberIds(empty, today, withoutTrips(members))).toEqual([]);
+    expect(choreTurnLabel(empty, today, withoutTrips(members))).toBeUndefined();
   });
 });
 
@@ -317,12 +339,12 @@ describe('AC-043/AC-044: rhythm "bei Bedarf"', () => {
   });
 
   it('AC-043: is never due, has its own bucket and the label "bei Bedarf"', () => {
-    expect(choreBucket(window, today)).toBe('asNeeded');
+    expect(choreBucket(window, today, home)).toBe('asNeeded');
     // Even a stray date (the database forbids it) does not make it due.
-    expect(choreBucket({ ...window, nextDueOn: today }, today)).toBe('asNeeded');
-    expect(choreBucket({ ...window, activeMonths: [4] }, today)).toBe('asNeeded');
+    expect(choreBucket({ ...window, nextDueOn: today }, today, home)).toBe('asNeeded');
+    expect(choreBucket({ ...window, activeMonths: [4] }, today, home)).toBe('asNeeded');
     expect(recurrenceLabel({ type: 'asNeeded' })).toBe('bei Bedarf');
-    expect(daysOverdue({ ...window, nextDueOn: '2026-11-01' }, today)).toBe(0);
+    expect(daysOverdue({ ...window, nextDueOn: '2026-11-01' }, today, home)).toBe(0);
     expect(flexibleProgress(window, today)).toBe(0);
   });
 
@@ -359,17 +381,17 @@ describe('AC-051: firstDueOn (creating and changing the rhythm)', () => {
     expect(firstDueOn({ type: 'weekly', every: 1, weekdays: [] }, today)).toBe(today);
   });
 
-  it('every n months: n months after the last time, never before today', () => {
+  it('every n months: n months after the last time (else after today), never before today', () => {
     expect(firstDueOn({ type: 'everyMonths', every: 2 }, today, '2026-10-05')).toBe('2026-12-05');
     expect(firstDueOn({ type: 'everyMonths', every: 1 }, today, '2026-09-01')).toBe(today);
     expect(firstDueOn({ type: 'everyMonths', every: 1 }, today, today)).toBe('2026-12-20');
-    expect(firstDueOn({ type: 'everyMonths', every: 6 }, today)).toBe(today);
+    expect(firstDueOn({ type: 'everyMonths', every: 6 }, today)).toBe('2027-05-20');
   });
 
-  it('flexible: the interval after the last time; never done = due today', () => {
+  it('flexible: the interval after the last time, never done after today (decision 8)', () => {
     expect(firstDueOn({ type: 'flexible', everyDays: 14 }, today, '2026-11-10')).toBe('2026-11-24');
     expect(firstDueOn({ type: 'flexible', everyDays: 14 }, today, '2026-10-01')).toBe(today);
-    expect(firstDueOn({ type: 'flexible', everyDays: 14 }, today)).toBe(today);
+    expect(firstDueOn({ type: 'flexible', everyDays: 14 }, today)).toBe('2026-12-04');
   });
 
   it('"bei Bedarf" has no date, "einmalig" its own date', () => {
@@ -427,7 +449,7 @@ describe('completionOutcome', () => {
       doneBy: enrico.id,
     });
     expect(outcome.nextDueOn).toBe('2026-11-27');
-    expect(choreBucket({ ...bath, ...outcome }, today)).not.toBe('today');
+    expect(choreBucket({ ...bath, ...outcome }, today, home)).not.toBe('today');
   });
 
   it('AC-040: a new "etwa alle 14 Tage", "abwechselnd" chore done by Enrico: 4 Dec, Nadja', () => {
@@ -639,5 +661,98 @@ describe('AC-031: someone else was faster', () => {
   it('leaves the time out when it cannot be read', () => {
     expect(fasterNotice('Nadja', 'kaputt')).toBe('Nadja war schneller');
     expect(fasterNotice('Nadja', undefined)).toBe('Nadja war schneller');
+  });
+});
+
+// ---------- Spec 0026, REQ-007: backfilling 30 days, moving an entry ----------
+
+describe('spec 0026, REQ-007: Nachtragen and „Datum ändern“', () => {
+  const sunday = '2026-11-22';
+
+  it('AC-019: booked for Sa 14.11., „Fenster Wohnzimmer“ (every 2 months, due Fr 20.11.) is next due Mi 20.1.2027', () => {
+    const window = chore({
+      title: 'Fenster Wohnzimmer',
+      recurrence: { type: 'everyMonths', every: 2 },
+      nextDueOn: '2026-11-20',
+    });
+    expect(
+      completionOutcome(window, { kind: 'done', doneOn: '2026-11-14', doneBy: enrico.id }),
+    ).toMatchObject({ nextDueOn: '2027-01-20', lastDoneOn: '2026-11-14' });
+  });
+
+  it('AC-020: Fr 23.10. is the earliest day, today the latest', () => {
+    expect(isBackfillDay('2026-10-23', sunday)).toBe(true);
+    expect(isBackfillDay('2026-10-22', sunday)).toBe(false);
+    expect(isBackfillDay(sunday, sunday)).toBe(true);
+    expect(isBackfillDay('2026-11-23', sunday)).toBe(false);
+  });
+
+  const sheets = chore({
+    id: 'bett',
+    title: 'Bettwäsche wechseln',
+    recurrence: { type: 'flexible', everyDays: 14 },
+    assignment: { type: 'anyone' },
+    nextDueOn: '2026-12-04',
+    lastDoneOn: '2026-11-20',
+  });
+  const latest = event({
+    id: 'neu',
+    choreId: 'bett',
+    doneOn: '2026-11-20',
+    doneBy: nadja.id,
+    createdAt: '2026-11-20T10:00:00Z',
+    previous: { nextDueOn: '2026-11-20', lastDoneOn: '2026-11-06' },
+  });
+  const older = event({
+    id: 'alt',
+    choreId: 'bett',
+    doneOn: '2026-11-06',
+    createdAt: '2026-11-06T10:00:00Z',
+    previous: { nextDueOn: '2026-11-06', lastDoneOn: '2026-10-23' },
+  });
+
+  it('AC-021: the latest entry moved to Mi 18.11.: next etwa Mi 2.12., last Mi 18.11.', () => {
+    expect(
+      dayChangeOutcome({
+        chore: sheets,
+        events: [older, latest],
+        eventId: 'neu',
+        doneOn: '2026-11-18',
+      }),
+    ).toEqual({ nextDueOn: '2026-12-02', lastDoneOn: '2026-11-18' });
+  });
+
+  it('AC-022: an older entry only changes its own day', () => {
+    expect(
+      dayChangeOutcome({
+        chore: sheets,
+        events: [older, latest],
+        eventId: 'alt',
+        doneOn: '2026-11-05',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('a deleted chore or an entry without a recorded state changes only the day', () => {
+    expect(
+      dayChangeOutcome({
+        chore: undefined,
+        events: [latest],
+        eventId: 'neu',
+        doneOn: '2026-11-18',
+      }),
+    ).toBeUndefined();
+    const seeded = { ...latest, previous: undefined };
+    expect(
+      dayChangeOutcome({ chore: sheets, events: [seeded], eventId: 'neu', doneOn: '2026-11-18' }),
+    ).toBeUndefined();
+  });
+
+  it('a skipped latest entry moves only the date; the last time stays', () => {
+    const skipped = { ...latest, kind: 'skipped' as const };
+    const weekly = chore({ id: 'bett', nextDueOn: '2026-11-27', lastDoneOn: '2026-11-13' });
+    expect(
+      dayChangeOutcome({ chore: weekly, events: [skipped], eventId: 'neu', doneOn: '2026-11-18' }),
+    ).toEqual({ nextDueOn: '2026-11-27', lastDoneOn: '2026-11-13' });
   });
 });

@@ -89,7 +89,7 @@ where household_id = tests.fx('home');
 -- ===================== Daily summary (AC-015 to AC-018) =====================
 select is(
   tests.body('2026-11-20 07:30', 'E', 'daily_summary'),
-  'Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Für morgen: Kichererbsen einweichen',
+  'Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Vorbereiten: Kichererbsen einweichen (bis ca. 23 Uhr)',
   'AC-015 daily summary: Enrico''s text at 7:30');
 select is(tests.body('2026-11-20 07:25', 'E', 'daily_summary'), null,
   'AC-015 daily summary: the 7:25 tick sends nothing yet');
@@ -103,7 +103,7 @@ select is(
   'Decisions 6, 12, 13 daily summary: title, unique key, due time, expiry at midnight and the link to the Übersicht');
 select is(
   tests.body('2026-11-20 07:30', 'N', 'daily_summary'),
-  'Heute: Bouldern (Vormittag) · Fenster Wohnzimmer (du, überfällig)',
+  'Heute: Bouldern (Vormittag) · Fenster Wohnzimmer (du, fällig seit 2 Tagen)',
   'AC-016, AC-018 daily summary: Nadja gets only her part, the overdue window included');
 select is(
   (select array_agg(distinct c.tick order by c.tick) from tests.c_between('2026-11-20 07:00', '2026-11-20 08:30', '5 minutes') c
@@ -137,8 +137,8 @@ update public.notification_settings set daily_summary_enabled = true where membe
 -- overdue chore; leftovers and free text on Sunday with a chore at a time and an "anyone" chore.
 select is(
   tests.body('2026-11-21 07:30', 'E', 'daily_summary'),
-  'Heute: Eislaufen (Hohenschönhausen, Vormittag) · Hummus (Mittag, du kochst) · Trattoria Da Enzo (Abend, 19:30) · Bad putzen (du, überfällig)',
-  'Decision 11 daily summary: activity with Zusatz, cook, reservation time and an overdue chore, in the order of the day');
+  'Heute: Eislaufen (Hohenschönhausen, Vormittag) · Hummus (Mittag, du kochst) · Trattoria Da Enzo (Abend, 19:30) · Bad putzen (du, fällig seit gestern) · Vorbereiten: Kichererbsen einweichen (schon fällig)',
+  'Decision 11 daily summary: activity with Zusatz, cook, reservation time and an overdue chore, in the order of the day; spec 0020 AC-031: the missed soaking is "schon fällig"');
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id, text, eater_ids, sort)
 values (tests.fx('home'), '2026-11-22', tests.fx('s_mittag'), 'leftovers', tests.fx('r_lasagne'), tests.fx('e_lasagne'), null, '{}', 0),
        (tests.fx('home'), '2026-11-22', tests.fx('s_morgen'), 'text', null, null, 'Pfannkuchen', '{}', 0);
@@ -148,7 +148,7 @@ values (tests.fx('c_blumen'), tests.fx('home'), 'Blumen gießen', '{"type": "wee
 update public.chores set next_due_on = '2026-11-29' where id = tests.fx('c_bad');
 select is(
   tests.body('2026-11-22 07:30', 'N', 'daily_summary'),
-  'Heute: Pfannkuchen (Frühstück) · Reste: Lasagne (Mittag) · Fenster Wohnzimmer (du, überfällig) · Blumen gießen',
+  'Heute: Pfannkuchen (Frühstück) · Reste: Lasagne (Mittag) · Fenster Wohnzimmer (du, fällig seit 4 Tagen) · Blumen gießen',
   'Decision 11 daily summary: free text, leftovers, overdue first (without its time), "anyone" without "du", not someone else''s turn');
 select is(
   tests.body('2026-11-22 07:30', 'E', 'daily_summary'),
@@ -388,11 +388,12 @@ select is(
 select is(
   (select string_agg(distinct c.kind, ',' order by c.kind) from tests.c_between('2026-11-21 00:00', '2026-11-23 00:00') c
    where c.who = 'N'),
-  'daily_summary,entry_reminder',
-  'AC-035 silent: Nadja gets her messages as usual');
+  'chore_reminder,daily_summary,entry_reminder',
+  'AC-035 silent: Nadja gets her messages as usual (spec 0026: also the turn she stands in for)');
 select is(
-  (select count(*)::int from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'), 0,
-  'AC-035 silent: Enrico''s turn at "Müll rausbringen" is not handed to Nadja');
+  (select string_agg(c.who || ': ' || c.body, ' | ') from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'),
+  'N: Müll rausbringen · 19:00 · du bist dran',
+  'spec 0026 AC-054 (replaces spec 0013, AC-023 here): Enrico is away, Nadja stands in for "Müll rausbringen"');
 insert into public.trip_members (household_id, trip_id, member_id)
 values (tests.fx('home'), tests.fx('away'), tests.fx('nadja'));
 select is(

@@ -149,11 +149,26 @@ export function withTime(title: string, time: TimeOfDay | undefined): string {
   return time === undefined ? title : `${title} · ${formatTime(time)}`;
 }
 
-/** Under "Uhrzeit" of a chore: whether the own setting reminds (AC-022, Offene Frage 3 d). */
-export function choreTimeHint(choreRemindersEnabled: boolean): string {
-  return choreRemindersEnabled
-    ? 'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)'
-    : 'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus';
+const OWN_CHORE_REMINDERS_OFF =
+  'Du selbst bekommst keine: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus.';
+
+/**
+ * Under „Erinnern“ of a chore with a time (spec 0027, REQ-009): whether the scheduler reminds
+ * whoever is up, and, when it does, that the own setting „Aufgaben mit Uhrzeit“ keeps it from
+ * you (AC-035, AC-037). Switched off it reminds nobody, so the own setting says nothing more.
+ */
+export function choreRemindHint(remindAtDueTime: boolean, choreRemindersEnabled: boolean): string {
+  if (!remindAtDueTime) return 'Keine Erinnerung – die Uhrzeit wird nur angezeigt.';
+  const reminds = 'Erinnert zur Uhrzeit, wer dran ist.';
+  return choreRemindersEnabled ? reminds : `${reminds} ${OWN_CHORE_REMINDERS_OFF}`;
+}
+
+/**
+ * „Erinnern“ as it is saved (spec 0027, AC-038): only a chore with a time can be silent; without
+ * one it is on, so a time chosen later reminds again (check `chores_remind_needs_time`).
+ */
+export function remindAtDueTimeFor(dueTime: TimeOfDay | undefined, remind: boolean): boolean {
+  return dueTime === undefined || remind;
 }
 
 /**

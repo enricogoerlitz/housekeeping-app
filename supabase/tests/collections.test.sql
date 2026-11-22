@@ -372,9 +372,9 @@ select is(
 select is(tests.links('sommerbuffet'), (select doc from before_contents where k = 'sommerbuffet'),
   'AC-032 delete_recipe: other collections are untouched');
 select is(
-  (select jsonb_agg(x order by x ->> 'sort') from private.recipe_deletions d,
+  (select jsonb_agg(x order by x ->> 'sort') from private.deletions d,
           jsonb_array_elements(d.snapshot -> 'collection_recipes') x
-   where d.recipe_id = tests.fx('grillabend')),
+   where d.target_id = tests.fx('grillabend')),
   (select jsonb_agg(doc order by doc ->> 'sort') from before_links where collection_id = tests.fx('grillabend')),
   'E11 delete_recipe: the snapshot holds the collection''s rows in full');
 select tests.authenticate_as(tests.fx('enrico'));
@@ -469,7 +469,7 @@ select tests.clear_authentication();
 select is(
   jsonb_build_object(
     'grillgemuese', (select count(*)::int from public.recipes where id = tests.fx('grillgemuese')),
-    'snapshot', (select count(*)::int from private.recipe_deletions where recipe_id = tests.fx('grillgemuese'))),
+    'snapshot', (select count(*)::int from private.deletions where target_id = tests.fx('grillgemuese'))),
   '{"grillgemuese": 0, "snapshot": 1}'::jsonb,
   'T10 restore_recipe: … nothing is restored halfway and the snapshot stays');
 select tests.authenticate_as(tests.fx('ben'));
@@ -496,7 +496,7 @@ select tests.clear_authentication();
 select is(
   jsonb_build_object(
     'tzatziki', (select count(*)::int from public.recipes where id = tests.fx('tzatziki')),
-    'snapshot', (select count(*)::int from private.recipe_deletions where recipe_id = tests.fx('tzatziki')),
+    'snapshot', (select count(*)::int from private.deletions where target_id = tests.fx('tzatziki')),
     'gross', jsonb_array_length(tests.links('gross'))),
   '{"tzatziki": 0, "snapshot": 1, "gross": 50}'::jsonb,
   'E15 restore_recipe: … nothing is restored halfway and the snapshot stays');

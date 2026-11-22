@@ -15,6 +15,7 @@ export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
+export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notifications';
 export * from './assistant';
@@ -28,8 +29,10 @@ export {
   preparePhoto,
   removeActivityPhoto,
   removeRecipePhoto,
+  removeRestaurantPhoto,
   setActivityPhoto,
   setRecipePhoto,
+  setRestaurantPhoto,
   usePhoto,
 } from './photos-remote';
 export { snapshot, OfflineError, type HouseholdData, type AppState } from './store';

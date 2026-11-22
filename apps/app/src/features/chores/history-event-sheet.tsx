@@ -1,11 +1,13 @@
 import {
+  changeChoreEventDay,
   reassignChoreEvent,
   removeChoreEvent,
   snapshot,
   useChores,
   useMembers,
+  useToday,
 } from '@housekeeping/api';
-import type { ChoreEvent } from '@housekeeping/core';
+import { addDays, BACKFILL_DAYS, type ChoreEvent } from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -18,9 +20,10 @@ import {
   Text,
   toast,
 } from '@housekeeping/ui';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { dayWithDate } from './chore-labels';
 
@@ -31,14 +34,17 @@ interface HistoryEventProps {
 
 /**
  * One history entry (AC-059 to AC-061): „Erledigt von“ changes who did it — for the latest entry
- * of a chore this also hands the turn on —, „Eintrag entfernen“ takes it back; for the latest
- * entry the chore is due again as before. Both need the network.
+ * of a chore this also hands the turn on —, „Datum ändern“ moves it up to 30 days back — for the
+ * latest entry date and last time follow (spec 0026, REQ-007) —, „Eintrag entfernen“ takes it
+ * back; for the latest entry the chore is due again as before. All need the network.
  */
 function useHistoryEvent(props: HistoryEventProps): { title: string; body: ReactNode } {
   const { event } = props;
   const members = useMembers();
   const chores = useChores();
   const online = useOnlineOnly();
+  const today = useToday();
+  const [picking, setPicking] = useState(false);
   const choreExists = chores.some((chore) => chore.id === event.choreId);
 
   const remove = () => {
@@ -59,7 +65,8 @@ function useHistoryEvent(props: HistoryEventProps): { title: string; body: React
     body: (
       <Stack gap={16}>
         <Text color="muted" testID="history-event-day">
-          {event.kind === 'skipped' ? 'Übersprungen am' : 'Erledigt am'} {dayWithDate(event.doneOn)}
+          {event.kind === 'skipped' ? 'Übersprungen am' : 'Erledigt am'}{' '}
+          {dayWithDate(event.doneOn, today)}
           {choreExists ? '' : ' · Aufgabe gelöscht'}
         </Text>
         <Stack gap={8}>
@@ -81,6 +88,30 @@ function useHistoryEvent(props: HistoryEventProps): { title: string; body: React
               />
             ))}
           </Row>
+        </Stack>
+        <Stack gap={8}>
+          <Button
+            label="Datum ändern"
+            icon="calendar-days"
+            variant="secondary"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => setPicking((current) => !current)}
+            testID="history-event-day-change"
+          />
+          {picking && !online.disabled ? (
+            <PlanDateCalendar
+              month={event.doneOn}
+              today={today}
+              marked={event.doneOn}
+              isDisabled={(date) => date > today || date < addDays(today, -BACKFILL_DAYS)}
+              onSelect={(date) => {
+                setPicking(false);
+                if (date !== event.doneOn) changeChoreEventDay(event.id, date);
+              }}
+              testID="history-event-calendar"
+            />
+          ) : null}
         </Stack>
         {online.hint ? (
           <Notice icon="wifi-off" text={online.hint} testID="history-event-offline" />

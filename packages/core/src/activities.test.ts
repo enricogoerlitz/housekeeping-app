@@ -5,7 +5,6 @@ import type { Activity } from './types';
 
 function activity(partial: Partial<Activity> & Pick<Activity, 'id' | 'name'>): Activity {
   return {
-    tags: [],
     favoriteOf: [],
     ratings: {},
     createdAt: '2026-11-01T12:00:00.000Z',

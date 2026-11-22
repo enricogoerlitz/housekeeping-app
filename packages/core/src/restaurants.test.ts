@@ -110,7 +110,6 @@ describe('routeLinks', () => {
       name: 'Eislaufen',
       placeName: 'Eisstadion Hohenschönhausen',
       location: { lat: 52.55, lng: 13.5 },
-      tags: [],
       favoriteOf: [],
       ratings: {},
       createdAt: '2026-11-01T12:00:00.000Z',
@@ -197,7 +196,7 @@ describe('restaurantVisits', () => {
       visit('c', '2026-09-20'),
       visit('future', '2026-11-25'),
       visit('unplanned', null),
-      visit('skipped', '2026-11-15', { notCooked: true }),
+      visit('skipped', '2026-11-15', { notDone: true }),
       visit('other', '2026-11-19', { restaurantId: 'rest-enzo' }),
       visit('recipe', '2026-11-19', { kind: 'recipe', restaurantId: undefined }),
     ];

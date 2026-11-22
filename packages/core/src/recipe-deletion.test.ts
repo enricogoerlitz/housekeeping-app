@@ -32,7 +32,7 @@ const today = '2026-11-20';
 
 describe('deleting a recipe (REQ-012, E3)', () => {
   const monday = entry({ id: 'mon' });
-  const todays = entry({ id: 'today', date: today, notCooked: true });
+  const todays = entry({ id: 'today', date: today, notDone: true });
   const saturday = entry({ id: 'sat', date: '2026-11-21' });
   const planned = entry({ id: 'planned', date: null });
   const leftovers = entry({
@@ -63,7 +63,7 @@ describe('deleting a recipe (REQ-012, E3)', () => {
       variants: [],
       text: 'Halloumi-Pfanne',
     });
-    expect(now).toMatchObject({ kind: 'text', text: 'Halloumi-Pfanne', notCooked: true });
+    expect(now).toMatchObject({ kind: 'text', text: 'Halloumi-Pfanne', notDone: true });
     expect(rest).toMatchObject({
       kind: 'text',
       recipeId: undefined,

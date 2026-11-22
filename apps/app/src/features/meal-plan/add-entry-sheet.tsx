@@ -81,9 +81,13 @@ import {
   useActivityForm,
 } from '@/features/activities/activity-form';
 import { activityPlaceLine } from '@/features/activities/labels';
-import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { DEFAULT_SERVINGS, NewRecipeFields } from '@/features/recipes/recipe-form';
-import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/restaurant-form';
+import {
+  RestaurantFormFields,
+  saveRestaurantPhoto,
+  useRestaurantForm,
+} from '@/features/restaurants/restaurant-form';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { addSheetTitle, dayLabel } from './labels';
@@ -512,7 +516,9 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     const draft = await restaurantForm.submit();
     if (!draft) return;
     try {
-      createAndPlanRestaurant(draft, planSlot());
+      const { restaurantId } = createAndPlanRestaurant(draft, planSlot());
+      // Spec 0024, REQ-001: the same fields as "Restaurant hinzufügen", the photo included.
+      saveRestaurantPhoto(restaurantId, restaurantForm.photo);
     } catch (caught) {
       restaurantForm.fail(caught);
       return;

@@ -14,8 +14,8 @@ import { useTripWindow } from '@/features/trips/trip-window';
 
 /**
  * The cards "Reisetasche" at the bottom of the Übersicht (spec 0012, REQ-009, D33): one per
- * packing list whose trip has a day in the shown week or starts 1 to 7 days after the shown
- * day, earliest first (AC-042, AC-043, AC-045). Bar, "12/30 gepackt ›" or "alles gepackt ✓"
+ * packing list whose trip has a day in the Abschnitt of the shown day (spec 0020, REQ-010) or
+ * starts 1 to 7 days after the shown day, earliest first (AC-042, AC-043, AC-045). Bar, "12/30 gepackt ›" or "alles gepackt ✓"
  * (AC-044), and "beginnt in 12 Tagen" counted from today (spec 0018, AC-020). A tap opens the
  * trip. Read from the cache only, so it shows offline too.
  */

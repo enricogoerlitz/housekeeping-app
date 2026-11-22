@@ -175,13 +175,13 @@ describe('activities in the plan', () => {
     });
   });
 
-  it('an activity in the plan cannot be planned away by a delete of the activity (restrict)', async () => {
+  it('AC-038: an activity is never deleted through apply_changes, only by delete_activity', async () => {
     await fx.startEnrico();
     await expect(
       fx.server
         .transport(ENRICO)
         .applyChanges(H, [{ kind: 'delete', table: 'activities', id: 'act-bouldern' }]),
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toMatchObject({ code: 'invalid_change' });
   });
 });
 
@@ -249,7 +249,7 @@ describe('create while planning: one apply_changes call each (REQ-008)', () => {
     expect(getData()).toBe(before);
   });
 
-  it('undo of create-and-plan removes both again, entry first', async () => {
+  it('undo of create-and-plan removes the entry; the activity stays (no delete, spec 0024)', async () => {
     await fx.startEnrico();
     const restore = snapshot();
     const { activityId, entryId } = createAndPlanActivity(
@@ -259,11 +259,9 @@ describe('create while planning: one apply_changes call each (REQ-008)', () => {
     await fx.settle();
     restore();
     await fx.settle();
-    expect(opsOf(1)).toEqual([
-      { kind: 'delete', table: 'meal_plan_entries', id: entryId },
-      { kind: 'delete', table: 'activities', id: activityId },
-    ]);
-    expect(fx.server.row(H, 'activities', activityId)).toBeUndefined();
+    expect(opsOf(1)).toEqual([{ kind: 'delete', table: 'meal_plan_entries', id: entryId }]);
+    expect(fx.server.row(H, 'meal_plan_entries', entryId)).toBeUndefined();
+    expect(fx.server.row(H, 'activities', activityId)).toBeDefined();
   });
 });
 
@@ -290,7 +288,6 @@ describe('activity commands: input and local effect', () => {
       name: 'Klettern im Wald',
       description: undefined,
       placeName: 'Hochseilgarten',
-      tags: [],
       favoriteOf: [],
       ratings: {},
       createdBy: NADJA,

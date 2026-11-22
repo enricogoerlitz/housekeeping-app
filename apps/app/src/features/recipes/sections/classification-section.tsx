@@ -262,7 +262,7 @@ function Field(props: { label: string; error?: string; children: ReactNode }) {
 }
 
 /** "Suchen oder anlegen" over existing values: a hit or „…“ neu anlegen (AC-024). */
-function ValuePicker(props: {
+export function ValuePicker(props: {
   label: string;
   placeholder: string;
   values: readonly string[];

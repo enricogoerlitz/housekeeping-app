@@ -1,46 +1,35 @@
 import {
   useActivitiesById,
   useMembersById,
-  usePhoto,
   usePlanEntries,
   useRecipesById,
   useRestaurantsById,
 } from '@housekeeping/api';
 import {
+  entryKindRole,
   formatLongDate,
   plannedAllLabel,
-  withNote,
   withTime,
   type Activity,
   type ISODate,
   type MealPlanEntry,
   type Recipe,
 } from '@housekeeping/core';
-import {
-  Avatar,
-  Badge,
-  Button,
-  Icon,
-  Photo,
-  PhotoCollage,
-  Row,
-  Section,
-  Surface,
-  Text,
-  useTheme,
-  type IconName,
-} from '@housekeeping/ui';
+import { Avatar, Badge, Button, Row, Section, Surface, Text, useTheme } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
 import { useOpenActivity } from '@/features/activities/navigation';
+import { EntryPicture } from '@/features/meal-plan/entry-picture';
+import { kindBadge } from '@/features/meal-plan/kind-badges';
 import { useOpenRecipe } from '@/features/recipes/navigation';
-import { useCoverSources } from '@/features/recipes/recipe-cover';
 import { entryTime } from '@/features/meal-plan/labels';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
+import { useOnlineOnly } from '@/features/shell/offline';
 
+import { plannedTitle } from './planned-title';
 import { useOpenCalendarAt } from './today-header';
 
 export interface TodayMealsProps {
@@ -49,19 +38,12 @@ export interface TodayMealsProps {
   title: string;
   /** The shown day's plan entries in the order of the day (Tageszeit, then kind). */
   entries: MealPlanEntry[];
-  /** Plan entries of the day after the shown one, for the lead-time hints (AC-014). */
-  nextDayEntries: MealPlanEntry[];
   slotNames: Record<string, string>;
+  /** "Hinzufügen" of an empty day: the add window for the shown day (spec 0020, REQ-005). */
+  onAdd: () => void;
   /** Phone: one row to swipe sideways (D7); wider: a grid with 16:10 photos (AC-010). */
   grid: boolean;
 }
-
-const BADGES = {
-  recipe: { label: 'Rezept', icon: 'cooking-pot' },
-  collection: { label: 'Sammlung', icon: 'layers' },
-  restaurant: { label: 'Restaurant', icon: 'utensils' },
-  activity: { label: 'Aktivität', icon: 'mountain' },
-} as const;
 
 /** Phone cards keep one width, so the third of three is cut at the edge (AC-010). */
 const PHONE_CARD_WIDTH = 156;
@@ -82,20 +64,16 @@ function gridRows(entries: MealPlanEntry[]): MealPlanEntry[][] {
  * none, it may be anything. A planned collection reads "Sammlung" (AC-012, spec 0009 AC-022).
  */
 function badgeFor(entry: MealPlanEntry, collection: boolean) {
-  const kind =
-    entry.kind === 'leftovers'
-      ? 'recipe'
-      : collection && entry.kind === 'recipe'
-        ? 'collection'
-        : entry.kind;
-  return kind === 'text' ? undefined : { ...BADGES[kind], testID: `today-badge-${entry.id}` };
+  if (entry.kind === 'text') return undefined;
+  const role = collection && entry.kind === 'recipe' ? 'collection' : entryKindRole(entry, {});
+  return { ...kindBadge(role), testID: `today-badge-${entry.id}` };
 }
 
 /**
  * "Heute geplant" / "Geplant am Samstag" (spec 0011, REQ-002): everything planned for the shown
  * day in the order of the day, each card with kind, Tageszeit, Zusatz, cook and "Route"; from four
- * entries "Alle n ›" opens the day in the calendar (AC-011), an empty day "Im Kalender planen ›"
- * (AC-013). Below: "Für morgen" for the day after the shown one (AC-014).
+ * entries "Alle n ›" opens the day in the calendar (AC-011). An empty day reads "Nichts geplant"
+ * with "Hinzufügen" (spec 0020, REQ-005, AC-022), online only.
  */
 export function TodayMeals(props: TodayMealsProps) {
   const theme = useTheme();
@@ -106,14 +84,12 @@ export function TodayMeals(props: TodayMealsProps) {
   const openRestaurant = useOpenRestaurant();
   const openActivity = useOpenActivity();
   const openCalendarAt = useOpenCalendarAt();
+  const online = useOnlineOnly();
+  const planEntries = usePlanEntries();
   const [routeFor, setRouteFor] = useState<RouteTarget | undefined>();
   const allLabel = plannedAllLabel(props.entries.length);
-
-  const prep = props.nextDayEntries.flatMap((entry) => {
-    const recipe =
-      entry.recipeId && entry.kind === 'recipe' ? recipesById[entry.recipeId] : undefined;
-    return recipe?.leadTime ? [{ entry, recipe, leadTime: recipe.leadTime }] : [];
-  });
+  const titleOf = (entry: MealPlanEntry) =>
+    plannedTitle(entry, recipesById, planEntries, restaurantsById, activitiesById);
 
   const card = (entry: MealPlanEntry) => {
     const slotName = props.slotNames[entry.slotId] ?? '';
@@ -129,9 +105,8 @@ export function TodayMeals(props: TodayMealsProps) {
           entry={entry}
           // "Vormittag · 10:30": the time of a restaurant or activity (spec 0021, AC-035).
           kicker={withTime(slotName, entryTime(entry))}
-          title={restaurant.name}
+          title={titleOf(entry)}
           meta={restaurant.cuisine}
-          placeholderIcon="utensils"
           onPress={() => openRestaurant(restaurant.id)}
           corner={<RouteButton entryId={entry.id} onPress={() => setRouteFor(restaurant)} />}
         />
@@ -142,6 +117,7 @@ export function TodayMeals(props: TodayMealsProps) {
         <ActivityCard
           entry={entry}
           activity={activity}
+          title={titleOf(entry)}
           slotName={slotName}
           onPress={activity ? () => openActivity(activity.id) : undefined}
           onRoute={
@@ -163,6 +139,7 @@ export function TodayMeals(props: TodayMealsProps) {
       <MealCard
         entry={entry}
         recipe={recipe}
+        title={titleOf(entry)}
         slotName={slotName}
         onPress={recipe ? () => openRecipe(recipe.id) : undefined}
       />
@@ -189,11 +166,14 @@ export function TodayMeals(props: TodayMealsProps) {
         <View testID="today-meals-empty" style={{ gap: 4, alignItems: 'flex-start' }}>
           <Text color="muted">Nichts geplant</Text>
           <Button
-            label="Im Kalender planen ›"
+            label="Hinzufügen"
+            icon="plus"
             variant="link"
             size="sm"
-            onPress={() => openCalendarAt(props.shown)}
-            testID="today-plan"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={props.onAdd}
+            testID="today-add"
           />
         </View>
       ) : props.grid ? (
@@ -230,20 +210,6 @@ export function TodayMeals(props: TodayMealsProps) {
           ))}
         </ScrollView>
       )}
-      {prep.length > 0 ? (
-        <View testID="today-prep" style={{ marginTop: 14, gap: 6 }}>
-          {prep.map((item) => (
-            <Row key={item.entry.id} gap={8} align="flex-start">
-              <Icon name="alarm-clock" size={18} color="accent" />
-              <Text style={{ flex: 1 }} testID={`today-prep-${item.entry.id}`}>
-                <Text variant="bodyStrong">Für morgen: </Text>
-                {item.leadTime.text} ({item.leadTime.hoursBefore} h)
-                <Text color="muted"> · {item.recipe.title}</Text>
-              </Text>
-            </Row>
-          ))}
-        </View>
-      ) : null}
       {routeFor ? (
         <RouteSheet restaurant={routeFor} visible onClose={() => setRouteFor(undefined)} />
       ) : null}
@@ -261,10 +227,6 @@ function PlannedCard(props: {
   kicker: string;
   title: string;
   meta?: ReactNode;
-  image?: number | { uri: string };
-  /** A recipe's or collection's cover (spec 0009, E14): one photo, a collage or none. */
-  images?: readonly (number | { uri: string })[];
-  placeholderIcon: IconName;
   /** A planned collection: Kennzeichen "Sammlung". */
   collection?: boolean;
   onPress?: () => void;
@@ -275,21 +237,7 @@ function PlannedCard(props: {
   const content = (
     <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
       <View>
-        {props.images ? (
-          <PhotoCollage
-            sources={props.images}
-            placeholderIcon={props.placeholderIcon}
-            aspectRatio={PHOTO_RATIO}
-            radius={0}
-          />
-        ) : (
-          <Photo
-            source={props.image}
-            placeholderIcon={props.placeholderIcon}
-            aspectRatio={PHOTO_RATIO}
-            radius={0}
-          />
-        )}
+        <EntryPicture entry={props.entry} aspectRatio={PHOTO_RATIO} radius={0} />
         {badge ? (
           <View style={{ position: 'absolute', bottom: 8, left: 8 }}>
             <Badge label={badge.label} icon={badge.icon} testID={badge.testID} />
@@ -365,21 +313,19 @@ function RouteButton(props: { entryId: string; onPress: () => void }) {
 function ActivityCard(props: {
   entry: MealPlanEntry;
   activity?: Activity;
+  title: string;
   slotName: string;
   onPress?: () => void;
   /** Only when the activity has a place. */
   onRoute?: () => void;
 }) {
   const { entry, activity } = props;
-  const photo = usePhoto(activity?.photoPath);
   return (
     <PlannedCard
       entry={entry}
       kicker={props.slotName}
-      title={withNote(activity?.name ?? entry.text ?? 'Aktivität', entry.note)}
+      title={props.title}
       meta={activity?.placeName ?? activity?.address}
-      image={photo.uri ? { uri: photo.uri } : undefined}
-      placeholderIcon="mountain"
       onPress={props.onPress}
       corner={
         props.onRoute ? <RouteButton entryId={entry.id} onPress={props.onRoute} /> : undefined
@@ -391,13 +337,13 @@ function ActivityCard(props: {
 function MealCard(props: {
   entry: MealPlanEntry;
   recipe?: Recipe;
+  title: string;
   slotName: string;
   onPress?: () => void;
 }) {
   const { entry, recipe } = props;
   const membersById = useMembersById();
   const planEntries = usePlanEntries();
-  const images = useCoverSources(recipe);
   const collection = recipe?.kind === 'collection';
   const cook = entry.cookId ? membersById[entry.cookId] : undefined;
   const leftovers = entry.kind === 'leftovers';
@@ -426,10 +372,8 @@ function MealCard(props: {
     <PlannedCard
       entry={entry}
       kicker={kicker}
-      title={recipe?.title ?? entry.text ?? 'Essen'}
+      title={props.title}
       meta={meta}
-      images={images}
-      placeholderIcon={collection ? 'layers' : 'utensils'}
       collection={collection}
       onPress={props.onPress}
     />

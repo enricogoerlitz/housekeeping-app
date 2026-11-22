@@ -1,6 +1,6 @@
 -- Deleting a recipe and "Rückgängig" (spec 0008, REQ-012, plan E1–E6): delete_recipe turns the
 -- recipe's plan entries up to today into free text and removes the later and the "vorgemerkt"
--- ones, keeps a server-side snapshot in private.recipe_deletions, and restore_recipe brings
+-- ones, keeps a server-side snapshot in private.deletions, and restore_recipe brings
 -- everything back for the person who deleted, within 1 hour. Recipes are deleted only through
 -- delete_recipe (no delete grant, apply_changes refuses). Covers AC-043, AC-044, AC-045 (server),
 -- AC-021 (foreign household) and the negative tests of the risk table in plan.md.
@@ -76,7 +76,7 @@ insert into public.recipe_favorites (household_id, recipe_id, member_id) values
   (tests.fx('home_a'), tests.fx('halloumi'), tests.fx('mia'));
 insert into public.meal_plan_entries
   (id, household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id, text, eater_ids, guests, portions,
-   variants, cook_id, sort, not_cooked) values
+   variants, cook_id, sort, not_done) values
   (tests.fx('e_past'), tests.fx('home_a'), current_date - 5, tests.fx('slot_abend'), 'recipe', tests.fx('halloumi'),
    null, null, array[tests.fx('enrico'), tests.fx('nadja'), tests.fx('mia')], 1, 4,
    '[{"variantId": "v1", "portions": 2}, {"variantId": "v2", "portions": 2}]', tests.fx('mia'), 0, false),
@@ -135,7 +135,7 @@ select throws_ok(
   format('select public.apply_changes(%L, %L)', tests.fx('home_a'),
          jsonb_build_array(jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('lasagne')))),
   '22023', 'invalid_change', 'E2 apply_changes: recipes cannot be deleted through apply_changes');
-select throws_ok('select * from private.recipe_deletions', '42501', null,
+select throws_ok('select * from private.deletions', '42501', null,
   'E4 recipe_deletions: authenticated cannot read the snapshots');
 select throws_ok(tests.delete_sql('halloumi', current_date - 2), '22023', 'invalid_value',
   'E3 delete_recipe: a device date two days back is rejected');
@@ -164,7 +164,7 @@ select tests.clear_authentication();
 select is(
   (select count(*)::int from public.recipes where id in (tests.fx('halloumi'), tests.fx('lasagne')))
   + (select count(*)::int from public.meal_plan_entries where recipe_id = tests.fx('halloumi') and kind <> 'text')
-  + (select count(*)::int from private.recipe_deletions),
+  + (select count(*)::int from private.deletions),
   2 + 5 + 0,
   'E3 delete_recipe: the refused calls changed nothing');
 
@@ -216,7 +216,7 @@ select ok(
   'E4 sync_pull: the snapshot never reaches a device');
 select tests.clear_authentication();
 select results_eq(
-  format($$ select household_id, deleted_by from private.recipe_deletions where recipe_id = %L $$, tests.fx('halloumi')),
+  format($$ select household_id, deleted_by from private.deletions where target_id = %L $$, tests.fx('halloumi')),
   format($$ values (%L::uuid, %L::uuid) $$, tests.fx('home_a'), tests.fx('enrico')),
   'E4 delete_recipe: one snapshot of the deleting person in the recipe''s household');
 
@@ -232,7 +232,7 @@ select throws_ok(tests.delete_sql('halloumi'), 'P0002', 'recipe_not_found',
 select tests.clear_authentication();
 select is(
   (select count(*)::int from public.recipes where id = tests.fx('halloumi'))
-  + (select count(*)::int from private.recipe_deletions where recipe_id = tests.fx('halloumi')),
+  + (select count(*)::int from private.deletions where target_id = tests.fx('halloumi')),
   1, 'E4 restore_recipe: the refused calls left the recipe deleted and the snapshot in place');
 select is(
   (select (select jsonb_agg(to_jsonb(r) order by r.id) from public.recipes r where r.household_id = tests.fx('home_b'))
@@ -269,7 +269,7 @@ select is(
   'AC-044 restore_recipe: the removed entries are back with all their values');
 select is((select created_at from public.recipes where id = tests.fx('halloumi')), '2026-01-15 09:00+00'::timestamptz,
   'AC-044 restore_recipe: the recipe keeps its original created_at');
-select is((select count(*)::int from private.recipe_deletions), 0, 'AC-044 restore_recipe: the snapshot is gone');
+select is((select count(*)::int from private.deletions), 0, 'AC-044 restore_recipe: the snapshot is gone');
 select tests.authenticate_as(tests.fx('enrico'));
 select public.apply_changes(tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
   'kind', 'insert', 'table', 'recipes', 'row', jsonb_build_object('id', tests.fx('later_recipe'), 'title', 'Neu'))));
@@ -346,8 +346,8 @@ select is(tests.entry('e_g_past_left') ->> 'leftovers_of_entry_id', tests.fx('e_
   'E3 delete_recipe: leftovers of a dish that becomes free text stay with it');
 select is(
   (select jsonb_agg(x - 'created_at' - 'updated_at' order by (x ->> 'id')::uuid)
-   from private.recipe_deletions d, jsonb_array_elements(d.snapshot -> 'removed') x
-   where d.recipe_id = tests.fx('gulasch')),
+   from private.deletions d, jsonb_array_elements(d.snapshot -> 'removed') x
+   where d.target_id = tests.fx('gulasch')),
   (select jsonb_agg(g.doc order by g.id) from gulasch_entries g
    where g.id in (tests.fx('e_g_future'), tests.fx('e_g_left'), tests.fx('e_g_chain'))),
   'E4 delete_recipe: the snapshot holds the removed leftovers in full');
@@ -366,7 +366,7 @@ select tests.authenticate_as(tests.fx('enrico'));
 select is((select public.delete_recipe(tests.fx('lasagne'), current_date)), '{"converted": 0, "removed": 1, "collections": 0}'::jsonb,
   'E3 delete_recipe: a recipe only planned in the future');
 select tests.clear_authentication();
-update private.recipe_deletions set deleted_at = now() - interval '61 minutes' where recipe_id = tests.fx('lasagne');
+update private.deletions set deleted_at = now() - interval '61 minutes' where target_id = tests.fx('lasagne');
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(tests.restore_sql('lasagne'), 'P0002', 'recipe_not_restorable',
   'E4 restore_recipe: a snapshot older than 1 hour is not restorable');
@@ -376,7 +376,7 @@ select is((select public.delete_recipe(tests.fx('curry'), current_date)), '{"con
   'E3 delete_recipe: a recipe without plan entries');
 select tests.clear_authentication();
 select results_eq(
-  'select recipe_id from private.recipe_deletions',
+  'select target_id from private.deletions',
   format($$ values (%L::uuid) $$, tests.fx('curry')),
   'E4 delete_recipe: deleting purges the household''s expired snapshots');
 
@@ -392,7 +392,7 @@ select is(
   (select count(*)::int from public.recipes where id = tests.fx('auflauf'))
   + (select count(*)::int from public.meal_plan_entries where id = tests.fx('e_auflauf')),
   0, 'E4 restore_recipe: … and nothing is restored halfway');
-select is((select count(*)::int from private.recipe_deletions where recipe_id = tests.fx('auflauf')), 1,
+select is((select count(*)::int from private.deletions where target_id = tests.fx('auflauf')), 1,
   'E4 restore_recipe: … and the snapshot stays');
 
 -- The recipe is back by other means: false, nothing changes; deleting again replaces the snapshot.
@@ -406,14 +406,14 @@ select is((select public.restore_recipe(tests.fx('risotto'))), false,
 select tests.clear_authentication();
 select results_eq(
   format($$ select r.title, d.snapshot -> 'recipe' ->> 'title' from public.recipes r
-            join private.recipe_deletions d on d.recipe_id = r.id where r.id = %L $$, tests.fx('risotto')),
+            join private.deletions d on d.target_id = r.id where r.id = %L $$, tests.fx('risotto')),
   $$ values ('Risotto neu', 'Risotto') $$,
   'E4 restore_recipe: … and changes nothing');
 select tests.authenticate_as(tests.fx('enrico'));
 select public.delete_recipe(tests.fx('risotto'), current_date);
 select tests.clear_authentication();
 select results_eq(
-  format($$ select snapshot -> 'recipe' ->> 'title' from private.recipe_deletions where recipe_id = %L $$,
+  format($$ select snapshot -> 'recipe' ->> 'title' from private.deletions where target_id = %L $$,
          tests.fx('risotto')),
   $$ values ('Risotto neu') $$,
   'E4 delete_recipe: deleting the same id again replaces the snapshot');
@@ -434,7 +434,7 @@ select throws_ok(tests.restore_sql('squat'), 'P0002', 'recipe_not_restorable',
 select tests.clear_authentication();
 select results_eq(
   format($$ select r.household_id, r.title, (select count(*)::int from public.meal_plan_entries where id = %L),
-                   (select count(*)::int from private.recipe_deletions where recipe_id = %L)
+                   (select count(*)::int from private.deletions where target_id = %L)
             from public.recipes r where r.id = %L $$, tests.fx('e_squat'), tests.fx('squat'), tests.fx('squat')),
   format($$ values (%L::uuid, 'Besetzt', 0, 1) $$, tests.fx('home_b')),
   'E4 restore_recipe: … the other household''s recipe stays, nothing comes back, the snapshot stays');
@@ -451,18 +451,18 @@ select tests.authenticate_as(tests.fx('ben'));
 select is((select public.delete_recipe(tests.fx('pasta_b'), current_date + 1)), '{"converted": 0, "removed": 1, "collections": 0}'::jsonb,
   'AC-043 delete_recipe: Ben deletes in his household, the day after tomorrow is the future');
 select tests.clear_authentication();
-update private.recipe_deletions set deleted_at = now() - interval '2 hours' where recipe_id = tests.fx('curry');
-select private.purge_recipe_deletions();
+update private.deletions set deleted_at = now() - interval '2 hours' where target_id = tests.fx('curry');
+select private.purge_deletions();
 select results_eq(
-  'select recipe_id from private.recipe_deletions order by recipe_id',
+  'select target_id from private.deletions order by target_id',
   format($$ select id from fx where key in ('auflauf', 'risotto', 'pasta_b', 'squat') order by id $$),
   'E4 purge_recipe_deletions: removes only snapshots older than 1 hour');
 select is(
-  (select count(*)::int from cron.job where jobname = 'purge-recipe-deletions'
-     and schedule = '20 * * * *' and command = 'select private.purge_recipe_deletions()'),
+  (select count(*)::int from cron.job where jobname = 'purge-deletions'
+     and schedule = '20 * * * *' and command = 'select private.purge_deletions()'),
   1, 'E4 purge-recipe-deletions: the job runs hourly');
 delete from public.households where id = tests.fx('home_b');
-select is((select count(*)::int from private.recipe_deletions where household_id = tests.fx('home_b')), 0,
+select is((select count(*)::int from private.deletions where household_id = tests.fx('home_b')), 0,
   'E4 recipe_deletions: deleting the household removes its snapshots');
 
 -- ===================== Definer functions =====================
@@ -474,14 +474,14 @@ select is(
   array['private.restore_recipe(uuid)', 'private.delete_recipe(uuid,date,boolean)'],
   'E6 delete_recipe/restore_recipe: security definer with an empty search_path');
 select ok(
-  not has_function_privilege('authenticated', 'private.purge_recipe_deletions()', 'execute'),
+  not has_function_privilege('authenticated', 'private.purge_deletions()', 'execute'),
   'E4 purge_recipe_deletions: not callable by the API roles');
 select ok(
-  not has_table_privilege('authenticated', 'private.recipe_deletions', 'select,insert,update,delete')
-  and not has_table_privilege('anon', 'private.recipe_deletions', 'select,insert,update,delete'),
+  not has_table_privilege('authenticated', 'private.deletions', 'select,insert,update,delete')
+  and not has_table_privilege('anon', 'private.deletions', 'select,insert,update,delete'),
   'E4 recipe_deletions: no grants');
 select ok(
-  (select relrowsecurity from pg_catalog.pg_class where oid = 'private.recipe_deletions'::regclass),
+  (select relrowsecurity from pg_catalog.pg_class where oid = 'private.deletions'::regclass),
   'E4 recipe_deletions: row level security is on');
 select ok(
   not has_table_privilege('authenticated', 'public.recipes', 'delete'),

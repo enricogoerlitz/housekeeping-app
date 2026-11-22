@@ -7,7 +7,7 @@ import {
   startOfWeek,
   weekdayShort,
 } from './dates';
-import type { ChoreEvent, ISODate } from './types';
+import type { ChoreEvent, Id, ISODate } from './types';
 
 // The history of the household plan (spec 0011, REQ-010): months, within them weeks, a year
 // divider at the turn of the year. Nothing is folded away.
@@ -93,4 +93,22 @@ export function historyGroups(events: ChoreEvent[], today: ISODate): HistoryMont
     });
   }
   return months;
+}
+
+/** The filters above the history (spec 0026, REQ-008): a person and a chore, both together. */
+export interface HistoryFilter {
+  person?: Id;
+  choreId?: Id;
+}
+
+/**
+ * The entries the filters keep (AC-024 to AC-026): by who did it and by the chore (its id, not
+ * its title), so entries of deleted chores show only without a chore filter.
+ */
+export function filterHistory(events: readonly ChoreEvent[], filter: HistoryFilter): ChoreEvent[] {
+  return events.filter(
+    (event) =>
+      (filter.person === undefined || event.doneBy === filter.person) &&
+      (filter.choreId === undefined || event.choreId === filter.choreId),
+  );
 }

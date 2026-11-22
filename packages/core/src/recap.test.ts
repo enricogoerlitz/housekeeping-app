@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { recapDayLabel, recapItems } from './recap';
+import { notDoneMessage, recapDayLabel, recapEarlierLabel, recapItems } from './recap';
 import { enrico, grillabend, kartoffelsalat, makeRecipe, nadja } from './test-fixtures';
 import type { Activity, Id, MealPlanEntry, Recipe, Restaurant } from './types';
 
@@ -38,7 +38,6 @@ const enzo: Restaurant = {
 const bouldern: Activity = {
   id: 'bouldern',
   name: 'Bouldern',
-  tags: [],
   favoriteOf: [],
   ratings: {},
   createdAt: '2026-10-01T12:00:00.000Z',
@@ -99,7 +98,7 @@ describe('REQ-003: "Wie war\'s?"', () => {
     const yesterday = [
       entry({ id: 'oma', kind: 'text', text: 'Essen bei Oma' }),
       entry({ id: 'reste', kind: 'leftovers', leftoversOfEntryId: 'fr' }),
-      entry({ id: 'pizza', recipeId: 'pizza', notCooked: true }),
+      entry({ id: 'pizza', recipeId: 'pizza', notDone: true }),
     ];
     expect(recap(yesterday)).toEqual([]);
   });
@@ -169,7 +168,7 @@ describe('REQ-003: "Wie war\'s?"', () => {
         kind: 'activity',
         activityId: 'bouldern',
         slotId: 'slot-vormittag',
-        notCooked: true,
+        notDone: true,
       }),
     ];
     expect(recap(sunday)).toEqual([]);
@@ -215,5 +214,20 @@ describe('Sammlungen in "Wie war\'s?" (spec 0009, REQ-009)', () => {
     });
     expect(titles(items)).toEqual(['Grillabend']);
     expect(titles(items)).not.toContain(kartoffelsalat.title);
+  });
+});
+
+describe('spec 0020 REQ-008/REQ-009: the recap row', () => {
+  it('AC-040: an earlier own rating reads "Letztes Mal ★ 4"', () => {
+    expect(recapEarlierLabel(4)).toBe('Letztes Mal ★ 4');
+  });
+
+  it('AC-042: none without an own rating; 3.5 reads "Letztes Mal ★ 3,5"', () => {
+    expect(recapEarlierLabel(undefined)).toBeUndefined();
+    expect(recapEarlierLabel(3.5)).toBe('Letztes Mal ★ 3,5');
+  });
+
+  it('AC-036: the hint after "Nicht gemacht"', () => {
+    expect(notDoneMessage('Eislaufen')).toBe('„Eislaufen“ als nicht gemacht markiert');
   });
 });

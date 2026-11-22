@@ -153,7 +153,8 @@ export const PAGE_PARAMS = {
     bewertung: one(oneOf(['4', '4.5'])),
     preis: many(oneOf(['1', '2', '3', '4'])),
     sortierung: one(oneOf([...values(RECIPE_SORT_SLUGS), ...RESTAURANT_SORT_SLUGS])),
-    fenster: one(oneOf(['neu', 'neu-restaurant'])),
+    // "bearbeiten" and "einplanen" for the restaurant chosen next to the list (spec 0024).
+    fenster: one(oneOf(['neu', 'neu-restaurant', 'bearbeiten', 'einplanen'])),
     restaurant: one(Uuid),
     link: one(z.string().max(2000)),
     name: one(Text),
@@ -182,13 +183,13 @@ export const PAGE_PARAMS = {
     favoriten: one(Flag),
     sortierung: one(oneOf(['name', 'bewertung', 'zuletzt']), 'name'),
     aktivitaet: one(Uuid),
-    fenster: one(oneOf(['neu-aktivitaet', 'einplanen'])),
+    fenster: one(oneOf(['neu-aktivitaet', 'einplanen', 'bearbeiten'])),
     von: Von,
   },
   aktivitaet: {
     id: one(Uuid),
     von: Von,
-    fenster: one(oneOf(['einplanen'])),
+    fenster: one(oneOf(['einplanen', 'bearbeiten'])),
   },
   liste: {
     posten: one(Uuid),

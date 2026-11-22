@@ -55,9 +55,14 @@ export interface TripFieldValues {
   note: string;
 }
 
+/** What a trip does, under "Wer?" when creating one (spec 0026, REQ-015, AC-058). */
+export const TRIP_EFFECT_NOTE =
+  'Wer weg ist, fehlt bei „Wer isst mit?“, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.';
+
 /**
  * The fields of a trip (spec 0022, REQ-001, REQ-003): "Wer?" with the hint, "Von", "Bis" with the
- * month calendar, "Notiz". `disabled` greys them out offline (AC-015).
+ * month calendar, "Notiz". `disabled` greys them out offline (AC-015). `effectNote`: "Reise
+ * eintragen" explains what a trip does (spec 0026, REQ-015).
  */
 export function TripFields(props: {
   value: TripFieldValues;
@@ -65,6 +70,7 @@ export function TripFields(props: {
   disabled?: boolean;
   hint?: string;
   focusNote?: boolean;
+  effectNote?: boolean;
 }) {
   const members = useMembers();
   const today = useToday();
@@ -104,6 +110,11 @@ export function TripFields(props: {
         <Text variant="caption" color="muted" testID="trip-who-hint">
           {tripWhoHint(who, members)}
         </Text>
+        {props.effectNote ? (
+          <Text variant="caption" color="muted" testID="trip-effect-note">
+            {TRIP_EFFECT_NOTE}
+          </Text>
+        ) : null}
       </Stack>
       <Stack gap={8}>
         <DateField
@@ -238,7 +249,7 @@ export function TripSheet(props: {
       }
     >
       <Stack gap={18}>
-        <TripFields value={fields} onChange={setFields} focusNote={props.focusNote} />
+        <TripFields value={fields} onChange={setFields} focusNote={props.focusNote} effectNote />
         <TripBagChips selected={bagIds} onChange={setBagIds} disabled={online.disabled} />
       </Stack>
     </Sheet>

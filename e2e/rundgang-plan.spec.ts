@@ -7,7 +7,6 @@ import {
   PLAN_ENTRY,
   SLOT_DINNER,
   TODAY,
-  back,
   day,
   expect,
   freshSeed,
@@ -188,10 +187,8 @@ test('AC-014 / AC-025 (0010): Woche, Monat and Jahr; ▲ opens "Aktivitäten" an
   await tid(page, 'week-today').click();
   await expect(tid(page, `day-${TODAY}`)).toBeVisible();
 
-  await tid(page, 'calendar-activities').click();
-  await expect(tid(page, 'activities-title')).toBeVisible();
-  await expect(tid(page, 'back')).toContainText('Kalender');
-  await back(page);
+  // Spec 0024, AC-030: the calendar's head has no way to the activities any more.
+  await expect(tid(page, 'calendar-activities')).toHaveCount(0);
   await expect(tid(page, 'calendar-view-week')).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, `day-${TODAY}`)).toBeVisible();
 });

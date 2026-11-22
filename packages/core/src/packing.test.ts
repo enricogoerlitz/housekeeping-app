@@ -625,6 +625,17 @@ describe('Übersicht und Kalender', () => {
     expect(cards('2026-12-07')).toEqual([]);
   });
 
+  it('spec 0020 AC-043: the section of the shown day counts, not the calendar week', () => {
+    const mallorca = trip('mallorca', [enrico.id], '2026-12-04', '2026-12-10', 'Urlaub Mallorca');
+    const bags = [listBag({ id: 'lm', tripId: mallorca.id })];
+    const shown = (day: string) =>
+      cards(day, [mallorca], bags, itemsOf('lm', 3), '2026-11-22').map((card) => card.startsIn);
+    expect(shown('2026-11-28')).toEqual(['beginnt in 12 Tagen']);
+    expect(shown('2026-12-11')).toHaveLength(1);
+    // Mo 7.–Do 10.12. lie in the calendar week of Sa 12.12., but not in its section.
+    expect(shown('2026-12-12')).toEqual([]);
+  });
+
   it('AC-044: a fully packed list says "alles gepackt ✓"', () => {
     expect(cards('2026-11-30', [week], listBags, itemsOf('l1', 30, 30))[0]?.progressLabel).toBe(
       'alles gepackt ✓',

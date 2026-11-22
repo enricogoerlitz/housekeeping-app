@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-22
 ---
 
@@ -374,6 +374,26 @@ anders vermerkt.
     zur Wirkung steht nur unter „Wer?“ beim Anlegen. Abgestimmt mit Spec 0027: dessen Schalter
     „Erinnern“ an der Aufgabe kommt nach dieser Spec und gilt zusätzlich zu REQ-014.
 
+Beim Bau ENTSCHIEDEN von Claude (22.11.2026), jeweils die einfachste Lösung im Sinne der Spec:
+
+19. **Reihenfolge von „Zu tun“, „Noch offen“ und Tagesüberblick:** Offenes zuerst, darin das zuletzt
+    fällig gewordene zuerst („fällig seit gestern“ vor „fällig seit 3 Tagen“, wie AC-027/AC-029),
+    dann gespeicherter Termin, dann Titel (REQ-011); gleich in `dueChores` und SQL.
+20. **Tagesüberblick** nennt nur „fällig seit …“ als Zusatz; „heute, nach der Reise“ und „jetzt/bald
+    fällig“ stehen nur in der App (der Überblick beginnt schon mit „Heute:“).
+21. **Haushalt-Zeile, ganzer Haushalt weg:** Geplantes und Offenes fehlen; wirklich Erledigtes (✓)
+    bleibt sichtbar (Erledigen während der Reise ist erlaubt).
+22. **„Zuletzt erledigt (optional)“:** Chips „Ohne Datum“, „Datum …“, „heute“, „gestern“,
+    „vorgestern“; der Kalender sperrt Tage nach heute.
+23. **„Datum ändern“** zeigt keinen eigenen Hinweis; der Eintrag steht sichtbar am neuen Tag.
+24. **Feste Person** = `next_assignee_id`, sonst `memberId` (wie bisher bei Erinnerungen); eine
+    Rotation ohne gespeicherte nächste Person erinnert weiter alle der Reihe (Spec 0013,
+    Decision 9), mit nächster Person die Vertretung.
+25. **Gemeinsamer Kalender-Baustein:** `PlanDateCalendar` liegt jetzt in
+    `apps/app/src/lib/plan-date-calendar.tsx`.
+26. **Zeitplaner:** sucht den freien Tag nur an Reise-Enden statt Tag für Tag (gleiches Ergebnis
+    wie core, Aufwand nach Zahl der Reisen; Befund des Security-Checks).
+
 ## Daten
 
 - **Keine neuen Spalten.** Termin, Person und „Zuletzt“ stehen schon an `chores` (`next_due_on`,
@@ -395,28 +415,33 @@ anders vermerkt.
 
 ## Risiken
 
-| Risiko                                             | Gegenmaßnahme                                                                    | Test                                                                |
-| -------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| App und Zeitplaner rechnen Reise-Regel verschieden | eine Fixture-Menge, Namen wie die core-Tests                                     | pgTAP `notification_parity` (AC-056), vitest `chores`/`overview`    |
-| Reisen eines fremden Haushalts wirken              | Funktionen filtern auf `household_id` der Aufgabe                                | pgTAP (AC-044, AC-057)                                              |
-| Tag ändern verschiebt fremde oder falsche Aufgabe  | `security definer` mit Mitgliedschaft, gesperrte Zeile, gesehener Stand, Grenzen | pgTAP: fremd, abgemeldet, ungültiger Tag, entfernt (AC-020, AC-023) |
-| Erinnerung an die falsche Person oder doppelt      | Dedupe-Schlüssel je Aufgabe und neuem Tag, `is_silent` bleibt                    | pgTAP Scheduler (AC-053–AC-055)                                     |
-| Endlosschleife bei vielen Reisen                   | Suche nach freiem Tag begrenzt (wie `MAX_STEPS`)                                 | vitest: 400 Tage Reise                                              |
+| Risiko                                             | Gegenmaßnahme                                                                    | Test                                                                                             |
+| -------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| App und Zeitplaner rechnen Reise-Regel verschieden | eine Fixture-Menge, Namen wie die core-Tests                                     | pgTAP `notification_parity` AC-056 ↔ vitest `chore-schedule.test.ts` AC-056 (gleiche Zeilen)     |
+| Reisen eines fremden Haushalts wirken              | Funktionen filtern auf `household_id` der Aufgabe                                | pgTAP `notification_parity` AC-044, AC-057                                                       |
+| Tag ändern verschiebt fremde oder falsche Aufgabe  | `security definer` mit Mitgliedschaft, gesperrte Zeile, gesehener Stand, Grenzen | pgTAP `chore_event_day.test.sql` (fremd, abgemeldet, direkt, ungültiger Tag, veraltet, entfernt) |
+| Erinnerung an die falsche Person oder doppelt      | Dedupe-Schlüssel je Aufgabe und neuem Tag, `is_silent` bleibt                    | pgTAP `chore_trip_scheduler.test.sql` (AC-053–AC-055), `notification_scheduler` AC-035           |
+| Endlosschleife bei vielen Reisen                   | Suche nach freiem Tag begrenzt (`MAX_WAIT_DAYS` = 400), SQL nur an Reise-Enden   | vitest und pgTAP: Reise über 400 Tage                                                            |
 
 ## Umsetzung
 
-- [ ] 1. core: Termin nach Reisen, freier Tag, Vertretung, Fälligkeitstexte, Punkte; Flexibel ab
+- [x] 1. core: Termin nach Reisen, freier Tag, Vertretung, Fälligkeitstexte, Punkte; Flexibel ab
       `nextDueOn`; `firstDueOn`-Vorschlag (AC-005, AC-007, AC-027–AC-048)
-- [ ] 2. Migration: `complete_chore` 30 Tage, Operation „Tag ändern“, Zeitplaner-Funktionen, Texte;
+- [x] 2. Migration: `complete_chore` 30 Tage, Operation „Tag ändern“, Zeitplaner-Funktionen, Texte;
       pgTAP inkl. Parität und Negativtests (AC-020, AC-023, AC-029, AC-053–AC-057)
-- [ ] 3. api: `postponeChore(choreId, day)`, Nachtragen mit Tag, Tag ändern, Formularfelder Termin,
+- [x] 3. api: `postponeChore(choreId, day)`, Nachtragen mit Tag, Tag ändern, Formularfelder Termin,
       „Zuletzt“, „Als Nächstes dran“ (AC-004–AC-010, AC-013–AC-015, AC-019–AC-023)
-- [ ] 4. Formular: „Datum …“, „Nächstes Mal“, „Zuletzt erledigt“, „Als Nächstes dran“, „Egal“ bei
+- [x] 4. Formular: „Datum …“, „Nächstes Mal“, „Zuletzt erledigt“, „Als Nächstes dran“, „Egal“ bei
       Bedarf (AC-001–AC-012)
-- [ ] 5. Aufgabe und Haushalt: Später-Menü, Knöpfe je Rhythmus, „Ohne Termin“, Link weg, „Noch
+- [x] 5. Aufgabe und Haushalt: Später-Menü, Knöpfe je Rhythmus, „Ohne Termin“, Link weg, „Noch
       offen“, Punkte, Reise-Satz (AC-012–AC-018, AC-031–AC-033, AC-049)
-- [ ] 6. Verlauf: Filter, „Alle Einträge ›“, „Datum ändern“ (AC-021–AC-026)
-- [ ] 7. Übersicht und Kalender: Texte, Punkte, Satz während der Reise, Haushalt-Zeile
+- [x] 6. Verlauf: Filter, „Alle Einträge ›“, „Datum ändern“ (AC-021–AC-026)
+- [x] 7. Übersicht und Kalender: Texte, Punkte, Satz während der Reise, Haushalt-Zeile
       (AC-027–AC-032, AC-037, AC-048–AC-052); Satz im Reise-Fenster mit Spec 0022 (AC-058)
-- [ ] 8. `/security-check` auf Migration und Zeitplaner
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] 8. `/security-check` auf Migration und Zeitplaner (0 kritisch/hoch; „mittel“ Rechenlast des
+      Zeitplaners behoben, Entscheidung 26; Hinweis: keine Obergrenze für Aufgaben je Haushalt —
+      offen für Spec 0028)
+- [x] Nachweis (22.11.2026): `pnpm format:check`, `pnpm check` (lint, typecheck, alle Vitest-Suites) und
+      `pnpm build:web` grün; `pnpm db:reset && pnpm exec supabase test db` grün (40 Dateien, neu
+      `chore_event_day`, `chore_trip_scheduler`, Parität in `notification_parity`); e2e
+      `rundgang-haushalt-termine.spec.ts` nur typgeprüft (läuft in Spec 0028).

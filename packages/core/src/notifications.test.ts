@@ -4,7 +4,7 @@ import {
   asksForPushPermission,
   base64UrlToBytes,
   bytesToBase64Url,
-  choreTimeHint,
+  choreRemindHint,
   dailySummaryPartLabel,
   deviceAction,
   deviceLabel,
@@ -22,6 +22,7 @@ import {
   permissionStatus,
   pushSupport,
   pushSupportHint,
+  remindAtDueTimeFor,
   serverDeviceStatus,
   thisDeviceRegistered,
   thisDeviceView,
@@ -172,13 +173,26 @@ describe('times in five-minute steps (Decision 4)', () => {
     expect(withTime('Müll rausbringen', undefined)).toBe('Müll rausbringen');
   });
 
-  it('AC-022: the hint under the time says whether the own setting is on', () => {
-    expect(choreTimeHint(true)).toBe(
-      'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)',
+  it('AC-035 (spec 0027): the hint under „Erinnern“, on and off', () => {
+    expect(choreRemindHint(true, true)).toBe('Erinnert zur Uhrzeit, wer dran ist.');
+    expect(choreRemindHint(false, true)).toBe('Keine Erinnerung – die Uhrzeit wird nur angezeigt.');
+  });
+
+  it('AC-037 (spec 0027): with the own „Aufgaben mit Uhrzeit“ off, „Erinnern“ adds why you get none', () => {
+    expect(choreRemindHint(true, false)).toBe(
+      'Erinnert zur Uhrzeit, wer dran ist. Du selbst bekommst keine: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus.',
     );
-    expect(choreTimeHint(false)).toBe(
-      'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus',
+    // Off for everyone, the own setting changes nothing.
+    expect(choreRemindHint(false, false)).toBe(
+      'Keine Erinnerung – die Uhrzeit wird nur angezeigt.',
     );
+  });
+
+  it('AC-038 (spec 0027): without a time „Erinnern“ is on, so a new time reminds again', () => {
+    expect(remindAtDueTimeFor('19:00', false)).toBe(false);
+    expect(remindAtDueTimeFor('19:00', true)).toBe(true);
+    expect(remindAtDueTimeFor(undefined, false)).toBe(true);
+    expect(remindAtDueTimeFor(undefined, true)).toBe(true);
   });
 });
 

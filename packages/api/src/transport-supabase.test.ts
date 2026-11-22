@@ -359,6 +359,34 @@ describe('supabase transport', () => {
     ]);
   });
 
+  it('AC-034: delete_restaurant/delete_activity and their restore with parameters and answers', async () => {
+    const { client, calls } = stubClient([
+      ok({ converted: 1, removed: 1 }),
+      ok(true),
+      ok({ converted: 1 }),
+      { data: null, error: { message: 'activity_not_restorable', code: 'P0002' }, status: 500 },
+    ]);
+    const transport = createSupabaseTransport(client);
+    expect(await transport.deleteRestaurant('r1', '2026-11-22')).toEqual({
+      converted: 1,
+      removed: 1,
+    });
+    expect(await transport.restoreRestaurant('r1')).toBe(true);
+    await expect(transport.deleteActivity('a1', '2026-11-22')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    await expect(transport.restoreActivity('a1')).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'activity_not_restorable',
+    });
+    expect(calls).toEqual([
+      { fn: 'delete_restaurant', args: { restaurant_id: 'r1', today: '2026-11-22' } },
+      { fn: 'restore_restaurant', args: { restaurant_id: 'r1' } },
+      { fn: 'delete_activity', args: { activity_id: 'a1', today: '2026-11-22' } },
+      { fn: 'restore_activity', args: { activity_id: 'a1' } },
+    ]);
+  });
+
   it('spec 0013: the six device RPCs with their parameters; list answers are validated', async () => {
     const row = {
       id: 'd1',

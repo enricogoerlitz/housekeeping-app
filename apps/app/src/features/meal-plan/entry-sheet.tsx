@@ -17,6 +17,7 @@ import {
   type EntryFields,
 } from '@housekeeping/api';
 import {
+  canMarkNotDone,
   checkEntryNote,
   checkEntryText,
   entryListShare,
@@ -42,6 +43,7 @@ import {
   Row,
   Sheet,
   Stack,
+  SwitchRow,
   Text,
   TextField,
   TimeField,
@@ -53,7 +55,7 @@ import { View } from 'react-native';
 
 import { hasPlace } from '@/features/activities/labels';
 import { useMoveEntry } from '@/features/calendar/move-entry';
-import { PlanDateCalendar } from '@/features/calendar/plan-date-calendar';
+import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOpenActivity } from '@/features/activities/navigation';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { useOpenRestaurant } from '@/features/restaurants/navigation';
@@ -584,6 +586,16 @@ export function EntrySheet(props: {
             </View>
           </View>
         )}
+        {canMarkNotDone(entry, today) ? (
+          // Saved at once like the other switches of the window (spec 0020, REQ-008, AC-037).
+          <SwitchRow
+            label="Nicht gemacht"
+            value={entry.notDone === true}
+            disabled={online.disabled}
+            onValueChange={(notDone) => updatePlanEntry(entry.id, { notDone })}
+            testID="entry-not-done"
+          />
+        ) : null}
         <Button
           label="Aus dem Plan nehmen"
           icon="trash"

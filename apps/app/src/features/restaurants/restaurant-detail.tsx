@@ -1,38 +1,48 @@
 import {
   rateRestaurant,
+  removeRestaurantPhoto,
+  setRestaurantPhoto,
   toggleRestaurantFavorite,
-  updateRestaurant,
   useCurrentMember,
   useMembers,
   usePlanEntries,
   useRestaurant,
   useToday,
 } from '@housekeeping/api';
-import { priceLabel, restaurantVisits, type Id, type Restaurant } from '@housekeeping/core';
+import { isWebUrl, priceLabel, visitsOf, type Id, type Restaurant } from '@housekeeping/core';
 import {
   Badge,
   Button,
   EmptyState,
   Icon,
   IconButton,
+  Menu,
+  openExternalLink,
   Row,
   Section,
   Stack,
   Text,
-  TextField,
-  toast,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 
+import { PlanPlaceSheet } from '@/features/meal-plan/plan-place-sheet';
 import { DetailPage } from '@/features/shell/detail-page';
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { DetailPhotoBlock } from '@/features/shell/own-photo';
+import { useDeletePlace } from '@/features/shell/use-delete-place';
+import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 
+import { EditRestaurantSheet } from './add-restaurant-sheet';
 import { visitsLabel } from './labels';
+import { RESTAURANT_ICON, type RestaurantFormFocus } from './restaurant-form';
 import { RouteSheet } from './route-sheet';
+
+/** The windows of a restaurant's detail; they stand in the address (spec 0019, REQ-013). */
+export type RestaurantWindow = 'bearbeiten' | 'einplanen';
 
 export interface RestaurantDetailProps {
   restaurantId: Id;
@@ -42,9 +52,20 @@ export interface RestaurantDetailProps {
   backLabel?: string;
   /** Shows a close button (split view on wide screens). */
   onClose?: () => void;
+  /** The open window and how to open or close one (address of the page showing the detail). */
+  window?: RestaurantWindow;
+  onWindow: (window: RestaurantWindow | undefined) => void;
+  /** After "Löschen": the grid or the list (spec 0024, REQ-010). */
+  onDeleted: () => void;
+  /** Opens another restaurant (a duplicate link in "Restaurant bearbeiten"). */
+  onOpen: (restaurantId: Id) => void;
 }
 
-/** One restaurant: rating and favourite per person, the shared note, visits and "Route" (AC-010, AC-013). */
+/**
+ * One restaurant: photo, rating and favourite per person, the shared note to read, its visits,
+ * "Route", "Webseite", "Einplanen", "Bearbeiten" and ⋯ "Löschen" (spec 0002, AC-010, AC-013;
+ * spec 0024).
+ */
 export function RestaurantDetail(props: RestaurantDetailProps) {
   const restaurant = useRestaurant(props.restaurantId);
   const router = useRouter();
@@ -66,8 +87,10 @@ export function RestaurantDetail(props: RestaurantDetailProps) {
           <Button
             label="Zu den Restaurants"
             icon="arrow-left"
-            onPress={() =>
-              router.replace({ pathname: '/rezepte', params: { view: 'restaurants' } })
+            // AC-029: next to the list back to the grid, keeping search and filter.
+            onPress={
+              props.onClose ??
+              (() => router.replace({ pathname: '/rezepte', params: { ansicht: 'restaurants' } }))
             }
             testID="restaurant-not-found-back"
           />
@@ -75,44 +98,31 @@ export function RestaurantDetail(props: RestaurantDetailProps) {
       </DetailPage>
     );
   }
-  // Another restaurant starts with a fresh note draft.
-  return (
-    <RestaurantDetailBody
-      key={restaurant.id}
-      restaurant={restaurant}
-      onBack={props.onBack}
-      backLabel={props.backLabel}
-      onClose={props.onClose}
-    />
-  );
+  return <RestaurantDetailBody key={restaurant.id} restaurant={restaurant} {...props} />;
 }
 
-function RestaurantDetailBody(props: {
-  restaurant: Restaurant;
-  onBack?: () => void;
-  /** The origin on the back link (spec 0019, REQ-006). */
-  backLabel?: string;
-  onClose?: () => void;
-}) {
+function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Restaurant }) {
   const { restaurant } = props;
-  const router = useRouter();
   const online = useOnlineOnly();
   const me = useCurrentMember();
   const members = useMembers();
   const entries = usePlanEntries();
   const today = useToday();
   const [routeOpen, setRouteOpen] = useState(false);
-  const [notes, setNotes] = useState(restaurant.notes ?? '');
+  // Where "Restaurant bearbeiten" puts the cursor: "Notiz bearbeiten" opens it in "Notiz".
+  const [focus, setFocus] = useState<RestaurantFormFocus | undefined>();
+  const visitsSection: SectionRef = useRef(null);
+  const jumpToVisits = useVisitsJump(visitsSection);
+  const remove = useDeletePlace('restaurant', restaurant, props.onDeleted);
 
-  const visits = restaurantVisits(restaurant.id, entries, today);
+  const visits = visitsOf('restaurant', restaurant.id, entries, today);
   const isFavorite = restaurant.favoriteOf.includes(me.id);
-  const notesChanged = notes.trim() !== (restaurant.notes ?? '');
   const meta = [restaurant.cuisine, priceLabel(restaurant.priceLevel)].filter(Boolean).join(' · ');
-
-  const saveNotes = () => {
-    if (!notesChanged || online.disabled) return;
-    updateRestaurant(restaurant.id, { notes: notes.trim() || undefined });
-    toast.show({ message: 'Notiz gespeichert' });
+  const website =
+    restaurant.websiteUrl && isWebUrl(restaurant.websiteUrl) ? restaurant.websiteUrl : undefined;
+  const edit = (at?: RestaurantFormFocus) => {
+    setFocus(at);
+    props.onWindow('bearbeiten');
   };
 
   const favorite = (
@@ -124,6 +134,19 @@ function RestaurantDetailBody(props: {
       onPress={() => toggleRestaurantFavorite(restaurant.id)}
     />
   );
+  const more = (
+    <Menu<'delete'>
+      trigger="icon"
+      icon="ellipsis"
+      label="Mehr"
+      accessibilityLabel={`Mehr zu ${restaurant.name}`}
+      options={[
+        { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
+      ]}
+      onChange={remove}
+      testID="restaurant-more"
+    />
+  );
 
   return (
     <DetailPage
@@ -131,7 +154,12 @@ function RestaurantDetailBody(props: {
       backLabel={props.backLabel}
       title={restaurant.name}
       titleTestID="restaurant-title"
-      right={favorite}
+      right={
+        <Row gap={4}>
+          {favorite}
+          {more}
+        </Row>
+      }
       tone="essen"
       testID="restaurant-screen"
     >
@@ -148,11 +176,23 @@ function RestaurantDetailBody(props: {
             ) : (
               <View />
             )}
-            {favorite}
+            <Row gap={4}>
+              {favorite}
+              {more}
+            </Row>
           </Row>
         )}
 
-        <Stack gap={10} style={{ marginBottom: 24 }}>
+        <DetailPhotoBlock
+          photoPath={restaurant.photoPath}
+          name={restaurant.name}
+          placeholderIcon={RESTAURANT_ICON}
+          onChange={(photo) => setRestaurantPhoto(restaurant.id, photo)}
+          onRemove={() => removeRestaurantPhoto(restaurant.id)}
+          testPrefix="restaurant"
+        />
+
+        <Stack gap={10} style={{ marginTop: 16, marginBottom: 24 }}>
           {props.onBack ? null : (
             <Text variant="title" heading testID="restaurant-title">
               {restaurant.name}
@@ -177,18 +217,19 @@ function RestaurantDetailBody(props: {
               </Text>
             </Row>
           ) : null}
-          <Row gap={6}>
-            <Icon name="history" size={16} color="muted" />
-            <Text variant="small" color="muted" testID="restaurant-visits">
-              {visitsLabel(visits)}
-            </Text>
-          </Row>
+          <VisitsLine
+            label={visitsLabel(visits)}
+            onPress={visits.count > 0 ? jumpToVisits : undefined}
+            testID="restaurant-visits"
+          />
           {restaurant.tags.length > 0 ? (
-            <Row gap={6} wrap>
-              {restaurant.tags.map((tag) => (
-                <Badge key={tag} label={tag} />
-              ))}
-            </Row>
+            <View testID="restaurant-tags-shown">
+              <Row gap={6} wrap>
+                {restaurant.tags.map((tag) => (
+                  <Badge key={tag} label={tag} />
+                ))}
+              </Row>
+            </View>
           ) : null}
           {/* "Du" with the own half stars, the others only to look at (spec 0008, E15, AC-041). */}
           <MemberRatings
@@ -200,6 +241,11 @@ function RestaurantDetailBody(props: {
             hint={online.hint}
             testID="restaurant-stars"
           />
+          {online.hint ? (
+            <Text variant="small" color="warn" testID="restaurant-offline-hint">
+              {online.hint}
+            </Text>
+          ) : null}
           <Row gap={10} wrap style={{ marginTop: 4 }}>
             <Button
               label="Route"
@@ -207,47 +253,89 @@ function RestaurantDetailBody(props: {
               onPress={() => setRouteOpen(true)}
               testID="restaurant-route"
             />
+            {website ? (
+              <Button
+                label="Webseite"
+                icon="external-link"
+                variant="secondary"
+                onPress={() => openExternalLink(website)}
+                testID="restaurant-website-open"
+              />
+            ) : null}
             <Button
               label="Einplanen"
               icon="calendar-plus"
               variant="secondary"
-              onPress={() => router.push('/kalender')}
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => props.onWindow('einplanen')}
               testID="restaurant-plan"
+            />
+            <Button
+              label="Bearbeiten"
+              icon="pencil"
+              variant="secondary"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => edit()}
+              testID="restaurant-edit"
             />
           </Row>
         </Stack>
 
-        <Section title="Notiz" testID="restaurant-notes-section">
-          <Stack gap={10}>
-            <TextField
-              accessibilityLabel="Notiz zum Restaurant"
-              value={notes}
-              onChangeText={setNotes}
-              onBlur={saveNotes}
-              placeholder="z. B. Trüffelpasta! Am Wochenende reservieren."
-              multiline
-              editable={!online.disabled}
-              hint={online.hint ?? 'Gilt für den ganzen Haushalt.'}
+        <Section
+          title="Notiz"
+          testID="restaurant-notes-section"
+          action={
+            <Button
+              label={restaurant.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen'}
+              icon="pencil"
+              variant="link"
+              size="sm"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => edit('notes')}
               testID="restaurant-notes-edit"
             />
-            {notesChanged ? (
-              <Button
-                label="Speichern"
-                icon="check"
-                size="sm"
-                disabled={online.disabled}
-                onPress={saveNotes}
-                testID="restaurant-notes-save"
-              />
-            ) : null}
-          </Stack>
+          }
+        >
+          <Text
+            selectable
+            color={restaurant.notes ? 'text' : 'muted'}
+            testID="restaurant-notes-text"
+          >
+            {restaurant.notes ?? 'Noch keine Notiz'}
+          </Text>
         </Section>
+
+        <VisitList
+          ref={visitsSection}
+          title="Besuche"
+          dates={visits.dates}
+          empty="Noch kein Besuch. Vergangene Tage aus dem Kalender stehen dann hier."
+          testID="restaurant-history"
+        />
 
         <RouteSheet
           restaurant={restaurant}
           visible={routeOpen}
           onClose={() => setRouteOpen(false)}
         />
+        {props.window === 'bearbeiten' ? (
+          <EditRestaurantSheet
+            restaurant={restaurant}
+            focus={focus}
+            onClose={() => props.onWindow(undefined)}
+            onOpenExisting={props.onOpen}
+          />
+        ) : null}
+        {props.window === 'einplanen' ? (
+          <PlanPlaceSheet
+            kind="restaurant"
+            place={restaurant}
+            onClose={() => props.onWindow(undefined)}
+          />
+        ) : null}
       </View>
     </DetailPage>
   );

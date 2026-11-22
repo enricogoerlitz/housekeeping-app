@@ -1,3 +1,4 @@
+-- contract: delete_recipe(uuid, date) becomes delete_recipe(uuid, date, boolean) (spec 0023), no compatibility with 2026.11.1; min_app_version: 2026.11.1
 -- Spec 0023, Decision 15: deleting a recipe or collection can take the ingredients of the entries
 -- that go off the shopping list in the same transaction ("Zutaten auch von der Liste nehmen", the
 -- choice of spec 0021 REQ-015). delete_recipe gets p_with_list (default false, so a call without
@@ -24,16 +25,13 @@ declare
   v_list jsonb := '[]';
   v_chunk integer;
 begin
-  if p_today is null or p_today not between current_date - 1 and current_date + 1 then
-    raise exception 'invalid_value' using errcode = '22023';
-  end if;
+  perform private.check_today(p_today);
 
   select r.* into v_recipe
   from public.recipes r
   where r.household_id = v_household_id and r.id = p_recipe_id
   for update;
   if not found then
-    -- Deleted by someone else while this call waited for the lock.
     raise exception 'recipe_not_found' using errcode = 'P0002';
   end if;
   perform 1 from public.meal_plan_entries e
@@ -47,7 +45,7 @@ begin
     for update
   ) c;
 
-  delete from private.recipe_deletions d
+  delete from private.deletions d
   where d.household_id = v_household_id and d.deleted_at <= now() - interval '1 hour';
 
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -68,8 +66,6 @@ begin
       where l.household_id = v_household_id and l.kind = 'leftovers' and l.recipe_id is null
     )
     select r.id from removed r);
-  -- The leftovers found this way have no recipe_id and are not locked yet: lock them before they
-  -- go into the snapshot, so a concurrent change cannot slip in between reading and deleting.
   perform 1 from public.meal_plan_entries e
   where e.household_id = v_household_id and e.id = any (v_removed_ids)
   for update;
@@ -101,8 +97,8 @@ begin
     end loop;
   end if;
 
-  insert into private.recipe_deletions as d (household_id, recipe_id, deleted_by, deleted_at, snapshot)
-  values (v_household_id, p_recipe_id, auth.uid(), now(), jsonb_build_object(
+  insert into private.deletions as d (household_id, kind, target_id, deleted_by, deleted_at, snapshot)
+  values (v_household_id, 'recipe', p_recipe_id, auth.uid(), now(), jsonb_build_object(
     'recipe', to_jsonb(v_recipe),
     'ratings', (select coalesce(jsonb_agg(jsonb_build_object('member_id', r.member_id, 'stars', r.stars)), '[]')
                 from public.recipe_ratings r
@@ -114,7 +110,7 @@ begin
     'removed', v_removed,
     'collection_recipes', v_collection_recipes,
     'list', v_list))
-  on conflict (household_id, recipe_id) do update
+  on conflict (household_id, kind, target_id) do update
     set deleted_by = excluded.deleted_by, deleted_at = excluded.deleted_at, snapshot = excluded.snapshot;
 
   update public.meal_plan_entries e
@@ -143,28 +139,11 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_deletion private.recipe_deletions;
-  v_snapshot jsonb;
-  v_household_id uuid;
+  v_deletion private.deletions := private.my_deletion('recipe', p_recipe_id);
+  v_snapshot jsonb := v_deletion.snapshot;
+  v_household_id uuid := v_deletion.household_id;
   v_existing_household_id uuid;
 begin
-  if auth.uid() is null then
-    raise exception 'not_authenticated' using errcode = '42501';
-  end if;
-
-  select d.* into v_deletion
-  from private.recipe_deletions d
-  join public.household_members m on m.household_id = d.household_id and m.profile_id = auth.uid()
-  where d.recipe_id = p_recipe_id and d.deleted_by = auth.uid() and d.deleted_at > now() - interval '1 hour'
-  for update of d;
-  if not found then
-    raise exception 'recipe_not_restorable' using errcode = 'P0002';
-  end if;
-  v_snapshot := v_deletion.snapshot;
-  v_household_id := v_deletion.household_id;
-
-  -- Recipe ids are unique across households. Back in this household: nothing to do. Taken in
-  -- another one (e.g. by a former member who saw the id): refused, never reported as success.
   select r.household_id into v_existing_household_id from public.recipes r where r.id = p_recipe_id;
   if v_existing_household_id = v_household_id then
     return false;
@@ -202,32 +181,9 @@ begin
                 where r.household_id = v_household_id
                   and r.id = case when c.collection_id = p_recipe_id then c.recipe_id else c.collection_id end)
   order by c.collection_id, c.sort, c.id
-  -- Only "already contained again" is skipped. A row id taken in the meantime (ids are unique
-  -- across households) fails loudly with 23505 instead of silently dropping the row.
   on conflict (household_id, collection_id, recipe_id) do nothing;
 
-  insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id,
-                                        text, note, leftovers_of_entry_id, eater_ids, guests, portions, variants,
-                                        cook_id, sort, not_cooked)
-  select e.id, v_household_id, e.date, e.slot_id, e.kind, e.recipe_id, e.restaurant_id, e.activity_id,
-         e.text, e.note,
-         case when e.leftovers_of_entry_id is null
-                or exists (select 1 from public.meal_plan_entries s
-                           where s.household_id = v_household_id and s.id = e.leftovers_of_entry_id)
-                or exists (select 1 from jsonb_array_elements(v_snapshot -> 'removed') s
-                           where (s ->> 'id')::uuid = e.leftovers_of_entry_id)
-              then e.leftovers_of_entry_id end,
-         array(select u.id from unnest(e.eater_ids) with ordinality u (id, ord)
-               where exists (select 1 from public.household_members m
-                             where m.household_id = v_household_id and m.profile_id = u.id)
-               order by u.ord),
-         e.guests, e.portions, e.variants,
-         case when exists (select 1 from public.household_members m
-                           where m.household_id = v_household_id and m.profile_id = e.cook_id)
-              then e.cook_id end,
-         e.sort, e.not_cooked
-  from jsonb_populate_recordset(null::public.meal_plan_entries, v_snapshot -> 'removed') e
-  on conflict (id) do nothing;
+  perform private.restore_plan_entries(v_household_id, v_snapshot -> 'removed');
 
   update public.meal_plan_entries e
   set kind = c.kind, recipe_id = c.recipe_id, text = c.text, variants = c.variants
@@ -241,8 +197,8 @@ begin
     perform private.restore_cleared_items(v_household_id, v_snapshot -> 'list');
   end if;
 
-  delete from private.recipe_deletions d
-  where d.household_id = v_household_id and d.recipe_id = p_recipe_id;
+  delete from private.deletions d
+  where d.household_id = v_household_id and d.kind = 'recipe' and d.target_id = p_recipe_id;
   return true;
 end
 $$;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { addDays } from './dates';
+import { addPresetSlot } from './calendar';
 import {
+  canMarkNotDone,
   defaultEaters,
   entriesForDay,
   leftoverCandidates,
@@ -358,7 +360,7 @@ describe('visitsOf', () => {
         restaurantId: 'act-bouldern',
       }),
       planned('unplanned', null),
-      planned('skipped', '2026-11-12', { notCooked: true }),
+      planned('skipped', '2026-11-12', { notDone: true }),
     ];
     expect(visitsOf('activity', 'act-bouldern', entries, today)).toEqual({
       count: 1,
@@ -462,7 +464,7 @@ describe('leftovers from the seven days before (REQ-011)', () => {
 
   it('AC-047: a future target day counts planned dishes, not those marked "nicht gekocht"', () => {
     const future = [
-      entry({ id: 'pizza', date: '2026-11-21', notCooked: true }),
+      entry({ id: 'pizza', date: '2026-11-21', notDone: true }),
       entry({ id: 'gulasch', date: '2026-11-23' }),
     ];
     expect(leftoverCandidates(future, '2026-11-27', slots, {}).map((e) => e.id)).toEqual([
@@ -546,5 +548,45 @@ describe('Sammlungen in a Tageszeit and as leftovers (spec 0009)', () => {
         (e) => e.id,
       ),
     ).toEqual(['dal']);
+  });
+});
+
+describe('spec 0020 REQ-005: addPresetSlot', () => {
+  it('AC-020: "Abend" is preselected, wherever it stands', () => {
+    expect(
+      addPresetSlot([
+        { id: 'abend', name: 'Abend', sort: 1 },
+        { id: 'spaet', name: 'Spät', sort: 2 },
+        { id: 'mittag', name: 'Mittag', sort: 0 },
+      ]),
+    ).toBe('abend');
+  });
+
+  it('AC-026: without "Abend" the last one ("Mittag" after "Frühstück")', () => {
+    expect(
+      addPresetSlot([
+        { id: 'mittag', name: 'Mittag', sort: 1 },
+        { id: 'fruehstueck', name: 'Frühstück', sort: 0 },
+      ]),
+    ).toBe('mittag');
+    expect(addPresetSlot([])).toBeUndefined();
+  });
+});
+
+describe('spec 0020 REQ-008: the switch "Nicht gemacht" in the entry window', () => {
+  const today = '2026-11-22';
+  it('AC-037: an entry of a day before today has it, of every kind but leftovers', () => {
+    for (const kind of ['recipe', 'text', 'restaurant', 'activity'] as const) {
+      expect(canMarkNotDone(entry({ id: kind, kind, date: '2026-11-21' }), today)).toBe(true);
+    }
+  });
+
+  it('AC-038: not today, not later, not for leftovers, not without a day', () => {
+    expect(canMarkNotDone(entry({ id: 'heute', date: today }), today)).toBe(false);
+    expect(canMarkNotDone(entry({ id: 'di', date: '2026-11-24' }), today)).toBe(false);
+    expect(
+      canMarkNotDone(entry({ id: 'reste', kind: 'leftovers', date: '2026-11-21' }), today),
+    ).toBe(false);
+    expect(canMarkNotDone(entry({ id: 'vorgemerkt', date: null }), today)).toBe(false);
   });
 });
