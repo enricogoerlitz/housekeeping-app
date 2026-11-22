@@ -312,6 +312,58 @@ wie bisher ohne Frage. Verschieben und Vormerken fragen nicht; die Herkunft nenn
   Zutaten entferne · Dann bleibt „Hackfleisch“ mit „von Hand: 1×“ (Und „Abbrechen“ ändert nichts; ein
   abgehakter Posten zählt nicht und bleibt).
 
+### Nachtrag aus Review 0002
+
+Vorgezogen aus Enricos Review 0002 (22.11.2026). Allgemeine Handy-Punkte (Hintergrund der Fenster,
+Abstände unten, Wischen zwischen Tabs, Karten-Link) regelt Spec 0029; `Sheet`, `shell.tsx`,
+`ViewTabs` und Karten-Links ändert diese Spec nicht.
+
+**REQ-016 — Aufgaben im Kalender erledigen und verwalten.** Eine Aufgabe im Kalender (Haushalt-Zeile
+der Woche, Monat, Tages-Fenster) lässt sich an jedem Tag abhaken, auch wenn sie erst in der Zukunft
+fällig ist; Abhaken bucht wie unter „Haushalt“ (`complete_chore`) mit dem heutigen Datum als
+Erledigt-Tag. Ein Tipp auf den Namen öffnet dasselbe Fenster der Aufgabe wie unter „Haushalt“
+(Bearbeiten, Verlauf, Überspringen …), nicht nur das Abhaken. Erledigte Vorkommen bleiben
+durchgestrichen wie bisher. Quelle: Review 0002. Offline: lesend; Abhaken und Fenster-Aktionen nur
+online (ausgegraut mit „Offline – zum Bearbeiten brauchst du Netz“).
+
+- AC-042: Angenommen heute So 22.11., „Bad putzen“ fällig am Fr 27.11. · Wenn ich im Kalender am
+  27.11. „Bad putzen“ abhake · Dann ist sie mit Erledigt-Tag So 22.11. gebucht, wie unter „Haushalt“.
+- AC-043: Wenn ich im Tages-Fenster des 27.11. auf „Bad putzen“ tippe · Dann öffnet sich das
+  Fenster „Bad putzen“ wie unter „Haushalt“ (Und offline ist der Haken ausgegraut).
+
+**REQ-017 — Aufgaben in Monat und Jahr.** Monat (Desktop und Tablet): mit eingeschalteter
+Haushalt-Zeile stehen die Aufgaben eines Tags als eigene Zeilen unter den Einträgen und zählen in
+„+n weitere“ mit; Handy-Monat: Aufgaben als Punkt der Art „Aufgabe“ (K-11). Jahr: jeder Tag mit
+fälligen Aufgaben zeigt den Punkt „Aufgabe“, und das Tages-Fenster zeigt sie (REQ-005); das Jahr
+bekommt keinen eigenen Schalter (der Punkt ist immer da). Quelle: Review 0002, K-11. Offline: lesend.
+
+- AC-044: Angenommen Desktop, Monat November, Haushalt-Zeile an, am 29.11. „Bad putzen“ und zwei
+  Einträge · Dann stehen am 29.11. beide Einträge und „Bad putzen“ als Zeile.
+- AC-045: Angenommen Jahr 2026 · Dann trägt der 29.11. den Punkt „Aufgabe“, und ein Tipp zeigt „Bad
+  putzen“ im Tages-Fenster.
+
+**REQ-018 — Handy-Kopf des Kalenders steht fest.** Auf dem Handy steht der linke Pfeil am linken
+Rand, der rechte am rechten Rand, die Beschriftung („16.–22. Nov“, „November 2026“, „2026“) mittig
+in einem festen Platz; eine längere oder kürzere Beschriftung verschiebt die Pfeile nicht. Ist die
+gezeigte Zeitspanne nicht die heutige, wird die Beschriftung zum Knopf „Zu heute“ (Unterzeile
+„Heute ›“ im selben Platz, Bildschirmleser „Zurück zu heute“); in der heutigen Zeitspanne ist sie nur
+Text. Tablet und Desktop bleiben, wie sie sind. Quelle: Review 0002. Offline: vollständig.
+
+- AC-046: Angenommen Handy, Woche 16.–22.11. · Wenn ich zur Woche 23.–29.11. blättere · Dann stehen
+  beide Pfeile an derselben Stelle wie vorher, und unter „23.–29. Nov“ steht „Heute ›“ · Wenn ich die
+  Beschriftung antippe · Dann zeigt der Kalender die Woche 16.–22.11. ohne „Heute ›“.
+
+**REQ-019 — Wischen blättert auf dem Handy.** Auf dem Handy blättert ein waagerechtes Wischen über
+den Kalender zur nächsten (nach links) oder vorigen (nach rechts) Zeitspanne der Ansicht (Woche,
+Monat, Jahr), wie die Pfeile. Ziehen eines Eintrags beginnt weiter erst nach Halten (Spec 0016) und
+blättert nie; das Tages-Fenster behält sein eigenes Wischen. Bei „Bewegung reduzieren“ ohne
+Animation. Die Pfeile bleiben. Quelle: Review 0002. Offline: vollständig.
+
+- AC-047: Angenommen Handy, Monat November · Wenn ich nach links wische · Dann zeigt der Kalender
+  Dezember 2026 · Wenn ich nach rechts wische · Dann wieder November.
+- AC-048: Angenommen Handy, Woche · Wenn ich „Lasagne“ halte und waagerecht ziehe · Dann wird sie
+  verschoben und die Woche blättert nicht.
+
 ## Entscheidungen
 
 Entschieden von Claude nach Enricos Regel „Empfehlung nehmen“ (22.11.2026).
@@ -387,17 +439,19 @@ neu fassen (Uhrzeit am Restaurant-Eintrag, ohne eigene Erinnerung), neu „Uhrze
 
 ## Umsetzung
 
-- [ ] 1. Migration: `starts_at`, Prüfregeln, Entfallenes, `apply_changes`, Planer; pgTAP (AC-018,
+- [x] 1. Migration: `starts_at`, Prüfregeln, Entfallenes, `apply_changes`, Planer; pgTAP (AC-018,
       AC-024, AC-036, AC-039)
-- [ ] 2. Core: Reste-Regeln und `plan-move` mit Tageszeit, ohne `too-far` (AC-032–AC-034);
+- [x] 2. Core: Reste-Regeln und `plan-move` mit Tageszeit, ohne `too-far` (AC-032–AC-034);
       Portionen-Delta (AC-015–AC-018); Beiträge neu rechnen (AC-019–AC-021, AC-041); Zählen „Essen“
       (AC-013); Erinnerungsvorschlag und Text (AC-037, AC-038)
-- [ ] 3. Api: Speichern beim Schließen in einem Aufruf, Entfernen mit Beiträgen (AC-025–AC-027,
+- [x] 3. Api: Speichern beim Schließen in einem Aufruf, Entfernen mit Beiträgen (AC-025–AC-027,
       AC-040)
 - [ ] 4. Eintragsfenster: Felder, Schließen, Chips offen (AC-015, AC-022–AC-029, AC-035)
 - [ ] 5. Hinzufügen-Fenster: Zähler, Zusatz, Uhrzeit, Tab „Reste“ (AC-017, AC-030, AC-031)
 - [ ] 6. Benachrichtigungen-Seite ohne Reservierung (AC-039)
 - [ ] 7. Kalender: Höhe, Monat-Aussehen, „+“, Scrollen zu heute, Kleinigkeiten (AC-001–AC-014)
 - [ ] 8. Aufräumen: Entfallenes aus „Daten“ im Code entfernen
+- [ ] 9. Nachtrag Review 0002: Aufgaben erledigen und Fenster im Kalender, Aufgaben in Monat und
+      Jahr, fester Handy-Kopf mit „Heute ›“, Wischen blättert (AC-042–AC-048)
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
       `/ui-verify`, `/security-check`
