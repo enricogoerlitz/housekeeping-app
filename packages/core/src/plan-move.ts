@@ -181,3 +181,40 @@ export function travellersOn(
   if (date === null) return [];
   return eaterIds.filter((id) => isAbsent(id, date, absences));
 }
+
+export type PlanMove =
+  | { kind: 'same' }
+  | { kind: 'blocked'; message: string }
+  | { kind: 'move'; date: ISODate | null; slotId: Id; message: string };
+
+/**
+ * One move as dragging and "Anderes Datum …" do it (REQ-004, REQ-005): where the entry lands and
+ * the toast after it, or why the target refuses it. `title` is the entry's name in the plan.
+ */
+export function planMove(input: {
+  entry: MealPlanEntry;
+  target: DropTarget;
+  entries: readonly MealPlanEntry[];
+  absences: Absence[];
+  members: readonly { id: Id; name: string }[];
+  slots: readonly { id: Id; name: string }[];
+  title: string;
+  today: ISODate;
+}): PlanMove {
+  const outcome = dropOutcome(input.entry, input.target, input.entries);
+  if (outcome.kind === 'same') return outcome;
+  if (outcome.kind === 'blocked') {
+    return { kind: 'blocked', message: blockedText(outcome.reason, input.title) };
+  }
+  const travellerNames = travellersOn(input.entry.eaterIds, outcome.date, input.absences).flatMap(
+    (id) => input.members.find((member) => member.id === id)?.name ?? [],
+  );
+  const message = moveToastText({
+    title: input.title,
+    date: outcome.date,
+    slotName: input.slots.find((slot) => slot.id === outcome.slotId)?.name ?? '',
+    today: input.today,
+    travellerNames,
+  });
+  return { ...outcome, message };
+}

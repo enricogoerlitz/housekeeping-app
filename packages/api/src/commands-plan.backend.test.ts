@@ -635,3 +635,42 @@ describe('spec 0018, REQ-003: "Fertig" saves the open fields of an entry', () =>
     expect(entryById(id)?.reservedAt).toBeUndefined();
   });
 });
+
+describe('spec 0016, REQ-004: moving an entry', () => {
+  const lasagne = () => {
+    const entry = getData().planEntries.find((candidate) => candidate.recipeId === 'rec-lasagne');
+    if (!entry) throw new Error('lasagne missing');
+    return entry;
+  };
+
+  it('AC-014: "Rückgängig" brings back day and Tageszeit', async () => {
+    await fx.startEnrico();
+    const before = lasagne();
+    const restore = snapshot();
+    movePlanEntry(before.id, addDays(TODAY, 40), SLOT_LUNCH);
+    expect(entryById(before.id)).toMatchObject({ date: addDays(TODAY, 40), slotId: SLOT_LUNCH });
+    restore();
+    expect(entryById(before.id)).toMatchObject({ date: before.date, slotId: before.slotId });
+    await fx.settle();
+    expect(fx.server.row(H, 'meal_plan_entries', before.id)).toMatchObject({
+      date: before.date,
+      slot_id: before.slotId,
+    });
+  });
+
+  it('AC-018: an entry deleted meanwhile is refused with the general hint and then gone', async () => {
+    await fx.startEnrico();
+    const messages: string[] = [];
+    const stop = onWriteRejected((message) => messages.push(message));
+    const { id } = lasagne();
+    await fx.server
+      .transport(NADJA)
+      .applyChanges(H, [{ kind: 'delete', table: 'meal_plan_entries', id }]);
+    movePlanEntry(id, addDays(TODAY, 2));
+    expect(entryById(id)?.date).toBe(addDays(TODAY, 2));
+    await fx.settle();
+    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(entryById(id)).toBeUndefined();
+    stop();
+  });
+});

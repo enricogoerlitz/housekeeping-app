@@ -7,6 +7,7 @@ import {
   moveBounds,
   moveTargetLabel,
   moveToastText,
+  planMove,
   travellersOn,
 } from './plan-move';
 import type { Absence, MealPlanEntry } from './types';
@@ -300,5 +301,84 @@ describe('travellersOn', () => {
 
   it('AC-016: a parked entry has nobody travelling', () => {
     expect(travellersOn(['enrico', 'nadja'], null, [nadjaAway])).toEqual([]);
+  });
+});
+
+describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
+  const members = [
+    { id: 'enrico', name: 'Enrico' },
+    { id: 'nadja', name: 'Nadja' },
+  ];
+  const slots = [
+    { id: 'mittag', name: 'Mittag' },
+    { id: 'abend', name: 'Abend' },
+  ];
+  const base = { members, slots, title: 'Lasagne', today, absences: [] };
+
+  it('AC-019: "Anderes Datum …" keeps the Tageszeit and names the year', () => {
+    expect(
+      planMove({
+        ...base,
+        entry: lasagne,
+        target: { kind: 'day', date: '2027-01-08' },
+        entries: [lasagne],
+      }),
+    ).toEqual({
+      kind: 'move',
+      date: '2027-01-08',
+      slotId: 'abend',
+      message: 'Lasagne → Fr 8.1.2027, Abend',
+    });
+  });
+
+  it('AC-016: the toast names the eaters travelling on the target day', () => {
+    const nadjaAway: Absence = {
+      id: 'a1',
+      memberId: 'nadja',
+      from: '2026-11-27',
+      to: '2026-11-29',
+    };
+    expect(
+      planMove({
+        ...base,
+        absences: [nadjaAway],
+        entry: lasagne,
+        target: { kind: 'slot', date: '2026-11-27', slotId: 'mittag' },
+        entries: [lasagne],
+      }),
+    ).toEqual({
+      kind: 'move',
+      date: '2026-11-27',
+      slotId: 'mittag',
+      message: 'Lasagne → Fr 27.11., Mittag · Nadja ist dann auf Reise',
+    });
+  });
+
+  it('AC-013: "Vormerken" says "vorgemerkt"', () => {
+    expect(
+      planMove({ ...base, entry: lasagne, target: { kind: 'parked' }, entries: [lasagne] }),
+    ).toEqual({ kind: 'move', date: null, slotId: 'abend', message: 'Lasagne vorgemerkt' });
+  });
+
+  it('AC-015: a target behind the leftovers is refused with the reason', () => {
+    expect(
+      planMove({
+        ...base,
+        entry: lasagne,
+        target: { kind: 'day', date: '2026-11-28' },
+        entries: [lasagne, lasagneLeftovers],
+      }),
+    ).toEqual({ kind: 'blocked', message: 'Reste von Lasagne stehen schon am Fr 27.11.' });
+  });
+
+  it('AC-003: the old place changes nothing and says nothing', () => {
+    expect(
+      planMove({
+        ...base,
+        entry: lasagne,
+        target: { kind: 'day', date: '2026-11-25' },
+        entries: [lasagne],
+      }),
+    ).toEqual({ kind: 'same' });
   });
 });
