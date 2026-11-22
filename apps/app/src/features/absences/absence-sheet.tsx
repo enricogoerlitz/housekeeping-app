@@ -39,9 +39,10 @@ import {
   TextField,
   toast,
   useTheme,
+  expandableA11y,
 } from '@housekeeping/ui';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { messageOf } from '@/features/packing/packing-labels';
 import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
@@ -260,8 +261,11 @@ function DateField(props: {
       <Pressable
         testID={props.testID}
         accessibilityRole="button"
-        accessibilityLabel={`${props.label}: ${formatPickerDate(props.value)}`}
-        accessibilityState={{ expanded: props.open }}
+        {...expandableA11y(
+          `${props.label}: ${formatPickerDate(props.value)}`,
+          props.open,
+          Platform.OS,
+        )}
         onPress={props.onPress}
         style={(state) => {
           const { pressed, focused } = state as { pressed: boolean; focused?: boolean };

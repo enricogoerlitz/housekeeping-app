@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 
 import {
   ACTIVE,
+  PLAN_ENTRY,
   SLOT_DINNER,
   TODAY,
   aiFixtures,
@@ -15,10 +16,10 @@ import {
   nav,
   only,
   open,
-  openSettings,
   routeUrl,
   showPlanWeek,
   stubMaps,
+  switchHousehold,
   test,
   tid,
   tidPrefix,
@@ -39,9 +40,33 @@ const BURGER = `restaurant-${seedIds['rest-burger']}`;
 
 /** Switches this device to the empty household "Test". */
 async function toTestHousehold(page: Page): Promise<void> {
-  await openSettings(page);
-  await tid(page, `household-${seedIds['hh-test']}`).click();
-  await back(page);
+  await switchHousehold(page, seedIds['hh-test']);
+}
+
+/** "Neu" → "Restaurant" (spec 0008: one "Neu" menu on recipes and restaurants). */
+async function newRestaurant(page: Page): Promise<void> {
+  await tid(page, 'recipe-new').click();
+  await tid(page, 'recipe-new-restaurant').click();
+  await expect(tid(page, 'restaurant-sheet')).toBeVisible();
+}
+
+/** Plans Trattoria Da Enzo on `date` (evening) from the calendar; returns the new entry's id. */
+async function planEnzo(page: Page, date: string): Promise<string> {
+  const enzoEntries = () =>
+    page
+      .locator(PLAN_ENTRY)
+      .filter({ hasText: 'Trattoria Da Enzo' })
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-testid') ?? ''));
+  const before = await enzoEntries();
+  // Phones have one "+" per day (evening preselected); the wide grid one per Tageszeit.
+  await tid(page, isPhone(page) ? `add-${date}` : `add-${date}-${SLOT_DINNER}`).click();
+  await tid(page, 'add-entry-tab-restaurants').click();
+  await tid(page, `add-entry-restaurant-${seedIds['rest-enzo']}`).click();
+  await tid(page, 'add-entry-save').click();
+  await expect(tid(page, 'add-entry-sheet')).toBeHidden();
+  await expect.poll(async () => (await enzoEntries()).length).toBe(before.length + 1);
+  const added = (await enzoEntries()).find((id) => !before.includes(id)) ?? '';
+  return added.replace(/^entry-/, '');
 }
 
 /** The number in "N Restaurants". */
@@ -123,7 +148,7 @@ test('0002 AC-004: an Apple Maps link fills in name and coordinates', async ({ p
   await open(page, '/');
   await toTestHousehold(page);
   await openRestaurants(page);
-  await tid(page, 'restaurant-add').click();
+  await newRestaurant(page);
   await tid(page, 'restaurant-link').fill(PHO_LINK);
   await expect(tid(page, 'restaurant-name')).toHaveValue('Pho Saigon');
   await expect(tid(page, 'restaurant-link-ok')).toContainText('Koordinaten übernommen');
@@ -140,7 +165,7 @@ test('0002 AC-005: a short link is recognised and saved with the place the serve
   const place = aiFixtures.resolveMapsLink();
   await open(page, '/rezepte?view=restaurants');
   const before = await restaurantCount(page);
-  await tid(page, 'restaurant-add').click();
+  await newRestaurant(page);
   await tid(page, 'restaurant-link').fill('https://maps.app.goo.gl/AbC123');
   await expect(tid(page, 'restaurant-link-short')).toHaveText(
     /Kurzlink erkannt – Ort wird beim Speichern abgerufen/,
@@ -156,7 +181,7 @@ test('0002 AC-006: text that is not a map link shows an error and leaves the for
   page,
 }) => {
   await open(page, '/rezepte?view=restaurants');
-  await tid(page, 'restaurant-add').click();
+  await newRestaurant(page);
   await tid(page, 'restaurant-link').fill('hallo welt');
   await expect(tid(page, 'restaurant-link-error')).toHaveText('Das ist kein Karten-Link');
   await expect(tid(page, 'restaurant-name')).toHaveValue('');
@@ -169,7 +194,7 @@ test('0002 AC-007: saving without a name creates nothing and shows "Name fehlt"'
   await open(page, '/rezepte?view=restaurants');
   const count = tid(page, 'restaurant-count');
   const before = await count.innerText();
-  await tid(page, 'restaurant-add').click();
+  await newRestaurant(page);
   await tid(page, 'restaurant-save').click();
   await expect(tid(page, 'restaurant-name-error')).toHaveText('Name fehlt');
   await expect(tid(page, 'restaurant-sheet')).toBeVisible();
@@ -195,7 +220,7 @@ test('0002 AC-009: the same link again offers "Öffnen" instead of a second entr
 }) => {
   await open(page, '/rezepte?view=restaurants');
   const count = await tid(page, 'restaurant-count').innerText();
-  await tid(page, 'restaurant-add').click();
+  await newRestaurant(page);
   await tid(page, 'restaurant-link').fill(ENZO_LINK);
   await expect(tid(page, 'restaurant-duplicate')).toContainText('Gibt es schon: Trattoria Da Enzo');
   await expect(tid(page, 'restaurant-duplicate-open')).toHaveText(/Öffnen/);
@@ -228,40 +253,22 @@ test('0002 AC-010: 5 stars, favourite and a note show in the list and on the det
   await expect(tid(page, 'restaurant-notes-edit')).toHaveValue('Trüffelpasta!');
 });
 
-test('0002 AC-011: a restaurant in the plan has the restaurant mark and adds nothing to the list', async ({
-  page,
-}) => {
+test('0002 AC-011: a restaurant in the calendar adds nothing to the list', async ({ page }) => {
   await open(page, '/kalender');
   await showPlanWeek(page, THURSDAY);
-  await tid(page, `add-${THURSDAY}-${SLOT_DINNER}`).click();
-  await tid(page, 'add-entry-mode-restaurant').click();
-  await tid(page, `add-entry-restaurant-${seedIds['rest-enzo']}`).click();
-  await tid(page, 'add-entry-restaurant-save').click();
-  const mark = tidPrefix(page, 'entry-restaurant-');
-  const entryId = (await mark.last().getAttribute('data-testid'))?.replace('entry-restaurant-', '');
-  const entry = tid(page, `entry-${entryId}`);
-  await expect(entry).toContainText('Trattoria Da Enzo');
-  await expect(tid(page, `entry-restaurant-${entryId}`)).toHaveText('Restaurant');
-
+  const entryId = await planEnzo(page, THURSDAY);
+  await expect(tid(page, `entry-${entryId}`)).toContainText('Trattoria Da Enzo');
+  // Spec 0006, AC-049: restaurants never appear in "Was soll auf die Liste?".
   await tid(page, 'plan-to-list').click();
-  for (const chip of await tidPrefix(page, 'pc-day-').all()) {
-    const id = await chip.getAttribute('data-testid');
-    const selected = (await chip.getAttribute('aria-selected')) === 'true';
-    if ((id === `pc-day-${THURSDAY}`) !== selected) await chip.click();
-  }
-  await expect(tid(page, `pc-day-${THURSDAY}`)).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'pc-dishes')).toHaveText('Noch kein Gericht gewählt.');
-  await expect(tid(page, 'pc-next')).toBeDisabled();
+  await expect(tid(page, 'pantry-check-sheet')).toContainText('Was soll auf die Liste?');
+  await expect(page.locator(`[data-testid="pick-entry-${entryId}"]${ACTIVE}`)).toHaveCount(0);
 });
 
 test('0002 AC-012: "Route" on Heute opens Apple Karten or Google Maps at Enzo’s coordinates', async ({
   page,
 }) => {
   await open(page, '/kalender');
-  await tid(page, `add-${TODAY}-${SLOT_DINNER}`).click();
-  await tid(page, 'add-entry-mode-restaurant').click();
-  await tid(page, `add-entry-restaurant-${seedIds['rest-enzo']}`).click();
-  await tid(page, 'add-entry-restaurant-save').click();
+  await planEnzo(page, TODAY);
 
   await nav(page, 'index');
   const card = tidPrefix(page, 'today-meal-').filter({ hasText: 'Trattoria Da Enzo' });
@@ -299,7 +306,9 @@ test('0002 offline: restaurants stay readable, editing is greyed out, the route 
   await open(page, '/rezepte?view=restaurants');
   await goOffline(page);
   await expect(tid(page, 'restaurant-offline-hint')).toBeVisible();
-  await expect(tid(page, 'restaurant-add')).toHaveAttribute('aria-disabled', 'true');
+  await tid(page, 'recipe-new').click();
+  await expect(tid(page, 'recipe-new-restaurant')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
   await tid(page, PHO).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await expect(tid(page, 'restaurant-favorite')).toHaveAttribute('aria-disabled', 'true');
@@ -331,12 +340,16 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
   async function pantryCheckFor(page: Page, date: string): Promise<void> {
     await showPlanWeek(page, date);
     await tid(page, 'plan-to-list').click();
-    for (const chip of await tidPrefix(page, 'pc-day-').all()) {
-      const id = await chip.getAttribute('data-testid');
-      const selected = (await chip.getAttribute('aria-selected')) === 'true';
-      if ((id === `pc-day-${date}`) !== selected) await chip.click();
+    const pizza = `pick-entry-${seedIds['plan-10']}-check`;
+    for (const check of await tidPrefix(page, 'pick-entry-')
+      .and(page.locator('[role="checkbox"]'))
+      .all()) {
+      const id = await check.getAttribute('data-testid');
+      const selected = (await check.getAttribute('aria-checked')) === 'true';
+      if ((id === pizza) !== selected) await check.click();
     }
-    await expect(tid(page, 'pc-dishes')).toHaveText('Pizza Margherita');
+    await expect(tid(page, pizza)).toHaveAttribute('aria-checked', 'true');
+    await expect(tid(page, 'pc-next')).toHaveText('Weiter: 1 Gericht');
     await tid(page, 'pc-next').click();
   }
 
@@ -349,7 +362,7 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
     await tid(page, 'pc-apply').click();
     await expect(toastMessage(page)).toContainText('auf der Liste');
     await nav(page, 'liste');
-    await expect(itemRows(page, 'Mozzarella')).toContainText('(Fior di Latte)');
+    await expect(itemRows(page, 'Mozzarella (Fior di Latte)')).toHaveCount(1);
   });
 
   test('"Fior di Latte" reaches the list through "Ist alle"', async ({ page }) => {
@@ -364,7 +377,7 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
     await expect(toastMessage(page)).toHaveText('Mozzarella steht auf der Liste');
     await back(page);
     await nav(page, 'liste');
-    await expect(itemRows(page, 'Mozzarella')).toContainText('(Fior di Latte)');
+    await expect(itemRows(page, 'Mozzarella (Fior di Latte)')).toHaveCount(1);
   });
 
   test('the note can be edited in the recipe and the pantry check uses the new one', async ({
@@ -376,11 +389,14 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
       'ingredient-shopping-note-',
       '',
     );
-    await tid(page, `ingredient-note-${ingredientId}`).click();
-    await expect(tid(page, 'ingredient-note-input')).toHaveValue('Fior di Latte');
-    await tid(page, 'ingredient-note-input').fill('Büffelmozzarella');
-    await tid(page, 'ingredient-note-save').click();
-    await expect(toastMessage(page)).toHaveText('Zusatz gespeichert');
+    // Spec 0008: edits sit behind the section's pen; the Zusatz is in the ingredient window.
+    await tid(page, 'recipe-ingredients-edit').click();
+    await tid(page, `recipe-row-menu-${ingredientId}`).click();
+    await tid(page, `recipe-row-menu-${ingredientId}-edit`).click();
+    await expect(tid(page, 'ingredient-shopping-note')).toHaveValue('Fior di Latte');
+    await tid(page, 'ingredient-shopping-note').fill('Büffelmozzarella');
+    await tid(page, 'ingredient-save').click();
+    await tid(page, 'recipe-ingredients-done').click();
     await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText(
       '(Büffelmozzarella)',
     );

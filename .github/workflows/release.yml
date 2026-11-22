@@ -1,0 +1,462 @@
+# Release of main (spec 0014, REQ-005, plan Task 8, decisions 2, 3, 10 to 14, 20, 22). Every push to
+# main — the merge commit of a release PR from develop or of a hotfix — builds in parallel and
+# delivers in order:
+#
+#   checks → version → web-bauen ∥ supabase-pruefen → pakete-pruefen → sicherung
+#          → supabase-ausliefern → web-ausliefern → pruefen → veroeffentlichen → rueckfuehrung
+#
+# - Red checks: nothing is built or delivered (AC-028). A red build, scan or backup: no migration
+#   (AC-029). A failed migration: no web, no tag (AC-030). Tag and GitHub release only after the
+#   web delivery and the verification are green; "Re-run failed jobs" continues (AC-031).
+# - Only documentation since the last tag: the checks run, nothing is released (AC-020). Started
+#   by hand (workflow_dispatch on main) with `erzwingen`, it releases anyway — for a new web build
+#   after a disaster restore into a new Supabase project (docs/architecture/betrieb.md).
+# - One delivery at a time, never cancelled; redeploy-web.yml shares the group (AC-032).
+# - Jobs with the environment production install no packages and run no package code; the build
+#   job has no environment and no secret (decision 3).
+# - After a hotfix the job rueckfuehrung merges main back into develop (decision 14, AC-067).
+name: Veröffentlichung
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      erzwingen:
+        description: 'Veröffentlichen, auch wenn sich seit dem letzten Tag nur Doku oder nichts geändert hat (z. B. nach einer Wiederherstellung in ein neues Supabase-Projekt)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    name: Checks
+    uses: ./.github/workflows/checks.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  version:
+    name: Version und Änderungsliste
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # commits/{sha}/pulls for the change list and the hotfix detection.
+      pull-requests: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
+      hotfix: ${{ steps.handback.outputs.hotfix }}
+      hand_back_branch: ${{ steps.handback.outputs.branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # All tags v*: the next version and the change list count from the latest one.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Nur auf main
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Veröffentlichungen gibt es nur von main"
+            exit 1
+          fi
+      - id: version
+        name: Version, nur Doku?, Mindestversion
+        env:
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.erzwingen }}
+        run: |
+          args=()
+          if [ "$FORCE" = true ]; then args+=(--force); fi
+          node scripts/release/version.mjs "${args[@]}"
+      - name: Änderungsliste
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/changelog.mjs --out "$RUNNER_TEMP/changelog.md"
+      - id: handback
+        name: Hotfix?
+        if: steps.version.outputs.release == 'true' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/release/hand-back.mjs detect --version "$VERSION"
+      - if: steps.version.outputs.release == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: changelog
+          path: ${{ runner.temp }}/changelog.md
+          if-no-files-found: error
+          retention-days: 30
+
+  web-bauen:
+    name: Web bauen
+    needs: [checks, version]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TURBO_TELEMETRY_DISABLED: 1
+      # Public values only (they end up in the bundle anyway).
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PRODUCTION_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_VAPID_PUBLIC_KEY: ${{ vars.PRODUCTION_VAPID_PUBLIC_KEY }}
+      EXPO_PUBLIC_APP_VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Variablen vorhanden
+        run: |
+          for name in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY EXPO_PUBLIC_VAPID_PUBLIC_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Variable für $name fehlt (PRODUCTION_SUPABASE_URL, PRODUCTION_SUPABASE_PUBLISHABLE_KEY, PRODUCTION_VAPID_PUBLIC_KEY)"
+              exit 1
+            fi
+          done
+      - run: pnpm install --frozen-lockfile
+      # Export, version.json (version and GITHUB_SHA), CSP and SWA configuration check (AC-038).
+      - run: pnpm build:web
+      - name: Paket für die GitHub-Veröffentlichung
+        run: (cd apps/app/dist && zip -qr "$RUNNER_TEMP/web-$VERSION.zip" .)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: apps/app/dist
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-zip
+          path: ${{ runner.temp }}/web-${{ needs.version.outputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  supabase-pruefen:
+    name: Supabase prüfen
+    needs: [checks, version]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_POOLER_URL: ${{ secrets.SUPABASE_POOLER_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tags: the guard compares with the migrations of the latest release.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+      - name: Pooler-Adresse vorhanden
+        # GitHub runners have no IPv6: database commands go through the session pooler (IPv4).
+        run: |
+          if [ -z "$SUPABASE_POOLER_URL" ]; then
+            echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
+            exit 1
+          fi
+      - name: Migrationshistorie der Produktion
+        # A foreign history stops the release (runbook B5); it is never repaired by hand.
+        run: |
+          supabase migration list --remote="$SUPABASE_POOLER_URL" --output-format json > "$RUNNER_TEMP/migrations.json" || true
+          node scripts/release/supabase-guard.mjs "$RUNNER_TEMP/migrations.json"
+      - name: Ausstehende Migrationen
+        run: supabase db push --remote="$SUPABASE_POOLER_URL" --dry-run --skip-vault
+
+  pakete-pruefen:
+    name: Pakete prüfen
+    needs: [checks, version, web-bauen, supabase-pruefen]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: ${{ runner.temp }}/dist
+      - name: Web-Export nach Geheimnissen durchsuchen
+        # AC-061: names and the values of the secrets of production; reports file and name only.
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: node apps/app/scripts/check-web-export.mjs --scan "$RUNNER_TEMP/dist" --names SUPABASE_ACCESS_TOKEN,GOOGLE_CLIENT_SECRET
+
+  sicherung:
+    name: Sicherung
+    needs: [checks, version, pakete-pruefen]
+    uses: ./.github/workflows/backup.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      prefix: release/v${{ needs.version.outputs.version }}
+
+  supabase-ausliefern:
+    name: Supabase ausliefern
+    needs: [checks, version, web-bauen, supabase-pruefen, pakete-pruefen, sicherung]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_POOLER_URL: ${{ secrets.SUPABASE_POOLER_URL }}
+      PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+      PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
+      PRODUCTION_WEB_ORIGIN_WILDCARD: ${{ vars.PRODUCTION_WEB_ORIGIN }}/**
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+      - name: Konfiguration für das Produktionsprojekt
+        run: node scripts/ci/supabase-remote.mjs production
+      - name: Pooler-Adresse vorhanden
+        # GitHub runners have no IPv6: database commands go through the session pooler (IPv4).
+        run: |
+          if [ -z "$SUPABASE_POOLER_URL" ]; then
+            echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
+            exit 1
+          fi
+      - name: Migrationen
+        # Names the migrations it applies (AC-027). Never the seed; the Vault stays Enrico's.
+        run: supabase db push --remote="$SUPABASE_POOLER_URL" --skip-vault --yes
+      - name: Auth- und API-Konfiguration
+        # After the migrations: the hook points at a function they create (AC-040).
+        run: supabase config push --remote="$SUPABASE_PROJECT_REF" --yes
+      - name: Functions
+        # Docker bundling (no --use-api), so the frozen deno.lock of push-send applies (AC-074);
+        # --prune removes functions that left the repo (AC-044).
+        run: supabase functions deploy --remote="$SUPABASE_PROJECT_REF" --prune --yes
+      - name: Secrets der Functions
+        # AC-045: only the allowed origin; never FOUNDRY_*, push values are Enrico's (runbook C6).
+        # Fixed values of [edge_runtime.secrets] in config.toml are pushed too; every one is
+        # overridden here so no local value (VAPID_SUBJECT = https://localhost) reaches the project.
+        run: supabase secrets set --remote="$SUPABASE_PROJECT_REF" --yes "ALLOWED_ORIGINS=$PRODUCTION_WEB_ORIGIN" "VAPID_SUBJECT=$PRODUCTION_WEB_ORIGIN"
+
+  web-ausliefern:
+    name: Web ausliefern v${{ needs.version.outputs.version }}
+    needs: [checks, version, supabase-ausliefern]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_WEB_ORIGIN }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SWA_NAME: ${{ vars.SWA_NAME }}
+      SWA_RESOURCE_GROUP: ${{ vars.SWA_RESOURCE_GROUP }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: dist
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: token
+        name: Deployment-Token holen
+        run: |
+          token="$(az staticwebapp secrets list -n "$SWA_NAME" -g "$SWA_RESOURCE_GROUP" --query properties.apiKey -o tsv)"
+          if [ -z "$token" ]; then
+            echo "::error::Deployment-Token der Static Web App nicht lesbar"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.token.outputs.token }}
+          action: upload
+          app_location: dist
+          skip_app_build: true
+          skip_api_build: true
+
+  pruefen:
+    name: Prüfung nach der Auslieferung
+    needs: [checks, version, web-ausliefern]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.PRODUCTION_SUPABASE_PUBLISHABLE_KEY }}
+      PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+      PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
+      PRODUCTION_WEB_ORIGIN_WILDCARD: ${{ vars.PRODUCTION_WEB_ORIGIN }}/**
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      # For `supabase config diff` inside verify.mjs, which compares the hashed secret.
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+      - name: Konfiguration für das Produktionsprojekt
+        run: node scripts/ci/supabase-remote.mjs production
+      - name: Produktion von außen prüfen
+        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$GITHUB_SHA"
+
+  veroeffentlichen:
+    name: Tag und GitHub-Veröffentlichung
+    needs: [checks, version, pruefen]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # The tag v<version> (ruleset: create only) and the GitHub release.
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: changelog
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-zip
+          path: ${{ runner.temp }}/release
+      - name: Veröffentlichen
+        # AC-064: the GitHub release with the change list and the web package of this version.
+        run: |
+          gh release create "$TAG" "$RUNNER_TEMP/release/web-$VERSION.zip" \
+            --target "$GITHUB_SHA" --title "$VERSION" --notes-file "$RUNNER_TEMP/release/changelog.md"
+
+  rueckfuehrung:
+    # AC-067, AC-068, decision 14: only after a released hotfix. The pull request opened with
+    # GITHUB_TOKEN starts no pull_request run, so the checks are started with workflow_dispatch
+    # on the branch (same commit, same check names as the required checks); the push to develop
+    # by GITHUB_TOKEN starts no preview, so it is started by hand, too. Merge commit only, never
+    # a force push. A conflict leaves the pull request open and the job red.
+    name: Rückführung nach develop
+    needs: [checks, version, veroeffentlichen]
+    if: github.event_name == 'push' && needs.version.outputs.hotfix == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: ${{ needs.version.outputs.hand_back_branch }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TITLE: 'chore: main nach develop zurückführen'
+    steps:
+      - id: pr
+        name: Zweig und PR anlegen
+        run: |
+          if ! gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" > /dev/null 2>&1; then
+            gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$GITHUB_SHA" > /dev/null
+          fi
+          number="$(gh pr list --head "$BRANCH" --base develop --state open --json number --jq '.[0].number // empty')"
+          if [ -z "$number" ]; then
+            body="Rückführung nach der Veröffentlichung v$VERSION (Hotfix auf main), angelegt von release.yml. Wird nach grünen Checks per Merge-Commit zusammengeführt. Bei Konflikt: docs/architecture/betrieb.md, Abschnitt Rückführung mit Konflikt."
+            number="$(gh api -X POST "repos/$GH_REPO/pulls" -f title="$TITLE" -f head="$BRANCH" -f base=develop -f body="$body" --jq .number)"
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "url=https://github.com/$GH_REPO/pull/$number" >> "$GITHUB_OUTPUT"
+          echo "PR: https://github.com/$GH_REPO/pull/$number"
+      - name: Konflikt?
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+          URL: ${{ steps.pr.outputs.url }}
+        run: |
+          state=UNKNOWN
+          for _ in $(seq 1 30); do
+            state="$(gh pr view "$NUMBER" --json mergeable --jq .mergeable)"
+            [ "$state" != UNKNOWN ] && break
+            sleep 10
+          done
+          if [ "$state" = CONFLICTING ]; then
+            echo "::error::Rückführung mit Konflikt – die PR bleibt offen, develop bleibt unverändert: $URL (docs/architecture/betrieb.md, Abschnitt Rückführung mit Konflikt)"
+            exit 1
+          fi
+          if [ "$state" != MERGEABLE ]; then
+            echo "::error::Zusammenführbarkeit der Rückführung unklar ($state): $URL"
+            exit 1
+          fi
+      - name: Checks auf dem Zweig starten und abwarten
+        env:
+          URL: ${{ steps.pr.outputs.url }}
+        run: |
+          since="$(date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run checks.yml --ref "$BRANCH"
+          id=""
+          for _ in $(seq 1 30); do
+            sleep 10
+            id="$(gh run list --workflow checks.yml --branch "$BRANCH" --event workflow_dispatch --limit 20 \
+              --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+            [ -n "$id" ] && break
+          done
+          if [ -z "$id" ]; then
+            echo "::error::Gestarteter Lauf von checks.yml nicht gefunden: $URL"
+            exit 1
+          fi
+          echo "Checks: https://github.com/$GH_REPO/actions/runs/$id"
+          if ! gh run watch "$id" --exit-status --interval 30 > /dev/null; then
+            echo "::error::Checks der Rückführung rot – die PR bleibt offen: $URL"
+            exit 1
+          fi
+      - name: Zusammenführen und Vorschau starten
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          gh pr merge "$NUMBER" --merge
+          gh workflow run preview.yml --ref develop

@@ -1,0 +1,151 @@
+# Delivers the web package of an earlier release again (spec 0014, AC-033, plan Task 8), e.g.
+# after a release with a broken surface. Changes nothing in Supabase: no migration, no
+# configuration, no function, no secret. Refuses a tag below the minimum version of production.
+#
+#   gh workflow run redeploy-web.yml --ref main -f tag=v<Version>
+#
+# The package is web-<version>.zip of that GitHub release; it carries the Supabase address of its
+# build, so after a move to a new Supabase project a forced release (release.yml, input
+# `erzwingen`) is needed instead (docs/architecture/betrieb.md).
+name: Web erneut ausliefern
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag der Veröffentlichung, z. B. v2026.12.4'
+        type: string
+        required: true
+
+concurrency:
+  # Shared with release.yml: never next to a release (AC-032).
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    name: Tag prüfen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Nur auf main
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Web erneut ausliefern nur von main (gh workflow run redeploy-web.yml --ref main …)"
+            exit 1
+          fi
+      - id: version
+        name: Tag und Mindestversion der Produktion
+        # The publishable key is public; min_app_version() is readable for anon.
+        env:
+          TAG: ${{ inputs.tag }}
+          PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.PRODUCTION_SUPABASE_PUBLISHABLE_KEY }}
+        run: node scripts/release/version.mjs --redeploy "$TAG" --supabase-url "$PRODUCTION_SUPABASE_URL"
+      - id: commit
+        name: Commit des Tags
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: echo "commit=$(git rev-parse --verify "refs/tags/$TAG^{commit}")" >> "$GITHUB_OUTPUT"
+
+  web-ausliefern:
+    name: Web ausliefern v${{ needs.version.outputs.version }}
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_WEB_ORIGIN }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+      SWA_NAME: ${{ vars.SWA_NAME }}
+      SWA_RESOURCE_GROUP: ${{ vars.SWA_RESOURCE_GROUP }}
+    steps:
+      - name: Paket der Veröffentlichung laden
+        run: |
+          gh release download "$TAG" --pattern "web-$VERSION.zip" --dir "$RUNNER_TEMP"
+          mkdir dist
+          unzip -q "$RUNNER_TEMP/web-$VERSION.zip" -d dist
+          if [ "$(jq -r .version dist/version.json)" != "$VERSION" ]; then
+            echo "::error::web-$VERSION.zip enthält nicht die Version $VERSION"
+            exit 1
+          fi
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: token
+        name: Deployment-Token holen
+        run: |
+          token="$(az staticwebapp secrets list -n "$SWA_NAME" -g "$SWA_RESOURCE_GROUP" --query properties.apiKey -o tsv)"
+          if [ -z "$token" ]; then
+            echo "::error::Deployment-Token der Static Web App nicht lesbar"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.token.outputs.token }}
+          action: upload
+          app_location: dist
+          skip_app_build: true
+          skip_api_build: true
+
+  pruefen:
+    name: Prüfung nach der Auslieferung
+    needs: [version, web-ausliefern]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.PRODUCTION_SUPABASE_PUBLISHABLE_KEY }}
+      PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+      PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
+      PRODUCTION_WEB_ORIGIN_WILDCARD: ${{ vars.PRODUCTION_WEB_ORIGIN }}/**
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      # For `supabase config diff` inside verify.mjs (read-only), which compares the hashed secret.
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      VERSION: ${{ needs.version.outputs.version }}
+      COMMIT: ${{ needs.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: 3.2.0
+      - name: Konfiguration für das Produktionsprojekt
+        run: node scripts/ci/supabase-remote.mjs production
+      - name: Produktion von außen prüfen
+        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$COMMIT"

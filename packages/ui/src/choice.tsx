@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { ChipView, focusRing, IconButton } from './controls';
+import { expandableA11y } from './expandable';
 import { type IconName } from './icons';
 import { menuKey } from './menu-keys';
 import { Icon, Text } from './primitives';
@@ -337,8 +338,7 @@ export function Menu<T extends string>(props: MenuProps<T>) {
         ref={trigger}
         testID={props.testID}
         accessibilityRole="button"
-        accessibilityLabel={props.accessibilityLabel}
-        accessibilityState={{ expanded: anchor !== undefined }}
+        {...expandableA11y(props.accessibilityLabel, anchor !== undefined, Platform.OS)}
         aria-haspopup="menu"
         onPress={open}
         hitSlop={4}
@@ -533,8 +533,7 @@ export function Popover(props: PopoverProps) {
         ref={trigger}
         testID={props.testID}
         accessibilityRole="button"
-        accessibilityLabel={props.accessibilityLabel}
-        accessibilityState={{ expanded: anchor !== undefined }}
+        {...expandableA11y(props.accessibilityLabel, anchor !== undefined, Platform.OS)}
         aria-haspopup="dialog"
         onPress={open}
         hitSlop={6}

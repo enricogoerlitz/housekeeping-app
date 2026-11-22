@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { Button, IconButton, TextField, focusRing } from './controls';
+import { expandableA11y } from './expandable';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
@@ -189,8 +190,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
           <Pressable
             testID={id('more')}
             accessibilityRole="button"
-            accessibilityLabel={props.more.label}
-            accessibilityState={{ expanded: moreOpen }}
+            {...expandableA11y(props.more.label, moreOpen, Platform.OS)}
             onPress={() => setMoreOpen(!moreOpen)}
             style={(state) => [
               {

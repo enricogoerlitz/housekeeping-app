@@ -39,10 +39,11 @@ import {
   useCheckWindow,
   useTheme,
   WIDE_GUTTER,
+  expandableA11y,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { undoAction } from '@/features/shell/offline';
@@ -327,8 +328,10 @@ export function ShoppingModeScreen() {
           <Pressable
             testID="sm-done-toggle"
             accessibilityRole="button"
-            accessibilityState={{ expanded: cartOpen }}
-            accessibilityLabel={`Im Wagen (${inCart.length})`}
+            {...expandableA11y(`Im Wagen (${inCart.length})`, cartOpen, Platform.OS, {
+              expanded: 'aufgeklappt',
+              collapsed: 'eingeklappt',
+            })}
             onPress={() => setCartOpen(!cartOpen)}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}
           >

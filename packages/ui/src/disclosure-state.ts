@@ -1,32 +1,17 @@
 // The foldable group "Gepackt (n)" (spec 0012, REQ-004, D31): header text, screen-reader label
 // and the folded state. Pure, so it is tested in Node; the words come from the feature.
 
-export interface DisclosureStateWords {
-  /** e.g. "aufgeklappt" */
-  expanded: string;
-  /** e.g. "eingeklappt" */
-  collapsed: string;
-}
-
 /** The visible header, e.g. "Gepackt (4)". */
 export function disclosureTitle(title: string, count: number): string {
   return `${title} (${count})`;
 }
 
 /**
- * What a screen reader hears on the header, e.g. "Gepackt, 4, eingeklappt". Pass `states` only
- * where the platform does not announce the expanded state itself (iOS says only "expanded",
- * never "collapsed"); the web and Android read it from `aria-expanded`.
+ * What a screen reader hears on the header before the state, e.g. "Gepackt, 4"; the state comes
+ * from `expandableA11y`.
  */
-export function disclosureLabel(
-  title: string,
-  count: number,
-  expanded: boolean,
-  states?: DisclosureStateWords,
-): string {
-  const base = `${title}, ${count}`;
-  if (!states) return base;
-  return `${base}, ${expanded ? states.expanded : states.collapsed}`;
+export function disclosureLabel(title: string, count: number): string {
+  return `${title}, ${count}`;
 }
 
 export interface DisclosureState {

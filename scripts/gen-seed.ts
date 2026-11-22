@@ -1,10 +1,12 @@
-// Writes the local seed (supabase/seed.sql) and the seed ids for e2e (e2e/seed-ids.ts) from the
+// Writes the local seed (supabase/seed.sql), the preview seed (supabase/preview-seed.sql, spec 0014:
+// the same households without test accounts) and the seed ids for e2e (e2e/seed-ids.ts) from the
 // demo households (packages/api/src/seed). The output does not depend on the day it runs:
 // dates and times are relative to the `supabase db reset` that loads the seed.
 //
 //   pnpm db:seed:gen
+//   tsx scripts/gen-seed.ts --check   (part of `pnpm check`: both SQL files are up to date)
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,9 +16,28 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 async function main(): Promise<void> {
   // Any base day gives the same output (pinned by seed-sql.test.ts).
-  const seed = await generateSeed(new Date().toISOString().slice(0, 10));
+  const base = new Date().toISOString().slice(0, 10);
+  const seed = await generateSeed(base);
+  const preview = await generateSeed(base, { accounts: 'preview' });
+  const files: [string, string][] = [
+    ['supabase/seed.sql', seed.sql],
+    ['supabase/preview-seed.sql', preview.sql],
+  ];
 
-  writeFileSync(resolve(root, 'supabase/seed.sql'), seed.sql);
+  if (process.argv.includes('--check')) {
+    const stale = files.filter(([file, sql]) => {
+      try {
+        return readFileSync(resolve(root, file), 'utf8') !== sql;
+      } catch {
+        return true;
+      }
+    });
+    for (const [file] of stale) console.error(`${file} is out of date. Run \`pnpm db:seed:gen\`.`);
+    if (stale.length > 0) process.exit(1);
+    return;
+  }
+
+  for (const [file, sql] of files) writeFileSync(resolve(root, file), sql);
 
   const entries = (ids: Record<string, string>) =>
     Object.entries(ids)
@@ -42,7 +63,7 @@ async function main(): Promise<void> {
   });
   if (prettier.status !== 0) throw new Error('prettier failed on e2e/seed-ids.ts');
 
-  console.log('Wrote supabase/seed.sql and e2e/seed-ids.ts');
+  console.log('Wrote supabase/seed.sql, supabase/preview-seed.sql and e2e/seed-ids.ts');
 }
 
 main().catch((error: unknown) => {

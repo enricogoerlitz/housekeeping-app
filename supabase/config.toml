@@ -54,9 +54,11 @@ port = 54329
 # Configure one of the supported pooler modes: `transaction`, `session`.
 pool_mode = "transaction"
 # How many server connections to allow per user/database pair.
-default_pool_size = 20
+# The pooler is off locally; these are the values of the hosted free tier, so that
+# `supabase config diff` after a delivery shows no difference (spec 0014, AC-040).
+default_pool_size = 15
 # Maximum number of client connections allowed.
-max_client_conn = 100
+max_client_conn = 200
 
 # [db.vault]
 # secret_key = "env(SECRET_VALUE)"
@@ -150,7 +152,8 @@ max_catalogs = 2
 
 # Store vector embeddings in S3 for large and durable datasets
 [storage.vector]
-enabled = true
+# Not used by the app; off like on the hosted free tier (keeps `config diff` clean).
+enabled = false
 max_buckets = 10
 max_indexes = 5
 
@@ -492,3 +495,44 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# ---------------------------------------------------------------------------------------------
+# Cloud projects (spec 0014, plan decision 6). Everything above is the base of both; these
+# sections override only what differs from local. The pipeline pushes them with
+# `supabase config push` and checks them with `supabase config diff --exit-code` (AC-040).
+#
+# The project_id values are placeholders: the CLI picks a section by its literal project_id, and
+# the ref stays out of the repo. scripts/ci/supabase-remote.mjs puts the ref of the job's GitHub
+# environment into the runner's copy and drops the other section. The web addresses come from
+# env(), set by the job from the variables PRODUCTION_WEB_ORIGIN and PREVIEW_WEB_ORIGIN; the
+# *_WILDCARD value is "<address>/**" (env() replaces only a whole value). Google, the hook, the
+# API schemas (public, graphql_public) and sign-up come from the base.
+# ---------------------------------------------------------------------------------------------
+
+[remotes.production]
+project_id = "productionprojectref"
+
+[remotes.production.auth]
+site_url = "env(PRODUCTION_WEB_ORIGIN)"
+additional_redirect_urls = ["env(PRODUCTION_WEB_ORIGIN)", "env(PRODUCTION_WEB_ORIGIN_WILDCARD)"]
+
+[remotes.production.auth.email]
+# Sign-in is Google only and invite-only (spec 0003, AC-007; spec 0014, AC-041).
+enabled = false
+
+[remotes.production.db.ssl_enforcement]
+enabled = true
+
+[remotes.preview]
+project_id = "previewprojectrefxxx"
+
+[remotes.preview.auth]
+site_url = "env(PREVIEW_WEB_ORIGIN)"
+additional_redirect_urls = ["env(PREVIEW_WEB_ORIGIN)", "env(PREVIEW_WEB_ORIGIN_WILDCARD)"]
+
+[remotes.preview.auth.email]
+# No e-mail sign-in, so the demo accounts of the preview seed cannot sign in (AC-014).
+enabled = false
+
+[remotes.preview.db.ssl_enforcement]
+enabled = true
