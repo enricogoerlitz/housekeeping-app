@@ -18,6 +18,7 @@ import {
   CheckResultSchema,
   ClearedItemsSchema,
   DeletedArticleSchema,
+  DeletedPlaceSchema,
   DeletedRecipeSchema,
   ManualAmountResultSchema,
   MergeArticlesResultSchema,
@@ -349,6 +350,14 @@ export function createSupabaseTransport(
       parsed(DeletedRecipeSchema, 'delete_recipe', { recipe_id: recipeId, today }),
     restoreRecipe: (recipeId) =>
       parsed(RestoredRecipeSchema, 'restore_recipe', { recipe_id: recipeId }),
+    deleteRestaurant: (restaurantId, today) =>
+      parsed(DeletedPlaceSchema, 'delete_restaurant', { restaurant_id: restaurantId, today }),
+    restoreRestaurant: (restaurantId) =>
+      parsed(RestoredRecipeSchema, 'restore_restaurant', { restaurant_id: restaurantId }),
+    deleteActivity: (activityId, today) =>
+      parsed(DeletedPlaceSchema, 'delete_activity', { activity_id: activityId, today }),
+    restoreActivity: (activityId) =>
+      parsed(RestoredRecipeSchema, 'restore_activity', { activity_id: activityId }),
     setRecipeFavorite: (recipeId, favorite) =>
       nothing('set_recipe_favorite', { recipe_id: recipeId, favorite }),
     setRecipeRating: (recipeId, stars) =>

@@ -243,14 +243,16 @@ test('0002 AC-010: 5 stars, favourite and a note show in the list and on the det
   await tid(page, BURGER).click();
   await tid(page, 'restaurant-stars-5').click();
   await tid(page, 'restaurant-favorite').click();
-  await tid(page, 'restaurant-notes-edit').fill('Trüffelpasta!');
-  await tid(page, 'restaurant-notes-save').click();
-  await expect(tid(page, 'restaurant-notes-edit')).toHaveValue('Trüffelpasta!');
+  // Spec 0024, REQ-002: the note only in "Restaurant bearbeiten".
+  await tid(page, 'restaurant-notes-edit').click();
+  await tid(page, 'restaurant-notes').fill('Trüffelpasta!');
+  await tid(page, 'restaurant-save').click();
+  await expect(tid(page, 'restaurant-notes-text')).toHaveText('Trüffelpasta!');
   await backToList(page);
   await expect(tid(page, `${BURGER}-favorite`)).toBeVisible();
   await expect(tid(page, `${BURGER}-stars`)).toHaveAttribute('aria-label', '5 von 5 Sternen');
   await tid(page, BURGER).click();
-  await expect(tid(page, 'restaurant-notes-edit')).toHaveValue('Trüffelpasta!');
+  await expect(tid(page, 'restaurant-notes-text')).toHaveText('Trüffelpasta!');
 });
 
 test('0002 AC-011: a restaurant in the calendar adds nothing to the list', async ({ page }) => {

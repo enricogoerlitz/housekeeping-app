@@ -301,9 +301,13 @@ export function diffHousehold(
           ? 'delete_article'
           : table === 'recipes'
             ? 'delete_recipe'
-            : table === 'notification_settings'
-              ? 'remove_member'
-              : 'remove_chore_event';
+            : table === 'restaurants'
+              ? 'delete_restaurant'
+              : table === 'activities'
+                ? 'delete_activity'
+                : table === 'notification_settings'
+                  ? 'remove_member'
+                  : 'remove_chore_event';
       throw new Error(`Deleting ${table} needs its own RPC (${way}).`);
     }
     if (NO_INSERT_TABLES.has(table) && ops.some((op) => op.kind === 'insert')) {
@@ -314,7 +318,7 @@ export function diffHousehold(
     const both = [...old, ...next];
     forward.set(table, withCreatedAt(selfReferencesFirst(ops, both), next));
     // Undo never deletes from these tables: an article created by the command stays, as when it
-    // was created by a list addition.
+    // was created by a list addition; so does an activity or a restaurant created while planning.
     const undo = diffRows(next, old, {
       table,
       allowedColumns,

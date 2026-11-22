@@ -5,12 +5,18 @@ import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityDetail } from './activity-detail';
 
-/** An activity on its own page in the calendar's area (spec 0010, AC-026). */
+/**
+ * An activity on its own page under "Verwalten" (phones, deep links; spec 0024, REQ-009):
+ * "‹ Aktivitäten", or the section it came from with `von` (spec 0019, REQ-006).
+ */
 export function ActivityScreen() {
-  const { params } = usePageParams('aktivitaet');
+  const address = usePageParams('aktivitaet');
+  const { params } = address;
   const router = useRouter();
-  // "‹ Kalender" or the section it came from, e.g. "‹ Verwalten" (spec 0019, AC-017).
-  const origin = useOriginBack(params.von, 'kalender');
+  const origin = useOriginBack(params.von, 'verwalten', {
+    label: 'Aktivitäten',
+    href: '/aktivitaeten',
+  });
   // Only an id of an own household reaches the lookup; anything else shows "nicht gefunden".
   const found = useAddressedId('activities', params.id);
   if (found === 'switching') return null;
@@ -19,9 +25,14 @@ export function ActivityScreen() {
       activityId={found === 'shown' ? (params.id ?? '') : ''}
       onBack={origin.back}
       backLabel={origin.label}
+      window={params.fenster}
+      onWindow={(window) =>
+        window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+      }
+      onDeleted={origin.back}
       onOpen={(activityId) =>
         router.replace({
-          pathname: '/kalender/aktivitaet/[id]',
+          pathname: '/aktivitaet/[id]',
           params: params.von ? { id: activityId, von: params.von } : { id: activityId },
         })
       }

@@ -52,8 +52,20 @@ describe('plan a recipe from its page (REQ-009)', () => {
   });
 
   it('AC-025 (0018): the notice names weekday, date and Tageszeit', () => {
-    expect(plannedNotice('2026-11-25', 'Abend')).toBe('Eingeplant: Mi 25.11., Abend');
-    expect(plannedNotice('2027-01-05', 'Mittag')).toBe('Eingeplant: Di 5.1., Mittag');
+    expect(plannedNotice('2026-11-25', 'Abend', '2026-11-22')).toBe('Eingeplant: Mi 25.11., Abend');
+  });
+
+  it('AC-018 (0024): in another year the notice names the year', () => {
+    expect(plannedNotice('2027-01-15', 'Mittag', '2026-11-22')).toBe(
+      'Eingeplant: Fr 15.1.2027, Mittag',
+    );
+  });
+
+  it('AC-021 (0024): an activity opens on the first Tageszeit', () => {
+    const vormittag = { id: 'vormittag', name: 'Vormittag', sort: 0 };
+    const abend = { id: 'abend', name: 'Abend', sort: 2 };
+    expect(defaultPlanChoice(today, [abend, vormittag], [], [], 'first').slotId).toBe('vormittag');
+    expect(defaultPlanChoice(today, [abend, vormittag], [], []).slotId).toBe('abend');
   });
 
   it('spec 0016: the notice after adding names the date, with the year when it is not this one', () => {
@@ -82,7 +94,7 @@ describe('plan a recipe from its page (REQ-009)', () => {
 
   it('AC-037: without a day it is "Vormerken" and "Vorgemerkt"', () => {
     expect(planButtonLabel(null, 'Abend')).toBe('Vormerken');
-    expect(plannedNotice(null, 'Abend')).toBe('Vorgemerkt');
+    expect(plannedNotice(null, 'Abend', '2026-11-22')).toBe('Vorgemerkt');
   });
 
   it('AC-036: another day sets "Wer isst mit?" back to those present; guests, slot and cook stay', () => {

@@ -21,6 +21,7 @@ import {
   compareTimestamps,
   isHalfStar,
   isReminderPast,
+  isWebUrl,
   packQuantity,
   PROFILE_COLORS,
   tripDays,
@@ -87,6 +88,10 @@ type RpcName =
   | 'merge_areas'
   | 'delete_recipe'
   | 'restore_recipe'
+  | 'delete_restaurant'
+  | 'restore_restaurant'
+  | 'delete_activity'
+  | 'restore_activity'
   | 'set_recipe_favorite'
   | 'set_recipe_rating'
   | 'set_restaurant_favorite'
@@ -401,6 +406,36 @@ interface RecipeDeletion {
   /** Spec 0009: its rows as a collection and as a contained recipe, in full. */
   collectionRecipes: Row[];
 }
+/** private.deletions of a restaurant or an activity (spec 0024, REQ-010). */
+interface PlaceDeletion {
+  householdId: string;
+  kind: PlaceKind;
+  targetId: string;
+  deletedBy: string;
+  deletedAt: number;
+  row: Row;
+  ratings: { member_id: string; stars: unknown }[];
+  favorites: string[];
+  /** The old values of the entries that became free text, and the text written. */
+  converted: (Row & { new_text: string })[];
+  removed: Row[];
+}
+type PlaceKind = 'restaurant' | 'activity';
+/** Table, reference column and per-member tables of a restaurant or an activity. */
+const PLACES = {
+  restaurant: {
+    table: 'restaurants',
+    column: 'restaurant_id',
+    ratings: 'restaurant_ratings',
+    favorites: 'restaurant_favorites',
+  },
+  activity: {
+    table: 'activities',
+    column: 'activity_id',
+    ratings: 'activity_ratings',
+    favorites: 'activity_favorites',
+  },
+} as const;
 /** A snapshot can be restored for 1 hour. */
 const RESTORABLE_MS = 60 * 60 * 1000;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -414,6 +449,13 @@ function withoutTimestamps(row: Row): Row {
   return copy;
 }
 
+/** An entry of a deletion snapshot as the row it was (without the text the deletion wrote). */
+function withoutConverted(entry: Row & { new_text: string }): Row {
+  const row: Row = { ...entry };
+  delete row.new_text;
+  return row;
+}
+
 /** meal_plan_entries_kind_complete, for the case a cleared reference can break. */
 function checkPlanEntry(row: Row): void {
   if (row.kind === 'leftovers' && row.recipe_id == null && row.leftovers_of_entry_id == null) {
@@ -422,11 +464,15 @@ function checkPlanEntry(row: Row): void {
 }
 
 /** Folders of the photo bucket per table (activities_photo_path_valid, recipes_photo_path_valid). */
-const PHOTO_FOLDERS: Record<string, string> = { activities: 'activities', recipes: 'recipes' };
+const PHOTO_FOLDERS: Record<string, string> = {
+  activities: 'activities',
+  recipes: 'recipes',
+  restaurants: 'restaurants',
+};
 /** The file name of a photo: a new lower-case uuid per upload, always .jpg. */
 const PHOTO_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
-/** <household>/<activities|recipes>/<row id>/<uuid>.jpg, like private.media_household_id. */
-const MEDIA_PATH = /^([^/]+)\/(activities|recipes)\/[^/]+\/([^/]+)$/;
+/** <household>/<activities|recipes|restaurants>/<row id>/<uuid>.jpg (private.media_household_id). */
+const MEDIA_PATH = /^([^/]+)\/(activities|recipes|restaurants)\/[^/]+\/([^/]+)$/;
 /** The bucket's limits: image/jpeg only, at most 2 MiB. */
 const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -768,6 +814,14 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
       throw new TransportError('permanent', '23514', 400);
     }
   }
+  // restaurants_website_url_valid, activities_website_url_valid (private.is_web_url, spec 0024).
+  if (
+    (table === 'restaurants' || table === 'activities') &&
+    row.website_url != null &&
+    !isWebUrl(String(row.website_url))
+  ) {
+    throw new TransportError('permanent', '23514', 400);
+  }
   if (table === 'activities') {
     const clash = Object.values(tables.activities ?? {}).some(
       (other) => other.id !== row.id && other.name_key === row.name_key,
@@ -816,6 +870,7 @@ export function createFakeServer(): FakeServer {
   let ai: FakeAi = {};
   /** private.recipe_deletions, one snapshot per household and recipe. */
   const recipeDeletions = new Map<string, RecipeDeletion>();
+  const placeDeletions = new Map<string, PlaceDeletion>();
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
   /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
   let pushSubscriptions: PushSubscriptionRecord[] = [];
@@ -2218,6 +2273,149 @@ export function createFakeServer(): FakeServer {
     return true;
   }
 
+  // ---------- delete_restaurant / delete_activity and their restore (spec 0024, REQ-010) ----------
+
+  function deletePlace(userId: string, kind: PlaceKind, targetId: string, today: string) {
+    const place = PLACES[kind];
+    const householdId = locate(userId, place.table, targetId);
+    if (!householdId) throw new TransportError('permanent', `${kind}_not_found`, 500);
+    const current = new Date(Date.now()).toISOString().slice(0, 10);
+    if (!ISO_DATE.test(today) || today < addDays(current, -1) || today > addDays(current, 1)) {
+      throw reject('invalid_value');
+    }
+    let deletion: PlaceDeletion | undefined;
+    const result = transaction(householdId, (before) => {
+      const row = before[place.table]?.[targetId];
+      if (!row) throw new TransportError('permanent', `${kind}_not_found`, 500);
+      const entries = Object.values(before.meal_plan_entries ?? {})
+        .filter((entry) => entry[place.column] === targetId)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const past = entries.filter((entry) => entry.date != null && String(entry.date) <= today);
+      const later = entries.filter((entry) => entry.date == null || String(entry.date) > today);
+      const converted = past.map((entry) => ({
+        ...entry,
+        new_text:
+          String(row.name) +
+          (entry.note != null && entry.note !== '' ? ` (${String(entry.note)})` : ''),
+      }));
+      const parentRows = (table: string) =>
+        Object.values(before[table] ?? {}).filter((other) => other[place.column] === targetId);
+      deletion = {
+        householdId,
+        kind,
+        targetId,
+        deletedBy: userId,
+        deletedAt: Date.now(),
+        row,
+        ratings: parentRows(place.ratings).map((rating) => ({
+          member_id: String(rating.member_id),
+          stars: rating.stars,
+        })),
+        favorites: parentRows(place.favorites).map((favorite) => String(favorite.member_id)),
+        converted,
+        removed: later,
+      };
+      let tables = before;
+      for (const entry of converted) {
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...withoutConverted(entry),
+          kind: 'text',
+          [place.column]: null,
+          text: entry.new_text,
+          note: null,
+          starts_at: null,
+        });
+      }
+      tables = withoutRows(
+        tables,
+        'meal_plan_entries',
+        later.map((entry) => entry.id),
+      );
+      tables = withoutRows(tables, place.table, [targetId]);
+      return [tables, { converted: converted.length, removed: later.length }];
+    });
+    for (const [key, kept] of placeDeletions) {
+      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
+        placeDeletions.delete(key);
+      }
+    }
+    if (deletion) placeDeletions.set(`${householdId}:${kind}:${targetId}`, deletion);
+    return result;
+  }
+
+  function restorePlace(userId: string, kind: PlaceKind, targetId: string): boolean {
+    const place = PLACES[kind];
+    const notRestorable = () => new TransportError('permanent', `${kind}_not_restorable`, 500);
+    const deletion = [...placeDeletions.values()].find(
+      (candidate) =>
+        candidate.kind === kind &&
+        candidate.targetId === targetId &&
+        candidate.deletedBy === userId &&
+        isMember(userId, candidate.householdId) &&
+        candidate.deletedAt > Date.now() - RESTORABLE_MS,
+    );
+    if (!deletion) throw notRestorable();
+    const { householdId } = deletion;
+    if (data.get(householdId)?.[place.table]?.[targetId]) return false;
+    if ([...data.values()].some((tables) => tables[place.table]?.[targetId])) throw notRestorable();
+    const current = new Set(memberIdsOf(householdId));
+    transaction(householdId, (before) => {
+      const row: Row = { ...withoutTimestamps(deletion.row), created_at: deletion.row.created_at };
+      if (kind === 'activity' && !current.has(String(row.created_by))) row.created_by = null;
+      checkRow(householdId, place.table, row, before);
+      let tables = withRow(before, place.table, row);
+      for (const rating of deletion.ratings) {
+        if (!current.has(rating.member_id)) continue;
+        const parent = { [place.column]: targetId, ...rating };
+        const id = compositeId(place.ratings, parent);
+        tables = withRow(tables, place.ratings, { id, ...parent });
+      }
+      for (const memberId of deletion.favorites) {
+        if (!current.has(memberId)) continue;
+        const parent = { [place.column]: targetId, member_id: memberId };
+        tables = withRow(tables, place.favorites, {
+          id: compositeId(place.favorites, parent),
+          ...parent,
+        });
+      }
+      for (const entry of deletion.removed) {
+        if (tables.meal_plan_entries?.[entry.id]) continue;
+        const eaters = Array.isArray(entry.eater_ids) ? entry.eater_ids.map(String) : [];
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...withoutTimestamps(entry),
+          eater_ids: eaters.filter((id) => current.has(id)),
+          cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
+        });
+      }
+      for (const entry of deletion.converted) {
+        const now = tables.meal_plan_entries?.[entry.id];
+        if (
+          !now ||
+          now.kind !== 'text' ||
+          now.recipe_id != null ||
+          now.restaurant_id != null ||
+          now.activity_id != null ||
+          now.text !== entry.new_text ||
+          now.note != null
+        ) {
+          continue;
+        }
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...now,
+          kind: entry.kind,
+          restaurant_id: entry.restaurant_id ?? null,
+          activity_id: entry.activity_id ?? null,
+          text: entry.text ?? null,
+          note: entry.note ?? null,
+          starts_at: entry.starts_at ?? null,
+        });
+      }
+      return [tables, undefined];
+    });
+    placeDeletions.delete(`${householdId}:${kind}:${targetId}`);
+    return true;
+  }
+
   // ---------- photo bucket (policies of storage.objects) ----------
 
   /** The household of a photo path the user may use, or undefined (wrong shape, foreign). */
@@ -2710,6 +2908,16 @@ export function createFakeServer(): FakeServer {
         run(userId, 'delete_recipe', () => deleteRecipe(userId, recipeId, today)),
       restoreRecipe: (recipeId) =>
         run(userId, 'restore_recipe', () => restoreRecipe(userId, recipeId)),
+      deleteRestaurant: (restaurantId, today) =>
+        run(userId, 'delete_restaurant', () =>
+          deletePlace(userId, 'restaurant', restaurantId, today),
+        ),
+      restoreRestaurant: (restaurantId) =>
+        run(userId, 'restore_restaurant', () => restorePlace(userId, 'restaurant', restaurantId)),
+      deleteActivity: (activityId, today) =>
+        run(userId, 'delete_activity', () => deletePlace(userId, 'activity', activityId, today)),
+      restoreActivity: (activityId) =>
+        run(userId, 'restore_activity', () => restorePlace(userId, 'activity', activityId)),
 
       mergeAreas: (sourceId, targetId) =>
         run(userId, 'merge_areas', () => {
@@ -3035,6 +3243,9 @@ export function createFakeServer(): FakeServer {
           deletions = deletions.filter((tombstone) => tombstone.householdId !== householdId);
           for (const [key, deletion] of recipeDeletions) {
             if (deletion.householdId === householdId) recipeDeletions.delete(key);
+          }
+          for (const [key, deletion] of placeDeletions) {
+            if (deletion.householdId === householdId) placeDeletions.delete(key);
           }
           notify(householdId);
         }),

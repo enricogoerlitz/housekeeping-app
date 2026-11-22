@@ -61,6 +61,10 @@ insert into lint_private_functions_for_authenticated values
   ('private.change_chore_event_day(uuid,jsonb)'), -- spec 0026: domain op of apply_changes, the only way to move an entry
   ('private.delete_recipe(uuid,date)'),     -- spec 0008: the only way to delete a recipe
   ('private.restore_recipe(uuid)'),         -- spec 0008: "Rückgängig" of delete_recipe
+  ('private.delete_restaurant(uuid,date)'), -- spec 0024: the only way to delete a restaurant
+  ('private.restore_restaurant(uuid)'),     -- spec 0024: "Rückgängig" of delete_restaurant
+  ('private.delete_activity(uuid,date)'),   -- spec 0024: the only way to delete an activity
+  ('private.restore_activity(uuid)'),       -- spec 0024: "Rückgängig" of delete_activity
   ('private.set_packing_items_packed(uuid,jsonb)'), -- spec 0012: the only way to pack (ADR-0013)
   ('private.adopt_bag_changes(uuid,jsonb)'),        -- spec 0022: domain op of apply_changes, "Übernehmen"
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing

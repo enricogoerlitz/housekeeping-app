@@ -98,6 +98,8 @@ export const WRITABLE_COLUMNS = {
     'price_level',
     'tags',
     'notes',
+    'website_url',
+    'photo_path',
   ],
   // created_by is only accepted on insert, and the server overwrites it with auth.uid().
   activities: [
@@ -110,7 +112,7 @@ export const WRITABLE_COLUMNS = {
     'lat',
     'lng',
     'maps_url',
-    'tags',
+    'website_url',
     'created_by',
   ],
   // Spec 0022: a trip and its people; people are only inserted and deleted (see PATCH_COLUMNS).
@@ -245,7 +247,8 @@ export const NO_INSERT_TABLES: ReadonlySet<string> = new Set([
 
 /**
  * Tables `apply_changes` never deletes from (allowlist `delete: false`): articles go through
- * delete_article (spec 0007, E4), recipes through delete_recipe (spec 0008, E2), chore entries
+ * delete_article (spec 0007, E4), recipes through delete_recipe (spec 0008, E2), restaurants and
+ * activities through delete_restaurant / delete_activity (spec 0024), chore entries
  * through remove_chore_event (spec 0011); notification settings go only with the member (spec
  * 0013).
  */
@@ -253,6 +256,8 @@ export const NO_DELETE_TABLES: ReadonlySet<string> = new Set([
   'households',
   'articles',
   'recipes',
+  'restaurants',
+  'activities',
   'chore_events',
   'notification_settings',
 ]);

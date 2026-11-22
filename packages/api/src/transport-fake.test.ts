@@ -357,9 +357,7 @@ describe('fake server: sync_pull', () => {
     expect(first.small.profiles?.map((profile) => profile.id).sort()).toEqual([ENRICO, NADJA]);
 
     vi.setSystemTime(new Date('2026-11-20T10:05:00Z'));
-    await server
-      .transport(NADJA)
-      .applyChanges(H, [{ kind: 'delete', table: 'restaurants', id: 'rest1' }]);
+    await server.transport(NADJA).deleteRestaurant('rest1', '2026-11-20');
     const delta = await enrico.syncPull({
       households: { [H]: { full: false, since: { restaurants: first.serverTime } } },
     });
@@ -422,21 +420,63 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
     row: { id, slot_id: 's1', eater_ids: [], ...row },
   });
 
-  it('refuses to delete a restaurant that is in the plan (on delete restrict)', async () => {
+  it('AC-038: never deletes a restaurant through apply_changes (delete_restaurant only)', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [plan('e1', { kind: 'restaurant', restaurant_id: 'rest1' })]);
     await expect(
       enrico.applyChanges(H, [{ kind: 'delete', table: 'restaurants', id: 'rest1' }]),
-    ).rejects.toMatchObject({
-      kind: 'permanent',
-      code: '23503',
-      constraint: 'meal_plan_entries_restaurant_fkey',
-    });
+    ).rejects.toMatchObject({ kind: 'permanent', code: 'invalid_change' });
+    expect(server.row(H, 'restaurants', 'rest1')).toBeDefined();
+  });
+
+  it('AC-034: delete_restaurant turns past entries into free text and removes later ones', async () => {
+    const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
-      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
-      { kind: 'delete', table: 'restaurants', id: 'rest1' },
+      plan('e-past', { kind: 'restaurant', restaurant_id: 'rest1', date: '2026-11-03' }),
+      plan('e-later', {
+        kind: 'restaurant',
+        restaurant_id: 'rest1',
+        date: '2026-11-28',
+        starts_at: '19:30',
+      }),
     ]);
+    await enrico.setRestaurantRating('rest1', 4.5);
+    expect(await enrico.deleteRestaurant('rest1', '2026-11-20')).toEqual({
+      converted: 1,
+      removed: 1,
+    });
     expect(server.row(H, 'restaurants', 'rest1')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-later')).toBeUndefined();
+    expect(server.rows(H, 'restaurant_ratings')).toEqual([]);
+    expect(server.row(H, 'meal_plan_entries', 'e-past')).toMatchObject({
+      kind: 'text',
+      restaurant_id: null,
+      text: 'Trattoria',
+    });
+    await expect(server.transport(NADJA).restoreRestaurant('rest1')).rejects.toMatchObject({
+      code: 'restaurant_not_restorable',
+    });
+    await expect(
+      server.transport(STRANGER).deleteRestaurant('rest1', '2026-11-20'),
+    ).rejects.toMatchObject({
+      code: 'restaurant_not_found',
+    });
+    expect(await enrico.restoreRestaurant('rest1')).toBe(true);
+    expect(server.row(H, 'restaurants', 'rest1')).toBeDefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-later')).toMatchObject({
+      starts_at: '19:30:00',
+    });
+    expect(server.row(H, 'meal_plan_entries', 'e-past')).toMatchObject({
+      kind: 'restaurant',
+      restaurant_id: 'rest1',
+      text: null,
+    });
+    expect(server.rows(H, 'restaurant_ratings')).toEqual([
+      expect.objectContaining({ member_id: ENRICO, stars: 4.5 }),
+    ]);
+    await expect(enrico.restoreRestaurant('rest1')).rejects.toMatchObject({
+      code: 'restaurant_not_restorable',
+    });
   });
 
   it('spec 0008, E2: never deletes a recipe through apply_changes (delete_recipe only)', async () => {
@@ -510,7 +550,7 @@ describe('fake server: activities and photos (spec 0004)', () => {
   const activity = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
     kind: 'insert' as const,
     table: 'activities',
-    row: { id, name, name_key: normalizeText(name), tags: [], ...extra },
+    row: { id, name, name_key: normalizeText(name), ...extra },
   });
   const jpeg = (size = 10) => new Blob([new Uint8Array(size)], { type: 'image/jpeg' });
 
@@ -524,7 +564,7 @@ describe('fake server: activities and photos (spec 0004)', () => {
     });
   });
 
-  it('protects a planned activity (restrict), deletes its favourites and ratings with it', async () => {
+  it('AC-036: deletes an activity only by delete_activity, with its favourites and ratings', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
       activity('act1', 'Bouldern'),
@@ -541,11 +581,9 @@ describe('fake server: activities and photos (spec 0004)', () => {
     ]);
     await expect(
       enrico.applyChanges(H, [{ kind: 'delete', table: 'activities', id: 'act1' }]),
-    ).rejects.toMatchObject({ code: '23503' });
-    await enrico.applyChanges(H, [
-      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
-      { kind: 'delete', table: 'activities', id: 'act1' },
-    ]);
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    expect(await enrico.deleteActivity('act1', '2026-11-20')).toEqual({ converted: 0, removed: 1 });
+    expect(server.row(H, 'meal_plan_entries', 'e1')).toBeUndefined();
     expect(server.rows(H, 'activity_favorites')).toEqual([]);
     expect(server.rows(H, 'activity_ratings')).toEqual([]);
     await expect(enrico.setActivityRating('act1', 3)).rejects.toMatchObject({

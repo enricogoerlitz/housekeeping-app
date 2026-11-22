@@ -240,6 +240,10 @@ export interface Restaurant {
   priceLevel?: 1 | 2 | 3 | 4;
   tags: string[];
   notes?: string;
+  /** "Webseite" (spec 0024, REQ-003): checked like the recipe links (web-link.ts), opened in a new tab. */
+  websiteUrl?: string;
+  /** Storage path of the household's own photo (spec 0024, REQ-004). */
+  photoPath?: string;
   favoriteOf: Id[];
   /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;
@@ -262,7 +266,8 @@ export interface Activity {
   location?: GeoPoint;
   /** The link the place was taken from (Google Maps / Apple Karten). */
   mapsUrl?: string;
-  tags: string[];
+  /** "Webseite" (spec 0024, REQ-003), like at the restaurant. */
+  websiteUrl?: string;
   favoriteOf: Id[];
   /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;

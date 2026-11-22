@@ -83,8 +83,8 @@ select * from tests.tenant_isolation('recipes',
 select * from tests.tenant_isolation('restaurants',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'), 'name', 'Thai Garden',
                      'maps_url', 'https://maps.app.goo.gl/abc', 'lat', 50.94, 'lng', 6.96),
-  '{"price_level": 2, "notes": "Mittags günstig"}',
-  tests.fx('anna'), tests.fx('ben'));
+  '{"price_level": 2, "notes": "Mittags günstig", "website_url": "https://thai-garden.de"}',
+  tests.fx('anna'), tests.fx('ben'), false); -- deleted only by delete_restaurant (spec 0024)
 
 select * from tests.tenant_isolation('trips',
   jsonb_build_object('id', gen_random_uuid(), 'household_id', tests.fx('home_a'),

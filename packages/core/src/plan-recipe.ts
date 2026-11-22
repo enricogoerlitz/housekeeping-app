@@ -63,18 +63,21 @@ export interface PlanChoice {
 
 /**
  * What the window opens with (AC-034, E11): today, the household's last Tageszeit ("Abend"), the
- * members present today, no guests and nobody cooking. Portions follow from eaters and guests.
+ * members present today, no guests and nobody cooking. Portions follow from eaters and guests. An
+ * activity opens on the first Tageszeit ("Vormittag", spec 0024, REQ-006).
  */
 export function defaultPlanChoice(
   today: ISODate,
   slots: readonly MealSlot[],
   members: readonly Member[],
   trips: readonly Trip[],
+  slot: 'first' | 'last' = 'last',
 ): PlanChoice {
-  const last = [...slots].sort((a, b) => a.sort - b.sort).at(-1);
+  const sorted = [...slots].sort((a, b) => a.sort - b.sort);
+  const chosen = slot === 'first' ? sorted[0] : sorted.at(-1);
   return {
     date: today,
-    slotId: last?.id,
+    slotId: chosen?.id,
     eaterIds: eatersForDay(members, today, trips),
     guests: 0,
     cookId: undefined,
@@ -108,11 +111,16 @@ export function refreshPlanEaters(
 
 /**
  * The notice after planning, before "Ansehen": "Eingeplant: Mi 25.11., Abend" (spec 0018,
- * AC-025) or "Vorgemerkt".
+ * AC-025), with the year when it is not the current one ("Fr 15.1.2027", spec 0024, AC-018), or
+ * "Vorgemerkt".
  */
-export function plannedNotice(date: ISODate | null, slotName: string): string {
+export function plannedNotice(date: ISODate | null, slotName: string, today: ISODate): string {
   if (date === null) return 'Vorgemerkt';
-  return `Eingeplant: ${weekdayShort(date)} ${formatShortDate(date)}, ${slotName}`;
+  const day =
+    date.slice(0, 4) === today.slice(0, 4)
+      ? `${weekdayShort(date)} ${formatShortDate(date)}`
+      : formatPickerDate(date);
+  return `Eingeplant: ${day}, ${slotName}`;
 }
 
 /**

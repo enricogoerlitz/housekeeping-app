@@ -1,6 +1,8 @@
 import {
+  cleanTags,
   findDuplicateRestaurant,
   isHalfStar,
+  normalizeWebsite,
   parseMapsLink,
   type GeoPoint,
   type Id,
@@ -22,6 +24,48 @@ export interface RestaurantDraft {
   cuisine?: string;
   priceLevel?: Restaurant['priceLevel'];
   notes?: string;
+  /** Schlagworte like at the recipe, at most 30 (spec 0024, REQ-001). */
+  tags?: string[];
+  /** "Webseite" as typed; "https://" is added (spec 0024, REQ-003). */
+  websiteUrl?: string;
+}
+
+/** The fields "Restaurant bearbeiten" changes; a field given as undefined is cleared. */
+export type RestaurantPatch = Partial<
+  Pick<
+    Restaurant,
+    | 'name'
+    | 'address'
+    | 'location'
+    | 'mapsUrl'
+    | 'cuisine'
+    | 'priceLevel'
+    | 'tags'
+    | 'notes'
+    | 'websiteUrl'
+  >
+>;
+
+export const MAX_RESTAURANT_TAGS = 30;
+const TOO_MANY_TAGS = `Höchstens ${MAX_RESTAURANT_TAGS} Schlagworte`;
+
+const trimmed = (text: string | undefined) => text?.trim() || undefined;
+
+/** Tags as stored (core cleanTags); "Höchstens 30 Schlagworte" beyond the limit. */
+function checkTags(tags: readonly string[]): string[] {
+  const clean = cleanTags(tags);
+  if (clean.length > MAX_RESTAURANT_TAGS) throw new Error(TOO_MANY_TAGS);
+  return clean;
+}
+
+/**
+ * The website as stored (core normalizeWebsite, the rule of private.is_web_url), undefined for an
+ * empty field; throws the field's message ("Keine gültige Adresse").
+ */
+export function checkWebsite(input: string | undefined): string | undefined {
+  const result = normalizeWebsite(input ?? '');
+  if ('problem' in result) throw new Error(result.problem);
+  return result.url;
 }
 
 export type LinkReading =
@@ -30,8 +74,11 @@ export type LinkReading =
   | { status: 'short'; url: string }
   | { status: 'invalid' };
 
-/** Reads a pasted or shared map link into a draft, and checks for an existing restaurant. */
-export function readMapsLink(text: string): LinkReading {
+/**
+ * Reads a pasted or shared map link into a draft, and checks for an existing restaurant; the
+ * restaurant being edited (`ownId`) does not count (spec 0024, AC-004).
+ */
+export function readMapsLink(text: string, ownId?: Id): LinkReading {
   const link = parseMapsLink(text);
   if (!link) return { status: 'invalid' };
   if (link.kind === 'short') return { status: 'short', url: link.url };
@@ -43,7 +90,10 @@ export function readMapsLink(text: string): LinkReading {
   return {
     status: 'place',
     draft,
-    duplicate: findDuplicateRestaurant(draft, getData().restaurants),
+    duplicate: findDuplicateRestaurant(
+      draft,
+      getData().restaurants.filter((restaurant) => restaurant.id !== ownId),
+    ),
   };
 }
 
@@ -75,6 +125,8 @@ export async function resolveMapsShortLink(url: string): Promise<RestaurantDraft
 export function createRestaurant(draft: RestaurantDraft): Id {
   const name = draft.name.trim();
   if (!name) throw new Error('Name fehlt');
+  const tags = checkTags(draft.tags ?? []);
+  const websiteUrl = checkWebsite(draft.websiteUrl);
   return commit({ path: 'diff' }, () => {
     const restaurant: Restaurant = {
       id: newId(),
@@ -85,7 +137,8 @@ export function createRestaurant(draft: RestaurantDraft): Id {
       cuisine: draft.cuisine?.trim() || undefined,
       priceLevel: draft.priceLevel,
       notes: draft.notes?.trim() || undefined,
-      tags: [],
+      tags,
+      websiteUrl,
       favoriteOf: [],
       ratings: {},
       createdAt: nowISO(),
@@ -104,13 +157,26 @@ function patchRestaurant(id: Id, patch: (restaurant: Restaurant) => Restaurant):
   }));
 }
 
-export function updateRestaurant(
-  id: Id,
-  patch: Partial<Pick<Restaurant, 'name' | 'address' | 'cuisine' | 'priceLevel' | 'notes'>>,
-): void {
-  if (patch.name !== undefined && !patch.name.trim()) throw new Error('Name fehlt');
+/**
+ * "Restaurant bearbeiten" (spec 0024, REQ-001): changes the fields given, a field given as
+ * undefined is cleared (an emptied map link clears link and coordinates). Throws "Name fehlt",
+ * "Höchstens 30 Schlagworte" or the website's message before anything changes. A restaurant
+ * deleted meanwhile is refused by the server and springs back with the general hint (AC-005).
+ */
+export function updateRestaurant(id: Id, patch: RestaurantPatch): void {
+  const clean: RestaurantPatch = { ...patch };
+  if ('name' in patch) {
+    const name = patch.name?.trim();
+    if (!name) throw new Error('Name fehlt');
+    clean.name = name;
+  }
+  if ('address' in patch) clean.address = trimmed(patch.address);
+  if ('cuisine' in patch) clean.cuisine = trimmed(patch.cuisine);
+  if ('notes' in patch) clean.notes = trimmed(patch.notes);
+  if ('tags' in patch) clean.tags = checkTags(patch.tags ?? []);
+  if ('websiteUrl' in patch) clean.websiteUrl = checkWebsite(patch.websiteUrl);
   commit({ path: 'diff' }, () =>
-    patchRestaurant(id, (restaurant) => ({ ...restaurant, ...patch })),
+    patchRestaurant(id, (restaurant) => ({ ...restaurant, ...clean })),
   );
 }
 
