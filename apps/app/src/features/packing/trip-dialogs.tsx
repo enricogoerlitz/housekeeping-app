@@ -3,14 +3,16 @@ import { Button, Row, Sheet, Text } from '@housekeeping/ui';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 /**
- * A small window that asks before the Urlaubsseite changes a lot at once: "Alle 30 Haken
- * entfernen?" (AC-028, AC-029) and deleting the absence with its packing list (AC-038).
+ * A small window that asks before the trip changes a lot at once: "Alle 30 Haken
+ * entfernen?" (AC-028, AC-029) and deleting the trip with its packing list (AC-038).
  * `needsNetwork` greys the confirm button out offline; resetting works offline (ADR-0013).
  */
 export function TripConfirmDialog(props: {
   title: string;
   message?: string;
   confirmLabel: string;
+  /** "Abbrechen" unless given, e.g. "Weiter bearbeiten". */
+  cancelLabel?: string;
   needsNetwork: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -28,7 +30,7 @@ export function TripConfirmDialog(props: {
       footer={
         <Row gap={10} style={{ justifyContent: 'flex-end' }}>
           <Button
-            label="Abbrechen"
+            label={props.cancelLabel ?? 'Abbrechen'}
             variant="secondary"
             onPress={props.onCancel}
             testID={`${props.testID}-cancel`}

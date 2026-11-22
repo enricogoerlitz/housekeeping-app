@@ -46,16 +46,21 @@ insert into fx (key, id) values
 insert into fx (key) values
   ('mallorca'), ('hamburg'), ('b_trip'), ('lb_strand'), ('lb_kultur'), ('lb_technik'), ('lb_hamburg'), ('lb_b'),
   ('open'), ('packed'), ('stale'), ('kopfhoerer'), ('item_b'), ('reisepass'),
-  ('new_absence'), ('new_list_bag'), ('r_nadja'), ('r_future'), ('r_open'), ('r_seq'), ('r_day'), ('r_foreign'),
+  ('new_trip'), ('new_list_bag'), ('r_nadja'), ('r_future'), ('r_open'), ('r_seq'), ('r_day'), ('r_foreign'),
   ('r_bag'), ('lb_removed'), ('k1'), ('k2');
 insert into fx (key) select 'k' || n from generate_series(3, 7) n;
 insert into fx (key) select 'r' || n from generate_series(1, 30) n;
 
-insert into public.absences (id, household_id, member_id, from_on, to_on) values
-  (tests.fx('mallorca'), tests.fx('home_a'), null, '2027-01-01', '2027-01-07'),
-  (tests.fx('hamburg'), tests.fx('home_a'), tests.fx('nadja'), '2027-02-01', '2027-02-02'),
-  (tests.fx('b_trip'), tests.fx('home_b'), tests.fx('ben'), '2027-02-01', '2027-02-03');
-insert into public.packing_list_bags (id, household_id, absence_id, name, sort) values
+insert into public.trips (id, household_id, from_on, to_on) values
+  (tests.fx('mallorca'), tests.fx('home_a'), '2027-01-01', '2027-01-07'),
+  (tests.fx('hamburg'), tests.fx('home_a'), '2027-02-01', '2027-02-02'),
+  (tests.fx('b_trip'), tests.fx('home_b'), '2027-02-01', '2027-02-03');
+insert into public.trip_members (household_id, trip_id, member_id) values
+  (tests.fx('home_a'), tests.fx('mallorca'), tests.fx('enrico')),
+  (tests.fx('home_a'), tests.fx('mallorca'), tests.fx('nadja')),
+  (tests.fx('home_a'), tests.fx('hamburg'), tests.fx('nadja')),
+  (tests.fx('home_b'), tests.fx('b_trip'), tests.fx('ben'));
+insert into public.packing_list_bags (id, household_id, trip_id, name, sort) values
   (tests.fx('lb_strand'), tests.fx('home_a'), tests.fx('mallorca'), 'Strand', 0),
   (tests.fx('lb_kultur'), tests.fx('home_a'), tests.fx('mallorca'), 'Kulturbeutel', 1),
   (tests.fx('lb_technik'), tests.fx('home_a'), tests.fx('mallorca'), 'Technik', 2),
@@ -201,12 +206,12 @@ select tests.authenticate_as(tests.fx('enrico'));
 select is(tests.pack('home_a', jsonb_build_array(tests.change('kopfhoerer', true))), '[]'::jsonb,
   'AC-024 set_packing_items_packed: a packing item removed meanwhile is skipped without an error');
 select tests.authenticate_as(tests.fx('nadja'));
-delete from public.absences where id = tests.fx('hamburg');
+delete from public.trips where id = tests.fx('hamburg');
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
   tests.pack('home_a', jsonb_build_array(tests.change('kopfhoerer', true), tests.change('open', false, 1))),
   jsonb_build_array(jsonb_build_object('item_id', tests.fx('open'), 'packed', false, 'pack_seq', 2)),
-  'AC-040 set_packing_items_packed: items of a deleted absence are skipped, the rest of the call applies');
+  'AC-040 set_packing_items_packed: items of a deleted trip are skipped, the rest of the call applies');
 
 -- ===================== The function =====================
 select tests.clear_authentication();
@@ -229,10 +234,12 @@ select ok(
 -- ===================== apply_changes: a packing list in one call (AC-011, AC-015) =====================
 create temp table new_list on commit drop as
   select jsonb_build_array(
-    jsonb_build_object('kind', 'insert', 'table', 'absences', 'row', jsonb_build_object(
-      'id', tests.fx('new_absence'), 'from_on', '2027-03-01', 'to_on', '2027-03-07')),
+    jsonb_build_object('kind', 'insert', 'table', 'trips', 'row', jsonb_build_object(
+      'id', tests.fx('new_trip'), 'from_on', '2027-03-01', 'to_on', '2027-03-07')),
+    jsonb_build_object('kind', 'insert', 'table', 'trip_members', 'row', jsonb_build_object(
+      'trip_id', tests.fx('new_trip'), 'member_id', tests.fx('enrico'))),
     jsonb_build_object('kind', 'insert', 'table', 'packing_list_bags', 'row', jsonb_build_object(
-      'id', tests.fx('new_list_bag'), 'absence_id', tests.fx('new_absence'), 'name', 'Strand', 'sort', 0)))
+      'id', tests.fx('new_list_bag'), 'trip_id', tests.fx('new_trip'), 'name', 'Strand', 'sort', 0)))
   || (select jsonb_agg(jsonb_build_object('kind', 'insert', 'table', 'packing_items', 'row', jsonb_build_object(
         'list_bag_id', tests.fx('new_list_bag'), 'name', case when n = 1 then 'T-Shirts' else 'Packstück ' || n end,
         'quantity', 1, 'per_day', case when n = 1 then 1 end, 'sort', n)) order by n)
@@ -244,10 +251,10 @@ select throws_ok(
     'kind', 'insert', 'table', 'packing_items', 'row', jsonb_build_object(
       'list_bag_id', tests.fx('new_list_bag'), 'name', '', 'sort', 22)))),
   '23514', null, 'AC-015 apply_changes: an invalid packing item at the end fails the call');
-select is((select count(*)::int from public.absences where id = tests.fx('new_absence')), 0,
+select is((select count(*)::int from public.trips where id = tests.fx('new_trip')), 0,
   'AC-015 apply_changes: … and nothing of it is saved');
 select lives_ok(tests.apply_sql('home_a', (select ops from new_list)),
-  'AC-011 apply_changes: absence, bag of the packing list and 21 packing items in one call');
+  'AC-011 apply_changes: trip, person, bag of the packing list and 21 packing items in one call');
 select results_eq(
   format($$ select count(*)::int, max(quantity) filter (where name = 'T-Shirts') from public.packing_items
             where list_bag_id = %L $$, tests.fx('new_list_bag')),
@@ -262,13 +269,13 @@ select throws_ok(
   '22023', 'invalid_change', 'T2 apply_changes: an insert with packed is rejected');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'packing_items', 'id', tests.fx('open'), 'changes', jsonb_build_object('name', 'X')))),
-  '22023', 'invalid_change', 'T2 apply_changes: packing items cannot be patched');
+    'kind', 'patch', 'table', 'packing_items', 'id', tests.fx('open'), 'changes', jsonb_build_object('pack_seq', 5)))),
+  '22023', 'invalid_change', 'T2 apply_changes: the packed state of packing items is never patched');
 
 -- ===================== restore_packing_items (AC-034, AC-035) =====================
 -- Nadja removed "Strand" with two packed items; "Rückgängig" inserts the bag and restores them.
 select tests.clear_authentication();
-insert into public.packing_list_bags (id, household_id, absence_id, name, sort)
+insert into public.packing_list_bags (id, household_id, trip_id, name, sort)
 values (tests.fx('lb_removed'), tests.fx('home_a'), tests.fx('mallorca'), 'Wandern', 5);
 update public.packing_items set list_bag_id = tests.fx('lb_removed') where id in (tests.fx('stale'), tests.fx('k1'));
 create temp table removed_rows on commit drop as
@@ -281,7 +288,7 @@ select public.apply_changes(tests.fx('home_a'), jsonb_build_array(jsonb_build_ob
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'insert', 'table', 'packing_list_bags', 'row', jsonb_build_object(
-      'id', tests.fx('lb_removed'), 'absence_id', tests.fx('mallorca'), 'name', 'Wandern', 'sort', 5)),
+      'id', tests.fx('lb_removed'), 'trip_id', tests.fx('mallorca'), 'name', 'Wandern', 'sort', 5)),
     jsonb_build_object('kind', 'restore_packing_items', 'items', (select jsonb_agg(doc) from removed_rows)))),
   'AC-034 apply_changes: the bag and its packing items come back in one call');
 select tests.clear_authentication();

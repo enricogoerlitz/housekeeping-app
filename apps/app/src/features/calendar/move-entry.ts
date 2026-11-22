@@ -2,7 +2,7 @@ import {
   movePlanEntry,
   OfflineError,
   snapshot,
-  useAbsences,
+  useTrips,
   useActivitiesById,
   useHousehold,
   useMembers,
@@ -41,7 +41,7 @@ export function useEntryTitle(): (entry: MealPlanEntry) => string {
  */
 export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => MoveEntryResult {
   const entries = usePlanEntries();
-  const absences = useAbsences();
+  const trips = useTrips();
   const members = useMembers();
   const household = useHousehold();
   const today = useToday();
@@ -52,7 +52,7 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
       entry,
       target,
       entries,
-      absences,
+      trips,
       members,
       slots: household.mealSlots,
       title: titleOf(entry),

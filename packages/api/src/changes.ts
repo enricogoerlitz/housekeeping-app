@@ -39,7 +39,8 @@ const TABLE_ORDER = [
   'shopping_contributions',
   'chores',
   'chore_events',
-  'absences',
+  'trips',
+  'trip_members',
   'packing_bags',
   'packing_bag_items',
   'packing_list_bags',
@@ -82,7 +83,7 @@ function deletedIds(before: Record<string, Row[]>, after: Record<string, Row[]>)
 
 /**
  * Rows the database deletes itself because their parent goes in the same change (recursively:
- * an absence takes its bags of the packing list, they take their Packstücke).
+ * a trip takes its people and the bags of its packing list, they take their Packstücke).
  */
 function cascadedIds(
   before: Record<string, Row[]>,

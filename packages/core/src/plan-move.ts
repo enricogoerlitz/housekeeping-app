@@ -1,8 +1,9 @@
 import { formatPickerDate, joinNames } from './calendar';
 import { addDays, formatShortDate, weekdayShort } from './dates';
-import { isAbsent, LEFTOVER_DAYS } from './meal-plan';
+import { LEFTOVER_DAYS } from './meal-plan';
 import { isReminderPast } from './reminder';
-import type { Absence, Id, ISODate, MealPlanEntry } from './types';
+import { isOnTrip } from './trips';
+import type { Id, ISODate, MealPlanEntry, Trip } from './types';
 
 // Moving a plan entry by dragging or "Anderes Datum …" (spec 0016, REQ-001 to REQ-005).
 
@@ -182,10 +183,10 @@ export function blockedText(reason: MoveBlockReason, dishTitle: string): string 
 export function travellersOn(
   eaterIds: readonly Id[],
   date: ISODate | null,
-  absences: Absence[],
+  trips: readonly Trip[],
 ): Id[] {
   if (date === null) return [];
-  return eaterIds.filter((id) => isAbsent(id, date, absences));
+  return eaterIds.filter((id) => isOnTrip(id, date, trips));
 }
 
 export type PlanMove =
@@ -203,7 +204,7 @@ export function planMove(input: {
   entry: MealPlanEntry;
   target: DropTarget;
   entries: readonly MealPlanEntry[];
-  absences: Absence[];
+  trips: readonly Trip[];
   members: readonly { id: Id; name: string }[];
   slots: readonly { id: Id; name: string }[];
   title: string;
@@ -216,7 +217,7 @@ export function planMove(input: {
   if (outcome.kind === 'blocked') {
     return { kind: 'blocked', message: blockedText(outcome.reason, input.title) };
   }
-  const travellerNames = travellersOn(input.entry.eaterIds, outcome.date, input.absences).flatMap(
+  const travellerNames = travellersOn(input.entry.eaterIds, outcome.date, input.trips).flatMap(
     (id) => input.members.find((member) => member.id === id)?.name ?? [],
   );
   const message = moveToastText({

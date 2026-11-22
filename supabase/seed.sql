@@ -26,7 +26,8 @@ alter table public.shopping_items disable trigger shopping_items_set_timestamps;
 alter table public.shopping_contributions disable trigger shopping_contributions_set_timestamps;
 alter table public.chores disable trigger chores_set_timestamps;
 alter table public.chore_events disable trigger chore_events_set_timestamps;
-alter table public.absences disable trigger absences_set_timestamps;
+alter table public.trips disable trigger trips_set_timestamps;
+alter table public.trip_members disable trigger trip_members_set_timestamps;
 alter table public.packing_bags disable trigger packing_bags_set_timestamps;
 alter table public.packing_bag_items disable trigger packing_bag_items_set_timestamps;
 alter table public.packing_list_bags disable trigger packing_list_bags_set_timestamps;
@@ -733,9 +734,14 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
   ('ce26be3d-b20d-53c0-888b-f51cc027ab61', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '3b116f4c-3ab4-5c3b-997b-574b39484db8', 'Fenster Wohnzimmer', 'done', ((now() at time zone 'Europe/Berlin')::date - 63), '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000009)),
   ('76cda384-e7b7-52ab-8244-e61de068b125', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '3b116f4c-3ab4-5c3b-997b-574b39484db8', 'Fenster Wohnzimmer', 'done', ((now() at time zone 'Europe/Berlin')::date - 400), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000010));
 
-insert into public.absences (id, household_id, member_id, from_on, to_on, note, created_at) values
-  ('c66bc195-adde-5d8d-a132-d7f4f0e37b7d', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', null, ((now() at time zone 'Europe/Berlin')::date + 12), ((now() at time zone 'Europe/Berlin')::date + 18), 'Urlaub Mallorca', now() + make_interval(days => -120, secs => 0.000000)),
-  ('db3ec107-3657-5c8c-9b36-66ae1e6bd891', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '64399031-c98c-5692-9e99-923924bfff3d', ((now() at time zone 'Europe/Berlin')::date + 26), ((now() at time zone 'Europe/Berlin')::date + 27), 'Dienstreise Hamburg', now() + make_interval(days => -120, secs => 0.000001));
+insert into public.trips (id, household_id, from_on, to_on, note, created_at) values
+  ('15f4f2cb-0d29-548d-b8bc-db781c114159', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 12), ((now() at time zone 'Europe/Berlin')::date + 18), 'Urlaub Mallorca', now() + make_interval(days => -120, secs => 0.000000)),
+  ('50dc9a05-496e-5e15-80a4-3bb93fb890b9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 26), ((now() at time zone 'Europe/Berlin')::date + 27), 'Dienstreise Hamburg', now() + make_interval(days => -120, secs => 0.000001));
+
+insert into public.trip_members (id, household_id, trip_id, member_id, created_at) values
+  ('978ce603-15fe-591e-b1b1-28d644da3e36', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000000)),
+  ('9131dd27-38c7-5545-905f-90ba53f29e0c', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000001)),
+  ('4d14a633-8bbf-5c39-952d-862d07818d5e', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '50dc9a05-496e-5e15-80a4-3bb93fb890b9', '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000002));
 
 insert into public.packing_bags (id, household_id, name, member_id, sort, created_at) values
   ('e5666659-25f5-56a5-bd8f-74e9c89b8234', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'Strand', null, 0, now() + make_interval(days => -120, secs => 0.000000)),
@@ -790,32 +796,32 @@ insert into public.packing_bag_items (id, household_id, bag_id, name, quantity, 
   ('98fba85b-fd28-5f82-be5b-2b4fd7ea8db9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '32e8db95-60b2-5517-b01f-f7af5c7b8827', 'Kamera', null, false, 4, now() + make_interval(days => -120, secs => 0.000043)),
   ('b8bb50d7-3ba1-501b-8efe-f7a6b3838e90', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '32e8db95-60b2-5517-b01f-f7af5c7b8827', 'E-Reader', null, false, 5, now() + make_interval(days => -120, secs => 0.000044));
 
-insert into public.packing_list_bags (id, household_id, absence_id, bag_id, name, member_id, sort, created_at) values
-  ('99c677f5-da3d-5eca-b90a-a123438e8a43', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'c66bc195-adde-5d8d-a132-d7f4f0e37b7d', 'e5666659-25f5-56a5-bd8f-74e9c89b8234', 'Strand', null, 0, now() + make_interval(days => -120, secs => 0.000000)),
-  ('b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'c66bc195-adde-5d8d-a132-d7f4f0e37b7d', 'f229b585-5756-5787-999c-ffdce00a69c2', 'Kulturbeutel', '64399031-c98c-5692-9e99-923924bfff3d', 1, now() + make_interval(days => -120, secs => 0.000001));
+insert into public.packing_list_bags (id, household_id, trip_id, bag_id, name, member_id, sort, created_at) values
+  ('99c677f5-da3d-5eca-b90a-a123438e8a43', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'e5666659-25f5-56a5-bd8f-74e9c89b8234', 'Strand', null, 0, now() + make_interval(days => -120, secs => 0.000000)),
+  ('b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'f229b585-5756-5787-999c-ffdce00a69c2', 'Kulturbeutel', '64399031-c98c-5692-9e99-923924bfff3d', 1, now() + make_interval(days => -120, secs => 0.000001));
 
-insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort, packed, packed_at, packed_by, pack_seq, created_at) values
-  ('7a34f62c-c716-5101-ba21-9f64a08112f4', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Badehose', 2, null, 0, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, now() + make_interval(days => -120, secs => 0.000000)),
-  ('ca3db814-7780-58fa-95b7-4a3a8a1a66fb', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'T-Shirts', 7, 1, 1, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000001)),
-  ('1c4a6e34-72d6-5583-a78d-5f92b7212fef', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Shorts', 3, null, 2, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000002)),
-  ('8f653810-cfc7-564d-8aba-75578217cf93', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Strandtuch', 2, null, 3, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, now() + make_interval(days => -120, secs => 0.000003)),
-  ('c9047646-a80e-5dbb-91a4-4c0c8f94adfe', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Sonnenbrille', null, null, 4, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, now() + make_interval(days => -120, secs => 0.000004)),
-  ('e1856f3b-aa6a-56f0-a356-b7b8ca354b06', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Sonnenhut', null, null, 5, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000005)),
-  ('ba653e3d-9c35-59cc-9435-c86a35bcc932', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Flip-Flops', null, null, 6, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000006)),
-  ('15e4ea5b-9cb7-56b7-b544-29118648b8de', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Strandtasche', null, null, 7, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000007)),
-  ('137426de-26df-584f-bc8a-c0db442078ec', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Taucherbrille', null, null, 8, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000008)),
-  ('4fe33121-3484-5046-8924-6c50a837b0e9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'After-Sun', null, null, 9, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000009)),
-  ('f26415d2-f104-59c3-833e-4b088aac257a', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Buch', null, null, 10, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, now() + make_interval(days => -120, secs => 0.000010)),
-  ('19773f21-dbc2-560a-93e7-b06099d9be4c', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Kartenspiel', null, null, 11, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000011)),
-  ('7efdb2e8-dd30-5393-ba17-9af501be296e', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Zahnbürste', null, null, 0, true, now() + make_interval(days => 0, secs => -64800.000000), '64399031-c98c-5692-9e99-923924bfff3d', 1, now() + make_interval(days => -120, secs => 0.000012)),
-  ('f4b42206-9eaa-537c-b880-0606b5c22c8f', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Zahnpasta', null, null, 1, true, now() + make_interval(days => 0, secs => -64800.000000), '64399031-c98c-5692-9e99-923924bfff3d', 1, now() + make_interval(days => -120, secs => 0.000013)),
-  ('c980fcba-4fe0-5562-9339-8ecfcda471cc', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Shampoo', null, null, 2, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000014)),
-  ('92effeb6-eb6b-511f-b2ec-412ac1a1093b', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Duschgel', null, null, 3, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000015)),
-  ('1f4de806-cb3c-55ce-a7c0-9b5bcf63fc65', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Deo', null, null, 4, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000016)),
-  ('4bbb5f3b-2780-5a5f-a7e7-f42cfb5c9a92', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Haarbürste', null, null, 5, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000017)),
-  ('7b47af8a-9f43-5c11-afb1-23a30c919476', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Gesichtscreme', null, null, 6, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000018)),
-  ('78918fcb-fabc-503a-8f74-6bed87808221', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Wattepads', null, null, 7, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000019)),
-  ('2e9ce988-e15e-5208-9ec6-7578bdc7edc3', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Nagelschere', null, null, 8, false, null, null, 0, now() + make_interval(days => -120, secs => 0.000020));
+insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort, packed, packed_at, packed_by, pack_seq, bag_item_id, from_bag, created_at) values
+  ('7a34f62c-c716-5101-ba21-9f64a08112f4', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Badehose', 2, null, 0, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, '0bac265d-122c-576a-b34c-5d9278321bce', true, now() + make_interval(days => -120, secs => 0.000000)),
+  ('ca3db814-7780-58fa-95b7-4a3a8a1a66fb', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'T-Shirts', 7, 1, 1, false, null, null, 0, '723e5c77-3f55-5091-92a4-df2c89e96dff', true, now() + make_interval(days => -120, secs => 0.000001)),
+  ('1c4a6e34-72d6-5583-a78d-5f92b7212fef', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Shorts', 3, null, 2, false, null, null, 0, '06f0a2f1-a4f0-50e4-9ca0-bf6de122f1d2', true, now() + make_interval(days => -120, secs => 0.000002)),
+  ('8f653810-cfc7-564d-8aba-75578217cf93', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Strandtuch', 2, null, 3, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, '96a2a4eb-478b-50ba-893f-57547973980b', true, now() + make_interval(days => -120, secs => 0.000003)),
+  ('c9047646-a80e-5dbb-91a4-4c0c8f94adfe', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Sonnenbrille', null, null, 4, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, '3d4c71c4-ddd0-5a88-ad44-f255035fd7ac', true, now() + make_interval(days => -120, secs => 0.000004)),
+  ('e1856f3b-aa6a-56f0-a356-b7b8ca354b06', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Sonnenhut', null, null, 5, false, null, null, 0, '1b9aad6a-9cb3-5948-9e79-76a2b96f8ce9', true, now() + make_interval(days => -120, secs => 0.000005)),
+  ('ba653e3d-9c35-59cc-9435-c86a35bcc932', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Flip-Flops', null, null, 6, false, null, null, 0, '569a9dcf-7539-5ac5-b183-80dac438d574', true, now() + make_interval(days => -120, secs => 0.000006)),
+  ('15e4ea5b-9cb7-56b7-b544-29118648b8de', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Strandtasche', null, null, 7, false, null, null, 0, '5881f468-9b1e-5b1e-a9d3-a67a7373b9b3', true, now() + make_interval(days => -120, secs => 0.000007)),
+  ('137426de-26df-584f-bc8a-c0db442078ec', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Taucherbrille', null, null, 8, false, null, null, 0, '2386ac25-d65d-5fa3-9292-43129222771e', true, now() + make_interval(days => -120, secs => 0.000008)),
+  ('4fe33121-3484-5046-8924-6c50a837b0e9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'After-Sun', null, null, 9, false, null, null, 0, '17cd5444-012d-5d8d-86c7-fde40f113513', true, now() + make_interval(days => -120, secs => 0.000009)),
+  ('f26415d2-f104-59c3-833e-4b088aac257a', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Buch', null, null, 10, true, now() + make_interval(days => 0, secs => -64800.000000), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', 1, 'f6b70500-899e-5c54-a4f0-8b63c0189459', true, now() + make_interval(days => -120, secs => 0.000010)),
+  ('19773f21-dbc2-560a-93e7-b06099d9be4c', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '99c677f5-da3d-5eca-b90a-a123438e8a43', 'Kartenspiel', null, null, 11, false, null, null, 0, '1e8eeb71-9fbe-52b3-b917-0b26fda24fde', true, now() + make_interval(days => -120, secs => 0.000011)),
+  ('7efdb2e8-dd30-5393-ba17-9af501be296e', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Zahnbürste', null, null, 0, true, now() + make_interval(days => 0, secs => -64800.000000), '64399031-c98c-5692-9e99-923924bfff3d', 1, '6c15c854-7b29-5eba-9856-1099179488e2', true, now() + make_interval(days => -120, secs => 0.000012)),
+  ('f4b42206-9eaa-537c-b880-0606b5c22c8f', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Zahnpasta', null, null, 1, true, now() + make_interval(days => 0, secs => -64800.000000), '64399031-c98c-5692-9e99-923924bfff3d', 1, '9b0ceb38-c225-50bb-a5a8-18d464fad671', true, now() + make_interval(days => -120, secs => 0.000013)),
+  ('c980fcba-4fe0-5562-9339-8ecfcda471cc', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Shampoo', null, null, 2, false, null, null, 0, '9f694df3-d895-5681-aa2a-8d93439bce36', true, now() + make_interval(days => -120, secs => 0.000014)),
+  ('92effeb6-eb6b-511f-b2ec-412ac1a1093b', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Duschgel', null, null, 3, false, null, null, 0, 'ea5ec05c-abbc-5a30-89d5-888041a399c6', true, now() + make_interval(days => -120, secs => 0.000015)),
+  ('1f4de806-cb3c-55ce-a7c0-9b5bcf63fc65', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Deo', null, null, 4, false, null, null, 0, 'a9486d49-4946-5d53-863a-830446f4b5da', true, now() + make_interval(days => -120, secs => 0.000016)),
+  ('4bbb5f3b-2780-5a5f-a7e7-f42cfb5c9a92', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Haarbürste', null, null, 5, false, null, null, 0, 'b38815c5-dd5d-5f81-a641-f4ff1826c762', true, now() + make_interval(days => -120, secs => 0.000017)),
+  ('7b47af8a-9f43-5c11-afb1-23a30c919476', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Gesichtscreme', null, null, 6, false, null, null, 0, '8191883e-9422-5637-b03e-86ad506a5de9', true, now() + make_interval(days => -120, secs => 0.000018)),
+  ('78918fcb-fabc-503a-8f74-6bed87808221', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Wattepads', null, null, 7, false, null, null, 0, '7e5dea13-c319-5716-a9f7-3ca524183999', true, now() + make_interval(days => -120, secs => 0.000019)),
+  ('2e9ce988-e15e-5208-9ec6-7578bdc7edc3', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'b3ec9c61-0f18-50b4-bbb9-daaf132c92d9', 'Nagelschere', null, null, 8, false, null, null, 0, 'b5137cb7-da75-5579-960c-8399379fa82a', true, now() + make_interval(days => -120, secs => 0.000020));
 
 insert into public.feedback (id, household_id, kind, text, status, author_id, screen, reason, spec_ref, created_at) values
   ('2fd686a1-72ad-50fb-a858-40b7e4523fef', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', 'idea', 'Im Kochmodus die Zutaten des aktuellen Schritts größer anzeigen.', 'accepted', '64399031-c98c-5692-9e99-923924bfff3d', 'Kochmodus', null, null, now() + make_interval(days => -3, secs => -63600.000000)),
@@ -1338,6 +1344,8 @@ update public.households set default_store_id = null where id = '263209f8-b95d-5
 
 
 
+
+set constraints all immediate;
 alter table public.profiles enable trigger profiles_set_timestamps;
 alter table public.households enable trigger households_set_timestamps;
 alter table public.household_members enable trigger household_members_set_timestamps;
@@ -1359,7 +1367,8 @@ alter table public.shopping_items enable trigger shopping_items_set_timestamps;
 alter table public.shopping_contributions enable trigger shopping_contributions_set_timestamps;
 alter table public.chores enable trigger chores_set_timestamps;
 alter table public.chore_events enable trigger chore_events_set_timestamps;
-alter table public.absences enable trigger absences_set_timestamps;
+alter table public.trips enable trigger trips_set_timestamps;
+alter table public.trip_members enable trigger trip_members_set_timestamps;
 alter table public.packing_bags enable trigger packing_bags_set_timestamps;
 alter table public.packing_bag_items enable trigger packing_bag_items_set_timestamps;
 alter table public.packing_list_bags enable trigger packing_list_bags_set_timestamps;

@@ -4,7 +4,6 @@ import { addDays } from './dates';
 import {
   defaultEaters,
   entriesForDay,
-  isAbsent,
   leftoverCandidates,
   leftoversDayLabel,
   orderSlotEntries,
@@ -22,9 +21,11 @@ import {
   makeRecipe,
   mangoCurry,
   nadja,
+  trip,
   vera,
 } from './test-fixtures';
-import type { Absence, MealPlanEntry } from './types';
+import { isOnTrip } from './trips';
+import type { MealPlanEntry, Trip } from './types';
 
 function entry(partial: Partial<MealPlanEntry> & Pick<MealPlanEntry, 'id'>): MealPlanEntry {
   return {
@@ -203,30 +204,28 @@ describe('variantSummary', () => {
   });
 });
 
-describe('absences', () => {
-  const absences: Absence[] = [
-    { id: 'a', memberId: enrico.id, from: '2026-11-20', to: '2026-11-22' },
-  ];
+describe('trips', () => {
+  const trips: Trip[] = [trip('a', [enrico.id], '2026-11-20', '2026-11-22')];
 
   it('AC-038: only Nadja is preselected on a Saturday Enrico is away', () => {
-    expect(defaultEaters([enrico, nadja], '2026-11-21', absences)).toEqual([nadja]);
+    expect(defaultEaters([enrico, nadja], '2026-11-21', trips)).toEqual([nadja]);
   });
 
   it('treats from and to as inclusive', () => {
-    expect(isAbsent(enrico.id, '2026-11-20', absences)).toBe(true);
-    expect(isAbsent(enrico.id, '2026-11-22', absences)).toBe(true);
-    expect(isAbsent(enrico.id, '2026-11-23', absences)).toBe(false);
-    expect(isAbsent(enrico.id, '2026-11-19', absences)).toBe(false);
-    expect(isAbsent(nadja.id, '2026-11-21', absences)).toBe(false);
+    expect(isOnTrip(enrico.id, '2026-11-20', trips)).toBe(true);
+    expect(isOnTrip(enrico.id, '2026-11-22', trips)).toBe(true);
+    expect(isOnTrip(enrico.id, '2026-11-23', trips)).toBe(false);
+    expect(isOnTrip(enrico.id, '2026-11-19', trips)).toBe(false);
+    expect(isOnTrip(nadja.id, '2026-11-21', trips)).toBe(false);
   });
 
-  it('applies a household absence to everyone', () => {
-    const away: Absence[] = [{ id: 'h', from: '2026-12-24', to: '2026-12-26' }];
+  it('applies a trip of the whole household to everyone', () => {
+    const away = [trip('h', [enrico.id, nadja.id], '2026-12-24', '2026-12-26')];
     expect(defaultEaters([enrico, nadja], '2026-12-25', away)).toEqual([]);
   });
 
   it('preselects everyone for an entry without a day', () => {
-    expect(defaultEaters([enrico, nadja], null, absences)).toEqual([enrico, nadja]);
+    expect(defaultEaters([enrico, nadja], null, trips)).toEqual([enrico, nadja]);
   });
 });
 

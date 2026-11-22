@@ -1,7 +1,7 @@
 import {
   addPlanEntry,
   splitForEaters,
-  useAbsences,
+  useTrips,
   useHousehold,
   useMembers,
   useMembersById,
@@ -45,12 +45,12 @@ export function PlanRecipeSheet(props: { recipe: Recipe; onClose: () => void }) 
   const household = useHousehold();
   const members = useMembers();
   const membersById = useMembersById();
-  const absences = useAbsences();
+  const trips = useTrips();
   const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>
-    defaultPlanChoice(today, household.mealSlots, members, absences),
+    defaultPlanChoice(today, household.mealSlots, members, trips),
   );
   const [error, setError] = useState<string | undefined>();
 
@@ -67,16 +67,16 @@ export function PlanRecipeSheet(props: { recipe: Recipe; onClose: () => void }) 
   };
   const page = (weeks: number) => {
     setWeekOffset(weekOffset + weeks);
-    update(pagePlanChoice(choice, weeks, members, absences));
+    update(pagePlanChoice(choice, weeks, members, trips));
   };
   const toggleLater = () => {
     if (choice.date !== null) {
-      update(withPlanDay(choice, null, members, absences));
+      update(withPlanDay(choice, null, members, trips));
       return;
     }
     // Back to a day: today's weekday in the week on screen.
     const day = days.find((candidate) => candidate.label === weekdayShort(today)) ?? days[0];
-    if (day) update(withPlanDay(choice, day.date, members, absences));
+    if (day) update(withPlanDay(choice, day.date, members, trips));
   };
 
   const save = () => {
@@ -166,7 +166,7 @@ export function PlanRecipeSheet(props: { recipe: Recipe; onClose: () => void }) 
             options={days.map((day) => ({ value: day.date, label: day.label }))}
             // No day is chosen while "Ohne Tag vormerken" is on.
             value={choice.date ?? ''}
-            onChange={(date) => update(withPlanDay(choice, date, members, absences))}
+            onChange={(date) => update(withPlanDay(choice, date, members, trips))}
             testID="plan-recipe-day"
           />
           <View style={{ flexDirection: 'row' }}>

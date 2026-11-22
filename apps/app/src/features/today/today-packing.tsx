@@ -1,33 +1,42 @@
 import {
-  useAbsences,
+  useMembers,
+  useTrips,
   useMembersById,
   usePackingItems,
   usePackingListBags,
   useToday,
 } from '@housekeeping/api';
-import { packingCards, type ISODate, type PackingCard } from '@housekeeping/core';
-import { Avatar, Icon, ProgressBar, Row, Section, Text, useTheme } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
-import { Pressable } from 'react-native';
+import { packingCards, tripStripes, type ISODate, type PackingCard } from '@housekeeping/core';
+import { AvatarStack, Icon, ProgressBar, Row, Section, Text, useTheme } from '@housekeeping/ui';
+import { Pressable, View } from 'react-native';
+
+import { useTripWindow } from '@/features/trips/trip-window';
 
 /**
  * The cards "Reisetasche" at the bottom of the Übersicht (spec 0012, REQ-009, D33): one per
- * packing list whose absence has a day in the shown week or starts 1 to 7 days after the shown
+ * packing list whose trip has a day in the shown week or starts 1 to 7 days after the shown
  * day, earliest first (AC-042, AC-043, AC-045). Bar, "12/30 gepackt ›" or "alles gepackt ✓"
  * (AC-044), and "beginnt in 12 Tagen" counted from today (spec 0018, AC-020). A tap opens the
- * Urlaubsseite. Read from the cache only, so it shows offline too.
+ * trip. Read from the cache only, so it shows offline too.
  */
 export function TodayPacking(props: { shown: ISODate }) {
-  const absences = useAbsences();
+  const trips = useTrips();
+  const members = useMembers();
   const listBags = usePackingListBags();
   const items = usePackingItems();
   const today = useToday();
-  const cards = packingCards({ shownDay: props.shown, today, absences, listBags, items });
+  const cards = packingCards({
+    shownDay: props.shown,
+    today,
+    trips: tripStripes(trips, members),
+    listBags,
+    items,
+  });
   if (cards.length === 0) return null;
   return (
     <>
       {cards.map((card) => (
-        <TodayPackingCard key={card.absenceId} card={card} />
+        <TodayPackingCard key={card.tripId} card={card} />
       ))}
     </>
   );
@@ -35,11 +44,11 @@ export function TodayPacking(props: { shown: ISODate }) {
 
 function TodayPackingCard(props: { card: PackingCard }) {
   const { card } = props;
-  const router = useRouter();
+  const tripWindow = useTripWindow('uebersicht');
   const theme = useTheme();
   const membersById = useMembersById();
-  const owner = card.memberId ? membersById[card.memberId] : undefined;
-  const testID = `today-packing-${card.absenceId}`;
+  const owners = card.memberIds.flatMap((id) => membersById[id] ?? []);
+  const testID = `today-packing-${card.tripId}`;
   const title = `Reisetasche · ${card.title}`;
 
   return (
@@ -47,13 +56,10 @@ function TodayPackingCard(props: { card: PackingCard }) {
       title={title}
       testID={testID}
       action={
-        owner ? (
-          <Avatar
-            name={owner.name}
-            color={owner.color}
-            size="xs"
-            testID={`${testID}-owner-${owner.id}`}
-          />
+        owners.length > 0 ? (
+          <View testID={`${testID}-owners`}>
+            <AvatarStack members={owners} size="xs" />
+          </View>
         ) : undefined
       }
     >
@@ -62,23 +68,14 @@ function TodayPackingCard(props: { card: PackingCard }) {
         accessibilityRole="button"
         accessibilityLabel={[
           `Packliste ${card.title} öffnen`,
-          owner?.name,
+          owners.map((owner) => owner.name).join(', '),
           card.progressLabel.replace(' ✓', ''),
           card.startsIn,
         ]
           .filter(Boolean)
           .join(', ')}
-        onPress={() =>
-          router.push(
-            {
-              pathname: '/kalender/reise/[id]',
-              params: { id: card.absenceId, von: 'uebersicht' },
-            },
-            // The calendar stays underneath, as for an activity (spec 0005); "‹ Übersicht" leads
-            // back here (spec 0012, task 12).
-            { withAnchor: true },
-          )
-        }
+        // Spec 0022, REQ-002: the trip window opens over the "Übersicht" (AC-006).
+        onPress={() => tripWindow.open(card.tripId)}
         style={(state) => ({
           opacity: state.pressed ? 0.7 : 1,
           borderRadius: theme.shape.radius.card,

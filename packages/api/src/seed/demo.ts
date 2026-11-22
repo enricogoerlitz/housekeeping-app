@@ -7,7 +7,7 @@ import {
   normalizeText,
   parseISODate,
   parseIngredientLine,
-  planPackingLists,
+  planPackingList,
   splitVariants,
   toISODate,
   weekdayShort,
@@ -28,6 +28,7 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type Trip,
   type Restaurant,
   type ShoppingItem,
   type Store,
@@ -1011,14 +1012,14 @@ function bagItem(bagId: Id, line: string, sort: number): PackingBagItem {
 
 /**
  * Reisetaschen "Strand", "Wintersport", "Kulturbeutel" (Nadja) and "Technik"; "Urlaub Mallorca"
- * (whole household, in 12 days, 7 days) with Strand and Kulturbeutel, some packed; "Dienstreise
+ * (Enrico and Nadja, in 12 days, 7 days) with Strand and Kulturbeutel, some packed; "Dienstreise
  * Hamburg" (Nadja) without a packing list.
  */
 function buildPacking(
   today: ISODate,
 ): Pick<
   HouseholdData,
-  'absences' | 'packingBags' | 'packingBagItems' | 'packingListBags' | 'packingItems'
+  'trips' | 'packingBags' | 'packingBagItems' | 'packingListBags' | 'packingItems'
 > {
   const packingBags: PackingBag[] = BAG_CONTENTS.map((bag, sort) => ({
     id: bag.id,
@@ -1029,22 +1030,26 @@ function buildPacking(
   const packingBagItems = BAG_CONTENTS.flatMap((bag) =>
     bag.items.map((line, sort) => bagItem(bag.id, line, sort)),
   );
-  const mallorca = {
-    id: 'abs-mallorca',
+  const mallorca: Trip = {
+    id: 'trip-mallorca',
     from: addDays(today, 12),
     to: addDays(today, 18),
     note: 'Urlaub Mallorca',
+    members: [
+      { id: 'trip-mallorca-enrico', memberId: ENRICO },
+      { id: 'trip-mallorca-nadja', memberId: NADJA },
+    ],
   };
-  const hamburg = {
-    id: 'abs-hamburg',
-    memberId: NADJA,
+  const hamburg: Trip = {
+    id: 'trip-hamburg',
     from: addDays(today, 26),
     to: addDays(today, 27),
     note: 'Dienstreise Hamburg',
+    members: [{ id: 'trip-hamburg-nadja', memberId: NADJA }],
   };
   let counter = 0;
-  const plan = planPackingLists({
-    absences: [mallorca],
+  const plan = planPackingList({
+    trip: mallorca,
     bagIds: ['bag-strand', 'bag-kulturbeutel'],
     bags: packingBags,
     bagItems: packingBagItems,
@@ -1057,7 +1062,7 @@ function buildPacking(
   });
   const packingListBags: PackingListBag[] = plan.listBags;
   return {
-    absences: [mallorca, hamburg],
+    trips: [mallorca, hamburg],
     packingBags,
     packingBagItems,
     packingListBags,
@@ -1086,7 +1091,7 @@ function buildTestData(today: ISODate): HouseholdData {
     items: [],
     chores: [],
     choreEvents: [],
-    absences: [],
+    trips: [],
     feedback: [],
     packingBags: [],
     packingBagItems: [],

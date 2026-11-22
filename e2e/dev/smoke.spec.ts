@@ -165,17 +165,17 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'calendar-view-year').click();
   await expect(tid(page, 'year-view')).toBeVisible();
   await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-absence-new').click();
-  await expect(tid(page, 'absence-sheet')).toBeVisible();
-  await tid(page, 'absence-from').click();
+  await tid(page, 'calendar-more-trips-new').click();
+  await expect(tid(page, 'trip-sheet')).toBeVisible();
+  await tid(page, 'trip-from').click();
   await expect(tid(page, 'range-picker')).toBeVisible();
   // Its Reisetaschen (spec 0012, AC-011, AC-012): a chosen bag counts into the button.
-  await expect(tid(page, 'absence-save')).toHaveText('Speichern');
-  await tid(page, `absence-bag-${seedIds['bag-strand']}`).click();
-  await expect(tid(page, 'absence-save')).toHaveText('Speichern · 12 Packstücke');
-  await tid(page, 'absence-bag-new').click();
-  await expect(tid(page, 'absence-bag-new-name')).toBeVisible();
-  await tid(page, 'absence-sheet-close').click();
+  await expect(tid(page, 'trip-save')).toHaveText('Speichern');
+  await tid(page, `trip-bag-${seedIds['bag-strand']}`).click();
+  await expect(tid(page, 'trip-save')).toHaveText('Speichern · 12 Packstücke');
+  await tid(page, 'trip-bag-new').click();
+  await expect(tid(page, 'trip-bag-new-name')).toBeVisible();
+  await tid(page, 'trip-sheet-close').click();
   await tid(page, 'calendar-view-week').click();
 
   // The calendar's pantry check, the list and store mode, the household.
@@ -254,7 +254,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await back(page);
   await leaveManaged(page);
   for (const [key, screen] of [
-    ['absences', 'absences-screen'],
+    ['trips', 'trips-screen'],
     ['members', 'members-screen'],
     ['feedback', 'feedback'],
   ] as const) {
@@ -270,9 +270,9 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // reset dialog leaves every Haken as it was (AC-029).
   const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
-  await openManaged(page, 'absences');
-  await tid(page, `absence-${seedIds['abs-mallorca']}`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await openManaged(page, 'trips');
+  await tid(page, `trip-${seedIds['trip-mallorca']}`).click();
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
   await tid(page, `${sunHat}-check`).click();
   await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
@@ -284,7 +284,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, `${strand}-add`).click();
   await expect(tid(page, 'trip-add-item-also')).toBeVisible();
   await tid(page, 'trip-add-item-sheet-close').click();
-  await tid(page, `trip-add-bag-open-${seedIds['abs-mallorca']}`).click();
+  await tid(page, `trip-add-bag-open-${seedIds['trip-mallorca']}`).click();
   await expect(tid(page, 'trip-add-bag-list')).toBeVisible();
   await tid(page, 'trip-add-bag-sheet-close').click();
   await tid(page, 'trip-more').click();
@@ -295,7 +295,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 7 von 21 gepackt');
   await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
   await back(page);
-  await expect(tid(page, 'absences-screen')).toBeVisible();
+  await expect(tid(page, 'trips-screen')).toBeVisible();
   await leaveManaged(page);
   await nav(page, 'kalender');
   await expect(tid(page, 'calendar-screen')).toBeVisible();
@@ -305,13 +305,13 @@ test('dev smoke: every screen renders without a React warning or error', async (
   // starts in 12 days, so only a week later the card stands below "Einkauf"; it still counts
   // from today (spec 0018, AC-020); a tap opens the Urlaubsseite, and "‹ Übersicht" leads back
   // (task 12).
-  const mallorcaCard = `today-packing-${seedIds['abs-mallorca']}`;
+  const mallorcaCard = `today-packing-${seedIds['trip-mallorca']}`;
   await expect(tid(page, mallorcaCard)).toHaveCount(0);
   await tid(page, 'today-week-next').click();
   await expect(tid(page, `${mallorcaCard}-progress`)).toHaveText('7/21 gepackt');
   await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 12 Tagen');
   await tid(page, `${mallorcaCard}-open`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await back(page);
   await expect(tid(page, 'today-screen')).toBeVisible();
   await tid(page, 'today-week-today').click();

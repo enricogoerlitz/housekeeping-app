@@ -538,6 +538,8 @@ describe('mapping between domain and rows', () => {
           quantity: null,
           per_day: null,
           sort: 99,
+          bag_item_id: null,
+          from_bag: false,
         },
       },
     ]);

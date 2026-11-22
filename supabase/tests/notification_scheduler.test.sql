@@ -219,12 +219,14 @@ select is(
   'Decisions 6, 12, 13 activities eve: key, expiry and the link to the one entry');
 select is(tests.body('2026-11-20 18:55', 'E', 'activities_eve'), null, 'AC-019 activities eve: not before 19:00');
 
-insert into public.absences (id, household_id, member_id, from_on, to_on, note)
-values (tests.fx('away'), tests.fx('home'), tests.fx('nadja'), '2026-11-21', '2026-11-26', 'GEHEIM-Abwesenheit');
+insert into public.trips (id, household_id, from_on, to_on, note)
+values (tests.fx('away'), tests.fx('home'), '2026-11-21', '2026-11-26', 'GEHEIM-Reise');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('nadja'));
 select is(
   (select string_agg(c.who, ',' order by c.who) from tests.c('2026-11-20 19:00') c where c.kind = 'activities_eve'),
   'E', 'AC-020 activities eve: Nadja is away on the day of the activity, only Enrico gets it');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, activity_id, eater_ids)
 values (tests.fx('e_kino'), tests.fx('home'), '2026-11-21', tests.fx('s_abend'), 'activity', tests.fx('a_kino'), '{}');
@@ -291,14 +293,16 @@ select is((select count(*)::int from tests.c('2026-11-22 19:00') c where c.kind 
 update public.chores set active_months = null where id = tests.fx('c_muell');
 
 update public.chores set due_time = '10:00' where id = tests.fx('c_bad');
-insert into public.absences (id, household_id, member_id, from_on, to_on)
-values (tests.fx('away'), tests.fx('home'), tests.fx('enrico'), '2026-11-20', '2026-11-20');
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('away'), tests.fx('home'), '2026-11-20', '2026-11-20');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('enrico'));
 select is(
   (select count(*)::int from tests.c('2026-11-20 10:00') c where c.dedupe_key like 'chore:' || tests.fx('c_bad') || '%'),
   0, 'AC-026 chore reminder: fixed to Enrico and Enrico is away → nobody');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 select is(tests.body('2026-11-20 10:00', 'E', 'chore_reminder'), 'Bad putzen · 10:00 · du bist dran',
-  'AC-026 chore reminder: … and without the absence Enrico gets it');
+  'AC-026 chore reminder: … and without the trip Enrico gets it');
 update public.chores set due_time = null where id = tests.fx('c_bad');
 
 -- ===================== Reservations (AC-027 to AC-031) =====================
@@ -386,8 +390,10 @@ select is(tests.body('2026-11-20 09:00', 'E', 'chore_reminder'), 'Paket abholen 
 delete from public.chores where id = tests.fx('c_paket');
 
 -- ===================== Silent while away (AC-035) =====================
-insert into public.absences (id, household_id, member_id, from_on, to_on)
-values (tests.fx('away'), tests.fx('home'), tests.fx('enrico'), '2026-11-21', '2026-11-26');
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('away'), tests.fx('home'), '2026-11-21', '2026-11-26');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('enrico'));
 select is(
   (select count(*)::int from tests.c_between('2026-11-20 19:00', '2026-11-27 00:00') c where c.who = 'E'),
   0, 'AC-035 silent: Enrico gets nothing while away, nor the evening before (AC-020), not even his chores');
@@ -399,17 +405,18 @@ select is(
 select is(
   (select count(*)::int from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'), 0,
   'AC-035 silent: Enrico''s turn at "Müll rausbringen" is not handed to Nadja');
-update public.absences set member_id = null where id = tests.fx('away');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('nadja'));
 select is(
   (select count(*)::int from tests.c_between('2026-11-21 00:00', '2026-11-27 00:00') c), 0,
   'AC-035 silent: the whole household is away → nobody gets anything');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 
 -- ===================== AC-040: minimal content =====================
 select is_empty(
   $$ select c.body from tests.c_between('2026-11-20 00:00', '2026-11-23 00:00') c
      where c.body ~ '@|GEHEIM' or c.url ~ '@|GEHEIM' $$,
-  'AC-040 content: no e-mail address, no note of a recipe, restaurant, activity or absence');
+  'AC-040 content: no e-mail address, no note of a recipe, restaurant, activity or trip');
 select is_empty(
   format($$ select c.url from tests.c_between('2026-11-20 00:00', '2026-11-23 00:00') c
             where (c.who = 'E' and c.url like '%%%s%%') or (c.who = 'N' and c.url like '%%%s%%') $$,

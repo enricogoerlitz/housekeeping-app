@@ -45,7 +45,8 @@ export const usePlanEntries = () => useDataSelector((data) => data.planEntries);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
-export const useAbsences = () => useDataSelector((data) => data.absences);
+/** Spec 0022: trips with their people, in creation order (core tripStripes). */
+export const useTrips = () => useDataSelector((data) => data.trips);
 export const useFeedback = () => useDataSelector((data) => data.feedback);
 /** Spec 0012: Reisetaschen and their Packstücke in creation order (core orderedBags, bagItemsOf). */
 export const usePackingBags = () => useDataSelector((data) => data.packingBags);
@@ -69,20 +70,17 @@ export interface PackingList {
 }
 
 /**
- * The packing list of these absences (the absences of one Urlaubsseite): their bags and those
- * bags' Packstücke, in creation order; order them with core packingSections. Recomputed only
- * when the ids or the packing rows change.
+ * The packing list of a trip: its bags and those bags' Packstücke, in creation order; order them
+ * with core packingSections. Recomputed only when the id or the packing rows change.
  */
-export function usePackingList(absenceIds: readonly Id[]): PackingList {
+export function usePackingList(tripId: Id): PackingList {
   const listBags = usePackingListBags();
   const items = usePackingItems();
-  const key = absenceIds.join(',');
   return useMemo(() => {
-    const ids = new Set(key.split(','));
-    const own = listBags.filter((bag) => ids.has(bag.absenceId));
+    const own = listBags.filter((bag) => bag.tripId === tripId);
     const bagIds = new Set(own.map((bag) => bag.id));
     return { listBags: own, items: items.filter((item) => bagIds.has(item.listBagId)) };
-  }, [key, listBags, items]);
+  }, [tripId, listBags, items]);
 }
 
 /**

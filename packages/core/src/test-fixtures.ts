@@ -3,12 +3,14 @@ import type {
   Article,
   CollectionRecipe,
   Id,
+  ISODate,
   Member,
   NotificationSettings,
   PackingBag,
   PackingBagItem,
   Recipe,
   RecipeIngredient,
+  Trip,
 } from './types';
 
 export const enrico: Member = {
@@ -371,3 +373,20 @@ export const notificationDefaults: NotificationSettings = {
   reservationRemindersEnabled: true,
   entryRemindersEnabled: true,
 };
+
+/** A trip of these people; the rows of trip_members get ids "<trip>:<member>". */
+export function trip(
+  id: Id,
+  memberIds: readonly Id[],
+  from: ISODate,
+  to: ISODate,
+  note?: string,
+): Trip {
+  return {
+    id,
+    from,
+    to,
+    note,
+    members: memberIds.map((memberId) => ({ id: `${id}:${memberId}`, memberId })),
+  };
+}

@@ -1,5 +1,5 @@
 import {
-  useAbsences,
+  useTrips,
   useActivitiesById,
   useMembers,
   useMembersById,
@@ -10,7 +10,7 @@ import {
   useRestaurantsById,
 } from '@housekeeping/api';
 import {
-  absenceStripes,
+  tripStripes,
   dayDots,
   dayMonthLongLabel,
   dayTile,
@@ -19,7 +19,7 @@ import {
   weekDates,
   weekdayLong,
   weekdayShort,
-  type AbsenceStripe,
+  type TripStripe,
   type Activity,
   type ISODate,
   type KindRole,
@@ -65,16 +65,16 @@ export interface WeekStripProps {
 
 /**
  * The week of the shown day at the top of the "Übersicht" (spec 0011, REQ-001): up to three dots
- * per day in the colours of the kinds, absences as stripes below (AC-005); on desktop tiles.
+ * per day in the colours of the kinds, trips as stripes below (AC-005); on desktop tiles.
  */
 export function WeekStrip(props: WeekStripProps) {
   const entries = usePlanEntries();
-  const absences = useAbsences();
+  const trips = useTrips();
   const members = useMembers();
   const week = weekDates(props.shown);
   const first = week[0] ?? props.shown;
   const last = week[6] ?? props.shown;
-  const stripes = absenceStripes(absences, members).flatMap((stripe) => {
+  const stripes = tripStripes(trips, members).flatMap((stripe) => {
     const segment = stripeSegment(stripe, first, last);
     return segment ? [{ stripe, start: segment.start, end: segment.end }] : [];
   });
@@ -284,14 +284,14 @@ function TilePhoto(props: { recipe?: Recipe; activity?: Activity; restaurant: bo
   );
 }
 
-/** An absence below the days it covers, in the person's colour (rules of spec 0010). */
-function StripeLine(props: { stripe: AbsenceStripe; start: number; end: number }) {
+/** A trip below the days it covers, in the person's colour (rules of spec 0010). */
+function StripeLine(props: { stripe: TripStripe; start: number; end: number }) {
   const membersById = useMembersById();
   const colors = useStripeColors(props.stripe, membersById);
   return (
     <View
       style={{ height: 4 }}
-      testID={`today-week-stripe-${props.stripe.absenceIds[0] ?? props.stripe.key}`}
+      testID={`today-week-stripe-${props.stripe.tripId}`}
       accessibilityLabel={stripeA11y(props.stripe, membersById)}
     >
       <View

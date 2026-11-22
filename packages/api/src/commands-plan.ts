@@ -115,13 +115,13 @@ function checkedReminder(
   });
 }
 
-/** Who eats by default on a day: every member of the household who is not absent. */
+/** Who eats by default on a day: every member of the household who is not on a trip. */
 export function defaultEaterIds(date: ISODate | null): Id[] {
   const data = getData();
   const members = getState().members.filter((member) =>
     data.household.memberIds.includes(member.id),
   );
-  return defaultEaters(members, date, data.absences).map((member) => member.id);
+  return defaultEaters(members, date, data.trips).map((member) => member.id);
 }
 
 /**

@@ -1,6 +1,6 @@
 import {
   createPackingBag,
-  useAbsences,
+  useTrips,
   useMembersById,
   usePackingBags,
   usePackingListBags,
@@ -13,25 +13,25 @@ import { View } from 'react-native';
 import { messageOf } from '@/features/packing/packing-labels';
 
 /**
- * "Reisetaschen (optional)" in the absence window, only when entering one (spec 0012, AC-012,
+ * "Reisetaschen (optional)" in the trip window, only when entering one (spec 0012, AC-012,
  * decision 10): every Reisetasche as a chip, the one used last first, none chosen; "+ Neue"
  * creates a bag without Packstücke and chooses it, or chooses the bag that has the name already
  * (AC-013).
  */
-export function AbsenceBagChips(props: {
+export function TripBagChips(props: {
   selected: Id[];
   onChange: (ids: Id[]) => void;
   disabled: boolean;
 }) {
   const bags = usePackingBags();
   const listBags = usePackingListBags();
-  const absences = useAbsences();
+  const trips = useTrips();
   const membersById = useMembersById();
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | undefined>();
 
-  const chips = bagChipOrder(bags, listBags, absences);
+  const chips = bagChipOrder(bags, listBags, trips);
   const choose = (id: Id) => {
     if (!props.selected.includes(id)) props.onChange([...props.selected, id]);
   };
@@ -63,7 +63,7 @@ export function AbsenceBagChips(props: {
   };
 
   return (
-    <View testID="absence-bags" style={{ gap: 8 }}>
+    <View testID="trip-bags" style={{ gap: 8 }}>
       <Text variant="smallStrong">Reisetaschen (optional)</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {chips.map((bag) => {
@@ -75,7 +75,7 @@ export function AbsenceBagChips(props: {
               selected={props.selected.includes(bag.id)}
               onPress={() => toggle(bag.id)}
               disabled={props.disabled}
-              testID={`absence-bag-${bag.id}`}
+              testID={`trip-bag-${bag.id}`}
             />
           );
         })}
@@ -89,7 +89,7 @@ export function AbsenceBagChips(props: {
           }}
           disabled={props.disabled}
           accessibilityLabel="Neue Reisetasche"
-          testID="absence-bag-new"
+          testID="trip-bag-new"
         />
       </View>
       {naming ? (
@@ -106,14 +106,14 @@ export function AbsenceBagChips(props: {
           returnKeyType="done"
           onSubmitEditing={create}
           editable={!props.disabled}
-          testID="absence-bag-new-name"
+          testID="trip-bag-new-name"
           right={
             <IconButton
               icon="check"
               label="Anlegen"
               disabled={props.disabled}
               onPress={create}
-              testID="absence-bag-new-save"
+              testID="trip-bag-new-save"
             />
           }
         />

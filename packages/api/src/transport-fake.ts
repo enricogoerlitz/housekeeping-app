@@ -17,13 +17,13 @@
 // person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
 // (users, devices) can share one server.
 import {
-  absenceDays,
   addDays,
   compareTimestamps,
   isHalfStar,
   isReminderPast,
   packQuantity,
   PROFILE_COLORS,
+  tripDays,
   queueEffect,
   RECIPE_LIMITS,
   type AiSearchRequest,
@@ -225,8 +225,15 @@ const REFERENCES: {
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
   { table: 'packing_bag_items', column: 'bag_id', target: 'packing_bags', onDelete: 'cascade' },
-  { table: 'packing_list_bags', column: 'absence_id', target: 'absences', onDelete: 'cascade' },
+  { table: 'packing_list_bags', column: 'trip_id', target: 'trips', onDelete: 'cascade' },
+  { table: 'trip_members', column: 'trip_id', target: 'trips', onDelete: 'cascade' },
   { table: 'packing_list_bags', column: 'bag_id', target: 'packing_bags', onDelete: 'set null' },
+  {
+    table: 'packing_items',
+    column: 'bag_item_id',
+    target: 'packing_bag_items',
+    onDelete: 'set null',
+  },
   {
     table: 'packing_items',
     column: 'list_bag_id',
@@ -257,6 +264,8 @@ const RESTORE_KEYS = new Set([
   'packed_at',
   'packed_by',
   'pack_seq',
+  'bag_item_id',
+  'from_bag',
 ]);
 
 const isTrimmedName = (value: unknown, max: number) =>
@@ -269,10 +278,19 @@ const inRange = (value: unknown, min: number, max: number) =>
   value === undefined ||
   (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max);
 
-/** The check constraints of the packing tables (spec 0012, packing migration). */
+/** The check constraints of the packing tables (spec 0012) and of trips (spec 0022). */
 function checkPackingRow(table: string, row: Row, tables: TableRows): void {
   const invalid = () => new TransportError('permanent', '23514', 400);
-  if (table === 'packing_bags') {
+  if (table === 'trips') {
+    if (String(row.to_on) < String(row.from_on)) throw invalid();
+    if (typeof row.note === 'string' && Array.from(row.note).length > 500) throw invalid();
+  } else if (table === 'trip_members') {
+    const clash = Object.values(tables.trip_members ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.trip_id === row.trip_id && other.member_id === row.member_id,
+    );
+    if (clash) throw conflict('23505');
+  } else if (table === 'packing_bags') {
     if (!isTrimmedName(row.name, 60)) throw invalid();
     const name = String(row.name).toLowerCase();
     const clash = Object.values(tables.packing_bags ?? {}).some(
@@ -288,7 +306,7 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
       row.bag_id != null &&
       Object.values(tables.packing_list_bags ?? {}).some(
         (other) =>
-          other.id !== row.id && other.absence_id === row.absence_id && other.bag_id === row.bag_id,
+          other.id !== row.id && other.trip_id === row.trip_id && other.bag_id === row.bag_id,
       );
     if (clash) throw conflict('23505');
   } else if (table === 'packing_items') {
@@ -303,24 +321,21 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
   }
 }
 
-/** "Je Tag" like the database: per day × days of the absence of its bag, at most 9999. */
+/** "Je Tag" like the database: per day × days of the trip of its bag, at most 9999. */
 function perDayQuantity(tables: TableRows, row: Row): unknown {
   if (row.per_day == null) return row.quantity;
   const listBag = tables.packing_list_bags?.[String(row.list_bag_id)];
-  const absence = listBag ? tables.absences?.[String(listBag.absence_id)] : undefined;
-  if (!absence) return row.quantity;
-  return packQuantity(
-    Number(row.per_day),
-    absenceDays(String(absence.from_on), String(absence.to_on)),
-  );
+  const trip = listBag ? tables.trips?.[String(listBag.trip_id)] : undefined;
+  if (!trip) return row.quantity;
+  return packQuantity(Number(row.per_day), tripDays(String(trip.from_on), String(trip.to_on)));
 }
 
-/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one absence (AC-037). */
-function recalcPacking(tables: TableRows, absenceId: string): TableRows {
+/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one trip (AC-037). */
+function recalcPacking(tables: TableRows, tripId: string): TableRows {
   let next = tables;
   const bagIds = new Set(
     Object.values(tables.packing_list_bags ?? {})
-      .filter((bag) => bag.absence_id === absenceId)
+      .filter((bag) => bag.trip_id === tripId)
       .map((bag) => bag.id),
   );
   for (const item of Object.values(tables.packing_items ?? {})) {
@@ -1035,6 +1050,9 @@ export function createFakeServer(): FakeServer {
     row: Record<string, unknown>,
   ): void {
     const memberIds = new Set(memberIdsOf(householdId));
+    if (table === 'trip_members' && 'member_id' in row && !memberIds.has(String(row.member_id))) {
+      throw foreignKey('trip_members_member_fkey');
+    }
     for (const reference of PACKING_MEMBER_COLUMNS) {
       const value = row[reference.column];
       if (reference.table === table && value != null && !memberIds.has(String(value))) {
@@ -1074,6 +1092,8 @@ export function createFakeServer(): FakeServer {
         packed_at: packed ? (compareTimestamps(at, time) > 0 ? time : at) : null,
         packed_by: packed ? (element.packed_by ?? null) : null,
         pack_seq: Math.min(Math.max(Number(element.pack_seq ?? 0), 0), 999_000),
+        bag_item_id: element.bag_item_id ?? null,
+        from_bag: element.from_bag === true,
       };
       row.quantity = perDayQuantity(next, row);
       next = withRow(next, 'packing_items', row);
@@ -1082,6 +1102,87 @@ export function createFakeServer(): FakeServer {
       checkPackingMembers(householdId, 'packing_items', row);
     }
     return [next, { restored: items.length }];
+  }
+
+  /**
+   * private.adopt_bag_changes (spec 0022, AC-036 to AC-038): appends, updates and deletes
+   * Packstücke of one bag of the packing list; packed or missing ones are skipped.
+   */
+  function adoptBagChanges(
+    tables: TableRows,
+    householdId: string,
+    change: unknown,
+  ): [TableRows, { inserted: number; updated: number; deleted: number }] {
+    if (!isPlainObject(change) || !isText(change.list_bag_id)) throw reject('invalid_change');
+    const listBagId = change.list_bag_id;
+    if (!tables.packing_list_bags?.[listBagId]) throw reject('invalid_change');
+    const list = (value: unknown): unknown[] => {
+      if (value === undefined) return [];
+      if (!Array.isArray(value)) throw reject('invalid_change');
+      return value as unknown[];
+    };
+    const inserts = list(change.insert);
+    const updates = list(change.update);
+    const deletes = list(change.delete);
+    if (inserts.length + updates.length + deletes.length > 200) throw reject('too_many_changes');
+    let next = tables;
+    let inserted = 0;
+    let updated = 0;
+    for (const element of inserts) {
+      if (!isPlainObject(element) || !isText(element.id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (next.packing_items?.[element.id]) throw conflict('23505');
+      const time = now();
+      const row: Row = {
+        ...OPEN_PACKING_ITEM,
+        id: element.id,
+        list_bag_id: listBagId,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day: element.per_day ?? null,
+        sort: element.sort ?? 0,
+        bag_item_id: element.bag_item_id ?? null,
+        from_bag: element.from_bag !== false,
+        created_at: time,
+        updated_at: time,
+      };
+      row.quantity = perDayQuantity(next, row);
+      next = withRow(next, 'packing_items', row);
+      checkReferences(next, 'packing_items', row);
+      checkPackingRow('packing_items', row, next);
+      inserted += 1;
+    }
+    for (const element of updates) {
+      if (!isPlainObject(element) || !isText(element.id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (
+        Object.keys(element).some((key) => !['id', 'name', 'quantity', 'per_day'].includes(key))
+      ) {
+        throw reject('invalid_change');
+      }
+      const row = next.packing_items?.[element.id];
+      if (!row || row.list_bag_id !== listBagId || row.packed === true) continue;
+      const patched: Row = {
+        ...row,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day: element.per_day ?? null,
+        updated_at: now(),
+      };
+      patched.quantity = perDayQuantity(next, patched);
+      checkPackingRow('packing_items', patched, next);
+      next = withRow(next, 'packing_items', patched);
+      updated += 1;
+    }
+    const gone = deletes.filter((id): id is string => {
+      const row = isText(id) ? next.packing_items?.[id] : undefined;
+      return row !== undefined && row.list_bag_id === listBagId && row.packed !== true;
+    });
+    next = withoutRows(next, 'packing_items', gone);
+    void householdId;
+    return [next, { inserted, updated, deleted: gone.length }];
   }
 
   /** private.set_packing_items_packed (ADR-0013): the rule table per Packstück, one transaction. */
@@ -1476,7 +1577,14 @@ export function createFakeServer(): FakeServer {
           ? Math.max(op.entries.length, 1)
           : op.kind === 'restore_packing_items'
             ? Math.max(Array.isArray(op.items) ? op.items.length : 1, 1)
-            : 1,
+            : op.kind === 'adopt_bag_changes'
+              ? Math.max(
+                  (op.change.insert?.length ?? 0) +
+                    (op.change.update?.length ?? 0) +
+                    (op.change.delete?.length ?? 0),
+                  1,
+                )
+              : 1,
     );
     const deletes = sum((op) =>
       // complete_chore too: done of a one-off chore deletes it, known only under the lock.
@@ -1484,7 +1592,9 @@ export function createFakeServer(): FakeServer {
         ? 1
         : op.kind === 'remove_contributions'
           ? op.ids.length
-          : 0,
+          : op.kind === 'adopt_bag_changes'
+            ? (op.change.delete?.length ?? 0)
+            : 0,
     );
     const contributions = sum((op) =>
       op.kind === 'add_contributions'
@@ -1519,6 +1629,10 @@ export function createFakeServer(): FakeServer {
           const [next, restored] = restorePackingItems(tables, householdId, op.items);
           tables = next;
           results.push(restored);
+        } else if (op.kind === 'adopt_bag_changes') {
+          const [next, adopted] = adoptBagChanges(tables, householdId, op.change);
+          tables = next;
+          results.push(adopted);
         } else if (op.kind === 'insert') {
           checkColumns(op.table, Object.keys(op.row), true);
           if (op.row.household_id !== undefined && op.row.household_id !== householdId) {
@@ -1562,7 +1676,7 @@ export function createFakeServer(): FakeServer {
               ...(op.table === 'activities' ? { created_by: userId } : {}),
             }),
           );
-          // packing_items_before_insert: "je Tag" from the absence, whatever the device sent.
+          // packing_items_before_insert: "je Tag" from the trip, whatever the device sent.
           const inserted = tables[op.table]?.[op.row.id];
           if (op.table === 'meal_plan_entries' && inserted) {
             tables = withRow(tables, op.table, reminderTriggers(undefined, inserted, timeZone));
@@ -1598,7 +1712,12 @@ export function createFakeServer(): FakeServer {
           }
           if (op.table === 'chore_events' && 'chore_id' in op.changes)
             checkChoreLink(tables, row, op.changes.chore_id);
-          const patched = withDbTimes(op.table, { ...row, ...op.changes });
+          const merged = withDbTimes(op.table, { ...row, ...op.changes });
+          // packing_items_before_update (spec 0022): "je Tag" from the trip, also when packed.
+          const patched =
+            op.table === 'packing_items' && ('quantity' in op.changes || 'per_day' in op.changes)
+              ? { ...merged, quantity: perDayQuantity(tables, merged) }
+              : merged;
           tables = withRow(
             tables,
             op.table,
@@ -1617,14 +1736,11 @@ export function createFakeServer(): FakeServer {
           checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
           checkPackingRow(op.table, tables[op.table]?.[op.id] ?? row, tables);
           checkPackingMembers(householdId, op.table, op.changes);
-          // absences_recalc_packing and packing_list_bags_recalc (AC-037).
+          // trips_recalc_packing (AC-037; spec 0022, AC-011).
           const changed = (column: string) =>
             column in op.changes && op.changes[column] !== row[column];
-          if (op.table === 'absences' && (changed('from_on') || changed('to_on'))) {
+          if (op.table === 'trips' && (changed('from_on') || changed('to_on'))) {
             tables = recalcPacking(tables, op.id);
-          }
-          if (op.table === 'packing_list_bags' && changed('absence_id')) {
-            tables = recalcPacking(tables, String(op.changes.absence_id));
           }
         } else {
           if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || NO_DELETE_TABLES.has(op.table)) {
@@ -1632,6 +1748,13 @@ export function createFakeServer(): FakeServer {
           }
           tables = withoutRows(tables, op.table, [op.id]);
         }
+      }
+      // trips_need_member and trip_members_last_gone, deferred to the end of the call (AC-043).
+      const withPeople = new Set(
+        Object.values(tables.trip_members ?? {}).map((row) => String(row.trip_id)),
+      );
+      if (Object.keys(tables.trips ?? {}).some((tripId) => !withPeople.has(tripId))) {
+        throw new TransportError('permanent', 'trip_without_members', 400);
       }
       return [tables, { applied: ops.length, results }];
     });
@@ -2528,6 +2651,22 @@ export function createFakeServer(): FakeServer {
               Object.values(tables.notification_settings ?? {})
                 .filter((row) => row.member_id === profileId)
                 .map((row) => row.id),
+            );
+            // Spec 0022, AC-044: she leaves her trips; a trip without anybody goes with its list.
+            next = withoutRows(
+              next,
+              'trip_members',
+              Object.values(next.trip_members ?? {})
+                .filter((row) => row.member_id === profileId)
+                .map((row) => row.id),
+            );
+            const withPeople = new Set(
+              Object.values(next.trip_members ?? {}).map((row) => String(row.trip_id)),
+            );
+            next = withoutRows(
+              next,
+              'trips',
+              Object.keys(next.trips ?? {}).filter((tripId) => !withPeople.has(tripId)),
             );
             for (const reference of PACKING_MEMBER_COLUMNS) {
               for (const row of Object.values(next[reference.table] ?? {})) {

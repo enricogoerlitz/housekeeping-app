@@ -1,10 +1,10 @@
 import {
-  absenceEndLabel,
+  tripEndLabel,
   dateRangeLabel,
   dragSourceKey,
   entryKindRole,
   stripeText,
-  type AbsenceStripe,
+  type TripStripe,
   type HouseholdRowItem,
   type Id,
   type MealPlanEntry,
@@ -35,7 +35,7 @@ import { LIFTED_OPACITY, useCalendarDrag } from './calendar-drag';
 const TINT_ALPHA = '2E';
 
 /** Edge and fill of a stripe: one person in her colour, several or the household neutral. */
-export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, Member>) {
+export function useStripeColors(stripe: TripStripe, membersById: Record<Id, Member>) {
   const theme = useTheme();
   const only = stripe.memberIds.length === 1 ? membersById[stripe.memberIds[0] ?? ''] : undefined;
   return only
@@ -48,7 +48,7 @@ export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, M
  * list ", mit Packliste" (spec 0012, AC-046).
  */
 export function stripeA11y(
-  stripe: AbsenceStripe,
+  stripe: TripStripe,
   membersById: Record<Id, Member>,
   hasPackingList = false,
 ): string {
@@ -63,7 +63,7 @@ export function stripeA11y(
 }
 
 /** The name badges of a stripe; the whole household also gets the house. */
-export function StripeBadges(props: { stripe: AbsenceStripe; members: Member[] }) {
+export function StripeBadges(props: { stripe: TripStripe; members: Member[] }) {
   const { stripe } = props;
   const people = stripe.household
     ? props.members
@@ -77,13 +77,13 @@ export function StripeBadges(props: { stripe: AbsenceStripe; members: Member[] }
 }
 
 /**
- * One absence as a stripe: badges, note and end ("(E) Urlaub Mallorca · bis Mo 4.1."), the bag
- * icon when it has a packing list. A tap opens its Urlaubsseite (spec 0012, AC-016, AC-046).
+ * One trip as a stripe: badges, note and end ("(E) Urlaub Mallorca · bis Mo 4.1."), the bag
+ * icon when it has a packing list. A tap opens its trip (spec 0012, AC-016, AC-046).
  */
-export function AbsenceStripeView(props: {
-  stripe: AbsenceStripe;
+export function TripStripeView(props: {
+  stripe: TripStripe;
   data: CalendarData;
-  onPress: (stripe: AbsenceStripe) => void;
+  onPress: (stripe: TripStripe) => void;
   /** Desktop: " · " between note and end; phones and lists: a space. */
   separator?: string;
   /** Desktop week: the stripe runs on beyond the shown days. */
@@ -94,8 +94,8 @@ export function AbsenceStripeView(props: {
   const theme = useTheme();
   const { stripe, data } = props;
   const colors = useStripeColors(stripe, data.membersById);
-  const text = `${stripeText(stripe)}${props.separator ?? ' '}${absenceEndLabel(stripe.to)}`;
-  const testID = props.testID ?? `absence-stripe-${stripe.absenceIds[0] ?? ''}`;
+  const text = `${stripeText(stripe)}${props.separator ?? ' '}${tripEndLabel(stripe.to)}`;
+  const testID = props.testID ?? `trip-stripe-${stripe.tripId}`;
   const packing = data.hasPackingList(stripe);
   return (
     <Pressable

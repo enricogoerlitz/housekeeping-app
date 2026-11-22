@@ -273,7 +273,7 @@ select is((select count(*)::int from public.households where id in (tests.fx('ho
 
 -- Fill "WG Köln": a row in every table that holds household data, photos in the storage.
 insert into fx (key) values ('slot'), ('area'), ('article'), ('store'), ('recipe'), ('collection'),
-  ('restaurant'), ('activity'), ('absence'), ('feedback'), ('chore'), ('event'), ('entry'),
+  ('restaurant'), ('activity'), ('trip'), ('feedback'), ('chore'), ('event'), ('entry'),
   ('item'), ('bag'), ('bag_item'), ('list_bag'), ('packing_item');
 update public.households set meal_slots = jsonb_build_array(jsonb_build_object('id', tests.fx('slot'), 'name', 'Abend', 'sort', 0))
 where id = tests.fx('wg');
@@ -295,8 +295,9 @@ insert into public.activities (id, household_id, name, name_key, created_by)
 values (tests.fx('activity'), tests.fx('wg'), 'Eislaufen', 'eislaufen', tests.fx('enrico'));
 insert into public.activity_favorites (household_id, activity_id, member_id) values (tests.fx('wg'), tests.fx('activity'), tests.fx('enrico'));
 insert into public.activity_ratings (household_id, activity_id, member_id, stars) values (tests.fx('wg'), tests.fx('activity'), tests.fx('enrico'), 3);
-insert into public.absences (id, household_id, member_id, from_on, to_on)
-values (tests.fx('absence'), tests.fx('wg'), tests.fx('enrico'), '2026-12-01', '2026-12-03');
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('trip'), tests.fx('wg'), '2026-12-01', '2026-12-03');
+insert into public.trip_members (household_id, trip_id, member_id) values (tests.fx('wg'), tests.fx('trip'), tests.fx('enrico'));
 insert into public.feedback (id, household_id, kind, text, author_id)
 values (tests.fx('feedback'), tests.fx('wg'), 'idea', 'Dunkler Modus', tests.fx('enrico'));
 insert into public.feedback_votes (household_id, feedback_id, member_id) values (tests.fx('wg'), tests.fx('feedback'), tests.fx('enrico'));
@@ -310,8 +311,8 @@ insert into public.shopping_items (id, household_id, article_id) values (tests.f
 insert into public.shopping_contributions (household_id, item_id) values (tests.fx('wg'), tests.fx('item'));
 insert into public.packing_bags (id, household_id, name, member_id) values (tests.fx('bag'), tests.fx('wg'), 'Kulturbeutel', tests.fx('enrico'));
 insert into public.packing_bag_items (id, household_id, bag_id, name) values (tests.fx('bag_item'), tests.fx('wg'), tests.fx('bag'), 'Zahnbürste');
-insert into public.packing_list_bags (id, household_id, absence_id, bag_id, name, member_id)
-values (tests.fx('list_bag'), tests.fx('wg'), tests.fx('absence'), tests.fx('bag'), 'Kulturbeutel', tests.fx('enrico'));
+insert into public.packing_list_bags (id, household_id, trip_id, bag_id, name, member_id)
+values (tests.fx('list_bag'), tests.fx('wg'), tests.fx('trip'), tests.fx('bag'), 'Kulturbeutel', tests.fx('enrico'));
 insert into public.packing_items (id, household_id, list_bag_id, name)
 values (tests.fx('packing_item'), tests.fx('wg'), tests.fx('list_bag'), 'Zahnbürste');
 insert into public.household_invitations (household_id, email, invited_by) values (tests.fx('wg'), 'tom@example.com', tests.fx('enrico'));

@@ -1,5 +1,4 @@
 import type {
-  Absence,
   Activity,
   Area,
   Article,
@@ -23,6 +22,7 @@ import type {
   ShoppingItem,
   Store,
   StoreQueueEntry,
+  Trip,
 } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
@@ -43,7 +43,8 @@ export interface HouseholdData {
   items: ShoppingItem[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
-  absences: Absence[];
+  /** Spec 0022: trips with their people (rows of trips and trip_members). */
+  trips: Trip[];
   feedback: FeedbackEntry[];
   /** Spec 0012: Reisetaschen and their Packstücke (in creation order; sort with core). */
   packingBags: PackingBag[];

@@ -1897,11 +1897,12 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
 
 describe('fake server: packing (spec 0012, like the database)', () => {
   const FOREIGN = 'h-2';
-  /** A seven-day absence with one bag: an open, a packed (pack_seq 3) and a "je Tag" Packstück. */
+  /** A seven-day trip with one bag: an open, a packed (pack_seq 3) and a "je Tag" Packstück. */
   function seedPacking() {
     server.addHousehold({ id: FOREIGN, name: 'Fremd' }, [STRANGER]);
     server.insertRows(H, {
-      absences: [{ id: 'abs-1', member_id: null, from_on: '2027-01-01', to_on: '2027-01-07' }],
+      trips: [{ id: 'abs-1', from_on: '2027-01-01', to_on: '2027-01-07' }],
+      trip_members: [{ id: 'tm-1', trip_id: 'abs-1', member_id: ENRICO }],
       packing_bags: [{ id: 'bag-strand', name: 'Strand', member_id: null, sort: 0 }],
       packing_bag_items: [
         {
@@ -1914,7 +1915,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         },
       ],
       packing_list_bags: [
-        { id: 'lb-1', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
+        { id: 'lb-1', trip_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
       ],
       packing_items: [
         { id: 'p-open', list_bag_id: 'lb-1', name: 'Badehose', quantity: 2, sort: 0 },
@@ -1932,8 +1933,9 @@ describe('fake server: packing (spec 0012, like the database)', () => {
       ],
     });
     server.insertRows(FOREIGN, {
-      absences: [{ id: 'abs-x', member_id: null, from_on: '2027-01-01', to_on: '2027-01-02' }],
-      packing_list_bags: [{ id: 'lb-x', absence_id: 'abs-x', bag_id: null, name: 'X', sort: 0 }],
+      trips: [{ id: 'abs-x', from_on: '2027-01-01', to_on: '2027-01-02' }],
+      trip_members: [{ id: 'tm-x', trip_id: 'abs-x', member_id: STRANGER }],
+      packing_list_bags: [{ id: 'lb-x', trip_id: 'abs-x', bag_id: null, name: 'X', sort: 0 }],
       packing_items: [{ id: 'p-x', list_bag_id: 'lb-x', name: 'Fremd', sort: 0 }],
     });
   }
@@ -2029,7 +2031,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
     expect(state('p-open')).toMatchObject({ packed: false, pack_seq: 0 });
   });
 
-  it('inserts start open; "je Tag" is computed from the absence; no patch of packing items', async () => {
+  it('inserts start open; "je Tag" is computed from the trip; no patch of the packed state', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
       {
@@ -2049,7 +2051,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         table: 'packing_items',
         row: { id: 'p-cheat', list_bag_id: 'lb-1', name: 'X', sort: 0, packed: true },
       },
-      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { name: 'Neu' } },
+      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { pack_seq: 4 } },
       { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { name: 'Neu' } },
     ] as RowOp[]) {
       await expect(enrico.applyChanges(H, [op])).rejects.toMatchObject({ code: 'invalid_change' });
@@ -2072,24 +2074,20 @@ describe('fake server: packing (spec 0012, like the database)', () => {
           sort: 4,
         },
       },
-      { kind: 'patch', table: 'absences', id: 'abs-1', changes: { to_on: '2027-01-05' } },
+      { kind: 'patch', table: 'trips', id: 'abs-1', changes: { to_on: '2027-01-05' } },
     ]);
     expect(server.row(H, 'packing_items', 'p-day2')?.quantity).toBe(5);
     expect(server.row(H, 'packing_items', 'p-day')?.quantity).toBe(7);
     expect(server.row(H, 'packing_items', 'p-open')?.quantity).toBe(2);
-    // A bag moving to another absence follows its duration.
-    await enrico.applyChanges(H, [
-      {
-        kind: 'insert',
-        table: 'absences',
-        row: { id: 'abs-2', member_id: NADJA, from_on: '2027-02-01', to_on: '2027-02-03' },
-      },
-      { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { absence_id: 'abs-2' } },
-    ]);
-    expect(server.row(H, 'packing_items', 'p-day2')?.quantity).toBe(3);
+    // Spec 0022: a bag stays at its trip.
+    await expect(
+      enrico.applyChanges(H, [
+        { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { trip_id: 'abs-x' } },
+      ]),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
     // 365 days × 99 is capped at 9999.
     await enrico.applyChanges(H, [
-      { kind: 'patch', table: 'absences', id: 'abs-2', changes: { to_on: '2028-01-31' } },
+      { kind: 'patch', table: 'trips', id: 'abs-1', changes: { to_on: '2027-12-31' } },
       {
         kind: 'insert',
         table: 'packing_items',
@@ -2111,7 +2109,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         {
           kind: 'insert',
           table: 'packing_list_bags',
-          row: { id: 'lb-2', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 1 },
+          row: { id: 'lb-2', trip_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 1 },
         },
       ]),
     ).rejects.toMatchObject({ code: '23505' });
@@ -2120,7 +2118,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         {
           kind: 'insert',
           table: 'packing_list_bags',
-          row: { id: 'lb-3', absence_id: 'abs-x', name: 'Fremd', sort: 1 },
+          row: { id: 'lb-3', trip_id: 'abs-x', name: 'Fremd', sort: 1 },
         },
       ]),
     ).rejects.toMatchObject({ code: '23503' });
@@ -2139,8 +2137,9 @@ describe('fake server: packing (spec 0012, like the database)', () => {
     expect(server.row(H, 'packing_list_bags', 'lb-1')).toMatchObject({ bag_id: null });
     expect(server.rows(H, 'packing_items')).toHaveLength(3);
 
-    await enrico.applyChanges(H, [{ kind: 'delete', table: 'absences', id: 'abs-1' }]);
+    await enrico.applyChanges(H, [{ kind: 'delete', table: 'trips', id: 'abs-1' }]);
     expect(server.rows(H, 'packing_list_bags')).toEqual([]);
+    expect(server.rows(H, 'trip_members')).toEqual([]);
     expect(server.rows(H, 'packing_items')).toEqual([]);
     const pulled = await enrico.syncPull({ households: { [H]: { full: false, since: {} } } });
     const tombstones = pulled.households[H]?.tombstones.map((t) => `${t.table}:${t.id}`) ?? [];
@@ -2163,7 +2162,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
       {
         kind: 'insert',
         table: 'packing_list_bags',
-        row: { id: 'lb-1', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
+        row: { id: 'lb-1', trip_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
       },
       {
         kind: 'restore_packing_items',

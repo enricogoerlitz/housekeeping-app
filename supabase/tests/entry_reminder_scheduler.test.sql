@@ -162,16 +162,19 @@ select ok(
 select tests.reminder('e_lasagne', null, null);
 update public.meal_plan_entries set date = '2026-11-29', slot_id = tests.fx('s_mittag') where id = tests.fx('e_lasagne');
 select tests.reminder('e_lasagne', 1, '18:00');
-insert into public.absences (id, household_id, member_id, from_on, to_on, note)
-values (tests.fx('away'), tests.fx('home'), tests.fx('enrico'), '2026-11-27', '2026-11-28', 'GEHEIM-Reise');
+insert into public.trips (id, household_id, from_on, to_on, note)
+values (tests.fx('away'), tests.fx('home'), '2026-11-27', '2026-11-28', 'GEHEIM-Reise');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('enrico'));
 select is(tests.msgs('2026-11-28 18:00'), 'N: Erinnerung: Lasagne · morgen Mittag',
   'AC-019 entry reminder: Enrico is away on the send day, only Nadja gets it');
-update public.absences set from_on = '2026-11-29', to_on = '2026-11-29' where id = tests.fx('away');
+update public.trips set from_on = '2026-11-29', to_on = '2026-11-29' where id = tests.fx('away');
 select is(tests.msgs('2026-11-28 18:00'), 'N: Erinnerung: Lasagne · morgen Mittag',
   'REQ-005 entry reminder: away on the day of the entry is silent too');
-update public.absences set member_id = null where id = tests.fx('away');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('nadja'));
 select is(tests.msgs('2026-11-28 18:00'), null, 'REQ-005 entry reminder: the whole household is away → nobody');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 
 -- ===================== AC-021: moving takes the reminder along =====================
 update public.meal_plan_entries set date = '2026-11-28', slot_id = tests.fx('s_abend') where id = tests.fx('e_lasagne');

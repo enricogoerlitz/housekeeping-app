@@ -23,8 +23,9 @@ import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useHandedHousehold } from '@/lib/addressed';
 import { usePageParams } from '@/lib/url-state';
+import { TripWindowHost } from '@/features/trips/trip-window';
 
-import { TodayAbsence } from './today-absence';
+import { TodayTrips } from './today-trips';
 import { TodayChores } from './today-chores';
 import { CalendarButton, WeekNav } from './today-header';
 import { TodayMeals } from './today-meals';
@@ -143,12 +144,13 @@ export function TodayScreen() {
         {offlineHint}
         {nav}
         {strip}
-        <TodayAbsence shown={shown} />
+        <TodayTrips shown={shown} />
         {meals}
         {recap}
         {chores}
         <TodayShopping preview={false} />
         <TodayPacking shown={shown} />
+        <TripWindowHost page="uebersicht" />
       </Screen>
     );
   }
@@ -161,7 +163,7 @@ export function TodayScreen() {
       >
         <View style={{ flex: 1.6, minWidth: 0 }}>
           {strip}
-          <TodayAbsence shown={shown} />
+          <TodayTrips shown={shown} />
           {meals}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -171,6 +173,7 @@ export function TodayScreen() {
           <TodayPacking shown={shown} />
         </View>
       </View>
+      <TripWindowHost page="uebersicht" />
     </Screen>
   );
 }

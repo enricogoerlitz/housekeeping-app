@@ -2,8 +2,8 @@ import { formatQty } from './amounts';
 import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';
+import { isOnTrip } from './trips';
 import type {
-  Absence,
   Article,
   Diet,
   Id,
@@ -12,6 +12,7 @@ import type {
   Member,
   PlanEntryVariant,
   Recipe,
+  Trip,
 } from './types';
 
 // What a member who eats everything is served first. "unknown" comes last: a variant is not
@@ -24,26 +25,17 @@ const FLEXIBLE_RANK: Record<Diet, number> = {
   meat: 4,
 };
 
-/** True when the member (or the whole household) is absent on that day; from and to are inclusive. */
-export function isAbsent(memberId: Id, date: ISODate, absences: Absence[]): boolean {
-  return absences.some(
-    (absence) =>
-      (absence.memberId === undefined || absence.memberId === memberId) &&
-      absence.from <= date &&
-      date <= absence.to,
-  );
-}
 /**
- * Members preselected for "Wer isst mit?": everyone who is not absent on that day; everyone for
+ * Members preselected for "Wer isst mit?": everyone who is not on a trip that day; everyone for
  * an entry without a day.
  */
 export function defaultEaters(
-  members: Member[],
+  members: readonly Member[],
   date: ISODate | null,
-  absences: Absence[],
+  trips: readonly Trip[],
 ): Member[] {
   if (date === null) return [...members];
-  return members.filter((member) => !isAbsent(member.id, date, absences));
+  return members.filter((member) => !isOnTrip(member.id, date, trips));
 }
 
 export interface VariantSplit {

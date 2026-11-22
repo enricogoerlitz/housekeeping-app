@@ -1,7 +1,7 @@
 // Packing without network against the running local stack (spec 0012, ADR-0013): two devices,
 // Nadja packs offline and both see the result once she is online again (AC-022); "Abhaken gewinnt"
 // against a re-pack by Enrico (AC-023); resetting offline keeps what was packed again meanwhile
-// (AC-030); "Alles einpacken" offline reaches the other device (AC-027). The test writes only an absence it creates itself and deletes it again (the packing
+// (AC-030); "Alles einpacken" offline reaches the other device (AC-027). The test writes only a trip it creates itself and deletes it again (the packing
 // list goes with it), so the seed stays as it was. Skipped unless SUPABASE_LOCAL=1, e.g.
 //
 //   set -a; . ./.env; set +a; SUPABASE_LOCAL=1 \
@@ -10,7 +10,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createEngine, startBackend, stopBackend, type Environment } from './backend';
-import { saveAbsences } from './commands-household';
+import { createTrip } from './commands-trips';
 import { packAll, resetPackingList, setPacked } from './commands-packing';
 import { TEST_ACCOUNTS, TEST_PASSWORD } from './dev-accounts';
 import { DEMO_HOUSEHOLD_ID } from './seed/demo';
@@ -87,14 +87,13 @@ describe.skipIf(!enabled)('spec 0012: packing without network in the local stack
       ]);
     };
 
-    let absenceId: string | undefined;
+    let tripId: string | undefined;
     try {
       // Nadja enters a trip with "Strand" (12 Packstücke).
       let engine = await start(nadja.client, nadja.userId, nadjaStorage);
       const strand = getData().packingBags.find((bag) => bag.name === 'Strand');
       if (!strand) throw new Error('seed: Strand missing');
-      [absenceId] = saveAbsences({
-        replaceIds: [],
+      tripId = createTrip({
         memberIds: [nadja.userId],
         from: '2030-07-01',
         to: '2030-07-07',
@@ -103,7 +102,7 @@ describe.skipIf(!enabled)('spec 0012: packing without network in the local stack
       });
       await engine.whenIdle();
       await engine.pull();
-      const listBag = getData().packingListBags.find((bag) => bag.absenceId === absenceId);
+      const listBag = getData().packingListBags.find((bag) => bag.tripId === tripId);
       const items = getData().packingItems.filter((item) => item.listBagId === listBag?.id);
       expect(items).toHaveLength(12);
       expect(items.find((item) => item.name === 'T-Shirts')?.quantity).toBe(7);
@@ -146,7 +145,7 @@ describe.skipIf(!enabled)('spec 0012: packing without network in the local stack
 
       // AC-030: Nadja resets offline, Enrico packs one again meanwhile: only that one stays packed.
       engine.setSimulatedOffline(true);
-      expect(resetPackingList([absenceId ?? ''])).toBe(5);
+      expect(resetPackingList(tripId ?? '')).toBe(5);
       await repackAsEnrico(second);
       engine.setSimulatedOffline(false);
       await engine.whenIdle();
@@ -173,9 +172,9 @@ describe.skipIf(!enabled)('spec 0012: packing without network in the local stack
       ).toHaveLength(12);
     } finally {
       enricoDevice.stop();
-      if (absenceId) {
+      if (tripId) {
         await enricoWire.applyChanges(householdId, [
-          { kind: 'delete', table: 'absences', id: absenceId },
+          { kind: 'delete', table: 'trips', id: tripId },
         ]);
       }
       await enrico.client.auth.signOut();

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import {
-  absenceEndLabel,
+  tripEndLabel,
   addDays,
   dayMonthLongLabel,
   formatPickerDate,
@@ -120,7 +120,7 @@ test.describe('phone', () => {
     page,
   }) => {
     await openMonthDay(page, MALLORCA);
-    const stripe = tid(page, `day-panel-stripe-${seedIds['abs-mallorca']}`);
+    const stripe = tid(page, `day-panel-stripe-${seedIds['trip-mallorca']}`);
     await expect(stripe).toContainText('Urlaub Mallorca');
 
     const strip = await tid(page, 'day-panel-week-strip').boundingBox();
@@ -132,8 +132,8 @@ test.describe('phone', () => {
     await page.mouse.up();
     await expectPanelDay(page, addDays(MALLORCA, 1));
 
-    await tid(page, `day-panel-stripe-${seedIds['abs-mallorca']}`).click();
-    await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+    await tid(page, `day-panel-stripe-${seedIds['trip-mallorca']}`).click();
+    await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
     await back(page);
     await expect(tid(page, 'day-panel')).toBeVisible();
     await expectPanelDay(page, addDays(MALLORCA, 1));
@@ -233,20 +233,20 @@ test.describe('phone', () => {
     const to = addDays(from, 4);
     await openMonthDay(page, from);
     await tid(page, 'day-panel-trip').click();
-    await expect(tid(page, 'absence-sheet')).toContainText('Reise eintragen');
-    await expect(tid(page, 'absence-from-value')).toHaveText(formatPickerDate(from));
-    await expect(tid(page, 'absence-to-value')).toHaveText(formatPickerDate(from));
+    await expect(tid(page, 'trip-sheet')).toContainText('Reise eintragen');
+    await expect(tid(page, 'trip-from-value')).toHaveText(formatPickerDate(from));
+    await expect(tid(page, 'trip-to-value')).toHaveText(formatPickerDate(from));
 
-    await tid(page, 'absence-to').click();
+    await tid(page, 'trip-to').click();
     for (let step = 0; step < 2 && !(await tid(page, `range-day-${to}`).isVisible()); step += 1) {
       await tid(page, 'range-next').click();
     }
     await tid(page, `range-day-${to}`).click();
-    await tid(page, 'absence-note').fill('Ostsee');
-    await tid(page, 'absence-save').click();
-    await expect(tid(page, 'absence-sheet')).toBeHidden();
+    await tid(page, 'trip-note').fill('Ostsee');
+    await tid(page, 'trip-save').click();
+    await expect(tid(page, 'trip-sheet')).toBeHidden();
     const stripe = tid(page, 'day-panel').locator('[data-testid^="day-panel-stripe-"]');
-    await expect(stripe.filter({ hasText: 'Ostsee' })).toContainText(absenceEndLabel(to));
+    await expect(stripe.filter({ hasText: 'Ostsee' })).toContainText(tripEndLabel(to));
   });
 });
 

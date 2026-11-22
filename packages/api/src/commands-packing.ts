@@ -1,9 +1,11 @@
 import {
+  bagDeviations,
   bagFullProblem,
   bagItemSortChanges,
   bagItemsOf,
   cleanPackingName,
   duplicateBag,
+  findBagByName,
   nextSort,
   packAllEntries,
   packEntry,
@@ -11,9 +13,14 @@ import {
   parsePackingLine,
   planAddBagToList,
   planAddPackingItem,
+  planAdoptBag,
+  planEditPackingItem,
   resetEntries,
+  tripDays,
+  tripStripes,
   undoPackAll,
   validateBagName,
+  type AdoptBagPlan,
   type Id,
   type PackEntry,
   type PackingBag,
@@ -24,7 +31,13 @@ import {
 
 import { packingListBagToRow } from './db/mapping';
 import { commit, getData, getState, newId, queueStoreAction, updateData } from './store';
-import { TransportError, type RestorePackingItem } from './transport';
+import {
+  TransportError,
+  type AdoptBagChange,
+  type AdoptPackingItem,
+  type ChangeOp,
+  type RestorePackingItem,
+} from './transport';
 
 // Reisetaschen and Packlisten (spec 0012). Rules live in core (packing.ts, packing-actions.ts);
 // here each action is one change: apply_changes for everything that adds, changes or removes
@@ -69,7 +82,7 @@ const nameTaken = (name: string) => (error: unknown) =>
 
 // ---------- Reisetaschen (REQ-001) ----------
 
-/** "+ Neue Reisetasche" (also "+ Neue" in the absence window, AC-013): at the end of the page. */
+/** "+ Neue Reisetasche" (also in the trip window, AC-013, spec 0022 AC-034): at the end of the page. */
 export function createPackingBag(input: { name: string; memberId?: Id }): Id {
   const name = checkedBagName(input.name);
   const bag: PackingBag = {
@@ -154,7 +167,7 @@ export function addPackingBagItem(bagId: Id, text: string): Id | undefined {
     bagId,
     name: line.name,
     quantity: line.quantity,
-    perDay: false,
+    perDay: line.perDay === true,
     sort: nextSort(own),
   };
   commit({ path: 'diff' }, () =>
@@ -226,12 +239,12 @@ export function removePackingBagItem(itemId: Id): void {
 // ---------- Packliste ergänzen und kürzen (REQ-007) ----------
 
 /** "+ Reisetasche hinzufügen" (AC-033): a copy at the end of the packing list; its id. */
-export function addBagToPackingList(absenceId: Id, bagId: Id): Id {
+export function addBagToPackingList(tripId: Id, bagId: Id): Id {
   const data = getData();
-  const absence = data.absences.find((candidate) => candidate.id === absenceId);
-  if (!absence) throw new Error('Diese Reise gibt es nicht mehr.');
+  const trip = data.trips.find((candidate) => candidate.id === tripId);
+  if (!trip) throw new Error('Diese Reise gibt es nicht mehr.');
   const plan = planAddBagToList({
-    absence,
+    trip,
     bag: requireBag(bagId),
     bagItems: data.packingBagItems,
     listBags: data.packingListBags,
@@ -278,6 +291,7 @@ export function addPackingItem(
     line,
     items: data.packingItems,
     alsoInBag: template ? data.packingBagItems : undefined,
+    days: daysOfListBag(listBag),
     newId,
   });
   commit({ path: 'diff' }, () =>
@@ -305,6 +319,8 @@ function restoreRows(items: readonly PackingItem[]): RestorePackingItem[] {
     packed_at: item.packedAt ?? null,
     packed_by: item.packedBy ?? null,
     pack_seq: item.packSeq,
+    bag_item_id: item.bagItemId ?? null,
+    from_bag: item.fromBag ?? false,
   }));
 }
 
@@ -417,17 +433,283 @@ export function packAll(listBagId: Id): () => void {
 }
 
 /**
- * "Für die Rückreise zurücksetzen" (AC-028 to AC-030): unpacks every packed Packstück of the
- * packing lists of these absences (the absences of one Urlaubsseite); returns how many. Works
- * offline; a Packstück packed again elsewhere meanwhile stays packed ("Abhaken gewinnt").
+ * "Für die Rückreise zurücksetzen" (AC-028 to AC-030; spec 0022, AC-018): unpacks every packed
+ * Packstück of the trip's packing list; returns how many. Works offline; a Packstück packed again
+ * elsewhere meanwhile stays packed ("Abhaken gewinnt").
  */
-export function resetPackingList(absenceIds: readonly Id[]): number {
+export function resetPackingList(tripId: Id): number {
   const data = getData();
   const listBagIds = new Set(
-    data.packingListBags.filter((bag) => absenceIds.includes(bag.absenceId)).map((bag) => bag.id),
+    data.packingListBags.filter((bag) => bag.tripId === tripId).map((bag) => bag.id),
   );
   const items = data.packingItems.filter((item) => listBagIds.has(item.listBagId));
   const entries = resetEntries(getState().activeHouseholdId, items);
   for (const entry of entries) queuePack(entry);
   return entries.length;
+}
+
+// ---------- Spec 0022: changing Packstücke, new Reisetasche, adopting changes ----------
+
+function daysOfListBag(listBag: PackingListBag): number {
+  const trip = getData().trips.find((candidate) => candidate.id === listBag.tripId);
+  if (!trip) throw new Error('Diese Reise gibt es nicht mehr.');
+  return tripDays(trip.from, trip.to);
+}
+
+const itemChanges = (item: PackingItem) => ({
+  name: item.name,
+  quantity: item.quantity ?? null,
+  per_day: item.perDay ?? null,
+});
+
+/**
+ * "Speichern" in the window of a Packstück of the packing list (REQ-009, AC-028 to AC-030): name,
+ * count and "je Tag"; it stays packed. With `alsoInBag` the Packstück of its Reisetasche changes
+ * too ("Auch in der Reisetasche „Strand“ ändern"); one added by hand is saved into the Reisetasche
+ * and linked to it ("… speichern"). One call, undone with the inverse patch.
+ */
+export function updatePackingItem(
+  itemId: Id,
+  input: { name: string; count?: number; perDay: boolean; alsoInBag?: boolean },
+): void {
+  const item = requirePackingItem(itemId);
+  const listBag = requireListBag(item.listBagId);
+  const next = planEditPackingItem({ item, ...input, days: daysOfListBag(listBag) });
+  const data = getData();
+  const linked =
+    item.bagItemId === undefined
+      ? undefined
+      : data.packingBagItems.find((candidate) => candidate.id === item.bagItemId);
+  const template =
+    input.alsoInBag && !linked && listBag.bagId !== undefined
+      ? data.packingBags.find((bag) => bag.id === listBag.bagId)
+      : undefined;
+  if (template) {
+    const full = bagFullProblem(bagItemsOf(template.id, data.packingBagItems).length);
+    if (full) throw new Error(full);
+  }
+  const count = input.perDay ? (input.count ?? 1) : input.count;
+  const bagChanges = { name: next.name, quantity: count ?? null, per_day: input.perDay };
+  const newBagItem: PackingBagItem | undefined = template
+    ? {
+        id: newId(),
+        bagId: template.id,
+        name: next.name,
+        quantity: count,
+        perDay: input.perDay,
+        sort: nextSort(bagItemsOf(template.id, data.packingBagItems)),
+      }
+    : undefined;
+  const saved: PackingItem = newBagItem
+    ? { ...next, bagItemId: newBagItem.id, fromBag: true }
+    : next;
+  const ops = (): ChangeOp[] => [
+    ...(newBagItem
+      ? [
+          {
+            kind: 'insert' as const,
+            table: 'packing_bag_items',
+            row: {
+              id: newBagItem.id,
+              bag_id: newBagItem.bagId,
+              name: newBagItem.name,
+              quantity: newBagItem.quantity ?? null,
+              per_day: newBagItem.perDay,
+              sort: newBagItem.sort,
+            },
+          },
+        ]
+      : []),
+    {
+      kind: 'patch',
+      table: 'packing_items',
+      id: itemId,
+      changes: {
+        ...itemChanges(saved),
+        ...(newBagItem ? { bag_item_id: newBagItem.id, from_bag: true } : {}),
+      },
+    },
+    ...(input.alsoInBag && linked
+      ? [{ kind: 'patch' as const, table: 'packing_bag_items', id: linked.id, changes: bagChanges }]
+      : []),
+  ];
+  const inverse = (): ChangeOp[] => [
+    {
+      kind: 'patch',
+      table: 'packing_items',
+      id: itemId,
+      changes: {
+        ...itemChanges(item),
+        ...(newBagItem
+          ? { bag_item_id: item.bagItemId ?? null, from_bag: item.fromBag ?? false }
+          : {}),
+      },
+    },
+    ...(input.alsoInBag && linked
+      ? [
+          {
+            kind: 'patch' as const,
+            table: 'packing_bag_items',
+            id: linked.id,
+            changes: {
+              name: linked.name,
+              quantity: linked.quantity ?? null,
+              per_day: linked.perDay,
+            },
+          },
+        ]
+      : []),
+    ...(newBagItem
+      ? [{ kind: 'delete' as const, table: 'packing_bag_items', id: newBagItem.id }]
+      : []),
+  ];
+  commit(
+    {
+      path: 'rpc',
+      send: (transport, context) => transport.applyChanges(context.householdId, ops()),
+      inverse: (transport, context) => transport.applyChanges(context.householdId, inverse()),
+    },
+    () =>
+      updateData((current) => ({
+        ...current,
+        packingItems: current.packingItems.map((candidate) =>
+          candidate.id === itemId
+            ? {
+                ...saved,
+                packed: candidate.packed,
+                packSeq: candidate.packSeq,
+                packedAt: candidate.packedAt,
+                packedBy: candidate.packedBy,
+              }
+            : candidate,
+        ),
+        packingBagItems: newBagItem
+          ? [...current.packingBagItems, newBagItem]
+          : input.alsoInBag && linked
+            ? current.packingBagItems.map((candidate) =>
+                candidate.id === linked.id
+                  ? { ...candidate, name: next.name, quantity: count, perDay: input.perDay }
+                  : candidate,
+              )
+            : current.packingBagItems,
+      })),
+  );
+}
+
+/**
+ * "+ Neue Reisetasche" in the trip window (REQ-011, AC-034, AC-035): "Anlegen" creates the empty
+ * Reisetasche and attaches it in one call. A Reisetasche of that name (case and umlauts ignored)
+ * that is not attached yet is attached instead, with its Packstücke; one already attached is
+ * "Hängt schon an dieser Packliste". Returns the id of the bag of the packing list.
+ */
+export function attachNewBag(tripId: Id, name: string): Id {
+  const data = getData();
+  const trip = data.trips.find((candidate) => candidate.id === tripId);
+  if (!trip) throw new Error('Diese Reise gibt es nicht mehr.');
+  const existing = findBagByName(cleanPackingName(name), data.packingBags);
+  if (existing) {
+    const attached = data.packingListBags.some(
+      (bag) => bag.tripId === tripId && bag.bagId === existing.id,
+    );
+    if (attached) throw new Error('Hängt schon an dieser Packliste');
+    return addBagToPackingList(tripId, existing.id);
+  }
+  const bag: PackingBag = {
+    id: newId(),
+    name: checkedBagName(name),
+    sort: nextSort(data.packingBags),
+  };
+  const plan = planAddBagToList({
+    trip,
+    bag,
+    bagItems: [],
+    listBags: data.packingListBags,
+    newId,
+  });
+  const [listBag] = plan.listBags;
+  if (!listBag) throw new Error('packing list bag missing');
+  commit({ path: 'diff', rejectedMessage: nameTaken(bag.name) }, () =>
+    updateData((current) => ({
+      ...current,
+      packingBags: [...current.packingBags, bag],
+      packingListBags: [...current.packingListBags, ...plan.listBags],
+    })),
+  );
+  return listBag.id;
+}
+
+const adoptRow = (item: PackingItem): AdoptPackingItem => ({
+  id: item.id,
+  name: item.name,
+  quantity: item.quantity ?? null,
+  per_day: item.perDay ?? null,
+  sort: item.sort,
+  bag_item_id: item.bagItemId ?? null,
+  from_bag: item.fromBag ?? true,
+});
+
+/**
+ * "In „Urlaub Mallorca“ übernehmen" (REQ-012, AC-036 to AC-038): new Packstücke of the
+ * Reisetasche open at the end, changed open ones adapted, removed open ones deleted; packed ones
+ * stay, also when they are packed on another device before the call runs (the server checks).
+ * One call; `snapshot()` taken before undoes it with the inverse call. Returns the plan.
+ */
+export function adoptBagChanges(bagId: Id, tripId: Id): AdoptBagPlan | undefined {
+  const data = getData();
+  const bag = requireBag(bagId);
+  const stripes = tripStripes(data.trips, getState().members);
+  const deviation = bagDeviations({
+    bag,
+    bagItems: data.packingBagItems,
+    trips: stripes,
+    listBags: data.packingListBags,
+    items: data.packingItems,
+    today: getState().today,
+  }).find((candidate) => candidate.tripId === tripId);
+  if (!deviation) return undefined;
+  const plan = planAdoptBag({ deviation, items: data.packingItems, days: deviation.days, newId });
+  const before = new Map(data.packingItems.map((item) => [item.id, item]));
+  const removed = plan.deleteIds.flatMap((id) => before.get(id) ?? []);
+  const changed = plan.update.flatMap((item) => before.get(item.id) ?? []);
+  const change: AdoptBagChange = {
+    list_bag_id: plan.listBagId,
+    insert: plan.insert.map(adoptRow),
+    update: plan.update.map((item) => ({ id: item.id, ...itemChanges(item) })),
+    delete: plan.deleteIds,
+  };
+  const undo: AdoptBagChange = {
+    list_bag_id: plan.listBagId,
+    insert: removed.map((item) => ({ ...adoptRow(item), bag_item_id: null })),
+    update: changed.map((item) => ({ id: item.id, ...itemChanges(item) })),
+    delete: plan.insert.map((item) => item.id),
+  };
+  const updated = new Map(plan.update.map((item) => [item.id, item]));
+  const deleted = new Set(plan.deleteIds);
+  commit(
+    {
+      path: 'rpc',
+      send: (transport, context) =>
+        transport.applyChanges(context.householdId, [{ kind: 'adopt_bag_changes', change }]),
+      inverse: (transport, context) =>
+        transport.applyChanges(context.householdId, [{ kind: 'adopt_bag_changes', change: undo }]),
+    },
+    () =>
+      updateData((current) => ({
+        ...current,
+        packingItems: [
+          ...current.packingItems
+            .filter((item) => !(deleted.has(item.id) && !item.packed))
+            .map((item) => {
+              const next = updated.get(item.id);
+              return next && !item.packed ? { ...item, ...itemChangesOf(next) } : item;
+            }),
+          ...plan.insert,
+        ],
+      })),
+  );
+  return plan;
+}
+
+function itemChangesOf(item: PackingItem): Pick<PackingItem, 'name' | 'quantity' | 'perDay'> {
+  return { name: item.name, quantity: item.quantity, perDay: item.perDay };
 }

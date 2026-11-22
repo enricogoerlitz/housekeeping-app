@@ -2,20 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import { isoWeekNumber, weekDates } from './dates';
 import {
-  absenceLines,
   calendarDayParam,
   choresOfDay,
   dayDots,
   dayTile,
   dueChores,
   overviewSections,
+  tripLines,
   overviewTitle,
   plannedAllLabel,
   shiftShownDay,
   weekNav,
 } from './overview';
-import { enrico, grillabend, nadja, vera } from './test-fixtures';
-import type { Absence, Chore, ChoreEvent, MealPlanEntry } from './types';
+import { enrico, grillabend, nadja, trip, vera } from './test-fixtures';
+import type { Chore, ChoreEvent, MealPlanEntry, Trip } from './types';
 
 // Friday, 20 November 2026 (KW 47: Monday 16 to Sunday 22 November).
 const today = '2026-11-20';
@@ -132,46 +132,37 @@ describe('AC-005/AC-006/AC-011: the week strip and the planned cards', () => {
   });
 });
 
-describe('AC-007: the absence line', () => {
-  const trip: Absence = {
-    id: 'a1',
-    memberId: nadja.id,
-    from: '2026-11-21',
-    to: '2026-11-26',
-    note: 'Urlaub Mallorca',
-  };
+describe('AC-007: the trip line', () => {
+  const mallorca = trip('a1', [nadja.id], '2026-11-21', '2026-11-26', 'Urlaub Mallorca');
 
   it('AC-007: "Nadja · Urlaub Mallorca · bis Do 26.11." while it lasts, gone after', () => {
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-23' })).toEqual([
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-23' })).toEqual([
       {
         key: expect.any(String),
         memberIds: [nadja.id],
         text: 'Nadja · Urlaub Mallorca · bis Do 26.11.',
       },
     ]);
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-26' })).toHaveLength(1);
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-27' })).toEqual([]);
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-20' })).toEqual([]);
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-26' })).toHaveLength(1);
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-27' })).toEqual([]);
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-20' })).toEqual([]);
   });
 
   it('AC-007, AC-033 (0016): without a note it reads "Nadja ist unterwegs bis Do 26.11."', () => {
-    const plain = { ...trip, note: undefined };
-    expect(absenceLines({ absences: [plain], members, date: '2026-11-23' })[0]?.text).toBe(
+    const plain = { ...mallorca, note: undefined };
+    expect(tripLines({ trips: [plain], members, date: '2026-11-23' })[0]?.text).toBe(
       'Nadja ist unterwegs bis Do 26.11.',
     );
   });
 
   it('several people and the whole household', () => {
     const three = [enrico, nadja, vera];
-    const both: Absence[] = [
-      { id: 'e', memberId: enrico.id, from: '2026-11-21', to: '2026-11-22' },
-      { id: 'v', memberId: vera.id, from: '2026-11-21', to: '2026-11-22' },
-    ];
-    expect(absenceLines({ absences: both, members: three, date: '2026-11-21' })[0]?.text).toBe(
+    const both: Trip[] = [trip('e', [enrico.id, vera.id], '2026-11-21', '2026-11-22')];
+    expect(tripLines({ trips: both, members: three, date: '2026-11-21' })[0]?.text).toBe(
       'Enrico und Vera sind unterwegs bis So 22.11.',
     );
-    const household: Absence = { id: 'h', from: '2026-11-21', to: '2026-11-22', note: 'Berlin' };
-    expect(absenceLines({ absences: [household], members, date: '2026-11-22' })).toEqual([
+    const household = trip('h', [enrico.id, nadja.id], '2026-11-21', '2026-11-22', 'Berlin');
+    expect(tripLines({ trips: [household], members, date: '2026-11-22' })).toEqual([
       { key: expect.any(String), memberIds: [], text: 'Alle · Berlin · bis So 22.11.' },
     ]);
   });

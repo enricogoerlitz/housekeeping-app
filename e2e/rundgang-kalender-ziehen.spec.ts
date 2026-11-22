@@ -45,7 +45,7 @@ freshSeed();
 const LASAGNE = seedIds['plan-2'];
 const CURRY_YESTERDAY = seedIds['plan-1'];
 const ENRICO = seedIds['m-enrico'];
-const MALLORCA = seedIds['abs-mallorca'];
+const MALLORCA = seedIds['trip-mallorca'];
 const OFFLINE_HINT = 'Offline – zum Bearbeiten brauchst du Netz';
 /** A day in the same week and grid row as today. */
 const NEIGHBOUR = isoWeekday(TODAY) === 7 ? day(-1) : day(1);
@@ -140,7 +140,7 @@ function choreToday(page: Page): Locator {
 
 /** Turns the week until the stripe "Urlaub Mallorca" (today + 12 to + 18) shows. */
 async function showMallorcaWeek(page: Page): Promise<Locator> {
-  const stripe = tid(page, `absence-stripe-${MALLORCA}`);
+  const stripe = tid(page, `trip-stripe-${MALLORCA}`);
   for (let step = 0; step < 3 && !(await stripe.isVisible()); step += 1) {
     await tid(page, 'week-next').click();
   }
@@ -360,7 +360,7 @@ test.describe('phone', () => {
     await touch.move(await centerOf(tid(page, 'calendar-title')));
     await touch.lift();
     await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
-    await expect(tid(page, 'absence-sheet')).toHaveCount(0);
+    await expect(tid(page, 'trip-sheet')).toHaveCount(0);
 
     const again = await finger(page);
     await again.hold(await centerOf(tid(page, `year-day-${jan(29)}`)));
@@ -368,12 +368,12 @@ test.describe('phone', () => {
     await expect(tid(page, 'trip-range-label')).toHaveText(rangeLabel(jan(29), feb2));
     await again.lift();
 
-    await expect(tid(page, 'absence-sheet')).toContainText('Reise eintragen');
-    await expect(tid(page, 'absence-from-value')).toHaveText(formatPickerDate(jan(29)));
-    await expect(tid(page, 'absence-to-value')).toHaveText(formatPickerDate(feb2));
-    await expect(tid(page, 'absence-note')).toBeFocused();
-    await tid(page, 'absence-sheet-close').click();
-    await expect(tid(page, 'absence-sheet')).toBeHidden();
+    await expect(tid(page, 'trip-sheet')).toContainText('Reise eintragen');
+    await expect(tid(page, 'trip-from-value')).toHaveText(formatPickerDate(jan(29)));
+    await expect(tid(page, 'trip-to-value')).toHaveText(formatPickerDate(feb2));
+    await expect(tid(page, 'trip-note')).toBeFocused();
+    await tid(page, 'trip-sheet-close').click();
+    await expect(tid(page, 'trip-sheet')).toBeHidden();
     await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
   });
 });
@@ -436,7 +436,7 @@ test.describe('desktop', () => {
     await expect(tid(page, 'trip-range-label')).toHaveCount(0);
     await page.mouse.up();
 
-    await expect(tid(page, 'absence-sheet')).toHaveCount(0);
+    await expect(tid(page, 'trip-sheet')).toHaveCount(0);
     await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
   });
 
@@ -549,26 +549,26 @@ test.describe('desktop', () => {
     await page.mouse.up();
 
     // Only "Reise eintragen" opens (AC-031), with the days and me chosen.
-    await expect(tid(page, 'absence-sheet')).toContainText('Reise eintragen');
-    await expect(tid(page, 'absence-from-value')).toHaveText(formatPickerDate(monday));
-    await expect(tid(page, 'absence-to-value')).toHaveText(formatPickerDate(friday));
-    await expect(tid(page, `absence-member-${ENRICO}`)).toHaveAttribute('aria-selected', 'true');
-    await expect(tid(page, 'absence-note')).toBeFocused();
-    await tid(page, 'absence-note').fill('Kiel');
-    await tid(page, 'absence-save').click();
-    await expect(tid(page, 'absence-sheet')).toBeHidden();
+    await expect(tid(page, 'trip-sheet')).toContainText('Reise eintragen');
+    await expect(tid(page, 'trip-from-value')).toHaveText(formatPickerDate(monday));
+    await expect(tid(page, 'trip-to-value')).toHaveText(formatPickerDate(friday));
+    await expect(tid(page, `trip-member-${ENRICO}`)).toHaveAttribute('aria-selected', 'true');
+    await expect(tid(page, 'trip-note')).toBeFocused();
+    await tid(page, 'trip-note').fill('Kiel');
+    await tid(page, 'trip-save').click();
+    await expect(tid(page, 'trip-sheet')).toBeHidden();
     await expect(tid(page, 'month-grid')).toContainText('Kiel');
     await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
 
-    const stripes = tid(page, 'month-grid').locator('[data-testid^="absence-stripe-"]:visible');
+    const stripes = tid(page, 'month-grid').locator('[data-testid^="trip-stripe-"]:visible');
     const before = await stripes.count();
     await mouseGrab(page, await freeArea(page, monday3));
     await mouseTo(page, await freeArea(page, wednesday3));
     await expect(tid(page, 'trip-range-label')).toHaveText(rangeLabel(monday3, wednesday3));
     await page.mouse.up();
-    await expect(tid(page, 'absence-sheet')).toBeVisible();
-    await tid(page, 'absence-sheet-close').click();
-    await expect(tid(page, 'absence-sheet')).toBeHidden();
+    await expect(tid(page, 'trip-sheet')).toBeVisible();
+    await tid(page, 'trip-sheet-close').click();
+    await expect(tid(page, 'trip-sheet')).toBeHidden();
     await expect(tidPrefix(page, 'trip-range-day-')).toHaveCount(0);
     await expect(stripes).toHaveCount(before);
   });
@@ -584,6 +584,6 @@ test('AC-010: a chore of the household row and a trip stripe do not lift', async
   const stripe = await showMallorcaWeek(page);
   await tryToDrag(page, stripe, tid(page, 'calendar-title'));
   await expect(page).toHaveURL(/\/kalender(\?|$)/);
-  await expect(tid(page, `absence-stripe-${MALLORCA}`)).toBeVisible();
+  await expect(tid(page, `trip-stripe-${MALLORCA}`)).toBeVisible();
   await expect(toastMessage(page)).toHaveCount(0);
 });

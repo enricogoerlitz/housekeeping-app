@@ -188,10 +188,6 @@ export const PAGE_PARAMS = {
     von: Von,
     fenster: one(oneOf(['einplanen'])),
   },
-  reise: {
-    id: one(Uuid),
-    von: Von,
-  },
   liste: {
     posten: one(Uuid),
     fenster: one(oneOf(['vorratscheck', 'aus-kalender'])),
@@ -227,6 +223,7 @@ export const PAGE_PARAMS = {
   },
   reisetaschen: {
     tasche: one(Uuid),
+    reise: one(Uuid),
   },
   reisetasche: {
     id: one(Uuid),

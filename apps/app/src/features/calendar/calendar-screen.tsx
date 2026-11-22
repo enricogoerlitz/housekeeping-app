@@ -16,7 +16,7 @@ import {
   switchView,
   weekDates,
   weekRangeLabel,
-  type AbsenceStripe,
+  type TripStripe,
   type CalendarView,
   type Id,
   type ISODate,
@@ -42,7 +42,8 @@ import { useIsFocused, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, type HostInstance } from 'react-native';
 
-import { AbsenceSheet } from '@/features/absences/absence-sheet';
+import { TripSheet } from '@/features/trips/trip-sheet';
+import { TripWindowHost, useTripWindow } from '@/features/trips/trip-window';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
 import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
@@ -69,7 +70,7 @@ const VIEWS: { value: CalendarView; label: string }[] = [
   { value: 'year', label: 'Jahr' },
 ];
 
-type MoreAction = 'household-row' | 'absence-new' | 'absences';
+type MoreAction = 'household-row' | 'trips-new' | 'trips';
 
 /** The week "Auf die Einkaufsliste" takes in the month without a chosen day: today's, else the first. */
 function defaultSelected(monthStart: ISODate, today: ISODate): ISODate {
@@ -88,6 +89,7 @@ export function CalendarScreen() {
   const data = useCalendarData();
   const settings = useSettings();
   const router = useRouter();
+  const tripWindow = useTripWindow('kalender');
   const online = useOnlineOnly();
   const { isPhone, isWide, bp, width } = useBreakpoint();
   const focused = useIsFocused();
@@ -143,7 +145,7 @@ export function CalendarScreen() {
   // "Vorgemerkt · n" under the grid of month and year is unfolded (only on this device).
   const [laterOpen, setLaterOpen] = useState(false);
   const pantryCheck = params.fenster === 'aus-kalender';
-  const tripWindow = params.fenster === 'neu-reise';
+  const newTripWindow = params.fenster === 'neu-reise';
   const openWindow = (fenster: 'aus-kalender' | 'neu-reise', date?: ISODate) =>
     address.open(date ? { fenster, tag: date } : { fenster });
   const closeWindow = () => address.close({ fenster: undefined });
@@ -299,12 +301,12 @@ export function CalendarScreen() {
           },
         ]),
     {
-      value: 'absence-new',
+      value: 'trips-new',
       label: 'Reise eintragen',
       disabled: online.disabled,
       hint: online.hint,
     },
-    { value: 'absences', label: 'Reisen' },
+    { value: 'trips', label: 'Reisen' },
   ];
   const onMore = (action: MoreAction) => {
     if (action === 'household-row') {
@@ -312,7 +314,7 @@ export function CalendarScreen() {
       settings.update({
         householdRow: { ...settings.householdRow, [view]: !householdOn },
       });
-    } else if (action === 'absence-new') {
+    } else if (action === 'trips-new') {
       if (!online.disabled) openWindow('neu-reise');
     } else {
       router.navigate('/reisen');
@@ -410,11 +412,8 @@ export function CalendarScreen() {
   );
 
   const onAdd = (target: AddTarget) => setAdding(target);
-  // A stripe leads to its Urlaubsseite (spec 0012, AC-016, AC-046); editing happens there (✎).
-  const openStripe = (stripe: AbsenceStripe) => {
-    const id = stripe.absenceIds[0];
-    if (id) router.push({ pathname: '/kalender/reise/[id]', params: { id } });
-  };
+  // A stripe opens its trip window over the calendar (spec 0022, REQ-002).
+  const openStripe = (stripe: TripStripe) => tripWindow.open(stripe.tripId);
   const later = orderSlotEntries(data.entries.filter((entry) => entry.date === null));
   const lastSlotId = data.slots[data.slots.length - 1]?.id;
 
@@ -557,15 +556,16 @@ export function CalendarScreen() {
           {pantryCheck && focused ? (
             <PantryCheckSheet weekDates={shownWeek} onClose={closeWindow} />
           ) : null}
-          {tripWindow && focused ? (
-            <AbsenceSheet
+          {newTripWindow && focused ? (
+            <TripSheet
               initialRange={params.tag ? { from: params.tag, to: params.tag } : undefined}
               onClose={closeWindow}
             />
           ) : null}
           {trip?.phase === 'sheet' && range ? (
-            <AbsenceSheet initialRange={range} focusNote onClose={() => setTrip(null)} />
+            <TripSheet initialRange={range} focusNote onClose={() => setTrip(null)} />
           ) : null}
+          <TripWindowHost page="kalender" />
         </Screen>
       </CalendarDragProvider>
       <TripRangeBanner

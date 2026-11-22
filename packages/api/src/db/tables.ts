@@ -13,7 +13,8 @@ export const ID_TABLES = [
   'collection_recipes',
   'restaurants',
   'activities',
-  'absences',
+  'trips',
+  'trip_members',
   'feedback',
   'chores',
   'chore_events',
@@ -112,7 +113,9 @@ export const WRITABLE_COLUMNS = {
     'tags',
     'created_by',
   ],
-  absences: ['member_id', 'from_on', 'to_on', 'note'],
+  // Spec 0022: a trip and its people; people are only inserted and deleted (see PATCH_COLUMNS).
+  trips: ['from_on', 'to_on', 'note'],
+  trip_members: ['trip_id', 'member_id'],
   // author_id is only accepted on insert, and the server overwrites it with auth.uid(). Status,
   // reason and spec_ref are the developer's, set in the database (spec 0027, Decision 10).
   feedback: ['kind', 'text', 'screen', 'author_id'],
@@ -161,8 +164,9 @@ export const WRITABLE_COLUMNS = {
   // through set_packing_items_packed and restore_packing_items.
   packing_bags: ['name', 'member_id', 'sort'],
   packing_bag_items: ['bag_id', 'name', 'quantity', 'per_day', 'sort'],
-  packing_list_bags: ['absence_id', 'bag_id', 'name', 'member_id', 'sort'],
-  packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort'],
+  packing_list_bags: ['trip_id', 'bag_id', 'name', 'member_id', 'sort'],
+  // Spec 0022: the origin in the Reisetasche (bag_item_id, from_bag).
+  packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort', 'bag_item_id', 'from_bag'],
   // Spec 0013, Decision 3: only these are patched, never household_id or member_id.
   notification_settings: [
     'daily_summary_enabled',
@@ -180,20 +184,23 @@ export type WritableTable = keyof typeof WRITABLE_COLUMNS;
 
 /**
  * Tables whose patch allowlist is narrower than their insert columns (spec 0012): a bag of a
- * packing list keeps its name and person as a copy, a Packstück of a packing list is never patched
- * (only its "je Tag" quantity changes, by the server, see DERIVED_COLUMNS). Spec 0009: the kind of
- * a recipe never changes, nor the collection and recipe of a contained recipe.
+ * packing list keeps its name and person as a copy and stays at its trip (spec 0022), a Packstück
+ * of a packing list is never patched (only its "je Tag" quantity changes, by the server, see
+ * DERIVED_COLUMNS). Spec 0009: the kind of a recipe never changes, nor the collection and recipe
+ * of a contained recipe. Spec 0022: the people of a trip are only inserted and deleted.
  */
 export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = {
   recipes: WRITABLE_COLUMNS.recipes.filter((column) => column !== 'kind'),
   collection_recipes: ['servings', 'variant_id', 'sort'],
-  packing_list_bags: ['absence_id', 'bag_id', 'sort'],
-  packing_items: [],
+  packing_list_bags: ['bag_id', 'sort'],
+  // Spec 0022, REQ-009: name, count, "je Tag" and the link; sent by updatePackingItem itself.
+  packing_items: ['name', 'quantity', 'per_day', 'bag_item_id', 'from_bag'],
+  trip_members: [],
 };
 
 /**
  * Columns the server computes itself after another change (spec 0012, decision 3: "je Tag" after
- * a change of the duration or of the absence of a bag). A diff shows the new value at once but
+ * a change of the period of the trip). A diff shows the new value at once but
  * never sends a patch of them.
  */
 export const DERIVED_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = {
@@ -211,7 +218,10 @@ export interface ChildReference {
  * with its tombstone, so a diff sends only the parent's delete. The fake server cascades the same.
  */
 export const CASCADE_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
-  absences: [{ table: 'packing_list_bags', column: 'absence_id' }],
+  trips: [
+    { table: 'trip_members', column: 'trip_id' },
+    { table: 'packing_list_bags', column: 'trip_id' },
+  ],
   packing_list_bags: [{ table: 'packing_items', column: 'list_bag_id' }],
   packing_bags: [{ table: 'packing_bag_items', column: 'bag_id' }],
 };
@@ -219,6 +229,7 @@ export const CASCADE_CHILDREN: Partial<Record<WritableTable, readonly ChildRefer
 /** `on delete set null`: deleting the parent clears the reference; the diff does not send it. */
 export const SET_NULL_CHILDREN: Partial<Record<WritableTable, readonly ChildReference[]>> = {
   packing_bags: [{ table: 'packing_list_bags', column: 'bag_id' }],
+  packing_bag_items: [{ table: 'packing_items', column: 'bag_item_id' }],
 };
 
 /**

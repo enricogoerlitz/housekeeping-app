@@ -41,7 +41,6 @@ import {
   compareTimestamps,
   DEFAULT_REMIND_MINUTES,
   normalizeText,
-  type Absence,
   type Activity,
   type Area,
   type Article,
@@ -58,6 +57,7 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type Trip,
   type Restaurant,
   type Row,
   type ShoppingContribution,
@@ -412,15 +412,28 @@ const choreEventRow = (householdId: string, event: ChoreEvent) =>
     ...(event.createdAt ? { created_at: event.createdAt } : {}),
   }));
 
-const absenceRow = (householdId: string, absence: Absence) =>
-  single('absences', householdId, absence, () => ({
-    id: absence.id,
-    household_id: householdId,
-    member_id: absence.memberId ?? null,
-    from_on: absence.from,
-    to_on: absence.to,
-    note: absence.note ?? null,
+function tripRows(householdId: string, trip: Trip): HouseholdRows {
+  return rowsOf(householdId, trip, () => ({
+    trips: [
+      {
+        id: trip.id,
+        household_id: householdId,
+        from_on: trip.from,
+        to_on: trip.to,
+        note: trip.note ?? null,
+      } satisfies Cached<'trips'>,
+    ],
+    trip_members: trip.members.map(
+      (member) =>
+        ({
+          id: member.id,
+          household_id: householdId,
+          trip_id: trip.id,
+          member_id: member.memberId,
+        }) satisfies Cached<'trip_members'>,
+    ),
   }));
+}
 
 const packingBagRow = (householdId: string, bag: PackingBag) =>
   single('packing_bags', householdId, bag, () => ({
@@ -446,7 +459,7 @@ const packingListBagRow = (householdId: string, bag: PackingListBag) =>
   single('packing_list_bags', householdId, bag, () => ({
     id: bag.id,
     household_id: householdId,
-    absence_id: bag.absenceId,
+    trip_id: bag.tripId,
     bag_id: bag.bagId ?? null,
     name: bag.name,
     member_id: bag.memberId ?? null,
@@ -466,6 +479,8 @@ const packingItemRow = (householdId: string, item: PackingItem) =>
     packed_at: item.packedAt ?? null,
     packed_by: item.packedBy ?? null,
     pack_seq: item.packSeq,
+    bag_item_id: item.bagItemId ?? null,
+    from_bag: item.fromBag ?? false,
   }));
 
 const settingsRow = (householdId: string, settings: NotificationSettings) =>
@@ -525,7 +540,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.items.map((item) => itemRows(householdId, item)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
     ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
-    ...data.absences.map((absence) => absenceRow(householdId, absence)),
+    ...data.trips.map((trip) => tripRows(householdId, trip)),
     ...data.feedback.map((entry) => feedbackRows(householdId, entry)),
     ...data.packingBags.map((bag) => packingBagRow(householdId, bag)),
     ...data.packingBagItems.map((item) => packingBagItemRow(householdId, item)),
@@ -555,7 +570,8 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     shopping_contributions: [],
     chores: [],
     chore_events: [],
-    absences: [],
+    trips: [],
+    trip_members: [],
     // Parents before children: the seed inserts in this order (seed-sql.ts).
     packing_bags: [],
     packing_bag_items: [],
@@ -897,14 +913,14 @@ function toChoreEvent(row: Row): ChoreEvent {
   };
 }
 
-function toAbsence(row: Row): Absence {
-  const r = row as Cached<'absences'>;
+function toTrip(row: Row, members: Row[]): Trip {
+  const r = row as Cached<'trips'>;
   return {
     id: r.id,
-    memberId: opt(r.member_id),
     from: r.from_on ?? '',
     to: r.to_on ?? '',
     note: opt(r.note),
+    members: members.map((member) => ({ id: member.id, memberId: String(member.member_id) })),
   };
 }
 
@@ -941,7 +957,7 @@ function toPackingListBag(row: Row): PackingListBag {
   const r = row as Cached<'packing_list_bags'>;
   return {
     id: r.id,
-    absenceId: r.absence_id ?? '',
+    tripId: r.trip_id ?? '',
     bagId: opt(r.bag_id),
     name: r.name ?? '',
     memberId: opt(r.member_id),
@@ -962,6 +978,8 @@ function toPackingItem(row: Row): PackingItem {
     packedBy: opt(r.packed_by),
     packSeq: r.pack_seq ?? 0,
     sort: r.sort ?? 0,
+    bagItemId: opt(r.bag_item_id),
+    fromBag: r.from_bag === true,
   };
 }
 
@@ -1085,6 +1103,12 @@ export function rowsToHousehold(
     );
   });
 
+  const tripMembers = groupBy(rowsOfTable(tables, 'trip_members', 'created'), 'trip_id');
+  const trips = rowsOfTable(tables, 'trips', 'created').map((row) => {
+    const rowMembers = tripMembers.get(row.id) ?? [];
+    return cached(row, rowMembers, () => toTrip(row, rowMembers));
+  });
+
   const ownSettings = Object.values(tables.notification_settings ?? {}).find(
     (row) => memberId !== undefined && row.member_id === memberId,
   );
@@ -1114,7 +1138,7 @@ export function rowsToHousehold(
       previous?.choreEvents,
       plain(tables, 'chore_events', 'doneOn', toChoreEvent),
     ),
-    absences: reuse(previous?.absences, plain(tables, 'absences', 'created', toAbsence)),
+    trips: reuse(previous?.trips, trips),
     feedback: reuse(previous?.feedback, feedback),
     packingBags: reuse(
       previous?.packingBags,

@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0017: version 9 for entry reminders, their setting and the household zone; version 8 loads again', () => {
-    expect(CACHE_VERSION).toBe(9);
+  it('spec 0022: version 10 for trips and trip_members; version 9 loads again', () => {
+    expect(CACHE_VERSION).toBe(10);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {
@@ -851,7 +851,7 @@ describe('writes: changesets (ADR-0011)', () => {
 
   it('a write outside commit() is a programming error', async () => {
     await startEnrico();
-    expect(() => updateData((data) => ({ ...data, absences: [] }))).toThrow(/commit/);
+    expect(() => updateData((data) => ({ ...data, trips: [] }))).toThrow(/commit/);
   });
 });
 
@@ -1152,7 +1152,7 @@ describe('spec 0012: packing in the store queue (ADR-0013)', () => {
     warn.mockRestore();
   });
 
-  it('AC-024 / AC-040: packed offline, the absence deleted meanwhile: gone, no hint', async () => {
+  it('AC-024 / AC-040: packed offline, the trip deleted meanwhile: gone, no hint', async () => {
     const enrico = await startEnrico();
     const messages: string[] = [];
     const stopListening = onWriteRejected((message) => messages.push(message));
@@ -1163,13 +1163,13 @@ describe('spec 0012: packing in the store queue (ADR-0013)', () => {
     queueStoreAction(pack(item.id));
     await server
       .transport(NADJA)
-      .applyChanges(H, [{ kind: 'delete', table: 'absences', id: listBag.absenceId }]);
+      .applyChanges(H, [{ kind: 'delete', table: 'trips', id: listBag.tripId }]);
 
     enrico.setSimulatedOffline(false);
     await settle(enrico);
     expect(writes()).toContain('set_packing_items_packed');
     expect(getData().packingItems.some((candidate) => candidate.id === item.id)).toBe(false);
-    expect(getData().absences.some((absence) => absence.id === listBag.absenceId)).toBe(false);
+    expect(getData().trips.some((trip) => trip.id === listBag.tripId)).toBe(false);
     expect(messages).toEqual([]);
     expect(await storage.get('queue')).toEqual([]);
     stopListening();

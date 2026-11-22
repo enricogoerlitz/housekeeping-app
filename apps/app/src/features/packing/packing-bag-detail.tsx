@@ -42,6 +42,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useAddressedId } from '@/lib/addressed';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
+import { BagDeviationHints } from './bag-trips';
 import { BagItemSheet, BagNameSheet } from './packing-bag-sheets';
 import {
   BAG_ITEM_ORDER_LABELS,
@@ -279,6 +280,7 @@ export function PackingBagPanel(props: {
           {error ?? online.hint}
         </Text>
       ) : null}
+      <BagDeviationHints bagId={bag.id} />
 
       <Section title="Für">
         <ChoiceChips<string>

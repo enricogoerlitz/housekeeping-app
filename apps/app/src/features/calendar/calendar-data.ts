@@ -1,5 +1,5 @@
 import {
-  useAbsences,
+  useTrips,
   useActivitiesById,
   useChoreEvents,
   useChores,
@@ -14,7 +14,7 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
-  absenceStripes,
+  tripStripes,
   dayA11yLabel,
   entriesForDay,
   entryKindRole,
@@ -23,7 +23,7 @@ import {
   stripeHasPackingList,
   travellersOn,
   withTime,
-  type AbsenceStripe,
+  type TripStripe,
   type HouseholdRowItem,
   type Id,
   type ISODate,
@@ -46,7 +46,7 @@ export function useCalendarData() {
   const activitiesById = useActivitiesById();
   const members = useMembers();
   const membersById = useMembersById();
-  const absences = useAbsences();
+  const trips = useTrips();
   const chores = useChores();
   const events = useChoreEvents();
   const listBags = usePackingListBags();
@@ -56,7 +56,7 @@ export function useCalendarData() {
     [household.mealSlots],
   );
   const slotOrder = useMemo(() => slots.map((slot) => slot.id), [slots]);
-  const stripes = useMemo(() => absenceStripes(absences, members), [absences, members]);
+  const stripes = useMemo(() => tripStripes(trips, members), [trips, members]);
   const byDate = useMemo(() => {
     const map = new Map<ISODate, MealPlanEntry[]>();
     for (const entry of entries) {
@@ -76,7 +76,7 @@ export function useCalendarData() {
     recipesById,
     members,
     membersById,
-    absences,
+    trips,
     chores,
     events,
     slots,
@@ -98,14 +98,14 @@ export function useCalendarData() {
         reservationTime(entry),
       ),
     slotName: (slotId: Id) => slots.find((slot) => slot.id === slotId)?.name ?? '',
-    /** The stripe carries the bag icon: one of its absences has a packing list (spec 0012, AC-046). */
-    hasPackingList: (stripe: AbsenceStripe) => stripeHasPackingList(stripe, listBags),
+    /** The stripe carries the bag icon: its trip has a packing list (spec 0012, AC-046). */
+    hasPackingList: (stripe: TripStripe) => stripeHasPackingList(stripe, listBags),
     /** Names of the members away on that day, for the day's screen-reader text (spec 0016). */
     travellerNames: (date: ISODate): string[] =>
       travellersOn(
         members.map((member) => member.id),
         date,
-        absences,
+        trips,
       ).map((id) => membersById[id]?.name ?? 'Jemand'),
     /** The household row from…to (both inclusive), by date. */
     householdRow: (from: ISODate, to: ISODate): Record<ISODate, HouseholdRowItem[]> =>
@@ -127,7 +127,7 @@ export function dayLabel(data: CalendarData, date: ISODate, choreCount = 0): str
 }
 
 /** "Enrico", "Enrico und Nadja", "Ganzer Haushalt": who a stripe stands for. */
-export function stripeWho(stripe: AbsenceStripe, membersById: Record<Id, Member>): string {
+export function stripeWho(stripe: TripStripe, membersById: Record<Id, Member>): string {
   if (stripe.household) return 'Ganzer Haushalt';
   const names = stripe.memberIds.map((id) => membersById[id]?.name ?? 'Jemand');
   if (names.length <= 1) return names[0] ?? 'Jemand';

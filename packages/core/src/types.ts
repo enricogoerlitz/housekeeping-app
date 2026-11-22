@@ -347,13 +347,19 @@ export interface ChoreEventPrevious {
   nextAssigneeId?: Id;
 }
 
-export interface Absence {
+/** One person of a trip (a row of trip_members). */
+export interface TripMember {
   id: Id;
-  /** Undefined = the whole household. */
-  memberId?: Id;
+  memberId: Id;
+}
+
+/** "Reise" (spec 0022): period, note and at least one person of the household. */
+export interface Trip {
+  id: Id;
   from: ISODate;
   to: ISODate;
   note?: string;
+  members: TripMember[];
 }
 
 // ---------- Feedback ----------
@@ -391,15 +397,15 @@ export interface PackingBagItem {
   name: string;
   /** 1–99; undefined = no quantity ("Sonnenbrille"). */
   quantity?: number;
-  /** The quantity is per day of the absence ("1 je Tag"); needs a quantity. */
+  /** The quantity is per day of the trip ("1 je Tag"); needs a quantity. */
   perDay: boolean;
   sort: number;
 }
 
-/** "Tasche der Packliste": one bag attached to an absence, with a copy of its name and member. */
+/** "Tasche der Packliste": one bag attached to a trip, with a copy of its name and member. */
 export interface PackingListBag {
   id: Id;
-  absenceId: Id;
+  tripId: Id;
   /** The Reisetasche it was copied from; undefined once that one is deleted. */
   bagId?: Id;
   name: string;
@@ -412,7 +418,7 @@ export interface PackingItem {
   id: Id;
   listBagId: Id;
   name: string;
-  /** The quantity shown; for "je Tag" per day × days of the absence (at most 9999). */
+  /** The quantity shown; for "je Tag" per day × days of the trip (at most 9999). */
   quantity?: number;
   /** Quantity per day (1–99); undefined = a fixed quantity or none. */
   perDay?: number;
@@ -422,6 +428,10 @@ export interface PackingItem {
   /** Counter for "Abhaken gewinnt" (ADR-0013). */
   packSeq: number;
   sort: number;
+  /** Spec 0022: the Packstück of the Reisetasche it came from; undefined once that one is gone. */
+  bagItemId?: Id;
+  /** It came from the Reisetasche (copied or saved there too); false = added by hand. */
+  fromBag?: boolean;
 }
 
 // ---------- Notifications (spec 0013) ----------
