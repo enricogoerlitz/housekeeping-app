@@ -36,7 +36,8 @@ vollständig pflegen noch dort einplanen, wo sie es gerade lesen.
 - **Keine neuen Navigationsbausteine.** Tab-Leiste und Seitenleiste auf jeder Seite, klebende
   Kopfzeile, Ansichts-Tabs, Fenstergrößen, „Suchen oder anlegen“ und die Filterzeile als Baustein
   kommen aus Spec 0005. Hier werden sie für „Essen“ und die Rezeptseite eingesetzt.
-- **Kein neuer Kochmodus** und keine Änderung an „Ist alle“ (Spec 0001, AC-023).
+- **Kein neuer Kochmodus** und keine Änderung an „Ist alle“ (Spec 0001, AC-023). Aufgehoben für
+  den Kochmodus durch Spec 0023, REQ-010.
 - **Keine neue Restaurantseite.** Restaurants bekommen die Filterzeile, die Endlos-Liste und halbe
   Sterne; Einplanen von der Restaurantseite gehört nicht dazu.
 - **Keine Datenbankänderung in dieser Spec.** Halbe Sterne brauchen eine; sie kommt mit Spec 0011,
@@ -127,7 +128,8 @@ Wenn        ich „Trattoria Da Enzo“ öffne und „Zurück“ wähle
 Dann        ist weiterhin „Restaurants“ aktiv
 ```
 
-**AC-003 — Neu** (geändert durch Spec 0009, AC-001: das Menü bietet zusätzlich „Sammlung“, das
+**AC-003 — Neu** (geändert durch Spec 0023, AC-045: ohne „Starter-Rezepte“; durch Spec 0009,
+AC-001: das Menü bietet zusätzlich „Sammlung“, das
 Fenster heißt „Neu“ und hat die Auswahl-Chips „Rezept · Sammlung“)
 
 ```gherkin
@@ -499,6 +501,9 @@ Dann        heißt das Rezept „Lasagne al forno“ und hat Enricos Notiz
 
 ### REQ-008 — Zutaten und Varianten bearbeiten
 
+_Geändert durch Spec 0023, REQ-001 und REQ-002:_ Im Zutatenfenster kommt der Artikel zuerst, das ⋯
+einer Zutat bietet „Zutat bearbeiten“, „Artikel bearbeiten“, „Nach oben“, „Nach unten“, „Entfernen“.
+
 > Im Abschnitt „Zutaten“ bekommt jede Zutat eine Menge und einen Artikel aus dem Katalog;
 > Varianten lassen sich anlegen, umbenennen, als Standard setzen und entfernen.
 
@@ -538,7 +543,8 @@ Wenn        ich „Linsen-Dal“ auf die Liste setze (REQ-010)
 Dann        steht auf der Einkaufsliste „Zwiebeln (rot)“ und „fein gehackt“ steht dort nicht
 ```
 
-**AC-032 — Fehlerfall: „Mehrere einfügen“ im Abschnitt „Zutaten“** (welche Zeilen ihren Artikel
+**AC-032 — Fehlerfall: „Mehrere einfügen“ im Abschnitt „Zutaten“** (Text des Hinweises geändert
+durch Spec 0023, REQ-006: „5 Zutaten gespeichert · 2 brauchen noch einen Artikel“) (welche Zeilen ihren Artikel
 bekommen und welche orange stehen: Spec 0007, AC-008 bis AC-010; hier nur das Verhalten des
 Abschnitts)
 
@@ -572,6 +578,9 @@ Dann        gibt es die Variante „mit Hähnchen“ und die Zutat „Hähnchen�
 ```
 
 ### REQ-009 — Einplanen von der Rezeptseite
+
+_Geändert durch Spec 0023, REQ-013:_ Die Tages-Chips zeigen Wochentag und Datum, dazu „Anderes
+Datum …“; der Knopf heißt „Am Mi 25.11. Abend einplanen“.
 
 > „Einplanen“ öffnet auf der Rezeptseite ein Fenster mit Woche, Tag, Tageszeit, „Wer isst mit?“,
 > Variante und „Wer kocht?“; danach bleibt man auf der Rezeptseite.

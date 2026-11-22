@@ -144,10 +144,10 @@ describe('parseIngredientLine', () => {
     });
   });
 
-  it('recognises EL and TL only in capitals', () => {
+  it('AC-023: reads el and tl as EL and TL (spec 0023, REQ-007)', () => {
     expect(parseIngredientLine('2 el Öl')).toEqual({
-      name: 'el Öl',
-      amount: { text: '2', qty: 2 },
+      name: 'Öl',
+      amount: { text: '2 el', qty: 2, unit: 'EL' },
     });
   });
 
@@ -248,7 +248,7 @@ describe('parseAmount', () => {
 
   it('keeps free text as written, without a quantity, so it never scales', () => {
     expect(parseAmount('etwas')).toEqual({ text: 'etwas' });
-    expect(parseAmount('2 große')).toEqual({ text: '2 große' });
+    expect(parseAmount('2 frische')).toEqual({ text: '2 frische' });
   });
 
   it('Spec 0009 AC-014: "1 Sack" and "1 Kasten" are count-like units', () => {

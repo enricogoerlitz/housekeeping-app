@@ -206,7 +206,15 @@ export const PAGE_PARAMS = {
     haushalt: Haushalt,
   },
   artikel: {
-    filter: one(oneOf(['ohne-bereich', 'vorrat', 'neu-aus-rezepten', 'aehnliche-namen'])),
+    filter: one(
+      oneOf([
+        'ohne-bereich',
+        'vorrat',
+        'neu-aus-rezepten',
+        'aehnliche-namen',
+        'ernaehrung-unbekannt',
+      ]),
+    ),
     bereich: one(Uuid),
     suche: one(Text),
     sortierung: one(oneOf(['name', 'neu']), 'name'),

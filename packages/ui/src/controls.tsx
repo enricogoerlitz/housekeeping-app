@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import {
   Platform,
   Pressable,
@@ -208,6 +208,8 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
 
 export interface ChipProps {
   label: string;
+  /** A second line under the label, e.g. the date under the weekday ("Mi" over "25.11."). */
+  detail?: string;
   icon?: IconName;
   selected?: boolean;
   onPress?: () => void;
@@ -240,13 +242,24 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
       {props.icon ? (
         <ChipIcon name={props.icon} selected={!!props.selected} toneFg={tone?.fg} />
       ) : null}
-      <Text
-        variant="smallStrong"
-        color={props.selected ? 'onAccent' : 'text'}
-        style={!props.selected && tone ? { color: tone.fg } : undefined}
-      >
-        {props.label}
-      </Text>
+      {props.detail === undefined ? (
+        <Text
+          variant="smallStrong"
+          color={props.selected ? 'onAccent' : 'text'}
+          style={!props.selected && tone ? { color: tone.fg } : undefined}
+        >
+          {props.label}
+        </Text>
+      ) : (
+        <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+          <Text variant="smallStrong" color={props.selected ? 'onAccent' : 'text'}>
+            {props.label}
+          </Text>
+          <Text variant="caption" color={props.selected ? 'onAccent' : 'muted'}>
+            {props.detail}
+          </Text>
+        </View>
+      )}
       {props.removable ? <ChipIcon name="x" selected={!!props.selected} toneFg={tone?.fg} /> : null}
     </>
   );
@@ -272,7 +285,10 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
     <Pressable
       testID={props.testID}
       accessibilityRole={props.role}
-      accessibilityLabel={props.accessibilityLabel ?? props.label}
+      accessibilityLabel={
+        props.accessibilityLabel ??
+        (props.detail === undefined ? props.label : `${props.label} ${props.detail}`)
+      }
       accessibilityHint={props.hint}
       accessibilityState={
         props.role === 'radio'
@@ -680,6 +696,8 @@ export interface TextFieldProps extends Pick<
   left?: ReactNode;
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
+  /** The input itself, e.g. to move the focus into it after a choice. */
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -714,6 +732,7 @@ export function TextField(props: TextFieldProps) {
     accessibilityLabel,
     onFocus,
     onBlur,
+    inputRef,
     ...input
   } = props;
   return (
@@ -742,6 +761,7 @@ export function TextField(props: TextFieldProps) {
         {left}
         <TextInput
           {...input}
+          ref={inputRef}
           testID={testID}
           accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}
           placeholderTextColor={placeholderColor}

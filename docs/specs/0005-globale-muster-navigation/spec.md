@@ -719,7 +719,8 @@ Dann        sehe ich nur Stichworttreffer und es geht keine Anfrage an die KI
 Und         die gespeicherte Einstellung bleibt auf dem Gerät erhalten
 ```
 
-**AC-047 — Leerer Zustand ohne KI** (ersetzt Spec 0001, AC-016, im Punkt „Beschreiben ✨“)
+**AC-047 — Leerer Zustand ohne KI** (ersetzt Spec 0001, AC-016, im Punkt „Beschreiben ✨“; ohne
+„Starter-Rezepte ansehen“ seit Spec 0023, AC-046)
 
 ```gherkin
 Angenommen  der Haushalt „Test“ ohne Rezepte, KI-Schalter „aus“

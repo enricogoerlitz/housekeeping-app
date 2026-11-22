@@ -67,7 +67,7 @@ alter table public.meal_plan_entries
     check (note !~ '[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]');
 
 -- ---------------------------------------------------------------------------------------------
--- apply_changes: the allowlist (otherwise unchanged from packing_list_edit)
+-- apply_changes: the allowlist (otherwise unchanged from recipe_links_and_non_food)
 -- ---------------------------------------------------------------------------------------------
 
 create or replace function public.apply_changes(p_household_id uuid, p_ops jsonb)
@@ -105,10 +105,10 @@ declare
                          "patch":  ["name", "area_order", "hidden_area_ids"], "delete": true},
     "recipes":          {"insert": ["id", "household_id", "kind", "title", "photo", "photo_path", "description",
                                     "servings", "total_minutes", "course", "cuisine", "tags", "variants", "ingredients",
-                                    "steps", "lead_time", "notes", "last_cooked_on", "cooked_count", "source"],
+                                    "steps", "lead_time", "notes", "last_cooked_on", "cooked_count", "links"],
                          "patch":  ["title", "photo", "photo_path", "description", "servings", "total_minutes", "course",
                                     "cuisine", "tags", "variants", "ingredients", "steps", "lead_time", "notes",
-                                    "last_cooked_on", "cooked_count", "source"], "delete": false},
+                                    "last_cooked_on", "cooked_count", "links"], "delete": false},
     "collection_recipes": {"insert": ["id", "household_id", "collection_id", "recipe_id", "servings", "variant_id",
                                       "sort"],
                            "patch":  ["servings", "variant_id", "sort"], "delete": true},

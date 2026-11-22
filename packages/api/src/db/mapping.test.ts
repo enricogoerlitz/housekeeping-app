@@ -577,6 +577,7 @@ describe('spec 0009: collections in the rows', () => {
           ratings: {},
           cookedCount: 0,
           createdAt: '2026-11-01T10:00:00.000Z',
+          links: [],
         },
         ...data.recipes,
       ],

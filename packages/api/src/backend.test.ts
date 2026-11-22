@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0021: version 11 for starts_at instead of the reservation; version 10 loads again', () => {
-    expect(CACHE_VERSION).toBe(11);
+  it('spec 0021: version 12 for starts_at instead of the reservation (after 0023: 11); version 11 loads again', () => {
+    expect(CACHE_VERSION).toBe(12);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

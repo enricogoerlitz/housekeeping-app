@@ -1356,11 +1356,11 @@ export type Database = {
           kind: string;
           last_cooked_on: string | null;
           lead_time: Json | null;
+          links: NonNullable<Json>;
           notes: string | null;
           photo: string | null;
           photo_path: string | null;
           servings: number;
-          source: string | null;
           steps: NonNullable<Json>;
           tags: string[];
           title: string;
@@ -1381,11 +1381,11 @@ export type Database = {
           kind?: string;
           last_cooked_on?: string | null;
           lead_time?: Json | null;
+          links?: NonNullable<Json>;
           notes?: string | null;
           photo?: string | null;
           photo_path?: string | null;
           servings?: number;
-          source?: string | null;
           steps?: NonNullable<Json>;
           tags?: string[];
           title: string;
@@ -1405,11 +1405,11 @@ export type Database = {
           kind?: string;
           last_cooked_on?: string | null;
           lead_time?: Json | null;
+          links?: NonNullable<Json>;
           notes?: string | null;
           photo?: string | null;
           photo_path?: string | null;
           servings?: number;
-          source?: string | null;
           steps?: NonNullable<Json>;
           tags?: string[];
           title?: string;

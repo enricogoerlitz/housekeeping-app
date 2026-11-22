@@ -84,7 +84,7 @@ export const WRITABLE_COLUMNS = {
     'notes',
     'last_cooked_on',
     'cooked_count',
-    'source',
+    'links',
   ],
   // Spec 0009, E4: a contained recipe keeps its collection and its recipe (see PATCH_COLUMNS).
   collection_recipes: ['collection_id', 'recipe_id', 'servings', 'variant_id', 'sort'],

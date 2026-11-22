@@ -1,6 +1,6 @@
 import { useArticles } from '@housekeeping/api';
 import {
-  missingArticlesLabel,
+  pastedSaveNotice,
   validateArticleDraft,
   type DraftArticle,
   type IngredientRow,
@@ -28,36 +28,95 @@ export function openRowLabel(row: IngredientRow): string {
 }
 
 /**
- * The rows of the section "Zutaten" that have no article yet (AC-032, spec 0007 AC-008 to AC-010):
- * orange with "Meinst du …?", "Artikel wählen" and "„…“ neu anlegen". They are not saved until they
- * have one; leaving the page drops them.
+ * The rows of the section "Zutaten" that are not saved yet (AC-032, spec 0007 AC-008 to AC-010):
+ * orange with "Meinst du …?", "Artikel wählen" and "„…“ neu anlegen"; a pasted duplicate with
+ * "Steht schon im Rezept", "Weglassen" and "Trotzdem hinzufügen" (spec 0023, REQ-006). Leaving the
+ * page drops them. Above them what "Fertig" saved and what stays open.
  */
 export function OpenRows(props: {
   rows: IngredientRow[];
+  /** After "Fertig": "5 Zutaten gespeichert · 2 brauchen noch einen Artikel". */
+  notice?: string;
   onChoose: (key: string, article: DraftArticle) => void;
   onRemove: (key: string) => void;
+  /** "Trotzdem hinzufügen" on a duplicate. */
+  onKeep: (key: string) => void;
 }) {
   const [picking, setPicking] = useState<string | undefined>();
   if (props.rows.length === 0) return null;
   return (
     <Stack gap={10}>
       <Text variant="smallStrong" color="warn" testID="recipe-ingredients-missing">
-        {missingArticlesLabel(props.rows.length)}
+        {props.notice ?? pastedSaveNotice(0, props.rows)}
       </Text>
-      {props.rows.map((row) => (
-        <OpenRow
-          key={row.key}
-          row={row}
-          picking={picking === row.key}
-          onPick={() => setPicking(picking === row.key ? undefined : row.key)}
-          onChoose={(article) => {
-            setPicking(undefined);
-            props.onChoose(row.key, article);
-          }}
-          onRemove={() => props.onRemove(row.key)}
-        />
-      ))}
+      {props.rows.map((row) =>
+        row.article !== undefined && row.duplicate ? (
+          <DuplicateRow
+            key={row.key}
+            row={row}
+            onDrop={() => props.onRemove(row.key)}
+            onKeep={() => props.onKeep(row.key)}
+          />
+        ) : (
+          <OpenRow
+            key={row.key}
+            row={row}
+            picking={picking === row.key}
+            onPick={() => setPicking(picking === row.key ? undefined : row.key)}
+            onChoose={(article) => {
+              setPicking(undefined);
+              props.onChoose(row.key, article);
+            }}
+            onRemove={() => props.onRemove(row.key)}
+          />
+        ),
+      )}
     </Stack>
+  );
+}
+
+/** A pasted row whose article is in the recipe already (AC-019 to AC-021). */
+function DuplicateRow(props: { row: IngredientRow; onDrop: () => void; onKeep: () => void }) {
+  const theme = useTheme();
+  const id = `open-row-${props.row.key}`;
+  const label = openRowLabel(props.row);
+  return (
+    <View
+      testID={id}
+      accessibilityLabel={`${label}: Steht schon im Rezept`}
+      style={{
+        gap: 8,
+        padding: 10,
+        borderRadius: theme.shape.radius.control,
+        backgroundColor: theme.colors.warnBg,
+      }}
+    >
+      <Row gap={8}>
+        <Icon name="circle-alert" size={16} color="warn" />
+        <Text variant="bodyStrong" color="warn" style={{ flex: 1 }} testID={`${id}-label`}>
+          {label}
+        </Text>
+      </Row>
+      <Text color="warn" testID={`${id}-duplicate`}>
+        Steht schon im Rezept
+      </Text>
+      <Row gap={8} wrap>
+        <Button
+          label="Weglassen"
+          size="sm"
+          variant="secondary"
+          onPress={props.onDrop}
+          testID={`${id}-drop`}
+        />
+        <Button
+          label="Trotzdem hinzufügen"
+          size="sm"
+          variant="link"
+          onPress={props.onKeep}
+          testID={`${id}-keep`}
+        />
+      </Row>
+    </View>
   );
 }
 

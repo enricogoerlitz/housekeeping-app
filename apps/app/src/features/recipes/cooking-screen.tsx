@@ -1,16 +1,30 @@
 import { useArticlesById, useRecipe } from '@housekeeping/api';
 import {
   cookingIngredients,
+  cookingKeyStep,
   cookingStepFromParam,
+  groupIngredients,
   ingredientLine,
+  isTimerFinished,
+  isTimerRunning,
+  otherStepTimers,
+  pauseStepTimer,
+  resetStepTimer,
   servingsLabel,
+  startStepTimer,
   stepsForVariants,
+  stepTimerLabel,
   type Recipe,
+  type RecipeIngredient,
+  type StepTimers,
 } from '@housekeeping/core';
 import {
   Button,
   Chip,
   EmptyState,
+  expandableA11y,
+  GroupLabel,
+  Icon,
   List,
   ListRow,
   Row,
@@ -22,14 +36,18 @@ import {
   useBottomInset,
 } from '@housekeeping/ui';
 import { Redirect, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useEffectEvent, useState } from 'react';
+import { Platform, Pressable, View } from 'react-native';
 
 import { usePageParams } from '@/lib/url-state';
 
+import { useWakeLock } from './use-wake-lock';
+
 /**
- * Cooking mode: one step per screen in large type (F3, AC-023). Full screen on phones, the sidebar
- * stays on wider screens (spec 0005, D5).
+ * Cooking mode (spec 0023, REQ-010): one step per screen as calm reading text, the ingredients of
+ * the variant beside it from 1100 px, below it on phones and tablets (open at the start, the head
+ * folds them). Timers keep running on other steps; the screen stays awake. Full screen on phones,
+ * the sidebar stays on wider screens (spec 0005, D5).
  */
 export function CookingScreen() {
   // Step, variant and portions stand in the address, so a reload cooks on (spec 0019, REQ-015).
@@ -85,27 +103,70 @@ function Cooking(props: {
   onLeave: () => void;
 }) {
   const { recipe } = props;
-  const { isPhone } = useBreakpoint();
+  const { isPhone, bp } = useBreakpoint();
+  // Two columns from 1100 px (spec 0023, Decision 4): the tablet in portrait has too little room.
+  const twoColumns = bp === 'desktop';
   // Above the home bar with its gap (spec 0029, REQ-002).
   const bottomEdge = useBottomInset();
   const variant = recipe.variants.find((candidate) => candidate.id === props.variantParam);
   const steps = stepsForVariants(recipe, variant ? [variant.id] : undefined);
   const ingredients = cookingIngredients(recipe, variant?.id, props.servings);
-  const articlesById = useArticlesById();
   const index = cookingStepFromParam(props.step, steps.length);
   const setIndex = props.onStep;
-  const [showIngredients, setShowIngredients] = useState(false);
+  // Open at the start; the state stays while paging, not when the cooking mode opens again (AC-039).
+  const [ingredientsOpen, setIngredientsOpen] = useState(true);
+  // Timers keep running on other steps and end with the cooking mode (Decision 5).
+  const [timers, setTimers] = useState<StepTimers>({});
+  const now = useClock(Object.values(timers).some((timer) => timer.startedAt !== undefined));
   // No tab bar here: the toast stands above the step buttons (AC-024).
   const [footerHeight, setFooterHeight] = useState<number | undefined>();
   useToastClearance(footerHeight === undefined ? undefined : footerHeight - bottomEdge);
+  useWakeLock();
+  useArrowKeys(index, steps.length, setIndex);
   const step = steps[Math.min(index, steps.length - 1)];
   const last = index >= steps.length - 1;
+  const others = otherStepTimers(timers, step?.id, now);
+  const ingredientsTitle = `Zutaten · ${servingsLabel(props.servings)}`;
+
+  const stepPart = step ? (
+    <Stack gap={20} style={{ maxWidth: READING_WIDTH }}>
+      <Text variant="smallStrong" color="accent" testID="cook-step-index">
+        Schritt {index + 1} von {steps.length}
+      </Text>
+      {/* The step is reading text in the font of the controls, no heading (AC-037). */}
+      <Text variant={twoColumns ? 'readingLarge' : 'reading'} selectable testID="cook-step-text">
+        {step.text}
+      </Text>
+      {step.timerMinutes ? (
+        <StepTimerControl
+          stepId={step.id}
+          stepNumber={index + 1}
+          minutes={step.timerMinutes}
+          timers={timers}
+          now={now}
+          onChange={setTimers}
+        />
+      ) : null}
+    </Stack>
+  ) : (
+    <EmptyState
+      icon="chef-hat"
+      title="Noch keine Schritte"
+      text="Für dieses Rezept ist noch keine Zubereitung hinterlegt."
+      testID="cook-no-steps"
+    >
+      <Button label="Zurück zum Rezept" onPress={props.onLeave} />
+    </EmptyState>
+  );
+
+  const ingredientList =
+    ingredients.length > 0 ? <CookingIngredients ingredients={ingredients} /> : null;
 
   return (
     <Screen
       testID="cooking-screen"
       tone="essen"
-      maxWidth={860}
+      maxWidth={twoColumns ? WIDE_MAX_WIDTH : NARROW_MAX_WIDTH}
       clearFab={false}
       footer={
         steps.length > 0 ? (
@@ -113,7 +174,7 @@ function Cooking(props: {
             onLayout={(event) => setFooterHeight(Math.round(event.nativeEvent.layout.height))}
             style={{
               width: '100%',
-              maxWidth: 860,
+              maxWidth: twoColumns ? WIDE_MAX_WIDTH : NARROW_MAX_WIDTH,
               alignSelf: 'center',
               paddingHorizontal: isPhone ? 16 : 36,
               paddingTop: 14,
@@ -178,105 +239,184 @@ function Cooking(props: {
         />
       </Row>
 
-      {step ? (
-        <Stack gap={20}>
-          <Text variant="smallStrong" color="accent" testID="cook-step-index">
-            Schritt {index + 1} von {steps.length}
-          </Text>
-          <Text variant={isPhone ? 'title' : 'display'} selectable testID="cook-step-text">
-            {step.text}
-          </Text>
-          {step.timerMinutes ? <StepTimer key={step.id} minutes={step.timerMinutes} /> : null}
-        </Stack>
-      ) : (
-        <EmptyState
-          icon="chef-hat"
-          title="Noch keine Schritte"
-          text="Für dieses Rezept ist noch keine Zubereitung hinterlegt."
-        >
-          <Button label="Zurück zum Rezept" onPress={props.onLeave} />
-        </EmptyState>
-      )}
-
-      {ingredients.length > 0 ? (
-        <View style={{ marginTop: 32 }}>
-          <Button
-            label={showIngredients ? 'Zutaten ausblenden' : 'Zutaten anzeigen'}
-            icon={showIngredients ? 'chevron-up' : 'chevron-down'}
-            variant="link"
-            onPress={() => setShowIngredients(!showIngredients)}
-            testID="cook-ingredients-toggle"
-          />
-          {showIngredients ? (
-            <View style={{ marginTop: 8 }} testID="cook-ingredients">
-              <List>
-                {ingredients.map((ingredient) => (
-                  <ListRow
-                    key={ingredient.id}
-                    // The Hinweis after "·" ("Zwiebeln · fein gehackt"); the amount stands in front.
-                    title={ingredientLine(
-                      { prepNote: ingredient.prepNote },
-                      articlesById[ingredient.articleId]?.name ?? '',
-                    )}
-                    testID={`cook-ingredient-${ingredient.id}`}
-                    leading={
-                      <Text variant="bodyStrong" style={{ width: 76 }}>
-                        {ingredient.amount?.text ?? ''}
-                      </Text>
-                    }
-                  />
-                ))}
-              </List>
-            </View>
-          ) : null}
+      {others.length > 0 ? (
+        <View testID="cook-other-timers" style={{ marginBottom: 16 }}>
+          <Row gap={8} wrap>
+            {others.map((timer) => (
+              <Chip
+                key={timer.stepId}
+                label={timer.label}
+                selected
+                onPress={() => {
+                  const at = steps.findIndex((candidate) => candidate.id === timer.stepId);
+                  if (at >= 0) setIndex(at);
+                }}
+                testID={`cook-other-timer-${timer.stepNumber}`}
+              />
+            ))}
+          </Row>
         </View>
       ) : null}
+
+      {twoColumns ? (
+        <Row gap={40} align="flex-start">
+          <View style={{ flex: 1, minWidth: 0 }}>{stepPart}</View>
+          {ingredientList ? (
+            <View
+              role="complementary"
+              aria-label={ingredientsTitle}
+              style={{ width: SIDE_WIDTH }}
+              testID="cook-ingredients"
+            >
+              <Text variant="bodyStrong" style={{ marginBottom: 8 }}>
+                {ingredientsTitle}
+              </Text>
+              {ingredientList}
+            </View>
+          ) : null}
+        </Row>
+      ) : (
+        <Stack gap={32}>
+          {stepPart}
+          {ingredientList ? (
+            <View>
+              <Pressable
+                accessibilityRole="button"
+                {...expandableA11y(ingredientsTitle, ingredientsOpen, Platform.OS, {
+                  expanded: 'aufgeklappt',
+                  collapsed: 'zugeklappt',
+                })}
+                onPress={() => setIngredientsOpen(!ingredientsOpen)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}
+                testID="cook-ingredients-toggle"
+              >
+                <Text variant="bodyStrong">{ingredientsTitle}</Text>
+                <Icon
+                  name={ingredientsOpen ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="muted"
+                />
+              </Pressable>
+              {ingredientsOpen ? (
+                <View style={{ marginTop: 4 }} testID="cook-ingredients">
+                  {ingredientList}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </Stack>
+      )}
     </Screen>
   );
 }
 
-function formatClock(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+const NARROW_MAX_WIDTH = 860;
+const WIDE_MAX_WIDTH = 1200;
+/** About 60 characters a line in the reading text. */
+const READING_WIDTH = 680;
+const SIDE_WIDTH = 340;
+
+/** The ingredients of the variant, scaled, without group first, then each group (REQ-004). */
+function CookingIngredients(props: { ingredients: RecipeIngredient[] }) {
+  const articlesById = useArticlesById();
+  return (
+    <>
+      {groupIngredients(props.ingredients).map((part) => (
+        <View key={part.group ?? ''}>
+          {part.group ? <GroupLabel>{part.group}</GroupLabel> : null}
+          <List>
+            {part.items.map((ingredient) => (
+              <ListRow
+                key={ingredient.id}
+                // The Hinweis after "·" ("Zwiebeln · fein gehackt"); the amount stands in front.
+                title={ingredientLine(
+                  { prepNote: ingredient.prepNote },
+                  articlesById[ingredient.articleId]?.name ?? '',
+                )}
+                testID={`cook-ingredient-${ingredient.id}`}
+                leading={
+                  <Text variant="bodyStrong" style={{ width: 76 }}>
+                    {ingredient.amount?.text ?? ''}
+                  </Text>
+                }
+              />
+            ))}
+          </List>
+        </View>
+      ))}
+    </>
+  );
 }
 
-/** A visual countdown; it does not ring and stops when the screen is left. */
-function StepTimer(props: { minutes: number }) {
-  const [remaining, setRemaining] = useState(props.minutes * 60);
-  const [running, setRunning] = useState(false);
-
-  const finished = remaining === 0;
-
+/** The time, ticking every second while a timer runs (a timer started since counts from its start). */
+function useClock(ticking: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!running || finished) return;
-    const timer = setInterval(() => {
-      setRemaining((value) => Math.max(0, value - 1));
-    }, 1000);
+    if (!ticking) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [running, finished]);
+  }, [ticking]);
+  return now;
+}
 
-  const label = finished
-    ? 'Timer abgelaufen'
-    : running
-      ? `Timer ${formatClock(remaining)}`
-      : remaining === props.minutes * 60
-        ? `Timer ${props.minutes} Min`
-        : `Timer ${formatClock(remaining)} · Pause`;
+/** Arrow right = "Weiter", arrow left = "Zurück" on the web, unless typing or a window is open. */
+function useArrowKeys(index: number, count: number, onStep: (index: number) => void): void {
+  const step = useEffectEvent((key: string) => {
+    const next = cookingKeyStep(key, index, count);
+    if (next !== undefined) onStep(next);
+  });
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target as { tagName?: string } | null;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      step(event.key);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
 
+/**
+ * The chip "Timer 35 Min" of a step (Start, Pause) and "Zurücksetzen" (AC-041): a visual countdown
+ * that keeps running on other steps; it does not ring.
+ */
+function StepTimerControl(props: {
+  stepId: string;
+  stepNumber: number;
+  minutes: number;
+  timers: StepTimers;
+  now: number;
+  onChange: (timers: StepTimers) => void;
+}) {
+  const timer = props.timers[props.stepId];
+  const running = isTimerRunning(timer, props.now);
+  const finished = isTimerFinished(timer, props.now);
+  const step = { stepId: props.stepId, stepNumber: props.stepNumber, minutes: props.minutes };
   return (
-    <Chip
-      label={label}
-      icon="timer"
-      selected={running && !finished}
-      onPress={() => {
-        if (finished) {
-          setRemaining(props.minutes * 60);
-          setRunning(false);
-        } else {
-          setRunning(!running);
-        }
-      }}
-      testID="cook-timer"
-    />
+    <Row gap={8} wrap>
+      <Chip
+        label={stepTimerLabel(timer, props.minutes, props.now)}
+        icon="timer"
+        selected={running}
+        onPress={() => {
+          if (finished) props.onChange(resetStepTimer(props.timers, props.stepId));
+          else if (running) props.onChange(pauseStepTimer(props.timers, props.stepId, Date.now()));
+          else props.onChange(startStepTimer(props.timers, step, Date.now()));
+        }}
+        testID="cook-timer"
+      />
+      {timer && !finished ? (
+        <Button
+          label="Zurücksetzen"
+          variant="link"
+          size="sm"
+          onPress={() => props.onChange(resetStepTimer(props.timers, props.stepId))}
+          testID="cook-timer-reset"
+        />
+      ) : null}
+    </Row>
   );
 }

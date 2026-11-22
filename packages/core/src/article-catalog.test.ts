@@ -100,6 +100,7 @@ function recipe(id: Id, title: string, ingredients: RecipeIngredient[]): Recipe 
     ratings: {},
     cookedCount: 0,
     createdAt: '2026-11-01T10:00:00Z',
+    links: [],
   };
 }
 
@@ -650,6 +651,7 @@ describe('filters, counts and sorting', () => {
       pantry: 1,
       needsReview: 1,
       similar: 2,
+      unknownDiet: 6,
     });
   });
 

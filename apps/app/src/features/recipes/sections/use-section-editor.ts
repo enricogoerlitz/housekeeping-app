@@ -7,15 +7,17 @@ import {
   type SectionSave,
 } from '@housekeeping/api';
 import {
-  addIngredientRows,
+  addPastedRows,
   contentsDraft,
   contentsRowsGone,
   savableContents,
   savablePart,
   sectionDraft,
   validateContentsDraft,
+  pastedSaveNotice,
   validateSectionDraft,
   type CollectionContent,
+  type IngredientsDraft,
   type ContentsDraft,
   type ContentsProblem,
   type Id,
@@ -53,6 +55,8 @@ interface EditorState {
   attempted?: boolean;
   /** Why "Fertig" did not save, e.g. offline. */
   error?: string;
+  /** What "Fertig" saved and what stays open (core pastedSaveNotice). */
+  notice?: string;
 }
 
 export interface SectionEditor {
@@ -65,6 +69,15 @@ export interface SectionEditor {
   change: (draft: OpenDraft) => void;
   /** "Fertig". */
   done: () => void;
+  /** "Abbrechen" and Escape: closes the open section without saving (spec 0023, REQ-003). */
+  cancel: () => void;
+  /**
+   * Saves the open section's valid part and closes it, like another pen (E7): before the read view
+   * saves one ingredient itself (spec 0023, REQ-002).
+   */
+  flush: () => void;
+  /** After "Fertig" with pasted rows left open: "5 Zutaten gespeichert · …" (spec 0023, REQ-006). */
+  notice: string | undefined;
   /** The message for a field after a failed "Fertig" ("Titel fehlt", AC-026). */
   problem: (field: SectionField | ContentsProblem['field'], key?: string) => string | undefined;
   problems: Problem[];
@@ -90,6 +103,24 @@ function openDraft(
 ): OpenDraft {
   if (section === 'contents') return { ...contentsDraft(recipe, contents), section };
   return sectionDraft(recipe, section);
+}
+
+/** The keys of the rows "Fertig" left open: without article, or duplicates (core openRows). */
+function openKeys(draft: IngredientsDraft | undefined): Set<string> {
+  return new Set(
+    (draft?.rows ?? [])
+      .filter((row) => row.article === undefined || row.duplicate)
+      .map((row) => row.key),
+  );
+}
+
+/** How many rows of the sent draft were saved: those the reopened section no longer has open. */
+function savedRows(sent: IngredientsDraft, reopened: IngredientsDraft): number {
+  const stored = new Set(sent.base.ingredients.map((ingredient) => ingredient.id));
+  const open = openKeys(reopened);
+  return sent.rows.filter(
+    (row) => row.ingredientId === undefined && !stored.has(row.key) && !open.has(row.key),
+  ).length;
 }
 
 function trySave(recipeId: Id, draft: OpenDraft): { save: Save | null } | { error: string } {
@@ -169,7 +200,14 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
         setState({});
         return;
       }
-      setState(save.reopened ? { draft: save.reopened } : {});
+      const notice =
+        draft.section === 'ingredients' && save.reopened
+          ? pastedSaveNotice(
+              savedRows(draft, save.reopened),
+              save.reopened.rows.filter((row) => openKeys(save.reopened).has(row.key)),
+            )
+          : undefined;
+      setState(save.reopened ? { draft: save.reopened, notice } : {});
       watch(save, draft, save.reopened);
     },
     [recipe, contents, recipeId, watch],
@@ -210,7 +248,7 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
     // The rows come from outside React (the window "Neu"); opening the section with them is the
     // synchronisation this effect exists for, once.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (rows) finish(addIngredientRows(sectionDraft(recipe, 'ingredients'), rows));
+    if (rows) finish(addPastedRows(sectionDraft(recipe, 'ingredients'), rows));
     // Runs once for the rows handed over before the page opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -229,10 +267,23 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
       }
       setState({ opening: section });
     },
-    change: (draft) => setState((current) => ({ ...current, draft, error: undefined })),
+    change: (draft) =>
+      setState((current) => ({ ...current, draft, error: undefined, notice: undefined })),
     done: () => {
       if (state.draft) finish(state.draft);
     },
+    cancel: () => setState({}),
+    flush: () => {
+      const open = state.draft;
+      if (!open) return;
+      const sent = savable(open);
+      if (sent) {
+        const result = trySave(recipeId, sent);
+        if ('save' in result && result.save) watch(result.save, sent, undefined);
+      }
+      setState({});
+    },
+    notice: state.notice,
     problem: (field, key) =>
       problems.find(
         (problem) => problem.field === field && (key === undefined || problem.key === key),

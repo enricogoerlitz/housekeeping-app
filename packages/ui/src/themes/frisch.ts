@@ -23,6 +23,8 @@ const type: Record<TextVariant, TextVariantStyle> = {
   cardTitle: { fontFamily: display, fontSize: 19, lineHeight: 23, letterSpacing: -0.3 },
   rowTitle: { fontFamily: uiMedium, fontSize: 16, lineHeight: 21 },
   body: { fontFamily: ui, fontSize: 16, lineHeight: 22 },
+  reading: { fontFamily: ui, fontSize: 20, lineHeight: 31 },
+  readingLarge: { fontFamily: ui, fontSize: 26, lineHeight: 40 },
   bodyStrong: { fontFamily: uiStrong, fontSize: 16, lineHeight: 22 },
   small: { fontFamily: ui, fontSize: 13.5, lineHeight: 18 },
   smallStrong: { fontFamily: uiStrong, fontSize: 13.5, lineHeight: 18 },

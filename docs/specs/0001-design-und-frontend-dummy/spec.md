@@ -206,7 +206,8 @@ Wenn        die Lint-Prüfung läuft
 Dann        schlägt sie fehl
 ```
 
-**AC-016 — Leerer Haushalt**
+**AC-016 — Leerer Haushalt** (geändert durch Spec 0023, AC-046: „Rezept anlegen“ und „Sammlung
+anlegen“ statt „Starter-Rezepte ansehen“)
 
 ```gherkin
 Angenommen  ich wechsle über das Profil in den Haushalt „Test“
@@ -278,7 +279,8 @@ Dann        entstehen drei Zutatenzeilen mit Rezeptangabe und Artikel:
             „200 ml · Kokosmilch“, „1 · Mango“, „1 Prise · Salz“
 ```
 
-**AC-023 — Kochmodus und „Ist alle“**
+**AC-023 — Kochmodus und „Ist alle“** (geändert durch Spec 0023, REQ-010: „Zutaten anzeigen“
+entfällt, die Zutaten stehen neben oder unter dem Schritt)
 
 ```gherkin
 Angenommen  „Mango-Curry“ ist geöffnet

@@ -44,7 +44,6 @@ export function newRecipe(input: {
   title: string;
   servings: number;
   createdAt: string;
-  source?: string;
 }): Recipe {
   const recipe: Recipe = {
     id: input.id,
@@ -59,9 +58,9 @@ export function newRecipe(input: {
     ratings: {},
     cookedCount: 0,
     createdAt: input.createdAt,
+    links: [],
   };
   if (input.kind === 'recipe') recipe.course = 'main';
-  if (input.source !== undefined) recipe.source = input.source;
   return recipe;
 }
 
@@ -321,6 +320,16 @@ export function recipePickerRows(
       return { recipe, selectable: selected.has(recipe.id) || !limitReached };
     }),
   };
+}
+
+/** "Portionen" in "Portionen und Variante", left blank (spec 0023, AC-058): "wie Sammlung (6)". */
+export function inheritedServingsPlaceholder(collectionServings: number): string {
+  return `wie Sammlung (${collectionServings})`;
+}
+
+/** The hint under it: "Leer lassen: so viele Portionen wie die Sammlung (6)". */
+export function inheritedServingsHint(collectionServings: number): string {
+  return `Leer lassen: so viele Portionen wie die Sammlung (${collectionServings})`;
 }
 
 /** The foot of the window: "2 Rezepte übernehmen", "1 Rezept übernehmen". */

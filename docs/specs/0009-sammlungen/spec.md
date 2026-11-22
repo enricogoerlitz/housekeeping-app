@@ -100,7 +100,7 @@ diese Rezepte:
 **Offline:** nur online (Anlegen ist Schreiben); offline sind die Einträge im Menü „+“ ausgegraut
 mit „Offline – zum Bearbeiten brauchst du Netz“.
 
-**AC-001** (ändert Spec 0008, AC-003)
+**AC-001** (ändert Spec 0008, AC-003; „Starter-Rezepte“ entfällt mit Spec 0023, AC-045)
 
 ```gherkin
 Angenommen  „Essen“ ist offen und ich bin online

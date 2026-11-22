@@ -39,7 +39,6 @@ import {
   TextField,
   useBreakpoint,
   useTheme,
-  type MenuOption,
   type TabSwipe,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
@@ -49,7 +48,7 @@ import { Pressable, View } from 'react-native';
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { usePageParams } from '@/lib/url-state';
 import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
-import { StarterSheet } from '@/features/recipes/starter-sheet';
+import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -58,8 +57,6 @@ import { lastVisitLabel, restaurantMeta } from './labels';
 import { RestaurantDetail } from './restaurant-detail';
 import { RestaurantFilterPanel } from './restaurant-filter-panel';
 import { useRestaurantListState } from './restaurant-list-state';
-
-type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
 
 /** Restaurant cards in the grid: at least this wide (one column on phones, three at 1440 px). */
 const CARD_MIN_WIDTH = 320;
@@ -90,7 +87,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const router = useRouter();
   const address = usePageParams('rezepte');
   const { params } = address;
-  const { isWide, isPhone } = useBreakpoint();
+  const { isWide } = useBreakpoint();
   const online = useOnlineOnly();
   const restaurants = useRestaurants();
   const entries = usePlanEntries();
@@ -105,7 +102,6 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     open: false,
     kind: 'recipe',
   });
-  const [starterOpen, setStarterOpen] = useState(false);
 
   // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
   // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
@@ -156,15 +152,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     return sortRestaurantList(filtered, sort, { me: me.id, entries, today, shuffle });
   }, [query, restaurants, filter, me.id, sort, entries, today, shuffle]);
 
-  const newOptions: MenuOption<NewKind>[] = [
-    { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
-    { value: 'collection', label: 'Sammlung', disabled: online.disabled, hint: online.hint },
-    { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
-    { value: 'starter', label: 'Starter-Rezepte' },
-  ];
-  const onNew = (kind: NewKind) => {
+  const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
-    else if (kind === 'starter') setStarterOpen(true);
     else setSheet({ focus: 'link' });
   };
 
@@ -174,15 +163,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       title="Essen"
       right={
         <>
-          <Menu
-            trigger={isPhone ? 'icon' : 'button'}
-            icon="plus"
-            label="Neu"
-            accessibilityLabel="Neu anlegen"
-            options={newOptions}
-            onChange={onNew}
-            testID="recipe-new"
-          />
+          <FoodNewMenu onNew={onNew} />
           <StartPageActions />
         </>
       }
@@ -211,7 +192,6 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
         onClose={() => setNewRecipe({ ...newRecipe, open: false })}
         onCreated={openRecipe}
       />
-      <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
     </>
   );
 

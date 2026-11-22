@@ -1,10 +1,18 @@
 import { formatPickerDate, weekRangeLabel } from './calendar';
-import { addDays, formatShortDate, startOfWeek, weekDates, weekdayShort } from './dates';
+import {
+  addDays,
+  daysBetween,
+  formatShortDate,
+  startOfWeek,
+  weekDates,
+  weekdayShort,
+} from './dates';
 import { defaultEaters } from './meal-plan';
 import type { Id, ISODate, MealSlot, Member, Trip } from './types';
 
-// The window "Einplanen" on the recipe page (spec 0008, REQ-009, E11): weeks from Monday, the
-// preselection and the texts of the button and the notice.
+// The window "Einplanen" (spec 0008, REQ-009, E11; spec 0023, REQ-013): weeks from Monday, the
+// preselection and the texts of the button and the notice. One window for recipes and collections;
+// restaurants and activities use it too (spec 0023, Decision 14; their extras come with spec 0024).
 
 export interface PlanWeek {
   /** Monday of the week. */
@@ -19,9 +27,18 @@ export function planWeek(today: ISODate, offset: number): PlanWeek {
   return { start, label: weekRangeLabel(start) };
 }
 
-/** The day chips Mo … So of the week that holds the date. */
-export function weekDays(weekStart: ISODate): { date: ISODate; label: string }[] {
-  return weekDates(weekStart).map((date) => ({ date, label: weekdayShort(date) }));
+/** The day chips Mo … So of the week that holds the date, the date under the weekday (AC-053). */
+export function weekDays(weekStart: ISODate): { date: ISODate; label: string; detail: string }[] {
+  return weekDates(weekStart).map((date) => ({
+    date,
+    label: weekdayShort(date),
+    detail: formatShortDate(date),
+  }));
+}
+
+/** The week offset (planWeek) of the week that holds `date`: "Anderes Datum …" shows it (AC-054). */
+export function weekOffsetFor(today: ISODate, date: ISODate): number {
+  return Math.round(daysBetween(startOfWeek(today), startOfWeek(date)) / 7);
 }
 
 /** Ids for "Wer isst mit?": everyone not on a trip that day; everyone without a day (AC-036). */
@@ -64,9 +81,29 @@ export function defaultPlanChoice(
   };
 }
 
-/** "Am Sa Abend einplanen"; "Vormerken" without a day (AC-034, AC-037). */
+/** "Am Mi 25.11. Abend einplanen"; "Vormerken" without a day (AC-037; spec 0023, AC-053). */
 export function planButtonLabel(date: ISODate | null, slotName: string): string {
-  return date === null ? 'Vormerken' : `Am ${weekdayShort(date)} ${slotName} einplanen`;
+  if (date === null) return 'Vormerken';
+  return `Am ${weekdayShort(date)} ${formatShortDate(date)} ${slotName} einplanen`;
+}
+
+/**
+ * Members or trips arrived after the window opened (a sync after reloading, AC-055): while "Wer
+ * isst mit?" is untouched the preselection follows them; a choice made by hand stays (AC-056). The
+ * same choice when nothing changes.
+ */
+export function refreshPlanEaters(
+  choice: PlanChoice,
+  touched: boolean,
+  members: readonly Member[],
+  trips: readonly Trip[],
+): PlanChoice {
+  if (touched) return choice;
+  const eaterIds = eatersForDay(members, choice.date, trips);
+  const same =
+    eaterIds.length === choice.eaterIds.length &&
+    eaterIds.every((id, index) => id === choice.eaterIds[index]);
+  return same ? choice : { ...choice, eaterIds };
 }
 
 /**

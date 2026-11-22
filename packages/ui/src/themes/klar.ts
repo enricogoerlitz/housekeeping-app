@@ -16,6 +16,8 @@ const type: Record<TextVariant, TextVariantStyle> = {
   cardTitle: { fontWeight: '600', fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
   rowTitle: { fontWeight: '400', fontSize: 16, lineHeight: 21 },
   body: { fontWeight: '400', fontSize: 16, lineHeight: 21 },
+  reading: { fontWeight: '400', fontSize: 20, lineHeight: 31 },
+  readingLarge: { fontWeight: '400', fontSize: 26, lineHeight: 40 },
   bodyStrong: { fontWeight: '600', fontSize: 16, lineHeight: 21 },
   small: { fontWeight: '400', fontSize: 13.5, lineHeight: 18 },
   smallStrong: { fontWeight: '600', fontSize: 13.5, lineHeight: 18 },

@@ -1,12 +1,13 @@
 import { deleteRecipe, discardRecipePhoto, OfflineError, snapshot } from '@housekeeping/api';
-import { recipeDeletedLabel, type Recipe } from '@housekeeping/core';
+import { deletedNotice, type Recipe } from '@housekeeping/core';
 import { toast } from '@housekeeping/ui';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 /**
  * ⋯ → "Löschen" on the page of a recipe or a collection (spec 0008, AC-043; spec 0009, AC-032):
- * back to "Essen" and the notice "… gelöscht · Rückgängig" for 5 s. Only when it ends without
+ * back to "Essen" and the notice "… gelöscht · Rückgängig" for 5 s, naming the planned entries that
+ * go (spec 0023, REQ-012). Only when it ends without
  * "Rückgängig" does the own photo go (E5); a refusal brings everything back (AC-045).
  */
 export function useDeleteRecipe(
@@ -35,7 +36,12 @@ export function useDeleteRecipe(
     const done = deletion;
     onBack();
     toast.show({
-      message: recipeDeletedLabel(recipe.title, done.collections),
+      // "Lasagne gelöscht · 2 geplante Einträge entfallen · auch aus 1 Sammlung entfernt" (spec 0023,
+      // REQ-012).
+      message: deletedNotice(recipe.title, {
+        entries: done.entries,
+        collections: done.collections,
+      }),
       actionLabel: 'Rückgängig',
       onAction: undoAction(restore),
       onExpire: () => void discardRecipePhoto(done),

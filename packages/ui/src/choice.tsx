@@ -57,6 +57,8 @@ function useAnchoredPanel(trigger: { current: HostInstance | null }) {
 export interface ChoiceOption<T extends string> {
   value: T;
   label: string;
+  /** ChoiceChips only: a second line under the label ("25.11." under "Mi"). */
+  detail?: string;
 }
 
 export interface ViewTabsProps<T extends string> {
@@ -244,6 +246,7 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
           key={option.value}
           role="radio"
           label={option.label}
+          detail={option.detail}
           selected={option.value === props.value}
           disabled={props.disabled}
           hint={props.disabled ? props.hint : undefined}
