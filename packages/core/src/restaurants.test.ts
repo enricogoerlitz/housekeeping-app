@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { findDuplicateRestaurant, priceLabel, restaurantVisits, routeLinks } from './restaurants';
+import {
+  findDuplicateRestaurant,
+  isInstalledIosApp,
+  priceLabel,
+  restaurantVisits,
+  routeLinks,
+  routeOpening,
+} from './restaurants';
 import type { Activity, MealPlanEntry, Restaurant } from './types';
 
 function restaurant(partial: Partial<Restaurant> & Pick<Restaurant, 'id' | 'name'>): Restaurant {
@@ -12,6 +19,62 @@ function restaurant(partial: Partial<Restaurant> & Pick<Restaurant, 'id' | 'name
     ...partial,
   };
 }
+
+describe('routeOpening (spec 0029, REQ-004)', () => {
+  const enzo = {
+    name: 'Trattoria Da Enzo',
+    address: 'Severinstraße 12, Köln',
+    location: { lat: 50.9271, lng: 6.958 },
+  };
+  const installed = { installedIosApp: true };
+  const browser = { installedIosApp: false };
+
+  it('AC-015: the installed iPhone app opens Apple Maps by its scheme in the same window', () => {
+    expect(routeOpening('apple', enzo, installed)).toEqual({
+      kind: 'app-scheme',
+      url: 'maps://?daddr=50.9271,6.958&q=Trattoria%20Da%20Enzo',
+    });
+  });
+
+  it('AC-016: Google Maps by its scheme, with the website as fallback (AC-017)', () => {
+    const eisstadion = { name: 'Eislaufen', placeName: 'Eisstadion Hohenschönhausen' };
+    const encoded = 'Eisstadion%20Hohensch%C3%B6nhausen';
+    expect(routeOpening('google', eisstadion, installed)).toEqual({
+      kind: 'app-scheme',
+      url: `comgooglemaps://?daddr=${encoded}`,
+      fallback: `https://www.google.com/maps/dir/?api=1&destination=${encoded}`,
+    });
+  });
+
+  it('AC-018: in a browser tab, on Android and on the desktop a new tab as before', () => {
+    expect(routeOpening('apple', enzo, browser)).toEqual({
+      kind: 'new-tab',
+      url: 'https://maps.apple.com/?daddr=50.9271,6.958&q=Trattoria%20Da%20Enzo',
+    });
+    expect(routeOpening('google', enzo, browser)).toEqual({
+      kind: 'new-tab',
+      url: 'https://www.google.com/maps/dir/?api=1&destination=50.9271,6.958',
+    });
+  });
+
+  it('AC-015: recognises the installed web app on iPhone and iPad only', () => {
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15';
+    const ipad = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15';
+    const android = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/141.0';
+    expect(isInstalledIosApp({ userAgent: iphone, maxTouchPoints: 5, standalone: true })).toBe(
+      true,
+    );
+    expect(isInstalledIosApp({ userAgent: ipad, maxTouchPoints: 5, standalone: true })).toBe(true);
+    expect(isInstalledIosApp({ userAgent: iphone, maxTouchPoints: 5, standalone: false })).toBe(
+      false,
+    );
+    expect(isInstalledIosApp({ userAgent: android, maxTouchPoints: 5, standalone: true })).toBe(
+      false,
+    );
+    // A Mac with a mouse looks like an iPad without touch points.
+    expect(isInstalledIosApp({ userAgent: ipad, maxTouchPoints: 0, standalone: true })).toBe(false);
+  });
+});
 
 describe('routeLinks', () => {
   it('AC-012: routes to the coordinates when they are known', () => {

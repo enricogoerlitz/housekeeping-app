@@ -1,6 +1,7 @@
-import { routeLinks, type Activity, type Restaurant } from '@housekeeping/core';
+import type { Activity, MapsApp, Restaurant } from '@housekeeping/core';
 import { Button, Sheet, Stack, Text } from '@housekeeping/ui';
-import { Linking } from 'react-native';
+
+import { openRoute } from '@/lib/open-route';
 
 /** Where a route goes: a restaurant, or an activity with its place name (spec 0004). */
 export type RouteTarget = Pick<Restaurant, 'name' | 'address' | 'location'> &
@@ -13,10 +14,10 @@ export function RouteSheet(props: {
   onClose: () => void;
 }) {
   const target = props.restaurant;
-  const links = routeLinks(target);
-  const open = (url: string) => {
+  // Spec 0029, REQ-004: no empty browser window stays behind in the installed iPhone app.
+  const open = (app: MapsApp) => {
     props.onClose();
-    Linking.openURL(url).catch(() => undefined);
+    openRoute(app, target);
   };
   return (
     <Sheet
@@ -35,7 +36,7 @@ export function RouteSheet(props: {
           label="Apple Karten"
           icon="map-pin"
           full
-          onPress={() => open(links.apple)}
+          onPress={() => open('apple')}
           testID="route-apple"
         />
         <Button
@@ -43,7 +44,7 @@ export function RouteSheet(props: {
           icon="map-pin"
           variant="secondary"
           full
-          onPress={() => open(links.google)}
+          onPress={() => open('google')}
           testID="route-google"
         />
       </Stack>
