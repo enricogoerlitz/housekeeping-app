@@ -26,7 +26,7 @@ import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { CookPicker, EaterPicker, FieldLabel, SplitFields } from './plan-fields';
+import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Das hat nicht geklappt.';
@@ -60,8 +60,21 @@ export function PlanRecipeSheet(props: { recipe: Recipe; onClose: () => void }) 
   const split = splitForEaters(recipe.id, choice.eaterIds, choice.guests);
   const misfits = split.misfitMemberIds.flatMap((id) => membersById[id] ?? []);
   const noEaters = choice.eaterIds.length + choice.guests === 0;
+  // Spec 0021, REQ-006: the counters replace the fixed portions; another day starts them over.
+  const portions = usePortions(recipe, () => ({
+    eaterIds: choice.eaterIds,
+    guests: choice.guests,
+    portions: split.portions,
+    variants: recipe.variants.map((variant) => ({
+      variantId: variant.id,
+      portions: split.variants.find((row) => row.variantId === variant.id)?.portions ?? 0,
+    })),
+  }));
 
   const update = (next: PlanChoice) => {
+    if (next.eaterIds !== choice.eaterIds && next.date !== choice.date) {
+      portions.reset(next.eaterIds, next.guests);
+    }
     setChoice(next);
     setError(undefined);
   };
@@ -91,8 +104,8 @@ export function PlanRecipeSheet(props: { recipe: Recipe; onClose: () => void }) 
         eaterIds: choice.eaterIds,
         guests: choice.guests,
         cookId: choice.cookId,
-        portions: split.portions,
-        variants: split.variants,
+        portions: portions.state.portions,
+        variants: portions.state.variants.filter((row) => row.portions > 0),
       });
     } catch (caught) {
       setError(message(caught));
@@ -195,10 +208,22 @@ export function PlanRecipeSheet(props: { recipe: Recipe; onClose: () => void }) 
           members={members}
           eaterIds={choice.eaterIds}
           guests={choice.guests}
-          onEaters={(eaterIds) => update({ ...choice, eaterIds })}
-          onGuests={(guests) => update({ ...choice, guests })}
+          onEaters={(eaterIds) => {
+            portions.setEaters(eaterIds);
+            update({ ...choice, eaterIds });
+          }}
+          onGuests={(guests) => {
+            portions.setGuests(guests);
+            update({ ...choice, guests });
+          }}
         />
-        <SplitFields recipe={recipe} split={split} misfits={misfits} testID="plan-recipe" />
+        <PortionFields
+          recipe={recipe}
+          state={portions.state}
+          onChange={portions.setState}
+          misfits={misfits}
+          testID="plan-recipe"
+        />
         <CookPicker
           members={members}
           cookId={choice.cookId}

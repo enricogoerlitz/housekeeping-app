@@ -26,16 +26,21 @@ import {
   addedNotice,
   collectionRecipeCountLabel,
   contentsInBook,
+  entryName,
   formatPickerDate,
   fuzzyIncludes,
   hasExactName,
   householdClock,
+  isSelectableMoveDay,
   leftoverCandidates,
   leftoversDayLabel,
   monthPickerStart,
+  moveBounds,
   offersReminder,
+  olderLeftoverCandidates,
   planCandidates,
   priceLabel,
+  TIME_FIELD_WORDS,
   withNote,
   type Activity,
   type EntryReminder,
@@ -47,6 +52,7 @@ import {
   type RecipeBook,
   type RecipeKind,
   type Restaurant,
+  type TimeOfDay,
 } from '@housekeeping/core';
 import {
   Button,
@@ -61,6 +67,7 @@ import {
   Stack,
   Text,
   TextField,
+  TimeField,
   ViewTabs,
   toast,
 } from '@housekeeping/ui';
@@ -80,7 +87,7 @@ import { RestaurantFormFields, useRestaurantForm } from '@/features/restaurants/
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { addSheetTitle, dayLabel, entryTitle } from './labels';
-import { CookPicker, EaterPicker, FieldLabel, SplitFields } from './plan-fields';
+import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 
 export interface AddTarget {
@@ -94,7 +101,7 @@ export interface AddTarget {
   slotChosen?: boolean;
 }
 
-type Tab = 'all' | 'recipes' | 'collections' | 'restaurants' | 'activities';
+type Tab = 'all' | 'leftovers' | 'recipes' | 'collections' | 'restaurants' | 'activities';
 type Creating = 'recipe' | 'collection' | 'restaurant' | 'activity';
 type Choice =
   | { kind: 'recipe'; recipe: Recipe }
@@ -105,6 +112,8 @@ type Choice =
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'all', label: 'Alle' },
+  // Spec 0021, REQ-011: only with a day to plan the leftovers on.
+  { value: 'leftovers', label: 'Reste' },
   { value: 'recipes', label: 'Rezepte' },
   { value: 'collections', label: 'Sammlungen' },
   { value: 'restaurants', label: 'Restaurants' },
@@ -113,6 +122,8 @@ const TABS: { value: Tab; label: string }[] = [
 
 /** Hits per kind; the middle scrolls, the window keeps its size (AC-022). */
 const MAX_RESULTS = 60;
+/** Spec 0021, REQ-011: the youngest leftovers above the hits in "Alle". */
+const LEFTOVERS_IN_ALL = 3;
 /** Day chips "Einplanen" of an activity offers from today; "Anderes Datum …" reaches any day. */
 const DAY_CHIPS = 14;
 
@@ -273,6 +284,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const [later, setLater] = useState(props.target.date === null);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | undefined>();
+  const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>();
+  const [olderLeftovers, setOlderLeftovers] = useState(false);
   const [eaterIds, setEaterIds] = useState<Id[]>([]);
   const [guests, setGuests] = useState(0);
   const [cookId, setCookId] = useState<Id | undefined>();
@@ -292,18 +305,28 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const slotName = slots.find((slot) => slot.id === slotId)?.name;
   const trimmed = query.trim();
   // Spec 0017, REQ-001: "Erinnern" in the second step, only with a day (not for "Vormerken").
-  const reminder = useReminderForm({ entryDate: date ?? today, slotName: slotName ?? '' });
+  const reminder = useReminderForm({
+    entryDate: date ?? today,
+    slotName: slotName ?? '',
+    startsAt,
+  });
   const remindable = offersReminder(date, householdClock(new Date(), household.timeZone).date);
 
   const recipe = choice?.kind === 'recipe' ? choice.recipe : undefined;
   const split = recipe ? splitForEaters(recipe.id, eaterIds, guests) : undefined;
   const misfits = split ? split.misfitMemberIds.flatMap((id) => membersById[id] ?? []) : [];
+  // Spec 0021, REQ-006: counters for portions and variants, following eaters and guests.
+  const portions = usePortions(recipe, () => ({ eaterIds: [], guests: 0, portions: 0, variants: [] }));
+  const timed = choice?.kind === 'restaurant' || choice?.kind === 'activity';
 
   const choose = (next: Choice) => {
     setChoice(next);
     setCreating(undefined);
-    setEaterIds(defaultEaterIds(date));
+    const eaters = defaultEaterIds(date);
+    setEaterIds(eaters);
     setGuests(0);
+    portions.reset(eaters, 0, next.kind === 'recipe' ? next.recipe : undefined);
+    setStartsAt(undefined);
     setCookId(undefined);
     setError(undefined);
     if (next.kind === 'text') setText(trimmed);
@@ -324,7 +347,17 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const toggleLater = () => {
     const next = !later;
     setLater(next);
-    setEaterIds(defaultEaterIds(next ? null : day));
+    const eaters = defaultEaterIds(next ? null : day);
+    setEaterIds(eaters);
+    portions.reset(eaters, guests);
+  };
+  const chooseEaters = (ids: Id[]) => {
+    setEaterIds(ids);
+    portions.setEaters(ids);
+  };
+  const chooseGuests = (count: number) => {
+    setGuests(count);
+    portions.setGuests(count);
   };
 
   const done = (title: string, planned: ISODate | null) => {
@@ -355,6 +388,8 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
       if (decision.action === 'set') checked = decision.reminder;
     }
     const withReminder = checked ? { reminder: checked } : {};
+    // Spec 0021, REQ-008, REQ-013: a Zusatz for every kind, a time for restaurants and activities.
+    const extras = { note, ...(timed && startsAt ? { startsAt } : {}) };
     try {
       switch (choice.kind) {
         case 'recipe': {
@@ -367,11 +402,12 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             eaterIds,
             guests,
             cookId,
-            portions: split.portions,
-            variants: split.variants,
+            portions: portions.state.portions,
+            variants: portions.state.variants.filter((row) => row.portions > 0),
+            ...extras,
             ...withReminder,
           });
-          done(choice.recipe.title, date);
+          done(withNote(choice.recipe.title, note), date);
           return;
         }
         case 'restaurant':
@@ -382,9 +418,10 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             restaurantId: choice.restaurant.id,
             eaterIds,
             guests,
+            ...extras,
             ...withReminder,
           });
-          done(choice.restaurant.name, date);
+          done(withNote(choice.restaurant.name, note), date);
           return;
         case 'activity':
           try {
@@ -393,7 +430,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
               slotId,
               kind: 'activity',
               activityId: choice.activity.id,
-              note,
+              ...extras,
               eaterIds: defaultEaterIds(date),
               ...withReminder,
             });
@@ -406,7 +443,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
         case 'text': {
           const value = text.trim();
           if (!value) {
-            setError('Schreib kurz, was es gibt.');
+            setError('Bitte etwas eintragen');
             return;
           }
           addPlanEntry({
@@ -415,9 +452,10 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             kind: 'text',
             text: value,
             eaterIds: defaultEaterIds(date),
+            ...extras,
             ...withReminder,
           });
-          done(value, date);
+          done(withNote(value, note), date);
           return;
         }
         case 'leftovers': {
@@ -432,6 +470,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             eaterIds: eaters,
             portions: Math.max(1, eaters.length),
             variants: [],
+            ...extras,
             ...withReminder,
           });
           done(choice.title, day);
@@ -527,14 +566,34 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           .sort((a, b) => a.name.localeCompare(b.name, 'de'))
           .slice(0, MAX_RESULTS)
       : [];
-  const hitCount = recipeHits.length + restaurantHits.length + activityHits.length;
+  const hitCount =
+    tab === 'leftovers' ? 0 : recipeHits.length + restaurantHits.length + activityHits.length;
 
+  // Spec 0021, REQ-011, REQ-012: leftovers of the seven days before and of the same day in an
+  // earlier Tageszeit; "Ältere Reste …" without a limit. The search filters them by name.
   const targetDay = props.target.date;
+  const leftoverSlot = props.target.slotChosen === false ? undefined : props.target.slotId;
+  const leftoverTitle = (source: MealPlanEntry, target: ISODate) =>
+    `Reste von ${entryName(source, recipesById, entries, restaurantsById, activitiesById)} (${leftoversDayLabel(
+      source.date ?? target,
+      target,
+      slots.find((slot) => slot.id === source.slotId)?.name,
+    )})`;
+  const leftoverRows = (sources: MealPlanEntry[], target: ISODate) =>
+    sources
+      .map((source) => ({ source, title: leftoverTitle(source, target) }))
+      .filter((row) => !trimmed || fuzzyIncludes(query, row.title));
   const leftovers = targetDay
-    ? leftoverCandidates(entries, targetDay, slotOrder, recipesById).map((source) => ({
-        source,
-        title: `Reste von ${entryTitle(source, recipesById, entries, restaurantsById, activitiesById)} (${leftoversDayLabel(source.date ?? targetDay, targetDay)})`,
-      }))
+    ? leftoverRows(
+        leftoverCandidates(entries, targetDay, slotOrder, recipesById, leftoverSlot),
+        targetDay,
+      )
+    : [];
+  const older = targetDay
+    ? leftoverRows(
+        olderLeftoverCandidates(entries, targetDay, slotOrder, recipesById, leftoverSlot),
+        targetDay,
+      )
     : [];
   const quoted = trimmed ? `„${trimmed}“ ` : '';
   // K-13: no "+ „Lasagne“ als Rezept anlegen" next to the recipe "Lasagne" (spec 0018, AC-018).
@@ -556,8 +615,55 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     ),
   };
 
+  const leftoverList = (rows: { source: MealPlanEntry; title: string }[], testID: string) => (
+    <List testID={testID}>
+      {rows.map((leftover) => (
+        <ListRow
+          key={leftover.source.id}
+          title={leftover.title}
+          leading={<Icon name="refresh-cw" size={18} color="muted" />}
+          onPress={() => choose({ kind: 'leftovers', source: leftover.source, title: leftover.title })}
+          testID={`add-entry-leftover-${leftover.source.id}`}
+        />
+      ))}
+    </List>
+  );
+
+  const leftoversTab = targetDay ? (
+    <Stack gap={4}>
+      {leftovers.length > 0 ? (
+        leftoverList(leftovers, 'add-entry-leftovers')
+      ) : (
+        <Text color="muted" testID="add-entry-leftovers-empty">
+          In den 7 Tagen davor wurde nichts gekocht.
+        </Text>
+      )}
+      <Button
+        label="Ältere Reste …"
+        variant="link"
+        size="sm"
+        onPress={() => setOlderLeftovers(!olderLeftovers)}
+        testID="add-entry-leftovers-older"
+      />
+      {olderLeftovers ? leftoverList(older, 'add-entry-leftovers-older-list') : null}
+    </Stack>
+  ) : null;
+
   const stepOne = (
     <Stack gap={4}>
+      {tab === 'all' && leftovers.length > 0 ? (
+        <>
+          <GroupLabel testID="add-entry-leftovers-group">Reste</GroupLabel>
+          {leftoverList(leftovers.slice(0, LEFTOVERS_IN_ALL), 'add-entry-leftovers-top')}
+          <Button
+            label="Alle Reste ›"
+            variant="link"
+            size="sm"
+            onPress={() => setTab('leftovers')}
+            testID="add-entry-leftovers-all"
+          />
+        </>
+      ) : null}
       {hitCount > 0 ? (
         <List testID="add-entry-hits">
           {recipeHits.map((candidate) => (
@@ -594,7 +700,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             />
           ))}
         </List>
-      ) : trimmed ? null : (
+      ) : trimmed || tab === 'leftovers' ? null : (
         <Text color="muted" testID="add-entry-none">
           {tab === 'restaurants'
             ? 'Noch keine Restaurants.'
@@ -688,30 +794,6 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
         ) : null}
       </List>
 
-      {tab === 'all' && targetDay ? (
-        <>
-          <GroupLabel testID="add-entry-leftovers">Reste</GroupLabel>
-          {leftovers.length === 0 ? (
-            <Text color="muted" testID="add-entry-leftovers-empty">
-              In den 7 Tagen davor wurde nichts gekocht.
-            </Text>
-          ) : (
-            <List>
-              {leftovers.map((leftover) => (
-                <ListRow
-                  key={leftover.source.id}
-                  title={leftover.title}
-                  leading={<Icon name="refresh-cw" size={18} color="muted" />}
-                  onPress={() =>
-                    choose({ kind: 'leftovers', source: leftover.source, title: leftover.title })
-                  }
-                  testID={`add-entry-leftover-${leftover.source.id}`}
-                />
-              ))}
-            </List>
-          )}
-        </>
-      ) : null}
     </Stack>
   );
 
@@ -738,7 +820,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
   const zusatz = (
     <TextField
-      label="Zusatz (optional)"
+      label="Zusatz"
       value={note}
       onChangeText={(value) => {
         setNote(value);
@@ -748,9 +830,40 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
       maxLength={NOTE_MAX_LENGTH}
       error={noteError}
       hint="Steht im Kalender in Klammern hinter dem Namen."
-      testID="add-entry-activity-note"
+      testID="add-entry-note"
     />
   );
+
+  const timeField = (
+    <TimeField
+      label="Uhrzeit (optional)"
+      {...TIME_FIELD_WORDS}
+      value={startsAt}
+      optional
+      clearLabel="Uhrzeit entfernen"
+      onChange={(time) => {
+        const next = time as TimeOfDay | undefined;
+        reminder.followTime(startsAt, next);
+        setStartsAt(next);
+      }}
+      hint={
+        choice?.kind === 'restaurant' || creating === 'restaurant'
+          ? 'Die Uhrzeit, für die ihr reserviert habt.'
+          : 'Wann es losgeht.'
+      }
+      testID="add-entry-time"
+    />
+  );
+
+  // REQ-012: leftovers lie after their dish; earlier Tageszeiten of its day are greyed out.
+  const leftoverBounds =
+    choice?.kind === 'leftovers'
+      ? moveBounds(
+          { ...choice.source, id: 'new', kind: 'leftovers', leftoversOfEntryId: choice.source.id },
+          entries,
+          slotOrder,
+        )
+      : undefined;
 
   const stepTwo = choice ? (
     <Stack gap={18}>
@@ -787,16 +900,41 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           testID="add-entry-later"
         />
       ) : null}
-      <ChoiceChips
-        label="Tageszeit"
-        options={slots.map((slot) => ({ value: slot.id, label: slot.name }))}
-        value={slotId}
-        onChange={(next) => {
-          setSlotId(next);
-          setSlotChosen(true);
-        }}
-        testID="add-entry-slot"
-      />
+      {leftoverBounds && day ? (
+        <View>
+          <FieldLabel>Tageszeit</FieldLabel>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} testID="add-entry-slot">
+            {slots.map((slot) => {
+              const allowed = isSelectableMoveDay(leftoverBounds, day, slot.id);
+              return (
+                <Chip
+                  key={slot.id}
+                  label={slot.name}
+                  selected={slotId === slot.id}
+                  disabled={!allowed}
+                  hint={allowed ? undefined : 'Reste stehen immer nach ihrem Gericht'}
+                  onPress={() => {
+                    setSlotId(slot.id);
+                    setSlotChosen(true);
+                  }}
+                  testID={`add-entry-slot-${slot.id}`}
+                />
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <ChoiceChips
+          label="Tageszeit"
+          options={slots.map((slot) => ({ value: slot.id, label: slot.name }))}
+          value={slotId}
+          onChange={(next) => {
+            setSlotId(next);
+            setSlotChosen(true);
+          }}
+          testID="add-entry-slot"
+        />
+      )}
       {choice.kind === 'text' ? (
         <TextField
           label="Was gibt es?"
@@ -818,15 +956,22 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           members={members}
           eaterIds={eaterIds}
           guests={guests}
-          onEaters={setEaterIds}
-          onGuests={setGuests}
+          onEaters={chooseEaters}
+          onGuests={chooseGuests}
         />
       ) : null}
-      {recipe && split ? (
-        <SplitFields recipe={recipe} split={split} misfits={misfits} testID="add-entry" />
+      {recipe ? (
+        <PortionFields
+          recipe={recipe}
+          state={portions.state}
+          onChange={portions.setState}
+          misfits={misfits}
+          testID="add-entry"
+        />
       ) : null}
       {recipe ? <CookPicker members={members} cookId={cookId} onChange={setCookId} /> : null}
-      {choice.kind === 'activity' ? zusatz : null}
+      {timed ? timeField : null}
+      {zusatz}
       {remindable ? (
         <ReminderBlock
           form={reminder}
@@ -983,7 +1128,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
               label="Art"
               value={tab}
               onChange={setTab}
-              options={TABS}
+              options={targetDay ? TABS : TABS.filter((option) => option.value !== 'leftovers')}
               testID="add-entry-tab"
             />
           </View>
@@ -996,7 +1141,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           {online.hint}
         </Text>
       ) : null}
-      {creating ? creatingBody : choice ? stepTwo : stepOne}
+      {creating ? creatingBody : choice ? stepTwo : tab === 'leftovers' ? leftoversTab : stepOne}
     </Sheet>
   );
 }
