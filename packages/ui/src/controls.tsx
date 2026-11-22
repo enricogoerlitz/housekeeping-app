@@ -106,7 +106,10 @@ export function Button(props: ButtonProps) {
     <Pressable
       testID={props.testID}
       accessibilityRole="button"
-      accessibilityLabel={props.accessibilityLabel ?? props.label}
+      accessibilityLabel={
+        props.accessibilityLabel ??
+        (props.detail === undefined ? props.label : `${props.label} ${props.detail}`)
+      }
       accessibilityHint={props.hint}
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
@@ -208,6 +211,8 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
 
 export interface ChipProps {
   label: string;
+  /** A second line under the label, e.g. the date under the weekday ("Mi" over "25.11."). */
+  detail?: string;
   icon?: IconName;
   selected?: boolean;
   onPress?: () => void;
@@ -240,13 +245,24 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
       {props.icon ? (
         <ChipIcon name={props.icon} selected={!!props.selected} toneFg={tone?.fg} />
       ) : null}
-      <Text
-        variant="smallStrong"
-        color={props.selected ? 'onAccent' : 'text'}
-        style={!props.selected && tone ? { color: tone.fg } : undefined}
-      >
-        {props.label}
-      </Text>
+      {props.detail === undefined ? (
+        <Text
+          variant="smallStrong"
+          color={props.selected ? 'onAccent' : 'text'}
+          style={!props.selected && tone ? { color: tone.fg } : undefined}
+        >
+          {props.label}
+        </Text>
+      ) : (
+        <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+          <Text variant="smallStrong" color={props.selected ? 'onAccent' : 'text'}>
+            {props.label}
+          </Text>
+          <Text variant="caption" color={props.selected ? 'onAccent' : 'muted'}>
+            {props.detail}
+          </Text>
+        </View>
+      )}
       {props.removable ? <ChipIcon name="x" selected={!!props.selected} toneFg={tone?.fg} /> : null}
     </>
   );

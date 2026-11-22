@@ -5,10 +5,12 @@ import {
   eatersForDay,
   pagePlanChoice,
   planButtonLabel,
+  refreshPlanEaters,
   plannedNotice,
   addedNotice,
   planWeek,
   weekDays,
+  weekOffsetFor,
   withPlanDay,
 } from './plan-recipe';
 import { enrico, nadja, trip } from './test-fixtures';
@@ -33,20 +35,20 @@ describe('plan a recipe from its page (REQ-009)', () => {
     });
   });
 
-  it('AC-034: the days Mo to So of the shown week', () => {
+  it('AC-034, spec 0023 AC-053: the days Mo to So of the shown week, with their date', () => {
     expect(weekDays('2026-11-16')).toEqual([
-      { date: '2026-11-16', label: 'Mo' },
-      { date: '2026-11-17', label: 'Di' },
-      { date: '2026-11-18', label: 'Mi' },
-      { date: '2026-11-19', label: 'Do' },
-      { date: '2026-11-20', label: 'Fr' },
-      { date: '2026-11-21', label: 'Sa' },
-      { date: '2026-11-22', label: 'So' },
+      { date: '2026-11-16', label: 'Mo', detail: '16.11.' },
+      { date: '2026-11-17', label: 'Di', detail: '17.11.' },
+      { date: '2026-11-18', label: 'Mi', detail: '18.11.' },
+      { date: '2026-11-19', label: 'Do', detail: '19.11.' },
+      { date: '2026-11-20', label: 'Fr', detail: '20.11.' },
+      { date: '2026-11-21', label: 'Sa', detail: '21.11.' },
+      { date: '2026-11-22', label: 'So', detail: '22.11.' },
     ]);
   });
 
   it('AC-034: the button names day and Tageszeit', () => {
-    expect(planButtonLabel('2026-11-21', 'Abend')).toBe('Am Sa Abend einplanen');
+    expect(planButtonLabel('2026-11-21', 'Abend')).toBe('Am Sa 21.11. Abend einplanen');
   });
 
   it('AC-025 (0018): the notice names weekday, date and Tageszeit', () => {
@@ -66,7 +68,7 @@ describe('plan a recipe from its page (REQ-009)', () => {
     expect(planWeek(today, 1)).toEqual({ start: '2026-11-23', label: 'KW 48 · 23.–29. Nov' });
     expect(planWeek(today, -1).label).toBe('KW 46 · 9.–15. Nov');
     expect(planWeek(today, 6).label).toBe('KW 53 · 28. Dez – 3. Jan');
-    expect(planButtonLabel('2026-11-25', 'Mittag')).toBe('Am Mi Mittag einplanen');
+    expect(planButtonLabel('2026-11-25', 'Mittag')).toBe('Am Mi 25.11. Mittag einplanen');
   });
 
   it('AC-036: members travelling on the chosen day are not preselected', () => {
@@ -120,5 +122,42 @@ describe('plan a recipe from its page (REQ-009)', () => {
 
   it('a household without Tageszeiten has no slot to preselect', () => {
     expect(defaultPlanChoice(today, [], [enrico], []).slotId).toBeUndefined();
+  });
+});
+
+describe('spec 0023 REQ-013: the plan window', () => {
+  it('AC-053: on Sunday 22.11. the week 47 with "So 22.11." and its button', () => {
+    expect(planWeek('2026-11-22', 0).label).toBe('KW 47 · 16.–22. Nov');
+    expect(planButtonLabel('2026-11-22', 'Abend')).toBe('Am So 22.11. Abend einplanen');
+  });
+
+  it('AC-054: "Anderes Datum …" 14.2.2027 shows its week', () => {
+    const offset = weekOffsetFor('2026-11-22', '2027-02-14');
+    expect(planWeek('2026-11-22', offset).label).toBe('KW 6 · 8.–14. Feb');
+    expect(planButtonLabel('2027-02-14', 'Abend')).toBe('Am So 14.2. Abend einplanen');
+    expect(weekOffsetFor('2026-11-22', '2026-11-16')).toBe(0);
+    expect(weekOffsetFor('2026-11-22', '2026-11-15')).toBe(-1);
+  });
+
+  it('AC-055: members arriving after the window opened are chosen while untouched', () => {
+    const opened = defaultPlanChoice(today, slots, [], []);
+    expect(opened.eaterIds).toEqual([]);
+    const later = refreshPlanEaters(opened, false, [enrico, nadja], []);
+    expect(later.eaterIds).toEqual([enrico.id, nadja.id]);
+  });
+
+  it('AC-056: a choice made by hand stays when a trip arrives', () => {
+    const chosen = {
+      ...defaultPlanChoice(today, slots, [enrico, nadja], []),
+      eaterIds: [enrico.id],
+    };
+    const trips = [trip('t', [enrico.id], today, today)];
+    expect(refreshPlanEaters(chosen, true, [enrico, nadja], trips)).toBe(chosen);
+    expect(refreshPlanEaters(chosen, false, [enrico, nadja], trips).eaterIds).toEqual([nadja.id]);
+  });
+
+  it('returns the same choice when nothing changes', () => {
+    const choice = defaultPlanChoice(today, slots, [enrico, nadja], []);
+    expect(refreshPlanEaters(choice, false, [enrico, nadja], [])).toBe(choice);
   });
 });
