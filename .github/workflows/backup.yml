@@ -147,7 +147,18 @@ jobs:
         run: |
           aws configure set default.s3.addressing_style path
           # Only from the bucket to the runner; the key could also write and delete.
-          aws s3 sync s3://household-media ./media --endpoint-url "$BACKUP_S3_ENDPOINT" --only-show-errors --no-progress
+          if ! out=$(aws s3 sync s3://household-media ./media --endpoint-url "$BACKUP_S3_ENDPOINT" --only-show-errors --no-progress 2>&1); then
+            # Before the first release the migrations have not created the bucket yet (the release
+            # backs up before it migrates). Then there are no photos; the check after every delivery
+            # requires the bucket, so a bucket lost later still shows up there.
+            if printf '%s' "$out" | grep -q 'NoSuchBucket'; then
+              echo "::warning::Bucket household-media fehlt – keine Fotos gesichert (vor der ersten Veröffentlichung erwartet)"
+              mkdir -p ./media
+            else
+              printf '%s\n' "$out" >&2
+              exit 1
+            fi
+          fi
 
       - name: Verschlüsseln und Begleitdatei
         working-directory: ${{ runner.temp }}/backup/dump
