@@ -8,6 +8,7 @@ import {
   type MoveBounds,
 } from '@housekeeping/core';
 import {
+  DragBadge,
   Text,
   space,
   toast,
@@ -234,34 +235,28 @@ export function RangeMark(props: { date: ISODate }) {
   );
 }
 
-/** "Mo 7.12. – Fr 11.12. · 5 Tage" at the top while a trip is drawn (REQ-007). */
+/**
+ * "Mo 7.12. – Fr 11.12. · 5 Tage" above the finger while a trip is drawn (REQ-007): near where
+ * the eye is, never over the header.
+ */
 export function TripRangeBanner(props: { label: string | null }) {
   const theme = useTheme();
   if (props.label === null) return null;
   return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: space.s,
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        zIndex: 10,
-      }}
-    >
+    <DragBadge>
       <View
         style={{
           paddingHorizontal: space.m,
           paddingVertical: space.xs,
           borderRadius: theme.shape.radius.chip,
           backgroundColor: theme.colors.accent,
+          boxShadow: theme.colors.shadowRaised,
         }}
       >
-        <Text variant="smallStrong" color="onAccent" testID="trip-range-label">
+        <Text variant="smallStrong" color="onAccent" numberOfLines={1} testID="trip-range-label">
           {props.label}
         </Text>
       </View>
-    </View>
+    </DragBadge>
   );
 }

@@ -30,8 +30,11 @@ gespeichert, der Test zu AC-017 hatte gezeigt, dass sie sonst beim alten Tag bli
    je Wochenzeile ein Rechteck, der Tag wird berechnet (rund 60 statt 365 Messungen). Gebaut je
    Zeile statt je Monat (Task 9), weil Reise-Streifen und Aufgaben die Zeilen eines Monats
    unterschiedlich hoch machen.
-4. **Ränder:** oben und unten 64 px Mitscrollen (rAF); links und rechts Zonen mit ‹ › mindestens
-   20 px vom Bildschirmrand (Zurück-Geste), blättern nach 600 ms, dann alle 900 ms. Beginnt das
+4. **Ränder:** oben und unten 64 px Mitscrollen (rAF); links und rechts 32 px breite Zonen,
+   die 20 px vom Bildschirmrand beginnen (Zurück-Geste), mit schlanken Griffen ‹ › statt eines
+   Schleiers; liegt die Zone über einem Ziel, endet sie an dessen Mitte, damit Montag und Sonntag
+   im Handy-Raster ablegbar bleiben (UI-Prüfung 22.11.2026). Blättern nach 1 s, dann alle 1,2 s.
+   Beginnt das
    Ziehen in einer Zone (Montag im Handy-Raster, eine Reise für einen Tag), blättert sie erst,
    wenn der Zeiger sie einmal verlassen hat (Task 9).
 5. **Abbrechen:** ohne Ziel loslassen, Escape, zweiter Zeiger, Android-Zurück, Übernahme durch einen
@@ -111,8 +114,8 @@ installierter Web-App (Enrico).
 ## Nachweis
 
 - [ ] Je AC ein Test, der rot war und jetzt grün ist, oder ein Klick- bzw. Gerätebeleg
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün (22.11.2026)
 - [ ] `pnpm e2e` und `pnpm e2e:dev` lokal grün
-- [ ] `/ui-verify` (Handy, Tablet, Desktop, hell und dunkel), `review-animations`
+- [x] `/ui-verify` (Handy, Tablet, Desktop, hell und dunkel) am 22.11.2026; Befunde 1–6 und 8–11 behoben, 7 (gekürzte Wochentitel am Tablet, älter als 0016) offen; Bewegung am Code beurteilt (Skill `review-animations` gibt es nicht)
 - [ ] Handtest iPhone-PWA: Halten, Ziehen, Rand, Reise ziehen (Enrico)
-- [ ] spec-auditor ohne fehlende AC
+- [x] spec-auditor (22.11.2026): fehlende Tests zu AC-005, 008, 010, 017, 031, 033 ergänzt; AC-017 deckte einen Fehler auf (Herkunft auf der Einkaufsliste), behoben

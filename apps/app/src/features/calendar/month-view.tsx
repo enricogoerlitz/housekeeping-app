@@ -10,7 +10,7 @@ import {
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
-import { Button, KindDot, Text, focusRing, useTheme } from '@housekeeping/ui';
+import { Button, KindDot, Text, keyboardFocusRing, useTheme } from '@housekeeping/ui';
 import { Platform, Pressable, View, type HostInstance, type ViewStyle } from 'react-native';
 
 import { AbsenceStripeView, EntryLine, useStripeColors } from './calendar-parts';
@@ -202,7 +202,7 @@ function MonthPhone(props: MonthViewProps) {
                       onPress={guardPress(() => props.onOpenDay(date))}
                       style={(state) => [
                         { alignItems: 'center', paddingVertical: 4, minHeight: 48 },
-                        focusRing(theme, (state as PressState).focused),
+                        keyboardFocusRing(theme, (state as PressState).focused),
                       ]}
                     >
                       <RangeMark date={date} />
@@ -243,12 +243,11 @@ function MonthGridDesktop(props: MonthViewProps) {
   const first = weeks[0]?.[0] ?? props.monthStart;
   const last = weeks[weeks.length - 1]?.[6] ?? props.monthStart;
   const chores = props.showHousehold ? data.householdRow(first, last) : {};
+  // Grid lines, today's tint and the trip marking lie behind the week (DayColumns), so they also
+  // run through the rows of trip stripes.
   const cell = (date: ISODate): ViewStyle => ({
     flex: 1,
     minWidth: 0,
-    borderRightWidth: 1,
-    borderColor: c.border,
-    backgroundColor: date === data.today ? c.accentSoft : 'transparent',
     opacity: refused(date) ? PALE_OPACITY : 1,
   });
 
@@ -273,13 +272,13 @@ function MonthGridDesktop(props: MonthViewProps) {
             dates={week}
             style={{ borderTopWidth: 1, borderColor: c.border }}
           >
+            <DayColumns week={week} today={data.today} refused={refused} />
             <View style={{ flexDirection: 'row' }}>
               {week.map((date) => {
                 const choreCount = (chores[date] ?? []).length;
                 const selected = date === props.selected;
                 return (
                   <View key={date} style={cell(date)}>
-                    <RangeMark date={date} />
                     <TripSource date={date}>
                       {(guardPress) => (
                         <Pressable
@@ -298,7 +297,7 @@ function MonthGridDesktop(props: MonthViewProps) {
                                 alignItems: 'flex-start',
                                 backgroundColor: hovered ? c.surfaceSunken : 'transparent',
                               },
-                              focusRing(theme, focused),
+                              keyboardFocusRing(theme, focused),
                             ];
                           }}
                         >
@@ -316,29 +315,34 @@ function MonthGridDesktop(props: MonthViewProps) {
                 );
               })}
             </View>
-            {segments.map(({ stripe, segment }) => (
-              <View key={stripe.key} style={{ height: 26, marginVertical: 1 }}>
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: `${(segment.start / 7) * 100}%`,
-                    width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
-                    paddingHorizontal: 2,
-                  }}
-                >
-                  <AbsenceStripeView
-                    stripe={stripe}
-                    data={data}
-                    separator=" · "
-                    continuesBefore={segment.continuesBefore}
-                    continuesAfter={segment.continuesAfter}
-                    onPress={props.onOpenStripe}
-                  />
-                </View>
+            {segments.length > 0 ? (
+              <View>
+                {segments.map(({ stripe, segment }) => (
+                  <View key={stripe.key} style={{ height: 26, marginVertical: 1 }}>
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        left: `${(segment.start / 7) * 100}%`,
+                        width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
+                        paddingHorizontal: 2,
+                      }}
+                    >
+                      <AbsenceStripeView
+                        stripe={stripe}
+                        data={data}
+                        separator=" · "
+                        continuesBefore={segment.continuesBefore}
+                        continuesAfter={segment.continuesAfter}
+                        onPress={props.onOpenStripe}
+                      />
+                    </View>
+                  </View>
+                ))}
+                <PaleDays week={week} refused={refused} />
               </View>
-            ))}
+            ) : null}
             <View style={{ flexDirection: 'row' }}>
               {week.map((date) => {
                 const { shown, more } = overflow(data.dayEntries(date));
@@ -349,7 +353,6 @@ function MonthGridDesktop(props: MonthViewProps) {
                     style={[cell(date), { minHeight: 96 }]}
                     testID={`month-cell-${date}`}
                   >
-                    <RangeMark date={date} />
                     <TripSource date={date} style={FILL}>
                       {(guardPress) => (
                         <Pressable
@@ -393,6 +396,60 @@ function MonthGridDesktop(props: MonthViewProps) {
           </WeekRowTarget>
         );
       })}
+    </View>
+  );
+}
+
+/**
+ * Behind a desktop week, the full height of each day including the rows of trip stripes: its grid
+ * line, the tint of today and the marking of a trip being drawn (REQ-007).
+ */
+function DayColumns(props: {
+  week: ISODate[];
+  today: ISODate;
+  refused: (date: ISODate) => boolean;
+}) {
+  const c = useTheme().colors;
+  return (
+    <View pointerEvents="none" style={[FILL, { flexDirection: 'row' }]}>
+      {props.week.map((date) => (
+        <View
+          key={date}
+          style={{
+            flex: 1,
+            borderRightWidth: 1,
+            borderColor: c.border,
+            backgroundColor: date === props.today ? c.accentSoft : 'transparent',
+            opacity: props.refused(date) ? PALE_OPACITY : 1,
+          }}
+        >
+          <RangeMark date={date} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Over the trip stripes of a desktop week, days the dragged entry cannot go to look pale too
+ * (AC-015): a stripe spans several days, so the page colour laid over a day fades its part.
+ */
+function PaleDays(props: { week: ISODate[]; refused: (date: ISODate) => boolean }) {
+  const c = useTheme().colors;
+  if (!props.week.some(props.refused)) return null;
+  return (
+    <View pointerEvents="none" style={[FILL, { flexDirection: 'row' }]}>
+      {props.week.map((date) => (
+        <View
+          key={date}
+          testID={props.refused(date) ? `month-pale-${date}` : undefined}
+          style={{
+            flex: 1,
+            backgroundColor: props.refused(date) ? c.bg : 'transparent',
+            opacity: 1 - PALE_OPACITY,
+          }}
+        />
+      ))}
     </View>
   );
 }

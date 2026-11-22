@@ -33,6 +33,7 @@ export {
   Stars,
   TextField,
   focusRing,
+  keyboardFocusRing,
   type ButtonProps,
   type IconButtonProps,
   type ChipProps,
@@ -149,6 +150,7 @@ export { PhotoCollage, type PhotoCollageProps } from './display';
 export { SelectRow, type SelectRowProps } from './lists';
 export { TimeField, type TimeFieldProps } from './time-field';
 export {
+  DragBadge,
   DragProvider,
   useDragSource,
   useDropTarget,
