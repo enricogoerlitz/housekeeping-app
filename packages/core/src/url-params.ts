@@ -601,6 +601,7 @@ export function startPageHref(href: string): string {
 
 // ---------- Sign-in ----------
 
+const CONTROL = /[\u0000-\u001f\u007f]/;
 const RETURN_PATH = /^\/[A-Za-z0-9\-._~%!$&'()*+,;=:@/?]*$/;
 
 /**
@@ -617,7 +618,9 @@ export function safeReturnPath(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
-  if (decoded.startsWith('//') || decoded.includes('\\')) return undefined;
+  if (decoded.startsWith('//') || decoded.includes('\\') || CONTROL.test(decoded)) {
+    return undefined;
+  }
   return value === '/' ? undefined : value;
 }
 

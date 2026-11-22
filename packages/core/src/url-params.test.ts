@@ -233,6 +233,8 @@ describe('safeReturnPath', () => {
       'javascript:alert(1)',
       ' /kalender',
       '/kalender\n',
+      '/kalender%0a',
+      '/%00',
       '',
       undefined,
       42,
