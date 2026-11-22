@@ -150,4 +150,4 @@ jobs:
       - name: Konfiguration für das Produktionsprojekt
         run: node scripts/ci/supabase-remote.mjs production
       - name: Produktion von außen prüfen
-        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$COMMIT" --old-origin "$PRODUCTION_OLD_WEB_ORIGIN"
+        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$COMMIT" ${PRODUCTION_OLD_WEB_ORIGIN:+--old-origin "$PRODUCTION_OLD_WEB_ORIGIN"}

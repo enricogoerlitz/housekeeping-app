@@ -165,8 +165,8 @@ macht Enrico:
 2. Dasselbe in `swa-housekeeping-app-preview` mit `test.house.kuschel-nest.de`.
 3. Die alten Adressen als GitHub-Variablen setzen (keine Secrets):
    `gh variable set PRODUCTION_OLD_WEB_ORIGIN --env production --body https://brave-bush-089e7a80f.6.azurestaticapps.net -R "$R"`
-   und `gh variable set PREVIEW_OLD_WEB_ORIGIN --env preview --body <alte Vorschau-Adresse> -R "$R"`
-   (die alte Vorschau-Adresse steht im Portal unter „Übersicht“ → „URL“).
+   und `gh variable set PREVIEW_OLD_WEB_ORIGIN --env preview --body https://victorious-island-00341950f.3.azurestaticapps.net -R "$R"`.
+   Erst nach Schritt 1 und 2 setzen: Ab dann prüft jeder Lauf die Umleitung.
 4. Prüfen (gibt nur Statuszeile und Ziel aus, kein Secret):
 
 ```sh
@@ -177,8 +177,8 @@ curl -sI https://house.kuschel-nest.de/ | grep -i '^HTTP'
 Erwartet: `HTTP/2 301` oder `308` mit `location: https://house.kuschel-nest.de/kalender`, die eigene
 Domain antwortet mit `200`. Jeder Lauf von Veröffentlichung, Vorschau und erneuter
 Web-Auslieferung prüft das (`verify.mjs --old-origin`, Prüfung „Alte Adresse“); antwortet die alte
-Adresse mit `200`, ist der Lauf rot mit „Alte Adresse leitet nicht um“, fehlt die Variable, mit
-„Alte Adresse nicht angegeben“. Supabase lässt als Rücksprung schon nur die eigenen Domains zu
+Adresse mit `200`, ist der Lauf rot mit „Alte Adresse leitet nicht um“. Solange die Variable fehlt,
+entfällt nur diese Prüfung; der übrige Lauf ist davon nicht betroffen. Supabase lässt als Rücksprung schon nur die eigenen Domains zu
 (`supabase/config.toml`).
 
 ## Neue Person einladen

@@ -356,8 +356,9 @@ staticwebapp hostname` kennt kein „Standard setzen“. Durchführen: Enrico (P
     Adress-Parameter (`fenster=profil|umbenennen|bearbeiten`) bringt Spec 0019.
 19. X-09: `verify.mjs --old-origin` prüft `/kalender` der alten Adresse; die drei Workflows geben
     die Variablen `PRODUCTION_OLD_WEB_ORIGIN` bzw. `PREVIEW_OLD_WEB_ORIGIN` mit. Fehlt die Variable,
-    ist der Lauf rot („Alte Adresse nicht angegeben“). Portal-Schritt und Variablen setzt Enrico
-    (`betrieb.md`, „Eigene Domain als Standard“).
+    entfällt nur diese Prüfung (Hauptsitzung, 22.11.2026: sonst wäre jede Vorschau rot, bis Enrico
+    den Portal-Schritt gemacht hat). Portal-Schritt und Variablen: Enrico (`betrieb.md`, „Eigene
+    Domain als Standard“); die Variablen erst danach setzen.
 20. AC-022 prüft pgTAP nacheinander (wer zuerst beitritt, verhindert das Löschen) und dass beide
     Funktionen dieselbe Zeile `for update` sperren; zwei echte Sitzungen gleichzeitig laufen nicht
     in pgTAP.

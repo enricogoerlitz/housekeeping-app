@@ -236,4 +236,4 @@ jobs:
         run: node scripts/ci/supabase-remote.mjs preview
       - name: Vorschau von außen prüfen
         # AC-013 (CSP names only the preview project), AC-069 (version.json names this commit).
-        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA" --old-origin "$PREVIEW_OLD_WEB_ORIGIN"
+        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA" ${PREVIEW_OLD_WEB_ORIGIN:+--old-origin "$PREVIEW_OLD_WEB_ORIGIN"}
