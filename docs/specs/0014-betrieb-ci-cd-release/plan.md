@@ -145,7 +145,8 @@ sql stable`, gibt `text` im Format `JJJJ.M.N` zurück, `execute` für `anon` und
     dann Vergleich mit `manifest.json` (AC-056). Zusätzlich: Die neueste tägliche Sicherung darf
     höchstens 36 Stunden alt sein, sonst rot („Sicherung zu alt“).
 20. **Azure:** verwaltete Identitäten (user-assigned) mit föderierten Anmeldedaten, Subjekt
-    `repo:enricogoerlitz/housekeeping-app:environment:<umgebung>`. Eigene Rollen statt
+    `repo:enricogoerlitz@81803968/housekeeping-app@1465163335:environment:<umgebung>` (das Repo nutzt
+    die unveränderlichen Subjekte von GitHub mit Besitzer- und Repo-ID; geändert am 22.11.2026). Eigene Rollen statt
     „Contributor“: „Housekeeping SWA Deploy Token Reader“ (nur `staticSites/read` und
     `staticSites/listSecrets/action`, zugewiesen an genau eine Static Web App) und „Housekeeping
     Backup Writer“ (nur `blobs/write` und `blobs/add/action`, zugewiesen am Container). Der
@@ -815,11 +816,13 @@ for role in role-swa-deploy-token role-backup-writer; do
   az role definition create --role-definition "@tmp/azure/$role.json"
 done
 
-# Identitäten mit föderierten Anmeldedaten je Umgebung
+# Identitäten mit föderierten Anmeldedaten je Umgebung. Präfix aus GitHub lesen; Variablen in
+# geschweiften Klammern, sonst liest zsh „$R:e…“ als Modifikator und verschluckt den Repo-Namen.
+OIDC_PREFIX=$(gh api repos/enricogoerlitz/housekeeping-app/actions/oidc/customization/sub --jq .sub_claim_prefix)
 ident() { az identity create -g "$RG" -n "$1" -l germanywestcentral -o none
   az identity federated-credential create -g "$RG" --identity-name "$1" -n "github-$2" \
     --issuer https://token.actions.githubusercontent.com \
-    --subject "repo:$R:environment:$2" --audiences api://AzureADTokenExchange -o none; }
+    --subject "${OIDC_PREFIX}:environment:${2}" --audiences api://AzureADTokenExchange -o none; }
 ident id-housekeeping-web-prd production
 ident id-housekeeping-web-preview preview
 ident id-housekeeping-backup backup
@@ -1148,3 +1151,20 @@ Wird am Ende ausgefüllt.
     `scripts/ci/workflows.test.mjs` verlangt für jeden festen Wert eine Übergabe. Gegen das
     Vorschau-Projekt ohne `.env` geprüft: mit und ohne `VAPID_SUBJECT`-Argument „Set 2 secrets“, der
     übergebene Wert ersetzt also den aus der Konfiguration.
+12. **Föderierte Anmeldedaten in Azure korrigiert (22.11.2026).** Die vierte Vorschau scheiterte bei
+    `azure/login`: Alle vier Einträge hatten den Betreff `repo:nvironment:<umgebung>`, weil zsh beim
+    Anlegen in `repo:$R:environment:…` das `:e` als Modifikator las. Außerdem sendet GitHub für dieses
+    Repo unveränderliche Betreffs mit IDs. Die Einträge sind auf
+    `repo:enricogoerlitz@81803968/housekeeping-app@1465163335:environment:<umgebung>` gesetzt, der
+    Befehl in B3 liest den Präfix aus GitHub und schreibt Variablen in geschweiften Klammern.
+13. **Prüfung nach der Auslieferung an der echten Vorschau korrigiert (22.11.2026).** Die erste
+    vollständig ausgelieferte Vorschau war in 6 von 14 Prüfungen rot:
+    - Ohne Agent-Modus gibt `supabase db query --output-format json` die Zeilen als JSON-Liste aus,
+      nicht als Objekt mit `rows`; `verify.mjs` liest jetzt beides (Seed-Daten, Foto-Bucket, Foto).
+    - Die Nur-Lese-Rolle von `--read-only` darf nicht `set role authenticated`; die eine feste
+      GraphQL-Abfrage läuft mit `--yes` (nur `select`, `set_config` transaktionslokal).
+    - `push-send` las sein Geheimnis vor der Signaturprüfung und antwortete in der Vorschau (ohne
+      Push-Secrets, Entscheidung 8) mit 500; unsignierte Anfragen bekommen jetzt 401, bevor die
+      Konfiguration gelesen wird.
+    - `config diff` meldete lokale Werte: Pooler-Größen (lokal aus) auf die Werte des Free-Tarifs
+      (15, 200), der ungenutzte Vektorspeicher aus.
