@@ -85,7 +85,8 @@ vor sich sieht. Und das Wort „Abwesenheit“ klingt nach Büro, nicht nach Zuh
 - **Handy:** ein Fenster von unten in halber Höhe; das Raster darüber bleibt bedienbar (anderen Tag
   antippen, blättern, Eintrag hineinziehen). Nach oben gezogen wird es groß, nach unten gezogen
   schließt es.
-- **Ab 700 px:** ein Bereich am rechten Rand neben dem Raster, mit ✕.
+- **Ab 1100 px:** ein Bereich am rechten Rand neben dem Raster, mit ✕. Auf Tablets (700 bis
+  1099 px) kommt es von unten wie auf dem Handy, damit das Raster breit bleibt (Offene Frage 8).
 - **Inhalt:** Kopf mit Datum („FR 27. NOVEMBER“) und einer Wochenleiste Mo bis So zum Wechseln des
   Tags; Reise-Streifen des Tags; Aufgaben des Tags, wenn die Haushalt-Zeile für „Monat“
   eingeschaltet ist; danach **alle** Tageszeiten des Haushalts mit ihren Einträgen und je
@@ -192,7 +193,11 @@ Und         es erscheint „Offline – zum Bearbeiten brauchst du Netz“
 **Regeln:** Während des Ziehens zeigt die Handy-Woche bei jedem Tag alle Tageszeiten des Haushalts
 als Ziele, auch die leeren (sonst zeigt sie nur Tageszeiten mit Einträgen, Spec 0010, AC-008). Am
 linken und rechten Rand der Ansicht liegen Zonen mit ‹ und ›: Hält man den Eintrag dort, blättert
-die Ansicht um einen Zeitraum und nach kurzem Halten wieder. Vergangene Tage sind erlaubte Ziele.
+die Ansicht um einen Zeitraum und nach kurzem Halten wieder. Beginnt das Ziehen in einer solchen
+Zone, blättert sie erst, wenn der Zeiger sie einmal verlassen hat (geändert am 22.11.2026: Im
+Handy-Raster liegt der Montag in der linken Zone, und eine Reise für einen einzelnen Tag hält man
+oft am Rand; ohne die Ausnahme blätterte die Ansicht schon beim Anfassen).
+Vergangene Tage sind erlaubte Ziele.
 Am Desktop-Monat fasst man die Zeilen im Tagesfeld an; im Handy-Monat und im Jahr die Zeilen im
 Tages-Fenster (REQ-006) und in der Leiste „Vorgemerkt“ (REQ-003).
 
@@ -672,13 +677,13 @@ Dann        erscheint die Seite „Nicht gefunden“
 
 ## Rückverfolgbarkeit
 
-| REQ     | AC                | Task (plan.md) | Test |
-| ------- | ----------------- | -------------- | ---- |
-| REQ-001 | AC-001 bis AC-005 | —              | —    |
-| REQ-002 | AC-006 bis AC-010 | —              | —    |
-| REQ-003 | AC-011 bis AC-013 | —              | —    |
-| REQ-004 | AC-014 bis AC-018 | —              | —    |
-| REQ-005 | AC-019 bis AC-021 | —              | —    |
-| REQ-006 | AC-022 bis AC-027 | —              | —    |
-| REQ-007 | AC-028 bis AC-032 | —              | —    |
-| REQ-008 | AC-033, AC-034    | —              | —    |
+| REQ     | AC                | Task (plan.md) | Test                                                                                                                                                                                                                                               |
+| ------- | ----------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | AC-001 bis AC-005 | 2, 5, 9, 11    | core `plan-move.test.ts` (AC-001 bis AC-003); ui `drag-gesture-state.test.ts` (AC-003 bis AC-005), `drag-controller.test.ts` (AC-001 bis AC-003), `drop-targets.test.ts` (AC-003); e2e `rundgang-kalender-ziehen.spec.ts` (AC-001, AC-002, AC-005) |
+| REQ-002 | AC-006 bis AC-010 | 1, 2, 5, 9, 11 | core `plan-move.test.ts` (AC-006 bis AC-008); ui `drag-controller.test.ts` (AC-007, AC-009), `edge-pager.test.ts` (AC-009), `docked-panel-state.test.ts` (AC-008); e2e `rundgang-kalender-ziehen.spec.ts` (AC-006 bis AC-010)                      |
+| REQ-003 | AC-011 bis AC-013 | 1, 9           | core `plan-move.test.ts` (AC-011 bis AC-013); e2e `rundgang-kalender-ziehen.spec.ts` (AC-011 bis AC-013)                                                                                                                                           |
+| REQ-004 | AC-014 bis AC-018 | 1, 7, 9        | core `plan-move.test.ts` (AC-015, AC-016), `shopping-list.test.ts` (AC-017); ui `drag-controller.test.ts` (AC-015); api `commands-plan.backend.test.ts` (AC-014, AC-017, AC-018); e2e `rundgang-kalender-ziehen.spec.ts` (AC-015)                  |
+| REQ-005 | AC-019 bis AC-021 | 1, 2, 4, 7     | core `plan-move.test.ts` (AC-019, AC-021), `calendar.test.ts` (AC-019); ui `month-calendar-nav.test.ts` (AC-019, AC-021); e2e `rundgang-kalender-verschieben.spec.ts` (AC-019 bis AC-021)                                                          |
+| REQ-006 | AC-022 bis AC-027 | 1, 6, 8        | core `calendar.test.ts` (AC-022, AC-023, AC-026, AC-027); ui `docked-panel-state.test.ts` (AC-022, AC-024); e2e `rundgang-kalender-tag.spec.ts` (AC-022 bis AC-027)                                                                                |
+| REQ-007 | AC-028 bis AC-032 | 1, 10          | core `calendar.test.ts` (AC-028, AC-029), `plan-move.test.ts` (AC-028); ui `drag-controller.test.ts` (AC-029); e2e `rundgang-kalender-ziehen.spec.ts` (AC-028 bis AC-031), `rundgang-kalender-tag.spec.ts` (AC-032)                                |
+| REQ-008 | AC-033, AC-034    | 3              | core `absences.test.ts`, `overview.test.ts` (AC-033); e2e `rundgang-plan.spec.ts` (AC-033, AC-034)                                                                                                                                                 |
