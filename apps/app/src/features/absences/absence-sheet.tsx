@@ -12,16 +12,12 @@ import {
   absenceWhoHint,
   droppedPackingListMessage,
   formatPickerDate,
-  inRange,
-  monthGrid,
   monthTitle,
   openRangeField,
-  parseISODate,
   pickRangeDate,
   planAbsenceWrite,
   planPackingLists,
   saveLabel,
-  shiftPeriod,
   startOfMonth,
   validateAbsenceDraft,
   type AbsenceStripe,
@@ -33,7 +29,7 @@ import {
   Avatar,
   Button,
   Chip,
-  IconButton,
+  MonthCalendar,
   Sheet,
   Stack,
   Text,
@@ -311,91 +307,23 @@ function RangeCalendar(props: {
   onMonth: (month: ISODate) => void;
   onPick: (date: ISODate) => void;
 }) {
-  const theme = useTheme();
   const { range } = props;
-  const currentMonth = props.month.slice(0, 7);
   return (
-    <View
-      testID="range-picker"
-      style={{
-        padding: 8,
-        borderRadius: theme.shape.radius.card,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <IconButton
-          icon="chevron-left"
-          label="Voriger Monat"
-          onPress={() => props.onMonth(shiftPeriod('month', props.month, -1))}
-          testID="range-prev"
-        />
-        <Text variant="bodyStrong" testID="range-title">
-          {monthTitle(props.month)}
-        </Text>
-        <IconButton
-          icon="chevron-right"
-          label="Nächster Monat"
-          onPress={() => props.onMonth(shiftPeriod('month', props.month, 1))}
-          testID="range-next"
-        />
-      </View>
-      <Text variant="caption" color="muted" style={{ textAlign: 'center', marginBottom: 4 }}>
-        {range.editing === 'from' ? 'Wähle „Von“' : 'Wähle „Bis“'}
-      </Text>
-      <View style={{ flexDirection: 'row' }}>
-        {WEEKDAY_HEADS.map((head) => (
-          <Text key={head} variant="caption" color="muted" style={{ flex: 1, textAlign: 'center' }}>
-            {head}
-          </Text>
-        ))}
-      </View>
-      {monthGrid(props.month).map((week) => (
-        <View key={week[0]} style={{ flexDirection: 'row' }}>
-          {week.map((date) => {
-            if (date.slice(0, 7) !== currentMonth) return <View key={date} style={{ flex: 1 }} />;
-            const marked = inRange(date, range.from, range.to);
-            const edge = date === range.from || date === range.to;
-            return (
-              <Pressable
-                key={date}
-                testID={`range-day-${date}`}
-                accessibilityRole="button"
-                accessibilityLabel={formatPickerDate(date)}
-                accessibilityState={{ selected: marked }}
-                onPress={() => props.onPick(date)}
-                style={{ flex: 1, alignItems: 'center', paddingVertical: 2 }}
-              >
-                <View
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 19,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: edge
-                      ? theme.colors.accent
-                      : marked
-                        ? theme.colors.accentSoft
-                        : 'transparent',
-                    borderWidth: date === props.today && !edge ? 1 : 0,
-                    borderColor: theme.colors.accent,
-                  }}
-                >
-                  <Text
-                    variant="small"
-                    style={{ color: edge ? theme.colors.onAccent : theme.colors.text }}
-                  >
-                    {String(parseISODate(date).getDate())}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
-    </View>
+    <MonthCalendar
+      month={props.month}
+      onMonthChange={props.onMonth}
+      onSelect={props.onPick}
+      title={monthTitle(props.month)}
+      weekdayLabels={WEEKDAY_HEADS}
+      previousLabel="Voriger Monat"
+      nextLabel="Nächster Monat"
+      dayLabel={formatPickerDate}
+      marked={{ from: range.from, to: range.to }}
+      focusDate={range.editing === 'to' ? range.to : range.from}
+      today={props.today}
+      hint={range.editing === 'from' ? 'Wähle „Von“' : 'Wähle „Bis“'}
+      testID="range"
+    />
   );
 }
 
