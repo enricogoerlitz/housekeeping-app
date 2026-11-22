@@ -478,7 +478,8 @@ test('AC-011 (0018): "Verlassen" asks first with the way back; "Abbrechen" keeps
   page,
 }) => {
   const name = `Verlassen ${unique()}`;
-  const householdId = await createTestHousehold(name);
+  // Spec 0027, AC-017: the last member has no "Verlassen"; Nadja makes Enrico one of two.
+  const householdId = await createTestHousehold(name, { withNadja: true });
   await open(page, '/');
   await switchHousehold(page, householdId);
   await openManaged(page, 'members');

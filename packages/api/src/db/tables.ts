@@ -113,8 +113,9 @@ export const WRITABLE_COLUMNS = {
     'created_by',
   ],
   absences: ['member_id', 'from_on', 'to_on', 'note'],
-  // author_id is only accepted on insert, and the server overwrites it with auth.uid().
-  feedback: ['kind', 'text', 'status', 'screen', 'reason', 'spec_ref', 'author_id'],
+  // author_id is only accepted on insert, and the server overwrites it with auth.uid(). Status,
+  // reason and spec_ref are the developer's, set in the database (spec 0027, Decision 10).
+  feedback: ['kind', 'text', 'screen', 'author_id'],
   chores: [
     'title',
     'room',

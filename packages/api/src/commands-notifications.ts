@@ -11,7 +11,7 @@ import {
 } from '@housekeeping/core';
 
 import { onlineCall, WRITE_REJECTED_MESSAGE } from './backend';
-import { commit, getData, OfflineError, updateData } from './store';
+import { commitIn, getState, OfflineError, updateData } from './store';
 import { checkTime } from './times';
 import { TransportError, type PushSubscriptionRow } from './transport';
 
@@ -53,17 +53,24 @@ export function pushRejectedMessage(error: unknown): string {
 }
 
 /**
- * Changes the signed-in member's settings in the active household (REQ-004): shown at once, one
- * patch of only the changed fields (AC-012), refused offline. Throws before sending when the
- * result would not be valid (five-minute times, 1–4 parts) or the row has not arrived yet.
+ * Changes the signed-in member's settings in a household of hers, by default the active one
+ * (REQ-004; spec 0027, REQ-008: another one without switching the app): shown at once, one patch
+ * of only the changed fields (AC-012), refused offline. Throws before sending when the result
+ * would not be valid (five-minute times, 1–4 parts), the household is not hers or the row has not
+ * arrived yet.
  */
-export function updateNotificationSettings(patch: NotificationSettingsPatch): void {
-  const current = getData().notificationSettings;
+export function updateNotificationSettings(
+  patch: NotificationSettingsPatch,
+  householdId: Id = getState().activeHouseholdId,
+): void {
+  const household = getState().households[householdId];
+  if (!household) throw new Error('Diesen Haushalt gibt es hier nicht');
+  const current = household.notificationSettings;
   if (!current) throw new Error('Deine Einstellungen sind noch nicht geladen');
   checkTime(patch.dailySummaryAt);
   checkTime(patch.activitiesEveAt);
   const next = NotificationSettingsSchema.parse({ ...current, ...patch });
-  commit({ path: 'diff' }, () =>
+  commitIn(householdId, { path: 'diff' }, () =>
     updateData((data) =>
       data.notificationSettings ? { ...data, notificationSettings: next } : data,
     ),

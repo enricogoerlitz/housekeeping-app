@@ -1,6 +1,18 @@
 import type { Page } from '@playwright/test';
 
-import { back, expect, goOffline, login, nav, open, openSettings, test, tid } from '../helpers';
+import {
+  back,
+  chooseTime,
+  expect,
+  expectTime,
+  goOffline,
+  login,
+  nav,
+  open,
+  openSettings,
+  test,
+  tid,
+} from '../helpers';
 import { seedIds } from '../seed-ids';
 
 // Spec 0013, task 8 — the page "Benachrichtigungen" in the personal settings. Runs in the dev
@@ -51,9 +63,9 @@ test('AC-001, AC-011: "Benachrichtigungen · 2 an" in the settings, the sections
   await expect(tid(page, 'notifications-screen')).toBeVisible();
 
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
-  // Enrico belongs to two households: the section names the active one (Offene Frage 3 e).
-  await expect(tid(page, 'notif-kinds')).toContainText(
-    'Was und wann · Enrico & Nadja · gilt für alle Geräte',
+  // Enrico belongs to two households: the choice starts at the active one (spec 0027, AC-032).
+  await expect(tid(page, 'notif-household-note')).toHaveText(
+    'Gilt für „Enrico & Nadja“ auf allen deinen Geräten.',
   );
   await expect(tid(page, 'notif-devices')).toContainText('Deine Geräte');
   await expect(tid(page, 'notif-kinds')).toContainText('Während einer Reise kommt nichts.');
@@ -103,10 +115,10 @@ test('AC-012, AC-003: Tagesüberblick at 6:45 with "Essen" and "Aufgaben" stays 
   await expect(toggle(page, 'notif-kind-daily-summary')).toBeChecked();
   await tid(page, 'notif-kind-daily-summary-detail').click();
   await expect(tid(page, 'notif-kind-sheet')).toBeVisible();
-  await tid(page, 'notif-kind-time').fill('6:47');
-  await tid(page, 'notif-kind-save').click();
-  await expect(tid(page, 'notif-kind-time-error')).toHaveText('Bitte in 5-Minuten-Schritten');
-  await tid(page, 'notif-kind-time').fill('6:45');
+  // Spec 0027, AC-029: 7:30 shows as "7" and "30"; "Stunde" has 0–23 and no "–".
+  await expectTime(page, 'notif-kind-time', '07:30');
+  await expect(tid(page, 'notif-kind-time-hour').locator('option')).toHaveCount(24);
+  await chooseTime(page, 'notif-kind-time', '06:45');
   await tid(page, 'notif-part-activities').click();
   await tid(page, 'notif-part-prep').click();
   // The last part cannot be dropped (Decision 25).
@@ -133,7 +145,7 @@ test('AC-012, AC-003: Tagesüberblick at 6:45 with "Essen" and "Aufgaben" stays 
   // Back to the defaults for the other tests of the run.
   await tid(page, 'settings-notifications-row').click();
   await tid(page, 'notif-kind-daily-summary-detail').click();
-  await tid(page, 'notif-kind-time').fill('7:30');
+  await chooseTime(page, 'notif-kind-time', '07:30');
   await tid(page, 'notif-part-activities').click();
   await tid(page, 'notif-part-prep').click();
   await tid(page, 'notif-kind-save').click();
@@ -187,8 +199,8 @@ test('AC-037, Decision 12: "/?haushalt=…" opens the Übersicht of that househo
   await expect(tid(page, 'today-screen')).toBeVisible();
   await openSettings(page);
   await tid(page, 'settings-notifications-row').click();
-  await expect(tid(page, 'notif-kinds')).toContainText(
-    'Was und wann · Test · gilt für alle Geräte',
+  await expect(tid(page, 'notif-household-note')).toHaveText(
+    'Gilt für „Test“ auf allen deinen Geräten.',
   );
 
   // A broken id changes nothing; back to the demo household.

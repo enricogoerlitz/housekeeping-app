@@ -1,20 +1,23 @@
 import {
+  OfflineError,
+  syncNow,
   useCurrentMember,
+  useHousehold,
   useNotificationSettings,
   useSyncState,
-  useToday,
 } from '@housekeeping/api';
 import {
   dietPreferenceLabel,
   notificationsRowLabel,
+  syncRow,
   thisDeviceRegistered,
-  toISODate,
 } from '@housekeeping/core';
 import {
   Avatar,
   Button,
   ChoiceChips,
   Icon,
+  IconButton,
   List,
   ListDetail,
   ListRow,
@@ -24,6 +27,7 @@ import {
   Stack,
   SwitchRow,
   Text,
+  toast,
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
@@ -37,11 +41,13 @@ import {
   NotificationsScreen,
 } from '@/features/notifications/notifications-screen';
 import { devicePushSupport } from '@/features/notifications/web-push-platform';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { ownAppVersion } from '@/lib/app-version';
 import { features } from '@/lib/features';
 import { useSettings, type AppearancePreference } from '@/lib/settings';
 
+import { ProfileSheet } from './profile-sheet';
 import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
 
@@ -211,6 +217,8 @@ function ProfileSection(props: { withSignOut?: boolean }) {
   const me = useCurrentMember();
   const email = useSignedInEmail();
   const signOut = useSignOut();
+  const online = useOnlineOnly();
+  const [editing, setEditing] = useState(false);
   return (
     <Section title="Profil" testID="settings-profile">
       <Stack gap={12}>
@@ -221,9 +229,20 @@ function ProfileSection(props: { withSignOut?: boolean }) {
               .filter(Boolean)
               .join(' · ')}
             leading={<Avatar name={me.name} color={me.color} size="m" />}
+            trailing={
+              <IconButton
+                icon="pencil"
+                label="Profil bearbeiten"
+                disabled={online.disabled}
+                hint={online.hint}
+                onPress={() => setEditing(true)}
+                testID="profile-edit"
+              />
+            }
             testID="profile-current"
           />
         </List>
+        {editing ? <ProfileSheet email={email} onClose={() => setEditing(false)} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {/* From tablet width "Abmelden" is the last row of the list on the left. */}
           {props.withSignOut ? (
@@ -254,21 +273,46 @@ function VersionLine() {
   );
 }
 
-/** „Zuletzt abgeglichen: heute, 16:58“ — quiet, only for the curious. */
+/**
+ * „Zuletzt abgeglichen: heute, 16:58 · Jetzt abgleichen“ (spec 0027, REQ-010): a button that sends
+ * what waits and then pulls; a second tap while it runs starts nothing. Offline it is greyed out.
+ */
 function SyncLine() {
   const sync = useSyncState();
-  const today = useToday();
-  if (!sync.lastSyncedAt) return null;
-  const at = new Date(sync.lastSyncedAt);
-  const time = at.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  const day =
-    toISODate(at) === today
-      ? 'heute'
-      : at.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+  const household = useHousehold();
+  const online = useOnlineOnly();
+  const [syncing, setSyncing] = useState(false);
+  const row = syncRow({
+    lastSyncedAt: sync.lastSyncedAt,
+    syncing,
+    now: new Date(),
+    timeZone: household.timeZone,
+  });
+  const run = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await syncNow();
+    } catch (error) {
+      toast.show({
+        message:
+          error instanceof OfflineError || error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
   return (
-    <Text variant="caption" color="muted" testID="sync-last">
-      Zuletzt abgeglichen: {day}, {time}
-    </Text>
+    <Button
+      label={row.label}
+      accessibilityLabel={row.accessibilityLabel}
+      variant="link"
+      size="sm"
+      disabled={online.disabled}
+      hint={online.hint}
+      onPress={() => void run()}
+      testID="sync-last"
+    />
   );
 }
 

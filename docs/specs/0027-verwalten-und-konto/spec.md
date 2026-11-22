@@ -335,6 +335,37 @@ staticwebapp hostname` kennt kein „Standard setzen“. Durchführen: Enrico (P
 13. Ersetzt: Spec 0003 „Haushalte werden nie über die API gelöscht“ (Kommentar `households_select`)
     und „Wer eingeladen ist, kann sich mit Google anmelden“; Spec 0013 AC-022 (Hinweis unter der
     Uhrzeit, jetzt AC-035/AC-037); Spec 0005 Offene Frage 2 ist mit REQ-003 erledigt.
+14. Uhrzeit-Auswahl beim Bauen (Claude, 22.11.2026): Im Web das `select` des Browsers
+    (`time-select.web.tsx`), auf iOS/Android ein `Menu` (`time-select.tsx`, nur Rückfall, da nur die
+    PWA ausgeliefert wird). „Stunde“/„Minute“ stehen als `TIME_FIELD_WORDS` in `core`. Eine
+    gewählte Stunde ohne Minute ergibt „:00“; bei Pflicht-Uhrzeiten gibt es „–“ nur, solange keine
+    gewählt ist (Erinnerung, deren Vorschlag schon vorbei ist). Fehlt sie, heißt der Hinweis „Bitte
+    eine Uhrzeit wählen“; was nicht in 5-Minuten-Schritten liegt, lehnt die API mit „Keine gültige
+    Uhrzeit“ ab.
+15. „Reserviert um“ speichert jede Wahl sofort, der Hinweis „Reserviert um 19:30“ wartet auf den
+    Server; „Fertig“ sendet nach einer Ablehnung noch einmal. Die Beschriftung „Uhrzeit (optional)“
+    an Restaurant und Aktivität bringt Spec 0021 (REQ-013). `choreTimeHint` bleibt bis Aufgabe 9
+    (REQ-009), `kindsSectionTitle` bis Aufgabe 8.
+16. Beim Bauen (Claude, 22.11.2026): `household_media_names` lehnt wie `delete_household` mit
+    `not_member` bzw. `not_last_member` ab, damit die App keine Fotos eines Haushalts löscht, der
+    bleibt (Befund des Security-Checks). Die App löscht die Fotos in Stapeln zu 100.
+17. Umbenennen geht ohne neue RPC als Patch von `households.name` über `apply_changes`; Feedback
+    bearbeiten als Patch, Löschen als `delete` derselben RPC (die „+1“ gehen per Kaskade mit).
+18. REQ-008 schreibt die Einstellungen des gewählten Haushalts mit `commitIn` (packages/api), ohne
+    den Haushalt der App zu wechseln; `fuer-haushalt` liest `useLocalSearchParams`. Die übrigen
+    Adress-Parameter (`fenster=profil|umbenennen|bearbeiten`) bringt Spec 0019.
+19. X-09: `verify.mjs --old-origin` prüft `/kalender` der alten Adresse; die drei Workflows geben
+    die Variablen `PRODUCTION_OLD_WEB_ORIGIN` bzw. `PREVIEW_OLD_WEB_ORIGIN` mit. Fehlt die Variable,
+    entfällt nur diese Prüfung (Hauptsitzung, 22.11.2026: sonst wäre jede Vorschau rot, bis Enrico
+    den Portal-Schritt gemacht hat). Portal-Schritt und Variablen: Enrico (`betrieb.md`, „Eigene
+    Domain als Standard“); die Variablen erst danach setzen.
+20. AC-022 prüft pgTAP nacheinander (wer zuerst beitritt, verhindert das Löschen) und dass beide
+    Funktionen dieselbe Zeile `for update` sperren; zwei echte Sitzungen gleichzeitig laufen nicht
+    in pgTAP.
+21. Beim Zusammenführen (Claude, 22.11.2026): Das Streichen von `accepted_at` ist ein Rückbau; die
+    Migration trägt den Kopf `-- contract: …; min_app_version: 2026.11.1` und hebt
+    `public.min_app_version()` auf die zuletzt veröffentlichte Version (höher lässt die Pipeline
+    nicht zu; es gibt keine Altlasten vor v1).
 
 ## Daten
 
@@ -361,38 +392,50 @@ null or remind_at_due_time`; in `apply_changes` und `private.chore_reminder_cand
 
 ## Risiken
 
-| Risiko                                                                                      | Gegenmaßnahme                                                                                         | Test                                   |
-| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| Fremder löscht einen Haushalt oder zieht eine Einladung zurück                              | RPC prüft Mitgliedschaft über `auth.uid()`; fremde IDs → `not_member` bzw. `invitation_not_found`     | pgTAP AC-004, AC-021                   |
-| Nicht-letztes Mitglied löscht; Beitritt während des Löschens                                | `for update` auf `households`, Zählung unter der Sperre; `accept_invitation` sperrt dieselbe Zeile    | pgTAP AC-021, AC-022 (zwei Sitzungen)  |
-| Abgemeldet / Wiederholung                                                                   | kein `anon`-Grant; zweiter Aufruf trifft keinen Haushalt mehr → `not_member`                          | pgTAP AC-021                           |
-| Teilfehler Datenbank ↔ Foto-Speicher                                                        | Fotos zuerst, Datenbank lehnt mit `media_remaining` ab; Wiederholen ist sicher                        | pgTAP `media_remaining`, vitest AC-023 |
-| Upload zwischen Foto-Prüfung und Commit                                                     | Upload braucht Mitgliedschaft, nach Commit unmöglich; Fenster eines Wimpernschlags, nur eigene Geräte | in Risiken vermerkt                    |
-| Kaskade scheitert an zusammengesetzten Fremdschlüsseln (`set null` auf `household_members`) | pgTAP mit voll befülltem Haushalt aller Tabellen                                                      | pgTAP AC-019                           |
-| Profil, Feedback oder Aufgabe einer anderen Person ändern                                   | RLS eigene Zeile bzw. Autor; Checks für Farbe, Länge, Anzahl                                          | pgTAP AC-012, AC-027, AC-038           |
-| Zurückgezogene Adresse kommt doch herein                                                    | Hook prüft nur existierende Einladungen                                                               | pgTAP `auth.test.sql` AC-001, AC-005   |
-| Andere Geräte behalten Daten oder Warteschlange blockiert                                   | `applyMemberships` und `dropMediaOutside`; dauerhafte Fehler werden verworfen                         | vitest AC-020                          |
+| Risiko                                                                                      | Gegenmaßnahme                                                                                         | Test                                                                    |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Fremder löscht einen Haushalt oder zieht eine Einladung zurück                              | RPC prüft Mitgliedschaft über `auth.uid()`; fremde IDs → `not_member` bzw. `invitation_not_found`     | pgTAP `manage_household` AC-004, AC-021                                 |
+| Nicht-letztes Mitglied löscht; Beitritt während des Löschens                                | `for update` auf `households`, Zählung unter der Sperre; `accept_invitation` sperrt dieselbe Zeile    | pgTAP AC-021, AC-022 (nacheinander, E20)                                |
+| Abgemeldet / Wiederholung                                                                   | kein `anon`-Grant; zweiter Aufruf trifft keinen Haushalt mehr → `not_member`                          | pgTAP AC-021                                                            |
+| Teilfehler Datenbank ↔ Foto-Speicher                                                        | Fotos zuerst, Datenbank lehnt mit `media_remaining` ab; Wiederholen ist sicher                        | pgTAP AC-021/AC-023 `media_remaining`, vitest `commands-account` AC-023 |
+| Upload zwischen Foto-Prüfung und Commit                                                     | Upload braucht Mitgliedschaft, nach Commit unmöglich; Fenster eines Wimpernschlags, nur eigene Geräte | in Risiken vermerkt (Security-Check: niedrig)                           |
+| Kaskade scheitert an zusammengesetzten Fremdschlüsseln (`set null` auf `household_members`) | pgTAP mit voll befülltem Haushalt aller Tabellen                                                      | pgTAP AC-019 (jede Tabelle mit `household_id`)                          |
+| Profil, Feedback oder Aufgabe einer anderen Person ändern                                   | RLS eigene Zeile bzw. Autor; Checks für Farbe, Länge, Anzahl                                          | pgTAP AC-012, AC-027; AC-038 nach 0026                                  |
+| Zurückgezogene Adresse kommt doch herein                                                    | Hook prüft nur existierende Einladungen                                                               | pgTAP `auth.test.sql`, `manage_household` AC-001, AC-005                |
+| Andere Geräte behalten Daten oder Warteschlange blockiert                                   | `applyMemberships` und `dropMediaOutside`; dauerhafte Fehler werden verworfen                         | vitest `commands-account` AC-019 (Gerät hält nichts mehr)               |
 
 ## Umsetzung
 
-- [ ] 1. Migration Einladungen: `accepted_at` weg, `accept_invitation` löscht, `withdraw_invitation`,
+- [x] 1. Migration Einladungen: `accepted_at` weg, `accept_invitation` löscht, `withdraw_invitation`,
       Hook angepasst; pgTAP rot→grün; Oberfläche „Zurückziehen“ (AC-001–AC-005)
-- [ ] 2. Google-Hinweis unter „Einladen“ und Abschnitt „Neue Person einladen“ in `betrieb.md`
+- [x] 2. Google-Hinweis unter „Einladen“ und Abschnitt „Neue Person einladen“ in `betrieb.md`
       (AC-006–AC-008)
-- [ ] 3. Profil: Palette in core, `update_profile`, Checks, Fenster „Profil bearbeiten“,
+- [x] 3. Profil: Palette in core, `update_profile`, Checks, Fenster „Profil bearbeiten“,
       Abneigungen in der Mitgliederliste (AC-009–AC-013)
-- [ ] 4. Umbenennen-Fenster (AC-014–AC-016)
-- [ ] 5. `delete_household`, `household_media_names`, App-Ablauf Fotos → RPC, Fenster mit
+- [x] 4. Umbenennen-Fenster (AC-014–AC-016)
+- [x] 5. `delete_household`, `household_media_names`, App-Ablauf Fotos → RPC, Fenster mit
       Namensbestätigung; Bedrohungstabelle als pgTAP und vitest (AC-017–AC-024)
-- [ ] 6. Feedback: Policies und Grants, ⋯ mit Bearbeiten und Löschen, Status-Satz (AC-025–AC-028)
-- [ ] 7. `TimeField` als Auswahl in `packages/ui`, an allen vier Stellen; tote Tipp-Logik entfernen
+- [x] 6. Feedback: Policies und Grants, ⋯ mit Bearbeiten und Löschen, Status-Satz (AC-025–AC-028)
+- [x] 7. `TimeField` als Auswahl in `packages/ui`, an allen vier Stellen; tote Tipp-Logik entfernen
       (AC-029–AC-031)
-- [ ] 8. Haushaltsauswahl auf „Benachrichtigungen“ (AC-032–AC-034)
-- [ ] 9. Nach Spec 0026: `chores.remind_at_due_time`, Zeitplaner, Schalter im Formular
+- [x] 8. Haushaltsauswahl auf „Benachrichtigungen“ (AC-032–AC-034)
+- [ ] 9. **nach 0026** (nicht in diesem Branch) — Nach Spec 0026: `chores.remind_at_due_time`, Zeitplaner, Schalter im Formular
       (AC-035–AC-038)
-- [ ] 10. `syncNow` in `packages/api` (drain, dann pull), Zeile als Knopf (AC-039–AC-041)
-- [ ] 11. Azure: Domain als Standard (Enrico), Umleitungs-Prüfung in `scripts/release/verify.mjs`
+- [x] 10. `syncNow` in `packages/api` (drain, dann pull), Zeile als Knopf (AC-039–AC-041)
+- [x] 11. (Code und `betrieb.md` fertig; Portal-Schritt und Variablen: Enrico) Azure: Domain als Standard (Enrico), Umleitungs-Prüfung in `scripts/release/verify.mjs`
       und den drei Workflows, `betrieb.md` (AC-042–AC-044)
-- [ ] `/security-check` auf den Diff (kritischer Pfad), Glossar: „Erinnern“ an „Uhrzeit (Aufgabe)“,
+- [x] `/security-check` auf den Diff (kritischer Pfad), Glossar: „Erinnern“ an „Uhrzeit (Aufgabe)“,
       „Einladung“ ohne Zustand „angenommen“
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und `pnpm exec supabase test db`
+
+## Nachweis
+
+Stand 22.11.2026, Branch `feat/0027-verwalten-und-konto` (ohne REQ-009):
+
+- `pnpm format:check && pnpm check`: grün (core, api, ui, edge, Skripte).
+- `pnpm db:reset && pnpm exec supabase test db` (über `db-lock.sh`): `Result: PASS`; die neuen
+  Tests in `supabase/tests/manage_household.test.sql` liefen vorher ohne die Migration rot.
+- `pnpm build:web`: grün. e2e nur typgeprüft (`rundgang-verwalten.spec.ts` neu, Uhrzeit-Helfer
+  `chooseTime`/`expectTime`).
+- Security-Check (kritischer Pfad): ein mittlerer Befund (Fotos vor der Server-Prüfung gelöscht)
+  behoben (E16), ein niedriger (Upload zwischen Prüfung und Commit) unter Risiken.

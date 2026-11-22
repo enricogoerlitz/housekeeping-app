@@ -35,15 +35,14 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   const save = () => {
     const found = choreDraftErrors(draft);
     setErrors(found);
-    const read = time.read();
-    if (found.title || found.weekdays || !read.ok) return;
+    if (found.title || found.weekdays) return;
     // A time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
     if (
-      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: read.time })
+      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: time.value })
     )
       ensureDevicePush();
     try {
-      createChore({ ...choreFieldsOf(draft, members), dueTime: read.time });
+      createChore({ ...choreFieldsOf(draft, members), dueTime: time.value });
     } catch (error) {
       setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
       return;

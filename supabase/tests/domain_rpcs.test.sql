@@ -133,9 +133,9 @@ select results_eq(
 select throws_ok(
   format($$ update public.feedback set author_id = %L where text = 'Knopf zu klein' $$, tests.fx('carla')),
   '42501', null, 'T3 feedback: author_id cannot be changed');
-select lives_ok(
+select throws_ok(
   $$ update public.feedback set status = 'accepted', reason = 'Kommt in Spec 0004' where text = 'Knopf zu klein' $$,
-  'T3 feedback: a member sets status and reason');
+  '42501', null, 'AC-027 (spec 0027) feedback: status and reason are not set through the API, not even by the author');
 
 select public.set_feedback_vote(tests.fx('feedback_a'), true);
 select public.set_feedback_vote(tests.fx('feedback_a'), true);

@@ -39,6 +39,8 @@ export {
   resetLocalData,
   startBackend,
   stopBackend,
+  syncNow,
+  SYNC_FAILED_MESSAGE,
   unsentStoreChangeCount,
   useSyncState,
   WRITE_REJECTED_MESSAGE,
