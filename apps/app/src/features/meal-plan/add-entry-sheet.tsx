@@ -26,6 +26,7 @@ import {
   collectionRecipeCountLabel,
   contentsInBook,
   fuzzyIncludes,
+  hasExactName,
   leftoverCandidates,
   leftoversDayLabel,
   planCandidates,
@@ -485,6 +486,24 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
       }))
     : [];
   const quoted = trimmed ? `„${trimmed}“ ` : '';
+  // K-13: no "+ „Lasagne“ als Rezept anlegen" next to the recipe "Lasagne" (spec 0018, AC-018).
+  const named = (kind: RecipeKind) =>
+    hasExactName(
+      trimmed,
+      recipes.filter((recipe) => recipe.kind === kind).map((recipe) => recipe.title),
+    );
+  const offerNew = {
+    recipe: !named('recipe'),
+    collection: !named('collection'),
+    restaurant: !hasExactName(
+      trimmed,
+      restaurants.map((restaurant) => restaurant.name),
+    ),
+    activity: !hasExactName(
+      trimmed,
+      activities.map((activity) => activity.name),
+    ),
+  };
 
   const stepOne = (
     <Stack gap={4}>
@@ -538,7 +557,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
 
       <GroupLabel>Neu</GroupLabel>
       <List testID="add-entry-new">
-        {tab === 'all' || tab === 'recipes' ? (
+        {(tab === 'all' || tab === 'recipes') && offerNew.recipe ? (
           <NewRow
             label={`+ ${quoted}als Rezept anlegen`}
             disabled={online.disabled}
@@ -546,7 +565,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             testID="add-entry-new-recipe"
           />
         ) : null}
-        {tab === 'collections' ? (
+        {tab === 'collections' && offerNew.collection ? (
           <NewRow
             label={`+ ${quoted}als Sammlung anlegen`}
             disabled={online.disabled}
@@ -554,7 +573,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             testID="add-entry-new-collection"
           />
         ) : null}
-        {tab === 'restaurants' ? (
+        {tab === 'restaurants' && offerNew.restaurant ? (
           <NewRow
             label={`+ ${quoted}als Restaurant anlegen`}
             disabled={online.disabled}
@@ -562,7 +581,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
             testID="add-entry-new-restaurant"
           />
         ) : null}
-        {tab === 'activities' ? (
+        {tab === 'activities' && offerNew.activity ? (
           <NewRow
             label={`+ ${quoted}als Aktivität anlegen`}
             disabled={online.disabled}
