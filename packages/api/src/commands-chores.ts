@@ -28,7 +28,6 @@ import {
   type Booking,
   type BookingInput,
 } from './chore-booking';
-import { choreToRow } from './db/mapping';
 import { commit, getData, getState, newId, updateData } from './store';
 import { checkTime } from './times';
 import { TransportError, type ChangeOp } from './transport';
