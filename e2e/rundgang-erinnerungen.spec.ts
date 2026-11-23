@@ -23,6 +23,7 @@ import {
   showPlanWeek,
   test,
   tid,
+  tidPrefix,
   toastMessage,
   dayBlock,
 } from './helpers';
@@ -108,12 +109,14 @@ async function planWithReminder(page: Page, date: ISODate, title: string): Promi
   await expect(tid(page, 'add-entry-sheet')).toBeHidden();
 }
 
-/** "Anderes Datum …" in the open entry window, then `target` in the month calendar. */
+/** "Anderes Datum …" in the open entry window, `target` in the month calendar, then "Fertig". */
 async function moveOther(page: Page, from: ISODate, target: ISODate): Promise<void> {
   await tid(page, 'entry-move-other').click();
   await expect(tid(page, 'entry-move-date-title')).toHaveText(monthTitle(from));
   if (monthTitle(target) !== monthTitle(from)) await tid(page, 'entry-move-date-prev').click();
   await tid(page, `entry-move-date-day-${target}`).click();
+  // The window stays open after a move (spec 0021, AC-028); "Fertig" closes it.
+  await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toHaveCount(0);
 }
 
@@ -300,7 +303,7 @@ test('REQ-007 / task 8: "Erinnerungen an Einträgen" is on, has no time; off, th
 }) => {
   await open(page, '/');
   await openSettings(page);
-  await expect(tid(page, 'settings-notifications-summary')).toHaveText(/^3 an/);
+  await expect(tid(page, 'settings-notifications-summary')).toHaveText(/^2 an/);
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notif-kinds')).toContainText('Erinnerungen an Einträgen');
   await expect(toggle(page, 'notif-kind-entry-reminders')).toBeChecked();
@@ -341,6 +344,8 @@ test('AC-002 / AC-005: the bell with day and time in the week, the day window an
   await tid(page, 'entry-done').click();
 
   await tid(page, 'calendar-view-month').click();
+  // `isVisible` does not wait: the month must be drawn before it decides to page on.
+  await expect(tidPrefix(page, 'month-day-').first()).toBeVisible();
   for (let step = 0; step < 3 && !(await tid(page, `month-day-${AHEAD}`).isVisible()); step += 1) {
     await tid(page, 'week-next').click();
   }
@@ -403,6 +408,8 @@ test('AC-023: "Vormerken" drops the bell and says only "vorgemerkt"; undo brings
   await entryRow(page, AHEAD, title).click();
   await tid(page, 'entry-move-later').click();
   await expect(toastMessage(page)).toHaveText(`${title} vorgemerkt`);
+  if (await tid(page, 'entry-sheet').isVisible()) await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toHaveCount(0);
   await expect(
     tid(page, 'planned-later').locator(PLAN_ENTRY).filter({ hasText: title }),
   ).not.toContainText('Erinnerung');

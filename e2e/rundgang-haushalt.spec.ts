@@ -23,6 +23,9 @@ import {
 } from './helpers';
 import { seedIds } from './seed-ids';
 
+/** A booked entry of the history, not the filter chips (`history-filter-…`) above it. */
+const HISTORY_ROW = '[data-testid^="history-"][role="button"]:not([data-testid^="history-filter"])';
+
 // Spec 0001 — household chores, history and feedback (REQ-008), and spec 0011 — "Übersicht" with
 // a shown day, "Zu tun" and "Haushalt" with one check list (Sammel-Fenster), "Was hast du
 // erledigt?", opening a chore, the empty household and list and detail on the desktop. The seed
@@ -105,7 +108,7 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await expect(tid(page, `chore-${BAD}`)).toBeHidden({ timeout: 6_000 });
 
     await tid(page, 'chores-tab-history').click();
-    const rows = tid(page, 'chore-history').locator('[data-testid^="history-"][role="button"]');
+    const rows = tid(page, 'chore-history').locator(HISTORY_ROW);
     await expect(rows.first()).toContainText('Bad putzen');
     await nav(page, 'index');
     await expect(tid(page, 'today-chores')).toBeVisible();
@@ -173,9 +176,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
       tid(page, 'chores-all').locator(CHORE_ROW).filter({ hasText: 'Fenster Küche' }),
     ).toHaveCount(1);
     await tid(page, 'chores-tab-history').click();
-    await expect(
-      tid(page, 'chore-history').locator('[data-testid^="history-"][role="button"]').first(),
-    ).toContainText('Fenster Küche');
+    await expect(tid(page, 'chore-history').locator(HISTORY_ROW).first()).toContainText(
+      'Fenster Küche',
+    );
   });
 
   test('AC-042 (0011): offline the hits stay, "Als erledigt eintragen" is greyed out', async ({

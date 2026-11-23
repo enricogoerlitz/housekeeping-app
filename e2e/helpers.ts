@@ -376,16 +376,30 @@ export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
 
 // ---------- Offline ----------
 
+/** ⊞ in the header of the page shown and not covered by a window; a fresh page takes a moment. */
+async function headerManageReachable(page: Page): Promise<boolean> {
+  const header = page.locator(`[data-testid="header-manage"]${ACTIVE}`);
+  try {
+    await expect(header).toHaveCount(1, { timeout: 3_000 });
+    // A trial click checks that nothing lies over it, without clicking.
+    await header.click({ trial: true, timeout: 1_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Switches the developer switch "Offline simulieren" (Verwalten → Entwicklung; spec 0005,
  * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar. A phone page
- * without ⊞ (a detail page) cannot reach the switch without leaving; there the device loses its
- * network for real, which the app treats the same way.
+ * without ⊞ (a detail page, or a window open above the page) cannot reach the switch without
+ * leaving; there the device loses its network for real, which the app treats the same way.
  */
 async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
   const phone = isPhone(page);
   if (phone) {
-    if (!onTabStartPage(page)) {
+    // A window above the page (e.g. an entry window) makes the header unreachable too.
+    if (!onTabStartPage(page) || !(await headerManageReachable(page))) {
       await page.context().setOffline(offline);
       return;
     }

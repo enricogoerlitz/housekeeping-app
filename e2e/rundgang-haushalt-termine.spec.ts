@@ -73,7 +73,10 @@ test.describe('Haushalt: dates and trips at phone width', () => {
     await expect(tid(page, 'chore-postpone-menu')).toContainText('Datum …');
     await tid(page, 'chore-postpone-plus2').click();
     await expect(toastMessage(page)).toContainText('Verschoben auf ');
-    await expect(tid(page, `chore-${BAD}`)).toHaveCount(0);
+    // Not under "Zu tun" any more; it may still show further down, e.g. under "Diese Woche".
+    await expect(tid(page, 'chores-today').locator(`[data-testid="chore-${BAD}"]`)).toHaveCount(0);
+    await tid(page, 'toast-action').click();
+    await expect(tid(page, 'chores-today').locator(`[data-testid="chore-${BAD}"]`)).toHaveCount(1);
   });
 
   test('AC-016 / AC-017: "Ohne Termin" holds the one-off chore; no "weitere Aufgaben später"', async ({
