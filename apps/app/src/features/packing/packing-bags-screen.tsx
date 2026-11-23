@@ -158,8 +158,14 @@ export function PackingBagsScreen() {
     <Screen
       testID="bags-screen"
       clearFab={false}
-      header={<ScreenHeader title="Reisetaschen" backLabel={back.label}
-          onBack={back.back} testID="bags-title" />}
+      header={
+        <ScreenHeader
+          title="Reisetaschen"
+          backLabel={back.label}
+          onBack={back.back}
+          testID="bags-title"
+        />
+      }
       scroll={isPhone}
       style={isPhone ? undefined : { flex: 1, paddingBottom: 0 }}
     >

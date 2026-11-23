@@ -184,8 +184,14 @@ export function StoresScreen() {
     <Screen
       testID="stores-screen"
       clearFab={false}
-      header={<ScreenHeader title="Märkte & Bereiche" backLabel={back.label}
-          onBack={back.back} testID="stores-title" />}
+      header={
+        <ScreenHeader
+          title="Märkte & Bereiche"
+          backLabel={back.label}
+          onBack={back.back}
+          testID="stores-title"
+        />
+      }
       tabs={
         <ViewTabs<StoresView>
           label="Ansicht"

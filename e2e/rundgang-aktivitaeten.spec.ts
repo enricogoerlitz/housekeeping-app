@@ -681,11 +681,16 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
   await expect(tid(page, `activity-${BOULDERN}-favorite`)).toHaveCount(0);
   await expect(tid(page, `activity-${BOULDERN}-stars`)).toHaveCount(0);
   await tid(page, `activity-${BOULDERN}`).click();
-  const ofNadja = tid(page, `activity-rating-${seedIds['m-nadja']}`);
-  await expect(ofNadja).toContainText(NADJA);
-  await expect(ofNadja.locator('[aria-label="4 von 5 Sternen"]')).toBeVisible(SYNC);
-  await expect(ofNadja).toContainText('Favorit');
-  await expect(tid(page, `activity-rating-${seedIds['m-enrico']}`)).toContainText('noch keine');
+  // Spec 0031, AC-086: the ratings as on a recipe, "Du" once and Nadja's stars to look at.
+  const ratings = tid(page, 'activity-stars-all');
+  await expect(ratings).toContainText(NADJA);
+  await expect(tid(page, `activity-stars-member-${seedIds['m-nadja']}`)).toHaveAttribute(
+    'aria-label',
+    '4 von 5 Sternen',
+    SYNC,
+  );
+  await expect(tid(page, `activity-stars-member-${seedIds['m-enrico']}`)).toHaveCount(0);
+  await expect(ratings.getByText('Du', { exact: true })).toHaveCount(1);
 });
 
 // ---------- REQ-001 order and REQ-008: create while planning ----------

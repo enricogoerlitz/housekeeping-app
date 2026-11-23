@@ -1,5 +1,5 @@
 import { Image, type ImageSource } from 'expo-image';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -550,7 +550,15 @@ export function EmptyState(props: EmptyStateProps) {
         </Text>
       ) : null}
       {props.children ? (
-        <View style={{ gap: 10, marginTop: 10, alignItems: 'center' }}>{props.children}</View>
+        <View style={{ gap: 10, marginTop: 10, alignItems: 'center' }}>
+          {/* A button keeps to the start of its box; each one gets a box of its own width, and
+              the box is centred (spec 0031, AC-085). */}
+          {Children.toArray(props.children).map((child, index) => (
+            <View key={isValidElement(child) && child.key !== null ? child.key : index}>
+              {child}
+            </View>
+          ))}
+        </View>
       ) : null}
     </View>
   );
