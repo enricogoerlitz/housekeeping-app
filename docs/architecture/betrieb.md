@@ -213,8 +213,11 @@ Skript fragt die Google-Adresse verdeckt ab, legt den Haushalt „Enrico & Nadja
 Standard-Tageszeiten und eine Einladung an, falls sie fehlen, und gibt nur aus, wie viel es angelegt
 hat (`1` = angelegt, `0` = war schon da):
 
+Die Arbeitskopie bleibt nie mit der Produktion verlinkt, auch wenn das Skript scheitert oder
+abgebrochen wird (`trap`):
+
 ```sh
-pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/prod-bootstrap.mjs && pnpm exec supabase unlink
+(trap 'pnpm exec supabase unlink' EXIT; pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/prod-bootstrap.mjs)
 ```
 
 Danach auf der Web-Adresse mit Google anmelden, die Einladung annehmen und Nadja in der App
@@ -255,7 +258,7 @@ vorige grün ist:
    Auth-Einstellungen und Function-Secrets bleiben:
 
    ```sh
-   pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/reset-app-data.mjs --project "<prod-ref>" && pnpm exec supabase unlink
+   (trap 'pnpm exec supabase unlink' EXIT; pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/reset-app-data.mjs --project "<prod-ref>")
    ```
 
 5. **Release-PR zusammenführen** („Create a merge commit“). `release.yml` läuft mit e2e, Sicherung,

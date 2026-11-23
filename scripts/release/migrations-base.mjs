@@ -9,6 +9,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export const BASE_FILE = 'supabase/migrations-base.json';
+// The only tag the exception may replace (security check 0031): using it again needs a visible
+// change of this line, not only a new JSON file.
+const ALLOWED_REPLACES = 'v2026.11.1';
 const TAG = /^v\d{4}\.(1[0-2]|[1-9])\.[1-9]\d*$/;
 const VERSION = /^\d{14}$/;
 
@@ -22,6 +25,9 @@ export function parseMigrationsBase(text) {
   }
   if (typeof data?.replaces !== 'string' || !TAG.test(data.replaces)) {
     throw new Error(`${BASE_FILE}: „replaces“ muss ein Tag v<JJJJ.M.N> sein`);
+  }
+  if (data.replaces !== ALLOWED_REPLACES) {
+    throw new Error(`${BASE_FILE}: „replaces“ darf nur ${ALLOWED_REPLACES} sein`);
   }
   if (typeof data.first !== 'string' || !VERSION.test(data.first)) {
     throw new Error(`${BASE_FILE}: „first“ muss eine Migrationsversion mit 14 Ziffern sein`);

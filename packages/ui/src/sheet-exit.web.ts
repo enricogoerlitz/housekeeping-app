@@ -22,6 +22,11 @@ export function fadeOutCopy(node: unknown, options: { slide: boolean; ms: number
     copy.setAttribute('data-sheet-exit', '');
     copy.style.pointerEvents = 'none';
     copy.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+    // No longer a window: Escape handlers and focus traps look for [aria-modal].
+    copy
+      .querySelectorAll('[aria-modal]')
+      .forEach((element) => element.removeAttribute('aria-modal'));
+    copy.querySelectorAll('[role="dialog"]').forEach((element) => element.removeAttribute('role'));
     // In the window's own place among the layers: one opened since then stays above the copy.
     const anchor = layer.isConnected ? layer : next?.isConnected ? next : null;
     document.body.insertBefore(copy, anchor);

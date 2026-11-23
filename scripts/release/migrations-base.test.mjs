@@ -35,6 +35,13 @@ describe('migrations-base.json', () => {
     assert.throws(() => parseMigrationsBase(JSON.stringify({ first: BASE.first })), /replaces/);
   });
 
+  test('security check 0031: only the one tag of the first productive version may be replaced', () => {
+    assert.throws(
+      () => parseMigrationsBase(JSON.stringify({ ...BASE, replaces: 'v2026.12.1' })),
+      /„replaces“ darf nur v2026\.11\.1 sein/,
+    );
+  });
+
   test('without the file there is no exception', () => {
     assert.equal(readMigrationsBase(dir), undefined);
     mkdirSync(path.join(dir, 'supabase'), { recursive: true });

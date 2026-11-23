@@ -1,37 +1,58 @@
-import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
-import { Platform, Text, type HostInstance } from 'react-native';
+import { useLayoutEffect, useRef, type Ref, type RefCallback, type RefObject } from 'react';
+import type { HostInstance } from 'react-native';
 
 /**
- * `accessibilityHint` that also reaches the browser: react-native-web drops the prop, so on the
- * web the same text hangs on a hidden node named by `aria-describedby` (spec 0023, AC-048).
- * Spread `props` on the control and render `node` inside it.
+ * ARIA attributes react-native-web does not write (`aria-description`, or `aria-disabled` on a
+ * Pressable without `disabled`), set on the node itself; `undefined` removes one. Native ignores
+ * them. Pass the ref to the control.
  */
-export function useHint(hint: string | undefined): { props: object; node: ReactNode } {
-  const id = useId();
-  if (!hint) return { props: {}, node: null };
-  if (Platform.OS !== 'web') return { props: { accessibilityHint: hint }, node: null };
-  return {
-    props: { accessibilityHint: hint, 'aria-describedby': id },
-    node: (
-      <Text nativeID={id} style={{ display: 'none' }}>
-        {hint}
-      </Text>
-    ),
-  };
+function useWebAria(
+  attributes: Record<string, string | undefined>,
+): RefObject<HostInstance | null> {
+  const ref = useRef<HostInstance>(null);
+  // `undefined` stays in the key as null, so a dropped value is removed from the node.
+  const key = JSON.stringify(attributes, (_name, value: unknown) => value ?? null);
+  useLayoutEffect(() => {
+    const node = ref.current as unknown;
+    if (typeof Element === 'undefined' || !(node instanceof Element)) return;
+    for (const [name, value] of Object.entries(JSON.parse(key) as Record<string, string | null>)) {
+      if (value === null) node.removeAttribute(name);
+      else node.setAttribute(name, value);
+    }
+  }, [key]);
+  return ref;
 }
 
 /**
- * `aria-disabled` for a Pressable that stays pressable while greyed out, so a press can say why
- * (e.g. offline). react-native-web's Pressable writes the attribute only from `disabled`, which
- * would also swallow the press; this sets it on the node. Pass the ref to the Pressable.
+ * `accessibilityHint` that also reaches the browser (spec 0023, AC-048): react-native-web drops
+ * the prop, so on the web the same text becomes the node's `aria-description`. Keep
+ * `accessibilityHint` for native and pass the ref to the control.
  */
-export function useAriaDisabled(disabled: boolean): RefObject<HostInstance | null> {
-  const ref = useRef<HostInstance>(null);
-  useLayoutEffect(() => {
-    const node = ref.current as unknown;
-    if (typeof Element !== 'undefined' && node instanceof Element) {
-      node.setAttribute('aria-disabled', String(disabled));
+export function useHint(hint: string | undefined): RefObject<HostInstance | null> {
+  return useWebAria({ 'aria-description': hint || undefined });
+}
+
+/**
+ * A Pressable that stays pressable while greyed out, so a press can say why (e.g. offline):
+ * react-native-web's Pressable writes `aria-disabled` only from `disabled`, which would also
+ * swallow the press. Keep `accessibilityHint` for native and pass the ref to the Pressable.
+ */
+export function useSoftDisabled(
+  disabled: boolean,
+  hint: string | undefined,
+): RefObject<HostInstance | null> {
+  return useWebAria({
+    'aria-disabled': String(disabled),
+    'aria-description': hint || undefined,
+  });
+}
+
+/** One ref for a node that two owners need (e.g. the caller's and the hint's). */
+export function mergeRefs<T>(...refs: (Ref<T> | undefined)[]): RefCallback<T> {
+  return (node) => {
+    for (const ref of refs) {
+      if (typeof ref === 'function') ref(node);
+      else if (ref) (ref as RefObject<T | null>).current = node;
     }
-  }, [disabled]);
-  return ref;
+  };
 }

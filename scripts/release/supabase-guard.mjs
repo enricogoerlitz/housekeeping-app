@@ -59,6 +59,19 @@ export function parseMigrationList(text) {
 export function guardMigrations({ remote, local, released, base }) {
   const errors = [];
   if (base !== undefined) {
+    // A new base replaces every released migration (security check 0031).
+    const kept = (released ?? []).filter((version) => version >= base.first);
+    if (kept.length > 0) {
+      errors.push(
+        `Die neue Basis beginnt mit ${base.first}, die veröffentlichte Migration ${kept.join(', ')} liegt nicht davor: „first“ muss nach allen Migrationen von ${base.replaces} liegen.`,
+      );
+    }
+    const old = local.filter((version) => version < base.first).sort();
+    if (old.length > 0) {
+      errors.push(
+        `Neben der neuen Basis liegen noch alte Migrationen: ${old.join(', ')}. Die neue Basis ersetzt sie; die Dateien löschen.`,
+      );
+    }
     const sortedLocal = [...local].sort();
     const mismatch = remote.findIndex((version, index) => version !== sortedLocal[index]);
     if (mismatch !== -1) {

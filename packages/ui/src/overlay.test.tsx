@@ -76,6 +76,9 @@ describe('Sheet leaving with its page (spec 0029, REQ-001)', () => {
       expect(copy?.hasAttribute('inert')).toBe(true);
       expect(copy?.querySelector('[data-testid="sheet"]')).not.toBeNull();
       expect(copy?.querySelector('[id]')).toBeNull();
+      // Not a window any more: Escape and focus traps look for [aria-modal].
+      expect(copy?.querySelector('[aria-modal]')).toBeNull();
+      expect(copy?.querySelector('[role="dialog"]')).toBeNull();
       act(() => {
         vi.advanceTimersByTime(400);
       });
