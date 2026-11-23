@@ -96,6 +96,16 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'recipe-more-collection').click();
   await expect(tid(page, `add-to-collection-${seedIds['rec-grillabend']}`)).toBeVisible();
   await tid(page, 'add-to-collection-sheet-close').click();
+  // "Was brauchst du wirklich?" down to its rows: a row is one checkbox, its "− n× +" are buttons
+  // of their own beside it, so React reports no nested button (spec 0031, AC-066).
+  await tid(page, 'recipe-to-list').click();
+  await expect(tid(page, 'pantry-check-sheet')).toContainText('Was brauchst du wirklich?');
+  const mango = `pc-row-${seedIds['art-mango']}`;
+  await expect(tid(page, `${mango}-open`)).toHaveAttribute('role', 'checkbox');
+  const count = await tid(page, `${mango}-count`).innerText();
+  await tid(page, `${mango}-plus`).click();
+  await expect(tid(page, `${mango}-count`)).not.toHaveText(count);
+  await tid(page, 'pantry-check-sheet-close').click();
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();
