@@ -9,13 +9,19 @@ select plan(15);
 create temp table lint_tables_without_household_id (name text primary key);
 insert into lint_tables_without_household_id values
   ('profiles'),     -- one row per person, visible to co-members
-  ('households'),   -- is the household itself
-  ('ai_usage');     -- per person quota, no grants, not synced (T7)
+  ('households');   -- is the household itself
 
 -- Tables with household_id that are not synced rows themselves (no sync triggers).
 create temp table lint_household_tables_without_sync (name text primary key);
 insert into lint_household_tables_without_sync values
   ('deleted_records'); -- the tombstone log itself
+
+-- Small tables that sync_pull sends in full on every pull ("small"), so they need neither
+-- tombstones nor the (household_id, updated_at) index of the delta queries (spec 0031, D-05).
+create temp table lint_household_tables_pulled_in_full (name text primary key);
+insert into lint_household_tables_pulled_in_full values
+  ('household_members'),
+  ('household_invitations');
 
 -- Functions that anon may execute (public on purpose, read no data).
 create temp table lint_functions_for_anon (signature text primary key);
@@ -35,7 +41,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.remove_member(uuid,uuid)'),
   ('private.withdraw_invitation(uuid)'), -- spec 0027
   ('private.update_profile(text,text,text,text[])'),
-  ('private.household_media_names(uuid)'), -- security invoker, reads storage.objects under RLS
+  ('private.begin_household_deletion(uuid)'), -- security invoker, reads storage.objects under RLS
   ('private.close_household_for_deletion(uuid)'), -- definer, rechecks last member under a lock
   ('private.delete_household(uuid)'),
   ('private.assert_members(uuid,uuid[])'), -- security invoker, called by member-check triggers
@@ -65,6 +71,8 @@ insert into lint_private_functions_for_authenticated values
   ('private.restore_restaurant(uuid)'),     -- spec 0024: "Rückgängig" of delete_restaurant
   ('private.delete_activity(uuid,date)'),   -- spec 0024: the only way to delete an activity
   ('private.restore_activity(uuid)'),       -- spec 0024: "Rückgängig" of delete_activity
+  ('private.delete_chore(uuid)'),           -- spec 0031: deleting a chore with a snapshot of its entries
+  ('private.restore_chore(uuid)'),          -- spec 0031: "Rückgängig" of delete_chore
   ('private.set_packing_items_packed(uuid,jsonb)'), -- spec 0012: the only way to pack (ADR-0013)
   ('private.adopt_bag_changes(uuid,jsonb)'),        -- spec 0022: domain op of apply_changes, "Übernehmen"
   ('private.restore_packing_items(uuid,jsonb)'),    -- spec 0012: domain op of apply_changes, undo of removing
@@ -149,7 +157,8 @@ select is_empty(
 -- 5
 select is_empty(
   $$ select t.name from lint_household_tables t
-     where not exists (
+     where t.name not in (select name from lint_household_tables_pulled_in_full)
+       and not exists (
        select 1 from pg_catalog.pg_trigger g
        where g.tgrelid = t.oid and not g.tgisinternal
          and g.tgfoid = 'private.record_deletion()'::regprocedure
@@ -174,7 +183,8 @@ select is_empty(
 -- 7
 select is_empty(
   $$ select t.name from lint_household_tables t
-     where not exists (
+     where t.name not in (select name from lint_household_tables_pulled_in_full)
+       and not exists (
        select 1 from pg_catalog.pg_index i
        where i.indrelid = t.oid
          and i.indkey[0] = (select attnum from pg_catalog.pg_attribute
