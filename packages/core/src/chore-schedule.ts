@@ -382,6 +382,22 @@ export function dueChores(chores: readonly Chore[], today: ISODate, away: ChoreA
     .map((entry) => entry.chore);
 }
 
+/**
+ * "Was hast du erledigt?" with an empty search (spec 0031, AC-070): every chore of the household,
+ * those of "Zu tun" first in its order (dueChores), then the others by name.
+ */
+export function doneSheetChores(
+  chores: readonly Chore[],
+  today: ISODate,
+  away: ChoreAway,
+): Chore[] {
+  const due = dueChores(chores, today, away);
+  const rest = chores
+    .filter((chore) => !due.includes(chore))
+    .sort((a, b) => a.title.localeCompare(b.title, 'de'));
+  return [...due, ...rest];
+}
+
 /** The points of "Zu tun" today: the effort of every due chore (REQ-010). */
 export function duePoints(chores: readonly Chore[], today: ISODate, away: ChoreAway): number {
   return dueChores(chores, today, away).reduce((sum, chore) => sum + chore.effort, 0);
