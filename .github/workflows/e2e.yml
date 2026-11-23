@@ -3,9 +3,10 @@
 # a branch, e.g. develop before the release PR. Not in checks.yml or preview.yml: pull requests stay
 # without e2e.
 #
-# - Four shards of `pnpm e2e` and the dev-mode smoke test `pnpm e2e:dev`, each on its own runner
+# - Six shards of `pnpm e2e` and the dev-mode smoke test `pnpm e2e:dev`, each on its own runner
 #   with its own local Supabase stack; every shard runs to the end. A red shard blocks until
-#   someone re-runs it (Playwright already retries a failed test once in CI).
+#   someone re-runs it (Playwright already retries a failed test once in CI). A shard that hangs
+#   stops after 40 minutes (the step), Playwright itself after 35 (globalTimeout in CI).
 # - No environment and no secret: only the public local defaults of the Supabase CLI and a push
 #   key pair made for this run (never stored, every value masked).
 name: e2e
@@ -25,11 +26,11 @@ jobs:
   e2e:
     name: e2e (${{ matrix.suite }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        suite: ['1/4', '2/4', '3/4', '4/4', 'dev']
+        suite: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6', 'dev']
     env:
       TURBO_TELEMETRY_DISABLED: 1
       SUITE: ${{ matrix.suite }}
@@ -66,8 +67,21 @@ jobs:
             exit 1
           fi
           echo "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$key" >> "$GITHUB_ENV"
-      - run: pnpm --filter @housekeeping/e2e exec playwright install --with-deps chromium
+      - id: playwright
+        name: Playwright-Version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @housekeeping/e2e exec playwright install --with-deps chromium
+      # The browser comes from the cache; the system libraries it needs do not.
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @housekeeping/e2e exec playwright install-deps chromium
       - name: e2e
+        timeout-minutes: 40
         # The setup resets the database and builds the web export with the developer switch.
         run: |
           if [ "$SUITE" = dev ]; then

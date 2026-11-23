@@ -57,6 +57,8 @@ async function planEnzo(page: Page, date: string): Promise<string> {
       .locator(PLAN_ENTRY)
       .filter({ hasText: 'Trattoria Da Enzo' })
       .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-testid') ?? ''));
+  // `evaluateAll` does not wait: the week must be drawn first.
+  await expect(page.locator('[data-testid^="day-2"]:visible').first()).toBeVisible();
   const before = await enzoEntries();
   // Phones have one "+" per day (evening preselected); the wide grid one per Tageszeit.
   await tid(page, isPhone(page) ? `add-${date}` : `add-${date}-${SLOT_DINNER}`).click();
@@ -314,7 +316,7 @@ test('0002 offline: restaurants stay readable, editing is greyed out, the route 
   await tid(page, PHO).click();
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await expect(tid(page, 'restaurant-favorite')).toHaveAttribute('aria-disabled', 'true');
-  await expect(tid(page, 'restaurant-notes-edit')).not.toBeEditable();
+  await expect(tid(page, 'restaurant-notes-edit')).toBeDisabled();
   await expect(tid(page, 'restaurant-route')).not.toHaveAttribute('aria-disabled', 'true');
 });
 
@@ -343,6 +345,8 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
     await showPlanWeek(page, date);
     await tid(page, 'plan-to-list').click();
     const pizza = `pick-entry-${seedIds['plan-10']}-check`;
+    // The rows render after the window: `.all()` takes only what is there.
+    await expect(tidPrefix(page, 'pick-entry-').first()).toBeVisible();
     for (const check of await tidPrefix(page, 'pick-entry-')
       .and(page.locator('[role="checkbox"]'))
       .all()) {

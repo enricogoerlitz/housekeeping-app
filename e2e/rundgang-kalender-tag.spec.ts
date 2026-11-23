@@ -5,18 +5,21 @@ import {
   dayMonthLongLabel,
   formatPickerDate,
   monthTitle,
+  periodNavLabel,
+  startOfMonth,
+  startOfWeek,
+  addMonths,
   weekDates,
-  weekRangeLabel,
   type ISODate,
 } from '@housekeeping/core';
 
 import {
+  contentReady,
   PLAN_ENTRY,
   SLOT_DINNER,
   SLOT_LUNCH,
   SLOT_MORNING,
   TODAY,
-  back,
   day,
   expect,
   freshSeed,
@@ -59,6 +62,8 @@ async function expectPanelDay(page: Page, date: ISODate): Promise<void> {
 async function showMonthDay(page: Page, date: ISODate): Promise<void> {
   await open(page, '/kalender');
   await tid(page, 'calendar-view-month').click();
+  // `isVisible` does not wait: the month must be drawn before it decides to page on.
+  await expect(tidPrefix(page, 'month-day-').first()).toBeVisible();
   for (let step = 0; step < 3 && !(await tid(page, `month-day-${date}`).isVisible()); step += 1) {
     await tid(page, date > TODAY ? 'week-next' : 'week-prev').click();
   }
@@ -123,6 +128,7 @@ test.describe('phone', () => {
     const stripe = tid(page, `day-panel-stripe-${seedIds['trip-mallorca']}`);
     await expect(stripe).toContainText('Urlaub Mallorca');
 
+    await contentReady(page);
     const strip = await tid(page, 'day-panel-week-strip').boundingBox();
     if (!strip) throw new Error('week strip not laid out');
     const y = strip.y + strip.height / 2;
@@ -134,7 +140,8 @@ test.describe('phone', () => {
 
     await tid(page, `day-panel-stripe-${seedIds['trip-mallorca']}`).click();
     await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
-    await back(page);
+    // The trip opens as a window above the calendar; closing it returns to the day window.
+    await tid(page, 'trip-window-close').click();
     await expect(tid(page, 'day-panel')).toBeVisible();
     await expectPanelDay(page, addDays(MALLORCA, 1));
   });
@@ -216,13 +223,18 @@ test.describe('phone', () => {
     await expect(tid(page, 'calendar-title')).toHaveText(monthTitle(chosen));
     await expect(tid(page, `month-day-${chosen}`)).toHaveAttribute('aria-selected', 'true');
     await expectPanelDay(page, chosen);
+    // Paging keeps the window open and chooses the new period's first day (calendar-screen `show`).
+    const first = startOfMonth(chosen);
     await tid(page, 'week-next').click();
     await expect(tid(page, 'day-panel')).toBeVisible();
-    await expectPanelDay(page, chosen);
+    await expectPanelDay(page, addMonths(first, 1));
     await tid(page, 'week-prev').click();
+    await expectPanelDay(page, first);
 
     await tid(page, 'calendar-view-week').click();
-    await expect(tid(page, 'calendar-title')).toHaveText(weekRangeLabel(chosen));
+    await expect(tid(page, 'calendar-title')).toHaveText(
+      periodNavLabel('week', startOfWeek(first), TODAY).label,
+    );
     await expect(tid(page, 'day-panel')).toBeHidden();
   });
 
@@ -260,24 +272,37 @@ test.describe('desktop', () => {
   }) => {
     expect(isPhone(page)).toBe(false);
     await openMonthDay(page, TODAY);
-    // A fourth entry today, so the grid shows three and "+1 weitere".
-    await tid(page, `day-panel-add-${SLOT_DINNER}`).click();
-    await tid(page, 'add-entry-search').fill('Salat');
-    await tid(page, `add-entry-recipe-${seedIds['rec-gemischter-salat']}`).click();
-    await tid(page, 'add-entry-save').click();
-    await expect(tid(page, 'add-entry-sheet')).toBeHidden();
-    await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(4);
+    // A day shows as many lines as fit (0021 REQ-001): add entries until it shows "+n weitere".
+    const extra = [
+      ['Salat', 'rec-gemischter-salat', 'Gemischter Salat'],
+      ['Linsen', 'rec-linsen-dal', 'Linsen-Dal'],
+      ['Shakshuka', 'rec-shakshuka', 'Shakshuka'],
+      ['Pfannkuchen', 'rec-pfannkuchen', 'Pfannkuchen'],
+    ] as const;
+    const added: string[] = [];
+    for (const [search, recipe, name] of extra) {
+      if ((await tid(page, `month-more-${TODAY}`).count()) > 0) break;
+      await tid(page, `day-panel-add-${SLOT_DINNER}`).click();
+      await tid(page, 'add-entry-search').fill(search);
+      await tid(page, `add-entry-recipe-${seedIds[recipe]}`).click();
+      await tid(page, 'add-entry-save').click();
+      await expect(tid(page, 'add-entry-sheet')).toBeHidden();
+      added.push(name);
+      await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(3 + added.length);
+    }
+    const total = 3 + added.length;
+    const shown = await tid(page, `month-cell-${TODAY}`).locator(PLAN_ENTRY).count();
 
     await page.keyboard.press('Escape');
     await expect(tid(page, 'day-panel')).toBeHidden();
     await expect(tid(page, `month-day-${TODAY}`)).toBeFocused();
 
     const more = tid(page, `month-more-${TODAY}`);
-    await expect(more).toHaveText('+1 weitere');
+    await expect(more).toHaveText(`+${total - shown} weitere`);
     await more.click();
     const panel = tid(page, 'day-panel');
     await expect(panel).toBeVisible();
-    await expect(panel.locator(PLAN_ENTRY)).toHaveCount(4);
+    await expect(panel.locator(PLAN_ENTRY)).toHaveCount(total);
     await expect(tidPrefix(page, `month-more-${TODAY}-`)).toHaveCount(0);
     await expect(page.getByText('Tag öffnen ›')).toHaveCount(0);
     const grid = await tid(page, 'month-grid').boundingBox();
@@ -290,11 +315,10 @@ test.describe('desktop', () => {
 
     // Leave the plan as the seed had it for the files after this one.
     await tid(page, `month-day-${TODAY}`).click();
-    await tid(page, 'day-panel')
-      .locator(PLAN_ENTRY)
-      .filter({ hasText: 'Gemischter Salat' })
-      .click();
-    await tid(page, 'entry-remove').click();
+    for (const name of added) {
+      await tid(page, 'day-panel').locator(PLAN_ENTRY).filter({ hasText: name }).click();
+      await tid(page, 'entry-remove').click();
+    }
     await expect(tid(page, 'day-panel').locator(PLAN_ENTRY)).toHaveCount(3);
   });
 });

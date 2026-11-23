@@ -36,8 +36,9 @@ export interface EditableSectionProps {
   /** Shown before the pencil while the section is read, e.g. the portions stepper of "Zutaten". */
   accessory?: ReactNode;
   /**
-   * No title row: the pencil or "Fertig" stands to the right of the content, for a block that
-   * has its own heading (the head of a recipe with its title); `title` is not shown then.
+   * No title row: the pencil stands to the right of the content, "Abbrechen" and "Fertig" above
+   * the fields, for a block that has its own heading (the head of a recipe with its title);
+   * `title` is not shown then.
    */
   inline?: boolean;
   /** The section; the pencil is `${testID}-edit`, "Fertig" `${testID}-done`. */
@@ -76,8 +77,9 @@ export function EditableSection(props: EditableSectionProps) {
       event.preventDefault();
       cancel();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Capture phase: react-native-web's TextInput stops its key events from bubbling.
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [editing, cancellable]);
 
   useEffect(() => {
@@ -145,6 +147,15 @@ export function EditableSection(props: EditableSectionProps) {
       control
     );
 
+  if (props.inline && editing) {
+    // The fields take the whole width; on a phone beside them they would be squeezed.
+    return (
+      <View ref={box} testID={props.testID} style={{ gap: 12 }}>
+        <View style={{ alignSelf: 'flex-end' }}>{action}</View>
+        {props.children}
+      </View>
+    );
+  }
   if (props.inline) {
     return (
       <View

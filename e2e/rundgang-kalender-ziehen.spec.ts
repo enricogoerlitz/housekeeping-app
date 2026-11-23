@@ -17,6 +17,7 @@ import {
 } from '@housekeeping/core';
 
 import {
+  contentReady,
   SLOT_DINNER,
   SLOT_LUNCH,
   SLOT_MORNING,
@@ -61,11 +62,32 @@ interface Point {
   y: number;
 }
 
+/**
+ * How much of the phone's day window shows: it keeps its full height and slides down
+ * (docked-panel.tsx), so its box height says nothing.
+ */
+async function shownHeight(page: Page, panel: Locator): Promise<number> {
+  const box = await panel.boundingBox();
+  return box ? Math.max(0, (page.viewportSize()?.height ?? 0) - box.y) : 0;
+}
+
+/** The middle of `locator` once it stands still (a view may still be scrolling to its place). */
 async function centerOf(locator: Locator): Promise<Point> {
   await expect(locator).toBeVisible();
-  const box = await locator.boundingBox();
-  if (!box) throw new Error('not laid out');
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  let last = '';
+  let point: Point = { x: 0, y: 0 };
+  await expect
+    .poll(async () => {
+      const box = await locator.boundingBox();
+      if (!box) return false;
+      point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const now = `${point.x},${point.y}`;
+      const still = now === last;
+      last = now;
+      return still;
+    })
+    .toBe(true);
+  return point;
 }
 
 async function scrollToCenter(locator: Locator): Promise<void> {
@@ -79,6 +101,8 @@ function entry(page: Page, id: string, within?: Locator): Locator {
 
 /** A finger on the page through CDP touch events, so the browser sends touch pointer events. */
 async function finger(page: Page) {
+  // The first touch right after a load misses the remounting content.
+  await contentReady(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
   let last: Point = { x: 0, y: 0 };
@@ -145,6 +169,8 @@ function choreToday(page: Page): Locator {
 /** Turns the week until the stripe "Urlaub Mallorca" (today + 12 to + 18) shows. */
 async function showMallorcaWeek(page: Page): Promise<Locator> {
   const stripe = tid(page, `trip-stripe-${MALLORCA}`);
+  // `isVisible` does not wait: the week must be drawn first.
+  await expect(page.locator('[data-testid^="day-2"]:visible').first()).toBeVisible();
   for (let step = 0; step < 3 && !(await stripe.isVisible()); step += 1) {
     await tid(page, 'week-next').click();
   }
@@ -257,12 +283,17 @@ test.describe('phone', () => {
     await expect(panel).toBeVisible();
 
     const touch = await finger(page);
+    // The day window lists the chores first; Lasagne may sit below the screen. The panel's
+    // scroller reaches under the tab bar, so "center" is not on screen: scroll it to the top.
+    await entry(page, LASAGNE, panel).evaluate((element) =>
+      element.scrollIntoView({ block: 'start' }),
+    );
     await touch.hold(await centerOf(entry(page, LASAGNE, panel)));
     const target = tid(page, 'planned-later-target');
     await expect(target).toHaveText('Vormerken');
     // The day window shrinks to its header line, so the grid and the strip are free (AC-008).
     await expect
-      .poll(async () => (await panel.boundingBox())?.height ?? 0)
+      .poll(async () => shownHeight(page, panel))
       .toBeLessThan((page.viewportSize()?.height ?? 0) * 0.2);
     await touch.move(await centerOf(target));
     await expect(tid(page, 'drag-label')).toHaveText('Vormerken');
@@ -324,15 +355,20 @@ test.describe('phone', () => {
     const height = (page.viewportSize()?.height ?? 0) * 0.2;
 
     const touch = await finger(page);
+    // The day window lists the chores first; Lasagne may sit below the screen. The panel's
+    // scroller reaches under the tab bar, so "center" is not on screen: scroll it to the top.
+    await entry(page, LASAGNE, panel).evaluate((element) =>
+      element.scrollIntoView({ block: 'start' }),
+    );
     await touch.hold(await centerOf(entry(page, LASAGNE, panel)));
-    await expect.poll(async () => (await panel.boundingBox())?.height ?? 0).toBeLessThan(height);
+    await expect.poll(async () => shownHeight(page, panel)).toBeLessThan(height);
     await touch.move(await centerOf(tid(page, `year-day-${neighbour}`)));
     await expect(tid(page, 'drag-label')).toHaveText(moveTargetLabel(neighbour, 'Abend'));
     await touch.lift();
 
     await expect(toastMessage(page)).toHaveText(lasagneToast(neighbour, 'Abend'));
     await expect(tid(page, 'day-panel-title')).toHaveText(title(TODAY), { useInnerText: true });
-    await expect.poll(async () => (await panel.boundingBox())?.height ?? 0).toBeGreaterThan(height);
+    await expect.poll(async () => shownHeight(page, panel)).toBeGreaterThan(height);
     await expect(entry(page, LASAGNE, panel)).toHaveCount(0);
     await tid(page, `year-day-${neighbour}`).click();
     await expect(tid(page, 'day-panel-title')).toHaveText(title(neighbour), { useInnerText: true });
@@ -474,6 +510,8 @@ test.describe('desktop', () => {
     await open(page, '/kalender');
     await entry(page, LASAGNE).click();
     await tid(page, 'entry-move-later').click();
+    // The window stays open after a move (0021 AC-028).
+    await tid(page, 'entry-done').click();
     await expect(tid(page, 'entry-sheet')).toHaveCount(0);
     const later = tid(page, 'planned-later');
     await expect(entry(page, LASAGNE, later)).toBeVisible();

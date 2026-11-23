@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useContext } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,8 +19,12 @@ function setWindow(width: number, height: number) {
   });
 }
 
-afterEach(() => {
+afterEach(async () => {
   setWindow(0, 0);
+  // A window still open when a test ends leaves its fading copy (sheet-exit.web.ts).
+  cleanup();
+  await Promise.resolve();
+  document.body.querySelectorAll('[data-sheet-exit]').forEach((copy) => copy.remove());
 });
 
 describe('Sheet (AC-029)', () => {
@@ -51,6 +55,46 @@ describe('Sheet (AC-029)', () => {
       rerender(<Sheet visible={false} onClose={() => undefined} title="Einplanen" size="s" />);
     });
     expect(screen.queryByRole('heading', { name: 'Einplanen' })).toBeNull();
+  });
+});
+
+describe('Sheet leaving with its page (spec 0029, REQ-001)', () => {
+  const exitCopy = () => document.body.querySelector('[data-sheet-exit]');
+
+  it('removed while open: an inert copy fades out over it and then goes', async () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(
+        <Sheet visible onClose={() => undefined} title="Einplanen" size="m" testID="sheet">
+          <Text>Inhalt</Text>
+        </Sheet>,
+      );
+      unmount();
+      await Promise.resolve();
+      const copy = exitCopy();
+      expect(copy).not.toBeNull();
+      expect(copy?.hasAttribute('inert')).toBe(true);
+      expect(copy?.querySelector('[data-testid="sheet"]')).not.toBeNull();
+      expect(copy?.querySelector('[id]')).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(exitCopy()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('closed before it is removed: no copy, it has faded out already', async () => {
+    const { rerender, unmount } = render(
+      <Sheet visible onClose={() => undefined} title="Einplanen" size="m" />,
+    );
+    act(() => {
+      rerender(<Sheet visible={false} onClose={() => undefined} title="Einplanen" size="m" />);
+    });
+    unmount();
+    await Promise.resolve();
+    expect(exitCopy()).toBeNull();
   });
 });
 
@@ -180,6 +224,15 @@ describe('Toast with "Rückgängig" (spec 0005; spec 0019, AC-024)', () => {
   it('nothing to show: no toast', () => {
     render(<ToastHost />);
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('stands in its own layer on the page, so an open window (Modal) never covers it', () => {
+    const { container } = render(<ToastHost />);
+    act(() => toast.show({ message: 'Gespeichert', actionLabel: 'Rückgängig', onAction: vi.fn() }));
+    const alert = screen.getByRole('alert');
+    expect(container.contains(alert)).toBe(false);
+    expect(alert.closest('body')).toBe(document.body);
+    act(() => toast.hide());
   });
 
   it('shows the message as an alert, without action when none is given', () => {

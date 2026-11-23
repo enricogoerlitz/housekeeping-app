@@ -97,7 +97,9 @@ test('AC-008 / AC-009 (0006): "Liste" shows groups with − 2× + or "500 g ›"
   await open(page, '/liste');
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
   // Spec 0025, AC-017: the dishes are counted, the list of them is one tap away.
-  await expect(tid(page, 'list-headline')).toHaveText(/^\d+ offen · aus \d+ Gerichten? ›$/);
+  await expect(tid(page, 'list-headline')).toHaveText(
+    /^\d+ offen · aus (1 Gericht|\d+ Gerichten) ›$/,
+  );
   const milk = await itemIdOf(openItem(page, 'Milch'));
   await expect(tid(page, `item-${milk}-count`)).toHaveText('2×');
   await expect(tid(page, `item-${milk}-minus`)).toBeVisible();
@@ -138,8 +140,9 @@ test('AC-018 / AC-020 (0006): a tap on "Möhren 500 g" or "Milch" opens "Posten 
   await expect(tid(page, 'item-sheet-count-count')).toHaveText('2×');
   await expect(tid(page, 'item-sheet-note')).toBeVisible();
   await expect(tid(page, 'item-sheet-area-name')).toHaveText('Kühlregal & Molkerei');
-  await expect(tid(page, 'item-sheet-origin')).toContainText('von Hand: 1×');
-  await expect(tid(page, 'item-sheet-origin')).toContainText('Lasagne');
+  // Spec 0025, AC-010: the origins from recipes with ✕; "von Hand" is the field, not a row.
+  await expect(tid(page, 'item-sheet-origins')).toContainText('Lasagne');
+  await expect(tid(page, 'item-sheet-origins')).not.toContainText('von Hand');
   await expect(tid(page, 'item-sheet-remove')).toBeVisible();
   await tid(page, 'item-sheet-done').click();
 });
@@ -216,15 +219,14 @@ test('AC-025 (0006): "Entfernen" in the window and a swipe both remove "Milch" w
   await expect(openItem(page, 'Milch')).toHaveCount(1);
 });
 
-test('AC-019 (0006): offline + and − are greyed out with the hint; reading still works', async ({
+test('AC-019 (0006): offline − is greyed out with the hint, + still counts (0019, AC-030); reading still works', async ({
   page,
 }) => {
   await open(page, '/liste');
   await goOffline(page);
   const milk = await itemIdOf(openItem(page, 'Milch'));
-  for (const part of ['minus', 'plus']) {
-    await expect(tid(page, `item-${milk}-${part}`)).toHaveAttribute('aria-disabled', 'true');
-  }
+  await expect(tid(page, `item-${milk}-minus`)).toHaveAttribute('aria-disabled', 'true');
+  await expect(tid(page, `item-${milk}-plus`)).not.toHaveAttribute('aria-disabled', 'true');
   await tid(page, 'list-more').click();
   await expect(tid(page, 'list-more-clear-list')).toHaveAttribute('aria-disabled', 'true');
 });
@@ -354,25 +356,25 @@ test('AC-044 / AC-047 (0006): a checked item stays struck, then moves to "Im Wag
   await startShopping(page);
   const progress = (await tid(page, 'shopping-progress').innerText()).match(/(\d+)\/(\d+)/);
   const [done, total] = [Number(progress?.[1]), Number(progress?.[2])];
-  const lemons = shoppingCheck(page, 'Zitronen');
-  await lemons.click();
-  await expect(lemons).toHaveAttribute('aria-checked', 'true');
+  const bananas = shoppingCheck(page, 'Bananen');
+  await bananas.click();
+  await expect(bananas).toHaveAttribute('aria-checked', 'true');
   await expect(tid(page, 'shopping-progress')).toHaveText(`${done + 1}/${total}`);
   // The Sammel-Fenster: 2 s after the last tap the row slides into "Im Wagen".
   await expect(tid(page, 'sm-done-toggle')).toContainText('Im Wagen', { timeout: 5_000 });
   await expect(tid(page, 'sm-done-toggle')).toHaveAttribute('aria-expanded', 'false');
   await tid(page, 'sm-done-toggle').click();
   await expect(tid(page, 'sm-done-toggle')).toHaveAttribute('aria-expanded', 'true');
-  await expect(tid(page, 'sm-done').locator('[aria-label="Zitronen"]')).toHaveCount(1);
+  await expect(tid(page, 'sm-done').locator('[aria-label="Bananen"]')).toHaveCount(1);
 
   await tid(page, 'shopping-close').click();
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
   await expect(toastMessage(page)).toHaveText(`${done + 1} gekauft · ${total - done - 1} bleiben`);
   await expect(tid(page, 'toast-action')).toHaveText('Rückgängig');
-  await expect(openItem(page, 'Zitronen')).toHaveCount(0);
+  await expect(openItem(page, 'Bananen')).toHaveCount(0);
   await tid(page, 'toast-action').click();
   await showDone(page);
-  await expect(doneItem(page, 'Zitronen')).toHaveCount(1);
+  await expect(doneItem(page, 'Bananen')).toHaveCount(1);
 });
 
 test('AC-045 / AC-046 (0006): offline in "Einkaufen" checking and adding work; "Fertig" only leaves', async ({
@@ -392,18 +394,25 @@ test('AC-045 / AC-046 (0006): offline in "Einkaufen" checking and adding work; "
   await expect(tid(page, 'screen-title')).toHaveText('Einkaufsliste');
 });
 
-test('AC-033 (0001): assigning an area in "Einkaufen" moves Bastelkleber out of "Ohne Bereich"', async ({
+test('AC-033 (0001): assigning an area in "Einkaufen" moves an item out of "Ohne Bereich"', async ({
   page,
 }) => {
   await open(page, '/liste');
   await startShopping(page);
   const none = tid(page, 'sm-group-none');
-  await expect(none).toContainText('Bastelkleber');
+  // Geschenkpapier from the seed, or Bastelkleber added by AC-030 above: whichever comes first.
+  const name = await none
+    .locator('[data-testid^="sm-item-"][data-testid$="-check"]')
+    .first()
+    .getAttribute('aria-label');
+  if (!name) throw new Error('no item without area');
   await none.locator('[data-testid^="assign-area-"]').first().click();
   await expect(tid(page, 'area-sheet')).toBeVisible();
   await tid(page, `area-picker-option-${area('obst-gemuese')}`).click();
-  await expect(tid(page, `sm-group-area:${area('obst-gemuese')}`)).toContainText('Bastelkleber');
-  await expect(tid(page, 'sm-group-none')).toBeHidden();
+  await expect(tid(page, `sm-group-area:${area('obst-gemuese')}`)).toContainText(name);
+  await expect(
+    page.locator(`[data-testid="sm-group-none"]${ACTIVE} [aria-label="${name}"]`),
+  ).toHaveCount(0);
 });
 
 test('AC-034 (0001): moving "Getränke" up at Rewe makes it the first group in "Einkaufen"', async ({
@@ -430,7 +439,7 @@ test('AC-034 (0001): moving "Getränke" up at Rewe makes it the first group in "
   expect((await storeGroups(page))[0]).toBe(`area:${area('getraenke')}`);
 });
 
-test('AC-049 / AC-053 / AC-054 (0006): step 1 picks entries of a week, a recipe without a day, nothing in a past week', async ({
+test('AC-049 / AC-053 (0006), AC-004 (0025): step 1 picks entries of a week, a recipe without a day; a past week opens at today', async ({
   page,
 }) => {
   await open(page, '/liste');
@@ -452,13 +461,13 @@ test('AC-049 / AC-053 / AC-054 (0006): step 1 picks entries of a week, a recipe 
   await page.keyboard.press('Escape');
   await expect(sheet).toBeHidden();
 
-  // AC-054: from a past week in the calendar nothing is preselected.
+  // Spec 0025, AC-004 (replaces 0006 AC-054): from a past week in the calendar the window opens
+  // like from the list, seven days from today.
   await nav(page, 'kalender');
   await tid(page, 'week-prev').click();
   await tid(page, 'plan-to-list').click();
-  await expect(tid(page, 'pc-next')).toHaveText('Weiter');
-  await expect(tid(page, 'pc-next')).toBeDisabled();
-  await expect(tid(page, 'pc-next-hint')).toHaveText('Wähle mindestens ein Gericht');
+  await expect(tid(page, 'pick-week-prev')).toBeDisabled();
+  await expect(tid(page, 'pc-next')).toHaveText(/^Weiter: \d+ Gerichte?$/);
 });
 
 test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry puts only Kokosmilch on the list', async ({

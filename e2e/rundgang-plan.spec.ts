@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { tripEndLabel } from '@housekeeping/core';
+import { periodNavLabel, startOfWeek, tripEndLabel } from '@housekeeping/core';
 
 import {
   ENRICO,
@@ -93,7 +93,11 @@ test('AC-024 (0001) / AC-021 / AC-023 (0010): Mango-Curry for both splits the va
   await expect(tid(page, `add-entry-slot-${SLOT_DINNER}`)).toHaveAttribute('aria-checked', 'true');
   await expect(tid(page, `eater-${member('m-enrico')}`)).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, `eater-${member('m-nadja')}`)).toHaveAttribute('aria-selected', 'true');
-  await expect(tid(page, 'add-entry-split')).toHaveText('mit Tofu 1 · mit Hähnchen 1');
+  // One counter per variant and the sum below (0021 REQ-006).
+  await expect(
+    page.locator('[data-testid^="add-entry-variant-"][data-testid$="-value"]:visible'),
+  ).toHaveText(['1', '1']);
+  await expect(tid(page, 'add-entry-portions-value')).toHaveText('2 Portionen');
   await tid(page, 'add-entry-step-back').click();
   await expect(tid(page, `add-entry-recipe-${seedIds['rec-mango-curry']}`)).toBeVisible();
   await tid(page, `add-entry-recipe-${seedIds['rec-mango-curry']}`).click();
@@ -168,13 +172,19 @@ test('AC-014 / AC-025 (0010): Woche, Monat and Jahr; ▲ opens "Aktivitäten" an
   page,
 }) => {
   await open(page, '/kalender');
-  await expect(tid(page, 'calendar-title')).toHaveText(/^KW \d+ · /);
+  // The phone's week title is the date range ("23.–29. Nov").
+  await expect(tid(page, 'calendar-title')).toHaveText(
+    periodNavLabel('week', startOfWeek(TODAY), TODAY).label,
+  );
   await tid(page, 'calendar-view-month').click();
   await expect(tid(page, 'month-phone')).toBeVisible();
   await expect(tid(page, `month-day-${TODAY}`)).toBeVisible();
   await tid(page, 'calendar-view-year').click();
   await expect(tid(page, 'year-view')).toBeVisible();
-  await expect(tidPrefix(page, 'year-month-')).toHaveCount(12);
+  // `year-month-<n>` per month (beside its `-open` heading button).
+  await expect(
+    page.locator('[data-testid^="year-month-"]:not([data-testid$="-open"]):visible'),
+  ).toHaveCount(12);
   // The month name opens the month; a day opens the day window (spec 0016, AC-023).
   await tid(page, 'year-month-3-open').click();
   await expect(tid(page, 'month-phone')).toBeVisible();
@@ -205,7 +215,7 @@ test('AC-035 / AC-044 (0010): "Bis" before "Von" and nobody chosen save nothing'
     if ((await chip.getAttribute('aria-selected')) === 'true') await chip.click();
   }
   await expect(tid(page, 'trip-save')).toBeDisabled();
-  await expect(tid(page, 'trip-who-hint')).toHaveText('Wähle, wer weg ist');
+  await expect(tid(page, 'trip-who-hint')).toHaveText('Wähle, wer unterwegs ist');
 });
 
 test('AC-033 / AC-037 (0010), AC-027 (0030): with Enrico away on Saturday both are still preselected', async ({
@@ -335,7 +345,7 @@ test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a
 
   await tid(page, 'calendar-more').click();
   await tid(page, 'calendar-more-trips').click();
-  await expect(page).toHaveURL(/\/reisen$/);
+  await expect(page).toHaveURL(/\/reisen(\?von=kalender)?$/);
   await expect(tid(page, 'trips-screen')).toContainText('Reisen');
   await expectNoAbsenceWord(page);
 });

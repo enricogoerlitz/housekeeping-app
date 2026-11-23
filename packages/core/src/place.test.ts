@@ -81,6 +81,12 @@ describe('openerOf', () => {
     expect(openerOf(place, `/rezept/${LASAGNE}`)).toEqual({ href: '/', section: 'uebersicht' });
   });
 
+  it('is the address before when the page mounts only after the router showed it (a lazy tab)', () => {
+    const shopping = placeAfter(EMPTY_PLACE, '/einkaufen', {});
+    const stores = placeAfter(shopping, '/maerkte', { von: 'liste' });
+    expect(openerOf(stores, '/maerkte')).toEqual({ href: '/einkaufen', section: 'liste' });
+  });
+
   it('is nothing when the current address is the page itself (deep link mounted again)', () => {
     const place = placeAfter(EMPTY_PLACE, `/rezept/${LASAGNE}`, { id: LASAGNE, schritt: '2' });
     expect(openerOf(place, `/rezept/${LASAGNE}`)).toBeUndefined();
@@ -133,6 +139,24 @@ describe('originBackPlan', () => {
       section: 'verwalten',
       label: 'Märkte',
       historyBack: false,
+      href: '/maerkte',
+    });
+  });
+
+  it('goes back one entry to its own list, whatever section the list itself names', () => {
+    // "Märkte" opened from the list (von=liste), then "Rewe Südstadt" from "Märkte".
+    const stores = placeAfter(EMPTY_PLACE, '/maerkte', { von: 'liste' });
+    const plan = originBackPlan({
+      von: undefined,
+      own: 'verwalten',
+      opener: stores.current,
+      place: stores,
+      home: { label: 'Märkte', href: '/maerkte' },
+    });
+    expect(plan).toEqual({
+      section: 'verwalten',
+      label: 'Märkte',
+      historyBack: true,
       href: '/maerkte',
     });
   });

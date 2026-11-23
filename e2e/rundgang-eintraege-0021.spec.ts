@@ -41,7 +41,7 @@ test('AC-035, AC-037: a first time on the restaurant switches "Erinnern" on', as
   await tid(page, 'entry-done').click();
   await open(page, `/kalender?eintrag=${ENZO}`);
   await chooseTime(page, 'entry-time', '19:30');
-  await expect(tid(page, 'entry-reminder-switch')).toBeChecked();
+  await expect(tid(page, 'entry-reminder-switch').locator('input')).toBeChecked();
   await tid(page, 'entry-done').click();
   await expect(tid(page, `entry-${ENZO}`)).toContainText('Trattoria Da Enzo · 19:30');
 });

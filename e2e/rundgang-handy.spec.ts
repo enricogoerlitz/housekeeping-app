@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { expect, open, settle, test, tid } from './helpers';
+import { contentReady, expect, open, routeUrl, settle, test, tid } from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0029 — phone polish. Runs once in spec 0028 with the full suite; here it is only
@@ -77,6 +77,7 @@ test.describe('swipe between view tabs (REQ-003)', () => {
 
   test('AC-009: a swipe to the left goes from "Anstehend" to "Alle"', async ({ page }) => {
     await open(page, '/haushalt');
+    await contentReady(page);
     await swipe(page, 300, 500, -200);
     await expect(page).toHaveURL(/\/haushalt\?ansicht=alle/);
   });
@@ -85,18 +86,21 @@ test.describe('swipe between view tabs (REQ-003)', () => {
     page,
   }) => {
     await open(page, '/rezepte?ansicht=restaurants');
+    await contentReady(page);
     await swipe(page, 100, 500, 200);
     await expect(page).toHaveURL(/\/rezepte$/);
   });
 
   test('AC-011: before the first tab nothing changes', async ({ page }) => {
     await open(page, '/haushalt');
+    await contentReady(page);
     await swipe(page, 100, 500, 220);
     await expect(page).toHaveURL(/\/haushalt$/);
   });
 
   test('AC-012: a short move and a move from the screen edge keep the tab', async ({ page }) => {
     await open(page, '/haushalt');
+    await contentReady(page);
     await swipe(page, 300, 500, -40);
     await swipe(page, 380, 500, -200);
     await expect(page).toHaveURL(/\/haushalt$/);
@@ -109,9 +113,7 @@ test.describe('route without an empty window (REQ-004)', () => {
   }) => {
     await open(page, `/restaurant/${ENZO}`);
     await tid(page, 'restaurant-route').click();
-    const popup = page.waitForEvent('popup');
-    await tid(page, 'route-apple').click();
-    expect((await popup).url()).toMatch(/^https:\/\/maps\.apple\.com\/\?daddr=/);
+    expect(await routeUrl(page, 'route-apple')).toMatch(/^https:\/\/maps\.apple\.com\/\?daddr=/);
   });
 
   test.describe('installed on an iPhone', () => {

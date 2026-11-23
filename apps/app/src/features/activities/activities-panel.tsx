@@ -331,7 +331,7 @@ function ActivityCard(props: {
       testID={`activity-${id}`}
       accessibilityRole="button"
       accessibilityLabel={activity.name}
-      accessibilityState={{ selected: !!props.selected }}
+      aria-selected={!!props.selected}
       onPress={props.onPress}
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,

@@ -60,7 +60,8 @@ test('AC-001: "Benachrichtigungen · 2 an" under the avatar opens the page; "Ver
   await expect(tid(page, 'settings-notifications-summary')).toHaveText('2 an · dieses Gerät aus');
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
-  await expect(tid(page, 'notif-kinds')).toContainText('gilt für alle Geräte');
+  // Enrico is in two households (seed): the kinds are per household, without "gilt für alle Geräte".
+  await expect(tid(page, 'notif-kinds')).toContainText('Was und wann');
   await expect(tid(page, 'notif-kinds')).toContainText('Während einer Reise kommt nichts.');
   await expect(tid(page, 'notif-devices')).toContainText('Deine Geräte');
   // The export has a service worker: the switch is live (not the development server's hint).

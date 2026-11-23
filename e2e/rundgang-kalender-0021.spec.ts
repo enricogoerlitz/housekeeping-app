@@ -13,6 +13,8 @@ import {
 } from '@housekeeping/core';
 
 import {
+  ACTIVE,
+  contentReady,
   SLOT_DINNER,
   SLOT_LUNCH,
   SLOT_MORNING,
@@ -95,6 +97,8 @@ async function householdRowInMonth(page: Page): Promise<void> {
 
 /** A finger on the page through CDP touch events, so the browser sends touch pointer events. */
 async function finger(page: Page) {
+  // The first touch right after a load misses the remounting content.
+  await contentReady(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
   const send = (
@@ -108,16 +112,18 @@ async function finger(page: Page) {
   return { send };
 }
 
-/** A sideways mouse swipe over the calendar body: -1 to the left (next), 1 to the right. */
+/** A sideways finger swipe over the calendar body: -1 to the left (next), 1 to the right. */
 async function swipe(page: Page, direction: -1 | 1): Promise<void> {
   const body = await boxOf(tid(page, 'calendar-swipe'));
+  const touch = await finger(page);
   const y = body.y + Math.min(body.height / 2, 200);
   const from = body.x + body.width * (direction < 0 ? 0.8 : 0.2);
   const to = body.x + body.width * (direction < 0 ? 0.2 : 0.8);
-  await page.mouse.move(from, y);
-  await page.mouse.down();
-  await page.mouse.move(to, y, { steps: 8 });
-  await page.mouse.up();
+  await touch.send('touchStart', [{ x: from, y }]);
+  for (let step = 1; step <= 8; step += 1) {
+    await touch.send('touchMove', [{ x: from + ((to - from) * step) / 8, y }]);
+  }
+  await touch.send('touchEnd', []);
 }
 
 test.describe('desktop', () => {
@@ -214,7 +220,7 @@ test.describe('desktop', () => {
     await showMonth(page);
     const trip = day(12);
     if (startOfMonth(trip) !== startOfMonth(TODAY)) await tid(page, 'week-next').click();
-    const stripes = tid(page, `trip-stripe-${MALLORCA}`);
+    const stripes = page.locator(`[data-testid="trip-stripe-${MALLORCA}"]${ACTIVE}`);
     await expect(stripes.first()).toContainText('Urlaub Mallorca');
     const rows = new Set([trip, addDays(trip, 6)].map((date) => startOfWeek(date)).filter(Boolean));
     await expect(stripes).toHaveCount(rows.size);
@@ -248,7 +254,8 @@ test.describe('desktop', () => {
     await expect(add).toHaveAttribute('aria-disabled', 'true');
     await expect(add).toHaveAccessibleDescription(OFFLINE_HINT);
     // Not only dimmed: a click says why, and neither the add window nor the day window opens.
-    await add.click();
+    // Playwright does not click what is aria-disabled; a person can.
+    await add.click({ force: true });
     await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
     await expect(tid(page, 'add-entry-sheet')).toBeHidden();
     await expect(tid(page, 'day-panel')).toBeHidden();
@@ -301,7 +308,8 @@ test.describe('desktop', () => {
   test('AC-044: with the household row the month shows the day’s chores as lines under the entries', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1440, height: 1200 });
+    // Tall enough that today's three entries and two chores fit (six week rows, REQ-001).
+    await page.setViewportSize({ width: 1440, height: 1700 });
     await showMonth(page);
     await expect(tid(page, `month-chores-${TODAY}`)).toHaveCount(0);
     await householdRowInMonth(page);
@@ -318,8 +326,9 @@ test.describe('tablet', () => {
   }) => {
     await page.setViewportSize({ width: 1024, height: 1366 });
     await open(page, '/kalender');
-    const empty = weekDates(TODAY).find((date) => date !== TODAY) ?? TODAY;
-    for (const height of await slotHeights(page, empty)) expect(height).toBeLessThan(110);
+    // Below desktop width the week is the list: today's three Tageszeiten, one entry each.
+    for (const height of await slotHeights(page, TODAY)) expect(height).toBeLessThan(110);
+    expect(await pageScrolls(page)).toBe(true);
   });
 
   test('AC-009: a tablet without a mouse shows no "+"; a tap opens the day window', async ({
@@ -370,9 +379,24 @@ test.describe('phone', () => {
     await tid(page, 'calendar-view-year').click();
     const month = Number(TODAY.slice(5, 7));
     const nav = await boxOf(tid(page, 'calendar-phone-nav'));
+    // "Oben": at the top, or as high as the year scrolls when the month sits in the last row.
     await expect
-      .poll(async () => (await boxOf(tid(page, `year-month-${month}`))).y)
-      .toBeLessThan(nav.y + nav.height + 60);
+      .poll(async () =>
+        tid(page, `year-month-${month}`).evaluate(
+          (element, limit) => {
+            let scroller = element.parentElement;
+            while (scroller && scroller.scrollHeight <= scroller.clientHeight) {
+              scroller = scroller.parentElement;
+            }
+            const atEnd =
+              !!scroller && scroller.scrollTop >= scroller.scrollHeight - scroller.clientHeight - 1;
+            const top = element.getBoundingClientRect().top;
+            return top < limit || (atEnd && top < window.innerHeight / 2);
+          },
+          nav.y + nav.height + 60,
+        ),
+      )
+      .toBe(true);
     await tid(page, 'week-next').click();
     await expect
       .poll(async () => (await boxOf(tid(page, 'year-month-1'))).y)

@@ -321,7 +321,7 @@ function MiniDay(props: {
           testID={`year-day-${props.date}`}
           accessibilityRole="button"
           accessibilityLabel={dayLabel(props.data, props.date, props.choreCount)}
-          accessibilityState={{ selected: props.selected }}
+          aria-selected={props.selected}
           // Spec 0031, REQ-031: the hit area does not grow past the day (no 44-pt ::before).
           {...({ dataSet: { dense: true } } as object)}
           onPress={guardPress(props.onPress)}

@@ -74,9 +74,18 @@ test('AC-008, AC-009: the website gets "https://"; other schemes and no host are
   await expect(tid(page, 'restaurant-edit-sheet')).toContainText('Keine gültige Adresse');
   await tid(page, 'restaurant-website').fill('trattoria-da-enzo.de');
   await tid(page, 'restaurant-save').click();
+  // The run needs no internet: the restaurant's site gets a stub page.
+  await page
+    .context()
+    .route(/^https:\/\/trattoria-da-enzo\.de\//, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html>' }),
+    );
   const popup = page.waitForEvent('popup');
   await tid(page, 'restaurant-website-open').click();
-  expect((await popup).url()).toContain('https://trattoria-da-enzo.de');
+  const site = await popup;
+  await site.waitForLoadState();
+  expect(site.url()).toContain('https://trattoria-da-enzo.de');
+  await site.close();
   await expect(tid(page, 'restaurant-title')).toHaveText('Trattoria Da Enzo');
 });
 

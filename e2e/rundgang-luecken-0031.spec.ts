@@ -43,7 +43,9 @@ async function sampleSheet(
     ([testId, duration]) =>
       new Promise<{ transform: string; opacity: number; scrim: number }[]>((resolve) => {
         const samples: { transform: string; opacity: number; scrim: number }[] = [];
-        const end = performance.now() + duration;
+        // The window counts from the sheet's first frame: opening may wait for its code first.
+        const cap = performance.now() + duration + 2000;
+        let end: number | undefined;
         const opacityOf = (node: Element | null) => {
           let value = 1;
           for (let at = node; at; at = at.parentElement) {
@@ -52,16 +54,22 @@ async function sampleSheet(
           return value;
         };
         const frame = () => {
-          const sheet = document.querySelector(`[data-testid="${testId}"]`);
+          // The window itself, or the inert copy that fades out once its page dropped it.
+          const selector = `[data-testid="${testId}"]`;
+          const sheet =
+            document.querySelector(`${selector}:not([inert] *)`) ??
+            document.querySelector(selector);
           const scrim = document.querySelector(`[data-testid="${testId}-scrim"]`);
           if (sheet) {
+            end ??= performance.now() + duration;
             samples.push({
               transform: getComputedStyle(sheet).transform,
               opacity: opacityOf(sheet),
               scrim: opacityOf(scrim),
             });
           }
-          if (performance.now() < end) requestAnimationFrame(frame);
+          const now = performance.now();
+          if (now < (end ?? cap) && now < cap) requestAnimationFrame(frame);
           else resolve(samples);
         };
         requestAnimationFrame(frame);
@@ -72,7 +80,7 @@ async function sampleSheet(
 
 /** The bottom edge of the window `id`, in px from the top of the page. */
 async function sheetBottom(page: Page, id: string): Promise<number> {
-  const box = await page.locator(`[data-testid="${id}"]`).boundingBox();
+  const box = await page.locator(`[data-testid="${id}"]:not([inert] *)`).boundingBox();
   return (box?.y ?? 0) + (box?.height ?? 0);
 }
 
@@ -108,7 +116,10 @@ test('AC-049 (0019): a failed sign-in says so, and the next attempt still return
     attempts += 1;
     return route.fulfill({
       status: 302,
-      headers: { location: '/?error=server_error&error_description=Unable+to+exchange+code' },
+      // Back to the app, not to Supabase's host (a relative address would resolve there).
+      headers: {
+        location: `${new URL(page.url()).origin}/?error=server_error&error_description=Unable+to+exchange+code`,
+      },
     });
   });
   await page.goto(address);

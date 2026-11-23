@@ -135,8 +135,9 @@ export function IngredientSheet(props: {
     setChosen(article);
     setQuery('');
     setArticleError(undefined);
-    // AC-001: after the article the amount.
-    requestAnimationFrame(() => amountInput.current?.focus());
+    // AC-001: after the article the amount, at once: a frame later it would take the focus from a
+    // field tapped in between.
+    amountInput.current?.focus();
   };
   const createNew = () => {
     const [problem] = validateArticleDraft({ name, synonyms: [] }, articles);
@@ -231,6 +232,7 @@ export function IngredientSheet(props: {
               placeholder="Artikel suchen oder anlegen"
               clearLabel="Suche leeren"
               autoFocus
+              enterSelects
               inputRef={articleInput}
               hits={search.hits}
               onSelect={(key) => {

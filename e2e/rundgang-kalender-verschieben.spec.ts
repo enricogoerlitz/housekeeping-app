@@ -36,6 +36,8 @@ const sameMonth = (a: ISODate, b: ISODate) => a.slice(0, 7) === b.slice(0, 7);
 
 /** Opens the entry window of `title` on `date` in the week and checks its Tageszeit. */
 async function expectEntryAt(page: Page, date: ISODate, title: string, slotId: string) {
+  // `isVisible` does not wait: the week must be drawn first.
+  await expect(page.locator('[data-testid^="day-2"]:visible').first()).toBeVisible();
   if (!(await tid(page, `day-${TODAY}`).isVisible())) await tid(page, 'week-today').click();
   await showPlanWeek(page, date);
   const row = dayBlock(page, date).locator(PLAN_ENTRY).filter({ hasText: title });
@@ -60,7 +62,8 @@ test('AC-019: "Anderes Datum …" moves Lasagne two months on and keeps "Abend"'
   await tid(page, 'entry-move-date-next').click();
   await expect(tid(page, 'entry-move-date-title')).toHaveText(monthTitle(target));
   await tid(page, `entry-move-date-day-${target}`).click();
-
+  // The window stays open after a move (spec 0021, AC-028); "Fertig" closes it.
+  await tid(page, 'entry-done').click();
   await expect(tid(page, 'entry-sheet')).toHaveCount(0);
   await expect(toastMessage(page)).toContainText(
     moveToastText({ title: 'Lasagne', date: target, slotName: 'Abend', today: TODAY }),
@@ -105,12 +108,10 @@ test('AC-021: with the keyboard, the days from the leftovers on are skipped', as
   await tid(page, 'entry-move-other').focus();
   await page.keyboard.press('Enter');
 
-  // The leftovers are today: today and every later day are blocked, as is more than seven days
-  // before them.
+  // The leftovers are today: every later day is blocked; no limit in days before them (spec
+  // 0021, Decision 10).
   await expect(tid(page, 'entry-move-date-title')).toHaveText(monthTitle(yesterday));
-  for (const blocked of [day(0), day(1), day(2), day(-8)].filter((date) =>
-    sameMonth(date, yesterday),
-  )) {
+  for (const blocked of [day(1), day(2)].filter((date) => sameMonth(date, yesterday))) {
     await expect(tid(page, `entry-move-date-day-${blocked}`)).toHaveAttribute(
       'aria-disabled',
       'true',
@@ -128,7 +129,8 @@ test('AC-021: with the keyboard, the days from the leftovers on are skipped', as
   }
   await page.keyboard.press('Enter');
 
-  await expect(tid(page, 'entry-sheet')).toHaveCount(0);
   await expect(toastMessage(page)).toContainText('Mango-Curry →');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toHaveCount(0);
   await expectEntryAt(page, target, 'Mango-Curry', SLOT_DINNER);
 });

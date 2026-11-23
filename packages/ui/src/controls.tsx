@@ -13,6 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useHint } from './hint';
 import { icons, type IconName } from './icons';
 import { useHover } from './pointer';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
@@ -103,12 +104,13 @@ export function Button(props: ButtonProps) {
         ? 'accent'
         : 'text';
   const c = theme.colors;
+  const hint = useHint(props.hint);
   return (
     <Pressable
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.accessibilityLabel ?? props.label}
-      accessibilityHint={props.hint}
+      {...hint.props}
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
@@ -139,6 +141,7 @@ export function Button(props: ButtonProps) {
           {props.label}
         </Text>
       </ToneContext.Provider>
+      {hint.node}
     </Pressable>
   );
 }
@@ -170,13 +173,14 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
   const iconColor: ColorToken =
     props.color ??
     (inArea ? 'text' : variant === 'filled' ? 'onAccent' : variant === 'soft' ? 'text' : 'muted');
+  const hint = useHint(props.hint);
   return (
     <Pressable
       ref={ref}
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.label}
-      accessibilityHint={props.hint}
+      {...hint.props}
       accessibilityState={{ disabled: !!props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
@@ -203,6 +207,7 @@ export function IconButton({ ref, ...props }: IconButtonProps) {
       <ToneContext.Provider value={inArea ? { fg: area.onFill } : undefined}>
         <Icon name={props.icon} size={Math.round(size * 0.52)} color={iconColor} />
       </ToneContext.Provider>
+      {hint.node}
     </Pressable>
   );
 }
@@ -237,6 +242,7 @@ export function Chip(props: ChipProps) {
 export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
   const theme = useTheme();
   const hover = useHover();
+  const hint = useHint(props.hint);
   const c = theme.colors;
   const tone = props.tone ? c.tones[props.tone] : undefined;
   const background = props.selected ? c.accent : tone ? tone.bg : c.surface;
@@ -294,7 +300,7 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
         props.accessibilityLabel ??
         (props.detail === undefined ? props.label : `${props.label} ${props.detail}`)
       }
-      accessibilityHint={props.hint}
+      {...hint.props}
       accessibilityState={
         props.role === 'radio'
           ? { checked: !!props.selected, disabled: !!props.disabled }
@@ -319,6 +325,7 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
       }}
     >
       {content}
+      {hint.node}
     </Pressable>
   );
 }
@@ -526,6 +533,7 @@ export function Stars(props: StarsProps) {
   const interactive = !!props.onChange && !props.disabled;
   const shown = (interactive ? pointer.preview : undefined) ?? props.value;
   const valueText = starsLabel(props.value);
+  const hint = useHint(props.hint);
 
   const dispatch = (event: StarPointerEvent) => {
     const next = starPointer(pointerRef.current, event);
@@ -588,7 +596,7 @@ export function Stars(props: StarsProps) {
       aria-valuenow={props.onChange ? props.value : undefined}
       aria-valuetext={props.onChange ? valueText : undefined}
       aria-disabled={props.onChange ? !interactive : undefined}
-      accessibilityHint={props.hint}
+      {...hint.props}
       accessibilityActions={
         interactive ? [{ name: 'increment' }, { name: 'decrement' }] : undefined
       }
@@ -643,6 +651,7 @@ export function Stars(props: StarsProps) {
           </View>
         );
       })}
+      {hint.node}
     </View>
   );
 }

@@ -50,6 +50,8 @@ export interface SearchOrCreateProps {
   /** "Mehr Angaben ▸": more fields that unfold in place, below the rows. */
   more?: { label: string; children: ReactNode };
   autoFocus?: boolean;
+  /** Enter in the field takes the first hit, e.g. the article of an ingredient (spec 0023, AC-001). */
+  enterSelects?: boolean;
   /** The search field, e.g. to put the focus back on it (spec 0023, AC-003). */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   /** Parts get `${testID}-input`, `-hit-<key>`, `-create-<key>`, `-brake`, `-more`. */
@@ -87,6 +89,14 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
         autoFocus={props.autoFocus}
         inputRef={props.inputRef}
         returnKeyType="search"
+        onSubmitEditing={
+          props.enterSelects
+            ? () => {
+                const first = props.hits[0];
+                if (first) props.onSelect(first.key);
+              }
+            : undefined
+        }
         testID={id('input')}
         left={<Icon name="search" size={20} color="muted" />}
         right={

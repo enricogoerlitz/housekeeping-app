@@ -127,7 +127,7 @@ function AddCell(props: { date: ISODate; slotId: Id; onAdd: WeekViewProps['onAdd
       accessibilityRole="button"
       accessibilityLabel="Hinzufügen"
       accessibilityHint={online.hint}
-      accessibilityState={{ disabled: online.disabled }}
+      aria-disabled={online.disabled}
       disabled={online.disabled}
       onPress={() => props.onAdd({ date: props.date, slotId: props.slotId, slotChosen: true })}
       style={(state) => {

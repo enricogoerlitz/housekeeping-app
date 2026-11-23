@@ -1,5 +1,20 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type HostInstance,
+  type ViewStyle,
+} from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
@@ -23,7 +38,9 @@ import {
   useBottomInset,
 } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
+import { fadeOutCopy } from './sheet-exit';
 import { createToastStore } from './toast-state';
+import { TopLayer } from './top-layer';
 
 export interface SheetProps {
   visible: boolean;
@@ -96,6 +113,21 @@ export function Sheet(props: SheetProps) {
   // While fading out the window takes no taps, and a tap on the scrim closes nothing twice.
   const close = props.visible ? props.onClose : undefined;
 
+  // Removed by its page while open: a copy fades out in its place (spec 0029, REQ-001).
+  const layer = useRef<HostInstance>(null);
+  const open = useRef({ shown: false, slide });
+  useLayoutEffect(() => {
+    open.current = { shown: props.visible && mounted, slide };
+  });
+  useLayoutEffect(
+    () => () => {
+      if (open.current.shown) {
+        fadeOutCopy(layer.current, { slide: open.current.slide, ms: CLOSE_MS });
+      }
+    },
+    [],
+  );
+
   return (
     <Modal
       visible={mounted}
@@ -107,6 +139,7 @@ export function Sheet(props: SheetProps) {
       <ToneContext.Provider value={undefined}>
         <PageScrollContext.Provider value={undefined}>
           <View
+            ref={layer}
             style={{
               flex: 1,
               justifyContent: isPhone ? 'flex-end' : 'center',
@@ -118,6 +151,7 @@ export function Sheet(props: SheetProps) {
             }}
           >
             <Animated.View
+              {...SCRIM_PART}
               style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, scrimStyle]}
             >
               <Pressable
@@ -129,6 +163,7 @@ export function Sheet(props: SheetProps) {
               />
             </Animated.View>
             <Animated.View
+              {...PANEL_PART}
               testID={props.testID}
               accessibilityViewIsModal
               pointerEvents={props.visible ? 'auto' : 'none'}
@@ -209,6 +244,10 @@ export function Sheet(props: SheetProps) {
   );
 }
 
+// The parts the copy of a dropped window animates (sheet-exit.web.ts).
+const SCRIM_PART = { dataSet: { sheetPart: 'scrim' } } as object;
+const PANEL_PART = { dataSet: { sheetPart: 'panel' } } as object;
+
 /** On the web: a scrolling panel keeps its scroll to itself (spec 0019, REQ-009). */
 const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;
 
@@ -250,6 +289,8 @@ export function useToastClearance(height: number | undefined): void {
 }
 
 /** Mount once near the root: above the tab bar and the home bar on phones (AC-024). */
+const WEB_TOAST_LAYER = { position: 'fixed', zIndex: 10000 } as unknown as ViewStyle;
+
 export function ToastHost() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -261,49 +302,52 @@ export function ToastHost() {
   const c = theme.colors;
   const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
   return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: 'absolute',
-        left: insets.left,
-        right: insets.right,
-        bottom: bottomEdge + below + (isPhone ? 12 : 24),
-        alignItems: 'center',
-        paddingHorizontal: 16,
-      }}
-    >
-      <ToneContext.Provider value={{ fg: c.bg }}>
-        <View
-          testID="toast"
-          accessibilityRole="alert"
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-            minHeight: 48,
-            maxWidth: 440,
-            paddingLeft: 16,
-            paddingRight: state.actionLabel ? 6 : 16,
-            paddingVertical: 6,
-            borderRadius: theme.shape.radius.control + 2,
-            // Inverted surface: stands out on every theme without a new colour.
-            backgroundColor: c.text,
-          }}
-        >
-          <Text variant="small" style={{ flexShrink: 1 }} testID="toast-message">
-            {state.message}
-          </Text>
-          {state.actionLabel ? (
-            <Button
-              label={state.actionLabel}
-              variant="link"
-              size="sm"
-              testID="toast-action"
-              onPress={() => store.act(state.id)}
-            />
-          ) : null}
-        </View>
-      </ToneContext.Provider>
-    </View>
+    <TopLayer>
+      <View
+        pointerEvents="box-none"
+        style={{
+          // Above react-native-web's Modal layers (z-index 9999) beside it in the body.
+          ...(Platform.OS === 'web' ? WEB_TOAST_LAYER : { position: 'absolute' }),
+          left: insets.left,
+          right: insets.right,
+          bottom: bottomEdge + below + (isPhone ? 12 : 24),
+          alignItems: 'center',
+          paddingHorizontal: 16,
+        }}
+      >
+        <ToneContext.Provider value={{ fg: c.bg }}>
+          <View
+            testID="toast"
+            accessibilityRole="alert"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              minHeight: 48,
+              maxWidth: 440,
+              paddingLeft: 16,
+              paddingRight: state.actionLabel ? 6 : 16,
+              paddingVertical: 6,
+              borderRadius: theme.shape.radius.control + 2,
+              // Inverted surface: stands out on every theme without a new colour.
+              backgroundColor: c.text,
+            }}
+          >
+            <Text variant="small" style={{ flexShrink: 1 }} testID="toast-message">
+              {state.message}
+            </Text>
+            {state.actionLabel ? (
+              <Button
+                label={state.actionLabel}
+                variant="link"
+                size="sm"
+                testID="toast-action"
+                onPress={() => store.act(state.id)}
+              />
+            ) : null}
+          </View>
+        </ToneContext.Provider>
+      </View>
+    </TopLayer>
   );
 }

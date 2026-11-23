@@ -42,6 +42,11 @@ const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 // ---------- Windows in the browser history ----------
 
 const windows: WindowEntry[] = [];
+// Between ✕ (history back) and the popstate that restores the page, a change of parameters would
+// be undone by that restore: it waits and applies after it (e.g. selecting what the window
+// just created).
+let closingWindow = false;
+const afterClose: (() => void)[] = [];
 
 function location(): string {
   return window.location.pathname + window.location.search + window.location.hash;
@@ -58,13 +63,22 @@ if (isWeb) {
     'popstate',
     (event) => {
       const top = windowClosedByBack(windows, entryId(), location());
-      if (!top) return;
-      windows.pop();
-      event.stopImmediatePropagation();
-      top.close();
+      closingWindow = false;
+      if (top) {
+        windows.pop();
+        event.stopImmediatePropagation();
+        top.close();
+      }
+      afterClose.splice(0).forEach((apply) => apply());
     },
     true,
   );
+}
+
+/** Runs `apply` once a window closing by ✕ has left the history, or at once when none is. */
+export function afterWindowClosed(apply: () => void): void {
+  if (closingWindow) afterClose.push(apply);
+  else apply();
 }
 
 function openWindowEntry(apply: () => void, close: () => void): void {
@@ -108,7 +122,9 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
     [navigation],
   );
   const replace = useCallback(
-    (patch: PageParams<K>) => setParams(pageQuery(page, patch)),
+    (patch: PageParams<K>) => {
+      afterWindowClosed(() => setParams(pageQuery(page, patch)));
+    },
     [page, setParams],
   );
 
@@ -132,8 +148,10 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
   );
   const close = useCallback(
     (patch: PageParams<K>) => {
-      if (ownWindowOnTop()) window.history.back();
-      else replace(patch);
+      if (ownWindowOnTop()) {
+        closingWindow = true;
+        window.history.back();
+      } else replace(patch);
     },
     [replace],
   );

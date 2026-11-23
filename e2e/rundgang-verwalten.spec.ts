@@ -34,9 +34,15 @@ test('AC-001, AC-006: inviting names the Google test users; "Zurückziehen" remo
   await login(page, 'enrico');
   await open(page, '/');
   await switchHousehold(page, householdId);
-  await expect(tid(page, 'settings-household')).toContainText(
-    'Ist die Adresse neu, muss Enrico sie zusätzlich bei Google als Testnutzer eintragen.',
-  );
+  await openManaged(page, 'members');
+  await expect(
+    page.getByText(
+      'Ist die Adresse neu, muss Enrico sie zusätzlich bei Google als Testnutzer eintragen.',
+      {
+        exact: false,
+      },
+    ),
+  ).toBeVisible();
   await expect(page.getByText('Wer eingeladen ist, kann sich mit Google anmelden.')).toHaveCount(0);
   await tid(page, 'household-invite-input').fill(email);
   await tid(page, 'household-invite-submit').click();
@@ -61,6 +67,7 @@ test('AC-017, AC-018, AC-019: the last member deletes the household after typing
   await login(page, 'enrico');
   await open(page, '/');
   await switchHousehold(page, householdId);
+  await openManaged(page, 'members');
   await expect(tid(page, `household-member-remove-${seedIds['m-enrico']}`)).toHaveCount(0);
   await tid(page, 'household-delete').click();
   const sheet = tid(page, 'household-delete-sheet');
@@ -90,6 +97,7 @@ test('AC-014, AC-015: renaming trims the name and refuses an empty one', async (
   await login(page, 'enrico');
   await open(page, '/');
   await switchHousehold(page, householdId);
+  await openManaged(page, 'members');
   await tid(page, 'household-rename').click();
   await tid(page, 'household-rename-input').fill('   ');
   await tid(page, 'household-rename-save').click();
@@ -170,10 +178,16 @@ test('AC-035, AC-038: „Erinnern“ comes with a time; off it only shows the ti
   await expect(remind()).toHaveCount(0);
   await chooseTime(page, 'chore-due-time', '19:00');
   await expect(remind().locator('input')).toBeChecked();
-  await expect(remind()).toContainText('Erinnert zur Uhrzeit, wer dran ist.');
+  // The switch carries the test id; its description stands beside it.
+  await expect(
+    page.getByText('Erinnert zur Uhrzeit, wer dran ist.', { exact: false }),
+  ).toBeVisible();
   await remind().locator('input').click();
   await expect(remind().locator('input')).not.toBeChecked();
-  await expect(remind()).toContainText('Keine Erinnerung – die Uhrzeit wird nur angezeigt.');
+  // The switch carries the test id; its description stands beside it.
+  await expect(
+    page.getByText('Keine Erinnerung – die Uhrzeit wird nur angezeigt.', { exact: false }),
+  ).toBeVisible();
   await chooseTime(page, 'chore-due-time', undefined);
   await expect(remind()).toHaveCount(0);
   await chooseTime(page, 'chore-due-time', '18:00');

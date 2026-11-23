@@ -223,14 +223,18 @@ export function ListScreen() {
   const openItem = (itemId: string) => address.open({ posten: itemId });
   const setEditing = (next: undefined) => address.close({ posten: next });
   // Someone else removed the item while its window was open (AC-027); an unknown item in the
-  // address opens nothing and says so (AC-052).
+  // address opens nothing and says so (AC-052). Removed from its own window, the window closes
+  // with its own toast and "Rückgängig" (AC-025), which this must not replace.
+  const [closedHere, setClosedHere] = useState<string | undefined>();
   const clearItem = () => address.replace({ posten: undefined });
   useMissingObject(
     openItemId,
     openItemRow !== undefined,
     'Diesen Posten gibt es nicht mehr',
     clearItem,
-    lastName ? `${lastName} steht nicht mehr auf der Liste` : undefined,
+    lastName && closedHere !== openItemId
+      ? `${lastName} steht nicht mehr auf der Liste`
+      : undefined,
   );
   const itemGone = clearItem;
 
@@ -576,7 +580,10 @@ export function ListScreen() {
           key={editing.itemId}
           itemId={editing.itemId}
           name={editing.name}
-          onClose={() => setEditing(undefined)}
+          onClose={() => {
+            setClosedHere(editing.itemId);
+            setEditing(undefined);
+          }}
           onGone={itemGone}
         />
       ) : null}
