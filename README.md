@@ -1,7 +1,7 @@
 # Housekeeping
 
-Private Haushalts-App für Enrico und Nadja. Eine **PWA** (Web-App zum Installieren auf dem
-Homescreen), keine nativen Apps. Sie läuft auf Handy, Tablet und Desktop und ist offline lesbar;
+Haushalts-App für alle, die sich einen Haushalt teilen: ob Paar, Familie oder WG. Eine **PWA**
+(Web-App zum Installieren auf dem Homescreen), keine nativen Apps. Sie läuft auf Handy, Tablet und Desktop und ist offline lesbar;
 Schreiben geht online, nur Einkaufen im Markt und Packen funktionieren auch ohne Netz.
 
 Funktionen: Übersicht, Kalender mit Reisen, Rezepte mit Kochmodus, Restaurants, Aktivitäten,
