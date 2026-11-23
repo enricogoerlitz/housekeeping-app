@@ -16,13 +16,11 @@ import {
   saveLabel,
   startOfMonth,
   validateTripDraft,
-  type TripStripe,
   type Id,
   type ISODate,
   type RangePick,
 } from '@housekeeping/core';
 import {
-  Avatar,
   Button,
   Chip,
   MonthCalendar,
@@ -345,20 +343,5 @@ function RangeCalendar(props: {
       hint={range.editing === 'from' ? 'Wähle „Von“' : 'Wähle „Bis“'}
       testID="range"
     />
-  );
-}
-
-/** Avatars of a stripe for list rows: the house for the whole household. */
-export function TripWho(props: { stripe: TripStripe }) {
-  const members = useMembers();
-  const people = props.stripe.household
-    ? members
-    : members.filter((member) => props.stripe.memberIds.includes(member.id));
-  return (
-    <View style={{ flexDirection: 'row', gap: 2 }}>
-      {people.map((member) => (
-        <Avatar key={member.id} name={member.name} color={member.color} size="s" />
-      ))}
-    </View>
   );
 }
