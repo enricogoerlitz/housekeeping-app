@@ -490,6 +490,23 @@ describe('TextField', () => {
     expect(screen.getByRole('textbox', { name: 'Notiz' })).toBeTruthy();
   });
 
+  it('spec 0032, AC-010: no autofill from contacts, except for an e-mail address', () => {
+    render(
+      <>
+        <TextField label="Titel" value="" onChangeText={() => undefined} testID="title" />
+        <TextField
+          label="Google-Adresse"
+          value=""
+          keyboardType="email-address"
+          onChangeText={() => undefined}
+          testID="mail"
+        />
+      </>,
+    );
+    expect(screen.getByTestId('title').getAttribute('autocomplete')).toBe('off');
+    expect(screen.getByTestId('mail').getAttribute('autocomplete')).toBe('email');
+  });
+
   it('an error replaces the hint', () => {
     render(<TextField label="Menge" error="Bitte eine Zahl" hint="z. B. 2" testID="amount" />);
     expect(screen.getByTestId('amount-error').textContent).toBe('Bitte eine Zahl');

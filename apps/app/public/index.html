@@ -4,9 +4,10 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <!-- viewport-fit=cover: the page reaches the screen edges, bars keep the safe areas (spec 0019). -->
+    <!-- interactive-widget: on Android the keyboard shrinks the layout (spec 0032, decision 2). -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <title>%WEB_TITLE%</title>
     <!-- Web app manifest and icons (spec 0003, offline start). Colours: Markthalle tokens. -->
@@ -30,10 +31,11 @@
       body {
         overflow: hidden;
       }
-      /* These styles make the root element full-height */
+      /* These styles make the root element full-height; with the keyboard open on iOS only as
+         high as the visible area (--app-height, spec 0032) */
       #root {
         display: flex;
-        height: 100%;
+        height: var(--app-height, 100%);
         flex: 1;
       }
     </style>

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { reducedMotion } from '../test/mocks/reanimated';
 import { safeArea } from '../test/mocks/safe-area';
+import { keyboard } from '../test/setup';
 import { Button } from './controls';
 import { Text } from './primitives';
 import { Sheet, ToastHost, toast, useToastClearance } from './overlay';
@@ -98,6 +99,103 @@ describe('Sheet leaving with its page (spec 0029, REQ-001)', () => {
     unmount();
     await Promise.resolve();
     expect(exitCopy()).toBeNull();
+  });
+});
+
+describe('Sheet and the keyboard (spec 0032, REQ-002)', () => {
+  const sheet = (
+    <Sheet visible onClose={() => undefined} title="Reise eintragen" size="m" testID="sheet">
+      <Text>Inhalt</Text>
+    </Sheet>
+  );
+
+  it('AC-004: on a phone it sits on the keyboard and fills the visible area below the top gap', () => {
+    setWindow(390, 844);
+    render(sheet);
+    act(() => keyboard.open(400));
+    expect(screen.getByTestId('sheet').style.height).toBe('388px');
+    expect(screen.getByTestId('sheet-layer').style.paddingBottom).toBe('444px');
+  });
+
+  it('AC-005: once the keyboard closes it has its fixed size again', () => {
+    setWindow(390, 844);
+    render(sheet);
+    act(() => keyboard.open(400));
+    act(() => keyboard.close());
+    expect(screen.getByTestId('sheet').style.height).toBe('760px');
+  });
+});
+
+describe('Sheet actions (spec 0032, REQ-003)', () => {
+  const save = vi.fn();
+  const cancel = vi.fn();
+  const close = vi.fn();
+  const sheet = (withCancel: boolean, disabled = false) => (
+    <Sheet
+      visible
+      onClose={close}
+      title="Aufgabe bearbeiten"
+      size="m"
+      testID="sheet"
+      actions={{
+        primary: {
+          label: 'Speichern',
+          onPress: save,
+          disabled,
+          hint: disabled ? 'Offline – zum Bearbeiten brauchst du Netz' : undefined,
+          testID: 'sheet-save',
+        },
+        ...(withCancel
+          ? { cancel: { label: 'Abbrechen', onPress: cancel, testID: 'sheet-cancel' } }
+          : {}),
+      }}
+    >
+      <Text>Inhalt</Text>
+    </Sheet>
+  );
+
+  it('AC-006: on a phone "Abbrechen", the title and "Speichern" stand in the header', () => {
+    setWindow(390, 844);
+    render(sheet(true));
+    const header = screen.getByTestId('sheet-header');
+    expect(within(header).getByRole('button', { name: 'Abbrechen' })).toBeTruthy();
+    expect(within(header).getByText('Aufgabe bearbeiten')).toBeTruthy();
+    expect(within(header).getByRole('button', { name: 'Speichern' })).toBeTruthy();
+    expect(screen.queryByTestId('sheet-footer')).toBeNull();
+    expect(screen.queryByTestId('sheet-close')).toBeNull();
+  });
+
+  it('AC-007: "Abbrechen" does what the sheet says; without one it closes like ✕', () => {
+    setWindow(390, 844);
+    const { unmount } = render(sheet(true));
+    fireEvent.click(screen.getByTestId('sheet-cancel'));
+    expect(cancel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('sheet-save'));
+    expect(save).toHaveBeenCalledTimes(1);
+    unmount();
+    render(sheet(false));
+    fireEvent.click(screen.getByTestId('sheet-close'));
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('sheet-close').textContent).toBe('Abbrechen');
+  });
+
+  it('AC-008: offline "Speichern" is greyed out and says why', () => {
+    setWindow(390, 844);
+    render(sheet(false, true));
+    const button = screen.getByTestId('sheet-save');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-description')).toBe(
+      'Offline – zum Bearbeiten brauchst du Netz',
+    );
+  });
+
+  it('AC-009: on the desktop the buttons stay at the bottom and ✕ at the top', () => {
+    setWindow(1280, 800);
+    render(sheet(true));
+    const footer = screen.getByTestId('sheet-footer');
+    expect(within(footer).getByRole('button', { name: 'Speichern' })).toBeTruthy();
+    expect(within(footer).getByRole('button', { name: 'Abbrechen' })).toBeTruthy();
+    expect(screen.getByTestId('sheet-close')).toBeTruthy();
   });
 });
 

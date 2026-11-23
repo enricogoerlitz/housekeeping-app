@@ -696,6 +696,7 @@ export interface TextFieldProps extends Pick<
   | 'numberOfLines'
   | 'maxLength'
   | 'accessibilityValue'
+  | 'autoComplete'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;
@@ -774,6 +775,10 @@ export function TextField(props: TextFieldProps) {
         {left}
         <TextInput
           {...input}
+          // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010).
+          autoComplete={
+            props.autoComplete ?? (props.keyboardType === 'email-address' ? 'email' : 'off')
+          }
           ref={inputRef}
           testID={testID}
           accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}

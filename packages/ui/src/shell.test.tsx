@@ -3,6 +3,7 @@ import { useContext } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { safeArea } from '../test/mocks/safe-area';
+import { keyboard } from '../test/setup';
 import { Button } from './controls';
 import { Text } from './primitives';
 import {
@@ -477,6 +478,21 @@ const items: NavItem[] = [
 ];
 
 describe('TabBar', () => {
+  it('spec 0032, AC-001, AC-002: hidden while the keyboard is open, back once it closes', () => {
+    render(<TabBar items={items} activeKey="today" onSelect={() => undefined} />);
+    expect(screen.getByRole('tablist')).toBeTruthy();
+    act(() => keyboard.open(400));
+    expect(screen.queryByRole('tablist')).toBeNull();
+    act(() => keyboard.close());
+    expect(screen.getByRole('tablist')).toBeTruthy();
+  });
+
+  it('spec 0032, AC-003: 100 px less visible (browser bar) keeps it', () => {
+    render(<TabBar items={items} activeKey="today" onSelect={() => undefined} />);
+    act(() => keyboard.open(744));
+    expect(screen.getByRole('tablist')).toBeTruthy();
+  });
+
   it('a tab list of named tabs; a tap selects another', () => {
     const onSelect = vi.fn();
     render(<TabBar items={items} activeKey="today" onSelect={onSelect} />);

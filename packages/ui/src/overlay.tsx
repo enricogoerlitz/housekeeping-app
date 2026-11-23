@@ -29,6 +29,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { bottomInset } from './bottom-inset';
 
 import { Button, IconButton } from './controls';
+import type { IconName } from './icons';
 import { Text } from './primitives';
 import { sheetFrame, type SheetSize } from './sheet-size';
 import {
@@ -38,6 +39,8 @@ import {
   useBottomInset,
 } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
+import { useKeyboard } from './keyboard';
+import { keyboardSheetFrame } from './keyboard-state';
 import { fadeOutCopy } from './sheet-exit';
 import { createToastStore } from './toast-state';
 import { TopLayer } from './top-layer';
@@ -56,6 +59,22 @@ export interface SheetProps {
    * pick with tabs. The window keeps its size whatever it shows; only the middle scrolls.
    */
   size: SheetSize;
+  /**
+   * The window's actions (spec 0032, REQ-003): on phones in the header ("Abbrechen" left, the
+   * primary right; without `cancel`, "Abbrechen" closes like ✕), on wider screens at the bottom.
+   * `footer` then holds only what comes besides them; on phones it ends the content.
+   */
+  actions?: { primary: SheetAction; cancel?: SheetAction };
+  testID?: string;
+}
+
+export interface SheetAction {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  /** Why it is greyed out (e.g. offline); screen readers hear it. */
+  hint?: string;
+  icon?: IconName;
   testID?: string;
 }
 
@@ -75,8 +94,15 @@ export function Sheet(props: SheetProps) {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const c = theme.colors;
-  const frame = sheetFrame(props.size, { width, height });
+  // With the keyboard open a phone window sits on it and fills the visible area (spec 0032).
+  const keyboard = useKeyboard();
+  const typing = isPhone && keyboard.open;
+  const fixedFrame = sheetFrame(props.size, { width, height });
+  const frame = typing
+    ? keyboardSheetFrame(fixedFrame, keyboard.visibleHeight, insets.top + TOP_GAP_TYPING)
+    : fixedFrame;
   const slide = isPhone && !reduced;
+  const headerActions = isPhone && props.actions !== undefined;
 
   const [mounted, setMounted] = useState(props.visible);
   // Mounted at once on opening; unmounted only once the fade-out has finished.
@@ -140,6 +166,7 @@ export function Sheet(props: SheetProps) {
         <PageScrollContext.Provider value={undefined}>
           <View
             ref={layer}
+            testID={props.testID ? `${props.testID}-layer` : undefined}
             style={{
               flex: 1,
               justifyContent: isPhone ? 'flex-end' : 'center',
@@ -148,6 +175,8 @@ export function Sheet(props: SheetProps) {
               paddingTop: insets.top,
               paddingLeft: insets.left,
               paddingRight: insets.right,
+              // The layer keeps the full height on iOS; the window stands on the keyboard.
+              paddingBottom: typing ? keyboard.inset : 0,
             }}
           >
             <Animated.View
@@ -179,38 +208,47 @@ export function Sheet(props: SheetProps) {
                   height: frame.height,
                   width: frame.width,
                   maxWidth: '100%',
-                  // Above the home bar with its gap (spec 0029, AC-007).
-                  paddingBottom: isPhone ? bottomInset(insets.bottom, 12) : 0,
+                  // Above the home bar with its gap (spec 0029, AC-007); on the keyboard none.
+                  paddingBottom: typing ? 0 : isPhone ? bottomInset(insets.bottom, 12) : 0,
                 },
                 sheetStyle,
               ]}
             >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingLeft: 20,
-                  paddingRight: 10,
-                  paddingTop: 14,
-                  paddingBottom: 6,
-                }}
-              >
-                <Text
-                  variant="heading"
-                  heading
-                  style={{ flex: 1 }}
-                  testID={props.testID ? `${props.testID}-title` : undefined}
-                >
-                  {props.title}
-                </Text>
-                <IconButton
-                  icon="x"
-                  label="Schließen"
-                  onPress={props.onClose}
-                  testID={props.testID ? `${props.testID}-close` : undefined}
+              {headerActions && props.actions ? (
+                <SheetActionsHeader
+                  title={props.title}
+                  actions={props.actions}
+                  onClose={props.onClose}
+                  testID={props.testID}
                 />
-              </View>
+              ) : (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingLeft: 20,
+                    paddingRight: 10,
+                    paddingTop: 14,
+                    paddingBottom: 6,
+                  }}
+                >
+                  <Text
+                    variant="heading"
+                    heading
+                    style={{ flex: 1 }}
+                    testID={props.testID ? `${props.testID}-title` : undefined}
+                  >
+                    {props.title}
+                  </Text>
+                  <IconButton
+                    icon="x"
+                    label="Schließen"
+                    onPress={props.onClose}
+                    testID={props.testID ? `${props.testID}-close` : undefined}
+                  />
+                </View>
+              )}
               {props.header ? <View style={{ paddingHorizontal: 20 }}>{props.header}</View> : null}
               <ScrollView
                 keyboardShouldPersistTaps="handled"
@@ -222,18 +260,24 @@ export function Sheet(props: SheetProps) {
                 <PageScrollControlContext.Provider value={undefined}>
                   {props.children}
                 </PageScrollControlContext.Provider>
+                {headerActions && props.footer ? (
+                  <View style={{ marginTop: 20 }}>{props.footer}</View>
+                ) : null}
               </ScrollView>
-              {props.footer ? (
+              {!headerActions && (props.footer || props.actions) ? (
                 <View
+                  testID={props.testID ? `${props.testID}-footer` : undefined}
                   style={{
                     paddingHorizontal: 20,
                     paddingTop: 10,
                     paddingBottom: isPhone ? 4 : 18,
                     borderTopWidth: 1,
                     borderTopColor: c.border,
+                    gap: 10,
                   }}
                 >
                   {props.footer}
+                  {props.actions ? <SheetActionsFooter actions={props.actions} /> : null}
                 </View>
               ) : null}
             </Animated.View>
@@ -241,6 +285,97 @@ export function Sheet(props: SheetProps) {
         </PageScrollContext.Provider>
       </ToneContext.Provider>
     </Modal>
+  );
+}
+
+/** Room above a phone window while the keyboard is open (spec 0032, AC-004). */
+const TOP_GAP_TYPING = 12;
+
+/** A phone window's header with its actions: "Abbrechen" · title · primary (spec 0032). */
+function SheetActionsHeader(props: {
+  title: string;
+  actions: { primary: SheetAction; cancel?: SheetAction };
+  onClose: () => void;
+  testID?: string;
+}) {
+  const id = (suffix: string) => (props.testID ? `${props.testID}-${suffix}` : undefined);
+  const cancel = props.actions.cancel ?? {
+    label: 'Abbrechen',
+    onPress: props.onClose,
+    testID: id('close'),
+  };
+  return (
+    <View
+      testID={id('header')}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        minHeight: 52,
+        paddingHorizontal: 12,
+        paddingTop: 6,
+      }}
+    >
+      <HeaderAction action={cancel} />
+      <Text
+        variant="rowTitle"
+        heading
+        numberOfLines={1}
+        style={{ flex: 1, textAlign: 'center' }}
+        testID={id('title')}
+      >
+        {props.title}
+      </Text>
+      <HeaderAction action={props.actions.primary} />
+    </View>
+  );
+}
+
+function HeaderAction(props: { action: SheetAction }) {
+  const { action } = props;
+  return (
+    <Button
+      label={action.label}
+      variant="link"
+      size="sm"
+      disabled={action.disabled}
+      hint={action.hint}
+      onPress={action.onPress}
+      testID={action.testID}
+    />
+  );
+}
+
+/** The actions at the bottom of a window on wider screens, as before (spec 0032, AC-009). */
+function SheetActionsFooter(props: { actions: { primary: SheetAction; cancel?: SheetAction } }) {
+  const { primary, cancel } = props.actions;
+  return (
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      {cancel ? (
+        <View style={{ flex: 1 }}>
+          <Button
+            label={cancel.label}
+            variant="secondary"
+            full
+            disabled={cancel.disabled}
+            hint={cancel.hint}
+            onPress={cancel.onPress}
+            testID={cancel.testID}
+          />
+        </View>
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Button
+          label={primary.label}
+          icon={primary.icon}
+          full
+          disabled={primary.disabled}
+          hint={primary.hint}
+          onPress={primary.onPress}
+          testID={primary.testID}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -298,9 +433,12 @@ export function ToastHost() {
   const { isPhone } = useBreakpoint();
   const state = useSyncExternalStore(store.subscribe, store.get, store.get);
   const bar = useSyncExternalStore(subscribeClearance, clearanceSnapshot, clearanceSnapshot);
+  const keyboard = useKeyboard();
   if (!state) return null;
   const c = theme.colors;
   const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
+  // On the keyboard, which hides the tab bar (spec 0032, REQ-002).
+  const bottom = keyboard.open ? keyboard.inset + 12 : bottomEdge + below + (isPhone ? 12 : 24);
   return (
     <TopLayer>
       <View
@@ -310,7 +448,7 @@ export function ToastHost() {
           ...(Platform.OS === 'web' ? WEB_TOAST_LAYER : { position: 'absolute' }),
           left: insets.left,
           right: insets.right,
-          bottom: bottomEdge + below + (isPhone ? 12 : 24),
+          bottom,
           alignItems: 'center',
           paddingHorizontal: 16,
         }}
