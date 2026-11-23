@@ -25,7 +25,6 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
-  Chip,
   DragProvider,
   IconButton,
   Menu,
@@ -474,10 +473,21 @@ export function CalendarScreen() {
       {next}
     </View>
   );
+  // "Heute" left of ‹ as in the "Übersicht", greyed out while today is shown (spec 0031, REQ-036).
+  const showsToday = periodContains(view, start, today);
   const nav = isPhone ? (
     phoneNav
   ) : (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <Button
+        label="Heute"
+        variant="secondary"
+        size="sm"
+        disabled={showsToday}
+        hint={showsToday ? undefined : 'Zurück zu heute'}
+        testID="week-today"
+        onPress={toToday}
+      />
       {prev}
       <Text
         variant="smallStrong"
@@ -488,19 +498,14 @@ export function CalendarScreen() {
         {title}
       </Text>
       {next}
-      <Chip
-        label="Heute"
-        selected={periodContains(view, start, today)}
-        testID="week-today"
-        onPress={toToday}
-      />
     </View>
   );
+  // Tabs and nav share a row only from 1100 px (spec 0031, REQ-032).
   const tabs = (
     <View
       style={
-        isPhone
-          ? { gap: 4 }
+        bp !== 'desktop'
+          ? { gap: 4, alignItems: isPhone ? undefined : 'flex-start' }
           : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }
       }
     >
@@ -585,7 +590,8 @@ export function CalendarScreen() {
                 data={data}
                 weekStart={start}
                 showHousehold={householdOn}
-                wide={isWide}
+                // The grid of seven columns only from 1100 px, else the list (REQ-032).
+                wide={bp === 'desktop'}
                 height={gridHeight}
                 scrollDay={day}
                 scrollRequest={scrollRequest}
