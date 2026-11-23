@@ -251,6 +251,26 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (23.11.2026).
     „Entwurf · “ vor dem Text. „Ohne Tag vormerken“ im Hinzufügen-Fenster setzt „Wer isst mit?“ nicht
     mehr zurück, weil die Vorauswahl nicht mehr vom Tag abhängt. Ohne Filter und ohne kommende
     Reisen steht unter „Kommend“ weiter „Nichts geplant.“; mit Filter fehlen leere Abschnitte.
+13. Nachgezogen nach einer unabhängigen Prüfung (23.11.2026):
+    - „Einplanen“ setzt beim Wechsel von Tag, Woche, „Ohne Tag vormerken“ und „Anderes Datum …“
+      „Wer isst mit?“ und die Portionen nicht mehr zurück (AC-031). Das Zurücksetzen gab es nur, damit
+      Reisende nicht gewählt blieben (Plan E11 aus Spec 0008); seit REQ-008 hat es keinen Grund und
+      widersprach Entscheidung 12. `withPlanDay`/`pagePlanChoice` ändern nur noch den Tag.
+    - Die eigentliche Ursache von REQ-007: PanResponder setzt `x0` erst beim Übernehmen und meldet
+      davor 0. Die Randprüfung (Spec 0029, 20 pt) las `x0` und lehnte darum jeden Tab-Wisch ab, auf
+      jedem Gerät; mit Chromium-Touch-Emulation (CDP) ist das nachgestellt. Der Start ist jetzt
+      `moveX - dx`.
+    - Rest-Risiko schräger Start: Mit `pan-y` scrollt WebKit den senkrechten Teil eines schrägen
+      Starts, und eine `ScrollView`, die so zum Responder wurde, gibt den Finger nicht mehr ab.
+      Darum nimmt der Wisch-Bereich (ihr Vorfahr) bei einem nativen Scroll mit Finger den Responder
+      in der Capture-Phase selbst und entscheidet am Weg seit dem Aufsetzen: seitlich genug ist ein
+      Wisch, überwiegend senkrecht (ab 10 pt, mindestens so viel senkrecht wie seitlich) oder vom
+      Rand bleibt ein Scroll, auch wenn der Zug später seitlich wird (AC-025). Gescrollt wird
+      weiter nativ. Zeilen-Wischen und Sortieren geben den Finger nie ab und bleiben, wie sie sind.
+    - Auf der Übersicht steht unter dem gestrichelten Streifen eines Entwurfs sichtbar „Entwurf“
+      (REQ-004), nicht nur im Vorlesetext.
+    - Ein gewählter `fill`-Chip behält seinen Rand (in seiner Füllfarbe); ohne ihn war er 2 px
+      schmaler als die übrigen (AC-019, AC-032).
 
 ## Daten
 
@@ -286,6 +306,11 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
       ohne Reisen, Hinweis beim Verschieben ohne Reisende, Satz unter „Wer?“ (AC-026–AC-030).
 - [x] 11. e2e-Tests (nur typgeprüft) in `e2e/rundgang-review-0002.spec.ts`; alte e2e-Tests zu K-02
       und zur Vorauswahl angepasst.
+- [x] 12. Nachgezogen (Entscheidung 13): „Wer isst mit?“ bleibt in „Einplanen“ (AC-031),
+      „Verschieben“ mit gleich breiten Tagen (AC-032), Tab-Wisch-Start aus `moveX - dx` und
+      Übernahme nach nativem Scroll (AC-023–AC-025), „Entwurf“ sichtbar auf der Übersicht,
+      Kommentar zu `useMoveEntry`; e2e-Tests mit echten Wischbewegungen und `freshSeed()` richtig
+      eingebunden.
 - [x] Nachweis (23.11.2026): `pnpm format:check && pnpm check` grün (core 1563, ui 406, api 936
       Tests), `pnpm build:web` grün, pgTAP über das Schloss 50 Dateien / 2591 Tests grün (neu
       `trip_drafts.test.sql`, 14), `pnpm test:scripts` 349 grün, `pnpm e2e:dev` 13 grün, e2e-Typprüfung
