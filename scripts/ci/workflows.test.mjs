@@ -210,14 +210,17 @@ describe('checks.yml', () => {
     assert.match(runOf('Migrationen'), /node scripts\/ci\/migrations\.mjs --base "\$base"/);
   });
 
-  test('AC-006: format, check, web build and pgTAP; the e2e suites run locally only', () => {
+  test('AC-006: format, check, web build and pgTAP; AC-009 (spec 0031): the e2e suites only in e2e.yml', () => {
     assert.match(runOf('Prüfungen'), /pnpm format:check/);
     assert.match(runOf('Prüfungen'), /pnpm check/);
     assert.match(runOf('Prüfungen'), /pnpm build:web/);
     assert.match(runOf('Datenbank (pgTAP)'), /supabase db start/);
     assert.match(runOf('Datenbank (pgTAP)'), /supabase test db/);
     for (const { file, text } of workflows) {
-      assert.doesNotMatch(text, /pnpm e2e/, file);
+      if (file !== 'e2e.yml') assert.doesNotMatch(text, /pnpm e2e/, file);
+    }
+    for (const file of ['checks.yml', 'preview.yml']) {
+      assert.doesNotMatch(byFile(file).text, /e2e\.yml/, file);
     }
   });
 
@@ -639,6 +642,51 @@ describe('preview.yml (Task 7)', () => {
   });
 });
 
+describe('e2e.yml (spec 0031, REQ-002)', () => {
+  const e2e = byFile('e2e.yml');
+  const suite = e2e?.doc.jobs?.e2e;
+
+  test('AC-009: called by the release and started by hand, nothing else', () => {
+    assert.ok(e2e, 'e2e.yml');
+    assert.deepEqual(Object.keys(e2e.doc.on).sort(), ['workflow_call', 'workflow_dispatch']);
+    const callers = workflows
+      .filter(({ text }) => /\.\/\.github\/workflows\/e2e\.yml/.test(text))
+      .map(({ file }) => file);
+    assert.deepEqual(callers, ['release.yml']);
+  });
+
+  test('AC-009: the job reads no secret and uses no environment', () => {
+    assert.doesNotMatch(e2e.text, /secrets\./);
+    for (const job of Object.values(e2e.doc.jobs)) assert.equal(job.environment, undefined);
+  });
+
+  test('AC-007: four shards of the full suite and the dev-mode smoke test, all run to the end', () => {
+    assert.deepEqual(suite.strategy.matrix.suite, ['1/4', '2/4', '3/4', '4/4', 'dev']);
+    assert.equal(suite.strategy['fail-fast'], false);
+    const script = runs(suite).join('\n');
+    assert.match(script, /pnpm e2e --shard="\$SUITE"/);
+    assert.match(script, /pnpm e2e:dev/);
+  });
+
+  test('AC-007: against a local stack with throwaway push keys, before the suite', () => {
+    assertOrder(
+      suite,
+      [
+        /node scripts\/push-keys\.mjs --out "\$RUNNER_TEMP\//,
+        /pnpm exec supabase start -x studio,logflare,vector/,
+        /supabase status -o env .*PUBLISHABLE_KEY[\s\S]*EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=.*GITHUB_ENV/,
+        /pnpm --filter @housekeeping\/e2e exec playwright install --with-deps chromium/,
+        /pnpm e2e/,
+      ],
+      'e2e',
+    );
+    assert.equal(suite.env.EXPO_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
+    const keys = runs(suite).find((run) => /push-keys/.test(run));
+    assert.match(keys, /::add-mask::/);
+    assert.match(keys, /rm -f "\$RUNNER_TEMP\//);
+  });
+});
+
 describe('release.yml (Task 8)', () => {
   const release = byFile('release.yml');
   const jobs = jobsOf('release.yml');
@@ -736,6 +784,17 @@ describe('release.yml (Task 8)', () => {
     for (const [id, job] of Object.entries(jobs)) {
       const writes = job.permissions?.contents === 'write';
       assert.equal(writes, ['veroeffentlichen', 'rueckfuehrung'].includes(id), id);
+    }
+  });
+
+  test('AC-007, AC-010 (spec 0031): the e2e suite runs before backup, Supabase and web delivery', () => {
+    assert.equal(jobs.e2e.uses, './.github/workflows/e2e.yml');
+    assert.deepEqual(jobs.e2e.permissions, { contents: 'read' });
+    assert.deepEqual(needsOf(jobs.e2e).sort(), ['checks', 'version']);
+    assert.equal(jobs.e2e.if, "needs.version.outputs.release == 'true'");
+    assert.equal(jobs.e2e.secrets, undefined);
+    for (const id of ['sicherung', 'supabase-ausliefern', 'web-ausliefern']) {
+      assert.ok(needsOf(jobs[id]).includes('e2e'), id);
     }
   });
 
