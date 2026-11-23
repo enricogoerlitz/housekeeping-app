@@ -721,8 +721,11 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
       gesperrten `ReorderList` und `aria-valuenow` an `ProgressBar`/`DueBar`, weil
       `react-native-web` `accessibilityState`/`accessibilityValue` dort nicht umsetzt;
       `CheckRow` mit `onPress` legt die Checkbox in einen Button (AC-028).
-- [ ] 31. `vitest.config.ts` mit Coverage für `core`, `api` und `ui`, Schwelle 80 %, `21-testing.md`
-      (AC-015–AC-017).
+- [x] 31. `vitest.config.ts` mit Coverage für `core`, `api` und `ui`, Schwelle 80 %, `21-testing.md`
+      (AC-015–AC-017). `pnpm test` misst je Paket alle Quelldateien (`--coverage`, v8): `core`
+      98,5 %, `api` 93,7 %, `ui` 98,9 % Zeilen. Ausgenommen sind nur Tests, Test-Helfer
+      (`test-fixtures.ts`, `transport-fake.ts`, `*test-helpers.ts`) und `*.gen.ts`, je mit Grund.
+      `scripts/ci/coverage.test.mjs` hält Skript, Schwelle und Begründungen fest.
 - [x] 32. Vertragstest Fake gegen DB (AC-059). `contract.integration.test.ts` lässt dieselben
       Schritte gegen Fake und lokale DB laufen (Allowlist von `apply_changes`,
       `delete/restore_recipe`, `delete/restore_restaurant/activity`, `complete_chore`,

@@ -11,9 +11,10 @@
   "scripts": {
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --coverage --passWithNoTests"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "5.1.1",
     "vitest": "^5.1.1"
   },
   "dependencies": {

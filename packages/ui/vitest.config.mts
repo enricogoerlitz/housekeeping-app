@@ -6,6 +6,18 @@ const mock = (name: string) => fileURLToPath(new URL(`./test/mocks/${name}`, imp
 
 export default defineConfig({
   test: {
+    // Coverage (spec 0031, REQ-005): `pnpm test` measures every source file of both projects, also
+    // those no test loads, and fails below 80 % of the lines. Single test files run without it.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        // The tests themselves; the stand-ins under test/ are outside `include`.
+        'src/**/*.test.{ts,tsx}',
+      ],
+      reporter: ['text-summary'],
+      thresholds: { lines: 80 },
+    },
     projects: [
       {
         // Pure logic next to the components: plain Node.
