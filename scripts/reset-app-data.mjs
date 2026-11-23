@@ -148,6 +148,18 @@ export function projectNameIn(output, project) {
   return found?.name;
 }
 
+/**
+ * What to remove from the photo bucket: each top-level entry of `supabase storage ls` (JSON),
+ * removed recursively. Removing the bucket's root would delete the bucket with its settings.
+ */
+export function mediaTargets(output) {
+  const paths = Array.isArray(output?.paths) ? output.paths : [];
+  return paths
+    .map((entry) => String(entry).replace(/\/+$/, ''))
+    .filter((entry) => entry.length > 0)
+    .map((entry) => `ss:///${BUCKET}/${entry}`);
+}
+
 function supabase(args, options = {}) {
   const result = spawnSync('pnpm', ['exec', 'supabase', ...args], {
     cwd: root,
@@ -192,13 +204,20 @@ async function main(argv) {
   const file = path.join(folder, 'reset.sql');
   try {
     writeFileSync(file, dataOnly ? dataSql() : resetSql(), { mode: 0o600 });
-    supabase(['db', 'query', `--remote=${project}`, '--file', file], { stdio: 'inherit' });
+    // The typed project name above is the confirmation; the CLI's own question cannot be asked
+    // without a terminal of its own.
+    supabase(['db', 'query', `--remote=${project}`, '--yes', '--file', file], { stdio: 'inherit' });
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
-  supabase(['storage', 'rm', `--remote=${project}`, '--recursive', `ss:///${BUCKET}`], {
-    stdio: 'inherit',
-  });
+  const remote = ['--experimental', `--remote=${project}`];
+  const listing = JSON.parse(
+    supabase(['storage', 'ls', ...remote, '--output-format', 'json', `ss:///${BUCKET}/`]),
+  );
+  for (const target of mediaTargets(listing)) {
+    supabase(['storage', 'rm', ...remote, '--yes', '--recursive', target], { stdio: 'inherit' });
+  }
+
   console.log(
     dataOnly
       ? `Geleert: ${name} (${project}). Schema und Migrationshistorie sind unverändert.`

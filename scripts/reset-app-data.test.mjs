@@ -12,6 +12,7 @@ import {
   checkEnvironment,
   checkLinked,
   dataSql,
+  mediaTargets,
   parseArgs,
   projectNameIn,
   resetSql,
@@ -115,5 +116,17 @@ describe('--data-only (spec 0028, decision 3, way D of 23.11.2026)', () => {
   test('accounts with their profiles and devices stay', () => {
     assert.match(sql, /tablename not in \('profiles', 'push_subscriptions'\)/);
     assert.doesNotMatch(sql, /\b(auth|vault|storage)\./);
+  });
+});
+
+describe('the photos (storage)', () => {
+  test('each top-level folder of the bucket is removed, never the bucket itself', () => {
+    assert.deepEqual(mediaTargets({ paths: ['hh1/', 'hh2/', 'stray.jpg'] }), [
+      'ss:///household-media/hh1',
+      'ss:///household-media/hh2',
+      'ss:///household-media/stray.jpg',
+    ]);
+    assert.deepEqual(mediaTargets({ paths: [] }), []);
+    assert.deepEqual(mediaTargets({ paths: ['', '/'] }), []);
   });
 });
