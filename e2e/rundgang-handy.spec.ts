@@ -24,6 +24,18 @@ async function swipe(page: Page, x: number, y: number, dx: number): Promise<void
   await settle(page);
 }
 
+/** Waits until the "Vorratscheck" sheet has slid up and its bottom edge meets the screen's. */
+async function expectSheetUp(page: Page): Promise<void> {
+  const sheet = tid(page, 'pantry-check-sheet');
+  const height = page.viewportSize()?.height ?? 0;
+  await expect
+    .poll(async () => {
+      const box = await sheet.boundingBox();
+      return Math.round((box?.y ?? 0) + (box?.height ?? 0));
+    })
+    .toBe(Math.round(height));
+}
+
 test.describe('sheets from below (REQ-001)', () => {
   test('AC-001: the scrim covers the screen at once, only the sheet slides up', async ({
     page,
@@ -36,18 +48,13 @@ test.describe('sheets from below (REQ-001)', () => {
     expect(box?.height).toBe(page.viewportSize()?.height);
     const sheet = tid(page, 'pantry-check-sheet');
     await expect(sheet).toContainText('Was soll auf die Liste?');
-    await page.waitForTimeout(400);
-    const settled = await sheet.boundingBox();
-    expect((settled?.y ?? 0) + (settled?.height ?? 0)).toBeCloseTo(
-      page.viewportSize()?.height ?? 0,
-      0,
-    );
+    await expectSheetUp(page);
   });
 
   test('AC-002: closing slides the sheet down before it is gone', async ({ page }) => {
     await open(page, '/liste');
     await tid(page, 'list-from-plan').click();
-    await page.waitForTimeout(400);
+    await expectSheetUp(page);
     await tid(page, 'pantry-check-sheet-close').click();
     await expect(page.locator('[data-testid="pantry-check-sheet"]')).toHaveCount(0);
     await expect(page).toHaveURL(/\/liste$/);

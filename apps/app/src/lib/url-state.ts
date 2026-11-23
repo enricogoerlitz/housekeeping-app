@@ -1,4 +1,5 @@
 import {
+  pageParamsBefore,
   pageQuery,
   readPageParams,
   SECTION_START,
@@ -124,15 +125,14 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
   const values = read.values;
   const open = useCallback(
     (patch: PageParams<K>) => {
-      const before = Object.fromEntries(
-        Object.keys(patch).map((name) => [name, (values as Record<string, unknown>)[name]]),
-      ) as PageParams<K>;
+      // Back to the entry below restores its whole address, also what changed inside the window.
+      const before = pageParamsBefore(page, values);
       openWindowEntry(
         () => replace(patch),
         () => replace(before),
       );
     },
-    [replace, values],
+    [page, replace, values],
   );
   const close = useCallback(
     (patch: PageParams<K>) => {

@@ -136,7 +136,7 @@ select throws_ok(
          jsonb_build_array(jsonb_build_object('kind', 'delete', 'table', 'recipes', 'id', tests.fx('lasagne')))),
   '22023', 'invalid_change', 'E2 apply_changes: recipes cannot be deleted through apply_changes');
 select throws_ok('select * from private.deletions', '42501', null,
-  'E4 recipe_deletions: authenticated cannot read the snapshots');
+  'E4 deletions: authenticated cannot read the snapshots');
 select throws_ok(tests.delete_sql('halloumi', current_date - 2), '22023', 'invalid_value',
   'E3 delete_recipe: a device date two days back is rejected');
 select throws_ok(tests.delete_sql('halloumi', current_date + 2), '22023', 'invalid_value',
@@ -212,7 +212,7 @@ select throws_ok(
   '23503', null, 'E6 meal_plan_entries: planning the deleted recipe fails with 23503');
 select ok(
   not (public.sync_pull(jsonb_build_object('households', jsonb_build_object(tests.fx('home_a'), '{"full": true}'::jsonb)))
-       -> 'households' -> tests.fx('home_a')::text -> 'rows') ? 'recipe_deletions',
+       -> 'households' -> tests.fx('home_a')::text -> 'rows') ? 'deletions',
   'E4 sync_pull: the snapshot never reaches a device');
 select tests.clear_authentication();
 select results_eq(
@@ -456,14 +456,14 @@ select private.purge_deletions();
 select results_eq(
   'select target_id from private.deletions order by target_id',
   format($$ select id from fx where key in ('auflauf', 'risotto', 'pasta_b', 'squat') order by id $$),
-  'E4 purge_recipe_deletions: removes only snapshots older than 1 hour');
+  'E4 purge_deletions: removes only snapshots older than 1 hour');
 select is(
   (select count(*)::int from cron.job where jobname = 'purge-deletions'
      and schedule = '20 * * * *' and command = 'select private.purge_deletions()'),
   1, 'E4 purge-recipe-deletions: the job runs hourly');
 delete from public.households where id = tests.fx('home_b');
 select is((select count(*)::int from private.deletions where household_id = tests.fx('home_b')), 0,
-  'E4 recipe_deletions: deleting the household removes its snapshots');
+  'E4 deletions: deleting the household removes its snapshots');
 
 -- ===================== Definer functions =====================
 select is(
@@ -475,14 +475,14 @@ select is(
   'E6 delete_recipe/restore_recipe: security definer with an empty search_path');
 select ok(
   not has_function_privilege('authenticated', 'private.purge_deletions()', 'execute'),
-  'E4 purge_recipe_deletions: not callable by the API roles');
+  'E4 purge_deletions: not callable by the API roles');
 select ok(
   not has_table_privilege('authenticated', 'private.deletions', 'select,insert,update,delete')
   and not has_table_privilege('anon', 'private.deletions', 'select,insert,update,delete'),
-  'E4 recipe_deletions: no grants');
+  'E4 deletions: no grants');
 select ok(
   (select relrowsecurity from pg_catalog.pg_class where oid = 'private.deletions'::regclass),
-  'E4 recipe_deletions: row level security is on');
+  'E4 deletions: row level security is on');
 select ok(
   not has_table_privilege('authenticated', 'public.recipes', 'delete'),
   'E2 recipes: authenticated has no delete grant');

@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { dayInMonth, monthTitle, moveToastText, type ISODate } from '@housekeeping/core';
 
 import {
@@ -16,6 +16,7 @@ import {
   test,
   tid,
   toastMessage,
+  dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -32,10 +33,6 @@ const CURRY_YESTERDAY = seedIds['plan-1'];
 const EISLAUFEN = seedIds['act-eislaufen'];
 
 const sameMonth = (a: ISODate, b: ISODate) => a.slice(0, 7) === b.slice(0, 7);
-
-function dayBlock(page: Page, date: string): Locator {
-  return tid(page, `day-${date}`).locator('xpath=..');
-}
 
 /** Opens the entry window of `title` on `date` in the week and checks its Tageszeit. */
 async function expectEntryAt(page: Page, date: ISODate, title: string, slotId: string) {

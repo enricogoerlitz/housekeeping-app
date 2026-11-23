@@ -159,7 +159,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'restaurant-link')).toBeVisible();
   await tid(page, 'add-entry-sheet-close').click();
 
-  // Month and year, and the absence window with its month calendar (spec 0010, REQ-004,
+  // Month and year, and the trip window with its month calendar (spec 0010, REQ-004,
   // REQ-005, REQ-010).
   await tid(page, 'calendar-view-month').click();
   await expect(tid(page, 'month-phone')).toBeVisible();
@@ -192,7 +192,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'chores-tab-history').click();
   await tid(page, 'chores-tab-all').click();
 
-  // Settings, and every page under "Verwalten" (spec 0005): stores and one store, absences,
+  // Settings, and every page under "Verwalten" (spec 0005): stores and one store, trips,
   // household and members, feedback. The AI is switched off, so there is no assistant to open.
   await nav(page, 'index');
   await openSettings(page);

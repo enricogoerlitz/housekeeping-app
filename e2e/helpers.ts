@@ -118,6 +118,14 @@ export async function expectTime(page: Page, id: string, time: string): Promise<
   await expect(tid(page, `${id}-minute`)).toHaveValue(minute);
 }
 
+/**
+ * One day of the phone week (`day-block-<date>`, spec 0031 AC-022): its head, the trips
+ * starting there, the household row and every Tageszeit with its entries.
+ */
+export function dayBlock(page: Page, date: string): Locator {
+  return tid(page, `day-block-${date}`);
+}
+
 /** All elements on the active screen whose test id starts with `prefix`. */
 export function tidPrefix(page: Page, prefix: string): Locator {
   return page.locator(`[data-testid^="${prefix}"]${ACTIVE}`);
