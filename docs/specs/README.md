@@ -37,12 +37,12 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0028](0028-aufraeumen-und-v1/spec.md)              | Aufräumen und erste produktive Version                                 | freigegeben |
 | [0029](0029-handy-feinschliff/spec.md)              | Handy-Feinschliff: Fenster, Abstand unten, Wischen, Route              | freigegeben |
 | [0030](0030-review-0002/spec.md)                    | Review 0002: Kalender, Reisen und Handy-Feinschliff                    | freigegeben |
-| [0031](0031-ultracode-code-review/spec.md)          | Ultracode-Code-Review: sauber für die erste produktive Version         | freigegeben |
+| [0031](0031-ultracode-code-review/spec.md)          | Ultracode-Code-Review: sauber für die erste produktive Version         | umgesetzt   |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 
-Stand 23.11.2026: 0019–0030 sind gebaut und auf `develop`, ebenso die Gruppen A–F von Spec 0031
-(Gruppen G und H offen). Nächste Schritte: [../handover/2026-11-23-copilot.md](../handover/2026-11-23-copilot.md).
+Stand 23.11.2026: 0019–0031 sind gebaut und auf `develop`; offen ist die erste produktive Version
+(Spec 0028). Nächste Schritte: [../handover/2026-11-23-copilot.md](../handover/2026-11-23-copilot.md).
 Die Spec-Status oben sind die Front-Matter-Werte; „freigegeben“ bei 0019–0030 heißt nur, dass der
 Status dort noch nicht auf „umgesetzt“ gesetzt wurde. Quelle der Wünsche:
 `docs/product/review-enrico-2026-11-22.md` (ER-01–ER-36) und

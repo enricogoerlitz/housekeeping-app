@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-23
 ---
 
@@ -751,8 +751,26 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
       Stack und Wegwerf-Push-Schlüsseln. Der erste echte Lauf folgt in Aufgabe 36.
 - [x] 35. Runbook in `betrieb.md` (AC-018, AC-019), Nachträge in 0028 (AC-016, AC-005, Schritte).
       `conventions.mjs` lehnt `reset-app-data.mjs` in Workflows, Actions und Paket-Skripten ab.
-- [ ] 36. Volle e2e-Suite lokal und im manuellen Lauf grün (AC-025), `/security-check` über den
-      Diff der Gruppen A, C und H.
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün mit Coverage ≥ 80 % in
+- [x] 36. Volle e2e-Suite lokal und im manuellen Lauf grün (AC-025), `/security-check` über den
+      Diff der Gruppen A, C und H. Viele Rundgänge waren bis dahin nur typgeprüft; sie sind an den
+      heutigen Stand angepasst (#56, #57). Das Desktop-Projekt umfasst jetzt auch `uebersicht` und
+      `kalender-0021`. Die Suite läuft in CI auf 6 Shards mit Browser-Cache und Zeitlimits (Job 50,
+      Schritt 40, `globalTimeout` 35 Minuten). Gefundene Fehler im Produkt, je mit Test behoben:
+      Escape im Rezept-Abschnitt, Kopf-Layout und Enter in der Artikelsuche, Fokus nach der
+      Artikelwahl, „Rückgängig“ nach Entfernen im eigenen Fenster, „Zurück“ von verzögert
+      geladenen Tabs und der eigenen Liste, Toasts unter offenen Fenstern, Fenster verschwanden
+      beim Schließen schlagartig (Spec 0029, REQ-001), ein neues Restaurant öffnete sich nicht,
+      `aria-selected`/`aria-disabled`/Hinweise kamen im Web nicht an. Security-Check: 0 kritisch,
+      0 hoch, 2 mittel, 1 niedrig, 3 Hinweise; behoben bzw. unter „Risiken“ (Tag-Schutz offen).
+      Für die Review-Schleife vorgemerkt: Viele `Pressable` der App setzen nur
+      `accessibilityHint`, das `react-native-web` verwirft (Hinweis fehlt im Web), und
+      `aria-disabled` ohne `disabled` überschreibt der Pressable (`useSoftDisabled` aus `ui`).
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün mit Coverage ≥ 80 % in
       `core`, `api` und `ui`, `pnpm exec supabase test db` und `pnpm test:integration` über das
       Schloss grün, `pnpm test:scripts` grün, `pnpm e2e` und `pnpm e2e:dev` grün.
+      Stand 23.11.2026: `pnpm format:check`, `pnpm check` (core 98,5 %, api 93,7 %, ui 98,9 %
+      Zeilen; enthält `test:scripts`) und `pnpm build:web` grün; `supabase test db` 54 Dateien,
+      2672 Tests grün; `pnpm test:integration` 22 Tests grün; `pnpm e2e` 409 grün, ein Test rot
+      (Escape während ein Fenster ausblendet, behoben in #57, danach grün); `pnpm e2e:dev` 13 grün;
+      manueller Lauf `e2e.yml` 45215581365 auf dem Stand von #57: alle 6 Shards und `dev` grün
+      (12 Minuten).
