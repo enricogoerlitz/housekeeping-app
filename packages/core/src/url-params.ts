@@ -352,6 +352,18 @@ export function pageQuery<K extends PageKey>(
   return query;
 }
 
+/**
+ * Every parameter of the page as it was in `values`, the others cleared: what going back to the
+ * entry below a window restores (spec 0019, REQ-013). A window can change parameters it did not
+ * open with (new article → that article), and those must not survive the way back.
+ */
+export function pageParamsBefore<K extends PageKey>(page: K, values: PageParams<K>): PageParams<K> {
+  const given = values as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(specsOf(page)).map((name) => [name, given[name]]),
+  ) as PageParams<K>;
+}
+
 /** The address of a page with its values, encoded (AC-055). Route ids belong in `path`. */
 export function pageHref<K extends PageKey>(path: string, page: K, values: PageParams<K>): string {
   const pairs: string[] = [];

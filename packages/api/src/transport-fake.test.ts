@@ -781,7 +781,7 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     expect(server.rows(H, 'shopping_items')).toHaveLength(1);
   });
 
-  it('every clear stays undoable: ≤ 1000 items and ≤ 5000 contributions (like the database)', async () => {
+  it('AC-058: every clear stays undoable: ≤ 1000 items and ≤ 5000 contributions (like the database)', async () => {
     const enrico = server.transport(ENRICO);
     const tooMany = { kind: 'permanent', code: 'too_many_changes' };
     const items = Array.from({ length: 1001 }, (_, index) => ({
@@ -801,10 +801,9 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     await expect(
       enrico.restoreClearedItems(H, [{ item: items[0] ?? {}, contributions }]),
     ).rejects.toMatchObject(tooMany);
-    // Builds 1000 items and 5000 contributions; slow under parallel load, not a hang.
-  }, 30_000);
+  });
 
-  it('a clear with more than 5000 contributions is refused and deletes nothing', async () => {
+  it('AC-058: a clear with more than 5000 contributions is refused and deletes nothing', async () => {
     server.insertRows(H, {
       shopping_contributions: Array.from({ length: 5000 }, (_, index) => milkRow(`c-${index}`, 1)),
     });

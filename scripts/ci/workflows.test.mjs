@@ -116,12 +116,15 @@ describe('checks.yml', () => {
   const job = (name) => jobs.find(([, j]) => j.name === name)?.[1];
   const runOf = (name) => runs(job(name) ?? {}).join('\n');
 
-  test('runs on pull requests, when called and by hand; never on push', () => {
+  test('AC-011 (spec 0031): runs on pull requests, after every merge to develop, when called and by hand', () => {
     const on = checks.doc.on;
-    assert.ok('pull_request' in on);
-    assert.ok('workflow_call' in on);
-    assert.ok('workflow_dispatch' in on);
-    assert.ok(!('push' in on));
+    assert.deepEqual(Object.keys(on).sort(), [
+      'pull_request',
+      'push',
+      'workflow_call',
+      'workflow_dispatch',
+    ]);
+    assert.deepEqual(on.push, { branches: ['develop'] });
     // A corrected title or a new base reruns "Konventionen".
     assert.ok(on.pull_request.types.includes('edited'));
   });
@@ -166,6 +169,19 @@ describe('checks.yml', () => {
       /github\.event_name == 'pull_request'/,
     );
     assert.match(checks.doc.concurrency.group, /github\.run_id/);
+  });
+
+  test('AC-011 (spec 0031): a push to develop has its own group per commit and is never cancelled', () => {
+    const { group } = checks.doc.concurrency;
+    assert.match(
+      group,
+      /github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop' && format\('develop-\{0\}', github\.sha\)/,
+    );
+    // The pull request number comes first, the run id last: only a push to develop gets the
+    // develop group, a release on main (push, called) keeps its run id.
+    assert.ok(group.indexOf('pull_request.number') < group.indexOf("'develop-"));
+    assert.ok(group.indexOf("'develop-") < group.indexOf('github.run_id'));
+    assert.doesNotMatch(checks.doc.concurrency['cancel-in-progress'], /push/);
   });
 
   test('"Konventionen" runs the script and actionlint by digest', () => {
@@ -253,12 +269,13 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
   // The GitHub Actions app: only check runs from Actions can satisfy a required check.
   const GITHUB_ACTIONS_APP_ID = 15368;
 
-  test('AC-001: three active rulesets without any bypass, for develop, main and tags v*', () => {
+  test('AC-001: three active rulesets, for develop, main and tags v*; develop and main without any bypass', () => {
     for (const [name, set] of Object.entries(rulesets)) {
       assert.ok(set, `infra/github/ruleset-${name}.json`);
       assert.equal(set.enforcement, 'active', name);
-      assert.deepEqual(set.bypass_actors, [], name);
     }
+    assert.deepEqual(rulesets.develop.bypass_actors, []);
+    assert.deepEqual(rulesets.main.bypass_actors, []);
     assert.deepEqual(rulesets.develop.conditions.ref_name.include, ['refs/heads/develop']);
     assert.deepEqual(rulesets.main.conditions.ref_name.include, ['refs/heads/main']);
     assert.deepEqual(rulesets.tags.conditions.ref_name.include, ['refs/tags/v*']);
@@ -303,9 +320,13 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
     }
   });
 
-  test('tags v* cannot be moved or deleted; creating stays allowed for the release job', () => {
+  test('AC-020 (spec 0031): tags v* cannot be created, moved or deleted; only GitHub Actions creates them', () => {
     const types = rulesets.tags.rules.map((r) => r.type).sort();
-    assert.deepEqual(types, ['deletion', 'non_fast_forward', 'update']);
+    assert.deepEqual(types, ['creation', 'deletion', 'non_fast_forward', 'update']);
+    // The release job creates the tag with GITHUB_TOKEN, the token of the GitHub Actions app.
+    assert.deepEqual(rulesets.tags.bypass_actors, [
+      { actor_id: GITHUB_ACTIONS_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
+    ]);
   });
 });
 

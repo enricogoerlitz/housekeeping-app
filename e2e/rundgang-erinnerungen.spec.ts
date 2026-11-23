@@ -24,6 +24,7 @@ import {
   test,
   tid,
   toastMessage,
+  dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -51,10 +52,6 @@ const PAST_SUFFIX = ' · Erinnerung liegt in der Vergangenheit';
 /** The input of a SwitchRow's switch (react-native-web puts the test id on its wrapper). */
 function toggle(page: Page, id: string): Locator {
   return tid(page, id).locator('input');
-}
-
-function dayBlock(page: Page, date: string): Locator {
-  return tid(page, `day-${date}`).locator('xpath=..');
 }
 
 function entryRow(page: Page, date: string, title: string): Locator {

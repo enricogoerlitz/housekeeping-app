@@ -19,8 +19,8 @@ import {
 } from './helpers';
 import { seedIds } from './seed-ids';
 
-// Spec 0012 — Reisetaschen: the bags under "Verwalten", attaching them to an absence, the
-// Urlaubsseite with packing (Sammel-Fenster), "Alles einpacken", resetting, adding and removing,
+// Spec 0012 — Reisetaschen: the bags under "Verwalten", attaching them to a trip, the
+// trip window with packing (Sammel-Fenster), "Alles einpacken", resetting, adding and removing,
 // the card on the Übersicht and the bag symbol in the calendar. Seed: "Urlaub Mallorca" (whole
 // household, today + 12 to + 18) with "Strand" and "Kulturbeutel", 6 of 21 packed; "Dienstreise
 // Hamburg" (Nadja) without a packing list. The tests change the demo, so the file starts from a
@@ -33,21 +33,21 @@ const MALLORCA = seedIds['trip-mallorca'];
 const HAMBURG = seedIds['trip-hamburg'];
 const STRAND = seedIds['bag-strand'];
 
-/** A packing item row on the Urlaubsseite whose label starts with `name` ("Badehose 2×"). */
+/** A packing item row in the trip window whose label starts with `name` ("Badehose 2×"). */
 function tripItem(page: Page, name: string): Locator {
   return page.locator(
     `[data-testid^="trip-item-"][data-testid$="-check"][aria-label^="${name}"]:not([inert] *):visible`,
   );
 }
 
-/** The section of one bag on the Urlaubsseite (`trip-bag-<listBagId>`, holds its counter). */
+/** The section of one bag in the trip window (`trip-bag-<listBagId>`, holds its counter). */
 function tripBag(page: Page, name: string): Locator {
   return tidPrefix(page, 'trip-bag-')
     .filter({ has: page.locator('[data-testid$="-counter"]') })
     .filter({ hasText: name });
 }
 
-/** Opens the Urlaubsseite of "Urlaub Mallorca" from "Verwalten" → "Reisen". */
+/** Opens the trip window of "Urlaub Mallorca" from "Verwalten" → "Reisen". */
 async function openMallorca(page: Page): Promise<void> {
   await open(page, '/');
   await openManaged(page, 'trips');
@@ -123,7 +123,7 @@ test('AC-002: the household "Test" has no bags yet', async ({ page }) => {
   await expect(tid(page, 'bag-new')).toHaveText(/Reisetasche anlegen/);
 });
 
-test('AC-011 / AC-012 / AC-013: the absence window attaches bags; the button counts the items', async ({
+test('AC-011 / AC-012 / AC-013: the trip window attaches bags; the button counts the items', async ({
   page,
 }) => {
   await open(page, '/');
@@ -159,7 +159,7 @@ test('AC-011 / AC-012 / AC-013: the absence window attaches bags; the button cou
   await expect(tripBag(page, 'Zelt')).toBeVisible();
 });
 
-test('AC-016 / AC-020 / AC-021: the Urlaubsseite of "Urlaub Mallorca"; packing moves an item into "Gepackt" and back', async ({
+test('AC-016 / AC-020 / AC-021: the trip window of "Urlaub Mallorca"; packing moves an item into "Gepackt" and back', async ({
   page,
 }) => {
   await openMallorca(page);
