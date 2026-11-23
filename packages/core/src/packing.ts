@@ -522,8 +522,7 @@ export function tripHeader(stripe: TripStripe, members: readonly Member[]): Trip
     stripe.from === stripe.to
       ? dayLabel(stripe.from)
       : `${dayLabel(stripe.from)} – ${dayLabel(stripe.to)}`;
-  const days = tripDays(stripe.from, stripe.to);
-  const duration = days === 1 ? '1 Tag' : `${days} Tage`;
+  const duration = durationLabel(tripDays(stripe.from, stripe.to));
   return {
     title: stripeText(stripe),
     memberIds: stripe.household ? members.map((member) => member.id) : [...stripe.memberIds],
@@ -531,6 +530,24 @@ export function tripHeader(stripe: TripStripe, members: readonly Member[]): Trip
     duration,
     subtitle: `${period} · ${duration}`,
   };
+}
+
+const durationLabel = (days: number) => (days === 1 ? '1 Tag' : `${days} Tage`);
+
+/**
+ * What the trip window shows while "Speichern" is visible (spec 0031, REQ-029): the duration and
+ * the "je Tag" quantities of the period set, as the server will recalculate them on saving
+ * (recalcPerDay). Without a changed period, or with an end before the start, the saved trip.
+ */
+export function tripPreview(
+  saved: { from: ISODate; to: ISODate },
+  period: { from: ISODate; to: ISODate } | undefined,
+  items: readonly PackingItem[],
+): { duration: string; items: readonly PackingItem[] } {
+  const shown = period && period.to >= period.from ? period : saved;
+  const days = tripDays(shown.from, shown.to);
+  const changed = days !== tripDays(saved.from, saved.to);
+  return { duration: durationLabel(days), items: changed ? recalcPerDay(items, days) : items };
 }
 
 /**

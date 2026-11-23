@@ -33,6 +33,7 @@ import {
   tripDays,
   tripDeleteDialog,
   tripHeader,
+  tripPreview,
   validateBagName,
 } from './packing';
 import {
@@ -559,6 +560,30 @@ describe('Dauer ändern und Reise löschen', () => {
     expect(next.map(packingItemLabel)).toEqual(['T-Shirts 5×', 'Socken 7×', 'Badehose 2×']);
     expect(next[1]).toBe(socks);
     expect(next[2]).toBe(badehose);
+  });
+
+  describe('the trip window shows the period set, before "Speichern" (spec 0031, REQ-029)', () => {
+    const saved = { from: '2026-12-12', to: '2026-12-19' };
+    const socks = packingItem({ id: 'Socken', listBagId: 'l', quantity: 8, perDay: 1 });
+
+    it('AC-068: Mallorca 12.–19.12., the end moved to 15.12. → "4 Tage", Socken 4', () => {
+      const preview = tripPreview(saved, { from: '2026-12-12', to: '2026-12-15' }, [socks]);
+      expect(preview.duration).toBe('4 Tage');
+      expect(preview.items.map(packingItemLabel)).toEqual(['Socken 4×']);
+    });
+
+    it('AC-068: nothing changed shows the saved trip', () => {
+      const items = [socks];
+      const preview = tripPreview(saved, undefined, items);
+      expect(preview).toEqual({ duration: '8 Tage', items });
+      expect(preview.items).toBe(items);
+    });
+
+    it('AC-068: an end before the start keeps the saved quantities', () => {
+      const items = [socks];
+      const preview = tripPreview(saved, { from: '2026-12-12', to: '2026-12-10' }, items);
+      expect(preview).toEqual({ duration: '8 Tage', items });
+    });
   });
 
   it('AC-016, AC-017: deleting a trip with a packing list names it; without one there is no dialog', () => {
