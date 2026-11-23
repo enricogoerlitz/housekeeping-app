@@ -25,7 +25,7 @@ import {
 } from './helpers';
 import { seedIds } from './seed-ids';
 
-// Spec 0001 — the weekly meal plan (REQ-006) and absences (AC-038), now in "Kalender" (spec 0010):
+// Spec 0001 — the weekly meal plan (REQ-006) and trips (AC-038), now in "Kalender" (spec 0010):
 // one "+ Hinzufügen" per day with one search for every kind, the second step in the same window,
 // the views Woche, Monat and Jahr, and the page "Reisen". The seed is dated from the real
 // today: "Thursday" of the ACs is today + 3 (no dish planned), "Saturday" today + 5. The tests add
@@ -55,7 +55,7 @@ async function openCalendarAt(page: Page, date: string): Promise<void> {
 }
 
 /**
- * Picks "Von" and "Bis" in the absence window's month calendar: the first tap sets "Von", the
+ * Picks "Von" and "Bis" in the trip window's month calendar: the first tap sets "Von", the
  * next one "Bis" (spec 0010, AC-042).
  */
 async function pickRange(page: Page, from: string, to: string): Promise<void> {
@@ -72,7 +72,7 @@ async function pickRange(page: Page, from: string, to: string): Promise<void> {
   }
 }
 
-/** REQ-008 (0016): the screen shows no "Abwesenheit", "Abwesenheiten" or "abwesend", also not to a screen reader. */
+/** REQ-008 (0016): the screen shows no old word for a trip, also not to a screen reader. */
 async function expectNoAbsenceWord(page: Page): Promise<void> {
   await expect(page.locator('body')).not.toContainText(/abwesen/i, { useInnerText: true });
   await expect(page.locator('[aria-label*="bwesen" i]')).toHaveCount(0);
@@ -288,7 +288,7 @@ test('AC-018 / AC-019 (0018): an exact recipe name offers no new recipe; a simil
   );
 });
 
-test('AC-021 (0018): the absence window names who is chosen: "Nur Enrico", then "Ganzer Haushalt"', async ({
+test('AC-021 (0018): the trip window names who is chosen: "Nur Enrico", then "Ganzer Haushalt"', async ({
   page,
 }) => {
   await open(page, '/');
@@ -303,7 +303,7 @@ test('AC-021 (0018): the absence window names who is chosen: "Nur Enrico", then 
   await expect(tid(page, 'trip-who-hint')).toHaveText('Ganzer Haushalt');
 });
 
-test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a note reads "unterwegs"; nowhere "Abwesenheit"', async ({
+test('AC-033 (0016): ⋯ offers "Reise eintragen" and "Reisen"; a trip without a note reads "unterwegs"; no old word for a trip', async ({
   page,
 }) => {
   const year = Number(TODAY.slice(0, 4)) + 1;

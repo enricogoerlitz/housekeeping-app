@@ -383,7 +383,7 @@ const foreignKey = (constraint: string) =>
 const constraintOf = (reference: { table: string; column: string }) =>
   `${reference.table}_${reference.column.replace(/_id$/, '')}_fkey`;
 
-/** private.recipe_deletions (spec 0008, E4): what restore_recipe brings back. */
+/** private.deletions of a recipe (spec 0008, E4; spec 0024): what restore_recipe brings back. */
 interface RecipeDeletion {
   householdId: string;
   recipeId: string;
@@ -870,7 +870,7 @@ export function createFakeServer(): FakeServer {
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
-  /** private.recipe_deletions, one snapshot per household and recipe. */
+  /** private.deletions of recipes, one snapshot per household and recipe. */
   const recipeDeletions = new Map<string, RecipeDeletion>();
   const placeDeletions = new Map<string, PlaceDeletion>();
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
