@@ -28,8 +28,9 @@
       "entry": ["*/index.ts"],
     },
   },
-  // Generated files (supabase gen types, gen-edge.mjs, gen-seed.ts).
-  "ignore": ["**/*.gen.ts", "e2e/seed-ids.ts"],
+  // Generated files (supabase gen types, gen-edge.mjs, gen-seed.ts); the stand-ins of the ui
+  // component tests, reached through aliases in packages/ui/vitest.config.mts.
+  "ignore": ["**/*.gen.ts", "e2e/seed-ids.ts", "packages/ui/test/mocks/**"],
   // gitleaks is a system binary in CI, not an npm package.
   "ignoreBinaries": ["gitleaks"],
   // knip's expo plugin expects expo-updates unless app.json turns updates off; the PWA has none.
