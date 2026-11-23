@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { baseApplies, readMigrationsBase } from './migrations-base.mjs';
-import { git, latestReleaseTag, lines, releaseTags } from './version.mjs';
+import { git, latestReleaseTag, lines, mainReleaseTags } from './version.mjs';
 
 const DIR = 'supabase/migrations';
 const VERSION = /^(\d+)_.*\.sql$/;
@@ -112,7 +112,7 @@ function localVersions() {
 }
 
 function releasedVersions() {
-  const latest = latestReleaseTag(releaseTags());
+  const latest = latestReleaseTag(mainReleaseTags());
   if (!latest) return undefined;
   return lines(git(['ls-tree', '-r', '--name-only', latest, '--', `${DIR}/`]))
     .map(versionOf)
@@ -128,7 +128,7 @@ function main(args) {
   const local = localVersions();
   const released = releasedVersions();
   const candidate = readMigrationsBase();
-  const base = baseApplies(candidate, latestReleaseTag(releaseTags())) ? candidate : undefined;
+  const base = baseApplies(candidate, latestReleaseTag(mainReleaseTags())) ? candidate : undefined;
   const errors = parsed.error
     ? [parsed.error]
     : guardMigrations({ ...parsed, local, released, base });

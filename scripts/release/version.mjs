@@ -119,6 +119,17 @@ export function releaseTags(cwd = process.cwd()) {
   return lines(git(['tag', '-l', 'v*'], cwd));
 }
 
+/**
+ * Tags v* on the first-parent history of HEAD (the release branch `main` in release.yml). A tag
+ * set elsewhere, e.g. by a workflow on a feature branch, does not count (security check 0031).
+ */
+export function mainReleaseTags(cwd = process.cwd()) {
+  const history = new Set(lines(git(['rev-list', '--first-parent', 'HEAD'], cwd)));
+  return releaseTags(cwd).filter((tag) =>
+    history.has(git(['rev-list', '-n', '1', tag], cwd).trim()),
+  );
+}
+
 function readMigrations() {
   return readdirSync(MIGRATIONS)
     .filter((file) => file.endsWith('.sql'))
@@ -141,7 +152,7 @@ function fail(message) {
 }
 
 function release(now, force) {
-  const tags = releaseTags();
+  const tags = mainReleaseTags();
   const latest = latestReleaseTag(tags);
   const previous = latest ? tagVersion(latest) : undefined;
   const version = nextAppVersion(tags, now);
