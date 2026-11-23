@@ -562,6 +562,14 @@ offline vollständig.
 
     Jede betroffene Spec bekommt einen Nachtrag mit Verweis auf 0031.
 
+15. **Silbentrennung (Gruppe F):** Passt „Kichererbsen-“ bei 1440 px nicht in die Spalte, trennt
+    der Browser nach Silben („Kichererb-|sen-Eintopf“). Das erfüllt REQ-033, AC-078 zeigt den
+    Idealfall. Bei 1024 px zeigt der Kalender nach REQ-032 die Liste, dort wird nichts getrennt.
+16. **„Zurück“ unter Verwalten (Gruppe F):** Die fünf Seiten lesen `von` wie „Artikel“. Links aus
+    einem anderen Bereich geben ihn mit („Märkte & Bereiche“ aus Liste und Einkaufen: „‹ Liste“,
+    „Reisen“ aus dem Kalender: „‹ Kalender“, der Hinweis nach einem neuen Bereich: der Bereich, in
+    dem er steht). Aus Verwalten und der Seitenleiste steht „‹ Verwalten“.
+
 ## Daten
 
 Personenbezogene Daten kommen nicht dazu. Die Migrationen kommen vor das Zusammenfassen
@@ -675,12 +683,12 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **F — UI/UX** (danach `/ui-verify` bei 390, 820, 1024 und 1440 px, hell und dunkel)
 
-- [ ] 25. Jahresansicht mit dem Finger, `data-dense`, Nachtrag in 0019 (AC-073, AC-074).
-- [ ] 26. Tablet: Übersicht einspaltig, Kalender-Liste und zwei Zeilen unter 1100 px
+- [x] 25. Jahresansicht mit dem Finger, `data-dense`, Nachtrag in 0019 (AC-073, AC-074).
+- [x] 26. Tablet: Übersicht einspaltig, Kalender-Liste und zwei Zeilen unter 1100 px
       (AC-075–AC-077).
-- [ ] 27. Silbentrennung und Avatar in der Wochenzeile (AC-078), Fokusrahmen in `InfiniteList`
+- [x] 27. Silbentrennung und Avatar in der Wochenzeile (AC-078), Fokusrahmen in `InfiniteList`
       (AC-079), Token `switchOff` (AC-080).
-- [ ] 28. Navigation und Darstellung angleichen (AC-081–AC-087).
+- [x] 28. Navigation und Darstellung angleichen (AC-081–AC-087).
 
 **G — Abdeckung** (nach A–F, weil die Gruppen Code verschieben)
 

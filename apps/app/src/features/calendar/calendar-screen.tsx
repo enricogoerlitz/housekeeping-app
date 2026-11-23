@@ -634,6 +634,7 @@ export function CalendarScreen() {
                 onOpenStripe={openStripe}
                 belowGrid={laterStrip}
                 height={gridHeight}
+                fillsWindow={bp === 'desktop'}
                 scrollMonth={day}
                 scrollRequest={scrollRequest}
               />

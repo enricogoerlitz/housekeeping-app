@@ -62,6 +62,11 @@ export interface YearViewProps {
   belowGrid?: ReactNode;
   /** Desktop: the grid's room in px down to "Vorgemerkt" (spec 0021, REQ-001); else natural. */
   height?: number;
+  /**
+   * Desktop: the grid fills the window and the page never scrolls to a month, also not in the
+   * first frame before `height` is measured (spec 0031, ui-verify).
+   */
+  fillsWindow: boolean;
   /** Phones and tablets: the month put under the tabs whenever `scrollRequest` changes (REQ-004). */
   scrollMonth: ISODate;
   scrollRequest: number;
@@ -100,7 +105,7 @@ export function YearView(props: YearViewProps) {
       ? undefined
       : sharedHeight(props.height - (rows.length - 1) * ROW_GAP, rows.length, 0);
   const registerMonth = useScrollTo({
-    enabled: !fill,
+    enabled: !props.fillsWindow,
     request: props.scrollRequest,
     period: year,
     target: startOfMonth(props.scrollMonth),

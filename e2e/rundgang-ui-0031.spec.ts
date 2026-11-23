@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { dayMonthLongLabel, type ISODate } from '@housekeeping/core';
+import { dayMonthLongLabel, monthTitle, type ISODate } from '@housekeeping/core';
 
 import {
   createTestHousehold,
@@ -88,7 +88,7 @@ test.describe('REQ-031: the year with a finger', () => {
     await tid(page, `year-day-${NOVEMBER_17}`).tap();
     await expect(tid(page, 'month-phone')).toBeVisible();
     await expect(page).toHaveURL(/ansicht=monat/);
-    await expect(page).toHaveURL(new RegExp(`tag=${YEAR}-11-`));
+    await expect(tid(page, 'calendar-title')).toHaveText(monthTitle(`${YEAR}-11-01`));
     await expect(tid(page, 'day-panel')).toHaveCount(0);
     await context.close();
   });
@@ -163,7 +163,9 @@ test.describe('REQ-033: hyphenation', () => {
         .first();
       await expect(stew).toBeVisible();
       expect(await stew.evaluate((element) => getComputedStyle(element).hyphens)).toBe('auto');
-      await expectBreaksAt(stew, 'Kichererbsen-Eintopf', []);
+      // Where „Kichererbsen-“ does not fit the column the browser hyphenates by syllable:
+      // „Ki-cher-erb-sen“ (Entscheidung 15), never „Kichererbse|n“.
+      await expectBreaksAt(stew, 'Kichererbsen-Eintopf', [2, 6, 9]);
 
       // The household row of the week is on from the start (settings).
       await open(page, '/kalender');
