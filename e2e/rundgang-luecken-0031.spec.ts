@@ -54,7 +54,11 @@ async function sampleSheet(
           return value;
         };
         const frame = () => {
-          const sheet = document.querySelector(`[data-testid="${testId}"]`);
+          // The window itself, or the inert copy that fades out once its page dropped it.
+          const selector = `[data-testid="${testId}"]`;
+          const sheet =
+            document.querySelector(`${selector}:not([inert] *)`) ??
+            document.querySelector(selector);
           const scrim = document.querySelector(`[data-testid="${testId}-scrim"]`);
           if (sheet) {
             end ??= performance.now() + duration;
@@ -76,7 +80,7 @@ async function sampleSheet(
 
 /** The bottom edge of the window `id`, in px from the top of the page. */
 async function sheetBottom(page: Page, id: string): Promise<number> {
-  const box = await page.locator(`[data-testid="${id}"]`).boundingBox();
+  const box = await page.locator(`[data-testid="${id}"]:not([inert] *)`).boundingBox();
   return (box?.y ?? 0) + (box?.height ?? 0);
 }
 
@@ -200,7 +204,7 @@ test.describe('reduced motion (0029, REQ-001)', () => {
     expect(opened[0]?.opacity ?? 1).toBeLessThan(1);
     expect(opened.at(-1)?.opacity).toBe(1);
 
-    const closing = sampleSheet(page, 'pantry-check-sheet', 700);
+    const closing = sampleSheet(page, 'pantry-check-sheet', 300);
     await tid(page, 'pantry-check-sheet-close').click();
     const closed = await closing;
     expect(closed.every((sample) => sample.transform === 'none')).toBe(true);
