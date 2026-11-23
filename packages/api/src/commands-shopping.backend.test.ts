@@ -342,10 +342,10 @@ describe('from the meal plan', () => {
       const items = fx.server
         .rows(H, 'shopping_items')
         .filter((row) => row.article_id === articleId && row.checked !== true)
-        .map((row) => row.id);
+        .map((row) => String(row.id));
       return fx.server
         .rows(H, 'shopping_contributions')
-        .filter((row) => items.includes(row.item_id));
+        .filter((row) => items.includes(String(row.item_id)));
     };
 
     it('AC-064: taken over again, the list keeps the same amounts, one call', async () => {
@@ -408,7 +408,7 @@ describe('from the meal plan', () => {
       if (!first) throw new Error('fixture');
       addPlannedToList(rows);
       await fx.settle();
-      const itemId = itemOf(articleName(first.articleId))?.id ?? '';
+      const itemId = itemOf(articleName(first.articleId) ?? '')?.id ?? '';
       setItemChecked(itemId, true);
       await fx.settle();
       expect(getData().items.find((item) => item.id === itemId)?.checked).toBe(true);
