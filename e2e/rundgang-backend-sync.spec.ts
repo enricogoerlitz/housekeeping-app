@@ -680,10 +680,11 @@ test('AC-008 / AC-009 (0018): "Fertig" saves "Reserviert um"; refused, the windo
       },
     }),
   );
+  // Choosing changes only the field; "Fertig" saves, and the refusal stands in the window.
   const toasts = await recordToasts(page);
   await chooseTime(page, 'entry-time', '20:00');
-  await expect(toastMessage(page)).toHaveText(REJECTED);
   await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-refused')).toHaveText(REJECTED);
   await expect(tid(page, 'entry-sheet')).toBeVisible();
   await expectTime(page, 'entry-time', '20:00');
   expect(
