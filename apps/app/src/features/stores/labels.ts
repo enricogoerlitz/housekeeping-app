@@ -24,5 +24,5 @@ export const ORDER_LABELS: ReorderListLabels = {
 
 export const articleCount = (count: number) => (count === 1 ? '1 Artikel' : `${count} Artikel`);
 
-export const FAILED = 'Das hat nicht geklappt.';
+const FAILED = 'Das hat nicht geklappt.';
 export const messageOf = (error: unknown) => errorMessage(error, FAILED);

@@ -106,7 +106,7 @@ function changesOf(base: TripFieldValues, draft: TripFieldValues): TripChanges {
  * something changed (the window stays open); then progress and the packing list, the bags as columns on wide screens. Offline the
  * fields are greyed out and packing goes on (ADR-0013).
  */
-export function TripWindow(props: { tripId: Id; onClose: () => void }) {
+function TripWindow(props: { tripId: Id; onClose: () => void }) {
   const trips = useTrips();
   const members = useMembers();
   const today = useToday();

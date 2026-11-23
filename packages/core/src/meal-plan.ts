@@ -1,4 +1,3 @@
-import { formatQty } from './amounts';
 import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';

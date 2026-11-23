@@ -36,9 +36,9 @@ export const TAB_BAR_HEIGHT = 62;
 export function useBottomInset(minimum = 0): number {
   return bottomInset(useSafeAreaInsets().bottom, minimum);
 }
-export const SIDEBAR_WIDTH = 256;
+const SIDEBAR_WIDTH = 256;
 /** Widest content of a page; wider windows centre it (spec 0005, AC-012). */
-export const CONTENT_MAX_WIDTH = 1320;
+const CONTENT_MAX_WIDTH = 1320;
 /** Page margin from tablet width on, next to the sidebar. */
 export const WIDE_GUTTER = 36;
 

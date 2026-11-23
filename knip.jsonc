@@ -1,0 +1,39 @@
+// knip (spec 0031, REQ-022): no unused file, export or dependency. Runs in `pnpm check`.
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "workspaces": {
+    ".": {
+      // edge-smoke.mjs runs by hand against real AI secrets (spec 0031, decision 7).
+      "entry": ["scripts/edge-smoke.mjs"],
+    },
+    "apps/app": {
+      // Loaded by index.html and by workbox (finish-web-export.mjs), not imported.
+      "entry": ["public/theme-boot.js", "scripts/sw-template.js"],
+    },
+    // index.ts of api and ui holds only what the app uses (spec 0031, REQ-022).
+    "packages/api": {
+      "includeEntryExports": true,
+    },
+    "packages/ui": {
+      // React Native platform files: Metro picks `.web` on the web.
+      "entry": ["src/**/*.web.{ts,tsx}"],
+      "includeEntryExports": true,
+    },
+    "e2e": {
+      // The static server of the e2e build, started by playwright.config.ts.
+      "entry": ["serve.mjs"],
+    },
+    "supabase/functions": {
+      // Deno entry points of the edge functions.
+      "entry": ["*/index.ts"],
+    },
+  },
+  // Generated files (supabase gen types, gen-edge.mjs, gen-seed.ts).
+  "ignore": ["**/*.gen.ts", "e2e/seed-ids.ts"],
+  // gitleaks is a system binary in CI, not an npm package.
+  "ignoreBinaries": ["gitleaks"],
+  // knip's expo plugin expects expo-updates unless app.json turns updates off; the PWA has none.
+  "ignoreDependencies": ["expo-updates"],
+  // Exported types that only the own file uses document its shape.
+  "ignoreExportsUsedInFile": { "interface": true, "type": true },
+}

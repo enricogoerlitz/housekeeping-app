@@ -46,6 +46,7 @@ function lockPage(): () => void {
   };
 }
 
+/** @public Metro resolves the import of the native twin to this file on the web. */
 export function useDragSource(options: DragSourceOptions): DragSourceBinding {
   const [element, setElement] = useState<HTMLElement | null>(null);
   // Window listeners live from the press to the end of the gesture; the page lock while lifted.

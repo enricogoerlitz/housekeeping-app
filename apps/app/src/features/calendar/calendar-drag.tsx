@@ -75,7 +75,7 @@ export function useLiftedKind(): DragKind | null {
   return kindOf(useLiftedSource());
 }
 
-export function inRange(range: DayRange | null, date: ISODate): boolean {
+function inRange(range: DayRange | null, date: ISODate): boolean {
   return range !== null && range.from <= date && date <= range.to;
 }
 

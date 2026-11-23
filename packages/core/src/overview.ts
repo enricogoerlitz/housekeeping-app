@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 import { stripesOn, tripEndLabel, tripStripes } from './trips';
 import { dayKinds, entryKindRole, monthName, type KindRole } from './calendar';
 import { dueChores, householdAwayNotice } from './chore-schedule';
@@ -262,4 +260,3 @@ export function choresOfDay(input: {
   const items = householdRow({ ...input, from: shown, to: shown })[shown] ?? [];
   return shown > today ? { kind: 'planned', items } : { kind: 'done', items };
 }
-

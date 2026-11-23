@@ -7,6 +7,8 @@ declare const require: (path: string) => number;
  * The sample photos of the seed recipes (see assets/photos/QUELLEN.md). Only photos.ts loads this
  * module, and only in dev and preview builds, so the production bundle and its precache carry
  * none of them (spec 0031, REQ-026).
+ *
+ * @public photos.ts reaches it through a conditional require that knip does not follow.
  */
 export const SAMPLE_PHOTOS: Record<PhotoKey, number> = {
   lasagne: require('../../assets/photos/lasagne.jpg'),

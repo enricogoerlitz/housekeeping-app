@@ -14,15 +14,15 @@ import { MAX_PUSH_ENDPOINT_LENGTH, isPushEndpoint } from '../_shared/push-endpoi
 import type { PushSender, VapidConfig } from './web-push.ts';
 
 export const MAX_BODY_BYTES = 128 * 1024;
-export const MAX_MESSAGES = 50;
+const MAX_MESSAGES = 50;
 export const CONCURRENCY = 5;
 export const SEND_TIMEOUT_MS = 10_000;
 /** pg_net waits 20 s for the answer; everything not done by then is reported as null. */
 export const BATCH_DEADLINE_MS = 15_000;
 /** A signature older than this is refused (seconds). */
-export const MAX_SIGNATURE_AGE_S = 300;
+const MAX_SIGNATURE_AGE_S = 300;
 /** Clock skew tolerated for a timestamp in the future (seconds). */
-export const MAX_CLOCK_SKEW_S = 60;
+const MAX_CLOCK_SKEW_S = 60;
 
 export interface PushSendDeps {
   env: (name: string) => string | undefined;

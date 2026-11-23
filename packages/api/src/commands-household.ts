@@ -144,13 +144,12 @@ export function toggleFeedbackVote(feedbackId: Id): void {
 
 // ---------- Household, invitations, membership (backend only; wait for the server) ----------
 
-export const INVALID_EMAIL_MESSAGE = 'Das ist keine E-Mail-Adresse';
-export const LAST_MEMBER_MESSAGE = 'Du bist das letzte Mitglied des Haushalts.';
-export const INVITATION_GONE_MESSAGE = 'Diese Einladung gibt es nicht mehr.';
+const INVALID_EMAIL_MESSAGE = 'Das ist keine E-Mail-Adresse';
+const LAST_MEMBER_MESSAGE = 'Du bist das letzte Mitglied des Haushalts.';
+const INVITATION_GONE_MESSAGE = 'Diese Einladung gibt es nicht mehr.';
 export const NOT_LAST_MEMBER_MESSAGE =
   'Inzwischen ist noch jemand Mitglied. Löschen geht nur als letztes Mitglied.';
-export const PROFILE_NOT_SAVED_MESSAGE =
-  'Nicht gespeichert – bitte mit Netz noch einmal versuchen.';
+const PROFILE_NOT_SAVED_MESSAGE = 'Nicht gespeichert – bitte mit Netz noch einmal versuchen.';
 
 const MESSAGES: Record<string, string> = {
   invalid_email: INVALID_EMAIL_MESSAGE,

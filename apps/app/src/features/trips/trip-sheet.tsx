@@ -54,7 +54,7 @@ export interface TripFieldValues {
  * What a trip does, under "Wer?" when creating one (spec 0026, REQ-015; spec 0030, REQ-008: a trip
  * changes nothing about eating).
  */
-export const TRIP_EFFECT_NOTE =
+const TRIP_EFFECT_NOTE =
   'Wer weg ist, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.';
 
 /** Under the switch "Entwurf" (spec 0030, REQ-004). */

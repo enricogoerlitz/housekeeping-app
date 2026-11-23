@@ -97,10 +97,7 @@ function addEntry(
  * 0021, REQ-007, REQ-015): their contributions on open items go and `additions` (what core's
  * recomputeEntryContributions added locally) come, one call however many there are.
  */
-export function entryListOp(
-  entryIds: readonly Id[],
-  additions: readonly EntryAddition[],
-): ChangeOp {
+function entryListOp(entryIds: readonly Id[], additions: readonly EntryAddition[]): ChangeOp {
   const articles = getData().articles;
   return {
     kind: 'replace_entry_contributions',

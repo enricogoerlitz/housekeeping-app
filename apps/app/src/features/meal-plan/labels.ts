@@ -7,7 +7,6 @@ import {
   type ISODate,
   type MealPlanEntry,
   type Member,
-  type PlanEntryVariant,
   type Recipe,
   type TimeOfDay,
 } from '@housekeeping/core';

@@ -63,7 +63,7 @@ export function pendingItemIds(
   return ids;
 }
 
-export function scheduleRetry(ctx: EngineContext): void {
+function scheduleRetry(ctx: EngineContext): void {
   if (ctx.retryTimer) return;
   const { retryDelays } = ctx;
   const delay = retryDelays[Math.min(ctx.retryAttempt, retryDelays.length - 1)] ?? 30_000;

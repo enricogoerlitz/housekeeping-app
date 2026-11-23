@@ -7,6 +7,7 @@ import type { CSSProperties } from 'react';
 import { useTheme } from './theme-context';
 import type { TimeSelectProps } from './time-select-props';
 
+/** @public Metro resolves the import of the native twin to this file on the web. */
 export function TimeSelect(props: TimeSelectProps) {
   const theme = useTheme();
   const c = theme.colors;
