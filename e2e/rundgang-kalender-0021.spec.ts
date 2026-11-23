@@ -286,24 +286,16 @@ test.describe('desktop', () => {
   test('AC-042: a chore planned on a later day is checked there and booked as done today', async ({
     page,
   }) => {
+    // "Küche wischen" is due tomorrow; on a Sunday tomorrow lies in the next week.
+    const tomorrow = day(1);
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, '/kalender');
-    const later = weekDates(TODAY).filter((date) => date > TODAY);
-    let checked = false;
-    for (const date of later) {
-      const box = tid(page, `household-row-${date}`).locator('[data-testid^="chore-check-"]');
-      if ((await box.count()) === 0) continue;
-      const id = (await box.first().getAttribute('data-testid')) ?? '';
-      await box.first().click();
-      await expect(box.first()).toHaveAttribute('aria-checked', 'true');
-      await expect(tid(page, `household-row-${date}`).locator(`[data-testid="${id}"]`)).toHaveCount(
-        0,
-        { timeout: 6000 },
-      );
-      checked = true;
-      break;
-    }
-    test.skip(!checked, 'the seed plans no chore later this week');
+    if (startOfWeek(tomorrow) !== startOfWeek(TODAY)) await tid(page, 'week-next').click();
+    const row = tid(page, `household-row-${tomorrow}`);
+    const box = row.locator(`[data-testid="chore-check-${seedIds['chore-kueche']}"]`);
+    await box.click();
+    await expect(box).toHaveAttribute('aria-checked', 'true');
+    await expect(box).toHaveCount(0, { timeout: 6000 });
   });
 
   test('AC-044: with the household row the month shows the day’s chores as lines under the entries', async ({

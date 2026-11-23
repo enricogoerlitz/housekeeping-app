@@ -103,9 +103,15 @@ export function ArticlesScreen() {
   const [newName, setNewName] = useState('');
   const creating = params.fenster === 'neu-artikel' ? { name: newName } : undefined;
   const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
+  // The merged article leaves the data before the address names the target: not "missing", or
+  // clearing the address would close the target as well (spec 0007, AC-037).
+  const [mergedAway, setMergedAway] = useState<Id | undefined>();
   const found = useAddressedId('articles', params.artikel);
-  useMissingObject(params.artikel, found !== 'missing', 'Diesen Artikel gibt es nicht mehr', () =>
-    address.replace({ artikel: undefined }),
+  useMissingObject(
+    params.artikel,
+    found !== 'missing' || params.artikel === mergedAway,
+    'Diesen Artikel gibt es nicht mehr',
+    () => address.replace({ artikel: undefined }),
   );
 
   // "Ähnliche Namen" compares every name with every other: once per data state.
@@ -408,6 +414,7 @@ export function ArticlesScreen() {
           targetId={merging.targetId}
           onCancel={() => setMerging(undefined)}
           onMerged={(targetId) => {
+            setMergedAway(merging.sourceId);
             setMerging(undefined);
             showArticle(targetId);
           }}

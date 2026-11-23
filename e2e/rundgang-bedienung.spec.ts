@@ -1,15 +1,21 @@
 import {
+  accessToken,
   back,
+  createAccount,
+  deleteAccount,
   expect,
   goOffline,
-  isPhone,
+  itemIdOf,
   itemRows,
   nav,
   open,
+  rpc,
   settle,
+  signInAs,
   test,
   tid,
   TODAY,
+  unique,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -165,9 +171,21 @@ test.describe('navigation (REQ-005 to REQ-007)', () => {
   });
 
   test('AC-020: with one household the overview shows no household line', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await open(page, '/');
-    if (isPhone(page)) await expect(tid(page, 'overview-household')).toHaveCount(0);
+    // Enrico is in two households; a new account with exactly one (spec 0031, AC-024).
+    const email = `einer-${unique()}@example.com`.toLowerCase();
+    const accountId = createAccount(email, 'Einer (Test)');
+    try {
+      await rpc(await accessToken({ email }), 'create_household', {
+        name: `Einer ${unique()}`,
+        starter: { areas: [], articles: [] },
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await signInAs(page, email);
+      await expect(tid(page, 'today-screen')).toBeVisible();
+      await expect(tid(page, 'overview-household')).toHaveCount(0);
+    } finally {
+      deleteAccount(accountId);
+    }
   });
 });
 
@@ -180,6 +198,8 @@ test.describe('phone basics (REQ-008, REQ-009)', () => {
     });
     const page = await context.newPage();
     await open(page, `/rezept/${LASAGNE}`);
+    // The app is ready before the recipe page has rendered its ⋯.
+    await expect(page.locator('[aria-haspopup="menu"]').first()).toBeVisible();
     const size = await page.evaluate(() => {
       const node = document.querySelector('[aria-haspopup="menu"]');
       if (!node) return { width: 0, height: 0 };
@@ -213,7 +233,8 @@ test.describe('offline (REQ-010)', () => {
     await goOffline(page);
     const milk = itemRows(page, 'Milch').first();
     await expect(milk).toBeVisible();
-    const id = (await milk.getAttribute('data-testid')) ?? '';
+    // The row's press area is `item-<id>-open`; the stepper next to it is `item-<id>-minus|plus`.
+    const id = `item-${await itemIdOf(milk)}`;
     await expect(page.locator(`[data-testid="${id}-minus"]`)).toBeDisabled();
     await page.locator(`[data-testid="${id}-plus"]`).click();
   });

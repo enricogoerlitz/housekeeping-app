@@ -1,5 +1,8 @@
 // Tiny static server for the exported web build, with SPA fallback to index.html.
 // Usage: node serve.mjs <root> <port>
+// GET /__e2e names what it serves (spec 0031, AC-023): the dist path, the SHA-256 of its
+// index.html and the server's PID, so the e2e setup adopts only a server of its own export.
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -30,6 +33,15 @@ http
       pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
     } catch {
       res.writeHead(400).end();
+      return;
+    }
+    if (pathname === '/__e2e') {
+      const index = path.join(root, 'index.html');
+      const hash = fs.existsSync(index)
+        ? createHash('sha256').update(fs.readFileSync(index)).digest('hex')
+        : null;
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ dist: root, index: hash, pid: process.pid }));
       return;
     }
     let file = path.join(root, pathname);
