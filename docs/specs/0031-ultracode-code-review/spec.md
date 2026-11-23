@@ -662,16 +662,16 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **D — Code-Struktur und Logik im Einplanen**
 
-- [ ] 16. `addEntryReducer` in `core`, `AddEntrySheet` zerlegen, `backend.ts` teilen (AC-056,
+- [x] 16. `addEntryReducer` in `core`, `AddEntrySheet` zerlegen, `backend.ts` teilen (AC-056,
       AC-057).
-- [ ] 17. Suche und Sortierung in `core` (AC-052, AC-053), Varianten-Filter (C-07), Reste-Leerzustand
+- [x] 17. Suche und Sortierung in `core` (AC-052, AC-053), Varianten-Filter (C-07), Reste-Leerzustand
       (AC-069), „Portionen“ einmal (AC-072).
-- [ ] 18. Ein „heute“ aus der Haushalts-Uhr, Edge-Funktion mit Kalenderarithmetik
+- [x] 18. Ein „heute“ aus der Haushalts-Uhr, Edge-Funktion mit Kalenderarithmetik
       (AC-049–AC-051).
-- [ ] 19. Tote Funktionen und Exporte, knip, Kommentar-Verweise, 0016-Nachweis (AC-054, AC-055).
-- [ ] 20. Doppelte Bausteine: `useRefusedDays`, `ConfirmDialog`, `errorMessage`, `householdEaters`,
+- [x] 19. Tote Funktionen und Exporte, knip, Kommentar-Verweise, 0016-Nachweis (AC-054, AC-055).
+- [x] 20. Doppelte Bausteine: `useRefusedDays`, `ConfirmDialog`, `errorMessage`, `householdEaters`,
       `weekdayHeads`, sortierte `mealSlots` (AC-060, AC-061).
-- [ ] 21. Beispielfotos nur im Seed, Seed-Typen verschieben (AC-062, AC-063).
+- [x] 21. Beispielfotos nur im Seed, Seed-Typen verschieben (AC-062, AC-063).
 
 **E — Logik**
 
