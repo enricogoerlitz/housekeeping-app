@@ -1036,7 +1036,7 @@ ausschalten; die Uhrzeit wird dann nur angezeigt.
 
 ### Produktion
 
-Die Umgebung, in der Enrico und Nadja die App mit echten Daten nutzen: die Static Web App
+Die Umgebung, in der die Haushalte die App mit echten Daten nutzen: die Static Web App
 „Produktion“ und das bestehende Supabase-Projekt (Frankfurt). Ändert sich nur über die
 Veröffentlichung aus `main`; nie Seed, nie Reset, keine Testkonten (Spec 0014, ADR-0015).
 

@@ -1,7 +1,7 @@
 # Housekeeping
 
-Private Haushalts-App für Enrico und Nadja. Eine **PWA** (Web-App zum Installieren auf dem
-Homescreen), keine nativen Apps. Sie läuft auf Handy, Tablet und Desktop und ist offline lesbar;
+Haushalts-App für alle, die sich einen Haushalt teilen: ob Paar, Familie oder WG. Eine **PWA**
+(Web-App zum Installieren auf dem Homescreen), keine nativen Apps. Sie läuft auf Handy, Tablet und Desktop und ist offline lesbar;
 Schreiben geht online, nur Einkaufen im Markt und Packen funktionieren auch ohne Netz.
 
 Funktionen: Übersicht, Kalender mit Reisen, Rezepte mit Kochmodus, Restaurants, Aktivitäten,
@@ -9,8 +9,8 @@ Einkaufsliste und Einkaufen im Markt (Laufreihenfolge), Haushaltsaufgaben, Reise
 Packlisten, Benachrichtigungen (Web Push). Anmeldung nur mit Google, nur auf Einladung; die Daten
 sind je Haushalt getrennt.
 
-Betrieb: Supabase (Postgres, Auth, Storage, Edge Functions) und Azure Static Web Apps.
-Produktion: `house.kuschel-nest.de`, Vorschau: `test.house.kuschel-nest.de`.
+Betrieb: Supabase (Postgres, Auth, Storage, Edge Functions) und Azure Static Web Apps, mit einer
+Vorschau- und einer Produktionsumgebung.
 
 - **Vision und fachliche Leitplanken:** [docs/product/vision.md](docs/product/vision.md)
 - **Architektur:** [docs/architecture/overview.md](docs/architecture/overview.md) ·
@@ -80,8 +80,8 @@ jedem Merge auf `develop`. Jobs: Änderungen, Konventionen, Geheimnisse, Migrati
 
 ### Branches und Release
 
-Arbeit läuft auf `<type>/<slug>` ab `develop`, jeder PR geht per Squash nach `develop`; nur Enrico
-öffnet den Release-PR `develop` → `main`, Agenten pushen oder mergen nie nach `main`. Vorschau,
+Arbeit läuft auf `<type>/<slug>` ab `develop`, jeder PR geht per Squash nach `develop`; nur die
+Maintainer öffnen den Release-PR `develop` → `main`, Agenten pushen oder mergen nie nach `main`. Vorschau,
 Release und Wiederherstellung: [docs/architecture/betrieb.md](docs/architecture/betrieb.md).
 
 ### KI-Setup

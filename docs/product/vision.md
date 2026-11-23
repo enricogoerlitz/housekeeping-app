@@ -7,8 +7,9 @@ Eine App, mit der ein Haushalt seinen Alltag plant, angefangen beim Essen. Der H
 Die Liste lässt sich von Hand ergänzen und im Laden **in Laufreihenfolge** abarbeiten. Dazu kommen
 weitere Haushaltsfunktionen.
 
-Für wen: zunächst ein Paar, das sich einen Haushalt teilt. Technisch ist jeder Haushalt ein
-eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf Einladung.
+Für wen: alle, die sich einen Haushalt teilen, ob Paar, Familie oder WG. Technisch ist jeder
+Haushalt ein eigener Mandant. Eine Person kann in mehreren Haushalten sein, die Anmeldung erfolgt
+nur auf Einladung.
 
 ## Grundsätze
 
@@ -17,8 +18,8 @@ eigener Mandant. Weitere Haushalte sind möglich, die Anmeldung erfolgt nur auf 
    ([Sync-Konzept](../architecture/sync.md)).
 2. **Alles Strukturierende ist optional.** Ein Artikel ohne Bereich, ein Rezept ohne Foto, ein
    Wochenplan-Eintrag ohne Rezept: Alles ist erlaubt und nichts blockiert.
-3. **Gemeinsam, live.** Beide sehen dieselbe Liste. Hakt eine Person etwas ab, sieht es die andere
-   sofort, sobald Netz da ist.
+3. **Gemeinsam, live.** Alle im Haushalt sehen dieselbe Liste. Hakt eine Person etwas ab, sehen es
+   die anderen sofort, sobald Netz da ist.
 4. **Ein Gefühl wie eine native App** auf iPhone, iPad und Android, und trotzdem im Browser
    nutzbar.
 5. **Einhändig im Laden.** Große Tippflächen, Wischen statt Tippen, nichts Wichtiges oben links.
