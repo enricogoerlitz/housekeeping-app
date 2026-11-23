@@ -1,5 +1,6 @@
-# Checks of every pull request to develop or main (spec 0014, plan decisions 2, 3, 23, 24, 27).
-# The job names are the required status checks of the rulesets. The preview and release workflows
+# Checks of every pull request to develop or main (spec 0014, plan decisions 2, 3, 23, 24, 27),
+# and again after every merge to develop (spec 0031, AC-011): the squash commit is the combination
+# that no pull request run has seen. The job names are the required status checks of the rulesets. The preview and release workflows
 # call this workflow as their first job (workflow_call) and hang everything else on it with
 # `needs`, so red checks on develop or main deliver nothing. The hand-back after a hotfix starts
 # it by hand (workflow_dispatch) on its branch.
@@ -14,12 +15,16 @@ on:
     branches: [develop, main]
     # edited: a corrected title or a new base reruns "Konventionen".
     types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [develop]
   workflow_call:
   workflow_dispatch:
 
 concurrency:
-  # A new push to a pull request replaces its running checks; called runs never cancel.
-  group: checks-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  # A new push to a pull request replaces its running checks. A merge to develop has its own group
+  # per commit, so every merged commit is checked and none is cancelled; called runs (also the
+  # release on a push to main) keep their run id and never cancel.
+  group: checks-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'push' && github.ref == 'refs/heads/develop' && format('develop-{0}', github.sha) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

@@ -16,8 +16,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const E2E_PORT = 8790;
-/** The version the e2e export is built as (spec 0014). */
-export const E2E_APP_VERSION = '2026.12.4';
+/**
+ * The version the e2e export is built as (spec 0014): far above every minimum version a migration
+ * may set, so no test but rundgang-version ever sees the lock screen (spec 0031, AC-021).
+ */
+export const E2E_APP_VERSION = '2099.12.1';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
