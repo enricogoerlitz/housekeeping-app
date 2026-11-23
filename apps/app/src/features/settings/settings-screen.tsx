@@ -3,6 +3,7 @@ import {
   syncNow,
   useCurrentMember,
   useHousehold,
+  useHouseholdClock,
   useNotificationSettings,
   useSyncState,
 } from '@housekeeping/api';
@@ -304,10 +305,11 @@ function SyncLine() {
   const household = useHousehold();
   const online = useOnlineOnly();
   const [syncing, setSyncing] = useState(false);
+  const clock = useHouseholdClock();
   const row = syncRow({
     lastSyncedAt: sync.lastSyncedAt,
     syncing,
-    now: new Date(),
+    now: clock().now,
     timeZone: household.timeZone,
   });
   const run = async () => {

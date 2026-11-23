@@ -1,12 +1,13 @@
 import {
   setEntryReminder,
   useHousehold,
+  useHouseholdClock,
+  useToday,
   useNotificationSettings,
   WRITE_REJECTED_MESSAGE,
 } from '@housekeeping/api';
 import {
   asksForPushPermission,
-  householdClock,
   MAX_REMINDER_TEXT,
   monthPickerStart,
   offsetFor,
@@ -89,7 +90,7 @@ export function useReminderForm(options: {
   startsAt?: TimeOfDay;
 }): ReminderForm {
   const { entryDate, entryId } = options;
-  const household = useHousehold();
+  const clock = useHouseholdClock();
   const ensureDevicePush = useEnsureDevicePush();
   const [draft, setDraft] = useState<ReminderDraft>(() => reminderDraftFrom(options.stored));
   const [error, setError] = useState<FieldError>();
@@ -106,8 +107,8 @@ export function useReminderForm(options: {
       entryDate,
       stored: base.current,
       draft: next,
-      now: new Date(),
-      timeZone: household.timeZone,
+      now: clock().now,
+      timeZone: clock().timeZone,
     });
 
   /**
@@ -152,15 +153,16 @@ export function useReminderForm(options: {
     toggle: (on) => {
       // The browser's question first, inside the tap (spec 0013, AC-007; AC-026).
       if (asksForPushPermission({ kind: 'switch', on })) ensureDevicePush();
+      const { now, timeZone } = clock();
       const suggestion =
         on && options.startsAt
-          ? suggestedReminder(entryDate, options.startsAt, new Date(), household.timeZone)
+          ? suggestedReminder(entryDate, options.startsAt, now, timeZone)
           : undefined;
       const next = !on
         ? REMINDER_OFF_DRAFT
         : suggestion
           ? { on: true, offsetDays: suggestion.offsetDays, time: suggestion.at, text: '' }
-          : switchedOnDraft(entryDate, options.slotName, new Date(), household.timeZone);
+          : switchedOnDraft(entryDate, options.slotName, now, timeZone);
       update(next);
       send(next, { quietWithoutTime: true });
     },
@@ -194,8 +196,8 @@ export function useReminderForm(options: {
         before,
         after,
         reminder: base.current,
-        now: new Date(),
-        timeZone: household.timeZone,
+        now: clock().now,
+        timeZone: clock().timeZone,
       });
       if (!suggestion) return;
       const next = { on: true, offsetDays: suggestion.offsetDays, time: suggestion.at, text: '' };
@@ -241,8 +243,8 @@ export function ReminderBlock(props: {
   const settings = useNotificationSettings();
   const deviceRegistered = useDeviceRegistered();
   const [picking, setPicking] = useState(false);
-  const now = new Date();
-  const today = householdClock(now, household.timeZone).date;
+  const today = useToday();
+  const { now } = useHouseholdClock()();
   const range = selectableReminderDays(entryDate, today);
   const chips = reminderDayChoices(entryDate, draft.on ? draft.offsetDays : undefined, today);
   const reach = reminderReachHint({

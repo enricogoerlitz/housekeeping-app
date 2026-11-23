@@ -1,6 +1,7 @@
 import {
   useCurrentMember,
   useHousehold,
+  useHouseholdClock,
   useHouseholdsMap,
   usePlanEntries,
   useToday,
@@ -57,7 +58,9 @@ export function TodayScreen() {
   useHandedHousehold(address.params.haushalt, address.replace);
   const { isPhone, bp } = useBreakpoint();
   // The time of day only picks the greeting; the date itself comes from useToday().
-  const [hour] = useState(() => new Date().getHours());
+  // Spec 0031, AC-050: the greeting follows the household's clock, not the device's.
+  const clock = useHouseholdClock();
+  const [hour] = useState(() => clock().hour);
   const today = useToday();
   const me = useCurrentMember();
   const household = useHousehold();

@@ -80,7 +80,7 @@ type Cached<T extends TableName> = Partial<Tables<T>> & { id: string };
 const opt = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
 
 /** The column default of `households.timezone`; every household row from the server has one. */
-const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
+export const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
 
 /** Domain jsonb values are plain JSON by construction (no functions, no dates). */
 const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;

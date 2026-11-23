@@ -22,7 +22,6 @@ import {
   checkEntryText,
   entryListShare,
   formatShortDate,
-  householdClock,
   isSelectableMoveDay,
   MAX_ENTRY_TEXT,
   monthPickerStart,
@@ -184,10 +183,7 @@ export function EntrySheet(props: {
       : undefined;
 
   // Spec 0017, AC-007: not for "vorgemerkt" and not for a day that has passed (household's date).
-  const remindable = offersReminder(
-    entry.date,
-    householdClock(new Date(), household.timeZone).date,
-  );
+  const remindable = offersReminder(entry.date, today);
   // A passed day offers no block, but its reminder still shows: "Erinnerung vorbei" (REQ-006).
   const pastReminder = remindable
     ? undefined

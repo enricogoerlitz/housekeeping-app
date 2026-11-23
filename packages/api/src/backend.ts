@@ -5,6 +5,7 @@
 // engine-queue.ts (the outbox), engine-store-queue.ts and engine-persistence.ts.
 import {
   applyQueue,
+  householdClock,
   unsentChangeCount,
   visibleTables,
   type Row,
@@ -16,7 +17,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { useSyncExternalStore } from 'react';
 
 import { appVersionGate } from './app-version';
-import { rowsToHousehold, rowsToMembers } from './db/mapping';
+import { HOUSEHOLD_TIME_ZONE_DEFAULT, rowsToHousehold, rowsToMembers } from './db/mapping';
 import {
   isOffline,
   report,
@@ -88,24 +89,6 @@ export function browserEnvironment(): Environment {
       };
     },
   };
-}
-
-const BERLIN_DATE = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Berlin',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-/**
- * The calendar day in Berlin ("YYYY-MM-DD"): the household's "today", whatever the device's time
- * zone. The state is rebuilt at least with every pull (every 60 s), so it moves on after midnight.
- */
-export function berlinToday(now: Date): string {
-  const parts = Object.fromEntries(
-    BERLIN_DATE.formatToParts(now).map((part) => [part.type, part.value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 export interface Engine extends BackendHooks {
@@ -311,7 +294,12 @@ export function createEngine(options: EngineOptions): Engine {
       ? rowsToMembers(cache.small, previous?.members)
       : (previous?.members ?? []);
     const next: AppState = {
-      today: berlinToday(new Date()),
+      // Spec 0031, REQ-020: the household's wall clock, whatever the device's time zone. The state
+      // is rebuilt at least with every pull (every 60 s), so it moves on after midnight.
+      today: householdClock(
+        new Date(),
+        households[activeHouseholdId]?.household.timeZone ?? HOUSEHOLD_TIME_ZONE_DEFAULT,
+      ).date,
       members,
       currentMemberId: userId,
       activeHouseholdId,

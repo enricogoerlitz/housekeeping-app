@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadAssistantContext, loadRecipeIndex } from './context.ts';
+import { berlinDate, loadAssistantContext, loadRecipeIndex } from './context.ts';
 import { fakeClient, type Row } from './test-fakes.ts';
 import { HOUSEHOLD_ID, householdTables } from './test-household.ts';
 
@@ -103,5 +103,19 @@ describe('spec 0009: collections in the AI context', () => {
     });
     expect(context?.recipes.find((entry) => entry.id !== 'r-grill')).not.toHaveProperty('kind');
     expect(context?.openRecipe).toMatchObject({ id: 'r-grill', kind: 'collection' });
+  });
+});
+
+describe('berlinDate (spec 0031, REQ-020)', () => {
+  it('AC-051: 27.3.2027 23:30 before the summer time: seven days on is the 3.4.', () => {
+    const now = new Date('2027-03-27T22:30:00Z');
+    expect(berlinDate(now)).toBe('2027-03-27');
+    expect(berlinDate(now, 7)).toBe('2027-04-03');
+  });
+
+  it('AC-051: 30.10.2027 00:30, before the end of the summer time: seven days on is the 6.11.', () => {
+    const now = new Date('2027-10-29T22:30:00Z');
+    expect(berlinDate(now)).toBe('2027-10-30');
+    expect(berlinDate(now, 7)).toBe('2027-11-06');
   });
 });

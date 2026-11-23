@@ -1,5 +1,5 @@
-import { useHousehold, usePlanEntries, useRecipeBook } from '@housekeeping/api';
-import { householdClock, prepLines, type ISODate } from '@housekeeping/core';
+import { useHousehold, useHouseholdClock, usePlanEntries, useRecipeBook } from '@housekeeping/api';
+import { prepLines, type ISODate } from '@housekeeping/core';
 import { Icon, Row, Text } from '@housekeeping/ui';
 import { View } from 'react-native';
 
@@ -11,8 +11,9 @@ export function TodayPrep(props: { shown: ISODate; today: ISODate }) {
   const household = useHousehold();
   const entries = usePlanEntries();
   const book = useRecipeBook();
+  const clock = useHouseholdClock();
   // The time only decides "Schon fällig"; the next render after a sync or a tap updates it.
-  const now = householdClock(new Date(), household.timeZone).time;
+  const now = clock().time;
   const lines = prepLines({
     entries,
     book,
