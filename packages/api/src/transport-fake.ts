@@ -158,7 +158,7 @@ export interface FakeServer {
   row(householdId: string, table: string, id: string): Row | undefined;
   /** The next call of `fn` fails with `error`. */
   failNext(fn: RpcName, error: TransportError, options?: { afterApply?: boolean }): void;
-  /** Like pg_cron: forgets deletions older than `before`. */
+  /** Like pg_cron: forgets rows of deleted_records older than `before`. */
   purgeDeletionsBefore(before: string): void;
   /** The place the edge function `resolve-maps-link` answers for a short link. */
   setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
@@ -395,7 +395,8 @@ const constraintOf = (reference: { table: string; column: string }) =>
 /** private.deletions of a recipe (spec 0008, E4; spec 0024): what restore_recipe brings back. */
 interface RecipeDeletion {
   householdId: string;
-  recipeId: string;
+  kind: 'recipe';
+  targetId: string;
   deletedBy: string;
   /** Milliseconds, like the server clock. */
   deletedAt: number;
@@ -420,7 +421,8 @@ interface RecipeDeletion {
 /** private.deletions of a chore (spec 0031, REQ-016): the row and the ids of its entries. */
 interface ChoreDeletion {
   householdId: string;
-  choreId: string;
+  kind: 'chore';
+  targetId: string;
   deletedBy: string;
   deletedAt: number;
   row: Row;
@@ -441,6 +443,8 @@ interface PlaceDeletion {
   removed: Row[];
 }
 type PlaceKind = 'restaurant' | 'activity';
+/** A row of private.deletions: primary key (household, kind, target), the snapshot by kind. */
+type Deletion = RecipeDeletion | ChoreDeletion | PlaceDeletion;
 /** Table, reference column and per-member tables of a restaurant or an activity. */
 const PLACES = {
   restaurant: {
@@ -880,18 +884,46 @@ export function createFakeServer(): FakeServer {
   let members: SmallRow[] = [];
   let invitations: SmallRow[] = [];
   const data = new Map<string, TableRows>();
-  /** `replacedBy`: deleted_records.replaced_by, set by merge_articles (spec 0007, E5). */
-  let deletions: (Tombstone & { householdId: string; replacedBy?: string })[] = [];
+  /** public.deleted_records; `replacedBy` is replaced_by, set by merge_articles (spec 0007, E5). */
+  let deletedRecords: (Tombstone & { householdId: string; replacedBy?: string })[] = [];
   const subscribers = new Map<string, Set<() => void>>();
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
-  /** private.deletions of recipes, one snapshot per household and recipe. */
-  const recipeDeletions = new Map<string, RecipeDeletion>();
-  const placeDeletions = new Map<string, PlaceDeletion>();
-  const choreDeletions = new Map<string, ChoreDeletion>();
+  /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
+  const deletions = new Map<string, Deletion>();
+  const deletionKey = (deletion: Pick<Deletion, 'householdId' | 'kind' | 'targetId'>) =>
+    `${deletion.householdId}:${deletion.kind}:${deletion.targetId}`;
+  /** Keeps a new snapshot; older ones of the household past the restore window go. */
+  function keepDeletion(deletion: Deletion): void {
+    for (const [key, kept] of deletions) {
+      if (
+        kept.householdId === deletion.householdId &&
+        kept.deletedAt <= Date.now() - RESTORABLE_MS
+      ) {
+        deletions.delete(key);
+      }
+    }
+    deletions.set(deletionKey(deletion), deletion);
+  }
+  /** The snapshot the person may restore: hers, while a member, within the window. */
+  function restorableDeletion<K extends Deletion['kind']>(
+    kind: K,
+    userId: string,
+    targetId: string,
+  ): Extract<Deletion, { kind: K }> | undefined {
+    const found = [...deletions.values()].find(
+      (candidate) =>
+        candidate.kind === kind &&
+        candidate.targetId === targetId &&
+        candidate.deletedBy === userId &&
+        isMember(userId, candidate.householdId) &&
+        candidate.deletedAt > Date.now() - RESTORABLE_MS,
+    );
+    return found as Extract<Deletion, { kind: K }> | undefined;
+  }
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
   /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
   let pushSubscriptions: PushSubscriptionRecord[] = [];
@@ -1014,7 +1046,7 @@ export function createFakeServer(): FakeServer {
           };
       }
       for (const id of Object.keys(old)) {
-        if (!(id in rows)) deletions.push({ householdId, table, id, deletedAt: time });
+        if (!(id in rows)) deletedRecords.push({ householdId, table, id, deletedAt: time });
       }
       next[table] = rows;
     }
@@ -1157,7 +1189,7 @@ export function createFakeServer(): FakeServer {
     const mine = new Set(householdsOf(userId));
     let id = itemId;
     for (let step = 0; step < 5; step++) {
-      const tombstone = [...deletions]
+      const tombstone = [...deletedRecords]
         .reverse()
         .find(
           (deletion) =>
@@ -2058,7 +2090,7 @@ export function createFakeServer(): FakeServer {
             if (Object.hasOwn(COMPOSITE_TABLES, table)) delete (copy as Partial<Row>).id;
             return copy;
           });
-        for (const deletion of deletions) {
+        for (const deletion of deletedRecords) {
           if (deletion.householdId !== householdId || deletion.table !== table) continue;
           if (since !== undefined && compareTimestamps(deletion.deletedAt, since) <= 0) continue;
           tombstones.push({ table, id: deletion.id, deletedAt: deletion.deletedAt });
@@ -2227,7 +2259,8 @@ export function createFakeServer(): FakeServer {
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       deletion = {
         householdId,
-        recipeId,
+        kind: 'recipe',
+        targetId: recipeId,
         deletedBy: userId,
         deletedAt: Date.now(),
         recipe,
@@ -2283,23 +2316,12 @@ export function createFakeServer(): FakeServer {
         },
       ];
     });
-    for (const [key, kept] of recipeDeletions) {
-      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
-        recipeDeletions.delete(key);
-      }
-    }
-    if (deletion) recipeDeletions.set(`${householdId}:${recipeId}`, deletion);
+    if (deletion) keepDeletion(deletion);
     return result;
   }
 
   function restoreRecipe(userId: string, recipeId: string): boolean {
-    const deletion = [...recipeDeletions.values()].find(
-      (candidate) =>
-        candidate.recipeId === recipeId &&
-        candidate.deletedBy === userId &&
-        isMember(userId, candidate.householdId) &&
-        candidate.deletedAt > Date.now() - RESTORABLE_MS,
-    );
+    const deletion = restorableDeletion('recipe', userId, recipeId);
     if (!deletion) throw new TransportError('permanent', 'recipe_not_restorable', 500);
     const { householdId } = deletion;
     if (data.get(householdId)?.recipes?.[recipeId]) return false;
@@ -2376,7 +2398,7 @@ export function createFakeServer(): FakeServer {
       }
       return [tables, undefined];
     });
-    recipeDeletions.delete(`${householdId}:${recipeId}`);
+    deletions.delete(deletionKey(deletion));
     return true;
   }
 
@@ -2393,7 +2415,8 @@ export function createFakeServer(): FakeServer {
       if (!row) throw notFound();
       deletion = {
         householdId,
-        choreId,
+        kind: 'chore',
+        targetId: choreId,
         deletedBy: userId,
         deletedAt: Date.now(),
         row,
@@ -2403,12 +2426,7 @@ export function createFakeServer(): FakeServer {
       };
       return [withoutRows(before, 'chores', [choreId]), undefined];
     });
-    for (const [key, kept] of choreDeletions) {
-      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
-        choreDeletions.delete(key);
-      }
-    }
-    if (deletion) choreDeletions.set(`${householdId}:${choreId}`, deletion);
+    if (deletion) keepDeletion(deletion);
   }
 
   /**
@@ -2418,13 +2436,7 @@ export function createFakeServer(): FakeServer {
    */
   function restoreChore(userId: string, choreId: string): boolean {
     const notRestorable = () => new TransportError('permanent', 'chore_not_restorable', 500);
-    const deletion = [...choreDeletions.values()].find(
-      (candidate) =>
-        candidate.choreId === choreId &&
-        candidate.deletedBy === userId &&
-        isMember(userId, candidate.householdId) &&
-        candidate.deletedAt > Date.now() - RESTORABLE_MS,
-    );
+    const deletion = restorableDeletion('chore', userId, choreId);
     if (!deletion) throw notRestorable();
     const { householdId } = deletion;
     if (data.get(householdId)?.chores?.[choreId]) return false;
@@ -2448,7 +2460,7 @@ export function createFakeServer(): FakeServer {
       }
       return [tables, undefined];
     });
-    choreDeletions.delete(`${householdId}:${choreId}`);
+    deletions.delete(deletionKey(deletion));
     return true;
   }
 
@@ -2513,26 +2525,14 @@ export function createFakeServer(): FakeServer {
       tables = withoutRows(tables, place.table, [targetId]);
       return [tables, { converted: converted.length, removed: later.length }];
     });
-    for (const [key, kept] of placeDeletions) {
-      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
-        placeDeletions.delete(key);
-      }
-    }
-    if (deletion) placeDeletions.set(`${householdId}:${kind}:${targetId}`, deletion);
+    if (deletion) keepDeletion(deletion);
     return result;
   }
 
   function restorePlace(userId: string, kind: PlaceKind, targetId: string): boolean {
     const place = PLACES[kind];
     const notRestorable = () => new TransportError('permanent', `${kind}_not_restorable`, 500);
-    const deletion = [...placeDeletions.values()].find(
-      (candidate) =>
-        candidate.kind === kind &&
-        candidate.targetId === targetId &&
-        candidate.deletedBy === userId &&
-        isMember(userId, candidate.householdId) &&
-        candidate.deletedAt > Date.now() - RESTORABLE_MS,
-    );
+    const deletion = restorableDeletion(kind, userId, targetId);
     if (!deletion) throw notRestorable();
     const { householdId } = deletion;
     if (data.get(householdId)?.[place.table]?.[targetId]) return false;
@@ -2591,7 +2591,7 @@ export function createFakeServer(): FakeServer {
       }
       return [tables, undefined];
     });
-    placeDeletions.delete(`${householdId}:${kind}:${targetId}`);
+    deletions.delete(deletionKey(deletion));
     return true;
   }
 
@@ -3019,7 +3019,7 @@ export function createFakeServer(): FakeServer {
           });
           if (replaced) {
             const { from, to } = replaced;
-            deletions = deletions.map((deletion) =>
+            deletedRecords = deletedRecords.map((deletion) =>
               deletion.householdId === householdId &&
               deletion.table === 'shopping_items' &&
               deletion.id === from &&
@@ -3371,15 +3371,11 @@ export function createFakeServer(): FakeServer {
           members = members.filter((member) => member.household_id !== householdId);
           invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
           data.delete(householdId);
-          deletions = deletions.filter((tombstone) => tombstone.householdId !== householdId);
-          for (const [key, deletion] of recipeDeletions) {
-            if (deletion.householdId === householdId) recipeDeletions.delete(key);
-          }
-          for (const [key, deletion] of placeDeletions) {
-            if (deletion.householdId === householdId) placeDeletions.delete(key);
-          }
-          for (const [key, deletion] of choreDeletions) {
-            if (deletion.householdId === householdId) choreDeletions.delete(key);
+          deletedRecords = deletedRecords.filter(
+            (tombstone) => tombstone.householdId !== householdId,
+          );
+          for (const [key, deletion] of deletions) {
+            if (deletion.householdId === householdId) deletions.delete(key);
           }
           notify(householdId);
         }),
@@ -3608,7 +3604,7 @@ export function createFakeServer(): FakeServer {
     testPushes: () =>
       testDeliveries.map(({ subscriptionId, profileId }) => ({ subscriptionId, profileId })),
     purgeDeletionsBefore(before) {
-      deletions = deletions.filter(
+      deletedRecords = deletedRecords.filter(
         (deletion) => compareTimestamps(deletion.deletedAt, before) >= 0,
       );
     },

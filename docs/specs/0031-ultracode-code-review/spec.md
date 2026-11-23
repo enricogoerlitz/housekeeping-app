@@ -716,7 +716,12 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 - [ ] 30. Komponententests in `ui` (AC-028, AC-029), Test für `startAuth` (AC-030).
 - [ ] 31. `vitest.config.ts` mit Coverage für `core`, `api` und `ui`, Schwelle 80 %, `21-testing.md`
       (AC-015–AC-017).
-- [ ] 32. Vertragstest Fake gegen DB (AC-059).
+- [x] 32. Vertragstest Fake gegen DB (AC-059). `contract.integration.test.ts` lässt dieselben
+      Schritte gegen Fake und lokale DB laufen (Allowlist von `apply_changes`,
+      `delete/restore_recipe`, `delete/restore_restaurant/activity`, `complete_chore`,
+      `delete/restore_chore`, je mit fremdem Haushalt) und vergleicht Antworten, Ablehnungen und
+      Zeilen. Der Fake führt `private.deletions` als eine Tabelle mit `kind` und `target_id`, die
+      Grabsteine heißen `deletedRecords`.
 
 **H — Weg zur Veröffentlichung** (zuletzt, vor 0028, Schritt 4)
 
