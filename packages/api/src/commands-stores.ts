@@ -1,6 +1,7 @@
 import {
   areaSortPatches,
   moveInOrder,
+  nextAreaSort,
   normalizeText,
   validateAreaName,
   type Area,
@@ -55,7 +56,7 @@ export function createArea(name: string): Id {
   const area: Area = {
     id: newId(),
     name: trimmed,
-    sort: areas.reduce((max, candidate) => Math.max(max, candidate.sort), 0) + 1,
+    sort: nextAreaSort(areas),
   };
   commit({ path: 'diff' }, () => updateData((data) => ({ ...data, areas: [...data.areas, area] })));
   return area.id;

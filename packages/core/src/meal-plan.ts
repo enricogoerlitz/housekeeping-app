@@ -109,17 +109,6 @@ export function splitVariants(
   });
   return { portions, variants, misfitMemberIds };
 }
-/**
- * "mit Tofu 1 · mit Hähnchen 1" in the recipe's variant order; "" for entries without variants.
- */
-export function variantSummary(entry: MealPlanEntry, recipe: Recipe): string {
-  return recipe.variants
-    .flatMap((variant) => {
-      const row = entry.variants.find((candidate) => candidate.variantId === variant.id);
-      return row && row.portions > 0 ? [`${variant.name} ${formatQty(row.portions)}`] : [];
-    })
-    .join(' · ');
-}
 /** "Eislaufen (Hohenschönhausen)"; the title alone without a Zusatz. */
 export function withNote(title: string, note?: string): string {
   const zusatz = note?.trim();

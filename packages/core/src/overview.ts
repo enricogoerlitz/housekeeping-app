@@ -263,14 +263,3 @@ export function choresOfDay(input: {
   return shown > today ? { kind: 'planned', items } : { kind: 'done', items };
 }
 
-const DayParam = z.iso.date();
-
-/**
- * The day the "Übersicht" hands to the calendar as "/kalender?tag=JJJJ-MM-TT" (AC-004, AC-011,
- * AC-013, plan decision 12): a valid calendar date, else undefined, so the calendar ignores it.
- */
-export function calendarDayParam(raw: string | string[] | undefined): ISODate | undefined {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const parsed = DayParam.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}

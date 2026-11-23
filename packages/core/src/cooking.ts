@@ -8,17 +8,6 @@ import type { Id, Recipe, RecipeIngredient } from './types';
 
 const WHOLE_NUMBER = /^[1-9]\d*$/;
 
-/** The portions of the cooking mode from the address; the recipe's own without a valid value. */
-export function cookingServings(
-  value: string | readonly string[] | undefined,
-  recipe: Pick<Recipe, 'servings'>,
-): number {
-  const first = typeof value === 'string' ? value : value?.[0];
-  if (first === undefined || !WHOLE_NUMBER.test(first)) return recipe.servings;
-  const servings = Number(first);
-  return Number.isSafeInteger(servings) ? servings : recipe.servings;
-}
-
 /** "1 Portion", "6 Portionen". */
 export function servingsLabel(servings: number): string {
   return servings === 1 ? '1 Portion' : `${servings} Portionen`;

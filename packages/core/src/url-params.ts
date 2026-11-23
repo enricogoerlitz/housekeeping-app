@@ -352,18 +352,6 @@ export function pageQuery<K extends PageKey>(
   return query;
 }
 
-/** The address of a page with its values, encoded (AC-055). Route ids belong in `path`. */
-export function pageHref<K extends PageKey>(path: string, page: K, values: PageParams<K>): string {
-  const pairs: string[] = [];
-  for (const [name, value] of Object.entries(pageQuery(page, values))) {
-    if (name === 'id' || value === undefined) continue;
-    for (const entry of Array.isArray(value) ? value : [value]) {
-      pairs.push(`${encodeURIComponent(name)}=${encodeURIComponent(entry)}`);
-    }
-  }
-  return pairs.length > 0 ? `${path}?${pairs.join('&')}` : path;
-}
-
 // ---------- Recipe list ----------
 
 export interface RecipeListAddressState {

@@ -4,13 +4,12 @@ import {
   addDays,
   entriesForDay,
   ingredientDrafts,
-  originSummary,
   rowsFromIngredientDrafts,
 } from '@housekeeping/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
-import { H, TODAY, withBackend } from './backend-test-helpers';
+import { H, originSummary, TODAY, withBackend } from './backend-test-helpers';
 import { createTrip } from './commands-trips';
 import {
   addPlanEntry,

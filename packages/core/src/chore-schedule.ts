@@ -23,11 +23,6 @@ export interface ChoreAway {
   trips: readonly Trip[];
 }
 
-/** No trips: every day is free (for callers that do not look at trips). */
-export function withoutTrips(members: readonly Member[]): ChoreAway {
-  return { members, trips: [] };
-}
-
 /** The search for a free day gives up after this many days (a very long trip, broken data). */
 export const MAX_WAIT_DAYS = 400;
 
