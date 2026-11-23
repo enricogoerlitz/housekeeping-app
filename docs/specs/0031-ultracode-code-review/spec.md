@@ -629,7 +629,7 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 - [x] 2. Fake-Server `insertRows`/`withoutRows` einmal je Tabelle kopieren, Timeouts zurück
       (AC-058).
 - [x] 3. `checks.yml` auf `push` nach `develop` (AC-011).
-- [ ] 4. Lint: Paketgrenzen, `--max-warnings=0`, `ban-ts-comment`, Pflicht-Begründung (AC-047,
+- [x] 4. Lint: Paketgrenzen, `--max-warnings=0`, `ban-ts-comment`, Pflicht-Begründung (AC-047,
       AC-048).
 - [ ] 5. Tag-Ruleset `creation`, e2e-App-Version als Konstante (AC-020, AC-021).
 

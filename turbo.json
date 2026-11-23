@@ -1,7 +1,9 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "tasks": {
-    "lint": {},
+    "lint": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/eslint.config.mjs"]
+    },
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
