@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { Locator, Page } from '@playwright/test';
 import {
   addDays,
@@ -19,12 +21,14 @@ import {
   SLOT_LUNCH,
   SLOT_MORNING,
   TODAY,
+  accessToken,
   day,
   expect,
   freshSeed,
   goOffline,
   isoWeekday,
   open,
+  rpc,
   test,
   tid,
   tidPrefix,
@@ -43,7 +47,7 @@ import { seedIds } from './seed-ids';
 freshSeed();
 
 const LASAGNE = seedIds['plan-2'];
-const CURRY_YESTERDAY = seedIds['plan-1'];
+const HOUSEHOLD = seedIds['hh-demo'];
 const ENRICO = seedIds['m-enrico'];
 const MALLORCA = seedIds['trip-mallorca'];
 const OFFLINE_HINT = 'Offline – zum Bearbeiten brauchst du Netz';
@@ -505,24 +509,72 @@ test.describe('desktop', () => {
   test('AC-015: a dish cannot go behind its leftovers; the days are pale and the reason shows', async ({
     page,
   }) => {
-    const yesterday = day(-1);
-    await open(page, '/kalender');
-    await tid(page, 'calendar-view-month').click();
-    const curry = entry(page, CURRY_YESTERDAY, tid(page, 'month-grid'));
-    test.skip((await curry.count()) === 0, 'yesterday is not on the grid of this month');
-    await scrollToCenter(curry);
-    await mouseGrab(page, await centerOf(curry));
+    // Its own curry on the 14th with leftovers on the 15th, two months ahead, so no today, no
+    // month boundary and no other test's days are involved.
+    const month = addDays(`${TODAY.slice(0, 7)}-01`, 70).slice(0, 7);
+    const cooked = `${month}-14`;
+    const leftovers = `${month}-15`;
+    const curryId = randomUUID();
+    const leftoversId = randomUUID();
+    const base = {
+      household_id: HOUSEHOLD,
+      recipe_id: seedIds['rec-mango-curry'],
+      eater_ids: [ENRICO, seedIds['m-nadja']],
+      guests: 0,
+      portions: 2,
+      variants: [],
+      sort: 0,
+    };
+    const token = await accessToken('enrico');
+    const change = (ops: unknown[]) =>
+      rpc(token, 'apply_changes', { p_household_id: HOUSEHOLD, p_ops: ops });
+    await change([
+      {
+        kind: 'insert',
+        table: 'meal_plan_entries',
+        row: { ...base, id: curryId, date: cooked, slot_id: SLOT_DINNER, kind: 'recipe' },
+      },
+      {
+        kind: 'insert',
+        table: 'meal_plan_entries',
+        row: {
+          ...base,
+          id: leftoversId,
+          date: leftovers,
+          slot_id: SLOT_LUNCH,
+          kind: 'leftovers',
+          leftovers_of_entry_id: curryId,
+        },
+      },
+    ]);
+    try {
+      await open(page, '/kalender');
+      await tid(page, 'calendar-view-month').click();
+      await tid(page, 'week-next').click();
+      await tid(page, 'week-next').click();
+      const curry = entry(page, curryId, tid(page, `month-cell-${cooked}`));
+      await scrollToCenter(curry);
+      await mouseGrab(page, await centerOf(curry));
 
-    const reason = blockedText({ kind: 'leftovers-planned', leftoversDate: TODAY }, 'Mango-Curry');
-    await expect(tid(page, `month-cell-${TODAY}`)).toHaveCSS('opacity', '0.4');
-    await expect(tid(page, `month-cell-${yesterday}`)).toHaveCSS('opacity', '1');
-    await mouseTo(page, await centerOf(tid(page, `month-cell-${TODAY}`)));
-    await expect(tid(page, 'drag-label')).toHaveText(reason);
-    await page.mouse.up();
+      const reason = blockedText(
+        { kind: 'leftovers-planned', leftoversDate: leftovers },
+        'Mango-Curry',
+      );
+      await expect(tid(page, `month-cell-${leftovers}`)).toHaveCSS('opacity', '0.4');
+      await expect(tid(page, `month-cell-${cooked}`)).toHaveCSS('opacity', '1');
+      await mouseTo(page, await centerOf(tid(page, `month-cell-${leftovers}`)));
+      await expect(tid(page, 'drag-label')).toHaveText(reason);
+      await page.mouse.up();
 
-    await expect(toastMessage(page)).toHaveText(reason);
-    await expect(entry(page, CURRY_YESTERDAY, tid(page, `month-cell-${yesterday}`))).toBeVisible();
-    await expect(tid(page, `month-cell-${TODAY}`)).toHaveCSS('opacity', '1');
+      await expect(toastMessage(page)).toHaveText(reason);
+      await expect(entry(page, curryId, tid(page, `month-cell-${cooked}`))).toBeVisible();
+      await expect(tid(page, `month-cell-${leftovers}`)).toHaveCSS('opacity', '1');
+    } finally {
+      await change([
+        { kind: 'delete', table: 'meal_plan_entries', id: leftoversId },
+        { kind: 'delete', table: 'meal_plan_entries', id: curryId },
+      ]);
+    }
   });
 
   test('AC-028 / AC-030: the mouse draws a trip over five days; closing the next one saves nothing', async ({
