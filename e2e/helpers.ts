@@ -56,6 +56,11 @@ export function inThisWeek(date: ISODate): boolean {
   return weekDates(TODAY).includes(date);
 }
 
+/** True when `date` lies in yesterday to today + 5, the Übersicht's first section (spec 0020). */
+export function inTodaysSection(date: ISODate): boolean {
+  return Array.from({ length: 7 }, (_, index) => day(index - 1)).includes(date);
+}
+
 /** The three Tageszeiten of the demo household (spec 0004, AC-001). */
 export const SLOT_MORNING = seedIds['slot-vormittag'];
 export const SLOT_LUNCH = seedIds['slot-mittag'];
@@ -97,6 +102,28 @@ export const ACTIVE = ':not([inert] *):visible';
 /** The element with this test id on the active screen. */
 export function tid(page: Page, id: string): Locator {
   return page.locator(`[data-testid="${id}"]${ACTIVE}`).first();
+}
+
+/** Chooses "19:30" in a time field (spec 0027, REQ-007), or "–" (no time) with undefined. */
+export async function chooseTime(page: Page, id: string, time: string | undefined): Promise<void> {
+  const [hour = '', minute = ''] = time === undefined ? [] : time.split(':');
+  await tid(page, `${id}-hour`).selectOption(hour === '' ? '' : hour.padStart(2, '0'));
+  if (minute !== '') await tid(page, `${id}-minute`).selectOption(minute);
+}
+
+/** The time a time field shows: "19:30", or "" for "–". */
+export async function expectTime(page: Page, id: string, time: string): Promise<void> {
+  const [hour = '', minute = ''] = time === '' ? [] : time.split(':');
+  await expect(tid(page, `${id}-hour`)).toHaveValue(hour === '' ? '' : hour.padStart(2, '0'));
+  await expect(tid(page, `${id}-minute`)).toHaveValue(minute);
+}
+
+/**
+ * One day of the phone week (`day-block-<date>`, spec 0031 AC-022): its head, the trips
+ * starting there, the household row and every Tageszeit with its entries.
+ */
+export function dayBlock(page: Page, date: string): Locator {
+  return tid(page, `day-block-${date}`);
 }
 
 /** All elements on the active screen whose test id starts with `prefix`. */
@@ -208,6 +235,16 @@ async function appReady(page: Page): Promise<void> {
   ).toBeVisible({ timeout: 30_000 });
 }
 
+/**
+ * Waits until the app has loaded and shows its content: no request for half a second. A gesture
+ * right after `open` would start on a screen that is still being replaced by its loaded content,
+ * and its touch would reach no responder.
+ */
+export async function contentReady(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+  await settle(page);
+}
+
 /** Signs in with a local test account (dev buttons) and waits for "Heute" after the first pull. */
 export async function login(page: Page, who: Account = 'enrico'): Promise<void> {
   await page.goto('/');
@@ -288,14 +325,23 @@ export async function back(page: Page): Promise<void> {
 
 /** A page under "Verwalten" (spec 0005, REQ-010): `manage-entry-<key>` / `nav-manage-<key>`. */
 export type ManagedPage =
-  'activities' | 'packing-bags' | 'absences' | 'articles' | 'stores' | 'members' | 'feedback';
+  'activities' | 'packing-bags' | 'trips' | 'articles' | 'stores' | 'members' | 'feedback';
+
+/** The first pages of the tabs, the only ones with ⊞ in the header on phones (spec 0005, AC-054). */
+const TAB_START_PAGES = new Set(['/', '/rezepte', '/kalender', '/liste', '/haushalt']);
+
+function onTabStartPage(page: Page): boolean {
+  return TAB_START_PAGES.has(new URL(page.url()).pathname);
+}
 
 /**
- * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page, then the
- * entry; on wider screens the entry in the sidebar.
+ * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page (from another
+ * page via "Übersicht"), then the entry; on wider screens the entry in the sidebar.
  */
 export async function openManaged(page: Page, key: ManagedPage): Promise<void> {
   if (isPhone(page)) {
+    // ⊞ is only on a tab's first page; from a detail page the way leads over "Übersicht".
+    if (!onTabStartPage(page)) await nav(page, 'index');
     await (await single(page, 'header-manage')).click();
     await expect(tid(page, 'manage-screen')).toBeVisible();
     await settle(page);
@@ -330,13 +376,33 @@ export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
 
 // ---------- Offline ----------
 
+/** ⊞ in the header of the page shown and not covered by a window; a fresh page takes a moment. */
+async function headerManageReachable(page: Page): Promise<boolean> {
+  const header = page.locator(`[data-testid="header-manage"]${ACTIVE}`);
+  try {
+    await expect(header).toHaveCount(1, { timeout: 3_000 });
+    // A trial click checks that nothing lies over it, without clicking.
+    await header.click({ trial: true, timeout: 1_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Switches the developer switch "Offline simulieren" (Verwalten → Entwicklung; spec 0005,
- * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar.
+ * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar. A phone page
+ * without ⊞ (a detail page, or a window open above the page) cannot reach the switch without
+ * leaving; there the device loses its network for real, which the app treats the same way.
  */
 async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
   const phone = isPhone(page);
   if (phone) {
+    // A window above the page (e.g. an entry window) makes the header unreachable too.
+    if (!onTabStartPage(page) || !(await headerManageReachable(page))) {
+      await page.context().setOffline(offline);
+      return;
+    }
     await (await single(page, 'header-manage')).click();
     await expect(tid(page, 'manage-screen')).toBeVisible();
     await settle(page);
@@ -489,6 +555,13 @@ export async function stubMaps(context: BrowserContext): Promise<void> {
 
 /** Clicks a route button and returns the URL of the map page it opened. */
 export async function routeUrl(page: Page, button: string): Promise<string> {
+  // The map services are answered here: their redirects would change the address, and the run
+  // needs no internet.
+  await page
+    .context()
+    .route(/^https:\/\/(maps\.apple\.com|www\.google\.com\/maps)\//, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html>' }),
+    );
   const [popup] = await Promise.all([
     page.context().waitForEvent('page'),
     tid(page, button).click(),

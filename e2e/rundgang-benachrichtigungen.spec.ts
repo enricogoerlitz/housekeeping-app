@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { back, expect, nav, only, open, openSettings, test, tid } from './helpers';
+import { back, chooseTime, expect, nav, only, open, openSettings, test, tid } from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0013 — the page "Benachrichtigungen" in the production export (with service worker and
@@ -56,11 +56,13 @@ test('AC-001: "Benachrichtigungen · 2 an" under the avatar opens the page; "Ver
   await fakePermission(page, 'default');
   await open(page, '/');
   await openSettings(page);
-  await expect(tid(page, 'settings-notifications-row')).toContainText('2 an');
+  // Not registered on this device yet (spec 0018, AC-022).
+  await expect(tid(page, 'settings-notifications-summary')).toHaveText('2 an · dieses Gerät aus');
   await tid(page, 'settings-notifications-row').click();
   await expect(tid(page, 'notif-device')).toContainText('Dieses Gerät');
-  await expect(tid(page, 'notif-kinds')).toContainText('gilt für alle Geräte');
-  await expect(tid(page, 'notif-kinds')).toContainText('Während Abwesenheiten bist du stumm.');
+  // Enrico is in two households (seed): the kinds are per household, without "gilt für alle Geräte".
+  await expect(tid(page, 'notif-kinds')).toContainText('Was und wann');
+  await expect(tid(page, 'notif-kinds')).toContainText('Während einer Reise kommt nichts.');
   await expect(tid(page, 'notif-devices')).toContainText('Deine Geräte');
   // The export has a service worker: the switch is live (not the development server's hint).
   await expect(toggle(page, 'notif-device-switch')).toBeEnabled();
@@ -124,7 +126,7 @@ test('AC-007 / AC-003: the browser is asked only when a kind is switched on or a
   await tid(page, 'chores-tab-all').click();
   await tid(page, `chore-${seedIds['chore-kueche']}`).click();
   await tid(page, 'chore-edit').click();
-  await tid(page, 'chore-due-time').fill('7:30');
+  await chooseTime(page, 'chore-due-time', '07:30');
   await tid(page, 'chore-save').click();
   await expect(tid(page, 'chore-sheet')).toContainText('7:30');
   await expect.poll(() => permissionAsks(page)).toBe(2);

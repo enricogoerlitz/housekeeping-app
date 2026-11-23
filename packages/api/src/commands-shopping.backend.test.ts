@@ -4,7 +4,6 @@ import {
   addDays,
   entryIdsOnList,
   groupItems,
-  originSummary,
   sectionDraft,
   summarizeItem,
   updateIngredientRow,
@@ -14,7 +13,7 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
-import { H, TODAY, withBackend } from './backend-test-helpers';
+import { H, originSummary, TODAY, withBackend } from './backend-test-helpers';
 import { resolveArticle } from './commands-articles';
 import { assignArticleArea } from './commands-household';
 import { saveRecipeSection } from './commands-recipes';
@@ -29,8 +28,10 @@ import {
   ITEM_NOTE_MAX_LENGTH,
   pantryCheckRows,
   removeShoppingItem,
+  setItemChecked,
   setItemNote,
   setItemNotAvailable,
+  type PantryCheckRow,
 } from './commands-shopping';
 import {
   AREA_NAME_MAX_LENGTH,
@@ -51,6 +52,9 @@ const fx = withBackend();
 const articleNamed = (name: string) => getData().articles.find((article) => article.name === name);
 const itemOf = (name: string) =>
   getData().items.find((item) => item.articleId === articleNamed(name)?.id && !item.checked);
+const entryIdsOf = (rows: readonly PantryCheckRow[]) => [
+  ...new Set(rows.flatMap((row) => row.contributions.map((contribution) => contribution.entryId))),
+];
 
 describe('adding to the list', () => {
   it('online: one add_shopping_contributions call; the returned item is shown at once', async () => {
@@ -198,14 +202,11 @@ describe('removing and clearing', () => {
     removeShoppingItem(milk.id);
     expect(getData().items.some((item) => item.id === milk.id)).toBe(false);
     await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
-    expect(fx.calls[0]?.args[1]).toEqual([
-      ...milk.contributions.map((contribution) => ({
-        kind: 'delete',
-        table: 'shopping_contributions',
-        id: contribution.id,
-      })),
-      { kind: 'delete', table: 'shopping_items', id: milk.id },
+    // One remove_item_contributions call, so the undo can restore the place (spec 0025).
+    expect(fx.calls.map((call) => call.fn)).toEqual(['removeItemContributions']);
+    expect(fx.calls[0]?.args).toEqual([
+      milk.id,
+      milk.contributions.map((contribution) => contribution.id),
     ]);
     expect(fx.server.row(H, 'shopping_items', milk.id)).toBeUndefined();
   });
@@ -328,6 +329,99 @@ describe('from the meal plan', () => {
     expect(getData().items).toEqual(listBefore);
   });
 
+  describe('"+ Aus Kalender" again (spec 0031, REQ-027)', () => {
+    const openAmounts = (rows: readonly { articleId: Id }[]) =>
+      rows.map((row) => {
+        const open = getData().items.find(
+          (item) => item.articleId === row.articleId && !item.checked,
+        );
+        return open ? summarizeItem(open).amount : undefined;
+      });
+    const serverContributions = (articleId: Id) => {
+      const items = fx.server
+        .rows(H, 'shopping_items')
+        .filter((row) => row.article_id === articleId && row.checked !== true)
+        .map((row) => String(row.id));
+      return fx.server
+        .rows(H, 'shopping_contributions')
+        .filter((row) => items.includes(String(row.item_id)));
+    };
+
+    it('AC-064: taken over again, the list keeps the same amounts, one call', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      addPlannedToList(rows);
+      await fx.settle();
+      const once = openAmounts(rows);
+      const onServer = rows.map((row) => serverContributions(row.articleId).length);
+      const calls = fx.calls.length;
+
+      expect(addPlannedToList(pantryCheckRows(entryIdsOf(rows)))).toBe(rows.length);
+      expect(openAmounts(rows)).toEqual(once);
+      await fx.settle();
+      expect(fx.calls.slice(calls).map((call) => call.fn)).toEqual(['applyChanges']);
+      expect(openAmounts(rows)).toEqual(once);
+      expect(rows.map((row) => serverContributions(row.articleId).length)).toEqual(onServer);
+    });
+
+    it('AC-064: an article left out this time stays on the list', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      addPlannedToList(rows);
+      await fx.settle();
+      const once = openAmounts(rows);
+
+      addPlannedToList(pantryCheckRows(entryIdsOf(rows)).slice(1));
+      await fx.settle();
+      expect(openAmounts(rows)).toEqual(once);
+    });
+
+    it('AC-064: undo brings back the contributions as they were', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      addPlannedToList(rows);
+      await fx.settle();
+      const listBefore = getData().items;
+      // The same contributions come back (ids, items, amounts), stamped anew by the server.
+      const serverContents = () =>
+        fx.server
+          .rows(H, 'shopping_contributions')
+          .map(({ created_at: _created, updated_at: _updated, ...row }) => row)
+          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const serverBefore = serverContents();
+
+      const restore = snapshot();
+      addPlannedToList(pantryCheckRows(entryIdsOf(rows)));
+      await fx.settle();
+      expect(serverContents()).not.toEqual(serverBefore);
+      restore();
+      await fx.settle();
+      expect(getData().items).toEqual(listBefore);
+      expect(serverContents()).toEqual(serverBefore);
+    });
+
+    it('AC-065: the checked Hackfleisch comes back as an open item with the planned amount', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      const [first] = rows;
+      if (!first) throw new Error('fixture');
+      addPlannedToList(rows);
+      await fx.settle();
+      const itemId = itemOf(articleName(first.articleId) ?? '')?.id ?? '';
+      setItemChecked(itemId, true);
+      await fx.settle();
+      expect(getData().items.find((item) => item.id === itemId)?.checked).toBe(true);
+
+      addPlannedToList(pantryCheckRows(entryIdsOf(rows)).slice(0, 1));
+      await fx.settle();
+      const open = getData().items.find(
+        (item) => item.articleId === first.articleId && !item.checked,
+      );
+      expect(open && summarizeItem(open).amount).toBe(first.amount);
+      expect(serverContributions(first.articleId)).toHaveLength(first.contributions.length);
+    });
+  });
+
   it('"Ist alle": one call; undo sends removeContributions', async () => {
     await fx.startEnrico();
     const recipe = getData().recipes.find((candidate) =>
@@ -358,9 +452,15 @@ describe('stores (diff path)', () => {
     moveStoreArea(storeId, area.id, 0);
     setStoreAreaHidden(storeId, area.id, true);
     await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(Array(3).fill('applyChanges'));
-    expect(fx.calls.map((call) => (call.args[1] as { kind: string; table: string }[])[0])).toEqual([
-      expect.objectContaining({ kind: 'insert', table: 'stores' }),
+    // The store comes from create_store (spec 0025), its order from patches.
+    expect(fx.calls.map((call) => call.fn)).toEqual([
+      'createStore',
+      'applyChanges',
+      'applyChanges',
+    ]);
+    expect(
+      fx.calls.slice(1).map((call) => (call.args[1] as { kind: string; table: string }[])[0]),
+    ).toEqual([
       expect.objectContaining({ kind: 'patch', table: 'stores' }),
       expect.objectContaining({ kind: 'patch', table: 'stores' }),
     ]);
@@ -520,14 +620,61 @@ describe("the household's shopping list (spec 0006, ADR-0012)", () => {
     stop();
   });
 
+  it('AC-030 (0019): offline "+" on "Milch 1×" shows 2× as pending and sends it once online', async () => {
+    const engine = await fx.startEnrico();
+    const milk = itemOf('Milch');
+    if (!milk) throw new Error('fixture');
+    const count = milk.contributions.reduce((sum, part) => sum + (part.count ?? 0), 0);
+    engine.setSimulatedOffline(true);
+    expect(adjustItemCount(milk.id, 1)).toEqual({ count: count + 1, removed: false });
+    const shown = itemOf('Milch');
+    expect(shown?.id).toBe(milk.id);
+    expect(shown?.pendingSync).toBe(true);
+    expect(shown?.contributions.reduce((sum, part) => sum + (part.count ?? 0), 0)).toBe(count + 1);
+    expect(await fx.storage.get('queue')).toEqual([
+      expect.objectContaining({ kind: 'add', householdId: H }),
+    ]);
+    await fx.settle(engine);
+    expect(fx.calls).toEqual([]);
+
+    engine.setSimulatedOffline(false);
+    await fx.settle(engine);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['addShoppingContributions']);
+    const counts = fx.server
+      .rows(H, 'shopping_contributions')
+      .filter((row) => row.item_id === milk.id)
+      .reduce((sum, row) => sum + Number(row.count ?? 0), 0);
+    expect(counts).toBe(count + 1);
+    expect(await fx.storage.get('queue')).toEqual([]);
+  });
+
+  it('AC-031 (0019): an item deleted elsewhere before the "+" is sent comes back as a new one', async () => {
+    const engine = await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const milk = itemOf('Milch');
+    if (!milk) throw new Error('fixture');
+    engine.setSimulatedOffline(true);
+    adjustItemCount(milk.id, 1);
+    fx.server.deleteRow(H, 'shopping_items', milk.id);
+    await fx.settle(nadja);
+    engine.setSimulatedOffline(false);
+    await fx.settle(engine);
+    const milks = fx.server
+      .rows(H, 'shopping_items')
+      .filter((row) => row.article_id === milk.articleId);
+    expect(milks).toHaveLength(1);
+    expect(milks[0]?.id).not.toBe(milk.id);
+  });
+
   it('AC-019: offline, ±, Zusatz, entfernen and leeren are refused with the offline hint', async () => {
     const engine = await fx.startEnrico();
     const milk = itemOf('Milch');
     if (!milk) throw new Error('fixture');
     engine.setSimulatedOffline(true);
     const before = getData();
-    expect(() => adjustItemCount(milk.id, 1)).toThrow(OfflineError);
-    expect(() => adjustItemCount(milk.id, 1)).toThrow('Offline – zum Bearbeiten brauchst du Netz');
+    // Spec 0019: "+" goes through the store queue offline (AC-030); "−" stays online (AC-031).
+    expect(() => adjustItemCount(milk.id, -1)).toThrow(OfflineError);
+    expect(() => adjustItemCount(milk.id, -1)).toThrow('Offline – zum Bearbeiten brauchst du Netz');
     expect(() => setItemNote(milk.id, 'laktosefrei')).toThrow(OfflineError);
     expect(() => removeShoppingItem(milk.id)).toThrow(OfflineError);
     expect(() => clearShoppingList()).toThrow(OfflineError);
@@ -684,7 +831,10 @@ describe("the household's shopping list (spec 0006, ADR-0012)", () => {
     expect(fx.server.row(H, 'shopping_items', milk.id)).toBeUndefined();
     undo();
     await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges', 'applyChanges']);
+    expect(fx.calls.map((call) => call.fn)).toEqual([
+      'removeItemContributions',
+      'restoreClearedItems',
+    ]);
     expect(fx.server.row(H, 'shopping_items', milk.id)).toBeDefined();
     expect(itemOf('Milch')?.contributions).toEqual(milk.contributions);
   });

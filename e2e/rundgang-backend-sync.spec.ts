@@ -2,6 +2,8 @@ import type { BrowserContext, Page } from '@playwright/test';
 
 import {
   accessToken,
+  chooseTime,
+  expectTime,
   createTestHousehold,
   day,
   doneItem,
@@ -12,6 +14,7 @@ import {
   open,
   itemIdOf,
   leaveManaged,
+  NADJA,
   openItem,
   openManaged,
   PLAN_ENTRY,
@@ -147,8 +150,23 @@ test('AC-012: Enrico removes Nadja; the household disappears from her device wit
   await enrico.bringToFront();
   await nav(enrico, 'index');
   await openManaged(enrico, 'members');
+  // Spec 0018, AC-010: "Entfernen" asks first; "Abbrechen" sends nothing.
+  const removeCalls: string[] = [];
+  enrico.on('request', (request) => {
+    if (request.url().includes('/rpc/remove_member')) removeCalls.push(request.url());
+  });
   await tid(enrico, `household-member-remove-${seedIds['m-nadja']}`).click();
+  await expect(tid(enrico, 'member-remove-dialog')).toContainText(`${NADJA} aus „Zwei Geräte`);
+  await expect(tid(enrico, 'member-remove-dialog')).toContainText('“ entfernen?');
+  await tid(enrico, 'member-remove-dialog-cancel').click();
+  await expect(tid(enrico, 'member-remove-dialog')).toHaveCount(0);
+  await expect(tid(enrico, `household-member-${seedIds['m-nadja']}`)).toBeVisible();
+  expect(removeCalls, 'no server call before the confirmation').toEqual([]);
+
+  await tid(enrico, `household-member-remove-${seedIds['m-nadja']}`).click();
+  await tid(enrico, 'member-remove-dialog-confirm').click();
   await expect(toastMessage(enrico)).toContainText('ist entfernt');
+  expect(removeCalls).toHaveLength(1);
 
   await nadja.bringToFront();
   await expect(tid(nadja, `household-${householdId}`)).toHaveCount(0, SYNC);
@@ -322,6 +340,8 @@ test('AC-020: a server error while taking over the pantry check puts nothing on 
   );
   await tid(page, 'plan-to-list').click();
   const curry = `pick-entry-${seedIds['plan-9']}-check`;
+  // The rows render after the window: `.all()` takes only what is there.
+  await expect(tidPrefix(page, 'pick-entry-').first()).toBeVisible();
   for (const check of await tidPrefix(page, 'pick-entry-')
     .and(page.locator('[role="checkbox"]'))
     .all()) {
@@ -542,4 +562,169 @@ test('AC-025: Enrico checks "Eier" offline, Nadja deletes it; online again it is
   await expect(smCheck(enrico, 'Milch')).toHaveCount(1);
   expect(await serverItems(householdId, 'Eier')).toEqual([]);
   expect(await toasts(), 'no error after coming back online').toEqual([]);
+});
+
+test('AC-001 (0018): a new recipe keeps its pasted ingredients, also after a reload', async ({
+  page,
+}) => {
+  const householdId = await createTestHousehold(`Zutaten ${unique()}`);
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  const title = `Dal mit Zutaten ${unique()}`;
+  await nav(page, 'rezepte');
+  await tid(page, 'recipe-new').click();
+  await tid(page, 'recipe-new-recipe').click();
+  await tid(page, 'new-recipe-title').fill(title);
+  await tid(page, 'new-recipe-ingredients').fill('200 g rote Linsen\n1 Dose Kokosmilch');
+  await tid(page, 'new-recipe-save').click();
+  await expect(tid(page, 'recipe-title')).toHaveText(title);
+  const ingredients = tid(page, 'recipe-ingredients');
+  await expect(ingredients).toContainText('Linsen', SYNC);
+  await expect(ingredients).toContainText('Kokosmilch');
+  await page.reload();
+  await expect(tid(page, 'recipe-ingredients')).toContainText('Linsen', SYNC);
+  await expect(tid(page, 'recipe-ingredients')).toContainText('Kokosmilch');
+});
+
+test('AC-007 / AC-009 (0018): "Fertig" saves the typed Zusatz; refused, the window stays open with the text and only the error hint', async ({
+  page,
+  allowConsoleError,
+}) => {
+  allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
+  const householdId = await createTestHousehold(`Fertig ${unique()}`);
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  const name = `Bouldern ${unique()}`;
+  await nav(page, 'kalender');
+  await tid(page, `add-${TODAY}`).click();
+  await tid(page, 'add-entry-tab-activities').click();
+  await tid(page, 'add-entry-new-activity').click();
+  await tid(page, 'activity-name').fill(name);
+  await tid(page, 'add-entry-new-activity-save').click();
+  await expect(toastMessage(page)).toHaveText(`„${name}“ angelegt und eingeplant`);
+  const entry = page.locator(PLAN_ENTRY).filter({ hasText: name });
+
+  // AC-007: typed without "Zusatz speichern", "Fertig" keeps it.
+  await entry.click();
+  await tid(page, 'entry-note-input').fill('Halle Nord');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await expect(entry).toContainText('Halle Nord');
+  await entry.click();
+  await expect(tid(page, 'entry-note-input')).toHaveValue('Halle Nord');
+
+  // AC-009: the server refuses; the window stays open with the text, and no success is claimed.
+  await page.route('**/rest/v1/rpc/apply_changes', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      json: {
+        code: '23514',
+        message: 'new row for relation "meal_plan_entries" violates check constraint',
+        details: null,
+        hint: null,
+      },
+    }),
+  );
+  await tid(page, 'entry-note-input').fill('Halle Süd');
+  // Earlier notices are gone, so the record holds only what this "Fertig" shows.
+  await expect(toastMessage(page)).toHaveCount(0);
+  const toasts = await recordToasts(page);
+  await tid(page, 'entry-done').click();
+  await expect(toastMessage(page)).toHaveText(REJECTED);
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
+  await expect(tid(page, 'entry-note-input')).toHaveValue('Halle Süd');
+  expect(await toasts(), 'no success before the server confirmed').toEqual([REJECTED]);
+
+  // Online again, the next "Fertig" saves it.
+  await page.unroute('**/rest/v1/rpc/apply_changes');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await expect(entry).toContainText('Halle Süd');
+});
+
+test('AC-008 / AC-009 (0018): "Fertig" saves "Reserviert um"; refused, the window stays open with the time and only the error hint', async ({
+  page,
+  allowConsoleError,
+}) => {
+  allowConsoleError(/^Failed to load resource: the server responded with a status of 400/);
+  const householdId = await createTestHousehold(`Reserviert ${unique()}`);
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  const name = `Trattoria ${unique()}`;
+  await nav(page, 'kalender');
+  await tid(page, `add-${TODAY}`).click();
+  await tid(page, 'add-entry-tab-restaurants').click();
+  await tid(page, 'add-entry-new-restaurant').click();
+  await tid(page, 'restaurant-name').fill(name);
+  await tid(page, 'add-entry-new-restaurant-save').click();
+  await expect(toastMessage(page)).toHaveText(`„${name}“ angelegt und eingeplant`);
+  const entry = page.locator(PLAN_ENTRY).filter({ hasText: name });
+
+  // AC-008: the chosen time is saved (spec 0027: a choice is a finished input).
+  await entry.click();
+  await chooseTime(page, 'entry-time', '19:30');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await entry.click();
+  await expectTime(page, 'entry-time', '19:30');
+
+  // AC-009: the server refuses; the window stays open with the time, and no success is claimed.
+  await page.route('**/rest/v1/rpc/apply_changes', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      json: {
+        code: '23514',
+        message: 'new row for relation "meal_plan_entries" violates check constraint',
+        details: null,
+        hint: null,
+      },
+    }),
+  );
+  // Choosing changes only the field; "Fertig" saves, and the refusal stands in the window. The
+  // toast of creating the restaurant goes first, so it is not taken for a success here.
+  await expect(page.locator('[data-testid="toast-message"]')).toHaveCount(0, { timeout: 15_000 });
+  const toasts = await recordToasts(page);
+  await chooseTime(page, 'entry-time', '20:00');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-refused')).toHaveText(REJECTED);
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
+  await expectTime(page, 'entry-time', '20:00');
+  expect(
+    (await toasts()).filter((message) => message !== REJECTED),
+    'no success before the server confirmed',
+  ).toEqual([]);
+
+  // Online again, the next "Fertig" saves it.
+  await page.unroute('**/rest/v1/rpc/apply_changes');
+  await tid(page, 'entry-done').click();
+  await expect(tid(page, 'entry-sheet')).toBeHidden();
+  await entry.click();
+  await expectTime(page, 'entry-time', '20:00');
+});
+
+test('REQ-004 (0018): the question to leave closes when its household goes away while it is open', async ({
+  page,
+  browser,
+}) => {
+  const { householdId, nadja } = await twoDevices(page, browser);
+  await nadja.bringToFront();
+  await openManaged(nadja, 'members');
+  await expect(tid(nadja, `household-${householdId}-active`)).toBeVisible();
+  await tid(nadja, `household-member-remove-${seedIds['m-nadja']}`).click();
+  await expect(tid(nadja, 'member-remove-dialog')).toContainText('„Zwei Geräte');
+  await expect(tid(nadja, 'member-remove-dialog')).toContainText('verlassen?');
+
+  // Enrico removes her meanwhile: another household becomes active on her device, and a
+  // confirmation must not act on it.
+  const removed = await supabaseFetch('/rest/v1/rpc/remove_member', {
+    method: 'POST',
+    token: await accessToken('enrico'),
+    body: { household_id: householdId, profile_id: seedIds['m-nadja'] },
+  });
+  expect(removed.ok, `remove_member answered ${removed.status}`).toBe(true);
+  await expect(tid(nadja, 'member-remove-dialog')).toHaveCount(0, SYNC);
+  await expect(tid(nadja, `household-${householdId}`)).toHaveCount(0);
+  await expect(tid(nadja, `household-member-${seedIds['m-nadja']}`)).toBeVisible();
 });

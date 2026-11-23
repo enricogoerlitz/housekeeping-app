@@ -31,6 +31,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { messageOf } from './packing-labels';
 import { TripAddItemSheet } from './trip-add-item-sheet';
+import { TripItemSheet } from './trip-item-sheet';
 
 type BagAction = 'pack-all' | 'remove';
 
@@ -52,6 +53,7 @@ export function TripSection(props: { section: PackingSection }) {
   const membersById = useMembersById();
   const owner = listBag.memberId ? membersById[listBag.memberId] : undefined;
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | undefined>();
 
   const items = useMemo(
     () => [...section.open, ...section.packed].sort(bySortThenId),
@@ -143,14 +145,18 @@ export function TripSection(props: { section: PackingSection }) {
             title={label}
             checked={check.isChecked(item)}
             onToggle={() => check.toggle(item)}
-            trailing={
+            onPress={() => setEditingId(item.id)}
+            // Outside the row's press area, which opens the Packstück window: no nested buttons.
+            controls={
               // Also on phones next to the swipe, so screen readers can remove a Packstück.
-              <Menu<'remove'>
+              <Menu<'edit' | 'remove'>
                 trigger="icon"
                 icon="ellipsis"
                 label="Mehr"
                 accessibilityLabel={`Mehr zu ${item.name}`}
                 options={[
+                  // Spec 0022, REQ-009: the window with name, count and "je Tag".
+                  { value: 'edit', label: 'Bearbeiten' },
                   {
                     value: 'remove',
                     label: 'Entfernen',
@@ -158,7 +164,9 @@ export function TripSection(props: { section: PackingSection }) {
                     hint: online.hint,
                   },
                 ]}
-                onChange={() => removeItem(item)}
+                onChange={(action) =>
+                  action === 'edit' ? setEditingId(item.id) : removeItem(item)
+                }
                 testID={`trip-item-${item.id}-more`}
               />
             }
@@ -240,6 +248,9 @@ export function TripSection(props: { section: PackingSection }) {
         />
       </View>
       {adding ? <TripAddItemSheet listBag={listBag} onClose={() => setAdding(false)} /> : null}
+      {editingId ? (
+        <TripItemSheet itemId={editingId} onClose={() => setEditingId(undefined)} />
+      ) : null}
     </Section>
   );
 }

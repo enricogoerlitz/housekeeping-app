@@ -1,10 +1,17 @@
-import { weekRangeLabel } from './calendar';
-import { addDays, startOfWeek, weekDates, weekdayShort } from './dates';
-import { defaultEaters } from './meal-plan';
-import type { Absence, Id, ISODate, MealSlot, Member } from './types';
+import { formatPickerDate, weekRangeLabel } from './calendar';
+import {
+  addDays,
+  daysBetween,
+  formatShortDate,
+  startOfWeek,
+  weekDates,
+  weekdayShort,
+} from './dates';
+import type { Id, ISODate, MealSlot, Member } from './types';
 
-// The window "Einplanen" on the recipe page (spec 0008, REQ-009, E11): weeks from Monday, the
-// preselection and the texts of the button and the notice.
+// The window "Einplanen" (spec 0008, REQ-009, E11; spec 0023, REQ-013): weeks from Monday, the
+// preselection and the texts of the button and the notice. One window for recipes and collections;
+// restaurants and activities use it too (spec 0023, Decision 14; their extras come with spec 0024).
 
 export interface PlanWeek {
   /** Monday of the week. */
@@ -19,18 +26,26 @@ export function planWeek(today: ISODate, offset: number): PlanWeek {
   return { start, label: weekRangeLabel(start) };
 }
 
-/** The day chips Mo … So of the week that holds the date. */
-export function weekDays(weekStart: ISODate): { date: ISODate; label: string }[] {
-  return weekDates(weekStart).map((date) => ({ date, label: weekdayShort(date) }));
+/** The day chips Mo … So of the week that holds the date, the date under the weekday (AC-053). */
+export function weekDays(weekStart: ISODate): { date: ISODate; label: string; detail: string }[] {
+  return weekDates(weekStart).map((date) => ({
+    date,
+    label: weekdayShort(date),
+    detail: formatShortDate(date),
+  }));
 }
 
-/** Ids for "Wer isst mit?": everyone not absent that day; everyone without a day (AC-036). */
-export function eatersForDay(
-  members: readonly Member[],
-  date: ISODate | null,
-  absences: readonly Absence[],
-): Id[] {
-  return defaultEaters([...members], date, [...absences]).map((member) => member.id);
+/** The week offset (planWeek) of the week that holds `date`: "Anderes Datum …" shows it (AC-054). */
+export function weekOffsetFor(today: ISODate, date: ISODate): number {
+  return Math.round(daysBetween(startOfWeek(today), startOfWeek(date)) / 7);
+}
+
+/**
+ * Ids for "Wer isst mit?": the whole household, on any day. A trip changes nothing about eating
+ * (spec 0030, REQ-008; replaces spec 0008, AC-036).
+ */
+export function householdEaters(members: readonly Member[]): Id[] {
+  return members.map((member) => member.id);
 }
 
 export interface PlanChoice {
@@ -46,45 +61,85 @@ export interface PlanChoice {
 
 /**
  * What the window opens with (AC-034, E11): today, the household's last Tageszeit ("Abend"), the
- * members present today, no guests and nobody cooking. Portions follow from eaters and guests.
+ * whole household, no guests and nobody cooking. Portions follow from eaters and guests. An
+ * activity opens on the first Tageszeit ("Vormittag", spec 0024, REQ-006).
  */
 export function defaultPlanChoice(
   today: ISODate,
   slots: readonly MealSlot[],
   members: readonly Member[],
-  absences: readonly Absence[],
+  slot: 'first' | 'last' = 'last',
 ): PlanChoice {
-  const last = [...slots].sort((a, b) => a.sort - b.sort).at(-1);
+  const sorted = [...slots].sort((a, b) => a.sort - b.sort);
+  const chosen = slot === 'first' ? sorted[0] : sorted.at(-1);
   return {
     date: today,
-    slotId: last?.id,
-    eaterIds: eatersForDay(members, today, absences),
+    slotId: chosen?.id,
+    eaterIds: householdEaters(members),
     guests: 0,
     cookId: undefined,
   };
 }
 
-/** "Am Sa Abend einplanen"; "Vormerken" without a day (AC-034, AC-037). */
+/** "Am Mi 25.11. Abend einplanen"; "Vormerken" without a day (AC-037; spec 0023, AC-053). */
 export function planButtonLabel(date: ISODate | null, slotName: string): string {
-  return date === null ? 'Vormerken' : `Am ${weekdayShort(date)} ${slotName} einplanen`;
-}
-
-/** The notice after planning, before "Ansehen": "Eingeplant: Sa Abend" or "Vorgemerkt". */
-export function plannedNotice(date: ISODate | null, slotName: string): string {
-  return date === null ? 'Vorgemerkt' : `Eingeplant: ${weekdayShort(date)} ${slotName}`;
+  if (date === null) return 'Vormerken';
+  return `Am ${weekdayShort(date)} ${formatShortDate(date)} ${slotName} einplanen`;
 }
 
 /**
- * Another day, or null for "Ohne Tag vormerken": "Wer isst mit?" goes back to those present that
- * day, so nobody absent stays chosen without notice; guests, Tageszeit and cook stay (E11, AC-036).
+ * Members arrived after the window opened (a sync after reloading, AC-055): while "Wer isst mit?"
+ * is untouched the preselection follows them; a choice made by hand stays (AC-056). The same
+ * choice when nothing changes.
  */
-export function withPlanDay(
+export function refreshPlanEaters(
   choice: PlanChoice,
-  date: ISODate | null,
+  touched: boolean,
   members: readonly Member[],
-  absences: readonly Absence[],
 ): PlanChoice {
-  return { ...choice, date, eaterIds: eatersForDay(members, date, absences) };
+  if (touched) return choice;
+  const eaterIds = householdEaters(members);
+  const same =
+    eaterIds.length === choice.eaterIds.length &&
+    eaterIds.every((id, index) => id === choice.eaterIds[index]);
+  return same ? choice : { ...choice, eaterIds };
+}
+
+/**
+ * The notice after planning, before "Ansehen": "Eingeplant: Mi 25.11., Abend" (spec 0018,
+ * AC-025), with the year when it is not the current one ("Fr 15.1.2027", spec 0024, AC-018), or
+ * "Vorgemerkt".
+ */
+export function plannedNotice(date: ISODate | null, slotName: string, today: ISODate): string {
+  if (date === null) return 'Vorgemerkt';
+  const day =
+    date.slice(0, 4) === today.slice(0, 4)
+      ? `${weekdayShort(date)} ${formatShortDate(date)}`
+      : formatPickerDate(date);
+  return `Eingeplant: ${day}, ${slotName}`;
+}
+
+/**
+ * The notice after adding from the calendar: "„Lasagne“ steht am Sa 28.11.", with the year when it
+ * is not the current one ("Sa 16.1.2027"), "„Shakshuka“ ist vorgemerkt" without a day (spec 0016:
+ * the calendar pages over months and years, a weekday and day alone are ambiguous).
+ */
+export function addedNotice(title: string, date: ISODate | null, today: ISODate): string {
+  if (date === null) return `„${title}“ ist vorgemerkt`;
+  const day =
+    date.slice(0, 4) === today.slice(0, 4)
+      ? `${weekdayShort(date)} ${formatShortDate(date)}`
+      : formatPickerDate(date);
+  return `„${title}“ steht am ${day}`;
+}
+
+/**
+ * Another day, or null for "Ohne Tag vormerken": only the day changes. "Wer isst mit?", guests,
+ * Tageszeit and cook stay, because the preselection no longer depends on the day (spec 0030,
+ * REQ-008, AC-031).
+ */
+export function withPlanDay(choice: PlanChoice, date: ISODate | null): PlanChoice {
+  return { ...choice, date };
 }
 
 /**
@@ -92,12 +147,7 @@ export function withPlanDay(
  * shown week and the button never names a day out of sight (AC-035). Without a day nothing
  * changes.
  */
-export function pagePlanChoice(
-  choice: PlanChoice,
-  weeks: number,
-  members: readonly Member[],
-  absences: readonly Absence[],
-): PlanChoice {
+export function pagePlanChoice(choice: PlanChoice, weeks: number): PlanChoice {
   if (choice.date === null) return choice;
-  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members, absences);
+  return withPlanDay(choice, addDays(choice.date, 7 * weeks));
 }

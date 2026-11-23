@@ -105,6 +105,57 @@ describe('guard', () => {
   });
 });
 
+describe('new migration base (spec 0031, REQ-001)', () => {
+  const NEW_A = '20261124000000';
+  const NEW_B = '20261124000001';
+  const base = { replaces: 'v2026.11.1', first: NEW_A };
+
+  test('AC-004: an empty history or a prefix of the new base passes', () => {
+    assert.deepEqual(
+      guardMigrations({ remote: [], local: [NEW_A, NEW_B], released: [A, B], base }),
+      [],
+    );
+    assert.deepEqual(
+      guardMigrations({ remote: [NEW_A], local: [NEW_A, NEW_B], released: [A, B], base }),
+      [],
+    );
+  });
+
+  test('AC-004: old versions in production stop it with „In Produktion …“ and the version', () => {
+    const errors = guardMigrations({
+      remote: [A, B],
+      local: [NEW_A, NEW_B],
+      released: [A, B],
+      base,
+    });
+    assert.match(errors[0], /^In Produktion .*20261121062343/);
+    assert.equal(errors.length, 2);
+    assert.match(errors[1], /Runbook/);
+  });
+
+  test('a foreign version is still red with the new base', () => {
+    const errors = guardMigrations({ remote: [FOREIGN], local: [NEW_A], released: [A], base });
+    assert.match(errors[0], /^In Produktion .*20250101000000/);
+  });
+
+  test('security check 0031: a base that keeps the released migrations is no new base', () => {
+    const early = { replaces: 'v2026.11.1', first: '00000000000000' };
+    const errors = guardMigrations({
+      remote: [],
+      local: [A, B, NEW_A],
+      released: [A, B],
+      base: early,
+    });
+    assert.match(errors[0], /^Die neue Basis beginnt mit 00000000000000/);
+    assert.match(errors.at(-1), /Runbook/);
+  });
+
+  test('security check 0031: old migration files next to the new base are red', () => {
+    const errors = guardMigrations({ remote: [], local: [A, NEW_A], released: [A, B], base });
+    assert.match(errors[0], /^Neben der neuen Basis liegen noch alte Migrationen: 20261121062343/);
+  });
+});
+
 describe('CLI', () => {
   function repoWith(migrations, { tag } = {}) {
     const cwd = repo();
@@ -164,6 +215,27 @@ describe('CLI', () => {
     );
     assert.equal(missing.status, 1, missing.output);
     assert.match(missing.output, new RegExp(A));
+  });
+
+  test('AC-004: with migrations-base.json naming the latest tag the new base may go to a reset project', () => {
+    const cwd = repoWith([A], { tag: 'v2026.11.1' });
+    git(cwd, 'rm', '-q', `supabase/migrations/${A}_m.sql`);
+    commit(cwd, 'feat: neue Basis', {
+      [`supabase/migrations/${C}_m.sql`]: 'select 1;\n',
+      'supabase/migrations-base.json': JSON.stringify({ replaces: 'v2026.11.1', first: C }),
+    });
+    const green = run(cwd, list([[C, '']]));
+    assert.equal(green.status, 0, green.output);
+    assert.match(green.output, /neue Basis/);
+    const old = run(
+      cwd,
+      list([
+        ['', A],
+        [C, ''],
+      ]),
+    );
+    assert.equal(old.status, 1, old.output);
+    assert.match(old.output, /In Produktion .*20261121062343/);
   });
 
   test('a CLI error fails the guard', () => {

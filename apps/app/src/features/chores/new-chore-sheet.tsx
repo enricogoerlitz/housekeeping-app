@@ -6,13 +6,14 @@ import {
   newChoreDraft,
   type ChoreDraftErrors,
 } from '@housekeeping/core';
-import { Button, Sheet, Stack, Text, toast } from '@housekeeping/ui';
+import { Sheet, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /** "Neue Aufgabe": only the title is required; everything else has a sensible default. */
 export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) {
@@ -35,17 +36,20 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
   const save = () => {
     const found = choreDraftErrors(draft);
     setErrors(found);
-    const read = time.read();
-    if (found.title || found.weekdays || !read.ok) return;
+    if (found.title || found.weekdays) return;
     // A time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
     if (
-      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: read.time })
+      asksForPushPermission({ kind: 'time', gesture: 'tap', before: undefined, after: time.value })
     )
       ensureDevicePush();
     try {
-      createChore({ ...choreFieldsOf(draft, members), dueTime: read.time });
+      createChore({
+        ...choreFieldsOf(draft, members),
+        dueTime: time.value,
+        remindAtDueTime: time.remind,
+      });
     } catch (error) {
-      setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
+      setErrors({ title: errorMessage(error, FAILED_MESSAGE) });
       return;
     }
     toast.show({ message: `„${draft.title.trim()}“ angelegt` });
@@ -60,23 +64,22 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
       testID="chore-new-sheet"
       size="m"
       footer={
-        <Stack gap={6}>
-          {online.hint ? (
-            <Text variant="small" color="warn">
-              {online.hint}
-            </Text>
-          ) : null}
-          <Button
-            label="Speichern"
-            icon="check"
-            full
-            onPress={save}
-            disabled={online.disabled}
-            hint={online.hint}
-            testID="chore-save"
-          />
-        </Stack>
+        online.hint ? (
+          <Text variant="small" color="warn">
+            {online.hint}
+          </Text>
+        ) : undefined
       }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'chore-save',
+        },
+      }}
     >
       <ChoreFormFields
         draft={draft}
@@ -89,6 +92,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
         time={time}
         offlineHint={online.hint}
         autoFocus
+        isNew
       />
     </Sheet>
   );

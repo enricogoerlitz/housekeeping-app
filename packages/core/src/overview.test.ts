@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { isoWeekNumber, weekDates } from './dates';
 import {
-  absenceLines,
-  calendarDayParam,
   choresOfDay,
   dayDots,
-  dayTile,
-  dueChores,
   overviewSections,
+  tripLines,
   overviewTitle,
+  overviewNav,
+  overviewSection,
+  overviewSubline,
   plannedAllLabel,
-  shiftShownDay,
-  weekNav,
+  shiftOverview,
+  tileEntry,
 } from './overview';
-import { enrico, grillabend, nadja, vera } from './test-fixtures';
-import type { Absence, Chore, ChoreEvent, MealPlanEntry } from './types';
+import { dueChores } from './chore-schedule';
+import { enrico, grillabend, nadja, trip, vera, withoutTrips } from './test-fixtures';
+import type { Chore, ChoreEvent, MealPlanEntry, Trip } from './types';
 
 // Friday, 20 November 2026 (KW 47: Monday 16 to Sunday 22 November).
 const today = '2026-11-20';
@@ -46,28 +46,17 @@ function chore(partial: Partial<Chore> & Pick<Chore, 'id' | 'title'>): Chore {
 }
 
 describe('REQ-001: the shown day', () => {
-  it('AC-001: today is "Freitag, 20. November", "Diese Woche · KW 47", Mo 16 … So 22', () => {
+  it('spec 0011: titles and section names of the shown day', () => {
     expect(overviewTitle(today, today)).toBe('Freitag, 20. November');
-    expect(weekNav(today, today)).toEqual({ label: 'Diese Woche · KW 47', showToday: false });
-    const week = weekDates(today);
-    expect(week[0]).toBe('2026-11-16');
-    expect(week[6]).toBe('2026-11-22');
-  });
-
-  it('AC-002: Saturday is "Morgen, Samstag 21. November" with the "Heute" button', () => {
     expect(overviewTitle('2026-11-21', today)).toBe('Morgen, Samstag 21. November');
     expect(overviewSections('2026-11-21', today)).toEqual({
       planned: 'Geplant am Samstag',
       chores: 'Zu tun am Samstag',
     });
-    expect(weekNav('2026-11-21', today).showToday).toBe(true);
-  });
-
-  it('AC-002: today reads "Heute geplant" and "Zu tun"', () => {
     expect(overviewSections(today, today)).toEqual({ planned: 'Heute geplant', chores: 'Zu tun' });
   });
 
-  it('AC-032: a past day reads "Erledigt am Mittwoch"; yesterday gets "Gestern, "', () => {
+  it('spec 0011 AC-032: a past day reads "Erledigt am Mittwoch"; yesterday gets "Gestern, "', () => {
     expect(overviewSections('2026-11-18', today)).toEqual({
       planned: 'Geplant am Mittwoch',
       chores: 'Erledigt am Mittwoch',
@@ -75,29 +64,98 @@ describe('REQ-001: the shown day', () => {
     expect(overviewTitle('2026-11-19', today)).toBe('Gestern, Donnerstag 19. November');
   });
 
-  it('AC-003: paging keeps the weekday (KW 49 Fr 4 Dec, then KW 46 Fr 13 Nov)', () => {
-    const later = shiftShownDay(shiftShownDay(today, 1), 1);
-    expect(later).toBe('2026-12-04');
-    expect(isoWeekNumber(later)).toBe(49);
-    expect(weekDates(later)[0]).toBe('2026-11-30');
-    expect(weekDates(later)[6]).toBe('2026-12-06');
-    expect(overviewTitle(later, today)).toBe('Freitag, 4. Dezember');
-    const earlier = shiftShownDay(later, -3);
-    expect(earlier).toBe('2026-11-13');
-    expect(isoWeekNumber(earlier)).toBe(46);
-  });
-
-  it('AC-062: another week shows its range and the "Heute" button', () => {
-    expect(weekNav('2026-12-04', today)).toEqual({
-      label: 'KW 49 · 30. Nov – 6. Dez',
-      showToday: true,
-    });
-  });
-
   it('another year adds the year; tomorrow across New Year stays "Morgen, …"', () => {
     expect(overviewTitle('2027-01-08', today)).toBe('Freitag, 8. Januar 2027');
     expect(overviewTitle('2025-11-21', today)).toBe('Freitag, 21. November 2025');
     expect(overviewTitle('2027-01-01', '2026-12-31')).toBe('Morgen, Freitag 1. Januar');
+  });
+});
+
+describe('spec 0020 REQ-001/REQ-002: seven days from yesterday', () => {
+  // Sunday, 22 November 2026.
+  const sunday = '2026-11-22';
+
+  it('AC-001: the strip shows Sa 21. to Fr 27.11., Sunday chosen, Mo 16. to Fr 20. missing', () => {
+    const section = overviewSection(sunday, sunday);
+    expect(section.dates).toEqual([
+      '2026-11-21',
+      '2026-11-22',
+      '2026-11-23',
+      '2026-11-24',
+      '2026-11-25',
+      '2026-11-26',
+      '2026-11-27',
+    ]);
+    expect(section.dates).not.toContain('2026-11-20');
+  });
+
+  it('AC-002: › goes to Sa 28.11.–Fr 4.12. with So 29.11.; twice ‹ to Sa 14.–Fr 20.11.', () => {
+    const later = shiftOverview(sunday, 1);
+    expect(later).toBe('2026-11-29');
+    expect(overviewSection(later, sunday)).toMatchObject({ from: '2026-11-28', to: '2026-12-04' });
+    const earlier = shiftOverview(later, -2);
+    expect(earlier).toBe('2026-11-15');
+    expect(overviewSection(earlier, sunday)).toMatchObject({
+      from: '2026-11-14',
+      to: '2026-11-20',
+    });
+  });
+
+  it('AC-003: Mi 25.11. › is Mi 2.12. at the fifth place, "Mittwoch, 2. Dezember"', () => {
+    const next = shiftOverview('2026-11-25', 1);
+    expect(next).toBe('2026-12-02');
+    expect(overviewSection(next, sunday).dates.indexOf(next)).toBe(4);
+    expect(overviewTitle(next, sunday)).toBe('Mittwoch, 2. Dezember');
+  });
+
+  it('AC-005: on Do 31.12.2026 the strip runs Mi 30.12.2026 to Di 5.1.2027', () => {
+    const newYear = '2026-12-31';
+    expect(overviewSection(newYear, newYear)).toMatchObject({
+      from: '2026-12-30',
+      to: '2027-01-05',
+    });
+    expect(overviewTitle('2027-01-01', newYear)).toBe('Morgen, Freitag 1. Januar');
+  });
+
+  it('AC-006: at midnight to Mo 23.11. the strip becomes So 22.–Sa 28.11.', () => {
+    expect(overviewSection('2026-11-23', '2026-11-23')).toMatchObject({
+      from: '2026-11-22',
+      to: '2026-11-28',
+    });
+  });
+
+  it('AC-007: range "Sa 21.11. – Fr 27.11." without "KW", "Heute" inactive in the section', () => {
+    const nav = overviewNav(sunday, sunday);
+    expect(nav.label).toBe('Sa 21.11. – Fr 27.11.');
+    expect(nav.label).not.toMatch(/KW|Diese Woche/);
+    expect(nav.todayActive).toBe(false);
+    expect(overviewNav('2026-11-24', sunday)).toMatchObject({
+      label: 'Sa 21.11. – Fr 27.11.',
+      todayActive: false,
+    });
+    expect(overviewSubline('2026-11-24', sunday, 'Guten Morgen, Enrico')).toBe(
+      'Guten Morgen, Enrico',
+    );
+    expect(overviewSubline('2026-11-21', sunday, 'Guten Morgen, Enrico')).toBe(
+      'Guten Morgen, Enrico',
+    );
+  });
+
+  it('AC-008: outside the section "In 7 Tagen" / "Vor 8 Tagen" and "Heute" active', () => {
+    expect(overviewNav('2026-11-29', sunday)).toMatchObject({
+      label: 'Sa 28.11. – Fr 4.12.',
+      todayActive: true,
+    });
+    expect(overviewSubline('2026-11-29', sunday, 'Guten Tag, Enrico')).toBe('In 7 Tagen');
+    expect(overviewSubline('2026-11-14', sunday, 'Guten Tag, Enrico')).toBe('Vor 8 Tagen');
+    expect(overviewSubline('2026-11-28', sunday, 'Guten Tag, Enrico')).toBe('In 6 Tagen');
+  });
+
+  it('AC-011: "Mi 30.12. – Di 5.1." and its spoken form', () => {
+    expect(overviewNav('2026-12-31', '2026-12-31')).toMatchObject({
+      label: 'Mi 30.12. – Di 5.1.',
+      a11yLabel: 'Mittwoch, 30. Dezember, bis Dienstag, 5. Januar',
+    });
   });
 });
 
@@ -117,13 +175,6 @@ describe('AC-005/AC-006/AC-011: the week strip and the planned cards', () => {
     expect(dayDots(entries, '2026-11-22', {})).toEqual([]);
   });
 
-  it('AC-006: the desktop tile shows the first entry of the day and "+2"', () => {
-    const tile = dayTile(entries, today, slotOrder);
-    expect(tile.first?.id).toBe('bouldern');
-    expect(tile.more).toBe(2);
-    expect(dayTile(entries, '2026-11-22', slotOrder)).toEqual({ first: undefined, more: 0 });
-  });
-
   it('AC-011: "Alle n ›" only from four entries on', () => {
     expect(plannedAllLabel(5)).toBe('Alle 5 ›');
     expect(plannedAllLabel(4)).toBe('Alle 4 ›');
@@ -132,46 +183,42 @@ describe('AC-005/AC-006/AC-011: the week strip and the planned cards', () => {
   });
 });
 
-describe('AC-007: the absence line', () => {
-  const trip: Absence = {
-    id: 'a1',
-    memberId: nadja.id,
-    from: '2026-11-21',
-    to: '2026-11-26',
-    note: 'Urlaub Mallorca',
-  };
+describe('AC-007: the trip line', () => {
+  const mallorca = trip('a1', [nadja.id], '2026-11-21', '2026-11-26', 'Urlaub Mallorca');
 
   it('AC-007: "Nadja · Urlaub Mallorca · bis Do 26.11." while it lasts, gone after', () => {
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-23' })).toEqual([
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-23' })).toEqual([
       {
         key: expect.any(String),
         memberIds: [nadja.id],
         text: 'Nadja · Urlaub Mallorca · bis Do 26.11.',
       },
     ]);
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-26' })).toHaveLength(1);
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-27' })).toEqual([]);
-    expect(absenceLines({ absences: [trip], members, date: '2026-11-20' })).toEqual([]);
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-26' })).toHaveLength(1);
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-27' })).toEqual([]);
+    expect(tripLines({ trips: [mallorca], members, date: '2026-11-20' })).toEqual([]);
   });
 
-  it('AC-007: without a note it reads "Nadja ist abwesend bis Do 26.11."', () => {
-    const plain = { ...trip, note: undefined };
-    expect(absenceLines({ absences: [plain], members, date: '2026-11-23' })[0]?.text).toBe(
-      'Nadja ist abwesend bis Do 26.11.',
+  it('AC-013 (0030): a draft has no line "unterwegs"', () => {
+    const draft = { ...mallorca, draft: true };
+    expect(tripLines({ trips: [draft], members, date: '2026-11-23' })).toEqual([]);
+  });
+
+  it('AC-007, AC-033 (0016): without a note it reads "Nadja ist unterwegs bis Do 26.11."', () => {
+    const plain = { ...mallorca, note: undefined };
+    expect(tripLines({ trips: [plain], members, date: '2026-11-23' })[0]?.text).toBe(
+      'Nadja ist unterwegs bis Do 26.11.',
     );
   });
 
   it('several people and the whole household', () => {
     const three = [enrico, nadja, vera];
-    const both: Absence[] = [
-      { id: 'e', memberId: enrico.id, from: '2026-11-21', to: '2026-11-22' },
-      { id: 'v', memberId: vera.id, from: '2026-11-21', to: '2026-11-22' },
-    ];
-    expect(absenceLines({ absences: both, members: three, date: '2026-11-21' })[0]?.text).toBe(
-      'Enrico und Vera sind abwesend bis So 22.11.',
+    const both: Trip[] = [trip('e', [enrico.id, vera.id], '2026-11-21', '2026-11-22')];
+    expect(tripLines({ trips: both, members: three, date: '2026-11-21' })[0]?.text).toBe(
+      'Enrico und Vera sind unterwegs bis So 22.11.',
     );
-    const household: Absence = { id: 'h', from: '2026-11-21', to: '2026-11-22', note: 'Berlin' };
-    expect(absenceLines({ absences: [household], members, date: '2026-11-22' })).toEqual([
+    const household = trip('h', [enrico.id, nadja.id], '2026-11-21', '2026-11-22', 'Berlin');
+    expect(tripLines({ trips: [household], members, date: '2026-11-22' })).toEqual([
       { key: expect.any(String), memberIds: [], text: 'Alle · Berlin · bis So 22.11.' },
     ]);
   });
@@ -214,7 +261,7 @@ describe('AC-032: choresOfDay', () => {
     doneBy: nadja.id,
   };
   const chores = [kitchen, bath, trash, sheets, plants, kitchenWindow];
-  const input = { chores, events: [window], members, today };
+  const input = { chores, events: [window], members, trips: [], today };
 
   it('AC-028: today lists overdue, due and nearly due flexible chores, never "bei Bedarf"', () => {
     const day = choresOfDay({ ...input, shown: today });
@@ -224,7 +271,11 @@ describe('AC-032: choresOfDay', () => {
       'bad',
       'bett',
     ]);
-    expect(dueChores(chores, today).map((item) => item.id)).toEqual(['muell', 'bad', 'bett']);
+    expect(dueChores(chores, today, withoutTrips(members)).map((item) => item.id)).toEqual([
+      'muell',
+      'bad',
+      'bett',
+    ]);
   });
 
   it('AC-032: Saturday shows "Küche wischen" planned with Enrico', () => {
@@ -251,19 +302,6 @@ describe('AC-032: choresOfDay', () => {
   });
 });
 
-describe('AC-004/AC-011/AC-013: the day handed to the calendar', () => {
-  it('AC-004: "/kalender?tag=2026-11-28" opens the week of Saturday, 28 November', () => {
-    expect(calendarDayParam('2026-11-28')).toBe('2026-11-28');
-    expect(calendarDayParam(['2026-11-22', '2026-11-23'])).toBe('2026-11-22');
-  });
-
-  it('an invalid or missing value is ignored', () => {
-    for (const raw of [undefined, '', '28.11.2026', '2026-13-01', '2026-02-30', 'heute', []]) {
-      expect(calendarDayParam(raw)).toBeUndefined();
-    }
-  });
-});
-
 describe('Sammlungen on the Übersicht (spec 0009, E17)', () => {
   it('spec 0011 AC-012: a collection gets its own dot, after the recipe', () => {
     const sunday = [
@@ -274,5 +312,82 @@ describe('Sammlungen on the Übersicht (spec 0009, E17)', () => {
       'recipe',
       'collection',
     ]);
+  });
+});
+
+describe('spec 0020 REQ-003: the most important entry of a tile', () => {
+  const day = '2026-11-22';
+  const books = { [grillabend.id]: grillabend };
+  const at = (partial: Partial<MealPlanEntry> & Pick<MealPlanEntry, 'id'>) =>
+    entry({ date: day, ...partial });
+  const eislaufen = at({
+    id: 'eis',
+    kind: 'activity',
+    activityId: 'eis',
+    slotId: 'slot-vormittag',
+  });
+  const reste = at({ id: 'reste', kind: 'leftovers', recipeId: 'mango', slotId: 'slot-mittag' });
+  const lasagne = at({ id: 'lasagne', recipeId: 'lasagne', sort: 0 });
+  const enzo = at({ id: 'enzo', kind: 'restaurant', restaurantId: 'enzo', sort: 1 });
+  const tile = (entries: MealPlanEntry[], date = day) => tileEntry(entries, date, slotOrder, books);
+
+  it('AC-012: "Lasagne" "+3", then a collection in the evening wins with "+4"', () => {
+    expect(tile([eislaufen, reste, lasagne, enzo])).toMatchObject({
+      entry: { id: 'lasagne' },
+      more: 3,
+    });
+    const grill = at({ id: 'grill', recipeId: grillabend.id, sort: 2 });
+    expect(tile([eislaufen, reste, lasagne, enzo, grill])).toMatchObject({
+      entry: { id: 'grill' },
+      more: 4,
+    });
+  });
+
+  it('AC-013: a later Tageszeit wins over the kind', () => {
+    const monday = [
+      at({ id: 'shakshuka', recipeId: 'shakshuka', slotId: 'slot-mittag' }),
+      at({ id: 'eis', kind: 'activity', activityId: 'eis' }),
+    ];
+    expect(tile(monday)).toMatchObject({ entry: { id: 'shakshuka' }, more: 1 });
+    const tuesday = [
+      at({ id: 'mango', recipeId: 'mango', slotId: 'slot-mittag' }),
+      at({ id: 'enzo', kind: 'restaurant', restaurantId: 'enzo' }),
+    ];
+    expect(tile(tuesday)).toMatchObject({ entry: { id: 'enzo' }, more: 1 });
+  });
+
+  it('AC-014: leftovers and free text by Tageszeit, leftovers before free text', () => {
+    const wednesday = [
+      at({ id: 'reste', kind: 'leftovers', recipeId: 'lasagne', slotId: 'slot-mittag' }),
+      at({ id: 'pizza', kind: 'text', text: 'Pizza bestellen' }),
+      at({ id: 'eis', kind: 'activity', activityId: 'eis' }),
+    ];
+    expect(tile(wednesday)).toMatchObject({ entry: { id: 'pizza' }, more: 2 });
+    const thursday = [
+      at({ id: 'pizza', kind: 'text', text: 'Pizza bestellen', sort: 0 }),
+      at({ id: 'reste', kind: 'leftovers', recipeId: 'lasagne', sort: 1 }),
+    ];
+    expect(tile(thursday)).toMatchObject({ entry: { id: 'reste' }, more: 1 });
+  });
+
+  it('AC-015: the same kind in the same Tageszeit follows the calendar order', () => {
+    const mango = at({ id: 'mango', recipeId: 'mango', sort: 0 });
+    const shakshuka = at({ id: 'shakshuka', recipeId: 'shakshuka', sort: 1 });
+    expect(tile([shakshuka, mango]).entry?.id).toBe('mango');
+    expect(
+      tile([
+        { ...shakshuka, sort: 0 },
+        { ...mango, sort: 1 },
+      ]).entry?.id,
+    ).toBe('shakshuka');
+  });
+
+  it('AC-016: only "Eislaufen" planned: no "+n"; reserved entries never count', () => {
+    const reserved = { ...lasagne, date: null };
+    expect(tile([eislaufen, reserved])).toEqual({
+      entry: eislaufen,
+      more: 0,
+    });
+    expect(tile([], '2026-11-28')).toEqual({ entry: undefined, more: 0 });
   });
 });

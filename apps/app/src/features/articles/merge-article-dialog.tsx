@@ -4,6 +4,7 @@ import { Button, Row, Sheet, Stack, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /**
  * "Milchkokos in Kokosmilch zusammenführen?" (AC-036): a small window with what moves; there is no
@@ -29,7 +30,7 @@ export function MergeArticleDialog(props: {
     try {
       mergeArticles(source.id, target.id);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+      setError(errorMessage(caught, FAILED_MESSAGE));
       return;
     }
     props.onMerged(target.id);

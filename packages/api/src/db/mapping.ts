@@ -5,7 +5,7 @@
 // ratings, votes) fold into `favoriteOf`, `ratings` and `votes`.
 //
 // Documented normalisations (a round trip is equal modulo these):
-// - null in a row ⇄ undefined (missing) in the domain; `not_cooked` / `not_available` false ⇄
+// - null in a row ⇄ undefined (missing) in the domain; `not_done` / `not_available` false ⇄
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
@@ -23,22 +23,22 @@
 // - Spec 0012: the packed state of a Packstück (`packed`, `packed_at`, `packed_by`, `pack_seq`) is
 //   read and written to rows for the local view, but a diff never sends it (NEVER_SENT_COLUMNS):
 //   only set_packing_items_packed and restore_packing_items write it. `per_day` of a Reisetasche
-//   is a flag, of a Packliste the quantity per day (`perDay` undefined = fixed). A removed person
+//   is a flag, `per_day_quantity` of a Packliste the quantity per day (`perDay` undefined = fixed). A removed person
 //   (`member_id`, `packed_by` null) is undefined. The four packing tables keep creation order.
 // - Spec 0009: `kind` other than 'collection' (or missing) is a recipe; a recipe without `course`
 //   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
 //   (`collection_recipes`) keep creation order; core orders them by `sort`.
 // - Spec 0013: times of day are "HH:MM" in the domain and "HH:MM:SS" in the rows, as Postgres
-//   returns a `time` (`due_time`, `reserved_at`, `daily_summary_at`, `activities_eve_at`); the rows
-//   write them with ":00", so a diff compares like with like. `remind_minutes_before` 120 (the
-//   column default) ⇄ undefined. Of `notification_settings` only the signed-in member's row is
-//   `notificationSettings` (RLS sends no other); `households.timezone` is read by nobody here and
-//   never written.
+//   returns a `time` (`due_time`, `starts_at`, `daily_summary_at`, `activities_eve_at`); the rows
+//   write them with ":00", so a diff compares like with like. Of `notification_settings` only
+//   the signed-in member's row is `notificationSettings` (RLS sends no other).
+// - Spec 0017: a reminder is the three columns `reminder_day_offset`, `reminder_at` ("HH:MM:SS"
+//   like every time) and `reminder_text` ⇄ `MealPlanEntry.reminder` (none = all three null).
+//   `entry_reminders_enabled` missing reads as its column default, on. `households.timezone` is
+//   `Household.timeZone`, read only: the rows never write it back.
 import {
   compareTimestamps,
-  DEFAULT_REMIND_MINUTES,
   normalizeText,
-  type Absence,
   type Activity,
   type Area,
   type Article,
@@ -55,6 +55,7 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type Trip,
   type Restaurant,
   type Row,
   type ShoppingContribution,
@@ -77,6 +78,9 @@ type TableName = keyof Database['public']['Tables'];
 type Cached<T extends TableName> = Partial<Tables<T>> & { id: string };
 
 const opt = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
+
+/** The column default of `households.timezone`; every household row from the server has one. */
+export const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
 
 /** Domain jsonb values are plain JSON by construction (no functions, no dates). */
 const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;
@@ -172,7 +176,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         notes: recipe.notes ?? null,
         last_cooked_on: recipe.lastCookedOn ?? null,
         cooked_count: recipe.cookedCount,
-        source: recipe.source ?? null,
+        links: json(recipe.links),
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
       } satisfies Cached<'recipes'>,
     ],
@@ -196,6 +200,8 @@ function restaurantRows(householdId: string, restaurant: Restaurant): HouseholdR
         price_level: restaurant.priceLevel ?? null,
         tags: restaurant.tags,
         notes: restaurant.notes ?? null,
+        website_url: restaurant.websiteUrl ?? null,
+        photo_path: restaurant.photoPath ?? null,
         ...(restaurant.createdAt ? { created_at: restaurant.createdAt } : {}),
       } satisfies Cached<'restaurants'>,
     ],
@@ -230,7 +236,7 @@ function activityRows(householdId: string, activity: Activity): HouseholdRows {
         lat: activity.location?.lat ?? null,
         lng: activity.location?.lng ?? null,
         maps_url: activity.mapsUrl ?? null,
-        tags: activity.tags,
+        website_url: activity.websiteUrl ?? null,
         created_by: activity.createdBy ?? null,
         ...(activity.createdAt ? { created_at: activity.createdAt } : {}),
       } satisfies Cached<'activities'>,
@@ -277,6 +283,7 @@ function itemRows(householdId: string, item: ShoppingItem): HouseholdRows {
         checked_at: item.checkedAt ?? null,
         checked_by: item.checkedBy ?? null,
         not_available: item.notAvailable ?? false,
+        checked_on_list: item.checkedOnList ?? false,
         ...(item.createdAt ? { created_at: item.createdAt } : {}),
       } satisfies Cached<'shopping_items'>,
     ],
@@ -352,9 +359,11 @@ const planRow = (householdId: string, entry: MealPlanEntry) =>
     variants: json(entry.variants),
     cook_id: entry.cookId ?? null,
     sort: entry.sort,
-    not_cooked: entry.notCooked ?? false,
-    reserved_at: entry.reservedAt === undefined ? null : toDbTime(entry.reservedAt),
-    remind_minutes_before: entry.remindMinutesBefore ?? DEFAULT_REMIND_MINUTES,
+    not_done: entry.notDone ?? false,
+    starts_at: entry.startsAt === undefined ? null : toDbTime(entry.startsAt),
+    reminder_day_offset: entry.reminder?.offsetDays ?? null,
+    reminder_at: entry.reminder ? toDbTime(entry.reminder.at) : null,
+    reminder_text: entry.reminder?.text ?? null,
   }));
 
 const collectionRecipeRow = (householdId: string, row: CollectionRecipe) =>
@@ -382,6 +391,7 @@ const choreRow = (householdId: string, chore: Chore) =>
     last_done_on: chore.lastDoneOn ?? null,
     active_months: chore.activeMonths ?? null,
     due_time: chore.dueTime === undefined ? null : toDbTime(chore.dueTime),
+    remind_at_due_time: chore.remindAtDueTime !== false,
   }));
 
 /** The row of one chore as an insert of `apply_changes` takes it (spec 0011: new chores, undo). */
@@ -403,15 +413,29 @@ const choreEventRow = (householdId: string, event: ChoreEvent) =>
     ...(event.createdAt ? { created_at: event.createdAt } : {}),
   }));
 
-const absenceRow = (householdId: string, absence: Absence) =>
-  single('absences', householdId, absence, () => ({
-    id: absence.id,
-    household_id: householdId,
-    member_id: absence.memberId ?? null,
-    from_on: absence.from,
-    to_on: absence.to,
-    note: absence.note ?? null,
+function tripRows(householdId: string, trip: Trip): HouseholdRows {
+  return rowsOf(householdId, trip, () => ({
+    trips: [
+      {
+        id: trip.id,
+        household_id: householdId,
+        from_on: trip.from,
+        to_on: trip.to,
+        note: trip.note ?? null,
+        draft: trip.draft === true,
+      } satisfies Cached<'trips'>,
+    ],
+    trip_members: trip.members.map(
+      (member) =>
+        ({
+          id: member.id,
+          household_id: householdId,
+          trip_id: trip.id,
+          member_id: member.memberId,
+        }) satisfies Cached<'trip_members'>,
+    ),
   }));
+}
 
 const packingBagRow = (householdId: string, bag: PackingBag) =>
   single('packing_bags', householdId, bag, () => ({
@@ -437,7 +461,7 @@ const packingListBagRow = (householdId: string, bag: PackingListBag) =>
   single('packing_list_bags', householdId, bag, () => ({
     id: bag.id,
     household_id: householdId,
-    absence_id: bag.absenceId,
+    trip_id: bag.tripId,
     bag_id: bag.bagId ?? null,
     name: bag.name,
     member_id: bag.memberId ?? null,
@@ -451,12 +475,14 @@ const packingItemRow = (householdId: string, item: PackingItem) =>
     list_bag_id: item.listBagId,
     name: item.name,
     quantity: item.quantity ?? null,
-    per_day: item.perDay ?? null,
+    per_day_quantity: item.perDay ?? null,
     sort: item.sort,
     packed: item.packed,
     packed_at: item.packedAt ?? null,
     packed_by: item.packedBy ?? null,
     pack_seq: item.packSeq,
+    bag_item_id: item.bagItemId ?? null,
+    from_bag: item.fromBag ?? false,
   }));
 
 const settingsRow = (householdId: string, settings: NotificationSettings) =>
@@ -470,7 +496,7 @@ const settingsRow = (householdId: string, settings: NotificationSettings) =>
     activities_eve_enabled: settings.activitiesEveEnabled,
     activities_eve_at: toDbTime(settings.activitiesEveAt),
     chore_reminders_enabled: settings.choreRemindersEnabled,
-    reservation_reminders_enabled: settings.reservationRemindersEnabled,
+    entry_reminders_enabled: settings.entryRemindersEnabled,
   }));
 
 /** The row of a bag of a packing list as an insert of `apply_changes` takes it. */
@@ -515,7 +541,7 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     ...data.items.map((item) => itemRows(householdId, item)),
     ...data.chores.map((chore) => choreRow(householdId, chore)),
     ...data.choreEvents.map((event) => choreEventRow(householdId, event)),
-    ...data.absences.map((absence) => absenceRow(householdId, absence)),
+    ...data.trips.map((trip) => tripRows(householdId, trip)),
     ...data.feedback.map((entry) => feedbackRows(householdId, entry)),
     ...data.packingBags.map((bag) => packingBagRow(householdId, bag)),
     ...data.packingBagItems.map((item) => packingBagItemRow(householdId, item)),
@@ -545,7 +571,8 @@ export function householdToRows(data: HouseholdData): HouseholdRows {
     shopping_contributions: [],
     chores: [],
     chore_events: [],
-    absences: [],
+    trips: [],
+    trip_members: [],
     // Parents before children: the seed inserts in this order (seed-sql.ts).
     packing_bags: [],
     packing_bag_items: [],
@@ -680,7 +707,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     lastCookedOn: opt(r.last_cooked_on),
     cookedCount: r.cooked_count ?? 0,
     createdAt: r.created_at ?? '',
-    source: opt(r.source),
+    links: (r.links ?? []) as unknown as Recipe['links'],
   };
 }
 
@@ -699,6 +726,8 @@ function toRestaurant(row: Row, favorites: Row[], ratings: Row[]): Restaurant {
     priceLevel: opt(r.price_level) as Restaurant['priceLevel'],
     tags: r.tags ?? [],
     notes: opt(r.notes),
+    websiteUrl: opt(r.website_url),
+    photoPath: opt(r.photo_path),
     favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
@@ -722,7 +751,7 @@ function toActivity(row: Row, favorites: Row[], ratings: Row[]): Activity {
         ? { lat: r.lat, lng: r.lng }
         : undefined,
     mapsUrl: opt(r.maps_url),
-    tags: r.tags ?? [],
+    websiteUrl: opt(r.website_url),
     favoriteOf: favorites.map((favorite) => String(favorite.member_id)),
     ratings: Object.fromEntries(
       ratings.map((rating) => [String(rating.member_id), Number(rating.stars)]),
@@ -773,6 +802,7 @@ function toItem(row: Row, contributions: Row[], pending: boolean): ShoppingItem 
     checkedAt: opt(r.checked_at),
     checkedBy: opt(r.checked_by),
     notAvailable: r.not_available ? true : undefined,
+    ...(r.checked_on_list === true ? { checkedOnList: true } : {}),
     ...(pending ? { pendingSync: true } : {}),
     createdAt: r.created_at ?? '',
   };
@@ -829,12 +859,20 @@ function toPlanEntry(row: Row): MealPlanEntry {
     variants: (r.variants ?? []) as unknown as MealPlanEntry['variants'],
     cookId: opt(r.cook_id),
     sort: r.sort ?? 0,
-    notCooked: r.not_cooked ? true : undefined,
-    reservedAt: fromDbTime(r.reserved_at),
-    remindMinutesBefore:
-      r.remind_minutes_before == null || r.remind_minutes_before === DEFAULT_REMIND_MINUTES
-        ? undefined
-        : (r.remind_minutes_before as MealPlanEntry['remindMinutesBefore']),
+    notDone: r.not_done ? true : undefined,
+    startsAt: fromDbTime(r.starts_at),
+    reminder: toReminder(r),
+  };
+}
+
+/** The three reminder columns; incomplete ones (the database refuses them) are no reminder. */
+function toReminder(r: Cached<'meal_plan_entries'>): MealPlanEntry['reminder'] {
+  const at = fromDbTime(r.reminder_at);
+  if (at === undefined || r.reminder_day_offset == null) return undefined;
+  return {
+    offsetDays: r.reminder_day_offset,
+    at,
+    ...(r.reminder_text == null ? {} : { text: r.reminder_text }),
   };
 }
 
@@ -852,6 +890,8 @@ function toChore(row: Row): Chore {
     lastDoneOn: opt(r.last_done_on),
     activeMonths: opt(r.active_months),
     dueTime: fromDbTime(r.due_time),
+    // Undefined is on, the default (spec 0027, REQ-009).
+    remindAtDueTime: r.remind_at_due_time === false ? false : undefined,
   };
 }
 
@@ -875,14 +915,15 @@ function toChoreEvent(row: Row): ChoreEvent {
   };
 }
 
-function toAbsence(row: Row): Absence {
-  const r = row as Cached<'absences'>;
+function toTrip(row: Row, members: Row[]): Trip {
+  const r = row as Cached<'trips'>;
   return {
     id: r.id,
-    memberId: opt(r.member_id),
     from: r.from_on ?? '',
     to: r.to_on ?? '',
     note: opt(r.note),
+    members: members.map((member) => ({ id: member.id, memberId: String(member.member_id) })),
+    ...(r.draft === true ? { draft: true } : {}),
   };
 }
 
@@ -919,7 +960,7 @@ function toPackingListBag(row: Row): PackingListBag {
   const r = row as Cached<'packing_list_bags'>;
   return {
     id: r.id,
-    absenceId: r.absence_id ?? '',
+    tripId: r.trip_id ?? '',
     bagId: opt(r.bag_id),
     name: r.name ?? '',
     memberId: opt(r.member_id),
@@ -934,12 +975,14 @@ function toPackingItem(row: Row): PackingItem {
     listBagId: r.list_bag_id ?? '',
     name: r.name ?? '',
     quantity: opt(r.quantity),
-    perDay: opt(r.per_day),
+    perDay: opt(r.per_day_quantity),
     packed: r.packed === true,
     packedAt: opt(r.packed_at),
     packedBy: opt(r.packed_by),
     packSeq: r.pack_seq ?? 0,
     sort: r.sort ?? 0,
+    bagItemId: opt(r.bag_item_id),
+    fromBag: r.from_bag === true,
   };
 }
 
@@ -954,7 +997,7 @@ function toNotificationSettings(row: Row): NotificationSettings {
     activitiesEveEnabled: r.activities_eve_enabled === true,
     activitiesEveAt: fromDbTime(r.activities_eve_at) ?? '19:00',
     choreRemindersEnabled: r.chore_reminders_enabled === true,
-    reservationRemindersEnabled: r.reservation_reminders_enabled === true,
+    entryRemindersEnabled: r.entry_reminders_enabled !== false,
   };
 }
 
@@ -968,8 +1011,12 @@ function toHousehold(row: SmallRow, members: SmallRow[]): Household {
     id: String(r.id),
     name: r.name ?? '',
     memberIds: members.map((member) => String(member.profile_id)),
-    mealSlots: (r.meal_slots ?? []) as unknown as Household['mealSlots'],
+    // Sorted once here, so every screen can take them as they come (spec 0031, C-15).
+    mealSlots: [...((r.meal_slots ?? []) as unknown as Household['mealSlots'])].sort(
+      (a, b) => a.sort - b.sort,
+    ),
     defaultStoreId: opt(r.default_store_id),
+    timeZone: r.timezone ?? HOUSEHOLD_TIME_ZONE_DEFAULT,
   };
 }
 
@@ -1061,6 +1108,12 @@ export function rowsToHousehold(
     );
   });
 
+  const tripMembers = groupBy(rowsOfTable(tables, 'trip_members', 'created'), 'trip_id');
+  const trips = rowsOfTable(tables, 'trips', 'created').map((row) => {
+    const rowMembers = tripMembers.get(row.id) ?? [];
+    return cached(row, rowMembers, () => toTrip(row, rowMembers));
+  });
+
   const ownSettings = Object.values(tables.notification_settings ?? {}).find(
     (row) => memberId !== undefined && row.member_id === memberId,
   );
@@ -1090,7 +1143,7 @@ export function rowsToHousehold(
       previous?.choreEvents,
       plain(tables, 'chore_events', 'doneOn', toChoreEvent),
     ),
-    absences: reuse(previous?.absences, plain(tables, 'absences', 'created', toAbsence)),
+    trips: reuse(previous?.trips, trips),
     feedback: reuse(previous?.feedback, feedback),
     packingBags: reuse(
       previous?.packingBags,

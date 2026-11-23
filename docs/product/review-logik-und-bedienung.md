@@ -3,6 +3,10 @@
 Stand: 22.11.2026, Branch `feat/0014-betrieb-ci-cd-release` (Commit `bd23fe5`), nach Abschluss
 der Specs 0001–0014.
 
+**Abgleich mit v2026.11.1 (erste Veröffentlichung, 22.11.2026):** Seit dem Rundgang hat sich am
+App-Code nichts geändert (Oberfläche, Logik, Daten, Migrationen); alle Befunde gelten unverändert.
+Neu sind X-08 und X-09 aus der Einrichtung von Produktion und Vorschau.
+
 ## Worum es geht
 
 Die ganze App wurde einmal so durchgeklickt, wie ein Mensch sie benutzt. Dazu lief der echte
@@ -59,9 +63,33 @@ umgesetzt wird.
 Eine gemeinsame Lösung für die neuen Grenzen wäre **ein Baustein „Anderes Datum …“**. Er hängt am
 Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheitsfenster schon hat.
 
+## Entscheidungen von Enrico (22.11.2026)
+
+Enrico übernimmt **alle Empfehlungen** dieses Dokuments. Die harten Änderungen hat er einzeln
+entschieden:
+
+| Befund | Entscheidung                                                                                                                                                            |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H-03   | **Ja:** Die Rotation überspringt Reisende, feste Termine während einer Reise des ganzen Haushalts rücken auf den ersten Tag danach, „Zu tun“ bleibt in der Zeit leer    |
+| V-04   | **Ja:** Haushalt umbenennen; „Haushalt löschen“ nur für das letzte Mitglied, mit Bestätigung, endgültig mit allen Daten und Fotos                                       |
+| X-02   | **Ja:** Aktivitäten und Restaurants löschen mit Rückgängig; vergangene Einträge bleiben als Verlauf, künftige entfallen mit Hinweis                                     |
+| X-08   | **Nein:** Die Google-Anmeldung bleibt auf „Testing“. Umgesetzt wird die Alternative: Hinweis im Fenster „Einladen“, neue Adressen bei Google als Testnutzer einzutragen |
+
+Umsetzung nach den Kalender-Specs 0016 und 0017, in eigenen Specs je Bereich.
+
+## Von Claude freigegeben (22.11.2026)
+
+Auf Enricos Auftrag hat Claude die eindeutigsten Logikfehler ausgewählt und freigegeben: Fälle, in
+denen das richtige Verhalten feststeht und keine Gestaltungsentscheidung nötig ist. Sie werden in
+**Spec 0018** („Fehler aus dem Logik-Review, Welle 1“) umgesetzt:
+
+E-01, E-02, K-03, V-01, V-06, H-07, K-13, U-05, K-12 (nur der Hinweistext), V-07, X-06, X-07, E-10.
+
+Alle übrigen Befunde warten auf Enricos Entscheidung.
+
 ## Zusammenfassung
 
-94 Befunde: **13 hoch, 31 mittel, 50 niedrig**.
+96 Befunde: **13 hoch, 32 mittel, 51 niedrig**.
 
 ### Die zehn wichtigsten
 
@@ -88,10 +116,10 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | U-02 | Übersicht               | „Für morgen“: kein Vorlauf aus Sammlungen, Vorlauf über 24 h kommt zu spät, keine Uhrzeit                                                     | mittel  | Sammlungen auflösen; nach Vorlaufzeit statt „morgen“ auswählen; „heute bis ca. 18 Uhr“ | M       |
 | U-03 | Übersicht               | „Wie war's?“: vorausgefüllte Sterne sehen bewertet aus                                                                                        | niedrig | Alte Bewertung blass, Knopf „Passt so“                                                 | S       |
 | U-04 | Übersicht               | Punkte „ca. 5“ auf der Übersicht, „ca. 2“ in Haushalt für denselben Tag                                                                       | niedrig | Gleiche Rechnung oder getrennt benennen                                                | S       |
-| U-05 | Übersicht               | Packkarte „beginnt in 7 Tagen“ zählt ab dem gewählten Tag, nicht ab heute                                                                     | niedrig | „beginnt am Fr 4.12.“                                                                  | S       |
+| U-05 | Übersicht               | Packkarte „beginnt in 7 Tagen“ zählt ab dem gewählten Tag, nicht ab heute (freigegeben, Spec 0018)                                            | niedrig | „beginnt am Fr 4.12.“                                                                  | S       |
 | K-01 | Kalender                | Wer isst mit, Gäste, Portionen, Varianten im Eintrag nicht änderbar                                                                           | hoch    | Planfelder auch im Eintragsfenster, freier Portions-Stepper                            | S–M     |
 | K-02 | Kalender/Abwesenheit    | Neue Abwesenheit lässt Esser in bestehenden Einträgen stehen                                                                                  | hoch    | Beim Speichern anbieten: „3 Gerichte im Zeitraum – Enrico rausnehmen?“                 | M       |
-| K-03 | Kalender                | „Fertig“ verwirft getippten Zusatz; drei Speicherlogiken in einem Fenster                                                                     | hoch    | Ein Verhalten: alles sofort speichern, „Fertig“ = schließen und Felder sichern         | S       |
+| K-03 | Kalender                | „Fertig“ verwirft getippten Zusatz; drei Speicherlogiken in einem Fenster (freigegeben, Spec 0018)                                            | hoch    | Ein Verhalten: alles sofort speichern, „Fertig“ = schließen und Felder sichern         | S       |
 | K-04 | Kalender                | „Verschieben“ nur in die angezeigte Woche                                                                                                     | mittel  | „Anderes Datum …“ mit Monatskalender                                                   | S–M     |
 | K-05 | Kalender                | Freitext-Eintrag nicht änderbar; Zusatz nur bei Aktivitäten                                                                                   | mittel  | Text editierbar; Zusatz für alle Arten                                                 | S       |
 | K-06 | Kalender                | Reste stehen nach ~3 Bildschirmlängen ganz unten in „Alle“                                                                                    | mittel  | Tab „Reste“ oder Reste-Chips oben                                                      | S       |
@@ -100,12 +128,12 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | K-09 | Kalender                | Uhrzeit und Erinnerung nur bei Restaurants, nicht bei Aktivitäten                                                                             | niedrig | „Uhrzeit (optional)“ auch für Aktivitäten                                              | M       |
 | K-10 | Kalender                | Handy-Woche öffnet bei Montag, heute liegt unten außer Sicht                                                                                  | niedrig | Zu heute scrollen                                                                      | S       |
 | K-11 | Kalender                | Monat/Jahr: keine Aufgaben in der Monats-Tagesliste, Freitext zählt als „Rezept“, Jahr beginnt im Januar, Namen auf dem Desktop gekürzt       | niedrig | Einzeln glätten                                                                        | S       |
-| K-12 | Abwesenheit             | Hinweis „Alle gewählt = ganzer Haushalt“ steht auch, wenn nur eine Person gewählt ist; Toast ohne „Anzeigen“                                  | niedrig | Zustand beschreiben; Toast mit Sprung                                                  | S       |
-| K-13 | Kalender                | Hinzufügen bietet „‚Lasagne‘ als Rezept anlegen“ trotz exaktem Treffer                                                                        | niedrig | Bei exaktem Treffer ausblenden                                                         | S       |
+| K-12 | Abwesenheit             | Hinweis „Alle gewählt = ganzer Haushalt“ steht auch, wenn nur eine Person gewählt ist; Toast ohne „Anzeigen“ (freigegeben, Spec 0018)         | niedrig | Zustand beschreiben; Toast mit Sprung                                                  | S       |
+| K-13 | Kalender                | Hinzufügen bietet „‚Lasagne‘ als Rezept anlegen“ trotz exaktem Treffer (freigegeben, Spec 0018)                                               | niedrig | Bei exaktem Treffer ausblenden                                                         | S       |
 | A-01 | Aktivitäten             | „Einplanen“ aus der Aktivität nur 14 Tage voraus                                                                                              | mittel  | „Anderes Datum …“                                                                      | S       |
 | A-02 | Aktivitäten             | Auf dem Handy nur über ein unbeschriftetes Berg-Symbol erreichbar                                                                             | niedrig | Zusätzlich ins ⋯-Menü des Kalenders                                                    | S       |
-| E-01 | Rezepte                 | Beim Anlegen eingefügte Zutaten gehen verloren                                                                                                | hoch    | Fehler beheben, E2E-Test ergänzen                                                      | S–M     |
-| E-02 | Kochmodus               | Kochmodus zeigt Grundmengen statt der gewählten Portionen                                                                                     | hoch    | Portionen übergeben; Regler im Kochmodus                                               | S       |
+| E-01 | Rezepte                 | Beim Anlegen eingefügte Zutaten gehen verloren (freigegeben, Spec 0018)                                                                       | hoch    | Fehler beheben, E2E-Test ergänzen                                                      | S–M     |
+| E-02 | Kochmodus               | Kochmodus zeigt Grundmengen statt der gewählten Portionen (freigegeben, Spec 0018)                                                            | hoch    | Portionen übergeben; Regler im Kochmodus                                               | S       |
 | E-03 | Rezepte/Sammlungen      | Löschen entfernt künftige Planeinträge ohne Hinweis                                                                                           | mittel  | Toast nennt entfallende Termine                                                        | S       |
 | E-04 | Rezepte                 | Abschnitts-Editoren ohne „Abbrechen“ und ohne Rückgängig                                                                                      | mittel  | „Verwerfen“ oder Toast „Gespeichert · Rückgängig“                                      | M       |
 | E-05 | Rezepte                 | Zutaten-„Gruppe“ pflegbar, aber nie angezeigt                                                                                                 | mittel  | Gruppen in Lese- und Kochansicht                                                       | S       |
@@ -113,7 +141,7 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | E-07 | Rezepte/Artikel         | „unbekannt“ durch Non-Food (Grillkohle, Backpapier) macht nichts mehr vegetarisch                                                             | mittel  | Ernährung „kein Lebensmittel“; Grund am Chip zeigen                                    | S–M     |
 | E-08 | Rezepte                 | Einfügen: „Fertig“ mit orangen Zeilen speichert still einen Teil; Dubletten unerkannt                                                         | mittel  | Hinweis „5 gespeichert, 2 offen“; Dubletten markieren                                  | S       |
 | E-09 | Rezepte/Liste           | Einheiten fehlen (Flasche, Tüte, Liter, Pck. …); „1 kleine Dose“ nicht erkannt                                                                | niedrig | Einheiten und Adjektive ergänzen                                                       | S       |
-| E-10 | Rezepte                 | Toast „Eingeplant: Mi Abend“ ohne Datum                                                                                                       | niedrig | Datum ergänzen                                                                         | S       |
+| E-10 | Rezepte                 | Toast „Eingeplant: Mi Abend“ ohne Datum (freigegeben, Spec 0018)                                                                              | niedrig | Datum ergänzen                                                                         | S       |
 | E-11 | Rezepte                 | Einplanen-Fenster: nur wochenweise blättern, Tage ohne Datum                                                                                  | niedrig | Datum unter den Chips, Monatssprung                                                    | S       |
 | E-12 | Rezepte                 | Einplanen-Fenster einmal mit „0 Portionen“ und gesperrtem Knopf (sporadisch)                                                                  | niedrig | Vorauswahl neu rechnen, wenn Mitglieder geladen sind                                   | S       |
 | E-13 | Essen                   | Liste „26 Rezepte · 2 Sammlungen“, Filterknopf „28 Rezepte zeigen“                                                                            | niedrig | Einheitlich zählen                                                                     | S       |
@@ -150,7 +178,7 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | H-04 | Haushalt                | Einmalige Aufgabe ohne Datum taucht nirgends auf                                                                                              | mittel  | Abschnitt „Ohne Termin“ unter „Anstehend“                                              | S       |
 | H-05 | Haushalt                | „Später“ ist immer „morgen“ und wirkt sofort                                                                                                  | mittel  | Kleines Menü: morgen, übermorgen, Wochenende, Datum                                    | S       |
 | H-06 | Haushalt                | Nachtragen nur bis vorgestern; Datum im Verlauf nicht änderbar                                                                                | mittel  | Bis ~30 Tage zurück; Datum im Verlauf editierbar                                       | S–M     |
-| H-07 | Haushalt                | Bei „Abwechselnd“ zeigt die Zeile alle Avatare statt der Person, die dran ist                                                                 | mittel  | Nur den Avatar der Person, die dran ist                                                | S       |
+| H-07 | Haushalt                | Bei „Abwechselnd“ zeigt die Zeile alle Avatare statt der Person, die dran ist (freigegeben, Spec 0018)                                        | mittel  | Nur den Avatar der Person, die dran ist                                                | S       |
 | H-08 | Haushalt                | Wer als Nächstes dran ist, lässt sich nicht festlegen                                                                                         | niedrig | Auswahl „Als Nächstes dran“                                                            | S       |
 | H-09 | Haushalt                | „Bei Bedarf“ startet mit „Abwechselnd“; ausgegraute Knöpfe ohne Grund                                                                         | niedrig | Standard „Egal“; ausblenden statt ausgrauen                                            | S       |
 | H-10 | Haushalt                | Verlauf ohne Filter                                                                                                                           | niedrig | Chips Person/Aufgabe; Link aus der Aufgabe                                             | M       |
@@ -159,13 +187,13 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | T-03 | Reisetaschen            | Von „Reisetaschen“ kein Weg zu kommenden Packlisten                                                                                           | mittel  | Abschnitt „Kommende Packlisten“                                                        | S       |
 | T-04 | Reisetaschen            | „Unterhose 1 je Tag“ wird zum Namen                                                                                                           | niedrig | „n je Tag“ erkennen                                                                    | S       |
 | T-05 | Reisetaschen            | Urlaubsseite bietet keine „Neue Reisetasche“                                                                                                  | niedrig | Wie im Abwesenheitsfenster                                                             | S       |
-| V-01 | Mitglieder              | „Entfernen“ und „Verlassen“ ohne Rückfrage, ohne Rückgängig                                                                                   | hoch    | Bestätigungsdialog mit Namen                                                           | S       |
+| V-01 | Mitglieder              | „Entfernen“ und „Verlassen“ ohne Rückfrage, ohne Rückgängig (freigegeben, Spec 0018)                                                          | hoch    | Bestätigungsdialog mit Namen                                                           | S       |
 | V-02 | Mitglieder              | Einladungen lassen sich nicht zurückziehen                                                                                                    | mittel  | „Zurückziehen“ je Einladung                                                            | M       |
 | V-03 | Einstellungen           | Eigenes Profil (Name, Farbe, Ernährung, Abneigungen) nicht bearbeitbar                                                                        | mittel  | Kleine Spec „Profil bearbeiten“                                                        | M       |
 | V-04 | Mitglieder              | Haushalt weder umbenennbar noch löschbar                                                                                                      | mittel  | ✎ am Namen; Löschen für das letzte Mitglied                                            | M       |
 | V-05 | Feedback                | Eigenes Feedback nicht bearbeit- oder löschbar; Status setzt niemand                                                                          | niedrig | ⋯ mit Bearbeiten/Löschen; Satz zum Status                                              | S–M     |
-| V-06 | Einstellungen           | Abmelden löscht ungesendete Offline-Haken ohne Warnung                                                                                        | mittel  | Rückfrage nur, wenn etwas ungesendet ist                                               | S       |
-| V-07 | Benachrichtigungen      | „2 an“, obwohl kein Gerät angemeldet ist                                                                                                      | niedrig | „2 an · dieses Gerät aus“                                                              | S       |
+| V-06 | Einstellungen           | Abmelden löscht ungesendete Offline-Haken ohne Warnung (freigegeben, Spec 0018)                                                               | mittel  | Rückfrage nur, wenn etwas ungesendet ist                                               | S       |
+| V-07 | Benachrichtigungen      | „2 an“, obwohl kein Gerät angemeldet ist (freigegeben, Spec 0018)                                                                             | niedrig | „2 an · dieses Gerät aus“                                                              | S       |
 | V-08 | Benachrichtigungen      | Uhrzeit als Textfeld; 5-Minuten-Regel erst im Fehler                                                                                          | niedrig | Zeitauswahl im 5-Minuten-Raster                                                        | S       |
 | V-09 | Benachrichtigungen      | Dass Einstellungen je Haushalt gelten, ist schwer zu erkennen                                                                                 | niedrig | Haushaltsumschalter auf der Seite                                                      | S       |
 | V-10 | Benachrichtigungen      | Aufgaben-Erinnerung nur für alle oder keine                                                                                                   | niedrig | Optional Schalter je Aufgabe                                                           | M       |
@@ -176,8 +204,10 @@ Ende jeder Datums-Chip-Reihe und öffnet den Monatskalender, den das Abwesenheit
 | X-03 | Offline                 | Banner „Lesen und Abhaken gehen“ widerspricht gesperrten Aufgaben; Hinweise mehrfach je Seite; Liste: „+“ gesperrt, Eintippen erhöht trotzdem | mittel  | Banner präzisieren, ein Hinweis je Seite, Liste konsistent                             | S       |
 | X-04 | Navigation              | Auf dem Handy ist nicht zu sehen, in welchem Haushalt man ist                                                                                 | mittel  | Haushaltsname auf der Übersicht, antippbar (nur bei mehreren)                          | S       |
 | X-05 | Navigation              | Zurück-Beschriftungen uneinheitlich, Desktop „Zurück: Kalender“ falsch, falscher Tab hervorgehoben                                            | niedrig | Ziel immer aus der Herkunft ableiten                                                   | S       |
-| X-06 | Version                 | Bei veralteter Version steht an Knöpfen der Offline-Text                                                                                      | niedrig | Eigener Hinweis „Bitte neu laden“                                                      | S       |
-| X-07 | Offline                 | Toast „Offline – nichts wurde abgehakt“ sagt nicht, was zu tun ist                                                                            | niedrig | „… Mit Netz noch einmal abhaken.“                                                      | S       |
+| X-06 | Version                 | Bei veralteter Version steht an Knöpfen der Offline-Text (freigegeben, Spec 0018)                                                             | niedrig | Eigener Hinweis „Bitte neu laden“                                                      | S       |
+| X-07 | Offline                 | Toast „Offline – nichts wurde abgehakt“ sagt nicht, was zu tun ist (freigegeben, Spec 0018)                                                   | niedrig | „… Mit Netz noch einmal abhaken.“                                                      | S       |
+| X-08 | Einladen                | Eingeladene scheitern an Google, solange die Google-App auf „Testing“ steht                                                                   | mittel  | Google-App auf „In Production“ (nur E-Mail/Profil, keine Prüfung)                      | S       |
+| X-09 | Adressen                | Alte `azurestaticapps.net`-Adressen laden die App, Anmelden scheitert dort                                                                    | niedrig | Eigene Domain in Azure als Standard setzen (leitet um)                                 | S       |
 
 ## Übersicht
 
@@ -1017,6 +1047,20 @@ Kleinigkeiten, alle niedrig, Aufwand S, beide Breiten:
   0011): Die Zeile steht wieder offen, gebucht wird nichts. Der Toast „Offline – nichts wurde
   abgehakt“ sagt aber nicht, was zu tun ist. Besser: „… Mit Netz noch einmal abhaken.“
   (`tmp/review/shots/E-phone-21-ac034-abbruch.png`)
+- **X-08 Einladen scheitert an Google · mittel · S · beide:** Wer in der App eingeladen wird, kommt
+  trotzdem nicht hinein, solange die Google-Anmeldung auf „Testing“ steht: Google weist jede Adresse
+  ab, die nicht in der Google-Konsole unter „Zielgruppe → Testnutzer“ steht, und zwar mit einer
+  eigenen Fehlerseite, bevor die App die Einladung überhaupt prüft. Wer einlädt, erfährt davon
+  nichts. **Empfehlung:** Die Google-App auf „In Production“ stellen. Weil sie nur E-Mail und Profil
+  abfragt, verlangt Google dafür keine Prüfung; danach entscheidet allein die Einladung der App.
+  Sonst wenigstens im Fenster „Einladen“ der Hinweis „Neue Adressen zusätzlich bei Google als
+  Testnutzer eintragen“.
+- **X-09 Alte Adressen · niedrig · S · beide:** Seit den eigenen Domains (`house.kuschel-nest.de`,
+  `test.house.kuschel-nest.de`) laden die alten Adressen `*.azurestaticapps.net` die App weiter. Die
+  Anmeldung dort scheitert mit „Anmelden hat nicht geklappt“, weil Supabase nach Google auf die
+  eingetragene Domain zurückleitet und der Browser dort den Anmeldestart nicht kennt (so am
+  22.11. in der Vorschau passiert). **Empfehlung:** In Azure bei beiden Static Web Apps die eigene
+  Domain als Standard setzen („Set default“); dann leiten die alten Adressen auf sie um.
 
 ## Bekannte Punkte aus dem Bau
 

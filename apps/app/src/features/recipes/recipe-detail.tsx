@@ -9,10 +9,11 @@ import {
 import {
   canPutRecipeOnList,
   chooseVariant,
-  deriveRecipeDiet,
+  recipeDietChip,
   shownVariantId,
   type Id,
   type Recipe,
+  type VariantChoice,
 } from '@housekeeping/core';
 import {
   Button,
@@ -32,6 +33,7 @@ import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
+import { usePageParams } from '@/lib/url-state';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
 import { CollectionDetailBody } from './collection-detail';
@@ -39,6 +41,7 @@ import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions'
 import { ClassificationSection } from './sections/classification-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
+import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
 import { StepsSection } from './sections/steps-section';
 import { useSectionEditor } from './sections/use-section-editor';
@@ -47,8 +50,10 @@ import { useDeleteRecipe } from './use-delete-recipe';
 
 export interface RecipeDetailProps {
   recipeId: Id;
-  /** "‹ Essen": back to the list, at the same place (AC-015). */
+  /** "‹ Essen": back to the list, at the same place (AC-015), or to the origin (spec 0019). */
   onBack: () => void;
+  /** The origin's name on the back link, "Essen" without one. */
+  backLabel: string;
 }
 
 /**
@@ -63,7 +68,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
   const [leaving, setLeaving] = useState(false);
   if (!recipe) {
     if (leaving) return <Screen testID="recipe-screen" tone="essen" />;
-    return <RecipeGone onBack={props.onBack} />;
+    return <RecipeGone onBack={props.onBack} backLabel={props.backLabel} />;
   }
   // A collection has its own page at the same address (spec 0009, E13).
   if (recipe.kind === 'collection') {
@@ -72,6 +77,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
         key={recipe.id}
         collection={recipe}
         onBack={props.onBack}
+        backLabel={props.backLabel}
         onDeleting={setLeaving}
       />
     );
@@ -82,19 +88,26 @@ export function RecipeDetail(props: RecipeDetailProps) {
       key={recipe.id}
       recipe={recipe}
       onBack={props.onBack}
+      backLabel={props.backLabel}
       onDeleting={setLeaving}
     />
   );
 }
 
 /** AC-021: deleted elsewhere, or an address from another household. */
-function RecipeGone(props: { onBack: () => void }) {
-  const router = useRouter();
+function RecipeGone(props: { onBack: () => void; backLabel: string }) {
   return (
     <Screen
       testID="recipe-screen"
       tone="essen"
-      header={<ScreenHeader title="Rezept" titleOnScroll backLabel="Essen" onBack={props.onBack} />}
+      header={
+        <ScreenHeader
+          title="Rezept"
+          titleOnScroll
+          backLabel={props.backLabel}
+          onBack={props.onBack}
+        />
+      }
     >
       <EmptyState
         icon="book-open"
@@ -102,9 +115,9 @@ function RecipeGone(props: { onBack: () => void }) {
         testID="recipe-not-found"
       >
         <Button
-          label="Zu Essen"
+          label={`Zu ${props.backLabel}`}
           icon="arrow-left"
-          onPress={() => (router.canGoBack() ? props.onBack() : router.replace('/rezepte'))}
+          onPress={props.onBack}
           testID="recipe-not-found-back"
         />
       </EmptyState>
@@ -115,6 +128,7 @@ function RecipeGone(props: { onBack: () => void }) {
 function RecipeDetailBody(props: {
   recipe: Recipe;
   onBack: () => void;
+  backLabel: string;
   /** true while this page deletes its recipe; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
@@ -126,36 +140,50 @@ function RecipeDetailBody(props: {
   const articlesById = useArticlesById();
   const { bp, isPhone } = useBreakpoint();
   const desktop = bp === 'desktop';
-  // Displayed portions are local; when the recipe's own portions change (assistant), they follow.
-  const [portions, setPortions] = useState({ base: recipe.servings, shown: recipe.servings });
-  const shownServings = portions.base === recipe.servings ? portions.shown : recipe.servings;
+  // Portions, variant and the windows "Einplanen", "Zur Sammlung" and "Vorratscheck" stand in the
+  // address (spec 0019, REQ-013): `/rezept/<id>?portionen=6&fenster=einplanen`. The recipe's own
+  // portions are the default and stay out of it.
+  const address = usePageParams('rezept');
+  const { params } = address;
+  const shownServings = params.portionen ?? recipe.servings;
+  const setPortions = (value: number) =>
+    address.replace({ portionen: value === recipe.servings ? undefined : value });
   // AC-033: a new default after "Fertig" is preselected; a removed variant falls back to it.
-  const [variantChoice, setVariantChoice] = useState(() => chooseVariant(recipe));
-  const [pantryCheck, setPantryCheck] = useState(false);
-  const [planning, setPlanning] = useState(false);
-  const [addingToCollection, setAddingToCollection] = useState(false);
+  const variantChoice = chooseVariant(recipe, params.variante);
+  const setVariantChoice = (choice: VariantChoice) =>
+    address.replace({
+      variante: choice.variantId === choice.defaultId ? undefined : choice.variantId,
+    });
+  const windowOf = (fenster: 'einplanen' | 'sammlung' | 'vorratscheck') => ({
+    open: params.fenster === fenster,
+    set: (open: boolean) =>
+      open ? address.open({ fenster }) : address.close({ fenster: undefined }),
+  });
+  const { open: planning, set: setPlanning } = windowOf('einplanen');
+  const { open: addingToCollection, set: setAddingToCollection } = windowOf('sammlung');
+  const { open: pantryCheck, set: setPantryCheck } = windowOf('vorratscheck');
   const photo = useRecipePhoto(recipe);
   const editor = useSectionEditor(recipe);
 
   const activeVariantId = shownVariantId(recipe, variantChoice);
-  const diet =
-    recipe.ingredients.length > 0
-      ? deriveRecipeDiet(recipe, activeVariantId, articlesById)
-      : undefined;
+  // No chip without food (spec 0023, AC-029: only "kein Lebensmittel").
+  const diet = recipeDietChip(recipe, activeVariantId, articlesById);
   const shownVariants = activeVariantId
     ? [{ variantId: activeVariantId, portions: shownServings }]
     : [];
   // AC-060: the same rule as the calendar picker (AC-061) — something to buy, or nothing to do.
   const canGoOnList = canPutRecipeOnList(recipe, shownServings, shownVariants);
 
+  // The cooking mode cooks the portions shown here (spec 0018, AC-004).
   const startCooking = () => {
+    const params = { id: recipe.id, portionen: String(shownServings) };
     router.push({
       pathname: '/rezept/[id]/kochen',
-      params: activeVariantId ? { id: recipe.id, variant: activeVariantId } : { id: recipe.id },
+      params: activeVariantId ? { ...params, variante: activeVariantId } : params,
     });
   };
 
-  const remove = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
+  const { remove, dialog: deleteDialog } = useDeleteRecipe(recipe, props.onBack, props.onDeleting);
 
   const actions = (
     <RecipeActions
@@ -184,13 +212,19 @@ function RecipeDetailBody(props: {
         onDelete={remove}
         onAddToCollection={() => setAddingToCollection(true)}
       />
+      {deleteDialog}
     </>
   );
 
   const head = (
     <Stack gap={16} style={{ flex: 1, minWidth: 0 }}>
       <HeadSection recipe={recipe} desktop={desktop} editor={editor} />
-      <ClassificationSection recipe={recipe} diet={diet} editor={editor} />
+      <ClassificationSection
+        recipe={recipe}
+        diet={diet}
+        variantId={activeVariantId}
+        editor={editor}
+      />
       <MemberRatings
         ratings={recipe.ratings}
         members={members}
@@ -210,12 +244,18 @@ function RecipeDetailBody(props: {
       variantId={activeVariantId}
       onVariant={(id: Id) => setVariantChoice(chooseVariant(recipe, id))}
       servings={shownServings}
-      onServings={(value) => setPortions({ base: recipe.servings, shown: Math.max(1, value) })}
+      onServings={(value) => setPortions(Math.max(1, value))}
       editor={editor}
     />
   );
   const steps = <StepsSection recipe={recipe} variantId={activeVariantId} editor={editor} />;
-  const notes = <NotesSection recipe={recipe} editor={editor} />;
+  // "Links" stand under "Notizen" (spec 0023, REQ-009).
+  const notes = (
+    <>
+      <NotesSection recipe={recipe} editor={editor} />
+      <LinksSection recipe={recipe} editor={editor} />
+    </>
+  );
 
   return (
     <Screen
@@ -225,7 +265,7 @@ function RecipeDetailBody(props: {
         <ScreenHeader
           title={recipe.title}
           titleOnScroll
-          backLabel="Essen"
+          backLabel={props.backLabel}
           onBack={props.onBack}
           right={headerRight}
           testID="recipe-bar-title"

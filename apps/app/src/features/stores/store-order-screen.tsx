@@ -25,14 +25,17 @@ import {
   Text,
   toast,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useAddressedId } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { messageOf, ORDER_LABELS } from './labels';
-import { AddAreaSheet, ConfirmDialog, NameSheet } from './store-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+
+import { AddAreaSheet, NameSheet } from './store-dialogs';
 
 type StoreAction = 'default' | 'delete';
 
@@ -40,7 +43,7 @@ type StoreAction = 'default' | 'delete';
  * ✎ "Markt umbenennen" and ⋯ ("Als Standard", "Markt löschen …", AC-044, AC-045) of a store, with
  * their windows. In the page header on phones, next to the store's name on wide screens.
  */
-export function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
+function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
   const stores = useStores();
   const household = useHousehold();
   const online = useOnlineOnly();
@@ -286,14 +289,17 @@ export function StoreOrderPanel(props: { storeId: Id; onDeleted: () => void; sho
 
 /** A store's walking order as a page of its own (phones; or opened directly by its address). */
 export function StoreOrderScreen() {
-  const params = useLocalSearchParams<{ id?: string }>();
+  const { params } = usePageParams('markt');
   const stores = useStores();
-  const router = useRouter();
-  // Always to the stores, also when the store was opened directly (spec 0005, AC-004).
-  const back = () => router.dismissTo('/maerkte');
+  // To the stores, also when the store was opened directly (spec 0005, AC-004); with `von` to
+  // that section (spec 0019, REQ-006).
+  const origin = useOriginBack(params.von, 'verwalten', { label: 'Märkte', href: '/maerkte' });
+  const back = origin.back;
 
-  const id = typeof params.id === 'string' ? params.id : undefined;
-  const store = stores.find((candidate) => candidate.id === id);
+  // Only a uuid of an own household reaches the lookup: `/markt/abc` is "nicht gefunden" (AC-053).
+  const found = useAddressedId('stores', params.id);
+  const store =
+    found === 'shown' ? stores.find((candidate) => candidate.id === params.id) : undefined;
   return (
     <Screen
       testID="store-order-screen"
@@ -302,7 +308,7 @@ export function StoreOrderScreen() {
         <ScreenHeader
           title={store?.name ?? 'Markt'}
           subtitle={store ? 'Laufweg durch den Markt' : undefined}
-          backLabel="Märkte"
+          backLabel={origin.label}
           onBack={back}
           right={store ? <StoreActions storeId={store.id} onDeleted={back} /> : undefined}
         />

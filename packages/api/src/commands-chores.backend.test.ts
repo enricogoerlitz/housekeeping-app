@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import { onWriteRejected, stopBackend, WRITE_REJECTED_MESSAGE } from './backend';
 import {
+  changeChoreEventDay,
   completeChore,
   createChore,
   deleteChore,
@@ -231,7 +232,7 @@ describe('spec 0011: booking with a condition (complete_chore)', () => {
       done_by: ENRICO,
     });
     const chore = choreById(done.choreId);
-    expect(chore && choreBucket(chore, TODAY)).toBe('asNeeded');
+    expect(chore && choreBucket(chore, TODAY, { members: [], trips: [] })).toBe('asNeeded');
   });
 
   it('AC-040: with "Mehr Angaben" the new chore is planned: 4.12., Nadja is next', async () => {
@@ -263,10 +264,10 @@ describe('spec 0011: booking with a condition (complete_chore)', () => {
     });
   });
 
-  it('AC-042: an empty title or a day other than heute, gestern, vorgestern sends nothing', async () => {
+  it('AC-042: an empty title or a day outside today − 30 … today sends nothing (spec 0026, AC-020)', async () => {
     await fx.startEnrico();
     expect(() => logDone({ title: '  ' })).toThrow('Titel fehlt');
-    expect(() => completeChore('chore-bad', { doneOn: '2026-11-17' })).toThrow();
+    expect(() => completeChore('chore-bad', { doneOn: '2026-10-20' })).toThrow();
     expect(() => completeChore('chore-bad', { doneOn: '2026-11-21' })).toThrow();
     expect(completeChore('chore-weg')).toBeNull();
     await fx.settle();
@@ -406,7 +407,7 @@ describe('spec 0011: editing and deleting a chore', () => {
     expect(choreById('chore-bad')).toBeUndefined();
   });
 
-  it('AC-053: deleting keeps the entries with their title; undo links them to the chore again', async () => {
+  it('AC-053, spec 0031 AC-040: deleting keeps the entries; undo is restore_chore and links exactly them again', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
     const restore = snapshot();
@@ -415,7 +416,8 @@ describe('spec 0011: editing and deleting a chore', () => {
     expect(eventById('ev-5')).toMatchObject({ title: 'Bad putzen' });
     expect(eventById('ev-5')?.choreId).toBeUndefined();
     await fx.settle(nadja);
-    expect(opsOf(0)).toEqual([{ kind: 'delete', table: 'chores', id: 'chore-bad' }]);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['deleteChore']);
+    expect(fx.calls[0]?.args).toEqual(['chore-bad']);
     expect(fx.server.row(H, 'chore_events', 'ev-5')).toMatchObject({
       chore_id: null,
       title: 'Bad putzen',
@@ -424,13 +426,24 @@ describe('spec 0011: editing and deleting a chore', () => {
 
     restore();
     await fx.settle(nadja);
-    expect(shape(opsOf(1))).toEqual([
-      ['insert', 'chores'],
-      ['patch', 'chore_events'],
-    ]);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['deleteChore', 'restoreChore']);
     expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ title: 'Bad putzen' });
     expect(fx.server.row(H, 'chore_events', 'ev-5')).toMatchObject({ chore_id: 'chore-bad' });
     expect(eventById('ev-5')?.choreId).toBe('chore-bad');
+    expect(fx.nadjaData(nadja).chores.some((chore) => chore.id === 'chore-bad')).toBe(true);
+  });
+
+  it('spec 0031 AC-040: an undo the server cannot do any more brings the deletion back', async () => {
+    await fx.startEnrico();
+    const restore = snapshot();
+    deleteChore('chore-bad');
+    await fx.settle();
+    fx.server.failNext('restore_chore', new TransportError('permanent', 'chore_not_restorable'));
+    restore();
+    await fx.settle();
+    expect(rejected).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(fx.server.row(H, 'chores', 'chore-bad')).toBeUndefined();
+    expect(choreById('chore-bad')).toBeUndefined();
   });
 
   it('AC-036 (spec 0003) / AC-051: a new chore gets its first date from core.firstDueOn', async () => {
@@ -463,9 +476,9 @@ describe('spec 0011: editing and deleting a chore', () => {
     expect(fx.calls.map((call) => call.fn)).toEqual(Array(3).fill('applyChanges'));
   });
 
-  it('"Später" moves only this occurrence by one day', async () => {
+  it('AC-013: "Später" moves only the next date to the chosen day', async () => {
     await fx.startEnrico();
-    postponeChore('chore-bad');
+    postponeChore('chore-bad', '2026-11-21');
     await fx.settle();
     expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ next_due_on: '2026-11-21' });
   });
@@ -571,7 +584,7 @@ describe('spec 0011: negative cases', () => {
       () => skipChore('chore-bad'),
       () => logDone({ title: 'Fenster putzen' }),
       () => logDone({ choreId: 'chore-bad' }, { doneOn: '2026-11-19' }),
-      () => postponeChore('chore-bad'),
+      () => postponeChore('chore-bad', '2026-11-21'),
       () => updateChore('chore-bad', { ...bath, title: 'Bad gründlich putzen' }),
       () => deleteChore('chore-bad'),
       () => reassignChoreEvent('ev-5', NADJA),
@@ -667,5 +680,222 @@ describe('spec 0013: the time of a chore', () => {
     fx.environment.setOnline(false);
     expect(() => updateChore('chore-bad', { ...bath, dueTime: '19:00' })).toThrow(OfflineError);
     expect(choreById('chore-bad')?.dueTime).toBeUndefined();
+  });
+});
+
+describe('spec 0027, REQ-009: „Erinnern“ per chore', () => {
+  it('AC-035: switching „Erinnern“ off is one patch; the time stays and Nadja sees it off', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    expect(trash.remindAtDueTime).not.toBe(false);
+    updateChore('chore-muell', { ...trash, remindAtDueTime: false });
+    expect(choreById('chore-muell')).toMatchObject({ dueTime: '19:00', remindAtDueTime: false });
+    await fx.settle(nadja);
+    expect(rejected).toEqual([]);
+    expect(opsOf(0)).toEqual([
+      { kind: 'patch', table: 'chores', id: 'chore-muell', changes: { remind_at_due_time: false } },
+    ]);
+    expect(fx.nadjaData(nadja).chores.find((chore) => chore.id === 'chore-muell')).toMatchObject({
+      dueTime: '19:00',
+      remindAtDueTime: false,
+    });
+  });
+
+  it('AC-038: removing the time switches „Erinnern“ on again, in the same patch', async () => {
+    await fx.startEnrico();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    updateChore('chore-muell', { ...trash, remindAtDueTime: false });
+    await fx.settle();
+    updateChore('chore-muell', { ...trash, dueTime: null, remindAtDueTime: false });
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(opsOf(1)).toEqual([
+      {
+        kind: 'patch',
+        table: 'chores',
+        id: 'chore-muell',
+        changes: { due_time: null, remind_at_due_time: true },
+      },
+    ]);
+    expect(choreById('chore-muell')?.remindAtDueTime).not.toBe(false);
+  });
+
+  it('AC-038: a new chore without a time is saved with „Erinnern“ on; with one, as chosen', async () => {
+    await fx.startEnrico();
+    const plain = createChore({
+      title: 'Blumen gießen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'anyone' },
+      remindAtDueTime: false,
+    });
+    const quiet = createChore({
+      title: 'Matratze drehen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'anyone' },
+      dueTime: '18:00',
+      remindAtDueTime: false,
+    });
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(fx.server.row(H, 'chores', plain)).toMatchObject({
+      due_time: null,
+      remind_at_due_time: true,
+    });
+    expect(fx.server.row(H, 'chores', quiet)).toMatchObject({
+      due_time: '18:00:00',
+      remind_at_due_time: false,
+    });
+  });
+
+  it('AC-038: the server refuses „Erinnern“ off without a time (23514) and a foreign household', async () => {
+    await fx.startEnrico();
+    const off = { remind_at_due_time: false };
+    await expect(
+      fx.server
+        .transport(ENRICO)
+        .applyChanges(H, [{ kind: 'patch', table: 'chores', id: 'chore-bad', changes: off }]),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      fx.server
+        .transport(ENRICO)
+        .applyChanges(crypto.randomUUID(), [
+          { kind: 'patch', table: 'chores', id: 'chore-muell', changes: off },
+        ]),
+    ).rejects.toMatchObject({ kind: 'permanent', code: 'not_member' });
+    expect(fx.server.row(H, 'chores', 'chore-muell')).toMatchObject({ remind_at_due_time: true });
+  });
+
+  it('REQ-009: switching „Erinnern“ is refused offline', async () => {
+    await fx.startEnrico();
+    const trash = choreById('chore-muell');
+    if (!trash) throw new Error('fixture');
+    fx.environment.setOnline(false);
+    expect(() => updateChore('chore-muell', { ...trash, remindAtDueTime: false })).toThrow(
+      OfflineError,
+    );
+    expect(choreById('chore-muell')?.remindAtDueTime).not.toBe(false);
+  });
+});
+
+describe('spec 0026: dates, Später, Nachtragen', () => {
+  it('AC-019: "Was anderes erledigt?" books a day up to 30 days back', async () => {
+    await fx.startEnrico();
+    const entry = logDone({ choreId: 'chore-bad' }, { doneOn: '2026-10-21' });
+    expect(entry).not.toBeNull();
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(fx.server.row(H, 'chore_events', entry?.eventId ?? '')).toMatchObject({
+      done_on: '2026-10-21',
+    });
+  });
+
+  it('AC-004: creating with „Zuletzt erledigt“ and „Nächstes Mal“ stores both, no history entry', async () => {
+    await fx.startEnrico();
+    const id = createChore({
+      title: 'Matratze drehen',
+      recurrence: { type: 'everyMonths', every: 6 },
+      assignment: { type: 'anyone' },
+      lastDoneOn: '2026-08-15',
+      nextDueOn: '2027-02-15',
+    });
+    await fx.settle();
+    expect(fx.server.row(H, 'chores', id)).toMatchObject({
+      next_due_on: '2027-02-15',
+      last_done_on: '2026-08-15',
+    });
+    expect(serverEvents(id)).toEqual([]);
+  });
+
+  it('AC-005: without „Nächstes Mal“ a new chore gets the suggestion of core (today + interval)', async () => {
+    await fx.startEnrico();
+    const id = createChore({
+      title: 'Fenster Wohnzimmer',
+      recurrence: { type: 'everyMonths', every: 2 },
+      assignment: { type: 'anyone' },
+    });
+    expect(choreById(id)?.nextDueOn).toBe('2027-01-20');
+  });
+
+  it('AC-006: editing „Nächstes Mal“ moves only the date; a day before today throws', async () => {
+    await fx.startEnrico();
+    const bath = choreById('chore-bad');
+    if (!bath) throw new Error('fixture');
+    updateChore('chore-bad', { ...bath, nextDueOn: '2026-11-26' });
+    await fx.settle();
+    expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ next_due_on: '2026-11-26' });
+    expect(() => updateChore('chore-bad', { ...bath, nextDueOn: '2026-11-19' })).toThrow(
+      'Nur ab heute',
+    );
+  });
+
+  it('AC-009: „Als Nächstes dran“ sets the turn of an alternating chore', async () => {
+    await fx.startEnrico();
+    const id = createChore({
+      title: 'Staubsaugen',
+      recurrence: { type: 'weekly', every: 1, weekdays: [6] },
+      assignment: { type: 'rotating', memberIds: [ENRICO, NADJA] },
+      nextAssigneeId: NADJA,
+    });
+    const chore = choreById(id);
+    if (!chore) throw new Error('not created');
+    expect(chore.nextAssigneeId).toBe(NADJA);
+    updateChore(id, { ...chore, nextAssigneeId: ENRICO });
+    await fx.settle();
+    expect(fx.server.row(H, 'chores', id)).toMatchObject({ next_assignee_id: ENRICO });
+  });
+
+  it('AC-015: "Später" takes the chosen day; before today it throws and sends nothing', async () => {
+    await fx.startEnrico();
+    expect(() => postponeChore('chore-bad', '2026-11-19')).toThrow('Nur ab heute');
+    postponeChore('chore-bad', '2026-11-25');
+    await fx.settle();
+    expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ next_due_on: '2026-11-25' });
+  });
+
+  it('AC-021: „Datum ändern“ of the latest entry moves the entry, the date and the last time', async () => {
+    await fx.startEnrico();
+    const eventId = completeChore('chore-bad');
+    if (!eventId) throw new Error('no event');
+    await fx.settle();
+    expect(changeChoreEventDay(eventId, '2026-11-18')).toBe(true);
+    expect(eventById(eventId)?.doneOn).toBe('2026-11-18');
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    const op = opsOf(1)[0];
+    expect(op).toMatchObject({
+      kind: 'change_chore_event_day',
+      change: { event_id: eventId, done_on: '2026-11-18', next_due_on: '2026-11-27' },
+    });
+    expect(fx.server.row(H, 'chore_events', eventId)).toMatchObject({ done_on: '2026-11-18' });
+    // Done early counts for the Friday ahead (spec 0011, AC-037).
+    expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({
+      next_due_on: '2026-11-27',
+      last_done_on: '2026-11-18',
+    });
+  });
+
+  it('AC-022: an older entry changes only its day', async () => {
+    await fx.startEnrico();
+    const before = choreById('chore-bad');
+    expect(changeChoreEventDay('ev-5', '2026-11-12')).toBe(true);
+    await fx.settle();
+    expect(rejected).toEqual([]);
+    expect(choreById('chore-bad')).toEqual(before);
+    expect(opsOf(0)[0]).toMatchObject({ change: { event_id: 'ev-5', done_on: '2026-11-12' } });
+    expect(opsOf(0)[0]).not.toHaveProperty('change.next_due_on');
+  });
+
+  it('AC-023: an entry removed on another device springs back with the general hint; > 30 days throws', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    expect(() => changeChoreEventDay('ev-5', '2026-10-20')).toThrow();
+    fx.server.deleteRow(H, 'chore_events', 'ev-5');
+    changeChoreEventDay('ev-5', '2026-11-12');
+    await fx.settle(nadja);
+    expect(rejected).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(changeChoreEventDay('ev-unknown', '2026-11-12')).toBe(false);
   });
 });

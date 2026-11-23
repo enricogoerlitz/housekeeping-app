@@ -52,6 +52,10 @@ flowchart LR
 - `updated_at` wird **vom Server** per Trigger gesetzt, nie vom Client.
 - Ein Lösch-Trigger schreibt jede gelöschte Zeile ins **Löschprotokoll** `deleted_records`
   (Tabelle, ID, Haushalt, Zeitpunkt). Es ist per RLS ebenfalls auf den eigenen Haushalt beschränkt.
+- Ausnahme sind die kleinen Tabellen (`profiles`, `households`, `household_members`,
+  `household_invitations`): `sync_pull` liefert sie bei jedem Abgleich vollständig. Sie brauchen
+  weder Grabsteine noch einen Delta-Index; ein entferntes Mitglied oder eine zurückgezogene
+  Einladung fehlt beim nächsten Abgleich (Spec 0031, D-05).
 
 **Ablauf:**
 
@@ -175,7 +179,9 @@ regelt die erste Spec mit Fotos.
   Nachricht enthält keine Zeilendaten.
 - **Vertrauensmodell der Grenzen:** `apply_changes` nimmt höchstens 200 Operationen und
   20 Löschungen je Aufruf an; jede ID in einer `remove_contributions`-Operation zählt als Löschung
-  und als Operation. Die Grenzen fangen Fehler im Client ab (etwa einen Diff, der versehentlich
+  und als Operation. `replace_entry_contributions` (Spec 0021) zählt als eine Löschung: Sie nimmt
+  nur die Beiträge der genannten Planeinträge (höchstens 200) von offenen Posten, so folgt die Liste
+  auch einem Gericht mit mehr als 20 Zutaten in einem Aufruf. Die Grenzen fangen Fehler im Client ab (etwa einen Diff, der versehentlich
   ganze Tabellen löscht), keine böswilligen Mitglieder: Ein Mitglied darf Zeilen seines Haushalts
   ohnehin direkt über die API löschen. Schutz gegen Fremde geben RLS und die Spaltenrechte.
 - **Einladungen** werden immer selbst angenommen (`accept_invitation`) oder abgelehnt
@@ -287,7 +293,8 @@ regelt die erste Spec mit Fotos.
 - **Bedingungen für `restore_recipe(recipe_id)`:** nur die Person, die gelöscht hat, solange sie
   Mitglied des Haushalts ist, und nur innerhalb von 1 Stunde; sonst `recipe_not_restorable`
   (P0002). Das Gerät schickt nur die ID. Zurück kommen das Rezept mit derselben ID, `photo_path`
-  und dem ursprünglichen `created_at` (Trigger `recipes_stamp_restored`), Bewertungen und Favoriten
+  und dem ursprünglichen `created_at` (`set_timestamps` mit `housekeeping.keep_created_at`, das nur
+  der Funktionseigentümer nutzen kann; Spec 0031, REQ-013), Bewertungen und Favoriten
   heutiger Mitglieder, die gelöschten Einträge (Esser nur heutige Mitglieder, Koch leer, wenn er
   fehlt) und die Freitext-Einträge, solange sie unverändert sind. Das Rezept bekommt ein neues
   `updated_at` und gewinnt so gegen seinen Grabstein. Steht die ID im selben Haushalt schon wieder,
@@ -349,7 +356,7 @@ definer` wirft der Trigger `recipes_kind_immutable` `kind_immutable` (22023) fü
 ## Nachtrag Spec 0011 — Erledigungen mit Bedingung, Bewertungen in halben Schritten
 
 - **Erledigungen nur über Domänen-Operationen:** Mitglieder haben auf `chore_events` nur noch
-  `select` und `update (chore_id, done_by)`; `insert` und `delete` sind entzogen, und die
+  `select` und `update (done_by)`; `insert` und `delete` sind entzogen, und die
   Allowlist von `apply_changes` erlaubt für `chore_events` weder `insert` noch `delete`. Gebucht
   wird mit der Operation `complete_chore` (`{"kind": "complete_chore", "completion": {…}}`),
   entfernt mit `remove_chore_event` (`{"kind": "remove_chore_event", "id": …}`). Beide laufen in
@@ -376,8 +383,13 @@ definer` wirft der Trigger `recipes_kind_immutable` `kind_immutable` (22023) fü
   Zwei Erledigungen derselben Aufgabe in einem Aufruf behalten so ihre Reihenfolge, und eine
   Erledigung, die auf die Sperre gewartet hat, liegt hinter der, auf die sie gewartet hat.
   `updated_at` bleibt `now()`; der Delta-Abgleich liest nur `updated_at`.
+- **Aufgabe löschen und „Rückgängig“ (Spec 0031, REQ-016):** `delete_chore(chore_id)` legt die
+  Aufgabe und die IDs ihrer Erledigungen in `private.deletions` (Art `chore`, 1 Stunde) und
+  löscht sie; die Erledigungen bleiben mit ihrem Titel im Verlauf. `restore_chore(chore_id)` gilt
+  wie bei Rezepten nur für die Person, die gelöscht hat: Die Aufgabe kommt mit derselben ID und
+  ihrem `created_at` zurück, und genau die Erledigungen des Schnappschusses hängen wieder an ihr.
 - **Die Verknüpfung bleibt:** `chore_id` einer Erledigung wechselt nur von leer auf eine Aufgabe
-  („Rückgängig“ nach dem Löschen) und wird nur durch das Löschen der Aufgabe leer. Jede andere
+  (`restore_chore`) und wird nur durch das Löschen der Aufgabe leer. Jede andere
   Änderung lehnt der Trigger `chore_events_keep_chore` mit `invalid_change` (22023) ab. Sonst
   stellte `remove_chore_event` den Stand davor an der falschen Aufgabe her.
 - **Grenzen:** `complete_chore` und `remove_chore_event` zählen je als eine Operation und eine
@@ -424,8 +436,8 @@ die Tasks 2 und 5 von Spec 0012.
   `packing_list_bags` (Tasche der Packliste: Abwesenheit, Herkunftstasche, Name und Mitglied als
   Kopie, Reihenfolge; dieselbe Reisetasche höchstens einmal je Abwesenheit) und `packing_items`
   (Packstücke der Packliste). `sync_pull` liefert alle vier.
-- **„Je Tag“ rechnet der Server.** Ein Trigger vor dem Einfügen setzt bei `per_day` die Anzahl auf
-  `least(per_day × Tage, 9999)` (Tage = `to_on − from_on + 1`), egal was das Gerät schickt.
+- **„Je Tag“ rechnet der Server.** Ein Trigger vor dem Einfügen setzt bei `per_day_quantity` die
+  Anzahl auf `least(per_day_quantity × Tage, 9999)` (Tage = `to_on − from_on + 1`), egal was das Gerät schickt.
   Gerechnet wird in `bigint`, damit auch eine absurd lange Abwesenheit nicht überläuft
   (Security-Check, Task 12). Ändern
   sich Von oder Bis einer Abwesenheit oder zieht eine Tasche der Packliste zu einer anderen
@@ -443,7 +455,8 @@ die Tasks 2 und 5 von Spec 0012.
 pack_seq}]` der gefundenen Packstücke.
 - **Rückgängig nach dem Entfernen:** Domänen-Operation
   `{"kind": "restore_packing_items", "items": [...]}` in `apply_changes`, zählt als ihre Elemente.
-  Elemente mit `id`, `list_bag_id`, `name` (Pflicht) und `quantity`, `per_day`, `sort`, `packed`,
+  Elemente mit `id`, `list_bag_id`, `name` (Pflicht) und `quantity`, `per_day_quantity`, `sort`,
+  `packed`,
   `packed_at`, `packed_by`, `pack_seq`; einfaches Einfügen (vorhandene Kennung → 23505, fremde
   Tasche oder fremde Person → 23503), `packed_at` höchstens `now()`, `pack_seq` 0 bis 999000.
   Ein Mitglied kann darüber `packed_by` und `packed_at` innerhalb des eigenen Haushalts frei
@@ -483,7 +496,7 @@ pack_seq}]` der gefundenen Packstücke.
   nicht gegen die 20 Löschungen je Aufruf, auch nicht beim „Rückgängig“ einer neuen Packliste.
 - **Vom Server gerechnet.** Eine neu gerechnete „je Tag“-Anzahl (`DERIVED_COLUMNS`:
   `packing_items.quantity`) zeigt das Gerät sofort, schickt sie aber nie; `packing_items` hat
-  keinen Patch, `packing_list_bags` nur `absence_id`, `bag_id`, `sort` (`PATCH_COLUMNS`). Die
+  keinen Patch, `packing_list_bags` nur `bag_id`, `sort` (die Packliste bleibt bei ihrer Reise, Spec 0022) (`PATCH_COLUMNS`). Die
   Gepackt-Spalten stehen in `NEVER_SENT_COLUMNS`.
 - **„Rückgängig“ nach dem Entfernen** eines Packstücks oder einer Tasche der Packliste schickt
   die Tasche (falls nötig) und `restore_packing_items` mit dem gepackten Stand in einem Aufruf.
@@ -568,3 +581,16 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   hält das Abmelden nicht auf) vor dem Löschen von Cache und Warteschlange. Die App meldet dort
   den Browser vom Push ab und ruft mit Netz `unregister_push_subscription`; ohne Netz bleibt die
   Zeile, bis der Push-Dienst 404/410 meldet.
+
+## Nachtrag Spec 0025 — Laden-Aktionen auf der Liste, ein Posten je Artikel
+
+- „Abhaken“, „Posten hinzufügen“ und „Bereich zuordnen“ gehen auch auf „Liste“ und in „Posten
+  bearbeiten“ / „Artikel bearbeiten“ über die Laden-Warteschlange (Nachtrag 2026-11-22 zu
+  ADR-0008). Ein Haken auf der Liste trägt `onList` (Standard `false`) und setzt
+  `shopping_items.checked_on_list`; „kauft gerade ein“ übergeht solche Haken.
+- `shopping_items` ist eindeutig je `(household_id, article_id)`. `restore_cleared_items` behält
+  `created_at` (höchstens `now()`), damit „Rückgängig“ einen Posten an seine Stelle zurückbringt;
+  `private.set_timestamps` übernimmt ein früheres `created_at` nur während einer Wiederherstellung
+  und nur für den Eigentümer der Funktionen.
+- Neue Schreibwege, alle online und je eine Transaktion: `set_manual_amount`,
+  `remove_item_contributions` (auch für „Entfernen“), `create_store`.

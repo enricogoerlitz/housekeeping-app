@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { finishSummary, shoppingModeGroups } from './shopping-mode';
+import {
+  currentShoppingRun,
+  extendShoppingRun,
+  finishSummary,
+  readShoppingRun,
+  runProgress,
+  shoppingModeGroups,
+  ShoppingRunSchema,
+  startShoppingRun,
+} from './shopping-mode';
 import { articlesById } from './test-fixtures';
 import type { Area, Article, Id, ShoppingItem, Store } from './types';
 
@@ -72,19 +81,94 @@ describe('shoppingModeGroups', () => {
   });
 });
 
-describe('finishSummary', () => {
-  it('AC-047: "8 gekauft · 2 bleiben"', () => {
-    const items = Array.from({ length: 10 }, (_, index) =>
-      item({ id: `i-${index}`, articleId: 'art-milch', checked: index < 8 }),
-    );
-    expect(finishSummary(items)).toEqual({
-      bought: 8,
-      remaining: 2,
-      label: '8 gekauft · 2 bleiben',
+describe('Einkaufsgang (spec 0025, REQ-013)', () => {
+  const open = (id: string) => item({ id, articleId: 'art-milch' });
+  const done = (id: string) => item({ id, articleId: 'art-milch', checked: true });
+  const fifteen = Array.from({ length: 15 }, (_, index) => open(`i-${index}`));
+  const lastTime = [done('brot'), done('butter')];
+
+  it('AC-042: starts with what is open; checked items from last time do not count', () => {
+    const run = startShoppingRun('h', [...fifteen, ...lastTime]);
+    expect(runProgress(run, [...fifteen, ...lastTime])).toMatchObject({ done: 0, total: 15 });
+    expect(runProgress(run, [...fifteen, ...lastTime]).inCart).toEqual([]);
+  });
+
+  it('AC-042: 3 checked → 3/15; "Butter" added again → open, 3/16', () => {
+    const run = startShoppingRun('h', [...fifteen, ...lastTime]);
+    const checked = fifteen.map((row, index) => (index < 3 ? { ...row, checked: true } : row));
+    expect(runProgress(run, [...checked, ...lastTime])).toMatchObject({ done: 3, total: 15 });
+    const withButter = [...checked, done('brot'), open('butter')];
+    const extended = extendShoppingRun(run, withButter);
+    expect(runProgress(extended, withButter)).toMatchObject({ done: 3, total: 16 });
+    expect(runProgress(extended, withButter).inCart.map((row) => row.id)).toEqual([
+      'i-0',
+      'i-1',
+      'i-2',
+    ]);
+  });
+
+  it('AC-042: extending without anything new keeps the same run', () => {
+    const run = startShoppingRun('h', fifteen);
+    expect(extendShoppingRun(run, fifteen)).toBe(run);
+  });
+
+  it('AC-043: "Fertig" reports this trip only: "3 gekauft · 13 bleiben"', () => {
+    const run = startShoppingRun('h', [...fifteen, ...lastTime]);
+    const rows = [
+      ...fifteen.map((row, index) => (index < 3 ? { ...row, checked: true } : row)),
+      done('brot'),
+      open('butter'),
+    ];
+    expect(finishSummary(extendShoppingRun(run, rows), rows)).toEqual({
+      bought: 3,
+      remaining: 13,
+      label: '3 gekauft · 13 bleiben',
     });
   });
 
-  it('nothing checked: "0 gekauft · 3 bleiben"', () => {
-    expect(finishSummary(rows).label).toBe('0 gekauft · 3 bleiben');
+  it('AC-044: taking the check out of "Limetten" makes it open again, 2/16', () => {
+    const rows = fifteen.map((row, index) => (index < 3 ? { ...row, checked: true } : row));
+    const run = extendShoppingRun(startShoppingRun('h', fifteen), [...rows, open('butter')]);
+    const unchecked = rows.map((row) => (row.id === 'i-2' ? { ...row, checked: false } : row));
+    expect(runProgress(run, [...unchecked, open('butter')])).toMatchObject({ done: 2, total: 16 });
+  });
+
+  it('AC-042: a reload reads the stored run of the same household back', () => {
+    const stored = JSON.stringify({ householdId: 'h', itemIds: ['i-0', 'i-1'] });
+    expect(readShoppingRun(stored, 'h')).toEqual({ householdId: 'h', itemIds: ['i-0', 'i-1'] });
+  });
+
+  it('a stored run of another household, broken or missing, is not read back', () => {
+    expect(readShoppingRun(JSON.stringify({ householdId: 'x', itemIds: [] }), 'h')).toBeUndefined();
+    expect(readShoppingRun('{"householdId":', 'h')).toBeUndefined();
+    expect(
+      readShoppingRun(JSON.stringify({ householdId: 'h', itemIds: [1] }), 'h'),
+    ).toBeUndefined();
+    expect(readShoppingRun(null, 'h')).toBeUndefined();
+    expect(readShoppingRun('', 'h')).toBeUndefined();
+  });
+
+  it('AC-042: the current run is the run extended by what is open now', () => {
+    const run = startShoppingRun('h', fifteen);
+    expect(currentShoppingRun(run, 'h', fifteen)).toBe(run);
+    expect(currentShoppingRun(run, 'h', [...fifteen, open('butter')]).itemIds).toHaveLength(16);
+  });
+
+  it('switching the household starts a new run with its open items', () => {
+    const run = startShoppingRun('h', fifteen);
+    expect(currentShoppingRun(run, 'other', [open('salz'), done('brot')])).toEqual({
+      householdId: 'other',
+      itemIds: ['salz'],
+    });
+  });
+
+  it('an item removed meanwhile no longer counts', () => {
+    const run = startShoppingRun('h', fifteen);
+    expect(runProgress(run, fifteen.slice(1))).toMatchObject({ done: 0, total: 14 });
+  });
+
+  it('a stored run is input: parsed, never cast', () => {
+    expect(ShoppingRunSchema.safeParse({ householdId: 'h', itemIds: ['a'] }).success).toBe(true);
+    expect(ShoppingRunSchema.safeParse({ householdId: 'h', itemIds: 'a' }).success).toBe(false);
   });
 });

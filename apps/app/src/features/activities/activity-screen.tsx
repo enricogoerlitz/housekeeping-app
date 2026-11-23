@@ -1,24 +1,40 @@
-import { routeId } from '@housekeeping/core';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+
+import { useAddressedId } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ActivityDetail } from './activity-detail';
 
-/** An activity on its own page in the calendar's area (spec 0010, AC-026). */
+/**
+ * An activity on its own page under "Verwalten" (phones, deep links; spec 0024, REQ-009):
+ * "‹ Aktivitäten", or the section it came from with `von` (spec 0019, REQ-006).
+ */
 export function ActivityScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const address = usePageParams('aktivitaet');
+  const { params } = address;
   const router = useRouter();
-  // Only a uuid reaches the lookup; anything else shows "nicht gefunden".
-  const id = routeId(params.id);
-  const back = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/kalender/aktivitaeten');
-  };
+  const origin = useOriginBack(params.von, 'verwalten', {
+    label: 'Aktivitäten',
+    href: '/aktivitaeten',
+  });
+  // Only an id of an own household reaches the lookup; anything else shows "nicht gefunden".
+  const found = useAddressedId('activities', params.id);
+  if (found === 'switching') return null;
   return (
     <ActivityDetail
-      activityId={id ?? ''}
-      onBack={back}
+      activityId={found === 'shown' ? (params.id ?? '') : ''}
+      onBack={origin.back}
+      backLabel={origin.label}
+      window={params.fenster}
+      onWindow={(window) =>
+        window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+      }
+      onDeleted={origin.back}
       onOpen={(activityId) =>
-        router.replace({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } })
+        router.replace({
+          pathname: '/aktivitaet/[id]',
+          params: params.von ? { id: activityId, von: params.von } : { id: activityId },
+        })
       }
     />
   );

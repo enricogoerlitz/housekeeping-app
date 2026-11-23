@@ -1,36 +1,47 @@
 import {
-  absenceEndLabel,
+  tripEndLabel,
   dateRangeLabel,
+  dragSourceKey,
   entryKindRole,
   stripeText,
-  type AbsenceStripe,
+  type TripStripe,
   type HouseholdRowItem,
   type Id,
   type MealPlanEntry,
   type Member,
 } from '@housekeeping/core';
 import {
+  ariaRef,
   AvatarStack,
   Checkbox,
+  hatchStyle,
   Icon,
   KindLine,
   RowTransition,
   Text,
+  toast,
+  useDragSource,
   useTheme,
+  withAlpha,
 } from '@housekeeping/ui';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, type ViewStyle } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { entryReminderLabels, ReminderBell } from '@/features/meal-plan/reminder-bell';
+import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
 import { stripeWho, type CalendarData } from './calendar-data';
+import { LIFTED_OPACITY, useCalendarDrag } from './calendar-drag';
+
+/** Corners of a day's field in the week and of a day's tile in the month (spec 0021, REQ-002). */
+export const CELL_RADIUS = 6;
 
 // Member colours come from the data; a stripe of one person is tinted with them at this opacity
 // (spec 0010, REQ-009: "zart in ihrer Mitgliederfarbe").
 const TINT_ALPHA = '2E';
 
 /** Edge and fill of a stripe: one person in her colour, several or the household neutral. */
-export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, Member>) {
+export function useStripeColors(stripe: TripStripe, membersById: Record<Id, Member>) {
   const theme = useTheme();
   const only = stripe.memberIds.length === 1 ? membersById[stripe.memberIds[0] ?? ''] : undefined;
   return only
@@ -38,17 +49,45 @@ export function useStripeColors(stripe: AbsenceStripe, membersById: Record<Id, M
     : { edge: theme.colors.textMuted, fill: theme.colors.surfaceSunken };
 }
 
+// The lines of a draft's hatching (spec 0030, Entscheidung 6): the stripe's colour, light enough
+// that the text over it stays readable.
+export const HATCH_ALPHA = '4D';
+
+/** The surface of a stripe: its soft fill, hatched for a draft (spec 0030, REQ-004). */
+export function stripeSurface(colors: { edge: string; fill: string }, draft: boolean): ViewStyle {
+  return draft
+    ? { backgroundColor: colors.fill, ...hatchStyle(withAlpha(colors.edge, HATCH_ALPHA)) }
+    : { backgroundColor: colors.fill };
+}
+
 /**
- * Screen-reader text of a stripe: "Enrico abwesend, Urlaub Mallorca, 1.–4. Jan", with a packing
+ * A thin stripe line (phone week bars, month and overview lines): solid, or dashed for a draft
+ * (spec 0030, Entscheidung 6). `side` is where the line is drawn, `width` its thickness.
+ */
+export function stripeLine(
+  edge: string,
+  draft: boolean,
+  side: 'top' | 'left',
+  width: number,
+): ViewStyle {
+  if (!draft) return { backgroundColor: edge };
+  return side === 'top'
+    ? { borderTopWidth: width, borderStyle: 'dashed', borderColor: edge }
+    : { borderLeftWidth: width, borderStyle: 'dashed', borderColor: edge };
+}
+
+/**
+ * Screen-reader text of a stripe: "Enrico unterwegs, Urlaub Mallorca, 1.–4. Jan", with a packing
  * list ", mit Packliste" (spec 0012, AC-046).
  */
 export function stripeA11y(
-  stripe: AbsenceStripe,
+  stripe: TripStripe,
   membersById: Record<Id, Member>,
   hasPackingList = false,
 ): string {
   return [
-    `${stripeWho(stripe, membersById)} abwesend`,
+    `${stripeWho(stripe, membersById)} unterwegs`,
+    stripe.draft ? 'Entwurf' : undefined,
     stripe.note,
     dateRangeLabel(stripe.from, stripe.to),
     hasPackingList ? 'mit Packliste' : undefined,
@@ -58,7 +97,7 @@ export function stripeA11y(
 }
 
 /** The name badges of a stripe; the whole household also gets the house. */
-export function StripeBadges(props: { stripe: AbsenceStripe; members: Member[] }) {
+export function StripeBadges(props: { stripe: TripStripe; members: Member[] }) {
   const { stripe } = props;
   const people = stripe.household
     ? props.members
@@ -72,13 +111,13 @@ export function StripeBadges(props: { stripe: AbsenceStripe; members: Member[] }
 }
 
 /**
- * One absence as a stripe: badges, note and end ("(E) Urlaub Mallorca · bis Mo 4.1."), the bag
- * icon when it has a packing list. A tap opens its Urlaubsseite (spec 0012, AC-016, AC-046).
+ * One trip as a stripe: badges, note and end ("(E) Urlaub Mallorca · bis Mo 4.1."), the bag
+ * icon when it has a packing list. A tap opens its trip (spec 0012, AC-016, AC-046).
  */
-export function AbsenceStripeView(props: {
-  stripe: AbsenceStripe;
+export function TripStripeView(props: {
+  stripe: TripStripe;
   data: CalendarData;
-  onPress: (stripe: AbsenceStripe) => void;
+  onPress: (stripe: TripStripe) => void;
   /** Desktop: " · " between note and end; phones and lists: a space. */
   separator?: string;
   /** Desktop week: the stripe runs on beyond the shown days. */
@@ -89,15 +128,17 @@ export function AbsenceStripeView(props: {
   const theme = useTheme();
   const { stripe, data } = props;
   const colors = useStripeColors(stripe, data.membersById);
-  const text = `${stripeText(stripe)}${props.separator ?? ' '}${absenceEndLabel(stripe.to)}`;
-  const testID = props.testID ?? `absence-stripe-${stripe.absenceIds[0] ?? ''}`;
+  const draft = stripe.draft ? 'Entwurf · ' : '';
+  const text = `${draft}${stripeText(stripe)}${props.separator ?? ' '}${tripEndLabel(stripe.to)}`;
+  const testID = props.testID ?? `trip-stripe-${stripe.tripId}`;
   const packing = data.hasPackingList(stripe);
   return (
     <Pressable
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={stripeA11y(stripe, data.membersById, packing)}
-      accessibilityHint="Urlaubsseite öffnen"
+      accessibilityHint="Seite der Reise öffnen"
+      ref={ariaRef({ 'aria-description': 'Seite der Reise öffnen' })}
       onPress={() => props.onPress(stripe)}
       style={(state) => ({
         flexDirection: 'row',
@@ -112,7 +153,7 @@ export function AbsenceStripeView(props: {
         borderBottomRightRadius: props.continuesAfter ? 0 : 4,
         borderLeftWidth: props.continuesBefore ? 0 : 3,
         borderLeftColor: colors.edge,
-        backgroundColor: colors.fill,
+        ...stripeSurface(colors, stripe.draft),
         opacity: state.pressed ? 0.7 : 1,
       })}
     >
@@ -130,7 +171,14 @@ export function AbsenceStripeView(props: {
   );
 }
 
-/** A plan entry as a calendar line: symbol, text and the kind's edge (D19). */
+/**
+ * A plan entry as a calendar line: symbol, text and the kind's edge (D19). It can be dragged to
+ * another day, Tageszeit or "Vorgemerkt" (spec 0016, REQ-001): held with a finger, pressed and
+ * moved with the mouse; its old place stays as a pale outline. Offline nothing lifts and the hint
+ * shows (AC-005). For screen readers the action "Verschieben" opens the entry window there.
+ * With `withReminder` (week and day panel) a reminder shows as a bell under the text, "Erinnerung
+ * Fr 18:00" (spec 0017, REQ-002); the dragged image stays without it, since the day moves.
+ */
 export function EntryLine(props: {
   entry: MealPlanEntry;
   data: CalendarData;
@@ -138,19 +186,49 @@ export function EntryLine(props: {
   /** The Tageszeit in front, in day lists ("Vormittag ▲ Strandtag"). */
   withSlot?: boolean;
   compact?: boolean;
+  /** The bell of the entry's reminder under the text (spec 0017): week and day panel only. */
+  withReminder?: boolean;
 }) {
   const { entry, data } = props;
+  const online = useOnlineOnly();
+  const { openMove } = useCalendarDrag();
   const title = data.lineTitleOf(entry);
+  const kind = entryKindRole(entry, data.recipesById);
+  const size = props.compact ? 'compact' : 'row';
+  const reminder = props.withReminder
+    ? entryReminderLabels(entry, title, data.household.timeZone)
+    : undefined;
+  const spoken = reminder?.accessibilityLabel ?? title;
+  const {
+    ref,
+    props: sourceProps,
+    style,
+    dragging,
+    guardPress,
+  } = useDragSource({
+    id: dragSourceKey({ kind: 'entry', entryId: entry.id }),
+    preview: () => <KindLine kind={kind} title={title} size={size} />,
+    disabled: online.disabled,
+    onBlocked: () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT }),
+  });
   return (
-    <KindLine
-      kind={entryKindRole(entry, data.recipesById)}
-      title={title}
-      prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
-      size={props.compact ? 'compact' : 'row'}
-      onPress={() => props.onPress(entry)}
-      accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${title}` : title}
-      testID={`entry-${entry.id}`}
-    />
+    <View ref={ref} {...sourceProps} style={[style, dragging ? { opacity: LIFTED_OPACITY } : null]}>
+      <KindLine
+        kind={kind}
+        title={title}
+        prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
+        size={size}
+        detail={
+          reminder ? (
+            <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
+          ) : undefined
+        }
+        onPress={guardPress(() => props.onPress(entry))}
+        accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken}
+        accessibilityAction={{ label: 'Verschieben', onAction: () => openMove(entry) }}
+        testID={`entry-${entry.id}`}
+      />
+    </View>
   );
 }
 
@@ -163,25 +241,19 @@ function People(props: { ids: Id[]; data: CalendarData }) {
   return people.length > 0 ? <AvatarStack members={people} size="xs" /> : null;
 }
 
-/** An empty ring for a chore that is not done: "○ Müll rausbringen". */
-function Ring() {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        width: 13,
-        height: 13,
-        borderRadius: 7,
-        borderWidth: 1.5,
-        borderColor: theme.colors.checkLine,
-      }}
-    />
-  );
-}
-
-/** A chore of a past or future day: done with ✓, planned with ○; nothing to tap. */
-function ChoreLine(props: { item: HouseholdRowItem; data: CalendarData; compact?: boolean }) {
+/** A booked chore: ✓, and a tap on its name opens the chore window while the chore exists. */
+function ChoreLine(props: {
+  item: HouseholdRowItem;
+  data: CalendarData;
+  compact?: boolean;
+  peopleBelow?: boolean;
+  onOpenChore: (choreId: Id) => void;
+}) {
   const { item } = props;
+  const people = <People ids={item.memberIds} data={props.data} />;
+  const choreId = props.data.chores.some((chore) => chore.id === item.choreId)
+    ? item.choreId
+    : undefined;
   return (
     <KindLine
       kind="chore"
@@ -189,41 +261,50 @@ function ChoreLine(props: { item: HouseholdRowItem; data: CalendarData; compact?
       quiet
       dashed={item.approximate}
       size={props.compact ? 'compact' : 'row'}
-      leading={item.status === 'done' ? <Icon name="check" size={14} color="muted" /> : <Ring />}
-      trailing={<People ids={item.memberIds} data={props.data} />}
-      accessibilityLabel={`${item.status === 'done' ? 'Erledigt' : 'Geplant'}: ${choreTitle(item)}`}
+      leading={<Icon name="check" size={14} color="muted" />}
+      trailing={props.peopleBelow ? undefined : people}
+      detail={props.peopleBelow ? people : undefined}
+      onPress={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
+      accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
       testID={`chore-occ-${item.key}`}
     />
   );
 }
 
 /**
- * The household row of today: due chores are checked with the one chore check window of
- * „Anstehend“ and „Zu tun“ (spec 0011, REQ-005); 2 s after the last tap the completions are
- * booked and stand as ✓ at the end of the day (spec 0010, AC-018). Leaving the calendar books at
- * once; a refusal brings the box back with the hint, e.g. „Nadja war schneller (10:02)“ (AC-031,
- * AC-034). Offline the boxes are greyed out (spec 0010, AC-020).
+ * The household row of one day (spec 0021, REQ-016): every chore that is due or planned can be
+ * checked on any day, also a future one, with the one chore check window of „Anstehend“ and „Zu
+ * tun“ (spec 0011, REQ-005); 2 s after the last tap it is booked as done today, as on „Haushalt“
+ * (AC-042). Leaving the calendar books at once; a refusal brings the box back with the hint, e.g.
+ * „Nadja war schneller (10:02)“. A tap on the name opens the chore window (AC-043). Offline the
+ * boxes are greyed out (spec 0010, AC-020); booked chores stand with ✓.
  */
-function HouseholdToday(props: {
+export function HouseholdDay(props: {
   items: HouseholdRowItem[];
   data: CalendarData;
   compact?: boolean;
+  /** The avatars under the title, so a narrow column gives the title its whole width (REQ-033). */
+  peopleBelow?: boolean;
+  onOpenChore: (choreId: Id) => void;
 }) {
   const online = useOnlineOnly();
-  const open = props.items.filter((item) => item.status === 'open');
-  const done = props.items.filter((item) => item.status !== 'open');
-  const itemOf = new Map(open.map((item) => [item.choreId ?? '', item]));
+  const choreOf = (item: HouseholdRowItem) =>
+    item.status === 'done'
+      ? undefined
+      : props.data.chores.find((chore) => chore.id === item.choreId);
+  const due = props.items.filter((item) => choreOf(item) !== undefined);
+  const rest = props.items.filter((item) => choreOf(item) === undefined);
+  const itemOf = new Map(due.map((item) => [item.choreId ?? '', item]));
   // In the order of the household row.
-  const openChores = open.flatMap(
-    (item) => props.data.chores.find((chore) => chore.id === item.choreId) ?? [],
-  );
-  const check = useChoreCheckWindow(openChores);
+  const dueChores = due.flatMap((item) => choreOf(item) ?? []);
+  const check = useChoreCheckWindow(dueChores);
   return (
     <>
       {check.rows.map((chore) => {
         const item = itemOf.get(chore.id);
         if (!item) return null;
         const checked = check.isChecked(chore);
+        const people = <People ids={item.memberIds} data={props.data} />;
         return (
           <RowTransition key={item.key}>
             <KindLine
@@ -231,6 +312,7 @@ function HouseholdToday(props: {
               title={choreTitle(item)}
               quiet
               struck={checked}
+              dashed={item.approximate}
               size={props.compact ? 'compact' : 'row'}
               leading={
                 <Checkbox
@@ -241,34 +323,24 @@ function HouseholdToday(props: {
                   testID={`chore-check-${chore.id}`}
                 />
               }
-              trailing={<People ids={item.memberIds} data={props.data} />}
-              accessibilityLabel={online.hint ? `${item.title}. ${online.hint}` : undefined}
+              trailing={props.peopleBelow ? undefined : people}
+              detail={props.peopleBelow ? people : undefined}
+              onPress={() => props.onOpenChore(chore.id)}
+              accessibilityLabel={`${choreTitle(item)}, Details`}
               testID={`chore-occ-${item.key}`}
             />
           </RowTransition>
         );
       })}
-      {done.map((item) => (
-        <ChoreLine key={item.key} item={item} data={props.data} compact={props.compact} />
-      ))}
-    </>
-  );
-}
-
-/** The household row of one day: today checkable, other days read only. */
-export function HouseholdDay(props: {
-  items: HouseholdRowItem[];
-  isToday: boolean;
-  data: CalendarData;
-  compact?: boolean;
-}) {
-  if (props.isToday) {
-    return <HouseholdToday items={props.items} data={props.data} compact={props.compact} />;
-  }
-  return (
-    <>
-      {props.items.map((item) => (
-        <ChoreLine key={item.key} item={item} data={props.data} compact={props.compact} />
+      {rest.map((item) => (
+        <ChoreLine
+          key={item.key}
+          item={item}
+          data={props.data}
+          compact={props.compact}
+          peopleBelow={props.peopleBelow}
+          onOpenChore={props.onOpenChore}
+        />
       ))}
     </>
   );

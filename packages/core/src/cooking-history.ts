@@ -1,7 +1,7 @@
 import type { CollectionRecipe, Id, ISODate, MealPlanEntry, Recipe } from './types';
 
 // "Gekocht" according to the calendar (spec 0009, E10, Offene Frage 2 A and 3 A). Nothing is
-// stored: the list "Essen" combines the stored history (seed, starter recipes) with this, online
+// stored: the list "Essen" combines the stored history (sample data) with this, online
 // and offline alike.
 
 export interface CookedFromCalendar {
@@ -30,7 +30,7 @@ export function cookingHistory(
   };
   for (const entry of entries) {
     if (entry.kind !== 'recipe' || entry.recipeId === undefined) continue;
-    if (entry.date === null || entry.date > today || entry.notCooked) continue;
+    if (entry.date === null || entry.date > today || entry.notDone) continue;
     count(entry.recipeId, entry.date);
     for (const row of collectionRecipes) {
       if (row.collectionId === entry.recipeId) count(row.recipeId, entry.date);

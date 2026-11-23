@@ -5,6 +5,7 @@ import { listProgress, originLabel, summarizeItem } from './shopping';
 import type {
   ContributionSource,
   Id,
+  ISODate,
   MealPlanEntry,
   Member,
   Recipe,
@@ -29,7 +30,7 @@ export function recipeSource(
 ): Extract<ContributionSource, { kind: 'recipe' }> {
   const title = contained === undefined ? recipe.title : `${recipe.title} · ${contained.title}`;
   if (entry === undefined) return { kind: 'recipe', recipeId: recipe.id, label: title };
-  const day = entry.date === null ? 'vorgemerkt' : weekdayShort(entry.date);
+  const day = entryDayLabel(entry.date);
   return {
     kind: 'recipe',
     recipeId: recipe.id,
@@ -38,52 +39,154 @@ export function recipeSource(
   };
 }
 
+function entryDayLabel(date: ISODate | null): string {
+  return date === null ? 'vorgemerkt' : weekdayShort(date);
+}
+
 /**
- * "Lasagne (Fr): 1× · von Hand: 1×": the contributions grouped by origin in the order they came,
- * each with its summed amount; an origin without amount reads alone ("von Hand").
+ * The label of a contribution whose plan entry moved to `date` (spec 0016, AC-017): the day at its
+ * end follows, "Mango-Curry (Sa)" → "Mango-Curry (So)". A label without a day stays.
  */
-export function originSummary(item: ShoppingItem): string {
+export function relabelForDay(label: string, date: ISODate | null): string {
+  return label.replace(/ \([^()]*\)$/, ` (${entryDayLabel(date)})`);
+}
+
+/**
+ * What the field "Von Hand" starts with (spec 0025, AC-010): the summed manual share as typed,
+ * "500 g", "2" for a count; empty without one.
+ */
+export function manualAmountText(item: ShoppingItem): string {
+  const manual = item.contributions.filter((contribution) => contribution.source.kind === 'manual');
+  if (manual.length === 0) return '';
+  const { amount } = summarizeItem({ ...item, contributions: manual });
+  return amount.replace(/^(\d+(?:,\d+)?)×$/, '$1');
+}
+
+export interface OriginRow {
+  /** "Lasagne (Mo)". */
+  label: string;
+  /** Its summed amount, "1×", "" when it brings none. */
+  amount: string;
+  contributionIds: Id[];
+}
+
+/**
+ * The origins from recipes in "Posten bearbeiten", each with ✕ (spec 0025, AC-010): grouped by
+ * label in the order they came. "von Hand" is the field, not a row.
+ */
+export function originRows(item: ShoppingItem): OriginRow[] {
   const byLabel = new Map<string, ShoppingContribution[]>();
   for (const contribution of item.contributions) {
+    if (contribution.source.kind === 'manual') continue;
     const label = originLabel(contribution.source);
     byLabel.set(label, [...(byLabel.get(label) ?? []), contribution]);
   }
-  return [...byLabel]
-    .map(([label, contributions]) => {
-      const { amount } = summarizeItem({ ...item, contributions });
-      return amount === '' ? label : `${label}: ${amount}`;
-    })
-    .join(' · ');
+  return [...byLabel].map(([label, contributions]) => ({
+    label,
+    amount: summarizeItem({ ...item, contributions }).amount,
+    contributionIds: contributions.map((contribution) => contribution.id),
+  }));
+}
+
+/**
+ * The hint under "Zusatz" when the change replaces what a recipe brought (spec 0025, AC-015,
+ * AC-016): "Ersetzt den Zusatz „Fior di Latte“ aus Lasagne (Mo)", "Entfernt den Zusatz …" when it
+ * is cleared. Undefined when no recipe Zusatz changes.
+ */
+export function noteChangeHint(item: ShoppingItem, note: string): string | undefined {
+  const next = note.trim();
+  const replaced = item.contributions.filter(
+    (contribution) =>
+      contribution.source.kind === 'recipe' &&
+      contribution.note !== undefined &&
+      contribution.note !== '' &&
+      contribution.note !== next,
+  );
+  const first = replaced[0];
+  if (!first) return undefined;
+  const from = [...new Set(replaced.map((contribution) => originLabel(contribution.source)))];
+  return `${next === '' ? 'Entfernt' : 'Ersetzt'} den Zusatz „${first.note}“ aus ${from.join(', ')}`;
+}
+
+/** A dish (recipe or collection) the open items come from (spec 0025, AC-017). */
+export interface ListDish {
+  recipeId: Id;
+  title: string;
+  /** Open items with a contribution from it. */
+  items: number;
 }
 
 export interface ListHeadline {
   open: number;
-  /** Recipes the open items come from, in the order they appear, each once. */
-  recipeTitles: string[];
-  /** "3 offen · für Lasagne, Kürbissuppe"; "3 offen" without recipes. */
+  /** In the order they were added, each once. */
+  dishes: ListDish[];
+  /** "14 offen · aus 4 Gerichten", "3 offen · aus 1 Gericht"; "3 offen" without dishes. */
   label: string;
 }
+
+/** A stored label without the day and the contained recipe: "Grillabend · Salat (Sa)" → "Grillabend". */
+function dishTitleFromLabel(label: string): string {
+  return label.replace(/ \([^()]*\)$/, '').split(' · ')[0] ?? label;
+}
+
 /**
- * The line under "Einkaufsliste" (AC-008). A recipe that no longer exists is named by the label
- * stored with its contribution.
+ * The line under "Einkaufsliste" (spec 0025, REQ-005): open items and the dishes they come from,
+ * counted by recipe or collection ("Gerichte", Decision 7). A dish that no longer exists is named
+ * by the label stored with its contribution.
  */
 export function listHeadline(
   items: readonly ShoppingItem[],
   recipesById: Readonly<Record<Id, Recipe>>,
 ): ListHeadline {
-  const openItems = items.filter((item) => !item.checked);
-  const titles = new Set<string>();
+  const openItems = items
+    .filter((item) => !item.checked)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const dishes = new Map<Id, ListDish>();
   for (const item of openItems) {
+    const seen = new Set<Id>();
     for (const { source } of item.contributions) {
-      if (source.kind === 'recipe') titles.add(recipesById[source.recipeId]?.title ?? source.label);
+      if (source.kind !== 'recipe' || seen.has(source.recipeId)) continue;
+      seen.add(source.recipeId);
+      const dish = dishes.get(source.recipeId) ?? {
+        recipeId: source.recipeId,
+        title: recipesById[source.recipeId]?.title ?? dishTitleFromLabel(source.label),
+        items: 0,
+      };
+      dishes.set(source.recipeId, { ...dish, items: dish.items + 1 });
     }
   }
-  const recipeTitles = [...titles];
+  const list = [...dishes.values()];
+  const count = `${openItems.length} offen`;
   const label =
-    recipeTitles.length === 0
-      ? `${openItems.length} offen`
-      : `${openItems.length} offen · für ${recipeTitles.join(', ')}`;
-  return { open: openItems.length, recipeTitles, label };
+    list.length === 0
+      ? count
+      : `${count} · aus ${list.length} ${list.length === 1 ? 'Gericht' : 'Gerichten'}`;
+  return { open: openItems.length, dishes: list, label };
+}
+
+/** A row of "Aus diesen Gerichten": "Grillabend · 6 Posten". */
+export function dishLabel(dish: ListDish): string {
+  return `${dish.title} · ${dish.items} Posten`;
+}
+
+/**
+ * The question of "Liste leeren …" (spec 0025, AC-019): open and checked items named apart,
+ * "14 offene und 3 erledigte Posten werden entfernt, auch die aus dem Kalender."
+ */
+export function clearListQuestion(open: number, done: number): string {
+  const total = open + done;
+  const parts = [
+    open > 0 ? `${open} ${open === 1 ? 'offener' : 'offene'}` : '',
+    done > 0 ? `${done} ${done === 1 ? 'erledigter' : 'erledigte'}` : '',
+  ].filter(Boolean);
+  const verb = total === 1 ? 'wird entfernt' : 'werden entfernt';
+  const calendar =
+    open === 0
+      ? ''
+      : total === 1
+        ? ', auch wenn er aus dem Kalender kommt'
+        : ', auch die aus dem Kalender';
+  return `${parts.join(' und ')} Posten ${verb}${calendar}.`;
 }
 
 // ---------- + and − ----------
@@ -194,9 +297,10 @@ export interface ActiveShopper {
 }
 
 /**
- * Another member who checked an item within the last SHOPPER_ACTIVE_MINUTES, derived from
- * checkedAt/checkedBy alone (no presence, no store). The most recent one wins; the progress is
- * that of the whole list. "Fertig" removes the checked items, so the hint goes with them.
+ * Another member who checked an item in "Einkaufen" within the last SHOPPER_ACTIVE_MINUTES,
+ * derived from checkedAt/checkedBy alone (no presence, no store); a check made on "Liste" does not
+ * count (spec 0025, AC-025). The most recent one wins; the progress is that of the whole list.
+ * "Fertig" removes the checked items, so the hint goes with them.
  */
 export function activeShopper(
   items: readonly ShoppingItem[],
@@ -210,7 +314,12 @@ export function activeShopper(
 
   let latest: { member: Member; time: number } | undefined;
   for (const item of items) {
-    if (!item.checked || item.checkedBy === undefined || item.checkedBy === currentMemberId) {
+    if (
+      !item.checked ||
+      item.checkedOnList === true ||
+      item.checkedBy === undefined ||
+      item.checkedBy === currentMemberId
+    ) {
       continue;
     }
     const time = item.checkedAt === undefined ? Number.NaN : Date.parse(item.checkedAt);

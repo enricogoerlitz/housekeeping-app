@@ -37,6 +37,7 @@ import { COLLECTION_BADGE } from './recipe-grid';
 import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
 import { IngredientsSection } from './sections/ingredients-section';
+import { LinksSection } from './sections/links-section';
 import { NotesSection } from './sections/notes-section';
 import { useSectionEditor } from './sections/use-section-editor';
 import { useDeleteRecipe } from './use-delete-recipe';
@@ -51,6 +52,7 @@ import { useDeleteRecipe } from './use-delete-recipe';
 export function CollectionDetailBody(props: {
   collection: Recipe;
   onBack: () => void;
+  backLabel: string;
   /** true while this page deletes its collection; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
@@ -66,7 +68,11 @@ export function CollectionDetailBody(props: {
   const [planning, setPlanning] = useState(false);
   const photo = useRecipePhoto(collection);
   const editor = useSectionEditor(collection);
-  const remove = useDeleteRecipe(collection, props.onBack, props.onDeleting);
+  const { remove, dialog: deleteDialog } = useDeleteRecipe(
+    collection,
+    props.onBack,
+    props.onDeleting,
+  );
 
   // AC-025, AC-028: for the collection's own portions; nothing in it reads "Noch nichts enthalten".
   const canGoOnList = canPutCollectionOnList(collection, contents);
@@ -94,6 +100,7 @@ export function CollectionDetailBody(props: {
       />
       {desktop ? actions : null}
       <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} />
+      {deleteDialog}
     </>
   );
 
@@ -141,7 +148,13 @@ export function CollectionDetailBody(props: {
       title="Eigene Zutaten"
     />
   );
-  const notes = <NotesSection recipe={collection} editor={editor} />;
+  // "Links" stand under "Notizen" (spec 0023, REQ-009).
+  const notes = (
+    <>
+      <NotesSection recipe={collection} editor={editor} />
+      <LinksSection recipe={collection} editor={editor} />
+    </>
+  );
 
   return (
     <Screen
@@ -151,7 +164,7 @@ export function CollectionDetailBody(props: {
         <ScreenHeader
           title={collection.title}
           titleOnScroll
-          backLabel="Essen"
+          backLabel={props.backLabel}
           onBack={props.onBack}
           right={headerRight}
           testID="recipe-bar-title"

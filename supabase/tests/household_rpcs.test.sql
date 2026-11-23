@@ -162,10 +162,10 @@ select throws_ok(
 select tests.authenticate_as((select id from fx where key = 'enrico'));
 insert into fx values ('inv_nadja', public.invite_member((select id from fx where key = 'home'), '  Nadja@Example.COM '));
 select results_eq(
-  $$ select household_id, email, invited_by, accepted_at from public.household_invitations
+  $$ select household_id, email, invited_by from public.household_invitations
      where id = (select id from fx where key = 'inv_nadja') $$,
   $$ select (select id from fx where key = 'home'), 'nadja@example.com',
-            (select id from fx where key = 'enrico'), null::timestamptz $$,
+            (select id from fx where key = 'enrico') $$,
   'AC-008: invite_member stores the lowercased address as an open invitation by the caller'
 );
 select is(
@@ -279,8 +279,8 @@ select ok(
   exists (select 1 from public.household_members
           where household_id = (select id from fx where key = 'home')
             and profile_id = (select id from fx where key = 'dora'))
-  and (select accepted_at = now() from public.household_invitations where id = (select id from fx where key = 'inv_dora')),
-  'T2: after accepting she is a member and the invitation is marked accepted'
+  and not exists (select 1 from public.household_invitations where id = (select id from fx where key = 'inv_dora')),
+  'T2 (spec 0027, Decision 1): after accepting she is a member and the invitation is gone'
 );
 select tests.authenticate_as((select id from fx where key = 'dora'));
 select throws_ok(
@@ -300,8 +300,8 @@ select tests.authenticate_as((select id from fx where key = 'ben'));
 select results_eq(
   $$ select (select count(*)::int from public.household_invitations where email = 'carla@example.com'),
             (select count(*)::int from public.deleted_records where table_name = 'household_invitations') $$,
-  $$ values (0, 1) $$,
-  'T2: a declined invitation is gone and leaves a tombstone for the household'
+  $$ values (0, 0) $$,
+  'T2: a declined invitation is gone, without a tombstone (spec 0031, AC-043: invitations come in full)'
 );
 
 -- ===================== remove_member (AC-012) =====================
@@ -310,10 +310,9 @@ select lives_ok(
   $$ select public.remove_member((select id from fx where key = 'home'), (select id from fx where key = 'carla')) $$,
   'AC-012: a member removes another member'
 );
-select results_eq(
+select is_empty(
   $$ select record_id from public.deleted_records where table_name = 'household_members' $$,
-  $$ select id::text from fx where key = 'carla' $$,
-  'AC-012: the removal leaves a membership tombstone (record_id = profile_id) for the remaining members'
+  'AC-012: the removal leaves no tombstone; memberships come in full on every pull (spec 0031, AC-043)'
 );
 
 select tests.authenticate_as((select id from fx where key = 'carla'));
@@ -382,8 +381,8 @@ select (select id from fx where key = 'wg_item'), a.household_id, a.id
 from public.articles a where a.household_id = (select id from fx where key = 'wg') and a.name_key = 'aepfel';
 insert into public.shopping_contributions (household_id, item_id)
 select (select id from fx where key = 'wg'), (select id from fx where key = 'wg_item');
-insert into private.recipe_deletions (household_id, recipe_id, deleted_by, snapshot)
-select (select id from fx where key = 'wg'), gen_random_uuid(), (select id from fx where key = 'enrico'), '{}';
+insert into private.deletions (household_id, kind, target_id, deleted_by, snapshot)
+select (select id from fx where key = 'wg'), 'recipe', gen_random_uuid(), (select id from fx where key = 'enrico'), '{}';
 select lives_ok(
   $$ delete from public.households where id = (select id from fx where key = 'wg') $$,
   'T1 households: a household with recipes, articles and items on the list can be deleted'
@@ -397,7 +396,7 @@ select is(
   'T1 households: its articles, recipes, items and areas are gone'
 );
 select is(
-  (select count(*)::int from private.recipe_deletions where household_id = (select id from fx where key = 'wg')),
+  (select count(*)::int from private.deletions where household_id = (select id from fx where key = 'wg')),
   0,
   'spec 0008 T1 households: the snapshots of deleted recipes go with the household'
 );

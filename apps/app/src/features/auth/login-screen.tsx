@@ -10,6 +10,8 @@ import { Platform, View } from 'react-native';
 
 import { authConfig } from '@/lib/auth-config';
 
+import { rememberReturnPath } from './return-path';
+
 const GOOGLE_SIGN_IN_AVAILABLE = Platform.OS === 'web';
 const NATIVE_HINT =
   'In der iPhone- und Android-App kommt die Google-Anmeldung später. Öffne die App bis dahin im Browser.';
@@ -46,7 +48,10 @@ export function LoginScreen(props: { error?: string }) {
           // Spec 0003 covers the web app only; native Google sign-in comes with the native app.
           disabled={busy || !GOOGLE_SIGN_IN_AVAILABLE}
           hint={GOOGLE_SIGN_IN_AVAILABLE ? undefined : NATIVE_HINT}
-          onPress={() => run(signInWithGoogle)}
+          onPress={() => {
+            rememberReturnPath();
+            run(signInWithGoogle);
+          }}
           testID="login-google"
         />
         {GOOGLE_SIGN_IN_AVAILABLE ? null : <Notice text={NATIVE_HINT} testID="login-native-hint" />}

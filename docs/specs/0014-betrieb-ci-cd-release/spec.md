@@ -48,7 +48,7 @@ es eine neue gibt.
   behoben; expand → migrate → contract hält ältere Versionen lauffähig.
 - **Keine Überwachung mit Bereitschaft:** kein Uptime-Dienst, kein Fehler-Tracking (etwa Sentry),
   keine Metrik-Dashboards.
-- **Keine eigene Domain** in dieser Spec (Offene Frage 13), **kein Selbst-Hosting** (ADR-0007,
+- ~~**Keine eigene Domain**~~ (aufgehoben am 22.11.2026: `house.kuschel-nest.de`) in dieser Spec (Offene Frage 13), **kein Selbst-Hosting** (ADR-0007,
   Nachtrag).
 - **Keine KI-Schlüssel in Produktion**, solange die KI ausgeblendet ist (Spec 0005; Offene Frage 10).
 - **Keine Tagesgrenzen für Einladungen und neue Haushalte** (Offene Frage 11).
@@ -178,6 +178,24 @@ Builds liegen als Repository-Variablen `PRODUCTION_*` bzw. `PREVIEW_*`, Entschei
 | Apple Developer Program, erst für iOS (Spec „Native Apps“) | 99 $ im Jahr                                       |
 | Play Console, erst für den Play Store (Spec „Native Apps“) | 25 $ einmalig                                      |
 | Supabase Pro, erst bei Bedarf                              | 25 $ im Monat (Offene Frage 14)                    |
+
+## Geändert nach der ersten Veröffentlichung (22.11.2026)
+
+Beim ersten Vorschau-Lauf und der ersten Veröffentlichung (v2026.11.1) wurden diese Punkte bewusst
+anders gelöst, als die Kriterien unten es beschreiben. Die Kriterien verweisen hierher; Begründung
+und Belege stehen in `plan.md` unter „Entscheidungen beim Bauen“ (Nummern in Klammern).
+
+| Kriterium oder Stelle                         | Bisher                                                       | Jetzt                                                                                                                                                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-006, Entscheidung 28                       | E2E in der Pipeline, Pflicht-Check                           | seit Spec 0031: Job „e2e“ in `release.yml` (blockierend, sechs Shards, von Hand startbar), nicht in PRs                                                                                               |
+| AC-060, Tabelle „GitHub-Umgebungen“, ADR-0015 | je Umgebung ein eingeschränktes Supabase-Token               | ein Token mit „Full access“ für beide Organisationen, 90 Tage, in `preview` und `production`; Risiko bewusst akzeptiert (Entscheidung Enrico)                                                         |
+| „kein Datenbank-Passwort“ (Konzept, Runbook)  | kein Datenbank-Passwort in `preview` und `production`        | Secret `SUPABASE_POOLER_URL` mit Passwort je Umgebung: die Runner haben kein IPv6, Datenbank-Befehle laufen über den Session-Pooler (10)                                                              |
+| AC-045                                        | nur `ALLOWED_ORIGINS`                                        | zusätzlich `VAPID_SUBJECT` mit der Web-Adresse der Umgebung, sonst überschreibt der feste Wert der `config.toml` (`https://localhost`) den der Produktion (11)                                        |
+| AC-073                                        | `--read-only` mit `set local role`                           | die eine GraphQL-Abfrage als `authenticated` läuft mit `--yes` und transaktionslokalem `set_config`; die Nur-Lese-Rolle darf die Rolle nicht wechseln (13)                                            |
+| AC-034, Tabelle „Azure-Ressourcen“            | West Europe, Standard-Adresse der Static Web App             | Static Web Apps in East US 2, Speicher und Identitäten in Germany West Central; eigene Domains `house.kuschel-nest.de` und `test.house.kuschel-nest.de` (Nicht-Ziel „Keine eigene Domain“ aufgehoben) |
+| AC-052, AC-054                                | `daily/<Datum>`, Löschen nach 30 Tagen                       | `daily/<Datum>/<Lauf>`, zusätzlich `release/v<Version>/`; Löschen nach 31 Tagen (18)                                                                                                                  |
+| Azure-Anmeldung der Umgebungen                | Betreff `repo:enricogoerlitz/housekeeping-app:environment:…` | unveränderlicher Betreff von GitHub mit Besitzer- und Repo-ID (12, 20)                                                                                                                                |
+| AC-069                                        | Vorschau bei jedem Push nach `develop`                       | Vorschau nur von Hand (`gh workflow run preview.yml --ref develop`); `develop` sammelt, Tests laufen lokal (Entscheidung Enrico, 22.11.2026)                                                          |
 
 ## Abhängigkeiten, Voraussetzungen und kritischer Pfad
 
@@ -398,6 +416,12 @@ Und         keiner dieser Jobs kann ein Secret der Umgebungen „preview“, „
 Und         dieselben Checks laufen nach jedem Zusammenführen noch einmal auf „develop“ bzw. „main“
 ```
 
+_Nachtrag (Spec 0031, REQ-002, Entscheidung 4, 23.11.2026):_ PRs bleiben ohne e2e. Die volle Suite
+(`pnpm e2e` in sechs Shards und `pnpm e2e:dev`) läuft jetzt als Job „e2e“ in `release.yml`
+(`.github/workflows/e2e.yml`), vor „Sicherung“, „Supabase ausliefern“ und „Web ausliefern“, gegen
+einen lokalen Supabase-Stack im Runner und ohne Secrets. Von Hand gestartet prüft er einen Zweig,
+z. B. `develop` vor der Release-PR.
+
 **AC-007 — pgTAP läuft mit**
 
 ```gherkin
@@ -480,7 +504,7 @@ Dann        melden alle Pflicht-Checks ein Ergebnis, und die PR lässt sich zusa
 **AC-012 — Vorschau-Adresse** — verworfen am 21.11.2026: siehe AC-069 (eine feste Vorschau für
 `develop` statt einer Adresse je PR).
 
-**AC-069 — Vorschau zeigt `develop`** (neu am 21.11.2026)
+**AC-069 — Vorschau zeigt `develop`** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“) (neu am 21.11.2026)
 
 ```gherkin
 Angenommen  die PR „feat: Reisetaschen packen (#41)“ wird nach „develop“ zusammengeführt, und die
@@ -768,7 +792,7 @@ Und         mit einem Tag unter der Mindestversion lehnt die Auslieferung ab
 **Offline:** offline vollständig wie bisher. Der Service Worker hält die App-Hülle vor; eine
 Auslieferung ändert daran nichts.
 
-**AC-034 — Erreichbar**
+**AC-034 — Erreichbar** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“)
 
 ```gherkin
 Angenommen  die erste Veröffentlichung ist durch
@@ -890,7 +914,7 @@ Dann        lehnt jede beide Aufrufe ab (401 bzw. 403)
 Und         eine Function, die aus dem Repo entfernt wurde, gibt es in Produktion nicht mehr
 ```
 
-**AC-045 — Secrets**
+**AC-045 — Secrets** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“)
 
 ```gherkin
 Angenommen  ein Wert für die Functions, etwa „ALLOWED_ORIGINS“, wird in der Umgebung „production“
@@ -909,7 +933,7 @@ Dann        ist er privat und nimmt höchstens 2 MiB und nur „image/jpeg“ an
 Und         ein Abruf eines Fotos ohne Anmeldung scheitert
 ```
 
-**AC-073 — `pg_net` nicht über die API erreichbar** (ergänzt am 21.11.2026 aus der
+**AC-073 — `pg_net` nicht über die API erreichbar** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“) (ergänzt am 21.11.2026 aus der
 Sicherheitsprüfung der Spec 0013: Supabase gibt die Warteschlange von `pg_net` an alle
 Datenbank-Rollen frei und `net.http_post` an `anon` und `authenticated`, und eine Migration kann
 das nicht zurücknehmen; nur die freigegebenen Schemas der API halten sie fern; geändert am
@@ -1011,7 +1035,7 @@ Dann        bricht sie vor jeder Auslieferung mit „iOS ist an, aber der Apple-
 
 **Offline:** betrifft keine App-Bedienung.
 
-**AC-052 — Nächtliche Sicherung**
+**AC-052 — Nächtliche Sicherung** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“)
 
 ```gherkin
 Angenommen  Produktion ist erreichbar
@@ -1032,7 +1056,7 @@ Und         die Identität der Sicherung kann Sicherungen schreiben, aber keine 
             überschreiben, die jünger als 30 Tage sind
 ```
 
-**AC-054 — Aufbewahrung**
+**AC-054 — Aufbewahrung** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“)
 
 ```gherkin
 Angenommen  seit über einem Jahr entsteht jede Nacht eine Sicherung
@@ -1098,7 +1122,7 @@ Und         die Azure-Anmeldung läuft per OIDC mit je einer Identität für Web
 Und         ein zur Laufzeit geholtes Token erscheint im Log nur als „***“
 ```
 
-**AC-060 — Eingeschränktes Supabase-Token**
+**AC-060 — Eingeschränktes Supabase-Token** (geändert am 22.11.2026, siehe „Geändert nach der ersten Veröffentlichung“)
 
 ```gherkin
 Angenommen  das Supabase-Zugangstoken der Umgebung „production“

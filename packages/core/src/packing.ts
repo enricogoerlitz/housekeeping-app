@@ -1,15 +1,9 @@
-import {
-  absenceEndLabel,
-  absenceStripes,
-  stripeText,
-  type AbsenceStripe,
-  type DroppedPackingList,
-} from './absences';
 import { moveInOrder } from './areas';
-import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
+import { daysBetween, formatShortDate, weekdayShort } from './dates';
+import { overviewSection } from './overview';
 import { normalizeText } from './text';
+import { stripeText, tripEndLabel, type TripStripe } from './trips';
 import type {
-  Absence,
   Id,
   ISODate,
   Member,
@@ -17,6 +11,7 @@ import type {
   PackingBagItem,
   PackingItem,
   PackingListBag,
+  Trip,
 } from './types';
 
 // Rules of Reisetaschen and Packlisten (spec 0012) without a screen. The server checks the same
@@ -28,7 +23,7 @@ export const MAX_BAG_NAME_LENGTH = 60;
 export const MAX_PACKING_ITEM_NAME_LENGTH = 120;
 /** Fixed quantity and quantity per day: 1–99. */
 export const MAX_PACKING_COUNT = 99;
-/** A computed "je Tag" quantity is capped like `least(per_day × days, 9999)` on the server. */
+/** A computed "je Tag" quantity is capped like `least(per_day_quantity × days, 9999)` on the server. */
 export const MAX_PACKING_QUANTITY = 9999;
 export const MAX_BAG_ITEMS = 100;
 /** Rows one save may write; `apply_changes` allows 200 operations (decision 13). */
@@ -41,6 +36,38 @@ export interface PackingLine {
   name: string;
   /** 1–99; undefined = no quantity. */
   quantity?: number;
+  /** The quantity is per day of the trip ("1 je Tag", spec 0022 REQ-010). */
+  perDay?: true;
+}
+
+const PER_DAY_SUFFIX = /(?:(?:^|\s)(?:je|pro)\s+tag|\s*\/\s*tag)$/i;
+const STANDALONE_NUMBER = /(?:^|\s)\d+\s*(?:×|x)?(?:\s|$)/i;
+
+/**
+ * "n je Tag" (spec 0022, REQ-010): a number 1–99 (with "×"/"x" or without) before "je Tag",
+ * "pro Tag" or "/Tag" at the end, or before the name; without a number 1. Two numbers, a number
+ * outside 1–99 or no name leave everything as the name (undefined here).
+ */
+function parsePerDay(text: string): PackingLine | undefined {
+  const suffix = PER_DAY_SUFFIX.exec(text);
+  if (!suffix) return undefined;
+  const head = text.slice(0, suffix.index).trim();
+  let name = head;
+  let quantity = 1;
+  const after = /^(.*?)\s*(\d+)\s*(?:×|x)?$/i.exec(head);
+  const before = /^(\d+)\s*(?:×|x(?=\s))?\s*(\S.*)$/i.exec(head);
+  if (after && after[1]) {
+    name = after[1].trim();
+    quantity = Number(after[2]);
+  } else if (before && before[2]) {
+    name = before[2].trim();
+    quantity = Number(before[1]);
+  } else if (/^\d/.test(head)) {
+    return undefined;
+  }
+  if (name === '' || STANDALONE_NUMBER.test(name)) return undefined;
+  if (quantity < 1 || quantity > MAX_PACKING_COUNT) return undefined;
+  return { name, quantity, perDay: true };
 }
 
 /** Collapses inner whitespace and trims, the form the database stores (`name = btrim(name)`). */
@@ -56,6 +83,7 @@ export function cleanPackingName(text: string): string {
 export function parsePackingLine(line: string): PackingLine | undefined {
   const text = cleanPackingName(line);
   if (text === '') return undefined;
+  if (PER_DAY_SUFFIX.test(text)) return parsePerDay(text) ?? { name: text };
   // "x" only counts as "times" when a space follows, so "2 xylophon" keeps its x.
   const match = /^(\d+)(\s*(?:×|[xX](?=\s))?\s*)(\S.*)$/.exec(text);
   const quantity = Number(match?.[1]);
@@ -255,8 +283,8 @@ export function duplicateBag(
 
 // ---------- Creating a Packliste ----------
 
-/** Days of an absence, the first and the last included (1.–7.1. = 7). */
-export function absenceDays(from: ISODate, to: ISODate): number {
+/** Days of a trip, the first and the last included (1.–7.1. = 7). */
+export function tripDays(from: ISODate, to: ISODate): number {
   return daysBetween(from, to) + 1;
 }
 
@@ -271,7 +299,7 @@ export interface PackingListPlan {
 }
 
 function copyBag(
-  absence: Pick<Absence, 'id' | 'from' | 'to'>,
+  trip: Pick<Trip, 'id' | 'from' | 'to'>,
   bag: PackingBag,
   bagItems: readonly PackingBagItem[],
   sort: number,
@@ -279,13 +307,13 @@ function copyBag(
 ): PackingListPlan {
   const listBag: PackingListBag = {
     id: newId(),
-    absenceId: absence.id,
+    tripId: trip.id,
     bagId: bag.id,
     name: bag.name,
     memberId: bag.memberId,
     sort,
   };
-  const days = absenceDays(absence.from, absence.to);
+  const days = tripDays(trip.from, trip.to);
   const items = bagItemsOf(bag.id, bagItems).map((item, index): PackingItem => ({
     id: newId(),
     listBagId: listBag.id,
@@ -298,6 +326,8 @@ function copyBag(
     packed: false,
     packSeq: 0,
     sort: index,
+    bagItemId: item.id,
+    fromBag: true,
   }));
   return { listBags: [listBag], items };
 }
@@ -310,47 +340,33 @@ function joinPlans(plans: PackingListPlan[]): PackingListPlan {
 }
 
 /**
- * The packing lists of the absences saved together (AC-011, AC-014; decision 9): a copy of each
- * chosen bag in the order of the page, "je Tag" computed with each absence's days. With several
- * single absences a bag "für" one of their people goes only to her list, every other bag to each
- * list. Chosen bags that no longer exist are left out.
+ * The packing list of a new trip (spec 0012, AC-011; spec 0022, AC-008, AC-009): a copy of each
+ * chosen bag in the order of the page, "je Tag" computed with the trip's days. Chosen bags that no
+ * longer exist are left out.
  */
-export function planPackingLists(input: {
-  absences: readonly Pick<Absence, 'id' | 'memberId' | 'from' | 'to'>[];
+export function planPackingList(input: {
+  trip: Pick<Trip, 'id' | 'from' | 'to'>;
   bagIds: readonly Id[];
   bags: readonly PackingBag[];
   bagItems: readonly PackingBagItem[];
   newId: () => Id;
 }): PackingListPlan {
   const chosen = orderedBags(input.bags).filter((bag) => input.bagIds.includes(bag.id));
-  const people = new Set(input.absences.flatMap((absence) => absence.memberId ?? []));
-  const several = input.absences.length > 1;
   return joinPlans(
-    input.absences.map((absence) => {
-      const bags = chosen.filter(
-        (bag) =>
-          !several ||
-          bag.memberId === undefined ||
-          !people.has(bag.memberId) ||
-          bag.memberId === absence.memberId,
-      );
-      return joinPlans(
-        bags.map((bag, index) => copyBag(absence, bag, input.bagItems, index, input.newId)),
-      );
-    }),
+    chosen.map((bag, index) => copyBag(input.trip, bag, input.bagItems, index, input.newId)),
   );
 }
 
-/** "+ Reisetasche hinzufügen" (AC-033): a copy of the bag at the end of the absence's list. */
+/** "+ Reisetasche hinzufügen" (AC-033): a copy of the bag at the end of the trip's list. */
 export function planAddBagToList(input: {
-  absence: Pick<Absence, 'id' | 'from' | 'to'>;
+  trip: Pick<Trip, 'id' | 'from' | 'to'>;
   bag: PackingBag;
   bagItems: readonly PackingBagItem[];
   listBags: readonly PackingListBag[];
   newId: () => Id;
 }): PackingListPlan {
-  const sort = nextSort(input.listBags.filter((bag) => bag.absenceId === input.absence.id));
-  return copyBag(input.absence, input.bag, input.bagItems, sort, input.newId);
+  const sort = nextSort(input.listBags.filter((bag) => bag.tripId === input.trip.id));
+  return copyBag(input.trip, input.bag, input.bagItems, sort, input.newId);
 }
 
 /**
@@ -363,16 +379,21 @@ export function planAddPackingItem(input: {
   /** Packstücke of the packing list. */
   items: readonly PackingItem[];
   alsoInBag?: readonly PackingBagItem[];
+  /** Days of the trip, for a "je Tag" line (spec 0022, AC-032). */
+  days?: number;
   newId: () => Id;
 }): { item: PackingItem; bagItem?: PackingBagItem } {
+  const perDay = input.line.perDay === true ? input.line.quantity : undefined;
   const item: PackingItem = {
     id: input.newId(),
     listBagId: input.listBag.id,
     name: input.line.name,
-    quantity: input.line.quantity,
+    quantity: perDay !== undefined ? packQuantity(perDay, input.days ?? 1) : input.line.quantity,
+    perDay,
     packed: false,
     packSeq: 0,
     sort: nextSort(input.items.filter((entry) => entry.listBagId === input.listBag.id)),
+    fromBag: false,
   };
   const bagId = input.listBag.bagId;
   if (!input.alsoInBag || bagId === undefined) return { item };
@@ -381,10 +402,10 @@ export function planAddPackingItem(input: {
     bagId,
     name: input.line.name,
     quantity: input.line.quantity,
-    perDay: false,
+    perDay: perDay !== undefined,
     sort: nextSort(input.alsoInBag.filter((entry) => entry.bagId === bagId)),
   };
-  return { item, bagItem };
+  return { item: { ...item, bagItemId: bagItem.id, fromBag: true }, bagItem };
 }
 
 /** The Reisetasche a bag of the packing list came from, while it exists (decision 18). */
@@ -396,18 +417,18 @@ export function sourceBag(
 }
 
 /**
- * The chips of the absence window (AC-012, decision 12): the bag used last first (latest start
- * of an absence it hangs on), never used ones in the order of the page.
+ * The chips of the trip window (AC-012, decision 12): the bag used last first (latest start
+ * of a trip it hangs on), never used ones in the order of the page.
  */
 export function bagChipOrder(
   bags: readonly PackingBag[],
   listBags: readonly PackingListBag[],
-  absences: readonly Absence[],
+  trips: readonly Pick<Trip, 'id' | 'from'>[],
 ): PackingBag[] {
-  const fromOf = new Map(absences.map((absence) => [absence.id, absence.from]));
+  const fromOf = new Map(trips.map((trip) => [trip.id, trip.from]));
   const lastUsed = new Map<Id, ISODate>();
   for (const listBag of listBags) {
-    const from = fromOf.get(listBag.absenceId);
+    const from = fromOf.get(listBag.tripId);
     if (listBag.bagId === undefined || from === undefined) continue;
     const known = lastUsed.get(listBag.bagId);
     if (known === undefined || from > known) lastUsed.set(listBag.bagId, from);
@@ -419,19 +440,17 @@ export function bagChipOrder(
   return [...used, ...page.filter((bag) => !lastUsed.has(bag.id))];
 }
 
-/** "+ Reisetasche hinzufügen" offers every bag not yet attached to the absence (AC-033). */
+/** "+ Reisetasche hinzufügen" offers every bag not yet attached to the trip (AC-033). */
 export function addableBags(
   bags: readonly PackingBag[],
   listBags: readonly PackingListBag[],
-  absenceId: Id,
+  tripId: Id,
 ): PackingBag[] {
-  const attached = new Set(
-    listBags.filter((bag) => bag.absenceId === absenceId).map((bag) => bag.bagId),
-  );
+  const attached = new Set(listBags.filter((bag) => bag.tripId === tripId).map((bag) => bag.bagId));
   return orderedBags(bags).filter((bag) => !attached.has(bag.id));
 }
 
-// ---------- Urlaubsseite ----------
+// ---------- Reise-Fenster ----------
 
 export interface PackingProgress {
   packed: number;
@@ -458,14 +477,14 @@ export interface PackingSection {
   counter: string;
 }
 
-/** One section per bag of the absence's packing list, in its order (AC-016, AC-020). */
+/** One section per bag of the trip's packing list, in its order (AC-016, AC-020). */
 export function packingSections(
   listBags: readonly PackingListBag[],
   items: readonly PackingItem[],
-  absenceId: Id,
+  tripId: Id,
 ): PackingSection[] {
   return listBags
-    .filter((bag) => bag.absenceId === absenceId)
+    .filter((bag) => bag.tripId === tripId)
     .sort(bySortThenId)
     .map((listBag) => {
       const own = items.filter((item) => item.listBagId === listBag.id).sort(bySortThenId);
@@ -479,15 +498,6 @@ export function packingSections(
         counter: `${packed.length}/${own.length}`,
       };
     });
-}
-
-/** The stripe a trip page shows: the one holding the absence of its address (decisions 9, 14). */
-export function tripStripe(
-  absenceId: Id,
-  absences: Absence[],
-  members: Member[],
-): AbsenceStripe | undefined {
-  return absenceStripes(absences, members).find((stripe) => stripe.absenceIds.includes(absenceId));
 }
 
 export interface TripHeader {
@@ -506,14 +516,13 @@ function dayLabel(date: ISODate): string {
   return `${weekdayShort(date)} ${formatShortDate(date)}`;
 }
 
-/** The head of the Urlaubsseite (AC-016): note as title, who, period and days. */
-export function tripHeader(stripe: AbsenceStripe, members: readonly Member[]): TripHeader {
+/** The head of the trip window (AC-001): note as title, who, period and days. */
+export function tripHeader(stripe: TripStripe, members: readonly Member[]): TripHeader {
   const period =
     stripe.from === stripe.to
       ? dayLabel(stripe.from)
       : `${dayLabel(stripe.from)} – ${dayLabel(stripe.to)}`;
-  const days = absenceDays(stripe.from, stripe.to);
-  const duration = days === 1 ? '1 Tag' : `${days} Tage`;
+  const duration = durationLabel(tripDays(stripe.from, stripe.to));
   return {
     title: stripeText(stripe),
     memberIds: stripe.household ? members.map((member) => member.id) : [...stripe.memberIds],
@@ -523,17 +532,35 @@ export function tripHeader(stripe: AbsenceStripe, members: readonly Member[]): T
   };
 }
 
+const durationLabel = (days: number) => (days === 1 ? '1 Tag' : `${days} Tage`);
+
 /**
- * "beginnt in 12 Tagen", "beginnt morgen", "beginnt heute", during the absence "läuft bis Do
- * 7.1.", afterwards "vorbei" (decision 15). `day` is today on the Urlaubsseite (AC-016) and the
- * shown day on the card of the Übersicht (AC-042).
+ * What the trip window shows while "Speichern" is visible (spec 0031, REQ-029): the duration and
+ * the "je Tag" quantities of the period set, as the server will recalculate them on saving
+ * (recalcPerDay). Without a changed period, or with an end before the start, the saved trip.
+ */
+export function tripPreview(
+  saved: { from: ISODate; to: ISODate },
+  period: { from: ISODate; to: ISODate } | undefined,
+  items: readonly PackingItem[],
+): { duration: string; items: readonly PackingItem[] } {
+  const shown = period && period.to >= period.from ? period : saved;
+  const days = tripDays(shown.from, shown.to);
+  const changed = days !== tripDays(saved.from, saved.to);
+  return { duration: durationLabel(days), items: changed ? recalcPerDay(items, days) : items };
+}
+
+/**
+ * "beginnt in 12 Tagen", "beginnt morgen", "beginnt heute", during the trip "läuft bis Do
+ * 7.1.", afterwards "vorbei" (decision 15). `day` is today, in the trip window (AC-001) as on
+ * the card of the Übersicht (spec 0018, AC-020).
  */
 export function startsInLabel(from: ISODate, to: ISODate, day: ISODate): string {
   const days = daysBetween(day, from);
   if (days > 1) return `beginnt in ${days} Tagen`;
   if (days === 1) return 'beginnt morgen';
   if (days === 0) return 'beginnt heute';
-  if (day <= to) return `läuft ${absenceEndLabel(to)}`;
+  if (day <= to) return `läuft ${tripEndLabel(to)}`;
   return 'vorbei';
 }
 
@@ -560,108 +587,333 @@ function itemsOfListBags(
 }
 
 /**
- * The dialog before deleting absences (AC-038): "Die Packliste mit 30 Packstücken wird mit
- * gelöscht."; undefined when none of them has a packing list (then 5 s "Rückgängig").
+ * The dialog before deleting a trip (AC-016): "Die Packliste mit 30 Packstücken wird mit
+ * gelöscht."; undefined without a packing list (then 5 s "Rückgängig", AC-017).
  */
-export function absenceDeleteDialog(
-  absenceIds: readonly Id[],
+export function tripDeleteDialog(
+  tripId: Id,
   listBags: readonly PackingListBag[],
   items: readonly PackingItem[],
 ): string | undefined {
-  const own = listBags.filter((bag) => absenceIds.includes(bag.absenceId));
+  const own = listBags.filter((bag) => bag.tripId === tripId);
   if (own.length === 0) return undefined;
-  const count = countOf(itemsOfListBags(own, items), true);
-  const lists = new Set(own.map((bag) => bag.absenceId)).size;
-  return lists === 1
-    ? `Die Packliste mit ${count} wird mit gelöscht.`
-    : `Die Packlisten mit ${count} werden mit gelöscht.`;
-}
-
-/**
- * The note in the absence window when saving removes rows with a packing list (decision 8):
- * "Die Packliste von Enrico mit 21 Packstücken wird mit gelöscht."; undefined when none.
- */
-export function droppedPackingListMessage(
-  dropped: readonly DroppedPackingList[],
-  members: readonly Member[],
-): string | undefined {
-  if (dropped.length === 0) return undefined;
-  return dropped
-    .map((list) => {
-      const name = members.find((member) => member.id === list.memberId)?.name;
-      const whose = name === undefined ? '' : ` von ${name}`;
-      return `Die Packliste${whose} mit ${countOf(list.itemCount, true)} wird mit gelöscht.`;
-    })
-    .join(' ');
+  return `Die Packliste mit ${countOf(itemsOfListBags(own, items), true)} wird mit gelöscht.`;
 }
 
 // ---------- Übersicht and calendar ----------
 
 export interface PackingCard {
-  absenceId: Id;
-  /** The note of the absence, else "abwesend"; the card reads "Reisetasche · <title>". */
+  tripId: Id;
+  /** The note of the trip, else "unterwegs"; the card reads "Reisetasche · <title>". */
   title: string;
-  /** The avatar; undefined for the whole household. */
-  memberId?: Id;
+  /** The avatars; empty for the whole household. */
+  memberIds: Id[];
   packed: number;
   total: number;
   /** "12/30 gepackt", fully packed "alles gepackt ✓" (AC-042, AC-044). */
   progressLabel: string;
-  /** Counted from the shown day (AC-042). */
+  /** Counted from today, whatever day is shown (spec 0018, AC-020). */
   startsIn: string;
 }
 
 /**
- * The cards "Reisetasche" of the Übersicht (D33, decision 15): one per absence with at least one
- * bag, when the week (Mo–So) of the shown day holds a day of it or it starts 1 to 7 days after
- * the shown day; earliest first.
+ * The cards "Reisetasche" of the Übersicht (D33, decision 15): one per trip with at least one
+ * bag, when the Abschnitt of the shown day (spec 0020, REQ-010) holds a day of it or it starts 1
+ * to 7 days after the shown day; earliest first. "beginnt in n Tagen" counts from today (spec
+ * 0018, AC-020).
  */
 export function packingCards(input: {
   shownDay: ISODate;
-  absences: readonly Absence[];
+  today: ISODate;
+  trips: readonly TripStripe[];
   listBags: readonly PackingListBag[];
   items: readonly PackingItem[];
 }): PackingCard[] {
-  const monday = startOfWeek(input.shownDay);
-  const sunday = addDays(monday, 6);
-  return [...input.absences]
-    .filter((absence) => {
-      const ahead = daysBetween(input.shownDay, absence.from);
-      const inWeek = absence.from <= sunday && absence.to >= monday;
-      return inWeek || (ahead >= 1 && ahead <= 7);
+  const section = overviewSection(input.shownDay, input.today);
+  return [...input.trips]
+    .filter((trip) => {
+      // A draft has no packing card yet (spec 0030, AC-013).
+      if (trip.draft) return false;
+      const ahead = daysBetween(input.shownDay, trip.from);
+      const inSection = trip.from <= section.to && trip.to >= section.from;
+      return inSection || (ahead >= 1 && ahead <= 7);
     })
     .sort(
       (a, b) =>
         a.from.localeCompare(b.from) ||
         a.to.localeCompare(b.to) ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        (a.tripId < b.tripId ? -1 : a.tripId > b.tripId ? 1 : 0),
     )
-    .flatMap((absence): PackingCard[] => {
-      const own = input.listBags.filter((bag) => bag.absenceId === absence.id);
+    .flatMap((trip): PackingCard[] => {
+      const own = input.listBags.filter((bag) => bag.tripId === trip.tripId);
       if (own.length === 0) return [];
       const ids = new Set(own.map((bag) => bag.id));
       const progress = packingProgress(input.items.filter((item) => ids.has(item.listBagId)));
       const allPacked = progress.total > 0 && progress.packed === progress.total;
       return [
         {
-          absenceId: absence.id,
-          title: stripeText({ note: absence.note?.trim() || undefined }),
-          memberId: absence.memberId,
+          tripId: trip.tripId,
+          title: stripeText(trip),
+          memberIds: trip.household ? [] : trip.memberIds,
           packed: progress.packed,
           total: progress.total,
           progressLabel: allPacked
             ? 'alles gepackt ✓'
             : `${progress.packed}/${progress.total} gepackt`,
-          startsIn: startsInLabel(absence.from, absence.to, input.shownDay),
+          startsIn: startsInLabel(trip.from, trip.to, input.today),
         },
       ];
     });
 }
 
-/** The bag icon on a stripe: one of its absences has a packing list (AC-046). */
+/** The bag icon on a stripe: its trip has a packing list (AC-046). */
 export function stripeHasPackingList(
-  stripe: Pick<AbsenceStripe, 'absenceIds'>,
+  stripe: Pick<TripStripe, 'tripId'>,
   listBags: readonly PackingListBag[],
 ): boolean {
-  return listBags.some((bag) => stripe.absenceIds.includes(bag.absenceId));
+  return listBags.some((bag) => bag.tripId === stripe.tripId);
+}
+
+// ---------- Changing a Packstück of the packing list (spec 0022, REQ-009) ----------
+
+/**
+ * The Packstück after "Speichern" in its window (AC-028, AC-030): name, count (empty, 1–99) and
+ * "je Tag" with the trip's `days`; "je Tag" without a count is 1. The packed state stays.
+ */
+export function planEditPackingItem(input: {
+  item: PackingItem;
+  name: string;
+  count?: number;
+  perDay: boolean;
+  days: number;
+}): PackingItem {
+  const name = cleanPackingName(input.name);
+  if (name === '') throw new Error('Name fehlt');
+  const tooLong = packingLineProblem({ name });
+  if (tooLong) throw new Error(tooLong);
+  const count = input.perDay ? (input.count ?? 1) : input.count;
+  if (count !== undefined && (!Number.isInteger(count) || count < 1 || count > MAX_PACKING_COUNT)) {
+    throw new Error(`Anzahl 1 bis ${MAX_PACKING_COUNT}`);
+  }
+  return {
+    ...input.item,
+    name,
+    quantity: input.perDay && count !== undefined ? packQuantity(count, input.days) : count,
+    perDay: input.perDay ? count : undefined,
+  };
+}
+
+/** The template values of a Packstück of a Reisetasche, as a Packstück of a list holds them. */
+function templateOf(
+  bagItem: PackingBagItem,
+  days: number,
+): Pick<PackingItem, 'name' | 'quantity' | 'perDay'> {
+  const perDay = bagItem.perDay && bagItem.quantity !== undefined ? bagItem.quantity : undefined;
+  return {
+    name: bagItem.name,
+    quantity: perDay !== undefined ? packQuantity(perDay, days) : bagItem.quantity,
+    perDay,
+  };
+}
+
+function differs(item: PackingItem, bagItem: PackingBagItem): boolean {
+  const perDay = bagItem.perDay && bagItem.quantity !== undefined ? bagItem.quantity : undefined;
+  if (item.name !== bagItem.name || item.perDay !== perDay) return true;
+  return perDay === undefined && item.quantity !== bagItem.quantity;
+}
+
+// ---------- Reisetasche and upcoming packing lists (spec 0022, REQ-012, REQ-013) ----------
+
+export interface BagDeviation {
+  tripId: Id;
+  listBagId: Id;
+  /** The trip's title ("Urlaub Mallorca", else "unterwegs") and start. */
+  title: string;
+  from: ISODate;
+  days: number;
+  /** Packstücke of the Reisetasche without a counterpart in the packing list. */
+  added: PackingBagItem[];
+  /** Open Packstücke whose name, count or "je Tag" differ from the Reisetasche. */
+  changed: { item: PackingItem; bagItem: PackingBagItem }[];
+  /** Open Packstücke from the Reisetasche whose template was deleted. */
+  removed: PackingItem[];
+  /** Changed or removed ones that are packed: they stay as they are. */
+  keptPacked: PackingItem[];
+}
+
+/**
+ * Where the upcoming packing lists (trip ends today or later, earliest first) differ from a
+ * Reisetasche they were copied from (AC-036 to AC-038): new, changed, removed; Packstücke added by
+ * hand never count, packed ones are listed apart. Lists without a difference are left out.
+ */
+export function bagDeviations(input: {
+  bag: PackingBag;
+  bagItems: readonly PackingBagItem[];
+  trips: readonly TripStripe[];
+  listBags: readonly PackingListBag[];
+  items: readonly PackingItem[];
+  today: ISODate;
+}): BagDeviation[] {
+  const template = bagItemsOf(input.bag.id, input.bagItems);
+  const byId = new Map(template.map((bagItem) => [bagItem.id, bagItem]));
+  return [...input.trips]
+    .filter((trip) => trip.to >= input.today)
+    .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to))
+    .flatMap((trip): BagDeviation[] =>
+      input.listBags
+        .filter((listBag) => listBag.tripId === trip.tripId && listBag.bagId === input.bag.id)
+        .flatMap((listBag): BagDeviation[] => {
+          const own = input.items
+            .filter((item) => item.listBagId === listBag.id && item.fromBag === true)
+            .sort(bySortThenId);
+          const linked = new Set(own.flatMap((item) => item.bagItemId ?? []));
+          const deviation: BagDeviation = {
+            tripId: trip.tripId,
+            listBagId: listBag.id,
+            title: stripeText(trip),
+            from: trip.from,
+            days: tripDays(trip.from, trip.to),
+            added: template.filter((bagItem) => !linked.has(bagItem.id)),
+            changed: [],
+            removed: [],
+            keptPacked: [],
+          };
+          for (const item of own) {
+            const bagItem = item.bagItemId === undefined ? undefined : byId.get(item.bagItemId);
+            if (bagItem && !differs(item, bagItem)) continue;
+            if (item.packed) deviation.keptPacked.push(item);
+            else if (bagItem) deviation.changed.push({ item, bagItem });
+            else deviation.removed.push(item);
+          }
+          const count =
+            deviation.added.length + deviation.changed.length + deviation.removed.length;
+          return count === 0 ? [] : [deviation];
+        }),
+    );
+}
+
+/** "„Urlaub Mallorca“ (ab Fr 4.12.) weicht ab: 1 neu, 1 geändert, 1 entfernt." (AC-036, AC-037). */
+export function bagDeviationHint(deviation: BagDeviation): string {
+  const parts = [
+    deviation.added.length > 0 ? `${deviation.added.length} neu` : undefined,
+    deviation.changed.length > 0 ? `${deviation.changed.length} geändert` : undefined,
+    deviation.removed.length > 0 ? `${deviation.removed.length} entfernt` : undefined,
+  ].filter(Boolean);
+  return `„${deviation.title}“ (ab ${dayLabel(deviation.from)}) weicht ab: ${parts.join(', ')}.`;
+}
+
+/**
+ * The dialog of "Übernehmen" (AC-037): "Neu: Sonnencreme. Geändert: Badehose 3×. Entfernt:
+ * Schnorchel. Bleibt, weil gepackt: Socken."
+ */
+export function adoptBagDialog(deviation: BagDeviation): string {
+  const names = (list: string[]) => list.join(', ');
+  return [
+    deviation.added.length > 0
+      ? `Neu: ${names(deviation.added.map((bagItem) => bagItemLabel(bagItem)))}.`
+      : undefined,
+    deviation.changed.length > 0
+      ? `Geändert: ${names(
+          deviation.changed.map(({ bagItem }) =>
+            packingItemLabel(templateOf(bagItem, deviation.days)),
+          ),
+        )}.`
+      : undefined,
+    deviation.removed.length > 0
+      ? `Entfernt: ${names(deviation.removed.map((item) => item.name))}.`
+      : undefined,
+    deviation.keptPacked.length > 0
+      ? `Bleibt, weil gepackt: ${names(deviation.keptPacked.map((item) => item.name))}.`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+export interface AdoptBagPlan {
+  listBagId: Id;
+  /** New open Packstücke at the end of the bag of the packing list. */
+  insert: PackingItem[];
+  /** Changed open Packstücke with the template's name, count and "je Tag". */
+  update: PackingItem[];
+  /** Removed open Packstücke. */
+  deleteIds: Id[];
+}
+
+/** What "Übernehmen" writes (AC-036, AC-037); packed ones are not touched. */
+export function planAdoptBag(input: {
+  deviation: BagDeviation;
+  items: readonly PackingItem[];
+  days: number;
+  newId: () => Id;
+}): AdoptBagPlan {
+  const { deviation } = input;
+  let sort = nextSort(input.items.filter((item) => item.listBagId === deviation.listBagId));
+  return {
+    listBagId: deviation.listBagId,
+    insert: deviation.added.map((bagItem) => ({
+      id: input.newId(),
+      listBagId: deviation.listBagId,
+      ...templateOf(bagItem, input.days),
+      packed: false,
+      packSeq: 0,
+      sort: sort++,
+      bagItemId: bagItem.id,
+      fromBag: true,
+    })),
+    update: deviation.changed.map(({ item, bagItem }) => ({
+      ...item,
+      ...templateOf(bagItem, input.days),
+    })),
+    deleteIds: deviation.removed.map((item) => item.id),
+  };
+}
+
+export interface UpcomingPackingList {
+  tripId: Id;
+  title: string;
+  /** "Mo 30.11. – Mi 2.12.". */
+  period: string;
+  /** "12/30 gepackt", fully packed "alles gepackt ✓". */
+  progressLabel: string;
+  memberIds: Id[];
+  household: boolean;
+}
+
+/**
+ * "Kommende Packlisten" on "Reisetaschen" (REQ-013, AC-039, AC-040): one row per trip that ends
+ * today or later and has a packing list, earliest first.
+ */
+export function upcomingPackingLists(input: {
+  trips: readonly TripStripe[];
+  listBags: readonly PackingListBag[];
+  items: readonly PackingItem[];
+  today: ISODate;
+}): UpcomingPackingList[] {
+  return [...input.trips]
+    .filter((trip) => trip.to >= input.today)
+    .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to))
+    .flatMap((trip): UpcomingPackingList[] => {
+      const own = new Set(
+        input.listBags.filter((bag) => bag.tripId === trip.tripId).map((bag) => bag.id),
+      );
+      if (own.size === 0) return [];
+      const progress = packingProgress(input.items.filter((item) => own.has(item.listBagId)));
+      const allPacked = progress.total > 0 && progress.packed === progress.total;
+      return [
+        {
+          tripId: trip.tripId,
+          title: stripeText(trip),
+          period:
+            trip.from === trip.to
+              ? dayLabel(trip.from)
+              : `${dayLabel(trip.from)} – ${dayLabel(trip.to)}`,
+          progressLabel: allPacked
+            ? 'alles gepackt ✓'
+            : `${progress.packed}/${progress.total} gepackt`,
+          memberIds: trip.memberIds,
+          household: trip.household,
+        },
+      ];
+    });
 }

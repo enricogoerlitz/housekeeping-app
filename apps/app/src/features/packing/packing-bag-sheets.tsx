@@ -72,23 +72,17 @@ export function BagNameSheet(props: {
       title={renaming ? 'Reisetasche umbenennen' : 'Neue Reisetasche'}
       onClose={props.onClose}
       testID={testID}
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onClose}
-            testID={`${testID}-cancel`}
-          />
-          <Button
-            label={renaming ? 'Speichern' : 'Anlegen'}
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={submit}
-            testID={`${testID}-save`}
-          />
-        </Row>
-      }
+      actions={{
+        primary: {
+          label: renaming ? 'Speichern' : 'Anlegen',
+          onPress: submit,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: `${testID}-save`,
+        },
+        // Kept for its testID, which the e2e smoke test taps.
+        cancel: { label: 'Abbrechen', onPress: props.onClose, testID: `${testID}-cancel` },
+      }}
     >
       <Stack gap={8}>
         <TextField
@@ -176,8 +170,17 @@ export function BagItemSheet(props: { itemId: Id; onClose: () => void }) {
       title={bagItemLabel(item)}
       onClose={props.onClose}
       testID="bag-item-sheet"
+      actions={{
+        primary: {
+          label: 'Speichern',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'bag-item-save',
+        },
+      }}
       footer={
-        <Row gap={10} style={{ justifyContent: 'space-between' }}>
+        <Row gap={10}>
           <Button
             label="Entfernen"
             variant="ghost"
@@ -186,14 +189,6 @@ export function BagItemSheet(props: { itemId: Id; onClose: () => void }) {
             hint={online.hint}
             onPress={remove}
             testID="bag-item-remove"
-          />
-          {/* No "Abbrechen": ✕ in the title closes, so both buttons fit on a phone. */}
-          <Button
-            label="Speichern"
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={save}
-            testID="bag-item-save"
           />
         </Row>
       }
@@ -236,7 +231,7 @@ export function BagItemSheet(props: { itemId: Id; onClose: () => void }) {
         </Stack>
         <SwitchRow
           label="je Tag"
-          description="Die Anzahl gilt für jeden Tag der Abwesenheit, z. B. 1 T-Shirt je Tag."
+          description="Die Anzahl gilt für jeden Tag der Reise, z. B. 1 T-Shirt je Tag."
           value={perDay}
           disabled={online.disabled}
           onValueChange={(value) => {

@@ -1,16 +1,7 @@
 import { addAreaToStore, fullAreaOrder, useAreas, useStores } from '@housekeeping/api';
 import { matchSearchOrCreate, validateAreaName, type Area, type Id } from '@housekeeping/core';
-import {
-  Button,
-  Row,
-  SearchOrCreate,
-  Sheet,
-  Stack,
-  Text,
-  TextField,
-  toast,
-} from '@housekeeping/ui';
-import { useState } from 'react';
+import { SearchOrCreate, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import { useState, type ReactNode } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -29,6 +20,8 @@ export function NameSheet(props: {
   onSubmit: (name: string) => string | undefined;
   onClose: () => void;
   testID: string;
+  /** More fields below the name, e.g. "Reihenfolge übernehmen von …" (spec 0025, AC-050). */
+  children?: ReactNode;
 }) {
   const online = useOnlineOnly();
   const [name, setName] = useState(props.initialName ?? '');
@@ -45,23 +38,15 @@ export function NameSheet(props: {
       title={props.title}
       onClose={props.onClose}
       testID={props.testID}
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onClose}
-            testID={`${props.testID}-cancel`}
-          />
-          <Button
-            label={props.submitLabel}
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={submit}
-            testID={`${props.testID}-save`}
-          />
-        </Row>
-      }
+      actions={{
+        primary: {
+          label: props.submitLabel,
+          disabled: online.disabled,
+          hint: online.hint,
+          onPress: submit,
+          testID: `${props.testID}-save`,
+        },
+      }}
     >
       <TextField
         label={props.label}
@@ -79,54 +64,7 @@ export function NameSheet(props: {
         onSubmitEditing={submit}
         testID={`${props.testID}-name`}
       />
-    </Sheet>
-  );
-}
-
-/** A small window that asks before something is lost: "Rewe Südstadt löschen?" (AC-045). */
-export function ConfirmDialog(props: {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  onConfirm: () => string | undefined;
-  onCancel: () => void;
-  testID: string;
-}) {
-  const online = useOnlineOnly();
-  const [error, setError] = useState<string | undefined>();
-  return (
-    <Sheet
-      visible
-      size="s"
-      title={props.title}
-      onClose={props.onCancel}
-      testID={props.testID}
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onCancel}
-            testID={`${props.testID}-cancel`}
-          />
-          <Button
-            label={props.confirmLabel}
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={() => setError(props.onConfirm())}
-            testID={`${props.testID}-confirm`}
-          />
-        </Row>
-      }
-    >
-      <Stack gap={10}>
-        <Text testID={`${props.testID}-text`}>{props.message}</Text>
-        {error || online.hint ? (
-          <Text variant="small" color="warn" testID={`${props.testID}-error`}>
-            {error ?? online.hint}
-          </Text>
-        ) : null}
-      </Stack>
+      {props.children}
     </Sheet>
   );
 }

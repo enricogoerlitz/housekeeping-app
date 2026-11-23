@@ -4,7 +4,8 @@
 //    the local Supabase values and the app version 2026.12.4 (spec 0014). EXPO_PUBLIC_* values are baked in at export time, so the
 //    export is rebuilt whenever they, the app sources or the export itself changed.
 // 3. A static server on 127.0.0.1:8790 — the only e2e origin the edge functions' CORS and the
-//    Supabase redirect URLs allow.
+//    Supabase redirect URLs allow. A running server is reused only when it serves this export
+//    (serve.mjs `/__e2e`, spec 0031 AC-023); any other stops the setup with its PID.
 //
 // Environment values come from `.env` (loaded into this process only, never printed) or, in CI,
 // from the job environment. E2E_SKIP_RESET=1 skips the reset; E2E_REBUILD=1 forces the export.
@@ -15,8 +16,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const E2E_PORT = 8790;
-/** The version the e2e export is built as (spec 0014). */
-export const E2E_APP_VERSION = '2026.12.4';
+/**
+ * The version the e2e export is built as (spec 0014): far above every minimum version a migration
+ * may set, so no test but rundgang-version ever sees the lock screen (spec 0031, AC-021).
+ */
+export const E2E_APP_VERSION = '2099.12.1';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -57,8 +61,8 @@ function buildInputs(env: NodeJS.ProcessEnv): string {
   );
 }
 
-function indexHash(): string | undefined {
-  const index = path.join(dist, 'index.html');
+function indexHash(root: string = dist): string | undefined {
+  const index = path.join(root, 'index.html');
   return existsSync(index) ? sha256(readFileSync(index)) : undefined;
 }
 
@@ -81,19 +85,62 @@ function buildIfStale(env: NodeJS.ProcessEnv): void {
   writeFileSync(markerFile, JSON.stringify({ inputs, index: indexHash() }));
 }
 
+/** True when anything answers HTTP on the port. */
 async function serverResponds(): Promise<boolean> {
   try {
-    const response = await fetch(`http://127.0.0.1:${E2E_PORT}/`);
-    return response.ok;
+    await fetch(`http://127.0.0.1:${E2E_PORT}/`);
+    return true;
   } catch {
     return false;
   }
 }
 
+/** What a `serve.mjs` on a port says about itself (`/__e2e`), if anything. */
+interface ServerIdentity {
+  dist?: unknown;
+  index?: unknown;
+  pid?: unknown;
+}
+
+/** The process listening on `port`, for the message when it does not name itself. */
+function listeningPid(port: number): string {
+  const result = spawnSync('lsof', ['-t', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+  return (result.stdout ?? '').trim().split('\n').filter(Boolean).join(', ') || 'unknown';
+}
+
+/**
+ * What listens on `port` (spec 0031, AC-023): "free", or "own" when it is a `serve.mjs` of the
+ * export in `root` (same dist path, same index.html). Anything else, e.g. a server of another
+ * worktree or an older serve.mjs, would test a foreign build: the setup stops and names its PID.
+ */
+export async function serverOnPort(port: number, root: string): Promise<'free' | 'own'> {
+  let response: Response;
+  try {
+    response = await fetch(`http://127.0.0.1:${port}/__e2e`);
+  } catch {
+    return 'free';
+  }
+  let identity: ServerIdentity = {};
+  try {
+    identity = (await response.json()) as ServerIdentity;
+  } catch {
+    // Not a serve.mjs that names itself: an older one answers with index.html.
+  }
+  const own = path.resolve(root);
+  const hash = indexHash(own);
+  if (identity.dist === own && hash !== undefined && identity.index === hash) return 'own';
+  const pid = typeof identity.pid === 'number' ? String(identity.pid) : listeningPid(port);
+  const serving = typeof identity.dist === 'string' ? `, serves ${identity.dist}` : '';
+  throw new Error(
+    `e2e setup: port ${port} is taken by a server that does not serve ${own} ` +
+      `(PID ${pid}${serving}). Stop it and run again.`,
+  );
+}
+
+/** Starts serve.mjs on the port, or reuses one there that serves this export. */
 async function startServer(): Promise<ChildProcess | undefined> {
-  if (await serverResponds()) {
-    // A server from an earlier run (e.g. `node serve.mjs`): it serves apps/app/dist from disk.
-    console.log(`e2e setup: reusing the server on port ${E2E_PORT}.`);
+  if ((await serverOnPort(E2E_PORT, dist)) === 'own') {
+    console.log(`e2e setup: reusing the server of this export on port ${E2E_PORT}.`);
     return undefined;
   }
   const server = spawn(process.execPath, [path.join(here, 'serve.mjs'), dist, String(E2E_PORT)], {

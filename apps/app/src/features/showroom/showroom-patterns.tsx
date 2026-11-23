@@ -4,7 +4,7 @@ import {
   matchSearchOrCreate,
   moveInOrder,
   orderAnnouncement,
-  parseTimeInput,
+  TIME_FIELD_WORDS,
   type Member,
 } from '@housekeeping/core';
 import {
@@ -14,10 +14,12 @@ import {
   ChoiceChips,
   Chip,
   Disclosure,
+  DockedPanel,
   EditableSection,
   EmptyState,
   FilterBar,
   Icon,
+  IconButton,
   KIND_ICONS,
   List,
   ListRow,
@@ -42,14 +44,16 @@ import {
   toast,
   useBreakpoint,
   useCheckWindow,
+  type DockedPanelState,
   type SheetSize,
 } from '@housekeeping/ui';
-import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { View, type HostInstance } from 'react-native';
 
 import { FavoriteButton } from '@/features/shell/favorite-button';
 import { MemberRatings } from '@/features/shell/member-ratings';
 
+import { DragDropBlock } from './showroom-drag';
 import {
   KIND_LABELS,
   SAMPLE_ARTICLES,
@@ -98,6 +102,7 @@ export function usePatternBlocks(): ReactNode[] {
     <CollageBlock key="collage" />,
     <SelectRowBlock key="select" />,
     <TimeBlock key="time" />,
+    <DragDropBlock key="drag" />,
   ];
 }
 
@@ -108,7 +113,7 @@ const FIVE_TABS = [
   { value: 'alle', label: 'Alle' },
   { value: 'verlauf', label: 'Verlauf' },
   { value: 'vorlagen', label: 'Vorlagen' },
-  { value: 'abwesenheiten', label: 'Abwesenheiten' },
+  { value: 'reisen', label: 'Reisen' },
 ] as const;
 type FiveTab = (typeof FIVE_TABS)[number]['value'];
 
@@ -1343,48 +1348,31 @@ function SelectRowBlock() {
   );
 }
 
-// ---------- Spec 0013: time field and a switch with details ----------
+// ---------- Spec 0013 and 0027: time field and a switch with details ----------
 
 function TimeBlock() {
   const [offline, setOffline] = useState(false);
-  const [text, setText] = useState('19:00');
-  const [error, setError] = useState<string>();
+  const [time, setTime] = useState<string | undefined>('19:00');
   const [summaryOn, setSummaryOn] = useState(false);
   const [summaryAt, setSummaryAt] = useState('07:30');
-  const read = () => {
-    const parsed = parseTimeInput(text);
-    if (!parsed.ok) {
-      setError(parsed.error);
-      return;
-    }
-    setError(undefined);
-    setText(parsed.time === undefined ? '' : formatTime(parsed.time));
-    if (parsed.time !== undefined) setSummaryAt(parsed.time);
-  };
   return (
     <Block
       title="Uhrzeit und Schalter mit Detail"
-      note="Eintippen: „19“, „1930“, „7.30“. Nur 5-Minuten-Schritte, ✕ leert das Feld. Beim Schalter mit Detail öffnen Titel und „›“ die Einstellung, der Schalter bleibt eigener Knopf."
+      note="„Stunde“ und „Minute“ wählen, nur 5-Minuten-Schritte; ✕ entfernt die Uhrzeit. Beim Schalter mit Detail öffnen Titel und „›“ die Einstellung, der Schalter bleibt eigener Knopf."
       testID="showroom-time"
     >
       <SwitchRow label="Offline" value={offline} onValueChange={setOffline} />
       <TimeField
-        label="Uhrzeit"
-        value={text}
-        onChangeText={(value) => {
-          setText(value);
-          setError(undefined);
+        label="Uhrzeit (optional)"
+        accessibilityName="Uhrzeit"
+        {...TIME_FIELD_WORDS}
+        value={time}
+        onChange={(value) => {
+          setTime(value);
+          if (value !== undefined) setSummaryAt(value);
         }}
-        onBlur={read}
-        onSubmitEditing={read}
-        onClear={() => {
-          setText('');
-          setError(undefined);
-        }}
+        optional
         clearLabel="Uhrzeit entfernen"
-        emptyLabel="keine Uhrzeit"
-        placeholder="z. B. 19:00"
-        error={error}
         disabled={offline}
         hint={offline ? OFFLINE_HINT : undefined}
         testID="showroom-time-field"
@@ -1401,4 +1389,86 @@ function TimeBlock() {
       />
     </Block>
   );
+}
+
+// ---------- Spec 0016, REQ-006: a panel that leaves the page usable ----------
+
+const PANEL_ROWS = [
+  'Vormittag · Bouldern',
+  'Mittag · Linsen-Dal',
+  'Abend · Lasagne',
+  ...Array.from({ length: 14 }, (_, index) => `Eintrag ${index + 1}`),
+];
+
+/**
+ * The block and its panel apart: the panel belongs into the Screen's `aside`, outside the
+ * scrolling page.
+ */
+export function useDockedPanelDemo(): { block: ReactNode; panel: ReactNode } {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<DockedPanelState>('half');
+  const opener = useRef<HostInstance>(null);
+  const block = (
+    <Block
+      key="docked"
+      title="Fenster neben der Seite"
+      note="Die Seite bleibt bedienbar. Handy: unten in halber Höhe; am Griff nach oben groß, nach unten zu, ein Tipp auf den Griff wechselt die Größe. Ab 700 px rechts neben dem Inhalt. Escape und Android-Zurück schließen, der Fokus kehrt zum Knopf zurück."
+      testID="showroom-docked"
+    >
+      <Row wrap gap={8}>
+        <IconButton
+          ref={opener}
+          icon="calendar-days"
+          variant="soft"
+          label="Fenster öffnen"
+          onPress={() => {
+            setState('half');
+            setOpen(true);
+          }}
+          testID="showroom-docked-open"
+        />
+        <Button
+          label="Auf eine Zeile"
+          size="sm"
+          variant="secondary"
+          disabled={!open}
+          onPress={() => setState('collapsed')}
+          testID="showroom-docked-collapse"
+        />
+        <Button
+          label="Halbe Höhe"
+          size="sm"
+          variant="secondary"
+          disabled={!open}
+          onPress={() => setState('half')}
+          testID="showroom-docked-half"
+        />
+      </Row>
+    </Block>
+  );
+  const panel = (
+    <DockedPanel
+      open={open}
+      onClose={() => setOpen(false)}
+      state={state}
+      onStateChange={setState}
+      label="Beispiel-Fenster"
+      closeLabel="Schließen"
+      handleLabel="Größe ändern"
+      returnFocusRef={opener}
+      header={
+        <Text variant="sectionLabel" heading>
+          Fr 27. November
+        </Text>
+      }
+      testID="showroom-docked-panel"
+    >
+      <List>
+        {PANEL_ROWS.map((row) => (
+          <ListRow key={row} title={row} />
+        ))}
+      </List>
+    </DockedPanel>
+  );
+  return { block, panel };
 }

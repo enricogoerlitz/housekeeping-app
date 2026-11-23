@@ -19,6 +19,7 @@ import {
   Button,
   EmptyState,
   Icon,
+  IconButton,
   List,
   ListRow,
   Menu,
@@ -33,8 +34,11 @@ import { View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
+import { useNewAreaHint } from './area-hint';
 import { articleCount, messageOf, ORDER_LABELS } from './labels';
-import { ConfirmDialog, MergeAreaPicker, NameSheet } from './store-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+
+import { MergeAreaPicker, NameSheet } from './store-dialogs';
 
 type AreaAction = 'rename' | 'merge' | 'delete';
 type Dialog =
@@ -56,6 +60,10 @@ export function AreasView() {
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog | undefined>();
   const [error, setError] = useState<string | undefined>();
+  const newAreaHint = useNewAreaHint();
+  // "Obst & Gemüse · 85 Artikel ›" opens "Artikel" with this area as filter (spec 0025, AC-045).
+  const openArticles = (areaId: Id) =>
+    router.navigate({ pathname: '/artikel', params: { bereich: areaId } });
   const counts = useMemo(() => articleCountsByArea(articles, areas), [articles, areas]);
   const sorted = useMemo(() => [...areas].sort((a, b) => a.sort - b.sort), [areas]);
   const nameOf = (areaId: Id) => areas.find((area) => area.id === areaId)?.name ?? 'Bereich';
@@ -157,7 +165,17 @@ export function AreasView() {
             labels={ORDER_LABELS}
             disabled={online.disabled}
             disabledHint={online.hint}
-            trailing={(item) => menu(item.key, item.name)}
+            trailing={(item) => (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {menu(item.key, item.name)}
+                <IconButton
+                  icon="chevron-right"
+                  label={`Artikel in ${item.name}`}
+                  onPress={() => openArticles(item.key)}
+                  testID={`area-articles-${item.key}`}
+                />
+              </View>
+            )}
             testID="areas"
           />
         )}
@@ -201,7 +219,7 @@ export function AreasView() {
               return messageOf(caught);
             }
             close();
-            toast.show({ message: `„${name.trim()}“ angelegt` });
+            newAreaHint(name);
             return undefined;
           }}
           onClose={close}

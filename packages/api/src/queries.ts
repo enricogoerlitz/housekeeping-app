@@ -1,5 +1,6 @@
 import {
   collectionContents,
+  householdTime,
   resolveShoppingStore,
   type Activity,
   type Article,
@@ -13,9 +14,10 @@ import {
   type RecipeBook,
   type Restaurant,
   type Store,
+  type HouseholdTime,
 } from '@housekeeping/core';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { useAppSelector, useDataSelector } from './store';
 
@@ -31,6 +33,15 @@ export const useActiveHouseholdId = () => useAppSelector((state) => state.active
 export const useHouseholdsMap = () => useAppSelector((state) => state.households);
 
 export const useHousehold = () => useDataSelector((data) => data.household);
+
+/**
+ * The household's clock (spec 0031, REQ-020): read it at the moment it is needed (a tap, a check),
+ * never `new Date()` with a time zone in a component. The day is `useToday()`.
+ */
+export function useHouseholdClock(): () => HouseholdTime {
+  const { timeZone } = useHousehold();
+  return useCallback(() => householdTime(new Date(), timeZone), [timeZone]);
+}
 export const useAreas = () => useDataSelector((data) => data.areas);
 export const useArticles = () => useDataSelector((data) => data.articles);
 export const useStores = () => useDataSelector((data) => data.stores);
@@ -45,7 +56,8 @@ export const usePlanEntries = () => useDataSelector((data) => data.planEntries);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
-export const useAbsences = () => useDataSelector((data) => data.absences);
+/** Spec 0022: trips with their people, in creation order (core tripStripes). */
+export const useTrips = () => useDataSelector((data) => data.trips);
 export const useFeedback = () => useDataSelector((data) => data.feedback);
 /** Spec 0012: Reisetaschen and their Packstücke in creation order (core orderedBags, bagItemsOf). */
 export const usePackingBags = () => useDataSelector((data) => data.packingBags);
@@ -59,6 +71,9 @@ export const usePackingItems = () => useDataSelector((data) => data.packingItems
  * (listPushDevices).
  */
 export const useNotificationSettings = () => useDataSelector((data) => data.notificationSettings);
+/** Spec 0027, REQ-008: the own settings of another household of mine (from the cache). */
+export const useNotificationSettingsOf = (householdId: string) =>
+  useAppSelector((state) => state.households[householdId]?.notificationSettings);
 
 export interface PackingList {
   listBags: PackingListBag[];
@@ -66,20 +81,17 @@ export interface PackingList {
 }
 
 /**
- * The packing list of these absences (the absences of one Urlaubsseite): their bags and those
- * bags' Packstücke, in creation order; order them with core packingSections. Recomputed only
- * when the ids or the packing rows change.
+ * The packing list of a trip: its bags and those bags' Packstücke, in creation order; order them
+ * with core packingSections. Recomputed only when the id or the packing rows change.
  */
-export function usePackingList(absenceIds: readonly Id[]): PackingList {
+export function usePackingList(tripId: Id): PackingList {
   const listBags = usePackingListBags();
   const items = usePackingItems();
-  const key = absenceIds.join(',');
   return useMemo(() => {
-    const ids = new Set(key.split(','));
-    const own = listBags.filter((bag) => ids.has(bag.absenceId));
+    const own = listBags.filter((bag) => bag.tripId === tripId);
     const bagIds = new Set(own.map((bag) => bag.id));
     return { listBags: own, items: items.filter((item) => bagIds.has(item.listBagId)) };
-  }, [key, listBags, items]);
+  }, [tripId, listBags, items]);
 }
 
 /**

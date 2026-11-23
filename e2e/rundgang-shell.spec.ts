@@ -209,7 +209,7 @@ test.describe('shell at phone width', () => {
     await goOffline(page);
     await nav(page, 'rezepte');
     const banner = tid(page, 'offline-banner');
-    await expect(banner).toHaveText('Offline – Lesen und Abhaken gehen');
+    await expect(banner).toHaveText('Offline – Lesen, Einkaufen und Packen gehen');
     const color = parseRgb(await banner.evaluate((el) => getComputedStyle(el).backgroundColor));
     const h = hue(color);
     expect(h >= 15 && h <= 50, `banner hue ${h} is orange`).toBe(true);
@@ -284,7 +284,8 @@ test.describe('shell at phone width', () => {
 
     await nav(page, 'kalender');
     // Every day of the current week is shown, and the calendar has dishes in it.
-    await expect(tidPrefix(page, 'day-')).toHaveCount(7);
+    // `day-<date>`, not the blocks `day-block-<date>` (spec 0031, T-03).
+    await expect(page.locator(`[data-testid^="day-2"]${ACTIVE}`)).toHaveCount(7);
     expect(await page.locator(PLAN_ENTRY).count()).toBeGreaterThan(3);
 
     await nav(page, 'liste');
@@ -322,7 +323,7 @@ test.describe('shell at phone width', () => {
     await expect(itemRows(page, 'Spülmittel')).toHaveCount(1);
   });
 
-  test('AC-016 / AC-047 (0005) / AC-018 (0008): the empty household "Test" shows the first steps; the starter catalog is there', async ({
+  test('AC-046 / AC-047 (0023) / AC-018 (0008): the empty household "Test" shows the first steps; the starter catalog is there', async ({
     page,
   }) => {
     await open(page, '/');
@@ -330,13 +331,21 @@ test.describe('shell at phone width', () => {
     await nav(page, 'rezepte');
     const empty = tid(page, 'recipes-empty');
     await expect(empty).toContainText('Noch keine Rezepte');
-    await expect(tid(page, 'empty-recipe-title')).toHaveText(/Titel eingeben/);
-    await expect(tid(page, 'empty-starter')).toHaveText(/Starter-Rezepte ansehen/);
+    await expect(empty).toContainText(
+      'Legt euer erstes Rezept an. Ein Titel reicht; Zutaten, Schritte und Links kommen später dazu.',
+    );
+    await expect(tid(page, 'empty-recipe-new')).toHaveText(/Rezept anlegen/);
+    await expect(tid(page, 'empty-collection-new')).toHaveText(/Sammlung anlegen/);
+    await expect(page.locator(`[data-testid="empty-starter"]${ACTIVE}`)).toHaveCount(0);
     // Spec 0008, AC-018: nothing to search or filter yet.
     await expect(page.locator(`[data-testid="recipe-search"]${ACTIVE}`)).toHaveCount(0);
     await expect(page.locator(`[data-testid="recipe-filters"]${ACTIVE}`)).toHaveCount(0);
     // Spec 0005, AC-047: no "Beschreiben ✨" while the AI switch is off.
     await expect(page.locator(`[data-testid="empty-describe"]${ACTIVE}`)).toHaveCount(0);
+    // Spec 0023, AC-046: "Sammlung anlegen" opens "Neu" with the kind "Sammlung".
+    await tid(page, 'empty-collection-new').click();
+    await expect(tid(page, 'new-recipe-kind-collection')).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Escape');
     await nav(page, 'liste');
     await tid(page, 'smart-input').fill('Karot');
     await expect(tid(page, 'smart-suggestions')).toContainText('Möhren · auch: Karotten');

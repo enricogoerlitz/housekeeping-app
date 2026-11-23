@@ -4,16 +4,15 @@ import {
   cuisineFacets,
   EMPTY_RESTAURANT_LIST_FILTER,
   filterButtonLabel,
-  fuzzyIncludes,
   removeRestaurantFilterChip,
   RESTAURANT_SORTS,
   restaurantCountLabel,
   restaurantEmptyLabel,
   restaurantFilterChips,
   restaurantFilterCount,
+  restaurantMatches,
   restaurantShowLabel,
   restaurantVisits,
-  routeId,
   sortRestaurantList,
   toggleRestaurantFavorites,
   type Id,
@@ -40,25 +39,26 @@ import {
   TextField,
   useBreakpoint,
   useTheme,
-  type MenuOption,
+  type TabSwipe,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
+import { afterWindowClosed, usePageParams } from '@/lib/url-state';
 import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
-import { StarterSheet } from '@/features/recipes/starter-sheet';
+import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { OwnPhoto } from '@/features/shell/own-photo';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
 import { lastVisitLabel, restaurantMeta } from './labels';
 import { RestaurantDetail } from './restaurant-detail';
 import { RestaurantFilterPanel } from './restaurant-filter-panel';
+import { RESTAURANT_ICON } from './restaurant-form';
 import { useRestaurantListState } from './restaurant-list-state';
-
-type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
 
 /** Restaurant cards in the grid: at least this wide (one column on phones, three at 1440 px). */
 const CARD_MIN_WIDTH = 320;
@@ -66,16 +66,6 @@ const CARD_MIN_WIDTH = 320;
 const LIST_COLUMN_WIDTH = 380;
 
 type SheetRequest = Pick<AddRestaurantSheetProps, 'initialText' | 'initialName' | 'focus'>;
-
-function param(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function matches(query: string, restaurant: Restaurant): boolean {
-  return [restaurant.name, restaurant.cuisine, restaurant.address, ...restaurant.tags].some(
-    (field) => field !== undefined && fuzzyIncludes(query, field),
-  );
-}
 
 /** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", else the menu text (T2, decision 6). */
 function sortShortLabel(sort: RestaurantListSort): string {
@@ -89,15 +79,11 @@ function sortShortLabel(sort: RestaurantListSort): string {
  * endless list; on wide screens list and detail side by side (spec 0002). Search, filters, sort
  * and the random order stay while the app runs (E14).
  */
-export function RestaurantsPanel(props: { switcher: ReactNode }) {
+export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }) {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    rid?: string | string[];
-    add?: string | string[];
-    share?: string | string[];
-    shareName?: string | string[];
-  }>();
-  const { isWide, isPhone } = useBreakpoint();
+  const address = usePageParams('rezepte');
+  const { params } = address;
+  const { isWide } = useBreakpoint();
   const online = useOnlineOnly();
   const restaurants = useRestaurants();
   const entries = usePlanEntries();
@@ -106,32 +92,45 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
   const list = useRestaurantListState();
   const openRecipe = useOpenRecipe();
 
-  const [sheet, setSheet] = useState<SheetRequest | undefined>();
+  // Where "Restaurant hinzufügen" puts the cursor; the window itself stands in the address.
+  const [focus, setFocus] = useState<SheetRequest['focus']>('link');
   const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
     open: false,
     kind: 'recipe',
   });
-  const [starterOpen, setStarterOpen] = useState(false);
 
-  const selectedId = isWide ? routeId(params.rid) : undefined;
-  // The share target and "+ → Restaurant" on the recipes view open the sheet through the URL, so
-  // a reload keeps it open (spec 0002, AC-008).
-  const shared: SheetRequest | undefined =
-    param(params.add) === '1'
-      ? { initialText: param(params.share), initialName: param(params.shareName), focus: 'name' }
+  // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
+  // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
+  const selectedId = isWide ? params.restaurant : undefined;
+  const addressed = params.restaurant;
+  const replace = address.replace;
+  useEffect(() => {
+    if (isWide || !addressed) return;
+    replace({ restaurant: undefined });
+    router.push({ pathname: '/restaurant/[id]', params: { id: addressed } }, { withAnchor: true });
+  }, [isWide, addressed, replace, router]);
+  // "+ → Restaurant", the empty state and the share target open the window through the address,
+  // so a reload keeps it open (spec 0002, AC-008); a shared link fills it.
+  const shared = params.link !== undefined || params.name !== undefined;
+  const sheetRequest: SheetRequest | undefined =
+    params.fenster === 'neu-restaurant'
+      ? { initialText: params.link, initialName: params.name, focus: shared ? 'name' : focus }
       : undefined;
-  const sheetRequest = sheet ?? shared;
+  const setSheet = (request: { focus: SheetRequest['focus'] }) => {
+    setFocus(request.focus);
+    address.open({ fenster: 'neu-restaurant' });
+  };
 
   const open = (restaurantId: Id) => {
-    if (isWide) router.setParams({ rid: restaurantId });
+    if (isWide) address.replace({ restaurant: restaurantId });
     else router.push({ pathname: '/restaurant/[id]', params: { id: restaurantId } });
   };
-  const closeSheet = () => {
-    setSheet(undefined);
-    if (shared) router.setParams({ add: undefined, share: undefined, shareName: undefined });
-  };
+  // The window closes first (back one entry); the restaurant opens after that, not under it.
+  const openFromSheet = (restaurantId: Id) => afterWindowClosed(() => open(restaurantId));
+  const closeSheet = () => address.close({ fenster: undefined, link: undefined, name: undefined });
 
-  const { query, filter, sort, shuffle } = list;
+  const { query, filter, sort } = list;
+  const shuffle = list.shuffleFor(restaurants.map((restaurant) => restaurant.id));
   const cuisines = useMemo(() => cuisineFacets(restaurants), [restaurants]);
   const visitsById = useMemo(
     () =>
@@ -144,22 +143,13 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
     [restaurants, entries, today],
   );
   const results = useMemo(() => {
-    const searched = query.trim()
-      ? restaurants.filter((restaurant) => matches(query, restaurant))
-      : restaurants;
+    const searched = restaurants.filter((restaurant) => restaurantMatches(query, restaurant));
     const filtered = applyRestaurantListFilter(searched, filter, me.id);
     return sortRestaurantList(filtered, sort, { me: me.id, entries, today, shuffle });
   }, [query, restaurants, filter, me.id, sort, entries, today, shuffle]);
 
-  const newOptions: MenuOption<NewKind>[] = [
-    { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
-    { value: 'collection', label: 'Sammlung', disabled: online.disabled, hint: online.hint },
-    { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
-    { value: 'starter', label: 'Starter-Rezepte' },
-  ];
-  const onNew = (kind: NewKind) => {
+  const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
-    else if (kind === 'starter') setStarterOpen(true);
     else setSheet({ focus: 'link' });
   };
 
@@ -169,15 +159,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
       title="Essen"
       right={
         <>
-          <Menu
-            trigger={isPhone ? 'icon' : 'button'}
-            icon="plus"
-            label="Neu"
-            accessibilityLabel="Neu anlegen"
-            options={newOptions}
-            onChange={onNew}
-            testID="recipe-new"
-          />
+          <FoodNewMenu onNew={onNew} />
           <StartPageActions />
         </>
       }
@@ -196,8 +178,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
           key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
           {...sheetRequest}
           onClose={closeSheet}
-          onCreated={open}
-          onOpenExisting={open}
+          onCreated={openFromSheet}
+          onOpenExisting={openFromSheet}
         />
       ) : null}
       <NewRecipeSheet
@@ -206,14 +188,19 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
         onClose={() => setNewRecipe({ ...newRecipe, open: false })}
         onCreated={openRecipe}
       />
-      <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
     </>
   );
 
   // Nothing created yet: no search and no filter row, only the first step (AC-018).
   if (restaurants.length === 0) {
     return (
-      <Screen testID="restaurants-screen" tone="essen" header={header} tabs={props.switcher}>
+      <Screen
+        testID="restaurants-screen"
+        tone="essen"
+        header={header}
+        tabs={props.switcher}
+        tabSwipe={props.swipe}
+      >
         {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="utensils"
@@ -388,6 +375,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
       tone="essen"
       header={header}
       tabs={props.switcher}
+      tabSwipe={props.swipe}
       toolbar={toolbar}
       scroll={false}
       clearFab={false}
@@ -399,7 +387,18 @@ export function RestaurantsPanel(props: { switcher: ReactNode }) {
           detail={
             <RestaurantDetail
               restaurantId={selectedId}
-              onClose={() => router.setParams({ rid: undefined })}
+              onClose={() => address.replace({ restaurant: undefined, fenster: undefined })}
+              window={
+                params.fenster === 'bearbeiten' || params.fenster === 'einplanen'
+                  ? params.fenster
+                  : undefined
+              }
+              onWindow={(window) =>
+                window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+              }
+              // Spec 0024, REQ-010: after "Löschen" the grid, with search and filter.
+              onDeleted={() => address.replace({ restaurant: undefined, fenster: undefined })}
+              onOpen={open}
             />
           }
           placeholder={{ icon: 'utensils', title: 'Wähl ein Restaurant aus' }}
@@ -431,7 +430,7 @@ function RestaurantCard(props: {
       testID={`restaurant-${id}`}
       accessibilityRole="button"
       accessibilityLabel={restaurant.name}
-      accessibilityState={{ selected: props.selected }}
+      aria-selected={props.selected}
       onPress={props.onPress}
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,
@@ -447,18 +446,15 @@ function RestaurantCard(props: {
           props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
         ]}
       >
-        <View
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: theme.shape.radius.photo,
-            backgroundColor: theme.colors.surfaceSunken,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name="utensils" size={22} color="muted" />
-        </View>
+        {/* The own photo, else the cutlery (spec 0024, REQ-004). */}
+        <OwnPhoto
+          photoPath={restaurant.photoPath}
+          name={restaurant.name}
+          placeholderIcon={RESTAURANT_ICON}
+          width={48}
+          height={48}
+          testID={`restaurant-${id}`}
+        />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Row gap={6}>
             <Text variant="rowTitle" numberOfLines={1} style={{ flexShrink: 1 }}>

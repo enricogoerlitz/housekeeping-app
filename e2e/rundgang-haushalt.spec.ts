@@ -1,13 +1,12 @@
 import type { Page } from '@playwright/test';
 
 import {
-  ENRICO,
   NADJA,
   back,
   day,
   expect,
   freshSeed,
-  inThisWeek,
+  inTodaysSection,
   isoWeekday,
   leaveManaged,
   nav,
@@ -24,6 +23,9 @@ import {
 } from './helpers';
 import { seedIds } from './seed-ids';
 
+/** A booked entry of the history, not the filter chips (`history-filter-…`) above it. */
+const HISTORY_ROW = '[data-testid^="history-"][role="button"]:not([data-testid^="history-filter"])';
+
 // Spec 0001 — household chores, history and feedback (REQ-008), and spec 0011 — "Übersicht" with
 // a shown day, "Zu tun" and "Haushalt" with one check list (Sammel-Fenster), "Was hast du
 // erledigt?", opening a chore, the empty household and list and detail on the desktop. The seed
@@ -35,9 +37,9 @@ const BAD = seedIds['chore-bad'];
 /** Chore rows in a list (not their check box or badges). */
 const CHORE_ROW = '[data-testid^="chore-"][role="button"]';
 
-/** Shows `date` on the Übersicht: pages the week strip when the day is in another week. */
+/** Shows `date` on the Übersicht: pages the Tagesleiste when the day is in another section. */
 async function showDay(page: Page, date: string): Promise<void> {
-  if (!inThisWeek(date)) await tid(page, 'today-week-next').click();
+  if (!inTodaysSection(date)) await tid(page, 'today-week-next').click();
   await tid(page, `today-week-${date}`).click();
 }
 
@@ -49,13 +51,17 @@ test.describe('Haushalt and Übersicht at phone width', () => {
   }) => {
     await open(page, '/');
     await expect(page.getByText(/^Guten (Morgen|Tag|Abend), Enrico/)).toBeVisible();
-    await expect(tid(page, 'today-week-label')).toHaveText(/^Diese Woche · KW \d+$/);
+    // Spec 0020, AC-007: the range without "KW", "Heute" greyed out in today's section.
+    await expect(tid(page, 'today-range')).toHaveText(/^\S\S \d+\.\d+\. – \S\S \d+\.\d+\.$/);
+    await expect(tid(page, 'today-week-today')).toBeDisabled();
     await expect(tid(page, 'today-meals')).toContainText('Heute geplant');
     await expect(tid(page, `today-meal-${seedIds['plan-2']}`)).toContainText('Lasagne');
     await expect(tid(page, `today-meal-${seedIds['plan-2']}`)).toContainText('Abend');
-    await expect(tid(page, `today-prep-${seedIds['plan-8']}`)).toHaveText(
-      'Für morgen: Kichererbsen einweichen (12 h) · Kichererbsen-Eintopf',
+    // Spec 0020, AC-027: the latest start of tomorrow's Vorlauf lies today.
+    await expect(tid(page, 'today-prep')).toContainText(
+      /^Heute (bis ca\. \d+ Uhr|Abend): Kichererbsen einweichen · Kichererbsen-Eintopf \(morgen /,
     );
+    await expect(page.getByText('Für morgen')).toHaveCount(0);
     await expect(tid(page, 'today-chores')).toContainText('Bad putzen');
     await expect(tid(page, 'today-shopping-count')).toHaveText(/\d+ offen/);
     // "Wie war's?" asks about the last three days only while today is shown (AC-022).
@@ -70,7 +76,8 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await open(page, '/');
     await showDay(page, day(1));
     await expect(tid(page, 'today-meals')).toContainText('Geplant am');
-    await expect(tid(page, 'today-week-today')).toBeVisible();
+    // Spec 0020, Entscheidung 1: tomorrow lies in today's section, "Heute" stays greyed out.
+    await expect(tid(page, 'today-week-today')).toBeDisabled();
     const card = tid(page, `today-meal-${seedIds['plan-8']}`);
     await expect(card).toContainText('Kichererbsen-Eintopf');
     await card.click();
@@ -79,10 +86,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await back(page);
     await nav(page, 'index');
     await expect(tid(page, `today-meal-${seedIds['plan-8']}`)).toBeVisible();
-    await expect(tid(page, 'today-week-today')).toBeVisible();
 
     // The seed plans "Grillabend" next Saturday (today on a Saturday).
-    await tid(page, 'today-week-today').click();
+    await tid(page, `today-week-${TODAY}`).click();
     const saturday = day((6 - isoWeekday(TODAY) + 7) % 7);
     await showDay(page, saturday);
     const grill = seedIds['plan-grillabend-sa'];
@@ -102,7 +108,7 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await expect(tid(page, `chore-${BAD}`)).toBeHidden({ timeout: 6_000 });
 
     await tid(page, 'chores-tab-history').click();
-    const rows = tid(page, 'chore-history').locator('[data-testid^="history-"][role="button"]');
+    const rows = tid(page, 'chore-history').locator(HISTORY_ROW);
     await expect(rows.first()).toContainText('Bad putzen');
     await nav(page, 'index');
     await expect(tid(page, 'today-chores')).toBeVisible();
@@ -132,8 +138,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await tid(page, 'chores-tab-all').click();
     const row = tid(page, 'chores-all').locator(CHORE_ROW).filter({ hasText: 'Staubsaugen' });
     await expect(row).toHaveCount(1);
-    await expect(row.locator(`[role="img"][aria-label="${ENRICO}"]`)).toHaveCount(1);
-    await expect(row.locator(`[role="img"][aria-label="${NADJA}"]`)).toHaveCount(1);
+    // Spec 0018, AC-016: an alternating chore shows only the person whose turn it is.
+    await expect(row.locator('[role="img"][aria-label^="dran: "]')).toHaveCount(1);
+    await expect(row.locator(`[role="img"][aria-label="${NADJA}"]`)).toHaveCount(0);
 
     await tid(page, 'chore-new').click();
     await tid(page, 'chore-save').click();
@@ -152,6 +159,8 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await tid(page, 'today-spontaneous').click();
     await expect(tid(page, 'chore-done-sheet')).toContainText('Was hast du erledigt?');
     await expect(tid(page, 'chore-done-save')).toBeDisabled();
+    // AC-070 (0031): with an empty search the household's chores already stand there.
+    await expect(tid(page, 'chore-done-search-hits')).toContainText('Fenster Küche');
     await tid(page, 'chore-done-search-input').fill('Fenster Kuche');
     await expect(tid(page, 'chore-done-search-create-new')).toBeDisabled();
     await expect(tid(page, 'chore-done-search-brake')).toContainText('Meinst du Fenster Küche?');
@@ -167,9 +176,9 @@ test.describe('Haushalt and Übersicht at phone width', () => {
       tid(page, 'chores-all').locator(CHORE_ROW).filter({ hasText: 'Fenster Küche' }),
     ).toHaveCount(1);
     await tid(page, 'chores-tab-history').click();
-    await expect(
-      tid(page, 'chore-history').locator('[data-testid^="history-"][role="button"]').first(),
-    ).toContainText('Fenster Küche');
+    await expect(tid(page, 'chore-history').locator(HISTORY_ROW).first()).toContainText(
+      'Fenster Küche',
+    );
   });
 
   test('AC-042 (0011): offline the hits stay, "Als erledigt eintragen" is greyed out', async ({
@@ -210,6 +219,24 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await expect(tid(page, 'chore-facts')).toBeVisible();
   });
 
+  test('spec 0032, AC-006: "Aufgabe bearbeiten" has "Abbrechen", title and "Speichern" in its header, no footer', async ({
+    page,
+  }) => {
+    await open(page, '/haushalt');
+    await tid(page, 'chores-tab-all').click();
+    await tid(page, `chore-${seedIds['chore-kueche']}`).click();
+    await tid(page, 'chore-edit').click();
+    const header = tid(page, 'chore-sheet-header');
+    await expect(header.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Speichern' })).toBeVisible();
+    await expect(page.locator('[data-testid="chore-sheet-footer"]')).toHaveCount(0);
+    const head = await header.boundingBox();
+    const sheet = await tid(page, 'chore-sheet').boundingBox();
+    expect((head?.y ?? 0) - (sheet?.y ?? 0)).toBeLessThan(20);
+    await tid(page, 'chore-edit-cancel').click();
+    await expect(tid(page, 'chore-facts')).toBeVisible();
+  });
+
   test('AC-048 (0011): the household "Test" without chores offers "Aufgabe anlegen"', async ({
     page,
   }) => {
@@ -243,6 +270,17 @@ test.describe('Haushalt and Übersicht at phone width', () => {
 
 test.describe('Haushalt at desktop width', () => {
   only('desktop');
+
+  test('spec 0032, AC-009: on the desktop "Speichern" stays at the bottom and ✕ at the top', async ({
+    page,
+  }) => {
+    await open(page, '/haushalt?fenster=neu-aufgabe');
+    const footer = tid(page, 'chore-new-sheet-footer');
+    await expect(footer.getByRole('button', { name: 'Speichern' })).toBeVisible();
+    await expect(tid(page, 'chore-new-sheet-close')).toBeVisible();
+    await expect(page.locator('[data-testid="chore-new-sheet-header"]')).toHaveCount(0);
+    await tid(page, 'chore-new-sheet-close').click();
+  });
 
   test('AC-046 / AC-047 (0011): three view tabs; "Alle" is list and detail side by side', async ({
     page,

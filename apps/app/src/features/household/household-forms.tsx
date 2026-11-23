@@ -6,11 +6,22 @@ import {
   removeMember,
   switchHousehold,
   useAuth,
+  useActiveHouseholdId,
   useCurrentMemberId,
   useHouseholdInvitations,
+  useHouseholdsMap,
   useMembers,
   useMyInvitations,
+  withdrawInvitation,
 } from '@housekeeping/api';
+import {
+  invitationHint,
+  invitedNotice,
+  memberProfileLine,
+  memberRemovalPrompt,
+  withdrawnNotice,
+  type MemberRemovalPrompt,
+} from '@housekeeping/core';
 import {
   Avatar,
   Button,
@@ -25,13 +36,14 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage } from '@/features/shell/error-message';
 
 // Household management (spec 0003, REQ-003): used by the settings and by the screen shown to a
 // signed-in person without a household. Every action needs the network.
 
-const messageOf = (error: unknown) =>
-  error instanceof Error ? error.message : 'Hat nicht geklappt – bitte noch einmal versuchen';
+const messageOf = (error: unknown) => errorMessage(error);
 
 /** Runs an action once at a time; its error goes to the field or a toast. */
 function useAction() {
@@ -114,8 +126,12 @@ export function InviteForm() {
 
   const submit = async () => {
     setError(undefined);
+    const address = email.trim().toLowerCase();
     const invited = await run(() => inviteMember(email), setError);
-    if (invited) setEmail('');
+    if (invited) {
+      setEmail('');
+      toast.show({ message: invitedNotice(address) });
+    }
   };
 
   return (
@@ -132,7 +148,8 @@ export function InviteForm() {
         keyboardType="email-address"
         returnKeyType="send"
         error={error}
-        hint={online.hint ?? 'Wer eingeladen ist, kann sich mit Google anmelden.'}
+        // Spec 0027, AC-006/AC-007: the Google hint stays, also offline (Decision 11).
+        hint={invitationHint(online.hint)}
         editable={!online.disabled}
         testID="household-invite-input"
       />
@@ -149,13 +166,39 @@ export function InviteForm() {
   );
 }
 
-/** Members of the active household and its open invitations („Eingeladen“). */
+/**
+ * Members of the active household and its open invitations („Eingeladen“). „Entfernen“ and
+ * „Verlassen“ ask first; the server call happens only on the confirmation (spec 0018, REQ-004).
+ * „Zurückziehen“ withdraws an invitation without asking (spec 0027, REQ-001, Decision 2); the
+ * last member has no „Verlassen“, only „Haushalt löschen“ below (AC-017).
+ */
 export function MemberList() {
   const members = useMembers();
   const invitations = useHouseholdInvitations();
   const me = useCurrentMemberId();
+  const households = useHouseholdsMap();
+  const activeHouseholdId = useActiveHouseholdId();
+  const householdName = households[activeHouseholdId]?.household.name ?? '';
+  const householdCount = Object.keys(households).length;
   const online = useOnlineOnly();
   const { busy, run } = useAction();
+  const [asking, setAsking] = useState<{ id: string; name: string } | undefined>();
+  // The question names one household, and the call acts on the active one: when another becomes
+  // active while it is open (e.g. removed on another device), it closes instead of acting there.
+  const [askedIn, setAskedIn] = useState(activeHouseholdId);
+  if (askedIn !== activeHouseholdId) {
+    setAskedIn(activeHouseholdId);
+    setAsking(undefined);
+  }
+
+  const withdraw = (invitationId: string, email: string) =>
+    run(
+      async () => {
+        await withdrawInvitation(invitationId);
+        toast.show({ message: withdrawnNotice(email) });
+      },
+      (message) => toast.show({ message }),
+    );
 
   const remove = (profileId: string, name: string) =>
     run(
@@ -169,43 +212,95 @@ export function MemberList() {
     );
 
   return (
-    <List testID="household-members">
-      {members.map((member) => {
-        const self = member.id === me;
-        return (
+    <>
+      <List testID="household-members">
+        {members.map((member) => {
+          const self = member.id === me;
+          const last = members.length === 1;
+          return (
+            <ListRow
+              key={member.id}
+              title={self ? `${member.name} (du)` : member.name}
+              subtitle={memberProfileLine(member)}
+              leading={<Avatar name={member.name} color={member.color} size="m" />}
+              trailing={
+                last ? undefined : (
+                  <Button
+                    label={self ? 'Verlassen' : 'Entfernen'}
+                    variant="link"
+                    size="sm"
+                    disabled={online.disabled || busy}
+                    hint={online.hint}
+                    onPress={() => setAsking({ id: member.id, name: member.name })}
+                    testID={`household-member-remove-${member.id}`}
+                  />
+                )
+              }
+              testID={`household-member-${member.id}`}
+            />
+          );
+        })}
+        {invitations.map((invitation) => (
           <ListRow
-            key={member.id}
-            title={self ? `${member.name} (du)` : member.name}
-            leading={<Avatar name={member.name} color={member.color} size="m" />}
+            key={invitation.id}
+            title={invitation.email}
+            subtitle="Eingeladen"
+            leading={
+              <View style={{ width: 36, alignItems: 'center' }}>
+                <Icon name="mail" color="muted" />
+              </View>
+            }
             trailing={
               <Button
-                label={self ? 'Verlassen' : 'Entfernen'}
+                label="Zurückziehen"
                 variant="link"
                 size="sm"
                 disabled={online.disabled || busy}
                 hint={online.hint}
-                onPress={() => void remove(member.id, member.name)}
-                testID={`household-member-remove-${member.id}`}
+                onPress={() => void withdraw(invitation.id, invitation.email)}
+                testID={`household-invitation-withdraw-${invitation.id}`}
               />
             }
-            testID={`household-member-${member.id}`}
+            testID={`household-invitation-${invitation.id}`}
           />
-        );
-      })}
-      {invitations.map((invitation) => (
-        <ListRow
-          key={invitation.id}
-          title={invitation.email}
-          subtitle="Eingeladen"
-          leading={
-            <View style={{ width: 36, alignItems: 'center' }}>
-              <Icon name="mail" color="muted" />
-            </View>
-          }
-          testID={`household-invitation-${invitation.id}`}
+        ))}
+      </List>
+      {asking ? (
+        <MemberRemovalDialog
+          prompt={memberRemovalPrompt({
+            memberName: asking.name,
+            householdName,
+            self: asking.id === me,
+            householdCount,
+          })}
+          onConfirm={() => {
+            const { id, name } = asking;
+            setAsking(undefined);
+            void remove(id, name);
+          }}
+          onCancel={() => setAsking(undefined)}
         />
-      ))}
-    </List>
+      ) : null}
+    </>
+  );
+}
+
+/** The question before „Entfernen“ or „Verlassen“; Escape and Android-Zurück cancel (spec 0005). */
+function MemberRemovalDialog(props: {
+  prompt: MemberRemovalPrompt;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <ConfirmDialog
+      title={props.prompt.title}
+      message={props.prompt.message}
+      confirmLabel={props.prompt.confirmLabel}
+      needsNetwork
+      onConfirm={props.onConfirm}
+      onCancel={props.onCancel}
+      testID="member-remove-dialog"
+    />
   );
 }
 

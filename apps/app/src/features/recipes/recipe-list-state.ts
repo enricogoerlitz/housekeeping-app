@@ -1,49 +1,32 @@
 import {
-  DEFAULT_RECIPE_SORT,
-  EMPTY_RECIPE_LIST_FILTER,
+  recipeListFromParams,
+  recipeListToParams,
   shuffleOrder,
   type Id,
   type RecipeListFilter,
   type RecipeListSort,
 } from '@housekeeping/core';
-import { useSyncExternalStore } from 'react';
+import { useState } from 'react';
 
-// Search, filter, sort and the random order of "Essen → Rezepte" while the app runs (spec 0008,
-// E14): opening a recipe, switching tabs or views keeps them; a restart starts over.
+import { usePageParams } from '@/lib/url-state';
+
+// Search, filter and sort of "Essen → Rezepte" stand in the address (spec 0019, REQ-011), so a
+// reload and a copied address show the same list; opening a recipe, switching tabs or views keeps
+// them (spec 0008, E14). Only the random order is drawn anew per page load (AC-035).
+
+let shuffle: readonly Id[] = [];
+let round = 0;
 
 export interface RecipeListState {
   query: string;
   filter: RecipeListFilter;
   sort: RecipeListSort;
-  /** The random order of all recipe ids, drawn when "Zufall" is chosen or mixed again. */
-  shuffle: readonly Id[];
   /**
    * Counts the changes of filter, sort and order. The list keeps its scroll position per round,
    * so each change starts at the top and "Zurück" returns to the same place (AC-011, AC-015).
    */
   round: number;
 }
-
-let state: RecipeListState = {
-  query: '',
-  filter: EMPTY_RECIPE_LIST_FILTER,
-  sort: DEFAULT_RECIPE_SORT,
-  shuffle: [],
-  round: 0,
-};
-const listeners = new Set<() => void>();
-
-function update(next: Partial<RecipeListState>, restart: boolean) {
-  state = { ...state, ...next, round: restart ? state.round + 1 : state.round };
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-const snapshot = () => state;
 
 export interface RecipeListActions {
   setQuery: (query: string) => void;
@@ -52,18 +35,36 @@ export interface RecipeListActions {
   setSort: (sort: RecipeListSort, ids: readonly Id[]) => void;
   /** "⟳ Neu mischen". */
   reshuffle: (ids: readonly Id[]) => void;
+  /** The random order over the given ids; drawn once after a reload with "Zufall". */
+  shuffleFor: (ids: readonly Id[]) => readonly Id[];
 }
 
-const actions: RecipeListActions = {
-  setQuery: (query) => update({ query }, false),
-  setFilter: (filter) => update({ filter }, true),
-  setSort: (sort, ids) =>
-    update(sort === 'random' ? { sort, shuffle: shuffleOrder(ids, Math.random) } : { sort }, true),
-  reshuffle: (ids) => update({ shuffle: shuffleOrder(ids, Math.random) }, true),
-};
-
-/** The list state of "Essen → Rezepte" and its changes. */
+/** The list state of "Essen → Rezepte" and its changes; each change replaces the address. */
 export function useRecipeListState(): RecipeListState & RecipeListActions {
-  const current = useSyncExternalStore(subscribe, snapshot, snapshot);
-  return { ...current, ...actions };
+  const { params, replace } = usePageParams('rezepte');
+  const state = recipeListFromParams(params);
+  const [, rerender] = useState(0);
+  const write = (next: Partial<typeof state>, restart: boolean) => {
+    if (restart) round += 1;
+    replace(recipeListToParams({ ...state, ...next }));
+  };
+  return {
+    ...state,
+    round,
+    setQuery: (query) => write({ query }, false),
+    setFilter: (filter) => write({ filter }, true),
+    setSort: (sort, ids) => {
+      if (sort === 'random') shuffle = shuffleOrder(ids, Math.random);
+      write({ sort }, true);
+    },
+    reshuffle: (ids) => {
+      shuffle = shuffleOrder(ids, Math.random);
+      round += 1;
+      rerender((count) => count + 1);
+    },
+    shuffleFor: (ids) => {
+      if (shuffle.length === 0 && ids.length > 0) shuffle = shuffleOrder(ids, Math.random);
+      return shuffle;
+    },
+  };
 }

@@ -1,11 +1,12 @@
-import { useState, type ReactNode } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { Platform, Pressable, View, type TextInput } from 'react-native';
 
-import { Button, IconButton, TextField, focusRing } from './controls';
+import { Button, IconButton, TextField, keyboardFocusRing } from './controls';
 import { expandableA11y } from './expandable';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
+import { ariaRef } from './hint';
 
 export interface SearchOrCreateHit {
   key: string;
@@ -50,6 +51,10 @@ export interface SearchOrCreateProps {
   /** "Mehr Angaben ▸": more fields that unfold in place, below the rows. */
   more?: { label: string; children: ReactNode };
   autoFocus?: boolean;
+  /** Enter in the field takes the first hit, e.g. the article of an ingredient (spec 0023, AC-001). */
+  enterSelects?: boolean;
+  /** The search field, e.g. to put the focus back on it (spec 0023, AC-003). */
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
   /** Parts get `${testID}-input`, `-hit-<key>`, `-create-<key>`, `-brake`, `-more`. */
   testID?: string;
 }
@@ -83,7 +88,16 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
         placeholder={props.placeholder}
         accessibilityLabel={props.label}
         autoFocus={props.autoFocus}
+        inputRef={props.inputRef}
         returnKeyType="search"
+        onSubmitEditing={
+          props.enterSelects
+            ? () => {
+                const first = props.hits[0];
+                if (first) props.onSelect(first.key);
+              }
+            : undefined
+        }
         testID={id('input')}
         left={<Icon name="search" size={20} color="muted" />}
         right={
@@ -128,6 +142,10 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
               accessibilityLabel={option.label}
               accessibilityHint={disabled ? props.createDisabledHint : undefined}
               accessibilityState={{ disabled: disabled || braked }}
+              // react-native-web drops accessibilityHint.
+              ref={ariaRef({
+                'aria-description': disabled ? props.createDisabledHint : undefined,
+              })}
               disabled={disabled || braked}
               onPress={() => props.onCreate(option.key)}
               style={(state) => [
@@ -140,7 +158,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                   borderRadius: theme.shape.radius.control,
                   opacity: disabled ? 0.45 : state.pressed ? 0.6 : 1,
                 },
-                focusRing(theme, (state as { focused?: boolean }).focused),
+                keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
               ]}
             >
               <Icon name="plus" size={20} color="accent" />
@@ -202,7 +220,7 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
                 alignSelf: 'flex-start',
                 opacity: state.pressed ? 0.6 : 1,
               },
-              focusRing(theme, (state as { focused?: boolean }).focused),
+              keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
             ]}
           >
             <Text variant="smallStrong" color="accent">

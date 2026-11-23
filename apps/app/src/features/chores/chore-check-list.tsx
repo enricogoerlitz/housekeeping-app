@@ -5,7 +5,13 @@ import {
   useChores,
   useMembersById,
 } from '@housekeeping/api';
-import { fasterNotice, latestBookedEvent, type Chore, type Id } from '@housekeeping/core';
+import {
+  fasterNotice,
+  latestBookedEvent,
+  OFFLINE_CHECK_NOTICE,
+  type Chore,
+  type Id,
+} from '@housekeeping/core';
 import { haptic, toast, useCheckWindow, type CheckWindowState } from '@housekeeping/ui';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
@@ -83,8 +89,7 @@ export function useChoreCheckWindow(chores: readonly Chore[]): CheckWindowState<
           bookOrExplain(id, tapped.get(id));
         } catch (error) {
           toast.show({
-            message:
-              error instanceof OfflineError ? 'Offline – nichts wurde abgehakt' : BOOKING_FAILED,
+            message: error instanceof OfflineError ? OFFLINE_CHECK_NOTICE : BOOKING_FAILED,
           });
           return;
         }

@@ -1,5 +1,5 @@
 import { Image, type ImageSource } from 'expo-image';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 
 import { collageInsets, collageLayout } from './collage-layout';
-import { Button, Checkbox, focusRing } from './controls';
+import { Button, Checkbox, keyboardFocusRing } from './controls';
+import { useHover } from './pointer';
 import type { IconName } from './icons';
-import { Icon, Surface, Text } from './primitives';
+import { HYPHENATE, Icon, Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
 import type { KindColor, Tone } from './themes';
 
@@ -65,10 +66,18 @@ export function Avatar(props: AvatarProps) {
 export function AvatarStack(props: {
   members: { id: string; name: string; color: string }[];
   size?: keyof typeof AVATAR_SIZES;
+  /** Read instead of the names, as one image, e.g. "dran: Nadja" (text from the app). */
+  accessibilityLabel?: string;
 }) {
   const theme = useTheme();
+  const labelled = props.accessibilityLabel !== undefined;
   return (
-    <View style={{ flexDirection: 'row' }}>
+    <View
+      style={{ flexDirection: 'row' }}
+      accessible={labelled || undefined}
+      accessibilityRole={labelled ? 'image' : undefined}
+      accessibilityLabel={props.accessibilityLabel}
+    >
       {props.members.map((member, index) => (
         <View
           key={member.id}
@@ -309,6 +318,7 @@ export interface MediaCardProps {
 /** A card with a picture: recipe tiles, today's meals. */
 export function MediaCard(props: MediaCardProps) {
   const theme = useTheme();
+  const hover = useHover();
   const layout = !props.layout || props.layout === 'auto' ? theme.shape.media : props.layout;
   const large = props.size === 'l';
   const cover = (size: Pick<PhotoProps, 'width' | 'height' | 'aspectRatio' | 'radius'>) =>
@@ -360,7 +370,8 @@ export function MediaCard(props: MediaCardProps) {
   );
   // The corner (e.g. a "Route" button or a heart) is never placed inside the pressable card:
   // a button inside a button is invalid on the web and unreachable for screen readers.
-  const card = (content: ReactNode) =>
+  // With a mouse the card's surface sinks while the pointer is on it (spec 0019, AC-007).
+  const card = (content: (hovered: boolean) => ReactNode) =>
     props.onPress ? (
       <Pressable
         testID={props.testID}
@@ -369,21 +380,21 @@ export function MediaCard(props: MediaCardProps) {
         onPress={props.onPress}
         style={(state) => [
           { flex: 1, opacity: state.pressed ? 0.75 : 1, borderRadius: theme.shape.radius.card },
-          focusRing(theme, (state as { focused?: boolean }).focused),
+          keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
         ]}
       >
-        {content}
+        {(state) => content(hover((state as { hovered?: boolean }).hovered))}
       </Pressable>
     ) : (
       <View testID={props.testID} style={{ flex: 1 }}>
-        {content}
+        {content(false)}
       </View>
     );
   if (layout === 'photoTop')
     return (
       <View style={{ flex: 1 }}>
-        {card(
-          <Surface padding={0} style={{ overflow: 'hidden', flex: 1 }}>
+        {card((hovered) => (
+          <Surface padding={0} sunken={hovered} style={{ overflow: 'hidden', flex: 1 }}>
             <View>
               {cover({
                 height: props.photoAspectRatio ? undefined : large ? 190 : 122,
@@ -396,8 +407,8 @@ export function MediaCard(props: MediaCardProps) {
               ) : null}
             </View>
             <View style={{ padding: 12, paddingTop: 10 }}>{text}</View>
-          </Surface>,
-        )}
+          </Surface>
+        ))}
         {props.corner ? (
           <View style={{ position: 'absolute', top: 8, right: 8 }}>{props.corner}</View>
         ) : null}
@@ -410,20 +421,30 @@ export function MediaCard(props: MediaCardProps) {
   });
   const rowStyle = { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 } as const;
   if (!props.corner)
-    return card(
-      <Surface padding={large ? 12 : 9} style={rowStyle}>
+    return card((hovered) => (
+      <Surface padding={large ? 12 : 9} sunken={hovered} style={rowStyle}>
         {thumb}
         {text}
-      </Surface>,
-    );
+      </Surface>
+    ));
   return (
     <Surface padding={large ? 12 : 9} style={rowStyle}>
-      {card(
-        <View style={rowStyle}>
+      {card((hovered) => (
+        <View
+          style={[
+            rowStyle,
+            hovered
+              ? {
+                  backgroundColor: theme.colors.surfaceSunken,
+                  borderRadius: theme.shape.radius.control,
+                }
+              : null,
+          ]}
+        >
           {thumb}
           {text}
-        </View>,
-      )}
+        </View>
+      ))}
       {props.corner}
     </Surface>
   );
@@ -439,6 +460,10 @@ export function ProgressBar(props: { value: number; label: string; testID?: stri
       accessibilityRole="progressbar"
       accessibilityLabel={props.label}
       accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
+      // react-native-web drops accessibilityValue.
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value * 100)}
       style={{
         height: 8,
         borderRadius: 4,
@@ -468,6 +493,10 @@ export function DueBar(props: { value: number; label: string }) {
       accessibilityRole="progressbar"
       accessibilityLabel={props.label}
       accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
+      // react-native-web drops accessibilityValue.
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value * 100)}
       style={{
         height: 6,
         width: 128,
@@ -529,14 +558,22 @@ export function EmptyState(props: EmptyStateProps) {
         </Text>
       ) : null}
       {props.children ? (
-        <View style={{ gap: 10, marginTop: 10, alignItems: 'center' }}>{props.children}</View>
+        <View style={{ gap: 10, marginTop: 10, alignItems: 'center' }}>
+          {/* A button keeps to the start of its box; each one gets a box of its own width, and
+              the box is centred (spec 0031, AC-085). */}
+          {Children.toArray(props.children).map((child, index) => (
+            <View key={isValidElement(child) && child.key !== null ? child.key : index}>
+              {child}
+            </View>
+          ))}
+        </View>
       ) : null}
     </View>
   );
 }
 
 /** The calm offline hint: orange, never red. */
-export function OfflineBanner(props: { text?: string; testID?: string }) {
+export function OfflineBanner(props: { text: string; testID?: string }) {
   const theme = useTheme();
   return (
     <ToneContext.Provider value={{ fg: theme.colors.warnText }}>
@@ -555,7 +592,7 @@ export function OfflineBanner(props: { text?: string; testID?: string }) {
       >
         <Icon name="wifi-off" size={17} />
         <Text variant="smallStrong" style={{ flex: 1 }}>
-          {props.text ?? 'Offline – Lesen und Abhaken gehen'}
+          {props.text}
         </Text>
       </View>
     </ToneContext.Provider>
@@ -846,6 +883,8 @@ export interface KindLineProps {
   /** Replaces the kind's symbol, e.g. the check box of a chore that is due today. */
   leading?: ReactNode;
   trailing?: ReactNode;
+  /** A second line under the title, e.g. the bell of a reminder (spec 0017). */
+  detail?: ReactNode;
   onPress?: () => void;
   /** Flexible chores: dashed edge (spec 0010, REQ-006). */
   dashed?: boolean;
@@ -856,6 +895,11 @@ export interface KindLineProps {
   /** Muted text, e.g. the quiet household row. */
   quiet?: boolean;
   accessibilityLabel?: string;
+  /**
+   * A custom screen-reader action on the line, e.g. "Verschieben" as the way without dragging
+   * (spec 0016); it needs `onPress`.
+   */
+  accessibilityAction?: { label: string; onAction: () => void };
   testID?: string;
 }
 
@@ -864,8 +908,24 @@ export interface KindLineProps {
  * fill (spec 0010, D19, AC-009).
  */
 export function KindLine(props: KindLineProps) {
+  const hover = useHover();
   const theme = useTheme();
   const compact = props.size === 'compact';
+  const title = (
+    <Text
+      variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
+      color={props.quiet || props.struck ? 'muted' : 'text'}
+      numberOfLines={compact ? 1 : 2}
+      style={[
+        props.detail ? { minWidth: 0 } : { flex: 1, minWidth: 0 },
+        // A calendar entry is a title too, also in `small` and `body` (spec 0031, REQ-033).
+        HYPHENATE,
+        props.struck ? { textDecorationLine: 'line-through' } : null,
+      ]}
+    >
+      {props.title}
+    </Text>
+  );
   const body = (
     <View
       style={{
@@ -888,20 +948,18 @@ export function KindLine(props: KindLineProps) {
       {props.leading ?? (
         <Icon name={KIND_ICONS[props.kind]} size={compact ? 13 : 15} color="muted" />
       )}
-      <Text
-        variant={compact ? 'caption' : props.quiet ? 'small' : 'body'}
-        color={props.quiet || props.struck ? 'muted' : 'text'}
-        numberOfLines={compact ? 1 : 2}
-        style={[
-          { flex: 1, minWidth: 0 },
-          props.struck ? { textDecorationLine: 'line-through' } : null,
-        ]}
-      >
-        {props.title}
-      </Text>
+      {props.detail ? (
+        <View style={{ flex: 1, minWidth: 0, paddingVertical: compact ? 1 : 3 }}>
+          {title}
+          {props.detail}
+        </View>
+      ) : (
+        title
+      )}
       {props.trailing}
     </View>
   );
+  const action = props.accessibilityAction;
   if (!props.onPress) {
     return (
       <View testID={props.testID} accessibilityLabel={props.accessibilityLabel}>
@@ -914,6 +972,14 @@ export function KindLine(props: KindLineProps) {
       testID={props.testID}
       accessibilityRole="button"
       accessibilityLabel={props.accessibilityLabel ?? props.title}
+      accessibilityActions={action ? [{ name: 'move', label: action.label }] : undefined}
+      onAccessibilityAction={
+        action
+          ? (event) => {
+              if (event.nativeEvent.actionName === 'move') action.onAction();
+            }
+          : undefined
+      }
       onPress={props.onPress}
       style={(state) => {
         const { pressed, hovered, focused } = state as {
@@ -924,10 +990,10 @@ export function KindLine(props: KindLineProps) {
         return [
           {
             borderRadius: 4,
-            backgroundColor: hovered ? theme.colors.surfaceSunken : 'transparent',
+            backgroundColor: hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
             opacity: pressed ? 0.7 : 1,
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >

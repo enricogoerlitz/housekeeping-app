@@ -105,7 +105,7 @@ describe('householdCall', () => {
   });
 
   it('signed out: fails', async () => {
-    await expect(create('WG Köln')).rejects.toThrow('Not signed in');
+    await expect(create('WG Köln')).rejects.toThrow('Du bist nicht angemeldet.');
   });
 });
 
@@ -145,15 +145,12 @@ describe('invitations', () => {
     expect(invitationsForMe(readSmallTables(), NADJA)).toEqual([]);
   });
 
-  it('accepted invitations and other addresses are not listed', () => {
+  it('invitations to other addresses are not mine (spec 0027: every invitation is open)', () => {
     const small = {
       profiles: [{ id: 'p1', email: 'p1@example.com' }],
       households: [{ id: 'h2', name: 'WG' }],
       household_members: [],
-      household_invitations: [
-        { id: 'i1', household_id: 'h2', email: 'p1@example.com', accepted_at: '2026-11-20' },
-        { id: 'i2', household_id: 'h2', email: 'p2@example.com', accepted_at: null },
-      ],
+      household_invitations: [{ id: 'i2', household_id: 'h2', email: 'p2@example.com' }],
     };
     expect(invitationsForMe(small, 'p1')).toEqual([]);
     expect(invitationsOfHousehold(small, 'h2').map((invitation) => invitation.id)).toEqual(['i2']);

@@ -1,4 +1,4 @@
-import type { SeedRecipe } from '../starter/types';
+import type { SeedRecipe } from './types';
 
 /**
  * Sample recipes of the demo household. Every ingredient names a starter catalog article exactly

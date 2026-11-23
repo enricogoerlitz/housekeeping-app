@@ -3,7 +3,7 @@ import { Platform, Pressable, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { ARRIVE, LEAVE, RowTransition } from './check';
-import { focusRing } from './controls';
+import { keyboardFocusRing } from './controls';
 import { disclosureLabel, disclosureState, disclosureTitle } from './disclosure-state';
 import { expandableA11y } from './expandable';
 import { Icon, Text } from './primitives';
@@ -65,7 +65,7 @@ export function Disclosure(props: DisclosureProps) {
               alignSelf: 'flex-start',
               opacity: pressState.pressed ? 0.6 : 1,
             },
-            focusRing(theme, (pressState as { focused?: boolean }).focused),
+            keyboardFocusRing(theme, (pressState as { focused?: boolean }).focused),
           ]}
         >
           <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={18} color="muted" />

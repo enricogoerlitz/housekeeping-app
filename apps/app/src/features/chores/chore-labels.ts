@@ -1,37 +1,35 @@
 import {
   assignmentLabel,
-  formatShortDate,
+  choreDayLabel,
+  choreTurnText,
   recurrenceLabel,
-  weekdayShort,
   type Chore,
+  type ChoreAway,
   type ChoreEvent,
   type ISODate,
-  type Member,
 } from '@housekeeping/core';
 import type { IconName } from '@housekeeping/ui';
 
-/** Calm wording for overdue chores: never red, never "überfällig". */
-export function overdueLabel(days: number): string {
-  return days === 1 ? 'fällig seit gestern' : `fällig seit ${days} Tagen`;
-}
-
-export function effortLabel(effort: number): string {
+function effortLabel(effort: number): string {
   return effort === 1 ? '1 Punkt' : `${effort} Punkte`;
 }
 
-/** "Fr 27.11." */
-export function dayWithDate(iso: ISODate): string {
-  return `${weekdayShort(iso)} ${formatShortDate(iso)}`;
+/** "Fr 27.11.", in another year "Mi 20.1.2027" (spec 0026, AC-019). */
+export function dayWithDate(iso: ISODate, today: ISODate): string {
+  return choreDayLabel(iso, today);
 }
 
-/** The first line of an opened chore: "wöchentlich Fr · Enrico · 2 Punkte" (AC-049). */
-export function choreFacts(chore: Chore, members: Member[]): string {
-  const next = members.find((member) => member.id === chore.nextAssigneeId);
-  const assignment = assignmentLabel(chore.assignment, members);
+/**
+ * The first line of an opened chore: "wöchentlich Fr · Enrico · 2 Punkte" (AC-049); alternating
+ * with whose turn it is, standing in for someone away: "abwechselnd, dran: Nadja (für Enrico,
+ * unterwegs)" (spec 0026, AC-045).
+ */
+export function choreFacts(chore: Chore, today: ISODate, away: ChoreAway): string {
+  const assignment = assignmentLabel(chore.assignment, [...away.members]);
+  const turn = choreTurnText(chore, today, away);
   return [
     recurrenceLabel(chore.recurrence),
-    // Alternating: whose turn it is (AC-040, AC-059).
-    chore.assignment.type === 'rotating' && next ? `${assignment}, dran: ${next.name}` : assignment,
+    turn ? `${assignment}, ${turn}` : assignment,
     effortLabel(chore.effort),
   ]
     .filter(Boolean)

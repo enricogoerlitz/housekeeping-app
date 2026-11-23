@@ -1,10 +1,20 @@
-import { addIngredientToList, snapshot, useArticles, useArticlesById } from '@housekeeping/api';
 import {
-  addIngredientRows,
+  addIngredientToList,
+  OfflineError,
+  removeRecipeIngredient,
+  saveIngredient,
+  snapshot,
+  useArticles,
+  useArticlesById,
+} from '@housekeeping/api';
+import {
+  addPastedRows,
   addVariant,
   chooseRowArticle,
+  groupIngredients,
   ingredientLine,
   ingredientsForVariant,
+  keepDuplicateRow,
   moveIngredientAmong,
   openRows,
   removeIngredient,
@@ -12,6 +22,8 @@ import {
   renameVariant,
   rowArticleName,
   scaleAmount,
+  sectionDraft,
+  servingsLabel,
   setDefaultVariant,
   validateSectionDraft,
   type Article,
@@ -25,6 +37,7 @@ import {
   Button,
   ChoiceChips,
   EditableSection,
+  GroupLabel,
   Icon,
   IconButton,
   List,
@@ -42,7 +55,7 @@ import { View } from 'react-native';
 
 import { ArticleSheet } from '@/features/articles/article-sheet';
 import { MergeArticleDialog } from '@/features/articles/merge-article-dialog';
-import { undoAction } from '@/features/shell/offline';
+import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { IngredientSheet } from '../ingredient-sheet';
 import { IngredientsPasteSheet } from '../ingredients-paste-sheet';
@@ -52,7 +65,8 @@ import { OpenRows } from './open-rows';
 import { TextSheet } from './text-sheet';
 import type { SectionEditor } from './use-section-editor';
 
-type RowAction = 'edit' | 'up' | 'down' | 'remove';
+type RowAction = 'edit' | 'article' | 'up' | 'down' | 'remove';
+type ReadAction = 'ingredient' | 'article' | 'remove';
 type VariantAction = 'rename' | 'default' | 'remove';
 
 const ROW_LABELS: ReorderListLabels = {
@@ -64,8 +78,10 @@ const ROW_LABELS: ReorderListLabels = {
 
 /**
  * Zutaten (REQ-008) with the portions stepper (display only, AC-028) and the variant choice. Read:
- * "Ist alle" and ⋯ "Artikel bearbeiten" per ingredient (spec 0007, AC-007). Edited as a whole:
- * rows with ≡, Menge, Artikel and ⋯, "+ Zutat", "Mehrere einfügen" and "+ Variante" (E9).
+ * the ingredients without group, then each group under its heading (spec 0023, REQ-004); "Ist
+ * alle" and ⋯ "Zutat bearbeiten", "Artikel bearbeiten", "Entfernen" per ingredient, saved at once
+ * with "Rückgängig" (spec 0023, REQ-002). Edited as a whole: a flat list of rows with ≡, Menge,
+ * Artikel and ⋯, "+ Zutat", "Mehrere einfügen" and "+ Variante" (E9).
  */
 export function IngredientsSection(props: {
   recipe: Recipe;
@@ -98,6 +114,7 @@ export function IngredientsSection(props: {
           onVariant={props.onVariant}
           servings={props.servings}
           frame={frame}
+          editor={editor}
         />
       )}
     </EditableSection>
@@ -110,14 +127,58 @@ function IngredientsRead(props: {
   onVariant: (id: Id) => void;
   servings: number;
   frame: ReturnType<typeof useSectionFrame>;
+  editor: SectionEditor;
 }) {
-  const { recipe, variantId, frame } = props;
+  const { recipe, variantId, frame, editor } = props;
   const articlesById = useArticlesById();
+  const online = useOnlineOnly();
   // ⋯ → "Artikel bearbeiten" (spec 0007, AC-007) and, from there, "Zusammenführen" (REQ-007).
   const [articleFor, setArticleFor] = useState<Id | undefined>();
   const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
+  // ⋯ → "Zutat bearbeiten": the window over the section as stored (spec 0023, REQ-002).
+  const [editing, setEditing] = useState<
+    { ingredientId: Id; draft: IngredientsDraft } | undefined
+  >();
   const ingredients = ingredientsForVariant(recipe, variantId);
   const factor = props.servings / recipe.servings;
+  const nameOf = (ingredient: RecipeIngredient) => articlesById[ingredient.articleId]?.name ?? '';
+
+  const edit = (ingredient: RecipeIngredient) => {
+    // An open other section is saved first, like another pen (E7).
+    editor.flush();
+    setEditing({ ingredientId: ingredient.id, draft: sectionDraft(recipe, 'ingredients') });
+  };
+  const save = (next: IngredientsDraft, key: string) => {
+    setEditing(undefined);
+    const row = next.rows.find((candidate) => candidate.key === key);
+    if (!row) return;
+    try {
+      const saved = saveIngredient(recipe.id, row);
+      if (!saved) return;
+      toast.show({ message: 'Zutat gespeichert', actionLabel: 'Rückgängig', onAction: saved.undo });
+    } catch (error) {
+      if (!(error instanceof OfflineError)) throw error;
+    }
+  };
+  const remove = (ingredient: RecipeIngredient) => {
+    editor.flush();
+    try {
+      const removed = removeRecipeIngredient(recipe.id, ingredient.id);
+      if (!removed) return;
+      toast.show({
+        message: `${nameOf(ingredient)} entfernt`,
+        actionLabel: 'Rückgängig',
+        onAction: removed.undo,
+      });
+    } catch (error) {
+      if (!(error instanceof OfflineError)) throw error;
+    }
+  };
+  const onAction = (action: ReadAction, ingredient: RecipeIngredient) => {
+    if (action === 'article') setArticleFor(ingredient.articleId);
+    else if (action === 'ingredient') edit(ingredient);
+    else remove(ingredient);
+  };
 
   const markEmpty = (ingredient: RecipeIngredient) => {
     const restore = snapshot();
@@ -160,56 +221,91 @@ function IngredientsRead(props: {
           ) : null}
         </Stack>
       ) : (
-        <List>
-          {ingredients.map((ingredient) => (
-            <ListRow
-              key={ingredient.id}
-              testID={`ingredient-${ingredient.id}`}
-              title={<IngredientTitle ingredient={ingredient} />}
-              accessibilityLabel={[
-                ingredientLine(ingredient, articlesById[ingredient.articleId]?.name ?? '', factor),
-                ingredient.shoppingNote ? `(${ingredient.shoppingNote})` : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              leading={
-                <Text
-                  variant="bodyStrong"
-                  style={{ width: 76 }}
-                  testID={`ingredient-amount-${ingredient.id}`}
-                >
-                  {ingredient.amount ? scaleAmount(ingredient.amount, factor).text : ''}
-                </Text>
-              }
-              trailing={
-                <Row gap={0}>
-                  <Menu<'article'>
-                    trigger="icon"
-                    icon="ellipsis"
-                    label="Mehr"
-                    accessibilityLabel={`Mehr zu ${articlesById[ingredient.articleId]?.name ?? ''}`}
-                    onChange={() => setArticleFor(ingredient.articleId)}
-                    options={[
-                      {
-                        value: 'article',
-                        label: 'Artikel bearbeiten',
-                        disabled: !articlesById[ingredient.articleId],
-                      },
-                    ]}
-                    testID={`ingredient-menu-${ingredient.id}`}
-                  />
-                  <IconButton
-                    icon="shopping-basket"
-                    label={`${articlesById[ingredient.articleId]?.name ?? ''} ist alle`}
-                    onPress={() => markEmpty(ingredient)}
-                    testID={`ingredient-empty-${ingredient.id}`}
-                  />
-                </Row>
-              }
-            />
-          ))}
-        </List>
+        groupIngredients(ingredients).map((part) => (
+          <View
+            key={part.group ?? ''}
+            testID={part.group ? `ingredient-group-${part.group}` : undefined}
+          >
+            {part.group ? <GroupLabel>{part.group}</GroupLabel> : null}
+            <List>
+              {part.items.map((ingredient) => (
+                <ListRow
+                  key={ingredient.id}
+                  testID={`ingredient-${ingredient.id}`}
+                  title={<IngredientTitle ingredient={ingredient} />}
+                  accessibilityLabel={[
+                    ingredientLine(
+                      ingredient,
+                      articlesById[ingredient.articleId]?.name ?? '',
+                      factor,
+                    ),
+                    ingredient.shoppingNote ? `(${ingredient.shoppingNote})` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  leading={
+                    <Text
+                      variant="bodyStrong"
+                      selectable
+                      style={{ width: 76 }}
+                      testID={`ingredient-amount-${ingredient.id}`}
+                    >
+                      {ingredient.amount ? scaleAmount(ingredient.amount, factor).text : ''}
+                    </Text>
+                  }
+                  trailing={
+                    <Row gap={0}>
+                      <Menu<ReadAction>
+                        trigger="icon"
+                        icon="ellipsis"
+                        label="Mehr"
+                        accessibilityLabel={`Mehr zu ${nameOf(ingredient)}`}
+                        onChange={(action) => onAction(action, ingredient)}
+                        options={[
+                          {
+                            value: 'ingredient',
+                            label: 'Zutat bearbeiten',
+                            disabled: online.disabled,
+                            hint: online.hint,
+                          },
+                          {
+                            value: 'article',
+                            label: 'Artikel bearbeiten',
+                            disabled: online.disabled || !articlesById[ingredient.articleId],
+                            hint: online.hint,
+                          },
+                          {
+                            value: 'remove',
+                            label: 'Entfernen',
+                            disabled: online.disabled,
+                            hint: online.hint,
+                          },
+                        ]}
+                        testID={`ingredient-menu-${ingredient.id}`}
+                      />
+                      <IconButton
+                        icon="shopping-basket"
+                        label={`${articlesById[ingredient.articleId]?.name ?? ''} ist alle`}
+                        onPress={() => markEmpty(ingredient)}
+                        testID={`ingredient-empty-${ingredient.id}`}
+                      />
+                    </Row>
+                  }
+                />
+              ))}
+            </List>
+          </View>
+        ))
       )}
+      {editing ? (
+        <IngredientSheet
+          draft={editing.draft}
+          rowKey={editing.ingredientId}
+          servingsNote={`für ${servingsLabel(recipe.servings)}`}
+          onApply={save}
+          onClose={() => setEditing(undefined)}
+        />
+      ) : null}
       {articleFor ? (
         <ArticleSheet
           visible
@@ -246,6 +342,13 @@ function rowDetail(row: IngredientRow, draft: IngredientsDraft): string | undefi
   return parts.filter(Boolean).join(' · ') || undefined;
 }
 
+/** The household article of a row; undefined while it is created only with "Fertig". */
+function householdArticleId(draft: IngredientsDraft, key: string): Id | undefined {
+  const article = draft.rows.find((row) => row.key === key)?.article;
+  if (article?.kind === 'article') return article.articleId;
+  return article?.kind === 'hit' && article.hit.kind === 'article' ? article.hit.id : undefined;
+}
+
 function rowName(row: IngredientRow, articlesById: Record<Id, Article>): string {
   return [row.amountText.trim(), rowArticleName(row, articlesById)].filter(Boolean).join(' ');
 }
@@ -257,6 +360,9 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
   const [sheet, setSheet] = useState<
     { kind: 'row'; key?: string } | { kind: 'paste' } | { kind: 'variant'; id?: Id } | undefined
   >();
+  // ⋯ → "Artikel bearbeiten" of a row whose household article exists already (spec 0023, AC-007).
+  const [articleFor, setArticleFor] = useState<Id | undefined>();
+  const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
   const set = (next: IngredientsDraft) => editor.change(next);
 
   const open = openRows(draft, articles);
@@ -321,8 +427,10 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
       {/* Orange rows first: they keep the section open (AC-032). */}
       <OpenRows
         rows={open}
+        notice={editor.notice}
         onChoose={(key, article) => set(chooseRowArticle(draft, key, article))}
         onRemove={(key) => set(removeIngredient(draft, key))}
+        onKeep={(key) => set(keepDuplicateRow(draft, key))}
       />
       {ready.length > 0 ? (
         <ReorderList
@@ -341,11 +449,18 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
               accessibilityLabel={`Mehr zu ${item.name}`}
               onChange={(action) => {
                 if (action === 'edit') setSheet({ kind: 'row', key: item.key });
+                else if (action === 'article') setArticleFor(householdArticleId(draft, item.key));
                 else if (action === 'remove') set(removeIngredient(draft, item.key));
                 else move(item.key, index + (action === 'up' ? -1 : 1));
               }}
               options={[
-                { value: 'edit', label: 'Bearbeiten' },
+                { value: 'edit', label: 'Zutat bearbeiten' },
+                // Greyed out while the article is created only with "Fertig".
+                {
+                  value: 'article',
+                  label: 'Artikel bearbeiten',
+                  disabled: householdArticleId(draft, item.key) === undefined,
+                },
                 { value: 'up', label: 'Nach oben', disabled: index === 0 },
                 { value: 'down', label: 'Nach unten', disabled: index === ready.length - 1 },
                 { value: 'remove', label: 'Entfernen' },
@@ -404,10 +519,29 @@ function IngredientsFields(props: { draft: IngredientsDraft; editor: SectionEdit
           onClose={() => setSheet(undefined)}
         />
       ) : null}
+      {articleFor ? (
+        <ArticleSheet
+          visible
+          articleId={articleFor}
+          onClose={() => setArticleFor(undefined)}
+          onMerge={(targetId) => {
+            setMerging({ sourceId: articleFor, targetId });
+            setArticleFor(undefined);
+          }}
+        />
+      ) : null}
+      {merging ? (
+        <MergeArticleDialog
+          sourceId={merging.sourceId}
+          targetId={merging.targetId}
+          onCancel={() => setMerging(undefined)}
+          onMerged={() => setMerging(undefined)}
+        />
+      ) : null}
       {sheet?.kind === 'paste' ? (
         <IngredientsPasteSheet
           onPaste={(rows) => {
-            set(addIngredientRows(draft, rows));
+            set(addPastedRows(draft, rows));
             setSheet(undefined);
           }}
           onClose={() => setSheet(undefined)}
@@ -471,7 +605,8 @@ function IngredientTitle(props: { ingredient: RecipeIngredient }) {
   const article = useArticlesById()[ingredient.articleId];
   return (
     <View>
-      <Text variant="rowTitle">
+      {/* Content to copy stays selectable, unlike the controls around it (spec 0019, AC-002). */}
+      <Text variant="rowTitle" selectable>
         {article?.name ?? ''}
         {ingredient.prepNote ? (
           <Text variant="body" testID={`ingredient-prep-note-${ingredient.id}`}>

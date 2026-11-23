@@ -357,9 +357,7 @@ describe('fake server: sync_pull', () => {
     expect(first.small.profiles?.map((profile) => profile.id).sort()).toEqual([ENRICO, NADJA]);
 
     vi.setSystemTime(new Date('2026-11-20T10:05:00Z'));
-    await server
-      .transport(NADJA)
-      .applyChanges(H, [{ kind: 'delete', table: 'restaurants', id: 'rest1' }]);
+    await server.transport(NADJA).deleteRestaurant('rest1', '2026-11-20');
     const delta = await enrico.syncPull({
       households: { [H]: { full: false, since: { restaurants: first.serverTime } } },
     });
@@ -422,21 +420,63 @@ describe('fake server: foreign keys like the database (spec 0003, T3)', () => {
     row: { id, slot_id: 's1', eater_ids: [], ...row },
   });
 
-  it('refuses to delete a restaurant that is in the plan (on delete restrict)', async () => {
+  it('AC-038: never deletes a restaurant through apply_changes (delete_restaurant only)', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [plan('e1', { kind: 'restaurant', restaurant_id: 'rest1' })]);
     await expect(
       enrico.applyChanges(H, [{ kind: 'delete', table: 'restaurants', id: 'rest1' }]),
-    ).rejects.toMatchObject({
-      kind: 'permanent',
-      code: '23503',
-      constraint: 'meal_plan_entries_restaurant_fkey',
-    });
+    ).rejects.toMatchObject({ kind: 'permanent', code: 'invalid_change' });
+    expect(server.row(H, 'restaurants', 'rest1')).toBeDefined();
+  });
+
+  it('AC-034: delete_restaurant turns past entries into free text and removes later ones', async () => {
+    const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
-      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
-      { kind: 'delete', table: 'restaurants', id: 'rest1' },
+      plan('e-past', { kind: 'restaurant', restaurant_id: 'rest1', date: '2026-11-03' }),
+      plan('e-later', {
+        kind: 'restaurant',
+        restaurant_id: 'rest1',
+        date: '2026-11-28',
+        starts_at: '19:30',
+      }),
     ]);
+    await enrico.setRestaurantRating('rest1', 4.5);
+    expect(await enrico.deleteRestaurant('rest1', '2026-11-20')).toEqual({
+      converted: 1,
+      removed: 1,
+    });
     expect(server.row(H, 'restaurants', 'rest1')).toBeUndefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-later')).toBeUndefined();
+    expect(server.rows(H, 'restaurant_ratings')).toEqual([]);
+    expect(server.row(H, 'meal_plan_entries', 'e-past')).toMatchObject({
+      kind: 'text',
+      restaurant_id: null,
+      text: 'Trattoria',
+    });
+    await expect(server.transport(NADJA).restoreRestaurant('rest1')).rejects.toMatchObject({
+      code: 'restaurant_not_restorable',
+    });
+    await expect(
+      server.transport(STRANGER).deleteRestaurant('rest1', '2026-11-20'),
+    ).rejects.toMatchObject({
+      code: 'restaurant_not_found',
+    });
+    expect(await enrico.restoreRestaurant('rest1')).toBe(true);
+    expect(server.row(H, 'restaurants', 'rest1')).toBeDefined();
+    expect(server.row(H, 'meal_plan_entries', 'e-later')).toMatchObject({
+      starts_at: '19:30:00',
+    });
+    expect(server.row(H, 'meal_plan_entries', 'e-past')).toMatchObject({
+      kind: 'restaurant',
+      restaurant_id: 'rest1',
+      text: null,
+    });
+    expect(server.rows(H, 'restaurant_ratings')).toEqual([
+      expect.objectContaining({ member_id: ENRICO, stars: 4.5 }),
+    ]);
+    await expect(enrico.restoreRestaurant('rest1')).rejects.toMatchObject({
+      code: 'restaurant_not_restorable',
+    });
   });
 
   it('spec 0008, E2: never deletes a recipe through apply_changes (delete_recipe only)', async () => {
@@ -510,7 +550,7 @@ describe('fake server: activities and photos (spec 0004)', () => {
   const activity = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
     kind: 'insert' as const,
     table: 'activities',
-    row: { id, name, name_key: normalizeText(name), tags: [], ...extra },
+    row: { id, name, name_key: normalizeText(name), ...extra },
   });
   const jpeg = (size = 10) => new Blob([new Uint8Array(size)], { type: 'image/jpeg' });
 
@@ -524,7 +564,7 @@ describe('fake server: activities and photos (spec 0004)', () => {
     });
   });
 
-  it('protects a planned activity (restrict), deletes its favourites and ratings with it', async () => {
+  it('AC-036: deletes an activity only by delete_activity, with its favourites and ratings', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
       activity('act1', 'Bouldern'),
@@ -541,11 +581,9 @@ describe('fake server: activities and photos (spec 0004)', () => {
     ]);
     await expect(
       enrico.applyChanges(H, [{ kind: 'delete', table: 'activities', id: 'act1' }]),
-    ).rejects.toMatchObject({ code: '23503' });
-    await enrico.applyChanges(H, [
-      { kind: 'delete', table: 'meal_plan_entries', id: 'e1' },
-      { kind: 'delete', table: 'activities', id: 'act1' },
-    ]);
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    expect(await enrico.deleteActivity('act1', '2026-11-20')).toEqual({ converted: 0, removed: 1 });
+    expect(server.row(H, 'meal_plan_entries', 'e1')).toBeUndefined();
     expect(server.rows(H, 'activity_favorites')).toEqual([]);
     expect(server.rows(H, 'activity_ratings')).toEqual([]);
     await expect(enrico.setActivityRating('act1', 3)).rejects.toMatchObject({
@@ -711,7 +749,7 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     expect(pull.households[id]?.rows).not.toHaveProperty('shopping_lists');
   });
 
-  it('ADR-0012: adding puts the item into the household; one open item per article', async () => {
+  it('S-03: adding puts the item into the household; one item per article, open or checked', async () => {
     const enrico = server.transport(ENRICO);
     const [added] = await enrico.addShoppingContributions(H, [entry('Duschgel', 'c-d')]);
     expect(server.row(H, 'shopping_items', added?.item_id ?? '')).toMatchObject({
@@ -728,7 +766,7 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
       enrico.applyChanges(H, [
         { kind: 'insert', table: 'shopping_items', row: { id: 'i-milk-2', article_id: 'a-milk' } },
       ]),
-    ).resolves.toMatchObject({ applied: 1 });
+    ).rejects.toMatchObject({ code: '23505' });
   });
 
   it('B1: a foreign household is refused with not_member on add, clear and restore', async () => {
@@ -743,7 +781,7 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     expect(server.rows(H, 'shopping_items')).toHaveLength(1);
   });
 
-  it('every clear stays undoable: ≤ 1000 items and ≤ 5000 contributions (like the database)', async () => {
+  it('AC-058: every clear stays undoable: ≤ 1000 items and ≤ 5000 contributions (like the database)', async () => {
     const enrico = server.transport(ENRICO);
     const tooMany = { kind: 'permanent', code: 'too_many_changes' };
     const items = Array.from({ length: 1001 }, (_, index) => ({
@@ -763,10 +801,9 @@ describe("fake server: the household's shopping list (ADR-0012, like the databas
     await expect(
       enrico.restoreClearedItems(H, [{ item: items[0] ?? {}, contributions }]),
     ).rejects.toMatchObject(tooMany);
-    // Builds 1000 items and 5000 contributions; slow under parallel load, not a hang.
-  }, 30_000);
+  });
 
-  it('a clear with more than 5000 contributions is refused and deletes nothing', async () => {
+  it('AC-058: a clear with more than 5000 contributions is refused and deletes nothing', async () => {
     server.insertRows(H, {
       shopping_contributions: Array.from({ length: 5000 }, (_, index) => milkRow(`c-${index}`, 1)),
     });
@@ -979,16 +1016,25 @@ describe('fake server: article catalog (spec 0007, like the database)', () => {
       );
     });
 
-    it('AC-034: refuses an article in a recipe, open or checked on the list', async () => {
+    it('AC-048: refuses an article in a recipe or open on the list', async () => {
       const enrico = server.transport(ENRICO);
       await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
       await enrico.applyChanges(H, [
         { kind: 'patch', table: 'recipes', id: 'r-curry', changes: { ingredients: [] } },
       ]);
       await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
-      await enrico.setItemChecked('i-km', true, 0);
-      await expect(enrico.deleteArticle('a-km')).rejects.toMatchObject({ code: 'article_in_use' });
       expect(server.row(H, 'articles', 'a-km')).toBeDefined();
+    });
+
+    it('AC-047: an article only checked on the list is deleted with its item', async () => {
+      const enrico = server.transport(ENRICO);
+      await enrico.applyChanges(H, [
+        { kind: 'patch', table: 'recipes', id: 'r-curry', changes: { ingredients: [] } },
+      ]);
+      await enrico.setItemChecked('i-km', true, 0);
+      await expect(enrico.deleteArticle('a-km')).resolves.toMatchObject({ id: 'a-km' });
+      expect(server.row(H, 'articles', 'a-km')).toBeUndefined();
+      expect(server.row(H, 'shopping_items', 'i-km')).toBeUndefined();
     });
 
     it('a foreign or missing article is not found', async () => {
@@ -1412,7 +1458,7 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
 
   it.each([
     ['a kind other than done/skipped', { kind: 'spontaneous' }],
-    ['a day before today − 3', { done_on: '2026-11-16' }],
+    ['a day before today − 31 (spec 0026)', { done_on: '2026-10-19' }],
     ['a day after today + 1', { done_on: '2026-11-22' }],
     ['a date not after the day', { next_due_on: '2026-11-20' }],
     ['an unknown field', { title: 'Fremder Titel' }],
@@ -1553,21 +1599,53 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
     expect(server.row(H, 'chores', 'c-once')).toBeDefined();
   });
 
-  it('AC-053: chore_id goes from null to a chore again, never to another chore or back to null', async () => {
+  it('spec 0031 AC-041: chore_id of an entry is never patched, also not of an orphaned one', async () => {
     const enrico = server.transport(ENRICO);
     await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
-    for (const chore_id of ['c-need', null]) {
+    await book(ENRICO, completion('c-once', 'ev2', { next_due_on: null }));
+    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: null });
+    for (const [id, chore_id] of [
+      ['ev1', 'c-need'],
+      ['ev1', null],
+      ['ev2', 'c-need'],
+    ] as const) {
       await expect(
         enrico.applyChanges(H, [
-          { kind: 'patch', table: 'chore_events', id: 'ev1', changes: { chore_id } },
+          { kind: 'patch', table: 'chore_events', id, changes: { chore_id } },
         ]),
       ).rejects.toMatchObject({ code: 'invalid_change' });
     }
+  });
+
+  it('spec 0031 AC-040, AC-042: delete_chore keeps a snapshot, restore_chore links exactly its entries', async () => {
+    const enrico = server.transport(ENRICO);
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
     await book(ENRICO, completion('c-once', 'ev2', { next_due_on: null }));
-    await enrico.applyChanges(H, [
-      { kind: 'patch', table: 'chore_events', id: 'ev2', changes: { chore_id: 'c-need' } },
-    ]);
-    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: 'c-need' });
+    const before = server.row(H, 'chores', 'c1');
+    await expect(server.transport(STRANGER).deleteChore('c1')).rejects.toMatchObject({
+      code: 'chore_not_found',
+    });
+    await expect(enrico.deleteChore('c-missing')).rejects.toMatchObject({
+      code: 'chore_not_found',
+    });
+    await enrico.deleteChore('c1');
+    expect(server.row(H, 'chores', 'c1')).toBeUndefined();
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: null });
+    for (const userId of [NADJA, STRANGER]) {
+      await expect(server.transport(userId).restoreChore('c1')).rejects.toMatchObject({
+        code: 'chore_not_restorable',
+      });
+    }
+    expect(await enrico.restoreChore('c1')).toBe(true);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({
+      title: 'Bad putzen',
+      created_at: before?.created_at,
+    });
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: 'c1' });
+    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: null });
+    await expect(enrico.restoreChore('c1')).rejects.toMatchObject({
+      code: 'chore_not_restorable',
+    });
   });
 
   it('AC-060: the second of two bookings in one call is the latest booked, whatever the ids', async () => {
@@ -1636,7 +1714,7 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
     variants: [{ variantId: 'v-tofu', portions: 2 }],
     cook_id: NADJA,
     sort: 0,
-    not_cooked: false,
+    not_done: false,
     ...row,
   });
 
@@ -1897,11 +1975,12 @@ describe('fake server: delete_recipe and restore_recipe (spec 0008, T1)', () => 
 
 describe('fake server: packing (spec 0012, like the database)', () => {
   const FOREIGN = 'h-2';
-  /** A seven-day absence with one bag: an open, a packed (pack_seq 3) and a "je Tag" Packstück. */
+  /** A seven-day trip with one bag: an open, a packed (pack_seq 3) and a "je Tag" Packstück. */
   function seedPacking() {
     server.addHousehold({ id: FOREIGN, name: 'Fremd' }, [STRANGER]);
     server.insertRows(H, {
-      absences: [{ id: 'abs-1', member_id: null, from_on: '2027-01-01', to_on: '2027-01-07' }],
+      trips: [{ id: 'abs-1', from_on: '2027-01-01', to_on: '2027-01-07' }],
+      trip_members: [{ id: 'tm-1', trip_id: 'abs-1', member_id: ENRICO }],
       packing_bags: [{ id: 'bag-strand', name: 'Strand', member_id: null, sort: 0 }],
       packing_bag_items: [
         {
@@ -1914,7 +1993,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         },
       ],
       packing_list_bags: [
-        { id: 'lb-1', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
+        { id: 'lb-1', trip_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
       ],
       packing_items: [
         { id: 'p-open', list_bag_id: 'lb-1', name: 'Badehose', quantity: 2, sort: 0 },
@@ -1928,12 +2007,20 @@ describe('fake server: packing (spec 0012, like the database)', () => {
           packed_by: NADJA,
           pack_seq: 3,
         },
-        { id: 'p-day', list_bag_id: 'lb-1', name: 'T-Shirts', quantity: 7, per_day: 1, sort: 2 },
+        {
+          id: 'p-day',
+          list_bag_id: 'lb-1',
+          name: 'T-Shirts',
+          quantity: 7,
+          per_day_quantity: 1,
+          sort: 2,
+        },
       ],
     });
     server.insertRows(FOREIGN, {
-      absences: [{ id: 'abs-x', member_id: null, from_on: '2027-01-01', to_on: '2027-01-02' }],
-      packing_list_bags: [{ id: 'lb-x', absence_id: 'abs-x', bag_id: null, name: 'X', sort: 0 }],
+      trips: [{ id: 'abs-x', from_on: '2027-01-01', to_on: '2027-01-02' }],
+      trip_members: [{ id: 'tm-x', trip_id: 'abs-x', member_id: STRANGER }],
+      packing_list_bags: [{ id: 'lb-x', trip_id: 'abs-x', bag_id: null, name: 'X', sort: 0 }],
       packing_items: [{ id: 'p-x', list_bag_id: 'lb-x', name: 'Fremd', sort: 0 }],
     });
   }
@@ -2029,13 +2116,20 @@ describe('fake server: packing (spec 0012, like the database)', () => {
     expect(state('p-open')).toMatchObject({ packed: false, pack_seq: 0 });
   });
 
-  it('inserts start open; "je Tag" is computed from the absence; no patch of packing items', async () => {
+  it('inserts start open; "je Tag" is computed from the trip; no patch of the packed state', async () => {
     const enrico = server.transport(ENRICO);
     await enrico.applyChanges(H, [
       {
         kind: 'insert',
         table: 'packing_items',
-        row: { id: 'p-new', list_bag_id: 'lb-1', name: 'Socken', quantity: 1, per_day: 2, sort: 3 },
+        row: {
+          id: 'p-new',
+          list_bag_id: 'lb-1',
+          name: 'Socken',
+          quantity: 1,
+          per_day_quantity: 2,
+          sort: 3,
+        },
       },
     ]);
     expect(server.row(H, 'packing_items', 'p-new')).toMatchObject({
@@ -2049,7 +2143,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         table: 'packing_items',
         row: { id: 'p-cheat', list_bag_id: 'lb-1', name: 'X', sort: 0, packed: true },
       },
-      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { name: 'Neu' } },
+      { kind: 'patch', table: 'packing_items', id: 'p-open', changes: { pack_seq: 4 } },
       { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { name: 'Neu' } },
     ] as RowOp[]) {
       await expect(enrico.applyChanges(H, [op])).rejects.toMatchObject({ code: 'invalid_change' });
@@ -2068,32 +2162,35 @@ describe('fake server: packing (spec 0012, like the database)', () => {
           list_bag_id: 'lb-1',
           name: 'Socken',
           quantity: 7,
-          per_day: 1,
+          per_day_quantity: 1,
           sort: 4,
         },
       },
-      { kind: 'patch', table: 'absences', id: 'abs-1', changes: { to_on: '2027-01-05' } },
+      { kind: 'patch', table: 'trips', id: 'abs-1', changes: { to_on: '2027-01-05' } },
     ]);
     expect(server.row(H, 'packing_items', 'p-day2')?.quantity).toBe(5);
     expect(server.row(H, 'packing_items', 'p-day')?.quantity).toBe(7);
     expect(server.row(H, 'packing_items', 'p-open')?.quantity).toBe(2);
-    // A bag moving to another absence follows its duration.
-    await enrico.applyChanges(H, [
-      {
-        kind: 'insert',
-        table: 'absences',
-        row: { id: 'abs-2', member_id: NADJA, from_on: '2027-02-01', to_on: '2027-02-03' },
-      },
-      { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { absence_id: 'abs-2' } },
-    ]);
-    expect(server.row(H, 'packing_items', 'p-day2')?.quantity).toBe(3);
+    // Spec 0022: a bag stays at its trip.
+    await expect(
+      enrico.applyChanges(H, [
+        { kind: 'patch', table: 'packing_list_bags', id: 'lb-1', changes: { trip_id: 'abs-x' } },
+      ]),
+    ).rejects.toMatchObject({ code: 'invalid_change' });
     // 365 days × 99 is capped at 9999.
     await enrico.applyChanges(H, [
-      { kind: 'patch', table: 'absences', id: 'abs-2', changes: { to_on: '2028-01-31' } },
+      { kind: 'patch', table: 'trips', id: 'abs-1', changes: { to_on: '2027-12-31' } },
       {
         kind: 'insert',
         table: 'packing_items',
-        row: { id: 'p-max', list_bag_id: 'lb-1', name: 'Viel', quantity: 99, per_day: 99, sort: 5 },
+        row: {
+          id: 'p-max',
+          list_bag_id: 'lb-1',
+          name: 'Viel',
+          quantity: 99,
+          per_day_quantity: 99,
+          sort: 5,
+        },
       },
     ]);
     expect(server.row(H, 'packing_items', 'p-max')?.quantity).toBe(9999);
@@ -2111,7 +2208,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         {
           kind: 'insert',
           table: 'packing_list_bags',
-          row: { id: 'lb-2', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 1 },
+          row: { id: 'lb-2', trip_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 1 },
         },
       ]),
     ).rejects.toMatchObject({ code: '23505' });
@@ -2120,7 +2217,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
         {
           kind: 'insert',
           table: 'packing_list_bags',
-          row: { id: 'lb-3', absence_id: 'abs-x', name: 'Fremd', sort: 1 },
+          row: { id: 'lb-3', trip_id: 'abs-x', name: 'Fremd', sort: 1 },
         },
       ]),
     ).rejects.toMatchObject({ code: '23503' });
@@ -2139,8 +2236,9 @@ describe('fake server: packing (spec 0012, like the database)', () => {
     expect(server.row(H, 'packing_list_bags', 'lb-1')).toMatchObject({ bag_id: null });
     expect(server.rows(H, 'packing_items')).toHaveLength(3);
 
-    await enrico.applyChanges(H, [{ kind: 'delete', table: 'absences', id: 'abs-1' }]);
+    await enrico.applyChanges(H, [{ kind: 'delete', table: 'trips', id: 'abs-1' }]);
     expect(server.rows(H, 'packing_list_bags')).toEqual([]);
+    expect(server.rows(H, 'trip_members')).toEqual([]);
     expect(server.rows(H, 'packing_items')).toEqual([]);
     const pulled = await enrico.syncPull({ households: { [H]: { full: false, since: {} } } });
     const tombstones = pulled.households[H]?.tombstones.map((t) => `${t.table}:${t.id}`) ?? [];
@@ -2163,7 +2261,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
       {
         kind: 'insert',
         table: 'packing_list_bags',
-        row: { id: 'lb-1', absence_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
+        row: { id: 'lb-1', trip_id: 'abs-1', bag_id: 'bag-strand', name: 'Strand', sort: 0 },
       },
       {
         kind: 'restore_packing_items',
@@ -2178,7 +2276,14 @@ describe('fake server: packing (spec 0012, like the database)', () => {
             packed_by: NADJA,
             pack_seq: 2_000_000,
           },
-          { id: 'p-day', list_bag_id: 'lb-1', name: 'T-Shirts', quantity: 1, per_day: 1, sort: 2 },
+          {
+            id: 'p-day',
+            list_bag_id: 'lb-1',
+            name: 'T-Shirts',
+            quantity: 1,
+            per_day_quantity: 1,
+            sort: 2,
+          },
         ],
       },
     ]);
@@ -2455,5 +2560,183 @@ describe('fake server: collections (spec 0009, like the database after T1)', () 
       code: 'too_many_collection_recipes',
     });
     expect(server.row(H, 'recipes', 'r2')).toBeUndefined();
+  });
+});
+
+describe('fake server: entry reminders (spec 0017, like the database)', () => {
+  // Friday 20.11.2026, 11:00 in Berlin (the household's zone).
+  const SATURDAY = '2026-11-21';
+  const lasagne = (extra: Row = { id: 'e-lasagne' }): Row => ({
+    date: SATURDAY,
+    slot_id: 'slot-dinner',
+    kind: 'recipe',
+    recipe_id: 'r1',
+    eater_ids: [],
+    guests: 0,
+    portions: 2,
+    variants: [],
+    sort: 0,
+    ...extra,
+  });
+  const insert = (row: Row): RowOp => ({ kind: 'insert', table: 'meal_plan_entries', row });
+  const patch = (changes: Record<string, unknown>): RowOp => ({
+    kind: 'patch',
+    table: 'meal_plan_entries',
+    id: 'e-lasagne',
+    changes,
+  });
+  const apply = (...ops: RowOp[]) => server.transport(ENRICO).applyChanges(H, ops);
+  const stored = () => server.row(H, 'meal_plan_entries', 'e-lasagne');
+
+  it('AC-002: an entry is inserted with its reminder; the time reads back with seconds', async () => {
+    await apply(
+      insert(
+        lasagne({
+          id: 'e-lasagne',
+          reminder_day_offset: 1,
+          reminder_at: '18:00',
+          reminder_text: 'Fleisch auftauen',
+        }),
+      ),
+    );
+    expect(stored()).toMatchObject({
+      reminder_day_offset: 1,
+      reminder_at: '18:00:00',
+      reminder_text: 'Fleisch auftauen',
+    });
+  });
+
+  it('an entry without a reminder has three nulls', async () => {
+    await apply(insert(lasagne()));
+    expect(stored()).toMatchObject({
+      reminder_day_offset: null,
+      reminder_at: null,
+      reminder_text: null,
+    });
+  });
+
+  it.each([
+    [
+      'a time outside 5-minute steps (AC-012, AC-013)',
+      { reminder_day_offset: 0, reminder_at: '17:03' },
+    ],
+    ['a day after the entry (AC-013)', { reminder_day_offset: -1, reminder_at: '18:00' }],
+    [
+      'more than 366 days before',
+      { date: '2028-01-01', reminder_day_offset: 367, reminder_at: '18:00' },
+    ],
+    ['a time without a day', { reminder_at: '18:00' }],
+    ['a day without a time', { reminder_day_offset: 1 }],
+    ['a text without a time', { reminder_text: 'Käse' }],
+    [
+      '81 characters (AC-015)',
+      { reminder_day_offset: 1, reminder_at: '18:00', reminder_text: 'x'.repeat(81) },
+    ],
+    [
+      'a line break (AC-015)',
+      { reminder_day_offset: 1, reminder_at: '18:00', reminder_text: 'Käse\nkaufen' },
+    ],
+    [
+      'spaces at the edges',
+      { reminder_day_offset: 1, reminder_at: '18:00', reminder_text: ' Käse' },
+    ],
+    ['an empty text', { reminder_day_offset: 1, reminder_at: '18:00', reminder_text: '' }],
+  ] as const)('refuses %s with 23514', async (_, reminder) => {
+    await apply(insert(lasagne()));
+    await expect(apply(patch(reminder))).rejects.toMatchObject({ code: '23514' });
+    expect(stored()).toMatchObject({ reminder_at: null, reminder_day_offset: null });
+  });
+
+  it('REQ-002: an entry without a day takes no reminder', async () => {
+    await expect(
+      apply(
+        insert(
+          lasagne({ id: 'e-lasagne', date: null, reminder_day_offset: 0, reminder_at: '17:00' }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
+
+  it('AC-011, AC-013: a moment in the past is refused on insert and on change, in the household zone', async () => {
+    const today = (at: string) =>
+      lasagne({ id: 'e-lasagne', date: '2026-11-20', reminder_day_offset: 0, reminder_at: at });
+    await expect(apply(insert(today('11:00')))).rejects.toMatchObject({
+      code: 'reminder_in_past',
+    });
+    // 10:00 UTC is 11:00 in Berlin: 11:30 lies in the future there.
+    await apply(insert(today('11:30')));
+    await expect(apply(patch({ reminder_at: '10:00' }))).rejects.toMatchObject({
+      code: 'reminder_in_past',
+    });
+    // Only the text changes: the moment is not judged again.
+    vi.setSystemTime(new Date('2026-11-20T10:45:00Z'));
+    await apply(patch({ reminder_text: 'Käse' }));
+    expect(stored()).toMatchObject({ reminder_at: '11:30:00', reminder_text: 'Käse' });
+  });
+
+  it('AC-022: moving the entry is never refused, even when the reminder then lies in the past', async () => {
+    await apply(insert(lasagne({ id: 'e-lasagne', reminder_day_offset: 1, reminder_at: '18:00' })));
+    await apply(patch({ date: '2026-11-20' }));
+    expect(stored()).toMatchObject({ date: '2026-11-20', reminder_day_offset: 1 });
+  });
+
+  it('AC-023: back to "Vorgemerkt" clears the reminder, also when only the date is sent (v2026.11.1)', async () => {
+    await apply(
+      insert(
+        lasagne({
+          id: 'e-lasagne',
+          reminder_day_offset: 0,
+          reminder_at: '17:00',
+          reminder_text: 'Käse kaufen',
+        }),
+      ),
+    );
+    await apply(patch({ date: null }));
+    expect(stored()).toMatchObject({
+      date: null,
+      reminder_day_offset: null,
+      reminder_at: null,
+      reminder_text: null,
+    });
+    // Undo sends date and reminder together; the date changes, so the moment is not judged.
+    vi.setSystemTime(new Date('2026-11-21T17:30:00Z'));
+    await apply(
+      patch({
+        date: SATURDAY,
+        reminder_day_offset: 0,
+        reminder_at: '17:00:00',
+        reminder_text: 'Käse kaufen',
+      }),
+    );
+    expect(stored()).toMatchObject({ date: SATURDAY, reminder_at: '17:00:00' });
+  });
+
+  it('REQ-007: a new member’s settings have "Erinnerungen an Einträgen" on; she can switch it', async () => {
+    const own = server.rows(H, 'notification_settings').find((row) => row.member_id === ENRICO);
+    expect(own).toMatchObject({ entry_reminders_enabled: true });
+    await apply({
+      kind: 'patch',
+      table: 'notification_settings',
+      id: String(own?.id),
+      changes: { entry_reminders_enabled: false },
+    });
+    expect(server.row(H, 'notification_settings', String(own?.id))).toMatchObject({
+      entry_reminders_enabled: false,
+    });
+  });
+
+  it('AC-027: nobody switches another member’s kind', async () => {
+    const theirs = server.rows(H, 'notification_settings').find((row) => row.member_id === NADJA);
+    await expect(
+      apply({
+        kind: 'patch',
+        table: 'notification_settings',
+        id: String(theirs?.id),
+        changes: { entry_reminders_enabled: false },
+      }),
+    ).rejects.toMatchObject({ code: 'row_not_found' });
+    expect(server.row(H, 'notification_settings', String(theirs?.id))).toMatchObject({
+      entry_reminders_enabled: true,
+    });
   });
 });

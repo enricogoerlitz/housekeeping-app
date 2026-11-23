@@ -5,13 +5,27 @@ import {
   addContribution,
   normalizeText,
   parseSmartInput,
+  withExactArticleName,
   type Article,
+  type EntryAddition,
   type Id,
+  type RowOp,
+  type ShoppingItem,
   type ShoppingContribution,
 } from '@housekeeping/core';
 
+import { diffHousehold, sendable, withoutPassedReminders } from './changes';
 import { resolveArticle } from './commands-articles';
-import { newId, nowISO, updateData } from './store';
+import {
+  commitConfirmed,
+  getData,
+  newId,
+  nowISO,
+  OfflineError,
+  updateData,
+  type CommitSpec,
+  type HouseholdData,
+} from './store';
 import type { AddEntry, ChangeOp } from './transport';
 
 function appendContribution(
@@ -53,22 +67,45 @@ export function addLocally(
   for (const contribution of contributions) {
     itemId = appendContribution(article.id, contribution, clientItemId);
   }
+  return { itemId, entry: addEntry(article, clientItemId, contributions) };
+}
+
+/** The add entry for contributions on one article's item (`add_shopping_contributions`). */
+function addEntry(
+  article: Article,
+  clientItemId: Id,
+  contributions: readonly ShoppingContribution[],
+): AddEntry {
   return {
-    itemId,
-    entry: {
-      client_item_id: clientItemId,
-      client_article_id: article.id,
-      article_name: article.name,
-      name_key: normalizeText(article.name),
-      contributions: contributions.map((contribution) => ({
-        id: contribution.id,
-        source: plain(contribution.source),
-        count: contribution.count ?? null,
-        qty: contribution.qty ?? null,
-        unit: contribution.unit ?? null,
-        note: contribution.note ?? null,
-      })),
-    },
+    client_item_id: clientItemId,
+    client_article_id: article.id,
+    article_name: article.name,
+    name_key: normalizeText(article.name),
+    contributions: contributions.map((contribution) => ({
+      id: contribution.id,
+      source: plain(contribution.source),
+      count: contribution.count ?? null,
+      qty: contribution.qty ?? null,
+      unit: contribution.unit ?? null,
+      note: contribution.note ?? null,
+    })),
+  };
+}
+
+/**
+ * The `apply_changes` domain operation that makes the server's list follow plan entries (spec
+ * 0021, REQ-007, REQ-015): their contributions on open items go and `additions` (what core's
+ * recomputeEntryContributions added locally) come, one call however many there are.
+ */
+function entryListOp(entryIds: readonly Id[], additions: readonly EntryAddition[]): ChangeOp {
+  const articles = getData().articles;
+  return {
+    kind: 'replace_entry_contributions',
+    entry_ids: [...entryIds],
+    entries: additions.flatMap((addition) => {
+      const article = articles.find((candidate) => candidate.id === addition.articleId);
+      return article ? [addEntry(article, addition.itemId, addition.contributions)] : [];
+    }),
   };
 }
 
@@ -86,8 +123,10 @@ export function addContributionOps(entries: readonly AddEntry[]): ChangeOp[] {
 export function typedContribution(
   text: string,
 ): { name: string; contribution: ShoppingContribution } | null {
-  const parsed = parseSmartInput(text);
-  if (!parsed) return null;
+  const typed = parseSmartInput(text);
+  if (!typed) return null;
+  // "2 Mozzarella (Fior di Latte)" is that article when it exists (spec 0025, AC-034).
+  const parsed = withExactArticleName(typed, getData().articles);
   return {
     name: parsed.name,
     contribution: {
@@ -109,4 +148,94 @@ export function addTextLocally(text: string): { added: AddedItem; entry: AddEntr
   const { article, created } = resolveArticle(typed.name);
   const { itemId, entry } = addLocally(article, [typed.contribution]);
   return { added: { itemId, articleName: article.name, createdArticle: created }, entry };
+}
+
+/** What commitEntriesWithList sends, and what its undo sends. */
+interface EntryListChange<T> {
+  value: T;
+  ops: ChangeOp[];
+  undoRows: RowOp[];
+  undoList: ChangeOp;
+}
+
+/** The contributions of these entries on open items, as add entries on their items (undo). */
+function entryContributionsOf(items: readonly ShoppingItem[], entryIds: readonly Id[]) {
+  return items.flatMap((item): EntryAddition[] => {
+    if (item.checked) return [];
+    const contributions = item.contributions.filter(
+      (c) =>
+        c.source.kind === 'recipe' &&
+        c.source.entryId !== undefined &&
+        entryIds.includes(c.source.entryId),
+    );
+    return contributions.length > 0
+      ? [{ articleId: item.articleId, itemId: item.id, contributions }]
+      : [];
+  });
+}
+
+/**
+ * Plan entries and the shopping list in one `apply_changes` call (spec 0021, REQ-007, REQ-015;
+ * ADR-0011, all or nothing): `changeEntries` changes the entries' rows (sent as the diff path
+ * would, deletes declared in `maxDeletes`), then the list becomes `list.items`, on the server
+ * through one `replace_entry_contributions` for `entryIds` — however many contributions that is.
+ * Undo puts the rows back (without reminders that have passed, spec 0017) and the entries' old
+ * contributions with them. With `confirmed` it resolves once the server took it.
+ */
+export function commitEntriesWithList<T>(
+  options: {
+    entryIds: readonly Id[];
+    maxDeletes?: Partial<Record<string, number>>;
+    rejectedMessage?: (error: unknown) => string | undefined;
+  },
+  changeEntries: () => T,
+  list: (data: HouseholdData) => { items: ShoppingItem[]; additions: EntryAddition[] },
+): { value: T; confirmed: Promise<unknown> } {
+  const spec: CommitSpec<EntryListChange<T>> = {
+    path: 'rpc',
+    send: (transport, context) => transport.applyChanges(context.householdId, context.result.ops),
+    inverse: (transport, context) => {
+      const timeZone = getData().household.timeZone;
+      return transport.applyChanges(context.householdId, [
+        ...withoutPassedReminders(sendable(context.result.undoRows), new Date(), timeZone),
+        context.result.undoList,
+      ]);
+    },
+    rejectedMessage: options.rejectedMessage,
+  };
+  const run = (): EntryListChange<T> => {
+    const before = getData();
+    const value = changeEntries();
+    const rows = getData();
+    const { send, sendInverse } = diffHousehold(before, rows, {
+      mode: 'send',
+      maxDeletes: options.maxDeletes,
+    });
+    const next = list(rows);
+    updateData((data) => ({ ...data, items: next.items }));
+    return {
+      value,
+      ops: [...sendable(send), entryListOp(options.entryIds, next.additions)],
+      undoRows: sendInverse,
+      undoList: entryListOp(options.entryIds, entryContributionsOf(before.items, options.entryIds)),
+    };
+  };
+  // commitConfirmed is async: what it throws before sending (offline, a failing command) is
+  // thrown here again, like commit does.
+  let ran: { value: T } | undefined;
+  let failure: unknown = new OfflineError();
+  const confirmed = commitConfirmed(spec, () => {
+    try {
+      const result = run();
+      ran = { value: result.value };
+      return result;
+    } catch (error) {
+      failure = error;
+      throw error;
+    }
+  });
+  // A caller that does not wait may ignore it; a refusal is reported through onWriteRejected.
+  confirmed.catch(() => {});
+  if (!ran) throw failure;
+  return { value: ran.value, confirmed };
 }

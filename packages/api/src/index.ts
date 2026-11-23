@@ -5,6 +5,7 @@ import './zod-config';
 
 export * from './queries';
 export * from './commands-household';
+export * from './commands-trips';
 export * from './commands-articles';
 export * from './commands-stores';
 export * from './commands-recipes';
@@ -14,55 +15,42 @@ export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
+export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notifications';
 export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';
 export {
-  PHOTO_FORBIDDEN_MESSAGE,
-  PHOTO_MAX_INPUT_BYTES,
-  PHOTO_UNUSABLE_MESSAGE,
   PHOTO_UPLOAD_FAILED_MESSAGE,
   preparePhoto,
   removeActivityPhoto,
   removeRecipePhoto,
+  removeRestaurantPhoto,
   setActivityPhoto,
   setRecipePhoto,
+  setRestaurantPhoto,
   usePhoto,
 } from './photos-remote';
-export { snapshot, OfflineError, type HouseholdData, type AppState } from './store';
+export { snapshot, OfflineError } from './store';
+export { useAddressedObject, type AddressedKind } from './addressed';
 export { useAppVersionState } from './app-version';
 export {
-  browserEnvironment,
   onWriteRejected,
-  resetLocalData,
-  startBackend,
-  stopBackend,
+  syncNow,
+  unsentStoreChangeCount,
   useSyncState,
   WRITE_REJECTED_MESSAGE,
-  type Environment,
-  type StartBackendOptions,
-  type SyncState,
 } from './backend';
-export { createIndexedDbStorage, createMemoryStorage, type Storage } from './storage';
+export { TransportError } from './transport';
 export {
-  NOT_INVITED_MESSAGE,
   readAuthConfig,
-  SIGN_IN_FAILED_MESSAGE,
   signInWithGoogle,
   signInWithTestAccount,
   signOut,
   startAuth,
   useAuth,
-  type AuthConfig,
-  type AuthState,
-  type AuthUser,
-  type PublicEnv,
-  type SessionStorage,
 } from './auth';
-export { TEST_ACCOUNTS, type TestAccount, type TestAccountKey } from './dev-accounts';
-export { useHouseholdInvitations, useMyInvitations, type Invitation } from './households';
-export { starterAreas } from './starter/areas';
-export { starterCatalog } from './starter/catalog';
+export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
+export { useHouseholdInvitations, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';

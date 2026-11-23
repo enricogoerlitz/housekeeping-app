@@ -222,7 +222,7 @@ describe('mapping between domain and rows', () => {
       lat: 52.55,
       lng: 13.5,
       maps_url: expect.stringMatching(/^https:\/\//),
-      tags: [],
+      website_url: null,
       created_by: ENRICO,
       created_at: expect.any(String),
     });
@@ -318,6 +318,21 @@ describe('mapping between domain and rows', () => {
     expect(areas.map((area) => area.sort)).toEqual(areas.map((_, index) => index));
     const recipes = rowsToHousehold(reversed, small, DEMO_HOUSEHOLD_ID).recipes;
     expect(recipes.map((recipe) => recipe.id)).toEqual(data.recipes.map((recipe) => recipe.id));
+  });
+
+  it('C-15 (0031): the Tageszeiten come sorted, however the row stores them', () => {
+    const { data, members } = demo();
+    const { tables, small } = asServerTables({
+      ...householdToRows(data),
+      ...membersToRows(members),
+    });
+    const households = (small.households ?? []).map((row) => ({
+      ...row,
+      meal_slots: [...data.household.mealSlots].reverse(),
+    }));
+    const slots = rowsToHousehold(tables, { ...small, households }, DEMO_HOUSEHOLD_ID).household
+      .mealSlots;
+    expect(slots.map((slot) => slot.sort)).toEqual([0, 1, 2]);
   });
 
   it('keeps object identity for unchanged rows across rebuilds', () => {
@@ -536,8 +551,10 @@ describe('mapping between domain and rows', () => {
           list_bag_id: listBag.id,
           name: 'Schnorchel',
           quantity: null,
-          per_day: null,
+          per_day_quantity: null,
           sort: 99,
+          bag_item_id: null,
+          from_bag: false,
         },
       },
     ]);
@@ -575,6 +592,7 @@ describe('spec 0009: collections in the rows', () => {
           ratings: {},
           cookedCount: 0,
           createdAt: '2026-11-01T10:00:00.000Z',
+          links: [],
         },
         ...data.recipes,
       ],
@@ -714,7 +732,7 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     activities_eve_enabled: false,
     activities_eve_at: '19:00:00',
     chore_reminders_enabled: true,
-    reservation_reminders_enabled: true,
+    entry_reminders_enabled: true,
     created_at: SERVER_TIME,
     updated_at: SERVER_TIME,
     ...overrides,
@@ -739,7 +757,7 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
       activitiesEveEnabled: false,
       activitiesEveAt: '19:00',
       choreRemindersEnabled: true,
-      reservationRemindersEnabled: true,
+      entryRemindersEnabled: true,
     });
   });
 
@@ -808,7 +826,9 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     const household = small.households?.[0];
     if (!household) throw new Error('fixture');
     small.households = [{ ...household, timezone: 'Europe/Berlin' }];
+    small.households = [{ ...household, timezone: 'Europe/Vienna' }];
     const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(back.household.timeZone).toBe('Europe/Vienna');
     expect(householdToRows(back).households?.[0]).not.toHaveProperty('timezone');
     const renamed: HouseholdData = { ...back, household: { ...back.household, name: 'Zuhause' } };
     expect(diffHousehold(back, renamed, { mode: 'send' }).send).toEqual([
@@ -832,31 +852,142 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     );
   });
 
-  it('AC-027, AC-029: a reservation and its reminder go there and back; 120 (the default) reads as undefined', () => {
+  it('spec 0021, AC-035: the time of an entry goes there and back as starts_at', () => {
     const { data } = demo();
     const rows = householdToRows(data);
-    const reserved = rows.meal_plan_entries?.find((row) => row.reserved_at !== null);
-    expect(reserved).toMatchObject({
-      kind: 'restaurant',
-      reserved_at: '19:30:00',
-      remind_minutes_before: 120,
-    });
+    const timed = rows.meal_plan_entries?.find((row) => row.starts_at !== null);
+    expect(timed).toMatchObject({ kind: 'restaurant', starts_at: '19:30:00' });
     const recipeRow = rows.meal_plan_entries?.find((row) => row.kind === 'recipe');
-    expect(recipeRow).toMatchObject({ reserved_at: null, remind_minutes_before: 120 });
-    const id = String(reserved?.id);
+    expect(recipeRow).toMatchObject({ starts_at: null });
+    expect(recipeRow).not.toHaveProperty('remind_minutes_before');
+    const id = String(timed?.id);
     const { tables, small } = asServerTables(rows);
     const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
-    const entry = back.planEntries.find((candidate) => candidate.id === id);
-    expect(entry?.reservedAt).toBe('19:30');
-    expect(entry?.remindMinutesBefore).toBeUndefined();
-    const oneHour = { ...tables.meal_plan_entries?.[id], id, remind_minutes_before: 60 };
-    const changed = rowsToHousehold(
-      { ...tables, meal_plan_entries: { ...tables.meal_plan_entries, [id]: oneHour } },
-      small,
-      DEMO_HOUSEHOLD_ID,
+    expect(back.planEntries.find((candidate) => candidate.id === id)?.startsAt).toBe('19:30');
+  });
+});
+
+describe('spec 0017: entry reminders in the rows', () => {
+  const ENTRY = 'plan-lasagne';
+  function withEntry(overrides: Record<string, unknown>) {
+    const { data } = demo();
+    const { tables, small } = asServerTables(householdToRows(data));
+    const source = Object.values(tables.meal_plan_entries ?? {}).find(
+      (row) => row.kind === 'recipe' && row.date !== null,
     );
-    expect(changed.planEntries.find((candidate) => candidate.id === id)?.remindMinutesBefore).toBe(
-      60,
-    );
+    if (!source) throw new Error('fixture');
+    tables.meal_plan_entries = {
+      ...tables.meal_plan_entries,
+      [ENTRY]: { ...source, ...overrides, id: ENTRY },
+    };
+    return { tables, small };
+  }
+  const entryOf = (data: HouseholdData) => data.planEntries.find((entry) => entry.id === ENTRY);
+
+  it('REQ-002: the reminder reads as offset, "HH:MM" and text; the rows write it back with seconds', () => {
+    const { tables, small } = withEntry({
+      reminder_day_offset: 1,
+      reminder_at: '18:00:00',
+      reminder_text: 'Fleisch auftauen',
+    });
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(entryOf(back)?.reminder).toEqual({
+      offsetDays: 1,
+      at: '18:00',
+      text: 'Fleisch auftauen',
+    });
+    expect(householdToRows(back).meal_plan_entries?.find((row) => row.id === ENTRY)).toMatchObject({
+      reminder_day_offset: 1,
+      reminder_at: '18:00:00',
+      reminder_text: 'Fleisch auftauen',
+    });
+  });
+
+  it('REQ-002: no text is no text; no reminder is null in all three columns', () => {
+    const { tables, small } = withEntry({
+      reminder_day_offset: 0,
+      reminder_at: '17:00:00',
+      reminder_text: null,
+    });
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(entryOf(back)?.reminder).toEqual({ offsetDays: 0, at: '17:00' });
+    const plain = withEntry({
+      reminder_day_offset: null,
+      reminder_at: null,
+      reminder_text: null,
+    });
+    const without = rowsToHousehold(plain.tables, plain.small, DEMO_HOUSEHOLD_ID);
+    expect(entryOf(without)?.reminder).toBeUndefined();
+    expect(
+      householdToRows(without).meal_plan_entries?.find((row) => row.id === ENTRY),
+    ).toMatchObject({ reminder_day_offset: null, reminder_at: null, reminder_text: null });
+  });
+
+  it('AC-005, AC-006: switching on and off is one patch of the three columns', () => {
+    const { tables, small } = withEntry({
+      reminder_day_offset: null,
+      reminder_at: null,
+      reminder_text: null,
+    });
+    const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    const on: HouseholdData = {
+      ...before,
+      planEntries: before.planEntries.map((entry) =>
+        entry.id === ENTRY ? { ...entry, reminder: { offsetDays: 1, at: '18:00' } } : entry,
+      ),
+    };
+    const change = diffHousehold(before, on, { mode: 'send' });
+    expect(change.send).toEqual([
+      {
+        kind: 'patch',
+        table: 'meal_plan_entries',
+        id: ENTRY,
+        changes: { reminder_day_offset: 1, reminder_at: '18:00:00' },
+      },
+    ]);
+    expect(change.sendInverse).toEqual([
+      {
+        kind: 'patch',
+        table: 'meal_plan_entries',
+        id: ENTRY,
+        changes: { reminder_day_offset: null, reminder_at: null },
+      },
+    ]);
+  });
+
+  it('REQ-007: "Erinnerungen an Einträgen" reads from the own row, on when the column is missing', () => {
+    const { data } = demo();
+    const { tables, small } = asServerTables(householdToRows(data));
+    const row = {
+      id: 'ns-enrico',
+      household_id: DEMO_HOUSEHOLD_ID,
+      member_id: ENRICO,
+      daily_summary_enabled: false,
+      daily_summary_at: '07:30:00',
+      daily_summary_parts: ['meals'],
+      activities_eve_enabled: false,
+      activities_eve_at: '19:00:00',
+      chore_reminders_enabled: true,
+    };
+    tables.notification_settings = { 'ns-enrico': row };
+    const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
+    expect(before.notificationSettings?.entryRemindersEnabled).toBe(true);
+    tables.notification_settings = { 'ns-enrico': { ...row, entry_reminders_enabled: false } };
+    const off = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
+    const settings = off.notificationSettings;
+    if (!settings) throw new Error('fixture');
+    expect(settings.entryRemindersEnabled).toBe(false);
+    const on: HouseholdData = {
+      ...off,
+      notificationSettings: { ...settings, entryRemindersEnabled: true },
+    };
+    expect(diffHousehold(off, on, { mode: 'send' }).send).toEqual([
+      {
+        kind: 'patch',
+        table: 'notification_settings',
+        id: 'ns-enrico',
+        changes: { entry_reminders_enabled: true },
+      },
+    ]);
   });
 });

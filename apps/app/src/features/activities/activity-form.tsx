@@ -1,53 +1,45 @@
 import {
   createActivity,
-  preparePhoto,
   readActivityMapsLink,
   removeActivityPhoto,
   resolveActivityShortLink,
   setActivityPhoto,
   updateActivity,
   useActivities,
-  usePhoto,
-  WRITE_REJECTED_MESSAGE,
   type ActivityDraft,
   type ActivityLinkReading,
   type ActivityPlace,
 } from '@housekeeping/api';
-import { findDuplicateActivity, type Activity, type GeoPoint, type Id } from '@housekeeping/core';
 import {
-  Button,
-  Icon,
-  Notice,
-  Photo,
-  Row,
-  Sheet,
-  Stack,
-  Text,
-  TextField,
-  toast,
-} from '@housekeeping/ui';
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+  findDuplicateActivity,
+  normalizeWebsite,
+  type Activity,
+  type GeoPoint,
+  type Id,
+} from '@housekeeping/core';
+import { Button, Icon, Notice, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
-import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
+import {
+  PhotoChoiceField,
+  savePhotoChoice as savePhoto,
+  usePhotoChoice,
+  type PhotoChoice,
+} from '@/features/shell/own-photo';
 
 import { ACTIVITY_ICON } from './activity-photo';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /** activities_name_length. */
 const ACTIVITY_NAME_MAX_LENGTH = 120;
-
-/** What happens with the photo when the form is saved. */
-export type PhotoChoice =
-  { kind: 'keep' } | { kind: 'new'; photo: Blob; uri: string } | { kind: 'remove' };
 
 export interface ActivityFormValues {
   draft: ActivityDraft;
   photo: PhotoChoice;
 }
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
+const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
 /**
  * State of the activity form (create and edit). The fields render with `ActivityFormFields`; the
@@ -67,9 +59,10 @@ export function useActivityForm(activity?: Activity) {
   const [address, setAddress] = useState(activity?.address ?? '');
   const [location, setLocation] = useState<GeoPoint | undefined>(activity?.location);
   const [mapsUrl, setMapsUrl] = useState<string | undefined>(activity?.mapsUrl);
-  const [photo, setPhoto] = useState<PhotoChoice>({ kind: 'keep' });
-  const [photoError, setPhotoError] = useState<string | undefined>();
-  const [preparing, setPreparing] = useState(false);
+  const [website, setWebsiteValue] = useState(activity?.websiteUrl ?? '');
+  const [websiteError, setWebsiteError] = useState<string | undefined>();
+  const photoChoice = usePhotoChoice(activity?.photoPath);
+  const { photo, preparing } = photoChoice;
   const [saving, setSaving] = useState(false);
 
   const duplicate = findDuplicateActivity(
@@ -77,14 +70,10 @@ export function useActivityForm(activity?: Activity) {
     activities.filter((candidate) => candidate.id !== activity?.id),
   );
 
-  // A chosen photo is shown from a blob: URL until it is saved; free it when it is replaced.
-  const previewUri = photo.kind === 'new' ? photo.uri : undefined;
-  useEffect(
-    () => () => {
-      if (previewUri) URL.revokeObjectURL(previewUri);
-    },
-    [previewUri],
-  );
+  const setWebsite = (value: string) => {
+    setWebsiteValue(value);
+    setWebsiteError(undefined);
+  };
 
   const setName = (value: string) => {
     setNameValue(value);
@@ -131,23 +120,6 @@ export function useActivityForm(activity?: Activity) {
     }
   };
 
-  const choosePhoto = () =>
-    pickPhotoFile((file) => {
-      setPhotoError(undefined);
-      setPreparing(true);
-      preparePhoto(file)
-        .then((prepared) =>
-          setPhoto({ kind: 'new', photo: prepared, uri: URL.createObjectURL(prepared) }),
-        )
-        .catch((error: unknown) => setPhotoError(message(error)))
-        .finally(() => setPreparing(false));
-    });
-
-  const removePhoto = () => {
-    setPhotoError(undefined);
-    setPhoto(activity?.photoPath ? { kind: 'remove' } : { kind: 'keep' });
-  };
-
   /**
    * Checks the form and resolves a short map link (online). Returns what to save, or undefined
    * after showing the problem at its field ("Name fehlt", AC-007 and AC-023).
@@ -155,6 +127,11 @@ export function useActivityForm(activity?: Activity) {
   const submit = async (): Promise<ActivityFormValues | undefined> => {
     if (!name.trim()) {
       setNameError('Name fehlt');
+      return undefined;
+    }
+    const checkedWebsite = normalizeWebsite(website);
+    if ('problem' in checkedWebsite) {
+      setWebsiteError(checkedWebsite.problem);
       return undefined;
     }
     if (duplicate || saving || preparing) return undefined;
@@ -182,7 +159,12 @@ export function useActivityForm(activity?: Activity) {
       }
     }
     return {
-      draft: { name: name.trim(), description: description.trim() || undefined, ...place },
+      draft: {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        websiteUrl: checkedWebsite.url,
+        ...place,
+      },
       photo,
     };
   };
@@ -205,11 +187,12 @@ export function useActivityForm(activity?: Activity) {
     address,
     setAddress,
     location,
+    website,
+    setWebsite,
+    websiteError,
+    photoChoice,
     photo,
-    photoError,
     preparing,
-    choosePhoto,
-    removePhoto,
     saving,
     duplicate,
     submit,
@@ -218,21 +201,13 @@ export function useActivityForm(activity?: Activity) {
 
 export type ActivityForm = ReturnType<typeof useActivityForm>;
 
-/**
- * Saves the photo choice after the activity exists (a new activity gets its photo right after it
- * was created). Runs on after the form closed; a failure shows as a toast, except a rejected
- * write, which the sync already reported.
- */
+/** Saves the photo choice after the activity exists (a new one right after it was created). */
 export function savePhotoChoice(activityId: Id, choice: PhotoChoice): void {
-  if (choice.kind === 'keep') return;
-  const run =
-    choice.kind === 'new'
-      ? setActivityPhoto(activityId, choice.photo)
-      : removeActivityPhoto(activityId);
-  run.catch((error: unknown) => {
-    const text = message(error);
-    if (text !== WRITE_REJECTED_MESSAGE) toast.show({ message: text });
-  });
+  savePhoto(
+    choice,
+    (blob) => setActivityPhoto(activityId, blob),
+    () => removeActivityPhoto(activityId),
+  );
 }
 
 /** Name, description, photo and place of an activity (AC-006 to AC-008). */
@@ -292,7 +267,11 @@ export function ActivityFormFields(props: {
         multiline
         testID="activity-description-input"
       />
-      {CAN_PICK_PHOTO ? <PhotoField form={form} /> : null}
+      <PhotoChoiceField
+        state={form.photoChoice}
+        placeholderIcon={ACTIVITY_ICON}
+        testPrefix="activity"
+      />
       <Stack gap={8}>
         <Text variant="smallStrong">Ort (optional)</Text>
         <TextField
@@ -350,61 +329,16 @@ export function ActivityFormFields(props: {
           testID="activity-address"
         />
       </Stack>
+      <TextField
+        label="Webseite"
+        value={form.website}
+        onChangeText={form.setWebsite}
+        placeholder="z. B. eisstadion-koeln.de"
+        keyboardType="url"
+        error={form.websiteError}
+        testID="activity-website"
+      />
     </Stack>
-  );
-}
-
-function PhotoField(props: { form: ActivityForm }) {
-  const { form } = props;
-  const online = useOnlineOnly();
-  const saved = usePhoto(form.photo.kind === 'keep' ? form.activity?.photoPath : undefined);
-  const uri = form.photo.kind === 'new' ? form.photo.uri : saved.uri;
-  return (
-    <View style={{ gap: 6 }}>
-      <Text variant="smallStrong">Foto (optional)</Text>
-      <Row gap={12}>
-        <View testID={uri ? 'activity-form-photo-preview' : undefined}>
-          <Photo
-            source={uri ? { uri } : undefined}
-            placeholderIcon={ACTIVITY_ICON}
-            width={64}
-            height={64}
-          />
-        </View>
-        <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-          <Button
-            label={uri ? 'Foto ändern' : 'Foto auswählen'}
-            icon="camera"
-            variant="secondary"
-            size="sm"
-            disabled={online.disabled || form.preparing}
-            hint={online.hint}
-            onPress={form.choosePhoto}
-            testID="activity-form-photo"
-          />
-          {uri ? (
-            <Button
-              label="Foto entfernen"
-              variant="link"
-              size="sm"
-              disabled={online.disabled}
-              onPress={form.removePhoto}
-              testID="activity-form-photo-remove"
-            />
-          ) : null}
-        </Stack>
-      </Row>
-      {form.preparing ? (
-        <Text variant="small" color="muted">
-          Foto wird vorbereitet …
-        </Text>
-      ) : null}
-      {form.photoError ? (
-        <Text variant="small" color="warn" testID="activity-form-photo-error">
-          {form.photoError}
-        </Text>
-      ) : null}
-    </View>
   );
 }
 
@@ -436,6 +370,7 @@ export function ActivityFormSheet(props: {
           address: values.draft.address,
           location: values.draft.location,
           mapsUrl: values.draft.mapsUrl,
+          websiteUrl: values.draft.websiteUrl,
         });
         id = editing.id;
       } else {
@@ -458,19 +393,17 @@ export function ActivityFormSheet(props: {
       title={editing ? 'Aktivität bearbeiten' : 'Aktivität anlegen'}
       testID="activity-sheet"
       size="m"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={online.disabled || !!form.duplicate || form.saving || form.preparing}
-          hint={
-            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined)
-          }
-          onPress={() => void save()}
-          testID="activity-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          disabled: online.disabled || !!form.duplicate || form.saving || form.preparing,
+          hint:
+            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined),
+          onPress: () => void save(),
+          testID: 'activity-save',
+        },
+      }}
     >
       <Stack gap={16}>
         {online.hint ? (

@@ -90,3 +90,29 @@ Schema-Änderungen vor dem Release (z. B. Spec 0007, 0011) ändern die Dateien d
 statt neue Flicken-Migrationen anzulegen. Damit gilt auch für sie: kein Code für die Übernahme
 alter Daten. Ab dem ersten `supabase db push` in das Produktionsprojekt gilt die Regel „nie
 ändern“ unverändert.
+
+## Nachtrag 22.11.2026: erste Veröffentlichung
+
+Die erste Veröffentlichung (v2026.11.1) hat die Grundlinie am 22.11.2026 in die Produktion gebracht
+(`supabase db push`). Seitdem gilt wieder „nie ändern“: Jede Schemaänderung ist eine neue Migration,
+nach expand → migrate → contract (`.claude/rules/30-database.md`).
+
+## Nachtrag 23.11.2026: neue Basis für die erste produktive Version (Spec 0031, Spec 0028)
+
+Die Produktion enthält bisher nur Testdaten. Vor der ersten produktiv genutzten Version fasst
+Spec 0028 deshalb alle Migrationen ein zweites und letztes Mal zu einer sauberen Basis zusammen,
+und das Produktionsprojekt wird vorher zurückgesetzt. Damit gilt „nie ändern“ genau einmal nicht,
+und auch das nur kontrolliert:
+
+- Die Datei `supabase/migrations-base.json` (`replaces`: der neueste Tag, `first`: die erste
+  Version der neuen Basis) erlaubt, die Migrationen dieses Tags zu ersetzen. Die Basis bekommt neue
+  Zeitstempel ab `first`.
+- Die Ausnahme gilt nur, solange `replaces` der neueste Tag ist: im Check „Migrationen“ (keine alte
+  Datei bleibt, keine neue liegt vor `first`), im Supabase-Wächter (Historie leer oder ein Präfix
+  der neuen Basis, sonst „In Produktion …“) und für `min_app_version` (höchstens die nächste statt
+  der veröffentlichten Version). Die Mindestversion 2026.11.2 sperrt damit Geräte mit v2026.11.1.
+- Mit dem nächsten Tag ist die Ausnahme verbraucht, die Datei wird gelöscht. Danach gilt wieder
+  „nie ändern“ und expand → migrate → contract.
+
+Die Prüfungen stehen in `scripts/release/migrations-base.mjs`, `scripts/ci/migrations.mjs`,
+`scripts/release/supabase-guard.mjs` und `scripts/release/version.mjs`, jeweils mit Tests.

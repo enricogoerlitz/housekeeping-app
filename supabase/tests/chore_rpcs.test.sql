@@ -5,7 +5,7 @@
 -- household, signed out, direct writes past the domain ops.
 begin;
 \ir _helpers.psql
-select plan(75);
+select plan(77);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -310,23 +310,31 @@ select throws_ok(
     tests.completion('bett', 'ev_x', 'done', current_date, 'enrico', current_date + 14, 'nadja', '{}'::jsonb))),
   'P0002', 'chore_not_found', 'AC-054 complete_chore: booking a chore deleted in the meantime is chore_not_found');
 
--- "Rückgängig" inserts the chore again and links its events: chore_id may go from null to a
--- chore, never from one chore to another (remove_chore_event would restore the wrong chore).
+-- "Rückgängig" of deleting a chore is restore_chore (spec 0031, REQ-016, chore_deletion.test.sql).
+-- A chore can still be inserted again with its id (undo of "Erledigt" on a new chore), but a
+-- member never sets chore_id of an event; the trigger keeps an event at its chore for every role.
 select lives_ok(
   tests.apply_sql('home_a', jsonb_build_array(
     jsonb_build_object('kind', 'insert', 'table', 'chores', 'row', jsonb_build_object(
       'id', tests.fx('bett'), 'title', 'Bettwäsche wechseln', 'recurrence', '{"type": "flexible", "everyDays": 14}'::jsonb,
-      'assignment', '{"type": "anyone"}'::jsonb, 'next_due_on', current_date + 14, 'last_done_on', current_date)),
-    jsonb_build_object('kind', 'patch', 'table', 'chore_events', 'id', tests.fx('ev_bett1'),
-                       'changes', jsonb_build_object('chore_id', tests.fx('bett'))))),
-  'AC-053 apply_changes: "Rückgängig" links an event of a deleted chore to the restored chore');
+      'assignment', '{"type": "anyone"}'::jsonb, 'next_due_on', current_date + 14, 'last_done_on', current_date)))),
+  'AC-053 apply_changes: a deleted chore can be inserted again with its id');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'chore_events', 'id', tests.fx('ev_bett1'), 'changes', jsonb_build_object('chore_id', tests.fx('bad'))))),
+    'kind', 'patch', 'table', 'chore_events', 'id', tests.fx('ev_bett1'), 'changes', jsonb_build_object('chore_id', tests.fx('bett'))))),
+  '22023', 'invalid_change', 'spec 0031 AC-041 apply_changes: a member cannot link an event to a chore');
+select throws_ok(
+  format('update public.chore_events set chore_id = %L where id = %L', tests.fx('bett'), tests.fx('ev_bett1')),
+  '42501', null, 'spec 0031 AC-041 chore_events: a member cannot set chore_id directly');
+select tests.clear_authentication();
+update public.chore_events set chore_id = tests.fx('bett') where id = tests.fx('ev_bett1');
+select throws_ok(
+  format('update public.chore_events set chore_id = %L where id = %L', tests.fx('bad'), tests.fx('ev_bett1')),
   '22023', 'invalid_change', 'spec 0011 chore_events: an event cannot be moved to another chore of the household');
 select throws_ok(
   format('update public.chore_events set chore_id = null where id = %L', tests.fx('ev_bett1')),
-  '22023', 'invalid_change', 'spec 0011 chore_events: the link to an existing chore cannot be cleared directly');
+  '22023', 'invalid_change', 'spec 0011 chore_events: the link to an existing chore cannot be cleared');
+select tests.authenticate_as(tests.fx('enrico'));
 
 -- ===================== "Erledigt von" (AC-059) =====================
 select lives_ok(
@@ -425,8 +433,8 @@ select is(tests.state('kueche'), tests.st(current_date + 4, null, 'nadja'),
 -- ===================== Invalid input =====================
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
-    tests.completion('kueche', 'ev_x', 'done', current_date - 4, 'nadja', current_date + 7, 'nadja'))),
-  '22023', 'invalid_change', 'Offene Frage 10 complete_chore: a day before today - 3 is invalid');
+    tests.completion('kueche', 'ev_x', 'done', current_date - 32, 'nadja', current_date + 7, 'nadja'))),
+  '22023', 'invalid_change', 'spec 0026 AC-020 complete_chore: a day before today - 31 is invalid');
 select throws_ok(
   tests.apply_sql('home_a', jsonb_build_array(
     tests.completion('kueche', 'ev_x', 'done', current_date + 2, 'nadja', current_date + 7, 'nadja'))),

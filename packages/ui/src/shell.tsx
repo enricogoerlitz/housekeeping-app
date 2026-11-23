@@ -1,9 +1,11 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   View,
   type LayoutChangeEvent,
+  type ScrollViewInstance,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -15,16 +17,29 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { IconButton, focusRing } from './controls';
+import { bottomInset } from './bottom-inset';
+import { IconButton, keyboardFocusRing } from './controls';
+import { useKeyboard } from './keyboard';
+import { useHover } from './pointer';
+import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
+import { TabSwipeArea } from './tab-swipe-area';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
 import { AreaToneContext, ToneContext, useBreakpoint, useTheme } from './theme-context';
 import type { Tone } from './themes';
 
 export const TAB_BAR_HEIGHT = 62;
-export const SIDEBAR_WIDTH = 256;
+
+/**
+ * Distance from the bottom edge for anything at the bottom of the screen: the safe area plus the
+ * gap above the home bar, or `minimum` without a home bar (spec 0029, REQ-002).
+ */
+export function useBottomInset(minimum = 0): number {
+  return bottomInset(useSafeAreaInsets().bottom, minimum);
+}
+const SIDEBAR_WIDTH = 256;
 /** Widest content of a page; wider windows centre it (spec 0005, AC-012). */
-export const CONTENT_MAX_WIDTH = 1320;
+const CONTENT_MAX_WIDTH = 1320;
 /** Page margin from tablet width on, next to the sidebar. */
 export const WIDE_GUTTER = 36;
 
@@ -42,8 +57,30 @@ const ScreenChromeContext = createContext({ collapsed: false });
  * that receives the scroll offset, so header and toolbar react as on a scrolling Screen.
  */
 export const PageScrollContext = createContext<
-  { inset: number; onScroll: (y: number) => void } | undefined
+  { inset: number; onScroll: (y: number) => void; touch?: ViewStyle | null } | undefined
 >(undefined);
+
+/**
+ * The scroll switch of a Screen that scrolls itself (spec 0016, plan decision 2): a drag turns
+ * the page's scrolling off on native while an entry hangs on the finger, and scrolls the page
+ * along at the top and bottom edges.
+ */
+export interface PageScrollControl {
+  setScrollEnabled: (enabled: boolean) => void;
+  scrollBy: (dy: number) => void;
+  /** The scroll area in window coordinates, where the bands that scroll along lie. */
+  measure: (
+    done: (rect: { x: number; y: number; width: number; height: number } | null) => void,
+  ) => void;
+}
+
+export const PageScrollControlContext = createContext<PageScrollControl | undefined>(undefined);
+
+/**
+ * Set by Screen around its `aside`: a DockedPanel at the bottom reports the height it covers, so
+ * the page gets that much room at its end.
+ */
+export const AsideInsetContext = createContext<((height: number) => void) | undefined>(undefined);
 
 export interface ScreenProps {
   children?: ReactNode;
@@ -55,12 +92,22 @@ export interface ScreenProps {
   /** View tabs below the header; they stay visible. */
   tabs?: ReactNode;
   /**
+   * On phones a sideways swipe over the content changes these view tabs (spec 0029, REQ-003);
+   * build it with `tabSwipe(options, value, onChange)`, the same as the tabs get.
+   */
+  tabSwipe?: TabSwipe;
+  /**
    * Search field and filter row below the tabs. On phones they slide away while scrolling down and
    * come back on scrolling up; on wider screens they stay.
    */
   toolbar?: ReactNode;
   /** Fixed content below the scroll area, e.g. a ComposerBar. */
   footer?: ReactNode;
+  /**
+   * A DockedPanel: from 1100 px it stands right of the scroll area, below header and tabs; on
+   * phones and tablets it lies over the lower part of the screen area, above the tab bar.
+   */
+  aside?: ReactNode;
   /**
    * false for screens that manage their own scrolling. With a header on phones the scrolling child
    * must be an InfiniteList: it takes the header's space as its inset (PageScrollContext).
@@ -106,6 +153,7 @@ export function Screen(props: ScreenProps) {
     now: 0,
   });
   const [toolbarHeight, setToolbarHeight] = useState(0);
+  const [asideInset, setAsideInset] = useState(0);
 
   const scrollY = useSharedValue(0);
   const isCollapsed = useSharedValue(false);
@@ -130,6 +178,19 @@ export function Screen(props: ScreenProps) {
       toolbarShift.set(shift);
     }
   };
+  const scrollView = useRef<ScrollViewInstance>(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [scrollControl] = useState<PageScrollControl>(() => ({
+    setScrollEnabled,
+    scrollBy: (dy) => {
+      scrollView.current?.scrollTo({ y: Math.max(0, scrollY.get() + dy), animated: false });
+    },
+    measure: (done) => {
+      const view = scrollView.current;
+      if (!view) done(null);
+      else view.measureInWindow((x, y, width, height) => done({ x, y, width, height }));
+    },
+  }));
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       onPageScroll(event.contentOffset.y);
@@ -161,36 +222,51 @@ export function Screen(props: ScreenProps) {
   // Once the narrow bar was measured the scroll area starts below it, so sticky group headings
   // stick under the bar instead of behind it; only the rest of the header lies over the content.
   const top = overlay ? (chrome.narrow ?? 0) : 0;
+  // Spec 0030, REQ-007: under a tab swipe the scroll area pans only vertically (iOS).
+  const touch = tabSwipeTouchAction(props.tabSwipe !== undefined, Platform.OS);
   const inset = overlay ? (chrome.expanded ?? 0) + toolbarHeight - top : 0;
   const measured = !overlay || chrome.expanded !== undefined;
   const content = (
     <View
       style={[
         inner,
-        { paddingTop: 8, paddingBottom: (props.clearFab ?? true) ? 96 : 24 },
+        {
+          paddingTop: 8,
+          paddingBottom: Math.max((props.clearFab ?? true) ? 96 : 24, asideInset + 24),
+        },
+        touch,
         props.style,
       ]}
     >
       {props.children}
     </View>
   );
-  const body =
+  const scrolling =
     props.scroll === false ? (
-      <PageScrollContext.Provider value={{ inset, onScroll: onPageScroll }}>
+      <PageScrollContext.Provider value={{ inset, onScroll: onPageScroll, touch }}>
         <View style={{ flex: 1, marginTop: top, opacity: measured ? 1 : 0 }}>{content}</View>
       </PageScrollContext.Provider>
     ) : (
       <Animated.ScrollView
+        ref={scrollView}
         style={{ flex: 1, marginTop: top, opacity: measured ? 1 : 0 }}
         contentContainerStyle={{ paddingTop: inset }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
-        {content}
+        <PageScrollControlContext.Provider value={scrollControl}>
+          {content}
+        </PageScrollControlContext.Provider>
       </Animated.ScrollView>
     );
+  const body = props.tabSwipe ? (
+    <TabSwipeArea swipe={props.tabSwipe}>{scrolling}</TabSwipeArea>
+  ) : (
+    scrolling
+  );
   const line: ViewStyle = {
     position: 'absolute',
     left: 0,
@@ -205,6 +281,9 @@ export function Screen(props: ScreenProps) {
     </ScreenChromeContext.Provider>
   ) : null;
   const tabs = props.tabs ? <View style={inner}>{props.tabs}</View> : null;
+  const aside = props.aside ? (
+    <AsideInsetContext.Provider value={setAsideInset}>{props.aside}</AsideInsetContext.Provider>
+  ) : null;
 
   if (!overlay) {
     return (
@@ -223,7 +302,14 @@ export function Screen(props: ScreenProps) {
               <Animated.View pointerEvents="none" style={[line, chromeLine]} />
             </View>
           ) : null}
-          {body}
+          {props.aside ? (
+            <View style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' }}>
+              <View style={{ flex: 1 }}>{body}</View>
+              {aside}
+            </View>
+          ) : (
+            body
+          )}
           {props.footer}
         </View>
       </AreaToneContext.Provider>
@@ -270,6 +356,7 @@ export function Screen(props: ScreenProps) {
             {tabs}
             <Animated.View pointerEvents="none" style={[line, chromeLine]} />
           </View>
+          {aside}
         </View>
         {props.footer}
       </View>
@@ -281,6 +368,8 @@ export interface ScreenHeaderProps {
   title: string;
   /** Small line above the title, e.g. the date. */
   kicker?: string;
+  /** A control above the title, e.g. the household on the phone's overview (spec 0019). */
+  above?: ReactNode;
   /** Small line below the title. */
   subtitle?: string;
   /** Content on the right: avatar, buttons, chips. They stay in the narrow bar. */
@@ -326,6 +415,7 @@ export function ScreenHeader(props: ScreenHeaderProps) {
         {props.onBack && props.backLabel && !collapsed ? (
           <BackLink label={props.backLabel} onPress={props.onBack} />
         ) : null}
+        {props.above && !collapsed ? props.above : null}
         {props.kicker && !collapsed ? (
           <Text variant="small" color="muted" style={{ marginBottom: 2 }}>
             {props.kicker}
@@ -420,7 +510,7 @@ function BackLink(props: { label: string; onPress: () => void }) {
             borderRadius: theme.shape.radius.control,
             opacity: pressed ? 0.6 : 1,
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -448,15 +538,18 @@ export interface TabBarProps {
 /** Bottom navigation for phones. */
 export function TabBar(props: TabBarProps) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const bottom = useBottomInset();
+  // While typing the tab bar gives its room to the page (spec 0032, AC-001).
+  const keyboard = useKeyboard();
   const c = theme.colors;
+  if (keyboard.open) return null;
   return (
     <View
       accessibilityRole="tablist"
       style={{
         flexDirection: 'row',
-        height: TAB_BAR_HEIGHT + insets.bottom,
-        paddingBottom: insets.bottom,
+        height: TAB_BAR_HEIGHT + bottom,
+        paddingBottom: bottom,
         paddingTop: 7,
         paddingHorizontal: 6,
         backgroundColor: c.barBg,
@@ -477,6 +570,8 @@ export function TabBar(props: TabBarProps) {
             accessibilityRole="tab"
             accessibilityLabel={item.label}
             accessibilityState={{ selected: active }}
+            // react-native-web ignores accessibilityState.
+            aria-selected={active}
             onPress={() => props.onSelect(item.key)}
             style={(state) => [
               {
@@ -486,7 +581,7 @@ export function TabBar(props: TabBarProps) {
                 opacity: state.pressed ? 0.6 : 1,
                 borderRadius: 12,
               },
-              focusRing(theme, (state as { focused?: boolean }).focused),
+              keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
             ]}
           >
             <View
@@ -554,6 +649,7 @@ export interface SidebarProps extends TabBarProps {
  * `accentSoft`, also in "Frisch", where area colours belong to the screen, not the navigation.
  */
 export function Sidebar(props: SidebarProps) {
+  const hover = useHover();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const c = theme.colors;
@@ -585,9 +681,9 @@ export function Sidebar(props: SidebarProps) {
                 paddingHorizontal: 10,
                 marginBottom: 12,
                 borderRadius: theme.shape.radius.control,
-                backgroundColor: hovered ? c.surfaceSunken : 'transparent',
+                backgroundColor: hover(hovered) ? c.surfaceSunken : 'transparent',
               },
-              focusRing(theme, focused),
+              keyboardFocusRing(theme, focused),
             ];
           }}
         >
@@ -657,6 +753,7 @@ export function Sidebar(props: SidebarProps) {
 
 /** One row of the sidebar: an area (role tab) or a page in a group (a link). */
 function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
+  const hover = useHover();
   const theme = useTheme();
   const c = theme.colors;
   const { entry } = props;
@@ -670,6 +767,7 @@ function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
       accessibilityRole={props.tab ? 'tab' : 'link'}
       accessibilityLabel={entry.label}
       accessibilityState={props.tab ? { selected: active } : undefined}
+      aria-selected={props.tab ? active : undefined}
       aria-current={!props.tab && active ? 'page' : undefined}
       onPress={entry.onPress}
       style={(state) => {
@@ -682,9 +780,13 @@ function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
             minHeight: props.tab ? 46 : 44,
             paddingHorizontal: 12,
             borderRadius: theme.shape.radius.control,
-            backgroundColor: active ? c.accentSoft : hovered ? c.surfaceSunken : 'transparent',
+            backgroundColor: active
+              ? c.accentSoft
+              : hover(hovered)
+                ? c.surfaceSunken
+                : 'transparent',
           },
-          focusRing(theme, focused),
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >
@@ -737,7 +839,7 @@ export function Fab(props: FabProps) {
           opacity: state.pressed ? 0.8 : 1,
           boxShadow: '0px 6px 18px rgba(0,0,0,0.22), 0px 1px 3px rgba(0,0,0,0.18)',
         },
-        focusRing(theme, (state as { focused?: boolean }).focused),
+        keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
       ]}
     >
       <ToneContext.Provider value={{ fg: c.fabText }}>

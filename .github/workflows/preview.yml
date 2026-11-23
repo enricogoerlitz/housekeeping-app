@@ -1,12 +1,12 @@
-# Preview of develop (spec 0014, REQ-003, plan Task 7, decisions 3, 6, 7, 8, 20). Every push to
-# develop (a squashed feature PR, a hand-back after a hotfix starts it by hand) delivers that state
-# to the Static Web App "Vorschau" and to the Supabase project "Vorschau" — never to production.
+# Preview of develop (spec 0014, REQ-003, plan Task 7, decisions 3, 6, 7, 8, 20). Started by hand
+# only (since 22.11.2026; develop collects merged work), it delivers the state of develop to the
+# Static Web App "Vorschau" and to the Supabase project "Vorschau" — never to production.
 #
 #   checks → web-bauen → supabase-vorschau → web-vorschau → pruefen
 #
 # - Red checks or a red web build: nothing is reset or delivered, the preview keeps its state
 #   (AC-070). The environment preview allows only develop (AC-071).
-# - One run at a time; a newer push waits and replaces any run still waiting (AC-069).
+# - One run at a time; a newer run waits and replaces any run still waiting (AC-069).
 # - The preview project is reset on every run (`db reset --remote --no-seed`, the one place the
 #   check "Konventionen" allows it, AC-010), then gets the preview seed without test accounts and
 #   the invitations of PREVIEW_INVITE_EMAILS (AC-014). Push stays off in the preview (decision 8).
@@ -15,8 +15,8 @@
 name: Vorschau
 
 on:
-  push:
-    branches: [develop]
+  # By hand only (changed 22.11.2026): develop collects merged work; the preview is delivered when
+  # Enrico or an agent starts it: gh workflow run preview.yml --ref develop
   workflow_dispatch:
 
 concurrency:
@@ -33,6 +33,8 @@ defaults:
 jobs:
   checks:
     name: Checks
+    # Only develop is delivered to the preview; everything else needs this job.
+    if: github.ref == 'refs/heads/develop'
     uses: ./.github/workflows/checks.yml
     permissions:
       contents: read
@@ -112,6 +114,14 @@ jobs:
         run: |
           if [ -z "$SUPABASE_POOLER_URL" ]; then
             echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
+            exit 1
+          fi
+          # The address must belong to the project of this environment: the pooler user is
+          # postgres.<ref>. A production address in the preview secret stops here, before the
+          # reset. Only the comparison result is printed, never the address.
+          rest="${SUPABASE_POOLER_URL#*://}"
+          if [ "${rest%%:*}" != "postgres.${SUPABASE_PROJECT_REF}" ]; then
+            echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
             exit 1
           fi
       - name: Datenbank neu aufsetzen
@@ -207,6 +217,8 @@ jobs:
       PREVIEW_SUPABASE_URL: ${{ vars.PREVIEW_SUPABASE_URL }}
       PREVIEW_WEB_ORIGIN: ${{ vars.PREVIEW_WEB_ORIGIN }}
       PREVIEW_WEB_ORIGIN_WILDCARD: ${{ vars.PREVIEW_WEB_ORIGIN }}/**
+      # Spec 0027, AC-043: the azurestaticapps.net address that must redirect to the own domain.
+      PREVIEW_OLD_WEB_ORIGIN: ${{ vars.PREVIEW_OLD_WEB_ORIGIN }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       # For `supabase config diff` inside verify.mjs, which compares the hashed secret.
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -224,4 +236,4 @@ jobs:
         run: node scripts/ci/supabase-remote.mjs preview
       - name: Vorschau von außen prüfen
         # AC-013 (CSP names only the preview project), AC-069 (version.json names this commit).
-        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA"
+        run: node scripts/release/verify.mjs "$PREVIEW_WEB_ORIGIN" "$PREVIEW_SUPABASE_URL" --environment preview --version vorschau --commit "$GITHUB_SHA" ${PREVIEW_OLD_WEB_ORIGIN:+--old-origin "$PREVIEW_OLD_WEB_ORIGIN"}

@@ -14,6 +14,7 @@ import {
   type DictatedItem,
 } from '@housekeeping/api';
 import {
+  dishLabel,
   groupItems,
   itemCount,
   listHeadline,
@@ -45,21 +46,23 @@ import {
   type MenuOption,
   expandableA11y,
 } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { useOpenManageEntry } from '@/features/manage/navigation';
 import { StartPageActions } from '@/features/shell/profile-button';
-import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useMissingObject } from '@/lib/addressed';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
+import { usePageParams } from '@/lib/url-state';
 import { useDictation } from '@/lib/use-dictation';
 
 import { useActiveShopper } from './active-shopper';
 import { CountStepper, removeWithUndo } from './item-controls';
-import { ItemSheet } from './item-sheet';
-import { ClearListSheet } from './list-sheets';
+import { checkOnList, ItemSheet } from './item-sheet';
+import { ClearListSheet, DishesSheet } from './list-sheets';
 import { PantryCheckSheet } from './pantry-check-sheet';
 import { SmartComposer } from './smart-composer';
 
@@ -77,12 +80,15 @@ function PendingDot(props: { itemId: string }) {
 
 /**
  * An open item on "Liste" (D24): no checkbox; "− 2× +" for pure counts, "500 g ›" for
- * quantities. A tap opens "Posten bearbeiten"; on phones a swipe to the left removes it.
+ * quantities. A tap opens "Posten bearbeiten"; on phones a swipe to the left removes it (online)
+ * and a swipe to the right marks it as done, offline too (spec 0025, REQ-006).
  */
 function ItemRow(props: {
   item: ShoppingItem;
   article: Article | undefined;
   swipe: boolean;
+  /** Removing needs the network; offline the swipe to the left only says so. */
+  canRemove: boolean;
   onOpen: (itemId: string, name: string) => void;
 }) {
   const { item } = props;
@@ -123,7 +129,11 @@ function ItemRow(props: {
     <SwipeToRemove
       label="Entfernen"
       enabled={props.swipe}
-      onRemove={() => removeWithUndo(item.id, name)}
+      onRemove={() =>
+        props.canRemove ? removeWithUndo(item.id, name) : toast.show({ message: OFFLINE_EDIT_HINT })
+      }
+      rightLabel="Erledigt"
+      onSwipeRight={() => checkOnList(item.id, name)}
       testID={`item-${item.id}-swipe`}
     >
       {row}
@@ -184,10 +194,16 @@ export function ListScreen() {
   const openManageEntry = useOpenManageEntry();
   const { isPhone, isWide } = useBreakpoint();
 
-  const [pantryCheck, setPantryCheck] = useState(false);
+  // The open item and "Vorratscheck" stand in the address (spec 0019, REQ-013): `/liste?posten=…`.
+  const address = usePageParams('liste');
+  const { params } = address;
+  const focused = useIsFocused();
+  const pantryCheck = params.fenster === 'vorratscheck' && focused;
+  const setPantryCheck = (open: boolean) =>
+    open ? address.open({ fenster: 'vorratscheck' }) : address.close({ fenster: undefined });
   const [showDone, setShowDone] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [editing, setEditing] = useState<{ itemId: string; name: string } | undefined>();
+  const [showDishes, setShowDishes] = useState(false);
   const [dictation, setDictation] = useState<Dictation | undefined>();
   const speech = useDictation();
   const [nothingHeard, setNothingHeard] = useState(false);
@@ -197,12 +213,34 @@ export function ListScreen() {
   const groups = groupItems(open, articlesById, areas);
   const headline = listHeadline(items, recipesById);
 
-  const openItem = (itemId: string, name: string) => setEditing({ itemId, name });
-  // Someone else removed the item while its window was open (AC-027).
-  const itemGone = () => {
-    if (editing) toast.show({ message: `${editing.name} steht nicht mehr auf der Liste` });
-    setEditing(undefined);
+  const openItemId = params.posten;
+  const openItemRow = items.find((item) => item.id === openItemId);
+  const openName = openItemRow ? (articlesById[openItemRow.articleId]?.name ?? '') : undefined;
+  const [lastName, setLastName] = useState<string | undefined>();
+  if (openName !== undefined && openName !== lastName) setLastName(openName);
+  const editing =
+    openItemRow && focused ? { itemId: openItemRow.id, name: openName ?? '' } : undefined;
+  // Someone else removed the item while its window was open (AC-027); an unknown item in the
+  // address opens nothing and says so (AC-052). Removed from its own window, the window closes
+  // with its own toast and "Rückgängig" (AC-025), which this must not replace. Opening an item
+  // again forgets that it was closed here.
+  const [closedHere, setClosedHere] = useState<string | undefined>();
+  const openItem = (itemId: string) => {
+    setClosedHere(undefined);
+    address.open({ posten: itemId });
   };
+  const setEditing = (next: undefined) => address.close({ posten: next });
+  const clearItem = () => address.replace({ posten: undefined });
+  useMissingObject(
+    openItemId,
+    openItemRow !== undefined,
+    'Diesen Posten gibt es nicht mehr',
+    clearItem,
+    lastName && closedHere !== openItemId
+      ? `${lastName} steht nicht mehr auf der Liste`
+      : undefined,
+  );
+  const itemGone = clearItem;
 
   const showDictated = (transcript: string, dictated: DictatedItem[]) => {
     setNothingHeard(dictated.length === 0);
@@ -282,7 +320,8 @@ export function ListScreen() {
     { value: 'articles', label: 'Artikel' },
   ];
   const onMore = (action: MoreAction) => {
-    if (action === 'stores') openManageEntry('/maerkte');
+    // "‹ Liste" on "Märkte & Bereiche" as on "Artikel" (spec 0031, REQ-036).
+    if (action === 'stores') openManageEntry({ pathname: '/maerkte', params: { von: 'liste' } });
     // "Zurück" on "Artikel" leads to the list again (spec 0007, AC-021).
     else if (action === 'articles')
       openManageEntry({ pathname: '/artikel', params: { von: 'liste' } });
@@ -300,7 +339,8 @@ export function ListScreen() {
             key={item.id}
             item={item}
             article={articlesById[item.articleId]}
-            swipe={isPhone && !online.disabled}
+            swipe={isPhone}
+            canRemove={!online.disabled}
             onOpen={openItem}
           />
         ))}
@@ -340,9 +380,23 @@ export function ListScreen() {
         >
           Einkaufsliste
         </Text>
-        <Text variant="small" color="muted" numberOfLines={2} testID="list-headline">
-          {headline.label}
-        </Text>
+        {headline.dishes.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${headline.label}. Gerichte zeigen`}
+            onPress={() => setShowDishes(true)}
+            style={{ minHeight: 24, alignSelf: 'flex-start' }}
+            testID="list-headline-button"
+          >
+            <Text variant="small" color="muted" numberOfLines={2} testID="list-headline">
+              {`${headline.label} ›`}
+            </Text>
+          </Pressable>
+        ) : (
+          <Text variant="small" color="muted" numberOfLines={2} testID="list-headline">
+            {headline.label}
+          </Text>
+        )}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {more}
@@ -530,15 +584,25 @@ export function ListScreen() {
           key={editing.itemId}
           itemId={editing.itemId}
           name={editing.name}
-          onClose={() => setEditing(undefined)}
+          onClose={() => {
+            setClosedHere(editing.itemId);
+            setEditing(undefined);
+          }}
           onGone={itemGone}
         />
       ) : null}
       {confirmClear ? (
         <ClearListSheet
-          count={items.length}
+          open={open.length}
+          done={done.length}
           onConfirm={clearList}
           onClose={() => setConfirmClear(false)}
+        />
+      ) : null}
+      {showDishes ? (
+        <DishesSheet
+          rows={headline.dishes.map((dish) => ({ key: dish.recipeId, label: dishLabel(dish) }))}
+          onClose={() => setShowDishes(false)}
         />
       ) : null}
       {pantryCheck ? (

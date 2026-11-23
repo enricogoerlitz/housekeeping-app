@@ -7,7 +7,6 @@ import type {
   ISODate,
   NotificationSettings,
   OwnPushSubscription,
-  RemindMinutes,
   TimeOfDay,
 } from './types';
 
@@ -17,22 +16,23 @@ import type {
 
 // ---------- Kinds and settings ----------
 
+/** Spec 0021, REQ-014: the reservation has no kind of its own; its reminder is the entry's. */
 export type NotificationKind =
-  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'reservationReminders';
+  'dailySummary' | 'activitiesEve' | 'choreReminders' | 'entryReminders';
 
 /** In the order of the page (concept 3.14). */
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   'dailySummary',
   'activitiesEve',
   'choreReminders',
-  'reservationReminders',
+  'entryReminders',
 ];
 
 const ENABLED_FIELD = {
   dailySummary: 'dailySummaryEnabled',
   activitiesEve: 'activitiesEveEnabled',
   choreReminders: 'choreRemindersEnabled',
-  reservationReminders: 'reservationRemindersEnabled',
+  entryReminders: 'entryRemindersEnabled',
 } as const satisfies Record<NotificationKind, keyof NotificationSettings>;
 
 export function kindEnabled(settings: NotificationSettings, kind: NotificationKind): boolean {
@@ -51,6 +51,26 @@ export function kindEnabledPatch(
 export function enabledKindsLabel(settings: NotificationSettings): string {
   const count = NOTIFICATION_KINDS.filter((kind) => kindEnabled(settings, kind)).length;
   return count === 0 ? 'Alle aus' : `${count} an`;
+}
+
+/**
+ * The same row naming this device (spec 0018, AC-022): "2 an · dieses Gerät aus" while kinds are
+ * on but nothing reaches this device; "2 an" once it is registered.
+ */
+export function notificationsRowLabel(settings: NotificationSettings, deviceOn: boolean): string {
+  const kinds = enabledKindsLabel(settings);
+  const anyOn = NOTIFICATION_KINDS.some((kind) => kindEnabled(settings, kind));
+  return anyOn && !deviceOn ? `${kinds} · dieses Gerät aus` : kinds;
+}
+
+/**
+ * Whether this device is registered for notifications, from what it remembers itself (works
+ * offline): switched on here, with a push address registered, where push is supported.
+ */
+export function thisDeviceRegistered(
+  state: Pick<DeviceState, 'support' | 'wanted' | 'storedEndpoint'>,
+): boolean {
+  return state.support === 'supported' && state.wanted === true && !!state.storedEndpoint;
 }
 
 /** The fixed order of the parts, also in the notification itself. */
@@ -91,7 +111,7 @@ export function toggleSummaryPart(
 
 /**
  * The line under a kind (AC-011): "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung",
- * "19:00", "2 h vorher, je Eintrag änderbar"; chores with a time have none.
+ * "19:00"; chores with a time and entry reminders have none.
  */
 export function kindSubtitle(
   settings: NotificationSettings,
@@ -107,48 +127,16 @@ export function kindSubtitle(
     case 'activitiesEve':
       return formatTime(settings.activitiesEveAt);
     case 'choreReminders':
+    // Spec 0017, REQ-007: no time of its own; it is set per entry.
+    case 'entryReminders':
       return undefined;
-    case 'reservationReminders':
-      return `${remindLabel(DEFAULT_REMIND_MINUTES)}, je Eintrag änderbar`;
   }
 }
 
 // ---------- Times ----------
 
-export type TimeInputResult =
-  { ok: true; time: TimeOfDay | undefined } | { ok: false; error: string };
-
-const TIME_ERRORS = {
-  invalid: 'Keine gültige Uhrzeit',
-  step: 'Bitte in 5-Minuten-Schritten',
-  required: 'Bitte eine Uhrzeit eingeben',
-};
-
-/** "19", "7", "1930", "730", "19:30", "7.30": hour alone, digits, or with ":" or ".". */
-const TIME_INPUT = /^(?:(\d{1,2})|(\d{1,2})(\d{2})|(\d{1,2})[:.](\d{2}))$/;
-
-/**
- * Reads a typed time (Decision 27). Empty means no time, unless one is required. Only full
- * five-minute steps count, as the scheduler runs every 5 minutes (Decision 4).
- */
-export function parseTimeInput(input: string, options?: { required?: boolean }): TimeInputResult {
-  const text = input.trim();
-  if (text === '') {
-    return options?.required
-      ? { ok: false, error: TIME_ERRORS.required }
-      : { ok: true, time: undefined };
-  }
-  const match = TIME_INPUT.exec(text);
-  if (!match) return { ok: false, error: TIME_ERRORS.invalid };
-  const hour = Number(match[1] ?? match[2] ?? match[4]);
-  const minute = Number(match[3] ?? match[5] ?? 0);
-  if (hour > 23 || minute > 59) return { ok: false, error: TIME_ERRORS.invalid };
-  if (minute % 5 !== 0) return { ok: false, error: TIME_ERRORS.step };
-  return {
-    ok: true,
-    time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
-  };
-}
+/** The names of the two selects of every time field (spec 0027, REQ-007). */
+export const TIME_FIELD_WORDS = { hourLabel: 'Stunde', minuteLabel: 'Minute' } as const;
 
 /** "7:30", "19:00": like the texts of the scheduler (`H:MM`). */
 export function formatTime(time: TimeOfDay): string {
@@ -161,20 +149,26 @@ export function withTime(title: string, time: TimeOfDay | undefined): string {
   return time === undefined ? title : `${title} · ${formatTime(time)}`;
 }
 
-/** Under "Uhrzeit" of a chore: whether the own setting reminds (AC-022, Offene Frage 3 d). */
-export function choreTimeHint(choreRemindersEnabled: boolean): string {
-  return choreRemindersEnabled
-    ? 'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)'
-    : 'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus';
+const OWN_CHORE_REMINDERS_OFF =
+  'Du selbst bekommst keine: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus.';
+
+/**
+ * Under „Erinnern“ of a chore with a time (spec 0027, REQ-009): whether the scheduler reminds
+ * whoever is up, and, when it does, that the own setting „Aufgaben mit Uhrzeit“ keeps it from
+ * you (AC-035, AC-037). Switched off it reminds nobody, so the own setting says nothing more.
+ */
+export function choreRemindHint(remindAtDueTime: boolean, choreRemindersEnabled: boolean): string {
+  if (!remindAtDueTime) return 'Keine Erinnerung – die Uhrzeit wird nur angezeigt.';
+  const reminds = 'Erinnert zur Uhrzeit, wer dran ist.';
+  return choreRemindersEnabled ? reminds : `${reminds} ${OWN_CHORE_REMINDERS_OFF}`;
 }
 
-/** "Erinnern … vorher" of a reservation (Offene Frage 2 A, Decision 14). */
-export const REMIND_CHOICES: readonly RemindMinutes[] = [30, 60, 120, 180, 240];
-export const DEFAULT_REMIND_MINUTES: RemindMinutes = 120;
-
-/** "30 Min vorher", "1 h vorher", "2 h vorher" (AC-029). */
-export function remindLabel(minutes: RemindMinutes): string {
-  return minutes < 60 ? `${minutes} Min vorher` : `${minutes / 60} h vorher`;
+/**
+ * „Erinnern“ as it is saved (spec 0027, AC-038): only a chore with a time can be silent; without
+ * one it is on, so a time chosen later reminds again (check `chores_remind_needs_time`).
+ */
+export function remindAtDueTimeFor(dueTime: TimeOfDay | undefined, remind: boolean): boolean {
+  return dueTime === undefined || remind;
 }
 
 /**
@@ -446,16 +440,6 @@ export function base64UrlToBytes(text: string): Uint8Array | undefined {
     }
   }
   return bytes;
-}
-
-/**
- * The title of "Was und wann": with the household's name when the person belongs to several, as
- * the settings hold per household (Offene Frage 3 e, Decision 25).
- */
-export function kindsSectionTitle(householdName: string | undefined): string {
-  return householdName === undefined
-    ? 'Was und wann · gilt für alle Geräte'
-    : `Was und wann · ${householdName} · gilt für alle Geräte`;
 }
 
 export interface ThisDeviceView {

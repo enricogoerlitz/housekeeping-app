@@ -24,7 +24,7 @@ import {
   setPackingBagMember,
   updatePackingBagItem,
 } from './commands-packing';
-import { removeAbsences } from './commands-household';
+import { removeTrip } from './commands-trips';
 import { ENRICO, NADJA } from './seed/demo';
 import { getData, OfflineError, snapshot } from './store';
 import { TransportError } from './transport';
@@ -37,13 +37,13 @@ const bag = (name: string) => {
   return found;
 };
 const mallorca = () => {
-  const found = getData().absences.find((absence) => absence.note === 'Urlaub Mallorca');
+  const found = getData().trips.find((trip) => trip.note === 'Urlaub Mallorca');
   if (!found) throw new Error('fixture: Urlaub Mallorca');
   return found;
 };
 const listBag = (name: string) => {
   const found = getData().packingListBags.find(
-    (candidate) => candidate.absenceId === mallorca().id && candidate.name === name,
+    (candidate) => candidate.tripId === mallorca().id && candidate.name === name,
   );
   if (!found) throw new Error(`fixture: list bag ${name}`);
   return found;
@@ -351,7 +351,7 @@ describe('Packen (REQ-004 to REQ-006)', () => {
     const [again] = packed;
     if (!again) throw new Error('fixture');
     engine.setSimulatedOffline(true);
-    expect(resetPackingList([mallorca().id])).toBe(packed.length);
+    expect(resetPackingList(mallorca().id)).toBe(packed.length);
     expect(getData().packingItems.some((item) => item.packed)).toBe(false);
     const nadja = fx.server.transport(NADJA);
     await nadja.setPackingItemsPacked(H, [
@@ -397,12 +397,12 @@ describe('Packen (REQ-004 to REQ-006)', () => {
       () => removeBagFromPackingList(section.id),
       () => addPackingItem(section.id, 'Schnorchel'),
       () => removePackingItem(item.id),
-      () => removeAbsences([mallorca().id]),
+      () => removeTrip(mallorca().id),
     ];
     for (const command of online) expect(command).toThrow(OfflineError);
     setPacked(item.id, !item.packed);
     packAll(section.id)();
-    resetPackingList([mallorca().id]);
+    resetPackingList(mallorca().id);
     await fx.settle(engine);
     expect(writes()).toEqual([]);
   });
@@ -424,18 +424,18 @@ describe('Packen (REQ-004 to REQ-006)', () => {
   });
 });
 
-describe('Abwesenheit löschen (REQ-008)', () => {
+describe('Reise löschen (REQ-008)', () => {
   it('AC-038: removing "Urlaub Mallorca" sends one delete; the packing list goes at once, bags stay', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
-    const absenceId = mallorca().id;
+    const tripId = mallorca().id;
     const bags = orderedBags(getData().packingBags).map((candidate) => candidate.id);
-    removeAbsences([absenceId]);
-    expect(getData().packingListBags.some((lb) => lb.absenceId === absenceId)).toBe(false);
+    removeTrip(tripId);
+    expect(getData().packingListBags.some((lb) => lb.tripId === tripId)).toBe(false);
     expect(getData().packingItems).toEqual([]);
     await fx.settle(nadja);
     expect(fx.calls).toEqual([
-      { fn: 'applyChanges', args: [H, [{ kind: 'delete', table: 'absences', id: absenceId }]] },
+      { fn: 'applyChanges', args: [H, [{ kind: 'delete', table: 'trips', id: tripId }]] },
     ]);
     expect(fx.nadjaData(nadja).packingItems).toEqual([]);
     expect(fx.nadjaData(nadja).packingListBags).toEqual([]);

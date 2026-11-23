@@ -198,7 +198,7 @@ test.describe('Artikel and Märkte at phone width', () => {
     await tid(page, 'store-menu').click();
     await tid(page, 'store-menu-delete').click();
     await expect(tid(page, 'store-delete-dialog')).toContainText('Aldi Nordstadt löschen?');
-    await expect(tid(page, 'store-delete-dialog-text')).toContainText(
+    await expect(tid(page, 'store-delete-dialog-message')).toContainText(
       'Die Laufreihenfolge geht verloren.',
     );
     await tid(page, 'store-delete-dialog-confirm').click();

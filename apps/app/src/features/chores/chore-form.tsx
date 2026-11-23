@@ -1,11 +1,14 @@
 import { useNotificationSettings } from '@housekeeping/api';
 import {
-  choreTimeHint,
-  formatTime,
+  choreRemindHint,
+  draftNextAssignee,
+  draftNextDueOn,
+  hasNextDueField,
   monthName,
-  parseTimeInput,
+  rhythmPatch,
   seasonLabel,
   seasonMonths,
+  TIME_FIELD_WORDS,
   weekdayShortName,
   type Assignment,
   type ChoreDraft,
@@ -77,13 +80,19 @@ function Field(props: { label: string; children: ReactNode }) {
   );
 }
 
-/** Rhythm chips and the details of the chosen rhythm. `prefix` keeps test ids apart. */
+/**
+ * Rhythm chips and the details of the chosen rhythm. `prefix` keeps test ids apart. With `dates`
+ * (the chore form) also „Nächstes Mal“ and, creating, „Zuletzt erledigt (optional)“ (spec 0026,
+ * REQ-002); `isNew`: „Bei Bedarf“ makes the assignment „Egal“ (REQ-004).
+ */
 export function RhythmField(props: {
   draft: ChoreDraft;
   update: DraftUpdate;
   today: ISODate;
   weekdayError?: string;
   prefix?: string;
+  isNew?: boolean;
+  dates?: boolean;
 }) {
   const { draft, update } = props;
   const id = (name: string) => `${props.prefix ?? ''}${name}`;
@@ -102,7 +111,7 @@ export function RhythmField(props: {
             key={option.value}
             label={option.label}
             selected={draft.rhythm === option.value}
-            onPress={() => set({ rhythm: option.value })}
+            onPress={() => set(rhythmPatch(draft, option.value, props.isNew ?? false))}
             testID={id(`rec-${option.value}`)}
           />
         ))}
@@ -113,6 +122,7 @@ export function RhythmField(props: {
           value={draft.onceDate}
           onChange={(onceDate) => set({ onceDate })}
           noneLabel="Ohne Datum"
+          min={props.today}
           testIDPrefix={id('once-date')}
         />
       ) : null}
@@ -188,6 +198,34 @@ export function RhythmField(props: {
           Wird nie fällig. Du findest sie unter „Alle“ und bei „Was anderes erledigt?“.
         </Text>
       ) : null}
+      {props.dates && hasNextDueField(draft.rhythm) ? (
+        <Stack gap={12}>
+          {props.isNew ? (
+            <Field label="Zuletzt erledigt (optional)">
+              <DateChips
+                today={props.today}
+                past
+                value={draft.lastDoneOn}
+                onChange={(lastDoneOn) => update({ lastDoneOn })}
+                noneLabel="Ohne Datum"
+                max={props.today}
+                testIDPrefix={id('last-done')}
+              />
+            </Field>
+          ) : null}
+          <Field label={draft.rhythm === 'flexible' ? 'Nächstes Mal etwa' : 'Nächstes Mal'}>
+            <DateChips
+              today={props.today}
+              value={draftNextDueOn(draft)}
+              onChange={(nextDueOn) => {
+                if (nextDueOn) update({ nextDueOn }, 'nextDue');
+              }}
+              min={props.today}
+              testIDPrefix={id('next-due')}
+            />
+          </Field>
+        </Stack>
+      ) : null}
     </Field>
   );
 }
@@ -215,6 +253,27 @@ export function AssignmentField(props: {
           />
         ))}
       </Row>
+      {draft.assignment === 'rotating' ? (
+        <Field label="Als Nächstes dran">
+          <Row wrap gap={8}>
+            {props.members.map((member) => (
+              <Chip
+                key={member.id}
+                label={member.name}
+                icon="user"
+                selected={
+                  draftNextAssignee(
+                    draft,
+                    props.members.map((entry) => entry.id),
+                  ) === member.id
+                }
+                onPress={() => props.update({ nextAssigneeId: member.id })}
+                testID={id(`next-${member.id}`)}
+              />
+            ))}
+          </Row>
+        </Field>
+      ) : null}
       {draft.assignment === 'fixed' ? (
         <Row wrap gap={8}>
           {props.members.map((member) => (
@@ -283,67 +342,73 @@ function SeasonField(props: { draft: ChoreDraft; update: DraftUpdate }) {
 }
 
 /**
- * „Uhrzeit“ of a chore (spec 0013, REQ-007): typed text, read with core `parseTimeInput` on save.
- * It is not part of the core draft; the sheets add it to the chore's fields.
+ * „Uhrzeit“ of a chore (spec 0013, REQ-007; chosen from hour and minute, spec 0027 REQ-007) with
+ * its switch „Erinnern“ (spec 0027, REQ-009). It is not part of the core draft; the sheets add it
+ * to the chore's fields.
  */
 export interface ChoreTime {
-  text: string;
-  error: string | undefined;
-  setText: (text: string) => void;
-  /** Reads the text; an invalid time shows its error and returns ok: false. */
-  read: () => { ok: true; time: TimeOfDay | undefined } | { ok: false };
+  value: TimeOfDay | undefined;
+  set: (time: TimeOfDay | undefined) => void;
+  remind: boolean;
+  setRemind: (remind: boolean) => void;
   reset: () => void;
 }
 
-export function useChoreTime(initial: TimeOfDay | undefined): ChoreTime {
-  const start = initial ? formatTime(initial) : '';
-  const [text, setTextState] = useState(start);
-  const [error, setError] = useState<string>();
+export function useChoreTime(initial: TimeOfDay | undefined, initialRemind = true): ChoreTime {
+  const [value, setValue] = useState(initial);
+  const [remind, setRemind] = useState(initialRemind);
   return {
-    text,
-    error,
-    setText: (next) => {
-      setTextState(next);
-      setError(undefined);
+    value,
+    // Without a time „Erinnern“ is on, so a time chosen again reminds (AC-038).
+    set: (time) => {
+      setValue(time);
+      if (time === undefined) setRemind(true);
     },
-    read: () => {
-      const result = parseTimeInput(text);
-      if (!result.ok) {
-        setError(result.error);
-        return { ok: false };
-      }
-      return { ok: true, time: result.time };
-    },
+    remind,
+    setRemind,
     reset: () => {
-      setTextState(start);
-      setError(undefined);
+      setValue(initial);
+      setRemind(initialRemind);
     },
   };
 }
 
 /**
- * The field „Uhrzeit (optional)“ with ✕ and, with a time, whether the own setting „Aufgaben mit
- * Uhrzeit“ reminds (AC-022, Offene Frage 3 d). Offline it is greyed out with the hint.
+ * The field „Uhrzeit (optional)“ with ✕ and, with a time, the switch „Erinnern“ for the whole
+ * household; its hint says whether it reminds and whether the own setting „Aufgaben mit Uhrzeit“
+ * keeps it from you (AC-035, AC-037). Offline both are greyed out with the hint.
  */
 function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
   const settings = useNotificationSettings();
   const { time } = props;
+  const offline = props.offlineHint !== undefined;
   // Without the settings row yet, the server's default counts: chore reminders are on (D36).
-  const reminds = settings?.choreRemindersEnabled ?? true;
+  const ownOn = settings?.choreRemindersEnabled ?? true;
   return (
-    <TimeField
-      label="Uhrzeit (optional)"
-      placeholder="z. B. 19:00"
-      value={time.text}
-      onChangeText={time.setText}
-      onClear={() => time.setText('')}
-      clearLabel="Uhrzeit entfernen"
-      emptyLabel="keine Uhrzeit"
-      error={time.error}
-      hint={props.offlineHint ?? (time.text.trim() ? choreTimeHint(reminds) : undefined)}
-      disabled={props.offlineHint !== undefined}
-      testID="chore-due-time"
-    />
+    <Stack gap={4}>
+      <TimeField
+        label="Uhrzeit (optional)"
+        accessibilityName="Uhrzeit"
+        {...TIME_FIELD_WORDS}
+        value={time.value}
+        onChange={time.set}
+        optional
+        clearLabel="Uhrzeit entfernen"
+        hint={props.offlineHint}
+        disabled={offline}
+        testID="chore-due-time"
+      />
+      {time.value ? (
+        <SwitchRow
+          label="Erinnern"
+          description={choreRemindHint(time.remind, ownOn)}
+          value={time.remind}
+          onValueChange={time.setRemind}
+          disabled={offline}
+          testID="chore-remind"
+        />
+      ) : null}
+    </Stack>
   );
 }
 
@@ -360,6 +425,8 @@ export function ChoreFormFields(props: {
   /** Offline: the time is greyed out with this hint (the other fields stay as they were). */
   offlineHint?: string;
   autoFocus?: boolean;
+  /** „Neue Aufgabe“: „Zuletzt erledigt“ and „Bei Bedarf“ → „Egal“ (spec 0026). */
+  isNew?: boolean;
 }) {
   const { draft, update } = props;
   return (
@@ -393,6 +460,8 @@ export function ChoreFormFields(props: {
         }}
         today={props.today}
         weekdayError={props.errors.weekdays}
+        isNew={props.isNew}
+        dates
       />
       <AssignmentField draft={draft} update={update} members={props.members} />
       <ChoreTimeField time={props.time} offlineHint={props.offlineHint} />

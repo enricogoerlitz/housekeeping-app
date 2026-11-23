@@ -3,12 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <!-- viewport-fit=cover: the page reaches the screen edges, bars keep the safe areas (spec 0019). -->
+    <!-- interactive-widget: on Android the keyboard shrinks the layout (spec 0032, decision 2). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <title>%WEB_TITLE%</title>
     <!-- Web app manifest and icons (spec 0003, offline start). Colours: Markthalle tokens. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/icon-180.png" />
-    <meta name="theme-color" content="#FAF6EE" />
+    <!-- Status bar in the header colour; theme-boot.js and the app set the chosen theme's. -->
+    <meta name="theme-color" content="#FAF6EE" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1B1613" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Housekeeping" />
@@ -23,13 +31,72 @@
       body {
         overflow: hidden;
       }
-      /* These styles make the root element full-height */
+      /* These styles make the root element full-height; with the keyboard open on iOS only as
+         high as the visible area (--app-height, spec 0032) */
       #root {
         display: flex;
-        height: 100%;
+        height: var(--app-height, 100%);
         flex: 1;
       }
     </style>
+    <!-- Spec 0019: the web app handles like an installed app (REQ-001, REQ-008, REQ-009). -->
+    <style id="app-feel">
+      html {
+        background-color: #faf6ee;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #1b1613;
+        }
+      }
+      /* Controls and labels are not selectable; content opts in (Text with selectable). */
+      body {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      input,
+      textarea,
+      [contenteditable='true'] {
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+      }
+      /* Touch targets reach past what is drawn: 44 pt with a finger, 24 px with a mouse. */
+      :is(
+        [role='button'],
+        [role='link'],
+        [role='tab'],
+        [role='checkbox'],
+        [role='radio'],
+        [role='switch'],
+        [role='menuitem'],
+        [role='menuitemradio'],
+        [role='slider'],
+        a[href]
+      )::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: max(100%, var(--hit, 24px));
+        height: max(100%, var(--hit, 24px));
+        transform: translate(-50%, -50%);
+      }
+      @media (pointer: coarse) {
+        html {
+          --hit: 44px;
+        }
+      }
+      /* Spec 0031, REQ-031: dense cells (the year's days) keep their drawn size; a finger opens
+         the month there, so the grown areas never cover the neighbour day. */
+      [data-dense]::before {
+        display: none;
+      }
+    </style>
+    <script src="/theme-boot.js"></script>
   </head>
 
   <body>

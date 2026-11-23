@@ -412,6 +412,29 @@ test('AC-023: version.json in the precache of sw.js fails the build', () => {
   assert.ok(problems.includes('sw.js precaches version.json'), problems.join('\n'));
 });
 
+test('AC-062 (0031): a release build without the seed precaches no sample photo', () => {
+  const photo = 'assets/__packages/api/assets/photos/lasagne.c50df9ff86202411597cf928af54e52a.jpg';
+  const withPhoto = serviceWorker.replace('[{', `[{"revision":null,"url":"${photo}"},{`);
+  const problems = checkExport({ ...exportWith(), serviceWorker: withPhoto });
+  assert.ok(problems.includes(`sw.js precaches the sample photo ${photo}`), problems.join('\n'));
+  // The preview and a local export with the test accounts carry the seed and its photos.
+  const preview = '{"version":"vorschau","commit":"0123456789abcdef"}\n';
+  assert.deepEqual(
+    checkExport({ ...exportWith(), serviceWorker: withPhoto, versionFile: preview }),
+    [],
+  );
+  const local = {
+    ...exportWith({
+      directives: {
+        'connect-src': "'self' http://127.0.0.1:54321 ws://127.0.0.1:54321",
+      },
+    }),
+    supabaseUrl: 'http://127.0.0.1:54321',
+    devLogin: '1',
+  };
+  assert.deepEqual(checkExport({ ...local, serviceWorker: withPhoto }), []);
+});
+
 test('staticwebapp.config.json in the precache of sw.js fails the build', () => {
   const withConfig = serviceWorker.replace(
     '[{',

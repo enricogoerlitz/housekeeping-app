@@ -3,6 +3,7 @@
 // the time of the own rating (ratedAt) shows at once and comes from the server afterwards.
 import { describe, expect, it } from 'vitest';
 
+import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import { rateActivity } from './commands-activities';
 import { updatePlanEntry } from './commands-plan';
@@ -77,9 +78,43 @@ describe('spec 0011: ratings in half steps', () => {
       (candidate) => candidate.kind === 'activity' && candidate.date !== null,
     );
     if (!entry) throw new Error('fixture');
-    updatePlanEntry(entry.id, { notCooked: true });
+    updatePlanEntry(entry.id, { notDone: true });
     await fx.settle(nadja);
-    expect(fx.nadjaData(nadja).planEntries.find((e) => e.id === entry.id)?.notCooked).toBe(true);
+    expect(fx.nadjaData(nadja).planEntries.find((e) => e.id === entry.id)?.notDone).toBe(true);
+  });
+
+  it('spec 0020 AC-036: "Rückgängig" takes "Nicht gemacht" back, also for Nadja', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const entry = getData().planEntries.find(
+      (candidate) => candidate.kind === 'activity' && candidate.date !== null,
+    );
+    if (!entry) throw new Error('fixture');
+    updatePlanEntry(entry.id, { notDone: true });
+    await fx.settle(nadja);
+    updatePlanEntry(entry.id, { notDone: false });
+    await fx.settle(nadja);
+    expect(fx.server.row(H, 'meal_plan_entries', entry.id)?.not_done).toBe(false);
+    expect(fx.nadjaData(nadja).planEntries.find((e) => e.id === entry.id)?.notDone).toBeUndefined();
+  });
+
+  it('spec 0020 AC-039: offline it is refused; a deleted entry gets the general hint, nothing marked', async () => {
+    await fx.startEnrico();
+    const entry = getData().planEntries.find(
+      (candidate) => candidate.kind === 'activity' && candidate.date !== null,
+    );
+    if (!entry) throw new Error('fixture');
+    fx.environment.setOnline(false);
+    expect(() => updatePlanEntry(entry.id, { notDone: true })).toThrow(OfflineError);
+    fx.environment.setOnline(true);
+    const rejected: string[] = [];
+    const stop = onWriteRejected((message) => rejected.push(message));
+    fx.server.deleteRow(H, 'meal_plan_entries', entry.id);
+    updatePlanEntry(entry.id, { notDone: true });
+    await fx.settle();
+    stop();
+    expect(rejected).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(getData().planEntries.some((e) => e.id === entry.id && e.notDone)).toBe(false);
   });
 
   it('AC-023: rating is refused offline', async () => {

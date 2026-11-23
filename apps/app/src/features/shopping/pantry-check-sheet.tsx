@@ -7,15 +7,18 @@ import {
   useRecipeBook,
   useShoppingItems,
   useToday,
+  withPantryAmount,
   type PantryCheckRow,
   type PantryRecipe,
 } from '@housekeeping/api';
 import {
-  addDays,
+  AMOUNT_NOT_RECOGNIZED,
   listPickerContinueLabel,
+  listPickerPage,
   listPickerPreselection,
-  listPickerWeek,
-  startOfWeek,
+  listPickerStart,
+  parseItemAmount,
+  shiftListPickerStart,
   toggleDaySelection,
   type Id,
   type ISODate,
@@ -23,14 +26,15 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
-  Checkbox,
+  CheckboxMark,
   GroupLabel,
   Icon,
+  IconButton,
   List,
   ListRow,
-  Row,
   Sheet,
   Text,
+  TextField,
   toast,
   expandableA11y,
 } from '@housekeeping/ui';
@@ -39,7 +43,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
-import { ListPickerStep, RecipeSearch, WeekPager, type ChosenRecipe } from './list-picker';
+import { ListPickerStep, PagePager, RecipeSearch, type ChosenRecipe } from './list-picker';
 
 const PICK_AT_LEAST_ONE = 'Wähle mindestens ein Gericht';
 
@@ -55,6 +59,100 @@ function rowNote(row: PantryCheckRow): string | undefined {
 
 function rowKey(row: PantryCheckRow): string {
   return row.articleId;
+}
+
+/**
+ * The amount of a pantry-check row (spec 0025, REQ-007): "− n× +" for a count (− stops at 1×,
+ * deselect instead of 0), else a tap on the amount opens a field; "viel" keeps the old amount
+ * and says so (AC-029).
+ */
+function RowAmount(props: {
+  row: PantryCheckRow;
+  kept: boolean;
+  onChange: (row: PantryCheckRow) => void;
+}) {
+  const { row } = props;
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(row.amount);
+  const [error, setError] = useState<string | undefined>();
+  const testID = `pc-row-${row.articleId}`;
+
+  if (row.count !== undefined) {
+    const count = row.count;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <IconButton
+          icon="minus"
+          size={44}
+          label={`${row.name} weniger`}
+          disabled={count <= 1}
+          onPress={() => props.onChange(withPantryAmount(row, { count: count - 1 }))}
+          testID={`${testID}-minus`}
+        />
+        <Text
+          variant="bodyStrong"
+          color={props.kept ? 'text' : 'muted'}
+          style={{ minWidth: 36, textAlign: 'center', fontVariant: ['tabular-nums'] }}
+          testID={`${testID}-count`}
+        >
+          {`${count}×`}
+        </Text>
+        <IconButton
+          icon="plus"
+          size={44}
+          label={`${row.name} mehr`}
+          disabled={count >= 99}
+          onPress={() => props.onChange(withPantryAmount(row, { count: count + 1 }))}
+          testID={`${testID}-plus`}
+        />
+      </View>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <Button
+        label={row.amount || 'Menge'}
+        variant="link"
+        size="sm"
+        accessibilityLabel={`Menge von ${row.name}: ${row.amount || 'keine'}. Ändern`}
+        onPress={() => {
+          setText(row.amount);
+          setError(undefined);
+          setEditing(true);
+        }}
+        testID={`${testID}-amount`}
+      />
+    );
+  }
+
+  const save = () => {
+    const amount = parseItemAmount(text);
+    if (amount === undefined || (amount.count === undefined && amount.qty === undefined)) {
+      setError(AMOUNT_NOT_RECOGNIZED);
+      return;
+    }
+    props.onChange(withPantryAmount(row, amount));
+    setEditing(false);
+  };
+  return (
+    <View style={{ width: 140 }}>
+      <TextField
+        accessibilityLabel={`Menge von ${row.name}`}
+        value={text}
+        onChangeText={(value) => {
+          setText(value);
+          setError(undefined);
+        }}
+        autoFocus
+        returnKeyType="done"
+        onSubmitEditing={save}
+        onBlur={save}
+        error={error}
+        testID={`${testID}-amount-input`}
+      />
+    </View>
+  );
 }
 
 export interface PantryCheckSheetProps {
@@ -85,25 +183,27 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   const book = useRecipeBook();
   const items = useShoppingItems();
   const household = useHousehold();
-  const slotOrder = [...household.mealSlots].sort((a, b) => a.sort - b.sort).map((slot) => slot.id);
+  const slotOrder = household.mealSlots.map((slot) => slot.id);
   const direct = props.recipes !== undefined;
-  const startWeek = startOfWeek(props.weekDates?.[0] ?? today);
+  // Seven days from today; from the calendar from the Monday of the week shown (Decision 2).
+  const firstStart = listPickerStart(today, props.weekDates?.[0]);
 
-  const pickerInput = (week: ISODate) => ({ entries, ...book, items, today, week, slotOrder });
+  const pickerInput = (start: ISODate) => ({ entries, ...book, items, today, start, slotOrder });
 
   const [step, setStep] = useState<Step>(direct ? 'check' : 'pick');
-  const [week, setWeek] = useState<ISODate>(startWeek);
+  const [start, setStart] = useState<ISODate>(firstStart);
   const [selected, setSelected] = useState<Set<Id>>(
-    () => new Set(direct ? [] : listPickerPreselection(pickerInput(startWeek))),
+    () => new Set(direct ? [] : listPickerPreselection(pickerInput(firstStart))),
   );
   const [chosen, setChosen] = useState<ChosenRecipe[]>([]);
   const [rows, setRows] = useState<PantryCheckRow[]>(() =>
     direct ? pantryCheckRows([], props.recipes) : [],
   );
   const [kept, setKept] = useState<Set<string>>(() => defaultKept(rows));
-  const [showPantry, setShowPantry] = useState(false);
+  // "Vorrat & Gewürze" starts open, its rows still deselected (spec 0025, AC-026).
+  const [showPantry, setShowPantry] = useState(true);
 
-  const shown = listPickerWeek(pickerInput(week));
+  const shown = listPickerPage(pickerInput(start));
   // Only entries that still exist count; one could be deleted on another device meanwhile.
   const entryIds = entries.filter((entry) => selected.has(entry.id)).map((entry) => entry.id);
   const chosenRecipes: PantryRecipe[] = chosen
@@ -141,7 +241,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
     const found = pantryCheckRows(entryIds, chosenRecipes);
     setRows(found);
     setKept(defaultKept(found));
-    setShowPantry(false);
+    setShowPantry(true);
     setStep('check');
   };
 
@@ -195,7 +295,12 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         title="Was soll auf die Liste?"
         testID="pantry-check-sheet"
         size="l"
-        header={<WeekPager week={week} onShift={(weeks) => setWeek(addDays(week, weeks * 7))} />}
+        header={
+          <PagePager
+            page={shown}
+            onShift={(direction) => setStart(shiftListPickerStart(start, today, direction))}
+          />
+        }
         footer={
           <View style={{ gap: 8 }}>
             {nextHint ? (
@@ -203,30 +308,27 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
                 {nextHint}
               </Text>
             ) : null}
-            <Row gap={10}>
-              <Button
-                label="Rezept wählen …"
-                variant="ghost"
-                testID="pick-choose-recipe"
-                onPress={() => setStep('search')}
-              />
-              <View style={{ flex: 1 }}>
-                <Button
-                  label={listPickerContinueLabel(dishes)}
-                  icon="arrow-right"
-                  full
-                  disabled={online.disabled || dishes === 0}
-                  hint={nextHint}
-                  testID="pc-next"
-                  onPress={next}
-                />
-              </View>
-            </Row>
+            <Button
+              label="Rezept wählen …"
+              variant="ghost"
+              testID="pick-choose-recipe"
+              onPress={() => setStep('search')}
+            />
           </View>
         }
+        actions={{
+          primary: {
+            label: listPickerContinueLabel(dishes),
+            icon: 'arrow-right',
+            disabled: online.disabled || dishes === 0,
+            hint: nextHint,
+            testID: 'pc-next',
+            onPress: next,
+          },
+        }}
       >
         <ListPickerStep
-          week={shown}
+          page={shown}
           selected={selected}
           onToggleEntry={toggleEntry}
           onToggleDay={(ids) => setSelected(toggleDaySelection(selected, ids))}
@@ -249,22 +351,25 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         // Selected reads as normal text with a tick; deselected ("haben wir") is faded and struck
         // through (REQ-009).
         strike={!isKept}
-        subtitle={row.sources.join(' · ')}
+        subtitle={[row.sources.join(' · '), row.onList ? `schon auf der Liste: ${row.onList}` : '']
+          .filter(Boolean)
+          .join(' · ')}
+        // The row is the checkbox; its amount buttons sit beside it (spec 0031, REQ-028).
+        checked={isKept}
         onPress={() => toggleRow(row)}
-        leading={
-          <Checkbox
-            checked={isKept}
-            label={row.name}
-            onChange={() => toggleRow(row)}
-            testID={`pc-row-${row.articleId}-check`}
+        leading={<CheckboxMark checked={isKept} />}
+        controls={
+          <RowAmount
+            row={row}
+            kept={isKept}
+            onChange={(changed) =>
+              setRows((current) =>
+                current.map((candidate) =>
+                  rowKey(candidate) === rowKey(changed) ? changed : candidate,
+                ),
+              )
+            }
           />
-        }
-        trailing={
-          row.amount ? (
-            <Text variant="body" color={isKept ? 'text' : 'muted'} strike={!isKept}>
-              {row.amount}
-            </Text>
-          ) : undefined
         }
         accessibilityLabel={`${row.name}${row.amount ? ` ${row.amount}` : ''}, ${
           isKept ? 'kommt auf die Liste' : 'haben wir'
@@ -281,30 +386,24 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
       title="Was brauchst du wirklich?"
       testID="pantry-check-sheet"
       size="l"
-      footer={
-        <Row gap={10}>
-          {direct ? null : (
-            <Button
-              label="Zurück"
-              icon="chevron-left"
-              variant="ghost"
-              testID="pc-back"
-              onPress={() => setStep('pick')}
-            />
-          )}
-          <View style={{ flex: 1 }}>
-            <Button
-              label={`${kept.size} übernehmen`}
-              icon="check"
-              full
-              disabled={online.disabled || kept.size === 0}
-              hint={online.hint}
-              testID="pc-apply"
-              onPress={apply}
-            />
-          </View>
-        </Row>
-      }
+      actions={{
+        primary: {
+          label: `${kept.size} übernehmen`,
+          icon: 'check',
+          disabled: online.disabled || kept.size === 0,
+          hint: online.hint,
+          testID: 'pc-apply',
+          onPress: apply,
+        },
+        cancel: direct
+          ? undefined
+          : {
+              label: 'Zurück',
+              icon: 'chevron-left',
+              testID: 'pc-back',
+              onPress: () => setStep('pick'),
+            },
+      }}
     >
       {rows.length === 0 ? (
         <Text color="muted" testID="pc-nothing">

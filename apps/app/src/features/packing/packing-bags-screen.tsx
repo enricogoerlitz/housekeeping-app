@@ -14,13 +14,16 @@ import {
   useBreakpoint,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
+import { TripWindowHost } from '@/features/trips/trip-window';
+
+import { UpcomingPackingLists } from './bag-trips';
 import { PackingBagPanel } from './packing-bag-detail';
 import { BagNameSheet } from './packing-bag-sheets';
 
@@ -57,11 +60,12 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
           {online.hint}
         </Text>
       ) : null}
+      <UpcomingPackingLists />
       {bags.length === 0 ? (
         <EmptyState
           icon="luggage"
           title="Noch keine Reisetaschen"
-          text="Pack einmal zusammen, was in eine Tasche gehört, z. B. „Strand“ oder „Kulturbeutel“. Beim Eintragen einer Abwesenheit wird daraus die Packliste."
+          text="Pack einmal zusammen, was in eine Tasche gehört, z. B. „Strand“ oder „Kulturbeutel“. Beim Eintragen einer Reise wird daraus die Packliste."
           testID="bags-empty"
         >
           {newButton(true, 'Reisetasche anlegen')}
@@ -129,22 +133,39 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
 export function PackingBagsScreen() {
   const bags = orderedBags(usePackingBags());
   const router = useRouter();
-  const back = useBackToManage();
   const { isPhone } = useBreakpoint();
-  const [chosenId, setChosenId] = useState<Id | undefined>();
+  // The chosen bag stands in the address (spec 0019, REQ-014); on phones the same `tasche`
+  // opens the bag's page.
+  const address = usePageParams('reisetaschen');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
+  const chosenId = address.params.tasche;
+  const replace = address.replace;
+  useEffect(() => {
+    if (!isPhone || !chosenId) return;
+    replace({ tasche: undefined });
+    router.push({ pathname: '/reisetasche/[id]', params: { id: chosenId } });
+  }, [isPhone, chosenId, replace, router]);
 
   // On wide screens a bag is always shown: the chosen one, else the first.
   const selected = bags.find((bag) => bag.id === chosenId) ?? bags[0];
   const select = (bagId: Id) => {
     if (isPhone) router.push({ pathname: '/reisetasche/[id]', params: { id: bagId } });
-    else setChosenId(bagId);
+    else replace({ tasche: bagId });
   };
 
   return (
     <Screen
       testID="bags-screen"
       clearFab={false}
-      header={<ScreenHeader title="Reisetaschen" onBack={back} testID="bags-title" />}
+      header={
+        <ScreenHeader
+          title="Reisetaschen"
+          backLabel={back.label}
+          onBack={back.back}
+          testID="bags-title"
+        />
+      }
       scroll={isPhone}
       style={isPhone ? undefined : { flex: 1, paddingBottom: 0 }}
     >
@@ -163,8 +184,8 @@ export function PackingBagsScreen() {
                 key={selected.id}
                 bagId={selected.id}
                 showTitle
-                onOpen={setChosenId}
-                onDeleted={() => setChosenId(undefined)}
+                onOpen={(bagId) => replace({ tasche: bagId })}
+                onDeleted={() => replace({ tasche: undefined })}
               />
             ) : undefined
           }
@@ -176,6 +197,7 @@ export function PackingBagsScreen() {
           testID="bags-split"
         />
       )}
+      <TripWindowHost page="reisetaschen" />
     </Screen>
   );
 }

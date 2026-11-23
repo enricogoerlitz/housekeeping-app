@@ -4,9 +4,8 @@ import {
   asksForPushPermission,
   base64UrlToBytes,
   bytesToBase64Url,
-  choreTimeHint,
+  choreRemindHint,
   dailySummaryPartLabel,
-  DEFAULT_REMIND_MINUTES,
   deviceAction,
   deviceLabel,
   deviceRowLabel,
@@ -16,17 +15,16 @@ import {
   kindEnabled,
   kindEnabledPatch,
   kindSubtitle,
-  kindsSectionTitle,
   NOTIFICATION_KINDS,
+  notificationsRowLabel,
   notificationTargetHref,
   parseNotificationTarget,
-  parseTimeInput,
   permissionStatus,
   pushSupport,
   pushSupportHint,
-  REMIND_CHOICES,
-  remindLabel,
+  remindAtDueTimeFor,
   serverDeviceStatus,
+  thisDeviceRegistered,
   thisDeviceView,
   toggleSummaryPart,
   withTime,
@@ -41,7 +39,8 @@ const CHORE = '1b6e5f4a-2c3d-4e5f-8a9b-0c1d2e3f4a5b';
 const ENTRY = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 
 describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
-  it('AC-001: the row in the settings reads "2 an" with the defaults', () => {
+  // Spec 0017, REQ-007: "Erinnerungen an Einträgen" is a third kind that is on at the start.
+  it('AC-001, spec 0021 AC-039: the row in the settings reads "2 an" with the defaults', () => {
     expect(enabledKindsLabel(notificationDefaults)).toBe('2 an');
   });
 
@@ -51,12 +50,39 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
       enabledKindsLabel({
         ...notificationDefaults,
         choreRemindersEnabled: false,
-        reservationRemindersEnabled: false,
+        entryRemindersEnabled: false,
       }),
     ).toBe('Alle aus');
   });
 
-  it('AC-011: the defaults: only chores with a time and reservations are on', () => {
+  it('spec 0018, AC-022: kinds on, this device not registered: "2 an · dieses Gerät aus"', () => {
+    expect(notificationsRowLabel(notificationDefaults, false)).toBe('2 an · dieses Gerät aus');
+  });
+
+  it('spec 0018, AC-022: once this device is registered: "2 an"', () => {
+    expect(notificationsRowLabel(notificationDefaults, true)).toBe('2 an');
+  });
+
+  it('spec 0018, AC-022: with every kind off the device does not matter: "Alle aus"', () => {
+    const off = {
+      ...notificationDefaults,
+      choreRemindersEnabled: false,
+      entryRemindersEnabled: false,
+    };
+    expect(notificationsRowLabel(off, false)).toBe('Alle aus');
+    expect(notificationsRowLabel(off, true)).toBe('Alle aus');
+  });
+
+  it('spec 0018, AC-022: registered = wanted here, an address registered, push supported', () => {
+    const on = { support: 'supported', wanted: true, storedEndpoint: 'https://push/1' } as const;
+    expect(thisDeviceRegistered(on)).toBe(true);
+    expect(thisDeviceRegistered({ ...on, wanted: false })).toBe(false);
+    expect(thisDeviceRegistered({ ...on, wanted: undefined })).toBe(false);
+    expect(thisDeviceRegistered({ support: 'supported', wanted: true })).toBe(false);
+    expect(thisDeviceRegistered({ ...on, support: 'unsupported' })).toBe(false);
+  });
+
+  it('AC-011, spec 0017 REQ-007: the defaults: chores with a time and entry reminders are on', () => {
     expect(NOTIFICATION_KINDS.map((kind) => kindEnabled(notificationDefaults, kind))).toEqual([
       false,
       false,
@@ -65,15 +91,26 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
     ]);
   });
 
-  it('AC-011: subtitles "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung", "19:00", "2 h vorher, je Eintrag änderbar"', () => {
+  it('spec 0021, AC-039: "Erinnerungen an Einträgen" is there, "Restaurant-Reservierung" is not', () => {
+    expect(NOTIFICATION_KINDS).toEqual([
+      'dailySummary',
+      'activitiesEve',
+      'choreReminders',
+      'entryReminders',
+    ]);
+  });
+
+  it('spec 0017, REQ-007: "Erinnerungen an Einträgen" has no time of its own and switches its own field', () => {
+    expect(kindSubtitle(notificationDefaults, 'entryReminders')).toBeUndefined();
+    expect(kindEnabledPatch('entryReminders', false)).toEqual({ entryRemindersEnabled: false });
+  });
+
+  it('AC-011: subtitles "7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung", "19:00"', () => {
     expect(kindSubtitle(notificationDefaults, 'dailySummary')).toBe(
       '7:30 · Essen · Aktivitäten · Aufgaben · Vorbereitung',
     );
     expect(kindSubtitle(notificationDefaults, 'activitiesEve')).toBe('19:00');
     expect(kindSubtitle(notificationDefaults, 'choreReminders')).toBeUndefined();
-    expect(kindSubtitle(notificationDefaults, 'reservationReminders')).toBe(
-      '2 h vorher, je Eintrag änderbar',
-    );
   });
 
   it('AC-012: the subtitle follows the chosen time and parts, always in the fixed order', () => {
@@ -89,9 +126,6 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
     expect(kindEnabledPatch('dailySummary', true)).toEqual({ dailySummaryEnabled: true });
     expect(kindEnabledPatch('activitiesEve', false)).toEqual({ activitiesEveEnabled: false });
     expect(kindEnabledPatch('choreReminders', false)).toEqual({ choreRemindersEnabled: false });
-    expect(kindEnabledPatch('reservationReminders', true)).toEqual({
-      reservationRemindersEnabled: true,
-    });
   });
 
   it('Decision 25: parts of the Tagesüberblick toggle, the last one cannot be deselected', () => {
@@ -126,62 +160,7 @@ describe('settings of the page "Benachrichtigungen" (REQ-001, REQ-004)', () => {
   });
 });
 
-describe('times in five-minute steps (Decision 4 and 27)', () => {
-  it('reads "19", "1930", "19:30", "7.30" and more', () => {
-    const cases: [string, string][] = [
-      ['19', '19:00'],
-      ['7', '07:00'],
-      ['0', '00:00'],
-      ['1930', '19:30'],
-      ['730', '07:30'],
-      ['0745', '07:45'],
-      ['19:30', '19:30'],
-      ['7.30', '07:30'],
-      ['7:30', '07:30'],
-      [' 19.05 ', '19:05'],
-      ['23:55', '23:55'],
-    ];
-    for (const [input, time] of cases) {
-      expect(parseTimeInput(input), input).toEqual({ ok: true, time });
-    }
-  });
-
-  it('"19:03" asks for five-minute steps', () => {
-    expect(parseTimeInput('19:03')).toEqual({ ok: false, error: 'Bitte in 5-Minuten-Schritten' });
-    expect(parseTimeInput('1958')).toEqual({ ok: false, error: 'Bitte in 5-Minuten-Schritten' });
-  });
-
-  it('"25:00" and other nonsense is no valid time', () => {
-    for (const input of [
-      '25:00',
-      '24:00',
-      '19:60',
-      '1975',
-      '19:3',
-      '7:5',
-      'abc',
-      '19:30:00',
-      '-1',
-      '12345',
-    ]) {
-      expect(parseTimeInput(input), input).toEqual({ ok: false, error: 'Keine gültige Uhrzeit' });
-    }
-  });
-
-  it('AC-025: an empty field means no time; where a time is required it asks for one', () => {
-    expect(parseTimeInput('')).toEqual({ ok: true, time: undefined });
-    expect(parseTimeInput('   ')).toEqual({ ok: true, time: undefined });
-    expect(parseTimeInput('', { required: true })).toEqual({
-      ok: false,
-      error: 'Bitte eine Uhrzeit eingeben',
-    });
-  });
-
-  it('every parsed time passes the schema the api and the database use', () => {
-    const parsed = parseTimeInput('7.30');
-    expect(parsed.ok && TimeOfDaySchema.safeParse(parsed.time).success).toBe(true);
-  });
-
+describe('times in five-minute steps (Decision 4)', () => {
   it('shows times as "H:MM", like the texts of the scheduler', () => {
     expect(formatTime('07:30')).toBe('7:30');
     expect(formatTime('19:00')).toBe('19:00');
@@ -194,25 +173,26 @@ describe('times in five-minute steps (Decision 4 and 27)', () => {
     expect(withTime('Müll rausbringen', undefined)).toBe('Müll rausbringen');
   });
 
-  it('AC-022: the hint under the time says whether the own setting is on', () => {
-    expect(choreTimeHint(true)).toBe(
-      'Du wirst zur Uhrzeit erinnert („Aufgaben mit Uhrzeit“ ist an)',
+  it('AC-035 (spec 0027): the hint under „Erinnern“, on and off', () => {
+    expect(choreRemindHint(true, true)).toBe('Erinnert zur Uhrzeit, wer dran ist.');
+    expect(choreRemindHint(false, true)).toBe('Keine Erinnerung – die Uhrzeit wird nur angezeigt.');
+  });
+
+  it('AC-037 (spec 0027): with the own „Aufgaben mit Uhrzeit“ off, „Erinnern“ adds why you get none', () => {
+    expect(choreRemindHint(true, false)).toBe(
+      'Erinnert zur Uhrzeit, wer dran ist. Du selbst bekommst keine: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus.',
     );
-    expect(choreTimeHint(false)).toBe(
-      'Keine Erinnerung: „Aufgaben mit Uhrzeit“ ist in deinen Benachrichtigungen aus',
+    // Off for everyone, the own setting changes nothing.
+    expect(choreRemindHint(false, false)).toBe(
+      'Keine Erinnerung – die Uhrzeit wird nur angezeigt.',
     );
   });
 
-  it('AC-029: "Erinnern" offers 30 min to 4 h, default 2 h', () => {
-    expect(REMIND_CHOICES).toEqual([30, 60, 120, 180, 240]);
-    expect(DEFAULT_REMIND_MINUTES).toBe(120);
-    expect(REMIND_CHOICES.map(remindLabel)).toEqual([
-      '30 Min vorher',
-      '1 h vorher',
-      '2 h vorher',
-      '3 h vorher',
-      '4 h vorher',
-    ]);
+  it('AC-038 (spec 0027): without a time „Erinnern“ is on, so a new time reminds again', () => {
+    expect(remindAtDueTimeFor('19:00', false)).toBe(false);
+    expect(remindAtDueTimeFor('19:00', true)).toBe(true);
+    expect(remindAtDueTimeFor(undefined, false)).toBe(true);
+    expect(remindAtDueTimeFor(undefined, true)).toBe(true);
   });
 });
 
@@ -647,13 +627,6 @@ describe('the page wiring of this device (Task 8)', () => {
     expect(base64UrlToBytes('a+b/')).toBeUndefined();
     expect(base64UrlToBytes('A')).toBeUndefined();
     expect(base64UrlToBytes('ab!c')).toBeUndefined();
-  });
-
-  it('AC-001, Offene Frage 3 e: the household is named when the person has several', () => {
-    expect(kindsSectionTitle(undefined)).toBe('Was und wann · gilt für alle Geräte');
-    expect(kindsSectionTitle('Enrico & Nadja')).toBe(
-      'Was und wann · Enrico & Nadja · gilt für alle Geräte',
-    );
   });
 });
 

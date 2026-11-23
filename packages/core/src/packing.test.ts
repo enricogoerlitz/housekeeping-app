@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { absenceStripes } from './absences';
 import {
-  absenceDays,
-  absenceDeleteDialog,
   addableBags,
   bagChipOrder,
   bagFullProblem,
@@ -12,7 +9,6 @@ import {
   bagItemsOf,
   bagSummary,
   copyName,
-  droppedPackingListMessage,
   duplicateBag,
   findBagByName,
   nextSort,
@@ -28,14 +24,16 @@ import {
   parsePackingLine,
   planAddBagToList,
   planAddPackingItem,
-  planPackingLists,
+  planPackingList,
   recalcPerDay,
   saveLabel,
   sourceBag,
   startsInLabel,
   stripeHasPackingList,
+  tripDays,
+  tripDeleteDialog,
   tripHeader,
-  tripStripe,
+  tripPreview,
   validateBagName,
 } from './packing';
 import {
@@ -46,17 +44,18 @@ import {
   packingBags,
   strand,
   technik,
-  vera,
+  trip,
   wintersport,
 } from './test-fixtures';
-import type { Absence, Id, PackingBag, PackingItem, PackingListBag } from './types';
+import { tripStripes } from './trips';
+import type { Id, PackingBag, PackingItem, PackingListBag } from './types';
 
 function idGenerator(prefix = 'new'): () => Id {
   let next = 0;
   return () => `${prefix}-${++next}`;
 }
 
-function listBag(partial: Partial<PackingListBag> & Pick<PackingListBag, 'id' | 'absenceId'>) {
+function listBag(partial: Partial<PackingListBag> & Pick<PackingListBag, 'id' | 'tripId'>) {
   return { name: 'Strand', sort: 0, ...partial } satisfies PackingListBag;
 }
 
@@ -79,12 +78,13 @@ function itemsOf(listBagId: Id, total: number, packed = 0): PackingItem[] {
   );
 }
 
-const mallorca: Absence = {
-  id: 'abs-mallorca',
-  from: '2027-01-01',
-  to: '2027-01-07',
-  note: 'Urlaub Mallorca',
-};
+const mallorca = trip(
+  'abs-mallorca',
+  [enrico.id, nadja.id],
+  '2027-01-01',
+  '2027-01-07',
+  'Urlaub Mallorca',
+);
 
 describe('Reisetaschen: input', () => {
   it('AC-003: "2 Badehose" is Badehose with 2, "Sonnenbrille" has no quantity, empty is nothing', () => {
@@ -250,26 +250,26 @@ describe('Reisetaschen: names, copies and order', () => {
 
 describe('Packliste: creating', () => {
   it('AC-011, AC-014: days include the first and the last; "je Tag" at most 9999', () => {
-    expect(absenceDays('2027-01-01', '2027-01-07')).toBe(7);
-    expect(absenceDays('2027-01-01', '2027-01-04')).toBe(4);
-    expect(absenceDays('2027-01-01', '2027-01-01')).toBe(1);
+    expect(tripDays('2027-01-01', '2027-01-07')).toBe(7);
+    expect(tripDays('2027-01-01', '2027-01-04')).toBe(4);
+    expect(tripDays('2027-01-01', '2027-01-01')).toBe(1);
     expect(packQuantity(1, 7)).toBe(7);
     expect(packQuantity(99, 365)).toBe(9999);
   });
 
   it('AC-011: Strand and Kulturbeutel at a household trip are 21 Packstücke, T-Shirts 7×', () => {
-    const plan = planPackingLists({
-      absences: [mallorca],
+    const plan = planPackingList({
+      trip: mallorca,
       bagIds: [kulturbeutel.id, strand.id],
       bags: packingBags,
       bagItems: packingBagItems,
       newId: idGenerator(),
     });
     expect(plan.listBags).toEqual([
-      { id: 'new-1', absenceId: mallorca.id, bagId: strand.id, name: 'Strand', sort: 0 },
+      { id: 'new-1', tripId: mallorca.id, bagId: strand.id, name: 'Strand', sort: 0 },
       {
         id: 'new-14',
-        absenceId: mallorca.id,
+        tripId: mallorca.id,
         bagId: kulturbeutel.id,
         name: 'Kulturbeutel',
         memberId: nadja.id,
@@ -286,6 +286,8 @@ describe('Packliste: creating', () => {
       packed: false,
       packSeq: 0,
       sort: 0,
+      bagItemId: expect.any(String),
+      fromBag: true,
     });
     expect(plan.items.find((item) => item.name === 'Badehose')).toMatchObject({
       quantity: 2,
@@ -297,8 +299,8 @@ describe('Packliste: creating', () => {
   });
 
   it('AC-012: without a chosen bag there is no packing list and the button says "Speichern"', () => {
-    const plan = planPackingLists({
-      absences: [mallorca],
+    const plan = planPackingList({
+      trip: mallorca,
       bagIds: [],
       bags: packingBags,
       bagItems: packingBagItems,
@@ -309,56 +311,24 @@ describe('Packliste: creating', () => {
     expect(saveLabel(1)).toBe('Speichern · 1 Packstück');
   });
 
-  it('AC-014: separate absences get their own list: T-Shirts 4× for Enrico, 7× for Nadja', () => {
-    const enricoTrip: Absence = {
-      id: 'a-e',
-      memberId: enrico.id,
-      from: '2027-01-01',
-      to: '2027-01-04',
-    };
-    const nadjaTrip: Absence = {
-      id: 'a-n',
-      memberId: nadja.id,
-      from: '2027-01-01',
-      to: '2027-01-07',
-    };
-    const shirts = (absence: Absence) => {
-      const plan = planPackingLists({
-        absences: [absence],
-        bagIds: [strand.id],
-        bags: packingBags,
-        bagItems: packingBagItems,
-        newId: idGenerator(absence.id),
-      });
-      expect(plan.listBags.map((bag) => bag.absenceId)).toEqual([absence.id]);
-      return plan.items.find((item) => item.name === 'T-Shirts')?.quantity;
-    };
-    expect(shirts(enricoTrip)).toBe(4);
-    expect(shirts(nadjaTrip)).toBe(7);
-  });
-
-  it('decision 9: with several single absences a bag for a chosen person goes only to hers', () => {
-    const forVera: PackingBag = { id: 'bag-vera', name: 'Vera', memberId: vera.id, sort: 9 };
-    const plan = planPackingLists({
-      absences: [
-        { id: 'a-e', memberId: enrico.id, from: '2027-01-01', to: '2027-01-07' },
-        { id: 'a-n', memberId: nadja.id, from: '2027-01-01', to: '2027-01-07' },
-      ],
-      bagIds: [strand.id, kulturbeutel.id, forVera.id],
-      bags: [...packingBags, forVera],
+  it('AC-009: one trip of Enrico and Vera gets one list with every chosen bag, also one "für" Nadja', () => {
+    const plan = planPackingList({
+      trip: trip('t', [enrico.id, 'm-vera'], '2027-01-01', '2027-01-04'),
+      bagIds: [strand.id, kulturbeutel.id],
+      bags: packingBags,
       bagItems: packingBagItems,
       newId: idGenerator(),
     });
-    const bagsOf = (absenceId: Id) =>
-      plan.listBags.filter((bag) => bag.absenceId === absenceId).map((bag) => bag.name);
-    expect(bagsOf('a-e')).toEqual(['Strand', 'Vera']);
-    expect(bagsOf('a-n')).toEqual(['Strand', 'Kulturbeutel', 'Vera']);
-    expect(plan.items).toHaveLength(12 + 12 + 9);
+    expect(plan.listBags.map((bag) => [bag.tripId, bag.name, bag.memberId])).toEqual([
+      ['t', 'Strand', undefined],
+      ['t', 'Kulturbeutel', nadja.id],
+    ]);
+    expect(plan.items.find((item) => item.name === 'T-Shirts')?.quantity).toBe(4);
   });
 
   it('a chosen bag that no longer exists is left out', () => {
-    const plan = planPackingLists({
-      absences: [mallorca],
+    const plan = planPackingList({
+      trip: mallorca,
       bagIds: ['gone', technik.id],
       bags: packingBags,
       bagItems: packingBagItems,
@@ -375,36 +345,30 @@ describe('Packliste: creating', () => {
   });
 
   it('AC-012: the bag used last comes first; never used ones follow in page order', () => {
-    const absences: Absence[] = [
-      {
-        id: 'hamburg',
-        memberId: nadja.id,
-        from: '2026-10-12',
-        to: '2026-10-14',
-        note: 'Dienstreise Hamburg',
-      },
-      { id: 'sommer', from: '2026-08-01', to: '2026-08-14', note: 'Sommerurlaub' },
+    const trips = [
+      trip('hamburg', [nadja.id], '2026-10-12', '2026-10-14', 'Dienstreise Hamburg'),
+      trip('sommer', [enrico.id, nadja.id], '2026-08-01', '2026-08-14', 'Sommerurlaub'),
     ];
     const listBags = [
-      listBag({ id: 'l1', absenceId: 'sommer', bagId: strand.id }),
-      listBag({ id: 'l2', absenceId: 'sommer', bagId: technik.id, name: 'Technik' }),
-      listBag({ id: 'l3', absenceId: 'hamburg', bagId: technik.id, name: 'Technik' }),
-      listBag({ id: 'l4', absenceId: 'hamburg', name: 'Gelöscht' }),
+      listBag({ id: 'l1', tripId: 'sommer', bagId: strand.id }),
+      listBag({ id: 'l2', tripId: 'sommer', bagId: technik.id, name: 'Technik' }),
+      listBag({ id: 'l3', tripId: 'hamburg', bagId: technik.id, name: 'Technik' }),
+      listBag({ id: 'l4', tripId: 'hamburg', name: 'Gelöscht' }),
     ];
-    expect(bagChipOrder(packingBags, listBags, absences).map((bag) => bag.name)).toEqual([
+    expect(bagChipOrder(packingBags, listBags, trips).map((bag) => bag.name)).toEqual([
       'Technik',
       'Strand',
       'Wintersport',
       'Kulturbeutel',
     ]);
-    expect(bagChipOrder(packingBags, [], absences)).toEqual(packingBags);
+    expect(bagChipOrder(packingBags, [], trips)).toEqual(packingBags);
   });
 });
 
 describe('Packliste: extending', () => {
   const attached = [
-    listBag({ id: 'l-strand', absenceId: mallorca.id, bagId: strand.id, sort: 0 }),
-    listBag({ id: 'l-other', absenceId: 'other', bagId: technik.id, name: 'Technik' }),
+    listBag({ id: 'l-strand', tripId: mallorca.id, bagId: strand.id, sort: 0 }),
+    listBag({ id: 'l-other', tripId: 'other', bagId: technik.id, name: 'Technik' }),
   ];
 
   it('AC-033: all bags except those already attached are offered', () => {
@@ -428,14 +392,14 @@ describe('Packliste: extending', () => {
       }),
     );
     const plan = planAddBagToList({
-      absence: mallorca,
+      trip: mallorca,
       bag: kleidung,
       bagItems: items,
       listBags: attached,
       newId: idGenerator(),
     });
     expect(plan.listBags).toEqual([
-      { id: 'new-1', absenceId: mallorca.id, bagId: kleidung.id, name: 'Kleidung', sort: 1 },
+      { id: 'new-1', tripId: mallorca.id, bagId: kleidung.id, name: 'Kleidung', sort: 1 },
     ]);
     expect(plan.items).toHaveLength(6);
     expect(plan.items.every((item) => !item.packed && item.listBagId === 'new-1')).toBe(true);
@@ -456,9 +420,11 @@ describe('Packliste: extending', () => {
         listBagId: 'l-strand',
         name: 'Schnorchel',
         quantity: undefined,
+        perDay: undefined,
         packed: false,
         packSeq: 0,
         sort: 9,
+        fromBag: false,
       },
     });
   });
@@ -484,24 +450,24 @@ describe('Packliste: extending', () => {
 
   it('decision 18: "auch in der Reisetasche" exists only while the template does', () => {
     expect(sourceBag(attached[0] as PackingListBag, packingBags)).toBe(strand);
-    expect(sourceBag(listBag({ id: 'x', absenceId: 'a' }), packingBags)).toBeUndefined();
+    expect(sourceBag(listBag({ id: 'x', tripId: 'a' }), packingBags)).toBeUndefined();
     expect(
-      sourceBag(listBag({ id: 'x', absenceId: 'a', bagId: 'gone' }), packingBags),
+      sourceBag(listBag({ id: 'x', tripId: 'a', bagId: 'gone' }), packingBags),
     ).toBeUndefined();
   });
 });
 
-describe('Urlaubsseite', () => {
+describe('Reise-Fenster', () => {
   const listBags = [
     listBag({
       id: 'l-kultur',
-      absenceId: mallorca.id,
+      tripId: mallorca.id,
       name: 'Kulturbeutel',
       memberId: nadja.id,
       sort: 1,
     }),
-    listBag({ id: 'l-strand', absenceId: mallorca.id, bagId: strand.id, sort: 0 }),
-    listBag({ id: 'l-other', absenceId: 'other', name: 'Technik' }),
+    listBag({ id: 'l-strand', tripId: mallorca.id, bagId: strand.id, sort: 0 }),
+    listBag({ id: 'l-other', tripId: 'other', name: 'Technik' }),
   ];
 
   it('AC-016, AC-020: one section per bag with "4/9", open in template order, packed at the end', () => {
@@ -522,7 +488,7 @@ describe('Urlaubsseite', () => {
     expect(sections[1]?.listBag.memberId).toBe(nadja.id);
   });
 
-  it('AC-019: an absence without bags has no sections', () => {
+  it('AC-003: a trip without bags has no sections', () => {
     expect(packingSections(listBags, [], 'hamburg')).toEqual([]);
   });
 
@@ -547,7 +513,7 @@ describe('Urlaubsseite', () => {
   });
 
   it('AC-016: header "(E)(N) · Fr 1.1. – Do 7.1. · 7 Tage" with the note as title', () => {
-    const [stripe] = absenceStripes([mallorca], [enrico, nadja]);
+    const [stripe] = tripStripes([mallorca], [enrico, nadja]);
     expect(stripe && tripHeader(stripe, [enrico, nadja])).toEqual({
       title: 'Urlaub Mallorca',
       memberIds: [enrico.id, nadja.id],
@@ -555,27 +521,17 @@ describe('Urlaubsseite', () => {
       duration: '7 Tage',
       subtitle: 'Fr 1.1. – Do 7.1. · 7 Tage',
     });
-    const [oneDay] = absenceStripes(
-      [{ id: 'd', memberId: nadja.id, from: '2026-12-28', to: '2026-12-28' }],
+    const [oneDay] = tripStripes(
+      [trip('d', [nadja.id], '2026-12-28', '2026-12-28')],
       [enrico, nadja],
     );
     expect(oneDay && tripHeader(oneDay, [enrico, nadja])).toEqual({
-      title: 'abwesend',
+      title: 'unterwegs',
       memberIds: [nadja.id],
       period: 'Mo 28.12.',
       duration: '1 Tag',
       subtitle: 'Mo 28.12. · 1 Tag',
     });
-  });
-
-  it('decision 9, 14: the page shows the stripe of its absence; an unknown id has none', () => {
-    const together: Absence[] = [
-      { id: 'a-e', memberId: enrico.id, from: '2027-01-01', to: '2027-01-07', note: 'Urlaub' },
-      { id: 'a-n', memberId: nadja.id, from: '2027-01-01', to: '2027-01-07', note: 'Urlaub' },
-      { id: 'a-x', memberId: nadja.id, from: '2027-02-01', to: '2027-02-02' },
-    ];
-    expect(tripStripe('a-n', together, [enrico, nadja, vera])?.absenceIds).toEqual(['a-e', 'a-n']);
-    expect(tripStripe('gone', together, [enrico, nadja, vera])).toBeUndefined();
   });
 
   it('AC-016: "beginnt in 12 Tagen", morgen, heute, "läuft bis Do 7.1.", "vorbei"', () => {
@@ -589,7 +545,7 @@ describe('Urlaubsseite', () => {
   });
 });
 
-describe('Dauer ändern und Abwesenheit löschen', () => {
+describe('Dauer ändern und Reise löschen', () => {
   it('AC-037: a shorter trip makes open "je Tag" 5×, packed stay 7×, fixed unchanged', () => {
     const shirts = packingItem({ id: 'T-Shirts', listBagId: 'l', quantity: 7, perDay: 1 });
     const socks = packingItem({
@@ -600,73 +556,90 @@ describe('Dauer ändern und Abwesenheit löschen', () => {
       packed: true,
     });
     const badehose = packingItem({ id: 'Badehose', listBagId: 'l', quantity: 2 });
-    const next = recalcPerDay([shirts, socks, badehose], absenceDays('2027-01-01', '2027-01-05'));
+    const next = recalcPerDay([shirts, socks, badehose], tripDays('2027-01-01', '2027-01-05'));
     expect(next.map(packingItemLabel)).toEqual(['T-Shirts 5×', 'Socken 7×', 'Badehose 2×']);
     expect(next[1]).toBe(socks);
     expect(next[2]).toBe(badehose);
   });
 
-  it('AC-038: deleting an absence with a packing list names it; without one there is no dialog', () => {
+  describe('the trip window shows the period set, before "Speichern" (spec 0031, REQ-029)', () => {
+    const saved = { from: '2026-12-12', to: '2026-12-19' };
+    const socks = packingItem({ id: 'Socken', listBagId: 'l', quantity: 8, perDay: 1 });
+
+    it('AC-068: Mallorca 12.–19.12., the end moved to 15.12. → "4 Tage", Socken 4', () => {
+      const preview = tripPreview(saved, { from: '2026-12-12', to: '2026-12-15' }, [socks]);
+      expect(preview.duration).toBe('4 Tage');
+      expect(preview.items.map(packingItemLabel)).toEqual(['Socken 4×']);
+    });
+
+    it('AC-068: nothing changed shows the saved trip', () => {
+      const items = [socks];
+      const preview = tripPreview(saved, undefined, items);
+      expect(preview).toEqual({ duration: '8 Tage', items });
+      expect(preview.items).toBe(items);
+    });
+
+    it('AC-068: an end before the start keeps the saved quantities', () => {
+      const items = [socks];
+      const preview = tripPreview(saved, { from: '2026-12-12', to: '2026-12-10' }, items);
+      expect(preview).toEqual({ duration: '8 Tage', items });
+    });
+  });
+
+  it('AC-016, AC-017: deleting a trip with a packing list names it; without one there is no dialog', () => {
     const listBags = [
-      listBag({ id: 'l1', absenceId: mallorca.id }),
-      listBag({ id: 'l2', absenceId: mallorca.id }),
+      listBag({ id: 'l1', tripId: mallorca.id }),
+      listBag({ id: 'l2', tripId: mallorca.id }),
     ];
     const items = [...itemsOf('l1', 21), ...itemsOf('l2', 9)];
-    expect(absenceDeleteDialog([mallorca.id], listBags, items)).toBe(
+    expect(tripDeleteDialog(mallorca.id, listBags, items)).toBe(
       'Die Packliste mit 30 Packstücken wird mit gelöscht.',
     );
-    expect(absenceDeleteDialog([mallorca.id], listBags.slice(1, 2), itemsOf('l2', 1))).toBe(
+    expect(tripDeleteDialog(mallorca.id, listBags.slice(1, 2), itemsOf('l2', 1))).toBe(
       'Die Packliste mit 1 Packstück wird mit gelöscht.',
     );
-    expect(absenceDeleteDialog(['hamburg'], listBags, items)).toBeUndefined();
-  });
-
-  it('AC-038: a stripe of several absences with lists names all of them', () => {
-    const listBags = [
-      listBag({ id: 'l1', absenceId: 'a-e' }),
-      listBag({ id: 'l2', absenceId: 'a-n' }),
-    ];
-    expect(
-      absenceDeleteDialog(['a-e', 'a-n'], listBags, [...itemsOf('l1', 12), ...itemsOf('l2', 21)]),
-    ).toBe('Die Packlisten mit 33 Packstücken werden mit gelöscht.');
-  });
-
-  it('decision 8: a list removed with its person is named in the dialog', () => {
-    expect(
-      droppedPackingListMessage(
-        [{ absenceId: 'a-e', memberId: enrico.id, itemCount: 21 }],
-        [enrico, nadja],
-      ),
-    ).toBe('Die Packliste von Enrico mit 21 Packstücken wird mit gelöscht.');
-    expect(droppedPackingListMessage([], [enrico, nadja])).toBeUndefined();
+    expect(tripDeleteDialog('hamburg', listBags, items)).toBeUndefined();
   });
 });
 
 describe('Übersicht und Kalender', () => {
-  const trip: Absence = {
-    id: 'abs-mallorca',
-    from: '2026-11-30',
-    to: '2026-12-04',
-    note: 'Urlaub Mallorca',
-  };
-  const hamburg: Absence = {
-    id: 'hamburg',
-    memberId: nadja.id,
-    from: '2026-12-28',
-    to: '2026-12-29',
-    note: 'Dienstreise Hamburg',
-  };
-  const listBags = [listBag({ id: 'l1', absenceId: trip.id })];
+  const members = [enrico, nadja];
+  const week = trip(
+    'abs-mallorca',
+    [enrico.id, nadja.id],
+    '2026-11-30',
+    '2026-12-04',
+    'Urlaub Mallorca',
+  );
+  const hamburg = trip('hamburg', [nadja.id], '2026-12-28', '2026-12-29', 'Dienstreise Hamburg');
+  const listBags = [listBag({ id: 'l1', tripId: week.id })];
   const items = itemsOf('l1', 30, 12);
-  const cards = (shownDay: string, absences = [trip, hamburg], bags = listBags, rows = items) =>
-    packingCards({ shownDay, absences, listBags: bags, items: rows });
+  const cards = (
+    shownDay: string,
+    trips = [week, hamburg],
+    bags = listBags,
+    rows = items,
+    today = shownDay,
+  ) =>
+    packingCards({
+      shownDay,
+      today,
+      trips: tripStripes(trips, members),
+      listBags: bags,
+      items: rows,
+    });
+
+  it('AC-013 (0030): a draft has no packing card', () => {
+    expect(cards('2026-11-23', [{ ...week, draft: true }, hamburg])).toEqual([]);
+  });
 
   it('AC-042: no card two weeks before, from 7 days before "beginnt in 7 Tagen"', () => {
     expect(cards('2026-11-16')).toEqual([]);
     expect(cards('2026-11-23')).toEqual([
       {
-        absenceId: trip.id,
+        tripId: week.id,
         title: 'Urlaub Mallorca',
+        memberIds: [],
         packed: 12,
         total: 30,
         progressLabel: '12/30 gepackt',
@@ -681,38 +654,46 @@ describe('Übersicht und Kalender', () => {
     expect(cards('2026-12-07')).toEqual([]);
   });
 
+  it('spec 0020 AC-043: the section of the shown day counts, not the calendar week', () => {
+    const mallorca = trip('mallorca', [enrico.id], '2026-12-04', '2026-12-10', 'Urlaub Mallorca');
+    const bags = [listBag({ id: 'lm', tripId: mallorca.id })];
+    const shown = (day: string) =>
+      cards(day, [mallorca], bags, itemsOf('lm', 3), '2026-11-22').map((card) => card.startsIn);
+    expect(shown('2026-11-28')).toEqual(['beginnt in 12 Tagen']);
+    expect(shown('2026-12-11')).toHaveLength(1);
+    // Mo 7.–Do 10.12. lie in the calendar week of Sa 12.12., but not in its section.
+    expect(shown('2026-12-12')).toEqual([]);
+  });
+
   it('AC-044: a fully packed list says "alles gepackt ✓"', () => {
-    expect(cards('2026-11-30', [trip], listBags, itemsOf('l1', 30, 30))[0]?.progressLabel).toBe(
+    expect(cards('2026-11-30', [week], listBags, itemsOf('l1', 30, 30))[0]?.progressLabel).toBe(
       'alles gepackt ✓',
     );
   });
 
   it('AC-045: one card per packing list, none for "Dienstreise Hamburg" without one', () => {
-    const enricoTrip: Absence = {
-      id: 'a-e',
-      memberId: enrico.id,
-      from: '2027-01-01',
-      to: '2027-01-04',
-    };
-    const nadjaTrip: Absence = {
-      id: 'a-n',
-      memberId: nadja.id,
-      from: '2027-01-01',
-      to: '2027-01-07',
-    };
-    const bags = [listBag({ id: 'le', absenceId: 'a-n' }), listBag({ id: 'ln', absenceId: 'a-e' })];
+    const enricoTrip = trip('a-e', [enrico.id], '2027-01-01', '2027-01-04');
+    const nadjaTrip = trip('a-n', [nadja.id], '2027-01-01', '2027-01-07');
+    const bags = [listBag({ id: 'le', tripId: 'a-n' }), listBag({ id: 'ln', tripId: 'a-e' })];
     const result = cards('2026-12-28', [nadjaTrip, hamburg, enricoTrip], bags, [
       ...itemsOf('le', 3),
       ...itemsOf('ln', 2, 1),
     ]);
-    expect(result.map((card) => [card.absenceId, card.memberId, card.progressLabel])).toEqual([
-      ['a-e', enrico.id, '1/2 gepackt'],
-      ['a-n', nadja.id, '0/3 gepackt'],
+    expect(result.map((card) => [card.tripId, card.memberIds, card.progressLabel])).toEqual([
+      ['a-e', [enrico.id], '1/2 gepackt'],
+      ['a-n', [nadja.id], '0/3 gepackt'],
     ]);
   });
 
+  it('AC-020 (0018): the card counts "beginnt in n Tagen" from today, not from the shown day', () => {
+    const mallorca = trip('abs-m', [enrico.id], '2026-12-04', '2026-12-11');
+    const bags = [listBag({ id: 'lm', tripId: mallorca.id })];
+    const shown = cards('2026-11-27', [mallorca], bags, itemsOf('lm', 3), '2026-11-22');
+    expect(shown.map((card) => card.startsIn)).toEqual(['beginnt in 12 Tagen']);
+  });
+
   it('AC-046: a stripe with a packing list carries the bag icon, one without does not', () => {
-    const stripes = absenceStripes([trip, hamburg], [enrico, nadja]);
+    const stripes = tripStripes([week, hamburg], members);
     expect(stripes.map((stripe) => stripeHasPackingList(stripe, listBags))).toEqual([true, false]);
   });
 });

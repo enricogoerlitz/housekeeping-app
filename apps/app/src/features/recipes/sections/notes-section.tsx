@@ -26,7 +26,9 @@ export function NotesSection(props: { recipe: Recipe; editor: SectionEditor }) {
           <SectionError editor={editor} testID="recipe-notes-error" />
         </Stack>
       ) : recipe.notes ? (
-        <Text testID="recipe-notes-text">{recipe.notes}</Text>
+        <Text selectable testID="recipe-notes-text">
+          {recipe.notes}
+        </Text>
       ) : (
         <Text color="muted">Noch keine Notizen.</Text>
       )}

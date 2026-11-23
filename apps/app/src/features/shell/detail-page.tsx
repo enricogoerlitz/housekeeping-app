@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 export interface DetailPageProps {
   /** Set on its own page; without it (split view on wide screens) only the content renders. */
   onBack?: () => void;
+  /** The origin on the back link, e.g. "Übersicht" (spec 0019, REQ-006); else an arrow. */
+  backLabel?: string;
   title: string;
   titleTestID?: string;
   /** Actions in the header, e.g. the favourite; they stay in the narrow bar. */
@@ -27,6 +29,7 @@ export function DetailPage(props: DetailPageProps) {
         <ScreenHeader
           title={props.title}
           onBack={props.onBack}
+          backLabel={props.backLabel}
           right={props.right}
           testID={props.titleTestID}
         />

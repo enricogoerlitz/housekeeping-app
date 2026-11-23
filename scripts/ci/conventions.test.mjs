@@ -5,7 +5,7 @@
 //   node --test scripts/ci/conventions.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -116,6 +116,29 @@ describe('title and branch', () => {
 
 describe('forbidden commands', () => {
   const file = (filePath, text) => ({ path: filePath, text });
+
+  test('AC-019 (spec 0031): no workflow, action or package script runs reset-app-data.mjs', () => {
+    for (const [filePath, text] of [
+      [
+        '.github/workflows/release.yml',
+        '      - run: node scripts/reset-app-data.mjs --project x\n',
+      ],
+      ['.github/actions/x/action.yml', '    - run: node ./scripts/reset-app-data.mjs\n'],
+      ['package.json', '    "reset:prod": "node scripts/reset-app-data.mjs",\n'],
+    ]) {
+      const found = findForbiddenCommands([file(filePath, text)]);
+      assert.equal(found.length, 1, filePath);
+      assert.match(found[0].message, /reset-app-data\.mjs.*nur von Hand/);
+    }
+    // The script itself, its test and the runbook name it.
+    assert.deepEqual(
+      findForbiddenCommands([
+        file('scripts/reset-app-data.mjs', '//   node scripts/reset-app-data.mjs --project x\n'),
+        file('scripts/reset-app-data.test.mjs', "const script = 'scripts/reset-app-data.mjs';\n"),
+      ]),
+      [],
+    );
+  });
 
   test('AC-010: db reset against a remote project is red in every variant', () => {
     for (const flag of ['--remote', '--linked', '--db-url postgres://x']) {
@@ -302,5 +325,17 @@ describe('CLI', () => {
     const { status, output } = run(cwd, [], { GITHUB_EVENT_NAME: 'push' });
     assert.equal(status, 0, output);
     assert.match(output, /keine PR/i);
+  });
+});
+
+describe('pull request template', () => {
+  test('AC-005: a new PR starts with the spec line, a test section and the critical-path checklist', () => {
+    const template = readFileSync(path.join(root, '.github/pull_request_template.md'), 'utf8');
+    assert.match(template, /^Spec: NNNN$/m);
+    assert.match(template, /„ohne Spec, weil …“/);
+    assert.match(template, /^## Tests$/m);
+    for (const item of ['Bedrohungsmodell', 'Negativtests', '/security-check']) {
+      assert.match(template, new RegExp(`^- \\[ \\] .*${item.replace('/', '\\/')}`, 'm'), item);
+    }
   });
 });

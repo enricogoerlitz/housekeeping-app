@@ -1,5 +1,5 @@
-// The wire between the device and the server: exactly the RPC contracts of spec 0003
-// (tmp/brief/rpc-contracts.md). JSON keys are the database's snake_case. Two implementations:
+// The wire between the device and the server: exactly the RPCs of supabase/migrations
+// (docs/architecture/sync.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
   PushSubscriptionStatusSchema,
@@ -154,6 +154,19 @@ export interface ChoreCompletion {
 }
 
 /**
+ * change_chore_event_day (spec 0026, REQ-007): moves an entry to another day. With the chore's
+ * state the device saw; for the latest booked entry the chore's next date (computed by core
+ * dayChangeOutcome) follows, the last time is computed by the server.
+ */
+export interface ChoreEventDayChange {
+  event_id: string;
+  done_on: string;
+  /** The chore's state as complete_chore compares it; left out for an entry of a deleted chore. */
+  seen?: ChoreCompletion['seen'];
+  next_due_on?: string | null;
+}
+
+/**
  * One Packstück as restore_packing_items puts it back (spec 0012, "Rückgängig" after removing):
  * with its packed state, which only the server writes. The server bounds the values.
  */
@@ -162,12 +175,33 @@ export interface RestorePackingItem {
   list_bag_id: string;
   name: string;
   quantity?: number | null;
-  per_day?: number | null;
+  per_day_quantity?: number | null;
   sort?: number;
   packed?: boolean;
   packed_at?: string | null;
   packed_by?: string | null;
   pack_seq?: number;
+  bag_item_id?: string | null;
+  from_bag?: boolean;
+}
+
+/** A Packstück of a packing list as adopt_bag_changes inserts or updates it (spec 0022). */
+export interface AdoptPackingItem {
+  id: string;
+  name: string;
+  quantity?: number | null;
+  per_day_quantity?: number | null;
+  sort?: number;
+  bag_item_id?: string | null;
+  from_bag?: boolean;
+}
+
+/** adopt_bag_changes (spec 0022, REQ-012): touches only Packstücke still open on the server. */
+export interface AdoptBagChange {
+  list_bag_id: string;
+  insert?: AdoptPackingItem[];
+  update?: Omit<AdoptPackingItem, 'sort' | 'bag_item_id' | 'from_bag'>[];
+  delete?: string[];
 }
 
 /** A row operation, or one of the domain operations `apply_changes` allows. */
@@ -175,9 +209,16 @@ export type ChangeOp =
   | RowOp
   | { kind: 'add_contributions'; entries: AddEntry[] }
   | { kind: 'remove_contributions'; ids: string[] }
+  /**
+   * Spec 0021, REQ-007/REQ-015: the entries' contributions on open items go, `entries` are added
+   * like add_contributions, emptied open items go; one delete however many contributions.
+   */
+  | { kind: 'replace_entry_contributions'; entry_ids: string[]; entries: AddEntry[] }
   | { kind: 'complete_chore'; completion: ChoreCompletion }
   | { kind: 'remove_chore_event'; id: string }
-  | { kind: 'restore_packing_items'; items: RestorePackingItem[] };
+  | { kind: 'change_chore_event_day'; change: ChoreEventDayChange }
+  | { kind: 'restore_packing_items'; items: RestorePackingItem[] }
+  | { kind: 'adopt_bag_changes'; change: AdoptBagChange };
 
 /** One change of set_packing_items_packed (ADR-0013). */
 export interface PackChange {
@@ -194,9 +235,6 @@ export type PackResult = z.infer<typeof PackResultSchema>;
 
 /** already_done (spec 0011, AC-031): who booked the chore that day, and when. */
 export const AlreadyDoneDetailSchema = z.object({ done_by: z.string(), done_at: z.string() });
-
-/** The answer of remove_chore_event in `results`: whether the state before came back. */
-export const RemovedChoreEventSchema = z.object({ restored: z.boolean() });
 
 export const ApplyChangesResultSchema = z.object({
   applied: z.number(),
@@ -254,6 +292,27 @@ export const AdjustResultSchema = z
   .nullable();
 export type AdjustResult = z.infer<typeof AdjustResultSchema>;
 
+/** set_manual_amount (spec 0025): a count or a quantity with an optional unit; none = empty. */
+export interface ManualAmount {
+  count?: number;
+  qty?: number;
+  unit?: string;
+}
+
+/** set_manual_amount: like adjust_item_count, the removed item comes back with restore. */
+export const ManualAmountResultSchema = z
+  .discriminatedUnion('removed', [
+    z.object({ item_id: z.string(), removed: z.literal(false) }),
+    z.object({
+      item_id: z.string(),
+      removed: z.literal(true),
+      item: LooseRowSchema,
+      contributions: z.array(LooseRowSchema),
+    }),
+  ])
+  .nullable();
+export type ManualAmountResult = z.infer<typeof ManualAmountResultSchema>;
+
 /** delete_article (spec 0007): the deleted row as stored, for "Rückgängig". */
 export const DeletedArticleSchema = z.looseObject({ id: z.string() });
 export type DeletedArticle = z.infer<typeof DeletedArticleSchema>;
@@ -278,6 +337,13 @@ export type DeletedRecipe = z.infer<typeof DeletedRecipeSchema>;
 
 /** restore_recipe (spec 0008, E4): false when the recipe exists again already. */
 export const RestoredRecipeSchema = z.boolean();
+
+/**
+ * delete_restaurant / delete_activity (spec 0024, REQ-010): how many plan entries became free text
+ * and how many went.
+ */
+export const DeletedPlaceSchema = z.object({ converted: z.number(), removed: z.number() });
+export type DeletedPlace = z.infer<typeof DeletedPlaceSchema>;
 
 /** sync_pull as sent: composite-key rows have no `id` yet (see db/tables.ts). */
 export const RawPullResultSchema = z.object({
@@ -315,7 +381,13 @@ export interface Transport {
   // Generic write (ADR-0011)
   applyChanges(householdId: string, ops: readonly ChangeOp[]): Promise<ApplyChangesResult>;
   // Store queue and list
-  setItemChecked(itemId: string, checked: boolean, seenCheckSeq: number): Promise<CheckResult>;
+  /** `onList`: checked on "Liste", not in "Einkaufen" (spec 0025, REQ-006). */
+  setItemChecked(
+    itemId: string,
+    checked: boolean,
+    seenCheckSeq: number,
+    onList?: boolean,
+  ): Promise<CheckResult>;
   setItemNotAvailable(itemId: string, value: boolean): Promise<NotAvailableResult>;
   /** Puts entries on the household's shopping list; `not_member` for a foreign household. */
   addShoppingContributions(householdId: string, entries: readonly AddEntry[]): Promise<AddResult>;
@@ -331,6 +403,18 @@ export interface Transport {
   /** One tap on + (delta > 0) or − (delta < 0); `invalid_value` beyond 0…99×. */
   adjustItemCount(itemId: string, delta: number): Promise<AdjustResult>;
   removeContributions(ids: readonly string[]): Promise<number>;
+  /**
+   * "Von Hand" (spec 0025, REQ-003): all manual contributions of the item become one with this
+   * amount (count or qty with unit; none = no manual one). Removing the last contribution removes
+   * the item and returns it for the undo; null when the item is gone. `invalid_value`.
+   */
+  setManualAmount(itemId: string, amount: ManualAmount): Promise<ManualAmountResult>;
+  /**
+   * ✕ at an origin, or removing a whole item (spec 0025): the given contributions of the item go,
+   * the item with them when nothing is left. Returns what restoreClearedItems puts back; null when
+   * the item is gone.
+   */
+  removeItemContributions(itemId: string, ids: readonly string[]): Promise<ClearedItems | null>;
   /**
    * Undo of clearing: open items come back open (joining an open item of the same article),
    * checked ones checked. Returns how many came back.
@@ -349,20 +433,56 @@ export interface Transport {
   mergeArticles(sourceId: string, targetId: string): Promise<MergeArticlesResult>;
   /** Moves the articles of one area to another and deletes the source; `area_not_found`. */
   mergeAreas(sourceId: string, targetId: string): Promise<number>;
+  /**
+   * "+ Neuer Markt" (spec 0025, REQ-015): with `copyFrom` the walking order and hidden areas of
+   * that store are copied once. `not_member`, `store_not_found`.
+   */
+  createStore(
+    householdId: string,
+    storeId: string,
+    name: string,
+    copyFrom: string | null,
+  ): Promise<void>;
   // Recipes (spec 0008)
   /**
    * Deletes a recipe (the only way, E2): entries up to `today` (the device's date, at most one day
    * off the server's) become free text, later and noted ones go, ratings and favourites go; the
    * server keeps a snapshot for 1 hour. `recipe_not_found` when missing or foreign,
-   * `invalid_value` for a date too far off.
+   * `invalid_value` for a date too far off. With `withList` ("Zutaten auch von der Liste nehmen",
+   * spec 0023, Decision 15) the contributions of the entries that go leave open items in the same
+   * transaction and come back with restoreRecipe.
    */
-  deleteRecipe(recipeId: string, today: string): Promise<DeletedRecipe>;
+  deleteRecipe(recipeId: string, today: string, withList?: boolean): Promise<DeletedRecipe>;
   /**
    * "Rückgängig" of delete_recipe, only for the person who deleted, within 1 hour; false when the
    * recipe exists again. `recipe_not_restorable` otherwise; a check error (e.g.
    * `ingredient_article_invalid`) when an article or meal slot is gone meanwhile.
    */
   restoreRecipe(recipeId: string): Promise<boolean>;
+  // Restaurants and activities (spec 0024, REQ-010)
+  /**
+   * Deletes a restaurant (the only way): entries up to `today` become free text with the name,
+   * later and noted ones go; the server keeps a snapshot for 1 hour. `restaurant_not_found` when
+   * missing or foreign, `invalid_value` for a date too far off.
+   */
+  deleteRestaurant(restaurantId: string, today: string): Promise<DeletedPlace>;
+  /** "Rückgängig" of delete_restaurant; false when it exists again. `restaurant_not_restorable`. */
+  restoreRestaurant(restaurantId: string): Promise<boolean>;
+  /** Like deleteRestaurant; the free text carries the Zusatz. `activity_not_found`. */
+  deleteActivity(activityId: string, today: string): Promise<DeletedPlace>;
+  /** "Rückgängig" of delete_activity; false when it exists again. `activity_not_restorable`. */
+  restoreActivity(activityId: string): Promise<boolean>;
+  // Chores (spec 0031, REQ-016)
+  /**
+   * Deletes a chore with a snapshot of the ids of its entries for 1 hour; the entries stay in the
+   * history without the link. `chore_not_found` when missing or foreign.
+   */
+  deleteChore(choreId: string): Promise<void>;
+  /**
+   * "Rückgängig" of delete_chore: the chore and exactly its entries again; false when it exists
+   * again. `chore_not_restorable`.
+   */
+  restoreChore(choreId: string): Promise<boolean>;
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
@@ -377,6 +497,28 @@ export interface Transport {
   acceptInvitation(invitationId: string): Promise<string>;
   declineInvitation(invitationId: string): Promise<void>;
   removeMember(householdId: string, profileId: string): Promise<void>;
+  /** Spec 0027: a member withdraws an invitation of her household; `invitation_not_found`. */
+  withdrawInvitation(invitationId: string): Promise<void>;
+  /**
+   * Spec 0027: the caller's own profile; `invalid_name`, `invalid_color`, `invalid_diet`,
+   * `invalid_dislikes`.
+   */
+  updateProfile(profile: {
+    name: string;
+    color: string;
+    dietPreference: string;
+    dislikes: readonly string[];
+  }): Promise<void>;
+  /**
+   * Spec 0027, 0031 (D-12): the last member starts deleting the household: it is closed to new
+   * members, and the names of its photos come back for the app to delete. `not_last_member`.
+   */
+  beginHouseholdDeletion(householdId: string): Promise<string[]>;
+  /**
+   * Spec 0027: the last member deletes the household; `not_member`, `not_last_member`,
+   * `media_remaining` (nothing is deleted then).
+   */
+  deleteHousehold(householdId: string): Promise<void>;
   // Push devices (spec 0013, ADR-0014): only the caller's own, online only, never cached.
   /**
    * Registers this browser's subscription for the caller (upsert by address: it moves to her).
@@ -447,12 +589,21 @@ export function switchable(inner: Transport): SwitchableTransport {
     clearShoppingList: guard(inner.clearShoppingList.bind(inner)),
     adjustItemCount: guard(inner.adjustItemCount.bind(inner)),
     removeContributions: guard(inner.removeContributions.bind(inner)),
+    setManualAmount: guard(inner.setManualAmount.bind(inner)),
+    removeItemContributions: guard(inner.removeItemContributions.bind(inner)),
+    createStore: guard(inner.createStore.bind(inner)),
     restoreClearedItems: guard(inner.restoreClearedItems.bind(inner)),
     deleteArticle: guard(inner.deleteArticle.bind(inner)),
     mergeArticles: guard(inner.mergeArticles.bind(inner)),
     mergeAreas: guard(inner.mergeAreas.bind(inner)),
     deleteRecipe: guard(inner.deleteRecipe.bind(inner)),
     restoreRecipe: guard(inner.restoreRecipe.bind(inner)),
+    deleteRestaurant: guard(inner.deleteRestaurant.bind(inner)),
+    restoreRestaurant: guard(inner.restoreRestaurant.bind(inner)),
+    deleteActivity: guard(inner.deleteActivity.bind(inner)),
+    restoreActivity: guard(inner.restoreActivity.bind(inner)),
+    deleteChore: guard(inner.deleteChore.bind(inner)),
+    restoreChore: guard(inner.restoreChore.bind(inner)),
     setRecipeFavorite: guard(inner.setRecipeFavorite.bind(inner)),
     setRecipeRating: guard(inner.setRecipeRating.bind(inner)),
     setRestaurantFavorite: guard(inner.setRestaurantFavorite.bind(inner)),
@@ -465,6 +616,10 @@ export function switchable(inner: Transport): SwitchableTransport {
     acceptInvitation: guard(inner.acceptInvitation.bind(inner)),
     declineInvitation: guard(inner.declineInvitation.bind(inner)),
     removeMember: guard(inner.removeMember.bind(inner)),
+    withdrawInvitation: guard(inner.withdrawInvitation.bind(inner)),
+    updateProfile: guard(inner.updateProfile.bind(inner)),
+    beginHouseholdDeletion: guard(inner.beginHouseholdDeletion.bind(inner)),
+    deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
     registerPushSubscription: guard(inner.registerPushSubscription.bind(inner)),
     setPushSubscriptionEnabled: guard(inner.setPushSubscriptionEnabled.bind(inner)),
     unregisterPushSubscription: guard(inner.unregisterPushSubscription.bind(inner)),

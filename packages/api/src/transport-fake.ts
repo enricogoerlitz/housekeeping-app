@@ -13,15 +13,18 @@
 // computed on insert and after a change of the duration, set_packing_items_packed with
 // "Abhaken gewinnt" via pack_seq, restore_packing_items), and notifications (spec 0013: one
 // settings row per member created on joining, readable and patchable only by herself, the
-// five-minute times and the reservation only on restaurant entries; the push subscriptions of a
+// five-minute times and the time only on restaurant and activity entries; the push subscriptions of a
 // person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
 // (users, devices) can share one server.
 import {
-  absenceDays,
   addDays,
   compareTimestamps,
   isHalfStar,
+  isReminderPast,
+  isWebUrl,
   packQuantity,
+  PROFILE_COLORS,
+  tripDays,
   queueEffect,
   RECIPE_LIMITS,
   type AiSearchRequest,
@@ -51,8 +54,10 @@ import {
 } from './db/tables';
 import {
   AdjustResultSchema,
+  ManualAmountResultSchema,
   TransportError,
   type ChoreCompletion,
+  type ChoreEventDayChange,
   type AddEntry,
   type AddResult,
   type ChangeOp,
@@ -74,12 +79,21 @@ type RpcName =
   | 'clear_shopping_list'
   | 'adjust_item_count'
   | 'remove_contributions'
+  | 'set_manual_amount'
+  | 'remove_item_contributions'
+  | 'create_store'
   | 'restore_cleared_items'
   | 'delete_article'
   | 'merge_articles'
   | 'merge_areas'
   | 'delete_recipe'
   | 'restore_recipe'
+  | 'delete_restaurant'
+  | 'restore_restaurant'
+  | 'delete_activity'
+  | 'restore_activity'
+  | 'delete_chore'
+  | 'restore_chore'
   | 'set_recipe_favorite'
   | 'set_recipe_rating'
   | 'set_restaurant_favorite'
@@ -92,6 +106,10 @@ type RpcName =
   | 'accept_invitation'
   | 'decline_invitation'
   | 'remove_member'
+  | 'withdraw_invitation'
+  | 'update_profile'
+  | 'begin_household_deletion'
+  | 'delete_household'
   | 'register_push_subscription'
   | 'set_push_subscription_enabled'
   | 'unregister_push_subscription'
@@ -140,7 +158,7 @@ export interface FakeServer {
   row(householdId: string, table: string, id: string): Row | undefined;
   /** The next call of `fn` fails with `error`. */
   failNext(fn: RpcName, error: TransportError, options?: { afterApply?: boolean }): void;
-  /** Like pg_cron: forgets deletions older than `before`. */
+  /** Like pg_cron: forgets rows of deleted_records older than `before`. */
   purgeDeletionsBefore(before: string): void;
   /** The place the edge function `resolve-maps-link` answers for a short link. */
   setMapsLink(url: string, reply: ResolveMapsLinkReply): void;
@@ -219,8 +237,15 @@ const REFERENCES: {
   { table: 'chore_events', column: 'chore_id', target: 'chores', onDelete: 'set null' },
   { table: 'articles', column: 'area_id', target: 'areas', onDelete: 'set null' },
   { table: 'packing_bag_items', column: 'bag_id', target: 'packing_bags', onDelete: 'cascade' },
-  { table: 'packing_list_bags', column: 'absence_id', target: 'absences', onDelete: 'cascade' },
+  { table: 'packing_list_bags', column: 'trip_id', target: 'trips', onDelete: 'cascade' },
+  { table: 'trip_members', column: 'trip_id', target: 'trips', onDelete: 'cascade' },
   { table: 'packing_list_bags', column: 'bag_id', target: 'packing_bags', onDelete: 'set null' },
+  {
+    table: 'packing_items',
+    column: 'bag_item_id',
+    target: 'packing_bag_items',
+    onDelete: 'set null',
+  },
   {
     table: 'packing_items',
     column: 'list_bag_id',
@@ -245,12 +270,14 @@ const RESTORE_KEYS = new Set([
   'list_bag_id',
   'name',
   'quantity',
-  'per_day',
+  'per_day_quantity',
   'sort',
   'packed',
   'packed_at',
   'packed_by',
   'pack_seq',
+  'bag_item_id',
+  'from_bag',
 ]);
 
 const isTrimmedName = (value: unknown, max: number) =>
@@ -263,10 +290,19 @@ const inRange = (value: unknown, min: number, max: number) =>
   value === undefined ||
   (typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max);
 
-/** The check constraints of the packing tables (spec 0012, packing migration). */
+/** The check constraints of the packing tables (spec 0012) and of trips (spec 0022). */
 function checkPackingRow(table: string, row: Row, tables: TableRows): void {
   const invalid = () => new TransportError('permanent', '23514', 400);
-  if (table === 'packing_bags') {
+  if (table === 'trips') {
+    if (String(row.to_on) < String(row.from_on)) throw invalid();
+    if (typeof row.note === 'string' && Array.from(row.note).length > 500) throw invalid();
+  } else if (table === 'trip_members') {
+    const clash = Object.values(tables.trip_members ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.trip_id === row.trip_id && other.member_id === row.member_id,
+    );
+    if (clash) throw conflict('23505');
+  } else if (table === 'packing_bags') {
     if (!isTrimmedName(row.name, 60)) throw invalid();
     const name = String(row.name).toLowerCase();
     const clash = Object.values(tables.packing_bags ?? {}).some(
@@ -282,43 +318,47 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
       row.bag_id != null &&
       Object.values(tables.packing_list_bags ?? {}).some(
         (other) =>
-          other.id !== row.id && other.absence_id === row.absence_id && other.bag_id === row.bag_id,
+          other.id !== row.id && other.trip_id === row.trip_id && other.bag_id === row.bag_id,
       );
     if (clash) throw conflict('23505');
   } else if (table === 'packing_items') {
     if (
       !isTrimmedName(row.name, 120) ||
       !inRange(row.quantity, 1, 9999) ||
-      !inRange(row.per_day, 1, 99) ||
-      (row.per_day != null && row.quantity == null)
+      !inRange(row.per_day_quantity, 1, 99) ||
+      (row.per_day_quantity != null && row.quantity == null)
     ) {
       throw invalid();
     }
   }
 }
 
-/** "Je Tag" like the database: per day × days of the absence of its bag, at most 9999. */
+/** "Je Tag" like the database: per day × days of the trip of its bag, at most 9999. */
 function perDayQuantity(tables: TableRows, row: Row): unknown {
-  if (row.per_day == null) return row.quantity;
+  if (row.per_day_quantity == null) return row.quantity;
   const listBag = tables.packing_list_bags?.[String(row.list_bag_id)];
-  const absence = listBag ? tables.absences?.[String(listBag.absence_id)] : undefined;
-  if (!absence) return row.quantity;
+  const trip = listBag ? tables.trips?.[String(listBag.trip_id)] : undefined;
+  if (!trip) return row.quantity;
   return packQuantity(
-    Number(row.per_day),
-    absenceDays(String(absence.from_on), String(absence.to_on)),
+    Number(row.per_day_quantity),
+    tripDays(String(trip.from_on), String(trip.to_on)),
   );
 }
 
-/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one absence (AC-037). */
-function recalcPacking(tables: TableRows, absenceId: string): TableRows {
+/** private.recalc_packing_quantities: the open "je Tag" Packstücke of one trip (AC-037). */
+function recalcPacking(tables: TableRows, tripId: string): TableRows {
   let next = tables;
   const bagIds = new Set(
     Object.values(tables.packing_list_bags ?? {})
-      .filter((bag) => bag.absence_id === absenceId)
+      .filter((bag) => bag.trip_id === tripId)
       .map((bag) => bag.id),
   );
   for (const item of Object.values(tables.packing_items ?? {})) {
-    if (!bagIds.has(String(item.list_bag_id)) || item.per_day == null || item.packed === true) {
+    if (
+      !bagIds.has(String(item.list_bag_id)) ||
+      item.per_day_quantity == null ||
+      item.packed === true
+    ) {
       continue;
     }
     const quantity = perDayQuantity(next, item);
@@ -352,10 +392,11 @@ const foreignKey = (constraint: string) =>
 const constraintOf = (reference: { table: string; column: string }) =>
   `${reference.table}_${reference.column.replace(/_id$/, '')}_fkey`;
 
-/** private.recipe_deletions (spec 0008, E4): what restore_recipe brings back. */
+/** private.deletions of a recipe (spec 0008, E4; spec 0024): what restore_recipe brings back. */
 interface RecipeDeletion {
   householdId: string;
-  recipeId: string;
+  kind: 'recipe';
+  targetId: string;
   deletedBy: string;
   /** Milliseconds, like the server clock. */
   deletedAt: number;
@@ -374,7 +415,51 @@ interface RecipeDeletion {
   removed: Row[];
   /** Spec 0009: its rows as a collection and as a contained recipe, in full. */
   collectionRecipes: Row[];
+  /** Spec 0023, Decision 15: the contributions taken off the list, as restore_cleared_items takes. */
+  list: ClearedItems;
 }
+/** private.deletions of a chore (spec 0031, REQ-016): the row and the ids of its entries. */
+interface ChoreDeletion {
+  householdId: string;
+  kind: 'chore';
+  targetId: string;
+  deletedBy: string;
+  deletedAt: number;
+  row: Row;
+  eventIds: string[];
+}
+/** private.deletions of a restaurant or an activity (spec 0024, REQ-010). */
+interface PlaceDeletion {
+  householdId: string;
+  kind: PlaceKind;
+  targetId: string;
+  deletedBy: string;
+  deletedAt: number;
+  row: Row;
+  ratings: { member_id: string; stars: unknown }[];
+  favorites: string[];
+  /** The old values of the entries that became free text, and the text written. */
+  converted: (Row & { new_text: string })[];
+  removed: Row[];
+}
+type PlaceKind = 'restaurant' | 'activity';
+/** A row of private.deletions: primary key (household, kind, target), the snapshot by kind. */
+type Deletion = RecipeDeletion | ChoreDeletion | PlaceDeletion;
+/** Table, reference column and per-member tables of a restaurant or an activity. */
+const PLACES = {
+  restaurant: {
+    table: 'restaurants',
+    column: 'restaurant_id',
+    ratings: 'restaurant_ratings',
+    favorites: 'restaurant_favorites',
+  },
+  activity: {
+    table: 'activities',
+    column: 'activity_id',
+    ratings: 'activity_ratings',
+    favorites: 'activity_favorites',
+  },
+} as const;
 /** A snapshot can be restored for 1 hour. */
 const RESTORABLE_MS = 60 * 60 * 1000;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -388,6 +473,13 @@ function withoutTimestamps(row: Row): Row {
   return copy;
 }
 
+/** An entry of a deletion snapshot as the row it was (without the text the deletion wrote). */
+function withoutConverted(entry: Row & { new_text: string }): Row {
+  const row: Row = { ...entry };
+  delete row.new_text;
+  return row;
+}
+
 /** meal_plan_entries_kind_complete, for the case a cleared reference can break. */
 function checkPlanEntry(row: Row): void {
   if (row.kind === 'leftovers' && row.recipe_id == null && row.leftovers_of_entry_id == null) {
@@ -396,11 +488,15 @@ function checkPlanEntry(row: Row): void {
 }
 
 /** Folders of the photo bucket per table (activities_photo_path_valid, recipes_photo_path_valid). */
-const PHOTO_FOLDERS: Record<string, string> = { activities: 'activities', recipes: 'recipes' };
+const PHOTO_FOLDERS: Record<string, string> = {
+  activities: 'activities',
+  recipes: 'recipes',
+  restaurants: 'restaurants',
+};
 /** The file name of a photo: a new lower-case uuid per upload, always .jpg. */
 const PHOTO_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
-/** <household>/<activities|recipes>/<row id>/<uuid>.jpg, like private.media_household_id. */
-const MEDIA_PATH = /^([^/]+)\/(activities|recipes)\/[^/]+\/([^/]+)$/;
+/** <household>/<activities|recipes|restaurants>/<row id>/<uuid>.jpg (private.media_household_id). */
+const MEDIA_PATH = /^([^/]+)\/(activities|recipes|restaurants)\/[^/]+\/([^/]+)$/;
 /** The bucket's limits: image/jpeg only, at most 2 MiB. */
 const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -471,6 +567,7 @@ const COMPLETION_KEYS = new Set([
   'next_due_on',
   'next_assignee_id',
 ]);
+const DAY_CHANGE_KEYS = new Set(['event_id', 'done_on', 'seen', 'next_due_on']);
 const SEEN_KEYS = new Set(['next_due_on', 'last_done_on', 'next_assignee_id', 'latest_event_id']);
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isTextOrNull = (value: unknown) => value === undefined || value === null || isText(value);
@@ -569,16 +666,15 @@ function checkCollectionRecipeInsert(row: Row, tables: TableRows): void {
   if (count >= 50) throw reject('too_many_collection_recipes');
 }
 
-// ---------- spec 0013: times, reservation, notification settings ----------
+// ---------- spec 0013: times, notification settings (spec 0021: starts_at) ----------
 
 /** private.is_five_minute_time: "HH:MM" or "HH:MM:SS" with seconds 0, minutes in steps of 5. */
 const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
 const TIME_COLUMNS: Record<string, readonly string[]> = {
   chores: ['due_time'],
-  meal_plan_entries: ['reserved_at'],
+  meal_plan_entries: ['starts_at', 'reminder_at'],
   notification_settings: ['daily_summary_at', 'activities_eve_at'],
 };
-const REMIND_MINUTES = new Set([30, 60, 120, 180, 240]);
 const SUMMARY_PARTS = new Set(['meals', 'activities', 'chores', 'prep']);
 
 /** A row as Postgres keeps it: a `time` reads back as "HH:MM:SS"; an invalid one is 23514. */
@@ -597,13 +693,14 @@ function withDbTimes(table: string, row: Row): Row {
   return next;
 }
 
-/** meal_plan_entries_remind_minutes_before_valid, _reservation_only_restaurant, the parts check. */
+/** meal_plan_entries_starts_at_only_timed (spec 0021), the reminder and the parts check. */
 function checkNotificationColumns(table: string, row: Row): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   if (table === 'meal_plan_entries') {
-    if (row.remind_minutes_before != null && !REMIND_MINUTES.has(Number(row.remind_minutes_before)))
+    if (row.starts_at != null && row.kind !== 'restaurant' && row.kind !== 'activity') {
       throw violated();
-    if (row.reserved_at != null && row.kind !== 'restaurant') throw violated();
+    }
+    checkReminderColumns(row);
   }
   if (table === 'notification_settings') {
     const parts = row.daily_summary_parts;
@@ -617,6 +714,65 @@ function checkNotificationColumns(table: string, row: Row): void {
       throw violated();
     }
   }
+}
+
+// C0, DEL, C1 and invisible or direction-changing characters, as the check
+// `meal_plan_entries_reminder_text_valid` refuses them.
+const CONTROL_CHARACTER =
+  /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
+
+/**
+ * Spec 0017: meal_plan_entries_reminder_day_offset_valid, _reminder_text_valid,
+ * _reminder_complete, _reminder_text_needs_time and _reminder_needs_date.
+ */
+function checkReminderColumns(row: Row): void {
+  const violated = () => new TransportError('permanent', '23514', 400);
+  const offset = row.reminder_day_offset;
+  const text = row.reminder_text;
+  if (offset != null && !(Number.isInteger(offset) && Number(offset) >= 0 && Number(offset) <= 366))
+    throw violated();
+  if (
+    text != null &&
+    (typeof text !== 'string' ||
+      [...text].length < 1 ||
+      [...text].length > 80 ||
+      text !== text.trim() ||
+      CONTROL_CHARACTER.test(text))
+  )
+    throw violated();
+  if ((offset == null) !== (row.reminder_at == null)) throw violated();
+  if (text != null && row.reminder_at == null) throw violated();
+  if (row.reminder_at != null && row.date == null) throw violated();
+}
+
+/**
+ * meal_plan_entries_clear_reminder and meal_plan_entries_check_reminder (spec 0017): back to
+ * "Vorgemerkt" clears the reminder; on insert, and on a change of the reminder on the same day,
+ * its moment must lie in the future in the household's zone (`reminder_in_past`). Moving the
+ * entry is never refused.
+ */
+function reminderTriggers(previous: Row | undefined, next: Row, timeZone: string): Row {
+  let row = next;
+  if (previous && previous.date != null && row.date == null) {
+    row = { ...row, reminder_day_offset: null, reminder_at: null, reminder_text: null };
+  }
+  if (row.reminder_at == null || row.reminder_day_offset == null || row.date == null) return row;
+  if (
+    previous &&
+    (row.date !== previous.date ||
+      (row.reminder_day_offset === previous.reminder_day_offset &&
+        row.reminder_at === previous.reminder_at))
+  ) {
+    return row;
+  }
+  const reminder = {
+    offsetDays: Number(row.reminder_day_offset),
+    at: String(row.reminder_at).slice(0, 5),
+  };
+  if (isReminderPast(String(row.date), reminder, new Date(), timeZone)) {
+    throw new TransportError('permanent', 'reminder_in_past', 400);
+  }
+  return row;
 }
 
 /** private.is_push_endpoint: https, a known push service, no port, no credentials (AC-044). */
@@ -682,6 +838,14 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
       throw new TransportError('permanent', '23514', 400);
     }
   }
+  // restaurants_website_url_valid, activities_website_url_valid (private.is_web_url, spec 0024).
+  if (
+    (table === 'restaurants' || table === 'activities') &&
+    row.website_url != null &&
+    !isWebUrl(String(row.website_url))
+  ) {
+    throw new TransportError('permanent', '23514', 400);
+  }
   if (table === 'activities') {
     const clash = Object.values(tables.activities ?? {}).some(
       (other) => other.id !== row.id && other.name_key === row.name_key,
@@ -692,6 +856,10 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   if (table === 'chores' && isAsNeeded(row) && row.next_due_on != null) {
     throw new TransportError('permanent', '23514', 400);
   }
+  // chores_remind_needs_time: only a chore with a time can be silent (spec 0027, AC-038).
+  if (table === 'chores' && row.remind_at_due_time === false && row.due_time == null) {
+    throw new TransportError('permanent', '23514', 400);
+  }
   // areas_household_id_name_idx (spec 0007, AC-052).
   if (table === 'areas') {
     const name = String(row.name).toLowerCase();
@@ -700,11 +868,10 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
     );
     if (clash) throw conflict('23505');
   }
-  // shopping_items_open_article_idx: one open item per article and household.
-  if (table === 'shopping_items' && row.checked !== true) {
+  // shopping_items_household_id_article_id_key: one item per article and household (spec 0025).
+  if (table === 'shopping_items') {
     const clash = Object.values(tables.shopping_items ?? {}).some(
-      (other) =>
-        other.id !== row.id && other.article_id === row.article_id && other.checked !== true,
+      (other) => other.id !== row.id && other.article_id === row.article_id,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
@@ -717,16 +884,46 @@ export function createFakeServer(): FakeServer {
   let members: SmallRow[] = [];
   let invitations: SmallRow[] = [];
   const data = new Map<string, TableRows>();
-  /** `replacedBy`: deleted_records.replaced_by, set by merge_articles (spec 0007, E5). */
-  let deletions: (Tombstone & { householdId: string; replacedBy?: string })[] = [];
+  /** public.deleted_records; `replacedBy` is replaced_by, set by merge_articles (spec 0007, E5). */
+  let deletedRecords: (Tombstone & { householdId: string; replacedBy?: string })[] = [];
   const subscribers = new Map<string, Set<() => void>>();
   const failures: FailureRule[] = [];
   const calls: { userId: string; fn: string }[] = [];
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
-  /** private.recipe_deletions, one snapshot per household and recipe. */
-  const recipeDeletions = new Map<string, RecipeDeletion>();
+  /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
+  const deletions = new Map<string, Deletion>();
+  const deletionKey = (deletion: Pick<Deletion, 'householdId' | 'kind' | 'targetId'>) =>
+    `${deletion.householdId}:${deletion.kind}:${deletion.targetId}`;
+  /** Keeps a new snapshot; older ones of the household past the restore window go. */
+  function keepDeletion(deletion: Deletion): void {
+    for (const [key, kept] of deletions) {
+      if (
+        kept.householdId === deletion.householdId &&
+        kept.deletedAt <= Date.now() - RESTORABLE_MS
+      ) {
+        deletions.delete(key);
+      }
+    }
+    deletions.set(deletionKey(deletion), deletion);
+  }
+  /** The snapshot the person may restore: hers, while a member, within the window. */
+  function restorableDeletion<K extends Deletion['kind']>(
+    kind: K,
+    userId: string,
+    targetId: string,
+  ): Extract<Deletion, { kind: K }> | undefined {
+    const found = [...deletions.values()].find(
+      (candidate) =>
+        candidate.kind === kind &&
+        candidate.targetId === targetId &&
+        candidate.deletedBy === userId &&
+        isMember(userId, candidate.householdId) &&
+        candidate.deletedAt > Date.now() - RESTORABLE_MS,
+    );
+    return found as Extract<Deletion, { kind: K }> | undefined;
+  }
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
   /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
   let pushSubscriptions: PushSubscriptionRecord[] = [];
@@ -770,7 +967,7 @@ export function createFakeServer(): FakeServer {
         activities_eve_enabled: false,
         activities_eve_at: '19:00:00',
         chore_reminders_enabled: true,
-        reservation_reminders_enabled: true,
+        entry_reminders_enabled: true,
       }),
       undefined,
     ]);
@@ -849,7 +1046,7 @@ export function createFakeServer(): FakeServer {
           };
       }
       for (const id of Object.keys(old)) {
-        if (!(id in rows)) deletions.push({ householdId, table, id, deletedAt: time });
+        if (!(id in rows)) deletedRecords.push({ householdId, table, id, deletedAt: time });
       }
       next[table] = rows;
     }
@@ -884,37 +1081,92 @@ export function createFakeServer(): FakeServer {
     return { ...tables, [table]: { ...tables[table], [row.id]: row } };
   }
 
-  /** Deletes rows like the database; `enforce` false = an administrator ignoring restrict. */
+  /** Several rows into one table with a single copy of it; a later row with the same id wins. */
+  function withRows(tables: TableRows, table: string, rows: Iterable<Row>): TableRows {
+    const list = [...rows];
+    if (list.length === 0) return tables;
+    const copy = { ...tables[table] };
+    for (const row of list) copy[row.id] = row;
+    return { ...tables, [table]: copy };
+  }
+
+  /** areas_leave_stores: the id leaves the walking order and the hidden areas of every store. */
+  function withoutAreaInStores(tables: TableRows, areaId: string): TableRows {
+    let next = tables;
+    for (const store of Object.values(tables.stores ?? {})) {
+      const order = Array.isArray(store.area_order) ? store.area_order.map(String) : [];
+      const hidden = Array.isArray(store.hidden_area_ids) ? store.hidden_area_ids.map(String) : [];
+      if (!order.includes(areaId) && !hidden.includes(areaId)) continue;
+      next = withRow(next, 'stores', {
+        ...store,
+        area_order: order.filter((id) => id !== areaId),
+        hidden_area_ids: hidden.filter((id) => id !== areaId),
+      });
+    }
+    return next;
+  }
+
+  /** Reopens a checked item for a new need: its bought contributions and check state go. */
+  function reopened(tables: TableRows, item: Row): TableRows {
+    const bought = Object.values(tables.shopping_contributions ?? {})
+      .filter((row) => row.item_id === item.id)
+      .map((row) => row.id);
+    return withRow(withoutRows(tables, 'shopping_contributions', bought), 'shopping_items', {
+      ...item,
+      checked: false,
+      checked_at: null,
+      checked_by: null,
+      not_available: false,
+      checked_on_list: false,
+      check_seq: Number(item.check_seq ?? 0) + 1,
+    });
+  }
+
+  /** The earlier of an entry's timestamp and now (restore_cleared_items keeps created_at). */
+  function notLater(value: unknown): string {
+    const time = now();
+    return typeof value === 'string' && value !== '' && compareTimestamps(value, time) < 0
+      ? value
+      : time;
+  }
+
+  /**
+   * Deletes rows like the database; `enforce` false = an administrator ignoring restrict. Each
+   * table is copied once per call, not once per row (spec 0031, AC-058).
+   */
   function withoutRows(
     tables: TableRows,
     table: string,
     ids: Iterable<string>,
     enforce = true,
   ): TableRows {
-    let next = tables;
-    for (const id of ids) {
-      if (!next[table]?.[id]) continue;
-      const kept = { ...next[table] };
-      delete kept[id];
-      next = { ...next, [table]: kept };
-      for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
-        for (const row of Object.values(next[reference.table] ?? {})) {
-          if (row[reference.column] !== id || reference.onDelete === 'cascade') continue;
-          if (reference.onDelete === 'restrict') {
-            if (enforce) throw foreignKey(constraintOf(reference));
-            continue;
-          }
-          const cleared = { ...row, [reference.column]: null };
-          if (enforce && reference.table === 'meal_plan_entries') checkPlanEntry(cleared);
-          next = withRow(next, reference.table, cleared);
+    const gone = new Set([...ids].filter((id) => tables[table]?.[id]));
+    if (gone.size === 0) return tables;
+    const kept = { ...tables[table] };
+    for (const id of gone) delete kept[id];
+    let next: TableRows = { ...tables, [table]: kept };
+    if (table === 'areas') for (const id of gone) next = withoutAreaInStores(next, id);
+    const isGone = (value: unknown) => typeof value === 'string' && gone.has(value);
+    for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
+      if (reference.onDelete === 'cascade') continue;
+      const cleared: Row[] = [];
+      for (const row of Object.values(next[reference.table] ?? {})) {
+        if (!isGone(row[reference.column])) continue;
+        if (reference.onDelete === 'restrict') {
+          if (enforce) throw foreignKey(constraintOf(reference));
+          continue;
         }
+        const nulled = { ...row, [reference.column]: null };
+        if (enforce && reference.table === 'meal_plan_entries') checkPlanEntry(nulled);
+        cleared.push(nulled);
       }
-      for (const cascade of CASCADES[table] ?? []) {
-        const dependent = Object.values(next[cascade.table] ?? {})
-          .filter((row) => row[cascade.column] === id)
-          .map((row) => row.id);
-        next = withoutRows(next, cascade.table, dependent, enforce);
-      }
+      next = withRows(next, reference.table, cleared);
+    }
+    for (const cascade of CASCADES[table] ?? []) {
+      const dependent = Object.values(next[cascade.table] ?? {})
+        .filter((row) => isGone(row[cascade.column]))
+        .map((row) => row.id);
+      next = withoutRows(next, cascade.table, dependent, enforce);
     }
     return next;
   }
@@ -937,7 +1189,7 @@ export function createFakeServer(): FakeServer {
     const mine = new Set(householdsOf(userId));
     let id = itemId;
     for (let step = 0; step < 5; step++) {
-      const tombstone = [...deletions]
+      const tombstone = [...deletedRecords]
         .reverse()
         .find(
           (deletion) =>
@@ -968,6 +1220,9 @@ export function createFakeServer(): FakeServer {
     row: Record<string, unknown>,
   ): void {
     const memberIds = new Set(memberIdsOf(householdId));
+    if (table === 'trip_members' && 'member_id' in row && !memberIds.has(String(row.member_id))) {
+      throw foreignKey('trip_members_member_fkey');
+    }
     for (const reference of PACKING_MEMBER_COLUMNS) {
       const value = row[reference.column];
       if (reference.table === table && value != null && !memberIds.has(String(value))) {
@@ -1001,12 +1256,14 @@ export function createFakeServer(): FakeServer {
         list_bag_id: element.list_bag_id,
         name: element.name,
         quantity: element.quantity ?? null,
-        per_day: element.per_day ?? null,
+        per_day_quantity: element.per_day_quantity ?? null,
         sort: element.sort ?? 0,
         packed,
         packed_at: packed ? (compareTimestamps(at, time) > 0 ? time : at) : null,
         packed_by: packed ? (element.packed_by ?? null) : null,
         pack_seq: Math.min(Math.max(Number(element.pack_seq ?? 0), 0), 999_000),
+        bag_item_id: element.bag_item_id ?? null,
+        from_bag: element.from_bag === true,
       };
       row.quantity = perDayQuantity(next, row);
       next = withRow(next, 'packing_items', row);
@@ -1015,6 +1272,89 @@ export function createFakeServer(): FakeServer {
       checkPackingMembers(householdId, 'packing_items', row);
     }
     return [next, { restored: items.length }];
+  }
+
+  /**
+   * private.adopt_bag_changes (spec 0022, AC-036 to AC-038): appends, updates and deletes
+   * Packstücke of one bag of the packing list; packed or missing ones are skipped.
+   */
+  function adoptBagChanges(
+    tables: TableRows,
+    householdId: string,
+    change: unknown,
+  ): [TableRows, { inserted: number; updated: number; deleted: number }] {
+    if (!isPlainObject(change) || !isText(change.list_bag_id)) throw reject('invalid_change');
+    const listBagId = change.list_bag_id;
+    if (!tables.packing_list_bags?.[listBagId]) throw reject('invalid_change');
+    const list = (value: unknown): unknown[] => {
+      if (value === undefined) return [];
+      if (!Array.isArray(value)) throw reject('invalid_change');
+      return value as unknown[];
+    };
+    const inserts = list(change.insert);
+    const updates = list(change.update);
+    const deletes = list(change.delete);
+    if (inserts.length + updates.length + deletes.length > 200) throw reject('too_many_changes');
+    let next = tables;
+    let inserted = 0;
+    let updated = 0;
+    for (const element of inserts) {
+      if (!isPlainObject(element) || !isText(element.id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (next.packing_items?.[element.id]) throw conflict('23505');
+      const time = now();
+      const row: Row = {
+        ...OPEN_PACKING_ITEM,
+        id: element.id,
+        list_bag_id: listBagId,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day_quantity: element.per_day_quantity ?? null,
+        sort: element.sort ?? 0,
+        bag_item_id: element.bag_item_id ?? null,
+        from_bag: element.from_bag !== false,
+        created_at: time,
+        updated_at: time,
+      };
+      row.quantity = perDayQuantity(next, row);
+      next = withRow(next, 'packing_items', row);
+      checkReferences(next, 'packing_items', row);
+      checkPackingRow('packing_items', row, next);
+      inserted += 1;
+    }
+    for (const element of updates) {
+      if (!isPlainObject(element) || !isText(element.id) || !isText(element.name)) {
+        throw reject('invalid_change');
+      }
+      if (
+        Object.keys(element).some(
+          (key) => !['id', 'name', 'quantity', 'per_day_quantity'].includes(key),
+        )
+      ) {
+        throw reject('invalid_change');
+      }
+      const row = next.packing_items?.[element.id];
+      if (!row || row.list_bag_id !== listBagId || row.packed === true) continue;
+      const patched: Row = {
+        ...row,
+        name: element.name,
+        quantity: element.quantity ?? null,
+        per_day_quantity: element.per_day_quantity ?? null,
+        updated_at: now(),
+      };
+      patched.quantity = perDayQuantity(next, patched);
+      checkPackingRow('packing_items', patched, next);
+      next = withRow(next, 'packing_items', patched);
+      updated += 1;
+    }
+    const gone = deletes.filter((id): id is string => {
+      const row = isText(id) ? next.packing_items?.[id] : undefined;
+      return row !== undefined && row.list_bag_id === listBagId && row.packed !== true;
+    });
+    next = withoutRows(next, 'packing_items', gone);
+    void householdId;
+    return [next, { inserted, updated, deleted: gone.length }];
   }
 
   /** private.set_packing_items_packed (ADR-0013): the rule table per Packstück, one transaction. */
@@ -1246,6 +1586,47 @@ export function createFakeServer(): FakeServer {
     return [next, results];
   }
 
+  /** Like private.replace_entry_contributions (spec 0021, REQ-007, REQ-015). */
+  function replaceEntryContributions(
+    tables: TableRows,
+    householdId: string,
+    entryIds: readonly string[],
+    entries: readonly AddEntry[],
+  ): [TableRows, { removed: number; added: AddResult }] {
+    if (!Array.isArray(entryIds) || entryIds.length === 0 || !Array.isArray(entries)) {
+      throw reject('invalid_change');
+    }
+    if (entryIds.length > 200) throw reject('too_many_changes');
+    const items = tables.shopping_items ?? {};
+    const own = Object.values(tables.shopping_contributions ?? {}).filter((row) => {
+      const source = row.source as { kind?: string; entryId?: string } | null;
+      const item = items[String(row.item_id)];
+      return (
+        source?.kind === 'recipe' &&
+        entryIds.includes(String(source.entryId)) &&
+        item !== undefined &&
+        item.checked !== true
+      );
+    });
+    const emptied = new Set(own.map((row) => String(row.item_id)));
+    let next = withoutRows(
+      tables,
+      'shopping_contributions',
+      own.map((row) => String(row.id)),
+    );
+    let added: AddResult = [];
+    if (entries.length > 0) [next, added] = addContributions(next, householdId, entries);
+    const left = new Set(
+      Object.values(next.shopping_contributions ?? {}).map((row) => String(row.item_id)),
+    );
+    next = withoutRows(
+      next,
+      'shopping_items',
+      [...emptied].filter((id) => !left.has(id) && next.shopping_items?.[id]?.checked !== true),
+    );
+    return [next, { removed: own.length, added }];
+  }
+
   function removeContributionRows(tables: TableRows, ids: readonly string[]): [TableRows, number] {
     const existing = ids.filter((id) => tables.shopping_contributions?.[id]);
     const itemIds = new Set(
@@ -1261,22 +1642,10 @@ export function createFakeServer(): FakeServer {
   }
 
   /**
-   * chore_events_keep_chore (spec 0011): an entry keeps its chore. The link is set again only
-   * after the chore was deleted („Rückgängig“, AC-053); it is cleared only by deleting the chore.
-   */
-  function checkChoreLink(tables: TableRows, event: Row, choreId: unknown): void {
-    const current = typeof event.chore_id === 'string' ? event.chore_id : null;
-    const target = choreId ?? null;
-    if (current === null || target === current) return;
-    if (target === null && !tables.chores?.[current]) return;
-    throw reject('invalid_change');
-  }
-
-  /**
    * private.complete_chore (spec 0011): books only while the chore still shows the seen state;
-   * the title comes from the chore, the state before from the stored row. A day outside today − 3
-   * … today + 1 (server date, UTC), a date not after the day, or a date for "bei Bedarf" is
-   * invalid_change.
+   * the title comes from the chore, the state before from the stored row. A day outside today − 31
+   * … today + 1 (server date, UTC; spec 0026), a date not after the day, or a date for "bei
+   * Bedarf" is invalid_change.
    */
   function completeChore(
     tables: TableRows,
@@ -1287,7 +1656,7 @@ export function createFakeServer(): FakeServer {
     const today = new Date().toISOString().slice(0, 10);
     const nextDueOn = completion.next_due_on ?? null;
     if (
-      completion.done_on < addDays(today, -3) ||
+      completion.done_on < addDays(today, -31) ||
       completion.done_on > addDays(today, 1) ||
       (nextDueOn !== null && nextDueOn <= completion.done_on)
     ) {
@@ -1365,6 +1734,71 @@ export function createFakeServer(): FakeServer {
   }
 
   /**
+   * private.change_chore_event_day (spec 0026, REQ-007): moves an entry to another day; the chore
+   * must still show the seen state (chore_changed). For its latest booked entry with a recorded
+   * state the chore's date follows as sent and the last time as the database computes it.
+   */
+  function changeChoreEventDay(
+    tables: TableRows,
+    change: unknown,
+  ): [TableRows, { event_id: string; moved_chore: boolean }] {
+    if (!isPlainObject(change)) throw reject('invalid_change');
+    const value = change as Partial<ChoreEventDayChange> & Record<string, unknown>;
+    const today = new Date().toISOString().slice(0, 10);
+    const nextDueOn = value.next_due_on ?? null;
+    if (
+      !Object.keys(value).every((key) => DAY_CHANGE_KEYS.has(key)) ||
+      !isText(value.event_id) ||
+      !isText(value.done_on) ||
+      !isTextOrNull(value.next_due_on) ||
+      (value.seen !== undefined && !isPlainObject(value.seen)) ||
+      value.done_on < addDays(today, -31) ||
+      value.done_on > addDays(today, 1) ||
+      (nextDueOn !== null && nextDueOn <= value.done_on)
+    ) {
+      throw reject('invalid_change');
+    }
+    const event = tables.chore_events?.[value.event_id];
+    if (!event) throw new TransportError('permanent', 'chore_event_not_found', 404);
+    let next = tables;
+    let moved = false;
+    const chore = typeof event.chore_id === 'string' ? tables.chores?.[event.chore_id] : undefined;
+    if (chore) {
+      const latest = Object.values(tables.chore_events ?? {})
+        .filter((row) => row.chore_id === chore.id)
+        .sort(newestFirst)[0];
+      const seen = value.seen;
+      const same = (column: 'next_due_on' | 'last_done_on' | 'next_assignee_id') =>
+        (seen?.[column] ?? null) === (chore[column] ?? null);
+      if (
+        seen === undefined ||
+        !same('next_due_on') ||
+        !same('last_done_on') ||
+        !same('next_assignee_id') ||
+        (seen.latest_event_id ?? null) !== (latest?.id ?? null)
+      ) {
+        throw reject('chore_changed');
+      }
+      if (latest?.id === event.id && event.prev_recorded === true) {
+        const before = event.prev_last_done_on == null ? null : String(event.prev_last_done_on);
+        next = withRow(next, 'chores', {
+          ...chore,
+          next_due_on: isAsNeeded(chore) ? null : nextDueOn,
+          last_done_on:
+            event.kind === 'done'
+              ? before !== null && before > value.done_on
+                ? before
+                : value.done_on
+              : (chore.last_done_on ?? null),
+        });
+        moved = true;
+      }
+    }
+    next = withRow(next, 'chore_events', { ...event, done_on: value.done_on });
+    return [next, { event_id: event.id, moved_chore: moved }];
+  }
+
+  /**
    * private.remove_chore_event (spec 0011): removing the latest booked entry of a chore that still
    * exists brings back the recorded state before it (no date for a chore that is "bei Bedarf" by
    * now); an older entry only goes.
@@ -1405,28 +1839,41 @@ export function createFakeServer(): FakeServer {
     const opCount = sum((op) =>
       op.kind === 'remove_contributions'
         ? Math.max(op.ids.length, 1)
-        : op.kind === 'add_contributions'
+        : op.kind === 'add_contributions' || op.kind === 'replace_entry_contributions'
           ? Math.max(op.entries.length, 1)
           : op.kind === 'restore_packing_items'
             ? Math.max(Array.isArray(op.items) ? op.items.length : 1, 1)
-            : 1,
+            : op.kind === 'adopt_bag_changes'
+              ? Math.max(
+                  (op.change.insert?.length ?? 0) +
+                    (op.change.update?.length ?? 0) +
+                    (op.change.delete?.length ?? 0),
+                  1,
+                )
+              : 1,
     );
     const deletes = sum((op) =>
       // complete_chore too: done of a one-off chore deletes it, known only under the lock.
-      op.kind === 'delete' || op.kind === 'complete_chore' || op.kind === 'remove_chore_event'
+      op.kind === 'delete' ||
+      op.kind === 'complete_chore' ||
+      op.kind === 'remove_chore_event' ||
+      op.kind === 'replace_entry_contributions'
         ? 1
         : op.kind === 'remove_contributions'
           ? op.ids.length
-          : 0,
+          : op.kind === 'adopt_bag_changes'
+            ? (op.change.delete?.length ?? 0)
+            : 0,
     );
     const contributions = sum((op) =>
-      op.kind === 'add_contributions'
+      op.kind === 'add_contributions' || op.kind === 'replace_entry_contributions'
         ? op.entries.reduce((total, entry) => total + entry.contributions.length, 0)
         : 0,
     );
     if (opCount > 200 || deletes > 20 || contributions > 500) throw reject('too_many_changes');
 
     let householdPatch: Record<string, unknown> | undefined;
+    const timeZone = String(households.get(householdId)?.timezone ?? 'Europe/Berlin');
     const result = transaction(householdId, (before) => {
       let tables = before;
       const results: unknown[] = [];
@@ -1439,6 +1886,15 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeContributionRows(tables, op.ids);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'replace_entry_contributions') {
+          const [next, replaced] = replaceEntryContributions(
+            tables,
+            householdId,
+            op.entry_ids,
+            op.entries,
+          );
+          tables = next;
+          results.push(replaced);
         } else if (op.kind === 'complete_chore') {
           const [next, booked] = completeChore(tables, householdId, op.completion);
           tables = next;
@@ -1447,10 +1903,18 @@ export function createFakeServer(): FakeServer {
           const [next, removed] = removeChoreEvent(tables, op.id);
           tables = next;
           results.push(removed);
+        } else if (op.kind === 'change_chore_event_day') {
+          const [next, changed] = changeChoreEventDay(tables, op.change);
+          tables = next;
+          results.push(changed);
         } else if (op.kind === 'restore_packing_items') {
           const [next, restored] = restorePackingItems(tables, householdId, op.items);
           tables = next;
           results.push(restored);
+        } else if (op.kind === 'adopt_bag_changes') {
+          const [next, adopted] = adoptBagChanges(tables, householdId, op.change);
+          tables = next;
+          results.push(adopted);
         } else if (op.kind === 'insert') {
           checkColumns(op.table, Object.keys(op.row), true);
           if (op.row.household_id !== undefined && op.row.household_id !== householdId) {
@@ -1473,9 +1937,14 @@ export function createFakeServer(): FakeServer {
                   ? // Column defaults: a collection must send course null (spec 0009, T1).
                     { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
                   : op.table === 'meal_plan_entries'
-                    ? { reserved_at: null, remind_minutes_before: 120 }
+                    ? {
+                        starts_at: null,
+                        reminder_day_offset: null,
+                        reminder_at: null,
+                        reminder_text: null,
+                      }
                     : op.table === 'chores'
-                      ? { due_time: null }
+                      ? { due_time: null, remind_at_due_time: true }
                       : {};
           if (op.table === 'collection_recipes') checkCollectionRecipeInsert(op.row, tables);
           tables = withRow(
@@ -1488,8 +1957,11 @@ export function createFakeServer(): FakeServer {
               ...(op.table === 'activities' ? { created_by: userId } : {}),
             }),
           );
-          // packing_items_before_insert: "je Tag" from the absence, whatever the device sent.
+          // packing_items_before_insert: "je Tag" from the trip, whatever the device sent.
           const inserted = tables[op.table]?.[op.row.id];
+          if (op.table === 'meal_plan_entries' && inserted) {
+            tables = withRow(tables, op.table, reminderTriggers(undefined, inserted, timeZone));
+          }
           if (op.table === 'packing_items' && inserted) {
             tables = withRow(tables, op.table, {
               ...inserted,
@@ -1519,9 +1991,18 @@ export function createFakeServer(): FakeServer {
           if (!row || (op.table === 'notification_settings' && row.member_id !== userId)) {
             throw new TransportError('permanent', 'row_not_found', 404);
           }
-          if (op.table === 'chore_events' && 'chore_id' in op.changes)
-            checkChoreLink(tables, row, op.changes.chore_id);
-          tables = withRow(tables, op.table, withDbTimes(op.table, { ...row, ...op.changes }));
+          const merged = withDbTimes(op.table, { ...row, ...op.changes });
+          // packing_items_before_update (spec 0022): "je Tag" from the trip, also when packed.
+          const patched =
+            op.table === 'packing_items' &&
+            ('quantity' in op.changes || 'per_day_quantity' in op.changes)
+              ? { ...merged, quantity: perDayQuantity(tables, merged) }
+              : merged;
+          tables = withRow(
+            tables,
+            op.table,
+            op.table === 'meal_plan_entries' ? reminderTriggers(row, patched, timeZone) : patched,
+          );
           if (op.table === 'recipes' && 'ingredients' in op.changes) {
             checkIngredients(op.changes.ingredients, tables);
           }
@@ -1535,14 +2016,11 @@ export function createFakeServer(): FakeServer {
           checkRow(householdId, op.table, tables[op.table]?.[op.id] ?? row, tables);
           checkPackingRow(op.table, tables[op.table]?.[op.id] ?? row, tables);
           checkPackingMembers(householdId, op.table, op.changes);
-          // absences_recalc_packing and packing_list_bags_recalc (AC-037).
+          // trips_recalc_packing (AC-037; spec 0022, AC-011).
           const changed = (column: string) =>
             column in op.changes && op.changes[column] !== row[column];
-          if (op.table === 'absences' && (changed('from_on') || changed('to_on'))) {
+          if (op.table === 'trips' && (changed('from_on') || changed('to_on'))) {
             tables = recalcPacking(tables, op.id);
-          }
-          if (op.table === 'packing_list_bags' && changed('absence_id')) {
-            tables = recalcPacking(tables, String(op.changes.absence_id));
           }
         } else {
           if (!Object.hasOwn(WRITABLE_COLUMNS, op.table) || NO_DELETE_TABLES.has(op.table)) {
@@ -1550,6 +2028,13 @@ export function createFakeServer(): FakeServer {
           }
           tables = withoutRows(tables, op.table, [op.id]);
         }
+      }
+      // trips_need_member and trip_members_last_gone, deferred to the end of the call (AC-043).
+      const withPeople = new Set(
+        Object.values(tables.trip_members ?? {}).map((row) => String(row.trip_id)),
+      );
+      if (Object.keys(tables.trips ?? {}).some((tripId) => !withPeople.has(tripId))) {
+        throw new TransportError('permanent', 'trip_without_members', 400);
       }
       return [tables, { applied: ops.length, results }];
     });
@@ -1575,9 +2060,7 @@ export function createFakeServer(): FakeServer {
     const serverTime = now();
     const mine = new Set(householdsOf(userId));
     const email = profiles.get(userId)?.email;
-    const openInvitations = invitations.filter(
-      (invitation) => invitation.email === email && invitation.accepted_at === null,
-    );
+    const openInvitations = invitations.filter((invitation) => invitation.email === email);
     const visibleHouseholds = new Set([
       ...mine,
       ...openInvitations.map((invitation) => String(invitation.household_id)),
@@ -1607,7 +2090,7 @@ export function createFakeServer(): FakeServer {
             if (Object.hasOwn(COMPOSITE_TABLES, table)) delete (copy as Partial<Row>).id;
             return copy;
           });
-        for (const deletion of deletions) {
+        for (const deletion of deletedRecords) {
           if (deletion.householdId !== householdId || deletion.table !== table) continue;
           if (since !== undefined && compareTimestamps(deletion.deletedAt, since) <= 0) continue;
           tombstones.push({ table, id: deletion.id, deletedAt: deletion.deletedAt });
@@ -1658,9 +2141,72 @@ export function createFakeServer(): FakeServer {
     return { stars };
   }
 
+  /**
+   * restore_cleared_items within a transaction (also restore_recipe, spec 0023): one item per
+   * article; an open entry joins the item of today and reopens it when it is checked under another
+   * id, a checked entry stays out. Returns how many entries brought something back.
+   */
+  function restoreItemsInto(
+    tables: TableRows,
+    householdId: string,
+    items: ClearedItems,
+  ): [TableRows, number] {
+    let next = tables;
+    let restored = 0;
+    for (const { item, contributions } of items) {
+      const id = String(item.id);
+      if (item.household_id !== householdId || item.article_id == null) {
+        throw reject('invalid_entries');
+      }
+      // Missing = checked (like the RPC).
+      const checked = item.checked == null ? true : item.checked === true;
+      // One item per article (spec 0025): an open entry joins the item of today and
+      // reopens it when it is checked under another id; a checked entry stays out.
+      const existing = Object.values(next.shopping_items ?? {}).find(
+        (other) => other.article_id === item.article_id,
+      );
+      let targetId: string | undefined;
+      let inserted = false;
+      if (!existing) {
+        next = withRow(next, 'shopping_items', {
+          ...item,
+          id,
+          checked,
+          checked_at: checked ? notLater(item.checked_at) : null,
+          checked_by: checked ? (item.checked_by ?? null) : null,
+          check_seq: item.check_seq ?? 0,
+          not_available: item.not_available ?? false,
+          checked_on_list: checked && item.checked_on_list === true,
+          created_at: notLater(item.created_at),
+        });
+        inserted = true;
+        targetId = id;
+      } else if (!checked || existing.id === id) {
+        if (!checked && existing.checked === true && existing.id !== id) {
+          next = reopened(next, existing);
+        }
+        targetId = existing.id;
+      }
+      let added = 0;
+      for (const contribution of targetId === undefined ? [] : (contributions ?? [])) {
+        const contributionId = String(contribution.id);
+        if (next.shopping_contributions?.[contributionId]) continue;
+        next = withRow(next, 'shopping_contributions', {
+          ...contribution,
+          id: contributionId,
+          item_id: targetId,
+          created_at: notLater(contribution.created_at),
+        });
+        added += 1;
+      }
+      if (inserted || added > 0) restored += 1;
+    }
+    return [next, restored];
+  }
+
   // ---------- delete_recipe and restore_recipe (spec 0008, E3 to E6) ----------
 
-  function deleteRecipe(userId: string, recipeId: string, today: string) {
+  function deleteRecipe(userId: string, recipeId: string, today: string, withList = false) {
     const householdId = locate(userId, 'recipes', recipeId);
     if (!householdId) throw new TransportError('permanent', 'recipe_not_found', 500);
     const current = new Date(Date.now()).toISOString().slice(0, 10);
@@ -1713,7 +2259,8 @@ export function createFakeServer(): FakeServer {
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       deletion = {
         householdId,
-        recipeId,
+        kind: 'recipe',
+        targetId: recipeId,
         deletedBy: userId,
         deletedAt: Date.now(),
         recipe,
@@ -1725,8 +2272,28 @@ export function createFakeServer(): FakeServer {
         converted,
         removed: later,
         collectionRecipes,
+        list: [],
       };
       let tables = before;
+      if (withList && found.length > 0) {
+        // Spec 0023, Decision 15: the contributions of the entries that go, on open items, as
+        // restore_cleared_items takes them back; then off the list (replace_entry_contributions).
+        const ids = new Set(found);
+        const ofRemoved = (row: Row) => {
+          const source = row.source as { kind?: string; entryId?: string } | null;
+          return source?.kind === 'recipe' && ids.has(String(source.entryId));
+        };
+        deletion.list = Object.values(before.shopping_items ?? {})
+          .filter((item) => item.checked !== true)
+          .map((item) => ({
+            item,
+            contributions: Object.values(before.shopping_contributions ?? {}).filter(
+              (row) => row.item_id === item.id && ofRemoved(row),
+            ),
+          }))
+          .filter((entry) => entry.contributions.length > 0);
+        [tables] = replaceEntryContributions(tables, householdId, found, []);
+      }
       for (const entry of converted) {
         const row = tables.meal_plan_entries?.[entry.id];
         if (!row) continue;
@@ -1749,23 +2316,12 @@ export function createFakeServer(): FakeServer {
         },
       ];
     });
-    for (const [key, kept] of recipeDeletions) {
-      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
-        recipeDeletions.delete(key);
-      }
-    }
-    if (deletion) recipeDeletions.set(`${householdId}:${recipeId}`, deletion);
+    if (deletion) keepDeletion(deletion);
     return result;
   }
 
   function restoreRecipe(userId: string, recipeId: string): boolean {
-    const deletion = [...recipeDeletions.values()].find(
-      (candidate) =>
-        candidate.recipeId === recipeId &&
-        candidate.deletedBy === userId &&
-        isMember(userId, candidate.householdId) &&
-        candidate.deletedAt > Date.now() - RESTORABLE_MS,
-    );
+    const deletion = restorableDeletion('recipe', userId, recipeId);
     if (!deletion) throw new TransportError('permanent', 'recipe_not_restorable', 500);
     const { householdId } = deletion;
     if (data.get(householdId)?.recipes?.[recipeId]) return false;
@@ -1826,6 +2382,7 @@ export function createFakeServer(): FakeServer {
           cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
         });
       }
+      if (deletion.list.length > 0) [tables] = restoreItemsInto(tables, householdId, deletion.list);
       for (const entry of deletion.converted) {
         const row = tables.meal_plan_entries?.[entry.id];
         if (!row || row.kind !== 'text' || row.recipe_id != null || row.text !== entry.new_text) {
@@ -1841,7 +2398,200 @@ export function createFakeServer(): FakeServer {
       }
       return [tables, undefined];
     });
-    recipeDeletions.delete(`${householdId}:${recipeId}`);
+    deletions.delete(deletionKey(deletion));
+    return true;
+  }
+
+  // ---------- delete_chore / restore_chore (spec 0031, REQ-016) ----------
+
+  /** private.delete_chore: the snapshot {row, entry ids}, then the chore; entries lose the link. */
+  function deleteChore(userId: string, choreId: string): void {
+    const notFound = () => new TransportError('permanent', 'chore_not_found', 500);
+    const householdId = locate(userId, 'chores', choreId);
+    if (!householdId) throw notFound();
+    let deletion: ChoreDeletion | undefined;
+    transaction(householdId, (before) => {
+      const row = before.chores?.[choreId];
+      if (!row) throw notFound();
+      deletion = {
+        householdId,
+        kind: 'chore',
+        targetId: choreId,
+        deletedBy: userId,
+        deletedAt: Date.now(),
+        row,
+        eventIds: Object.values(before.chore_events ?? {})
+          .filter((event) => event.chore_id === choreId)
+          .map((event) => String(event.id)),
+      };
+      return [withoutRows(before, 'chores', [choreId]), undefined];
+    });
+    if (deletion) keepDeletion(deletion);
+  }
+
+  /**
+   * private.restore_chore: for the person who deleted, while a member, within 1 hour. The chore
+   * comes back with its id and created_at, and the entries of the snapshot still without a chore
+   * hang on it again. False when it exists again.
+   */
+  function restoreChore(userId: string, choreId: string): boolean {
+    const notRestorable = () => new TransportError('permanent', 'chore_not_restorable', 500);
+    const deletion = restorableDeletion('chore', userId, choreId);
+    if (!deletion) throw notRestorable();
+    const { householdId } = deletion;
+    if (data.get(householdId)?.chores?.[choreId]) return false;
+    if ([...data.values()].some((tables) => tables.chores?.[choreId])) throw notRestorable();
+    const current = new Set(memberIdsOf(householdId));
+    transaction(householdId, (before) => {
+      const row: Row = {
+        ...withoutTimestamps(deletion.row),
+        created_at: deletion.row.created_at,
+        next_assignee_id: current.has(String(deletion.row.next_assignee_id))
+          ? deletion.row.next_assignee_id
+          : null,
+      };
+      checkRow(householdId, 'chores', row, before);
+      let tables = withRow(before, 'chores', row);
+      for (const id of deletion.eventIds) {
+        const event = tables.chore_events?.[id];
+        if (event && event.chore_id == null) {
+          tables = withRow(tables, 'chore_events', { ...event, chore_id: choreId });
+        }
+      }
+      return [tables, undefined];
+    });
+    deletions.delete(deletionKey(deletion));
+    return true;
+  }
+
+  // ---------- delete_restaurant / delete_activity and their restore (spec 0024, REQ-010) ----------
+
+  function deletePlace(userId: string, kind: PlaceKind, targetId: string, today: string) {
+    const place = PLACES[kind];
+    const householdId = locate(userId, place.table, targetId);
+    if (!householdId) throw new TransportError('permanent', `${kind}_not_found`, 500);
+    const current = new Date(Date.now()).toISOString().slice(0, 10);
+    if (!ISO_DATE.test(today) || today < addDays(current, -1) || today > addDays(current, 1)) {
+      throw reject('invalid_value');
+    }
+    let deletion: PlaceDeletion | undefined;
+    const result = transaction(householdId, (before) => {
+      const row = before[place.table]?.[targetId];
+      if (!row) throw new TransportError('permanent', `${kind}_not_found`, 500);
+      const entries = Object.values(before.meal_plan_entries ?? {})
+        .filter((entry) => entry[place.column] === targetId)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const past = entries.filter((entry) => entry.date != null && String(entry.date) <= today);
+      const later = entries.filter((entry) => entry.date == null || String(entry.date) > today);
+      const converted = past.map((entry) => ({
+        ...entry,
+        new_text:
+          String(row.name) +
+          (entry.note != null && entry.note !== '' ? ` (${String(entry.note)})` : ''),
+      }));
+      const parentRows = (table: string) =>
+        Object.values(before[table] ?? {}).filter((other) => other[place.column] === targetId);
+      deletion = {
+        householdId,
+        kind,
+        targetId,
+        deletedBy: userId,
+        deletedAt: Date.now(),
+        row,
+        ratings: parentRows(place.ratings).map((rating) => ({
+          member_id: String(rating.member_id),
+          stars: rating.stars,
+        })),
+        favorites: parentRows(place.favorites).map((favorite) => String(favorite.member_id)),
+        converted,
+        removed: later,
+      };
+      let tables = before;
+      for (const entry of converted) {
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...withoutConverted(entry),
+          kind: 'text',
+          [place.column]: null,
+          text: entry.new_text,
+          note: null,
+          starts_at: null,
+        });
+      }
+      tables = withoutRows(
+        tables,
+        'meal_plan_entries',
+        later.map((entry) => entry.id),
+      );
+      tables = withoutRows(tables, place.table, [targetId]);
+      return [tables, { converted: converted.length, removed: later.length }];
+    });
+    if (deletion) keepDeletion(deletion);
+    return result;
+  }
+
+  function restorePlace(userId: string, kind: PlaceKind, targetId: string): boolean {
+    const place = PLACES[kind];
+    const notRestorable = () => new TransportError('permanent', `${kind}_not_restorable`, 500);
+    const deletion = restorableDeletion(kind, userId, targetId);
+    if (!deletion) throw notRestorable();
+    const { householdId } = deletion;
+    if (data.get(householdId)?.[place.table]?.[targetId]) return false;
+    if ([...data.values()].some((tables) => tables[place.table]?.[targetId])) throw notRestorable();
+    const current = new Set(memberIdsOf(householdId));
+    transaction(householdId, (before) => {
+      const row: Row = { ...withoutTimestamps(deletion.row), created_at: deletion.row.created_at };
+      if (kind === 'activity' && !current.has(String(row.created_by))) row.created_by = null;
+      checkRow(householdId, place.table, row, before);
+      let tables = withRow(before, place.table, row);
+      for (const rating of deletion.ratings) {
+        if (!current.has(rating.member_id)) continue;
+        const parent = { [place.column]: targetId, ...rating };
+        const id = compositeId(place.ratings, parent);
+        tables = withRow(tables, place.ratings, { id, ...parent });
+      }
+      for (const memberId of deletion.favorites) {
+        if (!current.has(memberId)) continue;
+        const parent = { [place.column]: targetId, member_id: memberId };
+        tables = withRow(tables, place.favorites, {
+          id: compositeId(place.favorites, parent),
+          ...parent,
+        });
+      }
+      for (const entry of deletion.removed) {
+        if (tables.meal_plan_entries?.[entry.id]) continue;
+        const eaters = Array.isArray(entry.eater_ids) ? entry.eater_ids.map(String) : [];
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...withoutTimestamps(entry),
+          eater_ids: eaters.filter((id) => current.has(id)),
+          cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
+        });
+      }
+      for (const entry of deletion.converted) {
+        const now = tables.meal_plan_entries?.[entry.id];
+        if (
+          !now ||
+          now.kind !== 'text' ||
+          now.recipe_id != null ||
+          now.restaurant_id != null ||
+          now.activity_id != null ||
+          now.text !== entry.new_text ||
+          now.note != null
+        ) {
+          continue;
+        }
+        tables = withRow(tables, 'meal_plan_entries', {
+          ...now,
+          kind: entry.kind,
+          restaurant_id: entry.restaurant_id ?? null,
+          activity_id: entry.activity_id ?? null,
+          text: entry.text ?? null,
+          note: entry.note ?? null,
+          starts_at: entry.starts_at ?? null,
+        });
+      }
+      return [tables, undefined];
+    });
+    deletions.delete(deletionKey(deletion));
     return true;
   }
 
@@ -1861,7 +2611,7 @@ export function createFakeServer(): FakeServer {
       applyChanges: (householdId, ops) =>
         run(userId, 'apply_changes', () => applyChanges(userId, householdId, ops)),
 
-      setItemChecked: (requestedItemId, checked, seenCheckSeq) =>
+      setItemChecked: (requestedItemId, checked, seenCheckSeq, onList = false) =>
         run(userId, 'set_shopping_item_checked', () => {
           const resolved = resolveStoreItem(userId, requestedItemId);
           if (!resolved) return null;
@@ -1884,6 +2634,7 @@ export function createFakeServer(): FakeServer {
                 checked_by: userId,
                 check_seq: seq + 1,
                 not_available: false,
+                checked_on_list: onList,
               };
               return [withRow(tables, 'shopping_items', next), answer(next)];
             }
@@ -1892,30 +2643,12 @@ export function createFakeServer(): FakeServer {
             if (replaced || item.checked !== true || seq !== seenCheckSeq) {
               return [tables, answer(item)];
             }
-            const open = Object.values(tables.shopping_items ?? {}).find(
-              (other) =>
-                other.id !== itemId &&
-                other.article_id === item.article_id &&
-                other.checked !== true,
-            );
-            if (open) {
-              let next = tables;
-              for (const contribution of Object.values(tables.shopping_contributions ?? {})) {
-                if (contribution.item_id === itemId) {
-                  next = withRow(next, 'shopping_contributions', {
-                    ...contribution,
-                    item_id: open.id,
-                  });
-                }
-              }
-              next = withoutRows(next, 'shopping_items', [itemId]);
-              return [next, answer(open)];
-            }
             const next = {
               ...item,
               checked: false,
               checked_at: null,
               checked_by: null,
+              checked_on_list: false,
               check_seq: seq + 1,
             };
             return [withRow(tables, 'shopping_items', next), answer(next)];
@@ -2032,53 +2765,7 @@ export function createFakeServer(): FakeServer {
         run(userId, 'restore_cleared_items', () => {
           const householdId = memberOf(userId, requestedHouseholdId);
           assertRestorableSize(items);
-          return transaction(householdId, (tables) => {
-            let next = tables;
-            let restored = 0;
-            for (const { item, contributions } of items) {
-              const id = String(item.id);
-              if (item.household_id !== householdId || item.article_id == null) {
-                throw reject('invalid_entries');
-              }
-              // Missing = checked (like the RPC).
-              const checked = item.checked == null ? true : item.checked === true;
-              // An open item joins one that is open on the list again meanwhile (AC-037).
-              let targetId = checked
-                ? undefined
-                : Object.values(next.shopping_items ?? {}).find(
-                    (other) => other.article_id === item.article_id && other.checked !== true,
-                  )?.id;
-              let inserted = false;
-              if (targetId === undefined) {
-                if (!next.shopping_items?.[id]) {
-                  next = withRow(next, 'shopping_items', {
-                    ...item,
-                    id,
-                    checked,
-                    checked_at: checked ? (item.checked_at ?? now()) : null,
-                    checked_by: checked ? (item.checked_by ?? null) : null,
-                    check_seq: item.check_seq ?? 0,
-                    not_available: item.not_available ?? false,
-                  });
-                  inserted = true;
-                }
-                targetId = id;
-              }
-              let added = 0;
-              for (const contribution of contributions ?? []) {
-                const contributionId = String(contribution.id);
-                if (next.shopping_contributions?.[contributionId]) continue;
-                next = withRow(next, 'shopping_contributions', {
-                  ...contribution,
-                  id: contributionId,
-                  item_id: targetId,
-                });
-                added += 1;
-              }
-              if (inserted || (targetId !== id && added > 0)) restored += 1;
-            }
-            return [next, restored];
-          });
+          return transaction(householdId, (tables) => restoreItemsInto(tables, householdId, items));
         }),
 
       removeContributions: (ids) =>
@@ -2095,6 +2782,117 @@ export function createFakeServer(): FakeServer {
           return removed;
         }),
 
+      setManualAmount: (itemId, amount) =>
+        run(userId, 'set_manual_amount', () => {
+          const { count, qty } = amount;
+          const unit = amount.unit?.trim() || undefined;
+          if (
+            (count !== undefined && qty !== undefined) ||
+            (count !== undefined && !(Number.isInteger(count) && count >= 1 && count <= 10000)) ||
+            (qty !== undefined && !(qty > 0 && qty <= 1_000_000)) ||
+            (unit !== undefined && (qty === undefined || unit.length > 20))
+          ) {
+            throw reject('invalid_value');
+          }
+          const householdId = locate(userId, 'shopping_items', itemId);
+          if (!householdId) return null;
+          return ManualAmountResultSchema.parse(
+            transaction(householdId, (tables) => {
+              const item = tables.shopping_items?.[itemId];
+              if (!item) return [tables, null];
+              const oldestFirst = (a: Row, b: Row) => newestFirst(b, a);
+              const own = Object.values(tables.shopping_contributions ?? {})
+                .filter((row) => row.item_id === itemId)
+                .sort(oldestFirst);
+              const manual = own.filter(isManual);
+              let next = tables;
+              let keptId: string | undefined;
+              if (count !== undefined || qty !== undefined) {
+                const first = manual[0];
+                keptId = first?.id ?? crypto.randomUUID();
+                next = withRow(next, 'shopping_contributions', {
+                  ...(first ?? {
+                    id: keptId,
+                    item_id: itemId,
+                    source: { kind: 'manual' },
+                    note: null,
+                  }),
+                  count: count ?? null,
+                  qty: qty ?? null,
+                  unit: unit ?? null,
+                });
+              }
+              next = withoutRows(
+                next,
+                'shopping_contributions',
+                manual.filter((row) => row.id !== keptId).map((row) => row.id),
+              );
+              const remains = Object.values(next.shopping_contributions ?? {}).some(
+                (row) => row.item_id === itemId,
+              );
+              if (remains) return [next, { item_id: itemId, removed: false }];
+              return [
+                withoutRows(next, 'shopping_items', [itemId]),
+                { item_id: itemId, removed: true, item, contributions: own },
+              ];
+            }),
+          );
+        }),
+
+      removeItemContributions: (itemId, ids) =>
+        run(userId, 'remove_item_contributions', () => {
+          if (ids.length === 0) throw reject('invalid_value');
+          if (ids.length > 1000) throw reject('too_many_changes');
+          const householdId = locate(userId, 'shopping_items', itemId);
+          if (!householdId) return null;
+          return transaction(householdId, (tables): [TableRows, ClearedItems | null] => {
+            const item = tables.shopping_items?.[itemId];
+            if (!item) return [tables, null];
+            const removed = Object.values(tables.shopping_contributions ?? {})
+              .filter((row) => row.item_id === itemId && ids.includes(row.id))
+              .sort((a, b) => newestFirst(b, a));
+            if (removed.length === 0) return [tables, []];
+            let next = withoutRows(
+              tables,
+              'shopping_contributions',
+              removed.map((row) => row.id),
+            );
+            const remains = Object.values(next.shopping_contributions ?? {}).some(
+              (row) => row.item_id === itemId,
+            );
+            if (!remains) next = withoutRows(next, 'shopping_items', [itemId]);
+            return [next, [{ item, contributions: removed }]];
+          });
+        }),
+
+      createStore: (requestedHouseholdId, storeId, name, copyFrom) =>
+        run(userId, 'create_store', () => {
+          const householdId = memberOf(userId, requestedHouseholdId);
+          transaction(householdId, (tables) => {
+            const source = copyFrom === null ? undefined : tables.stores?.[copyFrom];
+            if (copyFrom !== null && !source) {
+              throw new TransportError('permanent', 'store_not_found', 500);
+            }
+            const bySort = Object.values(tables.areas ?? {})
+              .sort((a, b) => Number(a.sort ?? 0) - Number(b.sort ?? 0) || a.id.localeCompare(b.id))
+              .map((area) => area.id);
+            const row: Row = {
+              id: storeId,
+              name: name.trim(),
+              area_order: source
+                ? Array.isArray(source.area_order)
+                  ? [...source.area_order]
+                  : []
+                : bySort,
+              hidden_area_ids: Array.isArray(source?.hidden_area_ids)
+                ? [...source.hidden_area_ids]
+                : [],
+            };
+            checkRow(householdId, 'stores', row, tables);
+            return [withRow(tables, 'stores', row), undefined];
+          });
+        }),
+
       deleteArticle: (articleId) =>
         run(userId, 'delete_article', () => {
           const householdId = locate(userId, 'articles', articleId);
@@ -2109,11 +2907,18 @@ export function createFakeServer(): FakeServer {
                   (ingredient) => ingredient.articleId === articleId,
                 ),
             );
-            const onList = Object.values(tables.shopping_items ?? {}).some(
+            const items = Object.values(tables.shopping_items ?? {}).filter(
               (item) => item.article_id === articleId,
             );
-            if (inRecipe || onList) throw reject('article_in_use');
-            return [withoutRows(tables, 'articles', [articleId]), { ...article }];
+            if (inRecipe || items.some((item) => item.checked !== true)) {
+              throw reject('article_in_use');
+            }
+            const withoutItems = withoutRows(
+              tables,
+              'shopping_items',
+              items.map((item) => item.id),
+            );
+            return [withoutRows(withoutItems, 'articles', [articleId]), { ...article }];
           });
         }),
 
@@ -2146,32 +2951,34 @@ export function createFakeServer(): FakeServer {
                 ),
               });
             }
-            // 2. Both open on the list: one item.
+            // 2. The one item of the source (spec 0025): without an item of the target it moves;
+            // else an open source brings its contributions (and reopens a checked target), a
+            // checked one brings nothing, and the source's item goes.
             let items = 0;
-            const openOf = (articleId: string) =>
+            const itemOf = (articleId: string) =>
               Object.values(tables.shopping_items ?? {}).find(
-                (item) => item.article_id === articleId && item.checked !== true,
+                (item) => item.article_id === articleId,
               );
-            const sourceOpen = openOf(sourceId);
-            const targetOpen = openOf(targetId);
-            if (sourceOpen && targetOpen) {
-              for (const row of Object.values(tables.shopping_contributions ?? {})) {
-                if (row.item_id === sourceOpen.id) {
-                  tables = withRow(tables, 'shopping_contributions', {
-                    ...row,
-                    item_id: targetOpen.id,
-                  });
+            const sourceItem = itemOf(sourceId);
+            const targetItem = itemOf(targetId);
+            if (sourceItem && !targetItem) {
+              tables = withRow(tables, 'shopping_items', { ...sourceItem, article_id: targetId });
+              items = 1;
+            } else if (sourceItem && targetItem) {
+              if (sourceItem.checked !== true) {
+                if (targetItem.checked === true) tables = reopened(tables, targetItem);
+                for (const row of Object.values(tables.shopping_contributions ?? {})) {
+                  if (row.item_id === sourceItem.id) {
+                    tables = withRow(tables, 'shopping_contributions', {
+                      ...row,
+                      item_id: targetItem.id,
+                    });
+                  }
                 }
               }
-              tables = withoutRows(tables, 'shopping_items', [sourceOpen.id]);
-              replaced = { from: sourceOpen.id, to: targetOpen.id };
-              items += 1;
-            }
-            // 3. Every other item of the source.
-            for (const item of Object.values(tables.shopping_items ?? {})) {
-              if (item.article_id !== sourceId) continue;
-              tables = withRow(tables, 'shopping_items', { ...item, article_id: targetId });
-              items += 1;
+              tables = withoutRows(tables, 'shopping_items', [sourceItem.id]);
+              replaced = { from: sourceItem.id, to: targetItem.id };
+              items = 1;
             }
             // 6. Names of the source as synonyms of the target, without duplicate keys.
             const synonyms: string[] = [];
@@ -2212,7 +3019,7 @@ export function createFakeServer(): FakeServer {
           });
           if (replaced) {
             const { from, to } = replaced;
-            deletions = deletions.map((deletion) =>
+            deletedRecords = deletedRecords.map((deletion) =>
               deletion.householdId === householdId &&
               deletion.table === 'shopping_items' &&
               deletion.id === from &&
@@ -2224,10 +3031,24 @@ export function createFakeServer(): FakeServer {
           return result;
         }),
 
-      deleteRecipe: (recipeId, today) =>
-        run(userId, 'delete_recipe', () => deleteRecipe(userId, recipeId, today)),
+      deleteRecipe: (recipeId, today, withList) =>
+        run(userId, 'delete_recipe', () =>
+          deleteRecipe(userId, recipeId, today, withList === true),
+        ),
       restoreRecipe: (recipeId) =>
         run(userId, 'restore_recipe', () => restoreRecipe(userId, recipeId)),
+      deleteRestaurant: (restaurantId, today) =>
+        run(userId, 'delete_restaurant', () =>
+          deletePlace(userId, 'restaurant', restaurantId, today),
+        ),
+      restoreRestaurant: (restaurantId) =>
+        run(userId, 'restore_restaurant', () => restorePlace(userId, 'restaurant', restaurantId)),
+      deleteActivity: (activityId, today) =>
+        run(userId, 'delete_activity', () => deletePlace(userId, 'activity', activityId, today)),
+      restoreActivity: (activityId) =>
+        run(userId, 'restore_activity', () => restorePlace(userId, 'activity', activityId)),
+      deleteChore: (choreId) => run(userId, 'delete_chore', () => deleteChore(userId, choreId)),
+      restoreChore: (choreId) => run(userId, 'restore_chore', () => restoreChore(userId, choreId)),
 
       mergeAreas: (sourceId, targetId) =>
         run(userId, 'merge_areas', () => {
@@ -2385,7 +3206,6 @@ export function createFakeServer(): FakeServer {
             household_id: householdId,
             email: address,
             invited_by: userId,
-            accepted_at: null,
             created_at: time,
             updated_at: time,
           });
@@ -2400,12 +3220,9 @@ export function createFakeServer(): FakeServer {
             (candidate) => candidate.id === invitationId && candidate.email === email,
           );
           if (!invitation) throw new TransportError('permanent', 'invitation_not_found', 404);
+          // Spec 0027, Decision 1: accepting deletes the invitation.
           const time = now();
-          invitations = invitations.map((candidate) =>
-            candidate === invitation
-              ? { ...candidate, accepted_at: time, updated_at: time }
-              : candidate,
-          );
+          invitations = invitations.filter((candidate) => candidate !== invitation);
           const householdId = String(invitation.household_id);
           members.push({
             household_id: householdId,
@@ -2453,6 +3270,22 @@ export function createFakeServer(): FakeServer {
                 .filter((row) => row.member_id === profileId)
                 .map((row) => row.id),
             );
+            // Spec 0022, AC-044: she leaves her trips; a trip without anybody goes with its list.
+            next = withoutRows(
+              next,
+              'trip_members',
+              Object.values(next.trip_members ?? {})
+                .filter((row) => row.member_id === profileId)
+                .map((row) => row.id),
+            );
+            const withPeople = new Set(
+              Object.values(next.trip_members ?? {}).map((row) => String(row.trip_id)),
+            );
+            next = withoutRows(
+              next,
+              'trips',
+              Object.keys(next.trips ?? {}).filter((tripId) => !withPeople.has(tripId)),
+            );
             for (const reference of PACKING_MEMBER_COLUMNS) {
               for (const row of Object.values(next[reference.table] ?? {})) {
                 if (row[reference.column] !== profileId) continue;
@@ -2461,6 +3294,89 @@ export function createFakeServer(): FakeServer {
             }
             return [next, undefined];
           });
+          notify(householdId);
+        }),
+
+      withdrawInvitation: (invitationId) =>
+        run(userId, 'withdraw_invitation', () => {
+          requireUser(userId);
+          const invitation = invitations.find(
+            (candidate) =>
+              candidate.id === invitationId && isMember(userId, String(candidate.household_id)),
+          );
+          if (!invitation) throw new TransportError('permanent', 'invitation_not_found', 404);
+          invitations = invitations.filter((candidate) => candidate !== invitation);
+          notify(String(invitation.household_id));
+        }),
+
+      updateProfile: (profile) =>
+        run(userId, 'update_profile', () => {
+          requireUser(userId);
+          const name = profile.name.trim();
+          if (!name || [...name].length > 80) throw reject('invalid_name');
+          if (!PROFILE_COLORS.some((color) => color.hex === profile.color)) {
+            throw reject('invalid_color');
+          }
+          if (!['vegan', 'vegetarian', 'flexible'].includes(profile.dietPreference)) {
+            throw reject('invalid_diet');
+          }
+          const keys = profile.dislikes.map((dislike) => dislike.toLowerCase());
+          const dislikesValid =
+            profile.dislikes.length <= 50 &&
+            new Set(keys).size === keys.length &&
+            profile.dislikes.every(
+              (dislike) =>
+                dislike === dislike.trim() && [...dislike].length >= 1 && [...dislike].length <= 40,
+            );
+          if (!dislikesValid) throw reject('invalid_dislikes');
+          const current = profiles.get(userId);
+          if (!current) throw new TransportError('permanent', 'not_authenticated', 401);
+          profiles.set(userId, {
+            ...current,
+            name,
+            color: profile.color,
+            diet_preference: profile.dietPreference,
+            dislikes: [...profile.dislikes],
+            updated_at: now(),
+          });
+          for (const householdId of householdsOf(userId)) notify(householdId);
+        }),
+
+      beginHouseholdDeletion: (householdId) =>
+        run(userId, 'begin_household_deletion', () => {
+          requireUser(userId);
+          if (!isMember(userId, householdId)) {
+            throw new TransportError('permanent', 'not_member', 403);
+          }
+          if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
+          // Closed for new members before the photos go (security check 22.11.2026).
+          invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
+          return [...media.keys()]
+            .filter((path) => mediaHousehold(userId, path) === householdId)
+            .sort();
+        }),
+
+      deleteHousehold: (householdId) =>
+        run(userId, 'delete_household', () => {
+          requireUser(userId);
+          if (!isMember(userId, householdId)) {
+            throw new TransportError('permanent', 'not_member', 403);
+          }
+          if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
+          if ([...media.keys()].some((path) => path.startsWith(`${householdId}/`))) {
+            throw reject('media_remaining');
+          }
+          // One transaction with the cascade: rows, members, invitations, tombstones.
+          households.delete(householdId);
+          members = members.filter((member) => member.household_id !== householdId);
+          invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
+          data.delete(householdId);
+          deletedRecords = deletedRecords.filter(
+            (tombstone) => tombstone.householdId !== householdId,
+          );
+          for (const [key, deletion] of deletions) {
+            if (deletion.householdId === householdId) deletions.delete(key);
+          }
           notify(householdId);
         }),
 
@@ -2640,21 +3556,23 @@ export function createFakeServer(): FakeServer {
       const before = data.get(householdId) ?? {};
       let after = before;
       for (const [table, list] of Object.entries(rows)) {
-        for (const row of list) {
-          const defaults =
-            table === 'shopping_items'
-              ? {
-                  checked: false,
-                  checked_at: null,
-                  checked_by: null,
-                  check_seq: 0,
-                  not_available: false,
-                }
-              : table === 'packing_items'
-                ? OPEN_PACKING_ITEM
-                : {};
-          after = withRow(after, table, { ...defaults, ...row });
-        }
+        const defaults =
+          table === 'shopping_items'
+            ? {
+                checked: false,
+                checked_at: null,
+                checked_by: null,
+                check_seq: 0,
+                not_available: false,
+              }
+            : table === 'packing_items'
+              ? OPEN_PACKING_ITEM
+              : {};
+        after = withRows(
+          after,
+          table,
+          list.map((row) => ({ ...defaults, ...row })),
+        );
       }
       commit(householdId, before, after);
     },
@@ -2686,7 +3604,7 @@ export function createFakeServer(): FakeServer {
     testPushes: () =>
       testDeliveries.map(({ subscriptionId, profileId }) => ({ subscriptionId, profileId })),
     purgeDeletionsBefore(before) {
-      deletions = deletions.filter(
+      deletedRecords = deletedRecords.filter(
         (deletion) => compareTimestamps(deletion.deletedAt, before) >= 0,
       );
     },

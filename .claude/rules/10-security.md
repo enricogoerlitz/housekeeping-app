@@ -30,7 +30,7 @@ Apply these while writing. `/security-check` verifies them against a diff. They 
   Anything that must persist belongs in the repo, or the next release overwrites it.
 - Never print secrets: tokens, keys, passwords, connection strings.
 - Never run `supabase migration repair` or reset a remote database (`db reset` with `--remote`,
-  `--linked` or `--db-url`) without a reason stated in the feature's `plan.md`. The preview
+  `--linked` or `--db-url`) without a reason stated in the feature's spec. The preview
   workflow's reset is the standing exception.
 
 ## Authorisation lives in the database

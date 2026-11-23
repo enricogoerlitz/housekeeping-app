@@ -96,6 +96,16 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'recipe-more-collection').click();
   await expect(tid(page, `add-to-collection-${seedIds['rec-grillabend']}`)).toBeVisible();
   await tid(page, 'add-to-collection-sheet-close').click();
+  // "Was brauchst du wirklich?" down to its rows: a row is one checkbox, its "− n× +" are buttons
+  // of their own beside it, so React reports no nested button (spec 0031, AC-066).
+  await tid(page, 'recipe-to-list').click();
+  await expect(tid(page, 'pantry-check-sheet')).toContainText('Was brauchst du wirklich?');
+  const mango = `pc-row-${seedIds['art-mango']}`;
+  await expect(tid(page, `${mango}-open`)).toHaveAttribute('role', 'checkbox');
+  const count = await tid(page, `${mango}-count`).innerText();
+  await tid(page, `${mango}-plus`).click();
+  await expect(tid(page, `${mango}-count`)).not.toHaveText(count);
+  await tid(page, 'pantry-check-sheet-close').click();
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await tid(page, 'cook-close').click();
@@ -122,19 +132,20 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'restaurant-title')).toHaveText('Pho Saigon');
   await back(page);
 
-  // Kalender → ▲ Aktivitäten: the page, one activity on its own page, the add sheet's tabs and
-  // its "Neu anlegen" forms (spec 0010, REQ-007, REQ-008).
-  await nav(page, 'kalender');
-  await tid(page, 'calendar-activities').click();
+  // Verwalten → Aktivitäten: the page, one activity, the add sheet's tabs and its "Neu anlegen"
+  // forms (spec 0010, REQ-007, REQ-008; spec 0024, REQ-009).
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await tid(page, `activity-${seedIds['act-eislaufen']}`).click();
   await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
   await tid(page, 'activity-plan').click();
-  await expect(tid(page, 'add-entry-activity-chosen')).toHaveText('Eislaufen');
-  await tid(page, 'add-entry-sheet-close').click();
+  await expect(tid(page, 'plan-recipe-title')).toHaveText('Eislaufen');
+  await tid(page, 'plan-recipe-sheet-close').click();
+  // On phones the activity is its own page; closing the window stays on it (spec 0024, REQ-009).
+  await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
   await back(page);
   await expect(tid(page, 'activities-screen')).toBeVisible();
-  await back(page);
+  await nav(page, 'kalender');
   await expect(tid(page, 'calendar-screen')).toBeVisible();
   await tid(page, `add-${TODAY}`).click();
   await tid(page, 'add-entry-tab-activities').click();
@@ -158,24 +169,24 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'restaurant-link')).toBeVisible();
   await tid(page, 'add-entry-sheet-close').click();
 
-  // Month and year, and the absence window with its month calendar (spec 0010, REQ-004,
+  // Month and year, and the trip window with its month calendar (spec 0010, REQ-004,
   // REQ-005, REQ-010).
   await tid(page, 'calendar-view-month').click();
   await expect(tid(page, 'month-phone')).toBeVisible();
   await tid(page, 'calendar-view-year').click();
   await expect(tid(page, 'year-view')).toBeVisible();
   await tid(page, 'calendar-more').click();
-  await tid(page, 'calendar-more-absence-new').click();
-  await expect(tid(page, 'absence-sheet')).toBeVisible();
-  await tid(page, 'absence-from').click();
+  await tid(page, 'calendar-more-trips-new').click();
+  await expect(tid(page, 'trip-sheet')).toBeVisible();
+  await tid(page, 'trip-from').click();
   await expect(tid(page, 'range-picker')).toBeVisible();
   // Its Reisetaschen (spec 0012, AC-011, AC-012): a chosen bag counts into the button.
-  await expect(tid(page, 'absence-save')).toHaveText('Speichern');
-  await tid(page, `absence-bag-${seedIds['bag-strand']}`).click();
-  await expect(tid(page, 'absence-save')).toHaveText('Speichern · 12 Packstücke');
-  await tid(page, 'absence-bag-new').click();
-  await expect(tid(page, 'absence-bag-new-name')).toBeVisible();
-  await tid(page, 'absence-sheet-close').click();
+  await expect(tid(page, 'trip-save')).toHaveText('Speichern');
+  await tid(page, `trip-bag-${seedIds['bag-strand']}`).click();
+  await expect(tid(page, 'trip-save')).toHaveText('Speichern · 12 Packstücke');
+  await tid(page, 'trip-bag-new').click();
+  await expect(tid(page, 'trip-bag-new-name')).toBeVisible();
+  await tid(page, 'trip-sheet-close').click();
   await tid(page, 'calendar-view-week').click();
 
   // The calendar's pantry check, the list and store mode, the household.
@@ -191,7 +202,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await tid(page, 'chores-tab-history').click();
   await tid(page, 'chores-tab-all').click();
 
-  // Settings, and every page under "Verwalten" (spec 0005): stores and one store, absences,
+  // Settings, and every page under "Verwalten" (spec 0005): stores and one store, trips,
   // household and members, feedback. The AI is switched off, so there is no assistant to open.
   await nav(page, 'index');
   await openSettings(page);
@@ -254,7 +265,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await back(page);
   await leaveManaged(page);
   for (const [key, screen] of [
-    ['absences', 'absences-screen'],
+    ['trips', 'trips-screen'],
     ['members', 'members-screen'],
     ['feedback', 'feedback'],
   ] as const) {
@@ -263,16 +274,16 @@ test('dev smoke: every screen renders without a React warning or error', async (
     await leaveManaged(page);
   }
 
-  // The Urlaubsseite of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007): head and progress, a
-  // Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the windows behind
-  // "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens from its row in
-  // "Abwesenheiten" (task 10); "‹ Abwesenheiten" leads back there (task 12). "Abbrechen" in the
-  // reset dialog leaves every Haken as it was (AC-029).
+  // The trip window of "Urlaub Mallorca" (spec 0012, REQ-003 to REQ-007; spec 0022): head and
+  // progress, a Packstück packed through the check window into "Gepackt (n)", ⋯ of a bag, the
+  // windows behind "+ Packstück" and "+ Reisetasche hinzufügen", and the reset dialog. It opens
+  // from its row in "Reisen" and ✕ closes it there. "Abbrechen" in the reset dialog leaves every
+  // Haken as it was (AC-029).
   const strand = `trip-bag-${nestedSeedId('pack-mallorca-1')}`;
   const sunHat = `trip-item-${nestedSeedId('pack-mallorca-7')}`;
-  await openManaged(page, 'absences');
-  await tid(page, `absence-${seedIds['abs-mallorca']}`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
+  await openManaged(page, 'trips');
+  await tid(page, `trip-${seedIds['trip-mallorca']}`).click();
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
   await tid(page, `${sunHat}-check`).click();
   await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
@@ -280,11 +291,14 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, `${strand}-packed-body`)).toContainText('Sonnenhut');
   await tid(page, `${strand}-more`).click();
   await expect(tid(page, `${strand}-more-pack-all`)).toBeVisible();
+  // Escape closes only the menu, not the window below it.
   await page.keyboard.press('Escape');
+  await expect(tid(page, `${strand}-more-pack-all`)).toBeHidden();
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
   await tid(page, `${strand}-add`).click();
   await expect(tid(page, 'trip-add-item-also')).toBeVisible();
   await tid(page, 'trip-add-item-sheet-close').click();
-  await tid(page, `trip-add-bag-open-${seedIds['abs-mallorca']}`).click();
+  await tid(page, `trip-add-bag-open-${seedIds['trip-mallorca']}`).click();
   await expect(tid(page, 'trip-add-bag-list')).toBeVisible();
   await tid(page, 'trip-add-bag-sheet-close').click();
   await tid(page, 'trip-more').click();
@@ -294,24 +308,26 @@ test('dev smoke: every screen renders without a React warning or error', async (
   await expect(tid(page, 'trip-reset-dialog')).toHaveCount(0);
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 7 von 21 gepackt');
   await expect(tid(page, `${strand}-packed-toggle`)).toContainText('Gepackt (5)');
-  await back(page);
-  await expect(tid(page, 'absences-screen')).toBeVisible();
+  // Since spec 0022 the trip is a window over "Reisen"; ✕ closes it there.
+  await tid(page, 'trip-window-close').click();
+  await expect(tid(page, 'trips-screen')).toBeVisible();
   await leaveManaged(page);
   await nav(page, 'kalender');
   await expect(tid(page, 'calendar-screen')).toBeVisible();
   await nav(page, 'index');
 
   // The card "Reisetasche" on the Übersicht (spec 0012, AC-042, AC-044): "Urlaub Mallorca"
-  // starts in 12 days, so only a week later the card stands below "Einkauf", counted from the
-  // shown day; a tap opens the Urlaubsseite, and "‹ Übersicht" leads back (task 12).
-  const mallorcaCard = `today-packing-${seedIds['abs-mallorca']}`;
+  // starts in 12 days, so only a week later the card stands below "Einkauf"; it still counts
+  // from today (spec 0018, AC-020); a tap opens the trip window, and ✕ closes it on the
+  // Übersicht.
+  const mallorcaCard = `today-packing-${seedIds['trip-mallorca']}`;
   await expect(tid(page, mallorcaCard)).toHaveCount(0);
   await tid(page, 'today-week-next').click();
   await expect(tid(page, `${mallorcaCard}-progress`)).toHaveText('7/21 gepackt');
-  await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 5 Tagen');
+  await expect(tid(page, `${mallorcaCard}-starts`)).toHaveText('beginnt in 12 Tagen');
   await tid(page, `${mallorcaCard}-open`).click();
-  await expect(tid(page, 'trip-title')).toHaveText('Urlaub Mallorca');
-  await back(page);
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
+  await tid(page, 'trip-window-close').click();
   await expect(tid(page, 'today-screen')).toBeVisible();
   await tid(page, 'today-week-today').click();
 
@@ -321,8 +337,7 @@ test('dev smoke: every screen renders without a React warning or error', async (
   for (const key of ['rezepte', 'kalender', 'liste', 'haushalt', 'index'] as const) {
     await nav(page, key);
   }
-  await nav(page, 'kalender');
-  await tid(page, 'calendar-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-empty')).toBeVisible();
 
   // Signing out: no screen stays behind that still reads the household, which exists only while

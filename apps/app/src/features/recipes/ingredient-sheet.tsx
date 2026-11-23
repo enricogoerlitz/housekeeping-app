@@ -1,8 +1,11 @@
 import { useArticles } from '@housekeeping/api';
 import {
   addIngredientRows,
+  amountScalingHint,
   chooseRowArticle,
   defaultShoppingRuleFor,
+  groupProblem,
+  groupSuggestions,
   newIngredientRow,
   parseAmount,
   RECIPE_LIMITS,
@@ -17,9 +20,11 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
+  Chip,
   ChoiceChips,
   List,
   ListRow,
+  Row,
   SearchOrCreate,
   Sheet,
   Stack,
@@ -27,8 +32,8 @@ import {
   TextField,
   type ChoiceOption,
 } from '@housekeeping/ui';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useRef, useState, type ComponentRef } from 'react';
+import { View, type TextInput } from 'react-native';
 
 import { STARTER_DETAIL, useArticleSearch } from './article-search';
 import { newRowKey } from './sections/ingredient-handover';
@@ -42,6 +47,8 @@ const BASE = 'base';
 const CHOOSE_ARTICLE = 'Artikel wählen';
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
 const length = (text: string) => Array.from(collapse(text)).length;
+
+type InputRef = ComponentRef<typeof TextInput>;
 
 /** The article a row shows in the window: its household article as a hit, or what it chose. */
 function chosenOf(row: IngredientRow | undefined, articles: readonly Article[]) {
@@ -64,22 +71,28 @@ function chosenOf(row: IngredientRow | undefined, articles: readonly Article[]) 
 }
 
 /**
- * "+ Zutat" and ⋯ → "Bearbeiten" in the open section "Zutaten" (spec 0008, E9): Menge, the article
- * per "Suchen oder anlegen" over the household and the starter catalog, the Einkaufsregel
+ * "Neue Zutat" and "Zutat bearbeiten" (spec 0008, E9; spec 0023, REQ-001, REQ-002): the article
+ * first per "Suchen oder anlegen" over the household and the starter catalog (focused on opening),
+ * then "Menge" (the focus moves there after the choice, Enter takes it), the Einkaufsregel
  * preselected from the article (spec 0007, AC-005), Zusatz for the list, Hinweis for cooking,
- * Variante and Gruppe. "Übernehmen" only changes the draft; a new or starter article is created
- * with "Fertig" in the same change. Without an article a new row is not taken (spec 0007, AC-004).
+ * Variante and Gruppe with the recipe's groups as suggestions. "Übernehmen" hands the changed
+ * draft to the caller: the open section keeps it until "Fertig", the read view saves at once.
+ * Without an article nothing is taken (AC-003).
  */
 export function IngredientSheet(props: {
   draft: IngredientsDraft;
   /** The row to edit; undefined = "+ Zutat". */
   rowKey?: string;
-  onApply: (draft: IngredientsDraft) => void;
+  /** Under "Menge" when editing from the read view: "für 4 Portionen" (AC-005). */
+  servingsNote?: string;
+  onApply: (draft: IngredientsDraft, rowKey: string) => void;
   onClose: () => void;
 }) {
   const { draft } = props;
   const articles = useArticles();
   const row = draft.rows.find((candidate) => candidate.key === props.rowKey);
+  const amountInput = useRef<InputRef>(null);
+  const articleInput = useRef<InputRef>(null);
 
   const [amountText, setAmountText] = useState(row?.amountText ?? '');
   const [initialChosen] = useState(() => chosenOf(row, articles));
@@ -110,11 +123,21 @@ export function IngredientSheet(props: {
     length(prepNote) > RECIPE_LIMITS.prepNote
       ? `Höchstens ${RECIPE_LIMITS.prepNote} Zeichen`
       : undefined;
+  const groupError = groupProblem(group);
+  const groups = groupSuggestions(draft.rows).filter(
+    (suggestion) => suggestion.toLocaleLowerCase('de') !== group.trim().toLocaleLowerCase('de'),
+  );
+  const amountHint = [props.servingsNote, amountScalingHint(amountText)]
+    .filter(Boolean)
+    .join(' · ');
 
   const choose = (article: DraftArticle) => {
     setChosen(article);
     setQuery('');
     setArticleError(undefined);
+    // AC-001: after the article the amount, at once: a frame later it would take the focus from a
+    // field tapped in between.
+    amountInput.current?.focus();
   };
   const createNew = () => {
     const [problem] = validateArticleDraft({ name, synonyms: [] }, articles);
@@ -124,10 +147,12 @@ export function IngredientSheet(props: {
 
   const apply = () => {
     if (!chosen) {
+      // AC-003: the window stays, the amount too; the focus goes to the article.
       setArticleError(CHOOSE_ARTICLE);
+      articleInput.current?.focus();
       return;
     }
-    if (prepError) return;
+    if (prepError || groupError) return;
     const key = row?.key ?? newRowKey();
     let next = row ? draft : addIngredientRows(draft, [newIngredientRow(key)]);
     next = updateIngredientRow(next, key, {
@@ -139,7 +164,7 @@ export function IngredientSheet(props: {
     });
     if (chosen !== initialChosen) next = chooseRowArticle(next, key, chosen);
     if (ruleChosen && rule) next = setRowShoppingRule(next, key, rule);
-    props.onApply(next);
+    props.onApply(next, key);
   };
 
   const chosenName =
@@ -159,27 +184,17 @@ export function IngredientSheet(props: {
       title={row ? 'Zutat bearbeiten' : 'Neue Zutat'}
       onClose={props.onClose}
       testID="ingredient-sheet"
-      footer={
-        <Button
-          label="Übernehmen"
-          icon="check"
-          full
-          disabled={!!prepError}
-          onPress={apply}
-          testID="ingredient-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          disabled: !!prepError || !!groupError,
+          onPress: apply,
+          testID: 'ingredient-save',
+        },
+      }}
     >
       <Stack gap={18}>
-        <TextField
-          label="Menge"
-          placeholder="z. B. 400 ml"
-          value={amountText}
-          onChangeText={setAmountText}
-          autoFocus={!row}
-          testID="ingredient-amount"
-        />
-
         <View testID="ingredient-article">
           <Text variant="smallStrong" style={{ marginBottom: 6 }}>
             Artikel
@@ -197,6 +212,7 @@ export function IngredientSheet(props: {
                     onPress={() => {
                       setQuery(chosenName);
                       setChosen(undefined);
+                      requestAnimationFrame(() => articleInput.current?.focus());
                     }}
                     testID="ingredient-article-change"
                   />
@@ -214,7 +230,9 @@ export function IngredientSheet(props: {
               label="Artikel"
               placeholder="Artikel suchen oder anlegen"
               clearLabel="Suche leeren"
-              autoFocus={!!row}
+              autoFocus
+              enterSelects
+              inputRef={articleInput}
               hits={search.hits}
               onSelect={(key) => {
                 const hit = search.hitFor(key);
@@ -251,6 +269,18 @@ export function IngredientSheet(props: {
             </Text>
           ) : null}
         </View>
+
+        <TextField
+          label="Menge"
+          placeholder="freiwillig, z. B. 400 ml"
+          hint={amountHint || undefined}
+          value={amountText}
+          onChangeText={setAmountText}
+          inputRef={amountInput}
+          returnKeyType="done"
+          onSubmitEditing={apply}
+          testID="ingredient-amount"
+        />
 
         <View testID="ingredient-rule-field">
           <Text variant="smallStrong" style={{ marginBottom: 6 }}>
@@ -316,13 +346,30 @@ export function IngredientSheet(props: {
             />
           </View>
         ) : null}
-        <TextField
-          label="Gruppe"
-          placeholder="z. B. Für die Soße"
-          value={group}
-          onChangeText={setGroup}
-          testID="ingredient-group"
-        />
+        <Stack gap={8}>
+          <TextField
+            label="Gruppe"
+            placeholder="z. B. Für die Soße"
+            error={groupError}
+            value={group}
+            onChangeText={setGroup}
+            testID="ingredient-group"
+          />
+          {groups.length > 0 ? (
+            <View testID="ingredient-group-suggestions">
+              <Row gap={8} wrap>
+                {groups.map((suggestion) => (
+                  <Chip
+                    key={suggestion}
+                    label={suggestion}
+                    onPress={() => setGroup(suggestion)}
+                    testID={`ingredient-group-${suggestion}`}
+                  />
+                ))}
+              </Row>
+            </View>
+          ) : null}
+        </Stack>
       </Stack>
     </Sheet>
   );

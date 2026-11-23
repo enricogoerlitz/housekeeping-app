@@ -1,10 +1,16 @@
-import { createRestaurant } from '@housekeeping/api';
-import type { Id } from '@housekeeping/core';
-import { Button, Sheet, Stack, Text, toast } from '@housekeeping/ui';
+import { createRestaurant, updateRestaurant } from '@housekeeping/api';
+import type { Id, Restaurant } from '@housekeeping/core';
+import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { RestaurantFormFields, useRestaurantForm } from './restaurant-form';
+import {
+  RestaurantFormFields,
+  saveRestaurantPhoto,
+  useRestaurantForm,
+  type RestaurantForm,
+  type RestaurantFormFocus,
+} from './restaurant-form';
 
 export interface AddRestaurantSheetProps {
   onClose: () => void;
@@ -36,6 +42,7 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
       const id = createRestaurant(draft);
       props.onClose();
       props.onCreated(id);
+      saveRestaurantPhoto(id, form.photo);
       toast.show({ message: 'Restaurant gespeichert' });
     } catch (caught) {
       form.fail(caught);
@@ -43,25 +50,100 @@ export function AddRestaurantSheet(props: AddRestaurantSheetProps) {
   };
 
   return (
+    <RestaurantFormSheet
+      title="Restaurant hinzufügen"
+      form={form}
+      focus={props.focus}
+      onSave={() => void save()}
+      onClose={props.onClose}
+      onOpenExisting={props.onOpenExisting}
+    />
+  );
+}
+
+/**
+ * "Restaurant bearbeiten" (spec 0024, REQ-001): the form of "Restaurant hinzufügen", prefilled.
+ * "Speichern" sends every field (a cleared one is cleared, an emptied map link takes the
+ * coordinates with it) → "Restaurant gespeichert"; ✕ discards. "Notiz bearbeiten" opens it with
+ * the keyboard in "Notiz" (REQ-002).
+ */
+export function EditRestaurantSheet(props: {
+  restaurant: Restaurant;
+  focus?: RestaurantFormFocus;
+  onClose: () => void;
+  onOpenExisting: (restaurantId: Id) => void;
+}) {
+  const online = useOnlineOnly();
+  const form = useRestaurantForm(undefined, undefined, props.restaurant);
+  const { restaurant } = props;
+
+  const save = async () => {
+    if (online.disabled) return;
+    const draft = await form.submit();
+    if (!draft) return;
+    try {
+      updateRestaurant(restaurant.id, {
+        name: draft.name,
+        address: draft.address,
+        location: draft.location,
+        mapsUrl: draft.mapsUrl,
+        cuisine: draft.cuisine,
+        priceLevel: draft.priceLevel,
+        tags: draft.tags,
+        websiteUrl: draft.websiteUrl,
+        notes: draft.notes,
+      });
+    } catch (caught) {
+      form.fail(caught);
+      return;
+    }
+    props.onClose();
+    saveRestaurantPhoto(restaurant.id, form.photo);
+    toast.show({ message: 'Restaurant gespeichert' });
+  };
+
+  return (
+    <RestaurantFormSheet
+      title="Restaurant bearbeiten"
+      form={form}
+      focus={props.focus}
+      onSave={() => void save()}
+      onClose={props.onClose}
+      onOpenExisting={props.onOpenExisting}
+      testID="restaurant-edit-sheet"
+    />
+  );
+}
+
+function RestaurantFormSheet(props: {
+  title: string;
+  form: RestaurantForm;
+  focus?: RestaurantFormFocus;
+  onSave: () => void;
+  onClose: () => void;
+  onOpenExisting: (restaurantId: Id) => void;
+  testID?: string;
+}) {
+  const online = useOnlineOnly();
+  const { form } = props;
+  return (
     <Sheet
       visible
       onClose={props.onClose}
-      title="Restaurant hinzufügen"
-      testID="restaurant-sheet"
+      title={props.title}
+      testID={props.testID ?? 'restaurant-sheet'}
       size="m"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={online.disabled || !!form.duplicate || form.saving}
-          hint={
-            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined)
-          }
-          onPress={() => void save()}
-          testID="restaurant-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          disabled: online.disabled || !!form.duplicate || form.saving,
+          hint:
+            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined),
+          onPress: props.onSave,
+          testID: 'restaurant-save',
+        },
+      }}
     >
       <Stack gap={16}>
         {online.hint ? (

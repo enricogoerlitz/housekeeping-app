@@ -133,9 +133,11 @@ test('AC-021 (0001) / AC-003 (0008) / AC-060 (0006): "Neu" → "Rezept" creates 
   const before = Number((await count.innerText()).match(/\d+/)?.[0]);
 
   await tid(page, 'recipe-new').click();
-  for (const option of ['recipe', 'collection', 'restaurant', 'starter']) {
+  // Spec 0023, AC-045: exactly "Rezept", "Sammlung", "Restaurant".
+  for (const option of ['recipe', 'collection', 'restaurant']) {
     await expect(tid(page, `recipe-new-${option}`), option).toBeVisible();
   }
+  await expect(tid(page, 'recipe-new-starter')).toHaveCount(0);
   await tid(page, 'recipe-new-recipe').click();
   await expect(tid(page, 'new-recipe-kind-recipe')).toHaveAttribute('aria-checked', 'true');
   await tid(page, 'new-recipe-title').fill('Linsen-Dal');
@@ -254,6 +256,30 @@ test('AC-023 (0001): cooking mode steps through; "Ist alle" puts Kreuzkümmel on
   await back(page);
   await nav(page, 'liste');
   await expect(itemRows(page, 'Kreuzkümmel')).toHaveCount(1);
+});
+
+test('AC-004 / AC-006 (0018): the cooking mode cooks the 6 portions and the variant chosen on the recipe page', async ({
+  page,
+}) => {
+  await open(page, `/rezept/${MANGO}`);
+  await expect(tid(page, 'servings-value')).toHaveText('4');
+  await tid(page, 'servings-plus').click();
+  await tid(page, 'servings-plus').click();
+  await expect(tid(page, 'servings-value')).toHaveText('6');
+  await expect(tid(page, `ingredient-amount-${nested('mango-curry-i1')}`)).toHaveText('600 ml');
+  await tid(page, `variant-${nested('mango-curry-v2')}`).click();
+
+  await tid(page, 'start-cooking').click();
+  await expect(tid(page, 'cooking-screen')).toBeVisible();
+  await expect(tid(page, 'cook-subtitle')).toHaveText('Kochmodus · mit Hähnchen · 6 Portionen');
+  // Spec 0023, AC-037: on the phone the ingredients stand open under the step.
+  await expect(tid(page, 'cook-ingredients-toggle')).toHaveAttribute('aria-expanded', 'true');
+  const ingredients = tid(page, 'cook-ingredients');
+  await expect(tid(page, `cook-ingredient-${nested('mango-curry-i1')}`)).toContainText('600 ml');
+  await expect(ingredients).toContainText('600 g');
+  await expect(ingredients).toContainText('Hähnchenbrust');
+  await expect(ingredients).not.toContainText('Räuchertofu');
+  await tid(page, 'cook-close').click();
 });
 
 test('AC-020 / AC-028 (0008): the phone recipe page has its buttons under the head, no fields, one section at a time', async ({

@@ -16,7 +16,6 @@ import {
   copyName,
   packingNameSuggestions,
   parsePackingLine,
-  routeId,
   type Id,
 } from '@housekeeping/core';
 import {
@@ -35,12 +34,15 @@ import {
   TextField,
   toast,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { useAddressedId } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
+import { BagDeviationHints } from './bag-trips';
 import { BagItemSheet, BagNameSheet } from './packing-bag-sheets';
 import {
   BAG_ITEM_ORDER_LABELS,
@@ -55,7 +57,7 @@ type BagAction = 'duplicate' | 'delete';
  * ✎ "Umbenennen" and ⋯ "Duplizieren" (AC-008) / "Löschen" with 5 s "Rückgängig" (AC-009) of a
  * Reisetasche. In the page header on phones, next to the bag's name on wide screens.
  */
-export function BagActions(props: {
+function BagActions(props: {
   bagId: Id;
   /** Shows another bag: the copy, or the one that already has the typed name. */
   onOpen: (bagId: Id) => void;
@@ -278,6 +280,7 @@ export function PackingBagPanel(props: {
           {error ?? online.hint}
         </Text>
       ) : null}
+      <BagDeviationHints bagId={bag.id} />
 
       <Section title="Für">
         <ChoiceChips<string>
@@ -327,17 +330,22 @@ export function PackingBagPanel(props: {
 
 /** A Reisetasche as a page of its own (phones; or opened directly by its address). */
 export function PackingBagScreen() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const { params } = usePageParams('reisetasche');
   const bags = usePackingBags();
   const router = useRouter();
-  // Always to the bags, also when the bag was opened directly (spec 0005, AC-004).
-  const back = () => router.dismissTo('/reisetaschen');
+  // To the bags, also when the bag was opened directly (spec 0005, AC-004); with `von` to that
+  // section (spec 0019, REQ-006).
+  const origin = useOriginBack(params.von, 'verwalten', {
+    label: 'Reisetaschen',
+    href: '/reisetaschen',
+  });
+  const back = origin.back;
   const open = (bagId: Id) =>
     router.replace({ pathname: '/reisetasche/[id]', params: { id: bagId } });
 
-  // Only a uuid reaches the lookup; anything else shows "gibt es nicht mehr".
-  const id = routeId(params.id);
-  const bag = bags.find((candidate) => candidate.id === id);
+  // Only a uuid of an own household reaches the lookup; anything else shows "gibt es nicht mehr".
+  const found = useAddressedId('packingBags', params.id);
+  const bag = found === 'shown' ? bags.find((candidate) => candidate.id === params.id) : undefined;
   return (
     <Screen
       testID="bag-screen"
@@ -345,7 +353,7 @@ export function PackingBagScreen() {
       header={
         <ScreenHeader
           title={bag?.name ?? 'Reisetasche'}
-          backLabel="Reisetaschen"
+          backLabel={origin.label}
           onBack={back}
           right={bag ? <BagActions bagId={bag.id} onOpen={open} onDeleted={back} /> : undefined}
           testID="bag-screen-title"

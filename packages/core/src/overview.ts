@@ -1,28 +1,18 @@
-import { z } from 'zod';
-
-import { absenceEndLabel, absenceStripes, stripesOn } from './absences';
+import { stripesOn, tripEndLabel, tripStripes } from './trips';
+import { dayKinds, entryKindRole, monthName, type KindRole } from './calendar';
+import { dueChores, householdAwayNotice } from './chore-schedule';
 import {
-  dayKinds,
-  entryKindRole,
-  monthName,
-  overflow,
-  weekRangeLabel,
-  type KindRole,
-} from './calendar';
-import { choreBucket, flexibleProgress } from './chores';
-import { addDays, isoWeekNumber, parseISODate, startOfWeek, weekdayLong } from './dates';
+  addDays,
+  daysBetween,
+  formatLongDate,
+  formatShortDate,
+  parseISODate,
+  weekdayLong,
+  weekdayShort,
+} from './dates';
 import { householdRow, type HouseholdRowItem } from './household-row';
 import { entriesForDay } from './meal-plan';
-import type {
-  Absence,
-  Chore,
-  ChoreEvent,
-  Id,
-  ISODate,
-  MealPlanEntry,
-  Member,
-  Recipe,
-} from './types';
+import type { Chore, ChoreEvent, Id, ISODate, MealPlanEntry, Member, Recipe, Trip } from './types';
 
 // The "Übersicht" (spec 0011, REQ-001, REQ-002): one shown day, as if it were today, and the
 // week around it. Nothing here is stored; the shown day lives only while the app runs.
@@ -46,22 +36,65 @@ export function overviewTitle(shown: ISODate, today: ISODate): string {
   return `${weekday}, ${dayWithMonth(shown, today)}`;
 }
 
-/** ‹ › go a whole week back or on and keep the weekday (Offene Frage 2 a, AC-003). */
-export function shiftShownDay(shown: ISODate, weeks: number): ISODate {
-  return addDays(shown, 7 * weeks);
+// ---------- Seven days from yesterday (spec 0020, REQ-001, REQ-002) ----------
+
+/** Days of a section of the Tagesleiste and how far ‹ › go. */
+export const OVERVIEW_DAYS = 7;
+
+export interface OverviewSection {
+  from: ISODate;
+  to: ISODate;
+  /** The seven days in order. */
+  dates: ISODate[];
 }
 
 /**
- * What stands between ‹ and ›: "Diese Woche · KW 47" in the week of today, otherwise the
- * week's range ("KW 49 · 30. Nov – 6. Dez", for the screen reader). The button "Heute" takes
- * the middle as soon as any other day is shown (AC-002, AC-062).
+ * The Abschnitt of the shown day (AC-001, AC-005, AC-006): the sections are laid from yesterday
+ * on in steps of seven days, so today's section runs from yesterday to today + 5 and every other
+ * one keeps that rhythm.
  */
-export function weekNav(shown: ISODate, today: ISODate): { label: string; showToday: boolean } {
-  const label =
-    startOfWeek(shown) === startOfWeek(today)
-      ? `Diese Woche · KW ${isoWeekNumber(shown)}`
-      : weekRangeLabel(shown);
-  return { label, showToday: shown !== today };
+export function overviewSection(shown: ISODate, today: ISODate): OverviewSection {
+  const anchor = addDays(today, -1);
+  const steps = Math.floor(daysBetween(anchor, shown) / OVERVIEW_DAYS);
+  const from = addDays(anchor, steps * OVERVIEW_DAYS);
+  const dates = Array.from({ length: OVERVIEW_DAYS }, (_, index) => addDays(from, index));
+  return { from, to: addDays(from, OVERVIEW_DAYS - 1), dates };
+}
+
+/** ‹ › move section and shown day by seven days (AC-002, AC-003). */
+export function shiftOverview(shown: ISODate, steps: number): ISODate {
+  return addDays(shown, OVERVIEW_DAYS * steps);
+}
+
+function isInTodaysSection(shown: ISODate, today: ISODate): boolean {
+  return overviewSection(shown, today).from === overviewSection(today, today).from;
+}
+
+/**
+ * What stands between ‹ and › (AC-007, AC-011): "Sa 21.11. – Fr 27.11." without week number and
+ * year, read out as "Samstag, 21. November, bis Freitag, 27. November". "Heute" can be tapped only
+ * outside today's section (Entscheidung 1).
+ */
+export function overviewNav(
+  shown: ISODate,
+  today: ISODate,
+): { label: string; a11yLabel: string; todayActive: boolean } {
+  const { from, to } = overviewSection(shown, today);
+  return {
+    label: `${weekdayShort(from)} ${formatShortDate(from)} – ${weekdayShort(to)} ${formatShortDate(to)}`,
+    a11yLabel: `${formatLongDate(from)}, bis ${formatLongDate(to)}`,
+    todayActive: !isInTodaysSection(shown, today),
+  };
+}
+
+/**
+ * The one line under the title (AC-007, AC-008, Entscheidung 2): the greeting in today's section,
+ * whichever day of it is chosen; outside "In 7 Tagen" / "Vor 8 Tagen".
+ */
+export function overviewSubline(shown: ISODate, today: ISODate, greeting: string): string {
+  if (isInTodaysSection(shown, today)) return greeting;
+  const days = daysBetween(today, shown);
+  return days > 0 ? `In ${days} Tagen` : `Vor ${-days} Tagen`;
 }
 
 /**
@@ -96,14 +129,54 @@ export function dayDots(
   );
 }
 
-/** A desktop tile: the first entry of the day in the day's order and how many more (AC-006). */
-export function dayTile(
+/**
+ * Rank of an entry in a tile (REQ-003, Entscheidung 4): first the meals proper (collection,
+ * recipe, restaurant), then leftovers and free text, then activities; lower is more important.
+ */
+function tileGroup(
+  entry: MealPlanEntry,
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): { group: number; inGroup: number } {
+  switch (entry.kind) {
+    case 'recipe':
+      return { group: 0, inGroup: entryKindRole(entry, recipesById) === 'collection' ? 0 : 1 };
+    case 'restaurant':
+      return { group: 0, inGroup: 2 };
+    case 'leftovers':
+      return { group: 1, inGroup: 0 };
+    case 'text':
+      return { group: 1, inGroup: 1 };
+    case 'activity':
+      return { group: 2, inGroup: 0 };
+  }
+}
+
+/**
+ * The desktop tile (REQ-003, AC-012–AC-016): the most important entry of the day and how many
+ * others it has. Within a group the later Tageszeit wins, then the kind, then the calendar order
+ * of the Tageszeit. Chores, trips and reserved entries are no plan entries of the day.
+ */
+export function tileEntry(
   entries: MealPlanEntry[],
   date: ISODate,
   slotOrder: Id[],
-): { first: MealPlanEntry | undefined; more: number } {
-  const { shown, more } = overflow(entriesForDay(entries, date, slotOrder), 1);
-  return { first: shown[0], more };
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+): { entry: MealPlanEntry | undefined; more: number } {
+  const ofDay = entriesForDay(entries, date, slotOrder);
+  // Calendar order of the day, so equal ranks keep it.
+  const position = new Map(ofDay.map((entry, index) => [entry.id, index]));
+  const slotRank = (entry: MealPlanEntry) => slotOrder.indexOf(entry.slotId);
+  const ranked = [...ofDay].sort((a, b) => {
+    const ra = tileGroup(a, recipesById);
+    const rb = tileGroup(b, recipesById);
+    return (
+      ra.group - rb.group ||
+      slotRank(b) - slotRank(a) ||
+      ra.inGroup - rb.inGroup ||
+      (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0)
+    );
+  });
+  return { entry: ranked[0], more: Math.max(0, ofDay.length - 1) };
 }
 
 /** From this many entries the planned section links "Alle n ›" into the calendar (AC-011). */
@@ -114,7 +187,7 @@ export function plannedAllLabel(count: number): string | undefined {
   return count >= PLANNED_ALL_FROM ? `Alle ${count} ›` : undefined;
 }
 
-export interface AbsenceLine {
+export interface TripLine {
   key: string;
   /** The people of the line; empty for the whole household. */
   memberIds: Id[];
@@ -127,53 +200,27 @@ function joinNames(names: string[]): string {
 }
 
 /**
- * The quiet lines about absences on the shown day (AC-007, Offene Frage 2 e): "Nadja · Urlaub
- * Mallorca · bis Do 26.11.", without a note "Nadja ist abwesend bis Do 26.11."; several people
- * "Enrico und Vera sind abwesend …", the whole household "Alle …". One line per stripe.
+ * The quiet lines about trips on the shown day (AC-007, Offene Frage 2 e): "Nadja · Urlaub
+ * Mallorca · bis Do 26.11.", without a note "Nadja ist unterwegs bis Do 26.11."; several people
+ * "Enrico und Vera sind unterwegs …", the whole household "Alle …". One line per stripe.
  */
-export function absenceLines(input: {
-  absences: Absence[];
-  members: Member[];
-  date: ISODate;
-}): AbsenceLine[] {
+export function tripLines(input: { trips: Trip[]; members: Member[]; date: ISODate }): TripLine[] {
   const { members, date } = input;
-  return stripesOn(absenceStripes(input.absences, members), date).map((stripe) => {
+  // A draft has no effect, so nobody is "unterwegs" yet (spec 0030, AC-013).
+  const confirmed = tripStripes(input.trips, members).filter((stripe) => !stripe.draft);
+  return stripesOn(confirmed, date).map((stripe) => {
     const names = stripe.household
       ? ['Alle']
       : stripe.memberIds.map((id) => members.find((member) => member.id === id)?.name ?? '');
     const who = joinNames(names.filter((name) => name !== ''));
-    const end = absenceEndLabel(stripe.to);
+    const end = tripEndLabel(stripe.to);
     const plural = stripe.household || stripe.memberIds.length > 1;
     const text =
       stripe.note !== undefined
         ? `${who} · ${stripe.note} · ${end}`
-        : `${who} ${plural ? 'sind' : 'ist'} abwesend ${end}`;
-    return { key: stripe.key, memberIds: stripe.memberIds, text };
+        : `${who} ${plural ? 'sind' : 'ist'} unterwegs ${end}`;
+    return { key: stripe.key, memberIds: stripe.household ? [] : stripe.memberIds, text };
   });
-}
-
-/** Flexible chores show up under "Zu tun" once this share of their interval has passed. */
-export const FLEXIBLE_DUE_FROM = 0.8;
-
-/**
- * "Zu tun" today (unchanged from spec 0001): overdue chores first, then due today, then flexible
- * ones that are nearly due. "bei Bedarf" never shows up.
- */
-export function dueChores(chores: Chore[], today: ISODate): Chore[] {
-  const rank = (chore: Chore): number | undefined => {
-    const bucket = choreBucket(chore, today);
-    if (bucket === 'overdue') return 0;
-    if (bucket === 'today') return 1;
-    if (bucket === 'flexible' && flexibleProgress(chore, today) >= FLEXIBLE_DUE_FROM) return 2;
-    return undefined;
-  };
-  return chores
-    .flatMap((chore) => {
-      const order = rank(chore);
-      return order === undefined ? [] : [{ chore, order }];
-    })
-    .sort((a, b) => a.order - b.order)
-    .map((entry) => entry.chore);
 }
 
 export type ChoresOfDay =
@@ -182,34 +229,34 @@ export type ChoresOfDay =
   /** A later day: the dates computed from each rhythm, only to look at. */
   | { kind: 'planned'; items: HouseholdRowItem[] }
   /** A past day: what was done, only to look at. */
-  | { kind: 'done'; items: HouseholdRowItem[] };
+  | { kind: 'done'; items: HouseholdRowItem[] }
+  /**
+   * Today or a later day the whole household is away (REQ-013): instead of the list "Ihr seid
+   * unterwegs – Aufgaben warten bis Fr 11.12.".
+   */
+  | { kind: 'away'; notice: string; items: HouseholdRowItem[] };
 
 /**
  * The chores of the shown day (AC-032): today what is due, later days the planned dates and past
  * days what was done, both from the household row (spec 0010). "bei Bedarf" never shows.
- * For today `items` is empty; the rows come from `chores`.
+ * For today `items` is empty; the rows come from `chores`. Days of a trip of the whole household
+ * from today on show the notice instead (spec 0026, AC-049, AC-050).
  */
 export function choresOfDay(input: {
   chores: Chore[];
   events: ChoreEvent[];
   members: Member[];
+  trips: Trip[];
   shown: ISODate;
   today: ISODate;
 }): ChoresOfDay {
   const { shown, today } = input;
-  if (shown === today) return { kind: 'due', chores: dueChores(input.chores, today), items: [] };
+  const away = { members: input.members, trips: input.trips };
+  const notice = shown >= today ? householdAwayNotice(shown, today, away) : undefined;
+  if (notice !== undefined) return { kind: 'away', notice, items: [] };
+  if (shown === today) {
+    return { kind: 'due', chores: dueChores(input.chores, today, away), items: [] };
+  }
   const items = householdRow({ ...input, from: shown, to: shown })[shown] ?? [];
   return shown > today ? { kind: 'planned', items } : { kind: 'done', items };
-}
-
-const DayParam = z.iso.date();
-
-/**
- * The day the "Übersicht" hands to the calendar as "/kalender?tag=JJJJ-MM-TT" (AC-004, AC-011,
- * AC-013, plan decision 12): a valid calendar date, else undefined, so the calendar ignores it.
- */
-export function calendarDayParam(raw: string | string[] | undefined): ISODate | undefined {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const parsed = DayParam.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
 }

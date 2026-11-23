@@ -1,5 +1,4 @@
 import type {
-  Absence,
   Activity,
   Area,
   Article,
@@ -23,6 +22,7 @@ import type {
   ShoppingItem,
   Store,
   StoreQueueEntry,
+  Trip,
 } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
@@ -43,7 +43,8 @@ export interface HouseholdData {
   items: ShoppingItem[];
   chores: Chore[];
   choreEvents: ChoreEvent[];
-  absences: Absence[];
+  /** Spec 0022: trips with their people (rows of trips and trip_members). */
+  trips: Trip[];
   feedback: FeedbackEntry[];
   /** Spec 0012: Reisetaschen and their Packstücke (in creation order; sort with core). */
   packingBags: PackingBag[];
@@ -134,7 +135,7 @@ export interface RpcContext<T> {
  * filled in by the engine from what the device last saw of the server.
  */
 export type StoreAction =
-  | { kind: 'check'; itemId: string; checked: boolean }
+  | { kind: 'check'; itemId: string; checked: boolean; onList?: boolean }
   | { kind: 'pack'; householdId: string; itemId: string; packed: boolean }
   | Exclude<StoreQueueEntry, { kind: 'check' | 'pack' }>;
 
@@ -205,7 +206,7 @@ export function detachBackend(hooks: BackendHooks): void {
 }
 
 function requireBackend(): BackendHooks {
-  if (!backend) throw new Error('Not signed in');
+  if (!backend) throw new Error('Du bist nicht angemeldet.');
   return backend;
 }
 
@@ -243,6 +244,27 @@ export function commit<T>(spec: CommitSpec<T>, run: () => T): T {
   // inner one runs as part of the outer commit.
   if (committing) return run();
   return record(requireBackend(), spec, run);
+}
+
+/**
+ * Like commit, for another household than the one the app shows (spec 0027, REQ-008: the
+ * notification settings of another household): the change is recorded for `householdId`, and
+ * the app stays in its household. An unknown household throws.
+ */
+export function commitIn<T>(householdId: string, spec: CommitSpec<T>, run: () => T): T {
+  const original = getState().activeHouseholdId;
+  if (householdId === original) return commit(spec, run);
+  if (!getState().households[householdId]) throw new Error(`Unknown household ${householdId}`);
+  state = { ...getState(), activeHouseholdId: householdId };
+  try {
+    return commit(spec, run);
+  } finally {
+    const current = getState();
+    if (current.activeHouseholdId !== original) {
+      state = { ...current, activeHouseholdId: original };
+      notify();
+    }
+  }
 }
 
 /** One of the four store actions (ADR-0008 addendum): queued, shown at once, works offline. */

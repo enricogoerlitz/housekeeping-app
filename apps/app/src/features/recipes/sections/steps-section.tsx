@@ -1,12 +1,16 @@
 import {
   addStep,
   moveStep,
+  parseStepTimer,
   RECIPE_LIMITS,
   removeStep,
+  setStepTimer,
   stepsForVariants,
+  stepTimerProblem,
   updateStepText,
   type Id,
   type Recipe,
+  type RecipeStep,
   type StepsDraft,
 } from '@housekeeping/core';
 import {
@@ -17,6 +21,7 @@ import {
   Notice,
   ReorderList,
   Row,
+  Sheet,
   Stack,
   Text,
   TextField,
@@ -27,7 +32,6 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { SectionError, useSectionFrame } from './common';
-import { TextSheet } from './text-sheet';
 import type { SectionEditor } from './use-section-editor';
 
 type StepAction = 'text' | 'up' | 'down' | 'remove';
@@ -71,7 +75,9 @@ export function StepsSection(props: {
               <Row key={step.id} gap={12} align="flex-start">
                 <StepNumber value={index + 1} />
                 <Stack gap={4} style={{ flex: 1 }}>
-                  <Text testID={`recipe-step-${step.id}`}>{step.text}</Text>
+                  <Text selectable testID={`recipe-step-${step.id}`}>
+                    {step.text}
+                  </Text>
                   {step.timerMinutes ? (
                     <Row gap={5}>
                       <Icon name="timer" size={15} color="muted" />
@@ -138,7 +144,13 @@ function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: Section
           items={draft.steps.map((step) => ({
             key: step.id,
             name: step.text.trim() || '(leer)',
-            subtitle: variantName(step.variantId),
+            subtitle:
+              [
+                variantName(step.variantId),
+                step.timerMinutes ? `⏱ ${step.timerMinutes} Min` : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined,
             muted: !step.text.trim(),
           }))}
           onMove={(key, toIndex) => set(moveStep(draft, key, toIndex))}
@@ -155,7 +167,7 @@ function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: Section
                 else set(moveStep(draft, item.key, index + (action === 'up' ? -1 : 1)));
               }}
               options={[
-                { value: 'text', label: 'Text ändern' },
+                { value: 'text', label: 'Bearbeiten' },
                 { value: 'up', label: 'Nach oben', disabled: index === 0 },
                 { value: 'down', label: 'Nach unten', disabled: index === draft.steps.length - 1 },
                 { value: 'remove', label: 'Entfernen' },
@@ -184,20 +196,13 @@ function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: Section
       <SectionError editor={editor} testID="recipe-steps-error" />
 
       {editingStep ? (
-        <TextSheet
-          label="Schritt"
-          initial={editingStep.text}
-          multiline
-          check={(text) =>
-            stepLength(text) > RECIPE_LIMITS.stepText
-              ? `Höchstens ${RECIPE_LIMITS.stepText} Zeichen`
-              : undefined
-          }
-          title={editing?.added ? 'Neuer Schritt' : 'Schritt ändern'}
-          onApply={(text) => {
+        <StepSheet
+          step={editingStep}
+          title={editing?.added ? 'Neuer Schritt' : 'Schritt'}
+          onApply={(text, minutes) => {
             set(
               text.trim() || !editing?.added
-                ? updateStepText(draft, editingStep.id, text)
+                ? setStepTimer(updateStepText(draft, editingStep.id, text), editingStep.id, minutes)
                 : removeStep(draft, editingStep.id),
             );
             setEditing(undefined);
@@ -206,10 +211,83 @@ function StepsFields(props: { recipe: Recipe; draft: StepsDraft; editor: Section
             if (editing?.added) set(removeStep(draft, editingStep.id));
             setEditing(undefined);
           }}
-          testID="recipe-step-sheet"
         />
       ) : null}
     </Stack>
+  );
+}
+
+/**
+ * The window "Schritt" (spec 0023, REQ-005): "Text" and "Timer (Min)", whole minutes from 1 to
+ * 600, empty = no timer. "Übernehmen" only changes the draft; "Fertig" of the section saves.
+ */
+function StepSheet(props: {
+  step: RecipeStep;
+  title: string;
+  onApply: (text: string, minutes: number | undefined) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState(props.step.text);
+  const [timer, setTimer] = useState(
+    props.step.timerMinutes === undefined ? '' : String(props.step.timerMinutes),
+  );
+  const [textError, setTextError] = useState<string | undefined>();
+  const [timerError, setTimerError] = useState<string | undefined>();
+  const apply = () => {
+    const tooLong =
+      stepLength(text) > RECIPE_LIMITS.stepText
+        ? `Höchstens ${RECIPE_LIMITS.stepText} Zeichen`
+        : undefined;
+    const timerProblem = stepTimerProblem(timer);
+    setTextError(tooLong);
+    setTimerError(timerProblem);
+    if (tooLong || timerProblem) return;
+    props.onApply(text, parseStepTimer(timer));
+  };
+  return (
+    <Sheet
+      visible
+      size="s"
+      title={props.title}
+      onClose={props.onClose}
+      testID="recipe-step-sheet"
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          onPress: apply,
+          testID: 'recipe-step-sheet-apply',
+        },
+      }}
+    >
+      <Stack gap={16}>
+        <TextField
+          label="Text"
+          value={text}
+          onChangeText={(value) => {
+            setText(value);
+            setTextError(undefined);
+          }}
+          multiline
+          error={textError}
+          autoFocus
+          testID="recipe-step-sheet-input"
+        />
+        <TextField
+          label="Timer (Min)"
+          placeholder="freiwillig, z. B. 35"
+          value={timer}
+          onChangeText={(value) => {
+            setTimer(value);
+            setTimerError(undefined);
+          }}
+          keyboardType="number-pad"
+          onSubmitEditing={apply}
+          error={timerError}
+          testID="recipe-step-sheet-timer"
+        />
+      </Stack>
+    </Sheet>
   );
 }
 

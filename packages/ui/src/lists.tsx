@@ -1,9 +1,11 @@
 import { Children, createContext, isValidElement, useContext, type ReactNode } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
-import { Checkbox, CheckboxMark, IconButton, focusRing } from './controls';
+import { Checkbox, CheckboxMark, IconButton, keyboardFocusRing } from './controls';
+import { useHover } from './pointer';
 import { Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
+import { ariaRef } from './hint';
 
 export interface SectionProps {
   title?: string;
@@ -131,8 +133,10 @@ export interface ListRowProps {
   /** The row shown in the detail column next to the list ("Liste und Detail"), in `accentSoft`. */
   selected?: boolean;
   /**
-   * Makes the whole row one checkbox of a multi-select (SelectRow): read as checkbox with its
-   * state, and on the web the space bar toggles it like Enter. Needs `onPress`, no `controls`.
+   * Makes the whole row one checkbox of a multi-select (SelectRow, the pantry check): read as
+   * checkbox with its state, and on the web the space bar toggles it like Enter. Needs `onPress`;
+   * with `controls` the row's press area is the checkbox and the controls stay buttons of their
+   * own beside it.
    */
   checked?: boolean;
   /** Read by screen readers after the name, e.g. why the row cannot be chosen. */
@@ -143,6 +147,7 @@ export interface ListRowProps {
 }
 
 export function ListRow(props: ListRowProps) {
+  const hover = useHover();
   const theme = useTheme();
   const index = useContext(RowIndexContext);
   const insideTone = useContext(ToneContext) !== undefined;
@@ -216,6 +221,19 @@ export function ListRow(props: ListRowProps) {
   const wrap = (node: ReactNode) =>
     list === 'tile' ? <ToneContext.Provider value={undefined}>{node}</ToneContext.Provider> : node;
 
+  const checkable = props.checked !== undefined;
+  // react-native-web presses only role="button" with the space bar; a checkbox row does it here.
+  const checkboxKeys = (onPress: () => void) =>
+    checkable
+      ? ({
+          onKeyDown: (event: KeyEvent) => {
+            if (event.key !== ' ' && event.key !== 'Spacebar') return;
+            event.preventDefault();
+            if (!event.repeat && !props.disabled) onPress();
+          },
+        } as object)
+      : null;
+
   if (props.onPress && props.controls) {
     const { paddingVertical, paddingHorizontal, ...outer } = layout;
     return wrap(
@@ -230,13 +248,21 @@ export function ListRow(props: ListRowProps) {
       >
         <Pressable
           testID={props.testID ? `${props.testID}-open` : undefined}
-          accessibilityRole="button"
+          accessibilityRole={checkable ? 'checkbox' : 'button'}
           accessibilityLabel={
             props.accessibilityLabel ?? (typeof props.title === 'string' ? props.title : undefined)
           }
-          accessibilityState={{ disabled: !!props.disabled }}
+          accessibilityHint={props.hint}
+          accessibilityState={
+            checkable
+              ? { disabled: !!props.disabled, checked: props.checked }
+              : { disabled: !!props.disabled }
+          }
+          ref={ariaRef({ 'aria-description': props.hint })}
+          aria-checked={checkable ? props.checked : undefined}
           disabled={props.disabled}
           onPress={props.onPress}
+          {...checkboxKeys(props.onPress)}
           style={(state) => [
             {
               flex: 1,
@@ -249,7 +275,10 @@ export function ListRow(props: ListRowProps) {
               paddingLeft: paddingHorizontal,
             },
             { opacity: state.pressed ? 0.6 : 1 },
-            focusRing(theme, (state as { focused?: boolean }).focused),
+            hover((state as { hovered?: boolean }).hovered)
+              ? { backgroundColor: theme.colors.surfaceSunken }
+              : null,
+            keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
           ]}
         >
           {content}
@@ -259,14 +288,7 @@ export function ListRow(props: ListRowProps) {
     );
   }
   if (props.onPress) {
-    const checkable = props.checked !== undefined;
     const onPress = props.onPress;
-    // react-native-web presses only role="button" with the space bar; a checkbox row does it here.
-    const onKeyDown = (event: KeyEvent) => {
-      if (event.key !== ' ' && event.key !== 'Spacebar') return;
-      event.preventDefault();
-      if (!event.repeat && !props.disabled) onPress();
-    };
     return wrap(
       <Pressable
         testID={props.testID}
@@ -280,16 +302,22 @@ export function ListRow(props: ListRowProps) {
             ? { disabled: !!props.disabled, checked: props.checked }
             : { disabled: !!props.disabled, selected: !!props.selected }
         }
+        // react-native-web drops accessibilityHint and accessibilityState.
+        ref={ariaRef({ 'aria-description': props.hint })}
+        aria-selected={checkable ? undefined : !!props.selected}
         aria-checked={checkable ? props.checked : undefined}
         disabled={props.disabled}
         onPress={onPress}
-        {...(checkable ? ({ onKeyDown } as object) : null)}
+        {...checkboxKeys(onPress)}
         style={(state) => [
           layout,
           frame,
           highlight,
           { opacity: props.disabled ? 0.45 : state.pressed ? 0.6 : 1 },
-          focusRing(theme, (state as { focused?: boolean }).focused),
+          hover((state as { hovered?: boolean }).hovered) && !props.disabled
+            ? { backgroundColor: theme.colors.surfaceSunken }
+            : null,
+          keyboardFocusRing(theme, (state as { focused?: boolean }).focused),
         ]}
       >
         {content}
@@ -311,6 +339,8 @@ export interface CheckRowProps {
   checked: boolean;
   onToggle?: () => void;
   trailing?: ReactNode;
+  /** Buttons of their own outside the press area, e.g. ⋯ (see ListRow `controls`). */
+  controls?: ReactNode;
   disabled?: boolean;
   /** Opens details; the checkbox still toggles on its own. */
   onPress?: () => void;
@@ -329,6 +359,7 @@ export function CheckRow(props: CheckRowProps) {
       disabled={props.disabled}
       onPress={props.onPress}
       trailing={props.trailing}
+      controls={props.controls}
       leading={
         <Checkbox
           testID={props.testID ? `${props.testID}-check` : undefined}

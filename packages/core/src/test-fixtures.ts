@@ -1,14 +1,20 @@
 // Shared sample data for the unit tests of this package. Not exported from index.ts.
+import type { ChoreAway } from './chore-schedule';
+import { originLabel, summarizeItem } from './shopping';
 import type {
   Article,
   CollectionRecipe,
   Id,
+  ISODate,
   Member,
   NotificationSettings,
   PackingBag,
   PackingBagItem,
   Recipe,
   RecipeIngredient,
+  ShoppingContribution,
+  ShoppingItem,
+  Trip,
 } from './types';
 
 export const enrico: Member = {
@@ -85,6 +91,7 @@ export function makeRecipe(partial: Partial<Recipe> & Pick<Recipe, 'id' | 'title
     ratings: {},
     cookedCount: 0,
     createdAt: '2026-10-01T12:00:00.000Z',
+    links: [],
     ...partial,
   };
 }
@@ -368,5 +375,45 @@ export const notificationDefaults: NotificationSettings = {
   activitiesEveEnabled: false,
   activitiesEveAt: '19:00',
   choreRemindersEnabled: true,
-  reservationRemindersEnabled: true,
+  entryRemindersEnabled: true,
 };
+
+/** A trip of these people; the rows of trip_members get ids "<trip>:<member>". */
+export function trip(
+  id: Id,
+  memberIds: readonly Id[],
+  from: ISODate,
+  to: ISODate,
+  note?: string,
+): Trip {
+  return {
+    id,
+    from,
+    to,
+    note,
+    members: memberIds.map((memberId) => ({ id: `${id}:${memberId}`, memberId })),
+  };
+}
+
+/** No trips: every day is free (for tests that do not look at trips). */
+export function withoutTrips(members: readonly Member[]): ChoreAway {
+  return { members, trips: [] };
+}
+
+/**
+ * "Lasagne (Fr): 1× · von Hand: 1×": an item's contributions grouped by origin in the order they
+ * came, each with its summed amount; an origin without amount reads alone ("von Hand").
+ */
+export function originSummary(item: ShoppingItem): string {
+  const byLabel = new Map<string, ShoppingContribution[]>();
+  for (const contribution of item.contributions) {
+    const label = originLabel(contribution.source);
+    byLabel.set(label, [...(byLabel.get(label) ?? []), contribution]);
+  }
+  return [...byLabel]
+    .map(([label, contributions]) => {
+      const { amount } = summarizeItem({ ...item, contributions });
+      return amount === '' ? label : `${label}: ${amount}`;
+    })
+    .join(' · ');
+}

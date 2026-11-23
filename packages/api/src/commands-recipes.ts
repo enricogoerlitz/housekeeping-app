@@ -1,11 +1,17 @@
 import {
   addIngredientRows,
+  addPastedRows,
+  entriesOnList,
   findArticleByName,
+  ingredientRowOf,
   isHalfStar,
   newEntryTitleProblem,
   newRecipe,
   parseIngredientBlock,
+  placeIngredientRow,
   recipeDeletionEffect,
+  removeEntryContributions,
+  removeIngredient,
   resolveIngredientArticles,
   sectionDraft,
   sectionPatch,
@@ -24,8 +30,6 @@ import {
 import { catalogChoice, createArticle, insertArticles } from './commands-articles';
 import { INVALID_STARS } from './commands-restaurants';
 import { removeQuietly } from './photos-remote';
-import { buildRecipe } from './seed/demo';
-import { seedRecipes } from './seed/recipes-data';
 import { starterCatalogEntries } from './starter/entries';
 import {
   commit,
@@ -53,12 +57,7 @@ function patchRecipe(recipeId: Id, patch: (recipe: Recipe) => Recipe): void {
  * creates a collection (spec 0009, AC-001, AC-002): without course, sent with course null (E3).
  * Throws "Titel fehlt" (AC-003) or "Höchstens 200 Zeichen" before anything changes.
  */
-export function createRecipe(input: {
-  title: string;
-  servings?: number;
-  source?: string;
-  kind?: RecipeKind;
-}): Id {
+export function createRecipe(input: { title: string; servings?: number; kind?: RecipeKind }): Id {
   const problem = newEntryTitleProblem(input.title);
   if (problem) throw new Error(problem);
   return commit({ path: 'diff' }, () => {
@@ -68,10 +67,33 @@ export function createRecipe(input: {
       title: input.title,
       servings: input.servings ?? 2,
       createdAt: nowISO(),
-      source: input.source,
     });
     updateData((data) => ({ ...data, recipes: [recipe, ...data.recipes] }));
     return recipe.id;
+  });
+}
+
+/**
+ * "Neu" → "Rezept" with "Zutaten einfügen" (spec 0008, AC-021; spec 0018, REQ-001): the recipe and
+ * its pasted rows with an article in one change, so they never depend on the recipe page picking
+ * them up (E-01). New and starter articles ride in the same call. Returns the rows the page opens
+ * in the section "Zutaten": those without an article, or every row when the rows have a problem
+ * (a Hinweis over the limit), so the section shows it. Throws like createRecipe and OfflineError.
+ */
+export function createRecipeWithIngredients(
+  input: { title: string },
+  rows: readonly IngredientRow[],
+): { recipeId: Id; open: IngredientRow[] } {
+  const problem = newEntryTitleProblem(input.title);
+  if (problem) throw new Error(problem);
+  if (isOffline()) throw new OfflineError();
+  return commit({ path: 'diff' }, () => {
+    const recipeId = createRecipe({ title: input.title, kind: 'recipe' });
+    const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+    if (!recipe || rows.length === 0) return { recipeId, open: [] };
+    const draft = addPastedRows(sectionDraft(recipe, 'ingredients'), rows);
+    if (validateSectionDraft(draft).length > 0) return { recipeId, open: [...rows] };
+    return { recipeId, open: saveRecipeSection(recipeId, draft)?.open ?? [] };
   });
 }
 
@@ -249,15 +271,75 @@ function assertSectionFits(recipe: Recipe, draft: RecipeSectionDraft): void {
   }
 }
 
+// ---------- One ingredient from the read view (spec 0023, REQ-002, Decision 7) ----------
+
+export interface IngredientSave {
+  /** Resolves once the server took the change; rejects when it refused (the change jumps back). */
+  confirmed: Promise<void>;
+  /** "Rückgängig" in the notice: the ingredient as it was, in its place. */
+  undo: () => void;
+}
+
+/**
+ * "Zutat bearbeiten" from the read view: the row (core ingredientRowOf, changed in the window)
+ * saved at once as the section "Zutaten" with only this row changed, so the notice "Zutat
+ * gespeichert" can offer "Rückgängig". A new or starter article rides in the same call. Throws a
+ * problem of the row ("Höchstens 60 Zeichen") and OfflineError before anything changes; null when
+ * the recipe or the ingredient is gone.
+ */
+export function saveIngredient(recipeId: Id, row: IngredientRow): IngredientSave | null {
+  const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+  const previous =
+    recipe && row.ingredientId ? ingredientRowOf(recipe, row.ingredientId) : undefined;
+  if (!recipe || !previous) return null;
+  const saved = saveRecipeSection(
+    recipeId,
+    placeIngredientRow(sectionDraft(recipe, 'ingredients'), row),
+  );
+  if (!saved) return null;
+  return { confirmed: saved.confirmed, undo: () => putIngredientBack(recipeId, previous) };
+}
+
+/** "Entfernen" in the ⋯ of an ingredient on the read view: "Linsen entfernt" · "Rückgängig". */
+export function removeRecipeIngredient(recipeId: Id, ingredientId: Id): IngredientSave | null {
+  const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+  const index = recipe?.ingredients.findIndex((ingredient) => ingredient.id === ingredientId) ?? -1;
+  const previous = recipe ? ingredientRowOf(recipe, ingredientId) : undefined;
+  if (!recipe || !previous || index === -1) return null;
+  const saved = saveRecipeSection(
+    recipeId,
+    removeIngredient(sectionDraft(recipe, 'ingredients'), ingredientId),
+  );
+  if (!saved) return null;
+  return { confirmed: saved.confirmed, undo: () => putIngredientBack(recipeId, previous, index) };
+}
+
+/** "Rückgängig": the row as it was, on the recipe as it is now (other changes stay). */
+function putIngredientBack(recipeId: Id, row: IngredientRow, index?: number): void {
+  const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) return;
+  saveRecipeSection(recipeId, placeIngredientRow(sectionDraft(recipe, 'ingredients'), row, index));
+}
+
 // ---------- Deleting (spec 0008, REQ-012, E1 to E5) ----------
 
 export interface RecipeDeletion {
   recipeId: Id;
   /**
+   * How many planned entries go (later days, noted ones and leftovers depending on them), counted
+   * from the cache like the server does (spec 0023, REQ-012): core deletedNotice.
+   */
+  entries: number;
+  /**
    * How many collections the recipe was taken out of, counted from the cache (spec 0009, AC-033):
-   * core recipeDeletedLabel(title, collections). 0 for a collection.
+   * core deletedNotice. 0 for a collection.
    */
   collections: number;
+  /**
+   * How many items of the list lost ingredients of those entries ("Zutaten auch von der Liste
+   * nehmen", spec 0023, Decision 15); 0 without it.
+   */
+  ingredients: number;
   /** The recipe's own photo; discardRecipePhoto removes it once "Rückgängig" expired (E5). */
   photoPath?: string;
   /** Resolves once the server deleted the recipe; rejects when it refused (the recipe is back). */
@@ -274,17 +356,25 @@ export interface RecipeDeletion {
  * also when restore_recipe answers false.
  * Throws OfflineError; undefined for a recipe that is not there.
  */
-export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
+export function deleteRecipe(
+  recipeId: Id,
+  options: { withList?: boolean } = {},
+): RecipeDeletion | undefined {
   const recipe = getData().recipes.find((candidate) => candidate.id === recipeId);
   if (!recipe) return undefined;
   if (isOffline()) throw new OfflineError();
   const today = getState().today;
   const data = getData();
   const effect = recipeDeletionEffect(data.planEntries, recipe, today, data.collectionRecipes);
+  const withList = options.withList === true;
+  const ingredients = withList ? entriesOnList(data.items, effect.removedIds) : 0;
   const confirmed = commitConfirmed(
     {
       path: 'rpc',
-      send: (transport) => transport.deleteRecipe(recipeId, today),
+      send: (transport) =>
+        withList
+          ? transport.deleteRecipe(recipeId, today, true)
+          : transport.deleteRecipe(recipeId, today),
       // false: the recipe is back by other means (same id, same household). Nothing was
       // restored, so "Rückgängig" did not happen; it is refused like any other refusal.
       inverse: async (transport) => {
@@ -311,15 +401,46 @@ export function deleteRecipe(recipeId: Id): RecipeDeletion | undefined {
           planEntries: current.planEntries.flatMap((entry) =>
             removed.has(entry.id) ? [] : [converted.get(entry.id) ?? entry],
           ),
+          // Spec 0023, Decision 15: as delete_recipe does it with with_list.
+          items: withList
+            ? now.removedIds.reduce(
+                (items, entryId) => removeEntryContributions(items, entryId),
+                current.items,
+              )
+            : current.items,
         };
       }),
   );
   confirmed.catch(() => {});
   return {
     recipeId,
+    entries: effect.removedIds.length,
     collections: effect.collections,
+    ingredients,
     photoPath: recipe.photoPath,
     confirmed,
+  };
+}
+
+/**
+ * Before "Löschen" (spec 0023, Decision 15): the planned entries that would go and how many open
+ * items hold their ingredients; undefined for a recipe that is not there.
+ */
+export function recipeDeletionListShare(
+  recipeId: Id,
+): { entries: number; ingredients: number } | undefined {
+  const data = getData();
+  const recipe = data.recipes.find((candidate) => candidate.id === recipeId);
+  if (!recipe) return undefined;
+  const effect = recipeDeletionEffect(
+    data.planEntries,
+    recipe,
+    getState().today,
+    data.collectionRecipes,
+  );
+  return {
+    entries: effect.removedIds.length,
+    ingredients: entriesOnList(data.items, effect.removedIds),
   };
 }
 
@@ -392,48 +513,4 @@ export function rateRecipe(recipeId: Id, stars: number): void {
         ratedAt: { ...current.ratedAt, [me]: nowISO() },
       })),
   );
-}
-
-export interface StarterRecipeInfo {
-  key: string;
-  title: string;
-  photo?: string;
-  totalMinutes: number;
-  description: string;
-  /** Already in this household's recipe book. */
-  adopted: boolean;
-}
-
-/** The bundled starter recipes with a flag whether this household already has them. */
-export function listStarterRecipes(): StarterRecipeInfo[] {
-  const titles = new Set(getData().recipes.map((recipe) => recipe.title));
-  return seedRecipes.map((seed) => ({
-    key: seed.key,
-    title: seed.title,
-    photo: seed.photo,
-    totalMinutes: seed.totalMinutes,
-    description: seed.description,
-    adopted: titles.has(seed.title),
-  }));
-}
-
-/**
- * Copies starter recipes into the household's recipe book; they are normal recipes afterwards.
- * An article the household lacks follows the rule of REQ-004 (starter catalog, else "Neu aus
- * Rezepten"), in the same change.
- */
-export function adoptStarterRecipes(keys: string[]): number {
-  const titles = new Set(getData().recipes.map((recipe) => recipe.title));
-  const chosen = seedRecipes.filter((seed) => keys.includes(seed.key) && !titles.has(seed.title));
-  if (chosen.length === 0) return 0;
-  commit({ path: 'diff' }, () => {
-    articlesForNames(chosen.flatMap((seed) => seed.ingredients.map((entry) => entry.article)));
-    const articles = getData().articles;
-    const adopted = chosen.map((seed) => ({
-      ...buildRecipe(seed, articles, nowISO()),
-      id: newId(),
-    }));
-    updateData((current) => ({ ...current, recipes: [...adopted, ...current.recipes] }));
-  });
-  return chosen.length;
 }

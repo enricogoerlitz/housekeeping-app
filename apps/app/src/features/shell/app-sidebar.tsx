@@ -7,11 +7,13 @@ import {
   Stack,
   SwitchRow,
   Text,
+  keyboardFocusRing,
+  useHover,
   useTheme,
   type NavItem,
   type SidebarGroup,
 } from '@housekeeping/ui';
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -40,7 +42,6 @@ export function AppSidebar(props: AppSidebarProps) {
   const assistant = useAssistant();
   const offline = useOffline();
   const open = useOpenManageEntry();
-  const pathname = usePathname();
   const [switching, setSwitching] = useState(false);
 
   const groups: SidebarGroup[] = [
@@ -52,9 +53,7 @@ export function AppSidebar(props: AppSidebarProps) {
           key: entry.key,
           label: entry.label,
           icon: entry.icon,
-          active:
-            (entry.route !== undefined && entry.route === props.activeRoute) ||
-            (entry.pathPrefix !== undefined && pathname.startsWith(entry.pathPrefix)),
+          active: entry.route !== undefined && entry.route === props.activeRoute,
           onPress: () => open(entry.href),
           testID: `nav-manage-${entry.key}`,
         })),
@@ -138,6 +137,7 @@ function ProfileEntry(props: { active: boolean }) {
   const theme = useTheme();
   const member = useCurrentMember();
   const router = useRouter();
+  const hover = useHover();
   return (
     <Pressable
       testID="profile-button"
@@ -153,16 +153,10 @@ function ProfileEntry(props: { active: boolean }) {
             gap: 10,
             padding: 8,
             borderRadius: theme.shape.radius.control,
-            backgroundColor: props.active || hovered ? theme.colors.surfaceSunken : 'transparent',
+            backgroundColor:
+              props.active || hover(hovered) ? theme.colors.surfaceSunken : 'transparent',
           },
-          focused
-            ? {
-                outlineWidth: 2,
-                outlineColor: theme.colors.text,
-                outlineStyle: 'solid' as const,
-                outlineOffset: 2,
-              }
-            : null,
+          keyboardFocusRing(theme, focused),
         ];
       }}
     >

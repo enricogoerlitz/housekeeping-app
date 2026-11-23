@@ -1,11 +1,21 @@
 import { useActivities, useCurrentMember, usePlanEntries, useToday } from '@housekeeping/api';
-import { fuzzyIncludes, visitsOf, type Activity, type Id, type Visits } from '@housekeeping/core';
+import {
+  ACTIVITY_SORTS,
+  activityMatches,
+  sortActivities,
+  visitsOf,
+  type Activity,
+  type ActivitySort,
+  type Id,
+  type Visits,
+} from '@housekeeping/core';
 import {
   Button,
   Chip,
   EmptyState,
   Icon,
   IconButton,
+  ListDetail,
   Menu,
   Row,
   Screen,
@@ -18,105 +28,94 @@ import {
   useBreakpoint,
   useTheme,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useIsFocused, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { ScrollColumn } from '@/features/shell/scroll-column';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
+import { ActivityDetail } from './activity-detail';
 import { ActivityFormSheet } from './activity-form';
 import { ActivityPhoto } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
 
-type ActivitySort = 'name' | 'rating' | 'recent';
+const SORT_OF_SLUG = { name: 'name', bewertung: 'rating', zuletzt: 'recent' } as const;
+const SLUG_OF_SORT = { name: 'name', rating: 'bewertung', recent: 'zuletzt' } as const;
 
-const SORTS: { value: ActivitySort; label: string }[] = [
-  { value: 'name', label: 'Name' },
-  { value: 'rating', label: 'Bewertung' },
-  { value: 'recent', label: 'Zuletzt' },
-];
-
-function matches(query: string, activity: Activity): boolean {
-  return [
-    activity.name,
-    activity.description,
-    activity.placeName,
-    activity.address,
-    ...activity.tags,
-  ].some((field) => field !== undefined && fuzzyIncludes(query, field));
+/** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", as for restaurants. */
+function sortShortLabel(sort: ActivitySort): string {
+  if (sort === 'recent') return 'Zuletzt';
+  return ACTIVITY_SORTS.find((entry) => entry.value === sort)?.label ?? '';
 }
 
-/**
- * "Back" of the page "Aktivitäten" (spec 0010, REQ-008): opened from "Verwalten" on a phone it
- * leads there ("‹ Verwalten"), otherwise back to the calendar underneath ("‹ Kalender"), which
- * still shows the view and period it had (AC-025, AC-040).
- */
-function useActivitiesBack(): { label: string; back: () => void } {
-  const router = useRouter();
-  const { isPhone } = useBreakpoint();
-  const params = useLocalSearchParams<{ von?: string | string[] }>();
-  const from = Array.isArray(params.von) ? params.von[0] : params.von;
-  if (from === 'verwalten' && isPhone) {
-    return {
-      label: 'Verwalten',
-      back: () => {
-        // The calendar's tab gets its first page back before "Verwalten" shows, so the tab shows
-        // the calendar again later instead of this page.
-        router.replace('/kalender');
-        router.navigate('/verwalten');
-      },
-    };
-  }
-  return {
-    label: 'Kalender',
-    back: () => (router.canGoBack() ? router.back() : router.replace('/kalender')),
-  };
-}
+/** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
+const LIST_COLUMN_WIDTH = 380;
 
 /**
- * "Aktivitäten" as its own page in the calendar's area (spec 0010, REQ-008; spec 0004, AC-004,
- * AC-005): search, favourites, sort; an activity opens as its own page.
+ * "Aktivitäten" as its own page under "Verwalten" (spec 0024, REQ-008, REQ-009; spec 0004,
+ * AC-004, AC-005): search, favourites, sort. On phones an activity opens as its own page; from
+ * 700 px the grid of cards, and with a chosen activity the list on the left (chosen one
+ * highlighted) and the activity on the right with ✕ back to the grid.
  */
 export function ActivitiesScreen() {
+  const { isPhone, isWide, bp } = useBreakpoint();
   const router = useRouter();
-  const { isPhone, bp } = useBreakpoint();
   const online = useOnlineOnly();
   const activities = useActivities();
   const entries = usePlanEntries();
   const today = useToday();
   const me = useCurrentMember();
-  const { label: backLabel, back } = useActivitiesBack();
+  // Search, favourites, sort and "Neue Aktivität" stand in the address (spec 0019, REQ-011).
+  const address = usePageParams('aktivitaeten');
+  const { params } = address;
+  // "‹ Verwalten", or the section it was opened from (spec 0019, REQ-006).
+  const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
+  const focused = useIsFocused();
 
-  const [query, setQuery] = useState('');
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [sort, setSort] = useState<ActivitySort>('name');
-  const [creating, setCreating] = useState(false);
+  const query = params.suche ?? '';
+  const favoritesOnly = params.favoriten === '1';
+  const sort: ActivitySort = SORT_OF_SLUG[params.sortierung ?? 'name'];
+  const creating = params.fenster === 'neu-aktivitaet' && focused;
+  const setQuery = (next: string) => address.replace({ suche: next });
+  const setFavoritesOnly = (next: boolean) =>
+    address.replace({ favoriten: next ? '1' : undefined });
+  const setSort = (next: ActivitySort) => address.replace({ sortierung: SLUG_OF_SORT[next] });
+  const setCreating = (open: boolean) =>
+    open ? address.open({ fenster: 'neu-aktivitaet' }) : address.close({ fenster: undefined });
 
-  const open = (activityId: Id) =>
-    router.push({ pathname: '/kalender/aktivitaet/[id]', params: { id: activityId } });
+  // On wide screens the chosen activity stands in the address and replaces the entry (spec 0019,
+  // REQ-014); on phones the same address opens its page, with the list underneath.
+  const selectedId = isWide ? params.aktivitaet : undefined;
+  const addressed = params.aktivitaet;
+  const replace = address.replace;
+  useEffect(() => {
+    if (isWide || !addressed) return;
+    replace({ aktivitaet: undefined });
+    router.push({ pathname: '/aktivitaet/[id]', params: { id: addressed } }, { withAnchor: true });
+  }, [isWide, addressed, replace, router]);
+  // From a new activity on to it: the window leaves the address first.
+  const open = (activityId: Id) => {
+    if (isWide) address.replace({ fenster: undefined, aktivitaet: activityId });
+    else {
+      address.replace({ fenster: undefined });
+      router.push({ pathname: '/aktivitaet/[id]', params: { id: activityId } });
+    }
+  };
+  const closeDetail = () => address.replace({ aktivitaet: undefined, fenster: undefined });
 
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
   );
-  const results = activities
-    .filter(
+  const results = sortActivities(
+    activities.filter(
       (activity) =>
-        (!favoritesOnly || activity.favoriteOf.includes(me.id)) &&
-        (!query.trim() || matches(query, activity)),
-    )
-    .sort((a, b) => {
-      if (sort === 'rating') {
-        const byRating = (b.ratings[me.id] ?? 0) - (a.ratings[me.id] ?? 0);
-        if (byRating !== 0) return byRating;
-      }
-      if (sort === 'recent') {
-        // Never done goes last.
-        const daysA = visitsById.get(a.id)?.daysSince ?? Number.POSITIVE_INFINITY;
-        const daysB = visitsById.get(b.id)?.daysSince ?? Number.POSITIVE_INFINITY;
-        if (daysA !== daysB) return daysA - daysB;
-      }
-      return a.name.localeCompare(b.name, 'de');
-    });
+        (!favoritesOnly || activity.favoriteOf.includes(me.id)) && activityMatches(query, activity),
+    ),
+    sort,
+    { me: me.id, entries, today },
+  );
 
   const empty = activities.length === 0;
   const addButton = empty ? null : isPhone ? (
@@ -183,8 +182,9 @@ export function ActivitiesScreen() {
     );
   }
 
-  const columns = isPhone ? 1 : bp === 'desktop' ? 3 : 2;
-  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const split = selectedId !== undefined;
+  const columns = isPhone || split ? 1 : bp === 'desktop' ? 3 : 2;
+  const sortLabel = sortShortLabel(sort);
   const toolbar = (
     <Stack gap={8}>
       <TextField
@@ -219,7 +219,7 @@ export function ActivitiesScreen() {
           icon="arrow-up-down"
           value={sort}
           onChange={setSort}
-          options={SORTS}
+          options={[...ACTIVITY_SORTS]}
           testID="activity-sort"
         />
         <Chip
@@ -256,6 +256,7 @@ export function ActivitiesScreen() {
                 myRating={activity.ratings[me.id] ?? 0}
                 isFavorite={activity.favoriteOf.includes(me.id)}
                 visits={visitsById.get(activity.id)}
+                selected={activity.id === selectedId}
                 onPress={() => open(activity.id)}
               />
             </View>
@@ -265,10 +266,48 @@ export function ActivitiesScreen() {
     </>
   );
 
+  const detailWindow =
+    params.fenster === 'bearbeiten' || params.fenster === 'einplanen' ? params.fenster : undefined;
   return (
-    <Screen testID="activities-screen" tone="plan" header={header} toolbar={toolbar}>
-      {offlineHint}
-      {listBody}
+    <Screen
+      testID="activities-screen"
+      tone="plan"
+      header={header}
+      toolbar={toolbar}
+      scroll={!split}
+      style={split ? { flex: 1, paddingBottom: 0 } : undefined}
+    >
+      {split ? (
+        <ListDetail
+          list={
+            <ScrollColumn>
+              {offlineHint}
+              {listBody}
+            </ScrollColumn>
+          }
+          detail={
+            <ActivityDetail
+              activityId={selectedId}
+              onClose={closeDetail}
+              window={detailWindow}
+              onWindow={(window) =>
+                window ? address.open({ fenster: window }) : address.close({ fenster: undefined })
+              }
+              // Spec 0024, REQ-010: after "Löschen" the grid, with search and filter.
+              onDeleted={closeDetail}
+              onOpen={open}
+            />
+          }
+          placeholder={{ icon: 'mountain', title: 'Wähl eine Aktivität aus' }}
+          listWidth={LIST_COLUMN_WIDTH}
+          testID="activities-split"
+        />
+      ) : (
+        <>
+          {offlineHint}
+          {listBody}
+        </>
+      )}
       {sheet}
     </Screen>
   );
@@ -279,6 +318,7 @@ function ActivityCard(props: {
   myRating: number;
   isFavorite: boolean;
   visits?: Visits;
+  selected?: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -291,13 +331,20 @@ function ActivityCard(props: {
       testID={`activity-${id}`}
       accessibilityRole="button"
       accessibilityLabel={activity.name}
+      aria-selected={!!props.selected}
       onPress={props.onPress}
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,
         borderRadius: theme.shape.radius.card,
       })}
     >
-      <Surface padding={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <Surface
+        padding={12}
+        style={[
+          { flexDirection: 'row', alignItems: 'center', gap: 12 },
+          props.selected ? { borderWidth: 1.5, borderColor: theme.colors.accent } : null,
+        ]}
+      >
         <ActivityPhoto activity={activity} width={56} height={56} testID={`activity-${id}`} />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <Row gap={6}>

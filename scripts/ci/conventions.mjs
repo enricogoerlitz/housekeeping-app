@@ -82,6 +82,15 @@ const FORBIDDEN = [
     allowedIn: [],
     message: 'supabase migration repair ist verboten (Runbook B5 in plan.md der Spec 0014)',
   },
+  {
+    // Spec 0031, AC-019: resetting a cloud project is a step of the runbook, never automated.
+    command: /\breset-app-data\.mjs\b/,
+    flags: /./,
+    allowedIn: [],
+    only: (file) => isWorkflowFile(file) || path.posix.basename(file) === 'package.json',
+    message:
+      'scripts/reset-app-data.mjs läuft nur von Hand (Runbook „Erste produktive Version“ in docs/architecture/betrieb.md), nie aus einem Workflow oder Paket-Skript',
+  },
 ];
 
 /** Logical lines with the number of their first physical line; shell continuations are joined. */
@@ -109,6 +118,7 @@ export function findForbiddenCommands(files) {
     for (const { line, text } of logicalLines(file.text)) {
       for (const rule of FORBIDDEN) {
         if (rule.allowedIn.includes(file.path)) continue;
+        if (rule.only && !rule.only(file.path)) continue;
         if (rule.command.test(text) && rule.flags.test(text)) {
           found.push({ path: file.path, line, message: rule.message });
         }

@@ -287,7 +287,7 @@ describe('keep in done (spec 0012, AC-021)', () => {
     vi.useRealTimers();
   });
 
-  // A bag of the Urlaubsseite: Badehose packed (in "Gepackt (n)"), the others open.
+  // A bag of the trip window: Badehose packed (in "Gepackt (n)"), the others open.
   function bag(keepInDone: boolean) {
     let items: Item[] = [
       { id: 'badehose', checked: true },

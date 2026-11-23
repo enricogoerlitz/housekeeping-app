@@ -77,11 +77,42 @@ export function recipeDeletionEffect(
 }
 
 /**
- * The notice after deleting: "Halloumi-Pfanne gelöscht" (AC-043; "Rückgängig" is the action); a
- * recipe that was in collections adds "· auch aus 2 Sammlungen entfernt" (spec 0009, AC-033).
+ * The notice after deleting a recipe, a collection, a restaurant or an activity (spec 0023,
+ * REQ-012; spec 0024, REQ-010), before "Rückgängig": "Lasagne gelöscht", then the planned entries
+ * that go ("· 1 geplanter Eintrag entfällt", "· 2 geplante Einträge entfallen": later days, noted
+ * ones and leftovers depending on them), then for a recipe in collections "· auch aus 2 Sammlungen
+ * entfernt" (spec 0009, AC-033); between them the ingredients taken off the list ("· 3 Zutaten von der
+ * Liste genommen", spec 0023, Decision 15). Parts at 0 are left out.
  */
-export function recipeDeletedLabel(title: string, collections: number): string {
-  if (collections <= 0) return `${title} gelöscht`;
-  const where = collections === 1 ? '1 Sammlung' : `${collections} Sammlungen`;
-  return `${title} gelöscht · auch aus ${where} entfernt`;
+export function deletedNotice(
+  title: string,
+  counts: { entries?: number; ingredients?: number; collections?: number },
+): string {
+  const parts = [`${title} gelöscht`];
+  const entries = counts.entries ?? 0;
+  if (entries === 1) parts.push('1 geplanter Eintrag entfällt');
+  else if (entries > 1) parts.push(`${entries} geplante Einträge entfallen`);
+  const ingredients = counts.ingredients ?? 0;
+  if (ingredients > 0) parts.push(`${zutaten(ingredients)} von der Liste genommen`);
+  const collections = counts.collections ?? 0;
+  if (collections > 0) {
+    parts.push(
+      `auch aus ${collections === 1 ? '1 Sammlung' : `${collections} Sammlungen`} entfernt`,
+    );
+  }
+  return parts.join(' · ');
+}
+
+const zutaten = (count: number) => (count === 1 ? '1 Zutat' : `${count} Zutaten`);
+
+/**
+ * The question before deleting a recipe or collection whose entries that go have ingredients on
+ * the list (spec 0023, Decision 15): "Für 2 geplante Einträge stehen 3 Zutaten auf der
+ * Einkaufsliste."
+ */
+export function deletionListQuestion(counts: { entries: number; ingredients: number }): string {
+  const entries =
+    counts.entries === 1 ? '1 geplanten Eintrag' : `${counts.entries} geplante Einträge`;
+  const verb = counts.ingredients === 1 ? 'steht' : 'stehen';
+  return `Für ${entries} ${verb} ${zutaten(counts.ingredients)} auf der Einkaufsliste.`;
 }

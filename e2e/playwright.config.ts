@@ -21,6 +21,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
+  // In CI a hanging shard stops itself and still writes its report (spec 0031, REQ-002).
+  globalTimeout: process.env.CI ? 35 * 60_000 : 0,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { outputFolder: './playwright-report', open: 'never' }]],
   use: {
@@ -50,9 +52,12 @@ export default defineConfig({
     {
       // Only the files with width-specific criteria (layout, sidebar, split views), the
       // restaurants, which run completely at both widths, the version hint (spec 0014) and the
-      // list-and-detail pages of the household (spec 0011) and the articles (spec 0007).
+      // list-and-detail pages of the household (spec 0011), the articles (spec 0007), the
+      // overview and the calendar at desktop width (specs 0020, 0021) and the day window of the
+      // calendar beside the grid and dragging with the mouse (spec 0016).
       name: 'desktop',
-      testMatch: /rundgang-(shell|restaurants|version|haushalt|artikel)\.spec\.ts$/,
+      testMatch:
+        /rundgang-(shell|restaurants|version|haushalt|artikel|uebersicht|kalender-0021|kalender-tag|kalender-ziehen)\.spec\.ts$/,
       use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } },
     },
   ],

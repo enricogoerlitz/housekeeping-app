@@ -149,7 +149,17 @@ test('AC-003: signing out with a check waiting offline empties the device and sh
   await expect(page.locator('[data-testid^="item-"][data-testid$="-pending"]')).toHaveCount(1);
 
   await openSettings(page);
+  // Spec 0018, AC-013: the waiting check makes sign-out ask; "Abbrechen" keeps everything.
   await tid(page, 'settings-sign-out').click();
+  await expect(tid(page, 'sign-out-dialog-message')).toHaveText(
+    '1 Änderung ist noch nicht gesendet. Beim Abmelden geht sie verloren.',
+  );
+  await tid(page, 'sign-out-dialog-cancel').click();
+  await expect(tid(page, 'sign-out-dialog')).toHaveCount(0);
+  await expect(tid(page, 'settings-sign-out')).toBeVisible();
+  // AC-015: "Trotzdem abmelden" is the sign-out as before.
+  await tid(page, 'settings-sign-out').click();
+  await tid(page, 'sign-out-dialog-confirm').click();
   await expect(tid(page, 'login-screen')).toBeVisible();
   expect(await cachedKeys(page), 'local cache and store queue').toBe(0);
   const keys = await page.evaluate(() => Object.keys(window.localStorage));
@@ -196,7 +206,9 @@ test.describe('with the service worker', () => {
     await page.reload();
     await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 20_000 });
     await expect(tid(page, 'today-meals')).toContainText('Lasagne');
-    await expect(tid(page, 'offline-banner')).toHaveText('Offline – Lesen und Abhaken gehen');
+    await expect(tid(page, 'offline-banner')).toHaveText(
+      'Offline – Lesen, Einkaufen und Packen gehen',
+    );
     await nav(page, 'liste');
     await expect(itemRows(page, 'Milch')).toHaveCount(1);
   });
@@ -462,4 +474,60 @@ test('AC-033: after `pnpm db:reset` the demo household, "Test" and the owner inv
   );
   // Compared in-process; the address is never printed.
   expect(invitations.some((invitation) => invitation.email === owner)).toBe(true);
+});
+
+test('AC-011 (0018): "Verlassen" asks first with the way back; "Abbrechen" keeps the membership', async ({
+  page,
+}) => {
+  const name = `Verlassen ${unique()}`;
+  // Spec 0027, AC-017: the last member has no "Verlassen"; Nadja makes Enrico one of two.
+  const householdId = await createTestHousehold(name, { withNadja: true });
+  await open(page, '/');
+  await switchHousehold(page, householdId);
+  await openManaged(page, 'members');
+  const leaveCalls: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/rpc/remove_member')) leaveCalls.push(request.url());
+  });
+  await tid(page, `household-member-remove-${seedIds['m-enrico']}`).click();
+  const dialog = tid(page, 'member-remove-dialog');
+  await expect(dialog).toContainText(`„${name}“ verlassen?`);
+  // Enrico has other households, so there is no "einziger Haushalt".
+  await expect(tid(page, 'member-remove-dialog-message')).toHaveText(
+    'Zurück kommst du nur mit einer neuen Einladung.',
+  );
+  await expect(tid(page, 'member-remove-dialog-confirm')).toHaveText('Verlassen');
+  await tid(page, 'member-remove-dialog-cancel').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
+  await expect(tid(page, `household-member-${seedIds['m-enrico']}`)).toBeVisible();
+  expect(leaveCalls, 'no server call without the confirmation').toEqual([]);
+});
+
+test('AC-012 (0018): leaving the only household says so in the question', async ({ page }) => {
+  const name = `Einziger ${unique()}`;
+  const email = `einzig-${unique()}@example.com`.toLowerCase();
+  const householdId = await createTestHousehold(name);
+  const invitationId = await rpc<string>(await accessToken('enrico'), 'invite_member', {
+    household_id: householdId,
+    email,
+  });
+  const accountId = createAccount(email, 'Einzig');
+  try {
+    await rpc(await accessToken({ email }), 'accept_invitation', { invitation_id: invitationId });
+    await signInAs(page, email);
+    await expect(tid(page, 'today-screen')).toBeVisible({ timeout: 30_000 });
+    await openManaged(page, 'members');
+    await expect(tid(page, `household-${householdId}-active`)).toBeVisible();
+    await tid(page, `household-member-remove-${accountId}`).click();
+    await expect(tid(page, 'member-remove-dialog')).toContainText(`„${name}“ verlassen?`);
+    await expect(tid(page, 'member-remove-dialog-message')).toHaveText(
+      'Das ist dein einziger Haushalt. Zurück kommst du nur mit einer neuen Einladung.',
+    );
+    await tid(page, 'member-remove-dialog-cancel').click();
+    await expect(tid(page, 'member-remove-dialog')).toHaveCount(0);
+    await expect(tid(page, `household-member-${accountId}`)).toBeVisible();
+  } finally {
+    deleteAccount(accountId);
+  }
 });

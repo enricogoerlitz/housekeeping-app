@@ -36,9 +36,9 @@ migrations, deletion of data, and infrastructure or deployment code.
 
 When a change touches one of them, before the task counts as done:
 
-1. The plan names the risks and how they are countered (short threat model in `plan.md`).
+1. The spec names the risks and how they are countered (section "Risiken", a short table).
 2. Negative tests exist: foreign household, signed-out user, invalid input, failure path.
-3. `/security-check` has run on the diff; findings are fixed or recorded in `plan.md`.
+3. `/security-check` has run on the diff; findings are fixed or recorded under "Risiken".
 
 These add requirements to the work. They never stop it.
 

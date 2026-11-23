@@ -1,6 +1,5 @@
 import {
   confirmArticle,
-  createArea,
   deleteArticle,
   snapshot,
   updateArticle,
@@ -11,7 +10,6 @@ import {
 } from '@housekeeping/api';
 import {
   articleUsage,
-  matchSearchOrCreate,
   mergeTargets,
   validateArticleDraft,
   type Article,
@@ -35,18 +33,21 @@ import {
   Text,
   TextField,
   toast,
+  type SheetAction,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
+import { AreaPicker } from '@/features/stores/area-picker';
 
 import { DIET_OPTIONS, RULE_OPTIONS, type RuleChoice } from './labels';
+import { errorMessage } from '@/features/shell/error-message';
 
 const FAILED = 'Das hat nicht geklappt.';
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : FAILED);
+const messageOf = (error: unknown) => errorMessage(error, FAILED);
 
 export interface ArticleEditorProps {
   articleId: Id;
@@ -64,101 +65,6 @@ function FieldLabel(props: { children: string }) {
     <Text variant="smallStrong" style={{ marginBottom: 6 }}>
       {props.children}
     </Text>
-  );
-}
-
-/**
- * "Bereich" of the article: all areas and "Ohne Bereich", or "Suchen oder anlegen" while typing.
- * Unlike assigning in "Einkaufen", this is an edit of the article and needs the network.
- */
-function AreaStep(props: { article: Article; onDone: () => void }) {
-  const areas = useAreas();
-  const online = useOnlineOnly();
-  const [query, setQuery] = useState('');
-  const [error, setError] = useState<string | undefined>();
-  const result = matchSearchOrCreate(query, areas);
-  const name = query.trim();
-
-  const pick = (areaId: Id | null) => {
-    try {
-      if (areaId !== (props.article.areaId ?? null)) updateArticle(props.article.id, { areaId });
-      props.onDone();
-    } catch (caught) {
-      setError(messageOf(caught));
-    }
-  };
-  const create = () => {
-    try {
-      pick(createArea(name));
-    } catch (caught) {
-      setError(messageOf(caught));
-    }
-  };
-  const sorted = [...areas].sort((a, b) => a.sort - b.sort);
-  const check = (selected: boolean) =>
-    selected ? <Icon name="check" size={18} color="accent" /> : undefined;
-
-  return (
-    <Stack gap={12}>
-      <SearchOrCreate
-        query={query}
-        onQueryChange={(value) => {
-          setQuery(value);
-          setError(undefined);
-        }}
-        label="Bereich suchen"
-        placeholder="Bereich suchen oder anlegen"
-        clearLabel="Suche leeren"
-        autoFocus
-        hits={result.matches.map((match) => ({ key: match.item.id, title: match.item.name }))}
-        onSelect={pick}
-        createOptions={result.canCreate ? [{ key: 'area', label: `„${name}“ neu anlegen` }] : []}
-        onCreate={create}
-        brake={
-          result.similar
-            ? {
-                question: `Meinst du ${result.similar.name}?`,
-                acceptLabel: 'Ja',
-                createAnywayLabel: 'Trotzdem neu',
-                onAccept: () => {
-                  if (result.similar) pick(result.similar.id);
-                },
-              }
-            : undefined
-        }
-        createDisabledHint={online.hint}
-        testID="article-area-search"
-      />
-      {error ? (
-        <Text variant="small" color="warn" testID="article-area-error">
-          {error}
-        </Text>
-      ) : null}
-      {name === '' ? (
-        <List testID="article-area-all">
-          {[
-            <ListRow
-              key="none"
-              title="Ohne Bereich"
-              trailing={check(props.article.areaId === undefined)}
-              disabled={online.disabled}
-              onPress={() => pick(null)}
-              testID="article-area-option-none"
-            />,
-            ...sorted.map((area) => (
-              <ListRow
-                key={area.id}
-                title={area.name}
-                trailing={check(area.id === props.article.areaId)}
-                disabled={online.disabled}
-                onPress={() => pick(area.id)}
-                testID={`article-area-option-${area.id}`}
-              />
-            )),
-          ]}
-        </List>
-      ) : null}
-    </Stack>
   );
 }
 
@@ -208,10 +114,12 @@ function MergeStep(props: { article: Article; onPick: (targetId: Id) => void }) 
  * or when the field loses focus); every other field at once. Returns the parts, so the same editor
  * fills the medium window on phones and the right column on wide screens.
  */
-function useArticleEditor(props: ArticleEditorProps): {
+export function useArticleEditor(props: ArticleEditorProps): {
   title: string;
   body: ReactNode;
   footer: ReactNode;
+  /** "Fertig" of the main step; a window shows it among its actions instead of `footer`. */
+  done?: SheetAction;
 } {
   const articles = useArticles();
   const areas = useAreas();
@@ -294,7 +202,14 @@ function useArticleEditor(props: ArticleEditorProps): {
   if (step === 'area') {
     return {
       title: `Bereich für ${article.name}`,
-      body: <AreaStep article={article} onDone={() => setStep('main')} />,
+      body: (
+        <AreaPicker
+          articleId={article.id}
+          currentAreaId={article.areaId}
+          onPicked={() => setStep('main')}
+          testID="article-area"
+        />
+      ),
       footer: (
         <Button
           label="Zurück"
@@ -553,19 +468,21 @@ function useArticleEditor(props: ArticleEditorProps): {
     </Stack>
   );
 
+  const doneAction: SheetAction = {
+    label: 'Fertig',
+    disabled: !online.disabled && nameProblem !== undefined,
+    onPress: done,
+    testID: 'article-done',
+  };
   return {
     title: 'Artikel bearbeiten',
     body,
     footer: (
       <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-        <Button
-          label="Fertig"
-          disabled={!online.disabled && nameProblem !== undefined}
-          onPress={done}
-          testID="article-done"
-        />
+        <Button {...doneAction} />
       </Row>
     ),
+    done: doneAction,
   };
 }
 
@@ -578,7 +495,8 @@ export function ArticleSheet(props: ArticleEditorProps & { visible: boolean }) {
       size="m"
       title={editor.title}
       onClose={props.onClose}
-      footer={editor.footer}
+      footer={editor.done ? undefined : editor.footer}
+      actions={editor.done ? { primary: editor.done } : undefined}
       testID="article-sheet"
     >
       {editor.body}

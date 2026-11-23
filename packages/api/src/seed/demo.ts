@@ -7,7 +7,7 @@ import {
   normalizeText,
   parseISODate,
   parseIngredientLine,
-  planPackingLists,
+  planPackingList,
   splitVariants,
   toISODate,
   weekdayShort,
@@ -28,6 +28,7 @@ import {
   type PackingItem,
   type PackingListBag,
   type Recipe,
+  type Trip,
   type Restaurant,
   type ShoppingItem,
   type Store,
@@ -35,7 +36,8 @@ import {
 
 import { starterAreas } from '../starter/areas';
 import { starterCatalog } from '../starter/catalog';
-import type { AreaKey, SeedRecipe } from '../starter/types';
+import type { AreaKey } from '../starter/types';
+import type { SeedRecipe } from './types';
 import type { AppState, HouseholdData } from '../store';
 import { seedRecipes } from './recipes-data';
 
@@ -157,7 +159,7 @@ export function buildRecipe(seed: SeedRecipe, articles: Article[], createdAt: st
     ratings: {},
     cookedCount: 0,
     createdAt,
-    source: 'Starter',
+    links: [],
   };
 }
 
@@ -271,6 +273,7 @@ function buildCollections(
     ratings: {},
     cookedCount: 0,
     createdAt: `${addDays(today, offset)}T12:00:00.000Z`,
+    links: [],
   });
   const own = (
     index: number,
@@ -487,14 +490,9 @@ function buildDemoData(today: ISODate): HouseholdData {
   manual('Milch', { count: 1 });
   manual('Möhren', { qty: 500, unit: 'g' });
   manual('Geschenkpapier');
-  items = addContribution(
-    items,
-    articleIdByName('Bananen'),
-    { id: 'contrib-r-bananen', source: { kind: 'recurring' } },
-    nextItemId(),
-    now,
-  );
-  for (const name of ['Brot', 'Butter']) {
+  manual('Bananen');
+  // Bought last time; one item per article (spec 0025, S-03), so nothing the Lasagne needs.
+  for (const name of ['Brot', 'Joghurt']) {
     const id = nextItemId();
     items = [
       ...items,
@@ -828,15 +826,14 @@ function buildDemoData(today: ISODate): HouseholdData {
     visit(-33, 'rest-pho', 'plan-pho-2'),
     visit(-61, 'rest-pho', 'plan-pho-3'),
     visit(-19, 'rest-enzo', 'plan-enzo-1'),
-    // Spec 0013, AC-027: the day after tomorrow in the evening, reserved for 19:30, after the curry.
-    { ...visit(2, 'rest-enzo', 'plan-enzo-2'), sort: 1, reservedAt: '19:30' },
+    // Spec 0021, REQ-013: the day after tomorrow in the evening, at 19:30, after the curry.
+    { ...visit(2, 'rest-enzo', 'plan-enzo-2'), sort: 1, startsAt: '19:30' },
   );
 
   // ---------- Activities (spec 0004) ----------
   const activity = (id: string, name: string, extra: Partial<Activity>): Activity => ({
     id,
     name,
-    tags: [],
     favoriteOf: [],
     ratings: {},
     createdBy: ENRICO,
@@ -897,6 +894,7 @@ function buildDemoData(today: ISODate): HouseholdData {
       name: 'Enrico & Nadja',
       memberIds: [ENRICO, NADJA],
       mealSlots: mealSlots(),
+      timeZone: 'Europe/Berlin',
       defaultStoreId: 'store-rewe',
     },
     areas,
@@ -1010,14 +1008,14 @@ function bagItem(bagId: Id, line: string, sort: number): PackingBagItem {
 
 /**
  * Reisetaschen "Strand", "Wintersport", "Kulturbeutel" (Nadja) and "Technik"; "Urlaub Mallorca"
- * (whole household, in 12 days, 7 days) with Strand and Kulturbeutel, some packed; "Dienstreise
+ * (Enrico and Nadja, in 12 days, 7 days) with Strand and Kulturbeutel, some packed; "Dienstreise
  * Hamburg" (Nadja) without a packing list.
  */
 function buildPacking(
   today: ISODate,
 ): Pick<
   HouseholdData,
-  'absences' | 'packingBags' | 'packingBagItems' | 'packingListBags' | 'packingItems'
+  'trips' | 'packingBags' | 'packingBagItems' | 'packingListBags' | 'packingItems'
 > {
   const packingBags: PackingBag[] = BAG_CONTENTS.map((bag, sort) => ({
     id: bag.id,
@@ -1028,22 +1026,26 @@ function buildPacking(
   const packingBagItems = BAG_CONTENTS.flatMap((bag) =>
     bag.items.map((line, sort) => bagItem(bag.id, line, sort)),
   );
-  const mallorca = {
-    id: 'abs-mallorca',
+  const mallorca: Trip = {
+    id: 'trip-mallorca',
     from: addDays(today, 12),
     to: addDays(today, 18),
     note: 'Urlaub Mallorca',
+    members: [
+      { id: 'trip-mallorca-enrico', memberId: ENRICO },
+      { id: 'trip-mallorca-nadja', memberId: NADJA },
+    ],
   };
-  const hamburg = {
-    id: 'abs-hamburg',
-    memberId: NADJA,
+  const hamburg: Trip = {
+    id: 'trip-hamburg',
     from: addDays(today, 26),
     to: addDays(today, 27),
     note: 'Dienstreise Hamburg',
+    members: [{ id: 'trip-hamburg-nadja', memberId: NADJA }],
   };
   let counter = 0;
-  const plan = planPackingLists({
-    absences: [mallorca],
+  const plan = planPackingList({
+    trip: mallorca,
     bagIds: ['bag-strand', 'bag-kulturbeutel'],
     bags: packingBags,
     bagItems: packingBagItems,
@@ -1056,7 +1058,7 @@ function buildPacking(
   });
   const packingListBags: PackingListBag[] = plan.listBags;
   return {
-    absences: [mallorca, hamburg],
+    trips: [mallorca, hamburg],
     packingBags,
     packingBagItems,
     packingListBags,
@@ -1072,6 +1074,7 @@ function buildTestData(today: ISODate): HouseholdData {
       name: 'Test',
       memberIds: [ENRICO, NADJA],
       mealSlots: mealSlots(),
+      timeZone: 'Europe/Berlin',
     },
     areas: buildAreas(),
     articles: buildArticles(`${addDays(today, -40)}T12:00:00.000Z`),
@@ -1084,7 +1087,7 @@ function buildTestData(today: ISODate): HouseholdData {
     items: [],
     chores: [],
     choreEvents: [],
-    absences: [],
+    trips: [],
     feedback: [],
     packingBags: [],
     packingBagItems: [],

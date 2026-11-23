@@ -18,6 +18,7 @@ import {
   checkFunctions,
   checkGraphql,
   checkNetRest,
+  checkOldOrigin,
   checkPhotoAccess,
   checkPhotoBucket,
   checkSecurityHeaders,
@@ -448,6 +449,37 @@ describe('project ref', () => {
   });
 });
 
+describe('spec 0027, AC-042, AC-043: the old azurestaticapps.net address redirects', () => {
+  const OLD = 'https://brave-bush-089e7a80f.6.azurestaticapps.net';
+  const OWN = 'https://house.kuschel-nest.de';
+
+  test('301 or 308 to the same path on the own domain is ok', () => {
+    for (const status of [301, 308]) {
+      const r = checkOldOrigin(res(status, { location: `${OWN}/kalender` }), OWN, OLD);
+      assert.equal(r.ok, true, r.detail);
+      assert.equal(r.name, 'Alte Adresse');
+    }
+  });
+
+  test('200 from the old address is "Alte Adresse leitet nicht um"', () => {
+    const r = checkOldOrigin(res(200), OWN, OLD);
+    assert.equal(r.ok, false);
+    assert.match(r.detail, /Alte Adresse leitet nicht um/);
+  });
+
+  test('a redirect elsewhere, a 302, no answer or no old address given is FEHLER', () => {
+    assert.equal(
+      checkOldOrigin(res(301, { location: 'https://fremd.example/kalender' }), OWN, OLD).ok,
+      false,
+    );
+    assert.equal(checkOldOrigin(res(302, { location: `${OWN}/kalender` }), OWN, OLD).ok, false);
+    assert.equal(checkOldOrigin({ error: 'ENOTFOUND' }, OWN, OLD).ok, false);
+    const missing = checkOldOrigin(undefined, OWN, '');
+    assert.equal(missing.ok, false);
+    assert.match(missing.detail, /nicht angegeben/);
+  });
+});
+
 describe('wiring', () => {
   /** A fake network: every answer as production should give it. */
   function goodNetwork() {
@@ -542,6 +574,17 @@ describe('wiring', () => {
     expect: { version: '2026.12.4' },
     fetchImpl: network.fetchImpl,
     supabaseCli: cli.cli,
+  });
+
+  test('spec 0027: with --old-origin the old address is asked for /kalender without following', async () => {
+    const network = goodNetwork();
+    const OLD = 'https://old-0a1b2c3d.azurestaticapps.net';
+    const inner = network.fetchImpl;
+    network.fetchImpl = async (url, init = {}) =>
+      url === `${OLD}/kalender` ? res(308, { location: `${WEB}/kalender` }) : inner(url, init);
+    const results = await runChecks({ ...options(network, goodCli()), oldOrigin: OLD });
+    assert.deepEqual(failed(results), []);
+    assert.ok(results.some((r) => r.name === 'Alte Adresse' && r.ok));
   });
 
   test('all good: every check ok', async () => {

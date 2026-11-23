@@ -9,9 +9,9 @@
     "./themes": "./src/themes/index.ts"
   },
   "scripts": {
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --coverage --passWithNoTests"
   },
   "dependencies": {
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
@@ -25,6 +25,7 @@
     "expo-haptics": "*",
     "expo-image": "*",
     "react": "*",
+    "react-dom": "*",
     "react-native": "*",
     "react-native-reanimated": "*",
     "react-native-safe-area-context": "*",
@@ -32,6 +33,12 @@
     "react-native-worklets": "*"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@types/react-dom": "~19.3.0",
+    "@vitest/coverage-v8": "5.1.1",
+    "jsdom": "^31.0.1",
+    "react-dom": "19.3.0",
+    "react-native-web": "~0.21.4",
     "vitest": "^5.1.1"
   }
 }

@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
+import { FOCUS_RING_ROOM } from './controls';
 import { columnsFor, gridRows, type GridRow } from './grid-columns';
 import { PageScrollContext } from './shell';
 
@@ -84,7 +85,8 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
       if (hiddenAt.current === undefined) hiddenAt.current = offset.get();
       return;
     }
-    if (grid) setWidth(measured);
+    // The tiles share the width inside the focus ring's room.
+    if (grid) setWidth(Math.max(0, measured - 2 * FOCUS_RING_ROOM));
     const back = hiddenAt.current;
     hiddenAt.current = undefined;
     if (back !== undefined && back > 0)
@@ -153,8 +155,25 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
       onScroll={onScroll}
       scrollEventThrottle={16}
       onLayout={onLayout}
-      style={[{ flex: 1 }, grid && width === undefined ? { opacity: 0 } : null, props.style]}
-      contentContainerStyle={page ? { paddingTop: page.inset, paddingBottom: 24 } : undefined}
+      // The list reaches past its place by the room of the focus ring and its content comes back
+      // by as much, so the ring of an item at the edge is not cut (spec 0031, REQ-034).
+      style={[
+        { flex: 1, margin: -FOCUS_RING_ROOM },
+        grid && width === undefined ? { opacity: 0 } : null,
+        props.style,
+      ]}
+      contentContainerStyle={
+        page
+          ? [
+              {
+                paddingTop: page.inset + FOCUS_RING_ROOM,
+                paddingBottom: 24 + FOCUS_RING_ROOM,
+                paddingHorizontal: FOCUS_RING_ROOM,
+              },
+              page.touch,
+            ]
+          : { padding: FOCUS_RING_ROOM }
+      }
       onContentSizeChange={() => {
         const goal = target.get();
         if (goal <= 0) return;

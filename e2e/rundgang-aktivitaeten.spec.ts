@@ -8,6 +8,7 @@ import { formatLongDate } from '@housekeeping/core';
 
 import {
   ACTIVE,
+  openManaged,
   NADJA,
   PLAN_ENTRY,
   SLOT_DINNER,
@@ -37,6 +38,7 @@ import {
   tid,
   toastMessage,
   unique,
+  dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -73,42 +75,26 @@ const SUNDAY = day(7);
 
 /** The activity's own page in the calendar's area, on every width (spec 0010, AC-026). */
 function activityRoute(_page: Page, id: string): string {
-  return `/kalender/aktivitaet/${id}`;
+  return `/aktivitaet/${id}`;
 }
 
-/** "Aktivitäten" through ▲ in the calendar's head (spec 0010, AC-025). */
+/** "Aktivitäten" under "Verwalten" (spec 0024, REQ-009). */
 async function openActivities(page: Page): Promise<void> {
   await nav(page, 'kalender');
-  await tid(page, 'calendar-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-screen')).toBeVisible();
   await settle(page);
 }
 
-const SLOT_NAMES: Record<string, string> = {
-  [SLOT_MORNING]: 'Vormittag',
-  [SLOT_LUNCH]: 'Mittag',
-  [SLOT_DINNER]: 'Abend',
-};
-
-/** One day of the phone week: its head `day-<date>` and everything planned on it. */
-function dayBlock(page: Page, date: string): Locator {
-  return tid(page, `day-${date}`).locator('xpath=..');
-}
-
 /**
- * The titles of the entries in one Tageszeit, top to bottom. The phone week shows only the
- * Tageszeiten with entries (spec 0010, AC-008), each as its name above its rows.
+ * The titles of the entries in one Tageszeit (`week-slot-<date>-<slot>`), top to bottom. The
+ * phone week shows only the Tageszeiten with entries (spec 0010, AC-008): none is an empty list.
  */
 async function slotTitles(page: Page, date: string, slotId: string): Promise<(string | null)[]> {
-  const rows = await dayBlock(page, date)
+  return dayBlock(page, date)
+    .locator(`[data-testid="week-slot-${date}-${slotId}"]`)
     .locator(PLAN_ENTRY)
-    .evaluateAll((elements) =>
-      elements.map((row) => ({
-        slot: row.parentElement?.firstElementChild?.textContent ?? '',
-        title: row.getAttribute('aria-label'),
-      })),
-    );
-  return rows.filter((row) => row.slot === SLOT_NAMES[slotId]).map((row) => row.title);
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')));
 }
 
 /**
@@ -147,7 +133,7 @@ async function planActivity(page: Page, date: string, slotId: string, id: string
   await planOn(page, date, slotId, async () => {
     await tid(page, 'add-entry-tab-activities').click();
     await tid(page, `add-entry-activity-${id}`).click();
-    if (note) await tid(page, 'add-entry-activity-note').fill(note);
+    if (note) await tid(page, 'add-entry-note').fill(note);
   });
 }
 
@@ -251,8 +237,8 @@ test('AC-004: "Aktivitäten" lists Eislaufen and Bouldern with picture, name and
   page,
 }) => {
   await open(page, '/kalender');
-  await tid(page, 'calendar-activities').click();
-  await expect(page).toHaveURL(/\/kalender\/aktivitaeten/);
+  await openManaged(page, 'activities');
+  await expect(page).toHaveURL(/\/aktivitaeten/);
   for (const [id, name] of [
     [EISLAUFEN, 'Eislaufen'],
     [BOULDERN, 'Bouldern'],
@@ -284,10 +270,10 @@ test('AC-005: the household "Test" shows "Noch keine Aktivitäten" with "Aktivit
 test('AC-016: Bouldern shows "Zuletzt: vor 12 Tagen · 3-mal" and the three past days in "Verlauf"', async ({
   page,
 }) => {
-  await open(page, '/kalender/aktivitaeten');
+  await open(page, '/aktivitaeten');
   await tid(page, `activity-${BOULDERN}`).click();
   // On the phone the activity has its own page inside the tabs: the tab bar stays.
-  await expect(page).toHaveURL(new RegExp(`/kalender/aktivitaet/${BOULDERN}$`));
+  await expect(page).toHaveURL(new RegExp(`/aktivitaet/${BOULDERN}$`));
   await expect(tid(page, 'tab-kalender')).toBeVisible();
   await expect(tid(page, 'activity-title')).toHaveText('Bouldern');
   await expect(tid(page, 'activity-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
@@ -306,7 +292,7 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
   page,
 }) => {
   const name = `Eislaufen mit Freunden ${unique()}`;
-  await open(page, '/kalender/aktivitaeten');
+  await open(page, '/aktivitaeten');
   await tid(page, 'activity-add').click();
   await expect(tid(page, 'activity-sheet')).toBeVisible();
   await tid(page, 'activity-link').fill(
@@ -325,7 +311,7 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
 });
 
 test('AC-007: saving without a name creates nothing and shows "Name fehlt"', async ({ page }) => {
-  await open(page, '/kalender/aktivitaeten');
+  await open(page, '/aktivitaeten');
   const count = tid(page, 'activity-count');
   const before = await count.innerText();
   await tid(page, 'activity-add').click();
@@ -339,7 +325,7 @@ test('AC-007: saving without a name creates nothing and shows "Name fehlt"', asy
 test('AC-008: "bouldern" offers "Gibt es schon: Bouldern" with "Öffnen" instead of a copy', async ({
   page,
 }) => {
-  await open(page, '/kalender/aktivitaeten');
+  await open(page, '/aktivitaeten');
   const before = await tid(page, 'activity-count').innerText();
   await tid(page, 'activity-add').click();
   await tid(page, 'activity-name').fill('bouldern');
@@ -374,7 +360,7 @@ test('AC-009: Enrico’s photo of Eislaufen shows on Nadja’s device; it is sto
   await expect(tid(page, 'activity-photo-change')).toHaveText(/Foto ändern/);
 
   const nadja = await secondDevice(browser, 'nadja');
-  await nadja.page.goto('/kalender/aktivitaeten');
+  await nadja.page.goto('/aktivitaeten');
   await expectOwnPhoto(tid(nadja.page, `activity-${EISLAUFEN}-photo`));
   await nadja.context.close();
   await page.bringToFront();
@@ -427,7 +413,7 @@ test.describe('with the service worker', () => {
     page,
     context,
   }) => {
-    await open(page, '/kalender/aktivitaeten');
+    await open(page, '/aktivitaeten');
     await expectOwnPhoto(tid(page, `activity-${EISLAUFEN}-photo`));
     await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
     await expect
@@ -564,7 +550,8 @@ test('AC-015: Spieleabend has no place, so neither its page nor its plan entry h
   await tid(page, 'entry-done').click();
 
   // With a place there is one (Eislaufen this morning).
-  await tid(page, 'week-today').click();
+  await expect(page.locator('[data-testid^="day-2"]:visible').first()).toBeVisible();
+  if (!(await tid(page, `day-${TODAY}`).isVisible())) await tid(page, 'week-today').click();
   await tid(page, `entry-${EISLAUFEN_TODAY}`).click();
   await expect(tid(page, 'entry-route')).toBeVisible();
 });
@@ -666,7 +653,7 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
   await tid(nadja.page, 'activity-stars-4').click();
   await tid(nadja.page, 'activity-favorite').click();
   await expect(tid(nadja.page, 'activity-favorite')).toHaveAttribute('aria-pressed', 'true');
-  await nadja.page.goto('/kalender/aktivitaeten');
+  await nadja.page.goto('/aktivitaeten');
   await expect(tid(nadja.page, `activity-${BOULDERN}-stars`)).toHaveAttribute(
     'aria-label',
     '4 von 5 Sternen',
@@ -675,16 +662,21 @@ test('AC-020: Nadja rates Bouldern 4 stars and favours it; Enrico sees her ratin
   await nadja.context.close();
 
   await page.bringToFront();
-  await open(page, '/kalender/aktivitaeten');
+  await open(page, '/aktivitaeten');
   await expect(tid(page, `activity-${BOULDERN}`)).toBeVisible();
   await expect(tid(page, `activity-${BOULDERN}-favorite`)).toHaveCount(0);
   await expect(tid(page, `activity-${BOULDERN}-stars`)).toHaveCount(0);
   await tid(page, `activity-${BOULDERN}`).click();
-  const ofNadja = tid(page, `activity-rating-${seedIds['m-nadja']}`);
-  await expect(ofNadja).toContainText(NADJA);
-  await expect(ofNadja.locator('[aria-label="4 von 5 Sternen"]')).toBeVisible(SYNC);
-  await expect(ofNadja).toContainText('Favorit');
-  await expect(tid(page, `activity-rating-${seedIds['m-enrico']}`)).toContainText('noch keine');
+  // Spec 0031, AC-086: the ratings as on a recipe, "Du" once and Nadja's stars to look at.
+  const ratings = tid(page, 'activity-stars-all');
+  await expect(ratings).toContainText(NADJA);
+  await expect(tid(page, `activity-stars-member-${seedIds['m-nadja']}`)).toHaveAttribute(
+    'aria-label',
+    '4 von 5 Sternen',
+    SYNC,
+  );
+  await expect(tid(page, `activity-stars-member-${seedIds['m-enrico']}`)).toHaveCount(0);
+  await expect(ratings.getByText('Du', { exact: true })).toHaveCount(1);
 });
 
 // ---------- REQ-001 order and REQ-008: create while planning ----------
@@ -747,7 +739,7 @@ test('AC-023, AC-021: "Neue Aktivität" without a name creates nothing; "Kletter
   await expect.poll(() => slotTitles(page, SATURDAY, SLOT_DINNER)).toContain(name);
   expect(await slotTitles(page, SATURDAY, SLOT_DINNER)).toHaveLength(planned.length + 1);
   expect(await activityCount()).toBe(before + 1);
-  await tid(page, 'calendar-activities').click();
+  await openManaged(page, 'activities');
   await expect(tid(page, 'activities-screen')).toContainText(name);
 });
 
@@ -803,16 +795,16 @@ test.describe('at desktop width', () => {
     await expect(tid(page, `entry-${EISLAUFEN_TODAY}`)).toContainText('Eislaufen');
   });
 
-  test('AC-004, AC-016: an activity opens as its own page; a deep link keeps the sidebar', async ({
+  test('AC-004, AC-016: an activity opens next to the list (spec 0024, AC-026); a deep link keeps the sidebar', async ({
     page,
   }) => {
-    await open(page, '/kalender/aktivitaeten');
+    await open(page, '/aktivitaeten');
     await tid(page, `activity-${BOULDERN}`).click();
-    // Spec 0010, REQ-008: no split view any more, on every width its own page.
-    await expect(page).toHaveURL(new RegExp(`/kalender/aktivitaet/${BOULDERN}$`));
+    await expect(page).toHaveURL(new RegExp(`/aktivitaeten\\?aktivitaet=${BOULDERN}$`));
+    await expect(tid(page, 'activities-split')).toBeVisible();
     await expect(tid(page, 'activity-visits')).toHaveText('Zuletzt: vor 12 Tagen · 3-mal');
 
-    await page.goto(`/kalender/aktivitaet/${EISLAUFEN}`);
+    await page.goto(`/aktivitaet/${EISLAUFEN}`);
     await expect(tid(page, 'activity-title')).toHaveText('Eislaufen', SYNC);
     await expect(tid(page, 'nav-kalender')).toBeVisible();
   });
@@ -825,8 +817,8 @@ test('a deep link with a name of Object.prototype shows "nicht gefunden" instead
 }) => {
   // The pageErrors fixture fails the test on any uncaught error in the page.
   for (const [route, notFound] of [
-    ['/kalender/aktivitaet/constructor', 'activity-not-found'],
-    ['/kalender/aktivitaet/__proto__', 'activity-not-found'],
+    ['/aktivitaet/constructor', 'activity-not-found'],
+    ['/aktivitaet/__proto__', 'activity-not-found'],
     ['/rezept/toString', 'recipe-not-found'],
     ['/restaurant/constructor', 'restaurant-not-found'],
   ] as const) {

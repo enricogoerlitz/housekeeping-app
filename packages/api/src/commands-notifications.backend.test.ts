@@ -1,6 +1,7 @@
 // Notification commands (spec 0013): the own settings row on the diff path (created by the
 // server, only patched), the devices over their RPCs, online only. "Deine Geräte" is read from
 // the server, never from the cache, and never carries a push address or a key (ADR-0014).
+import { kindEnabledPatch } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
 import { createEngine } from './backend';
@@ -46,7 +47,7 @@ const DEFAULTS = {
   activitiesEveEnabled: false,
   activitiesEveAt: '19:00',
   choreRemindersEnabled: true,
-  reservationRemindersEnabled: true,
+  entryRemindersEnabled: true,
 };
 
 async function rejection(promise: Promise<unknown>): Promise<unknown> {
@@ -69,6 +70,35 @@ describe('settings (REQ-004)', () => {
     expect(getData().notificationSettings).toMatchObject(DEFAULTS);
     const rows = fx.server.rows(H, 'notification_settings');
     expect(rows.map((row) => row.member_id).sort()).toEqual([ENRICO, NADJA].sort());
+  });
+
+  it('spec 0017, AC-025: "Erinnerungen an Einträgen" switches with one patch of its own column', async () => {
+    await fx.startEnrico();
+    updateNotificationSettings(kindEnabledPatch('entryReminders', false));
+    expect(getData().notificationSettings?.entryRemindersEnabled).toBe(false);
+    await fx.settle();
+    expect(fx.calls).toEqual([
+      {
+        fn: 'applyChanges',
+        args: [
+          H,
+          [
+            {
+              kind: 'patch',
+              table: 'notification_settings',
+              id: getData().notificationSettings?.id,
+              changes: { entry_reminders_enabled: false },
+            },
+          ],
+        ],
+      },
+    ]);
+    const own = fx.server.rows(H, 'notification_settings').find((row) => row.member_id === ENRICO);
+    expect(own).toMatchObject({ entry_reminders_enabled: false });
+    fx.environment.setOnline(false);
+    expect(() => updateNotificationSettings(kindEnabledPatch('entryReminders', true))).toThrow(
+      OfflineError,
+    );
   });
 
   it('AC-012: a change is one patch of the changed fields, shown at once and on another device', async () => {

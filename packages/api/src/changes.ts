@@ -2,6 +2,7 @@
 // diffed per table (core diffRows). Pure; the engine decides where the operations go.
 import {
   diffRows,
+  isReminderPast,
   NEVER_SENT_COLUMNS,
   type Row,
   type RowOp,
@@ -38,7 +39,8 @@ const TABLE_ORDER = [
   'shopping_contributions',
   'chores',
   'chore_events',
-  'absences',
+  'trips',
+  'trip_members',
   'packing_bags',
   'packing_bag_items',
   'packing_list_bags',
@@ -81,7 +83,7 @@ function deletedIds(before: Record<string, Row[]>, after: Record<string, Row[]>)
 
 /**
  * Rows the database deletes itself because their parent goes in the same change (recursively:
- * an absence takes its bags of the packing list, they take their Packstücke).
+ * a trip takes its people and the bags of its packing list, they take their Packstücke).
  */
 function cascadedIds(
   before: Record<string, Row[]>,
@@ -299,9 +301,13 @@ export function diffHousehold(
           ? 'delete_article'
           : table === 'recipes'
             ? 'delete_recipe'
-            : table === 'notification_settings'
-              ? 'remove_member'
-              : 'remove_chore_event';
+            : table === 'restaurants'
+              ? 'delete_restaurant'
+              : table === 'activities'
+                ? 'delete_activity'
+                : table === 'notification_settings'
+                  ? 'remove_member'
+                  : 'remove_chore_event';
       throw new Error(`Deleting ${table} needs its own RPC (${way}).`);
     }
     if (NO_INSERT_TABLES.has(table) && ops.some((op) => op.kind === 'insert')) {
@@ -312,7 +318,7 @@ export function diffHousehold(
     const both = [...old, ...next];
     forward.set(table, withCreatedAt(selfReferencesFirst(ops, both), next));
     // Undo never deletes from these tables: an article created by the command stays, as when it
-    // was created by a list addition.
+    // was created by a list addition; so does an activity or a restaurant created while planning.
     const undo = diffRows(next, old, {
       table,
       allowedColumns,
@@ -376,5 +382,29 @@ export function isReflected(tables: TableRows, ops: readonly RowOp[]): boolean {
     return Object.entries(changes).every(
       ([column, value]) => NEVER_SENT.has(column) || sameJson(row[column], value),
     );
+  });
+}
+
+/**
+ * Undo after removing an entry inserts it again (spec 0017, REQ-006). A reminder whose moment has
+ * passed by then is left out of that insert: the database refuses a past reminder on insert
+ * (`reminder_in_past`), which would lose the whole undo, and it would not be sent anyway.
+ */
+export function withoutPassedReminders(
+  ops: readonly RowOp[],
+  now: Date,
+  timeZone: string,
+): RowOp[] {
+  return ops.map((op) => {
+    if (op.kind !== 'insert' || op.table !== 'meal_plan_entries') return op;
+    const { date, reminder_day_offset: offsetDays, reminder_at: at } = op.row;
+    if (typeof date !== 'string' || typeof offsetDays !== 'number' || typeof at !== 'string') {
+      return op;
+    }
+    if (!isReminderPast(date, { offsetDays, at: at.slice(0, 5) }, now, timeZone)) return op;
+    return {
+      ...op,
+      row: { ...op.row, reminder_day_offset: null, reminder_at: null, reminder_text: null },
+    };
   });
 }

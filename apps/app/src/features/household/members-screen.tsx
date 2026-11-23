@@ -1,6 +1,7 @@
 import { switchHousehold, useActiveHouseholdId, useHouseholdsMap } from '@housekeeping/api';
 import {
   Icon,
+  IconButton,
   List,
   ListRow,
   Screen,
@@ -13,9 +14,11 @@ import {
 } from '@housekeeping/ui';
 import { View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
+import { useOnlineOnly } from '@/features/shell/offline';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { CreateHouseholdForm, InviteForm, MemberList, MyInvitations } from './household-forms';
+import { DeleteHouseholdBlock, RenameHouseholdSheet } from './household-sheets';
 
 /**
  * "Verwalten" → "Haushalt & Mitglieder" (spec 0005, AC-056): the active household with its
@@ -23,17 +26,22 @@ import { CreateHouseholdForm, InviteForm, MemberList, MyInvitations } from './ho
  * the actions behave as in spec 0003, AC-008 to AC-010.
  */
 export function MembersScreen() {
-  const back = useBackToManage();
   const { isWide } = useBreakpoint();
   const households = useHouseholdsMap();
   const activeId = useActiveHouseholdId();
   const active = households[activeId]?.household;
+  const online = useOnlineOnly();
+  const address = usePageParams('mitglieder');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
+  const renaming = address.params.fenster === 'umbenennen';
 
   const members = (
     <Section title="Mitglieder" testID="settings-household">
       <Stack gap={14}>
         <MemberList />
         <InviteForm />
+        <DeleteHouseholdBlock />
       </Stack>
     </Section>
   );
@@ -57,10 +65,25 @@ export function MembersScreen() {
         <ScreenHeader
           title={active?.name ?? 'Haushalt'}
           kicker="Haushalt & Mitglieder"
-          onBack={back}
+          backLabel={back.label}
+          onBack={back.back}
+          right={
+            <IconButton
+              icon="pencil"
+              label="Haushalt umbenennen"
+              variant="soft"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => address.open({ fenster: 'umbenennen' })}
+              testID="household-rename"
+            />
+          }
         />
       }
     >
+      {renaming ? (
+        <RenameHouseholdSheet onClose={() => address.close({ fenster: undefined })} />
+      ) : null}
       {isWide ? (
         <View style={{ flexDirection: 'row', gap: 32, alignItems: 'flex-start' }}>
           <View style={{ flex: 1, minWidth: 0 }}>{members}</View>

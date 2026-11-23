@@ -1,0 +1,99 @@
+# The full e2e suite (spec 0031, REQ-002, decision 4): blocks every release. release.yml calls it
+# before the backup and before anything is delivered; started by hand (workflow_dispatch) it checks
+# a branch, e.g. develop before the release PR. Not in checks.yml or preview.yml: pull requests stay
+# without e2e.
+#
+# - Six shards of `pnpm e2e` and the dev-mode smoke test `pnpm e2e:dev`, each on its own runner
+#   with its own local Supabase stack; every shard runs to the end. A red shard blocks until
+#   someone re-runs it (Playwright already retries a failed test once in CI). A shard that hangs
+#   stops after 40 minutes (the step), Playwright itself after 35 (globalTimeout in CI).
+# - No environment and no secret: only the public local defaults of the Supabase CLI and a push
+#   key pair made for this run (never stored, every value masked).
+name: e2e
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  e2e:
+    name: e2e (${{ matrix.suite }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6', 'dev']
+    env:
+      TURBO_TELEMETRY_DISABLED: 1
+      SUITE: ${{ matrix.suite }}
+      # The local stack of this runner; its publishable key is read after the start.
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Wegwerf-Schlüssel für Web Push (nur dieser Lauf)
+        # The web build needs a public VAPID key, push-send and the Vault the rest of the pair.
+        run: |
+          node scripts/push-keys.mjs --out "$RUNNER_TEMP/push.env"
+          while IFS='=' read -r name value; do
+            case "$name" in '' | '#'*) continue ;; esac
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done < "$RUNNER_TEMP/push.env"
+          rm -f "$RUNNER_TEMP/push.env"
+      # The full stack (Auth, PostgREST, Storage, edge runtime) without the tools nobody tests.
+      - run: pnpm exec supabase start -x studio,logflare,vector
+      - name: Öffentlicher Schlüssel des lokalen Stacks
+        # Only the publishable key reaches the environment; nothing of the status is printed.
+        run: |
+          key=$(pnpm exec supabase status -o env | sed -n 's/^PUBLISHABLE_KEY="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')
+          if [ -z "$key" ]; then
+            echo "::error::Kein PUBLISHABLE_KEY im Status des lokalen Stacks"
+            exit 1
+          fi
+          echo "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$key" >> "$GITHUB_ENV"
+      - id: playwright
+        name: Playwright-Version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @housekeeping/e2e exec playwright install --with-deps chromium
+      # The browser comes from the cache; the system libraries it needs do not.
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @housekeeping/e2e exec playwright install-deps chromium
+      - name: e2e
+        timeout-minutes: 40
+        # The setup resets the database and builds the web export with the developer switch.
+        run: |
+          if [ "$SUITE" = dev ]; then
+            pnpm e2e:dev
+          else
+            pnpm e2e --shard="$SUITE"
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report-${{ strategy.job-index }}
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14

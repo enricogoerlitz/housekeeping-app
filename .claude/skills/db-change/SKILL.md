@@ -102,8 +102,8 @@ whether the change is additive or which expand/contract stage it is.
 
 ## Do not
 
-- Do not edit a committed migration. Write a new one. (Before the first production release,
-  edit the baseline files instead, ADR-0012.)
+- Do not edit a committed migration. Write a new one. (The ADR-0012 baseline is frozen since the
+  first production release on 2026-11-22.)
 - Do not disable RLS "for now", not even locally.
 - Do not use the `service_role` key to make a test pass.
 - Do not sync a table that has no RLS, or a column the user must not see.

@@ -2,9 +2,11 @@
 # main — the merge commit of a release PR from develop or of a hotfix — builds in parallel and
 # delivers in order:
 #
-#   checks → version → web-bauen ∥ supabase-pruefen → pakete-pruefen → sicherung
+#   checks → version → web-bauen ∥ supabase-pruefen → pakete-pruefen ┐
+#                    → e2e ──────────────────────────────────────────┴→ sicherung
 #          → supabase-ausliefern → web-ausliefern → pruefen → veroeffentlichen → rueckfuehrung
 #
+# - A red e2e shard (e2e.yml, spec 0031, REQ-002): no backup, no delivery, no tag (AC-007).
 # - Red checks: nothing is built or delivered (AC-028). A red build, scan or backup: no migration
 #   (AC-029). A failed migration: no web, no tag (AC-030). Tag and GitHub release only after the
 #   web delivery and the verification are green; "Re-run failed jobs" continues (AC-031).
@@ -183,6 +185,13 @@ jobs:
             echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
             exit 1
           fi
+          # The address must belong to the project of this environment: the pooler user is
+          # postgres.<ref>. Only the comparison result is printed, never the address.
+          rest="${SUPABASE_POOLER_URL#*://}"
+          if [ "${rest%%:*}" != "postgres.${SUPABASE_PROJECT_REF}" ]; then
+            echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
+            exit 1
+          fi
       - name: Migrationshistorie der Produktion
         # A foreign history stops the release (runbook B5); it is never repaired by hand.
         run: |
@@ -215,9 +224,17 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: node apps/app/scripts/check-web-export.mjs --scan "$RUNNER_TEMP/dist" --names SUPABASE_ACCESS_TOKEN,GOOGLE_CLIENT_SECRET
 
+  e2e:
+    name: e2e
+    needs: [checks, version]
+    if: needs.version.outputs.release == 'true'
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+
   sicherung:
     name: Sicherung
-    needs: [checks, version, pakete-pruefen]
+    needs: [checks, version, pakete-pruefen, e2e]
     uses: ./.github/workflows/backup.yml
     permissions:
       contents: read
@@ -229,7 +246,7 @@ jobs:
 
   supabase-ausliefern:
     name: Supabase ausliefern
-    needs: [checks, version, web-bauen, supabase-pruefen, pakete-pruefen, sicherung]
+    needs: [checks, version, web-bauen, supabase-pruefen, pakete-pruefen, e2e, sicherung]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
@@ -261,6 +278,13 @@ jobs:
             echo "::error::Secret SUPABASE_POOLER_URL fehlt (Session-Pooler-Adresse, docs/architecture/betrieb.md)"
             exit 1
           fi
+          # The address must belong to the project of this environment: the pooler user is
+          # postgres.<ref>. Only the comparison result is printed, never the address.
+          rest="${SUPABASE_POOLER_URL#*://}"
+          if [ "${rest%%:*}" != "postgres.${SUPABASE_PROJECT_REF}" ]; then
+            echo "::error::SUPABASE_POOLER_URL gehört nicht zum Projekt dieser Umgebung"
+            exit 1
+          fi
       - name: Migrationen
         # Names the migrations it applies (AC-027). Never the seed; the Vault stays Enrico's.
         run: supabase db push --remote="$SUPABASE_POOLER_URL" --skip-vault --yes
@@ -279,7 +303,7 @@ jobs:
 
   web-ausliefern:
     name: Web ausliefern v${{ needs.version.outputs.version }}
-    needs: [checks, version, supabase-ausliefern]
+    needs: [checks, version, e2e, supabase-ausliefern]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment:
@@ -332,6 +356,8 @@ jobs:
       PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
       PRODUCTION_WEB_ORIGIN: ${{ vars.PRODUCTION_WEB_ORIGIN }}
       PRODUCTION_WEB_ORIGIN_WILDCARD: ${{ vars.PRODUCTION_WEB_ORIGIN }}/**
+      # Spec 0027, AC-043: the azurestaticapps.net address that must redirect to the own domain.
+      PRODUCTION_OLD_WEB_ORIGIN: ${{ vars.PRODUCTION_OLD_WEB_ORIGIN }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       # For `supabase config diff` inside verify.mjs, which compares the hashed secret.
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -349,7 +375,7 @@ jobs:
       - name: Konfiguration für das Produktionsprojekt
         run: node scripts/ci/supabase-remote.mjs production
       - name: Produktion von außen prüfen
-        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$GITHUB_SHA"
+        run: node scripts/release/verify.mjs "$PRODUCTION_WEB_ORIGIN" "$PRODUCTION_SUPABASE_URL" --environment production --version "$VERSION" --commit "$GITHUB_SHA" ${PRODUCTION_OLD_WEB_ORIGIN:+--old-origin "$PRODUCTION_OLD_WEB_ORIGIN"}
 
   veroeffentlichen:
     name: Tag und GitHub-Veröffentlichung

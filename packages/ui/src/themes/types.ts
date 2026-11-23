@@ -15,6 +15,10 @@ export interface ThemeColors {
   bg: string;
   surface: string;
   surfaceSunken: string;
+  /** What floats above the page, e.g. the dragged entry; lighter than `surface` in dark mode. */
+  surfaceRaised: string;
+  /** The CSS box-shadow of a raised surface; in dark mode with a faint light rim. */
+  shadowRaised: string;
   border: string;
   text: string;
   textMuted: string;
@@ -29,6 +33,8 @@ export interface ThemeColors {
   warnBg: string;
   warnText: string;
   checkLine: string;
+  /** The track of a switch that is off: 3:1 on page and card (spec 0031, REQ-035). */
+  switchOff: string;
   /** Tab bar, sidebar and composer background. */
   barBg: string;
   scrim: string;
@@ -60,6 +66,10 @@ export type TextVariant =
   | 'cardTitle'
   | 'rowTitle'
   | 'body'
+  /** Long text to read at a distance, e.g. a step of the cooking mode (spec 0023): UI font. */
+  | 'reading'
+  /** `reading` on wide screens. */
+  | 'readingLarge'
   | 'bodyStrong'
   | 'small'
   | 'smallStrong'

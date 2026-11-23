@@ -1,7 +1,9 @@
-import { useAreas, useArticles } from '@housekeeping/api';
+import { useAreas, useArticles, useRecipes, useShoppingItems } from '@housekeeping/api';
 import {
   articleFilterCounts,
+  articlesInArea,
   filterArticles,
+  usedArticleIds,
   searchArticleList,
   similarArticleNames,
   sortArticles,
@@ -29,12 +31,12 @@ import {
   TextField,
   useBreakpoint,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useAddressedId, useMissingObject } from '@/lib/addressed';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { ArticlePanel, ArticleSheet } from './article-sheet';
 import {
@@ -42,6 +44,7 @@ import {
   emptyFilterTitle,
   filterChipLabel,
   filterFromParam,
+  filterParam,
   FILTERS,
   SIMILAR_PREFIX,
   SORT_OPTIONS,
@@ -55,57 +58,67 @@ interface ArticleRow {
   matchedSynonym?: string;
 }
 
-const firstParam = (value: string | string[] | undefined) =>
-  Array.isArray(value) ? value[0] : value;
-
-/**
- * "Zurück" of the page: opened from "Liste" ⋯ (`?von=liste`) it leads to the list, otherwise to
- * the page it was opened from under "Verwalten" (AC-021, E12).
- */
-function useArticlesBack(from: string | undefined): { label?: string; back: () => void } {
-  const router = useRouter();
-  const backToManage = useBackToManage();
-  if (from === 'liste') {
-    return {
-      label: 'Liste',
-      back: () => (router.canGoBack() ? router.back() : router.replace('/liste')),
-    };
-  }
-  return { back: backToManage };
-}
-
 /**
  * "Verwalten" → "Artikel" (REQ-005): all articles of the household with search, sort and filter
  * chips; a row opens "Artikel bearbeiten", on wide screens in the right column ("Liste und
  * Detail", AC-025). Reading and searching work offline; editing needs the network.
  */
 export function ArticlesScreen() {
-  const articles = useArticles();
+  const allArticles = useArticles();
   const areas = useAreas();
+  const recipes = useRecipes();
+  const items = useShoppingItems();
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
-  const params = useLocalSearchParams<{ von?: string | string[]; filter?: string | string[] }>();
-  const from = firstParam(params.von);
-  const filterParam = firstParam(params.filter);
-  const { label: backLabel, back } = useArticlesBack(from);
+  // Filter, search, sort, the chosen article and "Neuer Artikel" stand in the address (spec 0019,
+  // REQ-011, REQ-014); "Ohne Bereich ›" on "Bereiche" opens `/artikel?filter=ohne-bereich`.
+  const address = usePageParams('artikel');
+  const { params } = address;
+  // "‹ Liste" from the list's ⋯ (`von=liste`), otherwise "‹ Verwalten" (AC-021, E12).
+  const { label: backLabel, back } = useOriginBack(params.von, 'verwalten');
 
-  const [filter, setFilter] = useState<ArticleFilter>(filterFromParam(filterParam));
-  const [sort, setSort] = useState<ArticleSort>('name');
-  const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<Id | undefined>();
-  const [creating, setCreating] = useState<{ name: string } | undefined>();
+  const filter: ArticleFilter = filterFromParam(params.filter);
+  // "Bereich: Obst & Gemüse ✕" from a row on "Bereiche" or "Bereich ▾" (spec 0025, AC-045).
+  const areaFilter = areas.find((area) => area.id === params.bereich);
+  const setAreaFilter = (areaId: Id | undefined) => address.replace({ bereich: areaId });
+  const articles = useMemo(
+    () => articlesInArea(allArticles, areaFilter?.id),
+    [allArticles, areaFilter],
+  );
+  const sort: ArticleSort = params.sortierung === 'neu' ? 'new' : 'name';
+  const query = params.suche ?? '';
+  const selectedId = params.artikel;
+  const setFilter = (next: ArticleFilter) => address.replace({ filter: filterParam(next) });
+  const setSort = (next: ArticleSort) =>
+    address.replace({ sortierung: next === 'new' ? 'neu' : undefined });
+  const setQuery = (next: string) => address.replace({ suche: next });
+  // On phones the article opens as a window (a history entry); on wide screens it is selected.
+  const setSelectedId = (id: Id | undefined) => {
+    if (!isPhone) address.replace({ artikel: id });
+    else if (id) address.open({ artikel: id });
+    else address.close({ artikel: undefined });
+  };
+  /** From one window to the next (new → its article, merged → the target): one entry. */
+  const showArticle = (id: Id) => address.replace({ fenster: undefined, artikel: id });
+  const [newName, setNewName] = useState('');
+  const creating = params.fenster === 'neu-artikel' ? { name: newName } : undefined;
   const [merging, setMerging] = useState<{ sourceId: Id; targetId: Id } | undefined>();
-
-  // Opened again with another filter in the address ("Ohne Bereich ›", AC-051).
-  const [shownParam, setShownParam] = useState(filterParam);
-  if (shownParam !== filterParam) {
-    setShownParam(filterParam);
-    setFilter(filterFromParam(filterParam));
-  }
+  // The merged article leaves the data before the address names the target: not "missing", or
+  // clearing the address would close the target as well (spec 0007, AC-037).
+  const [mergedAway, setMergedAway] = useState<Id | undefined>();
+  const found = useAddressedId('articles', params.artikel);
+  useMissingObject(
+    params.artikel,
+    found !== 'missing' || params.artikel === mergedAway,
+    'Diesen Artikel gibt es nicht mehr',
+    () => address.replace({ artikel: undefined }),
+  );
 
   // "Ähnliche Namen" compares every name with every other: once per data state.
   const similar = useMemo(() => similarArticleNames(articles), [articles]);
-  const context = useMemo(() => ({ similar, areas }), [similar, areas]);
+  // "Unbenutzt": in no recipe and not open on the list (AC-046).
+  const usedIds = useMemo(() => usedArticleIds(recipes, items), [recipes, items]);
+  const context = useMemo(() => ({ similar, areas, usedIds }), [similar, areas, usedIds]);
   const counts = useMemo(() => articleFilterCounts(articles, context), [articles, context]);
   const areaNames = useMemo(() => new Map(areas.map((area) => [area.id, area.name])), [areas]);
 
@@ -121,9 +134,12 @@ export function ArticlesScreen() {
   }, [articles, filter, context, query, sort]);
 
   // Deleted or merged on another device while it was open: the editor just closes.
-  const selected = articles.find((article) => article.id === selectedId);
+  const selected = allArticles.find((article) => article.id === selectedId);
 
-  const startCreating = (name = '') => setCreating({ name });
+  const startCreating = (name = '') => {
+    setNewName(name);
+    address.open({ fenster: 'neu-artikel' });
+  };
   const sortLabel = SORT_OPTIONS.find((option) => option.value === sort)?.label ?? '';
 
   const addButton = isPhone ? (
@@ -195,6 +211,27 @@ export function ArticlesScreen() {
           options={SORT_OPTIONS}
           testID="articles-sort"
         />
+        {areaFilter ? (
+          <Chip
+            label={`Bereich: ${areaFilter.name} ✕`}
+            selected
+            accessibilityLabel={`Bereich ${areaFilter.name}, Filter entfernen`}
+            onPress={() => setAreaFilter(undefined)}
+            testID="articles-area-filter"
+          />
+        ) : (
+          <Menu
+            label="Bereich ▾"
+            accessibilityLabel="Nach Bereich filtern"
+            icon="map-pin"
+            value=""
+            onChange={(areaId: string) => setAreaFilter(areaId || undefined)}
+            options={[...areas]
+              .sort((a, b) => a.sort - b.sort)
+              .map((area) => ({ value: area.id, label: area.name }))}
+            testID="articles-area-menu"
+          />
+        )}
         {FILTERS.map((key) => (
           <Chip
             key={key}
@@ -377,19 +414,17 @@ export function ArticlesScreen() {
           targetId={merging.targetId}
           onCancel={() => setMerging(undefined)}
           onMerged={(targetId) => {
+            setMergedAway(merging.sourceId);
             setMerging(undefined);
-            setSelectedId(targetId);
+            showArticle(targetId);
           }}
         />
       ) : null}
       {creating ? (
         <NewArticleSheet
           initialName={creating.name}
-          onClose={() => setCreating(undefined)}
-          onOpen={(articleId) => {
-            setCreating(undefined);
-            setSelectedId(articleId);
-          }}
+          onClose={() => address.close({ fenster: undefined })}
+          onOpen={showArticle}
         />
       ) : null}
     </Screen>

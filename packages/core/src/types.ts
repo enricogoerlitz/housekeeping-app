@@ -2,11 +2,15 @@
 // Dates are ISO strings without time ("2026-11-20"); timestamps are full ISO strings.
 import { z } from 'zod';
 
+// Type only: reminder.ts imports its schemas from here.
+import type { EntryReminder } from './reminder';
+
 export type Id = string;
 export type ISODate = string;
 
 /** What an article, variant or recipe contains. Ordered from least to most restrictive to eat. */
-export type Diet = 'vegan' | 'vegetarian' | 'fish' | 'meat' | 'unknown';
+/** "kein Lebensmittel" (non_food) never counts when a diet is derived (spec 0023, REQ-008). */
+export type Diet = 'vegan' | 'vegetarian' | 'fish' | 'meat' | 'unknown' | 'non_food';
 /** How a member eats. */
 export type DietPreference = 'vegan' | 'vegetarian' | 'flexible';
 
@@ -31,6 +35,11 @@ export interface Household {
   memberIds: Id[];
   mealSlots: MealSlot[];
   defaultStoreId?: Id;
+  /**
+   * `households.timezone` (IANA, e.g. "Europe/Berlin"): every reminder is judged in it (spec 0017,
+   * Decision 5). Read only; nobody writes it from the app.
+   */
+  timeZone: string;
 }
 
 // ---------- Articles, areas, stores ----------
@@ -94,6 +103,16 @@ export interface RecipeIngredient {
   group?: string;
 }
 
+/**
+ * A link to a page on the web (spec 0023, REQ-009): the address as normalised on the device
+ * (web-link.ts) and checked again by the database (private.is_web_url). The app never loads it.
+ */
+export interface RecipeLink {
+  url: string;
+  /** "Bezeichnung", 1–80 characters; without it the host is shown. */
+  label?: string;
+}
+
 export interface RecipeVariant {
   id: Id;
   name: string;
@@ -144,7 +163,8 @@ export interface Recipe {
   lastCookedOn?: ISODate;
   cookedCount: number;
   createdAt: string;
-  source?: string;
+  /** At most 10, each address once (spec 0023, REQ-009). */
+  links: RecipeLink[];
 }
 
 /** "Enthaltenes Rezept": a recipe in a collection (spec 0009, E4). */
@@ -178,7 +198,10 @@ export interface MealPlanEntry {
   restaurantId?: Id;
   activityId?: Id;
   text?: string;
-  /** "Zusatz", shown in parentheses: "Eislaufen (Hohenschönhausen)". Only on activities. */
+  /**
+   * "Zusatz", shown in parentheses behind the name wherever the name stands: "Lasagne (doppelte
+   * Menge)", "Eislaufen (Hohenschönhausen)" (spec 0021, REQ-008); never in the Herkunft of the list.
+   */
   note?: string;
   leftoversOfEntryId?: Id;
   eaterIds: Id[];
@@ -188,11 +211,15 @@ export interface MealPlanEntry {
   variants: PlanEntryVariant[];
   cookId?: Id;
   sort: number;
-  notCooked?: boolean;
-  /** "Reserviert um" (spec 0013, REQ-008); only on restaurant entries. */
-  reservedAt?: TimeOfDay;
-  /** "Erinnern … vorher"; undefined = DEFAULT_REMIND_MINUTES (the column default, 120). */
-  remindMinutesBefore?: RemindMinutes;
+  /** "Nicht gemacht" (spec 0020, REQ-008): it did not happen; counts for no history or rating. */
+  notDone?: boolean;
+  /**
+   * "Uhrzeit (optional)" (spec 0021, REQ-013): when it starts, the reserved time of a restaurant;
+   * only on restaurant and activity entries.
+   */
+  startsAt?: TimeOfDay;
+  /** Spec 0017: "Erinnern" at a day before the entry and a time; only on entries with a day. */
+  reminder?: EntryReminder;
 }
 
 // ---------- Restaurants ----------
@@ -214,6 +241,10 @@ export interface Restaurant {
   priceLevel?: 1 | 2 | 3 | 4;
   tags: string[];
   notes?: string;
+  /** "Webseite" (spec 0024, REQ-003): checked like the recipe links (web-link.ts), opened in a new tab. */
+  websiteUrl?: string;
+  /** Storage path of the household's own photo (spec 0024, REQ-004). */
+  photoPath?: string;
   favoriteOf: Id[];
   /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;
@@ -236,7 +267,8 @@ export interface Activity {
   location?: GeoPoint;
   /** The link the place was taken from (Google Maps / Apple Karten). */
   mapsUrl?: string;
-  tags: string[];
+  /** "Webseite" (spec 0024, REQ-003), like at the restaurant. */
+  websiteUrl?: string;
   favoriteOf: Id[];
   /** Rating 0.5–5 in half steps per member id. */
   ratings: Record<Id, number>;
@@ -249,9 +281,7 @@ export interface Activity {
 // ---------- Shopping ----------
 
 export type ContributionSource =
-  | { kind: 'manual' }
-  | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string }
-  | { kind: 'recurring' };
+  { kind: 'manual' } | { kind: 'recipe'; recipeId: Id; entryId?: Id; label: string };
 
 export interface ShoppingContribution {
   id: Id;
@@ -275,6 +305,8 @@ export interface ShoppingItem {
   checkedBy?: Id;
   /** Marked "nicht da" in store mode. */
   notAvailable?: boolean;
+  /** Checked on "Liste", not in store mode (spec 0025, REQ-006): no "kauft gerade ein". */
+  checkedOnList?: boolean;
   /** Changed offline and not yet confirmed by the server (shown as a small dot). */
   pendingSync?: boolean;
   createdAt: string;
@@ -312,6 +344,11 @@ export interface Chore {
   activeMonths?: number[];
   /** "Uhrzeit": reminder on the due day (spec 0013, REQ-007); undefined = none. */
   dueTime?: TimeOfDay;
+  /**
+   * „Erinnern“ (spec 0027, REQ-009): false = the time is only shown, nobody is reminded; only with
+   * a time. Undefined = on, the default.
+   */
+  remindAtDueTime?: boolean;
 }
 
 export interface ChoreEvent {
@@ -337,13 +374,21 @@ export interface ChoreEventPrevious {
   nextAssigneeId?: Id;
 }
 
-export interface Absence {
+/** One person of a trip (a row of trip_members). */
+export interface TripMember {
   id: Id;
-  /** Undefined = the whole household. */
-  memberId?: Id;
+  memberId: Id;
+}
+
+/** "Reise" (spec 0022): period, note and at least one person of the household. */
+export interface Trip {
+  id: Id;
   from: ISODate;
   to: ISODate;
   note?: string;
+  members: TripMember[];
+  /** "Entwurf" (spec 0030, REQ-004): shown everywhere, but nobody on it is away yet. */
+  draft?: boolean;
 }
 
 // ---------- Feedback ----------
@@ -381,15 +426,15 @@ export interface PackingBagItem {
   name: string;
   /** 1–99; undefined = no quantity ("Sonnenbrille"). */
   quantity?: number;
-  /** The quantity is per day of the absence ("1 je Tag"); needs a quantity. */
+  /** The quantity is per day of the trip ("1 je Tag"); needs a quantity. */
   perDay: boolean;
   sort: number;
 }
 
-/** "Tasche der Packliste": one bag attached to an absence, with a copy of its name and member. */
+/** "Tasche der Packliste": one bag attached to a trip, with a copy of its name and member. */
 export interface PackingListBag {
   id: Id;
-  absenceId: Id;
+  tripId: Id;
   /** The Reisetasche it was copied from; undefined once that one is deleted. */
   bagId?: Id;
   name: string;
@@ -402,7 +447,7 @@ export interface PackingItem {
   id: Id;
   listBagId: Id;
   name: string;
-  /** The quantity shown; for "je Tag" per day × days of the absence (at most 9999). */
+  /** The quantity shown; for "je Tag" per day × days of the trip (at most 9999). */
   quantity?: number;
   /** Quantity per day (1–99); undefined = a fixed quantity or none. */
   perDay?: number;
@@ -412,6 +457,10 @@ export interface PackingItem {
   /** Counter for "Abhaken gewinnt" (ADR-0013). */
   packSeq: number;
   sort: number;
+  /** Spec 0022: the Packstück of the Reisetasche it came from; undefined once that one is gone. */
+  bagItemId?: Id;
+  /** It came from the Reisetasche (copied or saved there too); false = added by hand. */
+  fromBag?: boolean;
 }
 
 // ---------- Notifications (spec 0013) ----------
@@ -422,10 +471,6 @@ export interface PackingItem {
  */
 export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5][05]$/);
 export type TimeOfDay = z.infer<typeof TimeOfDaySchema>;
-
-/** "Erinnern … vorher" of a reservation, in minutes (Offene Frage 2 A). */
-export const RemindMinutesSchema = z.literal([30, 60, 120, 180, 240]);
-export type RemindMinutes = z.infer<typeof RemindMinutesSchema>;
 
 /** The parts of the "Tagesüberblick": Essen, Aktivitäten, Aufgaben, Vorbereitung. */
 export const DailySummaryPartSchema = z.enum(['meals', 'activities', 'chores', 'prep']);
@@ -449,7 +494,8 @@ export const NotificationSettingsSchema = z.object({
   activitiesEveEnabled: z.boolean(),
   activitiesEveAt: TimeOfDaySchema,
   choreRemindersEnabled: z.boolean(),
-  reservationRemindersEnabled: z.boolean(),
+  /** Spec 0017, REQ-007: "Erinnerungen an Einträgen", on at the start. */
+  entryRemindersEnabled: z.boolean(),
 });
 export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
 

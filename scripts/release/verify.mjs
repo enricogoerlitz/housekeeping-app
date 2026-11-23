@@ -6,6 +6,7 @@
 //   SUPABASE_PUBLISHABLE_KEY=… SUPABASE_ACCESS_TOKEN=… \
 //     node scripts/release/verify.mjs <web-origin> <supabase-url> \
 //       [--environment production|preview] [--version <JJJJ.M.N>] [--commit <sha>]
+//       [--old-origin <https://….azurestaticapps.net>]
 //
 // Checks, each reported as `ok` or `FEHLER` with a reason, never with values from the answers:
 // - Kopfzeilen (AC-035): CSP frame-ancestors 'none', nosniff, Referrer-Policy, HSTS, noindex on
@@ -23,7 +24,9 @@
 // - Keine Seed-Daten (AC-042): no account on @example.com, no household or account with an id of
 //   supabase/seed.sql (preview: its demo households are expected, so only @example.com counts);
 // - Foto-Bucket, Foto ohne Anmeldung (AC-046);
-// - Konfiguration (AC-040, AC-073 „Exposed schemas“): `supabase config diff --exit-code`.
+// - Konfiguration (AC-040, AC-073 „Exposed schemas“): `supabase config diff --exit-code`;
+// - Alte Adresse (spec 0027, AC-042, AC-043; with --old-origin): the azurestaticapps.net address
+//   answers /kalender with 301 or 308 to the same path on the web origin.
 // The project of the database checks is the one in the Supabase address (`--remote=<ref>`).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -99,6 +102,23 @@ export function checkSecurityHeaders(responses) {
     }
   }
   return result('Kopfzeilen', problems, 'Sicherheits-Header auf / und /index.html');
+}
+
+/** Spec 0027, AC-042, AC-043: the old default address leads to the own domain. */
+export function checkOldOrigin(response, webOrigin, oldOrigin) {
+  const name = 'Alte Adresse';
+  if (!oldOrigin) return result(name, ['Alte Adresse nicht angegeben (--old-origin)']);
+  const down = unreachable(response);
+  if (down) return result(name, [down]);
+  const target = `${webOrigin.replace(/\/+$/, '')}/kalender`;
+  if (response.status === 200) return result(name, ['Alte Adresse leitet nicht um']);
+  if (![301, 308].includes(response.status)) {
+    return result(name, [`HTTP ${response.status} statt 301 oder 308`]);
+  }
+  if (header(response, 'location') !== target) {
+    return result(name, ['leitet nicht auf dieselbe Seite der eigenen Domain um']);
+  }
+  return result(name, [], 'leitet dauerhaft auf die eigene Domain um');
 }
 
 const hostOf = (source) => /^[a-z][a-z0-9+.-]*:\/\/([^/:]+)/i.exec(source)?.[1]?.toLowerCase();
@@ -482,6 +502,7 @@ export async function runChecks({
   key,
   environment = 'production',
   expect = {},
+  oldOrigin,
   fetchImpl = fetch,
   supabaseCli = defaultSupabaseCli,
 }) {
@@ -597,6 +618,13 @@ export async function runChecks({
     results.push(checkPhotoAccess(access));
   }
 
+  if (oldOrigin !== undefined) {
+    const old = oldOrigin.replace(/\/+$/, '');
+    results.push(
+      checkOldOrigin(old ? await request(fetchImpl, `${old}/kalender`) : undefined, webBase, old),
+    );
+  }
+
   if (ref) {
     const diff = supabaseCli(['config', 'diff', `--remote=${ref}`, '--exit-code']);
     results.push(
@@ -618,12 +646,13 @@ async function main(argv) {
       environment: { type: 'string', default: 'production' },
       version: { type: 'string' },
       commit: { type: 'string' },
+      'old-origin': { type: 'string' },
     },
   });
   const key = process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
   if (positionals.length !== 2 || !['production', 'preview'].includes(values.environment) || !key) {
     console.error(
-      'Usage: SUPABASE_PUBLISHABLE_KEY=… node scripts/release/verify.mjs <web-origin> <supabase-url> [--environment production|preview] [--version <v>] [--commit <sha>]',
+      'Usage: SUPABASE_PUBLISHABLE_KEY=… node scripts/release/verify.mjs <web-origin> <supabase-url> [--environment production|preview] [--version <v>] [--commit <sha>] [--old-origin <url>]',
     );
     return 2;
   }
@@ -634,6 +663,7 @@ async function main(argv) {
     key,
     environment: values.environment,
     expect: { version: values.version, commit: values.commit },
+    oldOrigin: values['old-origin'],
   });
   const inActions = process.env.GITHUB_ACTIONS === 'true';
   for (const { name, ok, detail } of results) {

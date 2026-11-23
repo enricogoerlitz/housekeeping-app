@@ -10,7 +10,9 @@
 //     makes it a release anyway;
 //   - the last definition of public.min_app_version() in supabase/migrations must be at most the
 //     latest published version (before the first release: at most the new one), otherwise exit 1
-//     with „Mindestversion X ist noch nicht veröffentlicht“ and no outputs (AC-026).
+//     with „Mindestversion X ist noch nicht veröffentlicht“ and no outputs (AC-026). With the
+//     exception of the new migration base (supabase/migrations-base.json naming the latest tag,
+//     spec 0031, REQ-001) at most the new version: the base locks the devices of the old one.
 //   Outputs (GITHUB_OUTPUT): version, tag, previous (empty before the first release), release.
 //
 // Redeploy of an earlier web version (redeploy-web.yml):
@@ -29,6 +31,7 @@ import {
   parseAppVersion,
 } from '../../packages/core/src/app-version.ts';
 import { minAppVersionIn } from '../ci/migrations.mjs';
+import { baseApplies, readMigrationsBase } from './migrations-base.mjs';
 
 const MIGRATIONS = 'supabase/migrations';
 const TAG = /^v(.+)$/;
@@ -81,10 +84,13 @@ export function lastMinAppVersion(migrations) {
   return version;
 }
 
-/** The AC-026 message, or undefined when the minimum version blocks no device. */
-export function checkMinAppVersion({ min, published, next }) {
+/**
+ * The AC-026 message, or undefined when the minimum version blocks no device. `newBase`: the
+ * exception of the new migration base applies; then the limit is the new version (AC-005).
+ */
+export function checkMinAppVersion({ min, published, next, newBase = false }) {
   if (!parseAppVersion(min)) throw new Error(`Ungültige Mindestversion „${min}“`);
-  const limit = published ?? next;
+  const limit = newBase ? next : (published ?? next);
   return compareAppVersions(min, limit) > 0
     ? `Mindestversion ${min} ist noch nicht veröffentlicht`
     : undefined;
@@ -113,6 +119,17 @@ export function releaseTags(cwd = process.cwd()) {
   return lines(git(['tag', '-l', 'v*'], cwd));
 }
 
+/**
+ * Tags v* on the first-parent history of HEAD (the release branch `main` in release.yml). A tag
+ * set elsewhere, e.g. by a workflow on a feature branch, does not count (security check 0031).
+ */
+export function mainReleaseTags(cwd = process.cwd()) {
+  const history = new Set(lines(git(['rev-list', '--first-parent', 'HEAD'], cwd)));
+  return releaseTags(cwd).filter((tag) =>
+    history.has(git(['rev-list', '-n', '1', tag], cwd).trim()),
+  );
+}
+
 function readMigrations() {
   return readdirSync(MIGRATIONS)
     .filter((file) => file.endsWith('.sql'))
@@ -135,12 +152,13 @@ function fail(message) {
 }
 
 function release(now, force) {
-  const tags = releaseTags();
+  const tags = mainReleaseTags();
   const latest = latestReleaseTag(tags);
   const previous = latest ? tagVersion(latest) : undefined;
   const version = nextAppVersion(tags, now);
   const min = lastMinAppVersion(readMigrations());
-  const problem = checkMinAppVersion({ min, published: previous, next: version });
+  const newBase = baseApplies(readMigrationsBase(), latest);
+  const problem = checkMinAppVersion({ min, published: previous, next: version, newBase });
   if (problem) return fail(problem);
 
   const files = latest

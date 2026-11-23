@@ -3,7 +3,7 @@
 -- time. Example day: Friday, 20.11.2026, household "Enrico & Nadja" in Europe/Berlin.
 begin;
 \ir _helpers.psql
-select plan(67);
+select plan(63);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 create function tests.fx(p_key text) returns uuid language sql stable
@@ -62,7 +62,7 @@ insert into public.recipes (id, household_id, title, notes, lead_time) values
 insert into public.restaurants (id, household_id, name, address, notes)
 values (tests.fx('enzo'), tests.fx('home'), 'Trattoria Da Enzo', 'Hauptstraße 1', 'GEHEIM-Restaurantnotiz');
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, recipe_id, restaurant_id, activity_id,
-                                      note, eater_ids, cook_id, reserved_at) values
+                                      note, eater_ids, cook_id, starts_at) values
   (tests.fx('e_boulder'), tests.fx('home'), '2026-11-20', tests.fx('s_vor'), 'activity', null, null, tests.fx('a_boulder'),
    null, '{}', null, null),
   (tests.fx('e_lasagne'), tests.fx('home'), '2026-11-20', tests.fx('s_abend'), 'recipe', tests.fx('r_lasagne'), null, null,
@@ -89,7 +89,7 @@ where household_id = tests.fx('home');
 -- ===================== Daily summary (AC-015 to AC-018) =====================
 select is(
   tests.body('2026-11-20 07:30', 'E', 'daily_summary'),
-  'Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Für morgen: Kichererbsen einweichen',
+  'Heute: Bouldern (Vormittag) · Lasagne (Abend, du kochst) · Bad putzen (du) · Vorbereiten: Kichererbsen einweichen (bis ca. 23 Uhr)',
   'AC-015 daily summary: Enrico''s text at 7:30');
 select is(tests.body('2026-11-20 07:25', 'E', 'daily_summary'), null,
   'AC-015 daily summary: the 7:25 tick sends nothing yet');
@@ -103,7 +103,7 @@ select is(
   'Decisions 6, 12, 13 daily summary: title, unique key, due time, expiry at midnight and the link to the Übersicht');
 select is(
   tests.body('2026-11-20 07:30', 'N', 'daily_summary'),
-  'Heute: Bouldern (Vormittag) · Fenster Wohnzimmer (du, überfällig)',
+  'Heute: Bouldern (Vormittag) · Fenster Wohnzimmer (du, fällig seit 2 Tagen)',
   'AC-016, AC-018 daily summary: Nadja gets only her part, the overdue window included');
 select is(
   (select array_agg(distinct c.tick order by c.tick) from tests.c_between('2026-11-20 07:00', '2026-11-20 08:30', '5 minutes') c
@@ -137,8 +137,8 @@ update public.notification_settings set daily_summary_enabled = true where membe
 -- overdue chore; leftovers and free text on Sunday with a chore at a time and an "anyone" chore.
 select is(
   tests.body('2026-11-21 07:30', 'E', 'daily_summary'),
-  'Heute: Eislaufen (Hohenschönhausen, Vormittag) · Hummus (Mittag, du kochst) · Trattoria Da Enzo (Abend, 19:30) · Bad putzen (du, überfällig)',
-  'Decision 11 daily summary: activity with Zusatz, cook, reservation time and an overdue chore, in the order of the day');
+  'Heute: Eislaufen (Hohenschönhausen, Vormittag) · Hummus (Mittag, du kochst) · Trattoria Da Enzo (Abend, 19:30) · Bad putzen (du, fällig seit gestern) · Vorbereiten: Kichererbsen einweichen (schon fällig)',
+  'Decision 11 daily summary: activity with Zusatz, cook, reservation time and an overdue chore, in the order of the day; spec 0020 AC-031: the missed soaking is "schon fällig"');
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, recipe_id, leftovers_of_entry_id, text, eater_ids, sort)
 values (tests.fx('home'), '2026-11-22', tests.fx('s_mittag'), 'leftovers', tests.fx('r_lasagne'), tests.fx('e_lasagne'), null, '{}', 0),
        (tests.fx('home'), '2026-11-22', tests.fx('s_morgen'), 'text', null, null, 'Pfannkuchen', '{}', 0);
@@ -148,7 +148,7 @@ values (tests.fx('c_blumen'), tests.fx('home'), 'Blumen gießen', '{"type": "wee
 update public.chores set next_due_on = '2026-11-29' where id = tests.fx('c_bad');
 select is(
   tests.body('2026-11-22 07:30', 'N', 'daily_summary'),
-  'Heute: Pfannkuchen (Frühstück) · Reste: Lasagne (Mittag) · Fenster Wohnzimmer (du, überfällig) · Blumen gießen',
+  'Heute: Pfannkuchen (Frühstück) · Reste: Lasagne (Mittag) · Fenster Wohnzimmer (du, fällig seit 4 Tagen) · Blumen gießen',
   'Decision 11 daily summary: free text, leftovers, overdue first (without its time), "anyone" without "du", not someone else''s turn');
 select is(
   tests.body('2026-11-22 07:30', 'E', 'daily_summary'),
@@ -219,12 +219,14 @@ select is(
   'Decisions 6, 12, 13 activities eve: key, expiry and the link to the one entry');
 select is(tests.body('2026-11-20 18:55', 'E', 'activities_eve'), null, 'AC-019 activities eve: not before 19:00');
 
-insert into public.absences (id, household_id, member_id, from_on, to_on, note)
-values (tests.fx('away'), tests.fx('home'), tests.fx('nadja'), '2026-11-21', '2026-11-26', 'GEHEIM-Abwesenheit');
+insert into public.trips (id, household_id, from_on, to_on, note)
+values (tests.fx('away'), tests.fx('home'), '2026-11-21', '2026-11-26', 'GEHEIM-Reise');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('nadja'));
 select is(
   (select string_agg(c.who, ',' order by c.who) from tests.c('2026-11-20 19:00') c where c.kind = 'activities_eve'),
   'E', 'AC-020 activities eve: Nadja is away on the day of the activity, only Enrico gets it');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 
 insert into public.meal_plan_entries (id, household_id, date, slot_id, kind, activity_id, eater_ids)
 values (tests.fx('e_kino'), tests.fx('home'), '2026-11-21', tests.fx('s_abend'), 'activity', tests.fx('a_kino'), '{}');
@@ -291,56 +293,46 @@ select is((select count(*)::int from tests.c('2026-11-22 19:00') c where c.kind 
 update public.chores set active_months = null where id = tests.fx('c_muell');
 
 update public.chores set due_time = '10:00' where id = tests.fx('c_bad');
-insert into public.absences (id, household_id, member_id, from_on, to_on)
-values (tests.fx('away'), tests.fx('home'), tests.fx('enrico'), '2026-11-20', '2026-11-20');
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('away'), tests.fx('home'), '2026-11-20', '2026-11-20');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('enrico'));
 select is(
   (select count(*)::int from tests.c('2026-11-20 10:00') c where c.dedupe_key like 'chore:' || tests.fx('c_bad') || '%'),
   0, 'AC-026 chore reminder: fixed to Enrico and Enrico is away → nobody');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 select is(tests.body('2026-11-20 10:00', 'E', 'chore_reminder'), 'Bad putzen · 10:00 · du bist dran',
-  'AC-026 chore reminder: … and without the absence Enrico gets it');
+  'AC-026 chore reminder: … and without the trip Enrico gets it');
 update public.chores set due_time = null where id = tests.fx('c_bad');
 
--- ===================== Reservations (AC-027 to AC-031) =====================
+-- ===================== Uhrzeit and the one reminder (spec 0021, REQ-013, REQ-014) =====================
+select is(
+  (select count(*)::int from tests.c_between('2026-11-20 00:00', '2026-11-22 00:00') c
+   where c.kind in ('reservation_reminder', 'entry_reminder')),
+  0, 'AC-039 scheduler: a restaurant with a time but without "Erinnern" sends nothing (no reservation reminder)');
+alter table public.meal_plan_entries disable trigger meal_plan_entries_check_reminder;
+update public.meal_plan_entries set reminder_day_offset = 0, reminder_at = '17:30' where id = tests.fx('e_enzo');
+alter table public.meal_plan_entries enable trigger meal_plan_entries_check_reminder;
 select is(
   (select string_agg(c.who || ': ' || c.body, ' | ' order by c.who) from tests.c('2026-11-21 17:30') c
+   where c.kind = 'entry_reminder'),
+  'E: Erinnerung: Trattoria Da Enzo · heute 19:30 | N: Erinnerung: Trattoria Da Enzo · heute 19:30',
+  'AC-037 entry reminder: at 17:30 both get "Erinnerung: Trattoria Da Enzo · heute 19:30"');
+select is(tests.body('2026-11-21 17:25', 'E', 'entry_reminder'), null, 'AC-037 entry reminder: not before 17:30');
+select is(
+  (select count(*)::int from tests.c_between('2026-11-20 00:00', '2026-11-23 00:00', '5 minutes') c
    where c.kind = 'reservation_reminder'),
-  'E: Trattoria Da Enzo um 19:30 · in 2 Stunden · Route › | N: Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
-  'AC-028 reservation: both eat along, both get it 2 hours before');
-select is(
-  (select jsonb_build_object('key', c.dedupe_key, 'expires', c.expires_at, 'url', c.url)
-   from tests.c('2026-11-21 17:30') c where c.who = 'E' and c.kind = 'reservation_reminder'),
-  jsonb_build_object('key', format('reservation:%s:2026-11-21:19:30', tests.fx('e_enzo')),
-                     'expires', tests.berlin('2026-11-21 19:30'),
-                     'url', format('/kalender?tag=2026-11-21&eintrag=%s&haushalt=%s', tests.fx('e_enzo'), tests.fx('home'))),
-  'Decisions 6, 12, 13 reservation: key with the time, expiry at the reservation, link to the entry');
-select is(tests.body('2026-11-21 17:25', 'E', 'reservation_reminder'), null, 'AC-028 reservation: not before 17:30');
-update public.meal_plan_entries set eater_ids = array[tests.fx('enrico')] where id = tests.fx('e_enzo');
-select is(
-  (select string_agg(c.who, ',') from tests.c('2026-11-21 17:30') c where c.kind = 'reservation_reminder'), 'E',
-  'AC-028 reservation: Nadja does not eat along → only Enrico');
-update public.meal_plan_entries set eater_ids = '{}' where id = tests.fx('e_enzo');
-
-update public.meal_plan_entries set remind_minutes_before = 60 where id = tests.fx('e_enzo');
-select is(tests.body('2026-11-21 17:30', 'E', 'reservation_reminder'), null,
-  'AC-029 reservation: with "1 h vorher" nothing at 17:30');
-select is(tests.body('2026-11-21 18:30', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 1 Stunde · Route ›',
-  'AC-029 reservation: at 18:30 with "in 1 Stunde"');
-update public.meal_plan_entries set remind_minutes_before = 30 where id = tests.fx('e_enzo');
-update public.restaurants set address = null where id = tests.fx('enzo');
-select is(tests.body('2026-11-21 19:00', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 30 Minuten',
-  'Decision 11 reservation: "in 30 Minuten", and no "Route" without a place');
-update public.restaurants set address = 'Hauptstraße 1' where id = tests.fx('enzo');
-update public.meal_plan_entries set remind_minutes_before = 120 where id = tests.fx('e_enzo');
-
-select is(tests.body('2026-11-21 18:30', 'E', 'reservation_reminder'), null,
-  'AC-031 reservation: entered at 18:30 for 19:30 with 2 h → 17:30 is more than 30 minutes ago, nothing');
-select is(tests.body('2026-11-21 17:55', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
-  'Decision 5 reservation: 25 minutes late is still sent');
-select is(tests.body('2026-11-21 18:00', 'E', 'reservation_reminder'), 'Trattoria Da Enzo um 19:30 · in 2 Stunden · Route ›',
-  'Decision 5 reservation: exactly 30 minutes late is still sent');
-select is(tests.body('2026-11-21 18:01', 'E', 'reservation_reminder'), null,
-  'AC-031, Decision 5 reservation: more than 30 minutes late is dropped');
+  0, 'AC-039 scheduler: no message of the kind reservation_reminder any more');
+update public.meal_plan_entries set starts_at = '10:30' where id = tests.fx('e_eis');
+select is(tests.body('2026-11-20 19:00', 'E', 'activities_eve'), 'Morgen: Eislaufen (Hohenschönhausen), Vormittag, 10:30 · Kino, Abend',
+  'REQ-013 activities eve: "Morgen: Eislaufen (Hohenschönhausen), Vormittag, 10:30"');
+select ok(tests.body('2026-11-21 07:30', 'E', 'daily_summary') like 'Heute: Eislaufen (Hohenschönhausen, Vormittag, 10:30) · %',
+  'REQ-013 daily summary: "Eislaufen (Hohenschönhausen, Vormittag, 10:30)"');
+update public.meal_plan_entries set starts_at = null where id = tests.fx('e_eis');
+update public.meal_plan_entries set note = 'doppelte Menge' where id = tests.fx('e_hummus');
+select ok(tests.body('2026-11-21 07:30', 'E', 'daily_summary') like '% · Hummus (doppelte Menge, Mittag, du kochst) · %',
+  'REQ-008 daily summary: the Zusatz of a recipe stands with its name');
+update public.meal_plan_entries set note = null where id = tests.fx('e_hummus');
 
 -- ===================== Time zone and daylight saving (AC-033) =====================
 insert into public.meal_plan_entries (household_id, date, slot_id, kind, text, eater_ids)
@@ -386,30 +378,34 @@ select is(tests.body('2026-11-20 09:00', 'E', 'chore_reminder'), 'Paket abholen 
 delete from public.chores where id = tests.fx('c_paket');
 
 -- ===================== Silent while away (AC-035) =====================
-insert into public.absences (id, household_id, member_id, from_on, to_on)
-values (tests.fx('away'), tests.fx('home'), tests.fx('enrico'), '2026-11-21', '2026-11-26');
+insert into public.trips (id, household_id, from_on, to_on)
+values (tests.fx('away'), tests.fx('home'), '2026-11-21', '2026-11-26');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('enrico'));
 select is(
   (select count(*)::int from tests.c_between('2026-11-20 19:00', '2026-11-27 00:00') c where c.who = 'E'),
   0, 'AC-035 silent: Enrico gets nothing while away, nor the evening before (AC-020), not even his chores');
 select is(
   (select string_agg(distinct c.kind, ',' order by c.kind) from tests.c_between('2026-11-21 00:00', '2026-11-23 00:00') c
    where c.who = 'N'),
-  'daily_summary,reservation_reminder',
-  'AC-035 silent: Nadja gets her messages as usual');
+  'chore_reminder,daily_summary,entry_reminder',
+  'AC-035 silent: Nadja gets her messages as usual (spec 0026: also the turn she stands in for)');
 select is(
-  (select count(*)::int from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'), 0,
-  'AC-035 silent: Enrico''s turn at "Müll rausbringen" is not handed to Nadja');
-update public.absences set member_id = null where id = tests.fx('away');
+  (select string_agg(c.who || ': ' || c.body, ' | ') from tests.c('2026-11-22 19:00') c where c.kind = 'chore_reminder'),
+  'N: Müll rausbringen · 19:00 · du bist dran',
+  'spec 0026 AC-054 (replaces spec 0013, AC-023 here): Enrico is away, Nadja stands in for "Müll rausbringen"');
+insert into public.trip_members (household_id, trip_id, member_id)
+values (tests.fx('home'), tests.fx('away'), tests.fx('nadja'));
 select is(
   (select count(*)::int from tests.c_between('2026-11-21 00:00', '2026-11-27 00:00') c), 0,
   'AC-035 silent: the whole household is away → nobody gets anything');
-delete from public.absences where id = tests.fx('away');
+delete from public.trips where id = tests.fx('away');
 
 -- ===================== AC-040: minimal content =====================
 select is_empty(
   $$ select c.body from tests.c_between('2026-11-20 00:00', '2026-11-23 00:00') c
      where c.body ~ '@|GEHEIM' or c.url ~ '@|GEHEIM' $$,
-  'AC-040 content: no e-mail address, no note of a recipe, restaurant, activity or absence');
+  'AC-040 content: no e-mail address, no note of a recipe, restaurant, activity or trip');
 select is_empty(
   format($$ select c.url from tests.c_between('2026-11-20 00:00', '2026-11-23 00:00') c
             where (c.who = 'E' and c.url like '%%%s%%') or (c.who = 'N' and c.url like '%%%s%%') $$,
@@ -437,12 +433,12 @@ select is(
   'AC-036 removed member: no candidate for Nadja in any household');
 
 -- Settings off for a kind means nothing of that kind (AC-014 for the other kinds).
-update public.notification_settings set activities_eve_enabled = false, reservation_reminders_enabled = false
+update public.notification_settings set activities_eve_enabled = false, entry_reminders_enabled = false
 where member_id = tests.fx('enrico');
 select is(
   (select count(*)::int from tests.c_between('2026-11-20 17:00', '2026-11-21 19:30') c
-   where c.kind in ('activities_eve', 'reservation_reminder')),
-  0, 'AC-014 switched off: no activities eve and no reservation reminder');
+   where c.kind in ('activities_eve', 'entry_reminder')),
+  0, 'AC-014 switched off: no activities eve and no entry reminder');
 
 select * from finish();
 rollback;

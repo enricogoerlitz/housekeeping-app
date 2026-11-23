@@ -5,10 +5,12 @@ import {
   addStep,
   addVariant,
   chooseRowArticle,
+  ingredientDrafts,
   moveStep,
   newIngredientRow,
   removeIngredient,
   removeVariant,
+  rowsFromIngredientDrafts,
   searchArticleCatalog,
   sectionDraft,
   setDefaultVariant,
@@ -23,18 +25,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { H, TODAY, withBackend } from './backend-test-helpers';
 import {
-  adoptStarterRecipes,
   createRecipe,
+  createRecipeWithIngredients,
   deleteRecipe,
   discardRecipePhoto,
-  listStarterRecipes,
   rateRecipe,
+  recipeDeletionListShare,
   replaceIngredient,
   saveRecipeSection,
   toggleFavorite,
 } from './commands-recipes';
 import { updateArticle } from './commands-articles';
 import { addPlanEntry } from './commands-plan';
+import { addPlannedToList, pantryCheckRows } from './commands-shopping';
 import { starterCatalogEntries } from './starter/entries';
 import { ENRICO, NADJA, SLOT_DINNER } from './seed/demo';
 import { getData, OfflineError, snapshot } from './store';
@@ -62,24 +65,6 @@ describe('diff path', () => {
     expect(opsOf(0)).toEqual([
       expect.objectContaining({ kind: 'patch', table: 'recipes', id: recipe.id }),
     ]);
-  });
-
-  it('adopting a starter recipe inserts it in one call', async () => {
-    const engine = await fx.startEnrico();
-    const data = getData();
-    const starter = listStarterRecipes().find((candidate) => {
-      const own = data.recipes.find((recipe) => recipe.title === candidate.title);
-      return own && !data.planEntries.some((entry) => entry.recipeId === own.id);
-    });
-    const own = data.recipes.find((recipe) => recipe.title === starter?.title);
-    if (!starter || !own) throw new Error('fixture');
-    fx.server.deleteRow(H, 'recipes', own.id);
-    await engine.pull();
-    expect(adoptStarterRecipes([starter.key])).toBe(1);
-    await fx.settle();
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
-    expect(opsOf(0)).toEqual([expect.objectContaining({ kind: 'insert', table: 'recipes' })]);
-    expect(fx.server.rows(H, 'recipes').some((row) => row.title === starter.title)).toBe(true);
   });
 });
 
@@ -362,44 +347,6 @@ describe('ingredients with an article (spec 0007, through the section "Zutaten")
     expect(articleByName('Milchkokos')).toMatchObject({ needsReview: true, diet: 'unknown' });
     expect(ingredients[1]?.articleId).toBe(articleByName('Milchkokos').id);
   });
-
-  it('AC-016: adopting a starter recipe re-creates a missing article from the starter catalog', async () => {
-    const engine = await fx.startEnrico();
-    const data = getData();
-    const starter = listStarterRecipes().find((candidate) => {
-      const own = data.recipes.find((recipe) => recipe.title === candidate.title);
-      return own && !data.planEntries.some((entry) => entry.recipeId === own.id);
-    });
-    const own = data.recipes.find((recipe) => recipe.title === starter?.title);
-    const [first] = own?.ingredients ?? [];
-    const article = data.articles.find((candidate) => candidate.id === first?.articleId);
-    if (!starter || !own || !article) throw new Error('fixture');
-    fx.server.deleteRow(H, 'recipes', own.id);
-    // The household renamed the article: the starter entry is free again.
-    fx.server.insertRows(H, {
-      articles: [
-        {
-          ...fx.server.row(H, 'articles', article.id),
-          id: article.id,
-          name: `${article.name} (alt)`,
-          name_key: `${article.name.toLowerCase()} alt`,
-          synonyms: [],
-          synonym_keys: [],
-        },
-      ],
-    });
-    await engine.pull();
-    expect(adoptStarterRecipes([starter.key])).toBe(1);
-    await fx.settle();
-    expect(opsOf(0).map((op) => [op.kind, 'table' in op ? op.table : ''])).toEqual([
-      ['insert', 'articles'],
-      ['insert', 'recipes'],
-    ]);
-    const created = articleByName(article.name);
-    expect(created).toMatchObject({ needsReview: false, isPantry: article.isPantry });
-    const adopted = getData().recipes.find((recipe) => recipe.title === starter.title);
-    expect(adopted?.ingredients[0]?.articleId).toBe(created.id);
-  });
 });
 
 // ---------- spec 0008: sections, deletion, photo ----------
@@ -667,7 +614,7 @@ describe('spec 0008: saving a section (REQ-007, REQ-008, E7, E10)', () => {
         portions: 1,
         variants: [{ variantId: chicken.id, portions: 1 }],
         sort: index,
-        not_cooked: false,
+        not_done: false,
       })),
     });
     await engine.pull();
@@ -782,6 +729,60 @@ describe('spec 0008: deleting a recipe (REQ-012, E3 to E5)', () => {
     expect(fx.nadjaData(nadja).planEntries.find((entry) => entry.id === monday)).toMatchObject({
       kind: 'text',
       text: 'Halloumi-Pfanne',
+    });
+  });
+
+  describe('spec 0023, Decision 15: "Zutaten auch von der Liste nehmen"', () => {
+    const ofEntry = (entryId: string) =>
+      getData().items.flatMap((item) =>
+        item.contributions.filter(
+          (c) => c.source.kind === 'recipe' && c.source.entryId === entryId,
+        ),
+      );
+    const onServer = (entryId: string) =>
+      fx.server
+        .rows(H, 'shopping_contributions')
+        .filter((row) => (row.source as { entryId?: string } | null)?.entryId === entryId);
+    async function withList() {
+      const arranged = await arrange();
+      addPlannedToList(pantryCheckRows([arranged.saturday]).filter((row) => !row.isPantry));
+      await fx.settle();
+      fx.clearCalls();
+      return arranged;
+    }
+
+    it('Decision 15: names the entries that go and their ingredients on the list', async () => {
+      const { recipe, saturday } = await withList();
+      expect(recipeDeletionListShare(recipe.id)).toEqual({
+        entries: 1,
+        ingredients: ofEntry(saturday).length,
+      });
+      expect(ofEntry(saturday).length).toBeGreaterThan(0);
+      expect(recipeDeletionListShare('rec-unknown')).toBeUndefined();
+    });
+
+    it('Decision 15: with the list the ingredients go in the one delete_recipe call; undo brings them back', async () => {
+      const { recipe, saturday } = await withList();
+      const count = onServer(saturday).length;
+      const restore = snapshot();
+      expect(deleteRecipe(recipe.id, { withList: true })).toMatchObject({ ingredients: count });
+      expect(ofEntry(saturday)).toEqual([]);
+      await fx.settle();
+      expect(fx.calls).toEqual([{ fn: 'deleteRecipe', args: [recipe.id, TODAY, true] }]);
+      expect(onServer(saturday)).toEqual([]);
+      restore();
+      await fx.settle();
+      expect(onServer(saturday)).toHaveLength(count);
+      expect(ofEntry(saturday)).toHaveLength(count);
+    });
+
+    it('Decision 15: "Nur löschen" keeps the ingredients on the list', async () => {
+      const { recipe, saturday } = await withList();
+      const count = onServer(saturday).length;
+      expect(deleteRecipe(recipe.id)).toMatchObject({ ingredients: 0 });
+      await fx.settle();
+      expect(fx.calls).toEqual([{ fn: 'deleteRecipe', args: [recipe.id, TODAY] }]);
+      expect(onServer(saturday)).toHaveLength(count);
     });
   });
 
@@ -900,5 +901,89 @@ describe('spec 0008: deleting a recipe (REQ-012, E3 to E5)', () => {
       fx.server.transport('u-stranger').deleteRecipe(halloumi().id, TODAY),
     ).rejects.toMatchObject({ code: 'recipe_not_found' });
     expect(fx.server.row(H, 'recipes', halloumi().id)).toBeDefined();
+  });
+});
+
+describe('"Neu" → "Rezept" with "Zutaten einfügen" (spec 0018, REQ-001, E-01)', () => {
+  let key = 0;
+  /** The rows of the pasted block, as the window "Neu" reads them. */
+  const pasted = (text: string) =>
+    rowsFromIngredientDrafts(
+      ingredientDrafts(text, getData().articles, starterCatalogEntries, () => `paste-${++key}`),
+    );
+  const nameOf = (articleId: string) =>
+    getData().articles.find((article) => article.id === articleId)?.name;
+
+  it('AC-001: both pasted lines are in the new recipe, in the same call that creates it', async () => {
+    const engine = await fx.startEnrico();
+    const { recipeId, open } = createRecipeWithIngredients(
+      { title: 'Linsen-Dal' },
+      pasted('200 g rote Linsen\n1 Dose Kokosmilch'),
+    );
+    expect(open).toEqual([]);
+    const lines = () =>
+      recipeById(recipeId)?.ingredients.map((row) => [row.amount?.text, nameOf(row.articleId)]);
+    expect(lines()).toEqual([
+      ['200 g', 'Rote Linsen'],
+      ['1 Dose', 'Kokosmilch'],
+    ]);
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+    expect(opsOf(0)).toEqual([
+      expect.objectContaining({
+        kind: 'insert',
+        table: 'recipes',
+        row: expect.objectContaining({ id: recipeId, ingredients: expect.any(Array) }),
+      }),
+    ]);
+    // "Nach dem Neuladen": what the server holds, also on a fresh pull.
+    await engine.pull();
+    expect(lines()).toHaveLength(2);
+    const nadja = await fx.startNadja();
+    expect(
+      fx.nadjaData(nadja).recipes.find((recipe) => recipe.id === recipeId)?.ingredients,
+    ).toHaveLength(2);
+  });
+
+  it('AC-002: the ingredients do not wait for the recipe page; an unknown line comes back open', async () => {
+    await fx.startEnrico();
+    const { recipeId, open } = createRecipeWithIngredients(
+      { title: 'Linsen-Dal' },
+      pasted('200 g rote Linsen\n1 TL Bockshornkleesamen-Mix'),
+    );
+    // Saved with the recipe itself: no page has to pick anything up.
+    expect(recipeById(recipeId)?.ingredients).toHaveLength(1);
+    expect(open.map((row) => row.name)).toEqual(['Bockshornkleesamen-Mix']);
+    await fx.settle();
+    expect(fx.calls).toHaveLength(1);
+    expect(recipeById(recipeId)?.ingredients).toHaveLength(1);
+  });
+
+  it('AC-003: without pasted lines the recipe has no ingredients, as before', async () => {
+    await fx.startEnrico();
+    const { recipeId, open } = createRecipeWithIngredients({ title: 'Linsen-Dal' }, []);
+    expect(open).toEqual([]);
+    expect(recipeById(recipeId)).toMatchObject({ title: 'Linsen-Dal', ingredients: [] });
+    await fx.settle();
+    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
+  });
+
+  it('negative: no title or offline creates nothing; rows with a problem come back open', async () => {
+    await fx.startEnrico();
+    const before = getData().recipes.length;
+    const rows = pasted('200 g rote Linsen');
+    expect(() => createRecipeWithIngredients({ title: ' ' }, rows)).toThrow('Titel fehlt');
+    fx.environment.setOnline(false);
+    expect(() => createRecipeWithIngredients({ title: 'Linsen-Dal' }, rows)).toThrow(OfflineError);
+    fx.environment.setOnline(true);
+    expect(getData().recipes).toHaveLength(before);
+
+    // A Hinweis over the limit: the recipe is created, the rows open in the section with the hint.
+    const [row] = rows;
+    if (!row) throw new Error('fixture');
+    const tooLong = { ...row, prepNote: 'x'.repeat(201) };
+    const { recipeId, open } = createRecipeWithIngredients({ title: 'Linsen-Dal' }, [tooLong]);
+    expect(recipeById(recipeId)?.ingredients).toEqual([]);
+    expect(open).toEqual([tooLong]);
   });
 });

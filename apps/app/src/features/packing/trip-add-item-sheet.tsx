@@ -1,6 +1,6 @@
 import { addPackingItem, usePackingBags } from '@housekeeping/api';
 import { sourceBag, type PackingListBag } from '@housekeeping/core';
-import { Button, Sheet, Stack, SwitchRow, TextField } from '@housekeeping/ui';
+import { Sheet, Stack, SwitchRow, TextField } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -44,17 +44,16 @@ export function TripAddItemSheet(props: { listBag: PackingListBag; onClose: () =
       title={`Packstück für „${props.listBag.name}“`}
       onClose={props.onClose}
       testID="trip-add-item-sheet"
-      footer={
-        <Button
-          label="Hinzufügen"
-          icon="plus"
-          full
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={save}
-          testID="trip-add-item-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Hinzufügen',
+          icon: 'plus',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'trip-add-item-save',
+        },
+      }}
     >
       <Stack gap={12}>
         <TextField
@@ -64,7 +63,7 @@ export function TripAddItemSheet(props: { listBag: PackingListBag; onClose: () =
             setText(value);
             setError(undefined);
           }}
-          placeholder="z. B. 2 Badehose"
+          placeholder="z. B. 2 Badehose oder Socken 1 je Tag"
           error={error}
           hint={online.hint}
           editable={!online.disabled}

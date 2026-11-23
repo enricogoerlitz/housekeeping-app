@@ -36,10 +36,11 @@ const REQUIRED_CHECKS = [
   'Migrationen',
   'Prüfungen',
   'Datenbank (pgTAP)',
+  'Integration (API)',
   'Deno-Lock',
 ];
 /** Jobs that skip on a docs-only pull request (AC-011); the others always run. */
-const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Deno-Lock'];
+const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Integration (API)', 'Deno-Lock'];
 
 describe('all workflows', () => {
   test('the old ci.yml is replaced by checks.yml', () => {
@@ -116,12 +117,15 @@ describe('checks.yml', () => {
   const job = (name) => jobs.find(([, j]) => j.name === name)?.[1];
   const runOf = (name) => runs(job(name) ?? {}).join('\n');
 
-  test('runs on pull requests, when called and by hand; never on push', () => {
+  test('AC-011 (spec 0031): runs on pull requests, after every merge to develop, when called and by hand', () => {
     const on = checks.doc.on;
-    assert.ok('pull_request' in on);
-    assert.ok('workflow_call' in on);
-    assert.ok('workflow_dispatch' in on);
-    assert.ok(!('push' in on));
+    assert.deepEqual(Object.keys(on).sort(), [
+      'pull_request',
+      'push',
+      'workflow_call',
+      'workflow_dispatch',
+    ]);
+    assert.deepEqual(on.push, { branches: ['develop'] });
     // A corrected title or a new base reruns "Konventionen".
     assert.ok(on.pull_request.types.includes('edited'));
   });
@@ -168,6 +172,19 @@ describe('checks.yml', () => {
     assert.match(checks.doc.concurrency.group, /github\.run_id/);
   });
 
+  test('AC-011 (spec 0031): a push to develop has its own group per commit and is never cancelled', () => {
+    const { group } = checks.doc.concurrency;
+    assert.match(
+      group,
+      /github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop' && format\('develop-\{0\}', github\.sha\)/,
+    );
+    // The pull request number comes first, the run id last: only a push to develop gets the
+    // develop group, a release on main (push, called) keeps its run id.
+    assert.ok(group.indexOf('pull_request.number') < group.indexOf("'develop-"));
+    assert.ok(group.indexOf("'develop-") < group.indexOf('github.run_id'));
+    assert.doesNotMatch(checks.doc.concurrency['cancel-in-progress'], /push/);
+  });
+
   test('"Konventionen" runs the script and actionlint by digest', () => {
     assert.match(runOf('Konventionen'), /node scripts\/ci\/conventions\.mjs/);
     assert.match(runOf('Konventionen'), /rhysd\/actionlint(:[\w.]+)?@sha256:[0-9a-f]{64}/);
@@ -193,15 +210,36 @@ describe('checks.yml', () => {
     assert.match(runOf('Migrationen'), /node scripts\/ci\/migrations\.mjs --base "\$base"/);
   });
 
-  test('AC-006: format, check, web build and pgTAP; the e2e suites run locally only', () => {
+  test('AC-006: format, check, web build and pgTAP; AC-009 (spec 0031): the e2e suites only in e2e.yml', () => {
     assert.match(runOf('Prüfungen'), /pnpm format:check/);
     assert.match(runOf('Prüfungen'), /pnpm check/);
     assert.match(runOf('Prüfungen'), /pnpm build:web/);
     assert.match(runOf('Datenbank (pgTAP)'), /supabase db start/);
     assert.match(runOf('Datenbank (pgTAP)'), /supabase test db/);
     for (const { file, text } of workflows) {
-      assert.doesNotMatch(text, /pnpm e2e/, file);
+      if (file !== 'e2e.yml') assert.doesNotMatch(text, /pnpm e2e/, file);
     }
+    for (const file of ['checks.yml', 'preview.yml']) {
+      assert.doesNotMatch(byFile(file).text, /e2e\.yml/, file);
+    }
+  });
+
+  test('AC-014 (spec 0031): "Integration (API)" runs the API integration tests against a local stack without .env', () => {
+    const j = job('Integration (API)');
+    assert.ok(j, 'job "Integration (API)"');
+    const script = runOf('Integration (API)');
+    // The full stack (Auth, PostgREST, Storage, edge runtime) without the tools nobody tests.
+    assert.match(script, /pnpm exec supabase start -x studio,logflare,vector(\s|$)/);
+    assert.match(script, /pnpm test:integration/);
+    assert.ok(
+      script.indexOf('supabase start') < script.indexOf('pnpm test:integration'),
+      'the stack starts before the tests',
+    );
+    assert.equal(j.env?.SUPABASE_LOCAL, '1');
+    // Only the public local defaults of the Supabase CLI; no .env, no secret.
+    assert.equal(j.env?.EXPO_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
+    assert.match(j.env?.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '', /^sb_publishable_/);
+    assert.doesNotMatch(script, /\.env\b/);
   });
 
   test('throwaway VAPID keys per run, masked, before the web build and the local stack', () => {
@@ -253,12 +291,13 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
   // The GitHub Actions app: only check runs from Actions can satisfy a required check.
   const GITHUB_ACTIONS_APP_ID = 15368;
 
-  test('AC-001: three active rulesets without any bypass, for develop, main and tags v*', () => {
+  test('AC-001: three active rulesets, for develop, main and tags v*; develop and main without any bypass', () => {
     for (const [name, set] of Object.entries(rulesets)) {
       assert.ok(set, `infra/github/ruleset-${name}.json`);
       assert.equal(set.enforcement, 'active', name);
-      assert.deepEqual(set.bypass_actors, [], name);
     }
+    assert.deepEqual(rulesets.develop.bypass_actors, []);
+    assert.deepEqual(rulesets.main.bypass_actors, []);
     assert.deepEqual(rulesets.develop.conditions.ref_name.include, ['refs/heads/develop']);
     assert.deepEqual(rulesets.main.conditions.ref_name.include, ['refs/heads/main']);
     assert.deepEqual(rulesets.tags.conditions.ref_name.include, ['refs/tags/v*']);
@@ -303,9 +342,13 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
     }
   });
 
-  test('tags v* cannot be moved or deleted; creating stays allowed for the release job', () => {
+  test('AC-020 (spec 0031): tags v* cannot be created, moved or deleted; only GitHub Actions creates them', () => {
     const types = rulesets.tags.rules.map((r) => r.type).sort();
-    assert.deepEqual(types, ['deletion', 'non_fast_forward', 'update']);
+    assert.deepEqual(types, ['creation', 'deletion', 'non_fast_forward', 'update']);
+    // The release job creates the tag with GITHUB_TOKEN, the token of the GitHub Actions app.
+    assert.deepEqual(rulesets.tags.bypass_actors, [
+      { actor_id: GITHUB_ACTIONS_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
+    ]);
   });
 });
 
@@ -413,6 +456,10 @@ describe('all delivery workflows', () => {
         assert.ok(job.environment, `${file} ${id}`);
         const guard = runs(job).findIndex((run) => /-z "\$SUPABASE_POOLER_URL"/.test(run));
         assert.ok(guard !== -1 && guard < first, `${file} ${id}`);
+        // The address must belong to the project of this environment (security check 22.11.2026):
+        // a production address in the preview secret would let the preview reset production.
+        const check = runs(job)[guard];
+        assert.match(check, /"postgres\.\$\{SUPABASE_PROJECT_REF\}"/, `${file} ${id}`);
       }
     }
   });
@@ -481,9 +528,13 @@ describe('preview.yml (Task 7)', () => {
   const preview = byFile('preview.yml');
   const jobs = jobsOf('preview.yml');
 
-  test('AC-069, AC-071: runs on develop (push and by hand), never on a pull request', () => {
-    assert.deepEqual(Object.keys(preview.doc.on).sort(), ['push', 'workflow_dispatch']);
-    assert.deepEqual(preview.doc.on.push.branches, ['develop']);
+  test('AC-069, AC-071: runs only by hand (changed 22.11.2026), never on a push or pull request', () => {
+    assert.deepEqual(Object.keys(preview.doc.on), ['workflow_dispatch']);
+  });
+
+  test('AC-069: a run by hand from another branch than develop stops before anything is delivered', () => {
+    // The environment "preview" only allows develop as well; this stops earlier and visibly.
+    assert.equal(jobs.checks.if, "github.ref == 'refs/heads/develop'");
   });
 
   test('AC-069: one run at a time, a waiting run is replaced by a newer push', () => {
@@ -591,6 +642,67 @@ describe('preview.yml (Task 7)', () => {
   });
 });
 
+describe('e2e.yml (spec 0031, REQ-002)', () => {
+  const e2e = byFile('e2e.yml');
+  const suite = e2e?.doc.jobs?.e2e;
+
+  test('AC-009: called by the release and started by hand, nothing else', () => {
+    assert.ok(e2e, 'e2e.yml');
+    assert.deepEqual(Object.keys(e2e.doc.on).sort(), ['workflow_call', 'workflow_dispatch']);
+    const callers = workflows
+      .filter(({ text }) => /\.\/\.github\/workflows\/e2e\.yml/.test(text))
+      .map(({ file }) => file);
+    assert.deepEqual(callers, ['release.yml']);
+  });
+
+  test('AC-009: the job reads no secret and uses no environment', () => {
+    assert.doesNotMatch(e2e.text, /secrets\./);
+    for (const job of Object.values(e2e.doc.jobs)) assert.equal(job.environment, undefined);
+  });
+
+  test('AC-007: six shards of the full suite and the dev-mode smoke test, all run to the end', () => {
+    assert.deepEqual(suite.strategy.matrix.suite, [
+      '1/6',
+      '2/6',
+      '3/6',
+      '4/6',
+      '5/6',
+      '6/6',
+      'dev',
+    ]);
+    assert.equal(suite.strategy['fail-fast'], false);
+    const script = runs(suite).join('\n');
+    assert.match(script, /pnpm e2e --shard="\$SUITE"/);
+    assert.match(script, /pnpm e2e:dev/);
+  });
+
+  test('AC-007: against a local stack with throwaway push keys, before the suite', () => {
+    assertOrder(
+      suite,
+      [
+        /node scripts\/push-keys\.mjs --out "\$RUNNER_TEMP\//,
+        /pnpm exec supabase start -x studio,logflare,vector/,
+        /supabase status -o env .*PUBLISHABLE_KEY[\s\S]*EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=.*GITHUB_ENV/,
+        /pnpm --filter @housekeeping\/e2e exec playwright install --with-deps chromium/,
+        /pnpm e2e/,
+      ],
+      'e2e',
+    );
+    const cache = steps(suite).find((step) => step.uses?.startsWith('actions/cache@'));
+    assert.equal(cache?.with?.path, '~/.cache/ms-playwright');
+    assert.match(cache?.with?.key, /steps\.playwright\.outputs\.version/);
+    const e2eStep = steps(suite).find((step) => step.name === 'e2e');
+    assert.ok(
+      e2eStep['timeout-minutes'] < suite['timeout-minutes'],
+      'the step stops before the job',
+    );
+    assert.equal(suite.env.EXPO_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
+    const keys = runs(suite).find((run) => /push-keys/.test(run));
+    assert.match(keys, /::add-mask::/);
+    assert.match(keys, /rm -f "\$RUNNER_TEMP\//);
+  });
+});
+
 describe('release.yml (Task 8)', () => {
   const release = byFile('release.yml');
   const jobs = jobsOf('release.yml');
@@ -688,6 +800,17 @@ describe('release.yml (Task 8)', () => {
     for (const [id, job] of Object.entries(jobs)) {
       const writes = job.permissions?.contents === 'write';
       assert.equal(writes, ['veroeffentlichen', 'rueckfuehrung'].includes(id), id);
+    }
+  });
+
+  test('AC-007, AC-010 (spec 0031): the e2e suite runs before backup, Supabase and web delivery', () => {
+    assert.equal(jobs.e2e.uses, './.github/workflows/e2e.yml');
+    assert.deepEqual(jobs.e2e.permissions, { contents: 'read' });
+    assert.deepEqual(needsOf(jobs.e2e).sort(), ['checks', 'version']);
+    assert.equal(jobs.e2e.if, "needs.version.outputs.release == 'true'");
+    assert.equal(jobs.e2e.secrets, undefined);
+    for (const id of ['sicherung', 'supabase-ausliefern', 'web-ausliefern']) {
+      assert.ok(needsOf(jobs[id]).includes('e2e'), id);
     }
   });
 
@@ -810,7 +933,19 @@ describe('redeploy-web.yml (Task 8)', () => {
   test('AC-033: only by hand, with the tag as input, never next to a release', () => {
     assert.deepEqual(Object.keys(redeploy.doc.on), ['workflow_dispatch']);
     assert.equal(redeploy.doc.on.workflow_dispatch.inputs.tag.required, true);
-    assert.deepEqual(redeploy.doc.concurrency, { group: 'release', 'cancel-in-progress': false });
+    for (const id of ['web-ausliefern', 'pruefen']) {
+      assert.deepEqual(jobs[id].concurrency, { group: 'release', 'cancel-in-progress': false }, id);
+    }
+  });
+
+  test('review 0031, P-1: it refuses while a release waits or runs, instead of replacing it', () => {
+    // A workflow-level group would replace a waiting release run the moment this one is queued.
+    assert.equal(redeploy.doc.concurrency, undefined);
+    assert.deepEqual(jobs.version.permissions, { contents: 'read', actions: 'read' });
+    assert.match(
+      runs(jobs.version).join('\n'),
+      /gh run list --workflow release\.yml --json status --jq '\[\.\[\] \| select\(\.status != "completed"\)\] \| length'/,
+    );
   });
 
   test('AC-033: the tag is checked against the minimum version of production before anything is delivered', () => {
@@ -847,4 +982,25 @@ describe('redeploy-web.yml (Task 8)', () => {
 test('workflow files parse as YAML', () => {
   for (const { file, doc } of workflows) assert.equal(typeof doc, 'object', file);
   assert.ok(existsSync(path.join(root, '.github/dependabot.yml')));
+});
+
+describe('spec 0027, AC-043: every delivery checks the old address once its variable is set', () => {
+  for (const [file, variable] of [
+    ['release.yml', 'PRODUCTION_OLD_WEB_ORIGIN'],
+    ['redeploy-web.yml', 'PRODUCTION_OLD_WEB_ORIGIN'],
+    ['preview.yml', 'PREVIEW_OLD_WEB_ORIGIN'],
+  ]) {
+    test(`${file} passes --old-origin from the variable ${variable} only when it is set`, () => {
+      const jobs = Object.values(byFile(file).doc.jobs);
+      const verifying = jobs.filter((job) =>
+        runs(job).some((run) => run.includes('scripts/release/verify.mjs')),
+      );
+      assert.ok(verifying.length > 0);
+      for (const job of verifying) {
+        const flag = '${' + variable + ':+--old-origin "$' + variable + '"}';
+        assert.ok(runs(job).some((run) => run.includes(flag)));
+        assert.equal(job.env[variable], `\${{ vars.${variable} }}`);
+      }
+    });
+  }
 });

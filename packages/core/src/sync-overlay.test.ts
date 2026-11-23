@@ -82,7 +82,7 @@ describe('visibleTables', () => {
       },
     };
     const queue: StoreQueueEntry[] = [
-      { kind: 'check', itemId: 'i1', checked: true, seenCheckSeq: 0 },
+      { kind: 'check', itemId: 'i1', checked: true, seenCheckSeq: 0, onList: false },
     ];
     const note: RowOp = {
       kind: 'patch',

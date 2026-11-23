@@ -27,11 +27,12 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { announce } from './announce';
-import { IconButton, focusRing } from './controls';
+import { IconButton, keyboardFocusRing, keyboardFocus } from './controls';
 import { haptic } from './haptics';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
+import { ariaRef, mergeRefs } from './hint';
 
 export interface ReorderListItem {
   key: string;
@@ -87,12 +88,6 @@ const WEB_HANDLE: ViewStyle | null =
   Platform.OS === 'web'
     ? ({ cursor: 'grab', touchAction: 'none', userSelect: 'none' } as unknown as ViewStyle)
     : null;
-
-/** On the web a click also focuses the handle; only keyboard focus gets the ring. */
-function keyboardFocus(event: unknown): boolean {
-  const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
-  return target?.matches?.(':focus-visible') ?? true;
-}
 
 interface Layout {
   y: number;
@@ -388,6 +383,10 @@ function ReorderRow(props: ReorderRowProps) {
               accessibilityLabel={labels.open?.(item.name) ?? item.name}
               accessibilityHint={props.disabled ? props.disabledHint : undefined}
               accessibilityState={{ disabled: !!props.disabled }}
+              // react-native-web drops accessibilityHint.
+              ref={ariaRef({
+                'aria-description': props.disabled ? props.disabledHint : undefined,
+              })}
               disabled={props.disabled}
               onPress={props.onPress}
               onFocus={(event) => setPressFocused(keyboardFocus(event))}
@@ -399,7 +398,7 @@ function ReorderRow(props: ReorderRowProps) {
                   borderRadius: theme.shape.radius.control,
                   opacity: state.pressed ? 0.6 : 1,
                 },
-                focusRing(theme, pressFocused),
+                keyboardFocusRing(theme, pressFocused),
               ]}
             >
               <Text variant="rowTitle" color={item.muted ? 'muted' : 'text'} numberOfLines={2}>
@@ -421,13 +420,18 @@ function ReorderRow(props: ReorderRowProps) {
         leading={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <View
-              ref={registerHandle}
+              ref={mergeRefs(
+                registerHandle,
+                ariaRef({ 'aria-description': props.disabled ? props.disabledHint : undefined }),
+              )}
               {...responder.panHandlers}
               testID={id('handle')}
               accessibilityRole="button"
               accessibilityLabel={labels.handle(item.name)}
               accessibilityHint={props.disabled ? props.disabledHint : undefined}
               accessibilityState={{ disabled: !!props.disabled }}
+              // react-native-web ignores accessibilityState.
+              aria-disabled={!!props.disabled}
               focusable={!props.disabled}
               onFocus={(event) => setFocused(keyboardFocus(event))}
               onBlur={() => setFocused(false)}
@@ -442,7 +446,7 @@ function ReorderRow(props: ReorderRowProps) {
                   opacity: props.disabled ? 0.4 : 1,
                 },
                 props.disabled ? null : WEB_HANDLE,
-                focusRing(theme, focused),
+                keyboardFocusRing(theme, focused),
               ]}
             >
               <Icon name="grip-vertical" size={20} color="muted" />

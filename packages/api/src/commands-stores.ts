@@ -1,6 +1,7 @@
 import {
   areaSortPatches,
   moveInOrder,
+  nextAreaSort,
   normalizeText,
   validateAreaName,
   type Area,
@@ -55,7 +56,7 @@ export function createArea(name: string): Id {
   const area: Area = {
     id: newId(),
     name: trimmed,
-    sort: areas.reduce((max, candidate) => Math.max(max, candidate.sort), 0) + 1,
+    sort: nextAreaSort(areas),
   };
   commit({ path: 'diff' }, () => updateData((data) => ({ ...data, areas: [...data.areas, area] })));
   return area.id;
@@ -153,18 +154,27 @@ export function deleteArea(areaId: Id): void {
 
 // ---------- Stores ----------
 
-export function createStore(name: string): Id {
-  const trimmed = name.trim();
-  if (!trimmed) throw new Error('Name fehlt');
-  const data = getData();
+export function createStore(name: string, copyFrom?: Id): Id {
+  const trimmed = storeName(name);
+  const source =
+    copyFrom === undefined ? undefined : getData().stores.find((s) => s.id === copyFrom);
+  if (copyFrom !== undefined && !source) throw new Error('Den Markt gibt es nicht mehr.');
+  const bySort = [...getData().areas]
+    .sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
+    .map((area) => area.id);
   const store: Store = {
     id: newId(),
     name: trimmed,
-    areaOrder: [...data.areas].sort((a, b) => a.sort - b.sort).map((area) => area.id),
-    hiddenAreaIds: [],
+    areaOrder: source ? [...source.areaOrder] : bySort,
+    hiddenAreaIds: [...(source?.hiddenAreaIds ?? [])],
   };
-  commit({ path: 'diff' }, () =>
-    updateData((current) => ({ ...current, stores: [...current.stores, store] })),
+  commit(
+    {
+      path: 'rpc',
+      send: (transport, context) =>
+        transport.createStore(context.householdId, store.id, trimmed, copyFrom ?? null),
+    },
+    () => updateData((current) => ({ ...current, stores: [...current.stores, store] })),
   );
   return store.id;
 }

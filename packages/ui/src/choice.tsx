@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -11,12 +11,15 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
-import { ChipView, focusRing, IconButton } from './controls';
+import { ChipView, FOCUS_RING_ROOM, keyboardFocused, keyboardFocusRing } from './controls';
 import { expandableA11y } from './expandable';
 import { type IconName } from './icons';
 import { menuKey } from './menu-keys';
+import { useHover } from './pointer';
 import { Icon, Text } from './primitives';
 import { useAreaColors, useTheme } from './theme-context';
+import { chipRowStyle } from './chip-layout';
+import { ariaRef } from './hint';
 
 // One pattern per task (spec 0005, D1): view tabs switch views, choice chips pick one value in a
 // form, a menu picks an order. They replace the segment bar.
@@ -25,9 +28,57 @@ type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 // react-native-web passes `onKeyDown` through to the DOM; native has no such prop and ignores it.
 type KeyEvent = { key: string; preventDefault: () => void };
 
+type Anchor = { x: number; y: number; width: number; height: number };
+
+/**
+ * Escape on the web closes only this menu or popover, never a window below it. A modal of
+ * react-native-web closes on the keyup of Escape once it is the top one: while the menu still
+ * fades in (or out) that is the window below. So the menu takes the keyup first (capture on
+ * `window`) and stops it there.
+ */
+function useEscapeCloses(
+  isOpen: boolean,
+  hide: () => void,
+  trigger: { current: HostInstance | null },
+): void {
+  useEffect(() => {
+    if (!isOpen || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      hide();
+      trigger.current?.focus();
+    };
+    window.addEventListener('keyup', onKey, true);
+    return () => window.removeEventListener('keyup', onKey, true);
+  }, [isOpen, hide, trigger]);
+}
+
+/**
+ * Open state of a menu or popover at its trigger (spec 0019, REQ-004). The position stays while
+ * the modal fades out, so it closes where it was instead of jumping to the top left; `keyboard`
+ * says whether it was opened with the keyboard, which alone moves the focus into it.
+ */
+function useAnchoredPanel(trigger: { current: HostInstance | null }) {
+  const [panel, setPanel] = useState<{ open: boolean; keyboard: boolean; anchor?: Anchor }>({
+    open: false,
+    keyboard: false,
+  });
+  const open = () => {
+    const keyboard = Platform.OS === 'web' && keyboardFocused(true);
+    trigger.current?.measureInWindow((x, y, width, height) =>
+      setPanel({ open: true, keyboard, anchor: { x, y, width, height } }),
+    );
+  };
+  const hide = useCallback(() => setPanel((current) => ({ ...current, open: false })), []);
+  return { anchor: panel.anchor, keyboard: panel.keyboard, isOpen: panel.open, open, hide };
+}
+
 export interface ChoiceOption<T extends string> {
   value: T;
   label: string;
+  /** ChoiceChips only: a second line under the label ("25.11." under "Mi"). */
+  detail?: string;
 }
 
 export interface ViewTabsProps<T extends string> {
@@ -47,6 +98,7 @@ export interface ViewTabsProps<T extends string> {
  */
 export function ViewTabs<T extends string>(props: ViewTabsProps<T>) {
   const theme = useTheme();
+  const hover = useHover();
   const area = useAreaColors();
   const scrollRef = useRef<ScrollViewInstance>(null);
   const tabs = useRef(new Map<T, HostInstance>());
@@ -108,7 +160,9 @@ export function ViewTabs<T extends string>(props: ViewTabsProps<T>) {
       onScroll={(event) => {
         viewport.current.x = event.nativeEvent.contentOffset.x;
       }}
-      style={{ flexGrow: 0 }}
+      // Room for the focus ring of the first and the last tab (AC-005).
+      style={{ flexGrow: 0, margin: -FOCUS_RING_ROOM }}
+      contentContainerStyle={{ padding: FOCUS_RING_ROOM }}
     >
       <View
         testID={props.testID}
@@ -146,25 +200,33 @@ export function ViewTabs<T extends string>(props: ViewTabsProps<T>) {
                   paddingBottom: 8,
                   borderRadius: 6,
                 },
-                focusRing(theme, (state as PressState).focused),
+                keyboardFocusRing(theme, (state as PressState).focused),
               ]}
             >
-              <Text variant="bodyStrong" color={selected ? 'text' : 'muted'} numberOfLines={1}>
-                {option.label}
-              </Text>
-              {selected ? (
-                <View
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: 3,
-                    borderRadius: 2,
-                    backgroundColor: area?.line ?? theme.colors.accent,
-                  }}
-                />
-              ) : null}
+              {(state) => (
+                <>
+                  <Text
+                    variant="bodyStrong"
+                    color={selected || hover((state as PressState).hovered) ? 'text' : 'muted'}
+                    numberOfLines={1}
+                  >
+                    {option.label}
+                  </Text>
+                  {selected ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 3,
+                        borderRadius: 2,
+                        backgroundColor: area?.line ?? theme.colors.accent,
+                      }}
+                    />
+                  ) : null}
+                </>
+              )}
             </Pressable>
           );
         })}
@@ -182,6 +244,11 @@ export interface ChoiceChipsProps<T extends string> {
   /** Greyed out and not changeable, e.g. a write while offline; `hint` says why. */
   disabled?: boolean;
   hint?: string;
+  /**
+   * The chips share the full width in equal parts and never wrap (spec 0030, REQ-005): for a fixed
+   * number of chips whose labels change, e.g. the seven days of a week.
+   */
+  fill?: boolean;
   /** Each chip gets `${testID}-${value}`. */
   testID?: string;
 }
@@ -197,13 +264,16 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
       accessibilityRole="radiogroup"
       accessibilityLabel={props.label}
       accessibilityState={{ disabled: !!props.disabled }}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+      aria-disabled={!!props.disabled}
+      style={chipRowStyle(!!props.fill)}
     >
       {props.options.map((option) => (
         <ChipView
           key={option.value}
+          fill={props.fill}
           role="radio"
           label={option.label}
+          detail={option.detail}
           selected={option.value === props.value}
           disabled={props.disabled}
           hint={props.disabled ? props.hint : undefined}
@@ -261,44 +331,36 @@ export function Menu<T extends string>(props: MenuProps<T>) {
   const items = useRef(new Map<T, HostInstance>());
   const iconOnly = props.trigger === 'icon';
   const isChoice = props.value !== undefined;
-  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number }>();
-
-  const open = () =>
-    trigger.current?.measureInWindow((x, y, width, height) => setAnchor({ x, y, width, height }));
+  const hover = useHover();
+  const panel = useAnchoredPanel(trigger);
+  const { anchor, isOpen, open, hide } = panel;
   const close = () => {
-    setAnchor(undefined);
+    hide();
     trigger.current?.focus();
   };
   const choose = (value: T) => {
     props.onChange(value);
     close();
   };
-  const isOpen = anchor !== undefined;
-  useEffect(() => {
-    // The modal does not report Escape on the web; close the menu here (spec 0010, platforms).
-    if (!isOpen || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setAnchor(undefined);
-      trigger.current?.focus();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen]);
+  // The modal does not report Escape on the web; close the menu here (spec 0010, platforms).
+  useEscapeCloses(isOpen, hide, trigger);
 
   const current = Math.max(
     0,
     props.options.findIndex((option) => option.value === props.value),
   );
+  const keyboardOpened = isOpen && panel.keyboard;
   useEffect(() => {
-    if (!anchor) return;
+    // Opened with the mouse or a finger, nothing is focused or highlighted (AC-010); with the
+    // keyboard the first entry, in a choice the current one, gets the focus (AC-011). The menu
+    // mounts in a modal; focus moves into it once it is on screen.
+    if (!keyboardOpened) return;
     const first = props.options[current];
-    // The menu mounts in a modal; focus moves into it once it is on screen.
     const frame = requestAnimationFrame(() => {
       if (first) items.current.get(first.value)?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [anchor, current, props.options]);
+  }, [keyboardOpened, current, props.options]);
 
   const focusAt = (index: number) => {
     const count = props.options.length;
@@ -338,7 +400,7 @@ export function Menu<T extends string>(props: MenuProps<T>) {
         ref={trigger}
         testID={props.testID}
         accessibilityRole="button"
-        {...expandableA11y(props.accessibilityLabel, anchor !== undefined, Platform.OS)}
+        {...expandableA11y(props.accessibilityLabel, isOpen, Platform.OS)}
         aria-haspopup="menu"
         onPress={open}
         hitSlop={4}
@@ -352,10 +414,10 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                 borderRadius: 18,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: hovered || anchor ? c.surfaceSunken : 'transparent',
+                backgroundColor: hover(hovered) || isOpen ? c.surfaceSunken : 'transparent',
                 opacity: pressed ? 0.6 : 1,
               },
-              focusRing(theme, hasFocus),
+              keyboardFocusRing(theme, hasFocus),
             ];
           }
           return [
@@ -372,7 +434,7 @@ export function Menu<T extends string>(props: MenuProps<T>) {
               alignSelf: 'flex-start',
               opacity: pressed ? 0.7 : 1,
             },
-            focusRing(theme, hasFocus),
+            keyboardFocusRing(theme, hasFocus),
           ];
         }}
       >
@@ -386,7 +448,7 @@ export function Menu<T extends string>(props: MenuProps<T>) {
           </>
         )}
       </Pressable>
-      <Modal visible={anchor !== undefined} transparent animationType="fade" onRequestClose={close}>
+      <Modal visible={isOpen} transparent animationType="fade" onRequestClose={close}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={props.accessibilityLabel}
@@ -419,6 +481,8 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                 ref={(node) => {
                   if (node) items.current.set(option.value, node);
                   else items.current.delete(option.value);
+                  // react-native-web drops accessibilityHint.
+                  ariaRef({ 'aria-description': option.hint })(node);
                 }}
                 testID={props.testID ? `${props.testID}-${option.value}` : undefined}
                 {...itemRole(isChoice)}
@@ -436,6 +500,8 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                 onPress={() => choose(option.value)}
                 style={(state) => {
                   const { pressed, hovered, focused: hasFocus } = state as PressState;
+                  // Grey only under the mouse or with keyboard focus, never ahead of time (AC-010).
+                  const marked = hover(hovered) || keyboardFocused(hasFocus);
                   return [
                     {
                       flexDirection: 'row',
@@ -443,10 +509,10 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                       gap: 10,
                       minHeight: MENU_ITEM_HEIGHT,
                       paddingHorizontal: 14,
-                      backgroundColor:
-                        (hovered || hasFocus) && !option.disabled ? c.surfaceSunken : 'transparent',
+                      backgroundColor: marked && !option.disabled ? c.surfaceSunken : 'transparent',
                       opacity: option.disabled ? 0.5 : pressed ? 0.7 : 1,
                     },
+                    keyboardFocusRing(theme, hasFocus),
                   ];
                 }}
               >
@@ -466,146 +532,6 @@ export function Menu<T extends string>(props: MenuProps<T>) {
               </Pressable>
             );
           })}
-        </View>
-      </Modal>
-    </>
-  );
-}
-
-export interface PopoverProps {
-  /** Text of the link that opens it, e.g. "+2 weitere". */
-  label: string;
-  /** Accessible name of the link, e.g. "2 weitere Einträge am Freitag, 1. Januar". */
-  accessibilityLabel: string;
-  /** Title in the panel's head, e.g. "Freitag, 1. Januar". */
-  title: string;
-  /** The content; `close` closes the panel, e.g. before navigating away. */
-  children: (close: () => void) => ReactNode;
-  width?: number;
-  /** The link; the panel is `${testID}-panel`, its ✕ `${testID}-close`. */
-  testID?: string;
-}
-
-const POPOVER_MAX_HEIGHT = 440;
-
-/**
- * A small panel that opens at its link, e.g. behind "+2 weitere" in the month (spec 0010,
- * AC-012). Opens with a click or Enter; Escape, ✕ or a click outside closes it.
- */
-export function Popover(props: PopoverProps) {
-  const theme = useTheme();
-  const c = theme.colors;
-  const window = useWindowDimensions();
-  const trigger = useRef<HostInstance>(null);
-  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number }>();
-
-  const open = () =>
-    trigger.current?.measureInWindow((x, y, width, height) => setAnchor({ x, y, width, height }));
-  const close = () => {
-    setAnchor(undefined);
-    trigger.current?.focus();
-  };
-  const isOpen = anchor !== undefined;
-  useEffect(() => {
-    // Focus stays on the link, outside the modal, so the web needs its own Escape (spec 0010).
-    if (!isOpen || Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setAnchor(undefined);
-      trigger.current?.focus();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen]);
-
-  const width = Math.min(props.width ?? 320, window.width - 16);
-  const maxHeight = Math.min(POPOVER_MAX_HEIGHT, window.height - 16);
-  const below = (anchor?.y ?? 0) + (anchor?.height ?? 0) + 4;
-  const top =
-    below + maxHeight > window.height - 8
-      ? Math.max(8, Math.min(below, window.height - maxHeight - 8))
-      : below;
-  const left = Math.max(8, Math.min(anchor?.x ?? 0, window.width - width - 8));
-
-  return (
-    <>
-      <Pressable
-        ref={trigger}
-        testID={props.testID}
-        accessibilityRole="button"
-        {...expandableA11y(props.accessibilityLabel, anchor !== undefined, Platform.OS)}
-        aria-haspopup="dialog"
-        onPress={open}
-        hitSlop={6}
-        style={(state) => {
-          const { pressed, hovered, focused } = state as PressState;
-          return [
-            {
-              alignSelf: 'flex-start',
-              paddingHorizontal: 4,
-              paddingVertical: 2,
-              borderRadius: theme.shape.radius.control,
-              backgroundColor: hovered ? c.surfaceSunken : 'transparent',
-              opacity: pressed ? 0.6 : 1,
-            },
-            focusRing(theme, focused),
-          ];
-        }}
-      >
-        <Text variant="caption" color="muted" numberOfLines={1}>
-          {props.label}
-        </Text>
-      </Pressable>
-      <Modal visible={anchor !== undefined} transparent animationType="fade" onRequestClose={close}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Schließen"
-          onPress={close}
-          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-        />
-        <View
-          testID={props.testID ? `${props.testID}-panel` : undefined}
-          accessibilityRole="none"
-          aria-modal
-          role="dialog"
-          aria-label={props.title}
-          style={{
-            position: 'absolute',
-            top,
-            left,
-            width,
-            maxHeight,
-            borderRadius: theme.shape.radius.card,
-            backgroundColor: c.surface,
-            borderWidth: 1,
-            borderColor: c.border,
-            boxShadow: '0px 8px 24px rgba(0,0,0,0.16)',
-            overflow: 'hidden',
-          }}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              paddingLeft: 14,
-              paddingRight: 4,
-              paddingTop: 4,
-            }}
-          >
-            <Text variant="bodyStrong" heading style={{ flex: 1 }} numberOfLines={1}>
-              {props.title}
-            </Text>
-            <IconButton
-              icon="x"
-              label="Schließen"
-              onPress={close}
-              testID={props.testID ? `${props.testID}-close` : undefined}
-            />
-          </View>
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}>
-            {props.children(() => setAnchor(undefined))}
-          </ScrollView>
         </View>
       </Modal>
     </>

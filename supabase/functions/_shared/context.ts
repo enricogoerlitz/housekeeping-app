@@ -116,15 +116,20 @@ async function articleNames(
   return new Map(found.flat().map((article) => [article.id, article.name]));
 }
 
-/** "YYYY-MM-DD" in Europe/Berlin, the household's calendar. */
+/**
+ * "YYYY-MM-DD" in Europe/Berlin, the household's calendar, `addDays` later. The days are added to
+ * the date, not as 24 hours, so a change of summer time keeps the day (spec 0031, AC-051).
+ */
 export function berlinDate(now: Date, addDays = 0): string {
-  const shifted = new Date(now.getTime() + addDays * 86_400_000);
-  return new Intl.DateTimeFormat('en-CA', {
+  const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Berlin',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(shifted);
+  }).format(now);
+  const [year, month, day] = today.split('-').map(Number);
+  if (year === undefined || month === undefined || day === undefined) return today;
+  return new Date(Date.UTC(year, month - 1, day + addDays)).toISOString().slice(0, 10);
 }
 
 export interface OpenRecipe {

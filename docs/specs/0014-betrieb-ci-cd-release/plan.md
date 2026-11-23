@@ -193,7 +193,7 @@ sql stable`, gibt `text` im Format `JJJJ.M.N` zurück, `execute` für `anon` und
 28. **Rulesets ohne Umgehung** (`bypass_actors: []`) für `develop`, `main` und Tags `v*`;
     `develop` erlaubt Squash und Merge-Commit (Merge-Commit braucht nur die Rückführung), `main`
     nur Merge-Commit. Pflicht-Checks: `Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`,
-    `Datenbank (pgTAP)`, `Deno-Lock`, `E2E`; „up to date“ wird nicht verlangt. Grenze: GitHub
+    `Datenbank (pgTAP)`, `Deno-Lock` (`E2E` bis 22.11.2026, seitdem nur lokal); „up to date“ wird nicht verlangt. Grenze: GitHub
     kann die vorgeschlagene Merge-Art nicht je Quellzweig festlegen; auf `develop` schlägt die
     Oberfläche die zuletzt gewählte Art vor (AC-003 gilt mit diesem Vorbehalt, Task 0 vermerkt
     ihn in der Spec).
@@ -1071,7 +1071,8 @@ Nacht (eigene Änderung, nicht in diesem Plan).
 
 - Keine erwarteten Brüche: Der Hinweis erscheint nur bei einer neueren Version (lokal `dev`), die
   Zeile „Version dev“ steht ganz unten in den Einstellungen. Neu ist `e2e/rundgang-version.spec.ts`.
-- Der Check „E2E“ wird Pflicht; die volle Suite muss vor Task 13 einmal grün sein.
+- Der Check „E2E“ wird Pflicht; die volle Suite muss vor Task 13 einmal grün sein. (Geändert am
+  22.11.2026: „E2E“ läuft nicht mehr in der Pipeline, nur lokal vor jeder Veröffentlichung.)
 
 ## Überschneidungen mit anderen Specs
 
@@ -1102,18 +1103,25 @@ Nacht (eigene Änderung, nicht in diesem Plan).
 
 ## Nachweis
 
-Wird am Ende ausgefüllt.
+Stand 22.11.2026 nach der ersten Veröffentlichung; offen sind die Punkte ohne Haken.
 
-- [ ] Alle AC haben einen Test, der rot war und jetzt grün ist, oder einen Beleg aus Task 13/14
-      (spec-auditor)
-- [ ] `pnpm format:check && pnpm check && pnpm build:web` grün
-- [ ] `pnpm exec supabase test db` grün (`app_version.test.sql`)
+- [x] spec-auditor am 22.11.2026 gegen `develop`: fast alle AC durch Tests oder Live-Läufe belegt.
+      Nachgeholt: AC-005 (Test der PR-Vorlage in `conventions.test.mjs`), AC-015 (Anmeldung in der
+      Vorschau am 22.11. durch Enrico; eine nicht eingeladene Adresse wies dieselbe Einladungsprüfung
+      in der leeren Produktion ab), AC-057 (`backup_reader`: kein Superuser, nur `pg_read_all_data`,
+      0 Schreibrechte, `has_table_privilege` für insert/delete falsch). Abweichungen von AC-006, 034,
+      045, 052, 054, 060, 073 stehen in der Spec unter „Geändert nach der ersten Veröffentlichung“.
+      **Offen:** AC-030 (halb gescheiterte Migration, Verhalten der CLI, nicht live prüfbar) und
+      AC-039 (Handtest: PWA im Flugmodus nach der nächsten Veröffentlichung).
+- [x] `pnpm format:check && pnpm check && pnpm build:web` grün (Job „Prüfungen“ in jedem Lauf, zuletzt Release-PR #10)
+- [x] `pnpm exec supabase test db` grün (Job „Datenbank (pgTAP)“, Release-PR #10)
 - [ ] `/ui-verify` für Hinweis und Einstellungen
-- [ ] `/security-check` über Workflows, Skripte, `infra/`, `config.toml`
+- [x] `/security-check` über Workflows, Skripte, `infra/`, `config.toml` (22.11.2026): kritisch 0,
+      hoch 0, mittel 2, niedrig 4, Hinweis 1; siehe „Sicherheitsprüfung 22.11.2026“
 - [ ] Negativtests aus Task 13 belegt (`tmp/0014/`)
-- [ ] Erste Vorschau und erste Veröffentlichung grün, `verify.mjs` grün
+- [x] Erste Vorschau und erste Veröffentlichung grün, `verify.mjs` grün: Vorschau-Lauf 45004887517 (mit Domain erneut grün), Release-Lauf 45022167671, v2026.11.1 auf https://house.kuschel-nest.de; volle E2E lokal vorher grün (175 + 13). Unterwegs behoben: Entscheidungen beim Bauen 10–15
 - [ ] Erste Sicherung und Wiederherstellungstest grün, Unveränderlichkeit gesperrt
-- [ ] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012)
+- [x] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012, Nachtrag 22.11.2026)
 - [ ] Offline-Verhalten (AC-023, AC-039) auf dem iPhone geprüft
 - [ ] Glossar, ADR-0015 und Rückverfolgbarkeitstabelle aktuell
 
@@ -1180,3 +1188,20 @@ Wird am Ende ausgefüllt.
     Fotos; jeder andere Fehler bricht weiter ab. Ein später verlorener Bucket fällt in der Prüfung nach
     jeder Auslieferung auf („Foto-Bucket“). Außerdem: Das Passwort der Rolle `backup_reader` passte
     nicht zu `BACKUP_DB_URL` und wurde im SQL-Editor angeglichen (`alter role … with password`).
+
+## Sicherheitsprüfung 22.11.2026
+
+Geprüft nach der ersten Veröffentlichung über Workflows, Skripte, `infra/`, `config.toml` und
+`push-send`, mit Live-Abgleich von GitHub-Umgebungen und Azure-Identitäten. Das Repo ist
+**öffentlich**, also auch alle Workflow-Logs; in keinem Log fand sich ein Geheimnis oder ein
+personenbezogener Wert.
+
+| Befund                                                                                                                            | Schwere | Stand                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vorschau-Reset nicht an das Vorschau-Projekt gebunden (Produktions-Pooler-Adresse im falschen Secret leert die Produktion)        | mittel  | **behoben:** Vor dem ersten Datenbank-Befehl muss der Pooler-Benutzer `postgres.<SUPABASE_PROJECT_REF>` sein, in Vorschau und Release; Test in `workflows.test.mjs` |
+| `Azure/static-web-apps-deploy` startet das Image `staticappsclient:stable` (veränderliches Tag) mit dem Deployment-Token          | mittel  | **offen:** Image per Digest selbst starten und den Digest pflegen; eigene Änderung, weil sie den Auslieferungsweg ersetzt                                           |
+| Unveränderlichkeit der Sicherungen noch ungesperrt                                                                                | niedrig | **teilweise:** Löschsperre `CanNotDelete` auf `sthousekeepingbkpger` gesetzt; die Policy wird nach dem ersten grünen Wiederherstellungstest gesperrt                |
+| Release-Assets veränderlich, Redeploy prüft nur `version.json`                                                                    | niedrig | **offen:** „Immutable releases“ einschalten oder Prüfsumme des Zips prüfen                                                                                          |
+| `push-send` antwortet mit aktuellem Zeitstempel und beliebiger Signatur in der Vorschau mit 500 statt 401                         | niedrig | **offen:** Signaturformat vor dem Lesen des Secrets prüfen; fehlendes Secret → 401 (ändert Spec 0013, AC-045)                                                       |
+| S3-Schlüssel der Sicherung darf den Storage auch schreiben und löschen                                                            | niedrig | **akzeptiert:** Supabase bietet keine reinen Leseschlüssel; Schlüssel mit dem Supabase-Token rotieren                                                               |
+| `GITHUB_TOKEN` durfte PRs freigeben; SHA-Pinning nicht als Repo-Einstellung erzwungen; Kommentar `checks.yml:116` zu optimistisch | Hinweis | **teilweise:** Freigabe durch `GITHUB_TOKEN` abgeschaltet; SHA-Pinning prüft weiter der Check „Konventionen“                                                        |

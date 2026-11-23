@@ -1,9 +1,7 @@
-import { formatQty } from './amounts';
 import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';
 import type {
-  Absence,
   Article,
   Diet,
   Id,
@@ -17,34 +15,14 @@ import type {
 // What a member who eats everything is served first. "unknown" comes last: a variant is not
 // preferred just because its ingredients could not be identified.
 const FLEXIBLE_RANK: Record<Diet, number> = {
+  // Never derived for a variant (spec 0023, REQ-008); listed for the type only.
+  non_food: 0,
   unknown: 0,
   vegan: 1,
   vegetarian: 2,
   fish: 3,
   meat: 4,
 };
-
-/** True when the member (or the whole household) is absent on that day; from and to are inclusive. */
-export function isAbsent(memberId: Id, date: ISODate, absences: Absence[]): boolean {
-  return absences.some(
-    (absence) =>
-      (absence.memberId === undefined || absence.memberId === memberId) &&
-      absence.from <= date &&
-      date <= absence.to,
-  );
-}
-/**
- * Members preselected for "Wer isst mit?": everyone who is not absent on that day; everyone for
- * an entry without a day.
- */
-export function defaultEaters(
-  members: Member[],
-  date: ISODate | null,
-  absences: Absence[],
-): Member[] {
-  if (date === null) return [...members];
-  return members.filter((member) => !isAbsent(member.id, date, absences));
-}
 
 export interface VariantSplit {
   portions: number;
@@ -130,17 +108,6 @@ export function splitVariants(
   });
   return { portions, variants, misfitMemberIds };
 }
-/**
- * "mit Tofu 1 · mit Hähnchen 1" in the recipe's variant order; "" for entries without variants.
- */
-export function variantSummary(entry: MealPlanEntry, recipe: Recipe): string {
-  return recipe.variants
-    .flatMap((variant) => {
-      const row = entry.variants.find((candidate) => candidate.variantId === variant.id);
-      return row && row.portions > 0 ? [`${variant.name} ${formatQty(row.portions)}`] : [];
-    })
-    .join(' · ');
-}
 /** "Eislaufen (Hohenschönhausen)"; the title alone without a Zusatz. */
 export function withNote(title: string, note?: string): string {
   const zusatz = note?.trim();
@@ -191,6 +158,17 @@ export function entriesForDay(
     .sort((a, b) => slotPosition(a) - slotPosition(b) || compareInSlot(a, b));
 }
 
+/**
+ * The switch "Nicht gemacht" in the entry window (spec 0020, REQ-008, Entscheidung 10): only for an
+ * entry of a day before today and never for leftovers; today "nicht gemacht" rather means removing.
+ */
+export function canMarkNotDone(
+  entry: Pick<MealPlanEntry, 'date' | 'kind'>,
+  today: ISODate,
+): boolean {
+  return entry.date !== null && entry.date < today && entry.kind !== 'leftovers';
+}
+
 export interface Visits {
   count: number;
   lastOn?: ISODate;
@@ -213,7 +191,7 @@ export function visitsOf(
   for (const entry of entries) {
     const targetId = kind === 'restaurant' ? entry.restaurantId : entry.activityId;
     if (entry.kind !== kind || targetId !== id || entry.date === null) continue;
-    if (entry.date > today || entry.notCooked) continue;
+    if (entry.date > today || entry.notDone) continue;
     dates.push(entry.date);
   }
   dates.sort().reverse();
@@ -230,18 +208,38 @@ export function visitsOf(
 export const LEFTOVER_DAYS = 7;
 
 /**
- * Dishes "Reste" offers for a target day (REQ-011): recipes and free text planned from
- * target − 7 to target − 1, without leftovers of leftovers, without collections (glossary "Reste",
- * spec 0009) and without "nicht gekocht"; the youngest day first, within a day the later
- * Tageszeit first.
+ * Whether an entry lies before the target place: an earlier day, or the target day in an earlier
+ * Tageszeit than `targetSlotId` (spec 0021, REQ-012). Without a target slot only earlier days.
  */
-export function leftoverCandidates(
+function beforeTarget(
+  entry: MealPlanEntry,
+  target: ISODate,
+  slotOrder: Id[],
+  targetSlotId: Id | undefined,
+): boolean {
+  if (entry.date === null) return false;
+  if (entry.date < target) return true;
+  if (entry.date > target || targetSlotId === undefined) return false;
+  const position = (slotId: Id) => {
+    const index = slotOrder.indexOf(slotId);
+    return index === -1 ? slotOrder.length : index;
+  };
+  return position(entry.slotId) < position(targetSlotId);
+}
+
+/**
+ * Dishes a target place can take leftovers of: recipes and free text before it, without
+ * leftovers of leftovers, without collections (glossary "Reste", spec 0009) and without
+ * "nicht gekocht"; the youngest day first, within a day the later Tageszeit first.
+ */
+function leftoverSources(
   entries: MealPlanEntry[],
   target: ISODate,
   slotOrder: Id[],
   recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+  targetSlotId: Id | undefined,
+  from: ISODate | undefined,
 ): MealPlanEntry[] {
-  const first = addDays(target, -LEFTOVER_DAYS);
   const slotPosition = (entry: MealPlanEntry): number => {
     const index = slotOrder.indexOf(entry.slotId);
     return index === -1 ? -1 : index;
@@ -250,11 +248,11 @@ export function leftoverCandidates(
     .filter(
       (entry) =>
         entry.date !== null &&
-        entry.date >= first &&
-        entry.date < target &&
+        (from === undefined || entry.date >= from) &&
+        beforeTarget(entry, target, slotOrder, targetSlotId) &&
         (entry.kind === 'recipe' || entry.kind === 'text') &&
         (entry.recipeId === undefined || recipesById[entry.recipeId]?.kind !== 'collection') &&
-        !entry.notCooked,
+        !entry.notDone,
     )
     .sort(
       (a, b) =>
@@ -265,10 +263,45 @@ export function leftoverCandidates(
 }
 
 /**
- * The day in "Reste von Linsen-Dal (Mo)": the weekday within the target's calendar week, else
- * weekday and date ("So 22.11."), so the same weekday a week earlier stays clear.
+ * Dishes "Reste" offers for a target day (REQ-011): recipes and free text planned from
+ * target − 7 to target − 1 and, with `targetSlotId`, the target day in an earlier Tageszeit
+ * (spec 0021, REQ-012, AC-032); the youngest first.
  */
-export function leftoversDayLabel(source: ISODate, target: ISODate): string {
+export function leftoverCandidates(
+  entries: MealPlanEntry[],
+  target: ISODate,
+  slotOrder: Id[],
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+  targetSlotId?: Id,
+): MealPlanEntry[] {
+  return leftoverSources(
+    entries,
+    target,
+    slotOrder,
+    recipesById,
+    targetSlotId,
+    addDays(target, -LEFTOVER_DAYS),
+  );
+}
+
+/** "Ältere Reste …" (spec 0021, REQ-012, AC-033): every earlier dish, without a limit in days. */
+export function olderLeftoverCandidates(
+  entries: MealPlanEntry[],
+  target: ISODate,
+  slotOrder: Id[],
+  recipesById: Readonly<Record<Id, Pick<Recipe, 'kind'>>>,
+  targetSlotId?: Id,
+): MealPlanEntry[] {
+  return leftoverSources(entries, target, slotOrder, recipesById, targetSlotId, undefined);
+}
+
+/**
+ * The day in "Reste von Linsen-Dal (Mo)": the Tageszeit for the same day ("(Mittag)", spec 0021,
+ * AC-032), the weekday within the target's calendar week, else weekday and date ("So 22.11."), so
+ * the same weekday a week earlier stays clear.
+ */
+export function leftoversDayLabel(source: ISODate, target: ISODate, slotName?: string): string {
+  if (source === target && slotName) return slotName;
   if (startOfWeek(source) === startOfWeek(target)) return weekdayShort(source);
   return `${weekdayShort(source)} ${formatShortDate(source)}`;
 }

@@ -1,9 +1,12 @@
-import { useChoreEvents, useChores, useMembers, useMembersById } from '@housekeeping/api';
+import { useChoreEvents, useChores, useMembersById } from '@housekeeping/api';
 import {
+  choreDueLabel,
   choreMemberIds,
+  choreTurnLabel,
   choresOfDay,
-  daysOverdue,
+  duePoints,
   flexibleProgress,
+  pointsLabel,
   recurrenceLabel,
   withTime,
   type Chore,
@@ -23,44 +26,55 @@ import {
   Text,
   useTheme,
 } from '@housekeeping/ui';
-import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
+import { flexibleBarLabel } from '@/features/chores/chore-row';
 import { DoneSheet } from '@/features/chores/done-sheet';
+import { useChoreAway } from '@/features/chores/use-chore-away';
 import { useOnlineOnly } from '@/features/shell/offline';
-
-function dueText(chore: Chore, today: ISODate): string {
-  const days = daysOverdue(chore, today);
-  if (days === 0) return 'heute';
-  return days === 1 ? 'fällig seit 1 Tag' : `fällig seit ${days} Tagen`;
-}
+import { usePageParams } from '@/lib/url-state';
 
 /**
  * "Zu tun" of the shown day (spec 0011, REQ-005, AC-032): today the due chores (core dueChores)
  * with the one chore check window of the Haushalt — a tap strikes through, a second takes it
  * back, 2 s after the last tap the checked ones are booked and leave; leaving the page books at
- * once; no "Rückgängig" (AC-028 to AC-031). Later days show the planned dates, past days what was
- * done, both only to look at and without "Was anderes erledigt?".
+ * once; no "Rückgängig" (AC-028 to AC-031). Later days show the planned dates, each can be
+ * checked with the same window as in the calendar and booked as done today (spec 0031, review
+ * loop, R-01); past days show what was done, only to look at. "Was anderes erledigt?" only today.
+ * Next to the title the points of today (spec 0026, REQ-010); during a trip of the whole household
+ * the sentence of REQ-013.
  */
 export function TodayChores(props: { shown: ISODate; today: ISODate; title: string }) {
   const chores = useChores();
   const events = useChoreEvents();
-  const members = useMembers();
-  const day = choresOfDay({ chores, events, members, shown: props.shown, today: props.today });
+  const away = useChoreAway();
+  const day = choresOfDay({
+    chores,
+    events,
+    members: [...away.members],
+    trips: [...away.trips],
+    shown: props.shown,
+    today: props.today,
+  });
 
   return (
     <Section
       title={props.title}
       testID="today-chores"
-      meta={
-        day.kind === 'due' && day.chores.length > 0
-          ? `ca. ${day.chores.reduce((sum, chore) => sum + chore.effort, 0)} Punkte`
-          : undefined
-      }
+      meta={day.kind === 'due' ? pointsLabel(duePoints(chores, props.today, away)) : undefined}
     >
       {day.kind === 'due' ? (
         <DueChores chores={day.chores} today={props.today} />
+      ) : day.kind === 'away' ? (
+        <>
+          <Text color="muted" testID="today-chores-away">
+            {day.notice}
+          </Text>
+          {props.shown === props.today ? <DoneLink /> : null}
+        </>
+      ) : day.kind === 'planned' ? (
+        <PlannedChores items={day.items} chores={chores} />
       ) : (
         <ChoresToLookAt items={day.items} kind={day.kind} />
       )}
@@ -68,64 +82,16 @@ export function TodayChores(props: { shown: ISODate; today: ISODate; title: stri
   );
 }
 
-function DueChores(props: { chores: Chore[]; today: ISODate }) {
-  const members = useMembers();
+/** "Was anderes erledigt?" under "Zu tun" today, also during a trip (AC-049). */
+function DoneLink() {
   const online = useOnlineOnly();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const check = useChoreCheckWindow(props.chores);
-
-  const rows = check.rows;
-
+  // "Was hast du erledigt?" stands in the address, `/?fenster=erledigt` (spec 0019).
+  const address = usePageParams('uebersicht');
+  const sheetOpen = address.params.fenster === 'erledigt';
+  const setSheetOpen = (open: boolean) =>
+    open ? address.open({ fenster: 'erledigt' }) : address.close({ fenster: undefined });
   return (
     <>
-      {rows.length === 0 ? (
-        <Text color="muted" testID="today-chores-empty">
-          Heute ist nichts fällig.
-        </Text>
-      ) : (
-        <List>
-          {rows.map((chore) => {
-            const checked = check.isChecked(chore);
-            const flexible = chore.recurrence.type === 'flexible';
-            const progress = flexibleProgress(chore, props.today);
-            const assignees = choreMemberIds(chore, members).flatMap((id) =>
-              members.filter((member) => member.id === id),
-            );
-            return (
-              <RowTransition key={chore.id}>
-                <CheckRow
-                  testID={`today-chore-${chore.id}`}
-                  title={withTime(chore.title, chore.dueTime)}
-                  checked={checked}
-                  disabled={online.disabled}
-                  onToggle={() => check.toggle(chore)}
-                  subtitle={
-                    flexible ? (
-                      <View>
-                        <Text variant="small" color="muted">
-                          {recurrenceLabel(chore.recurrence)}
-                        </Text>
-                        <DueBar
-                          value={progress}
-                          label={progress >= 1 ? 'Ist fällig' : 'Bald fällig'}
-                        />
-                      </View>
-                    ) : (
-                      `${recurrenceLabel(chore.recurrence)} · ${dueText(chore, props.today)}`
-                    )
-                  }
-                  trailing={assignees.length > 0 ? <AvatarStack members={assignees} /> : undefined}
-                />
-              </RowTransition>
-            );
-          })}
-        </List>
-      )}
-      {online.hint ? (
-        <Text variant="small" color="muted" style={{ marginTop: 6 }} testID="today-chores-offline">
-          {online.hint}
-        </Text>
-      ) : null}
       <View style={{ marginTop: 8 }}>
         <Button
           label="Was anderes erledigt?"
@@ -142,7 +108,112 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
   );
 }
 
-/** Another day: "○ Küche wischen (E)" planned, "✓ Fenster Wohnzimmer (N)" done; nothing to tap. */
+function DueChores(props: { chores: Chore[]; today: ISODate }) {
+  const away = useChoreAway();
+  const members = away.members;
+  const online = useOnlineOnly();
+  const check = useChoreCheckWindow(props.chores);
+
+  const rows = check.rows;
+
+  return (
+    <>
+      {rows.length === 0 ? (
+        <Text color="muted" testID="today-chores-empty">
+          Heute ist nichts fällig.
+        </Text>
+      ) : (
+        <List>
+          {rows.map((chore) => {
+            const checked = check.isChecked(chore);
+            const flexible = chore.recurrence.type === 'flexible';
+            const progress = flexibleProgress(chore, props.today);
+            const assignees = choreMemberIds(chore, props.today, away).flatMap((id) =>
+              members.filter((member) => member.id === id),
+            );
+            return (
+              <RowTransition key={chore.id}>
+                <CheckRow
+                  testID={`today-chore-${chore.id}`}
+                  title={withTime(chore.title, chore.dueTime)}
+                  checked={checked}
+                  disabled={online.disabled}
+                  onToggle={() => check.toggle(chore)}
+                  subtitle={
+                    flexible ? (
+                      <View>
+                        <Text variant="small" color="muted">
+                          {recurrenceLabel(chore.recurrence)}
+                        </Text>
+                        <DueBar value={progress} label={flexibleBarLabel(progress)} />
+                      </View>
+                    ) : (
+                      [recurrenceLabel(chore.recurrence), choreDueLabel(chore, props.today, away)]
+                        .filter(Boolean)
+                        .join(' · ')
+                    )
+                  }
+                  trailing={
+                    assignees.length > 0 ? (
+                      <AvatarStack
+                        members={assignees}
+                        accessibilityLabel={choreTurnLabel(chore, props.today, away)}
+                      />
+                    ) : undefined
+                  }
+                />
+              </RowTransition>
+            );
+          })}
+        </List>
+      )}
+      <DoneLink />
+    </>
+  );
+}
+
+/**
+ * A later day: the planned chores can be checked as in the calendar's household row (spec 0021,
+ * REQ-016); 2 s after the last tap they are booked as done today. What cannot be checked (done or
+ * no longer a chore) stands as on a past day.
+ */
+function PlannedChores(props: { items: HouseholdRowItem[]; chores: Chore[] }) {
+  const membersById = useMembersById();
+  const online = useOnlineOnly();
+  const choreOf = (item: HouseholdRowItem) =>
+    item.status === 'done' ? undefined : props.chores.find((chore) => chore.id === item.choreId);
+  const open = props.items.filter((item) => choreOf(item) !== undefined);
+  const rest = props.items.filter((item) => choreOf(item) === undefined);
+  const itemOf = new Map(open.map((item) => [item.choreId ?? '', item]));
+  const check = useChoreCheckWindow(open.flatMap((item) => choreOf(item) ?? []));
+  if (props.items.length === 0) return <ChoresToLookAt items={[]} kind="planned" />;
+  return (
+    <>
+      <List>
+        {check.rows.map((chore) => {
+          const item = itemOf.get(chore.id);
+          if (!item) return null;
+          const people = item.memberIds.flatMap((id) => membersById[id] ?? []);
+          return (
+            <RowTransition key={item.key}>
+              <CheckRow
+                testID={`today-chore-${item.key}`}
+                title={item.approximate ? `${item.title}, etwa` : item.title}
+                checked={check.isChecked(chore)}
+                disabled={online.disabled}
+                onToggle={() => check.toggle(chore)}
+                trailing={people.length > 0 ? <AvatarStack members={people} /> : undefined}
+              />
+            </RowTransition>
+          );
+        })}
+      </List>
+      {rest.length > 0 ? <ChoresToLookAt items={rest} kind="planned" /> : null}
+    </>
+  );
+}
+
+/** A past day: "✓ Fenster Wohnzimmer (N)" done; nothing to tap. */
 function ChoresToLookAt(props: { items: HouseholdRowItem[]; kind: 'planned' | 'done' }) {
   const membersById = useMembersById();
   if (props.items.length === 0) {

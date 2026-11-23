@@ -22,6 +22,7 @@ import {
   recipeListCountLabel,
   recipeShowLabel,
   recipeSortShortLabel,
+  FOOD_LIST_CLEARED,
   removeFilterChip,
   searchRecipes,
   sortRecipeList,
@@ -47,10 +48,8 @@ import {
   TextField,
   TypingIndicator,
   ViewTabs,
-  useBreakpoint,
-  type MenuOption,
+  tabSwipe,
 } from '@housekeeping/ui';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -60,14 +59,15 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
+import { usePageParams, type PageAddress } from '@/lib/url-state';
 
 import { AiSearchPanel } from './ai-search-panel';
 import { useOpenRecipe } from './navigation';
+import { FoodNewMenu, type FoodNewKind } from './new-menu';
 import { NewRecipeSheet } from './new-recipe-sheet';
 import { RecipeFilterPanel } from './recipe-filter-panel';
 import { RecipeTile } from './recipe-grid';
 import { useRecipeListState } from './recipe-list-state';
-import { StarterSheet } from './starter-sheet';
 import { useAiSearch } from './use-ai-search';
 
 type FoodView = 'recipes' | 'restaurants';
@@ -77,7 +77,22 @@ const FOOD_VIEWS: { value: FoodView; label: string }[] = [
   { value: 'restaurants', label: 'Restaurants' },
 ];
 
-type NewKind = 'recipe' | 'collection' | 'restaurant' | 'starter';
+type FoodParams = PageAddress<'rezepte'>['params'];
+
+/**
+ * The list parameters of each view as last left while the app runs: both views share the names
+ * (`suche`, `favoriten`, …), so switching the view swaps them (spec 0019, REQ-005, REQ-011).
+ */
+const leftView: Partial<Record<FoodView, FoodParams>> = {};
+
+function listParams(params: FoodParams): FoodParams {
+  const kept: Record<string, unknown> = {};
+  for (const name of Object.keys(FOOD_LIST_CLEARED)) {
+    const value = (params as Record<string, unknown>)[name];
+    if (value !== undefined) kept[name] = value;
+  }
+  return kept as FoodParams;
+}
 
 /** Recipe tiles: at least 260 px wide, two side by side on phones (AC-014). */
 const TILE_MIN_WIDTH = 260;
@@ -88,9 +103,8 @@ const TILE_MIN_WIDTH = 260;
  * Search, filters, sort and the random order stay while the app runs (E14).
  */
 export function RecipesScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams<{ view?: string | string[] }>();
-  const { isPhone } = useBreakpoint();
+  const address = usePageParams('rezepte');
+  const { params } = address;
   const online = useOnlineOnly();
   const assistant = useAssistant();
   const settings = useSettings();
@@ -104,21 +118,23 @@ export function RecipesScreen() {
   const list = useRecipeListState();
   const openRecipe = useOpenRecipe();
 
-  // The window "Neu" with the kind chosen in "+" preselected (spec 0009, AC-001, AC-002).
-  const [newSheet, setNewSheet] = useState<{ open: boolean; kind: RecipeKind }>({
-    open: false,
-    kind: 'recipe',
-  });
-  const openNew = (kind: RecipeKind) => setNewSheet({ open: true, kind });
-  const [starterOpen, setStarterOpen] = useState(false);
+  // The window "Neu" with the kind chosen in "+" preselected (spec 0009, AC-001, AC-002); the
+  // window stands in the address (`fenster=neu`), the kind only here.
+  const [newKind, setNewKind] = useState<RecipeKind>('recipe');
+  const newSheet = { open: params.fenster === 'neu', kind: newKind };
+  const openNew = (kind: RecipeKind) => {
+    setNewKind(kind);
+    address.open({ fenster: 'neu' });
+  };
 
-  const { query, filter, sort, shuffle } = list;
+  const { query, filter, sort } = list;
   // "Zuletzt gekocht" and "Lange nicht gekocht" count what the calendar says was cooked, for a
   // collection also its recipes (spec 0009, E10, AC-031).
   const recipes = useMemo(
     () => withCookingHistory(stored, cookingHistory(entries, book.collectionRecipes, today)),
     [stored, entries, book.collectionRecipes, today],
   );
+  const shuffle = list.shuffleFor(recipes.map((recipe) => recipe.id));
   const cuisines = useMemo(() => cuisineFacets(recipes), [recipes]);
   const results = useMemo(() => {
     const searched = searchRecipes(query, recipes, articlesById);
@@ -140,40 +156,37 @@ export function RecipesScreen() {
   const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
   const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
 
-  // The chosen side lives in the URL, so a reload or a deep link keeps it.
-  const view: FoodView =
-    (Array.isArray(params.view) ? params.view[0] : params.view) === 'restaurants'
-      ? 'restaurants'
-      : 'recipes';
+  // The chosen side lives in the address, so a reload or a deep link keeps it.
+  const view: FoodView = params.ansicht === 'restaurants' ? 'restaurants' : 'recipes';
+  const viewPatch = (next: FoodView): FoodParams => {
+    leftView[view] = listParams(params);
+    return {
+      ...FOOD_LIST_CLEARED,
+      ...leftView[next],
+      ansicht: next === 'restaurants' ? 'restaurants' : undefined,
+      restaurant: undefined,
+    };
+  };
+  const changeView = (next: FoodView) => address.replace(viewPatch(next));
   const switcher = (
     <ViewTabs
       label="Rezepte oder Restaurants"
       value={view}
-      onChange={(next) =>
-        router.setParams({
-          view: next === 'restaurants' ? 'restaurants' : undefined,
-          rid: undefined,
-        })
-      }
+      onChange={changeView}
       options={FOOD_VIEWS}
       testID="food-switch"
     />
   );
+  // On phones a sideways swipe changes the view (spec 0029, REQ-003).
+  const swipe = tabSwipe(FOOD_VIEWS, view, changeView);
 
-  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} />;
+  if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} swipe={swipe} />;
 
   const ids = recipes.map((recipe) => recipe.id);
-  const newOptions: MenuOption<NewKind>[] = [
-    { value: 'recipe', label: 'Rezept', disabled: online.disabled, hint: online.hint },
-    { value: 'collection', label: 'Sammlung', disabled: online.disabled, hint: online.hint },
-    { value: 'restaurant', label: 'Restaurant', disabled: online.disabled, hint: online.hint },
-    { value: 'starter', label: 'Starter-Rezepte' },
-  ];
-  const onNew = (kind: NewKind) => {
+  const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') openNew(kind);
-    else if (kind === 'starter') setStarterOpen(true);
     // The restaurant window belongs to the restaurants view; its address opens it (spec 0002).
-    else router.setParams({ view: 'restaurants', add: '1' });
+    else address.open({ ...viewPatch('restaurants'), fenster: 'neu-restaurant' });
   };
 
   const header = (
@@ -181,15 +194,7 @@ export function RecipesScreen() {
       title="Essen"
       right={
         <>
-          <Menu
-            trigger={isPhone ? 'icon' : 'button'}
-            icon="plus"
-            label="Neu"
-            accessibilityLabel="Neu anlegen"
-            options={newOptions}
-            onChange={onNew}
-            testID="recipe-new"
-          />
+          <FoodNewMenu onNew={onNew} />
           <StartPageActions />
         </>
       }
@@ -202,46 +207,42 @@ export function RecipesScreen() {
   ) : null;
 
   const sheets = (
-    <>
-      <NewRecipeSheet
-        visible={newSheet.open}
-        kind={newSheet.kind}
-        onClose={() => setNewSheet({ ...newSheet, open: false })}
-        onCreated={openRecipe}
-      />
-      <StarterSheet visible={starterOpen} onClose={() => setStarterOpen(false)} />
-    </>
+    <NewRecipeSheet
+      visible={newSheet.open}
+      kind={newSheet.kind}
+      onClose={() => address.close({ fenster: undefined })}
+      onCreated={openRecipe}
+    />
   );
 
-  // Nothing created yet: no search and no filter row, only the first step (AC-018).
+  // Nothing created yet: no search and no filter row, only the first step (AC-018; spec 0023,
+  // REQ-011: no starter recipes any more).
   if (recipes.length === 0) {
     return (
-      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher}>
+      <Screen testID="recipes-screen" tone="essen" header={header} tabs={switcher} tabSwipe={swipe}>
         {offlineHint ? <View style={{ marginBottom: 12 }}>{offlineHint}</View> : null}
         <EmptyState
           icon="book-open"
           title="Noch keine Rezepte"
-          text={
-            features.ai
-              ? 'Fangt mit einem Titel an, übernehmt Klassiker oder beschreibt, worauf ihr Lust habt.'
-              : 'Fangt mit einem Titel an oder übernehmt Klassiker.'
-          }
+          text="Legt euer erstes Rezept an. Ein Titel reicht; Zutaten, Schritte und Links kommen später dazu."
           testID="recipes-empty"
         >
           <Button
-            label="Titel eingeben"
+            label="Rezept anlegen"
             icon="pencil"
             disabled={online.disabled}
             hint={online.hint}
             onPress={() => openNew('recipe')}
-            testID="empty-recipe-title"
+            testID="empty-recipe-new"
           />
           <Button
-            label="Starter-Rezepte ansehen"
-            icon="book-open"
+            label="Sammlung anlegen"
+            icon="layers"
             variant="secondary"
-            onPress={() => setStarterOpen(true)}
-            testID="empty-starter"
+            disabled={online.disabled}
+            hint={online.hint}
+            onPress={() => openNew('collection')}
+            testID="empty-collection-new"
           />
           {features.ai ? (
             <Button
@@ -347,7 +348,7 @@ export function RecipesScreen() {
       panel={<RecipeFilterPanel filter={filter} onChange={list.setFilter} cuisines={cuisines} />}
       resetLabel="Zurücksetzen"
       onReset={() => list.setFilter(EMPTY_RECIPE_LIST_FILTER)}
-      applyLabel={recipeShowLabel(results.length)}
+      applyLabel={recipeShowLabel(results)}
       collapseLabel="Einklappen"
       testID="recipe-filters"
     />
@@ -406,6 +407,7 @@ export function RecipesScreen() {
       tone="essen"
       header={header}
       tabs={switcher}
+      tabSwipe={swipe}
       toolbar={toolbar}
       scroll={false}
       clearFab={false}

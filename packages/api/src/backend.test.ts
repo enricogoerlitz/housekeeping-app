@@ -14,7 +14,7 @@ import {
 import { switchHousehold } from './commands-household';
 import { createRecipe, updateRecipe } from './commands-recipes';
 import { removePlanEntry } from './commands-plan';
-import { createRestaurant } from './commands-restaurants';
+import { createPackingBag } from './commands-packing';
 import { chooseShoppingStore, setItemChecked } from './commands-shopping';
 import { fakeEnvironment, seededServer, type FakeEnvironment } from './backend-test-helpers';
 import { DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0013: version 8 for notification settings, chore times and reservations; version 7 loads again', () => {
-    expect(CACHE_VERSION).toBe(8);
+  it('spec 0031: version 18 for packing_items.per_day_quantity (after 0030: 17); version 17 loads again', () => {
+    expect(CACHE_VERSION).toBe(18);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {
@@ -491,7 +491,8 @@ describe('stored store queue (security check, spec 0006)', () => {
       });
       await settle(engine);
       expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
-      expect(await storage.get('queue')).toEqual([valid]);
+      // Stored again as parsed: the older entry gains onList false (spec 0025).
+      expect(await storage.get('queue')).toEqual([{ ...valid, onList: false }]);
 
       environment.setOnline(true);
       await settle(engine);
@@ -791,15 +792,16 @@ describe('writes: changesets (ADR-0011)', () => {
     if (!recipe) throw new Error('fixture');
     const restore = snapshot();
     updateRecipe(recipe.id, { title: 'Kurz anders' });
-    // A restaurant: recipes are deleted only by delete_recipe (spec 0008, E2).
-    const created = createRestaurant({ name: 'Wieder weg' });
+    // A Reisetasche: recipes, restaurants and activities are deleted only by their RPC (spec 0008,
+    // E2; spec 0024).
+    const created = createPackingBag({ name: 'Wieder weg' });
     await settle();
     restore();
     expect(getData().recipes[0]?.title).toBe(recipe.title);
     await settle();
     expect(server.row(H, 'recipes', recipe.id)).toMatchObject({ title: recipe.title });
-    expect(server.row(H, 'restaurants', created)).toBeUndefined();
-    expect(getData().restaurants.some((candidate) => candidate.id === created)).toBe(false);
+    expect(server.row(H, 'packing_bags', created)).toBeUndefined();
+    expect(getData().packingBags.some((candidate) => candidate.id === created)).toBe(false);
   });
 
   it('rpc path: the local effect shows at once and the inverse RPC undoes it', async () => {
@@ -851,7 +853,7 @@ describe('writes: changesets (ADR-0011)', () => {
 
   it('a write outside commit() is a programming error', async () => {
     await startEnrico();
-    expect(() => updateData((data) => ({ ...data, absences: [] }))).toThrow(/commit/);
+    expect(() => updateData((data) => ({ ...data, trips: [] }))).toThrow(/commit/);
   });
 });
 
@@ -1152,7 +1154,7 @@ describe('spec 0012: packing in the store queue (ADR-0013)', () => {
     warn.mockRestore();
   });
 
-  it('AC-024 / AC-040: packed offline, the absence deleted meanwhile: gone, no hint', async () => {
+  it('AC-024 / AC-040: packed offline, the trip deleted meanwhile: gone, no hint', async () => {
     const enrico = await startEnrico();
     const messages: string[] = [];
     const stopListening = onWriteRejected((message) => messages.push(message));
@@ -1163,13 +1165,13 @@ describe('spec 0012: packing in the store queue (ADR-0013)', () => {
     queueStoreAction(pack(item.id));
     await server
       .transport(NADJA)
-      .applyChanges(H, [{ kind: 'delete', table: 'absences', id: listBag.absenceId }]);
+      .applyChanges(H, [{ kind: 'delete', table: 'trips', id: listBag.tripId }]);
 
     enrico.setSimulatedOffline(false);
     await settle(enrico);
     expect(writes()).toContain('set_packing_items_packed');
     expect(getData().packingItems.some((candidate) => candidate.id === item.id)).toBe(false);
-    expect(getData().absences.some((absence) => absence.id === listBag.absenceId)).toBe(false);
+    expect(getData().trips.some((trip) => trip.id === listBag.tripId)).toBe(false);
     expect(messages).toEqual([]);
     expect(await storage.get('queue')).toEqual([]);
     stopListening();

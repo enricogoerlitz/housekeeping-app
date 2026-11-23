@@ -20,7 +20,7 @@ export function removeWithUndo(itemId: Id, name: string): void {
  * One tap on + or − (REQ-003). − on 1× removes the item, with "Rückgängig" like removing it.
  * Returns true when the item is gone.
  */
-export function stepItemCount(itemId: Id, name: string, delta: 1 | -1): boolean {
+function stepItemCount(itemId: Id, name: string, delta: 1 | -1): boolean {
   const restore = snapshot();
   const change = adjustItemCount(itemId, delta);
   if (!change?.removed) return false;
@@ -33,8 +33,8 @@ export function stepItemCount(itemId: Id, name: string, delta: 1 | -1): boolean 
 }
 
 /**
- * "− 2× +" for an item with pure counts (AC-014, AC-015). Online only: offline both buttons are
- * greyed out with the offline hint (AC-019).
+ * "− 2× +" for an item with pure counts (AC-014, AC-015). Offline "+" goes through the store
+ * queue like adding an item; "−" is greyed out with the offline hint (spec 0019, AC-030, AC-031).
  */
 export function CountStepper(props: {
   itemId: Id;
@@ -70,8 +70,8 @@ export function CountStepper(props: {
         icon="plus"
         size={44}
         label={`${props.name} mehr`}
-        disabled={online.disabled || props.count >= MAX_ITEM_COUNT}
-        hint={online.hint}
+        // "+" works offline like typing the item in (store queue, spec 0019, AC-030).
+        disabled={props.count >= MAX_ITEM_COUNT}
         onPress={() => step(1)}
         testID={`${props.testID}-plus`}
       />

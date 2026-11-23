@@ -43,6 +43,10 @@ const TEXT_PAIRS: [fg: Role, bg: Role][] = [
   ['fabText', 'fabBg'],
   ['accent', 'bg'],
   ['accent', 'surface'],
+  // The dragged entry floats on the raised surface (spec 0016).
+  ['text', 'surfaceRaised'],
+  ['textMuted', 'surfaceRaised'],
+  ['accent', 'surfaceRaised'],
 ];
 // Non-text UI (WCAG 1.4.11): the check mark fill and the assistant button must stand out from
 // the card and the page by at least 3:1.
@@ -138,5 +142,14 @@ describe('theme selection', () => {
     expect(isThemeId('Markthalle')).toBe(false);
     expect(isThemeId(42)).toBe(false);
     expect(isThemeId(undefined)).toBe(false);
+  });
+});
+
+// Spec 0031, REQ-035: the track of a switch that is off is its own role and stands out from the
+// page and from cards by 3:1 without a shadow.
+describe('switch track (spec 0031, REQ-035)', () => {
+  it.each(cases)('AC-080: $name: switchOff reaches 3:1 on page and card', ({ colors }) => {
+    expect(contrast(colors.switchOff, colors.bg)).toBeGreaterThanOrEqual(3);
+    expect(contrast(colors.switchOff, colors.surface)).toBeGreaterThanOrEqual(3);
   });
 });
