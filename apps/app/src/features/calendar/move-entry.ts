@@ -32,10 +32,11 @@ export function useEntryTitle(): (entry: MealPlanEntry) => string {
 
 /**
  * Moves a plan entry the way dragging and "Anderes Datum …" do (spec 0016, REQ-004, REQ-005):
- * the toast "Lasagne → Fr 8.1.2027, Abend" with who is travelling then, whether its reminder now
- * lies in the past (spec 0017, AC-022) and "Rückgängig" (5 s), the reason when the leftovers rule refuses the target, nothing for the old place. When the
- * server refuses the move, the entry springs back and the general hint "Hat nicht geklappt –
- * bitte noch einmal versuchen" comes from onWriteRejected (AC-018).
+ * the toast "Lasagne → Fr 8.1.2027, Abend" (no travellers, spec 0030, AC-028), whether its reminder
+ * now lies in the past (spec 0017, AC-022) and "Rückgängig" (5 s), the reason when the leftovers
+ * rule refuses the target, nothing for the old place. When the server refuses the move, the entry
+ * springs back and the general hint "Hat nicht geklappt – bitte noch einmal versuchen" comes from
+ * onWriteRejected (AC-018).
  */
 export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => MoveEntryResult {
   const entries = usePlanEntries();
