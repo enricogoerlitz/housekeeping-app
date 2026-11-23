@@ -137,6 +137,23 @@ describe('new migration base (spec 0031, REQ-001)', () => {
     const errors = guardMigrations({ remote: [FOREIGN], local: [NEW_A], released: [A], base });
     assert.match(errors[0], /^In Produktion .*20250101000000/);
   });
+
+  test('security check 0031: a base that keeps the released migrations is no new base', () => {
+    const early = { replaces: 'v2026.11.1', first: '00000000000000' };
+    const errors = guardMigrations({
+      remote: [],
+      local: [A, B, NEW_A],
+      released: [A, B],
+      base: early,
+    });
+    assert.match(errors[0], /^Die neue Basis beginnt mit 00000000000000/);
+    assert.match(errors.at(-1), /Runbook/);
+  });
+
+  test('security check 0031: old migration files next to the new base are red', () => {
+    const errors = guardMigrations({ remote: [], local: [A, NEW_A], released: [A, B], base });
+    assert.match(errors[0], /^Neben der neuen Basis liegen noch alte Migrationen: 20261121062343/);
+  });
 });
 
 describe('CLI', () => {

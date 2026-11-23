@@ -20,13 +20,9 @@ import {
 import { DEFAULT_THEME_ID, getTheme } from './themes';
 import { pointer } from '../test/setup';
 
-/** The accessible description the browser builds from `aria-describedby` (AC-048 of 0023). */
+/** The accessible description the browser reads (`aria-description`, AC-048 of 0023). */
 function description(element: HTMLElement): string {
-  return (element.getAttribute('aria-describedby') ?? '')
-    .split(' ')
-    .map((id) => (id ? (document.getElementById(id)?.textContent ?? '') : ''))
-    .join(' ')
-    .trim();
+  return element.getAttribute('aria-description') ?? '';
 }
 
 describe('Button (AC-029)', () => {
