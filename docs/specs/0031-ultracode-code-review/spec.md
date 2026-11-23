@@ -562,6 +562,13 @@ offline vollständig.
 
     Jede betroffene Spec bekommt einen Nachtrag mit Verweis auf 0031.
 
+- **REQ-027, im Bau entschieden:** Ersetzt werden nur die Beiträge auf den Artikeln, die man im
+  Vorratscheck übernimmt. Abgewählte Artikel des Eintrags („haben wir“) bleiben auf der Liste, wie
+  sie waren. Weil `replace_entry_contributions` alle offenen Beiträge des Eintrags entfernt, gehen
+  sie im selben Aufruf mit neuer Id wieder mit. Undo stellt die alten Beiträge her.
+- **REQ-030, im Bau entschieden:** „Fällige und überfällige zuerst“ heißt in der Reihenfolge von
+  „Zu tun“ (`dueChores`), der Rest nach Name.
+
 ## Daten
 
 Personenbezogene Daten kommen nicht dazu. Die Migrationen kommen vor das Zusammenfassen
@@ -675,10 +682,10 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **E — Logik**
 
-- [ ] 22. „+ Aus Kalender“ ersetzt statt anzuhängen (AC-064, AC-065).
-- [ ] 23. Vorratscheck mit `controls` und Rolle `checkbox`, Smoke-Test bis zu den Zeilen (AC-066,
+- [x] 22. „+ Aus Kalender“ ersetzt statt anzuhängen (AC-064, AC-065).
+- [x] 23. Vorratscheck mit `controls` und Rolle `checkbox`, Smoke-Test bis zu den Zeilen (AC-066,
       AC-067).
-- [ ] 24. Reise-Fenster live (AC-068), „Was hast du erledigt?“ mit Liste (AC-070),
+- [x] 24. Reise-Fenster live (AC-068), „Was hast du erledigt?“ mit Liste (AC-070),
       Einladungs-Hinweis samt Nachtrag in 0027 (AC-071).
 
 **F — UI/UX** (danach `/ui-verify` bei 390, 820, 1024 und 1440 px, hell und dunkel)

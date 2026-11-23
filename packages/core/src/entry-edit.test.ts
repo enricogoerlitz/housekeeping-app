@@ -11,6 +11,7 @@ import {
   portionsFor,
   recomputeEntryContributions,
   removeEntryContributions,
+  replacePlannedOnList,
   stepPortions,
   type PortionState,
 } from './entry-edit';
@@ -352,6 +353,108 @@ describe('recomputeEntryContributions (REQ-007)', () => {
       now,
     });
     expect(result).toEqual({ items: other, changed: false, additions: [] });
+  });
+});
+
+describe('"+ Aus Kalender" again replaces instead of adding (spec 0031, REQ-027)', () => {
+  const manual: ShoppingContribution = { id: 'c-hand', source: { kind: 'manual' }, count: 1 };
+  const fresh = (partial: Partial<ShoppingContribution>) =>
+    expect.objectContaining({ ...partial, id: expect.stringMatching(/^new-/) });
+  const hack500 = () => contribution(newId(), { qty: 500, unit: 'g' });
+
+  it('AC-064: Lasagne with 500 g Hackfleisch open on the list, taken over again → still 500 g', () => {
+    const list = [item('i-hack', 'hack', [contribution('c-hack', { qty: 500, unit: 'g' })])];
+    const result = replacePlannedOnList({
+      items: list,
+      additions: [{ articleId: 'hack', contributions: [hack500()] }],
+      newId,
+      now,
+    });
+    expect(result.entryIds).toEqual(['e1']);
+    expect(result.items).toEqual([
+      { ...list[0], contributions: [fresh({ qty: 500, unit: 'g', source })] },
+    ]);
+    expect(result.additions).toEqual([
+      {
+        articleId: 'hack',
+        itemId: 'i-hack',
+        contributions: [fresh({ qty: 500, unit: 'g', source })],
+      },
+    ]);
+  });
+
+  it('AC-064: other contributions on the item stay', () => {
+    const list = [
+      item('i-hack', 'hack', [manual, contribution('c-hack', { qty: 500, unit: 'g' })]),
+    ];
+    const result = replacePlannedOnList({
+      items: list,
+      additions: [{ articleId: 'hack', contributions: [hack500()] }],
+      newId,
+      now,
+    });
+    expect(result.items[0]?.contributions).toEqual([manual, fresh({ qty: 500, unit: 'g' })]);
+  });
+
+  it('AC-064: an article of the entry not taken over this time stays on the list as it was', () => {
+    const list = [
+      item('i-hack', 'hack', [contribution('c-hack', { qty: 500, unit: 'g' })]),
+      item('i-platten', 'platten', [contribution('c-platten', { count: 1 })]),
+    ];
+    const result = replacePlannedOnList({
+      items: list,
+      additions: [{ articleId: 'hack', contributions: [hack500()] }],
+      newId,
+      now,
+    });
+    expect(result.items).toEqual([
+      { ...list[0], contributions: [fresh({ qty: 500, unit: 'g' })] },
+      { ...list[1], contributions: [fresh({ count: 1, source })] },
+    ]);
+    // The server removes all of the entry's contributions on open items, so it gets this one back.
+    expect(result.additions).toContainEqual({
+      articleId: 'platten',
+      itemId: 'i-platten',
+      contributions: [fresh({ count: 1, source })],
+    });
+  });
+
+  it('AC-065: the Hackfleisch is checked → a new open item with 500 g, nothing to replace', () => {
+    const list = [item('i-hack', 'hack', [contribution('c-hack', { qty: 500, unit: 'g' })], true)];
+    const result = replacePlannedOnList({
+      items: list,
+      additions: [{ articleId: 'hack', contributions: [hack500()] }],
+      newId,
+      now,
+    });
+    expect(result.entryIds).toEqual([]);
+    expect(result.items).toEqual([
+      {
+        id: 'i-hack',
+        articleId: 'hack',
+        checked: false,
+        createdAt: list[0]?.createdAt,
+        contributions: [fresh({ qty: 500, unit: 'g' })],
+      },
+    ]);
+  });
+
+  it('REQ-027: a recipe chosen directly (no plan entry) is added as before', () => {
+    const list = [item('i-hack', 'hack', [contribution('c-hack', { qty: 500, unit: 'g' })])];
+    const direct: ShoppingContribution = {
+      id: 'new-direct',
+      source: { kind: 'recipe', recipeId: 'lasagne', label: 'Lasagne' },
+      qty: 250,
+      unit: 'g',
+    };
+    const result = replacePlannedOnList({
+      items: list,
+      additions: [{ articleId: 'hack', contributions: [direct] }],
+      newId,
+      now,
+    });
+    expect(result.entryIds).toEqual([]);
+    expect(result.items[0]?.contributions).toEqual([...(list[0]?.contributions ?? []), direct]);
   });
 });
 

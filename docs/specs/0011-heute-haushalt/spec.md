@@ -552,6 +552,9 @@ Dann        steht „Bad putzen“ wieder offen da, mit „Hat nicht geklappt �
 **Offline:** nur online — Suchen geht offline, „Als erledigt eintragen“ ist ohne Netz ausgegraut
 mit Hinweis.
 
+_Nachtrag (Spec 0031, AC-070, 23.11.2026):_ Mit leerem Suchfeld stehen die Aufgaben des Haushalts
+schon da, fällige und überfällige zuerst (in der Reihenfolge von „Zu tun“), dann nach Name.
+
 **AC-035 — Suchen**
 
 ```gherkin

@@ -12,6 +12,7 @@ import {
   choreTurn,
   choreTurnLabel,
   choreTurnText,
+  doneSheetChores,
   dueChores,
   duePoints,
   firstFreeDay,
@@ -160,6 +161,24 @@ describe('REQ-009: one wording for what is due', () => {
       'Müll rausbringen',
       'Bad putzen',
     ]);
+  });
+
+  it('AC-070 (spec 0031): "Was hast du erledigt?" without a search lists every chore, due and overdue first, then by name', () => {
+    const later = chore({ id: 'k', title: 'Keller aufräumen', nextDueOn: '2026-12-01' });
+    const asNeeded = chore({
+      id: 'a',
+      title: 'Abfluss reinigen',
+      recurrence: { type: 'asNeeded' },
+      nextDueOn: undefined,
+    });
+    expect(ids(doneSheetChores([later, asNeeded, bath, trash, window], today, home))).toEqual([
+      'Fenster Wohnzimmer',
+      'Müll rausbringen',
+      'Bad putzen',
+      'Abfluss reinigen',
+      'Keller aufräumen',
+    ]);
+    expect(doneSheetChores([], today, home)).toEqual([]);
   });
 
   it('AC-028: Fri 20.11. not done: Sat "fällig seit gestern", Sun "fällig seit 2 Tagen", in the row only today', () => {

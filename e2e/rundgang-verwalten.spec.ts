@@ -41,7 +41,7 @@ test('AC-001, AC-006: inviting names the Google test users; "Zurückziehen" remo
   await tid(page, 'household-invite-input').fill(email);
   await tid(page, 'household-invite-submit').click();
   await expect(toastMessage(page)).toHaveText(
-    `${email} ist eingeladen. Ist die Adresse neu: bei Google als Testnutzer eintragen.`,
+    `${email} ist eingeladen. Ist die Adresse neu, muss Enrico sie bei Google eintragen.`,
   );
   const row = page.locator('[data-testid^="household-invitation-withdraw-"]').first();
   await row.click();
