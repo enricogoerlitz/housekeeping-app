@@ -52,7 +52,9 @@ async function lineStarts(locator: Locator): Promise<number[]> {
         const range = document.createRange();
         range.setStart(node, index);
         range.setEnd(node, index + 1);
-        const rect = range.getClientRects()[0];
+        // Right after a hyphenation point Chromium also reports an empty box at the end of the line
+        // before; the character itself is the last box with a width.
+        const rect = [...range.getClientRects()].filter((box) => box.width > 0).pop();
         if (!rect || text[index] === ' ') continue;
         if (lastTop !== undefined && rect.top > lastTop + 2) starts.push(offset + index);
         lastTop = rect.top;
@@ -214,7 +216,11 @@ test.describe('REQ-034: focus rings in lists', () => {
       tid(page, 'chores-all').locator('[data-testid^="chore-"][role="button"]').first(),
     );
     await open(page, '/artikel');
-    await expectRingWhole(page, tid(page, `article-${seedIds['art-moehren']}`));
+    // The list is virtualised (455 articles): take the first row that is drawn.
+    await expectRingWhole(
+      page,
+      tid(page, 'articles-list').locator('[data-testid^="article-"]').first(),
+    );
   });
 });
 
