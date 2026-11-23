@@ -120,14 +120,14 @@ describe('Haushalt umbenennen (REQ-004)', () => {
     const nadja = await fx.startNadja();
     await fx.startEnrico();
     fx.clearCalls();
-    expect(renameHousehold(' Kuschelnest ')).toBe('saved');
-    expect(getState().households[H]?.household.name).toBe('Kuschelnest');
+    expect(renameHousehold(' Zuhause ')).toBe('saved');
+    expect(getState().households[H]?.household.name).toBe('Zuhause');
     await fx.settle(nadja);
     expect(fx.calls[0]?.args[1]).toEqual([
-      { kind: 'patch', table: 'households', id: H, changes: { name: 'Kuschelnest' } },
+      { kind: 'patch', table: 'households', id: H, changes: { name: 'Zuhause' } },
     ]);
     await nadja.pull();
-    expect(nadja.getState()?.households[H]?.household.name).toBe('Kuschelnest');
+    expect(nadja.getState()?.households[H]?.household.name).toBe('Zuhause');
   });
 
   it('AC-015: unchanged sends nothing; empty is refused', async () => {

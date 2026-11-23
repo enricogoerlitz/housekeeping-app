@@ -49,7 +49,7 @@ insert into fx (key, id) values
   ('nadja', tests.create_user('nadja@example.com', 'Nadja')),
   ('jana', tests.create_user('jana@example.com', 'Jana'));
 insert into fx (key, id) values
-  ('home', tests.create_household('Görlitz', array[tests.fx('enrico'), tests.fx('nadja')])),
+  ('home', tests.create_household('Zuhause', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('schmidt', tests.create_household('Schmidt', array[tests.fx('jana')]));
 insert into fx (key) values ('abend'), ('lasagne'), ('e_lasagne'), ('e_curry'), ('e_shakshuka'), ('e_new'), ('e_far'),
   ('e_later');

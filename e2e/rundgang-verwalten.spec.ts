@@ -86,7 +86,7 @@ test('AC-017: with two members the sentence replaces "Haushalt löschen"', async
 
 test('AC-014, AC-015: renaming trims the name and refuses an empty one', async ({ page }) => {
   const householdId = await createTestHousehold(`Umbenennen ${unique()}`);
-  const next = `Kuschelnest ${unique()}`;
+  const next = `Zuhause ${unique()}`;
   await login(page, 'enrico');
   await open(page, '/');
   await switchHousehold(page, householdId);

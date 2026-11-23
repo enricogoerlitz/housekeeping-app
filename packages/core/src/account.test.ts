@@ -141,9 +141,9 @@ describe('Haushalt umbenennen (REQ-004)', () => {
       error: 'Der Name fehlt.',
     });
     expect(householdRename('Enrico & Nadja', ' Enrico & Nadja ')).toEqual({ action: 'keep' });
-    expect(householdRename('Enrico & Nadja', ' Kuschelnest ')).toEqual({
+    expect(householdRename('Enrico & Nadja', ' Zuhause ')).toEqual({
       action: 'save',
-      name: 'Kuschelnest',
+      name: 'Zuhause',
     });
     expect(householdRename('Enrico & Nadja', 'x'.repeat(81))).toEqual({
       action: 'invalid',

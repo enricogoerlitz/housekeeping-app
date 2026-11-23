@@ -1,7 +1,7 @@
 -- The scheduler for reminders on plan entries (spec 0017, Task 2): private.notification_candidates
 -- at a fixed time decides who gets which entry reminder with which text, link and expiry, in the
 -- household's local time; run_notification_tick writes it once per device with high urgency and
--- never logs its text. Example week of the spec: household "Görlitz" with Enrico and Nadja in
+-- never logs its text. Example week of the spec: household "Zuhause" with Enrico and Nadja in
 -- Europe/Berlin, "Lasagne" on Saturday, 28.11.2026, evening.
 begin;
 \ir _helpers.psql
@@ -45,7 +45,7 @@ insert into fx (key, id) values
   ('nadja', tests.create_user('nadja@example.com', 'Nadja')),
   ('jana', tests.create_user('jana@example.com', 'Jana'));
 insert into fx (key, id) values
-  ('home', tests.create_household('Görlitz', array[tests.fx('enrico'), tests.fx('nadja')])),
+  ('home', tests.create_household('Zuhause', array[tests.fx('enrico'), tests.fx('nadja')])),
   ('schmidt', tests.create_household('Schmidt', array[tests.fx('jana')]));
 insert into fx (key) values
   ('s_vor'), ('s_mittag'), ('s_abend'), ('s_gone'), ('s_jana'), ('r_lasagne'), ('a_eis'), ('enzo'),

@@ -9,8 +9,8 @@ Einkaufsliste und Einkaufen im Markt (Laufreihenfolge), Haushaltsaufgaben, Reise
 Packlisten, Benachrichtigungen (Web Push). Anmeldung nur mit Google, nur auf Einladung; die Daten
 sind je Haushalt getrennt.
 
-Betrieb: Supabase (Postgres, Auth, Storage, Edge Functions) und Azure Static Web Apps.
-Produktion: `house.kuschel-nest.de`, Vorschau: `test.house.kuschel-nest.de`.
+Betrieb: Supabase (Postgres, Auth, Storage, Edge Functions) und Azure Static Web Apps, mit einer
+Vorschau- und einer Produktionsumgebung.
 
 - **Vision und fachliche Leitplanken:** [docs/product/vision.md](docs/product/vision.md)
 - **Architektur:** [docs/architecture/overview.md](docs/architecture/overview.md) ·
@@ -80,8 +80,8 @@ jedem Merge auf `develop`. Jobs: Änderungen, Konventionen, Geheimnisse, Migrati
 
 ### Branches und Release
 
-Arbeit läuft auf `<type>/<slug>` ab `develop`, jeder PR geht per Squash nach `develop`; nur Enrico
-öffnet den Release-PR `develop` → `main`, Agenten pushen oder mergen nie nach `main`. Vorschau,
+Arbeit läuft auf `<type>/<slug>` ab `develop`, jeder PR geht per Squash nach `develop`; nur die
+Maintainer öffnen den Release-PR `develop` → `main`, Agenten pushen oder mergen nie nach `main`. Vorschau,
 Release und Wiederherstellung: [docs/architecture/betrieb.md](docs/architecture/betrieb.md).
 
 ### KI-Setup

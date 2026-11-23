@@ -40,7 +40,7 @@ Keiner der Punkte ist fertig (geprüft 22.11.2026). Vorhanden sind nur Teile:
   `apply_changes` (`20261122143506_entry_reminders.sql`); keine Oberfläche.
 - V-11: `pull` und `drain` gibt es in `packages/api/src/backend.ts`; die Zeile in
   `apps/app/src/features/settings/settings-screen.tsx` ist nur Text.
-- X-09: nicht erledigt — `https://brave-bush-089e7a80f.6.azurestaticapps.net/` antwortet am
+- X-09: nicht erledigt — `<alte Produktions-Adresse>/` antwortet am
   22.11.2026 mit 200 statt umzuleiten.
 
 ## Anforderungen
@@ -128,12 +128,12 @@ steht nur zum Lesen da („Kommt von Google und lässt sich hier nicht ändern.�
 umbenennen“ (Feld „Name“, 1–80 Zeichen, Rand-Leerzeichen entfernt); jedes Mitglied darf das.
 Quelle: V-04. Offline: nur online, ✎ gesperrt.
 
-- AC-014: Angenommen Enrico auf „Haushalt & Mitglieder“ von „Enrico & Nadja“ · Wenn er „Kuschelnest“
+- AC-014: Angenommen Enrico auf „Haushalt & Mitglieder“ von „Enrico & Nadja“ · Wenn er „Zuhause“
   speichert · Dann heißt der Haushalt in Kopfzeile, „Haushalte“ und „Haushalt wechseln“ so, und auf
   Nadjas Gerät nach dem Abgleich ebenso.
 - AC-015: Angenommen das Fenster ist offen · Wenn der Name leer oder nur Leerzeichen ist · Dann wird
   nichts gespeichert, „Der Name fehlt.“ · Und unverändert schließt „Speichern“ ohne Aufruf · Und
-  „ Kuschelnest “ wird zu „Kuschelnest“.
+  „ Zuhause “ wird zu „Zuhause“.
 - AC-016: Angenommen Nadja ist nicht Mitglied von „WG Köln“ · Wenn sie dessen Namen über die API
   ändern will · Dann lehnt der Server ab · Und benennen zwei Mitglieder gleichzeitig um, gilt der
   zuletzt angekommene Name auf beiden Geräten.
@@ -280,14 +280,14 @@ Quelle: V-11. Offline: gesperrt mit Offline-Hinweis; mit Netz gleicht die App oh
 ### Adressen
 
 **REQ-011 — Alte Adressen leiten um.** In beiden Static Web Apps (`swa-housekeeping-app-prd` →
-`house.kuschel-nest.de`, `swa-housekeeping-app-preview` → `test.house.kuschel-nest.de`) ist die
+`<Produktions-Domain>`, `swa-housekeeping-app-preview` → `<Vorschau-Domain>`) ist die
 eigene Domain Standard, sodass die `azurestaticapps.net`-Adresse umleitet; jede Auslieferung prüft
 das. Quelle: X-09. Offline: —.
 
 - AC-042: Angenommen die Domain ist Standard · Wenn jemand
-  `https://brave-bush-089e7a80f.6.azurestaticapps.net/kalender` aufruft · Dann antwortet Azure mit
-  301 oder 308 auf `https://house.kuschel-nest.de/kalender` · Und die alte Vorschau-Adresse leitet auf
-  `https://test.house.kuschel-nest.de` um · Und die eigenen Domains antworten mit 200.
+  `<alte Produktions-Adresse>/kalender` aufruft · Dann antwortet Azure mit
+  301 oder 308 auf `<Produktions-Domain>/kalender` · Und die alte Vorschau-Adresse leitet auf
+  `<Vorschau-Domain>` um · Und die eigenen Domains antworten mit 200.
 - AC-043: Angenommen ein Lauf von Veröffentlichung, Vorschau oder erneuter Web-Auslieferung · Wenn die
   alte Adresse mit 200 antwortet · Dann ist der Lauf rot mit „Alte Adresse leitet nicht um“.
 - AC-044: Angenommen `docs/architecture/betrieb.md` · Dann nennt „Stand der Einrichtung“ die eigenen
