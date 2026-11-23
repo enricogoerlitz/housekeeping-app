@@ -713,7 +713,14 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
       `currentShoppingRun`. Geprüft und in der App gelassen: `move-entry.ts` (die Logik ist schon
       `planMove`, übrig sind Toast und Schreiben) und `calendar-fill.ts` (Messen im Fenster, eine
       Zeile Rechnung).
-- [ ] 30. Komponententests in `ui` (AC-028, AC-029), Test für `startAuth` (AC-030).
+- [x] 30. Komponententests in `ui` (AC-028, AC-029), Test für `startAuth` (AC-030). Vitest mit
+      jsdom und `react-native-web` (Projekt `components`, Ersatz für native Module unter
+      `packages/ui/test/mocks`), jede `.tsx`-Datei hat Tests, `ui` liegt bei 98,9 % Zeilen.
+      Gefunden und für die Review-Schleife vorgemerkt: Im Web fehlen `aria-selected` (Tabs in
+      Tab-Leiste und Seitenleiste, `ListRow` mit `selected`), `aria-disabled` am Griff einer
+      gesperrten `ReorderList` und `aria-valuenow` an `ProgressBar`/`DueBar`, weil
+      `react-native-web` `accessibilityState`/`accessibilityValue` dort nicht umsetzt;
+      `CheckRow` mit `onPress` legt die Checkbox in einen Button (AC-028).
 - [ ] 31. `vitest.config.ts` mit Coverage für `core`, `api` und `ui`, Schwelle 80 %, `21-testing.md`
       (AC-015–AC-017).
 - [x] 32. Vertragstest Fake gegen DB (AC-059). `contract.integration.test.ts` lässt dieselben
