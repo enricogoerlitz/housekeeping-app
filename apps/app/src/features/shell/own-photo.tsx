@@ -14,12 +14,12 @@ import { View } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 // The household's own photo of an activity or a restaurant (spec 0004, REQ-004; spec 0024,
 // REQ-004): shown from the device storage, changed only online, with the same texts for both.
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
+const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
 /**
  * The own photo, or the placeholder symbol while there is none or it cannot load. With a testID,

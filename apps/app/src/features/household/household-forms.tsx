@@ -36,14 +36,14 @@ import {
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage } from '@/features/shell/error-message';
 
 // Household management (spec 0003, REQ-003): used by the settings and by the screen shown to a
 // signed-in person without a household. Every action needs the network.
 
-const messageOf = (error: unknown) =>
-  error instanceof Error ? error.message : 'Hat nicht geklappt – bitte noch einmal versuchen';
+const messageOf = (error: unknown) => errorMessage(error);
 
 /** Runs an action once at a time; its error goes to the field or a toast. */
 function useAction() {
@@ -292,7 +292,7 @@ function MemberRemovalDialog(props: {
   onCancel: () => void;
 }) {
   return (
-    <TripConfirmDialog
+    <ConfirmDialog
       title={props.prompt.title}
       message={props.prompt.message}
       confirmLabel={props.prompt.confirmLabel}

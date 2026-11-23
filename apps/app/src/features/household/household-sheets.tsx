@@ -17,12 +17,12 @@ import { Button, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage } from '@/features/shell/error-message';
 
 // Spec 0027, REQ-004 and REQ-005: renaming the household and deleting it as its last member.
 // Both need the network; the checks come from core.
 
-const messageOf = (error: unknown) =>
-  error instanceof Error ? error.message : 'Hat nicht geklappt – bitte noch einmal versuchen';
+const messageOf = (error: unknown) => errorMessage(error);
 
 /** "Haushalt umbenennen" (AC-014, AC-015): one field "Name", trimmed, unchanged closes. */
 export function RenameHouseholdSheet(props: { onClose: () => void }) {

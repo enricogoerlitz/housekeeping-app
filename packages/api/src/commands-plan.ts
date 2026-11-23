@@ -6,7 +6,7 @@ import {
   collectionDiet,
   contentsInBook,
   contributionsFromEntry,
-  eatersForDay,
+  householdEaters,
   dietFitsPreference,
   entryListShare,
   EntryReminderSchema,
@@ -139,7 +139,7 @@ function checkedReminder(
 /** Who eats by default: every member of the household, trips or not (spec 0030, REQ-008). */
 export function defaultEaterIds(): Id[] {
   const data = getData();
-  return eatersForDay(
+  return householdEaters(
     getState().members.filter((member) => data.household.memberIds.includes(member.id)),
   );
 }

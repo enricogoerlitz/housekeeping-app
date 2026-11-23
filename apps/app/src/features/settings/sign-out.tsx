@@ -2,7 +2,7 @@ import { signOut, unsentStoreChangeCount } from '@housekeeping/api';
 import { signOutWarning } from '@housekeeping/core';
 import { useState, type ReactNode } from 'react';
 
-import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 
 /**
  * „Abmelden“ (spec 0018, REQ-005): with changes still waiting in the store queue it asks first;
@@ -17,7 +17,7 @@ export function useSignOut(): { request: () => void; dialog: ReactNode } {
     else void signOut();
   };
   const dialog = warning ? (
-    <TripConfirmDialog
+    <ConfirmDialog
       title="Abmelden?"
       message={warning}
       confirmLabel="Trotzdem abmelden"

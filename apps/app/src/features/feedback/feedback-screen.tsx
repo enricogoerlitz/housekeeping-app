@@ -43,9 +43,10 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { useBackToManage } from '@/features/manage/navigation';
-import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { usePageParams } from '@/lib/url-state';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage } from '@/features/shell/error-message';
 
 type Kind = FeedbackEntry['kind'];
 type Status = FeedbackEntry['status'];
@@ -322,7 +323,7 @@ function FeedbackCard(props: { entry: FeedbackEntry }) {
       </Row>
       {editing ? <EditFeedbackSheet entry={entry} onClose={() => setEditing(false)} /> : null}
       {deleting ? (
-        <TripConfirmDialog
+        <ConfirmDialog
           title={prompt.title}
           message={prompt.message}
           confirmLabel="Löschen"
@@ -332,7 +333,7 @@ function FeedbackCard(props: { entry: FeedbackEntry }) {
             try {
               deleteFeedback(entry.id);
             } catch (error) {
-              toast.show({ message: error instanceof Error ? error.message : String(error) });
+              toast.show({ message: errorMessage(error) });
             }
           }}
           onCancel={() => setDeleting(false)}
@@ -377,7 +378,7 @@ function EditFeedbackSheet(props: { entry: FeedbackEntry; onClose: () => void })
     try {
       editFeedback(props.entry.id, { kind, text });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(errorMessage(caught));
       return;
     }
     props.onClose();

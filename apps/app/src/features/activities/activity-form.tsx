@@ -29,6 +29,7 @@ import {
 } from '@/features/shell/own-photo';
 
 import { ACTIVITY_ICON } from './activity-photo';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /** activities_name_length. */
 const ACTIVITY_NAME_MAX_LENGTH = 120;
@@ -38,8 +39,7 @@ export interface ActivityFormValues {
   photo: PhotoChoice;
 }
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
+const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
 /**
  * State of the activity form (create and edit). The fields render with `ActivityFormFields`; the

@@ -105,7 +105,7 @@ describe('householdCall', () => {
   });
 
   it('signed out: fails', async () => {
-    await expect(create('WG Köln')).rejects.toThrow('Not signed in');
+    await expect(create('WG Köln')).rejects.toThrow('Du bist nicht angemeldet.');
   });
 });
 

@@ -15,6 +15,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
+import { errorMessage } from '@/features/shell/error-message';
 
 /** Why "Auf die Liste" is greyed out when there is nothing to buy (spec 0008, AC-060). */
 export const NO_INGREDIENTS_HINT = 'Noch keine Zutaten';
@@ -117,7 +118,7 @@ export function useRecipePhoto(recipe: Recipe): RecipePhotoState {
       toast.show({ message: done });
     } catch (caught) {
       if (kind === 'remove' && !(caught instanceof OfflineError)) setError(WRITE_REJECTED_MESSAGE);
-      else setError(caught instanceof Error ? caught.message : PHOTO_UPLOAD_FAILED_MESSAGE);
+      else setError(errorMessage(caught, PHOTO_UPLOAD_FAILED_MESSAGE));
     } finally {
       setBusy(undefined);
     }

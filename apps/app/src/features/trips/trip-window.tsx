@@ -39,7 +39,7 @@ import { View } from 'react-native';
 
 import { FAILED, messageOf } from '@/features/packing/packing-labels';
 import { TripAddBagSheet } from '@/features/packing/trip-add-bag-sheet';
-import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { TripSection } from '@/features/packing/trip-section';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { usePageParams } from '@/lib/url-state';
@@ -354,7 +354,7 @@ export function TripWindow(props: { tripId: Id; onClose: () => void }) {
 
       {adding ? <TripAddBagSheet tripId={trip.id} onClose={() => setAdding(false)} /> : null}
       {dialog === 'reset' ? (
-        <TripConfirmDialog
+        <ConfirmDialog
           title={`Alle ${progress.packed} Haken entfernen?`}
           message="Alle Packstücke stehen danach wieder offen in ihren Taschen."
           confirmLabel="Zurücksetzen"
@@ -365,7 +365,7 @@ export function TripWindow(props: { tripId: Id; onClose: () => void }) {
         />
       ) : null}
       {dialog === 'delete' && deleteMessage ? (
-        <TripConfirmDialog
+        <ConfirmDialog
           title="Reise löschen?"
           message={deleteMessage}
           confirmLabel="Löschen"
@@ -376,7 +376,7 @@ export function TripWindow(props: { tripId: Id; onClose: () => void }) {
         />
       ) : null}
       {dialog === 'discard' ? (
-        <TripConfirmDialog
+        <ConfirmDialog
           title="Änderungen an der Reise verwerfen?"
           confirmLabel="Verwerfen"
           cancelLabel="Weiter bearbeiten"

@@ -152,7 +152,7 @@ describe('the signed-in user', () => {
   it('without a sign-in there is no state, and commands are refused', () => {
     expect(() => getState()).toThrow();
     expect(() => addFeedback({ kind: 'idea', text: 'Etwas' })).toThrow();
-    expect(() => snapshot()).toThrow('Not signed in');
+    expect(() => snapshot()).toThrow('Du bist nicht angemeldet.');
   });
 
   it('AC-049 (0031): "today" is the date on the household clock, whatever the device says', async () => {

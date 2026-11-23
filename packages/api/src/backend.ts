@@ -592,7 +592,7 @@ export function useSyncState(): SyncState {
 export async function householdCall<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
   const engine = current;
   const wire = currentWire;
-  if (!engine || !wire) throw new Error('Not signed in');
+  if (!engine || !wire) throw new Error('Du bist nicht angemeldet.');
   if (engine.isOffline()) throw new OfflineError();
   const result = await send(wire);
   await engine.pull();
@@ -607,7 +607,7 @@ export async function householdCall<T>(send: (transport: Transport) => Promise<T
 export async function onlineCall<T>(send: (transport: Transport) => Promise<T>): Promise<T> {
   const engine = current;
   const wire = currentWire;
-  if (!engine || !wire) throw new Error('Not signed in');
+  if (!engine || !wire) throw new Error('Du bist nicht angemeldet.');
   if (engine.isNetworkOffline()) throw new OfflineError();
   return send(wire);
 }
@@ -621,7 +621,7 @@ export const SYNC_FAILED_MESSAGE =
  */
 export async function syncNow(): Promise<void> {
   const engine = current;
-  if (!engine) throw new Error('Not signed in');
+  if (!engine) throw new Error('Du bist nicht angemeldet.');
   if (engine.isNetworkOffline()) throw new OfflineError();
   if (!(await engine.syncNow())) throw new Error(SYNC_FAILED_MESSAGE);
 }

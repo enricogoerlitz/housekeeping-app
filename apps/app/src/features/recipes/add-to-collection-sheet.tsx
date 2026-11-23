@@ -26,6 +26,7 @@ import {
 import { useState } from 'react';
 
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /**
  * ⋯ → "Zu Sammlung hinzufügen" on a recipe page (spec 0009, E16, AC-008, AC-010): all collections
@@ -50,11 +51,7 @@ export function AddToCollectionSheet(props: { recipe: Recipe; onClose: () => voi
       toast.show({ message: addedToCollectionLabel(added.title) });
     } catch (cause) {
       setError(
-        cause instanceof OfflineError
-          ? OFFLINE_EDIT_HINT
-          : cause instanceof Error
-            ? cause.message
-            : 'Das hat nicht geklappt.',
+        cause instanceof OfflineError ? OFFLINE_EDIT_HINT : errorMessage(cause, FAILED_MESSAGE),
       );
     }
   };

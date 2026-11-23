@@ -4,7 +4,6 @@ import {
   useHouseholdClock,
   useToday,
   useNotificationSettings,
-  WRITE_REJECTED_MESSAGE,
 } from '@housekeeping/api';
 import {
   asksForPushPermission,
@@ -42,6 +41,7 @@ import { devicePushSupport } from '@/features/notifications/web-push-platform';
 
 import { FieldLabel } from './plan-fields';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
+import { errorMessage } from '@/features/shell/error-message';
 
 // Spec 0017 "Erinnern" (REQ-001 to REQ-004, REQ-007): the switch and, when it is on, "Tag",
 // "Uhrzeit" and "Woran erinnern? (optional)". The add window keeps the draft until "Einplanen";
@@ -130,7 +130,7 @@ export function useReminderForm(options: {
     } catch (caught) {
       setError({
         field: 'time',
-        error: caught instanceof Error ? caught.message : WRITE_REJECTED_MESSAGE,
+        error: errorMessage(caught),
       });
       return false;
     }

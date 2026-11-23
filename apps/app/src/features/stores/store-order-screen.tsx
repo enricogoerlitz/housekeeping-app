@@ -33,7 +33,9 @@ import { useAddressedId } from '@/lib/addressed';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { messageOf, ORDER_LABELS } from './labels';
-import { AddAreaSheet, ConfirmDialog, NameSheet } from './store-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+
+import { AddAreaSheet, NameSheet } from './store-dialogs';
 
 type StoreAction = 'default' | 'delete';
 

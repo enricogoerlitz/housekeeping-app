@@ -36,7 +36,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useTripWindow } from '@/features/trips/trip-window';
 
 import { messageOf } from './packing-labels';
-import { TripConfirmDialog } from './trip-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 
 /**
  * "Kommende Packlisten" on top of "Reisetaschen" (spec 0022, REQ-013, AC-039, AC-040): one row
@@ -163,7 +163,7 @@ export function BagDeviationHints(props: { bagId: Id }) {
         ))}
       </Stack>
       {asking ? (
-        <TripConfirmDialog
+        <ConfirmDialog
           title={`In „${asking.title}“ übernehmen?`}
           message={adoptBagDialog(asking)}
           confirmLabel="Übernehmen"

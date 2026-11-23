@@ -1,5 +1,6 @@
 import { orderAnnouncement } from '@housekeeping/core';
 import type { ReorderListLabels } from '@housekeeping/ui';
+import { errorMessage } from '@/features/shell/error-message';
 
 /** "Märkte · Bereiche" (E12): the view is in the address, `?ansicht=bereiche`. */
 export type StoresView = 'maerkte' | 'bereiche';
@@ -24,4 +25,4 @@ export const ORDER_LABELS: ReorderListLabels = {
 export const articleCount = (count: number) => (count === 1 ? '1 Artikel' : `${count} Artikel`);
 
 export const FAILED = 'Das hat nicht geklappt.';
-export const messageOf = (error: unknown) => (error instanceof Error ? error.message : FAILED);
+export const messageOf = (error: unknown) => errorMessage(error, FAILED);

@@ -13,6 +13,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import { NewRecipeFields } from './recipe-form';
 import { handOverIngredientRows, rowsFromText } from './sections/ingredient-handover';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 export interface NewRecipeSheetProps {
   visible: boolean;
@@ -71,7 +72,7 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
         recipeId = createRecipe({ title, kind });
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Das hat nicht geklappt.');
+      setError(errorMessage(cause, FAILED_MESSAGE));
       return;
     }
     close();

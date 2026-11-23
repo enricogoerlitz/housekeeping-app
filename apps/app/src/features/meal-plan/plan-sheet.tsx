@@ -39,9 +39,9 @@ import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
+const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
 /** What "Wer isst mit?" means for a recipe or a collection: portions over its variants. */
 export interface PlanSplit {

@@ -16,6 +16,7 @@ import {
   saveLabel,
   startOfMonth,
   validateTripDraft,
+  weekdayHeads,
   type Id,
   type ISODate,
   type RangePick,
@@ -40,8 +41,6 @@ import { messageOf } from '@/features/packing/packing-labels';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { TripBagChips } from './trip-bag-chips';
-
-const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 export interface TripFieldValues {
   who: Id[];
@@ -333,7 +332,7 @@ function RangeCalendar(props: {
       onMonthChange={props.onMonth}
       onSelect={props.onPick}
       title={monthTitle(props.month)}
-      weekdayLabels={WEEKDAY_HEADS}
+      weekdayLabels={weekdayHeads(false)}
       previousLabel="Voriger Monat"
       nextLabel="Nächster Monat"
       dayLabel={formatPickerDate}

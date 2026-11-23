@@ -1,8 +1,6 @@
-import { formatPickerDate, monthTitle, type ISODate } from '@housekeeping/core';
+import { formatPickerDate, monthTitle, weekdayHeads, type ISODate } from '@housekeeping/core';
 import { MonthCalendar } from '@housekeeping/ui';
 import { useState } from 'react';
-
-const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /**
  * The month calendar behind "Anderes Datum …" (spec 0016, REQ-005): starts with `month`, ‹ ›
@@ -24,7 +22,7 @@ export function PlanDateCalendar(props: {
       onMonthChange={setMonth}
       onSelect={props.onSelect}
       title={monthTitle(month)}
-      weekdayLabels={WEEKDAY_HEADS}
+      weekdayLabels={weekdayHeads(false)}
       previousLabel="Voriger Monat"
       nextLabel="Nächster Monat"
       dayLabel={formatPickerDate}

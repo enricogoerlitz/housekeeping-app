@@ -1,5 +1,4 @@
 import {
-  OfflineError,
   syncNow,
   useCurrentMember,
   useHousehold,
@@ -52,6 +51,7 @@ import { useSettings, type AppearancePreference } from '@/lib/settings';
 import { ProfileSheet } from './profile-sheet';
 import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
+import { errorMessage } from '@/features/shell/error-message';
 
 export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
 
@@ -319,8 +319,7 @@ function SyncLine() {
       await syncNow();
     } catch (error) {
       toast.show({
-        message:
-          error instanceof OfflineError || error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       });
     } finally {
       setSyncing(false);

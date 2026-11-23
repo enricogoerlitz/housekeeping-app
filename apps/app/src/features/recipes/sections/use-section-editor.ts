@@ -34,6 +34,7 @@ import { BackHandler, Platform } from 'react-native';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 
 import { takeHandedOverRows } from './ingredient-handover';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 // The sections of the recipe page (spec 0008, REQ-007, E7): at most one is open, its draft lives
 // here. "Fertig" checks and saves it; another pen, leaving the page (blur, Android back, unmount)
@@ -129,7 +130,7 @@ function trySave(recipeId: Id, draft: OpenDraft): { save: Save | null } | { erro
     return { save: saveRecipeSection(recipeId, draft) };
   } catch (error) {
     if (error instanceof OfflineError) return { error: OFFLINE_EDIT_HINT };
-    return { error: error instanceof Error ? error.message : 'Das hat nicht geklappt.' };
+    return { error: errorMessage(error, FAILED_MESSAGE) };
   }
 }
 

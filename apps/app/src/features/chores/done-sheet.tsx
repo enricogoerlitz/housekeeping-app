@@ -39,6 +39,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { AssignmentField, RhythmField, useChoreDraft } from './chore-form';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /** The day menu: a quick day, or „Datum …“ for the month calendar (spec 0026, REQ-007). */
 type DayChoice = ISODate | 'pick';
@@ -134,13 +135,7 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
         return;
       }
     } catch (caught) {
-      setError(
-        caught instanceof OfflineError
-          ? online.hint
-          : caught instanceof Error
-            ? caught.message
-            : 'Das hat nicht geklappt.',
-      );
+      setError(caught instanceof OfflineError ? online.hint : errorMessage(caught, FAILED_MESSAGE));
       return;
     }
     const name = choice.kind === 'chore' ? choice.chore.title : choice.title;

@@ -51,6 +51,7 @@ import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
 import { choreFacts, dayWithDate, eventIcon, eventKindLabel } from './chore-labels';
 import { useChoreAway } from './use-chore-away';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 const RECENT_ENTRIES = 3;
 
@@ -159,7 +160,7 @@ function useChoreDetail(props: ChoreDetailProps): {
         remindAtDueTime: time.remind,
       });
     } catch (error) {
-      setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
+      setErrors({ title: errorMessage(error, FAILED_MESSAGE) });
       return;
     }
     setEditing(false);

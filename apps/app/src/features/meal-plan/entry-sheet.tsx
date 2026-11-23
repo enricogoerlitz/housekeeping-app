@@ -68,6 +68,7 @@ import { entryTitle } from './labels';
 import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
+import { errorMessage } from '@/features/shell/error-message';
 
 function Label(props: { children: string }) {
   return (
@@ -234,7 +235,7 @@ export function EntrySheet(props: {
     try {
       saved = saveEntry(entry.id, fields);
     } catch (caught) {
-      setRefused(caught instanceof Error ? caught.message : WRITE_REJECTED_MESSAGE);
+      setRefused(errorMessage(caught));
       return;
     }
     setSaving(true);

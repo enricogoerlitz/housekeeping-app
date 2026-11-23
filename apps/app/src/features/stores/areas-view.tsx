@@ -36,7 +36,9 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
 import { useNewAreaHint } from './area-hint';
 import { articleCount, messageOf, ORDER_LABELS } from './labels';
-import { ConfirmDialog, MergeAreaPicker, NameSheet } from './store-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+
+import { MergeAreaPicker, NameSheet } from './store-dialogs';
 
 type AreaAction = 'rename' | 'merge' | 'delete';
 type Dialog =

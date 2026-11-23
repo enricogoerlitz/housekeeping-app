@@ -19,6 +19,7 @@ import { Button, List, SearchOrCreate, SelectRow, Sheet, Stack, Text } from '@ho
 import { useMemo, useState } from 'react';
 
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /**
  * The window "Rezepte zu „Grillabend“" (spec 0009, E16, AC-006, AC-007, AC-010): a search over the
@@ -75,11 +76,7 @@ export function CollectionRecipesSheet(props: { collection: Recipe; onClose: () 
   };
 
   const failure = (cause: unknown) =>
-    cause instanceof OfflineError
-      ? OFFLINE_EDIT_HINT
-      : cause instanceof Error
-        ? cause.message
-        : 'Das hat nicht geklappt.';
+    cause instanceof OfflineError ? OFFLINE_EDIT_HINT : errorMessage(cause, FAILED_MESSAGE);
 
   // AC-007: the recipe exists before anything is taken over, and is ticked in the window.
   const createAndTick = () => {
