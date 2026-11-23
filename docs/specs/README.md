@@ -42,8 +42,8 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 
-Stand 23.11.2026: 0019–0031 sind gebaut und auf `develop`; offen ist die erste produktive Version
-(Spec 0028). Nächste Schritte: [../handover/2026-11-23-copilot.md](../handover/2026-11-23-copilot.md).
+Stand 23.11.2026: 0019–0032 sind gebaut; die erste produktive Version v2026.11.2 ist veröffentlicht
+(Spec 0028, Weg D; offen nur der Wiederherstellungstest). Nächste Schritte: [../handover/2026-11-23-copilot.md](../handover/2026-11-23-copilot.md).
 Die Spec-Status oben sind die Front-Matter-Werte; „freigegeben“ bei 0019–0030 heißt nur, dass der
 Status dort noch nicht auf „umgesetzt“ gesetzt wurde. Quelle der Wünsche:
 `docs/product/review-enrico-2026-11-22.md` (ER-01–ER-36) und
