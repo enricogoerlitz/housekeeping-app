@@ -21,6 +21,7 @@ import {
   checkEntryNote,
   checkEntryText,
   entryListShare,
+  formatShortDate,
   householdClock,
   isSelectableMoveDay,
   MAX_ENTRY_TEXT,
@@ -32,6 +33,7 @@ import {
   TIME_FIELD_WORDS,
   variantRows,
   weekDates,
+  weekdayShort,
   type DropTarget,
   type Id,
   type ISODate,
@@ -40,6 +42,7 @@ import {
 import {
   Button,
   Chip,
+  ChoiceChips,
   Row,
   Sheet,
   Stack,
@@ -62,7 +65,7 @@ import { useOpenRestaurant } from '@/features/restaurants/navigation';
 import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 
-import { dayLabel, entryTitle } from './labels';
+import { entryTitle } from './labels';
 import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
@@ -335,17 +338,23 @@ export function EntrySheet(props: {
   const moveSection = (
     <View testID="entry-move-section">
       <Label>Verschieben</Label>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {chipDates.map((date) => (
-          <Chip
-            key={date}
-            label={dayLabel(date)}
-            selected={entry.date === date}
-            disabled={online.disabled}
-            testID={`entry-move-${date}`}
-            onPress={() => moveTo({ kind: 'day', date })}
-          />
-        ))}
+      <ChoiceChips
+        label="Tag"
+        options={chipDates.map((date) => ({
+          value: date,
+          label: weekdayShort(date),
+          detail: formatShortDate(date),
+        }))}
+        // No day is chosen while the entry is "vorgemerkt".
+        value={entry.date ?? ''}
+        onChange={(date) => moveTo({ kind: 'day', date })}
+        disabled={online.disabled}
+        hint={online.hint}
+        // Spec 0030, REQ-005: seven equal chips, so a move to another week never shifts them.
+        fill
+        testID="entry-move"
+      />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
         <Chip
           label="Vormerken"
           icon="bookmark"

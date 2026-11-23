@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-import { day, expect, freshSeed, open, test, tid, toastMessage } from './helpers';
+import { day, expect, freshSeed, open, test, tid, toastMessage, TODAY } from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0030 — Enrico's review 0002: sticky day heads, readable days while drawing a trip, "Reisen"
@@ -104,6 +104,26 @@ test.describe('REQ-005 / REQ-006: windows', () => {
     expect(new Set(widths).size).toBe(1);
     const before = await chips.first().boundingBox();
     await tid(page, 'plan-recipe-week-next').click();
+    const after = await chips.first().boundingBox();
+    expect(after?.x).toBe(before?.x);
+  });
+
+  test('AC-032: the seven day chips under "Verschieben" are equally wide and stay put in another week', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, `/kalender?eintrag=${seedIds['plan-2']}`);
+    const chips = page.getByTestId(/^entry-move-\d{4}-\d{2}-\d{2}$/);
+    await expect(chips).toHaveCount(7);
+    const widths = await chips.evaluateAll((nodes) =>
+      nodes.map((node) => Math.round(node.getBoundingClientRect().width)),
+    );
+    expect(new Set(widths).size).toBe(1);
+    const before = await chips.first().boundingBox();
+    await tid(page, 'entry-move-other').click();
+    // A week later; the calendar opens on the entry's month.
+    if (day(7).slice(0, 7) !== TODAY.slice(0, 7)) await tid(page, 'entry-move-date-next').click();
+    await tid(page, `entry-move-date-day-${day(7)}`).click();
     const after = await chips.first().boundingBox();
     expect(after?.x).toBe(before?.x);
   });

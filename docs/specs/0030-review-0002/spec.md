@@ -116,15 +116,21 @@ Quelle: Review 0002, Punkt 4 (Urlaubsplanung). Offline: offline lesend (Umschalt
 
 ### Fenster
 
-**REQ-005 — Gleich breite Tage in „Einplanen“.** Die sieben Tages-Chips im Fenster „Einplanen“
-(Rezept, Restaurant, Aktivität) teilen sich die ganze Breite zu gleichen Teilen, sodass beim
-Blättern der Woche nichts springt. Quelle: Review 0002, Punkt 5 und Bildschirmfoto. Offline:
+**REQ-005 — Gleich breite Tage in „Einplanen“ und „Verschieben“.** Die sieben Tages-Chips im
+Fenster „Einplanen“ (Rezept, Restaurant, Aktivität) und in der Zeile „Verschieben“ des
+Eintrag-Fensters teilen sich die ganze Breite zu gleichen Teilen, sodass beim Blättern der Woche
+oder beim Verschieben in eine andere Woche nichts springt; „Vormerken“ und „Anderes Datum …“ stehen
+darunter. Quelle: Review 0002, Punkt 5 und Bildschirmfoto. Offline:
 offline lesend (wie das Fenster).
 
 - AC-019: Angenommen „Einplanen“ für „Brooklyn Burger Bar“ auf dem Handy (390 px), KW 6 · Dann füllen
   „Mo 8.2.“ bis „So 14.2.“ die Zeile in sieben gleich breiten Chips · Wenn ich zu KW 7 blättere · Dann
   steht „Mo 15.2.“ genau dort, wo „Mo 8.2.“ stand.
 - AC-020 (Rand): Angenommen Desktop · Dann füllen die sieben Chips ebenso die Breite des Fensters.
+- AC-032: Angenommen das Eintrag-Fenster von „Lasagne“ am Mo 23.11. auf dem Handy (390 px) · Dann
+  füllen „Mo 23.11.“ bis „So 29.11.“ unter „Verschieben“ die Zeile in sieben gleich breiten Chips ·
+  Wenn ich über „Anderes Datum …“ auf Mi 2.12. verschiebe · Dann steht „Mo 30.11.“ genau dort, wo
+  „Mo 23.11.“ stand.
 
 **REQ-006 — Reihenfolge der Tabs im Hinzufügen-Fenster.** Die Tabs des Hinzufügen-Fensters im
 Kalender lauten „Alle, Rezepte, Restaurants, Aktivitäten, Sammlungen, Reste“. Quelle: Review 0002,
@@ -212,9 +218,11 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (23.11.2026).
 6. Schraffur: diagonale Streifen in der Farbe des Streifens über der zarten Fläche (Web:
    `repeating-linear-gradient`), dünne Linien (Woche auf dem Handy, Monat) gestrichelt; keine neue
    Farbe.
-7. Gleich breite Chips (`ChoiceChips` mit `fill`) nur in „Einplanen“: Nur dort wechseln die
-   Beschriftungen beim Blättern. Die Datums-Chips der Aufgaben laufen in einer scrollbaren Reihe ohne
-   Blättern, die Tageszeit-Chips haben feste Namen; gleich breit würde dort nur Platz kosten.
+7. Gleich breite Chips (`ChoiceChips` mit `fill`) in „Einplanen“ und in der Zeile „Verschieben“
+   des Eintrag-Fensters: Nur dort wechseln die Beschriftungen, beim Blättern oder wenn der Eintrag in
+   eine andere Woche zieht (nachgezogen nach der Prüfung, AC-032). Die Datums-Chips der Aufgaben und
+   „Wann?“ im Hinzufügen-Fenster laufen in einer scrollbaren Reihe ab heute ohne Blättern, die
+   Tageszeit-Chips haben feste Namen; gleich breit würde dort nur Platz kosten.
 8. Ursache Wischen (REQ-007): Die Liste ist ein eigener Scrollbereich. Ohne `touch-action` übernimmt
    iOS jede Bewegung als natives Scrollen; schon ein Pixel senkrecht macht die `ScrollView` von
    react-native-web zum Responder, und sie gibt ihn nach beobachtetem Scrollen nicht mehr ab
@@ -264,7 +272,8 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
 
 - [x] 1. Spec, Glossar „Reise-Entwurf“, Eintrag in `docs/specs/README.md`.
 - [x] 2. Tabs im Hinzufügen-Fenster neu sortiert (AC-021, AC-022).
-- [x] 3. `ChoiceChips` mit `fill`; „Einplanen“ nutzt es (AC-019, AC-020).
+- [x] 3. `ChoiceChips` mit `fill`; „Einplanen“ und „Verschieben“ nutzen es (AC-019, AC-020,
+      AC-032).
 - [x] 4. Hervorhebung beim Ziehen einer Reise nur als Rahmen (AC-005, AC-006).
 - [x] 5. Kopfzeilen sticky, Wochentage am Desktop ausgeschrieben (AC-001–AC-004).
 - [x] 6. Tab-Wisch: `touch-action: pan-y` am Scrollbereich, Finger nicht abgeben (AC-023–AC-025).
