@@ -487,12 +487,22 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
   await expect(tid(page, 'pantry-check-sheet')).toContainText('Was brauchst du wirklich?');
   await expect(tid(page, 'pc-zone-needed')).toHaveText('Kommt auf die Liste');
   for (const key of ['mango', 'kokosmilch']) {
-    await expect(tid(page, `pc-row-${article(key)}-check`), key).toHaveAttribute(
+    await expect(tid(page, `pc-row-${article(key)}-open`), key).toHaveAttribute(
       'aria-checked',
       'true',
     );
     await expect(tid(page, `pc-row-${article(key)}`), key).toContainText('Mango-Curry');
   }
+  // AC-067 (spec 0031): the row reads as one checkbox with name and state, its amount buttons
+  // are controls of their own with a name, not inside it.
+  const mangoRow = tid(page, `pc-row-${article('mango')}-open`);
+  await expect(mangoRow).toHaveAttribute('role', 'checkbox');
+  await expect(mangoRow).toHaveAttribute('aria-label', /^Mango/);
+  await expect(mangoRow.locator('button, [role="button"]')).toHaveCount(0);
+  await expect(tid(page, `pc-row-${article('mango')}-plus`)).toHaveAttribute(
+    'aria-label',
+    'Mango mehr',
+  );
   // Pantry articles stand open but deselected under "Vorrat & Gewürze" (spec 0025, AC-026).
   await expect(tid(page, `pc-row-${article('reis')}`)).toBeVisible();
   await expect(tid(page, 'pc-pantry-toggle')).toContainText('Vorrat & Gewürze');
@@ -506,9 +516,9 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
   );
   await tid(page, 'pc-next').click();
   const needed = Number((await tid(page, 'pc-apply').innerText()).match(/\d+/)?.[0]);
-  await tid(page, `pc-row-${article('mango')}-check`).click();
+  await tid(page, `pc-row-${article('mango')}-open`).click();
   await expect(tid(page, 'pc-apply')).toHaveText(`${needed - 1} übernehmen`);
-  await expect(tid(page, `pc-row-${article('mango')}-check`)).toHaveAttribute(
+  await expect(tid(page, `pc-row-${article('mango')}-open`)).toHaveAttribute(
     'aria-checked',
     'false',
   );
@@ -521,12 +531,12 @@ test('AC-055 / AC-056 / AC-057 (0006): the pantry check of a planned Mango-Curry
   }
   await expect(tid(page, 'pc-apply')).toHaveText('0 übernehmen');
   await expect(tid(page, 'pc-apply')).toBeDisabled();
-  await tid(page, `pc-row-${article('kokosmilch')}-check`).click();
+  await tid(page, `pc-row-${article('kokosmilch')}-open`).click();
   await expect(tid(page, 'pc-apply')).toHaveText('1 übernehmen');
 
   await expect(tid(page, 'pc-pantry-toggle')).toHaveAttribute('aria-expanded', 'true');
   for (const key of ['reis', 'kreuzkuemmel']) {
-    await expect(tid(page, `pc-row-${article(key)}-check`), key).toHaveAttribute(
+    await expect(tid(page, `pc-row-${article(key)}-open`), key).toHaveAttribute(
       'aria-checked',
       'false',
     );

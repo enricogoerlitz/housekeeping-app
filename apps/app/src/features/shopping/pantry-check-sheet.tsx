@@ -26,7 +26,7 @@ import {
 } from '@housekeeping/core';
 import {
   Button,
-  Checkbox,
+  CheckboxMark,
   GroupLabel,
   Icon,
   IconButton,
@@ -358,16 +358,11 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
         subtitle={[row.sources.join(' · '), row.onList ? `schon auf der Liste: ${row.onList}` : '']
           .filter(Boolean)
           .join(' · ')}
+        // The row is the checkbox; its amount buttons sit beside it (spec 0031, REQ-028).
+        checked={isKept}
         onPress={() => toggleRow(row)}
-        leading={
-          <Checkbox
-            checked={isKept}
-            label={row.name}
-            onChange={() => toggleRow(row)}
-            testID={`pc-row-${row.articleId}-check`}
-          />
-        }
-        trailing={
+        leading={<CheckboxMark checked={isKept} />}
+        controls={
           <RowAmount
             row={row}
             kept={isKept}

@@ -132,8 +132,10 @@ export interface ListRowProps {
   /** The row shown in the detail column next to the list ("Liste und Detail"), in `accentSoft`. */
   selected?: boolean;
   /**
-   * Makes the whole row one checkbox of a multi-select (SelectRow): read as checkbox with its
-   * state, and on the web the space bar toggles it like Enter. Needs `onPress`, no `controls`.
+   * Makes the whole row one checkbox of a multi-select (SelectRow, the pantry check): read as
+   * checkbox with its state, and on the web the space bar toggles it like Enter. Needs `onPress`;
+   * with `controls` the row's press area is the checkbox and the controls stay buttons of their
+   * own beside it.
    */
   checked?: boolean;
   /** Read by screen readers after the name, e.g. why the row cannot be chosen. */
@@ -218,6 +220,19 @@ export function ListRow(props: ListRowProps) {
   const wrap = (node: ReactNode) =>
     list === 'tile' ? <ToneContext.Provider value={undefined}>{node}</ToneContext.Provider> : node;
 
+  const checkable = props.checked !== undefined;
+  // react-native-web presses only role="button" with the space bar; a checkbox row does it here.
+  const checkboxKeys = (onPress: () => void) =>
+    checkable
+      ? ({
+          onKeyDown: (event: KeyEvent) => {
+            if (event.key !== ' ' && event.key !== 'Spacebar') return;
+            event.preventDefault();
+            if (!event.repeat && !props.disabled) onPress();
+          },
+        } as object)
+      : null;
+
   if (props.onPress && props.controls) {
     const { paddingVertical, paddingHorizontal, ...outer } = layout;
     return wrap(
@@ -232,13 +247,20 @@ export function ListRow(props: ListRowProps) {
       >
         <Pressable
           testID={props.testID ? `${props.testID}-open` : undefined}
-          accessibilityRole="button"
+          accessibilityRole={checkable ? 'checkbox' : 'button'}
           accessibilityLabel={
             props.accessibilityLabel ?? (typeof props.title === 'string' ? props.title : undefined)
           }
-          accessibilityState={{ disabled: !!props.disabled }}
+          accessibilityHint={props.hint}
+          accessibilityState={
+            checkable
+              ? { disabled: !!props.disabled, checked: props.checked }
+              : { disabled: !!props.disabled }
+          }
+          aria-checked={checkable ? props.checked : undefined}
           disabled={props.disabled}
           onPress={props.onPress}
+          {...checkboxKeys(props.onPress)}
           style={(state) => [
             {
               flex: 1,
@@ -264,14 +286,7 @@ export function ListRow(props: ListRowProps) {
     );
   }
   if (props.onPress) {
-    const checkable = props.checked !== undefined;
     const onPress = props.onPress;
-    // react-native-web presses only role="button" with the space bar; a checkbox row does it here.
-    const onKeyDown = (event: KeyEvent) => {
-      if (event.key !== ' ' && event.key !== 'Spacebar') return;
-      event.preventDefault();
-      if (!event.repeat && !props.disabled) onPress();
-    };
     return wrap(
       <Pressable
         testID={props.testID}
@@ -288,7 +303,7 @@ export function ListRow(props: ListRowProps) {
         aria-checked={checkable ? props.checked : undefined}
         disabled={props.disabled}
         onPress={onPress}
-        {...(checkable ? ({ onKeyDown } as object) : null)}
+        {...checkboxKeys(onPress)}
         style={(state) => [
           layout,
           frame,

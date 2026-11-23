@@ -19,7 +19,7 @@ export function invitationHint(offlineHint: string | undefined): string {
 
 /** The notice after inviting (AC-006). */
 export function invitedNotice(email: string): string {
-  return `${email} ist eingeladen. Ist die Adresse neu: bei Google als Testnutzer eintragen.`;
+  return `${email} ist eingeladen. Ist die Adresse neu, muss Enrico sie bei Google eintragen.`;
 }
 
 /** The notice after "Zurückziehen" (AC-001). */

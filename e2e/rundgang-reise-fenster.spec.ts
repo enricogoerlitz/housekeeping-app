@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 
 import {
+  day,
   expect,
   freshSeed,
   open,
@@ -73,6 +74,24 @@ test('AC-011 / AC-013 (0022): changing the note shows "Speichern", the window st
   await expect(toastMessage(page)).toHaveText('Reise geändert');
   await expect(tid(page, 'trip-window-title')).toHaveText('Mallorca mit Oma');
   await expect(tid(page, 'trip-save')).toHaveCount(0);
+});
+
+test('AC-068 (0031): a shorter end, not yet saved, shows its days and "je Tag" quantities', async ({
+  page,
+}) => {
+  await openFromTrips(page, MALLORCA);
+  const shirts = page.locator('[data-testid^="trip-item-"]', { hasText: 'T-Shirts' }).first();
+  await expect(tid(page, 'trip-subtitle')).toHaveText('7 Tage');
+  await expect(shirts).toContainText('T-Shirts 7×');
+  const end = day(15);
+  await tid(page, 'trip-to').click();
+  for (let step = 0; step < 2 && !(await tid(page, `range-day-${end}`).isVisible()); step += 1) {
+    await tid(page, 'range-next').click();
+  }
+  await tid(page, `range-day-${end}`).click();
+  await expect(tid(page, 'trip-save')).toBeVisible();
+  await expect(tid(page, 'trip-subtitle')).toHaveText('4 Tage');
+  await expect(shirts).toContainText('T-Shirts 4×');
 });
 
 test('AC-017 (0022): a trip without a packing list is deleted with 5 s "Rückgängig"', async ({
