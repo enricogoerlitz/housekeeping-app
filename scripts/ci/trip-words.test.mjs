@@ -137,9 +137,19 @@ test('AC-033 (0031): an e2e test name with "absence window" is red, the proofs a
   );
 });
 
-test('AC-034 (0031): "Starter-Katalog" and starterCatalog stay allowed', () => {
+test('AC-034 (0031): every dropped identifier is red, "Starter-Katalog" and starterCatalog stay allowed', () => {
   assert.equal(DROPPED.test('Starter-Katalog'), false);
   assert.equal(DROPPED.test('const starterCatalog = useStarterCatalog();'), false);
-  assert.equal(DROPPED.test('<StarterSheet />'), true);
-  assert.equal(DROPPED.test('parseTimeInput("19:30")'), true);
+  for (const word of [
+    'not_' + 'cooked',
+    'reservation_' + 'reminder',
+    'remind_minutes_' + 'before',
+    'recipe_' + 'deletions',
+    '<Starter' + 'Sheet />',
+    'listStarter' + 'Recipes()',
+    'QUICK_' + 'ADD',
+    'parseTime' + 'Input("19:30")',
+  ]) {
+    assert.equal(DROPPED.test(word), true, word);
+  }
 });
