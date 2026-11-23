@@ -67,15 +67,15 @@ Use `expo install` for anything native so versions match the Expo SDK.
 | ------------------------------------------------------------ | ---------------------------------------------------- |
 | The app (routes in `src/app`, features in `src/features`)    | `apps/app/`                                          |
 | Pure domain logic — no React, no Supabase, no I/O            | `packages/core/`                                     |
-| Data access: Supabase client, local cache, delta sync, hooks | `packages/api/` (created by the first data spec)     |
-| Design system: tokens and components                         | `packages/ui/` (created by the design spec)          |
+| Data access: Supabase client, local cache, delta sync, hooks | `packages/api/`                                      |
+| Design system: tokens and components                         | `packages/ui/`                                       |
 | Migrations, pgTAP tests, edge functions                      | `supabase/`                                          |
 | Infrastructure, pipeline, operations runbook                 | `infra/`, `.github/`, `docs/architecture/betrieb.md` |
 | Product vision, backlog, domain guidelines                   | `docs/product/vision.md`                             |
 | Requirements and plan per feature                            | `docs/specs/NNNN-slug/{spec,plan}.md`                |
 | Architecture decisions                                       | `docs/adr/`                                          |
 | System overview, sync concept                                | `docs/architecture/`                                 |
-| Look and feel                                                | `docs/design/DESIGN.md` (created by the design spec) |
+| Look and feel                                                | `docs/design/DESIGN.md`                              |
 | Domain vocabulary                                            | `.agents/glossary.md`                                |
 | Scratch work (git-ignored)                                   | `tmp/<topic>/`                                       |
 
