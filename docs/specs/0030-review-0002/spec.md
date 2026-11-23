@@ -175,8 +175,12 @@ gehen, Aktivitäten machen“). Offline: offline lesend.
   wartet sie wie bisher bis nach der Reise (Spec 0026, unverändert).
 - AC-030: Angenommen ich öffne „Reise eintragen“ · Dann steht unter „Wer?“ der neue Satz, „Wer isst
   mit?“ kommt darin nicht vor.
+- AC-031: Angenommen „Einplanen“ für „Lasagne“ und bei „Wer isst mit?“ nur Enrico gewählt · Wenn ich
+  einen anderen Tag, eine andere Woche, „Ohne Tag vormerken“ oder „Anderes Datum …“ wähle · Dann
+  bleibt nur Enrico gewählt, und die Portionen bleiben, wie sie waren.
 
-**Ersetzt** (gilt nicht mehr): Spec 0008 AC-036 (erster Teil: Abwesende nicht vorausgewählt);
+**Ersetzt** (gilt nicht mehr): Spec 0008 AC-036 (erster Teil: Abwesende nicht vorausgewählt) und
+Plan E11 (ein anderer Tag setzt „Wer isst mit?“ zurück, siehe AC-031);
 Spec 0010 AC-033 und AC-034 (je die Zeile zu „Wer isst mit?“); Spec 0016 AC-016 (Zusatz „· Nadja
 ist dann auf Reise“); Spec 0022 REQ-007 und REQ-008 mit AC-021 bis AC-027 (Reisende aus geplanten
 Gerichten nehmen); Spec 0023 AC-056 (eine neue Reise ändert die Vorauswahl; AC-055 gilt für

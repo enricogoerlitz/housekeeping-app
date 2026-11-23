@@ -152,6 +152,20 @@ test.describe('REQ-008: trips act only on chores', () => {
     await expect(tid(page, `eater-${NADJA_ID}`)).toHaveAttribute('aria-selected', 'true');
   });
 
+  test('AC-031: a hand-made "Wer isst mit?" stays when changing the day, the week or "Vormerken"', async ({
+    page,
+  }) => {
+    await open(page, `/rezept/${LASAGNE}`);
+    await tid(page, 'recipe-plan').click();
+    await tid(page, `eater-${NADJA_ID}`).click();
+    await expect(tid(page, `eater-${NADJA_ID}`)).toHaveAttribute('aria-selected', 'false');
+    await tid(page, 'plan-recipe-week-next').click();
+    await tid(page, `plan-recipe-day-${day(8)}`).click();
+    await tid(page, 'plan-recipe-later').click();
+    await expect(tid(page, `eater-${ENRICO_ID}`)).toHaveAttribute('aria-selected', 'true');
+    await expect(tid(page, `eater-${NADJA_ID}`)).toHaveAttribute('aria-selected', 'false');
+  });
+
   test('AC-026 / AC-030: saving a trip asks nothing about dishes; the note names no eaters', async ({
     page,
   }) => {

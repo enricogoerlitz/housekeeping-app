@@ -134,15 +134,12 @@ export function addedNotice(title: string, date: ISODate | null, today: ISODate)
 }
 
 /**
- * Another day, or null for "Ohne Tag vormerken": "Wer isst mit?" goes back to the whole household;
- * guests, Tageszeit and cook stay (E11; spec 0030, REQ-008).
+ * Another day, or null for "Ohne Tag vormerken": only the day changes. "Wer isst mit?", guests,
+ * Tageszeit and cook stay, because the preselection no longer depends on the day (spec 0030,
+ * REQ-008, AC-031).
  */
-export function withPlanDay(
-  choice: PlanChoice,
-  date: ISODate | null,
-  members: readonly Member[],
-): PlanChoice {
-  return { ...choice, date, eaterIds: eatersForDay(members) };
+export function withPlanDay(choice: PlanChoice, date: ISODate | null): PlanChoice {
+  return { ...choice, date };
 }
 
 /**
@@ -150,11 +147,7 @@ export function withPlanDay(
  * shown week and the button never names a day out of sight (AC-035). Without a day nothing
  * changes.
  */
-export function pagePlanChoice(
-  choice: PlanChoice,
-  weeks: number,
-  members: readonly Member[],
-): PlanChoice {
+export function pagePlanChoice(choice: PlanChoice, weeks: number): PlanChoice {
   if (choice.date === null) return choice;
-  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members);
+  return withPlanDay(choice, addDays(choice.date, 7 * weeks));
 }

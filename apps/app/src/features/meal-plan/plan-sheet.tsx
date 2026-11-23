@@ -123,22 +123,18 @@ export function PlanSheet(props: {
   const noEaters = withEaters && choice.eaterIds.length + choice.guests === 0;
 
   const update = (next: PlanChoice, counted = false) => {
-    // Another day starts the counters over from those present; a choice of eaters counts on.
+    // New eaters or guests start the counters over; a choice made in the counters counts on.
     if (!counted && (next.eaterIds !== choice.eaterIds || next.guests !== choice.guests)) {
       portions.reset(next.eaterIds, next.guests);
     }
     setChoice(next);
     setError(undefined);
   };
-  // Another day sets "Wer isst mit?" back to everyone (E11): untouched again.
-  const toDay = (date: string | null) => {
-    setTouched(false);
-    update(withPlanDay(choice, date, members));
-  };
+  // Another day keeps "Wer isst mit?" and the counters (spec 0030, AC-031).
+  const toDay = (date: string | null) => update(withPlanDay(choice, date));
   const page = (weeks: number) => {
     setWeekOffset(weekOffset + weeks);
-    setTouched(false);
-    update(pagePlanChoice(choice, weeks, members));
+    update(pagePlanChoice(choice, weeks));
   };
   const toggleLater = () => {
     if (choice.date !== null) {
