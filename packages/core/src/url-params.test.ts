@@ -6,7 +6,6 @@ import {
   calendarFromParams,
   cookingStepFromParam,
   PAGE_PARAMS,
-  pageHref,
   pageQuery,
   pageParamsBefore,
   readPageParams,
@@ -22,11 +21,25 @@ import {
   sectionOfPath,
   sectionOfStartPath,
   startPageHref,
+  type PageKey,
+  type PageParams,
 } from './url-params';
 
 const LASAGNE = '0b4a3c52-8e5f-4d1a-9b7e-2f6d8c9a1e01';
 const TEST_HOUSEHOLD = '7d1e2f30-4a5b-4c6d-8e9f-a0b1c2d3e4f5';
 const OWN_HOUSEHOLD = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+
+/** The address the router writes for a page's values: encoded, route ids belong in `path`. */
+function pageHref<K extends PageKey>(path: string, page: K, values: PageParams<K>): string {
+  const pairs: string[] = [];
+  for (const [name, value] of Object.entries(pageQuery(page, values))) {
+    if (name === 'id' || value === undefined) continue;
+    for (const entry of Array.isArray(value) ? value : [value]) {
+      pairs.push(`${encodeURIComponent(name)}=${encodeURIComponent(entry)}`);
+    }
+  }
+  return pairs.length > 0 ? `${path}?${pairs.join('&')}` : path;
+}
 
 /** The query of an address as the router hands it over: decoded, repeated names as lists. */
 function rawOf(href: string): Record<string, string[]> {

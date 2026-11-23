@@ -10,7 +10,7 @@ import {
 } from '@housekeeping/core';
 import type { IconName } from '@housekeeping/ui';
 
-export function effortLabel(effort: number): string {
+function effortLabel(effort: number): string {
   return effort === 1 ? '1 Punkt' : `${effort} Punkte`;
 }
 

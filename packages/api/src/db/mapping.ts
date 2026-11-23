@@ -80,7 +80,7 @@ type Cached<T extends TableName> = Partial<Tables<T>> & { id: string };
 const opt = <T>(value: T | null | undefined): T | undefined => (value === null ? undefined : value);
 
 /** The column default of `households.timezone`; every household row from the server has one. */
-const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
+export const HOUSEHOLD_TIME_ZONE_DEFAULT = 'Europe/Berlin';
 
 /** Domain jsonb values are plain JSON by construction (no functions, no dates). */
 const json = (value: unknown): NonNullable<Json> => value as NonNullable<Json>;
@@ -1011,7 +1011,10 @@ function toHousehold(row: SmallRow, members: SmallRow[]): Household {
     id: String(r.id),
     name: r.name ?? '',
     memberIds: members.map((member) => String(member.profile_id)),
-    mealSlots: (r.meal_slots ?? []) as unknown as Household['mealSlots'],
+    // Sorted once here, so every screen can take them as they come (spec 0031, C-15).
+    mealSlots: [...((r.meal_slots ?? []) as unknown as Household['mealSlots'])].sort(
+      (a, b) => a.sort - b.sort,
+    ),
     defaultStoreId: opt(r.default_store_id),
     timeZone: r.timezone ?? HOUSEHOLD_TIME_ZONE_DEFAULT,
   };

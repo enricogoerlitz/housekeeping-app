@@ -4,8 +4,8 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import type { PageSection, SectionEditor } from './use-section-editor';
 
-export const DONE_LABEL = 'Fertig';
-export const CANCEL_LABEL = 'Abbrechen';
+const DONE_LABEL = 'Fertig';
+const CANCEL_LABEL = 'Abbrechen';
 
 /**
  * The props every section of the recipe page shares: pen, "Abbrechen" and "Fertig" (spec 0023,

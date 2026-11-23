@@ -1,6 +1,7 @@
 import {
   useCurrentMember,
   useHousehold,
+  useHouseholdClock,
   useHouseholdsMap,
   usePlanEntries,
   useToday,
@@ -60,7 +61,9 @@ export function TodayScreen() {
   // Two columns and the nav beside the title only from 1100 px (spec 0031, REQ-032).
   const twoColumns = bp === 'desktop';
   // The time of day only picks the greeting; the date itself comes from useToday().
-  const [hour] = useState(() => new Date().getHours());
+  // Spec 0031, AC-050: the greeting follows the household's clock, not the device's.
+  const clock = useHouseholdClock();
+  const [hour] = useState(() => clock().hour);
   const today = useToday();
   const me = useCurrentMember();
   const household = useHousehold();
@@ -80,7 +83,7 @@ export function TodayScreen() {
   const shown = address.params.tag ?? today;
   const show = (date: ISODate) => address.replace({ tag: date === today ? undefined : date });
 
-  const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
+  const slots = household.mealSlots;
   const slotOrder = slots.map((slot) => slot.id);
   const slotNames = Object.fromEntries(slots.map((slot) => [slot.id, slot.name]));
   const sections = overviewSections(shown, today);

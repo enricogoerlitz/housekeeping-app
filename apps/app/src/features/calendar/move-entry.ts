@@ -4,6 +4,7 @@ import {
   snapshot,
   useActivitiesById,
   useHousehold,
+  useHouseholdClock,
   usePlanEntries,
   useRecipesById,
   useRestaurantsById,
@@ -42,6 +43,7 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
   const entries = usePlanEntries();
   const household = useHousehold();
   const today = useToday();
+  const clock = useHouseholdClock();
   const titleOf = useEntryTitle();
 
   return (entry, target) => {
@@ -50,10 +52,10 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
       target,
       entries,
       // In the household's order: it decides what "later" means (spec 0021, REQ-012).
-      slots: [...household.mealSlots].sort((a, b) => a.sort - b.sort),
+      slots: household.mealSlots,
       title: titleOf(entry),
       today,
-      now: new Date(),
+      now: clock().now,
       timeZone: household.timeZone,
     });
     if (move.kind === 'same') return 'same';

@@ -206,7 +206,7 @@ export function detachBackend(hooks: BackendHooks): void {
 }
 
 function requireBackend(): BackendHooks {
-  if (!backend) throw new Error('Not signed in');
+  if (!backend) throw new Error('Du bist nicht angemeldet.');
   return backend;
 }
 

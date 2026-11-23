@@ -6,11 +6,11 @@
 import type { Point } from './drop-targets';
 
 /** A mouse drag starts once the pointer has moved this far with the button down. */
-export const MOUSE_DRAG_DISTANCE = 4;
+const MOUSE_DRAG_DISTANCE = 4;
 /** A finger lifts the entry after holding this long … */
-export const TOUCH_HOLD_MS = 400;
+const TOUCH_HOLD_MS = 400;
 /** … without moving further than this; moving further first means the person scrolls. */
-export const TOUCH_SLOP = 8;
+const TOUCH_SLOP = 8;
 
 /** A pen behaves like a finger: the caller passes it as `touch`. */
 export type PointerKind = 'mouse' | 'touch';

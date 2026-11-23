@@ -12,14 +12,13 @@ import {
   noteChangeHint,
   originRows,
   MAX_ITEM_COUNT,
-  originSummary,
   recipeSource,
   relabelForDay,
   resolveShoppingStore,
   SHOPPER_ACTIVE_MINUTES,
 } from './shopping-list';
 import { originLabel } from './shopping';
-import { enrico, makeRecipe, nadja, vera } from './test-fixtures';
+import { enrico, makeRecipe, nadja, originSummary, vera } from './test-fixtures';
 import type { Id, Recipe, ShoppingContribution, ShoppingItem, Store } from './types';
 
 const manual = (id: Id, count?: number): ShoppingContribution => ({
@@ -104,35 +103,6 @@ describe('recipeSource and originLabel', () => {
 
   it('AC-014: manual contributions read "von Hand"', () => {
     expect(originLabel({ kind: 'manual' })).toBe('von Hand');
-  });
-});
-
-describe('originSummary', () => {
-  it('AC-014: "Lasagne (Fr): 1× · von Hand: 1×"', () => {
-    expect(originSummary(item([fromPlan('a', 'Lasagne', 'Fr'), manual('b', 1)]))).toBe(
-      'Lasagne (Fr): 1× · von Hand: 1×',
-    );
-  });
-
-  it('AC-059: keeps the order in which the contributions came: "von Hand: 1× · Mango-Curry: 1×"', () => {
-    const direct: ShoppingContribution = {
-      id: 'b',
-      source: recipeSource({ id: 'rec-curry', title: 'Mango-Curry' }),
-      count: 1,
-    };
-    expect(originSummary(item([manual('a', 1), direct]))).toBe('von Hand: 1× · Mango-Curry: 1×');
-  });
-
-  it('AC-037: two manual contributions of one item read as one "von Hand: 2×"', () => {
-    expect(originSummary(item([manual('a', 1), manual('b', 1)]))).toBe('von Hand: 2×');
-  });
-
-  it('AC-008: quantities read with their unit; a contribution without amount reads only its origin', () => {
-    expect(
-      originSummary(
-        item([fromPlan('a', 'Kürbissuppe', 'Sa', { qty: 500, unit: 'g' }), manual('b')]),
-      ),
-    ).toBe('Kürbissuppe (Sa): 500 g · von Hand');
   });
 });
 

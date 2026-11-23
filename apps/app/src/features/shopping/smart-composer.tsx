@@ -10,6 +10,7 @@ import {
 import { Button, Chip, ComposerBar, IconButton, Text, TextField } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 const MAX_SUGGESTIONS = 4;
 
@@ -102,7 +103,7 @@ export function SmartComposer(props: {
       if (refocus) setFieldKey(fieldKey + 1);
       if (added) props.onAdded?.(added);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+      setError(errorMessage(caught, FAILED_MESSAGE));
     }
   };
 

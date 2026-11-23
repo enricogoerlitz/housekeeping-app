@@ -13,13 +13,3 @@ export const fontAssets: Record<string, number> = {
   DMSans_500Medium: require('@expo-google-fonts/dm-sans/500Medium/DMSans_500Medium.ttf'),
   DMSans_600SemiBold: require('@expo-google-fonts/dm-sans/600SemiBold/DMSans_600SemiBold.ttf'),
 };
-
-/** The subset of font files a theme needs, ready for `useFonts` / `Font.loadAsync`. */
-export function fontsFor(keys: string[]): Record<string, number> {
-  const result: Record<string, number> = {};
-  for (const key of keys) {
-    const asset = fontAssets[key];
-    if (asset !== undefined) result[key] = asset;
-  }
-  return result;
-}

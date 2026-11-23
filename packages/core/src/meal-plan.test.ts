@@ -10,7 +10,6 @@ import {
   olderLeftoverCandidates,
   orderSlotEntries,
   splitVariants,
-  variantSummary,
   visitsOf,
   withNote,
 } from './meal-plan';
@@ -54,8 +53,6 @@ describe('splitVariants', () => {
       ],
       misfitMemberIds: [],
     });
-    const planned = entry({ id: 'e', recipeId: mangoCurry.id, variants: split.variants });
-    expect(variantSummary(planned, mangoCurry)).toBe('mit Tofu 1 · mit Hähnchen 1');
   });
 
   it('AC-025: Spaghetti Bolognese does not fit Nadja', () => {
@@ -189,20 +186,6 @@ describe('splitVariants', () => {
       variants: [],
       misfitMemberIds: [],
     });
-  });
-});
-
-describe('variantSummary', () => {
-  it('lists only variants with portions, in recipe order; "" without variants', () => {
-    const planned = entry({
-      id: 'e',
-      variants: [
-        { variantId: 'v-haehnchen', portions: 1.5 },
-        { variantId: 'v-tofu', portions: 0 },
-      ],
-    });
-    expect(variantSummary(planned, mangoCurry)).toBe('mit Hähnchen 1,5');
-    expect(variantSummary(entry({ id: 'b' }), bolognese)).toBe('');
   });
 });
 

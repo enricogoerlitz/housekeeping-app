@@ -28,6 +28,7 @@ import {
   usePhotoChoice,
   type PhotoChoice,
 } from '@/features/shell/own-photo';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 const PRICE_LEVELS: NonNullable<Restaurant['priceLevel']>[] = [1, 2, 3, 4];
 
@@ -39,8 +40,7 @@ export const RESTAURANT_ICON = 'utensils';
 
 type PlaceReading = Extract<LinkReading, { status: 'place' }>;
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
+const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
 /** Which field gets the keyboard first; "notes" from "Notiz bearbeiten" (spec 0024, REQ-002). */
 export type RestaurantFormFocus = 'link' | 'name' | 'notes';

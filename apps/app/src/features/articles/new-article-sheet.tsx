@@ -10,6 +10,7 @@ import { SearchOrCreate, Sheet, Stack, Text } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /**
  * "+ Neu" on the page "Artikel" (AC-026): "Suchen oder anlegen" over the household's articles and
@@ -34,7 +35,7 @@ export function NewArticleSheet(props: {
     try {
       props.onOpen(action());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Das hat nicht geklappt.');
+      setError(errorMessage(caught, FAILED_MESSAGE));
     }
   };
   const choose = (key: string) => {

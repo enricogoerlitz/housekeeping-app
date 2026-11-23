@@ -53,10 +53,7 @@ export function useCalendarData() {
   const events = useChoreEvents();
   const listBags = usePackingListBags();
 
-  const slots = useMemo(
-    () => [...household.mealSlots].sort((a, b) => a.sort - b.sort),
-    [household.mealSlots],
-  );
+  const slots = household.mealSlots;
   const slotOrder = useMemo(() => slots.map((slot) => slot.id), [slots]);
   const stripes = useMemo(() => tripStripes(trips, members), [trips, members]);
   const byDate = useMemo(() => {

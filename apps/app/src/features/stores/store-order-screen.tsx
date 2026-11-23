@@ -33,7 +33,9 @@ import { useAddressedId } from '@/lib/addressed';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { messageOf, ORDER_LABELS } from './labels';
-import { AddAreaSheet, ConfirmDialog, NameSheet } from './store-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
+
+import { AddAreaSheet, NameSheet } from './store-dialogs';
 
 type StoreAction = 'default' | 'delete';
 
@@ -41,7 +43,7 @@ type StoreAction = 'default' | 'delete';
  * ✎ "Markt umbenennen" and ⋯ ("Als Standard", "Markt löschen …", AC-044, AC-045) of a store, with
  * their windows. In the page header on phones, next to the store's name on wide screens.
  */
-export function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
+function StoreActions(props: { storeId: Id; onDeleted: () => void }) {
   const stores = useStores();
   const household = useHousehold();
   const online = useOnlineOnly();

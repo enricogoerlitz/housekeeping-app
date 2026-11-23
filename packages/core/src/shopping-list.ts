@@ -52,24 +52,6 @@ export function relabelForDay(label: string, date: ISODate | null): string {
 }
 
 /**
- * "Lasagne (Fr): 1× · von Hand: 1×": the contributions grouped by origin in the order they came,
- * each with its summed amount; an origin without amount reads alone ("von Hand").
- */
-export function originSummary(item: ShoppingItem): string {
-  const byLabel = new Map<string, ShoppingContribution[]>();
-  for (const contribution of item.contributions) {
-    const label = originLabel(contribution.source);
-    byLabel.set(label, [...(byLabel.get(label) ?? []), contribution]);
-  }
-  return [...byLabel]
-    .map(([label, contributions]) => {
-      const { amount } = summarizeItem({ ...item, contributions });
-      return amount === '' ? label : `${label}: ${amount}`;
-    })
-    .join(' · ');
-}
-
-/**
  * What the field "Von Hand" starts with (spec 0025, AC-010): the summed manual share as typed,
  * "500 g", "2" for a count; empty without one.
  */

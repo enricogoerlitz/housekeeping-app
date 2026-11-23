@@ -1,5 +1,6 @@
 import { orderAnnouncement } from '@housekeeping/core';
 import type { ReorderListLabels } from '@housekeeping/ui';
+import { errorMessage } from '@/features/shell/error-message';
 
 // Words of "Reisetaschen" and the trip window (spec 0012). Task 9 appends its own exports at the
 // end of this file.
@@ -18,4 +19,4 @@ export const FOR_EVERYONE = 'alle';
 export const FOR_EVERYONE_LABEL = 'Alle';
 
 export const FAILED = 'Hat nicht geklappt – bitte noch einmal versuchen';
-export const messageOf = (error: unknown) => (error instanceof Error ? error.message : FAILED);
+export const messageOf = (error: unknown) => errorMessage(error, FAILED);

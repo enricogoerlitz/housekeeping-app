@@ -75,14 +75,17 @@ export function useLiftedKind(): DragKind | null {
   return kindOf(useLiftedSource());
 }
 
-export function inRange(range: DayRange | null, date: ISODate): boolean {
+function inRange(range: DayRange | null, date: ISODate): boolean {
   return range !== null && range.from <= date && date <= range.to;
 }
 
-/** A day the dragged entry cannot go to: shown pale in month and year (AC-015). */
-export function useRefusedDay(date: ISODate): boolean {
+/**
+ * Whether the dragged entry cannot go to a day (or one Tageszeit of it): such places are shown
+ * pale in week, month and year (spec 0016, AC-015). Nothing is refused while nothing is dragged.
+ */
+export function useRefusedDays(): (date: ISODate, slotId?: string) => boolean {
   const { bounds } = useCalendarDrag();
-  return bounds !== null && !isSelectableMoveDay(bounds, date);
+  return (date, slotId) => bounds !== null && !isSelectableMoveDay(bounds, date, slotId);
 }
 
 /**
@@ -130,8 +133,7 @@ export function SlotTarget(props: {
 }) {
   const ref = useRef<HostInstance>(null);
   const kind = useDraggedKind();
-  const { bounds } = useCalendarDrag();
-  const refused = bounds !== null && !isSelectableMoveDay(bounds, props.date, props.slotId);
+  const refused = useRefusedDays()(props.date, props.slotId);
   const target = useDropTarget(
     moveTargetKey({ kind: 'slot', date: props.date, slotId: props.slotId }),
     ref,

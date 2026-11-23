@@ -7,7 +7,6 @@ import {
   type ISODate,
   type MealPlanEntry,
   type Member,
-  type PlanEntryVariant,
   type Recipe,
   type TimeOfDay,
 } from '@housekeeping/core';
@@ -41,16 +40,6 @@ export function entryTitle(
   activitiesById: Record<Id, { name: string }> = {},
 ): string {
   return planEntryTitle(entry, recipesById, entries, restaurantsById, activitiesById);
-}
-
-/** "mit Tofu 1 · mit Hähnchen 1" for a split that is not saved yet. */
-export function splitSummary(recipe: Recipe, variants: PlanEntryVariant[]): string {
-  return recipe.variants
-    .flatMap((variant) => {
-      const row = variants.find((candidate) => candidate.variantId === variant.id);
-      return row && row.portions > 0 ? [`${variant.name} ${row.portions}`] : [];
-    })
-    .join(' · ');
 }
 
 /** "Passt nicht für Nadja", "Passt nicht für Enrico und Nadja". */

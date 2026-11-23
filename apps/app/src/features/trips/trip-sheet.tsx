@@ -16,6 +16,7 @@ import {
   saveLabel,
   startOfMonth,
   validateTripDraft,
+  weekdayHeads,
   type Id,
   type ISODate,
   type RangePick,
@@ -41,8 +42,6 @@ import { useOnlineOnly } from '@/features/shell/offline';
 
 import { TripBagChips } from './trip-bag-chips';
 
-const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-
 export interface TripFieldValues {
   who: Id[];
   range: RangePick;
@@ -55,7 +54,7 @@ export interface TripFieldValues {
  * What a trip does, under "Wer?" when creating one (spec 0026, REQ-015; spec 0030, REQ-008: a trip
  * changes nothing about eating).
  */
-export const TRIP_EFFECT_NOTE =
+const TRIP_EFFECT_NOTE =
   'Wer weg ist, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.';
 
 /** Under the switch "Entwurf" (spec 0030, REQ-004). */
@@ -333,7 +332,7 @@ function RangeCalendar(props: {
       onMonthChange={props.onMonth}
       onSelect={props.onPick}
       title={monthTitle(props.month)}
-      weekdayLabels={WEEKDAY_HEADS}
+      weekdayLabels={weekdayHeads(false)}
       previousLabel="Voriger Monat"
       nextLabel="Nächster Monat"
       dayLabel={formatPickerDate}

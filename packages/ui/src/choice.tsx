@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -11,13 +11,7 @@ import {
   type ScrollViewInstance,
 } from 'react-native';
 
-import {
-  ChipView,
-  FOCUS_RING_ROOM,
-  IconButton,
-  keyboardFocused,
-  keyboardFocusRing,
-} from './controls';
+import { ChipView, FOCUS_RING_ROOM, keyboardFocused, keyboardFocusRing } from './controls';
 import { expandableA11y } from './expandable';
 import { type IconName } from './icons';
 import { menuKey } from './menu-keys';
@@ -534,137 +528,6 @@ export function Menu<T extends string>(props: MenuProps<T>) {
               </Pressable>
             );
           })}
-        </View>
-      </Modal>
-    </>
-  );
-}
-
-export interface PopoverProps {
-  /** Text of the link that opens it, e.g. "+2 weitere". */
-  label: string;
-  /** Accessible name of the link, e.g. "2 weitere Einträge am Freitag, 1. Januar". */
-  accessibilityLabel: string;
-  /** Title in the panel's head, e.g. "Freitag, 1. Januar". */
-  title: string;
-  /** The content; `close` closes the panel, e.g. before navigating away. */
-  children: (close: () => void) => ReactNode;
-  width?: number;
-  /** The link; the panel is `${testID}-panel`, its ✕ `${testID}-close`. */
-  testID?: string;
-}
-
-const POPOVER_MAX_HEIGHT = 440;
-
-/**
- * A small panel that opens at its link, e.g. behind "+2 weitere" in the month (spec 0010,
- * AC-012). Opens with a click or Enter; Escape, ✕ or a click outside closes it.
- */
-export function Popover(props: PopoverProps) {
-  const theme = useTheme();
-  const c = theme.colors;
-  const window = useWindowDimensions();
-  const trigger = useRef<HostInstance>(null);
-  const hover = useHover();
-  const { anchor, isOpen, open, hide } = useAnchoredPanel(trigger);
-  const close = () => {
-    hide();
-    trigger.current?.focus();
-  };
-  // Focus stays on the link, outside the modal, so the web needs its own Escape (spec 0010).
-  useEscapeCloses(isOpen, hide, trigger);
-
-  const width = Math.min(props.width ?? 320, window.width - 16);
-  const maxHeight = Math.min(POPOVER_MAX_HEIGHT, window.height - 16);
-  const below = (anchor?.y ?? 0) + (anchor?.height ?? 0) + 4;
-  const top =
-    below + maxHeight > window.height - 8
-      ? Math.max(8, Math.min(below, window.height - maxHeight - 8))
-      : below;
-  const left = Math.max(8, Math.min(anchor?.x ?? 0, window.width - width - 8));
-
-  return (
-    <>
-      <Pressable
-        ref={trigger}
-        testID={props.testID}
-        accessibilityRole="button"
-        {...expandableA11y(props.accessibilityLabel, isOpen, Platform.OS)}
-        aria-haspopup="dialog"
-        onPress={open}
-        hitSlop={6}
-        style={(state) => {
-          const { pressed, hovered, focused } = state as PressState;
-          return [
-            {
-              alignSelf: 'flex-start',
-              paddingHorizontal: 4,
-              paddingVertical: 2,
-              borderRadius: theme.shape.radius.control,
-              backgroundColor: hover(hovered) ? c.surfaceSunken : 'transparent',
-              opacity: pressed ? 0.6 : 1,
-            },
-            keyboardFocusRing(theme, focused),
-          ];
-        }}
-      >
-        <Text variant="caption" color="muted" numberOfLines={1}>
-          {props.label}
-        </Text>
-      </Pressable>
-      <Modal visible={isOpen} transparent animationType="fade" onRequestClose={close}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Schließen"
-          onPress={close}
-          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-        />
-        <View
-          testID={props.testID ? `${props.testID}-panel` : undefined}
-          accessibilityRole="none"
-          aria-modal
-          role="dialog"
-          aria-label={props.title}
-          style={{
-            position: 'absolute',
-            top,
-            left,
-            width,
-            maxHeight,
-            borderRadius: theme.shape.radius.card,
-            backgroundColor: c.surface,
-            borderWidth: 1,
-            borderColor: c.border,
-            boxShadow: '0px 8px 24px rgba(0,0,0,0.16)',
-            overflow: 'hidden',
-          }}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              paddingLeft: 14,
-              paddingRight: 4,
-              paddingTop: 4,
-            }}
-          >
-            <Text variant="bodyStrong" heading style={{ flex: 1 }} numberOfLines={1}>
-              {props.title}
-            </Text>
-            <IconButton
-              icon="x"
-              label="Schließen"
-              onPress={close}
-              testID={props.testID ? `${props.testID}-close` : undefined}
-            />
-          </View>
-          <ScrollView
-            style={{ overscrollBehavior: 'contain' } as object}
-            contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14, gap: 8 }}
-          >
-            {props.children(hide)}
-          </ScrollView>
         </View>
       </Modal>
     </>

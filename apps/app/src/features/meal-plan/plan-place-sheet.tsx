@@ -1,4 +1,4 @@
-import { addPlanEntry, NOTE_MAX_LENGTH, useHousehold } from '@housekeeping/api';
+import { addPlanEntry, NOTE_MAX_LENGTH, useHousehold, useHouseholdClock } from '@housekeeping/api';
 import {
   checkEntryNote,
   suggestedReminder,
@@ -25,6 +25,7 @@ export function PlanPlaceSheet(props: {
   onClose: () => void;
 }) {
   const household = useHousehold();
+  const clock = useHouseholdClock();
   const [startsAt, setStartsAt] = useState<TimeOfDay | undefined>();
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | undefined>();
@@ -40,7 +41,7 @@ export function PlanPlaceSheet(props: {
     const time = choice.date ? startsAt : undefined;
     const suggestion =
       choice.date && time
-        ? suggestedReminder(choice.date, time, new Date(), household.timeZone)
+        ? suggestedReminder(choice.date, time, clock().now, household.timeZone)
         : undefined;
     addPlanEntry({
       date: choice.date,

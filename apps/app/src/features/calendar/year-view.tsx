@@ -1,6 +1,5 @@
 import {
   dateRangeLabel,
-  isSelectableMoveDay,
   monthGrid,
   monthName,
   parseISODate,
@@ -38,7 +37,7 @@ import {
   RangeMark,
   TripSource,
   WeekRowTarget,
-  useCalendarDrag,
+  useRefusedDays,
 } from './calendar-drag';
 import { useScrollTo } from './calendar-scroll';
 
@@ -291,7 +290,7 @@ function MiniDay(props: {
   register: (node: HostInstance | null) => void;
 }) {
   const theme = useTheme();
-  const { bounds } = useCalendarDrag();
+  const refusedDays = useRefusedDays();
   const coverage = yearDayTrip(props.date, props.data.stripes);
   const member = coverage.kind === 'one' ? props.data.membersById[coverage.memberId] : undefined;
   const background =
@@ -313,7 +312,7 @@ function MiniDay(props: {
   const isToday = props.date === props.data.today;
   const c = theme.colors;
   // Days the dragged entry cannot go to are pale (spec 0016, AC-015).
-  const refused = bounds !== null && !isSelectableMoveDay(bounds, props.date);
+  const refused = refusedDays(props.date);
   return (
     <TripSource date={props.date} style={{ flex: 1, opacity: refused ? PALE_OPACITY : 1 }}>
       {(guardPress) => (

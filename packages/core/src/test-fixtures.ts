@@ -1,4 +1,6 @@
 // Shared sample data for the unit tests of this package. Not exported from index.ts.
+import type { ChoreAway } from './chore-schedule';
+import { originLabel, summarizeItem } from './shopping';
 import type {
   Article,
   CollectionRecipe,
@@ -10,6 +12,8 @@ import type {
   PackingBagItem,
   Recipe,
   RecipeIngredient,
+  ShoppingContribution,
+  ShoppingItem,
   Trip,
 } from './types';
 
@@ -389,4 +393,27 @@ export function trip(
     note,
     members: memberIds.map((memberId) => ({ id: `${id}:${memberId}`, memberId })),
   };
+}
+
+/** No trips: every day is free (for tests that do not look at trips). */
+export function withoutTrips(members: readonly Member[]): ChoreAway {
+  return { members, trips: [] };
+}
+
+/**
+ * "Lasagne (Fr): 1× · von Hand: 1×": an item's contributions grouped by origin in the order they
+ * came, each with its summed amount; an origin without amount reads alone ("von Hand").
+ */
+export function originSummary(item: ShoppingItem): string {
+  const byLabel = new Map<string, ShoppingContribution[]>();
+  for (const contribution of item.contributions) {
+    const label = originLabel(contribution.source);
+    byLabel.set(label, [...(byLabel.get(label) ?? []), contribution]);
+  }
+  return [...byLabel]
+    .map(([label, contributions]) => {
+      const { amount } = summarizeItem({ ...item, contributions });
+      return amount === '' ? label : `${label}: ${amount}`;
+    })
+    .join(' · ');
 }

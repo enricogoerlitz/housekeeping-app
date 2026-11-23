@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { useNewAreaHint } from './area-hint';
+import { errorMessage } from '@/features/shell/error-message';
 
 const FAILED = 'Das hat nicht geklappt.';
 
@@ -42,7 +43,7 @@ export function AreaPicker(props: {
       props.onPicked(name);
       newAreaHint(name);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : FAILED);
+      setError(errorMessage(caught, FAILED));
     }
   };
   const check = (selected: boolean) =>

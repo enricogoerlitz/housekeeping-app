@@ -116,21 +116,6 @@ export function monthGrid(iso: ISODate): ISODate[][] {
   return weeks;
 }
 
-/**
- * The period the grid shows after a day was chosen in the day window's week strip (spec 0016,
- * AC-023): it stays while the grid shows the day (the month with the days of its first and last
- * week, the year), otherwise it moves to the period with the day, so the day is marked.
- */
-export function periodForDay(view: CalendarView, start: ISODate, iso: ISODate): ISODate {
-  if (view === 'month') {
-    const weeks = monthGrid(start);
-    const first = weeks[0]?.[0] ?? start;
-    const last = weeks[weeks.length - 1]?.[6] ?? start;
-    return iso >= first && iso <= last ? periodStart('month', start) : periodStart('month', iso);
-  }
-  return periodContains(view, start, iso) ? periodStart(view, start) : periodStart(view, iso);
-}
-
 /** The first days of the twelve months of a year. */
 export function yearMonths(year: number): ISODate[] {
   return Array.from({ length: 12 }, (_, index) => toISODate(new Date(year, index, 1, 12)));

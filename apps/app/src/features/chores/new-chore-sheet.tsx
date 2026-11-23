@@ -13,6 +13,7 @@ import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { ChoreFormFields, useChoreDraft, useChoreTime } from './chore-form';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
 /** "Neue Aufgabe": only the title is required; everything else has a sensible default. */
 export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) {
@@ -48,7 +49,7 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
         remindAtDueTime: time.remind,
       });
     } catch (error) {
-      setErrors({ title: error instanceof Error ? error.message : 'Das hat nicht geklappt.' });
+      setErrors({ title: errorMessage(error, FAILED_MESSAGE) });
       return;
     }
     toast.show({ message: `„${draft.title.trim()}“ angelegt` });

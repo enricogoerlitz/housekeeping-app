@@ -85,7 +85,7 @@ function commandFitsContext(command: AssistantCommand, context: AssistantContext
   }
 }
 
-export function toReply(model: ModelReply, context: AssistantContext): AssistantReply {
+function toReply(model: ModelReply, context: AssistantContext): AssistantReply {
   const parts = (model.proposal?.parts ?? [])
     .filter((part) => commandFitsContext(part.command, context))
     .map((part) => ({ id: crypto.randomUUID(), ...part }));

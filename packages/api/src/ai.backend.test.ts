@@ -150,7 +150,7 @@ describe('aiSearchAsync (backend)', () => {
 describe('without a sign-in', () => {
   it('the AI calls are refused before anything is sent', async () => {
     await expect(askAssistantAsync('Hallo', {})).rejects.toThrow();
-    await expect(getSpeechToken()).rejects.toThrow('Not signed in');
+    await expect(getSpeechToken()).rejects.toThrow('Du bist nicht angemeldet.');
   });
 });
 

@@ -1,9 +1,9 @@
 // Household commands (spec 0003): feedback and articles on the diff path (trips are in
 // commands-trips.backend.test.ts), votes per member over their RPC, assigning an area through the store queue, and the household,
 // invitation and membership calls that wait for the server.
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { berlinToday } from './backend';
+import { syncNow } from './backend';
 import { H, withBackend } from './backend-test-helpers';
 import {
   acceptInvitation,
@@ -152,15 +152,30 @@ describe('the signed-in user', () => {
   it('without a sign-in there is no state, and commands are refused', () => {
     expect(() => getState()).toThrow();
     expect(() => addFeedback({ kind: 'idea', text: 'Etwas' })).toThrow();
-    expect(() => snapshot()).toThrow('Not signed in');
+    expect(() => snapshot()).toThrow('Du bist nicht angemeldet.');
   });
 
-  it('"today" is the Berlin date', async () => {
-    expect(berlinToday(new Date('2026-11-20T22:59:00Z'))).toBe('2026-11-20');
-    expect(berlinToday(new Date('2026-11-20T23:30:00Z'))).toBe('2026-11-21');
-    expect(berlinToday(new Date('2026-06-30T22:30:00Z'))).toBe('2026-07-01');
+  it('AC-049 (0031): "today" is the date on the household clock, whatever the device says', async () => {
+    // 00:00:30 in Berlin, still the evening before in UTC.
+    vi.setSystemTime(new Date('2026-11-20T23:00:30Z'));
     await fx.startEnrico();
-    expect(getState().today).toBe(berlinToday(new Date()));
+    expect(getState().today).toBe('2026-11-21');
+  });
+
+  it('AC-050 (0031): a household in New York has its own "today"', async () => {
+    // 02:00 in Berlin is 20:00 the day before in New York.
+    vi.setSystemTime(new Date('2026-11-21T01:00:00Z'));
+    fx.server.addHousehold(
+      { id: 'h-new-york', name: 'Haus in New York', timezone: 'America/New_York' },
+      [ENRICO],
+    );
+    await fx.startEnrico();
+    await fx.settle();
+    expect(getState().today).toBe('2026-11-21');
+    switchHousehold('h-new-york');
+    await syncNow();
+    expect(getState().activeHouseholdId).toBe('h-new-york');
+    expect(getState().today).toBe('2026-11-20');
   });
 });
 

@@ -13,6 +13,8 @@
 // - EXPO_PUBLIC_DEV_LOGIN=1 only with a local Supabase (spec 0014, AC-038);
 // - staticwebapp.config.json (Azure Static Web Apps, spec 0014) sends the security headers and
 //   the cache rules and falls back to index.html except for /_expo/* (AC-035 to AC-038);
+// - a build against a non-local Supabase other than the preview precaches none of the seed's
+//   sample photos (spec 0031, AC-062);
 // - version.json exists with a valid version and is not in the precache of sw.js (AC-023);
 //   neither is staticwebapp.config.json (Static Web Apps reads it at deploy time; if it is not
 //   served, the whole precache would fail);
@@ -180,6 +182,19 @@ const NEVER_PRECACHED = ['version.json', 'staticwebapp.config.json'];
 /** Valid versions in version.json: a release `JJJJ.M.N`, the preview, or a local build. */
 const VERSION = /^(?:dev|vorschau|\d{4}\.(?:1[0-2]|[1-9])\.[1-9]\d*)$/;
 
+/** Where the export puts the seed's sample photos (packages/api/assets/photos). */
+const SAMPLE_PHOTO = /packages\/api\/assets\/photos\//;
+
+/** The version in version.json, or undefined. */
+function versionOf(text) {
+  try {
+    const version = JSON.parse(text ?? '')?.version;
+    return typeof version === 'string' ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function versionFileProblems(text) {
   if (text === undefined) return ['version.json is missing'];
   let parsed;
@@ -331,6 +346,12 @@ export function checkExport({
     const precached = precachedUrls(serviceWorker);
     for (const name of NEVER_PRECACHED) {
       if (precached.includes(name)) problems.push(`sw.js precaches ${name}`);
+    }
+    // Spec 0031, AC-062: the seed's photos belong to the preview and local builds only.
+    if (!localBuild && versionOf(versionFile) !== 'vorschau') {
+      for (const url of precached.filter((name) => SAMPLE_PHOTO.test(name))) {
+        problems.push(`sw.js precaches the sample photo ${url}`);
+      }
     }
   }
   if (swaConfig === undefined) {

@@ -19,7 +19,7 @@ export interface ToastState extends ToastOptions {
   id: number;
 }
 
-export const TOAST_DURATION_MS = 5000;
+const TOAST_DURATION_MS = 5000;
 
 export interface ToastStore {
   /** Shows a toast; one that is still on screen ends as expired. */

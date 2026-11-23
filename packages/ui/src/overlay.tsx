@@ -23,7 +23,7 @@ import {
   useBottomInset,
 } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
-import { createToastStore, type ToastOptions } from './toast-state';
+import { createToastStore } from './toast-state';
 
 export interface SheetProps {
   visible: boolean;
@@ -210,11 +210,9 @@ export function Sheet(props: SheetProps) {
 }
 
 /** On the web: a scrolling panel keeps its scroll to itself (spec 0019, REQ-009). */
-export const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;
+const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;
 
 // ---------- Toast with "Rückgängig" ----------
-
-export type { ToastOptions };
 
 const store = createToastStore();
 

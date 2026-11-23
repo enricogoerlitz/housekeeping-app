@@ -42,10 +42,11 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { AreaPicker } from '@/features/stores/area-picker';
 
 import { DIET_OPTIONS, RULE_OPTIONS, type RuleChoice } from './labels';
+import { errorMessage } from '@/features/shell/error-message';
 
 const FAILED = 'Das hat nicht geklappt.';
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : FAILED);
+const messageOf = (error: unknown) => errorMessage(error, FAILED);
 
 export interface ArticleEditorProps {
   articleId: Id;

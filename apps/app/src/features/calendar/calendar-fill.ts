@@ -5,7 +5,7 @@ import { useWindowDimensions, type HostInstance } from 'react-native';
 // with the tabs and the window's lower edge, measured from where the calendar's content begins.
 
 /** What the page keeps free under its content when it does not clear the assistant button. */
-export const PAGE_END = 24;
+const PAGE_END = 24;
 
 export interface FillHeight {
   /** Put on an empty view at the top of the calendar's content. */

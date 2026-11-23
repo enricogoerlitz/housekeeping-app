@@ -57,7 +57,7 @@ type BagAction = 'duplicate' | 'delete';
  * ✎ "Umbenennen" and ⋯ "Duplizieren" (AC-008) / "Löschen" with 5 s "Rückgängig" (AC-009) of a
  * Reisetasche. In the page header on phones, next to the bag's name on wide screens.
  */
-export function BagActions(props: {
+function BagActions(props: {
   bagId: Id;
   /** Shows another bag: the copy, or the one that already has the typed name. */
   onOpen: (bagId: Id) => void;

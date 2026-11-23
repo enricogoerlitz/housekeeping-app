@@ -4,7 +4,7 @@
 // Node.
 
 /** Height of the bands at the top and bottom that scroll along. */
-export const AUTO_SCROLL_BAND = 64;
+const AUTO_SCROLL_BAND = 64;
 /** Pixels per second at the very edge; the speed falls off linearly across the band. */
 export const AUTO_SCROLL_MAX_SPEED = 1200;
 /** The paging zones keep clear of the system back gesture at the screen edge. */
@@ -15,14 +15,14 @@ export const EDGE_ZONE_INSET = 20;
  */
 export const EDGE_ZONE_WIDTH = 32;
 /** Over a target the zone ends at its middle, but keeps at least this much (tiny year days). */
-export const EDGE_ZONE_MIN_WIDTH = 16;
+const EDGE_ZONE_MIN_WIDTH = 16;
 /**
  * Holding in a zone this long turns the first page: longer than aiming at a day at the edge
  * takes before letting go …
  */
 export const EDGE_FIRST_PAGE_MS = 1000;
 /** … and then one more page each this often. */
-export const EDGE_REPEAT_PAGE_MS = 1200;
+const EDGE_REPEAT_PAGE_MS = 1200;
 
 export interface Viewport {
   width: number;

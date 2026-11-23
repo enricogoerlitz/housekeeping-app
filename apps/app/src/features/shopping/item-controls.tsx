@@ -20,7 +20,7 @@ export function removeWithUndo(itemId: Id, name: string): void {
  * One tap on + or − (REQ-003). − on 1× removes the item, with "Rückgängig" like removing it.
  * Returns true when the item is gone.
  */
-export function stepItemCount(itemId: Id, name: string, delta: 1 | -1): boolean {
+function stepItemCount(itemId: Id, name: string, delta: 1 | -1): boolean {
   const restore = snapshot();
   const change = adjustItemCount(itemId, delta);
   if (!change?.removed) return false;

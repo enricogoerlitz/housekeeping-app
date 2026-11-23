@@ -25,6 +25,7 @@ import { useState, type ReactNode } from 'react';
 
 import { SectionError, useSectionFrame } from './common';
 import type { SectionEditor } from './use-section-editor';
+import { errorMessage } from '@/features/shell/error-message';
 
 type LinkAction = 'edit' | 'up' | 'down' | 'remove';
 
@@ -187,7 +188,7 @@ function LinkSheet(props: {
       } catch (error) {
         setProblem({
           field: 'url',
-          text: error instanceof Error ? error.message : LINK_LIMIT_HINT,
+          text: errorMessage(error, LINK_LIMIT_HINT),
         });
       }
       return;

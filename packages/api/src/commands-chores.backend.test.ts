@@ -1,7 +1,7 @@
 // Chore commands (spec 0003, spec 0011): entries are booked only by the domain op complete_chore
 // with the state the device saw, and removed only by remove_chore_event — one apply_changes call
 // per command (ADR-0011). Chores themselves are inserted, patched and deleted as rows.
-import { choreBucket, withoutTrips } from '@housekeeping/core';
+import { choreBucket } from '@housekeeping/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { H, TODAY, withBackend } from './backend-test-helpers';
@@ -232,7 +232,7 @@ describe('spec 0011: booking with a condition (complete_chore)', () => {
       done_by: ENRICO,
     });
     const chore = choreById(done.choreId);
-    expect(chore && choreBucket(chore, TODAY, withoutTrips([]))).toBe('asNeeded');
+    expect(chore && choreBucket(chore, TODAY, { members: [], trips: [] })).toBe('asNeeded');
   });
 
   it('AC-040: with "Mehr Angaben" the new chore is planned: 4.12., Nadja is next', async () => {

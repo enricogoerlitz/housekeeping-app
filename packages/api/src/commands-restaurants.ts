@@ -46,7 +46,7 @@ export type RestaurantPatch = Partial<
   >
 >;
 
-export const MAX_RESTAURANT_TAGS = 30;
+const MAX_RESTAURANT_TAGS = 30;
 const TOO_MANY_TAGS = `Höchstens ${MAX_RESTAURANT_TAGS} Schlagworte`;
 
 const trimmed = (text: string | undefined) => text?.trim() || undefined;
@@ -97,7 +97,7 @@ export function readMapsLink(text: string, ownId?: Id): LinkReading {
   };
 }
 
-export const NOT_A_MAPS_LINK_MESSAGE = 'Das ist kein Karten-Link';
+const NOT_A_MAPS_LINK_MESSAGE = 'Das ist kein Karten-Link';
 const RESOLVE_FAILED_MESSAGE =
   'Der Link ließ sich gerade nicht öffnen – bitte noch einmal versuchen';
 

@@ -1,5 +1,6 @@
 import {
   collectionContents,
+  householdTime,
   resolveShoppingStore,
   type Activity,
   type Article,
@@ -13,9 +14,10 @@ import {
   type RecipeBook,
   type Restaurant,
   type Store,
+  type HouseholdTime,
 } from '@housekeeping/core';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { useAppSelector, useDataSelector } from './store';
 
@@ -31,6 +33,15 @@ export const useActiveHouseholdId = () => useAppSelector((state) => state.active
 export const useHouseholdsMap = () => useAppSelector((state) => state.households);
 
 export const useHousehold = () => useDataSelector((data) => data.household);
+
+/**
+ * The household's clock (spec 0031, REQ-020): read it at the moment it is needed (a tap, a check),
+ * never `new Date()` with a time zone in a component. The day is `useToday()`.
+ */
+export function useHouseholdClock(): () => HouseholdTime {
+  const { timeZone } = useHousehold();
+  return useCallback(() => householdTime(new Date(), timeZone), [timeZone]);
+}
 export const useAreas = () => useDataSelector((data) => data.areas);
 export const useArticles = () => useDataSelector((data) => data.articles);
 export const useStores = () => useDataSelector((data) => data.stores);

@@ -184,7 +184,7 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
   const book = useRecipeBook();
   const items = useShoppingItems();
   const household = useHousehold();
-  const slotOrder = [...household.mealSlots].sort((a, b) => a.sort - b.sort).map((slot) => slot.id);
+  const slotOrder = household.mealSlots.map((slot) => slot.id);
   const direct = props.recipes !== undefined;
   // Seven days from today; from the calendar from the Monday of the week shown (Decision 2).
   const firstStart = listPickerStart(today, props.weekDates?.[0]);

@@ -1,5 +1,5 @@
-// The wire between the device and the server: exactly the RPC contracts of spec 0003
-// (tmp/brief/rpc-contracts.md). JSON keys are the database's snake_case. Two implementations:
+// The wire between the device and the server: exactly the RPCs of supabase/migrations
+// (docs/architecture/sync.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
   PushSubscriptionStatusSchema,
@@ -235,9 +235,6 @@ export type PackResult = z.infer<typeof PackResultSchema>;
 
 /** already_done (spec 0011, AC-031): who booked the chore that day, and when. */
 export const AlreadyDoneDetailSchema = z.object({ done_by: z.string(), done_at: z.string() });
-
-/** The answer of remove_chore_event in `results`: whether the state before came back. */
-export const RemovedChoreEventSchema = z.object({ restored: z.boolean() });
 
 export const ApplyChangesResultSchema = z.object({
   applied: z.number(),
