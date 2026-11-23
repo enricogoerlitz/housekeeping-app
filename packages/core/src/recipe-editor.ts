@@ -1210,20 +1210,3 @@ export function planEntriesAfterVariantRemoval(
     return [{ ...entry, variants: split }];
   });
 }
-
-// ---------- The page ----------
-
-/**
- * E7: what the page shows after the server refused a section it saved. The section opens again
- * with the refused draft when no section is open, or when the one open is still exactly the draft
- * the save left open (AC-032: the orange rows). A section opened or edited since stays as it is,
- * so a refusal never sends anything again by itself.
- */
-export function draftAfterRefusal(
-  open: RecipeSectionDraft | undefined,
-  refused: RecipeSectionDraft,
-  leftOpen: RecipeSectionDraft | undefined,
-): RecipeSectionDraft | undefined {
-  if (open === undefined) return refused;
-  return open === leftOpen ? refused : open;
-}

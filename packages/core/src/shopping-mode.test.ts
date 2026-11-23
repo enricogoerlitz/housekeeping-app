@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  currentShoppingRun,
   extendShoppingRun,
   finishSummary,
+  readShoppingRun,
   runProgress,
   shoppingModeGroups,
   ShoppingRunSchema,
@@ -129,6 +131,35 @@ describe('Einkaufsgang (spec 0025, REQ-013)', () => {
     const run = extendShoppingRun(startShoppingRun('h', fifteen), [...rows, open('butter')]);
     const unchecked = rows.map((row) => (row.id === 'i-2' ? { ...row, checked: false } : row));
     expect(runProgress(run, [...unchecked, open('butter')])).toMatchObject({ done: 2, total: 16 });
+  });
+
+  it('AC-042: a reload reads the stored run of the same household back', () => {
+    const stored = JSON.stringify({ householdId: 'h', itemIds: ['i-0', 'i-1'] });
+    expect(readShoppingRun(stored, 'h')).toEqual({ householdId: 'h', itemIds: ['i-0', 'i-1'] });
+  });
+
+  it('a stored run of another household, broken or missing, is not read back', () => {
+    expect(readShoppingRun(JSON.stringify({ householdId: 'x', itemIds: [] }), 'h')).toBeUndefined();
+    expect(readShoppingRun('{"householdId":', 'h')).toBeUndefined();
+    expect(
+      readShoppingRun(JSON.stringify({ householdId: 'h', itemIds: [1] }), 'h'),
+    ).toBeUndefined();
+    expect(readShoppingRun(null, 'h')).toBeUndefined();
+    expect(readShoppingRun('', 'h')).toBeUndefined();
+  });
+
+  it('AC-042: the current run is the run extended by what is open now', () => {
+    const run = startShoppingRun('h', fifteen);
+    expect(currentShoppingRun(run, 'h', fifteen)).toBe(run);
+    expect(currentShoppingRun(run, 'h', [...fifteen, open('butter')]).itemIds).toHaveLength(16);
+  });
+
+  it('switching the household starts a new run with its open items', () => {
+    const run = startShoppingRun('h', fifteen);
+    expect(currentShoppingRun(run, 'other', [open('salz'), done('brot')])).toEqual({
+      householdId: 'other',
+      itemIds: ['salz'],
+    });
   });
 
   it('an item removed meanwhile no longer counts', () => {

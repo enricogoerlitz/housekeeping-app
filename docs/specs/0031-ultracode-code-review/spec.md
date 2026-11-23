@@ -707,7 +707,12 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **G — Abdeckung** (nach A–F, weil die Gruppen Code verschieben)
 
-- [ ] 29. Logik aus `apps/app` nach `core` (AC-026, AC-027).
+- [x] 29. Logik aus `apps/app` nach `core` (AC-026, AC-027). Neu in `core`: `place.ts` (Ort,
+      `originFor`, `sectionHref`, „Zurück“, Fenster im Browser-Verlauf), `section-editor.ts`
+      (`sectionEditorReducer`, samt `draftAfterRefusal`), `readShoppingRun` und
+      `currentShoppingRun`. Geprüft und in der App gelassen: `move-entry.ts` (die Logik ist schon
+      `planMove`, übrig sind Toast und Schreiben) und `calendar-fill.ts` (Messen im Fenster, eine
+      Zeile Rechnung).
 - [ ] 30. Komponententests in `ui` (AC-028, AC-029), Test für `startAuth` (AC-030).
 - [ ] 31. `vitest.config.ts` mit Coverage für `core`, `api` und `ui`, Schwelle 80 %, `21-testing.md`
       (AC-015–AC-017).

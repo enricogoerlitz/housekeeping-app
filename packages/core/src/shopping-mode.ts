@@ -65,6 +65,34 @@ export function extendShoppingRun(run: ShoppingRun, items: readonly ShoppingItem
   return { ...run, itemIds: [...run.itemIds, ...joined].slice(0, RUN_MAX_ITEMS) };
 }
 
+/** A run stored on the device, read back after a reload: only one of this household (AC-042). */
+export function readShoppingRun(
+  stored: string | null | undefined,
+  householdId: Id,
+): ShoppingRun | undefined {
+  if (!stored) return undefined;
+  try {
+    const parsed = ShoppingRunSchema.safeParse(JSON.parse(stored));
+    return parsed.success && parsed.data.householdId === householdId ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The Einkaufsgang as it is now: extended by what is open, or a new one when the household
+ * changed. The same run when nothing changed.
+ */
+export function currentShoppingRun(
+  run: ShoppingRun,
+  householdId: Id,
+  items: readonly ShoppingItem[],
+): ShoppingRun {
+  return run.householdId === householdId
+    ? extendShoppingRun(run, items)
+    : startShoppingRun(householdId, items);
+}
+
 export interface RunProgress {
   done: number;
   total: number;
