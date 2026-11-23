@@ -1,5 +1,12 @@
 import { useContext, type ReactNode } from 'react';
-import { Text as RNText, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  Platform,
+  Text as RNText,
+  View,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 import { icons, type IconName } from './icons';
 import { ToneContext, useTheme } from './theme-context';
@@ -40,6 +47,16 @@ function resolveColor(theme: Theme, toneFg: string | undefined, token: ColorToke
   }
 }
 
+/**
+ * Long German words break at a syllable with a hyphen instead of anywhere (spec 0031, REQ-033);
+ * the browser hyphenates by `lang="de"`. Native apps break words themselves.
+ */
+export const HYPHENATE: TextStyle | null =
+  Platform.OS === 'web' ? ({ hyphens: 'auto' } as unknown as TextStyle) : null;
+
+/** The title roles hyphenate (REQ-033). */
+const HYPHENATED_VARIANTS = new Set<TextVariant>(['caption', 'rowTitle', 'cardTitle']);
+
 export interface TextProps {
   children?: ReactNode;
   variant?: TextVariant;
@@ -66,6 +83,7 @@ export function Text(props: TextProps) {
       accessibilityRole={props.heading ? 'header' : undefined}
       style={[
         variant,
+        HYPHENATED_VARIANTS.has(props.variant ?? 'body') ? HYPHENATE : null,
         { color },
         props.align ? { textAlign: props.align } : null,
         props.strike ? { textDecorationLine: 'line-through' } : null,
