@@ -65,11 +65,11 @@ export const WRITABLE_COLUMNS = {
     'needs_review',
   ],
   stores: ['name', 'area_order', 'hidden_area_ids'],
-  // kind ("Rezept" or "Sammlung", spec 0009, E2) only on insert: see PATCH_COLUMNS.
+  // kind ("Rezept" or "Sammlung", spec 0009, E2) only on insert: see PATCH_COLUMNS. photo (the
+  // bundled sample photo) is set only by the seed (spec 0031, REQ-026).
   recipes: [
     'kind',
     'title',
-    'photo',
     'photo_path',
     'description',
     'servings',
@@ -134,8 +134,9 @@ export const WRITABLE_COLUMNS = {
     'due_time',
     'remind_at_due_time',
   ],
-  // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011).
-  chore_events: ['chore_id', 'done_by'],
+  // Entries are only patched: booked by complete_chore, removed by remove_chore_event (spec 0011),
+  // their chore set only by delete_chore / restore_chore (spec 0031, REQ-016).
+  chore_events: ['done_by'],
   meal_plan_entries: [
     'date',
     'slot_id',
@@ -162,14 +163,23 @@ export const WRITABLE_COLUMNS = {
   ],
   shopping_items: ['article_id'],
   shopping_contributions: ['item_id', 'source', 'count', 'qty', 'unit', 'note'],
-  households: ['name', 'meal_slots', 'default_store_id'],
+  // The meal slots are set by create_household, never by a member (spec 0031, REQ-014).
+  households: ['name', 'default_store_id'],
   // Spec 0012: the packed state (packed, packed_at, packed_by, pack_seq) is never here; it goes
   // through set_packing_items_packed and restore_packing_items.
   packing_bags: ['name', 'member_id', 'sort'],
   packing_bag_items: ['bag_id', 'name', 'quantity', 'per_day', 'sort'],
   packing_list_bags: ['trip_id', 'bag_id', 'name', 'member_id', 'sort'],
   // Spec 0022: the origin in the Reisetasche (bag_item_id, from_bag).
-  packing_items: ['list_bag_id', 'name', 'quantity', 'per_day', 'sort', 'bag_item_id', 'from_bag'],
+  packing_items: [
+    'list_bag_id',
+    'name',
+    'quantity',
+    'per_day_quantity',
+    'sort',
+    'bag_item_id',
+    'from_bag',
+  ],
   // Spec 0013, Decision 3: only these are patched, never household_id or member_id.
   notification_settings: [
     'daily_summary_enabled',
@@ -196,7 +206,7 @@ export const PATCH_COLUMNS: Partial<Record<WritableTable, readonly string[]>> = 
   collection_recipes: ['servings', 'variant_id', 'sort'],
   packing_list_bags: ['bag_id', 'sort'],
   // Spec 0022, REQ-009: name, count, "je Tag" and the link; sent by updatePackingItem itself.
-  packing_items: ['name', 'quantity', 'per_day', 'bag_item_id', 'from_bag'],
+  packing_items: ['name', 'quantity', 'per_day_quantity', 'bag_item_id', 'from_bag'],
   trip_members: [],
 };
 
