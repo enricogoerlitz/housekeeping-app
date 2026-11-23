@@ -25,6 +25,7 @@ import {
   EntryLine,
   HouseholdDay,
   useStripeColors,
+  stripeLine,
 } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
 import { DayHeadTarget, RangeMark, SlotTarget, TripSource, useLiftedKind } from './calendar-drag';
@@ -329,7 +330,7 @@ function StripeBar(props: { stripe: TripStripe; on: boolean; data: CalendarData 
       style={{
         width: 3,
         alignSelf: 'stretch',
-        backgroundColor: props.on ? colors.edge : 'transparent',
+        ...(props.on ? stripeLine(colors.edge, props.stripe.draft, 'left', 3) : null),
       }}
     />
   );

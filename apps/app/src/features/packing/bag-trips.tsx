@@ -64,7 +64,14 @@ export function UpcomingPackingLists() {
           <ListRow
             key={row.tripId}
             title={row.title}
-            subtitle={`${row.period} · ${row.progressLabel}`}
+            // Spec 0030, REQ-004: a draft is shown with its packing list, marked as such.
+            subtitle={[
+              trips.some((trip) => trip.id === row.tripId && trip.draft) ? 'Entwurf' : undefined,
+              row.period,
+              row.progressLabel,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             leading={<Icon name="luggage" color="muted" />}
             trailing={
               row.household ? (

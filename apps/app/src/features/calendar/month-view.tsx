@@ -36,6 +36,7 @@ import {
   EntryLine,
   HouseholdDay,
   useStripeColors,
+  stripeLine,
 } from './calendar-parts';
 import { dayLabel, dayRoles, type CalendarData } from './calendar-data';
 import {
@@ -152,7 +153,7 @@ function StripeLine(props: { stripe: TripStripe; start: number; end: number; dat
           left: `${(props.start / 7) * 100}%`,
           width: `${((props.end - props.start + 1) / 7) * 100}%`,
           borderRadius: 2,
-          backgroundColor: colors.edge,
+          ...stripeLine(colors.edge, props.stripe.draft, 'top', 3),
         }}
       />
     </View>

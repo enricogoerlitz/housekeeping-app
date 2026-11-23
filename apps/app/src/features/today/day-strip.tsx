@@ -33,7 +33,7 @@ import {
 } from '@housekeeping/ui';
 import { Pressable, View } from 'react-native';
 
-import { stripeA11y, useStripeColors } from '@/features/calendar/calendar-parts';
+import { stripeA11y, stripeLine, useStripeColors } from '@/features/calendar/calendar-parts';
 import { EntryPicture } from '@/features/meal-plan/entry-picture';
 import { KIND_LABELS } from '@/features/meal-plan/kind-badges';
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -312,7 +312,7 @@ function StripeLine(props: { stripe: TripStripe; start: number; end: number; day
           left: `${(props.start / props.days) * 100}%`,
           width: `${((props.end - props.start + 1) / props.days) * 100}%`,
           borderRadius: 2,
-          backgroundColor: colors.edge,
+          ...stripeLine(colors.edge, props.stripe.draft, 'top', 4),
         }}
       />
     </View>

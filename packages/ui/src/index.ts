@@ -220,3 +220,4 @@ export {
 export { monthCalendarKey, type MonthCalendarKeyResult } from './month-calendar-nav';
 export { MonthCalendar, type MonthCalendarProps } from './month-calendar';
 export { openExternalLink } from './external-link';
+export { hatchImage, hatchStyle, withAlpha } from './hatch';
