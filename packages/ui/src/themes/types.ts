@@ -33,6 +33,8 @@ export interface ThemeColors {
   warnBg: string;
   warnText: string;
   checkLine: string;
+  /** The track of a switch that is off: 3:1 on page and card (spec 0031, REQ-035). */
+  switchOff: string;
   /** Tab bar, sidebar and composer background. */
   barBg: string;
   scrim: string;

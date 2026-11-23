@@ -1,5 +1,5 @@
 import { Image, type ImageSource } from 'expo-image';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Children, isValidElement, useEffect, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -14,7 +14,7 @@ import { collageInsets, collageLayout } from './collage-layout';
 import { Button, Checkbox, keyboardFocusRing } from './controls';
 import { useHover } from './pointer';
 import type { IconName } from './icons';
-import { Icon, Surface, Text } from './primitives';
+import { HYPHENATE, Icon, Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
 import type { KindColor, Tone } from './themes';
 
@@ -550,7 +550,15 @@ export function EmptyState(props: EmptyStateProps) {
         </Text>
       ) : null}
       {props.children ? (
-        <View style={{ gap: 10, marginTop: 10, alignItems: 'center' }}>{props.children}</View>
+        <View style={{ gap: 10, marginTop: 10, alignItems: 'center' }}>
+          {/* A button keeps to the start of its box; each one gets a box of its own width, and
+              the box is centred (spec 0031, AC-085). */}
+          {Children.toArray(props.children).map((child, index) => (
+            <View key={isValidElement(child) && child.key !== null ? child.key : index}>
+              {child}
+            </View>
+          ))}
+        </View>
       ) : null}
     </View>
   );
@@ -902,6 +910,8 @@ export function KindLine(props: KindLineProps) {
       numberOfLines={compact ? 1 : 2}
       style={[
         props.detail ? { minWidth: 0 } : { flex: 1, minWidth: 0 },
+        // A calendar entry is a title too, also in `small` and `body` (spec 0031, REQ-033).
+        HYPHENATE,
         props.struck ? { textDecorationLine: 'line-through' } : null,
       ]}
     >

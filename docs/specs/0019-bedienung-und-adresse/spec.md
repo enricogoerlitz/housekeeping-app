@@ -211,6 +211,11 @@ im Monat ≈ 30, Jahr-Tage ≈ 14. Die sichtbare Größe darf bleiben; die Tippf
 - AC-028 (Rand): Angenommen Desktop, Jahresansicht · Dann ist jeder Tag mindestens 24 × 24 px
   anklickbar.
 
+**Nachtrag (Spec 0031, REQ-031, Entscheidung 9, 23.11.2026):** Die Tage der Jahresansicht haben mit
+dem Finger keine eigene 44-pt-Fläche mehr (`data-dense`), denn die gewachsenen Flächen deckten den
+Nachbartag. Ein Tipp mit dem Finger öffnet dort den Monat in der Monatsansicht; mit der Maus bleibt
+jeder Tag mindestens 24 × 24 px anklickbar (AC-028).
+
 ### Offline-Hinweise
 
 **REQ-010 — Offline-Hinweise passen zum Bildschirm.** Das Banner heißt „Offline – Lesen, Einkaufen und

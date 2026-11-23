@@ -12,19 +12,14 @@ import {
 } from '@housekeeping/api';
 import { isWebUrl, visitsOf, type Activity, type Id } from '@housekeeping/core';
 import {
-  Avatar,
   Button,
   EmptyState,
   Icon,
   IconButton,
-  List,
-  ListRow,
   Menu,
   openExternalLink,
   Row,
-  Section,
   Stack,
-  Stars,
   Text,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
@@ -35,6 +30,7 @@ import { PlanPlaceSheet } from '@/features/meal-plan/plan-place-sheet';
 import { RouteSheet } from '@/features/restaurants/route-sheet';
 import { DetailPage } from '@/features/shell/detail-page';
 import { FavoriteButton } from '@/features/shell/favorite-button';
+import { MemberRatings } from '@/features/shell/member-ratings';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
@@ -116,7 +112,6 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
 
   const visits = visitsOf('activity', activity.id, entries, today);
   const isFavorite = activity.favoriteOf.includes(me.id);
-  const mine = activity.ratings[me.id] ?? 0;
   const hasSlot = household.mealSlots.length > 0;
   const place = [activity.placeName, activity.address].filter(Boolean).join(', ');
   const website =
@@ -214,16 +209,17 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             onPress={visitsLabel ? jumpToHistory : undefined}
             testID="activity-visits"
           />
-          <Row gap={10}>
-            <Stars
-              value={mine}
-              onChange={online.disabled ? undefined : (stars) => rateActivity(activity.id, stars)}
-              testID="activity-stars"
-            />
-            <Text variant="caption" color="muted">
-              {mine ? 'Deine Bewertung' : 'Noch nicht bewertet'}
-            </Text>
-          </Row>
+          {/* "Du" with the own half stars, the others only to look at, as on a recipe and a
+              restaurant (spec 0031, AC-086). */}
+          <MemberRatings
+            ratings={activity.ratings}
+            members={members}
+            me={me.id}
+            onRate={(stars) => rateActivity(activity.id, stars)}
+            disabled={online.disabled}
+            hint={online.hint}
+            testID="activity-stars"
+          />
           {online.hint ? (
             <Text variant="small" color="warn" testID="activity-offline-hint">
               {online.hint}
@@ -268,32 +264,6 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
             />
           </Row>
         </Stack>
-
-        <Section title="Bewertungen" testID="activity-ratings">
-          <List>
-            {members.map((member) => {
-              const rating = activity.ratings[member.id] ?? 0;
-              return (
-                <ListRow
-                  key={member.id}
-                  testID={`activity-rating-${member.id}`}
-                  leading={<Avatar name={member.name} color={member.color} />}
-                  title={member.id === me.id ? `${member.name} (du)` : member.name}
-                  subtitle={activity.favoriteOf.includes(member.id) ? 'Favorit' : undefined}
-                  trailing={
-                    rating ? (
-                      <Stars value={rating} size={16} />
-                    ) : (
-                      <Text variant="small" color="muted">
-                        noch keine
-                      </Text>
-                    )
-                  }
-                />
-              );
-            })}
-          </List>
-        </Section>
 
         <VisitList
           ref={historySection}

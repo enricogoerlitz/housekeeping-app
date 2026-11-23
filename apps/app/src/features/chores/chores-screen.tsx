@@ -505,7 +505,7 @@ function ChoresEmpty(props: { disabled: boolean; hint: string | undefined; onCre
     <EmptyState
       icon="list-checks"
       title="Noch keine Aufgaben"
-      text="Leg eure erste Aufgabe an oder nimm eine Vorlage."
+      text="Legt eure erste Aufgabe an oder nehmt eine Vorlage."
       testID="chores-empty"
     >
       <Button

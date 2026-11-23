@@ -312,7 +312,8 @@ export function ListScreen() {
     { value: 'articles', label: 'Artikel' },
   ];
   const onMore = (action: MoreAction) => {
-    if (action === 'stores') openManageEntry('/maerkte');
+    // "‹ Liste" on "Märkte & Bereiche" as on "Artikel" (spec 0031, REQ-036).
+    if (action === 'stores') openManageEntry({ pathname: '/maerkte', params: { von: 'liste' } });
     // "Zurück" on "Artikel" leads to the list again (spec 0007, AC-021).
     else if (action === 'articles')
       openManageEntry({ pathname: '/artikel', params: { von: 'liste' } });

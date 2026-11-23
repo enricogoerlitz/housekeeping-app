@@ -265,6 +265,7 @@ function WeekGrid(props: WeekViewProps) {
                   <HouseholdDay
                     items={chores[date] ?? []}
                     data={data}
+                    peopleBelow
                     onOpenChore={props.onOpenChore}
                   />
                 </View>
