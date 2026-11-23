@@ -21,15 +21,15 @@ import {
   type Id,
   type ISODate,
 } from '@housekeeping/core';
-import { Button, Sheet, Text, toast } from '@housekeeping/ui';
+import { Sheet, Text, toast, type SheetAction } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
-import { useReducer, type ReactNode } from 'react';
+import { useReducer } from 'react';
 
 import { DEFAULT_SERVINGS } from '@/features/recipes/recipe-form';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import { AddEntryCreateBody, AddEntryCreateFooter, useAddEntryCreate } from './add-entry-create';
+import { AddEntryCreateBody, addEntryCreateAction, useAddEntryCreate } from './add-entry-create';
 import { AddEntryDetails } from './add-entry-details';
 import { AddEntrySearch, AddEntrySearchHeader } from './add-entry-search';
 import { addSheetTitle } from './labels';
@@ -120,23 +120,23 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
     toast.show({ message: addedNotice(request.title, request.input.date, today) });
   };
 
-  let footer: ReactNode;
+  let actions: { primary: SheetAction } | undefined;
   if (creating) {
-    footer = <AddEntryCreateFooter state={state} create={create} online={online} />;
+    const primary = addEntryCreateAction(state, create, online);
+    actions = primary ? { primary } : undefined;
   } else if (choice) {
     const needsEaters = choice.kind === 'recipe' || choice.kind === 'restaurant';
     const noEaters = needsEaters && state.portions.eaterIds.length + state.portions.guests === 0;
-    footer = (
-      <Button
-        label={state.later ? 'Vormerken' : 'Einplanen'}
-        icon="plus"
-        full
-        disabled={online.disabled || noEaters}
-        hint={online.hint ?? (noEaters ? 'Wähl aus, wer mitisst.' : undefined)}
-        testID="add-entry-save"
-        onPress={save}
-      />
-    );
+    actions = {
+      primary: {
+        label: state.later ? 'Vormerken' : 'Einplanen',
+        icon: 'plus',
+        disabled: online.disabled || noEaters,
+        hint: online.hint ?? (noEaters ? 'Wähl aus, wer mitisst.' : undefined),
+        testID: 'add-entry-save',
+        onPress: save,
+      },
+    };
   }
 
   const searching = !choice && !creating;
@@ -159,7 +159,7 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           />
         ) : undefined
       }
-      footer={footer}
+      actions={actions}
     >
       {online.hint ? (
         <Text variant="small" color="warn" style={{ marginBottom: 8 }}>

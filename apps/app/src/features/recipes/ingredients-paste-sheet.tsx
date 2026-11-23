@@ -1,6 +1,6 @@
 import { useArticles } from '@housekeeping/api';
 import type { IngredientRow } from '@housekeeping/core';
-import { Button, Sheet, TextField } from '@housekeeping/ui';
+import { Sheet, TextField } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { rowsFromText } from './sections/ingredient-handover';
@@ -39,15 +39,14 @@ export function IngredientsPasteSheet(props: {
       title="Zutaten einfügen"
       testID="ingredients-paste-sheet"
       size="m"
-      footer={
-        <Button
-          label="Einfügen"
-          icon="check"
-          full
-          onPress={paste}
-          testID="ingredients-paste-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Einfügen',
+          icon: 'check',
+          onPress: paste,
+          testID: 'ingredients-paste-save',
+        },
+      }}
     >
       <TextField
         label="Zutaten"

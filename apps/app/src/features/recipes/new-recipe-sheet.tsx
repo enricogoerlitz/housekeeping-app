@@ -6,7 +6,7 @@ import {
   type Id,
   type RecipeKind,
 } from '@housekeeping/core';
-import { Button, ChoiceChips, Sheet, Stack, TextField } from '@housekeeping/ui';
+import { ChoiceChips, Sheet, Stack, TextField } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -86,17 +86,16 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       title="Neu"
       testID="new-recipe-sheet"
       size="m"
-      footer={
-        <Button
-          label="Anlegen"
-          icon="check"
-          full
-          onPress={save}
-          disabled={online.disabled}
-          hint={online.hint}
-          testID="new-recipe-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Anlegen',
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'new-recipe-save',
+        },
+      }}
     >
       <Stack gap={16}>
         <ChoiceChips

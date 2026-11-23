@@ -62,10 +62,16 @@ export interface SheetProps {
   /**
    * The window's actions (spec 0032, REQ-003): on phones in the header ("Abbrechen" left, the
    * primary right; without `cancel`, "Abbrechen" closes like ✕), on wider screens at the bottom.
+   * `cancel: null` for a window that keeps its changes on closing: no "Abbrechen" then.
    * `footer` then holds only what comes besides them; on phones it ends the content.
    */
-  actions?: { primary: SheetAction; cancel?: SheetAction };
+  actions?: SheetActions;
   testID?: string;
+}
+
+export interface SheetActions {
+  primary: SheetAction;
+  cancel?: SheetAction | null;
 }
 
 export interface SheetAction {
@@ -294,16 +300,19 @@ const TOP_GAP_TYPING = 12;
 /** A phone window's header with its actions: "Abbrechen" · title · primary (spec 0032). */
 function SheetActionsHeader(props: {
   title: string;
-  actions: { primary: SheetAction; cancel?: SheetAction };
+  actions: SheetActions;
   onClose: () => void;
   testID?: string;
 }) {
   const id = (suffix: string) => (props.testID ? `${props.testID}-${suffix}` : undefined);
-  const cancel = props.actions.cancel ?? {
-    label: 'Abbrechen',
-    onPress: props.onClose,
-    testID: id('close'),
-  };
+  const cancel =
+    props.actions.cancel === null
+      ? null
+      : (props.actions.cancel ?? {
+          label: 'Abbrechen',
+          onPress: props.onClose,
+          testID: id('close'),
+        });
   return (
     <View
       testID={id('header')}
@@ -316,7 +325,7 @@ function SheetActionsHeader(props: {
         paddingTop: 6,
       }}
     >
-      <HeaderAction action={cancel} />
+      {cancel ? <HeaderAction action={cancel} /> : <View style={{ width: 8 }} />}
       <Text
         variant="rowTitle"
         heading
@@ -333,21 +342,24 @@ function SheetActionsHeader(props: {
 
 function HeaderAction(props: { action: SheetAction }) {
   const { action } = props;
+  // A Button aligns itself to the start; the wrapper centres it on the title's line.
   return (
-    <Button
-      label={action.label}
-      variant="link"
-      size="sm"
-      disabled={action.disabled}
-      hint={action.hint}
-      onPress={action.onPress}
-      testID={action.testID}
-    />
+    <View>
+      <Button
+        label={action.label}
+        variant="link"
+        size="sm"
+        disabled={action.disabled}
+        hint={action.hint}
+        onPress={action.onPress}
+        testID={action.testID}
+      />
+    </View>
   );
 }
 
 /** The actions at the bottom of a window on wider screens, as before (spec 0032, AC-009). */
-function SheetActionsFooter(props: { actions: { primary: SheetAction; cancel?: SheetAction } }) {
+function SheetActionsFooter(props: { actions: SheetActions }) {
   const { primary, cancel } = props.actions;
   return (
     <View style={{ flexDirection: 'row', gap: 8 }}>

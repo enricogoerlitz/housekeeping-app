@@ -251,15 +251,14 @@ function StepSheet(props: {
       title={props.title}
       onClose={props.onClose}
       testID="recipe-step-sheet"
-      footer={
-        <Button
-          label="Übernehmen"
-          icon="check"
-          full
-          onPress={apply}
-          testID="recipe-step-sheet-apply"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          onPress: apply,
+          testID: 'recipe-step-sheet-apply',
+        },
+      }}
     >
       <Stack gap={16}>
         <TextField

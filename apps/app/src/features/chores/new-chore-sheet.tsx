@@ -6,7 +6,7 @@ import {
   newChoreDraft,
   type ChoreDraftErrors,
 } from '@housekeeping/core';
-import { Button, Sheet, Stack, Text, toast } from '@housekeeping/ui';
+import { Sheet, Text, toast } from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
@@ -64,23 +64,22 @@ export function NewChoreSheet(props: { visible: boolean; onClose: () => void }) 
       testID="chore-new-sheet"
       size="m"
       footer={
-        <Stack gap={6}>
-          {online.hint ? (
-            <Text variant="small" color="warn">
-              {online.hint}
-            </Text>
-          ) : null}
-          <Button
-            label="Speichern"
-            icon="check"
-            full
-            onPress={save}
-            disabled={online.disabled}
-            hint={online.hint}
-            testID="chore-save"
-          />
-        </Stack>
+        online.hint ? (
+          <Text variant="small" color="warn">
+            {online.hint}
+          </Text>
+        ) : undefined
       }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'chore-save',
+        },
+      }}
     >
       <ChoreFormFields
         draft={draft}

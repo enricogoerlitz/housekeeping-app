@@ -392,17 +392,16 @@ function EditFeedbackSheet(props: { entry: FeedbackEntry; onClose: () => void })
       title="Feedback bearbeiten"
       onClose={props.onClose}
       testID="fb-edit-sheet"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={empty || online.disabled}
-          hint={online.hint ?? (empty ? 'Schreib zuerst, worum es geht' : undefined)}
-          onPress={save}
-          testID="fb-edit-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          onPress: save,
+          disabled: empty || online.disabled,
+          hint: online.hint ?? (empty ? 'Schreib zuerst, worum es geht' : undefined),
+          testID: 'fb-edit-save',
+        },
+      }}
     >
       <Stack gap={14}>
         <ChoiceChips<Kind>

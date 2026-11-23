@@ -308,21 +308,13 @@ function ItemEditor(props: {
         onPress={remove}
         testID="item-sheet-remove"
       />
-      <Row gap={10}>
-        <Button
-          label="Als erledigt markieren"
-          icon="check"
-          variant="secondary"
-          onPress={markDone}
-          testID="item-sheet-check"
-        />
-        <Button
-          label="Fertig"
-          disabled={tooLong || manualError !== undefined}
-          onPress={done}
-          testID="item-sheet-done"
-        />
-      </Row>
+      <Button
+        label="Als erledigt markieren"
+        icon="check"
+        variant="secondary"
+        onPress={markDone}
+        testID="item-sheet-check"
+      />
     </Row>
   );
 
@@ -333,6 +325,14 @@ function ItemEditor(props: {
       title={name}
       onClose={props.onClose}
       footer={footer}
+      actions={{
+        primary: {
+          label: 'Fertig',
+          disabled: tooLong || manualError !== undefined,
+          onPress: done,
+          testID: 'item-sheet-done',
+        },
+      }}
       testID="item-sheet"
     >
       <Stack gap={18}>

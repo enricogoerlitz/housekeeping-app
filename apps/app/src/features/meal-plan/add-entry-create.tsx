@@ -14,7 +14,7 @@ import {
   type ISODate,
   type RecipeKind,
 } from '@housekeeping/core';
-import { Button, Stack, Text } from '@housekeeping/ui';
+import { Button, Stack, Text, type SheetAction } from '@housekeeping/ui';
 import type { Dispatch } from 'react';
 import { View } from 'react-native';
 
@@ -202,65 +202,52 @@ export function AddEntryCreateBody(props: {
 }
 
 /** "Anlegen und einplanen" / "Anlegen und vormerken" of the kind being created. */
-export function AddEntryCreateFooter(props: {
-  state: AddEntryState;
-  create: AddEntryCreate;
-  online: Online;
-}) {
-  const { state, create, online } = props;
+export function addEntryCreateAction(
+  state: AddEntryState,
+  create: AddEntryCreate,
+  online: Online,
+): SheetAction | undefined {
   const { creating } = state;
   const label = state.later ? 'Anlegen und vormerken' : 'Anlegen und einplanen';
   if (creating === 'recipe' || creating === 'collection') {
-    return (
-      <Button
-        label={label}
-        icon="check"
-        full
-        disabled={online.disabled}
-        hint={online.hint}
-        testID={`add-entry-new-${creating}-save`}
-        onPress={() => create.saveNewRecipe(creating)}
-      />
-    );
+    return {
+      label,
+      icon: 'check',
+      disabled: online.disabled,
+      hint: online.hint,
+      testID: `add-entry-new-${creating}-save`,
+      onPress: () => create.saveNewRecipe(creating),
+    };
   }
   if (creating === 'restaurant') {
     const { restaurantForm } = create;
-    return (
-      <Button
-        label={label}
-        icon="check"
-        full
-        disabled={online.disabled || !!restaurantForm.duplicate || restaurantForm.saving}
-        hint={
-          online.hint ??
-          (restaurantForm.duplicate ? `Gibt es schon: ${restaurantForm.duplicate.name}` : undefined)
-        }
-        testID="add-entry-new-restaurant-save"
-        onPress={() => void create.saveNewRestaurant()}
-      />
-    );
+    return {
+      label,
+      icon: 'check',
+      disabled: online.disabled || !!restaurantForm.duplicate || restaurantForm.saving,
+      hint:
+        online.hint ??
+        (restaurantForm.duplicate ? `Gibt es schon: ${restaurantForm.duplicate.name}` : undefined),
+      testID: 'add-entry-new-restaurant-save',
+      onPress: () => void create.saveNewRestaurant(),
+    };
   }
   if (creating === 'activity') {
     const { activityForm } = create;
-    return (
-      <Button
-        label={label}
-        icon="check"
-        full
-        disabled={
-          online.disabled ||
-          !!activityForm.duplicate ||
-          activityForm.saving ||
-          activityForm.preparing
-        }
-        hint={
-          online.hint ??
-          (activityForm.duplicate ? `Gibt es schon: ${activityForm.duplicate.name}` : undefined)
-        }
-        testID="add-entry-new-activity-save"
-        onPress={() => void create.saveNewActivity()}
-      />
-    );
+    return {
+      label,
+      icon: 'check',
+      disabled:
+        online.disabled ||
+        !!activityForm.duplicate ||
+        activityForm.saving ||
+        activityForm.preparing,
+      hint:
+        online.hint ??
+        (activityForm.duplicate ? `Gibt es schon: ${activityForm.duplicate.name}` : undefined),
+      testID: 'add-entry-new-activity-save',
+      onPress: () => void create.saveNewActivity(),
+    };
   }
-  return null;
+  return undefined;
 }

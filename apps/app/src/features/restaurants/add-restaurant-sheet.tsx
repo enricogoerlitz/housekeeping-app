@@ -1,6 +1,6 @@
 import { createRestaurant, updateRestaurant } from '@housekeeping/api';
 import type { Id, Restaurant } from '@housekeeping/core';
-import { Button, Sheet, Stack, Text, toast } from '@housekeeping/ui';
+import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -133,19 +133,17 @@ function RestaurantFormSheet(props: {
       title={props.title}
       testID={props.testID ?? 'restaurant-sheet'}
       size="m"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={online.disabled || !!form.duplicate || form.saving}
-          hint={
-            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined)
-          }
-          onPress={props.onSave}
-          testID="restaurant-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          disabled: online.disabled || !!form.duplicate || form.saving,
+          hint:
+            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined),
+          onPress: props.onSave,
+          testID: 'restaurant-save',
+        },
+      }}
     >
       <Stack gap={16}>
         {online.hint ? (

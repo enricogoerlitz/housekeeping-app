@@ -219,6 +219,24 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await expect(tid(page, 'chore-facts')).toBeVisible();
   });
 
+  test('spec 0032, AC-006: "Aufgabe bearbeiten" has "Abbrechen", title and "Speichern" in its header, no footer', async ({
+    page,
+  }) => {
+    await open(page, '/haushalt');
+    await tid(page, 'chores-tab-all').click();
+    await tid(page, `chore-${seedIds['chore-kueche']}`).click();
+    await tid(page, 'chore-edit').click();
+    const header = tid(page, 'chore-sheet-header');
+    await expect(header.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Speichern' })).toBeVisible();
+    await expect(page.locator('[data-testid="chore-sheet-footer"]')).toHaveCount(0);
+    const head = await header.boundingBox();
+    const sheet = await tid(page, 'chore-sheet').boundingBox();
+    expect((head?.y ?? 0) - (sheet?.y ?? 0)).toBeLessThan(20);
+    await tid(page, 'chore-edit-cancel').click();
+    await expect(tid(page, 'chore-facts')).toBeVisible();
+  });
+
   test('AC-048 (0011): the household "Test" without chores offers "Aufgabe anlegen"', async ({
     page,
   }) => {
@@ -252,6 +270,17 @@ test.describe('Haushalt and Übersicht at phone width', () => {
 
 test.describe('Haushalt at desktop width', () => {
   only('desktop');
+
+  test('spec 0032, AC-009: on the desktop "Speichern" stays at the bottom and ✕ at the top', async ({
+    page,
+  }) => {
+    await open(page, '/haushalt?fenster=neu-aufgabe');
+    const footer = tid(page, 'chore-new-sheet-footer');
+    await expect(footer.getByRole('button', { name: 'Speichern' })).toBeVisible();
+    await expect(tid(page, 'chore-new-sheet-close')).toBeVisible();
+    await expect(page.locator('[data-testid="chore-new-sheet-header"]')).toHaveCount(0);
+    await tid(page, 'chore-new-sheet-close').click();
+  });
 
   test('AC-046 / AC-047 (0011): three view tabs; "Alle" is list and detail side by side', async ({
     page,

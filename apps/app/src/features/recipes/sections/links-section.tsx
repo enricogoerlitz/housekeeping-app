@@ -202,15 +202,14 @@ function LinkSheet(props: {
       title="Link"
       onClose={props.onClose}
       testID="recipe-link-sheet"
-      footer={
-        <Button
-          label="Übernehmen"
-          icon="check"
-          full
-          onPress={apply}
-          testID="recipe-link-sheet-apply"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          onPress: apply,
+          testID: 'recipe-link-sheet-apply',
+        },
+      }}
     >
       <Stack gap={16}>
         <TextField

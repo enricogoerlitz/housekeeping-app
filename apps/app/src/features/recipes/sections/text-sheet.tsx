@@ -1,4 +1,4 @@
-import { Button, Sheet, TextField } from '@housekeeping/ui';
+import { Sheet, TextField } from '@housekeeping/ui';
 import { useState } from 'react';
 
 /**
@@ -36,15 +36,14 @@ export function TextSheet(props: {
       title={props.title}
       onClose={props.onClose}
       testID={props.testID}
-      footer={
-        <Button
-          label="Übernehmen"
-          icon="check"
-          full
-          onPress={apply}
-          testID={`${props.testID}-apply`}
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          onPress: apply,
+          testID: `${props.testID}-apply`,
+        },
+      }}
     >
       <TextField
         label={props.label}

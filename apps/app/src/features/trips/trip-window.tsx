@@ -278,18 +278,19 @@ function TripWindow(props: { tripId: Id; onClose: () => void }) {
           />
         </Row>
       }
-      footer={
-        dirty ? (
-          <Button
-            label="Speichern"
-            icon="check"
-            full
-            onPress={save}
-            disabled={online.disabled || problems.noOne}
-            hint={online.hint ?? (problems.noOne ? 'Wähle, wer unterwegs ist' : undefined)}
-            testID="trip-save"
-          />
-        ) : undefined
+      actions={
+        dirty
+          ? {
+              primary: {
+                label: 'Speichern',
+                icon: 'check',
+                onPress: save,
+                disabled: online.disabled || problems.noOne,
+                hint: online.hint ?? (problems.noOne ? 'Wähle, wer unterwegs ist' : undefined),
+                testID: 'trip-save',
+              },
+            }
+          : undefined
       }
     >
       <Stack gap={24}>

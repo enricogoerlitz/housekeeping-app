@@ -22,7 +22,6 @@ import {
   type RangePick,
 } from '@housekeeping/core';
 import {
-  Button,
   Chip,
   MonthCalendar,
   Sheet,
@@ -236,17 +235,16 @@ export function TripSheet(props: {
       title="Reise eintragen"
       testID="trip-sheet"
       size="m"
-      footer={
-        <Button
-          label={saveLabel(newItemCount)}
-          icon="check"
-          full
-          onPress={save}
-          disabled={online.disabled || problems.noOne}
-          hint={online.hint ?? (problems.noOne ? 'Wähle, wer unterwegs ist' : undefined)}
-          testID="trip-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: saveLabel(newItemCount),
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled || problems.noOne,
+          hint: online.hint ?? (problems.noOne ? 'Wähle, wer unterwegs ist' : undefined),
+          testID: 'trip-save',
+        },
+      }}
     >
       <Stack gap={18}>
         <TripFields value={fields} onChange={setFields} focusNote={props.focusNote} effectNote />

@@ -55,17 +55,16 @@ export function RenameHouseholdSheet(props: { onClose: () => void }) {
       title="Haushalt umbenennen"
       onClose={props.onClose}
       testID="household-rename-sheet"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={online.disabled}
-          hint={online.hint}
-          onPress={save}
-          testID="household-rename-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'household-rename-save',
+        },
+      }}
     >
       <TextField
         label="Name"
@@ -165,6 +164,7 @@ function DeleteHouseholdSheet(props: { onClose: () => void }) {
       title={prompt.title}
       onClose={close}
       testID="household-delete-sheet"
+      // Deleting stays at the bottom: a destructive confirmation, not a form to save (spec 0032).
       footer={
         <Row gap={10} style={{ justifyContent: 'flex-end' }}>
           <Button

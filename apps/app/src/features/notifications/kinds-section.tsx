@@ -26,7 +26,6 @@ import {
   type TimeOfDay,
 } from '@housekeeping/core';
 import {
-  Button,
   Chip,
   ChoiceChips,
   Row,
@@ -221,23 +220,22 @@ function KindSheet(props: {
       title={KIND_LABELS[kind]}
       size="m"
       testID="notif-kind-sheet"
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          onPress: submit,
+          disabled: props.offlineHint !== undefined,
+          hint: props.offlineHint,
+          testID: 'notif-kind-save',
+        },
+      }}
       footer={
-        <Stack gap={6}>
-          {props.offlineHint ? (
-            <Text variant="small" color="warn">
-              {props.offlineHint}
-            </Text>
-          ) : null}
-          <Button
-            label="Speichern"
-            icon="check"
-            full
-            onPress={submit}
-            disabled={props.offlineHint !== undefined}
-            hint={props.offlineHint}
-            testID="notif-kind-save"
-          />
-        </Stack>
+        props.offlineHint ? (
+          <Text variant="small" color="warn">
+            {props.offlineHint}
+          </Text>
+        ) : undefined
       }
     >
       <Stack gap={20}>

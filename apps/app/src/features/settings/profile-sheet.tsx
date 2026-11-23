@@ -89,23 +89,22 @@ export function ProfileSheet(props: { email: string; onClose: () => void }) {
         title="Profil bearbeiten"
         onClose={close}
         testID="profile-sheet"
+        actions={{
+          primary: {
+            label: 'Speichern',
+            icon: 'check',
+            onPress: () => void save(),
+            disabled: online.disabled || busy,
+            hint: online.hint,
+            testID: 'profile-save',
+          },
+        }}
         footer={
-          <Stack gap={6}>
-            {saveError ? (
-              <Text variant="small" color="warn" testID="profile-save-error">
-                {saveError}
-              </Text>
-            ) : null}
-            <Button
-              label="Speichern"
-              icon="check"
-              full
-              disabled={online.disabled || busy}
-              hint={online.hint}
-              onPress={() => void save()}
-              testID="profile-save"
-            />
-          </Stack>
+          saveError ? (
+            <Text variant="small" color="warn" testID="profile-save-error">
+              {saveError}
+            </Text>
+          ) : undefined
         }
       >
         <Stack gap={20}>

@@ -1,15 +1,6 @@
 import { addAreaToStore, fullAreaOrder, useAreas, useStores } from '@housekeeping/api';
 import { matchSearchOrCreate, validateAreaName, type Area, type Id } from '@housekeeping/core';
-import {
-  Button,
-  Row,
-  SearchOrCreate,
-  Sheet,
-  Stack,
-  Text,
-  TextField,
-  toast,
-} from '@housekeeping/ui';
+import { SearchOrCreate, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -47,23 +38,15 @@ export function NameSheet(props: {
       title={props.title}
       onClose={props.onClose}
       testID={props.testID}
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onClose}
-            testID={`${props.testID}-cancel`}
-          />
-          <Button
-            label={props.submitLabel}
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={submit}
-            testID={`${props.testID}-save`}
-          />
-        </Row>
-      }
+      actions={{
+        primary: {
+          label: props.submitLabel,
+          disabled: online.disabled,
+          hint: online.hint,
+          onPress: submit,
+          testID: `${props.testID}-save`,
+        },
+      }}
     >
       <TextField
         label={props.label}

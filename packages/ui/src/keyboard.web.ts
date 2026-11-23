@@ -33,8 +33,18 @@ function update() {
   const next = read();
   apply(next);
   if (next.open === state.open && next.inset === state.inset) return;
+  const opened = next.open && !state.open;
   state = next;
   listeners.forEach((listener) => listener());
+  // The app just got shorter: the field being typed in stays in view.
+  if (opened) {
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== document.body) {
+        active.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -57,7 +67,11 @@ function subscribe(listener: () => void): () => void {
 const snapshot = () => state;
 const serverSnapshot = () => NO_KEYBOARD;
 
-/** The software keyboard: open, how much it covers, the visible height. */
+/**
+ * The software keyboard: open, how much it covers, the visible height.
+ *
+ * @public Metro resolves the import of the native twin to this file on the web.
+ */
 export function useKeyboard(): KeyboardState {
   return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 }

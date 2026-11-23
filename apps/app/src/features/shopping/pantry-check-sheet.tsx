@@ -32,7 +32,6 @@ import {
   IconButton,
   List,
   ListRow,
-  Row,
   Sheet,
   Text,
   TextField,
@@ -309,27 +308,24 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
                 {nextHint}
               </Text>
             ) : null}
-            <Row gap={10}>
-              <Button
-                label="Rezept wählen …"
-                variant="ghost"
-                testID="pick-choose-recipe"
-                onPress={() => setStep('search')}
-              />
-              <View style={{ flex: 1 }}>
-                <Button
-                  label={listPickerContinueLabel(dishes)}
-                  icon="arrow-right"
-                  full
-                  disabled={online.disabled || dishes === 0}
-                  hint={nextHint}
-                  testID="pc-next"
-                  onPress={next}
-                />
-              </View>
-            </Row>
+            <Button
+              label="Rezept wählen …"
+              variant="ghost"
+              testID="pick-choose-recipe"
+              onPress={() => setStep('search')}
+            />
           </View>
         }
+        actions={{
+          primary: {
+            label: listPickerContinueLabel(dishes),
+            icon: 'arrow-right',
+            disabled: online.disabled || dishes === 0,
+            hint: nextHint,
+            testID: 'pc-next',
+            onPress: next,
+          },
+        }}
       >
         <ListPickerStep
           page={shown}
@@ -390,30 +386,24 @@ export function PantryCheckSheet(props: PantryCheckSheetProps) {
       title="Was brauchst du wirklich?"
       testID="pantry-check-sheet"
       size="l"
-      footer={
-        <Row gap={10}>
-          {direct ? null : (
-            <Button
-              label="Zurück"
-              icon="chevron-left"
-              variant="ghost"
-              testID="pc-back"
-              onPress={() => setStep('pick')}
-            />
-          )}
-          <View style={{ flex: 1 }}>
-            <Button
-              label={`${kept.size} übernehmen`}
-              icon="check"
-              full
-              disabled={online.disabled || kept.size === 0}
-              hint={online.hint}
-              testID="pc-apply"
-              onPress={apply}
-            />
-          </View>
-        </Row>
-      }
+      actions={{
+        primary: {
+          label: `${kept.size} übernehmen`,
+          icon: 'check',
+          disabled: online.disabled || kept.size === 0,
+          hint: online.hint,
+          testID: 'pc-apply',
+          onPress: apply,
+        },
+        cancel: direct
+          ? undefined
+          : {
+              label: 'Zurück',
+              icon: 'chevron-left',
+              testID: 'pc-back',
+              onPress: () => setStep('pick'),
+            },
+      }}
     >
       {rows.length === 0 ? (
         <Text color="muted" testID="pc-nothing">

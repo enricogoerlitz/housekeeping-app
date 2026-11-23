@@ -33,6 +33,7 @@ import {
   Text,
   TextField,
   toast,
+  type SheetAction,
 } from '@housekeeping/ui';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -117,6 +118,8 @@ export function useArticleEditor(props: ArticleEditorProps): {
   title: string;
   body: ReactNode;
   footer: ReactNode;
+  /** "Fertig" of the main step; a window shows it among its actions instead of `footer`. */
+  done?: SheetAction;
 } {
   const articles = useArticles();
   const areas = useAreas();
@@ -465,19 +468,21 @@ export function useArticleEditor(props: ArticleEditorProps): {
     </Stack>
   );
 
+  const doneAction: SheetAction = {
+    label: 'Fertig',
+    disabled: !online.disabled && nameProblem !== undefined,
+    onPress: done,
+    testID: 'article-done',
+  };
   return {
     title: 'Artikel bearbeiten',
     body,
     footer: (
       <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-        <Button
-          label="Fertig"
-          disabled={!online.disabled && nameProblem !== undefined}
-          onPress={done}
-          testID="article-done"
-        />
+        <Button {...doneAction} />
       </Row>
     ),
+    done: doneAction,
   };
 }
 
@@ -490,7 +495,8 @@ export function ArticleSheet(props: ArticleEditorProps & { visible: boolean }) {
       size="m"
       title={editor.title}
       onClose={props.onClose}
-      footer={editor.footer}
+      footer={editor.done ? undefined : editor.footer}
+      actions={editor.done ? { primary: editor.done } : undefined}
       testID="article-sheet"
     >
       {editor.body}

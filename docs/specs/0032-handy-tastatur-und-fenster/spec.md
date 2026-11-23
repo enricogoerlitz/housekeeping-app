@@ -88,7 +88,10 @@ vollständig.
    selbst. Die Tab-Leiste bleibt dort sichtbar (kein Unterschied messbar); hingenommen.
 3. **Welche Fenster umgestellt werden (REQ-003):** alle mit Eingabefeldern oder einer
    Hauptaktion zum Speichern bzw. Übernehmen. Bestätigungsfenster ohne Eingabe behalten ihre
-   Knöpfe unten (Nicht-Ziel 3). Testkennungen der Knöpfe bleiben gleich.
+   Knöpfe unten (Nicht-Ziel 3), ebenso „Haushalt löschen“ (eine Bestätigung, die etwas endgültig
+   löscht, gehört nicht als Akzent-Knopf in die Kopfzeile). Fenster, die beim Schließen ihre
+   Änderungen behalten (Eintrag), haben kein „Abbrechen“, nur „Fertig“ (`cancel: null`).
+   Testkennungen der Knöpfe bleiben gleich.
 4. **„Abbrechen“ statt ✕ auf dem Handy:** Gibt ein Fenster keine eigene Abbrechen-Aktion, schließt
    „Abbrechen“ wie ✕ (gleiche Testkennung `…-close`). Ändert Spec 0029, AC-006 und AC-007 (Fußleiste
    über der Home-Leiste) für die umgestellten Fenster.
@@ -101,15 +104,24 @@ Keine. Nur Darstellung.
 
 ## Umsetzung
 
-- [ ] 1. Tastatur-Zustand in `ui` (`keyboardState`, `useKeyboardInset`, Höhe der App, Seite
-      zurück), Viewport-Tag (AC-001–AC-003)
-- [ ] 2. Tab-Leiste und Assistent-Knopf bei offener Tastatur aus, Toast über der Tastatur (AC-001,
+- [x] 1. Tastatur-Zustand in `ui` (`keyboardState`, `useKeyboard`, `--app-height` für `#root`,
+      Seite zurück, aktives Feld in Sicht), Viewport-Tag (AC-001–AC-003)
+- [x] 2. Tab-Leiste und Assistent-Knopf bei offener Tastatur aus, Toast über der Tastatur (AC-001,
       AC-002)
-- [ ] 3. `Sheet` über der Tastatur (AC-004, AC-005)
-- [ ] 4. `Sheet`-Aktionen (`actions`): Kopfzeile auf dem Handy, unten auf breiten Bildschirmen
-      (AC-006–AC-009)
-- [ ] 5. Fenster mit Eingaben auf `actions` umstellen (AC-006)
-- [ ] 6. `autocomplete="off"` für Sachfelder in `TextField` (AC-010)
-- [ ] 7. e2e: Kopfzeile auf dem Handy, Fußleiste am Desktop; betroffene Rundgänge anpassen
+- [x] 3. `Sheet` über der Tastatur (AC-004, AC-005)
+- [x] 4. `Sheet`-Aktionen (`actions`, `cancel: null`): Kopfzeile auf dem Handy, unten auf breiten
+      Bildschirmen (AC-006–AC-009)
+- [x] 5. Fenster mit Eingaben auf `actions` umgestellt (rund 30 Fenster in Essen, Plan, Haushalt,
+      Reisen, Packen, Liste, Artikel, Märkte, Restaurants, Aktivitäten, Profil, Feedback,
+      Benachrichtigungen); unverändert: Bestätigungen ohne Eingabe, „Haushalt löschen“, der
+      Assistent (Eingabe ist die Fußleiste), Schritte mit nur „Zurück“ (AC-006)
+- [x] 6. `autocomplete="off"` für Sachfelder in `TextField`, `email` für E-Mail-Felder (AC-010)
+- [x] 7. e2e: Kopfzeile auf dem Handy, Fußleiste am Desktop (`rundgang-haushalt`, „spec 0032“);
+      die betroffenen Rundgänge liefen ohne Anpassung grün
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, betroffene e2e-Dateien
       grün, Vorschau ausgeliefert; Sichtprüfung auf dem iPhone durch den Inhaber
+      _Stand 23.11.2026:_ `pnpm format:check`, `pnpm check` grün; Komponententests für
+      Tastatur-Modus, Fenster und Aktionen (`keyboard-state.test.ts`, `overlay.test.tsx`,
+      `shell.test.tsx`, `controls.test.tsx`); 16 betroffene e2e-Dateien grün (164 Tests); mit
+      simulierter Tastatur geprüft: „Aufgabe bearbeiten“, „Reise eintragen“, Liste, Rezept-Abschnitt.
+      Offen: Sichtprüfung auf dem iPhone.

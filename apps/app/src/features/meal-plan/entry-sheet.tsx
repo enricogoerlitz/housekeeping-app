@@ -391,21 +391,22 @@ export function EntrySheet(props: {
       title={title}
       testID="entry-sheet"
       size="m"
+      // Closing keeps the changes like "Fertig", so there is no "Abbrechen" (spec 0032).
+      actions={{
+        cancel: null,
+        primary: {
+          label: 'Fertig',
+          disabled: saving,
+          onPress: () => close('done'),
+          testID: 'entry-done',
+        },
+      }}
       footer={
-        <Stack gap={6}>
-          {refused ? (
-            <Text variant="small" color="warn" testID="entry-refused">
-              {refused}
-            </Text>
-          ) : null}
-          <Button
-            label="Fertig"
-            full
-            disabled={saving}
-            onPress={() => close('done')}
-            testID="entry-done"
-          />
-        </Stack>
+        refused ? (
+          <Text variant="small" color="warn" testID="entry-refused">
+            {refused}
+          </Text>
+        ) : undefined
       }
     >
       <Stack gap={20}>

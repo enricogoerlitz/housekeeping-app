@@ -179,6 +179,28 @@ describe('Sheet actions (spec 0032, REQ-003)', () => {
     expect(screen.getByTestId('sheet-close').textContent).toBe('Abbrechen');
   });
 
+  it('a window that keeps its changes on closing has no "Abbrechen" (cancel: null)', () => {
+    setWindow(390, 844);
+    render(
+      <Sheet
+        visible
+        onClose={close}
+        title="Lasagne"
+        size="m"
+        testID="sheet"
+        actions={{
+          primary: { label: 'Fertig', onPress: save, testID: 'sheet-done' },
+          cancel: null,
+        }}
+      >
+        <Text>Inhalt</Text>
+      </Sheet>,
+    );
+    const header = screen.getByTestId('sheet-header');
+    expect(within(header).queryByRole('button', { name: 'Abbrechen' })).toBeNull();
+    expect(within(header).getByRole('button', { name: 'Fertig' })).toBeTruthy();
+  });
+
   it('AC-008: offline "Speichern" is greyed out and says why', () => {
     setWindow(390, 844);
     render(sheet(false, true));
