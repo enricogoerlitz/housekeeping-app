@@ -91,6 +91,23 @@ export function householdClock(now: Date, timeZone: string): { date: ISODate; ti
   };
 }
 
+/** A moment read on the household's clock (spec 0031, REQ-020). */
+export interface HouseholdTime {
+  now: Date;
+  timeZone: string;
+  date: ISODate;
+  /** "HH:MM:SS". */
+  time: string;
+  /** 0–23, e.g. for "Guten Morgen". */
+  hour: number;
+}
+
+/** `now` on the household's clock, with the moment and the zone for the reminder rules. */
+export function householdTime(now: Date, timeZone: string): HouseholdTime {
+  const clock = householdClock(now, timeZone);
+  return { now, timeZone, ...clock, hour: Number(clock.time.slice(0, 2)) };
+}
+
 /**
  * Whether the reminder's moment is not in the future (REQ-003): compared as wall-clock time in
  * the household's zone, like the scheduler (`(day + time) at time zone households.timezone`).

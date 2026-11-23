@@ -24,6 +24,7 @@ import {
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { errorMessage } from '@/features/shell/error-message';
 
 // Spec 0027, REQ-003: "Profil bearbeiten" — name, colour, diet and dislikes of the signed-in
 // person; the address only to read. Online only; closing with changes asks first (AC-011).
@@ -75,7 +76,7 @@ export function ProfileSheet(props: { email: string; onClose: () => void }) {
       props.onClose();
     } catch (error) {
       // AC-013: the window stays open with every input.
-      setSaveError(error instanceof Error ? error.message : String(error));
+      setSaveError(errorMessage(error));
       setBusy(false);
     }
   };

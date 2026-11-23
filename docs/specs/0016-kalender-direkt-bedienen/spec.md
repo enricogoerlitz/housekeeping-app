@@ -684,6 +684,11 @@ Dann        erscheint die Seite „Nicht gefunden“
 | REQ-003 | AC-011 bis AC-013 | 1, 9           | core `plan-move.test.ts` (AC-011 bis AC-013); e2e `rundgang-kalender-ziehen.spec.ts` (AC-011 bis AC-013)                                                                                                                                           |
 | REQ-004 | AC-014 bis AC-018 | 1, 7, 9        | core `plan-move.test.ts` (AC-015, AC-016), `shopping-list.test.ts` (AC-017); ui `drag-controller.test.ts` (AC-015); api `commands-plan.backend.test.ts` (AC-014, AC-017, AC-018); e2e `rundgang-kalender-ziehen.spec.ts` (AC-015)                  |
 | REQ-005 | AC-019 bis AC-021 | 1, 2, 4, 7     | core `plan-move.test.ts` (AC-019, AC-021), `calendar.test.ts` (AC-019); ui `month-calendar-nav.test.ts` (AC-019, AC-021); e2e `rundgang-kalender-verschieben.spec.ts` (AC-019 bis AC-021)                                                          |
-| REQ-006 | AC-022 bis AC-027 | 1, 6, 8        | core `calendar.test.ts` (AC-022, AC-023, AC-026, AC-027); ui `docked-panel-state.test.ts` (AC-022, AC-024); e2e `rundgang-kalender-tag.spec.ts` (AC-022 bis AC-027)                                                                                |
+| REQ-006 | AC-022 bis AC-027 | 1, 6, 8        | core `calendar.test.ts` (AC-022, AC-026, AC-027); ui `docked-panel-state.test.ts` (AC-022, AC-024); e2e `rundgang-kalender-tag.spec.ts` (AC-022 bis AC-027)                                                                                        |
 | REQ-007 | AC-028 bis AC-032 | 1, 10          | core `calendar.test.ts` (AC-028, AC-029), `plan-move.test.ts` (AC-028); ui `drag-controller.test.ts` (AC-029); e2e `rundgang-kalender-ziehen.spec.ts` (AC-028 bis AC-031), `rundgang-kalender-tag.spec.ts` (AC-032)                                |
 | REQ-008 | AC-033, AC-034    | 3              | core `absences.test.ts`, `overview.test.ts` (AC-033); e2e `rundgang-plan.spec.ts` (AC-033, AC-034)                                                                                                                                                 |
+
+**Nachtrag (Spec 0031, AC-055):** AC-023 belegte ein Test von `periodForDay` in
+`calendar.test.ts`. Die App hat die Funktion nie genutzt. Mit Spec 0031 (REQ-022, Entscheidung 10)
+sind Funktion und Test gelöscht. Das Raster folgt weiter dem gewählten Tag, AC-023 belegt nur noch
+der e2e-Test `rundgang-kalender-tag.spec.ts`.

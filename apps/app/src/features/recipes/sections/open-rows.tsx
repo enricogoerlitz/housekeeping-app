@@ -23,7 +23,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { useArticleSearch } from '../article-search';
 
 /** "200 ml Kokosmilch", "1 TL Bockshornklee", "Salz" — what was pasted or typed. */
-export function openRowLabel(row: IngredientRow): string {
+function openRowLabel(row: IngredientRow): string {
   return [row.amountText.trim(), row.name ?? ''].filter(Boolean).join(' ');
 }
 

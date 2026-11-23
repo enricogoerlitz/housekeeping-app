@@ -4,13 +4,12 @@ import {
   addDays,
   entriesForDay,
   ingredientDrafts,
-  originSummary,
   rowsFromIngredientDrafts,
 } from '@housekeeping/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
-import { H, TODAY, withBackend } from './backend-test-helpers';
+import { H, originSummary, TODAY, withBackend } from './backend-test-helpers';
 import { createTrip } from './commands-trips';
 import {
   addPlanEntry,
@@ -186,6 +185,22 @@ describe('meal plan commands: input and local effect', () => {
       { variantId: 'mango-curry-v1', portions: 1 },
       { variantId: 'mango-curry-v2', portions: 1 },
     ]);
+  });
+
+  it('C-07 (0031): addPlanEntry drops variants with 0 portions itself', () => {
+    const id = addPlanEntry({
+      date: addDays(TODAY, 3),
+      slotId: SLOT_DINNER,
+      kind: 'recipe',
+      recipeId: 'rec-mango-curry',
+      eaterIds: [ENRICO, NADJA],
+      portions: 2,
+      variants: [
+        { variantId: 'mango-curry-v1', portions: 2 },
+        { variantId: 'mango-curry-v2', portions: 0 },
+      ],
+    });
+    expect(entryById(id)?.variants).toEqual([{ variantId: 'mango-curry-v1', portions: 2 }]);
   });
 
   it('AC-027 (0030): a trip changes nothing: everyone is preselected', () => {

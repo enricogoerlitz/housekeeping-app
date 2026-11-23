@@ -3,7 +3,6 @@ import {
   dayKinds,
   fittingItems,
   formatLongDate,
-  isSelectableMoveDay,
   monthGrid,
   parseISODate,
   sharedHeight,
@@ -46,7 +45,7 @@ import {
   RangeMark,
   TripSource,
   WeekRowTarget,
-  useCalendarDrag,
+  useRefusedDays,
 } from './calendar-drag';
 
 export interface MonthViewProps {
@@ -213,15 +212,9 @@ function DayNumber(props: {
   );
 }
 
-/** Days the dragged entry cannot go to are pale (AC-015). */
-function useRefused(): (date: ISODate) => boolean {
-  const { bounds } = useCalendarDrag();
-  return (date) => bounds !== null && !isSelectableMoveDay(bounds, date);
-}
-
 function MonthPhone(props: MonthViewProps) {
   const theme = useTheme();
-  const refused = useRefused();
+  const refused = useRefusedDays();
   const { data } = props;
   const weeks = monthGrid(props.monthStart);
   const month = props.monthStart.slice(0, 7);
@@ -298,7 +291,7 @@ function MonthPhone(props: MonthViewProps) {
 function MonthGridDesktop(props: MonthViewProps) {
   const theme = useTheme();
   const fine = useFinePointer();
-  const refused = useRefused();
+  const refused = useRefusedDays();
   const c = theme.colors;
   const { data } = props;
   const weeks = monthGrid(props.monthStart);

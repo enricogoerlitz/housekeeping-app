@@ -86,54 +86,6 @@ export function NameSheet(props: {
   );
 }
 
-/** A small window that asks before something is lost: "Rewe Südstadt löschen?" (AC-045). */
-export function ConfirmDialog(props: {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  onConfirm: () => string | undefined;
-  onCancel: () => void;
-  testID: string;
-}) {
-  const online = useOnlineOnly();
-  const [error, setError] = useState<string | undefined>();
-  return (
-    <Sheet
-      visible
-      size="s"
-      title={props.title}
-      onClose={props.onCancel}
-      testID={props.testID}
-      footer={
-        <Row gap={10} style={{ justifyContent: 'flex-end' }}>
-          <Button
-            label="Abbrechen"
-            variant="secondary"
-            onPress={props.onCancel}
-            testID={`${props.testID}-cancel`}
-          />
-          <Button
-            label={props.confirmLabel}
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={() => setError(props.onConfirm())}
-            testID={`${props.testID}-confirm`}
-          />
-        </Row>
-      }
-    >
-      <Stack gap={10}>
-        <Text testID={`${props.testID}-text`}>{props.message}</Text>
-        {error || online.hint ? (
-          <Text variant="small" color="warn" testID={`${props.testID}-error`}>
-            {error ?? online.hint}
-          </Text>
-        ) : null}
-      </Stack>
-    </Sheet>
-  );
-}
-
 /**
  * "+ Bereich hinzufügen" in a store (AC-048, AC-049): an area of the household that is hidden
  * here shows "ausgeblendet" and comes back at its place; a new name creates the area for the whole

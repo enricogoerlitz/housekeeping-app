@@ -266,7 +266,7 @@ const isAccountGone = (error: AuthErrorLike) => error.code === 'user_not_found';
 const errorName = (error: unknown) => (error instanceof Error ? error.name : 'unknown');
 
 /** How long sign-out waits for `beforeSignOut` (plan 0013, Decision 28). */
-export const BEFORE_SIGN_OUT_MS = 3_000;
+const BEFORE_SIGN_OUT_MS = 3_000;
 
 /** Runs the hook, but never longer than BEFORE_SIGN_OUT_MS and never with an error. */
 async function runBeforeSignOut(hook: (() => Promise<void>) | undefined): Promise<void> {

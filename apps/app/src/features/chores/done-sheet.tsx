@@ -36,6 +36,7 @@ import {
 } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
@@ -138,13 +139,7 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
         return;
       }
     } catch (caught) {
-      setError(
-        caught instanceof OfflineError
-          ? online.hint
-          : caught instanceof Error
-            ? caught.message
-            : 'Das hat nicht geklappt.',
-      );
+      setError(caught instanceof OfflineError ? online.hint : errorMessage(caught, FAILED_MESSAGE));
       return;
     }
     const name = choice.kind === 'chore' ? choice.chore.title : choice.title;

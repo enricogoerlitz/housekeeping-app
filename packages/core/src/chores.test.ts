@@ -26,9 +26,8 @@ import {
   choreTurnLabel,
   daysOverdue,
   flexibleProgress,
-  withoutTrips,
 } from './chore-schedule';
-import { enrico, nadja } from './test-fixtures';
+import { enrico, nadja, withoutTrips } from './test-fixtures';
 import type { Assignment, Chore, ChoreEvent, Recurrence } from './types';
 
 // 2026-11-20 is a Friday; its week runs from Monday 16 to Sunday 22 November.

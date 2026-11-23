@@ -200,7 +200,7 @@ export function useActiveSection(): Origin | undefined {
 }
 
 /** The start page of a section as last left, without window and detail (REQ-005). */
-export function sectionHref(section: Origin): string {
+function sectionHref(section: Origin): string {
   return startPages[section] ?? SECTION_START[section];
 }
 

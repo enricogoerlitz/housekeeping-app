@@ -147,7 +147,8 @@ export function PortionFields(props: {
     !props.disabled && canStepPortions(state, delta, variantId);
   return (
     <View style={{ gap: 8 }}>
-      <FieldLabel>Portionen</FieldLabel>
+      {/* Without variants the counter itself says "Portionen" (spec 0031, AC-072). */}
+      {state.variants.length === 0 ? null : <FieldLabel>Portionen</FieldLabel>}
       {state.variants.length === 0 ? (
         <Counter
           label="Portionen"

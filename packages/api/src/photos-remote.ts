@@ -50,7 +50,7 @@ export const PHOTO_HOUSEHOLD_CHANGED_MESSAGE =
   'Das Foto wurde nicht gespeichert – du hast inzwischen den Haushalt gewechselt';
 
 /** What a person may choose (AC-010); phone photos fit. */
-export const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;
+const PHOTO_MAX_INPUT_BYTES = 15 * 1024 * 1024;
 /** Longest side of the stored photo (AC-009). */
 const PHOTO_MAX_SIDE = 1600;
 const JPEG_QUALITY = 0.82;

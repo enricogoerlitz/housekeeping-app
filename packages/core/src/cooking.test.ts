@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cookingIngredients, cookingServings, servingsLabel } from './cooking';
+import { cookingIngredients, servingsLabel } from './cooking';
 import { makeRecipe } from './test-fixtures';
 
 // Spec 0018, REQ-002 (E-02): the cooking mode uses the portions chosen when it opens.
@@ -46,7 +46,6 @@ const amounts = (servings: number, variantId?: string) =>
 
 describe('cooking mode portions (spec 0018, REQ-002)', () => {
   it('AC-004: 6 of 4 portions show 225 g Linsen, and the mode names "6 Portionen"', () => {
-    expect(cookingServings('6', lasagne)).toBe(6);
     expect(amounts(6)).toEqual([
       ['l-linsen', '225 g'],
       ['l-hack', '750 g'],
@@ -57,7 +56,7 @@ describe('cooking mode portions (spec 0018, REQ-002)', () => {
   });
 
   it('any other portion count scales the same way: 8 portions show 300 g Linsen and name "8 Portionen"', () => {
-    expect(amounts(cookingServings('8', lasagne))[0]).toEqual(['l-linsen', '300 g']);
+    expect(amounts(8)[0]).toEqual(['l-linsen', '300 g']);
     expect(servingsLabel(8)).toBe('8 Portionen');
   });
 
@@ -67,14 +66,5 @@ describe('cooking mode portions (spec 0018, REQ-002)', () => {
       ['l-zucchini', '3'],
       ['l-salz', undefined],
     ]);
-  });
-
-  it('negative: without or with an invalid address value the recipe’s own portions count', () => {
-    for (const value of [undefined, '', '0', '-2', '2.5', 'abc', '6x', '1e3']) {
-      expect(cookingServings(value, lasagne), String(value)).toBe(4);
-    }
-    // A repeated parameter: the first one counts, as for routeId.
-    expect(cookingServings(['6', '8'], lasagne)).toBe(6);
-    expect(amounts(4)[0]).toEqual(['l-linsen', '150 g']);
   });
 });

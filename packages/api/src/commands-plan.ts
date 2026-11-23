@@ -6,7 +6,7 @@ import {
   collectionDiet,
   contentsInBook,
   contributionsFromEntry,
-  eatersForDay,
+  householdEaters,
   dietFitsPreference,
   entryListShare,
   EntryReminderSchema,
@@ -139,7 +139,7 @@ function checkedReminder(
 /** Who eats by default: every member of the household, trips or not (spec 0030, REQ-008). */
 export function defaultEaterIds(): Id[] {
   const data = getData();
-  return eatersForDay(
+  return householdEaters(
     getState().members.filter((member) => data.household.memberIds.includes(member.id)),
   );
 }
@@ -184,6 +184,11 @@ export type PlanSlotInput = Omit<
 /** The trimmed Zusatz (empty → none); the hint of checkEntryNote otherwise (REQ-008). */
 function cleanNote(note: string | undefined): string | undefined {
   return fieldValue(checkEntryNote(note ?? ''));
+}
+
+/** The split as stored: only variants that get a portion (the windows count every variant). */
+function storedVariants(variants: readonly PlanEntryVariant[]): PlanEntryVariant[] {
+  return variants.filter((row) => row.portions > 0);
 }
 
 /**
@@ -239,7 +244,7 @@ export function addPlanEntry(input: PlanEntryInput): Id {
       eaterIds: input.eaterIds,
       guests,
       portions: input.portions ?? split?.portions ?? Math.max(1, input.eaterIds.length + guests),
-      variants: input.variants ?? split?.variants ?? [],
+      variants: storedVariants(input.variants ?? split?.variants ?? []),
       cookId: input.cookId,
       sort: siblings.length,
       reminder,
@@ -349,7 +354,7 @@ export function saveEntry(entryId: Id, fields: EntryFields): Promise<string | un
   if (fields.guests !== undefined) next.guests = fields.guests;
   if (fields.portions !== undefined) next.portions = fields.portions;
   if (fields.variants !== undefined) {
-    next.variants = fields.variants.filter((row) => row.portions > 0);
+    next.variants = storedVariants(fields.variants);
   }
   if (fields.reminderText !== undefined && entry.reminder) {
     next.reminder = checkedReminder(entry, {

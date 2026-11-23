@@ -1,4 +1,3 @@
-import { formatQty } from './amounts';
 import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';
@@ -108,17 +107,6 @@ export function splitVariants(
     return count === undefined ? [] : [{ variantId: variant.id, portions: count }];
   });
   return { portions, variants, misfitMemberIds };
-}
-/**
- * "mit Tofu 1 · mit Hähnchen 1" in the recipe's variant order; "" for entries without variants.
- */
-export function variantSummary(entry: MealPlanEntry, recipe: Recipe): string {
-  return recipe.variants
-    .flatMap((variant) => {
-      const row = entry.variants.find((candidate) => candidate.variantId === variant.id);
-      return row && row.portions > 0 ? [`${variant.name} ${formatQty(row.portions)}`] : [];
-    })
-    .join(' · ');
 }
 /** "Eislaufen (Hohenschönhausen)"; the title alone without a Zusatz. */
 export function withNote(title: string, note?: string): string {

@@ -1,10 +1,10 @@
 // Spec 0025 "Einkauf": the amount "von Hand", ✕ per origin, removing at the same place, checking on
 // the list (store action with onList), exact names, deleting an article with its checked item and
 // a new store that copies another.
-import { AMOUNT_NOT_RECOGNIZED, originSummary, summarizeItem } from '@housekeeping/core';
+import { AMOUNT_NOT_RECOGNIZED, summarizeItem } from '@housekeeping/core';
 import { describe, expect, it } from 'vitest';
 
-import { H, withBackend } from './backend-test-helpers';
+import { H, originSummary, withBackend } from './backend-test-helpers';
 import { createArticle, deleteArticle } from './commands-articles';
 import {
   addPlannedToList,

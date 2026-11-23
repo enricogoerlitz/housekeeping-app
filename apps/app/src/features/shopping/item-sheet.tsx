@@ -43,6 +43,7 @@ import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { AreaPicker } from '@/features/stores/area-picker';
 
 import { CountStepper, removeWithUndo } from './item-controls';
+import { errorMessage } from '@/features/shell/error-message';
 
 const NOTE_TOO_LONG = `Höchstens ${ITEM_NOTE_MAX_LENGTH} Zeichen`;
 const FAILED = 'Das hat nicht geklappt.';
@@ -173,7 +174,7 @@ function ItemEditor(props: {
       action();
       return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : FAILED);
+      setError(errorMessage(caught, FAILED));
       return false;
     }
   };
@@ -212,7 +213,7 @@ function ItemEditor(props: {
     try {
       result = removeItemOrigin(item.id, ids);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : FAILED);
+      setError(errorMessage(caught, FAILED));
       return;
     }
     if (result === null) {

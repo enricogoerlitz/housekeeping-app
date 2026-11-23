@@ -1,5 +1,6 @@
 // The synced tables and what a client may write to them. Mirrors the database: the grant matrix
-// (column-level grants) and the allowlist of `apply_changes` (tmp/brief/db-handoff.md, T5).
+// (column-level grants in supabase/migrations) and the allowlist of `apply_changes`
+// (20261121062357_apply_changes.sql; docs/architecture/sync.md).
 import type { PullResult, SyncRow } from '@housekeeping/core';
 
 import type { RawPullResult } from '../transport';
@@ -45,7 +46,6 @@ export const COMPOSITE_TABLES = {
 
 export type IdTable = (typeof ID_TABLES)[number];
 export type CompositeTable = keyof typeof COMPOSITE_TABLES;
-export type HouseholdTable = IdTable | CompositeTable;
 
 /**
  * Columns `apply_changes` accepts per table (insert additionally sends `id`). Store-only columns

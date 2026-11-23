@@ -54,7 +54,7 @@ import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
 
 export { useDragSource } from './drag-source';
-export type { DragSourceBinding, DragSourceOptions } from './drag-context';
+export type { DragSourceBinding } from './drag-context';
 export type { DragCallbacks, DropGrid } from './drag-controller';
 
 // Snap back after a drag: a spring, fast, no overshoot past the place it came from.

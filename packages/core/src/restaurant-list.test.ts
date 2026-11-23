@@ -5,6 +5,7 @@ import {
   EMPTY_RESTAURANT_LIST_FILTER,
   RESTAURANT_SORTS,
   restaurantCountLabel,
+  restaurantMatches,
   restaurantEmptyLabel,
   restaurantFilterChips,
   restaurantFilterCount,
@@ -163,5 +164,27 @@ describe('restaurant list (REQ-005)', () => {
     expect(restaurantCountLabel(1)).toBe('1 Restaurant');
     expect(restaurantEmptyLabel('xyzzy')).toBe('Keine Restaurants für „xyzzy“');
     expect(restaurantEmptyLabel(' ')).toBe('Keine Restaurants für diese Filter');
+  });
+});
+
+describe('restaurantMatches (spec 0031, REQ-021)', () => {
+  const brunch = restaurant({
+    id: 'brunch',
+    name: 'Café Morgenrot',
+    cuisine: 'Frühstück',
+    address: 'Wrangelstraße 12, 10997 Berlin-Kreuzberg',
+    tags: ['Brunch'],
+  });
+
+  it('AC-052: finds a restaurant by its address or a tag, as on its page', () => {
+    expect(restaurantMatches('Kreuzberg', brunch)).toBe(true);
+    expect(restaurantMatches('brunch', brunch)).toBe(true);
+    expect(restaurantMatches('Morgenrot', brunch)).toBe(true);
+    expect(restaurantMatches('Frühstück', brunch)).toBe(true);
+  });
+
+  it('AC-052: an empty search matches everything, another word nothing', () => {
+    expect(restaurantMatches('  ', brunch)).toBe(true);
+    expect(restaurantMatches('Pizza', brunch)).toBe(false);
   });
 });

@@ -4,7 +4,6 @@ import {
   addDays,
   entryIdsOnList,
   groupItems,
-  originSummary,
   sectionDraft,
   summarizeItem,
   updateIngredientRow,
@@ -14,7 +13,7 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
-import { H, TODAY, withBackend } from './backend-test-helpers';
+import { H, originSummary, TODAY, withBackend } from './backend-test-helpers';
 import { resolveArticle } from './commands-articles';
 import { assignArticleArea } from './commands-household';
 import { saveRecipeSection } from './commands-recipes';

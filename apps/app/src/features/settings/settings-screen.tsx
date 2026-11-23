@@ -1,8 +1,8 @@
 import {
-  OfflineError,
   syncNow,
   useCurrentMember,
   useHousehold,
+  useHouseholdClock,
   useNotificationSettings,
   useSyncState,
 } from '@housekeeping/api';
@@ -51,6 +51,7 @@ import { useSettings, type AppearancePreference } from '@/lib/settings';
 import { ProfileSheet } from './profile-sheet';
 import { useSignOut } from './sign-out';
 import { ThemePicker } from './theme-picker';
+import { errorMessage } from '@/features/shell/error-message';
 
 export type SettingsSection = 'profile' | 'appearance' | 'ai' | 'notifications';
 
@@ -300,10 +301,11 @@ function SyncLine() {
   const household = useHousehold();
   const online = useOnlineOnly();
   const [syncing, setSyncing] = useState(false);
+  const clock = useHouseholdClock();
   const row = syncRow({
     lastSyncedAt: sync.lastSyncedAt,
     syncing,
-    now: new Date(),
+    now: clock().now,
     timeZone: household.timeZone,
   });
   const run = async () => {
@@ -313,8 +315,7 @@ function SyncLine() {
       await syncNow();
     } catch (error) {
       toast.show({
-        message:
-          error instanceof OfflineError || error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
       });
     } finally {
       setSyncing(false);

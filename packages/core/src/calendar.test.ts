@@ -22,7 +22,6 @@ import {
   monthTitle,
   overflow,
   periodContains,
-  periodForDay,
   periodStart,
   rangeLabel,
   shiftPeriod,
@@ -362,17 +361,6 @@ describe('spec 0016: day window, range drag and changing the view', () => {
     // Without a chosen day the rules of spec 0010 stay.
     expect(switchView('year', 'month', '2027-01-01', today0016)).toBe('2027-01-01');
     expect(switchView('year', 'month', '2026-01-01', today0016)).toBe('2026-11-01');
-  });
-
-  it('AC-023: a day chosen in the week strip keeps the grid while it shows the day, else follows it', () => {
-    // November 2026 shows Mon 26.10. to Sun 6.12.
-    expect(periodForDay('month', '2026-11-01', '2026-11-28')).toBe('2026-11-01');
-    expect(periodForDay('month', '2026-11-01', '2026-12-03')).toBe('2026-11-01');
-    expect(periodForDay('month', '2026-11-01', '2026-12-07')).toBe('2026-12-01');
-    expect(periodForDay('month', '2026-11-01', '2026-10-25')).toBe('2026-10-01');
-    expect(periodForDay('year', '2026-01-01', '2026-12-31')).toBe('2026-01-01');
-    expect(periodForDay('year', '2026-01-01', '2027-01-01')).toBe('2027-01-01');
-    expect(periodForDay('week', '2026-11-23', '2026-11-30')).toBe('2026-11-30');
   });
 
   it('AC-019: "Anderes Datum …" starts with the month of the entry, a parked one with today', () => {

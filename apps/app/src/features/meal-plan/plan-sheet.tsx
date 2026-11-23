@@ -39,9 +39,9 @@ import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { CookPicker, EaterPicker, FieldLabel, PortionFields, usePortions } from './plan-fields';
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Das hat nicht geklappt.';
+const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
 
 /** What "Wer isst mit?" means for a recipe or a collection: portions over its variants. */
 export interface PlanSplit {
@@ -82,7 +82,7 @@ export function PlanSheet(props: {
   const household = useHousehold();
   const members = useMembers();
   const membersById = useMembersById();
-  const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
+  const slots = household.mealSlots;
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>
@@ -161,7 +161,7 @@ export function PlanSheet(props: {
         split
           ? {
               portions: portions.state.portions,
-              variants: portions.state.variants.filter((row) => row.portions > 0),
+              variants: portions.state.variants,
             }
           : undefined,
       );

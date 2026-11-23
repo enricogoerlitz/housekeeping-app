@@ -2,6 +2,12 @@
 // "Enrico & Nadja" (seed/demo.ts), a fake platform environment, Enrico's device attached to the
 // store (so commands run against it) and Nadja's device as a second, passive engine. Not exported
 // from index.ts.
+import {
+  originLabel,
+  summarizeItem,
+  type ShoppingContribution,
+  type ShoppingItem,
+} from '@housekeeping/core';
 import { afterEach, beforeEach, vi } from 'vitest';
 
 import { createEngine, startBackend, stopBackend, type Engine, type Environment } from './backend';
@@ -194,4 +200,22 @@ export function withBackend(): BackendFixture {
     },
   };
   return fixture;
+}
+
+/**
+ * "Lasagne (Fr): 1× · von Hand: 1×": an item's contributions grouped by origin in the order they
+ * came, each with its summed amount; an origin without amount reads alone ("von Hand").
+ */
+export function originSummary(item: ShoppingItem): string {
+  const byLabel = new Map<string, ShoppingContribution[]>();
+  for (const contribution of item.contributions) {
+    const label = originLabel(contribution.source);
+    byLabel.set(label, [...(byLabel.get(label) ?? []), contribution]);
+  }
+  return [...byLabel]
+    .map(([label, contributions]) => {
+      const { amount } = summarizeItem({ ...item, contributions });
+      return amount === '' ? label : `${label}: ${amount}`;
+    })
+    .join(' · ');
 }

@@ -22,7 +22,6 @@ import {
   checkEntryText,
   entryListShare,
   formatShortDate,
-  householdClock,
   isSelectableMoveDay,
   MAX_ENTRY_TEXT,
   monthPickerStart,
@@ -69,6 +68,7 @@ import { entryTitle } from './labels';
 import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
 import { entryReminderLabels, ReminderBell } from './reminder-bell';
+import { errorMessage } from '@/features/shell/error-message';
 
 function Label(props: { children: string }) {
   return (
@@ -184,10 +184,7 @@ export function EntrySheet(props: {
       : undefined;
 
   // Spec 0017, AC-007: not for "vorgemerkt" and not for a day that has passed (household's date).
-  const remindable = offersReminder(
-    entry.date,
-    householdClock(new Date(), household.timeZone).date,
-  );
+  const remindable = offersReminder(entry.date, today);
   // A passed day offers no block, but its reminder still shows: "Erinnerung vorbei" (REQ-006).
   const pastReminder = remindable
     ? undefined
@@ -238,7 +235,7 @@ export function EntrySheet(props: {
     try {
       saved = saveEntry(entry.id, fields);
     } catch (caught) {
-      setRefused(caught instanceof Error ? caught.message : WRITE_REJECTED_MESSAGE);
+      setRefused(errorMessage(caught));
       return;
     }
     setSaving(true);
@@ -298,7 +295,7 @@ export function EntrySheet(props: {
   const moveTo = (target: DropTarget) => {
     if (moveEntry(entry, target) === 'moved') setPickingDate(false);
   };
-  const slotOrder = [...household.mealSlots].sort((a, b) => a.sort - b.sort).map((slot) => slot.id);
+  const slotOrder = household.mealSlots.map((slot) => slot.id);
   const bounds = moveBounds(entry, entries, slotOrder);
   // The week of the entry's day, after "Anderes Datum …" too (AC-029).
   const chipDates = entry.date ? weekDates(startOfWeek(entry.date)) : props.weekDates;

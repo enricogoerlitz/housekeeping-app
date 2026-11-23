@@ -45,7 +45,7 @@ import { View } from 'react-native';
 import { stripeWho } from '@/features/calendar/calendar-data';
 import { stripeSurface, useStripeColors } from '@/features/calendar/calendar-parts';
 import { FAILED } from '@/features/packing/packing-labels';
-import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
+import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { useOriginBack, usePageParams } from '@/lib/url-state';
 
@@ -271,7 +271,7 @@ export function TripsScreen() {
       {creating ? <TripSheet onClose={() => address.close({ fenster: undefined })} /> : null}
       <TripWindowHost page="reisen" />
       {deleting ? (
-        <TripConfirmDialog
+        <ConfirmDialog
           title="Reise löschen?"
           message={deleting.message}
           confirmLabel="Löschen"

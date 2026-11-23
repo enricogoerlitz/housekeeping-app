@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   defaultPlanChoice,
-  eatersForDay,
+  householdEaters,
   pagePlanChoice,
   planButtonLabel,
   refreshPlanEaters,
@@ -84,7 +84,7 @@ describe('plan a recipe from its page (REQ-009)', () => {
   });
 
   it('AC-027 (0030): a trip never changes who is preselected, with or without a day', () => {
-    expect(eatersForDay([enrico, nadja])).toEqual([enrico.id, nadja.id]);
+    expect(householdEaters([enrico, nadja])).toEqual([enrico.id, nadja.id]);
     expect(defaultPlanChoice(today, slots, [enrico, nadja]).eaterIds).toEqual([
       enrico.id,
       nadja.id,

@@ -44,7 +44,7 @@ export function weekOffsetFor(today: ISODate, date: ISODate): number {
  * Ids for "Wer isst mit?": the whole household, on any day. A trip changes nothing about eating
  * (spec 0030, REQ-008; replaces spec 0008, AC-036).
  */
-export function eatersForDay(members: readonly Member[]): Id[] {
+export function householdEaters(members: readonly Member[]): Id[] {
   return members.map((member) => member.id);
 }
 
@@ -75,7 +75,7 @@ export function defaultPlanChoice(
   return {
     date: today,
     slotId: chosen?.id,
-    eaterIds: eatersForDay(members),
+    eaterIds: householdEaters(members),
     guests: 0,
     cookId: undefined,
   };
@@ -98,7 +98,7 @@ export function refreshPlanEaters(
   members: readonly Member[],
 ): PlanChoice {
   if (touched) return choice;
-  const eaterIds = eatersForDay(members);
+  const eaterIds = householdEaters(members);
   const same =
     eaterIds.length === choice.eaterIds.length &&
     eaterIds.every((id, index) => id === choice.eaterIds[index]);

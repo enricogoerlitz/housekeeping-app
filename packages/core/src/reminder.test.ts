@@ -6,6 +6,7 @@ import {
   dayChipFor,
   EntryReminderSchema,
   householdClock,
+  householdTime,
   initialReminder,
   isReminderPast,
   offsetFor,
@@ -64,6 +65,27 @@ describe('householdClock', () => {
 
   it('throws on a time zone the platform does not know', () => {
     expect(() => householdClock(NOW, 'Mars/Olympus')).toThrow();
+  });
+});
+
+describe('householdTime (spec 0031, REQ-020)', () => {
+  it('AC-050: 20:00 in New York is 02:00 in Berlin: the hour follows the household', () => {
+    const now = new Date('2026-11-21T01:00:00Z');
+    expect(householdTime(now, 'Europe/Berlin')).toEqual({
+      now,
+      timeZone: 'Europe/Berlin',
+      date: '2026-11-21',
+      time: '02:00:00',
+      hour: 2,
+    });
+    expect(householdTime(now, 'America/New_York')).toMatchObject({ date: '2026-11-20', hour: 20 });
+  });
+
+  it('AC-049: 00:00:30 in Berlin is already the next day', () => {
+    expect(householdTime(new Date('2026-11-20T23:00:30Z'), 'Europe/Berlin')).toMatchObject({
+      date: '2026-11-21',
+      hour: 0,
+    });
   });
 });
 

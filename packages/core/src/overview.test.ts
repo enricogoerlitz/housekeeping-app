@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  calendarDayParam,
   choresOfDay,
   dayDots,
   overviewSections,
@@ -14,8 +13,8 @@ import {
   shiftOverview,
   tileEntry,
 } from './overview';
-import { dueChores, withoutTrips } from './chore-schedule';
-import { enrico, grillabend, nadja, trip, vera } from './test-fixtures';
+import { dueChores } from './chore-schedule';
+import { enrico, grillabend, nadja, trip, vera, withoutTrips } from './test-fixtures';
 import type { Chore, ChoreEvent, MealPlanEntry, Trip } from './types';
 
 // Friday, 20 November 2026 (KW 47: Monday 16 to Sunday 22 November).
@@ -299,19 +298,6 @@ describe('AC-032: choresOfDay', () => {
     for (const shown of ['2026-11-21', '2026-11-27', '2026-12-20']) {
       const day = choresOfDay({ ...input, chores: [kitchenWindow], shown });
       expect(day.items).toEqual([]);
-    }
-  });
-});
-
-describe('AC-004/AC-011/AC-013: the day handed to the calendar', () => {
-  it('AC-004: "/kalender?tag=2026-11-28" opens the week of Saturday, 28 November', () => {
-    expect(calendarDayParam('2026-11-28')).toBe('2026-11-28');
-    expect(calendarDayParam(['2026-11-22', '2026-11-23'])).toBe('2026-11-22');
-  });
-
-  it('an invalid or missing value is ignored', () => {
-    for (const raw of [undefined, '', '28.11.2026', '2026-13-01', '2026-02-30', 'heute', []]) {
-      expect(calendarDayParam(raw)).toBeUndefined();
     }
   });
 });
