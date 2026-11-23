@@ -242,6 +242,8 @@ export function PlanSheet(props: {
             // No day is chosen while "Ohne Tag vormerken" is on.
             value={choice.date ?? ''}
             onChange={toDay}
+            // Spec 0030, REQ-005: seven equal chips, so paging the week never shifts them.
+            fill
             testID="plan-recipe-day"
           />
           <Row gap={8} wrap>

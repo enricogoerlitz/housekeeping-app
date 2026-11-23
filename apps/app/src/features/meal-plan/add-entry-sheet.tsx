@@ -114,14 +114,15 @@ type Choice =
   | { kind: 'text' }
   | { kind: 'leftovers'; source: MealPlanEntry; title: string };
 
+// Spec 0030, REQ-006: in this order.
 const TABS: { value: Tab; label: string }[] = [
   { value: 'all', label: 'Alle' },
-  // Spec 0021, REQ-011: only with a day to plan the leftovers on.
-  { value: 'leftovers', label: 'Reste' },
   { value: 'recipes', label: 'Rezepte' },
-  { value: 'collections', label: 'Sammlungen' },
   { value: 'restaurants', label: 'Restaurants' },
   { value: 'activities', label: 'Aktivitäten' },
+  { value: 'collections', label: 'Sammlungen' },
+  // Spec 0021, REQ-011: only with a day to plan the leftovers on.
+  { value: 'leftovers', label: 'Reste' },
 ];
 
 /** Hits per kind; the middle scrolls, the window keeps its size (AC-022). */
@@ -251,8 +252,8 @@ function DayPicker(props: {
 
 /**
  * "+ Hinzufügen" in the calendar (spec 0010, REQ-007): one large window of fixed size with the
- * search field "Was steht an?" and the tabs "Alle · Rezepte · Sammlungen · Restaurants ·
- * Aktivitäten" (spec 0009, AC-021); "Neu" creates a recipe, collection, restaurant or activity
+ * search field "Was steht an?" and the tabs "Alle · Rezepte · Restaurants · Aktivitäten ·
+ * Sammlungen · Reste" (spec 0009, AC-021; spec 0030, REQ-006); "Neu" creates a recipe, collection, restaurant or activity
  * right here (spec 0004, REQ-008), free text and
  * "Reste" from the seven days before (REQ-011) are in "Alle". The second step runs in the same
  * window. With `activityId` ("Einplanen" on an activity) that activity is chosen and the day can
