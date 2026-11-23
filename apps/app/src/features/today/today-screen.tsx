@@ -77,7 +77,7 @@ export function TodayScreen() {
   const shown = address.params.tag ?? today;
   const show = (date: ISODate) => address.replace({ tag: date === today ? undefined : date });
 
-  const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
+  const slots = household.mealSlots;
   const slotOrder = slots.map((slot) => slot.id);
   const slotNames = Object.fromEntries(slots.map((slot) => [slot.id, slot.name]));
   const sections = overviewSections(shown, today);

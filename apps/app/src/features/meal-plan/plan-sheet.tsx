@@ -82,7 +82,7 @@ export function PlanSheet(props: {
   const household = useHousehold();
   const members = useMembers();
   const membersById = useMembersById();
-  const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
+  const slots = household.mealSlots;
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>

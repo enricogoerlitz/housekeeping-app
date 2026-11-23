@@ -58,6 +58,7 @@ export {
   type StartBackendOptions,
   type SyncState,
 } from './backend';
+export { TransportError } from './transport';
 export { createIndexedDbStorage, createMemoryStorage, type Storage } from './storage';
 export {
   NOT_INVITED_MESSAGE,

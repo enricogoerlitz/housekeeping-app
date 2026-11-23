@@ -72,6 +72,8 @@ export interface ReminderForm {
   followTime: (before: TimeOfDay | undefined, after: TimeOfDay | undefined) => void;
   /** Resolves once the server took what was sent last, rejects when it refused it. */
   pending: () => Promise<void>;
+  /** The add window: another choice starts without the reminder of the one before (AC-056). */
+  reset: () => void;
 }
 
 /**
@@ -201,6 +203,7 @@ export function useReminderForm(options: {
       send(next);
     },
     pending: () => sent.current,
+    reset: () => update(reminderDraftFrom(options.stored)),
   };
 }
 

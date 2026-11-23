@@ -320,6 +320,21 @@ describe('mapping between domain and rows', () => {
     expect(recipes.map((recipe) => recipe.id)).toEqual(data.recipes.map((recipe) => recipe.id));
   });
 
+  it('C-15 (0031): the Tageszeiten come sorted, however the row stores them', () => {
+    const { data, members } = demo();
+    const { tables, small } = asServerTables({
+      ...householdToRows(data),
+      ...membersToRows(members),
+    });
+    const households = (small.households ?? []).map((row) => ({
+      ...row,
+      meal_slots: [...data.household.mealSlots].reverse(),
+    }));
+    const slots = rowsToHousehold(tables, { ...small, households }, DEMO_HOUSEHOLD_ID).household
+      .mealSlots;
+    expect(slots.map((slot) => slot.sort)).toEqual([0, 1, 2]);
+  });
+
   it('keeps object identity for unchanged rows across rebuilds', () => {
     const { data, members } = demo();
     const { tables, small } = asServerTables({

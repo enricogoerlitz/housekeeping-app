@@ -1011,7 +1011,10 @@ function toHousehold(row: SmallRow, members: SmallRow[]): Household {
     id: String(r.id),
     name: r.name ?? '',
     memberIds: members.map((member) => String(member.profile_id)),
-    mealSlots: (r.meal_slots ?? []) as unknown as Household['mealSlots'],
+    // Sorted once here, so every screen can take them as they come (spec 0031, C-15).
+    mealSlots: [...((r.meal_slots ?? []) as unknown as Household['mealSlots'])].sort(
+      (a, b) => a.sort - b.sort,
+    ),
     defaultStoreId: opt(r.default_store_id),
     timeZone: r.timezone ?? HOUSEHOLD_TIME_ZONE_DEFAULT,
   };

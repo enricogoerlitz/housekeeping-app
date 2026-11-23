@@ -4,6 +4,7 @@ import {
   activityMatches,
   sortActivities,
   visitsOf,
+  type Activity,
   type ActivitySort,
   type Id,
   type Visits,
