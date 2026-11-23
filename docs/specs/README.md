@@ -21,7 +21,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0012](0012-reisetaschen/spec.md)                   | Reisetaschen                                                           | umgesetzt   |
 | [0013](0013-benachrichtigungen/spec.md)             | Benachrichtigungen                                                     | umgesetzt   |
 | [0014](0014-betrieb-ci-cd-release/spec.md)          | Betrieb: Branching, CI/CD und Release (Welle 6, nach 0013)             | freigegeben |
-| [0015](0015-native-apps-anmeldung-speicher/spec.md) | Native Apps: Anmeldung und Speicher                                    | entwurf     |
+| [0015](0015-native-apps-anmeldung-speicher/spec.md) | Native Apps (geparkt, nur PWA)                                         | entwurf     |
 | [0016](0016-kalender-direkt-bedienen/spec.md)       | Kalender direkt bedienen: Ziehen, Tages-Fenster, Reisen                | freigegeben |
 | [0017](0017-erinnerungen-an-eintraegen/spec.md)     | Erinnerungen an Kalendereinträgen                                      | freigegeben |
 | [0018](0018-logikfehler-welle-1/spec.md)            | Fehler aus dem Logik-Review, Welle 1                                   | freigegeben |
@@ -29,10 +29,10 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0020](0020-uebersicht-sieben-tage/spec.md)         | Übersicht: sieben Tage ab gestern                                      | umgesetzt   |
 | [0021](0021-kalender-und-eintraege/spec.md)         | Kalender am Desktop und Einträge vollständig bearbeiten                | freigegeben |
 | [0022](0022-reisen-und-reisetaschen/spec.md)        | Reisen im Kalender, Reisetaschen und Packlisten                        | freigegeben |
-| [0023](0023-rezepte-und-kochmodus/spec.md)          | Rezepte bearbeiten, Kochmodus neu, Starter-Rezepte entfernt            | freigegeben |
+| [0023](0023-rezepte-und-kochmodus/spec.md)          | Rezepte bearbeiten, Kochmodus neu, Starter-Rezepte entfernt            | umgesetzt   |
 | [0024](0024-restaurants-und-aktivitaeten/spec.md)   | Restaurants und Aktivitäten verwalten                                  | freigegeben |
 | [0025](0025-einkauf/spec.md)                        | Einkauf: Liste, Einkaufen, Artikel und Märkte                          | freigegeben |
-| [0026](0026-haushaltsaufgaben-und-reisen/spec.md)   | Haushaltsaufgaben: Termine, Später, Nachtragen und Reisen              | freigegeben |
+| [0026](0026-haushaltsaufgaben-und-reisen/spec.md)   | Haushaltsaufgaben: Termine, Später, Nachtragen und Reisen              | umgesetzt   |
 | [0027](0027-verwalten-und-konto/spec.md)            | Verwalten und Konto: Einladungen, Profil, Haushalt, Benachrichtigungen | freigegeben |
 | [0028](0028-aufraeumen-und-v1/spec.md)              | Aufräumen und erste produktive Version                                 | freigegeben |
 | [0029](0029-handy-feinschliff/spec.md)              | Handy-Feinschliff: Fenster, Abstand unten, Wischen, Route              | freigegeben |
@@ -41,9 +41,14 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 
-Stand 22.11.2026: alle zehn Specs freigegeben, noch nichts gebaut. Quelle der Wünsche:
+Stand 23.11.2026: 0019–0030 sind gebaut und auf `develop`, ebenso die Gruppen A–F von Spec 0031
+(Gruppen G und H offen). Nächste Schritte: [../handover/2026-11-23-copilot.md](../handover/2026-11-23-copilot.md).
+Die Spec-Status oben sind die Front-Matter-Werte; „freigegeben“ bei 0019–0030 heißt nur, dass der
+Status dort noch nicht auf „umgesetzt“ gesetzt wurde. Quelle der Wünsche:
 `docs/product/review-enrico-2026-11-22.md` (ER-01–ER-36) und
 `docs/product/review-logik-und-bedienung.md`. Bei Widerspruch gilt Enricos Review.
+
+Die folgende Bau-Reihenfolge und die Regeln sind die ursprüngliche Planung der Welle.
 
 **Reihenfolge** (Gruppen parallel, je Spec ein Branch `feat/NNNN-slug` und eine PR):
 
