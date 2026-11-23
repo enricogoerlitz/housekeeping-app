@@ -235,6 +235,16 @@ async function appReady(page: Page): Promise<void> {
   ).toBeVisible({ timeout: 30_000 });
 }
 
+/**
+ * Waits until the app has loaded and shows its content: no request for half a second. A gesture
+ * right after `open` would start on a screen that is still being replaced by its loaded content,
+ * and its touch would reach no responder.
+ */
+export async function contentReady(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+  await settle(page);
+}
+
 /** Signs in with a local test account (dev buttons) and waits for "Heute" after the first pull. */
 export async function login(page: Page, who: Account = 'enrico'): Promise<void> {
   await page.goto('/');
@@ -318,11 +328,16 @@ export type ManagedPage =
   'activities' | 'packing-bags' | 'trips' | 'articles' | 'stores' | 'members' | 'feedback';
 
 /**
- * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page, then the
- * entry; on wider screens the entry in the sidebar.
+ * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page (from another
+ * page via "Übersicht"), then the entry; on wider screens the entry in the sidebar.
  */
 export async function openManaged(page: Page, key: ManagedPage): Promise<void> {
   if (isPhone(page)) {
+    // ⊞ is only on a tab's first page; from a detail page the way leads over "Übersicht".
+    await settle(page);
+    if ((await page.locator(`[data-testid="header-manage"]${ACTIVE}`).count()) === 0) {
+      await nav(page, 'index');
+    }
     await (await single(page, 'header-manage')).click();
     await expect(tid(page, 'manage-screen')).toBeVisible();
     await settle(page);
@@ -359,12 +374,19 @@ export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
 
 /**
  * Switches the developer switch "Offline simulieren" (Verwalten → Entwicklung; spec 0005,
- * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar.
+ * AC-059): on phones on the page behind ⊞ and back, on wider screens in the sidebar. A phone page
+ * without ⊞ (a detail page) cannot reach the switch without leaving; there the device loses its
+ * network for real, which the app treats the same way.
  */
 async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
   const phone = isPhone(page);
   if (phone) {
-    await (await single(page, 'header-manage')).click();
+    await settle(page);
+    if ((await page.locator(`[data-testid="header-manage"]${ACTIVE}`).count()) === 0) {
+      await page.context().setOffline(offline);
+      return;
+    }
+    await tid(page, 'header-manage').click();
     await expect(tid(page, 'manage-screen')).toBeVisible();
     await settle(page);
   }
@@ -516,6 +538,13 @@ export async function stubMaps(context: BrowserContext): Promise<void> {
 
 /** Clicks a route button and returns the URL of the map page it opened. */
 export async function routeUrl(page: Page, button: string): Promise<string> {
+  // The map services are answered here: their redirects would change the address, and the run
+  // needs no internet.
+  await page
+    .context()
+    .route(/^https:\/\/(maps\.apple\.com|www\.google\.com\/maps)\//, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html>' }),
+    );
   const [popup] = await Promise.all([
     page.context().waitForEvent('page'),
     tid(page, button).click(),

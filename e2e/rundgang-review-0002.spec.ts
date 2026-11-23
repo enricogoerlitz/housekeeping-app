@@ -1,6 +1,16 @@
 import type { Page } from '@playwright/test';
 
-import { day, expect, freshSeed, open, test, tid, toastMessage, TODAY } from './helpers';
+import {
+  contentReady,
+  day,
+  expect,
+  freshSeed,
+  open,
+  test,
+  tid,
+  toastMessage,
+  TODAY,
+} from './helpers';
 import { seedIds } from './seed-ids';
 
 // Spec 0030 — Enrico's review 0002: sticky day heads, readable days while drawing a trip, "Reisen"
@@ -192,9 +202,12 @@ test.describe('REQ-007: the tab swipe on the phone', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open(page, '/haushalt');
-    const panY = await page
-      .locator('[style*="touch-action"]')
-      .evaluateAll((nodes) => nodes.some((node) => getComputedStyle(node).touchAction === 'pan-y'));
+    await contentReady(page);
+    const panY = await page.evaluate(() =>
+      [...document.querySelectorAll('*')].some(
+        (node) => getComputedStyle(node).touchAction === 'pan-y',
+      ),
+    );
     expect(panY).toBe(true);
   });
 
@@ -203,6 +216,7 @@ test.describe('REQ-007: the tab swipe on the phone', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open(page, '/haushalt');
+    await contentReady(page);
     await drag(page, 300, await headingY(page, 'Diese Woche'), [
       [-5, -5],
       [-9, -9],
@@ -221,6 +235,7 @@ test.describe('REQ-007: the tab swipe on the phone', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open(page, '/rezepte');
+    await contentReady(page);
     await drag(page, 200, 700, [
       [-2, -20],
       [-4, -60],
@@ -240,6 +255,7 @@ test.describe('REQ-007: the tab swipe on the phone', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open(page, '/haushalt');
+    await contentReady(page);
     await drag(page, 300, await headingY(page, 'Diese Woche'), [
       [-2, -6],
       [-4, -12],

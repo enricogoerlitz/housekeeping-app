@@ -21,6 +21,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
+  // In CI a hanging shard stops itself and still writes its report (spec 0031, REQ-002).
+  globalTimeout: process.env.CI ? 35 * 60_000 : 0,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { outputFolder: './playwright-report', open: 'never' }]],
   use: {

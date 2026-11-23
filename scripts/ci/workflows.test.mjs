@@ -660,8 +660,16 @@ describe('e2e.yml (spec 0031, REQ-002)', () => {
     for (const job of Object.values(e2e.doc.jobs)) assert.equal(job.environment, undefined);
   });
 
-  test('AC-007: four shards of the full suite and the dev-mode smoke test, all run to the end', () => {
-    assert.deepEqual(suite.strategy.matrix.suite, ['1/4', '2/4', '3/4', '4/4', 'dev']);
+  test('AC-007: six shards of the full suite and the dev-mode smoke test, all run to the end', () => {
+    assert.deepEqual(suite.strategy.matrix.suite, [
+      '1/6',
+      '2/6',
+      '3/6',
+      '4/6',
+      '5/6',
+      '6/6',
+      'dev',
+    ]);
     assert.equal(suite.strategy['fail-fast'], false);
     const script = runs(suite).join('\n');
     assert.match(script, /pnpm e2e --shard="\$SUITE"/);
@@ -679,6 +687,14 @@ describe('e2e.yml (spec 0031, REQ-002)', () => {
         /pnpm e2e/,
       ],
       'e2e',
+    );
+    const cache = steps(suite).find((step) => step.uses?.startsWith('actions/cache@'));
+    assert.equal(cache?.with?.path, '~/.cache/ms-playwright');
+    assert.match(cache?.with?.key, /steps\.playwright\.outputs\.version/);
+    const e2eStep = steps(suite).find((step) => step.name === 'e2e');
+    assert.ok(
+      e2eStep['timeout-minutes'] < suite['timeout-minutes'],
+      'the step stops before the job',
     );
     assert.equal(suite.env.EXPO_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
     const keys = runs(suite).find((run) => /push-keys/.test(run));
