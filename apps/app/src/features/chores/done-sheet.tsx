@@ -14,6 +14,7 @@ import {
   choreDraftErrors,
   choreDayLabel,
   doneOnChoices,
+  doneSheetChores,
   matchSearchOrCreate,
   newChoreDraft,
   plannedFieldsOf,
@@ -35,11 +36,12 @@ import {
 } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 
+import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
 
 import { AssignmentField, RhythmField, useChoreDraft } from './chore-form';
-import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
+import { useChoreAway } from './use-chore-away';
 
 /** The day menu: a quick day, or „Datum …“ for the month calendar (spec 0026, REQ-007). */
 type DayChoice = ISODate | 'pick';
@@ -50,7 +52,8 @@ type Choice = { kind: 'chore'; chore: Chore } | { kind: 'new'; title: string };
 const NEW_KEY = 'new';
 
 /**
- * „Was hast du erledigt?“ (REQ-006): search over all chores; a hit counts as done on the chosen
+ * „Was hast du erledigt?“ (REQ-006): search over all chores, with an empty search all of them,
+ * due ones first (spec 0031, AC-070); a hit counts as done on the chosen
  * day (heute, gestern, vorgestern or „Datum …“ up to 30 days back, spec 0026) by the chosen person, and its next date moves on as when
  * checking it off (AC-036 to AC-038). Without a hit a new chore „bei Bedarf“ is created and booked
  * (AC-039); with „Mehr Angaben“ it gets a rhythm and an assignment right away (AC-040). A
@@ -62,6 +65,7 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
   const members = useMembers();
   const me = useCurrentMember();
   const today = useToday();
+  const away = useChoreAway();
   const online = useOnlineOnly();
 
   const [query, setQuery] = useState('');
@@ -251,10 +255,13 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
         label="Aufgabe suchen"
         placeholder="z. B. Fenster putzen"
         clearLabel="Suche leeren"
-        hits={result.matches.map(({ item }) => ({
-          key: item.id,
-          title: item.name,
-          meta: recurrenceLabel(item.chore.recurrence),
+        hits={(title === ''
+          ? doneSheetChores(chores, today, away)
+          : result.matches.map(({ item }) => item.chore)
+        ).map((chore) => ({
+          key: chore.id,
+          title: chore.title,
+          meta: recurrenceLabel(chore.recurrence),
         }))}
         onSelect={(key) => {
           const hit = items.find((item) => item.id === key);

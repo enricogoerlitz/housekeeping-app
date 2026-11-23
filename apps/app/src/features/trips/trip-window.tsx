@@ -16,6 +16,7 @@ import {
   stripeOf,
   tripDeleteDialog,
   tripHeader,
+  tripPreview,
   validateTripDraft,
   type Id,
   type Trip,
@@ -141,11 +142,13 @@ function TripWindow(props: { tripId: Id; onClose: () => void }) {
   const head = tripHeader(stripe, members);
   const people = members.filter((member) => head.memberIds.includes(member.id));
   const progress = packingProgress(items);
-  const sections = packingSections(listBags, items, trip.id);
   const deleteMessage = tripDeleteDialog(trip.id, listBags, items);
   const values = draft ?? fieldsOf(trip);
   const changes = base && draft ? changesOf(base, draft) : {};
   const dirty = Object.keys(changes).length > 0;
+  // While "Speichern" shows, duration and "je Tag" quantities follow the period set (AC-068).
+  const preview = tripPreview(trip, dirty ? values.range : undefined, items);
+  const sections = packingSections(listBags, preview.items, trip.id);
   const problems = validateTripDraft({
     memberIds: values.who,
     from: values.range.from,
@@ -298,7 +301,7 @@ function TripWindow(props: { tripId: Id; onClose: () => void }) {
             hint={online.hint}
           />
           <Text color="muted" testID="trip-subtitle">
-            {head.duration}
+            {preview.duration}
           </Text>
         </Stack>
 

@@ -156,6 +156,8 @@ test.describe('Haushalt and Übersicht at phone width', () => {
     await tid(page, 'today-spontaneous').click();
     await expect(tid(page, 'chore-done-sheet')).toContainText('Was hast du erledigt?');
     await expect(tid(page, 'chore-done-save')).toBeDisabled();
+    // AC-070 (0031): with an empty search the household's chores already stand there.
+    await expect(tid(page, 'chore-done-search-hits')).toContainText('Fenster Küche');
     await tid(page, 'chore-done-search-input').fill('Fenster Kuche');
     await expect(tid(page, 'chore-done-search-create-new')).toBeDisabled();
     await expect(tid(page, 'chore-done-search-brake')).toContainText('Meinst du Fenster Küche?');
