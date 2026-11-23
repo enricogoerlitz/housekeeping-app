@@ -36,6 +36,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0027](0027-verwalten-und-konto/spec.md)            | Verwalten und Konto: Einladungen, Profil, Haushalt, Benachrichtigungen | freigegeben |
 | [0028](0028-aufraeumen-und-v1/spec.md)              | Aufräumen und erste produktive Version                                 | freigegeben |
 | [0029](0029-handy-feinschliff/spec.md)              | Handy-Feinschliff: Fenster, Abstand unten, Wischen, Route              | freigegeben |
+| [0030](0030-review-0002/spec.md)                    | Review 0002: Kalender, Reisen und Handy-Feinschliff                    | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

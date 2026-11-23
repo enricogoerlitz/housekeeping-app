@@ -685,8 +685,8 @@ und Woche, mit einer Trennzeile beim Jahreswechsel (Spec 0011, REQ-010). Ein Tip
 Ein Zeitraum, in dem eine oder mehrere Personen unterwegs sind (Urlaub, Dienstreise, Besuch). Eine
 Reise hat Von, Bis, eine optionale Notiz (Titel, ohne Notiz „unterwegs“) und mindestens eine Person;
 stehen alle Mitglieder darauf, heißt sie „Ganzer Haushalt“ (nur abgeleitet, nicht gespeichert).
-Wirkt auf „Wer isst mit?“, Benachrichtigungen und Aufgaben ([Termin nach Reisen](#termin-nach-reisen),
-[Vertretung](#vertretung)). Von und Bis sind frei wählbar, auch über Monats- und Jahresgrenzen und in
+Wirkt nur auf Aufgaben ([Termin nach Reisen](#termin-nach-reisen), [Vertretung](#vertretung)) und
+schaltet Benachrichtigungen still, nicht auf Essen, Esser oder Einkauf (Spec 0030, REQ-008). Von und Bis sind frei wählbar, auch über Monats- und Jahresgrenzen und in
 der Vergangenheit. Kann eine Packliste haben (Spec 0022). Hieß bis Spec 0022 „Abwesenheit“.
 
 - **Im Code:** `Trip`, `trips` (eine Zeile je Reise) und `trip_members` (Person je Reise); vorher
@@ -697,7 +697,18 @@ der Vergangenheit. Kann eine Packliste haben (Spec 0022). Hieß bis Spec 0022 �
   entfällt
 - **Nicht verwenden:** Abwesenheit (alter Name), Urlaub (ist nur ein Fall davon), Pause
 - **Siehe auch:** [Reise-Streifen](#reise-streifen), [Reise-Fenster](#reise-fenster),
-  [Packliste](#packliste)
+  [Packliste](#packliste), [Reise-Entwurf](#reise-entwurf)
+
+### Reise-Entwurf
+
+Eine [Reise](#reise), die noch geplant wird (Urlaubsplanung). Sie steht schraffiert und mit
+„Entwurf“ überall, wo Reisen stehen, wirkt aber noch nicht: Aufgaben warten nicht, Nachrichten
+kommen weiter, keine Pack-Karte auf der Übersicht. Ausschalten von „Entwurf“ bestätigt die Reise
+(Spec 0030, REQ-004).
+
+- **Im Code:** `Trip.draft`, Spalte `trips.draft`
+- **In der Oberfläche:** „Entwurf“, „Entwurf gespeichert“, „Reise bestätigt“
+- **Nicht verwenden:** vorläufige Reise, geplante Reise
 
 ### Tages-Fenster
 
