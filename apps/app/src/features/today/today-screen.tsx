@@ -48,8 +48,9 @@ function greeting(hour: number): string {
  * Tagesleiste (seven days from yesterday), Vorbereitung, planned, "Wie war's?" and "Zu tun" all
  * follow it. The shown day stands in the address (`/?tag=…`, spec 0019): coming back from a detail
  * page and a reload keep it. Phone: head, Tagesleiste, planned, Wie war's?, Zu tun, Einkauf,
- * Reisetasche. Desktop (1,6 : 1): left Tagesleiste and planned, right Wie war's?, Zu tun, Einkauf
- * and Reisetasche (spec 0012).
+ * Reisetasche; tablets the same in one column, with the cards of the planned side by side (spec
+ * 0031, REQ-032). Desktop (1,6 : 1): left Tagesleiste and planned, right Wie war's?, Zu tun,
+ * Einkauf and Reisetasche (spec 0012).
  */
 export function TodayScreen() {
   const address = usePageParams('uebersicht');
@@ -57,6 +58,8 @@ export function TodayScreen() {
   // household other than the active one becomes active; the parameter then leaves.
   useHandedHousehold(address.params.haushalt, address.replace);
   const { isPhone, bp } = useBreakpoint();
+  // Two columns and the nav beside the title only from 1100 px (spec 0031, REQ-032).
+  const twoColumns = bp === 'desktop';
   // The time of day only picks the greeting; the date itself comes from useToday().
   // Spec 0031, AC-050: the greeting follows the household's clock, not the device's.
   const clock = useHouseholdClock();
@@ -96,7 +99,7 @@ export function TodayScreen() {
     <OverviewNav
       shown={shown}
       today={today}
-      row={isPhone}
+      row={!twoColumns}
       onPage={(steps) => show(shiftOverview(shown, steps))}
       onToday={() => address.replace({ tag: undefined })}
     />
@@ -113,7 +116,7 @@ export function TodayScreen() {
       }
       // Always exactly one line, so nothing below moves (REQ-002, AC-007, AC-008).
       subtitle={overviewSubline(shown, today, `${greeting(hour)}, ${me.name}`)}
-      right={isPhone ? <StartPageActions /> : nav}
+      right={isPhone ? <StartPageActions /> : twoColumns ? nav : undefined}
     />
   );
 
@@ -123,7 +126,7 @@ export function TodayScreen() {
         shown={shown}
         today={today}
         slotOrder={slotOrder}
-        tiles={bp === 'desktop'}
+        tiles={twoColumns}
         onSelect={show}
         onAdd={addTo}
       />
@@ -147,7 +150,7 @@ export function TodayScreen() {
   const recap = isToday ? <TodayRecap today={today} slotOrder={slotOrder} /> : null;
   const chores = <TodayChores shown={shown} today={today} title={sections.chores} />;
 
-  if (isPhone) {
+  if (!twoColumns) {
     return (
       <Screen testID="today-screen" header={header}>
         {offlineHint}
@@ -157,7 +160,7 @@ export function TodayScreen() {
         {meals}
         {recap}
         {chores}
-        <TodayShopping preview={false} />
+        <TodayShopping preview={!isPhone} />
         <TodayPacking shown={shown} />
         <TripWindowHost page="uebersicht" />
         {addSheet}
@@ -168,9 +171,7 @@ export function TodayScreen() {
   return (
     <Screen testID="today-screen" header={header}>
       {offlineHint}
-      <View
-        style={{ flexDirection: 'row', gap: bp === 'desktop' ? 48 : 28, alignItems: 'flex-start' }}
-      >
+      <View style={{ flexDirection: 'row', gap: 48, alignItems: 'flex-start' }}>
         <View style={{ flex: 1.6, minWidth: 0 }}>
           {strip}
           <TodayTrips shown={shown} />

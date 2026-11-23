@@ -21,7 +21,7 @@ export interface MemberRatingsProps {
 }
 
 /**
- * The ratings in the head of a recipe or restaurant page (spec 0008, E15, AC-040): "Du" with the
+ * The ratings in the head of a recipe, restaurant or activity page (spec 0008, E15, AC-040): "Du" with the
  * own stars to set, next to it every other member with their stars only to look at; without a
  * rating the stars stay empty.
  */

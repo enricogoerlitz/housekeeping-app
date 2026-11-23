@@ -44,11 +44,10 @@ import { View } from 'react-native';
 
 import { stripeWho } from '@/features/calendar/calendar-data';
 import { stripeSurface, useStripeColors } from '@/features/calendar/calendar-parts';
-import { useBackToManage } from '@/features/manage/navigation';
 import { FAILED } from '@/features/packing/packing-labels';
 import { ConfirmDialog } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
-import { usePageParams } from '@/lib/url-state';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { TripSheet } from './trip-sheet';
 import { TripWindowHost, useTripWindow } from './trip-window';
@@ -65,7 +64,6 @@ const ALL_PERIODS = 'alle';
  * without one there is 5 s "Rückgängig" (AC-038).
  */
 export function TripsScreen() {
-  const back = useBackToManage();
   const trips = useTrips();
   const members = useMembers();
   const membersById = useMembersById();
@@ -75,6 +73,8 @@ export function TripsScreen() {
   const online = useOnlineOnly();
   const tripWindow = useTripWindow('reisen');
   const address = usePageParams('reisen');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
   const creating = address.params.fenster === 'neu-reise';
   const [deleting, setDeleting] = useState<{ stripe: TripStripe; message: string }>();
 
@@ -178,7 +178,8 @@ export function TripsScreen() {
       header={
         <ScreenHeader
           title="Reisen"
-          onBack={back}
+          backLabel={back.label}
+          onBack={back.back}
           right={
             <IconButton
               icon="plus"

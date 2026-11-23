@@ -477,7 +477,7 @@ export function SwitchRow(props: SwitchRowProps) {
         value={props.value}
         onValueChange={props.onValueChange}
         disabled={props.disabled}
-        trackColor={{ false: c.surfaceSunken, true: c.success }}
+        trackColor={{ false: c.switchOff, true: c.success }}
         thumbColor={c.surface}
         // react-native-web reads these two for the "on" state.
         {...({ activeTrackColor: c.success, activeThumbColor: c.surface } as object)}

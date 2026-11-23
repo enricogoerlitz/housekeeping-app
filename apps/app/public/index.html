@@ -88,6 +88,11 @@
           --hit: 44px;
         }
       }
+      /* Spec 0031, REQ-031: dense cells (the year's days) keep their drawn size; a finger opens
+         the month there, so the grown areas never cover the neighbour day. */
+      [data-dense]::before {
+        display: none;
+      }
     </style>
     <script src="/theme-boot.js"></script>
   </head>

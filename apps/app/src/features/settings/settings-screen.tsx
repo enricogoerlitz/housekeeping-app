@@ -162,13 +162,9 @@ function SettingsList(props: {
           <ListRow
             key={section}
             title={SECTION_TITLES[section]}
-            trailing={
-              section === 'notifications' && notifications ? (
-                <Text variant="small" color="muted">
-                  {notifications}
-                </Text>
-              ) : undefined
-            }
+            // Under the title, so the narrow list of a tablet keeps the title whole (spec 0031,
+            // ui-verify of REQ-033).
+            subtitle={section === 'notifications' ? notifications : undefined}
             selected={section === props.chosen}
             onPress={() => props.onChoose(section)}
             testID={`settings-nav-${section}`}

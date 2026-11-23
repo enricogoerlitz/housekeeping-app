@@ -17,10 +17,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { ScrollColumn } from '@/features/shell/scroll-column';
-import { usePageParams } from '@/lib/url-state';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { TripWindowHost } from '@/features/trips/trip-window';
 
@@ -134,11 +133,12 @@ function BagsList(props: { selectedId?: Id; onSelect: (bagId: Id) => void }) {
 export function PackingBagsScreen() {
   const bags = orderedBags(usePackingBags());
   const router = useRouter();
-  const back = useBackToManage();
   const { isPhone } = useBreakpoint();
   // The chosen bag stands in the address (spec 0019, REQ-014); on phones the same `tasche`
   // opens the bag's page.
   const address = usePageParams('reisetaschen');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
   const chosenId = address.params.tasche;
   const replace = address.replace;
   useEffect(() => {
@@ -158,7 +158,14 @@ export function PackingBagsScreen() {
     <Screen
       testID="bags-screen"
       clearFab={false}
-      header={<ScreenHeader title="Reisetaschen" onBack={back} testID="bags-title" />}
+      header={
+        <ScreenHeader
+          title="Reisetaschen"
+          backLabel={back.label}
+          onBack={back.back}
+          testID="bags-title"
+        />
+      }
       scroll={isPhone}
       style={isPhone ? undefined : { flex: 1, paddingBottom: 0 }}
     >

@@ -40,6 +40,7 @@ export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from 
 export { Sheet, toast, ToastHost, useToastClearance } from './overlay';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useFinePointer, useHover } from './pointer';
+export { pressedWithFinger } from './press-pointer';
 export { type SheetSize } from './sheet-size';
 export { DockedPanel, type DockedPanelState } from './docked-panel';
 export { panelPlacement } from './docked-panel-state';

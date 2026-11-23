@@ -46,6 +46,7 @@ Rollen statt Farbnamen. Alle Paare erfüllen WCAG AA (Text ≥ 4,5:1), geprüft 
 | `accent` / `onAccent`                                 | Hauptaktionen, aktiver Tab, Links                                                                              |
 | `accentSoft`                                          | aktiver Eintrag in der Seitenleiste (in allen Themes)                                                          |
 | `success` / `onSuccess`                               | abgehakt, erledigt, Fortschritt                                                                                |
+| `switchOff`                                           | Spur eines Schalters „aus“; ≥ 3:1 gegen Seite und Karte, ohne Schatten (Spec 0031, REQ-035)                    |
 | `star`, `due`                                         | Bewertungen; Fälligkeitsbalken und Vorlauf-Hinweis                                                             |
 | `warnBg` / `warnText`                                 | Offline, „Passt nicht für …“, Fehlermeldungen an Feldern                                                       |
 | `barBg`                                               | Tab-Leiste, Seitenleiste, Eingabeleiste                                                                        |
