@@ -33,10 +33,24 @@ function hasNeighbour(dx: number, position: Pick<TabSwipePosition, 'index' | 'co
   return dx < 0 ? position.index < position.count - 1 : position.index > 0;
 }
 
-/** Whether a move (dx, dy so far, started at x0) is a tab swipe and not scrolling or going back. */
-export function claimsTabSwipe(dx: number, dy: number, x0: number, width: number): boolean {
-  if (x0 < TAB_SWIPE_EDGE || x0 > width - TAB_SWIPE_EDGE) return false;
-  return claimsSwipe(dx, dy);
+/** The part of PanResponder's gesture state a claim reads. */
+export interface TabSwipeMove {
+  /** Way so far since the finger went down. */
+  dx: number;
+  dy: number;
+  /** Where the finger is now. */
+  moveX: number;
+}
+
+/**
+ * Whether a move is a tab swipe and not scrolling or going back. The start is `moveX - dx`:
+ * PanResponder sets `x0` only on the grant, before it reads 0, so an edge check on it refused
+ * every swipe (spec 0030, REQ-007).
+ */
+export function claimsTabSwipe(move: TabSwipeMove, width: number): boolean {
+  const start = move.moveX - move.dx;
+  if (start < TAB_SWIPE_EDGE || start > width - TAB_SWIPE_EDGE) return false;
+  return claimsSwipe(move.dx, move.dy);
 }
 
 /** Where the content stands while the finger is down: 1:1, gently resisting without a neighbour. */

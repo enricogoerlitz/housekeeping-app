@@ -59,13 +59,20 @@ describe('swipe between view tabs (spec 0029, REQ-003)', () => {
   });
 
   it('AC-012: only a clearly sideways move away from the screen edges is taken', () => {
-    expect(claimsTabSwipe(14, 3, 200, 390)).toBe(true);
-    expect(claimsTabSwipe(14, 10, 200, 390)).toBe(false);
-    expect(claimsTabSwipe(5, 0, 200, 390)).toBe(false);
+    // The start is where the finger is now minus the way so far (moveX - dx).
+    expect(claimsTabSwipe({ dx: 14, dy: 3, moveX: 214 }, 390)).toBe(true);
+    expect(claimsTabSwipe({ dx: 14, dy: 10, moveX: 214 }, 390)).toBe(false);
+    expect(claimsTabSwipe({ dx: 5, dy: 0, moveX: 205 }, 390)).toBe(false);
     expect(TAB_SWIPE_EDGE).toBe(20);
-    expect(claimsTabSwipe(30, 0, 19, 390)).toBe(false);
-    expect(claimsTabSwipe(-30, 0, 371, 390)).toBe(false);
-    expect(claimsTabSwipe(-30, 0, 370, 390)).toBe(true);
+    expect(claimsTabSwipe({ dx: 30, dy: 0, moveX: 49 }, 390)).toBe(false);
+    expect(claimsTabSwipe({ dx: -30, dy: 0, moveX: 341 }, 390)).toBe(false);
+    expect(claimsTabSwipe({ dx: -30, dy: 0, moveX: 340 }, 390)).toBe(true);
+  });
+
+  it('AC-023 (0030): the start comes from the move, not from x0, which PanResponder sets only on grant', () => {
+    // Before the grant PanResponder reports x0 = 0; a swipe from the middle must still be taken.
+    const beforeGrant = { dx: -25, dy: 0, moveX: 275, x0: 0 };
+    expect(claimsTabSwipe(beforeGrant, 390)).toBe(true);
   });
 
   it('neighbourTab picks the tab a step away and nothing past the ends', () => {

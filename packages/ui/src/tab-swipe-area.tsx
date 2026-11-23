@@ -132,9 +132,7 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
       },
       // Bubbling only: a row swipe or a reorder drag inside claims the move first.
       onMoveShouldSetPanResponder: (_event, gesture) =>
-        enabled.get() &&
-        !blocked.get() &&
-        claimsTabSwipe(gesture.dx, gesture.dy, gesture.x0, width.get()),
+        enabled.get() && !blocked.get() && claimsTabSwipe(gesture, width.get()),
       // Spec 0030, REQ-007: once the swipe has the finger, a scroll view does not take it back.
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
