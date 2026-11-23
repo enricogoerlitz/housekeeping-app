@@ -314,12 +314,10 @@ export function replacePlannedOnList(input: {
   const kept = input.items.flatMap((item) =>
     item.checked || takenOver.has(item.articleId)
       ? []
-      : item.contributions
-          .filter(ofReplaced)
-          .map((c) => ({
-            articleId: item.articleId,
-            contributions: [{ ...c, id: input.newId() }],
-          })),
+      : item.contributions.filter(ofReplaced).map((c) => ({
+          articleId: item.articleId,
+          contributions: [{ ...c, id: input.newId() }],
+        })),
   );
   const emptied = new Set(
     input.items
