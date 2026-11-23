@@ -326,3 +326,15 @@ describe('sectionOfStartPath', () => {
     for (const origin of ORIGINS) expect(sectionOfStartPath(SECTION_START[origin])).toBe(origin);
   });
 });
+
+describe('pages under "Verwalten" (spec 0031, REQ-036)', () => {
+  it.each(['reisen', 'maerkte', 'mitglieder', 'feedback', 'reisetaschen'] as const)(
+    'AC-081: %s reads its origin from `von`, so "Zurück" names it',
+    (page) => {
+      expect(readPageParams(page, { von: 'kalender' })).toEqual({
+        values: { von: 'kalender' },
+        invalid: [],
+      });
+    },
+  );
+});

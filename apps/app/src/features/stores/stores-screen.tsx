@@ -21,10 +21,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { usePageParams } from '@/lib/url-state';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { AreasView } from './areas-view';
 import { messageOf, viewFromParam, VIEW_OPTIONS, type StoresView } from './labels';
@@ -151,11 +150,12 @@ export function StoresScreen() {
   const stores = useStores();
   const household = useHousehold();
   const router = useRouter();
-  const back = useBackToManage();
   const { isPhone } = useBreakpoint();
   // View and the chosen store stand in the address (spec 0019, REQ-011, REQ-014); on phones the
   // same `markt` opens the store's page.
   const address = usePageParams('maerkte');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
   const { params } = address;
   const view = viewFromParam(params.ansicht);
   const chosenId = params.markt;
@@ -184,7 +184,8 @@ export function StoresScreen() {
     <Screen
       testID="stores-screen"
       clearFab={false}
-      header={<ScreenHeader title="Märkte & Bereiche" onBack={back} testID="stores-title" />}
+      header={<ScreenHeader title="Märkte & Bereiche" backLabel={back.label}
+          onBack={back.back} testID="stores-title" />}
       tabs={
         <ViewTabs<StoresView>
           label="Ansicht"

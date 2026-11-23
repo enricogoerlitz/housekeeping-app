@@ -368,7 +368,8 @@ export function CalendarScreen() {
     } else if (action === 'trips-new') {
       if (!online.disabled) openWindow('neu-reise');
     } else {
-      router.navigate('/reisen');
+      // "‹ Kalender" on "Reisen" (spec 0031, REQ-036).
+      router.navigate({ pathname: '/reisen', params: { von: 'kalender' } });
     }
   };
 

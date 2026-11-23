@@ -228,6 +228,7 @@ export const PAGE_PARAMS = {
     ansicht: one(oneOf(['maerkte', 'bereiche']), 'maerkte'),
     markt: one(Uuid),
     fenster: one(oneOf(['neu-markt', 'neu-bereich'])),
+    von: Von,
   },
   markt: {
     id: one(Uuid),
@@ -236,6 +237,7 @@ export const PAGE_PARAMS = {
   reisetaschen: {
     tasche: one(Uuid),
     reise: one(Uuid),
+    von: Von,
   },
   reisetasche: {
     id: one(Uuid),
@@ -246,6 +248,7 @@ export const PAGE_PARAMS = {
     fenster: one(oneOf(['neu-reise'])),
     // Spec 0030, REQ-003: the filter "Zeitraum", a year or a month of the start.
     zeitraum: one(z.string().regex(/^\d{4}(-(0[1-9]|1[0-2]))?$/)),
+    von: Von,
   },
   verwalten: {},
   einstellungen: {
@@ -257,10 +260,12 @@ export const PAGE_PARAMS = {
   },
   mitglieder: {
     fenster: one(oneOf(['umbenennen'])),
+    von: Von,
   },
   feedback: {
     filter: one(oneOf(['neu', 'angenommen', 'abgelehnt', 'erledigt'])),
     feedback: one(Uuid),
+    von: Von,
   },
   /** The Web Share target keeps the names the manifest gives it. */
   teilen: {

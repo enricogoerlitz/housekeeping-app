@@ -395,7 +395,7 @@ export function ShoppingModeScreen() {
           onClose={() => setChoosingStore(false)}
           onManage={() => {
             setChoosingStore(false);
-            openManage('/maerkte');
+            openManage({ pathname: '/maerkte', params: { von: 'liste' } });
           }}
         />
       ) : null}

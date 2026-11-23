@@ -42,9 +42,8 @@ import {
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
 import { TripConfirmDialog } from '@/features/packing/trip-dialogs';
-import { usePageParams } from '@/lib/url-state';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 type Kind = FeedbackEntry['kind'];
@@ -100,11 +99,12 @@ function similarEntries(text: string, entries: FeedbackEntry[]): FeedbackEntry[]
 
 /** "Verwalten" → "Feedback" (spec 0005, AC-054). */
 export function FeedbackScreen() {
-  const back = useBackToManage();
   const { isWide } = useBreakpoint();
   const entries = useFeedback();
   // The status filter stands in the address, `?filter=neu` (spec 0019, REQ-011).
   const address = usePageParams('feedback');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
   const slug = address.params.filter;
   const filter: Filter = slug ? STATUS_OF_SLUG[slug] : 'all';
   const setFilter = (next: Filter) =>
@@ -163,7 +163,8 @@ export function FeedbackScreen() {
         <ScreenHeader
           title="Feedback"
           subtitle="Ideen, Probleme und Lob für die App"
-          onBack={back}
+          backLabel={back.label}
+          onBack={back.back}
         />
       }
     >
