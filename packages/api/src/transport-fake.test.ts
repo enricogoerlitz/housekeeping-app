@@ -1600,21 +1600,53 @@ describe('fake server: chore entries only by complete_chore / remove_chore_event
     expect(server.row(H, 'chores', 'c-once')).toBeDefined();
   });
 
-  it('AC-053: chore_id goes from null to a chore again, never to another chore or back to null', async () => {
+  it('spec 0031 AC-041: chore_id of an entry is never patched, also not of an orphaned one', async () => {
     const enrico = server.transport(ENRICO);
     await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
-    for (const chore_id of ['c-need', null]) {
+    await book(ENRICO, completion('c-once', 'ev2', { next_due_on: null }));
+    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: null });
+    for (const [id, chore_id] of [
+      ['ev1', 'c-need'],
+      ['ev1', null],
+      ['ev2', 'c-need'],
+    ] as const) {
       await expect(
         enrico.applyChanges(H, [
-          { kind: 'patch', table: 'chore_events', id: 'ev1', changes: { chore_id } },
+          { kind: 'patch', table: 'chore_events', id, changes: { chore_id } },
         ]),
       ).rejects.toMatchObject({ code: 'invalid_change' });
     }
+  });
+
+  it('spec 0031 AC-040, AC-042: delete_chore keeps a snapshot, restore_chore links exactly its entries', async () => {
+    const enrico = server.transport(ENRICO);
+    await book(ENRICO, completion('c1', 'ev1', { seen: seenBath }));
     await book(ENRICO, completion('c-once', 'ev2', { next_due_on: null }));
-    await enrico.applyChanges(H, [
-      { kind: 'patch', table: 'chore_events', id: 'ev2', changes: { chore_id: 'c-need' } },
-    ]);
-    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: 'c-need' });
+    const before = server.row(H, 'chores', 'c1');
+    await expect(server.transport(STRANGER).deleteChore('c1')).rejects.toMatchObject({
+      code: 'chore_not_found',
+    });
+    await expect(enrico.deleteChore('c-missing')).rejects.toMatchObject({
+      code: 'chore_not_found',
+    });
+    await enrico.deleteChore('c1');
+    expect(server.row(H, 'chores', 'c1')).toBeUndefined();
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: null });
+    for (const userId of [NADJA, STRANGER]) {
+      await expect(server.transport(userId).restoreChore('c1')).rejects.toMatchObject({
+        code: 'chore_not_restorable',
+      });
+    }
+    expect(await enrico.restoreChore('c1')).toBe(true);
+    expect(server.row(H, 'chores', 'c1')).toMatchObject({
+      title: 'Bad putzen',
+      created_at: before?.created_at,
+    });
+    expect(server.row(H, 'chore_events', 'ev1')).toMatchObject({ chore_id: 'c1' });
+    expect(server.row(H, 'chore_events', 'ev2')).toMatchObject({ chore_id: null });
+    await expect(enrico.restoreChore('c1')).rejects.toMatchObject({
+      code: 'chore_not_restorable',
+    });
   });
 
   it('AC-060: the second of two bookings in one call is the latest booked, whatever the ids', async () => {
@@ -1976,7 +2008,14 @@ describe('fake server: packing (spec 0012, like the database)', () => {
           packed_by: NADJA,
           pack_seq: 3,
         },
-        { id: 'p-day', list_bag_id: 'lb-1', name: 'T-Shirts', quantity: 7, per_day: 1, sort: 2 },
+        {
+          id: 'p-day',
+          list_bag_id: 'lb-1',
+          name: 'T-Shirts',
+          quantity: 7,
+          per_day_quantity: 1,
+          sort: 2,
+        },
       ],
     });
     server.insertRows(FOREIGN, {
@@ -2084,7 +2123,14 @@ describe('fake server: packing (spec 0012, like the database)', () => {
       {
         kind: 'insert',
         table: 'packing_items',
-        row: { id: 'p-new', list_bag_id: 'lb-1', name: 'Socken', quantity: 1, per_day: 2, sort: 3 },
+        row: {
+          id: 'p-new',
+          list_bag_id: 'lb-1',
+          name: 'Socken',
+          quantity: 1,
+          per_day_quantity: 2,
+          sort: 3,
+        },
       },
     ]);
     expect(server.row(H, 'packing_items', 'p-new')).toMatchObject({
@@ -2117,7 +2163,7 @@ describe('fake server: packing (spec 0012, like the database)', () => {
           list_bag_id: 'lb-1',
           name: 'Socken',
           quantity: 7,
-          per_day: 1,
+          per_day_quantity: 1,
           sort: 4,
         },
       },
@@ -2138,7 +2184,14 @@ describe('fake server: packing (spec 0012, like the database)', () => {
       {
         kind: 'insert',
         table: 'packing_items',
-        row: { id: 'p-max', list_bag_id: 'lb-1', name: 'Viel', quantity: 99, per_day: 99, sort: 5 },
+        row: {
+          id: 'p-max',
+          list_bag_id: 'lb-1',
+          name: 'Viel',
+          quantity: 99,
+          per_day_quantity: 99,
+          sort: 5,
+        },
       },
     ]);
     expect(server.row(H, 'packing_items', 'p-max')?.quantity).toBe(9999);
@@ -2224,7 +2277,14 @@ describe('fake server: packing (spec 0012, like the database)', () => {
             packed_by: NADJA,
             pack_seq: 2_000_000,
           },
-          { id: 'p-day', list_bag_id: 'lb-1', name: 'T-Shirts', quantity: 1, per_day: 1, sort: 2 },
+          {
+            id: 'p-day',
+            list_bag_id: 'lb-1',
+            name: 'T-Shirts',
+            quantity: 1,
+            per_day_quantity: 1,
+            sort: 2,
+          },
         ],
       },
     ]);

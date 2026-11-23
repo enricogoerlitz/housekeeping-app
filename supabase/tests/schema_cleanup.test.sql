@@ -101,10 +101,10 @@ select lives_ok(tests.apply_sql(jsonb_build_array(jsonb_build_object('kind', 'in
                        'maps_url', 'http://maps.google.com/?q=Enzo')))),
   'AC-044 restaurants: … like for a restaurant');
 select throws_ok(tests.apply_sql(jsonb_build_array(jsonb_build_object('kind', 'patch', 'table', 'activities',
-    'id', tests.fx('eislaufen'), 'changes', jsonb_build_object('maps_url', 'https://maps.google.com/?q=Eis stadion'))))),
+    'id', tests.fx('eislaufen'), 'changes', jsonb_build_object('maps_url', 'https://maps.google.com/?q=Eis stadion')))),
   '23514', null, 'AC-044 activities: a link with a space is refused (private.is_web_url)');
 select throws_ok(tests.apply_sql(jsonb_build_array(jsonb_build_object('kind', 'patch', 'table', 'restaurants',
-    'id', tests.fx('enzo'), 'changes', jsonb_build_object('maps_url', 'https://localhost'))))),
+    'id', tests.fx('enzo'), 'changes', jsonb_build_object('maps_url', 'https://localhost')))),
   '23514', null, 'AC-044 restaurants: a link without a dot in the host is refused, like for an activity');
 
 select * from finish();

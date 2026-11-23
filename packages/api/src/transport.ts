@@ -175,7 +175,7 @@ export interface RestorePackingItem {
   list_bag_id: string;
   name: string;
   quantity?: number | null;
-  per_day?: number | null;
+  per_day_quantity?: number | null;
   sort?: number;
   packed?: boolean;
   packed_at?: string | null;
@@ -190,7 +190,7 @@ export interface AdoptPackingItem {
   id: string;
   name: string;
   quantity?: number | null;
-  per_day?: number | null;
+  per_day_quantity?: number | null;
   sort?: number;
   bag_item_id?: string | null;
   from_bag?: boolean;
@@ -475,6 +475,17 @@ export interface Transport {
   deleteActivity(activityId: string, today: string): Promise<DeletedPlace>;
   /** "Rückgängig" of delete_activity; false when it exists again. `activity_not_restorable`. */
   restoreActivity(activityId: string): Promise<boolean>;
+  // Chores (spec 0031, REQ-016)
+  /**
+   * Deletes a chore with a snapshot of the ids of its entries for 1 hour; the entries stay in the
+   * history without the link. `chore_not_found` when missing or foreign.
+   */
+  deleteChore(choreId: string): Promise<void>;
+  /**
+   * "Rückgängig" of delete_chore: the chore and exactly its entries again; false when it exists
+   * again. `chore_not_restorable`.
+   */
+  restoreChore(choreId: string): Promise<boolean>;
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
@@ -501,8 +512,11 @@ export interface Transport {
     dietPreference: string;
     dislikes: readonly string[];
   }): Promise<void>;
-  /** Spec 0027: the names of the household's photos the caller may delete. */
-  householdMediaNames(householdId: string): Promise<string[]>;
+  /**
+   * Spec 0027, 0031 (D-12): the last member starts deleting the household: it is closed to new
+   * members, and the names of its photos come back for the app to delete. `not_last_member`.
+   */
+  beginHouseholdDeletion(householdId: string): Promise<string[]>;
   /**
    * Spec 0027: the last member deletes the household; `not_member`, `not_last_member`,
    * `media_remaining` (nothing is deleted then).
@@ -591,6 +605,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     restoreRestaurant: guard(inner.restoreRestaurant.bind(inner)),
     deleteActivity: guard(inner.deleteActivity.bind(inner)),
     restoreActivity: guard(inner.restoreActivity.bind(inner)),
+    deleteChore: guard(inner.deleteChore.bind(inner)),
+    restoreChore: guard(inner.restoreChore.bind(inner)),
     setRecipeFavorite: guard(inner.setRecipeFavorite.bind(inner)),
     setRecipeRating: guard(inner.setRecipeRating.bind(inner)),
     setRestaurantFavorite: guard(inner.setRestaurantFavorite.bind(inner)),
@@ -605,7 +621,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     removeMember: guard(inner.removeMember.bind(inner)),
     withdrawInvitation: guard(inner.withdrawInvitation.bind(inner)),
     updateProfile: guard(inner.updateProfile.bind(inner)),
-    householdMediaNames: guard(inner.householdMediaNames.bind(inner)),
+    beginHouseholdDeletion: guard(inner.beginHouseholdDeletion.bind(inner)),
     deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
     registerPushSubscription: guard(inner.registerPushSubscription.bind(inner)),
     setPushSubscriptionEnabled: guard(inner.setPushSubscriptionEnabled.bind(inner)),

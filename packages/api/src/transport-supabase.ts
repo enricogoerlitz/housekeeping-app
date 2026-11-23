@@ -362,6 +362,8 @@ export function createSupabaseTransport(
       parsed(DeletedPlaceSchema, 'delete_activity', { activity_id: activityId, today }),
     restoreActivity: (activityId) =>
       parsed(RestoredRecipeSchema, 'restore_activity', { activity_id: activityId }),
+    deleteChore: (choreId) => nothing('delete_chore', { chore_id: choreId }),
+    restoreChore: (choreId) => parsed(RestoredRecipeSchema, 'restore_chore', { chore_id: choreId }),
     setRecipeFavorite: (recipeId, favorite) =>
       nothing('set_recipe_favorite', { recipe_id: recipeId, favorite }),
     setRecipeRating: (recipeId, stars) =>
@@ -392,8 +394,8 @@ export function createSupabaseTransport(
         diet_preference: profile.dietPreference,
         dislikes: [...profile.dislikes],
       }),
-    householdMediaNames: (householdId) =>
-      parsed(z.array(z.string()), 'household_media_names', { household_id: householdId }),
+    beginHouseholdDeletion: (householdId) =>
+      parsed(z.array(z.string()), 'begin_household_deletion', { household_id: householdId }),
     deleteHousehold: (householdId) => nothing('delete_household', { household_id: householdId }),
     registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
       id('register_push_subscription', {

@@ -94,8 +94,8 @@ select is(
 select is(
   (select count(*)::int from public.deleted_records
    where table_name = 'household_invitations' and record_id = tests.fx('inv_lisa')::text),
-  1,
-  'AC-001: the devices of the household learn it from a tombstone');
+  0,
+  'AC-001 (spec 0031, AC-043): no tombstone, the devices get the invitations in full on every pull');
 select tests.clear_authentication();
 select ok(not pg_temp.admits('lisa@example.com'),
   'AC-001: signing in with Google afterwards creates no account (not_invited)');
@@ -252,7 +252,7 @@ select is((select name from public.households where id = tests.fx('wg')), 'WG KÃ
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('home')),
   'P0001', 'not_last_member', 'AC-021: "Kuschelnest" has two members: not_last_member');
-select throws_ok(format('select * from public.household_media_names(%L)', tests.fx('home')),
+select throws_ok(format('select * from public.begin_household_deletion(%L)', tests.fx('home')),
   'P0001', 'not_last_member',
   'AC-022: the photo list is refused too, so the app deletes no photo of a household that stays');
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
@@ -265,7 +265,7 @@ select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
 select tests.authenticate_as_anon();
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   '42501', null, 'AC-021: signed out it is refused');
-select throws_ok(format('select * from public.household_media_names(%L)', tests.fx('wg')),
+select throws_ok(format('select * from public.begin_household_deletion(%L)', tests.fx('wg')),
   '42501', null, 'AC-021: signed out nobody lists the photos');
 select tests.clear_authentication();
 select is((select count(*)::int from public.households where id in (tests.fx('home'), tests.fx('wg'))), 2,
@@ -344,9 +344,9 @@ insert into public.household_invitations (household_id, email, invited_by)
 values (tests.fx('wg'), 'mia@example.com', tests.fx('enrico'));
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
-  (select count(*)::int from public.household_media_names(tests.fx('wg'))),
+  (select count(*)::int from public.begin_household_deletion(tests.fx('wg'))),
   3,
-  'REQ-005: household_media_names lists the photos Enrico may delete (activities, recipes, restaurants)');
+  'REQ-005: begin_household_deletion lists the photos Enrico may delete (activities, recipes, restaurants)');
 select tests.clear_authentication();
 select is(
   (select count(*)::int from public.household_invitations where household_id = tests.fx('wg')),
@@ -354,7 +354,7 @@ select is(
   'AC-022: listing the photos for deletion drops the open invitations, so nobody joins while they go');
 select tests.authenticate_as(tests.fx('enrico'));
 select tests.authenticate_as(tests.fx('ben'));
-select throws_ok(format('select * from public.household_media_names(%L)', tests.fx('wg')),
+select throws_ok(format('select * from public.begin_household_deletion(%L)', tests.fx('wg')),
   '42501', 'not_member', 'AC-021: Ben lists no photo of "WG KÃ¶ln" (not_member)');
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),

@@ -51,7 +51,7 @@ insert into public.packing_list_bags (id, household_id, trip_id, bag_id, name, s
   (tests.fx('lb_strand'), tests.fx('home'), tests.fx('mallorca'), tests.fx('strand'), 'Strand', 0),
   (tests.fx('lb_other'), tests.fx('home'), tests.fx('mallorca'), null, 'Technik', 1);
 insert into public.packing_items
-  (id, household_id, list_bag_id, name, quantity, per_day, packed, packed_at, packed_by, pack_seq, sort, bag_item_id, from_bag) values
+  (id, household_id, list_bag_id, name, quantity, per_day_quantity, packed, packed_at, packed_by, pack_seq, sort, bag_item_id, from_bag) values
   (tests.fx('badehose'), tests.fx('home'), tests.fx('lb_strand'), 'Badehose', 2, null, false, null, null, 0, 0, tests.fx('bi_badehose'), true),
   (tests.fx('schnorchel'), tests.fx('home'), tests.fx('lb_strand'), 'Schnorchel', null, null, false, null, null, 0, 1, null, true),
   (tests.fx('socken'), tests.fx('home'), tests.fx('lb_strand'), 'Socken', 7, 1, true, now(), tests.fx('nadja'), 1, 2, tests.fx('bi_socken'), true),
@@ -62,24 +62,24 @@ set constraints all deferred;
 -- ===================== REQ-009: editing a Packstück =====================
 select tests.authenticate_as(tests.fx('enrico'));
 select is(
-  tests.affected(format('update public.packing_items set quantity = 1, per_day = 2 where id = %L', tests.fx('socken'))), 1,
+  tests.affected(format('update public.packing_items set quantity = 1, per_day_quantity = 2 where id = %L', tests.fx('socken'))), 1,
   'AC-028 packing_items: a member sets "Socken" to 2 je Tag');
 select results_eq(
-  format('select quantity, per_day::int, packed, pack_seq from public.packing_items where id = %L', tests.fx('socken')),
+  format('select quantity, per_day_quantity::int, packed, pack_seq from public.packing_items where id = %L', tests.fx('socken')),
   $$ values (14, 2, true, 1) $$,
   'AC-028 packing_items: "Socken 14×", still packed, pack_seq unchanged');
 select lives_ok(
-  format('update public.packing_items set quantity = null, per_day = 1 where id = %L', tests.fx('kartenspiel')),
+  format('update public.packing_items set quantity = null, per_day_quantity = 1 where id = %L', tests.fx('kartenspiel')),
   'AC-030 packing_items: "je Tag" without a quantity is computed (no error)');
 select is((tests.item('kartenspiel') ->> 'quantity')::int, 7, 'AC-030 packing_items: … 1 je Tag for 7 days is 7');
 select lives_ok(
-  format('update public.packing_items set quantity = null, per_day = null where id = %L', tests.fx('kartenspiel')),
+  format('update public.packing_items set quantity = null, per_day_quantity = null where id = %L', tests.fx('kartenspiel')),
   'REQ-009 packing_items: the quantity can be emptied');
 select throws_ok(
   format($$ update public.packing_items set name = '' where id = %L $$, tests.fx('badehose')),
   '23514', null, 'AC-030 packing_items: an empty name is refused');
 select throws_ok(
-  format('update public.packing_items set quantity = 100, per_day = 100 where id = %L', tests.fx('badehose')),
+  format('update public.packing_items set quantity = 100, per_day_quantity = 100 where id = %L', tests.fx('badehose')),
   '23514', null, 'REQ-009 packing_items: 100 je Tag is refused');
 select throws_ok(
   format('update public.packing_items set packed = false where id = %L', tests.fx('socken')),
@@ -108,7 +108,7 @@ select throws_ok(
     'kind', 'patch', 'table', 'packing_items', 'id', tests.fx('badehose'), 'changes', '{"packed": true}'::jsonb))),
   '22023', 'invalid_change', 'AC-043 apply_changes: "gepackt" is never patched');
 update public.packing_items set name = 'Badehose' where id = tests.fx('badehose');
-update public.packing_items set quantity = 1, per_day = 1 where id = tests.fx('socken');
+update public.packing_items set quantity = 1, per_day_quantity = 1 where id = tests.fx('socken');
 
 -- ===================== AC-042: another household, signed out =====================
 select tests.authenticate_as(tests.fx('ben'));
@@ -136,15 +136,15 @@ create temp table adopted on commit drop as
     'insert', jsonb_build_array(jsonb_build_object('id', tests.fx('neu'), 'name', 'Sonnencreme', 'sort', 4,
                                                    'bag_item_id', tests.fx('bi_sonnencreme'), 'from_bag', true)),
     'update', jsonb_build_array(
-      jsonb_build_object('id', tests.fx('badehose'), 'name', 'Badehose', 'quantity', 3, 'per_day', null),
-      jsonb_build_object('id', tests.fx('socken'), 'name', 'Socken', 'quantity', 2, 'per_day', 2)),
+      jsonb_build_object('id', tests.fx('badehose'), 'name', 'Badehose', 'quantity', 3, 'per_day_quantity', null),
+      jsonb_build_object('id', tests.fx('socken'), 'name', 'Socken', 'quantity', 2, 'per_day_quantity', 2)),
     'delete', jsonb_build_array(tests.fx('schnorchel'), tests.fx('socken')))) as r;
 select tests.clear_authentication();
 select is((select r from adopted), '{"inserted": 1, "updated": 1, "deleted": 1}'::jsonb,
   'AC-037 adopt_bag_changes: one new, one changed, one deleted (the packed one is skipped twice)');
 select is((tests.item('badehose') ->> 'quantity')::int, 3, 'AC-037: "Badehose 3×"');
 select results_eq(
-  format('select quantity, per_day::int, packed from public.packing_items where id = %L', tests.fx('socken')),
+  format('select quantity, per_day_quantity::int, packed from public.packing_items where id = %L', tests.fx('socken')),
   $$ values (7, 1, true) $$,
   'AC-037: "Socken 7×" stays packed and unchanged ("Bleibt, weil gepackt")');
 select is(tests.item('schnorchel'), null, 'AC-037: "Schnorchel" is gone');
@@ -163,7 +163,7 @@ select is(
   tests.adopt('home', jsonb_build_object(
     'list_bag_id', tests.fx('lb_strand'),
     'insert', jsonb_build_array(jsonb_build_object('id', tests.fx('schnorchel'), 'name', 'Schnorchel', 'sort', 1, 'from_bag', true)),
-    'update', jsonb_build_array(jsonb_build_object('id', tests.fx('badehose'), 'name', 'Badehose', 'quantity', 2, 'per_day', null)),
+    'update', jsonb_build_array(jsonb_build_object('id', tests.fx('badehose'), 'name', 'Badehose', 'quantity', 2, 'per_day_quantity', null)),
     'delete', jsonb_build_array(tests.fx('neu')))),
   '{"inserted": 1, "updated": 1, "deleted": 1}'::jsonb,
   'AC-037 adopt_bag_changes: "Rückgängig" restores everything in one call');

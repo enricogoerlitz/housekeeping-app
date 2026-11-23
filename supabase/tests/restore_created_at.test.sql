@@ -82,7 +82,7 @@ select set_config('housekeeping.keep_created_at', 'on', true);
 select throws_ok(
   format($$ select public.apply_changes(%L, %L) $$, tests.fx('home_a'), jsonb_build_array(jsonb_build_object(
     'kind', 'insert', 'table', 'recipes',
-    'row', jsonb_build_object('id', tests.fx('new_recipe'), 'title', 'Neu', 'created_at', '2026-01-15'))))),
+    'row', jsonb_build_object('id', tests.fx('new_recipe'), 'title', 'Neu', 'created_at', '2026-01-15')))),
   '22023', 'invalid_change', 'AC-036 apply_changes: created_at cannot be sent, also with the setting on');
 select throws_ok(
   format($$ insert into public.recipes (id, household_id, title, created_at) values (%L, %L, 'Neu', '2026-01-15') $$,

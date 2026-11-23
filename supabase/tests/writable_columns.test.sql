@@ -49,7 +49,7 @@ select throws_ok(tests.patch_sql('recipes', tests.fx('lasagne'), '{"photo": "cur
 select throws_ok(
   format($$ select public.apply_changes(%L, %L) $$, tests.fx('home'), jsonb_build_array(jsonb_build_object(
     'kind', 'insert', 'table', 'recipes',
-    'row', jsonb_build_object('id', tests.fx('curry'), 'title', 'Curry', 'photo', 'curry.jpg'))))),
+    'row', jsonb_build_object('id', tests.fx('curry'), 'title', 'Curry', 'photo', 'curry.jpg')))),
   '22023', 'invalid_change', 'REQ-026 apply_changes: a member cannot insert a recipe with photo');
 select throws_ok(format($$ update public.recipes set photo = 'curry.jpg' where id = %L $$, tests.fx('lasagne')),
   '42501', null, 'REQ-026 PostgREST: a member cannot update photo');

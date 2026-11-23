@@ -31,7 +31,7 @@ import {
 import { choreToRow } from './db/mapping';
 import { commit, getData, getState, newId, updateData } from './store';
 import { checkTime } from './times';
-import type { ChangeOp } from './transport';
+import { TransportError, type ChangeOp } from './transport';
 
 export interface CompletionOptions {
   /** Today back to today − 30 (spec 0026, REQ-007); default today. Other days throw before sending. */
@@ -444,31 +444,24 @@ export function updateChore(choreId: Id, input: ChoreInput): void {
 
 /**
  * „Löschen“ (AC-053): the chore goes, its entries stay with their title and lose the link (the
- * database clears it). „Rückgängig“ (snapshot) inserts the chore with the same id and links its
- * entries again, in one call.
+ * database clears it). One RPC (spec 0031, REQ-016): the server keeps a snapshot of the chore and
+ * its entries for 1 hour, and „Rückgängig“ is restore_chore, which brings the chore back with the
+ * same id and links exactly these entries again (AC-040).
  */
 export function deleteChore(choreId: Id): void {
   const data = getData();
   const chore = data.chores.find((candidate) => candidate.id === choreId);
   if (!chore) return;
-  const linked = data.choreEvents.filter((event) => event.choreId === choreId);
   commit(
     {
       path: 'rpc',
-      send: (transport, context) =>
-        transport.applyChanges(context.householdId, [
-          { kind: 'delete', table: 'chores', id: choreId },
-        ]),
-      inverse: (transport, context) =>
-        transport.applyChanges(context.householdId, [
-          { kind: 'insert', table: 'chores', row: choreToRow(context.householdId, chore) },
-          ...linked.map((event): ChangeOp => ({
-            kind: 'patch',
-            table: 'chore_events',
-            id: event.id,
-            changes: { chore_id: choreId },
-          })),
-        ]),
+      send: (transport) => transport.deleteChore(choreId),
+      // false: it is back by other means; nothing was restored, so it is refused like any refusal.
+      inverse: async (transport) => {
+        if (!(await transport.restoreChore(choreId))) {
+          throw new TransportError('permanent', 'chore_not_restorable');
+        }
+      },
     },
     () =>
       updateData((current) => ({

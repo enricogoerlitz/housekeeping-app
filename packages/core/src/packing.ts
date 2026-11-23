@@ -23,7 +23,7 @@ export const MAX_BAG_NAME_LENGTH = 60;
 export const MAX_PACKING_ITEM_NAME_LENGTH = 120;
 /** Fixed quantity and quantity per day: 1–99. */
 export const MAX_PACKING_COUNT = 99;
-/** A computed "je Tag" quantity is capped like `least(per_day × days, 9999)` on the server. */
+/** A computed "je Tag" quantity is capped like `least(per_day_quantity × days, 9999)` on the server. */
 export const MAX_PACKING_QUANTITY = 9999;
 export const MAX_BAG_ITEMS = 100;
 /** Rows one save may write; `apply_changes` allows 200 operations (decision 13). */
