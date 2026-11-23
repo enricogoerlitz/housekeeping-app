@@ -231,6 +231,7 @@ export function IngredientSheet(props: {
               placeholder="Artikel suchen oder anlegen"
               clearLabel="Suche leeren"
               autoFocus
+              enterSelects
               inputRef={articleInput}
               hits={search.hits}
               onSelect={(key) => {

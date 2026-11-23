@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { Modal } from 'react-native';
+import { Modal, TextInput } from 'react-native';
 import { Text } from './primitives';
 import { EditableSection, type EditableSectionProps } from './editable-section';
 
@@ -96,6 +96,39 @@ describe('EditableSection "Abbrechen" (spec 0023, REQ-003)', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     rerender(section({ editing: false, onCancel, cancelLabel: 'Abbrechen' }));
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Notizen bearbeiten' }));
+  });
+
+  it('AC-010: Escape typed in a field of the section cancels too', () => {
+    // react-native-web's TextInput stops its key events from bubbling up to the window.
+    const onCancel = vi.fn();
+    render(
+      <EditableSection
+        title="Kopf"
+        editing
+        inline
+        onEdit={() => undefined}
+        onDone={() => undefined}
+        onCancel={onCancel}
+        cancelLabel="Abbrechen"
+        editLabel="Kopf bearbeiten"
+        doneLabel="Fertig"
+      >
+        <TextInput accessibilityLabel="Titel" defaultValue="Lasagne neu" />
+      </EditableSection>,
+    );
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Titel' }), { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('inline while editing: "Abbrechen" and "Fertig" stand above the fields, not beside them', () => {
+    render(
+      section({ inline: true, editing: true, onCancel: () => undefined, cancelLabel: 'Abbrechen' }),
+    );
+    const done = screen.getByRole('button', { name: 'Fertig' });
+    const content = screen.getByText('Mit Safran');
+    expect(done.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const box = screen.getByTestId('notes');
+    expect(getComputedStyle(box).flexDirection).toBe('column');
   });
 
   it('AC-011: Escape leaves the section alone while a window above is open', () => {

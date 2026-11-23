@@ -69,6 +69,30 @@ describe('SearchOrCreate (spec 0005, REQ-006)', () => {
     expect(onSelect).toHaveBeenCalledWith('m2');
   });
 
+  it('AC-001 (spec 0023): with `enterSelects`, Enter in the field takes the first hit', () => {
+    const { onSelect } = renderSearch({
+      query: 'Muskat',
+      enterSelects: true,
+      hits: [
+        { key: 'muskat', title: 'Muskatnuss', detail: 'auch: Muskat' },
+        { key: 'muskat-bluete', title: 'Muskatblüte' },
+      ],
+    });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zutat suchen' }), { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith('muskat');
+  });
+
+  it('Enter selects nothing without `enterSelects` or without a hit', () => {
+    const hits = [{ key: 'muskat', title: 'Muskatnuss' }];
+    const first = renderSearch({ query: 'Muskat', hits });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zutat suchen' }), { key: 'Enter' });
+    expect(first.onSelect).not.toHaveBeenCalled();
+    first.unmount();
+    const second = renderSearch({ query: 'Quark', enterSelects: true });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Zutat suchen' }), { key: 'Enter' });
+    expect(second.onSelect).not.toHaveBeenCalled();
+  });
+
   it('no hits: no list', () => {
     renderSearch({ query: 'Xyz' });
     expect(screen.queryByTestId('soc-hits')).toBeNull();

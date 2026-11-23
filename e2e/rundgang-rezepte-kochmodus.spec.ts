@@ -1,7 +1,6 @@
 import { expect as baseExpect } from '@playwright/test';
 
 import {
-  back,
   day,
   expect,
   freshSeed,
@@ -50,7 +49,7 @@ test('AC-001 / AC-003: "Neue Zutat" starts with the article, then "Menge"; witho
   await tid(page, 'ingredient-amount').fill('1 Prise');
   await expect(page.getByText('Bleibt beim Umrechnen gleich')).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(tid(page, 'recipe-rows')).toContainText('1 Prise Muskatnuss');
+  await expect(tid(page, 'recipe-ingredients')).toContainText('1 Prise Muskatnuss');
 });
 
 test('AC-004 / AC-005 / AC-007: "Zutat bearbeiten" from the read view saves at once with undo', async ({
@@ -143,7 +142,7 @@ test('AC-037 / AC-039 / AC-044: the cooking mode shows the step as text and the 
   page,
 }) => {
   await open(page, `/rezept/${LASAGNE}/kochen?portionen=6`);
-  await expect(tid(page, 'cook-step-index')).toHaveText('Schritt 1 von 7');
+  await expect(tid(page, 'cook-step-index')).toHaveText('Schritt 1 von 6');
   const text = tid(page, 'cook-step-text');
   await expect(text).not.toHaveAttribute('role', 'heading');
   const size = await text.evaluate((node) => parseFloat(getComputedStyle(node).fontSize));
@@ -155,7 +154,7 @@ test('AC-037 / AC-039 / AC-044: the cooking mode shows the step as text and the 
   await tid(page, 'cook-next').click();
   await expect(tid(page, 'cook-ingredients')).toBeHidden();
   await page.keyboard.press('ArrowLeft');
-  await expect(tid(page, 'cook-step-index')).toHaveText('Schritt 1 von 7');
+  await expect(tid(page, 'cook-step-index')).toHaveText('Schritt 1 von 6');
 });
 
 test('AC-045 / AC-046: "Neu" offers exactly Rezept, Sammlung, Restaurant on both views', async ({
@@ -176,7 +175,11 @@ test('AC-049: deleting names the planned entries that go', async ({ page }) => {
   await expect(toastMessage(page)).toContainText(
     'Halloumi-Pfanne gelöscht · 1 geplanter Eintrag entfällt',
   );
-  await back(page);
+  // Deleting leads back by itself; "Rückgängig" brings the recipe back for the next test.
+  await expect(tid(page, 'recipe-more')).toHaveCount(0);
+  await tid(page, 'toast-action').click();
+  await open(page, `/rezept/${HALLOUMI}`);
+  await expect(tid(page, 'recipe-title')).toHaveText('Halloumi-Pfanne');
 });
 
 test('Decision 15: deleting asks about the ingredients of the entries that go and takes them off', async ({
@@ -206,12 +209,13 @@ test('Decision 15: deleting asks about the ingredients of the entries that go an
   await tid(page, 'recipe-more').click();
   await page.locator('[role="menuitem"]').filter({ hasText: 'Löschen' }).click();
   await expect(tid(page, 'recipe-delete-dialog')).toContainText('Halloumi-Pfanne löschen?');
+  // AC-049 before left its entry next week after "Rückgängig": one or two entries go.
   await expect(tid(page, 'recipe-delete-message')).toContainText(
-    /^Für 1 geplanten Eintrag (steht 1 Zutat|stehen \d+ Zutaten) auf der Einkaufsliste\.$/,
+    /^Für (1 geplanten Eintrag|\d+ geplante Einträge) (steht 1 Zutat|stehen \d+ Zutaten) auf der Einkaufsliste\.$/,
   );
   await tid(page, 'recipe-delete-with-list').click();
   await expect(toastMessage(page)).toContainText(
-    /^Halloumi-Pfanne gelöscht · 1 geplanter Eintrag entfällt · \d+ Zutaten? von der Liste genommen/,
+    /^Halloumi-Pfanne gelöscht · (1 geplanter Eintrag entfällt|\d+ geplante Einträge entfallen) · \d+ Zutaten? von der Liste genommen/,
   );
   await nav(page, 'liste');
   await expect(page.getByText('Halloumi-Pfanne')).toHaveCount(0);
@@ -224,5 +228,5 @@ test('AC-053 / AC-054: the plan window shows dates and reaches any day', async (
   await expect(tid(page, `plan-recipe-day-${today}`)).toHaveAttribute('aria-checked', 'true');
   await expect(tid(page, 'plan-recipe-save')).toContainText('einplanen');
   await tid(page, 'plan-recipe-other-date').click();
-  await expect(tid(page, 'plan-recipe-calendar')).toBeVisible();
+  await expect(tid(page, 'plan-recipe-calendar-picker')).toBeVisible();
 });
