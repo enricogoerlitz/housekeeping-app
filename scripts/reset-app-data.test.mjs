@@ -8,7 +8,15 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { checkEnvironment, checkLinked, parseArgs, resetSql } from './reset-app-data.mjs';
+import {
+  checkEnvironment,
+  checkLinked,
+  dataSql,
+  mediaTargets,
+  parseArgs,
+  projectNameIn,
+  resetSql,
+} from './reset-app-data.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const script = path.join(root, 'scripts/reset-app-data.mjs');
@@ -20,7 +28,11 @@ const REF = 'abcdefghijklmnopqrst';
 
 describe('arguments', () => {
   test('AC-015: the project ref is required and must look like one', () => {
-    assert.deepEqual(parseArgs(['--project', REF]), { project: REF });
+    assert.deepEqual(parseArgs(['--project', REF]), { project: REF, dataOnly: false });
+    assert.deepEqual(parseArgs(['--project', REF, '--data-only']), {
+      project: REF,
+      dataOnly: true,
+    });
     assert.throws(() => parseArgs([]), /--project <Projektkennung> fehlt/);
     assert.throws(() => parseArgs(['--project', 'prod']), /keine Projektkennung/);
     assert.throws(() => parseArgs(['--project', REF, '--yes']), /Unbekannte Angabe --yes/);
@@ -77,5 +89,44 @@ describe('what it deletes (AC-013, decision 3)', () => {
   test('accounts, Vault and the auth settings stay', () => {
     assert.doesNotMatch(sql, /\b(drop|delete|truncate)\b[^;]*\b(auth|vault|storage)\./i);
     assert.doesNotMatch(sql, /drop schema (if exists )?public\b/);
+  });
+});
+
+describe('the project name (supabase projects list)', () => {
+  test('is read from the CLI output, which wraps the list in `projects`', () => {
+    const output = { projects: [{ id: REF, name: 'housekeeping-app-test' }], message: '' };
+    assert.equal(projectNameIn(output, REF), 'housekeeping-app-test');
+    assert.equal(projectNameIn([{ ref: REF, name: 'alt' }], REF), 'alt');
+    assert.equal(projectNameIn({ projects: [] }, REF), undefined);
+  });
+});
+
+describe('--data-only (spec 0028, decision 3, way D of 23.11.2026)', () => {
+  const sql = dataSql();
+
+  test('empties every table of public and private in one statement, schema and history stay', () => {
+    assert.equal(sql.match(/^do \$reset\$/gm)?.length, 1);
+    assert.match(sql, /schemaname in \('public', 'private'\)/);
+    assert.match(sql, /truncate table %I\.%I cascade/);
+    assert.doesNotMatch(sql, /\bdrop\b/i);
+    assert.doesNotMatch(sql, /schema_migrations/);
+    assert.doesNotMatch(sql, /cron\./);
+  });
+
+  test('accounts with their profiles and devices stay', () => {
+    assert.match(sql, /tablename not in \('profiles', 'push_subscriptions'\)/);
+    assert.doesNotMatch(sql, /\b(auth|vault|storage)\./);
+  });
+});
+
+describe('the photos (storage)', () => {
+  test('each top-level folder of the bucket is removed, never the bucket itself', () => {
+    assert.deepEqual(mediaTargets({ paths: ['hh1/', 'hh2/', 'stray.jpg'] }), [
+      'ss:///household-media/hh1',
+      'ss:///household-media/hh2',
+      'ss:///household-media/stray.jpg',
+    ]);
+    assert.deepEqual(mediaTargets({ paths: [] }), []);
+    assert.deepEqual(mediaTargets({ paths: ['', '/'] }), []);
   });
 });

@@ -154,7 +154,15 @@ schreiben. Offline: offline lesend; der alte Stand im Gerät wird verworfen.
    ihn). Tut er das nicht, läuft `/code-review` je Paket auf Stufe „high“.
 6. **Alte Sicherungen** (Schema v2026.11.1) bleiben in Azure, bis die erste Sicherung auf der neuen
    Basis den Wiederherstellungstest bestanden hat. Danach gilt die normale Aufbewahrung.
-7. OFFEN: Zeitpunkt des Zurücksetzens der Produktion – Enrico bestätigt ihn, bevor REQ-006 läuft.
+7. ~~OFFEN: Zeitpunkt des Zurücksetzens der Produktion~~ – bestätigt am 23.11.2026, 22:07.
+8. **Weg D statt Zusammenfassen (Entscheidung des Inhabers, 23.11.2026):** Die Produktion wird
+   nicht neu aufgebaut, sondern nur geleert (`reset-app-data.mjs --data-only`: alle Tabellen in
+   `public` und `private` außer Profilen und Push-Geräten, dazu die Fotos). Schema, Aufträge und
+   Migrationshistorie bleiben; das normale Release spielt die neuen Migrationen oben drauf.
+   Damit sind REQ-001 (neue Basis), AC-012 (Probe des Neuaufbaus) und die Mindestversion 2026.11.2
+   aus REQ-007 **verworfen**: Die Migrationshistorie bleibt bei 34 Dateien, die Mindestversion bei
+   2026.11.1 (eure Geräte laden einmal neu). Grund: dasselbe Schema am Ende, weniger Schritte und
+   Risiko, heute produktiv. Die Ausnahme `migrations-base.json` wird nicht benutzt.
 
 ## Daten
 
