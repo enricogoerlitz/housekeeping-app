@@ -36,7 +36,8 @@ import {
 
 import { starterAreas } from '../starter/areas';
 import { starterCatalog } from '../starter/catalog';
-import type { AreaKey, SeedRecipe } from '../starter/types';
+import type { AreaKey } from '../starter/types';
+import type { SeedRecipe } from './types';
 import type { AppState, HouseholdData } from '../store';
 import { seedRecipes } from './recipes-data';
 
