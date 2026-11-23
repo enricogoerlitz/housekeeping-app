@@ -3,7 +3,9 @@
 // that nobody can create from the app. This script creates the household "Enrico & Nadja" with the
 // default meal slots and the starter content of the app's createHousehold (private.apply_starter
 // with starterPayload from packages/api/src/starter) and an invitation for one Google address. A
-// second run finds both and creates nothing.
+// second run finds both and creates nothing. `--household "<Name>"` creates a further household
+// under that name (found by its name only), e.g. a second household for an address that is
+// already invited to "Enrico & Nadja".
 //
 // Run it yourself, once, with the CLI linked to production (runbook C11 in the plan):
 //
@@ -45,6 +47,21 @@ const EmailSchema = z
   .max(254)
   .regex(/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/);
 
+const USAGE =
+  'Usage: node scripts/prod-bootstrap.mjs [--household "<Haushaltsname>"] (fragt die Google-Adresse verdeckt ab)';
+
+/** No arguments: "Enrico & Nadja"; `--household <name>`: a further household by that name. */
+export function parseArgs(args) {
+  if (args.length === 0) return { household: HOUSEHOLD_NAME, named: false };
+  if (args.length !== 2 || args[0] !== '--household') throw new Error(USAGE);
+  const household = args[1].trim();
+  // Same rule as households_name_valid.
+  if ([...household].length < 1 || [...household].length > 80) {
+    throw new Error('Haushaltsname: 1 bis 80 Zeichen.');
+  }
+  return { household, named: true };
+}
+
 const INVALID_EMAIL = 'Ungültige Google-Adresse: erwartet name@domain.tld, höchstens 254 Zeichen.';
 
 /** The checked, lowercased address; throws a message that never contains the input. */
@@ -57,14 +74,30 @@ export function parseEmail(raw) {
 /**
  * One statement: finds the household the address is invited to or a member of, otherwise the one
  * named "Enrico & Nadja", otherwise creates it with the starter content; then invites the address
- * unless it is a member. Reports only how many rows it created.
+ * unless it is a member. A named further household is looked up by its name only. Reports only
+ * how many rows it created.
  */
-export function bootstrapSql(email) {
+export function bootstrapSql(
+  email,
+  { household: householdName = HOUSEHOLD_NAME, named = false } = {},
+) {
   if (EmailSchema.safeParse(email).data !== email) {
     throw new Error('bootstrapSql: die Adresse zuerst mit parseEmail prüfen');
   }
   const hex = Buffer.from(email, 'utf8').toString('hex');
-  const name = HOUSEHOLD_NAME.replaceAll("'", "''");
+  const name = householdName.replaceAll("'", "''");
+  const ownLookup = named
+    ? 'select null::uuid as id where false'
+    : `select h.id from public.households h
+  where h.id in (
+    select i.household_id from public.household_invitations i, input where i.email = input.email
+    union
+    select m.household_id from public.household_members m
+      join public.profiles p on p.id = m.profile_id
+      join input on p.email = input.email
+  )
+  order by h.created_at
+  limit 1`;
   const slots = MEAL_SLOTS.map(
     (slot, sort) =>
       `jsonb_build_object('id', gen_random_uuid(), 'name', '${slot}', 'sort', ${sort})`,
@@ -74,16 +107,7 @@ with input as (
   select convert_from(decode('${hex}', 'hex'), 'UTF8') as email
 ),
 own as (
-  select h.id from public.households h
-  where h.id in (
-    select i.household_id from public.household_invitations i, input where i.email = input.email
-    union
-    select m.household_id from public.household_members m
-      join public.profiles p on p.id = m.profile_id
-      join input on p.email = input.email
-  )
-  order by h.created_at
-  limit 1
+  ${ownLookup}
 ),
 named as (
   select h.id from public.households h where h.name = '${name}' order by h.created_at limit 1
@@ -132,12 +156,12 @@ select
  * Writes the SQL into a private temp file, hands it to runQuery and deletes it again, whatever
  * happens. Returns the exit status of runQuery.
  */
-export async function runBootstrap({ email, runQuery, tmpRoot = tmpdir() }) {
+export async function runBootstrap({ email, household, runQuery, tmpRoot = tmpdir() }) {
   const dir = mkdtempSync(path.join(tmpRoot, 'prod-bootstrap-'));
   try {
     chmodSync(dir, 0o700);
     const file = path.join(dir, 'bootstrap.sql');
-    writeFileSync(file, bootstrapSql(email), { mode: 0o600, flag: 'wx' });
+    writeFileSync(file, bootstrapSql(email, household), { mode: 0o600, flag: 'wx' });
     chmodSync(file, 0o600);
     return await runQuery(file);
   } finally {
@@ -176,14 +200,15 @@ async function promptHidden(question) {
 }
 
 async function main(args) {
-  if (args.length > 0) {
-    console.error(
-      'Usage: node scripts/prod-bootstrap.mjs (ohne Argumente; fragt die Google-Adresse verdeckt ab)',
-    );
+  let household;
+  try {
+    household = parseArgs(args);
+  } catch (error) {
+    console.error(error.message);
     return 2;
   }
   console.error(
-    `Legt im verknüpften Supabase-Projekt den Haushalt „${HOUSEHOLD_NAME}“ und eine Einladung an, falls sie fehlen.`,
+    `Legt im verknüpften Supabase-Projekt den Haushalt „${household.household}“ und eine Einladung an, falls sie fehlen.`,
   );
   let email;
   try {
@@ -192,7 +217,7 @@ async function main(args) {
     console.error(error.message);
     return 1;
   }
-  const status = await runBootstrap({ email, runQuery: supabaseQuery });
+  const status = await runBootstrap({ email, household, runQuery: supabaseQuery });
   console.error(
     status === 0
       ? 'Fertig. 1 = angelegt, 0 = war schon da (Startinhalt nur mit einem neuen Haushalt). Jetzt mit Google anmelden und die Einladung annehmen.'

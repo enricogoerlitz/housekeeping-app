@@ -232,6 +232,10 @@ abgebrochen wird (`trap`):
 Danach auf der Web-Adresse mit Google anmelden, die Einladung annehmen und Nadja in der App
 einladen. Ein zweiter Lauf legt nichts an.
 
+Einen weiteren Haushalt mit Startbereichen und Artikelkatalog legt
+`node scripts/prod-bootstrap.mjs --household "<Name>"` an, auch für eine Adresse, die schon in einen
+anderen Haushalt eingeladen ist. Gesucht wird dann nur nach dem Namen.
+
 ## Erste produktive Version (0028)
 
 > **Gewählt am 23.11.2026: Weg D** (Spec 0028, Entscheidung 8). Die Produktion wird nur geleert,
