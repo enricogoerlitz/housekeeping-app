@@ -8,6 +8,7 @@ import {
   createDragController,
   ghostSize,
   ghostStart,
+  highlightFilled,
   type DragCallbacks,
   type DragSink,
   type Measure,
@@ -467,5 +468,16 @@ describe('ghost geometry', () => {
   it('a badge floats above the finger, and below it at the top of the window', () => {
     expect(badgeTop(400, 28)).toBe(400 - BADGE_CLEARANCE - 28);
     expect(badgeTop(40, 28)).toBe(40 + BADGE_CLEARANCE);
+  });
+});
+
+describe('the highlight over the target (spec 0030, REQ-002)', () => {
+  it('AC-005: drawing a trip (no preview) frames the day only, so its tint and text stay readable', () => {
+    expect(highlightFilled(true, false)).toBe(false);
+  });
+
+  it('AC-006: dragging an entry fills an allowed target as before; a refused one stays unfilled', () => {
+    expect(highlightFilled(true, true)).toBe(true);
+    expect(highlightFilled(false, true)).toBe(false);
   });
 });

@@ -166,6 +166,17 @@ export function ghostStart(
   return Math.max(start + GHOST_EDGE_MARGIN, Math.min(pointer - grab, last));
 }
 
+/**
+ * Whether the highlight over the target is filled (spec 0030, REQ-002): an allowed target while
+ * an entry is dragged (it has a preview). Drawing a trip over days has no preview; its days are
+ * tinted under their content (RangeMark), so the highlight is only a frame and the text stays
+ * readable.
+ */
+export function highlightFilled(allowed: boolean, hasPreview: boolean): boolean {
+  'worklet';
+  return allowed && hasPreview;
+}
+
 /** A badge on the pointer keeps this distance to it, so the finger does not cover it. */
 export const BADGE_CLEARANCE = 56;
 

@@ -41,6 +41,7 @@ import {
   createDragController,
   ghostSize,
   ghostStart,
+  highlightFilled,
   type DragCallbacks,
   type DragController,
   type DropGrid,
@@ -113,7 +114,9 @@ export function DragProvider(props: DragProviderProps) {
   const areaBottom = useSharedValue(0);
   // In the right half of the window the label grows to the left, so it is not cut off.
   const labelEnd = useSharedValue(false);
-  const highlight = useSharedValue<{ rect: Rect; allowed: boolean } | null>(null);
+  const highlight = useSharedValue<{ rect: Rect; allowed: boolean; filled: boolean } | null>(
+    null,
+  );
 
   const [controller] = useState(() => {
     let loop = 0;
@@ -172,7 +175,12 @@ export function DragProvider(props: DragProviderProps) {
         }
         ghostOpacity.set(1);
       },
-      highlight: (rect, allowed) => highlight.set(rect ? { rect, allowed } : null),
+      highlight: (rect, allowed) =>
+        highlight.set(
+          rect
+            ? { rect, allowed, filled: highlightFilled(allowed, self.getSnapshot().preview !== null) }
+            : null,
+        ),
       end: (outcome, returnTo) => {
         endSession();
         if (outcome === 'drop') haptic('drop');
@@ -371,7 +379,9 @@ function useSnapshot(controller: DragController<ReactNode>) {
 
 /** The one highlight over the target under the pointer; refused targets get a muted frame. */
 function DropHighlight(
-  props: OverlayPartProps & { highlight: Shared<{ rect: Rect; allowed: boolean } | null> },
+  props: OverlayPartProps & {
+    highlight: Shared<{ rect: Rect; allowed: boolean; filled: boolean } | null>;
+  },
 ) {
   const theme = useTheme();
   const c = theme.colors;
@@ -385,7 +395,7 @@ function DropHighlight(
       width: current.rect.width,
       height: current.rect.height,
       borderColor: current.allowed ? c.accent : c.textMuted,
-      backgroundColor: current.allowed ? c.accentSoft : 'transparent',
+      backgroundColor: current.filled ? c.accentSoft : 'transparent',
       transform: [
         { translateX: current.rect.x - originX.get() },
         { translateY: current.rect.y - originY.get() },
