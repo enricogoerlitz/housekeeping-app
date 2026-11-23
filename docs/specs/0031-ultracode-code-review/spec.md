@@ -1,5 +1,5 @@
 ---
-status: entwurf # entwurf | freigegeben | umgesetzt | verworfen
+status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-23
 ---
 
@@ -626,20 +626,28 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **A — Pipeline-Grundlagen**
 
-- [ ] 2. Fake-Server `insertRows`/`withoutRows` einmal je Tabelle kopieren, Timeouts zurück
+- [x] 2. Fake-Server `insertRows`/`withoutRows` einmal je Tabelle kopieren, Timeouts zurück
       (AC-058).
-- [ ] 3. `checks.yml` auf `push` nach `develop` (AC-011).
-- [ ] 4. Lint: Paketgrenzen, `--max-warnings=0`, `ban-ts-comment`, Pflicht-Begründung (AC-047,
+- [x] 3. `checks.yml` auf `push` nach `develop` (AC-011).
+- [x] 4. Lint: Paketgrenzen, `--max-warnings=0`, `ban-ts-comment`, Pflicht-Begründung (AC-047,
       AC-048).
-- [ ] 5. Tag-Ruleset `creation`, e2e-App-Version als Konstante (AC-020, AC-021).
+- [ ] 5. Tag-Ruleset `creation`, e2e-App-Version als Konstante (AC-020, AC-021). Im Repository
+      fertig (`ruleset-tags.json`, `workflows.test.mjs`, „2099.12.1“, Nachtrag ADR-0015). OFFEN:
+      Probe in einem Test-Repository und `gh api -X PUT` auf GitHub (Runbook in `betrieb.md`).
 
 **B — e2e-Suite**
 
-- [ ] 6. `freshSeed()` in `rundgang-reise-fenster`, `dayBlock` mit testID, Server-Identität in
+- [x] 6. `freshSeed()` in `rundgang-reise-fenster`, `dayBlock` mit testID, Server-Identität in
       `global-setup` (AC-022, AC-023).
 - [ ] 7. Lauf auf 8790, jeden roten Fall einordnen, veraltete Tests anpassen (AC-024).
-- [ ] 8. Begriffs-Guard für e2e und Wortliste, Testnamen (AC-033, AC-034).
-- [ ] 9. Datums-Unabhängigkeit, Warten auf die Endlage, fehlende AC-Tests (AC-031, AC-032, T-12).
+      Veraltete Tests angepasst (AC-024: „2 an“, `bedienung` AC-020 mit eigenem Nutzer);
+      `pnpm e2e:dev` grün. Voller Lauf in H.
+- [x] 8. Begriffs-Guard für e2e und Wortliste, Testnamen (AC-033, AC-034).
+- [x] 9. Datums-Unabhängigkeit, Warten auf die Endlage, fehlende AC-Tests (AC-031, AC-032, T-12).
+      Die fehlenden Tests stehen in `e2e/rundgang-luecken-0031.spec.ts`. 0029 AC-006 hat keinen
+      e2e-Test: Chromium hat keine Home-Leiste (sicherer Rand 0), dort bleibt alles wie bisher
+      (AC-008, `rundgang-handy`); die 8 pt über der Home-Leiste sichert
+      `packages/ui/src/bottom-inset.test.ts`, auf dem Einkaufsmodus und Kochmodus aufsetzen.
 
 **C — Datenbank** (je Punkt eine Migration mit rotem pgTAP zuerst, `db-change`-Skill)
 

@@ -246,12 +246,9 @@ export function useSectionEditor(recipe: Recipe): SectionEditor {
   // render thrown away during the navigation cannot use them up (spec 0018, E-01).
   useEffect(() => {
     const rows = takeHandedOverRows(recipeId);
-    // The rows come from outside React (the window "Neu"); opening the section with them is the
-    // synchronisation this effect exists for, once.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the rows come from outside React (the window "Neu"); opening the section with them is what this effect is for, once
     if (rows) finish(addPastedRows(sectionDraft(recipe, 'ingredients'), rows));
-    // Runs once for the rows handed over before the page opened.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, for the rows handed over before the page opened
   }, []);
 
   const problems = state.attempted && state.draft ? validate(state.draft) : [];

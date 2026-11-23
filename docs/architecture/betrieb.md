@@ -44,19 +44,24 @@ flowchart LR
   M -.->|nach Hotfix: Rückführung| D
 ```
 
-Die Rulesets liegen als Dateien in `infra/github/` und gelten ohne Umgehung, auch für Enrico:
+Die Rulesets liegen als Dateien in `infra/github/` und gelten auch für Enrico. Umgehen darf nur die
+GitHub-Actions-App das Tag-Ruleset, damit die Veröffentlichung ihren Tag anlegt (ADR-0015, Nachtrag
+2026-11-23):
 
-| Datei                  | Gilt für  | Regeln                                                                                    |
-| ---------------------- | --------- | ----------------------------------------------------------------------------------------- |
-| `ruleset-develop.json` | `develop` | nur per PR (Squash oder Merge-Commit), Pflicht-Checks grün, kein Force-Push, kein Löschen |
-| `ruleset-main.json`    | `main`    | nur per PR (nur Merge-Commit), Pflicht-Checks grün, kein Force-Push, kein Löschen         |
-| `ruleset-tags.json`    | Tags `v*` | nicht verschieben, nicht löschen; anlegen darf die Veröffentlichung                       |
+| Datei                  | Gilt für  | Regeln                                                                                          |
+| ---------------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `ruleset-develop.json` | `develop` | nur per PR (Squash oder Merge-Commit), Pflicht-Checks grün, kein Force-Push, kein Löschen       |
+| `ruleset-main.json`    | `main`    | nur per PR (nur Merge-Commit), Pflicht-Checks grün, kein Force-Push, kein Löschen               |
+| `ruleset-tags.json`    | Tags `v*` | nicht von Hand anlegen, nicht verschieben, nicht löschen; anlegen darf nur die Veröffentlichung |
 
 Pflicht-Checks sind die Jobnamen aus `.github/workflows/checks.yml` ohne „Änderungen“:
 `Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`, `Datenbank (pgTAP)`, `Deno-Lock`,
 jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
 verlangt; Freigaben (Reviews) auch nicht, weil es nur einen Besitzer gibt. Ein Jobname und die
-Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das.
+Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das. Nach jedem Merge
+nach `develop` laufen dieselben Checks noch einmal auf dem Merge-Commit, je Commit in einer eigenen
+Gruppe, ohne Abbruch (Spec 0031, AC-011). Ein roter Lauf dort heißt: Die Kombination zweier PRs ist
+kaputt, der nächste Fix geht per PR.
 
 Die E2E-Suiten (`pnpm e2e`, `pnpm e2e:dev`) laufen seit 22.11.2026 nicht mehr in der Pipeline, nur
 lokal: vor jeder Veröffentlichung einmal beide ausführen (Spec 0014, AC-006).
@@ -68,6 +73,11 @@ for f in ruleset-develop ruleset-main ruleset-tags; do gh api -X POST "repos/$R/
 gh api "repos/$R/rulesets" --jq '.[] | [.id, .name, .enforcement] | @tsv'
 gh api -X PUT "repos/$R/rulesets/<id>" --input infra/github/ruleset-develop.json
 ```
+
+Bevor `ruleset-tags.json` mit `creation` und der Ausnahme für GitHub Actions ersetzt wird (Spec
+0031, AC-020), wird es in einem Test-Repository geprüft: Ein von Hand gepushter Tag `v2026.12.9`
+wird abgelehnt, und ein Workflow mit `contents: write` legt mit `gh release create` seinen Tag
+trotzdem an. Erst dann `gh api -X PUT` auf das Tag-Ruleset dieses Repositorys.
 
 ## Alltag
 

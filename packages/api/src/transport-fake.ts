@@ -383,7 +383,7 @@ const foreignKey = (constraint: string) =>
 const constraintOf = (reference: { table: string; column: string }) =>
   `${reference.table}_${reference.column.replace(/_id$/, '')}_fkey`;
 
-/** private.recipe_deletions (spec 0008, E4): what restore_recipe brings back. */
+/** private.deletions of a recipe (spec 0008, E4; spec 0024): what restore_recipe brings back. */
 interface RecipeDeletion {
   householdId: string;
   recipeId: string;
@@ -870,7 +870,7 @@ export function createFakeServer(): FakeServer {
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
   const media = new Map<string, Blob>();
   let ai: FakeAi = {};
-  /** private.recipe_deletions, one snapshot per household and recipe. */
+  /** private.deletions of recipes, one snapshot per household and recipe. */
   const recipeDeletions = new Map<string, RecipeDeletion>();
   const placeDeletions = new Map<string, PlaceDeletion>();
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
@@ -1030,6 +1030,15 @@ export function createFakeServer(): FakeServer {
     return { ...tables, [table]: { ...tables[table], [row.id]: row } };
   }
 
+  /** Several rows into one table with a single copy of it; a later row with the same id wins. */
+  function withRows(tables: TableRows, table: string, rows: Iterable<Row>): TableRows {
+    const list = [...rows];
+    if (list.length === 0) return tables;
+    const copy = { ...tables[table] };
+    for (const row of list) copy[row.id] = row;
+    return { ...tables, [table]: copy };
+  }
+
   /** areas_leave_stores: the id leaves the walking order and the hidden areas of every store. */
   function withoutAreaInStores(tables: TableRows, areaId: string): TableRows {
     let next = tables;
@@ -1048,11 +1057,10 @@ export function createFakeServer(): FakeServer {
 
   /** Reopens a checked item for a new need: its bought contributions and check state go. */
   function reopened(tables: TableRows, item: Row): TableRows {
-    let next = tables;
-    for (const row of Object.values(tables.shopping_contributions ?? {})) {
-      if (row.item_id === item.id) next = withoutRows(next, 'shopping_contributions', [row.id]);
-    }
-    return withRow(next, 'shopping_items', {
+    const bought = Object.values(tables.shopping_contributions ?? {})
+      .filter((row) => row.item_id === item.id)
+      .map((row) => row.id);
+    return withRow(withoutRows(tables, 'shopping_contributions', bought), 'shopping_items', {
       ...item,
       checked: false,
       checked_at: null,
@@ -1071,38 +1079,43 @@ export function createFakeServer(): FakeServer {
       : time;
   }
 
-  /** Deletes rows like the database; `enforce` false = an administrator ignoring restrict. */
+  /**
+   * Deletes rows like the database; `enforce` false = an administrator ignoring restrict. Each
+   * table is copied once per call, not once per row (spec 0031, AC-058).
+   */
   function withoutRows(
     tables: TableRows,
     table: string,
     ids: Iterable<string>,
     enforce = true,
   ): TableRows {
-    let next = tables;
-    for (const id of ids) {
-      if (!next[table]?.[id]) continue;
-      const kept = { ...next[table] };
-      delete kept[id];
-      next = { ...next, [table]: kept };
-      if (table === 'areas') next = withoutAreaInStores(next, id);
-      for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
-        for (const row of Object.values(next[reference.table] ?? {})) {
-          if (row[reference.column] !== id || reference.onDelete === 'cascade') continue;
-          if (reference.onDelete === 'restrict') {
-            if (enforce) throw foreignKey(constraintOf(reference));
-            continue;
-          }
-          const cleared = { ...row, [reference.column]: null };
-          if (enforce && reference.table === 'meal_plan_entries') checkPlanEntry(cleared);
-          next = withRow(next, reference.table, cleared);
+    const gone = new Set([...ids].filter((id) => tables[table]?.[id]));
+    if (gone.size === 0) return tables;
+    const kept = { ...tables[table] };
+    for (const id of gone) delete kept[id];
+    let next: TableRows = { ...tables, [table]: kept };
+    if (table === 'areas') for (const id of gone) next = withoutAreaInStores(next, id);
+    const isGone = (value: unknown) => typeof value === 'string' && gone.has(value);
+    for (const reference of REFERENCES.filter((candidate) => candidate.target === table)) {
+      if (reference.onDelete === 'cascade') continue;
+      const cleared: Row[] = [];
+      for (const row of Object.values(next[reference.table] ?? {})) {
+        if (!isGone(row[reference.column])) continue;
+        if (reference.onDelete === 'restrict') {
+          if (enforce) throw foreignKey(constraintOf(reference));
+          continue;
         }
+        const nulled = { ...row, [reference.column]: null };
+        if (enforce && reference.table === 'meal_plan_entries') checkPlanEntry(nulled);
+        cleared.push(nulled);
       }
-      for (const cascade of CASCADES[table] ?? []) {
-        const dependent = Object.values(next[cascade.table] ?? {})
-          .filter((row) => row[cascade.column] === id)
-          .map((row) => row.id);
-        next = withoutRows(next, cascade.table, dependent, enforce);
-      }
+      next = withRows(next, reference.table, cleared);
+    }
+    for (const cascade of CASCADES[table] ?? []) {
+      const dependent = Object.values(next[cascade.table] ?? {})
+        .filter((row) => isGone(row[cascade.column]))
+        .map((row) => row.id);
+      next = withoutRows(next, cascade.table, dependent, enforce);
     }
     return next;
   }
@@ -3462,21 +3475,23 @@ export function createFakeServer(): FakeServer {
       const before = data.get(householdId) ?? {};
       let after = before;
       for (const [table, list] of Object.entries(rows)) {
-        for (const row of list) {
-          const defaults =
-            table === 'shopping_items'
-              ? {
-                  checked: false,
-                  checked_at: null,
-                  checked_by: null,
-                  check_seq: 0,
-                  not_available: false,
-                }
-              : table === 'packing_items'
-                ? OPEN_PACKING_ITEM
-                : {};
-          after = withRow(after, table, { ...defaults, ...row });
-        }
+        const defaults =
+          table === 'shopping_items'
+            ? {
+                checked: false,
+                checked_at: null,
+                checked_by: null,
+                check_seq: 0,
+                not_available: false,
+              }
+            : table === 'packing_items'
+              ? OPEN_PACKING_ITEM
+              : {};
+        after = withRows(
+          after,
+          table,
+          list.map((row) => ({ ...defaults, ...row })),
+        );
       }
       commit(householdId, before, after);
     },

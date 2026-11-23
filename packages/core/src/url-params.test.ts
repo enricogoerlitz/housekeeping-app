@@ -7,6 +7,7 @@ import {
   cookingStepFromParam,
   PAGE_PARAMS,
   pageQuery,
+  pageParamsBefore,
   readPageParams,
   recipeListFromParams,
   recipeListToParams,
@@ -108,6 +109,22 @@ describe('readPageParams', () => {
   it('every page knows the route id only where the route has one', () => {
     expect(Object.keys(PAGE_PARAMS.rezept)).toContain('id');
     expect(Object.keys(PAGE_PARAMS.rezepte)).not.toContain('id');
+  });
+});
+
+describe('pageParamsBefore', () => {
+  it('AC-013 (0019): going back to the page restores every parameter, also one set inside the window', () => {
+    // "+ Neu" opened a window over the filtered list; inside it "Drachenfrucht" was shown.
+    const before = { filter: 'vorrat' } as const;
+    expect(pageQuery('artikel', pageParamsBefore('artikel', before))).toEqual({
+      filter: 'vorrat',
+      bereich: undefined,
+      sortierung: undefined,
+      suche: undefined,
+      artikel: undefined,
+      fenster: undefined,
+      von: undefined,
+    });
   });
 });
 

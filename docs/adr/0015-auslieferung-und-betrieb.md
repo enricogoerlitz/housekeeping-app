@@ -259,3 +259,11 @@ ab; alles andere gilt unverändert.
 - Der Auslöser „West Europe wird für das Abo verfügbar“ unter „Wann diese Entscheidung neu
   bewertet wird“ gilt jetzt für beide Static Web Apps; Storage und Identitäten müssen dafür nicht
   umziehen.
+
+## Nachtrag 2026-11-23 — Tags `v*` legt nur die Veröffentlichung an
+
+Spec 0031 (REQ-007, AC-020): Bisher durfte jeder mit Schreibrecht einen Tag `v*` von Hand anlegen,
+und ein solcher Tag hätte die nächste App-Version bestimmt. Das Tag-Ruleset verbietet jetzt auch
+das Anlegen (`creation`). Die einzige Ausnahme in einem Ruleset ist die GitHub-Actions-App
+(`integration_id` 15368) für die Tags: Mit ihrem `GITHUB_TOKEN` legt der Job „Tag und
+GitHub-Veröffentlichung“ in `release.yml` den Tag an. `develop` und `main` bleiben ohne Umgehung.
