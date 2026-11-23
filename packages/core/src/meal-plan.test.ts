@@ -216,7 +216,6 @@ describe('trips', () => {
     expect(isOnTrip(enrico.id, '2026-11-19', trips)).toBe(false);
     expect(isOnTrip(nadja.id, '2026-11-21', trips)).toBe(false);
   });
-
 });
 
 describe('entriesForDay', () => {

@@ -9,7 +9,7 @@ import { removeMember } from './commands-household';
 import { setPacked } from './commands-packing';
 import { addPlanEntry } from './commands-plan';
 import { createTrip, removeTrip, updateTrip } from './commands-trips';
-import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH } from './seed/demo';
+import { ENRICO, NADJA, SLOT_DINNER } from './seed/demo';
 import { getData, snapshot } from './store';
 import { TransportError } from './transport';
 
@@ -277,7 +277,9 @@ describe('spec 0030: a trip as a draft (REQ-004)', () => {
     updateTrip(id, { draft: false });
     await fx.settle(engine);
     const ops = (fx.calls[0]?.args[1] ?? []) as { kind: string; table: string; changes?: object }[];
-    expect(ops).toEqual([expect.objectContaining({ kind: 'patch', table: 'trips', changes: { draft: false } })]);
+    expect(ops).toEqual([
+      expect.objectContaining({ kind: 'patch', table: 'trips', changes: { draft: false } }),
+    ]);
     expect(fx.server.row(H, 'trips', id)).toMatchObject({ draft: false });
     updateTrip(id, { draft: true });
     await fx.settle(engine);

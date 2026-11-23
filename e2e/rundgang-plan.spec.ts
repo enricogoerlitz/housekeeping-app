@@ -212,7 +212,7 @@ test('AC-035 / AC-044 (0010): "Bis" before "Von" and nobody chosen save nothing'
   await expect(tid(page, 'trip-who-hint')).toHaveText('Wähle, wer weg ist');
 });
 
-test('AC-038 (0001) / AC-033 / AC-037 (0010): with Enrico away on Saturday only Nadja is preselected', async ({
+test('AC-033 / AC-037 (0010), AC-027 (0030): with Enrico away on Saturday both are still preselected', async ({
   page,
 }) => {
   await open(page, '/');
@@ -236,7 +236,8 @@ test('AC-038 (0001) / AC-033 / AC-037 (0010): with Enrico away on Saturday only 
   await showPlanWeek(page, SATURDAY);
   await tid(page, `add-${SATURDAY}`).click();
   await pickRecipe(page, 'Shakshuka', 'rec-shakshuka');
-  await expect(tid(page, `eater-${member('m-enrico')}`)).toHaveAttribute('aria-selected', 'false');
+  // Spec 0030, REQ-008: a trip changes nothing about eating.
+  await expect(tid(page, `eater-${member('m-enrico')}`)).toHaveAttribute('aria-selected', 'true');
   await expect(tid(page, `eater-${member('m-nadja')}`)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Escape');
 

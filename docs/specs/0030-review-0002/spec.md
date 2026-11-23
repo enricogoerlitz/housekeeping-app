@@ -89,7 +89,7 @@ Filtern nicht).
   „Keine Reisen in diesem Zeitraum.“ mit dem Knopf „Alle Zeiträume“ · Und `zeitraum=abc` wird
   ignoriert (alle Reisen).
 - AC-011: Angenommen „Mallorca“ hat eine Packliste mit 3 von 18 gepackt · Dann zeigt die Zeile die
-  Kachel „SA 12“, „Mallorca“, „12.–19. Dez · 8 Tage · Enrico & Nadja“ und „3/18 gepackt“.
+  Kachel „SA 12“, „Mallorca“, „12.–19. Dez · 8 Tage · Ganzer Haushalt“ und „3/18 gepackt“.
 
 **REQ-004 — Reise als Entwurf.** Beim Eintragen und im Reise-Fenster schaltet „Entwurf“ eine Reise
 auf „noch in Planung“. Ein Entwurf ist im Kalender, in „Reisen“ und auf der Übersicht schraffiert
@@ -231,7 +231,14 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (23.11.2026).
     `defaultPlanChoice`/`withPlanDay`/`pagePlanChoice`/`refreshPlanEaters` und `travellerNames` von
     `moveToastText`. Eine eigene Datenbank-Funktion hatte das Rausnehmen nicht (es lief über
     `apply_changes` und `replace_entry_contributions`, die bleiben), also entfällt in der Datenbank
-    nichts.
+    nichts. `defaultEaters` (core) entfällt ganz, `defaultEaterIds()` (api) nimmt keinen Tag mehr.
+12. Beim Bau entschieden: „Entwurf“ ist ein Schalter unter „Notiz“ mit dem Satz „Noch in Planung:
+    wirkt erst, wenn du den Entwurf ausschaltest.“; Hinweise nach dem Speichern „Entwurf
+    gespeichert“, „Reise bestätigt“ (Entwurf aus) und sonst wie bisher „Reise eingetragen“/„Reise
+    geändert“; im Reise-Fenster steht neben den Personen das Abzeichen „Entwurf“, auf den Streifen
+    „Entwurf · “ vor dem Text. „Ohne Tag vormerken“ im Hinzufügen-Fenster setzt „Wer isst mit?“ nicht
+    mehr zurück, weil die Vorauswahl nicht mehr vom Tag abhängt. Ohne Filter und ohne kommende
+    Reisen steht unter „Kommend“ weiter „Nichts geplant.“; mit Filter fehlen leere Abschnitte.
 
 ## Daten
 
@@ -252,19 +259,19 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
 ## Umsetzung
 
 - [x] 1. Spec, Glossar „Reise-Entwurf“, Eintrag in `docs/specs/README.md`.
-- [ ] 2. Tabs im Hinzufügen-Fenster neu sortiert (AC-021, AC-022).
-- [ ] 3. `ChoiceChips` mit `fill`; „Einplanen“ nutzt es (AC-019, AC-020).
-- [ ] 4. Hervorhebung beim Ziehen einer Reise nur als Rahmen (AC-005, AC-006).
-- [ ] 5. Kopfzeilen sticky, Wochentage am Desktop ausgeschrieben (AC-001–AC-004).
-- [ ] 6. Tab-Wisch: `touch-action: pan-y` am Scrollbereich, Finger nicht abgeben (AC-023–AC-025).
-- [ ] 7. Migration `trips.draft`, Server-Regeln, pgTAP; Typen, Seeds, Cache, core-Regeln mit Tests
+- [x] 2. Tabs im Hinzufügen-Fenster neu sortiert (AC-021, AC-022).
+- [x] 3. `ChoiceChips` mit `fill`; „Einplanen“ nutzt es (AC-019, AC-020).
+- [x] 4. Hervorhebung beim Ziehen einer Reise nur als Rahmen (AC-005, AC-006).
+- [x] 5. Kopfzeilen sticky, Wochentage am Desktop ausgeschrieben (AC-001–AC-004).
+- [x] 6. Tab-Wisch: `touch-action: pan-y` am Scrollbereich, Finger nicht abgeben (AC-023–AC-025).
+- [x] 7. Migration `trips.draft`, Server-Regeln, pgTAP; Typen, Seeds, Cache, core-Regeln mit Tests
       (AC-013, AC-015, AC-017).
-- [ ] 8. Entwurf im Fenster „Reise eintragen“ und im Reise-Fenster, Schraffur in Kalender, Jahr,
+- [x] 8. Entwurf im Fenster „Reise eintragen“ und im Reise-Fenster, Schraffur in Kalender, Jahr,
       „Reisen“ (AC-012, AC-014, AC-016, AC-018).
-- [ ] 9. „Reisen“ nach Monaten mit Filter „Zeitraum“ (AC-007–AC-011).
-- [ ] 10. Reisen wirken nur auf Aufgaben: K-02 und Rausnehmen entfernt, Vorauswahl „Wer isst mit?“
+- [x] 9. „Reisen“ nach Monaten mit Filter „Zeitraum“ (AC-007–AC-011).
+- [x] 10. Reisen wirken nur auf Aufgaben: K-02 und Rausnehmen entfernt, Vorauswahl „Wer isst mit?“
       ohne Reisen, Hinweis beim Verschieben ohne Reisende, Satz unter „Wer?“ (AC-026–AC-030).
-- [ ] 11. e2e-Tests (nur typgeprüft) in `e2e/rundgang-review-0002.spec.ts`; alte e2e-Tests zu K-02
+- [x] 11. e2e-Tests (nur typgeprüft) in `e2e/rundgang-review-0002.spec.ts`; alte e2e-Tests zu K-02
       und zur Vorauswahl angepasst.
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, DB-Tests über das
       Schloss grün, `pnpm e2e:dev` grün, e2e-Typprüfung grün. Offen: Wischen auf dem iPhone prüft

@@ -114,9 +114,7 @@ export function DragProvider(props: DragProviderProps) {
   const areaBottom = useSharedValue(0);
   // In the right half of the window the label grows to the left, so it is not cut off.
   const labelEnd = useSharedValue(false);
-  const highlight = useSharedValue<{ rect: Rect; allowed: boolean; filled: boolean } | null>(
-    null,
-  );
+  const highlight = useSharedValue<{ rect: Rect; allowed: boolean; filled: boolean } | null>(null);
 
   const [controller] = useState(() => {
     let loop = 0;
@@ -178,7 +176,11 @@ export function DragProvider(props: DragProviderProps) {
       highlight: (rect, allowed) =>
         highlight.set(
           rect
-            ? { rect, allowed, filled: highlightFilled(allowed, self.getSnapshot().preview !== null) }
+            ? {
+                rect,
+                allowed,
+                filled: highlightFilled(allowed, self.getSnapshot().preview !== null),
+              }
             : null,
         ),
       end: (outcome, returnTo) => {
