@@ -273,6 +273,8 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
       ohne Reisen, Hinweis beim Verschieben ohne Reisende, Satz unter „Wer?“ (AC-026–AC-030).
 - [x] 11. e2e-Tests (nur typgeprüft) in `e2e/rundgang-review-0002.spec.ts`; alte e2e-Tests zu K-02
       und zur Vorauswahl angepasst.
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün, DB-Tests über das
-      Schloss grün, `pnpm e2e:dev` grün, e2e-Typprüfung grün. Offen: Wischen auf dem iPhone prüft
-      Enrico (Entscheidung 8).
+- [x] Nachweis (23.11.2026): `pnpm format:check && pnpm check` grün (core 1563, ui 406, api 936
+      Tests), `pnpm build:web` grün, pgTAP über das Schloss 50 Dateien / 2591 Tests grün (neu
+      `trip_drafts.test.sql`, 14), `pnpm test:scripts` 349 grün, `pnpm e2e:dev` 13 grün, e2e-Typprüfung
+      grün. Offen: Wischen auf dem iPhone prüft Enrico (Entscheidung 8); die volle e2e-Suite läuft
+      später.
