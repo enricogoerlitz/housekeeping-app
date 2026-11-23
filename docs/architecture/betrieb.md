@@ -241,9 +241,18 @@ Migrationsbasis, die die Migrationen von v2026.11.1 ersetzt (`supabase/migration
 Den Zeitpunkt bestätigt Enrico. Die Schritte laufen genau in dieser Reihenfolge, jeder erst, wenn der
 vorige grün ist:
 
-1. **Probe in der Vorschau.** Dieselben Schritte 4 und 6 gegen `<preview-ref>`, danach
-   `gh workflow run preview.yml --ref develop`. Enrico und Nadja melden sich an, eine
-   Benachrichtigung kommt an (Spec 0028, AC-012).
+1. **Probe in der Vorschau** (Spec 0028, AC-012; Reihenfolge nach Spec 0031, P-2). Das Skript setzt
+   die Vorschau zurück, `preview.yml` spielt die Migrationen (dann die neue Basis) ein und legt die
+   Testhaushalte aus `preview-seed.sql` und die Einladungen an. Push bleibt in der Vorschau aus
+   (Entscheidung 8 von Spec 0014); Benachrichtigungen werden erst in der Produktion geprüft:
+
+   ```sh
+   node scripts/reset-app-data.mjs --project "<preview-ref>"
+   gh workflow run preview.yml --ref develop
+   ```
+
+   Danach melden sich Enrico und Nadja auf der Vorschau an, und der Planer läuft fehlerfrei.
+
 2. **Sicherung von Hand.** Die letzte Sicherung der alten Produktion. Sie bleibt in Azure, bis der
    Wiederherstellungstest auf der neuen Basis grün ist (Spec 0028, Entscheidung 6):
 
@@ -275,14 +284,16 @@ vorige grün ist:
    Schritt 4 erst nach einem grünen e2e-Lauf: Ein roter e2e-Job in `release.yml` hielte die
    Produktion sonst nach dem Zurücksetzen ohne Schema fest.
 
-4. **Produktion zurücksetzen.** Mit dem Skript aus Spec 0028, Schritt 6. Es läuft nur von Hand, nie
-   aus einem Workflow (`conventions.mjs` prüft das, Spec 0031, AC-019). Es nimmt die Projektkennung
-   als Pflichtangabe, vergleicht sie mit dem verlinkten Projekt und fragt vor dem Löschen nach dem
-   Projektnamen. Gelöscht werden `public`, `private`, die Fotos und die Migrationshistorie. Vault,
-   Auth-Einstellungen und Function-Secrets bleiben:
+4. **Produktion zurücksetzen** mit `scripts/reset-app-data.mjs` (Spec 0028, Schritt 6). Es läuft nur
+   von Hand in einem Terminal, nie in CI (das Skript bricht dort ab; `conventions.mjs` verbietet es in
+   Workflows, Spec 0031, AC-019). Es nimmt die Projektkennung als Pflichtangabe und richtet jeden
+   Befehl ausdrücklich an dieses Projekt (`--remote=<ref>`, kein `supabase link` nötig); ist ein
+   anderes Projekt verlinkt, bricht es ab. Vor dem Löschen fragt es nach dem Projektnamen (braucht
+   `supabase login`). Gelöscht werden die Objekte in `public` und `private`, die pg_cron-Aufträge, die
+   Migrationshistorie und die Fotos. Konten, Vault, Auth-Einstellungen und Function-Secrets bleiben:
 
    ```sh
-   (trap 'pnpm exec supabase unlink' EXIT; pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/reset-app-data.mjs --project "<prod-ref>")
+   node scripts/reset-app-data.mjs --project "<prod-ref>"
    ```
 
 5. **Release-PR zusammenführen** („Create a merge commit“). `release.yml` läuft mit e2e, Sicherung,
