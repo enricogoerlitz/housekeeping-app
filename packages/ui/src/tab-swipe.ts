@@ -48,9 +48,29 @@ export interface TabSwipeMove {
  * every swipe (spec 0030, REQ-007).
  */
 export function claimsTabSwipe(move: TabSwipeMove, width: number): boolean {
-  const start = move.moveX - move.dx;
-  if (start < TAB_SWIPE_EDGE || start > width - TAB_SWIPE_EDGE) return false;
+  if (startsAtEdge(move, width)) return false;
   return claimsSwipe(move.dx, move.dy);
+}
+
+/** From this far up or down a move that runs at least as much vertically as sideways is a scroll. */
+const SCROLL_DISTANCE = 10;
+
+function startsAtEdge(move: TabSwipeMove, width: number): boolean {
+  const start = move.moveX - move.dx;
+  return start < TAB_SWIPE_EDGE || start > width - TAB_SWIPE_EDGE;
+}
+
+/**
+ * Whether the tab swipe keeps a move open when the page starts to scroll natively (spec 0030,
+ * REQ-007): with `pan-y` iOS scrolls the vertical part of a diagonal start, and a ScrollView that
+ * became the responder through that scroll never lets go. So the swipe area takes the move
+ * first and decides on the way since the finger went down: sideways enough is a swipe
+ * (`claimsTabSwipe`), mostly vertical or from the screen edge is a scroll and stays one.
+ */
+export function scrollKeepsTabSwipe(move: TabSwipeMove, width: number): boolean {
+  if (startsAtEdge(move, width)) return false;
+  const vertical = Math.abs(move.dy);
+  return vertical < SCROLL_DISTANCE || vertical < Math.abs(move.dx);
 }
 
 /** Where the content stands while the finger is down: 1:1, gently resisting without a neighbour. */

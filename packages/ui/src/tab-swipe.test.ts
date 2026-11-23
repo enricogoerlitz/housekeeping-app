@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   claimsTabSwipe,
+  scrollKeepsTabSwipe,
   neighbourTab,
   tabSwipe,
   tabSwipeOffset,
@@ -73,6 +74,21 @@ describe('swipe between view tabs (spec 0029, REQ-003)', () => {
     // Before the grant PanResponder reports x0 = 0; a swipe from the middle must still be taken.
     const beforeGrant = { dx: -25, dy: 0, moveX: 275, x0: 0 };
     expect(claimsTabSwipe(beforeGrant, 390)).toBe(true);
+  });
+
+  it('AC-023 (0030): a scroll that starts on a diagonal start leaves the move to the tab swipe', () => {
+    // 45 degrees for the first pixels (iOS already scrolls with pan-y), then sideways.
+    expect(scrollKeepsTabSwipe({ dx: -14, dy: -12, moveX: 286 }, 390)).toBe(true);
+    expect(claimsTabSwipe({ dx: -30, dy: -14, moveX: 270 }, 390)).toBe(true);
+    // Too short to tell yet.
+    expect(scrollKeepsTabSwipe({ dx: 0, dy: -8, moveX: 300 }, 390)).toBe(true);
+  });
+
+  it('AC-025 (0030): a mostly vertical move or one from the edge stays with the scroll', () => {
+    expect(scrollKeepsTabSwipe({ dx: -4, dy: -12, moveX: 296 }, 390)).toBe(false);
+    expect(scrollKeepsTabSwipe({ dx: 3, dy: 20, moveX: 203 }, 390)).toBe(false);
+    expect(scrollKeepsTabSwipe({ dx: -12, dy: -12, moveX: 288 }, 390)).toBe(false);
+    expect(scrollKeepsTabSwipe({ dx: -14, dy: -12, moveX: 0 }, 390)).toBe(false);
   });
 
   it('neighbourTab picks the tab a step away and nothing past the ends', () => {

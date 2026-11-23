@@ -13,7 +13,13 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { useFinePointer } from './pointer';
-import { claimsTabSwipe, tabSwipeOffset, tabSwipeStep, type TabSwipe } from './tab-swipe';
+import {
+  claimsTabSwipe,
+  scrollKeepsTabSwipe,
+  tabSwipeOffset,
+  tabSwipeStep,
+  type TabSwipe,
+} from './tab-swipe';
 import { useBreakpoint } from './theme-context';
 
 // Spec 0029, decision 7: the old content leaves in 180 ms, the new one arrives from 30 % of the
@@ -68,6 +74,13 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
   const index = useSharedValue(props.swipe.index);
   const count = useSharedValue(props.swipe.count);
   const blocked = useSharedValue(false);
+  // Where the finger went down, and how far it had come when the swipe took over: a swipe taken
+  // after a native scroll counts from there (spec 0030, REQ-007).
+  const start = useSharedValue({ x: 0, y: 0 });
+  const base = useSharedValue(0);
+  // idle: nothing yet · pending: holds the finger after a native scroll began, not decided ·
+  // swiping: follows the finger · scrolling: the move is a scroll, nothing to do until release.
+  const mode = useSharedValue<'idle' | 'pending' | 'swiping' | 'scrolling'>('idle');
   useLayoutEffect(() => {
     enabled.set(isPhone && !fine);
     still.set(reduced);
@@ -125,28 +138,56 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
     const report = (direction: -1 | 1) =>
       setSwiped((previous) => ({ step: direction, count: (previous?.count ?? 0) + 1 }));
     const settle = () => offset.set(withSpring(0, SETTLE));
-    return PanResponder.create({
+    const take = (dx: number) => {
+      mode.set('swiping');
+      base.set(dx);
+      cancelAnimation(offset);
+      cancelAnimation(opacity);
+      opacity.set(1);
+    };
+    const pan = PanResponder.create({
       onStartShouldSetPanResponderCapture: (event) => {
         blocked.set(inSidewaysScroller(event.nativeEvent.target));
+        start.set({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
+        mode.set('idle');
         return false;
       },
       // Bubbling only: a row swipe or a reorder drag inside claims the move first.
       onMoveShouldSetPanResponder: (_event, gesture) =>
         enabled.get() && !blocked.get() && claimsTabSwipe(gesture, width.get()),
-      // Spec 0030, REQ-007: once the swipe has the finger, a scroll view does not take it back.
-      onPanResponderTerminationRequest: () => false,
+      // Spec 0030, REQ-007: once the swipe has the finger, or holds it after a native scroll
+      // began, a scroll view does not take it back; a move that turned out a scroll may go.
+      onPanResponderTerminationRequest: () => mode.get() === 'scrolling',
+      onPanResponderReject: () => mode.set('idle'),
       onPanResponderGrant: () => {
-        cancelAnimation(offset);
-        cancelAnimation(opacity);
-        opacity.set(1);
+        // Taken through a native scroll: undecided until the move tells (see `scrollClaim`).
+        if (mode.get() === 'pending') return;
+        take(0);
       },
       onPanResponderMove: (_event, gesture) => {
-        if (still.get()) return;
-        offset.set(tabSwipeOffset(gesture.dx, { index: index.get(), count: count.get() }));
+        if (mode.get() === 'pending') {
+          const from = start.get();
+          const move = {
+            dx: gesture.moveX - from.x,
+            dy: gesture.moveY - from.y,
+            moveX: gesture.moveX,
+          };
+          if (claimsTabSwipe(move, width.get())) take(gesture.dx);
+          else if (!scrollKeepsTabSwipe(move, width.get())) mode.set('scrolling');
+        }
+        if (mode.get() !== 'swiping' || still.get()) return;
+        offset.set(
+          tabSwipeOffset(gesture.dx - base.get(), { index: index.get(), count: count.get() }),
+        );
       },
       onPanResponderRelease: (_event, gesture) => {
+        if (mode.get() !== 'swiping') {
+          mode.set('idle');
+          return;
+        }
+        mode.set('idle');
         const areaWidth = width.get();
-        const direction = tabSwipeStep(gesture.dx, gesture.vx, {
+        const direction = tabSwipeStep(gesture.dx - base.get(), gesture.vx, {
           index: index.get(),
           count: count.get(),
           width: areaWidth,
@@ -165,8 +206,22 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
           }),
         );
       },
-      onPanResponderTerminate: settle,
+      onPanResponderTerminate: () => {
+        mode.set('idle');
+        settle();
+      },
     });
+    // Web: a native scroll that starts while the finger is down would make the ScrollView the
+    // responder for good. The swipe area, its ancestor, takes it in the capture phase instead
+    // while the move may still become a swipe; the page keeps scrolling natively either way.
+    const scrollClaim = {
+      onScrollShouldSetResponderCapture: () => {
+        if (!enabled.get() || blocked.get() || mode.get() !== 'idle') return false;
+        mode.set('pending');
+        return true;
+      },
+    };
+    return { ...pan.panHandlers, ...(Platform.OS === 'web' ? scrollClaim : {}) };
   });
 
   const style = useAnimatedStyle(() => ({
@@ -175,7 +230,7 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
   }));
   return (
     <Animated.View
-      {...responder.panHandlers}
+      {...responder}
       onLayout={(event) => width.set(Math.round(event.nativeEvent.layout.width) || screenWidth)}
       style={[{ flex: 1 }, style]}
     >
