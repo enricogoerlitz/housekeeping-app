@@ -83,6 +83,9 @@ Schritt. Quelle: X-08. Offline: Text, auch offline sichtbar.
   beim Anmelden „Zugriff blockiert“.“ · Und nach dem Einladen sagt ein Hinweis „nadja@example.com ist
   eingeladen. Ist die Adresse neu: bei Google als Testnutzer eintragen.“ · Und der Satz „Wer
   eingeladen ist, kann sich mit Google anmelden.“ steht nirgends mehr.
+  _Nachtrag (Spec 0031, AC-071, 23.11.2026):_ Der Hinweis nach dem Einladen lautet jetzt
+  „nadja@example.com ist eingeladen. Ist die Adresse neu, muss Enrico sie bei Google eintragen.“
+  Er sagt so auch Nadja, wer den Schritt bei Google macht.
 - AC-007: Angenommen das Gerät ist offline · Dann stehen Offline-Hinweis und Google-Hinweis beide da.
 - AC-008: Angenommen `docs/architecture/betrieb.md` · Dann gibt es „Neue Person einladen“ mit den
   Schritten (in der App einladen; Google Cloud Console → „Google Auth Platform“ → „Zielgruppe“ →

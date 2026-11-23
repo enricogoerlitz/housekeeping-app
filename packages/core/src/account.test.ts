@@ -44,8 +44,11 @@ describe('Einladungen (REQ-001, REQ-002)', () => {
     expect(INVITE_FIELD_HINT).toBe(
       'Ist die Adresse neu, muss Enrico sie zusätzlich bei Google als Testnutzer eintragen. Sonst zeigt Google beim Anmelden „Zugriff blockiert“.',
     );
-    expect(invitedNotice('nadja@example.com')).toBe(
-      'nadja@example.com ist eingeladen. Ist die Adresse neu: bei Google als Testnutzer eintragen.',
+  });
+
+  it('AC-071 (spec 0031, replaces the notice of 0027 AC-006): Nadja invites, Enrico enters it at Google', () => {
+    expect(invitedNotice('oma@example.com')).toBe(
+      'oma@example.com ist eingeladen. Ist die Adresse neu, muss Enrico sie bei Google eintragen.',
     );
   });
 
