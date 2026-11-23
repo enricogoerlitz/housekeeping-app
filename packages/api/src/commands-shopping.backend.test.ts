@@ -29,8 +29,10 @@ import {
   ITEM_NOTE_MAX_LENGTH,
   pantryCheckRows,
   removeShoppingItem,
+  setItemChecked,
   setItemNote,
   setItemNotAvailable,
+  type PantryCheckRow,
 } from './commands-shopping';
 import {
   AREA_NAME_MAX_LENGTH,
@@ -51,6 +53,9 @@ const fx = withBackend();
 const articleNamed = (name: string) => getData().articles.find((article) => article.name === name);
 const itemOf = (name: string) =>
   getData().items.find((item) => item.articleId === articleNamed(name)?.id && !item.checked);
+const entryIdsOf = (rows: readonly PantryCheckRow[]) => [
+  ...new Set(rows.flatMap((row) => row.contributions.map((contribution) => contribution.entryId))),
+];
 
 describe('adding to the list', () => {
   it('online: one add_shopping_contributions call; the returned item is shown at once', async () => {
@@ -323,6 +328,99 @@ describe('from the meal plan', () => {
     expect(fx.calls[1]?.args[0]).toHaveLength(250);
     expect(fx.server.rows(H, 'shopping_contributions')).toEqual(serverBefore);
     expect(getData().items).toEqual(listBefore);
+  });
+
+  describe('"+ Aus Kalender" again (spec 0031, REQ-027)', () => {
+    const openAmounts = (rows: readonly { articleId: Id }[]) =>
+      rows.map((row) => {
+        const open = getData().items.find(
+          (item) => item.articleId === row.articleId && !item.checked,
+        );
+        return open ? summarizeItem(open).amount : undefined;
+      });
+    const serverContributions = (articleId: Id) => {
+      const items = fx.server
+        .rows(H, 'shopping_items')
+        .filter((row) => row.article_id === articleId && row.checked !== true)
+        .map((row) => row.id);
+      return fx.server
+        .rows(H, 'shopping_contributions')
+        .filter((row) => items.includes(row.item_id));
+    };
+
+    it('AC-064: taken over again, the list keeps the same amounts, one call', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      addPlannedToList(rows);
+      await fx.settle();
+      const once = openAmounts(rows);
+      const onServer = rows.map((row) => serverContributions(row.articleId).length);
+      const calls = fx.calls.length;
+
+      expect(addPlannedToList(pantryCheckRows(entryIdsOf(rows)))).toBe(rows.length);
+      expect(openAmounts(rows)).toEqual(once);
+      await fx.settle();
+      expect(fx.calls.slice(calls).map((call) => call.fn)).toEqual(['applyChanges']);
+      expect(openAmounts(rows)).toEqual(once);
+      expect(rows.map((row) => serverContributions(row.articleId).length)).toEqual(onServer);
+    });
+
+    it('AC-064: an article left out this time stays on the list', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      addPlannedToList(rows);
+      await fx.settle();
+      const once = openAmounts(rows);
+
+      addPlannedToList(pantryCheckRows(entryIdsOf(rows)).slice(1));
+      await fx.settle();
+      expect(openAmounts(rows)).toEqual(once);
+    });
+
+    it('AC-064: undo brings back the contributions as they were', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      addPlannedToList(rows);
+      await fx.settle();
+      const listBefore = getData().items;
+      // The same contributions come back (ids, items, amounts), stamped anew by the server.
+      const serverContents = () =>
+        fx.server
+          .rows(H, 'shopping_contributions')
+          .map(({ created_at: _created, updated_at: _updated, ...row }) => row)
+          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const serverBefore = serverContents();
+
+      const restore = snapshot();
+      addPlannedToList(pantryCheckRows(entryIdsOf(rows)));
+      await fx.settle();
+      expect(serverContents()).not.toEqual(serverBefore);
+      restore();
+      await fx.settle();
+      expect(getData().items).toEqual(listBefore);
+      expect(serverContents()).toEqual(serverBefore);
+    });
+
+    it('AC-065: the checked Hackfleisch comes back as an open item with the planned amount', async () => {
+      await fx.startEnrico();
+      const rows = lasagneRows();
+      const [first] = rows;
+      if (!first) throw new Error('fixture');
+      addPlannedToList(rows);
+      await fx.settle();
+      const itemId = itemOf(articleName(first.articleId))?.id ?? '';
+      setItemChecked(itemId, true);
+      await fx.settle();
+      expect(getData().items.find((item) => item.id === itemId)?.checked).toBe(true);
+
+      addPlannedToList(pantryCheckRows(entryIdsOf(rows)).slice(0, 1));
+      await fx.settle();
+      const open = getData().items.find(
+        (item) => item.articleId === first.articleId && !item.checked,
+      );
+      expect(open && summarizeItem(open).amount).toBe(first.amount);
+      expect(serverContributions(first.articleId)).toHaveLength(first.contributions.length);
+    });
   });
 
   it('"Ist alle": one call; undo sends removeContributions', async () => {

@@ -280,6 +280,76 @@ export function recomputeEntryContributions(input: {
 }
 
 /**
+ * "+ Aus Kalender" for entries that already stand on the list (spec 0031, REQ-027): for an
+ * entry with contributions on open items, those on the articles taken over are replaced, not
+ * added to; on articles not taken over this time they stay. On the server this is one
+ * `replace_entry_contributions` for `entryIds`, which removes all of the entries' contributions on
+ * open items, so `additions` also brings back the kept ones (new ids, same Herkunft and amount).
+ * An entry only on checked items has nothing to replace: its contributions reopen the item.
+ * Without `entryIds` nothing is replaced and the additions are plain list additions.
+ */
+export function replacePlannedOnList(input: {
+  items: readonly ShoppingItem[];
+  additions: readonly { articleId: Id; contributions: readonly ShoppingContribution[] }[];
+  newId: () => Id;
+  now: string;
+}): { items: ShoppingItem[]; entryIds: Id[]; additions: EntryAddition[] } {
+  const takenOver = new Set(input.additions.map((addition) => addition.articleId));
+  const planned = new Set(
+    input.additions.flatMap((addition) =>
+      addition.contributions.flatMap((c) =>
+        c.source.kind === 'recipe' && c.source.entryId !== undefined ? [c.source.entryId] : [],
+      ),
+    ),
+  );
+  const entryIds = [...planned].filter((entryId) =>
+    input.items.some(
+      (item) => !item.checked && item.contributions.some((c) => ofEntry(c, entryId)),
+    ),
+  );
+  const ofReplaced = (c: ShoppingContribution) =>
+    c.source.kind === 'recipe' &&
+    c.source.entryId !== undefined &&
+    entryIds.includes(c.source.entryId);
+  const kept = input.items.flatMap((item) =>
+    item.checked || takenOver.has(item.articleId)
+      ? []
+      : item.contributions
+          .filter(ofReplaced)
+          .map((c) => ({
+            articleId: item.articleId,
+            contributions: [{ ...c, id: input.newId() }],
+          })),
+  );
+  const emptied = new Set(
+    input.items
+      .filter((item) => !item.checked && item.contributions.some(ofReplaced))
+      .map((item) => item.id),
+  );
+  let next = input.items.map((item) =>
+    emptied.has(item.id)
+      ? { ...item, contributions: item.contributions.filter((c) => !ofReplaced(c)) }
+      : item,
+  );
+  const additions: EntryAddition[] = [];
+  for (const addition of [...input.additions, ...kept]) {
+    for (const contribution of addition.contributions) {
+      const known = additions.find((candidate) => candidate.articleId === addition.articleId);
+      const itemId =
+        known?.itemId ??
+        next.find((item) => item.articleId === addition.articleId && !item.checked)?.id ??
+        next.find((item) => item.articleId === addition.articleId)?.id ??
+        input.newId();
+      next = addContribution(next, addition.articleId, contribution, itemId, input.now);
+      if (known) known.contributions.push(contribution);
+      else additions.push({ articleId: addition.articleId, itemId, contributions: [contribution] });
+    }
+  }
+  next = next.filter((item) => !emptied.has(item.id) || item.contributions.length > 0);
+  return { items: next, entryIds, additions };
+}
+
+/**
  * What of the entry stands on the list (REQ-015): the Herkunft ("Lasagne (Sa)"), the number of
  * open items ("2 Zutaten") and of contributions; undefined when nothing open has one.
  */
