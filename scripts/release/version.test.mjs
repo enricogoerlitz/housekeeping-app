@@ -256,6 +256,20 @@ describe('CLI', () => {
     });
   });
 
+  test('security check 0031: a tag outside the first-parent history of the release branch counts not', () => {
+    const cwd = repoWithFoundation();
+    git(cwd, 'tag', 'v2026.11.1');
+    git(cwd, 'checkout', '-q', '-b', 'chore/x');
+    commit(cwd, 'chore: x', { 'x.txt': 'x\n' });
+    git(cwd, 'tag', 'v2099.12.1');
+    git(cwd, 'checkout', '-q', '-');
+    commit(cwd, 'feat: Reisetaschen', { 'packages/core/src/bag.ts': 'export const x = 1;\n' });
+    const result = run(cwd, ['--now', '2026-11-25T12:00:00Z']);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.outputs.previous, '2026.11.1');
+    assert.equal(result.outputs.version, '2026.11.2');
+  });
+
   test('AC-018: after v2026.12.3 the next one in December is 2026.12.4, in January 2027.1.1', () => {
     const cwd = repoWithFoundation();
     git(cwd, 'tag', 'v2026.12.3');
