@@ -1,14 +1,20 @@
 import {
+  EMPTY_PLACE,
+  isOwnWindowOnTop,
+  openerOf,
+  originBackPlan,
+  originFor as originForPlace,
   pageParamsBefore,
   pageQuery,
+  placeAfter,
   readPageParams,
-  SECTION_START,
-  sectionOfPath,
-  sectionOfStartPath,
-  startPageHref,
+  sectionHref,
+  windowClosedByBack,
   type Origin,
   type PageKey,
   type PageParams,
+  type PlaceState,
+  type WindowEntry,
 } from '@housekeeping/core';
 import {
   useGlobalSearchParams,
@@ -25,7 +31,8 @@ import { Platform } from 'react-native';
 // values of the list in core (`PAGE_PARAMS`), and follow one history rule (Decision 4): view,
 // filter, search, sort, paging and the selection on wide screens replace the current entry;
 // opening a window adds one, so the browser's Back, the swipe back, Escape, a tap outside and ✕
-// close it alike (REQ-013).
+// close it alike (REQ-013). The decisions are pure functions in core (place.ts); this file only
+// connects them to the router and the browser history.
 
 type Raw = Record<string, string | string[] | undefined>;
 type Query = Record<string, string | string[] | undefined>;
@@ -34,15 +41,6 @@ const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
 
 // ---------- Windows in the browser history ----------
 
-/**
- * A window opened by the person: the browser entry below it (same router entry id, the address
- * without the window) and how to tell the router that the window is closed.
- */
-interface WindowEntry {
-  entryId: unknown;
-  base: string;
-  close: () => void;
-}
 const windows: WindowEntry[] = [];
 
 function location(): string {
@@ -59,8 +57,8 @@ if (isWeb) {
   window.addEventListener(
     'popstate',
     (event) => {
-      const top = windows[windows.length - 1];
-      if (!top || entryId() !== top.entryId || location() !== top.base) return;
+      const top = windowClosedByBack(windows, entryId(), location());
+      if (!top) return;
       windows.pop();
       event.stopImmediatePropagation();
       top.close();
@@ -77,10 +75,8 @@ function openWindowEntry(apply: () => void, close: () => void): void {
   apply();
 }
 
-/** True when the window shown was opened in this session: closing it goes back one entry. */
 function ownWindowOnTop(): boolean {
-  const top = windows[windows.length - 1];
-  return isWeb && top !== undefined && entryId() === top.entryId && location() !== top.base;
+  return isWeb && isOwnWindowOnTop(windows, entryId(), location());
 }
 
 // ---------- Reading and writing a page's parameters ----------
@@ -146,30 +142,14 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
 
 // ---------- Where the person is: sections, origins, start pages ----------
 
-interface Place {
-  href: string;
-  section: Origin;
-}
-let current: Place | undefined;
-const startPages: Partial<Record<Origin, string>> = {};
+let place: PlaceState = EMPTY_PLACE;
 const placeListeners = new Set<() => void>();
 
 function subscribePlace(listener: () => void): () => void {
   placeListeners.add(listener);
   return () => placeListeners.delete(listener);
 }
-const placeSnapshot = () => current;
-
-function queryString(params: Raw): string {
-  const pairs: string[] = [];
-  for (const [name, value] of Object.entries(params)) {
-    if (name === 'id' || value === undefined) continue;
-    for (const entry of Array.isArray(value) ? value : [value]) {
-      pairs.push(`${encodeURIComponent(name)}=${encodeURIComponent(entry)}`);
-    }
-  }
-  return pairs.length > 0 ? `?${pairs.join('&')}` : '';
-}
+const placeSnapshot = () => place.current;
 
 /**
  * Mount once inside the router: remembers the current address, its section and each section's
@@ -183,11 +163,7 @@ export function PlaceTracker(): null {
     // From the router, not from the browser's address: on the web the router writes that only
     // after this effect, so it would still be the page before (Zurück from "Verwalten" left "/"
     // remembered as "/verwalten", and "Übersicht" then opened "Verwalten" again).
-    const href = pathname + queryString(params);
-    const von = typeof params.von === 'string' ? params.von : undefined;
-    current = { href, section: sectionOfPath(pathname, von) };
-    const start = sectionOfStartPath(pathname);
-    if (start) startPages[start] = startPageHref(href);
+    place = placeAfter(place, pathname, params);
     for (const listener of placeListeners) listener();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the parameters' content
   }, [pathname, key]);
@@ -199,15 +175,13 @@ export function useActiveSection(): Origin | undefined {
   return useSyncExternalStore(subscribePlace, placeSnapshot, placeSnapshot)?.section;
 }
 
-/** The start page of a section as last left, without window and detail (REQ-005). */
-function sectionHref(section: Origin): string {
-  return startPages[section] ?? SECTION_START[section];
-}
-
 /** Choosing a section in the tab bar or the sidebar: its start page, also from inside it. */
 export function useOpenSection(): (section: Origin) => void {
   const router = useRouter();
-  return useCallback((section: Origin) => router.navigate(sectionHref(section) as never), [router]);
+  return useCallback(
+    (section: Origin) => router.navigate(sectionHref(place, section) as never),
+    [router],
+  );
 }
 
 /**
@@ -215,19 +189,8 @@ export function useOpenSection(): (section: Origin) => void {
  * another one, so the page names it and leads back to it (REQ-006).
  */
 export function originFor(own: Origin): Origin | undefined {
-  const section = current?.section;
-  return section === undefined || section === own ? undefined : section;
+  return originForPlace(place, own);
 }
-
-const SECTION_LABEL: Record<Origin, string> = {
-  uebersicht: 'Übersicht',
-  essen: 'Essen',
-  kalender: 'Kalender',
-  liste: 'Liste',
-  haushalt: 'Haushalt',
-  verwalten: 'Verwalten',
-  reisen: 'Reisen',
-};
 
 export interface OriginBack {
   section: Origin;
@@ -248,23 +211,15 @@ export function useOriginBack(
   home?: { label: string; href: string },
 ): OriginBack {
   const router = useRouter();
-  const section = von ?? own;
-  const fallback = von === undefined && home ? home.href : sectionHref(section);
-  // The address the page was opened from: still the current one while it renders first. After
-  // a deep link the router may mount the page again once it is ready; then "current" is the page
-  // itself, which is no origin.
   const pathname = usePathname();
-  const [opener] = useState(() =>
-    current && current.href.split('?')[0] !== pathname ? current : undefined,
-  );
+  // The address the page was opened from, as it was while the page rendered first.
+  const [opener] = useState(() => openerOf(place, pathname));
+  const plan = originBackPlan({ von, own, opener, place, home });
+  const { historyBack, href } = plan;
   const back = useCallback(() => {
-    if (opener && opener.section === section) {
-      if (isWeb) window.history.back();
-      else router.back();
-      return;
-    }
-    router.navigate(fallback as never);
-  }, [opener, router, section, fallback]);
-  const label = von === undefined && home ? home.label : SECTION_LABEL[section];
-  return { section, label, back };
+    if (!historyBack) router.navigate(href as never);
+    else if (isWeb) window.history.back();
+    else router.back();
+  }, [historyBack, href, router]);
+  return { section: plan.section, label: plan.label, back };
 }

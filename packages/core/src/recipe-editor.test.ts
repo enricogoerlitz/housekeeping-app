@@ -9,7 +9,6 @@ import {
   addVariant,
   chooseRowArticle,
   cleanTags,
-  draftAfterRefusal,
   moveIngredient,
   moveIngredientAmong,
   moveStep,
@@ -37,6 +36,7 @@ import {
   type SectionPatchContext,
 } from './recipe-editor';
 import { ingredientLine } from './recipes';
+import { draftAfterRefusal } from './section-editor';
 import {
   articles,
   articlesById,

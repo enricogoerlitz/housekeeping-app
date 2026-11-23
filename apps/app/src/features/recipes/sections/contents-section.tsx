@@ -10,6 +10,7 @@ import {
   validateContentsDraft,
   type CollectionContent,
   type ContentsRow,
+  type ContentsSectionDraft,
   type Id,
   type Recipe,
 } from '@housekeeping/core';
@@ -35,7 +36,7 @@ import { CollectionRecipesSheet } from '../collection-recipes-sheet';
 import { RecipeCover } from '../recipe-cover';
 
 import { SectionError, useSectionFrame } from './common';
-import type { ContentsSectionDraft, SectionEditor } from './use-section-editor';
+import type { SectionEditor } from './use-section-editor';
 
 type RowAction = 'edit' | 'up' | 'down' | 'remove';
 

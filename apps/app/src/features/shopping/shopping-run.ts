@@ -1,7 +1,7 @@
 import { useActiveHouseholdId } from '@housekeeping/api';
 import {
-  extendShoppingRun,
-  ShoppingRunSchema,
+  currentShoppingRun,
+  readShoppingRun,
   startShoppingRun,
   type ShoppingItem,
   type ShoppingRun,
@@ -26,10 +26,7 @@ function storage(): Storage | undefined {
 
 function readRun(householdId: string): ShoppingRun | undefined {
   try {
-    const raw = storage()?.getItem(KEY);
-    if (!raw) return undefined;
-    const parsed = ShoppingRunSchema.safeParse(JSON.parse(raw));
-    return parsed.success && parsed.data.householdId === householdId ? parsed.data : undefined;
+    return readShoppingRun(storage()?.getItem(KEY), householdId);
   } catch {
     return undefined;
   }
@@ -53,10 +50,7 @@ export function useShoppingRun(items: readonly ShoppingItem[]): ShoppingRun {
   const [run, setRun] = useState<ShoppingRun>(
     () => readRun(householdId) ?? startShoppingRun(householdId, items),
   );
-  const current =
-    run.householdId === householdId
-      ? extendShoppingRun(run, items)
-      : startShoppingRun(householdId, items);
+  const current = currentShoppingRun(run, householdId, items);
   if (current !== run) setRun(current);
 
   useEffect(() => {

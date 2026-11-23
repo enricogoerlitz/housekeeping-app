@@ -1,8 +1,9 @@
+import type { PageSection } from '@housekeeping/core';
 import { Text, useBreakpoint, type EditableSectionProps } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
-import type { PageSection, SectionEditor } from './use-section-editor';
+import type { SectionEditor } from './use-section-editor';
 
 const DONE_LABEL = 'Fertig';
 const CANCEL_LABEL = 'Abbrechen';
