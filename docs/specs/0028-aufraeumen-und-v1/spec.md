@@ -94,6 +94,9 @@ Offline: –
 - AC-012: Angenommen die Vorschau läuft auf v2026.11.1-Schema · Wenn das Skript sie zurücksetzt,
   die neue Basis einspielt und den Haushalt anlegt · Dann melden sich Enrico und Nadja dort an,
   Benachrichtigungen kommen an, und der Planer läuft fehlerfrei.
+  _Nachtrag (Spec 0031, P-2, 23.11.2026):_ Reihenfolge in der Vorschau: Skript, dann `preview.yml`
+  (spielt die Migrationen ein und legt Testhaushalte und Einladungen an). Push ist in der Vorschau
+  aus (Spec 0014, Entscheidung 8); Benachrichtigungen werden erst in der Produktion geprüft.
 
 **REQ-006 — Produktion frisch aufsetzen.** Die Produktion wird zu einem Zeitpunkt, den Enrico
 bestätigt, zurückgesetzt und auf der neuen Basis neu aufgesetzt. Offline: –
@@ -143,6 +146,10 @@ schreiben. Offline: offline lesend; der alte Stand im Gerät wird verworfen.
 4. **Ein Skript für Vorschau und Produktion** (`scripts/reset-app-data.mjs`). Es nimmt die
    Projektkennung als Pflichtangabe, vergleicht sie mit dem verlinkten Projekt und fragt vor dem
    Löschen nach dem Projektnamen. Kein Secret im Aufruf oder in der Ausgabe.
+   _Nachtrag 23.11.2026:_ Jeder Befehl nennt das Projekt ausdrücklich (`--remote=<ref>`), ein
+   `supabase link` ist nicht nötig; ein anders verlinktes Projekt bricht ab. In CI und ohne Terminal
+   bricht es ab (Security-Check 0031). Die Daten löscht eine einzige Anweisung (eine Transaktion);
+   Konten, Vault und Function-Secrets bleiben (Empfehlung aus Entscheidung 3 übernommen).
 5. **Code-Review:** Enrico kann `/code-review ultra` selbst starten (kostenpflichtig, nur durch
    ihn). Tut er das nicht, läuft `/code-review` je Paket auf Stufe „high“.
 6. **Alte Sicherungen** (Schema v2026.11.1) bleiben in Azure, bis die erste Sicherung auf der neuen
@@ -194,6 +201,11 @@ Abschnitt „Daten“ jeder Spec):
 - [ ] 4. Migrationen zu neuer Basis zusammenfassen, ADR-0012-Nachtrag, Regeln anpassen (AC-001–AC-003)
 - [ ] 5. Volle e2e-Suite, `/ui-verify`, `/security-check` über die Welle (AC-009–AC-011)
 - [ ] 6. Skript `reset-app-data.mjs`, Probe in der Vorschau (AC-012, AC-015)
+      _Stand 23.11.2026:_ Skript mit Tests fertig (`reset-app-data.test.mjs`: Kennung, CI/Terminal,
+      verlinktes Projekt, Inhalt der Anweisung). Lokal geprobt: Skript-SQL gegen die lokale
+      Datenbank, danach alle Tabellen, Funktionen, `private`, Aufträge und Historie weg, Konten und
+      Vault da; `supabase migration up` spielt alle Migrationen wieder ein, pgTAP grün (nach
+      `db:reset` mit Seed). Offen: Probe in der Vorschau mit dem Inhaber (braucht `supabase login`).
 - [ ] 7. Mit Enrico: Zeitpunkt, letzte Sicherung, Produktion zurücksetzen, Bootstrap (AC-013, AC-014)
 - [ ] 8. `min_app_version`, Release-PR, Veröffentlichung (AC-016, AC-017)
 - [ ] 9. Wiederherstellungstest auf der neuen Basis (AC-018)
