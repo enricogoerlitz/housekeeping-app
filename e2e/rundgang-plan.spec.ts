@@ -21,6 +21,7 @@ import {
   tid,
   tidPrefix,
   toastMessage,
+  dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -36,11 +37,6 @@ freshSeed();
 const THURSDAY = day(3);
 const SATURDAY = day(5);
 const member = (key: 'm-enrico' | 'm-nadja') => seedIds[key];
-
-/** One day on the phone week: its head `day-<date>` and everything planned on it. */
-function dayBlock(page: Page, date: string): Locator {
-  return tid(page, `day-${date}`).locator('xpath=..');
-}
 
 /** The calendar rows of one day. */
 function entries(page: Page, date: string): Locator {

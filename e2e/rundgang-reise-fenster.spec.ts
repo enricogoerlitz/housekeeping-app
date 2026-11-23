@@ -19,7 +19,7 @@ import { seedIds } from './seed-ids';
 const MALLORCA = seedIds['trip-mallorca'];
 const HAMBURG = seedIds['trip-hamburg'];
 
-test.beforeEach(() => freshSeed());
+freshSeed();
 
 async function openFromTrips(page: Page, tripId: string): Promise<void> {
   await open(page, '/');

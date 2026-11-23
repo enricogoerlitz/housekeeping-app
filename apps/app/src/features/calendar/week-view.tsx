@@ -404,6 +404,7 @@ function WeekList(props: WeekViewProps) {
                 borderRadius: theme.shape.radius.card,
                 backgroundColor: date === data.today ? theme.colors.accentSoft : 'transparent',
               }}
+              testID={`day-block-${date}`}
             >
               {/* Spec 0030, AC-002: the day's head stays at the top until the next day pushes it
                   out; on the day's own colour. */}

@@ -38,6 +38,7 @@ import {
   tid,
   toastMessage,
   unique,
+  dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -90,11 +91,6 @@ const SLOT_NAMES: Record<string, string> = {
   [SLOT_LUNCH]: 'Mittag',
   [SLOT_DINNER]: 'Abend',
 };
-
-/** One day of the phone week: its head `day-<date>` and everything planned on it. */
-function dayBlock(page: Page, date: string): Locator {
-  return tid(page, `day-${date}`).locator('xpath=..');
-}
 
 /**
  * The titles of the entries in one Tageszeit, top to bottom. The phone week shows only the
