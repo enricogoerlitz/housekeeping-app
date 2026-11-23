@@ -198,11 +198,10 @@ test.describe('phone basics (REQ-008, REQ-009)', () => {
     });
     const page = await context.newPage();
     await open(page, `/rezept/${LASAGNE}`);
-    // The app is ready before the recipe page has rendered its ⋯.
-    await expect(page.locator('[aria-haspopup="menu"]').first()).toBeVisible();
-    const size = await page.evaluate(() => {
-      const node = document.querySelector('[aria-haspopup="menu"]');
-      if (!node) return { width: 0, height: 0 };
+    // The app is ready before the recipe page has rendered its ⋯; the first visible one counts.
+    const menu = page.locator('[aria-haspopup="menu"]:visible').first();
+    await expect(menu).toBeVisible();
+    const size = await menu.evaluate((node) => {
       const hit = getComputedStyle(node, '::before');
       return { width: parseFloat(hit.width), height: parseFloat(hit.height) };
     });

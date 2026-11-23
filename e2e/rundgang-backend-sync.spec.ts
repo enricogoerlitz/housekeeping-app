@@ -340,6 +340,8 @@ test('AC-020: a server error while taking over the pantry check puts nothing on 
   );
   await tid(page, 'plan-to-list').click();
   const curry = `pick-entry-${seedIds['plan-9']}-check`;
+  // The rows render after the window: `.all()` takes only what is there.
+  await expect(tidPrefix(page, 'pick-entry-').first()).toBeVisible();
   for (const check of await tidPrefix(page, 'pick-entry-')
     .and(page.locator('[role="checkbox"]'))
     .all()) {
@@ -680,7 +682,9 @@ test('AC-008 / AC-009 (0018): "Fertig" saves "Reserviert um"; refused, the windo
       },
     }),
   );
-  // Choosing changes only the field; "Fertig" saves, and the refusal stands in the window.
+  // Choosing changes only the field; "Fertig" saves, and the refusal stands in the window. The
+  // toast of creating the restaurant goes first, so it is not taken for a success here.
+  await expect(page.locator('[data-testid="toast-message"]')).toHaveCount(0, { timeout: 15_000 });
   const toasts = await recordToasts(page);
   await chooseTime(page, 'entry-time', '20:00');
   await tid(page, 'entry-done').click();

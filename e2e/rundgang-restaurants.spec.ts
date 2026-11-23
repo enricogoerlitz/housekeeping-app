@@ -343,6 +343,8 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
     await showPlanWeek(page, date);
     await tid(page, 'plan-to-list').click();
     const pizza = `pick-entry-${seedIds['plan-10']}-check`;
+    // The rows render after the window: `.all()` takes only what is there.
+    await expect(tidPrefix(page, 'pick-entry-').first()).toBeVisible();
     for (const check of await tidPrefix(page, 'pick-entry-')
       .and(page.locator('[role="checkbox"]'))
       .all()) {
