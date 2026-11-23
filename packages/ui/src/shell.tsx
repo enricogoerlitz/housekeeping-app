@@ -1,5 +1,6 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   View,
@@ -19,7 +20,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { bottomInset } from './bottom-inset';
 import { IconButton, keyboardFocusRing } from './controls';
 import { useHover } from './pointer';
-import type { TabSwipe } from './tab-swipe';
+import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
 import { TabSwipeArea } from './tab-swipe-area';
 import { icons, type IconName } from './icons';
 import { Divider, Icon, Text } from './primitives';
@@ -55,7 +56,7 @@ const ScreenChromeContext = createContext({ collapsed: false });
  * that receives the scroll offset, so header and toolbar react as on a scrolling Screen.
  */
 export const PageScrollContext = createContext<
-  { inset: number; onScroll: (y: number) => void } | undefined
+  { inset: number; onScroll: (y: number) => void; touch?: ViewStyle | null } | undefined
 >(undefined);
 
 /**
@@ -220,6 +221,8 @@ export function Screen(props: ScreenProps) {
   // Once the narrow bar was measured the scroll area starts below it, so sticky group headings
   // stick under the bar instead of behind it; only the rest of the header lies over the content.
   const top = overlay ? (chrome.narrow ?? 0) : 0;
+  // Spec 0030, REQ-007: under a tab swipe the scroll area pans only vertically (iOS).
+  const touch = tabSwipeTouchAction(props.tabSwipe !== undefined, Platform.OS);
   const inset = overlay ? (chrome.expanded ?? 0) + toolbarHeight - top : 0;
   const measured = !overlay || chrome.expanded !== undefined;
   const content = (
@@ -230,6 +233,7 @@ export function Screen(props: ScreenProps) {
           paddingTop: 8,
           paddingBottom: Math.max((props.clearFab ?? true) ? 96 : 24, asideInset + 24),
         },
+        touch,
         props.style,
       ]}
     >
@@ -238,7 +242,7 @@ export function Screen(props: ScreenProps) {
   );
   const scrolling =
     props.scroll === false ? (
-      <PageScrollContext.Provider value={{ inset, onScroll: onPageScroll }}>
+      <PageScrollContext.Provider value={{ inset, onScroll: onPageScroll, touch }}>
         <View style={{ flex: 1, marginTop: top, opacity: measured ? 1 : 0 }}>{content}</View>
       </PageScrollContext.Provider>
     ) : (

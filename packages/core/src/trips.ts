@@ -9,10 +9,14 @@ export function tripMemberIds(trip: Pick<Trip, 'members'>): Id[] {
   return trip.members.map((member) => member.memberId);
 }
 
-/** True when the person is on a trip that covers the day; from and to are inclusive. */
+/**
+ * True when the person is on a trip that covers the day; from and to are inclusive. A draft has
+ * no effect yet (spec 0030, REQ-004): nobody on it is away.
+ */
 export function isOnTrip(memberId: Id, date: ISODate, trips: readonly Trip[]): boolean {
   return trips.some(
     (trip) =>
+      trip.draft !== true &&
       trip.from <= date &&
       date <= trip.to &&
       trip.members.some((member) => member.memberId === memberId),
@@ -31,6 +35,8 @@ export interface TripStripe {
   from: ISODate;
   to: ISODate;
   note?: string;
+  /** "Entwurf": drawn hatched, no effect (spec 0030, REQ-004). */
+  draft: boolean;
 }
 
 function orderOf(members: readonly Member[]) {
@@ -52,6 +58,7 @@ export function stripeOf(trip: Trip, members: readonly Member[]): TripStripe {
     from: trip.from,
     to: trip.to,
     note: trip.note?.trim() || undefined,
+    draft: trip.draft === true,
   };
 }
 
@@ -112,24 +119,29 @@ export function stripesOn(stripes: readonly TripStripe[], date: ISODate): TripSt
   return stripes.filter((stripe) => stripe.from <= date && date <= stripe.to);
 }
 
+/** `draft`: only drafts cover the day, drawn hatched (spec 0030, AC-018). */
 export type YearDayTrip =
   | { kind: 'none' }
-  | { kind: 'household' }
-  | { kind: 'one'; memberId: Id }
-  | { kind: 'several'; memberIds: Id[] };
+  | { kind: 'household'; draft?: true }
+  | { kind: 'one'; memberId: Id; draft?: true }
+  | { kind: 'several'; memberIds: Id[]; draft?: true };
 
 /**
  * How a day of the year view is coloured (REQ-005): a trip of the whole household → neutral,
- * exactly one person → her colour, several people → one fine line each.
+ * exactly one person → her colour, several people → one fine line each. Confirmed trips decide;
+ * a day only drafts cover is coloured by them, hatched (spec 0030, AC-018).
  */
 export function yearDayTrip(date: ISODate, stripes: readonly TripStripe[]): YearDayTrip {
   const covering = stripesOn(stripes, date);
-  if (covering.some((stripe) => stripe.household)) return { kind: 'household' };
-  const memberIds = [...new Set(covering.flatMap((stripe) => stripe.memberIds))];
+  const confirmed = covering.filter((stripe) => !stripe.draft);
+  const shown = confirmed.length > 0 ? confirmed : covering;
+  const mark = confirmed.length > 0 ? {} : { draft: true as const };
+  if (shown.some((stripe) => stripe.household)) return { kind: 'household', ...mark };
+  const memberIds = [...new Set(shown.flatMap((stripe) => stripe.memberIds))];
   if (memberIds.length === 0) return { kind: 'none' };
   const [only] = memberIds;
-  if (memberIds.length === 1 && only !== undefined) return { kind: 'one', memberId: only };
-  return { kind: 'several', memberIds };
+  if (memberIds.length === 1 && only !== undefined) return { kind: 'one', memberId: only, ...mark };
+  return { kind: 'several', memberIds, ...mark };
 }
 
 /** Stripes that touch the year, in the order of tripStripes (AC-016: both years). */

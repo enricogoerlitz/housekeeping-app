@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0020: version 16 for not_done instead of not_cooked (after 0024 and 0027: 15); version 15 loads again', () => {
-    expect(CACHE_VERSION).toBe(16);
+  it('spec 0030: version 17 for trips.draft (after 0020: 16); version 16 loads again', () => {
+    expect(CACHE_VERSION).toBe(17);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

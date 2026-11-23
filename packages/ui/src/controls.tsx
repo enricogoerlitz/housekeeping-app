@@ -31,6 +31,7 @@ import { revealsError } from './reveal-error';
 import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
+import { fillChipStyle } from './chip-layout';
 
 /** On the web a click also focuses a focusable view; only keyboard focus gets the ring. */
 export function keyboardFocus(event: unknown): boolean {
@@ -222,6 +223,8 @@ export interface ChipProps {
   removable?: boolean;
   /** Accessible name when it says more than the label, e.g. "Vegan entfernen". */
   accessibilityLabel?: string;
+  /** Takes an equal share of a filled ChoiceChips row (spec 0030, REQ-005). */
+  fill?: boolean;
   testID?: string;
 }
 
@@ -274,6 +277,7 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
     borderWidth: props.selected || tone ? 0 : 1,
     borderColor: c.border,
     alignSelf: 'flex-start',
+    ...(props.fill ? fillChipStyle() : null),
   };
   if (!props.onPress)
     return (

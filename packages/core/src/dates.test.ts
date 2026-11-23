@@ -17,6 +17,7 @@ import {
   weekDates,
   weekdayShort,
   weekdayShortName,
+  weekdayHeads,
 } from './dates';
 
 describe('date helpers', () => {
@@ -107,5 +108,20 @@ describe('createdTime', () => {
       Date.parse('2026-11-20T10:00:00.000Z'),
     );
     expect(createdTime({ createdAt: 'kaputt' })).toBe(0);
+  });
+});
+
+describe('spec 0030, REQ-001: the weekday heads of the month', () => {
+  it('AC-004: written out on the desktop, short elsewhere', () => {
+    expect(weekdayHeads(true)).toEqual([
+      'Montag',
+      'Dienstag',
+      'Mittwoch',
+      'Donnerstag',
+      'Freitag',
+      'Samstag',
+      'Sonntag',
+    ]);
+    expect(weekdayHeads(false)).toEqual(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
   });
 });

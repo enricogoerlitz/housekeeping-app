@@ -1,6 +1,8 @@
 // Decisions of the swipe between view tabs on phones (spec 0029, REQ-003, decision 6). Pure, so the
 // thresholds are tested in Node; the component only feeds in the responder's numbers.
 
+import type { ViewStyle } from 'react-native';
+
 import { claimsSwipe } from './swipe-step';
 
 /** A move starting this close to the left or right screen edge belongs to the system back gesture. */
@@ -88,4 +90,18 @@ export function neighbourTab<T>(
   const index = options.findIndex((option) => option.value === value);
   if (index < 0) return undefined;
   return options[index + step]?.value;
+}
+
+/**
+ * The touch action of a page's scroll area under a tab swipe (spec 0030, REQ-007, Entscheidung 8).
+ * Without it iOS takes every move in the scroll area as a native pan, the ScrollView becomes the
+ * responder and never lets go, so the swipe never arrives; `touch-action` on the swipe area itself
+ * does not help, since a scroll area starts its own. With `pan-y` inside the scroll area a sideways
+ * finger stays with the page's script, vertical scrolling stays native; rows that scroll sideways
+ * are scroll areas of their own and keep theirs.
+ */
+export function tabSwipeTouchAction(active: boolean, platform: string): ViewStyle | null {
+  if (!active || platform !== 'web') return null;
+  // React Native's types do not name touchAction; react-native-web passes it on to CSS.
+  return { touchAction: 'pan-y' } as unknown as ViewStyle;
 }

@@ -4,7 +4,6 @@ import {
   addDays,
   entriesForDay,
   ingredientDrafts,
-  isoWeekday,
   originSummary,
   rowsFromIngredientDrafts,
 } from '@housekeeping/core';
@@ -172,7 +171,7 @@ describe('meal plan commands: input and local effect', () => {
     expect(
       getData().planEntries.filter((e) => e.date === date && e.slotId === SLOT_DINNER),
     ).toEqual([]);
-    const eaterIds = defaultEaterIds(date);
+    const eaterIds = defaultEaterIds();
     expect(eaterIds).toEqual([ENRICO, NADJA]);
     const id = addPlanEntry({
       date,
@@ -189,12 +188,10 @@ describe('meal plan commands: input and local effect', () => {
     ]);
   });
 
-  it('AC-038: with Enrico away on Saturday only Nadja is preselected', () => {
+  it('AC-027 (0030): a trip changes nothing: everyone is preselected', () => {
     const saturday = addDays(TODAY, 1);
-    expect(isoWeekday(saturday)).toBe(6);
     createTrip({ memberIds: [ENRICO], from: saturday, to: addDays(saturday, 2) });
-    expect(defaultEaterIds(saturday)).toEqual([NADJA]);
-    expect(defaultEaterIds(TODAY)).toEqual([ENRICO, NADJA]);
+    expect(defaultEaterIds()).toEqual([ENRICO, NADJA]);
   });
 
   it('AC-048: a second dish joins the same meal with its own cook', () => {

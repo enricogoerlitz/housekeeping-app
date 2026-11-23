@@ -13,6 +13,7 @@ import {
 import {
   AvatarStack,
   Checkbox,
+  hatchStyle,
   Icon,
   KindLine,
   RowTransition,
@@ -20,8 +21,9 @@ import {
   toast,
   useDragSource,
   useTheme,
+  withAlpha,
 } from '@housekeeping/ui';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, type ViewStyle } from 'react-native';
 
 import { useChoreCheckWindow } from '@/features/chores/chore-check-list';
 import { entryReminderLabels, ReminderBell } from '@/features/meal-plan/reminder-bell';
@@ -46,6 +48,33 @@ export function useStripeColors(stripe: TripStripe, membersById: Record<Id, Memb
     : { edge: theme.colors.textMuted, fill: theme.colors.surfaceSunken };
 }
 
+// The lines of a draft's hatching (spec 0030, Entscheidung 6): the stripe's colour, light enough
+// that the text over it stays readable.
+export const HATCH_ALPHA = '4D';
+
+/** The surface of a stripe: its soft fill, hatched for a draft (spec 0030, REQ-004). */
+export function stripeSurface(colors: { edge: string; fill: string }, draft: boolean): ViewStyle {
+  return draft
+    ? { backgroundColor: colors.fill, ...hatchStyle(withAlpha(colors.edge, HATCH_ALPHA)) }
+    : { backgroundColor: colors.fill };
+}
+
+/**
+ * A thin stripe line (phone week bars, month and overview lines): solid, or dashed for a draft
+ * (spec 0030, Entscheidung 6). `side` is where the line is drawn, `width` its thickness.
+ */
+export function stripeLine(
+  edge: string,
+  draft: boolean,
+  side: 'top' | 'left',
+  width: number,
+): ViewStyle {
+  if (!draft) return { backgroundColor: edge };
+  return side === 'top'
+    ? { borderTopWidth: width, borderStyle: 'dashed', borderColor: edge }
+    : { borderLeftWidth: width, borderStyle: 'dashed', borderColor: edge };
+}
+
 /**
  * Screen-reader text of a stripe: "Enrico unterwegs, Urlaub Mallorca, 1.–4. Jan", with a packing
  * list ", mit Packliste" (spec 0012, AC-046).
@@ -57,6 +86,7 @@ export function stripeA11y(
 ): string {
   return [
     `${stripeWho(stripe, membersById)} unterwegs`,
+    stripe.draft ? 'Entwurf' : undefined,
     stripe.note,
     dateRangeLabel(stripe.from, stripe.to),
     hasPackingList ? 'mit Packliste' : undefined,
@@ -97,7 +127,8 @@ export function TripStripeView(props: {
   const theme = useTheme();
   const { stripe, data } = props;
   const colors = useStripeColors(stripe, data.membersById);
-  const text = `${stripeText(stripe)}${props.separator ?? ' '}${tripEndLabel(stripe.to)}`;
+  const draft = stripe.draft ? 'Entwurf · ' : '';
+  const text = `${draft}${stripeText(stripe)}${props.separator ?? ' '}${tripEndLabel(stripe.to)}`;
   const testID = props.testID ?? `trip-stripe-${stripe.tripId}`;
   const packing = data.hasPackingList(stripe);
   return (
@@ -120,7 +151,7 @@ export function TripStripeView(props: {
         borderBottomRightRadius: props.continuesAfter ? 0 : 4,
         borderLeftWidth: props.continuesBefore ? 0 : 3,
         borderLeftColor: colors.edge,
-        backgroundColor: colors.fill,
+        ...stripeSurface(colors, stripe.draft),
         opacity: state.pressed ? 0.7 : 1,
       })}
     >

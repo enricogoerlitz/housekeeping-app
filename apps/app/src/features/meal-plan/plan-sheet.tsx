@@ -4,7 +4,6 @@ import {
   useMembers,
   useMembersById,
   useToday,
-  useTrips,
 } from '@housekeeping/api';
 import {
   defaultPlanChoice,
@@ -56,7 +55,7 @@ export interface PlanSplit {
  * over "25.11.", "Ohne Tag vormerken", "Anderes Datum …" (a month calendar in the window), the
  * Tageszeit, "Wer isst mit?", for a recipe the split over its variants, and "Wer kocht?". It opens
  * on today and the last Tageszeit; while "Wer isst mit?" is untouched the preselection follows
- * members and trips arriving later. Afterwards the page stays and a notice offers "Ansehen".
+ * members arriving later. Afterwards the page stays and a notice offers "Ansehen".
  */
 export function PlanSheet(props: {
   /** The name of what is planned, shown on top. */
@@ -83,16 +82,15 @@ export function PlanSheet(props: {
   const household = useHousehold();
   const members = useMembers();
   const membersById = useMembersById();
-  const trips = useTrips();
   const slots = [...household.mealSlots].sort((a, b) => a.sort - b.sort);
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [choice, setChoice] = useState<PlanChoice>(() =>
-    defaultPlanChoice(today, household.mealSlots, members, trips, props.slot),
+    defaultPlanChoice(today, household.mealSlots, members, props.slot),
   );
-  // AC-055, AC-056: members or trips that arrive later count while the eaters are untouched.
+  // AC-055, AC-056: members that arrive later count while the eaters are untouched.
   const [touched, setTouched] = useState(false);
-  const [seen, setSeen] = useState({ members, trips });
+  const [seen, setSeen] = useState(members);
   // Spec 0021, REQ-006: counters for portions and variants that follow eaters and guests.
   const portions = usePortions(recipe, () => {
     const first = recipe ? splitForEaters(recipe.id, choice.eaterIds, choice.guests) : undefined;
@@ -106,9 +104,9 @@ export function PlanSheet(props: {
       })),
     };
   });
-  if (seen.members !== members || seen.trips !== trips) {
-    setSeen({ members, trips });
-    const refreshed = refreshPlanEaters(choice, touched, members, trips);
+  if (seen !== members) {
+    setSeen(members);
+    const refreshed = refreshPlanEaters(choice, touched, members);
     if (refreshed.eaterIds !== choice.eaterIds)
       portions.reset(refreshed.eaterIds, refreshed.guests);
     setChoice(refreshed);
@@ -132,15 +130,15 @@ export function PlanSheet(props: {
     setChoice(next);
     setError(undefined);
   };
-  // Another day sets "Wer isst mit?" back to those present (E11): untouched again.
+  // Another day sets "Wer isst mit?" back to everyone (E11): untouched again.
   const toDay = (date: string | null) => {
     setTouched(false);
-    update(withPlanDay(choice, date, members, trips));
+    update(withPlanDay(choice, date, members));
   };
   const page = (weeks: number) => {
     setWeekOffset(weekOffset + weeks);
     setTouched(false);
-    update(pagePlanChoice(choice, weeks, members, trips));
+    update(pagePlanChoice(choice, weeks, members));
   };
   const toggleLater = () => {
     if (choice.date !== null) {
@@ -244,6 +242,8 @@ export function PlanSheet(props: {
             // No day is chosen while "Ohne Tag vormerken" is on.
             value={choice.date ?? ''}
             onChange={toDay}
+            // Spec 0030, REQ-005: seven equal chips, so paging the week never shifts them.
+            fill
             testID="plan-recipe-day"
           />
           <Row gap={8} wrap>

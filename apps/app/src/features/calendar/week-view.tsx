@@ -12,9 +12,18 @@ import {
   type ISODate,
   type MealPlanEntry,
 } from '@housekeeping/core';
-import { Badge, Button, Icon, Text, space, useHover, useTheme } from '@housekeeping/ui';
+import {
+  Badge,
+  Button,
+  Icon,
+  Text,
+  space,
+  stickyTopStyle,
+  useHover,
+  useTheme,
+} from '@housekeeping/ui';
 import { useState } from 'react';
-import { Pressable, View, type HostInstance } from 'react-native';
+import { Platform, Pressable, View, type HostInstance } from 'react-native';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
@@ -25,6 +34,7 @@ import {
   EntryLine,
   HouseholdDay,
   useStripeColors,
+  stripeLine,
 } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
 import { DayHeadTarget, RangeMark, SlotTarget, TripSource, useLiftedKind } from './calendar-drag';
@@ -168,7 +178,10 @@ function WeekGrid(props: WeekViewProps) {
     backgroundColor: date === data.today ? theme.colors.accentSoft : 'transparent',
   });
   // Day heads, trip and household row keep their natural height; the Tageszeiten share the rest.
-  const [headHeight, setHeadHeight] = useState(0);
+  const [dayRowHeight, setDayRowHeight] = useState(0);
+  const [rowsHeight, setRowsHeight] = useState(0);
+  const hasRows = stripes.length > 0 || !!props.showHousehold;
+  const headHeight = dayRowHeight + (hasRows ? ROW_GAP + rowsHeight : 0);
   const count = data.slots.length;
   const slotHeight =
     props.height === undefined
@@ -181,74 +194,85 @@ function WeekGrid(props: WeekViewProps) {
 
   return (
     <View style={{ marginBottom: GRID_END, gap: ROW_GAP }} testID="week-grid">
+      {/* From 700 px a trip is drawn over the day heads (spec 0016, REQ-007). They stay at the
+          top while the grid scrolls (spec 0030, REQ-001): a direct child of the whole grid. */}
       <View
-        style={{ gap: ROW_GAP }}
-        onLayout={(event) => setHeadHeight(event.nativeEvent.layout.height)}
+        testID="week-day-heads"
+        style={{
+          flexDirection: 'row',
+          gap: 4,
+          ...stickyTopStyle(Platform.OS, theme.colors.bg),
+        }}
+        onLayout={(event) => setDayRowHeight(event.nativeEvent.layout.height)}
       >
-        {/* From 700 px a trip is drawn over the day heads (spec 0016, REQ-007). */}
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <View style={{ width: LABEL_WIDTH }} />
-          {dates.map((date) => (
-            <DayHeadTarget key={date} date={date} style={{ flex: 1, minWidth: 0 }}>
-              <TripSource
-                date={date}
-                style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: space.xs }}
-              >
-                {() => (
-                  <>
-                    <RangeMark date={date} />
-                    <DayHead date={date} today={data.today} />
-                  </>
-                )}
-              </TripSource>
-            </DayHeadTarget>
-          ))}
-        </View>
-        {stripes.length > 0 ? (
-          <View style={{ flexDirection: 'row', gap: 4 }} testID="week-trip-row">
-            <RowLabel>Reise</RowLabel>
-            <View style={{ flex: 1, gap: 3 }}>
-              {stripes.map(({ stripe, segment }) => (
-                <View key={stripe.key} style={{ position: 'relative', height: 26 }}>
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      bottom: 0,
-                      left: `${(segment.start / 7) * 100}%`,
-                      width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
-                    }}
-                  >
-                    <TripStripeView
-                      stripe={stripe}
-                      data={data}
-                      separator=" · "
-                      continuesBefore={segment.continuesBefore}
-                      continuesAfter={segment.continuesAfter}
-                      onPress={props.onOpenStripe}
-                    />
+        <View style={{ width: LABEL_WIDTH }} />
+        {dates.map((date) => (
+          <DayHeadTarget key={date} date={date} style={{ flex: 1, minWidth: 0 }}>
+            <TripSource
+              date={date}
+              style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: space.xs }}
+            >
+              {() => (
+                <>
+                  <RangeMark date={date} />
+                  <DayHead date={date} today={data.today} />
+                </>
+              )}
+            </TripSource>
+          </DayHeadTarget>
+        ))}
+      </View>
+      {hasRows ? (
+        <View
+          style={{ gap: ROW_GAP }}
+          onLayout={(event) => setRowsHeight(event.nativeEvent.layout.height)}
+        >
+          {stripes.length > 0 ? (
+            <View style={{ flexDirection: 'row', gap: 4 }} testID="week-trip-row">
+              <RowLabel>Reise</RowLabel>
+              <View style={{ flex: 1, gap: 3 }}>
+                {stripes.map(({ stripe, segment }) => (
+                  <View key={stripe.key} style={{ position: 'relative', height: 26 }}>
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        left: `${(segment.start / 7) * 100}%`,
+                        width: `${((segment.end - segment.start + 1) / 7) * 100}%`,
+                      }}
+                    >
+                      <TripStripeView
+                        stripe={stripe}
+                        data={data}
+                        separator=" · "
+                        continuesBefore={segment.continuesBefore}
+                        continuesAfter={segment.continuesAfter}
+                        onPress={props.onOpenStripe}
+                      />
+                    </View>
                   </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+          {props.showHousehold ? (
+            <View style={{ flexDirection: 'row', gap: 4 }} testID="household-row">
+              <RowLabel>Haushalt</RowLabel>
+              {dates.map((date) => (
+                <View key={date} style={cell(date)} testID={`household-row-${date}`}>
+                  {/* Full rows: a chore's name wraps onto two lines (spec 0021, AC-014). */}
+                  <HouseholdDay
+                    items={chores[date] ?? []}
+                    data={data}
+                    onOpenChore={props.onOpenChore}
+                  />
                 </View>
               ))}
             </View>
-          </View>
-        ) : null}
-        {props.showHousehold ? (
-          <View style={{ flexDirection: 'row', gap: 4 }} testID="household-row">
-            <RowLabel>Haushalt</RowLabel>
-            {dates.map((date) => (
-              <View key={date} style={cell(date)} testID={`household-row-${date}`}>
-                {/* Full rows: a chore's name wraps onto two lines (spec 0021, AC-014). */}
-                <HouseholdDay
-                  items={chores[date] ?? []}
-                  data={data}
-                  onOpenChore={props.onOpenChore}
-                />
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </View>
+          ) : null}
+        </View>
+      ) : null}
       {data.slots.map((slot) => (
         <View
           key={slot.id}
@@ -329,7 +353,7 @@ function StripeBar(props: { stripe: TripStripe; on: boolean; data: CalendarData 
       style={{
         width: 3,
         alignSelf: 'stretch',
-        backgroundColor: props.on ? colors.edge : 'transparent',
+        ...(props.on ? stripeLine(colors.edge, props.stripe.draft, 'left', 3) : null),
       }}
     />
   );
@@ -381,12 +405,21 @@ function WeekList(props: WeekViewProps) {
                 backgroundColor: date === data.today ? theme.colors.accentSoft : 'transparent',
               }}
             >
-              <DayHead
-                date={date}
-                today={data.today}
-                upper
-                register={(node) => registerDay(date, node)}
-              />
+              {/* Spec 0030, AC-002: the day's head stays at the top until the next day pushes it
+                  out; on the day's own colour. */}
+              <View
+                style={stickyTopStyle(
+                  Platform.OS,
+                  date === data.today ? theme.colors.accentSoft : theme.colors.bg,
+                )}
+              >
+                <DayHead
+                  date={date}
+                  today={data.today}
+                  upper
+                  register={(node) => registerDay(date, node)}
+                />
+              </View>
               {labelled.map((stripe) => (
                 <TripStripeView
                   key={stripe.key}

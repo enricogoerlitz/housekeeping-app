@@ -2,7 +2,6 @@ import { formatQty } from './amounts';
 import { addDays, daysBetween, formatShortDate, startOfWeek, weekdayShort } from './dates';
 import { deriveRecipeDiet, dietFitsPreference } from './diet';
 import { defaultVariantId } from './recipes';
-import { isOnTrip } from './trips';
 import type {
   Article,
   Diet,
@@ -12,7 +11,6 @@ import type {
   Member,
   PlanEntryVariant,
   Recipe,
-  Trip,
 } from './types';
 
 // What a member who eats everything is served first. "unknown" comes last: a variant is not
@@ -26,19 +24,6 @@ const FLEXIBLE_RANK: Record<Diet, number> = {
   fish: 3,
   meat: 4,
 };
-
-/**
- * Members preselected for "Wer isst mit?": everyone who is not on a trip that day; everyone for
- * an entry without a day.
- */
-export function defaultEaters(
-  members: readonly Member[],
-  date: ISODate | null,
-  trips: readonly Trip[],
-): Member[] {
-  if (date === null) return [...members];
-  return members.filter((member) => !isOnTrip(member.id, date, trips));
-}
 
 export interface VariantSplit {
   portions: number;

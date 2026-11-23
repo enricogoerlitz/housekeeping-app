@@ -615,6 +615,8 @@ export function packingCards(input: {
   const section = overviewSection(input.shownDay, input.today);
   return [...input.trips]
     .filter((trip) => {
+      // A draft has no packing card yet (spec 0030, AC-013).
+      if (trip.draft) return false;
       const ahead = daysBetween(input.shownDay, trip.from);
       const inSection = trip.from <= section.to && trip.to >= section.from;
       return inSection || (ahead >= 1 && ahead <= 7);

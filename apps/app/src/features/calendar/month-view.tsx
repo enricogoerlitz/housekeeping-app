@@ -8,6 +8,7 @@ import {
   parseISODate,
   sharedHeight,
   stripeSegment,
+  weekdayHeads,
   type TripStripe,
   type Id,
   type ISODate,
@@ -19,6 +20,7 @@ import {
   KindDot,
   Text,
   keyboardFocusRing,
+  stickyTopStyle,
   toast,
   useFinePointer,
   useHover,
@@ -36,6 +38,7 @@ import {
   EntryLine,
   HouseholdDay,
   useStripeColors,
+  stripeLine,
 } from './calendar-parts';
 import { dayLabel, dayRoles, type CalendarData } from './calendar-data';
 import {
@@ -58,6 +61,8 @@ export interface MonthViewProps {
   registerDay: (date: ISODate, node: HostInstance | null) => void;
   showHousehold: boolean;
   wide: boolean;
+  /** Desktop (from 1100 px): the weekday heads are written out (spec 0030, AC-004). */
+  longWeekdays?: boolean;
   /** Desktop: the grid's room in px down to "Vorgemerkt" (spec 0021, REQ-001); else natural. */
   height?: number;
   /** "+" of a desktop day (spec 0021, REQ-003). */
@@ -66,8 +71,6 @@ export interface MonthViewProps {
   onOpenStripe: (stripe: TripStripe) => void;
   onOpenChore: (choreId: Id) => void;
 }
-
-const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 type PressState = { pressed: boolean; hovered?: boolean; focused?: boolean };
 
@@ -101,10 +104,19 @@ export function MonthView(props: MonthViewProps) {
   return props.wide ? <MonthGridDesktop {...props} /> : <MonthPhone {...props} />;
 }
 
-function WeekdayHeads() {
+/**
+ * The row of weekdays over the grid; it stays at the top while the month scrolls (spec 0030,
+ * REQ-001), so it must be a direct child of the whole grid.
+ */
+function WeekdayHeads(props: { long?: boolean; onHeight?: (height: number) => void }) {
+  const theme = useTheme();
   return (
-    <View style={{ flexDirection: 'row' }}>
-      {WEEKDAY_HEADS.map((head) => (
+    <View
+      testID="month-weekday-heads"
+      onLayout={(event) => props.onHeight?.(event.nativeEvent.layout.height)}
+      style={{ flexDirection: 'row', ...stickyTopStyle(Platform.OS, theme.colors.bg) }}
+    >
+      {weekdayHeads(!!props.long).map((head) => (
         <View key={head} style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }}>
           <Text variant="caption" color="muted">
             {head}
@@ -152,7 +164,7 @@ function StripeLine(props: { stripe: TripStripe; start: number; end: number; dat
           left: `${(props.start / 7) * 100}%`,
           width: `${((props.end - props.start + 1) / 7) * 100}%`,
           borderRadius: 2,
-          backgroundColor: colors.edge,
+          ...stripeLine(colors.edge, props.stripe.draft, 'top', 3),
         }}
       />
     </View>
@@ -319,9 +331,7 @@ function MonthGridDesktop(props: MonthViewProps) {
 
   return (
     <View style={{ marginBottom: GRID_END }} testID="month-grid">
-      <View onLayout={(event) => setHeadsHeight(event.nativeEvent.layout.height)}>
-        <WeekdayHeads />
-      </View>
+      <WeekdayHeads long={props.longWeekdays} onHeight={setHeadsHeight} />
       {weeks.map((week, index) => {
         const weekFirst = week[0] ?? first;
         const weekLast = week[6] ?? last;

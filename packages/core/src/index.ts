@@ -16,7 +16,7 @@ export * from './meal-plan';
 export * from './calendar';
 export * from './plan-move';
 export * from './trips';
-export * from './trip-meals';
+export * from './trip-list';
 export * from './household-row';
 export * from './shopping';
 export * from './shopping-list';

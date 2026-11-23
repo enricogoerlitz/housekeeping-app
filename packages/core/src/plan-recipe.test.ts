@@ -13,7 +13,7 @@ import {
   weekOffsetFor,
   withPlanDay,
 } from './plan-recipe';
-import { enrico, nadja, trip } from './test-fixtures';
+import { enrico, nadja } from './test-fixtures';
 import type { MealSlot } from './types';
 
 const today = '2026-11-20';
@@ -26,7 +26,7 @@ const slots: MealSlot[] = [
 describe('plan a recipe from its page (REQ-009)', () => {
   it('AC-034: the window opens on this week, today and the last Tageszeit, with everyone', () => {
     expect(planWeek(today, 0)).toEqual({ start: '2026-11-16', label: 'KW 47 · 16.–22. Nov' });
-    expect(defaultPlanChoice(today, slots, [enrico, nadja], [])).toEqual({
+    expect(defaultPlanChoice(today, slots, [enrico, nadja])).toEqual({
       date: today,
       slotId: 'slot-abend',
       eaterIds: [enrico.id, nadja.id],
@@ -64,8 +64,8 @@ describe('plan a recipe from its page (REQ-009)', () => {
   it('AC-021 (0024): an activity opens on the first Tageszeit', () => {
     const vormittag = { id: 'vormittag', name: 'Vormittag', sort: 0 };
     const abend = { id: 'abend', name: 'Abend', sort: 2 };
-    expect(defaultPlanChoice(today, [abend, vormittag], [], [], 'first').slotId).toBe('vormittag');
-    expect(defaultPlanChoice(today, [abend, vormittag], [], []).slotId).toBe('abend');
+    expect(defaultPlanChoice(today, [abend, vormittag], [], 'first').slotId).toBe('vormittag');
+    expect(defaultPlanChoice(today, [abend, vormittag], []).slotId).toBe('abend');
   });
 
   it('spec 0016: the notice after adding names the date, with the year when it is not this one', () => {
@@ -83,13 +83,12 @@ describe('plan a recipe from its page (REQ-009)', () => {
     expect(planButtonLabel('2026-11-25', 'Mittag')).toBe('Am Mi 25.11. Mittag einplanen');
   });
 
-  it('AC-036: members travelling on the chosen day are not preselected', () => {
-    const trips = [trip('a1', [nadja.id], '2026-11-28', '2026-11-28')];
-    expect(eatersForDay([enrico, nadja], '2026-11-28', trips)).toEqual([enrico.id]);
-    expect(eatersForDay([enrico, nadja], '2026-11-27', trips)).toEqual([enrico.id, nadja.id]);
-    expect(eatersForDay([enrico, nadja], null, trips)).toEqual([enrico.id, nadja.id]);
-    const household = [trip('a2', [enrico.id, nadja.id], today, today)];
-    expect(defaultPlanChoice(today, slots, [enrico, nadja], household).eaterIds).toEqual([]);
+  it('AC-027 (0030): a trip never changes who is preselected, with or without a day', () => {
+    expect(eatersForDay([enrico, nadja])).toEqual([enrico.id, nadja.id]);
+    expect(defaultPlanChoice(today, slots, [enrico, nadja]).eaterIds).toEqual([
+      enrico.id,
+      nadja.id,
+    ]);
   });
 
   it('AC-037: without a day it is "Vormerken" and "Vorgemerkt"', () => {
@@ -97,43 +96,37 @@ describe('plan a recipe from its page (REQ-009)', () => {
     expect(plannedNotice(null, 'Abend', '2026-11-22')).toBe('Vorgemerkt');
   });
 
-  it('AC-036: another day sets "Wer isst mit?" back to those present; guests, slot and cook stay', () => {
-    const trips = [trip('a1', [nadja.id], '2026-11-28', '2026-11-28')];
+  it('AC-036, AC-027 (0030): another day sets "Wer isst mit?" back to everyone; guests, slot and cook stay', () => {
     const choice = {
-      ...defaultPlanChoice(today, slots, [enrico, nadja], trips),
+      ...defaultPlanChoice(today, slots, [enrico, nadja]),
       eaterIds: [nadja.id],
       guests: 2,
       cookId: enrico.id,
       slotId: 'slot-mittag',
     };
-    expect(withPlanDay(choice, '2026-11-28', [enrico, nadja], trips)).toEqual({
+    expect(withPlanDay(choice, '2026-11-28', [enrico, nadja])).toEqual({
       date: '2026-11-28',
       slotId: 'slot-mittag',
-      eaterIds: [enrico.id],
+      eaterIds: [enrico.id, nadja.id],
       guests: 2,
       cookId: enrico.id,
     });
-    // "Ohne Tag vormerken": nobody travels without a day.
-    expect(withPlanDay(choice, null, [enrico, nadja], trips).eaterIds).toEqual([
-      enrico.id,
-      nadja.id,
-    ]);
+    expect(withPlanDay(choice, null, [enrico, nadja]).eaterIds).toEqual([enrico.id, nadja.id]);
   });
 
   it('AC-035: paging moves the chosen day by whole weeks, so it stays in the shown week', () => {
-    const trips = [trip('a1', [nadja.id], '2026-11-27', '2026-11-27')];
-    const choice = defaultPlanChoice(today, slots, [enrico, nadja], trips);
-    const next = pagePlanChoice(choice, 1, [enrico, nadja], trips);
+    const choice = defaultPlanChoice(today, slots, [enrico, nadja]);
+    const next = pagePlanChoice(choice, 1, [enrico, nadja]);
     expect(next.date).toBe('2026-11-27');
-    expect(next.eaterIds).toEqual([enrico.id]);
-    expect(pagePlanChoice(choice, -2, [enrico, nadja], trips).date).toBe('2026-11-06');
+    expect(next.eaterIds).toEqual([enrico.id, nadja.id]);
+    expect(pagePlanChoice(choice, -2, [enrico, nadja]).date).toBe('2026-11-06');
     // Without a day ("Vormerken") paging changes nothing.
-    const later = withPlanDay(choice, null, [enrico, nadja], trips);
-    expect(pagePlanChoice(later, 1, [enrico, nadja], trips)).toBe(later);
+    const later = withPlanDay(choice, null, [enrico, nadja]);
+    expect(pagePlanChoice(later, 1, [enrico, nadja])).toBe(later);
   });
 
   it('a household without Tageszeiten has no slot to preselect', () => {
-    expect(defaultPlanChoice(today, [], [enrico], []).slotId).toBeUndefined();
+    expect(defaultPlanChoice(today, [], [enrico]).slotId).toBeUndefined();
   });
 });
 
@@ -152,24 +145,22 @@ describe('spec 0023 REQ-013: the plan window', () => {
   });
 
   it('AC-055: members arriving after the window opened are chosen while untouched', () => {
-    const opened = defaultPlanChoice(today, slots, [], []);
+    const opened = defaultPlanChoice(today, slots, []);
     expect(opened.eaterIds).toEqual([]);
-    const later = refreshPlanEaters(opened, false, [enrico, nadja], []);
+    const later = refreshPlanEaters(opened, false, [enrico, nadja]);
     expect(later.eaterIds).toEqual([enrico.id, nadja.id]);
   });
 
-  it('AC-056: a choice made by hand stays when a trip arrives', () => {
+  it('AC-056: a choice made by hand stays when members change', () => {
     const chosen = {
-      ...defaultPlanChoice(today, slots, [enrico, nadja], []),
+      ...defaultPlanChoice(today, slots, [enrico, nadja]),
       eaterIds: [enrico.id],
     };
-    const trips = [trip('t', [enrico.id], today, today)];
-    expect(refreshPlanEaters(chosen, true, [enrico, nadja], trips)).toBe(chosen);
-    expect(refreshPlanEaters(chosen, false, [enrico, nadja], trips).eaterIds).toEqual([nadja.id]);
+    expect(refreshPlanEaters(chosen, true, [enrico, nadja])).toBe(chosen);
   });
 
   it('returns the same choice when nothing changes', () => {
-    const choice = defaultPlanChoice(today, slots, [enrico, nadja], []);
-    expect(refreshPlanEaters(choice, false, [enrico, nadja], [])).toBe(choice);
+    const choice = defaultPlanChoice(today, slots, [enrico, nadja]);
+    expect(refreshPlanEaters(choice, false, [enrico, nadja])).toBe(choice);
   });
 });

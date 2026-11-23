@@ -227,3 +227,30 @@ describe('the hint under "Wer?"', () => {
     expect(tripWhoHint([], members)).toBe('Wähle, wer unterwegs ist');
   });
 });
+
+describe('spec 0030: a trip can be a draft (REQ-004)', () => {
+  const draft = { ...trip('d', [nadja.id], '2026-12-12', '2026-12-19', 'Mallorca'), draft: true };
+
+  it('AC-013: nobody on a draft is away', () => {
+    expect(isOnTrip(nadja.id, '2026-12-14', [draft])).toBe(false);
+    expect(isOnTrip(nadja.id, '2026-12-14', [{ ...draft, draft: false }])).toBe(true);
+  });
+
+  it('AC-012: the stripe of a draft says so', () => {
+    expect(tripStripes([draft], members)[0]).toMatchObject({ draft: true });
+    expect(tripStripes([{ ...draft, draft: undefined }], members)[0]).toMatchObject({
+      draft: false,
+    });
+  });
+
+  it('AC-018: a day only drafts cover is hatched in the year view, a confirmed trip wins', () => {
+    const stripes = tripStripes([draft], members);
+    expect(yearDayTrip('2026-12-14', stripes)).toEqual({
+      kind: 'one',
+      memberId: nadja.id,
+      draft: true,
+    });
+    const both = tripStripes([draft, trip('e', [enrico.id], '2026-12-14', '2026-12-14')], members);
+    expect(yearDayTrip('2026-12-14', both)).toEqual({ kind: 'one', memberId: enrico.id });
+  });
+});

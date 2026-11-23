@@ -2,19 +2,14 @@ import {
   packingSaveProblem,
   planPackingList,
   recalcPerDay,
-  followEntryOnList,
   tripDays,
   validateTripDraft,
-  withoutTravellers,
   type Id,
-  type EntryAddition,
   type ISODate,
-  type MealPlanEntry,
   type Trip,
 } from '@housekeeping/core';
 
-import { commitEntriesWithList } from './list-additions';
-import { commit, getData, getState, newId, nowISO, updateData } from './store';
+import { commit, getData, newId, updateData } from './store';
 
 // Trips (spec 0022, REQ-003 to REQ-005, REQ-015): one trip with its people and one packing list.
 // Every command is one change (ADR-0011), sent as one apply_changes call.
@@ -31,7 +26,8 @@ function cleanNote(note: string | undefined): string | undefined {
 
 /**
  * "Reise eintragen" (AC-008, AC-009): the trip, every chosen person and a packing list of the
- * chosen Reisetaschen ("je Tag" with the trip's days) in one change. Returns the trip's id.
+ * chosen Reisetaschen ("je Tag" with the trip's days) in one change. `draft`: saved as "Entwurf"
+ * (spec 0030, REQ-004). Returns the trip's id.
  */
 export function createTrip(input: {
   memberIds: Id[];
@@ -39,6 +35,7 @@ export function createTrip(input: {
   to: ISODate;
   note?: string;
   bagIds?: Id[];
+  draft?: boolean;
 }): Id {
   validate(input);
   const data = getData();
@@ -49,6 +46,7 @@ export function createTrip(input: {
     to: input.to,
     note: cleanNote(input.note),
     members: memberIds.map((memberId) => ({ id: newId(), memberId })),
+    ...(input.draft ? { draft: true } : {}),
   };
   const packing = planPackingList({
     trip,
@@ -77,6 +75,8 @@ export interface TripChanges {
   from?: ISODate;
   to?: ISODate;
   note?: string;
+  /** "Entwurf" on or off (spec 0030, REQ-004). */
+  draft?: boolean;
 }
 
 /**
@@ -95,6 +95,7 @@ export function updateTrip(tripId: Id, changes: TripChanges): void {
     from: changes.from ?? trip.from,
     to: changes.to ?? trip.to,
     note: changes.note === undefined ? trip.note : cleanNote(changes.note),
+    draft: changes.draft ?? trip.draft,
     members: memberIds
       ? memberIds.map(
           (memberId) =>
@@ -143,50 +144,4 @@ export function removeTrip(tripId: Id): void {
       };
     }),
   );
-}
-
-/**
- * "Rausnehmen (n)" (REQ-007, AC-021 to AC-025): takes the chosen travellers out of these dishes
- * and lets the open items of the shopping list follow, in one call (all or nothing). An entry
- * that is gone meanwhile is left out. Returns how many dishes were changed.
- */
-export function takeTravellersOut(offers: readonly { entryId: Id; memberIds: Id[] }[]): number {
-  const data = getData();
-  const members = getState().members;
-  const recipesById = new Map(data.recipes.map((recipe) => [recipe.id, recipe]));
-  const articlesById = Object.fromEntries(data.articles.map((article) => [article.id, article]));
-  const found = offers.flatMap((offer) => {
-    const entry = data.planEntries.find((candidate) => candidate.id === offer.entryId);
-    return entry ? [{ entry, memberIds: offer.memberIds }] : [];
-  });
-  if (found.length === 0) return 0;
-  const now = nowISO();
-  let items = data.items;
-  const additions: EntryAddition[] = [];
-  let listChanged = false;
-  const changed = new Map<Id, MealPlanEntry>();
-  for (const { entry, memberIds } of found) {
-    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
-    const next = withoutTravellers({ entry, memberIds, recipe, members, articlesById });
-    changed.set(entry.id, next);
-    const followed = followEntryOnList({ items, entry: next, recipe, articlesById, newId, now });
-    items = followed.items;
-    listChanged ||= followed.changed;
-    additions.push(...followed.additions);
-  }
-  const changeEntries = () =>
-    updateData((current) => ({
-      ...current,
-      planEntries: current.planEntries.map((entry) => changed.get(entry.id) ?? entry),
-    }));
-  if (!listChanged) {
-    commit({ path: 'diff' }, changeEntries);
-  } else {
-    // The list follows in the same call, however many ingredients (replace_entry_contributions).
-    commitEntriesWithList({ entryIds: [...changed.keys()] }, changeEntries, () => ({
-      items,
-      additions,
-    }));
-  }
-  return found.length;
 }

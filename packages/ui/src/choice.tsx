@@ -24,6 +24,7 @@ import { menuKey } from './menu-keys';
 import { useHover } from './pointer';
 import { Icon, Text } from './primitives';
 import { useAreaColors, useTheme } from './theme-context';
+import { chipRowStyle } from './chip-layout';
 
 // One pattern per task (spec 0005, D1): view tabs switch views, choice chips pick one value in a
 // form, a menu picks an order. They replace the segment bar.
@@ -248,6 +249,11 @@ export interface ChoiceChipsProps<T extends string> {
   /** Greyed out and not changeable, e.g. a write while offline; `hint` says why. */
   disabled?: boolean;
   hint?: string;
+  /**
+   * The chips share the full width in equal parts and never wrap (spec 0030, REQ-005): for a fixed
+   * number of chips whose labels change, e.g. the seven days of a week.
+   */
+  fill?: boolean;
   /** Each chip gets `${testID}-${value}`. */
   testID?: string;
 }
@@ -263,11 +269,12 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
       accessibilityRole="radiogroup"
       accessibilityLabel={props.label}
       accessibilityState={{ disabled: !!props.disabled }}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+      style={chipRowStyle(!!props.fill)}
     >
       {props.options.map((option) => (
         <ChipView
           key={option.value}
+          fill={props.fill}
           role="radio"
           label={option.label}
           detail={option.detail}

@@ -154,7 +154,9 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
       scrollEventThrottle={16}
       onLayout={onLayout}
       style={[{ flex: 1 }, grid && width === undefined ? { opacity: 0 } : null, props.style]}
-      contentContainerStyle={page ? { paddingTop: page.inset, paddingBottom: 24 } : undefined}
+      contentContainerStyle={
+        page ? [{ paddingTop: page.inset, paddingBottom: 24 }, page.touch] : undefined
+      }
       onContentSizeChange={() => {
         const goal = target.get();
         if (goal <= 0) return;

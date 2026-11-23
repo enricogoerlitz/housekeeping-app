@@ -244,6 +244,8 @@ export const PAGE_PARAMS = {
   reisen: {
     reise: one(Uuid),
     fenster: one(oneOf(['neu-reise'])),
+    // Spec 0030, REQ-003: the filter "Zeitraum", a year or a month of the start.
+    zeitraum: one(z.string().regex(/^\d{4}(-(0[1-9]|1[0-2]))?$/)),
   },
   verwalten: {},
   einstellungen: {

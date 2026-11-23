@@ -108,11 +108,13 @@ test.describe('Haushalt: dates and trips at phone width', () => {
     await expect(tid(page, `chore-done-calendar-day-${day(1)}`)).toBeDisabled();
   });
 
-  test('AC-058: "Reise eintragen" says what a trip does under "Wer?"', async ({ page }) => {
+  test('AC-058, spec 0030 AC-030: "Reise eintragen" says what a trip does under "Wer?"', async ({
+    page,
+  }) => {
     await open(page, '/reisen?fenster=neu-reise');
     await expect(tid(page, 'trip-effect-note')).toHaveText(
-      'Wer weg ist, fehlt bei „Wer isst mit?“, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.',
+      'Wer weg ist, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.',
     );
-    await expect(page.getByText(/^Wer weg ist, fehlt bei „Wer isst mit\?“\.$/)).toHaveCount(0);
+    await expect(page.getByText(/Wer isst mit/)).toHaveCount(0);
   });
 });

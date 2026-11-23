@@ -14,6 +14,7 @@ import {
   type ISODate,
 } from '@housekeeping/core';
 import {
+  hatchStyle,
   Icon,
   KindDot,
   List,
@@ -23,11 +24,12 @@ import {
   keyboardFocusRing,
   useHover,
   useTheme,
+  withAlpha,
 } from '@housekeeping/ui';
 import type { ReactNode } from 'react';
 import { Pressable, View, type HostInstance } from 'react-native';
 
-import { StripeBadges, stripeA11y } from './calendar-parts';
+import { HATCH_ALPHA, StripeBadges, stripeA11y, stripeLine } from './calendar-parts';
 import { dayLabel, stripeWho, type CalendarData } from './calendar-data';
 import {
   PALE_OPACITY,
@@ -145,7 +147,14 @@ export function YearView(props: YearViewProps) {
                   ]
                     .filter(Boolean)
                     .join(' · ')}
-                  subtitle={stripe.household ? undefined : stripeWho(stripe, data.membersById)}
+                  subtitle={
+                    [
+                      stripe.household ? undefined : stripeWho(stripe, data.membersById),
+                      stripe.draft ? 'Entwurf' : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || undefined
+                  }
                   leading={<StripeBadges stripe={stripe} members={data.members} />}
                   trailing={
                     data.hasPackingList(stripe) ? (
@@ -277,6 +286,12 @@ function MiniDay(props: {
       : member
         ? `${member.color}${TINT_ALPHA}`
         : 'transparent';
+  // Spec 0030, AC-018: a day only drafts cover is hatched instead of filled.
+  const draft = coverage.kind !== 'none' && coverage.draft === true;
+  const hatch =
+    draft && coverage.kind !== 'several'
+      ? hatchStyle(withAlpha(member?.color ?? theme.colors.textMuted, HATCH_ALPHA))
+      : null;
   const lines =
     coverage.kind === 'several'
       ? coverage.memberIds.flatMap((id) => props.data.membersById[id] ?? [])
@@ -304,6 +319,7 @@ function MiniDay(props: {
               paddingVertical: 1,
               backgroundColor: background,
             },
+            hatch,
             props.fill ? { flexGrow: 1 } : null,
             keyboardFocusRing(theme, (state as PressState).focused),
           ]}
@@ -348,7 +364,7 @@ function MiniDay(props: {
                 alignSelf: 'stretch',
                 height: 1.5,
                 marginTop: 1,
-                backgroundColor: person.color,
+                ...stripeLine(person.color, draft, 'top', 1.5),
               }}
             />
           ))}

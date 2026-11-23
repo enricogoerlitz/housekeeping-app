@@ -271,6 +271,7 @@ describe('spec 0016: day window, range drag and changing the view', () => {
     tripId: 'a1',
     memberIds: ['nadja'],
     household: false,
+    draft: false,
     from: '2026-11-27',
     to: '2026-11-29',
     note: 'Hamburg',

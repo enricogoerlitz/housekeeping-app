@@ -387,6 +387,8 @@ export interface Trip {
   to: ISODate;
   note?: string;
   members: TripMember[];
+  /** "Entwurf" (spec 0030, REQ-004): shown everywhere, but nobody on it is away yet. */
+  draft?: boolean;
 }
 
 // ---------- Feedback ----------

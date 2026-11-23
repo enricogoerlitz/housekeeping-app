@@ -604,6 +604,10 @@ describe('Übersicht und Kalender', () => {
       items: rows,
     });
 
+  it('AC-013 (0030): a draft has no packing card', () => {
+    expect(cards('2026-11-23', [{ ...week, draft: true }, hamburg])).toEqual([]);
+  });
+
   it('AC-042: no card two weeks before, from 7 days before "beginnt in 7 Tagen"', () => {
     expect(cards('2026-11-16')).toEqual([]);
     expect(cards('2026-11-23')).toEqual([

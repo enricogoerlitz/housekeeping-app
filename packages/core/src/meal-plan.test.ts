@@ -4,7 +4,6 @@ import { addDays } from './dates';
 import { addPresetSlot } from './calendar';
 import {
   canMarkNotDone,
-  defaultEaters,
   entriesForDay,
   leftoverCandidates,
   leftoversDayLabel,
@@ -210,25 +209,12 @@ describe('variantSummary', () => {
 describe('trips', () => {
   const trips: Trip[] = [trip('a', [enrico.id], '2026-11-20', '2026-11-22')];
 
-  it('AC-038: only Nadja is preselected on a Saturday Enrico is away', () => {
-    expect(defaultEaters([enrico, nadja], '2026-11-21', trips)).toEqual([nadja]);
-  });
-
   it('treats from and to as inclusive', () => {
     expect(isOnTrip(enrico.id, '2026-11-20', trips)).toBe(true);
     expect(isOnTrip(enrico.id, '2026-11-22', trips)).toBe(true);
     expect(isOnTrip(enrico.id, '2026-11-23', trips)).toBe(false);
     expect(isOnTrip(enrico.id, '2026-11-19', trips)).toBe(false);
     expect(isOnTrip(nadja.id, '2026-11-21', trips)).toBe(false);
-  });
-
-  it('applies a trip of the whole household to everyone', () => {
-    const away = [trip('h', [enrico.id, nadja.id], '2026-12-24', '2026-12-26')];
-    expect(defaultEaters([enrico, nadja], '2026-12-25', away)).toEqual([]);
-  });
-
-  it('preselects everyone for an entry without a day', () => {
-    expect(defaultEaters([enrico, nadja], null, trips)).toEqual([enrico, nadja]);
   });
 });
 

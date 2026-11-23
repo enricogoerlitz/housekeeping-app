@@ -97,6 +97,13 @@ export function isoWeekNumber(iso: ISODate): number {
 export function weekdayShortName(weekday: number): string {
   return WEEKDAYS_SHORT[weekday - 1] ?? '';
 }
+/**
+ * The heads of a month's columns, Monday first: written out ("Montag" …) on the desktop, short
+ * ("Mo" …) elsewhere (spec 0030, REQ-001).
+ */
+export function weekdayHeads(long: boolean): string[] {
+  return [...(long ? WEEKDAYS_LONG : WEEKDAYS_SHORT)];
+}
 /** "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So". */
 export function weekdayShort(iso: ISODate): string {
   return weekdayShortName(isoWeekday(iso));
