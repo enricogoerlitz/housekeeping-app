@@ -254,15 +254,14 @@ function ContentSheet(props: {
       title={props.name}
       onClose={props.onClose}
       testID="collection-row-sheet"
-      footer={
-        <Button
-          label="Übernehmen"
-          icon="check"
-          full
-          onPress={apply}
-          testID="collection-row-sheet-apply"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          onPress: apply,
+          testID: 'collection-row-sheet-apply',
+        },
+      }}
     >
       <Stack gap={16}>
         <TextField

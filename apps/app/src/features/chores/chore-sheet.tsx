@@ -40,6 +40,7 @@ import {
   Surface,
   Text,
   toast,
+  type SheetAction,
 } from '@housekeeping/ui';
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -56,6 +57,8 @@ import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 const RECENT_ENTRIES = 3;
 
 type PostponeChoice = PostponeOption['key'] | 'pick';
+
+type SheetActions = { primary: SheetAction; cancel?: SheetAction };
 
 interface ChoreDetailProps {
   chore: Chore;
@@ -107,6 +110,7 @@ function useChoreDetail(props: ChoreDetailProps): {
   title: string;
   body: ReactNode;
   footer?: ReactNode;
+  actions?: SheetActions;
 } {
   const { chore } = props;
   const members = useMembers();
@@ -183,37 +187,26 @@ function useChoreDetail(props: ChoreDetailProps): {
           offlineHint={online.hint}
         />
       ),
-      footer: (
-        <Stack gap={6}>
-          {online.hint ? (
-            <Text variant="small" color="warn">
-              {online.hint}
-            </Text>
-          ) : null}
-          <Row gap={8}>
-            <View style={{ flex: 1 }}>
-              <Button
-                label="Abbrechen"
-                variant="secondary"
-                full
-                onPress={() => setEditing(false)}
-                testID="chore-edit-cancel"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button
-                label="Speichern"
-                icon="check"
-                full
-                onPress={save}
-                disabled={online.disabled}
-                hint={online.hint}
-                testID="chore-save"
-              />
-            </View>
-          </Row>
-        </Stack>
-      ),
+      footer: online.hint ? (
+        <Text variant="small" color="warn">
+          {online.hint}
+        </Text>
+      ) : undefined,
+      actions: {
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'chore-save',
+        },
+        cancel: {
+          label: 'Abbrechen',
+          onPress: () => setEditing(false),
+          testID: 'chore-edit-cancel',
+        },
+      },
     };
   }
 
@@ -372,6 +365,7 @@ export function ChoreSheet(props: ChoreDetailProps) {
       onClose={props.onClose}
       title={detail.title}
       footer={detail.footer}
+      actions={detail.actions}
       testID="chore-sheet"
       size="m"
     >
@@ -392,7 +386,48 @@ export function ChorePanel(props: ChoreDetailProps) {
         <IconButton icon="x" label="Schließen" onPress={props.onClose} testID="chore-panel-close" />
       </Row>
       {detail.body}
-      {detail.footer}
+      {detail.actions ? (
+        <Stack gap={6}>
+          {detail.footer}
+          <PanelActions actions={detail.actions} />
+        </Stack>
+      ) : (
+        detail.footer
+      )}
     </Surface>
+  );
+}
+
+/** The panel has no window header, so its actions sit at the bottom side by side. */
+function PanelActions(props: { actions: SheetActions }) {
+  const { primary, cancel } = props.actions;
+  return (
+    <Row gap={8}>
+      {cancel ? (
+        <View style={{ flex: 1 }}>
+          <Button
+            label={cancel.label}
+            variant="secondary"
+            full
+            onPress={cancel.onPress}
+            disabled={cancel.disabled}
+            hint={cancel.hint}
+            icon={cancel.icon}
+            testID={cancel.testID}
+          />
+        </View>
+      ) : null}
+      <View style={{ flex: 1 }}>
+        <Button
+          label={primary.label}
+          full
+          onPress={primary.onPress}
+          disabled={primary.disabled}
+          hint={primary.hint}
+          icon={primary.icon}
+          testID={primary.testID}
+        />
+      </View>
+    </Row>
   );
 }

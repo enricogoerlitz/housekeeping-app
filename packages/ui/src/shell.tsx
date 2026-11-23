@@ -19,6 +19,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { bottomInset } from './bottom-inset';
 import { IconButton, keyboardFocusRing } from './controls';
+import { useKeyboard } from './keyboard';
 import { useHover } from './pointer';
 import { tabSwipeTouchAction, type TabSwipe } from './tab-swipe';
 import { TabSwipeArea } from './tab-swipe-area';
@@ -538,7 +539,10 @@ export interface TabBarProps {
 export function TabBar(props: TabBarProps) {
   const theme = useTheme();
   const bottom = useBottomInset();
+  // While typing the tab bar gives its room to the page (spec 0032, AC-001).
+  const keyboard = useKeyboard();
   const c = theme.colors;
+  if (keyboard.open) return null;
   return (
     <View
       accessibilityRole="tablist"

@@ -15,7 +15,7 @@ import {
   type Id,
   type Recipe,
 } from '@housekeeping/core';
-import { Button, List, SearchOrCreate, SelectRow, Sheet, Stack, Text } from '@housekeeping/ui';
+import { List, SearchOrCreate, SelectRow, Sheet, Text } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
@@ -123,27 +123,26 @@ export function CollectionRecipesSheet(props: { collection: Recipe; onClose: () 
           testID="collection-recipes-search"
         />
       }
+      actions={{
+        primary: {
+          label: takeOverLabel(count),
+          icon: 'check',
+          onPress: takeOver,
+          disabled: online.disabled || count === 0,
+          hint: online.hint,
+          testID: 'collection-recipes-save',
+        },
+      }}
       footer={
-        <Stack gap={8}>
-          {error ? (
-            <Text variant="small" color="warn" testID="collection-recipes-error">
-              {error}
-            </Text>
-          ) : picker.limitReached ? (
-            <Text variant="small" color="muted" testID="collection-recipes-full">
-              {COLLECTION_FULL}
-            </Text>
-          ) : null}
-          <Button
-            label={takeOverLabel(count)}
-            icon="check"
-            full
-            onPress={takeOver}
-            disabled={online.disabled || count === 0}
-            hint={online.hint}
-            testID="collection-recipes-save"
-          />
-        </Stack>
+        error ? (
+          <Text variant="small" color="warn" testID="collection-recipes-error">
+            {error}
+          </Text>
+        ) : picker.limitReached ? (
+          <Text variant="small" color="muted" testID="collection-recipes-full">
+            {COLLECTION_FULL}
+          </Text>
+        ) : undefined
       }
     >
       {picker.rows.length > 0 ? (

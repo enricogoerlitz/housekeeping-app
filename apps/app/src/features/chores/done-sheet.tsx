@@ -23,17 +23,7 @@ import {
   type Id,
   type ISODate,
 } from '@housekeeping/core';
-import {
-  Button,
-  Chip,
-  Menu,
-  Row,
-  SearchOrCreate,
-  Sheet,
-  Stack,
-  Text,
-  toast,
-} from '@housekeeping/ui';
+import { Chip, Menu, Row, SearchOrCreate, Sheet, Stack, Text, toast } from '@housekeeping/ui';
 import { useMemo, useState } from 'react';
 
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
@@ -165,6 +155,18 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
       title="Was hast du erledigt?"
       size="l"
       testID="chore-done-sheet"
+      actions={{
+        primary: {
+          label: 'Als erledigt eintragen',
+          icon: 'check',
+          onPress: save,
+          disabled: online.disabled || choice === undefined,
+          hint:
+            online.hint ??
+            (choice === undefined ? 'Such eine Aufgabe oder leg eine an' : undefined),
+          testID: 'chore-done-save',
+        },
+      }}
       footer={
         <Stack gap={12}>
           {chosenText ? (
@@ -225,18 +227,6 @@ export function DoneSheet(props: { visible: boolean; onClose: () => void }) {
               {error}
             </Text>
           ) : null}
-          <Button
-            label="Als erledigt eintragen"
-            icon="check"
-            full
-            disabled={online.disabled || choice === undefined}
-            hint={
-              online.hint ??
-              (choice === undefined ? 'Such eine Aufgabe oder leg eine an' : undefined)
-            }
-            onPress={save}
-            testID="chore-done-save"
-          />
           {online.hint ? (
             <Text variant="small" color="warn" testID="chore-done-offline">
               {online.hint}

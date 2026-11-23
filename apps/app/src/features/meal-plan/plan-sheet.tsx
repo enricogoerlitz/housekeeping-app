@@ -20,17 +20,7 @@ import {
   type PlanEntryVariant,
   type Recipe,
 } from '@housekeeping/core';
-import {
-  Button,
-  Chip,
-  ChoiceChips,
-  IconButton,
-  Row,
-  Sheet,
-  Stack,
-  Text,
-  toast,
-} from '@housekeeping/ui';
+import { Chip, ChoiceChips, IconButton, Row, Sheet, Stack, Text, toast } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -186,24 +176,22 @@ export function PlanSheet(props: {
       title="Einplanen"
       size="m"
       testID="plan-recipe-sheet"
-      footer={
-        <Button
-          label={planButtonLabel(choice.date, slotName)}
-          icon="calendar-plus"
-          full
-          disabled={online.disabled || noEaters || !choice.slotId}
-          hint={
+      actions={{
+        primary: {
+          label: planButtonLabel(choice.date, slotName),
+          icon: 'calendar-plus',
+          disabled: online.disabled || noEaters || !choice.slotId,
+          hint:
             online.hint ??
             (noEaters
               ? 'Wähl aus, wer mitisst.'
               : choice.slotId
                 ? undefined
-                : 'Lege zuerst eine Tageszeit an.')
-          }
-          onPress={save}
-          testID="plan-recipe-save"
-        />
-      }
+                : 'Lege zuerst eine Tageszeit an.'),
+          onPress: save,
+          testID: 'plan-recipe-save',
+        },
+      }}
     >
       <Stack gap={18}>
         {online.hint ? (

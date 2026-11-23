@@ -184,16 +184,15 @@ export function IngredientSheet(props: {
       title={row ? 'Zutat bearbeiten' : 'Neue Zutat'}
       onClose={props.onClose}
       testID="ingredient-sheet"
-      footer={
-        <Button
-          label="Übernehmen"
-          icon="check"
-          full
-          disabled={!!prepError || !!groupError}
-          onPress={apply}
-          testID="ingredient-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Übernehmen',
+          icon: 'check',
+          disabled: !!prepError || !!groupError,
+          onPress: apply,
+          testID: 'ingredient-save',
+        },
+      }}
     >
       <Stack gap={18}>
         <View testID="ingredient-article">

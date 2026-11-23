@@ -12,7 +12,6 @@ import {
   type Recipe,
 } from '@housekeeping/core';
 import {
-  Button,
   Icon,
   KIND_ICONS,
   List,
@@ -72,18 +71,19 @@ export function AddToCollectionSheet(props: { recipe: Recipe; onClose: () => voi
       title="Zu Sammlung hinzufügen"
       onClose={props.onClose}
       testID="add-to-collection-sheet"
-      footer={
-        creating ? (
-          <Button
-            label="Anlegen und hinzufügen"
-            icon="check"
-            full
-            onPress={createNew}
-            disabled={online.disabled}
-            hint={online.hint}
-            testID="add-to-collection-create"
-          />
-        ) : undefined
+      actions={
+        creating
+          ? {
+              primary: {
+                label: 'Anlegen und hinzufügen',
+                icon: 'check',
+                onPress: createNew,
+                disabled: online.disabled,
+                hint: online.hint,
+                testID: 'add-to-collection-create',
+              },
+            }
+          : undefined
       }
     >
       <Stack gap={12}>

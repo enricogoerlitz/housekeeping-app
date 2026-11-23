@@ -7,6 +7,7 @@ import {
   TabBar,
   useBottomInset,
   useBreakpoint,
+  useKeyboard,
   useTheme,
   type NavItem,
 } from '@housekeeping/ui';
@@ -120,6 +121,8 @@ function Navigation(props: BottomTabBarProps) {
   const { isPhone } = useBreakpoint();
   const assistant = useAssistant();
   const bottom = useBottomInset();
+  // While typing neither the tab bar nor the assistant button take room (spec 0032, AC-001).
+  const keyboard = useKeyboard();
   const segments = useSegments();
   const activeRoute = props.state.routes[props.state.index]?.name ?? 'index';
   // A detail page highlights the section it came from (`von`); a page under "Verwalten"
@@ -143,7 +146,7 @@ function Navigation(props: BottomTabBarProps) {
     <View>
       {/* On the list the assistant entry sits in the input bar, so the thumb zone stays free. */}
       {/* A panel at the bottom (the day window) hides it, so it covers none of its controls. */}
-      {features.ai && activeKey !== 'liste' && !assistant.buttonHidden ? (
+      {features.ai && activeKey !== 'liste' && !assistant.buttonHidden && !keyboard.open ? (
         <Fab
           icon="sparkles"
           label="Assistent"

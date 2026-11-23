@@ -94,8 +94,17 @@ export function TripItemSheet(props: { itemId: Id; onClose: () => void }) {
       title={packingItemLabel(item)}
       onClose={props.onClose}
       testID="trip-item-sheet"
+      actions={{
+        primary: {
+          label: 'Speichern',
+          onPress: save,
+          disabled: online.disabled,
+          hint: online.hint,
+          testID: 'trip-item-save',
+        },
+      }}
       footer={
-        <Row gap={10} style={{ justifyContent: 'space-between' }}>
+        <Row gap={10}>
           <Button
             label="Entfernen"
             variant="ghost"
@@ -104,13 +113,6 @@ export function TripItemSheet(props: { itemId: Id; onClose: () => void }) {
             hint={online.hint}
             onPress={remove}
             testID="trip-item-remove"
-          />
-          <Button
-            label="Speichern"
-            disabled={online.disabled}
-            hint={online.hint}
-            onPress={save}
-            testID="trip-item-save"
           />
         </Row>
       }

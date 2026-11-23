@@ -38,6 +38,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0029](0029-handy-feinschliff/spec.md)              | Handy-Feinschliff: Fenster, Abstand unten, Wischen, Route              | freigegeben |
 | [0030](0030-review-0002/spec.md)                    | Review 0002: Kalender, Reisen und Handy-Feinschliff                    | freigegeben |
 | [0031](0031-ultracode-code-review/spec.md)          | Ultracode-Code-Review: sauber für die erste produktive Version         | umgesetzt   |
+| [0032](0032-handy-tastatur-und-fenster/spec.md)     | Handy: Tastatur und Fenster                                            | freigegeben |
 
 ## Welle 2 (0019–0028): Bau-Reihenfolge und Regeln
 

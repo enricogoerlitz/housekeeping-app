@@ -393,19 +393,17 @@ export function ActivityFormSheet(props: {
       title={editing ? 'Aktivität bearbeiten' : 'Aktivität anlegen'}
       testID="activity-sheet"
       size="m"
-      footer={
-        <Button
-          label="Speichern"
-          icon="check"
-          full
-          disabled={online.disabled || !!form.duplicate || form.saving || form.preparing}
-          hint={
-            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined)
-          }
-          onPress={() => void save()}
-          testID="activity-save"
-        />
-      }
+      actions={{
+        primary: {
+          label: 'Speichern',
+          icon: 'check',
+          disabled: online.disabled || !!form.duplicate || form.saving || form.preparing,
+          hint:
+            online.hint ?? (form.duplicate ? `Gibt es schon: ${form.duplicate.name}` : undefined),
+          onPress: () => void save(),
+          testID: 'activity-save',
+        },
+      }}
     >
       <Stack gap={16}>
         {online.hint ? (
