@@ -272,7 +272,8 @@ test('AC-004 / AC-006 (0018): the cooking mode cooks the 6 portions and the vari
   await tid(page, 'start-cooking').click();
   await expect(tid(page, 'cooking-screen')).toBeVisible();
   await expect(tid(page, 'cook-subtitle')).toHaveText('Kochmodus · mit Hähnchen · 6 Portionen');
-  await tid(page, 'cook-ingredients-toggle').click();
+  // Spec 0023, AC-037: on the phone the ingredients stand open under the step.
+  await expect(tid(page, 'cook-ingredients-toggle')).toHaveAttribute('aria-expanded', 'true');
   const ingredients = tid(page, 'cook-ingredients');
   await expect(tid(page, `cook-ingredient-${nested('mango-curry-i1')}`)).toContainText('600 ml');
   await expect(ingredients).toContainText('600 g');
