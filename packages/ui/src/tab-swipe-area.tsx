@@ -152,9 +152,20 @@ export function TabSwipeArea(props: { swipe: TabSwipe; children: ReactNode }) {
         mode.set('idle');
         return false;
       },
+      // Every move on its way down: a move that runs mostly vertically first stays a scroll, even
+      // when it turns sideways later (AC-025). Never takes the finger here.
+      onMoveShouldSetPanResponderCapture: (_event, gesture) => {
+        if (mode.get() === 'idle' && !scrollKeepsTabSwipe(gesture, width.get())) {
+          mode.set('scrolling');
+        }
+        return false;
+      },
       // Bubbling only: a row swipe or a reorder drag inside claims the move first.
       onMoveShouldSetPanResponder: (_event, gesture) =>
-        enabled.get() && !blocked.get() && claimsTabSwipe(gesture, width.get()),
+        enabled.get() &&
+        !blocked.get() &&
+        mode.get() === 'idle' &&
+        claimsTabSwipe(gesture, width.get()),
       // Spec 0030, REQ-007: once the swipe has the finger, or holds it after a native scroll
       // began, a scroll view does not take it back; a move that turned out a scroll may go.
       onPanResponderTerminationRequest: () => mode.get() === 'scrolling',

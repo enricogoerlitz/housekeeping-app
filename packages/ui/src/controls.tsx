@@ -275,7 +275,8 @@ export function ChipView(props: ChipProps & { role: 'button' | 'radio' }) {
     borderRadius: theme.shape.radius.chip,
     backgroundColor: background,
     borderWidth: props.selected || tone ? 0 : 1,
-    borderColor: c.border,
+    // A filled chip keeps its border when chosen, in its own colour (see fillChipStyle).
+    borderColor: props.selected || tone ? background : c.border,
     alignSelf: 'flex-start',
     ...(props.fill ? fillChipStyle() : null),
   };
