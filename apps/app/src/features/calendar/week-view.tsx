@@ -13,6 +13,8 @@ import {
   type MealPlanEntry,
 } from '@housekeeping/core';
 import {
+  toast,
+  ariaRef,
   Badge,
   Button,
   Icon,
@@ -25,7 +27,7 @@ import {
 import { useState } from 'react';
 import { Platform, Pressable, View, type HostInstance } from 'react-native';
 
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
 
 import {
@@ -127,9 +129,16 @@ function AddCell(props: { date: ISODate; slotId: Id; onAdd: WeekViewProps['onAdd
       accessibilityRole="button"
       accessibilityLabel="Hinzufügen"
       accessibilityHint={online.hint}
-      aria-disabled={online.disabled}
-      disabled={online.disabled}
-      onPress={() => props.onAdd({ date: props.date, slotId: props.slotId, slotChosen: true })}
+      // Greyed out offline but still pressable, so a press says why (spec 0031, review U-2).
+      ref={ariaRef({
+        'aria-description': online.hint,
+        'aria-disabled': String(online.disabled),
+      })}
+      onPress={
+        online.disabled
+          ? () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT })
+          : () => props.onAdd({ date: props.date, slotId: props.slotId, slotChosen: true })
+      }
       style={(state) => {
         const { hovered, focused } = state as { hovered?: boolean; focused?: boolean };
         return {

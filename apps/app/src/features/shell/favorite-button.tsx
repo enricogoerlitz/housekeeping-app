@@ -1,4 +1,4 @@
-import { Icon, useTheme } from '@housekeeping/ui';
+import { Icon, ariaRef, useTheme } from '@housekeeping/ui';
 import { Pressable } from 'react-native';
 
 /** The heart in the header of a recipe, restaurant or activity: the own favourite. */
@@ -16,8 +16,8 @@ export function FavoriteButton(props: {
       accessibilityRole="button"
       accessibilityLabel="Favorit"
       accessibilityHint={props.hint}
-      aria-selected={props.active}
-      aria-disabled={props.disabled}
+      // react-native-web drops accessibilityHint.
+      ref={ariaRef({ 'aria-description': props.hint })}
       aria-pressed={props.active}
       disabled={props.disabled}
       onPress={props.onPress}

@@ -221,6 +221,28 @@ describe('recomputeEntryContributions (REQ-007)', () => {
     ]);
   });
 
+  it('review 0031: a collection keeps the Herkunft of each dish, not the first one', () => {
+    const grill = { kind: 'recipe' as const, recipeId: 'grillabend', entryId: 'e2' };
+    const salat = { ...grill, label: 'Grillabend · Kartoffelsalat (Sa)' };
+    const wurst = { ...grill, label: 'Grillabend · Würstchen (Sa)' };
+    const items = [
+      item('i-hack', 'hack', [{ id: 'c1', source: salat, qty: 250, unit: 'g' }]),
+      item('i-platten', 'platten', [{ id: 'c2', source: wurst, count: 1 }]),
+    ];
+    const result = recomputeEntryContributions({
+      items,
+      entryId: 'e2',
+      planned: [
+        { ...planned('hack', { qty: 500, unit: 'g' }), ...grill, label: salat.label },
+        { ...planned('platten', { count: 2 }), ...grill, label: wurst.label },
+      ],
+      articlesById: byId,
+      newId,
+      now,
+    });
+    expect(result.items.map((each) => each.contributions[0]?.source)).toEqual([salat, wurst]);
+  });
+
   it('AC-019: the same amounts again are no change', () => {
     const result = recomputeEntryContributions({
       items: list,

@@ -118,13 +118,12 @@ test.describe('REQ-032: tablets', () => {
     const nav = await boxOf(tid(page, 'today-week-nav'));
     const head = await boxOf(title);
     expect(nav.y).toBeGreaterThanOrEqual(head.y + head.height - 1);
+    // The seed has a recap of yesterday on the overview.
     const recap = tid(page, 'today-recap');
-    if ((await recap.count()) > 0) {
-      const area = await boxOf(recap);
-      for (const part of await tidPrefix(page, 'recap-').all()) {
-        const box = await part.boundingBox();
-        if (box) expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width + 1);
-      }
+    const area = await boxOf(recap);
+    for (const part of await tidPrefix(page, 'recap-').all()) {
+      const box = await part.boundingBox();
+      if (box) expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width + 1);
     }
   });
 

@@ -241,9 +241,21 @@ export function recomputeEntryContributions(input: {
   const holders = items.filter((item) => item.contributions.some((c) => ofEntry(c, entryId)));
   if (holders.length === 0) return { items, changed: false, additions: [] };
 
-  const existingSource = holders
+  // The Herkunft stays per dish: a collection labels each dish ("Grillabend · Würstchen (Sa)"),
+  // and a recipe's planned label may lack the day, so the dish is matched without it.
+  const existingSources = holders
     .flatMap((item) => item.contributions)
-    .find((contribution) => ofEntry(contribution, entryId))?.source;
+    .filter((contribution) => ofEntry(contribution, entryId))
+    .map((contribution) => contribution.source)
+    .filter((source) => source.kind === 'recipe');
+  const dish = (label: string) => label.replace(/ \([^()]*\)$/, '');
+  const sourceOf = (planned: PlannedContribution): ShoppingContribution['source'] =>
+    existingSources.find((source) => dish(source.label) === dish(planned.label)) ?? {
+      kind: 'recipe',
+      recipeId: planned.recipeId,
+      entryId,
+      label: planned.label,
+    };
   const keptArticles = new Set(holders.filter((item) => item.checked).map((i) => i.articleId));
   const openArticles = new Set(holders.filter((item) => !item.checked).map((i) => i.articleId));
   const emptied = new Set(holders.filter((item) => !item.checked).map((item) => item.id));
@@ -256,10 +268,7 @@ export function recomputeEntryContributions(input: {
     if (pantry && !openArticles.has(planned.articleId)) continue;
     const contribution: ShoppingContribution = {
       id: input.newId(),
-      source:
-        existingSource && existingSource.kind === 'recipe'
-          ? existingSource
-          : { kind: 'recipe', recipeId: planned.recipeId, entryId, label: planned.label },
+      source: sourceOf(planned),
       ...(planned.count === undefined ? {} : { count: planned.count }),
       ...(planned.qty === undefined ? {} : { qty: planned.qty }),
       ...(planned.unit === undefined ? {} : { unit: planned.unit }),

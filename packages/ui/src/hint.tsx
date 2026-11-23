@@ -47,6 +47,21 @@ export function useSoftDisabled(
   });
 }
 
+/**
+ * The same as a callback ref, for places where a hook cannot run (an item in a list): sets or
+ * removes the attributes on every render. Native ignores them.
+ */
+export function ariaRef(attributes: Record<string, string | undefined>): RefCallback<HostInstance> {
+  return (node) => {
+    const element = node as unknown;
+    if (typeof Element === 'undefined' || !(element instanceof Element)) return;
+    for (const [name, value] of Object.entries(attributes)) {
+      if (value === undefined) element.removeAttribute(name);
+      else element.setAttribute(name, value);
+    }
+  };
+}
+
 /** One ref for a node that two owners need (e.g. the caller's and the hint's). */
 export function mergeRefs<T>(...refs: (Ref<T> | undefined)[]): RefCallback<T> {
   return (node) => {

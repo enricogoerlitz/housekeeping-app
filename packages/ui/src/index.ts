@@ -37,7 +37,7 @@ export {
   type PhotoProps,
 } from './display';
 export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from './choice';
-export { useSoftDisabled } from './hint';
+export { ariaRef, useSoftDisabled } from './hint';
 export { Sheet, toast, ToastHost, useToastClearance } from './overlay';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { useFinePointer, useHover } from './pointer';

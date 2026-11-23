@@ -933,7 +933,19 @@ describe('redeploy-web.yml (Task 8)', () => {
   test('AC-033: only by hand, with the tag as input, never next to a release', () => {
     assert.deepEqual(Object.keys(redeploy.doc.on), ['workflow_dispatch']);
     assert.equal(redeploy.doc.on.workflow_dispatch.inputs.tag.required, true);
-    assert.deepEqual(redeploy.doc.concurrency, { group: 'release', 'cancel-in-progress': false });
+    for (const id of ['web-ausliefern', 'pruefen']) {
+      assert.deepEqual(jobs[id].concurrency, { group: 'release', 'cancel-in-progress': false }, id);
+    }
+  });
+
+  test('review 0031, P-1: it refuses while a release waits or runs, instead of replacing it', () => {
+    // A workflow-level group would replace a waiting release run the moment this one is queued.
+    assert.equal(redeploy.doc.concurrency, undefined);
+    assert.deepEqual(jobs.version.permissions, { contents: 'read', actions: 'read' });
+    assert.match(
+      runs(jobs.version).join('\n'),
+      /gh run list --workflow release\.yml --json status --jq '\[\.\[\] \| select\(\.status != "completed"\)\] \| length'/,
+    );
   });
 
   test('AC-033: the tag is checked against the minimum version of production before anything is delivered', () => {

@@ -63,8 +63,10 @@ nach `develop` laufen dieselben Checks noch einmal auf dem Merge-Commit, je Comm
 Gruppe, ohne Abbruch (Spec 0031, AC-011). Ein roter Lauf dort heißt: Die Kombination zweier PRs ist
 kaputt, der nächste Fix geht per PR.
 
-Die E2E-Suiten (`pnpm e2e`, `pnpm e2e:dev`) laufen seit 22.11.2026 nicht mehr in der Pipeline, nur
-lokal: vor jeder Veröffentlichung einmal beide ausführen (Spec 0014, AC-006).
+Die E2E-Suiten (`pnpm e2e` in sechs Shards und `pnpm e2e:dev`) laufen nicht in Pull Requests,
+sondern als blockierender Job „e2e“ in `release.yml` und von Hand mit
+`gh workflow run e2e.yml --ref develop` (Spec 0031, REQ-002). Ein roter Shard verhindert Sicherung,
+Auslieferung und Tag.
 
 ```sh
 # Anlegen (einmal, Runbook B7)
@@ -109,8 +111,8 @@ gh pr create --base main --head develop --title "chore: Veröffentlichung"
 ```
 
 Nach grünen Checks mit **„Create a merge commit“** zusammenführen (auf `main` die einzige Art).
-`release.yml` läuft dann ohne weiteren Handgriff: Version und Änderungsliste, Web bauen und
-Supabase prüfen, Pakete prüfen, Sicherung, Supabase ausliefern, Web ausliefern, Prüfung von außen,
+`release.yml` läuft dann ohne weiteren Handgriff: Version und Änderungsliste, Web bauen,
+Supabase prüfen und e2e, Pakete prüfen, Sicherung, Supabase ausliefern, Web ausliefern, Prüfung von außen,
 Tag `v<Version>` und GitHub-Veröffentlichung. Liegen seit dem letzten Tag nur Dokumentation und
 Agent-Einstellungen vor, gibt es keine Veröffentlichung; von Hand erzwingen lässt sie sich mit
 `gh workflow run release.yml --ref main -f erzwingen=true` (etwa nach einer Wiederherstellung, siehe
@@ -154,11 +156,18 @@ fehlt `develop` die Historie von `main` und die nächste Release-PR hat Konflikt
 
 Liefert das Web-Paket einer früheren Veröffentlichung erneut aus, ohne Supabase zu ändern (z. B.
 nach einem versehentlich überschriebenen Stand). Abgelehnt wird ein Tag unter der Mindestversion
-der Produktion.
+der Produktion, und solange eine Veröffentlichung wartet oder läuft (dann danach erneut starten):
+GitHub hält je Gruppe nur einen wartenden Lauf und ersetzt ihn durch einen neueren. Aus demselben
+Grund ersetzt ein zweiter Push auf `main` einen noch wartenden ersten; dann nach dem Lauf
+`gh workflow run release.yml --ref main` starten, damit nichts liegen bleibt (Spec 0031, P-1).
 
 ```sh
+since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 gh workflow run redeploy-web.yml --ref main -f tag=v<Version>
-gh run watch --exit-status "$(gh run list --workflow redeploy-web.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+sleep 15
+id="$(gh run list --workflow redeploy-web.yml --event workflow_dispatch --limit 20 --json databaseId,createdAt \
+  --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+gh run watch "$id" --exit-status
 ```
 
 Das Paket enthält die Supabase-Adresse von damals; nach einem Wechsel des Supabase-Projekts hilft
@@ -238,18 +247,33 @@ vorige grün ist:
 2. **Sicherung von Hand.** Die letzte Sicherung der alten Produktion. Sie bleibt in Azure, bis der
    Wiederherstellungstest auf der neuen Basis grün ist (Spec 0028, Entscheidung 6):
 
+   Erst weiter, wenn **dieser** Lauf grün ist. `gh run list` direkt nach dem Start findet sonst
+   leicht den vorigen Lauf, und `gh run watch` ohne `--exit-status` meldet auch Rot als Erfolg:
+
    ```sh
+   since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
    gh workflow run backup.yml --ref main
-   gh run watch "$(gh run list --workflow backup.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+   sleep 15
+   id="$(gh run list --workflow backup.yml --event workflow_dispatch --limit 20 --json databaseId,createdAt \
+     --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+   gh run watch "$id" --exit-status
    ```
 
 3. **Release-PR grün.** Vorher `develop` mit der vollen e2e-Suite prüfen, dann die Release-PR öffnen,
    aber **noch nicht zusammenführen**:
 
    ```sh
+   since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
    gh workflow run e2e.yml --ref develop
+   sleep 15
+   id="$(gh run list --workflow e2e.yml --event workflow_dispatch --limit 20 --json databaseId,createdAt \
+     --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+   gh run watch "$id" --exit-status
    gh pr create --base main --head develop --title "chore: Veröffentlichung"
    ```
+
+   Schritt 4 erst nach einem grünen e2e-Lauf: Ein roter e2e-Job in `release.yml` hielte die
+   Produktion sonst nach dem Zurücksetzen ohne Schema fest.
 
 4. **Produktion zurücksetzen.** Mit dem Skript aus Spec 0028, Schritt 6. Es läuft nur von Hand, nie
    aus einem Workflow (`conventions.mjs` prüft das, Spec 0031, AC-019). Es nimmt die Projektkennung
@@ -413,8 +437,12 @@ wie jede andere (Sicherung, Migrationen, Konfiguration, Functions, Web, Prüfung
 nächste Version:
 
 ```sh
+since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 gh workflow run release.yml --ref main -f erzwingen=true
-gh run watch --exit-status "$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+sleep 15
+id="$(gh run list --workflow release.yml --event workflow_dispatch --limit 20 --json databaseId,createdAt \
+  --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId // empty")"
+gh run watch "$id" --exit-status
 ```
 
 **7. Prüfen und aufräumen:** `verify.mjs` läuft mit der Veröffentlichung; zusätzlich mit beiden

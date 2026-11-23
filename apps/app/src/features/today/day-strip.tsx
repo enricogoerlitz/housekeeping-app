@@ -23,6 +23,8 @@ import {
   type MealPlanEntry,
 } from '@housekeeping/core';
 import {
+  toast,
+  ariaRef,
   Badge,
   Icon,
   KindDot,
@@ -36,7 +38,7 @@ import { Pressable, View } from 'react-native';
 import { stripeA11y, stripeLine, useStripeColors } from '@/features/calendar/calendar-parts';
 import { EntryPicture } from '@/features/meal-plan/entry-picture';
 import { KIND_LABELS } from '@/features/meal-plan/kind-badges';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
 import { plannedTitle } from './planned-title';
 
@@ -266,9 +268,16 @@ function DayTile(props: DayProps) {
           accessibilityRole="button"
           accessibilityLabel={`Für ${dayName(date, props.today)} hinzufügen`}
           accessibilityHint={online.hint}
-          aria-disabled={online.disabled}
-          disabled={online.disabled}
-          onPress={() => props.onAdd(date)}
+          // Greyed out offline but still pressable, so a press says why (spec 0031, review U-2).
+          ref={ariaRef({
+            'aria-description': online.hint,
+            'aria-disabled': String(online.disabled),
+          })}
+          onPress={
+            online.disabled
+              ? () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT })
+              : () => props.onAdd(date)
+          }
           style={(state) => [
             {
               position: 'absolute',

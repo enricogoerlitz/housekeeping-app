@@ -487,9 +487,8 @@ describe('TabBar', () => {
     expect(screen.getByTestId('tab-today')).toBeTruthy();
   });
 
-  // Bug: react-native-web ignores `accessibilityState`, so on the web screen readers do not hear
-  // which tab is active (month-calendar.tsx sets `aria-selected` for this reason).
-  it.fails('BUG: the active tab is announced as selected on the web', () => {
+  // react-native-web ignores `accessibilityState`; the tab sets `aria-selected` itself.
+  it('the active tab is announced as selected on the web', () => {
     render(
       <ThemeProvider themeId="frisch" mode="light">
         <TabBar items={items} activeKey="recipes" onSelect={() => undefined} />
@@ -566,8 +565,8 @@ describe('Sidebar (spec 0005, REQ-010)', () => {
     expect(screen.getByText('Profil')).toBeTruthy();
   });
 
-  // Same bug as in the TabBar: `accessibilityState` does not reach the browser.
-  it.fails('BUG: the active area is announced as selected on the web', () => {
+  // As in the TabBar: `aria-selected`, since `accessibilityState` does not reach the browser.
+  it('the active area is announced as selected on the web', () => {
     render(
       <Sidebar brand="WG" brandLabel="WG" items={items} activeKey="today" onSelect={vi.fn()} />,
     );

@@ -32,6 +32,7 @@ import { haptic } from './haptics';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
+import { ariaRef, mergeRefs } from './hint';
 
 export interface ReorderListItem {
   key: string;
@@ -382,6 +383,10 @@ function ReorderRow(props: ReorderRowProps) {
               accessibilityLabel={labels.open?.(item.name) ?? item.name}
               accessibilityHint={props.disabled ? props.disabledHint : undefined}
               accessibilityState={{ disabled: !!props.disabled }}
+              // react-native-web drops accessibilityHint.
+              ref={ariaRef({
+                'aria-description': props.disabled ? props.disabledHint : undefined,
+              })}
               disabled={props.disabled}
               onPress={props.onPress}
               onFocus={(event) => setPressFocused(keyboardFocus(event))}
@@ -415,13 +420,18 @@ function ReorderRow(props: ReorderRowProps) {
         leading={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <View
-              ref={registerHandle}
+              ref={mergeRefs(
+                registerHandle,
+                ariaRef({ 'aria-description': props.disabled ? props.disabledHint : undefined }),
+              )}
               {...responder.panHandlers}
               testID={id('handle')}
               accessibilityRole="button"
               accessibilityLabel={labels.handle(item.name)}
               accessibilityHint={props.disabled ? props.disabledHint : undefined}
               accessibilityState={{ disabled: !!props.disabled }}
+              // react-native-web ignores accessibilityState.
+              aria-disabled={!!props.disabled}
               focusable={!props.disabled}
               onFocus={(event) => setFocused(keyboardFocus(event))}
               onBlur={() => setFocused(false)}

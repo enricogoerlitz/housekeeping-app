@@ -187,7 +187,7 @@ und Belege stehen in `plan.md` unter „Entscheidungen beim Bauen“ (Nummern in
 
 | Kriterium oder Stelle                         | Bisher                                                       | Jetzt                                                                                                                                                                                                 |
 | --------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC-006, Entscheidung 28                       | E2E in der Pipeline, Pflicht-Check                           | seit Spec 0031: Job „e2e“ in `release.yml` (blockierend, vier Shards, von Hand startbar), nicht in PRs                                                                                                |
+| AC-006, Entscheidung 28                       | E2E in der Pipeline, Pflicht-Check                           | seit Spec 0031: Job „e2e“ in `release.yml` (blockierend, sechs Shards, von Hand startbar), nicht in PRs                                                                                               |
 | AC-060, Tabelle „GitHub-Umgebungen“, ADR-0015 | je Umgebung ein eingeschränktes Supabase-Token               | ein Token mit „Full access“ für beide Organisationen, 90 Tage, in `preview` und `production`; Risiko bewusst akzeptiert (Entscheidung Enrico)                                                         |
 | „kein Datenbank-Passwort“ (Konzept, Runbook)  | kein Datenbank-Passwort in `preview` und `production`        | Secret `SUPABASE_POOLER_URL` mit Passwort je Umgebung: die Runner haben kein IPv6, Datenbank-Befehle laufen über den Session-Pooler (10)                                                              |
 | AC-045                                        | nur `ALLOWED_ORIGINS`                                        | zusätzlich `VAPID_SUBJECT` mit der Web-Adresse der Umgebung, sonst überschreibt der feste Wert der `config.toml` (`https://localhost`) den der Produktion (11)                                        |
@@ -417,7 +417,7 @@ Und         dieselben Checks laufen nach jedem Zusammenführen noch einmal auf �
 ```
 
 _Nachtrag (Spec 0031, REQ-002, Entscheidung 4, 23.11.2026):_ PRs bleiben ohne e2e. Die volle Suite
-(`pnpm e2e` in vier Shards und `pnpm e2e:dev`) läuft jetzt als Job „e2e“ in `release.yml`
+(`pnpm e2e` in sechs Shards und `pnpm e2e:dev`) läuft jetzt als Job „e2e“ in `release.yml`
 (`.github/workflows/e2e.yml`), vor „Sicherung“, „Supabase ausliefern“ und „Web ausliefern“, gegen
 einen lokalen Supabase-Stack im Runner und ohne Secrets. Von Hand gestartet prüft er einen Zweig,
 z. B. `develop` vor der Release-PR.

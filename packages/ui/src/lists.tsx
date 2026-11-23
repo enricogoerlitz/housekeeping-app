@@ -5,6 +5,7 @@ import { Checkbox, CheckboxMark, IconButton, keyboardFocusRing } from './control
 import { useHover } from './pointer';
 import { Surface, Text } from './primitives';
 import { ToneContext, useTheme } from './theme-context';
+import { ariaRef } from './hint';
 
 export interface SectionProps {
   title?: string;
@@ -257,6 +258,7 @@ export function ListRow(props: ListRowProps) {
               ? { disabled: !!props.disabled, checked: props.checked }
               : { disabled: !!props.disabled }
           }
+          ref={ariaRef({ 'aria-description': props.hint })}
           aria-checked={checkable ? props.checked : undefined}
           disabled={props.disabled}
           onPress={props.onPress}
@@ -300,6 +302,9 @@ export function ListRow(props: ListRowProps) {
             ? { disabled: !!props.disabled, checked: props.checked }
             : { disabled: !!props.disabled, selected: !!props.selected }
         }
+        // react-native-web drops accessibilityHint and accessibilityState.
+        ref={ariaRef({ 'aria-description': props.hint })}
+        aria-selected={checkable ? undefined : !!props.selected}
         aria-checked={checkable ? props.checked : undefined}
         disabled={props.disabled}
         onPress={onPress}

@@ -211,6 +211,13 @@ async function openMenu(trigger: HTMLElement) {
 }
 
 describe('Menu (spec 0010, spec 0019 REQ-004)', () => {
+  it('review 0031: a greyed-out option says why on the web', async () => {
+    const { trigger } = renderSort();
+    const menu = await openMenu(trigger);
+    const rating = within(menu).getByRole('menuitemradio', { name: 'Bewertung' });
+    expect(rating.getAttribute('aria-description')).toBe('Noch keine Bewertungen');
+  });
+
   it('the trigger is a button that says it opens a closed menu', () => {
     const { trigger } = renderSort();
     expect(trigger.getAttribute('role')).toBe('button');
