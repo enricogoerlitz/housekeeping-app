@@ -1,41 +1,36 @@
 // The sync engine (spec 0003) keeps a local cache of the user's households, pulls
 // deltas (docs/architecture/sync.md), shows `server rows ⊕ store queue ⊕ pending changesets`
 // (ADR-0011) and sends writes through one FIFO outbox. Merge and sync rules are core functions;
-// this module only does the I/O and the bookkeeping around them.
+// this module builds the visible state and runs the engine, its parts live in engine-pull.ts,
+// engine-queue.ts (the outbox), engine-store-queue.ts and engine-persistence.ts.
 import {
-  applyMemberships,
-  applyPull,
   applyQueue,
-  createSyncCache,
-  dropSettled,
-  enqueue,
-  needsFullLoad,
-  packBatch,
-  parseStoredQueue,
-  pullRequestFor,
-  rejectFrom,
-  remapQueue,
-  requeue,
   unsentChangeCount,
   visibleTables,
-  type Changeset,
-  type HouseholdCache,
-  type PackEntry,
   type Row,
-  type RowOp,
   type SmallRow,
-  type StoreQueueEntry,
   type SyncCache,
-  type SyncRow,
   type TableRows,
 } from '@housekeeping/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useSyncExternalStore } from 'react';
 
-import { appVersionGate, type VersionGate } from './app-version';
-import { diffHousehold, isReflected, sendable, withoutPassedReminders } from './changes';
+import { appVersionGate } from './app-version';
 import { rowsToHousehold, rowsToMembers } from './db/mapping';
-import { dropMediaOutside } from './media-cache';
+import {
+  isOffline,
+  report,
+  unsent,
+  writesDisabled,
+  type EngineContext,
+  type EngineOptions,
+  type Environment,
+  type SyncState,
+} from './engine-context';
+import { load, rememberActiveHousehold, rememberShoppingStore } from './engine-persistence';
+import { requestPull, updateChannels } from './engine-pull';
+import { drain, recordChange, undoable } from './engine-queue';
+import { enqueueStoreAction, pendingItemIds } from './engine-store-queue';
 import type { Storage } from './storage';
 import {
   attachBackend,
@@ -45,20 +40,17 @@ import {
   publishState,
   type AppState,
   type BackendHooks,
-  type CommitOutcome,
-  type CommitSpec,
   type HouseholdData,
-  type StoreAction,
 } from './store';
-import {
-  isNetworkFailure,
-  isTransient,
-  switchable,
-  TransportError,
-  type AddEntry,
-  type Transport,
-} from './transport';
+import { switchable, TransportError, type Transport } from './transport';
 import { createSupabaseTransport, fromSupabaseClient } from './transport-supabase';
+
+export {
+  WRITE_REJECTED_MESSAGE,
+  type EngineOptions,
+  type Environment,
+  type SyncState,
+} from './engine-context';
 
 /**
  * Bump when the cached shape changes: the device then drops its cache and loads again (AC-018).
@@ -67,16 +59,6 @@ import { createSupabaseTransport, fromSupabaseClient } from './transport-supabas
 export const CACHE_VERSION = 17;
 /** Retention of `deleted_records` on the server (pg_cron). */
 const RETENTION_DAYS = 30;
-export const WRITE_REJECTED_MESSAGE = 'Hat nicht geklappt – bitte noch einmal versuchen';
-
-const HISTORY_LIMIT = 100;
-
-/** Signals from the platform: network and app visibility. */
-export interface Environment {
-  isOnline(): boolean;
-  isVisible(): boolean;
-  subscribe(listener: { online?(): void; offline?(): void; foreground?(): void }): () => void;
-}
 
 /** Browser events where they exist; elsewhere always online and visible. */
 export function browserEnvironment(): Environment {
@@ -126,38 +108,6 @@ export function berlinToday(now: Date): string {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-export interface SyncState {
-  status: 'idle' | 'syncing' | 'offline' | 'error';
-  /** `serverTime` of the last pull applied. */
-  lastSyncedAt?: string;
-  /** At least one household is in the cache, so the screens can show data. */
-  ready: boolean;
-}
-
-export interface EngineOptions {
-  transport: Transport;
-  storage: Storage;
-  /** The signed-in user; the cache is bound to it (AC-003). */
-  userId: string;
-  environment?: Environment;
-  cacheVersion?: number;
-  retentionDays?: number;
-  realtimeDebounceMs?: number;
-  fallbackIntervalMs?: number;
-  retryDelaysMs?: readonly number[];
-  onStateChange?: (state: AppState) => void;
-  onSyncStateChange?: (state: SyncState) => void;
-  onWriteRejected?: (message: string) => void;
-  /** The small tables (profiles, households, memberships, invitations) changed. */
-  onSmallChange?: (small: SyncCache['small']) => void;
-  /** Where the app keeps the household being shown (switchHousehold changes it in the store). */
-  readActiveHouseholdId?: () => string | undefined;
-  /** A pull came back without the user's own profile: the account no longer exists. */
-  onAccountMissing?: () => void;
-  /** Below the minimum app version: no writes, the store queue waits (spec 0014, AC-025). */
-  versionGate?: VersionGate;
-}
-
 export interface Engine extends BackendHooks {
   /** No connection (or the simulated one); unlike `isOffline`, not the version lock. */
   isNetworkOffline(): boolean;
@@ -182,98 +132,7 @@ export interface Engine extends BackendHooks {
   syncNow(): Promise<boolean>;
 }
 
-/** A changeset waiting in the outbox, and what is needed to undo it. */
-interface OutboxCommit {
-  seq: number;
-  changeset: Changeset;
-  send: (transport: Transport) => Promise<unknown>;
-  inverse?: {
-    ops: RowOp[];
-    send: (transport: Transport) => Promise<unknown>;
-    /** Diff path: the operations `send` sends, so undo can drop passed reminders (spec 0017). */
-    sendOps?: RowOp[];
-  };
-  response?: unknown;
-  /** The answer got lost: the next pull shows whether it arrived. */
-  unknownOutcome?: boolean;
-  rejected?: boolean;
-  /** Told once whether the server took the change (commitConfirmed). */
-  onOutcome?: CommitOutcome;
-  rejectedMessage?: (error: unknown) => string | undefined;
-}
-
-/** Tells the waiting caller once how its change ended. */
-function report(entry: OutboxCommit, error?: unknown): void {
-  const onOutcome = entry.onOutcome;
-  entry.onOutcome = undefined;
-  onOutcome?.(error);
-}
-
-interface PersistedMeta {
-  version: number;
-  userId: string;
-  householdIds: string[];
-}
-
-function isMeta(value: unknown): value is PersistedMeta {
-  if (typeof value !== 'object' || value === null) return false;
-  const meta = value as Record<string, unknown>;
-  return (
-    typeof meta.version === 'number' &&
-    typeof meta.userId === 'string' &&
-    Array.isArray(meta.householdIds)
-  );
-}
-
 const EMPTY_SMALL: SyncCache['small'] = {};
-
-const householdKey = (householdId: string) => `household:${householdId}`;
-
-const smallKey = (row: SmallRow) =>
-  typeof row.id === 'string' ? row.id : `${String(row.household_id)}:${String(row.profile_id)}`;
-
-/**
- * Rows the safety window delivers again are new objects with the same content. Keeping the cached
- * object for the same version (`updated_at`) keeps domain objects identical, so screens only
- * re-render for real changes.
- */
-function keepIdentity(previous: SyncCache, next: SyncCache): SyncCache {
-  const small: SyncCache['small'] = {};
-  for (const [table, rows] of Object.entries(next.small)) {
-    const old = new Map((previous.small[table] ?? []).map((row) => [smallKey(row), row]));
-    const kept = rows.map((row) => {
-      const cached = old.get(smallKey(row));
-      return cached && cached.updated_at === row.updated_at ? cached : row;
-    });
-    const before = previous.small[table];
-    small[table] =
-      before && before.length === kept.length && kept.every((row, index) => row === before[index])
-        ? before
-        : kept;
-  }
-  const households: SyncCache['households'] = {};
-  for (const [householdId, household] of Object.entries(next.households)) {
-    const old = previous.households[householdId];
-    if (!old || old === household) {
-      households[householdId] = household;
-      continue;
-    }
-    const tables: HouseholdCache['tables'] = {};
-    for (const [table, rows] of Object.entries(household.tables)) {
-      const cachedRows = old.tables[table] ?? {};
-      let changed = Object.keys(cachedRows).length !== Object.keys(rows).length;
-      const kept: Record<string, SyncRow> = {};
-      for (const [id, row] of Object.entries(rows)) {
-        const cached = cachedRows[id];
-        kept[id] = cached && cached.updated_at === row.updated_at ? cached : row;
-        if (kept[id] !== cached) changed = true;
-      }
-      tables[table] = changed ? kept : cachedRows;
-    }
-    households[householdId] = { ...household, tables };
-  }
-  return { ...next, small, households };
-}
 
 /**
  * The household shown when none is chosen: the one the user joined first (ties: by name), so the
@@ -301,145 +160,92 @@ function firstJoined(
   )[0];
 }
 
-/** The stored store choices: household id → store id or null; anything else is dropped. */
-function storeChoicesFrom(value: unknown): Record<string, string | null> {
-  if (typeof value !== 'object' || value === null) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string | null] =>
-        entry[1] === null || typeof entry[1] === 'string',
-    ),
-  );
-}
-
 function byId(rows: readonly SmallRow[]): Record<string, Row> {
   const result: Record<string, Row> = {};
   for (const row of rows) if (typeof row.id === 'string') result[row.id] = row as Row;
   return result;
 }
 
-function toAddEntry(entry: Extract<StoreQueueEntry, { kind: 'add' }>): AddEntry {
-  const first = entry.contributions[0];
-  return {
-    client_item_id: entry.clientItemId,
-    client_article_id: entry.clientArticleId,
-    article_name: first?.articleName ?? '',
-    name_key: first?.nameKey ?? '',
-    contributions: entry.contributions.map((contribution) => ({
-      id: contribution.clientContributionId,
-      source: { kind: 'manual' },
-      count: contribution.count ?? null,
-      qty: contribution.qty ?? null,
-      unit: contribution.unit ?? null,
-      note: contribution.note ?? null,
-    })),
-  };
-}
-
 export function createEngine(options: EngineOptions): Engine {
   const { storage, userId } = options;
-  const transport = switchable(options.transport);
   const environment = options.environment ?? browserEnvironment();
   const versionGate = options.versionGate ?? appVersionGate;
-  const cacheVersion = options.cacheVersion ?? CACHE_VERSION;
-  const retentionDays = options.retentionDays ?? RETENTION_DAYS;
-  const debounceMs = options.realtimeDebounceMs ?? 300;
-  const intervalMs = options.fallbackIntervalMs ?? 60_000;
-  const retryDelays = options.retryDelaysMs ?? [1000, 2000, 5000, 10_000, 30_000];
 
-  let cache: SyncCache | undefined;
-  const persisted = new Map<string, HouseholdCache>();
-  let loaded = false;
-  /** The household last chosen on this device (stored with the cache, so bound to the user). */
-  let chosenHouseholdId: string | undefined;
-  /** The store last chosen in "Einkaufen" per household (spec 0006), stored like the household. */
-  let storeChoices: Record<string, string | null> = {};
-
-  // Store queue: waiting entries, the ones being sent (one, or a run of pack entries), and
-  // answered ones shown until the next pull.
-  let queue: StoreQueueEntry[] = [];
-  let inFlight: StoreQueueEntry[] = [];
-  let settling: { entry: StoreQueueEntry; confirmedAt: number }[] = [];
-  const entrySeq = new WeakMap<StoreQueueEntry, number>();
-  const knownCheckSeq = new Map<string, number>();
-  /** pack_seq of Packstücke as the server answered, newer than the cache until the next pull. */
-  const knownPackSeq = new Map<string, number>();
-
-  let commits: OutboxCommit[] = [];
-  let history: OutboxCommit[] = [];
-  let seq = 0;
-  let startedGeneration = 0;
-  let appliedGeneration = 0;
-
-  let networkFailed = false;
-  let lastPullFailed = false;
-  let lastSyncedAt: string | undefined;
-  let appState: AppState | undefined;
   let publishedSmall: SyncCache['small'] | undefined;
   let syncState: SyncState = { status: 'idle', ready: false };
-
-  let pullPromise: Promise<void> | undefined;
-  let pullAgain = false;
-  let drainPromise: Promise<void> | undefined;
-  let drainAgain = false;
-  let drainScheduled = false;
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  let retryAttempt = 0;
-  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  let intervalTimer: ReturnType<typeof setInterval> | undefined;
   let unsubscribeEnvironment: (() => void) | undefined;
   let unsubscribeVersionGate: (() => void) | undefined;
-  const channels = new Map<string, () => void>();
-  let running = false;
-  /** Bumped by a reset; work started before it must not write its result. */
-  let epoch = 0;
-  /** A reset engine writes nothing to the device any more (the storage belongs to the next start). */
-  let cleared = false;
 
-  const unsent = () => (inFlight.length > 0 ? [...inFlight, ...queue] : queue);
-  const isOffline = () => transport.isBlocked() || !environment.isOnline() || networkFailed;
-  const canReachServer = () => !transport.isBlocked() && environment.isOnline();
-  /** Commands are refused offline and below the minimum app version (spec 0014, AC-025). */
-  const writesDisabled = () => isOffline() || versionGate.writesLocked();
+  const ctx: EngineContext = {
+    options,
+    storage,
+    userId,
+    transport: switchable(options.transport),
+    environment,
+    versionGate,
+    cacheVersion: options.cacheVersion ?? CACHE_VERSION,
+    retentionDays: options.retentionDays ?? RETENTION_DAYS,
+    debounceMs: options.realtimeDebounceMs ?? 300,
+    intervalMs: options.fallbackIntervalMs ?? 60_000,
+    retryDelays: options.retryDelaysMs ?? [1000, 2000, 5000, 10_000, 30_000],
+    cache: undefined,
+    persisted: new Map(),
+    loaded: false,
+    chosenHouseholdId: undefined,
+    storeChoices: {},
+    queue: [],
+    inFlight: [],
+    settling: [],
+    entrySeq: new WeakMap(),
+    knownCheckSeq: new Map(),
+    knownPackSeq: new Map(),
+    commits: [],
+    history: [],
+    seq: 0,
+    startedGeneration: 0,
+    appliedGeneration: 0,
+    networkFailed: false,
+    lastPullFailed: false,
+    lastSyncedAt: undefined,
+    appState: undefined,
+    pullPromise: undefined,
+    pullAgain: false,
+    drainPromise: undefined,
+    drainAgain: false,
+    drainScheduled: false,
+    retryTimer: undefined,
+    retryAttempt: 0,
+    debounceTimer: undefined,
+    intervalTimer: undefined,
+    channels: new Map(),
+    running: false,
+    epoch: 0,
+    cleared: false,
+    rebuild,
+    baseTables,
+    publishSyncState,
+    requestPull: () => requestPull(ctx),
+    drain: () => drain(ctx),
+  };
 
   // ---------- visible state ----------
 
-  function withSeq(entry: StoreQueueEntry, from: StoreQueueEntry): StoreQueueEntry {
-    const value = entrySeq.get(from);
-    if (value !== undefined && !entrySeq.has(entry)) entrySeq.set(entry, value);
-    return entry;
-  }
-
-  /** Items with a store action that has not been answered yet (the small dot). */
-  function pendingItemIds(base: TableRows, householdId: string): Set<string> {
-    const after = applyQueue(base, unsent(), householdId);
-    const ids = new Set<string>();
-    if (after === base) return ids;
-    for (const [id, row] of Object.entries(after.shopping_items ?? {})) {
-      if (base.shopping_items?.[id] !== row) ids.add(id);
-    }
-    for (const [id, row] of Object.entries(after.shopping_contributions ?? {})) {
-      if (base.shopping_contributions?.[id] !== row) ids.add(String(row.item_id));
-    }
-    return ids;
-  }
-
   function baseTables(householdId: string): TableRows | undefined {
-    const household = cache?.households[householdId];
-    if (!cache || !household?.pulledAt) return undefined;
-    return { ...household.tables, households: byId(cache.small.households ?? []) };
+    const household = ctx.cache?.households[householdId];
+    if (!ctx.cache || !household?.pulledAt) return undefined;
+    return { ...household.tables, households: byId(ctx.cache.small.households ?? []) };
   }
 
   function computeSyncState(): SyncState {
-    const status = isOffline()
+    const status = isOffline(ctx)
       ? 'offline'
-      : pullPromise
+      : ctx.pullPromise
         ? 'syncing'
-        : lastPullFailed
+        : ctx.lastPullFailed
           ? 'error'
           : 'idle';
-    const ready = Object.keys(appState?.households ?? {}).length > 0;
-    return { status, lastSyncedAt, ready };
+    const ready = Object.keys(ctx.appState?.households ?? {}).length > 0;
+    return { status, lastSyncedAt: ctx.lastSyncedAt, ready };
   }
 
   function publishSyncState(): void {
@@ -456,7 +262,7 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function publishSmall(): void {
-    const small = cache?.small ?? EMPTY_SMALL;
+    const small = ctx.cache?.small ?? EMPTY_SMALL;
     if (small === publishedSmall) return;
     publishedSmall = small;
     options.onSmallChange?.(small);
@@ -464,11 +270,12 @@ export function createEngine(options: EngineOptions): Engine {
 
   function rebuild(): void {
     publishSmall();
-    const previous = appState;
+    const { cache } = ctx;
+    const previous = ctx.appState;
     const households: Record<string, HouseholdData> = {};
     if (cache) {
-      const overlay = [...settling.map((settled) => settled.entry), ...unsent()];
-      const changesets = commits.map((entry) => entry.changeset);
+      const overlay = [...ctx.settling.map((settled) => settled.entry), ...unsent(ctx)];
+      const changesets = ctx.commits.map((entry) => entry.changeset);
       for (const householdId of cache.householdIds) {
         const base = baseTables(householdId);
         if (!base?.households?.[householdId]) continue;
@@ -479,12 +286,12 @@ export function createEngine(options: EngineOptions): Engine {
             : { ...cache.small, households: Object.values(tables.households ?? {}) };
         const confirmed = applyQueue(
           base,
-          settling.map((settled) => settled.entry),
+          ctx.settling.map((settled) => settled.entry),
           householdId,
         );
         households[householdId] = rowsToHousehold(tables, small, householdId, {
           previous: previous?.households[householdId],
-          pendingItemIds: pendingItemIds(confirmed, householdId),
+          pendingItemIds: pendingItemIds(ctx, confirmed, householdId),
           memberId: userId,
         });
       }
@@ -493,7 +300,7 @@ export function createEngine(options: EngineOptions): Engine {
     const wanted = [
       options.readActiveHouseholdId?.(),
       previous?.activeHouseholdId,
-      chosenHouseholdId,
+      ctx.chosenHouseholdId,
     ].find((id) => id !== undefined && households[id] !== undefined);
     const activeHouseholdId = wanted ?? firstJoined(cache?.small, userId, households) ?? '';
     const sameHouseholds =
@@ -509,8 +316,8 @@ export function createEngine(options: EngineOptions): Engine {
       currentMemberId: userId,
       activeHouseholdId,
       households: sameHouseholds && previous ? previous.households : households,
-      offline: writesDisabled(),
-      storeChoices,
+      offline: writesDisabled(ctx),
+      storeChoices: ctx.storeChoices,
     };
     if (
       previous &&
@@ -519,642 +326,60 @@ export function createEngine(options: EngineOptions): Engine {
       publishSyncState();
       return;
     }
-    appState = next;
+    ctx.appState = next;
     options.onStateChange?.(next);
     publishSyncState();
-  }
-
-  /** The store holds the command's own result; the engine's view (same rows) replaces it. */
-  function republish(): void {
-    rebuild();
-    if (appState) options.onStateChange?.(appState);
-  }
-
-  // ---------- storage ----------
-
-  function meta(): PersistedMeta {
-    return { version: cacheVersion, userId, householdIds: cache?.householdIds ?? [] };
-  }
-
-  async function persistQueue(): Promise<void> {
-    if (cleared) return;
-    await storage.setMany([
-      ['meta', meta()],
-      ['queue', unsent()],
-    ]);
-  }
-
-  /** One sync step is written in one transaction: meta, small tables, changed households, queue. */
-  async function persistCache(next: SyncCache): Promise<void> {
-    const entries: [string, unknown][] = [
-      ['meta', meta()],
-      ['small', next.small],
-      ['queue', unsent()],
-    ];
-    for (const householdId of next.householdIds) {
-      const household = next.households[householdId];
-      if (household && persisted.get(householdId) !== household) {
-        entries.push([householdKey(householdId), household]);
-        persisted.set(householdId, household);
-      }
-    }
-    const removed = [...persisted.keys()].filter((householdId) => !next.households[householdId]);
-    for (const householdId of removed) persisted.delete(householdId);
-    // A household the user lost leaves nothing on the device, also not as the stored choice.
-    // Lost means no longer a member: a household not loaded yet (first pull) is not lost.
-    const member = (householdId: string) => next.householdIds.includes(householdId);
-    const lostChoice = chosenHouseholdId !== undefined && !member(chosenHouseholdId);
-    if (lostChoice) chosenHouseholdId = undefined;
-    if (Object.keys(storeChoices).some((householdId) => !member(householdId))) {
-      storeChoices = Object.fromEntries(
-        Object.entries(storeChoices).filter(([householdId]) => member(householdId)),
-      );
-      entries.push(['store-choices', storeChoices]);
-    }
-    await storage.setMany(entries);
-    const gone = removed.map(householdKey);
-    if (lostChoice) gone.push('active');
-    if (gone.length > 0) await storage.del(gone);
-    // Its photos go with it (photos-remote.ts keeps them next to the cache).
-    if (removed.length > 0) await dropMediaOutside(storage, new Set(Object.keys(next.households)));
-  }
-
-  async function load(): Promise<void> {
-    if (loaded) return;
-    loaded = true;
-    const stored = await storage.get('meta');
-    if (!isMeta(stored) || stored.userId !== userId) {
-      // Another user or nothing yet: start empty (AC-003).
-      await storage.clear();
-    } else if (stored.version !== cacheVersion) {
-      // Another cache version: the cache is loaded again (AC-018), but what waits to be sent and
-      // what was chosen on this device is no cache and stays.
-      await readDeviceState();
-      await storage.clear();
-      const kept: [string, unknown][] = [
-        ['meta', meta()],
-        ['queue', queue],
-        ['store-choices', storeChoices],
-      ];
-      if (chosenHouseholdId !== undefined) kept.push(['active', chosenHouseholdId]);
-      await storage.setMany(kept);
-    } else {
-      const small = (await storage.get('small')) as SyncCache['small'] | undefined;
-      const households: SyncCache['households'] = {};
-      for (const householdId of stored.householdIds) {
-        // Written by this module under the same cache version.
-        const household = (await storage.get(householdKey(householdId))) as
-          HouseholdCache | undefined;
-        if (household) {
-          households[householdId] = household;
-          persisted.set(householdId, household);
-        }
-      }
-      cache = {
-        version: cacheVersion,
-        householdIds: stored.householdIds,
-        small: small ?? {},
-        households,
-      };
-      await readDeviceState();
-    }
-    rebuild();
-  }
-
-  /** Reads store queue, household and store choices of this device into the engine. */
-  async function readDeviceState(): Promise<void> {
-    // Kept across cache versions and app updates, so an entry may no longer parse: it is dropped,
-    // and the user is told that an action got lost.
-    const { entries, dropped } = parseStoredQueue(await storage.get('queue'));
-    queue = entries;
-    if (dropped > 0) {
-      await storage.setMany([['queue', queue]]);
-      options.onWriteRejected?.(WRITE_REJECTED_MESSAGE);
-    }
-    const chosen = await storage.get('active');
-    chosenHouseholdId = typeof chosen === 'string' ? chosen : undefined;
-    storeChoices = storeChoicesFrom(await storage.get('store-choices'));
-    for (const entry of queue) entrySeq.set(entry, ++seq);
-  }
-
-  // ---------- pull ----------
-
-  function updateChannels(): void {
-    const wanted = new Set(running ? (cache?.householdIds ?? []) : []);
-    for (const [householdId, unsubscribe] of channels) {
-      if (!wanted.has(householdId)) {
-        unsubscribe();
-        channels.delete(householdId);
-      }
-    }
-    for (const householdId of wanted) {
-      if (!channels.has(householdId)) {
-        channels.set(householdId, transport.subscribe(householdId, onSignal));
-      }
-    }
-  }
-
-  function onSignal(): void {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      debounceTimer = undefined;
-      void requestPull();
-    }, debounceMs);
-  }
-
-  /** Drops what the base now contains; a write whose answer got lost counts only if it arrived. */
-  function settle(): void {
-    const kept = new Set(
-      dropSettled(
-        commits.map((entry) => entry.changeset),
-        appliedGeneration,
-      ).map((changeset) => changeset.id),
-    );
-    let lost = false;
-    for (const entry of commits) {
-      if (kept.has(entry.changeset.id) || !entry.unknownOutcome) continue;
-      const base = baseTables(entry.changeset.householdId);
-      if (!base || !isReflected(base, entry.changeset.ops)) {
-        entry.rejected = true;
-        lost = true;
-        report(entry, new TransportError('permanent', 'write_lost'));
-      } else {
-        report(entry);
-      }
-    }
-    commits = commits.filter((entry) => kept.has(entry.changeset.id));
-    settling = settling.filter((settled) => settled.confirmedAt >= appliedGeneration);
-    if (lost) options.onWriteRejected?.(WRITE_REJECTED_MESSAGE);
-  }
-
-  async function pullOnce(): Promise<void> {
-    if (!canReachServer()) return;
-    const at = epoch;
-    const generation = ++startedGeneration;
-    const base = cache && cache.version === cacheVersion ? cache : createSyncCache(cacheVersion);
-    let request = pullRequestFor(base);
-    let result = await transport.syncPull(request);
-    const stale = needsFullLoad(base, result.serverTime, {
-      retentionDays,
-      cacheVersion,
-    }).householdIds.filter((householdId) => request.households[householdId]?.full === false);
-    if (stale.length > 0) {
-      // Longer offline than the deletion log is kept: load these households in full (AC-017).
-      request = pullRequestFor(base, stale);
-      result = await transport.syncPull(request);
-    }
-    if (at !== epoch) return;
-    if (!(result.small.profiles ?? []).some((row) => row.id === userId)) {
-      // Every pull carries the own profile; without it the account was deleted (e.g. db reset).
-      options.onAccountMissing?.();
-      return;
-    }
-
-    const memberOf = (result.small.household_members ?? [])
-      .filter((row) => row.profile_id === userId)
-      .map((row) => String(row.household_id));
-    const next = keepIdentity(base, applyMemberships(applyPull(base, result), memberOf));
-    cache = next;
-    appliedGeneration = generation;
-    lastSyncedAt = result.serverTime;
-    networkFailed = false;
-    lastPullFailed = false;
-    settle();
-    rebuild();
-    updateChannels();
-    await persistCache(next);
-    // A household joined since the last pull is loaded in full right away (first start: 2 trips).
-    if (memberOf.some((householdId) => !next.households[householdId]?.pulledAt)) pullAgain = true;
-  }
-
-  function requestPull(): Promise<void> {
-    if (pullPromise) {
-      pullAgain = true;
-      return pullPromise;
-    }
-    pullPromise = (async () => {
-      try {
-        do {
-          pullAgain = false;
-          try {
-            await pullOnce();
-          } catch (error) {
-            if (isNetworkFailure(error)) networkFailed = !transport.isBlocked();
-            else lastPullFailed = !isTransient(error);
-            if (!(error instanceof TransportError)) {
-              console.warn(`Sync failed: ${error instanceof Error ? error.name : 'unknown'}`);
-            }
-            pullAgain = false;
-          }
-        } while (pullAgain && running);
-      } finally {
-        pullPromise = undefined;
-        rebuild();
-      }
-    })();
-    publishSyncState();
-    return pullPromise;
-  }
-
-  // ---------- outbox ----------
-
-  function scheduleRetry(): void {
-    if (retryTimer) return;
-    const delay = retryDelays[Math.min(retryAttempt, retryDelays.length - 1)] ?? 30_000;
-    retryAttempt += 1;
-    retryTimer = setTimeout(() => {
-      retryTimer = undefined;
-      void drain();
-    }, delay);
-  }
-
-  function noteFailure(error: unknown): void {
-    if (isNetworkFailure(error) && !transport.isBlocked()) networkFailed = true;
-  }
-
-  function noteSuccess(): void {
-    if (networkFailed) {
-      networkFailed = false;
-      rebuild();
-    }
-  }
-
-  async function sendCommit(entry: OutboxCommit): Promise<void> {
-    entry.changeset = { ...entry.changeset, status: 'sent' };
-    try {
-      entry.response = await entry.send(transport);
-      noteSuccess();
-      entry.changeset = { ...entry.changeset, status: 'confirmed', confirmedAt: startedGeneration };
-      report(entry);
-    } catch (error) {
-      if (isTransient(error)) {
-        noteFailure(error);
-        entry.unknownOutcome = true;
-        entry.changeset = {
-          ...entry.changeset,
-          status: 'confirmed',
-          confirmedAt: startedGeneration,
-        };
-      } else {
-        const { dropped } = rejectFrom(
-          commits.map((candidate) => candidate.changeset),
-          entry.changeset.id,
-        );
-        const droppedIds = new Set(dropped.map((changeset) => changeset.id));
-        for (const candidate of commits) {
-          if (!droppedIds.has(candidate.changeset.id)) continue;
-          candidate.rejected = true;
-          report(candidate, error);
-        }
-        commits = commits.filter((candidate) => !droppedIds.has(candidate.changeset.id));
-        rebuild();
-        options.onWriteRejected?.(entry.rejectedMessage?.(error) ?? WRITE_REJECTED_MESSAGE);
-        return;
-      }
-    }
-    void requestPull();
-  }
-
-  function rewriteQueue(rewrite: (entries: StoreQueueEntry[]) => StoreQueueEntry[]): void {
-    const before = queue;
-    const after = rewrite(before);
-    queue = after.map((entry, index) => {
-      const from = before[index];
-      return from ? withSeq(entry, from) : entry;
-    });
-  }
-
-  /**
-   * Sends the first store-queue entry, or the run of pack entries at the front as one
-   * set_packing_items_packed call (ADR-0013). False when it has to wait (transient failure).
-   */
-  async function sendEntry(entry: StoreQueueEntry, run: readonly PackEntry[]): Promise<boolean> {
-    const sent: StoreQueueEntry[] = run.length > 0 ? [...run] : [entry];
-    queue = queue.slice(sent.length);
-    inFlight = sent;
-    void persistQueue();
-    try {
-      const ids: Record<string, string> = {};
-      if (entry.kind === 'check') {
-        const answer = await transport.setItemChecked(
-          entry.itemId,
-          entry.checked,
-          entry.seenCheckSeq,
-          entry.onList,
-        );
-        if (answer) {
-          knownCheckSeq.set(answer.item_id, answer.check_seq);
-          if (answer.item_id !== entry.itemId) ids[entry.itemId] = answer.item_id;
-          // Later toggles of the same item were queued against the seq before this one.
-          rewriteQueue((entries) =>
-            entries.map((candidate) =>
-              candidate.kind === 'check' && candidate.itemId === entry.itemId
-                ? { ...candidate, seenCheckSeq: answer.check_seq }
-                : candidate,
-            ),
-          );
-        }
-      } else if (entry.kind === 'notAvailable') {
-        await transport.setItemNotAvailable(entry.itemId, entry.value);
-      } else if (entry.kind === 'assignArea') {
-        await transport.assignArticleArea(entry.articleId, entry.areaId);
-      } else if (entry.kind === 'pack') {
-        const answer = await transport.setPackingItemsPacked(
-          entry.householdId,
-          run.map((packing) => ({
-            item_id: packing.itemId,
-            packed: packing.packed,
-            seen_pack_seq: packing.seenPackSeq,
-          })),
-        );
-        // Packstücke missing from the answer are gone meanwhile: their entries are done (AC-024).
-        // The counters are known before anything else can be queued, so a later unpack of the
-        // same Packstück carries the new one.
-        const seqs = new Map(answer.map((row) => [row.item_id, row.pack_seq]));
-        for (const [itemId, packSeq] of seqs) knownPackSeq.set(itemId, packSeq);
-        rewriteQueue((entries) =>
-          entries.map((candidate) => {
-            const packSeq = candidate.kind === 'pack' ? seqs.get(candidate.itemId) : undefined;
-            return candidate.kind === 'pack' && packSeq !== undefined
-              ? { ...candidate, seenPackSeq: packSeq }
-              : candidate;
-          }),
-        );
-      } else {
-        const [answer] = await transport.addShoppingContributions(entry.householdId, [
-          toAddEntry(entry),
-        ]);
-        if (answer && answer.item_id !== entry.clientItemId) {
-          ids[entry.clientItemId] = answer.item_id;
-        }
-        if (answer && answer.article_id !== entry.clientArticleId) {
-          ids[entry.clientArticleId] = answer.article_id;
-        }
-      }
-      if (Object.keys(ids).length > 0) rewriteQueue((entries) => remapQueue(entries, ids));
-      noteSuccess();
-      retryAttempt = 0;
-      for (const done of sent) settling.push({ entry: done, confirmedAt: startedGeneration });
-      inFlight = [];
-      void persistQueue();
-      rebuild();
-      void requestPull();
-      return true;
-    } catch (error) {
-      inFlight = [];
-      if (isTransient(error)) {
-        noteFailure(error);
-        // Back in front, merged with entries queued meanwhile, so counter entries cancel.
-        queue = requeue(sent, queue);
-        void persistQueue();
-        rebuild();
-        scheduleRetry();
-        return false;
-      }
-      // Permanent: dropped and logged, never blocking the queue (sync.md). No row data in logs.
-      console.warn(
-        `Store action dropped: ${error instanceof TransportError ? error.code : 'unknown'}`,
-      );
-      void persistQueue();
-      rebuild();
-      return true;
-    }
-  }
-
-  async function step(): Promise<boolean> {
-    if (!running || !canReachServer()) return false;
-    const next = commits.find((entry) => entry.changeset.status === 'pending');
-    const head = queue[0];
-    if (!next && !head) return false;
-    const seqOf = (entry: StoreQueueEntry) => entrySeq.get(entry) ?? Number.POSITIVE_INFINITY;
-    if (next && (!head || next.seq < seqOf(head))) {
-      await sendCommit(next);
-      return true;
-    }
-    // A held queue also holds the changes queued after its head (FIFO); releasing drains.
-    if (!head || versionGate.queueHeld()) return false;
-    // A run of pack entries never overtakes a change queued after its first entry (FIFO).
-    const run = packBatch(queue).filter((_, index, all) =>
-      all.slice(0, index + 1).every((entry) => !next || seqOf(entry) < next.seq),
-    );
-    return sendEntry(head, run);
-  }
-
-  function drain(): Promise<void> {
-    if (drainPromise) {
-      drainAgain = true;
-      return drainPromise;
-    }
-    drainPromise = (async () => {
-      try {
-        while (running) {
-          drainAgain = false;
-          if (!(await step()) && !drainAgain) break;
-        }
-      } finally {
-        drainPromise = undefined;
-      }
-    })();
-    return drainPromise;
-  }
-
-  // ---------- writes ----------
-
-  function recordChange<T>(
-    spec: CommitSpec<T>,
-    before: AppState,
-    after: AppState,
-    result: T,
-    onOutcome?: CommitOutcome,
-  ): void {
-    const householdId = before.activeHouseholdId;
-    const old = before.households[householdId];
-    const next = after.households[householdId];
-    if (!old || !next) throw new Error(`Household ${householdId} is not loaded`);
-    const change =
-      old === next
-        ? { ops: [], inverse: [], send: [], sendInverse: [] }
-        : diffHousehold(old, next, {
-            mode: spec.path === 'diff' ? 'send' : 'local',
-            maxDeletes: spec.path === 'diff' ? spec.maxDeletes : undefined,
-          });
-    if (spec.path === 'diff' && change.send.length === 0) {
-      republish();
-      onOutcome?.();
-      return;
-    }
-    seq += 1;
-    const context = { result, householdId, ops: change.ops };
-    const entry: OutboxCommit = {
-      seq,
-      onOutcome,
-      rejectedMessage: spec.rejectedMessage,
-      changeset: { id: `changeset-${seq}`, householdId, ops: change.ops, status: 'pending' },
-      send:
-        spec.path === 'diff'
-          ? (wire) => wire.applyChanges(householdId, sendable(change.send))
-          : (wire) => spec.send(wire, context),
-    };
-    if (spec.path === 'diff') {
-      // Nothing to undo (e.g. only an article was created, which undo keeps): no empty call.
-      if (change.sendInverse.length > 0) {
-        entry.inverse = {
-          ops: change.inverse,
-          send: (wire) => wire.applyChanges(householdId, sendable(change.sendInverse)),
-          sendOps: change.sendInverse,
-        };
-      }
-    } else if (spec.inverse) {
-      const inverse = spec.inverse;
-      entry.inverse = {
-        ops: change.inverse,
-        send: (wire) => inverse(wire, context, entry.response),
-      };
-    }
-    commits.push(entry);
-    history = [...history, entry].slice(-HISTORY_LIMIT);
-    republish();
-    void drain();
-  }
-
-  function expectedRow(table: string, id: string): { server?: Row; expected?: Row } {
-    for (const householdId of cache?.householdIds ?? []) {
-      const tables = cache?.households[householdId]?.tables;
-      if (!tables) continue;
-      const confirmed = applyQueue(
-        tables,
-        [...settling.map((settled) => settled.entry), ...inFlight],
-        householdId,
-      );
-      const expected = confirmed[table]?.[id];
-      if (expected) return { server: tables[table]?.[id], expected };
-    }
-    return {};
-  }
-
-  function enqueueStoreAction(action: StoreAction): void {
-    let entry: StoreQueueEntry;
-    let baseRow: Row | undefined;
-    if (action.kind === 'check') {
-      const { server, expected } = expectedRow('shopping_items', action.itemId);
-      const seen = Math.max(Number(server?.check_seq ?? 0), knownCheckSeq.get(action.itemId) ?? 0);
-      entry = { ...action, onList: action.onList ?? false, seenCheckSeq: seen };
-      baseRow = expected;
-    } else if (action.kind === 'notAvailable') {
-      entry = action;
-      baseRow = expectedRow('shopping_items', action.itemId).expected;
-    } else if (action.kind === 'assignArea') {
-      entry = action;
-      baseRow = expectedRow('articles', action.articleId).expected;
-    } else if (action.kind === 'pack') {
-      // The counter the device last saw: the cached row, or a newer answer to its own pack entry.
-      // The expected row includes the run in flight, so an unpack queued meanwhile ("Rückgängig")
-      // is kept instead of being taken for "no change" (ADR-0013).
-      const { server, expected } = expectedRow('packing_items', action.itemId);
-      const seen = Math.max(Number(server?.pack_seq ?? 0), knownPackSeq.get(action.itemId) ?? 0);
-      entry = { ...action, seenPackSeq: seen };
-      baseRow = expected;
-    } else {
-      entry = action;
-    }
-    const next = enqueue(queue, entry, baseRow);
-    for (const candidate of next) if (!entrySeq.has(candidate)) entrySeq.set(candidate, ++seq);
-    queue = next;
-    void persistQueue();
-    rebuild();
-    // Sent after the current task: entries queued together ("Alles einpacken", one per
-    // Packstück) leave as one run instead of the first one alone (ADR-0013).
-    if (drainScheduled) return;
-    drainScheduled = true;
-    queueMicrotask(() => {
-      drainScheduled = false;
-      void drain();
-    });
-  }
-
-  function undoable(): () => void {
-    const mark = seq;
-    return () => {
-      if (writesDisabled()) throw new OfflineError();
-      const own = history.filter((entry) => entry.seq > mark && !entry.rejected).reverse();
-      const now = new Date();
-      for (const entry of own) {
-        const { inverse } = entry;
-        if (!inverse) continue;
-        const { householdId } = entry.changeset;
-        const timeZone = appState?.households[householdId]?.household.timeZone;
-        const { sendOps } = inverse;
-        // Spec 0017, REQ-006: an entry inserted again keeps only a reminder still to come.
-        const passed = (ops: RowOp[]) =>
-          timeZone === undefined ? ops : withoutPassedReminders(ops, now, timeZone);
-        seq += 1;
-        commits.push({
-          seq,
-          changeset: {
-            id: `changeset-${seq}`,
-            householdId,
-            ops: sendOps ? passed(inverse.ops) : inverse.ops,
-            status: 'pending',
-          },
-          send: sendOps
-            ? (wire) => wire.applyChanges(householdId, sendable(passed(sendOps)))
-            : inverse.send,
-        });
-      }
-      rebuild();
-      void drain();
-    };
   }
 
   // ---------- lifecycle ----------
 
   function stopTimers(): void {
-    if (retryTimer) clearTimeout(retryTimer);
-    if (debounceTimer) clearTimeout(debounceTimer);
-    if (intervalTimer) clearInterval(intervalTimer);
-    retryTimer = undefined;
-    debounceTimer = undefined;
-    intervalTimer = undefined;
+    if (ctx.retryTimer) clearTimeout(ctx.retryTimer);
+    if (ctx.debounceTimer) clearTimeout(ctx.debounceTimer);
+    if (ctx.intervalTimer) clearInterval(ctx.intervalTimer);
+    ctx.retryTimer = undefined;
+    ctx.debounceTimer = undefined;
+    ctx.intervalTimer = undefined;
   }
 
   function stop(): void {
-    running = false;
+    ctx.running = false;
     stopTimers();
     unsubscribeEnvironment?.();
     unsubscribeEnvironment = undefined;
     unsubscribeVersionGate?.();
     unsubscribeVersionGate = undefined;
-    updateChannels();
+    updateChannels(ctx);
   }
 
   async function start(): Promise<void> {
-    await load();
-    if (running) return;
-    running = true;
+    await load(ctx);
+    if (ctx.running) return;
+    ctx.running = true;
     unsubscribeEnvironment = environment.subscribe({
       online: () => {
         rebuild();
-        void requestPull();
-        void drain();
+        void ctx.requestPull();
+        void ctx.drain();
       },
       offline: () => rebuild(),
-      foreground: () => void requestPull(),
+      foreground: () => void ctx.requestPull(),
     });
     unsubscribeVersionGate = versionGate.subscribe(() => {
       rebuild();
-      void drain();
+      void ctx.drain();
     });
-    intervalTimer = setInterval(() => {
-      if (environment.isVisible()) void requestPull();
-    }, intervalMs);
-    updateChannels();
-    void drain();
-    await requestPull();
+    ctx.intervalTimer = setInterval(() => {
+      if (environment.isVisible()) void ctx.requestPull();
+    }, ctx.intervalMs);
+    updateChannels(ctx);
+    void ctx.drain();
+    await ctx.requestPull();
   }
 
   async function whenIdle(): Promise<void> {
     for (;;) {
-      const pending = pullPromise ?? drainPromise;
+      const pending = ctx.pullPromise ?? ctx.drainPromise;
       if (!pending) return;
       await pending;
     }
@@ -1162,87 +387,56 @@ export function createEngine(options: EngineOptions): Engine {
 
   async function resetLocalData(): Promise<void> {
     stop();
-    epoch += 1;
-    cleared = true;
-    cache = undefined;
-    persisted.clear();
-    queue = [];
-    inFlight = [];
-    settling = [];
-    for (const entry of commits) report(entry, new TransportError('permanent', 'reset'));
-    commits = [];
-    history = [];
-    knownCheckSeq.clear();
-    knownPackSeq.clear();
-    chosenHouseholdId = undefined;
-    storeChoices = {};
+    ctx.epoch += 1;
+    ctx.cleared = true;
+    ctx.cache = undefined;
+    ctx.persisted.clear();
+    ctx.queue = [];
+    ctx.inFlight = [];
+    ctx.settling = [];
+    for (const entry of ctx.commits) report(entry, new TransportError('permanent', 'reset'));
+    ctx.commits = [];
+    ctx.history = [];
+    ctx.knownCheckSeq.clear();
+    ctx.knownPackSeq.clear();
+    ctx.chosenHouseholdId = undefined;
+    ctx.storeChoices = {};
     await storage.clear();
     rebuild();
   }
 
-  function rememberActiveHousehold(householdId: string): void {
-    if (cleared || chosenHouseholdId === householdId) return;
-    chosenHouseholdId = householdId;
-    // meta binds the choice to this user: another user's start clears the whole storage.
-    void storage
-      .setMany([
-        ['meta', meta()],
-        ['active', householdId],
-      ])
-      .catch((error: unknown) => {
-        console.warn(
-          `Storing the household failed: ${error instanceof Error ? error.name : 'unknown'}`,
-        );
-      });
-  }
-
-  function rememberShoppingStore(householdId: string, storeId: string | null): void {
-    if (cleared || storeChoices[householdId] === storeId) return;
-    storeChoices = { ...storeChoices, [householdId]: storeId };
-    rebuild();
-    // Only on this device (spec 0006): meta binds it to the user like the chosen household.
-    void storage
-      .setMany([
-        ['meta', meta()],
-        ['store-choices', storeChoices],
-      ])
-      .catch((error: unknown) => {
-        console.warn(
-          `Storing the store failed: ${error instanceof Error ? error.name : 'unknown'}`,
-        );
-      });
-  }
-
   return {
-    load,
+    load: () => load(ctx),
     start,
     stop,
-    pull: requestPull,
+    pull: ctx.requestPull,
     whenIdle,
-    getState: () => appState,
+    getState: () => ctx.appState,
     getSyncState: () => syncState,
     resetLocalData,
-    unsentStoreChanges: () => unsentChangeCount(unsent()),
+    unsentStoreChanges: () => unsentChangeCount(unsent(ctx)),
     async syncNow() {
-      const before = lastSyncedAt;
-      await drain();
-      await requestPull();
-      return lastSyncedAt !== before;
+      const before = ctx.lastSyncedAt;
+      await ctx.drain();
+      await ctx.requestPull();
+      return ctx.lastSyncedAt !== before;
     },
-    isOffline: writesDisabled,
-    isNetworkOffline: isOffline,
-    recordChange,
-    enqueueStoreAction,
-    undoable,
-    rememberActiveHousehold,
-    rememberShoppingStore,
+    isOffline: () => writesDisabled(ctx),
+    isNetworkOffline: () => isOffline(ctx),
+    recordChange: (spec, before, after, result, onOutcome) =>
+      recordChange(ctx, spec, before, after, result, onOutcome),
+    enqueueStoreAction: (action) => enqueueStoreAction(ctx, action),
+    undoable: () => undoable(ctx),
+    rememberActiveHousehold: (householdId) => rememberActiveHousehold(ctx, householdId),
+    rememberShoppingStore: (householdId, storeId) =>
+      rememberShoppingStore(ctx, householdId, storeId),
     setSimulatedOffline(offline) {
-      transport.setBlocked(offline);
-      if (!offline) networkFailed = false;
+      ctx.transport.setBlocked(offline);
+      if (!offline) ctx.networkFailed = false;
       rebuild();
       if (!offline) {
-        void requestPull();
-        void drain();
+        void ctx.requestPull();
+        void ctx.drain();
       }
     },
   };
