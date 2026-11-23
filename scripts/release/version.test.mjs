@@ -161,6 +161,40 @@ describe('minimum version', () => {
   });
 });
 
+describe('minimum version with the new migration base (spec 0031, REQ-001)', () => {
+  test('AC-005: with the exception 2026.11.2 may be above the published 2026.11.1, up to the new version', () => {
+    for (const next of ['2026.11.2', '2026.12.1']) {
+      assert.equal(
+        checkMinAppVersion({ min: '2026.11.2', published: '2026.11.1', next, newBase: true }),
+        undefined,
+      );
+    }
+  });
+
+  test('AC-005: without the exception min above published stays red, above next always', () => {
+    assert.match(
+      checkMinAppVersion({ min: '2026.11.2', published: '2026.11.1', next: '2026.11.2' }),
+      /Mindestversion 2026\.11\.2 ist noch nicht veröffentlicht/,
+    );
+    assert.match(
+      checkMinAppVersion({
+        min: '2026.12.1',
+        published: '2026.11.1',
+        next: '2026.11.2',
+        newBase: true,
+      }),
+      /Mindestversion 2026\.12\.1 ist noch nicht veröffentlicht/,
+    );
+  });
+
+  test('AC-006: after the release v2026.11.1 is refused for a redeploy', () => {
+    assert.match(
+      checkRedeploy({ tag: 'v2026.11.1', min: '2026.11.2' }).error,
+      /unter der Mindestversion/,
+    );
+  });
+});
+
 describe('AC-033: redeploy of an earlier web version', () => {
   test('a tag at or above the minimum version is accepted', () => {
     assert.deepEqual(checkRedeploy({ tag: 'v2026.12.4', min: '2026.12.2' }), {
@@ -281,6 +315,24 @@ describe('CLI', () => {
     assert.equal(status, 1, output);
     assert.match(output, /Mindestversion 2026\.12\.9 ist noch nicht veröffentlicht/);
     assert.equal(o.release, undefined, 'no outputs: the jobs after it must not start');
+  });
+
+  test('AC-005: migrations-base.json naming the latest tag lets the new base raise the minimum to the next version', () => {
+    const cwd = repoWithFoundation();
+    git(cwd, 'tag', 'v2026.11.1');
+    commit(cwd, 'feat: neue Basis', { [CONTRACT]: minVersionSql('2026.11.2') });
+    const without = run(cwd, ['--now', '2026-11-24T12:00:00Z']);
+    assert.equal(without.status, 1, without.output);
+    commit(cwd, 'feat: Ausnahme', {
+      'supabase/migrations-base.json': JSON.stringify({
+        replaces: 'v2026.11.1',
+        first: '20261124000000',
+      }),
+    });
+    const { status, output, outputs: o } = run(cwd, ['--now', '2026-11-24T12:00:00Z']);
+    assert.equal(status, 0, output);
+    assert.equal(o.version, '2026.11.2');
+    assert.match(output, /Mindestversion 2026\.11\.2/);
   });
 
   test('in GitHub Actions the error is a workflow command', () => {

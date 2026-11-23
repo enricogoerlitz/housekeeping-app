@@ -164,6 +164,79 @@ describe('changes to committed migrations', () => {
   });
 });
 
+describe('new migration base (spec 0031, REQ-001)', () => {
+  const BASE = { replaces: 'v2026.11.1', first: '20261124000000' };
+  const OLD = [
+    'supabase/migrations/20261121062343_foundation.sql',
+    'supabase/migrations/20261123070918_schema_cleanup.sql',
+  ];
+  const NEW = [
+    'supabase/migrations/20261124000000_foundation.sql',
+    'supabase/migrations/20261124000001_identity.sql',
+  ];
+  const replace = (files) =>
+    parseNameStatus(
+      [...OLD.map((file) => `D\t${file}`), ...files.map((f) => `A\t${f}`)].join('\n'),
+    );
+  const check = (entries, options = {}) =>
+    checkChanges(entries, {
+      released: true,
+      read: () => 'create table public.x (id int);',
+      base: BASE,
+      latestTag: 'v2026.11.1',
+      files: NEW,
+      ...options,
+    });
+
+  test('AC-001: deleting every old migration for a base at or after `first` is green', () => {
+    const { errors, notes } = check(replace(NEW));
+    assert.deepEqual(errors, []);
+    assert.match(notes.join('\n'), /Neue Basis ersetzt v2026\.11\.1/);
+  });
+
+  test('AC-002: an old migration left beside the new base is red and named', () => {
+    const entries = parseNameStatus(
+      [`D\t${OLD[0]}`, ...NEW.map((file) => `A\t${file}`)].join('\n'),
+    );
+    const { errors } = check(entries, { files: [OLD[1], ...NEW] });
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /20261123070918_schema_cleanup\.sql/);
+  });
+
+  test('AC-002: a new migration before `first` is red and named', () => {
+    const early = 'supabase/migrations/20261123999999_late.sql';
+    const { errors } = check(replace([...NEW, early]), { files: [...NEW, early] });
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /20261123999999_late\.sql.*20261124000000/);
+  });
+
+  test('AC-002: `replaces` must name the latest tag; the deletions stay red then', () => {
+    const { errors } = check(replace(NEW), { base: { ...BASE, replaces: 'v2026.10.1' } });
+    assert.match(errors[0], /v2026\.10\.1.*v2026\.11\.1/);
+    assert.equal(errors.filter((error) => /wurde gelöscht/.test(error)).length, 2);
+  });
+
+  test('AC-003: after the next tag the exception is used up', () => {
+    const { errors } = check(replace(NEW), { latestTag: 'v2026.12.1' });
+    assert.match(errors[0], /v2026\.11\.1.*v2026\.12\.1/);
+    assert.equal(errors.filter((error) => /nie geändert/.test(error)).length, 2);
+  });
+
+  test('a migration of the new base is never changed once committed', () => {
+    const { errors } = check(parseNameStatus(`M\t${NEW[0]}`));
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /20261124000000_foundation\.sql.*geändert/);
+  });
+
+  test('the new base is checked for the contract header too', () => {
+    const { errors } = check(replace(NEW), {
+      read: () => 'alter table public.recipes drop column notes;',
+    });
+    assert.equal(errors.length, 2);
+    assert.match(errors[0], /Rückbau ohne Kennzeichnung/);
+  });
+});
+
 describe('CLI', () => {
   const git = (cwd, ...args) => {
     const result = spawnSync(
@@ -243,6 +316,34 @@ describe('CLI', () => {
     const green = run(cwd, '--base', 'main');
     assert.equal(green.status, 0, green.output);
     assert.match(green.output, /Migrationen: ok/);
+  });
+
+  test('AC-001, AC-002: the CLI replaces the tagged migrations with a new base', () => {
+    const cwd = repo({ tagged: true });
+    rmSync(path.join(cwd, 'supabase/migrations/20261121062343_foundation.sql'));
+    writeFileSync(
+      path.join(cwd, 'supabase/migrations/20261124000000_foundation.sql'),
+      'create table public.recipes (id int);\n',
+    );
+    writeFileSync(
+      path.join(cwd, 'supabase/migrations-base.json'),
+      JSON.stringify({ replaces: 'v2026.11.1', first: '20261124000000' }),
+    );
+    git(cwd, 'add', '-A');
+    git(cwd, 'commit', '-q', '-m', 'feat: neue Basis');
+    const green = run(cwd, '--base', 'main');
+    assert.equal(green.status, 0, green.output);
+    assert.match(green.output, /Neue Basis ersetzt v2026\.11\.1/);
+
+    writeFileSync(
+      path.join(cwd, 'supabase/migrations/20261121062343_foundation.sql'),
+      'create table public.recipes (id int, notes text);\n',
+    );
+    git(cwd, 'add', '-A');
+    git(cwd, 'commit', '-q', '-m', 'fix: alte Datei zurück');
+    const red = run(cwd, '--base', 'main');
+    assert.equal(red.status, 1, red.output);
+    assert.match(red.output, /20261121062343_foundation\.sql/);
   });
 
   test('without --base the CLI refuses to guess', () => {
