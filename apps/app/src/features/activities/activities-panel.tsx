@@ -1,5 +1,13 @@
 import { useActivities, useCurrentMember, usePlanEntries, useToday } from '@housekeeping/api';
-import { fuzzyIncludes, visitsOf, type Activity, type Id, type Visits } from '@housekeeping/core';
+import {
+  ACTIVITY_SORTS,
+  activityMatches,
+  sortActivities,
+  visitsOf,
+  type ActivitySort,
+  type Id,
+  type Visits,
+} from '@housekeeping/core';
 import {
   Button,
   Chip,
@@ -32,21 +40,13 @@ import { ActivityFormSheet } from './activity-form';
 import { ActivityPhoto } from './activity-photo';
 import { activityPlaceLine, activityVisitsLabel } from './labels';
 
-type ActivitySort = 'name' | 'rating' | 'recent';
-
 const SORT_OF_SLUG = { name: 'name', bewertung: 'rating', zuletzt: 'recent' } as const;
 const SLUG_OF_SORT = { name: 'name', rating: 'bewertung', recent: 'zuletzt' } as const;
 
-const SORTS: { value: ActivitySort; label: string }[] = [
-  { value: 'name', label: 'Name' },
-  { value: 'rating', label: 'Bewertung' },
-  { value: 'recent', label: 'Zuletzt' },
-];
-
-function matches(query: string, activity: Activity): boolean {
-  return [activity.name, activity.description, activity.placeName, activity.address].some(
-    (field) => field !== undefined && fuzzyIncludes(query, field),
-  );
+/** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", as for restaurants. */
+function sortShortLabel(sort: ActivitySort): string {
+  if (sort === 'recent') return 'Zuletzt';
+  return ACTIVITY_SORTS.find((entry) => entry.value === sort)?.label ?? '';
 }
 
 /** The list column next to a chosen activity on wide screens ("Liste und Detail"). */
@@ -107,25 +107,14 @@ export function ActivitiesScreen() {
   const visitsById = new Map<Id, Visits>(
     activities.map((activity) => [activity.id, visitsOf('activity', activity.id, entries, today)]),
   );
-  const results = activities
-    .filter(
+  const results = sortActivities(
+    activities.filter(
       (activity) =>
-        (!favoritesOnly || activity.favoriteOf.includes(me.id)) &&
-        (!query.trim() || matches(query, activity)),
-    )
-    .sort((a, b) => {
-      if (sort === 'rating') {
-        const byRating = (b.ratings[me.id] ?? 0) - (a.ratings[me.id] ?? 0);
-        if (byRating !== 0) return byRating;
-      }
-      if (sort === 'recent') {
-        // Never done goes last.
-        const daysA = visitsById.get(a.id)?.daysSince ?? Number.POSITIVE_INFINITY;
-        const daysB = visitsById.get(b.id)?.daysSince ?? Number.POSITIVE_INFINITY;
-        if (daysA !== daysB) return daysA - daysB;
-      }
-      return a.name.localeCompare(b.name, 'de');
-    });
+        (!favoritesOnly || activity.favoriteOf.includes(me.id)) && activityMatches(query, activity),
+    ),
+    sort,
+    { me: me.id, entries, today },
+  );
 
   const empty = activities.length === 0;
   const addButton = empty ? null : isPhone ? (
@@ -194,7 +183,7 @@ export function ActivitiesScreen() {
 
   const split = selectedId !== undefined;
   const columns = isPhone || split ? 1 : bp === 'desktop' ? 3 : 2;
-  const sortLabel = SORTS.find((entry) => entry.value === sort)?.label ?? '';
+  const sortLabel = sortShortLabel(sort);
   const toolbar = (
     <Stack gap={8}>
       <TextField
@@ -229,7 +218,7 @@ export function ActivitiesScreen() {
           icon="arrow-up-down"
           value={sort}
           onChange={setSort}
-          options={SORTS}
+          options={[...ACTIVITY_SORTS]}
           testID="activity-sort"
         />
         <Chip

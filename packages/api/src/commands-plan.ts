@@ -186,6 +186,11 @@ function cleanNote(note: string | undefined): string | undefined {
   return fieldValue(checkEntryNote(note ?? ''));
 }
 
+/** The split as stored: only variants that get a portion (the windows count every variant). */
+function storedVariants(variants: readonly PlanEntryVariant[]): PlanEntryVariant[] {
+  return variants.filter((row) => row.portions > 0);
+}
+
 /**
  * Adds a dish to a meal. A meal can hold several dishes, each with its own cook. When the server
  * refuses it because the recipe was deleted meanwhile, the hint is "Das Rezept gibt es nicht
@@ -239,7 +244,7 @@ export function addPlanEntry(input: PlanEntryInput): Id {
       eaterIds: input.eaterIds,
       guests,
       portions: input.portions ?? split?.portions ?? Math.max(1, input.eaterIds.length + guests),
-      variants: input.variants ?? split?.variants ?? [],
+      variants: storedVariants(input.variants ?? split?.variants ?? []),
       cookId: input.cookId,
       sort: siblings.length,
       reminder,
@@ -349,7 +354,7 @@ export function saveEntry(entryId: Id, fields: EntryFields): Promise<string | un
   if (fields.guests !== undefined) next.guests = fields.guests;
   if (fields.portions !== undefined) next.portions = fields.portions;
   if (fields.variants !== undefined) {
-    next.variants = fields.variants.filter((row) => row.portions > 0);
+    next.variants = storedVariants(fields.variants);
   }
   if (fields.reminderText !== undefined && entry.reminder) {
     next.reminder = checkedReminder(entry, {

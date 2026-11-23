@@ -6,6 +6,7 @@ import {
   type MinRating,
 } from './recipe-list';
 import { priceLabel, restaurantVisits } from './restaurants';
+import { fuzzyIncludes } from './text';
 import type { Id, ISODate, MealPlanEntry, Restaurant } from './types';
 
 // The list on "Essen → Restaurants" (spec 0008, REQ-005): the same filter row as for recipes,
@@ -32,6 +33,17 @@ export const EMPTY_RESTAURANT_LIST_FILTER: RestaurantListFilter = {
   cuisines: [],
   priceLevels: [],
 };
+
+/**
+ * The search of "Essen → Restaurants" and of "Einplanen" (spec 0031, REQ-021): name, cuisine,
+ * address and tags. An empty search matches every restaurant.
+ */
+export function restaurantMatches(query: string, restaurant: Restaurant): boolean {
+  if (!query.trim()) return true;
+  return [restaurant.name, restaurant.cuisine, restaurant.address, ...restaurant.tags].some(
+    (field) => field !== undefined && fuzzyIncludes(query, field),
+  );
+}
 
 /** The quick chip "Favoriten". */
 export function toggleRestaurantFavorites(filter: RestaurantListFilter): RestaurantListFilter {

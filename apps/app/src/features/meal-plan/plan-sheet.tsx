@@ -161,7 +161,7 @@ export function PlanSheet(props: {
         split
           ? {
               portions: portions.state.portions,
-              variants: portions.state.variants.filter((row) => row.portions > 0),
+              variants: portions.state.variants,
             }
           : undefined,
       );

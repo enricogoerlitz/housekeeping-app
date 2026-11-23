@@ -4,13 +4,13 @@ import {
   cuisineFacets,
   EMPTY_RESTAURANT_LIST_FILTER,
   filterButtonLabel,
-  fuzzyIncludes,
   removeRestaurantFilterChip,
   RESTAURANT_SORTS,
   restaurantCountLabel,
   restaurantEmptyLabel,
   restaurantFilterChips,
   restaurantFilterCount,
+  restaurantMatches,
   restaurantShowLabel,
   restaurantVisits,
   sortRestaurantList,
@@ -66,12 +66,6 @@ const CARD_MIN_WIDTH = 320;
 const LIST_COLUMN_WIDTH = 380;
 
 type SheetRequest = Pick<AddRestaurantSheetProps, 'initialText' | 'initialName' | 'focus'>;
-
-function matches(query: string, restaurant: Restaurant): boolean {
-  return [restaurant.name, restaurant.cuisine, restaurant.address, ...restaurant.tags].some(
-    (field) => field !== undefined && fuzzyIncludes(query, field),
-  );
-}
 
 /** "↕ Zuletzt ▾": the short text for "Zuletzt besucht", else the menu text (T2, decision 6). */
 function sortShortLabel(sort: RestaurantListSort): string {
@@ -147,9 +141,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     [restaurants, entries, today],
   );
   const results = useMemo(() => {
-    const searched = query.trim()
-      ? restaurants.filter((restaurant) => matches(query, restaurant))
-      : restaurants;
+    const searched = restaurants.filter((restaurant) => restaurantMatches(query, restaurant));
     const filtered = applyRestaurantListFilter(searched, filter, me.id);
     return sortRestaurantList(filtered, sort, { me: me.id, entries, today, shuffle });
   }, [query, restaurants, filter, me.id, sort, entries, today, shuffle]);
