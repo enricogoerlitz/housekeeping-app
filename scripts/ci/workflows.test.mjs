@@ -269,12 +269,13 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
   // The GitHub Actions app: only check runs from Actions can satisfy a required check.
   const GITHUB_ACTIONS_APP_ID = 15368;
 
-  test('AC-001: three active rulesets without any bypass, for develop, main and tags v*', () => {
+  test('AC-001: three active rulesets, for develop, main and tags v*; develop and main without any bypass', () => {
     for (const [name, set] of Object.entries(rulesets)) {
       assert.ok(set, `infra/github/ruleset-${name}.json`);
       assert.equal(set.enforcement, 'active', name);
-      assert.deepEqual(set.bypass_actors, [], name);
     }
+    assert.deepEqual(rulesets.develop.bypass_actors, []);
+    assert.deepEqual(rulesets.main.bypass_actors, []);
     assert.deepEqual(rulesets.develop.conditions.ref_name.include, ['refs/heads/develop']);
     assert.deepEqual(rulesets.main.conditions.ref_name.include, ['refs/heads/main']);
     assert.deepEqual(rulesets.tags.conditions.ref_name.include, ['refs/tags/v*']);
@@ -319,9 +320,13 @@ describe('infra/github rulesets (Task 10, decision 28)', () => {
     }
   });
 
-  test('tags v* cannot be moved or deleted; creating stays allowed for the release job', () => {
+  test('AC-020 (spec 0031): tags v* cannot be created, moved or deleted; only GitHub Actions creates them', () => {
     const types = rulesets.tags.rules.map((r) => r.type).sort();
-    assert.deepEqual(types, ['deletion', 'non_fast_forward', 'update']);
+    assert.deepEqual(types, ['creation', 'deletion', 'non_fast_forward', 'update']);
+    // The release job creates the tag with GITHUB_TOKEN, the token of the GitHub Actions app.
+    assert.deepEqual(rulesets.tags.bypass_actors, [
+      { actor_id: GITHUB_ACTIONS_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
+    ]);
   });
 });
 
