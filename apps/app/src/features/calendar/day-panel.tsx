@@ -218,7 +218,7 @@ function WeekStrip(props: {
             testID={`day-panel-day-${date}`}
             accessibilityRole="button"
             accessibilityLabel={formatLongDate(date)}
-            accessibilityState={{ selected }}
+            aria-selected={selected}
             onPress={() => props.onChoose(date)}
             style={(state) => {
               const { pressed, focused } = state as { pressed: boolean; focused?: boolean };
@@ -269,7 +269,7 @@ function AddLine(props: {
       accessibilityRole="button"
       accessibilityLabel={props.label}
       accessibilityHint={props.hint}
-      accessibilityState={{ disabled: props.disabled }}
+      aria-disabled={props.disabled}
       disabled={props.disabled}
       onPress={props.onPress}
       style={(state) => {

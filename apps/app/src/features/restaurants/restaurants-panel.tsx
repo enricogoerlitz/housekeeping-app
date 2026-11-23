@@ -428,7 +428,7 @@ function RestaurantCard(props: {
       testID={`restaurant-${id}`}
       accessibilityRole="button"
       accessibilityLabel={restaurant.name}
-      accessibilityState={{ selected: props.selected }}
+      aria-selected={props.selected}
       onPress={props.onPress}
       style={(state) => ({
         opacity: state.pressed ? 0.75 : 1,

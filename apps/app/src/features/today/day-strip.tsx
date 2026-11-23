@@ -124,7 +124,7 @@ function DayColumn(props: DayProps) {
       testID={`today-week-${date}`}
       accessibilityRole="button"
       accessibilityLabel={`${dayLabel(date, props.today, dots)}${selected ? ', gewählt' : ''}`}
-      accessibilityState={{ selected }}
+      aria-selected={selected}
       onPress={() => props.onSelect(date)}
       // Hover only with a mouse, the ring only with the keyboard (spec 0019, REQ-002, REQ-003).
       style={(state) => [
@@ -205,7 +205,7 @@ function DayTile(props: DayProps) {
         testID={`today-week-${date}`}
         accessibilityRole="button"
         accessibilityLabel={`${dayLabel(date, props.today, dots)}${selected ? ', gewählt' : ''}`}
-        accessibilityState={{ selected }}
+        aria-selected={selected}
         onPress={() => props.onSelect(date)}
         style={(state) => [
           {
@@ -266,7 +266,7 @@ function DayTile(props: DayProps) {
           accessibilityRole="button"
           accessibilityLabel={`Für ${dayName(date, props.today)} hinzufügen`}
           accessibilityHint={online.hint}
-          accessibilityState={{ disabled: online.disabled }}
+          aria-disabled={online.disabled}
           disabled={online.disabled}
           onPress={() => props.onAdd(date)}
           style={(state) => [

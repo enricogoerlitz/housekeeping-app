@@ -43,7 +43,8 @@ function ThemeCard(props: {
       testID={`theme-${props.family.id}`}
       accessibilityRole="radio"
       accessibilityLabel={`Theme ${props.family.name}`}
-      accessibilityState={{ selected: props.selected, checked: props.selected }}
+      aria-selected={props.selected}
+      aria-checked={props.selected}
       onPress={props.onSelect}
       style={(state) => [
         {

@@ -16,7 +16,8 @@ export function FavoriteButton(props: {
       accessibilityRole="button"
       accessibilityLabel="Favorit"
       accessibilityHint={props.hint}
-      accessibilityState={{ selected: props.active, disabled: props.disabled }}
+      aria-selected={props.active}
+      aria-disabled={props.disabled}
       aria-pressed={props.active}
       disabled={props.disabled}
       onPress={props.onPress}

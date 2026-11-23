@@ -245,7 +245,7 @@ function MonthPhone(props: MonthViewProps) {
                       testID={`month-day-${date}`}
                       accessibilityRole="button"
                       accessibilityLabel={dayLabel(data, date, choreCount)}
-                      accessibilityState={{ selected }}
+                      aria-selected={selected}
                       onPress={guardPress(() => props.onOpenDay(date))}
                       style={(state) => [
                         { alignItems: 'center', paddingVertical: 4, minHeight: 48 },
@@ -369,7 +369,7 @@ function MonthGridDesktop(props: MonthViewProps) {
                           testID={`month-day-${date}`}
                           accessibilityRole="button"
                           accessibilityLabel={dayLabel(data, date, choreCount)}
-                          accessibilityState={{ selected }}
+                          aria-selected={selected}
                           onPress={guardPress(() => props.onOpenDay(date))}
                           style={(state) => [
                             {
@@ -528,7 +528,7 @@ function AddToDay(props: { date: ISODate; visible: boolean; onPress: () => void 
       accessibilityRole="button"
       accessibilityLabel={`Hinzufügen am ${formatLongDate(props.date)}`}
       accessibilityHint={online.hint}
-      accessibilityState={{ disabled: online.disabled }}
+      aria-disabled={online.disabled}
       onPress={
         online.disabled
           ? () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT })
