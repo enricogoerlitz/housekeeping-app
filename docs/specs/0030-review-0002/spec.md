@@ -116,15 +116,21 @@ Quelle: Review 0002, Punkt 4 (Urlaubsplanung). Offline: offline lesend (Umschalt
 
 ### Fenster
 
-**REQ-005 — Gleich breite Tage in „Einplanen“.** Die sieben Tages-Chips im Fenster „Einplanen“
-(Rezept, Restaurant, Aktivität) teilen sich die ganze Breite zu gleichen Teilen, sodass beim
-Blättern der Woche nichts springt. Quelle: Review 0002, Punkt 5 und Bildschirmfoto. Offline:
+**REQ-005 — Gleich breite Tage in „Einplanen“ und „Verschieben“.** Die sieben Tages-Chips im
+Fenster „Einplanen“ (Rezept, Restaurant, Aktivität) und in der Zeile „Verschieben“ des
+Eintrag-Fensters teilen sich die ganze Breite zu gleichen Teilen, sodass beim Blättern der Woche
+oder beim Verschieben in eine andere Woche nichts springt; „Vormerken“ und „Anderes Datum …“ stehen
+darunter. Quelle: Review 0002, Punkt 5 und Bildschirmfoto. Offline:
 offline lesend (wie das Fenster).
 
 - AC-019: Angenommen „Einplanen“ für „Brooklyn Burger Bar“ auf dem Handy (390 px), KW 6 · Dann füllen
   „Mo 8.2.“ bis „So 14.2.“ die Zeile in sieben gleich breiten Chips · Wenn ich zu KW 7 blättere · Dann
   steht „Mo 15.2.“ genau dort, wo „Mo 8.2.“ stand.
 - AC-020 (Rand): Angenommen Desktop · Dann füllen die sieben Chips ebenso die Breite des Fensters.
+- AC-032: Angenommen das Eintrag-Fenster von „Lasagne“ am Mo 23.11. auf dem Handy (390 px) · Dann
+  füllen „Mo 23.11.“ bis „So 29.11.“ unter „Verschieben“ die Zeile in sieben gleich breiten Chips ·
+  Wenn ich über „Anderes Datum …“ auf Mi 2.12. verschiebe · Dann steht „Mo 30.11.“ genau dort, wo
+  „Mo 23.11.“ stand.
 
 **REQ-006 — Reihenfolge der Tabs im Hinzufügen-Fenster.** Die Tabs des Hinzufügen-Fensters im
 Kalender lauten „Alle, Rezepte, Restaurants, Aktivitäten, Sammlungen, Reste“. Quelle: Review 0002,
@@ -175,8 +181,12 @@ gehen, Aktivitäten machen“). Offline: offline lesend.
   wartet sie wie bisher bis nach der Reise (Spec 0026, unverändert).
 - AC-030: Angenommen ich öffne „Reise eintragen“ · Dann steht unter „Wer?“ der neue Satz, „Wer isst
   mit?“ kommt darin nicht vor.
+- AC-031: Angenommen „Einplanen“ für „Lasagne“ und bei „Wer isst mit?“ nur Enrico gewählt · Wenn ich
+  einen anderen Tag, eine andere Woche, „Ohne Tag vormerken“ oder „Anderes Datum …“ wähle · Dann
+  bleibt nur Enrico gewählt, und die Portionen bleiben, wie sie waren.
 
-**Ersetzt** (gilt nicht mehr): Spec 0008 AC-036 (erster Teil: Abwesende nicht vorausgewählt);
+**Ersetzt** (gilt nicht mehr): Spec 0008 AC-036 (erster Teil: Abwesende nicht vorausgewählt) und
+Plan E11 (ein anderer Tag setzt „Wer isst mit?“ zurück, siehe AC-031);
 Spec 0010 AC-033 und AC-034 (je die Zeile zu „Wer isst mit?“); Spec 0016 AC-016 (Zusatz „· Nadja
 ist dann auf Reise“); Spec 0022 REQ-007 und REQ-008 mit AC-021 bis AC-027 (Reisende aus geplanten
 Gerichten nehmen); Spec 0023 AC-056 (eine neue Reise ändert die Vorauswahl; AC-055 gilt für
@@ -208,9 +218,11 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (23.11.2026).
 6. Schraffur: diagonale Streifen in der Farbe des Streifens über der zarten Fläche (Web:
    `repeating-linear-gradient`), dünne Linien (Woche auf dem Handy, Monat) gestrichelt; keine neue
    Farbe.
-7. Gleich breite Chips (`ChoiceChips` mit `fill`) nur in „Einplanen“: Nur dort wechseln die
-   Beschriftungen beim Blättern. Die Datums-Chips der Aufgaben laufen in einer scrollbaren Reihe ohne
-   Blättern, die Tageszeit-Chips haben feste Namen; gleich breit würde dort nur Platz kosten.
+7. Gleich breite Chips (`ChoiceChips` mit `fill`) in „Einplanen“ und in der Zeile „Verschieben“
+   des Eintrag-Fensters: Nur dort wechseln die Beschriftungen, beim Blättern oder wenn der Eintrag in
+   eine andere Woche zieht (nachgezogen nach der Prüfung, AC-032). Die Datums-Chips der Aufgaben und
+   „Wann?“ im Hinzufügen-Fenster laufen in einer scrollbaren Reihe ab heute ohne Blättern, die
+   Tageszeit-Chips haben feste Namen; gleich breit würde dort nur Platz kosten.
 8. Ursache Wischen (REQ-007): Die Liste ist ein eigener Scrollbereich. Ohne `touch-action` übernimmt
    iOS jede Bewegung als natives Scrollen; schon ein Pixel senkrecht macht die `ScrollView` von
    react-native-web zum Responder, und sie gibt ihn nach beobachtetem Scrollen nicht mehr ab
@@ -239,6 +251,26 @@ Alle von Claude nach Enricos Regel „Empfehlung nehmen“ (23.11.2026).
     „Entwurf · “ vor dem Text. „Ohne Tag vormerken“ im Hinzufügen-Fenster setzt „Wer isst mit?“ nicht
     mehr zurück, weil die Vorauswahl nicht mehr vom Tag abhängt. Ohne Filter und ohne kommende
     Reisen steht unter „Kommend“ weiter „Nichts geplant.“; mit Filter fehlen leere Abschnitte.
+13. Nachgezogen nach einer unabhängigen Prüfung (23.11.2026):
+    - „Einplanen“ setzt beim Wechsel von Tag, Woche, „Ohne Tag vormerken“ und „Anderes Datum …“
+      „Wer isst mit?“ und die Portionen nicht mehr zurück (AC-031). Das Zurücksetzen gab es nur, damit
+      Reisende nicht gewählt blieben (Plan E11 aus Spec 0008); seit REQ-008 hat es keinen Grund und
+      widersprach Entscheidung 12. `withPlanDay`/`pagePlanChoice` ändern nur noch den Tag.
+    - Die eigentliche Ursache von REQ-007: PanResponder setzt `x0` erst beim Übernehmen und meldet
+      davor 0. Die Randprüfung (Spec 0029, 20 pt) las `x0` und lehnte darum jeden Tab-Wisch ab, auf
+      jedem Gerät; mit Chromium-Touch-Emulation (CDP) ist das nachgestellt. Der Start ist jetzt
+      `moveX - dx`.
+    - Rest-Risiko schräger Start: Mit `pan-y` scrollt WebKit den senkrechten Teil eines schrägen
+      Starts, und eine `ScrollView`, die so zum Responder wurde, gibt den Finger nicht mehr ab.
+      Darum nimmt der Wisch-Bereich (ihr Vorfahr) bei einem nativen Scroll mit Finger den Responder
+      in der Capture-Phase selbst und entscheidet am Weg seit dem Aufsetzen: seitlich genug ist ein
+      Wisch, überwiegend senkrecht (ab 10 pt, mindestens so viel senkrecht wie seitlich) oder vom
+      Rand bleibt ein Scroll, auch wenn der Zug später seitlich wird (AC-025). Gescrollt wird
+      weiter nativ. Zeilen-Wischen und Sortieren geben den Finger nie ab und bleiben, wie sie sind.
+    - Auf der Übersicht steht unter dem gestrichelten Streifen eines Entwurfs sichtbar „Entwurf“
+      (REQ-004), nicht nur im Vorlesetext.
+    - Ein gewählter `fill`-Chip behält seinen Rand (in seiner Füllfarbe); ohne ihn war er 2 px
+      schmaler als die übrigen (AC-019, AC-032).
 
 ## Daten
 
@@ -260,7 +292,8 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
 
 - [x] 1. Spec, Glossar „Reise-Entwurf“, Eintrag in `docs/specs/README.md`.
 - [x] 2. Tabs im Hinzufügen-Fenster neu sortiert (AC-021, AC-022).
-- [x] 3. `ChoiceChips` mit `fill`; „Einplanen“ nutzt es (AC-019, AC-020).
+- [x] 3. `ChoiceChips` mit `fill`; „Einplanen“ und „Verschieben“ nutzen es (AC-019, AC-020,
+      AC-032).
 - [x] 4. Hervorhebung beim Ziehen einer Reise nur als Rahmen (AC-005, AC-006).
 - [x] 5. Kopfzeilen sticky, Wochentage am Desktop ausgeschrieben (AC-001–AC-004).
 - [x] 6. Tab-Wisch: `touch-action: pan-y` am Scrollbereich, Finger nicht abgeben (AC-023–AC-025).
@@ -273,8 +306,19 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
       ohne Reisen, Hinweis beim Verschieben ohne Reisende, Satz unter „Wer?“ (AC-026–AC-030).
 - [x] 11. e2e-Tests (nur typgeprüft) in `e2e/rundgang-review-0002.spec.ts`; alte e2e-Tests zu K-02
       und zur Vorauswahl angepasst.
+- [x] 12. Nachgezogen (Entscheidung 13): „Wer isst mit?“ bleibt in „Einplanen“ (AC-031),
+      „Verschieben“ mit gleich breiten Tagen (AC-032), Tab-Wisch-Start aus `moveX - dx` und
+      Übernahme nach nativem Scroll (AC-023–AC-025), „Entwurf“ sichtbar auf der Übersicht,
+      Kommentar zu `useMoveEntry`; e2e-Tests mit echten Wischbewegungen und `freshSeed()` richtig
+      eingebunden.
 - [x] Nachweis (23.11.2026): `pnpm format:check && pnpm check` grün (core 1563, ui 406, api 936
       Tests), `pnpm build:web` grün, pgTAP über das Schloss 50 Dateien / 2591 Tests grün (neu
       `trip_drafts.test.sql`, 14), `pnpm test:scripts` 349 grün, `pnpm e2e:dev` 13 grün, e2e-Typprüfung
       grün. Offen: Wischen auf dem iPhone prüft Enrico (Entscheidung 8); die volle e2e-Suite läuft
       später.
+- [x] Nachweis Nachzug (23.11.2026): `pnpm format:check && pnpm check` grün (core 1564, ui 410, api
+      936 Tests), `pnpm build:web` grün, pgTAP über das Schloss 50 Dateien / 2591 Tests grün,
+      `pnpm e2e:dev` 13 grün, e2e-Typprüfung grün. `e2e/rundgang-review-0002.spec.ts` (15) und die
+      Wisch-Tests aus `rundgang-handy.spec.ts` (AC-009–AC-012) gezielt gegen den Dev-Server mit
+      Touch-Emulation grün; vor dem `x0`-Fix scheiterte dort jeder Tab-Wisch. Offen bleibt: Wischen
+      auf dem iPhone selbst (WebKit) prüft Enrico.

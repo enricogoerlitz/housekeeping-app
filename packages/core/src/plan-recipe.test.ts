@@ -96,7 +96,7 @@ describe('plan a recipe from its page (REQ-009)', () => {
     expect(plannedNotice(null, 'Abend', '2026-11-22')).toBe('Vorgemerkt');
   });
 
-  it('AC-036, AC-027 (0030): another day sets "Wer isst mit?" back to everyone; guests, slot and cook stay', () => {
+  it('AC-031 (0030): another day keeps "Wer isst mit?", guests, slot and cook', () => {
     const choice = {
       ...defaultPlanChoice(today, slots, [enrico, nadja]),
       eaterIds: [nadja.id],
@@ -104,25 +104,27 @@ describe('plan a recipe from its page (REQ-009)', () => {
       cookId: enrico.id,
       slotId: 'slot-mittag',
     };
-    expect(withPlanDay(choice, '2026-11-28', [enrico, nadja])).toEqual({
+    expect(withPlanDay(choice, '2026-11-28')).toEqual({
       date: '2026-11-28',
       slotId: 'slot-mittag',
-      eaterIds: [enrico.id, nadja.id],
+      eaterIds: [nadja.id],
       guests: 2,
       cookId: enrico.id,
     });
-    expect(withPlanDay(choice, null, [enrico, nadja]).eaterIds).toEqual([enrico.id, nadja.id]);
+    const later = withPlanDay(choice, null);
+    expect(later.date).toBeNull();
+    expect(later.eaterIds).toBe(choice.eaterIds);
   });
 
-  it('AC-035: paging moves the chosen day by whole weeks, so it stays in the shown week', () => {
-    const choice = defaultPlanChoice(today, slots, [enrico, nadja]);
-    const next = pagePlanChoice(choice, 1, [enrico, nadja]);
+  it('AC-035, AC-031 (0030): paging moves the chosen day by whole weeks and keeps the eaters', () => {
+    const choice = { ...defaultPlanChoice(today, slots, [enrico, nadja]), eaterIds: [enrico.id] };
+    const next = pagePlanChoice(choice, 1);
     expect(next.date).toBe('2026-11-27');
-    expect(next.eaterIds).toEqual([enrico.id, nadja.id]);
-    expect(pagePlanChoice(choice, -2, [enrico, nadja]).date).toBe('2026-11-06');
+    expect(next.eaterIds).toBe(choice.eaterIds);
+    expect(pagePlanChoice(choice, -2).date).toBe('2026-11-06');
     // Without a day ("Vormerken") paging changes nothing.
-    const later = withPlanDay(choice, null, [enrico, nadja]);
-    expect(pagePlanChoice(later, 1, [enrico, nadja])).toBe(later);
+    const later = withPlanDay(choice, null);
+    expect(pagePlanChoice(later, 1)).toBe(later);
   });
 
   it('a household without Tageszeiten has no slot to preselect', () => {

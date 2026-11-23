@@ -11,9 +11,14 @@ export function chipRowStyle(fill: boolean): ViewStyle {
     : { flexDirection: 'row', flexWrap: 'wrap', gap: 8 };
 }
 
-/** One chip of a filled row: an equal share, its content centred, little side padding. */
+/**
+ * One chip of a filled row: an equal share, its content centred, little side padding. The border
+ * stays when the chip is chosen (in its fill colour), since a flex share never shrinks below the
+ * border: a chosen chip without one came out 2 px narrower.
+ */
 export function fillChipStyle(): ViewStyle {
   return {
+    borderWidth: 1,
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,

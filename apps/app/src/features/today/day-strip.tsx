@@ -294,27 +294,43 @@ function DayTile(props: DayProps) {
   );
 }
 
-/** A trip below the days it covers, in the person's colour (rules of spec 0010). */
+/**
+ * A trip below the days it covers, in the person's colour (rules of spec 0010); a draft is dashed
+ * and carries "Entwurf" under its start (spec 0030, REQ-004).
+ */
 function StripeLine(props: { stripe: TripStripe; start: number; end: number; days: number }) {
   const membersById = useMembersById();
   const colors = useStripeColors(props.stripe, membersById);
+  const left = `${(props.start / props.days) * 100}%` as const;
   return (
     <View
-      style={{ height: 4 }}
       testID={`today-week-stripe-${props.stripe.tripId}`}
       accessibilityLabel={stripeA11y(props.stripe, membersById)}
     >
-      <View
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: `${(props.start / props.days) * 100}%`,
-          width: `${((props.end - props.start + 1) / props.days) * 100}%`,
-          borderRadius: 2,
-          ...stripeLine(colors.edge, props.stripe.draft, 'top', 4),
-        }}
-      />
+      <View style={{ height: 4 }}>
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left,
+            width: `${((props.end - props.start + 1) / props.days) * 100}%`,
+            borderRadius: 2,
+            ...stripeLine(colors.edge, props.stripe.draft, 'top', 4),
+          }}
+        />
+      </View>
+      {props.stripe.draft ? (
+        <View style={{ marginLeft: left, marginTop: 2 }}>
+          <Text
+            variant="caption"
+            color="muted"
+            testID={`today-week-stripe-${props.stripe.tripId}-draft`}
+          >
+            Entwurf
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

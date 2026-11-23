@@ -33,10 +33,44 @@ function hasNeighbour(dx: number, position: Pick<TabSwipePosition, 'index' | 'co
   return dx < 0 ? position.index < position.count - 1 : position.index > 0;
 }
 
-/** Whether a move (dx, dy so far, started at x0) is a tab swipe and not scrolling or going back. */
-export function claimsTabSwipe(dx: number, dy: number, x0: number, width: number): boolean {
-  if (x0 < TAB_SWIPE_EDGE || x0 > width - TAB_SWIPE_EDGE) return false;
-  return claimsSwipe(dx, dy);
+/** The part of PanResponder's gesture state a claim reads. */
+export interface TabSwipeMove {
+  /** Way so far since the finger went down. */
+  dx: number;
+  dy: number;
+  /** Where the finger is now. */
+  moveX: number;
+}
+
+/**
+ * Whether a move is a tab swipe and not scrolling or going back. The start is `moveX - dx`:
+ * PanResponder sets `x0` only on the grant, before it reads 0, so an edge check on it refused
+ * every swipe (spec 0030, REQ-007).
+ */
+export function claimsTabSwipe(move: TabSwipeMove, width: number): boolean {
+  if (startsAtEdge(move, width)) return false;
+  return claimsSwipe(move.dx, move.dy);
+}
+
+/** From this far up or down a move that runs at least as much vertically as sideways is a scroll. */
+const SCROLL_DISTANCE = 10;
+
+function startsAtEdge(move: TabSwipeMove, width: number): boolean {
+  const start = move.moveX - move.dx;
+  return start < TAB_SWIPE_EDGE || start > width - TAB_SWIPE_EDGE;
+}
+
+/**
+ * Whether the tab swipe keeps a move open when the page starts to scroll natively (spec 0030,
+ * REQ-007): with `pan-y` iOS scrolls the vertical part of a diagonal start, and a ScrollView that
+ * became the responder through that scroll never lets go. So the swipe area takes the move
+ * first and decides on the way since the finger went down: sideways enough is a swipe
+ * (`claimsTabSwipe`), mostly vertical or from the screen edge is a scroll and stays one.
+ */
+export function scrollKeepsTabSwipe(move: TabSwipeMove, width: number): boolean {
+  if (startsAtEdge(move, width)) return false;
+  const vertical = Math.abs(move.dy);
+  return vertical < SCROLL_DISTANCE || vertical < Math.abs(move.dx);
 }
 
 /** Where the content stands while the finger is down: 1:1, gently resisting without a neighbour. */
