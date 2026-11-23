@@ -635,11 +635,17 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **B — e2e-Suite**
 
-- [ ] 6. `freshSeed()` in `rundgang-reise-fenster`, `dayBlock` mit testID, Server-Identität in
+- [x] 6. `freshSeed()` in `rundgang-reise-fenster`, `dayBlock` mit testID, Server-Identität in
       `global-setup` (AC-022, AC-023).
 - [ ] 7. Lauf auf 8790, jeden roten Fall einordnen, veraltete Tests anpassen (AC-024).
-- [ ] 8. Begriffs-Guard für e2e und Wortliste, Testnamen (AC-033, AC-034).
-- [ ] 9. Datums-Unabhängigkeit, Warten auf die Endlage, fehlende AC-Tests (AC-031, AC-032, T-12).
+      Veraltete Tests angepasst (AC-024: „2 an“, `bedienung` AC-020 mit eigenem Nutzer);
+      `pnpm e2e:dev` grün. Voller Lauf in H.
+- [x] 8. Begriffs-Guard für e2e und Wortliste, Testnamen (AC-033, AC-034).
+- [x] 9. Datums-Unabhängigkeit, Warten auf die Endlage, fehlende AC-Tests (AC-031, AC-032, T-12).
+      Die fehlenden Tests stehen in `e2e/rundgang-luecken-0031.spec.ts`. 0029 AC-006 hat keinen
+      e2e-Test: Chromium hat keine Home-Leiste (sicherer Rand 0), dort bleibt alles wie bisher
+      (AC-008, `rundgang-handy`); die 8 pt über der Home-Leiste sichert
+      `packages/ui/src/bottom-inset.test.ts`, auf dem Einkaufsmodus und Kochmodus aufsetzen.
 
 **C — Datenbank** (je Punkt eine Migration mit rotem pgTAP zuerst, `db-change`-Skill)
 
