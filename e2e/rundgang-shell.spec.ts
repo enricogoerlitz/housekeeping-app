@@ -284,7 +284,8 @@ test.describe('shell at phone width', () => {
 
     await nav(page, 'kalender');
     // Every day of the current week is shown, and the calendar has dishes in it.
-    await expect(tidPrefix(page, 'day-')).toHaveCount(7);
+    // `day-<date>`, not the blocks `day-block-<date>` (spec 0031, T-03).
+    await expect(page.locator(`[data-testid^="day-2"]${ACTIVE}`)).toHaveCount(7);
     expect(await page.locator(PLAN_ENTRY).count()).toBeGreaterThan(3);
 
     await nav(page, 'liste');

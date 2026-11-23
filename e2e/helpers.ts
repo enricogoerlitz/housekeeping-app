@@ -327,6 +327,13 @@ export async function back(page: Page): Promise<void> {
 export type ManagedPage =
   'activities' | 'packing-bags' | 'trips' | 'articles' | 'stores' | 'members' | 'feedback';
 
+/** The first pages of the tabs, the only ones with ⊞ in the header on phones (spec 0005, AC-054). */
+const TAB_START_PAGES = new Set(['/', '/rezepte', '/kalender', '/liste', '/haushalt']);
+
+function onTabStartPage(page: Page): boolean {
+  return TAB_START_PAGES.has(new URL(page.url()).pathname);
+}
+
 /**
  * Opens a page under "Verwalten": on phones ⊞ in the header of a tab's first page (from another
  * page via "Übersicht"), then the entry; on wider screens the entry in the sidebar.
@@ -334,10 +341,7 @@ export type ManagedPage =
 export async function openManaged(page: Page, key: ManagedPage): Promise<void> {
   if (isPhone(page)) {
     // ⊞ is only on a tab's first page; from a detail page the way leads over "Übersicht".
-    await settle(page);
-    if ((await page.locator(`[data-testid="header-manage"]${ACTIVE}`).count()) === 0) {
-      await nav(page, 'index');
-    }
+    if (!onTabStartPage(page)) await nav(page, 'index');
     await (await single(page, 'header-manage')).click();
     await expect(tid(page, 'manage-screen')).toBeVisible();
     await settle(page);
@@ -381,12 +385,11 @@ export async function showPlanWeek(page: Page, date: ISODate): Promise<void> {
 async function setSimulatedOffline(page: Page, offline: boolean): Promise<void> {
   const phone = isPhone(page);
   if (phone) {
-    await settle(page);
-    if ((await page.locator(`[data-testid="header-manage"]${ACTIVE}`).count()) === 0) {
+    if (!onTabStartPage(page)) {
       await page.context().setOffline(offline);
       return;
     }
-    await tid(page, 'header-manage').click();
+    await (await single(page, 'header-manage')).click();
     await expect(tid(page, 'manage-screen')).toBeVisible();
     await settle(page);
   }

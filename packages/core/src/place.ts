@@ -19,8 +19,12 @@ export interface Place {
 
 export interface PlaceState {
   current?: Place;
+  /** The last address on another path, for a page that mounts after the router showed it. */
+  previous?: Place;
   startPages: Partial<Record<Origin, string>>;
 }
+
+const pathOf = (place: Place | undefined) => place?.href.split('?')[0];
 
 export const EMPTY_PLACE: PlaceState = { startPages: {} };
 
@@ -43,6 +47,7 @@ export function placeAfter(state: PlaceState, pathname: string, params: RawParam
   const start = sectionOfStartPath(pathname);
   return {
     current: { href, section: sectionOfPath(pathname, von) },
+    previous: pathOf(state.current) === pathname ? state.previous : state.current,
     startPages: start ? { ...state.startPages, [start]: startPageHref(href) } : state.startPages,
   };
 }
@@ -63,12 +68,13 @@ export function originFor(state: PlaceState, own: Origin): Origin | undefined {
 
 /**
  * The address a page at `pathname` was opened from: the current one while the page renders
- * first. After a deep link the router may mount the page again; then the current address is the
- * page itself, which is no origin.
+ * first. A page in a tab that mounts only after the router showed it (expo-router mounts tabs
+ * lazily) finds itself as the current address; then it is the one before. After a deep link
+ * there is none before, which is no origin.
  */
 export function openerOf(state: PlaceState, pathname: string): Place | undefined {
-  const current = state.current;
-  return current && current.href.split('?')[0] !== pathname ? current : undefined;
+  if (state.current && pathOf(state.current) !== pathname) return state.current;
+  return state.previous && pathOf(state.previous) !== pathname ? state.previous : undefined;
 }
 
 const SECTION_LABEL: Record<Origin, string> = {
@@ -92,8 +98,8 @@ export interface OriginBackPlan {
 }
 
 /**
- * "Zurück" of a detail page (REQ-006): to the previous entry when that is the origin, otherwise
- * to the origin's start page; never out of the app (AC-018). `von` is the page's parameter, `own`
+ * "Zurück" of a detail page (REQ-006): to the previous entry when that is the origin or the
+ * page's own list, otherwise to the origin's start page; never out of the app (AC-018). `von` is the page's parameter, `own`
  * its section without one, `home` its own list instead of the section's start (e.g. "Märkte").
  */
 export function originBackPlan(input: {
@@ -109,7 +115,9 @@ export function originBackPlan(input: {
   return {
     section,
     label: ownList?.label ?? SECTION_LABEL[section],
-    historyBack: opener !== undefined && opener.section === section,
+    historyBack:
+      opener !== undefined &&
+      (opener.section === section || (ownList !== undefined && pathOf(opener) === ownList.href)),
     href: ownList?.href ?? sectionHref(place, section),
   };
 }

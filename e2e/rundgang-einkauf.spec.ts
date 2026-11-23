@@ -147,7 +147,7 @@ test('AC-050: a new store takes the walking order of dm', async ({ page }) => {
   await tid(page, 'store-new').click();
   await tid(page, 'store-new-sheet-name').fill('Rossmann');
   await tid(page, 'store-new-copy').click();
-  await page.getByText('dm', { exact: true }).last().click();
+  await page.getByRole('menuitemradio', { name: 'dm Drogerie' }).click();
   await tid(page, 'store-new-sheet-save').click();
   await expect(toastMessage(page)).toHaveText('„Rossmann“ angelegt');
 });
