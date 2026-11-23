@@ -604,6 +604,7 @@ export function CalendarScreen() {
                 registerDay={registerDay}
                 showHousehold={householdOn}
                 wide={isWide}
+                longWeekdays={bp === 'desktop'}
                 height={gridHeight}
                 onAdd={onAdd}
                 onOpenEntry={setOpenEntry}
