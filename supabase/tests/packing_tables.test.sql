@@ -89,7 +89,7 @@ insert into public.packing_list_bags (id, household_id, trip_id, bag_id, name, m
   (tests.fx('lb_b'), tests.fx('home_b'), tests.fx('b_trip'), tests.fx('bag_b'), 'Strand', null, 0);
 -- "Strand" of "Urlaub Mallorca": 9 packing items, 4 of them packed (AC-009, AC-037).
 insert into public.packing_items
-  (id, household_id, list_bag_id, name, quantity, per_day, packed, packed_at, packed_by, pack_seq, sort) values
+  (id, household_id, list_bag_id, name, quantity, per_day_quantity, packed, packed_at, packed_by, pack_seq, sort) values
   (tests.fx('it_tshirts'), tests.fx('home_a'), tests.fx('lb_strand'), 'T-Shirts', 1, 1, false, null, null, 0, 0),
   (tests.fx('it_socken'), tests.fx('home_a'), tests.fx('lb_strand'), 'Socken', 1, 1, true, now(), tests.fx('nadja'), 1, 1),
   (tests.fx('it_badehose'), tests.fx('home_a'), tests.fx('lb_strand'), 'Badehose', 2, null, false, null, null, 0, 2),
@@ -131,7 +131,7 @@ select * from tests.tenant_isolation('packing_list_bags',
   tests.fx('enrico'), tests.fx('ben'));
 select * from tests.tenant_isolation('packing_items',
   jsonb_build_object('id', tests.fx('iso_item'), 'household_id', tests.fx('home_a'), 'list_bag_id', tests.fx('lb_kultur'),
-                     'name', 'Kopfhörer', 'quantity', 1, 'per_day', null, 'sort', 20),
+                     'name', 'Kopfhörer', 'quantity', 1, 'per_day_quantity', null, 'sort', 20),
   jsonb_build_object('name', 'Kopfhörer 2'),
   tests.fx('enrico'), tests.fx('ben'));
 
@@ -217,11 +217,11 @@ select throws_ok(
          tests.fx('home_a'), tests.fx('lb_kultur')),
   '23514', null, 'T1 packing_items: quantity 10000 is rejected');
 select throws_ok(
-  format($$ insert into public.packing_items (household_id, list_bag_id, name, quantity, per_day)
+  format($$ insert into public.packing_items (household_id, list_bag_id, name, quantity, per_day_quantity)
             values (%L, %L, 'Socken', 1, 100) $$, tests.fx('home_a'), tests.fx('lb_kultur')),
   '23514', null, 'T1 packing_items: 100 per day is rejected');
 select throws_ok(
-  format($$ insert into public.packing_items (household_id, list_bag_id, name, quantity, per_day)
+  format($$ insert into public.packing_items (household_id, list_bag_id, name, quantity, per_day_quantity)
             values (%L, %L, 'Socken', 1, 0) $$, tests.fx('home_a'), tests.fx('lb_kultur')),
   '23514', null, 'T1 packing_items: 0 per day is rejected');
 
@@ -248,7 +248,7 @@ select throws_ok(
          tests.fx('home_b'), tests.fx('strand')),
   '23503', null, 'AC-010 packing_bag_items: a packing bag of another household is rejected');
 select throws_ok(
-  format($$ insert into public.packing_items (household_id, list_bag_id, name, quantity, per_day)
+  format($$ insert into public.packing_items (household_id, list_bag_id, name, quantity, per_day_quantity)
             values (%L, %L, 'Fremd', 1, 1) $$, tests.fx('home_b'), tests.fx('lb_strand')),
   '23503', null, 'AC-010 packing_items: a bag of a packing list of another household is rejected');
 select tests.authenticate_as(tests.fx('enrico'));
@@ -292,7 +292,7 @@ select throws_ok(
   '42501', null, 'T1 packing_items: a member cannot move a packing item to another bag');
 
 -- ===================== Insert trigger: "je Tag" and open state (AC-011, AC-014) =====================
-insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort) values
+insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day_quantity, sort) values
   (tests.fx('new_tshirts'), tests.fx('home_a'), tests.fx('lb_kultur'), 'T-Shirts', 3, 1, 1),
   (tests.fx('new_fixed'), tests.fx('home_a'), tests.fx('lb_kultur'), 'Badehose', 2, null, 2),
   (tests.fx('new_short'), tests.fx('home_a'), tests.fx('lb_short'), 'T-Shirts', 7, 1, 0),
@@ -323,7 +323,7 @@ insert into public.packing_list_bags (id, household_id, trip_id, bag_id, name, m
   (tests.fx('lb_huge'), tests.fx('home_a'), tests.fx('huge_trip'), null, 'Strand', null, 0);
 select tests.authenticate_as(tests.fx('enrico'));
 select lives_ok(
-  format($$ insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day, sort)
+  format($$ insert into public.packing_items (id, household_id, list_bag_id, name, quantity, per_day_quantity, sort)
             values (%L, %L, %L, 'T-Shirts', 1, 99, 0) $$, tests.fx('new_huge'), tests.fx('home_a'), tests.fx('lb_huge')),
   'Security check 0012 packing_items: 99 per day for 30 million days does not overflow on insert');
 select lives_ok(

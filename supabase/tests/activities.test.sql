@@ -105,10 +105,10 @@ select throws_ok(
   format($$ insert into public.activities (household_id, name, name_key, address) values (%L, 'X', 'x', %L) $$,
          tests.fx('home_a'), repeat('a', 301)),
   '23514', null, 'REQ-003 activities: an address longer than 300 characters is rejected');
-select throws_ok(
+select lives_ok(
   format($$ insert into public.activities (household_id, name, name_key, maps_url) values (%L, 'X', 'x', 'http://maps.google.com/?q=x') $$,
          tests.fx('home_a')),
-  '23514', null, 'AC-014 activities: a maps link must be https');
+  'AC-014 activities: an http maps link is accepted like for a restaurant (spec 0031, AC-044)');
 select throws_ok(
   format($$ insert into public.activities (household_id, name, name_key, maps_url) values (%L, 'X', 'x', 'javascript:alert(1)') $$,
          tests.fx('home_a')),

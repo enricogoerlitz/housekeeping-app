@@ -70,9 +70,9 @@ select lives_ok(
                                                       'bag_id', tests.fx('kultur_bag'), 'name', 'Kulturbeutel',
                                                       'member_id', tests.fx('nadja'), 'sort', 1)),
     tests.ins('packing_items', jsonb_build_object('id', tests.fx('tshirts'), 'list_bag_id', tests.fx('lb_strand'),
-                                                  'name', 'T-Shirts', 'quantity', 1, 'per_day', 1, 'sort', 0)),
+                                                  'name', 'T-Shirts', 'quantity', 1, 'per_day_quantity', 1, 'sort', 0)),
     tests.ins('packing_items', jsonb_build_object('id', tests.fx('socken'), 'list_bag_id', tests.fx('lb_strand'),
-                                                  'name', 'Socken', 'quantity', 1, 'per_day', 1, 'sort', 1))))),
+                                                  'name', 'Socken', 'quantity', 1, 'per_day_quantity', 1, 'sort', 1))))),
   'AC-008 apply_changes: trip, both people and the packing list in one call');
 select results_eq(
   format($$ select (select count(*)::int from public.trip_members where trip_id = %1$L),

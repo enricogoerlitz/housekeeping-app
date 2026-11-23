@@ -551,7 +551,7 @@ describe('mapping between domain and rows', () => {
           list_bag_id: listBag.id,
           name: 'Schnorchel',
           quantity: null,
-          per_day: null,
+          per_day_quantity: null,
           sort: 99,
           bag_item_id: null,
           from_bag: false,

@@ -32,7 +32,7 @@ as $$ select format('select public.apply_changes(%L, %L)', tests.fx(p_household)
 create function tests.restore_item(p_key text, p_list_bag text, p_extra jsonb default '{}') returns jsonb
 language sql stable
 as $$ select jsonb_build_object('id', tests.fx(p_key), 'list_bag_id', tests.fx(p_list_bag), 'name', 'Badehose',
-                                'quantity', 2, 'per_day', null, 'sort', 0, 'packed', false, 'packed_at', null,
+                                'quantity', 2, 'per_day_quantity', null, 'sort', 0, 'packed', false, 'packed_at', null,
                                 'packed_by', null, 'pack_seq', 0) || p_extra $$;
 grant execute on all functions in schema tests to anon, authenticated;
 
@@ -242,7 +242,7 @@ create temp table new_list on commit drop as
       'id', tests.fx('new_list_bag'), 'trip_id', tests.fx('new_trip'), 'name', 'Strand', 'sort', 0)))
   || (select jsonb_agg(jsonb_build_object('kind', 'insert', 'table', 'packing_items', 'row', jsonb_build_object(
         'list_bag_id', tests.fx('new_list_bag'), 'name', case when n = 1 then 'T-Shirts' else 'Packstück ' || n end,
-        'quantity', 1, 'per_day', case when n = 1 then 1 end, 'sort', n)) order by n)
+        'quantity', 1, 'per_day_quantity', case when n = 1 then 1 end, 'sort', n)) order by n)
       from generate_series(1, 21) n) as ops;
 grant select on new_list to authenticated;
 select tests.authenticate_as(tests.fx('enrico'));
@@ -307,7 +307,7 @@ select lives_ok(
     tests.restore_item('r_open', 'lb_strand', jsonb_build_object('packed', false, 'packed_at', '2026-11-19 08:00+00',
                                                                    'packed_by', tests.fx('nadja'), 'pack_seq', 2)),
     tests.restore_item('r_seq', 'lb_strand', jsonb_build_object('packed', true, 'pack_seq', 5000000)),
-    tests.restore_item('r_day', 'lb_strand', jsonb_build_object('quantity', 1, 'per_day', 2)))))),
+    tests.restore_item('r_day', 'lb_strand', jsonb_build_object('quantity', 1, 'per_day_quantity', 2)))))),
   'AC-035 apply_changes: restore_packing_items restores removed packing items');
 select tests.clear_authentication();
 select is(tests.state('r_nadja'),

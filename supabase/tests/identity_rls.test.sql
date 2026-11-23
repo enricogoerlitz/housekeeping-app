@@ -4,7 +4,7 @@
 -- invitations directly.
 begin;
 \ir _helpers.psql
-select plan(43);
+select plan(44);
 
 create temp table fx (key text primary key, id uuid) on commit drop;
 grant select on fx to anon, authenticated;
@@ -90,15 +90,19 @@ select results_eq(
   'AC-011 households: a member sees only her households'
 );
 update public.households set name = 'Hacked' where id = (select id from fx where key = 'home_b');
-update public.households
-set name = 'Anna & Carla',
-    meal_slots = '[{"id": "8c1f2a4e-1111-4b4b-9c9c-000000000001", "name": "Frühstück", "sort": 0}]'
-where id = (select id from fx where key = 'home_a');
+update public.households set name = 'Anna & Carla' where id = (select id from fx where key = 'home_a');
 select results_eq(
-  $$ select name, meal_slots -> 0 ->> 'name' from public.households $$,
-  $$ values ('Anna & Carla', 'Frühstück') $$,
-  'T2 households: a member renames her household and edits its meal slots'
+  $$ select name from public.households $$,
+  $$ values ('Anna & Carla') $$,
+  'T2 households: a member renames her household'
 );
+select throws_ok(
+  $$ update public.households set meal_slots = '[{"id": "8c1f2a4e-1111-4b4b-9c9c-000000000001", "name": "Frühstück", "sort": 0}]'
+     where id = (select id from fx where key = 'home_a') $$,
+  '42501', null,
+  'spec 0031 AC-037 households: a member cannot change the meal slots'
+);
+select tests.clear_authentication();
 select throws_ok(
   $$ update public.households set meal_slots = '[{"name": "ohne id", "sort": 0}]'
      where id = (select id from fx where key = 'home_a') $$,
@@ -111,6 +115,7 @@ select throws_ok(
   '23514', null,
   'T2 households: meal slots must be an array'
 );
+select tests.authenticate_as((select id from fx where key = 'anna'));
 select throws_ok(
   $$ update public.households set id = gen_random_uuid() where id = (select id from fx where key = 'home_a') $$,
   '42501', null,
@@ -232,9 +237,13 @@ select results_eq(
   'AC-011 household_invitations: a member of another household does not see them'
 );
 
--- ===================== deleted_records of the identity tables =====================
+-- ===================== deleted_records =====================
+-- Invitations and memberships come in full on every pull and leave no tombstone (spec 0031,
+-- D-05); a tombstone of another table shows who may read them.
 select tests.clear_authentication();
 delete from public.household_invitations where email = 'erik@example.com';
+insert into public.deleted_records (household_id, table_name, record_id)
+values ((select id from fx where key = 'home_b'), 'areas', gen_random_uuid()::text);
 select tests.authenticate_as((select id from fx where key = 'anna'));
 select is(
   (select count(*)::int from public.deleted_records),
@@ -244,8 +253,8 @@ select is(
 select tests.authenticate_as((select id from fx where key = 'ben'));
 select results_eq(
   'select table_name from public.deleted_records',
-  $$ values ('household_invitations') $$,
-  'T2 deleted_records: a deleted invitation leaves a tombstone for its household'
+  $$ values ('areas') $$,
+  'T2 deleted_records: a member reads the tombstones of her household; the deleted invitation left none'
 );
 
 -- ===================== anon =====================

@@ -300,8 +300,8 @@ select tests.authenticate_as((select id from fx where key = 'ben'));
 select results_eq(
   $$ select (select count(*)::int from public.household_invitations where email = 'carla@example.com'),
             (select count(*)::int from public.deleted_records where table_name = 'household_invitations') $$,
-  $$ values (0, 1) $$,
-  'T2: a declined invitation is gone and leaves a tombstone for the household'
+  $$ values (0, 0) $$,
+  'T2: a declined invitation is gone, without a tombstone (spec 0031, AC-043: invitations come in full)'
 );
 
 -- ===================== remove_member (AC-012) =====================
@@ -310,10 +310,9 @@ select lives_ok(
   $$ select public.remove_member((select id from fx where key = 'home'), (select id from fx where key = 'carla')) $$,
   'AC-012: a member removes another member'
 );
-select results_eq(
+select is_empty(
   $$ select record_id from public.deleted_records where table_name = 'household_members' $$,
-  $$ select id::text from fx where key = 'carla' $$,
-  'AC-012: the removal leaves a membership tombstone (record_id = profile_id) for the remaining members'
+  'AC-012: the removal leaves no tombstone; memberships come in full on every pull (spec 0031, AC-043)'
 );
 
 select tests.authenticate_as((select id from fx where key = 'carla'));

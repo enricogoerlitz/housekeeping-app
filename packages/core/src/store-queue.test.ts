@@ -383,7 +383,7 @@ function packingItemRow(id: string, rest: Partial<Row> = {}): Row {
     list_bag_id: 'l1',
     name: id,
     quantity: null,
-    per_day: null,
+    per_day_quantity: null,
     packed: false,
     packed_at: null,
     packed_by: null,

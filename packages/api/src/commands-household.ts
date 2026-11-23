@@ -246,7 +246,7 @@ export async function deleteHousehold(householdId: Id): Promise<void> {
   const name = getState().households[householdId]?.household.name ?? '';
   const notDone = `Löschen nicht abgeschlossen – „${name}“ ist noch da. Bitte mit Netz noch einmal löschen.`;
   try {
-    const names = await onlineCall((transport) => transport.householdMediaNames(householdId));
+    const names = await onlineCall((transport) => transport.beginHouseholdDeletion(householdId));
     for (let start = 0; start < names.length; start += 100) {
       const batch = names.slice(start, start + 100);
       await onlineCall((transport) => transport.removeMedia(batch));

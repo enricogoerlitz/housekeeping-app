@@ -407,7 +407,7 @@ describe('spec 0011: editing and deleting a chore', () => {
     expect(choreById('chore-bad')).toBeUndefined();
   });
 
-  it('AC-053: deleting keeps the entries with their title; undo links them to the chore again', async () => {
+  it('AC-053, spec 0031 AC-040: deleting keeps the entries; undo is restore_chore and links exactly them again', async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
     const restore = snapshot();
@@ -416,7 +416,8 @@ describe('spec 0011: editing and deleting a chore', () => {
     expect(eventById('ev-5')).toMatchObject({ title: 'Bad putzen' });
     expect(eventById('ev-5')?.choreId).toBeUndefined();
     await fx.settle(nadja);
-    expect(opsOf(0)).toEqual([{ kind: 'delete', table: 'chores', id: 'chore-bad' }]);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['deleteChore']);
+    expect(fx.calls[0]?.args).toEqual(['chore-bad']);
     expect(fx.server.row(H, 'chore_events', 'ev-5')).toMatchObject({
       chore_id: null,
       title: 'Bad putzen',
@@ -425,13 +426,24 @@ describe('spec 0011: editing and deleting a chore', () => {
 
     restore();
     await fx.settle(nadja);
-    expect(shape(opsOf(1))).toEqual([
-      ['insert', 'chores'],
-      ['patch', 'chore_events'],
-    ]);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['deleteChore', 'restoreChore']);
     expect(fx.server.row(H, 'chores', 'chore-bad')).toMatchObject({ title: 'Bad putzen' });
     expect(fx.server.row(H, 'chore_events', 'ev-5')).toMatchObject({ chore_id: 'chore-bad' });
     expect(eventById('ev-5')?.choreId).toBe('chore-bad');
+    expect(fx.nadjaData(nadja).chores.some((chore) => chore.id === 'chore-bad')).toBe(true);
+  });
+
+  it('spec 0031 AC-040: an undo the server cannot do any more brings the deletion back', async () => {
+    await fx.startEnrico();
+    const restore = snapshot();
+    deleteChore('chore-bad');
+    await fx.settle();
+    fx.server.failNext('restore_chore', new TransportError('permanent', 'chore_not_restorable'));
+    restore();
+    await fx.settle();
+    expect(rejected).toEqual([WRITE_REJECTED_MESSAGE]);
+    expect(fx.server.row(H, 'chores', 'chore-bad')).toBeUndefined();
+    expect(choreById('chore-bad')).toBeUndefined();
   });
 
   it('AC-036 (spec 0003) / AC-051: a new chore gets its first date from core.firstDueOn', async () => {

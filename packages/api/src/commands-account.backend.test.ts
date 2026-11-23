@@ -150,7 +150,7 @@ describe('Haushalt löschen (REQ-005)', () => {
     fx.clearCalls();
     await deleteHousehold(wg);
     expect(fx.calls.map((call) => call.fn)).toEqual([
-      'householdMediaNames',
+      'beginHouseholdDeletion',
       'removeMedia',
       'deleteHousehold',
     ]);
@@ -170,7 +170,7 @@ describe('Haushalt löschen (REQ-005)', () => {
     );
     expect(getState().households[H]).toBeDefined();
     // The server refuses before any photo is deleted.
-    expect(fx.calls.map((call) => call.fn)).toEqual(['householdMediaNames']);
+    expect(fx.calls.map((call) => call.fn)).toEqual(['beginHouseholdDeletion']);
     expect(fx.server.media(path)).toBeDefined();
   });
 

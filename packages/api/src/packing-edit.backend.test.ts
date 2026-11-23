@@ -60,7 +60,7 @@ describe('changing a Packstück of the packing list (REQ-009)', () => {
     expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
     expect(fx.server.row(H, 'packing_items', shirts.id)).toMatchObject({
       quantity: 14,
-      per_day: 2,
+      per_day_quantity: 2,
       packed: true,
     });
     const template = getData().packingBagItems.find(
@@ -154,7 +154,10 @@ describe('"+ Packstück" and the Reisetasche with "je Tag" (REQ-010)', () => {
     await fx.settle(engine);
     const item = getData().packingItems.find((candidate) => candidate.id === id);
     expect(item).toMatchObject({ name: 'Hemden', quantity: 14, perDay: 2, fromBag: true });
-    expect(fx.server.row(H, 'packing_items', id ?? '')).toMatchObject({ quantity: 14, per_day: 2 });
+    expect(fx.server.row(H, 'packing_items', id ?? '')).toMatchObject({
+      quantity: 14,
+      per_day_quantity: 2,
+    });
     expect(
       getData().packingBagItems.find((bagItem) => bagItem.id === item?.bagItemId),
     ).toMatchObject({

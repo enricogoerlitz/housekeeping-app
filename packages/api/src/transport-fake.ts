@@ -92,6 +92,8 @@ type RpcName =
   | 'restore_restaurant'
   | 'delete_activity'
   | 'restore_activity'
+  | 'delete_chore'
+  | 'restore_chore'
   | 'set_recipe_favorite'
   | 'set_recipe_rating'
   | 'set_restaurant_favorite'
@@ -106,7 +108,7 @@ type RpcName =
   | 'remove_member'
   | 'withdraw_invitation'
   | 'update_profile'
-  | 'household_media_names'
+  | 'begin_household_deletion'
   | 'delete_household'
   | 'register_push_subscription'
   | 'set_push_subscription_enabled'
@@ -268,7 +270,7 @@ const RESTORE_KEYS = new Set([
   'list_bag_id',
   'name',
   'quantity',
-  'per_day',
+  'per_day_quantity',
   'sort',
   'packed',
   'packed_at',
@@ -323,8 +325,8 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
     if (
       !isTrimmedName(row.name, 120) ||
       !inRange(row.quantity, 1, 9999) ||
-      !inRange(row.per_day, 1, 99) ||
-      (row.per_day != null && row.quantity == null)
+      !inRange(row.per_day_quantity, 1, 99) ||
+      (row.per_day_quantity != null && row.quantity == null)
     ) {
       throw invalid();
     }
@@ -333,11 +335,14 @@ function checkPackingRow(table: string, row: Row, tables: TableRows): void {
 
 /** "Je Tag" like the database: per day × days of the trip of its bag, at most 9999. */
 function perDayQuantity(tables: TableRows, row: Row): unknown {
-  if (row.per_day == null) return row.quantity;
+  if (row.per_day_quantity == null) return row.quantity;
   const listBag = tables.packing_list_bags?.[String(row.list_bag_id)];
   const trip = listBag ? tables.trips?.[String(listBag.trip_id)] : undefined;
   if (!trip) return row.quantity;
-  return packQuantity(Number(row.per_day), tripDays(String(trip.from_on), String(trip.to_on)));
+  return packQuantity(
+    Number(row.per_day_quantity),
+    tripDays(String(trip.from_on), String(trip.to_on)),
+  );
 }
 
 /** private.recalc_packing_quantities: the open "je Tag" Packstücke of one trip (AC-037). */
@@ -349,7 +354,11 @@ function recalcPacking(tables: TableRows, tripId: string): TableRows {
       .map((bag) => bag.id),
   );
   for (const item of Object.values(tables.packing_items ?? {})) {
-    if (!bagIds.has(String(item.list_bag_id)) || item.per_day == null || item.packed === true) {
+    if (
+      !bagIds.has(String(item.list_bag_id)) ||
+      item.per_day_quantity == null ||
+      item.packed === true
+    ) {
       continue;
     }
     const quantity = perDayQuantity(next, item);
@@ -407,6 +416,15 @@ interface RecipeDeletion {
   collectionRecipes: Row[];
   /** Spec 0023, Decision 15: the contributions taken off the list, as restore_cleared_items takes. */
   list: ClearedItems;
+}
+/** private.deletions of a chore (spec 0031, REQ-016): the row and the ids of its entries. */
+interface ChoreDeletion {
+  householdId: string;
+  choreId: string;
+  deletedBy: string;
+  deletedAt: number;
+  row: Row;
+  eventIds: string[];
 }
 /** private.deletions of a restaurant or an activity (spec 0024, REQ-010). */
 interface PlaceDeletion {
@@ -873,6 +891,7 @@ export function createFakeServer(): FakeServer {
   /** private.deletions of recipes, one snapshot per household and recipe. */
   const recipeDeletions = new Map<string, RecipeDeletion>();
   const placeDeletions = new Map<string, PlaceDeletion>();
+  const choreDeletions = new Map<string, ChoreDeletion>();
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
   /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
   let pushSubscriptions: PushSubscriptionRecord[] = [];
@@ -1205,7 +1224,7 @@ export function createFakeServer(): FakeServer {
         list_bag_id: element.list_bag_id,
         name: element.name,
         quantity: element.quantity ?? null,
-        per_day: element.per_day ?? null,
+        per_day_quantity: element.per_day_quantity ?? null,
         sort: element.sort ?? 0,
         packed,
         packed_at: packed ? (compareTimestamps(at, time) > 0 ? time : at) : null,
@@ -1259,7 +1278,7 @@ export function createFakeServer(): FakeServer {
         list_bag_id: listBagId,
         name: element.name,
         quantity: element.quantity ?? null,
-        per_day: element.per_day ?? null,
+        per_day_quantity: element.per_day_quantity ?? null,
         sort: element.sort ?? 0,
         bag_item_id: element.bag_item_id ?? null,
         from_bag: element.from_bag !== false,
@@ -1277,7 +1296,9 @@ export function createFakeServer(): FakeServer {
         throw reject('invalid_change');
       }
       if (
-        Object.keys(element).some((key) => !['id', 'name', 'quantity', 'per_day'].includes(key))
+        Object.keys(element).some(
+          (key) => !['id', 'name', 'quantity', 'per_day_quantity'].includes(key),
+        )
       ) {
         throw reject('invalid_change');
       }
@@ -1287,7 +1308,7 @@ export function createFakeServer(): FakeServer {
         ...row,
         name: element.name,
         quantity: element.quantity ?? null,
-        per_day: element.per_day ?? null,
+        per_day_quantity: element.per_day_quantity ?? null,
         updated_at: now(),
       };
       patched.quantity = perDayQuantity(next, patched);
@@ -1586,18 +1607,6 @@ export function createFakeServer(): FakeServer {
     );
     next = withoutRows(next, 'shopping_items', empty);
     return [next, existing.length];
-  }
-
-  /**
-   * chore_events_keep_chore (spec 0011): an entry keeps its chore. The link is set again only
-   * after the chore was deleted („Rückgängig“, AC-053); it is cleared only by deleting the chore.
-   */
-  function checkChoreLink(tables: TableRows, event: Row, choreId: unknown): void {
-    const current = typeof event.chore_id === 'string' ? event.chore_id : null;
-    const target = choreId ?? null;
-    if (current === null || target === current) return;
-    if (target === null && !tables.chores?.[current]) return;
-    throw reject('invalid_change');
   }
 
   /**
@@ -1950,12 +1959,11 @@ export function createFakeServer(): FakeServer {
           if (!row || (op.table === 'notification_settings' && row.member_id !== userId)) {
             throw new TransportError('permanent', 'row_not_found', 404);
           }
-          if (op.table === 'chore_events' && 'chore_id' in op.changes)
-            checkChoreLink(tables, row, op.changes.chore_id);
           const merged = withDbTimes(op.table, { ...row, ...op.changes });
           // packing_items_before_update (spec 0022): "je Tag" from the trip, also when packed.
           const patched =
-            op.table === 'packing_items' && ('quantity' in op.changes || 'per_day' in op.changes)
+            op.table === 'packing_items' &&
+            ('quantity' in op.changes || 'per_day_quantity' in op.changes)
               ? { ...merged, quantity: perDayQuantity(tables, merged) }
               : merged;
           tables = withRow(
@@ -2369,6 +2377,78 @@ export function createFakeServer(): FakeServer {
       return [tables, undefined];
     });
     recipeDeletions.delete(`${householdId}:${recipeId}`);
+    return true;
+  }
+
+  // ---------- delete_chore / restore_chore (spec 0031, REQ-016) ----------
+
+  /** private.delete_chore: the snapshot {row, entry ids}, then the chore; entries lose the link. */
+  function deleteChore(userId: string, choreId: string): void {
+    const notFound = () => new TransportError('permanent', 'chore_not_found', 500);
+    const householdId = locate(userId, 'chores', choreId);
+    if (!householdId) throw notFound();
+    let deletion: ChoreDeletion | undefined;
+    transaction(householdId, (before) => {
+      const row = before.chores?.[choreId];
+      if (!row) throw notFound();
+      deletion = {
+        householdId,
+        choreId,
+        deletedBy: userId,
+        deletedAt: Date.now(),
+        row,
+        eventIds: Object.values(before.chore_events ?? {})
+          .filter((event) => event.chore_id === choreId)
+          .map((event) => String(event.id)),
+      };
+      return [withoutRows(before, 'chores', [choreId]), undefined];
+    });
+    for (const [key, kept] of choreDeletions) {
+      if (kept.householdId === householdId && kept.deletedAt <= Date.now() - RESTORABLE_MS) {
+        choreDeletions.delete(key);
+      }
+    }
+    if (deletion) choreDeletions.set(`${householdId}:${choreId}`, deletion);
+  }
+
+  /**
+   * private.restore_chore: for the person who deleted, while a member, within 1 hour. The chore
+   * comes back with its id and created_at, and the entries of the snapshot still without a chore
+   * hang on it again. False when it exists again.
+   */
+  function restoreChore(userId: string, choreId: string): boolean {
+    const notRestorable = () => new TransportError('permanent', 'chore_not_restorable', 500);
+    const deletion = [...choreDeletions.values()].find(
+      (candidate) =>
+        candidate.choreId === choreId &&
+        candidate.deletedBy === userId &&
+        isMember(userId, candidate.householdId) &&
+        candidate.deletedAt > Date.now() - RESTORABLE_MS,
+    );
+    if (!deletion) throw notRestorable();
+    const { householdId } = deletion;
+    if (data.get(householdId)?.chores?.[choreId]) return false;
+    if ([...data.values()].some((tables) => tables.chores?.[choreId])) throw notRestorable();
+    const current = new Set(memberIdsOf(householdId));
+    transaction(householdId, (before) => {
+      const row: Row = {
+        ...withoutTimestamps(deletion.row),
+        created_at: deletion.row.created_at,
+        next_assignee_id: current.has(String(deletion.row.next_assignee_id))
+          ? deletion.row.next_assignee_id
+          : null,
+      };
+      checkRow(householdId, 'chores', row, before);
+      let tables = withRow(before, 'chores', row);
+      for (const id of deletion.eventIds) {
+        const event = tables.chore_events?.[id];
+        if (event && event.chore_id == null) {
+          tables = withRow(tables, 'chore_events', { ...event, chore_id: choreId });
+        }
+      }
+      return [tables, undefined];
+    });
+    choreDeletions.delete(`${householdId}:${choreId}`);
     return true;
   }
 
@@ -2967,6 +3047,8 @@ export function createFakeServer(): FakeServer {
         run(userId, 'delete_activity', () => deletePlace(userId, 'activity', activityId, today)),
       restoreActivity: (activityId) =>
         run(userId, 'restore_activity', () => restorePlace(userId, 'activity', activityId)),
+      deleteChore: (choreId) => run(userId, 'delete_chore', () => deleteChore(userId, choreId)),
+      restoreChore: (choreId) => run(userId, 'restore_chore', () => restoreChore(userId, choreId)),
 
       mergeAreas: (sourceId, targetId) =>
         run(userId, 'merge_areas', () => {
@@ -3260,8 +3342,8 @@ export function createFakeServer(): FakeServer {
           for (const householdId of householdsOf(userId)) notify(householdId);
         }),
 
-      householdMediaNames: (householdId) =>
-        run(userId, 'household_media_names', () => {
+      beginHouseholdDeletion: (householdId) =>
+        run(userId, 'begin_household_deletion', () => {
           requireUser(userId);
           if (!isMember(userId, householdId)) {
             throw new TransportError('permanent', 'not_member', 403);
@@ -3295,6 +3377,9 @@ export function createFakeServer(): FakeServer {
           }
           for (const [key, deletion] of placeDeletions) {
             if (deletion.householdId === householdId) placeDeletions.delete(key);
+          }
+          for (const [key, deletion] of choreDeletions) {
+            if (deletion.householdId === householdId) choreDeletions.delete(key);
           }
           notify(householdId);
         }),

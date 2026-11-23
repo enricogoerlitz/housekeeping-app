@@ -313,7 +313,7 @@ function restoreRows(items: readonly PackingItem[]): RestorePackingItem[] {
     list_bag_id: item.listBagId,
     name: item.name,
     quantity: item.quantity ?? null,
-    per_day: item.perDay ?? null,
+    per_day_quantity: item.perDay ?? null,
     sort: item.sort,
     packed: item.packed,
     packed_at: item.packedAt ?? null,
@@ -459,7 +459,7 @@ function daysOfListBag(listBag: PackingListBag): number {
 const itemChanges = (item: PackingItem) => ({
   name: item.name,
   quantity: item.quantity ?? null,
-  per_day: item.perDay ?? null,
+  per_day_quantity: item.perDay ?? null,
 });
 
 /**
@@ -642,7 +642,7 @@ const adoptRow = (item: PackingItem): AdoptPackingItem => ({
   id: item.id,
   name: item.name,
   quantity: item.quantity ?? null,
-  per_day: item.perDay ?? null,
+  per_day_quantity: item.perDay ?? null,
   sort: item.sort,
   bag_item_id: item.bagItemId ?? null,
   from_bag: item.fromBag ?? true,

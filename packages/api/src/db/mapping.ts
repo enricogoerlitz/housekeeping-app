@@ -23,7 +23,7 @@
 // - Spec 0012: the packed state of a Packstück (`packed`, `packed_at`, `packed_by`, `pack_seq`) is
 //   read and written to rows for the local view, but a diff never sends it (NEVER_SENT_COLUMNS):
 //   only set_packing_items_packed and restore_packing_items write it. `per_day` of a Reisetasche
-//   is a flag, of a Packliste the quantity per day (`perDay` undefined = fixed). A removed person
+//   is a flag, `per_day_quantity` of a Packliste the quantity per day (`perDay` undefined = fixed). A removed person
 //   (`member_id`, `packed_by` null) is undefined. The four packing tables keep creation order.
 // - Spec 0009: `kind` other than 'collection' (or missing) is a recipe; a recipe without `course`
 //   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
@@ -475,7 +475,7 @@ const packingItemRow = (householdId: string, item: PackingItem) =>
     list_bag_id: item.listBagId,
     name: item.name,
     quantity: item.quantity ?? null,
-    per_day: item.perDay ?? null,
+    per_day_quantity: item.perDay ?? null,
     sort: item.sort,
     packed: item.packed,
     packed_at: item.packedAt ?? null,
@@ -975,7 +975,7 @@ function toPackingItem(row: Row): PackingItem {
     listBagId: r.list_bag_id ?? '',
     name: r.name ?? '',
     quantity: opt(r.quantity),
-    perDay: opt(r.per_day),
+    perDay: opt(r.per_day_quantity),
     packed: r.packed === true,
     packedAt: opt(r.packed_at),
     packedBy: opt(r.packed_by),

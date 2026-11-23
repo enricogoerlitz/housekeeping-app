@@ -304,7 +304,7 @@ try {
 
   // Quota used up (AC-030): refused before any Foundry call.
   psql(
-    `insert into public.ai_usage (profile_id, day, requests)
+    `insert into private.ai_usage (profile_id, day, requests)
      select id, (now() at time zone 'Europe/Berlin')::date, 200 from public.profiles
      where email = '${email}'
      on conflict (profile_id, day) do update set requests = 200;`,

@@ -118,3 +118,26 @@ describe('diffRows', () => {
     }
   });
 });
+
+describe('spec 0031: columns members do not write', () => {
+  it('REQ-026: a new recipe is inserted without its bundled sample photo', () => {
+    const ops = diffRows([], [{ id: 'r1', title: 'Lasagne', photo: null }], {
+      table: 'recipes',
+      allowedColumns: ['title'],
+    });
+    expect(ops).toEqual([
+      { kind: 'insert', table: 'recipes', row: { id: 'r1', title: 'Lasagne' } },
+    ]);
+  });
+
+  it('REQ-026: a patch never changes the sample photo', () => {
+    const lasagne = { id: 'r1', title: 'Lasagne', photo: 'lasagne.jpg' };
+    const error = errorOf(() =>
+      diffRows([lasagne], [{ ...lasagne, photo: null }], {
+        table: 'recipes',
+        allowedColumns: ['title'],
+      }),
+    );
+    expect(error.code).toBe('column-not-allowed');
+  });
+});

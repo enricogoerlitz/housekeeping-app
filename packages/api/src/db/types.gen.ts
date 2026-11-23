@@ -192,36 +192,6 @@ export type Database = {
           },
         ];
       };
-      ai_usage: {
-        Row: {
-          day: string;
-          profile_id: string;
-          requests: number;
-          speech_tokens: number;
-        };
-        ComputedFields: never;
-        Insert: {
-          day: string;
-          profile_id: string;
-          requests?: number;
-          speech_tokens?: number;
-        };
-        Update: {
-          day?: string;
-          profile_id?: string;
-          requests?: number;
-          speech_tokens?: number;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'ai_usage_profile_id_fkey';
-            columns: ['profile_id'];
-            isOneToOne: false;
-            referencedRelation: 'profiles';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
       areas: {
         Row: {
           created_at: string;
@@ -1078,7 +1048,7 @@ export type Database = {
           packed: boolean;
           packed_at: string | null;
           packed_by: string | null;
-          per_day: number | null;
+          per_day_quantity: number | null;
           quantity: number | null;
           sort: number;
           updated_at: string;
@@ -1096,7 +1066,7 @@ export type Database = {
           packed?: boolean;
           packed_at?: string | null;
           packed_by?: string | null;
-          per_day?: number | null;
+          per_day_quantity?: number | null;
           quantity?: number | null;
           sort?: number;
           updated_at?: string;
@@ -1113,7 +1083,7 @@ export type Database = {
           packed?: boolean;
           packed_at?: string | null;
           packed_by?: string | null;
-          per_day?: number | null;
+          per_day_quantity?: number | null;
           quantity?: number | null;
           sort?: number;
           updated_at?: string;
@@ -1854,6 +1824,7 @@ export type Database = {
       adjust_item_count: { Args: { p_delta: number; p_item_id: string }; Returns: Json };
       apply_changes: { Args: { p_household_id: string; p_ops: Json }; Returns: Json };
       assign_article_area: { Args: { p_area_id: string; p_article_id: string }; Returns: Json };
+      begin_household_deletion: { Args: { household_id: string }; Returns: string[] };
       clear_checked_items: { Args: { p_household_id: string }; Returns: Json };
       clear_shopping_list: { Args: { p_household_id: string }; Returns: Json };
       consume_ai_quota: { Args: { amount: number; kind: string }; Returns: boolean };
@@ -1865,13 +1836,13 @@ export type Database = {
       decline_invitation: { Args: { invitation_id: string }; Returns: undefined };
       delete_activity: { Args: { activity_id: string; today: string }; Returns: Json };
       delete_article: { Args: { p_article_id: string }; Returns: Json };
+      delete_chore: { Args: { chore_id: string }; Returns: undefined };
       delete_household: { Args: { household_id: string }; Returns: undefined };
       delete_recipe: {
         Args: { recipe_id: string; today: string; with_list?: boolean };
         Returns: Json;
       };
       delete_restaurant: { Args: { restaurant_id: string; today: string }; Returns: Json };
-      household_media_names: { Args: { household_id: string }; Returns: string[] };
       invite_member: { Args: { email: string; household_id: string }; Returns: string };
       list_push_subscriptions: {
         Args: { p_current_endpoint?: string };
@@ -1896,6 +1867,7 @@ export type Database = {
       remove_member: { Args: { household_id: string; profile_id: string }; Returns: undefined };
       remove_push_subscription: { Args: { p_id: string }; Returns: boolean };
       restore_activity: { Args: { activity_id: string }; Returns: boolean };
+      restore_chore: { Args: { chore_id: string }; Returns: boolean };
       restore_cleared_items: { Args: { p_household_id: string; p_items: Json }; Returns: number };
       restore_recipe: { Args: { recipe_id: string }; Returns: boolean };
       restore_restaurant: { Args: { restaurant_id: string }; Returns: boolean };

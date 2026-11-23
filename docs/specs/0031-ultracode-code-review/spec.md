@@ -666,13 +666,13 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **C — Datenbank** (je Punkt eine Migration mit rotem pgTAP zuerst, `db-change`-Skill)
 
-- [ ] 10. `created_at` beim Wiederherstellen (AC-035, AC-036).
-- [ ] 11. `meal_slots`, `recipes.photo` aus Grant und Allowlist (AC-037, REQ-026).
-- [ ] 12. `private.ai_usage` (AC-038, AC-039).
-- [ ] 13. `delete_chore`/`restore_chore`, `chore_id` aus Grant und Allowlist; UI auf die RPCs
+- [x] 10. `created_at` beim Wiederherstellen (AC-035, AC-036).
+- [x] 11. `meal_slots`, `recipes.photo` aus Grant und Allowlist (AC-037, REQ-026).
+- [x] 12. `private.ai_usage` (AC-038, AC-039).
+- [x] 13. `delete_chore`/`restore_chore`, `chore_id` aus Grant und Allowlist; UI auf die RPCs
       (AC-040–AC-042).
-- [ ] 14. Kleine Bereinigungen D-05, D-06, D-09, D-12, D-13, `CACHE_VERSION` (AC-043–AC-045).
-- [ ] 15. `recipe_deletion.test.sql` auf Fixtures, Seed-Test unabhängig, Job „Integration (API)“,
+- [x] 14. Kleine Bereinigungen D-05, D-06, D-09, D-12, D-13, `CACHE_VERSION` (AC-043–AC-045).
+- [x] 15. `recipe_deletion.test.sql` auf Fixtures, Seed-Test unabhängig, Job „Integration (API)“,
       Rulesets (AC-012–AC-014).
 
 **D — Code-Struktur und Logik im Einplanen**
