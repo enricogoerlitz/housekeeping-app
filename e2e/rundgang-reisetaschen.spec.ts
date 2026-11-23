@@ -1,7 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 
 import {
-  back,
   day,
   expect,
   freshSeed,
@@ -165,7 +164,8 @@ test('AC-016 / AC-020 / AC-021: the trip window of "Urlaub Mallorca"; packing mo
   await openMallorca(page);
   await expect(tid(page, 'trip-starts')).toHaveText('beginnt in 12 Tagen');
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt');
-  await expect(tid(page, 'back')).toContainText('Reisen');
+  // The trip opens as a window over "Reisen" (0022 AC-039); it closes with its cross.
+  await expect(tid(page, 'trip-window-close')).toBeVisible();
 
   const before = (await tripBag(page, 'Strand').locator('[data-testid$="-counter"]').innerText())
     .trim()
@@ -186,7 +186,9 @@ test('AC-016 / AC-020 / AC-021: the trip window of "Urlaub Mallorca"; packing mo
   await expect(tid(page, 'trip-progress')).toHaveText('Packliste · 6 von 21 gepackt', {
     timeout: 6_000,
   });
-  await expect(strand.locator('[data-testid$="-open"]')).toContainText('Sonnenhut');
+  await expect(strand.locator('[data-testid^="trip-bag-"][data-testid$="-open"]')).toContainText(
+    'Sonnenhut',
+  );
 });
 
 test('AC-026 / AC-028 / AC-029: "Alles einpacken" with "Rückgängig"; resetting asks first', async ({
@@ -242,7 +244,7 @@ test('AC-019: "Dienstreise Hamburg" has no packing list yet', async ({ page }) =
   await tid(page, `trip-${HAMBURG}-open`).click();
   await expect(tid(page, `trip-empty-${HAMBURG}`)).toContainText('Noch keine Packliste');
   await expect(tid(page, `trip-add-bag-open-${HAMBURG}`)).toBeVisible();
-  await back(page);
+  await tid(page, 'trip-window-close').click();
   await expect(tid(page, 'trips-screen')).toBeVisible();
   await leaveManaged(page);
 });
@@ -259,8 +261,8 @@ test('AC-042 / AC-046: the Übersicht card a week ahead and the bag symbol on th
   await expect(tid(page, `today-packing-${MALLORCA}-starts`)).toHaveText(/^beginnt in \d+ Tagen$/);
   await tid(page, `today-packing-${MALLORCA}-open`).click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
-  await expect(tid(page, 'back')).toContainText('Übersicht');
-  await back(page);
+  await tid(page, 'trip-window-close').click();
+  await expect(tid(page, 'trip-window')).toHaveCount(0);
   await expect(tid(page, 'today-screen')).toBeVisible();
 
   await nav(page, 'kalender');
@@ -268,5 +270,5 @@ test('AC-042 / AC-046: the Übersicht card a week ahead and the bag symbol on th
   await expect(tid(page, `trip-stripe-${MALLORCA}-bag`)).toBeVisible();
   await tid(page, `trip-stripe-${MALLORCA}`).click();
   await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
-  await expect(tid(page, 'back')).toContainText('Kalender');
+  await expect(tid(page, 'calendar-title')).toBeAttached();
 });

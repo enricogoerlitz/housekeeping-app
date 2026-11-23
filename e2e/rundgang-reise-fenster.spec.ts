@@ -74,6 +74,11 @@ test('AC-011 / AC-013 (0022): changing the note shows "Speichern", the window st
   await expect(toastMessage(page)).toHaveText('Reise geändert');
   await expect(tid(page, 'trip-window-title')).toHaveText('Mallorca mit Oma');
   await expect(tid(page, 'trip-save')).toHaveCount(0);
+
+  // Leave the note as the seed had it for the tests after this one.
+  await tid(page, 'trip-note').fill('Urlaub Mallorca');
+  await tid(page, 'trip-save').click();
+  await expect(tid(page, 'trip-window-title')).toHaveText('Urlaub Mallorca');
 });
 
 test('AC-068 (0031): a shorter end, not yet saved, shows its days and "je Tag" quantities', async ({

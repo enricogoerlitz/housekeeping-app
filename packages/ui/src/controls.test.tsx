@@ -20,6 +20,15 @@ import {
 import { DEFAULT_THEME_ID, getTheme } from './themes';
 import { pointer } from '../test/setup';
 
+/** The accessible description the browser builds from `aria-describedby` (AC-048 of 0023). */
+function description(element: HTMLElement): string {
+  return (element.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .map((id) => (id ? (document.getElementById(id)?.textContent ?? '') : ''))
+    .join(' ')
+    .trim();
+}
+
 describe('Button (AC-029)', () => {
   it('is a button named by its label and presses', () => {
     const onPress = vi.fn();
@@ -34,6 +43,7 @@ describe('Button (AC-029)', () => {
     render(<Button label="Speichern" onPress={onPress} disabled hint="Offline" />);
     const button = screen.getByRole('button', { name: 'Speichern' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(description(button)).toBe('Offline');
     fireEvent.click(button);
     expect(onPress).not.toHaveBeenCalled();
   });
@@ -178,6 +188,7 @@ describe('IconButton', () => {
     );
     const button = screen.getByRole('button', { name: 'Bearbeiten' });
     expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(description(button)).toBe('Offline');
     fireEvent.click(button);
     expect(onPress).not.toHaveBeenCalled();
   });
@@ -251,6 +262,7 @@ describe('Chip', () => {
     const chip = screen.getByRole('button', { name: 'Vegan' });
     expect(chip.getAttribute('aria-disabled')).toBe('true');
     expect(chip.getAttribute('aria-pressed')).toBe('false');
+    expect(description(chip)).toBe('Offline');
     fireEvent.click(chip);
     expect(onPress).not.toHaveBeenCalled();
   });
@@ -437,6 +449,7 @@ describe('Stars (spec 0011, REQ-004)', () => {
     );
     const slider = screen.getByRole('slider', { name: 'Bewertung' });
     expect(slider.getAttribute('aria-disabled')).toBe('true');
+    expect(description(slider)).toBe('Offline');
     expect(slider.getAttribute('tabindex')).not.toBe('0');
     expect(screen.queryByTestId('s-3')).toBeNull();
     fireEvent.keyDown(slider, { key: 'ArrowRight' });

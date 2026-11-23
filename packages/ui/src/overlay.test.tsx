@@ -182,6 +182,15 @@ describe('Toast with "Rückgängig" (spec 0005; spec 0019, AC-024)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('stands in its own layer on the page, so an open window (Modal) never covers it', () => {
+    const { container } = render(<ToastHost />);
+    act(() => toast.show({ message: 'Gespeichert', actionLabel: 'Rückgängig', onAction: vi.fn() }));
+    const alert = screen.getByRole('alert');
+    expect(container.contains(alert)).toBe(false);
+    expect(alert.closest('body')).toBe(document.body);
+    act(() => toast.hide());
+  });
+
   it('shows the message as an alert, without action when none is given', () => {
     render(<ToastHost />);
     act(() => toast.show({ message: 'Gespeichert' }));

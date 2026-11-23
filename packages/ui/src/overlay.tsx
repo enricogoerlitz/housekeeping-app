@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, View, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
@@ -24,6 +24,7 @@ import {
 } from './shell';
 import { ToneContext, useBreakpoint, useTheme } from './theme-context';
 import { createToastStore } from './toast-state';
+import { TopLayer } from './top-layer';
 
 export interface SheetProps {
   visible: boolean;
@@ -250,6 +251,8 @@ export function useToastClearance(height: number | undefined): void {
 }
 
 /** Mount once near the root: above the tab bar and the home bar on phones (AC-024). */
+const WEB_TOAST_LAYER = { position: 'fixed', zIndex: 10000 } as unknown as ViewStyle;
+
 export function ToastHost() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -261,49 +264,52 @@ export function ToastHost() {
   const c = theme.colors;
   const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
   return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: 'absolute',
-        left: insets.left,
-        right: insets.right,
-        bottom: bottomEdge + below + (isPhone ? 12 : 24),
-        alignItems: 'center',
-        paddingHorizontal: 16,
-      }}
-    >
-      <ToneContext.Provider value={{ fg: c.bg }}>
-        <View
-          testID="toast"
-          accessibilityRole="alert"
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-            minHeight: 48,
-            maxWidth: 440,
-            paddingLeft: 16,
-            paddingRight: state.actionLabel ? 6 : 16,
-            paddingVertical: 6,
-            borderRadius: theme.shape.radius.control + 2,
-            // Inverted surface: stands out on every theme without a new colour.
-            backgroundColor: c.text,
-          }}
-        >
-          <Text variant="small" style={{ flexShrink: 1 }} testID="toast-message">
-            {state.message}
-          </Text>
-          {state.actionLabel ? (
-            <Button
-              label={state.actionLabel}
-              variant="link"
-              size="sm"
-              testID="toast-action"
-              onPress={() => store.act(state.id)}
-            />
-          ) : null}
-        </View>
-      </ToneContext.Provider>
-    </View>
+    <TopLayer>
+      <View
+        pointerEvents="box-none"
+        style={{
+          // Above react-native-web's Modal layers (z-index 9999) beside it in the body.
+          ...(Platform.OS === 'web' ? WEB_TOAST_LAYER : { position: 'absolute' }),
+          left: insets.left,
+          right: insets.right,
+          bottom: bottomEdge + below + (isPhone ? 12 : 24),
+          alignItems: 'center',
+          paddingHorizontal: 16,
+        }}
+      >
+        <ToneContext.Provider value={{ fg: c.bg }}>
+          <View
+            testID="toast"
+            accessibilityRole="alert"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              minHeight: 48,
+              maxWidth: 440,
+              paddingLeft: 16,
+              paddingRight: state.actionLabel ? 6 : 16,
+              paddingVertical: 6,
+              borderRadius: theme.shape.radius.control + 2,
+              // Inverted surface: stands out on every theme without a new colour.
+              backgroundColor: c.text,
+            }}
+          >
+            <Text variant="small" style={{ flexShrink: 1 }} testID="toast-message">
+              {state.message}
+            </Text>
+            {state.actionLabel ? (
+              <Button
+                label={state.actionLabel}
+                variant="link"
+                size="sm"
+                testID="toast-action"
+                onPress={() => store.act(state.id)}
+              />
+            ) : null}
+          </View>
+        </ToneContext.Provider>
+      </View>
+    </TopLayer>
   );
 }

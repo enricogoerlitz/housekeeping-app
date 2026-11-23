@@ -46,7 +46,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
-import { usePageParams } from '@/lib/url-state';
+import { afterWindowClosed, usePageParams } from '@/lib/url-state';
 import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
 import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
@@ -125,6 +125,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
     if (isWide) address.replace({ restaurant: restaurantId });
     else router.push({ pathname: '/restaurant/[id]', params: { id: restaurantId } });
   };
+  // The window closes first (back one entry); the restaurant opens after that, not under it.
+  const openFromSheet = (restaurantId: Id) => afterWindowClosed(() => open(restaurantId));
   const closeSheet = () => address.close({ fenster: undefined, link: undefined, name: undefined });
 
   const { query, filter, sort } = list;
@@ -176,8 +178,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
           key={`${sheetRequest.initialText ?? ''}|${sheetRequest.initialName ?? ''}`}
           {...sheetRequest}
           onClose={closeSheet}
-          onCreated={open}
-          onOpenExisting={open}
+          onCreated={openFromSheet}
+          onOpenExisting={openFromSheet}
         />
       ) : null}
       <NewRecipeSheet

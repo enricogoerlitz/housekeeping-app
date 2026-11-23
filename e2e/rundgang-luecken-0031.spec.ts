@@ -43,7 +43,9 @@ async function sampleSheet(
     ([testId, duration]) =>
       new Promise<{ transform: string; opacity: number; scrim: number }[]>((resolve) => {
         const samples: { transform: string; opacity: number; scrim: number }[] = [];
-        const end = performance.now() + duration;
+        // The window counts from the sheet's first frame: opening may wait for its code first.
+        const cap = performance.now() + duration + 2000;
+        let end: number | undefined;
         const opacityOf = (node: Element | null) => {
           let value = 1;
           for (let at = node; at; at = at.parentElement) {
@@ -55,13 +57,15 @@ async function sampleSheet(
           const sheet = document.querySelector(`[data-testid="${testId}"]`);
           const scrim = document.querySelector(`[data-testid="${testId}-scrim"]`);
           if (sheet) {
+            end ??= performance.now() + duration;
             samples.push({
               transform: getComputedStyle(sheet).transform,
               opacity: opacityOf(sheet),
               scrim: opacityOf(scrim),
             });
           }
-          if (performance.now() < end) requestAnimationFrame(frame);
+          const now = performance.now();
+          if (now < (end ?? cap) && now < cap) requestAnimationFrame(frame);
           else resolve(samples);
         };
         requestAnimationFrame(frame);
@@ -108,7 +112,10 @@ test('AC-049 (0019): a failed sign-in says so, and the next attempt still return
     attempts += 1;
     return route.fulfill({
       status: 302,
-      headers: { location: '/?error=server_error&error_description=Unable+to+exchange+code' },
+      // Back to the app, not to Supabase's host (a relative address would resolve there).
+      headers: {
+        location: `${new URL(page.url()).origin}/?error=server_error&error_description=Unable+to+exchange+code`,
+      },
     });
   });
   await page.goto(address);
@@ -193,7 +200,7 @@ test.describe('reduced motion (0029, REQ-001)', () => {
     expect(opened[0]?.opacity ?? 1).toBeLessThan(1);
     expect(opened.at(-1)?.opacity).toBe(1);
 
-    const closing = sampleSheet(page, 'pantry-check-sheet', 300);
+    const closing = sampleSheet(page, 'pantry-check-sheet', 700);
     await tid(page, 'pantry-check-sheet-close').click();
     const closed = await closing;
     expect(closed.every((sample) => sample.transform === 'none')).toBe(true);
