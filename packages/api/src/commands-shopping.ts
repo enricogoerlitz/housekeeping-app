@@ -11,6 +11,7 @@ import {
   parseItemAmount,
   parseSmartInput,
   recipeSource,
+  replacePlannedOnList,
   summarizeItem,
   weekdayShort,
   type Article,
@@ -28,6 +29,7 @@ import {
 import {
   addLocally,
   addTextLocally,
+  commitEntriesWithList,
   contributionIds,
   typedContribution,
   type AddedItem,
@@ -39,6 +41,7 @@ import {
   getState,
   isOffline,
   newId,
+  nowISO,
   queueStoreAction,
   rememberShoppingStore,
   updateData,
@@ -63,6 +66,9 @@ export type { AddedItem } from './list-additions';
  */
 export const ARTICLE_GONE_MESSAGE = 'Den Artikel gibt es nicht mehr – bitte noch einmal hinzufügen';
 
+const articleGone = (error: unknown) =>
+  error instanceof TransportError && error.code === '23503' ? ARTICLE_GONE_MESSAGE : undefined;
+
 /**
  * A command that puts things on the household's shopping list (ADR-0012: the household's items):
  * shown at once, sent as one `add_shopping_contributions` call (one transaction); undo removes
@@ -76,10 +82,7 @@ function putOnList<T>(run: () => { result: T; entries: AddEntry[] }): T {
         transport.addShoppingContributions(context.householdId, context.result.entries),
       inverse: (transport, context) =>
         transport.removeContributions(contributionIds(context.result.entries)),
-      rejectedMessage: (error) =>
-        error instanceof TransportError && error.code === '23503'
-          ? ARTICLE_GONE_MESSAGE
-          : undefined,
+      rejectedMessage: articleGone,
     },
     run,
   ).result;
@@ -612,12 +615,40 @@ function toContribution(planned: PlannedContribution, id: Id): ShoppingContribut
 
 /**
  * Puts the rows the user kept in the pantry check on the list. Returns the number of articles.
- * All rows are one transaction (AC-020). Online only.
+ * All rows are one transaction (AC-020). A plan entry already on open items is replaced there,
+ * not added again (spec 0031, REQ-027): one `replace_entry_contributions`, and undo brings back
+ * its old contributions. Online only.
  */
 export function addPlannedToList(rows: PantryCheckRow[]): number {
-  const articles = indexById(getData().articles);
+  const data = getData();
+  const articles = indexById(data.articles);
   const kept = rows.filter((row) => articles[row.articleId]);
   if (kept.length === 0) return 0;
+  const additions = kept.map((row) => ({
+    articleId: row.articleId,
+    contributions: row.contributions.map((planned) => toContribution(planned, newId())),
+  }));
+  const { entryIds } = replacePlannedOnList({
+    items: data.items,
+    additions,
+    newId,
+    now: nowISO(),
+  });
+  if (entryIds.length > 0) {
+    return commitEntriesWithList(
+      { entryIds, rejectedMessage: articleGone },
+      () => kept.length,
+      (current) => {
+        const { items, additions: sent } = replacePlannedOnList({
+          items: current.items,
+          additions,
+          newId,
+          now: nowISO(),
+        });
+        return { items, additions: sent };
+      },
+    ).value;
+  }
   return putOnList(() => ({
     result: kept.length,
     entries: kept.map((row) => {

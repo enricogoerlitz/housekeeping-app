@@ -105,7 +105,7 @@ function SmRow(props: {
           onPress={props.onToggle}
           style={{ minHeight: 44, justifyContent: 'center' }}
         >
-          <Text variant="cardTitle" color={checked ? 'muted' : 'text'} strike={checked}>
+          <Text variant="rowTitle" color={checked ? 'muted' : 'text'} strike={checked}>
             {name}
             {note ? (
               <Text variant="body" color="muted">
@@ -299,7 +299,14 @@ export function ShoppingModeScreen() {
         paddingBottom: 10 + bottomEdge,
       }}
     >
-      <View style={{ width: '100%', maxWidth: SHOPPING_MAX_WIDTH, alignSelf: 'center' }}>
+      {/* As wide as the rows: the page's width less its gutters (spec 0031, AC-084). */}
+      <View
+        style={{
+          width: '100%',
+          maxWidth: SHOPPING_MAX_WIDTH - 2 * WIDE_GUTTER,
+          alignSelf: 'center',
+        }}
+      >
         {/* The same input as "Was fehlt?", without microphone and assistant (REQ-012). */}
         <SmartComposer
           framed={false}
@@ -395,7 +402,7 @@ export function ShoppingModeScreen() {
           onClose={() => setChoosingStore(false)}
           onManage={() => {
             setChoosingStore(false);
-            openManage('/maerkte');
+            openManage({ pathname: '/maerkte', params: { von: 'liste' } });
           }}
         />
       ) : null}

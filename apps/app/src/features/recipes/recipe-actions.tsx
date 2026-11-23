@@ -7,7 +7,16 @@ import {
   WRITE_REJECTED_MESSAGE,
 } from '@housekeeping/api';
 import type { Recipe } from '@housekeeping/core';
-import { Button, Menu, Row, Text, toast, type MenuOption } from '@housekeeping/ui';
+import {
+  Button,
+  Menu,
+  Row,
+  Stack,
+  Text,
+  toast,
+  useBreakpoint,
+  type MenuOption,
+} from '@housekeeping/ui';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -32,61 +41,94 @@ export interface RecipeActionsProps {
 
 /**
  * "Einplanen", "Auf die Liste" and "Kochen" (AC-019, AC-020): on the desktop in the header bar,
- * on phones and tablets under the head. Offline only "Kochen" works (AC-022).
+ * on phones and tablets under the head. On phones "Kochen" comes first over the whole width, then
+ * "Einplanen" and "Auf die Liste" side by side (spec 0031, AC-087). Offline only "Kochen" works
+ * (AC-022).
  */
 export function RecipeActions(props: RecipeActionsProps) {
   const { recipe } = props;
   const online = useOnlineOnly();
   const assistant = useAssistant();
+  const { isPhone } = useBreakpoint();
   const size = props.compact ? 'sm' : 'md';
+  const plan = (
+    <Button
+      label="Einplanen"
+      icon="calendar-plus"
+      variant="secondary"
+      size={size}
+      full={isPhone}
+      onPress={props.onPlan}
+      disabled={online.disabled}
+      hint={online.hint}
+      testID="recipe-plan"
+    />
+  );
+  // REQ-010: straight into the pantry check with the portions and variant shown here.
+  const toList = (
+    <Button
+      label="Auf die Liste"
+      icon="shopping-basket"
+      variant="secondary"
+      size={size}
+      full={isPhone}
+      onPress={props.onList}
+      disabled={online.disabled || !props.canGoOnList}
+      hint={online.hint ?? (props.canGoOnList ? undefined : NO_INGREDIENTS_HINT)}
+      testID="recipe-to-list"
+    />
+  );
+  const noIngredients = props.canGoOnList ? null : (
+    <Text variant="caption" color="muted" testID="recipe-to-list-hint">
+      {NO_INGREDIENTS_HINT}
+    </Text>
+  );
+  const cook = (
+    <Button
+      label="Kochen"
+      icon="chef-hat"
+      size={size}
+      full={isPhone}
+      onPress={props.onCook}
+      disabled={recipe.steps.length === 0}
+      testID="start-cooking"
+    />
+  );
+  const adjust = features.ai ? (
+    <Button
+      label="Anpassen"
+      icon="sparkles"
+      variant="ghost"
+      size={size}
+      onPress={() => assistant.open({ recipeId: recipe.id })}
+      testID="recipe-assistant"
+    />
+  ) : null;
+
+  if (isPhone) {
+    return (
+      <Stack gap={10}>
+        {cook}
+        <Row gap={10} align="flex-start">
+          <View style={{ flex: 1, minWidth: 0 }}>{plan}</View>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            {toList}
+            {noIngredients}
+          </View>
+        </Row>
+        {adjust}
+      </Stack>
+    );
+  }
   return (
     <Row gap={props.compact ? 8 : 10} wrap>
-      <Button
-        label="Einplanen"
-        icon="calendar-plus"
-        variant="secondary"
-        size={size}
-        onPress={props.onPlan}
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="recipe-plan"
-      />
-      {/* REQ-010: straight into the pantry check with the portions and variant shown here. */}
+      {plan}
       <Row gap={8}>
-        <Button
-          label="Auf die Liste"
-          icon="shopping-basket"
-          variant="secondary"
-          size={size}
-          onPress={props.onList}
-          disabled={online.disabled || !props.canGoOnList}
-          hint={online.hint ?? (props.canGoOnList ? undefined : NO_INGREDIENTS_HINT)}
-          testID="recipe-to-list"
-        />
-        {props.canGoOnList ? null : (
-          <Text variant="caption" color="muted" testID="recipe-to-list-hint">
-            {NO_INGREDIENTS_HINT}
-          </Text>
-        )}
+        {toList}
+        {noIngredients}
       </Row>
-      <Button
-        label="Kochen"
-        icon="chef-hat"
-        size={size}
-        onPress={props.onCook}
-        disabled={recipe.steps.length === 0}
-        testID="start-cooking"
-      />
-      {features.ai ? (
-        <Button
-          label="Anpassen"
-          icon="sparkles"
-          variant="ghost"
-          size={size}
-          onPress={() => assistant.open({ recipeId: recipe.id })}
-          testID="recipe-assistant"
-        />
-      ) : null}
+      {cook}
+      {adjust}
     </Row>
   );
 }

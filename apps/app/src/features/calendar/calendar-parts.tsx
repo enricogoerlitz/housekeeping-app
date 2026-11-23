@@ -244,9 +244,11 @@ function ChoreLine(props: {
   item: HouseholdRowItem;
   data: CalendarData;
   compact?: boolean;
+  peopleBelow?: boolean;
   onOpenChore: (choreId: Id) => void;
 }) {
   const { item } = props;
+  const people = <People ids={item.memberIds} data={props.data} />;
   const choreId = props.data.chores.some((chore) => chore.id === item.choreId)
     ? item.choreId
     : undefined;
@@ -258,7 +260,8 @@ function ChoreLine(props: {
       dashed={item.approximate}
       size={props.compact ? 'compact' : 'row'}
       leading={<Icon name="check" size={14} color="muted" />}
-      trailing={<People ids={item.memberIds} data={props.data} />}
+      trailing={props.peopleBelow ? undefined : people}
+      detail={props.peopleBelow ? people : undefined}
       onPress={choreId === undefined ? undefined : () => props.onOpenChore(choreId)}
       accessibilityLabel={`Erledigt: ${choreTitle(item)}`}
       testID={`chore-occ-${item.key}`}
@@ -278,6 +281,8 @@ export function HouseholdDay(props: {
   items: HouseholdRowItem[];
   data: CalendarData;
   compact?: boolean;
+  /** The avatars under the title, so a narrow column gives the title its whole width (REQ-033). */
+  peopleBelow?: boolean;
   onOpenChore: (choreId: Id) => void;
 }) {
   const online = useOnlineOnly();
@@ -297,6 +302,7 @@ export function HouseholdDay(props: {
         const item = itemOf.get(chore.id);
         if (!item) return null;
         const checked = check.isChecked(chore);
+        const people = <People ids={item.memberIds} data={props.data} />;
         return (
           <RowTransition key={item.key}>
             <KindLine
@@ -315,7 +321,8 @@ export function HouseholdDay(props: {
                   testID={`chore-check-${chore.id}`}
                 />
               }
-              trailing={<People ids={item.memberIds} data={props.data} />}
+              trailing={props.peopleBelow ? undefined : people}
+              detail={props.peopleBelow ? people : undefined}
               onPress={() => props.onOpenChore(chore.id)}
               accessibilityLabel={`${choreTitle(item)}, Details`}
               testID={`chore-occ-${item.key}`}
@@ -329,6 +336,7 @@ export function HouseholdDay(props: {
           item={item}
           data={props.data}
           compact={props.compact}
+          peopleBelow={props.peopleBelow}
           onOpenChore={props.onOpenChore}
         />
       ))}

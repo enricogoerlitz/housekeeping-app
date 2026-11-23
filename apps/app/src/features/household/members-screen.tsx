@@ -14,9 +14,8 @@ import {
 } from '@housekeeping/ui';
 import { View } from 'react-native';
 
-import { useBackToManage } from '@/features/manage/navigation';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { usePageParams } from '@/lib/url-state';
+import { useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { CreateHouseholdForm, InviteForm, MemberList, MyInvitations } from './household-forms';
 import { DeleteHouseholdBlock, RenameHouseholdSheet } from './household-sheets';
@@ -27,13 +26,14 @@ import { DeleteHouseholdBlock, RenameHouseholdSheet } from './household-sheets';
  * the actions behave as in spec 0003, AC-008 to AC-010.
  */
 export function MembersScreen() {
-  const back = useBackToManage();
   const { isWide } = useBreakpoint();
   const households = useHouseholdsMap();
   const activeId = useActiveHouseholdId();
   const active = households[activeId]?.household;
   const online = useOnlineOnly();
   const address = usePageParams('mitglieder');
+  // "‹ Verwalten", or the page it was opened from with `von` (spec 0031, REQ-036).
+  const back = useOriginBack(address.params.von, 'verwalten');
   const renaming = address.params.fenster === 'umbenennen';
 
   const members = (
@@ -65,7 +65,8 @@ export function MembersScreen() {
         <ScreenHeader
           title={active?.name ?? 'Haushalt'}
           kicker="Haushalt & Mitglieder"
-          onBack={back}
+          backLabel={back.label}
+          onBack={back.back}
           right={
             <IconButton
               icon="pencil"

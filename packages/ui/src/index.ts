@@ -29,6 +29,7 @@ export {
   IconButton,
   Chip,
   Checkbox,
+  CheckboxMark,
   SwitchRow,
   Stars,
   TextField,
@@ -106,6 +107,7 @@ export { HOME_BAR_GAP, bottomInset } from './bottom-inset';
 export { tabSwipe, type TabSwipe } from './tab-swipe';
 export { ScrollRow, type ScrollRowProps } from './scroll-row';
 export { useFinePointer, useHover } from './pointer';
+export { pressedWithFinger } from './press-pointer';
 export { sheetFrame, type SheetSize, type SheetFrame } from './sheet-size';
 export { DockedPanel, type DockedPanelProps, type DockedPanelState } from './docked-panel';
 export { panelPlacement } from './docked-panel-state';
