@@ -234,6 +234,12 @@ einladen. Ein zweiter Lauf legt nichts an.
 
 ## Erste produktive Version (0028)
 
+> **Gewählt am 23.11.2026: Weg D** (Spec 0028, Entscheidung 8). Die Produktion wird nur geleert,
+> nicht neu aufgebaut; die neue Basis und die Probe des Neuaufbaus unten entfallen. Ablauf:
+> Sicherung (Schritt 2) → e2e auf `develop` grün und Release-PR öffnen (Schritt 3) →
+> `node scripts/reset-app-data.mjs --project "<prod-ref>" --data-only` → Release-PR zusammenführen
+> → Bootstrap (Schritt 6). Die Schritte unten bleiben für einen späteren Neuaufbau stehen.
+
 Einmalig für die erste produktiv genutzte Version (Spec 0028, Schritte 6 bis 9). Die Produktion
 enthält bis dahin nur Testdaten. Sie wird zurückgesetzt und läuft danach auf der neuen
 Migrationsbasis, die die Migrationen von v2026.11.1 ersetzt (`supabase/migrations-base.json`,
