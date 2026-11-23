@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests --testTimeout=20000"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@housekeeping/core": "workspace:*",
