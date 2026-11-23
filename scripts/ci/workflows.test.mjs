@@ -36,10 +36,11 @@ const REQUIRED_CHECKS = [
   'Migrationen',
   'Prüfungen',
   'Datenbank (pgTAP)',
+  'Integration (API)',
   'Deno-Lock',
 ];
 /** Jobs that skip on a docs-only pull request (AC-011); the others always run. */
-const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Deno-Lock'];
+const HEAVY = ['Prüfungen', 'Datenbank (pgTAP)', 'Integration (API)', 'Deno-Lock'];
 
 describe('all workflows', () => {
   test('the old ci.yml is replaced by checks.yml', () => {
@@ -218,6 +219,24 @@ describe('checks.yml', () => {
     for (const { file, text } of workflows) {
       assert.doesNotMatch(text, /pnpm e2e/, file);
     }
+  });
+
+  test('AC-014 (spec 0031): "Integration (API)" runs the API integration tests against a local stack without .env', () => {
+    const j = job('Integration (API)');
+    assert.ok(j, 'job "Integration (API)"');
+    const script = runOf('Integration (API)');
+    // The full stack (Auth, PostgREST, Storage, edge runtime) without the tools nobody tests.
+    assert.match(script, /pnpm exec supabase start -x studio,logflare,vector(\s|$)/);
+    assert.match(script, /pnpm test:integration/);
+    assert.ok(
+      script.indexOf('supabase start') < script.indexOf('pnpm test:integration'),
+      'the stack starts before the tests',
+    );
+    assert.equal(j.env?.SUPABASE_LOCAL, '1');
+    // Only the public local defaults of the Supabase CLI; no .env, no secret.
+    assert.equal(j.env?.EXPO_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
+    assert.match(j.env?.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '', /^sb_publishable_/);
+    assert.doesNotMatch(script, /\.env\b/);
   });
 
   test('throwaway VAPID keys per run, masked, before the web build and the local stack', () => {

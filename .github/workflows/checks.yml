@@ -214,6 +214,34 @@ jobs:
       - run: pnpm exec supabase db start
       - run: pnpm exec supabase test db
 
+  integration:
+    # The API integration tests (packages/api/src/**/*.integration.test.ts) against a full local
+    # stack: Auth, PostgREST, Storage and the edge runtime (spec 0031, REQ-004, decision 7). A job
+    # of its own, because it needs `supabase start` instead of `db start` and a failure is clear
+    # to place. No .env: only the public local defaults of the Supabase CLI.
+    name: Integration (API)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_LOCAL: '1'
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec supabase start -x studio,logflare,vector
+      # Resets the database, then runs the files one after another in random order (AC-012).
+      - run: pnpm test:integration
+
   deno-lock:
     name: Deno-Lock
     needs: changes

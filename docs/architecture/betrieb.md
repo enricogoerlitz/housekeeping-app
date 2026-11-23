@@ -55,8 +55,8 @@ GitHub-Actions-App das Tag-Ruleset, damit die Veröffentlichung ihren Tag anlegt
 | `ruleset-tags.json`    | Tags `v*` | nicht von Hand anlegen, nicht verschieben, nicht löschen; anlegen darf nur die Veröffentlichung |
 
 Pflicht-Checks sind die Jobnamen aus `.github/workflows/checks.yml` ohne „Änderungen“:
-`Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`, `Datenbank (pgTAP)`, `Deno-Lock`,
-jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
+`Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`, `Datenbank (pgTAP)`,
+`Integration (API)` (Spec 0031, REQ-004), `Deno-Lock`, jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
 verlangt; Freigaben (Reviews) auch nicht, weil es nur einen Besitzer gibt. Ein Jobname und die
 Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das. Nach jedem Merge
 nach `develop` laufen dieselben Checks noch einmal auf dem Merge-Commit, je Commit in einer eigenen

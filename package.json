@@ -24,7 +24,7 @@
     "e2e:dev": "pnpm --filter @housekeeping/e2e e2e:dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:integration": "pnpm db:reset && SUPABASE_LOCAL=1 node scripts/with-env.mjs pnpm --filter @housekeeping/api exec vitest run --no-file-parallelism integration"
+    "test:integration": "pnpm db:reset && SUPABASE_LOCAL=1 node scripts/with-env.mjs pnpm --filter @housekeeping/api exec vitest run --no-file-parallelism --sequence.shuffle integration"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
