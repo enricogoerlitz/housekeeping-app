@@ -38,6 +38,7 @@ import {
   tid,
   toastMessage,
   unique,
+  dayBlock,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -85,31 +86,15 @@ async function openActivities(page: Page): Promise<void> {
   await settle(page);
 }
 
-const SLOT_NAMES: Record<string, string> = {
-  [SLOT_MORNING]: 'Vormittag',
-  [SLOT_LUNCH]: 'Mittag',
-  [SLOT_DINNER]: 'Abend',
-};
-
-/** One day of the phone week: its head `day-<date>` and everything planned on it. */
-function dayBlock(page: Page, date: string): Locator {
-  return tid(page, `day-${date}`).locator('xpath=..');
-}
-
 /**
- * The titles of the entries in one Tageszeit, top to bottom. The phone week shows only the
- * Tageszeiten with entries (spec 0010, AC-008), each as its name above its rows.
+ * The titles of the entries in one Tageszeit (`week-slot-<date>-<slot>`), top to bottom. The
+ * phone week shows only the Tageszeiten with entries (spec 0010, AC-008): none is an empty list.
  */
 async function slotTitles(page: Page, date: string, slotId: string): Promise<(string | null)[]> {
-  const rows = await dayBlock(page, date)
+  return dayBlock(page, date)
+    .locator(`[data-testid="week-slot-${date}-${slotId}"]`)
     .locator(PLAN_ENTRY)
-    .evaluateAll((elements) =>
-      elements.map((row) => ({
-        slot: row.parentElement?.firstElementChild?.textContent ?? '',
-        title: row.getAttribute('aria-label'),
-      })),
-    );
-  return rows.filter((row) => row.slot === SLOT_NAMES[slotId]).map((row) => row.title);
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')));
 }
 
 /**
@@ -565,7 +550,7 @@ test('AC-015: Spieleabend has no place, so neither its page nor its plan entry h
   await tid(page, 'entry-done').click();
 
   // With a place there is one (Eislaufen this morning).
-  await tid(page, 'week-today').click();
+  if (!(await tid(page, `day-${TODAY}`).isVisible())) await tid(page, 'week-today').click();
   await tid(page, `entry-${EISLAUFEN_TODAY}`).click();
   await expect(tid(page, 'entry-route')).toBeVisible();
 });
