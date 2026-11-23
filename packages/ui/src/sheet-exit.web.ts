@@ -5,6 +5,8 @@ const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
  * React drops it at once, so an inert copy of its layer takes its place and fades out (or slides
  * down) instead of vanishing. Call it while the window is still on the page; a window that stays
  * (React's StrictMode remount) leaves no copy.
+ *
+ * @public Metro resolves the import of the native twin to this file on the web.
  */
 export function fadeOutCopy(node: unknown, options: { slide: boolean; ms: number }): void {
   if (typeof document === 'undefined' || !(node instanceof HTMLElement)) return;

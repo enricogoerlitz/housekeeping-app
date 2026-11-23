@@ -13,6 +13,7 @@ import {
 } from '@housekeeping/core';
 
 import {
+  ACTIVE,
   contentReady,
   SLOT_DINNER,
   SLOT_LUNCH,
@@ -219,7 +220,7 @@ test.describe('desktop', () => {
     await showMonth(page);
     const trip = day(12);
     if (startOfMonth(trip) !== startOfMonth(TODAY)) await tid(page, 'week-next').click();
-    const stripes = tid(page, `trip-stripe-${MALLORCA}`);
+    const stripes = page.locator(`[data-testid="trip-stripe-${MALLORCA}"]${ACTIVE}`);
     await expect(stripes.first()).toContainText('Urlaub Mallorca');
     const rows = new Set([trip, addDays(trip, 6)].map((date) => startOfWeek(date)).filter(Boolean));
     await expect(stripes).toHaveCount(rows.size);
@@ -253,7 +254,8 @@ test.describe('desktop', () => {
     await expect(add).toHaveAttribute('aria-disabled', 'true');
     await expect(add).toHaveAccessibleDescription(OFFLINE_HINT);
     // Not only dimmed: a click says why, and neither the add window nor the day window opens.
-    await add.click();
+    // Playwright does not click what is aria-disabled; a person can.
+    await add.click({ force: true });
     await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
     await expect(tid(page, 'add-entry-sheet')).toBeHidden();
     await expect(tid(page, 'day-panel')).toBeHidden();
@@ -306,7 +308,8 @@ test.describe('desktop', () => {
   test('AC-044: with the household row the month shows the day’s chores as lines under the entries', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1440, height: 1200 });
+    // Tall enough that today's three entries and two chores fit (six week rows, REQ-001).
+    await page.setViewportSize({ width: 1440, height: 1700 });
     await showMonth(page);
     await expect(tid(page, `month-chores-${TODAY}`)).toHaveCount(0);
     await householdRowInMonth(page);
@@ -323,8 +326,9 @@ test.describe('tablet', () => {
   }) => {
     await page.setViewportSize({ width: 1024, height: 1366 });
     await open(page, '/kalender');
-    const empty = weekDates(TODAY).find((date) => date !== TODAY) ?? TODAY;
-    for (const height of await slotHeights(page, empty)) expect(height).toBeLessThan(110);
+    // Below desktop width the week is the list: today's three Tageszeiten, one entry each.
+    for (const height of await slotHeights(page, TODAY)) expect(height).toBeLessThan(110);
+    expect(await pageScrolls(page)).toBe(true);
   });
 
   test('AC-009: a tablet without a mouse shows no "+"; a tap opens the day window', async ({

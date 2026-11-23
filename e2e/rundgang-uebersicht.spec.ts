@@ -6,6 +6,7 @@ import {
   expect,
   freshSeed,
   goOffline,
+  nav,
   only,
   open,
   switchHousehold,
@@ -25,7 +26,9 @@ freshSeed();
 async function headBoxes(page: Page): Promise<string> {
   const boxes = [];
   for (const id of ['today-week-today', 'today-week-prev', 'today-range', 'today-week-next']) {
-    const box = await tid(page, id).boundingBox();
+    // The range's fixed slot, not its text: the text is centred in it (AC-009, "gleich breit").
+    const control = id === 'today-range' ? tid(page, id).locator('..') : tid(page, id);
+    const box = await control.boundingBox();
     boxes.push(box ? `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)}` : 'none');
   }
   return boxes.join(' | ');
@@ -81,6 +84,9 @@ test.describe('the Tagesleiste and its head', () => {
 });
 
 test.describe('an empty day', () => {
+  // "Nichts geplant" with "Hinzufügen" is the phone's (AC-022); the desktop has the tile's "+".
+  only('phone');
+
   test('AC-022 / AC-023: "Nichts geplant" with "Hinzufügen" opens the add window; closing plans nothing', async ({
     page,
   }) => {
@@ -118,6 +124,8 @@ test.describe('the tiles on the desktop', () => {
   }) => {
     await open(page, '/');
     await switchHousehold(page, seedIds['hh-test']);
+    // On wider screens leaving "Haushalt & Mitglieder" ends on "Verwalten".
+    await nav(page, 'index');
     await tid(page, `today-week-${day(2)}-title`).click();
     await expect(tid(page, 'add-entry-sheet')).toBeHidden();
     await expect(tid(page, 'today-meals')).toContainText('Geplant am');

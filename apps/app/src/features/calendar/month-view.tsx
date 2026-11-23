@@ -24,6 +24,8 @@ import {
   useFinePointer,
   useHover,
   useTheme,
+  useAriaDisabled,
+  useHint,
 } from '@housekeeping/ui';
 import { useState } from 'react';
 import { Platform, Pressable, View, type HostInstance, type ViewStyle } from 'react-native';
@@ -522,13 +524,16 @@ function AddToDay(props: { date: ISODate; visible: boolean; onPress: () => void 
   const theme = useTheme();
   const hover = useHover();
   const online = useOnlineOnly();
+  // Greyed out offline but still pressable, so a click says why (AC-009).
+  const softDisabled = useAriaDisabled(online.disabled);
+  const hint = useHint(online.hint);
   return (
     <Pressable
+      ref={softDisabled}
       testID={`month-add-${props.date}`}
       accessibilityRole="button"
       accessibilityLabel={`Hinzufügen am ${formatLongDate(props.date)}`}
-      accessibilityHint={online.hint}
-      aria-disabled={online.disabled}
+      {...hint.props}
       onPress={
         online.disabled
           ? () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT })
@@ -556,6 +561,7 @@ function AddToDay(props: { date: ISODate; visible: boolean; onPress: () => void 
       }}
     >
       <Icon name="plus" size={16} color="muted" />
+      {hint.node}
     </Pressable>
   );
 }

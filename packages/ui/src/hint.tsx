@@ -1,5 +1,5 @@
-import { useId, type ReactNode } from 'react';
-import { Platform, Text } from 'react-native';
+import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { Platform, Text, type HostInstance } from 'react-native';
 
 /**
  * `accessibilityHint` that also reaches the browser: react-native-web drops the prop, so on the
@@ -18,4 +18,20 @@ export function useHint(hint: string | undefined): { props: object; node: ReactN
       </Text>
     ),
   };
+}
+
+/**
+ * `aria-disabled` for a Pressable that stays pressable while greyed out, so a press can say why
+ * (e.g. offline). react-native-web's Pressable writes the attribute only from `disabled`, which
+ * would also swallow the press; this sets it on the node. Pass the ref to the Pressable.
+ */
+export function useAriaDisabled(disabled: boolean): RefObject<HostInstance | null> {
+  const ref = useRef<HostInstance>(null);
+  useLayoutEffect(() => {
+    const node = ref.current as unknown;
+    if (typeof Element !== 'undefined' && node instanceof Element) {
+      node.setAttribute('aria-disabled', String(disabled));
+    }
+  }, [disabled]);
+  return ref;
 }
