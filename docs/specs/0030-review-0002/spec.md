@@ -316,3 +316,9 @@ Entfällt in der Datenbank: nichts (Entscheidung 11).
       `trip_drafts.test.sql`, 14), `pnpm test:scripts` 349 grün, `pnpm e2e:dev` 13 grün, e2e-Typprüfung
       grün. Offen: Wischen auf dem iPhone prüft Enrico (Entscheidung 8); die volle e2e-Suite läuft
       später.
+- [x] Nachweis Nachzug (23.11.2026): `pnpm format:check && pnpm check` grün (core 1564, ui 410, api
+      936 Tests), `pnpm build:web` grün, pgTAP über das Schloss 50 Dateien / 2591 Tests grün,
+      `pnpm e2e:dev` 13 grün, e2e-Typprüfung grün. `e2e/rundgang-review-0002.spec.ts` (15) und die
+      Wisch-Tests aus `rundgang-handy.spec.ts` (AC-009–AC-012) gezielt gegen den Dev-Server mit
+      Touch-Emulation grün; vor dem `x0`-Fix scheiterte dort jeder Tab-Wisch. Offen bleibt: Wischen
+      auf dem iPhone selbst (WebKit) prüft Enrico.
