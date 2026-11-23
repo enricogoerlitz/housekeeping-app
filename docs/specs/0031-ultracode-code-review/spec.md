@@ -739,8 +739,10 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
       negativen Tests, Nachtrag zu ADR-0012 (AC-001–AC-005). Gemeinsames Lesen und Prüfen in
       `scripts/release/migrations-base.mjs`. Die Datei `supabase/migrations-base.json` selbst
       entsteht mit der neuen Basis in Spec 0028, Schritt 4; ohne sie bleibt alles wie bisher.
-- [ ] 34. Job „e2e“ in `release.yml` mit Shards und manuellem Lauf, `workflows.test.mjs`, Nachtrag
-      in 0014 (AC-007–AC-010).
+- [x] 34. Job „e2e“ in `release.yml` mit Shards und manuellem Lauf, `workflows.test.mjs`, Nachtrag
+      in 0014 (AC-007–AC-010). Der Job ruft `.github/workflows/e2e.yml` auf (`workflow_call`,
+      `workflow_dispatch`): vier Shards von `pnpm e2e` und `pnpm e2e:dev`, je mit eigenem lokalen
+      Stack und Wegwerf-Push-Schlüsseln. Der erste echte Lauf folgt in Aufgabe 36.
 - [ ] 35. Runbook in `betrieb.md` (AC-018, AC-019), Nachträge in 0028 (AC-016, AC-005, Schritte).
 - [ ] 36. Volle e2e-Suite lokal und im manuellen Lauf grün (AC-025), `/security-check` über den
       Diff der Gruppen A, C und H.
