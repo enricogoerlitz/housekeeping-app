@@ -22,12 +22,14 @@ import {
   Section,
   Text,
   keyboardFocusRing,
+  pressedWithFinger,
+  useFinePointer,
   useHover,
   useTheme,
   withAlpha,
 } from '@housekeeping/ui';
 import type { ReactNode } from 'react';
-import { Pressable, View, type HostInstance } from 'react-native';
+import { Pressable, View, type GestureResponderEvent, type HostInstance } from 'react-native';
 
 import { HATCH_ALPHA, StripeBadges, stripeA11y, stripeLine } from './calendar-parts';
 import { dayLabel, stripeWho, type CalendarData } from './calendar-data';
@@ -46,7 +48,10 @@ export interface YearViewProps {
   columns: number;
   /** The day of the open day window; it is marked. */
   selected: ISODate | undefined;
-  /** A tap on a day opens the day window (spec 0016, AC-023). */
+  /**
+   * A click on a day opens the day window (spec 0016, AC-023). A finger opens the day's month
+   * instead: the small days are too close to hit (spec 0031, REQ-031).
+   */
   onOpenDay: (date: ISODate) => void;
   /** Every day cell registers here, e.g. to get the focus back when the day window closes. */
   registerDay: (date: ISODate, node: HostInstance | null) => void;
@@ -70,8 +75,9 @@ const TINT_ALPHA = '33';
 /**
  * The year (spec 0010, REQ-005): twelve small months with a dot on days with entries and trips
  * tinted, then the year's trips as a list. A day with chores carries the dot "Aufgabe", always,
- * without a switch (spec 0021, REQ-017). A tap on a day opens the day window, a tap on the month
- * name the month (spec 0016, AC-023). On the desktop the rows of months share the window's height
+ * without a switch (spec 0021, REQ-017). A click on a day opens the day window, a tap on the
+ * month name the month (spec 0016, AC-023); a finger on a day opens its month (spec 0031,
+ * REQ-031). On the desktop the rows of months share the window's height
  * (spec 0021, REQ-001); elsewhere the page opens at the current month (REQ-004).
  */
 export function YearView(props: YearViewProps) {
@@ -196,6 +202,7 @@ function MiniMonth(props: {
 }) {
   const theme = useTheme();
   const hover = useHover();
+  const fine = useFinePointer();
   const month = props.monthStart.slice(0, 7);
   const index = parseISODate(props.monthStart).getMonth();
   const name = monthName(index);
@@ -253,7 +260,9 @@ function MiniMonth(props: {
                 choreCount={(props.chores[date] ?? []).length}
                 fill={props.fill}
                 selected={date === props.selected}
-                onPress={() => props.onOpenDay(date)}
+                onPress={(event) =>
+                  pressedWithFinger(event, fine) ? props.onOpenMonth() : props.onOpenDay(date)
+                }
                 register={(node) => props.registerDay(date, node)}
               />
             ) : (
@@ -273,7 +282,7 @@ function MiniDay(props: {
   choreCount: number;
   fill: boolean;
   selected: boolean;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   register: (node: HostInstance | null) => void;
 }) {
   const theme = useTheme();
@@ -309,6 +318,8 @@ function MiniDay(props: {
           accessibilityRole="button"
           accessibilityLabel={dayLabel(props.data, props.date, props.choreCount)}
           accessibilityState={{ selected: props.selected }}
+          // Spec 0031, REQ-031: the hit area does not grow past the day (no 44-pt ::before).
+          {...({ dataSet: { dense: true } } as object)}
           onPress={guardPress(props.onPress)}
           style={(state) => [
             // At least 24 × 24 px to click (spec 0019, REQ-009, AC-028); the day stays small.
