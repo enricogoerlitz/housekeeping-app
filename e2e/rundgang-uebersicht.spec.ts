@@ -83,6 +83,24 @@ test.describe('the Tagesleiste and its head', () => {
   });
 });
 
+test('review 0031, R-01: a chore of a later day can be checked, as in the calendar', async ({
+  page,
+}) => {
+  await open(page, '/');
+  await tid(page, `today-week-${day(1)}`).click();
+  const row = page
+    .locator(`[data-testid^="today-chore-"]:not([data-testid$="-check"])${ACTIVE}`)
+    .filter({ hasText: 'Küche wischen' })
+    .first();
+  await expect(row).toBeVisible();
+  const check = page.locator(`[data-testid="${await row.getAttribute('data-testid')}-check"]`);
+  await check.click();
+  await expect(check).toHaveAttribute('aria-checked', 'true');
+  // A second tap takes it back before it is booked (the check window).
+  await check.click();
+  await expect(check).toHaveAttribute('aria-checked', 'false');
+});
+
 test.describe('an empty day', () => {
   // "Nichts geplant" with "Hinzufügen" is the phone's (AC-022); the desktop has the tile's "+".
   only('phone');

@@ -10,6 +10,8 @@ import {
   type MealPlanEntry,
 } from '@housekeeping/core';
 import {
+  toast,
+  ariaRef,
   Button,
   DockedPanel,
   Icon,
@@ -26,7 +28,7 @@ import type { RefObject } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { AddTarget } from '@/features/meal-plan/add-entry-sheet';
-import { useOnlineOnly } from '@/features/shell/offline';
+import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
 
 import { TripStripeView, EntryLine, HouseholdDay } from './calendar-parts';
 import type { CalendarData } from './calendar-data';
@@ -269,9 +271,13 @@ function AddLine(props: {
       accessibilityRole="button"
       accessibilityLabel={props.label}
       accessibilityHint={props.hint}
-      aria-disabled={props.disabled}
-      disabled={props.disabled}
-      onPress={props.onPress}
+      // Greyed out offline but still pressable, so a press says why (spec 0031, review U-2).
+      ref={ariaRef({ 'aria-description': props.hint, 'aria-disabled': String(props.disabled) })}
+      onPress={
+        props.disabled
+          ? () => toast.show({ message: props.hint ?? OFFLINE_EDIT_HINT })
+          : props.onPress
+      }
       style={(state) => {
         const { pressed, hovered, focused } = state as {
           pressed: boolean;

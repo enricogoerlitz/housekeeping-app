@@ -220,12 +220,16 @@ export function ListScreen() {
   if (openName !== undefined && openName !== lastName) setLastName(openName);
   const editing =
     openItemRow && focused ? { itemId: openItemRow.id, name: openName ?? '' } : undefined;
-  const openItem = (itemId: string) => address.open({ posten: itemId });
-  const setEditing = (next: undefined) => address.close({ posten: next });
   // Someone else removed the item while its window was open (AC-027); an unknown item in the
   // address opens nothing and says so (AC-052). Removed from its own window, the window closes
-  // with its own toast and "Rückgängig" (AC-025), which this must not replace.
+  // with its own toast and "Rückgängig" (AC-025), which this must not replace. Opening an item
+  // again forgets that it was closed here.
   const [closedHere, setClosedHere] = useState<string | undefined>();
+  const openItem = (itemId: string) => {
+    setClosedHere(undefined);
+    address.open({ posten: itemId });
+  };
+  const setEditing = (next: undefined) => address.close({ posten: next });
   const clearItem = () => address.replace({ posten: undefined });
   useMissingObject(
     openItemId,

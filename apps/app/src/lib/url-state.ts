@@ -1,4 +1,5 @@
 import {
+  forgetPlace,
   EMPTY_PLACE,
   isOwnWindowOnTop,
   openerOf,
@@ -168,6 +169,11 @@ function subscribePlace(listener: () => void): () => void {
   return () => placeListeners.delete(listener);
 }
 const placeSnapshot = () => place.current;
+
+/** Call right before `router.replace` of a whole address (see `forgetPlace` in core). */
+export function forgetCurrentPlace(): void {
+  place = forgetPlace(place);
+}
 
 /**
  * Mount once inside the router: remembers the current address, its section and each section's

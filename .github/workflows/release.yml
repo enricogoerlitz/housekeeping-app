@@ -2,7 +2,8 @@
 # main — the merge commit of a release PR from develop or of a hotfix — builds in parallel and
 # delivers in order:
 #
-#   checks → version → web-bauen ∥ supabase-pruefen ∥ e2e → pakete-pruefen → sicherung
+#   checks → version → web-bauen ∥ supabase-pruefen → pakete-pruefen ┐
+#                    → e2e ──────────────────────────────────────────┴→ sicherung
 #          → supabase-ausliefern → web-ausliefern → pruefen → veroeffentlichen → rueckfuehrung
 #
 # - A red e2e shard (e2e.yml, spec 0031, REQ-002): no backup, no delivery, no tag (AC-007).

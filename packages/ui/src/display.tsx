@@ -460,6 +460,10 @@ export function ProgressBar(props: { value: number; label: string; testID?: stri
       accessibilityRole="progressbar"
       accessibilityLabel={props.label}
       accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
+      // react-native-web drops accessibilityValue.
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value * 100)}
       style={{
         height: 8,
         borderRadius: 4,
@@ -489,6 +493,10 @@ export function DueBar(props: { value: number; label: string }) {
       accessibilityRole="progressbar"
       accessibilityLabel={props.label}
       accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
+      // react-native-web drops accessibilityValue.
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value * 100)}
       style={{
         height: 6,
         width: 128,

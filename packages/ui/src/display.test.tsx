@@ -265,6 +265,25 @@ describe('ProgressBar and DueBar', () => {
     );
     expect([fill('Bad putzen'), fill('Küche'), fill('Fenster')]).toEqual(['4%', '50%', '100%']);
   });
+
+  it('review 0031: the value reaches the browser as aria-valuenow (0 to 100)', () => {
+    render(
+      <>
+        <ProgressBar value={0.42} label="Einkauf" />
+        <DueBar value={0.5} label="Küche" />
+      </>,
+    );
+    const now = (name: string) => {
+      const bar = screen.getByRole('progressbar', { name });
+      return [
+        bar.getAttribute('aria-valuemin'),
+        bar.getAttribute('aria-valuemax'),
+        bar.getAttribute('aria-valuenow'),
+      ];
+    };
+    expect(now('Einkauf')).toEqual(['0', '100', '42']);
+    expect(now('Küche')).toEqual(['0', '100', '50']);
+  });
 });
 
 describe('EmptyState', () => {

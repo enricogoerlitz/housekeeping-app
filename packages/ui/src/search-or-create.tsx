@@ -6,6 +6,7 @@ import { expandableA11y } from './expandable';
 import { List, ListRow } from './lists';
 import { Icon, Text } from './primitives';
 import { useTheme } from './theme-context';
+import { ariaRef } from './hint';
 
 export interface SearchOrCreateHit {
   key: string;
@@ -141,6 +142,10 @@ export function SearchOrCreate(props: SearchOrCreateProps) {
               accessibilityLabel={option.label}
               accessibilityHint={disabled ? props.createDisabledHint : undefined}
               accessibilityState={{ disabled: disabled || braked }}
+              // react-native-web drops accessibilityHint.
+              ref={ariaRef({
+                'aria-description': disabled ? props.createDisabledHint : undefined,
+              })}
               disabled={disabled || braked}
               onPress={() => props.onCreate(option.key)}
               style={(state) => [

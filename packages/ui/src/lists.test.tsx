@@ -196,6 +196,13 @@ describe('ListRow', () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it('review 0031: selected and the hint reach the browser', () => {
+    render(<ListRow title="Curry" selected hint="Öffnet das Rezept" onPress={() => undefined} />);
+    const row = screen.getByRole('button', { name: 'Curry' });
+    expect(row.getAttribute('aria-selected')).toBe('true');
+    expect(row.getAttribute('aria-description')).toBe('Öffnet das Rezept');
+  });
+
   it('selected: the row shown in the detail column is highlighted in accentSoft', () => {
     render(<ListRow title="Curry" selected onPress={() => undefined} />);
     const row = screen.getByRole('button', { name: 'Curry' });

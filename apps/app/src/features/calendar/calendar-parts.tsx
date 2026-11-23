@@ -11,6 +11,7 @@ import {
   type Member,
 } from '@housekeeping/core';
 import {
+  ariaRef,
   AvatarStack,
   Checkbox,
   hatchStyle,
@@ -137,6 +138,7 @@ export function TripStripeView(props: {
       accessibilityRole="button"
       accessibilityLabel={stripeA11y(stripe, data.membersById, packing)}
       accessibilityHint="Seite der Reise öffnen"
+      ref={ariaRef({ 'aria-description': 'Seite der Reise öffnen' })}
       onPress={() => props.onPress(stripe)}
       style={(state) => ({
         flexDirection: 'row',

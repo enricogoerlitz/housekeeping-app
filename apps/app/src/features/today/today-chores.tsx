@@ -39,9 +39,11 @@ import { usePageParams } from '@/lib/url-state';
  * "Zu tun" of the shown day (spec 0011, REQ-005, AC-032): today the due chores (core dueChores)
  * with the one chore check window of the Haushalt — a tap strikes through, a second takes it
  * back, 2 s after the last tap the checked ones are booked and leave; leaving the page books at
- * once; no "Rückgängig" (AC-028 to AC-031). Later days show the planned dates, past days what was
- * done, both only to look at and without "Was anderes erledigt?". Next to the title the points of
- * today (spec 0026, REQ-010); during a trip of the whole household the sentence of REQ-013.
+ * once; no "Rückgängig" (AC-028 to AC-031). Later days show the planned dates, each can be
+ * checked with the same window as in the calendar and booked as done today (spec 0031, review
+ * loop, R-01); past days show what was done, only to look at. "Was anderes erledigt?" only today.
+ * Next to the title the points of today (spec 0026, REQ-010); during a trip of the whole household
+ * the sentence of REQ-013.
  */
 export function TodayChores(props: { shown: ISODate; today: ISODate; title: string }) {
   const chores = useChores();
@@ -71,6 +73,8 @@ export function TodayChores(props: { shown: ISODate; today: ISODate; title: stri
           </Text>
           {props.shown === props.today ? <DoneLink /> : null}
         </>
+      ) : day.kind === 'planned' ? (
+        <PlannedChores items={day.items} chores={chores} />
       ) : (
         <ChoresToLookAt items={day.items} kind={day.kind} />
       )}
@@ -168,7 +172,48 @@ function DueChores(props: { chores: Chore[]; today: ISODate }) {
   );
 }
 
-/** Another day: "○ Küche wischen (E)" planned, "✓ Fenster Wohnzimmer (N)" done; nothing to tap. */
+/**
+ * A later day: the planned chores can be checked as in the calendar's household row (spec 0021,
+ * REQ-016); 2 s after the last tap they are booked as done today. What cannot be checked (done or
+ * no longer a chore) stands as on a past day.
+ */
+function PlannedChores(props: { items: HouseholdRowItem[]; chores: Chore[] }) {
+  const membersById = useMembersById();
+  const online = useOnlineOnly();
+  const choreOf = (item: HouseholdRowItem) =>
+    item.status === 'done' ? undefined : props.chores.find((chore) => chore.id === item.choreId);
+  const open = props.items.filter((item) => choreOf(item) !== undefined);
+  const rest = props.items.filter((item) => choreOf(item) === undefined);
+  const itemOf = new Map(open.map((item) => [item.choreId ?? '', item]));
+  const check = useChoreCheckWindow(open.flatMap((item) => choreOf(item) ?? []));
+  if (props.items.length === 0) return <ChoresToLookAt items={[]} kind="planned" />;
+  return (
+    <>
+      <List>
+        {check.rows.map((chore) => {
+          const item = itemOf.get(chore.id);
+          if (!item) return null;
+          const people = item.memberIds.flatMap((id) => membersById[id] ?? []);
+          return (
+            <RowTransition key={item.key}>
+              <CheckRow
+                testID={`today-chore-${item.key}`}
+                title={item.approximate ? `${item.title}, etwa` : item.title}
+                checked={check.isChecked(chore)}
+                disabled={online.disabled}
+                onToggle={() => check.toggle(chore)}
+                trailing={people.length > 0 ? <AvatarStack members={people} /> : undefined}
+              />
+            </RowTransition>
+          );
+        })}
+      </List>
+      {rest.length > 0 ? <ChoresToLookAt items={rest} kind="planned" /> : null}
+    </>
+  );
+}
+
+/** A past day: "✓ Fenster Wohnzimmer (N)" done; nothing to tap. */
 function ChoresToLookAt(props: { items: HouseholdRowItem[]; kind: 'planned' | 'done' }) {
   const membersById = useMembersById();
   if (props.items.length === 0) {

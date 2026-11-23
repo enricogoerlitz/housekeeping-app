@@ -566,6 +566,8 @@ export function TabBar(props: TabBarProps) {
             accessibilityRole="tab"
             accessibilityLabel={item.label}
             accessibilityState={{ selected: active }}
+            // react-native-web ignores accessibilityState.
+            aria-selected={active}
             onPress={() => props.onSelect(item.key)}
             style={(state) => [
               {
@@ -761,6 +763,7 @@ function SidebarRow(props: { entry: SidebarEntry; tab?: boolean }) {
       accessibilityRole={props.tab ? 'tab' : 'link'}
       accessibilityLabel={entry.label}
       accessibilityState={props.tab ? { selected: active } : undefined}
+      aria-selected={props.tab ? active : undefined}
       aria-current={!props.tab && active ? 'page' : undefined}
       onPress={entry.onPress}
       style={(state) => {

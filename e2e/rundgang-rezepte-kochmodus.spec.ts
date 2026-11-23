@@ -193,14 +193,23 @@ test('Decision 15: deleting asks about the ingredients of the entries that go an
   await nav(page, 'kalender');
   await showPlanWeek(page, day(7));
   await tid(page, 'plan-to-list').click();
+  // The rows render after the window: `.all()` takes only what is there.
+  await expect(tidPrefix(page, 'pick-entry-').first()).toBeVisible();
+  let halloumis = 0;
   for (const check of await tidPrefix(page, 'pick-entry-')
     .and(page.locator('[role="checkbox"]'))
     .all()) {
     const id = (await check.getAttribute('data-testid'))?.replace(/-check$/, '') ?? '';
     const halloumi = (await tid(page, id).innerText()).includes('Halloumi-Pfanne');
+    if (halloumi) halloumis += 1;
     const selected = (await check.getAttribute('aria-checked')) === 'true';
     if (halloumi !== selected) await check.click();
   }
+  // Earlier tests of this file may have planned it in the same week too.
+  expect(halloumis).toBeGreaterThan(0);
+  await expect(tid(page, 'pc-next')).toHaveText(
+    `Weiter: ${halloumis} ${halloumis === 1 ? 'Gericht' : 'Gerichte'}`,
+  );
   await tid(page, 'pc-next').click();
   await tid(page, 'pc-apply').click();
   await expect(tid(page, 'pantry-check-sheet')).toBeHidden();

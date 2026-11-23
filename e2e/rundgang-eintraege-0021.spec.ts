@@ -58,22 +58,20 @@ test('AC-030, AC-031: leftovers stand on top, "Alle Reste ›" opens the tab', a
   await open(page, '/kalender');
   await page.locator('[data-testid^="add-20"]').last().click();
   await expect(tid(page, 'add-entry-sheet')).toBeVisible();
-  const top = tid(page, 'add-entry-leftovers-top');
-  if (await top.isVisible()) {
-    await tid(page, 'add-entry-leftovers-all').click();
-    await expect(tid(page, 'add-entry-leftovers-older')).toBeVisible();
-  }
+  // The seed has leftovers (the curry of yesterday evening): they stand on top.
+  await expect(tid(page, 'add-entry-leftovers-top')).toBeVisible();
+  await tid(page, 'add-entry-leftovers-all').click();
+  await expect(tid(page, 'add-entry-leftovers-older')).toBeVisible();
 });
 
 test('AC-040: removing with contributions on the list asks first', async ({ page }) => {
   await open(page, `/kalender?eintrag=${LASAGNE}`);
   await tid(page, 'entry-remove').click();
-  const dialog = tid(page, 'entry-remove-dialog');
-  if (await dialog.isVisible()) {
-    await expect(tid(page, 'entry-remove-message')).toContainText('auf der Einkaufsliste');
-    await tid(page, 'entry-remove-cancel').click();
-    await expect(tid(page, 'entry-sheet')).toBeVisible();
-  }
+  // The seed has Lasagne's ingredients on the list, so removing asks first.
+  await expect(tid(page, 'entry-remove-dialog')).toBeVisible();
+  await expect(tid(page, 'entry-remove-message')).toContainText('auf der Einkaufsliste');
+  await tid(page, 'entry-remove-cancel').click();
+  await expect(tid(page, 'entry-sheet')).toBeVisible();
 });
 
 test('offline: the fields are greyed out and closing only closes', async ({ page }) => {

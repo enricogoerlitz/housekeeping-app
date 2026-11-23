@@ -17,11 +17,6 @@ on:
         type: string
         required: true
 
-concurrency:
-  # Shared with release.yml: never next to a release (AC-032).
-  group: release
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -34,6 +29,9 @@ jobs:
     name: Tag prüfen
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -50,6 +48,19 @@ jobs:
         run: |
           if [ "$GITHUB_REF" != refs/heads/main ]; then
             echo "::error::Web erneut ausliefern nur von main (gh workflow run redeploy-web.yml --ref main …)"
+            exit 1
+          fi
+      - name: Keine Veröffentlichung in Arbeit
+        # Review 0031, P-1: GitHub keeps one waiting run per concurrency group and replaces it by a
+        # newer one. So this workflow has no group of its own and refuses while release.yml waits
+        # or runs; only its delivering jobs share the group "release" (AC-032).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          busy="$(gh run list --workflow release.yml --json status --jq '[.[] | select(.status != "completed")] | length')"
+          if [ "$busy" != 0 ]; then
+            echo "::error::Eine Veröffentlichung wartet oder läuft; danach erneut starten."
             exit 1
           fi
       - id: version
@@ -69,6 +80,9 @@ jobs:
   web-ausliefern:
     name: Web ausliefern v${{ needs.version.outputs.version }}
     needs: version
+    concurrency:
+      group: release
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment:
@@ -120,6 +134,9 @@ jobs:
   pruefen:
     name: Prüfung nach der Auslieferung
     needs: [version, web-ausliefern]
+    concurrency:
+      group: release
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production

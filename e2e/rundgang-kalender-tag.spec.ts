@@ -30,6 +30,7 @@ import {
   test,
   tid,
   tidPrefix,
+  toastMessage,
 } from './helpers';
 import { seedIds } from './seed-ids';
 
@@ -208,6 +209,10 @@ test.describe('phone', () => {
     await expect(tid(page, 'day-panel-trip')).toBeDisabled();
     await expect(tid(page, 'day-panel-offline')).toHaveText(OFFLINE_HINT);
     await expect(tid(page, 'day-panel').getByText(OFFLINE_HINT)).toHaveCount(1);
+    // Spec 0031, review U-2: greyed out, but a tap says why (Playwright clicks no aria-disabled).
+    await tid(page, `day-panel-add-${SLOT_MORNING}`).click({ force: true });
+    await expect(toastMessage(page)).toHaveText(OFFLINE_HINT);
+    await expect(tid(page, 'add-entry-sheet')).toHaveCount(0);
   });
 
   test('AC-027: paging keeps the day window; month and week follow the chosen day', async ({

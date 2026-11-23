@@ -52,6 +52,15 @@ export function placeAfter(state: PlaceState, pathname: string, params: RawParam
   };
 }
 
+/**
+ * Before the address is replaced (back to the remembered address after signing in): the entry
+ * below is then not the current address, so nothing shown so far may be an opener (AC-018). The
+ * start pages stay.
+ */
+export function forgetPlace(state: PlaceState): PlaceState {
+  return { startPages: state.startPages };
+}
+
 /** The start page of a section as last left, without window and detail (REQ-005). */
 export function sectionHref(state: PlaceState, section: Origin): string {
   return state.startPages[section] ?? SECTION_START[section];

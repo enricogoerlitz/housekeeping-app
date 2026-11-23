@@ -19,6 +19,7 @@ import { useHover } from './pointer';
 import { Icon, Text } from './primitives';
 import { useAreaColors, useTheme } from './theme-context';
 import { chipRowStyle } from './chip-layout';
+import { ariaRef } from './hint';
 
 // One pattern per task (spec 0005, D1): view tabs switch views, choice chips pick one value in a
 // form, a menu picks an order. They replace the segment bar.
@@ -263,6 +264,7 @@ export function ChoiceChips<T extends string>(props: ChoiceChipsProps<T>) {
       accessibilityRole="radiogroup"
       accessibilityLabel={props.label}
       accessibilityState={{ disabled: !!props.disabled }}
+      aria-disabled={!!props.disabled}
       style={chipRowStyle(!!props.fill)}
     >
       {props.options.map((option) => (
@@ -479,6 +481,8 @@ export function Menu<T extends string>(props: MenuProps<T>) {
                 ref={(node) => {
                   if (node) items.current.set(option.value, node);
                   else items.current.delete(option.value);
+                  // react-native-web drops accessibilityHint.
+                  ariaRef({ 'aria-description': option.hint })(node);
                 }}
                 testID={props.testID ? `${props.testID}-${option.value}` : undefined}
                 {...itemRole(isChoice)}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_PLACE,
+  forgetPlace,
   isOwnWindowOnTop,
   openerOf,
   originBackPlan,
@@ -85,6 +86,15 @@ describe('openerOf', () => {
     const shopping = placeAfter(EMPTY_PLACE, '/einkaufen', {});
     const stores = placeAfter(shopping, '/maerkte', { von: 'liste' });
     expect(openerOf(stores, '/maerkte')).toEqual({ href: '/einkaufen', section: 'liste' });
+  });
+
+  it('review 0031: after the address was replaced (back after sign-in) nothing below is the opener', () => {
+    const home = placeAfter(EMPTY_PLACE, '/', {});
+    const forgotten = forgetPlace(home);
+    expect(openerOf(forgotten, `/rezept/${LASAGNE}`)).toBeUndefined();
+    const articles = placeAfter(forgotten, '/artikel', { von: 'uebersicht' });
+    expect(openerOf(articles, '/artikel')).toBeUndefined();
+    expect(forgotten.startPages).toEqual(home.startPages);
   });
 
   it('is nothing when the current address is the page itself (deep link mounted again)', () => {
