@@ -56,7 +56,10 @@ Pflicht-Checks sind die Jobnamen aus `.github/workflows/checks.yml` ohne „Änd
 `Konventionen`, `Geheimnisse`, `Migrationen`, `Prüfungen`, `Datenbank (pgTAP)`, `Deno-Lock`,
 jeweils nur von GitHub Actions erfüllbar (`integration_id` 15368). „Up to date“ wird nicht
 verlangt; Freigaben (Reviews) auch nicht, weil es nur einen Besitzer gibt. Ein Jobname und die
-Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das.
+Rulesets ändern sich immer zusammen; `scripts/ci/workflows.test.mjs` prüft das. Nach jedem Merge
+nach `develop` laufen dieselben Checks noch einmal auf dem Merge-Commit, je Commit in einer eigenen
+Gruppe, ohne Abbruch (Spec 0031, AC-011). Ein roter Lauf dort heißt: Die Kombination zweier PRs ist
+kaputt, der nächste Fix geht per PR.
 
 Die E2E-Suiten (`pnpm e2e`, `pnpm e2e:dev`) laufen seit 22.11.2026 nicht mehr in der Pipeline, nur
 lokal: vor jeder Veröffentlichung einmal beide ausführen (Spec 0014, AC-006).
