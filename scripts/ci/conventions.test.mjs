@@ -117,6 +117,29 @@ describe('title and branch', () => {
 describe('forbidden commands', () => {
   const file = (filePath, text) => ({ path: filePath, text });
 
+  test('AC-019 (spec 0031): no workflow, action or package script runs reset-app-data.mjs', () => {
+    for (const [filePath, text] of [
+      [
+        '.github/workflows/release.yml',
+        '      - run: node scripts/reset-app-data.mjs --project x\n',
+      ],
+      ['.github/actions/x/action.yml', '    - run: node ./scripts/reset-app-data.mjs\n'],
+      ['package.json', '    "reset:prod": "node scripts/reset-app-data.mjs",\n'],
+    ]) {
+      const found = findForbiddenCommands([file(filePath, text)]);
+      assert.equal(found.length, 1, filePath);
+      assert.match(found[0].message, /reset-app-data\.mjs.*nur von Hand/);
+    }
+    // The script itself, its test and the runbook name it.
+    assert.deepEqual(
+      findForbiddenCommands([
+        file('scripts/reset-app-data.mjs', '//   node scripts/reset-app-data.mjs --project x\n'),
+        file('scripts/reset-app-data.test.mjs', "const script = 'scripts/reset-app-data.mjs';\n"),
+      ]),
+      [],
+    );
+  });
+
   test('AC-010: db reset against a remote project is red in every variant', () => {
     for (const flag of ['--remote', '--linked', '--db-url postgres://x']) {
       const found = findForbiddenCommands([

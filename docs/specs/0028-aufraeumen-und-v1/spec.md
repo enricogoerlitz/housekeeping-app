@@ -50,6 +50,12 @@ Datenbank, Code, Tests und Doku verschwunden. Offline: –
 - AC-005: Angenommen die neue Basis · Wenn ein Schema-Bericht unbenutzte Spalten, Funktionen,
   Grants und Indexe listet (Abgleich mit den Zugriffen in `packages/api` und den Funktionen) ·
   Dann ist jeder Treffer entfernt oder mit Grund in diese Spec eingetragen.
+  _Nachtrag (Spec 0031, 23.11.2026):_ Schon entfernt durch eigene Migrationen vor dem
+  Zusammenfassen (0031 REQ-013 bis REQ-017, Abschnitt „Daten“ dort): `*_stamp_restored`,
+  `record_deletion` auf Mitgliedern und Einladungen samt Indexen, `profiles_email_idx`,
+  `public.ai_usage` (jetzt `private.ai_usage`), `household_media_names` (jetzt
+  `begin_household_deletion`), Grants auf `meal_slots`, `chore_events.chore_id` und
+  `recipes.photo`.
 
 ### Code
 
@@ -108,6 +114,9 @@ schreiben. Offline: offline lesend; der alte Stand im Gerät wird verworfen.
 - AC-016: Angenommen ein iPhone mit installierter v2026.11.1 · Wenn es nach der Veröffentlichung
   öffnet · Dann sieht es „Neue Version verfügbar“ (`min_app_version`, Spec 0014), lädt neu, und
   `CACHE_VERSION` leert den lokalen Speicher samt Warteschlange.
+  _Nachtrag (Spec 0031, REQ-001, Entscheidung 3, 23.11.2026):_ Die neue Basis setzt
+  `min_app_version` auf „2026.11.2“. Das ist mehr als ein Hinweis: Bis zum Neuladen sperrt
+  `VersionGate` das Schreiben, und `redeploy-web.yml` lehnt v2026.11.1 ab (0031 AC-006).
 
 **REQ-008 — Veröffentlichung und Sicherung.** Die Version geht über den normalen Freigabeweg nach
 `main`, und Sicherung sowie Wiederherstellungstest laufen auf der neuen Basis. Offline: –
@@ -168,14 +177,14 @@ Abschnitt „Daten“ jeder Spec):
 
 ## Risiken
 
-| Risiko                                              | Gegenmaßnahme                                                                 | Test                                    |
-| --------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------- |
-| Falsches Projekt wird zurückgesetzt                 | Pflichtangabe der Kennung, Abgleich mit dem verlinkten Projekt, Namensabfrage | AC-015, Probe in der Vorschau           |
-| Basis weicht vom gebauten Schema ab                 | `db diff` gegen die alten Migrationen, volle pgTAP-Suite                      | AC-002, AC-001                          |
-| Vault oder Secrets gehen beim Zurücksetzen verloren | nur `public`, `private`, Fotos und Migrationshistorie löschen                 | AC-013, Benachrichtigung nach der Probe |
-| Alte App schreibt in das neue Schema                | `min_app_version` vor der Auslieferung hochsetzen, `CACHE_VERSION` erhöhen    | AC-016                                  |
-| Sicherung lässt sich nicht wiederherstellen         | Wiederherstellungstest vor dem Löschen alter Sicherungen                      | AC-018                                  |
-| Aufräumen entfernt etwas, das noch genutzt wird     | Suche über alle Pakete, volle Tests, e2e-Suite                                | AC-004, AC-008, AC-009                  |
+| Risiko                                              | Gegenmaßnahme                                                                    | Test                                    |
+| --------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
+| Falsches Projekt wird zurückgesetzt                 | Pflichtangabe der Kennung, Abgleich mit dem verlinkten Projekt, Namensabfrage    | AC-015, Probe in der Vorschau           |
+| Basis weicht vom gebauten Schema ab                 | `db diff` gegen die alten Migrationen, volle pgTAP-Suite                         | AC-002, AC-001                          |
+| Vault oder Secrets gehen beim Zurücksetzen verloren | nur `public`, `private`, Fotos und Migrationshistorie löschen                    | AC-013, Benachrichtigung nach der Probe |
+| Alte App schreibt in das neue Schema                | `min_app_version` 2026.11.2 sperrt das Schreiben, `CACHE_VERSION` erhöhen (0031) | AC-016, 0031 AC-005, AC-006             |
+| Sicherung lässt sich nicht wiederherstellen         | Wiederherstellungstest vor dem Löschen alter Sicherungen                         | AC-018                                  |
+| Aufräumen entfernt etwas, das noch genutzt wird     | Suche über alle Pakete, volle Tests, e2e-Suite                                   | AC-004, AC-008, AC-009                  |
 
 ## Umsetzung
 
@@ -188,5 +197,12 @@ Abschnitt „Daten“ jeder Spec):
 - [ ] 7. Mit Enrico: Zeitpunkt, letzte Sicherung, Produktion zurücksetzen, Bootstrap (AC-013, AC-014)
 - [ ] 8. `min_app_version`, Release-PR, Veröffentlichung (AC-016, AC-017)
 - [ ] 9. Wiederherstellungstest auf der neuen Basis (AC-018)
+      _Nachtrag (Spec 0031, 23.11.2026):_ Schritt 3 ist Spec 0031 (Ultracode-Code-Review). Schritt 4
+      legt zusätzlich `supabase/migrations-base.json` an (`replaces: "v2026.11.1"`, `first` = erste
+      Version der neuen Basis). Damit lassen der Check „Migrationen“, der Supabase-Wächter und
+      `version.mjs` die neue Basis einmal zu (0031 REQ-001). Schritt 8 setzt `min_app_version` in der
+      neuen Basis auf „2026.11.2“. Die Reihenfolge der Schritte 6 bis 9 steht als Runbook in
+      `docs/architecture/betrieb.md`, Abschnitt „Erste produktive Version (0028)“.
+
 - [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web`, `pnpm exec supabase test db`,
       `pnpm e2e`, `pnpm e2e:dev` grün

@@ -119,6 +119,7 @@ Agent-Einstellungen vor, gibt es keine Veröffentlichung; von Hand erzwingen lä
 Ist ein Lauf rot: die Fehlermeldung im Lauf lesen, beheben (Hotfix oder PR nach `develop` und neue
 Freigabe). Scheitert nur ein Schritt nach „Supabase ausliefern“ (z. B. Web ausliefern), reicht
 „Re-run failed jobs“: Migrationen sind abwärtsverträglich (expand → migrate → contract).
+Ausnahme: die erste produktive Version, siehe [unten](#erste-produktive-version-0028).
 
 ### Hotfix
 
@@ -218,6 +219,66 @@ pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/prod-bootstra
 
 Danach auf der Web-Adresse mit Google anmelden, die Einladung annehmen und Nadja in der App
 einladen. Ein zweiter Lauf legt nichts an.
+
+## Erste produktive Version (0028)
+
+Einmalig für die erste produktiv genutzte Version (Spec 0028, Schritte 6 bis 9). Die Produktion
+enthält bis dahin nur Testdaten. Sie wird zurückgesetzt und läuft danach auf der neuen
+Migrationsbasis, die die Migrationen von v2026.11.1 ersetzt (`supabase/migrations-base.json`,
+[ADR-0012, Nachtrag 23.11.2026](../adr/0012-neuaufbau-der-migrationen-vor-der-ersten-auslieferung.md)).
+Den Zeitpunkt bestätigt Enrico. Die Schritte laufen genau in dieser Reihenfolge, jeder erst, wenn der
+vorige grün ist:
+
+1. **Probe in der Vorschau.** Dieselben Schritte 4 und 6 gegen `<preview-ref>`, danach
+   `gh workflow run preview.yml --ref develop`. Enrico und Nadja melden sich an, eine
+   Benachrichtigung kommt an (Spec 0028, AC-012).
+2. **Sicherung von Hand.** Die letzte Sicherung der alten Produktion. Sie bleibt in Azure, bis der
+   Wiederherstellungstest auf der neuen Basis grün ist (Spec 0028, Entscheidung 6):
+
+   ```sh
+   gh workflow run backup.yml --ref main
+   gh run watch "$(gh run list --workflow backup.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+   ```
+
+3. **Release-PR grün.** Vorher `develop` mit der vollen e2e-Suite prüfen, dann die Release-PR öffnen,
+   aber **noch nicht zusammenführen**:
+
+   ```sh
+   gh workflow run e2e.yml --ref develop
+   gh pr create --base main --head develop --title "chore: Veröffentlichung"
+   ```
+
+4. **Produktion zurücksetzen.** Mit dem Skript aus Spec 0028, Schritt 6. Es läuft nur von Hand, nie
+   aus einem Workflow (`conventions.mjs` prüft das, Spec 0031, AC-019). Es nimmt die Projektkennung
+   als Pflichtangabe, vergleicht sie mit dem verlinkten Projekt und fragt vor dem Löschen nach dem
+   Projektnamen. Gelöscht werden `public`, `private`, die Fotos und die Migrationshistorie. Vault,
+   Auth-Einstellungen und Function-Secrets bleiben:
+
+   ```sh
+   pnpm exec supabase link --project-ref "<prod-ref>" && node scripts/reset-app-data.mjs --project "<prod-ref>" && pnpm exec supabase unlink
+   ```
+
+5. **Release-PR zusammenführen** („Create a merge commit“). `release.yml` läuft mit e2e, Sicherung,
+   Supabase-Wächter (leere Historie), neuer Basis und Web. Die Mindestversion 2026.11.2 sperrt Geräte
+   mit v2026.11.1 für das Schreiben, bis sie neu laden.
+6. **Bootstrap.** Wie in [Erste Anmeldung in einer leeren Produktion](#erste-anmeldung-in-einer-leeren-produktion):
+   `node scripts/prod-bootstrap.mjs` legt den Haushalt „Enrico & Nadja“ und Enricos Einladung an.
+7. **Wiederherstellungstest** nach der ersten Nachtsicherung auf der neuen Basis. Erst danach dürfen
+   die alten Sicherungen ablaufen:
+
+   ```sh
+   gh workflow run restore-test.yml --ref main
+   ```
+
+8. **Aufräumen.** In einer PR nach `develop` `supabase/migrations-base.json` löschen. Mit dem neuen
+   Tag ist die Ausnahme ohnehin verbraucht.
+
+**Ausnahme vom Alltag:** Für dieses Release gilt „Re-run failed jobs, Migrationen sind
+abwärtsverträglich“ (siehe [Freigabe](#freigabe-veröffentlichung)) **nicht**. Die neue Basis ist
+nicht mit dem alten Schema verträglich. Scheitert ein Schritt nach „Supabase ausliefern“, erst den
+Zustand der Produktion prüfen (`pnpm exec supabase migration list --linked`). Fehlt dort die neue
+Basis ganz oder teilweise, das Projekt nach Schritt 4 erneut zurücksetzen und den Lauf neu starten.
+Die Historie nie mit `migration repair` flicken.
 
 ## Sicherung und Wiederherstellungstest
 
