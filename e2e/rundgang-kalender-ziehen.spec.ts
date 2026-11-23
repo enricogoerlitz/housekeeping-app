@@ -311,10 +311,10 @@ test.describe('phone', () => {
   test('AC-008: in the year, from the day window onto another day; the window shows its day again', async ({
     page,
   }) => {
-    test.skip(
-      NEIGHBOUR.slice(0, 4) !== TODAY.slice(0, 4),
-      'the neighbour day lies in another year',
-    );
+    // The year view shows one year: on 31 December the neighbour is the day before.
+    const neighbour =
+      [NEIGHBOUR, day(1), day(-1)].find((date) => date.slice(0, 4) === TODAY.slice(0, 4)) ??
+      NEIGHBOUR;
     const title = (date: ISODate) => dayMonthLongLabel(date).toUpperCase();
     await open(page, '/kalender');
     await tid(page, 'calendar-view-year').click();
@@ -326,16 +326,16 @@ test.describe('phone', () => {
     const touch = await finger(page);
     await touch.hold(await centerOf(entry(page, LASAGNE, panel)));
     await expect.poll(async () => (await panel.boundingBox())?.height ?? 0).toBeLessThan(height);
-    await touch.move(await centerOf(tid(page, `year-day-${NEIGHBOUR}`)));
-    await expect(tid(page, 'drag-label')).toHaveText(moveTargetLabel(NEIGHBOUR, 'Abend'));
+    await touch.move(await centerOf(tid(page, `year-day-${neighbour}`)));
+    await expect(tid(page, 'drag-label')).toHaveText(moveTargetLabel(neighbour, 'Abend'));
     await touch.lift();
 
-    await expect(toastMessage(page)).toHaveText(lasagneToast(NEIGHBOUR, 'Abend'));
+    await expect(toastMessage(page)).toHaveText(lasagneToast(neighbour, 'Abend'));
     await expect(tid(page, 'day-panel-title')).toHaveText(title(TODAY), { useInnerText: true });
     await expect.poll(async () => (await panel.boundingBox())?.height ?? 0).toBeGreaterThan(height);
     await expect(entry(page, LASAGNE, panel)).toHaveCount(0);
-    await tid(page, `year-day-${NEIGHBOUR}`).click();
-    await expect(tid(page, 'day-panel-title')).toHaveText(title(NEIGHBOUR), { useInnerText: true });
+    await tid(page, `year-day-${neighbour}`).click();
+    await expect(tid(page, 'day-panel-title')).toHaveText(title(neighbour), { useInnerText: true });
     await expect(entry(page, LASAGNE, panel)).toBeVisible();
 
     await undo(page);

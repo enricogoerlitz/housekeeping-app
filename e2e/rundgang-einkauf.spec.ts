@@ -8,6 +8,7 @@ import {
   open,
   openItem,
   shoppingCheck,
+  showDone,
   test,
   tid,
   tidPrefix,
@@ -85,6 +86,7 @@ test('AC-022 / AC-024: swiping right marks as done, offline with "wird synchroni
   await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2, { steps: 8 });
   await page.mouse.up();
   await expect(toastMessage(page)).toHaveText('Milch erledigt');
+  await showDone(page);
   await expect(tid(page, `item-${id}-pending`)).toBeVisible();
 });
 

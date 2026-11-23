@@ -550,7 +550,7 @@ test('AC-015: Spieleabend has no place, so neither its page nor its plan entry h
   await tid(page, 'entry-done').click();
 
   // With a place there is one (Eislaufen this morning).
-  await tid(page, 'week-today').click();
+  if (!(await tid(page, `day-${TODAY}`).isVisible())) await tid(page, 'week-today').click();
   await tid(page, `entry-${EISLAUFEN_TODAY}`).click();
   await expect(tid(page, 'entry-route')).toBeVisible();
 });
