@@ -735,8 +735,10 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **H — Weg zur Veröffentlichung** (zuletzt, vor 0028, Schritt 4)
 
-- [ ] 33. `migrations-base.json`, `migrations.mjs`, `supabase-guard.mjs`, `version.mjs` mit
-      negativen Tests, Nachtrag zu ADR-0012 (AC-001–AC-005).
+- [x] 33. `migrations-base.json`, `migrations.mjs`, `supabase-guard.mjs`, `version.mjs` mit
+      negativen Tests, Nachtrag zu ADR-0012 (AC-001–AC-005). Gemeinsames Lesen und Prüfen in
+      `scripts/release/migrations-base.mjs`. Die Datei `supabase/migrations-base.json` selbst
+      entsteht mit der neuen Basis in Spec 0028, Schritt 4; ohne sie bleibt alles wie bisher.
 - [ ] 34. Job „e2e“ in `release.yml` mit Shards und manuellem Lauf, `workflows.test.mjs`, Nachtrag
       in 0014 (AC-007–AC-010).
 - [ ] 35. Runbook in `betrieb.md` (AC-018, AC-019), Nachträge in 0028 (AC-016, AC-005, Schritte).

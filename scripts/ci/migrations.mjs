@@ -3,6 +3,9 @@
 // - Compares `git diff --name-status <base>...HEAD -- supabase/migrations`. Before the first tag
 //   v* the baseline may still change (ADR-0012): a changed, deleted or renamed migration is only a
 //   note. From the first tag on it is red: a committed migration is never changed.
+// - The one-time exception of spec 0031, REQ-001 (supabase/migrations-base.json, see
+//   scripts/release/migrations-base.mjs): while it names the latest tag, deleting the migrations
+//   of that tag is allowed, if afterwards every migration has a version ≥ `first`.
 // - A new migration with `drop column`, `drop table` or `rename` outside comments needs the
 //   contract header `-- contract: <Begründung>; min_app_version: <Version>` in its leading comment
 //   block and a new definition of public.min_app_version() returning that same version.
@@ -12,6 +15,8 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import { BASE_FILE, readMigrationsBase } from '../release/migrations-base.mjs';
 
 const DIR = 'supabase/migrations';
 export const CONTRACT_MISSING =
@@ -85,13 +90,26 @@ export function parseNameStatus(text) {
 
 const VERB = { M: 'geändert', T: 'geändert', D: 'gelöscht', R: 'umbenannt' };
 
+/** The version (timestamp) of a migration file. */
+const versionOf = (file) => /^(\d+)_/.exec(path.posix.basename(file))?.[1] ?? '';
+
 /**
  * Errors and notes for the migration changes of a pull request. `released`: a tag v* exists.
- * `read(path)` returns the content of a new file.
+ * `read(path)` returns the content of a new file. With the exception of spec 0031 (`base`, see
+ * migrations-base.mjs): `latestTag` is the newest release tag, `files` the migrations after the
+ * pull request.
  */
-export function checkChanges(entries, { released, read }) {
+export function checkChanges(entries, { released, read, base, latestTag, files = [] }) {
   const errors = [];
   const notes = [];
+  const exception = released && base !== undefined && base.replaces === latestTag;
+  if (released && base !== undefined && !exception) {
+    errors.push(
+      `${BASE_FILE}: „replaces“ nennt ${base.replaces}, der neueste Tag ist ${latestTag}. Die Ausnahme gilt nur für den neuesten Tag; nach ihm wird die Datei gelöscht.`,
+    );
+  }
+  const old = (file) => exception && versionOf(file) < base.first;
+  let replaced = 0;
   for (const entry of entries) {
     if (!entry.path.endsWith('.sql') && !entry.oldPath?.endsWith('.sql')) continue;
     if (entry.status === 'A' || entry.status === 'C') {
@@ -101,6 +119,12 @@ export function checkChanges(entries, { released, read }) {
     const verb = VERB[entry.status];
     if (!verb) continue;
     const file = entry.oldPath ?? entry.path;
+    if (old(file) && (entry.status === 'D' || entry.status === 'R')) {
+      // Replaced by the new base; a rename into it is checked like a new file.
+      replaced += 1;
+      if (entry.status === 'R') errors.push(...checkNewMigration(entry.path, read(entry.path)));
+      continue;
+    }
     const what = entry.status === 'R' ? `${verb} nach ${entry.path}` : verb;
     if (released) {
       errors.push(
@@ -111,6 +135,19 @@ export function checkChanges(entries, { released, read }) {
         `Noch kein Tag v*: ${file} ${what}, erlaubt bis zur ersten Veröffentlichung (ADR-0012).`,
       );
     }
+  }
+  if (exception) {
+    const added = new Set(entries.filter((entry) => entry.status !== 'D').map((e) => e.path));
+    for (const file of files.filter(old)) {
+      errors.push(
+        added.has(file)
+          ? `${file}: Version liegt vor „first“ ${base.first} der neuen Basis (${BASE_FILE}).`
+          : `${file}: alte Migration liegt noch neben der neuen Basis; alle Migrationen von ${base.replaces} werden ersetzt (${BASE_FILE}).`,
+      );
+    }
+    notes.push(
+      `Neue Basis ersetzt ${base.replaces}: ${replaced} alte Migration(en) gelöscht, alle Migrationen ab ${base.first} (Spec 0031, REQ-001).`,
+    );
   }
   return { errors, notes };
 }
@@ -131,10 +168,18 @@ function main(args) {
   const entries = parseNameStatus(
     git(['diff', '--name-status', '-M', `${base}...HEAD`, '--', DIR]),
   );
-  const released = git(['tag', '-l', 'v*']).trim() !== '';
+  // Git's version sort orders vJJJJ.M.N tags by their numbers.
+  const latestTag = git(['tag', '-l', 'v*', '--sort=-v:refname']).split('\n')[0] || undefined;
+  const released = latestTag !== undefined;
+  const files = git(['ls-tree', '--name-only', 'HEAD', `${DIR}/`])
+    .split('\n')
+    .filter((file) => file.endsWith('.sql'));
   const { errors, notes } = checkChanges(entries, {
     released,
     read: (file) => readFileSync(file, 'utf8'),
+    base: readMigrationsBase(),
+    latestTag,
+    files,
   });
   for (const note of notes) console.log(`Hinweis: ${note}`);
   if (errors.length === 0) {

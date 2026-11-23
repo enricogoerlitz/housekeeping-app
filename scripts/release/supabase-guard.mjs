@@ -9,12 +9,16 @@
 // - After it, the history must be a prefix of the local migrations (supabase/migrations) and hold
 //   every migration of the latest release tag; a foreign version, a gap or a missing released
 //   migration (another or a reset project) stops the release.
+// - With the one-time exception of spec 0031, REQ-001 (supabase/migrations-base.json naming the
+//   latest tag): the history must be empty (reset project) or a prefix of the new base; a version
+//   of the replaced migrations stops the release („In Produktion …“).
 // On a stop: do not deliver, follow runbook B5 in docs/specs/0014-betrieb-ci-cd-release/plan.md.
 // The history is never repaired by hand. Prints versions (timestamps) and counts only.
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { baseApplies, readMigrationsBase } from './migrations-base.mjs';
 import { git, latestReleaseTag, lines, releaseTags } from './version.mjs';
 
 const DIR = 'supabase/migrations';
@@ -49,11 +53,20 @@ export function parseMigrationList(text) {
 
 /**
  * Errors of the remote history. `local`: versions of the local migrations, `released`: versions
- * at the latest release tag, undefined before the first release.
+ * at the latest release tag, undefined before the first release. `base`: the exception of
+ * migrations-base.json, only when it applies.
  */
-export function guardMigrations({ remote, local, released }) {
+export function guardMigrations({ remote, local, released, base }) {
   const errors = [];
-  if (released === undefined) {
+  if (base !== undefined) {
+    const sortedLocal = [...local].sort();
+    const mismatch = remote.findIndex((version, index) => version !== sortedLocal[index]);
+    if (mismatch !== -1) {
+      errors.push(
+        `In Produktion steht ${remote[mismatch]} an Stelle ${mismatch + 1}, die neue Basis (ab ${base.first}) erwartet dort ${sortedLocal[mismatch] ?? 'keine'}: das Projekt erst zurücksetzen (Spec 0028).`,
+      );
+    }
+  } else if (released === undefined) {
     if (remote.length > 0) {
       errors.push(
         `Produktion hat schon ${remote.length} Migration(en) in der Historie (zuerst ${remote[0]}), obwohl es noch keine Veröffentlichung (Tag v*) gibt.`,
@@ -101,10 +114,14 @@ function main(args) {
   const parsed = parseMigrationList(readFileSync(args[0], 'utf8'));
   const local = localVersions();
   const released = releasedVersions();
-  const errors = parsed.error ? [parsed.error] : guardMigrations({ ...parsed, local, released });
+  const candidate = readMigrationsBase();
+  const base = baseApplies(candidate, latestReleaseTag(releaseTags())) ? candidate : undefined;
+  const errors = parsed.error
+    ? [parsed.error]
+    : guardMigrations({ ...parsed, local, released, base });
   if (errors.length === 0) {
     console.log(
-      `Supabase-Wächter: ok (${parsed.remote.length} von ${local.length} Migrationen in Produktion, ${local.length - parsed.remote.length} neu; ${released ? 'nach' : 'vor'} der ersten Veröffentlichung).`,
+      `Supabase-Wächter: ok (${parsed.remote.length} von ${local.length} Migrationen in Produktion, ${local.length - parsed.remote.length} neu; ${base ? `neue Basis ersetzt ${base.replaces}` : released ? 'nach der ersten Veröffentlichung' : 'vor der ersten Veröffentlichung'}).`,
     );
     return 0;
   }
