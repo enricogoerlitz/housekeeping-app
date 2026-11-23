@@ -1055,8 +1055,8 @@ Kleinigkeiten, alle niedrig, Aufwand S, beide Breiten:
   abfragt, verlangt Google dafür keine Prüfung; danach entscheidet allein die Einladung der App.
   Sonst wenigstens im Fenster „Einladen“ der Hinweis „Neue Adressen zusätzlich bei Google als
   Testnutzer eintragen“.
-- **X-09 Alte Adressen · niedrig · S · beide:** Seit den eigenen Domains (`<Produktions-Domain>`,
-  `<Vorschau-Domain>`) laden die alten Adressen `*.azurestaticapps.net` die App weiter. Die
+- **X-09 Alte Adressen · niedrig · S · beide:** Seit den eigenen Domains (`house.kuschel-nest.de`,
+  `test.house.kuschel-nest.de`) laden die alten Adressen `*.azurestaticapps.net` die App weiter. Die
   Anmeldung dort scheitert mit „Anmelden hat nicht geklappt“, weil Supabase nach Google auf die
   eingetragene Domain zurückleitet und der Browser dort den Anmeldestart nicht kennt (so am
   22.11. in der Vorschau passiert). **Empfehlung:** In Azure bei beiden Static Web Apps die eigene

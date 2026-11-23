@@ -48,7 +48,7 @@ es eine neue gibt.
   behoben; expand → migrate → contract hält ältere Versionen lauffähig.
 - **Keine Überwachung mit Bereitschaft:** kein Uptime-Dienst, kein Fehler-Tracking (etwa Sentry),
   keine Metrik-Dashboards.
-- ~~**Keine eigene Domain**~~ (aufgehoben am 22.11.2026: `<Produktions-Domain>`) in dieser Spec (Offene Frage 13), **kein Selbst-Hosting** (ADR-0007,
+- ~~**Keine eigene Domain**~~ (aufgehoben am 22.11.2026: `house.kuschel-nest.de`) in dieser Spec (Offene Frage 13), **kein Selbst-Hosting** (ADR-0007,
   Nachtrag).
 - **Keine KI-Schlüssel in Produktion**, solange die KI ausgeblendet ist (Spec 0005; Offene Frage 10).
 - **Keine Tagesgrenzen für Einladungen und neue Haushalte** (Offene Frage 11).
@@ -185,17 +185,17 @@ Beim ersten Vorschau-Lauf und der ersten Veröffentlichung (v2026.11.1) wurden d
 anders gelöst, als die Kriterien unten es beschreiben. Die Kriterien verweisen hierher; Begründung
 und Belege stehen in `plan.md` unter „Entscheidungen beim Bauen“ (Nummern in Klammern).
 
-| Kriterium oder Stelle                         | Bisher                                                       | Jetzt                                                                                                                                                                                       |
-| --------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AC-006, Entscheidung 28                       | E2E in der Pipeline, Pflicht-Check                           | seit Spec 0031: Job „e2e“ in `release.yml` (blockierend, vier Shards, von Hand startbar), nicht in PRs                                                                                      |
-| AC-060, Tabelle „GitHub-Umgebungen“, ADR-0015 | je Umgebung ein eingeschränktes Supabase-Token               | ein Token mit „Full access“ für beide Organisationen, 90 Tage, in `preview` und `production`; Risiko bewusst akzeptiert (Entscheidung Enrico)                                               |
-| „kein Datenbank-Passwort“ (Konzept, Runbook)  | kein Datenbank-Passwort in `preview` und `production`        | Secret `SUPABASE_POOLER_URL` mit Passwort je Umgebung: die Runner haben kein IPv6, Datenbank-Befehle laufen über den Session-Pooler (10)                                                    |
-| AC-045                                        | nur `ALLOWED_ORIGINS`                                        | zusätzlich `VAPID_SUBJECT` mit der Web-Adresse der Umgebung, sonst überschreibt der feste Wert der `config.toml` (`https://localhost`) den der Produktion (11)                              |
-| AC-073                                        | `--read-only` mit `set local role`                           | die eine GraphQL-Abfrage als `authenticated` läuft mit `--yes` und transaktionslokalem `set_config`; die Nur-Lese-Rolle darf die Rolle nicht wechseln (13)                                  |
-| AC-034, Tabelle „Azure-Ressourcen“            | West Europe, Standard-Adresse der Static Web App             | Static Web Apps in East US 2, Speicher und Identitäten in Germany West Central; eigene Domains `<Produktions-Domain>` und `<Vorschau-Domain>` (Nicht-Ziel „Keine eigene Domain“ aufgehoben) |
-| AC-052, AC-054                                | `daily/<Datum>`, Löschen nach 30 Tagen                       | `daily/<Datum>/<Lauf>`, zusätzlich `release/v<Version>/`; Löschen nach 31 Tagen (18)                                                                                                        |
-| Azure-Anmeldung der Umgebungen                | Betreff `repo:enricogoerlitz/housekeeping-app:environment:…` | unveränderlicher Betreff von GitHub mit Besitzer- und Repo-ID (12, 20)                                                                                                                      |
-| AC-069                                        | Vorschau bei jedem Push nach `develop`                       | Vorschau nur von Hand (`gh workflow run preview.yml --ref develop`); `develop` sammelt, Tests laufen lokal (Entscheidung Enrico, 22.11.2026)                                                |
+| Kriterium oder Stelle                         | Bisher                                                       | Jetzt                                                                                                                                                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AC-006, Entscheidung 28                       | E2E in der Pipeline, Pflicht-Check                           | seit Spec 0031: Job „e2e“ in `release.yml` (blockierend, vier Shards, von Hand startbar), nicht in PRs                                                                                                |
+| AC-060, Tabelle „GitHub-Umgebungen“, ADR-0015 | je Umgebung ein eingeschränktes Supabase-Token               | ein Token mit „Full access“ für beide Organisationen, 90 Tage, in `preview` und `production`; Risiko bewusst akzeptiert (Entscheidung Enrico)                                                         |
+| „kein Datenbank-Passwort“ (Konzept, Runbook)  | kein Datenbank-Passwort in `preview` und `production`        | Secret `SUPABASE_POOLER_URL` mit Passwort je Umgebung: die Runner haben kein IPv6, Datenbank-Befehle laufen über den Session-Pooler (10)                                                              |
+| AC-045                                        | nur `ALLOWED_ORIGINS`                                        | zusätzlich `VAPID_SUBJECT` mit der Web-Adresse der Umgebung, sonst überschreibt der feste Wert der `config.toml` (`https://localhost`) den der Produktion (11)                                        |
+| AC-073                                        | `--read-only` mit `set local role`                           | die eine GraphQL-Abfrage als `authenticated` läuft mit `--yes` und transaktionslokalem `set_config`; die Nur-Lese-Rolle darf die Rolle nicht wechseln (13)                                            |
+| AC-034, Tabelle „Azure-Ressourcen“            | West Europe, Standard-Adresse der Static Web App             | Static Web Apps in East US 2, Speicher und Identitäten in Germany West Central; eigene Domains `house.kuschel-nest.de` und `test.house.kuschel-nest.de` (Nicht-Ziel „Keine eigene Domain“ aufgehoben) |
+| AC-052, AC-054                                | `daily/<Datum>`, Löschen nach 30 Tagen                       | `daily/<Datum>/<Lauf>`, zusätzlich `release/v<Version>/`; Löschen nach 31 Tagen (18)                                                                                                                  |
+| Azure-Anmeldung der Umgebungen                | Betreff `repo:enricogoerlitz/housekeeping-app:environment:…` | unveränderlicher Betreff von GitHub mit Besitzer- und Repo-ID (12, 20)                                                                                                                                |
+| AC-069                                        | Vorschau bei jedem Push nach `develop`                       | Vorschau nur von Hand (`gh workflow run preview.yml --ref develop`); `develop` sammelt, Tests laufen lokal (Entscheidung Enrico, 22.11.2026)                                                          |
 
 ## Abhängigkeiten, Voraussetzungen und kritischer Pfad
 
@@ -1397,8 +1397,8 @@ Regionen und Begründung: ADR-0015, Nachtrag 2026-11-21. Die vollständige Über
 - Static Web Apps in `rg-housekeeping-app-weu-prd`, beide Tarif Free, Region **East US 2** (West
   Europe nahm am 21.11.2026 erneut keine neuen Ressourcen an; dort liegen nur die App-Dateien,
   keine Daten):
-  - Produktion `swa-housekeeping-app-prd`: `<alte Produktions-Adresse>`.
-  - Vorschau `swa-housekeeping-app-preview`: `<alte Vorschau-Adresse>`.
+  - Produktion `swa-housekeeping-app-prd`: `https://brave-bush-089e7a80f.6.azurestaticapps.net`.
+  - Vorschau `swa-housekeeping-app-preview`: `https://victorious-island-00341950f.3.azurestaticapps.net`.
   - Eigene Domain später.
 - Storage für Sicherungen: `sthousekeepingbkpger` in **Germany West Central**.
 - Identitäten `id-housekeeping-web-prd`, `id-housekeeping-web-preview`, `id-housekeeping-backup`,

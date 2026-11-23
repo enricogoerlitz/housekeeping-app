@@ -450,8 +450,8 @@ describe('project ref', () => {
 });
 
 describe('spec 0027, AC-042, AC-043: the old azurestaticapps.net address redirects', () => {
-  const OLD = 'https://old-name-0000000.1.azurestaticapps.net';
-  const OWN = 'https://app.example.org';
+  const OLD = 'https://brave-bush-089e7a80f.6.azurestaticapps.net';
+  const OWN = 'https://house.kuschel-nest.de';
 
   test('301 or 308 to the same path on the own domain is ok', () => {
     for (const status of [301, 308]) {

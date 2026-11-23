@@ -1119,7 +1119,7 @@ Stand 22.11.2026 nach der ersten Veröffentlichung; offen sind die Punkte ohne H
 - [x] `/security-check` über Workflows, Skripte, `infra/`, `config.toml` (22.11.2026): kritisch 0,
       hoch 0, mittel 2, niedrig 4, Hinweis 1; siehe „Sicherheitsprüfung 22.11.2026“
 - [ ] Negativtests aus Task 13 belegt (`tmp/0014/`)
-- [x] Erste Vorschau und erste Veröffentlichung grün, `verify.mjs` grün: Vorschau-Lauf 45004887517 (mit Domain erneut grün), Release-Lauf 45022167671, v2026.11.1 auf <Produktions-Domain>; volle E2E lokal vorher grün (175 + 13). Unterwegs behoben: Entscheidungen beim Bauen 10–15
+- [x] Erste Vorschau und erste Veröffentlichung grün, `verify.mjs` grün: Vorschau-Lauf 45004887517 (mit Domain erneut grün), Release-Lauf 45022167671, v2026.11.1 auf https://house.kuschel-nest.de; volle E2E lokal vorher grün (175 + 13). Unterwegs behoben: Entscheidungen beim Bauen 10–15
 - [ ] Erste Sicherung und Wiederherstellungstest grün, Unveränderlichkeit gesperrt
 - [x] Regel `30-database.md` nach der ersten Veröffentlichung umgestellt (ADR-0012, Nachtrag 22.11.2026)
 - [ ] Offline-Verhalten (AC-023, AC-039) auf dem iPhone geprüft

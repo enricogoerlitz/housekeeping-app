@@ -238,7 +238,7 @@ select is(
   0, 'AC-016: â€¦ nor directly');
 select lives_ok(
   tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
-    'kind', 'patch', 'table', 'households', 'id', tests.fx('home'), 'changes', '{"name": "Zuhause"}'::jsonb))),
+    'kind', 'patch', 'table', 'households', 'id', tests.fx('home'), 'changes', '{"name": "Kuschelnest"}'::jsonb))),
   'AC-014: a member renames her household');
 select throws_ok(
   tests.apply_sql('home', jsonb_build_array(jsonb_build_object(
@@ -251,7 +251,7 @@ select is((select name from public.households where id = tests.fx('wg')), 'WG KÃ
 -- ===================== REQ-005: deleting a household =====================
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('home')),
-  'P0001', 'not_last_member', 'AC-021: "Zuhause" has two members: not_last_member');
+  'P0001', 'not_last_member', 'AC-021: "Kuschelnest" has two members: not_last_member');
 select throws_ok(format('select * from public.begin_household_deletion(%L)', tests.fx('home')),
   'P0001', 'not_last_member',
   'AC-022: the photo list is refused too, so the app deletes no photo of a household that stays');
@@ -322,7 +322,7 @@ insert into private.deletions (household_id, kind, target_id, deleted_by, snapsh
 values (tests.fx('wg'), 'recipe', gen_random_uuid(), tests.fx('enrico'), '{}');
 insert into public.deleted_records (household_id, table_name, record_id) values (tests.fx('wg'), 'recipes', gen_random_uuid());
 select tests.add_push_subscription(tests.fx('enrico'), 'laptop');
--- The same in "Zuhause", which must stay.
+-- The same in "Kuschelnest", which must stay.
 insert into public.recipes (household_id, title) values (tests.fx('home'), 'Mango-Curry');
 
 select is(

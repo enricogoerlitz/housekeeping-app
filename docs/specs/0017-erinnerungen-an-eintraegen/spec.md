@@ -76,7 +76,7 @@ In der Oberfläche heißt eine Abwesenheit ab Spec 0016 „Reise“; diese Spec 
 
 ## Anforderungen und Akzeptanzkriterien
 
-Wenn nichts anderes steht: Haushalt „Zuhause“ mit Enrico und Nadja, Zeitzone Europe/Berlin, heute ist
+Wenn nichts anderes steht: Haushalt „Görlitz“ mit Enrico und Nadja, Zeitzone Europe/Berlin, heute ist
 Mittwoch, der 25.11.2026, 12:00. Beide haben ein Gerät mit eingeschalteten Benachrichtigungen und die
 Art „Erinnerungen an Einträgen“ an.
 
@@ -362,7 +362,7 @@ Dann        bekommt Nadja „Erinnerung: Lasagne · morgen Mittag“ und Enrico 
 
 ```gherkin
 Angenommen  „Lasagne“ am Samstagabend mit der Erinnerung „Am Tag“ 17:00
-Und         im Haushalt „Schmidt“ ist Jana Mitglied, die nicht zum Haushalt „Zuhause“ gehört
+Und         im Haushalt „Schmidt“ ist Jana Mitglied, die nicht zum Haushalt „Görlitz“ gehört
 Wenn        Nadja den Eintrag um 16:00 entfernt und es 17:00 wird
 Dann        bekommt niemand eine Nachricht
 Angenommen  stattdessen verlässt Nadja um 16:00 den Haushalt

@@ -1,6 +1,6 @@
 # Review von Enrico: Bedienung und Oberfläche (22.11.2026)
 
-Stand: 22.11.2026, 15:30 Uhr, Vorschau `<Vorschau-Domain>` mit v2026.11.1. Enrico
+Stand: 22.11.2026, 15:30 Uhr, Vorschau `https://test.house.kuschel-nest.de` mit v2026.11.1. Enrico
 hat die erste Version am Desktop durchgesehen und seine Wünsche notiert; die Punkte fürs iPhone
 reicht er nach. Dieses Dokument hält die Wünsche mit festen Kennungen (`ER-NN`) fest, damit Specs
 darauf verweisen können.
