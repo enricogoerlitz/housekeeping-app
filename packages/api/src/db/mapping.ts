@@ -422,6 +422,7 @@ function tripRows(householdId: string, trip: Trip): HouseholdRows {
         from_on: trip.from,
         to_on: trip.to,
         note: trip.note ?? null,
+        draft: trip.draft === true,
       } satisfies Cached<'trips'>,
     ],
     trip_members: trip.members.map(
@@ -922,6 +923,7 @@ function toTrip(row: Row, members: Row[]): Trip {
     to: r.to_on ?? '',
     note: opt(r.note),
     members: members.map((member) => ({ id: member.id, memberId: String(member.member_id) })),
+    ...(r.draft === true ? { draft: true } : {}),
   };
 }
 

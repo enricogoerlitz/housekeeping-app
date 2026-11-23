@@ -208,7 +208,9 @@ function joinNames(names: string[]): string {
  */
 export function tripLines(input: { trips: Trip[]; members: Member[]; date: ISODate }): TripLine[] {
   const { members, date } = input;
-  return stripesOn(tripStripes(input.trips, members), date).map((stripe) => {
+  // A draft has no effect, so nobody is "unterwegs" yet (spec 0030, AC-013).
+  const confirmed = tripStripes(input.trips, members).filter((stripe) => !stripe.draft);
+  return stripesOn(confirmed, date).map((stripe) => {
     const names = stripe.household
       ? ['Alle']
       : stripe.memberIds.map((id) => members.find((member) => member.id === id)?.name ?? '');

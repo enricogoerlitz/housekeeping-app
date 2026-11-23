@@ -200,6 +200,11 @@ describe('AC-007: the trip line', () => {
     expect(tripLines({ trips: [mallorca], members, date: '2026-11-20' })).toEqual([]);
   });
 
+  it('AC-013 (0030): a draft has no line "unterwegs"', () => {
+    const draft = { ...mallorca, draft: true };
+    expect(tripLines({ trips: [draft], members, date: '2026-11-23' })).toEqual([]);
+  });
+
   it('AC-007, AC-033 (0016): without a note it reads "Nadja ist unterwegs bis Do 26.11."', () => {
     const plain = { ...mallorca, note: undefined };
     expect(tripLines({ trips: [plain], members, date: '2026-11-23' })[0]?.text).toBe(

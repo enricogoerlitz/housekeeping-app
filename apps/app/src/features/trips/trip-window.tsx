@@ -3,10 +3,8 @@ import {
   resetPackingList,
   snapshot,
   updateTrip,
-  useHousehold,
   useMembers,
   usePackingList,
-  usePlanEntries,
   useToday,
   useTrips,
   type TripChanges,
@@ -18,14 +16,13 @@ import {
   stripeOf,
   tripDeleteDialog,
   tripHeader,
-  tripMealOffers,
   validateTripDraft,
   type Id,
   type Trip,
-  type TripMealOffer,
 } from '@housekeeping/core';
 import {
   AvatarStack,
+  Badge,
   Button,
   EmptyState,
   Menu,
@@ -47,7 +44,6 @@ import { TripSection } from '@/features/packing/trip-section';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { usePageParams } from '@/lib/url-state';
 
-import { TripMealsDialog } from './trip-meals-dialog';
 import { TripFields, type TripFieldValues } from './trip-sheet';
 
 type TripAction = 'reset' | 'delete';
@@ -84,6 +80,7 @@ function fieldsOf(trip: Trip): TripFieldValues {
     who: trip.members.map((member) => member.memberId),
     range: { from: trip.from, to: trip.to, editing: null },
     note: trip.note ?? '',
+    draft: trip.draft === true,
   };
 }
 
@@ -98,22 +95,21 @@ function changesOf(base: TripFieldValues, draft: TripFieldValues): TripChanges {
   if (base.range.from !== draft.range.from) changes.from = draft.range.from;
   if (base.range.to !== draft.range.to) changes.to = draft.range.to;
   if (base.note.trim() !== draft.note.trim()) changes.note = draft.note.trim();
+  if (base.draft !== draft.draft) changes.draft = draft.draft;
   return changes;
 }
 
 /**
  * The trip window (spec 0022, REQ-001 to REQ-005): head with the title (note, else "unterwegs"),
  * "beginnt in 12 Tagen" and ⋯ ("Für die Rückreise zurücksetzen", "Reise löschen"); Wer?, Von,
- * Bis and Notiz changed in place with "Speichern" only while something changed (the window stays
- * open); then progress and the packing list, the bags as columns on wide screens. Offline the
+ * Bis, Notiz and "Entwurf" (spec 0030, REQ-004) changed in place with "Speichern" only while
+ * something changed (the window stays open); then progress and the packing list, the bags as columns on wide screens. Offline the
  * fields are greyed out and packing goes on (ADR-0013).
  */
 export function TripWindow(props: { tripId: Id; onClose: () => void }) {
   const trips = useTrips();
   const members = useMembers();
   const today = useToday();
-  const household = useHousehold();
-  const entries = usePlanEntries();
   const online = useOnlineOnly();
   const { isWide } = useBreakpoint();
   const { listBags, items } = usePackingList(props.tripId);
@@ -122,13 +118,9 @@ export function TripWindow(props: { tripId: Id; onClose: () => void }) {
   const [draft, setDraft] = useState<TripFieldValues>();
   const [dialog, setDialog] = useState<TripAction | 'discard'>();
   const [adding, setAdding] = useState(false);
-  const [offers, setOffers] = useState<TripMealOffer[]>();
   const [leaving, setLeaving] = useState(false);
 
   if (leaving) return null;
-  if (offers) {
-    return <TripMealsDialog offers={offers} onDone={() => setOffers(undefined)} />;
-  }
   if (!trip) {
     // Deleted on another device (AC-004): unsaved fields are dropped without an error.
     return (
@@ -175,29 +167,23 @@ export function TripWindow(props: { tripId: Id; onClose: () => void }) {
 
   const save = () => {
     if (online.disabled || !dirty || problems.noOne || problems.toBeforeFrom) return;
-    const before = { from: trip.from, to: trip.to, memberIds: fieldsOf(trip).who };
     try {
       updateTrip(trip.id, changes);
     } catch (failure) {
       toast.show({ message: messageOf(failure) });
       return;
     }
-    toast.show({ message: 'Reise geändert' });
-    const after = {
-      from: changes.from ?? trip.from,
-      to: changes.to ?? trip.to,
-      memberIds: changes.memberIds ?? before.memberIds,
-    };
+    // Spec 0030, AC-014, AC-015: confirming makes the trip count, without a further question.
+    toast.show({
+      message:
+        changes.draft === false
+          ? 'Reise bestätigt'
+          : changes.draft === true
+            ? 'Entwurf gespeichert'
+            : 'Reise geändert',
+    });
     setBase(undefined);
     setDraft(undefined);
-    const found = tripMealOffers({
-      trip: after,
-      before,
-      entries,
-      slots: household.mealSlots,
-      today,
-    });
-    if (found.length > 0) setOffers(found);
   };
 
   const remove = () => {
@@ -260,6 +246,7 @@ export function TripWindow(props: { tripId: Id; onClose: () => void }) {
         <Row gap={8} align="center" style={{ justifyContent: 'space-between' }}>
           <Row gap={8} align="center" wrap>
             <AvatarStack members={people} size="s" />
+            {trip.draft ? <Badge label="Entwurf" icon="pencil" testID="trip-draft-badge" /> : null}
             <Text variant="smallStrong" testID="trip-starts">
               {startsInLabel(trip.from, trip.to, today)}
             </Text>

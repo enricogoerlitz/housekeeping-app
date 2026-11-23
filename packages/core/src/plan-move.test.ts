@@ -291,27 +291,6 @@ describe('texts while and after moving', () => {
     );
   });
 
-  it('AC-016: the toast names who is travelling then', () => {
-    expect(
-      moveToastText({
-        title: 'Lasagne',
-        date: '2026-11-27',
-        slotName: 'Abend',
-        today,
-        travellerNames: ['Nadja'],
-      }),
-    ).toBe('Lasagne → Fr 27.11., Abend · Nadja ist dann auf Reise');
-    expect(
-      moveToastText({
-        title: 'Lasagne',
-        date: '2026-11-27',
-        slotName: 'Abend',
-        today,
-        travellerNames: ['Enrico', 'Nadja'],
-      }),
-    ).toBe('Lasagne → Fr 27.11., Abend · Enrico und Nadja sind dann auf Reise');
-  });
-
   it('AC-022: a reminder now in the past adds "Erinnerung liegt in der Vergangenheit"', () => {
     expect(
       moveToastText({
@@ -322,22 +301,10 @@ describe('texts while and after moving', () => {
         reminderPast: true,
       }),
     ).toBe('Lasagne → Mi 25.11., Abend · Erinnerung liegt in der Vergangenheit');
-    expect(
-      moveToastText({
-        title: 'Lasagne',
-        date: '2026-11-27',
-        slotName: 'Abend',
-        today,
-        travellerNames: ['Nadja'],
-        reminderPast: true,
-      }),
-    ).toBe(
-      'Lasagne → Fr 27.11., Abend · Nadja ist dann auf Reise · Erinnerung liegt in der Vergangenheit',
-    );
   });
 });
 
-describe('travellersOn', () => {
+describe('travellersOn (screen-reader text of a calendar day)', () => {
   const nadjaAway = trip('a1', ['nadja'], '2026-11-27', '2026-11-29');
 
   it('AC-016: eaters who are travelling on the target day, in the order of the eaters', () => {
@@ -360,10 +327,6 @@ describe('travellersOn', () => {
 });
 
 describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
-  const members = [
-    { id: 'enrico', name: 'Enrico' },
-    { id: 'nadja', name: 'Nadja' },
-  ];
   const slots = [
     { id: 'mittag', name: 'Mittag' },
     { id: 'abend', name: 'Abend' },
@@ -371,11 +334,9 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
   // 12:00 in Berlin on `today`.
   const now = new Date('2026-11-22T11:00:00Z');
   const base = {
-    members,
     slots,
     title: 'Lasagne',
     today,
-    trips: [],
     now,
     timeZone: 'Europe/Berlin',
   };
@@ -396,12 +357,10 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
     });
   });
 
-  it('AC-016: the toast names the eaters travelling on the target day', () => {
-    const nadjaAway = trip('a1', ['nadja'], '2026-11-27', '2026-11-29');
+  it('AC-028 (0030): the toast names no travellers, a trip changes nothing about eating', () => {
     expect(
       planMove({
         ...base,
-        trips: [nadjaAway],
         entry: lasagne,
         target: { kind: 'slot', date: '2026-11-27', slotId: 'mittag' },
         entries: [lasagne],
@@ -410,7 +369,7 @@ describe('planMove: what a move does and says (REQ-004, REQ-005)', () => {
       kind: 'move',
       date: '2026-11-27',
       slotId: 'mittag',
-      message: 'Lasagne → Fr 27.11., Mittag · Nadja ist dann auf Reise',
+      message: 'Lasagne → Fr 27.11., Mittag',
     });
   });
 

@@ -1,4 +1,4 @@
-import { formatPickerDate, joinNames } from './calendar';
+import { formatPickerDate } from './calendar';
 import { formatShortDate, weekdayShort } from './dates';
 import { isReminderPast } from './reminder';
 import { isOnTrip } from './trips';
@@ -155,17 +155,16 @@ export function moveTargetLabel(date: ISODate | null, slotName: string): string 
 const REMINDER_PAST_SUFFIX = ' · Erinnerung liegt in der Vergangenheit';
 
 /**
- * The toast after a move (AC-001, AC-013, AC-016, AC-019): "Lasagne → Fr 27.11., Abend", with the
- * year when it is not the current one ("Fr 8.1.2027"), "Lasagne vorgemerkt" without a day, and
- * " · Nadja ist dann auf Reise" for eaters travelling on that day. A reminder that now lies in the
- * past adds " · Erinnerung liegt in der Vergangenheit" (spec 0017, AC-022).
+ * The toast after a move (AC-001, AC-013, AC-019): "Lasagne → Fr 27.11., Abend", with the year
+ * when it is not the current one ("Fr 8.1.2027"), "Lasagne vorgemerkt" without a day. Travellers
+ * are not named: a trip changes nothing about eating (spec 0030, REQ-008). A reminder that now
+ * lies in the past adds " · Erinnerung liegt in der Vergangenheit" (spec 0017, AC-022).
  */
 export function moveToastText(input: {
   title: string;
   date: ISODate | null;
   slotName: string;
   today: ISODate;
-  travellerNames?: readonly string[];
   reminderPast?: boolean;
 }): string {
   if (input.date === null) return `${input.title} vorgemerkt`;
@@ -173,13 +172,8 @@ export function moveToastText(input: {
     input.date.slice(0, 4) === input.today.slice(0, 4)
       ? shortDay(input.date)
       : formatPickerDate(input.date);
-  const names = input.travellerNames ?? [];
-  const travel =
-    names.length === 0
-      ? ''
-      : ` · ${joinNames(names)} ${names.length === 1 ? 'ist' : 'sind'} dann auf Reise`;
   const reminder = input.reminderPast ? REMINDER_PAST_SUFFIX : '';
-  return `${input.title} → ${day}, ${input.slotName}${travel}${reminder}`;
+  return `${input.title} → ${day}, ${input.slotName}${reminder}`;
 }
 
 /** Why the target refused the entry (AC-015); `dishTitle` is the title of the dish. */
@@ -192,7 +186,7 @@ export function blockedText(reason: MoveBlockReason, dishTitle: string): string 
   }
 }
 
-/** Eaters travelling on the day, in the order of `eaterIds`; nobody without a day (AC-016). */
+/** Who of `eaterIds` is on a trip that day (a calendar day's screen-reader text); nobody without a day. */
 export function travellersOn(
   eaterIds: readonly Id[],
   date: ISODate | null,
@@ -217,8 +211,6 @@ export function planMove(input: {
   entry: MealPlanEntry;
   target: DropTarget;
   entries: readonly MealPlanEntry[];
-  trips: readonly Trip[];
-  members: readonly { id: Id; name: string }[];
   slots: readonly { id: Id; name: string }[];
   title: string;
   today: ISODate;
@@ -235,15 +227,11 @@ export function planMove(input: {
   if (outcome.kind === 'blocked') {
     return { kind: 'blocked', message: blockedText(outcome.reason, input.title) };
   }
-  const travellerNames = travellersOn(input.entry.eaterIds, outcome.date, input.trips).flatMap(
-    (id) => input.members.find((member) => member.id === id)?.name ?? [],
-  );
   const message = moveToastText({
     title: input.title,
     date: outcome.date,
     slotName: input.slots.find((slot) => slot.id === outcome.slotId)?.name ?? '',
     today: input.today,
-    travellerNames,
     reminderPast:
       input.entry.reminder !== undefined &&
       outcome.date !== null &&

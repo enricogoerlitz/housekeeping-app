@@ -7,8 +7,7 @@ import {
   weekDates,
   weekdayShort,
 } from './dates';
-import { defaultEaters } from './meal-plan';
-import type { Id, ISODate, MealSlot, Member, Trip } from './types';
+import type { Id, ISODate, MealSlot, Member } from './types';
 
 // The window "Einplanen" (spec 0008, REQ-009, E11; spec 0023, REQ-013): weeks from Monday, the
 // preselection and the texts of the button and the notice. One window for recipes and collections;
@@ -41,13 +40,12 @@ export function weekOffsetFor(today: ISODate, date: ISODate): number {
   return Math.round(daysBetween(startOfWeek(today), startOfWeek(date)) / 7);
 }
 
-/** Ids for "Wer isst mit?": everyone not on a trip that day; everyone without a day (AC-036). */
-export function eatersForDay(
-  members: readonly Member[],
-  date: ISODate | null,
-  trips: readonly Trip[],
-): Id[] {
-  return defaultEaters(members, date, trips).map((member) => member.id);
+/**
+ * Ids for "Wer isst mit?": the whole household, on any day. A trip changes nothing about eating
+ * (spec 0030, REQ-008; replaces spec 0008, AC-036).
+ */
+export function eatersForDay(members: readonly Member[]): Id[] {
+  return members.map((member) => member.id);
 }
 
 export interface PlanChoice {
@@ -63,14 +61,13 @@ export interface PlanChoice {
 
 /**
  * What the window opens with (AC-034, E11): today, the household's last Tageszeit ("Abend"), the
- * members present today, no guests and nobody cooking. Portions follow from eaters and guests. An
+ * whole household, no guests and nobody cooking. Portions follow from eaters and guests. An
  * activity opens on the first Tageszeit ("Vormittag", spec 0024, REQ-006).
  */
 export function defaultPlanChoice(
   today: ISODate,
   slots: readonly MealSlot[],
   members: readonly Member[],
-  trips: readonly Trip[],
   slot: 'first' | 'last' = 'last',
 ): PlanChoice {
   const sorted = [...slots].sort((a, b) => a.sort - b.sort);
@@ -78,7 +75,7 @@ export function defaultPlanChoice(
   return {
     date: today,
     slotId: chosen?.id,
-    eaterIds: eatersForDay(members, today, trips),
+    eaterIds: eatersForDay(members),
     guests: 0,
     cookId: undefined,
   };
@@ -91,18 +88,17 @@ export function planButtonLabel(date: ISODate | null, slotName: string): string 
 }
 
 /**
- * Members or trips arrived after the window opened (a sync after reloading, AC-055): while "Wer
- * isst mit?" is untouched the preselection follows them; a choice made by hand stays (AC-056). The
- * same choice when nothing changes.
+ * Members arrived after the window opened (a sync after reloading, AC-055): while "Wer isst mit?"
+ * is untouched the preselection follows them; a choice made by hand stays (AC-056). The same
+ * choice when nothing changes.
  */
 export function refreshPlanEaters(
   choice: PlanChoice,
   touched: boolean,
   members: readonly Member[],
-  trips: readonly Trip[],
 ): PlanChoice {
   if (touched) return choice;
-  const eaterIds = eatersForDay(members, choice.date, trips);
+  const eaterIds = eatersForDay(members);
   const same =
     eaterIds.length === choice.eaterIds.length &&
     eaterIds.every((id, index) => id === choice.eaterIds[index]);
@@ -138,16 +134,15 @@ export function addedNotice(title: string, date: ISODate | null, today: ISODate)
 }
 
 /**
- * Another day, or null for "Ohne Tag vormerken": "Wer isst mit?" goes back to those present that
- * day, so nobody travelling stays chosen without notice; guests, Tageszeit and cook stay (E11, AC-036).
+ * Another day, or null for "Ohne Tag vormerken": "Wer isst mit?" goes back to the whole household;
+ * guests, Tageszeit and cook stay (E11; spec 0030, REQ-008).
  */
 export function withPlanDay(
   choice: PlanChoice,
   date: ISODate | null,
   members: readonly Member[],
-  trips: readonly Trip[],
 ): PlanChoice {
-  return { ...choice, date, eaterIds: eatersForDay(members, date, trips) };
+  return { ...choice, date, eaterIds: eatersForDay(members) };
 }
 
 /**
@@ -159,8 +154,7 @@ export function pagePlanChoice(
   choice: PlanChoice,
   weeks: number,
   members: readonly Member[],
-  trips: readonly Trip[],
 ): PlanChoice {
   if (choice.date === null) return choice;
-  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members, trips);
+  return withPlanDay(choice, addDays(choice.date, 7 * weeks), members);
 }

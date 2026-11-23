@@ -727,9 +727,9 @@ insert into public.chore_events (id, household_id, chore_id, title, kind, done_o
   ('ce26be3d-b20d-53c0-888b-f51cc027ab61', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '3b116f4c-3ab4-5c3b-997b-574b39484db8', 'Fenster Wohnzimmer', 'done', ((now() at time zone 'Europe/Berlin')::date - 63), '64399031-c98c-5692-9e99-923924bfff3d', now() + make_interval(days => -120, secs => 0.000009)),
   ('76cda384-e7b7-52ab-8244-e61de068b125', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '3b116f4c-3ab4-5c3b-997b-574b39484db8', 'Fenster Wohnzimmer', 'done', ((now() at time zone 'Europe/Berlin')::date - 400), 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000010));
 
-insert into public.trips (id, household_id, from_on, to_on, note, created_at) values
-  ('15f4f2cb-0d29-548d-b8bc-db781c114159', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 12), ((now() at time zone 'Europe/Berlin')::date + 18), 'Urlaub Mallorca', now() + make_interval(days => -120, secs => 0.000000)),
-  ('50dc9a05-496e-5e15-80a4-3bb93fb890b9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 26), ((now() at time zone 'Europe/Berlin')::date + 27), 'Dienstreise Hamburg', now() + make_interval(days => -120, secs => 0.000001));
+insert into public.trips (id, household_id, from_on, to_on, note, draft, created_at) values
+  ('15f4f2cb-0d29-548d-b8bc-db781c114159', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 12), ((now() at time zone 'Europe/Berlin')::date + 18), 'Urlaub Mallorca', false, now() + make_interval(days => -120, secs => 0.000000)),
+  ('50dc9a05-496e-5e15-80a4-3bb93fb890b9', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', ((now() at time zone 'Europe/Berlin')::date + 26), ((now() at time zone 'Europe/Berlin')::date + 27), 'Dienstreise Hamburg', false, now() + make_interval(days => -120, secs => 0.000001));
 
 insert into public.trip_members (id, household_id, trip_id, member_id, created_at) values
   ('978ce603-15fe-591e-b1b1-28d644da3e36', 'c1437b0b-9d8a-50e6-b93b-6a826feaae34', '15f4f2cb-0d29-548d-b8bc-db781c114159', 'ecc63aaa-a39f-59d0-b7c7-55980a57c2f3', now() + make_interval(days => -120, secs => 0.000000)),

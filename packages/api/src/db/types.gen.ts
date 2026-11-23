@@ -1802,6 +1802,7 @@ export type Database = {
       trips: {
         Row: {
           created_at: string;
+          draft: boolean;
           from_on: string;
           household_id: string;
           id: string;
@@ -1812,6 +1813,7 @@ export type Database = {
         ComputedFields: never;
         Insert: {
           created_at?: string;
+          draft?: boolean;
           from_on: string;
           household_id: string;
           id?: string;
@@ -1821,6 +1823,7 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          draft?: boolean;
           from_on?: string;
           household_id?: string;
           id?: string;

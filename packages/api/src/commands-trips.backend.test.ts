@@ -8,7 +8,7 @@ import { onWriteRejected, WRITE_REJECTED_MESSAGE } from './backend';
 import { removeMember } from './commands-household';
 import { setPacked } from './commands-packing';
 import { addPlanEntry } from './commands-plan';
-import { createTrip, removeTrip, takeTravellersOut, updateTrip } from './commands-trips';
+import { createTrip, removeTrip, updateTrip } from './commands-trips';
 import { ENRICO, NADJA, SLOT_DINNER, SLOT_LUNCH } from './seed/demo';
 import { getData, snapshot } from './store';
 import { TransportError } from './transport';
@@ -232,57 +232,63 @@ describe('somebody leaves the household (AC-044)', () => {
   });
 });
 
-describe('taking travellers out of planned dishes (REQ-007, K-02)', () => {
-  const plan = (text: string, date: string, eaterIds: string[], slotId = SLOT_DINNER) =>
-    addPlanEntry({
-      date,
-      slotId,
+describe('spec 0030: a trip changes nothing about eating (REQ-008)', () => {
+  it('AC-026: saving a trip over a planned dish leaves its eaters, portions and the list', async () => {
+    const engine = await fx.startEnrico();
+    const lasagne = addPlanEntry({
+      date: '2027-03-01',
+      slotId: SLOT_DINNER,
       kind: 'text',
-      text,
-      eaterIds,
-      portions: eaterIds.length,
+      text: 'Lasagne',
+      eaterIds: [ENRICO, NADJA],
+      portions: 2,
       cookId: ENRICO,
     });
-  const entryOf = (id: string) => getData().planEntries.find((entry) => entry.id === id);
-
-  it('AC-021: Lasagne keeps Nadja without cook, Shakshuka is parked, in one call; "Rückgängig" restores', async () => {
-    const engine = await fx.startEnrico();
-    const lasagne = plan('Lasagne', '2027-03-01', [ENRICO, NADJA]);
-    const shakshuka = plan('Shakshuka', '2027-03-03', [ENRICO], SLOT_LUNCH);
     await fx.settle(engine);
-    fx.clearCalls();
-    const restore = snapshot();
-    expect(
-      takeTravellersOut([
-        { entryId: lasagne, memberIds: [ENRICO] },
-        { entryId: shakshuka, memberIds: [ENRICO] },
-      ]),
-    ).toBe(2);
-    expect(entryOf(lasagne)).toMatchObject({ eaterIds: [NADJA], cookId: undefined });
-    expect(entryOf(shakshuka)).toMatchObject({ date: null, eaterIds: [ENRICO], portions: 1 });
+    const items = getData().items;
+    createTrip({ memberIds: [ENRICO], from: '2027-02-28', to: '2027-03-02' });
     await fx.settle(engine);
-    expect(fx.calls.map((call) => call.fn)).toEqual(['applyChanges']);
-    expect(fx.server.row(H, 'meal_plan_entries', shakshuka)).toMatchObject({ date: null });
-    restore();
-    await fx.settle(engine);
-    expect(fx.server.row(H, 'meal_plan_entries', shakshuka)).toMatchObject({ date: '2027-03-03' });
-    expect(fx.server.row(H, 'meal_plan_entries', lasagne)).toMatchObject({
-      eater_ids: [ENRICO, NADJA],
+    expect(getData().planEntries.find((entry) => entry.id === lasagne)).toMatchObject({
+      date: '2027-03-01',
+      eaterIds: [ENRICO, NADJA],
+      portions: 2,
+      cookId: ENRICO,
     });
+    expect(getData().items).toEqual(items);
+  });
+});
+
+describe('spec 0030: a trip as a draft (REQ-004)', () => {
+  it('AC-012: a draft is saved as one and reaches the other device', async () => {
+    await fx.startEnrico();
+    const nadja = await fx.startNadja();
+    const id = createTrip({ memberIds: [NADJA], ...sommer, draft: true });
+    expect(tripOf(id)?.draft).toBe(true);
+    await fx.settle(nadja);
+    expect(fx.server.row(H, 'trips', id)).toMatchObject({ draft: true });
+    expect(fx.nadjaData(nadja).trips.find((trip) => trip.id === id)?.draft).toBe(true);
   });
 
-  it('AC-025: an entry deleted meanwhile is left out; a server error changes nothing and shows the hint', async () => {
+  it('AC-014, AC-015: confirming and turning back into a draft patch only draft', async () => {
     const engine = await fx.startEnrico();
-    const lasagne = plan('Lasagne', '2027-03-01', [ENRICO, NADJA]);
+    const id = createTrip({ memberIds: [NADJA], ...sommer, draft: true });
     await fx.settle(engine);
-    expect(takeTravellersOut([{ entryId: 'gone', memberIds: [ENRICO] }])).toBe(0);
-    const messages: string[] = [];
-    const stop = onWriteRejected((message) => messages.push(message));
-    fx.server.failNext('apply_changes', new TransportError('permanent', '23514', 400));
-    takeTravellersOut([{ entryId: lasagne, memberIds: [ENRICO] }]);
+    fx.clearCalls();
+    updateTrip(id, { draft: false });
     await fx.settle(engine);
-    expect(entryOf(lasagne)?.eaterIds).toEqual([ENRICO, NADJA]);
-    expect(messages).toEqual([WRITE_REJECTED_MESSAGE]);
-    stop();
+    const ops = (fx.calls[0]?.args[1] ?? []) as { kind: string; table: string; changes?: object }[];
+    expect(ops).toEqual([expect.objectContaining({ kind: 'patch', table: 'trips', changes: { draft: false } })]);
+    expect(fx.server.row(H, 'trips', id)).toMatchObject({ draft: false });
+    updateTrip(id, { draft: true });
+    await fx.settle(engine);
+    expect(fx.server.row(H, 'trips', id)).toMatchObject({ draft: true });
+  });
+
+  it('a trip without the switch is confirmed', async () => {
+    const engine = await fx.startEnrico();
+    const id = createTrip({ memberIds: [NADJA], ...sommer });
+    await fx.settle(engine);
+    expect(tripOf(id)?.draft).toBeUndefined();
+    expect(fx.server.row(H, 'trips', id)).toMatchObject({ draft: false });
   });
 });

@@ -6,7 +6,7 @@ import {
   collectionDiet,
   contentsInBook,
   contributionsFromEntry,
-  defaultEaters,
+  eatersForDay,
   dietFitsPreference,
   entryListShare,
   EntryReminderSchema,
@@ -136,13 +136,12 @@ function checkedReminder(
   });
 }
 
-/** Who eats by default on a day: every member of the household who is not on a trip. */
-export function defaultEaterIds(date: ISODate | null): Id[] {
+/** Who eats by default: every member of the household, trips or not (spec 0030, REQ-008). */
+export function defaultEaterIds(): Id[] {
   const data = getData();
-  const members = getState().members.filter((member) =>
-    data.household.memberIds.includes(member.id),
+  return eatersForDay(
+    getState().members.filter((member) => data.household.memberIds.includes(member.id)),
   );
-  return defaultEaters(members, date, data.trips).map((member) => member.id);
 }
 
 /**

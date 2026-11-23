@@ -2,10 +2,8 @@ import {
   movePlanEntry,
   OfflineError,
   snapshot,
-  useTrips,
   useActivitiesById,
   useHousehold,
-  useMembers,
   usePlanEntries,
   useRecipesById,
   useRestaurantsById,
@@ -41,8 +39,6 @@ export function useEntryTitle(): (entry: MealPlanEntry) => string {
  */
 export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => MoveEntryResult {
   const entries = usePlanEntries();
-  const trips = useTrips();
-  const members = useMembers();
   const household = useHousehold();
   const today = useToday();
   const titleOf = useEntryTitle();
@@ -52,8 +48,6 @@ export function useMoveEntry(): (entry: MealPlanEntry, target: DropTarget) => Mo
       entry,
       target,
       entries,
-      trips,
-      members,
       // In the household's order: it decides what "later" means (spec 0021, REQ-012).
       slots: [...household.mealSlots].sort((a, b) => a.sort - b.sort),
       title: titleOf(entry),

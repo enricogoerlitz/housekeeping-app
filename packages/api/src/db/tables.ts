@@ -116,7 +116,7 @@ export const WRITABLE_COLUMNS = {
     'created_by',
   ],
   // Spec 0022: a trip and its people; people are only inserted and deleted (see PATCH_COLUMNS).
-  trips: ['from_on', 'to_on', 'note'],
+  trips: ['from_on', 'to_on', 'note', 'draft'],
   trip_members: ['trip_id', 'member_id'],
   // author_id is only accepted on insert, and the server overwrites it with auth.uid(). Status,
   // reason and spec_ref are the developer's, set in the database (spec 0027, Decision 10).

@@ -1,11 +1,9 @@
 import {
   createTrip,
   useCurrentMember,
-  useHousehold,
   useMembers,
   usePackingBagItems,
   usePackingBags,
-  usePlanEntries,
   useToday,
 } from '@housekeeping/api';
 import {
@@ -17,9 +15,7 @@ import {
   planPackingList,
   saveLabel,
   startOfMonth,
-  tripMealOffers,
   validateTripDraft,
-  type TripMealOffer,
   type TripStripe,
   type Id,
   type ISODate,
@@ -32,6 +28,7 @@ import {
   MonthCalendar,
   Sheet,
   Stack,
+  SwitchRow,
   Text,
   TextField,
   toast,
@@ -45,7 +42,6 @@ import { messageOf } from '@/features/packing/packing-labels';
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { TripBagChips } from './trip-bag-chips';
-import { TripMealsDialog } from './trip-meals-dialog';
 
 const WEEKDAY_HEADS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
@@ -53,16 +49,25 @@ export interface TripFieldValues {
   who: Id[];
   range: RangePick;
   note: string;
+  /** "Entwurf" (spec 0030, REQ-004). */
+  draft: boolean;
 }
 
-/** What a trip does, under "Wer?" when creating one (spec 0026, REQ-015, AC-058). */
+/**
+ * What a trip does, under "Wer?" when creating one (spec 0026, REQ-015; spec 0030, REQ-008: a trip
+ * changes nothing about eating).
+ */
 export const TRIP_EFFECT_NOTE =
-  'Wer weg ist, fehlt bei „Wer isst mit?“, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.';
+  'Wer weg ist, bekommt keine Nachrichten und wird bei Aufgaben übersprungen. Was niemand erledigen kann, wartet bis danach.';
+
+/** Under the switch "Entwurf" (spec 0030, REQ-004). */
+const DRAFT_NOTE = 'Noch in Planung: wirkt erst, wenn du den Entwurf ausschaltest.';
 
 /**
  * The fields of a trip (spec 0022, REQ-001, REQ-003): "Wer?" with the hint, "Von", "Bis" with the
- * month calendar, "Notiz". `disabled` greys them out offline (AC-015). `effectNote`: "Reise
- * eintragen" explains what a trip does (spec 0026, REQ-015).
+ * month calendar, "Notiz" and "Entwurf" (spec 0030, REQ-004). `disabled` greys them out offline
+ * (AC-015; spec 0030, AC-016). `effectNote`: "Reise eintragen" explains what a trip does (spec
+ * 0026, REQ-015).
  */
 export function TripFields(props: {
   value: TripFieldValues;
@@ -152,6 +157,14 @@ export function TripFields(props: {
         hint={props.hint}
         testID="trip-note"
       />
+      <SwitchRow
+        label="Entwurf"
+        description={DRAFT_NOTE}
+        value={props.value.draft}
+        onValueChange={(draft) => set({ draft })}
+        disabled={props.disabled}
+        testID="trip-draft"
+      />
     </Stack>
   );
 }
@@ -159,7 +172,7 @@ export function TripFields(props: {
 /**
  * "Reise eintragen" (spec 0010, REQ-010; spec 0022, REQ-003): who, from, to, a note and the
  * Reisetaschen; "Speichern · 18 Packstücke" creates the trip, its people and its packing list in
- * one call and closes. Then it offers to take the travellers out of planned dishes (REQ-007).
+ * one call and closes. A trip changes nothing about planned dishes (spec 0030, REQ-008).
  * `initialRange` fills "Von" and "Bis", e.g. the day of the day window (spec 0016, AC-032) or the
  * days drawn over the grid (AC-028).
  */
@@ -172,8 +185,6 @@ export function TripSheet(props: {
   const me = useCurrentMember();
   const today = useToday();
   const online = useOnlineOnly();
-  const household = useHousehold();
-  const entries = usePlanEntries();
   const bags = usePackingBags();
   const bagItems = usePackingBagItems();
   const [fields, setFields] = useState<TripFieldValues>({
@@ -184,9 +195,9 @@ export function TripSheet(props: {
       editing: null,
     },
     note: '',
+    draft: false,
   });
   const [bagIds, setBagIds] = useState<Id[]>([]);
-  const [offers, setOffers] = useState<TripMealOffer[]>();
   const { who, range } = fields;
   const problems = validateTripDraft({ memberIds: who, from: range.from, to: range.to });
 
@@ -211,23 +222,15 @@ export function TripSheet(props: {
         to: range.to,
         note: fields.note.trim(),
         bagIds,
+        draft: fields.draft,
       });
     } catch (failure) {
       toast.show({ message: messageOf(failure) });
       return;
     }
-    toast.show({ message: 'Reise eingetragen' });
-    const found = tripMealOffers({
-      trip: { from: range.from, to: range.to, memberIds: who },
-      entries,
-      slots: household.mealSlots,
-      today,
-    });
-    if (found.length > 0) setOffers(found);
-    else props.onClose();
+    toast.show({ message: fields.draft ? 'Entwurf gespeichert' : 'Reise eingetragen' });
+    props.onClose();
   };
-
-  if (offers) return <TripMealsDialog offers={offers} onDone={props.onClose} />;
 
   return (
     <Sheet
