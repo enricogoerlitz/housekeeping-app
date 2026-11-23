@@ -6,6 +6,7 @@ import {
   tabSwipe,
   tabSwipeOffset,
   tabSwipeStep,
+  tabSwipeTouchAction,
   TAB_SWIPE_EDGE,
   TAB_SWIPE_RUBBER_MAX,
 } from './tab-swipe';
@@ -84,5 +85,16 @@ describe('swipe between view tabs (spec 0029, REQ-003)', () => {
     swipe.onStep(1);
     swipe.onStep(-1);
     expect(chosen).toEqual(['alle']);
+  });
+});
+
+describe('the tab swipe reaches iOS (spec 0030, REQ-007)', () => {
+  it('AC-023, AC-024: the scroll area of a page with a tab swipe pans only vertically on the web', () => {
+    expect(tabSwipeTouchAction(true, 'web')).toEqual({ touchAction: 'pan-y' });
+  });
+
+  it('AC-025: without a tab swipe, or natively, nothing changes', () => {
+    expect(tabSwipeTouchAction(false, 'web')).toBeNull();
+    expect(tabSwipeTouchAction(true, 'ios')).toBeNull();
   });
 });
