@@ -1,5 +1,5 @@
 ---
-status: entwurf # entwurf | freigegeben | umgesetzt | verworfen
+status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-23
 ---
 
@@ -634,12 +634,14 @@ Weil `add-entry-sheet.tsx` mehrere Gruppen berührt, gehören alle Änderungen d
 
 **A — Pipeline-Grundlagen**
 
-- [ ] 2. Fake-Server `insertRows`/`withoutRows` einmal je Tabelle kopieren, Timeouts zurück
+- [x] 2. Fake-Server `insertRows`/`withoutRows` einmal je Tabelle kopieren, Timeouts zurück
       (AC-058).
-- [ ] 3. `checks.yml` auf `push` nach `develop` (AC-011).
-- [ ] 4. Lint: Paketgrenzen, `--max-warnings=0`, `ban-ts-comment`, Pflicht-Begründung (AC-047,
+- [x] 3. `checks.yml` auf `push` nach `develop` (AC-011).
+- [x] 4. Lint: Paketgrenzen, `--max-warnings=0`, `ban-ts-comment`, Pflicht-Begründung (AC-047,
       AC-048).
-- [ ] 5. Tag-Ruleset `creation`, e2e-App-Version als Konstante (AC-020, AC-021).
+- [ ] 5. Tag-Ruleset `creation`, e2e-App-Version als Konstante (AC-020, AC-021). Im Repository
+      fertig (`ruleset-tags.json`, `workflows.test.mjs`, „2099.12.1“, Nachtrag ADR-0015). OFFEN:
+      Probe in einem Test-Repository und `gh api -X PUT` auf GitHub (Runbook in `betrieb.md`).
 
 **B — e2e-Suite**
 

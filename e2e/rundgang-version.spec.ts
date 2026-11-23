@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 
+import { E2E_APP_VERSION } from './global-setup';
 import {
   accessToken,
   expect,
@@ -17,13 +18,14 @@ import {
 import { seedIds } from './seed-ids';
 
 // Spec 0014, REQ-004: the app shows its version, notices a newer one and is locked for editing
-// below the server's minimum version. The export of this suite is built as "2026.12.4"
+// below the server's minimum version. The export of this suite is built as E2E_APP_VERSION
 // (global-setup.ts); a newer release and a higher minimum are simulated by answering
 // `/version.json` and the RPC `min_app_version` in the browser. AC-025 checks one item, so the
 // demo starts fresh.
 
-const OWN = '2026.12.4';
-const NEWER = '2026.12.5';
+const OWN = E2E_APP_VERSION;
+/** The next release after OWN: same month, running number + 1 (spec 0031, AC-021). */
+const NEWER = OWN.replace(/\.(\d+)$/, (_, sequence: string) => `.${Number(sequence) + 1}`);
 
 freshSeed();
 
