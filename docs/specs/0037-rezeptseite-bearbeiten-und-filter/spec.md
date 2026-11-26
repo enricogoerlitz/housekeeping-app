@@ -1,5 +1,5 @@
 ---
-status: entwurf # entwurf | freigegeben | umgesetzt | verworfen
+status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -9,8 +9,6 @@ datum: 2026-11-26
 E-04, E-05, E-07, E-09, E-11, E-12, E-17 Schlagwort-Filter). **Welle 2.** **Kritischer Pfad:** ja:
 Migration (Dauer an Sammlungen, Entscheidung 2), Sync (Speichern mehrerer Abschnitte in einem
 Schritt).
-
-> **Entwurf vor den Entscheidungen.** Die AC werden nach Enricos Wahl der Optionen geschärft.
 
 ## Ziel
 
@@ -25,75 +23,130 @@ Zahl Personen. Zutaten eines anderen Rezepts (Pizzateig) lassen sich als Gruppe 
 - Keine Verknüpfung zwischen Rezepten: übernommene Zutaten sind Kopien.
 - Kein neues Foto-Fenster (Spec 0039).
 
-## Anforderungen (Entwurf)
+## Anforderungen
 
-**REQ-001 — Ein Bearbeitungsmodus.** Ein Stift oben rechts schaltet die ganze Seite in den
-Bearbeitungsmodus; „Speichern“/„Abbrechen“ oben rechts; „+ Zutat“, „+ Rezept“ öffnen im Lesemodus
-den Bearbeitungsmodus und gleich das Fenster. Ersetzt den „Abschnitt der Rezeptseite“ (Spec 0008
-REQ-007). Offline: offline lesend.
+Haushalt „Enrico & Nadja“, heute ist Donnerstag, 26.11.2026.
 
-- AC-001: Angenommen „Apfelkuchen“ · Dann gibt es im Lesemodus genau einen Stift (oben rechts)
-- AC-002: Angenommen Bearbeitungsmodus, Titel und Zutat geändert · Wenn ich „Speichern“ tippe ·
-  Dann sind beide Änderungen in einem Schritt gespeichert, oder bei Fehler keine
-- AC-003: Angenommen Bearbeitungsmodus mit Änderungen · Wenn ich die Seite verlasse · Dann fragt die
-  App „Änderungen verwerfen?“
-- AC-004: Angenommen Nadja ändert dasselbe Rezept auf ihrem Gerät, während ich bearbeite · Wenn ich
-  speichere · Dann gilt die Regel aus OFFEN 4
+### Rezeptseite
 
-**REQ-002 — Neu-Fenster mit mehr Möglichkeiten.** „Neu → Rezept/Sammlung“ bietet optional Foto,
-Zutaten (Einfügen) bzw. Rezepte und „Mit KI ausfüllen“ (Spec 0040); der Name reicht weiterhin.
+**REQ-001 — Ein Bearbeitungsmodus.** Im Lesemodus hat die Rezept- und Sammlungsseite keine Stifte in
+den Abschnitten; ein Stift oben rechts schaltet die ganze Seite in den Bearbeitungsmodus, „Speichern“
+und „Abbrechen“ stehen dann oben rechts. „+ Zutat“ und „+ Rezept“ bleiben im Lesemodus sichtbar und
+öffnen den Bearbeitungsmodus mit dem passenden Fenster. Ersetzt den „Abschnitt der Rezeptseite“
+(Spec 0008 REQ-007, Spec 0023). Quelle: E-07. Offline: offline lesend (Bearbeiten braucht Netz).
 
-**REQ-003 — Sammlungen im Filter.** Ernährungsform wird aus dem Inhalt abgeleitet (gibt es schon),
-eine leere Sammlung passt zu jedem Filter; Gerichtart/Küche passen, wenn ein enthaltenes Rezept passt.
+- AC-001: Angenommen „Apfelkuchen“ im Lesemodus · Dann gibt es auf der Seite genau einen Stift (oben
+  rechts), und „+ Zutat“ ist sichtbar
+- AC-002: Angenommen „Apfelkuchen“ · Wenn ich „+ Zutat“ tippe · Dann ist die Seite im
+  Bearbeitungsmodus und „Neue Zutat“ offen
+- AC-003: Angenommen Bearbeitungsmodus, Titel „Apfelkuchen“ → „Omas Apfelkuchen“ und Zutat „Zimt“
+  neu · Wenn ich „Speichern“ tippe · Dann sind beide Änderungen gespeichert und die Seite im Lesemodus
+- AC-004: Angenommen dieselben Änderungen, der Server lehnt die Zutat ab · Wenn ich „Speichern“ tippe ·
+  Dann ist nichts gespeichert, der Bearbeitungsmodus bleibt mit der Fehlermeldung offen
+- AC-005: Angenommen Bearbeitungsmodus mit Änderungen · Wenn ich „Abbrechen“ tippe oder die Seite
+  verlasse · Dann fragt die App „Änderungen verwerfen?“
+- AC-006: Angenommen Nadja hat das Rezept gespeichert, während ich bearbeite · Wenn ich speichere ·
+  Dann gelten meine geänderten Felder, ihre übrigen Änderungen bleiben, und ein Hinweis sagt „Nadja
+  hat das Rezept zwischendurch geändert“
+- AC-007: Angenommen offline · Dann ist der Stift deaktiviert mit dem Offline-Hinweis
 
-- AC-005: Angenommen Sammlung „Grillabend“ leer · Wenn ich „vegetarisch“ filtere · Dann steht
+**REQ-002 — Neu-Fenster mit mehr Möglichkeiten.** „Neu → Rezept/Sammlung“ hat neben dem Titel
+aufklappbar: Foto (Foto-Fenster, Spec 0039), Zutaten einfügen (Rezept) bzw. Rezepte wählen
+(Sammlung) und „Mit KI ausfüllen“ (Spec 0040). Der Titel allein reicht. Quelle: E-09. Offline: nur
+online.
+
+- AC-008: Angenommen „Neu → Rezept“ · Wenn ich nur „Linsen-Dal“ eingebe und „Anlegen“ tippe · Dann ist
+  „Linsen-Dal“ angelegt und seine Seite offen
+- AC-009: Angenommen „Neu → Sammlung“ · Wenn ich „Grillabend“ eingebe, „Steak“ und „Salat“ wähle und
+  anlege · Dann enthält „Grillabend“ beide Rezepte
+
+**REQ-003 — Zutaten aus Rezept übernehmen.** Im Bearbeitungsmodus „Aus Rezept übernehmen“: ein
+Rezept wählen, seine Zutaten kommen als Kopie in eine Gruppe mit dem Rezeptnamen. Quelle: E-12.
+Offline: offline lesend.
+
+- AC-010: Angenommen „Pizza Margherita“ ohne Zutaten, „Pizzateig“ mit 4 Zutaten für 2 Portionen ·
+  Wenn ich „Pizzateig“ übernehme · Dann stehen 4 Zutaten in der Gruppe „Pizzateig“ · Und eine spätere
+  Änderung an „Pizzateig“ ändert sie nicht
+- AC-011: Angenommen „Pizza Margherita“ hat 4 Portionen, „Pizzateig“ 2 · Dann werden die Mengen auf 4
+  Portionen umgerechnet
+- AC-012: Angenommen das gewählte Rezept hat keine Zutaten · Dann sagt die App „„Pizzateig“ hat keine
+  Zutaten“
+
+### Filter
+
+**REQ-004 — Sammlungen im Filter.** Eine Sammlung passt zu einem Ernährungsfilter, wenn alle
+enthaltenen Rezepte und eigenen Zutaten passen (gibt es schon); zu Gerichtart und Küche, wenn ein
+enthaltenes Rezept passt. Eine leere Sammlung passt zu jedem Filter. Quelle: E-04. Offline: offline
+vollständig.
+
+- AC-013: Angenommen Sammlung „Grillabend“ ohne Inhalt · Wenn ich „vegetarisch“ filtere · Dann steht
   „Grillabend“ in der Liste
-- AC-006: Angenommen Sammlung mit „Steak“ und „Salat“ · Wenn ich „vegetarisch“ filtere · Dann fehlt
-  sie
+- AC-014: Angenommen „Grillabend“ mit „Steak“ und „Salat“ · Wenn ich „vegetarisch“ filtere · Dann fehlt
+  „Grillabend“
+- AC-015: Angenommen „Grillabend“ mit „Steak“ (Gerichtart „Hauptgericht“) · Wenn ich „Hauptgericht“
+  filtere · Dann steht „Grillabend“ in der Liste
 
-**REQ-004 — Dauer an Sammlungen.** Eine Sammlung hat eine eingebbare Dauer; der Dauer-Filter gilt
-auch für sie. (OFFEN 2)
+**REQ-005 — Dauer an Sammlungen.** Eine Sammlung hat ein Feld „Zeit in Minuten“ wie ein Rezept; der
+Dauer-Filter gilt dafür. Ohne Angabe passt sie zu keinem Dauer-Filter (wie Rezepte). Quelle: E-05.
+Offline: offline lesend.
 
-**REQ-005 — Auf die Liste für N Personen.** „Auf die Liste“ fragt die Personenzahl (vorbelegt mit
-den Portionen des Rezepts bzw. der Sammlung) und rechnet die Mengen um (Rechnung gibt es schon).
+- AC-016: Angenommen „Grillabend“ mit 90 Minuten · Wenn ich „< 2 h“ filtere · Dann steht „Grillabend“
+  in der Liste · Und bei „< 30 min“ fehlt er
+- AC-017: Angenommen ein Mitglied eines anderen Haushalts · Dann kann es die Dauer von „Grillabend“
+  weder lesen noch ändern
 
-- AC-007: Angenommen „Apfelkuchen“ für 2 Portionen mit „200 g Mehl“ · Wenn ich „Auf die Liste“ für
-  4 Personen wähle · Dann steht „400 g Mehl“ im Vorratscheck
+**REQ-006 — Schlagwort-Filter.** Rezepte und Restaurants lassen sich im Filter nach Schlagworten
+filtern: ein durchsuchbares Auswahlfeld mit den Schlagworten des Haushalts, Mehrfachauswahl, ein
+Eintrag passt, wenn er alle gewählten trägt. Gespeichert in der Adresse wie die anderen Filter.
+Quelle: E-17. Offline: offline vollständig.
 
-**REQ-006 — Zutaten aus Rezept übernehmen.** Im Bearbeitungsmodus „Aus Rezept übernehmen“: Rezept
-wählen, seine Zutaten kommen als Gruppe mit dem Rezeptnamen dazu, als Kopie.
+- AC-018: Angenommen Rezepte mit „Ofen“ und „Familie“ · Wenn ich im Filter „Ofen“ suche und wähle ·
+  Dann stehen nur Rezepte mit „Ofen“ in der Liste, und der Filter-Knopf zeigt „1“
+- AC-019: Angenommen kein Rezept hat Schlagworte · Dann fehlt der Abschnitt „Schlagworte“ im Filter
 
-- AC-008: Angenommen „Pizza Margherita“ ohne Zutaten, „Pizzateig“ mit 4 Zutaten · Wenn ich
-  „Pizzateig“ übernehme · Dann stehen 4 Zutaten in der Gruppe „Pizzateig“, und eine spätere Änderung
-  an „Pizzateig“ ändert sie nicht
+### Einkauf
 
-**REQ-007 — Schlagwort-Filter.** Rezepte und Restaurants lassen sich nach Schlagworten filtern, über
-ein durchsuchbares Auswahlfeld im Filter.
+**REQ-007 — Auf die Liste für N Personen.** „Auf die Liste“ zeigt oben im Vorratscheck einen Stepper
+„Für N Personen“, vorbelegt mit den Portionen des Rezepts bzw. der Sammlung; die Mengen rechnen sich
+beim Ändern sofort um. Quelle: E-11. Offline: offline lesend.
+
+- AC-020: Angenommen „Apfelkuchen“ für 2 Portionen mit „200 g Mehl“ · Wenn ich „Auf die Liste“ wähle
+  und „Für 4 Personen“ einstelle · Dann zeigt der Vorratscheck „400 g Mehl“
+- AC-021: Angenommen eine Zutat ohne Menge („Salz“) · Dann bleibt sie ohne Menge
 
 ## Entscheidungen
 
 1. REQ-001 speichert über eine Datenbank-Funktion in einer Transaktion (Regel „Mehrzeilige Aktionen
-   sind ein RPC“), nicht über mehrere Abschnitts-Aufrufe.
-2. OFFEN: Dauer der Sammlung — A: eingeben (Migration lockert `recipes_kind_fields`) · B: aus den
-   Rezepten ableiten (längstes Rezept). Empfehlung A (Enrico will eingeben; ableiten passt nicht zu
-   „Menü in Gängen“).
-3. OFFEN: Personen-Abfrage als eigener kleiner Schritt vor dem Vorratscheck oder als Stepper oben im
-   Vorratscheck. Empfehlung: Stepper im Vorratscheck (ein Fenster weniger).
-4. OFFEN: Gleichzeitiges Bearbeiten — A: zuletzt gespeichert gewinnt je Feld (heute je Abschnitt) ·
-   B: Hinweis „Nadja hat das Rezept geändert – neu laden?“. Empfehlung A mit Hinweis-Toast.
+   sind ein RPC“), die nur die geänderten Felder und Zeilen schickt; zuletzt gespeichert gewinnt je
+   Feld (AC-006).
+2. Enrico, 26.11.: Dauer der Sammlung wird eingegeben (nicht abgeleitet); die Migration lockert den
+   Check `recipes_kind_fields` nur für `total_minutes`.
+3. Enrico, 26.11.: Personen als Stepper im Vorratscheck, kein eigener Schritt.
+4. Glossar „Abschnitt der Rezeptseite“ wird ersetzt durch **Bearbeitungsmodus**.
 
 ## Daten
 
-Migration für REQ-004 (Entscheidung 2 A). Sonst bestehende Tabellen `recipes`, `recipe_ingredients`.
+Migration: Check `recipes_kind_fields` erlaubt `total_minutes` bei `kind = 'collection'`. Neue
+Datenbank-Funktion zum Speichern der Rezeptseite (Kopf, Einordnung, Zutaten, Schritte, Notizen, Links)
+in einer Transaktion, `security invoker` unter RLS.
 
 ## Risiken
 
-| Risiko                                 | Gegenmaßnahme                 | Test                               |
-| -------------------------------------- | ----------------------------- | ---------------------------------- |
-| Speichern bricht halb ab               | ein RPC, eine Transaktion     | pgTAP: Fehler in Zutat → nichts    |
-| Fremder Haushalt speichert Rezept      | RLS/Prüfung im RPC            | pgTAP fremder Haushalt, abgemeldet |
-| Sammlung bekommt Rezept-Felder (Küche) | Check nur für `total_minutes` | pgTAP Check                        |
+| Risiko                                  | Gegenmaßnahme                             | Test                               |
+| --------------------------------------- | ----------------------------------------- | ---------------------------------- |
+| Speichern bricht halb ab                | eine Funktion, eine Transaktion           | pgTAP: Fehler in Zutat → nichts    |
+| Fremder Haushalt / abgemeldet speichert | RLS, Funktion läuft als Aufrufer          | pgTAP fremder Haushalt, abgemeldet |
+| Sammlung bekommt Rezept-Felder (Küche)  | Check lockert nur `total_minutes`         | pgTAP Check                        |
+| Sync verpasst Änderungen                | bestehende Trigger, `updated_at` je Zeile | pgTAP Trigger                      |
 
 ## Umsetzung
 
-Nach den Entscheidungen.
+- [ ] 1. Migration Check + Speicher-Funktion (`db-change`, pgTAP) (AC-003, AC-004, AC-017)
+- [ ] 2. Bearbeitungsmodus der Rezept- und Sammlungsseite, Lesemodus ohne Stifte (AC-001–AC-007)
+- [ ] 3. Neu-Fenster (AC-008, AC-009)
+- [ ] 4. Aus Rezept übernehmen (core-Funktion + Picker) (AC-010–AC-012)
+- [ ] 5. Filter: Sammlungen, Dauer, Schlagworte (core + Adresse + Auswahlfeld) (AC-013–AC-019)
+- [ ] 6. Personen-Stepper im Vorratscheck (AC-020, AC-021)
+- [ ] 7. Glossar „Bearbeitungsmodus“
+- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
+      `pnpm exec supabase test db`; `/security-check`
