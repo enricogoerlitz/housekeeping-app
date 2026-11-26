@@ -3,8 +3,9 @@
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "workspaces": {
     ".": {
-      // edge-smoke.mjs runs by hand against real AI secrets (spec 0031, decision 7).
-      "entry": ["scripts/edge-smoke.mjs"],
+      // edge-smoke.mjs runs by hand against real AI secrets (spec 0031, decision 7). The scripts
+      // of own skills are run by the agent from the skill's instructions.
+      "entry": ["scripts/edge-smoke.mjs", ".claude/skills/recipe-crud/scripts/*.{ts,mjs}"],
     },
     "apps/app": {
       // Loaded by index.html and by workbox (finish-web-export.mjs), not imported.
@@ -31,8 +32,8 @@
   // Generated files (supabase gen types, gen-edge.mjs, gen-seed.ts); the stand-ins of the ui
   // component tests, reached through aliases in packages/ui/vitest.config.mts.
   "ignore": ["**/*.gen.ts", "e2e/seed-ids.ts", "packages/ui/test/mocks/**"],
-  // gitleaks is a system binary in CI, not an npm package.
-  "ignoreBinaries": ["gitleaks"],
+  // gitleaks is a system binary in CI, sips the macOS image tool of the recipe-crud skill.
+  "ignoreBinaries": ["gitleaks", "sips"],
   // knip's expo plugin expects expo-updates unless app.json turns updates off; the PWA has none.
   "ignoreDependencies": ["expo-updates"],
   // Exported types that only the own file uses document its shape.
