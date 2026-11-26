@@ -394,8 +394,8 @@ describe('a new cache version (AC-018)', () => {
     return itemId;
   }
 
-  it('spec 0043: version 21 for recipes.video_path (after 0042: 20); version 20 loads again', () => {
-    expect(CACHE_VERSION).toBe(21);
+  it('spec 0046: version 22 for recipes.videos (after 0043: 21); version 21 loads again', () => {
+    expect(CACHE_VERSION).toBe(22);
   });
 
   it('spec 0012: a queued pack entry survives the version bump and is sent', async () => {

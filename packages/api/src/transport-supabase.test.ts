@@ -392,6 +392,25 @@ describe('supabase transport', () => {
     ]);
   });
 
+  it('spec 0046 AC-012, AC-017: set_recipe_video_poster and remove_recipe_video with their parameters and answers', async () => {
+    const video = { path: 'h/recipes/r/v.mp4', url: 'https://vm.tiktok.com/x/', poster: 'p.jpg' };
+    const { client, calls } = stubClient([ok(true), ok(video), ok(null), ok({ url: 'no path' })]);
+    const transport = createSupabaseTransport(client);
+    expect(await transport.setRecipeVideoPoster('h1', 'r1', video.path, video.poster)).toBe(true);
+    expect(await transport.removeRecipeVideo('h1', 'r1', video.path)).toEqual(video);
+    expect(await transport.removeRecipeVideo('h1', 'r1', video.path)).toBeNull();
+    await expect(transport.removeRecipeVideo('h1', 'r1', video.path)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    const removal = { p_household_id: 'h1', p_recipe_id: 'r1', p_path: video.path };
+    expect(calls).toEqual([
+      { fn: 'set_recipe_video_poster', args: { ...removal, p_poster: video.poster } },
+      { fn: 'remove_recipe_video', args: removal },
+      { fn: 'remove_recipe_video', args: removal },
+      { fn: 'remove_recipe_video', args: removal },
+    ]);
+  });
+
   it('AC-034: delete_restaurant/delete_activity and their restore with parameters and answers', async () => {
     const { client, calls } = stubClient([
       ok({ converted: 1, removed: 1 }),

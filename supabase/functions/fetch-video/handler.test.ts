@@ -10,6 +10,8 @@ const RECIPE_ID = 'cccccccc-0000-4000-8000-000000000003';
 const SHORT = 'https://vm.tiktok.com/ZGdXoJ8Ay/';
 const LONG = 'https://www.tiktok.com/@jacobs_lunch/video/7686512961438960929';
 const PLAY = 'https://v16-webapp-prime.tiktok.com/video/tos/maliva/abc/?a=1988';
+const SECOND = 'https://www.tiktok.com/@koch/video/1';
+const COVER = 'https://p16-common-sign.tiktokcdn-eu.com/tos-useast2a/cover~tplv.image?x=1';
 const MP4 = Uint8Array.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 const VIDEO_PATH = new RegExp(
   `^${HOUSEHOLD_ID}/recipes/${RECIPE_ID}/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.mp4$`,
@@ -20,13 +22,20 @@ const pasta = (fields: Row = {}): Row => ({
   household_id: HOUSEHOLD_ID,
   kind: 'recipe',
   title: 'Pasta Sorrentina',
-  links: [{ url: SHORT, label: 'TikTok' }, { url: 'https://www.chefkoch.de/rezepte/1' }],
-  video_path: null,
+  links: [
+    { url: SHORT, label: 'TikTok' },
+    { url: 'https://www.chefkoch.de/rezepte/1' },
+    { url: SECOND },
+  ],
+  videos: [],
   ...fields,
 });
 
 function page(): string {
-  const item = { id: '7686512961438960929', video: { playAddr: PLAY, size: MP4.byteLength } };
+  const item = {
+    id: '7686512961438960929',
+    video: { playAddr: PLAY, size: MP4.byteLength, cover: COVER },
+  };
   const data = { __DEFAULT_SCOPE__: { 'webapp.video-detail': { itemInfo: { itemStruct: item } } } };
   return `<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(data)}</script>`;
 }
@@ -82,24 +91,27 @@ async function errorOf(response: Response): Promise<unknown> {
 }
 
 describe('fetch-video (spec 0043, REQ-001)', () => {
-  it('AC-001: loads the video, uploads it as the caller and sets video_path through apply_changes', async () => {
+  it('AC-006 (0046): loads the video, uploads it as the caller and adds it through add_recipe_video', async () => {
     const deps = setup();
     const response = await handler(post(body(), { origin: 'http://localhost:8081' }), deps);
     expect(response.status).toBe(200);
     expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:8081');
-    const { videoPath } = (await response.json()) as { videoPath: string };
+    const { videoPath, coverUrl } = (await response.json()) as {
+      videoPath: string;
+      coverUrl?: string;
+    };
     expect(videoPath).toMatch(VIDEO_PATH);
+    expect(coverUrl).toBe(COVER);
     expect(deps.client.uploads).toEqual([
       { bucket: 'household-videos', path: videoPath, bytes: MP4, contentType: 'video/mp4' },
     ]);
     expect(deps.client.rpcCalls).toEqual([
       {
-        fn: 'apply_changes',
+        fn: 'add_recipe_video',
         args: {
           p_household_id: HOUSEHOLD_ID,
-          p_ops: [
-            { kind: 'patch', table: 'recipes', id: RECIPE_ID, changes: { video_path: videoPath } },
-          ],
+          p_recipe_id: RECIPE_ID,
+          p_video: { path: videoPath, url: SHORT },
         },
       },
     ]);
@@ -189,9 +201,11 @@ describe('fetch-video (spec 0043, REQ-001)', () => {
     }
   });
 
-  it('a recipe with a video already is video_exists (409); a collection gets none (forbidden)', async () => {
+  it('AC-004 (0046): the link with its video already is video_exists (409); a collection gets none (forbidden)', async () => {
     const withVideo = setup({
-      recipe: pasta({ video_path: `${HOUSEHOLD_ID}/recipes/${RECIPE_ID}/x.mp4` }),
+      recipe: pasta({
+        videos: [{ path: `${HOUSEHOLD_ID}/recipes/${RECIPE_ID}/x.mp4`, url: SHORT }],
+      }),
     });
     const response = await handler(post(body()), withVideo);
     expect(response.status).toBe(409);
@@ -202,7 +216,39 @@ describe('fetch-video (spec 0043, REQ-001)', () => {
     expect(collection.fetchMock).not.toHaveBeenCalled();
   });
 
-  it('Risiken: when apply_changes refuses, the uploaded file is removed again (no orphan)', async () => {
+  it('AC-002 (0046): the video of another link is added after the first', async () => {
+    const deps = setup({
+      recipe: pasta({
+        videos: [{ path: `${HOUSEHOLD_ID}/recipes/${RECIPE_ID}/x.mp4`, url: SECOND }],
+      }),
+      rpc: () => ({ data: true, error: null }),
+    });
+    const response = await handler(post(body()), deps);
+    expect(response.status).toBe(200);
+    expect(deps.client.rpcCalls.map((call) => call.fn)).toEqual(['add_recipe_video']);
+  });
+
+  it('AC-004 (0046): ten videos are the most; nothing is fetched for an eleventh', async () => {
+    const full = Array.from({ length: 10 }, (_, n) => ({
+      path: `${HOUSEHOLD_ID}/recipes/${RECIPE_ID}/${n}.mp4`,
+    }));
+    const deps = setup({ recipe: pasta({ videos: full }) });
+    const response = await handler(post(body()), deps);
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toBe('video_exists');
+    expect(deps.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a concurrent save of the same link (add_recipe_video false) removes the file: video_exists', async () => {
+    const deps = setup({ rpc: () => ({ data: false, error: null }) });
+    const response = await handler(post(body()), deps);
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toBe('video_exists');
+    const uploaded = deps.client.uploads[0]?.path;
+    expect(deps.client.removes).toEqual([{ bucket: 'household-videos', paths: [uploaded] }]);
+  });
+
+  it('Risiken: when add_recipe_video refuses, the uploaded file is removed again (no orphan)', async () => {
     const deps = setup({
       rpc: () => ({ data: null, error: { message: 'row_not_found', code: 'P0002' } }),
     });

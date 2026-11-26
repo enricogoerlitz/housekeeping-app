@@ -355,6 +355,14 @@ export type DeletedRecipe = z.infer<typeof DeletedRecipeSchema>;
 export const RestoredRecipeSchema = z.boolean();
 
 /**
+ * remove_recipe_video (spec 0046, AC-017): the video taken out of the recipe's list, so the app
+ * deletes its files; null when the recipe had no such video.
+ */
+export const RemovedRecipeVideoSchema = z
+  .object({ path: z.string(), url: z.string().optional(), poster: z.string().optional() })
+  .nullable();
+
+/**
  * delete_restaurant / delete_activity (spec 0024, REQ-010): how many plan entries became free text
  * and how many went.
  */
@@ -515,6 +523,20 @@ export interface Transport {
   // Per member
   setRecipeFavorite(recipeId: string, favorite: boolean): Promise<void>;
   setRecipeRating(recipeId: string, stars: number | null): Promise<void>;
+  // The videos of a recipe (spec 0046): only these functions write recipes.videos.
+  /** The poster of a video; false when the recipe has no such video or it has a poster already. */
+  setRecipeVideoPoster(
+    householdId: string,
+    recipeId: string,
+    path: string,
+    poster: string,
+  ): Promise<boolean>;
+  /** Takes the video out of the recipe's list and returns it; null when it is not there. */
+  removeRecipeVideo(
+    householdId: string,
+    recipeId: string,
+    path: string,
+  ): Promise<z.infer<typeof RemovedRecipeVideoSchema>>;
   setRestaurantFavorite(restaurantId: string, favorite: boolean): Promise<void>;
   setRestaurantRating(restaurantId: string, stars: number | null): Promise<void>;
   setActivityFavorite(activityId: string, favorite: boolean): Promise<void>;
@@ -578,9 +600,9 @@ export interface Transport {
    */
   fetchImage(request: FetchImageRequest): Promise<Blob>;
   /**
-   * "Video speichern" (`fetch-video`, spec 0043): the server loads the TikTok video into
-   * household-videos and sets the recipe's video_path; `not_a_tiktok_link`, `video_unavailable`,
-   * `video_too_large`, `video_exists` (all permanent), `forbidden` (403).
+   * "Video speichern" (`fetch-video`, spec 0043, spec 0046): the server loads the TikTok video into
+   * household-videos and adds it to the recipe's videos; `not_a_tiktok_link`, `video_unavailable`,
+   * `video_too_large`, `video_exists` (that link's video is there; all permanent), `forbidden`.
    */
   fetchVideo(request: FetchVideoRequest): Promise<FetchVideoReply>;
   /** The assistant (`ai-assistant`): an answer, maybe with a proposal; it never changes data. */
@@ -648,6 +670,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     mergeAreas: guard(inner.mergeAreas.bind(inner)),
     deleteRecipe: guard(inner.deleteRecipe.bind(inner)),
     restoreRecipe: guard(inner.restoreRecipe.bind(inner)),
+    setRecipeVideoPoster: guard(inner.setRecipeVideoPoster.bind(inner)),
+    removeRecipeVideo: guard(inner.removeRecipeVideo.bind(inner)),
     deleteRestaurant: guard(inner.deleteRestaurant.bind(inner)),
     restoreRestaurant: guard(inner.restoreRestaurant.bind(inner)),
     deleteActivity: guard(inner.deleteActivity.bind(inner)),

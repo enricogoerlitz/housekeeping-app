@@ -24,6 +24,7 @@ import {
   type Recipe,
   type RecipeKind,
   type RecipeSectionDraft,
+  type RecipeVideo,
   type ShoppingRule,
 } from '@housekeeping/core';
 
@@ -353,8 +354,8 @@ export interface RecipeDeletion {
   ingredients: number;
   /** The recipe's own photo; discardRecipePhoto removes it once "Rückgängig" expired (E5). */
   photoPath?: string;
-  /** The recipe's video (spec 0043); discardRecipePhoto removes it with the photo. */
-  videoPath?: string;
+  /** The recipe's videos (spec 0046); discardRecipePhoto removes them and their posters too. */
+  videos: RecipeVideo[];
   /** Resolves once the server deleted the recipe; rejects when it refused (the recipe is back). */
   confirmed: Promise<void>;
 }
@@ -431,7 +432,7 @@ export function deleteRecipe(
     collections: effect.collections,
     ingredients,
     photoPath: recipe.photoPath,
-    videoPath: recipe.videoPath,
+    videos: recipe.videos,
     confirmed,
   };
 }
@@ -459,14 +460,15 @@ export function recipeDeletionListShare(
 }
 
 /**
- * E5: removes the own photo of a deleted recipe, and its video (spec 0043, REQ-003), when the
+ * E5: removes the own photo of a deleted recipe, and its videos with their posters (spec 0046,
+ * AC-018), when the
  * notice "… gelöscht · Rückgängig" runs out (toast onExpire) — only after the server took the
  * deletion and while the recipe has not come back ("Rückgängig"). Never throws; a file that cannot
  * be removed stays in the household's folder until the nightly sweep (spec 0039).
  */
 export async function discardRecipePhoto(deletion: RecipeDeletion): Promise<void> {
-  const { photoPath, videoPath } = deletion;
-  if (!photoPath && !videoPath) return;
+  const { photoPath, videos } = deletion;
+  if (!photoPath && videos.length === 0) return;
   try {
     await deletion.confirmed;
   } catch {
@@ -478,8 +480,13 @@ export async function discardRecipePhoto(deletion: RecipeDeletion): Promise<void
   if (recipes.some((recipe) => recipe.id === deletion.recipeId)) return;
   if (photoPath && !recipes.some((recipe) => recipe.photoPath === photoPath))
     await removeQuietly(photoPath);
-  if (videoPath && !recipes.some((recipe) => recipe.videoPath === videoPath))
-    await removeVideoQuietly(videoPath);
+  const named = (pick: (video: RecipeVideo) => string | undefined, path: string) =>
+    recipes.some((recipe) => recipe.videos.some((video) => pick(video) === path));
+  for (const video of videos) {
+    if (!named((other) => other.path, video.path)) await removeVideoQuietly(video.path);
+    if (video.poster && !named((other) => other.poster, video.poster))
+      await removeQuietly(video.poster);
+  }
 }
 
 /** Favourites are per person: their own RPC; undo sends the opposite. */

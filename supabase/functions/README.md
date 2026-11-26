@@ -74,10 +74,11 @@ latest (AC-012); a variant still running then counts as failed and keeps running
 45 s (cost accepted, spec "Risiken"). Answer `{ images: [base64, …], failed }`; no variant at all is 503. Variants are
 never stored: only "Übernehmen" in the app uploads one through the normal photo path.
 
-**`fetch-video`** (spec 0043, "Video speichern"): the common path, membership of `householdId`
-(403), the recipe under the caller's RLS (a collection or a recipe she cannot see is 403), the
-`url` must be an https TikTok link the recipe has (else 422 `not_a_tiktok_link`, before anything
-is fetched) and the recipe must have no video yet (409 `video_exists`). `_shared/tiktok.ts`
+**`fetch-video`** (spec 0043, spec 0046, "Video speichern"): the common path, membership of
+`householdId` (403), the recipe under the caller's RLS (a collection or a recipe she cannot see is
+403), the `url` must be an https TikTok link the recipe has (else 422 `not_a_tiktok_link`, before
+anything is fetched) and the recipe must not have that link's video or ten videos already (409
+`video_exists`). `_shared/tiktok.ts`
 reads the page like `ai-recipe-draft` (TikTok and its CDNs only, 5 redirects, 2 MB, 10 s) and
 loads `playAddr` through `fetchPublic` with the cookies that page set and `Referer:
 https://www.tiktok.com/` (TikTok's video hosts answer 403 without either): `video/mp4`, at most
@@ -85,9 +86,11 @@ https://www.tiktok.com/` (TikTok's video hosts answer 403 without either): `vide
 redirects, an `ftyp` box; anything else is 422 `video_unavailable`. The file goes into the
 private bucket `household-videos` as `<household>/recipes/<recipe>/<uuid>.mp4` with the
 **caller's** key (the storage policies decide; a 413 of the bucket is `video_too_large`), then
-`apply_changes` sets `video_path`, also as the caller; when that is refused the file is removed
-again. Answer `{ videoPath }`. No server key, no quota. Nothing about the link or the video is
-logged.
+`add_recipe_video` appends `{ path, url }` to the recipe's `videos`, also as the caller; when that
+is refused the file is removed again (`false`, the same link saved meanwhile: 409
+`video_exists`). Answer `{ videoPath, coverUrl? }`: the cover's https address on TikTok's hosts,
+which the app loads through `fetch-image` as the video's poster. No server key, no quota. Nothing
+about the link or the video is logged.
 
 **Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
 `private.run_media_orphan_sweep()` (job `media-orphan-sweep`, 02:30 UTC), signed like `push-send`

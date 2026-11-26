@@ -2,17 +2,29 @@ import { useArticlesById, useCollectionContents, useRecipeImage } from '@houseke
 import {
   coverPhotos,
   defaultImagePrompt,
+  galleryItems,
   mainIngredientNames,
   type Recipe,
+  type RecipeVideo,
 } from '@housekeeping/core';
-import { Photo, PhotoCollage, Stack, type PhotoProps } from '@housekeeping/ui';
-import { useEffect, useMemo } from 'react';
+import { MediaGallery, Photo, PhotoCollage, Stack, type PhotoProps } from '@housekeeping/ui';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PhotoActionRow, ZoomablePhoto } from '@/features/shell/own-photo';
 import { PhotoWindow } from '@/features/shell/photo-window';
 
 import { RecipePhotoStatus, type RecipePhotoState } from './recipe-actions';
+import { VideoPlayer, VideoTile } from './recipe-video';
+
+/** The frame of the page's photo; the videos' posters stand in the same one (spec 0046). */
+const PHOTO_ASPECT = 4 / 3;
+
+const GALLERY_LABELS = {
+  previous: 'Vorheriges',
+  next: 'Nächstes',
+  position: (page: number, count: number) => `${page} von ${count}`,
+};
 
 type ImageSource = number | { uri: string };
 
@@ -76,6 +88,8 @@ function useBlobUri(blob: Blob | undefined): string | undefined {
  * The photo of the page with its save state; a collection's cover is its collage (E14). A tap
  * shows it on the whole screen, "Foto ändern" right under it opens the window "Foto" (spec 0036,
  * REQ-008, REQ-009; spec 0039, REQ-001), which the ⋯ menu opens too; under a sample photo too.
+ * The recipe's videos follow the photo in a gallery (spec 0046, REQ-003); without a photo it
+ * starts with the first video; a video plays only on the whole screen (REQ-004).
  */
 export function RecipePhoto(props: {
   recipe: Recipe;
@@ -98,25 +112,52 @@ export function RecipePhoto(props: {
       : image
         ? [image]
         : [];
+  const [playing, setPlaying] = useState<RecipeVideo>();
+  const photo = (
+    <ZoomablePhoto key="photo" sources={sources} name={props.recipe.title} testID="recipe-photo">
+      {pendingUri ? (
+        <Photo
+          source={{ uri: pendingUri }}
+          aspectRatio={PHOTO_ASPECT}
+          alt={props.recipe.title}
+          testID="recipe-photo-pending"
+        />
+      ) : (
+        <RecipeCover
+          recipe={props.recipe}
+          aspectRatio={PHOTO_ASPECT}
+          alt={props.recipe.title}
+          testID="recipe-photo"
+        />
+      )}
+    </ZoomablePhoto>
+  );
   return (
     <Stack gap={4} style={props.style}>
-      <ZoomablePhoto sources={sources} name={props.recipe.title} testID="recipe-photo">
-        {pendingUri ? (
-          <Photo
-            source={{ uri: pendingUri }}
-            aspectRatio={4 / 3}
-            alt={props.recipe.title}
-            testID="recipe-photo-pending"
-          />
-        ) : (
-          <RecipeCover
-            recipe={props.recipe}
-            aspectRatio={4 / 3}
-            alt={props.recipe.title}
-            testID="recipe-photo"
-          />
+      <MediaGallery aspectRatio={PHOTO_ASPECT} labels={GALLERY_LABELS} testID="recipe-gallery">
+        {galleryItems(props.recipe, sources.length > 0).map((item) =>
+          item.kind === 'photo' ? (
+            photo
+          ) : (
+            <VideoTile
+              key={item.key}
+              recipe={props.recipe}
+              video={item.video}
+              index={item.index}
+              aspectRatio={PHOTO_ASPECT}
+              onPlay={() => setPlaying(item.video)}
+              testID={`recipe-video-${item.index}`}
+            />
+          ),
         )}
-      </ZoomablePhoto>
+      </MediaGallery>
+      {playing ? (
+        <VideoPlayer
+          video={playing}
+          title={props.recipe.title}
+          onClose={() => setPlaying(undefined)}
+        />
+      ) : null}
       <PhotoActionRow
         // A sample photo shows too: "Foto ändern"; only an own one can be removed (in the window).
         hasPhoto={sources.length > 0}
@@ -137,7 +178,7 @@ export function RecipePhoto(props: {
             props.recipe.kind === 'recipe' ? mainIngredientNames(props.recipe, articlesById) : [],
           )}
           placeholderIcon={props.recipe.kind === 'collection' ? 'layers' : 'chef-hat'}
-          aspectRatio={4 / 3}
+          aspectRatio={PHOTO_ASPECT}
           onApply={props.photo.apply}
           onRemove={props.photo.removeConfirmed}
           onClose={props.photo.closeWindow}

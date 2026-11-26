@@ -39,8 +39,8 @@ type LinkAction = 'edit' | 'up' | 'down' | 'remove';
  * the label over the host (or the host alone) with the symbol "öffnet extern"; a tap opens the page
  * in a new tab and the app stays. The app never loads the page. A link that fails the check on the
  * device is plain text. Read and open offline; editing online only. A TikTok link of a recipe
- * without a video has "Video speichern" (spec 0043, REQ-001). "+ Link" in the read view opens the
- * edit mode with the window "Link", like "+ Zutat" (spec 0047, REQ-003).
+ * whose video is not saved yet has the save button at its right end (spec 0046, REQ-002). "+ Link"
+ * in the read view opens the edit mode with the window "Link", like "+ Zutat" (spec 0047, REQ-003).
  */
 export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
@@ -109,7 +109,7 @@ function LinkRow(props: {
   link: RecipeLink;
   testID: string;
   trailing?: ReactNode;
-  /** Buttons of their own beside the row (spec 0043: "Video speichern"). */
+  /** Buttons of their own beside the row (spec 0046: the save button of a TikTok link). */
   controls?: ReactNode;
 }) {
   const shown = linkDisplay(props.link);

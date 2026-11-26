@@ -81,6 +81,11 @@ const object = (value: unknown): Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Json) : {};
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
+/** The video's cover, else its original cover: https on TikTok's hosts only. */
+function coverOf(video: Json): string | undefined {
+  return tiktokAddress(text(video.cover) || undefined) ?? tiktokAddress(video.originCover);
+}
+
 /** The video's data from the page's `__UNIVERSAL_DATA_FOR_REHYDRATION__` JSON, or undefined. */
 function itemOf(html: string): Json | undefined {
   const match =
@@ -190,8 +195,7 @@ export async function readTikTok(link: string, deps: PublicFetchDeps): Promise<T
   );
   const result: TikTokRead = { text: Array.from(parts.join('\n')).slice(0, MAX_TEXT).join('') };
   if (canonical) result.resolvedUrl = canonical;
-  const coverUrl =
-    tiktokAddress(text(video.cover) || undefined) ?? tiktokAddress(video.originCover);
+  const coverUrl = coverOf(video);
   if (coverUrl) result.coverUrl = coverUrl;
   return result;
 }
@@ -215,16 +219,20 @@ function isMp4(bytes: Uint8Array): boolean {
   );
 }
 
+/** A loaded TikTok video and the address of its cover (spec 0046: the poster), when it has one. */
+export interface TikTokVideo {
+  bytes: Uint8Array<ArrayBuffer>;
+  coverUrl?: string;
+}
+
 /**
  * The MP4 of a TikTok video (spec 0043, REQ-001): the page (short link resolved), its playAddr,
  * then the file with the page's cookies and TikTok as the referer, at most VIDEO_MAX_BYTES within
- * 60 s. Throws TikTokVideoError: `too_large` above the limit (by the page's size, the answer's
- * header or while reading), `unavailable` for everything else the internet or TikTok does.
+ * 60 s; with the cover the same page names (spec 0046, AC-012). Throws TikTokVideoError:
+ * `too_large` above the limit (by the page's size, the answer's header or while reading),
+ * `unavailable` for everything else the internet or TikTok does.
  */
-export async function loadTikTokVideo(
-  link: string,
-  deps: PublicFetchDeps,
-): Promise<Uint8Array<ArrayBuffer>> {
+export async function loadTikTokVideo(link: string, deps: PublicFetchDeps): Promise<TikTokVideo> {
   const unavailable = () => new TikTokVideoError('unavailable');
   let page: PublicResponse;
   try {
@@ -258,5 +266,6 @@ export async function loadTikTokVideo(
     throw error;
   }
   if (!isMp4(bytes)) throw unavailable();
-  return bytes;
+  const coverUrl = coverOf(video);
+  return coverUrl ? { bytes, coverUrl } : { bytes };
 }

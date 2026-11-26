@@ -132,6 +132,8 @@ type RpcName =
   | 'resolve-maps-link'
   | 'fetch-image'
   | 'fetch-video'
+  | 'set_recipe_video_poster'
+  | 'remove_recipe_video'
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
@@ -188,10 +190,14 @@ export interface FakeServer {
   /** A stored photo (bucket household-media). */
   media(path: string): Blob | undefined;
   /**
-   * What fetch-video gets behind a TikTok link (spec 0043): the video, or why there is none.
-   * Unknown links give `video_unavailable`.
+   * What fetch-video gets behind a TikTok link (spec 0043): the video, or why there is none, and
+   * the address of its cover (spec 0046). Unknown links give `video_unavailable`.
    */
-  setVideoAddress(url: string, video: Blob | 'video_unavailable' | 'video_too_large'): void;
+  setVideoAddress(
+    url: string,
+    video: Blob | 'video_unavailable' | 'video_too_large',
+    coverUrl?: string,
+  ): void;
   /** A stored video (bucket household-videos). */
   video(path: string): Blob | undefined;
   /** Like the Vault entries push_send_url and push_send_secret (spec 0013); unset by default. */
@@ -543,6 +549,36 @@ const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
 /** <household>/recipes/<recipe id>/<uuid>.mp4 (private.video_household_id, spec 0043). */
 const VIDEO_PATH =
   /^([^/]+)\/recipes\/([^/]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.mp4$/;
+/** At most this many videos per recipe (recipes_videos_valid, spec 0046). */
+const MAX_VIDEOS = 10;
+
+/** recipes_videos_valid (spec 0046): {path, url?, poster?} in the recipe's own folder. */
+function videosValid(householdId: string, row: Row): boolean {
+  const videos = row.videos ?? [];
+  if (!Array.isArray(videos) || videos.length > MAX_VIDEOS) return false;
+  if (videos.length > 0 && row.kind === 'collection') return false;
+  const prefix = `${householdId}/recipes/${row.id}/`;
+  const paths = new Set<string>();
+  const urls = new Set<string>();
+  for (const video of videos as unknown[]) {
+    if (typeof video !== 'object' || video === null || Array.isArray(video)) return false;
+    const { path, url, poster, ...rest } = video as Record<string, unknown>;
+    if (Object.keys(rest).length > 0 || typeof path !== 'string') return false;
+    if (!path.startsWith(prefix) || !VIDEO_PATH.test(path) || paths.has(path)) return false;
+    paths.add(path);
+    if (url !== undefined && (typeof url !== 'string' || !isWebUrl(url) || urls.has(url)))
+      return false;
+    if (typeof url === 'string') urls.add(url);
+    if (
+      poster !== undefined &&
+      (typeof poster !== 'string' ||
+        !poster.startsWith(prefix) ||
+        !PHOTO_FILE.test(poster.slice(prefix.length)))
+    )
+      return false;
+  }
+  return true;
+}
 
 /** shopping_contributions_note_length (spec 0006, AC-022). */
 const NOTE_MAX_LENGTH = 200;
@@ -873,12 +909,9 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   ) {
     throw new TransportError('permanent', '23514', 400);
   }
-  // recipes_video_path_valid (spec 0043): the recipe's own folder, a recipe, not a collection.
-  if (table === 'recipes' && row.video_path != null) {
-    const match = VIDEO_PATH.exec(String(row.video_path));
-    if (!match || match[1] !== householdId || match[2] !== row.id || row.kind === 'collection') {
-      throw new TransportError('permanent', '23514', 400);
-    }
+  // recipes_video_path_retired and recipes_videos_valid (spec 0046).
+  if (table === 'recipes' && (row.video_path != null || !videosValid(householdId, row))) {
+    throw new TransportError('permanent', '23514', 400);
   }
   const folder = PHOTO_FOLDERS[table];
   if (folder && row.photo_path != null) {
@@ -970,7 +1003,10 @@ export function createFakeServer(): FakeServer {
   const imageAddresses = new Map<string, Blob>();
   const media = new Map<string, Blob>();
   const videos = new Map<string, Blob>();
-  const videoAddresses = new Map<string, Blob | 'video_unavailable' | 'video_too_large'>();
+  const videoAddresses = new Map<
+    string,
+    { video: Blob | 'video_unavailable' | 'video_too_large'; coverUrl?: string }
+  >();
   let ai: FakeAi = {};
   /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
   const deletions = new Map<string, Deletion>();
@@ -2022,7 +2058,14 @@ export function createFakeServer(): FakeServer {
                 ? OPEN_PACKING_ITEM
                 : op.table === 'recipes'
                   ? // Column defaults: a collection must send course null (spec 0009, T1).
-                    { kind: 'recipe', course: 'main', tags: [], variants: [], steps: [] }
+                    {
+                      kind: 'recipe',
+                      course: 'main',
+                      tags: [],
+                      variants: [],
+                      steps: [],
+                      videos: [],
+                    }
                   : op.table === 'meal_plan_entries'
                     ? {
                         starts_at: null,
@@ -2745,7 +2788,35 @@ export function createFakeServer(): FakeServer {
     return householdId && isMember(userId, householdId) ? householdId : undefined;
   }
 
-  /** fetch-video (spec 0043): checks like the function, then the upload and apply_changes. */
+  type VideoEntry = { path: string; url?: string; poster?: string };
+  const videosOfRow = (row: Row): VideoEntry[] =>
+    Array.isArray(row.videos) ? (row.videos as VideoEntry[]) : [];
+
+  /**
+   * The recipe's videos as `change` makes them (add_recipe_video, set_recipe_video_poster,
+   * remove_recipe_video of spec 0046): the member's own household only, then the check.
+   */
+  function changeVideos<T>(
+    userId: string,
+    householdId: string,
+    recipeId: string,
+    change: (videos: VideoEntry[], recipe: Row) => [VideoEntry[] | undefined, T],
+    missing: T,
+  ): T {
+    requireUser(userId);
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_member', 403);
+    return transaction(householdId, (tables) => {
+      const recipe = tables.recipes?.[recipeId];
+      if (!recipe) return [tables, missing];
+      const [next, result] = change(videosOfRow(recipe), recipe);
+      if (!next) return [tables, result];
+      const row = { ...recipe, videos: next };
+      checkRow(householdId, 'recipes', row, tables);
+      return [withRow(tables, 'recipes', withDbTimes('recipes', row)), result];
+    });
+  }
+
+  /** fetch-video (spec 0043, 0046): checks like the function, then the upload and add_recipe_video. */
   function fetchVideo(userId: string, request: FetchVideoRequest): FetchVideoReply {
     requireUser(userId);
     if (!isMember(userId, request.householdId))
@@ -2756,15 +2827,21 @@ export function createFakeServer(): FakeServer {
     const links = Array.isArray(recipe.links) ? (recipe.links as { url?: unknown }[]) : [];
     if (!isTikTokUrl(request.url) || !links.some((link) => link.url === request.url))
       throw new TransportError('permanent', 'not_a_tiktok_link', 422);
-    if (recipe.video_path != null) throw new TransportError('permanent', 'video_exists', 409);
-    const video = videoAddresses.get(request.url) ?? 'video_unavailable';
-    if (typeof video === 'string') throw new TransportError('permanent', video, 422);
+    if (videosOfRow(recipe).some((video) => video.url === request.url))
+      throw new TransportError('permanent', 'video_exists', 409);
+    const address = videoAddresses.get(request.url) ?? { video: 'video_unavailable' as const };
+    if (typeof address.video === 'string')
+      throw new TransportError('permanent', address.video, 422);
     const videoPath = `${request.householdId}/recipes/${request.recipeId}/${crypto.randomUUID()}.mp4`;
-    videos.set(videoPath, video);
-    applyChanges(userId, request.householdId, [
-      { kind: 'patch', table: 'recipes', id: request.recipeId, changes: { video_path: videoPath } },
-    ]);
-    return { videoPath };
+    videos.set(videoPath, address.video);
+    changeVideos(
+      userId,
+      request.householdId,
+      request.recipeId,
+      (list) => [[...list, { path: videoPath, url: request.url }], true],
+      false,
+    );
+    return address.coverUrl ? { videoPath, coverUrl: address.coverUrl } : { videoPath };
   }
 
   function mediaHousehold(userId: string, path: string): string | undefined {
@@ -3662,6 +3739,35 @@ export function createFakeServer(): FakeServer {
           return image;
         }),
       fetchVideo: (request) => run(userId, 'fetch-video', () => fetchVideo(userId, request)),
+      setRecipeVideoPoster: (householdId, recipeId, path, poster) =>
+        run(userId, 'set_recipe_video_poster', () =>
+          changeVideos(
+            userId,
+            householdId,
+            recipeId,
+            (list, recipe) =>
+              list.some((video) => video.path === path && video.poster === undefined) &&
+              recipe.photo_path !== poster &&
+              !list.some((video) => video.poster === poster)
+                ? [list.map((video) => (video.path === path ? { ...video, poster } : video)), true]
+                : [undefined, false],
+            false,
+          ),
+        ),
+      removeRecipeVideo: (householdId, recipeId, path) =>
+        run(userId, 'remove_recipe_video', () =>
+          changeVideos<VideoEntry | null>(
+            userId,
+            householdId,
+            recipeId,
+            (list) => {
+              const removed = list.find((video) => video.path === path);
+              if (!removed) return [undefined, null];
+              return [list.filter((video) => video !== removed), removed];
+            },
+            null,
+          ),
+        ),
       askAssistant: (request) =>
         run(userId, 'ai-assistant', () => {
           if (!ai.assistant) throw aiUnavailable();
@@ -3828,8 +3934,8 @@ export function createFakeServer(): FakeServer {
       ai = next;
     },
     media: (path) => media.get(path),
-    setVideoAddress: (url, video) => {
-      videoAddresses.set(url, video);
+    setVideoAddress: (url, video, coverUrl) => {
+      videoAddresses.set(url, coverUrl ? { video, coverUrl } : { video });
     },
     video: (path) => videos.get(path),
     setPushConfigured(configured) {
