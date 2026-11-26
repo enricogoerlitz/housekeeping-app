@@ -1,10 +1,11 @@
 import { generateImagesAsync } from '@housekeeping/api';
 import {
   applyFieldChanges,
-  imageWishPrompt,
+  placeImageContext,
   placeProposal,
   placeValuesFromResult,
   proposalIsEmpty,
+  type AiImageContext,
   type ChangeProposal,
   type GeoPoint,
   type PlaceValues,
@@ -61,13 +62,13 @@ function usePhotoSuggestions() {
     },
     [],
   );
-  const suggest = (prompt: string) => {
+  const suggest = (prompt: string, context: AiImageContext) => {
     round.current += 1;
     const mine = round.current;
     free(shown.current);
     setChosen(undefined);
     setSuggestions({ status: 'loading' });
-    generateImagesAsync({ prompt, styles: [] }).then(
+    generateImagesAsync({ prompt, styles: [], context }).then(
       (result) => {
         if (round.current !== mine) return;
         setSuggestions({
@@ -220,11 +221,10 @@ export function PlaceWebFill(props: {
     // one gets one made from its name (AC-030), unless it has a photo already.
     const photo = taken.imageWish ? undefined : taken.photo;
     if (taken.imageWish || (!photo && !props.hasPhoto)) {
+      // Spec 0052: the raw wish (or the name) with what the photo is for.
       suggest(
-        imageWishPrompt(taken.imageWish, {
-          title: after.name ?? taken.card.title,
-          kind: props.kind,
-        }),
+        taken.imageWish ?? after.name ?? taken.card.title,
+        placeImageContext(props.kind, after),
       );
     }
     if (!props.current) {

@@ -13,30 +13,6 @@ export function searchStatusLine(kind: WebSearchKind): string {
     : 'Suche bei Google Maps …';
 }
 
-const KIND_WORDS: Record<WebSearchKind, { the: string; for: string }> = {
-  recipe: { the: 'Das Gericht', for: 'für das Gericht' },
-  restaurant: { the: 'Das Restaurant', for: 'für das Restaurant' },
-  activity: { the: 'Die Aktivität', for: 'für die Aktivität' },
-};
-/** The prompt field of ai-image (spec 0040) takes at most this many characters. */
-const IMAGE_PROMPT_MAX = 1000;
-
-/**
- * What the photo is made from (AC-026, AC-030): the person's image wish with what it is for, or
- * without a wish the title and kind alone. The image function turns it into its own prompts; this
- * stays the raw wish plus context (spec 0052 changes ai-image, this adapter keeps the call small).
- */
-export function imageWishPrompt(
-  wish: string | undefined,
-  context: { title: string; kind: WebSearchKind },
-): string {
-  const words = KIND_WORDS[context.kind];
-  const text = wish?.trim()
-    ? `${wish.trim()} – ${words.for} „${context.title}“`
-    : `${words.the} „${context.title}“`;
-  return text.slice(0, IMAGE_PROMPT_MAX);
-}
-
 /** AC-002: a link alone in the search field (it goes to „Eigene Angaben“); words make a search. */
 export function pastedLink(text: string): string | undefined {
   const trimmed = text.trim();

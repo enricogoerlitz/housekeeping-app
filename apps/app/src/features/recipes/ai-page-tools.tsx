@@ -4,7 +4,6 @@ import {
   draftImageContext,
   IMAGE_EXTRA_MAX,
   imageFailureNotice,
-  imageWishPrompt,
   proposalIsEmpty,
   recipeProposal,
   type FieldChange,
@@ -63,7 +62,8 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
     } else if (imageWish || (!photo && !hadPhoto && reply.sources.length > 0)) {
       // Spec 0049, REQ-008: the image wish makes the photo; a found page without one gets one.
       startPhotoSuggestions(recipe.id, {
-        prompt: imageWishPrompt(imageWish, { title: reply.draft.title, kind: 'recipe' }),
+        prompt: imageWish ?? reply.draft.title,
+        context: draftImageContext(reply.draft),
       });
     }
     if (proposalIsEmpty(proposal)) {

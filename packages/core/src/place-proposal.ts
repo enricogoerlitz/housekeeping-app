@@ -1,4 +1,9 @@
-import type { PlaceProposal, WebResult } from './ai-contract';
+import {
+  IMAGE_CONTEXT_LIMITS,
+  type AiImageContext,
+  type PlaceProposal,
+  type WebResult,
+} from './ai-contract';
 import { diffFieldChanges, type ChangeProposal } from './proposal-diff';
 import { priceLabel } from './restaurants';
 
@@ -79,4 +84,27 @@ export function placeProposal(
         })
       : diffFieldChanges<keyof typeof ACTIVITY_LABELS>(ACTIVITY_LABELS, before, after);
   return { fields, groups: [] };
+}
+
+/**
+ * What a generated photo of a found place is for (spec 0052): its name, cuisine or kind, place and
+ * description. The person's image wish goes as the prompt beside it, untouched.
+ */
+export function placeImageContext(kind: ProposalPlaceKind, values: PlaceValues): AiImageContext {
+  const cut = (value: string | undefined, max: number) =>
+    value?.trim().slice(0, max).trim() || undefined;
+  const context: AiImageContext = {
+    kind,
+    title: cut(values.name, IMAGE_CONTEXT_LIMITS.title) ?? kind,
+  };
+  const category = cut(
+    kind === 'restaurant' ? values.cuisine : values.kind,
+    IMAGE_CONTEXT_LIMITS.category,
+  );
+  if (category) context.category = category;
+  const place = kind === 'activity' ? cut(values.placeName, IMAGE_CONTEXT_LIMITS.place) : undefined;
+  if (place) context.place = place;
+  const description = cut(values.description, IMAGE_CONTEXT_LIMITS.description);
+  if (description) context.description = description;
+  return context;
 }

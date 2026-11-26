@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { newIngredientRow, type IngredientRow } from './recipe-editor';
 import { articlesById } from './test-fixtures';
-import { imageWishPrompt, pastedLink, previewIngredients, searchStatusLine } from './web-preview';
+import { pastedLink, previewIngredients, searchStatusLine } from './web-preview';
 
 // Spec 0049: the parts of the Websuche the window shows besides the cards.
 
@@ -58,18 +58,5 @@ describe('searchStatusLine (AC-005)', () => {
     expect(searchStatusLine('recipe')).toBe('Suche bei Chefkoch und anderen Rezeptseiten …');
     expect(searchStatusLine('restaurant')).toBe('Suche bei Google Maps …');
     expect(searchStatusLine('activity')).toBe('Suche bei Google Maps …');
-  });
-});
-
-describe('imageWishPrompt (AC-026, AC-030)', () => {
-  it('the wish with what it is for; without a wish the title and kind alone', () => {
-    expect(
-      imageWishPrompt('Frau in Boulderhalle', { title: 'Berta Block', kind: 'activity' }),
-    ).toBe('Frau in Boulderhalle – für die Aktivität „Berta Block“');
-    expect(imageWishPrompt(undefined, { title: 'Mutzenbacher', kind: 'restaurant' })).toBe(
-      'Das Restaurant „Mutzenbacher“',
-    );
-    expect(imageWishPrompt(undefined, { title: 'Dal', kind: 'recipe' })).toBe('Das Gericht „Dal“');
-    expect(imageWishPrompt('x'.repeat(2000), { title: 'Dal', kind: 'recipe' }).length).toBe(1000);
   });
 });

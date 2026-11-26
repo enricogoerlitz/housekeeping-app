@@ -10,7 +10,6 @@ import {
 } from '@housekeeping/api';
 import {
   draftImageContext,
-  imageWishPrompt,
   NEW_ENTRY_KINDS,
   newEntryTakesIngredients,
   newEntryTitleProblem,
@@ -181,7 +180,9 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     handOverNewRecipe(recipe, input, pagePhoto);
     if (!pagePhoto) {
       startPhotoSuggestions(recipe.id, {
-        prompt: imageWishPrompt(taken.imageWish, { title: recipe.title, kind: 'recipe' }),
+        // Spec 0052: the raw wish (or the title) with what the photo is for.
+        prompt: taken.imageWish ?? recipe.title,
+        context: draftImageContext(reply.draft),
       });
     }
     close();

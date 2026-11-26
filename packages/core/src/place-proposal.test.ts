@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { WebResult } from './ai-contract';
-import { placeProposal, placeValuesFromResult } from './place-proposal';
+import { placeImageContext, placeProposal, placeValuesFromResult } from './place-proposal';
 import { proposalSummaryText, proposalSummary } from './proposal-diff';
 
 // Spec 0049: a place found on the web as values of the restaurant or activity form, and the
@@ -74,5 +74,32 @@ describe('placeProposal (REQ-005)', () => {
     expect(proposalSummaryText(proposalSummary(proposal, new Set()))).toBe(
       'Vorschlag: 3 neu · 1 geändert',
     );
+  });
+});
+
+describe('placeImageContext (REQ-008, AC-026, AC-030)', () => {
+  it('what the photo is for: the name, cuisine or kind, place and description (spec 0052)', () => {
+    expect(
+      placeImageContext('activity', {
+        name: 'Berta Block',
+        placeName: 'Berta Block',
+        kind: 'Bouldern',
+        description: 'Große Boulderhalle in Pankow.',
+        address: 'Mühlenstraße 62, 13187 Berlin',
+      }),
+    ).toEqual({
+      kind: 'activity',
+      title: 'Berta Block',
+      category: 'Bouldern',
+      place: 'Berta Block',
+      description: 'Große Boulderhalle in Pankow.',
+    });
+    expect(
+      placeImageContext('restaurant', { name: 'Mutzenbacher', cuisine: 'Österreichisch' }),
+    ).toEqual({
+      kind: 'restaurant',
+      title: 'Mutzenbacher',
+      category: 'Österreichisch',
+    });
   });
 });

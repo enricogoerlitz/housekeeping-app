@@ -212,9 +212,11 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
 9. Agent, 26.11.: Öffnungszeiten zeigt nur die Vorschau („Heute …“); Restaurant und Aktivität haben
    dafür kein Feld, und eine kopierte Öffnungszeit würde veralten. Kein neues Feld. Den Preis
    übernimmt das Restaurant, wenn der Anbieter einen nennt.
-10. Agent, 26.11.: Das Foto aus einem Bildwunsch geht als „Wunsch – für die Aktivität „Name““ an
-    `ai-image` (Adapter `imageWishPrompt` in core). Spec 0052 baut `ai-image` so um, dass eine KI
-    daraus drei FLUX-Prompts macht; bis dahin baut `ai-image` den Prompt wie in Spec 0040.
+10. Agent, 26.11.: Das Foto aus einem Bildwunsch geht als roher Wunsch mit dem Kontext des Eintrags
+    an `ai-image` (Spec 0052: eine KI macht daraus drei FLUX-Prompts): Rezept `draftImageContext`,
+    Ort `placeImageContext` (Name, Küche bzw. Art, Ort, Beschreibung). Ohne Wunsch ist der Prompt
+    der Name bzw. Titel. Probe 26.11.: „Frau in Boulderhalle“ → drei Boulder-Fotos, „Mutzenbacher“
+    ohne Foto → drei Fotos eines österreichischen Gasthauses mit Schnitzel.
 
 ## Daten
 
