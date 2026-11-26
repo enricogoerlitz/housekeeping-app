@@ -205,7 +205,7 @@ export function CollectionDetailBody(props: {
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} />
+              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} onShare={share} />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -218,7 +218,7 @@ export function CollectionDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={collection} photo={photo} />
+            <RecipePhoto recipe={collection} photo={photo} onShare={share} />
             {head}
             {contained}
             {ingredients}

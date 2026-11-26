@@ -128,6 +128,12 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
   );
   // "Teilen" (spec 0042, REQ-004): works offline; the photo goes along where files can be shared.
   const shareFile = useShareFile(activity.photoPath, activity.name);
+  const share = () =>
+    void shareText({
+      title: activity.name,
+      text: activityShareText(activity, appLink(`/aktivitaet/${activity.id}`)),
+      file: shareFile,
+    });
   const more = (
     <Menu<'share' | 'delete'>
       trigger="icon"
@@ -139,15 +145,8 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
       onChange={(action) => {
-        if (action === 'delete') {
-          remove();
-          return;
-        }
-        void shareText({
-          title: activity.name,
-          text: activityShareText(activity, appLink(`/aktivitaet/${activity.id}`)),
-          file: shareFile,
-        });
+        if (action === 'delete') remove();
+        else share();
       }}
       testID="activity-more"
     />
@@ -194,6 +193,7 @@ function ActivityDetailBody(props: ActivityDetailProps & { activity: Activity })
           placeholderIcon={ACTIVITY_ICON}
           onChange={(photo) => setActivityPhoto(activity.id, photo)}
           onRemove={() => removeActivityPhoto(activity.id)}
+          onShare={share}
           testPrefix="activity"
         />
 

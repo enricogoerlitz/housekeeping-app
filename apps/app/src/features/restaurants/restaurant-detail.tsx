@@ -145,6 +145,12 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
   );
   // "Teilen" (spec 0042, AC-009): works offline; the photo goes along where files can be shared.
   const shareFile = useShareFile(restaurant.photoPath, restaurant.name);
+  const share = () =>
+    void shareText({
+      title: restaurant.name,
+      text: restaurantShareText(restaurant, appLink(`/restaurant/${restaurant.id}`)),
+      file: shareFile,
+    });
   const more = (
     <Menu<'share' | 'delete'>
       trigger="icon"
@@ -156,15 +162,8 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
         { value: 'delete', label: 'Löschen', disabled: online.disabled, hint: online.hint },
       ]}
       onChange={(action) => {
-        if (action === 'delete') {
-          remove();
-          return;
-        }
-        void shareText({
-          title: restaurant.name,
-          text: restaurantShareText(restaurant, appLink(`/restaurant/${restaurant.id}`)),
-          file: shareFile,
-        });
+        if (action === 'delete') remove();
+        else share();
       }}
       testID="restaurant-more"
     />
@@ -211,6 +210,7 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
           placeholderIcon={RESTAURANT_ICON}
           onChange={(photo) => setRestaurantPhoto(restaurant.id, photo)}
           onRemove={() => removeRestaurantPhoto(restaurant.id)}
+          onShare={share}
           testPrefix="restaurant"
         />
 

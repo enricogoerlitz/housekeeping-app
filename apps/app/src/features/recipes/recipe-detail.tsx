@@ -298,7 +298,7 @@ function RecipeDetailBody(props: {
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={recipe} photo={photo} style={{ flex: 1 }} />
+              <RecipePhoto recipe={recipe} photo={photo} style={{ flex: 1 }} onShare={share} />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -311,7 +311,7 @@ function RecipeDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={recipe} photo={photo} />
+            <RecipePhoto recipe={recipe} photo={photo} onShare={share} />
             {head}
             {ingredients}
             {steps}

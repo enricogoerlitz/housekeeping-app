@@ -58,14 +58,18 @@ Quelle: F-04. Offline: offline vollständig (Formular).
 
 ### Teilen
 
-**REQ-004 — Teilen.** Rezept, Sammlung, Restaurant und Aktivität haben „Teilen“ (Menü „Mehr“ bzw.
-Knopf). Geteilt wird über das Teilen-Menü des Geräts ein ohne App lesbarer Text und der App-Link;
-am Desktop ohne Teilen-Menü wird der Text kopiert. Quelle: F-09. Offline: offline vollständig.
+**REQ-004 — Teilen.** Rezept, Sammlung, Restaurant und Aktivität haben „Teilen“ als gut sichtbares
+Symbol direkt unter dem Foto, am rechten Ende der Zeile mit der Foto-Aktion (auch ohne Foto und
+offline); zusätzlich im Menü „Mehr“. Geteilt wird über das Teilen-Menü des Geräts ein ohne App
+lesbarer Text und der App-Link; am Desktop ohne Teilen-Menü wird der Text kopiert. Quelle: F-09,
+Enricos Nachtrag vom 26.11. Offline: offline vollständig.
 
 - AC-008: Angenommen „Apfelkuchen“ für 2 Portionen · Wenn ich „Teilen“ tippe · Dann enthält der Text
   Titel, „2 Portionen“, alle Zutaten mit Mengen, die Schritte und die Links
 - AC-009: Angenommen „AMRIT“ · Dann enthält der Text Name, Adresse, Karten-Link und Webseite
 - AC-010: Angenommen Desktop ohne Teilen-Menü · Dann ist der Text kopiert und die App sagt „Kopiert“
+- AC-016: Angenommen die Seite von „Apfelkuchen“, „AMRIT“, einer Sammlung oder einer Aktivität ·
+  Dann steht unter dem Foto rechts in der Zeile von „Foto ändern“ das Symbol „Teilen“, auch offline
 
 ### Eigentümer
 
@@ -104,10 +108,12 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
    wenn er leer ist oder vom vorigen Link stammt (Reihenfolge Name → Pin → Link).
 8. Bau, 26.11.: „Zurückziehen“ einer Einladung bleibt für jedes Mitglied (nicht in REQ-005
    genannt); „Haushalt löschen“ bleibt beim letzten Mitglied.
-9. OFFEN: `apply_changes` ersetzen auch Spec 0041 (`20261126111313`) und diese Migration
-   (`20261126111336`), beide auf Basis von `20261123070918`. Wer als Zweiter nach `develop` kommt,
-   muss seine Fassung auf die des anderen setzen (hier: nur `maps_url` bei `stores`), sonst fehlen
-   die Tabellen der anderen Spec in der Allowlist.
+9. Bau, 26.11.: Das Teilen-Symbol sitzt in `PhotoActionRow` (`own-photo.tsx`) rechts; Spec 0039
+   ersetzt die Foto-Knöpfe links durch „Foto ändern“, das Symbol bleibt am Zeilenende.
+10. OFFEN: `apply_changes` ersetzen auch Spec 0041 (`20261126111313`) und diese Migration
+    (`20261126111336`), beide auf Basis von `20261123070918`. Wer als Zweiter nach `develop` kommt,
+    muss seine Fassung auf die des anderen setzen (hier: nur `maps_url` bei `stores`), sonst fehlen
+    die Tabellen der anderen Spec in der Allowlist.
 
 ## Daten
 
@@ -143,7 +149,7 @@ Pin öffnet nur `www.google.com/maps/search` mit kodierter Suche.
 - [x] 2. Eigentümer: Funktion + Prüfungen + pgTAP (AC-012–AC-015), UI (AC-011)
 - [x] 3. Ortsfeld-Baustein, eingesetzt in Restaurant, Aktivität, Markt (AC-001, AC-002)
 - [x] 4. Einfügen erkennen (core: Erkennung Link/Adresse, Tests) (AC-005–AC-007)
-- [x] 5. Teilen (core: Text je Eintrag, Tests) (AC-008–AC-010)
+- [x] 5. Teilen (core: Text je Eintrag, Tests) (AC-008–AC-010); Symbol unter dem Foto (AC-016)
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`
 
@@ -159,7 +165,8 @@ Pin öffnet nur `www.google.com/maps/search` mit kodierter Suche.
 - Dev-Server (Port 8099), Playwright als Enrico und Nadja, 390×844 und 1440×900: AC-001 (Pin öffnet
   `google.com/maps/search/?api=1&query=Bless…`), AC-002, AC-003 (Route erst mit Link, weg ohne),
   AC-005, AC-006 (Adresse in „Adresse“, Cursor in „Karten-Link“), Webadresse → „Webseite“, AC-007,
-  AC-010 (ohne `navigator.share` kopiert, „Kopiert“), AC-011 (Nadja: kein „Einladen“, kein
+  AC-010 (ohne `navigator.share` kopiert, „Kopiert“), AC-016 (Symbol unter dem Foto auf allen vier
+  Seiten, Tipp kopiert den Text), AC-011 (Nadja: kein „Einladen“, kein
   „Entfernen“, „Eigentümer“ bei Enrico); keine Konsolenfehler. Bilder in `tmp/review-0003/0042/`.
 - Nur am iPhone prüfbar: „Einfügen“-Blase von iOS, Teilen-Menü mit Foto, Fokus/Tastatur nach dem
   Einfügen, Rückkehr aus Google Maps in die installierte App.
