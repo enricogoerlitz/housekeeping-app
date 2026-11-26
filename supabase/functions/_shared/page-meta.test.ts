@@ -54,6 +54,18 @@ describe('pageMeta', () => {
     expect(pageMeta(page).recipe).toEqual({ name: 'X' });
   });
 
+  it('security check 0049: long attribute-less meta tags and deeply nested images stay cheap', () => {
+    const started = Date.now();
+    pageMeta(`<meta ${'a'.repeat(1990)}>`.repeat(1500));
+    const deep = `${'['.repeat(200_000)}"https://a.example/x.jpg"${']'.repeat(200_000)}`;
+    expect(
+      pageMeta(
+        `<script type="application/ld+json">{"@type":"Recipe","name":"X","image":${deep}}</script>`,
+      ).recipe,
+    ).toEqual({ name: 'X' });
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
   it('a hostile page costs linear time (2 MB of unclosed script tags)', () => {
     const started = Date.now();
     pageMeta('<script type="application/ld+json">'.repeat(60_000));

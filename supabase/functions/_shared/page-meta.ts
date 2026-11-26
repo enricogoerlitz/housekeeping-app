@@ -20,7 +20,12 @@ export interface PageMeta {
 const MAX_TAG = 2000;
 const MAX_URL = 2048;
 const MAX_NAME = 200;
-const ATTRIBUTE = /([a-z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
+// An attribute starts after whitespace and has a short name: a tag of letters without "=" cannot
+// make the engine retry from every position (security check 0049).
+const ATTRIBUTE = /(?:^|\s)([a-z:_-]{1,40})\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
+/** Nesting and entries looked at for an image; deeper JSON is no image (security check 0049). */
+const IMAGE_DEPTH = 3;
+const IMAGE_ENTRIES = 10;
 const JSON_LD = /\btype\s*=\s*["']?application\/ld\+json/i;
 
 function decode(text: string): string {
@@ -52,10 +57,11 @@ export function durationMinutes(value: unknown): number | undefined {
   return minutes > 0 && minutes <= 10_000 ? minutes : undefined;
 }
 
-function firstImage(value: unknown): string | undefined {
+function firstImage(value: unknown, depth = 0): string | undefined {
   if (Array.isArray(value)) {
-    for (const entry of value) {
-      const url = firstImage(entry);
+    if (depth >= IMAGE_DEPTH) return undefined;
+    for (const entry of value.slice(0, IMAGE_ENTRIES)) {
+      const url = firstImage(entry, depth + 1);
       if (url) return url;
     }
     return undefined;

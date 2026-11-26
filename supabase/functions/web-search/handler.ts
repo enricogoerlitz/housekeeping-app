@@ -150,7 +150,14 @@ function valid(results: readonly (WebResult | undefined)[]): WebResult[] {
 async function recipeCard(deps: Deps, hit: WebHit): Promise<WebResult | undefined> {
   const html = await loadPage(deps, hit.url);
   if (html === undefined) return undefined;
-  const meta = pageMeta(html);
+  let meta: ReturnType<typeof pageMeta>;
+  try {
+    meta = pageMeta(html);
+  } catch {
+    // A page the parser cannot take costs only its own card (security check 0049).
+    console.error('web_search_page_unread', { reason: 'unparsable' });
+    return undefined;
+  }
   if (!meta.recipe) return undefined;
   const { recipe } = meta;
   // Rating and count come as a pair: the provider's (Google's) or else the page's.
@@ -190,10 +197,18 @@ async function searchPlaces(
   input: SearchInput,
   intent: SearchIntent,
 ): Promise<WebSearchReply> {
-  const { value: hits, provider } = await searchWithFallback(configuredProviders(deps), (p) =>
-    p.places(intent.query, input.near),
+  const providers = configuredProviders(deps);
+  const around = await searchWithFallback(providers, (p) => p.places(intent.query, input.near));
+  const cards = valid(around.value.map((hit) => placeCard(hit, around.provider)));
+  if (cards.length > 0 || !input.near) return replyOf(intent, around.provider, cards);
+  // AC-027: a named place far from the household's places ("Bertablock" from Köln) is found
+  // without the centre; this costs a second search only when the first found nothing.
+  const anywhere = await searchWithFallback(providers, (p) => p.places(intent.query));
+  return replyOf(
+    intent,
+    anywhere.provider,
+    valid(anywhere.value.map((hit) => placeCard(hit, anywhere.provider))),
   );
-  return replyOf(intent, provider, valid(hits.map((hit) => placeCard(hit, provider))));
 }
 
 // ---------- Place preview ----------

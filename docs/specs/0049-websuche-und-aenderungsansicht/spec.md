@@ -204,36 +204,54 @@ blob:`); das Foto einer Karte wird bei „Übernehmen“ zum Foto des Eintrags.
 
 Keine Schemaänderung. Neue Edge Function `web-search` (Suche, KI-Schritt für längere Texte,
 Ortsvorschau); neue Function-Secrets `SERPER_API_KEY` und
-`BRAVE_SEARCH_API_KEY` (Namen in `.env.example`). Suchwörter gehen an Serper bzw. Brave, Seitentext,
+`BRAVE_SEARCH_API_KEY` (Namen in `.env.example`). Suchwörter und der Ort-Mittelpunkt des Haushalts (eine Koordinate, Entscheidung 3) gehen an
+Serper bzw. Brave, Seitentext,
 Ortsdaten sowie Küchen und Aktivitätsarten des Haushalts an Azure (wie ADR-0009). Nichts wird
 gespeichert, bevor die Person „Speichern“ tippt.
 
 ## Risiken
 
-| Risiko                                  | Gegenmaßnahme                                                                           | Test                         |
-| --------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------- |
-| SSRF über Treffer-Adressen              | jede Seite und jedes Bild über `fetchPublic` (ADR-0016)                                 | Edge-Tests mit `fetchPublic` |
-| Schlüssel gelangt in App oder Log       | nur Function-Secrets, Logs nur mit Grund und Status, nie Adresse oder Suchwort          | Test „Log ohne Schlüssel“    |
-| Prompt-Injection aus Seite oder Treffer | Treffer und Seitentext als Daten markiert, strenges Schema, nur `select`                | AC-025                       |
-| Prompt-Injection über den Suchtext      | Text als Daten, Antwort nur `query`/`imageWish` (zod, Längen)                           | AC-026, AC-028               |
-| Abgemeldet / fremder Haushalt           | JWT + Mitgliedschaft vor jedem Anbieter-Aufruf                                          | AC-024                       |
-| Anbieter-Antwort fremder Form           | zod je Anbieter, nur https-Adressen ≤ 2048 Zeichen übernommen                           | Edge-Tests                   |
-| Kosten laufen weg                       | höchstens 1 Suche (Serper) + 1 Ausweichsuche, 6 Seiten je Suche; Guthaben beim Anbieter | Vertragstest Grenzen         |
-| Hängender Anbieter                      | 8 s je Anbieter, 6 s je Seite, eine Frist für alles                                     | Edge-Tests mit Zeitgrenze    |
+| Risiko                                  | Gegenmaßnahme                                                                                                                                                                            | Test                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| SSRF über Treffer-Adressen              | jede Seite und jedes Bild über `fetchPublic` (ADR-0016)                                                                                                                                  | Edge-Tests mit `fetchPublic`           |
+| Schlüssel gelangt in App oder Log       | nur Function-Secrets, Logs nur mit Grund und Status, nie Adresse oder Suchwort                                                                                                           | Test „Log ohne Schlüssel“              |
+| Prompt-Injection aus Seite oder Treffer | Treffer und Seitentext als Daten markiert, strenges Schema, nur `select`                                                                                                                 | AC-025                                 |
+| Prompt-Injection über den Suchtext      | Text als Daten, Antwort nur `query`/`imageWish` (zod, Längen)                                                                                                                            | AC-026, AC-028                         |
+| Abgemeldet / fremder Haushalt           | JWT + Mitgliedschaft vor jedem Anbieter-Aufruf                                                                                                                                           | AC-024                                 |
+| Anbieter-Antwort fremder Form           | zod je Anbieter, nur https-Adressen ≤ 2048 Zeichen übernommen                                                                                                                            | Edge-Tests                             |
+| Kosten laufen weg                       | höchstens 1 Suche (Serper) + 1 Ausweichsuche, 6 Seiten je Suche; Guthaben beim Anbieter                                                                                                  | Vertragstest Grenzen                   |
+| Hängender Anbieter                      | 8 s je Anbieter, 6 s je Seite, eine Frist für alles                                                                                                                                      | Edge-Tests mit Zeitgrenze              |
+| Feindliche Rezeptseite legt Suche lahm  | `/security-check` 26.11. (mittel, behoben): Attribut-Regex mit begrenztem Namen, Bildsuche mit Tiefe 3, Parserfehler kostet nur die Karte                                                | Test „long attribute-less meta tags …“ |
+| Kosten pro Zeit unbegrenzt              | `/security-check` 26.11. (mittel, akzeptiert): kein Kontingent wie Spec 0040 Entscheidung 2; nur Mitglieder (Einladung); Grenze ist das Guthaben bei Serper/Brave und das Limit in Azure | Enrico-Todo: Budget-Alarm              |
 
 ## Umsetzung
 
-- [ ] 1. Vertrag in core (`ai-contract.ts`: Anfrage, Treffer, Ortsvorschlag, Fehlercode
-      `search_unavailable`) und Ortshilfen (Suchmittelpunkt, Öffnungszeit heute, Rangfolge)
-      (AC-006, AC-008, AC-011)
-- [ ] 2. Änderungsansicht als reine Funktion in core mit Tests (AC-016 – AC-019, AC-021)
-- [ ] 3. `_shared/web-search.ts` (Serper, Brave, Ausweichweg) und `_shared/page-meta.ts`
+- [x] 1. Vertrag in core (`ai-contract.ts`: Anfrage, Treffer, Suchabsicht, Ortsvorschlag, Fehlercode
+      `search_unavailable`) und Ortshilfen (`web-results.ts`: Suchmittelpunkt, Öffnungszeit heute,
+      Rangfolge, Preis) (AC-006 – AC-008, AC-011)
+- [x] 2. Änderungsansicht als reine Funktionen in core (`proposal-diff.ts`, `recipe-proposal.ts`,
+      `place-proposal.ts`) mit Tests (AC-016 – AC-019, AC-021, AC-029)
+- [x] 3. `_shared/web-search.ts` (Serper, Brave, Ausweichweg) und `_shared/page-meta.ts`
       (JSON-LD-Rezept, og:image) (AC-005 – AC-009, AC-022, AC-023)
-- [ ] 4. Edge Function `web-search` (Suche, Ortsvorschau) (AC-011, AC-012, AC-024, AC-025)
-- [ ] 5. Probe gegen Serper, Brave und Foundry (`tmp/review-0003/0049/`)
-- [ ] 6. api: `webSearchAsync`, `placePreviewAsync`
-- [ ] 7. App: Suchfeld, Karten, Vorschau, Reiter im KI-Fenster, „Im Web suchen“ (AC-001 – AC-015)
-- [ ] 8. App: Änderungsansicht für Rezept, Restaurant, Aktivität (AC-016 – AC-021)
+- [x] 4. Edge Function `web-search` (KI-Schritt, Suche, Ortsvorschau) (AC-011, AC-012, AC-024 –
+      AC-028)
+- [x] 5. Proben gegen Serper, Brave, Foundry und FLUX (`tmp/review-0003/0049/`, `ERGEBNIS.md`)
+- [x] 6. api: `webSearchAsync`, `placePreviewAsync`
+- [x] 7. App: Suchfeld, Karten, Vorschau, Reiter im KI-Fenster, „Im Web suchen“, Fotovorschläge
+      aus Bildwunsch (AC-001 – AC-015, AC-026, AC-030)
+- [x] 8. App: Änderungsansicht für Rezept, Restaurant, Aktivität (AC-016 – AC-021)
 - [ ] 9. Secrets: **Enrico-Todo** `supabase secrets set SERPER_API_KEY=… BRAVE_SEARCH_API_KEY=…` in
       Vorschau und Produktion
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün
+- [x] Nachweis (26.11.): `pnpm format:check && pnpm check && pnpm build:web` grün (Build mit
+      `node scripts/with-env.mjs`). Tests rot → grün: core `web-results`, `proposal-diff`,
+      `recipe-proposal`, `place-proposal`, `web-preview`; edge `page-meta`, `web-search`,
+      `web-search/handler`; api `web-search.backend`, `transport-supabase`; ui Kontrast und
+      `removed`-Farbe. Echte Aufrufe (Handler dieser Worktree unter Node): Rezept-, Restaurant- und
+      Aktivitätssuche, Brave-Ausweichweg (falscher Serper-Schlüssel → Brave, beide falsch → 503),
+      Ortsvorschau, Rezeptvorschau über `ai-recipe-draft`, Bild aus Wunsch (3 Varianten, 9,4 s);
+      Enricos Prompts vorher/nachher in `tmp/review-0003/0049/ERGEBNIS.md`. App auf :8095 mit
+      Playwright (Handy, Desktop): Neu → Rezept → Websuche → Karte → Vorschau → Übernehmen (Seite mit
+      Foto im Bearbeitungsmodus), Lasagne → Mit KI ausfüllen → Ersetzen → Änderungsansicht (↺
+      behalten) → Übernehmen, Restaurant hinzufügen und bearbeiten über „Im Web suchen“.
+      `/security-check`: 0 kritisch/hoch, 3 mittel (2 behoben, 1 akzeptiert, Risiken), 3 Hinweise
+      (Ort-Mittelpunkt jetzt unter Daten).

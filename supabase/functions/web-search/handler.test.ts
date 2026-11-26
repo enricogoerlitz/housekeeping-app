@@ -346,6 +346,22 @@ describe('web-search: places (REQ-002)', () => {
     expect(JSON.parse(String(init?.body)).ll).toBe('@52.515,13.454,11z');
   });
 
+  it('AC-027: nothing around the household → once more without a place (a named place elsewhere)', async () => {
+    let calls = 0;
+    const { deps } = setup({
+      [SERPER_MAPS]: () => {
+        calls += 1;
+        return json({ places: calls === 1 ? [] : [madameHien] });
+      },
+    });
+    const reply = await body(
+      await handler(search('Bertablock', 'activity', { near: { lat: 50.94, lng: 6.96 } }), deps),
+    );
+    expect(reply.results).toHaveLength(1);
+    const bodies = deps.fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies.map((sent) => sent.ll)).toEqual(['@50.94,6.96,11z', undefined]);
+  });
+
   it('at most 5 cards', async () => {
     const many = Array.from({ length: 9 }, (_, index) => ({ ...madameHien, cid: String(index) }));
     const { deps } = setup({ [SERPER_MAPS]: () => json({ places: many }) });
