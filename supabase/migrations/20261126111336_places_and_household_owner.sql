@@ -61,6 +61,11 @@ begin
   if v_uid is null then
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
+
+  -- Locked like remove_member does, so an owner who is just leaving cannot invite at the same
+  -- time as the next owner.
+  perform 1 from public.households h where h.id = p_household_id for update;
+
   if not exists (
     select 1 from public.household_members m
     where m.household_id = p_household_id and m.profile_id = v_uid
