@@ -396,13 +396,13 @@ test.describe('ingredient shopping note (spec 0001 addition)', () => {
       '',
     );
     // Spec 0008: edits sit behind the section's pen; the Zusatz is in the ingredient window.
-    await tid(page, 'recipe-ingredients-edit').click();
+    await tid(page, 'recipe-edit').click();
     await tid(page, `recipe-row-menu-${ingredientId}`).click();
     await tid(page, `recipe-row-menu-${ingredientId}-edit`).click();
     await expect(tid(page, 'ingredient-shopping-note')).toHaveValue('Fior di Latte');
     await tid(page, 'ingredient-shopping-note').fill('Büffelmozzarella');
     await tid(page, 'ingredient-save').click();
-    await tid(page, 'recipe-ingredients-done').click();
+    await tid(page, 'recipe-edit-save').click();
     await expect(tid(page, `ingredient-shopping-note-${ingredientId}`)).toHaveText(
       '(Büffelmozzarella)',
     );

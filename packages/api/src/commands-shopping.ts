@@ -491,6 +491,22 @@ export interface PantryRecipe {
 }
 
 /**
+ * "Für N Personen" in the pantry check (spec 0037, REQ-007): the recipe for `portions`, at least
+ * 1; the portions of each variant follow in the same ratio.
+ */
+export function pantryRecipeFor(recipe: PantryRecipe, portions: number): PantryRecipe {
+  const to = Math.max(1, Math.round(portions));
+  const next: PantryRecipe = { recipeId: recipe.recipeId, portions: to };
+  if (recipe.variants) {
+    next.variants = recipe.variants.map((variant) => ({
+      ...variant,
+      portions: Math.max(1, Math.round((variant.portions * to) / recipe.portions)),
+    }));
+  }
+  return next;
+}
+
+/**
  * What a collection brings for these portions (core collectionContributions, spec 0009, E6): own
  * ingredients with Herkunft "Grillabend", contained ones "Grillabend · Kartoffelsalat", from a
  * plan entry with the day "(Sa)".

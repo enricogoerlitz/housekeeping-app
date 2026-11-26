@@ -17,7 +17,6 @@ import {
 import {
   Button,
   ChoiceChips,
-  EditableSection,
   List,
   ListRow,
   Menu,
@@ -28,15 +27,15 @@ import {
   TextField,
   type ReorderListLabels,
 } from '@housekeeping/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
 import { CollectionRecipesSheet } from '../collection-recipes-sheet';
 import { RecipeCover } from '../recipe-cover';
 
-import { SectionError, useSectionFrame } from './common';
-import type { SectionEditor } from './use-section-editor';
+import { RecipeSection } from './common';
+import type { PageEditor } from './use-page-editor';
 
 type RowAction = 'edit' | 'up' | 'down' | 'remove';
 
@@ -52,29 +51,55 @@ const ROW_LABELS: ReorderListLabels = {
  * "Enthält" on the page of a collection (spec 0009, REQ-003, E13): the contained recipes in their
  * order, "Kartoffelsalat · 6 Port." or with a chosen variant "Grillgemüse · vegan · 8 Port."
  * (AC-016); a tap opens the recipe's page (AC-004), "+ Rezept hinzufügen" the window "Rezepte zu …"
- * (AC-006). The pen edits order, portions and variant per recipe and removes recipes; "Fertig"
- * saves it all as one write (E12), the recipes themselves stay.
+ * (AC-006; in the read view it opens the edit mode first, spec 0037). The edit mode of the page
+ * edits order, portions and variant per recipe and removes recipes; "Speichern" saves them with
+ * the rest of the page (spec 0037, REQ-001), the recipes themselves stay.
  */
 export function ContentsSection(props: {
   collection: Recipe;
   contents: readonly CollectionContent[];
   onOpen: (recipeId: Id) => void;
-  editor: SectionEditor;
+  editor: PageEditor;
 }) {
-  const { editor } = props;
+  const { editor, contents } = props;
   const online = useOnlineOnly();
-  const frame = useSectionFrame(editor, 'contents', 'Enthält');
-  const draft = editor.draft?.section === 'contents' ? editor.draft : undefined;
-  const [picking, setPicking] = useState(false);
+  const draft = editor.draft?.contents;
+  const [pickingHere, setPicking] = useState(false);
+  // "+ Rezept" in the read view opens the edit mode with the window (spec 0037, REQ-001).
+  const { intent, clearIntent, addContents } = editor;
+  const picking = pickingHere || intent?.kind === 'recipes';
+  const closePicking = () => {
+    setPicking(false);
+    if (intent?.kind === 'recipes') clearIntent();
+  };
+  // The window puts the recipes in at once (spec 0009, AC-006): they join the draft as stored rows.
+  const editing = draft !== undefined;
+  useEffect(() => {
+    if (editing) addContents(contents);
+  }, [editing, contents, addContents]);
+  const addButton = (
+    <Button
+      label="Rezept hinzufügen"
+      icon="plus"
+      variant="link"
+      onPress={() => (draft ? setPicking(true) : editor.start({ kind: 'recipes' }))}
+      disabled={online.disabled}
+      hint={online.hint}
+      testID="collection-add-recipes"
+    />
+  );
   return (
-    <EditableSection {...frame} testID="collection-contents">
+    <RecipeSection title="Enthält" testID="collection-contents">
       {draft ? (
-        <ContentsFields
-          collection={props.collection}
-          contents={props.contents}
-          draft={draft}
-          editor={editor}
-        />
+        <Stack gap={12}>
+          <ContentsFields
+            collection={props.collection}
+            contents={props.contents}
+            draft={draft}
+            editor={editor}
+          />
+          {addButton}
+        </Stack>
       ) : (
         <Stack gap={12}>
           {props.contents.length === 0 ? (
@@ -94,21 +119,13 @@ export function ContentsSection(props: {
               ))}
             </List>
           )}
-          <Button
-            label="Rezept hinzufügen"
-            icon="plus"
-            variant="link"
-            onPress={() => setPicking(true)}
-            disabled={online.disabled}
-            hint={online.hint}
-            testID="collection-add-recipes"
-          />
+          {addButton}
         </Stack>
       )}
       {picking ? (
-        <CollectionRecipesSheet collection={props.collection} onClose={() => setPicking(false)} />
+        <CollectionRecipesSheet collection={props.collection} onClose={closePicking} />
       ) : null}
-    </EditableSection>
+    </RecipeSection>
   );
 }
 
@@ -127,7 +144,7 @@ function ContentsFields(props: {
   collection: Recipe;
   contents: readonly CollectionContent[];
   draft: ContentsSectionDraft;
-  editor: SectionEditor;
+  editor: PageEditor;
 }) {
   const { collection, draft, editor } = props;
   const [editingRow, setEditingRow] = useState<Id | undefined>();
@@ -190,7 +207,6 @@ function ContentsFields(props: {
           {removedProblem}
         </Text>
       ) : null}
-      <SectionError editor={editor} testID="collection-contents-error" />
       {shownRow ? (
         <ContentSheet
           collection={collection}

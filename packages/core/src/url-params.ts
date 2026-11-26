@@ -145,11 +145,13 @@ export const PAGE_PARAMS = {
     art: one(oneOf(values(KIND_SLUGS))),
     favoriten: one(Flag),
     ernaehrung: one(oneOf(values(DIET_SLUGS))),
-    dauer: one(oneOf(['15', '30', '60'])),
+    dauer: one(oneOf(['15', '30', '60', '120'])),
     'fuer-alle': one(Flag),
     selten: one(Flag),
     gang: many(oneOf(values(COURSE_SLUGS))),
     kueche: many(Text),
+    /** Tag keys, all of them must fit (spec 0037, REQ-006). */
+    schlagwort: many(Text),
     bewertung: one(oneOf(['4', '4.5'])),
     preis: many(oneOf(['1', '2', '3', '4'])),
     sortierung: one(oneOf([...values(RECIPE_SORT_SLUGS), ...RESTAURANT_SORT_SLUGS])),
@@ -402,6 +404,7 @@ export function recipeListFromParams(
     rare: values.selten === '1',
     courses: (values.gang ?? []).map((slug) => COURSE_OF[slug]),
     cuisines: values.kueche ?? [],
+    tags: values.schlagwort ?? [],
   };
   if (values.art) filter.kind = KIND_OF[values.art];
   if (values.ernaehrung) filter.diet = DIET_OF[values.ernaehrung];
@@ -418,11 +421,14 @@ export function recipeListToParams(state: RecipeListAddressState): PageParams<'r
     art: filter.kind ? KIND_SLUGS[filter.kind] : undefined,
     favoriten: filter.favorites ? '1' : undefined,
     ernaehrung: filter.diet ? DIET_SLUGS[filter.diet] : undefined,
-    dauer: filter.maxMinutes ? (String(filter.maxMinutes) as '15' | '30' | '60') : undefined,
+    dauer: filter.maxMinutes
+      ? (String(filter.maxMinutes) as '15' | '30' | '60' | '120')
+      : undefined,
     'fuer-alle': filter.fitsAll ? '1' : undefined,
     selten: filter.rare ? '1' : undefined,
     gang: filter.courses.map((course) => COURSE_SLUGS[course]),
     kueche: [...filter.cuisines],
+    schlagwort: [...filter.tags],
     bewertung: filter.minRating ? (String(filter.minRating) as '4' | '4.5') : undefined,
     sortierung: state.sort === DEFAULT_RECIPE_SORT ? undefined : RECIPE_SORT_SLUGS[state.sort],
   };
@@ -458,6 +464,7 @@ export function restaurantListFromParams(
     ...EMPTY_RESTAURANT_LIST_FILTER,
     favorites: values.favoriten === '1',
     cuisines: values.kueche ?? [],
+    tags: values.schlagwort ?? [],
     priceLevels: (values.preis ?? []).map((level) => Number(level) as PriceLevel),
   };
   if (values.bewertung) filter.minRating = Number(values.bewertung) as MinRating;
@@ -478,6 +485,7 @@ export function restaurantListToParams(state: RestaurantListAddressState): PageP
     suche: state.query.trim() === '' ? undefined : state.query,
     favoriten: filter.favorites ? '1' : undefined,
     kueche: [...filter.cuisines],
+    schlagwort: [...filter.tags],
     bewertung: filter.minRating ? (String(filter.minRating) as '4' | '4.5') : undefined,
     preis: filter.priceLevels.map((level) => String(level) as '1' | '2' | '3' | '4'),
     sortierung:
@@ -496,6 +504,7 @@ export const FOOD_LIST_CLEARED: PageParams<'rezepte'> = {
   selten: undefined,
   gang: undefined,
   kueche: undefined,
+  schlagwort: undefined,
   bewertung: undefined,
   preis: undefined,
   sortierung: undefined,

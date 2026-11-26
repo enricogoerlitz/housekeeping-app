@@ -1,5 +1,6 @@
 import {
   cuisineKey,
+  hasAllTags,
   minRatingLabel,
   orderByShuffle,
   type CuisineFacet,
@@ -24,6 +25,8 @@ export interface RestaurantListFilter {
   cuisines: string[];
   /** One of them must fit. */
   priceLevels: PriceLevel[];
+  /** Tag keys (tagKey); all of them must fit (spec 0037, REQ-006). */
+  tags: string[];
   /** The own rating from this value on. */
   minRating?: MinRating;
 }
@@ -32,6 +35,7 @@ export const EMPTY_RESTAURANT_LIST_FILTER: RestaurantListFilter = {
   favorites: false,
   cuisines: [],
   priceLevels: [],
+  tags: [],
 };
 
 /**
@@ -56,6 +60,7 @@ export function restaurantFilterCount(filter: RestaurantListFilter): number {
     Number(filter.favorites) +
     filter.cuisines.length +
     filter.priceLevels.length +
+    filter.tags.length +
     Number(filter.minRating !== undefined)
   );
 }
@@ -63,12 +68,14 @@ export function restaurantFilterCount(filter: RestaurantListFilter): number {
 export type RestaurantFilterChip =
   | { kind: 'cuisine'; value: string; label: string }
   | { kind: 'price'; value: PriceLevel; label: string }
+  | { kind: 'tag'; value: string; label: string }
   | { kind: 'rating'; value: MinRating; label: string };
 
-/** Active values without a quick chip, with ✕: Küche, Preisniveau ("€€"), Bewertung. */
+/** Active values without a quick chip, with ✕: Küche, Preisniveau ("€€"), Schlagworte, Bewertung. */
 export function restaurantFilterChips(
   filter: RestaurantListFilter,
   facets: readonly CuisineFacet[],
+  tags: readonly CuisineFacet[] = [],
 ): RestaurantFilterChip[] {
   const chips: RestaurantFilterChip[] = [
     ...filter.cuisines.map((value): RestaurantFilterChip => ({
@@ -80,6 +87,11 @@ export function restaurantFilterChips(
       kind: 'price',
       value,
       label: priceLabel(value),
+    })),
+    ...filter.tags.map((value): RestaurantFilterChip => ({
+      kind: 'tag',
+      value,
+      label: tags.find((facet) => facet.key === value)?.label ?? value,
     })),
   ];
   if (filter.minRating !== undefined) {
@@ -101,6 +113,8 @@ export function removeRestaurantFilterChip(
       return { ...filter, cuisines: filter.cuisines.filter((value) => value !== chip.value) };
     case 'price':
       return { ...filter, priceLevels: filter.priceLevels.filter((value) => value !== chip.value) };
+    case 'tag':
+      return { ...filter, tags: filter.tags.filter((value) => value !== chip.value) };
     case 'rating':
       return { ...filter, minRating: undefined };
   }
@@ -123,6 +137,7 @@ export function applyRestaurantListFilter(
     ) {
       return false;
     }
+    if (!hasAllTags(restaurant.tags, filter.tags)) return false;
     if (minRating !== undefined && (restaurant.ratings[me] ?? 0) < minRating) return false;
     return true;
   });

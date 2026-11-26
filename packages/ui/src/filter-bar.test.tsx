@@ -115,7 +115,7 @@ describe('FilterBar (spec 0005, REQ-007)', () => {
 });
 
 describe('FilterSection (spec 0036, REQ-003)', () => {
-  it('AC-005: never wider than the panel, so its chips wrap inside it', () => {
+  it('AC-005: never wider than the panel, so its chips wrap inside it; never squeezed in a column (spec 0037)', () => {
     render(
       <FilterSection title="Küche" testID="part">
         <Text>Vietnamesisch 1</Text>
@@ -124,7 +124,7 @@ describe('FilterSection (spec 0036, REQ-003)', () => {
     const part = screen.getByTestId('part');
     expect(part.textContent).toContain('Küche');
     expect(getComputedStyle(part).maxWidth).toBe('100%');
-    expect(getComputedStyle(part).flexShrink).toBe('1');
+    expect(getComputedStyle(part).flexShrink).toBe('0');
     const chips = part.lastElementChild as HTMLElement;
     expect(getComputedStyle(chips).flexWrap).toBe('wrap');
   });

@@ -71,6 +71,8 @@ export interface ConfirmRequest {
   message?: string;
   /** "Löschen", "Entfernen" */
   confirmLabel: string;
+  /** "Abbrechen" unless given, e.g. "Weiter bearbeiten" (spec 0037, AC-005). */
+  cancelLabel?: string;
   /** Default true: offline the confirm button is greyed out with the hint. */
   needsNetwork?: boolean;
   /** Runs on the confirm button; a returned hint keeps the window open. */
@@ -105,6 +107,7 @@ export function ConfirmHost() {
       title={request.title}
       message={request.message}
       confirmLabel={request.confirmLabel}
+      cancelLabel={request.cancelLabel}
       needsNetwork={request.needsNetwork}
       onConfirm={() => {
         const hint = request.onConfirm();

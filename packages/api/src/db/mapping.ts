@@ -9,6 +9,8 @@
 //   undefined.
 // - A removed member (`done_by` / `author_id` null) becomes '' in the domain and null again.
 // - `name_key` / `synonym_keys` (articles, activities) are always recomputed with `normalizeText`.
+// - Spec 0037: `updated_at` of a recipe is `Recipe.updatedAt`, written back only to keep the local
+//   view (NEVER_SENT_COLUMNS: a diff never sends it).
 // - Columns the domain does not have are not written back: `updated_at`, `check_seq`,
 //   `profiles.email`, and `created_at` of tables whose domain type has no `createdAt`.
 // - Spec 0011: `updated_at` of a rating row is `ratedAt` of that member (and is written back only
@@ -178,6 +180,7 @@ function recipeRows(householdId: string, recipe: Recipe): HouseholdRows {
         cooked_count: recipe.cookedCount,
         links: json(recipe.links),
         ...(recipe.createdAt ? { created_at: recipe.createdAt } : {}),
+        ...(recipe.updatedAt ? { updated_at: recipe.updatedAt } : {}),
       } satisfies Cached<'recipes'>,
     ],
     recipe_favorites: memberRows(householdId, 'recipe_id', recipe.id, recipe.favoriteOf),
@@ -707,6 +710,7 @@ function toRecipe(row: Row, favorites: Row[], ratings: Row[]): Recipe {
     lastCookedOn: opt(r.last_cooked_on),
     cookedCount: r.cooked_count ?? 0,
     createdAt: r.created_at ?? '',
+    updatedAt: opt(r.updated_at),
     links: (r.links ?? []) as unknown as Recipe['links'],
   };
 }

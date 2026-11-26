@@ -87,7 +87,6 @@ export {
   type SidebarGroup,
 } from './shell';
 export { columnsFor } from './grid-columns';
-export { EditableSection, type EditableSectionProps } from './editable-section';
 export { Disclosure } from './disclosure';
 export { expandableA11y } from './expandable';
 export { PhotoCollage } from './display';

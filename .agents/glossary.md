@@ -219,7 +219,7 @@ Anfang gestern bis heute + 5 („heutiger Abschnitt“). Die Leiste springt um g
 
 - **Im Code:** kein eigener Typ
 - **Nicht verwenden:** Woche (für diesen Zeitraum), Seite
-- **Abgrenzung:** Nicht der _Abschnitt der Rezeptseite_ und nicht die Gruppen der Seiten „Heute
+- **Abgrenzung:** Nicht der _Bearbeitungsmodus_ der Rezeptseite und nicht die Gruppen der Seiten „Heute
   geplant“, „Noch offen“ usw.
 
 ### Kochbeginn
@@ -527,17 +527,21 @@ an die Standardvariante ab (Spec 0008).
   (`{ variantId, portions }`)
 - **Nicht verwenden:** Version, Abwandlung, Option
 
-### Abschnitt der Rezeptseite
+### Bearbeitungsmodus
 
-Ein Block der Rezeptseite, der für sich bearbeitet und gespeichert wird: Kopf, Einordnung, Zutaten,
-Zubereitung, Notizen. Höchstens einer ist zugleich offen; „Fertig“, ein anderer Stift oder das
-Verlassen der Seite speichert ihn und schickt nur seine Felder (Spec 0008, REQ-007).
+Der Zustand der Rezept- oder Sammlungsseite, in dem alle Blöcke (Kopf, Einordnung, Zutaten,
+Zubereitung, Notizen, Links, bei Sammlungen „Enthält“) zugleich bearbeitet werden. Der Stift oben
+rechts öffnet ihn, „Speichern“ sichert alle geänderten Blöcke in einem Schritt, „Abbrechen“ fragt
+„Änderungen verwerfen?“. Im Lesemodus hat die Seite keine Stifte in den Blöcken (Spec 0037,
+REQ-001; ersetzt den „Abschnitt der Rezeptseite“ aus Spec 0008, REQ-007).
 
-- **Im Code:** `RecipeSection` (`'head' | 'classification' | 'ingredients' | 'steps' | 'notes'`),
-  Entwurf `RecipeSectionDraft`, in der App `useSectionEditor`, Baustein `EditableSection`
-- **Nicht verwenden:** Karte, Bereich (ist der Gang im Markt), Formular
+- **Im Code:** `PageDraft`, `pageEditorReducer` (`packages/core`, `page-editor.ts`), Block-Entwurf
+  `RecipeSectionDraft` mit `RecipeSection`, Speichern `saveRecipePage` / `save_recipe_page`, in
+  der App `usePageEditor`
+- **Nicht verwenden:** Abschnitt der Rezeptseite, Formular, Editiermodus
 - **Abgrenzung:** Die Abschnitte der _Packliste_ (`packingSections`) und „Heute geplant“ auf der
-  _Übersicht_ sind Gruppen zum Lesen, keine Abschnitte der Rezeptseite.
+  _Übersicht_ sind Gruppen zum Lesen. Ein Fenster („Neue Zutat“) im Bearbeitungsmodus speichert
+  nichts selbst.
 
 ### Gerichtart
 

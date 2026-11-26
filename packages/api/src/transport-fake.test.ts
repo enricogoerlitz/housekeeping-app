@@ -2369,8 +2369,13 @@ describe('fake server: collections (spec 0009, like the database after T1)', () 
         { kind: 'insert', table: 'recipes', row: { id: 'c-x', kind: 'collection', title: 'X' } },
       ]),
     ).rejects.toMatchObject({ kind: 'permanent', code: '23514' });
+    // Spec 0037, AC-016: a collection has a time.
+    await expect(
+      apply([
+        { kind: 'insert', table: 'recipes', row: collection('c-zeit', { total_minutes: 90 }) },
+      ]),
+    ).resolves.toMatchObject({ applied: 1 });
     for (const field of [
-      { total_minutes: 30 },
       { cuisine: 'Italienisch' },
       { tags: ['grill'] },
       { variants: [{ id: 'v', name: 'v', isDefault: true }] },

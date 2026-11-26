@@ -436,12 +436,13 @@ describe('Sammlungen in "Essen → Rezepte" (spec 0009, REQ-006)', () => {
     ]);
   });
 
-  it('AC-019: "< 30 Min" and a cuisine never match a collection', () => {
+  it('AC-019: "< 30 Min" never matches a collection without time; a cuisine none of its recipes has neither', () => {
     expect(shown(toggleQuickFilter(EMPTY_RECIPE_LIST_FILTER, 'fast'))).not.toContain('Grillabend');
     expect(shown({ ...EMPTY_RECIPE_LIST_FILTER, cuisines: ['italienisch'] })).not.toContain(
       'Grillabend',
     );
-    expect(shown({ ...EMPTY_RECIPE_LIST_FILTER, courses: ['main'] })).not.toContain('Grillabend');
+    // Spec 0037, AC-015: a contained main course makes the collection one.
+    expect(shown({ ...EMPTY_RECIPE_LIST_FILTER, courses: ['main'] })).toContain('Grillabend');
   });
 
   it('AC-020: "Vegetarisch" shows "Mezze-Abend", not "Grillabend"; "Vegan" neither', () => {
