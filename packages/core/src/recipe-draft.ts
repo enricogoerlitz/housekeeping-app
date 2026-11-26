@@ -128,7 +128,11 @@ export function insertAtCursor(
 /** The prefilled prompt of the tab "KI" (REQ-004): the title, for a recipe with main ingredients. */
 export function defaultImagePrompt(title: string, mainIngredients: readonly string[]): string {
   const names = mainIngredients.slice(0, MAIN_INGREDIENTS_IN_PROMPT);
-  return names.length === 0 ? title : `${title} mit ${names.join(', ')}`;
+  if (names.length === 0) return title;
+  // "Apfelkuchen mit Streuseln mit Butter" reads badly: a second "mit" becomes a comma.
+  return /\smit\s/i.test(title)
+    ? `${title}, ${names.join(', ')}`
+    : `${title} mit ${names.join(', ')}`;
 }
 
 /** The main ingredients of a recipe for its image prompt: base rows without Vorrat, in order. */

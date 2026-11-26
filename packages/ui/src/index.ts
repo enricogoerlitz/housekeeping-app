@@ -14,6 +14,7 @@ export {
   Stars,
   TextField,
   keyboardFocusRing,
+  type TextFieldProps,
 } from './controls';
 export { Section, GroupLabel, List, ListRow, CheckRow, GhostRow } from './lists';
 export {

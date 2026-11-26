@@ -17,7 +17,7 @@ import { requireMember } from '../_shared/membership.ts';
 import type { z } from 'zod';
 
 /** "Aus diesem Foto" sends the photo in the body (Entscheidung 4). */
-export const MAX_IMAGE_BODY_BYTES = 6 * 1024 * 1024;
+const MAX_IMAGE_BODY_BYTES = 6 * 1024 * 1024;
 
 // Recipes, restaurants and activities share the window, so the look is photographic, not food only.
 const STYLE =
@@ -39,10 +39,49 @@ const STYLE_PHRASES: { [style in ImageStyle]: string } = {
   bright: 'Bright, airy, high-key light.',
 };
 
-export function imagePrompt(input: z.infer<typeof AiImageRequestSchema>): string {
+function imagePrompt(input: z.infer<typeof AiImageRequestSchema>): string {
   const styles = (input.styles ?? []).map((style) => STYLE_PHRASES[style]).join(' ');
   const subject = input.image ? `${EDIT} ${input.prompt}.` : `Subject: ${input.prompt}.`;
   return [subject, styles, STYLE].filter(Boolean).join(' ');
+}
+
+/** AC-012: the answer comes after 30 s at the latest once at least one variant is there. */
+const ANSWER_BY_MS = 30_000;
+
+/**
+ * Every call settled, or — when at least one variant is ready — as many as are settled after
+ * ANSWER_BY_MS (the rest count as failed, AC-014). A single call still has its own 45 s
+ * (Entscheidung 4), so without any variant the answer waits for them.
+ */
+async function settledOrEnough<T>(
+  calls: Promise<T>[],
+): Promise<(PromiseSettledResult<T> | undefined)[]> {
+  const results: (PromiseSettledResult<T> | undefined)[] = calls.map(() => undefined);
+  const started = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const enough = new Promise<void>((resolve) => {
+    const firstSuccess = () => {
+      if (timer !== undefined) return;
+      timer = setTimeout(resolve, Math.max(0, ANSWER_BY_MS - (Date.now() - started)));
+    };
+    calls.forEach((call, index) =>
+      call.then(
+        (value) => {
+          results[index] = { status: 'fulfilled', value };
+          firstSuccess();
+        },
+        (reason: unknown) => {
+          results[index] = { status: 'rejected', reason };
+        },
+      ),
+    );
+  });
+  try {
+    await Promise.race([Promise.allSettled(calls), enough]);
+  } finally {
+    clearTimeout(timer);
+  }
+  return results;
 }
 
 async function variants(
@@ -51,15 +90,16 @@ async function variants(
 ): Promise<AiImageReply> {
   const prompt = imagePrompt(input);
   const image = input.image?.slice(input.image.indexOf(',') + 1);
-  const settled = await Promise.allSettled(
-    Array.from({ length: IMAGE_VARIANTS }, () =>
-      callFlux(deps, image === undefined ? { prompt } : { prompt, image }),
-    ),
+  const calls = Array.from({ length: IMAGE_VARIANTS }, () =>
+    callFlux(deps, image === undefined ? { prompt } : { prompt, image }),
   );
-  const images = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+  const settled = await settledOrEnough(calls);
+  const images = settled.flatMap((result) =>
+    result?.status === 'fulfilled' ? [result.value] : [],
+  );
   // A missing setting is a configuration error (500), not an unavailable model.
   const config = settled.find(
-    (result) => result.status === 'rejected' && !(result.reason instanceof HttpError),
+    (result) => result?.status === 'rejected' && !(result.reason instanceof HttpError),
   );
   if (images.length === 0) {
     if (config?.status === 'rejected') throw config.reason;

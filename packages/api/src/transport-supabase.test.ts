@@ -954,3 +954,72 @@ describe('supabase transport: photo storage (spec 0004)', () => {
     expect(stored.map((entry) => entry.op)).toEqual(['upload', 'remove', 'upload']);
   });
 });
+
+describe('supabase transport: ai-recipe-draft and ai-image (spec 0040)', () => {
+  const draftReply = {
+    draft: {
+      title: 'Apfelkuchen',
+      servings: 4,
+      course: 'dessert',
+      tags: [],
+      ingredients: [{ name: 'Mehl', amount: '250 g' }],
+      steps: ['Backen'],
+    },
+    sources: [],
+  };
+
+  it('AC-001, AC-012: the replies are checked against the core contract', async () => {
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: draftReply, error: null },
+        { data: { draft: { ...draftReply.draft, commands: [] }, sources: [] }, error: null },
+        { data: { images: ['/9j/4AAQ'], failed: 2 }, error: null },
+        { data: { images: [], failed: 3 }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const draftRequest = { householdId: 'h1', text: 'Apfelkuchen' };
+    await expect(transport.aiRecipeDraft(draftRequest)).resolves.toEqual(draftReply);
+    await expect(transport.aiRecipeDraft(draftRequest)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    const imageRequest = { householdId: 'h1', prompt: 'Apfelkuchen' };
+    await expect(transport.aiImage(imageRequest)).resolves.toEqual({
+      images: ['/9j/4AAQ'],
+      failed: 2,
+    });
+    await expect(transport.aiImage(imageRequest)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(invoked.map((call) => call.name)).toEqual([
+      'ai-recipe-draft',
+      'ai-recipe-draft',
+      'ai-image',
+      'ai-image',
+    ]);
+  });
+
+  it('AC-005: the draft waits longer than other calls (the server allows the model 60 s)', async () => {
+    vi.useFakeTimers();
+    const { client } = stubClient([]);
+    client.functions.invoke = () => new Promise(() => {});
+    const transport = createSupabaseTransport(client, { timeoutMs: 1000 });
+    let settled = false;
+    const draft = transport
+      .aiRecipeDraft({ householdId: 'h1', text: 'Kuchen' })
+      .catch((error: unknown) => error)
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(await draft).toMatchObject({ kind: 'transient', code: 'timeout' });
+    const image = transport
+      .aiImage({ householdId: 'h1', prompt: 'Kuchen' })
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(55_000);
+    expect(await image).toMatchObject({ code: 'timeout' });
+  });
+});

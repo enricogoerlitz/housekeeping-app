@@ -86,6 +86,34 @@ describe('ai-image (spec 0040, REQ-004)', () => {
     expect(body.images).toHaveLength(2);
   });
 
+  it('AC-012, AC-014: a variant that hangs does not hold back the others beyond 30 s', async () => {
+    vi.useFakeTimers();
+    let call = 0;
+    const deps = fakeDeps({
+      env: ENV,
+      client: fakeClient({ tables: householdTables() }),
+      fetch: (_input, init) => {
+        call += 1;
+        if (call !== 2) return Promise.resolve(fluxReply(`/9j/AAA${call}`));
+        return new Promise((_, reject) =>
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+        );
+      },
+    });
+    let settled = false;
+    const pending = handler(post({ householdId: HOUSEHOLD_ID, prompt: 'Pasta' }), deps).finally(
+      () => {
+        settled = true;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ images: ['/9j/AAA1', '/9j/AAA3'], failed: 1 });
+  });
+
   it('AC-014: when every variant fails it is 503 ai_unavailable', async () => {
     const { deps } = setup([() => new Response('bad', { status: 400 })]);
     const response = await handler(post({ householdId: HOUSEHOLD_ID, prompt: 'Pasta' }), deps);

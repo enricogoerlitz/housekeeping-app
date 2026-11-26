@@ -1,4 +1,5 @@
 import {
+  createRecipeFromPage,
   OfflineError,
   saveRecipePage,
   setRecipePhoto,
@@ -39,6 +40,7 @@ import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 
+import { dismissPhotoSuggestions, forgetUnsavedRecipe, takeAiDraft } from '../ai-draft';
 import { takeHandedOverRows } from './ingredient-handover';
 
 // The edit mode of the recipe and collection page (spec 0037, REQ-001): the pen at the top opens
@@ -81,7 +83,12 @@ export interface PageEditor {
    * without saving (core fillPageDraft); the photo is saved after "Speichern" through the usual
    * photo path. The person checks it and saves or discards it.
    */
-  load: (input: PageDraftInput, photo?: Blob) => void;
+  load: (input: PageDraftInput, photo?: Blob, options?: { replace?: boolean }) => void;
+  /** The photo "Speichern" will set (a chosen AI suggestion, spec 0040 AC-010); none = keep. */
+  chosenPhoto: Blob | undefined;
+  choosePhoto: (photo: Blob | undefined) => void;
+  /** The recipe exists only as this draft (spec 0040, AC-001): "Speichern" creates it. */
+  unsaved: boolean;
   /** The message for a field after a failed "Speichern" ("Titel fehlt"). */
   problem: (field: OpenDraftProblem['field'], key?: string) => string | undefined;
 }
@@ -100,13 +107,27 @@ function asked(onDiscard: () => void): void {
   });
 }
 
-export function usePageEditor(recipe: Recipe): PageEditor {
+export function usePageEditor(
+  recipe: Recipe,
+  options: {
+    /** Spec 0040, AC-001: the recipe is not stored yet ("Neu → Mit KI ausfüllen"). */
+    unsaved?: boolean;
+    /** Leaves the page after "Verwerfen" of an unsaved recipe: there is nothing to show. */
+    onDiscard?: () => void;
+  } = {},
+): PageEditor {
   const recipeId = recipe.id;
+  const unsaved = options.unsaved === true;
   // Empty for a recipe; "Enthält" of a collection.
   const contents = useCollectionContents(recipeId);
   const [state, dispatch] = useReducer(pageEditorReducer, {});
   const [intent, setIntent] = useState<EditIntent>();
   const photo = useRef<Blob | undefined>(undefined);
+  const [chosenPhoto, setChosenPhoto] = useState<Blob>();
+  const choosePhoto = useCallback((next: Blob | undefined) => {
+    photo.current = next;
+    setChosenPhoto(next);
+  }, []);
   // What the save's answer reopens with when rows stay open; synced after each commit.
   const latest = useRef({ recipe, contents });
   useLayoutEffect(() => {
@@ -123,9 +144,19 @@ export function usePageEditor(recipe: Recipe): PageEditor {
   const changed = state.draft !== undefined && pageDraftChanged(state.draft);
   const close = useCallback(() => {
     photo.current = undefined;
+    setChosenPhoto(undefined);
     setIntent(undefined);
+    dismissPhotoSuggestions(recipeId);
     dispatch({ type: 'close' });
-  }, []);
+  }, [recipeId]);
+  const onDiscard = options.onDiscard;
+  // "Verwerfen" of a recipe that was never saved: it is gone, and so is its page.
+  const discard = useCallback(() => {
+    close();
+    if (!unsaved) return;
+    forgetUnsavedRecipe(recipeId);
+    onDiscard?.();
+  }, [close, unsaved, recipeId, onDiscard]);
 
   const start = useCallback(
     (next?: EditIntent) => {
@@ -137,22 +168,24 @@ export function usePageEditor(recipe: Recipe): PageEditor {
 
   const cancel = useCallback(() => {
     if (!state.draft || state.saving) return;
-    if (changed) asked(close);
-    else close();
-  }, [state.draft, state.saving, changed, close]);
+    if (changed) asked(discard);
+    else discard();
+  }, [state.draft, state.saving, changed, discard]);
 
   const guard = useCallback(
     (leave: () => void) => {
       if (!state.draft || !changed) {
+        if (unsaved) forgetUnsavedRecipe(recipeId);
         leave();
         return;
       }
       asked(() => {
         close();
+        if (unsaved) forgetUnsavedRecipe(recipeId);
         leave();
       });
     },
-    [state.draft, changed, close],
+    [state.draft, changed, close, unsaved, recipeId],
   );
 
   const save = () => {
@@ -178,6 +211,33 @@ export function usePageEditor(recipe: Recipe): PageEditor {
         }),
       });
       dispatch({ type: 'failed', error: WRITE_REJECTED_MESSAGE });
+      return;
+    }
+    if (unsaved) {
+      // Spec 0040, AC-001: only now the recipe comes into being, with every section in one step.
+      let created: ReturnType<typeof createRecipeFromPage>;
+      try {
+        created = createRecipeFromPage(draft);
+      } catch (error) {
+        dispatch({
+          type: 'failed',
+          error:
+            error instanceof OfflineError ? OFFLINE_EDIT_HINT : errorMessage(error, FAILED_MESSAGE),
+        });
+        return;
+      }
+      const pendingPhoto = photo.current;
+      forgetUnsavedRecipe(recipeId);
+      if (pendingPhoto) void setRecipePhoto(recipeId, pendingPhoto).catch(() => {});
+      close();
+      if (created.open.length > 0) {
+        const next = pageDraft(latest.current.recipe, latest.current.contents);
+        dispatch({
+          type: 'open',
+          draft: withSection(next, addIngredientRows(next.ingredients, created.open)),
+        });
+      }
+      toast.show({ message: 'Gespeichert' });
       return;
     }
     let result: ReturnType<typeof saveRecipePage>;
@@ -227,6 +287,16 @@ export function usePageEditor(recipe: Recipe): PageEditor {
   // "Neues Rezept" with orange rows: the edit mode opens with them. Taken after the commit, so a
   // render thrown away during the navigation cannot use them up (spec 0018, E-01).
   const openHandedOverRows = useEffectEvent(() => {
+    // "Neu → Mit KI ausfüllen" (spec 0040): the edit mode opens with the AI's draft.
+    const handed = takeAiDraft(recipeId);
+    if (handed) {
+      if (handed.photo) photo.current = handed.photo;
+      dispatch({
+        type: 'open',
+        draft: fillPageDraft(pageDraft(recipe, contents), handed.input, newId),
+      });
+      return;
+    }
     const rows = takeHandedOverRows(recipeId);
     if (!rows) return;
     const draft = pageDraft(recipe, contents);
@@ -295,11 +365,17 @@ export function usePageEditor(recipe: Recipe): PageEditor {
     cancel,
     guard,
     addContents,
-    load: (input, newPhoto) => {
+    load: (input, newPhoto, loadOptions) => {
       const base = state.draft ?? pageDraft(recipe, contents);
-      if (newPhoto) photo.current = newPhoto;
-      dispatch({ type: 'open', draft: fillPageDraft(base, input, newId) });
+      if (newPhoto) choosePhoto(newPhoto);
+      dispatch({
+        type: 'open',
+        draft: fillPageDraft(base, input, newId, { replace: loadOptions?.replace === true }),
+      });
     },
+    chosenPhoto,
+    choosePhoto,
+    unsaved,
     problem: (field, key) =>
       problems.find((problem) => problem.field === field && problem.key === key)?.message,
   };

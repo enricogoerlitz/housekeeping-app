@@ -21,7 +21,7 @@ import { isTikTokHost, readTikTok } from '../_shared/tiktok.ts';
 import type { z } from 'zod';
 
 /** Photos travel in the body (Entscheidung 4): 6 MB instead of 64 KB, nothing goes to the bucket. */
-export const MAX_DRAFT_BODY_BYTES = 6 * 1024 * 1024;
+const MAX_DRAFT_BODY_BYTES = 6 * 1024 * 1024;
 const PAGE_MAX_BYTES = 2 * 1024 * 1024;
 const PAGE_TIMEOUT_MS = 10_000;
 const PAGE_REDIRECTS = 3;

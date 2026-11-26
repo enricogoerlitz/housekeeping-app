@@ -12,6 +12,7 @@ import {
   NEW_ENTRY_KINDS,
   newEntryTakesIngredients,
   newEntryTitleProblem,
+  newRecipe,
   searchRecipes,
   sortRecipes,
   type Id,
@@ -34,8 +35,11 @@ import { View } from 'react-native';
 
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
+import { handOverNewRecipe, startPhotoSuggestions } from './ai-draft';
+import { AiFillFields, toastUnreadLinks, useAiFill, useDraftInput } from './ai-fill';
 import { NewRecipeFields } from './recipe-form';
 import { handOverIngredientRows, rowsFromText } from './sections/ingredient-handover';
 
@@ -48,16 +52,17 @@ export interface NewRecipeSheetProps {
   onCreated: (recipeId: Id) => void;
 }
 
-/** What the window "Neu" has opened besides the title (spec 0037, REQ-002). */
-type Extra = 'photo' | 'ingredients' | 'recipes';
+/** What the window "Neu" has opened besides the title (spec 0037, REQ-002; "ai": spec 0040). */
+type Extra = 'photo' | 'ingredients' | 'recipes' | 'ai';
 
 /**
  * The window "Neu" (spec 0009, E16): the choice chips "Rezept · Sammlung" and a title are enough
  * (AC-001 to AC-003; spec 0037, AC-008). Opened on demand (spec 0037, REQ-002): a photo, for a
  * recipe "Zutaten einfügen" (spec 0008, AC-021, AC-022: the pasted lines with an article are saved
  * with the new recipe, spec 0018, REQ-001; its page opens the edit mode with the rest orange) and
- * for a collection "Rezepte wählen" (AC-009, saved with it in one step). "Mit KI ausfüllen" joins
- * them with spec 0040.
+ * for a collection "Rezepte wählen" (AC-009, saved with it in one step). "Mit KI ausfüllen" (spec
+ * 0040, AC-001) turns the primary action into "Ausfüllen": the recipe page opens in the edit mode
+ * with the AI's draft, and nothing is saved before its "Speichern".
  */
 export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const online = useOnlineOnly();
@@ -70,6 +75,8 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const [photo, setPhoto] = useState<Blob | undefined>();
   const [extras, setExtras] = useState<ReadonlySet<Extra>>(() => new Set());
   const [error, setError] = useState<string | undefined>(undefined);
+  const fill = useAiFill();
+  const draftInput = useDraftInput();
   // Every opening starts with the kind chosen in "+" (state adjusted while rendering).
   const [shown, setShown] = useState(props.visible);
   if (props.visible !== shown) {
@@ -84,11 +91,48 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     setPhoto(undefined);
     setExtras(new Set());
     setError(undefined);
+    fill.reset();
     props.onClose();
   };
 
   const takesIngredients = newEntryTakesIngredients(kind);
   const open = (extra: Extra) => setExtras((current) => new Set(current).add(extra));
+  const withAi = features.aiRecipes && kind === 'recipe' && extras.has('ai');
+
+  // AC-001: the draft opens on the recipe page in the edit mode; the recipe exists only there
+  // until "Speichern". A typed title, pasted ingredients and a chosen photo go along.
+  const fillWithAi = () => {
+    if (fill.busy || (!fill.ready && title.trim() === '')) return;
+    const typed = [
+      title.trim() ? `Titel: ${title.trim()}` : '',
+      ingredients.trim() ? `Zutaten:\n${ingredients.trim()}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const chosenPhoto = photo;
+    void fill.run(typed).then((reply) => {
+      if (!reply) return;
+      const input = draftInput(reply);
+      if (title.trim()) input.title = title.trim();
+      const recipe = newRecipe({
+        id: crypto.randomUUID(),
+        kind: 'recipe',
+        title: input.title ?? reply.draft.title,
+        servings: reply.draft.servings,
+        createdAt: new Date().toISOString(),
+      });
+      handOverNewRecipe(recipe, input, chosenPhoto);
+      if (fill.generatePhoto && reply.draft.imagePrompt) {
+        startPhotoSuggestions(recipe.id, {
+          prompt: reply.draft.imagePrompt,
+          coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
+        });
+      }
+      close();
+      props.onCreated(recipe.id);
+      toastUnreadLinks(reply.sources);
+    });
+  };
   const save = () => {
     const problem = newEntryTitleProblem(title);
     if (problem) {
@@ -130,14 +174,23 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       testID="new-recipe-sheet"
       size="m"
       actions={{
-        primary: {
-          label: 'Anlegen',
-          icon: 'check',
-          onPress: save,
-          disabled: online.disabled,
-          hint: online.hint,
-          testID: 'new-recipe-save',
-        },
+        primary: withAi
+          ? {
+              label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
+              icon: 'sparkles',
+              onPress: fillWithAi,
+              disabled: online.disabled || fill.busy || (!fill.ready && title.trim() === ''),
+              hint: online.hint,
+              testID: 'new-recipe-ai-submit',
+            }
+          : {
+              label: 'Anlegen',
+              icon: 'check',
+              onPress: save,
+              disabled: online.disabled,
+              hint: online.hint,
+              testID: 'new-recipe-save',
+            },
       }}
     >
       <Stack gap={16}>
@@ -158,9 +211,10 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             if (error) setError(undefined);
           }}
           error={error}
-          onSubmit={save}
+          onSubmit={withAi ? fillWithAi : save}
           autoFocus
         />
+        {withAi ? <AiFillFields fill={fill} testID="new-recipe-ai" /> : null}
         {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
         {takesIngredients && extras.has('ingredients') ? (
           <TextField
@@ -178,6 +232,17 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
           <PickRecipes value={recipeIds} onChange={setRecipeIds} />
         ) : null}
         <Row gap={16} wrap>
+          {features.aiRecipes && kind === 'recipe' && !extras.has('ai') ? (
+            <Button
+              label="Mit KI ausfüllen"
+              icon="sparkles"
+              variant="link"
+              disabled={online.disabled}
+              hint={online.hint}
+              onPress={() => open('ai')}
+              testID="new-recipe-open-ai"
+            />
+          ) : null}
           {extras.has('photo') || !CAN_PICK_PHOTO ? null : (
             <Button
               label="Foto"

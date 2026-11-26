@@ -708,6 +708,7 @@ export interface TextFieldProps extends Pick<
   | 'maxLength'
   | 'accessibilityValue'
   | 'autoComplete'
+  | 'onSelectionChange'
 > {
   /** Visible label above the field; also the accessible name. */
   label?: string;

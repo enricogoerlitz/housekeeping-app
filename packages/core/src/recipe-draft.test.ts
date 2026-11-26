@@ -232,6 +232,9 @@ describe('defaultImagePrompt (REQ-004)', () => {
       'Apfelkuchen mit Äpfel, Butter, Zucker',
     );
     expect(defaultImagePrompt('Kletterhalle', [])).toBe('Kletterhalle');
+    expect(defaultImagePrompt('Apfelkuchen mit Streuseln', ['Butter', 'Äpfel'])).toBe(
+      'Apfelkuchen mit Streuseln, Butter, Äpfel',
+    );
   });
 });
 

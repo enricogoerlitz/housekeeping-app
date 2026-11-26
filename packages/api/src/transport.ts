@@ -3,6 +3,8 @@
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
   PushSubscriptionStatusSchema,
+  type AiImageReply,
+  type AiImageRequest,
   type AiSearchRequest,
   type AiSearchResult,
   type AssistantReply,
@@ -10,6 +12,8 @@ import {
   type PullRequest,
   type PullResult,
   type FetchImageRequest,
+  type RecipeDraftReply,
+  type RecipeDraftRequest,
   type ResolveMapsLinkReply,
   type RowOp,
   type SpeechTokenReply,
@@ -577,6 +581,10 @@ export interface Transport {
   aiSearch(request: AiSearchRequest): Promise<AiSearchResult>;
   /** A short-lived token for streaming speech to Azure (`speech-token`); never the key. */
   speechToken(): Promise<SpeechTokenReply>;
+  /** "Mit KI ausfüllen" (`ai-recipe-draft`, spec 0040): a draft, nothing is saved. */
+  aiRecipeDraft(request: RecipeDraftRequest): Promise<RecipeDraftReply>;
+  /** Three image variants (`ai-image`, spec 0040): never stored by the server. */
+  aiImage(request: AiImageRequest): Promise<AiImageReply>;
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
@@ -660,6 +668,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     askAssistant: guard(inner.askAssistant.bind(inner)),
     aiSearch: guard(inner.aiSearch.bind(inner)),
     speechToken: guard(inner.speechToken.bind(inner)),
+    aiRecipeDraft: guard(inner.aiRecipeDraft.bind(inner)),
+    aiImage: guard(inner.aiImage.bind(inner)),
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),
