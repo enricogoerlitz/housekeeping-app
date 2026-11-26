@@ -35,6 +35,7 @@ import {
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PlaceField } from '@/features/shell/place-field';
 import {
   PhotoChoiceField,
   savePhotoChoice as savePhoto,
@@ -311,63 +312,53 @@ export function ActivityFormFields(props: {
         placeholderIcon={form.icon ?? (form.kindId ? kindIcon : ACTIVITY_ICON)}
         testPrefix="activity"
       />
-      <Stack gap={8}>
-        <Text variant="smallStrong">Ort (optional)</Text>
-        <TextField
-          accessibilityLabel="Karten-Link"
-          value={form.link}
-          onChangeText={form.changeLink}
-          placeholder="Link aus Google Maps oder Apple Karten einfügen"
-          error={form.linkError}
-          hint={
-            form.reading
-              ? undefined
-              : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
-          }
-          left={<Icon name="link" size={18} color="muted" />}
-          testID="activity-link"
-        />
-        {confirmation ? (
-          <Row gap={6}>
-            <Icon name="circle-check" size={16} color="success" />
-            <Text
-              variant="small"
-              color="success"
-              testID="activity-link-ok"
-              style={{ flexShrink: 1 }}
-            >
-              {confirmation}
-            </Text>
-          </Row>
-        ) : null}
-        {form.reading?.status === 'short' ? (
-          <Row gap={6}>
-            <Icon name="info" size={16} color="muted" />
-            <Text
-              variant="small"
-              color="muted"
-              testID="activity-link-short"
-              style={{ flexShrink: 1 }}
-            >
-              Kurzlink erkannt – Ort wird beim Speichern abgerufen
-            </Text>
-          </Row>
-        ) : null}
-        <TextField
-          label="Ortsname"
-          value={form.placeName}
-          onChangeText={form.setPlaceName}
-          placeholder="z. B. Eisstadion Hohenschönhausen"
-          testID="activity-place-name"
-        />
-        <TextField
-          label="Adresse"
-          value={form.address}
-          onChangeText={form.setAddress}
-          placeholder="Straße, Ort"
-          testID="activity-address"
-        />
-      </Stack>
+      {/* The place field of restaurants, activities and stores (spec 0042, REQ-001): the
+          name for the search is the place name ("Eisstadion …"), which also labels "Route". */}
+      <PlaceField
+        title="Ort (optional)"
+        testPrefix="activity"
+        entryName={form.name}
+        searchName={form.placeName}
+        onSearchNameChange={form.setPlaceName}
+        link={form.link}
+        onLinkChange={form.changeLink}
+        linkError={form.linkError}
+        linkHint={
+          form.reading ? undefined : 'In der Karten-App auf „Teilen“ tippen und den Link kopieren.'
+        }
+        address={{ value: form.address, onChange: form.setAddress }}
+        onWebsite={form.setWebsite}
+        linkStatus={
+          <>
+            {confirmation ? (
+              <Row gap={6}>
+                <Icon name="circle-check" size={16} color="success" />
+                <Text
+                  variant="small"
+                  color="success"
+                  testID="activity-link-ok"
+                  style={{ flexShrink: 1 }}
+                >
+                  {confirmation}
+                </Text>
+              </Row>
+            ) : null}
+            {form.reading?.status === 'short' ? (
+              <Row gap={6}>
+                <Icon name="info" size={16} color="muted" />
+                <Text
+                  variant="small"
+                  color="muted"
+                  testID="activity-link-short"
+                  style={{ flexShrink: 1 }}
+                >
+                  Kurzlink erkannt – Ort wird beim Speichern abgerufen
+                </Text>
+              </Row>
+            ) : null}
+          </>
+        }
+      />
       <TextField
         label="Webseite"
         value={form.website}

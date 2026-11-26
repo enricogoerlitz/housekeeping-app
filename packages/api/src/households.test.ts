@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { householdCall, startBackend, stopBackend, type Environment } from './backend';
 import { householdToRows, membersToRows } from './db/mapping';
-import { invitationsForMe, invitationsOfHousehold, readSmallTables } from './households';
+import {
+  invitationsForMe,
+  invitationsOfHousehold,
+  ownerOfHousehold,
+  readSmallTables,
+} from './households';
 import { createInitialState, DEMO_HOUSEHOLD_ID, ENRICO, NADJA } from './seed/demo';
 import { createMemoryStorage } from './storage';
 import { getState, OfflineError } from './store';
@@ -154,5 +159,39 @@ describe('invitations', () => {
     };
     expect(invitationsForMe(small, 'p1')).toEqual([]);
     expect(invitationsOfHousehold(small, 'h2').map((invitation) => invitation.id)).toEqual(['i2']);
+  });
+});
+
+describe('the owner (spec 0042, REQ-005)', () => {
+  it('AC-011: the cache names Enrico, who joined first, as the owner; Nadja sees the same', async () => {
+    await signIn(ENRICO);
+    expect(ownerOfHousehold(readSmallTables(), H)).toBe(ENRICO);
+    await stopBackend();
+    await signIn(NADJA);
+    expect(ownerOfHousehold(readSmallTables(), H)).toBe(ENRICO);
+    expect(ownerOfHousehold(readSmallTables(), 'unknown')).toBeUndefined();
+  });
+
+  it('AC-012, AC-013: the server refuses Nadja inviting and removing Enrico', async () => {
+    await signIn(NADJA);
+    await expect(invite(H, 'lena@example.com')).rejects.toMatchObject({ code: 'not_owner' });
+    await expect(householdCall((t) => t.removeMember(H, ENRICO))).rejects.toMatchObject({
+      code: 'not_owner',
+    });
+    expect(getState().households[H]?.household.memberIds).toEqual(
+      expect.arrayContaining([ENRICO, NADJA]),
+    );
+  });
+
+  it('AC-014: after Enrico left, Nadja is the owner and invites', async () => {
+    await signIn(ENRICO);
+    await householdCall((t) => t.removeMember(H, ENRICO));
+    await stopBackend();
+    await signIn(NADJA);
+    expect(ownerOfHousehold(readSmallTables(), H)).toBe(NADJA);
+    await invite(H, 'lena@example.com');
+    expect(invitationsOfHousehold(readSmallTables(), H).map((i) => i.email)).toEqual([
+      'lena@example.com',
+    ]);
   });
 });

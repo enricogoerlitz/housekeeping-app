@@ -1,6 +1,7 @@
 import {
   rateRecipe,
   toggleFavorite,
+  useArticlesById,
   useCollectionContents,
   useCurrentMember,
   useMembers,
@@ -8,6 +9,7 @@ import {
 import {
   canPutCollectionOnList,
   collectionListHint,
+  collectionShareText,
   collectionSummary,
   type Recipe,
 } from '@housekeeping/core';
@@ -33,6 +35,8 @@ import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { useOpenRecipe } from './navigation';
+import { appLink, shareText, useShareFile } from '@/lib/share';
+
 import { NO_INGREDIENTS_HINT, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { RecipePhoto } from './recipe-cover';
 import { COLLECTION_BADGE } from './recipe-grid';
@@ -84,6 +88,21 @@ export function CollectionDetailBody(props: {
     props.onDeleting,
   );
 
+  // "Teilen" (spec 0042, REQ-004): what it contains and its own ingredients, with the own photo.
+  const articlesById = useArticlesById();
+  const shareFile = useShareFile(collection.photoPath, collection.title);
+  const share = () =>
+    void shareText({
+      title: collection.title,
+      text: collectionShareText({
+        collection,
+        contents,
+        articleName: (articleId) => articlesById[articleId]?.name ?? '',
+        appUrl: appLink(`/rezept/${collection.id}`),
+      }),
+      file: shareFile,
+    });
+
   // AC-025, AC-028: for the collection's own portions; nothing in it reads "Noch nichts enthalten".
   const canGoOnList = canPutCollectionOnList(collection, contents);
   const listHint = canGoOnList
@@ -112,7 +131,7 @@ export function CollectionDetailBody(props: {
       />
       {desktop ? actions : null}
       <EditControls editor={editor} />
-      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} />
+      <RecipeMoreMenu recipe={collection} photo={photo} onDelete={remove} onShare={share} />
       {deleteDialog}
     </>
   );
@@ -198,7 +217,7 @@ export function CollectionDetailBody(props: {
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} />
+              <RecipePhoto recipe={collection} photo={photo} style={{ flex: 1 }} onShare={share} />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -211,7 +230,7 @@ export function CollectionDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={collection} photo={photo} />
+            <RecipePhoto recipe={collection} photo={photo} onShare={share} />
             {head}
             {contained}
             {ingredients}

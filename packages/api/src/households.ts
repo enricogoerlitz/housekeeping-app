@@ -1,6 +1,6 @@
 // Invitations (spec 0003, REQ-003) read from the small tables of the local cache. The household,
 // invitation and membership commands live in commands-household.ts.
-import type { Id, SmallRow } from '@housekeeping/core';
+import { householdOwnerId, type Id, type SmallRow } from '@housekeeping/core';
 import { useSyncExternalStore } from 'react';
 
 import { readSmallTables, subscribeSmall } from './backend';
@@ -62,6 +62,21 @@ export function invitationsForMe(small: Small, userId: Id): Invitation[] {
     .map((row) => toInvitation(row, households));
 }
 
+/**
+ * The owner of a household (spec 0042, REQ-005): who joined first by household_members.created_at
+ * of the cache. Only shown; private.household_owner on the server decides.
+ */
+export function ownerOfHousehold(small: Small, householdId: Id): Id | undefined {
+  return householdOwnerId(
+    (small.household_members ?? [])
+      .filter((row) => row.household_id === householdId)
+      .map((row) => ({
+        profileId: String(row.profile_id),
+        joinedAt: String(row.created_at ?? ''),
+      })),
+  );
+}
+
 /** Derived lists are cached per small-tables object, so hooks return stable references. */
 function memo(
   derive: (small: Small, id: Id) => Invitation[],
@@ -102,4 +117,11 @@ export function useMyInvitations(): Invitation[] {
   const small = useSmall();
   const userId = useAppSelector((state) => state.currentMemberId);
   return memoForMe(small, userId);
+}
+
+/** The owner of the active household; undefined while its memberships are not loaded. */
+export function useHouseholdOwnerId(): Id | undefined {
+  const small = useSmall();
+  const householdId = useAppSelector((state) => state.activeHouseholdId);
+  return ownerOfHousehold(small, householdId);
 }

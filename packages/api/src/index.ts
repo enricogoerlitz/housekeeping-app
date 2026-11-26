@@ -24,6 +24,7 @@ export * from './assistant';
 export * from './ai';
 export { photoSource, useRecipeImage } from './photos';
 export {
+  loadPhoto,
   PHOTO_UPLOAD_FAILED_MESSAGE,
   preparePhoto,
   removeActivityPhoto,
@@ -54,5 +55,5 @@ export {
   useAuth,
 } from './auth';
 export { TEST_ACCOUNTS, type TestAccountKey } from './dev-accounts';
-export { useHouseholdInvitations, useMyInvitations } from './households';
+export { useHouseholdInvitations, useHouseholdOwnerId, useMyInvitations } from './households';
 export { starterCatalogEntries } from './starter/entries';

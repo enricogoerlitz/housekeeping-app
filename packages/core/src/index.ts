@@ -31,6 +31,8 @@ export * from './overview';
 export * from './recap';
 export * from './restaurants';
 export * from './maps-link';
+export * from './place-input';
+export * from './share-text';
 export * from './activities';
 export * from './activity-kinds';
 export * from './activity-series';
