@@ -446,7 +446,7 @@ export function ActivityFormSheet(props: {
         ) : null}
         <ActivityFormFields
           form={form}
-          autoFocus={!editing}
+          autoFocus
           onOpenExisting={(existing) => {
             props.onClose();
             props.onOpenExisting(existing.id);

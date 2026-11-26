@@ -140,3 +140,18 @@ test.describe('route without an empty window (REQ-004)', () => {
     });
   });
 });
+
+test.describe('store mode on the phone (review 0003, feedback 1)', () => {
+  test('"Einkaufen" fills the window and scrolls inside it: the add bar stays at the bottom', async ({
+    page,
+  }) => {
+    // Without the tab bar the JS stack fills the window; its card must not grow with the page,
+    // or the page's ScrollView has no height and nothing scrolls (stack-options.test.mjs).
+    await open(page, '/liste');
+    await tid(page, 'start-shopping').click();
+    const bar = tid(page, 'shopping-add-bar');
+    await expect(bar).toBeInViewport();
+    const box = await bar.boundingBox();
+    expect(Math.round((box?.y ?? 0) + (box?.height ?? 0))).toBe(page.viewportSize()?.height);
+  });
+});

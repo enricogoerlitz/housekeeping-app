@@ -1,7 +1,6 @@
 import {
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -23,10 +22,10 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { fieldAutofill } from './field-autofill';
+import { disguiseContactWords, fieldAutofill, isAppleTouchBrowser } from './field-autofill';
 import { mergeRefs, useHint } from './hint';
 import { icons, type IconName } from './icons';
-import { useHover } from './pointer';
+import { useFinePointer, useHover } from './pointer';
 import { Icon, Text, useColor, type ColorToken } from './primitives';
 import {
   IDLE_STAR_POINTER,
@@ -40,7 +39,7 @@ import {
   type StarStep,
 } from './star-value';
 import { revealsError } from './reveal-error';
-import { SheetFocusContext } from './sheet-focus';
+import { SheetFocusContext, SheetSubmitContext } from './sheet-focus';
 import { switchRowParts } from './time-field-state';
 import { ToneContext, useAreaColors, useTheme } from './theme-context';
 import type { Theme, Tone } from './themes';
@@ -722,10 +721,23 @@ export interface TextFieldProps extends Pick<
   left?: ReactNode;
   /** Pill-shaped field for search and composer bars. */
   round?: boolean;
+  /** false: Enter in this field never saves the window it is in (a search field). */
+  submitsWindow?: boolean;
   /** The input itself, e.g. to move the focus into it after a choice. */
   inputRef?: Ref<ComponentRef<typeof TextInput>>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+}
+
+let fieldSerial = 0;
+const nextFieldSerial = () => (fieldSerial += 1);
+const unchanged = (text: string) => text;
+
+/** Safari on iPhone and iPad, where the contact autofill guesses from a field's words. */
+function onAppleTouch(): boolean {
+  return (
+    Platform.OS === 'web' && typeof navigator !== 'undefined' && isAppleTouchBrowser(navigator)
+  );
 }
 
 export function TextField(props: TextFieldProps) {
@@ -760,30 +772,45 @@ export function TextField(props: TextFieldProps) {
     onBlur,
     inputRef,
     autoFocus,
+    submitsWindow,
     ...input
   } = props;
   // Spec 0033, REQ-006: in a window the window focuses the field once it has slid in.
   const claimFocus = useContext(SheetFocusContext);
+  // Spec 0036, REQ-014: on the desktop Enter in a one-line field of a window saves it, unless the
+  // field does something of its own with Enter (a suggestion list) or opts out.
+  const submitWindow = useContext(SheetSubmitContext);
+  const finePointer = useFinePointer();
+  const enterSaves =
+    finePointer &&
+    submitWindow !== undefined &&
+    !props.multiline &&
+    props.onSubmitEditing === undefined &&
+    submitsWindow !== false;
   const own = useRef<ComponentRef<typeof TextInput> | null>(null);
   useEffect(() => {
     if (!autoFocus || !claimFocus || !own.current) return;
     return claimFocus(own.current);
   }, [autoFocus, claimFocus]);
-  // Spec 0033, REQ-005: no contact autofill on iOS; react-native-web does not pass `name` on.
+  // Spec 0033, REQ-005: never "Kontakt autom. ausfüllen" on iOS (field-autofill.ts says how);
+  // react-native-web does not pass `name` on.
+  const [serial] = useState(nextFieldSerial);
   const autofill = fieldAutofill({
-    id: useId(),
+    serial,
     keyboardType: props.keyboardType,
     autoComplete: props.autoComplete,
   });
+  const words = autofill.disguise && onAppleTouch() ? disguiseContactWords : unchanged;
   useLayoutEffect(() => {
     const node = own.current as unknown;
     if (Platform.OS === 'web' && node instanceof HTMLElement) {
       node.setAttribute('name', autofill.name);
     }
   }, [autofill.name]);
+  const accessibleName = accessibilityLabel ?? label ?? props.placeholder;
   return (
     <View style={[{ gap: 6 }, style]}>
-      {label ? <Text variant="smallStrong">{label}</Text> : null}
+      {label ? <Text variant="smallStrong">{words(label)}</Text> : null}
       <View
         style={{
           flexDirection: 'row',
@@ -813,9 +840,14 @@ export function TextField(props: TextFieldProps) {
           // No autofill from contacts on titles, amounts and notes (spec 0032, AC-010; 0033).
           autoComplete={autofill.autoComplete as TextInputProps['autoComplete']}
           autoFocus={autoFocus === true && !claimFocus}
+          onSubmitEditing={enterSaves ? () => submitWindow() : input.onSubmitEditing}
+          // A window that stays open (a field is missing) keeps the cursor in the field.
+          blurOnSubmit={enterSaves ? false : input.blurOnSubmit}
           ref={mergeRefs(own, inputRef)}
+          nativeID={autofill.id}
           testID={testID}
-          accessibilityLabel={accessibilityLabel ?? label ?? props.placeholder}
+          placeholder={props.placeholder === undefined ? undefined : words(props.placeholder)}
+          accessibilityLabel={accessibleName === undefined ? undefined : words(accessibleName)}
           placeholderTextColor={placeholderColor}
           onFocus={(event) => {
             setFocused(true);

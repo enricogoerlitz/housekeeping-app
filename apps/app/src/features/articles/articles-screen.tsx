@@ -31,6 +31,7 @@ import {
   TextField,
   useBreakpoint,
   FieldClearButton,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { type ComponentRef, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, type TextInput } from 'react-native';
@@ -139,6 +140,7 @@ export function ArticlesScreen() {
   const selected = allArticles.find((article) => article.id === selectedId);
 
   const startCreating = (name = '') => {
+    openKeyboardNow();
     setNewName(name);
     address.open({ fenster: 'neu-artikel' });
   };
