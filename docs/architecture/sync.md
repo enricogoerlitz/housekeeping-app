@@ -503,6 +503,21 @@ pack_seq}]` der gefundenen Packstücke.
 - **Cache-Version 6.** Die vier Tabellen ändern die Form des Caches; Warteschlange, Haushalts- und
   Marktwahl bleiben beim Wechsel erhalten.
 
+## Nachtrag Spec 0051 — Mitteilungen in der App
+
+- **Lesen aus dem Cache:** `dueNotices` (`packages/core/src/notices.ts`) bildet die offenen
+  Mitteilungen der angemeldeten Person im gezeigten Haushalt aus Planeinträgen (mit Serien),
+  Rezepten, Aufgaben, Reisen und Mitgliedern, zur Uhrzeit des Haushalts; die Glocke rechnet jede
+  Minute neu. Offline unverändert lesbar.
+- **Bestätigen ist ein Schreiben online:** `acknowledge_notices(household_id, keys)` vereinigt die
+  Schlüssel atomar mit `notification_settings.acknowledged_notices` der eigenen Zeile, wirft
+  Bestätigungen von Tagen vor mehr als 14 Tagen weg und behält höchstens 400. Das Gerät zeigt das
+  Ergebnis sofort (Überlagerung, ADR-0011; gleiche Regel in `acknowledgedAfter`), die anderen
+  Geräte bekommen die Zeile über den Delta-Sync. Kein Schreiben über `apply_changes` (Allowlist
+  leer), kein Update-Recht auf die Spalte.
+- **Cache-Version 22.** Die Einstellungs-Spalten von Spec 0013 liest das Gerät nicht mehr; sie
+  bleiben bis zum Rückbau in der Tabelle.
+
 ## Nachtrag Spec 0013 — Benachrichtigungen (Versand entfernt)
 
 Der Versand aufs Gerät (ADR-0014) ist mit Spec 0051 entfallen. Mitteilungen erscheinen in der App (Glocke mit Zähler), berechnet aus dem lokalen Speicher; bestätigte Mitteilungen liegen je Person in `notification_settings.acknowledged_notices` (Spec 0051, ADR-0017). Übrig aus Spec 0013 sind die Spalten und die Tabelle `notification_settings`:

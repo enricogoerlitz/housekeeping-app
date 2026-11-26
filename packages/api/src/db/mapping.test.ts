@@ -872,7 +872,9 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
       rowsToHousehold(old.tables, old.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
         .notificationSettings?.acknowledgedNotices,
     ).toEqual([]);
-    const broken = withSettings([settingsRow({ id: 'ns-enrico', acknowledged_notices: [1, 'a:b:2026-11-20'] })]);
+    const broken = withSettings([
+      settingsRow({ id: 'ns-enrico', acknowledged_notices: [1, 'a:b:2026-11-20'] }),
+    ]);
     expect(
       rowsToHousehold(broken.tables, broken.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
         .notificationSettings?.acknowledgedNotices,
@@ -881,7 +883,11 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
 
   it('AC-013: only the signed-in member’s row is her settings; without one there are none', () => {
     const { tables, small } = withSettings([
-      settingsRow({ id: 'ns-nadja', member_id: NADJA, acknowledged_notices: ['cook:x:2026-11-20'] }),
+      settingsRow({
+        id: 'ns-nadja',
+        member_id: NADJA,
+        acknowledged_notices: ['cook:x:2026-11-20'],
+      }),
     ]);
     expect(
       rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO }).notificationSettings,

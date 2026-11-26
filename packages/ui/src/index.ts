@@ -41,7 +41,7 @@ export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from 
 export { IconChoice } from './icon-choice';
 export { ViewSwitch } from './view-switch';
 export { ariaRef, useSoftDisabled } from './hint';
-export { ListPlaceholder } from './placeholder';
+export { WithBadge } from './count-badge';
 export { useWakeLock } from './use-wake-lock';
 export { needsPortraitHint } from './portrait-hint';
 export { EDGE_SWIPE_START, nextEdgeSwipe, systemSwipeNavigation } from './edge-swipe';

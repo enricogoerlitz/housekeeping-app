@@ -1,4 +1,3 @@
-import { useNotificationSettings } from '@housekeeping/api';
 import {
   choreRemindHint,
   draftNextAssignee,
@@ -375,15 +374,12 @@ export function useChoreTime(initial: TimeOfDay | undefined, initialRemind = tru
 
 /**
  * The field „Uhrzeit (optional)“ with ✕ and, with a time, the switch „Erinnern“ for the whole
- * household; its hint says whether it reminds and whether the own setting „Aufgaben mit Uhrzeit“
- * keeps it from you (AC-035, AC-037). Offline both are greyed out with the hint.
+ * household; its hint says whether whoever is up gets a notice in the app (AC-035; spec 0051).
+ * Offline both are greyed out with the hint.
  */
 function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
-  const settings = useNotificationSettings();
   const { time } = props;
   const offline = props.offlineHint !== undefined;
-  // Without the settings row yet, the server's default counts: chore reminders are on (D36).
-  const ownOn = settings?.choreRemindersEnabled ?? true;
   return (
     <Stack gap={4}>
       <TimeField
@@ -401,7 +397,7 @@ function ChoreTimeField(props: { time: ChoreTime; offlineHint?: string }) {
       {time.value ? (
         <SwitchRow
           label="Erinnern"
-          description={choreRemindHint(time.remind, ownOn)}
+          description={choreRemindHint(time.remind)}
           value={time.remind}
           onValueChange={time.setRemind}
           disabled={offline}

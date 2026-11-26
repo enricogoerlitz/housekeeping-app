@@ -27,7 +27,6 @@ import {
   type ISODate,
 } from '@housekeeping/core';
 import { Sheet, Text, toast, type SheetAction } from '@housekeeping/ui';
-import { useRouter } from 'expo-router';
 import { useReducer, useState } from 'react';
 
 import { DEFAULT_SERVINGS } from '@/features/recipes/recipe-form';
@@ -58,7 +57,6 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
   const activities = useActivities();
   const members = useMembers();
   const articlesById = useArticlesById();
-  const router = useRouter();
 
   const [state, dispatch] = useReducer(addEntryReducer, undefined, () =>
     initialAddEntryState(props.target, {
@@ -214,10 +212,6 @@ export function AddEntrySheet(props: { target: AddTarget; onClose: () => void; a
           reminder={reminder}
           remindable={remindable}
           online={online}
-          onOpenSettings={() => {
-            props.onClose();
-            router.push('/einstellungen/benachrichtigungen');
-          }}
           onSave={save}
           repeat={{ value: repeat, onChange: setRepeat }}
         />

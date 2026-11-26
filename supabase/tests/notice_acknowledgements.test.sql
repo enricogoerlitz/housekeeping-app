@@ -3,7 +3,7 @@
 -- change only through acknowledge_notices (AC-022 to AC-025, Decisions 7 and 8).
 begin;
 \ir _helpers.psql
-select plan(32);
+select plan(33);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -116,6 +116,8 @@ select throws_ok(tests.ack_sql('home', array['cook:' || repeat('a', 50) || ':' |
   '22023', 'invalid_notice', 'AC-024: a key longer than 200 characters is refused');
 select throws_ok(tests.ack_sql('home', array(select 'cook:k' || n || ':' || tests.day() from generate_series(1, 101) n)),
   '22023', 'invalid_notice', 'AC-024: more than 100 keys at once are refused');
+select throws_ok(tests.ack_sql('home', array['cook:a:9999-12-31']), '22023', 'invalid_notice',
+  'AC-024: a day further ahead than any reminder is refused');
 select throws_ok(format('select public.acknowledge_notices(%L, %L)', tests.fx('home_b'),
                         array['cook:a:' || tests.day()]),
   'P0002', 'not_found', 'AC-024: Enrico cannot acknowledge in a household he is not a member of');

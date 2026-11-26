@@ -80,7 +80,9 @@ export function acknowledgedAfter(
   const oldest = addDays(today, -ACKNOWLEDGED_KEEP_DAYS);
   return [...new Set([...current, ...keys])]
     .map((key) => ({ key, day: noticeDay(key) }))
-    .filter((each): each is { key: string; day: ISODate } => each.day !== undefined && each.day >= oldest)
+    .filter(
+      (each): each is { key: string; day: ISODate } => each.day !== undefined && each.day >= oldest,
+    )
     .sort((a, b) => (a.day === b.day ? (a.key < b.key ? -1 : 1) : a.day < b.day ? 1 : -1))
     .slice(0, MAX_ACKNOWLEDGED)
     .map((each) => each.key);

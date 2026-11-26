@@ -90,6 +90,8 @@ drop index public.meal_plan_entries_reminder_send_day_idx;
 drop table private.notification_deliveries;
 drop table private.push_subscriptions;
 drop function private.is_push_endpoint(text);
+-- Only the two tables above used it.
+drop function private.touch_updated_at();
 
 -- ---------------------------------------------------------------------------------------------
 -- Acknowledgements of the in-app notices
@@ -146,6 +148,11 @@ begin
   where h.id = p_household_id and h.id in (select private.my_household_ids());
   if v_today is null then
     raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  -- No day further ahead than a reminder can lie (366 days, spec 0017): far-future keys would
+  -- otherwise push every real acknowledgement out of the newest 400 (security check 26.11.2026).
+  if exists (select 1 from unnest(p_keys) k where private.notice_day(k) > v_today + 367) then
+    raise exception 'invalid_notice' using errcode = '22023';
   end if;
 
   update public.notification_settings s

@@ -24,6 +24,7 @@ import {
   householdOwnerId,
   isHalfStar,
   isNoticeKey,
+  noticeDay,
   isReminderPast,
   MAX_ACKNOWLEDGE_AT_ONCE,
   isTikTokUrl,
@@ -772,7 +773,6 @@ function checkNotificationColumns(table: string, row: Row): void {
     }
     checkReminderColumns(row);
   }
-
 }
 
 // C0, DEL, C1 and invisible or direction-changing characters, as the check
@@ -1018,7 +1018,12 @@ export function createFakeServer(): FakeServer {
     if (!own) throw new TransportError('permanent', 'not_found', 404);
     const timeZone = String(households.get(householdId)?.timezone ?? 'Europe/Berlin');
     const today = householdClock(new Date(), timeZone).date;
-    const current = Array.isArray(own.acknowledged_notices) ? own.acknowledged_notices.map(String) : [];
+    // No day further ahead than a reminder can lie (366 days, spec 0017).
+    const latest = addDays(today, 367);
+    if (keys.some((key) => (noticeDay(key) ?? '') > latest)) throw reject('invalid_notice');
+    const current = Array.isArray(own.acknowledged_notices)
+      ? own.acknowledged_notices.map(String)
+      : [];
     transaction(householdId, (tables) => [
       withRow(tables, 'notification_settings', {
         ...own,

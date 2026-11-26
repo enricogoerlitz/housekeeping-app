@@ -11,10 +11,10 @@ The concept is in `docs/architecture/sync.md` (ADR-0008). These rules must never
 
 - **Reads come from the local cache.** UI code reads reactively from the cache in `packages/api`.
   It never awaits a network request to show data.
-- **Two online-only reads:** the person's own push subscriptions ("Deine Geräte") come from
-  `list_push_subscriptions`, never from the cache, and show an offline hint without network
-  (ADR-0014). Push subscriptions and the delivery log are never synced. Notification settings
-  are a normal synced table, readable only by the member herself.
+- **One online-only read:** the version check. Notices behind the bell are derived from the
+  cache by `dueNotices` in `packages/core` (ADR-0017); the acknowledged ones live in the member's
+  own synced row of `notification_settings`, readable only by herself and written only through
+  `acknowledge_notices`.
 - The version check reads `/version.json` (`cache: 'no-store'`, never from the service worker
   cache) and `public.min_app_version()` online, at start and on returning to the foreground
   (ADR-0015). Without network it does nothing: no hint, no error, no lock. Below the minimum

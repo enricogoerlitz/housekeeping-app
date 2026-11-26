@@ -90,8 +90,14 @@ describe('dueNotices — entry reminders (REQ-002)', () => {
   });
 
   it('AC-007: a reminder of the day before names "morgen" and its text', () => {
-    const early = { ...pizza, date: tomorrow, reminder: { offsetDays: 1, at: '17:30', text: 'Tisch bestätigen' } };
-    expect(shown({ entries: [early] })).toEqual(['Pizzeria Roma | morgen 19:30 · Tisch bestätigen']);
+    const early = {
+      ...pizza,
+      date: tomorrow,
+      reminder: { offsetDays: 1, at: '17:30', text: 'Tisch bestätigen' },
+    };
+    expect(shown({ entries: [early] })).toEqual([
+      'Pizzeria Roma | morgen 19:30 · Tisch bestätigen',
+    ]);
   });
 
   it('AC-007: the target opens the day with the entry', () => {
@@ -189,7 +195,9 @@ describe('dueNotices — Vorlauf and cooking (REQ-002)', () => {
 
   it('AC-010: "Du kochst" for a recipe today with me as the cook', () => {
     const heute = entry({ id: 'e-lasagne', recipeId: lasagne.id, cookId: enrico.id });
-    expect(shown({ entries: [heute], now: '07:00' })).toEqual(['Lasagne | Du kochst · heute Abend']);
+    expect(shown({ entries: [heute], now: '07:00' })).toEqual([
+      'Lasagne | Du kochst · heute Abend',
+    ]);
     expect(shown({ entries: [heute], me: nadja.id })).toEqual([]);
     expect(shown({ entries: [{ ...heute, notDone: true }] })).toEqual([]);
     expect(shown({ entries: [{ ...heute, date: tomorrow }] })).toEqual([]);
@@ -215,14 +223,18 @@ describe('dueNotices — activities (REQ-002)', () => {
   });
 
   it('AC-011: a Termin of a series opens its day, without an entry window', () => {
-    const termin = { ...eisMorgen, id: 's-eis:2026-11-21', series: { seriesId: 's-eis', on: tomorrow } };
+    const termin = {
+      ...eisMorgen,
+      id: 's-eis:2026-11-21',
+      series: { seriesId: 's-eis', on: tomorrow },
+    };
     const [notice] = dueNotices(input({ entries: [termin], now: '20:00' }));
     expect(notice?.target).toEqual({ screen: 'calendar', day: tomorrow });
     expect(notice && isNoticeKey(notice.key)).toBe(true);
   });
 });
 
-describe('dueNotices — absence and order', () => {
+describe('dueNotices — trips and order', () => {
   const eisMorgen = entry({
     id: 'e-eis',
     date: tomorrow,
@@ -235,7 +247,12 @@ describe('dueNotices — absence and order', () => {
   it('AC-012: on a trip today: no notices at all', () => {
     const trips = [trip('t-1', [enrico.id], today, '2026-11-22')];
     expect(
-      shown({ entries: [pizza, eisMorgen], chores: [muell], now: '20:00', away: { members: [enrico, nadja], trips } }),
+      shown({
+        entries: [pizza, eisMorgen],
+        chores: [muell],
+        now: '20:00',
+        away: { members: [enrico, nadja], trips },
+      }),
     ).toEqual([]);
   });
 
@@ -243,17 +260,21 @@ describe('dueNotices — absence and order', () => {
     const trips = [trip('t-1', [enrico.id], tomorrow, '2026-11-22')];
     const away = { members: [enrico, nadja], trips };
     expect(shown({ entries: [pizzaMorgen, eisMorgen], now: '20:00', away })).toEqual([]);
-    expect(shown({ entries: [pizzaMorgen, eisMorgen], now: '20:00', away, me: nadja.id })).toHaveLength(2);
+    expect(
+      shown({ entries: [pizzaMorgen, eisMorgen], now: '20:00', away, me: nadja.id }),
+    ).toHaveLength(2);
   });
 
   it('REQ-004: newest first, acknowledged ones left out', () => {
-    const notices = dueNotices(input({ entries: [pizza, eisMorgen], chores: [muell], now: '20:00' }));
+    const notices = dueNotices(
+      input({ entries: [pizza, eisMorgen], chores: [muell], now: '20:00' }),
+    );
     expect(notices.map((notice) => notice.kind)).toEqual(['activity', 'chore', 'entryReminder']);
     const acknowledged = [notices[1]?.key ?? ''];
     expect(
-      dueNotices(input({ entries: [pizza, eisMorgen], chores: [muell], now: '20:00', acknowledged })).map(
-        (notice) => notice.kind,
-      ),
+      dueNotices(
+        input({ entries: [pizza, eisMorgen], chores: [muell], now: '20:00', acknowledged }),
+      ).map((notice) => notice.kind),
     ).toEqual(['activity', 'entryReminder']);
   });
 });
@@ -276,21 +297,27 @@ describe('notice keys and acknowledgements (REQ-005)', () => {
     expect(isNoticeKey(`entry:e-pizza:0-1730:${today}`)).toBe(true);
     expect(isNoticeKey('x')).toBe(false);
     expect(isNoticeKey(`chore:c-muell:2026-13-45`)).toBe(false);
-    expect(isNoticeKey(`chore:${'a'.repeat(50)}:${'b'.repeat(50)}:${'c'.repeat(50)}:${'d'.repeat(50)}:${today}`)).toBe(false);
+    expect(
+      isNoticeKey(
+        `chore:${'a'.repeat(50)}:${'b'.repeat(50)}:${'c'.repeat(50)}:${'d'.repeat(50)}:${today}`,
+      ),
+    ).toBe(false);
   });
 
   it('AC-023: unites, drops what is older than 14 days, keeps each key once', () => {
     const before = ['cook:old:2026-11-05', 'cook:edge:2026-11-06', `chore:c-muell:${today}`];
-    expect(acknowledgedAfter(before, [`chore:c-muell:${today}`, `cook:new:${today}`], today)).toEqual([
-      `chore:c-muell:${today}`,
-      `cook:new:${today}`,
-      'cook:edge:2026-11-06',
-    ]);
+    expect(
+      acknowledgedAfter(before, [`chore:c-muell:${today}`, `cook:new:${today}`], today),
+    ).toEqual([`chore:c-muell:${today}`, `cook:new:${today}`, 'cook:edge:2026-11-06']);
   });
 
   it('Decision 7: keeps the newest 400', () => {
     const full = Array.from({ length: 400 }, (_, index) => `cook:k${index}:2026-11-19`);
-    const after = acknowledgedAfter([...full, 'cook:oldest:2026-11-18'], [`cook:today:${today}`], today);
+    const after = acknowledgedAfter(
+      [...full, 'cook:oldest:2026-11-18'],
+      [`cook:today:${today}`],
+      today,
+    );
     expect(after).toHaveLength(400);
     expect(after[0]).toBe(`cook:today:${today}`);
     expect(after).not.toContain('cook:oldest:2026-11-18');

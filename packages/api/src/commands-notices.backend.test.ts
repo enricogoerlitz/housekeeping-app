@@ -62,7 +62,7 @@ describe('acknowledgeNotices (REQ-004, REQ-005)', () => {
     );
   });
 
-  it('AC-022: Nadja\'s row stays as it was', async () => {
+  it("AC-022: Nadja's row stays as it was", async () => {
     await fx.startEnrico();
     const nadja = await fx.startNadja();
     acknowledgeNotices([muell()]);
@@ -95,7 +95,10 @@ describe('acknowledgeNotices (REQ-004, REQ-005)', () => {
       fx.server.transport(NADJA).acknowledgeNotices('fremd', [muell()]),
     ).rejects.toMatchObject({ code: 'not_found' });
     await expect(
-      fx.server.transport(ENRICO).acknowledgeNotices(H, ['x']),
+      fx.server.transport(ENRICO).acknowledgeNotices(H, ['cook:a:9999-12-31']),
     ).rejects.toMatchObject({ code: 'invalid_notice' });
+    await expect(fx.server.transport(ENRICO).acknowledgeNotices(H, ['x'])).rejects.toMatchObject({
+      code: 'invalid_notice',
+    });
   });
 });

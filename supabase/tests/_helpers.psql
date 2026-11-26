@@ -279,52 +279,11 @@ begin
 end
 $$;
 
--- ---------- Notifications (spec 0013) ----------
+-- ---------- Times (spec 0013) ----------
 
 -- A moment given in the local time of Europe/Berlin, e.g. tests.berlin('2026-11-20 07:30').
 create function tests.berlin(p_local timestamp) returns timestamptz
 language sql immutable
 as $$ select p_local at time zone 'Europe/Berlin' $$;
-
--- Valid Web Push keys of the right shape (65-byte P-256 point, 16-byte auth secret, base64url).
-create function tests.p256dh() returns text language sql immutable as $$ select 'B' || repeat('A', 86) $$;
-create function tests.push_auth() returns text language sql immutable as $$ select repeat('A', 22) $$;
-
--- A push subscription inserted directly (as postgres), bypassing the RPC and its limits.
-create function tests.add_push_subscription(p_profile_id uuid, p_name text, p_enabled boolean default true)
-returns uuid
-language plpgsql
-as $$
-declare
-  v_id uuid;
-begin
-  insert into private.push_subscriptions (profile_id, endpoint, p256dh, auth, device_label, enabled)
-  values (p_profile_id, 'https://fcm.googleapis.com/fcm/send/' || p_name, tests.p256dh(), tests.push_auth(), p_name,
-          p_enabled)
-  returning id into v_id;
-  return v_id;
-end
-$$;
-
--- The two Vault entries of the push hand-over with made-up test values (never real secrets);
--- rolled back with the test. tests.clear_push_vault() removes them, so a developer's local
--- entries never influence a test.
-create function tests.set_push_vault() returns void
-language plpgsql
-as $$
-begin
-  perform tests.clear_push_vault();
-  perform vault.create_secret('test-push-secret', 'push_send_secret');
-  perform vault.create_secret('http://push-send.test/functions/v1/push-send', 'push_send_url');
-end
-$$;
-
-create function tests.clear_push_vault() returns void
-language plpgsql
-as $$
-begin
-  delete from vault.secrets where name in ('push_send_secret', 'push_send_url');
-end
-$$;
 
 grant execute on all functions in schema tests to anon, authenticated;

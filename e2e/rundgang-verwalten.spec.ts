@@ -20,7 +20,7 @@ import { seedIds } from './seed-ids';
 
 // Spec 0027 — "Verwalten und Konto": withdrawing an invitation and the Google hint (REQ-001,
 // REQ-002), the own profile (REQ-003), renaming and deleting a household (REQ-004, REQ-005), the
-// own feedback (REQ-006), the household of "Benachrichtigungen" (REQ-008) and "Jetzt abgleichen"
+// own feedback (REQ-006), and "Jetzt abgleichen"
 // (REQ-010), „Erinnern“ per chore (REQ-009). Each writing test makes its own household; the server rules are pgTAP's
 // (supabase/tests/manage_household.test.sql). Runs once in spec 0028.
 
@@ -139,21 +139,6 @@ test('AC-028: the sentence about the status stands above the filters', async ({ 
   await expect(tid(page, 'fb-status-note')).toHaveText(
     'Den Status setzt der Entwickler der App, wenn er ein Feedback bearbeitet hat.',
   );
-});
-
-test('AC-032, AC-034: the household of the settings is chosen without switching the app', async ({
-  page,
-}) => {
-  await login(page, 'enrico');
-  await open(page, '/einstellungen/benachrichtigungen?fuer-haushalt=kaputt');
-  await expect(tid(page, 'notif-household-note')).toHaveText(
-    'Gilt für „Enrico & Nadja“ auf allen deinen Geräten.',
-  );
-  await tid(page, `notif-household-${seedIds['hh-test']}`).click();
-  await expect(tid(page, 'notif-household-note')).toHaveText(
-    'Gilt für „Test“ auf allen deinen Geräten.',
-  );
-  await expect(page).toHaveURL(new RegExp(`fuer-haushalt=${seedIds['hh-test']}`));
 });
 
 test('AC-039, AC-041: "Jetzt abgleichen" is a button; offline it is greyed out', async ({

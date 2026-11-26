@@ -21,13 +21,15 @@ import { CreateHouseholdForm } from '@/features/household/household-forms';
 import { HouseholdList } from '@/features/household/members-screen';
 import { MANAGE_GROUPS, SHOWROOM_ENTRY } from '@/features/manage/manage-entries';
 import { useOpenManageEntry } from '@/features/manage/navigation';
+import { NoticeBell } from '@/features/notices/notice-bell';
 import { authConfig } from '@/lib/auth-config';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 
 // The sidebar of tablets and desktops (spec 0005, REQ-010; concept 3.12): household name with ▾,
 // the five areas, the always visible group "Verwalten" in three blocks, in development builds
-// "Entwicklung", and the avatar for the personal settings at the bottom.
+// "Entwicklung", and the avatar for the personal settings at the bottom, the bell of the
+// notices beside it (spec 0051).
 
 export interface AppSidebarProps {
   items: NavItem[];
@@ -113,7 +115,14 @@ export function AppSidebar(props: AppSidebarProps) {
         }
         groups={groups}
         groupsTestID="sidebar-manage"
-        footer={<ProfileEntry active={props.activeRoute === 'einstellungen'} />}
+        footer={
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <ProfileEntry active={props.activeRoute === 'einstellungen'} />
+            </View>
+            <NoticeBell />
+          </View>
+        }
       />
       {/* A sheet, not a menu: next to the households it holds the form for a new one. */}
       <Sheet

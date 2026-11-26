@@ -509,7 +509,9 @@ describe('entryWhen (spec 0051: the line of a notice)', () => {
 
   it('REQ-005: further ahead with weekday and date, "Sa 28.11., Abend"', () => {
     expect(entryWhen({ ...lasagne, offsetDays: 2 })).toBe('Sa 28.11., Abend');
-    expect(entryWhen({ ...lasagne, entryDate: '2027-03-05', offsetDays: 3 })).toBe('Fr 5.3., Abend');
+    expect(entryWhen({ ...lasagne, entryDate: '2027-03-05', offsetDays: 3 })).toBe(
+      'Fr 5.3., Abend',
+    );
   });
 
   it('REQ-005: without a (known) Tageszeit it is left out', () => {

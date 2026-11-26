@@ -41,6 +41,8 @@ const TEXT_PAIRS: [fg: Role, bg: Role][] = [
   ['warnText', 'warnBg'],
   ['onSuccess', 'success'],
   ['fabText', 'fabBg'],
+  // Spec 0051: the number in the red circle of the bell.
+  ['onBadge', 'badge'],
   ['accent', 'bg'],
   ['accent', 'surface'],
   // The dragged entry floats on the raised surface (spec 0016).

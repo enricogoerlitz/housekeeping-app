@@ -442,4 +442,3 @@ export function entryWhen(input: {
   if (offsetDays === 1) return `morgen${slot ? ` ${slot}` : ''}`;
   return `${weekdayShort(entryDate)} ${formatShortDate(entryDate)}${slot ? `, ${slot}` : ''}`;
 }
-

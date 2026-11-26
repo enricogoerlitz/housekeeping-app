@@ -17,9 +17,9 @@ Apply these while writing. `/security-check` verifies them against a diff. They 
 - The `service_role` / secret key, database passwords, OAuth client secrets and AI service keys
   never appear in app code, in `EXPO_PUBLIC_*` variables, in logs or in commits.
 - Fail loudly at startup when a required value is missing — never fall back to a hardcoded one.
-- The VAPID private key and the push shared secret exist only as Supabase Function secrets and
-  in the Vault (ADR-0014). Only the VAPID **public** key may be an `EXPO_PUBLIC_*` value. The
-  owner sets these values himself; agents never generate, print or read them.
+- Shared secrets of server-to-server calls (e.g. `MEDIA_SWEEP_SECRET`) exist only as Supabase
+  Function secrets and in the Vault. The owner sets these values himself; agents never generate,
+  print or read them. Web Push and its VAPID keys are gone (ADR-0017).
 
 ## Cloud projects
 

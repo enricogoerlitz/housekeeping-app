@@ -64,11 +64,11 @@ Enrico; Arten aus Spec 0013 und 0017. Offline: offline vollständig (lesen).
 - AC-008: Angenommen „Müll rausbringen“ ist heute um 19:00 fällig, „Erinnern“ an, Enrico ist dran ·
   Wenn es 19:00 ist · Dann hat Enrico die Mitteilung „Müll rausbringen“ mit „19:00 · du bist dran“,
   Nadja keine; um 18:55 hat sie auch Enrico nicht; mit „Erinnern“ aus nie
-- AC-009: Angenommen „Hummus“ morgen Mittag mit Vorlauf „Kichererbsen einweichen“ 16 h, Enrico kocht
+- AC-009: Angenommen „Hummus“ morgen Mittag mit Vorlauf „Kichererbsen einweichen“ 12 h, Enrico kocht
   · Wenn man heute die Mitteilungen bildet · Dann hat Enrico „Kichererbsen einweichen“ mit „Heute
-  Abend · Hummus (morgen Mittag)“, Nadja nicht
+  bis ca. 23 Uhr · Hummus (morgen Mittag)“, Nadja nicht
 - AC-010: Angenommen heute Abend „Lasagne“, Enrico kocht · Wenn man die Mitteilungen bildet · Dann
-  hat Enrico „Du kochst heute: Lasagne“ mit „Abend“; „Nicht gemacht“ oder morgen: keine
+  hat Enrico „Lasagne“ mit „Du kochst · heute Abend“; „Nicht gemacht“ oder morgen: keine
 - AC-011: Angenommen morgen Vormittag „Eislaufen“ · Wenn es heute 19:00 ist · Dann haben beide
   „Eislaufen“ mit „morgen Vormittag“; um 18:55 keiner; morgen den ganzen Tag „heute Vormittag“
 - AC-012: Angenommen Enrico ist heute auf einer Reise · Wenn man seine Mitteilungen bildet · Dann
@@ -101,7 +101,8 @@ Offline: offline lesend — Bestätigen braucht Netz (Entscheidung 6).
 - AC-019: Angenommen drei offene Mitteilungen · Wenn man „Alle bestätigen“ tippt · Dann ist die
   Liste leer mit „Gerade steht nichts an.“ und die Glocke ohne Kreis
 - AC-020: Angenommen offline · Wenn man das Fenster öffnet · Dann sind die Mitteilungen zu sehen, ✓
-  und „Alle bestätigen“ ausgegraut mit „Offline – zum Bestätigen brauchst du Netz“
+  und „Alle bestätigen“ ausgegraut mit dem üblichen Hinweis „Offline – zum Bearbeiten brauchst du
+  Netz“
 - AC-021: Angenommen eine bestätigte Erinnerung, deren Uhrzeit danach geändert wird · Wenn die neue
   Uhrzeit erreicht ist · Dann ist sie wieder offen
 
@@ -136,7 +137,7 @@ Auftrag. Offline: nur online.
    mitisst), `cook` („Du kochst heute“ für jedes Rezept heute mit mir als Koch), `activity`
    (Aktivitäten, auch Termine einer Serie, ab 19:00 am Vortag bis Ende des Tags, für alle).
    Der Tagesüberblick als Sammelnachricht entfällt: die Übersicht zeigt den Tag schon.
-3. **Ruhe bei Abwesenheit:** Wer heute auf einer Reise ist, hat keine Mitteilungen; Mitteilungen zu
+3. **Ruhe auf Reisen:** Wer heute auf einer Reise ist, hat keine Mitteilungen; Mitteilungen zu
    einem Tag, an dem man weg ist, fehlen (wie `is_silent`, Spec 0013/0022).
 4. **Keine Einstellungen je Art** (Nicht-Ziel): die Glocke drängt sich nicht auf, deshalb braucht es
    kein Abschalten; der Rest der Seite „Benachrichtigungen“ (Geräte, Probe) hat ohne Push keinen
@@ -167,11 +168,26 @@ Auftrag. Offline: nur online.
     `plan_entry_title`, Texte des Planers u. a.) gab es nur für den Zeitplaner (ADR-0014,
     „zweite Stelle für Fachregeln“). Was nach dem Entfernen von nichts mehr benutzt wird, fällt weg,
     samt Gleichlauf-Tests; `is_silent` bleibt (Aufgaben warten auf Reisen).
-12. **Glocke:** neue Komponente `CountBadge` in `packages/ui`; auf dem Handy in `StartPageActions`,
-    sonst im Fuß der Seitenleiste. Das Fenster ist das vorhandene `Sheet` (Größe s). Die Zeit läuft
-    in der Glocke minütlich weiter (AC-016).
+12. **Glocke:** neue Komponente `WithBadge` in `packages/ui` mit den neuen Farb-Tokens
+    `badge`/`onBadge` (Rot `#D70015`, Weiß; 5,4 : 1), die einzige rote Farbe der App, entgegen
+    „Kein Rot“ in `DESIGN.md` auf Enricos ausdrücklichen Wunsch („roter Kreis mit Zahl“). Auf dem
+    Handy in `StartPageActions` links von ⊞, sonst im Fuß der Seitenleiste rechts neben dem Avatar.
+    Das Fenster ist das vorhandene `Sheet` (Größe s) mit „Alle bestätigen“ als Hauptaktion. Die Zeit
+    läuft in der Glocke minütlich weiter (AC-016).
 13. **Tipp aufs Ziel** nutzt die vorhandenen Ziele `NotificationTarget`/`notificationTargetHref`
     (Kalender mit Tag und Eintrag, Aufgabe unter „Haushalt“); Termine einer Serie öffnen den Tag.
+14. **Keine Doppelung:** Eine Aktivität mit eigener Erinnerung meldet nur die Erinnerung, nicht
+    zusätzlich „Aktivität morgen“.
+15. **Mit Push entfällt auch, was nur Push diente:** die Seite und Adresse
+    `/einstellungen/benachrichtigungen` (mit `fuer-haushalt`), der Abmelde-Haken `beforeSignOut`
+    (meldete das Gerät ab), `commitIn` (nur für Einstellungen eines anderen Haushalts),
+    `reminderMessage` und `reminderReachHint` (Text bzw. Hinweis „Auf diesem Gerät kommen keine
+    Benachrichtigungen an“), der Index `meal_plan_entries_reminder_send_day_idx` des Planers, die
+    Integrationstests von Spec 0013, die UI-Komponente `ListPlaceholder` (nur „Deine Geräte“ nutzte
+    sie, Spec 0034) und das Deno-Lock-Prüfen (nur `push-send` hatte eins). Der
+    Pflicht-Check „Deno-Lock“ fällt aus `infra/github/ruleset-*.json` (Enrico-Schritt 3).
+16. **Bestätigen nur im gezeigten Haushalt** und nur, was gerade offen ist: „Alle bestätigen“
+    schickt die Schlüssel der Liste in einem Aufruf (höchstens 100; mehr stehen nie an).
 
 ## Daten
 
@@ -184,28 +200,59 @@ Mitglieder (alles schon im Cache).
 
 ## Risiken
 
-| Risiko                                                     | Gegenmaßnahme                                                             | Test                                               |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------- |
-| Fremdes Mitglied bestätigt in meiner Zeile                 | RPC filtert `member_id = auth.uid()` und Mitgliedschaft, sonst `not_found` | pgTAP `notification_settings` (AC-024)             |
-| Abgemeldeter Aufruf                                        | `revoke … from public, anon`; nur `authenticated`                         | pgTAP (AC-024)                                     |
-| Zeile wächst unbegrenzt / riesige Schlüssel                | Prüfung Format und Länge, 100 je Aufruf, 400 je Zeile, Aufräumen 14 Tage  | pgTAP (AC-023, AC-024)                             |
-| Direktes Schreiben an der RPC vorbei                       | kein Update-Recht auf `acknowledged_notices`, Policy nur Lesen            | pgTAP (AC-025)                                     |
-| Alte App (2026.11.2) ruft gelöschte RPCs                   | Mindestversion 2026.11.3 sperrt das Schreiben, Fehler zeigen den Hinweis  | `migrations.test.mjs` (Kopf `contract`)            |
-| Löschen trifft etwas, das noch gebraucht wird              | Abhängigkeiten per Abfrage ermittelt; `is_silent` bleibt; Tests aller Funktionen | `pnpm exec supabase test db`                 |
-| Vault-Löschung scheitert in der Cloud                      | `delete from vault.secrets where name in (…)` als Eigentümer `postgres`   | lokale Migration; Enrico-Schritte prüfen          |
-| Mitteilung verrät fremde Daten                              | nur aus dem eigenen Cache (RLS), nur eigene Person                         | core `notices.test.ts` (AC-008, AC-013)            |
+| Risiko                                         | Gegenmaßnahme                                                                    | Test                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------- |
+| Fremdes Mitglied bestätigt in meiner Zeile     | RPC filtert `member_id = auth.uid()` und Mitgliedschaft, sonst `not_found`       | pgTAP `notice_acknowledgements` (AC-024) |
+| Abgemeldeter Aufruf                            | `revoke … from public, anon`; nur `authenticated`                                | pgTAP (AC-024)                           |
+| Zeile wächst unbegrenzt / riesige Schlüssel    | Prüfung Format und Länge, 100 je Aufruf, 400 je Zeile, Aufräumen 14 Tage         | pgTAP (AC-023, AC-024)                   |
+| Direktes Schreiben an der RPC vorbei           | kein Update-Recht auf `acknowledged_notices`, `apply_changes` lässt nichts zu    | pgTAP (AC-025), `transport-fake.test.ts` |
+| Alte App (2026.11.2) ruft gelöschte RPCs       | Mindestversion 2026.11.3 sperrt das Schreiben, Fehler zeigen den Hinweis         | `migrations.test.mjs` (Kopf `contract`)  |
+| Löschen trifft etwas, das noch gebraucht wird  | Abhängigkeiten per Abfrage ermittelt; `is_silent` bleibt; Tests aller Funktionen | `pnpm exec supabase test db`             |
+| Vault-Löschung scheitert in der Cloud          | `delete from vault.secrets where name in (…)` als Eigentümer `postgres`          | lokale Migration; Enrico-Schritte prüfen |
+| Mitteilung verrät fremde Daten                 | nur aus dem eigenen Cache (RLS), nur eigene Person                               | core `notices.test.ts` (AC-008, AC-013)  |
+| Schlüssel weit in der Zukunft verdrängen echte | Tag höchstens heute + 367 (eine Erinnerung liegt höchstens 366 Tage vorher)      | pgTAP (AC-024), `commands-notices`       |
+| Alte Push-Secrets bleiben in der Cloud stehen  | `supabase secrets unset …` (Enrico-Schritt 2); `push-send` geht mit `--prune`    | `/security-check` 26.11. (niedrig)       |
+| Tipp öffnet eine fremde Adresse                | nur feste Pfade `/haushalt`, `/kalender` mit Ids aus dem Cache; Zod an der Seite | core `notifications.test.ts`             |
+
+## Enrico-Schritte
+
+1. **Vor dem Merge dieses PR** (sonst wartet er auf einen Check, den es nicht mehr gibt): das
+   Ruleset von `develop` ohne „Deno-Lock“ übernehmen
+   `gh api -X PUT repos/enricogoerlitz/housekeeping-app/rulesets/27820495 --input infra/github/ruleset-develop.json`;
+   vor dem Merge des nächsten Release-PR dasselbe für `main`
+   `gh api -X PUT repos/enricogoerlitz/housekeeping-app/rulesets/27820497 --input infra/github/ruleset-main.json`.
+2. **Nach der nächsten Veröffentlichung** (sie spielt die Migration ein und löscht `push-send` per
+   `functions deploy --prune`): die verwaisten Function-Secrets löschen, **aus einem leeren Ordner**,
+   nie aus dem Repo (die CLI würde sonst Werte aus `supabase/config.toml` mitnehmen):
+   `mkdir -p /tmp/leer && cd /tmp/leer && supabase secrets unset --remote=<Produktions-Ref> --workdir . VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT PUSH_SEND_SECRET`
+   (CLI 3.x, wie `release.yml`; mit `--dry-run` vorher ansehen) und dasselbe mit
+   `--remote=<Vorschau-Ref>`.
+3. GitHub-Variablen löschen: `gh variable delete PRODUCTION_VAPID_PUBLIC_KEY` und
+   `gh variable delete PREVIEW_VAPID_PUBLIC_KEY` (Repository-Ebene).
+4. Lokal in `.env` die Zeilen `EXPO_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PUBLIC_KEY`,
+   `VAPID_PRIVATE_KEY` und `PUSH_SEND_SECRET` löschen (nichts liest sie mehr).
+5. Auf den Geräten nichts nötig; wer mag, nimmt der App die Erlaubnis für Benachrichtigungen in den
+   Browser-Einstellungen.
 
 ## Umsetzung
 
-- [ ] 1. Migration: Push entfernen, Spalte und RPC, Mindestversion; pgTAP rot → grün (AC-001,
+- [x] 1. Migration: Push entfernen, Spalte und RPC, Mindestversion; pgTAP rot → grün (AC-001,
       AC-002, AC-022–AC-025)
-- [ ] 2. `packages/core` `notices.ts` mit Tests rot → grün; Push-Teile aus `notifications.ts`
+- [x] 2. `packages/core` `notices.ts` mit Tests rot → grün; Push-Teile aus `notifications.ts`
       (AC-006–AC-013, AC-015, AC-021)
-- [ ] 3. `packages/api`: Mapping, Transport, `acknowledgeNotices`, Cache-Version; Push-Befehle weg
+- [x] 3. `packages/api`: Mapping, Transport, `acknowledgeNotices`, Cache-Version; Push-Befehle weg
       (AC-018, AC-020)
-- [ ] 4. `packages/ui` `CountBadge`; App: Glocke, Fenster, Seite „Benachrichtigungen“ weg, keine
+- [x] 4. `packages/ui` `WithBadge` und Tokens `badge`/`onBadge`; App: Glocke, Fenster, Seite „Benachrichtigungen“ weg, keine
       Erlaubnisfragen (AC-003, AC-006, AC-014–AC-020)
-- [ ] 5. Function, Service Worker, Skripte, Workflows, Doku, ADR-0017, Regeln (AC-004, AC-005)
-- [ ] 6. Screenshots Handy 390×844 und Desktop 1440×900; `/security-check`
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` und
-      `pnpm exec supabase test db` grün
+- [x] 5. Function, Service Worker, Skripte, Workflows, Doku, ADR-0017, Regeln (AC-004, AC-005)
+- [x] 6. Screenshots Handy 390×844 und Desktop 1440×900; `/security-check`
+- [x] Nachweis (26.11.2026): `pnpm format:check && pnpm check` grün (core 1.774, api 996 Tests,
+      Skripte, knip, Lint, Typen); `node scripts/with-env.mjs pnpm build:web` grün (Service Worker
+      ohne `push`/`notificationclick`); `pnpm exec supabase test db`: alle Dateien dieser Spec grün,
+      rot nur `recipe_video` und `schema_lint` wegen der Migration der parallelen Spec 0046 in der
+      geteilten lokalen DB (nicht in diesem Zweig). Glocke, Fenster, Bestätigen, „Alle bestätigen“,
+      Tipp aufs Ziel, offline und die alte Adresse am Dev-Server (Port 8097) geklickt; Screenshots
+      in `tmp/review-0003/0051/`. `/security-check`: 0 kritisch/hoch/mittel, 1 niedrig
+      (Enrico-Schritt 2), Hinweise umgesetzt (Tag-Grenze, `touch_updated_at`, Test-Helfer). Volle
+      e2e-Suite nicht gelaufen (Bau-Brief); `pnpm test:integration` nicht gelaufen (setzt die
+      geteilte DB zurück).

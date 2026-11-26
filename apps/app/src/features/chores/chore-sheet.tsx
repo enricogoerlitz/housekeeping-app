@@ -12,7 +12,6 @@ import {
   useToday,
 } from '@housekeeping/api';
 import {
-  asksForPushPermission,
   choreDraftErrors,
   choreDraftFrom,
   choreFieldsOf,
@@ -45,7 +44,6 @@ import {
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { useEnsureDevicePush } from '@/features/notifications/use-device-push';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { undoAction, useOnlineOnly } from '@/features/shell/offline';
 import { PlanDateCalendar } from '@/lib/plan-date-calendar';
@@ -121,7 +119,6 @@ function useChoreDetail(props: ChoreDetailProps): {
   const today = useToday();
   const events = useChoreEvents();
   const online = useOnlineOnly();
-  const ensureDevicePush = useEnsureDevicePush();
   const [editing, setEditing] = useState(false);
   const [draft, update, reset] = useChoreDraft(() => choreDraftFrom(chore, today, me.id));
   const [errors, setErrors] = useState<ChoreDraftErrors>({});
@@ -147,16 +144,6 @@ function useChoreDetail(props: ChoreDetailProps): {
     const found = choreDraftErrors(draft);
     setErrors(found);
     if (found.title || found.weekdays) return;
-    // A new time asks for this device first, inside the tap (spec 0013, AC-007, Decision 26).
-    if (
-      asksForPushPermission({
-        kind: 'time',
-        gesture: 'tap',
-        before: chore.dueTime,
-        after: time.value,
-      })
-    )
-      ensureDevicePush();
     try {
       // No time removes it (✕, AC-025).
       updateChore(chore.id, {

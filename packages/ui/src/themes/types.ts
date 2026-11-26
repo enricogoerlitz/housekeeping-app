@@ -40,6 +40,12 @@ export interface ThemeColors {
   scrim: string;
   fabBg: string;
   fabText: string;
+  /**
+   * The red circle with the number of open notices on the bell (spec 0051): the only red of the
+   * app, by the owner's wish; never for hints, errors or anything overdue.
+   */
+  badge: string;
+  onBadge: string;
   tones: Record<Tone, { bg: string; fg: string }>;
   /** Terrakotta, Pflaume, Ocker, Moos, Grau (spec 0010, D19). */
   kinds: Record<KindColor, string>;

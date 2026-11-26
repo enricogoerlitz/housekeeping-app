@@ -1,5 +1,5 @@
 ---
-status: angenommen
+status: abgelöst durch ADR-0017
 datum: 2026-11-21
 autor: agent
 betrifft:
@@ -19,7 +19,10 @@ betrifft:
 
 ## Status
 
-`angenommen` · 21.11.2026, vom Eigentümer mit dem Plan zu Spec 0013 („Benachrichtigungen“) vorab
+`abgelöst durch ADR-0017` — siehe [ADR-0017](0017-mitteilungen-in-der-app.md) (26.11.2026:
+Web Push entfernt, Mitteilungen nur in der App).
+
+Ursprünglich `angenommen` · 21.11.2026, vom Eigentümer mit dem Plan zu Spec 0013 („Benachrichtigungen“) vorab
 freigegeben. Die fachlichen Entscheidungen D36 bis D43 (UI-Konzept v2, Abschnitt 6) sind
 freigegeben, darunter D40 (Rechte des Zeitplaners). Diese ADR hält fest, **womit** zugestellt wird, **wer** plant und **wo** Schlüssel, Push-Abos und das
 Zustell-Protokoll liegen. Sie präzisiert Regel 4 und Regel 5 aus `AGENTS.md`; ein eigener Nachtrag

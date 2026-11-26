@@ -10,7 +10,6 @@ import { AssistantSheet } from '@/features/assistant/assistant-sheet';
 import { AuthGate } from '@/features/auth/auth-gate';
 import { ReturnAfterSignIn } from '@/features/auth/return-path';
 import { ConfirmHost } from '@/features/shell/confirm-dialog';
-import { NotificationBridge } from '@/features/notifications/use-notification-open';
 import { PortraitHint } from '@/features/shell/portrait-hint';
 import { AssistantProvider } from '@/lib/assistant';
 import { features } from '@/lib/features';
@@ -27,8 +26,6 @@ export default function RootLayout() {
               <Screens />
               <PlaceTracker />
               <ReturnAfterSignIn />
-              {/* Web Push: this device's registration at start, a tap on a notification. */}
-              <NotificationBridge />
               {/* Without the AI switch the assistant cannot open at all (spec 0005, AC-044). */}
               {features.ai ? <AssistantSheet /> : null}
             </AssistantProvider>

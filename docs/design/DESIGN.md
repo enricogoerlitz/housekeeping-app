@@ -15,7 +15,8 @@
    1320 px, erst darüber wird zentriert. Jeder Bereich hat eine Breite, nie abhängig von Ansicht
    oder Inhalt (Spec 0005, REQ-002).
 3. **Ruhe statt Druck.** Kein Rot. Hinweise, Offline und Überfälliges sind orange
-   (`warnBg`/`warnText`). Keine Punkte, Serien oder Ranglisten.
+   (`warnBg`/`warnText`). Einzige Ausnahme auf Wunsch des Eigentümers: die Zahl offener
+   Mitteilungen an der Glocke (`badge`, Spec 0051). Keine Punkte, Serien oder Ranglisten.
 4. **Fotos sind die Bühne für Essen**, Symbole für alles andere. Keine Emojis als Symbole.
 5. **Nur Tokens.** Feature-Code enthält keine Farbwerte und keine Schriftnamen; die Lint-Regel prüft
    das (Spec 0001, AC-005).
@@ -51,6 +52,7 @@ Rollen statt Farbnamen. Alle Paare erfüllen WCAG AA (Text ≥ 4,5:1), geprüft 
 | `warnBg` / `warnText`                                 | Offline, „Passt nicht für …“, Fehlermeldungen an Feldern                                                       |
 | `barBg`                                               | Tab-Leiste, Seitenleiste, Eingabeleiste                                                                        |
 | `fabBg` / `fabText`                                   | Assistent-Knopf (in „Frisch“ Tinte)                                                                            |
+| `badge` / `onBadge`                                   | Roter Kreis mit Zahl an der Glocke (`WithBadge`, Spec 0051); sonst nirgends                                    |
 | `tones.{essen,plan,liste,haushalt,ki}`                | Bereichsfarben; nur „Frisch“ nutzt sie, siehe unten                                                            |
 | `kinds.{recipe,collection,restaurant,activity,chore}` | Arten im Kalender (Spec 0010, D19): nur als 3-px-Kante oder Punkt, nie als Fläche; ≥ 3:1 gegen Seite und Karte |
 
