@@ -1,7 +1,6 @@
 import {
   OfflineError,
   PHOTO_UPLOAD_FAILED_MESSAGE,
-  preparePhoto,
   removeRecipePhoto,
   setRecipePhoto,
   WRITE_REJECTED_MESSAGE,
@@ -21,11 +20,11 @@ import {
 import { useRef, useState } from 'react';
 import { View, type HostInstance } from 'react-native';
 
-import { confirmPhotoRemoval } from '@/features/shell/own-photo';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { confirmPhotoRemoval } from '@/features/shell/photo-window';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
-import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
+import { CAN_PICK_PHOTO } from '@/lib/pick-photo';
 import { errorMessage } from '@/features/shell/error-message';
 
 /** Why "Auf die Liste" is greyed out when there is nothing to buy (spec 0008, AC-060). */
@@ -142,10 +141,17 @@ export function RecipeActions(props: RecipeActionsProps) {
 }
 
 export interface RecipePhotoState {
-  /** "Foto ändern": opens the picker; call it right inside the press (browsers ask for that). */
+  /** "Foto ändern": opens the window "Foto" (spec 0039, REQ-001). */
   change: () => void;
-  /** "Foto entfernen": back to the sample photo (spec 0004, AC-018). */
+  /** The window "Foto" is open. */
+  windowOpen: boolean;
+  closeWindow: () => void;
+  /** "Übernehmen" in the window: saves the prepared JPEG. */
+  apply: (photo: Blob) => void;
+  /** "Foto entfernen": asks, then back to the sample photo (spec 0004, AC-018). */
   remove: () => void;
+  /** Removes without asking: the window asked already. */
+  removeConfirmed: () => void;
   busy?: 'change' | 'remove';
   error?: string;
 }
@@ -158,6 +164,7 @@ export function useRecipePhoto(recipe: Recipe): RecipePhotoState {
   const online = useOnlineOnly();
   const [busy, setBusy] = useState<'change' | 'remove'>();
   const [error, setError] = useState<string>();
+  const [windowOpen, setWindowOpen] = useState(false);
 
   const run = async (kind: 'change' | 'remove', action: () => Promise<void>, done: string) => {
     setBusy(kind);
@@ -173,26 +180,26 @@ export function useRecipePhoto(recipe: Recipe): RecipePhotoState {
     }
   };
 
+  const removeConfirmed = () =>
+    void run('remove', () => removeRecipePhoto(recipe.id), 'Foto entfernt');
+
   return {
     busy,
     error,
+    windowOpen,
+    closeWindow: () => setWindowOpen(false),
     change: () => {
       if (online.disabled || busy) return;
-      pickPhotoFile((file) => {
-        void run(
-          'change',
-          async () => setRecipePhoto(recipe.id, await preparePhoto(file)),
-          'Foto gespeichert',
-        );
-      });
+      setWindowOpen(true);
     },
-    // Asks first, from the menu as from under the photo (spec 0036, AC-019).
+    apply: (photo) =>
+      void run('change', () => setRecipePhoto(recipe.id, photo), 'Foto gespeichert'),
+    // Asks first, from the menu (spec 0036, AC-019).
     remove: () => {
       if (online.disabled || busy) return;
-      confirmPhotoRemoval(
-        () => void run('remove', () => removeRecipePhoto(recipe.id), 'Foto entfernt'),
-      );
+      confirmPhotoRemoval(removeConfirmed);
     },
+    removeConfirmed,
   };
 }
 
@@ -216,11 +223,12 @@ export function RecipePhotoStatus(props: { photo: RecipePhotoState }) {
   );
 }
 
-type MoreAction = 'collection' | 'photo' | 'photo-remove' | 'delete';
+type MoreAction = 'share' | 'collection' | 'photo' | 'photo-remove' | 'delete';
 
 /**
- * ⋯ of the recipe page (AC-020): "Zu Sammlung hinzufügen" for a recipe only (spec 0009, AC-008,
- * AC-009), "Foto ändern", "Foto entfernen" with an own photo, "Löschen".
+ * ⋯ of the recipe page (AC-020): "Teilen" (spec 0042, REQ-004; offline too), "Zu Sammlung
+ * hinzufügen" for a recipe only (spec 0009, AC-008, AC-009), "Foto ändern", "Foto entfernen" with
+ * an own photo, "Löschen".
  */
 export function RecipeMoreMenu(props: {
   recipe: Recipe;
@@ -228,10 +236,13 @@ export function RecipeMoreMenu(props: {
   onDelete: () => void;
   /** Offered for the kind "Rezept" only; a collection never goes into a collection (D15). */
   onAddToCollection?: () => void;
+  /** "Teilen": runs inside the tap, as the share menu of the browser asks. */
+  onShare?: () => void;
 }) {
   const online = useOnlineOnly();
   const busy = props.photo.busy !== undefined;
   const options: MenuOption<MoreAction>[] = [];
+  if (props.onShare) options.push({ value: 'share', label: 'Teilen' });
   if (props.recipe.kind === 'recipe' && props.onAddToCollection) {
     options.push({
       value: 'collection',
@@ -265,7 +276,8 @@ export function RecipeMoreMenu(props: {
       accessibilityLabel={`Mehr zu ${props.recipe.title}`}
       options={options}
       onChange={(action) => {
-        if (action === 'collection') props.onAddToCollection?.();
+        if (action === 'share') props.onShare?.();
+        else if (action === 'collection') props.onAddToCollection?.();
         else if (action === 'photo') props.photo.change();
         else if (action === 'photo-remove') props.photo.remove();
         else props.onDelete();

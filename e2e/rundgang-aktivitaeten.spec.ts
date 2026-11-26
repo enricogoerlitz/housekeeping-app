@@ -138,14 +138,23 @@ async function planActivity(page: Page, date: string, slotId: string, id: string
 }
 
 /** Chooses a file in the picker the button opens. */
+/**
+ * Opens the window "Foto" with `opener` (spec 0039), chooses the file under "Datei wählen" and,
+ * unless `apply` is false, takes it with "Übernehmen" once the preview shows it.
+ */
 async function pickFile(
   page: Page,
-  button: string,
+  opener: string,
   file: string | { name: string; mimeType: string; buffer: Buffer },
+  options: { prefix: string; apply?: boolean },
 ): Promise<void> {
+  await tid(page, opener).click();
   const chooser = page.waitForEvent('filechooser');
-  await tid(page, button).click();
+  await tid(page, `${options.prefix}-photo-window-file`).click();
   await (await chooser).setFiles(file);
+  if (options.apply === false) return;
+  await expect(tid(page, `${options.prefix}-photo-window-preview-new`)).toBeVisible(SYNC);
+  await tid(page, `${options.prefix}-photo-window-apply`).click();
 }
 
 /** The image of an element shows an own photo (a blob: URL from the device's photo store). */
@@ -298,7 +307,7 @@ test('AC-006: a Google Maps link fills in the place with coordinates; the name s
   await tid(page, 'activity-link').fill(
     'https://www.google.com/maps/place/Eisstadion+Hohensch%C3%B6nhausen/@52.55,13.5,17z',
   );
-  await expect(tid(page, 'activity-place-name')).toHaveValue('Eisstadion Hohenschönhausen');
+  await expect(tid(page, 'activity-search-name')).toHaveValue('Eisstadion Hohenschönhausen');
   await expect(tid(page, 'activity-link-ok')).toContainText('Koordinaten übernommen');
   await expect(tid(page, 'activity-name')).toHaveValue('');
   await tid(page, 'activity-name').fill(name);
@@ -353,7 +362,7 @@ test('AC-009: Enrico’s photo of Eislaufen shows on Nadja’s device; it is sto
   await expect(tid(page, 'activity-title')).toHaveText('Eislaufen');
   await expect(tid(page, 'activity-image-placeholder')).toBeVisible();
   await expect(tid(page, 'activity-photo-change')).toHaveText(/Foto hinzufügen/);
-  await pickFile(page, 'activity-photo-change', GPS_PHOTO);
+  await pickFile(page, 'activity-photo-change', GPS_PHOTO, { prefix: 'activity' });
   await expect(toastMessage(page)).toHaveText('Foto gespeichert', SYNC);
   // The photo appears once it is loaded (usePhoto with the React Compiler on).
   await expectOwnPhoto(tid(page, 'activity-image-photo'));
@@ -388,18 +397,24 @@ test('AC-010: a file that is no image or larger than 15 MB is not uploaded', asy
   });
   await open(page, activityRoute(page, BOULDERN));
   await expect(tid(page, 'activity-title')).toHaveText('Bouldern');
-  for (const file of [
-    { name: 'notiz.txt', mimeType: 'text/plain', buffer: Buffer.from('Das ist kein Bild.') },
-    {
-      name: 'riesig.jpg',
-      mimeType: 'image/jpeg',
-      buffer: Buffer.alloc(15 * 1024 * 1024 + 1, 0xff),
-    },
-  ]) {
-    await pickFile(page, 'activity-photo-change', file);
-    await expect(tid(page, 'activity-photo-error')).toHaveText(
+  for (const [file, message] of [
+    [
+      { name: 'notiz.txt', mimeType: 'text/plain', buffer: Buffer.from('Das ist kein Bild.') },
+      'Das ist kein Bild',
+    ],
+    [
+      {
+        name: 'riesig.jpg',
+        mimeType: 'image/jpeg',
+        buffer: Buffer.alloc(15 * 1024 * 1024 + 1, 0xff),
+      },
       'Dieses Bild können wir nicht verwenden',
-    );
+    ],
+  ] as const) {
+    await pickFile(page, 'activity-photo-change', file, { prefix: 'activity', apply: false });
+    await expect(tid(page, 'activity-photo-window-error')).toHaveText(message);
+    await expect(tid(page, 'activity-photo-window-apply')).toBeDisabled();
+    await tid(page, 'activity-photo-window-cancel').click();
   }
   await expect(tid(page, 'activity-image-placeholder')).toBeVisible();
   expect(uploads).toEqual([]);
@@ -596,7 +611,7 @@ test('AC-017: Nadja’s photo of Spaghetti Bolognese shows on Enrico’s device 
   await nadja.page.goto(`/rezept/${BOLOGNESE}`);
   await expect(tid(nadja.page, 'recipe-detail')).toBeVisible({ timeout: 30_000 });
   await tid(nadja.page, 'recipe-more').click();
-  await pickFile(nadja.page, 'recipe-more-photo', GPS_PHOTO);
+  await pickFile(nadja.page, 'recipe-more-photo', GPS_PHOTO, { prefix: 'recipe' });
   await expectOwnPhoto(tid(nadja.page, 'recipe-photo'));
   await nadja.context.close();
   await page.bringToFront();
@@ -624,7 +639,7 @@ test('AC-018: "Foto entfernen" on Lasagne shows the sample photo again and delet
   const sample = await image.getAttribute('src');
   expect(sample).not.toMatch(/^blob:/);
   await tid(page, 'recipe-more').click();
-  await pickFile(page, 'recipe-more-photo', GPS_PHOTO);
+  await pickFile(page, 'recipe-more-photo', GPS_PHOTO, { prefix: 'recipe' });
   await expectOwnPhoto(tid(page, 'recipe-photo'));
   const objectPath = await photoPathOf('recipes', LASAGNE);
   const enrico = await accessToken('enrico');

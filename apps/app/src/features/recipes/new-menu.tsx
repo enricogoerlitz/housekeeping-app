@@ -1,4 +1,4 @@
-import { Menu, useBreakpoint, type MenuOption } from '@housekeeping/ui';
+import { Menu, useBreakpoint, type MenuOption, openKeyboardNow } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 
@@ -23,7 +23,11 @@ export function FoodNewMenu(props: { onNew: (kind: FoodNewKind) => void }) {
       label="Neu"
       accessibilityLabel="Neu anlegen"
       options={options}
-      onChange={props.onNew}
+      // Every entry opens a window to type in: the keyboard opens with the tap (spec 0033, REQ-006).
+      onChange={(kind) => {
+        openKeyboardNow();
+        props.onNew(kind);
+      }}
       testID="recipe-new"
     />
   );

@@ -18,7 +18,7 @@ import {
   moveArea,
   moveStoreArea,
   renameArea,
-  renameStore,
+  updateStore,
   setDefaultStore,
   setStoreAreaHidden,
 } from './commands-stores';
@@ -54,7 +54,7 @@ describe('stores', () => {
   it('AC-044: renaming and "Als Standard" are patches; Standard moves to the new store', async () => {
     await fx.startEnrico();
     setDefaultStore('store-rewe');
-    renameStore('store-dm', ' Aldi Nordstadt ');
+    updateStore('store-dm', { name: ' Aldi Nordstadt ' });
     setDefaultStore('store-dm');
     await fx.settle();
     const ops = fx.calls.flatMap((call) => call.args[1] as ChangeOp[]);
@@ -71,8 +71,45 @@ describe('stores', () => {
       changes: { default_store_id: 'store-dm' },
     });
     expect(getData().household.defaultStoreId).toBe('store-dm');
-    expect(() => renameStore('store-dm', '')).toThrow('Name fehlt');
-    expect(() => renameStore('store-dm', 'x'.repeat(81))).toThrow('Höchstens 80 Zeichen');
+    expect(() => updateStore('store-dm', { name: '' })).toThrow('Name fehlt');
+    expect(() => updateStore('store-dm', { name: 'x'.repeat(81) })).toThrow('Höchstens 80 Zeichen');
+  });
+
+  it('spec 0042, AC-003: "Markt bearbeiten" saves name and map link in one patch', async () => {
+    await fx.startEnrico();
+    updateStore('store-dm', { name: 'Edeka Mitte', mapsUrl: ' https://maps.app.goo.gl/abc ' });
+    await fx.settle();
+    const ops = fx.calls.flatMap((call) => call.args[1] as ChangeOp[]);
+    expect(ops).toContainEqual({
+      kind: 'patch',
+      table: 'stores',
+      id: 'store-dm',
+      changes: { name: 'Edeka Mitte', maps_url: 'https://maps.app.goo.gl/abc' },
+    });
+    expect(store('store-dm').mapsUrl).toBe('https://maps.app.goo.gl/abc');
+
+    // Without a link the link goes; a store without one shows no "Route" (spec 0036 rule).
+    updateStore('store-dm', { name: 'Edeka Mitte', mapsUrl: '  ' });
+    await fx.settle();
+    expect(store('store-dm').mapsUrl).toBeUndefined();
+    expect(fx.calls.flatMap((call) => call.args[1] as ChangeOp[]).at(-1)).toEqual({
+      kind: 'patch',
+      table: 'stores',
+      id: 'store-dm',
+      changes: { maps_url: null },
+    });
+  });
+
+  it('spec 0042, REQ-002: a map link that is no http(s) address is refused before sending', async () => {
+    await fx.startEnrico();
+    const before = fx.calls.length;
+    expect(() =>
+      updateStore('store-dm', { name: 'Edeka', mapsUrl: 'javascript:alert(1)' }),
+    ).toThrow('Das ist kein Karten-Link');
+    expect(() =>
+      updateStore('store-dm', { name: 'Edeka', mapsUrl: `https://${'a'.repeat(2000)}` }),
+    ).toThrow('Das ist kein Karten-Link');
+    expect(fx.calls.length).toBe(before);
   });
 
   it('AC-044: Nadja never chose a store; her "Einkaufen" follows the new default store', async () => {
@@ -91,7 +128,7 @@ describe('stores', () => {
     await fx.settle(nadja);
     expect(nadjasStore()).toBe('store-rewe');
 
-    renameStore('store-dm', 'Aldi Nordstadt');
+    updateStore('store-dm', { name: 'Aldi Nordstadt' });
     setDefaultStore('store-dm');
     await fx.settle(nadja);
     expect(nadjasStore()).toBe('store-dm');

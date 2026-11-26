@@ -56,6 +56,7 @@ import {
   ViewTabs,
   tabSwipe,
   useBreakpoint,
+  openKeyboardNow,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
@@ -158,6 +159,7 @@ export function RecipesScreen() {
   const [newKind, setNewKind] = useState<RecipeKind>('recipe');
   const newSheet = { open: params.fenster === 'neu', kind: newKind };
   const openNew = (kind: RecipeKind) => {
+    openKeyboardNow();
     setNewKind(kind);
     address.open({ fenster: 'neu' });
   };

@@ -2,6 +2,8 @@
 // the document until the picker reports back: an input that hangs nowhere can be collected, and
 // iOS then drops the chosen photo, so the first try came back empty.
 
+import type { PickImageOptions } from './pick-image-options';
+
 let pending: HTMLInputElement | null = null;
 
 /**
@@ -10,12 +12,14 @@ let pending: HTMLInputElement | null = null;
  *
  * @public Metro resolves the import of the native twin to this file on the web.
  */
-export function pickImageFile(onFile: (file: File) => void): void {
+export function pickImageFile(onFile: (file: File) => void, options: PickImageOptions = {}): void {
   if (typeof document === 'undefined') return;
   pending?.remove();
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
+  // "Foto aufnehmen" (spec 0039, AC-009): phones open the rear camera directly.
+  if (options.camera) input.setAttribute('capture', 'environment');
   input.setAttribute('aria-hidden', 'true');
   input.tabIndex = -1;
   input.style.position = 'fixed';

@@ -136,6 +136,13 @@ export const ResolveMapsLinkReplySchema = z.strictObject({
 });
 export type ResolveMapsLinkReply = z.infer<typeof ResolveMapsLinkReplySchema>;
 
+/**
+ * "Bildadresse" in the photo window (spec 0039, REQ-003): the server loads the image at `url`
+ * (fetch-image) and answers its bytes. The household is checked for membership only.
+ */
+export const FetchImageRequestSchema = z.strictObject({ householdId: Id, url: HttpsUrl });
+export type FetchImageRequest = z.infer<typeof FetchImageRequestSchema>;
+
 /** Stable error codes of the edge functions; the app maps them to German messages. */
 export const ErrorCodeSchema = z.enum([
   'unauthorized',
@@ -144,6 +151,10 @@ export const ErrorCodeSchema = z.enum([
   'quota_exceeded',
   'ai_unavailable',
   'internal',
+  /** The caller is no member of the household named in the request (fetch-image). */
+  'forbidden',
+  /** The address gives no usable public image (fetch-image, spec 0039, AC-007). */
+  'not_an_image',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

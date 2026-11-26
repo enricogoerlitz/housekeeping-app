@@ -353,6 +353,7 @@ const storeRow = (householdId: string, store: Store) =>
     name: store.name,
     area_order: store.areaOrder,
     hidden_area_ids: store.hiddenAreaIds,
+    maps_url: store.mapsUrl ?? null,
   }));
 
 const planRow = (householdId: string, entry: MealPlanEntry) =>
@@ -937,6 +938,7 @@ function toStore(row: Row): Store {
     name: r.name ?? '',
     areaOrder: r.area_order ?? [],
     hiddenAreaIds: r.hidden_area_ids ?? [],
+    mapsUrl: opt(r.maps_url),
   };
 }
 

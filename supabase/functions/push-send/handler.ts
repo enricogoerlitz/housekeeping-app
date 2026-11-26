@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { readLimitedBody } from '../_shared/body.ts';
 import { ConfigError, jsonResponse, requireEnv } from '../_shared/errors.ts';
 import { MAX_PUSH_ENDPOINT_LENGTH, isPushEndpoint } from '../_shared/push-endpoint.ts';
+import { freshTimestamp, validSignature } from '../_shared/signature.ts';
 import type { PushSender, VapidConfig } from './web-push.ts';
 
 export const MAX_BODY_BYTES = 128 * 1024;
@@ -19,11 +20,6 @@ export const CONCURRENCY = 5;
 export const SEND_TIMEOUT_MS = 10_000;
 /** pg_net waits 20 s for the answer; everything not done by then is reported as null. */
 export const BATCH_DEADLINE_MS = 15_000;
-/** A signature older than this is refused (seconds). */
-const MAX_SIGNATURE_AGE_S = 300;
-/** Clock skew tolerated for a timestamp in the future (seconds). */
-const MAX_CLOCK_SKEW_S = 60;
-
 export interface PushSendDeps {
   env: (name: string) => string | undefined;
   createSender: (config: VapidConfig) => Promise<PushSender>;
@@ -70,49 +66,6 @@ type Status = number | null | 'rejected';
 
 function reply(status: number, error: string, headers: { [name: string]: string } = {}): Response {
   return jsonResponse({ error }, status, headers);
-}
-
-/** Unix seconds, as the database writes them; anything else is refused. */
-function freshTimestamp(value: string | null, nowMs: number): string | null {
-  if (value === null || !/^\d{1,12}$/.test(value)) return null;
-  const age = Math.floor(nowMs / 1000) - Number(value);
-  return age <= MAX_SIGNATURE_AGE_S && age >= -MAX_CLOCK_SKEW_S ? value : null;
-}
-
-function hexBytes(value: string): Uint8Array | null {
-  if (!/^[0-9a-f]{64}$/.test(value)) return null;
-  return Uint8Array.from(value.match(/../g) ?? [], (pair) => parseInt(pair, 16));
-}
-
-/**
- * HMAC-SHA256 of "<timestamp>.<body>" with the shared secret, compared byte by byte without an
- * early exit, so timing tells nothing about the expected value.
- */
-async function validSignature(
-  secret: string,
-  timestamp: string,
-  body: Uint8Array,
-  given: string,
-): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const prefix = encoder.encode(`${timestamp}.`);
-  const signed = new Uint8Array(prefix.byteLength + body.byteLength);
-  signed.set(prefix, 0);
-  signed.set(body, prefix.byteLength);
-  const expected = new Uint8Array(await crypto.subtle.sign('HMAC', key, signed));
-  const actual = hexBytes(given);
-  if (actual === null) return false;
-  let difference = 0;
-  for (let i = 0; i < expected.byteLength; i += 1)
-    difference |= (actual[i] ?? 0) ^ (expected[i] ?? 0);
-  return difference === 0;
 }
 
 function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {

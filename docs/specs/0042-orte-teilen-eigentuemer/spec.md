@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -58,14 +58,18 @@ Quelle: F-04. Offline: offline vollständig (Formular).
 
 ### Teilen
 
-**REQ-004 — Teilen.** Rezept, Sammlung, Restaurant und Aktivität haben „Teilen“ (Menü „Mehr“ bzw.
-Knopf). Geteilt wird über das Teilen-Menü des Geräts ein ohne App lesbarer Text und der App-Link;
-am Desktop ohne Teilen-Menü wird der Text kopiert. Quelle: F-09. Offline: offline vollständig.
+**REQ-004 — Teilen.** Rezept, Sammlung, Restaurant und Aktivität haben „Teilen“ als gut sichtbares
+Symbol direkt unter dem Foto, am rechten Ende der Zeile mit der Foto-Aktion (auch ohne Foto und
+offline); zusätzlich im Menü „Mehr“. Geteilt wird über das Teilen-Menü des Geräts ein ohne App
+lesbarer Text und der App-Link; am Desktop ohne Teilen-Menü wird der Text kopiert. Quelle: F-09,
+Enricos Nachtrag vom 26.11. Offline: offline vollständig.
 
 - AC-008: Angenommen „Apfelkuchen“ für 2 Portionen · Wenn ich „Teilen“ tippe · Dann enthält der Text
   Titel, „2 Portionen“, alle Zutaten mit Mengen, die Schritte und die Links
 - AC-009: Angenommen „AMRIT“ · Dann enthält der Text Name, Adresse, Karten-Link und Webseite
 - AC-010: Angenommen Desktop ohne Teilen-Menü · Dann ist der Text kopiert und die App sagt „Kopiert“
+- AC-016: Angenommen die Seite von „Apfelkuchen“, „AMRIT“, einer Sammlung oder einer Aktivität ·
+  Dann steht unter dem Foto rechts in der Zeile von „Foto ändern“ das Symbol „Teilen“, auch offline
 
 ### Eigentümer
 
@@ -88,6 +92,28 @@ steht beim Eigentümer „Eigentümer“. Quelle: V-01. Offline: offline lesend.
 2. Enrico, 26.11.: Zwischenablage nur über „Einfügen“ (iOS erlaubt kein Lesen beim Antippen).
 3. Enrico, 26.11.: Teilen = lesbarer Text + App-Link; Foto mit teilen, wenn das Gerät Dateien teilen
    kann (`navigator.canShare({ files })`).
+4. Bau, 26.11.: „Name für die Suche“ ist beim Restaurant und beim Markt nur ein Feld für den Pin
+   (nicht gespeichert, leer = Name des Eintrags als Platzhalter); bei der Aktivität ist es der
+   gespeicherte Ortsname (`place_name`), der auch „Route“ beschriftet. Der Pin sucht auch mit der
+   Adresse allein; deaktiviert nur ohne Name und ohne Adresse (AC-002).
+5. Bau, 26.11.: Der Karten-Link des Markts steht im ✎-Fenster „Markt bearbeiten“ (Name + Ortsfeld),
+   nicht in „Neuer Markt“ (dort bliebe nur ein zweiter Schreibschritt nach `create_store`). Ein
+   Kurzlink wird beim Speichern aufgelöst wie beim Restaurant; „Route“ des Markts nutzt die
+   Koordinaten des Links, sonst den Namen.
+6. Bau, 26.11.: Einfügen erkennt Karten-Link, Webadresse (→ „Webseite“, wo es sie gibt) und Adresse
+   mit fünfstelliger PLZ. Normales Einfügen = mehr als ein Zeichen auf einmal eingefügt
+   (`insertedText`); Diktat oder Autokorrektur mit erkennbarem Inhalt wandert ebenso. Danach geht
+   der Cursor ins nächste leere Feld von Karten-Link/Adresse.
+7. Bau, 26.11.: Ein vor dem Link getippter Restaurantname bleibt; der Link füllt den Namen nur,
+   wenn er leer ist oder vom vorigen Link stammt (Reihenfolge Name → Pin → Link).
+8. Bau, 26.11.: „Zurückziehen“ einer Einladung bleibt für jedes Mitglied (nicht in REQ-005
+   genannt); „Haushalt löschen“ bleibt beim letzten Mitglied.
+9. Bau, 26.11.: Das Teilen-Symbol sitzt in `PhotoActionRow` (`own-photo.tsx`) rechts; Spec 0039
+   ersetzt die Foto-Knöpfe links durch „Foto ändern“, das Symbol bleibt am Zeilenende.
+10. Bau, 26.11. (nach dem Merge von 0041 und 0037): `apply_changes` dieser Migration baut auf der
+    Fassung von `20261126111313` (Spec 0041) auf und ergänzt nur `maps_url` bei `stores`;
+    Cache-Version 20 (0041: 19). `save_recipe_page` (0037) ruft `apply_changes(uuid, jsonb)`
+    unverändert auf.
 
 ## Daten
 
@@ -97,20 +123,56 @@ Migration: `stores.maps_url` (Grants, Sync-Registrierung, Cache-Version). Geänd
 
 ## Risiken
 
-| Risiko                                  | Gegenmaßnahme                                  | Test         |
-| --------------------------------------- | ---------------------------------------------- | ------------ |
-| Mitglied entfernt Eigentümer per API    | Prüfung in `remove_member`                     | pgTAP AC-012 |
-| Mitglied lädt per API ein               | Prüfung in `invite_member`                     | pgTAP AC-013 |
-| Haushalt ohne Eigentümer nach Verlassen | Eigentümer immer abgeleitet                    | pgTAP AC-014 |
-| Fremder Haushalt / abgemeldet           | bestehende Prüfungen                           | pgTAP AC-015 |
-| Wiederherstellung ändert Beitrittszeit  | `created_at` bleibt (Migration 20261123070546) | Test Restore |
+| Risiko                                  | Gegenmaßnahme                                  | Test          |
+| --------------------------------------- | ---------------------------------------------- | ------------- |
+| Mitglied entfernt Eigentümer per API    | Prüfung in `remove_member`                     | pgTAP AC-012  |
+| Mitglied lädt per API ein               | Prüfung in `invite_member`                     | pgTAP AC-013  |
+| Haushalt ohne Eigentümer nach Verlassen | Eigentümer immer abgeleitet                    | pgTAP AC-014  |
+| Fremder Haushalt / abgemeldet           | bestehende Prüfungen                           | pgTAP AC-015  |
+| Wiederherstellung ändert Beitrittszeit  | `created_at` bleibt (Migration 20261123070546) | Test Restore  |
+| Eigentümer lädt ein, während er geht    | `invite_member` sperrt die Haushaltszeile      | Code-Review   |
+| Fremder Text aus der Zwischenablage     | nur Text, nie HTML; Link-Prüfung + DB-Check    | Vitest, pgTAP |
+
+`Test Restore` = `household_owner.test.sql`: Wiederbeitritt (auch mit gesetztem
+`housekeeping.keep_created_at` als Client) kommt ans Ende; ein Update behält `created_at`;
+Mitglieder haben kein Insert/Update auf `household_members`. Die Restore-Funktionen der Migration
+20261123070546 berühren `household_members` nicht.
+
+`/security-check` (26.11.): 0 kritisch/hoch/mittel; 1 niedrig behoben (Sperre in
+`invite_member` gegen das Rennen „Eigentümer geht / lädt ein“); Hinweise: „Zurückziehen“ bleibt für
+alle Mitglieder (Entscheidung 8); `maps_url` wird nie als Link geöffnet, nur als Text geteilt; der
+Pin öffnet nur `www.google.com/maps/search` mit kodierter Suche.
 
 ## Umsetzung
 
-- [ ] 1. Migration `stores.maps_url` + pgTAP (`db-change`) (AC-003, AC-004)
-- [ ] 2. Eigentümer: Funktion + Prüfungen + pgTAP (AC-012–AC-015), UI (AC-011)
-- [ ] 3. Ortsfeld-Baustein, eingesetzt in Restaurant, Aktivität, Markt (AC-001, AC-002)
-- [ ] 4. Einfügen erkennen (core: Erkennung Link/Adresse, Tests) (AC-005–AC-007)
-- [ ] 5. Teilen (core: Text je Eintrag, Tests) (AC-008–AC-010)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
+- [x] 1. Migration `stores.maps_url` + pgTAP (`db-change`) (AC-003, AC-004)
+- [x] 2. Eigentümer: Funktion + Prüfungen + pgTAP (AC-012–AC-015), UI (AC-011)
+- [x] 3. Ortsfeld-Baustein, eingesetzt in Restaurant, Aktivität, Markt (AC-001, AC-002)
+- [x] 4. Einfügen erkennen (core: Erkennung Link/Adresse, Tests) (AC-005–AC-007)
+- [x] 5. Teilen (core: Text je Eintrag, Tests) (AC-008–AC-010); Symbol unter dem Foto (AC-016)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün;
       `pnpm exec supabase test db`; `/security-check`
+
+## Nachweis
+
+- Rot vor grün: pgTAP `household_owner` (Funktion fehlte) und `store_maps_url` (`invalid_change`,
+  Spalte fehlte); Vitest api `commands-stores` (`updateStore`), `households` (`ownerOfHousehold`),
+  core `membership` (`householdOwnerId`), `place-input`, `share-text` (Modul fehlte).
+- 26.11.: `pnpm format:check && pnpm check` grün, `pnpm build:web` (mit `.env`) grün.
+  `pnpm exec supabase test db`: `household_owner` (27), `store_maps_url` (12), `household_rpcs`
+  und alle übrigen eigenen grün; rot nur Tests fremder, parallel eingespielter Migrationen
+  (`collections` durch 0037, `manage_household`/`schema_lint` durch 0041).
+- Dev-Server (Port 8099), Playwright als Enrico und Nadja, 390×844 und 1440×900: AC-001 (Pin öffnet
+  `google.com/maps/search/?api=1&query=Bless…`), AC-002, AC-003 (Route erst mit Link, weg ohne),
+  AC-005, AC-006 (Adresse in „Adresse“, Cursor in „Karten-Link“), Webadresse → „Webseite“, AC-007,
+  AC-010 (ohne `navigator.share` kopiert, „Kopiert“), AC-016 (Symbol unter dem Foto auf allen vier
+  Seiten, Tipp kopiert den Text), AC-011 (Nadja: kein „Einladen“, kein
+  „Entfernen“, „Eigentümer“ bei Enrico); keine Konsolenfehler. Bilder in `tmp/review-0003/0042/`.
+- Nur am iPhone prüfbar: „Einfügen“-Blase von iOS, Teilen-Menü mit Foto, Fokus/Tastatur nach dem
+  Einfügen, Rückkehr aus Google Maps in die installierte App.
+- e2e: `rundgang-aktivitaeten` an `activity-search-name` angepasst, nicht ausgeführt (die Suite
+  setzt die geteilte lokale DB zurück).
+- Nach dem Merge von `develop` (0037, 0041): `apply_changes` der Migration lokal neu eingespielt
+  (kein Reset); `pnpm exec supabase test db` komplett grün (58 Dateien, 2853 Tests, darunter
+  `apply_changes`, `schema_lint`, `sync_pull`, `recipe_page_save`,
+  `activity_kinds_and_series`); `pnpm format:check && pnpm check && pnpm build:web` grün.
