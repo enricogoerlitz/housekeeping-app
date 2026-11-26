@@ -9,11 +9,13 @@ import {
   webSearchAsync,
 } from '@housekeeping/api';
 import {
+  defaultWebPhotoChoice,
   searchCenter,
   WEB_SEARCH_LIMITS,
   type PlaceProposal,
   type RecipeDraftReply,
   type WebResult,
+  type WebPhotoChoice,
   type WebSearchKind,
 } from '@housekeeping/core';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -52,6 +54,9 @@ export interface WebSearch {
   preview: PreviewState | undefined;
   /** REQ-008: what the photo should show, read from the search text; then no page photo is used. */
   imageWish: string | undefined;
+  /** REQ-010: the photo the previewed hit gives the entry; set before „Übernehmen“. */
+  photoChoice: WebPhotoChoice;
+  setPhotoChoice: (choice: WebPhotoChoice) => void;
   photos: Record<string, CardPhoto>;
   search: () => void;
   open: (card: WebResult) => void;
@@ -86,6 +91,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
   const [state, setState] = useState<SearchState>({ status: 'idle' });
   const [preview, setPreview] = useState<PreviewState>();
   const [imageWish, setImageWish] = useState<string>();
+  const [photoChoice, setPhotoChoice] = useState<WebPhotoChoice>('source');
   const [photos, setPhotos] = useState<Record<string, CardPhoto>>({});
   const [focusRequest, setFocusRequest] = useState(0);
   const round = useRef(0);
@@ -156,6 +162,7 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
   const open = (card: WebResult) => {
     const mine = round.current;
     setPreview({ status: 'loading', card });
+    setPhotoChoice(defaultWebPhotoChoice(card.imageUrl !== undefined, imageWish));
     const done = (next: PreviewState) => {
       if (round.current === mine)
         setPreview((current) => (current?.card === card ? next : current));
@@ -191,6 +198,8 @@ export function useWebSearch(kind: WebSearchKind, initialQuery = ''): WebSearch 
     state,
     preview,
     imageWish,
+    photoChoice,
+    setPhotoChoice,
     photos,
     search,
     open,

@@ -217,10 +217,9 @@ export function PlaceWebFill(props: {
     const after = placeValuesFromResult(props.kind, taken.card, taken.place ?? {});
     const location = taken.card.location;
     setOpen(false);
-    // REQ-008: an image wish makes the photo; without one the card's photo, and a place without
-    // one gets one made from its name (AC-030), unless it has a photo already.
-    const photo = taken.imageWish ? undefined : taken.photo;
-    if (taken.imageWish || (!photo && !props.hasPhoto)) {
+    // REQ-010: the photo chosen in the preview — the card's, three made by the AI, or none.
+    const photo = taken.photo;
+    if (taken.photoChoice === 'ai') {
       // Spec 0052: the raw wish (or the name) with what the photo is for.
       suggest(
         taken.imageWish ?? after.name ?? taken.card.title,

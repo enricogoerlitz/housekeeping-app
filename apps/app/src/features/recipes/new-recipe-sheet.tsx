@@ -174,11 +174,11 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       servings: reply.draft.servings,
       createdAt: new Date().toISOString(),
     });
-    // REQ-008: an image wish makes the photo (three suggestions); without one the page's photo,
-    // and a page without a photo gets one made from the title (AC-030).
-    const pagePhoto = taken.imageWish ? undefined : (taken.photo ?? photo);
-    handOverNewRecipe(recipe, input, pagePhoto);
-    if (!pagePhoto) {
+    // REQ-010: the photo chosen in the preview — the page's, three made by the AI (with the wish
+    // or the title), or none (a photo chosen in "Neu" stays then).
+    const pagePhoto = taken.photoChoice === 'source' ? taken.photo : photo;
+    handOverNewRecipe(recipe, input, taken.photoChoice === 'ai' ? undefined : pagePhoto);
+    if (taken.photoChoice === 'ai') {
       startPhotoSuggestions(recipe.id, {
         // Spec 0052: the raw wish (or the title) with what the photo is for.
         prompt: taken.imageWish ?? recipe.title,

@@ -414,7 +414,8 @@ export interface AiFillResult {
   generatePhoto: boolean;
   /** The photo of the page found on the web (spec 0049, REQ-004). */
   photo?: Blob;
-  /** Spec 0049, REQ-008: the photo is made from this wish instead. */
+  /** Spec 0049, REQ-010: „KI-Bild“ — three suggestions from the wish or the title. */
+  makePhoto?: boolean;
   imageWish?: string;
 }
 
@@ -450,7 +451,8 @@ export function AiFillSheet(props: {
       reply: taken.recipe,
       replace: mode === 'replace',
       generatePhoto: false,
-      ...(taken.photo && !taken.imageWish ? { photo: taken.photo } : {}),
+      ...(taken.photo ? { photo: taken.photo } : {}),
+      ...(taken.photoChoice === 'ai' ? { makePhoto: true } : {}),
       ...(taken.imageWish ? { imageWish: taken.imageWish } : {}),
     });
   };

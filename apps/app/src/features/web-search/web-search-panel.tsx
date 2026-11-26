@@ -1,5 +1,6 @@
 import { useArticlesById, useHousehold } from '@housekeeping/api';
 import {
+  effectiveWebPhotoChoice,
   hoursToday,
   isoWeekdayIn,
   pastedLink,
@@ -10,14 +11,17 @@ import {
   type IngredientRow,
   type PlaceProposal,
   type RecipeDraftReply,
+  type WebPhotoChoice,
   type WebResult,
 } from '@housekeeping/core';
 import {
   Button,
+  ChoiceChips,
   Notice,
   Photo,
   Row,
   Stack,
+  SwitchRow,
   Text,
   useTheme,
   type SheetAction,
@@ -43,8 +47,10 @@ export interface WebTake {
   photo?: Blob;
   recipe?: RecipeDraftReply;
   place?: PlaceProposal;
-  /** REQ-008: the photo is made from this instead of taking `photo`. */
+  /** REQ-008: what the made photo should show; without it the name with its context. */
   imageWish?: string;
+  /** REQ-010: `photo` only with "source"; "ai" makes three suggestions; "none" no photo. */
+  photoChoice: WebPhotoChoice;
 }
 
 /** The primary action of the window: "Suchen", or "Übernehmen" in a preview. */
@@ -66,9 +72,11 @@ export function webSearchPrimary(
       onPress: () => {
         if (!ready) return;
         const photo = search.photos[preview.card.url];
+        const photoChoice = effectiveWebPhotoChoice(search.photoChoice, photo?.status === 'ready');
         onTake({
           card: preview.card,
-          ...(photo?.status === 'ready' ? { photo: photo.photo } : {}),
+          photoChoice,
+          ...(photo?.status === 'ready' && photoChoice === 'source' ? { photo: photo.photo } : {}),
           ...(preview.status === 'recipe' ? { recipe: preview.reply } : {}),
           ...(preview.status === 'place' ? { place: preview.proposal } : {}),
           ...(search.imageWish ? { imageWish: search.imageWish } : {}),
@@ -275,6 +283,59 @@ function PlacePreview(props: {
   );
 }
 
+const PHOTO_OPTIONS: { value: WebPhotoChoice; label: string }[] = [
+  { value: 'source', label: 'Original' },
+  { value: 'ai', label: 'KI-Bild' },
+  { value: 'none', label: 'Keins' },
+];
+
+/**
+ * REQ-010: which photo the entry gets. With a photo of the hit „Original · KI-Bild · Keins“
+ * (AC-034), without one the switch „Foto generieren“ (AC-035).
+ */
+function PhotoChoice(props: { search: WebSearch; testID: string }) {
+  const { search, testID } = props;
+  const card = search.preview?.card;
+  if (!card) return null;
+  const photo = search.photos[card.url];
+  const hasPhoto = photo?.status === 'ready' || photo?.status === 'loading';
+  const choice = effectiveWebPhotoChoice(search.photoChoice, hasPhoto);
+  const note =
+    choice === 'ai'
+      ? search.imageWish
+        ? `Nach „Übernehmen“ macht die KI drei Fotos: „${search.imageWish}“.`
+        : 'Nach „Übernehmen“ macht die KI drei Fotos zur Auswahl.'
+      : choice === 'none'
+        ? 'Der Eintrag bekommt kein Foto.'
+        : undefined;
+  return (
+    <Stack gap={6}>
+      {hasPhoto ? (
+        <ChoiceChips
+          label="Foto"
+          options={PHOTO_OPTIONS}
+          value={choice}
+          onChange={search.setPhotoChoice}
+          testID={testID}
+        />
+      ) : (
+        <SwitchRow
+          label="Foto generieren"
+          description="Der Treffer hat kein Foto; die KI schlägt drei vor."
+          value={choice === 'ai'}
+          onValueChange={(on) => search.setPhotoChoice(on ? 'ai' : 'none')}
+          testID={`${testID}-generate`}
+        />
+      )}
+      {note && hasPhoto ? (
+        <Text variant="small" color="muted" testID={`${testID}-note`}>
+          {note}
+        </Text>
+      ) : null}
+    </Stack>
+  );
+}
+
 function Preview(props: { search: WebSearch; rows?: RecipeRows; testID: string }) {
   const { search, testID } = props;
   const preview = search.preview;
@@ -284,8 +345,11 @@ function Preview(props: { search: WebSearch; rows?: RecipeRows; testID: string }
   return (
     <View style={{ gap: 12 }} testID={id}>
       <CardImage photo={search.photos[card.url]} alt={card.title} />
+      <PhotoChoice search={search} testID={`${id}-photo`} />
       <Stack gap={2}>
-        <Text variant="cardTitle">{card.title}</Text>
+        <Text variant="cardTitle">
+          {preview.status === 'place' && preview.proposal.name ? preview.proposal.name : card.title}
+        </Text>
         <Text variant="caption" color="muted">
           {card.source}
         </Text>

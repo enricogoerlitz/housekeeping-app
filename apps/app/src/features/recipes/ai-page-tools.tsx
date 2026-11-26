@@ -45,7 +45,14 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
     return article?.name ?? row.name ?? '';
   };
   // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
-  const propose = ({ reply, replace, generatePhoto, photo, imageWish }: AiFillResult) => {
+  const propose = ({
+    reply,
+    replace,
+    generatePhoto,
+    photo,
+    makePhoto,
+    imageWish,
+  }: AiFillResult) => {
     const before = editor.draft;
     if (!before) return;
     const input = draftInput(reply);
@@ -59,8 +66,8 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
         context: draftImageContext(reply.draft),
         coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
       });
-    } else if (imageWish || (!photo && !hadPhoto && reply.sources.length > 0)) {
-      // Spec 0049, REQ-008: the image wish makes the photo; a found page without one gets one.
+    } else if (makePhoto) {
+      // Spec 0049, REQ-010: „KI-Bild“ chosen in the preview, with the wish or the title.
       startPhotoSuggestions(recipe.id, {
         prompt: imageWish ?? reply.draft.title,
         context: draftImageContext(reply.draft),

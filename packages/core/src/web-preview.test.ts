@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { newIngredientRow, type IngredientRow } from './recipe-editor';
 import { articlesById } from './test-fixtures';
-import { pastedLink, previewIngredients, searchStatusLine } from './web-preview';
+import {
+  defaultWebPhotoChoice,
+  effectiveWebPhotoChoice,
+  pastedLink,
+  previewIngredients,
+  searchStatusLine,
+} from './web-preview';
 
 // Spec 0049: the parts of the Websuche the window shows besides the cards.
 
@@ -58,5 +64,19 @@ describe('searchStatusLine (AC-005)', () => {
     expect(searchStatusLine('recipe')).toBe('Suche bei Chefkoch und anderen Rezeptseiten …');
     expect(searchStatusLine('restaurant')).toBe('Suche bei Google Maps …');
     expect(searchStatusLine('activity')).toBe('Suche bei Google Maps …');
+  });
+});
+
+describe('the photo of a hit (REQ-010)', () => {
+  it('AC-034: the source photo by default; AC-036: an image wish makes it "KI-Bild"', () => {
+    expect(defaultWebPhotoChoice(true, undefined)).toBe('source');
+    expect(defaultWebPhotoChoice(true, 'Frau in Boulderhalle')).toBe('ai');
+    expect(defaultWebPhotoChoice(false, undefined)).toBe('ai');
+  });
+
+  it('AC-035: a hit whose photo did not load has only "Foto generieren" on or off', () => {
+    expect(effectiveWebPhotoChoice('source', false)).toBe('ai');
+    expect(effectiveWebPhotoChoice('none', false)).toBe('none');
+    expect(effectiveWebPhotoChoice('source', true)).toBe('source');
   });
 });

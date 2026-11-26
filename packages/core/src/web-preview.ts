@@ -13,6 +13,26 @@ export function searchStatusLine(kind: WebSearchKind): string {
     : 'Suche bei Google Maps …';
 }
 
+/** The photo a found entry gets (REQ-010): the hit's own, three made by the AI, or none. */
+export type WebPhotoChoice = 'source' | 'ai' | 'none';
+
+/** AC-034, AC-036: the hit's photo unless the search text wished for a picture. */
+export function defaultWebPhotoChoice(
+  hasSourcePhoto: boolean,
+  imageWish: string | undefined,
+): WebPhotoChoice {
+  if (imageWish?.trim()) return 'ai';
+  return hasSourcePhoto ? 'source' : 'ai';
+}
+
+/** AC-035: without a usable photo of the hit, "Original" means "Foto generieren". */
+export function effectiveWebPhotoChoice(
+  choice: WebPhotoChoice,
+  hasSourcePhoto: boolean,
+): WebPhotoChoice {
+  return choice === 'source' && !hasSourcePhoto ? 'ai' : choice;
+}
+
 /** AC-002: a link alone in the search field (it goes to „Eigene Angaben“); words make a search. */
 export function pastedLink(text: string): string | undefined {
   const trimmed = text.trim();

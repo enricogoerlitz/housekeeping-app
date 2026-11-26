@@ -161,6 +161,24 @@ Enrico, 26.11. abends. Offline: nur online.
 - AC-030: Angenommen ein Treffer ohne Foto · Wenn ich ihn bei einem Eintrag ohne Foto übernehme ·
   Dann erscheinen drei aus Name und Art erzeugte Fotovorschläge
 
+### Foto des Treffers
+
+**REQ-010 — Foto vor „Übernehmen“ wählen.** In der Vorschau (Rezept, Restaurant, Aktivität) wählt
+die Person direkt unter dem großen Foto, welches Foto der Eintrag bekommt: hat der Treffer ein
+Foto, „Original · KI-Bild · Keins“ („Original“ vorgewählt, bei einem Bildwunsch „KI-Bild“); hat er
+keins, nur „Foto generieren“ (an). „KI-Bild“ zeigt nach „Übernehmen“ die drei Vorschläge aus
+`ai-image` (Wunsch oder Name mit Kontext), „Keins“ lässt das Foto weg. Quelle: Enrico, 26.11.
+abends („Default Google-Bild, UI/UX-technisch schön und einfach“). Offline: nur online.
+
+- AC-034: Angenommen die Vorschau von „Mutzenbacher“ mit Google-Foto · Dann steht unter dem Foto
+  „Original · KI-Bild · Keins“ mit „Original“ gewählt · Und „Übernehmen“ setzt das Google-Foto
+- AC-035: Angenommen ein Treffer ohne Foto · Dann steht dort nur „Foto generieren“ (an) · Und aus
+  heißt: kein Foto
+- AC-036: Angenommen die Suche „… Bild soll Frau in Boulderhalle sein“ · Dann ist „KI-Bild“
+  vorgewählt mit „Nach „Übernehmen“ macht die KI drei Fotos: „Frau in Boulderhalle““
+- AC-037: Angenommen „Keins“ · Wenn ich „Übernehmen“ tippe · Dann hat der Eintrag kein Foto und es
+  erscheinen keine Vorschläge
+
 ### Fotos in „Eigene Angaben“
 
 **REQ-009 — Ziehen, Einfügen, Bildadresse am Desktop.** Im Reiter „Eigene Angaben“ nehmen die
@@ -258,6 +276,8 @@ gespeichert, bevor die Person „Speichern“ tippt.
 - [x] 7. App: Suchfeld, Karten, Vorschau, Reiter im KI-Fenster, „Im Web suchen“, Fotovorschläge
       aus Bildwunsch (AC-001 – AC-015, AC-026, AC-030)
 - [x] 8. App: Änderungsansicht für Rezept, Restaurant, Aktivität (AC-016 – AC-021)
+- [x] 11. App: Foto-Wahl in der Vorschau „Original · KI-Bild · Keins“ bzw. „Foto generieren“
+      (AC-034 – AC-037), Logik `defaultWebPhotoChoice`/`effectiveWebPhotoChoice` in core
 - [x] 10. App: „Eigene Angaben“ am Desktop mit Ziehen, Einfügen und Bildadresse (AC-031 – AC-033);
       Playwright Desktop: Bildadresse und gezogene Datei hängen an
 - [ ] 9. Secrets: **Enrico-Todo** `supabase secrets set SERPER_API_KEY=… BRAVE_SEARCH_API_KEY=…` in
