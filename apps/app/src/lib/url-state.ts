@@ -24,7 +24,17 @@ import {
   usePathname,
   useRouter,
 } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { Platform } from 'react-native';
 
 // Spec 0019 "Zustand in der Adresse": the only place of the app that reads route parameters
@@ -113,7 +123,31 @@ export interface PageAddress<K extends PageKey> {
   close: (patch: PageParams<K>) => void;
 }
 
+const PreviewAddressContext = createContext<
+  { page: PageKey; params: Record<string, unknown> } | undefined
+>(undefined);
+
+/**
+ * Draws a page as it would show with `params`, e.g. the neighbour tab beside a tab swipe (spec
+ * 0034, REQ-007): `usePageParams(page)` inside reads these and writes nothing.
+ */
+export function PagePreview<K extends PageKey>(props: {
+  page: K;
+  params: PageParams<K>;
+  children: ReactNode;
+}) {
+  return createElement(
+    PreviewAddressContext.Provider,
+    { value: { page: props.page, params: props.params as Record<string, unknown> } },
+    props.children,
+  );
+}
+
+const ignore = () => undefined;
+
 export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
+  const preview = useContext(PreviewAddressContext);
+  const previewing = preview?.page === page;
   const raw = useLocalSearchParams<Raw>();
   // On the page's own route: router.setParams would set them on the focused route above it.
   const navigation = useNavigation();
@@ -135,8 +169,9 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
   // Invalid values and defaults leave the address (the route id stays, it is part of the path).
   const invalid = read.invalid.filter((name) => name !== 'id').join(',');
   useEffect(() => {
-    if (invalid) setParams(Object.fromEntries(invalid.split(',').map((name) => [name, undefined])));
-  }, [invalid, setParams]);
+    if (invalid && !previewing)
+      setParams(Object.fromEntries(invalid.split(',').map((name) => [name, undefined])));
+  }, [invalid, previewing, setParams]);
 
   const values = read.values;
   const open = useCallback(
@@ -159,6 +194,14 @@ export function usePageParams<K extends PageKey>(page: K): PageAddress<K> {
     },
     [replace],
   );
+  if (previewing) {
+    return {
+      params: preview.params as PageParams<K>,
+      replace: ignore,
+      open: ignore,
+      close: ignore,
+    };
+  }
   return { params: values, replace, open, close };
 }
 

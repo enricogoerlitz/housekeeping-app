@@ -57,6 +57,7 @@ import {
   tabSwipe,
   useBreakpoint,
   openKeyboardNow,
+  useTabPreview,
 } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
@@ -69,7 +70,7 @@ import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
-import { usePageParams, type PageAddress } from '@/lib/url-state';
+import { PagePreview, usePageParams, type PageAddress } from '@/lib/url-state';
 
 import { AiSearchPanel } from './ai-search-panel';
 import { useOpenRecipe } from './navigation';
@@ -140,6 +141,7 @@ export function RecipesScreen() {
   const today = useToday();
   const list = useRecipeListState();
   const openRecipe = useOpenRecipe();
+  const preview = useTabPreview();
   const { isWide } = useBreakpoint();
   // "Kacheln" or "Liste", chosen on this device (spec 0038, REQ-001).
   const listView = useListView('recipes');
@@ -191,20 +193,22 @@ export function RecipesScreen() {
   // Without the AI switch in code the stored setting stays on the device but has no effect
   // (spec 0005, AC-046).
   const aiSearch = features.ai && settings.aiSearch;
-  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
+  // The neighbour view drawn beside a tab swipe sends nothing (spec 0034, REQ-007).
+  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled && !preview, query);
   const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
 
   // The chosen side lives in the address, so a reload or a deep link keeps it.
   const view: FoodView = params.ansicht === 'restaurants' ? 'restaurants' : 'recipes';
+  const viewParams = (next: FoodView): FoodParams => ({
+    ...FOOD_LIST_CLEARED,
+    ...leftView[next],
+    ansicht: next === 'restaurants' ? 'restaurants' : undefined,
+    restaurant: undefined,
+    ...QUICK_VIEW_CLEARED,
+  });
   const viewPatch = (next: FoodView): FoodParams => {
     leftView[view] = listParams(params);
-    return {
-      ...FOOD_LIST_CLEARED,
-      ...leftView[next],
-      ansicht: next === 'restaurants' ? 'restaurants' : undefined,
-      restaurant: undefined,
-      ...QUICK_VIEW_CLEARED,
-    };
+    return viewParams(next);
   };
   const changeView = (next: FoodView) => address.replace(viewPatch(next));
   const switcher = (
@@ -216,8 +220,22 @@ export function RecipesScreen() {
       testID="food-switch"
     />
   );
-  // On phones a sideways swipe changes the view (spec 0029, REQ-003).
-  const swipe = tabSwipe(FOOD_VIEWS, view, changeView);
+  // On phones a sideways swipe changes the view (spec 0029, REQ-003), with the other view beside
+  // the content, as it was left (spec 0034, REQ-007).
+  const swipe = tabSwipe(FOOD_VIEWS, view, changeView, (next) => (
+    <PagePreview
+      page="rezepte"
+      params={{
+        ...params,
+        ...viewParams(next),
+        fenster: undefined,
+        link: undefined,
+        name: undefined,
+      }}
+    >
+      <RecipesScreen />
+    </PagePreview>
+  ));
 
   if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} swipe={swipe} />;
 

@@ -11,9 +11,13 @@ import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native
 import { FOCUS_RING_ROOM } from './controls';
 import { columnsFor, gridRows, type GridRow } from './grid-columns';
 import { PageScrollContext } from './shell';
+import { TabPreviewContext } from './tab-preview';
 
 // Scroll positions of lists that were left, per `restoreKey`, while the app runs.
 const positions = new Map<string, number>();
+// The width a grid was last measured at, per `restoreKey`: the same list drawn again (after a tab
+// swipe that showed it beside the content, spec 0034, REQ-007) has no empty first frame.
+const widths = new Map<string, number>();
 
 export interface InfiniteListProps<T> {
   data: readonly T[];
@@ -48,6 +52,8 @@ export interface InfiniteListProps<T> {
  */
 export function InfiniteList<T>(props: InfiniteListProps<T>) {
   const page = useContext(PageScrollContext);
+  // Beside a tab swipe (spec 0034, REQ-007) the list shows its place but never moves it.
+  const preview = useContext(TabPreviewContext) !== undefined;
   const list = useRef<FlatList<GridRow<T>>>(null);
   const offset = useSharedValue(0);
   const saved = props.restoreKey ? (positions.get(props.restoreKey) ?? 0) : 0;
@@ -66,15 +72,17 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   const { restoreKey } = props;
   useEffect(
     () => () => {
-      if (restoreKey) positions.set(restoreKey, offset.get());
+      if (restoreKey && !preview) positions.set(restoreKey, offset.get());
     },
-    [offset, restoreKey],
+    [offset, restoreKey, preview],
   );
 
   const grid = props.minColumnWidth !== undefined;
   const gap = props.gap ?? 12;
   // The grid needs its own width; it stays invisible for the one frame before it is measured.
-  const [width, setWidth] = useState<number>();
+  const [width, setWidth] = useState(() =>
+    props.restoreKey ? widths.get(props.restoreKey) : undefined,
+  );
   // Web: a screen left in a stack stays mounted but hidden (display: none), which loses the scroll
   // position. The place it had when it was hidden comes back once it shows again (spec 0008,
   // AC-015).
@@ -86,7 +94,11 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
       return;
     }
     // The tiles share the width inside the focus ring's room.
-    if (grid) setWidth(Math.max(0, measured - 2 * FOCUS_RING_ROOM));
+    if (grid) {
+      const inner = Math.max(0, measured - 2 * FOCUS_RING_ROOM);
+      setWidth(inner);
+      if (restoreKey) widths.set(restoreKey, inner);
+    }
     const back = hiddenAt.current;
     hiddenAt.current = undefined;
     if (back !== undefined && back > 0)

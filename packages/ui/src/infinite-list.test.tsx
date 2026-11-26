@@ -5,6 +5,7 @@ import { FOCUS_RING_ROOM } from './controls';
 import { InfiniteList } from './infinite-list';
 import { Text } from './primitives';
 import { PageScrollContext } from './shell';
+import { TabPreviewContext } from './tab-preview';
 
 type Row = { id: string; header?: boolean };
 const rows = (count: number): Row[] =>
@@ -101,6 +102,25 @@ describe('InfiniteList as a grid (spec 0008, REQ-004)', () => {
     expect(grid.style.opacity).toBe('0');
     layout(grid, 400, 600);
     expect(grid.style.opacity).toBe('');
+  });
+
+  it('AC-015 (0034): a grid measured before under its restoreKey shows at once, e.g. after a tab swipe', () => {
+    const Kept = () => (
+      <InfiniteList
+        testID="kept"
+        data={tiles(3)}
+        keyExtractor={(row) => row.id}
+        renderItem={(row) => <Text>{row.id}</Text>}
+        minColumnWidth={100}
+        restoreKey="kept-grid"
+      />
+    );
+    const first = render(<Kept />);
+    layout(screen.getByTestId('kept'), 400, 600);
+    first.unmount();
+    render(<Kept />);
+    expect(screen.getByTestId('kept').style.opacity).toBe('');
+    expect(gridRows(screen.getByTestId('kept'))[0]).toHaveLength(3);
   });
 
   it('draws as many columns as fit; the last row keeps the column width', () => {
@@ -221,6 +241,28 @@ describe('InfiniteList scrolling', () => {
     layout(contentOf(list), 400, 2000);
     layout(contentOf(list), 400, 2001);
     expect(list.scrollTop).toBe(0);
+  });
+
+  it('AC-015 (0034): beside a tab swipe it shows the remembered place and leaves it as it was', () => {
+    const first = render(<List restoreKey="neighbour" />);
+    scrollTo(screen.getByTestId('list'), 500);
+    first.unmount();
+
+    const preview = render(
+      <TabPreviewContext.Provider value={{ top: 0, inset: 0 }}>
+        <List restoreKey="neighbour" />
+      </TabPreviewContext.Provider>,
+    );
+    const shown = screen.getByTestId('list');
+    layout(contentOf(shown), 400, 3000);
+    expect(shown.scrollTop).toBe(500);
+    scrollTo(shown, 40);
+    preview.unmount();
+
+    render(<List restoreKey="neighbour" />);
+    const list = screen.getByTestId('list');
+    layout(contentOf(list), 400, 3000);
+    expect(list.scrollTop).toBe(500);
   });
 
   it('without restoreKey it starts at the top', () => {

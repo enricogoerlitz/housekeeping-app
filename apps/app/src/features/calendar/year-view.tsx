@@ -33,6 +33,7 @@ import { Pressable, View, type GestureResponderEvent, type HostInstance } from '
 import { HATCH_ALPHA, StripeBadges, stripeA11y, stripeLine } from './calendar-parts';
 import { dayLabel, stripeWho, type CalendarData } from './calendar-data';
 import {
+  CalendarSwipe,
   PALE_OPACITY,
   RangeMark,
   TripSource,
@@ -57,6 +58,11 @@ export interface YearViewProps {
   /** A tap on the month name opens the month. */
   onOpenMonth: (monthStart: ISODate) => void;
   onOpenStripe: (stripe: TripStripe) => void;
+  /**
+   * Phones: a sideways swipe over the months pages the year; under them it is left to the view
+   * tabs (spec 0034, REQ-006).
+   */
+  gridSwipe: { enabled: boolean; onSwipe: (step: 1 | -1) => void };
   /** Under the grid, before the year's trips: the strip "Vorgemerkt" (spec 0016, REQ-003). */
   belowGrid?: ReactNode;
   /** Desktop: the grid's room in px down to "Vorgemerkt" (spec 0021, REQ-001); else natural. */
@@ -117,31 +123,33 @@ export function YearView(props: YearViewProps) {
 
   return (
     <View testID="year-view">
-      <View style={{ gap: ROW_GAP }}>
-        {rows.map((row) => (
-          <View key={row[0]} style={{ flexDirection: 'row', gap: 10, minHeight: rowHeight }}>
-            {row.map((monthStart) => (
-              <View
-                key={monthStart}
-                ref={(node) => registerMonth(monthStart, node)}
-                style={{ flex: 1, minWidth: 0 }}
-              >
-                <MiniMonth
-                  monthStart={monthStart}
-                  data={data}
-                  plannedDays={plannedDays}
-                  chores={chores}
-                  fill={fill}
-                  selected={props.selected}
-                  onOpenDay={props.onOpenDay}
-                  registerDay={props.registerDay}
-                  onOpenMonth={() => props.onOpenMonth(monthStart)}
-                />
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
+      <CalendarSwipe {...props.gridSwipe}>
+        <View style={{ gap: ROW_GAP }}>
+          {rows.map((row) => (
+            <View key={row[0]} style={{ flexDirection: 'row', gap: 10, minHeight: rowHeight }}>
+              {row.map((monthStart) => (
+                <View
+                  key={monthStart}
+                  ref={(node) => registerMonth(monthStart, node)}
+                  style={{ flex: 1, minWidth: 0 }}
+                >
+                  <MiniMonth
+                    monthStart={monthStart}
+                    data={data}
+                    plannedDays={plannedDays}
+                    chores={chores}
+                    fill={fill}
+                    selected={props.selected}
+                    onOpenDay={props.onOpenDay}
+                    registerDay={props.registerDay}
+                    onOpenMonth={() => props.onOpenMonth(monthStart)}
+                  />
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      </CalendarSwipe>
       {props.belowGrid}
       <View style={{ marginTop: 24 }}>
         <Section title={`Reisen ${props.year}`} testID="year-trips">

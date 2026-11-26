@@ -1,3 +1,4 @@
+import { useTabPreview } from '@housekeeping/ui';
 import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
 import { Platform, type HostInstance } from 'react-native';
 
@@ -17,11 +18,20 @@ function scrollerOf(node: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/** The page to the node's top, without animation; `toTop` to the start of the page instead. */
-function scrollPageTo(node: HostInstance | undefined, toTop: boolean): void {
+/**
+ * The page to the node's top, without animation; `toTop` to the start of the page instead. The
+ * neighbour tab drawn beside a tab swipe (`own`, spec 0034, REQ-007) moves only its own scroller:
+ * `scrollIntoView` would also move the page it stands beside.
+ */
+function scrollPageTo(node: HostInstance | undefined, toTop: boolean, own: boolean): void {
   if (Platform.OS !== 'web' || !isElement(node)) return;
-  if (toTop) scrollerOf(node)?.scrollTo({ top: 0 });
-  else node.scrollIntoView({ block: 'start', inline: 'nearest' });
+  const scroller = scrollerOf(node);
+  if (toTop) scroller?.scrollTo({ top: 0 });
+  else if (!own) node.scrollIntoView({ block: 'start', inline: 'nearest' });
+  else if (scroller) {
+    const shift = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop += shift;
+  }
 }
 
 /**
@@ -38,9 +48,10 @@ export function useScrollTo<K>(options: {
   first: K;
 }): (key: K, node: HostInstance | null) => void {
   const nodes = useRef(new Map<K, HostInstance>());
+  const preview = useTabPreview();
   const scroll = useEffectEvent(() => {
     if (!options.enabled) return;
-    scrollPageTo(nodes.current.get(options.target), options.target === options.first);
+    scrollPageTo(nodes.current.get(options.target), options.target === options.first, preview);
   });
   useEffect(() => {
     const frame = requestAnimationFrame(() => scroll());
