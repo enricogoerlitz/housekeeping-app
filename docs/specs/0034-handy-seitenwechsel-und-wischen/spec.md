@@ -1,5 +1,5 @@
 ---
-status: entwurf # entwurf | freigegeben | umgesetzt | verworfen
+status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -123,7 +123,8 @@ Quelle: H-09. Offline: offline vollständig.
 - AC-020: Angenommen Android, installierte App · Wenn ich das Handy quer halte · Dann bleibt die
   Ansicht im Hochformat
 - AC-021: Angenommen iPhone, installierte App, iOS lässt die Sperre nicht zu · Wenn ich das Handy
-  quer halte · Dann siehe Entscheidung 4
+  quer halte · Dann liegt über der App „Bitte Handy hochkant halten“, und
+  hochkant ist alles wie vorher
 
 **REQ-010 — Bildschirm bleibt im Einkaufsmodus an.** Quelle: H-10. Offline: offline vollständig.
 
@@ -148,10 +149,8 @@ Netz).
    Geprüft wird am Gerät; Flackern ist im Simulator nicht sicher nachstellbar.
 3. REQ-007 ist der größte Brocken (beide Tabs gleichzeitig gerendert). Kommt als letzte Aufgabe der
    Welle; wird sie zu teuer, melde ich das, statt abzuspecken.
-4. OFFEN (REQ-009): iOS ignoriert die Hochformat-Angabe der Web-App weitgehend. Annahme: Manifest
-   `orientation: portrait` (wirkt auf Android) und auf dem iPhone im Querformat ein Hinweis „Bitte
-   Handy hochkant halten“ über der App statt verzerrter Ansicht. Alternative: Querformat einfach
-   zulassen.
+4. REQ-009 (Enrico, 26.11.): Manifest `orientation: portrait` (wirkt auf Android); auf dem iPhone
+   liegt im Querformat ein Hinweis „Bitte Handy hochkant halten“ über der App.
 5. REQ-010: Wake Lock in installierten iOS-Apps ab iOS 18.4; nach Rückkehr in die App wird er neu
    angefordert. Der Haken aus dem Kochmodus wird gemeinsam genutzt.
 

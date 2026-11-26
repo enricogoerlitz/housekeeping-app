@@ -1,5 +1,5 @@
 ---
-status: entwurf # entwurf | freigegeben | umgesetzt | verworfen
+status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -120,15 +120,15 @@ in der Übersicht nur, wenn ein Karten-Link hinterlegt ist. Quelle: F-07. Offlin
 
 ### Löschen und Sicherheit
 
-**REQ-012 — Nachfrage vor dem Löschen.** Siehe Entscheidung 1. Quelle: F-08. Offline: wie die
+**REQ-012 — Nachfrage vor dem Löschen.** Jede Löschaktion fragt vorher nach (Entscheidung 1). Quelle: F-08. Offline: wie die
 jeweilige Aktion.
 
 - AC-019: Angenommen „Apfelkuchen“ mit Foto · Wenn ich „Foto entfernen“ tippe · Dann fragt die App
   „Foto entfernen?“ mit „Entfernen“ und „Abbrechen“ · Und „Abbrechen“ lässt das Foto stehen
 - AC-020: Angenommen Restaurant „Bless“ · Wenn ich „Löschen“ wähle · Dann fragt die App „„Bless“
   löschen?“, erst „Löschen“ löscht
-- AC-021: Angenommen ein Eintrag der Einkaufsliste · Wenn ich ihn entferne · Dann siehe
-  Entscheidung 1
+- AC-021: Angenommen „Milch“ steht auf der Einkaufsliste · Wenn ich „Entfernen“ wähle · Dann fragt
+  die App „„Milch“ entfernen?“, erst „Entfernen“ entfernt sie
 
 **REQ-013 — Sicherheitswarnungen behoben.** Die zwei offenen Dependabot-Warnungen (`minimatch` <
 11.0.1, `glob` < 14.0.2) sind geschlossen. Quelle: S-01. Offline: entfällt.
@@ -138,10 +138,9 @@ jeweilige Aktion.
 
 ## Entscheidungen
 
-1. OFFEN (REQ-012): Enrico wünscht Nachfrage bei allen Löschaktionen. Heute haben viele stattdessen
-   5 s „Rückgängig“. Annahme: Nachfrage für Fotos, Rezepte, Sammlungen, Restaurants, Aktivitäten,
-   Artikel, Aufgaben, Reisetaschen, Märkte; „Rückgängig“ ohne Nachfrage bleibt bei schnellen
-   Listen-Aktionen (Einkaufsposten, Packstück, Planeintrag, Zutat im Entwurf, Erledigung im Verlauf).
+1. REQ-012 (Enrico, 26.11.): **Jede** Löschaktion fragt vorher nach, auch die schnellen
+   Listen-Aktionen (Einkaufsposten, Packstück, Planeintrag, Zutat, Erledigung im Verlauf). Das
+   bisherige 5-s-„Rückgängig“ nach dem Löschen entfällt dort, wo jetzt gefragt wird.
 2. REQ-005: Der neue Artikel „Schinken“ darf neben dem Synonym „Schinken“ von „Kochschinken“
    bestehen; ein exakter Name steht in der Suche vor einem Synonym. Ändert Spec 0025
    (Prüfung „Gibt es schon“) für den Fall Name = fremdes Synonym.

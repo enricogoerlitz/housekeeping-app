@@ -39,10 +39,10 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0030](0030-review-0002/spec.md)                         | Review 0002: Kalender, Reisen und Handy-Feinschliff                    | freigegeben |
 | [0031](0031-ultracode-code-review/spec.md)               | Ultracode-Code-Review: sauber für die erste produktive Version         | umgesetzt   |
 | [0032](0032-handy-tastatur-und-fenster/spec.md)          | Handy: Tastatur und Fenster                                            | freigegeben |
-| [0033](0033-handy-fenster-tastatur-fotos/spec.md)        | Handy: Fenster, Tastatur und Fotos                                     | entwurf     |
-| [0034](0034-handy-seitenwechsel-und-wischen/spec.md)     | Handy: Seitenwechsel, Laden und Wischen                                | entwurf     |
-| [0035](0035-kalender-und-uebersicht-feinschliff/spec.md) | Kalender und Übersicht: Fehler und Feinschliff                         | entwurf     |
-| [0036](0036-essen-und-formulare-fehler/spec.md)          | Essen und Formulare: Fehler und Bedienung                              | entwurf     |
+| [0033](0033-handy-fenster-tastatur-fotos/spec.md)        | Handy: Fenster, Tastatur und Fotos                                     | freigegeben |
+| [0034](0034-handy-seitenwechsel-und-wischen/spec.md)     | Handy: Seitenwechsel, Laden und Wischen                                | freigegeben |
+| [0035](0035-kalender-und-uebersicht-feinschliff/spec.md) | Kalender und Übersicht: Fehler und Feinschliff                         | freigegeben |
+| [0036](0036-essen-und-formulare-fehler/spec.md)          | Essen und Formulare: Fehler und Bedienung                              | freigegeben |
 | [0037](0037-rezeptseite-bearbeiten-und-filter/spec.md)   | Rezeptseite: Bearbeitungsmodus, Sammlungen im Filter, Personen         | entwurf     |
 | [0038](0038-ansicht-kacheln-und-liste/spec.md)           | Ansicht wählen: Kacheln oder Liste                                     | entwurf     |
 | [0039](0039-foto-fenster/spec.md)                        | Foto-Fenster: wählen, ziehen, einfügen, Bildadresse, Kamera            | entwurf     |

@@ -63,8 +63,7 @@ annehmen, mit geändertem Text neu erzeugen, oder abbrechen. Gespeichert wird nu
 
 ## Entscheidungen
 
-1. OFFEN: Heute ist die KI in der App ganz ausgeschaltet (`features.ai = false`, auch Diktat).
-   Annahme: Nur die neuen Funktionen (Rezept ausfüllen, Bilder, Diktat dafür) werden eingeschaltet;
+1. Entschieden (Enrico, 26.11.): Heute ist die KI ganz aus (`features.ai = false`). Nur die neuen Funktionen (Rezept ausfüllen, Bilder, Diktat dafür) werden eingeschaltet;
    Assistent und KI-Suche bleiben aus.
 2. Ablauf serverseitig (ADR-0009, neues ADR „Bildmodell und Abruf fremder Seiten“):
    - `ai-recipe-draft`: Fotos werden vorher in einen Eingangsordner des Haushalts hochgeladen (Body
@@ -74,11 +73,11 @@ annehmen, mit geändertem Text neu erzeugen, oder abbrechen. Gespeichert wird nu
      werden die Eingangsfotos gelöscht.
    - `ai-image`: 3 FLUX.2-pro-Aufrufe parallel (≈ 10 s, ≈ 9–14 ct), Antwort als Bilddaten an die
      App; Speichern erst bei Annahme über den normalen Foto-Weg.
-3. OFFEN (E-15 TikTok): Test am 26.11.: Video über den Link ladbar (MP4, 95 s, 21,6 MB), ohne
+3. Entschieden (Enrico, 26.11., E-15 TikTok): Test am 26.11.: Video über den Link ladbar (MP4, 95 s, 21,6 MB), ohne
    offizielle Schnittstelle. A: nur Link + KI liest die Beschreibung, Video öffnet TikTok · B: Video
    in eigenem Speicher-Bucket (bis 50 MB), Abspielen in der App; kann jederzeit brechen, Speicher
-   ~20 MB je Video, nur private Nutzung · Empfehlung: A zuerst, B als eigener kleiner Schritt am Ende
-   von Welle 2, falls du es willst.
+   ~20 MB je Video, nur private Nutzung · Gebaut wird A zuerst, B als eigener Schritt am Ende
+   von Welle 2.
 4. OFFEN: Kontingent je Person und Tag — Vorschlag: 30 Rezept-Entwürfe, 30 Bilder (= 10 Runden).
    Kosten bei Vollauslastung ≈ 1 € je Person und Tag; realistisch Cent-Beträge.
 
