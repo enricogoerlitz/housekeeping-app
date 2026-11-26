@@ -86,7 +86,9 @@ mit. Offline: nur online.
    Rezepts mit dem Wiedergabe-Knopf. `begin_household_deletion` liefert Fotos und Videos; die App
    unterscheidet sie an der Endung `.mp4`. Ein gelöschtes Rezept nimmt sein Video mit, wenn
    „Rückgängig“ abgelaufen ist (wie das Foto), sonst der nächtliche Aufräum-Lauf.
-8. Enrico, 26.11.2026 (war OFFEN; die Empfehlung „nicht sichern“ ist verworfen): Die Videos aus
+8. **Abgelöst durch Spec 0048, Entscheidung 1** (Enrico, 26.11.2026): Videos werden nicht mehr
+   gesichert; der Reset und „Video-Bucket“ in `verify.mjs` bleiben. Bisheriger Text:
+   Enrico, 26.11.2026 (war OFFEN; die Empfehlung „nicht sichern“ ist verworfen): Die Videos aus
    `household-videos` **gehören in jede Sicherung** (nachts und vor jeder Veröffentlichung), und
    `scripts/reset-app-data.mjs` leert den Bucket wie die Fotos (auch mit `--data-only`). Umsetzung:
    `backup.yml` synchronisiert den Bucket nach `videos/` im Archiv; `manifest.json` zählt die

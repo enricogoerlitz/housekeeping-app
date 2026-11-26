@@ -130,7 +130,7 @@ describe('backup.yml', () => {
     assert.match(text, /::error::Datenbank nicht erreichbar/);
   });
 
-  test('AC-052, spec 0043: photos and videos only from their buckets to the runner, never back', () => {
+  test('AC-052, AC-001: photos only from their bucket to the runner, never back; no videos', () => {
     const s3 = cmds.filter((c) => /\baws s3\b/.test(c));
     const syncs = s3.map((c) => {
       const [, sub, source, target] = /\baws s3 (\S+) (\S+) (\S+)/.exec(c);
@@ -139,18 +139,18 @@ describe('backup.yml', () => {
       assert.match(c, /--endpoint-url "\$BACKUP_S3_ENDPOINT"/);
       return [source, target];
     });
-    assert.deepEqual(syncs, [
-      ['s3://household-media', './media'],
-      ['s3://household-videos', './videos'],
-    ]);
+    assert.deepEqual(syncs, [['s3://household-media', './media']]);
     assert.doesNotMatch(text, /aws s3 (cp|mv|rm|rb|mb)\b/);
+    // Spec 0048, decision 1: the recipe videos are not backed up.
+    assert.doesNotMatch(text, /household-videos/);
   });
 
   test('a missing bucket (before the release that creates it) gives zero files; other errors fail', () => {
-    const cases = [
-      ['Fotos sichern', 'household-media', 'media'],
-      ['Videos sichern', 'household-videos', 'videos'],
-    ];
+    const cases = [['Fotos sichern', 'household-media', 'media']];
+    assert.equal(
+      steps(job).some((s) => s.name === 'Videos sichern'),
+      false,
+    );
     for (const [name, bucket, folder] of cases) {
       const step = steps(job).find((s) => s.name === name);
       assert.ok(step, name);
@@ -162,14 +162,15 @@ describe('backup.yml', () => {
     }
   });
 
-  test('AC-052, spec 0043: one archive with videos, encrypted with age, then the manifest', () => {
+  test('AC-052, AC-001: one archive of dumps and photos, encrypted with age, then the manifest', () => {
     const tar = cmds.findIndex((c) => /\btar -cz/.test(c));
     assert.ok(tar >= 0);
-    assert.match(cmds[tar], /^tar -cz roles\.sql schema\.sql data\.sql media videos \|/);
+    assert.match(cmds[tar], /^tar -cz roles\.sql schema\.sql data\.sql media \|/);
     assert.match(cmds[tar], /\| age -r "\$BACKUP_AGE_RECIPIENT" -o /, 'tar direkt in age');
     const manifest = cmds.findIndex((c) => c.includes('scripts/backup/manifest.mjs'));
     assert.ok(manifest > tar);
-    assert.match(cmds[manifest], /--media media --videos videos/);
+    assert.match(cmds[manifest], /--media media\s+--archive /);
+    assert.doesNotMatch(cmds[manifest], /--videos/);
   });
 
   test('AC-053: uploads only the encrypted archive and the manifest, never overwriting', () => {
@@ -236,7 +237,8 @@ describe('restore-test.yml', () => {
     const start = index(/\bsupabase db start\b/);
     const restore = index(/session_replication_role = replica/);
     const counts = index(/node scripts\/backup\/compare\.mjs counts/);
-    assert.match(cmds[counts], /--media "\$W\/backup\/media" --videos "\$W\/backup\/videos"/);
+    assert.match(cmds[counts], /--media "\$W\/backup\/media"$/);
+    assert.doesNotMatch(text, /--videos/, 'AC-003: kein Videoordner');
     const order = [latest, download, checksum, decrypt, start, restore, counts];
     assert.ok(
       order.every((i) => i >= 0),

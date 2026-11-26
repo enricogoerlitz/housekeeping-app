@@ -1167,7 +1167,7 @@ AC-025, ADR-0015).
 ### Sicherung
 
 Die nächtliche, mit `age` verschlüsselte Kopie von Datenbank (Rollen, Schema, Daten) und allen
-Fotos im Azure-Storage-Konto, mit einer Begleitdatei ohne Daten (Zeilen je Tabelle, Fotoanzahl,
+Fotos im Azure-Storage-Konto (ohne Rezeptvideos, Spec 0048), mit einer Begleitdatei ohne Daten (Zeilen je Tabelle, Fotoanzahl,
 Prüfsumme). Zusätzlich vor jeder Veröffentlichung. 30 Tage unveränderlich; tägliche bleiben 30
 Tage, die vom Monatsersten 12 Monate (Spec 0014, REQ-009).
 

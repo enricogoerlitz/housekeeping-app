@@ -338,21 +338,42 @@ Die Historie nie mit `migration repair` flicken.
 - Ablage im Container `backups`: `daily/<JJJJ-MM-TT>/<Lauf>/`, `monthly/<JJJJ-MM>/<Lauf>/`,
   `release/v<Version>/<Lauf>/`, je mit `backup.tar.gz.age` und `manifest.json`. Tägliche und
   Release-Sicherungen bleiben 31 Tage, monatliche 366 Tage; jede ist 30 Tage unveränderlich.
-- Inhalt des Archivs: `roles.sql`, `schema.sql`, `data.sql` (Datenbank), `media/` (Fotos aus
-  `household-media`) und `videos/` (Rezeptvideos aus `household-videos`, seit Spec 0043,
-  Entscheidung 8). **Nicht enthalten** sind die Function-Secrets und die Vault-Einträge
-  `push_send_secret` und `push_send_url`.
-- `manifest.json` nennt Zeilen je Tabelle, die Zahl der Fotos und der Videos und die Prüfsumme
-  (Format 2). Sicherungen von vor Spec 0043 haben Format 1 ohne Videos; `compare.mjs` liest beide
-  und vergleicht die Videos nur ab Format 2.
-- Fehlt ein Bucket (vor der Veröffentlichung, die ihn anlegt), sichert der Lauf mit einer Warnung
-  null Dateien daraus. Dass beide Buckets nach jeder Auslieferung da sind, prüft `verify.mjs`
-  („Foto-Bucket“, „Video-Bucket“).
-- Größe: Videos haben bis 50 MiB, der Speicher des Free-Tarifs fasst 1 GB insgesamt. Ein Archiv
-  bleibt also unter etwa 1 GB; die Zeitgrenzen von 45 Minuten für Sicherung und
-  Wiederherstellungstest reichen dafür. Jede Nachtsicherung lädt alle Fotos und Videos ganz aus
-  Supabase (Egress des Projekts) und legt sie verschlüsselt in Azure ab (bis etwa 45 Sicherungen).
+- Inhalt des Archivs: `roles.sql`, `schema.sql`, `data.sql` (Datenbank) und `media/` (Fotos aus
+  `household-media`). **Nicht enthalten** sind die Rezeptvideos aus `household-videos` (Spec
+  0048, Entscheidung 1: über ihren TikTok-Link neu speicherbar, und jede Nacht alle Videos kostete
+  zu viel Egress), die Function-Secrets und die Vault-Einträge `push_send_secret` und
+  `push_send_url`.
+- `manifest.json` nennt Zeilen je Tabelle, die Zahl der Fotos und die Prüfsumme (Format 3).
+  Ältere Sicherungen: Format 2 (Spec 0043 bis 0048) enthält zusätzlich `videos/` und zählt sie,
+  Format 1 (vor Spec 0043) ist wie Format 3. `compare.mjs` liest alle drei und vergleicht nur
+  Zeilen und Fotos. Die Archive mit Videos laufen mit der Aufbewahrung ab (31 bzw. 366 Tage).
+- Fehlt der Foto-Bucket (vor der ersten Veröffentlichung), sichert der Lauf mit einer Warnung null
+  Fotos. Dass beide Buckets nach jeder Auslieferung da sind, prüft `verify.mjs` („Foto-Bucket“,
+  „Video-Bucket“; den Video-Bucket braucht die App, auch wenn ihn keine Sicherung liest).
+- Größe: Fotos haben höchstens 2 MiB; die Zeitgrenzen von 45 Minuten für Sicherung und
+  Wiederherstellungstest reichen reichlich.
 - Von Hand: `gh workflow run backup.yml --ref main` bzw. `gh workflow run restore-test.yml --ref main`.
+
+### Egress der Sicherung
+
+Der Free-Tarif von Supabase hat **5 GB ungecachten Egress im Monat**; darüber warnt Supabase und
+schränkt das Projekt danach bis zum nächsten Abrechnungszeitraum ein. Jede Nachtsicherung lädt
+**alle Fotos ganz** aus Supabase (der Läufer ist jede Nacht leer), dazu den Datenbank-Dump
+(einige MB). Ein Foto hat nach dem Verkleinern (höchstens 1600 px, JPEG-Qualität 0,82) meist
+0,2 bis 0,4 MB; geschätzt mit 0,3 MB und 30 Nächten (jede Veröffentlichung sichert einmal mehr):
+
+| Fotos | Volumen `household-media` | Egress der Sicherung im Monat |
+| ----- | ------------------------- | ----------------------------- |
+| 100   | etwa 30 MB                | etwa 0,9 GB                   |
+| 300   | etwa 90 MB                | etwa 2,7 GB                   |
+| 500   | etwa 150 MB               | etwa 4,5 GB                   |
+
+Das Volumen steht jede Nacht im Log des Schritts „Verschlüsseln und Begleitdatei“
+(`Begleitdatei: … 312 Fotos (94,1 MB)`); den Egress insgesamt zeigt das Supabase-Dashboard
+(Usage → Egress), dazu kommt das Laden der Fotos in der App. **Schwelle:** Übersteigt das
+Volumen etwa **100 MB** (rund 330 Fotos, also etwa 3 GB Egress im Monat nur für die Sicherung),
+die Fotos inkrementell sichern (nur neue Fotos laden, Ablage in Azure): eine eigene Spec, die
+Befunde dafür stehen in Spec 0048, Entscheidung 4.
 
 ### Unveränderlichkeit sperren
 
@@ -412,11 +433,11 @@ LOCAL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 node scripts/backup/compare.mjs query --manifest tmp/restore/download/manifest.json > tmp/restore/count.sql
 psql "$LOCAL" -X -At -v ON_ERROR_STOP=1 -f tmp/restore/count.sql > tmp/restore/counts.txt
 node scripts/backup/compare.mjs counts --manifest tmp/restore/download/manifest.json \
-  --counts tmp/restore/counts.txt --media tmp/restore/backup/media --videos tmp/restore/backup/videos
+  --counts tmp/restore/counts.txt --media tmp/restore/backup/media
 ```
 
-(Bei einer Sicherung im Format 1, also von vor Spec 0043, gibt es kein `videos/`; `compare.mjs`
-übergeht es dann.)
+(Eine Sicherung im Format 2, also von Spec 0043 bis 0048, enthält zusätzlich `videos/`;
+`compare.mjs` übergeht die Videos.)
 
 Stimmt alles, mit `psql "$LOCAL"` stichprobenartig nachsehen (`supabase db start` startet nur die
 Datenbank, kein Studio), dann `(cd tmp/restore/db && pnpm exec supabase stop --no-backup)`.
@@ -434,7 +455,8 @@ unset DB_URL
 
 Fotos und Videos: Storage → Settings → S3 Connection → neuen Schlüssel anlegen, dann mit dem
 Endpunkt des neuen Projekts hochladen (die einzige Stelle, an der in Richtung Bucket synchronisiert
-wird). Die Buckets selbst kommen mit `data.sql` zurück; `videos/` fehlt bei Sicherungen im Format 1:
+wird). Die Buckets selbst kommen mit `data.sql` zurück; `videos/` gibt es nur in Sicherungen im
+Format 2:
 
 ```sh
 read -rs AWS_ACCESS_KEY_ID; read -rs AWS_SECRET_ACCESS_KEY; export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
@@ -443,6 +465,11 @@ aws s3 sync tmp/restore/backup/media s3://household-media --endpoint-url "$S3" -
 [ -d tmp/restore/backup/videos ] && aws s3 sync tmp/restore/backup/videos s3://household-videos --endpoint-url "$S3" --region "$REGION"
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 ```
+
+**Rezeptvideos** sind seit Spec 0048 nicht gesichert. Nach dem Einspielen nennen Rezepte noch ihr
+Video, die Datei fehlt aber: Die App zeigt „Das Video ließ sich gerade nicht laden – bitte noch
+einmal versuchen“. Im Rezept „Video entfernen“ wählen und das Video bei Bedarf über den TikTok-Link
+neu speichern (das Entfernen klappt auch ohne Datei).
 
 **5. Was die Sicherung nicht enthält, neu setzen** (Runbook C3 bis C8 im Plan, jeweils für das neue
 Projekt):
