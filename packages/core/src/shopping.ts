@@ -1,4 +1,4 @@
-import { buyableQty, formatAmount, formatQty } from './amounts';
+import { buyableQty, formatAmount, formatQty, scaleAmount } from './amounts';
 import { createdTime } from './dates';
 import { defaultVariantId } from './recipe-variants';
 import type {
@@ -28,6 +28,11 @@ export interface PlannedContribution {
   entryId: Id;
   /** e.g. "Mango-Curry (Mi)". */
   label: string;
+  /**
+   * The recipe's own amount, scaled, where the list takes a pack instead ("1× Milch" for
+   * "500 ml"): the pantry check shows it beside the count (spec 0037, AC-020).
+   */
+  recipeAmount?: { qty: number; unit: string };
 }
 /**
  * What a planned recipe needs from the shop: one contribution per ingredient, not merged.
@@ -81,10 +86,15 @@ export function contributionsFromEntry(
     };
 
     const amount = ingredient.amount;
+    const factor = recipe.servings > 0 ? portions / recipe.servings : 1;
     if (ingredient.shoppingRule === 'count' || amount?.qty === undefined) {
       contribution.count = 1;
+      if (amount?.qty !== undefined) {
+        const scaled = scaleAmount(amount, factor);
+        // Without a unit the recipe counts pieces ("2" Eier).
+        contribution.recipeAmount = { qty: scaled.qty ?? amount.qty, unit: amount.unit ?? 'Stück' };
+      }
     } else {
-      const factor = recipe.servings > 0 ? portions / recipe.servings : 1;
       if (amount.unit === undefined) {
         // The small tolerance keeps float noise (2.0000000000000004) from adding a whole piece.
         contribution.count = Math.max(1, Math.ceil(amount.qty * factor - 1e-9));

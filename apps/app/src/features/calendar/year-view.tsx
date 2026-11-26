@@ -22,6 +22,7 @@ import {
   Text,
   keyboardFocusRing,
   pressedWithFinger,
+  useBreakpoint,
   useFinePointer,
   useHover,
   useTheme,
@@ -294,6 +295,9 @@ function MiniMonth(props: {
   );
 }
 
+const DIGITS_PHONE = { fontSize: 10, lineHeight: 13 } as const;
+const DIGITS_WIDE = { fontSize: 12, lineHeight: 15 } as const;
+
 function MiniDay(props: {
   date: ISODate;
   data: CalendarData;
@@ -305,6 +309,7 @@ function MiniDay(props: {
   register: (node: HostInstance | null) => void;
 }) {
   const theme = useTheme();
+  const { isPhone } = useBreakpoint();
   const refusedDays = useRefusedDays();
   const coverage = yearDayTrip(props.date, props.data.stripes);
   const member = coverage.kind === 'one' ? props.data.membersById[coverage.memberId] : undefined;
@@ -366,7 +371,12 @@ function MiniDay(props: {
             <Text
               variant="caption"
               color={props.selected ? undefined : isToday ? 'accent' : 'text'}
-              style={[{ fontSize: 12, lineHeight: 15 }, props.selected ? { color: c.bg } : null]}
+              // 12 px where a day is wide enough (spec 0035); a phone's three months a row leave
+              // about 16 px a day, where "27 28 29" would run together (review 0003).
+              style={[
+                isPhone ? DIGITS_PHONE : DIGITS_WIDE,
+                props.selected ? { color: c.bg } : null,
+              ]}
             >
               {String(parseISODate(props.date).getDate())}
             </Text>

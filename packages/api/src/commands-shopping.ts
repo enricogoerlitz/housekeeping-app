@@ -442,6 +442,11 @@ export interface PantryCheckRow {
   count?: number;
   /** "schon auf der Liste: 1×": the article's open item on the list (spec 0025, AC-027). */
   onList?: string;
+  /**
+   * "500 ml": what the recipes ask for where the list takes packs ("1×"), so "Für N Personen"
+   * visibly changes the row (spec 0037, AC-020). Undefined when the amount itself is shown.
+   */
+  recipeAmount?: string;
   /** From a recipe chosen directly, `entryId` is empty: there is no plan entry. */
   contributions: PlannedContribution[];
 }
@@ -450,18 +455,34 @@ export interface PantryCheckRow {
 function rowAmount(row: Pick<PantryCheckRow, 'articleId' | 'contributions'>): {
   amount: string;
   count?: number;
+  recipeAmount?: string;
 } {
-  const preview: ShoppingItem = {
+  const preview = (contributions: ShoppingContribution[]): ShoppingItem => ({
     id: 'preview',
     articleId: row.articleId,
-    contributions: row.contributions.map((contribution, index) =>
-      toContribution(contribution, `preview-${index}`),
-    ),
+    contributions,
     checked: false,
     createdAt: '',
+  });
+  const item = preview(
+    row.contributions.map((contribution, index) =>
+      toContribution(contribution, `preview-${index}`),
+    ),
+  );
+  const count = itemCount(item);
+  // The recipes' amounts, added up like on the list: "250 ml" + "250 ml" → "500 ml".
+  const needed = row.contributions.flatMap((contribution, index) =>
+    contribution.recipeAmount
+      ? [{ id: `need-${index}`, source: { kind: 'manual' as const }, ...contribution.recipeAmount }]
+      : [],
+  );
+  const recipeAmount =
+    count !== undefined && needed.length > 0 ? summarizeItem(preview(needed)).amount : '';
+  return {
+    amount: summarizeItem(item).amount,
+    ...(count === undefined ? {} : { count }),
+    ...(recipeAmount ? { recipeAmount } : {}),
   };
-  const count = itemCount(preview);
-  return { amount: summarizeItem(preview).amount, ...(count === undefined ? {} : { count }) };
 }
 
 /**
@@ -474,7 +495,7 @@ export function withPantryAmount(row: PantryCheckRow, amount: ItemAmount): Pantr
     const { count: _count, qty: _qty, unit: _unit, ...origin } = contribution;
     return index === 0 ? { ...origin, ...amount } : origin;
   });
-  const { count: _old, ...rest } = row;
+  const { count: _old, recipeAmount: _need, ...rest } = row;
   return { ...rest, contributions, ...rowAmount({ articleId: row.articleId, contributions }) };
 }
 

@@ -26,6 +26,12 @@ function apfelkuchen(): string {
       shoppingRule: 'recipeAmount',
     },
     { ...newIngredientRow('salz'), amountText: '', article: article('Salz') },
+    {
+      ...newIngredientRow('milch'),
+      amountText: '250 ml',
+      article: article('Milch'),
+      shoppingRule: 'count',
+    },
   ]);
   commit({ path: 'diff' }, () => applySection(recipeId, draft));
   return recipeId;
@@ -42,6 +48,22 @@ describe('pantryRecipeFor (spec 0037, REQ-007)', () => {
       )?.amount;
     expect(mehl(2)).toBe('200 g');
     expect(mehl(4)).toBe('400 g');
+  });
+
+  it('AC-020: a pack stays 1×, the recipe amount beside it follows: 250 ml for 2, 500 ml for 4', async () => {
+    await fx.startEnrico();
+    const recipeId = apfelkuchen();
+    await fx.settle();
+    const milch = (portions: number) =>
+      pantryCheckRows([], [pantryRecipeFor({ recipeId, portions: 2 }, portions)]).find(
+        (row) => row.name === 'Milch',
+      );
+    expect(milch(2)).toEqual(expect.objectContaining({ count: 1, recipeAmount: '250 ml' }));
+    expect(milch(4)).toEqual(expect.objectContaining({ count: 1, recipeAmount: '500 ml' }));
+    const mehl = pantryCheckRows([], [{ recipeId, portions: 4 }]).find(
+      (row) => row.name === 'Mehl',
+    );
+    expect(mehl?.recipeAmount).toBeUndefined();
   });
 
   it('AC-021: an ingredient without amount gets none: it stays as it is for 2 and for 4', async () => {

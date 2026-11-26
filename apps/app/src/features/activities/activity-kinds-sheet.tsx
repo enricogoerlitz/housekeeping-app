@@ -117,7 +117,9 @@ function KindEditor(props: {
       message:
         props.usage === 0
           ? 'Keine Aktivität hat diese Art.'
-          : `${countLabel(props.usage)} behalten ihre Einträge und haben danach keine Art mehr.`,
+          : props.usage === 1
+            ? '1 Aktivität behält ihre Einträge und hat danach keine Art mehr.'
+            : `${countLabel(props.usage)} behalten ihre Einträge und haben danach keine Art mehr.`,
       confirmLabel: 'Löschen',
       testID: 'activity-kind-delete-confirm',
       onConfirm: () => {

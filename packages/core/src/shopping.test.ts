@@ -203,6 +203,48 @@ describe('contributionsFromEntry', () => {
     ]);
   });
 
+  it('AC-020 (spec 0037): a pack keeps its count, the scaled recipe amount travels beside it', () => {
+    const recipe = {
+      ...halloumiPfanne,
+      ingredients: [
+        {
+          id: 'm',
+          articleId: 'art-milch',
+          amount: { text: '250 ml', qty: 250, unit: 'ml' },
+          shoppingRule: 'count' as const,
+        },
+        { id: 'w', articleId: 'art-weg', shoppingRule: 'count' as const },
+        {
+          id: 'e',
+          articleId: 'art-eier',
+          amount: { text: '2', qty: 2 },
+          shoppingRule: 'count' as const,
+        },
+        {
+          id: 'h',
+          articleId: 'art-halloumi',
+          amount: { text: '250 g', qty: 250, unit: 'g' },
+          shoppingRule: 'recipeAmount' as const,
+        },
+      ],
+    };
+    const rows = contributionsFromEntry(
+      curryEntry({ portions: 4, variants: [] }),
+      recipe,
+      articlesById,
+      'Do',
+    );
+    expect(rows[0]).toEqual(
+      expect.objectContaining({ count: 1, recipeAmount: { qty: 500, unit: 'ml' } }),
+    );
+    // Without a quantity, or when the list takes the recipe amount itself, there is nothing beside.
+    expect(rows[1]?.recipeAmount).toBeUndefined();
+    // Without a unit the recipe counts pieces: "2" Eier for 2 are 4 Stück for 4.
+    expect(rows[2]?.recipeAmount).toEqual({ qty: 4, unit: 'Stück' });
+    expect(rows[3]).toEqual(expect.objectContaining({ qty: 500, unit: 'g' }));
+    expect(rows[3]?.recipeAmount).toBeUndefined();
+  });
+
   it('AC-011, AC-012: the Hinweis never goes to the list, the Einkaufs-Zusatz does', () => {
     const recipe = {
       ...halloumiPfanne,

@@ -291,7 +291,12 @@ export function ActivityFormFields(props: {
         ) : null}
       </Stack>
       <ActivityKindField kindId={form.kindId} onChange={form.setKindId} />
-      <ActivityIconField icon={form.icon} fallback={kindIcon} onChange={form.setIcon} />
+      <ActivityIconField
+        icon={form.icon}
+        fallback={kindIcon}
+        fromKind={form.kindId !== undefined && kindsById[form.kindId] !== undefined}
+        onChange={form.setIcon}
+      />
       <SwitchRow
         label="Merken"
         description="Steht in der Liste unter „Gemerkt“. Aus für Einmaliges – im Kalender steht es trotzdem."

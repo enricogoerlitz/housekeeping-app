@@ -207,12 +207,14 @@ export function ActivityKindField(props: {
 
 /**
  * "Symbol" of an activity (REQ-002): the kind's symbol unless an own one is chosen from the fixed
- * list; "Symbol der Art nehmen" goes back.
+ * list; "Symbol der Art nehmen" goes back. Without a kind it is the standard symbol.
  */
 export function ActivityIconField(props: {
   icon: ActivityIcon | undefined;
   /** The symbol without an own one: the kind's or the default. */
   fallback: ActivityIcon;
+  /** `fallback` is the kind's symbol, not the default one. */
+  fromKind: boolean;
   onChange: (icon: ActivityIcon | undefined) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -225,7 +227,7 @@ export function ActivityIconField(props: {
         <Text style={{ flex: 1 }} color="muted" numberOfLines={1} testID="activity-icon-label">
           {props.icon
             ? `${activityIconLabel(props.icon)} (eigenes)`
-            : `${activityIconLabel(props.fallback)} (von der Art)`}
+            : `${activityIconLabel(props.fallback)} (${props.fromKind ? 'von der Art' : 'Standard'})`}
         </Text>
         <Button
           label={open ? 'Fertig' : 'Ändern'}
@@ -246,7 +248,7 @@ export function ActivityIconField(props: {
           />
           {props.icon ? (
             <Button
-              label="Symbol der Art nehmen"
+              label={props.fromKind ? 'Symbol der Art nehmen' : 'Standardsymbol nehmen'}
               variant="link"
               size="sm"
               onPress={() => props.onChange(undefined)}

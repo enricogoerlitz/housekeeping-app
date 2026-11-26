@@ -177,7 +177,7 @@ export function AddEntryCreateBody(props: {
         <NewHeading title="Neues Restaurant" onBack={back} />
         <RestaurantFormFields
           form={create.restaurantForm}
-          focus="link"
+          focus="name"
           openLabel="Auswählen"
           onOpenExisting={(chosen) => props.onChoose({ kind: 'restaurant', restaurant: chosen })}
         />
