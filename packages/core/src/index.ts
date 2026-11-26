@@ -79,3 +79,8 @@ export * from './browse-order';
 export * from './recipe-draft';
 export * from './image-context';
 export * from './recipe-video';
+export * from './web-results';
+export * from './proposal-diff';
+export * from './recipe-proposal';
+export * from './place-proposal';
+export * from './web-preview';

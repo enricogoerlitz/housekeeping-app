@@ -347,6 +347,107 @@ export const AiImageReplySchema = z.strictObject({
 });
 export type AiImageReply = z.infer<typeof AiImageReplySchema>;
 
+// ---------- Websuche (spec 0049) ----------
+
+export const WEB_SEARCH_KINDS = ['recipe', 'restaurant', 'activity'] as const;
+export type WebSearchKind = (typeof WEB_SEARCH_KINDS)[number];
+/** Limits of one search (Risiken "Kosten laufen weg"). */
+export const WEB_SEARCH_LIMITS = { query: 200, results: 5, openingDays: 7 } as const;
+
+const GeoPointSchema = z.strictObject({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+
+/** One day of opening hours as the provider wrote it, ISO weekday 1 (Montag) … 7 (Sonntag). */
+export const OpeningDaySchema = z.strictObject({
+  weekday: z.int().min(1).max(7),
+  /** "11:00–23:00", "Geschlossen", "24 Stunden geöffnet". */
+  hours: z.string().trim().min(1).max(120),
+});
+export type OpeningDay = z.infer<typeof OpeningDaySchema>;
+
+/** One result card (REQ-002); the app sends it back unchanged for the place preview. */
+export const WebResultSchema = z.strictObject({
+  /** The recipe page, or for a place the maps link or else its website ("Quelle öffnen"). */
+  url: HttpsUrl,
+  title: z.string().trim().min(1).max(200),
+  /** The host without "www.", e.g. "chefkoch.de". */
+  source: z.string().trim().min(1).max(120),
+  /** Loaded by the app through fetch-image (CSP), never shown directly. */
+  imageUrl: HttpsUrl.optional(),
+  rating: z.number().min(0).max(5).optional(),
+  ratingCount: z.int().min(0).max(100_000_000).optional(),
+  /** Recipes: the total time from the page. */
+  totalMinutes: z.int().min(1).max(10000).optional(),
+  /** Short text of the provider, e.g. the snippet; data only. */
+  snippet: z.string().trim().max(400).optional(),
+  // Places (restaurant, activity):
+  address: z.string().trim().max(300).optional(),
+  /** "Vietnamesisches Restaurant", "Kletterhalle". */
+  category: z.string().trim().max(120).optional(),
+  websiteUrl: HttpsUrl.optional(),
+  mapsUrl: HttpsUrl.optional(),
+  location: GeoPointSchema.optional(),
+  openingHours: z.array(OpeningDaySchema).max(WEB_SEARCH_LIMITS.openingDays).optional(),
+  /** 1 (€) … 4 (€€€€), from the provider's price range. */
+  priceLevel: z.int().min(1).max(4).optional(),
+});
+export type WebResult = z.infer<typeof WebResultSchema>;
+
+export const WebSearchRequestSchema = z.discriminatedUnion('mode', [
+  z.strictObject({
+    mode: z.literal('search'),
+    householdId: Id,
+    kind: z.enum(WEB_SEARCH_KINDS),
+    query: z.string().trim().min(1).max(WEB_SEARCH_LIMITS.query),
+    /** Where to look for places (Entscheidung 3); without it the provider decides. */
+    near: GeoPointSchema.optional(),
+  }),
+  z.strictObject({
+    mode: z.literal('place'),
+    householdId: Id,
+    kind: z.enum(['restaurant', 'activity']),
+    result: WebResultSchema,
+  }),
+]);
+export type WebSearchRequest = z.infer<typeof WebSearchRequestSchema>;
+
+export const WebSearchReplySchema = z.strictObject({
+  results: z.array(WebResultSchema).max(WEB_SEARCH_LIMITS.results),
+  provider: z.enum(['serper', 'brave']),
+  /** What was searched: the person's text without commands and image wishes (REQ-008). */
+  query: z.string().trim().min(1).max(WEB_SEARCH_LIMITS.query),
+  /** "Bild soll Frau in Boulderhalle sein": the photo is made from it, not taken from the page. */
+  imageWish: z.string().trim().min(1).max(300).optional(),
+});
+export type WebSearchReply = z.infer<typeof WebSearchReplySchema>;
+
+/** How the model reads the person's search text (REQ-008): what to search, what to picture. */
+export const SearchIntentSchema = z.strictObject({
+  query: z.string().trim().min(1).max(WEB_SEARCH_LIMITS.query),
+  imageWish: z.string().trim().min(1).max(300).optional(),
+});
+export type SearchIntent = z.infer<typeof SearchIntentSchema>;
+
+/** What the model may answer for a place preview (REQ-003, AC-025): place data, nothing else. */
+export const PlaceProposalSchema = z.strictObject({
+  /** The place's name as people say it, without "GmbH" or a slogan. */
+  name: z.string().trim().min(1).max(120).optional(),
+  /** Restaurants: up to 3 Schlagworte, the household's when they fit. */
+  tags: z.array(z.string().trim().min(1).max(40)).max(3).optional(),
+  /** Restaurants: one of the household's cuisines when one fits, else a short German one. */
+  cuisine: z.string().trim().min(1).max(80).optional(),
+  /** Activities: exactly the name of one of the household's kinds, else none. */
+  kind: z.string().trim().min(1).max(40).optional(),
+  /** Activities: one or two German sentences about the place. */
+  description: z.string().trim().min(1).max(500).optional(),
+});
+export type PlaceProposal = z.infer<typeof PlaceProposalSchema>;
+
+export const PlacePreviewReplySchema = z.strictObject({ proposal: PlaceProposalSchema });
+export type PlacePreviewReply = z.infer<typeof PlacePreviewReplySchema>;
+
 /** Stable error codes of the edge functions; the app maps them to German messages. */
 export const ErrorCodeSchema = z.enum([
   'unauthorized',
@@ -369,6 +470,8 @@ export const ErrorCodeSchema = z.enum([
   'video_too_large',
   /** fetch-video: the recipe has the video of this link already (one per link, spec 0046). */
   'video_exists',
+  /** web-search (spec 0049, AC-023): neither Serper nor Brave answered usably. */
+  'search_unavailable',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

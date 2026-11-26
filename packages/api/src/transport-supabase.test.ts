@@ -1054,3 +1054,46 @@ describe('supabase transport: ai-recipe-draft and ai-image (spec 0040)', () => {
     expect(await image).toMatchObject({ code: 'timeout' });
   });
 });
+
+describe('supabase transport: web-search (spec 0049)', () => {
+  it('AC-005, AC-012: search and place preview replies are checked against the contract', async () => {
+    const card = {
+      url: 'https://www.chefkoch.de/rezepte/1/a.html',
+      title: 'Bolognese',
+      source: 'chefkoch.de',
+    };
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: { provider: 'serper', query: 'x', results: [card] }, error: null },
+        {
+          data: { provider: 'serper', query: 'x', results: [{ ...card, url: 'http://a.de' }] },
+          error: null,
+        },
+        { data: { proposal: { cuisine: 'Vietnamesisch' } }, error: null },
+        { data: { proposal: { command: 'delete' } }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    const search = { mode: 'search', householdId: 'h1', kind: 'recipe', query: 'x' } as const;
+    await expect(transport.webSearch(search)).resolves.toEqual({
+      provider: 'serper',
+      query: 'x',
+      results: [card],
+    });
+    await expect(transport.webSearch(search)).rejects.toMatchObject({ code: 'invalid_response' });
+    const place = { mode: 'place', householdId: 'h1', kind: 'restaurant', result: card } as const;
+    await expect(transport.placePreview(place)).resolves.toEqual({
+      proposal: { cuisine: 'Vietnamesisch' },
+    });
+    await expect(transport.placePreview(place)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+    expect(invoked.map((call) => call.name)).toEqual([
+      'web-search',
+      'web-search',
+      'web-search',
+      'web-search',
+    ]);
+  });
+});

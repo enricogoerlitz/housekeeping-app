@@ -3,6 +3,7 @@ import type { Id, Restaurant } from '@housekeeping/core';
 import { Sheet, Stack, Text, toast } from '@housekeeping/ui';
 
 import { useOnlineOnly } from '@/features/shell/offline';
+import { PlaceWebFill } from '@/features/web-search/place-web-fill';
 
 import {
   RestaurantFormFields,
@@ -151,6 +152,16 @@ function RestaurantFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
+        {/* Spec 0049: a new one is filled at once, an existing one shows its changes first. */}
+        <PlaceWebFill
+          kind="restaurant"
+          name={form.name}
+          {...(form.restaurant ? { current: form.webValues() } : {})}
+          hasPhoto={form.restaurant?.photoPath !== undefined}
+          onApply={form.applyWeb}
+          onLink={form.changeLink}
+          testID="restaurant-web"
+        />
         <RestaurantFormFields
           form={form}
           focus={props.focus}

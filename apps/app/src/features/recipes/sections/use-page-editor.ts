@@ -40,7 +40,12 @@ import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { OFFLINE_EDIT_HINT } from '@/features/shell/offline';
 
-import { dismissPhotoSuggestions, forgetUnsavedRecipe, takeAiDraft } from '../ai-draft';
+import {
+  dismissPhotoSuggestions,
+  forgetUnsavedRecipe,
+  peekAiDraftPhoto,
+  takeAiDraft,
+} from '../ai-draft';
 import { takeHandedOverRows } from './ingredient-handover';
 
 // The edit mode of the recipe and collection page (spec 0037, REQ-001): the pen at the top opens
@@ -87,6 +92,13 @@ export interface PageEditor {
    * photo path. The person checks it and saves or discards it.
    */
   load: (input: PageDraftInput, photo?: Blob, options?: { replace?: boolean }) => void;
+  /**
+   * The page as `load` would fill it, without opening it (spec 0049): the "after" of the
+   * Änderungsansicht.
+   */
+  filled: (input: PageDraftInput, options?: { replace?: boolean }) => PageDraft;
+  /** The Änderungsansicht's result (spec 0049, REQ-005): the edit mode opens with it, unsaved. */
+  adopt: (draft: PageDraft) => void;
   /** The photo "Speichern" will set (a chosen AI suggestion, spec 0040 AC-010); none = keep. */
   chosenPhoto: Blob | undefined;
   choosePhoto: (photo: Blob | undefined) => void;
@@ -125,8 +137,11 @@ export function usePageEditor(
   const contents = useCollectionContents(recipeId);
   const [state, dispatch] = useReducer(pageEditorReducer, {});
   const [intent, setIntent] = useState<EditIntent>();
-  const photo = useRef<Blob | undefined>(undefined);
-  const [chosenPhoto, setChosenPhoto] = useState<Blob>();
+  // The photo handed over with a draft ("Neu → Mit KI ausfüllen", spec 0049 AC-014: the photo of
+  // the page found on the web) shows as the pending photo from the first render.
+  const [handedPhoto] = useState(() => peekAiDraftPhoto(recipeId));
+  const photo = useRef<Blob | undefined>(handedPhoto);
+  const [chosenPhoto, setChosenPhoto] = useState<Blob | undefined>(handedPhoto);
   const choosePhoto = useCallback((next: Blob | undefined) => {
     photo.current = next;
     setChosenPhoto(next);
@@ -376,6 +391,11 @@ export function usePageEditor(
         draft: fillPageDraft(base, input, newId, { replace: loadOptions?.replace === true }),
       });
     },
+    filled: (input, fillOptions) =>
+      fillPageDraft(state.draft ?? pageDraft(recipe, contents), input, newId, {
+        replace: fillOptions?.replace === true,
+      }),
+    adopt: (draft) => dispatch({ type: 'open', draft }),
     chosenPhoto,
     choosePhoto,
     unsaved,

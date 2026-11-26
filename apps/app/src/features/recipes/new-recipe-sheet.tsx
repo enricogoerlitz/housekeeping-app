@@ -30,6 +30,7 @@ import {
   Stack,
   Text,
   TextField,
+  ViewTabs,
   toast,
 } from '@housekeeping/ui';
 import { useState } from 'react';
@@ -37,11 +38,24 @@ import { View } from 'react-native';
 
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { useWebSearch } from '@/features/web-search/use-web-search';
+import {
+  webSearchPrimary,
+  WebSearchPanel,
+  type WebTake,
+} from '@/features/web-search/web-search-panel';
 import { features } from '@/lib/features';
 import { CAN_PICK_PHOTO, pickPhotoFile } from '@/lib/pick-photo';
 
 import { handOverNewRecipe, startPhotoSuggestions } from './ai-draft';
-import { AiFillFields, toastUnreadLinks, useAiFill, useDraftInput } from './ai-fill';
+import {
+  AI_FILL_TABS,
+  AiFillFields,
+  toastUnreadLinks,
+  useAiFill,
+  useDraftInput,
+  type AiFillTab,
+} from './ai-fill';
 import { IngredientLinesField } from './ingredient-lines-field';
 import { NewRecipeFields } from './recipe-form';
 import { handOverIngredientRows, rowsFromText } from './sections/ingredient-handover';
@@ -81,6 +95,9 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
   const [error, setError] = useState<string | undefined>(undefined);
   const fill = useAiFill();
   const draftInput = useDraftInput();
+  // Spec 0049, REQ-001: "Websuche" first, prefilled with the title when the AI opens (AC-001).
+  const search = useWebSearch('recipe');
+  const [aiTab, setAiTab] = useState<AiFillTab>('web');
   // Every opening starts with the kind chosen in "+" (state adjusted while rendering).
   const [shown, setShown] = useState(props.visible);
   if (props.visible !== shown) {
@@ -97,11 +114,16 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
     setExtras(new Set());
     setError(undefined);
     fill.reset();
+    search.reset();
+    setAiTab('web');
     props.onClose();
   };
 
   const takesIngredients = newEntryTakesIngredients(kind);
-  const open = (extra: Extra) => setExtras((current) => new Set(current).add(extra));
+  const open = (extra: Extra) => {
+    if (extra === 'ai' && search.query.trim() === '') search.setQuery(title.trim());
+    setExtras((current) => new Set(current).add(extra));
+  };
   const withAi = features.aiRecipes && kind === 'recipe' && extras.has('ai');
 
   // AC-001: the draft opens on the recipe page in the edit mode; the recipe exists only there
@@ -138,6 +160,33 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       props.onCreated(recipe.id);
       toastUnreadLinks(reply.sources);
     });
+  };
+  // Spec 0049, AC-014: the recipe found on the web opens like an AI draft, with the page's photo
+  // and the page as its link; nothing is saved before "Speichern".
+  const takeFromWeb = (taken: WebTake) => {
+    const reply = taken.recipe;
+    if (!reply) return;
+    const input = draftInput(reply);
+    const recipe = newRecipe({
+      id: crypto.randomUUID(),
+      kind: 'recipe',
+      title: input.title ?? reply.draft.title,
+      servings: reply.draft.servings,
+      createdAt: new Date().toISOString(),
+    });
+    // REQ-010: the photo chosen in the preview — the page's, three made by the AI (with the wish
+    // or the title), or none (a photo chosen in "Neu" stays then).
+    const pagePhoto = taken.photoChoice === 'source' ? taken.photo : photo;
+    handOverNewRecipe(recipe, input, taken.photoChoice === 'ai' ? undefined : pagePhoto);
+    if (taken.photoChoice === 'ai') {
+      startPhotoSuggestions(recipe.id, {
+        // Spec 0052: the raw wish (or the title) with what the photo is for.
+        prompt: taken.imageWish ?? recipe.title,
+        context: draftImageContext(reply.draft),
+      });
+    }
+    close();
+    props.onCreated(recipe.id);
   };
   const save = () => {
     const problem = newEntryTitleProblem(title);
@@ -184,14 +233,16 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
       size="m"
       actions={{
         primary: withAi
-          ? {
-              label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
-              icon: 'sparkles',
-              onPress: fillWithAi,
-              disabled: online.disabled || fill.busy || (!fill.ready && title.trim() === ''),
-              hint: online.hint,
-              testID: 'new-recipe-ai-submit',
-            }
+          ? aiTab === 'web'
+            ? webSearchPrimary(search, online, takeFromWeb, 'new-recipe-web')
+            : {
+                label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
+                icon: 'sparkles',
+                onPress: fillWithAi,
+                disabled: online.disabled || fill.busy || (!fill.ready && title.trim() === ''),
+                hint: online.hint,
+                testID: 'new-recipe-ai-submit',
+              }
           : {
               label: 'Anlegen',
               icon: 'check',
@@ -220,10 +271,33 @@ export function NewRecipeSheet(props: NewRecipeSheetProps) {
             if (error) setError(undefined);
           }}
           error={error}
-          onSubmit={withAi ? fillWithAi : save}
+          onSubmit={withAi ? (aiTab === 'web' ? search.search : fillWithAi) : save}
           autoFocus
         />
-        {withAi ? <AiFillFields fill={fill} testID="new-recipe-ai" /> : null}
+        {withAi ? (
+          <Stack gap={12}>
+            <ViewTabs
+              label="Mit KI ausfüllen"
+              options={AI_FILL_TABS}
+              value={aiTab}
+              onChange={setAiTab}
+              testID="new-recipe-ai-tab"
+            />
+            {aiTab === 'web' ? (
+              <WebSearchPanel
+                search={search}
+                onLink={(link) => {
+                  fill.setText(link);
+                  setAiTab('own');
+                }}
+                recipeRows={(reply) => draftInput(reply).ingredients ?? []}
+                testID="new-recipe-web"
+              />
+            ) : (
+              <AiFillFields fill={fill} testID="new-recipe-ai" />
+            )}
+          </Stack>
+        ) : null}
         {extras.has('photo') ? <NewPhotoSlot photo={photo} onChange={setPhoto} /> : null}
         {takesIngredients && extras.has('ingredients') ? (
           <IngredientLinesField

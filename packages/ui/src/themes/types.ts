@@ -32,6 +32,10 @@ export interface ThemeColors {
   /** Offline and "needs attention" hints: orange, never red. */
   warnBg: string;
   warnText: string;
+  /** The Änderungsansicht (spec 0049): the subtle yellow behind a new or changed field or row. */
+  changedBg: string;
+  /** The Änderungsansicht: an old value or a removed row, struck through; always with a word. */
+  removedText: string;
   checkLine: string;
   /** The track of a switch that is off: 3:1 on page and card (spec 0031, REQ-035). */
   switchOff: string;

@@ -16,6 +16,7 @@ import {
   tagValues,
   type GeoPoint,
   type Id,
+  type PlaceValues,
   type Restaurant,
 } from '@housekeeping/core';
 import { Button, Chip, Icon, Notice, Row, Stack, Text, TextField } from '@housekeeping/ui';
@@ -31,6 +32,7 @@ import {
   type PhotoChoice,
 } from '@/features/shell/own-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
+import type { WebPlace } from '@/features/web-search/place-web-fill';
 
 const PRICE_LEVELS: NonNullable<Restaurant['priceLevel']>[] = [1, 2, 3, 4];
 
@@ -176,9 +178,43 @@ export function useRestaurantForm(
     return draft;
   };
 
+  // Spec 0049: what the form shows now, for the Änderungsansicht, and the place found on the web.
+  const webValues = (): PlaceValues => ({
+    name,
+    address,
+    cuisine,
+    tags: tags.join(', '),
+    priceLevel: priceLevel === undefined ? '' : String(priceLevel),
+    websiteUrl: website,
+    mapsUrl: place?.draft.mapsUrl ?? kept.mapsUrl ?? '',
+  });
+  const applyWeb = (web: WebPlace) => {
+    const { values } = web;
+    if (values.name) setName(values.name);
+    if (values.address) setAddress(values.address);
+    if (values.cuisine) setCuisine(values.cuisine);
+    if (values.tags) {
+      let next = tags;
+      for (const tag of values.tags.split(',')) if (tag.trim()) next = addTag(next, tag.trim());
+      setTags(next);
+    }
+    if (values.priceLevel) setPriceLevel(Number(values.priceLevel) as Restaurant['priceLevel']);
+    if (values.websiteUrl) setWebsite(values.websiteUrl);
+    if (values.mapsUrl) {
+      // Like the saved link of a restaurant being edited: kept until the link is changed.
+      setLink(values.mapsUrl);
+      setReading(undefined);
+      setLinkError(undefined);
+      setKept({ mapsUrl: values.mapsUrl, location: web.location });
+    }
+    if (web.photo) photoChoice.takePhoto(web.photo);
+  };
+
   return {
     restaurant,
     restaurants,
+    webValues,
+    applyWeb,
     link,
     changeLink,
     reading,

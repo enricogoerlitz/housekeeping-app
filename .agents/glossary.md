@@ -1208,3 +1208,22 @@ Annahme).
 - **Nicht verwenden:** Sideload (in deutschen Texten), Beta, Testkanal (meint die Play Console)
 - **Abgrenzung:** Der _interne Testkanal der Play Console_ ist ein anderer Weg (Spec 0015, Offene
   Frage 4 B).
+
+### Websuche
+
+Das Suchen eines Rezepts, Restaurants oder einer Aktivität im Web aus „Mit KI ausfüllen“ bzw. „Im
+Web suchen“ (Spec 0049): 3 bis 5 Treffer als Karten, eine Vorschau, „Übernehmen“. Nichts wird
+gespeichert, bevor die Person „Speichern“ tippt.
+
+- **Im Code:** `webSearchAsync`, `web-search` (Edge Function), `WebResult`
+- **Nicht verwenden:** Google-Suche, Internetsuche, KI-Suche (das ist die Suche in den eigenen
+  Rezepten, Spec 0003)
+
+### Änderungsansicht
+
+Was ein Vorschlag (Websuche oder KI-Entwurf) an einem vorhandenen Eintrag ändern würde: neue,
+geänderte und entfernte Felder und Zeilen, jede mit ihrem Wort und einzeln zurückzunehmen
+(Spec 0049).
+
+- **Im Code:** `ChangeProposal`, `ProposalSheet`, `recipeProposal`, `placeProposal`
+- **Nicht verwenden:** Diff, Vergleich, Änderungsprotokoll

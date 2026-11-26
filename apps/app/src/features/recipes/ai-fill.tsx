@@ -1,5 +1,7 @@
 import {
+  checkImageFile,
   draftRecipeAsync,
+  loadPhotoFromAddress,
   OfflineError,
   preparePhoto,
   starterCatalogEntries,
@@ -12,6 +14,7 @@ import {
   RECIPE_DRAFT_LIMITS,
   draftLinks,
   draftToPageInput,
+  imageAddress,
   linkChipLabel,
   tagValues,
   type PageDraftInput,
@@ -29,15 +32,26 @@ import {
   Stack,
   SwitchRow,
   Text,
+  TextField,
+  ViewTabs,
   pickImageFile,
   toast,
   useBreakpoint,
+  useFinePointer,
+  useImageDropAndPaste,
 } from '@housekeeping/ui';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+import { pasteKeys } from '@/features/shell/photo-window';
+import { useWebSearch } from '@/features/web-search/use-web-search';
+import {
+  webSearchPrimary,
+  WebSearchPanel,
+  type WebTake,
+} from '@/features/web-search/web-search-panel';
 
 import { newRowKey } from './sections/ingredient-handover';
 
@@ -56,6 +70,10 @@ export interface AiFill {
   links: string[];
   photos: DraftPhoto[];
   addPhoto: (camera: boolean) => void;
+  /** A file dropped or pasted on the desktop (spec 0049, REQ-009). */
+  addFile: (file: File) => void;
+  /** An image address, loaded by the server (fetch-image, spec 0039). */
+  addAddress: (url: string) => void;
   removePhoto: (index: number) => void;
   generatePhoto: boolean;
   setGeneratePhoto: (on: boolean) => void;
@@ -93,28 +111,32 @@ export function useAiFill(): AiFill {
   }, []);
 
   const links = draftLinks(text);
+  // Every source ends the same way: shrunk to 1280 px and attached, at most 4 (REQ-001).
+  const attach = (source: () => Promise<Blob>) => {
+    if (photos.length >= RECIPE_DRAFT_LIMITS.photos) return;
+    setPreparing(true);
+    setError(undefined);
+    source()
+      .then((image) => preparePhoto(image, DRAFT_PHOTO_MAX_SIDE))
+      .then(
+        (photo) => {
+          setPreparing(false);
+          setPhotos((current) =>
+            current.length >= RECIPE_DRAFT_LIMITS.photos
+              ? current
+              : [...current, { photo, uri: URL.createObjectURL(photo) }],
+          );
+        },
+        (cause: unknown) => {
+          setPreparing(false);
+          setError(cause instanceof Error ? cause.message : AI_DRAFT_UNREACHABLE_MESSAGE);
+        },
+      );
+  };
   const addPhoto = (camera: boolean) =>
-    pickImageFile(
-      (file) => {
-        setPreparing(true);
-        setError(undefined);
-        preparePhoto(file, DRAFT_PHOTO_MAX_SIDE).then(
-          (photo) => {
-            setPreparing(false);
-            setPhotos((current) =>
-              current.length >= RECIPE_DRAFT_LIMITS.photos
-                ? current
-                : [...current, { photo, uri: URL.createObjectURL(photo) }],
-            );
-          },
-          (cause: unknown) => {
-            setPreparing(false);
-            setError(cause instanceof Error ? cause.message : AI_DRAFT_UNREACHABLE_MESSAGE);
-          },
-        );
-      },
-      camera ? { camera: true } : undefined,
-    );
+    pickImageFile((file) => attach(async () => file), camera ? { camera: true } : undefined);
+  const addFile = (file: File) => attach(async () => checkImageFile(file));
+  const addAddress = (url: string) => attach(() => loadPhotoFromAddress(url));
   const removePhoto = (index: number) =>
     setPhotos((current) => {
       const gone = current[index];
@@ -165,6 +187,8 @@ export function useAiFill(): AiFill {
     links,
     photos,
     addPhoto,
+    addFile,
+    addAddress,
     removePhoto,
     generatePhoto,
     setGeneratePhoto,
@@ -204,12 +228,55 @@ export function toastUnreadLinks(sources: readonly RecipeDraftSource[]): void {
   });
 }
 
+const ADDRESS_DELAY_MS = 400;
+
+/** "Bildadresse" (spec 0049, REQ-009): a pasted image address attaches by itself, like spec 0039. */
+function ImageAddressField(props: {
+  disabled: boolean;
+  onAddress: (url: string) => void;
+  testID: string;
+}) {
+  const [address, setAddress] = useState('');
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const load = (text: string) => {
+    const url = imageAddress(text);
+    if (!url) return;
+    clearTimeout(timer.current);
+    setAddress('');
+    props.onAddress(url);
+  };
+  return (
+    <TextField
+      label="Bildadresse"
+      placeholder="https://…"
+      value={address}
+      onChangeText={(text) => {
+        setAddress(text);
+        clearTimeout(timer.current);
+        if (imageAddress(text)) timer.current = setTimeout(() => load(text), ADDRESS_DELAY_MS);
+      }}
+      onSubmitEditing={() => load(address)}
+      keyboardType="url"
+      autoComplete="off"
+      returnKeyType="go"
+      editable={!props.disabled}
+      testID={props.testID}
+    />
+  );
+}
+
 /** The field, the link chips, the photos and "Foto generieren" (REQ-001 – REQ-003). */
 export function AiFillFields(props: { fill: AiFill; testID: string }) {
   const { fill, testID } = props;
   const online = useOnlineOnly();
   const { isPhone } = useBreakpoint();
+  const finePointer = useFinePointer();
   const disabled = online.disabled || fill.busy;
+  // Spec 0049, REQ-009: on the desktop like the photo window — drop, ⌘V and an image address.
+  const desktop = !isPhone && finePointer;
+  const room = fill.photos.length < RECIPE_DRAFT_LIMITS.photos;
+  const dragging = useImageDropAndPaste(desktop && room && !disabled, fill.addFile);
   const chipState = (url: string): 'reading' | 'read' | 'failed' | undefined => {
     if (fill.busy) return 'reading';
     const source = fill.sources.find((candidate) => candidate.url === url);
@@ -293,6 +360,24 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
           />
         </Row>
       ) : null}
+      {desktop && room ? (
+        <>
+          <Text
+            variant="small"
+            color={dragging ? 'accent' : 'muted'}
+            testID={`${testID}-drop-hint`}
+          >
+            {dragging
+              ? 'Zum Anhängen hier loslassen'
+              : `Fotos hierher ziehen, mit ${pasteKeys()} einfügen oder eine Bildadresse angeben`}
+          </Text>
+          <ImageAddressField
+            disabled={disabled || fill.preparing}
+            onAddress={fill.addAddress}
+            testID={`${testID}-address`}
+          />
+        </>
+      ) : null}
       <SwitchRow
         label="Foto generieren"
         description="Die KI schlägt drei Fotos vor; du wählst eins oder keins."
@@ -315,17 +400,41 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
   );
 }
 
+/** The two tabs of "Mit KI ausfüllen" (spec 0049, REQ-001): "Websuche" first, always. */
+export type AiFillTab = 'web' | 'own';
+export const AI_FILL_TABS: { value: AiFillTab; label: string }[] = [
+  { value: 'web', label: 'Websuche' },
+  { value: 'own', label: 'Eigene Angaben' },
+];
+
+/** What "Mit KI ausfüllen" hands to the page: a draft, from the web search with its photo. */
+export interface AiFillResult {
+  reply: RecipeDraftReply;
+  replace: boolean;
+  generatePhoto: boolean;
+  /** The photo of the page found on the web (spec 0049, REQ-004). */
+  photo?: Blob;
+  /** Spec 0049, REQ-010: „KI-Bild“ — three suggestions from the wish or the title. */
+  makePhoto?: boolean;
+  imageWish?: string;
+}
+
 /**
- * "Mit KI ausfüllen" on the recipe page in the edit mode: the same field in a window. A recipe
- * with ingredients asks "Ergänzen oder ersetzen?" (AC-006); "Ergänzen" keeps them.
+ * "Mit KI ausfüllen" on the recipe page in the edit mode: "Websuche" (spec 0049, prefilled with
+ * the title) and „Eigene Angaben“ (the field of spec 0040) in a window. A recipe with ingredients
+ * asks "Ergänzen oder ersetzen?" (AC-006); "Ergänzen" keeps them.
  */
 export function AiFillSheet(props: {
+  title: string;
   hasIngredients: boolean;
-  onDraft: (result: { reply: RecipeDraftReply; replace: boolean; generatePhoto: boolean }) => void;
+  onDraft: (result: AiFillResult) => void;
   onClose: () => void;
 }) {
   const fill = useAiFill();
   const online = useOnlineOnly();
+  const search = useWebSearch('recipe', props.title);
+  const draftInput = useDraftInput();
+  const [tab, setTab] = useState<AiFillTab>('web');
   const [mode, setMode] = useState<'add' | 'replace'>('add');
   const submit = () => {
     if (!fill.ready || fill.busy) return;
@@ -335,21 +444,45 @@ export function AiFillSheet(props: {
       props.onDraft({ reply, replace: mode === 'replace', generatePhoto: fill.generatePhoto });
     });
   };
+  const take = (taken: WebTake) => {
+    if (!taken.recipe) return;
+    props.onClose();
+    props.onDraft({
+      reply: taken.recipe,
+      replace: mode === 'replace',
+      generatePhoto: false,
+      ...(taken.photo ? { photo: taken.photo } : {}),
+      ...(taken.photoChoice === 'ai' ? { makePhoto: true } : {}),
+      ...(taken.imageWish ? { imageWish: taken.imageWish } : {}),
+    });
+  };
   return (
     <Sheet
       visible
-      size="m"
+      size="l"
       title="Mit KI ausfüllen"
       onClose={props.onClose}
+      header={
+        <ViewTabs
+          label="Mit KI ausfüllen"
+          options={AI_FILL_TABS}
+          value={tab}
+          onChange={setTab}
+          testID="recipe-ai-fill-tab"
+        />
+      }
       actions={{
-        primary: {
-          label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
-          icon: 'sparkles',
-          onPress: submit,
-          disabled: online.disabled || fill.busy || !fill.ready,
-          hint: online.hint,
-          testID: 'recipe-ai-fill-submit',
-        },
+        primary:
+          tab === 'web'
+            ? webSearchPrimary(search, online, take, 'recipe-ai-fill-web')
+            : {
+                label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
+                icon: 'sparkles',
+                onPress: submit,
+                disabled: online.disabled || fill.busy || !fill.ready,
+                hint: online.hint,
+                testID: 'recipe-ai-fill-submit',
+              },
         cancel: { label: 'Abbrechen', onPress: props.onClose, testID: 'recipe-ai-fill-cancel' },
       }}
       testID="recipe-ai-fill"
@@ -368,7 +501,19 @@ export function AiFillSheet(props: {
             testID="recipe-ai-fill-mode"
           />
         ) : null}
-        <AiFillFields fill={fill} testID="recipe-ai-fill-field" />
+        {tab === 'web' ? (
+          <WebSearchPanel
+            search={search}
+            onLink={(link) => {
+              fill.setText(link);
+              setTab('own');
+            }}
+            recipeRows={(reply) => draftInput(reply).ingredients ?? []}
+            testID="recipe-ai-fill-web"
+          />
+        ) : (
+          <AiFillFields fill={fill} testID="recipe-ai-fill-field" />
+        )}
       </Stack>
     </Sheet>
   );

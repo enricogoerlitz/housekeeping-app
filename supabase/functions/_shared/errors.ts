@@ -14,6 +14,7 @@ const STATUS: { [code in ErrorCode]: number } = {
   quota_exceeded: 429,
   internal: 500,
   ai_unavailable: 503,
+  search_unavailable: 503,
 };
 
 /** Ends a request with one of the stable error codes of the contract. */

@@ -21,6 +21,11 @@ const copies = [
     target: 'supabase/functions/_shared/image-source.gen.ts',
     allowedImports: [],
   },
+  {
+    source: 'packages/core/src/web-results.ts',
+    target: 'supabase/functions/_shared/web-results.gen.ts',
+    allowedImports: [],
+  },
 ];
 const check = process.argv.includes('--check');
 let failed = false;

@@ -54,7 +54,8 @@ const PREVIEW_MAX_HEIGHT = 220;
 /** A short pause after typing, so a pasted address is loaded once and a typed one when done. */
 const ADDRESS_DELAY_MS = 400;
 
-const pasteKeys = () =>
+/** "⌘V" on Apple devices, else "Strg+V" (also the AI field's photos, spec 0049 REQ-009). */
+export const pasteKeys = () =>
   Platform.OS === 'web' &&
   typeof navigator !== 'undefined' &&
   /Mac|iP(hone|ad)/.test(navigator.userAgent)

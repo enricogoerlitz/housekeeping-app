@@ -435,6 +435,9 @@ FOUNDRY_STT_LANGUAGE = "env(FOUNDRY_STT_LANGUAGE)"
 FOUNDRY_STT_MODEL = "env(FOUNDRY_STT_MODEL)"
 # ai-image (spec 0040, ADR-0016): the FLUX.2-pro deployment of the same Foundry resource.
 FOUNDRY_IMAGE_DEPLOYMENT = "env(FOUNDRY_IMAGE_DEPLOYMENT)"
+# web-search (spec 0049): Serper.dev first, the Brave Search API as fallback.
+SERPER_API_KEY = "env(SERPER_API_KEY)"
+BRAVE_SEARCH_API_KEY = "env(BRAVE_SEARCH_API_KEY)"
 # Not a secret: the browser origins of the local web app and the e2e server.
 ALLOWED_ORIGINS = "http://localhost:8081,http://127.0.0.1:8081,http://127.0.0.1:8790"
 # media-sweep (spec 0039): the shared secret the database signs the nightly sweep with (Vault
@@ -475,6 +478,11 @@ verify_jwt = false
 import_map = "./functions/deno.json"
 
 [functions.ai-image]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+# Spec 0049: "Websuche" (Serper/Brave, recipe pages, place preview).
+[functions.web-search]
 verify_jwt = false
 import_map = "./functions/deno.json"
 

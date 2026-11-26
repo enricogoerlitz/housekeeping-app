@@ -13,14 +13,18 @@ export const AI_QUOTA_MESSAGE = 'Für heute ist das KI-Kontingent aufgebraucht';
 export const AI_UNAVAILABLE_MESSAGE = 'Der Assistent ist gerade nicht erreichbar';
 export const AI_SIGN_IN_MESSAGE = 'Bitte melde dich neu an';
 export const AI_FAILED_MESSAGE = 'Das hat gerade nicht geklappt – bitte noch einmal versuchen';
+/** Spec 0049, AC-023: neither Serper nor Brave answered. */
+const WEB_SEARCH_UNAVAILABLE_MESSAGE =
+  'Die Websuche ist gerade nicht erreichbar. Versuch es gleich noch einmal.';
 
-export type AiErrorReason = 'quota' | 'unavailable' | 'unauthorized' | 'failed';
+export type AiErrorReason = 'quota' | 'unavailable' | 'unauthorized' | 'failed' | 'search';
 
 const MESSAGES: Record<AiErrorReason, string> = {
   quota: AI_QUOTA_MESSAGE,
   unavailable: AI_UNAVAILABLE_MESSAGE,
   unauthorized: AI_SIGN_IN_MESSAGE,
   failed: AI_FAILED_MESSAGE,
+  search: WEB_SEARCH_UNAVAILABLE_MESSAGE,
 };
 
 /** A failed AI call; `message` is the German text for the person. */
@@ -37,6 +41,8 @@ function reasonOf(error: TransportError): AiErrorReason {
       return 'quota';
     case 'unauthorized':
       return 'unauthorized';
+    case 'search_unavailable':
+      return 'search';
     case 'ai_unavailable':
     case 'network':
     case 'timeout':

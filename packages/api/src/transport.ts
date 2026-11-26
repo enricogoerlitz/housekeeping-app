@@ -18,6 +18,9 @@ import {
   type ResolveMapsLinkReply,
   type RowOp,
   type SpeechTokenReply,
+  type PlacePreviewReply,
+  type WebSearchReply,
+  type WebSearchRequest,
 } from '@housekeeping/core';
 import { z } from 'zod';
 
@@ -584,6 +587,10 @@ export interface Transport {
   aiRecipeDraft(request: RecipeDraftRequest): Promise<RecipeDraftReply>;
   /** Three image variants (`ai-image`, spec 0040): never stored by the server. */
   aiImage(request: AiImageRequest): Promise<AiImageReply>;
+  /** "Websuche" (`web-search`, spec 0049): 3–5 cards; `search_unavailable` when no provider answers. */
+  webSearch(request: Extract<WebSearchRequest, { mode: 'search' }>): Promise<WebSearchReply>;
+  /** The preview of a place card (`web-search`, spec 0049): cuisine or kind, description. */
+  placePreview(request: Extract<WebSearchRequest, { mode: 'place' }>): Promise<PlacePreviewReply>;
   // Photo storage: the private bucket household-media, path <household>/<activities|recipes>/<id>/<file>
   /** Stores a JPEG under a new name (never overwrites). */
   uploadMedia(path: string, photo: Blob): Promise<void>;
@@ -672,6 +679,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     speechToken: guard(inner.speechToken.bind(inner)),
     aiRecipeDraft: guard(inner.aiRecipeDraft.bind(inner)),
     aiImage: guard(inner.aiImage.bind(inner)),
+    webSearch: guard(inner.webSearch.bind(inner)),
+    placePreview: guard(inner.placePreview.bind(inner)),
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),

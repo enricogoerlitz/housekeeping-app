@@ -467,6 +467,7 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
     payload_too_large: 413,
     quota_exceeded: 429,
     ai_unavailable: 503,
+    search_unavailable: 503,
     internal: 500,
   };
   await fulfilFunction(route, status[code], ErrorReplySchema.parse({ error: code }));
