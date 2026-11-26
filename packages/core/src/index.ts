@@ -46,6 +46,7 @@ export * from './ai-contract';
 export * from './recipe-list';
 export * from './restaurant-list';
 export * from './list-sorts';
+export * from './list-views';
 export * from './recipe-editor';
 export * from './recipe-deletion';
 export * from './place-deletion';

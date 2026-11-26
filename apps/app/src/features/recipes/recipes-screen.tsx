@@ -30,6 +30,8 @@ import {
   sortRecipeList,
   toggleQuickFilter,
   withCookingHistory,
+  type Id,
+  type ListView,
   type Recipe,
   type RecipeKind,
 } from '@housekeeping/core';
@@ -42,6 +44,7 @@ import {
   Icon,
   IconButton,
   InfiniteList,
+  ListDetail,
   Menu,
   Notice,
   Screen,
@@ -52,25 +55,30 @@ import {
   TypingIndicator,
   ViewTabs,
   tabSwipe,
+  useBreakpoint,
   openKeyboardNow,
+  useTabPreview,
 } from '@housekeeping/ui';
-import { type ComponentRef, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View, type TextInput } from 'react-native';
 
 import { RestaurantsPanel } from '@/features/restaurants/restaurants-panel';
+import { ListViewSwitch, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { useAssistant } from '@/lib/assistant';
 import { features } from '@/lib/features';
 import { useSettings } from '@/lib/settings';
-import { usePageParams, type PageAddress } from '@/lib/url-state';
+import { PagePreview, usePageParams, type PageAddress } from '@/lib/url-state';
 
 import { AiSearchPanel } from './ai-search-panel';
 import { useOpenRecipe } from './navigation';
 import { FoodNewMenu, type FoodNewKind } from './new-menu';
 import { NewRecipeSheet } from './new-recipe-sheet';
 import { RecipeFilterPanel } from './recipe-filter-panel';
-import { RecipeTile } from './recipe-grid';
+import { RecipeDetail } from './recipe-detail';
+import { RecipeRow, RecipeTile } from './recipe-grid';
 import { useRecipeListState } from './recipe-list-state';
 import { useAiSearch } from './use-ai-search';
 
@@ -98,13 +106,24 @@ function listParams(params: FoodParams): FoodParams {
   return kept as FoodParams;
 }
 
-/** Recipe tiles: at least 260 px wide, two side by side on phones (AC-014). */
-const TILE_MIN_WIDTH = 260;
+/** List entries in the grid without a recipe beside it: as wide as the restaurant cards. */
+const ROW_MIN_WIDTH = 320;
+/** The list column next to the recipe in the quick view (as for restaurants). */
+const LIST_COLUMN_WIDTH = 380;
+
+/** Closes the recipe beside the list, with what its page kept in the address (spec 0038). */
+const QUICK_VIEW_CLEARED: FoodParams = {
+  rezept: undefined,
+  portionen: undefined,
+  variante: undefined,
+};
 
 /**
  * "Essen": view tabs "Rezepte · Restaurants", and for recipes one search and filter row over an
- * endless grid of tiles (spec 0008, REQ-001 to REQ-004). A recipe always opens as its own page.
- * Search, filters, sort and the random order stay while the app runs (E14).
+ * endless grid of tiles (spec 0008, REQ-001 to REQ-004), or a list (spec 0038). A tile opens the
+ * recipe's page; an entry of the list opens beside it on wide screens (quick view, address
+ * `rezept`) and as its page on phones. Search, filters, sort and the random order stay while the
+ * app runs (E14).
  */
 export function RecipesScreen() {
   const searchInput = useRef<ComponentRef<typeof TextInput>>(null);
@@ -122,6 +141,20 @@ export function RecipesScreen() {
   const today = useToday();
   const list = useRecipeListState();
   const openRecipe = useOpenRecipe();
+  const preview = useTabPreview();
+  const { isWide } = useBreakpoint();
+  // "Kacheln" or "Liste", chosen on this device (spec 0038, REQ-001).
+  const listView = useListView('recipes');
+  const selectedId = listView.quick ? params.rezept : undefined;
+  // Phones show no quick view: the same address opens the recipe's page (AC-003).
+  const addressed = params.rezept;
+  const replace = address.replace;
+  const router = useRouter();
+  useEffect(() => {
+    if (isWide || !addressed) return;
+    replace(QUICK_VIEW_CLEARED);
+    router.push({ pathname: '/rezept/[id]', params: { id: addressed } }, { withAnchor: true });
+  }, [isWide, addressed, replace, router]);
 
   // The window "Neu" with the kind chosen in "+" preselected (spec 0009, AC-001, AC-002); the
   // window stands in the address (`fenster=neu`), the kind only here.
@@ -160,19 +193,22 @@ export function RecipesScreen() {
   // Without the AI switch in code the stored setting stays on the device but has no effect
   // (spec 0005, AC-046).
   const aiSearch = features.ai && settings.aiSearch;
-  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled, query);
+  // The neighbour view drawn beside a tab swipe sends nothing (spec 0034, REQ-007).
+  const { state: ai, runNow: runAi } = useAiSearch(aiSearch && !online.disabled && !preview, query);
   const aiVisible = aiSearch && ai.status !== 'idle' && query.trim() !== '';
 
   // The chosen side lives in the address, so a reload or a deep link keeps it.
   const view: FoodView = params.ansicht === 'restaurants' ? 'restaurants' : 'recipes';
+  const viewParams = (next: FoodView): FoodParams => ({
+    ...FOOD_LIST_CLEARED,
+    ...leftView[next],
+    ansicht: next === 'restaurants' ? 'restaurants' : undefined,
+    restaurant: undefined,
+    ...QUICK_VIEW_CLEARED,
+  });
   const viewPatch = (next: FoodView): FoodParams => {
     leftView[view] = listParams(params);
-    return {
-      ...FOOD_LIST_CLEARED,
-      ...leftView[next],
-      ansicht: next === 'restaurants' ? 'restaurants' : undefined,
-      restaurant: undefined,
-    };
+    return viewParams(next);
   };
   const changeView = (next: FoodView) => address.replace(viewPatch(next));
   const switcher = (
@@ -184,8 +220,22 @@ export function RecipesScreen() {
       testID="food-switch"
     />
   );
-  // On phones a sideways swipe changes the view (spec 0029, REQ-003).
-  const swipe = tabSwipe(FOOD_VIEWS, view, changeView);
+  // On phones a sideways swipe changes the view (spec 0029, REQ-003), with the other view beside
+  // the content, as it was left (spec 0034, REQ-007).
+  const swipe = tabSwipe(FOOD_VIEWS, view, changeView, (next) => (
+    <PagePreview
+      page="rezepte"
+      params={{
+        ...params,
+        ...viewParams(next),
+        fenster: undefined,
+        link: undefined,
+        name: undefined,
+      }}
+    >
+      <RecipesScreen />
+    </PagePreview>
+  ));
 
   if (view === 'restaurants') return <RestaurantsPanel switcher={switcher} swipe={swipe} />;
 
@@ -269,6 +319,23 @@ export function RecipesScreen() {
     );
   }
 
+  const closeQuick = () => address.replace({ ...QUICK_VIEW_CLEARED, fenster: undefined });
+  // A tile opens the recipe's page, which swipes through the list in this order (spec 0034,
+  // REQ-008); an entry of the list on wide screens opens beside it (AC-001).
+  const openFromList = (recipeId: Id) => {
+    if (listView.quick)
+      address.replace({ ...QUICK_VIEW_CLEARED, rezept: recipeId, fenster: undefined });
+    else
+      openRecipe(
+        recipeId,
+        results.map((entry) => entry.id),
+      );
+  };
+  // "Kacheln" close the recipe beside the list (as for restaurants, AC-005).
+  const changeListView = (next: ListView) => {
+    if (selectedId) closeQuick();
+    listView.setView(next);
+  };
   const toggleAi = () => settings.update({ aiSearch: !settings.aiSearch });
   const filterCount = activeFilterCount(filter);
   const sortLabel = recipeSortShortLabel(sort);
@@ -369,6 +436,9 @@ export function RecipesScreen() {
       onReset={() => list.setFilter(EMPTY_RECIPE_LIST_FILTER)}
       applyLabel={recipeShowLabel(results)}
       collapseLabel="Einklappen"
+      trailing={
+        <ListViewSwitch value={listView.view} onChange={changeListView} testID="recipe-view" />
+      }
       testID="recipe-filters"
     />
   );
@@ -420,6 +490,54 @@ export function RecipesScreen() {
     </EmptyState>
   );
 
+  const tiles = listView.view === 'tiles';
+  const split = selectedId !== undefined;
+  const layout = tiles ? 'tiles' : split ? 'column' : 'grid';
+  const recipeList = (
+    <InfiniteList<Recipe>
+      // A new round (filter, sort, mixing) starts at the top; its place is kept per round.
+      // Tiles, the grid of entries and the narrow column keep separate places.
+      key={`${layout}-${list.round}`}
+      restoreKey={tiles ? `recipes-${list.round}` : `recipes-${layout}-${list.round}`}
+      data={aiVisible ? [] : results}
+      keyExtractor={(recipe) => recipe.id}
+      renderItem={(recipe) =>
+        tiles ? (
+          <RecipeTile recipe={recipe} articlesById={articlesById} onOpen={openFromList} />
+        ) : (
+          // The grid spaces its rows itself; the plain column needs the gap per entry.
+          <View style={split ? { marginBottom: 12 } : { flexGrow: 1 }}>
+            <RecipeRow
+              recipe={recipe}
+              articlesById={articlesById}
+              selected={recipe.id === selectedId}
+              onOpen={openFromList}
+            />
+          </View>
+        )
+      }
+      minColumnWidth={tiles ? TILE_MIN_WIDTH : split ? undefined : ROW_MIN_WIDTH}
+      minColumns={tiles ? 2 : undefined}
+      ListHeaderComponent={
+        <View style={{ gap: 6, marginBottom: 12 }}>
+          {offlineHint}
+          {aiVisible ? (
+            <Text variant="small" color="muted" testID="recipe-count">
+              KI-Suche
+            </Text>
+          ) : results.length > 0 ? (
+            <Text variant="small" color="muted" testID="recipe-count">
+              {recipeListCountLabel(results)}
+            </Text>
+          ) : null}
+          {aiPart}
+        </View>
+      }
+      ListEmptyComponent={aiVisible ? undefined : empty}
+      testID="recipe-list"
+    />
+  );
+
   return (
     <Screen
       testID="recipes-screen"
@@ -432,45 +550,25 @@ export function RecipesScreen() {
       clearFab={false}
       style={{ flex: 1, paddingTop: 0, paddingBottom: 0 }}
     >
-      <InfiniteList<Recipe>
-        // A new round (filter, sort, mixing) starts at the top; its place is kept per round.
-        key={list.round}
-        restoreKey={`recipes-${list.round}`}
-        data={aiVisible ? [] : results}
-        keyExtractor={(recipe) => recipe.id}
-        renderItem={(recipe) => (
-          <RecipeTile
-            recipe={recipe}
-            articlesById={articlesById}
-            // The recipe's page swipes through the list in this order (spec 0034, REQ-008).
-            onOpen={(recipeId) =>
-              openRecipe(
-                recipeId,
-                results.map((entry) => entry.id),
-              )
-            }
-          />
-        )}
-        minColumnWidth={TILE_MIN_WIDTH}
-        minColumns={2}
-        ListHeaderComponent={
-          <View style={{ gap: 6, marginBottom: 12 }}>
-            {offlineHint}
-            {aiVisible ? (
-              <Text variant="small" color="muted" testID="recipe-count">
-                KI-Suche
-              </Text>
-            ) : results.length > 0 ? (
-              <Text variant="small" color="muted" testID="recipe-count">
-                {recipeListCountLabel(results)}
-              </Text>
-            ) : null}
-            {aiPart}
-          </View>
-        }
-        ListEmptyComponent={aiVisible ? undefined : empty}
-        testID="recipe-list"
-      />
+      {split ? (
+        <ListDetail
+          list={recipeList}
+          detail={
+            <RecipeDetail
+              key={selectedId}
+              recipeId={selectedId}
+              onBack={closeQuick}
+              backLabel="Essen"
+              quick
+            />
+          }
+          placeholder={{ icon: 'book-open', title: 'Wähl ein Rezept aus' }}
+          listWidth={LIST_COLUMN_WIDTH}
+          testID="recipes-split"
+        />
+      ) : (
+        recipeList
+      )}
       {sheets}
     </Screen>
   );

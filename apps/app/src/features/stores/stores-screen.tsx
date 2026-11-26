@@ -23,7 +23,7 @@ import { View } from 'react-native';
 
 import { ScrollColumn } from '@/features/shell/scroll-column';
 import { useOnlineOnly } from '@/features/shell/offline';
-import { useOriginBack, usePageParams } from '@/lib/url-state';
+import { PagePreview, useOriginBack, usePageParams } from '@/lib/url-state';
 
 import { AreasView } from './areas-view';
 import { messageOf, viewFromParam, VIEW_OPTIONS, type StoresView } from './labels';
@@ -201,8 +201,21 @@ export function StoresScreen() {
           testID="stores-view"
         />
       }
-      // On phones a sideways swipe changes the view (spec 0029, REQ-003).
-      tabSwipe={tabSwipe(VIEW_OPTIONS, view, setView)}
+      // On phones a sideways swipe changes the view (spec 0029, REQ-003), with the neighbour view
+      // beside the content (spec 0034, REQ-007).
+      tabSwipe={tabSwipe(VIEW_OPTIONS, view, setView, (next) => (
+        <PagePreview
+          page="maerkte"
+          params={{
+            ...params,
+            ansicht: next === 'bereiche' ? 'bereiche' : undefined,
+            markt: undefined,
+            fenster: undefined,
+          }}
+        >
+          <StoresScreen />
+        </PagePreview>
+      ))}
       scroll={!split}
       style={split ? { flex: 1, paddingBottom: 0 } : undefined}
     >
