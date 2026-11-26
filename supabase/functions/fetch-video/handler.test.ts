@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DbResult } from '../_shared/deps.ts';
+import type { DbResult, StorageResult } from '../_shared/deps.ts';
 import { ANON_JWT, fakeClient, fakeDeps, post, type Row } from '../_shared/test-fakes.ts';
 import { HOUSEHOLD_ID, householdTables } from '../_shared/test-household.ts';
-import type { StorageResult } from '../_shared/deps.ts';
 import { handler } from './handler.ts';
 
 // "Pasta Sorrentina" with its TikTok link (spec 0043); the page JSON follows a real video page.

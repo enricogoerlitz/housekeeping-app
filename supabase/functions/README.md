@@ -4,17 +4,18 @@ Server side of the AI features, the map-link resolver (spec 0003, ADR-0009) and 
 notifications (spec 0013, ADR-0014). Deno in the Supabase Edge Runtime; unit-tested with vitest
 under Node.
 
-| Function            | Input (contract)           | Quota     | Calls                                |
-| ------------------- | -------------------------- | --------- | ------------------------------------ |
-| `ai-assistant`      | `AssistantRequestSchema`   | `request` | Foundry LLM (structured output)      |
-| `ai-search`         | `AiSearchRequestSchema`    | `request` | Foundry LLM (structured output)      |
-| `speech-token`      | empty body                 | `speech`  | Azure STS `issueToken` (short token) |
-| `resolve-maps-link` | `ResolveMapsLinkRequest…`  | none      | Google short links only, manual hops |
-| `push-send`         | `{ messages: [...] }`      | none      | known push services only (Web Push)  |
-| `fetch-image`       | `FetchImageRequestSchema`  | none      | any public https address (SSRF-safe) |
-| `ai-recipe-draft`   | `RecipeDraftRequestSchema` | none      | recipe pages, TikTok, Foundry LLM    |
-| `ai-image`          | `AiImageRequestSchema`     | none      | FLUX.2-pro (3 variants in parallel)  |
-| `media-sweep`       | `{ names: [...] }`         | none      | Storage API (deletes orphan photos)  |
+| Function            | Input (contract)           | Quota     | Calls                                                |
+| ------------------- | -------------------------- | --------- | ---------------------------------------------------- |
+| `ai-assistant`      | `AssistantRequestSchema`   | `request` | Foundry LLM (structured output)                      |
+| `ai-search`         | `AiSearchRequestSchema`    | `request` | Foundry LLM (structured output)                      |
+| `speech-token`      | empty body                 | `speech`  | Azure STS `issueToken` (short token)                 |
+| `resolve-maps-link` | `ResolveMapsLinkRequest…`  | none      | Google short links only, manual hops                 |
+| `push-send`         | `{ messages: [...] }`      | none      | known push services only (Web Push)                  |
+| `fetch-image`       | `FetchImageRequestSchema`  | none      | any public https address (SSRF-safe)                 |
+| `ai-recipe-draft`   | `RecipeDraftRequestSchema` | none      | recipe pages, TikTok, Foundry LLM                    |
+| `ai-image`          | `AiImageRequestSchema`     | none      | FLUX.2-pro (3 variants in parallel)                  |
+| `fetch-video`       | `FetchVideoRequestSchema`  | none      | TikTok and its CDNs only, then Storage as the caller |
+| `media-sweep`       | `{ names, videos? }`       | none      | Storage API (deletes orphan photos and videos)       |
 
 Every function: CORS allowlist → POST only → JWT verified with `auth.getClaims()` and
 `role = authenticated` (the anon key gets 401) → body ≤ 64 KB (6 MB for `ai-recipe-draft` and
@@ -73,12 +74,29 @@ latest (AC-012); a variant still running then counts as failed and keeps running
 45 s (cost accepted, spec "Risiken"). Answer `{ images: [base64, …], failed }`; no variant at all is 503. Variants are
 never stored: only "Übernehmen" in the app uploads one through the normal photo path.
 
+**`fetch-video`** (spec 0043, "Video speichern"): the common path, membership of `householdId`
+(403), the recipe under the caller's RLS (a collection or a recipe she cannot see is 403), the
+`url` must be an https TikTok link the recipe has (else 422 `not_a_tiktok_link`, before anything
+is fetched) and the recipe must have no video yet (409 `video_exists`). `_shared/tiktok.ts`
+reads the page like `ai-recipe-draft` (TikTok and its CDNs only, 5 redirects, 2 MB, 10 s) and
+loads `playAddr` through `fetchPublic` with the cookies that page set and `Referer:
+https://www.tiktok.com/` (TikTok's video hosts answer 403 without either): `video/mp4`, at most
+50 MiB (by the page's `size`, the header or while reading: 422 `video_too_large`), 60 s, 3
+redirects, an `ftyp` box; anything else is 422 `video_unavailable`. The file goes into the
+private bucket `household-videos` as `<household>/recipes/<recipe>/<uuid>.mp4` with the
+**caller's** key (the storage policies decide; a 413 of the bucket is `video_too_large`), then
+`apply_changes` sets `video_path`, also as the caller; when that is refused the file is removed
+again. Answer `{ videoPath }`. No server key, no quota. Nothing about the link or the video is
+logged.
+
 **Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
 `private.run_media_orphan_sweep()` (job `media-orphan-sweep`, 02:30 UTC), signed like `push-send`
 (`x-sweep-timestamp`, `x-sweep-signature`, secret `MEDIA_SWEEP_SECRET`; `_shared/signature.ts`).
 No JWT, no CORS: POST only (405) → fresh timestamp and valid HMAC (401) → body ≤ 128 KB (413) →
-zod: 1 to 500 names, each `<household>/<activities|recipes|restaurants>/<id>/<uuid>.jpg` (400) →
-`storage.from('household-media').remove()` in chunks of 100. Answer `{ removed }`, or 502
+zod: up to 500 names, each `<household>/<activities|recipes|restaurants>/<id>/<uuid>.jpg`, and up
+to 500 `videos` (spec 0043), each `<household>/recipes/<id>/<uuid>.mp4`, at least one in all
+(400) → `storage.from('household-media').remove()`, then `storage.from('household-videos')`, in
+chunks of 100. Answer `{ removed }`, or 502
 `storage_failed` with what was removed before. The **only** function that reads the server key
 (`SUPABASE_SECRET_KEYS`, else `SUPABASE_SERVICE_ROLE_KEY`): only it may delete across households,
 and a direct delete in `storage.objects` would leave the file in the storage backend. Names are

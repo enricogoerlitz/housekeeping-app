@@ -5,7 +5,8 @@
 //   nothing unsafe; script-src-elem and script-src-attr, when present, the same), object-src
 //   'none', base-uri 'self' and connect-src with the Supabase origin of the build and no wildcard
 //   or bare scheme (`*`, `https:` …); in a build against a non-local Supabase, connect-src names
-//   neither localhost nor 127.0.0.1 (spec 0014, AC-035);
+//   neither localhost nor 127.0.0.1 (spec 0014, AC-035); media-src exactly 'self' blob: (spec
+//   0043: the recipe video plays from a blob: URL);
 // - index.html has no inline script (any <script> without a src attribute, in any letter case);
 // - the service worker dist/sw.js exists (offline start, AC-004) and handles push and
 //   notificationclick (spec 0013);
@@ -314,6 +315,10 @@ export function checkExport({
     }
     if (values('base-uri').join(' ') !== "'self'") {
       problems.push("base-uri must be exactly 'self'");
+    }
+    // Spec 0043: the recipe video plays from a blob: URL; never from another host.
+    if (values('media-src').join(' ') !== "'self' blob:") {
+      problems.push("media-src must be exactly 'self' blob:");
     }
     const connect = values('connect-src');
     if (supabaseUrl && !connect.includes(new URL(supabaseUrl).origin)) {
