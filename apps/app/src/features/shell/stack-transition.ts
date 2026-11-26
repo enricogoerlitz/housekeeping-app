@@ -132,6 +132,10 @@ export function phoneStackOptions(reducedMotion: boolean): StackNavigationOption
     // (`minHeight: 100%`, meant for a scrolling document), but the app's body never scrolls, so
     // the page's own ScrollView had no height limit and nothing scrolled (iPhone, 26.11.).
     headerMode: 'float',
+    // Spec 0034, REQ-002 (H-07): the page below stays laid out under the open one. Hidden with
+    // `display: none` it lost its scroll place for two frames on coming back; after iOS's own
+    // edge swipe (no slide of ours to cover it) that showed as a flash of the list's top.
+    detachPreviousScreen: false,
     // The JS stack does not animate on the web unless asked to.
     animation: 'default',
     // The system's edge swipe goes back; a second gesture of our own would fight it.

@@ -59,3 +59,11 @@ test("the router grows a card with the page only when the header mode is not 'fl
     /pageOverflowEnabled: headerMode !== 'float' && presentation !== 'modal'/,
   );
 });
+
+// Spec 0034, REQ-002 (H-07): the list under an open page keeps its layout and its scroll place;
+// hidden with `display: none` it showed its top for two frames after iOS's edge swipe.
+test('AC-004: the page below stays laid out under the open one', () => {
+  const { phoneStackOptions } = loadStackTransition();
+  assert.equal(phoneStackOptions(false).detachPreviousScreen, false);
+  assert.equal(phoneStackOptions(true).detachPreviousScreen, false);
+});
