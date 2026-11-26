@@ -5,12 +5,24 @@ import {
   imageFailureNotice,
   type ImageStyle,
 } from '@housekeeping/core';
-import { Button, Chip, Photo, Row, Stack, SwitchRow, Text, useTheme } from '@housekeeping/ui';
+import {
+  Button,
+  Chip,
+  Photo,
+  Row,
+  Stack,
+  SwitchRow,
+  Text,
+  useRevealOnShow,
+  useTheme,
+} from '@housekeeping/ui';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+
+import { revokeLater } from './revoke-later';
 
 // The tab "KI" of the photo window (spec 0040, REQ-004, REQ-005): a prompt (prefilled from the
 // title, for a recipe with its main ingredients), style chips and, with a photo, "Aus diesem
@@ -62,7 +74,7 @@ export function PhotoWindowAi(props: {
   const shown = result?.variants;
   useEffect(
     () => () => {
-      for (const variant of shown ?? []) URL.revokeObjectURL(variant.uri);
+      for (const variant of shown ?? []) revokeLater(variant.uri);
     },
     [shown],
   );
@@ -113,6 +125,8 @@ export function PhotoWindowAi(props: {
 
   const failure = result ? imageFailureNotice(result.failed) : undefined;
   const disabled = online.disabled || busy;
+  // What comes after "Erzeugen" scrolls into view, so it never hides behind the footer.
+  const outcomeRef = useRevealOnShow(busy ? 'busy' : (error ?? result));
   return (
     <Stack gap={12}>
       <DictationField
@@ -159,57 +173,63 @@ export function PhotoWindowAi(props: {
           testID={`${id}-create`}
         />
       </View>
-      {busy ? (
-        <Row gap={8}>
-          {[0, 1, 2].map((index) => (
-            <View key={index} style={{ flex: 1 }}>
-              <Photo loading aspectRatio={1} />
-            </View>
-          ))}
-        </Row>
-      ) : result ? (
-        <Row gap={8}>
-          {result.variants.map((variant, index) => (
-            <Pressable
-              key={variant.uri}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: index === selected }}
-              accessibilityLabel={`Variante ${index + 1}`}
-              onPress={() => pick(index)}
-              testID={`${id}-variant-${index}`}
-              style={{
-                flex: 1,
-                maxWidth: 140,
-                borderRadius: theme.shape.radius.tile,
-                borderWidth: 3,
-                borderColor: index === selected ? theme.colors.accent : 'transparent',
-                overflow: 'hidden',
-              }}
-            >
-              <Photo source={{ uri: variant.uri }} aspectRatio={1} alt={`Variante ${index + 1}`} />
-            </Pressable>
-          ))}
-        </Row>
-      ) : null}
-      {busy ? (
-        <Text variant="small" color="muted" testID={`${id}-busy`}>
-          Die KI erzeugt drei Varianten … das dauert etwa zehn Sekunden.
-        </Text>
-      ) : result && selected === undefined ? (
-        <Text variant="small" color="muted">
-          Tippe eine Variante an, dann „Übernehmen“.
-        </Text>
-      ) : null}
-      {failure ? (
-        <Text variant="small" color="muted" testID={`${id}-failed`}>
-          {failure}
-        </Text>
-      ) : null}
-      {error ? (
-        <Text variant="small" color="warn" testID={`${id}-error`}>
-          {error}
-        </Text>
-      ) : null}
+      <View ref={outcomeRef} style={{ gap: 12 }}>
+        {busy ? (
+          <Row gap={8}>
+            {[0, 1, 2].map((index) => (
+              <View key={index} style={{ flex: 1 }}>
+                <Photo loading aspectRatio={1} />
+              </View>
+            ))}
+          </Row>
+        ) : result ? (
+          <Row gap={8}>
+            {result.variants.map((variant, index) => (
+              <Pressable
+                key={variant.uri}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: index === selected }}
+                accessibilityLabel={`Variante ${index + 1}`}
+                onPress={() => pick(index)}
+                testID={`${id}-variant-${index}`}
+                style={{
+                  flex: 1,
+                  maxWidth: 140,
+                  borderRadius: theme.shape.radius.tile,
+                  borderWidth: 3,
+                  borderColor: index === selected ? theme.colors.accent : 'transparent',
+                  overflow: 'hidden',
+                }}
+              >
+                <Photo
+                  source={{ uri: variant.uri }}
+                  aspectRatio={1}
+                  alt={`Variante ${index + 1}`}
+                />
+              </Pressable>
+            ))}
+          </Row>
+        ) : null}
+        {busy ? (
+          <Text variant="small" color="muted" testID={`${id}-busy`}>
+            Die KI erzeugt drei Varianten … das dauert etwa zehn Sekunden.
+          </Text>
+        ) : result && selected === undefined ? (
+          <Text variant="small" color="muted">
+            Tippe eine Variante an, dann „Übernehmen“.
+          </Text>
+        ) : null}
+        {failure ? (
+          <Text variant="small" color="muted" testID={`${id}-failed`}>
+            {failure}
+          </Text>
+        ) : null}
+        {error ? (
+          <Text variant="small" color="warn" testID={`${id}-error`}>
+            {error}
+          </Text>
+        ) : null}
+      </View>
     </Stack>
   );
 }

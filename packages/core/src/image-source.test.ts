@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { imageAddress, imageTypeOf } from './image-source';
+import { imageAddress, imageTypeOf, unsuitableImageAddress } from './image-source';
 
 const bytes = (...values: (number | string)[]) =>
   Uint8Array.from(
@@ -43,5 +43,22 @@ describe('imageAddress (spec 0039, REQ-003)', () => {
     expect(imageAddress('data:image/png;base64,AAAA')).toBeUndefined();
     expect(imageAddress('https://user:pass@example.org/a.jpg')).toBeUndefined();
     expect(imageAddress(`https://example.org/${'a'.repeat(2100)}`)).toBeUndefined();
+  });
+});
+
+describe('unsuitableImageAddress (spec 0039, AC-007)', () => {
+  it('AC-007: an address the app will not load (http, other schemes, credentials) is unsuitable', () => {
+    expect(unsuitableImageAddress('http://example.org/kuchen.jpg')).toBe(true);
+    expect(unsuitableImageAddress(' http://localhost:54321/a.png ')).toBe(true);
+    expect(unsuitableImageAddress('ftp://example.org/a.jpg')).toBe(true);
+    expect(unsuitableImageAddress('https://user:pass@example.org/a.jpg')).toBe(true);
+  });
+
+  it('AC-007: a loadable address, an empty field and text still being typed are not', () => {
+    expect(unsuitableImageAddress('https://example.org/kuchen.jpg')).toBe(false);
+    expect(unsuitableImageAddress('')).toBe(false);
+    expect(unsuitableImageAddress('kuchen')).toBe(false);
+    expect(unsuitableImageAddress('http')).toBe(false);
+    expect(unsuitableImageAddress('https://')).toBe(false);
   });
 });

@@ -59,6 +59,7 @@ import {
   focusQuietly,
 } from './sheet-focus';
 import { toastBottom, toastEdge, type Box } from './toast-place';
+import { useTitleFit } from './use-title-fit';
 import { createToastStore } from './toast-state';
 import { TopLayer } from './top-layer';
 
@@ -478,7 +479,14 @@ export function Sheet(props: SheetProps) {
 /** Room above a phone window while the keyboard is open (spec 0032, AC-004). */
 const TOP_GAP_TYPING = 12;
 
-/** A phone window's header with its actions: "Abbrechen" · title · primary (spec 0032). */
+const HEADER_PADDING = 12;
+const HEADER_GAP = 8;
+
+/**
+ * A phone window's header with its actions: "Abbrechen" · title · primary (spec 0032). When the
+ * actions leave the title too little room ("Am Do 26.11. Vormittag einplanen"), the title goes
+ * on its own line below them instead of shrinking to "Einplan…" (review 0003).
+ */
 function SheetActionsHeader(props: {
   title: string;
   actions: SheetActions;
@@ -486,6 +494,13 @@ function SheetActionsHeader(props: {
   testID?: string;
 }) {
   const id = (suffix: string) => (props.testID ? `${props.testID}-${suffix}` : undefined);
+  const {
+    ownLine: titleBelow,
+    onRow,
+    titleRef,
+    onTitle,
+    onAction,
+  } = useTitleFit({ padding: 2 * HEADER_PADDING, gap: HEADER_GAP, actions: 2 });
   const cancel =
     props.actions.cancel === null
       ? null
@@ -494,29 +509,46 @@ function SheetActionsHeader(props: {
           onPress: props.onClose,
           testID: id('close'),
         });
-  return (
-    <View
-      testID={id('header')}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        minHeight: 52,
-        paddingHorizontal: 12,
-        paddingTop: 6,
-      }}
-    >
-      {cancel ? <HeaderAction action={cancel} /> : <View style={{ width: 8 }} />}
+  const title = (
+    // Keyed by the text: a new title is measured anew, even where its box keeps its size.
+    <View key={`title-${props.title}`} style={{ flex: 1, minWidth: 0 }} onLayout={onTitle}>
       <Text
+        ref={titleRef}
         variant="rowTitle"
         heading
         numberOfLines={1}
-        style={{ flex: 1, textAlign: 'center' }}
+        style={{ textAlign: 'center' }}
         testID={id('title')}
       >
         {props.title}
       </Text>
-      <HeaderAction action={props.actions.primary} />
+    </View>
+  );
+  return (
+    <View testID={id('header')} style={{ paddingTop: 6 }}>
+      <View
+        onLayout={onRow}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: HEADER_GAP,
+          minHeight: 52,
+          paddingHorizontal: HEADER_PADDING,
+        }}
+      >
+        <View onLayout={onAction(0)}>
+          {cancel ? <HeaderAction action={cancel} /> : <View style={{ width: 8 }} />}
+        </View>
+        {titleBelow ? <View key="spacer" style={{ flex: 1 }} /> : title}
+        <View onLayout={onAction(1)}>
+          <HeaderAction action={props.actions.primary} />
+        </View>
+      </View>
+      {titleBelow ? (
+        <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 4 }}>
+          {title}
+        </View>
+      ) : null}
     </View>
   );
 }

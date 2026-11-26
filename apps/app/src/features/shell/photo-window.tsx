@@ -1,5 +1,5 @@
 import { checkImageFile, loadPhotoFromAddress, preparePhoto } from '@housekeeping/api';
-import { imageAddress } from '@housekeeping/core';
+import { imageAddress, unsuitableImageAddress } from '@housekeeping/core';
 import {
   Button,
   Notice,
@@ -13,6 +13,7 @@ import {
   pickImageFile,
   useBreakpoint,
   useImageDropAndPaste,
+  useRevealOnShow,
   useTheme,
   type IconName,
 } from '@housekeeping/ui';
@@ -25,6 +26,7 @@ import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { features } from '@/lib/features';
 
 import { PhotoWindowAi } from './photo-window-ai';
+import { revokeLater } from './revoke-later';
 
 // The window "Foto" (spec 0039, REQ-001 – REQ-004): one window wherever a photo is changed — at a
 // recipe, a collection, a restaurant and an activity. A new image comes from a file (chosen,
@@ -101,7 +103,7 @@ export function PhotoWindow(props: {
   const candidateUri = candidate?.uri;
   useEffect(
     () => () => {
-      if (candidateUri) URL.revokeObjectURL(candidateUri);
+      if (candidateUri) revokeLater(candidateUri);
     },
     [candidateUri],
   );
@@ -131,8 +133,9 @@ export function PhotoWindow(props: {
   };
   const dragging = useImageDropAndPaste(!online.disabled, takeFile);
 
+  // An address the app will not load (`http://…`) says so instead of being ignored (AC-007).
   const loadAddress = (text: string) => {
-    const url = imageAddress(text);
+    const url = imageAddress(text) ?? (unsuitableImageAddress(text) ? text.trim() : undefined);
     if (!url || url === loadedAddress.current || online.disabled) return;
     loadedAddress.current = url;
     take('address', () => loadPhotoFromAddress(url));
@@ -143,7 +146,12 @@ export function PhotoWindow(props: {
   const changeAddress = (text: string) => {
     setAddress(text);
     clearTimeout(addressTimer.current);
-    if (imageAddress(text))
+    // An emptied field takes its note along, and the same address may be tried again.
+    if (text.trim() === '' && !busy) {
+      loadedAddress.current = undefined;
+      setError(undefined);
+    }
+    if (imageAddress(text) || unsuitableImageAddress(text))
       addressTimer.current = setTimeout(() => loadAddress(text), ADDRESS_DELAY_MS);
   };
 
@@ -163,16 +171,30 @@ export function PhotoWindow(props: {
 
   const shown = candidate ? { uri: candidate.uri } : props.current;
   const disabled = online.disabled || busy !== undefined;
+  // The note under the sources scrolls into view, so it never hides behind the footer.
+  const errorRef = useRevealOnShow(error);
+  const busyRef = useRevealOnShow(busy);
 
   return (
     <Sheet
       visible
-      size="m"
+      // On wider screens the large window: preview, sources and "Foto entfernen" fit on a laptop
+      // without a half-cut last row; anything more scrolls.
+      size={isPhone ? 'm' : 'l'}
       title="Foto"
       onClose={props.onClose}
       header={
         VIEWS.length > 1 ? (
-          <ViewTabs options={VIEWS} value={view} onChange={setView} label="Quelle" testID={id} />
+          <ViewTabs
+            options={VIEWS}
+            value={view}
+            onChange={(next) => {
+              setView(next);
+              setError(undefined);
+            }}
+            label="Quelle"
+            testID={id}
+          />
         ) : undefined
       }
       actions={{
@@ -242,14 +264,18 @@ export function PhotoWindow(props: {
           />
         ) : null}
         {busy ? (
-          <Text variant="small" color="muted" testID={`${id}-busy`}>
-            {busy === 'address' ? 'Bild wird geladen …' : 'Bild wird vorbereitet …'}
-          </Text>
+          <View ref={busyRef}>
+            <Text variant="small" color="muted" testID={`${id}-busy`}>
+              {busy === 'address' ? 'Bild wird geladen …' : 'Bild wird vorbereitet …'}
+            </Text>
+          </View>
         ) : null}
         {error ? (
-          <Text variant="small" color="warn" testID={`${id}-error`}>
-            {error}
-          </Text>
+          <View ref={errorRef}>
+            <Text variant="small" color="warn" testID={`${id}-error`}>
+              {error}
+            </Text>
+          </View>
         ) : null}
         {props.hasPhoto ? (
           <View style={{ alignItems: 'flex-start' }}>

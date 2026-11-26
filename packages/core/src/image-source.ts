@@ -40,3 +40,13 @@ export function imageAddress(text: string): string | undefined {
   if (!authority || authority.includes('@') || authority.startsWith(':')) return undefined;
   return `https://${trimmed.slice('https://'.length)}`;
 }
+
+/**
+ * The pasted text is an address (a scheme, `://` and something after it) the app will not load,
+ * e.g. `http://…` or one with a password: the window says so instead of ignoring it (AC-007).
+ * Text still being typed (`https://`) is not.
+ */
+export function unsuitableImageAddress(text: string): boolean {
+  const trimmed = text.trim();
+  return /^[a-z][a-z0-9+.-]*:\/\/\S/i.test(trimmed) && imageAddress(trimmed) === undefined;
+}

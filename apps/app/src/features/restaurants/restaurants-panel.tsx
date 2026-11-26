@@ -100,8 +100,9 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   // "Kacheln" open the restaurant's page, "Liste" beside the list on wide screens (spec 0038).
   const listView = useListView('restaurants');
 
-  // Where "Restaurant hinzufügen" puts the cursor; the window itself stands in the address.
-  const [focus, setFocus] = useState<SheetRequest['focus']>('link');
+  // Where "Restaurant hinzufügen" puts the cursor: a new restaurant starts with its name; only
+  // "Link einfügen" in the empty state starts with the link. The window stands in the address.
+  const [focus, setFocus] = useState<SheetRequest['focus']>('name');
   const [newRecipe, setNewRecipe] = useState<{ open: boolean; kind: RecipeKind }>({
     open: false,
     kind: 'recipe',
@@ -175,7 +176,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
 
   const onNew = (kind: FoodNewKind) => {
     if (kind === 'recipe' || kind === 'collection') setNewRecipe({ open: true, kind });
-    else setSheet({ focus: 'link' });
+    else setSheet({ focus: 'name' });
   };
 
   // The same "+" as on "Essen → Rezepte" (spec 0008, AC-003): one header for both views.

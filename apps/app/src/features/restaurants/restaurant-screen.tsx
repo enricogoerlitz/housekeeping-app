@@ -11,8 +11,12 @@ export function RestaurantScreen() {
   const address = usePageParams('restaurant');
   const { params } = address;
   const router = useRouter();
-  // "‹ Essen" (the restaurant list) or the section it came from (spec 0019, REQ-006).
-  const origin = useOriginBack(params.von, 'essen');
+  // "‹ Essen" (the restaurant list) or the section it came from (spec 0019, REQ-006). Opened by
+  // its address alone, back and "Löschen" lead to the restaurants, not to the recipes.
+  const origin = useOriginBack(params.von, 'essen', {
+    label: 'Essen',
+    href: '/rezepte?ansicht=restaurants',
+  });
   // Only an id of an own household reaches the lookup; anything else shows "nicht gefunden".
   const found = useAddressedId('restaurants', params.id);
   if (found === 'switching') return null;
