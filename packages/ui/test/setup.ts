@@ -2,6 +2,7 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
+import { settleKeyboard } from '../src/keyboard.web';
 import { reducedMotion } from './mocks/reanimated';
 import { safeArea } from './mocks/safe-area';
 
@@ -35,14 +36,17 @@ class FakeViewport extends EventTarget {
 }
 const viewport = new FakeViewport();
 Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+// The keyboard is taken once it has settled (spec 0033, REQ-003); the stand-in settles at once.
 export const keyboard = {
   open(visible: number) {
     viewport.visible = visible;
     viewport.dispatchEvent(new Event('resize'));
+    settleKeyboard();
   },
   close() {
     viewport.visible = undefined;
     viewport.dispatchEvent(new Event('resize'));
+    settleKeyboard();
   },
 };
 
@@ -50,6 +54,7 @@ afterEach(() => {
   cleanup();
   viewport.visible = undefined;
   viewport.dispatchEvent(new Event('resize'));
+  settleKeyboard();
   pointer.fine = false;
   reducedMotion.value = false;
   safeArea.insets = { top: 0, right: 0, bottom: 0, left: 0 };

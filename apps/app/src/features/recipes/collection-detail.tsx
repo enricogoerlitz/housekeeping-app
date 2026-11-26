@@ -20,9 +20,10 @@ import {
   Stack,
   Text,
   useBreakpoint,
+  useToastAvoid,
 } from '@housekeeping/ui';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, type HostInstance } from 'react-native';
 
 import { PlanRecipeSheet } from '@/features/meal-plan/plan-recipe-sheet';
 import { FavoriteButton } from '@/features/shell/favorite-button';
@@ -233,35 +234,40 @@ function CollectionActions(props: {
 }) {
   const online = useOnlineOnly();
   const size = props.compact ? 'sm' : 'md';
+  // A toast stands above these buttons, not on them (spec 0033, AC-025).
+  const buttons = useRef<HostInstance>(null);
+  useToastAvoid(buttons);
   return (
-    <Row gap={props.compact ? 8 : 10} wrap>
-      <Button
-        label="Einplanen"
-        icon="calendar-plus"
-        variant="secondary"
-        size={size}
-        onPress={props.onPlan}
-        disabled={online.disabled}
-        hint={online.hint}
-        testID="recipe-plan"
-      />
-      <Row gap={8}>
+    <View ref={buttons}>
+      <Row gap={props.compact ? 8 : 10} wrap>
         <Button
-          label="Auf die Liste"
-          icon="shopping-basket"
+          label="Einplanen"
+          icon="calendar-plus"
           variant="secondary"
           size={size}
-          onPress={props.onList}
-          disabled={online.disabled || props.listHint !== undefined}
-          hint={online.hint ?? props.listHint}
-          testID="recipe-to-list"
+          onPress={props.onPlan}
+          disabled={online.disabled}
+          hint={online.hint}
+          testID="recipe-plan"
         />
-        {props.listHint ? (
-          <Text variant="caption" color="muted" testID="recipe-to-list-hint">
-            {props.listHint}
-          </Text>
-        ) : null}
+        <Row gap={8}>
+          <Button
+            label="Auf die Liste"
+            icon="shopping-basket"
+            variant="secondary"
+            size={size}
+            onPress={props.onList}
+            disabled={online.disabled || props.listHint !== undefined}
+            hint={online.hint ?? props.listHint}
+            testID="recipe-to-list"
+          />
+          {props.listHint ? (
+            <Text variant="caption" color="muted" testID="recipe-to-list-hint">
+              {props.listHint}
+            </Text>
+          ) : null}
+        </Row>
       </Row>
-    </Row>
+    </View>
   );
 }
