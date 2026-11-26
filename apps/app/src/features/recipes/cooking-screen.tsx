@@ -29,6 +29,7 @@ import {
   ListRow,
   Row,
   Screen,
+  Sheet,
   Stack,
   Text,
   useBreakpoint,
@@ -41,6 +42,8 @@ import { useEffect, useEffectEvent, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { usePageParams } from '@/lib/url-state';
+
+import { RecipeVideo } from './recipe-video';
 
 /**
  * Cooking mode (spec 0023, REQ-010): one step per screen as calm reading text, the ingredients of
@@ -127,6 +130,8 @@ function Cooking(props: {
   const last = index >= steps.length - 1;
   const others = otherStepTimers(timers, step?.id, now);
   const ingredientsTitle = `Zutaten · ${servingsLabel(props.servings)}`;
+  // Spec 0043, REQ-002: the saved video, in a window over the step.
+  const [videoOpen, setVideoOpen] = useState(false);
 
   const stepPart = step ? (
     <Stack gap={20} style={{ maxWidth: READING_WIDTH }}>
@@ -228,16 +233,39 @@ function Cooking(props: {
             {recipe.title}
           </Text>
         </View>
-        {/* Full screen on phones, so "Fertig" is the way out (spec 0005, D5). */}
-        <Button
-          label="Fertig"
-          variant="secondary"
-          size="sm"
-          hint="Kochmodus beenden"
-          onPress={props.onLeave}
-          testID="cook-close"
-        />
+        <Row gap={8}>
+          {recipe.videoPath ? (
+            <Button
+              label="Video"
+              icon="film"
+              variant="secondary"
+              size="sm"
+              onPress={() => setVideoOpen(true)}
+              testID="cook-video"
+            />
+          ) : null}
+          {/* Full screen on phones, so "Fertig" is the way out (spec 0005, D5). */}
+          <Button
+            label="Fertig"
+            variant="secondary"
+            size="sm"
+            hint="Kochmodus beenden"
+            onPress={props.onLeave}
+            testID="cook-close"
+          />
+        </Row>
       </Row>
+      {videoOpen ? (
+        <Sheet
+          visible
+          size="m"
+          title="Video"
+          onClose={() => setVideoOpen(false)}
+          testID="cook-video-sheet"
+        >
+          <RecipeVideo recipe={recipe} testID="cook-video-frame" />
+        </Sheet>
+      ) : null}
 
       {others.length > 0 ? (
         <View testID="cook-other-timers" style={{ marginBottom: 16 }}>

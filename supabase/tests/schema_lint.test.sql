@@ -52,6 +52,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.set_activity_favorite(uuid,boolean)'),
   ('private.set_activity_rating(uuid,numeric)'),
   ('private.media_household_id(text)'), -- used by the storage.objects policies (spec 0004)
+  ('private.video_household_id(text)'), -- the same for household-videos (spec 0043)
   ('private.set_feedback_vote(uuid,boolean)'),
   ('private.set_shopping_item_checked(uuid,boolean,integer,boolean)'),
   ('private.set_shopping_item_not_available(uuid,boolean)'),

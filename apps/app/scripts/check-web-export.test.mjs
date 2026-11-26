@@ -38,6 +38,7 @@ const validDirectives = {
   'script-src': "'self'",
   'style-src': "'self' 'unsafe-inline'",
   'img-src': "'self' data: blob:",
+  'media-src': "'self' blob:",
   'connect-src':
     "'self' https://abc.supabase.co wss://abc.supabase.co https://*.stt.speech.microsoft.com",
   'object-src': "'none'",
@@ -71,6 +72,21 @@ function configWith(change) {
 
 test('a valid export passes', () => {
   assert.deepEqual(checkExport(exportWith()), []);
+});
+
+test('spec 0043: media-src is exactly self and blob: (the recipe video plays from a blob URL)', () => {
+  assert.match(
+    checkExport(exportWith({ directives: { 'media-src': undefined } })).join('\n'),
+    /media-src must be exactly 'self' blob:/,
+  );
+  assert.match(
+    checkExport(
+      exportWith({
+        directives: { 'media-src': "'self' blob: https://v16-webapp-prime.tiktok.com" },
+      }),
+    ).join('\n'),
+    /media-src must be exactly 'self' blob:/,
+  );
 });
 
 test('hashes in script-src-elem pass', () => {

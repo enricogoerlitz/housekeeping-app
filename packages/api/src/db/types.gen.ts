@@ -1511,6 +1511,7 @@ export type Database = {
           total_minutes: number | null;
           updated_at: string;
           variants: NonNullable<Json>;
+          video_path: string | null;
         };
         ComputedFields: never;
         Insert: {
@@ -1536,6 +1537,7 @@ export type Database = {
           total_minutes?: number | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
+          video_path?: string | null;
         };
         Update: {
           cooked_count?: number;
@@ -1560,6 +1562,7 @@ export type Database = {
           total_minutes?: number | null;
           updated_at?: string;
           variants?: NonNullable<Json>;
+          video_path?: string | null;
         };
         Relationships: [
           {

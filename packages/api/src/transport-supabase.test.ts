@@ -811,6 +811,75 @@ describe('supabase transport: AI edge functions', () => {
   });
 });
 
+describe('supabase transport: recipe videos (spec 0043)', () => {
+  const request = {
+    householdId: 'h1',
+    recipeId: 'r1',
+    url: 'https://vm.tiktok.com/ZGdXoJ8Ay/',
+  };
+
+  it('AC-001: fetch-video answers the stored path; AC-002/003: its codes come through', async () => {
+    const { client, invoked } = stubClient(
+      [],
+      [
+        { data: { videoPath: 'h1/recipes/r1/v.mp4' }, error: null },
+        {
+          data: null,
+          error: {
+            name: 'FunctionsHttpError',
+            message: 'Edge Function returned a non-2xx status code',
+            context: { status: 422, json: async () => ({ error: 'video_too_large' }) },
+          },
+        },
+        { data: { videoPath: '' }, error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.fetchVideo(request)).resolves.toEqual({
+      videoPath: 'h1/recipes/r1/v.mp4',
+    });
+    expect(invoked).toEqual([{ name: 'fetch-video', body: request }]);
+    await expect(transport.fetchVideo(request)).rejects.toMatchObject({
+      kind: 'permanent',
+      code: 'video_too_large',
+    });
+    await expect(transport.fetchVideo(request)).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+
+  it('AC-007: downloads past the HTTP cache and AC-009 removes, both in household-videos', async () => {
+    const video = new Blob(['x'], { type: 'video/mp4' });
+    const { client, stored } = stubClient(
+      [],
+      [],
+      [
+        { data: video, error: null },
+        { data: [], error: null },
+        { data: 'odd', error: null },
+      ],
+    );
+    const transport = createSupabaseTransport(client);
+    await expect(transport.downloadVideo('h1/recipes/r1/v.mp4')).resolves.toBe(video);
+    await transport.removeVideos(['h1/recipes/r1/v.mp4']);
+    expect(stored).toEqual([
+      {
+        bucket: 'household-videos',
+        op: 'download',
+        args: [
+          'h1/recipes/r1/v.mp4',
+          {},
+          { cache: 'no-store', signal: expect.any(AbortSignal) as AbortSignal },
+        ],
+      },
+      { bucket: 'household-videos', op: 'remove', args: [['h1/recipes/r1/v.mp4']] },
+    ]);
+    await expect(transport.downloadVideo('h1/recipes/r1/v.mp4')).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+});
+
 describe('supabase transport: photo storage (spec 0004)', () => {
   /** What storage-js answers for a refused request: HTTP 400 with the real status in the body. */
   const apiError = (statusCode: string, code: string) => ({

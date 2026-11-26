@@ -173,6 +173,11 @@ export interface Recipe {
   updatedAt?: string;
   /** At most 10, each address once (spec 0023, REQ-009). */
   links: RecipeLink[];
+  /**
+   * Storage path of the recipe's own video in household-videos (spec 0043), saved from a TikTok
+   * link by the server; never kept on the device.
+   */
+  videoPath?: string;
 }
 
 /** "Enthaltenes Rezept": a recipe in a collection (spec 0009, E4). */

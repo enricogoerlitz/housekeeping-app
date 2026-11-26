@@ -9,6 +9,7 @@ const ROW = 'cccccccc-0000-4000-8000-000000000003';
 const name = (file: string, folder = 'recipes') => `${HOUSEHOLD}/${folder}/${ROW}/${file}.jpg`;
 const ORPHAN = name('dddddddd-0000-4000-8000-000000000004');
 const ORPHAN_2 = name('eeeeeeee-0000-4000-8000-000000000005', 'activities');
+const VIDEO = `${HOUSEHOLD}/recipes/${ROW}/ffffffff-0000-4000-8000-000000000006.mp4`;
 
 async function sign(secret: string, timestamp: string, body: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -45,7 +46,9 @@ async function request(
   });
 }
 
-function deps(remove = vi.fn(async (names: string[]) => ({ removed: names.length }))) {
+function deps(
+  remove = vi.fn(async (_bucket: string, names: string[]) => ({ removed: names.length })),
+) {
   const env: { [name: string]: string } = {
     MEDIA_SWEEP_SECRET: SECRET,
     SUPABASE_URL: 'http://kong:8000',
@@ -66,11 +69,25 @@ describe('media-sweep (spec 0039, REQ-005)', () => {
     const response = await handler(await request({ names: [ORPHAN, ORPHAN_2] }), d);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ removed: 2 });
-    expect(d.remove).toHaveBeenCalledWith([ORPHAN, ORPHAN_2]);
+    expect(d.remove).toHaveBeenCalledWith('household-media', [ORPHAN, ORPHAN_2]);
     expect(d.createRemover).toHaveBeenCalledWith({
       url: 'http://kong:8000',
       key: 'test-service-key',
     });
+  });
+
+  it('spec 0043, AC-011: deletes the orphan videos from household-videos', async () => {
+    const d = deps();
+    const response = await handler(await request({ names: [ORPHAN], videos: [VIDEO] }), d);
+    expect(await response.json()).toEqual({ removed: 2 });
+    expect(d.remove.mock.calls).toEqual([
+      ['household-media', [ORPHAN]],
+      ['household-videos', [VIDEO]],
+    ]);
+    const onlyVideos = deps();
+    const alone = await handler(await request({ names: [], videos: [VIDEO] }), onlyVideos);
+    expect(await alone.json()).toEqual({ removed: 1 });
+    expect(onlyVideos.remove.mock.calls).toEqual([['household-videos', [VIDEO]]]);
   });
 
   it('removes in chunks of 100', async () => {
@@ -80,7 +97,7 @@ describe('media-sweep (spec 0039, REQ-005)', () => {
     );
     const response = await handler(await request({ names }), d);
     expect(await response.json()).toEqual({ removed: 250 });
-    expect(d.remove.mock.calls.map(([chunk]) => chunk.length)).toEqual([100, 100, 50]);
+    expect(d.remove.mock.calls.map(([, chunk]) => chunk.length)).toEqual([100, 100, 50]);
   });
 
   it.each([
@@ -103,7 +120,10 @@ describe('media-sweep (spec 0039, REQ-005)', () => {
 
   it.each([
     ['no names', { names: [] }],
+    ['no names and no videos', { names: [], videos: [] }],
     ['a name outside the photo folders', { names: [`${HOUSEHOLD}/other/${ROW}/x.jpg`] }],
+    ['a photo name as a video', { names: [], videos: [ORPHAN] }],
+    ['a video name as a photo', { names: [VIDEO] }],
     ['a path that climbs up', { names: [`${HOUSEHOLD}/recipes/../../etc/passwd`] }],
     ['an extra field', { names: [ORPHAN], bucket: 'other' }],
   ])('a signed body with %s gets 400 and deletes nothing', async (_label, body) => {
@@ -121,7 +141,7 @@ describe('media-sweep (spec 0039, REQ-005)', () => {
 
   it('a failing Storage API answers 502 with what was removed before', async () => {
     const remove = vi
-      .fn<(names: string[]) => Promise<{ removed: number }>>()
+      .fn<(bucket: string, names: string[]) => Promise<{ removed: number }>>()
       .mockResolvedValueOnce({ removed: 100 })
       .mockRejectedValueOnce(new Error('storage down'));
     const d = deps(remove);

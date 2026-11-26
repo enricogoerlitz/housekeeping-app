@@ -142,6 +142,19 @@ export type ResolveMapsLinkReply = z.infer<typeof ResolveMapsLinkReplySchema>;
 export const FetchImageRequestSchema = z.strictObject({ householdId: Id, url: HttpsUrl });
 export type FetchImageRequest = z.infer<typeof FetchImageRequestSchema>;
 
+/**
+ * "Video speichern" (spec 0043): the server loads the video behind `url`, a TikTok link of the
+ * recipe, into household-videos as the caller and sets the recipe's video_path; the reply names it.
+ */
+export const FetchVideoRequestSchema = z.strictObject({
+  householdId: Id,
+  recipeId: Id,
+  url: HttpsUrl,
+});
+export type FetchVideoRequest = z.infer<typeof FetchVideoRequestSchema>;
+export const FetchVideoReplySchema = z.strictObject({ videoPath: z.string().min(1).max(200) });
+export type FetchVideoReply = z.infer<typeof FetchVideoReplySchema>;
+
 // ---------- "Mit KI ausfüllen" and images (spec 0040, ADR-0016) ----------
 
 /** Limits of one "Mit KI ausfüllen" (REQ-001; Risiken "Kosten laufen weg"). */
@@ -263,6 +276,14 @@ export const ErrorCodeSchema = z.enum([
   'not_an_image',
   /** The body is larger than the function takes (64 KB, or 6 MB with photos; spec 0040). */
   'payload_too_large',
+  /** fetch-video (spec 0043, AC-004): the address is no TikTok link of the recipe. */
+  'not_a_tiktok_link',
+  /** fetch-video (AC-002): TikTok gave no video (error, block, timeout, changed page). */
+  'video_unavailable',
+  /** fetch-video (AC-003): the video is larger than 50 MB. */
+  'video_too_large',
+  /** fetch-video: the recipe has a video already (one per recipe). */
+  'video_exists',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

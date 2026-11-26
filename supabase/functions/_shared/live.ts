@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-import type { ClaimsResult, DbResult, Deps, Query, UserClient } from './deps.ts';
+import type { ClaimsResult, DbResult, Deps, Query, StorageResult, UserClient } from './deps.ts';
 import { ConfigError, requireEnv } from './errors.ts';
 import { resolveAddresses } from './fetch-public.ts';
 
@@ -46,8 +46,33 @@ function userClient(env: Deps['env'], authorization: string): UserClient {
         }))
         .then(onFulfilled, onRejected),
   });
+  // storage-js errors carry the Storage API's status in statusCode (a string) or status.
+  const stored = (error: unknown): StorageResult => {
+    if (!error) return { error: null };
+    const fields = error as { message?: unknown; status?: unknown; statusCode?: unknown };
+    const status = Number(fields.statusCode ?? fields.status);
+    return {
+      error: {
+        message: typeof fields.message === 'string' ? fields.message : 'storage_failed',
+        ...(Number.isInteger(status) && status > 0 ? { status } : {}),
+      },
+    };
+  };
   return {
     auth: { getClaims: (jwt): Promise<ClaimsResult> => client.auth.getClaims(jwt) },
+    storage: {
+      // cacheControl '0': no CDN or browser keeps a copy (like the photos, packages/api).
+      upload: async (bucket, path, bytes, contentType) =>
+        stored(
+          (
+            await client.storage
+              .from(bucket)
+              .upload(path, bytes, { contentType, upsert: false, cacheControl: '0' })
+          ).error,
+        ),
+      remove: async (bucket, paths) =>
+        stored((await client.storage.from(bucket).remove(paths)).error),
+    },
     rpc: (fn, args) =>
       client.rpc(fn, args).then(({ data, error }): DbResult => ({
         data,

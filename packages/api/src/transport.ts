@@ -12,6 +12,8 @@ import {
   type PullRequest,
   type PullResult,
   type FetchImageRequest,
+  type FetchVideoReply,
+  type FetchVideoRequest,
   type RecipeDraftReply,
   type RecipeDraftRequest,
   type ResolveMapsLinkReply,
@@ -575,6 +577,12 @@ export interface Transport {
    * `not_an_image` (422) when there is none, `forbidden` (403) for a foreign household.
    */
   fetchImage(request: FetchImageRequest): Promise<Blob>;
+  /**
+   * "Video speichern" (`fetch-video`, spec 0043): the server loads the TikTok video into
+   * household-videos and sets the recipe's video_path; `not_a_tiktok_link`, `video_unavailable`,
+   * `video_too_large`, `video_exists` (all permanent), `forbidden` (403).
+   */
+  fetchVideo(request: FetchVideoRequest): Promise<FetchVideoReply>;
   /** The assistant (`ai-assistant`): an answer, maybe with a proposal; it never changes data. */
   askAssistant(request: AssistantRequest): Promise<AssistantReply>;
   /** The AI recipe search (`ai-search`). */
@@ -595,6 +603,11 @@ export interface Transport {
   downloadMedia(path: string, signal?: AbortSignal): Promise<Blob>;
   /** Deletes what the caller may delete; missing or foreign paths are left alone. */
   removeMedia(paths: readonly string[]): Promise<void>;
+  // Video storage (spec 0043): the private bucket household-videos, <household>/recipes/<id>/<uuid>.mp4
+  /** The stored video, never into the HTTP cache; `not_found` for a missing or foreign one. */
+  downloadVideo(path: string, signal?: AbortSignal): Promise<Blob>;
+  /** Deletes what the caller may delete; missing or foreign paths are left alone. */
+  removeVideos(paths: readonly string[]): Promise<void>;
   // Sync
   syncPull(request: PullRequest): Promise<PullResult>;
   /** Realtime: calls `onSignal` when the household changed. Only a signal, never data. */
@@ -665,6 +678,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     sendTestPush: guard(inner.sendTestPush.bind(inner)),
     resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
     fetchImage: guard(inner.fetchImage.bind(inner)),
+    fetchVideo: guard(inner.fetchVideo.bind(inner)),
     askAssistant: guard(inner.askAssistant.bind(inner)),
     aiSearch: guard(inner.aiSearch.bind(inner)),
     speechToken: guard(inner.speechToken.bind(inner)),
@@ -673,6 +687,8 @@ export function switchable(inner: Transport): SwitchableTransport {
     uploadMedia: guard(inner.uploadMedia.bind(inner)),
     downloadMedia: guard(inner.downloadMedia.bind(inner)),
     removeMedia: guard(inner.removeMedia.bind(inner)),
+    downloadVideo: guard(inner.downloadVideo.bind(inner)),
+    removeVideos: guard(inner.removeVideos.bind(inner)),
     syncPull: guard(inner.syncPull.bind(inner)),
     subscribe: (householdId, onSignal) =>
       inner.subscribe(householdId, () => {
