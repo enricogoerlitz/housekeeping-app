@@ -50,6 +50,15 @@ describe('FilterBar (spec 0005, REQ-007)', () => {
     expect(screen.queryByText('Alle Filterfelder')).toBeNull();
   });
 
+  it('spec 0038: the view switch stands at the end of the row, outside the chips that scroll', () => {
+    renderBar({ trailing: <Text testID="switch">Ansicht</Text> });
+    const row = screen.getByTestId('bar-row');
+    const end = screen.getByTestId('switch');
+    expect(row.lastElementChild?.contains(end)).toBe(true);
+    expect(row.firstElementChild?.contains(screen.getByText('Vegan'))).toBe(true);
+    expect(row.firstElementChild?.contains(end)).toBe(false);
+  });
+
   it('the filter button is highlighted while a filter is on', () => {
     const { filter } = renderBar({ filterLabel: 'Filter (1)', activeCount: 1 });
     expect(filter).toBe(screen.getByRole('button', { name: 'Filter (1)' }));

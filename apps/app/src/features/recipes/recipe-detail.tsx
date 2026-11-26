@@ -15,15 +15,7 @@ import {
   type Recipe,
   type VariantChoice,
 } from '@housekeeping/core';
-import {
-  Button,
-  EmptyState,
-  Row,
-  Screen,
-  ScreenHeader,
-  Stack,
-  useBreakpoint,
-} from '@housekeeping/ui';
+import { Button, EmptyState, Row, Screen, Stack, useBreakpoint } from '@housekeeping/ui';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -48,6 +40,7 @@ import { EditControls, EditError } from './sections/edit-controls';
 import { StepsSection } from './sections/steps-section';
 import { usePageEditor } from './sections/use-page-editor';
 import { RecipePhoto } from './recipe-cover';
+import { RecipeFrame } from './recipe-frame';
 import { useDeleteRecipe } from './use-delete-recipe';
 
 export interface RecipeDetailProps {
@@ -56,6 +49,8 @@ export interface RecipeDetailProps {
   onBack: () => void;
   /** The origin's name on the back link, "Essen" without one. */
   backLabel: string;
+  /** Beside the recipe list on wide screens, ✕ calls `onBack` (spec 0038, AC-001). */
+  quick?: boolean;
 }
 
 /**
@@ -71,7 +66,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
   const [leaving, setLeaving] = useState(false);
   if (!recipe) {
     if (leaving) return <Screen testID="recipe-screen" tone="essen" />;
-    return <RecipeGone onBack={props.onBack} backLabel={props.backLabel} />;
+    return <RecipeGone onBack={props.onBack} backLabel={props.backLabel} quick={props.quick} />;
   }
   // A collection has its own page at the same address (spec 0009, E13).
   if (recipe.kind === 'collection') {
@@ -81,6 +76,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
         collection={recipe}
         onBack={props.onBack}
         backLabel={props.backLabel}
+        quick={props.quick}
         onDeleting={setLeaving}
       />
     );
@@ -92,25 +88,20 @@ export function RecipeDetail(props: RecipeDetailProps) {
       recipe={recipe}
       onBack={props.onBack}
       backLabel={props.backLabel}
+      quick={props.quick}
       onDeleting={setLeaving}
     />
   );
 }
 
 /** AC-021: deleted elsewhere, or an address from another household. */
-function RecipeGone(props: { onBack: () => void; backLabel: string }) {
+function RecipeGone(props: { onBack: () => void; backLabel: string; quick?: boolean }) {
   return (
-    <Screen
-      testID="recipe-screen"
-      tone="essen"
-      header={
-        <ScreenHeader
-          title="Rezept"
-          titleOnScroll
-          backLabel={props.backLabel}
-          onBack={props.onBack}
-        />
-      }
+    <RecipeFrame
+      quick={props.quick}
+      title="Rezept"
+      backLabel={props.backLabel}
+      onBack={props.onBack}
     >
       <EmptyState
         icon="book-open"
@@ -124,7 +115,7 @@ function RecipeGone(props: { onBack: () => void; backLabel: string }) {
           testID="recipe-not-found-back"
         />
       </EmptyState>
-    </Screen>
+    </RecipeFrame>
   );
 }
 
@@ -132,6 +123,7 @@ function RecipeDetailBody(props: {
   recipe: Recipe;
   onBack: () => void;
   backLabel: string;
+  quick?: boolean;
   /** true while this page deletes its recipe; false again when the deletion did not start. */
   onDeleting: (leaving: boolean) => void;
 }) {
@@ -144,7 +136,8 @@ function RecipeDetailBody(props: {
   const members = useMembers();
   const articlesById = useArticlesById();
   const { bp, isPhone } = useBreakpoint();
-  const desktop = bp === 'desktop';
+  // Beside the list the column is too narrow for two (spec 0038).
+  const desktop = bp === 'desktop' && !props.quick;
   // Portions, variant and the windows "Einplanen", "Zur Sammlung" and "Vorratscheck" stand in the
   // address (spec 0019, REQ-013): `/rezept/<id>?portionen=6&fenster=einplanen`. The recipe's own
   // portions are the default and stay out of it.
@@ -272,20 +265,13 @@ function RecipeDetailBody(props: {
   );
 
   return (
-    <Screen
-      testID="recipe-screen"
-      tone="essen"
-      tabSwipe={swipe}
-      header={
-        <ScreenHeader
-          title={recipe.title}
-          titleOnScroll
-          backLabel={props.backLabel}
-          onBack={back}
-          right={headerRight}
-          testID="recipe-bar-title"
-        />
-      }
+    <RecipeFrame
+      quick={props.quick}
+      title={recipe.title}
+      backLabel={props.backLabel}
+      onBack={back}
+      right={headerRight}
+      swipe={swipe}
     >
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
@@ -324,6 +310,6 @@ function RecipeDetailBody(props: {
           />
         ) : null}
       </View>
-    </Screen>
+    </RecipeFrame>
   );
 }

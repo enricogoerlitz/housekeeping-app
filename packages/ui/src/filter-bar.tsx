@@ -18,6 +18,8 @@ export interface FilterBarProps {
   sort?: ReactNode;
   /** Quick chips and the chips of active filters (`Chip removable`); they scroll sideways. */
   chips?: ReactNode;
+  /** At the end of the row, outside the chips that scroll, e.g. the view switch (spec 0038). */
+  trailing?: ReactNode;
   /** All filter fields. Phones: a medium window; wider screens: unfolds below the row. */
   panel: ReactNode;
   /** Title of the window on phones. */
@@ -64,17 +66,22 @@ export function FilterBar(props: FilterBarProps) {
   return (
     <View testID={props.testID} style={{ gap: 10 }}>
       {props.search}
-      <ScrollRow>
-        <Chip
-          label={props.filterLabel}
-          icon="list-filter"
-          selected={props.activeCount > 0}
-          onPress={() => setOpen(!open)}
-          testID={id('filter')}
-        />
-        {props.sort}
-        {props.chips}
-      </ScrollRow>
+      <View testID={id('row')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <ScrollRow>
+            <Chip
+              label={props.filterLabel}
+              icon="list-filter"
+              selected={props.activeCount > 0}
+              onPress={() => setOpen(!open)}
+              testID={id('filter')}
+            />
+            {props.sort}
+            {props.chips}
+          </ScrollRow>
+        </View>
+        {props.trailing}
+      </View>
       {isPhone ? (
         <Sheet
           visible={open}

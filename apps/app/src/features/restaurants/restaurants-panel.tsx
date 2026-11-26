@@ -55,6 +55,7 @@ import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { OwnPhoto } from '@/features/shell/own-photo';
+import { ListViewSwitch, PlaceTile, TILE_MIN_WIDTH, useListView } from '@/features/shell/list-view';
 
 import { AddRestaurantSheet, type AddRestaurantSheetProps } from './add-restaurant-sheet';
 import { lastVisitLabel, restaurantMeta } from './labels';
@@ -95,6 +96,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const me = useCurrentMember();
   const list = useRestaurantListState();
   const openRecipe = useOpenRecipe();
+  // "Kacheln" open the restaurant's page, "Liste" beside the list on wide screens (spec 0038).
+  const listView = useListView('restaurants');
 
   // Where "Restaurant hinzufügen" puts the cursor; the window itself stands in the address.
   const [focus, setFocus] = useState<SheetRequest['focus']>('link');
@@ -105,7 +108,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
 
   // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
   // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
-  const selectedId = isWide ? params.restaurant : undefined;
+  const selectedId = listView.quick ? params.restaurant : undefined;
   // Opened from another section ("Öffnen" in the calendar): "‹ Kalender" and ✕ lead back there,
   // as for activities (spec 0035, REQ-002).
   const origin = useOriginBack(params.von, 'essen');
@@ -132,7 +135,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   };
 
   const open = (restaurantId: Id) => {
-    if (isWide) address.replace({ restaurant: restaurantId });
+    if (listView.quick) address.replace({ restaurant: restaurantId });
     else router.push({ pathname: '/restaurant/[id]', params: { id: restaurantId } });
   };
   // The window closes first (back one entry); the restaurant opens after that, not under it.
@@ -254,6 +257,11 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   }
 
   const ids = restaurants.map((restaurant) => restaurant.id);
+  // Spec 0038, AC-005: "Kacheln" close the restaurant beside the list; the tiles fill the width.
+  const changeView = (next: typeof listView.view) => {
+    if (selectedId) address.replace({ restaurant: undefined, fenster: undefined });
+    listView.setView(next);
+  };
   const filterCount = restaurantFilterCount(filter);
   const sortLabel = sortShortLabel(sort);
   const toolbar = (
@@ -337,6 +345,9 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       onReset={() => list.setFilter(EMPTY_RESTAURANT_LIST_FILTER)}
       applyLabel={restaurantShowLabel(results.length)}
       collapseLabel="Einklappen"
+      trailing={
+        <ListViewSwitch value={listView.view} onChange={changeView} testID="restaurant-view" />
+      }
       testID="restaurant-filters"
     />
   );
@@ -360,28 +371,41 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   );
 
   const split = selectedId !== undefined;
+  const tiles = listView.view === 'tiles';
+  const layout = tiles ? 'tiles' : split ? 'column' : 'grid';
   const restaurantList = (
     <InfiniteList<Restaurant>
       // A new round (filter, sort, mixing) starts at the top; its place is kept per round. The
-      // grid and the narrow list column keep separate places.
-      key={`${split ? 'column' : 'grid'}-${list.round}`}
-      restoreKey={`restaurants-${split ? 'column' : 'grid'}-${list.round}`}
+      // tiles, the grid and the narrow list column keep separate places.
+      key={`${layout}-${list.round}`}
+      restoreKey={`restaurants-${layout}-${list.round}`}
       data={results}
       keyExtractor={(restaurant) => restaurant.id}
-      renderItem={(restaurant) => (
-        // The grid spaces its rows itself; the plain column needs the gap per card.
-        <View style={split ? { marginBottom: 12 } : { flexGrow: 1 }}>
-          <RestaurantCard
+      renderItem={(restaurant) =>
+        tiles ? (
+          <RestaurantTile
             restaurant={restaurant}
             myRating={restaurant.ratings[me.id] ?? 0}
             isFavorite={restaurant.favoriteOf.includes(me.id)}
             lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
-            selected={restaurant.id === selectedId}
             onPress={() => openFromList(restaurant.id)}
           />
-        </View>
-      )}
-      minColumnWidth={split ? undefined : CARD_MIN_WIDTH}
+        ) : (
+          // The grid spaces its rows itself; the plain column needs the gap per card.
+          <View style={split ? { marginBottom: 12 } : { flexGrow: 1 }}>
+            <RestaurantCard
+              restaurant={restaurant}
+              myRating={restaurant.ratings[me.id] ?? 0}
+              isFavorite={restaurant.favoriteOf.includes(me.id)}
+              lastVisit={lastVisitLabel(visitsById.get(restaurant.id)?.daysSince)}
+              selected={restaurant.id === selectedId}
+              onPress={() => openFromList(restaurant.id)}
+            />
+          </View>
+        )
+      }
+      minColumnWidth={tiles ? TILE_MIN_WIDTH : split ? undefined : CARD_MIN_WIDTH}
+      minColumns={tiles ? 2 : undefined}
       ListHeaderComponent={
         <View style={{ gap: 6, marginBottom: 12 }}>
           {offlineHint}
@@ -438,6 +462,66 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
       )}
       {sheets}
     </Screen>
+  );
+}
+
+type RestaurantEntryProps = {
+  restaurant: Restaurant;
+  myRating: number;
+  isFavorite: boolean;
+  lastVisit?: string;
+  onPress: () => void;
+};
+
+/** Favourite, own rating and last visit, below the name of a card or a tile. */
+function RestaurantSignals(props: RestaurantEntryProps) {
+  const id = props.restaurant.id;
+  if (!props.isFavorite && !props.myRating && !props.lastVisit) return null;
+  return (
+    <Row gap={8} wrap>
+      {props.isFavorite ? (
+        <View
+          testID={`restaurant-${id}-favorite`}
+          accessibilityLabel="Favorit"
+          accessibilityRole="image"
+        >
+          <Icon name="heart" size={15} color="accent" filled />
+        </View>
+      ) : null}
+      {props.myRating ? (
+        <Stars value={props.myRating} size={13} testID={`restaurant-${id}-stars`} />
+      ) : null}
+      {props.lastVisit ? (
+        <Text variant="caption" color="muted" testID={`restaurant-${id}-last`}>
+          {props.lastVisit}
+        </Text>
+      ) : null}
+    </Row>
+  );
+}
+
+/** "Kacheln" (spec 0038, REQ-001): the own photo big in 4:3, else the cutlery. */
+function RestaurantTile(props: RestaurantEntryProps) {
+  const { restaurant } = props;
+  const meta = restaurantMeta(restaurant);
+  return (
+    <PlaceTile
+      testID={`restaurant-${restaurant.id}`}
+      name={restaurant.name}
+      photoPath={restaurant.photoPath}
+      placeholderIcon={RESTAURANT_ICON}
+      meta={
+        <View style={{ gap: 4 }}>
+          {meta ? (
+            <Text variant="caption" color="muted" numberOfLines={1}>
+              {meta}
+            </Text>
+          ) : null}
+          <RestaurantSignals {...props} />
+        </View>
+      }
+      onPress={props.onPress}
+    />
   );
 }
 

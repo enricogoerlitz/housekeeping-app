@@ -1,5 +1,5 @@
 ---
-status: freigegeben # entwurf | freigegeben | umgesetzt | verworfen
+status: umgesetzt # entwurf | freigegeben | umgesetzt | verworfen
 datum: 2026-11-26
 ---
 
@@ -46,15 +46,35 @@ Aktivitäten „Liste“. Gespeichert lokal je Gerät. Offline: offline vollstä
 2. Liste = heutiger Restaurant-Eintrag (Bild 56 px links, Name, eine Zeile Details); Kachel = heutige
    Rezept-Kachel (Bild 4:3). Rezepte bekommen eine Schnellansicht (Adress-Param `rezept`).
 3. Gespeichert in `LocalSettings` je Bereich (wie die Sortierung, Spec 0036), nicht synchronisiert.
+4. Beim Bau, 26.11.: Die Schnellansicht eines Rezepts schreibt Portionen, Variante und ihre Fenster
+   („Einplanen“, „Zur Sammlung“, „Vorratscheck“) wie die eigene Seite in die Adresse von
+   `/rezepte` (`rezept`, `portionen`, `variante`, `fenster`); „Essen“ erneut wählen schließt sie.
+   Neben der Liste steht das Rezept einspaltig (die Spalte ist zu schmal für zwei).
+5. Beim Bau, 26.11.: Öffnen aus einem anderen Bereich (Kalender, Übersicht) folgt der gewählten
+   Ansicht: bei „Kacheln“ die eigene Seite, bei „Liste“ am Desktop die Schnellansicht.
+6. Beim Bau, 26.11.: Liste ohne geöffneten Eintrag = Raster der Listeneinträge (wie heute bei
+   Restaurants), mit geöffnetem Eintrag die schmale Spalte links. Auf dem Handy steht der
+   Umschalter ebenfalls am Zeilenende; die Chips davor scrollen seitlich.
 
 ## Daten
 
 Entfällt (lokale Einstellung).
 
+## Risiken
+
+Kein kritischer Pfad. `/security-check` (26.11.): keine Befunde. Gespeicherte Ansicht und die neuen
+Adress-Parameter sind Allowlist bzw. Zod-geprüft (`parseListViews`, `Uuid`, `PositiveInt`); die
+Schnellansicht liest nur aus dem lokalen Cache.
+
 ## Umsetzung
 
-- [ ] 1. Baustein Umschalter in `packages/ui` (Rolle, Name, Zustand getestet)
-- [ ] 2. Einstellung je Bereich (AC-004)
-- [ ] 3. Rezepte: Liste + Schnellansicht (AC-001, AC-003)
-- [ ] 4. Restaurants und Aktivitäten: Kacheln (AC-002, AC-005, AC-006)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/ui-verify`
+- [x] 1. Baustein Umschalter in `packages/ui` (`ViewSwitch`, Rolle, Name, Zustand getestet;
+      `FilterBar.trailing`)
+- [x] 2. Einstellung je Bereich (AC-004; `core/list-views.ts`, `LocalSettings.listViews`)
+- [x] 3. Rezepte: Liste + Schnellansicht (AC-001, AC-003; Adress-Param `rezept`)
+- [x] 4. Restaurants und Aktivitäten: Kacheln (AC-002, AC-005, AC-006)
+- [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; Screenshots Handy
+      390×844 und Desktop 1440×900 in `tmp/review-0003/0038/` (Klickpfade AC-001 bis AC-006 per
+      Playwright gegen den Dev-Server, keine Konsolenfehler). Tests: `list-views.test.ts`
+      (AC-001–AC-004), `url-params.test.ts` (Schnellansicht), `view-switch.test.tsx`,
+      `filter-bar.test.tsx`.

@@ -361,6 +361,34 @@ describe('startPageHref', () => {
   });
 });
 
+describe('the recipe quick view on "Essen" (spec 0038)', () => {
+  it('AC-001: the recipe beside the list, its portions, variant and windows stand in the address', () => {
+    const href = pageHref('/rezepte', 'rezepte', {
+      rezept: LASAGNE,
+      portionen: 6,
+      variante: OWN_HOUSEHOLD,
+      fenster: 'vorratscheck',
+    });
+    const read = readPageParams('rezepte', rawOf(href));
+    expect(read.invalid).toEqual([]);
+    expect(read.values).toEqual({
+      rezept: LASAGNE,
+      portionen: 6,
+      variante: OWN_HOUSEHOLD,
+      fenster: 'vorratscheck',
+    });
+    expect(readPageParams('rezepte', { fenster: 'sammlung' }).values.fenster).toBe('sammlung');
+  });
+  it('an id that is no uuid is dropped', () => {
+    expect(readPageParams('rezepte', { rezept: 'apfelkuchen' }).invalid).toEqual(['rezept']);
+  });
+  it('choosing "Essen" again closes the quick view with its portions and variant', () => {
+    expect(
+      startPageHref(`/rezepte?suche=kuchen&rezept=${LASAGNE}&portionen=6&variante=${LASAGNE}`),
+    ).toBe('/rezepte?suche=kuchen');
+  });
+});
+
 describe('sectionOfStartPath', () => {
   it('names the section of a start page and nothing for other pages', () => {
     expect(sectionOfStartPath('/')).toBe('uebersicht');

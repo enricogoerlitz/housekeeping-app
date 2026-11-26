@@ -38,6 +38,7 @@ export {
 } from './display';
 export { ViewTabs, ChoiceChips, Menu, type ChoiceOption, type MenuOption } from './choice';
 export { IconChoice } from './icon-choice';
+export { ViewSwitch } from './view-switch';
 export { ariaRef, useSoftDisabled } from './hint';
 export { ListPlaceholder } from './placeholder';
 export { useWakeLock } from './use-wake-lock';
