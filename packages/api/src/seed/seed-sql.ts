@@ -95,6 +95,8 @@ const JSON_COLUMNS = new Set([
   'steps',
   'lead_time',
   'links',
+  // Spec 0046: the recipe's videos, a jsonb list.
+  'videos',
   'source',
   'recurrence',
   'assignment',

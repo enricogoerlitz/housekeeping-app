@@ -206,3 +206,9 @@ Haupt-Checkout `tmp/review-0003/0046/`. **Nur am iPhone prüfbar:** das Wischen 
 (CSS-Scroll-Snap), der Vollbild-Player von iOS (ohne `playsinline`) und ob Safari nach dem Laden
 von selbst startet oder einen Tipp auf Wiedergabe braucht; „Fertig“ schließt die Ebene
 (`webkitendfullscreen`).
+
+**Nachtrag (26.11.2026, CI):** Auf einer frischen Datenbank lehnte `recipes_videos_valid` den
+Seed ab: der Generator schrieb `videos` als leeres Text-Array (`'{}'`). `videos` ist jetzt eine
+JSON-Spalte des Generators (`'[]'::jsonb`, Test in `seed-sql.test.ts`). Geprüft ohne Reset der
+gemeinsamen Datenbank: der alte Seed scheitert in einer zurückgerollten Transaktion mit genau
+diesem Fehler, `seed.sql` und `preview-seed.sql` laufen dort durch (26 Rezepte, alle ohne Videos).

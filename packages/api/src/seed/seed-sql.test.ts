@@ -43,6 +43,18 @@ describe('AC-033 (spec 0003): generated seed', async () => {
     expect(seed.sql).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
+  it('spec 0046: a recipe without videos gets the empty jsonb list, never an empty array', () => {
+    const insert = /insert into public\.recipes \(([^)]*)\) values\n([\s\S]*?);\n/.exec(seed.sql);
+    const columns = (insert?.[1] ?? '').split(', ');
+    expect(columns).toContain('videos');
+    const rows = (insert?.[2] ?? '').split('\n');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row).toMatch(/'\[\]'::jsonb, now\(\) \+ make_interval/);
+      expect(row).not.toMatch(/, '\{\}', now\(\) \+ make_interval/);
+    }
+  });
+
   it('inserts the activities before the plan entries that point to them (spec 0004)', () => {
     const activities = seed.sql.indexOf('insert into public.activities ');
     expect(activities).toBeGreaterThan(0);
