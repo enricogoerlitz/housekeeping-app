@@ -1,19 +1,27 @@
+import { useArticlesById } from '@housekeeping/api';
 import {
+  applyRecipeProposal,
   draftImageContext,
   IMAGE_EXTRA_MAX,
   imageFailureNotice,
+  proposalIsEmpty,
+  recipeProposal,
+  type FieldChange,
+  type IngredientRow,
   type Recipe,
+  type RecipeProposal,
 } from '@housekeeping/core';
-import { Button, Notice, Photo, Row, Stack, Text, useTheme } from '@housekeeping/ui';
-import { useState } from 'react';
+import { Button, Notice, Photo, Row, Stack, Text, toast, useTheme } from '@housekeeping/ui';
+import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
+import { ProposalSheet } from '@/features/web-search/proposal-sheet';
 import { features } from '@/lib/features';
 
 import { regeneratePhotoSuggestions, startPhotoSuggestions, usePhotoSuggestions } from './ai-draft';
-import { AiFillSheet, toastUnreadLinks, useDraftInput } from './ai-fill';
+import { AiFillSheet, toastUnreadLinks, useDraftInput, type AiFillResult } from './ai-fill';
 import type { PageEditor } from './sections/use-page-editor';
 
 /**
@@ -25,9 +33,39 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
   const online = useOnlineOnly();
   const [filling, setFilling] = useState(false);
+  const [review, setReview] = useState<Review>();
   const draftInput = useDraftInput();
+  const articlesById = useArticlesById();
   if (!features.aiRecipes || !editor.draft || recipe.kind !== 'recipe') return null;
   const hasIngredients = editor.draft.ingredients.rows.length > 0;
+  const articleName = (row: IngredientRow) => {
+    const article = row.article;
+    if (article?.kind === 'article') return articlesById[article.articleId]?.name ?? row.name ?? '';
+    if (article?.kind === 'hit') return article.hit.name;
+    return article?.name ?? row.name ?? '';
+  };
+  // Spec 0049, REQ-005: a draft for a recipe that has content opens the Änderungsansicht first.
+  const propose = ({ reply, replace, generatePhoto, photo }: AiFillResult) => {
+    const before = editor.draft;
+    if (!before) return;
+    const input = draftInput(reply);
+    const proposal = recipeProposal(before, editor.filled(input, { replace }), { articleName });
+    const hadPhoto = recipe.photoPath !== undefined || recipe.photo !== undefined;
+    if (photo) proposal.fields.push(photoField(hadPhoto));
+    toastUnreadLinks(reply.sources);
+    if (generatePhoto && reply.draft.imagePrompt) {
+      startPhotoSuggestions(recipe.id, {
+        prompt: reply.draft.imagePrompt,
+        context: draftImageContext(reply.draft),
+        coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
+      });
+    }
+    if (proposalIsEmpty(proposal)) {
+      toast.show({ message: 'Der Vorschlag ändert nichts am Rezept.' });
+      return;
+    }
+    setReview({ proposal, ...(photo ? { photo } : {}) });
+  };
   return (
     <Stack gap={12}>
       <View style={{ alignItems: 'flex-start' }}>
@@ -45,22 +83,67 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
       <PhotoSuggestionsPanel recipe={recipe} editor={editor} />
       {filling ? (
         <AiFillSheet
+          title={editor.draft.head.title}
           hasIngredients={hasIngredients}
           onClose={() => setFilling(false)}
-          onDraft={({ reply, replace, generatePhoto }) => {
-            editor.load(draftInput(reply), undefined, { replace });
-            toastUnreadLinks(reply.sources);
-            if (generatePhoto && reply.draft.imagePrompt) {
-              startPhotoSuggestions(recipe.id, {
-                prompt: reply.draft.imagePrompt,
-                context: draftImageContext(reply.draft),
-                coverUrl: reply.sources.find((source) => source.coverUrl)?.coverUrl,
-              });
-            }
+          onDraft={propose}
+        />
+      ) : null}
+      {review ? (
+        <RecipeReview
+          review={review}
+          onApply={(rejected) => {
+            editor.adopt(applyRecipeProposal(review.proposal, rejected));
+            if (review.photo && !rejected.has(PHOTO_FIELD)) editor.choosePhoto(review.photo);
+            setReview(undefined);
           }}
+          onClose={() => setReview(undefined)}
         />
       ) : null}
     </Stack>
+  );
+}
+
+interface Review {
+  proposal: RecipeProposal;
+  photo?: Blob;
+}
+
+const PHOTO_FIELD = 'photo';
+
+/** The photo of the page as the field "Foto" of the Änderungsansicht. */
+function photoField(hadPhoto: boolean): FieldChange {
+  return {
+    id: PHOTO_FIELD,
+    label: 'Foto',
+    before: hadPhoto ? 'bisheriges Foto' : '',
+    after: 'Foto der Seite',
+    status: hadPhoto ? 'changed' : 'new',
+  };
+}
+
+/** The Änderungsansicht of the recipe, with the page's photo shown as a picture. */
+function RecipeReview(props: {
+  review: Review;
+  onApply: (rejected: ReadonlySet<string>) => void;
+  onClose: () => void;
+}) {
+  const { photo } = props.review;
+  const [uri] = useState(() => (photo ? URL.createObjectURL(photo) : undefined));
+  useEffect(
+    () => () => {
+      if (uri) URL.revokeObjectURL(uri);
+    },
+    [uri],
+  );
+  return (
+    <ProposalSheet
+      proposal={props.review.proposal}
+      {...(uri ? { photo: { uri } } : {})}
+      onApply={props.onApply}
+      onClose={props.onClose}
+      testID="recipe-proposal"
+    />
   );
 }
 

@@ -29,6 +29,7 @@ import {
   Stack,
   SwitchRow,
   Text,
+  ViewTabs,
   pickImageFile,
   toast,
   useBreakpoint,
@@ -38,6 +39,12 @@ import { View } from 'react-native';
 
 import { DictationField } from '@/features/shell/dictation-field';
 import { OFFLINE_EDIT_HINT, useOnlineOnly } from '@/features/shell/offline';
+import { useWebSearch } from '@/features/web-search/use-web-search';
+import {
+  webSearchPrimary,
+  WebSearchPanel,
+  type WebTake,
+} from '@/features/web-search/web-search-panel';
 
 import { newRowKey } from './sections/ingredient-handover';
 
@@ -315,17 +322,38 @@ export function AiFillFields(props: { fill: AiFill; testID: string }) {
   );
 }
 
+/** The two tabs of "Mit KI ausfüllen" (spec 0049, REQ-001): "Websuche" first, always. */
+export type AiFillTab = 'web' | 'own';
+export const AI_FILL_TABS: { value: AiFillTab; label: string }[] = [
+  { value: 'web', label: 'Websuche' },
+  { value: 'own', label: 'Eigene Angaben' },
+];
+
+/** What "Mit KI ausfüllen" hands to the page: a draft, from the web search with its photo. */
+export interface AiFillResult {
+  reply: RecipeDraftReply;
+  replace: boolean;
+  generatePhoto: boolean;
+  /** The photo of the page found on the web (spec 0049, REQ-004). */
+  photo?: Blob;
+}
+
 /**
- * "Mit KI ausfüllen" on the recipe page in the edit mode: the same field in a window. A recipe
- * with ingredients asks "Ergänzen oder ersetzen?" (AC-006); "Ergänzen" keeps them.
+ * "Mit KI ausfüllen" on the recipe page in the edit mode: "Websuche" (spec 0049, prefilled with
+ * the title) and „Eigene Angaben“ (the field of spec 0040) in a window. A recipe with ingredients
+ * asks "Ergänzen oder ersetzen?" (AC-006); "Ergänzen" keeps them.
  */
 export function AiFillSheet(props: {
+  title: string;
   hasIngredients: boolean;
-  onDraft: (result: { reply: RecipeDraftReply; replace: boolean; generatePhoto: boolean }) => void;
+  onDraft: (result: AiFillResult) => void;
   onClose: () => void;
 }) {
   const fill = useAiFill();
   const online = useOnlineOnly();
+  const search = useWebSearch('recipe', props.title);
+  const draftInput = useDraftInput();
+  const [tab, setTab] = useState<AiFillTab>('web');
   const [mode, setMode] = useState<'add' | 'replace'>('add');
   const submit = () => {
     if (!fill.ready || fill.busy) return;
@@ -335,21 +363,43 @@ export function AiFillSheet(props: {
       props.onDraft({ reply, replace: mode === 'replace', generatePhoto: fill.generatePhoto });
     });
   };
+  const take = (taken: WebTake) => {
+    if (!taken.recipe) return;
+    props.onClose();
+    props.onDraft({
+      reply: taken.recipe,
+      replace: mode === 'replace',
+      generatePhoto: false,
+      ...(taken.photo ? { photo: taken.photo } : {}),
+    });
+  };
   return (
     <Sheet
       visible
-      size="m"
+      size="l"
       title="Mit KI ausfüllen"
       onClose={props.onClose}
+      header={
+        <ViewTabs
+          label="Mit KI ausfüllen"
+          options={AI_FILL_TABS}
+          value={tab}
+          onChange={setTab}
+          testID="recipe-ai-fill-tab"
+        />
+      }
       actions={{
-        primary: {
-          label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
-          icon: 'sparkles',
-          onPress: submit,
-          disabled: online.disabled || fill.busy || !fill.ready,
-          hint: online.hint,
-          testID: 'recipe-ai-fill-submit',
-        },
+        primary:
+          tab === 'web'
+            ? webSearchPrimary(search, online, take, 'recipe-ai-fill-web')
+            : {
+                label: fill.busy ? 'Wird ausgefüllt …' : 'Ausfüllen',
+                icon: 'sparkles',
+                onPress: submit,
+                disabled: online.disabled || fill.busy || !fill.ready,
+                hint: online.hint,
+                testID: 'recipe-ai-fill-submit',
+              },
         cancel: { label: 'Abbrechen', onPress: props.onClose, testID: 'recipe-ai-fill-cancel' },
       }}
       testID="recipe-ai-fill"
@@ -368,7 +418,19 @@ export function AiFillSheet(props: {
             testID="recipe-ai-fill-mode"
           />
         ) : null}
-        <AiFillFields fill={fill} testID="recipe-ai-fill-field" />
+        {tab === 'web' ? (
+          <WebSearchPanel
+            search={search}
+            onLink={(link) => {
+              fill.setText(link);
+              setTab('own');
+            }}
+            recipeRows={(reply) => draftInput(reply).ingredients ?? []}
+            testID="recipe-ai-fill-web"
+          />
+        ) : (
+          <AiFillFields fill={fill} testID="recipe-ai-fill-field" />
+        )}
       </Stack>
     </Sheet>
   );

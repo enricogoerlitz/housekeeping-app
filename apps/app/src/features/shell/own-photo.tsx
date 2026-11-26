@@ -272,7 +272,13 @@ export function usePhotoChoice(savedPath: string | undefined) {
     setPhoto(savedPath ? { kind: 'remove' } : { kind: 'keep' });
   };
 
-  return { savedPath, photo, photoError, preparing, choosePhoto, removePhoto };
+  /** A photo prepared elsewhere, e.g. the one of a place found on the web (spec 0049). */
+  const takePhoto = (prepared: Blob) => {
+    setPhotoError(undefined);
+    setPhoto({ kind: 'new', photo: prepared, uri: URL.createObjectURL(prepared) });
+  };
+
+  return { savedPath, photo, photoError, preparing, choosePhoto, removePhoto, takePhoto };
 }
 
 export type PhotoChoiceState = ReturnType<typeof usePhotoChoice>;

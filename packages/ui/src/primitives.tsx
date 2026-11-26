@@ -14,7 +14,17 @@ import { ToneContext, useTheme } from './theme-context';
 import type { TextVariant, Theme } from './themes';
 
 export type ColorToken =
-  'text' | 'muted' | 'accent' | 'onAccent' | 'success' | 'onSuccess' | 'warn' | 'star' | 'due';
+  | 'text'
+  | 'muted'
+  | 'accent'
+  | 'onAccent'
+  | 'success'
+  | 'onSuccess'
+  | 'warn'
+  | 'star'
+  | 'due'
+  /** An old value or a removed row in the Änderungsansicht (spec 0049). */
+  | 'removed';
 
 /** Resolves a colour token, honouring the text colour inherited from a tone tile. */
 export function useColor(token: ColorToken | undefined, fallback: ColorToken = 'text'): string {
@@ -41,6 +51,8 @@ function resolveColor(theme: Theme, toneFg: string | undefined, token: ColorToke
       return c.onSuccess;
     case 'warn':
       return c.warnText;
+    case 'removed':
+      return c.removedText;
     case 'star':
       return c.star;
     case 'due':

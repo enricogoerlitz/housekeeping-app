@@ -19,6 +19,7 @@ import {
   type ActivityIcon,
   type GeoPoint,
   type Id,
+  type PlaceValues,
 } from '@housekeeping/core';
 import {
   Button,
@@ -46,6 +47,7 @@ import {
 import { ActivityIconField, ActivityKindField } from './activity-kind-field';
 import { ACTIVITY_ICON } from './activity-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
+import { PlaceWebFill, type WebPlace } from '@/features/web-search/place-web-fill';
 
 /** activities_name_length. */
 const ACTIVITY_NAME_MAX_LENGTH = 120;
@@ -63,6 +65,7 @@ const message = (error: unknown) => errorMessage(error, FAILED_MESSAGE);
  */
 export function useActivityForm(activity?: Activity) {
   const activities = useActivities();
+  const kindsById = useActivityKindsById();
   const [name, setNameValue] = useState(activity?.name ?? '');
   const [nameError, setNameError] = useState<string | undefined>();
   const [description, setDescription] = useState(activity?.description ?? '');
@@ -192,8 +195,42 @@ export function useActivityForm(activity?: Activity) {
     };
   };
 
+  // Spec 0049: what the form shows now, for the Änderungsansicht, and the place found on the web.
+  const webValues = (): PlaceValues => ({
+    name,
+    placeName,
+    address,
+    kind: kindId ? (kindsById[kindId]?.name ?? '') : '',
+    description,
+    websiteUrl: website,
+    mapsUrl: mapsUrl ?? '',
+  });
+  const applyWeb = (web: WebPlace) => {
+    const { values } = web;
+    if (values.name) setName(values.name);
+    if (values.placeName) setPlaceName(values.placeName);
+    if (values.address) setAddress(values.address);
+    if (values.description) setDescription(values.description);
+    if (values.websiteUrl) setWebsite(values.websiteUrl);
+    if (values.kind) {
+      const kind = Object.values(kindsById).find((candidate) => candidate.name === values.kind);
+      if (kind) setKindId(kind.id);
+    }
+    if (values.mapsUrl) {
+      setLink(values.mapsUrl);
+      setReading(undefined);
+      setLinkError(undefined);
+      setLinkPlaceName(undefined);
+      setMapsUrl(values.mapsUrl);
+      setLocation(web.location);
+    }
+    if (web.photo) photoChoice.takePhoto(web.photo);
+  };
+
   return {
     activity,
+    webValues,
+    applyWeb,
     name,
     setName,
     nameError,
@@ -449,6 +486,16 @@ export function ActivityFormSheet(props: {
             {online.hint}
           </Text>
         ) : null}
+        {/* Spec 0049: a new one is filled at once, an existing one shows its changes first. */}
+        <PlaceWebFill
+          kind="activity"
+          name={form.name}
+          {...(editing ? { current: form.webValues() } : {})}
+          hasPhoto={editing?.photoPath !== undefined}
+          onApply={form.applyWeb}
+          onLink={form.changeLink}
+          testID="activity-web"
+        />
         <ActivityFormFields
           form={form}
           autoFocus

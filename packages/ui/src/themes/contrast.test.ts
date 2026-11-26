@@ -49,6 +49,11 @@ const TEXT_PAIRS: [fg: Role, bg: Role][] = [
   ['text', 'surfaceRaised'],
   ['textMuted', 'surfaceRaised'],
   ['accent', 'surfaceRaised'],
+  // The Änderungsansicht (spec 0049): new and changed rows on the yellow tint, old values red.
+  ['text', 'changedBg'],
+  ['textMuted', 'changedBg'],
+  ['removedText', 'surface'],
+  ['removedText', 'bg'],
 ];
 // Non-text UI (WCAG 1.4.11): the check mark fill and the assistant button must stand out from
 // the card and the page by at least 3:1.

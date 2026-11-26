@@ -83,3 +83,4 @@ export * from './web-results';
 export * from './proposal-diff';
 export * from './recipe-proposal';
 export * from './place-proposal';
+export * from './web-preview';
