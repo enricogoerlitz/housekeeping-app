@@ -32,6 +32,8 @@ export * from './recap';
 export * from './restaurants';
 export * from './maps-link';
 export * from './activities';
+export * from './activity-kinds';
+export * from './activity-series';
 export * from './dictation';
 export * from './sync-delta';
 export * from './sync-overlay';

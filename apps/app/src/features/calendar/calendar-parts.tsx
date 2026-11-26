@@ -199,6 +199,13 @@ export function EntryLine(props: {
   const title = data.lineTitleOf(entry);
   const kind = entryKindRole(entry, data.recipesById);
   const size = props.compact ? 'compact' : 'row';
+  // Spec 0041: the activity's symbol (AC-005), who is "dabei" (AC-014), a Termin of a series.
+  const series = entry.series !== undefined;
+  const activityIcon = data.activityIconOf(entry);
+  const leading = activityIcon ? (
+    <Icon name={activityIcon} size={props.compact ? 13 : 15} color="muted" />
+  ) : undefined;
+  const people = props.compact ? '' : data.peopleOf(entry);
   const reminder = props.withReminder
     ? entryReminderLabels(entry, title, data.household.timeZone)
     : undefined;
@@ -211,9 +218,15 @@ export function EntryLine(props: {
     guardPress,
   } = useDragSource({
     id: dragSourceKey({ kind: 'entry', entryId: entry.id }),
-    preview: () => <KindLine kind={kind} title={title} size={size} />,
-    disabled: online.disabled,
-    onBlocked: () => toast.show({ message: online.hint ?? OFFLINE_EDIT_HINT }),
+    preview: () => <KindLine kind={kind} title={title} size={size} leading={leading} />,
+    // A Termin of a series moves in its window ("Termin verschieben"), not by dragging.
+    disabled: online.disabled || series,
+    onBlocked: () =>
+      toast.show({
+        message: series
+          ? 'Einen Termin einer Serie verschiebst du in seinem Fenster.'
+          : (online.hint ?? OFFLINE_EDIT_HINT),
+      }),
   });
   return (
     <View ref={ref} {...sourceProps} style={[style, dragging ? { opacity: LIFTED_OPACITY } : null]}>
@@ -222,19 +235,48 @@ export function EntryLine(props: {
         title={title}
         prefix={props.withSlot ? data.slotName(entry.slotId) : undefined}
         size={size}
+        leading={leading}
         detail={
-          reminder ? (
-            <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
+          reminder || people || (series && !props.compact) ? (
+            <View>
+              {people || series ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {series ? <Icon name="repeat" size={12} color="muted" /> : null}
+                  {people ? (
+                    <Text variant="caption" color="muted" testID={`entry-people-${entry.id}`}>
+                      {people}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {reminder ? (
+                <ReminderBell label={reminder.label} testID={`reminder-bell-${entry.id}`} />
+              ) : null}
+            </View>
           ) : undefined
         }
         onPress={guardPress(() => props.onPress(entry))}
-        accessibilityLabel={props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken}
-        accessibilityAction={{ label: 'Verschieben', onAction: () => openMove(entry) }}
+        accessibilityLabel={withPeople(
+          props.withSlot ? `${data.slotName(entry.slotId)}: ${spoken}` : spoken,
+          data.peopleOf(entry),
+          series,
+        )}
+        accessibilityAction={{
+          label: 'Verschieben',
+          onAction: () => (series ? props.onPress(entry) : openMove(entry)),
+        }}
         tooltip={lineTooltip(entryCountRole(entry, data.recipesById), title)}
         testID={`entry-${entry.id}`}
       />
     </View>
   );
+}
+
+/** "Bouldern · 18:00, mit Enrico + 2, Serie" for screen readers. */
+function withPeople(label: string, people: string, series: boolean): string {
+  return [label, people ? `mit ${people}` : undefined, series ? 'Serie' : undefined]
+    .filter(Boolean)
+    .join(', ');
 }
 
 function choreTitle(item: HouseholdRowItem): string {

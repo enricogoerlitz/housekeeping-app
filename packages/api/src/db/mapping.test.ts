@@ -230,6 +230,9 @@ describe('mapping between domain and rows', () => {
       website_url: null,
       created_by: ENRICO,
       created_at: expect.any(String),
+      kind_id: 'kind-sport',
+      icon: null,
+      remembered: true,
     });
     expect(rows.activity_ratings).toContainEqual({
       id: `act-eislaufen:${NADJA}`,
@@ -273,6 +276,87 @@ describe('mapping between domain and rows', () => {
     expect(domain.activities.find((activity) => activity.id === 'act-bouldern')?.photoPath).toBe(
       'hh-demo/activities/act-bouldern/b.jpg',
     );
+  });
+
+  it('spec 0041: kinds, series and exceptions survive a round trip; unknown symbols and rules are dropped', () => {
+    const { data, members } = demo();
+    const withSeries: HouseholdData = {
+      ...data,
+      activities: data.activities.map((activity) =>
+        activity.id === 'act-bouldern'
+          ? { ...activity, icon: 'mountain', remembered: false }
+          : activity,
+      ),
+      activitySeries: [
+        {
+          id: 'series-1',
+          activityId: 'act-bouldern',
+          rule: { type: 'weekly', every: 2, weekdays: [2, 4] },
+          startsOn: '2026-12-01',
+          endsOn: '2027-03-31',
+          slotId: 'slot-abend',
+          startsAt: '18:00',
+          note: 'Halle Nord',
+          eaterIds: [ENRICO],
+          guests: 2,
+        },
+        {
+          id: 'series-2',
+          activityId: 'act-eislaufen',
+          rule: { type: 'yearly' },
+          startsOn: '2027-03-14',
+          slotId: 'slot-abend',
+          eaterIds: [],
+          guests: 0,
+        },
+      ],
+      activitySeriesExceptions: [
+        { id: 'x-1', seriesId: 'series-1', on: '2026-12-08' },
+        {
+          id: 'x-2',
+          seriesId: 'series-1',
+          on: '2026-12-15',
+          movedTo: '2026-12-16',
+          startsAt: '19:00',
+        },
+      ],
+    };
+    const rows = householdToRows(withSeries);
+    expect(rows.activity_series?.[0]).toMatchObject({
+      starts_at: '18:00:00',
+      ends_on: '2027-03-31',
+    });
+    const { tables, small } = asServerTables({ ...rows, ...membersToRows(members) });
+    const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(back.activityKinds).toEqual(withSeries.activityKinds);
+    expect(back.activitySeries).toEqual(withSeries.activitySeries);
+    expect(back.activitySeriesExceptions).toEqual(withSeries.activitySeriesExceptions);
+    expect(back.activities.find((activity) => activity.id === 'act-bouldern')).toMatchObject({
+      icon: 'mountain',
+      remembered: false,
+      kindId: 'kind-sport',
+    });
+
+    const series = tables.activity_series?.['series-2'];
+    const bouldern = tables.activities?.['act-bouldern'];
+    const kind = tables.activity_kinds?.['kind-sport'];
+    if (!series || !bouldern || !kind) throw new Error('fixture');
+    tables.activity_series = {
+      ...tables.activity_series,
+      [series.id]: { ...series, rule: { type: 'daily' } },
+    };
+    tables.activities = {
+      ...tables.activities,
+      [bouldern.id]: { ...bouldern, icon: 'skull', remembered: null },
+    };
+    tables.activity_kinds = { ...tables.activity_kinds, [kind.id]: { ...kind, icon: 'skull' } };
+    const odd = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID);
+    expect(odd.activitySeries.map((entry) => entry.id)).toEqual(['series-1']);
+    expect(odd.activities.find((activity) => activity.id === 'act-bouldern')).toMatchObject({
+      icon: undefined,
+      remembered: true,
+    });
+    expect(odd.activityKinds.find((entry) => entry.id === 'kind-sport')?.icon).toBe('mountain');
   });
 
   it('a removed member (null done_by / author_id) becomes an empty id', () => {

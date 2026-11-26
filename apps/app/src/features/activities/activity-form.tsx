@@ -1,5 +1,6 @@
 import {
   createActivity,
+  useActivityKindsById,
   readActivityMapsLink,
   removeActivityPhoto,
   resolveActivityShortLink,
@@ -11,13 +12,26 @@ import {
   type ActivityPlace,
 } from '@housekeeping/api';
 import {
+  activityIconOf,
   findDuplicateActivity,
   normalizeWebsite,
   type Activity,
+  type ActivityIcon,
   type GeoPoint,
   type Id,
 } from '@housekeeping/core';
-import { Button, Icon, Notice, Row, Sheet, Stack, Text, TextField, toast } from '@housekeeping/ui';
+import {
+  Button,
+  Icon,
+  Notice,
+  Row,
+  Sheet,
+  Stack,
+  SwitchRow,
+  Text,
+  TextField,
+  toast,
+} from '@housekeeping/ui';
 import { useState } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
@@ -28,6 +42,7 @@ import {
   type PhotoChoice,
 } from '@/features/shell/own-photo';
 
+import { ActivityIconField, ActivityKindField } from './activity-kind-field';
 import { ACTIVITY_ICON } from './activity-photo';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 
@@ -61,6 +76,10 @@ export function useActivityForm(activity?: Activity) {
   const [mapsUrl, setMapsUrl] = useState<string | undefined>(activity?.mapsUrl);
   const [website, setWebsiteValue] = useState(activity?.websiteUrl ?? '');
   const [websiteError, setWebsiteError] = useState<string | undefined>();
+  // Spec 0041: "Art", "Symbol" and "Merken" (on for a new activity, REQ-004).
+  const [kindId, setKindId] = useState<Id | undefined>(activity?.kindId);
+  const [icon, setIcon] = useState<ActivityIcon | undefined>(activity?.icon);
+  const [remembered, setRemembered] = useState(activity?.remembered ?? true);
   const photoChoice = usePhotoChoice(activity?.photoPath);
   const { photo, preparing } = photoChoice;
   const [saving, setSaving] = useState(false);
@@ -163,6 +182,9 @@ export function useActivityForm(activity?: Activity) {
         name: name.trim(),
         description: description.trim() || undefined,
         websiteUrl: checkedWebsite.url,
+        kindId,
+        icon,
+        remembered,
         ...place,
       },
       photo,
@@ -190,6 +212,12 @@ export function useActivityForm(activity?: Activity) {
     website,
     setWebsite,
     websiteError,
+    kindId,
+    setKindId,
+    icon,
+    setIcon,
+    remembered,
+    setRemembered,
     photoChoice,
     photo,
     preparing,
@@ -219,6 +247,8 @@ export function ActivityFormFields(props: {
   autoFocus?: boolean;
 }) {
   const { form } = props;
+  const kindsById = useActivityKindsById();
+  const kindIcon = activityIconOf({ kindId: form.kindId }, kindsById);
   const place = form.reading?.status === 'place' ? form.reading.place : undefined;
   const confirmation = place
     ? [
@@ -259,6 +289,15 @@ export function ActivityFormFields(props: {
           />
         ) : null}
       </Stack>
+      <ActivityKindField kindId={form.kindId} onChange={form.setKindId} />
+      <ActivityIconField icon={form.icon} fallback={kindIcon} onChange={form.setIcon} />
+      <SwitchRow
+        label="Merken"
+        description="Steht in der Liste unter „Gemerkt“. Aus für Einmaliges – im Kalender steht es trotzdem."
+        value={form.remembered}
+        onValueChange={form.setRemembered}
+        testID="activity-remembered"
+      />
       <TextField
         label="Beschreibung"
         value={form.description}
@@ -269,7 +308,7 @@ export function ActivityFormFields(props: {
       />
       <PhotoChoiceField
         state={form.photoChoice}
-        placeholderIcon={ACTIVITY_ICON}
+        placeholderIcon={form.icon ?? (form.kindId ? kindIcon : ACTIVITY_ICON)}
         testPrefix="activity"
       />
       <Stack gap={8}>
@@ -371,6 +410,9 @@ export function ActivityFormSheet(props: {
           location: values.draft.location,
           mapsUrl: values.draft.mapsUrl,
           websiteUrl: values.draft.websiteUrl,
+          kindId: values.draft.kindId,
+          icon: values.draft.icon,
+          remembered: values.draft.remembered,
         });
         id = editing.id;
       } else {

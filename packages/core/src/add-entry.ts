@@ -292,7 +292,9 @@ export function addEntryRequest(state: AddEntryState, atHome: Id[]): AddEntryReq
           slotId,
           kind: 'activity',
           activityId: choice.activity.id,
-          eaterIds: atHome,
+          // Spec 0041, REQ-005: "Wer ist dabei?" and "Gäste", like who eats along.
+          eaterIds,
+          guests,
           ...extras,
         },
       };

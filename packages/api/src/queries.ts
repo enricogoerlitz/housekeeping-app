@@ -3,6 +3,7 @@ import {
   householdTime,
   resolveShoppingStore,
   type Activity,
+  type ActivityKind,
   type Article,
   type CollectionContent,
   type CollectionRecipe,
@@ -53,6 +54,11 @@ export const useRestaurants = () => useDataSelector((data) => data.restaurants);
 /** Newest first. */
 export const useActivities = () => useDataSelector((data) => data.activities);
 export const usePlanEntries = () => useDataSelector((data) => data.planEntries);
+/** Spec 0041: "Aktivitätsarten" in creation order, series and their exceptions. */
+export const useActivityKinds = () => useDataSelector((data) => data.activityKinds);
+export const useActivitySeries = () => useDataSelector((data) => data.activitySeries);
+export const useActivitySeriesExceptions = () =>
+  useDataSelector((data) => data.activitySeriesExceptions);
 export const useShoppingItems = () => useDataSelector((data) => data.items);
 export const useChores = () => useDataSelector((data) => data.chores);
 export const useChoreEvents = () => useDataSelector((data) => data.choreEvents);
@@ -134,6 +140,9 @@ export function useRestaurant(id: Id | undefined): Restaurant | undefined {
 }
 export function useActivitiesById(): Record<Id, Activity> {
   return indexById(useActivities());
+}
+export function useActivityKindsById(): Record<Id, ActivityKind> {
+  return indexById(useActivityKinds());
 }
 export function useActivity(id: Id | undefined): Activity | undefined {
   const activities = useActivitiesById();

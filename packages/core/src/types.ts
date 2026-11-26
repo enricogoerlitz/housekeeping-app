@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 // Type only: reminder.ts imports its schemas from here.
+import type { ActivityIcon } from './activity-kinds';
 import type { EntryReminder } from './reminder';
 
 export type Id = string;
@@ -225,6 +226,11 @@ export interface MealPlanEntry {
   startsAt?: TimeOfDay;
   /** Spec 0017: "Erinnern" at a day before the entry and a time; only on entries with a day. */
   reminder?: EntryReminder;
+  /**
+   * Spec 0041: a "Termin" of a series, computed on the device (activity-series.ts) and never
+   * stored as a plan entry; `on` is the day the rule gives it (before any "verschieben").
+   */
+  series?: { seriesId: Id; on: ISODate };
 }
 
 // ---------- Restaurants ----------
@@ -281,6 +287,57 @@ export interface Activity {
   ratedAt?: Record<Id, string>;
   createdBy?: Id;
   createdAt: string;
+  /** "Art" (spec 0041, REQ-001); undefined = none, also after the kind was deleted. */
+  kindId?: Id;
+  /** "Eigenes Symbol" (REQ-002), one of ACTIVITY_ICONS; undefined = the kind's symbol. */
+  icon?: ActivityIcon;
+  /** "Merken" (REQ-004): shown under "Gemerkt" in the list; on unless switched off. */
+  remembered: boolean;
+}
+
+/** "Aktivitätsart" (spec 0041, REQ-001): name and symbol, shared by the household. */
+export interface ActivityKind {
+  id: Id;
+  name: string;
+  icon: ActivityIcon;
+}
+
+/**
+ * The rhythm of a series (spec 0041, REQ-003): the weekly and monthly shapes of the chore
+ * Recurrence, plus "jährlich" on the day and month of the start.
+ */
+export type SeriesRule =
+  | Extract<Recurrence, { type: 'weekly' }>
+  | Extract<Recurrence, { type: 'monthly' }>
+  | { type: 'yearly' };
+
+/** "Serie" (spec 0041, REQ-003): an activity planned with a rhythm. */
+export interface ActivitySeries {
+  id: Id;
+  activityId: Id;
+  rule: SeriesRule;
+  startsOn: ISODate;
+  /** "bis" (inclusive); undefined = "dauerhaft". */
+  endsOn?: ISODate;
+  slotId: Id;
+  startsAt?: TimeOfDay;
+  /** "Zusatz", like on a plan entry. */
+  note?: string;
+  /** "Wer ist dabei?" (REQ-005). */
+  eaterIds: Id[];
+  guests: number;
+}
+
+/** One "Termin" of a series "abgesagt" (no movedTo) or "verschoben" (spec 0041, REQ-003). */
+export interface ActivitySeriesException {
+  id: Id;
+  seriesId: Id;
+  /** The day the rule gives the Termin. */
+  on: ISODate;
+  movedTo?: ISODate;
+  /** Another Tageszeit or Uhrzeit of a moved Termin; undefined = the series' one. */
+  slotId?: Id;
+  startsAt?: TimeOfDay;
 }
 
 // ---------- Shopping ----------

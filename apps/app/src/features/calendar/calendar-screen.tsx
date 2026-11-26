@@ -50,6 +50,7 @@ import { ChoreSheet } from '@/features/chores/chore-sheet';
 import { TripSheet } from '@/features/trips/trip-sheet';
 import { TripWindowHost, useTripWindow } from '@/features/trips/trip-window';
 import { AddEntrySheet, type AddTarget } from '@/features/meal-plan/add-entry-sheet';
+import { SeriesOccurrenceSheet } from '@/features/activities/series-occurrence-sheet';
 import { EntrySheet } from '@/features/meal-plan/entry-sheet';
 import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { StartPageActions } from '@/features/shell/profile-button';
@@ -177,13 +178,20 @@ export function CalendarScreen() {
   };
   const setOpenEntry = (entry: MealPlanEntry | undefined) => {
     setMoveFirst(false);
-    if (entry) address.open({ eintrag: entry.id });
+    // Spec 0041: a Termin of a series opens its own window (series and its day in the address).
+    if (entry?.series) address.open({ serie: entry.series.seriesId, termin: entry.series.on });
+    else if (entry) address.open({ eintrag: entry.id });
     else address.close({ eintrag: undefined });
   };
   const openMove = (entry: MealPlanEntry) => {
+    if (entry.series) {
+      setOpenEntry(entry);
+      return;
+    }
     setMoveFirst(true);
     address.open({ eintrag: entry.id });
   };
+  const closeOccurrence = () => address.close({ serie: undefined, termin: undefined });
   // "Vorgemerkt · n" under the grid of month and year is unfolded (only on this device).
   const [laterOpen, setLaterOpen] = useState(false);
   const pantryCheck = params.fenster === 'aus-kalender';
@@ -705,6 +713,14 @@ export function CalendarScreen() {
               moveFirst={moveFirst}
               weekDates={weekDates(openEntry.date ?? start)}
               onClose={() => setOpenEntry(undefined)}
+            />
+          ) : null}
+          {params.serie && params.termin && focused ? (
+            <SeriesOccurrenceSheet
+              key={`${params.serie}:${params.termin}`}
+              seriesId={params.serie}
+              on={params.termin}
+              onClose={closeOccurrence}
             />
           ) : null}
           {openChore && focused ? (

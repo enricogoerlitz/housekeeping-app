@@ -133,6 +133,9 @@ export const PAGE_PARAMS = {
     tag: one(Day),
     fenster: one(oneOf(['tag', 'neu-eintrag', 'neu-reise', 'aus-kalender'])),
     eintrag: one(Uuid),
+    /** A Termin of a series: the series and the day the rule gives it (spec 0041, REQ-003). */
+    serie: one(Uuid),
+    termin: one(Day),
     zeit: one(Time),
     reise: one(Uuid),
     /** The chore window of a chore in the calendar (spec 0021, REQ-016). */
@@ -185,7 +188,8 @@ export const PAGE_PARAMS = {
     favoriten: one(Flag),
     sortierung: one(oneOf(['name', 'bewertung', 'zuletzt']), 'name'),
     aktivitaet: one(Uuid),
-    fenster: one(oneOf(['neu-aktivitaet', 'einplanen', 'bearbeiten'])),
+    // "arten": the kinds under "Verwalten" (spec 0041, REQ-001).
+    fenster: one(oneOf(['neu-aktivitaet', 'einplanen', 'bearbeiten', 'arten'])),
     von: Von,
   },
   aktivitaet: {

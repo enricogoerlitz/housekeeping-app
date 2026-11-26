@@ -62,8 +62,18 @@ function deletePlace(kind: PlaceKind, id: Id): PlaceDeletion | undefined {
         const now = placeDeletionEffect(current.planEntries, kind, place, today);
         const converted = new Map(now.converted.map((entry) => [entry.id, entry]));
         const removed = new Set(now.removedIds);
+        // Spec 0041: the series of the activity and their exceptions go with it.
+        const goneSeries = new Set(
+          kind === 'activity'
+            ? current.activitySeries.filter((series) => series.activityId === id).map((s) => s.id)
+            : [],
+        );
         return {
           ...current,
+          activitySeries: current.activitySeries.filter((series) => !goneSeries.has(series.id)),
+          activitySeriesExceptions: current.activitySeriesExceptions.filter(
+            (exception) => !goneSeries.has(exception.seriesId),
+          ),
           restaurants:
             kind === 'restaurant'
               ? current.restaurants.filter((candidate) => candidate.id !== id)
