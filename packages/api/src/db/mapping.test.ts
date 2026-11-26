@@ -843,13 +843,10 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
   const settingsRow = (overrides: Row = { id: 'ns-enrico' }): Row => ({
     household_id: DEMO_HOUSEHOLD_ID,
     member_id: ENRICO,
+    // The old setting columns are still in the row (spec 0051, Decision 9) and are left alone.
     daily_summary_enabled: false,
     daily_summary_at: '07:30:00',
-    daily_summary_parts: ['meals', 'activities', 'chores', 'prep'],
-    activities_eve_enabled: false,
-    activities_eve_at: '19:00:00',
-    chore_reminders_enabled: true,
-    entry_reminders_enabled: true,
+    acknowledged_notices: ['chore:c-muell:2026-11-20'],
     created_at: SERVER_TIME,
     updated_at: SERVER_TIME,
     ...overrides,
@@ -862,61 +859,49 @@ describe('spec 0013: notification settings, times and reservation in the rows', 
     return { tables, small };
   }
 
-  it('AC-011: the own row reads as the domain settings, the database times "HH:MM:SS" as "HH:MM"', () => {
+  it('spec 0051, REQ-005: the own row reads as the acknowledged notices; missing or broken as none', () => {
     const { tables, small } = withSettings([settingsRow()]);
     const back = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
     expect(back.notificationSettings).toEqual({
       id: 'ns-enrico',
       memberId: ENRICO,
-      dailySummaryEnabled: false,
-      dailySummaryAt: '07:30',
-      dailySummaryParts: ['meals', 'activities', 'chores', 'prep'],
-      activitiesEveEnabled: false,
-      activitiesEveAt: '19:00',
-      choreRemindersEnabled: true,
-      entryRemindersEnabled: true,
+      acknowledgedNotices: ['chore:c-muell:2026-11-20'],
     });
+    const old = withSettings([settingsRow({ id: 'ns-enrico', acknowledged_notices: undefined })]);
+    expect(
+      rowsToHousehold(old.tables, old.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
+        .notificationSettings?.acknowledgedNotices,
+    ).toEqual([]);
+    const broken = withSettings([settingsRow({ id: 'ns-enrico', acknowledged_notices: [1, 'a:b:2026-11-20'] })]);
+    expect(
+      rowsToHousehold(broken.tables, broken.small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO })
+        .notificationSettings?.acknowledgedNotices,
+    ).toEqual(['a:b:2026-11-20']);
   });
 
   it('AC-013: only the signed-in member’s row is her settings; without one there are none', () => {
     const { tables, small } = withSettings([
-      settingsRow({ id: 'ns-nadja', member_id: NADJA, daily_summary_enabled: true }),
+      settingsRow({ id: 'ns-nadja', member_id: NADJA, acknowledged_notices: ['cook:x:2026-11-20'] }),
     ]);
     expect(
       rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO }).notificationSettings,
     ).toBeUndefined();
     expect(
       rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: NADJA }).notificationSettings
-        ?.dailySummaryEnabled,
-    ).toBe(true);
+        ?.acknowledgedNotices,
+    ).toEqual(['cook:x:2026-11-20']);
   });
 
-  it('AC-012: a change of the settings is one patch of only the changed columns, times with seconds', () => {
+  it('spec 0051: acknowledging is no diff the client may send (only acknowledge_notices writes it)', () => {
     const { tables, small } = withSettings([settingsRow()]);
     const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
     const settings = before.notificationSettings;
     if (!settings) throw new Error('fixture');
     const after: HouseholdData = {
       ...before,
-      notificationSettings: {
-        ...settings,
-        dailySummaryEnabled: true,
-        dailySummaryAt: '06:45',
-        dailySummaryParts: ['meals', 'chores'],
-      },
+      notificationSettings: { ...settings, acknowledgedNotices: ['cook:y:2026-11-20'] },
     };
-    expect(diffHousehold(before, after, { mode: 'send' }).send).toEqual([
-      {
-        kind: 'patch',
-        table: 'notification_settings',
-        id: 'ns-enrico',
-        changes: {
-          daily_summary_enabled: true,
-          daily_summary_at: '06:45:00',
-          daily_summary_parts: ['meals', 'chores'],
-        },
-      },
-    ]);
+    expect(() => diffHousehold(before, after, { mode: 'send' })).toThrow();
   });
 
   it('AC-013: a diff never inserts, deletes or moves a settings row', () => {
@@ -1068,42 +1053,6 @@ describe('spec 0017: entry reminders in the rows', () => {
         table: 'meal_plan_entries',
         id: ENTRY,
         changes: { reminder_day_offset: null, reminder_at: null },
-      },
-    ]);
-  });
-
-  it('REQ-007: "Erinnerungen an Einträgen" reads from the own row, on when the column is missing', () => {
-    const { data } = demo();
-    const { tables, small } = asServerTables(householdToRows(data));
-    const row = {
-      id: 'ns-enrico',
-      household_id: DEMO_HOUSEHOLD_ID,
-      member_id: ENRICO,
-      daily_summary_enabled: false,
-      daily_summary_at: '07:30:00',
-      daily_summary_parts: ['meals'],
-      activities_eve_enabled: false,
-      activities_eve_at: '19:00:00',
-      chore_reminders_enabled: true,
-    };
-    tables.notification_settings = { 'ns-enrico': row };
-    const before = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
-    expect(before.notificationSettings?.entryRemindersEnabled).toBe(true);
-    tables.notification_settings = { 'ns-enrico': { ...row, entry_reminders_enabled: false } };
-    const off = rowsToHousehold(tables, small, DEMO_HOUSEHOLD_ID, { memberId: ENRICO });
-    const settings = off.notificationSettings;
-    if (!settings) throw new Error('fixture');
-    expect(settings.entryRemindersEnabled).toBe(false);
-    const on: HouseholdData = {
-      ...off,
-      notificationSettings: { ...settings, entryRemindersEnabled: true },
-    };
-    expect(diffHousehold(off, on, { mode: 'send' }).send).toEqual([
-      {
-        kind: 'patch',
-        table: 'notification_settings',
-        id: 'ns-enrico',
-        changes: { entry_reminders_enabled: true },
       },
     ]);
   });

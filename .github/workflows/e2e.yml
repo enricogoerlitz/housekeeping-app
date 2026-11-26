@@ -7,8 +7,7 @@
 #   with its own local Supabase stack; every shard runs to the end. A red shard blocks until
 #   someone re-runs it (Playwright already retries a failed test once in CI). A shard that hangs
 #   stops after 40 minutes (the step), Playwright itself after 35 (globalTimeout in CI).
-# - No environment and no secret: only the public local defaults of the Supabase CLI and a push
-#   key pair made for this run (never stored, every value masked).
+# - No environment and no secret: only the public local defaults of the Supabase CLI.
 name: e2e
 
 on:
@@ -50,16 +49,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Wegwerf-Schlüssel für Web Push (nur dieser Lauf)
-        # The web build needs a public VAPID key, push-send and the Vault the rest of the pair.
-        run: |
-          node scripts/push-keys.mjs --out "$RUNNER_TEMP/push.env"
-          while IFS='=' read -r name value; do
-            case "$name" in '' | '#'*) continue ;; esac
-            echo "::add-mask::$value"
-            echo "$name=$value" >> "$GITHUB_ENV"
-          done < "$RUNNER_TEMP/push.env"
-          rm -f "$RUNNER_TEMP/push.env"
       # The full stack (Auth, PostgREST, Storage, edge runtime) without the tools nobody tests.
       - run: pnpm exec supabase start -x studio,logflare,vector
       - name: Öffentlicher Schlüssel des lokalen Stacks

@@ -334,7 +334,7 @@ describe('sectionOfPath', () => {
     expect(sectionOfPath(`/restaurant/${LASAGNE}`)).toBe('essen');
     expect(sectionOfPath(`/markt/${LASAGNE}`)).toBe('verwalten');
     expect(sectionOfPath('/einkaufen')).toBe('liste');
-    expect(sectionOfPath('/einstellungen/benachrichtigungen')).toBe('verwalten');
+    expect(sectionOfPath('/einstellungen')).toBe('verwalten');
   });
   it('AC-030 (0024): the activities live under "Verwalten", no tab is highlighted', () => {
     expect(sectionOfPath('/aktivitaeten')).toBe('verwalten');

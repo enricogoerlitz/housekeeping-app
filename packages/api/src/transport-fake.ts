@@ -11,17 +11,21 @@
 // kind check, once per collection and at most 50, cascades and the rows in the snapshot), and
 // Reisetaschen and Packlisten (spec 0012: grants and allowlist, cascades and set null, "je Tag"
 // computed on insert and after a change of the duration, set_packing_items_packed with
-// "Abhaken gewinnt" via pack_seq, restore_packing_items), and notifications (spec 0013: one
-// settings row per member created on joining, readable and patchable only by herself, the
-// five-minute times and the time only on restaurant and activity entries; the push subscriptions of a
-// person with the checks, limits and errors of the device RPCs, ADR-0014). Several transports
+// "Abhaken gewinnt" via pack_seq, restore_packing_items), the five-minute times and the
+// time only on restaurant and activity entries (spec 0013, 0021), and the acknowledged notices
+// (spec 0051: one row per member created on joining, readable only by herself, written through
+// acknowledge_notices). Several transports
 // (users, devices) can share one server.
 import {
+  acknowledgedAfter,
   addDays,
   compareTimestamps,
+  householdClock,
   householdOwnerId,
   isHalfStar,
+  isNoticeKey,
   isReminderPast,
+  MAX_ACKNOWLEDGE_AT_ONCE,
   isTikTokUrl,
   isWebUrl,
   packQuantity,
@@ -123,12 +127,7 @@ type RpcName =
   | 'update_profile'
   | 'begin_household_deletion'
   | 'delete_household'
-  | 'register_push_subscription'
-  | 'set_push_subscription_enabled'
-  | 'unregister_push_subscription'
-  | 'remove_push_subscription'
-  | 'list_push_subscriptions'
-  | 'send_test_push'
+  | 'acknowledge_notices'
   | 'resolve-maps-link'
   | 'fetch-image'
   | 'fetch-video'
@@ -200,12 +199,6 @@ export interface FakeServer {
   ): void;
   /** A stored video (bucket household-videos). */
   video(path: string): Blob | undefined;
-  /** Like the Vault entries push_send_url and push_send_secret (spec 0013); unset by default. */
-  setPushConfigured(configured: boolean): void;
-  /** The push service answered 404/410 for this address: the subscription is unreachable. */
-  markPushGone(endpoint: string): void;
-  /** The probes sent so far ("Probe senden"), oldest first. */
-  testPushes(): { subscriptionId: string; profileId: string }[];
   calls: { userId: string; fn: string }[];
 }
 
@@ -752,9 +745,7 @@ const FIVE_MINUTE_TIME = /^([01]\d|2[0-3]):[0-5][05](:00)?$/;
 const TIME_COLUMNS: Record<string, readonly string[]> = {
   chores: ['due_time'],
   meal_plan_entries: ['starts_at', 'reminder_at'],
-  notification_settings: ['daily_summary_at', 'activities_eve_at'],
 };
-const SUMMARY_PARTS = new Set(['meals', 'activities', 'chores', 'prep']);
 
 /** A row as Postgres keeps it: a `time` reads back as "HH:MM:SS"; an invalid one is 23514. */
 function withDbTimes(table: string, row: Row): Row {
@@ -772,7 +763,7 @@ function withDbTimes(table: string, row: Row): Row {
   return next;
 }
 
-/** meal_plan_entries_starts_at_only_timed (spec 0021), the reminder and the parts check. */
+/** meal_plan_entries_starts_at_only_timed (spec 0021) and the reminder. */
 function checkNotificationColumns(table: string, row: Row): void {
   const violated = () => new TransportError('permanent', '23514', 400);
   if (table === 'meal_plan_entries') {
@@ -781,18 +772,7 @@ function checkNotificationColumns(table: string, row: Row): void {
     }
     checkReminderColumns(row);
   }
-  if (table === 'notification_settings') {
-    const parts = row.daily_summary_parts;
-    if (
-      !Array.isArray(parts) ||
-      parts.length < 1 ||
-      parts.length > 4 ||
-      new Set(parts).size !== parts.length ||
-      parts.some((part) => !SUMMARY_PARTS.has(String(part)))
-    ) {
-      throw violated();
-    }
-  }
+
 }
 
 // C0, DEL, C1 and invisible or direction-changing characters, as the check
@@ -852,49 +832,6 @@ function reminderTriggers(previous: Row | undefined, next: Row, timeZone: string
     throw new TransportError('permanent', 'reminder_in_past', 400);
   }
   return row;
-}
-
-/** private.is_push_endpoint: https, a known push service, no port, no credentials (AC-044). */
-const PUSH_ENDPOINT = new RegExp(
-  '^https://(fcm\\.googleapis\\.com|updates\\.push\\.services\\.mozilla\\.com|web\\.push\\.apple\\.com' +
-    '|[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\.notify\\.windows\\.com)' +
-    "/[A-Za-z0-9._~:/?@!$&'()*+,;=%-]*$",
-);
-const PUSH_P256DH = /^B[A-Za-z0-9_-]{86}$/;
-const PUSH_AUTH = /^[A-Za-z0-9_-]{22}$/;
-/** Decision 20: at most 10 devices per person, 3 probes in 10 minutes. */
-const MAX_PUSH_DEVICES = 10;
-const MAX_TEST_PUSHES = 3;
-const TEST_PUSH_WINDOW_MS = 10 * 60 * 1000;
-
-interface PushSubscriptionRecord {
-  id: string;
-  profileId: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  deviceLabel: string;
-  enabled: boolean;
-  goneAt: string | null;
-  lastSuccessAt: string | null;
-  createdAt: string;
-}
-
-function validPushSubscription(
-  endpoint: string,
-  p256dh: string,
-  auth: string,
-  label: string,
-): boolean {
-  return (
-    endpoint.length <= 1024 &&
-    PUSH_ENDPOINT.test(endpoint) &&
-    PUSH_P256DH.test(p256dh) &&
-    PUSH_AUTH.test(auth) &&
-    label.length >= 1 &&
-    label.length <= 60 &&
-    !/[\u0000-\u001f\u007f]/.test(label)
-  );
 }
 
 /** Row checks of the database that a client bug could break (spec 0004, 0006, 0007). */
@@ -1041,12 +978,6 @@ export function createFakeServer(): FakeServer {
     return found as Extract<Deletion, { kind: K }> | undefined;
   }
   const aiUnavailable = () => new TransportError('transient', 'ai_unavailable', 503);
-  /** private.push_subscriptions (spec 0013): never synced, reached only through the RPCs. */
-  let pushSubscriptions: PushSubscriptionRecord[] = [];
-  /** The probes of private.notification_deliveries (kind 'test'), for the rate limit. */
-  const testDeliveries: { subscriptionId: string; profileId: string; at: number }[] = [];
-  let pushConfigured = false;
-
   /** Server clock with microseconds, strictly increasing like `now()` in separate transactions. */
   function now(): string {
     lastMicros = Math.max(lastMicros + 1, Date.now() * 1000);
@@ -1072,8 +1003,34 @@ export function createFakeServer(): FakeServer {
     members.filter((member) => member.profile_id === userId).map((m) => String(m.household_id));
 
   /**
+   * private.acknowledge_notices (spec 0051, Decisions 7 and 8): unites the keys with the own row,
+   * drops what belongs to a day more than 14 days ago, keeps the newest 400. `invalid_notice`,
+   * `not_found` for a household that is not hers.
+   */
+  function acknowledgeNotices(userId: string, householdId: string, keys: readonly string[]): void {
+    if (keys.length > MAX_ACKNOWLEDGE_AT_ONCE || keys.some((key) => !isNoticeKey(key))) {
+      throw reject('invalid_notice');
+    }
+    if (!isMember(userId, householdId)) throw new TransportError('permanent', 'not_found', 404);
+    const own = Object.values(data.get(householdId)?.notification_settings ?? {}).find(
+      (row) => row.member_id === userId,
+    );
+    if (!own) throw new TransportError('permanent', 'not_found', 404);
+    const timeZone = String(households.get(householdId)?.timezone ?? 'Europe/Berlin');
+    const today = householdClock(new Date(), timeZone).date;
+    const current = Array.isArray(own.acknowledged_notices) ? own.acknowledged_notices.map(String) : [];
+    transaction(householdId, (tables) => [
+      withRow(tables, 'notification_settings', {
+        ...own,
+        acknowledged_notices: acknowledgedAfter(current, keys, today),
+      }),
+      undefined,
+    ]);
+  }
+
+  /**
    * household_members_create_notification_settings (spec 0013, Decision 3): a new member gets her
-   * row with the column defaults; an existing one is kept.
+   * row, nothing acknowledged yet (spec 0051); an existing one is kept.
    */
   function createNotificationSettings(householdId: string, profileId: string): void {
     const exists = Object.values(data.get(householdId)?.notification_settings ?? {}).some(
@@ -1084,64 +1041,17 @@ export function createFakeServer(): FakeServer {
       withRow(tables, 'notification_settings', {
         id: crypto.randomUUID(),
         member_id: profileId,
-        daily_summary_enabled: false,
-        daily_summary_at: '07:30:00',
-        daily_summary_parts: ['meals', 'activities', 'chores', 'prep'],
-        activities_eve_enabled: false,
-        activities_eve_at: '19:00:00',
-        chore_reminders_enabled: true,
-        entry_reminders_enabled: true,
+        acknowledged_notices: [],
       }),
       undefined,
     ]);
   }
 
-  /** Every device RPC: `not_authenticated` (42501) without a signed-in user. */
+  /** `not_authenticated` without a signed-in user. */
   function requireUser(userId: string): void {
     if (!userId || !profiles.has(userId)) {
       throw new TransportError('permanent', 'not_authenticated', 401);
     }
-  }
-
-  const ownSubscription = (userId: string, endpoint: string) =>
-    pushSubscriptions.find(
-      (subscription) => subscription.endpoint === endpoint && subscription.profileId === userId,
-    );
-
-  /** private.register_push_subscription: upsert by address for the caller (Decision 19, 20). */
-  function registerPushSubscription(
-    userId: string,
-    endpoint: string,
-    p256dh: string,
-    auth: string,
-    deviceLabel: string,
-  ): string {
-    requireUser(userId);
-    const label = deviceLabel.trim();
-    if (!validPushSubscription(endpoint, p256dh, auth, label)) {
-      throw reject('invalid_subscription');
-    }
-    const existing = pushSubscriptions.find((subscription) => subscription.endpoint === endpoint);
-    const own = pushSubscriptions.filter((subscription) => subscription.profileId === userId);
-    if (existing?.profileId !== userId && own.length >= MAX_PUSH_DEVICES) {
-      throw reject('too_many_devices');
-    }
-    const record: PushSubscriptionRecord = {
-      id: existing?.id ?? crypto.randomUUID(),
-      profileId: userId,
-      endpoint,
-      p256dh,
-      auth,
-      deviceLabel: label,
-      enabled: true,
-      goneAt: null,
-      lastSuccessAt: existing?.lastSuccessAt ?? null,
-      createdAt: existing?.createdAt ?? now(),
-    };
-    pushSubscriptions = existing
-      ? pushSubscriptions.map((subscription) => (subscription === existing ? record : subscription))
-      : [...pushSubscriptions, record];
-    return record.id;
   }
 
   function notify(householdId: string): void {
@@ -3651,77 +3561,8 @@ export function createFakeServer(): FakeServer {
           notify(householdId);
         }),
 
-      registerPushSubscription: (endpoint, p256dh, auth, deviceLabel) =>
-        run(userId, 'register_push_subscription', () =>
-          registerPushSubscription(userId, endpoint, p256dh, auth, deviceLabel),
-        ),
-      setPushSubscriptionEnabled: (endpoint, enabled) =>
-        run(userId, 'set_push_subscription_enabled', () => {
-          requireUser(userId);
-          const own = ownSubscription(userId, endpoint);
-          if (!own) throw new TransportError('permanent', 'not_found', 404);
-          pushSubscriptions = pushSubscriptions.map((subscription) =>
-            subscription === own ? { ...own, enabled } : subscription,
-          );
-        }),
-      unregisterPushSubscription: (endpoint) =>
-        run(userId, 'unregister_push_subscription', () => {
-          requireUser(userId);
-          pushSubscriptions = pushSubscriptions.filter(
-            (subscription) =>
-              !(subscription.endpoint === endpoint && subscription.profileId === userId),
-          );
-        }),
-      removePushSubscription: (id) =>
-        run(userId, 'remove_push_subscription', () => {
-          requireUser(userId);
-          const before = pushSubscriptions.length;
-          pushSubscriptions = pushSubscriptions.filter(
-            (subscription) => !(subscription.id === id && subscription.profileId === userId),
-          );
-          return pushSubscriptions.length < before;
-        }),
-      listPushSubscriptions: (currentEndpoint) =>
-        run(userId, 'list_push_subscriptions', () => {
-          requireUser(userId);
-          const current = (subscription: PushSubscriptionRecord) =>
-            subscription.endpoint === currentEndpoint;
-          return pushSubscriptions
-            .filter((subscription) => subscription.profileId === userId)
-            .sort(
-              (a, b) =>
-                Number(current(b)) - Number(current(a)) ||
-                compareTimestamps(a.createdAt, b.createdAt) ||
-                (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-            )
-            .map((subscription) => ({
-              id: subscription.id,
-              device_label: subscription.deviceLabel,
-              status: subscription.goneAt
-                ? ('unreachable' as const)
-                : subscription.enabled
-                  ? ('active' as const)
-                  : ('off' as const),
-              is_current: current(subscription),
-              created_at: subscription.createdAt,
-              last_success_at: subscription.lastSuccessAt,
-            }));
-        }),
-      sendTestPush: (endpoint) =>
-        run(userId, 'send_test_push', () => {
-          requireUser(userId);
-          const own = ownSubscription(userId, endpoint);
-          if (!own || !own.enabled || own.goneAt !== null) {
-            throw new TransportError('permanent', 'not_found', 404);
-          }
-          if (!pushConfigured) throw reject('push_not_configured');
-          const since = Date.now() - TEST_PUSH_WINDOW_MS;
-          const recent = testDeliveries.filter(
-            (delivery) => delivery.profileId === userId && delivery.at > since,
-          );
-          if (recent.length >= MAX_TEST_PUSHES) throw reject('rate_limited');
-          testDeliveries.push({ subscriptionId: own.id, profileId: userId, at: Date.now() });
-        }),
+      acknowledgeNotices: (householdId, keys) =>
+        run(userId, 'acknowledge_notices', () => acknowledgeNotices(userId, householdId, keys)),
 
       resolveMapsLink: (url) =>
         run(userId, 'resolve-maps-link', () => {
@@ -3938,17 +3779,6 @@ export function createFakeServer(): FakeServer {
       videoAddresses.set(url, coverUrl ? { video, coverUrl } : { video });
     },
     video: (path) => videos.get(path),
-    setPushConfigured(configured) {
-      pushConfigured = configured;
-    },
-    markPushGone(endpoint) {
-      const time = now();
-      pushSubscriptions = pushSubscriptions.map((subscription) =>
-        subscription.endpoint === endpoint ? { ...subscription, goneAt: time } : subscription,
-      );
-    },
-    testPushes: () =>
-      testDeliveries.map(({ subscriptionId, profileId }) => ({ subscriptionId, profileId })),
     purgeDeletionsBefore(before) {
       deletedRecords = deletedRecords.filter(
         (deletion) => compareTimestamps(deletion.deletedAt, before) >= 0,

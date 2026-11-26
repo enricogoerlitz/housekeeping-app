@@ -72,7 +72,6 @@ const ALLOWED = [
     text: "hasnt_function('private', 'reservation_reminder_candidates'",
   },
   { file: 'supabase/tests/plan_entry_fields.test.sql', text: '"remind_minutes_before": 60' },
-  { file: 'supabase/tests/notification_scheduler.test.sql', text: 'reservation_reminder' },
   { file: 'supabase/tests/restaurants_and_activities.test.sql', text: 'recipe_deletions' },
   {
     file: 'packages/api/src/db/mapping.test.ts',

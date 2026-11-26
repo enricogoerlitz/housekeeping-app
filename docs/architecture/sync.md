@@ -6,13 +6,13 @@
 
 ## Ziel
 
-| Ohne Netz möglich                                                                                     | Braucht Netz                                               |
-| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen                               |
-| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen                  |
-| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen                       |
-| **Packen**, „Alles einpacken“, „Für die Rückreise zurücksetzen“ (ADR-0013)                            | Packstücke und Taschen ergänzen, entfernen                 |
-| Benachrichtigungen **empfangen** (der Server stellt zu, ADR-0014)                                     | Benachrichtigungen einstellen, Geräte anmelden und ansehen |
+| Ohne Netz möglich                                                                                     | Braucht Netz                                  |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Alles **lesen**: Rezepte, Wochenplan, Einkaufslisten, Märkte und Bereiche                             | Anlegen, bearbeiten, löschen                  |
+| Im Laden: **abhaken**, „nicht da“, Posten **hinzufügen**, Bereich **zuordnen** (Nachtrag zu ADR-0008) | Einkaufsliste aus dem Wochenplan erzeugen     |
+| Einkaufsmodus mit Laufreihenfolge                                                                     | Anmelden, Haushalt anlegen, einladen          |
+| **Packen**, „Alles einpacken“, „Für die Rückreise zurücksetzen“ (ADR-0013)                            | Packstücke und Taschen ergänzen, entfernen    |
+| **Mitteilungen** ansehen (Glocke, aus dem lokalen Speicher berechnet, Spec 0051)                      | Mitteilungen bestätigen, Einstellungen ändern |
 
 Ohne Netz sind Bearbeiten-Aktionen sichtbar deaktiviert, mit dem Hinweis „Offline – zum Bearbeiten
 brauchst du Netz“. Das ist ein normaler Zustand, kein Fehler.
@@ -503,11 +503,9 @@ pack_seq}]` der gefundenen Packstücke.
 - **Cache-Version 6.** Die vier Tabellen ändern die Form des Caches; Warteschlange, Haushalts- und
   Marktwahl bleiben beim Wechsel erhalten.
 
-## Nachtrag Spec 0013 — Benachrichtigungen
+## Nachtrag Spec 0013 — Benachrichtigungen (Versand entfernt)
 
-Entschieden in ADR-0014: Web Push mit VAPID; die Datenbank plant, die Edge Function `push-send`
-stellt nur zu. Ohne Netz kommen Nachrichten trotzdem an (der Server stellt zu); einstellen,
-Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
+Der Versand aufs Gerät (ADR-0014) ist mit Spec 0051 entfallen. Mitteilungen erscheinen in der App (Glocke mit Zähler), berechnet aus dem lokalen Speicher; bestätigte Mitteilungen liegen je Person in `notification_settings.acknowledged_notices` (Spec 0051, ADR-0017). Übrig aus Spec 0013 sind die Spalten und die Tabelle `notification_settings`:
 
 **Datenbank (Spec 0013, Task 1 und 2):**
 
@@ -524,45 +522,6 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   sieben Einstellungs-Spalten (`apply_changes`: kein `insert`, kein `delete`, Patch der eigenen
   Zeile; eine fremde Zeile ergibt `row_not_found`). Wer den Haushalt verlässt, verliert die Zeile
   per Fremdschlüssel; der Grabstein enthält nur die Kennung.
-- **Nicht synchronisiert, im Schema `private`** (RLS an, keine Policies, keine Grants):
-  `push_subscriptions` (gehört einer Person; Push-Adresse und Schlüssel verlassen die Datenbank
-  nur Richtung `push-send`) und `notification_deliveries` (Zustell-Protokoll des Servers, ohne
-  Inhalt, 30 Tage). Erreichbar nur über die RPCs `register_push_subscription`,
-  `set_push_subscription_enabled`, `unregister_push_subscription`, `remove_push_subscription`,
-  `list_push_subscriptions` (einziges Lesen ohne Cache: nur die eigenen Geräte, nie Adresse oder
-  Schlüssel), `send_test_push` und über den Zeitplaner.
-- **Takt:** `pg_cron` ruft alle 5 Minuten `private.run_notification_tick()`. Er wertet zuerst die
-  Antworten des letzten Takts aus, liest Adresse und Geheimnis aus dem Vault (`push_send_url`,
-  `push_send_secret`; fehlen sie: Warnung `push_not_configured`, kein Protokoll, kein Aufruf),
-  sucht die fälligen Nachrichten in der Ortszeit des Haushalts
-  (`private.notification_candidates(p_now)`), schreibt sie je aktivem Gerät mit eindeutigem
-  Schlüssel ins Protokoll (`on conflict do nothing`) und gibt nur die neu geschriebenen in
-  Bündeln von höchstens 50 Nachrichten und 100 KB per `net.http_post` an `push-send`. Eine
-  Transaktions-Sperre schließt überlappende Takte aus.
-- **Übergabe signiert (Nachtrag ADR-0014):** Das Geheimnis verlässt die Datenbank nie. Jede
-  Anfrage trägt `x-push-timestamp` (Unix-Sekunden) und `x-push-signature` (HMAC-SHA256 über
-  `<timestamp>.<body>` mit `push_send_secret`); `push-send` prüft zeitkonstant und lehnt
-  Zeitstempel ab, die älter als 5 Minuten oder mehr als 1 Minute voraus sind. Grund: die
-  Warteschlange von `pg_net` ist für alle Datenbank-Rollen lesbar, bis die Anfrage raus ist.
-- **Fenster und Schlüssel:** gesendet wird, was seit höchstens 30 Minuten fällig ist (genau 30
-  Minuten zu spät kommt noch); was später käme, entfällt. Schlüssel: `daily:<haushalt>:<person>:<tag>`, `eve:<haushalt>:<person>:<tag>`,
-  `chore:<aufgabe>:<tag>`, `reservation:<eintrag>:<tag>:<HH:MM>`, `test:<uuid>`. Die Uhrzeit der
-  Einstellung steht nicht im Schlüssel (neue Uhrzeit, kein zweiter Überblick), die der
-  Reservierung schon (verlegt → neue Erinnerung). Höchstens einmal: ein Fehler wird vermerkt,
-  nicht wiederholt.
-- **Stumm:** wer am Sendetag oder am Tag, um den es geht, abwesend ist (oder der ganze Haushalt),
-  bekommt nichts; Empfänger sind immer aktuelle Mitglieder.
-- **Antworten:** `push-send` antwortet `{results: [{id, status}]}`. 2xx → `sent`; 404/410 →
-  `gone`, das Abo gilt als „nicht erreichbar“ und bekommt nichts mehr; sonst `failed`. Antwortet
-  `push-send` selbst mit einem Fehler oder gar nicht binnen einer Stunde, sind alle Nachrichten
-  des Bündels `failed`.
-- **Grenzen:** höchstens 10 Geräte je Person (`too_many_devices`), 3 Proben in 10 Minuten je
-  Person (`rate_limited`; die Protokoll-Zeilen bleiben ohne Gerät stehen, wenn es entfernt wird,
-  sodass Abmelden und neu Anmelden die Grenze nicht zurücksetzt), Push-Adresse nur `https://` zu einem bekannten Push-Dienst ohne Port und
-  Anmeldedaten, höchstens 1024 Zeichen (`invalid_subscription`), Text höchstens 400 Zeichen.
-- **Doppelte Regeln:** „fällig“ (`private.chore_due_state`) und „wer ist dran“
-  (`private.chore_assignees`) stehen auch in SQL; `notification_parity.test.sql` hält sie mit
-  `dueChores` und `choreMemberIds` in `packages/core` im Gleichlauf.
 
 **Gerät und Cache (Spec 0013, Task 5):**
 
@@ -572,15 +531,6 @@ Geräte anmelden und „Deine Geräte“ ansehen brauchen Netz.
   Person und Haushalt ändern weist schon der Diff ab. Uhrzeiten sind im Gerät „HH:MM“, in den
   Zeilen „HH:MM:SS“ wie Postgres sie liefert, damit Diff und Server dasselbe vergleichen.
   `CACHE_VERSION` 8 (neue Tabelle und Spalten); Warteschlange und Haushaltswahl überleben das.
-- **Online-Liste:** „Deine Geräte“ (`listPushDevices`) fragt bei jedem Öffnen den Server
-  (`list_push_subscriptions`), nie den Cache; ohne Netz `OfflineError`, die Seite zeigt den
-  Hinweis. Die Antwort wird streng geprüft: eine Zeile mit Push-Adresse oder Schlüssel wird
-  abgelehnt. Anmelden, an/aus, Entfernen und „Probe senden“ gehen direkt per RPC, ohne Abgleich
-  danach (sie ändern nichts Synchronisiertes).
-- **Abmelden:** `createAuthController` ruft `beforeSignOut` (höchstens 3 s, ein Fehler oder Hängen
-  hält das Abmelden nicht auf) vor dem Löschen von Cache und Warteschlange. Die App meldet dort
-  den Browser vom Push ab und ruft mit Netz `unregister_push_subscription`; ohne Netz bleibt die
-  Zeile, bis der Push-Dienst 404/410 meldet.
 
 ## Nachtrag Spec 0025 — Laden-Aktionen auf der Liste, ein Posten je Artikel
 

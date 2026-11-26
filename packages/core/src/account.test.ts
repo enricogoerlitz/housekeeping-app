@@ -12,10 +12,8 @@ import {
   invitationHint,
   INVITE_FIELD_HINT,
   invitedNotice,
-  kindsScopeNote,
   MAX_DISLIKES,
   memberProfileLine,
-  notificationsHouseholdId,
   profileDraftChanged,
   profileDraftErrors,
   PROFILE_COLORS,
@@ -220,21 +218,6 @@ describe('Feedback (REQ-006)', () => {
   it('AC-028: the sentence about the status', () => {
     expect(FEEDBACK_STATUS_NOTE).toBe(
       'Den Status setzt der Entwickler der App, wenn er ein Feedback bearbeitet hat.',
-    );
-  });
-});
-
-describe('Benachrichtigungen je Haushalt (REQ-008)', () => {
-  it('AC-032: the chosen own household; AC-034: a foreign or unknown one falls back to the active', () => {
-    const own = ['home', 'wg'];
-    expect(notificationsHouseholdId('wg', own, 'home')).toBe('wg');
-    expect(notificationsHouseholdId(undefined, own, 'home')).toBe('home');
-    expect(notificationsHouseholdId('fremd', own, 'home')).toBe('home');
-  });
-
-  it('AC-032: "Gilt für „Enrico & Nadja“ auf allen deinen Geräten."', () => {
-    expect(kindsScopeNote('Enrico & Nadja')).toBe(
-      'Gilt für „Enrico & Nadja“ auf allen deinen Geräten.',
     );
   });
 });

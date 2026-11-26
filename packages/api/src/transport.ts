@@ -2,7 +2,6 @@
 // (docs/architecture/sync.md). JSON keys are the database's snake_case. Two implementations:
 // SupabaseTransport (transport-supabase.ts) and an in-memory server for tests (transport-fake.ts).
 import {
-  PushSubscriptionStatusSchema,
   type AiImageReply,
   type AiImageRequest,
   type AiSearchRequest,
@@ -387,20 +386,6 @@ export const RawPullResultSchema = z.object({
 });
 export type RawPullResult = z.infer<typeof RawPullResultSchema>;
 
-/**
- * One row of `list_push_subscriptions` (spec 0013): strict, so an answer that carried a push
- * address or a key would be refused rather than passed on (ADR-0014).
- */
-export const PushSubscriptionRowSchema = z.strictObject({
-  id: z.string(),
-  device_label: z.string(),
-  status: PushSubscriptionStatusSchema,
-  is_current: z.boolean(),
-  created_at: z.string(),
-  last_success_at: z.string().nullable(),
-});
-export type PushSubscriptionRow = z.infer<typeof PushSubscriptionRowSchema>;
-
 export interface Transport {
   // Generic write (ADR-0011)
   applyChanges(householdId: string, ops: readonly ChangeOp[]): Promise<ApplyChangesResult>;
@@ -570,27 +555,11 @@ export interface Transport {
    * `media_remaining` (nothing is deleted then).
    */
   deleteHousehold(householdId: string): Promise<void>;
-  // Push devices (spec 0013, ADR-0014): only the caller's own, online only, never cached.
   /**
-   * Registers this browser's subscription for the caller (upsert by address: it moves to her).
-   * `invalid_subscription`, `too_many_devices`; returns the subscription's id.
+   * Spec 0051: acknowledges in-app notices of the caller in one of her households (her own row of
+   * notification_settings); `invalid_notice`, `not_found`.
    */
-  registerPushSubscription(
-    endpoint: string,
-    p256dh: string,
-    auth: string,
-    deviceLabel: string,
-  ): Promise<string>;
-  /** "Auf diesem Gerät benachrichtigen"; `not_found` for an address that is not the caller's. */
-  setPushSubscriptionEnabled(endpoint: string, enabled: boolean): Promise<void>;
-  /** Deletes this device's subscription (sign-out); an unknown address is no error. */
-  unregisterPushSubscription(endpoint: string): Promise<void>;
-  /** "Entfernen": true when an own subscription was deleted, false for a foreign or unknown id. */
-  removePushSubscription(id: string): Promise<boolean>;
-  /** "Deine Geräte": never an address or a key; `is_current` for `currentEndpoint`. */
-  listPushSubscriptions(currentEndpoint?: string): Promise<PushSubscriptionRow[]>;
-  /** "Probe senden" to this device; `not_found`, `push_not_configured`, `rate_limited`. */
-  sendTestPush(endpoint: string): Promise<void>;
+  acknowledgeNotices(householdId: string, keys: readonly string[]): Promise<void>;
   // Edge functions
   /** Follows a short map link on the server (`resolve-maps-link`); `not_a_maps_link` when none. */
   resolveMapsLink(url: string): Promise<ResolveMapsLinkReply>;
@@ -694,12 +663,7 @@ export function switchable(inner: Transport): SwitchableTransport {
     updateProfile: guard(inner.updateProfile.bind(inner)),
     beginHouseholdDeletion: guard(inner.beginHouseholdDeletion.bind(inner)),
     deleteHousehold: guard(inner.deleteHousehold.bind(inner)),
-    registerPushSubscription: guard(inner.registerPushSubscription.bind(inner)),
-    setPushSubscriptionEnabled: guard(inner.setPushSubscriptionEnabled.bind(inner)),
-    unregisterPushSubscription: guard(inner.unregisterPushSubscription.bind(inner)),
-    removePushSubscription: guard(inner.removePushSubscription.bind(inner)),
-    listPushSubscriptions: guard(inner.listPushSubscriptions.bind(inner)),
-    sendTestPush: guard(inner.sendTestPush.bind(inner)),
+    acknowledgeNotices: guard(inner.acknowledgeNotices.bind(inner)),
     resolveMapsLink: guard(inner.resolveMapsLink.bind(inner)),
     fetchImage: guard(inner.fetchImage.bind(inner)),
     fetchVideo: guard(inner.fetchVideo.bind(inner)),

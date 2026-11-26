@@ -88,12 +88,7 @@ insert into lint_private_functions_for_authenticated values
   ('private.add_recipe_video(uuid,uuid,jsonb)'),           -- spec 0046: the only ways to write recipes.videos
   ('private.set_recipe_video_poster(uuid,uuid,text,text)'),
   ('private.remove_recipe_video(uuid,uuid,text)'),
-  ('private.register_push_subscription(text,text,text,text)'), -- spec 0013: push subscriptions (ADR-0014)
-  ('private.set_push_subscription_enabled(text,boolean)'),
-  ('private.unregister_push_subscription(text)'),
-  ('private.remove_push_subscription(uuid)'),
-  ('private.list_push_subscriptions(text)'),     -- online-only read of the own devices, never synced
-  ('private.send_test_push(text)');
+  ('private.acknowledge_notices(uuid,text[])'); -- spec 0051: the only way to acknowledge notices
 
 create temp view lint_public_tables as
   select c.oid, c.relname as name, c.relrowsecurity as rls

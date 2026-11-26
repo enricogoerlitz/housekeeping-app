@@ -8,9 +8,7 @@
 //   neither localhost nor 127.0.0.1 (spec 0014, AC-035); media-src exactly 'self' blob: (spec
 //   0043: the recipe video plays from a blob: URL);
 // - index.html has no inline script (any <script> without a src attribute, in any letter case);
-// - the service worker dist/sw.js exists (offline start, AC-004) and handles push and
-//   notificationclick (spec 0013);
-// - EXPO_PUBLIC_VAPID_PUBLIC_KEY is base64url of an uncompressed P-256 point (65 bytes, 0x04);
+// - the service worker dist/sw.js exists (offline start, AC-004);
 // - EXPO_PUBLIC_DEV_LOGIN=1 only with a local Supabase (spec 0014, AC-038);
 // - staticwebapp.config.json (Azure Static Web Apps, spec 0014) sends the security headers and
 //   the cache rules and falls back to index.html except for /_expo/* (AC-035 to AC-038);
@@ -46,9 +44,6 @@ export function readCsp(html) {
   }
   return directives;
 }
-
-/** Server-side secrets of push-send (ADR-0014) that must never reach the bundle. */
-export const BUNDLE_SECRET_NAMES = ['VAPID_PRIVATE_KEY', 'PUSH_SEND_SECRET'];
 
 /** Names of server secrets that have no business in the bundle, not even as a name (AC-061). */
 const FORBIDDEN_NAMES = ['FOUNDRY_API_KEY', 'GOOGLE_CLIENT_SECRET'];
@@ -255,18 +250,6 @@ export function scanFiles(files, secrets = {}) {
   return problems;
 }
 
-/** Why the public VAPID key is unusable, or undefined when it is a 65-byte uncompressed point. */
-function vapidKeyProblem(key) {
-  if (!key)
-    return 'EXPO_PUBLIC_VAPID_PUBLIC_KEY is not set (create it with node scripts/push-keys.mjs)';
-  if (!/^[A-Za-z0-9_-]+$/.test(key)) return 'EXPO_PUBLIC_VAPID_PUBLIC_KEY is not base64url';
-  const bytes = Buffer.from(key, 'base64url');
-  if (bytes.length !== 65 || bytes[0] !== 0x04) {
-    return 'EXPO_PUBLIC_VAPID_PUBLIC_KEY is not an uncompressed P-256 public key (65 bytes)';
-  }
-  return undefined;
-}
-
 /**
  * Problems of the export; empty when it is fine. `swaConfig` and `versionFile` are the texts of
  * the files (undefined when missing). `files` ({path, content}) and `secrets` ({name: value}) are
@@ -276,7 +259,6 @@ export function checkExport({
   html,
   serviceWorker,
   supabaseUrl,
-  vapidPublicKey,
   devLogin,
   swaConfig,
   versionFile,
@@ -289,8 +271,6 @@ export function checkExport({
   if (devLogin === '1' && !localBuild) {
     problems.push('EXPO_PUBLIC_DEV_LOGIN=1 is only allowed with a local Supabase');
   }
-  const vapid = vapidKeyProblem(vapidPublicKey);
-  if (vapid) problems.push(vapid);
   const csp = readCsp(html);
   if (!csp) {
     problems.push('index.html has no Content-Security-Policy <meta>');
@@ -343,11 +323,6 @@ export function checkExport({
   if (serviceWorker === undefined) {
     problems.push('sw.js is missing');
   } else {
-    for (const event of ['push', 'notificationclick']) {
-      if (!new RegExp(`addEventListener\\(\\s*['"]${event}['"]`).test(serviceWorker)) {
-        problems.push(`sw.js has no ${event} handler`);
-      }
-    }
     const precached = precachedUrls(serviceWorker);
     for (const name of NEVER_PRECACHED) {
       if (precached.includes(name)) problems.push(`sw.js precaches ${name}`);
@@ -440,21 +415,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         html: readFileSync(path.join(dist, 'index.html'), 'utf8'),
         serviceWorker: readIfExists(path.join(dist, 'sw.js')),
         supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL?.trim(),
-        vapidPublicKey: process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim(),
         devLogin: process.env.EXPO_PUBLIC_DEV_LOGIN?.trim(),
         swaConfig: readIfExists(path.join(dist, 'staticwebapp.config.json')),
         versionFile: readIfExists(path.join(dist, 'version.json')),
         files: readTree(dist),
-        secrets: Object.fromEntries(
-          BUNDLE_SECRET_NAMES.map((name) => [name, process.env[name]?.trim()]),
-        ),
       }),
     );
-    const scanned = BUNDLE_SECRET_NAMES.filter((name) => process.env[name]?.trim());
     console.log(
-      `check-web-export: CSP, service worker with push, VAPID key, Static Web Apps configuration and version.json are in place; secret scan: patterns${
-        scanned.length > 0 ? `, values of ${scanned.join(', ')}` : ''
-      }.`,
+      'check-web-export: CSP, service worker, Static Web Apps configuration and version.json are in place; secret scan: patterns.',
     );
   }
 }

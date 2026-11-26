@@ -62,6 +62,7 @@ export * from './page-editor';
 export * from './cooking';
 export * from './cooking-history';
 export * from './notifications';
+export * from './notices';
 export * from './app-version';
 export * from './membership';
 export * from './reminder';

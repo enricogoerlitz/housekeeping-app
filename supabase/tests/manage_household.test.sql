@@ -320,12 +320,9 @@ values (tests.fx('list_bag'), tests.fx('wg'), tests.fx('trip'), tests.fx('bag'),
 insert into public.packing_items (id, household_id, list_bag_id, name)
 values (tests.fx('packing_item'), tests.fx('wg'), tests.fx('list_bag'), 'Zahnbürste');
 insert into public.household_invitations (household_id, email, invited_by) values (tests.fx('wg'), 'tom@example.com', tests.fx('enrico'));
-insert into private.notification_deliveries (dedupe_key, profile_id, household_id, kind, due_at)
-values ('daily:wg', tests.fx('enrico'), tests.fx('wg'), 'daily_summary', now());
 insert into private.deletions (household_id, kind, target_id, deleted_by, snapshot)
 values (tests.fx('wg'), 'recipe', gen_random_uuid(), tests.fx('enrico'), '{}');
 insert into public.deleted_records (household_id, table_name, record_id) values (tests.fx('wg'), 'recipes', gen_random_uuid());
-select tests.add_push_subscription(tests.fx('enrico'), 'laptop');
 -- The same in "Kuschelnest", which must stay.
 insert into public.recipes (household_id, title) values (tests.fx('home'), 'Mango-Curry');
 
@@ -409,10 +406,9 @@ select ok(not pg_temp.admits('tom@example.com'),
   'AC-020: no invitation lets Tom in any more');
 select ok(
   exists (select 1 from public.profiles where id = tests.fx('enrico'))
-  and exists (select 1 from private.push_subscriptions where profile_id = tests.fx('enrico'))
   and (select count(*) from public.recipes where household_id = tests.fx('home')) = 1
   and exists (select 1 from storage.objects where bucket_id = 'household-media' and name like tests.fx('home') || '/%'),
-  'AC-020: account, profile, devices and the other household with its photos stay');
+  'AC-020: account, profile and the other household with its photos stay');
 select tests.authenticate_as(tests.fx('enrico'));
 select throws_ok(format('select public.delete_household(%L)', tests.fx('wg')),
   '42501', 'not_member', 'AC-021: a repeated call after deleting is not_member');

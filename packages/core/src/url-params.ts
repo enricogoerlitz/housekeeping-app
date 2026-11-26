@@ -265,11 +265,8 @@ export const PAGE_PARAMS = {
   },
   verwalten: {},
   einstellungen: {
-    abschnitt: one(oneOf(['profil', 'darstellung', 'ki', 'benachrichtigungen'])),
+    abschnitt: one(oneOf(['profil', 'darstellung', 'ki'])),
     fenster: one(oneOf(['profil'])),
-  },
-  benachrichtigungen: {
-    'fuer-haushalt': one(Uuid),
   },
   mitglieder: {
     fenster: one(oneOf(['umbenennen'])),

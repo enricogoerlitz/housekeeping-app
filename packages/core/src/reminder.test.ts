@@ -15,7 +15,7 @@ import {
   reminderDay,
   reminderDayChips,
   reminderLabel,
-  reminderMessage,
+  entryWhen,
   reminderTextCounter,
   reminderAfterStart,
   selectableReminderDays,
@@ -496,80 +496,27 @@ describe('planEntryTitle', () => {
   });
 });
 
-describe('reminderMessage', () => {
-  const lasagne = { title: 'Lasagne', entryDate: SATURDAY, slotName: 'Abend' };
+describe('entryWhen (spec 0051: the line of a notice)', () => {
+  const lasagne = { entryDate: SATURDAY, slotName: 'Abend' };
 
-  it('AC-016: on the day, "Erinnerung: Lasagne · heute Abend"', () => {
-    expect(reminderMessage({ ...lasagne, offsetDays: 0 })).toBe(
-      'Erinnerung: Lasagne · heute Abend',
-    );
+  it('AC-016: on the day, "heute Abend"', () => {
+    expect(entryWhen({ ...lasagne, offsetDays: 0 })).toBe('heute Abend');
   });
 
-  it('AC-014: the day before with text, "… · morgen Abend · Fleisch auftauen"', () => {
-    expect(reminderMessage({ ...lasagne, offsetDays: 1, text: 'Fleisch auftauen' })).toBe(
-      'Erinnerung: Lasagne · morgen Abend · Fleisch auftauen',
-    );
+  it('AC-014: the day before, "morgen Abend"', () => {
+    expect(entryWhen({ ...lasagne, offsetDays: 1 })).toBe('morgen Abend');
   });
 
   it('REQ-005: further ahead with weekday and date, "Sa 28.11., Abend"', () => {
-    expect(reminderMessage({ ...lasagne, offsetDays: 2 })).toBe(
-      'Erinnerung: Lasagne · Sa 28.11., Abend',
-    );
-    expect(reminderMessage({ ...lasagne, entryDate: '2027-03-05', offsetDays: 3 })).toBe(
-      'Erinnerung: Lasagne · Fr 5.3., Abend',
-    );
+    expect(entryWhen({ ...lasagne, offsetDays: 2 })).toBe('Sa 28.11., Abend');
+    expect(entryWhen({ ...lasagne, entryDate: '2027-03-05', offsetDays: 3 })).toBe('Fr 5.3., Abend');
   });
 
-  it('AC-019: "Erinnerung: Lasagne · morgen Mittag"', () => {
-    expect(
-      reminderMessage({
-        title: 'Lasagne',
-        entryDate: '2026-11-29',
-        slotName: 'Mittag',
-        offsetDays: 1,
-      }),
-    ).toBe('Erinnerung: Lasagne · morgen Mittag');
-  });
-
-  it('REQ-004: an activity is named with its Zusatz', () => {
-    expect(
-      reminderMessage({
-        title: 'Eislaufen (Hohenschönhausen)',
-        entryDate: '2026-11-29',
-        slotName: 'Vormittag',
-        offsetDays: 0,
-      }),
-    ).toBe('Erinnerung: Eislaufen (Hohenschönhausen) · heute Vormittag');
-  });
-
-  it('REQ-005: without a (known) Tageszeit it is left out, like the scheduler', () => {
+  it('REQ-005: without a (known) Tageszeit it is left out', () => {
     const noSlot = { ...lasagne, slotName: '' };
-    expect(reminderMessage({ ...noSlot, offsetDays: 0 })).toBe('Erinnerung: Lasagne · heute');
-    expect(reminderMessage({ ...noSlot, offsetDays: 1, text: 'Käse' })).toBe(
-      'Erinnerung: Lasagne · morgen · Käse',
-    );
-    expect(reminderMessage({ ...noSlot, offsetDays: 2 })).toBe('Erinnerung: Lasagne · Sa 28.11.');
-  });
-
-  it('REQ-005: a very long name is shortened with "…" to at most 400 characters', () => {
-    const long = 'L'.repeat(500);
-    const message = reminderMessage({ ...lasagne, title: long, offsetDays: 1, text: 'Käse' });
-    expect([...message]).toHaveLength(400);
-    expect(message.endsWith('L… · morgen Abend · Käse')).toBe(true);
-    expect(message.startsWith('Erinnerung: LLL')).toBe(true);
-  });
-
-  it('REQ-005: a name that fits exactly is not shortened', () => {
-    const suffix = ' · heute Abend';
-    const fits = 'N'.repeat(400 - 'Erinnerung: '.length - suffix.length);
-    expect(reminderMessage({ ...lasagne, title: fits, offsetDays: 0 })).toBe(
-      `Erinnerung: ${fits}${suffix}`,
-    );
-  });
-
-  it('REQ-005: shortening counts characters, not UTF-16 units', () => {
-    const message = reminderMessage({ ...lasagne, title: '🍝'.repeat(500), offsetDays: 0 });
-    expect([...message]).toHaveLength(400);
+    expect(entryWhen({ ...noSlot, offsetDays: 0 })).toBe('heute');
+    expect(entryWhen({ ...noSlot, offsetDays: 1 })).toBe('morgen');
+    expect(entryWhen({ ...noSlot, offsetDays: 2 })).toBe('Sa 28.11.');
   });
 });
 
@@ -578,16 +525,10 @@ describe('spec 0021: the time of an entry and its one reminder (REQ-008, REQ-013
   // Saturday, 28.11.2026, 12:00 in Berlin.
   const SATURDAY_NOON = new Date('2026-11-28T11:00:00Z');
 
-  it('AC-037: with a time the message names it, "Erinnerung: Trattoria Da Enzo · heute 19:30"', () => {
-    expect(reminderMessage({ ...enzo, offsetDays: 0, startsAt: '19:30' })).toBe(
-      'Erinnerung: Trattoria Da Enzo · heute 19:30',
-    );
-    expect(reminderMessage({ ...enzo, offsetDays: 1, startsAt: '19:30' })).toBe(
-      'Erinnerung: Trattoria Da Enzo · morgen 19:30',
-    );
-    expect(reminderMessage({ ...enzo, offsetDays: 3, startsAt: '09:05', text: 'Tisch' })).toBe(
-      'Erinnerung: Trattoria Da Enzo · Sa 28.11., 9:05 · Tisch',
-    );
+  it('AC-037: with a time it is named instead of the Tageszeit, "heute 19:30"', () => {
+    expect(entryWhen({ ...enzo, offsetDays: 0, startsAt: '19:30' })).toBe('heute 19:30');
+    expect(entryWhen({ ...enzo, offsetDays: 1, startsAt: '19:30' })).toBe('morgen 19:30');
+    expect(entryWhen({ ...enzo, offsetDays: 3, startsAt: '09:05' })).toBe('Sa 28.11., 9:05');
   });
 
   it('AC-023: every kind carries its Zusatz, "Lasagne (doppelte Menge)"', () => {

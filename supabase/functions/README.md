@@ -1,7 +1,7 @@
 # Edge Functions
 
-Server side of the AI features, the map-link resolver (spec 0003, ADR-0009) and the delivery of
-notifications (spec 0013, ADR-0014). Deno in the Supabase Edge Runtime; unit-tested with vitest
+Server side of the AI features, the map-link resolver (spec 0003, ADR-0009), photo and video handling
+and the nightly media sweep. Deno in the Supabase Edge Runtime; unit-tested with vitest
 under Node.
 
 | Function            | Input (contract)           | Quota     | Calls                                                |
@@ -10,7 +10,6 @@ under Node.
 | `ai-search`         | `AiSearchRequestSchema`    | `request` | Foundry LLM (structured output)                      |
 | `speech-token`      | empty body                 | `speech`  | Azure STS `issueToken` (short token)                 |
 | `resolve-maps-link` | `ResolveMapsLinkRequest…`  | none      | Google short links only, manual hops                 |
-| `push-send`         | `{ messages: [...] }`      | none      | known push services only (Web Push)                  |
 | `fetch-image`       | `FetchImageRequestSchema`  | none      | any public https address (SSRF-safe)                 |
 | `ai-recipe-draft`   | `RecipeDraftRequestSchema` | none      | recipe pages, TikTok, Foundry LLM                    |
 | `ai-image`          | `AiImageRequestSchema`     | none      | Foundry LLM (1 call), FLUX.2-pro (3 in parallel)     |
@@ -23,21 +22,6 @@ Every function: CORS allowlist → POST only → JWT verified with `auth.getClai
 `consume_ai_quota` with the caller's own client → work. Errors are `{ "error": code }`
 (`ErrorReplySchema` in `packages/core/src/ai-contract.ts`). No service-role key is used (except by `media-sweep`, below);
 all database reads run under the caller's RLS.
-
-**Exception `push-send`:** called by `pg_net` from the notification tick, not by the app. No JWT
-and no CORS answers: POST only (else 405) → `x-push-timestamp` (Unix seconds, at most 5 minutes
-old and at most 1 minute ahead, else 401) → body ≤ 128 KB (else 413) → `x-push-signature`, the hex
-HMAC-SHA256 of `<timestamp>.<body>` with `PUSH_SEND_SECRET`, compared in constant time (else 401;
-the database computes it in `private.post_push_bundle`, so the secret never sits in pg_net's
-queue, which every database role can read) → zod (1 to 50 messages, else 400) →
-every endpoint checked again against the known push services (`_shared/push-endpoint.ts`, the same
-pattern as `private.is_push_endpoint`) → encrypted (RFC 8291) and VAPID-signed (RFC 8292) by
-`jsr:@negrel/webpush` 0.5.0, at most 5 at a time, 10 s per message, 15 s per batch. Answer
-`{ "results": [{ "id", "status" }] }` with the push service's HTTP status (any 2xx as 201, because
-the library hides the exact one), `null` (no answer in time, network error) or `"rejected"`
-(unknown endpoint, nothing sent). No database, no Supabase client, no service-role key
-(`push-send/no-db-access.test.ts`). The library and its import map (`push-send/deno.json`) belong
-to this function only.
 
 **`fetch-image`** (spec 0039, ADR-0016): the common path above, then membership of
 `householdId` under the caller's RLS (else 403 `forbidden`), then `_shared/fetch-public.ts`:
@@ -101,7 +85,7 @@ which the app loads through `fetch-image` as the video's poster. No server key, 
 about the link or the video is logged.
 
 **Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
-`private.run_media_orphan_sweep()` (job `media-orphan-sweep`, 02:30 UTC), signed like `push-send`
+`private.run_media_orphan_sweep()` (job `media-orphan-sweep`, 02:30 UTC), signed with an HMAC
 (`x-sweep-timestamp`, `x-sweep-signature`, secret `MEDIA_SWEEP_SECRET`; `_shared/signature.ts`).
 No JWT, no CORS: POST only (405) → fresh timestamp and valid HMAC (401) → body ≤ 128 KB (413) →
 zod: up to 500 names, each `<household>/<activities|recipes|restaurants>/<id>/<uuid>.jpg`, and up
@@ -126,13 +110,8 @@ never logged.
 - `_shared/flux.ts` — the image model client (FLUX.2-pro, BFL path); `_shared/membership.ts` — the
   household membership check of `fetch-image`, `ai-recipe-draft` and `ai-image`.
 - `_shared/signature.ts` — the HMAC check of requests the database sends through pg_net.
-- `push-send/web-push.ts` — adapter to `jsr:@negrel/webpush` (keys, options, status); its tests
-  pin the library against the RFC 8291 Appendix A and RFC 8292 §2.4 vectors.
 - `deno.json` — import map for Deno (`zod`, `@supabase/supabase-js`, same pins as `package.json`).
   Source files use relative `.ts` imports and these two bare specifiers only.
-- `push-send/deno.json` — import map of `push-send` only (`zod`, `@negrel/webpush`). Under Node the
-  library comes from `package.json` as `jsr:0.5.0` (pnpm's JSR protocol, locked in
-  `pnpm-lock.yaml`).
 
 ## Commands
 
@@ -158,11 +137,6 @@ Read by the functions (names only; values live in `.env`, never in the app):
   (`SUPABASE_SECRET_KEYS`, else `SUPABASE_SERVICE_ROLE_KEY`, both injected by Supabase). The
   owner creates the secret and sets it as a function secret and in the Vault
   (`media_sweep_secret`, plus `media_sweep_url`); without the Vault entries the job only warns.
-- `push-send` reads only `PUSH_SEND_SECRET`, `VAPID_PUBLIC_KEY` (base64url of the 65-byte
-  uncompressed P-256 key, the same value as `EXPO_PUBLIC_VAPID_PUBLIC_KEY`), `VAPID_PRIVATE_KEY`
-  (base64url of the 32-byte private scalar) and `VAPID_SUBJECT` (`https:` or `mailto:` URI; locally
-  `https://localhost` in `config.toml`). Secrets: function secrets and Vault only, set by the owner
-  (`node scripts/push-keys.mjs`); agents never generate, read or print them.
 
 A missing variable fails the request with `500 internal` and logs the variable name.
 
@@ -224,8 +198,6 @@ contract reply and without the API key in it; `resolve-maps-link` with a long Go
 with `https://evil.example/` → 422; `ai-search` and `ai-assistant` → 200 with replies that pass
 the contract schemas (`packages/core/src/ai-contract.ts`); a household the caller cannot see →
 400; daily request quota used up (`ai_usage.requests = 200`) → 429 before any Foundry call.
-`push-send` (only when `PUSH_SEND_SECRET` is set in the shell): no signature, a signature with
-the wrong key or one older than 5 minutes → 401, no messages → 400, an internal address → `rejected`, a made-up FCM address → 200 with FCM's status.
 
 Cost per run: two Foundry LLM calls and one Azure speech token. Output: status codes, reply keys
 and timings only — never tokens or keys.

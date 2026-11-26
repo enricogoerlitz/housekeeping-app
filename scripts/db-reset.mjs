@@ -1,9 +1,6 @@
 // Resets the LOCAL database: migrations + supabase/seed.sql (test accounts and demo households).
 // When DEV_OWNER_EMAIL is set (in .env or the environment), that address gets an open invitation
 // to both seed households; a real Google account can sign up with it and accept them.
-// When PUSH_SEND_SECRET is set (created by `node scripts/push-keys.mjs`), the local Vault gets
-// push_send_secret and push_send_url (spec 0013, ADR-0014), so the notification tick can call
-// push-send; without it the reset still succeeds and the tick only warns push_not_configured.
 // Values are handed to psql through the container's environment (\getenv), never as an argument
 // or a file, and never printed.
 //
@@ -79,32 +76,4 @@ on conflict (household_id, email) do nothing;
   console.log('Invited DEV_OWNER_EMAIL to "Enrico & Nadja" and "Test".');
 } else {
   console.log('DEV_OWNER_EMAIL is not set: no owner invitation.');
-}
-
-if (process.env.PUSH_SEND_SECRET?.trim()) {
-  // The database reaches push-send through the Kong gateway in the Docker network of the stack.
-  process.env.PUSH_SEND_URL_LOCAL = `http://supabase_kong_${localProjectId()}:8000/functions/v1/push-send`;
-  const sql = `
-\\getenv secret PUSH_SEND_SECRET
-\\getenv url PUSH_SEND_URL_LOCAL
-select vault.update_secret(s.id, btrim(:'secret')) from vault.secrets s where s.name = 'push_send_secret';
-select vault.create_secret(btrim(:'secret'), 'push_send_secret')
-where not exists (select 1 from vault.secrets where name = 'push_send_secret');
-select vault.update_secret(s.id, :'url') from vault.secrets s where s.name = 'push_send_url';
-select vault.create_secret(:'url', 'push_send_url')
-where not exists (select 1 from vault.secrets where name = 'push_send_url');
-`;
-  const vault = psql(sql, ['PUSH_SEND_SECRET', 'PUSH_SEND_URL_LOCAL']);
-  if (vault.status !== 0) {
-    // psql would echo the failing statement; its output stays hidden.
-    console.error(
-      'Setting the push Vault entries failed (psql output hidden): is the stack running?',
-    );
-    process.exit(vault.status ?? 1);
-  }
-  console.log('Push Vault: push_send_secret and push_send_url set (values not shown).');
-} else {
-  console.log(
-    'PUSH_SEND_SECRET is not set: no push Vault entries, so no local notifications (the tick warns push_not_configured). Create it with node scripts/push-keys.mjs.',
-  );
 }

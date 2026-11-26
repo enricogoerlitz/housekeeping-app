@@ -2716,32 +2716,19 @@ describe('fake server: entry reminders (spec 0017, like the database)', () => {
     expect(stored()).toMatchObject({ date: SATURDAY, reminder_at: '17:00:00' });
   });
 
-  it('REQ-007: a new member’s settings have "Erinnerungen an Einträgen" on; she can switch it', async () => {
+  it('spec 0051: a new member’s row has nothing acknowledged; apply_changes cannot write it', async () => {
     const own = server.rows(H, 'notification_settings').find((row) => row.member_id === ENRICO);
-    expect(own).toMatchObject({ entry_reminders_enabled: true });
-    await apply({
-      kind: 'patch',
-      table: 'notification_settings',
-      id: String(own?.id),
-      changes: { entry_reminders_enabled: false },
-    });
-    expect(server.row(H, 'notification_settings', String(own?.id))).toMatchObject({
-      entry_reminders_enabled: false,
-    });
-  });
-
-  it('AC-027: nobody switches another member’s kind', async () => {
-    const theirs = server.rows(H, 'notification_settings').find((row) => row.member_id === NADJA);
+    expect(own).toMatchObject({ acknowledged_notices: [] });
     await expect(
       apply({
         kind: 'patch',
         table: 'notification_settings',
-        id: String(theirs?.id),
-        changes: { entry_reminders_enabled: false },
+        id: String(own?.id),
+        changes: { acknowledged_notices: ['chore:c:2026-11-20'] },
       }),
-    ).rejects.toMatchObject({ code: 'row_not_found' });
-    expect(server.row(H, 'notification_settings', String(theirs?.id))).toMatchObject({
-      entry_reminders_enabled: true,
+    ).rejects.toMatchObject({ code: 'invalid_change' });
+    expect(server.row(H, 'notification_settings', String(own?.id))).toMatchObject({
+      acknowledged_notices: [],
     });
   });
 });

@@ -72,14 +72,12 @@ export const usePackingBagItems = () => useDataSelector((data) => data.packingBa
 export const usePackingListBags = () => useDataSelector((data) => data.packingListBags);
 export const usePackingItems = () => useDataSelector((data) => data.packingItems);
 /**
- * Spec 0013: the signed-in member's own notification settings in the active household; undefined
- * until the first pull brought the row. "Deine Geräte" is not here: it is online only
- * (listPushDevices).
+ * Spec 0051: the keys of the notices the signed-in member acknowledged in the active household
+ * (her own row of notification_settings); empty until the first pull brought the row.
  */
-export const useNotificationSettings = () => useDataSelector((data) => data.notificationSettings);
-/** Spec 0027, REQ-008: the own settings of another household of mine (from the cache). */
-export const useNotificationSettingsOf = (householdId: string) =>
-  useAppSelector((state) => state.households[householdId]?.notificationSettings);
+export const useAcknowledgedNotices = (): readonly string[] =>
+  useDataSelector((data) => data.notificationSettings?.acknowledgedNotices ?? NONE_ACKNOWLEDGED);
+const NONE_ACKNOWLEDGED: readonly string[] = [];
 
 export interface PackingList {
   listBags: PackingListBag[];

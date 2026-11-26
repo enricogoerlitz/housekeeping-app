@@ -31,12 +31,13 @@
 //   is "main" as before, a collection has none (null ⇄ undefined). Contained recipes
 //   (`collection_recipes`) keep creation order; core orders them by `sort`.
 // - Spec 0013: times of day are "HH:MM" in the domain and "HH:MM:SS" in the rows, as Postgres
-//   returns a `time` (`due_time`, `starts_at`, `daily_summary_at`, `activities_eve_at`); the rows
-//   write them with ":00", so a diff compares like with like. Of `notification_settings` only
-//   the signed-in member's row is `notificationSettings` (RLS sends no other).
+//   returns a `time` (`due_time`, `starts_at`, `reminder_at`); the rows write them with ":00",
+//   so a diff compares like with like. Of `notification_settings` only the signed-in member's row
+//   is `notificationSettings` (RLS sends no other); spec 0051: only its `acknowledged_notices`
+//   are read, the old setting columns are left alone.
 // - Spec 0017: a reminder is the three columns `reminder_day_offset`, `reminder_at` ("HH:MM:SS"
 //   like every time) and `reminder_text` ⇄ `MealPlanEntry.reminder` (none = all three null).
-//   `entry_reminders_enabled` missing reads as its column default, on. `households.timezone` is
+//   `households.timezone` is
 //   `Household.timeZone`, read only: the rows never write it back.
 // - Spec 0041: a symbol outside ACTIVITY_ICONS (the database refuses it) reads as none; a kind
 //   without a valid one as the default. A rule the database would refuse makes its series
@@ -562,13 +563,7 @@ const settingsRow = (householdId: string, settings: NotificationSettings) =>
     id: settings.id,
     household_id: householdId,
     member_id: settings.memberId,
-    daily_summary_enabled: settings.dailySummaryEnabled,
-    daily_summary_at: toDbTime(settings.dailySummaryAt),
-    daily_summary_parts: settings.dailySummaryParts,
-    activities_eve_enabled: settings.activitiesEveEnabled,
-    activities_eve_at: toDbTime(settings.activitiesEveAt),
-    chore_reminders_enabled: settings.choreRemindersEnabled,
-    entry_reminders_enabled: settings.entryRemindersEnabled,
+    acknowledged_notices: settings.acknowledgedNotices,
   }));
 
 /** The row of a bag of a packing list as an insert of `apply_changes` takes it. */
@@ -1115,13 +1110,9 @@ function toNotificationSettings(row: Row): NotificationSettings {
   return {
     id: r.id,
     memberId: r.member_id ?? '',
-    dailySummaryEnabled: r.daily_summary_enabled === true,
-    dailySummaryAt: fromDbTime(r.daily_summary_at) ?? '07:30',
-    dailySummaryParts: (r.daily_summary_parts ?? []) as NotificationSettings['dailySummaryParts'],
-    activitiesEveEnabled: r.activities_eve_enabled === true,
-    activitiesEveAt: fromDbTime(r.activities_eve_at) ?? '19:00',
-    choreRemindersEnabled: r.chore_reminders_enabled === true,
-    entryRemindersEnabled: r.entry_reminders_enabled !== false,
+    acknowledgedNotices: Array.isArray(r.acknowledged_notices)
+      ? r.acknowledged_notices.filter((key): key is string => typeof key === 'string')
+      : [],
   };
 }
 

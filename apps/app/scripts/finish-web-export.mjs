@@ -10,9 +10,6 @@
 //    unset). The app fetches it to notice a new release, so it is never precached (AC-023);
 //    staticwebapp.config.json (from public/) is not precached either: Static Web Apps reads it
 //    at deploy time, and one file it does not serve would fail the whole precache.
-// Web push (spec 0013): the build fails without EXPO_PUBLIC_VAPID_PUBLIC_KEY, like without the
-// Supabase origin; check-web-export.mjs checks its form. The CSP needs nothing for push (the push
-// service talks to the browser, not to the page).
 // Only the export gets these; the dev server stays without service worker and CSP.
 // check-web-export.mjs then verifies the result (part of build:web).
 //
@@ -34,12 +31,6 @@ const indexPath = path.join(dist, 'index.html');
 function fail(message) {
   console.error(`finish-web-export: ${message}`);
   process.exit(1);
-}
-
-if (!process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim()) {
-  fail(
-    'EXPO_PUBLIC_VAPID_PUBLIC_KEY is not set; the app subscribes to web push with it. Create the keys once with `node scripts/push-keys.mjs` (writes .env, prints no value).',
-  );
 }
 
 function supabaseOrigins() {

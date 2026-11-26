@@ -114,8 +114,8 @@ describe('--data-only (spec 0028, decision 3, way D of 23.11.2026)', () => {
     assert.doesNotMatch(sql, /cron\./);
   });
 
-  test('accounts with their profiles and devices stay', () => {
-    assert.match(sql, /tablename not in \('profiles', 'push_subscriptions'\)/);
+  test('accounts with their profiles stay', () => {
+    assert.match(sql, /tablename not in \('profiles'\)/);
     assert.doesNotMatch(sql, /\b(auth|vault|storage)\./);
   });
 });

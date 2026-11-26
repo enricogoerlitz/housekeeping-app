@@ -11,7 +11,7 @@
     "build:web": "expo export --platform web && node scripts/finish-web-export.mjs && node scripts/check-web-export.mjs",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/app-config.test.mjs scripts/check-web-export.test.mjs scripts/sw-push.test.mjs scripts/theme-boot.test.mjs scripts/url-params-usage.test.mjs scripts/list-state.test.mjs scripts/stack-options.test.mjs scripts/startup-images.test.mjs"
+    "test": "node --test scripts/app-config.test.mjs scripts/check-web-export.test.mjs scripts/theme-boot.test.mjs scripts/url-params-usage.test.mjs scripts/list-state.test.mjs scripts/stack-options.test.mjs scripts/startup-images.test.mjs"
   },
   "dependencies": {
     "@housekeeping/api": "workspace:*",

@@ -3,8 +3,7 @@ import { addDays, formatShortDate, weekdayShort } from './dates';
 import type { ISODate, MealPlanEntry, MealSlot, Recipe, TimeOfDay } from './types';
 
 // Vorbereitung (spec 0020, REQ-006, REQ-007): a recipe's Vorlauf shows on the day one has to
-// start at the latest. The rules exist twice: here and in `private.prep_items` (SQL), kept equal
-// by the same cases in prep.test.ts and notification_parity.test.sql.
+// start at the latest; spec 0051: also an in-app notice for who cooks (notices.ts).
 
 const SLOT_START_TIMES: Record<string, TimeOfDay> = {
   Vormittag: '08:00',
@@ -84,7 +83,7 @@ export function prepItems(input: {
         ? contentsInBook(planned, input.book).map((content) => content.recipe)
         : [planned];
     return withLead.flatMap((recipe): PrepItem[] => {
-      // Only what the editor writes (1–168 whole hours), as in SQL.
+      // Only what the editor writes (1–168 whole hours).
       const hours = recipe.leadTime?.hoursBefore;
       if (!recipe.leadTime || !Number.isInteger(hours) || hours === undefined) return [];
       if (hours < 1 || hours > MAX_PREP_HOURS) return [];

@@ -1,12 +1,12 @@
 -- Reminders on plan entries (spec 0017, Task 1): three columns on meal_plan_entries, written only
 -- through apply_changes like every other entry field. Members set, change and clear them; a
 -- foreign household and anon cannot; the database refuses invalid values and a time in the past;
--- moving keeps them, "Vormerken" clears them and undo restores them. The per-person switch
--- entry_reminders_enabled lives in notification_settings. Dates are relative to today (Berlin), so
+-- moving keeps them, "Vormerken" clears them and undo restores them. Spec 0051: they become in-app
+-- notices on the devices (packages/core notices.ts); no scheduler, no per-person switch. Dates are relative to today (Berlin), so
 -- the "not in the past" check holds whenever the test runs.
 begin;
 \ir _helpers.psql
-select plan(57);
+select plan(52);
 
 create temp table fx (key text primary key, id uuid not null default gen_random_uuid()) on commit drop;
 grant select on fx to anon, authenticated;
@@ -197,27 +197,7 @@ select is(tests.affected(format($$ select 1 from public.deleted_records where ta
                                    and record_id = %L $$, tests.fx('e_lasagne'))), 1,
   'AC-024 meal_plan_entries: the delete leaves a tombstone, so the reminder disappears on every device');
 
--- ===================== The per-person switch (REQ-007, AC-027) =====================
-select is((select entry_reminders_enabled from public.notification_settings where member_id = tests.fx('enrico')), true,
-  'REQ-007 notification_settings: "Erinnerungen an Einträgen" is on at the start');
-select lives_ok(
-  tests.apply_sql('home', jsonb_build_array(jsonb_build_object('kind', 'patch', 'table', 'notification_settings',
-    'id', (select id from public.notification_settings where member_id = tests.fx('enrico')),
-    'changes', jsonb_build_object('entry_reminders_enabled', false)))),
-  'AC-025 apply_changes: Enrico switches the kind off for himself');
-select tests.clear_authentication();
-insert into fx (key, id) values
-  ('enrico_settings', (select id from public.notification_settings where member_id = tests.fx('enrico')));
-select tests.authenticate_as(tests.fx('nadja'));
-select throws_ok(
-  tests.apply_sql('home', jsonb_build_array(jsonb_build_object('kind', 'patch', 'table', 'notification_settings',
-    'id', tests.fx('enrico_settings'), 'changes', jsonb_build_object('entry_reminders_enabled', true)))),
-  'P0002', 'row_not_found', 'AC-027 apply_changes: Nadja cannot switch Enrico''s kind');
-select tests.clear_authentication();
-select is((select entry_reminders_enabled from public.notification_settings where id = tests.fx('enrico_settings')), false,
-  'AC-027 notification_settings: Enrico''s setting stays as he set it');
-
--- ===================== Sync, scheduler index, log kind =====================
+-- ===================== Sync =====================
 select tests.authenticate_as(tests.fx('nadja'));
 select is(
   (select e -> 'reminder_at'
@@ -227,12 +207,8 @@ select is(
    where e ->> 'id' = tests.fx('e_new')::text),
   '"09:00:00"'::jsonb, 'REQ-002 sync_pull: the reminder reaches the devices of the household');
 select tests.clear_authentication();
-select has_index('public', 'meal_plan_entries', 'meal_plan_entries_reminder_send_day_idx',
-  'Decision 2 meal_plan_entries: the scheduler finds reminders by household and send day');
-select lives_ok(
-  format($$ insert into private.notification_deliveries (dedupe_key, profile_id, household_id, kind, due_at)
-            values ('entry:x', %L, %L, 'entry_reminder', now()) $$, tests.fx('enrico'), tests.fx('home')),
-  'Decision 2 notification_deliveries: the log knows the kind entry_reminder');
+select hasnt_index('public', 'meal_plan_entries', 'meal_plan_entries_reminder_send_day_idx',
+  'Spec 0051: the index of the scheduler is gone with it');
 
 select * from finish();
 rollback;
