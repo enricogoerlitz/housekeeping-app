@@ -114,6 +114,7 @@ describe('routeLinks', () => {
       favoriteOf: [],
       ratings: {},
       createdAt: '2026-11-01T12:00:00.000Z',
+      remembered: true,
     };
     expect(routeLinks(eislaufen)).toEqual({
       apple: 'https://maps.apple.com/?daddr=52.55,13.5&q=Eisstadion%20Hohensch%C3%B6nhausen',

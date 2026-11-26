@@ -15,6 +15,7 @@ export * from './commands-shopping';
 export * from './commands-chores';
 export * from './commands-restaurants';
 export * from './commands-activities';
+export * from './commands-activity-series';
 export * from './commands-places';
 export * from './commands-packing';
 export * from './commands-notifications';

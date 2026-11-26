@@ -1,5 +1,8 @@
 import type {
   Activity,
+  ActivityKind,
+  ActivitySeries,
+  ActivitySeriesException,
   Area,
   Article,
   Chore,
@@ -39,6 +42,10 @@ export interface HouseholdData {
   collectionRecipes: CollectionRecipe[];
   restaurants: Restaurant[];
   activities: Activity[];
+  /** Spec 0041: "Aktivitätsarten" (creation order), series and their exceptions. */
+  activityKinds: ActivityKind[];
+  activitySeries: ActivitySeries[];
+  activitySeriesExceptions: ActivitySeriesException[];
   planEntries: MealPlanEntry[];
   items: ShoppingItem[];
   chores: Chore[];

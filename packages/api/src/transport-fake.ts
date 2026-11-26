@@ -26,6 +26,10 @@ import {
   PROFILE_COLORS,
   tripDays,
   queueEffect,
+  DEFAULT_ACTIVITY_KINDS,
+  isActivityIcon,
+  normalizeText,
+  SeriesRuleSchema,
   RECIPE_LIMITS,
   type AiSearchRequest,
   type AiSearchResult,
@@ -193,6 +197,7 @@ const CASCADES: Record<string, { table: string; column: string }[]> = {
   activities: [
     { table: 'activity_favorites', column: 'activity_id' },
     { table: 'activity_ratings', column: 'activity_id' },
+    { table: 'activity_series', column: 'activity_id' },
   ],
   feedback: [{ table: 'feedback_votes', column: 'feedback_id' }],
   // Spec 0012: the same table as the diff uses (db/tables.ts).
@@ -227,6 +232,15 @@ const REFERENCES: {
     onDelete: 'restrict',
   },
   { table: 'meal_plan_entries', column: 'activity_id', target: 'activities', onDelete: 'restrict' },
+  // Spec 0041.
+  { table: 'activities', column: 'kind_id', target: 'activity_kinds', onDelete: 'set null' },
+  { table: 'activity_series', column: 'activity_id', target: 'activities', onDelete: 'cascade' },
+  {
+    table: 'activity_series_exceptions',
+    column: 'series_id',
+    target: 'activity_series',
+    onDelete: 'cascade',
+  },
   {
     table: 'meal_plan_entries',
     column: 'leftovers_of_entry_id',
@@ -441,6 +455,9 @@ interface PlaceDeletion {
   /** The old values of the entries that became free text, and the text written. */
   converted: (Row & { new_text: string })[];
   removed: Row[];
+  /** Spec 0041: the series of an activity and their exceptions. */
+  series: Row[];
+  exceptions: Row[];
 }
 type PlaceKind = 'restaurant' | 'activity';
 /** A row of private.deletions: primary key (household, kind, target), the snapshot by kind. */
@@ -849,6 +866,33 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   if (table === 'activities') {
     const clash = Object.values(tables.activities ?? {}).some(
       (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+    // activities_icon_valid (spec 0041, Entscheidung 5).
+    if (row.icon != null && !isActivityIcon(String(row.icon))) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  // activity_kinds_icon_valid, activity_kinds_household_id_name_key_key (spec 0041).
+  if (table === 'activity_kinds') {
+    if (!isActivityIcon(String(row.icon))) throw new TransportError('permanent', '23514', 400);
+    const clash = Object.values(tables.activity_kinds ?? {}).some(
+      (other) => other.id !== row.id && other.name_key === row.name_key,
+    );
+    if (clash) throw new TransportError('permanent', '23505', 409);
+  }
+  // activity_series_rule_valid, activity_series_period_valid (spec 0041).
+  if (table === 'activity_series') {
+    const invalidPeriod = row.ends_on != null && String(row.ends_on) < String(row.starts_on);
+    if (!SeriesRuleSchema.safeParse(row.rule).success || invalidPeriod) {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
+  // activity_series_exceptions_one_per_occurrence (spec 0041).
+  if (table === 'activity_series_exceptions') {
+    const clash = Object.values(tables.activity_series_exceptions ?? {}).some(
+      (other) =>
+        other.id !== row.id && other.series_id === row.series_id && other.on_date === row.on_date,
     );
     if (clash) throw new TransportError('permanent', '23505', 409);
   }
@@ -2505,6 +2549,13 @@ export function createFakeServer(): FakeServer {
         favorites: parentRows(place.favorites).map((favorite) => String(favorite.member_id)),
         converted,
         removed: later,
+        series: kind === 'activity' ? parentRows('activity_series') : [],
+        exceptions:
+          kind === 'activity'
+            ? Object.values(before.activity_series_exceptions ?? {}).filter((exception) =>
+                parentRows('activity_series').some((series) => series.id === exception.series_id),
+              )
+            : [],
       };
       let tables = before;
       for (const entry of converted) {
@@ -2541,6 +2592,14 @@ export function createFakeServer(): FakeServer {
     transaction(householdId, (before) => {
       const row: Row = { ...withoutTimestamps(deletion.row), created_at: deletion.row.created_at };
       if (kind === 'activity' && !current.has(String(row.created_by))) row.created_by = null;
+      // A kind deleted meanwhile is not put back (spec 0041).
+      if (
+        kind === 'activity' &&
+        row.kind_id != null &&
+        !before.activity_kinds?.[String(row.kind_id)]
+      ) {
+        row.kind_id = null;
+      }
       checkRow(householdId, place.table, row, before);
       let tables = withRow(before, place.table, row);
       for (const rating of deletion.ratings) {
@@ -2565,6 +2624,18 @@ export function createFakeServer(): FakeServer {
           eater_ids: eaters.filter((id) => current.has(id)),
           cook_id: current.has(String(entry.cook_id)) ? entry.cook_id : null,
         });
+      }
+      for (const series of deletion.series) {
+        if (tables.activity_series?.[series.id]) continue;
+        const eaters = Array.isArray(series.eater_ids) ? series.eater_ids.map(String) : [];
+        tables = withRow(tables, 'activity_series', {
+          ...withoutTimestamps(series),
+          eater_ids: eaters.filter((id) => current.has(id)),
+        });
+      }
+      for (const exception of deletion.exceptions) {
+        if (tables.activity_series_exceptions?.[exception.id]) continue;
+        tables = withRow(tables, 'activity_series_exceptions', withoutTimestamps(exception));
       }
       for (const entry of deletion.converted) {
         const now = tables.meal_plan_entries?.[entry.id];
@@ -3184,6 +3255,20 @@ export function createFakeServer(): FakeServer {
             updated_at: time,
           });
           createNotificationSettings(id, userId);
+          // households_seed_activity_kinds (spec 0041, REQ-001).
+          transaction(id, (tables) => [
+            withRows(
+              tables,
+              'activity_kinds',
+              DEFAULT_ACTIVITY_KINDS.map((kind) => ({
+                id: crypto.randomUUID(),
+                name: kind.name,
+                name_key: normalizeText(kind.name),
+                icon: kind.icon,
+              })),
+            ),
+            undefined,
+          ]);
           return id;
         }),
 
