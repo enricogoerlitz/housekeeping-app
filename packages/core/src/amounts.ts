@@ -154,6 +154,11 @@ function findUnit(token: string): string | undefined {
   return UNIT_BY_SPELLING.get(token.normalize('NFC').toLowerCase());
 }
 
+/** True for a unit as it may be written ("g", "Dosen", "el"), e.g. a line "200 g" with no name yet. */
+export function isUnitWord(token: string): boolean {
+  return findUnit(token) !== undefined;
+}
+
 function isSize(token: string): boolean {
   return SIZE.test(token.normalize('NFC'));
 }
@@ -412,11 +417,16 @@ export function amountScalingHint(text: string): string | undefined {
   return scales ? 'Wird mit den Portionen umgerechnet' : 'Bleibt beim Umrechnen gleich';
 }
 
+/** A pasted line without its leading bullet ("- ", "• "). */
+export function withoutBullet(line: string): string {
+  return line.replace(BULLET, '');
+}
+
 /** Splits a pasted block into lines and parses each; empty lines and bullets ("- ", "• ") are ignored. */
 export function parseIngredientBlock(text: string): ParsedIngredient[] {
   return text
     .split(/\r?\n/)
-    .map((line) => parseIngredientLine(line.replace(BULLET, '')))
+    .map((line) => parseIngredientLine(withoutBullet(line)))
     .filter((ingredient): ingredient is ParsedIngredient => ingredient !== null);
 }
 /** German number formatting: 1.5 → "1,5", 600 → "600", 0.333 → "0,33". */

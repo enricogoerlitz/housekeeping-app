@@ -111,7 +111,11 @@ function textsOf(item: SearchOrCreateItem): string[] {
 export function matchSearchOrCreate<T extends SearchOrCreateItem>(
   query: string,
   items: readonly T[],
-  options?: { limit?: number },
+  options?: {
+    limit?: number;
+    /** Higher first among hits of equal quality, e.g. how often an article is used (spec 0050). */
+    rank?: (item: T) => number;
+  },
 ): SearchOrCreateResult<T> {
   const q = normalizeText(query);
   if (q === '') return { matches: [], canCreate: false };
@@ -132,10 +136,12 @@ export function matchSearchOrCreate<T extends SearchOrCreateItem>(
     }
     if (best.score > 0) scored.push({ ...best, wordPart: best.score === SCORE.wordPart });
   }
+  const rank = options?.rank ?? (() => 0);
   scored.sort(
     (a, b) =>
       b.score - a.score ||
       b.piece - a.piece ||
+      rank(b.item) - rank(a.item) ||
       a.item.name.length - b.item.name.length ||
       a.item.name.localeCompare(b.item.name, 'de'),
   );

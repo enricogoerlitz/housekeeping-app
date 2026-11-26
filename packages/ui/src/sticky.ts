@@ -17,3 +17,18 @@ export function stickyTopStyle(platform: string, background: string): ViewStyle 
     backgroundColor: background,
   };
 }
+
+/**
+ * A strip that stays at the bottom of its scroll area while the content above it is longer, e.g.
+ * the chips of "Zutaten einfügen" (spec 0050, Entscheidung 3): a phone window sits on the open
+ * keyboard, so its bottom is just above the keys. Otherwise it stands where it is.
+ */
+export function stickyBottomStyle(platform: string, background: string): ViewStyle {
+  if (platform !== 'web') return {};
+  return {
+    position: 'sticky' as ViewStyle['position'],
+    bottom: 0,
+    zIndex: 2,
+    backgroundColor: background,
+  };
+}

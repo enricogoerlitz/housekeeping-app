@@ -2,9 +2,11 @@ import { starterCatalogEntries } from '@housekeeping/api';
 import {
   ingredientDrafts,
   rowsFromIngredientDrafts,
+  withLinePicks,
   type Article,
   type Id,
   type IngredientRow,
+  type LinePicks,
 } from '@housekeeping/core';
 
 // Rows of "Mehrere einfügen" (spec 0007, REQ-002) live only in the draft of the section "Zutaten"
@@ -19,10 +21,17 @@ let rowSeq = 0;
 /** A key for a row that is not stored yet; unique while the app runs. */
 export const newRowKey = (): string => `row-${++rowSeq}`;
 
-/** The rows of a pasted block: sure lines with their article, the others orange (AC-008). */
-export function rowsFromText(text: string, articles: readonly Article[]): IngredientRow[] {
+/**
+ * The rows of a pasted block: sure lines with their article, the others orange (AC-008), and the
+ * lines whose article was picked in the preview with that one (spec 0050, AC-012, AC-013).
+ */
+export function rowsFromText(
+  text: string,
+  articles: readonly Article[],
+  picks: LinePicks = new Map(),
+): IngredientRow[] {
   return rowsFromIngredientDrafts(
-    ingredientDrafts(text, articles, starterCatalogEntries, newRowKey),
+    withLinePicks(ingredientDrafts(text, articles, starterCatalogEntries, newRowKey), picks),
   );
 }
 
