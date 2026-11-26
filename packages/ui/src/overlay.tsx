@@ -227,6 +227,15 @@ export function Sheet(props: SheetProps) {
     };
   }, [mounted, isPhone]);
 
+  // Spec 0044, REQ-003: closed with the cursor in one of its fields, the keyboard goes along with
+  // the window instead of after it has gone.
+  useEffect(() => {
+    if (props.visible || typeof document === 'undefined') return;
+    const box = panel.current as unknown;
+    const active = document.activeElement;
+    if (box instanceof Node && active instanceof HTMLElement && box.contains(active)) active.blur();
+  }, [props.visible]);
+
   // Spec 0036, REQ-014: Enter in a one-line field presses the primary button, unless greyed out.
   const primary = props.actions?.primary;
   const submit = props.visible && primary && !primary.disabled ? primary.onPress : undefined;
@@ -311,17 +320,20 @@ export function Sheet(props: SheetProps) {
               <View
                 ref={layer}
                 testID={props.testID ? `${props.testID}-layer` : undefined}
-                style={{
-                  flex: 1,
-                  justifyContent: isPhone ? 'flex-end' : 'center',
-                  alignItems: isPhone ? 'stretch' : 'center',
-                  // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
-                  paddingTop: insets.top,
-                  paddingLeft: insets.left,
-                  paddingRight: insets.right,
-                  // The layer keeps the full height on iOS; the window stands on the keyboard.
-                  paddingBottom: typing ? keyboard.inset : 0,
-                }}
+                style={[
+                  {
+                    flex: 1,
+                    justifyContent: isPhone ? 'flex-end' : 'center',
+                    alignItems: isPhone ? 'stretch' : 'center',
+                    // Clear of the status bar, the notch and, in landscape, the rounded corners (REQ-008).
+                    paddingTop: insets.top,
+                    paddingLeft: insets.left,
+                    paddingRight: insets.right,
+                    // The layer keeps the full height on iOS; the window stands on the keyboard.
+                    paddingBottom: typing ? keyboard.inset : 0,
+                  },
+                  isPhone && !reduced ? KEYBOARD_GLIDE : null,
+                ]}
               >
                 <Animated.View
                   {...SCRIM_PART}
@@ -612,6 +624,20 @@ const PANEL_PART = { dataSet: { sheetPart: 'panel' } } as object;
 const SHEET_HEAD = { dataSet: { sheetHead: 'true' } } as object;
 /** On the web: a swipe here moves nothing of the browser's own (spec 0033, AC-013). */
 const NO_PAN = (Platform.OS === 'web' ? { touchAction: 'none' } : null) as ViewStyle | null;
+
+/**
+ * On the web: a phone window glides onto the keyboard as it comes and down as it goes, instead
+ * of jumping there (spec 0044, REQ-002); the same easing as the window's own slide.
+ */
+const KEYBOARD_GLIDE = (
+  Platform.OS === 'web'
+    ? {
+        transitionProperty: 'padding-bottom',
+        transitionDuration: `${OPEN_MS}ms`,
+        transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)',
+      }
+    : null
+) as ViewStyle | null;
 
 /** On the web: a scrolling panel keeps its scroll to itself (spec 0019, REQ-009). */
 const OVERSCROLL_CONTAIN = { overscrollBehavior: 'contain' } as object;

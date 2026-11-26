@@ -6,6 +6,7 @@ import { TextInput, View, type HostInstance } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TextField } from './controls';
+import { HANDOVER_MS, openKeyboardNow } from './keyboard-proxy';
 import { Sheet, ToastHost, toast, useToastAvoid } from './overlay';
 import { Text } from './primitives';
 
@@ -274,7 +275,7 @@ describe('Sheet with the keyboard moving (spec 0033, REQ-003)', () => {
     vi.useRealTimers();
   });
 
-  it('AC-008: the keyboard rising in steps moves the window once, to its final place', () => {
+  it('AC-008 (changed by spec 0044, AC-007): after the first step, further heights wait until they settle', () => {
     setWindow(390, 844);
     render(
       <Sheet visible onClose={() => undefined} title="Link" size="m" testID="sheet">
@@ -284,7 +285,8 @@ describe('Sheet with the keyboard moving (spec 0033, REQ-003)', () => {
     report(700);
     report(520);
     report(400);
-    expect(screen.getByTestId('sheet').style.maxHeight).toBe('760px');
+    // The keyboard coming is taken at once (520 px visible), the rest once it has settled.
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('508px');
     act(() => vi.advanceTimersByTime(200));
     expect(screen.getByTestId('sheet').style.maxHeight).toBe('388px');
     expect(screen.getByTestId('sheet-layer').style.paddingBottom).toBe('444px');
@@ -307,6 +309,119 @@ describe('Sheet with the keyboard moving (spec 0033, REQ-003)', () => {
     act(() => vi.advanceTimersByTime(200));
     expect(scrollTo).toHaveBeenCalledWith(0, 0);
     expect(screen.getByTestId('sheet-layer').style.paddingBottom).toBe('0px');
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+    scrollTo.mockRestore();
+  });
+});
+
+describe('Sheet with the keyboard on iPhone (spec 0044, REQ-002, REQ-003)', () => {
+  const viewport = window.visualViewport as unknown as EventTarget & {
+    visible?: number;
+    offsetTop: number;
+  };
+  const userAgent = Object.getOwnPropertyDescriptor(window.navigator, 'userAgent');
+  function report(visible: number | undefined) {
+    viewport.visible = visible;
+    act(() => {
+      viewport.dispatchEvent(new Event('resize'));
+    });
+  }
+  const layer = () => screen.getByTestId('sheet-layer').style.paddingBottom;
+  function openSheet() {
+    return render(
+      <Sheet visible onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+  }
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.localStorage.clear();
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15',
+    });
+  });
+  afterEach(() => {
+    report(undefined);
+    act(() => vi.runOnlyPendingTimers());
+    viewport.offsetTop = 0;
+    vi.useRealTimers();
+    if (userAgent) Object.defineProperty(window.navigator, 'userAgent', userAgent);
+    else Reflect.deleteProperty(window.navigator, 'userAgent');
+  });
+
+  it('AC-003: the keyboard coming puts the window on it at once', () => {
+    setWindow(390, 844);
+    openSheet();
+    report(464);
+    expect(layer()).toBe('380px');
+  });
+
+  it('AC-004: after a tap that asked for it, the window waits where the keyboard will be', () => {
+    setWindow(390, 844);
+    // Measured once before.
+    report(464);
+    report(undefined);
+    act(() => openKeyboardNow());
+    openSheet();
+    expect(layer()).toBe('380px');
+    report(464);
+    expect(layer()).toBe('380px');
+    act(() => vi.advanceTimersByTime(2000));
+    expect(layer()).toBe('380px');
+  });
+
+  it('AC-005: never measured, it waits 45 % of the window high', () => {
+    setWindow(390, 700);
+    act(() => openKeyboardNow());
+    openSheet();
+    expect(layer()).toBe('315px');
+  });
+
+  it('AC-006: no keyboard after 1.5 s, the window goes back to the bottom edge', () => {
+    setWindow(390, 844);
+    act(() => openKeyboardNow());
+    openSheet();
+    expect(layer()).not.toBe('0px');
+    act(() => vi.advanceTimersByTime(HANDOVER_MS + 50));
+    expect(layer()).toBe('0px');
+  });
+
+  it('AC-008: the visible area moved down by 120 px, the window ends at its bottom edge', () => {
+    setWindow(390, 844);
+    openSheet();
+    viewport.offsetTop = 120;
+    report(464);
+    expect(layer()).toBe('260px');
+  });
+
+  it('AC-009: closed with the cursor in a field, the field lets go of it at once', () => {
+    setWindow(390, 844);
+    const view = openSheet();
+    act(() => vi.advanceTimersByTime(400));
+    const title = screen.getByTestId('title');
+    expect(document.activeElement).toBe(title);
+    // The stand-in animation unmounts at once; the window lets go of the cursor itself first.
+    const blur = vi.spyOn(title, 'blur');
+    view.rerender(
+      <Sheet visible={false} onClose={() => undefined} title="Neu" size="m" testID="sheet">
+        <TextField label="Titel" autoFocus testID="title" />
+      </Sheet>,
+    );
+    expect(blur).toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(title);
+  });
+
+  it('AC-010: the keyboard gone, the window is at the bottom edge at once and the page at the top', () => {
+    setWindow(390, 844);
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+    openSheet();
+    report(464);
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 180 });
+    report(undefined);
+    expect(layer()).toBe('0px');
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
     Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
     scrollTo.mockRestore();
   });
