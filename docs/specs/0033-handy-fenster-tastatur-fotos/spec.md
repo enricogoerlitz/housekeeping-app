@@ -254,7 +254,9 @@ grün: `field-autofill.test.ts` (neutrale Namen, Wortverbinder, iPhone-Erkennung
 `TextField` hat Textfelder), `keyboard-proxy.test.tsx` (AC-017, AC-018, AC-020). Dev-Server
 (Port 8095), WebKit mit iPhone-Kennung 390 × 844: „Neu → Rezept“, „Neu → Restaurant“, „Neuer
 Artikel“, „Neue Aufgabe“ – Fokus wandert ohne Umweg über einen Knopf ins erste Feld. Offen:
-iPhone-Abnahme (Tastatur geht auf, keine Kontakt-Leiste).
+iPhone-Abnahme (Tastatur geht auf, keine Kontakt-Leiste). `/security-check` (security-auditor) auf dem Diff
+aller Nachträge: 0 Befunde, 2 Hinweise ohne Angriffspfad (Fokus-Ersatz gilt seitenweit für 1,5 s;
+verstecktes Feld ist `aria-hidden`, aber fokussierbar).
 
 QA-Nachtrag 26.11.: Entscheidungen 11 und 12. `sheet-size.test.ts`, `overlay.test.tsx`,
 `overlay-handy.test.tsx` (Toast oben statt auf den Sternen) und `toast-place.test.ts` (`toastEdge`,
