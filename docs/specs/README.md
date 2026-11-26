@@ -55,6 +55,7 @@ Ablauf und Regeln: siehe `AGENTS.md`, Abschnitt „Workflow per feature“.
 | [0046](0046-rezept-mediengalerie/spec.md)                   | Rezept-Mediengalerie mit mehreren Videos                               | freigegeben |
 | [0047](0047-feinschliff-teilen-foto-links-kalender/spec.md) | Feinschliff: Teilen, Foto-Fenster, „+ Link“, Foto im Plan-Eintrag      | freigegeben |
 | [0048](0048-sicherung-ohne-videos/spec.md)                  | Sicherung ohne Videos                                                  | freigegeben |
+| [0049](0049-websuche-und-aenderungsansicht/spec.md)         | Websuche und Änderungsansicht                                          | freigegeben |
 | [0050](0050-zutaten-vorschlaege-beim-einfuegen/spec.md)     | Zutaten einfügen: Vorschläge beim Tippen und Vorschau                  | freigegeben |
 | [0051](0051-mitteilungen-in-der-app-statt-push/spec.md)     | Mitteilungen in der App statt Push                                     | freigegeben |
 | [0052](0052-bildprompt-aufbereitung/spec.md)                | Bild-Prompt aufbereiten: aus einem kurzen Wunsch drei gute Bilder      | freigegeben |
