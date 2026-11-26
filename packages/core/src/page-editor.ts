@@ -25,7 +25,8 @@ import {
   type StepsDraft,
 } from './recipe-editor';
 import { ingredientsForVariant } from './recipe-variants';
-import type { Id, Recipe, RecipeKind, RecipeLink } from './types';
+import { normalizeText } from './text';
+import type { Course, Id, Recipe, RecipeKind, RecipeLink } from './types';
 
 // The edit mode of the recipe page (spec 0037, REQ-001; replaces the sections of spec 0008,
 // REQ-007): a pen at the top opens every section of the page at once, "Speichern" saves the
@@ -163,6 +164,10 @@ export interface PageDraftInput {
   title?: string;
   servings?: number;
   totalMinutes?: number;
+  /** Einordnung (recipes only); tags are added, each spelling once. */
+  course?: Course;
+  cuisine?: string;
+  tags?: readonly string[];
   /** Added after the rows there are. */
   ingredients?: readonly IngredientRow[];
   /** Added after the steps there are (recipes only). */
@@ -178,13 +183,38 @@ export interface PageDraftInput {
  * the edit mode and saves it with "Speichern" or throws it away with "Abbrechen". Spec 0040 hooks
  * in here (and the app's page editor `load`, which also takes a photo).
  */
-export function fillPageDraft(page: PageDraft, input: PageDraftInput, newId: () => Id): PageDraft {
+export function fillPageDraft(
+  page: PageDraft,
+  input: PageDraftInput,
+  newId: () => Id,
+  /** "Ersetzen" (spec 0040, AC-006): the draft's ingredients and steps take the place of the old. */
+  options: { replace?: boolean } = {},
+): PageDraft {
   let next = page;
   const head = { ...page.head };
   if (input.title !== undefined) head.title = input.title;
   if (input.servings !== undefined) head.servings = String(input.servings);
   if (input.totalMinutes !== undefined) head.totalMinutes = String(input.totalMinutes);
   next = withSection(next, head);
+  if (next.classification) {
+    const classification = { ...next.classification };
+    if (input.course !== undefined) classification.course = input.course;
+    if (input.cuisine !== undefined) classification.cuisine = input.cuisine;
+    if (input.tags) {
+      const tags = [...classification.tags];
+      for (const tag of input.tags) {
+        if (!tags.some((known) => normalizeText(known) === normalizeText(tag))) tags.push(tag);
+      }
+      classification.tags = tags;
+    }
+    next = withSection(next, classification);
+  }
+  if (options.replace && input.ingredients && input.ingredients.length > 0) {
+    next = withSection(next, { ...next.ingredients, rows: [] });
+  }
+  if (options.replace && next.steps && input.steps && input.steps.length > 0) {
+    next = withSection(next, { ...next.steps, steps: [] });
+  }
   if (input.ingredients && input.ingredients.length > 0) {
     next = withSection(next, addIngredientRows(next.ingredients, input.ingredients));
   }

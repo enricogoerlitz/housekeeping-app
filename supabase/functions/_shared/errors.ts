@@ -6,6 +6,7 @@ const STATUS: { [code in ErrorCode]: number } = {
   forbidden: 403,
   not_a_maps_link: 422,
   not_an_image: 422,
+  payload_too_large: 413,
   quota_exceeded: 429,
   internal: 500,
   ai_unavailable: 503,

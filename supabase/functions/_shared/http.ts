@@ -14,14 +14,16 @@ export interface Endpoint<Input> {
   schema: z.ZodType<Input>;
   /** Charged after the body is valid and before `run`; omit for functions without cost. */
   quota?: QuotaKind;
+  /** Largest body taken (default 64 KB); more is 413 before anything else is read or done. */
+  maxBodyBytes?: number;
   /** The reply as JSON, or a ready Response (bytes, fetch-image) that gets the CORS headers. */
   run(context: { input: Input; client: UserClient; userId: string }): Promise<unknown>;
 }
 
-/** Reads at most `limit` bytes; an empty body counts as `{}`. */
+/** Reads at most `limit` bytes (more is 413); an empty body counts as `{}`. */
 async function readJsonBody(request: Request, limit: number): Promise<unknown> {
   const bytes = await readLimitedBody(request, limit);
-  if (bytes === null) throw new HttpError('invalid_request');
+  if (bytes === null) throw new HttpError('payload_too_large');
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim();
     return text === '' ? {} : (JSON.parse(text) as unknown);
@@ -52,7 +54,9 @@ export async function handleRequest<Input>(
     if (request.method !== 'POST') throw new HttpError('invalid_request');
 
     const { client, userId } = await authenticate(request, deps);
-    const parsed = endpoint.schema.safeParse(await readJsonBody(request, MAX_BODY_BYTES));
+    const parsed = endpoint.schema.safeParse(
+      await readJsonBody(request, endpoint.maxBodyBytes ?? MAX_BODY_BYTES),
+    );
     if (!parsed.success) throw new HttpError('invalid_request');
     if (endpoint.quota) await consumeQuota(client, endpoint.quota);
     const reply = await endpoint.run({ input: parsed.data, client, userId });

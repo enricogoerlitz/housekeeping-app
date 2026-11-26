@@ -5,13 +5,20 @@ import { HttpError, requireEnv } from './errors.ts';
 import { UpstreamUnavailable, fetchTextWithRetry } from './retry.ts';
 import { parseModelOutput, toStrictJsonSchema } from './strict-schema.ts';
 
+/** One part of a message: text, or an image as a `data:image/jpeg;base64,…` URL (spec 0040). */
+export type FoundryContentPart =
+  { type: 'input_text'; text: string } | { type: 'input_image'; image_url: string };
+
 export interface FoundryRequest<T> {
   /** Name of the output schema, `[a-z_]`. */
   name: string;
   schema: z.ZodType<T>;
   instructions: string;
-  input: { role: 'user'; content: string }[];
+  input: { role: 'user'; content: string | FoundryContentPart[] }[];
   maxOutputTokens: number;
+  /** Attempts and time budget (fetchTextWithRetry; defaults 3 and 20 s). */
+  attempts?: number;
+  budgetMs?: number;
 }
 
 function outputText(body: unknown): string | undefined {
@@ -40,24 +47,29 @@ export async function callFoundry<T>(
   const model = requireEnv(deps.env, 'FOUNDRY_LLM_DEPLOYMENT');
   let reply: { status: number; text: string };
   try {
-    reply = await fetchTextWithRetry(deps.fetch, `${baseUrl}/responses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
-      body: JSON.stringify({
-        model,
-        instructions: request.instructions,
-        input: request.input,
-        text: {
-          format: {
-            type: 'json_schema',
-            name: request.name,
-            strict: true,
-            schema: toStrictJsonSchema(request.schema),
+    reply = await fetchTextWithRetry(
+      deps.fetch,
+      `${baseUrl}/responses`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+        body: JSON.stringify({
+          model,
+          instructions: request.instructions,
+          input: request.input,
+          text: {
+            format: {
+              type: 'json_schema',
+              name: request.name,
+              strict: true,
+              schema: toStrictJsonSchema(request.schema),
+            },
           },
-        },
-        max_output_tokens: request.maxOutputTokens,
-      }),
-    });
+          max_output_tokens: request.maxOutputTokens,
+        }),
+      },
+      { attempts: request.attempts, budgetMs: request.budgetMs },
+    );
   } catch (error) {
     const status = error instanceof UpstreamUnavailable ? error.status : undefined;
     console.error('foundry_unavailable', { status });

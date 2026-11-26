@@ -125,6 +125,30 @@ Entscheidung 3 A. Offline: nur online.
      Bilddaten; bei REQ-005 schickt die App das Foto mit (verkleinert, 1024 px). Speichern nur bei
      „Übernehmen“ über den normalen Foto-Weg.
    - Zeitgrenzen: 60 s für den Entwurf, 45 s je Bild; ein Versuch mehr bei 429/5xx.
+5. Agent, 26.11. (beim Bau, entschieden ohne Rückfrage, Enrico unterwegs):
+   - **TikTok-Untertitel:** Enricos Testvideo hat eine leere Beschreibung (`desc`), aber
+     automatische deutsche Untertitel (WebVTT, ≈ 3 KB) im Seiten-JSON. Die Funktion liest sie mit
+     (nur TikTok-Hosts, 64 KB, 5 s) und gibt sie mit der Beschreibung an die KI. Kein Video, kein
+     Ton. Ohne sie bekäme die KI bei diesem Video nur den Link.
+   - **Neues Rezept ohne Datenbank (AC-001):** „Neu → Mit KI ausfüllen“ legt nichts an. Die
+     Rezeptseite zeigt das Rezept nur als Entwurf aus dem Speicher der App; erst „Speichern“ legt
+     Rezept und alle Abschnitte in einem Schritt an (`createRecipeFromPage`), „Abbrechen“ →
+     „Verwerfen“ verlässt die Seite. Neu laden der Seite verwirft den Entwurf („gibt es nicht
+     mehr“).
+   - **„Ergänzen oder ersetzen?“ (AC-006)** ist im KI-Fenster eine Auswahl (Ergänzen
+     vorgewählt), sichtbar nur, wenn das Rezept schon Zutaten hat; „Ersetzen“ ersetzt Zutaten und
+     Schritte.
+   - **Nicht gelesene Links (AC-004, AC-017):** Weil das Fenster nach dem Ausfüllen schließt,
+     kommt der Hinweis „chefkoch.de konnte nicht gelesen werden“ zusätzlich als Toast auf der
+     Rezeptseite.
+   - **Bilder spätestens nach 30 s (AC-012):** Hängt ein FLUX-Aufruf (in der Probe einmal 45 s),
+     antwortet `ai-image` 30 s nach dem Start mit den fertigen Varianten; die hängende zählt als
+     fehlgeschlagen (AC-014). Ohne fertige Variante gilt weiter die 45-s-Grenze je Bild.
+   - **413 für alle Funktionen:** Ein zu großer Body ist jetzt überall `payload_too_large` (413)
+     statt `invalid_request` (400), auch bei Assistent und KI-Suche.
+   - **Schalter:** `features.aiRecipes = true` (Entscheidung 1); `features.ai` bleibt aus.
+   - **Mikrofon verweigert (AC-009):** Der Hinweis nennt jetzt den Weg „Einstellungen › Apps ›
+     Safari › Mikrofon“; er gilt auch für den (ausgeschalteten) Assistenten.
 
 ## Daten
 
@@ -142,16 +166,37 @@ nicht gespeichert.
 | Kosten laufen weg                  | Limit in Azure (Entscheidung 2), Grenzen je Aufruf (3 Links, 4 Fotos, 3 Bilder) | Vertragstest Grenzen       |
 | Abgemeldet / fremder Haushalt      | JWT + Mitgliedschaft geprüft                                                    | Test 401/403               |
 | Großer Body als Angriff            | 6 MB nur in `ai-recipe-draft`/`ai-image`, zod vor jeder Arbeit                  | Test 413                   |
+| Fremde Seite legt Funktion lahm    | `/security-check` 26.11. (niedrig): HTML→Text als linearer Scanner statt Regex  | Test 2 MB `<!--`, `<`      |
+| Hängende Bildvariante kostet       | `/security-check` 26.11. (Hinweis): läuft nach der 30-s-Antwort bis 45 s weiter | akzeptiert, Limit in Azure |
 
 ## Umsetzung
 
-- [ ] 1. ADR-0016 „Bildmodell und Abruf fremder Seiten“; Schalter `features.aiRecipes`
-- [ ] 2. Vertrag in core (Eingabe, Entwurf, Bilder) + Zuordnung zu Artikeln (AC-002) mit Tests
-- [ ] 3. Gemeinsamer sicherer Abruf (`_shared/fetch-public.ts`, aus Spec 0039) + HTML → Text + TikTok-Auflösung (AC-004, AC-016, AC-017)
-- [ ] 4. `ai-recipe-draft` (AC-001–AC-007)
-- [ ] 5. `ai-image` (AC-012–AC-015)
-- [ ] 6. App: KI-Feld mit Links, Fotos, Mikrofon, Schalter (AC-001, AC-006, AC-008–AC-011)
-- [ ] 7. App: Reiter „KI“ im Foto-Fenster (AC-012–AC-015)
-- [ ] 8. Secrets in Vorschau/Produktion setzen lassen bzw. per Pipeline (Enrico-Todo, falls nötig)
-- [ ] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/security-check`; echte
-      Aufrufe gegen Foundry in der Vorschau
+- [x] 1. ADR-0016 „Bildmodell und Abruf fremder Seiten“ (mit Spec 0039 angelegt); Schalter
+      `features.aiRecipes`
+- [x] 2. Vertrag in core (`ai-contract.ts`: Eingabe, Entwurf, Bilder) + Zuordnung zu Artikeln
+      (`recipe-draft.ts`, AC-002) mit Tests
+- [x] 3. Sicherer Abruf mit `allowHost` (TikTok-Hosts) + HTML → Text (`page-text.ts`) +
+      TikTok-Auflösung mit Beschreibung, Untertiteln und Vorschaubild (`tiktok.ts`)
+- [x] 4. `ai-recipe-draft` (AC-001–AC-007, AC-011, AC-016, AC-017)
+- [x] 5. `ai-image` (AC-012–AC-015)
+- [x] 6. App: KI-Feld mit Links, Fotos, Mikrofon, Schalter, Entwurf ohne Datenbank,
+      Fotovorschläge (AC-001, AC-006, AC-008–AC-011)
+- [x] 7. App: Reiter „KI“ im Foto-Fenster (AC-012–AC-015)
+- [x] 8. Secrets: Vorschau und Produktion setzen keine `FOUNDRY_*` über die Pipeline
+      (`scripts/ci/workflows.test.mjs` verbietet es); **Enrico-Todo:**
+      `supabase secrets set FOUNDRY_IMAGE_DEPLOYMENT=…` in Produktion (und in der Vorschau, falls
+      KI dort laufen soll). `supabase functions deploy --prune` liefert beide Funktionen aus.
+- [x] Nachweis (26.11.): `pnpm format:check && pnpm check && pnpm build:web` grün (Build mit
+      `node scripts/with-env.mjs`, er braucht `EXPO_PUBLIC_VAPID_PUBLIC_KEY`). Tests rot → grün:
+      core `ai-recipes-contract.test.ts`, `recipe-draft.test.ts`; api `ai-recipes.backend.test.ts`,
+      `transport-supabase.test.ts`; edge `ai-recipe-draft`, `ai-image`, `page-text`, `tiktok`,
+      `flux`, `fetch-public`, `foundry`, `http`. `/security-check`: 0 kritisch/hoch/mittel,
+      1 niedrig (behoben), 1 Hinweis (Risiken). Echte Aufrufe gegen Foundry lokal (Handler dieser
+      Worktree unter Node, App auf :8094, Playwright): Entwurf „Apfelkuchen für 4 …“ 6,6 s mit
+      Zutaten aus dem Katalog, drei Fotos 8,6 s; vor „Speichern“ 0 Zeilen in `recipes`, danach
+      Rezept + Foto (AC-001, AC-010); TikTok `vm.tiktok.com/ZGdXoJ8Ay/` → „Fettuccine mit
+      Zucchini, Tomaten und Kapern“ aus den Untertiteln, Link
+      `tiktok.com/@jacobs_lunch/video/7686512961438960929` gespeichert, Vorschaubild als Vorlage
+      (AC-016); Foto-Fenster „KI“ 12 s, nach „Erzeugen“ keine neue Datei im Bucket, nach
+      „Übernehmen“ altes Foto gelöscht (AC-012, AC-013). Insgesamt 3 LLM- und 12 FLUX-Aufrufe.
+      Bildschirmfotos: `tmp/review-0003/0040/`. Nicht in der Vorschau geprüft (dort keine KI).

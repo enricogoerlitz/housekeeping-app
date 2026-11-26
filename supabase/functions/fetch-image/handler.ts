@@ -4,27 +4,17 @@
 // Answer: the image bytes as application/octet-stream (supabase-js hands them over as a Blob),
 // errors as { error }: not_an_image for every address that gives no usable public image.
 import { FetchImageRequestSchema } from '../_shared/contract.gen.ts';
-import type { Deps, UserClient } from '../_shared/deps.ts';
+import type { Deps } from '../_shared/deps.ts';
 import { HttpError } from '../_shared/errors.ts';
 import { fetchPublic, PublicFetchError } from '../_shared/fetch-public.ts';
 import { handleRequest } from '../_shared/http.ts';
 import { imageTypeOf } from '../_shared/image-source.gen.ts';
+import { requireMember } from '../_shared/membership.ts';
 
 /** The same limit as a chosen file (packages/api preparePhoto). */
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 3;
-
-/** Under the caller's RLS: a household she is no member of shows no member rows. */
-async function requireMember(client: UserClient, householdId: string): Promise<void> {
-  const { data, error } = await client
-    .from('household_members')
-    .select('household_id')
-    .eq('household_id', householdId)
-    .limit(1);
-  if (error) throw new Error('membership_lookup_failed');
-  if (!Array.isArray(data) || data.length === 0) throw new HttpError('forbidden');
-}
 
 async function loadImage(deps: Deps, url: string): Promise<Response> {
   let bytes: Uint8Array<ArrayBuffer>;

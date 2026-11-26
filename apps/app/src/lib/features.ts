@@ -5,5 +5,12 @@
  * "Anpassen" and the KI settings — is hidden while this is false, so the UI can trigger no AI
  * request. Data, quota and edge functions stay as they are; the device keeps its stored AI
  * settings. Set it to true to bring every entry point back.
+ *
+ * `aiRecipes` (spec 0040, Entscheidung 1): only "Mit KI ausfüllen", the tab "KI" of the photo
+ * window and the microphone in their fields. Independent of `ai`: the assistant and the AI search
+ * stay off.
  */
-export const features: { readonly ai: boolean } = { ai: false };
+export const features: { readonly ai: boolean; readonly aiRecipes: boolean } = {
+  ai: false,
+  aiRecipes: true,
+};

@@ -22,6 +22,9 @@ import { Platform, View } from 'react-native';
 import { errorMessage, FAILED_MESSAGE } from '@/features/shell/error-message';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { confirmFirst } from '@/features/shell/confirm-dialog';
+import { features } from '@/lib/features';
+
+import { PhotoWindowAi } from './photo-window-ai';
 
 // The window "Foto" (spec 0039, REQ-001 – REQ-004): one window wherever a photo is changed — at a
 // recipe, a collection, a restaurant and an activity. A new image comes from a file (chosen,
@@ -29,11 +32,16 @@ import { confirmFirst } from '@/features/shell/confirm-dialog';
 // like every photo (1600 px, JPEG) and shown before "Übernehmen" saves it. "Abbrechen" keeps the
 // old photo. Everything here needs the network.
 
+type View_ = 'choose' | 'ai';
+
 /**
- * The window's views. Spec 0040 adds "KI" (create or edit the photo with the image model) as a
- * second view; with one view no tab row shows.
+ * The window's views: "KI" (spec 0040, REQ-004: create or edit the photo with the image model)
+ * only with `features.aiRecipes`; with one view no tab row shows.
  */
-const VIEWS: { value: 'choose'; label: string }[] = [{ value: 'choose', label: 'Bild wählen' }];
+const VIEWS: { value: View_; label: string }[] = [
+  { value: 'choose', label: 'Bild wählen' },
+  ...(features.aiRecipes ? [{ value: 'ai' as const, label: 'KI' }] : []),
+];
 
 type Busy = 'prepare' | 'address' | undefined;
 
@@ -66,6 +74,8 @@ export function PhotoWindow(props: {
   /** An own photo is stored: "Foto entfernen" is offered. */
   hasPhoto: boolean;
   name: string;
+  /** The prefilled prompt of "KI" (spec 0040, REQ-004); the name when not given. */
+  aiPrompt?: string;
   placeholderIcon: IconName;
   aspectRatio: number;
   /** "Übernehmen" with the prepared JPEG; the window is closed already. */
@@ -78,7 +88,7 @@ export function PhotoWindow(props: {
   const online = useOnlineOnly();
   const theme = useTheme();
   const { isPhone } = useBreakpoint();
-  const [view, setView] = useState<'choose'>('choose');
+  const [view, setView] = useState<View_>('choose');
   const [candidate, setCandidate] = useState<{ photo: Blob; uri: string }>();
   const [busy, setBusy] = useState<Busy>();
   const [error, setError] = useState<string>();
@@ -202,62 +212,35 @@ export function PhotoWindow(props: {
             alt={shown ? props.name : undefined}
           />
         </View>
-        {isPhone ? null : (
+        {view === 'ai' ? (
+          <PhotoWindowAi
+            prompt={props.aiPrompt ?? props.name}
+            currentUri={
+              props.hasPhoto && typeof props.current === 'object' ? props.current.uri : undefined
+            }
+            onPick={(photo) => take('prepare', async () => photo)}
+            testID={`${id}-ai`}
+          />
+        ) : null}
+        {view === 'ai' || isPhone ? null : (
           <Text variant="small" color="muted" testID={`${id}-drop-hint`}>
             {dragging
               ? 'Zum Übernehmen hier loslassen'
               : `Bild hierher ziehen, mit ${pasteKeys()} einfügen oder eine Datei wählen`}
           </Text>
         )}
-        <Row gap={8} wrap>
-          {isPhone ? (
-            <>
-              <Button
-                label="Fotomediathek"
-                icon="image"
-                variant="secondary"
-                size="sm"
-                disabled={disabled}
-                hint={online.hint}
-                onPress={() => pick(false)}
-                testID={`${id}-library`}
-              />
-              <Button
-                label="Foto aufnehmen"
-                icon="camera"
-                variant="secondary"
-                size="sm"
-                disabled={disabled}
-                hint={online.hint}
-                onPress={() => pick(true)}
-                testID={`${id}-camera`}
-              />
-            </>
-          ) : null}
-          <Button
-            label="Datei wählen"
-            icon="folder-open"
-            variant="secondary"
-            size="sm"
+        {view === 'choose' ? (
+          <ChooseSources
+            id={id}
+            isPhone={isPhone}
             disabled={disabled}
-            hint={online.hint}
-            onPress={() => pick(false)}
-            testID={`${id}-file`}
+            online={online}
+            pick={pick}
+            address={address}
+            changeAddress={changeAddress}
+            loadAddress={loadAddress}
           />
-        </Row>
-        <TextField
-          label="Bildadresse"
-          placeholder="https://…"
-          value={address}
-          onChangeText={changeAddress}
-          onSubmitEditing={() => loadAddress(address)}
-          keyboardType="url"
-          autoComplete="off"
-          returnKeyType="go"
-          editable={!online.disabled}
-          hint="Adresse eines Bildes einfügen, z. B. über „Bildadresse kopieren“"
-          testID={`${id}-address`}
-        />
+        ) : null}
         {busy ? (
           <Text variant="small" color="muted" testID={`${id}-busy`}>
             {busy === 'address' ? 'Bild wird geladen …' : 'Bild wird vorbereitet …'}
@@ -284,5 +267,72 @@ export function PhotoWindow(props: {
         ) : null}
       </Stack>
     </Sheet>
+  );
+}
+
+/** The view "Bild wählen": library, camera, file and the image address (spec 0039). */
+function ChooseSources(props: {
+  id: string;
+  isPhone: boolean;
+  disabled: boolean;
+  online: { disabled: boolean; hint: string | undefined };
+  pick: (camera: boolean) => void;
+  address: string;
+  changeAddress: (text: string) => void;
+  loadAddress: (text: string) => void;
+}) {
+  const { id, isPhone, disabled, online, pick, address } = props;
+  return (
+    <>
+      <Row gap={8} wrap>
+        {isPhone ? (
+          <>
+            <Button
+              label="Fotomediathek"
+              icon="image"
+              variant="secondary"
+              size="sm"
+              disabled={disabled}
+              hint={online.hint}
+              onPress={() => pick(false)}
+              testID={`${id}-library`}
+            />
+            <Button
+              label="Foto aufnehmen"
+              icon="camera"
+              variant="secondary"
+              size="sm"
+              disabled={disabled}
+              hint={online.hint}
+              onPress={() => pick(true)}
+              testID={`${id}-camera`}
+            />
+          </>
+        ) : null}
+        <Button
+          label="Datei wählen"
+          icon="folder-open"
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          hint={online.hint}
+          onPress={() => pick(false)}
+          testID={`${id}-file`}
+        />
+      </Row>
+      <TextField
+        label="Bildadresse"
+        placeholder="https://…"
+        value={address}
+        onChangeText={props.changeAddress}
+        onSubmitEditing={() => props.loadAddress(address)}
+        keyboardType="url"
+        autoComplete="off"
+        returnKeyType="go"
+        editable={!online.disabled}
+        hint="Adresse eines Bildes einfügen, z. B. über „Bildadresse kopieren“"
+        testID={`${id}-address`}
+      />
+    </>
   );
 }

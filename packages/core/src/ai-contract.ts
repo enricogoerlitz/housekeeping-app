@@ -142,6 +142,113 @@ export type ResolveMapsLinkReply = z.infer<typeof ResolveMapsLinkReplySchema>;
 export const FetchImageRequestSchema = z.strictObject({ householdId: Id, url: HttpsUrl });
 export type FetchImageRequest = z.infer<typeof FetchImageRequestSchema>;
 
+// ---------- "Mit KI ausfüllen" and images (spec 0040, ADR-0016) ----------
+
+/** Limits of one "Mit KI ausfüllen" (REQ-001; Risiken "Kosten laufen weg"). */
+export const RECIPE_DRAFT_LIMITS = { text: 2000, links: 3, photos: 4 } as const;
+/** The longest side of a photo sent with a draft (Entscheidung 4). */
+export const DRAFT_PHOTO_MAX_SIDE = 1280;
+/** The longest side of the photo an image is made from ("Aus diesem Foto", REQ-005). */
+export const IMAGE_EDIT_MAX_SIDE = 1024;
+/** Variants per "Erzeugen" (REQ-004). */
+export const IMAGE_VARIANTS = 3;
+/** Base64 characters of one photo: about 1.5 MB of JPEG, far above a shrunk photo. */
+const MAX_PHOTO_BASE64 = 2_000_000;
+const JPEG_DATA_PREFIX = 'data:image/jpeg;base64,';
+
+const Base64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/** A shrunk photo as `data:image/jpeg;base64,…`; nothing else is sent to the model. */
+const JpegDataUrl = z
+  .string()
+  .max(MAX_PHOTO_BASE64 + JPEG_DATA_PREFIX.length)
+  .refine(
+    (value) =>
+      value.startsWith(JPEG_DATA_PREFIX) && Base64.test(value.slice(JPEG_DATA_PREFIX.length)),
+  );
+
+export const RecipeDraftRequestSchema = z
+  .strictObject({
+    householdId: Id,
+    /** Free text, typed or dictated; the links found in it travel in `links`. */
+    text: z.string().trim().max(RECIPE_DRAFT_LIMITS.text).default(''),
+    links: z.array(HttpsUrl).max(RECIPE_DRAFT_LIMITS.links).default([]),
+    photos: z.array(JpegDataUrl).max(RECIPE_DRAFT_LIMITS.photos).default([]),
+    /** "Foto generieren" (REQ-003): the draft brings a prompt for the image model. */
+    imagePrompt: z.boolean().default(true),
+  })
+  .refine(
+    (request) => request.text !== '' || request.links.length > 0 || request.photos.length > 0,
+  );
+export type RecipeDraftRequest = z.input<typeof RecipeDraftRequestSchema>;
+
+export const DraftIngredientSchema = z.strictObject({
+  /** The household's article name when one fits (name or synonym), else a short German name. */
+  name: z.string().trim().min(1).max(120),
+  /** "250 g", "1 EL", "" for "nach Geschmack". */
+  amount: z.string().trim().max(60),
+  /** Hinweis for cooking, e.g. "gewürfelt". */
+  note: z.string().trim().max(200).optional(),
+  /** e.g. "Teig", "Streusel". */
+  group: z.string().trim().max(60).optional(),
+});
+export type DraftIngredient = z.infer<typeof DraftIngredientSchema>;
+
+/** What the model may answer: recipe data, nothing else (AC-007). */
+export const RecipeDraftSchema = z.strictObject({
+  title: z.string().trim().min(1).max(200),
+  servings: z.int().min(1).max(100),
+  totalMinutes: z.int().min(1).max(10000).optional(),
+  course: z.enum(['breakfast', 'main', 'side', 'dessert', 'snack', 'drink']),
+  cuisine: z.string().trim().max(80).optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(10),
+  ingredients: z.array(DraftIngredientSchema).max(60),
+  steps: z.array(z.string().trim().min(1).max(1000)).max(40),
+  notes: z.string().trim().max(2000).optional(),
+  /** English prompt for the image model; only with "Foto generieren". */
+  imagePrompt: z.string().trim().max(1000).optional(),
+});
+export type RecipeDraft = z.infer<typeof RecipeDraftSchema>;
+
+export const RecipeDraftSourceSchema = z.strictObject({
+  /** The link as sent. */
+  url: HttpsUrl,
+  kind: z.enum(['page', 'tiktok']),
+  /** false: the chip says "… konnte nicht gelesen werden" (AC-004, AC-017). */
+  read: z.boolean(),
+  /** TikTok: where the short link leads; saved as the recipe's link (AC-016). */
+  resolvedUrl: HttpsUrl.optional(),
+  /** TikTok: the video's cover, the reference for "Foto generieren" (REQ-006). */
+  coverUrl: HttpsUrl.optional(),
+});
+export type RecipeDraftSource = z.infer<typeof RecipeDraftSourceSchema>;
+
+export const RecipeDraftReplySchema = z.strictObject({
+  draft: RecipeDraftSchema,
+  sources: z.array(RecipeDraftSourceSchema).max(RECIPE_DRAFT_LIMITS.links),
+});
+export type RecipeDraftReply = z.infer<typeof RecipeDraftReplySchema>;
+
+/** Style chips "Hochglanz", "Rustikal", "Von oben", "Nah", "Hell" (REQ-004). */
+export const IMAGE_STYLES = ['glossy', 'rustic', 'top', 'close', 'bright'] as const;
+export type ImageStyle = (typeof IMAGE_STYLES)[number];
+
+export const AiImageRequestSchema = z.strictObject({
+  householdId: Id,
+  prompt: z.string().trim().min(1).max(1000),
+  styles: z.array(z.enum(IMAGE_STYLES)).max(IMAGE_STYLES.length).optional(),
+  /** "Aus diesem Foto" (REQ-005): the photo to start from, at most 1024 px. */
+  image: JpegDataUrl.optional(),
+});
+export type AiImageRequest = z.infer<typeof AiImageRequestSchema>;
+
+export const AiImageReplySchema = z.strictObject({
+  /** JPEG bytes as base64; the server never stores them (Entscheidung 4). */
+  images: z.array(z.string().min(1).max(4_000_000).regex(Base64)).min(1).max(IMAGE_VARIANTS),
+  /** Variants that failed (AC-014). */
+  failed: z.int().min(0).max(IMAGE_VARIANTS),
+});
+export type AiImageReply = z.infer<typeof AiImageReplySchema>;
+
 /** Stable error codes of the edge functions; the app maps them to German messages. */
 export const ErrorCodeSchema = z.enum([
   'unauthorized',
@@ -154,6 +261,8 @@ export const ErrorCodeSchema = z.enum([
   'forbidden',
   /** The address gives no usable public image (fetch-image, spec 0039, AC-007). */
   'not_an_image',
+  /** The body is larger than the function takes (64 KB, or 6 MB with photos; spec 0040). */
+  'payload_too_large',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 

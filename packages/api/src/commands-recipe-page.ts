@@ -5,6 +5,7 @@
 import {
   changedSections,
   compareTimestamps,
+  newRecipe,
   validatePageDraft,
   type Id,
   type IngredientRow,
@@ -13,7 +14,15 @@ import {
 
 import { applyContents, removedContents } from './commands-collections';
 import { applySection } from './commands-recipes';
-import { commitConfirmed, getData, isOffline, OfflineError } from './store';
+import {
+  commit,
+  commitConfirmed,
+  getData,
+  isOffline,
+  nowISO,
+  OfflineError,
+  updateData,
+} from './store';
 
 export interface PageSave {
   /**
@@ -85,4 +94,32 @@ export function saveRecipePage(page: PageDraft): PageSave | null {
   confirmed.catch(() => {});
   if (failure !== undefined) throw failure;
   return { confirmed, open };
+}
+
+/**
+ * "Speichern" of a recipe that exists only as a draft so far ("Neu → Mit KI ausfüllen", spec
+ * 0040, AC-001): the recipe and every filled section in one change, so nothing is in the database
+ * before this. Throws the first problem and OfflineError before anything changes; returns the rows
+ * left open (an article deleted meanwhile).
+ */
+export function createRecipeFromPage(page: PageDraft): { open: IngredientRow[] } {
+  const [problem] = validatePageDraft(page);
+  if (problem) throw new Error(problem.message);
+  if (isOffline()) throw new OfflineError();
+  const { recipeId } = page;
+  return commit({ path: 'diff' }, () => {
+    const recipe = newRecipe({
+      id: recipeId,
+      kind: 'recipe',
+      title: page.head.base.title,
+      servings: Number(page.head.base.servings),
+      createdAt: nowISO(),
+    });
+    updateData((data) => ({ ...data, recipes: [recipe, ...data.recipes] }));
+    let open: IngredientRow[] = [];
+    for (const draft of changedSections(page)) {
+      if (draft.section !== 'contents') open = [...open, ...applySection(recipeId, draft)];
+    }
+    return { open };
+  });
 }

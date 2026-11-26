@@ -288,6 +288,40 @@ describe('fetchPublic', () => {
     expect(await pending).toBe('timeout');
   });
 
+  it('spec 0040: allowHost is checked on the first address and on every redirect hop', async () => {
+    const tiktokOnly = { ...IMAGE, allowHost: (host: string) => host.endsWith('.tiktok.com') };
+    const first = deps({});
+    expect(await reason(fetchPublic('https://evil.example.org/a.jpg', tiktokOnly, first))).toBe(
+      'blocked_host',
+    );
+    expect(first.fetchMock).not.toHaveBeenCalled();
+    const hop = deps({
+      'https://vm.tiktok.com/x/': () => redirect('https://evil.example.org/a.jpg', 301),
+    });
+    expect(await reason(fetchPublic('https://vm.tiktok.com/x/', tiktokOnly, hop))).toBe(
+      'blocked_host',
+    );
+    expect(hop.fetchMock).toHaveBeenCalledTimes(1);
+    const fine = deps({
+      'https://vm.tiktok.com/x/': () => redirect('https://www.tiktok.com/@a/video/1', 301),
+      'https://www.tiktok.com/@a/video/1': () => image(3),
+    });
+    expect((await fetchPublic('https://vm.tiktok.com/x/', tiktokOnly, fine)).url).toBe(
+      'https://www.tiktok.com/@a/video/1',
+    );
+  });
+
+  it('spec 0040: sends the given user agent, else the default one', async () => {
+    const d = deps({ 'https://example.org/a.jpg': () => image(3) });
+    await fetchPublic('https://example.org/a.jpg', { ...IMAGE, userAgent: 'Test-Agent/1' }, d);
+    await fetchPublic('https://example.org/a.jpg', IMAGE, d);
+    const agents = d.fetchMock.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get('user-agent'),
+    );
+    expect(agents[0]).toBe('Test-Agent/1');
+    expect(agents[1]).toMatch(/^Mozilla\/5\.0 \(compatible; HousekeepingApp/);
+  });
+
   it('a network error is "network"', async () => {
     const d = deps({
       'https://down.example.org/a.jpg': () => Promise.reject(new TypeError('connection refused')),

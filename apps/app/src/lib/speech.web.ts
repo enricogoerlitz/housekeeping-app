@@ -11,8 +11,11 @@ import {
   type SpeechSession,
 } from './speech-common';
 
+// Spec 0040, AC-009: says where the switch is; typing goes on meanwhile.
 const MIC_DENIED_MESSAGE =
-  'Ohne Freigabe fürs Mikrofon geht die Spracheingabe nicht. Du kannst sie in den Browser-Einstellungen erlauben.';
+  'Ohne Freigabe fürs Mikrofon geht die Spracheingabe nicht. Erlaube sie in den Einstellungen – ' +
+  'auf dem iPhone unter Einstellungen › Apps › Safari › Mikrofon, am Computer über das Symbol ' +
+  'neben der Adresse. Tippen geht weiter.';
 const NO_MIC_MESSAGE = 'Kein Mikrofon gefunden';
 
 /** Asks for the microphone once, so a refusal gets a clear message instead of a dead session. */

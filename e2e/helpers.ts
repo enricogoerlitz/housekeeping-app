@@ -460,6 +460,7 @@ export async function fulfilError(route: Route, code: ErrorCode): Promise<void> 
     forbidden: 403,
     not_a_maps_link: 422,
     not_an_image: 422,
+    payload_too_large: 413,
     quota_exceeded: 429,
     ai_unavailable: 503,
     internal: 500,

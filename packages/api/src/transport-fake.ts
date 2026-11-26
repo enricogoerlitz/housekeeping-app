@@ -32,10 +32,14 @@ import {
   normalizeText,
   SeriesRuleSchema,
   RECIPE_LIMITS,
+  type AiImageReply,
+  type AiImageRequest,
   type AiSearchRequest,
   type AiSearchResult,
   type AssistantReply,
   type AssistantRequest,
+  type RecipeDraftReply,
+  type RecipeDraftRequest,
   type ResolveMapsLinkReply,
   type SpeechTokenReply,
   type PullRequest,
@@ -127,6 +131,8 @@ type RpcName =
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
+  | 'ai-recipe-draft'
+  | 'ai-image'
   | 'storage_upload'
   | 'storage_download'
   | 'storage_remove'
@@ -137,6 +143,8 @@ export interface FakeAi {
   assistant?: (request: AssistantRequest) => AssistantReply;
   search?: (request: AiSearchRequest) => AiSearchResult;
   speechToken?: () => SpeechTokenReply;
+  recipeDraft?: (request: RecipeDraftRequest) => RecipeDraftReply;
+  image?: (request: AiImageRequest) => AiImageReply;
 }
 
 interface FailureRule {
@@ -3614,6 +3622,23 @@ export function createFakeServer(): FakeServer {
         run(userId, 'speech-token', () => {
           if (!ai.speechToken) throw aiUnavailable();
           return ai.speechToken();
+        }),
+      // Spec 0040: membership is checked like fetch-image; nothing is stored.
+      aiRecipeDraft: (request) =>
+        run(userId, 'ai-recipe-draft', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.recipeDraft) throw aiUnavailable();
+          return ai.recipeDraft(request);
+        }),
+      aiImage: (request) =>
+        run(userId, 'ai-image', () => {
+          requireUser(userId);
+          if (!isMember(userId, request.householdId))
+            throw new TransportError('permanent', 'forbidden', 403);
+          if (!ai.image) throw aiUnavailable();
+          return ai.image(request);
         }),
 
       // The Storage API answers a refused request with its status (413, 415, 403, 409).

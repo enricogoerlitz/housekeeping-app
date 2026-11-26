@@ -11,6 +11,8 @@
 
 export type PublicFetchFailure =
   | 'invalid_url'
+  /** The host is not one the caller allows (allowHost), e.g. a TikTok link leaving TikTok. */
+  | 'blocked_host'
   | 'blocked_address'
   | 'dns_failed'
   | 'too_many_redirects'
@@ -21,6 +23,9 @@ export type PublicFetchFailure =
   | 'network';
 
 export class PublicFetchError extends Error {
+  /** The checked address the failure happened at (after redirects), if one was reached. */
+  url?: string;
+
   constructor(readonly reason: PublicFetchFailure) {
     super(reason);
     this.name = 'PublicFetchError';
@@ -38,6 +43,10 @@ export interface PublicFetchOptions {
   maxRedirects: number;
   /** Sent as `Accept`; defaults to the accepted types. */
   accept?: string;
+  /** Only hosts this accepts are requested, the first and every redirect (`blocked_host`). */
+  allowHost?: (hostname: string) => boolean;
+  /** Sent as `User-Agent`; defaults to a browser-like one that names no person. */
+  userAgent?: string;
 }
 
 export interface PublicFetchDeps {
@@ -271,9 +280,12 @@ export async function fetchPublic(
     }, options.timeoutMs);
   });
   aborted.catch(() => undefined);
+  let url: URL | undefined;
   try {
-    let url = checkedUrl(raw);
+    url = checkedUrl(raw);
     for (let redirects = 0; ; redirects += 1) {
+      if (options.allowHost && !options.allowHost(url.hostname.toLowerCase()))
+        throw fail('blocked_host');
       await checkHost(url, deps, aborted);
       let response: Response;
       try {
@@ -284,7 +296,7 @@ export async function fetchPublic(
             signal: controller.signal,
             headers: {
               accept: options.accept ?? options.contentTypes.join(', '),
-              'user-agent': USER_AGENT,
+              'user-agent': options.userAgent ?? USER_AGENT,
             },
           }),
           aborted,
@@ -313,6 +325,10 @@ export async function fetchPublic(
       const bytes = await readBody(response, options.maxBytes, aborted);
       return { url: url.href, contentType, bytes };
     }
+  } catch (error) {
+    // Where it failed, e.g. the page a short link led to (spec 0040: the TikTok link is kept).
+    if (error instanceof PublicFetchError && url) error.url = url.href;
+    throw error;
   } finally {
     clearTimeout(timer);
   }

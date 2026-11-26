@@ -1,8 +1,10 @@
 // Transport over supabase-js: one RPC per call, answers validated with Zod, errors classified.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  AiImageReplySchema,
   AiSearchResultSchema,
   AssistantReplySchema,
+  RecipeDraftReplySchema,
   ResolveMapsLinkReplySchema,
   SpeechTokenReplySchema,
   type PullResult,
@@ -131,6 +133,13 @@ export interface SupabaseTransportOptions {
   mediaTimeoutMs?: number;
 }
 
+/**
+ * Spec 0040, Entscheidung 4: the server reads the links (10 s) and gives the model 60 s with one
+ * more try; the three images get 45 s each, in parallel. The app waits a little longer than that.
+ */
+const AI_DRAFT_TIMEOUT_MS = 80_000;
+const AI_IMAGE_TIMEOUT_MS = 55_000;
+
 export function createSupabaseTransport(
   client: SupabaseLike,
   options: SupabaseTransportOptions = {},
@@ -179,10 +188,10 @@ export function createSupabaseTransport(
   }
 
   /** An edge function: errors are `{ error: code }` with an HTTP status (core ErrorReply). */
-  async function invoke(name: string, body: unknown): Promise<unknown> {
+  async function invoke(name: string, body: unknown, waitMs = timeoutMs): Promise<unknown> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new TransportError('transient', 'timeout', 0)), timeoutMs);
+      timer = setTimeout(() => reject(new TransportError('transient', 'timeout', 0)), waitMs);
     });
     try {
       const reply = await Promise.race([client.functions.invoke(name, { body }), timeout]);
@@ -208,8 +217,9 @@ export function createSupabaseTransport(
     schema: S,
     name: string,
     body: unknown,
+    waitMs?: number,
   ): Promise<z.infer<S>> {
-    const result = schema.safeParse(await invoke(name, body));
+    const result = schema.safeParse(await invoke(name, body, waitMs));
     if (!result.success) throw new TransportError('permanent', 'invalid_response');
     return result.data;
   }
@@ -437,6 +447,10 @@ export function createSupabaseTransport(
     askAssistant: (request) => invokeParsed(AssistantReplySchema, 'ai-assistant', request),
     aiSearch: (request) => invokeParsed(AiSearchResultSchema, 'ai-search', request),
     speechToken: () => invokeParsed(SpeechTokenReplySchema, 'speech-token', {}),
+    aiRecipeDraft: (request) =>
+      invokeParsed(RecipeDraftReplySchema, 'ai-recipe-draft', request, AI_DRAFT_TIMEOUT_MS),
+    aiImage: (request) =>
+      invokeParsed(AiImageReplySchema, 'ai-image', request, AI_IMAGE_TIMEOUT_MS),
     uploadMedia: async (path, photo) => {
       let sent: PromiseLike<StorageReply> | undefined;
       try {

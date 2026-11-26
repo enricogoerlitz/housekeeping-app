@@ -31,6 +31,8 @@ import { usePageParams } from '@/lib/url-state';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { AddToCollectionSheet } from './add-to-collection-sheet';
+import { unsavedRecipe } from './ai-draft';
+import { AiPageTools } from './ai-page-tools';
 import { CollectionDetailBody } from './collection-detail';
 import { RecipeActions, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { ClassificationSection } from './sections/classification-section';
@@ -63,7 +65,9 @@ export interface RecipeDetailProps {
  * `usePageEditor`).
  */
 export function RecipeDetail(props: RecipeDetailProps) {
-  const recipe = useRecipe(props.recipeId);
+  const stored = useRecipe(props.recipeId);
+  // Spec 0040, AC-001: "Neu → Mit KI ausfüllen" opens a recipe that exists only as a draft.
+  const recipe = stored ?? unsavedRecipe(props.recipeId);
   // Set while this page deletes its own recipe: it leaves instead of showing "gibt es nicht mehr".
   const [leaving, setLeaving] = useState(false);
   if (!recipe) {
@@ -88,6 +92,7 @@ export function RecipeDetail(props: RecipeDetailProps) {
     <RecipeDetailBody
       key={recipe.id}
       recipe={recipe}
+      unsaved={!stored}
       onBack={props.onBack}
       backLabel={props.backLabel}
       quick={props.quick}
@@ -123,6 +128,8 @@ function RecipeGone(props: { onBack: () => void; backLabel: string; quick?: bool
 
 function RecipeDetailBody(props: {
   recipe: Recipe;
+  /** Only a draft so far (spec 0040): the page is the edit mode, "Speichern" creates it. */
+  unsaved: boolean;
   onBack: () => void;
   backLabel: string;
   quick?: boolean;
@@ -163,7 +170,7 @@ function RecipeDetailBody(props: {
   const { open: addingToCollection, set: setAddingToCollection } = windowOf('sammlung');
   const { open: pantryCheck, set: setPantryCheck } = windowOf('vorratscheck');
   const photo = useRecipePhoto(recipe);
-  const editor = usePageEditor(recipe);
+  const editor = usePageEditor(recipe, { unsaved: props.unsaved, onDiscard: props.onBack });
   const editing = editor.draft !== undefined;
   // While the page is edited nothing leads away without asking (AC-005).
   const swipe = editing ? undefined : browse;
@@ -282,6 +289,9 @@ function RecipeDetailBody(props: {
     </>
   );
 
+  // An unsaved recipe has no read view: before the draft opens and after "Verwerfen".
+  if (props.unsaved && !editing) return <Screen testID="recipe-screen" tone="essen" />;
+
   return (
     <RecipeFrame
       quick={props.quick}
@@ -293,10 +303,17 @@ function RecipeDetailBody(props: {
     >
       <View testID="recipe-detail" style={{ gap: isPhone ? 24 : 32, paddingTop: 8 }}>
         <EditError editor={editor} />
+        <AiPageTools recipe={recipe} editor={editor} />
         {desktop ? (
           <>
             <Row gap={32} align="flex-start">
-              <RecipePhoto recipe={recipe} photo={photo} style={{ flex: 1 }} onShare={share} />
+              <RecipePhoto
+                recipe={recipe}
+                photo={photo}
+                style={{ flex: 1 }}
+                onShare={share}
+                pending={editor.chosenPhoto}
+              />
               {head}
             </Row>
             <Row gap={32} align="flex-start">
@@ -309,7 +326,12 @@ function RecipeDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={recipe} photo={photo} onShare={share} />
+            <RecipePhoto
+              recipe={recipe}
+              photo={photo}
+              onShare={share}
+              pending={editor.chosenPhoto}
+            />
             {head}
             {ingredients}
             {steps}

@@ -1,7 +1,12 @@
-import { useCollectionContents, useRecipeImage } from '@housekeeping/api';
-import { coverPhotos, type Recipe } from '@housekeeping/core';
+import { useArticlesById, useCollectionContents, useRecipeImage } from '@housekeeping/api';
+import {
+  coverPhotos,
+  defaultImagePrompt,
+  mainIngredientNames,
+  type Recipe,
+} from '@housekeeping/core';
 import { Photo, PhotoCollage, Stack, type PhotoProps } from '@housekeeping/ui';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { useOnlineOnly } from '@/features/shell/offline';
 import { PhotoActionRow, ZoomablePhoto } from '@/features/shell/own-photo';
@@ -55,6 +60,18 @@ function CollectionCover(props: { recipe: Recipe } & Omit<PhotoProps, 'source'>)
   return <PhotoCollage {...frame} sources={sources} />;
 }
 
+/** A blob: URL for `blob` while it is shown. */
+function useBlobUri(blob: Blob | undefined): string | undefined {
+  const uri = useMemo(() => (blob ? URL.createObjectURL(blob) : undefined), [blob]);
+  useEffect(
+    () => () => {
+      if (uri) URL.revokeObjectURL(uri);
+    },
+    [uri],
+  );
+  return uri;
+}
+
 /**
  * The photo of the page with its save state; a collection's cover is its collage (E14). A tap
  * shows it on the whole screen, "Foto ändern" right under it opens the window "Foto" (spec 0036,
@@ -66,20 +83,39 @@ export function RecipePhoto(props: {
   style?: { flex: number };
   /** "Teilen" at the right end of the photo's row (spec 0042, REQ-004). */
   onShare?: () => void;
+  /** The photo "Speichern" will set: a chosen AI suggestion (spec 0040, AC-010). */
+  pending?: Blob;
 }) {
   const online = useOnlineOnly();
+  const articlesById = useArticlesById();
   const image = useRecipeImage(props.recipe);
   const covers = useCoverSources(props.recipe);
-  const sources = props.recipe.kind === 'collection' ? covers : image ? [image] : [];
+  const pendingUri = useBlobUri(props.pending);
+  const sources = pendingUri
+    ? [{ uri: pendingUri }]
+    : props.recipe.kind === 'collection'
+      ? covers
+      : image
+        ? [image]
+        : [];
   return (
     <Stack gap={4} style={props.style}>
       <ZoomablePhoto sources={sources} name={props.recipe.title} testID="recipe-photo">
-        <RecipeCover
-          recipe={props.recipe}
-          aspectRatio={4 / 3}
-          alt={props.recipe.title}
-          testID="recipe-photo"
-        />
+        {pendingUri ? (
+          <Photo
+            source={{ uri: pendingUri }}
+            aspectRatio={4 / 3}
+            alt={props.recipe.title}
+            testID="recipe-photo-pending"
+          />
+        ) : (
+          <RecipeCover
+            recipe={props.recipe}
+            aspectRatio={4 / 3}
+            alt={props.recipe.title}
+            testID="recipe-photo"
+          />
+        )}
       </ZoomablePhoto>
       <PhotoActionRow
         // A sample photo shows too: "Foto ändern"; only an own one can be removed (in the window).
@@ -96,6 +132,10 @@ export function RecipePhoto(props: {
           current={props.recipe.kind === 'collection' ? covers[0] : image}
           hasPhoto={!!props.recipe.photoPath}
           name={props.recipe.title}
+          aiPrompt={defaultImagePrompt(
+            props.recipe.title,
+            props.recipe.kind === 'recipe' ? mainIngredientNames(props.recipe, articlesById) : [],
+          )}
           placeholderIcon={props.recipe.kind === 'collection' ? 'layers' : 'chef-hat'}
           aspectRatio={4 / 3}
           onApply={props.photo.apply}

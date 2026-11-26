@@ -124,10 +124,11 @@ export function stripJpegMetadata(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
 
 /**
  * Web only: the chosen file as the JPEG that gets stored — decoded (camera rotation applied),
- * drawn at most 1600 px on a canvas and encoded at quality 0.82, metadata stripped. Throws
+ * drawn at most 1600 px (or `maxSide`: the AI gets 1280 or 1024 px, spec 0040) on a canvas and
+ * encoded at quality 0.82, metadata stripped. Throws
  * PHOTO_UNUSABLE_MESSAGE for a file that is no usable image (AC-010).
  */
-export async function preparePhoto(file: Blob): Promise<Blob> {
+export async function preparePhoto(file: Blob, maxSide = PHOTO_MAX_SIDE): Promise<Blob> {
   checkPhotoFile(file);
   let bitmap: ImageBitmap;
   try {
@@ -136,7 +137,7 @@ export async function preparePhoto(file: Blob): Promise<Blob> {
     throw unusable();
   }
   try {
-    const size = fitWithin(bitmap.width, bitmap.height);
+    const size = fitWithin(bitmap.width, bitmap.height, maxSide);
     const canvas = document.createElement('canvas');
     canvas.width = size.width;
     canvas.height = size.height;
