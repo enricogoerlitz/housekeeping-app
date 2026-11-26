@@ -18,6 +18,13 @@ export interface RecipeFrameProps {
   children?: ReactNode;
 }
 
+/**
+ * The photo of a recipe or a collection above its text, in the quick view and on tablets (spec
+ * 0047, REQ-005): 4:3 at most this wide is as high as a restaurant's photo there (560 px at 16:9 =
+ * 315 px). Phones keep the whole width.
+ */
+export const STACKED_PHOTO_MAX_WIDTH = 420;
+
 /** The page around a recipe or a collection, or the quick view beside the list. */
 export function RecipeFrame(props: RecipeFrameProps) {
   if (props.quick) {

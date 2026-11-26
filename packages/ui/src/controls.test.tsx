@@ -201,6 +201,33 @@ describe('IconButton', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Schließen' }));
   });
 
+  it('AC-005 (0047): touchFrame keeps a 44 × 44 tap area around a smaller button on the web', () => {
+    const onPress = vi.fn();
+    render(
+      <IconButton
+        icon="share"
+        label="Teilen"
+        variant="soft"
+        size={32}
+        touchFrame
+        onPress={onPress}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Teilen' });
+    // react-native-web ignores hitSlop: the button itself is the 44 × 44 frame …
+    expect(button.style.width).toBe('44px');
+    expect(button.style.height).toBe('44px');
+    // … whose negative margin keeps the layout of a 32 pt button …
+    expect(button.style.marginTop).toBe('-6px');
+    expect(button.style.marginLeft).toBe('-6px');
+    // … and the visible circle inside stays 32 pt.
+    const circle = button.firstElementChild as HTMLElement;
+    expect(circle.style.width).toBe('32px');
+    expect(circle.style.height).toBe('32px');
+    fireEvent.click(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
   it('plain: a fine pointer hovering shades it', () => {
     pointer.fine = true;
     render(<IconButton icon="x" label="Schließen" />);

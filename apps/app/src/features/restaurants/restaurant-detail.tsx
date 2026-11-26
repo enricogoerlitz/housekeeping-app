@@ -13,7 +13,6 @@ import {
   showsRoute,
   isWebUrl,
   priceLabel,
-  restaurantShareText,
   visitsOf,
   type Id,
   type Restaurant,
@@ -44,7 +43,7 @@ import { DetailPhotoBlock } from '@/features/shell/own-photo';
 import { useDeletePlace } from '@/features/shell/use-delete-place';
 import { VisitList, VisitsLine, useVisitsJump, type SectionRef } from '@/features/shell/visits';
 import { openLink } from '@/lib/open-link';
-import { appLink, shareText, useShareFile } from '@/lib/share';
+import { shareTarget } from '@/lib/share';
 
 import { EditRestaurantSheet } from './add-restaurant-sheet';
 import { visitsLabel } from './labels';
@@ -146,14 +145,8 @@ function RestaurantDetailBody(props: RestaurantDetailProps & { restaurant: Resta
       onPress={() => toggleRestaurantFavorite(restaurant.id)}
     />
   );
-  // "Teilen" (spec 0042, AC-009): works offline; the photo goes along where files can be shared.
-  const shareFile = useShareFile(restaurant.photoPath, restaurant.name);
-  const share = () =>
-    void shareText({
-      title: restaurant.name,
-      text: restaurantShareText(restaurant, appLink(`/restaurant/${restaurant.id}`)),
-      file: shareFile,
-    });
+  // "Teilen" (spec 0047, REQ-001): only the link to the page; works offline.
+  const share = () => void shareTarget({ kind: 'restaurant', id: restaurant.id });
   const more = (
     <Menu<'share' | 'delete'>
       trigger="icon"

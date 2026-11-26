@@ -151,8 +151,8 @@ export function DetailPhotoBlock(props: {
 /**
  * "Foto hinzufügen/ändern" right under a photo (spec 0036, REQ-008), at a restaurant, an
  * activity, a recipe and a collection; it opens the window "Foto", where "Foto entfernen" is
- * (spec 0039, REQ-001). "Teilen" stands as an icon at the right end of the row, also offline
- * (spec 0042, REQ-004, AC-016).
+ * (spec 0039, REQ-001). "Teilen" stands as a small icon at the right end of the row, also
+ * offline (spec 0042, REQ-004, AC-016; spec 0047, REQ-001).
  */
 export function PhotoActionRow(props: {
   hasPhoto: boolean;
@@ -180,10 +180,13 @@ export function PhotoActionRow(props: {
         ) : null}
       </View>
       {props.onShare ? (
+        // Smaller than the other symbols, still 44 × 44 pt to tap (spec 0047, AC-005).
         <IconButton
           icon="share"
           label="Teilen"
           variant="soft"
+          size={32}
+          touchFrame
           onPress={props.onShare}
           testID={`${props.testPrefix}-share`}
         />

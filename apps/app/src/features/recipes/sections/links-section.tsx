@@ -21,11 +21,13 @@ import {
   TextField,
   openKeyboardNow,
 } from '@housekeeping/ui';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { View } from 'react-native';
 
 import { RecipeSection } from './common';
 import type { PageEditor } from './use-page-editor';
 import { errorMessage } from '@/features/shell/error-message';
+import { useOnlineOnly } from '@/features/shell/offline';
 import { openLink } from '@/lib/open-link';
 
 import { SaveVideoButton, useSaveVideo } from '../recipe-video';
@@ -37,18 +39,40 @@ type LinkAction = 'edit' | 'up' | 'down' | 'remove';
  * the label over the host (or the host alone) with the symbol "öffnet extern"; a tap opens the page
  * in a new tab and the app stays. The app never loads the page. A link that fails the check on the
  * device is plain text. Read and open offline; editing online only. A TikTok link of a recipe
- * without a video has "Video speichern" (spec 0043, REQ-001).
+ * without a video has "Video speichern" (spec 0043, REQ-001). "+ Link" in the read view opens the
+ * edit mode with the window "Link", like "+ Zutat" (spec 0047, REQ-003).
  */
 export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
   const draft = editor.draft?.links;
   const video = useSaveVideo(recipe);
+  const online = useOnlineOnly();
+  const full = recipe.links.length >= MAX_LINKS;
+  const add = (
+    <View style={{ flexDirection: 'row' }}>
+      <Button
+        label="Link"
+        icon="plus"
+        variant="link"
+        disabled={online.disabled || full}
+        hint={online.hint ?? (full ? LINK_LIMIT_HINT : undefined)}
+        onPress={() => {
+          openKeyboardNow();
+          editor.start({ kind: 'link' });
+        }}
+        testID="recipe-read-add-link"
+      />
+    </View>
+  );
   return (
     <RecipeSection title="Links" testID="recipe-links">
       {draft ? (
         <LinksFields draft={draft} editor={editor} />
       ) : recipe.links.length === 0 ? (
-        <Text color="muted">Noch keine Links.</Text>
+        <Stack gap={8}>
+          <Text color="muted">Noch keine Links.</Text>
+          {add}
+        </Stack>
       ) : (
         <Stack gap={8}>
           <List>
@@ -74,6 +98,7 @@ export function LinksSection(props: { recipe: Recipe; editor: PageEditor }) {
               {video.error}
             </Text>
           ) : null}
+          {add}
         </Stack>
       )}
     </RecipeSection>
@@ -110,7 +135,14 @@ function LinkRow(props: {
 
 function LinksFields(props: { draft: LinksDraft; editor: PageEditor }) {
   const { draft, editor } = props;
-  const [editing, setEditing] = useState<{ index?: number } | undefined>();
+  // "+ Link" in the read view opened the edit mode with the window (spec 0047, AC-011).
+  const [editing, setEditing] = useState<{ index?: number } | undefined>(() =>
+    editor.intent?.kind === 'link' ? {} : undefined,
+  );
+  const { intent, clearIntent } = editor;
+  useEffect(() => {
+    if (intent?.kind === 'link') clearIntent();
+  }, [intent, clearIntent]);
   const set = (links: RecipeLink[]) => editor.change({ ...draft, links });
   const full = draft.links.length >= MAX_LINKS;
   const move = (index: number, to: number) => {

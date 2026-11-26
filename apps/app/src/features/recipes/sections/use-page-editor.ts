@@ -49,9 +49,12 @@ import { takeHandedOverRows } from './ingredient-handover';
 // (AC-004); "Abbrechen" and leaving the page ask "Änderungen verwerfen?" when something changed
 // (AC-005). The state changes only through core pageEditorReducer.
 
-/** What the edit mode opens with: a window of a section, e.g. "+ Zutat" in the read view (AC-002). */
+/**
+ * What the edit mode opens with: a window of a section, e.g. "+ Zutat" in the read view (AC-002)
+ * or "+ Link" (spec 0047, REQ-003).
+ */
 export type EditIntent =
-  { kind: 'ingredient'; key?: string } | { kind: 'recipes' } | { kind: 'copy' };
+  { kind: 'ingredient'; key?: string } | { kind: 'recipes' } | { kind: 'copy' } | { kind: 'link' };
 
 const CHANGED_MEANWHILE_NOTICE =
   'Das Rezept wurde zwischendurch geändert. Deine Änderungen gelten, die übrigen bleiben.';
@@ -63,7 +66,7 @@ export interface PageEditor {
   saving: boolean;
   /** Why "Speichern" did not save: offline, refused (AC-004). */
   error: string | undefined;
-  /** The pen, "+ Zutat", "+ Rezept": opens the edit mode, optionally with a window (AC-002). */
+  /** The pen, "+ Zutat", "+ Rezept", "+ Link": opens the edit mode, optionally with a window (AC-002). */
   start: (intent?: EditIntent) => void;
   /** The window the edit mode opened with; the section takes it once (clearIntent). */
   intent: EditIntent | undefined;

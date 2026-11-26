@@ -1,7 +1,6 @@
 import {
   rateRecipe,
   toggleFavorite,
-  useArticlesById,
   useCollectionContents,
   useCurrentMember,
   useMembers,
@@ -9,7 +8,6 @@ import {
 import {
   canPutCollectionOnList,
   collectionListHint,
-  collectionShareText,
   collectionSummary,
   type Recipe,
 } from '@housekeeping/core';
@@ -25,11 +23,11 @@ import { PantryCheckSheet } from '@/features/shopping/pantry-check-sheet';
 import { useBrowseSwipe } from '@/lib/browse-order';
 
 import { useOpenRecipe } from './navigation';
-import { appLink, shareText, useShareFile } from '@/lib/share';
+import { shareTarget } from '@/lib/share';
 
 import { NO_INGREDIENTS_HINT, RecipeMoreMenu, useRecipePhoto } from './recipe-actions';
 import { RecipePhoto } from './recipe-cover';
-import { RecipeFrame } from './recipe-frame';
+import { RecipeFrame, STACKED_PHOTO_MAX_WIDTH } from './recipe-frame';
 import { COLLECTION_BADGE } from './recipe-grid';
 import { ContentsSection } from './sections/contents-section';
 import { HeadSection } from './sections/head-section';
@@ -82,20 +80,8 @@ export function CollectionDetailBody(props: {
     props.onDeleting,
   );
 
-  // "Teilen" (spec 0042, REQ-004): what it contains and its own ingredients, with the own photo.
-  const articlesById = useArticlesById();
-  const shareFile = useShareFile(collection.photoPath, collection.title);
-  const share = () =>
-    void shareText({
-      title: collection.title,
-      text: collectionShareText({
-        collection,
-        contents,
-        articleName: (articleId) => articlesById[articleId]?.name ?? '',
-        appUrl: appLink(`/rezept/${collection.id}`),
-      }),
-      file: shareFile,
-    });
+  // "Teilen" (spec 0047, REQ-001): only the link to the page.
+  const share = () => void shareTarget({ kind: 'recipe', id: collection.id });
 
   // AC-025, AC-028: for the collection's own portions; nothing in it reads "Noch nichts enthalten".
   const canGoOnList = canPutCollectionOnList(collection, contents);
@@ -217,7 +203,9 @@ export function CollectionDetailBody(props: {
           </>
         ) : (
           <>
-            <RecipePhoto recipe={collection} photo={photo} onShare={share} />
+            <View style={isPhone ? undefined : { maxWidth: STACKED_PHOTO_MAX_WIDTH }}>
+              <RecipePhoto recipe={collection} photo={photo} onShare={share} />
+            </View>
             {head}
             {contained}
             {ingredients}

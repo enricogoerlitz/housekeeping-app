@@ -27,6 +27,7 @@ import {
   monthPickerStart,
   moveBounds,
   offersReminder,
+  planEntryPhoto,
   reminderAfterStart,
   startOfWeek,
   TIME_FIELD_WORDS,
@@ -64,6 +65,7 @@ import { RouteSheet, type RouteTarget } from '@/features/restaurants/route-sheet
 import { confirmFirst } from '@/features/shell/confirm-dialog';
 import { useOnlineOnly } from '@/features/shell/offline';
 
+import { EntryPhoto } from './entry-photo';
 import { entryTitle } from './labels';
 import { EaterPicker, PortionFields, usePortions } from './plan-fields';
 import { ReminderBlock, useReminderForm } from './reminder-block';
@@ -167,6 +169,8 @@ export function EntrySheet(props: {
     entry.kind === 'restaurant' && entry.restaurantId
       ? restaurantsById[entry.restaurantId]
       : undefined;
+  // Spec 0047, REQ-004: the photo on top, only where there is one.
+  const photo = planEntryPhoto(entry, { recipesById, restaurantsById, activitiesById });
   const timed = entry.kind === 'restaurant' || entry.kind === 'activity';
   const eats = entry.kind === 'recipe' || entry.kind === 'restaurant';
   // "Route" only with a map link (spec 0036, AC-018; before plan Decision 11: or an address).
@@ -422,6 +426,7 @@ export function EntrySheet(props: {
       }
     >
       <Stack gap={20}>
+        {photo ? <EntryPhoto photo={photo} name={title} /> : null}
         {props.moveFirst ? moveSection : null}
         {online.hint ? (
           <Text variant="small" color="warn">
