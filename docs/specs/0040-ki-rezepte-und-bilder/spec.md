@@ -60,6 +60,9 @@ KI-04. Offline: nur online.
 
 - AC-008: Angenommen iPhone, KI-Feld · Wenn ich das Mikrofon tippe und „Pizzateig mit Hefe“ sage ·
   Dann steht „Pizzateig mit Hefe“ im Feld
+- AC-018: Angenommen ich diktiere „Pizzateig mit Hefe“ · Wenn ich nach einer kurzen Pause „Ende“
+  sage · Dann endet das Diktat und im Feld steht „Pizzateig mit Hefe“ ohne „Ende“; „Am Ende des
+  Tages will ich Pasta“ in einem Zug beendet es nicht
 - AC-009: Angenommen das Mikrofon ist verweigert · Dann erklärt die App, wie man es in den
   Einstellungen erlaubt, und das Tippen geht weiter
 
@@ -153,6 +156,10 @@ Entscheidung 3 A. Offline: nur online.
    **im Feld** an der Cursorstelle, nicht mehr als Zeile „Ich höre: …“ darunter. Solange das
    Mikrofon hört, ist das Feld nur lesbar; der zweite Tipp übernimmt den Text (AC-008 gilt
    unverändert). Vor dem ersten Wort zeigt ein leeres Feld „Ich höre zu …“ als Platzhalter.
+7. Enrico, 26.11.: **„Ende“ beendet das Diktat** wie der zweite Tipp, aber nur als eigene Äußerung
+   nach einer kurzen Pause. Die Spracherkennung trennt Äußerungen an Pausen; „am Ende des Tages
+   will ich …“ im Redefluss ist Teil eines längeren Abschnitts und beendet nichts. Das Wort selbst
+   landet nicht im Feld (AC-018).
 
 ## Daten
 

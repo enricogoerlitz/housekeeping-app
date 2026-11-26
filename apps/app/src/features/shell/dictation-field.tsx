@@ -22,7 +22,7 @@ export function DictationField(
 ) {
   const { value, onChangeText, testID, ...field } = props;
   const online = useOnlineOnly();
-  const dictation = useDictation();
+  const dictation = useDictation({ onStopWord: () => finish() });
   const selection = useRef<{ start: number; end: number } | undefined>(undefined);
   const latest = useRef(value);
   useLayoutEffect(() => {
@@ -38,13 +38,18 @@ export function DictationField(
       ? insertAtCursor(value, anchor, dictation.transcript).text
       : value;
 
+  // Second tap or „Ende“ (decision 7): what was heard goes in at the cursor.
+  function finish() {
+    void dictation.stop().then((heard) => {
+      const next = insertAtCursor(latest.current, selection.current, heard);
+      selection.current = { start: next.cursor, end: next.cursor };
+      onChangeText(next.text);
+    });
+  }
+
   const press = () => {
     if (listening) {
-      void dictation.stop().then((heard) => {
-        const next = insertAtCursor(latest.current, selection.current, heard);
-        selection.current = { start: next.cursor, end: next.cursor };
-        onChangeText(next.text);
-      });
+      finish();
       return;
     }
     if (dictation.status === 'idle') {

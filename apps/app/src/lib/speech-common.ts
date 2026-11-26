@@ -12,6 +12,8 @@ export interface SpeechHandlers {
   onTranscript(text: string): void;
   /** Recognition stopped by itself with a problem; the German text for the person. */
   onError(message: string): void;
+  /** The person said „Ende“ as its own utterance (spec 0040, decision 7); the word is dropped. */
+  onStopWord?(): void;
 }
 
 /** A dictation problem whose message is meant for the person (German). */
