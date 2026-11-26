@@ -25,13 +25,19 @@ const DRAFT: RecipeDraft = {
   title: 'Apfelkuchen mit Streuseln',
   servings: 4,
   totalMinutes: 70,
+  description: 'Saftiger Apfelkuchen mit Zimt und knusprigen Butterstreuseln.',
   course: 'dessert',
-  tags: ['backen'],
+  tags: [{ name: 'backen', isNew: true }],
+  variants: [],
   ingredients: [
-    { name: 'Weizenmehl Type 405', amount: '250 g' },
+    { name: 'Weizenmehl Type 405', amount: '250 g', group: 'Für die Streusel' },
     { name: 'Äpfel', amount: '4', note: 'in Spalten' },
   ],
-  steps: ['Streusel kneten', 'Äpfel schneiden', 'Backen'],
+  steps: [
+    { text: 'Streusel kneten' },
+    { text: 'Äpfel schneiden' },
+    { text: 'Backen', timerMinutes: 45 },
+  ],
   imagePrompt: 'apple crumble cake on a plate',
 };
 
@@ -181,6 +187,30 @@ describe('ai-recipe-draft (spec 0040, REQ-001)', () => {
     // RLS decides; a foreign household's article never reaches the prompt.
     expect(household).not.toContain('Fremdartikel');
     expect(modelBody().instructions).toMatch(/genau so/i);
+  });
+
+  it('spec 0045 AC-001, AC-003, AC-006: the schema asks for description, tags and variants; the household tags are data', async () => {
+    const { deps, texts, modelBody } = setup();
+    await handler(post({ householdId: HOUSEHOLD_ID, text: 'ich will meatball pasta' }), deps);
+    const household = JSON.parse(
+      texts().find((text) => text.includes('Weizenmehl Type 405')) ?? '{}',
+    ) as { schlagworte?: string[] };
+    expect(household.schlagworte).toEqual(['scharf']);
+    const body = modelBody() as ModelBody & {
+      text: { format: { schema: { required: string[]; properties: { [key: string]: unknown } } } };
+    };
+    expect(body.text.format.schema.required).toEqual(
+      expect.arrayContaining(['description', 'tags', 'variants', 'ingredients', 'steps']),
+    );
+    expect(body.instructions).toMatch(/schlagworte/i);
+    expect(body.instructions).toMatch(/Variante/);
+  });
+
+  it('spec 0045 AC-014: a draft without a description is off-contract and gives 503', async () => {
+    const { description: _, ...without } = DRAFT;
+    const { deps } = setup({}, () => foundryReply(without));
+    const response = await handler(post({ householdId: HOUSEHOLD_ID, text: 'Kuchen' }), deps);
+    expect(response.status).toBe(503);
   });
 
   it('AC-003: a photo of a cookbook page goes to the model as input_image', async () => {

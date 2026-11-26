@@ -5,6 +5,7 @@ import {
   cuisineValues,
   dietLabel,
   ingredientsForVariant,
+  isNewTag,
   normalizeText,
   unknownDietArticles,
   tagValues,
@@ -176,6 +177,7 @@ function ClassificationFields(props: { draft: ClassificationDraft; editor: PageE
   const recipes = useRecipes();
   const set = (patch: Partial<ClassificationDraft>) => editor.change({ ...draft, ...patch });
   const taken = new Set(draft.tags.map(normalizeText));
+  const known = tagValues(recipes);
   return (
     <Stack gap={16}>
       <Field label="Gerichtart">
@@ -221,7 +223,8 @@ function ClassificationFields(props: { draft: ClassificationDraft; editor: PageE
               {draft.tags.map((tag) => (
                 <Chip
                   key={tag}
-                  label={tag}
+                  // Spec 0045, AC-005: a tag no recipe has yet, e.g. one the AI brought.
+                  label={isNewTag(tag, known) ? `${tag} · neu` : tag}
                   removable
                   accessibilityLabel={`Schlagwort ${tag} entfernen`}
                   onPress={() => set({ tags: draft.tags.filter((other) => other !== tag) })}
@@ -233,7 +236,7 @@ function ClassificationFields(props: { draft: ClassificationDraft; editor: PageE
           <ValuePicker
             label="Schlagwort"
             placeholder="Schlagwort suchen oder anlegen"
-            values={tagValues(recipes).filter((tag) => !taken.has(normalizeText(tag)))}
+            values={known.filter((tag) => !taken.has(normalizeText(tag)))}
             onPick={(tag) => set({ tags: addTag(draft.tags, tag) })}
             testID="recipe-edit-tag"
           />

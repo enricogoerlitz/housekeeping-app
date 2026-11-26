@@ -4,6 +4,7 @@ import {
   preparePhoto,
   starterCatalogEntries,
   useArticles,
+  useRecipes,
 } from '@housekeeping/api';
 import {
   AI_DRAFT_UNREACHABLE_MESSAGE,
@@ -12,6 +13,7 @@ import {
   draftLinks,
   draftToPageInput,
   linkChipLabel,
+  tagValues,
   type PageDraftInput,
   type RecipeDraftReply,
   type RecipeDraftSource,
@@ -176,14 +178,20 @@ export function useAiFill(): AiFill {
   };
 }
 
-/** The draft as the edit mode takes it, with the household's articles (AC-002). */
+/**
+ * The draft as the edit mode takes it, with the household's articles (AC-002) and tags (spec 0045,
+ * REQ-002); new variants get ids like "+ Variante".
+ */
 export function useDraftInput(): (reply: RecipeDraftReply) => PageDraftInput {
   const articles = useArticles();
+  const recipes = useRecipes();
   return (reply) =>
     draftToPageInput(reply.draft, reply.sources, {
       articles,
       catalog: starterCatalogEntries,
       newKey: newRowKey,
+      newId: () => crypto.randomUUID(),
+      tags: tagValues(recipes),
     });
 }
 

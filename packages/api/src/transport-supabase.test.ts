@@ -1029,10 +1029,12 @@ describe('supabase transport: ai-recipe-draft and ai-image (spec 0040)', () => {
     draft: {
       title: 'Apfelkuchen',
       servings: 4,
+      description: 'Ein einfacher Apfelkuchen.',
       course: 'dessert',
-      tags: [],
+      tags: [{ name: 'backen', isNew: false }],
+      variants: [],
       ingredients: [{ name: 'Mehl', amount: '250 g' }],
-      steps: ['Backen'],
+      steps: [{ text: 'Backen', timerMinutes: 45 }],
     },
     sources: [],
   };

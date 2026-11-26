@@ -18,10 +18,12 @@ const reply: RecipeDraftReply = {
   draft: {
     title: 'Apfelkuchen',
     servings: 4,
+    description: 'Ein einfacher Apfelkuchen.',
     course: 'dessert',
     tags: [],
+    variants: [],
     ingredients: [{ name: 'Mehl', amount: '250 g' }],
-    steps: ['Backen'],
+    steps: [{ text: 'Backen' }],
   },
   sources: [],
 };
@@ -137,15 +139,35 @@ describe('createRecipeFromPage (spec 0040, AC-001)', () => {
     let seq = 0;
     const page = fillPageDraft(
       pageDraft(recipe, []),
-      { title: 'Apfelkuchen mit Streuseln', servings: 4, steps: ['Backen'] },
+      {
+        title: 'Apfelkuchen mit Streuseln',
+        description: 'Mit Streuseln.',
+        servings: 4,
+        // Spec 0045: variants and a step of one variant are saved with the new recipe.
+        variants: [
+          { id: 'f1e2d3c4-0000-4000-8000-0000000000aa', name: 'Mit Zimt', isDefault: true },
+        ],
+        steps: [
+          { text: 'Backen', timerMinutes: 45 },
+          { text: 'Zimt streuen', variantId: 'f1e2d3c4-0000-4000-8000-0000000000aa' },
+        ],
+      },
       () => `step-${++seq}`,
     );
     expect(getData().recipes).toHaveLength(before);
     createRecipeFromPage(page);
     await fx.settle();
     const saved = getData().recipes.find((candidate) => candidate.id === recipe.id);
-    expect(saved).toMatchObject({ title: 'Apfelkuchen mit Streuseln', servings: 4 });
-    expect(saved?.steps.map((step) => step.text)).toEqual(['Backen']);
+    expect(saved).toMatchObject({
+      title: 'Apfelkuchen mit Streuseln',
+      description: 'Mit Streuseln.',
+      servings: 4,
+      variants: [{ id: 'f1e2d3c4-0000-4000-8000-0000000000aa', name: 'Mit Zimt', isDefault: true }],
+    });
+    expect(saved?.steps).toMatchObject([
+      { text: 'Backen', timerMinutes: 45 },
+      { text: 'Zimt streuen', variantId: 'f1e2d3c4-0000-4000-8000-0000000000aa' },
+    ]);
     expect(getData().recipes).toHaveLength(before + 1);
     expect(fx.server.calls.filter((call) => call.fn === 'apply_changes')).toHaveLength(1);
   });

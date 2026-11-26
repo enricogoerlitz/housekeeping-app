@@ -195,6 +195,9 @@ export const RecipeDraftRequestSchema = z
   );
 export type RecipeDraftRequest = z.input<typeof RecipeDraftRequestSchema>;
 
+/** Name of a variant of the draft, e.g. "Vegetarisch"; ingredients and steps point at it by name. */
+const VariantName = z.string().trim().min(1).max(60);
+
 export const DraftIngredientSchema = z.strictObject({
   /** The household's article name when one fits (name or synonym), else a short German name. */
   name: z.string().trim().min(1).max(120),
@@ -202,21 +205,54 @@ export const DraftIngredientSchema = z.strictObject({
   amount: z.string().trim().max(60),
   /** Hinweis for cooking, e.g. "gewürfelt". */
   note: z.string().trim().max(200).optional(),
-  /** e.g. "Teig", "Streusel". */
+  /** e.g. "Für den Teig", "Für die Soße". */
   group: z.string().trim().max(60).optional(),
+  /** Only for one variant (spec 0045, REQ-003); without it the row is shared by every variant. */
+  variant: VariantName.optional(),
 });
 export type DraftIngredient = z.infer<typeof DraftIngredientSchema>;
 
-/** What the model may answer: recipe data, nothing else (AC-007). */
+export const DraftStepSchema = z.strictObject({
+  text: z.string().trim().min(1).max(1000),
+  /** Only for one variant (spec 0045, REQ-003). */
+  variant: VariantName.optional(),
+  /** The step's cooking timer (spec 0023, REQ-005): 1–600 minutes. */
+  timerMinutes: z.int().min(1).max(600).optional(),
+});
+export type DraftStep = z.infer<typeof DraftStepSchema>;
+
+/** A tag of the draft (spec 0045, REQ-002); `isNew` when the household does not have it yet. */
+export const DraftTagSchema = z.strictObject({
+  name: z.string().trim().min(1).max(40),
+  isNew: z.boolean(),
+});
+
+/**
+ * What the model may answer: recipe data, nothing else (spec 0040, AC-007). Spec 0045: always a
+ * description, tags from the household, variants with their own rows and steps, timers and Vorlauf.
+ * The draft names variants instead of ids, so it can later be compared with a stored recipe.
+ */
 export const RecipeDraftSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
+  /** 1–3 sentences (REQ-001). */
+  description: z.string().trim().min(1).max(600),
   servings: z.int().min(1).max(100),
   totalMinutes: z.int().min(1).max(10000).optional(),
+  /** "Vorlauf", e.g. dough overnight. */
+  leadTime: z
+    .strictObject({
+      text: z.string().trim().min(1).max(200),
+      hoursBefore: z.int().min(1).max(168),
+    })
+    .optional(),
   course: z.enum(['breakfast', 'main', 'side', 'dessert', 'snack', 'drink']),
   cuisine: z.string().trim().max(80).optional(),
-  tags: z.array(z.string().trim().min(1).max(40)).max(10),
-  ingredients: z.array(DraftIngredientSchema).max(60),
-  steps: z.array(z.string().trim().min(1).max(1000)).max(40),
+  /** 2–5 asked for; more are cut on the device (REQ-002, AC-004). */
+  tags: z.array(DraftTagSchema).max(10),
+  /** The first is the standard; empty for a dish without variants. */
+  variants: z.array(z.strictObject({ name: VariantName })).max(6),
+  ingredients: z.array(DraftIngredientSchema).max(80),
+  steps: z.array(DraftStepSchema).max(40),
   notes: z.string().trim().max(2000).optional(),
   /** English prompt for the image model; only with "Foto generieren". */
   imagePrompt: z.string().trim().max(1000).optional(),

@@ -3,6 +3,7 @@ import { Children, isValidElement, useEffect, useState, type ReactNode } from 'r
 import {
   AccessibilityInfo,
   Animated,
+  Easing,
   Platform,
   Pressable,
   View,
@@ -159,6 +160,11 @@ export interface PhotoProps {
    * pops or shifts when it fades in (spec 0034, AC-010).
    */
   loading?: boolean;
+  /**
+   * The photo is being generated (spec 0045, REQ-005): the surface pulses softly around a sparkle
+   * and is read as a progress indicator with this label; still when the system reduces motion.
+   */
+  generating?: string;
   width?: number | `${number}%`;
   height?: number;
   aspectRatio?: number;
@@ -180,6 +186,16 @@ export function Photo(props: PhotoProps) {
     overflow: 'hidden',
     backgroundColor: theme.colors.surfaceSunken,
   };
+  if (props.generating !== undefined) {
+    return (
+      <GeneratingPhoto
+        label={props.generating}
+        box={box}
+        style={props.style}
+        testID={props.testID}
+      />
+    );
+  }
   if (props.source === undefined) {
     return (
       <View
@@ -204,6 +220,77 @@ export function Photo(props: PhotoProps) {
         style={{ width: '100%', height: '100%' }}
         transition={120}
       />
+    </View>
+  );
+}
+
+/** Static until the system answers, so nothing moves for people who asked for less motion. */
+function useReduceMotion(): boolean {
+  const [reduceMotion, setReduceMotion] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduced) => {
+        if (!cancelled) setReduceMotion(reduced);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return reduceMotion;
+}
+
+const PULSE_MS = 900;
+
+function GeneratingPhoto(props: {
+  label: string;
+  box: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}) {
+  const theme = useTheme();
+  const reduceMotion = useReduceMotion();
+  // A lighter layer over the sunken surface fades in and out: the tile seems to breathe, while
+  // the sparkle stays steady on top.
+  const [glow] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduceMotion) return;
+    const timing = (toValue: number) =>
+      Animated.timing(glow, {
+        toValue,
+        duration: PULSE_MS,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: Platform.OS !== 'web',
+      });
+    const loop = Animated.loop(Animated.sequence([timing(1), timing(0)]));
+    loop.start();
+    return () => {
+      loop.stop();
+      glow.setValue(0);
+    };
+  }, [glow, reduceMotion]);
+  return (
+    <View
+      testID={props.testID}
+      accessibilityRole="progressbar"
+      accessibilityLabel={props.label}
+      style={[props.box, { alignItems: 'center', justifyContent: 'center' }, props.style]}
+    >
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          backgroundColor: theme.colors.surface,
+          opacity: glow,
+        }}
+      />
+      <ToneContext.Provider value={undefined}>
+        <Icon name="sparkles" size={26} color="muted" />
+      </ToneContext.Provider>
     </View>
   );
 }
@@ -800,20 +887,8 @@ const TYPING_DOT = 7;
  */
 export function TypingIndicator(props: { label: string; testID?: string }) {
   const theme = useTheme();
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const reduceMotion = useReduceMotion();
   const [phase] = useState(() => new Animated.Value(0));
-
-  useEffect(() => {
-    let cancelled = false;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((reduced) => {
-        if (!cancelled) setReduceMotion(reduced);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (reduceMotion) return;

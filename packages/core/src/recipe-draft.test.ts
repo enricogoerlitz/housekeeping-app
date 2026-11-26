@@ -9,7 +9,9 @@ import {
   draftLinks,
   draftToPageInput,
   imageFailureNotice,
+  imagePromptWithExtra,
   insertAtCursor,
+  isNewTag,
   linkChipLabel,
   mainIngredientNames,
 } from './recipe-draft';
@@ -27,6 +29,11 @@ const catalog: StarterCatalogEntry[] = [{ name: 'Zimt', diet: 'vegan', isPantry:
 
 let seq = 0;
 const newKey = () => `k${++seq}`;
+let ids = 0;
+const newId = () => `v${++ids}`;
+/** The household's tags in their spelling (spec 0045, REQ-002). */
+const knownTags = ['backen', 'one pot', 'schnell'];
+const context = { articles: household, catalog, newKey, newId, tags: knownTags };
 
 const draft: RecipeDraft = {
   title: 'Apfelkuchen mit Streuseln',
@@ -34,20 +41,25 @@ const draft: RecipeDraft = {
   totalMinutes: 70,
   course: 'dessert',
   cuisine: 'deutsch',
-  tags: ['backen', 'kuchen'],
+  description: 'Saftiger Apfelkuchen mit Streuseln.',
+  tags: [
+    { name: 'Backen', isNew: false },
+    { name: 'kuchen', isNew: true },
+  ],
+  variants: [],
   ingredients: [
     { name: 'Mehl', amount: '250 g' },
     { name: 'Möhren', amount: '2', note: 'gerieben', group: 'Teig' },
     { name: 'Zimt', amount: '1 TL' },
     { name: 'Drachenfrucht', amount: '1' },
   ],
-  steps: ['Streusel kneten', 'Backen'],
+  steps: [{ text: 'Streusel kneten' }, { text: 'Backen', timerMinutes: 45 }],
   notes: 'Warm servieren',
   imagePrompt: 'apple crumble cake',
 };
 
 describe('draftToPageInput: ingredients map to the household articles (AC-002)', () => {
-  const input = draftToPageInput(draft, [], { articles: household, catalog, newKey });
+  const input = draftToPageInput(draft, [], context);
   const rows = input.ingredients ?? [];
 
   it('AC-002: "Mehl" is the synonym of "Weizenmehl Type 405": the row has that article', () => {
@@ -84,10 +96,98 @@ describe('draftToPageInput: ingredients map to the household articles (AC-002)',
       totalMinutes: 70,
       course: 'dessert',
       cuisine: 'deutsch',
+      description: 'Saftiger Apfelkuchen mit Streuseln.',
       tags: ['backen', 'kuchen'],
-      steps: ['Streusel kneten', 'Backen'],
+      steps: [{ text: 'Streusel kneten' }, { text: 'Backen', timerMinutes: 45 }],
       notes: 'Warm servieren',
     });
+  });
+});
+
+describe('draftToPageInput: tags from the household (spec 0045, REQ-002)', () => {
+  const tagged = (names: string[]) =>
+    draftToPageInput({ ...draft, tags: names.map((name) => ({ name, isNew: false })) }, [], context)
+      .tags;
+
+  it('AC-003: a tag the household has is taken in its spelling', () => {
+    expect(tagged(['One Pot', 'Schnell'])).toEqual(['one pot', 'schnell']);
+  });
+
+  it('AC-005: a tag the household does not have is new', () => {
+    expect(isNewTag('pasta', knownTags)).toBe(true);
+    expect(isNewTag('One Pot', knownTags)).toBe(false);
+  });
+
+  it('AC-004: at most 5 tags, each once', () => {
+    expect(tagged(['a', 'b', 'A', 'c', 'd', 'e', 'f', 'g'])).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+});
+
+describe('draftToPageInput: variants (spec 0045, REQ-003)', () => {
+  const meatballs: RecipeDraft = {
+    ...draft,
+    variants: [{ name: 'Mit Rinderhack' }, { name: 'Vegetarisch' }, { name: 'vegetarisch' }],
+    ingredients: [
+      { name: 'Spaghetti', amount: '400 g' },
+      {
+        name: 'Hackfleisch',
+        amount: '500 g',
+        group: 'Für die Bällchen',
+        variant: 'Mit Rinderhack',
+      },
+      { name: 'Linsen', amount: '200 g', group: 'Für die Bällchen', variant: 'VEGETARISCH' },
+      { name: 'Tomaten', amount: '800 g', group: 'Für die Soße', variant: 'Mit Pilzen' },
+    ],
+    steps: [
+      { text: 'Bällchen formen', variant: 'Mit Rinderhack' },
+      { text: 'Linsenbällchen formen', variant: 'Vegetarisch' },
+      { text: 'Soße 20 Minuten köcheln', timerMinutes: 20 },
+    ],
+  };
+  const input = draftToPageInput(meatballs, [], context);
+  const [meat, veggie] = input.variants ?? [];
+
+  it('AC-006: each variant once, the first is the standard', () => {
+    expect(input.variants).toHaveLength(2);
+    expect(meat).toMatchObject({ name: 'Mit Rinderhack', isDefault: true });
+    expect(veggie).toMatchObject({ name: 'Vegetarisch', isDefault: false });
+  });
+
+  it('AC-006: a row of a variant belongs to it, a shared one to none', () => {
+    const rows = input.ingredients ?? [];
+    expect(rows[0]?.variantId).toBeUndefined();
+    expect(rows[1]?.variantId).toBe(meat?.id);
+    expect(rows[2]?.variantId).toBe(veggie?.id);
+  });
+
+  it('AC-009: a row naming a variant the draft does not have is shared', () => {
+    expect(input.ingredients?.[3]?.variantId).toBeUndefined();
+  });
+
+  it('AC-011: the group comes along', () => {
+    expect(input.ingredients?.map((row) => row.group)).toEqual([
+      '',
+      'Für die Bällchen',
+      'Für die Bällchen',
+      'Für die Soße',
+    ]);
+  });
+
+  it('AC-007, AC-013: steps keep their variant and timer', () => {
+    expect(input.steps).toEqual([
+      { text: 'Bällchen formen', variantId: meat?.id },
+      { text: 'Linsenbällchen formen', variantId: veggie?.id },
+      { text: 'Soße 20 Minuten köcheln', timerMinutes: 20 },
+    ]);
+  });
+
+  it('a lead time comes along', () => {
+    const withLead = draftToPageInput(
+      { ...draft, leadTime: { text: 'Teig über Nacht', hoursBefore: 12 } },
+      [],
+      context,
+    );
+    expect(withLead.leadTime).toEqual({ text: 'Teig über Nacht', hoursBefore: 12 });
   });
 });
 
@@ -104,7 +204,7 @@ describe('draftToPageInput: links (AC-016, AC-017)', () => {
   ];
 
   it('AC-016: the resolved TikTok link is the recipe link; AC-017: a failed one is kept as sent', () => {
-    const input = draftToPageInput(draft, sources, { articles: household, catalog, newKey });
+    const input = draftToPageInput(draft, sources, context);
     expect(input.links).toEqual([
       { url: 'https://www.chefkoch.de/rezepte/1' },
       {
@@ -124,7 +224,7 @@ describe('fillPageDraft with a draft from the AI', () => {
     ingredients: [{ id: 'i-milch', articleId: 'art-milch', shoppingRule: 'count' }],
     steps: [{ id: 's-1', text: 'Alt' }],
   });
-  const input = draftToPageInput(draft, [], { articles: household, catalog, newKey });
+  const input = draftToPageInput(draft, [], context);
 
   it('AC-006: "Ergänzen" keeps the ingredients and steps there are', () => {
     const filled = fillPageDraft(pageDraft(recipe, []), input, newKey);
@@ -152,6 +252,81 @@ describe('fillPageDraft with a draft from the AI', () => {
       cuisine: 'deutsch',
       tags: ['Backen', 'kuchen'],
     });
+  });
+
+  it('AC-001, AC-002: an empty description is filled; "Ergänzen" keeps one there is', () => {
+    expect(fillPageDraft(pageDraft(recipe, []), input, newKey).head.description).toBe(
+      'Saftiger Apfelkuchen mit Streuseln.',
+    );
+    const own = pageDraft({ ...recipe, description: 'Omas Rezept' }, []);
+    expect(fillPageDraft(own, input, newKey).head.description).toBe('Omas Rezept');
+    expect(fillPageDraft(own, input, newKey, { replace: true }).head.description).toBe(
+      'Saftiger Apfelkuchen mit Streuseln.',
+    );
+  });
+
+  it('AC-013: a step keeps its timer', () => {
+    const filled = fillPageDraft(pageDraft(recipe, []), input, newKey);
+    expect(filled.steps?.steps.at(-1)).toMatchObject({ text: 'Backen', timerMinutes: 45 });
+  });
+
+  const withVariants = makeRecipe({
+    ...recipe,
+    variants: [
+      { id: 'var-fleisch', name: 'Mit Hähnchen', isDefault: true },
+      { id: 'var-veggie', name: 'Vegetarisch', isDefault: false },
+    ],
+    ingredients: [
+      { id: 'i-milch', articleId: 'art-milch', shoppingRule: 'count', variantId: 'var-veggie' },
+    ],
+  });
+  const variantInput = draftToPageInput(
+    {
+      ...draft,
+      variants: [{ name: 'vegetarisch' }, { name: 'Mit Tofu' }],
+      ingredients: [{ name: 'Linsen', amount: '200 g', variant: 'vegetarisch' }],
+      steps: [{ text: 'Tofu braten', variant: 'Mit Tofu' }],
+    },
+    [],
+    context,
+  );
+
+  it('AC-008: "Ergänzen" reuses a variant of the same name and adds the others', () => {
+    const filled = fillPageDraft(pageDraft(withVariants, []), variantInput, newKey);
+    expect(filled.ingredients.variants.map((variant) => [variant.name, variant.isDefault])).toEqual(
+      [
+        ['Mit Hähnchen', true],
+        ['Vegetarisch', false],
+        ['Mit Tofu', false],
+      ],
+    );
+    const tofu = filled.ingredients.variants[2]?.id;
+    expect(filled.ingredients.rows.at(-1)?.variantId).toBe('var-veggie');
+    expect(filled.steps?.steps.at(-1)).toMatchObject({ text: 'Tofu braten', variantId: tofu });
+  });
+
+  it('AC-010: "Ersetzen" replaces the variants; the first of the draft is the standard', () => {
+    const filled = fillPageDraft(pageDraft(withVariants, []), variantInput, newKey, {
+      replace: true,
+    });
+    expect(filled.ingredients.variants.map((variant) => [variant.name, variant.isDefault])).toEqual(
+      [
+        ['vegetarisch', true],
+        ['Mit Tofu', false],
+      ],
+    );
+    expect(filled.ingredients.rows.map((row) => row.variantId)).toEqual([
+      filled.ingredients.variants[0]?.id,
+    ]);
+  });
+
+  it('a lead time fills an empty Vorlauf', () => {
+    const filled = fillPageDraft(
+      pageDraft(recipe, []),
+      { leadTime: { text: 'Teig über Nacht', hoursBefore: 12 } },
+      newKey,
+    );
+    expect(filled.steps).toMatchObject({ leadTimeText: 'Teig über Nacht', leadTimeHours: '12' });
   });
 });
 
@@ -267,5 +442,30 @@ describe('messages', () => {
     expect(imageFailureNotice(0)).toBeUndefined();
     expect(imageFailureNotice(1)).toBe('Eine Variante ist fehlgeschlagen');
     expect(imageFailureNotice(2)).toBe('Zwei Varianten sind fehlgeschlagen');
+  });
+});
+
+describe('imagePromptWithExtra: "Neu generieren" with a wish (spec 0045, REQ-006)', () => {
+  it("AC-017: the wish follows the draft's image prompt", () => {
+    expect(imagePromptWithExtra('spaghetti with meatballs', ' heller, von oben ')).toBe(
+      'spaghetti with meatballs. heller, von oben',
+    );
+  });
+
+  it('AC-017: a prompt ending with a full stop gets no second one', () => {
+    expect(imagePromptWithExtra('no text, no people.', 'heller')).toBe(
+      'no text, no people. heller',
+    );
+  });
+
+  it('AC-017: without a wish the prompt stays as it is', () => {
+    expect(imagePromptWithExtra('spaghetti with meatballs', '  ')).toBe('spaghetti with meatballs');
+  });
+
+  it('AC-019: together at most 1000 characters; the wish is cut, the prompt stays', () => {
+    const prompt = 'p'.repeat(990);
+    const result = imagePromptWithExtra(prompt, 'heller, von oben');
+    expect(result).toHaveLength(1000);
+    expect(result.startsWith(`${prompt}. `)).toBe(true);
   });
 });

@@ -3,10 +3,11 @@ import { Button, Notice, Photo, Row, Stack, Text, useTheme } from '@housekeeping
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { DictationField } from '@/features/shell/dictation-field';
 import { useOnlineOnly } from '@/features/shell/offline';
 import { features } from '@/lib/features';
 
-import { dismissPhotoSuggestions, startPhotoSuggestions, usePhotoSuggestions } from './ai-draft';
+import { regeneratePhotoSuggestions, startPhotoSuggestions, usePhotoSuggestions } from './ai-draft';
 import { AiFillSheet, toastUnreadLinks, useDraftInput } from './ai-fill';
 import type { PageEditor } from './sections/use-page-editor';
 
@@ -57,15 +58,58 @@ export function AiPageTools(props: { recipe: Recipe; editor: PageEditor }) {
   );
 }
 
-/** AC-010: three suggestions; "Übernehmen" makes one the draft's photo (saved with "Speichern"). */
+/** Spec 0045, REQ-005: read by screen readers on each pulsing tile. */
+const GENERATING_LABEL = 'Foto wird erzeugt';
+/** The wish of "Neu generieren" (REQ-006); the image prompt takes up to 1000 characters in all. */
+const EXTRA_MAX = 300;
+/** Three tiles stay thumbnails on a wide screen; the large photo stands below. */
+const TILE_MAX = 200;
+
+/**
+ * AC-010: three suggestions; "Übernehmen" makes one the draft's photo (saved with "Speichern").
+ * Spec 0045: the tiles pulse while the photos are made (REQ-005); "Neu generieren" with an
+ * optional wish makes three new ones (REQ-006) and replaces "Keins davon".
+ */
 function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
   const { recipe, editor } = props;
   const theme = useTheme();
+  const online = useOnlineOnly();
   const suggestions = usePhotoSuggestions(recipe.id);
   const [selected, setSelected] = useState(0);
+  const [extra, setExtra] = useState('');
   if (!suggestions) return null;
   const id = 'recipe-photo-suggestions';
-  if (suggestions.status === 'loading') {
+  const loading = suggestions.status === 'loading';
+  const regenerate = () => {
+    setSelected(0);
+    regeneratePhotoSuggestions(recipe.id, extra);
+  };
+  const again = (
+    <Stack gap={8}>
+      <DictationField
+        label="Was soll anders sein?"
+        placeholder="optional, z. B. heller, von oben"
+        value={extra}
+        onChangeText={setExtra}
+        maxLength={EXTRA_MAX}
+        editable={!loading && !online.disabled}
+        testID={`${id}-extra`}
+      />
+      <View style={{ alignItems: 'flex-start' }}>
+        <Button
+          label={loading ? 'Wird erzeugt …' : 'Neu generieren'}
+          icon="refresh-cw"
+          variant="secondary"
+          size="sm"
+          disabled={loading || online.disabled}
+          hint={online.hint}
+          onPress={regenerate}
+          testID={`${id}-regenerate`}
+        />
+      </View>
+    </Stack>
+  );
+  if (loading) {
     return (
       <Stack gap={8}>
         <Text variant="smallStrong" testID={id}>
@@ -73,8 +117,12 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
         </Text>
         <Row gap={8}>
           {[0, 1, 2].map((index) => (
-            <View key={index} style={{ flex: 1 }}>
-              <Photo loading aspectRatio={1} />
+            <View key={index} style={{ flex: 1, maxWidth: TILE_MAX }}>
+              <Photo
+                generating={GENERATING_LABEL}
+                aspectRatio={1}
+                testID={`${id}-generating-${index}`}
+              />
             </View>
           ))}
         </Row>
@@ -85,7 +133,12 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
     );
   }
   if (suggestions.status === 'failed') {
-    return <Notice icon="circle-alert" text={suggestions.message} testID={`${id}-error`} />;
+    return (
+      <Stack gap={8}>
+        <Notice icon="circle-alert" text={suggestions.message} testID={`${id}-error`} />
+        {again}
+      </Stack>
+    );
   }
   const chosen = suggestions.photos.findIndex((entry) => entry.photo === editor.chosenPhoto);
   const failure = imageFailureNotice(suggestions.failed);
@@ -105,6 +158,7 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
             testID={`${id}-${index}`}
             style={{
               flex: 1,
+              maxWidth: TILE_MAX,
               borderRadius: theme.shape.radius.tile,
               borderWidth: 3,
               borderColor: index === selected ? theme.colors.accent : 'transparent',
@@ -132,22 +186,13 @@ function PhotoSuggestionsPanel(props: { recipe: Recipe; editor: PageEditor }) {
           }}
           testID={`${id}-apply`}
         />
-        <Button
-          label="Keins davon"
-          variant="ghost"
-          size="sm"
-          onPress={() => {
-            if (chosen >= 0) editor.choosePhoto(undefined);
-            dismissPhotoSuggestions(recipe.id);
-          }}
-          testID={`${id}-dismiss`}
-        />
         {chosen >= 0 ? (
           <Text variant="small" color="muted" testID={`${id}-chosen`}>
             Wird mit „Speichern“ das Foto des Rezepts.
           </Text>
         ) : null}
       </Row>
+      {again}
     </Stack>
   );
 }

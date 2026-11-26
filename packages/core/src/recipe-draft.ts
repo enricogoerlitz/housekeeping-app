@@ -1,8 +1,14 @@
 import type { RecipeDraft, RecipeDraftSource } from './ai-contract';
 import { exactCatalogHit, type StarterCatalogEntry } from './article-catalog';
-import type { PageDraftInput } from './page-editor';
-import { newIngredientRow, type IngredientRow, type IngredientRowArticle } from './recipe-editor';
-import type { Article, Id, Recipe, RecipeLink } from './types';
+import type { PageDraftInput, PageDraftStep } from './page-editor';
+import {
+  cleanTags,
+  newIngredientRow,
+  type IngredientRow,
+  type IngredientRowArticle,
+} from './recipe-editor';
+import { normalizeText } from './text';
+import type { Article, Id, Recipe, RecipeLink, RecipeVariant } from './types';
 import { linkHost } from './web-link';
 
 // "Mit KI ausfüllen" (spec 0040, REQ-001 – REQ-006): what the app does with the AI's answer before
@@ -61,12 +67,33 @@ function articleOf(
   return hit.kind === 'article' ? { kind: 'article', articleId: hit.id } : { kind: 'hit', hit };
 }
 
+/** Tags of a draft (spec 0045, REQ-002): at most 5 (AC-004). */
+export const MAX_DRAFT_TAGS = 5;
+
+/**
+ * The draft's tags as the edit mode takes them (AC-003, AC-004): one the household has in the
+ * household's spelling, each once, at most 5.
+ */
+export function draftTags(tags: readonly { name: string }[], known: readonly string[]): string[] {
+  const spelled = tags.map(
+    (tag) => known.find((value) => normalizeText(value) === normalizeText(tag.name)) ?? tag.name,
+  );
+  return cleanTags(spelled).slice(0, MAX_DRAFT_TAGS);
+}
+
+/** AC-005: a tag no recipe of the household has yet shows "neu" in the edit mode. */
+export function isNewTag(tag: string, known: readonly string[]): boolean {
+  return !known.some((value) => normalizeText(value) === normalizeText(tag));
+}
+
 /**
  * The AI's draft as input for the edit mode (AC-001, AC-002): an ingredient whose name is the name
  * or a synonym of a household article gets that article, one of a starter entry the entry (both
  * like a pasted line); every other one is marked new and becomes an article only on "Speichern".
  * Each link sent becomes a link of the recipe, a TikTok link as the address it resolved to
- * (AC-016) or as sent when it could not be read (AC-017).
+ * (AC-016) or as sent when it could not be read (AC-017). Spec 0045: the variants get ids, the
+ * first is the standard, rows and steps find theirs by name (a name the draft does not have is
+ * shared, AC-009); tags follow the household's spelling.
  */
 export function draftToPageInput(
   draft: RecipeDraft,
@@ -74,17 +101,45 @@ export function draftToPageInput(
   context: {
     articles: readonly Article[];
     catalog: readonly StarterCatalogEntry[];
+    /** Row keys of the edit mode. */
     newKey: () => string;
+    /** Ids of new variants. */
+    newId: () => Id;
+    /** The household's tags (tagValues). */
+    tags: readonly string[];
   },
 ): PageDraftInput {
-  const ingredients = draft.ingredients.map((ingredient): IngredientRow => ({
-    ...newIngredientRow(context.newKey()),
-    name: ingredient.name,
-    amountText: ingredient.amount,
-    prepNote: ingredient.note ?? '',
-    group: ingredient.group ?? '',
-    article: articleOf(ingredient.name, context.articles, context.catalog),
-  }));
+  const variants: RecipeVariant[] = [];
+  for (const variant of draft.variants) {
+    const name = variant.name.trim();
+    if (variants.some((known) => normalizeText(known.name) === normalizeText(name))) continue;
+    variants.push({ id: context.newId(), name, isDefault: variants.length === 0 });
+  }
+  const variantId = (name: string | undefined): Id | undefined =>
+    name === undefined
+      ? undefined
+      : variants.find((variant) => normalizeText(variant.name) === normalizeText(name))?.id;
+
+  const ingredients = draft.ingredients.map((ingredient): IngredientRow => {
+    const row: IngredientRow = {
+      ...newIngredientRow(context.newKey()),
+      name: ingredient.name,
+      amountText: ingredient.amount,
+      prepNote: ingredient.note ?? '',
+      group: ingredient.group ?? '',
+      article: articleOf(ingredient.name, context.articles, context.catalog),
+    };
+    const id = variantId(ingredient.variant);
+    if (id !== undefined) row.variantId = id;
+    return row;
+  });
+  const steps = draft.steps.map((step): PageDraftStep => {
+    const made: PageDraftStep = { text: step.text };
+    const id = variantId(step.variant);
+    if (id !== undefined) made.variantId = id;
+    if (step.timerMinutes !== undefined) made.timerMinutes = step.timerMinutes;
+    return made;
+  });
   const links = sources.map((source): RecipeLink =>
     source.kind === 'tiktok'
       ? { url: source.resolvedUrl ?? source.url, label: 'TikTok' }
@@ -92,14 +147,17 @@ export function draftToPageInput(
   );
   const input: PageDraftInput = {
     title: draft.title,
+    description: draft.description,
     servings: draft.servings,
     course: draft.course,
-    tags: draft.tags,
+    tags: draftTags(draft.tags, context.tags),
+    variants,
     ingredients,
-    steps: draft.steps,
+    steps,
     links,
   };
   if (draft.totalMinutes !== undefined) input.totalMinutes = draft.totalMinutes;
+  if (draft.leadTime !== undefined) input.leadTime = draft.leadTime;
   if (draft.cuisine !== undefined) input.cuisine = draft.cuisine;
   if (draft.notes !== undefined) input.notes = draft.notes;
   return input;
@@ -142,6 +200,21 @@ export function mainIngredientNames(recipe: Recipe, articlesById: Record<Id, Art
     if (!article || article.isPantry || ingredient.variantId !== undefined) return [];
     return [article.name];
   });
+}
+
+/** The longest prompt the image function takes (AiImageRequestSchema). */
+const MAX_IMAGE_PROMPT = 1000;
+
+/**
+ * "Neu generieren" (spec 0045, REQ-006): the draft's image prompt with the person's wish behind
+ * it (AC-017); when both are too long the wish is cut, never the prompt (AC-019).
+ */
+export function imagePromptWithExtra(prompt: string, extra: string): string {
+  const base = prompt.trim();
+  const wish = extra.trim();
+  if (wish === '') return base;
+  const joined = /[.!?]$/u.test(base) ? `${base} ${wish}` : `${base}. ${wish}`;
+  return joined.slice(0, MAX_IMAGE_PROMPT);
 }
 
 /** AC-014: under the variants when some of them failed. */
