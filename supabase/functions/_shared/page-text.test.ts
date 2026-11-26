@@ -43,4 +43,24 @@ describe('pageText (spec 0040: a recipe page as text for the model)', () => {
     expect(pageText('<p>Salz &unbekannt; <b>Pfeffer')).toBe('Salz &unbekannt; Pfeffer');
     expect(pageText('')).toBe('');
   });
+
+  it('AC-007: a hostile page of 2 MB unclosed comments, scripts or brackets takes linear time', () => {
+    const size = 2 * 1024 * 1024;
+    for (const unit of ['<!--', '<script ', '<style>', '<', '<a ']) {
+      const hostile = unit.repeat(Math.ceil(size / unit.length));
+      const started = performance.now();
+      pageText(`<p>Linsen</p>${hostile}`);
+      expect(performance.now() - started, unit).toBeLessThan(1000);
+    }
+  });
+
+  it('a JSON-LD block in the head counts; an unclosed hidden block ends the text', () => {
+    const html =
+      '<html><head><title>Dal</title><script type="application/ld+json">{"name":"Dal"}</script></head>' +
+      '<body><p>Linsen</p><script>var x = "geheim"';
+    const text = pageText(html);
+    expect(text.split('\n')[0]).toBe('{"name":"Dal"}');
+    expect(text).toContain('Linsen');
+    expect(text).not.toContain('geheim');
+  });
 });

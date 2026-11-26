@@ -35,8 +35,16 @@ const NAMED: { [name: string]: string } = {
   times: '×',
 };
 
-const BLOCK =
-  /<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|td|th|table|section|article|header|footer|nav|main|aside|blockquote|pre|dd|dt|dl|figure|figcaption|hr)\b[^>]*>/gi;
+/** Tags that end a line of text. */
+const BLOCK = new Set(
+  'p div br li ul ol h1 h2 h3 h4 h5 h6 tr td th table section article header footer nav main aside blockquote pre dd dt dl figure figcaption hr'.split(
+    ' ',
+  ),
+);
+/** Elements whose content is no text for the reader. */
+const HIDDEN = new Set(['script', 'style', 'noscript', 'svg', 'template']);
+const TAG_NAME = /^\/?([a-z][a-z0-9]*)/;
+const JSON_LD = /\btype\s*=\s*["']?application\/ld\+json/;
 
 function decodeEntities(text: string): string {
   return text.replace(
@@ -54,35 +62,61 @@ function decodeEntities(text: string): string {
   );
 }
 
-/** The JSON-LD blocks, each as it is (already JSON text). */
-function jsonLd(html: string): string[] {
-  const blocks: string[] = [];
-  for (const match of html.matchAll(
-    /<script\b[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script\s*>/gi,
-  )) {
-    const block = (match[1] ?? '').trim();
-    if (block) blocks.push(block.replace(/\s+/g, ' '));
+/**
+ * One pass over the page with indexOf only, so a hostile page (2 MB of "<!--" or "<script"
+ * without an end) costs linear time — lazy regexes would search to the end from every opening
+ * (security check of spec 0040). Comments and hidden elements are dropped, their JSON-LD kept;
+ * an unclosed comment, hidden element or tag ends the text.
+ */
+function scan(html: string): { jsonLd: string[]; text: string } {
+  const lower = html.toLowerCase();
+  const jsonLd: string[] = [];
+  const parts: string[] = [];
+  let at = 0;
+  while (at < html.length) {
+    const open = html.indexOf('<', at);
+    if (open === -1) {
+      parts.push(html.slice(at));
+      break;
+    }
+    parts.push(html.slice(at, open));
+    if (lower.startsWith('<!--', open)) {
+      const end = lower.indexOf('-->', open + 4);
+      if (end === -1) break;
+      parts.push(' ');
+      at = end + 3;
+      continue;
+    }
+    const close = html.indexOf('>', open + 1);
+    if (close === -1) break;
+    const tag = lower.slice(open + 1, close);
+    const name = TAG_NAME.exec(tag)?.[1] ?? '';
+    at = close + 1;
+    if (!tag.startsWith('/') && HIDDEN.has(name)) {
+      const end = lower.indexOf(`</${name}`, at);
+      const content = end === -1 ? '' : html.slice(at, end).trim();
+      if (name === 'script' && content && JSON_LD.test(tag)) {
+        jsonLd.push(content.replace(/\s+/g, ' '));
+      }
+      if (end === -1) break;
+      const after = html.indexOf('>', end);
+      at = after === -1 ? html.length : after + 1;
+      parts.push(' ');
+      continue;
+    }
+    parts.push(BLOCK.has(name) ? '\n' : ' ');
   }
-  return blocks;
-}
-
-function visibleText(html: string): string {
-  const withoutHidden = html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style|noscript|svg|template|head)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(BLOCK, '\n')
-    .replace(/<[^>]*>/g, ' ')
-    // A tag cut off at the end ("<b>Pfeffer" is fine, "<div class=" is not text).
-    .replace(/<[^>]*$/, ' ');
-  return decodeEntities(withoutHidden)
+  const text = decodeEntities(parts.join(''))
     .split('\n')
     .map((line) => line.replace(/\s+/g, ' ').trim())
     .filter((line) => line !== '')
     .join('\n');
+  return { jsonLd, text };
 }
 
 /** JSON-LD first, then the visible text; whitespace collapsed, at most `maxChars` characters. */
 export function pageText(html: string, maxChars = MAX_CHARS): string {
-  const text = [...jsonLd(html), visibleText(html)].filter((part) => part !== '').join('\n');
-  return Array.from(text).slice(0, maxChars).join('');
+  const { jsonLd, text } = scan(html);
+  const all = [...jsonLd, text].filter((part) => part !== '').join('\n');
+  return Array.from(all).slice(0, maxChars).join('');
 }

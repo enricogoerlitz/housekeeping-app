@@ -68,7 +68,9 @@ photo, at most 1024 px), no quota, membership (403). One English prompt (neutral
 style, no text or people, the style chips as phrases; with a photo the edit wording "same subject,
 remove text and overlays" plus the person's instruction), three `_shared/flux.ts` calls in
 parallel (FLUX.2-pro over the BFL path of the Foundry resource, 1024 px JPEG, 45 s and one more try
-on 429/5xx each). Answer `{ images: [base64, …], failed }`; no variant at all is 503. Variants are
+on 429/5xx each). Once one variant is ready, the answer goes out 30 s after the start at the
+latest (AC-012); a variant still running then counts as failed and keeps running until its own
+45 s (cost accepted, spec "Risiken"). Answer `{ images: [base64, …], failed }`; no variant at all is 503. Variants are
 never stored: only "Übernehmen" in the app uploads one through the normal photo path.
 
 **Exception `media-sweep`** (spec 0039, REQ-005): called nightly by pg_net from
