@@ -125,3 +125,15 @@ Liest die Erledigungen (`chore_events`); „Zurücknehmen“ nutzt den bestehend
 - [x] 5. `Tooltip` + Einsatz im Kalender (AC-011–AC-013)
 - [x] 6. `overviewTitle` ohne Vorsilbe (AC-014)
 - [x] Nachweis: `pnpm format:check && pnpm check && pnpm build:web` grün; `/ui-verify` Desktop/Handy
+
+## Nachweis
+
+26.11.2026: `pnpm format:check && pnpm check && pnpm build:web` grün (core, ui, api mit Abdeckung
+≥ 80 %). Neue Tests: `overview.test.ts` (AC-002, AC-014), `place.test.ts` (AC-005–AC-007),
+`chores.test.ts` (AC-001, AC-003), `household-row.test.ts`, `calendar.test.ts` (AC-008, AC-010,
+AC-011), `tooltip-position.test.ts` und `tooltip.test.tsx` (AC-011–AC-013). Im Dev-Server
+(Playwright, 1440 × 700/900/1000 und 390 × 844) geprüft: Zurücknehmen in Übersicht und Kalender,
+offline deaktiviert mit Hinweis, „Im Verlauf öffnen“ öffnet den Eintrag im Verlauf; Aktivität aus
+dem Kalender markiert nur „Aktivitäten“, „‹ Kalender“ führt zurück; Restaurant auf dem Handy
+markiert „Essen“; Tooltip nach 500 ms nur bei abgeschnittenem Text; Jahr 28 px/12 px, Januar 2027
+bei 1440 × 900 ohne Scrollen; Überschrift der Übersicht an jedem Tag gleich hoch.
