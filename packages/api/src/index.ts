@@ -36,6 +36,7 @@ export {
   usePhoto,
 } from './photos-remote';
 export { checkImageFile, loadPhotoFromAddress } from './photo-sources';
+export { loadRecipeVideo, removeRecipeVideo, saveRecipeVideo } from './recipe-video';
 export { snapshot, OfflineError } from './store';
 export { useAddressedObject, type AddressedKind } from './addressed';
 export { useAppVersionState } from './app-version';

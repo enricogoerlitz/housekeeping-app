@@ -8,6 +8,7 @@ import {
 } from '@housekeeping/core';
 
 import { householdCall, onlineCall, WRITE_REJECTED_MESSAGE } from './backend';
+import { isVideoPath } from './recipe-video';
 import { starterPayload } from './starter/payload';
 import {
   commit,
@@ -249,9 +250,16 @@ export async function deleteHousehold(householdId: Id): Promise<void> {
   const notDone = `Löschen nicht abgeschlossen – „${name}“ ist noch da. Bitte mit Netz noch einmal löschen.`;
   try {
     const names = await onlineCall((transport) => transport.beginHouseholdDeletion(householdId));
-    for (let start = 0; start < names.length; start += 100) {
-      const batch = names.slice(start, start + 100);
+    // Photos and, since spec 0043, videos (AC-010): each from its own bucket.
+    const photos = names.filter((name) => !isVideoPath(name));
+    const videos = names.filter(isVideoPath);
+    for (let start = 0; start < photos.length; start += 100) {
+      const batch = photos.slice(start, start + 100);
       await onlineCall((transport) => transport.removeMedia(batch));
+    }
+    for (let start = 0; start < videos.length; start += 100) {
+      const batch = videos.slice(start, start + 100);
+      await onlineCall((transport) => transport.removeVideos(batch));
     }
     await householdCall((transport) => transport.deleteHousehold(householdId));
   } catch (error) {

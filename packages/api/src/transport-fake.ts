@@ -22,6 +22,7 @@ import {
   householdOwnerId,
   isHalfStar,
   isReminderPast,
+  isTikTokUrl,
   isWebUrl,
   packQuantity,
   PROFILE_COLORS,
@@ -38,6 +39,8 @@ import {
   type AiSearchResult,
   type AssistantReply,
   type AssistantRequest,
+  type FetchVideoReply,
+  type FetchVideoRequest,
   type RecipeDraftReply,
   type RecipeDraftRequest,
   type ResolveMapsLinkReply,
@@ -128,6 +131,7 @@ type RpcName =
   | 'send_test_push'
   | 'resolve-maps-link'
   | 'fetch-image'
+  | 'fetch-video'
   | 'ai-assistant'
   | 'ai-search'
   | 'speech-token'
@@ -183,6 +187,13 @@ export interface FakeServer {
   setAi(ai: FakeAi): void;
   /** A stored photo (bucket household-media). */
   media(path: string): Blob | undefined;
+  /**
+   * What fetch-video gets behind a TikTok link (spec 0043): the video, or why there is none.
+   * Unknown links give `video_unavailable`.
+   */
+  setVideoAddress(url: string, video: Blob | 'video_unavailable' | 'video_too_large'): void;
+  /** A stored video (bucket household-videos). */
+  video(path: string): Blob | undefined;
   /** Like the Vault entries push_send_url and push_send_secret (spec 0013); unset by default. */
   setPushConfigured(configured: boolean): void;
   /** The push service answered 404/410 for this address: the subscription is unreachable. */
@@ -529,6 +540,9 @@ const PHOTO_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const MEDIA_PATH = /^([^/]+)\/(activities|recipes|restaurants)\/[^/]+\/([^/]+)$/;
 /** The bucket's limits: image/jpeg only, at most 2 MiB. */
 const MEDIA_MAX_BYTES = 2 * 1024 * 1024;
+/** <household>/recipes/<recipe id>/<uuid>.mp4 (private.video_household_id, spec 0043). */
+const VIDEO_PATH =
+  /^([^/]+)\/recipes\/([^/]+)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.mp4$/;
 
 /** shopping_contributions_note_length (spec 0006, AC-022). */
 const NOTE_MAX_LENGTH = 200;
@@ -859,6 +873,13 @@ function checkRow(householdId: string, table: string, row: Row, tables: TableRow
   ) {
     throw new TransportError('permanent', '23514', 400);
   }
+  // recipes_video_path_valid (spec 0043): the recipe's own folder, a recipe, not a collection.
+  if (table === 'recipes' && row.video_path != null) {
+    const match = VIDEO_PATH.exec(String(row.video_path));
+    if (!match || match[1] !== householdId || match[2] !== row.id || row.kind === 'collection') {
+      throw new TransportError('permanent', '23514', 400);
+    }
+  }
   const folder = PHOTO_FOLDERS[table];
   if (folder && row.photo_path != null) {
     const prefix = `${householdId}/${folder}/${row.id}/`;
@@ -948,6 +969,8 @@ export function createFakeServer(): FakeServer {
   const mapsLinks = new Map<string, ResolveMapsLinkReply>();
   const imageAddresses = new Map<string, Blob>();
   const media = new Map<string, Blob>();
+  const videos = new Map<string, Blob>();
+  const videoAddresses = new Map<string, Blob | 'video_unavailable' | 'video_too_large'>();
   let ai: FakeAi = {};
   /** private.deletions: one snapshot per household, kind and target, kept for RESTORABLE_MS. */
   const deletions = new Map<string, Deletion>();
@@ -2717,6 +2740,33 @@ export function createFakeServer(): FakeServer {
   // ---------- photo bucket (policies of storage.objects) ----------
 
   /** The household of a photo path the user may use, or undefined (wrong shape, foreign). */
+  function videoHousehold(userId: string, path: string): string | undefined {
+    const [, householdId] = VIDEO_PATH.exec(path) ?? [];
+    return householdId && isMember(userId, householdId) ? householdId : undefined;
+  }
+
+  /** fetch-video (spec 0043): checks like the function, then the upload and apply_changes. */
+  function fetchVideo(userId: string, request: FetchVideoRequest): FetchVideoReply {
+    requireUser(userId);
+    if (!isMember(userId, request.householdId))
+      throw new TransportError('permanent', 'forbidden', 403);
+    const recipe = data.get(request.householdId)?.recipes?.[request.recipeId];
+    if (!recipe || recipe.kind === 'collection')
+      throw new TransportError('permanent', 'forbidden', 403);
+    const links = Array.isArray(recipe.links) ? (recipe.links as { url?: unknown }[]) : [];
+    if (!isTikTokUrl(request.url) || !links.some((link) => link.url === request.url))
+      throw new TransportError('permanent', 'not_a_tiktok_link', 422);
+    if (recipe.video_path != null) throw new TransportError('permanent', 'video_exists', 409);
+    const video = videoAddresses.get(request.url) ?? 'video_unavailable';
+    if (typeof video === 'string') throw new TransportError('permanent', video, 422);
+    const videoPath = `${request.householdId}/recipes/${request.recipeId}/${crypto.randomUUID()}.mp4`;
+    videos.set(videoPath, video);
+    applyChanges(userId, request.householdId, [
+      { kind: 'patch', table: 'recipes', id: request.recipeId, changes: { video_path: videoPath } },
+    ]);
+    return { videoPath };
+  }
+
   function mediaHousehold(userId: string, path: string): string | undefined {
     const [, householdId, , file] = MEDIA_PATH.exec(path) ?? [];
     if (!householdId || !file || !PHOTO_FILE.test(file)) return undefined;
@@ -3492,9 +3542,10 @@ export function createFakeServer(): FakeServer {
           if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
           // Closed for new members before the photos go (security check 22.11.2026).
           invitations = invitations.filter((invitation) => invitation.household_id !== householdId);
-          return [...media.keys()]
-            .filter((path) => mediaHousehold(userId, path) === householdId)
-            .sort();
+          return [
+            ...[...media.keys()].filter((path) => mediaHousehold(userId, path) === householdId),
+            ...[...videos.keys()].filter((path) => videoHousehold(userId, path) === householdId),
+          ].sort();
         }),
 
       deleteHousehold: (householdId) =>
@@ -3504,7 +3555,9 @@ export function createFakeServer(): FakeServer {
             throw new TransportError('permanent', 'not_member', 403);
           }
           if (memberIdsOf(householdId).length > 1) throw reject('not_last_member');
-          if ([...media.keys()].some((path) => path.startsWith(`${householdId}/`))) {
+          if (
+            [...media.keys(), ...videos.keys()].some((path) => path.startsWith(`${householdId}/`))
+          ) {
             throw reject('media_remaining');
           }
           // One transaction with the cascade: rows, members, invitations, tombstones.
@@ -3608,6 +3661,7 @@ export function createFakeServer(): FakeServer {
           if (!image) throw new TransportError('permanent', 'not_an_image', 422);
           return image;
         }),
+      fetchVideo: (request) => run(userId, 'fetch-video', () => fetchVideo(userId, request)),
       askAssistant: (request) =>
         run(userId, 'ai-assistant', () => {
           if (!ai.assistant) throw aiUnavailable();
@@ -3664,6 +3718,17 @@ export function createFakeServer(): FakeServer {
       removeMedia: (paths) =>
         run(userId, 'storage_remove', () => {
           for (const path of paths) if (mediaHousehold(userId, path)) media.delete(path);
+        }),
+      downloadVideo: (path, signal) =>
+        run(userId, 'storage_download', () => {
+          if (signal?.aborted) throw new TransportError('transient', 'aborted', 0);
+          const video = videoHousehold(userId, path) ? videos.get(path) : undefined;
+          if (!video) throw new TransportError('permanent', 'not_found', 404);
+          return video;
+        }),
+      removeVideos: (paths) =>
+        run(userId, 'storage_remove', () => {
+          for (const path of paths) if (videoHousehold(userId, path)) videos.delete(path);
         }),
 
       syncPull: (request) =>
@@ -3763,6 +3828,10 @@ export function createFakeServer(): FakeServer {
       ai = next;
     },
     media: (path) => media.get(path),
+    setVideoAddress: (url, video) => {
+      videoAddresses.set(url, video);
+    },
+    video: (path) => videos.get(path),
     setPushConfigured(configured) {
       pushConfigured = configured;
     },

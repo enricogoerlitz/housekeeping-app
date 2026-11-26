@@ -24,11 +24,29 @@ export interface ClaimsResult {
   error: unknown;
 }
 
+/** A storage request's outcome; `status` is the Storage API's own (413 for a file too large). */
+export interface StorageResult {
+  error: { message: string; status?: number } | null;
+}
+
+/** Storage as the caller (spec 0043): the bucket's policies decide, never a server key. */
+export interface UserStorage {
+  /** Stores a new object; never overwrites one. */
+  upload(
+    bucket: string,
+    path: string,
+    bytes: Uint8Array,
+    contentType: string,
+  ): Promise<StorageResult>;
+  remove(bucket: string, paths: string[]): Promise<StorageResult>;
+}
+
 /** A Supabase client acting as the caller: every read and RPC runs under their RLS. */
 export interface UserClient {
   auth: { getClaims(jwt: string): Promise<ClaimsResult> };
   rpc(fn: string, args: { [name: string]: unknown }): PromiseLike<DbResult>;
   from(table: string): { select(columns: string): Query };
+  storage: UserStorage;
 }
 
 export interface Deps {

@@ -8,6 +8,8 @@ import {
   AssistantRequestSchema,
   ErrorReplySchema,
   FetchImageRequestSchema,
+  FetchVideoReplySchema,
+  FetchVideoRequestSchema,
   ResolveMapsLinkReplySchema,
   ResolveMapsLinkRequestSchema,
   SpeechTokenReplySchema,
@@ -205,6 +207,36 @@ describe('fetch image (spec 0039)', () => {
   });
 });
 
+describe('fetch video (spec 0043)', () => {
+  const householdId = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const recipeId = 'bbbbbbbb-0000-4000-8000-000000000002';
+
+  it('AC-001: asks for the video of an https link of a recipe in the active household', () => {
+    const request = { householdId, recipeId, url: 'https://vm.tiktok.com/ZGdXoJ8Ay/' };
+    expect(FetchVideoRequestSchema.parse(request)).toEqual(request);
+    const reply = { videoPath: `${householdId}/recipes/${recipeId}/x.mp4` };
+    expect(FetchVideoReplySchema.parse(reply)).toEqual(reply);
+  });
+
+  it('AC-004: refuses http, a missing recipe and extra fields', () => {
+    expect(
+      FetchVideoRequestSchema.safeParse({ householdId, recipeId, url: 'http://vm.tiktok.com/x' })
+        .success,
+    ).toBe(false);
+    expect(
+      FetchVideoRequestSchema.safeParse({ householdId, url: 'https://vm.tiktok.com/x' }).success,
+    ).toBe(false);
+    expect(
+      FetchVideoRequestSchema.safeParse({
+        householdId,
+        recipeId,
+        url: 'https://vm.tiktok.com/x',
+        videoPath: 'a',
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe('ErrorReplySchema', () => {
   it('accepts every stable error code and nothing else', () => {
     for (const error of [
@@ -216,6 +248,10 @@ describe('ErrorReplySchema', () => {
       'internal',
       'forbidden',
       'not_an_image',
+      'not_a_tiktok_link',
+      'video_unavailable',
+      'video_too_large',
+      'video_exists',
     ])
       expect(ErrorReplySchema.parse({ error })).toEqual({ error });
     expect(ErrorReplySchema.safeParse({ error: 'teapot' }).success).toBe(false);

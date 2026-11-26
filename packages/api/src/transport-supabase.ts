@@ -5,6 +5,7 @@ import {
   AiSearchResultSchema,
   AssistantReplySchema,
   RecipeDraftReplySchema,
+  FetchVideoReplySchema,
   ResolveMapsLinkReplySchema,
   SpeechTokenReplySchema,
   type PullResult,
@@ -66,6 +67,8 @@ interface StorageBucketLike {
 
 /** The private bucket of the photos (supabase/migrations/…_storage_household_media.sql). */
 const MEDIA_BUCKET = 'household-media';
+/** The private bucket of the recipe videos (spec 0043, …_recipe_video.sql). */
+const VIDEO_BUCKET = 'household-videos';
 
 /** Storage status (from the answer's body: the HTTP status is 400 for most refusals) → code. */
 const STORAGE_CODES: Record<number, string> = {
@@ -139,6 +142,12 @@ export interface SupabaseTransportOptions {
  */
 const AI_DRAFT_TIMEOUT_MS = 80_000;
 const AI_IMAGE_TIMEOUT_MS = 55_000;
+/**
+ * Spec 0043, AC-001: the server reads the page (10 s), loads the video (60 s) and uploads it; the
+ * app waits up to 90 s. A video of up to 50 MB downloads within 2 minutes.
+ */
+const FETCH_VIDEO_TIMEOUT_MS = 90_000;
+const VIDEO_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 export function createSupabaseTransport(
   client: SupabaseLike,
@@ -232,6 +241,8 @@ export function createSupabaseTransport(
   async function media(
     request: (bucket: StorageBucketLike, signal: AbortSignal) => PromiseLike<StorageReply>,
     caller?: AbortSignal,
+    bucketName = MEDIA_BUCKET,
+    waitMs = mediaTimeoutMs,
   ): Promise<unknown> {
     if (caller?.aborted) throw new TransportError('transient', 'aborted', 0);
     const controller = new AbortController();
@@ -244,12 +255,12 @@ export function createSupabaseTransport(
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, mediaTimeoutMs);
+    }, waitMs);
     const cancel = () => controller.abort();
     caller?.addEventListener('abort', cancel);
     try {
       const reply = await Promise.race([
-        request(client.storage.from(MEDIA_BUCKET), controller.signal),
+        request(client.storage.from(bucketName), controller.signal),
         stopped,
       ]);
       if (reply.error) throw classifyStorageError(reply.error);
@@ -451,6 +462,8 @@ export function createSupabaseTransport(
       invokeParsed(RecipeDraftReplySchema, 'ai-recipe-draft', request, AI_DRAFT_TIMEOUT_MS),
     aiImage: (request) =>
       invokeParsed(AiImageReplySchema, 'ai-image', request, AI_IMAGE_TIMEOUT_MS),
+    fetchVideo: (request) =>
+      invokeParsed(FetchVideoReplySchema, 'fetch-video', request, FETCH_VIDEO_TIMEOUT_MS),
     uploadMedia: async (path, photo) => {
       let sent: PromiseLike<StorageReply> | undefined;
       try {
@@ -489,6 +502,20 @@ export function createSupabaseTransport(
     },
     removeMedia: async (paths) => {
       await media((bucket) => bucket.remove([...paths]));
+    },
+    downloadVideo: async (path, signal) => {
+      // no-store: like the photos, nothing of the video stays in the browser's HTTP cache.
+      const data = await media(
+        (bucket, stop) => bucket.download(path, {}, { cache: 'no-store', signal: stop }),
+        signal,
+        VIDEO_BUCKET,
+        VIDEO_DOWNLOAD_TIMEOUT_MS,
+      );
+      if (!(data instanceof Blob)) throw new TransportError('permanent', 'invalid_response');
+      return data;
+    },
+    removeVideos: async (paths) => {
+      await media((bucket) => bucket.remove([...paths]), undefined, VIDEO_BUCKET);
     },
     syncPull: async (request): Promise<PullResult> => {
       const raw = await parsed(RawPullResultSchema, 'sync_pull', { p_request: request });

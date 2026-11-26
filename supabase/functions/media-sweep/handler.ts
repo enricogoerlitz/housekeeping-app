@@ -4,7 +4,8 @@
 // x-sweep-timestamp and x-sweep-signature, secret MEDIA_SWEEP_SECRET from the Vault). Deleting
 // has to go through the Storage API (a direct delete in storage.objects leaves the file in the
 // storage backend), and only a server key may delete across households: this is the one function
-// that reads it. It deletes only names of the photo folders in household-media, nothing else.
+// that reads it. It deletes only names of the photo folders in household-media and, since spec
+// 0043, names of the video folders in household-videos ("videos"), nothing else.
 import { z } from 'zod';
 
 import { readLimitedBody } from '../_shared/body.ts';
@@ -19,13 +20,20 @@ const CHUNK = 100;
 /** The object names the photo policies allow (private.media_household_id). */
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const MEDIA_NAME = new RegExp(`^${UUID}/(activities|recipes|restaurants)/${UUID}/${UUID}\\.jpg$`);
+/** The object names the video policies allow (private.video_household_id, spec 0043). */
+const VIDEO_NAME = new RegExp(`^${UUID}/recipes/${UUID}/${UUID}\\.mp4$`);
 
-const RequestSchema = z.strictObject({
-  names: z.array(z.string().regex(MEDIA_NAME)).min(1).max(MAX_NAMES),
-});
+const RequestSchema = z
+  .strictObject({
+    names: z.array(z.string().regex(MEDIA_NAME)).max(MAX_NAMES),
+    videos: z.array(z.string().regex(VIDEO_NAME)).max(MAX_NAMES).optional(),
+  })
+  .refine((body) => body.names.length + (body.videos?.length ?? 0) > 0);
 
-/** Removes the names from household-media; resolves with how many the Storage API removed. */
-export type Remover = (names: string[]) => Promise<{ removed: number }>;
+export type SweptBucket = 'household-media' | 'household-videos';
+
+/** Removes the names from the bucket; resolves with how many the Storage API removed. */
+export type Remover = (bucket: SweptBucket, names: string[]) => Promise<{ removed: number }>;
 
 export interface MediaSweepDeps {
   env: (name: string) => string | undefined;
@@ -82,14 +90,19 @@ export async function handler(request: Request, deps: MediaSweepDeps): Promise<R
       key: serverKey(deps.env),
     });
     let removed = 0;
-    const { names } = parsed.data;
-    for (let start = 0; start < names.length; start += CHUNK) {
-      try {
-        removed += (await remove(names.slice(start, start + CHUNK))).removed;
-      } catch {
-        // The rest stays for the next night; the names are never logged.
-        console.error('media_sweep_storage_failed');
-        return reply(502, { error: 'storage_failed', removed });
+    const batches: [SweptBucket, string[]][] = [
+      ['household-media', parsed.data.names],
+      ['household-videos', parsed.data.videos ?? []],
+    ];
+    for (const [bucket, names] of batches) {
+      for (let start = 0; start < names.length; start += CHUNK) {
+        try {
+          removed += (await remove(bucket, names.slice(start, start + CHUNK))).removed;
+        } catch {
+          // The rest stays for the next night; the names are never logged.
+          console.error('media_sweep_storage_failed');
+          return reply(502, { error: 'storage_failed', removed });
+        }
       }
     }
     return reply(200, { removed });

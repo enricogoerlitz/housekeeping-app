@@ -47,6 +47,11 @@ export interface PublicFetchOptions {
   allowHost?: (hostname: string) => boolean;
   /** Sent as `User-Agent`; defaults to a browser-like one that names no person. */
   userAgent?: string;
+  /**
+   * More request headers for every hop (spec 0043: `Referer` and the page's cookies for a TikTok
+   * video). Only for callers that also restrict the hosts (allowHost): they go to every redirect.
+   */
+  headers?: { [name: string]: string };
 }
 
 export interface PublicFetchDeps {
@@ -61,6 +66,8 @@ export interface PublicResponse {
   /** The media type without parameters, lower case. */
   contentType: string;
   bytes: Uint8Array<ArrayBuffer>;
+  /** `name=value` of every cookie the hops set, in order (attributes dropped). */
+  cookies: string[];
 }
 
 const REDIRECT = new Set([301, 302, 303, 307, 308]);
@@ -68,6 +75,14 @@ const REDIRECT = new Set([301, 302, 303, 307, 308]);
 const USER_AGENT = 'Mozilla/5.0 (compatible; HousekeepingApp/1.0; +image-fetch)';
 
 const fail = (reason: PublicFetchFailure) => new PublicFetchError(reason);
+
+/** `name=value` of each Set-Cookie header; a header without `=` is dropped. */
+function cookiesOf(response: Response): string[] {
+  return response.headers
+    .getSetCookie()
+    .map((header) => header.split(';')[0]?.trim() ?? '')
+    .filter((pair) => /^[^=\s]+=/.test(pair));
+}
 
 // ---------------------------------------------------------------------------------------------
 // Addresses
@@ -281,6 +296,7 @@ export async function fetchPublic(
   });
   aborted.catch(() => undefined);
   let url: URL | undefined;
+  const cookies: string[] = [];
   try {
     url = checkedUrl(raw);
     for (let redirects = 0; ; redirects += 1) {
@@ -295,6 +311,7 @@ export async function fetchPublic(
             redirect: 'manual',
             signal: controller.signal,
             headers: {
+              ...options.headers,
               accept: options.accept ?? options.contentTypes.join(', '),
               'user-agent': options.userAgent ?? USER_AGENT,
             },
@@ -305,6 +322,7 @@ export async function fetchPublic(
         if (error instanceof PublicFetchError) throw error;
         throw fail(controller.signal.aborted ? 'timeout' : 'network');
       }
+      cookies.push(...cookiesOf(response));
       if (REDIRECT.has(response.status)) {
         void response.body?.cancel().catch(() => undefined);
         const location = response.headers.get('location');
@@ -323,7 +341,7 @@ export async function fetchPublic(
         throw fail('wrong_type');
       }
       const bytes = await readBody(response, options.maxBytes, aborted);
-      return { url: url.href, contentType, bytes };
+      return { url: url.href, contentType, bytes, cookies };
     }
   } catch (error) {
     // Where it failed, e.g. the page a short link led to (spec 0040: the TikTok link is kept).
