@@ -37,6 +37,10 @@ jobs:
       # The local stack of this runner; its publishable key is read after the start.
       EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
     steps:
+      # Keep the Supabase ports (54321–54329) out of the range Linux uses for outgoing connections:
+      # a download on the runner can otherwise hold 54322 and the database cannot bind it
+      # ("address already in use", review 0003, 26.11.2026). First step, before any network use.
+      - run: sudo sysctl -w net.ipv4.ip_local_port_range="20000 54000"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
