@@ -19,18 +19,3 @@ export function inSidewaysScroller(target: unknown): boolean {
   }
   return false;
 }
-
-/**
- * Web: whether a touch on `target` belongs to a swipe area nested inside `own` (spec 0034,
- * REQ-006): the nearest swipe area around the target takes it, the outer one leaves it. Swipe
- * areas carry `data-swipe-area`.
- */
-export function inInnerSwipeArea(target: unknown, own: unknown): boolean {
-  if (Platform.OS !== 'web' || !own) return false;
-  let node = target as { hasAttribute?: (name: string) => boolean; parentElement?: unknown };
-  while (node && typeof node.hasAttribute === 'function') {
-    if (node.hasAttribute('data-swipe-area')) return node !== own;
-    node = node.parentElement as typeof node;
-  }
-  return false;
-}
