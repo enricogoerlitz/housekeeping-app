@@ -113,7 +113,8 @@ describe('Sheet and the keyboard (spec 0032, REQ-002)', () => {
     setWindow(390, 844);
     render(sheet);
     act(() => keyboard.open(400));
-    expect(screen.getByTestId('sheet').style.height).toBe('388px');
+    // A form grows with its content (spec 0033, decision 11), at most up to the top gap.
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('388px');
     expect(screen.getByTestId('sheet-layer').style.paddingBottom).toBe('444px');
   });
 
@@ -122,7 +123,7 @@ describe('Sheet and the keyboard (spec 0032, REQ-002)', () => {
     render(sheet);
     act(() => keyboard.open(400));
     act(() => keyboard.close());
-    expect(screen.getByTestId('sheet').style.height).toBe('760px');
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('760px');
   });
 });
 
@@ -242,11 +243,14 @@ describe('Sheet sizes and layout (spec 0005, REQ-003)', () => {
     expect(screen.getByTestId('sheet').style.height).toBe('');
   });
 
-  it('phones: a sheet from below over the full width; m and l keep their height', () => {
+  it('phones: a sheet from below over the full width; l keeps its height, m follows its content', () => {
     setWindow(390, 844);
-    const { rerender } = render(sheet('m'));
+    const { rerender } = render(sheet('l'));
     expect(screen.getByTestId('sheet').style.width).toBe('');
     expect(screen.getByTestId('sheet').style.height).toBe('760px');
+    rerender(sheet('m'));
+    expect(screen.getByTestId('sheet').style.height).toBe('');
+    expect(screen.getByTestId('sheet').style.maxHeight).toBe('760px');
     rerender(sheet('s'));
     expect(screen.getByTestId('sheet').style.height).toBe('');
     expect(screen.getByTestId('sheet').style.maxHeight).toBe('422px');

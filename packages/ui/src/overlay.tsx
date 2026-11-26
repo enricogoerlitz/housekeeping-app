@@ -52,7 +52,7 @@ import { sheetDragOffset, sheetDragRelease, upwardShadow } from './sheet-drag';
 import { useSheetDrag } from './sheet-drag-events';
 import { fadeOutCopy } from './sheet-exit';
 import { FOCUS_SETTLE_MS, SheetFocusContext, focusQuietly } from './sheet-focus';
-import { toastBottom } from './toast-place';
+import { toastBottom, toastEdge, type Box } from './toast-place';
 import { createToastStore } from './toast-state';
 import { TopLayer } from './top-layer';
 
@@ -565,9 +565,14 @@ const store = createToastStore();
 // Buttons of the page the toast must not cover, e.g. "Einplanen" (spec 0033, REQ-009).
 // Where they stood as the toast appeared: a store, so React (and its compiler) sees the change.
 const avoided = new Set<RefObject<unknown>>();
-let obstacles: Band[] = [];
+interface Obstacles {
+  avoid: Band[];
+  /** Everything to press on screen (decision 12): the toast goes to the top rather than on it. */
+  pressable: Box[];
+}
+let obstacles: Obstacles = { avoid: [], pressable: [] };
 const obstacleListeners = new Set<() => void>();
-function setObstacles(next: Band[]) {
+function setObstacles(next: Obstacles) {
   if (JSON.stringify(next) === JSON.stringify(obstacles)) return;
   obstacles = next;
   for (const listener of obstacleListeners) listener();
@@ -582,7 +587,7 @@ const obstaclesSnapshot = () => obstacles;
 export const toast = {
   show: (options: Parameters<typeof store.show>[0]) => {
     // Where the page's buttons stand as it appears; it keeps its place while shown (AC-025).
-    setObstacles(avoidedBands());
+    setObstacles(measureObstacles());
     store.show(options);
   },
   /** Ends the toast without its action; its `onExpire` runs. */
@@ -636,6 +641,28 @@ function avoidedBands(): Band[] {
   return bands;
 }
 
+const PRESSABLE =
+  'button, a[href], input, textarea, select, [role="button"], [role="link"], [role="tab"], ' +
+  '[role="switch"], [role="checkbox"], [role="radio"], [role="slider"]';
+
+/** What can be pressed on screen now, outside the toast and outside inert pages (web only). */
+function pressableBoxes(): Box[] {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return [];
+  const boxes: Box[] = [];
+  for (const node of document.querySelectorAll(PRESSABLE)) {
+    if (node.closest('[inert], [data-testid="toast"]')) continue;
+    const rect = node.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) continue;
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
+    boxes.push({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right });
+  }
+  return boxes;
+}
+
+function measureObstacles(): Obstacles {
+  return { avoid: avoidedBands(), pressable: pressableBoxes() };
+}
+
 /** Mount once near the root: above the tab bar and the home bar on phones (AC-024). */
 const WEB_TOAST_LAYER = { position: 'fixed', zIndex: 10000 } as unknown as ViewStyle;
 const TOAST_MIN_HEIGHT = 48;
@@ -644,31 +671,42 @@ export function ToastHost() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const bottomEdge = useBottomInset();
-  const { isPhone, height } = useBreakpoint();
+  const { isPhone, width, height } = useBreakpoint();
   const state = useSyncExternalStore(store.subscribe, store.get, store.get);
   const bar = useSyncExternalStore(subscribeClearance, clearanceSnapshot, clearanceSnapshot);
   const keyboard = useKeyboard();
+  // Until measured, the widest the toast can be.
+  const [toastWidth, setToastWidth] = useState<number>();
   // The page may still change as the toast appears (a "wird gespeichert" line goes): once it has
   // drawn, the buttons are measured again.
-  const avoid = useSyncExternalStore(subscribeObstacles, obstaclesSnapshot, obstaclesSnapshot);
+  const measured = useSyncExternalStore(subscribeObstacles, obstaclesSnapshot, obstaclesSnapshot);
   const shownId = state?.id;
   useEffect(() => {
     if (shownId === undefined || typeof requestAnimationFrame === 'undefined') return;
-    const frame = requestAnimationFrame(() => setObstacles(avoidedBands()));
+    const frame = requestAnimationFrame(() => setObstacles(measureObstacles()));
     return () => cancelAnimationFrame(frame);
   }, [shownId]);
   if (!state) return null;
   const c = theme.colors;
   const below = bar ?? (isPhone ? TAB_BAR_HEIGHT : 0);
-  // On the keyboard, which hides the tab bar (spec 0032, REQ-002).
-  const bottom = keyboard.open
-    ? keyboard.inset + 12
-    : toastBottom({
-        bottom: bottomEdge + below + (isPhone ? 12 : 24),
+  // On the keyboard, which hides the tab bar (spec 0032, REQ-002); else above the bottom bar and
+  // the page's buttons, or at the top when that would cover something to press (decision 12).
+  const place = keyboard.open
+    ? { bottom: keyboard.inset + 12 }
+    : toastEdge({
+        windowWidth: width,
         windowHeight: height,
+        toastWidth: toastWidth ?? Math.min(440, width - insets.left - insets.right - 32),
         toastHeight: TOAST_MIN_HEIGHT,
-        gap: 12,
-        obstacles: avoid,
+        bottom: toastBottom({
+          bottom: bottomEdge + below + (isPhone ? 12 : 24),
+          windowHeight: height,
+          toastHeight: TOAST_MIN_HEIGHT,
+          gap: 12,
+          obstacles: measured.avoid,
+        }),
+        top: insets.top + (isPhone ? 8 : 24),
+        pressable: measured.pressable,
       });
   return (
     <TopLayer>
@@ -679,7 +717,7 @@ export function ToastHost() {
           ...(Platform.OS === 'web' ? WEB_TOAST_LAYER : { position: 'absolute' }),
           left: insets.left,
           right: insets.right,
-          bottom,
+          ...place,
           alignItems: 'center',
           paddingHorizontal: 16,
         }}
@@ -688,6 +726,7 @@ export function ToastHost() {
           <View
             testID="toast"
             accessibilityRole="alert"
+            onLayout={(event) => setToastWidth(event.nativeEvent.layout.width)}
             style={{
               flexDirection: 'row',
               alignItems: 'center',

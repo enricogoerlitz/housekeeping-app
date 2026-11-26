@@ -57,7 +57,7 @@ function CollectionCover(props: { recipe: Recipe } & Omit<PhotoProps, 'source'>)
 /**
  * The photo of the page with its save state; a collection's cover is its collage (E14). A tap
  * shows it on the whole screen, "Foto ändern" and "Foto entfernen" stand right under it (spec
- * 0036, REQ-008, REQ-009).
+ * 0036, REQ-008, REQ-009); under a sample photo only "Foto ändern".
  */
 export function RecipePhoto(props: {
   recipe: Recipe;
@@ -79,7 +79,9 @@ export function RecipePhoto(props: {
         />
       </ZoomablePhoto>
       <PhotoActionRow
-        hasPhoto={!!props.recipe.photoPath}
+        // A sample photo shows too: "Foto ändern", but nothing to remove.
+        hasPhoto={sources.length > 0}
+        removable={!!props.recipe.photoPath}
         disabled={online.disabled || props.photo.busy !== undefined}
         hint={online.hint}
         onChange={props.photo.change}

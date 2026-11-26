@@ -180,6 +180,17 @@ Knöpfen am unteren Rand der Seite, nicht darauf. Quelle: Video-Befund. Offline:
     übergeben (bekannter iOS-Kniff) — Pro: Tastatur sofort offen / Contra: `Menu` muss den Fokus
     beim Schließen nicht mehr auf seinen Knopf legen, react-native-web legt ihn trotzdem zurück;
     fragil, nur am Gerät prüfbar. Empfehlung: A, erst nach der iPhone-Abnahme über B entscheiden.
+11. QA-Nachtrag (26.11.): Ohne Schleier wirkte ein Formular-Fenster (`m`) mit wenig Inhalt auf dem
+    Handy kaputt (Aufgabe „Bad putzen“: 760 px hoch, die untere Hälfte leer). Auf dem Handy wächst
+    `m` jetzt mit dem Inhalt bis 90 % und scrollt darüber; `l` (Suchen und Wählen mit Tabs) bleibt
+    fest 90 % (Spec 0005, AC-014). Mit offener Tastatur steht das Fenster weiter auf ihr, höchstens
+    bis knapp unter den oberen Rand (Spec 0032, AC-004). Wegwischen, Tastatur und Scrollen bleiben
+    gleich. Ändert Spec 0005 AC-014 für `m` auf dem Handy.
+12. QA-Nachtrag (26.11.): Über „Kochen“/„Einplanen“ landete „Foto gespeichert“ auf den Sternen
+    „Du/Nadja“. Regel jetzt: Der Hinweis steht unten (über den gemeldeten Knöpfen der Seite, wie
+    bisher); läge er dort auf etwas Bedienbarem (Knopf, Link, Feld), steht er oben unter der
+    Statusleiste, falls dort frei; sonst bleibt er unten. Gemessen wird im Web beim Erscheinen und
+    ein Bild später (`toastEdge`, `toast-place.ts`).
 
 ## Daten
 
@@ -213,3 +224,10 @@ Entfällt: nur Oberfläche.
       fokussiert nichts; Foto über den Dateiwähler beim ersten Mal gespeichert, „Foto gespeichert“
       über „Kochen / Einplanen / Auf die Liste“. Bilder in `tmp/review-0003/0033/`. Offen:
       iPhone-Abnahme (Wischen, Tastatur, Kontakt-Leiste, Mediathek).
+
+QA-Nachtrag 26.11.: Entscheidungen 11 und 12. `sheet-size.test.ts`, `overlay.test.tsx`,
+`overlay-handy.test.tsx` (Toast oben statt auf den Sternen) und `toast-place.test.ts` (`toastEdge`,
+rot gezeigt, dann grün); `photo-viewer.test.tsx` (dunkle Bühne auch hell, rot gezeigt). Dev-Server
+390 × 844: Aufgabe „Bad putzen“ 380 statt 760 px hoch, Wegziehen schließt; lange Formulare (Eintrag,
+Neue Zutat, Restaurant, Artikel) bis 760 px und scrollen; „Foto gespeichert“ oben neben „‹ Essen“.
+Bilder in `tmp/review-0003/qa-fix/`.

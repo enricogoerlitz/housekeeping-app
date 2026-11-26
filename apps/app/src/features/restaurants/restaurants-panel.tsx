@@ -15,6 +15,7 @@ import {
   restaurantVisits,
   sortRestaurantList,
   toggleRestaurantFavorites,
+  quickViewOrigin,
   type Id,
   type RecipeKind,
   type Restaurant,
@@ -47,7 +48,7 @@ import { Pressable, View, type TextInput } from 'react-native';
 
 import { useOpenRecipe } from '@/features/recipes/navigation';
 import { rememberBrowseOrder } from '@/lib/browse-order';
-import { afterWindowClosed, usePageParams } from '@/lib/url-state';
+import { afterWindowClosed, useOriginBack, usePageParams } from '@/lib/url-state';
 import { NewRecipeSheet } from '@/features/recipes/new-recipe-sheet';
 import { FoodNewMenu, type FoodNewKind } from '@/features/recipes/new-menu';
 import { StartPageActions } from '@/features/shell/profile-button';
@@ -104,6 +105,12 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   // On wide screens the chosen restaurant stands in the address and replaces the entry (spec 0019,
   // REQ-014, AC-043); on phones the same address opens its page, with the list underneath (AC-044).
   const selectedId = isWide ? params.restaurant : undefined;
+  // Opened from another section ("Öffnen" in the calendar): "‹ Kalender" and ✕ lead back there,
+  // as for activities (spec 0035, REQ-002).
+  const origin = useOriginBack(params.von, 'essen');
+  const fromOther = selectedId !== undefined && quickViewOrigin(params.von, 'essen') !== undefined;
+  const closeDetail = () =>
+    fromOther ? origin.back() : address.replace({ restaurant: undefined, fenster: undefined });
   const addressed = params.restaurant;
   const replace = address.replace;
   useEffect(() => {
@@ -168,6 +175,8 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
   const header = (
     <ScreenHeader
       title="Essen"
+      backLabel={fromOther ? origin.label : undefined}
+      onBack={fromOther ? origin.back : undefined}
       right={
         <>
           <FoodNewMenu onNew={onNew} />
@@ -399,7 +408,7 @@ export function RestaurantsPanel(props: { switcher: ReactNode; swipe: TabSwipe }
           detail={
             <RestaurantDetail
               restaurantId={selectedId}
-              onClose={() => address.replace({ restaurant: undefined, fenster: undefined })}
+              onClose={closeDetail}
               window={
                 params.fenster === 'bearbeiten' || params.fenster === 'einplanen'
                   ? params.fenster

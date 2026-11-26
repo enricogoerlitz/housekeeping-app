@@ -85,6 +85,15 @@ export function openerOf(state: PlaceState, pathname: string): Place | undefined
   return state.previous && pathOf(state.previous) !== pathname ? state.previous : undefined;
 }
 
+/**
+ * The quick view beside a start page's list (wide screens), opened from another section: its ✕
+ * and the header's "‹ Kalender" lead back there (spec 0035, REQ-002). Without `von`, or from the
+ * own section, ✕ only closes it.
+ */
+export function quickViewOrigin(von: Origin | undefined, own: Origin): Origin | undefined {
+  return von === undefined || von === own ? undefined : von;
+}
+
 const SECTION_LABEL: Record<Origin, string> = {
   uebersicht: 'Übersicht',
   essen: 'Essen',

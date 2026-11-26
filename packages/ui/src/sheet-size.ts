@@ -5,7 +5,7 @@ export const PHONE_MAX_WIDTH = 700;
 
 /**
  * s = confirm or pick one of a few (height follows the content); m = forms; l = search and pick
- * with tabs. m and l keep their height whatever they show.
+ * with tabs. l keeps its height whatever it shows, m too from tablet width on.
  */
 export type SheetSize = 's' | 'm' | 'l';
 
@@ -22,6 +22,9 @@ export function sheetFrame(size: SheetSize, window: { width: number; height: num
   if (window.width < PHONE_MAX_WIDTH) {
     if (size === 's') return { maxHeight: Math.round(window.height * 0.5) };
     const height = Math.round(window.height * 0.9);
+    // Without the scrim a short form at 90 % looked broken (spec 0033, decision 11): on phones it
+    // grows with its content; only `l` with its tabs keeps its height.
+    if (size === 'm') return { maxHeight: height };
     return { height, maxHeight: height };
   }
   const maxHeight = Math.round(window.height * 0.85);
